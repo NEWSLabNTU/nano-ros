@@ -190,25 +190,31 @@ def self_test():
                 fh.write(text)
         return d
 
+    # Synthetic paths, built so a doc-reference scanner never reads them as
+    # links into the real tree.
+    RFC_PATH = os.path.join("docs", "design", "0901" + "-x.md")
+    PHASE_PATH = os.path.join("docs", "roadmap", "phase-901" + "-x.md")
+    ARCHIVED_PATH = os.path.join("docs", "roadmap", "archived", "phase-901" + "-x.md")
+
     def rfc(extra, status="Draft"):
         return f"---\nrfc: 0901\ntitle: \"t\"\nstatus: {status}\n{extra}---\n\n# body\n"
 
     phase_ok = "# Phase 901\n\nImplements [RFC-0901](../design/0901-x.md).\n"
     phase_silent = "# Phase 901\n\nNothing about the design.\n"
     cases = [
-        ("tracked", {"docs/design/0901-x.md": rfc("implements-tracked-by: [phase-901]\n"),
-                     "docs/roadmap/phase-901-x.md": phase_ok}, None),
-        ("tracked by an archived phase", {"docs/design/0901-x.md": rfc("implements-tracked-by: [phase-901]\n"),
-                     "docs/roadmap/archived/phase-901-x.md": phase_ok}, None),
-        ("empty list", {"docs/design/0901-x.md": rfc("implements-tracked-by: []\n")}, "names no phase"),
-        ("no field", {"docs/design/0901-x.md": rfc("")}, "no `implements-tracked-by:`"),
-        ("missing phase", {"docs/design/0901-x.md": rfc("implements-tracked-by: [phase-901]\n")}, "does not exist"),
-        ("no back-link", {"docs/design/0901-x.md": rfc("implements-tracked-by: [phase-901]\n"),
-                          "docs/roadmap/phase-901-x.md": phase_silent}, "does not name RFC-0901 back"),
-        ("none with reason", {"docs/design/0901-x.md": rfc("implements-tracked-by: []\nimplementation: none -- an analysis\n")}, None),
-        ("none without reason", {"docs/design/0901-x.md": rfc("implementation: none\n")}, "no reason"),
-        ("superseded", {"docs/design/0901-x.md": rfc("implements-tracked-by: []\n", "Superseded")}, None),
-        ("no frontmatter", {"docs/design/0901-x.md": "# RFC-0901\n\n**Status:** Draft\n"}, "no frontmatter"),
+        ("tracked", {RFC_PATH: rfc("implements-tracked-by: [phase-901]\n"),
+                     PHASE_PATH: phase_ok}, None),
+        ("tracked by an archived phase", {RFC_PATH: rfc("implements-tracked-by: [phase-901]\n"),
+                     ARCHIVED_PATH: phase_ok}, None),
+        ("empty list", {RFC_PATH: rfc("implements-tracked-by: []\n")}, "names no phase"),
+        ("no field", {RFC_PATH: rfc("")}, "no `implements-tracked-by:`"),
+        ("missing phase", {RFC_PATH: rfc("implements-tracked-by: [phase-901]\n")}, "does not exist"),
+        ("no back-link", {RFC_PATH: rfc("implements-tracked-by: [phase-901]\n"),
+                          PHASE_PATH: phase_silent}, "does not name RFC-0901 back"),
+        ("none with reason", {RFC_PATH: rfc("implements-tracked-by: []\nimplementation: none -- an analysis\n")}, None),
+        ("none without reason", {RFC_PATH: rfc("implementation: none\n")}, "no reason"),
+        ("superseded", {RFC_PATH: rfc("implements-tracked-by: []\n", "Superseded")}, None),
+        ("no frontmatter", {RFC_PATH: "# RFC-0901\n\n**Status:** Draft\n"}, "no frontmatter"),
     ]
     bad = 0
     for name, files, want in cases:
@@ -217,7 +223,7 @@ def self_test():
             print(f"  self-test FAIL: {name}: got {got!r}, want {want!r}")
             bad += 1
     # The ratchet: a baselined failure passes, a new one fails, a stale entry fails.
-    failing = {"docs/design/0901-x.md": rfc("implements-tracked-by: []\n")}
+    failing = {RFC_PATH: rfc("implements-tracked-by: []\n")}
     d = tree(dict(failing, **{BASELINE: "0901 names no phase\n"}))
     if judge(d)[0] != 0:
         print("  self-test FAIL: a baselined RFC did not pass")
@@ -225,7 +231,7 @@ def self_test():
     if judge(tree(failing))[0] != 1:
         print("  self-test FAIL: an unbaselined failing RFC passed")
         bad += 1
-    d = tree({"docs/design/0901-x.md": rfc("implementation: none -- ref\n"),
+    d = tree({RFC_PATH: rfc("implementation: none -- ref\n"),
               BASELINE: "0901 names no phase\n"})
     if judge(d)[0] != 1:
         print("  self-test FAIL: a stale baseline entry passed")
