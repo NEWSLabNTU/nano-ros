@@ -43,7 +43,7 @@ endfunction()
 #                    `nros_configured_locate` publishes once a CLI resolves),
 #                    else empty;
 #   <again_out>      KIND RECONFIGURE (the default): `west build -d <dir>
-#                    --cmake` on Zephyr, else `cmake <dir>`.
+#                    --cmake` where west drove the configure, else `cmake <dir>`.
 #                    KIND PRISTINE (R55), for a FATAL whose cause is a value the
 #                    configure CACHED (the toolchain, `ZEPHYR_SDK_INSTALL_DIR`),
 #                    which outranks the environment and survives a
@@ -57,6 +57,21 @@ endfunction()
 #   <alt_out>        on a CLI-driven road, the explicit alternative of
 #                    rebuilding with `nros build` (`NROS_CONFIGURED_BUILD_COMMAND`),
 #                    which uses its own build dir; else empty.
+#
+# Issue 2276 -- two inputs the forms above depend on are ASKED, never assumed:
+#
+#   * West drove the configure only if `WEST_PYTHON` is defined (west's
+#     `build.py` passes `-DWEST_PYTHON=<interpreter>`; `cmake/modules/west.cmake`
+#     reads it the same way). A defined `ZEPHYR_BASE` says only "Zephyr": a
+#     plain `cmake -B` Zephyr build gets the `cmake` forms, not `west build`.
+#   * Under sysbuild this module runs in an IMAGE, configured with
+#     `-DSYSBUILD:BOOL=True` into `<build>/<image>` (`sysbuild_extensions.cmake`),
+#     so `CMAKE_BINARY_DIR` is not the dir the user named. The remedy names
+#     the parent `<build>`, and the west PRISTINE form passes `--sysbuild`; a
+#     sysbuild configure without west is `cmake -S ${ZEPHYR_BASE}/share/sysbuild
+#     -B <build> -DAPP_DIR=<source>`. Sysbuild forwards every non-`CMAKE_*`
+#     cache entry to its images, `WEST_PYTHON` included, so the two questions
+#     are answered in the image as they are at the top.
 function(nros_reconfigure_remedy _configure_out _again_out)
     cmake_parse_arguments(_RR "" "KIND;ALTERNATIVE" "" ${ARGN})
     if(NOT _RR_KIND)
@@ -68,7 +83,22 @@ function(nros_reconfigure_remedy _configure_out _again_out)
     if(DEFINED ZEPHYR_BASE AND NOT "${ZEPHYR_BASE}" STREQUAL "")
         set(_zephyr TRUE)
     endif()
+    # Issue 2276 N10: west drove this configure only if it passed WEST_PYTHON.
+    set(_west FALSE)
+    if(_zephyr AND DEFINED WEST_PYTHON AND NOT "${WEST_PYTHON}" STREQUAL "")
+        set(_west TRUE)
+    endif()
+    # Issue 2276 N9: a sysbuild IMAGE configures `<build>/<image>`; repair `<build>`.
     set(_dir "${CMAKE_BINARY_DIR}")
+    set(_sysbuild FALSE)
+    if(_zephyr AND SYSBUILD)
+        set(_sysbuild TRUE)
+        get_filename_component(_dir "${CMAKE_BINARY_DIR}" DIRECTORY)
+    endif()
+    set(_west_sb "")
+    if(_sysbuild)
+        set(_west_sb "--sysbuild ")
+    endif()
     if(_RR_KIND STREQUAL "PRISTINE")
         # The board as the user spelled it: Zephyr caches it as CACHED_BOARD
         # (`mps2/an385`), while BOARD is split into BOARD + BOARD_QUALIFIERS.
@@ -78,15 +108,28 @@ function(nros_reconfigure_remedy _configure_out _again_out)
         elseif(DEFINED BOARD)
             set(_board "${BOARD}")
         endif()
-        if(_zephyr AND NOT "${_board}" STREQUAL ""
-           AND DEFINED APPLICATION_SOURCE_DIR AND NOT "${APPLICATION_SOURCE_DIR}" STREQUAL "")
-            set(_again "`west build -p always -d ${_dir} -b ${_board} "
-                "${APPLICATION_SOURCE_DIR}`, with the cmake options it was first "
+        set(_source "")
+        if(DEFINED APPLICATION_SOURCE_DIR)
+            set(_source "${APPLICATION_SOURCE_DIR}")
+        endif()
+        if(_west AND NOT "${_board}" STREQUAL "" AND NOT "${_source}" STREQUAL "")
+            set(_again "`west build -p always ${_west_sb}-d ${_dir} -b ${_board} "
+                "${_source}`, with the cmake options it was first "
                 "configured with after `--`")
             string(CONCAT _again ${_again})
-        elseif(_zephyr)
-            set(_again "`west build -p always -d ${_dir}` with the board, source "
-                "and cmake options it was first configured with")
+        elseif(_west)
+            set(_again "`west build -p always ${_west_sb}-d ${_dir}` with the board, "
+                "source and cmake options it was first configured with")
+            string(CONCAT _again ${_again})
+        elseif(_sysbuild AND NOT "${_source}" STREQUAL "")
+            set(_again "remove `${_dir}` and configure it from scratch "
+                "(`cmake -S ${ZEPHYR_BASE}/share/sysbuild -B ${_dir} "
+                "-DAPP_DIR=${_source}`, with the options it was first configured with)")
+            string(CONCAT _again ${_again})
+        elseif(_sysbuild)
+            set(_again "remove `${_dir}` and configure it from scratch "
+                "(`cmake -S ${ZEPHYR_BASE}/share/sysbuild -B ${_dir}`, with the "
+                "`APP_DIR` and options it was first configured with)")
             string(CONCAT _again ${_again})
         else()
             set(_again "remove `${_dir}` and configure it from scratch "
@@ -95,7 +138,7 @@ function(nros_reconfigure_remedy _configure_out _again_out)
             string(CONCAT _again ${_again})
         endif()
     elseif(_RR_KIND STREQUAL "RECONFIGURE")
-        if(_zephyr)
+        if(_west)
             set(_again "`west build -d ${_dir} --cmake`")
         else()
             set(_again "`cmake ${_dir}`")

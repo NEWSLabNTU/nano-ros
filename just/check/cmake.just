@@ -75,6 +75,14 @@ cli-fmt:
 cmake-cli-rows:
     @bash packages/testing/nros-tests/tests/cmake_cli_rows.sh
 
+# Issue 2276 -- a configure-time FATAL's re-configure remedy asks whether west
+# drove the configure (`WEST_PYTHON`) and whether this is a sysbuild image
+# (`SYSBUILD`, dir `<build>/<image>`), instead of reading "Zephyr" as "west"
+# and `CMAKE_BINARY_DIR` as the dir the user named. Drives the production
+# `nros_reconfigure_remedy` over all five shapes. Buildless (`cmake -P`).
+cmake-reconfigure-remedy:
+    @bash packages/testing/nros-tests/tests/cmake_reconfigure_remedy.sh
+
 # Issue 0726 — `find_program(VAR ...)` is a NO-OP when VAR is already defined,
 # so the "initialise then search" spelling never searches. All three sites in
 # this tree paired it with a quiet fallback (FetchContent clone, "no SDK

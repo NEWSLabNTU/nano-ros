@@ -327,9 +327,11 @@ else
 $SUB_OUT"
 fi
 # Ruling R52 -- on Zephyr (no CLI) the remedy is the west re-configure.
+# `-DWEST_PYTHON` stands in for west, which passes it to every cmake it runs;
+# a Zephyr configure without it is not west's and gets `cmake <dir>` (issue 2276).
 ZW_RC=0
 ZW_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/zw-build" \
-    -DPROBE_DERIVED=ON -DZEPHYR_BASE=/zephyr 2>&1)" || ZW_RC=$?
+    -DPROBE_DERIVED=ON -DZEPHYR_BASE=/zephyr -DWEST_PYTHON=/usr/bin/python3 2>&1)" || ZW_RC=$?
 check
 if [ "$ZW_RC" -ne 0 ] && nros_grep_q -F "Re-run this build's configure (\`west build -d $TEST_TMPDIR/zw-build --cmake\`)" <<<"$(flat "$ZW_OUT")" \
    && ! nros_grep_q -F 'Run `nros configure' <<<"$(flat "$ZW_OUT")"; then
@@ -343,7 +345,7 @@ fi
 # --cmake\` for THIS dir; \`nros build\` (its own dir) is only the alternative.
 HW_RC=0
 HW_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/hw-build" \
-    -DPROBE_DERIVED=ON -DZEPHYR_BASE=/zephyr -DPROBE_CLI=ON 2>&1)" || HW_RC=$?
+    -DPROBE_DERIVED=ON -DZEPHYR_BASE=/zephyr -DWEST_PYTHON=/usr/bin/python3 -DPROBE_CLI=ON 2>&1)" || HW_RC=$?
 check
 if [ "$HW_RC" -ne 0 ] \
    && nros_grep_q -F "Run \`nros configure /p --image i\`, then \`west build -d $TEST_TMPDIR/hw-build --cmake\` (or rebuild with \`nros build --workspace /p i\`, which uses its own build dir)" <<<"$(flat "$HW_OUT")"; then
@@ -370,7 +372,7 @@ GEOF
 for road in zephyr cmake; do
     G_RC=0
     if [ "$road" = zephyr ]; then
-        G_OUT="$(cmake -S "$GUARD_ROOT/src" -B "$GUARD_ROOT/build-$road" -DZEPHYR_BASE=/zephyr \
+        G_OUT="$(cmake -S "$GUARD_ROOT/src" -B "$GUARD_ROOT/build-$road" -DZEPHYR_BASE=/zephyr -DWEST_PYTHON=/usr/bin/python3 \
             -DBOARD=mps2/an385 "-DAPPLICATION_SOURCE_DIR=$GUARD_ROOT/src" 2>&1)" || G_RC=$?
         # The board and source are named: a pristine run wipes the cache west
         # would read them from (measured, tmp/w7-westprobe/pristine.sh).
@@ -403,7 +405,7 @@ set(APPLICATION_SOURCE_DIR "$GA_ROOT/app")
 nros_check_generated_app_current()
 GAEOF
 GA_RC=0
-GA_OUT="$(cmake -S "$GA_ROOT/src" -B "$GA_ROOT/build" -DZEPHYR_BASE=/zephyr 2>&1)" || GA_RC=$?
+GA_OUT="$(cmake -S "$GA_ROOT/src" -B "$GA_ROOT/build" -DZEPHYR_BASE=/zephyr -DWEST_PYTHON=/usr/bin/python3 2>&1)" || GA_RC=$?
 check
 if [ "$GA_RC" -ne 0 ] && nros_grep_q -F "\`west build -d $GA_ROOT/build --cmake\`" <<<"$(flat "$GA_OUT")"; then
     log_success "the generated-app FATAL names west build --cmake for its dir"
