@@ -148,3 +148,27 @@ emulator. Two things this run does not cover, and the nightly does: the
 runner's emulator is 6.2.0, not 9.0.2, and the harness resolves the fixture
 from the lane's west build root, not from this build dir. **The acceptance is
 unchanged:** `CorePinPlacement/zephyr/c` passes in a tier-2 nightly.
+
+## The runner image already has the emulator; the cell has not run since, 2026-11-12 (still open)
+
+The emulator is in the image. Inside the running container
+`nano-ros-runner-newslab-118-server` on 2026-11-12: `/usr/bin/qemu-system-aarch64`,
+`QEMU emulator version 6.2.0 (Debian 1:6.2+dfsg-2ubuntu6.31)`, with `virt`
+listed by `-machine help`. Runner 241 measured the same that day. Rebuilding
+the image with `scripts/ci/runner-container.sh --build` would change nothing,
+so no rebuild or restart was done.
+
+What keeps this open is that the cell has not run since the 10-27 ENOENT:
+
+- `CorePinPlacement/zephyr/c` is at coordinate `zephyr,c,zenoh`. The scheduled
+  tier-2 (1-wise) run does not select it: run 42971493635 reports it
+  `[SKIPPED:lane]`.
+- The pairwise nightly that does select it (`nightly` workflow, job
+  `tier 2 nightly (pairwise cover)`) stopped in `build-test-fixtures` on both
+  11-11 runs (42963678320, 42977216883), both on runner 118, before any cell.
+  The stop was `examples/zephyr/rust/action-server: paste 1.0.15 is in no
+  pinned range`, which is issue 2193's.
+
+The acceptance is unchanged: `CorePinPlacement/zephyr/c` passes in a pairwise
+nightly. The one difference from the passing run on 11-06 is still the
+emulator version: 6.2.0 on the runner against 9.0.2 on newslab-server133.

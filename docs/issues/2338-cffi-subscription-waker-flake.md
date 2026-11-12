@@ -42,3 +42,23 @@ arrival count), which tells whether arrivals were missed or merely late under a
 loaded runner, or a change that makes the test's bound a function of what it
 measures rather than a fixed ~10 s window. If it does not recur within two
 weeks of merge-queue traffic, close as not reproduced.
+
+## No second sighting, 2026-11-12
+
+The failed merge-queue `gate` runs from 2026-11-07 03:00 UTC to 2026-11-12 (61
+runs) were searched for `cffi_subscription_waker`. It failed in none of them.
+Two of them name `cffi_smoke`, and in both the waker test passed: 42686592265
+(1.633 s) and 43130480680 (1.654 s).
+
+Locally, 96 runs of the test at 32-way, each with its own `zenohd`, all passed
+in 1.62–1.64 s. That time is the test's 1 s sleep plus three arrivals.
+
+43130480680 did fail a sibling, `cffi_pubsub_round_trip`:
+`CffiSession::open` returned `ConnectionFailed` at 10.168 s
+(`cffi_smoke.rs:100`). That is a failure to connect to the test's own router.
+The 10 s matches the connect budget #3566 introduced (issues 2389/2437/2438,
+merged 2026-11-11 22:16 UTC), so it belongs with that change, not with this
+issue's late or missed wakes.
+
+This issue's closing rule stands: close as not reproduced if nothing recurs by
+2026-11-21, two weeks after it was found.
