@@ -1015,6 +1015,16 @@ pub fn run(args: Args) -> Result<()> {
         args.ros_edition.as_deref(),
         std::env::var("ROS_DISTRO").ok().as_deref(),
     );
+    // Issue 2400 W4: a template whose measured floor is above the board's
+    // default main stack states its own, derived from the row.
+    let main_stack = new_workspace::template_main_stack(
+        &root,
+        &new_workspace::stack_floor_template_key(template, lang, &rmw, &board),
+        descriptor.zephyr_board().is_some(),
+        lang == nros_lang::Language::Rust,
+        &rmw,
+        &board,
+    );
     let bringup = new_workspace::scaffold_project(&new_workspace::WorkspaceProject {
         dir: ws_dir.clone(),
         node: new_workspace::NodePackage {
@@ -1030,6 +1040,7 @@ pub fn run(args: Args) -> Result<()> {
         rmw: &rmw,
         ros_edition: &edition,
         locator,
+        main_stack,
     })?;
     let bringup_name = bringup
         .file_name()

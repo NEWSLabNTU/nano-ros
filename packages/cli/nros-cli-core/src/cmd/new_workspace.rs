@@ -123,6 +123,10 @@ pub struct WorkspaceProject<'a> {
     pub ros_edition: &'a str,
     /// The image's `locator`, from the board's `[board.net] host_serial`.
     pub locator: Option<String>,
+    /// The main stack the image states through its `os_config`, from
+    /// [`template_main_stack`]: `Some` only when the template's measured
+    /// floor is above the stack the image would otherwise get.
+    pub main_stack: Option<u64>,
 }
 
 /// The file that says "this directory is a workspace root" to every reader that
@@ -163,6 +167,9 @@ pub fn scaffold_project(p: &WorkspaceProject<'_>) -> Result<PathBuf> {
         bringup_package_xml(&bringup, p.node.name),
     )?;
     std::fs::write(bringup_dir.join("system.toml"), bringup_system_toml(p))?;
+    if let Some(bytes) = p.main_stack {
+        std::fs::write(bringup_dir.join(STACK_CONF), stack_conf(p, bytes))?;
+    }
     if let Some(contract) = bringup_contract(&p.node) {
         std::fs::write(bringup_dir.join(crate::cmd::ws::LEAF_CONTRACT), contract)?;
     }
@@ -189,7 +196,7 @@ fn bringup_system_toml(p: &WorkspaceProject<'_>) -> String {
          # this package when you need a launch argument, a remap or a parameter.\n\
          \n[system]\nname = \"{name}\"\nrmw = \"{rmw}\"\nros_edition = \"{ed}\"\ndomain_id = 0\n\
          \n[[component]]\npkg = \"{pkg}\"\nclass = \"{class}\"\nname = \"{ros}\"\n\
-         \n[image.{id}]\nboard = \"{board}\"\n{locator}\
+         \n[image.{id}]\nboard = \"{board}\"\n{locator}{os_config}\
          # The stack allowance this image is measured under: the\n\
          # template it was made from. Remove it once the image no longer is one.\n\
          stack_floor_image = \"{floor_key}\"\n",
@@ -202,7 +209,156 @@ fn bringup_system_toml(p: &WorkspaceProject<'_>) -> String {
         id = p.image_id,
         board = p.board,
         floor_key = stack_floor_template_key(p.node.template, p.node.lang, p.rmw, p.board),
+        os_config = if p.main_stack.is_some() {
+            format!("os_config = [\"{STACK_CONF}\"]\n")
+        } else {
+            String::new()
+        },
     )
+}
+
+/// The `os_config` fragment that raises the main stack to the template's
+/// measured floor (issue 2400, ruling (A)(3)).
+const STACK_CONF: &str = "stack.conf";
+
+fn stack_conf(p: &WorkspaceProject<'_>, bytes: u64) -> String {
+    format!(
+        "# The main stack this image needs: the floor measured for the template it\n\
+         # was made from ({key}, config/stack-floors.toml in nano-ros), which\n\
+         # is above the stack the module gives this board by default. The build\n\
+         # CHECKs it against this image's own frames (issue 2400) and says when it\n\
+         # must move; it never lowers it.\n\
+         CONFIG_MAIN_STACK_SIZE={bytes}\n",
+        key = stack_floor_template_key(p.node.template, p.node.lang, p.rmw, p.board),
+    )
+}
+
+/// The main stack a `nros new` image must state, or `None` when it needs none
+/// (issue 2400 W4; ruling (A)(3): an image raises its own stack through its
+/// `os_config`). `Some(floor)` only when ALL hold:
+///
+/// * the board is a Zephyr board (the knob is `CONFIG_MAIN_STACK_SIZE`);
+/// * `config/stack-floors.toml` has an OPEN row for `key` recording the
+///   static walk it was measured on (`[allowance.measured] static`);
+/// * that row's floor is above the stack the image gets without one
+///   ([`zephyr_main_stack_default`]).
+///
+/// The number is DERIVED from the row, by the same formula
+/// `scripts/nros-stack-floor.py`'s `floor_formula` uses, so a re-measured row
+/// moves what the next `nros new` writes. It is never below the default:
+/// nothing lowers a stack.
+#[must_use]
+pub fn template_main_stack(
+    root: &Path,
+    key: &str,
+    zephyr: bool,
+    rust: bool,
+    rmw: &str,
+    board: &str,
+) -> Option<u64> {
+    if !zephyr {
+        return None;
+    }
+    let table = std::fs::read_to_string(root.join("config/stack-floors.toml")).ok()?;
+    let floor = recorded_floor(&table, key)?;
+    let default = zephyr_main_stack_default(root, board, rust, rmw)?;
+    (floor > default).then_some(floor)
+}
+
+/// The OPEN floor `config/stack-floors.toml` records for `key`:
+/// `ceil8(ceil((static + allowance) * (100 + margin_pct) / 100))`, exactly
+/// `floor_formula` in `scripts/nros-stack-floor.py`.
+#[must_use]
+pub fn recorded_floor(table: &str, key: &str) -> Option<u64> {
+    let doc: toml::Value = toml::from_str(table).ok()?;
+    let margin = doc.get("margin_pct")?.as_integer()?;
+    doc.get("allowance")?
+        .as_array()?
+        .iter()
+        .filter(|a| {
+            a.get("image").and_then(|v| v.as_str()) == Some(key)
+                && a.get("role").and_then(|v| v.as_str()) == Some("OPEN")
+        })
+        .filter_map(|a| {
+            let bytes = a.get("bytes")?.as_integer()?;
+            let stat = a.get("measured")?.get("static")?.as_integer()?;
+            let raw = (stat + bytes).max(0) * (100 + margin);
+            let raw = (raw + 99) / 100;
+            u64::try_from((raw + 7) / 8 * 8).ok()
+        })
+        .max()
+}
+
+/// The `CONFIG_MAIN_STACK_SIZE` a Zephyr image gets with no `os_config` of its
+/// own: the last value the board package's confs state (`prj.conf`, then
+/// `boards/*.conf`), else the nano-ros module's `configdefault MAIN_STACK_SIZE`
+/// in its `if NROS_RMW_<RMW>` block of `zephyr/Kconfig`, READ there so it
+/// cannot drift from the default it describes. `None` when neither answers,
+/// or a `default` carries a condition this reader does not know.
+#[must_use]
+pub fn zephyr_main_stack_default(root: &Path, board: &str, rust: bool, rmw: &str) -> Option<u64> {
+    let pkg = root
+        .join("packages/boards")
+        .join(format!("nros-board-{board}"));
+    let mut confs = vec![pkg.join("prj.conf")];
+    if let Ok(rd) = std::fs::read_dir(pkg.join("boards")) {
+        let mut more: Vec<PathBuf> = rd
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|x| x == "conf"))
+            .collect();
+        more.sort();
+        confs.extend(more);
+    }
+    let stated = confs
+        .iter()
+        .filter_map(|c| std::fs::read_to_string(c).ok())
+        .flat_map(|t| {
+            t.lines()
+                .filter_map(|l| {
+                    l.trim()
+                        .strip_prefix("CONFIG_MAIN_STACK_SIZE=")?
+                        .trim()
+                        .parse()
+                        .ok()
+                })
+                .collect::<Vec<u64>>()
+        })
+        .last();
+    if stated.is_some() {
+        return stated;
+    }
+    let kconfig = std::fs::read_to_string(root.join("zephyr/Kconfig")).ok()?;
+    let open = format!("if NROS_RMW_{}", rmw.to_ascii_uppercase());
+    let close = format!("endif # NROS_RMW_{}", rmw.to_ascii_uppercase());
+    // the module opens one `if NROS_RMW_<RMW>` block several times; the
+    // default is in whichever holds it
+    let mut in_block = false;
+    let mut lines = kconfig.lines().map(str::trim);
+    while let Some(line) = lines.next() {
+        if line == open {
+            in_block = true;
+        } else if line == close {
+            in_block = false;
+        } else if in_block && line == "configdefault MAIN_STACK_SIZE" {
+            for d in lines.by_ref() {
+                let rest = d.strip_prefix("default ")?;
+                let (value, cond) = match rest.split_once(" if ") {
+                    Some((v, c)) => (v, Some(c.trim())),
+                    None => (rest, None),
+                };
+                let value: u64 = value.trim().parse().ok()?;
+                match cond {
+                    None => return Some(value),
+                    // a row names a cross board, never ARCH_POSIX
+                    Some("NROS_RUST_API && !ARCH_POSIX") if rust => return Some(value),
+                    Some("NROS_RUST_API && !ARCH_POSIX") => {}
+                    Some(_) => return None,
+                }
+            }
+            return None;
+        }
+    }
+    None
 }
 
 /// The ONE spelling of a template's stack-floor key (issue 2400, key (c),
@@ -702,6 +858,7 @@ mod tests {
                 rmw: "zenoh",
                 ros_edition: "humble",
                 locator: None,
+                main_stack: None,
             })
             .unwrap();
             for (name, role) in [
@@ -775,6 +932,138 @@ mod tests {
         }
     }
 
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf()
+    }
+
+    /// Issue 2400 W4: the recorded floor is `floor_formula`'s, on the
+    /// committed rows (the build reproduced each of these).
+    #[test]
+    fn a_rows_recorded_floor_is_the_check_formula() {
+        let t = std::fs::read_to_string(repo_root().join("config/stack-floors.toml")).unwrap();
+        let k = |s: &str| format!("{s}@nucleo-f767zi-zephyr");
+        assert_eq!(
+            recorded_floor(&t, &k("action-server/rust/zenoh")),
+            Some(33288)
+        );
+        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(31784));
+        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(12872));
+        assert_eq!(recorded_floor(&t, &k("listener/rust/zenoh")), None);
+    }
+
+    /// The default is READ from the module's Kconfig, per language.
+    #[test]
+    fn the_zephyr_main_stack_default_is_the_modules_kconfig() {
+        let r = repo_root();
+        let b = "nucleo-f767zi-zephyr";
+        assert_eq!(zephyr_main_stack_default(&r, b, true, "zenoh"), Some(32768));
+        assert_eq!(
+            zephyr_main_stack_default(&r, b, false, "zenoh"),
+            Some(16384)
+        );
+        // a board that states its own wins
+        assert_eq!(
+            zephyr_main_stack_default(&r, "mps2-an385-zephyr", true, "zenoh"),
+            Some(131072)
+        );
+    }
+
+    /// Ruling (A)(3), for EVERY row: the image `nros new` makes from a measured
+    /// template gets a main stack at or above its floor, either the board's
+    /// default or the `os_config` the scaffold writes, and never below the
+    /// default. A row added with a floor above its default is covered with no
+    /// edit here.
+    #[test]
+    fn every_measured_template_gets_a_main_stack_at_its_floor() {
+        let r = repo_root();
+        let t = std::fs::read_to_string(r.join("config/stack-floors.toml")).unwrap();
+        let doc: toml::Value = toml::from_str(&t).unwrap();
+        let rows = doc["allowance"].as_array().unwrap();
+        assert!(!rows.is_empty());
+        let mut raised = 0;
+        for row in rows {
+            let key = row["image"].as_str().unwrap();
+            let Some((tmpl, board)) = key.split_once('@') else {
+                continue; // not a template key
+            };
+            let mut it = tmpl.split('/');
+            let (_, lang, rmw) = (it.next().unwrap(), it.next().unwrap(), it.next().unwrap());
+            let rust = lang == "rust";
+            let floor = recorded_floor(&t, key).expect(key);
+            let default = zephyr_main_stack_default(&r, board, rust, rmw).expect(key);
+            let got = template_main_stack(&r, key, true, rust, rmw, board);
+            let stack = got.unwrap_or(default);
+            assert!(
+                stack >= floor,
+                "{key}: {stack} B is below its floor {floor} B"
+            );
+            assert!(
+                stack >= default,
+                "{key}: {stack} B lowers the default {default} B"
+            );
+            raised += usize::from(got.is_some());
+        }
+        assert_eq!(
+            template_main_stack(
+                &r,
+                "action-server/rust/zenoh@nucleo-f767zi-zephyr",
+                true,
+                true,
+                "zenoh",
+                "nucleo-f767zi-zephyr"
+            ),
+            Some(33288)
+        );
+        assert!(raised >= 1);
+        // not a Zephyr board: the knob is not CONFIG_MAIN_STACK_SIZE
+        assert_eq!(
+            template_main_stack(
+                &r,
+                "action-server/rust/zenoh@nucleo-f767zi-zephyr",
+                false,
+                true,
+                "zenoh",
+                "nucleo-f767zi-zephyr"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_raised_template_states_its_stack_through_os_config() {
+        let ws = tmp("stackraise");
+        let bringup = scaffold_project(&WorkspaceProject {
+            dir: ws.clone(),
+            node: talker("sensor_node"),
+            board: "nucleo-f767zi-zephyr",
+            image_id: "zephyr",
+            rmw: "zenoh",
+            ros_edition: "humble",
+            locator: None,
+            main_stack: Some(33288),
+        })
+        .unwrap();
+        let sys = std::fs::read_to_string(bringup.join("system.toml")).unwrap();
+        assert!(sys.contains("os_config = [\"stack.conf\"]"), "{sys}");
+        let conf = std::fs::read_to_string(bringup.join("stack.conf")).unwrap();
+        assert!(
+            conf.lines().any(|l| l == "CONFIG_MAIN_STACK_SIZE=33288"),
+            "{conf}"
+        );
+        // both readers still parse it
+        let parsed: crate::orchestration::cargo_metadata_schema::SystemToml =
+            toml::from_str(&sys).unwrap();
+        assert_eq!(
+            parsed.image["zephyr"].os_config,
+            vec!["stack.conf".to_string()]
+        );
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
     #[test]
     fn a_workspace_name_gives_its_node_and_bringup() {
         assert_eq!(node_package_name("sensor_ws"), "sensor_node");
@@ -812,6 +1101,7 @@ mod tests {
             rmw: "zenoh",
             ros_edition: "humble",
             locator: Some("serial/UART_0#baudrate=115200".into()),
+            main_stack: None,
         })
         .unwrap();
         assert_eq!(bringup, ws.join("src/sensor_node_bringup"));
@@ -953,6 +1243,7 @@ mod tests {
                 rmw: "zenoh",
                 ros_edition: "humble",
                 locator: None,
+                main_stack: None,
             })
             .unwrap();
             let cmake = std::fs::read_to_string(ws.join("src/nx_node/CMakeLists.txt")).unwrap();
@@ -978,6 +1269,7 @@ mod tests {
             rmw: "zenoh",
             ros_edition: "humble",
             locator: None,
+            main_stack: None,
         })
         .unwrap();
         let sys_path = ws.join("src/sensor_node_bringup/system.toml");
