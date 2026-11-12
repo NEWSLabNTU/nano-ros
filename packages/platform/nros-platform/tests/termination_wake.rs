@@ -39,13 +39,17 @@ fn a_termination_signal_ends_a_long_park() {
         "the test runner already handles SIGTERM, so the guard cannot be tested here"
     );
 
+    // `start` is taken BEFORE the killer exists (issue 2479): the killer's
+    // 100 ms runs from its own spawn, so a `start` taken after the spawn can
+    // be later than the killer's clock and the park then measures < 100 ms
+    // for a signal that really did arrive at 100 ms (measured: 99.991 ms).
+    let start = Instant::now();
     let killer = thread::spawn(|| {
         thread::sleep(Duration::from_millis(100));
         // SAFETY: deliver SIGTERM to this process; the guard turns the first
         // one into a flag.
         unsafe { libc::kill(libc::getpid(), libc::SIGTERM) };
     });
-    let start = Instant::now();
     // SAFETY: `w` was initialised above.
     let rc = unsafe { nros_platform_wake_park_until_us(w, 5_000_000) };
     let elapsed = start.elapsed();
