@@ -304,6 +304,7 @@ jobs:
           # Issue 1846 — free space after every build, so a disk-full run says
           # which build ate it instead of only where it finally died.
           avail() { echo "  disk: $(df -h --output=avail / | tail -n 1 | tr -d ' ') free"; }
+          free_gb() { df -BG --output=avail / | tail -n 1 | tr -dc '0-9'; }
           # Issue 2130 — the builds below took 106 G free under 49 G and the
           # job died of disk during the cells. After each build, release the
           # COMPILE intermediates it left (crate libraries, objects, rustc's
@@ -332,9 +333,21 @@ jobs:
                   echo "=== workspace-fixtures-build.sh linux --id $id ==="
                   bash scripts/build/workspace-fixtures-build.sh linux --id "$id"
                   avail
+                  # Issue 2469 — and mid-loop when free space runs low. Since
+                  # phase-531/535 made the Linux examples one-package
+                  # workspaces, the set is 73 rows (57 on 2026-11-11), each 2-3 G
+                  # after a 28 G cold first one, and run 43153068357's runner
+                  # died of disk at 7 G free with the loop unfinished. A release
+                  # costs only a rebuild of the libraries a later row of the
+                  # SAME workspace shares, so it runs when it is needed rather
+                  # than after every row.
+                  if [ "$(free_gb)" -lt 30 ]; then
+                      echo "  under 30G free: releasing compile intermediates before the next row"
+                      release
+                      avail
+                  fi
               done <<< "$wss"
-              # Once, after every row: the rows share one cargo target per
-              # workspace, so a release between them rebuilds its deps per row.
+              # And once after every row, before the builds below and the cells.
               release
               avail
           fi

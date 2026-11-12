@@ -241,6 +241,7 @@ qos-profile-ssot
 queue-notify-decision
 readiness-marker-literals
 reconfigure-stale
+release-fixture-intermediates
 release-manifest
 repr-memory-agreement
 required-contexts-reportable
@@ -279,6 +280,8 @@ runner-sweep-eviction-order
 rust-stdio-on-zephyr
 rust-targets-covered
 sched-dim-arms
+sched-task-priority-plan
+sched-task-spin-gap
 scope-namespace
 sdk-guard-can-fire
 sdk-store-not-enumerated
@@ -310,8 +313,6 @@ test-targets
 tests-can-fail
 third-party-is-submodules
 tier-has-ci-owner
-sched-task-priority-plan
-sched-task-spin-gap
 vendor-fetch-pinned
 version-lockstep
 wait-evidence-discarded
