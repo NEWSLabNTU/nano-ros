@@ -16,6 +16,10 @@ default = []
 # linker errors. ESP32 / ESP32-QEMU should NOT enable this since
 # esp-hal already provides them.
 libc-stubs = []
+# A C library owns these symbols (a C-rooted image, where CMake owns the link
+# and newlib owns libc). Overrides `libc-stubs`: no stub is exported, whoever
+# else turned it on. Phase-553 W1.
+c-libc = []
 
 [dependencies]
 # Issue 1640 — the shared heap-refusal report (`src/heap.rs`): the arena type,

@@ -131,6 +131,10 @@ safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 # `nros` umbrella (executor + node-runtime). Off by default: legacy
 # `run(Config, closure)` examples don't need it.
 board-entry = ["dep:nros"]
+# The image's C library owns libc and the C heap (newlib, in a C-rooted image
+# where CMake owns the final link): the platform crate exports none of its
+# libc stubs. RFC-0130, phase-553 W1.
+c-libc = ["nros-platform-mps2-an385/c-libc"]
 # phase-337 W6.a — the RTIC entry surface (`src/rtic.rs`), formerly the separate
 # `nros-board-rtic-mps2-an385` crate. Independent of `board-entry`: the two are
 # different entry shapes on one board (RTIC owns its own reset vector + deferred

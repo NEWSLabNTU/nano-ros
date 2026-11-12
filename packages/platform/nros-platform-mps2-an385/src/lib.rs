@@ -17,7 +17,9 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 pub mod clock;
-#[cfg(feature = "libc-heap")]
+// `c-libc` overrides `libc-heap`: newlib's allocator is the only `malloc` in a
+// C-rooted image (phase-553 W1).
+#[cfg(all(feature = "libc-heap", not(feature = "c-libc")))]
 pub mod libc_stubs;
 pub mod memory;
 pub mod net;

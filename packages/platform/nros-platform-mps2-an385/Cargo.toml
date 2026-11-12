@@ -32,6 +32,10 @@ libc-stubs = ["nros-baremetal-common/libc-stubs"]
 # allocation surface whether or not anything calls it. Default-on — every
 # existing consumer (zenoh's Z_MALLOC route, XRCE's wrapper) keeps them.
 libc-heap = []
+# A C library (newlib) owns libc and the C heap: neither `libc-stubs` nor
+# `libc-heap` exports anything, whoever turned them on. For a C-rooted image,
+# where CMake owns the final link (RFC-0130, phase-553 W1).
+c-libc = ["nros-baremetal-common/c-libc"]
 # TLS support (larger heap: 128 KB instead of 64 KB)
 link-tls = []
 # Phase 97.3.mps2-an385 — DDS / DDS DcpsDomainParticipant + builtin
