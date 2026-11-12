@@ -2,6 +2,11 @@
 
 <!-- type: how-to · level: 1 -->
 
+> **Not published yet.** The first `nros` release after 0.6.0-nros8 publishes
+> this image. Until that release is out, `docker pull` below fails with
+> `denied`. Install `nros` on your own machine meanwhile, as
+> [Install](./install.md) describes.
+
 The starter image is a container with nano-ros already installed: the `nros`
 command, ROS 2 Humble with its Zenoh router, the toolchains for the Linux host
 and the emulated `mps2-an385` boards (bare-metal and FreeRTOS), Rust, and the

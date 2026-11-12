@@ -182,7 +182,10 @@ Per release cycle, the maintainer doing the cut should:
    <https://github.com/orgs/newslabntu/packages/container/nano-ros-starter/settings>
    (Danger Zone > Change visibility > Public). Until then no student can
    pull it, and `probe.yml`'s `image-track` stays red and does not move
-   `latest` (issue 2459). Later releases inherit the setting.
+   `latest` (issue 2459). Later releases inherit the setting. Once an
+   anonymous `docker pull ghcr.io/newslabntu/nano-ros-starter:latest`
+   works, delete the "Not published yet" note at the top of
+   `book/src/start/starter-image.md`.
 
 Credential ownership and per-release CI integration are open
 questions for Phase 140 / post-1.0; until then this checklist is
