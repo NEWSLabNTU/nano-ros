@@ -46,6 +46,31 @@ subject: every Python string literal under `colcon_nano_ros/` that is not a
 docstring, baseline zero. Negative control: the same gate on the old
 `manifest.py` reports its three ids.
 
+**User ruling, 2026-11-12** ("Take your recommendation"), relayed by the
+manager: "Error reporting = A NOW, then C later: user-reachable output,
+build-stopping refusals included, names what/where/how-to-fix and NO
+phase/issue/RFC id. Ids live in source comments and `-v` detail. (C, stable
+codes + an explain verb, goes to 243 later.)" The issue was un-parked on the
+same ruling.
+
+**The CLI library refusals named here are done.** `build_type.rs`'s
+retired-`<build_type>` warning, and `package_xml.rs`'s two refusals (one build
+role per package; the retired `<nano_ros>` element), keep their remedy and
+lose the RFC and phase ids, which moved to comments. The CMake twin of the
+`<nano_ros>` refusal (`NanoRosPackageXml.cmake`, a `FATAL_ERROR`) loses them
+too, so the two readers still say the same thing. `check-user-surface-ids`
+reads both Rust files whole (`REFUSAL_FILES`, baseline zero). Negative
+control: the gate on main's two files reports their 5 ids.
+
+**Backlog the ruling opens, measured 2026-11-12, not done here:**
+- `nros-cli-core/src` outside `cmd/` and `cargo-nano-ros/src` hold about 219
+  id-bearing string literals (string scan; not all are messages, some are
+  generated code or data). Most in `entity_inventory.rs` (26),
+  `builder/cmake_root.rs` (12), `builder/west_app.rs` (12).
+- CMake `FATAL_ERROR`/`SEND_ERROR` text cites an id at 103 sites in 52 files.
+  `check-cmake-user-output-refs` excludes those two levels on purpose ("a
+  build that stops is being diagnosed"). Ruling A reverses that exclusion.
+
 **Left: runtime logs of a default image.** The rule for which runtime
 literals are log or panic text, and the C string lexer, are still to do.
 

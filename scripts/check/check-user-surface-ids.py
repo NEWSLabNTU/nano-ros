@@ -32,6 +32,11 @@ Subjects, all checked on every run:
   `check-cmake-user-output-refs` applies to `FATAL_ERROR` (phase-517 W5).
   A warning whose text is assembled away from its print (a `Vec` of warnings
   printed later) is not seen: a known gap, stated rather than claimed;
+* every string literal of the CLI library files whose refusals and warnings
+  stop or annotate a user's build outside `cmd/` (issue 2443): `REFUSAL_FILES`,
+  read whole like `cmd/`. Not yet every file of `nros-cli-core` and
+  `cargo-nano-ros`: the rest still holds ids, a backlog stated rather than
+  claimed;
 * the messages of the colcon plugin (issue 2443),
   `packages/cli/colcon-cargo-ros2/colcon_nano_ros/`: every Python string
   literal (f-string parts included) that is not a docstring. A user's
@@ -185,6 +190,27 @@ def source_hits() -> list[str]:
         if Path(rel).name == "tests.rs" or "/tests/" in rel:
             continue
         for ln, s in rust_strings((ROOT / rel).read_text()):
+            for tok in ids(s):
+                bad.append(f"{rel}:{ln}: {tok!r} in {s.strip()[:90]!r}")
+    return bad
+
+
+# Library files outside `cmd/` whose messages reach a user's build: a warning
+# for a retired `<build_type>`, and the package.xml refusals (issue 2443).
+REFUSAL_FILES = [
+    "packages/cli/nros-cli-core/src/build_type.rs",
+    "packages/cli/cargo-nano-ros/src/package_xml.rs",
+]
+
+
+def refusal_file_hits() -> list[str]:
+    bad = []
+    for rel in REFUSAL_FILES:
+        path = ROOT / rel
+        if not path.is_file():
+            bad.append(f"{rel}: listed in REFUSAL_FILES but missing; update the list")
+            continue
+        for ln, s in rust_strings(path.read_text()):
             for tok in ids(s):
                 bad.append(f"{rel}:{ln}: {tok!r} in {s.strip()[:90]!r}")
     return bad
@@ -463,7 +489,10 @@ def main() -> int:
         print(f"{NAME}: self-test OK")
         return 0
 
-    bad = source_hits() + book_hits() + build_script_warning_hits() + colcon_hits()
+    bad = (
+        source_hits() + refusal_file_hits() + book_hits() + build_script_warning_hits()
+        + colcon_hits()
+    )
     cli = args.cli
     if cli is None:
         from source_locate import nros_cli_bin
@@ -491,7 +520,8 @@ def main() -> int:
             NAME, f"no in-tree nros CLI (`just setup-cli`); {rendered} not read"
         )
     print(
-        f"{NAME}: OK (cmd/ strings, build-script warnings, colcon messages, {BOOK_SCOPE}, "
+        f"{NAME}: OK (cmd/ strings, CLI refusal files, build-script warnings, colcon "
+        f"messages, {BOOK_SCOPE}, "
         f"{rendered})"
     )
     return 0

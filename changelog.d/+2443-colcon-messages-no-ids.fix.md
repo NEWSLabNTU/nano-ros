@@ -1,1 +1,1 @@
-The colcon plugin's refusals of an unknown build type and of a retired `<nano_ros …/>` element now say what to write instead, without citing internal design ids.
+Build refusals and warnings about `package.xml` now say what to write instead, without citing internal design ids: the colcon plugin's unknown-build-type and retired-`<nano_ros …/>` refusals, the retired-`<build_type>` warning, the one-build-role-per-package refusal, and the `<nano_ros …/>` refusal in both the Rust and CMake readers.

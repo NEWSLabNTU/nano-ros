@@ -261,8 +261,8 @@ function(nano_ros_read_package_export)
     # would configure a freertos leaf as a host build with no diagnostic.
     if(_body MATCHES "<nano_ros[ \t\r\n]+([^>]*)/?>")
         message(FATAL_ERROR
-            "${_NRP_PACKAGE_XML}: the <nano_ros ${CMAKE_MATCH_1}/> element is retired "
-            "(RFC-0098 D3/D5, phase-445). State the deployment in a system.toml "
+            "${_NRP_PACKAGE_XML}: the <nano_ros ${CMAKE_MATCH_1}/> element is retired. "
+            "State the deployment in a system.toml "
             "beside the package's CMakeLists.txt — `[system] rmw/domain_id`, "
             "`[image.<id>] board = \"<board>\"`, one `[[component]]` — and delete "
             "the element.")

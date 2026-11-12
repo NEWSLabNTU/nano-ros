@@ -112,10 +112,12 @@ pub fn build_role_of(provides: &[Provision]) -> std::result::Result<Option<Build
         (true, true) => Ok(None),
         (false, true) => Ok(Some(BuildRole::Host)),
         (true, false) => Ok(Some(BuildRole::Target)),
+        // One build role per package is RFC-0119 D3; the id stays here, out of
+        // the refusal a user's build prints (issue 2443).
         (false, false) => Err(format!(
             "announces host-tool kinds ({}) and target kinds ({}) in one package — \
              a package has one build role, so split it into two packages, as a board \
-             vendor ships a board package and a runner package (RFC-0119 D3)",
+             vendor ships a board package and a runner package",
             show(&host),
             show(&target)
         )),
@@ -269,9 +271,11 @@ impl PackageXml {
                 // Refused rather than ignored: ignoring it would drop a board
                 // selection the author believes is in force.
                 Ok(Event::Start(e) | Event::Empty(e)) if e.name().as_ref() == b"nano_ros" => {
+                    // The ids above stay in this comment, out of the refusal a
+                    // user's build prints (issue 2443).
                     return Err(eyre!(
                         "the <nano_ros deploy= board= rmw=/> element is retired \
-                         (RFC-0098 D3/D5, phase-445) — state the deployment in a \
+                         — state the deployment in a \
                          system.toml beside the package's manifest (`[system] \
                          rmw/domain_id`, `[image.<id>] board = \"<board>\"`) and \
                          delete the element; a provider selection with no \
