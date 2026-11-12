@@ -2019,7 +2019,13 @@ pub fn write_for_leaf(
 ) -> eyre::Result<WrittenDescriptor> {
     let leaf = img.leaf.as_path();
     let (inventory, inv_error) = match crate::leaf_entity_env::inventory_for_leaf(leaf) {
-        Ok((inv, _unprobeable)) if !inv.is_empty() => (Some(inv), None),
+        Ok((mut inv, _unprobeable)) if !inv.is_empty() => {
+            // Issue 2364 -- the frame facts only the model and manifest state,
+            // as the leaf's `[env]` road applies them; the contract join below
+            // keeps the probe's frame, so they ride through it.
+            crate::leaf_entity_env::with_leaf_frame(leaf, &mut inv);
+            (Some(inv), None)
+        }
         Ok(_) => (None, None),
         Err(e) => (None, Some(e.to_string())),
     };

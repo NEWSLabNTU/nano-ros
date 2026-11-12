@@ -1,7 +1,7 @@
 ---
 id: 2364
 title: "The cargo-leaf contract join drops the model's tiers, monitor rows and infra services, so a leaf's descriptor describes less than it declares"
-status: open
+status: resolved
 type: bug
 area: [cli, sizing]
 severity: low
@@ -54,3 +54,50 @@ For each of `tiers`, `monitor_rows` and `infra`:
 
 A test per folded fact, with a negative control, as
 `a_declared_ingress_reaches_the_joined_frame` does for ingress.
+
+## Fix (2026-11-12)
+
+The facts were not only dropped by the join. Each leaf road applied its own
+subset of them to the inventory before deriving anything:
+
+| road | monitor rows | sched tasks | service families |
+| --- | --- | --- | --- |
+| cargo `[env]` sidecar (`leaf_env`) | yes | no | yes |
+| west C-lane fragment (`west-leaf-sizing`) | yes | no | no |
+| sizing descriptor (`write_for_leaf`, both roads) | no | no | no |
+
+`leaf_entity_env::with_leaf_frame` now applies all three, by the model
+road's rules (`EntityInventory::from_model`'s frame, and `with_fact_infra`
+over `leaf_infra`), and every road calls it. The descriptor applies it to the
+probe's inventory before the contract join, which keeps the probe's frame, so
+the facts pass through the join. `with_leaf_monitor_rows` is gone.
+
+Folding `infra` here does not double-count. The descriptor's queryable count
+(`local_query_servers`) excludes the runtime's servers, and the families are
+also stated separately (`infra_families`). The per-kind counts now match the
+knobs the `[env]` road already wrote for the same leaf.
+
+### Measured
+
+None of the 29 in-tree cargo leaves declares a sched task, a contract
+monitor or a service family, whether in `system.toml`, a contract sidecar or
+a `param-services`/`lifecycle` feature on its `nros` dependency. `nros sync` ran
+on every leaf twice: once with this CLI, and once with a build that differs
+only in the descriptor's call. The descriptors are byte-identical on all 24
+leaves that sync (15 of them with a probeable component). The other 5 are
+test fixtures that fail `sync` under both CLIs for an unrelated reason: a
+missing workspace member.
+
+### Test
+
+`the_leaf_frame_reaches_the_inventory_and_survives_the_join`:
+
+- No model gives no change.
+- A model with one `min_rate_hz` row, three tasks and the `lifecycle`
+  feature states `monitor_rows = (1, 0)`, `sched_tasks = 3` and
+  `lifecycle`.
+- All three survive `contract_join::join`.
+- The derived knobs move: one monitor row, plus two publishers (the
+  `/diagnostics` reporter and `transition_event`).
+
+Each fact was mutation-checked by deleting it, and the test then fails.

@@ -1115,10 +1115,6 @@ pub struct LeafEnv {
 pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
     use crate::entity_inventory::Derivation;
 
-    // The service families this image builds, for the inventory below (they
-    // reach the consumers through the leaf's sizing descriptor).
-    let infra = leaf_infra(leaf_model(leaf).as_ref(), manifest_infra(leaf));
-
     let (mut inv, unprobeable) = match inventory_for_leaf(leaf) {
         Ok(v) => v,
         Err(e) => {
@@ -1151,8 +1147,7 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
             env: BTreeMap::new(),
         };
     }
-    with_leaf_monitor_rows(leaf, &mut inv);
-    with_fact_infra(&mut inv, infra);
+    with_leaf_frame(leaf, &mut inv);
     match inv.derive() {
         Derivation::Derived(knobs) => {
             // Issue 1125 — the payload classes need a SECOND inventory (the
@@ -1240,22 +1235,39 @@ pub fn with_fact_infra(
     }
 }
 
-/// phase-496 W1 -- the probe sees no contract, so the monitor-table counts
-/// come from the leaf's resolved model, and only when that model describes
-/// wiring (the same predicate the cmake road's `from_model` applies): a model
-/// with no contract says nothing about monitors, and a hand-built table in
-/// such a leaf keeps the crate default rather than a derived zero.
+/// Issue 2364 -- the frame facts a probe cannot see, from the leaf's own
+/// model and manifest: the contract-monitor row counts (phase-496 W1), the
+/// authored sched task count, and the service families the image builds
+/// ([`with_fact_infra`] over [`leaf_infra`], issue 1743).
 ///
-/// Lifted out of [`leaf_env`] for issue 1662: the Zephyr west road's fragment
-/// (`nros ws west-leaf-sizing`) must derive over the SAME inventory the cargo
-/// road's `[env]` does, monitor rows included.
-pub fn with_leaf_monitor_rows(leaf: &Path, inv: &mut EntityInventory) {
-    if let Some(model) = leaf_model(leaf)
-        && let Some((rows, ages)) =
-            EntityInventory::from_model("leaf model", &model).and_then(|m| m.monitor_rows())
-    {
-        inv.set_monitor_rows(rows, ages);
+/// ONE spelling for every reader of a leaf's inventory: the cargo `[env]`
+/// sidecar ([`leaf_env`]), the Zephyr west fragment
+/// (`nros ws west-leaf-sizing`, issue 1662) and the sizing descriptor both
+/// roads write (`sizing_descriptor::write_for_leaf`). Each applied its own
+/// subset -- the `[env]` road the monitors and families, the west fragment the
+/// monitors alone, the descriptor none -- so one declaration gave three
+/// answers. A model with no contract says nothing about monitors or sched
+/// tasks (the predicate `from_model` applies on the model road too), and a leaf
+/// with no model keeps the inventory it always had.
+pub fn with_leaf_frame(leaf: &Path, inv: &mut EntityInventory) {
+    let model = leaf_model(leaf);
+    with_model_frame(inv, model.as_ref(), manifest_infra(leaf));
+}
+
+/// [`with_leaf_frame`] over an already-read model and the manifest's
+/// `(param_services, lifecycle)` features.
+pub fn with_model_frame(
+    inv: &mut EntityInventory,
+    model: Option<&nros_orchestration_ir::overlay::LoadedModel>,
+    manifest: (bool, bool),
+) {
+    if let Some(m) = model.and_then(|m| EntityInventory::from_model("leaf model", m)) {
+        if let Some((rows, ages)) = m.monitor_rows() {
+            inv.set_monitor_rows(rows, ages);
+        }
+        inv.set_sched_tasks(inv.sched_tasks().max(m.sched_tasks()));
     }
+    with_fact_infra(inv, leaf_infra(model, manifest));
 }
 
 /// The string rows of a rendered sidecar's `[env]`, read back rather than
@@ -1389,6 +1401,86 @@ mod tests {
         assert_eq!(ents[0].type_name.as_deref(), Some("std_msgs/msg/String"));
         assert_eq!(ents[0].name.as_deref(), Some("/chatter"));
         assert_eq!(ents[1].kind, EntityKind::Timer);
+    }
+
+    /// Issue 2364 -- the frame facts only a leaf's model and manifest state
+    /// (monitor rows, the authored sched task count, the service families)
+    /// reach its inventory through ONE helper, and survive the contract join
+    /// the sizing descriptor runs, which keeps the probe's frame.
+    #[test]
+    fn the_leaf_frame_reaches_the_inventory_and_survives_the_join() {
+        use ros_launch_manifest_model::{PubContract, SystemModel, TaskDef, TopicWiring};
+        let probed = || {
+            let mut inv = EntityInventory::new("t");
+            let (pkg, component, declaration) = declaration_from_probe(TALKER).unwrap();
+            inv.insert(ComponentEntities {
+                pkg,
+                class: component.clone(),
+                component,
+                declaration,
+            });
+            inv
+        };
+        let mut m = SystemModel::default();
+        let ep = "/talker/chatter".to_string();
+        m.structure.topics.insert(
+            "/chatter".into(),
+            TopicWiring {
+                msg_type: "std_msgs/msg/Int32".into(),
+                publishers: vec![ep.clone()],
+                subscribers: vec![],
+            },
+        );
+        m.contracts.pub_endpoints.insert(
+            ep,
+            PubContract {
+                min_rate_hz: Some(10.0),
+                ..Default::default()
+            },
+        );
+        for t in ["hi", "lo", "bg"] {
+            m.execution.tasks.insert(t.into(), TaskDef::default());
+        }
+        let model = nros_orchestration_ir::overlay::LoadedModel::bare(m);
+
+        // Negative control: no model and no manifest feature, no change.
+        let mut bare = probed();
+        with_model_frame(&mut bare, None, (false, false));
+        assert_eq!(bare.monitor_rows(), None);
+        assert_eq!(bare.sched_tasks(), 0);
+        assert_eq!(
+            bare.infra(),
+            crate::entity_inventory::InfraServices::default()
+        );
+
+        let mut inv = probed();
+        with_model_frame(&mut inv, Some(&model), (false, true));
+        assert_eq!(inv.monitor_rows(), Some((1, 0)));
+        assert_eq!(inv.sched_tasks(), 3);
+        assert!(inv.infra().lifecycle);
+        assert!(!inv.infra().param_services);
+
+        let joined = crate::contract_join::join(&inv, &model).inventory;
+        assert_eq!(joined.monitor_rows(), Some((1, 0)));
+        assert_eq!(joined.sched_tasks(), 3);
+        assert!(joined.infra().lifecycle);
+
+        // And the derived knobs move with them: the monitor table, the
+        // `/diagnostics` reporter and the lifecycle publisher, and a
+        // scheduling-context table for every authored sched task.
+        let (Derivation::Derived(before), Derivation::Derived(after)) =
+            (probed().derive(), joined.derive())
+        else {
+            panic!("both derive");
+        };
+        assert_eq!(before.max_monitors, None);
+        assert_eq!(after.max_monitors, Some(1));
+        assert_eq!(after.max_publishers, before.max_publishers + 2, "{after:?}");
+        assert_eq!(
+            after.max_sc,
+            1 + 3,
+            "slot 0 plus one per sched task: {after:?}"
+        );
     }
 
     /// Issue 1662 -- a leaf whose component lives in a NODE package it
