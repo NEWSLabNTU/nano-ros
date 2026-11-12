@@ -2,6 +2,7 @@
 rfc: 0009
 title: "Bridge topic-forwarding (Phase 172)"
 status: Stable
+area: rmw-wire
 since: 2026-05
 last-reviewed: 2026-05
 implements-tracked-by: [phase-421]

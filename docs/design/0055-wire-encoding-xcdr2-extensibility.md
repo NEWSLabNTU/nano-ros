@@ -2,6 +2,7 @@
 rfc: 0055
 title: "Wire encoding: XCDR2 + explicit type extensibility for modern ROS 2 interop"
 status: Draft
+area: rmw-wire
 since: 2026-07
 last-reviewed: 2026-07
 implements-tracked-by: [phase-303]

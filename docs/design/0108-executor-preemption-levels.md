@@ -2,6 +2,7 @@
 rfc: 0108
 title: "One ordered ready set per core, N preemption levels derived from the contract -- ordering is separated from preemption"
 status: Accepted
+area: runtime-api
 since: 2026-10
 last-reviewed: 2026-10
 implements-tracked-by: [phase-509]

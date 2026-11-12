@@ -2,6 +2,7 @@
 rfc: 0089
 title: "ROS 2 API adoption, and the compile-or-conform rule"
 status: Stable
+area: runtime-api
 since: 2026-09
 last-reviewed: 2026-11
 implements-tracked-by: [phase-417, phase-427, phase-438, phase-476, phase-482, phase-483, phase-492, phase-499, phase-501, phase-504, phase-515]

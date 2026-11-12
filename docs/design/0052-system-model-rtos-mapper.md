@@ -2,6 +2,7 @@
 rfc: 0052
 title: "SystemModel → RTOS primitives — the execution/contract mapper for embedded consumption"
 status: Draft
+area: workspace-system-model
 since: 2026-07
 last-reviewed: 2026-11-09
 implements-tracked-by: [phase-296]

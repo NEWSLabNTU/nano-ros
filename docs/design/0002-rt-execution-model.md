@@ -2,6 +2,7 @@
 rfc: 0002
 title: "RT Execution Model — Live Design Doc"
 status: Draft
+area: runtime-api
 since: 2026-05
 last-reviewed: 2026-06
 implements-tracked-by: [phase-162]

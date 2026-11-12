@@ -2,6 +2,7 @@
 rfc: 0102
 title: "Logger hierarchy: get_child, level inheritance, and what each backend sees"
 status: Stable
+area: runtime-api
 since: 2026-10
 last-reviewed: 2026-10
 implements-tracked-by: [phase-479]

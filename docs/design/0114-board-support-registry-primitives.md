@@ -2,6 +2,7 @@
 rfc: 0114
 title: "Board support registry: primitives and derivation"
 status: Draft
+area: platform-board-rtos
 since: 2026-10
 last-reviewed: 2026-11
 implements-tracked-by: [phase-522]

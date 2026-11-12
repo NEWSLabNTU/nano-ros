@@ -2,6 +2,7 @@
 rfc: 0051
 title: "Test-matrix architecture: one generated matrix, one output checker, one isolation allocator"
 status: Stable
+area: test-ci
 since: 2026-07
 last-reviewed: 2026-10-22
 implements-tracked-by: [phase-295, phase-510]

@@ -2,6 +2,7 @@
 rfc: 0127
 title: "One starter image, derived per audience"
 status: Draft
+area: docs-ux-diagnostics
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-551]

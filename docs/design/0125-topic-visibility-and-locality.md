@@ -2,6 +2,7 @@
 rfc: 0125
 title: "Topic visibility and locality: an image-internal topic leaves the wire"
 status: Draft
+area: workspace-system-model
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: []

@@ -2,6 +2,7 @@
 rfc: 0017
 title: "Phase 110.E.b — `PlatformTimer` + `AtomicSporadicState` design"
 status: Stable
+area: platform-board-rtos
 since: 2026-05
 last-reviewed: 2026-05
 implements-tracked-by: [phase-274]

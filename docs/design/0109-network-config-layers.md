@@ -3,6 +3,7 @@ rfc: 0109
 title: "Network and middleware configuration in three layers: the OS owns the
   devices, the RMW's own file owns the wiring, nano-ros owns only ROS-level facts"
 status: Draft
+area: rmw-wire
 since: 2026-10
 last-reviewed: 2026-11-07
 implements-tracked-by: [phase-514, phase-546]

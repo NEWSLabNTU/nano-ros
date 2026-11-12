@@ -2,6 +2,7 @@
 rfc: 0018
 title: "C++ API Design — nros-cpp"
 status: Stable
+area: runtime-api
 since: 2026-03
 last-reviewed: 2026-06
 implements-tracked-by: [phase-287, phase-442]

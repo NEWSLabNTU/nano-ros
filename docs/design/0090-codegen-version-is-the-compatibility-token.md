@@ -2,6 +2,7 @@
 rfc: 0090
 title: "The codegen version is the compatibility token, and generated code carries it"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-09
 implements-tracked-by: [phase-429]

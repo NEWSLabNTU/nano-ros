@@ -2,6 +2,7 @@
 rfc: 0005
 title: "RMW Layer Design: Middleware Abstraction for nros"
 status: Stable
+area: rmw-wire
 since: 2026-02
 last-reviewed: 2026-04
 implements-tracked-by: [phase-328, phase-500]

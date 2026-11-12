@@ -2,6 +2,7 @@
 rfc: 0025
 title: "nano-ros Phase 212 — Multi-Node Workspace Layout Reference"
 status: Draft
+area: workspace-system-model
 since: 2026-06
 last-reviewed: 2026-06
 implements-tracked-by: [phase-212]

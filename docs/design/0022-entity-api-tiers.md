@@ -2,6 +2,7 @@
 rfc: 0022
 title: "Entity API tiers — convenient (`fork`) + customizable (`clone`)"
 status: Stable
+area: runtime-api
 since: 2026-05
 last-reviewed: 2026-05
 implements-tracked-by: [phase-483]

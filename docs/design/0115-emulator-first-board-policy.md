@@ -2,6 +2,7 @@
 rfc: 0115
 title: "Emulator-first board policy: a board enters the book with an emulator twin that runs the same ELF"
 status: Draft
+area: platform-board-rtos
 since: 2026-10
 last-reviewed: 2026-11
 implements-tracked-by: [phase-524]

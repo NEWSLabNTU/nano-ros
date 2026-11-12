@@ -2,6 +2,7 @@
 rfc: 0013
 title: "Custom-board provisioning — out-of-tree boards self-describe their deps"
 status: Superseded
+area: platform-board-rtos
 since: 2026-05
 last-reviewed: 2026-09
 implements-tracked-by: []

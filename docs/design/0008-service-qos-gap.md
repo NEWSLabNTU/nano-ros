@@ -2,6 +2,7 @@
 rfc: 0008
 title: "Service / action QoS gap (the `create_service_*` no-QoS path)"
 status: Superseded
+area: runtime-api
 since: 2026-05
 last-reviewed: 2026-06
 implements-tracked-by: [phase-189]

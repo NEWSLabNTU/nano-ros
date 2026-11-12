@@ -2,6 +2,7 @@
 rfc: 0074
 title: "Ingress budget: the contract bounds what a device is made to receive"
 status: Stable
+area: workspace-system-model
 since: 2026-08
 last-reviewed: 2026-11-05
 implements-tracked-by: [phase-462, phase-516, phase-519]

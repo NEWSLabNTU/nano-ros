@@ -2,6 +2,7 @@
 rfc: 0082
 title: "A demonstrable CAN stack: reproduce what ROS ships, in a container"
 status: Draft
+area: rmw-wire
 since: 2026-08
 last-reviewed: 2026-08-26
 implements-tracked-by: [phase-387]

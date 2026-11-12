@@ -2,6 +2,7 @@
 rfc: 0043
 title: "C++/C Entry real-callback binding — executor-routed, no callback naming"
 status: Stable
+area: runtime-api
 since: 2026-06
 last-reviewed: 2026-06-12
 implements-tracked-by: [phase-236, phase-240]

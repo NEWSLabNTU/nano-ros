@@ -2,6 +2,7 @@
 rfc: 0076
 title: "The platform ABI: a caller asks, and never assumes"
 status: Draft
+area: platform-board-rtos
 since: 2026-08
 last-reviewed: 2026-10
 implements-tracked-by: [phase-364]

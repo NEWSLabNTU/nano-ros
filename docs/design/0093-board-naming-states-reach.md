@@ -2,6 +2,7 @@
 rfc: 0093
 title: "A board name states the reach of its build"
 status: Draft
+area: platform-board-rtos
 since: 2026-09
 last-reviewed: 2026-09
 implements-tracked-by: [phase-437]

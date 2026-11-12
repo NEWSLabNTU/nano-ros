@@ -2,6 +2,7 @@
 rfc: 0039
 title: "PX4 integration architecture (uORB in-firmware + companion XRCE; 1.16 message versioning)"
 status: Draft
+area: platform-board-rtos
 since: 2026-06
 last-reviewed: 2026-11
 implements-tracked-by: [phase-232, phase-233, phase-541, phase-542]

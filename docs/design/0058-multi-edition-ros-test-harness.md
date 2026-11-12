@@ -2,6 +2,7 @@
 rfc: 0058
 title: "Multi-edition ROS test harness: docker-backed RosEnv provider for codegen + interop"
 status: Draft
+area: test-ci
 since: 2026-07
 last-reviewed: 2026-07
 implements-tracked-by: [phase-309]

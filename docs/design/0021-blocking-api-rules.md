@@ -2,6 +2,7 @@
 rfc: 0021
 title: "Blocking API Rules"
 status: Stable
+area: runtime-api
 since: 2026-04
 last-reviewed: 2026-04
 implements-tracked-by: []

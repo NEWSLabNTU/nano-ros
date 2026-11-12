@@ -2,6 +2,7 @@
 rfc: 0035
 title: "RMW vtable ABI — frozen slot table + stability policy"
 status: Draft
+area: rmw-wire
 since: 2026-06
 last-reviewed: 2026-06
 implements-tracked-by: [phase-237, phase-301, phase-328, phase-421]

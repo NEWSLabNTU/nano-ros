@@ -2,6 +2,7 @@
 rfc: 0101
 title: "Vendored source resolution: one owner per graph, and the hand-off is `links`"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-09-29
 implements-tracked-by: [phase-471]

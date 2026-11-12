@@ -2,6 +2,7 @@
 rfc: 0023
 title: "Codegen — workspace / AMENT discovery — design + revision plan"
 status: Stable
+area: build-toolchain-codegen
 since: 2026-05
 last-reviewed: 2026-05
 implements-tracked-by: [phase-265, phase-287, phase-293, phase-294, phase-335]

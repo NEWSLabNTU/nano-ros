@@ -2,6 +2,7 @@
 rfc: 0072
 title: "RTOS integration: nano-ros is an imported library, and the RTOS owns its own build"
 status: Draft
+area: platform-board-rtos
 since: 2026-08
 last-reviewed: 2026-10
 implements-tracked-by: [phase-349, phase-351]

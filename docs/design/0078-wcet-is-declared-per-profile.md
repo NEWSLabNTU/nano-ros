@@ -2,6 +2,7 @@
 rfc: 0078
 title: "An execution-time BOUND is declared per measurement profile — and a measured maximum is not one"
 status: Draft
+area: workspace-system-model
 since: 2026-08
 last-reviewed: 2026-10
 implements-tracked-by: [issue-0404, issue-0259, issue-0403, phase-463]

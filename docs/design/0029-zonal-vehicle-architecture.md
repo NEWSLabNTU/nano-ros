@@ -2,6 +2,7 @@
 rfc: 0029
 title: "Zonal Vehicle Architecture and nano-ros"
 status: Stable
+area: docs-ux-diagnostics
 since: 2026-02
 last-reviewed: 2026-02
 implements-tracked-by: []

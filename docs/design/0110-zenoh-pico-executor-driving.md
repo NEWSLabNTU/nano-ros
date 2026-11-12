@@ -2,6 +2,7 @@
 rfc: 0110
 title: "Driving zenoh-pico 1.10's executor: one thread where the platform can block, the caller's spin where it cannot"
 status: Stable
+area: rmw-wire
 since: 2026-10
 last-reviewed: 2026-10
 implements-tracked-by: [phase-508]

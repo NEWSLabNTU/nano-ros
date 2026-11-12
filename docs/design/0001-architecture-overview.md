@@ -2,6 +2,7 @@
 rfc: 0001
 title: "nano-ros Architecture Overview"
 status: Stable
+area: runtime-api
 since: 2026-03
 last-reviewed: 2026-04
 implements-tracked-by: [phase-321]

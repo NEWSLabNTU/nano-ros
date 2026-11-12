@@ -2,6 +2,7 @@
 rfc: 0040
 title: "Distribution model + `nros new` scaffolding dependency convention"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-06
 last-reviewed: 2026-06
 implements-tracked-by: [phase-196]   # 196.7 — fix the dep convention for the source-release model

@@ -2,6 +2,7 @@
 rfc: 0069
 title: "The action payload envelope: one CDR header, ROS 2's"
 status: Accepted
+area: rmw-wire
 since: 2026-08
 last-reviewed: 2026-08-05
 implements-tracked-by: [phase-338]

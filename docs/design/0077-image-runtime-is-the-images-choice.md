@@ -2,6 +2,7 @@
 rfc: 0077
 title: "The image runtime is the image's choice"
 status: Draft
+area: runtime-api
 since: 2026-08
 last-reviewed: 2026-08
 implements-tracked-by: [phase-383, issue-0618, issue-0617, issue-0615]

@@ -2,6 +2,7 @@
 rfc: 0122
 title: "Example pairs live as images in the language workspaces, one single-node workspace per platform and language stays as the copy-out example, and every support cadence names the CI job that keeps it"
 status: Draft
+area: workspace-system-model
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-535]

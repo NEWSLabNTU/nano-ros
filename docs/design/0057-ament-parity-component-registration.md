@@ -2,6 +2,7 @@
 rfc: 0057
 title: "Ament-parity component registration — split library/registration macros, retire the L.4 class-prefix rule, auto-wired interface deps"
 status: Stable
+area: runtime-api
 since: 2026-07
 last-reviewed: 2026-07
 implemented: 2026-07 (phase-305)

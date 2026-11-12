@@ -2,6 +2,7 @@
 rfc: 0033
 title: "Per-field message capacity configuration"
 status: Stable
+area: build-toolchain-codegen
 since: 2026-06
 last-reviewed: 2026-08-31
 implements-tracked-by: [phase-229, phase-235, phase-390, phase-403]

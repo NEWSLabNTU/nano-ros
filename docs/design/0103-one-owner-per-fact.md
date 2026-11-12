@@ -3,6 +3,7 @@ rfc: 0103
 title: "One owner per fact: every configuration fact and every resource location
   has one authored home, and every road reads the resolved answer"
 status: Stable
+area: workspace-system-model
 since: 2026-10
 last-reviewed: 2026-10-24
 implements-tracked-by: [phase-484, phase-497]

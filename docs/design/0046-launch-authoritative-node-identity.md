@@ -2,6 +2,7 @@
 rfc: 0046
 title: "Launch-authoritative node identity (name + namespace), unified across languages"
 status: Draft
+area: workspace-system-model
 since: 2026-06
 last-reviewed: 2026-06
 implements-tracked-by: [phase-268]

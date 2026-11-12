@@ -2,6 +2,7 @@
 rfc: 0066
 title: "Example and fixture consolidation: workspaces carry coverage, fixtures carry configuration"
 status: Draft
+area: test-ci
 since: 2026-08
 last-reviewed: 2026-08-02
 implements-tracked-by: [phase-331]

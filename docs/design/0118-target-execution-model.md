@@ -2,6 +2,7 @@
 rfc: 0118
 title: "Target execution model: run, flash and monitor as separate verbs over one RunPlan, a five-level customisation ladder, and a per-machine bench file"
 status: Draft
+area: docs-ux-diagnostics
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-528, phase-529, phase-533]

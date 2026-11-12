@@ -90,7 +90,7 @@ def load():
             body_text = body
             docs[num] = dict(
                 num=num, path=os.path.relpath(p, ROOT), archived=archived, title=title,
-                status=status, reviewed=field(fm, "last-reviewed") or "-",
+                status=status, area=field(fm, "area") or "-", reviewed=field(fm, "last-reviewed") or "-",
                 since=field(fm, "since") or "-",
                 phases=sorted(set(re.findall(r"phase-(\d+)", field(fm, "implements-tracked-by"))), key=int),
                 sup=sup, supby=supby, amends=amends, cites=cites,
@@ -212,6 +212,27 @@ def main(argv):
                 f"| {tier} | {sim} | {a['num']} {a['title']} ({a['status']}) | {b['num']} {b['title']} ({b['status']}) | "
                 f"{', '.join(ph) or '-'} | {ev} |\n"
             )
+    # One prioritized list per area (W2): a pair goes to the slice of each RFC
+    # in it, so a cross-area pair reaches both reviewers.
+    slices = {}
+    for r in rk:
+        if r[0] == 3:
+            continue
+        for area in {r[2]["area"], r[3]["area"]}:
+            slices.setdefault(area, []).append(r)
+    os.makedirs(os.path.join(args.out, "slices"), exist_ok=True)
+    for area, rows in sorted(slices.items()):
+        with open(os.path.join(args.out, "slices", f"{area}.md"), "w", encoding="utf8") as fh:
+            mine = sorted(d["num"] for d in docs.values() if d["area"] == area and not d["archived"])
+            fh.write(f"# W2 slice: {area} (generated)\n\n")
+            fh.write(f"RFCs in this area ({len(mine)}): {', '.join(mine)}\n\n")
+            fh.write("Pairs to review, tier 1 (subject overlap) then tier 2 (a citation that claims a change):\n\n")
+            for tier, sim, a, b, ph, ev in rows:
+                fh.write(f"- [tier {tier}] RFC-{a['num']} ({a['area']}, {a['status']}) vs RFC-{b['num']} "
+                         f"({b['area']}, {b['status']})" + (f", similarity {sim}" if tier == 1 else "") + "\n")
+                fh.write(f"  - {a['title']}\n  - {b['title']}\n")
+                if ev:
+                    fh.write(f"  - evidence: {ev}\n")
     print(f"rfc-inventory: {len(docs)} RFC(s), {len(pairs)} candidate pair(s): overlap {tiers[1]}, "
           f"citing a change {tiers[2]}, plain citation {tiers[3]} -> {os.path.relpath(args.out, ROOT)}/")
     return 0

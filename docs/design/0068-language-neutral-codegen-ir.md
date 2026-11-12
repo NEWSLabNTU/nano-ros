@@ -2,6 +2,7 @@
 rfc: 0068
 title: "Language-neutral codegen IR — parse → resolve → lower → render"
 status: Stable
+area: build-toolchain-codegen
 since: 2026-08
 last-reviewed: 2026-09-27
 implements-tracked-by: [phase-335]

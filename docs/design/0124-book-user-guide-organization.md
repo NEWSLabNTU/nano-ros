@@ -2,6 +2,7 @@
 rfc: 0124
 title: "The nano-ros Book charter: principles, topic levels and a user-guide organization"
 status: Draft
+area: docs-ux-diagnostics
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-537]

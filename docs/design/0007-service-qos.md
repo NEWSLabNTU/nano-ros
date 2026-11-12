@@ -2,6 +2,7 @@
 rfc: 0007
 title: "Service / action QoS — design"
 status: Stable
+area: runtime-api
 since: 2026-05
 last-reviewed: 2026-05
 implements-tracked-by: [phase-239]

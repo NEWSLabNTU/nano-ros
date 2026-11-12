@@ -2,6 +2,7 @@
 rfc: 0112
 title: "Frameworks are supported through one host-driven contract; codegen is admitted, not assumed"
 status: Draft
+area: platform-board-rtos
 since: 2026-10
 last-reviewed: 2026-10
 implements-tracked-by: [phase-520, phase-521]

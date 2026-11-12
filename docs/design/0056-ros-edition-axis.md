@@ -2,6 +2,7 @@
 rfc: 0056
 title: "ROS edition axis: per-distro interop profile (type hash + wire encoding + interface set)"
 status: Draft
+area: rmw-wire
 since: 2026-07
 last-reviewed: 2026-10
 implements-tracked-by: [phase-304, phase-41, phase-303]

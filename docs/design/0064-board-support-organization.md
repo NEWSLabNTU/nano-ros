@@ -2,6 +2,7 @@
 rfc: 0064
 title: "Board support organization: nano-ros as an embeddable library, not a board framework"
 status: Draft (LIVE — under active exploration)
+area: platform-board-rtos
 since: 2026-07
 last-reviewed: 2026-09-06
 implements-tracked-by: [phase-337, phase-375, phase-215]  # R3's matrix; 375 = tier policy + onboarding cost + R5's process; 215 = the FVP migration

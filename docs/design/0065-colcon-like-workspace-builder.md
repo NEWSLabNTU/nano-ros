@@ -2,6 +2,7 @@
 rfc: 0065
 title: "A colcon-like builder: `nros build`, and the entry stops being hand-written"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-08
 last-reviewed: 2026-10
 implements-tracked-by: [phase-383]

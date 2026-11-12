@@ -2,6 +2,7 @@
 rfc: 0119
 title: "CLI extension packages: `runner` and `command` provider kinds, built for the host like any workspace package, with nano-ros's own runners and commands following the same convention"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-527, phase-528, phase-529, phase-533]
