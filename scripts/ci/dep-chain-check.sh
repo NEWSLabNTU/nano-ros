@@ -115,9 +115,11 @@ want = board_dir(board)
 if want is None:
     sys.exit(f"`nros board info {board}` does not resolve")
 hits = []
+defaults = set()
 for path in sorted(glob.glob(f"{ex}/src/*/system.toml")):
     doc = tomllib.load(open(path, "rb"))
     sys_rmw = doc.get("system", {}).get("rmw", "zenoh")
+    defaults.update(doc.get("system", {}).get("default_images", []))
     dflt = doc.get("image_defaults", {})
     for img, row in (doc.get("image") or {}).items():
         if row.get("node_features"):
@@ -127,6 +129,12 @@ for path in sorted(glob.glob(f"{ex}/src/*/system.toml")):
             continue
         if row.get("rmw", dflt.get("rmw", sys_rmw)) == rmw:
             hits.append(img)
+# Two images can share a board and an RMW and differ only in deployment (the
+# bare-metal talker's `docker` image is its compose test's network). The one
+# a plain build takes is the bringup's `default_images` entry, so that breaks
+# the tie; a tie it cannot break still fails.
+if len(hits) > 1 and len([h for h in hits if h in defaults]) == 1:
+    hits = [h for h in hits if h in defaults]
 if len(hits) != 1:
     sys.exit(f"want exactly one {board}/{rmw} image without node_features in {ex}, found {hits}")
 print(hits[0])
