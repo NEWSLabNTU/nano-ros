@@ -180,9 +180,10 @@ behaviour a user can see.
 **On every distro,** nano-ros activates a managed node's publishers when the
 node enters `active` (ruled 2026-11-12, Q2). Where rclcpp leaves that to the
 user, the user's own `publisher->on_activate()` in `on_activate` is a
-harmless no-op. Which distros activate by themselves is still recorded
-(verification item 1), so that the book can say where nano-ros does more than
-rclcpp. It does not change the behaviour.
+harmless no-op. Verification item 1 found that on Humble and on Jazzy rclcpp
+activates only through the base `LifecycleNode::on_activate`. So nano-ros
+does more than rclcpp only for an overriding class that forgets the base
+call, and the book says so.
 
 ### D4. Transition callbacks in each language
 
@@ -205,8 +206,12 @@ shutdown, and Failure for `on_error`.
   its configure function on its own node, which is how a stock rclc program
   does it. The executor-scoped family
   (`rclc_executor_register_lifecycle_services(exec)` and its two siblings)
-  retires with D8. The exact Humble and Jazzy spellings are to be taken from
-  upstream's headers, not from this text. **Verification before Stable.**
+  retires with D8. The spellings and shapes are upstream's, read on
+  2026-11-12 (verification item 2). Callbacks are `int (*)(void)`, where
+  `RCL_RET_OK` means success and anything else means failure. They are
+  registered per goal state, so `on_shutdown` and `on_error` go through
+  `rclc_lifecycle_register_callback`. A callback reaches its own data the
+  way a stock rclc callback does, through file-scope state.
 - **C++:** `rclcpp_lifecycle::LifecycleNode` keeps its virtual `on_*` hooks.
   Its `start()` registers its OWN node's machine (`_for_node`), which now adds
   a table entry instead of overwriting one. `LifecyclePublisher` stays, and
@@ -224,10 +229,11 @@ Stock behaviour, which nano-ros adopts:
   through `errorprocessing` (15): `get_current_state()` inside `on_configure`
   reports `configuring`, as rclcpp does. The state accessor (D1) and
   `TransitionCtx` both read it.
-- **`transition_event` carries what rclcpp publishes for the same transition.**
-  Whether that is one event (start to goal) or one per hop through the
-  transition state is to be measured against rclcpp. **Verification before
-  Stable.**
+- **`transition_event` carries what rclcpp publishes for the same transition**
+  (verification item 3): two events per transition, primary → transition
+  state and then transition state → result, and a third when a callback
+  returns ERROR. Each event sets `start_state` and `goal_state` and leaves
+  `transition` and `timestamp` empty, as rcl does.
 
 Still not implemented, as before:
 
@@ -437,10 +443,70 @@ None. Q1 (a plain component launched as `<lifecycle_node>` is managed) and Q2
 ## Verification before Stable
 
 The RFC becomes Stable only after these three checks (ruled 2026-11-12). Each
-is a claim about stock behaviour, read from rclcpp and rclc sources on Humble
-and Jazzy rather than from memory:
+is a claim about stock behaviour. All three were read from upstream source on
+2026-11-12 (phase-554 W0), at the `humble` and `jazzy` branch tips:
 
-1. whether rclcpp auto-activates managed entities, and from which distro (D3,
-   Q2);
-2. upstream `rclc_lifecycle` spellings on Humble and Jazzy (D4);
-3. `transition_event`'s event count per transition (D5).
+| Repo | humble | jazzy |
+|---|---|---|
+| ros2/rclcpp | `b54525b36c4a` | `35b821a9fb1f` |
+| ros2/rcl | `b50489adc465` | `18d96c9c2b98` |
+| ros2/rclc | `10eadcc6444a` | `45ef3de56758` |
+
+On all three points Humble and Jazzy behave the same.
+
+1. **Does rclcpp activate managed entities by itself?** Only through the base
+   class's default callback. `LifecycleNode::on_activate(const State &)`
+   calls `impl_->on_activate()`, which calls `on_activate()` on every managed
+   entity, and `on_deactivate` mirrors it
+   (`rclcpp_lifecycle/src/lifecycle_node.cpp`, `on_activate`). A user class
+   that overrides `on_activate` and does not call the base leaves its
+   publishers inactive until it calls `publisher->on_activate()` itself, on
+   both distros.
+   - **Consequence for D3:** nano-ros activates on entering `active` whatever
+     the callback does (Q2). So nano-ros does more than rclcpp for an
+     overriding class that forgets the base call, and the same for every
+     other class.
+   - **Timers:** Jazzy's `LifecycleNodeInterfaceImpl` records timers in
+     `weak_timers_`, but nothing reads that list to gate them. Timers are not
+     managed on either distro, which matches D3.
+2. **Upstream `rclc_lifecycle` (D4).** The header is byte-identical on Humble
+   and Jazzy:
+   - **Making a lifecycle node:** `rclc_make_node_a_lifecycle_node(rclc_lifecycle_node_t *,
+     rcl_node_t *, rcl_lifecycle_state_machine_t *, rcl_allocator_t *, bool
+     enable_communication_interface)`.
+   - **Changing state:** `rclc_lifecycle_change_state(node, transition_id,
+     publish_update)`.
+   - **Registering callbacks:** `rclc_lifecycle_register_on_configure`,
+     `_on_activate`, `_on_deactivate` and `_on_cleanup`, plus the generic
+     `rclc_lifecycle_register_callback(node, goal_state, cb)`.
+   - **Service servers:** `rclc_lifecycle_init_get_state_server`,
+     `_get_available_states_server` and `_change_state_server`, each taking an
+     `rclc_lifecycle_service_context_t *` and an executor.
+   - **Teardown:** `rclc_lifecycle_node_fini`.
+
+   Three things differ from rclcpp, and D4's C surface follows upstream
+   rather than rclcpp:
+   - **Callback shape.** A callback is `int (*)(void)`: no context and no
+     previous state. `RCL_RET_OK` means success, and any other value takes
+     the transition's FAILURE branch. rclc has no ERROR branch and no
+     `on_shutdown` / `on_error` register function.
+   - **Services answered.** rclc builds on rcl's state machine, which with
+     the communication interface enabled creates all five services and
+     `transition_event`. rclc answers only three of them: `get_state`,
+     `get_available_states` and `change_state`. nano-ros answers all five,
+     which a stock rclc client cannot tell apart.
+   - **Types.** The API needs `rcl_lifecycle_state_machine_t` and
+     `rcl_allocator_t`. The nano-ros C surface provides them as the opaque
+     storage types its rclc subset already uses.
+3. **`transition_event` per transition (D5).** rcl publishes one event per
+   `_trigger_transition` call. It sets only `start_state` and `goal_state`,
+   and leaves `transition` and `timestamp` at their initialised values
+   (`rcl_lifecycle/src/com_interface.c`,
+   `rcl_lifecycle_com_interface_publish_notification`). rclcpp's
+   `change_state` triggers twice for a transition, primary → transition state
+   and then transition state → result, so it publishes **two events**. A
+   callback that returns ERROR adds a third, `errorprocessing` → its result
+   (`lifecycle_node_interface_impl.cpp`, `change_state`). rclc's
+   `rclc_lifecycle_change_state` also triggers twice. So D5's
+   `transition_event` is two events per transition, three on ERROR, with the
+   same fields set and the same fields left empty.
