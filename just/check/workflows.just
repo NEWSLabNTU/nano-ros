@@ -827,6 +827,13 @@ queue-notify-decision:
     @bash scripts/ci/queue-ejected.sh --selftest
     @bash scripts/ci/queue-triage.sh --selftest
 
+# issue 2469 — live-peer's intermediates release: every root reached and
+# reported (a mawk exponent once stopped it after the first), build-script
+# executables released, what the cells and probes read kept.
+[private]
+release-fixture-intermediates:
+    @bash scripts/ci/release-fixture-intermediates.sh --self-test
+
 # issues 1081 + 1841 — `just setup` brings play_launch to its recorded pin. A
 # DIRTY off-pin submodule is refused in a developer tree (it may be work) and
 # discarded in a CI job (`GITHUB_ACTIONS=true`: a persistent self-hosted
