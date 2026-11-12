@@ -41,7 +41,7 @@ cd "$repo"
 # untracked build/target trees can never slow this down or leak in).
 leaves() {
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/zephyr/|/multi-package-workspace/|/templates/local-msg-package/|/templates/multi-node-workspace/|/templates/workspace-shadowing/|/workspaces/|esp32-c3-baremetal/rust/dds/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/px4/' \
+        | grep -vE '/zephyr/|/multi-package-workspace/|/templates/local-msg-package/|/templates/multi-node-workspace/|/templates/workspace-shadowing/|/workspaces/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/px4/' \
         | python3 scripts/lib/drop_workspace_members.py \
         | sort | while read -r toml; do dirname "$toml"; done
 }

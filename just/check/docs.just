@@ -426,6 +426,15 @@ roadmap-claims:
 issue-phase-links:
     @python3 scripts/check-issue-phase-links.py
 
+# 2026-11-13 -- every example platform a list names exists: an `examples/`
+# directory, a fixture platform, or a board key in the index. The retired
+# `esp32-c3-baremetal` stayed in seven places in `examples/README.md` and in
+# three build scripts after its directory went (found by nros 133).
+# Buildless, well under a second. No allowlist.
+[private]
+example-platform-names:
+    @python3 scripts/check/check-example-platform-names.py
+
 # phase-464 -- a `PR #1234 (abc1234)` citation must name a commit main can
 # reach. Third sibling of `roadmap-status` and `roadmap-claims`: those ask
 # whether a status EXISTS and whether it contradicts its own body; this one
