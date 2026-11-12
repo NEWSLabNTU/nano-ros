@@ -2,6 +2,7 @@
 rfc: 0060
 title: "Three layers: spec, resolver, runtime"
 status: Stable
+area: workspace-system-model
 since: 2026-07
 last-reviewed: 2026-11
 implements-tracked-by: [phase-312, phase-332, phase-486]

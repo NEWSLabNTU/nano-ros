@@ -2,6 +2,7 @@
 rfc: 0044
 title: "rclcpp-faithful component model — IS-A-Node, ctor-wired, typed member callbacks"
 status: Draft
+area: runtime-api
 since: 2026-06
 last-reviewed: 2026-06-13
 implements-tracked-by: [phase-242]

@@ -2,6 +2,7 @@
 rfc: 0004
 title: "Configuration model: language-agnostic config across single-node and workspace"
 status: Stable
+area: workspace-system-model
 since: 2026-05
 last-reviewed: 2026-10
 implements-tracked-by: [phase-227]

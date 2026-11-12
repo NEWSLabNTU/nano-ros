@@ -2,6 +2,7 @@
 rfc: 0120
 title: "`nros configure`: one resolver every road calls, `nros build` as the recommended front door, and single-pass host configures"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-530]

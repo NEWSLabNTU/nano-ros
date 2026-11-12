@@ -2,6 +2,7 @@
 rfc: 0073
 title: "Platform clock: one nanosecond symbol plus a resolution query"
 status: Draft
+area: platform-board-rtos
 since: 2026-08
 last-reviewed: 2026-08
 implements-tracked-by: [phase-352]

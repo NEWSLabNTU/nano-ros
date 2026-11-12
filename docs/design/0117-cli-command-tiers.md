@@ -2,6 +2,7 @@
 rfc: 0117
 title: "CLI command tiers: a task-grouped user tier, a hidden `nros dev` tier, ROS 2 flag names where the meaning is the same, and aliases instead of removals"
 status: Draft
+area: docs-ux-diagnostics
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-526]

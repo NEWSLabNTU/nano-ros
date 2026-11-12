@@ -2,6 +2,7 @@
 rfc: 0116
 title: "Adoption purposes and front doors: three purposes as acceptance columns, an action-only user surface, serial-first chapters, a single-package front door and one run verb"
 status: Draft
+area: docs-ux-diagnostics
 since: 2026-10
 last-reviewed: 2026-10
 implements-tracked-by: [phase-525, phase-523]

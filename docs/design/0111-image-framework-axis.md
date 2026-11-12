@@ -2,6 +2,7 @@
 rfc: 0111
 title: "An image's entry framework is its own field, not a word in the board name"
 status: Draft
+area: platform-board-rtos
 since: 2026-10
 last-reviewed: 2026-10
 implements-tracked-by: []

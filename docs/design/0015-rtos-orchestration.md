@@ -2,6 +2,7 @@
 rfc: 0015
 title: "RTOS Orchestration via Launch Tree + Manifest Codegen"
 status: Stable
+area: workspace-system-model
 since: 2026-04
 last-reviewed: 2026-06
 implements-tracked-by: [phase-227, phase-228]

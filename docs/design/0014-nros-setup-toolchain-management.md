@@ -2,6 +2,7 @@
 rfc: 0014
 title: "`nros setup` — toolchain & dependency management (W.5 design)"
 status: Stable
+area: build-toolchain-codegen
 since: 2026-05
 last-reviewed: 2026-05
 implements-tracked-by: [phase-240, phase-287, phase-288, phase-327, phase-365, phase-431, phase-447]

@@ -2,6 +2,7 @@
 rfc: 0095
 title: "The store is the root: nano-ros as a provisioned artifact"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-11
 implements-tracked-by: [phase-440, phase-443, phase-447]

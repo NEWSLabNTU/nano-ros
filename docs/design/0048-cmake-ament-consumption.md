@@ -2,6 +2,7 @@
 rfc: 0048
 title: "Ament-aligned CMake consumption — source-backed find_package, one shape per platform"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-07
 last-reviewed: 2026-07
 implements-tracked-by: [phase-287]

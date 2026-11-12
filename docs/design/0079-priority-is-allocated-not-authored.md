@@ -2,6 +2,7 @@
 rfc: 0079
 title: "Scheduling priority is ALLOCATED from a declared address plan — the user states a timing contract, never a kernel number"
 status: Draft
+area: workspace-system-model
 since: 2026-08
 last-reviewed: 2026-08
 implements-tracked-by: [phase-459, issue-0506, issue-0623, issue-0736]

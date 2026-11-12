@@ -2,6 +2,7 @@
 rfc: 0050
 title: "SystemModel — one resolved system artifact from launch + contracts + system config, shared with play_launch"
 status: Draft
+area: workspace-system-model
 since: 2026-07
 last-reviewed: 2026-07
 implements-tracked-by: [phase-296]

@@ -2,6 +2,7 @@
 rfc: 0032
 title: "Entry-Codegen Pipeline — main() emission across frameworks + sched tasks"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-06
 last-reviewed: 2026-06
 implements-tracked-by: [phase-212, phase-228, phase-236]

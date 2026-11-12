@@ -2,6 +2,7 @@
 rfc: 0123
 title: "Two books by audience: the nano-ros Book and nano-ros Internals"
 status: Draft
+area: docs-ux-diagnostics
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-532]

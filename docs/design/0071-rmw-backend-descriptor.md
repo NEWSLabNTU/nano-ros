@@ -2,6 +2,7 @@
 rfc: 0071
 title: "RMW backend descriptor: a backend declares itself, core names none"
 status: Draft
+area: rmw-wire
 since: 2026-08
 last-reviewed: 2026-11
 implements-tracked-by: [phase-347, phase-348, phase-506, phase-531]

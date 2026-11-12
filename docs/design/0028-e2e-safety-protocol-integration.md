@@ -2,6 +2,7 @@
 rfc: 0028
 title: "E2E Safety Protocol Integration Analysis"
 status: Stable
+area: rmw-wire
 since: 2026-02
 last-reviewed: 2026-02
 implements-tracked-by: []

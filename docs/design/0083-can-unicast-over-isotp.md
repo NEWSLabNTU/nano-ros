@@ -2,6 +2,7 @@
 rfc: 0083
 title: "CAN unicast over ISO-TP: full ROS semantics on a CAN bus"
 status: Draft
+area: rmw-wire
 since: 2026-08
 last-reviewed: 2026-08-27
 implements-tracked-by: [phase-393, phase-394]

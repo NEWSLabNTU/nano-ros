@@ -2,6 +2,7 @@
 rfc: 0047
 title: "Unified sched-context binding via callback groups — code-declared groups, config-assigned tiers"
 status: Draft
+area: workspace-system-model
 since: 2026-07
 last-reviewed: 2026-10
 implements-tracked-by: [phase-272, phase-273]

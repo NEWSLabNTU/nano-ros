@@ -2,6 +2,7 @@
 rfc: 0027
 title: "ROS 2 User Workflow for nano-ros"
 status: Stable
+area: docs-ux-diagnostics
 since: 2026-05
 last-reviewed: 2026-05
 implements-tracked-by: [phase-263]

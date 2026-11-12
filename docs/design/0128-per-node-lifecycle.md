@@ -2,6 +2,7 @@
 rfc: 0128
 title: "A managed node has its own REP-2002 state machine, served under its own name, as stock ROS 2 does"
 status: Draft
+area: runtime-api
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-554]

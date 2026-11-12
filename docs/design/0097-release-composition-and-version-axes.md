@@ -2,6 +2,7 @@
 rfc: 0097
 title: "Release composition: four version axes, and which artifact carries each"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-11
 implements-tracked-by: [phase-443, phase-447, phase-541]

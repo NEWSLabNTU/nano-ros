@@ -2,6 +2,7 @@
 rfc: 0049
 title: "Hierarchical platform/board configuration"
 status: Stable
+area: platform-board-rtos
 since: 2026-07
 last-reviewed: 2026-07-16
 implements-tracked-by: [phase-290]

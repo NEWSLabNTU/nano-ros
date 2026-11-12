@@ -2,6 +2,7 @@
 rfc: 0067
 title: "Env-invariant Rust message-dependency identity"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-08
 last-reviewed: 2026-11
 implements-tracked-by: [phase-333, phase-335, phase-465]

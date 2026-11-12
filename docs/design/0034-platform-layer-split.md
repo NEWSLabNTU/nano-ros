@@ -2,6 +2,7 @@
 rfc: 0034
 title: "Platform Layer Split & System-ABI Ownership"
 status: Draft
+area: platform-board-rtos
 since: 2026-06
 last-reviewed: 2026-06
 implements-tracked-by: [phase-230]

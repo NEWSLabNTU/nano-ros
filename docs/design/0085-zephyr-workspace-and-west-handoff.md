@@ -2,6 +2,7 @@
 rfc: 0085
 title: "Where the nano-ros workspace lives, and who calls whom on Zephyr"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-08
 last-reviewed: 2026-11
 implements-tracked-by: [phase-452]

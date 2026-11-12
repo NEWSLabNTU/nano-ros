@@ -2,6 +2,7 @@
 rfc: 0096
 title: "One freestanding `rclcpp` API, identical on every platform"
 status: Stable
+area: runtime-api
 since: 2026-09
 last-reviewed: 2026-11
 implements-tracked-by: [phase-209, phase-417, phase-442, phase-456, phase-476, phase-482, phase-487, phase-488, phase-518]

@@ -2,6 +2,7 @@
 rfc: 0070
 title: "Build caches: one root, one vocabulary, one derivation"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-08
 last-reviewed: 2026-11
 implements-tracked-by: [phase-334, phase-340, phase-344, phase-350, phase-383]

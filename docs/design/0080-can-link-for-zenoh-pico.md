@@ -2,6 +2,7 @@
 rfc: 0080
 title: "A CAN link for zenoh-pico: a datagram link type, self-contained in the vendored tree"
 status: Draft
+area: rmw-wire
 since: 2026-08
 last-reviewed: 2026-08-23
 implements-tracked-by: [phase-377]

@@ -2,6 +2,7 @@
 rfc: 0011
 title: "PX4 RMW (`nros-rmw-uorb`) — design notes"
 status: Stable
+area: rmw-wire
 since: 2026-04
 last-reviewed: 2026-11
 implements-tracked-by: [phase-232, phase-421]

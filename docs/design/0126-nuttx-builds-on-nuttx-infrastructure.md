@@ -2,6 +2,7 @@
 rfc: 0126
 title: "NuttX images build on NuttX's own build infrastructure"
 status: Draft
+area: platform-board-rtos
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-550]

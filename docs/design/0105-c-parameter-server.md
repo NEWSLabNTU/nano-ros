@@ -2,6 +2,7 @@
 rfc: 0105
 title: "The C parameter server: one family, rclc's shape, bounded for an RTOS"
 status: Draft
+area: runtime-api
 since: 2026-10
 last-reviewed: 2026-11
 implements-tracked-by: [phase-491]

@@ -2,6 +2,7 @@
 rfc: 0075
 title: "Zenoh router provenance: take the router from ROS, pin only what compiles into firmware"
 status: Draft
+area: rmw-wire
 since: 2026-08
 last-reviewed: 2026-08
 implements-tracked-by: [phase-362]

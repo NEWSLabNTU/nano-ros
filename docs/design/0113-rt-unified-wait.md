@@ -2,6 +2,7 @@
 rfc: 0113
 title: "Every supported way to run nano-ros keeps the real-time promise; one wait serves every platform and RMW"
 status: Stable
+area: runtime-api
 since: 2026-10
 last-reviewed: 2026-11
 implements-tracked-by: [phase-521]

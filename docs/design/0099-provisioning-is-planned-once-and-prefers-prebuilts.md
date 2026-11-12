@@ -2,6 +2,7 @@
 rfc: 0099
 title: "Provisioning is planned once, prefers prebuilts, and ships what a build needs"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-10
 implements-tracked-by: [phase-447, phase-517]

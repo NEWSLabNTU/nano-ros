@@ -2,6 +2,7 @@
 rfc: 0087
 title: "Package identity and the provider format"
 status: Draft
+area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-09
 implements-tracked-by: [phase-420]

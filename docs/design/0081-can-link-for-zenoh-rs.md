@@ -2,6 +2,7 @@
 rfc: 0081
 title: "A CAN link for zenoh-rs: the host half of RFC-0080"
 status: Draft
+area: rmw-wire
 since: 2026-08
 last-reviewed: 2026-08-25
 implements-tracked-by: [phase-378]

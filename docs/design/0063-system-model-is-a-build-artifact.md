@@ -2,6 +2,7 @@
 rfc: 0063
 title: "The SystemModel is a build artifact, not a committed source"
 status: Stable
+area: workspace-system-model
 since: 2026-08
 last-reviewed: 2026-11
 implements-tracked-by: [phase-330, phase-383]

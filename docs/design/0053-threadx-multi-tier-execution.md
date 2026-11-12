@@ -2,6 +2,7 @@
 rfc: 0053
 title: "ThreadX multi-sched-task execution — codegen-baked static per-sched-task stacks + native preemption-threshold"
 status: Draft
+area: platform-board-rtos
 since: 2026-07
 last-reviewed: 2026-07
 implements-tracked-by: [phase-297]

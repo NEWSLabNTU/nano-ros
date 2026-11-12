@@ -2,6 +2,7 @@
 rfc: 0031
 title: "RMW backend selection and lowering"
 status: Stable
+area: rmw-wire
 since: 2026-06
 last-reviewed: 2026-10
 implements-tracked-by: [phase-227]

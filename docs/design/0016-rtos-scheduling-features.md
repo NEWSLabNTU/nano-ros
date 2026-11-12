@@ -2,6 +2,7 @@
 rfc: 0016
 title: "RTOS Scheduling Features for nano-ros"
 status: Stable
+area: platform-board-rtos
 since: 2026-03
 last-reviewed: 2026-06
 implements-tracked-by: [phase-228]

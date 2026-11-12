@@ -2,6 +2,7 @@
 rfc: 0121
 title: "Workspace-first project layout: every project is a colcon workspace, `system.toml` lives only in a bringup package, and a single node is a scaffolded bringup plus `nros run <node>`"
 status: Draft
+area: workspace-system-model
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-531]

@@ -2,6 +2,7 @@
 rfc: 0088
 title: "Serialization format is a compile-time provider"
 status: Draft
+area: rmw-wire
 since: 2026-09
 last-reviewed: 2026-09
 implements-tracked-by: [phase-421]

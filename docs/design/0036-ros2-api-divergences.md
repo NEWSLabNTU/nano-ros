@@ -2,6 +2,7 @@
 rfc: 0036
 title: "Divergences from the ROS 2 standard client APIs (rclrs / rclcpp / rclc)"
 status: Draft
+area: runtime-api
 since: 2026-06
 last-reviewed: 2026-08
 implements-tracked-by: [phase-379, phase-381]
