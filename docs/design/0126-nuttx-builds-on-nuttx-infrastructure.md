@@ -191,3 +191,13 @@ None: every question in issue 2236 is ruled (see "Decided").
 
 - 2026-11 -- created as a decision shape, from issue 2236's build-system
   study and exploration.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict:** keep (ruled 2026-11-12).
+
+Stale references, each checked with `git ls-files` or `git grep` on main:
+
+- RFC-0130 is cited but not yet in the tree: its id is reserved, and the draft is in flight. This resolves when it merges.
+
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.

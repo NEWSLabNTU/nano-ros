@@ -4,7 +4,7 @@ title: "rtos-integration-pattern"
 status: Draft
 area: platform-board-rtos
 since: 2026-06
-last-reviewed: 2026-06
+last-reviewed: 2026-11
 implements-tracked-by: [phase-288]
 supersedes: []
 superseded-by: null
@@ -224,3 +224,21 @@ known-issue #18 (`docs/known-issues.md`).
 need to link NuttX's kernel/libc export libs (which back even `alloc`'s
 `malloc`/`free` and the platform's `sem_*`/clock primitives). The platform's
 std/alloc choice and the deploy's link inputs are independent axes.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict:** merge-into RFC-0072, pending the user's ruling (brief item P1).
+
+Stale references, each checked with `git ls-files` or `git grep` on main:
+
+- `zephyr/cmake/nros_component_link.cmake`, `zephyr/Kconfig.system` and `zenoh_platforms.toml` are gone from the tree.
+- The "known-issue #18" link points at `docs/known-issues.md`, which is now a stub pointing at `docs/issues/`.
+- Section 9 says `nros` and `nros-node` have a `std` feature and that NuttX images use `std`. Neither holds: the core crates have no `std` feature (phase-359), and `nros-board-nuttx` is `no_std` unconditionally (`src/lib.rs`, phase-359 W7).
+
+Where newer designs or the code disagree:
+
+- Section 4 says there is no deploy verb and that `nros build`/`run` were deprecated. RFC-0098 D2 and RFC-0118 restored them (`cmd/build.rs`, `run_exec.rs`, `flash.rs`, `monitor.rs`).
+- Section 4's NuttX row sends readers to the cargo road. RFC-0126 D4 (ruled 2026-11-12) makes the unified ROS-CMake road the one road.
+- RFC-0072 says this RFC "already states this RFC's principle" and extends it.
+
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.

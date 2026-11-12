@@ -4,7 +4,7 @@ title: "Board / BSP Integration Architecture"
 status: Stable
 area: platform-board-rtos
 since: 2026-05
-last-reviewed: 2026-05
+last-reviewed: 2026-11
 implements-tracked-by: [phase-322, phase-337]
 supersedes: []
 superseded-by: null
@@ -132,7 +132,7 @@ introduces alongside the existing per-board Cargo crates.
 
 Detailed findings on each RTOS's native conventions feed the design.
 The full research output (URLs + concrete file snippets) is captured
-in the per-RTOS sections of `docs/roadmap/phase-139-rtos-integration-shells.md`;
+in the per-RTOS sections of `docs/roadmap/archived/phase-139-rtos-integration-shells.md`;
 this section distils the integration contract.
 
 ### Zephyr — `west` + `module.yml`
@@ -391,5 +391,23 @@ this design pass):
 - FreeRTOS + ThreadX vendor pluralism (NXP MCUXpresso, STM32CubeMX,
   ESP-IDF, AWS LTS, Renesas Synergy, X-CUBE-AZRTOS).
 
-URLs are inlined in the matching `docs/roadmap/phase-139-rtos-integration-shells.md`
+URLs are inlined in the matching `docs/roadmap/archived/phase-139-rtos-integration-shells.md`
 sections.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict:** amend.
+
+Stale references, each checked with `git ls-files` or `git grep` on main:
+
+- These crates no longer exist: `nros-board-orin-spe`, `nros-board-baremetal-cortex-m`/`-a`, `nros-platform-esp-idf` and `nros-rmw-dds`.
+- These paths are gone: `zpico-sys/build/manifest.rs`, `zenoh_platforms.toml` and `integrations/platformio/library.json`. The PlatformIO manifest is the repo-root `library.json`.
+- The phase-139 link was fixed in this review: that doc moved to `archived/`.
+
+Where newer designs or the code disagree:
+
+- "~30 C functions" against RFC-0064's count of 92.
+- "Crates.io namespace is open" for overlay crates, against RFC-0040 D1: no `nros*` crate is ever published.
+- The Layer 2.5 overlay crates against RFC-0072. The banner admits this, but only in the FreeRTOS section.
+
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.

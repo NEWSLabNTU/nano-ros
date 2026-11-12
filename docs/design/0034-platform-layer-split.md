@@ -4,7 +4,7 @@ title: "Platform Layer Split & System-ABI Ownership"
 status: Draft
 area: platform-board-rtos
 since: 2026-06
-last-reviewed: 2026-06
+last-reviewed: 2026-11
 implements-tracked-by: [phase-230]
 supersedes: []
 superseded-by: null
@@ -334,3 +334,19 @@ scope (the lint excludes the vendored submodule).
 
 [platform-c-abi.md]: ../../book/src/reference/platform-api.md
 [issue 0006]: ../issues/archived/0006-rtos-dual-heap.md
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict:** amend, then consider Stable (brief item P3).
+
+Stale references, each checked with `git ls-files` or `git grep` on main:
+
+- `nros-c/include/nros/platform/{freertos,zephyr}.h` and `nros-board-orin-spe` are gone.
+- The global-allocator feature is in `nros-platform/Cargo.toml` (`global-allocator`), not in `nros-platform-api`.
+
+Where newer designs or the code disagree:
+
+- The D6 table row "Zephyr: framework owns (zephyr-lang-rust)" is out of date. Since issue 1324, Zephyr Rust allocation goes through `nros_platform_alloc`, and `CONFIG_RUST_ALLOC=y` is refused.
+- D3's single bridge is still open: two `platform_aliases.c` exist, in `zpico-sys` and in `nros-rmw-xrce`.
+
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.
