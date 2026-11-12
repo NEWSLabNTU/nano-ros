@@ -124,6 +124,11 @@ Rules:
   by spawning `nros build <native image>` (`entity_census.rs:546-560`, reached
   from `build.rs:907-922`). That is layer 0 calling layer 2. Phase-530 W2
   replaces it with a direct host-tool build of the native image.
+- **A provisioned input is not a host-build product.** Layer 0 may read an
+  input that is built once and shared by every image, such as a NuttX kernel
+  export's `scripts/Make.defs` (built once per arch), the same way it reads
+  an SDK. What it must not read is a product of the host build of the image
+  it is configuring. (RFC-0126, issue 2236 Q14, ruled 2026-11-12.)
 
 "Main path" is a documentation decision, not a dependency. The book leads with
 `nros new` → `nros build` → `nros run`. No tool requires `nros build`.
@@ -508,3 +513,8 @@ configure, is answered by D2: the stamp records it.)
   Kconfig declares no knob symbol; issue 2236 section 1). Whether the road
   stays a guest road is still open (issue 2236 Q1, Q7); building NuttX
   images on NuttX's own infrastructure is proposed in [RFC-0126](0126-nuttx-builds-on-nuttx-infrastructure.md).
+- 2026-11-12 -- D1: a provisioned input (a NuttX kernel export, built once
+  per arch) is not a host-build product, so layer 0 may read it ([RFC-0126](0126-nuttx-builds-on-nuttx-infrastructure.md) Q14). D5: a NuttX make
+  app that names a project is a hooked road; one that names none stays a
+  guest road (RFC-0126 Q1, Q7). The D5 NuttX row itself is amended by
+  phase-550 W6.
