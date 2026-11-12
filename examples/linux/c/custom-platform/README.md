@@ -7,7 +7,7 @@ embedded targets.
 ## Features Demonstrated
 
 - **Platform Abstraction Layer**: a reference implementation of the canonical
-  `<nros/platform.h>` ABI (`src/platform_impl.c`) — the symbols you port to a
+  `<nros/platform.h>` ABI (`src/native_c_custom_platform/src/platform_impl.c`) — the symbols you port to a
   new target
 - **Guard Conditions**: Cross-thread/interrupt signaling for shutdown or event notification
 - **Static Allocation**: application resources held in one static struct
@@ -17,8 +17,8 @@ embedded targets.
 ## How it is built (important)
 
 The executable `baremetal_demo` runs on the **Rust POSIX platform port** — the
-one `[image.linux] board = "linux"` in `system.toml` selects — so it builds and
-runs on a desktop. `src/platform_impl.c`
+one `[image.linux] board = "linux"` in the bringup's `system.toml` selects — so it builds and
+runs on a desktop. `src/native_c_custom_platform/src/platform_impl.c`
 implements the **same** `nros_platform_*` symbols, so it cannot be linked into
 that binary too — two implementations of one ABI is a duplicate-definition
 error. Instead CMake compiles it into a stand-alone `baremetal_platform_ref`
@@ -28,21 +28,28 @@ the canonical header.
 To make `platform_impl.c` the *actual* platform for a real target: build nros
 **without** a Rust platform port (no `platform-posix` / `platform-<rtos>`
 feature — the C side provides the symbols) and link this translation unit into
-your firmware. See the header comment in `src/platform_impl.c`.
+your firmware. See the header comment in
+`src/native_c_custom_platform/src/platform_impl.c`.
 
 ## Building
 
+A single-node workspace: `src/native_c_custom_platform` is the program, with
+its own `main()`, and `src/native_c_custom_platform_bringup` holds the
+`system.toml` that says what to build. The `linux` image builds that same
+`main` (an owned entry, RFC-0071 D19); it keeps its hand-written `main`
+because a user-supplied platform is one of the manual-entry demos RFC-0122 D10
+keeps.
+
 ```bash
-cd examples/linux/c/custom-platform
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+cp -r examples/linux/c/custom-platform ~/my-platform && cd ~/my-platform
+source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
+nros build linux
 ```
 
 Nothing to build by hand first: `find_package(nano_ros)` builds the `nros-c`
-library the example links. No `nros configure` either — a single-package C leaf's
-message bindings are a CMake-time output. The board, the RMW and the domain come
-from `system.toml` beside `CMakeLists.txt` (`[image.linux]` + `[system]`,
-RFC-0098 D3/D5), not from a `-D` flag.
+library the example links. The board, the RMW and the domain come from the
+bringup's `system.toml` (`[image.linux]` + `[system]`, RFC-0098 D3/D5), not
+from a `-D` flag.
 
 ## Running
 
@@ -51,12 +58,12 @@ RFC-0098 D3/D5), not from a `-D` flag.
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 
 # Run the demo
-./build/baremetal_demo
+./build/posix-zenoh-linux-native_c_custom_platform_bringup/cmake/pkg/native_c_custom_platform/baremetal_demo
 ```
 
 ## Platform Implementation
 
-`src/platform_impl.c` implements the full canonical ABI declared in
+`src/native_c_custom_platform/src/platform_impl.c` implements the full canonical ABI declared in
 `<nros/platform.h>`. A platform supplies every function declared `extern` there;
 the header provides `nros_platform_malloc`/`free` and
 `nros_platform_atomic_{store,load}_bool` as `static inline` (do not redefine
