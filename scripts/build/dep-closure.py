@@ -33,6 +33,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from build_walk import build_files  # noqa: E402  the one walk of build output
+
 
 def dep_targets(text: str) -> list[str]:
     """Yield the dependency tokens of a Make-style dep-info body.
@@ -142,7 +145,7 @@ def main() -> int:
     #    to `cmake/NanoRosCodegenCore.cmake` moved no signature at all, though 18
     #    in-repo modules are listed here for a single row.
     # walk-ok: cmake bookkeeping under a build dir — build output, not tracked
-    for mk in build_dir.rglob("CMakeFiles/Makefile.cmake"):
+    for mk in (f for f in build_files(build_dir, names=("Makefile.cmake",)) if f.parent.name == "CMakeFiles"):
         try:
             text = mk.read_text(errors="replace")
         except OSError as exc:
@@ -157,7 +160,7 @@ def main() -> int:
     #    `$` continues a line. A stale `build.ninja` copied from another checkout
     #    lists that checkout's paths; `keep()` drops anything outside this root.
     # walk-ok: ninja files under a build dir — build output, not tracked
-    for nj in build_dir.rglob("build.ninja"):
+    for nj in build_files(build_dir, names=("build.ninja",)):
         try:
             text = nj.read_text(errors="replace")
         except OSError as exc:
@@ -173,7 +176,7 @@ def main() -> int:
 
     # 3) Compiler / cargo dep-info.
     # walk-ok: cmake dep files under a build dir — build output, not tracked
-    for dep_file in build_dir.rglob("*.d"):
+    for dep_file in build_files(build_dir, (".d",)):
         try:
             text = dep_file.read_text(errors="replace")
         except OSError as exc:

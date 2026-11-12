@@ -55,6 +55,9 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from build_walk import build_files  # noqa: E402  the one walk of build output
+
 # ---------------------------------------------------------------------------
 # The graph and the walk (pure; the self-test drives these directly)
 # ---------------------------------------------------------------------------
@@ -562,25 +565,11 @@ def load_ci(g: Graph, f: Path) -> None:
 
 
 def frame_files(root: Path) -> list[Path]:
-    """Every `.su` / `.ci` under `root`, THROUGH symlinked directories.
-
-    A build dir's `cargo` is a symlink into the shared cargo root whenever
-    cargo directories are shared (the fixture builds set
-    NROS_SHARED_CARGO_ROOT), and every C file a crate's build script compiles
-    -- zenoh-pico, the zpico shim -- writes its `.su` there. `Path.rglob` does
-    not enter a symlinked directory, so those frames were never read and the
-    walk refused as if the functions had none. A directory reached twice (a
-    link back up the tree) is walked once."""
-    out: list[Path] = []
-    seen: set[str] = set()
-    for d, dirs, names in os.walk(root, followlinks=True):  # walk-ok: untracked GCC build output in a build dir the caller names
-        real = os.path.realpath(d)
-        if real in seen:
-            dirs[:] = []
-            continue
-        seen.add(real)
-        out += [Path(d, n) for n in names if n.endswith((".su", ".ci"))]
-    return sorted(out, key=lambda f: (f.suffix != ".su", str(f)))
+    """Every `.su` / `.ci` under `root`, through symlinked directories: a
+    build dir's `cargo` is a symlink into the shared cargo root when cargo dirs
+    are shared, and every C file a build script compiles writes its `.su`
+    there (`build_walk`, the one walk of build output)."""
+    return sorted(build_files(root, (".su", ".ci")), key=lambda f: (f.suffix != ".su", str(f)))
 
 
 def load_su(g: Graph, root: Path) -> None:

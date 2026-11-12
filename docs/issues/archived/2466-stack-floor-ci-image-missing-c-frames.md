@@ -146,3 +146,38 @@ A missing frame was never counted as 0: the walk refused. So no floor was ever
 computed low. The cost was that the CHECK could not run on these images, which
 would have FAILED a measured one.
 
+### The class: every reader of build output behind the symlink
+
+Defect 1 is not specific to the stack floor. Any reader that walks a build dir
+with `Path.rglob` or a bare `os.walk` misses everything behind `<build>/cargo`
+whenever cargo dirs are shared.
+
+Both readers now go through one helper, `scripts/lib/build_walk.py`
+(`build_files()`). It follows symlinked directories and visits each real
+directory once.
+
+The sweep found one sibling: `scripts/build/dep-closure.py`, the MEASURED half
+of a fixture's input signature.
+- It read `*.d` dep-info, `build.ninja` and `Makefile.cmake` with `rglob`, so it
+  never read cargo's dep-info.
+- Measured on `cpp-port-minimal-publisher`'s fixture build dir: 109 repo paths
+  before, 524 after. Every Rust crate source the image compiles was missing from
+  the measured closure (`nros-node`, `nros-c`, `nros-cpp`, `nros-rmw-zenoh`,
+  the generated message crates, ...).
+
+Not siblings:
+- **Tools that DELETE or count build output** must not follow a link out of
+  their tree, and keep their own walk: `trim-caches`, `prune-superseded-artifacts`,
+  `gc-shared-cargo` (which looks for the `cargo` links on purpose), and
+  `check-example-leaf-target-dirs`.
+- **`check-sizes-header-mirrors`** prunes `cargo`/`target` by design: no CMake
+  target dir lives there.
+- **`cargo-out-dir-headers`** walks inside one cargo `OUT_DIR`.
+- **`nros-build-profile`** recurses with `Path::is_dir()`, which follows links.
+- **The fixture staleness probe** walks SOURCE inputs, not build output.
+- **`nros-mem-report`** reads one ELF; its glob is not recursive.
+
+Sweep:
+`git grep -n -E "\.rglob\(|glob\([^)]*\*\*|os\.walk\(" -- 'scripts/*.py' 'packages/*.py'`,
+then each hit read for whether it walks build output.
+
