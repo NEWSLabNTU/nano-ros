@@ -1,6 +1,8 @@
 # Phase 556 — ROS 2 interface compatibility audit
 
-**Status (2026-11-13). OPEN: the plan is approved; no item has started.**
+**Status (2026-11-13). IN PROGRESS: W0 is done, and a first by-hand
+measurement of W2 to W6 found three gaps (W10 to W12) and one question for
+the user (W13).**
 The user's goal is to "ensure the interface compatibility among nano-ros and
 stock ROS 2". This phase measures it: a nano-ros node and a stock `rclcpp`
 node that declare the same interface are asked the same `ros2` CLI questions,
@@ -47,7 +49,7 @@ merge, and the item says so.
 
 ### W0 — Inventory the interop tests that exist
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-13, this doc)
 
 Read the interop tests under `packages/testing/nros-tests/tests/`
 (`graph_interop`, `params_per_node_interop`, `c_param_server_interop`,
@@ -59,6 +61,51 @@ checks that nano-ros answers, and which axis has no test.
 
 Acceptance: a table in this doc, one row per axis, naming the test (or none)
 and what it compares.
+
+Result: **no test asks a stock node and a nano-ros node the same question
+and compares the answers.** The two nearest are
+`advertised_state_interop.rs` (Cyclone only: what a stock peer reads about
+our QoS, against our own actual-QoS slot) and `graph_interop.rs` (the GID a
+stock peer reads, against our own). Paths are under
+`packages/testing/nros-tests/tests/`.
+
+| axis | checks only that nano-ros answers | no test |
+|---|---|---|
+| param list, get, set | `params.rs` (string matches), `params_per_node_interop.rs` (zenoh, cyclone, xrce), `c_param_server_interop.rs` | |
+| param describe | `params.rs`, a loose match | |
+| param dump | | yes |
+| the six parameter services | `qos_override_e2e.rs` (names, no types) | types |
+| `service list -t` | `ros2_action_e2e.rs` (waits for one hidden service) | `-t` output |
+| `action list -t` | `ros2_action_e2e.rs` drives goals, never lists | listing |
+| `node list` | `graph_interop.rs`, `rust_multi_node_per_node_graph.rs` | |
+| `node info` | `rust_multi_node_per_node_graph.rs` (XRCE only, one section) | zenoh |
+| `topic list -t` | a helper in `src/ros2.rs` that no test calls | yes |
+| `/rosout`, `/parameter_events` | `rosout_interop.rs`, `params_per_node_interop.rs`, `c_param_server_interop.rs` (echo the content) | presence in the graph |
+| `topic info -v` QoS | `workspace_features_e2e.rs`, `qos_override_e2e.rs` (against the declared profile); `graph_interop.rs`, `xrce_ros2_interop.rs` (GID) | |
+| lifecycle | `interop_e2e.rs`, `workspace_features_e2e.rs`, `entry_e2e.rs` (stock `ros2 lifecycle` drives a nano-ros node) | phase-554 owns it (W7) |
+
+### First measurement of W2 to W6 (2026-11-13, by hand)
+
+Humble with `rmw_zenoh_cpp`, `--no-daemon`. nano-ros: fixture
+`param-two-node-talker` and the native Rust talker, listener, service-server
+and action-server. Stock: an rclpy node with the same parameters,
+`demo_nodes_cpp` talker, listener and `add_two_ints_server`, and
+`examples_rclcpp_minimal_action_server`.
+
+Matches stock: `param list`, `get`, `set` and `--param-type` on declared
+parameters; `param describe` on a declared parameter, byte for byte; the six
+parameter service names and types on the first node; `service list -t`;
+`action list -t` and `action info -t`; the hidden action services and topics
+with their types; the `node info` action section; the QoS of
+`/parameter_events`, `_action/status` and `_action/feedback`; reliability,
+durability, lifespan, deadline and liveliness of a default-QoS topic.
+
+Differs: W10 to W13 below. The `/chatter` history depth differs because the
+examples declare different depths, which is not a gap.
+
+Not measured yet: non-default deadline, lifespan and liveliness (W6); C and
+C++ nano-ros nodes (W2); `/parameter_events` message content and
+`ros2 param load` (W2); Jazzy (W8).
 
 ### W1 — A paired-node comparison harness
 
@@ -149,8 +196,60 @@ same queries, and add their items here if so.
 
 Acceptance: a decision with its reason, in this item.
 
-### Gap items
+## Gap items
 
-Each gap W2 to W8 measure is added below as its own `### W<n>` item, with its
+Each gap W2 to W8 measure is added here as its own `### W<n>` item, with its
 issue, its expected-failure test, and the acceptance "the test is flipped to
 the plain check and passes".
+
+### W10 — The second node of an image misses a parameter service
+
+- **Status:** OPEN
+
+[Issue 2482](../issues/2482-second-node-param-service-missing.md): in a
+two-node zenoh image the second node serves 5 of the 6 parameter services
+(`get_parameter_types` is missing) and publishes no `/parameter_events`.
+
+Acceptance: a test asks `ros2 node info` for each node of a two-node image,
+held in expected-failure form until the fix, then flipped to the plain check
+and passing.
+
+### W11 — `use_sim_time` is not declared
+
+- **Status:** OPEN
+
+[Issue 2483](../issues/2483-use-sim-time-not-declared.md): every stock node
+declares `use_sim_time`; a nano-ros node with parameter services does not, so
+`ros2 param set <node> use_sim_time true` is refused.
+
+Acceptance: as W10, comparing `param list` and `param get use_sim_time`.
+
+### W12 — Replies for undeclared names, and refusal reasons
+
+- **Status:** OPEN
+
+[Issue 2484](../issues/2484-param-service-undeclared-replies.md):
+`GetParameters` and `DescribeParameters` answer an undeclared name with a
+filler entry where stock answers with none, so `ros2 param get` exits 0; and
+the delete and off-step refusals give a different reason from stock.
+
+Acceptance: as W10, one test per reply shape and refusal reason.
+
+### W13 — Which interfaces a node has by default
+
+- **Status:** BLOCKED (user ruling)
+
+A stock node always serves the six parameter services, publishes `/rosout`
+and `/parameter_events`, and subscribes to `/parameter_events`. A nano-ros
+node by default has none of these: RFC-0060 says nano-ros "defaults them
+off", and `/rosout` is opt-in through `nros-log`. The cost a user sees:
+`ros2 param list /talker` prints nothing with exit 0, and
+`ros2 param get /talker x` fails with `Wait for service timed out`.
+
+Question for the user: keep the defaults off (each service is a zenoh
+queryable and costs RAM on small targets) and document the difference, or
+turn them on where the board can afford it, for example on native Linux.
+
+Acceptance: the ruling is recorded here, and either the defaults move with a
+test comparing `node info` against stock, or the difference is documented
+where a user meets it.
