@@ -37,7 +37,7 @@ fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
         depfile_paths: Vec::new(),
         bringup: "demo_bringup".into(),
         launch_file: PathBuf::from("/tmp/system.launch.xml"),
-        lifecycle: None,
+        managed_nodes: Vec::new(),
         param_services: false,
         safety: None,
         sched_tasks: Default::default(),
@@ -347,89 +347,83 @@ fn typed_emit_param_services_absent_when_disabled() {
     assert!(!src.contains("nros_cpp_declare_node_param"));
 }
 
+/// RFC-0128 D2 -- a managed node of the plan.
+fn managed(name: &str, autostart_code: u8) -> crate::codegen::entry::ManagedPlanNode {
+    crate::codegen::entry::ManagedPlanNode {
+        namespace: "/".into(),
+        name: name.into(),
+        autostart_code,
+    }
+}
+
 #[test]
-fn typed_emit_lifecycle_active_emits_autostart_block() {
-    // Phase 269 W2 — lifecycle = Some("active") → nros_cpp_lifecycle_autostart(executor, 2u)
-    // in the post-configure block, AFTER any param block, BEFORE return 0.
+fn typed_emit_managed_node_registers_its_own_machine() {
+    // RFC-0128 D2 -- a managed node registers its own lifecycle machine by
+    // name, right after it is built, and nothing registers on the executor.
     let mut plan = fixture_plan(&[("lifecycle_talker_pkg", "lifecycle_talker")]);
-    plan.lifecycle = Some("active".into());
+    plan.managed_nodes = vec![managed("lifecycle_talker", 2)];
     let src = emit_typed(&plan).expect("typed C lifecycle emit ok");
-    // autostart call with code 2 (active = configure + activate)
     assert!(
-        src.contains("nros_cpp_lifecycle_autostart(executor, 2u)"),
-        "expected nros_cpp_lifecycle_autostart(executor, 2u) in:\n{src}"
+        src.contains("nros_cpp_lifecycle_register_node(executor, \"/\", \"lifecycle_talker\", 2u)"),
+        "expected the per-node registration with code 2 in:\n{src}"
     );
-    // error-propagation guard
     assert!(src.contains("if (lc_ret != NROS_CPP_RET_OK) return (int32_t)lc_ret"));
-    // AFTER configure loop (all node configure calls), BEFORE return 0
-    let autostart_at = src.find("nros_cpp_lifecycle_autostart").unwrap();
-    let ret_at = src.rfind("return 0;").unwrap();
+    assert!(!src.contains("nros_cpp_lifecycle_autostart"), "{src}");
     assert!(
-        autostart_at < ret_at,
-        "lifecycle block must precede return 0"
+        !src.contains("nros_cpp_register_lifecycle_services("),
+        "{src}"
     );
-    // configure loop precedes the lifecycle block
+    // After the node's configure call, before the setup returns.
     let cfg_at = src
-        .find("__nros_c_component_lifecycle_talker_pkg_configure")
+        .find("__nros_c_component_lifecycle_talker_pkg_configure(")
         .unwrap();
-    assert!(
-        cfg_at < autostart_at,
-        "lifecycle block must follow configure loop"
-    );
+    let lc_at = src.find("nros_cpp_lifecycle_register_node").unwrap();
+    let ret_at = src.rfind("return 0;").unwrap();
+    assert!(cfg_at < lc_at && lc_at < ret_at, "{src}");
 }
 
 #[test]
-fn typed_emit_lifecycle_configure_emits_code_1() {
-    let mut plan = fixture_plan(&[("lc_pkg", "lc")]);
-    plan.lifecycle = Some("configure".into());
-    let src = emit_typed(&plan).expect("typed C lifecycle configure emit ok");
-    assert!(
-        src.contains("nros_cpp_lifecycle_autostart(executor, 1u)"),
-        "expected autostart_code 1 for 'configure'; src:\n{src}"
-    );
+fn typed_emit_managed_node_carries_its_own_autostart_code() {
+    // RFC-0128 D6 -- each managed node its own code; they may disagree.
+    let mut plan = fixture_plan(&[("a_pkg", "a"), ("b_pkg", "b")]);
+    plan.managed_nodes = vec![managed("a", 1), managed("b", 0)];
+    let src = emit_typed(&plan).expect("typed C lifecycle emit ok");
+    assert!(src.contains("\"/\", \"a\", 1u)"), "{src}");
+    assert!(src.contains("\"/\", \"b\", 0u)"), "{src}");
 }
 
 #[test]
-fn typed_emit_lifecycle_none_emits_code_0() {
-    let mut plan = fixture_plan(&[("lc_pkg", "lc")]);
-    plan.lifecycle = Some("none".into());
-    let src = emit_typed(&plan).expect("typed C lifecycle none emit ok");
-    assert!(
-        src.contains("nros_cpp_lifecycle_autostart(executor, 0u)"),
-        "expected autostart_code 0 for 'none'; src:\n{src}"
+fn typed_emit_only_the_managed_node_registers_a_machine() {
+    // RFC-0128 D2 -- one managed and one unmanaged node: exactly one machine.
+    let mut plan = fixture_plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
+    plan.managed_nodes = vec![managed("talker", 0)];
+    let src = emit_typed(&plan).expect("typed C emit ok");
+    assert_eq!(
+        src.matches("nros_cpp_lifecycle_register_node(").count(),
+        1,
+        "{src}"
     );
+    assert!(!src.contains("\"listener\", 0u"), "{src}");
 }
 
 #[test]
-fn typed_emit_lifecycle_absent_when_disabled() {
-    // Guard: lifecycle = None → byte-identical output (no lifecycle block).
+fn typed_emit_lifecycle_absent_when_no_node_is_managed() {
+    // Guard: no managed node -> no lifecycle call at all.
     let plan = fixture_plan(&[("talker_pkg", "talker")]);
     let src = emit_typed(&plan).expect("typed C emit ok");
-    assert!(
-        !src.contains("nros_cpp_lifecycle_autostart"),
-        "lifecycle block must be absent when lifecycle = None"
-    );
+    assert!(!src.contains("nros_cpp_lifecycle_register_node"), "{src}");
     assert!(
         !src.contains("nros_cpp_register_lifecycle_services"),
-        "lifecycle block must be absent when lifecycle = None"
+        "{src}"
     );
 }
 
 #[test]
-fn typed_emit_lifecycle_after_param_block() {
-    // Phase 269 W2 — when both param_services and lifecycle are set, the lifecycle
-    // block must appear AFTER the param block (same order as the Rust macro: params → lifecycle).
+fn typed_emit_managed_node_the_plan_does_not_build_is_refused() {
     let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
-    plan.param_services = true;
-    plan.nodes[0].params = vec![("foo".into(), "bar".into())];
-    plan.lifecycle = Some("active".into());
-    let src = emit_typed(&plan).expect("typed C combined emit ok");
-    let param_at = src.find("nros_cpp_register_parameter_services").unwrap();
-    let lc_at = src.find("nros_cpp_lifecycle_autostart").unwrap();
-    assert!(
-        param_at < lc_at,
-        "lifecycle block must follow param-services block"
-    );
+    plan.managed_nodes = vec![managed("ghost", 2)];
+    let e = emit_typed(&plan).unwrap_err();
+    assert!(e.contains("ghost"), "{e}");
 }
 
 // -------------------------------------------------------------------------
@@ -514,7 +508,7 @@ fn fixture_plan_with_sched_tasks() -> Plan {
         depfile_paths: Vec::new(),
         bringup: "demo_bringup".into(),
         launch_file: PathBuf::from("/tmp/system.launch.xml"),
-        lifecycle: None,
+        managed_nodes: Vec::new(),
         param_services: false,
         safety: None,
         sched_tasks: Default::default(),

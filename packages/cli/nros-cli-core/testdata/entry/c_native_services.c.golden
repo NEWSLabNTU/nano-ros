@@ -34,6 +34,10 @@ static int32_t __nros_entry_setup(void* executor) {
         void* self = __nros_c_component_c_talker_pkg_create();
         int32_t crc = __nros_c_component_c_talker_pkg_configure(&__nros_node_0, executor, self);
         if (crc != 0) return crc;
+        /* A managed node: its own lifecycle machine, under its own name, then
+         * its boot autostart (0 none, 1 configure, 2 active). */
+        nros_cpp_ret_t lc_ret = nros_cpp_lifecycle_register_node(executor, "/", "talker", 2u);
+        if (lc_ret != NROS_CPP_RET_OK) return (int32_t)lc_ret;
     }
     /* Phase 269 (W1) — param-services: register the runtime get/set surface
      * (seeding: emit_declare_params, pre-construction — issue 0745). */
@@ -42,11 +46,6 @@ static int32_t __nros_entry_setup(void* executor) {
          * is unavailable, but the SEEDED store above already carries the launch
          * initials, so boot proceeds. */
         (void)nros_cpp_register_parameter_services(executor);
-    }
-    /* Phase 269 (W2) — lifecycle-services: register + autostart. */
-    {
-        nros_cpp_ret_t lc_ret = nros_cpp_lifecycle_autostart(executor, 2u);
-        if (lc_ret != NROS_CPP_RET_OK) return (int32_t)lc_ret;
     }
     return 0;
 }

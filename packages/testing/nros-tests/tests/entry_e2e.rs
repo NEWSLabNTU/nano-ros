@@ -28,7 +28,7 @@
 //! - **Qos** (phase-276 W5): the in-image reliable+transient_local pair
 //!   matches + delivers in-image (`Z_FEATURE_LOCAL_SUBSCRIBER`); the
 //!   listener's republished count on `/qos_ok` reaches an external sink.
-//! - **Lifecycle** (phase-276 W3 / #128): `apply_lifecycle` autostart drives
+//! - **Lifecycle** (phase-276 W3 / #128): `apply_lifecycle_node` autostart drives
 //!   Configure→Activate at boot, observed over the REP-2002 service surface
 //!   (`ros2 lifecycle …`; requires ROS 2 + rmw_zenoh_cpp, fails when absent).
 //! - **Safety** (phase-276 W4): the CRC attach → in-image deliver → validate
@@ -365,8 +365,9 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             port: port_of(MP::ZephyrNativeSim, ML::Rust, MW::Lifecycle),
             boot: Boot::ZephyrNativeSim,
             proof: proof_for(platform, lang, workload),
-            note: "phase-276 W3 / #128: apply_lifecycle installs the five REP-2002 services and \
-                   drives the boot autostart (Configure→Activate) in-image — no manual set",
+            note: "phase-276 W3 / #128: apply_lifecycle_node installs the five REP-2002 services \
+                   on the <lifecycle_node> and drives its boot autostart (Configure→Activate) \
+                   in-image — no manual set",
         },
         (MP::ZephyrNativeSim, ML::Rust, MW::Safety) => Exec {
             resolver: build_zephyr_workspace_rust_safety_entry,

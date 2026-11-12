@@ -565,6 +565,12 @@ impl LoadedModel {
         }
     }
 
+    /// The image's managed nodes and each one's boot transition —
+    /// [`managed_nodes`].
+    pub fn managed_nodes(&self) -> Vec<ManagedNode> {
+        managed_nodes(&self.model, &self.overlay)
+    }
+
     /// The image's lifecycle boot transition — [`reduce_lifecycle_autostart`].
     pub fn lifecycle_autostart(
         &self,
@@ -644,7 +650,97 @@ pub fn placed_here(model: &ros_launch_manifest_model::SystemModel, fqn: &str) ->
     model.execution.deploy.is_empty() || model.execution.deploy.contains_key(fqn)
 }
 
+/// Split a node FQN into `(namespace, name)`: the name is the last segment,
+/// the namespace everything before it without its trailing `/`, and `/` when
+/// that is empty. The one split every entry road names a node by.
+pub fn split_fqn(fqn: &str) -> (String, String) {
+    let name = fqn.rsplit('/').next().unwrap_or(fqn);
+    let ns = fqn[..fqn.len() - name.len()].trim_end_matches('/');
+    let ns = if ns.is_empty() { "/" } else { ns };
+    (ns.to_string(), name.to_string())
+}
+
+/// RFC-0128 D2 (phase-554 W2) — one managed node of an image.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedNode {
+    /// The model's node key.
+    pub fqn: String,
+    /// The namespace the node is created at (`/` for the root).
+    pub namespace: String,
+    /// The node's final name.
+    pub name: String,
+    /// Its boot transition (RFC-0128 D6): the node's own
+    /// `lifecycle_autostart`, else the overlay's `[lifecycle] autostart`,
+    /// else `None`.
+    pub autostart: Option<ros_launch_manifest_model::Autostart>,
+}
+
+impl ManagedNode {
+    /// The autostart as the runtime encodes it: 0 none, 1 configure, 2 active.
+    pub fn autostart_code(&self) -> u8 {
+        autostart_code(self.autostart)
+    }
+}
+
+/// The runtime encoding of an autostart level: 0 none (or unset),
+/// 1 configure, 2 active.
+pub fn autostart_code(a: Option<ros_launch_manifest_model::Autostart>) -> u8 {
+    use ros_launch_manifest_model::Autostart;
+    match a {
+        None | Some(Autostart::None) => 0,
+        Some(Autostart::Configure) => 1,
+        Some(Autostart::Active) => 2,
+    }
+}
+
+/// The overlay's `[lifecycle] autostart`, typed. An unrecognised value was
+/// already dropped when the overlay was read.
+fn overlay_autostart(overlay: &Overlay) -> Option<ros_launch_manifest_model::Autostart> {
+    use ros_launch_manifest_model::Autostart;
+    match overlay.lifecycle_autostart.as_deref() {
+        Some("none") => Some(Autostart::None),
+        Some("configure") => Some(Autostart::Configure),
+        Some("active") => Some(Autostart::Active),
+        _ => None,
+    }
+}
+
+/// RFC-0128 D2 + D6 (phase-554 W2) — the managed nodes this image runs, in
+/// launch declaration order.
+///
+/// A node is managed when the resolved model marks it (`lifecycle: true`,
+/// from a launch `<lifecycle_node>` / `LifecycleNode(...)` or a contract's
+/// `lifecycle: true`), and the image runs it when [`placed_here`] says so.
+/// Each takes its OWN autostart; the overlay's `[lifecycle] autostart` fills
+/// only the nodes that leave theirs unset. Two nodes stating different
+/// values is not a conflict: each machine boots on its own.
+pub fn managed_nodes(
+    model: &ros_launch_manifest_model::SystemModel,
+    overlay: &Overlay,
+) -> Vec<ManagedNode> {
+    let default = overlay_autostart(overlay);
+    model
+        .structure
+        .nodes
+        .iter()
+        .filter(|(fqn, n)| n.lifecycle && placed_here(model, fqn))
+        .map(|(fqn, n)| {
+            let (namespace, name) = split_fqn(fqn);
+            ManagedNode {
+                fqn: fqn.clone(),
+                namespace,
+                name,
+                autostart: n.lifecycle_autostart.or(default),
+            }
+        })
+        .collect()
+}
+
 /// phase-486 W0 Correction 2 — ONE lifecycle boot transition per image.
+///
+/// RFC-0128 D6 retires this rule: each managed node now takes its own value
+/// ([`managed_nodes`]). It stays until phase-554 W7 retires it formally, for
+/// readers that still size or describe the image by one value.
 ///
 /// The runtime has one executor-wide autostart, while the model states it per
 /// node. Three readers used to take the first node's value. The rule now:
@@ -933,6 +1029,122 @@ mod tests {
         ]);
         let e = reduce_lifecycle_autostart(&m, &Overlay::default()).unwrap_err();
         assert!(e.contains("/a") && e.contains("/b"), "{e}");
+    }
+
+    // ---- RFC-0128 D2/D6 (phase-554 W2): the managed nodes ----
+
+    fn managed(vals: &[(&str, bool, Option<Autostart>)]) -> SystemModel {
+        let mut m = SystemModel::default();
+        for (fqn, lc, a) in vals {
+            m.structure.nodes.insert(
+                (*fqn).to_string(),
+                NodeInstance {
+                    lifecycle: *lc,
+                    lifecycle_autostart: *a,
+                    ..NodeInstance::default()
+                },
+            );
+        }
+        m
+    }
+
+    fn rows(v: &[ManagedNode]) -> Vec<(&str, &str, Option<Autostart>)> {
+        v.iter()
+            .map(|n| (n.namespace.as_str(), n.name.as_str(), n.autostart))
+            .collect()
+    }
+
+    #[test]
+    fn each_managed_node_takes_its_own_autostart_in_launch_order() {
+        // Declaration order, not FQN order: `/z` before `/a`.
+        let m = managed(&[
+            ("/z/talker", true, Some(Autostart::Active)),
+            ("/a", true, Some(Autostart::None)),
+        ]);
+        let got = managed_nodes(&m, &Overlay::default());
+        assert_eq!(
+            rows(&got),
+            [
+                ("/z", "talker", Some(Autostart::Active)),
+                ("/", "a", Some(Autostart::None)),
+            ]
+        );
+        assert_eq!(got[0].fqn, "/z/talker");
+        assert_eq!(
+            got.iter()
+                .map(ManagedNode::autostart_code)
+                .collect::<Vec<_>>(),
+            [2, 0]
+        );
+    }
+
+    #[test]
+    fn the_overlay_default_fills_only_nodes_that_state_none() {
+        let m = managed(&[("/a", true, None), ("/b", true, Some(Autostart::None))]);
+        let o = Overlay {
+            lifecycle_autostart: Some("configure".into()),
+            ..Overlay::default()
+        };
+        assert_eq!(
+            rows(&managed_nodes(&m, &o)),
+            [
+                ("/", "a", Some(Autostart::Configure)),
+                ("/", "b", Some(Autostart::None)),
+            ]
+        );
+        // No default either: unset, which the runtime reads as `none`.
+        let got = managed_nodes(&m, &Overlay::default());
+        assert_eq!(got[0].autostart, None);
+        assert_eq!(got[0].autostart_code(), 0);
+    }
+
+    #[test]
+    fn an_unmanaged_node_is_not_listed_even_with_a_default() {
+        let m = managed(&[("/plain", false, None), ("/managed", true, None)]);
+        let o = Overlay {
+            lifecycle_autostart: Some("active".into()),
+            ..Overlay::default()
+        };
+        assert_eq!(
+            rows(&managed_nodes(&m, &o)),
+            [("/", "managed", Some(Autostart::Active))]
+        );
+        // An image with no managed node gets no machine, whatever the default.
+        let none = managed(&[("/plain", false, None)]);
+        assert!(managed_nodes(&none, &o).is_empty());
+    }
+
+    #[test]
+    fn a_managed_node_placed_elsewhere_is_not_listed() {
+        let mut m = managed(&[("/here", true, None), ("/there", true, None)]);
+        m.execution.deploy.insert("/here".into(), Deploy::default());
+        assert_eq!(
+            rows(&managed_nodes(&m, &Overlay::default())),
+            [("/", "here", None)]
+        );
+    }
+
+    /// The one-value rule refused this; per-node machines boot it as stated.
+    #[test]
+    fn two_managed_nodes_that_disagree_are_not_an_error() {
+        let m = managed(&[
+            ("/a", true, Some(Autostart::None)),
+            ("/b", true, Some(Autostart::Active)),
+        ]);
+        assert_eq!(
+            rows(&managed_nodes(&m, &Overlay::default())),
+            [
+                ("/", "a", Some(Autostart::None)),
+                ("/", "b", Some(Autostart::Active))
+            ]
+        );
+    }
+
+    #[test]
+    fn split_fqn_names_the_root_namespace_slash() {
+        assert_eq!(split_fqn("/talker"), ("/".into(), "talker".into()));
+        assert_eq!(split_fqn("/a/b/talker"), ("/a/b".into(), "talker".into()));
+        assert_eq!(split_fqn("talker"), ("/".into(), "talker".into()));
     }
 
     #[test]

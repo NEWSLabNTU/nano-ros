@@ -1,6 +1,7 @@
 // LifecycleTalker — Phase 269 W2: managed-node C++ component that publishes a counter
 // on /chatter. Lifecycle state machine (register + Configure→Activate) is handled by the
-// generated entry's __nros_entry_setup via nros_cpp_lifecycle_autostart; this component
+// generated entry right after it builds the node (nros_cpp_lifecycle_register_node,
+// because the launch file declares it a <lifecycle_node>); this component
 // has no lifecycle callbacks of its own. The e2e test checks that
 // `ros2 lifecycle get /talker` returns `active` at boot.
 

@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::managed_node_id",
+  "verdict": "extension",
+  "why": "RFC-0128 D2 (phase-554 W2): find the node a launch file marks `<lifecycle_node>` in the executor's node table by name and namespace, the namespace compared without its leading/trailing `/`. The generated entries' lookup; rclcpp needs none because the node object is the handle."
+}

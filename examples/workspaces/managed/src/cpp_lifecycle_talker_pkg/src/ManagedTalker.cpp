@@ -1,7 +1,7 @@
 // ManagedTalker — a managed C++ node built on `rclcpp_lifecycle::LifecycleNode`
 // (phase-482 W4; phase 270 #103 before it, on the retired `rclcpp::LifecycleNode`
 // mixin). Unlike LifecycleTalker (whose lifecycle is driven by the entry's
-// `nros_cpp_lifecycle_autostart` codegen), this node authors its own transition
+// `nros_cpp_lifecycle_register_node` codegen), this node authors its own transition
 // behaviour through the rclcpp-shape on_* overrides and self-drives the machine
 // from its constructor. `cpp_lifecycle_node_wrapper_e2e` greps this node's
 // stdout for the transition markers and the gated `Published:` lines.

@@ -1,7 +1,9 @@
 <?xml version="1.0"?>
-<!-- Phase 269 W2 — managed (lifecycle) C entry. The generated entry calls
-     nros_cpp_lifecycle_autostart(executor, 2u) in __nros_entry_setup so the
-     node boots directly to `active` (Configure→Activate) with no manual transition. -->
+<!-- A managed (lifecycle) C node. `<lifecycle_node>` marks `talker` managed, so
+     the generated entry registers its own REP-2002 machine under its name
+     (`/talker/get_state`, ...) right after building it, and drives it to the
+     bringup's `[lifecycle] autostart` ("active": Configure then Activate) with
+     no manual transition. -->
 <launch>
-  <node pkg="c_lifecycle_talker_pkg" exec="c_talker" name="talker"/>
+  <lifecycle_node pkg="c_lifecycle_talker_pkg" exec="c_talker" name="talker"/>
 </launch>

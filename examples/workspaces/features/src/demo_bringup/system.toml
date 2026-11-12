@@ -26,7 +26,11 @@ default_launch = "c_params.launch.xml"
 features = ["param_services"]
 
 # The managed-node boot policy. Present ⇒ the lifecycle axis is on; `autostart`
-# is the part `features` cannot express.
+# is the part `features` cannot express. It is the DEFAULT boot state of each
+# managed node: a node is managed only when its launch file declares it as a
+# `<lifecycle_node>` (the `*_lifecycle.launch.xml` images), and one that states
+# its own `autostart` keeps it. Images with no managed node register no
+# lifecycle machine at all.
 [lifecycle]
 autostart = "active"
 

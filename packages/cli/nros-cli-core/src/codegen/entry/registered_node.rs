@@ -128,7 +128,7 @@ impl RegisteredNode {
             // tool's own mtime is the edge that matters here, and cmake adds it
             // with `nros_codegen_tool_reconfigure()` (issue 1018).
             depfile_paths: Vec::new(),
-            lifecycle: None,
+            managed_nodes: Vec::new(),
             param_services: false,
             safety: None,
             sched_tasks: Default::default(),

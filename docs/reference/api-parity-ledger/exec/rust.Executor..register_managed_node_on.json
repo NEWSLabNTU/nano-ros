@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_managed_node_on",
+  "verdict": "extension",
+  "why": "RFC-0128 D2 (phase-554 W2): register a managed node's machine, keeping one the node's component already registered (a C++ `rclcpp_lifecycle::LifecycleNode`) instead of refusing it as `register_lifecycle_services_on` does. The generated entries' registration path."
+}

@@ -71,14 +71,14 @@ var __nros_node_{{ loop.index0 }}: c.nros_cpp_node_t = undefined;
         const self = __nros_c_component_{{ n.pkg | pkg_ident }}_create();
         const crc = __nros_c_component_{{ n.pkg | pkg_ident }}_configure(&__nros_node_{{ idx }}, executor, self);
         if (crc != 0) return crc;
+{%- if n.lifecycle_code is not none %}
+        if (c.nros_cpp_lifecycle_register_node(executor, "{{ n.namespace | c_str }}", "{{ n.name | c_str }}", {{ n.lifecycle_code }}) != c.NROS_CPP_RET_OK) return -1;
+{%- endif %}
     }
 {%- endmacro %}
 {%- macro service_calls() %}
 {%- if services.param_services %}
     _ = c.nros_cpp_register_parameter_services(executor);
-{%- endif %}
-{%- if services.lifecycle_code is not none %}
-    if (c.nros_cpp_lifecycle_autostart(executor, {{ services.lifecycle_code }}) != c.NROS_CPP_RET_OK) return -1;
 {%- endif %}
 {%- endmacro %}
 {% if sched_tasks %}

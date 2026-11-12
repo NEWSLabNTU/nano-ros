@@ -588,12 +588,13 @@ endif()
 # Issue 1681 -- the OTHER two capability axes, by the same rule.
 #
 # The generated entry calls what each declared axis registers --
-# `nros_cpp_lifecycle_autostart` for `lifecycle`, the integrity path for
+# `nros_cpp_lifecycle_register_node` for a managed node, the integrity path for
 # `safety` -- and each symbol exists only in an nros-cpp built with the axis's
 # cargo feature. The cmake road maps every axis through `nros_feature_set`
 # (`cmake/NanoRosFeatureSet.cmake`); this road mapped `param_services` alone, so
 # a Zephyr C/C++ image declaring `lifecycle` failed to link
-# (`undefined reference to nros_cpp_lifecycle_autostart`, measured on
+# (`undefined reference to nros_cpp_lifecycle_autostart`, the call it had then,
+# measured on
 # `features`'s `[image.zephyr_cpp_params]`, whose bringup declares both).
 #
 # One suffix, appended to the nros-cpp string AND to both nros-c strings:

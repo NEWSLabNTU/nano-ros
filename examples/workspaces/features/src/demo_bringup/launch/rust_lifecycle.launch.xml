@@ -1,6 +1,7 @@
 <?xml version="1.0"?>
-<!-- phase-263 A3 / phase-264 W2 — a managed (lifecycle) system: the runtime
-     registers the 5 REP-2002 lifecycle services and autostarts the node. -->
+<!-- A managed (lifecycle) Rust system. `<lifecycle_node>` marks `talker`
+     managed, so the runtime registers its own 5 REP-2002 lifecycle services
+     under its name and autostarts it to the bringup's `[lifecycle] autostart`. -->
 <launch>
-  <node pkg="rust_lifecycle_talker_pkg" exec="talker" name="talker"/>
+  <lifecycle_node pkg="rust_lifecycle_talker_pkg" exec="talker" name="talker"/>
 </launch>

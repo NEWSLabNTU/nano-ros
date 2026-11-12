@@ -106,23 +106,39 @@ pub trait NodeDispatchRuntime {
         10
     }
 
-    /// Phase 264 W2 — register the REP-2002 lifecycle services on the underlying
-    /// executor + drive boot autostart. `autostart`: 0 = none, 1 = configure,
-    /// 2 = configure+activate. Default no-op (non-executor runtimes, or `nros`
-    /// built without `lifecycle-services`); the `ExecutorNodeRuntime` impl in
-    /// `nros` does the real work behind that feature. `nros::main!` calls this
-    /// (via [`RuntimeCtx::apply_lifecycle`]) when `system.toml` declares
-    /// `[lifecycle]`, mirroring the bake's `generate.rs::render_lifecycle_fn`.
-    /// issue 0460 — the `Err` carries a STATIC REASON, not `()`.
+    /// RFC-0128 D2 (phase-554 W2) — make one MANAGED node of this image a
+    /// lifecycle node: register the five REP-2002 services under the node's
+    /// own name (`namespace` + `name`, the node `nros::main!` created for that
+    /// launch entry) and drive its boot `autostart` (0 none, 1 configure,
+    /// 2 configure + activate). `nros::main!` calls this (via
+    /// [`RuntimeCtx::apply_lifecycle_node`]) once per node the resolved model
+    /// marks managed, right after that node's `register` call. No machine is
+    /// ever registered on the executor's own identity.
     ///
-    /// A capability that fails to register is reported by the caller as
-    /// `RuntimeError::NodeRegister("lifecycle")`, which names WHICH capability
-    /// and nothing about WHY. On Zephyr that opaque string was the entire
-    /// diagnostic for three dead entries: the image printed nothing after
-    /// "Network ready" and the cause could only be guessed at. `&'static str`
-    /// rather than a typed error because this trait lives below `nros-node` and
-    /// cannot name `NodeError`.
-    fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), &'static str> {
+    /// Default no-op (non-executor runtimes, or `nros` built without
+    /// `lifecycle-services`); the `ExecutorNodeRuntime` impl in `nros` does
+    /// the real work behind that feature. issue 0460 — the `Err` carries a
+    /// STATIC REASON, not `()`: a capability that fails to register is
+    /// reported by the caller as `RuntimeError::Capability`, and without the
+    /// reason that said which capability and nothing about why. `&'static str`
+    /// rather than a typed error because this trait lives below `nros-node`
+    /// and cannot name `NodeError`.
+    fn apply_lifecycle_node(
+        &mut self,
+        namespace: &'static str,
+        name: &'static str,
+        autostart: u8,
+    ) -> Result<(), &'static str> {
+        let _ = (namespace, name, autostart);
+        Ok(())
+    }
+
+    /// RFC-0128 D2 (phase-554 W2) — the self-bringup form of
+    /// [`apply_lifecycle_node`](Self::apply_lifecycle_node). A single-package
+    /// self-bringup has no model to name its node, so the managed node is the
+    /// first node the image built (its component's launch node, the node its
+    /// launch parameters are seeded on). Default no-op, as above.
+    fn apply_lifecycle_self_bringup(&mut self, autostart: u8) -> Result<(), &'static str> {
         let _ = autostart;
         Ok(())
     }
@@ -356,12 +372,24 @@ impl<'a> RuntimeCtx<'a> {
         }
     }
 
-    /// Phase 264 W2 — register lifecycle services + drive autostart on the runtime
-    /// sink (forwards to [`NodeDispatchRuntime::apply_lifecycle`]). `nros::main!`
-    /// emits this after the per-node `register` calls when `system.toml` declares
-    /// `[lifecycle]`. No-op unless `nros` is built with `lifecycle-services`.
-    pub fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), &'static str> {
-        self.runtime.apply_lifecycle(autostart)
+    /// RFC-0128 D2 — make one managed node a lifecycle node (forwards to
+    /// [`NodeDispatchRuntime::apply_lifecycle_node`]). `nros::main!` emits this
+    /// after the `register` call of each node the model marks managed. No-op
+    /// unless `nros` is built with `lifecycle-services`.
+    pub fn apply_lifecycle_node(
+        &mut self,
+        namespace: &'static str,
+        name: &'static str,
+        autostart: u8,
+    ) -> Result<(), &'static str> {
+        self.runtime
+            .apply_lifecycle_node(namespace, name, autostart)
+    }
+
+    /// RFC-0128 D2 — the self-bringup form (forwards to
+    /// [`NodeDispatchRuntime::apply_lifecycle_self_bringup`]).
+    pub fn apply_lifecycle_self_bringup(&mut self, autostart: u8) -> Result<(), &'static str> {
+        self.runtime.apply_lifecycle_self_bringup(autostart)
     }
 
     /// Phase 264 W4b -- register the ROS 2 parameter services and create the

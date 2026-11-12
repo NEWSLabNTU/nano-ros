@@ -48,10 +48,6 @@ static int32_t __nros_entry_setup_sched_task_0_nodes(void* executor, const char*
          * initials, so boot proceeds. */
         (void)nros_cpp_register_parameter_services(executor);
     }
-    /* Phase 269 (W2) — lifecycle-services: register + autostart. */
-    {
-        nros_cpp_lifecycle_autostart(executor, 1u);
-    }
     return 0;
 }
 
@@ -80,6 +76,12 @@ static int32_t __nros_entry_setup_sched_task_1_nodes(void* executor, const char*
         ::rclcpp::detail::finish_declared_callback_groups(__nros_node_1, __nros_groups_1);
         if (!__nros_node_1.ok()) return __nros_node_1.error_code();
         if (!r.ok()) return static_cast<int32_t>(r.raw());
+        /* A managed node: its own lifecycle machine, under its own name, then
+         * its boot autostart (0 none, 1 configure, 2 active). */
+        {
+            const nros_cpp_ret_t __lc = nros_cpp_lifecycle_register_node(executor, "/", "telem", 1u);
+            if (__lc != NROS_CPP_RET_OK) return static_cast<int32_t>(__lc);
+        }
     }
     return 0;
 }

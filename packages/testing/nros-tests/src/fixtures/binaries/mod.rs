@@ -3378,7 +3378,7 @@ pub fn build_native_workspace_c_params_entry() -> TestResult<&'static Path> {
 }
 
 /// Phase 269 W2 — the managed-node (lifecycle) C workspace Entry pkg fixture (`features`).
-/// Boots the talker node to `active` via `nros_cpp_lifecycle_autostart`; consumed by
+/// Boots the talker node to `active` via `nros_cpp_lifecycle_register_node`; consumed by
 /// tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_c_lifecycle_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_LIFECYCLE_ENTRY_BINARY
@@ -4434,7 +4434,7 @@ pub fn build_native_workspace_mixed_params_entry() -> TestResult<&'static Path> 
 }
 
 /// Phase 269 W2 — the managed-node (lifecycle) C++ workspace Entry pkg fixture (`managed`).
-/// Boots the talker node to `active` via `nros_cpp_lifecycle_autostart`; consumed by
+/// Boots the talker node to `active` via `nros_cpp_lifecycle_register_node`; consumed by
 /// tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_cpp_lifecycle_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_LIFECYCLE_ENTRY_BINARY
@@ -6113,7 +6113,7 @@ pub fn build_zephyr_workspace_cpp_params_entry() -> TestResult<PathBuf> {
 /// phase-276 W3 (#128) — the Zephyr (native_sim) MANAGED (lifecycle) Rust workspace Entry
 /// (`features`'s `[image.zephyr_rust_lifecycle]`, a GENERATED west application since
 /// phase-470 W5.b1): the talker node + the five REP-2002 lifecycle
-/// services with boot autostart (the #128 `Framework::Zephyr` `apply_lifecycle` emit).
+/// services with boot autostart (the #128 `Framework::Zephyr` lifecycle emit, now `apply_lifecycle_node`).
 /// Built by the west lane into `<zephyr-build-root>/build-ws-rs-lifecycle-entry-zenoh/
 /// zephyr/zephyr.exe`; consumed by `tests/entry_e2e.rs` (zephyr_rust_lifecycle cell).
 pub fn build_zephyr_workspace_rust_lifecycle_entry() -> TestResult<PathBuf> {

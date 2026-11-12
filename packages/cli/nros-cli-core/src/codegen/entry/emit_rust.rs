@@ -415,7 +415,7 @@ mod tests {
             depfile_paths: Vec::new(),
             bringup: "demo_bringup".into(),
             launch_file: PathBuf::from("/tmp/system.launch.xml"),
-            lifecycle: None,
+            managed_nodes: Vec::new(),
             param_services: false,
             safety: None,
             sched_tasks: Default::default(),

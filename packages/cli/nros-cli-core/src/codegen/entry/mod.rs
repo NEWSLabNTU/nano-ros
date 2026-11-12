@@ -91,9 +91,12 @@ pub struct Plan {
     /// Resolved launch-file path; surfaces in the generated header
     /// banner.
     pub launch_file: PathBuf,
-    /// Boot lifecycle autostart from `system.toml [lifecycle].autostart`
-    /// (`"none"` | `"configure"` | `"active"`). `None` ⇒ no `[lifecycle]` block. (#117)
-    pub lifecycle: Option<String>,
+    /// RFC-0128 D2 (phase-554 W2) — the nodes this image runs that the model
+    /// marks MANAGED, in launch declaration order, each with its own boot
+    /// autostart (RFC-0128 D6). Each gets its own lifecycle machine under its
+    /// own name; none is registered on the executor's identity. Empty ⇒ the
+    /// image registers no lifecycle machine.
+    pub managed_nodes: Vec<ManagedPlanNode>,
     /// `[param_services]` (or `features=["param_services"]`) enabled — register the
     /// ROS 2 parameter services. (#116)
     pub param_services: bool,
@@ -112,6 +115,17 @@ pub struct Plan {
     /// `Default` (everything `None`) for a plan whose model declares none,
     /// which is what every hand-built test plan wants.
     pub session: BakedSession,
+}
+
+/// RFC-0128 D2 — one managed node of a [`Plan`], named as the plan names its
+/// node (`PlanNode::name` / `namespace`, from the same FQN split).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManagedPlanNode {
+    pub namespace: String,
+    pub name: String,
+    /// Its boot autostart as the runtime encodes it: 0 none, 1 configure,
+    /// 2 active.
+    pub autostart_code: u8,
 }
 
 // phase-326 (issue 0364): ~~`Plan::for_host`~~ / `Plan::hosts` / `PlanNode.host`
@@ -521,16 +535,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             Some(d) => (d.domain, d.locator.clone(), d.rmw.clone()),
             None => (None, None, None),
         });
-        let bare = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
-        let namespace = {
-            let ns = &fqn[..fqn.len() - bare.len()];
-            let ns = ns.trim_end_matches('/');
-            if ns.is_empty() {
-                "/".to_string()
-            } else {
-                ns.to_string()
-            }
-        };
+        let (namespace, bare) = nros_orchestration_ir::overlay::split_fqn(fqn);
         let exec = inst
             .exec
             .clone()
@@ -636,20 +641,19 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
         }
     }
 
-    // phase-486 W3 — the overlay supplies the switches and the lifecycle
-    // default; ONE reducer turns per-node values into the image's one boot
-    // transition (refusing a disagreement), replacing first-node-wins.
-    let lifecycle = model
-        .lifecycle_autostart()
-        .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?
-        .map(|a| {
-            match a {
-                ros_launch_manifest_model::Autostart::None => "none",
-                ros_launch_manifest_model::Autostart::Configure => "configure",
-                ros_launch_manifest_model::Autostart::Active => "active",
-            }
-            .to_string()
-        });
+    // RFC-0128 D2/D6 (phase-554 W2) — the managed nodes this image runs, each
+    // with its own autostart (the overlay's `[lifecycle] autostart` fills only
+    // the nodes that state none). Two nodes stating different values is no
+    // longer a conflict: each machine boots on its own.
+    let managed_nodes = model
+        .managed_nodes()
+        .into_iter()
+        .map(|m| ManagedPlanNode {
+            autostart_code: m.autostart_code(),
+            namespace: m.namespace,
+            name: m.name,
+        })
+        .collect();
     let features = model.features(None);
     let param_services = features.iter().any(|f| f == "param_services");
     let safety = features.iter().any(|f| f == "safety").then_some(true);
@@ -660,7 +664,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
         depfile_paths: vec![model_path.to_path_buf()],
         bringup: "system-model".to_string(),
         launch_file: model_path.to_path_buf(),
-        lifecycle,
+        managed_nodes,
         param_services,
         safety,
         sched_tasks,
@@ -1402,7 +1406,7 @@ contracts: {}
             depfile_paths: vec![],
             bringup: "demo".into(),
             launch_file: std::path::PathBuf::from("/tmp/x.launch.xml"),
-            lifecycle: None,
+            managed_nodes: Vec::new(),
             param_services: false,
             safety: None,
             sched_tasks: Default::default(),
@@ -1588,7 +1592,7 @@ contracts: {}
             depfile_paths: vec![],
             bringup: "demo".into(),
             launch_file: PathBuf::from("/tmp/x.launch.xml"),
-            lifecycle: None,
+            managed_nodes: Vec::new(),
             param_services: false,
             safety: None,
             sched_tasks,
@@ -1718,7 +1722,7 @@ contracts: {}
             depfile_paths: vec![],
             bringup: "demo".into(),
             launch_file: PathBuf::from("/tmp/x.launch.xml"),
-            lifecycle: None,
+            managed_nodes: Vec::new(),
             param_services: false,
             safety: None,
             sched_tasks,
@@ -1794,7 +1798,7 @@ contracts: {}
                 depfile_paths: vec![],
                 bringup: "demo".into(),
                 launch_file: PathBuf::from("/tmp/x.launch.xml"),
-                lifecycle: None,
+                managed_nodes: Vec::new(),
                 param_services: false,
                 safety: None,
                 sched_tasks: Default::default(),
@@ -2017,7 +2021,7 @@ contracts: {}
             depfile_paths: vec![],
             bringup: "demo".into(),
             launch_file: PathBuf::from("/tmp/x.launch.xml"),
-            lifecycle: None,
+            managed_nodes: Vec::new(),
             param_services: false,
             safety: None,
             sched_tasks: Default::default(),
@@ -2099,7 +2103,7 @@ contracts: {}
             depfile_paths: vec![],
             bringup: "demo".into(),
             launch_file: PathBuf::from("/tmp/x.launch.xml"),
-            lifecycle: None,
+            managed_nodes: Vec::new(),
             param_services: false,
             safety: None,
             sched_tasks,

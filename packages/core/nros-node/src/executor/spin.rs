@@ -14616,6 +14616,85 @@ impl<'s> Executor<'s> {
         sm.register(Slot::Error, Some(trampolines::on_error::<T>));
         Ok(())
     }
+
+    /// The nodes that hold a lifecycle state machine, in registration order.
+    /// `None` is the machine on the executor's own identity (RFC-0128 D1).
+    pub fn lifecycle_machine_nodes(
+        &self,
+    ) -> impl Iterator<Item = Option<super::node_record::NodeId>> + '_ {
+        self.lifecycle.iter().map(|e| e.node)
+    }
+
+    /// RFC-0128 D2 (phase-554 W2) — the node a generated entry names as
+    /// managed, found by its final name and namespace.
+    ///
+    /// The namespace is compared without its leading and trailing `/`, so the
+    /// model's `/` (root) and a node built with `""` or `/` are one namespace,
+    /// as they are in the node's FQN.
+    pub fn managed_node_id(
+        &self,
+        name: &str,
+        namespace: &str,
+    ) -> Option<super::node_record::NodeId> {
+        let want = namespace.trim_matches('/');
+        self.nodes
+            .iter()
+            .enumerate()
+            .find(|(_, n)| {
+                n.name.as_str() == name && n.namespace.as_str().trim_matches('/') == want
+            })
+            .map(|(index, _)| super::node_record::NodeId::from_raw(index as u8))
+    }
+
+    /// RFC-0128 D2 (phase-554 W2) — make `node` a managed node: give it a
+    /// machine, served under its own name, unless it already has one.
+    ///
+    /// "Already has one" is the component-declared case: a C++ component
+    /// deriving `rclcpp_lifecycle::LifecycleNode` registers its own machine
+    /// (with its callbacks) while it is constructed, and the launch file may
+    /// also say `<lifecycle_node>`. Both say the same thing, so the existing
+    /// machine is kept rather than refused.
+    pub fn register_managed_node_on(
+        &mut self,
+        node: super::node_record::NodeId,
+    ) -> Result<(), NodeError> {
+        if self.lifecycle_state_machine_on(node).is_some() {
+            return Ok(());
+        }
+        self.register_lifecycle_services_on(node)
+    }
+
+    /// RFC-0128 D6 — drive `node`'s machine toward its boot `autostart`
+    /// (0 none, 1 configure, 2 active).
+    ///
+    /// Each step runs only from the state it starts from (`configure` from
+    /// `unconfigured`, `activate` from `inactive`), so a component that
+    /// already drove its own machine is left where it put itself. A node
+    /// with no machine has nothing to drive, so this returns `Ok`.
+    ///
+    /// # Safety
+    /// The machine's registered transition callbacks run here; the caller
+    /// must keep them and their context valid (as for
+    /// [`LifecyclePollingNodeCtx::trigger_transition`](crate::lifecycle::LifecyclePollingNodeCtx::trigger_transition)).
+    pub unsafe fn drive_lifecycle_autostart_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        autostart: u8,
+    ) -> Result<(), crate::lifecycle::LifecycleError> {
+        use crate::{LifecycleState, LifecycleTransition};
+        let Some(sm) = self.lifecycle_state_machine_on_mut(node) else {
+            return Ok(());
+        };
+        if autostart >= 1 && sm.state() == LifecycleState::Unconfigured {
+            // SAFETY: forwarded through this function's contract.
+            unsafe { sm.trigger_transition(LifecycleTransition::Configure) }?;
+        }
+        if autostart >= 2 && sm.state() == LifecycleState::Inactive {
+            // SAFETY: forwarded through this function's contract.
+            unsafe { sm.trigger_transition(LifecycleTransition::Activate) }?;
+        }
+        Ok(())
+    }
 }
 
 // ============================================================================

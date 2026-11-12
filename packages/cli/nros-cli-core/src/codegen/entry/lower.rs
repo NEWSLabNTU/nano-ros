@@ -224,6 +224,8 @@ fn lower_node(n: &PlanNode) -> LoweredNode {
         // Set by `lower_image` from `LowerOptions::node_ranks`; the plan
         // carries no rank.
         rank: None,
+        // Set by `lower_image` from `Plan::managed_nodes` (RFC-0128 D2).
+        lifecycle_code: None,
     }
 }
 
@@ -286,6 +288,26 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
     }
 
     let mut e = lower_entry(plan);
+    // RFC-0128 D2 (phase-554 W2) -- each managed node carries its own boot
+    // autostart, matched by the name and namespace the node is created under.
+    // Both sides come from one FQN split, so a managed node no plan node
+    // answers to is a drift between them, refused rather than dropped.
+    for m in &plan.managed_nodes {
+        let at = plan.nodes.iter().position(|n| {
+            node_name(n) == m.name
+                && node_namespace(n).trim_matches('/') == m.namespace.trim_matches('/')
+        });
+        match at {
+            Some(i) => e.nodes[i].lifecycle_code = Some(m.autostart_code),
+            None => {
+                return Err(format!(
+                    "typed entry emit: the model marks node `{}` in namespace `{}` managed, \
+                     but the plan builds no node by that name",
+                    m.name, m.namespace
+                ));
+            }
+        }
+    }
     // phase-509 P2 -- each node's rank, by the FQN the derivation ranked it
     // under (`plan_node_fqn`, the same key the monitor rows use).
     for (lowered, n) in e.nodes.iter_mut().zip(&plan.nodes) {
@@ -404,11 +426,6 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
 
     e.services = LoweredServices {
         param_services: plan.param_services,
-        lifecycle_code: plan.lifecycle.as_deref().map(|a| match a {
-            "none" => 0u8,
-            "configure" => 1,
-            _ => 2,
-        }),
     };
 
     match opts.probe {

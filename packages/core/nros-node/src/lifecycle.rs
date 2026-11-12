@@ -235,7 +235,7 @@ pub type LifecycleCallbackFnCtx = unsafe extern "C" fn(ctx: *mut c_void) -> u8;
 /// the executor, which owns the publisher. Recording where the transition
 /// HAPPENS rather than at each caller is the whole point: `ros2 lifecycle
 /// set`, `rclc_executor_lifecycle_change_state`,
-/// `nros_cpp_lifecycle_change_state`, `nros_cpp_lifecycle_autostart` and the
+/// `nros_cpp_lifecycle_change_state`, `nros_cpp_lifecycle_register_node` and the
 /// safe `LifecycleCallbacks` road all funnel through that one function, so a
 /// new caller is announced without being told to announce.
 #[cfg(feature = "lifecycle-services")]
@@ -260,8 +260,8 @@ pub(crate) struct TransitionAnnouncement {
 /// The drain is the executor's lifecycle step, so the bound is "the longest
 /// burst a transition source can produce before the executor next spins".
 /// Measured against the sources in this tree the longest is TWO —
-/// `nros_cpp_lifecycle_autostart(exec, 2)` runs `configure` then `activate`
-/// from `__nros_entry_setup`, before the spin loop starts. Four is that with
+/// `nros_cpp_lifecycle_register_node(exec, ns, name, 2)` runs `configure` then
+/// `activate` from `__nros_entry_setup`, before the spin loop starts. Four is that with
 /// headroom for a caller driving its own sequence; beyond it a record is
 /// dropped and COUNTED, never silently lost
 /// ([`LifecyclePollingNodeCtx::take_dropped_announcements`]) — the posture the

@@ -1561,33 +1561,41 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
         Ok(())
     }
 
-    // Phase 264 W2 — register the REP-2002 lifecycle services + drive boot
-    // autostart on the owned executor (mirrors `generate.rs::render_lifecycle_fn`).
-    // Only compiled with `lifecycle-services`; without it the trait default no-op
-    // applies, so a `[lifecycle]` block is silently inert (the Entry opts in by
-    // enabling `nros/lifecycle-services`). `nros::main!` calls this when
-    // `system.toml` declares `[lifecycle]`.
+    // RFC-0128 D2 (phase-554 W2) — one managed node: find the node its launch
+    // entry created, give it a machine served under its own name, and drive
+    // its own boot autostart. Only compiled with `lifecycle-services`; without
+    // it the trait default no-op applies (and `nros::main!` const-asserts the
+    // feature for an image that has managed nodes). Nothing here touches the
+    // executor's own identity: an image registers a machine for exactly the
+    // nodes its model marks managed.
     #[cfg(feature = "lifecycle-services")]
-    fn apply_lifecycle(&mut self, autostart: u8) -> Result<(), &'static str> {
-        // issue 0460 — carry WHY. The caller can only say which capability
-        // failed; without this the whole diagnostic was
-        // `NodeRegister("lifecycle")`.
-        self.executor
-            .register_lifecycle_services()
-            .map_err(|e| capability_reason(&e))?;
-        if autostart >= 1
-            && let Some(sm) = self.executor.lifecycle_state_machine_mut()
-        {
-            // No transition callbacks registered → each transition takes the
-            // default-success path (REP-2002 skeleton), as the bake does.
-            unsafe {
-                let _ = sm.trigger_transition(crate::LifecycleTransition::Configure);
-                if autostart >= 2 {
-                    let _ = sm.trigger_transition(crate::LifecycleTransition::Activate);
-                }
-            }
+    fn apply_lifecycle_node(
+        &mut self,
+        namespace: &'static str,
+        name: &'static str,
+        autostart: u8,
+    ) -> Result<(), &'static str> {
+        let Some(node) = self.executor.managed_node_id(name, namespace) else {
+            return Err(
+                "the launch file marks this node managed, but no node with its \
+                        name and namespace is in the executor's node table: its \
+                        component did not create it under the launch name",
+            );
+        };
+        manage_node(&mut self.executor, node, autostart)
+    }
+
+    // RFC-0128 D2 — a self-bringup has no model to name its node, so its
+    // managed node is the first one the image built (the component's launch
+    // node, where its launch parameters are seeded too).
+    #[cfg(feature = "lifecycle-services")]
+    fn apply_lifecycle_self_bringup(&mut self, autostart: u8) -> Result<(), &'static str> {
+        if self.executor.nodes().is_empty() {
+            return Err("this self-bringup declares `lifecycle` but its component \
+                        created no node to manage");
         }
-        Ok(())
+        let node = nros_node::executor::NodeId::from_raw(0);
+        manage_node(&mut self.executor, node, autostart)
     }
 
     // Phase 264 W4b -- register the 6 ROS 2 parameter services on the owned executor
@@ -3120,6 +3128,25 @@ where
 // every component via the four-fn-ptr ~~`register_dispatch_slot`~~ then spun) is
 // gone. It had no callers; owned-spin / BSP entries register through the
 // `install_node_typed` seam + drive `ExecutorNodeRuntime::spin`.
+
+/// RFC-0128 D2/D6 — register `node`'s machine (keeping one its component
+/// already registered) and drive its boot autostart. The transitions run with
+/// no callbacks of the entry's own: a component's registered callbacks run,
+/// otherwise each takes the default-success path.
+#[cfg(all(feature = "alloc", feature = "lifecycle-services"))]
+fn manage_node(
+    executor: &mut Executor<'static>,
+    node: nros_node::executor::NodeId,
+    autostart: u8,
+) -> Result<(), &'static str> {
+    executor
+        .register_managed_node_on(node)
+        .map_err(|e| capability_reason(&e))?;
+    // SAFETY: any callbacks on this machine were registered by the node's own
+    // component, which the runtime keeps alive for the executor's life.
+    unsafe { executor.drive_lifecycle_autostart_on(node, autostart) }
+        .map_err(|_| "the node's boot autostart transition was refused by its callback")
+}
 
 /// issue 0460 — map a `NodeError` to a static reason a capability failure can
 /// carry across the `nros-platform` trait boundary (which cannot name

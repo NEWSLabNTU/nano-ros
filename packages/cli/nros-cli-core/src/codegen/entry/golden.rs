@@ -75,6 +75,15 @@ impl Emitter {
     }
 }
 
+/// RFC-0128 D2 -- a managed node of a golden plan, at the root namespace.
+fn managed(name: &str, autostart_code: u8) -> super::ManagedPlanNode {
+    super::ManagedPlanNode {
+        namespace: "/".into(),
+        name: name.into(),
+        autostart_code,
+    }
+}
+
 fn node(pkg: &str, exec: &str, class: Option<(&str, &str)>) -> PlanNode {
     PlanNode {
         pkg: pkg.into(),
@@ -107,7 +116,7 @@ fn plan(board: &str, nodes: Vec<PlanNode>) -> Plan {
         depfile_paths: vec![],
         bringup: "demo_bringup".into(),
         launch_file: PathBuf::from("/tmp/system.launch.xml"),
-        lifecycle: None,
+        managed_nodes: Vec::new(),
         param_services: false,
         safety: None,
         sched_tasks: Default::default(),
@@ -344,9 +353,12 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
         Emitter::C,
     ));
 
-    // param-services and lifecycle close a setup function with a fixed block
-    // that no other row emits. Both paths carry it — the single setup fn, and
-    // TIER 0 only, because they are process facts rather than per-tier ones.
+    // param-services closes a setup function with a fixed block that no other
+    // row emits. Both paths carry it — the single setup fn, and TIER 0 only,
+    // because it is a process fact rather than a per-tier one. A managed node
+    // (RFC-0128 D2) registers its own lifecycle machine right after it is
+    // built, on whichever tier builds it: the sched-task row manages `telem`,
+    // which is NOT on tier 0.
     // `emit_c`'s QoS block reached NO golden: `c_native_rich` carries params
     // and remaps but no override, so the one C statement that differs from the
     // C++ spelling of the same data — a free function on the node's ADDRESS
@@ -371,12 +383,12 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
 
     let mut c_svc = plan("linux", vec![c_node("c_talker_pkg", "talker")]);
     c_svc.param_services = true;
-    c_svc.lifecycle = Some("active".into());
+    c_svc.managed_nodes = vec![managed("talker", 2)];
     out.push(("c_native_services", c_svc, Emitter::C));
 
     let mut c_sched_task_svc = c_sched_task_plan("linux");
     c_sched_task_svc.param_services = true;
-    c_sched_task_svc.lifecycle = Some("configure".into());
+    c_sched_task_svc.managed_nodes = vec![managed("telem", 1)];
     out.push((
         "c_native_sched_tasks_services",
         c_sched_task_svc,
@@ -617,17 +629,18 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
         Emitter::Cpp,
     ));
 
-    // param-services + lifecycle close a setup function with a block no other
-    // C++ row emits, on BOTH paths — and on the sched-task path only sched task 0 gets
-    // it, because they are process facts rather than per-sched-task ones.
+    // param-services closes a setup function with a block no other C++ row
+    // emits, on BOTH paths — and on the sched-task path only sched task 0 gets
+    // it, because it is a process fact. A managed node registers its own
+    // lifecycle machine right after it is built, on its own sched task.
     let mut cpp_svc = plan("linux", vec![typed_node("talker_pkg", "talker")]);
     cpp_svc.param_services = true;
-    cpp_svc.lifecycle = Some("active".into());
+    cpp_svc.managed_nodes = vec![managed("talker", 2)];
     out.push(("cpp_native_services", cpp_svc, Emitter::Cpp));
 
     let mut cpp_sched_task_svc = cpp_sched_task_plan("linux");
     cpp_sched_task_svc.param_services = true;
-    cpp_sched_task_svc.lifecycle = Some("configure".into());
+    cpp_sched_task_svc.managed_nodes = vec![managed("telem", 1)];
     out.push((
         "cpp_native_sched_tasks_services",
         cpp_sched_task_svc,

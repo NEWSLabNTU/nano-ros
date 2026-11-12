@@ -138,6 +138,12 @@ pub struct LoweredNode {
     /// nothing: the node holds rank 0, which is today's order.
     #[serde(default)]
     pub rank: Option<u8>,
+    /// RFC-0128 D2 (phase-554 W2) -- `Some` when the resolved model marks this
+    /// node MANAGED: the C-ABI packs register its own lifecycle machine right
+    /// after building it and drive it to this boot autostart (0 none,
+    /// 1 configure, 2 active). `None` for an unmanaged node.
+    #[serde(default)]
+    pub lifecycle_code: Option<u8>,
 }
 
 /// The facts a language pack renders an entry from — and, since phase-494 W2,

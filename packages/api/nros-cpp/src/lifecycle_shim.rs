@@ -27,8 +27,8 @@ pub type nros_cpp_lifecycle_callback_t = unsafe extern "C" fn(*mut c_void) -> u8
 
 #[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
 use crate::{
-    NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_NOT_INIT, NROS_CPP_RET_OK,
-    cpp_ctx_checked, nros_cpp_ret_t,
+    NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_NOT_FOUND,
+    NROS_CPP_RET_NOT_INIT, NROS_CPP_RET_OK, cpp_ctx_checked, nros_cpp_ret_t,
 };
 
 /// Register the five REP-2002 lifecycle services on the C++ executor's node.
@@ -267,47 +267,79 @@ pub unsafe extern "C" fn nros_cpp_lifecycle_register_on_error(
     unsafe { register_cpp(executor, LifecycleCallbackSlot::Error, cb, ctx) }
 }
 
-/// Register lifecycle services and optionally drive the node to a higher
-/// autostart state.
+/// Make one MANAGED node of the image a lifecycle node: register the five
+/// REP-2002 services under the node's own name, then drive it to its boot
+/// autostart.
 ///
-/// `autostart_code`: 0 = services only (none), 1 = configure, 2 = active.
+/// The generated C and C++ entries call this right after building each node
+/// the resolved model marks managed (a launch `<lifecycle_node>`), with the
+/// node's own `autostart_code`: 0 = services only (none), 1 = configure,
+/// 2 = configure + activate. No machine is registered on the executor's own
+/// identity. A node whose component already registered its own machine (a
+/// C++ `rclcpp_lifecycle::LifecycleNode`) keeps it, with its callbacks, and
+/// each autostart step runs only from the state it starts from.
+///
+/// Returns `NROS_CPP_RET_NOT_FOUND` (and logs the node) when no node with
+/// that name and namespace is in the executor's node table.
 ///
 /// # Safety
-/// Same as [`nros_cpp_register_lifecycle_services`] and
-/// [`nros_cpp_lifecycle_change_state`].
+/// `executor` must be a valid, live `CppContext*` produced by `nros_cpp_init`;
+/// `namespace_` and `name` must be NUL-terminated strings (`namespace_` may be
+/// null for the root). Registered transition callbacks run here, so they and
+/// their context must be live.
 #[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_lifecycle_autostart(
+pub unsafe extern "C" fn nros_cpp_lifecycle_register_node(
     executor: *mut c_void,
+    namespace_: *const core::ffi::c_char,
+    name: *const core::ffi::c_char,
     autostart_code: u8,
 ) -> nros_cpp_ret_t {
-    let ret = unsafe { nros_cpp_register_lifecycle_services(executor) };
-    if ret != NROS_CPP_RET_OK {
-        return ret;
+    if name.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    // autostart_code: 1 = configure, 2 = configure + activate.
-    //
-    // Issue 1099 — spelled through the enum, not as literals. These WERE `1`
-    // and `2`; `2` is `lifecycle_msgs`' CLEANUP, so once the ids became
-    // upstream's, an autostart-to-Active would have configured the node and
-    // then immediately cleaned it back up.
-    if autostart_code >= 1 {
-        let ret = unsafe {
-            nros_cpp_lifecycle_change_state(executor, LifecycleTransition::Configure as u8)
-        };
-        if ret != NROS_CPP_RET_OK {
-            return ret;
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(name) = (unsafe { crate::cstr_to_str(name) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let ns = if namespace_.is_null() {
+        "/"
+    } else {
+        match unsafe { crate::cstr_to_str(namespace_) } {
+            Some(s) => s,
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    };
+    let Some(node) = ctx.executor.managed_node_id(name, ns) else {
+        crate::cpp_diag!(
+            "nros_cpp_lifecycle_register_node: the launch file marks node `{}` in namespace \
+             `{}` managed, but no node by that name is in the executor's node table",
+            name,
+            ns
+        );
+        return NROS_CPP_RET_NOT_FOUND;
+    };
+    if let Err(e) = ctx.executor.register_managed_node_on(node) {
+        // Issue 2304 -- say why, not a bare ERROR.
+        return crate::report_entity_refusal(
+            "nros_cpp_lifecycle_register_node",
+            format_args!("the lifecycle services of `{}`", name),
+            e,
+        );
+    }
+    // SAFETY: forwarded through this function's unsafe contract.
+    match unsafe {
+        ctx.executor
+            .drive_lifecycle_autostart_on(node, autostart_code)
+    } {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(LifecycleError::InvalidTransition { .. }) => NROS_CPP_RET_INVALID_ARGUMENT,
+        Err(LifecycleError::NodeFinalized) | Err(LifecycleError::CallbackFailed { .. }) => {
+            NROS_CPP_RET_ERROR
         }
     }
-    if autostart_code >= 2 {
-        let ret = unsafe {
-            nros_cpp_lifecycle_change_state(executor, LifecycleTransition::Activate as u8)
-        };
-        if ret != NROS_CPP_RET_OK {
-            return ret;
-        }
-    }
-    NROS_CPP_RET_OK
 }
 
 #[cfg(test)]
@@ -328,7 +360,9 @@ mod tests {
         assert_eq!(ret, NROS_CPP_RET_INVALID_ARGUMENT);
         let ret = unsafe { nros_cpp_lifecycle_change_state(ptr::null_mut(), 1) };
         assert_eq!(ret, NROS_CPP_RET_INVALID_ARGUMENT);
-        let ret = unsafe { nros_cpp_lifecycle_autostart(ptr::null_mut(), 0) };
+        let ret = unsafe {
+            nros_cpp_lifecycle_register_node(ptr::null_mut(), ptr::null(), c"talker".as_ptr(), 0)
+        };
         assert_eq!(ret, NROS_CPP_RET_INVALID_ARGUMENT);
         for reg in [
             nros_cpp_lifecycle_register_on_configure as unsafe extern "C" fn(_, _, _) -> _,

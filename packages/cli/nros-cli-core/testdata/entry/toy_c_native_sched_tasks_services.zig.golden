@@ -37,7 +37,6 @@ fn __nros_entry_setup_sched_task_0(executor: ?*anyopaque) callconv(.C) i32 {
         if (crc != 0) return crc;
     }
     _ = c.nros_cpp_register_parameter_services(executor);
-    if (c.nros_cpp_lifecycle_autostart(executor, 1) != c.NROS_CPP_RET_OK) return -1;
     return 0;
 }
 fn __nros_entry_setup_sched_task_1(executor: ?*anyopaque) callconv(.C) i32 {
@@ -48,6 +47,7 @@ fn __nros_entry_setup_sched_task_1(executor: ?*anyopaque) callconv(.C) i32 {
         const self = __nros_c_component_telem_pkg_create();
         const crc = __nros_c_component_telem_pkg_configure(&__nros_node_1, executor, self);
         if (crc != 0) return crc;
+        if (c.nros_cpp_lifecycle_register_node(executor, "/", "telem", 1) != c.NROS_CPP_RET_OK) return -1;
     }
     return 0;
 }

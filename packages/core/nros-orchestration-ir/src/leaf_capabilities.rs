@@ -95,8 +95,8 @@ pub struct LeafCapabilities {
     pub param_store: bool,
     /// `lifecycle` is declared: register the five REP-2002 services and drive
     /// boot autostart at this level (0 none / 1 configure / 2 active — the
-    /// encoding `apply_lifecycle` takes). `[lifecycle] autostart` gives the
-    /// level; absent, it is 0, as `autostart = "none"` is on the C/C++ road.
+    /// encoding `apply_lifecycle_self_bringup` takes). `[lifecycle] autostart`
+    /// gives the level; absent, it is 0, as `autostart = "none"` is on the C/C++ road.
     pub lifecycle_autostart: Option<u8>,
 }
 
