@@ -49,14 +49,14 @@
       "target": "thumbv7em-none-eabi"
     },
     {
-      "bytes": -4416,
+      "bytes": -4236,
       "image": "talker/c/zenoh@nucleo-f767zi-zephyr",
       "issue": "2402",
       "measured": {
         "image": "nros new --board nucleo-f767zi-zephyr --lang c --rmw zenoh --template talker",
         "issue": "2400",
-        "method": "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, nros-relwithdebinfo (no LTO); static from main",
-        "peak": 11696,
+        "method": "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 14 rounds, nros-relwithdebinfo (no LTO); static from main. Re-measured 2026-11-13 by the twin lane (scripts/stack-floor-twin.py): the peak rose 180 B with the walk unchanged, so the growth is on an indirect path the walk charges, not follows",
+        "peak": 11876,
         "static": 16112
       },
       "reason": "NEGATIVE: the static walk charges each of 51 indirect sites on the C path 8,392 B (the deepest zenoh-scoped target) while the targets that run are shallow",

@@ -6,7 +6,7 @@ type: limitation
 severity: low
 area: [memory, freertos, build]
 found: 2026-11-12
-related: [issue-2400]
+related: [issue-2400, phase-557]
 ---
 
 ## What

@@ -6,11 +6,12 @@ type: tech-debt
 severity: medium
 area: [memory, zephyr, px4, nuttx, freertos, build]
 found: 2026-11-10
-related: [issue-2360, issue-2365, issue-2398, issue-2359, issue-0961, issue-1146, phase-548]
+related: [issue-2360, issue-2365, issue-2398, issue-2359, issue-0961, issue-1146, phase-548, phase-557]
 ---
 
 **Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md)**, beside
-issue 2360, whose measurements are this issue's main input.
+issue 2360, whose measurements are this issue's main input. **The work items
+and their status: [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md).**
 
 ## What
 
@@ -406,3 +407,18 @@ named unlike the measured ones (`xt`, `xa`, `xl`):
 | `xt` Rust talker | `talker/rust/zenoh@…` | measured, holds (31,784 B against 32,768 B) |
 | `xa` Rust action server | `action-server/rust/zenoh@…` | measured, **fails**: `Raise it: CONFIG_MAIN_STACK_SIZE=33288` |
 | `xl` Rust listener, key edited to the talker's | `talker/rust/zenoh@…` | builds with `WARNING: … is NOT the shape its OPEN allowance was measured on (NROS_MAX_PUBLISHERS measured 1, this image 0; NROS_MAX_SUBSCRIBERS measured 0, this image 1)` |
+
+### W6: the twin lane (2026-11-13)
+
+`just zephyr stack-floor-twin` (`scripts/stack-floor-twin.py`) re-measures
+every row whose key is a template key on a Renode-twin board. It builds the
+template with the thread analyzer and runs it in Renode. Then it compares the
+main thread's peak with the build's own static walk, which the walker now
+writes to `nros/stack-floor/report.json`. It fails when the peak is above
+the floor, or when `bytes != peak - static`.
+
+Its first run confirmed both Rust rows exact. It found the C talker's peak
+180 B above its row (11,876 against 11,696 B) with the walk unchanged at
+16,112 B: the unsafe drift this wave was for. The row is now −4,236 B, floor
+13,064 B. The verdict table and the item status are in
+[phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W6.

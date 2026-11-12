@@ -64,7 +64,10 @@ scope = ["zenoh", "zpico"]
 # -784) and moved no peak, so each allowance rose by its walk's drop. A row
 # measured before a frame on its walk changes is stale in the UNSAFE
 # direction: the walk falls, the allowance stays, and the floor drops below
-# the peak (the C talker's old row gave 3,848 B against an 11,696 B peak). The Rust images were
+# the peak (the C talker's old row gave 3,848 B against an 11,696 B peak).
+# `just zephyr stack-floor-twin` re-measures every row here and fails when
+# `bytes != peak - static`; its first run (2026-11-13) found the C talker's
+# peak 180 B above its row and confirmed both Rust rows exact. The Rust images were
 # built with LTO (issue 2407, `cargo rustc --crate-type staticlib`). The C
 # talker's lane builds nros-relwithdebinfo, so it has no LTO. The static walk
 # uses this table's policy.
@@ -122,14 +125,14 @@ image = "talker/c/zenoh@nucleo-f767zi-zephyr"
 rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
-bytes = -4416
+bytes = -4236
 issue = "2402"
 reason = "NEGATIVE: the static walk charges each of 51 indirect sites on the C path 8,392 B (the deepest zenoh-scoped target) while the targets that run are shallow"
 
 [allowance.measured]
-peak = 11696
+peak = 11876
 static = 16112
-method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, nros-relwithdebinfo (no LTO); static from main"
+method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 14 rounds, nros-relwithdebinfo (no LTO); static from main. Re-measured 2026-11-13 by the twin lane (scripts/stack-floor-twin.py): the peak rose 180 B with the walk unchanged, so the growth is on an indirect path the walk charges, not follows"
 image = "nros new --board nucleo-f767zi-zephyr --lang c --rmw zenoh --template talker"
 issue = "2400"
 
