@@ -223,6 +223,16 @@ NROS_CARGO_CONFIG = $(NROS_IMAGE_ROOT)/make/nros-cargo.toml
 # project.
 NROS_PROJECT_LIST := $(strip $(NROS_PROJECTS))
 NROS_IMAGE_KEY = $(NROS_IMAGE_ROOT)/make/image-key
+# phase-550 W6b (RFC-0126 D2) — and, once `nros configure` has run, the
+# image's own facts, from the producers the cmake road calls. `nros locate
+# nuttx-image-env` writes its entity facts (`nros dev image entity-facts`
+# over the inventory configure wrote) and board facts (`nros dev image
+# board-facts`) to NROS_FACTS_CONFIG, `force`d as the cmake road's process
+# environment is, and the image's own env layers (`leaf-system
+# --image-env-out`) to NROS_IMAGE_ENV_CONFIG when it states any. It also says,
+# every build, that the image has no sizing descriptor yet.
+NROS_FACTS_CONFIG = $(NROS_IMAGE_ROOT)/make/nros-image-facts.toml
+NROS_IMAGE_ENV_CONFIG = $(NROS_IMAGE_ROOT)/make/nros-image-env.toml
 NROS_PROJECT_ARGS = $(if $(NROS_PROJECT_LIST),--project $(NROS_PROJECT_LIST) \
 	$(if $(NROS_IMAGE),--image $(NROS_IMAGE)) --rmw $(NROS_RMW) \
 	--ros-edition $(NROS_ROS_EDITION) --kconfig $(TOPDIR)/.config)
@@ -268,6 +278,10 @@ define NROS_CARGO_BUILD
 		--target-dir $(NROS_IMAGE_TARGET_DIR) \
 		--out $(NROS_CARGO_CONFIG) $(NROS_PROJECT_ARGS) >/dev/null
 	$(if $(NROS_PROJECT_LIST),cd $(NROS_PROJECT_LIST) && $(NROS_CLI) configure --image "$$(cat $(NROS_IMAGE_KEY))")
+	$(if $(NROS_PROJECT_LIST),$(NROS_CLI) locate nuttx-image-env \
+		--index $(NROS_REPO_DIR)/nros-sdk-index.toml \
+		--project $(NROS_PROJECT_LIST) --image "$$(cat $(NROS_IMAGE_KEY))" \
+		--out $(NROS_FACTS_CONFIG) >/dev/null)
 	NUTTX_DIR=$(TOPDIR) \
 	NUTTX_APPS_DIR=$(APPDIR) \
 	NUTTX_EXPORT_DIR=$(TOPDIR) \
@@ -284,6 +298,8 @@ define NROS_CARGO_BUILD
     cargo build --release \
 		--message-format=json-render-diagnostics \
 		--config $(NROS_CARGO_CONFIG) \
+		$(if $(NROS_PROJECT_LIST),--config $(NROS_FACTS_CONFIG) \
+			$$(test -f $(NROS_IMAGE_ENV_CONFIG) && echo --config $(NROS_IMAGE_ENV_CONFIG))) \
 		--no-default-features \
 		--features "$$(cut -d' ' -f2 $(NROS_IMAGE_SPEC))" \
 		--manifest-path "$$(cut -d' ' -f1 $(NROS_IMAGE_SPEC))" \

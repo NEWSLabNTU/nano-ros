@@ -266,8 +266,9 @@ describe what the road then does.
   `"defaults"`). No make census here; that is a separate issue (Q6).
 - Gate: cleared (Q1 yes, Q2 A2, Q3 B1, Q4 yes, Q6 yes, Q7 yes, ruled 2026-11-12).
 - **Acceptance:** 2236 section 5's acceptance list.
-- **Status:** OPEN (W6a done 2026-11-13; W6b and W6c not started). Split
-  into three PRs (manager, 2026-11-13).
+- **Status:** OPEN (W6a and W6b done 2026-11-13; W6c not started; the
+  sizing descriptor moved to W6d). Split into three PRs (manager,
+  2026-11-13).
   - **W6a, identity.** The shell's Makefile reads `NROS_PROJECTS`:
     - none: a guest, with the same command as before;
     - more than one: refused in `context::`, naming every path;
@@ -308,8 +309,63 @@ describe what the road then does.
     - A no-op `make` costs about 0.5 s more (1.9 s against 1.42 s).
     - The lane now asserts that an incremental edit rebuilds the archive,
       and that check goes red without the hook.
-    - Part 2, the knob producer moved into the CLI (manager ruling
-      2026-11-13, option A), is next.
+  - **W6b, part 2: DONE (2026-11-13).** One producer for the image's facts
+    (manager ruling 2026-11-13, option A).
+    - `nros dev image entity-facts --inventory <fragment>
+      [--sizing-descriptor <path>]` composes the rows the cmake road handed
+      cargo: the declared depth table, the descriptor's path and the
+      parameter store's capacities. A missing inventory and a refused
+      `params:` declaration are refused, with no internal id.
+    - The cmake road's `nros_entity_facts_env` calls it. It keeps only what
+      that configure alone knows: the fragment it wrote, and which
+      descriptor to name. The budget term, empty since issue 1649, is
+      deleted.
+    - The make road calls the same producers after `nros configure`:
+      `nros locate nuttx-image-env` writes the entity facts (over the
+      configure's `resolved.cmake`) and the board facts as `force`d `[env]`
+      rows, like the cmake road's process environment, and the image's own
+      env layers through the cmake road's `leaf-system --image-env-out`.
+      Cargo gets both files with `--config`. The board's own cargo `[env]`
+      rows stay on W5's carrier only.
+    - Acceptance 1: the old cmake composition and the verb, over 97 real
+      inventory fragments and 3 synthetic edge cases, each with and without
+      a descriptor: 200 comparisons, 0 differences.
+    - Acceptance 2, on the C talker (`examples/qemu-armv7a-nuttx/c/talker`
+      staged as a make-app project in a W1 arm tree): the make road's facts
+      rows equal the env rows of the cmake road's cargo command, all six
+      (`NROS_BOARD`, `NROS_BOARD_TOML`, `NROS_PLATFORM_NAME`, the three
+      `NROS_SDK_NUTTX_*`), value for value. Two rows differ by carrier only:
+      `CC_armv7a_nuttx_eabihf` reaches cargo through the board's cargo config
+      (W5), and `NROS_SIZING_DESCRIPTOR` is absent (W6d). The kernel ELF links.
+    - The make road writes no sizing descriptor yet (W6d), so the build
+      prints a warning every time that the image's pools take the board's
+      defaults rather than sizes from its declarations.
+
+### W6d -- The make road sizes a project image from its declarations
+
+A project image on the make road builds with no sizing descriptor, so
+`NROS_SIZING_DESCRIPTOR` is absent and its executor, node table and
+transport pools take the board's defaults, which can be smaller than the
+image's declarations need (a liveliness table of 16 for an image that needs
+17 was measured this way). W6b says so on every build; this item removes the gap. Next after W6b
+(manager, 2026-11-13).
+
+- Every descriptor today is written inside a cmake configure by `nros dev
+  image sizing-descriptor`, whose model road reads `nros-metadata.json`
+  (written by `nano_ros_node_register`), the bound inventory, the target
+  triple and the board's heap and receive-cost facts. The make road has
+  none of the cmake-side inputs.
+- **Design (to settle in the PR):** the metadata comes from the project's
+  declared `entities`, which W6a already requires of every `[[component]]`
+  (preferred: no build of the app's sources is needed, and the
+  declarations are the contract the image states), rather than from a
+  census of the app. The verb is called after `nros configure`, its output
+  named to cargo by `nros locate nuttx-image-env` through `entity-facts
+  --sizing-descriptor`, and the W6b warning is deleted.
+- **Acceptance (moved from W6b, acceptance 3):** for the C talker, the
+  cargo `[env]` and the placed `nros_config_generated.h` of a make-road
+  build are byte-identical to `nros build`'s on the cmake road.
+- **Status:** OPEN (2026-11-13).
 
 ### W7 -- The image crate is generated in `context::`
 
