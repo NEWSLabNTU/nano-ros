@@ -75,8 +75,9 @@ KNOWN_GAPS = (
 PROBE_NON_TRACKS = {"default", "bootstrap", "checkout", "installed", "platform",
                     "platform-asset", "zenoh", "bootstrap-arch", "bootstrap-fedora",
                     "bootstrap-zsh", "extract",
-                    # phase-551 W7: a container recipe's probe, not a book chapter
-                    "starter-recipe"}
+                    # phase-551 W7/W5: the starter image's probes (its customer
+                    # recipe, and the image itself), not board chapters
+                    "starter-recipe", "image"}
 
 
 def load(name: str, rel: str):

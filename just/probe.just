@@ -449,3 +449,13 @@ extract out="tmp/probe-steps.sh" distro="debian" track="quickstart":
 [group("main")]
 starter-recipe starter="nano-ros-starter:local":
     ./scripts/probe/verify-starter-recipe.sh --starter {{starter}}
+
+# RFC-0127 D7 (phase-551 W5) — the `image` probe track: the starter's
+# compressed size against its budget, the book's newcomer steps
+# (book/src/start/starter-image.md) run in it with no network, and its
+# course recipe (devcontainer.json by digest, `nros doctor`'s container
+# line). `pull=1` removes the local copy and times a registry pull first;
+# probe.yml runs it that way on the newest release before moving `latest`.
+[group("main")]
+image ref="nano-ros-starter:local" pull="0":
+    ./scripts/probe/verify-starter-image.sh {{ref}} {{ if pull == "1" { "--pull" } else { "" } }}
