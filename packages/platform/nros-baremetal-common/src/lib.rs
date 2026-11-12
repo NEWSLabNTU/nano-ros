@@ -18,5 +18,9 @@ pub mod heap;
 pub mod random;
 pub mod sleep;
 
-#[cfg(feature = "libc-stubs")]
+// `c-libc` wins over `libc-stubs`: a C-rooted image (CMake owns the final
+// link) brings newlib, which must be the only definition of these symbols,
+// and cargo features are additive, so the opt-out has to be its own feature.
+// Phase-553 W1.
+#[cfg(all(feature = "libc-stubs", not(feature = "c-libc")))]
 pub mod libc_stubs;

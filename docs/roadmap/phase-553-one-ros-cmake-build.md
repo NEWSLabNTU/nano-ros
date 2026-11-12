@@ -1,6 +1,6 @@
 # Phase 553 — One C/C++ build method: a ROS 2 CMake package on every board
 
-**Status (2026-11-12). PLANNED: the direction is ruled, no item has started.**
+**Status (2026-11-12). IN PROGRESS: W1 done; W2 to W6 planned.**
 Work for [RFC-0130](../design/0130-one-ros-cmake-build.md). Maintainer ruling
 2026-11-12, "Accept the unified ROS-CMake build": a C/C++ node package is an
 ordinary ROS 2 `ament_cmake(_auto)`-style package on every board, with no
@@ -27,28 +27,38 @@ through the shared C runner.
 
 ### W1 — One libc and heap owner on a C-rooted image
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-12, #3637)
 
-The bare-metal platform crates gate their C library exports behind default
+The bare-metal platform crates exported C library symbols behind default
 features (`libc-stubs`: `strlen`, `memcpy`, `snprintf`, `vsnprintf`, …;
-`libc-heap`: `malloc`, `free`, `realloc`, `calloc`), but two dependents force
-them on by taking `nros-platform-mps2-an385` with its defaults:
-`nros-board-mps2-an385` and `nros-platform`. Take it with
-`default-features = false` in both and forward the two features through the
-board crate's defaults, so a cargo-rooted image keeps them and the C-rooted
-staticlib turns them off. newlib (nano) then owns libc. Decide and state one
-heap layout: newlib's `_sbrk` region and the Rust allocator's arena must not
-overlap. The main stack bounds that layout too. It is unbounded today and
-grows down from the top of RAM toward the `_sbrk` heap with no guard; see
+`libc-heap`: `malloc`, `free`, `realloc`, `calloc`), and many images take the
+board crate with `default-features = false` yet still rely on them, so
+moving the stubs behind the board's defaults would have broken their links.
+Cargo features are additive, so the opt-out is its own feature: `c-libc` on
+`nros-board-mps2-an385` (forwarded to `nros-platform-mps2-an385` and
+`nros-baremetal-common`) removes every stub export, whoever turned
+`libc-stubs`/`libc-heap` on. A Rust-rooted image is unchanged (it never sets
+`c-libc`). newlib (nano) owns libc in a C-rooted image.
+
+Heap layout, one owner per heap and no overlap: the Rust allocator's arena is
+a static array in `.bss` (`nros_platform_mps2_an385::memory::HEAP`, 132,816
+bytes in the probe); newlib's `_sbrk` grows from `end` = `__sheap`, the end
+of `.bss`, upward toward the stack. The main stack bounds that layout too. It
+is unbounded today and grows down from the top of RAM toward the `_sbrk` heap
+with no guard; see
 [issue 2494](../issues/2494-mps2-baremetal-stack-unbounded.md).
 
-Acceptance:
-- The RFC-0130 D4 probe's C component prints `Publishing: 'Hello World: N'`
-  and `RCLC_LOG_INFO` prints its expanded arguments (`seq=N`, not `%d`).
-- The probe's map shows `snprintf`/`vsnprintf`/`malloc` from newlib, none
-  from a Rust crate.
-- Every existing cargo-rooted mps2-an385 image still links: the
-  `baremetal-*` workspace rows and the leaf rows build (no feature lost).
+Measured on the RFC-0130 D4 probe with the board's `c-libc` on, against a
+zenoh router:
+- the C component prints `Publishing: 'Hello World: 1'`, `… 2`, `… 3`, and
+  `RCLC_LOG_INFO` prints `c_talker logging seq=1` (it printed `''` and `%d`
+  with the stubs exported);
+- the link map takes `snprintf`, `vsnprintf`, `malloc`, `free` and `_sbrk`
+  from `libc_nano.a`, and the staticlib defines none of them (`nm`);
+  `strlen`/`memcpy` resolve to Rust's `compiler_builtins`, its own weak
+  fallbacks rather than our stubs;
+- no default changed, so every cargo-rooted image keeps its symbols; the push
+  gate's embedded builds cover them.
 
 ### W2 — C++ static constructors run at startup
 
