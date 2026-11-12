@@ -32,7 +32,18 @@ untouched — `--message-format=json-render-diagnostics` renders diagnostics to
 stderr as usual and leaves stdout pure JSON for us, so nothing a developer reads
 is swallowed.
 
-Run: cargo-out-dir-headers.py --package nros-c [--package …] --dest <dir> -- cargo build …
+LINK SCRIPTS (phase-553 W4, RFC-0130 D2)
+
+A C-rooted bare-metal image is linked by CMake, against a staticlib whose
+startup crates (cortex-m-rt, the board, the PAC) publish their linker scripts
+from their build scripts' `$OUT_DIR`s. Corrosion does not forward a
+staticlib's `rustc-link-search`, so CMake cannot find them. `--link-scripts
+<pkg>` copies the top-level `*.x` of each such package's `$OUT_DIR` into
+`<dest>/link/`, one directory CMake names at configure time and hands the
+linker with `-L`. Same stream, same reason as the headers.
+
+Run: cargo-out-dir-headers.py --package nros-c [--package …]
+         [--link-scripts <pkg> …] --dest <dir> -- cargo build …
      cargo-out-dir-headers.py --self-test
 """
 
@@ -93,6 +104,43 @@ def copy_headers(out_dir: str, dest: str) -> list:
     return copied
 
 
+LINK_SCRIPT_SUBDIR = "link"
+
+
+def copy_if_changed(src: str, dst: str) -> None:
+    """Copy `src` to `dst` unless `dst` already holds the same bytes.
+
+    An unchanged file keeps its mtime, so nothing keyed on it rebuilds.
+    """
+    try:
+        with open(src, "rb") as fs, open(dst, "rb") as fd:
+            if fs.read() == fd.read():
+                return
+    except OSError:
+        pass
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.copyfile(src, dst)
+
+
+def copy_link_scripts(out_dir: str, dest: str) -> list:
+    """Copy the top-level `*.x` of `out_dir` into `<dest>/link/`.
+
+    Top level only: `link_script!` and cortex-m-rt both write there, and a
+    deeper `.x` is nobody's linker script.
+    """
+    copied = []
+    try:
+        names = sorted(os.listdir(out_dir))
+    except OSError:
+        return copied
+    for name in names:
+        src = os.path.join(out_dir, name)
+        if name.endswith(".x") and os.path.isfile(src):
+            copy_if_changed(src, os.path.join(dest, LINK_SCRIPT_SUBDIR, name))
+            copied.append(name)
+    return copied
+
+
 def asks_for_stream(cargo_cmd: list) -> bool:
     """True when the command asks cargo for the JSON stream this script reads.
 
@@ -106,7 +154,7 @@ def asks_for_stream(cargo_cmd: list) -> bool:
     return any(a.startswith("--message-format") for a in cargo_cmd)
 
 
-def run(packages: list, dest: str, cargo_cmd: list) -> int:
+def run(packages: list, dest: str, cargo_cmd: list, link_packages: list = ()) -> int:
     """Run cargo and place the headers of every package in `packages`.
 
     Several, because one cargo build can hold more than one header writer:
@@ -148,6 +196,22 @@ def run(packages: list, dest: str, cargo_cmd: list) -> int:
                 f"nros: {package} headers -> {dest} ({', '.join(copied)})",
                 file=sys.stderr,
             )
+
+    # Unlike a header, a missing link script IS fatal: the image's link names
+    # it, and a link that cannot find `memory.x` fails far from the cause.
+    missing = []
+    for package in link_packages:
+        out_dirs = _out_dirs(lines, package)
+        copied = copy_link_scripts(out_dirs[-1], dest) if out_dirs else []
+        if not copied:
+            missing.append(package)
+    if missing:
+        print(
+            f"nros: no linker script published by {', '.join(missing)}; "
+            "the image cannot be linked",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -235,6 +299,25 @@ def self_test() -> int:
             else:
                 print("  ok   a changed header is copied")
 
+        # Link scripts: the top-level `*.x` only, into `<dest>/link/`.
+        lout = os.path.join(tmp, "lout")
+        os.makedirs(os.path.join(lout, "deeper"))
+        for name in ("memory.x", "c-runtime.x", "deeper/other.x", "build.rs.d"):
+            with open(os.path.join(lout, name), "w") as f:
+                f.write(name)
+        got = copy_link_scripts(lout, dest)
+        if got != ["c-runtime.x", "memory.x"] or not os.path.isfile(
+                os.path.join(dest, LINK_SCRIPT_SUBDIR, "memory.x")):
+            print(f"  FAIL copy_link_scripts copied {got}", file=sys.stderr)
+            fails += 1
+        else:
+            print("  ok   copy_link_scripts takes the top-level *.x into link/")
+        if copy_link_scripts(os.path.join(tmp, "nothing"), dest) != []:
+            print("  FAIL a missing out_dir should copy no link script", file=sys.stderr)
+            fails += 1
+        else:
+            print("  ok   a missing out_dir copies no link script")
+
         # No `nros/` under OUT_DIR is normal, not an error.
         if copy_headers(os.path.join(tmp, "nothing"), dest) != []:
             print("  FAIL a missing out_dir/nros should copy nothing", file=sys.stderr)
@@ -245,7 +328,7 @@ def self_test() -> int:
     if fails:
         print(f"cargo-out-dir-headers --self-test: {fails} case(s) FAILED", file=sys.stderr)
         return 1
-    print("cargo-out-dir-headers --self-test: OK (7 checks)")
+    print("cargo-out-dir-headers --self-test: OK (9 checks)")
     return 0
 
 
@@ -255,6 +338,8 @@ def main(argv) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--package", required=True, action="append",
                     help="a package whose build script writes headers; repeatable")
+    ap.add_argument("--link-scripts", action="append", default=[],
+                    help="a package whose $OUT_DIR holds linker scripts; repeatable")
     ap.add_argument("--dest", required=True)
     ap.add_argument("cargo", nargs=argparse.REMAINDER)
     args = ap.parse_args(argv)
@@ -262,7 +347,7 @@ def main(argv) -> int:
     if not cargo_cmd:
         print("no cargo command given after `--`", file=sys.stderr)
         return 2
-    return run(args.package, args.dest, cargo_cmd)
+    return run(args.package, args.dest, cargo_cmd, args.link_scripts)
 
 
 if __name__ == "__main__":

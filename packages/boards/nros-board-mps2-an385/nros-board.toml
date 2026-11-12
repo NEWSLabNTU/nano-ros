@@ -142,3 +142,10 @@ panic = "own"
 heap = true
 atomics = true
 threads = false
+
+# phase-553 W4 (RFC-0130 D2) — a C or C++ component package on this board is
+# built by CMake, which owns the final link. The toolchain file is the generic
+# Cortex-M3 one (its name is historical: nothing in it is FreeRTOS's); the
+# board's cmake overlay adds the C-rooted link.
+[board.cmake]
+toolchain_file = "cmake/toolchain/arm-freertos-armcm3.cmake"

@@ -1179,12 +1179,17 @@ pub(crate) fn package_dir(args: &Args, name: &str) -> PathBuf {
 }
 
 /// Issue 2376 — a C or C++ node needs a C/C++ entry, and the entry pipeline
-/// has none for a board with no RTOS (`nros_entry_lower::BOARD_KEYS` leaves
-/// bare-metal `mps2-an385` out: "a C or C++ entry has no runner"). The scaffold
-/// used to accept the pairing and the first `nros build` failed at configure
-/// (`codegen entry-pack: unknown board key`), which is how every C and C++ tab
-/// of the Tutorial broke. Ask the SAME table the build asks, and name the
-/// boards on that chip the pipeline does take.
+/// has none for a board whose key has no family in
+/// `nros_entry_lower::BOARD_KEYS`. The scaffold used to accept the pairing and
+/// the first `nros build` failed at configure (`codegen entry-pack: unknown
+/// board key`), which is how every C and C++ tab of the Tutorial broke. Ask
+/// the SAME table the build asks, and name the boards on that chip the
+/// pipeline does take.
+///
+/// Bare-metal mps2-an385 was the board this refused until phase-553 W4 gave
+/// it a family (RFC-0130: a C/C++ package builds on the CMake road there
+/// too). No in-tree board is refused now; the guard stays for a board from an
+/// out-of-tree catalog that the entry table does not know.
 pub(crate) fn refuse_c_family_without_entry(lang: nros_lang::Language, board: &str) -> Result<()> {
     if matches!(lang, nros_lang::Language::Rust) || nros_entry_lower::board_family(board).is_ok() {
         return Ok(());
@@ -1194,13 +1199,16 @@ pub(crate) fn refuse_c_family_without_entry(lang: nros_lang::Language, board: &s
         .filter(|k| *k != board && k.starts_with(stem) && k.len() > stem.len())
         .collect();
     let hint = if siblings.is_empty() {
-        "`nros board list` names the boards; pick one with an RTOS.".to_string()
+        "`nros board list` names the boards that have one.".to_string()
     } else {
-        format!("The same chip with an RTOS: {}.", siblings.join(", "))
+        format!(
+            "Boards on the same chip that have one: {}.",
+            siblings.join(", ")
+        )
     };
     bail!(
         "nros new: `--lang {}` on `{board}`: a C or C++ node needs a C/C++ entry, and this \
-         board has none (it runs one Rust program on bare metal). {hint}",
+         board has none. {hint}",
         lang.as_str()
     )
 }
@@ -1619,19 +1627,29 @@ mod c_family_entry_tests {
     use super::refuse_c_family_without_entry;
     use nros_lang::Language;
 
-    /// Issue 2376 — the pairing the Tutorial taught is refused at scaffold
-    /// time, naming the boards on the same chip the entry pipeline takes.
+    /// Phase-553 W4 — bare metal has a C/C++ entry now, so the pairing the
+    /// Tutorial taught is accepted at scaffold time.
     #[test]
-    fn a_c_or_cpp_node_on_a_bare_metal_board_is_refused_naming_the_rtos_boards() {
+    fn a_c_or_cpp_node_on_the_bare_metal_board_is_accepted() {
+        for lang in [Language::C, Language::Cpp, Language::Rust] {
+            for board in ["mps2-an385-baremetal", "mps2-an385-freertos", "linux"] {
+                refuse_c_family_without_entry(lang, board).unwrap();
+            }
+        }
+    }
+
+    /// Issue 2376 — a board the entry table does not know is still refused,
+    /// naming the boards on the same chip the entry pipeline takes.
+    #[test]
+    fn a_c_or_cpp_node_on_a_board_with_no_entry_family_is_refused() {
         for lang in [Language::C, Language::Cpp] {
-            let e = refuse_c_family_without_entry(lang, "mps2-an385-baremetal")
+            let e = refuse_c_family_without_entry(lang, "mps2-an385-custom")
                 .unwrap_err()
                 .to_string();
             assert!(e.contains("mps2-an385-freertos"), "{e}");
             assert!(e.contains(lang.as_str()), "{e}");
+            assert!(!e.contains("issue"), "{e}");
         }
-        refuse_c_family_without_entry(Language::Rust, "mps2-an385-baremetal").unwrap();
-        refuse_c_family_without_entry(Language::C, "mps2-an385-freertos").unwrap();
-        refuse_c_family_without_entry(Language::Cpp, "linux").unwrap();
+        refuse_c_family_without_entry(Language::Rust, "mps2-an385-custom").unwrap();
     }
 }

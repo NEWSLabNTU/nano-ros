@@ -169,10 +169,21 @@ endif()
 # the name `nros_c`, so every target below keeps its name. A
 # backend that is not bundled, or none, imports `nros-c` exactly as before.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosImageCrate.cmake")
+# phase-553 W4 (RFC-0130 D2) — on bare metal the board's Rust startup rides in
+# this staticlib, because CMake owns the final link.
+set(_nros_c_board_args "")
+set(_nros_c_bm_LINK_PACKAGES "")
+if(NROS_PLATFORM STREQUAL "baremetal" OR NROS_PLATFORM STREQUAL "bare-metal")
+    include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosBareMetalPlatform.cmake")
+    nros_baremetal_board_crate(_nros_c_bm "${NROS_BOARD}"
+        "${CMAKE_CURRENT_LIST_DIR}/../../..")
+    set(_nros_c_board_args BAREMETAL_BOARD "${NROS_BOARD}")
+endif()
 nros_image_crate(_nros_c_img
     FLAVOR       c
     RMW          "${NROS_RMW}"
     OUT_DIR      "${CMAKE_CURRENT_BINARY_DIR}/nros-c-image"
+    ${_nros_c_board_args}
     API_FEATURES ${_features})
 set(_nros_c_cargo_manifest "${_nros_c_img_MANIFEST}")
 corrosion_import_crate(
@@ -189,7 +200,16 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmak
 # headers from `$OUT_DIR` into a dir this configure owns. The mirror below
 # reads that copy, never the `$CARGO_TARGET_DIR` side channel.
 set(_nros_c_placed_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-placed")
-nros_config_header_place(nros_c "${_nros_c_placed_dir}" nros-c)
+if(_nros_c_bm_LINK_PACKAGES)
+    nros_config_header_place(nros_c "${_nros_c_placed_dir}" nros-c
+        LINK_SCRIPTS ${_nros_c_bm_LINK_PACKAGES})
+    # The startup, board and PAC linker scripts, for whichever umbrella the
+    # image links (phase-553 W4): the board overlay names the script with `-T`,
+    # this directory is where the linker finds it and what it INCLUDEs.
+    target_link_options(nros_c-static INTERFACE "-L${_nros_c_placed_dir}/link")
+else()
+    nros_config_header_place(nros_c "${_nros_c_placed_dir}" nros-c)
+endif()
 # Issue 0945 item 1 — witness that cargo actually built into the shared
 # directory. The redirect above works by symlinking over a path Corrosion
 # derives privately and offers no knob for, so a Corrosion upgrade that moves

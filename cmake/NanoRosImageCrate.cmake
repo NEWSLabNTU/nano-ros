@@ -26,7 +26,14 @@
 #       RMW          <rmw>
 #       OUT_DIR      <dir>
 #       API_FEATURES <features nros_feature_set() derived for the API crate>
+#       [BAREMETAL_BOARD <cmake board token>]
 #       [ALWAYS])
+#
+# BAREMETAL_BOARD (phase-553 W4, RFC-0130 D2): a board whose startup is Rust
+# (bare metal) rides in the image's staticlib too, since CMake owns the final
+# link; `nros_baremetal_board_crate()` gives its dependency line and anchor.
+# It generates the image crate whatever the backend. (A board token, not the
+# Rust text: an anchor holds `;`, which an argument list would split.)
 #
 # Sets in the caller's scope:
 #   <prefix>_MANIFEST  the manifest to import
@@ -146,7 +153,8 @@ static _KEEP_BACKEND: fn() = || {
 endfunction()
 
 function(nros_image_crate prefix)
-    cmake_parse_arguments(_IC "ALWAYS" "FLAVOR;RMW;OUT_DIR;WORKSPACE_DIR" "API_FEATURES" ${ARGN})
+    cmake_parse_arguments(_IC "ALWAYS" "FLAVOR;RMW;OUT_DIR;WORKSPACE_DIR;BAREMETAL_BOARD"
+        "API_FEATURES" ${ARGN})
     if(_IC_FLAVOR STREQUAL "c")
         set(_api_pkg nros-c)
         set(_api_lib nros_c)
@@ -165,12 +173,19 @@ function(nros_image_crate prefix)
     set(${prefix}_FEATURES "${_IC_API_FEATURES}" PARENT_SCOPE)
     set(${prefix}_LOCKED LOCKED PARENT_SCOPE)
 
+    set(_bm_DEP_LINE "")
+    set(_bm_ANCHOR "")
+    if(_IC_BAREMETAL_BOARD)
+        include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosBareMetalPlatform.cmake")
+        nros_baremetal_board_crate(_bm "${_IC_BAREMETAL_BOARD}" "${_repo}" "${_IC_RMW}")
+    endif()
+
     nros_image_backend(_ib RMW "${_IC_RMW}" API_FEATURES ${_IC_API_FEATURES})
     if(_ib_BUNDLED)
         set(_api_feats ${_ib_API_FEATURES})
         nros_rmw_dispatch("${_IC_RMW}")  # memoised; brings NROS_RMW_* into this scope
         set(_bundles "${NROS_RMW_REGISTER_CRATE}")
-    elseif(_IC_ALWAYS)
+    elseif(_IC_ALWAYS OR _IC_BAREMETAL_BOARD)
         set(_api_feats ${_IC_API_FEATURES})
         set(_ib_DEP_LINE "")
         set(_ib_ANCHOR "")
@@ -269,6 +284,7 @@ crate-type = [\"staticlib\"]
 [dependencies]
 api = { package = \"${_api_pkg}\", path = \"${_api_dir}\", default-features = false }
 ${_ib_DEP_LINE}
+${_bm_DEP_LINE}
 
 [features]
 ${_forward}${_ws_table}")
@@ -282,7 +298,7 @@ ${_forward}${_ws_table}")
 ${_no_std}#![allow(unused)]
 #[used]
 ${_surface}
-${_ib_ANCHOR}")
+${_ib_ANCHOR}${_bm_ANCHOR}")
     # Write only on change: an unchanged manifest must not re-trigger cargo.
     foreach(_pair "Cargo.toml|_manifest" "src/lib.rs|_lib")
         string(REPLACE "|" ";" _pv "${_pair}")

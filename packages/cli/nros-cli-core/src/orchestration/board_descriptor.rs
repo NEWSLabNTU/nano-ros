@@ -276,7 +276,10 @@ impl PlatformKind {
             PlatformKind::Zephyr => Some(F::Zephyr),
             PlatformKind::Nuttx => Some(F::Nuttx),
             PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => Some(F::Threadx),
-            PlatformKind::BareMetal | PlatformKind::Stm32 => None,
+            // phase-553 W4 -- bare metal has a family for its C/C++ entry;
+            // its sched task key is still the empty one.
+            PlatformKind::BareMetal => Some(F::Baremetal),
+            PlatformKind::Stm32 => None,
         }
     }
 

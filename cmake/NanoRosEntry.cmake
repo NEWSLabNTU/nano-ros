@@ -1078,8 +1078,8 @@ function(nano_ros_entry)
         endif()
         _nros_resolve_entry_locator(entry
             "${NROS_PLATFORM}" "${NROS_BOARD}" _nra_locator)
-        target_compile_definitions(${_NRA_NAME} PRIVATE
-            "NROS_ENTRY_LOCATOR=\"${_nra_locator}\"")
+        nros_locator_c_define(_nra_loc_def NROS_ENTRY_LOCATOR "${_nra_locator}")
+        target_compile_definitions(${_NRA_NAME} PRIVATE "${_nra_loc_def}")
         # phase-287 W6 — bake the domain the same way; portable sources read
         # NROS_ENTRY_DOMAIN_ID.
         #

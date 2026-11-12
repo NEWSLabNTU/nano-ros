@@ -727,6 +727,6 @@ nros_stack_floor_cargo_env(${_crate_target}-static)
     # rebuild — or race on — the one board rlib.
     _nros_rv64_image_locator(_rv64_locator)
     message(STATUS "nros_threadx_rv64_rust_app(${target}): locator ${_rv64_locator}")
-    target_compile_definitions(${target} PRIVATE
-        "NROS_RV64_IMAGE_LOCATOR=\"${_rv64_locator}\"")
+    nros_locator_c_define(_rv64_loc_def NROS_RV64_IMAGE_LOCATOR "${_rv64_locator}")
+    target_compile_definitions(${target} PRIVATE "${_rv64_loc_def}")
 endfunction()

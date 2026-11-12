@@ -1,6 +1,6 @@
 # Phase 553 — One C/C++ build method: a ROS 2 CMake package on every board
 
-**Status (2026-11-12). IN PROGRESS: W1 and W2 done; W3 to W6 planned.**
+**Status (2026-11-13). IN PROGRESS: W1 to W4 done; W5 to W7 open.**
 Work for [RFC-0130](../design/0130-one-ros-cmake-build.md). Maintainer ruling
 2026-11-12, "Accept the unified ROS-CMake build": a C/C++ node package is an
 ordinary ROS 2 `ament_cmake(_auto)`-style package on every board, with no
@@ -88,7 +88,7 @@ logs as in W1.
 
 ### W3 — No `-lgcc` on the C-rooted link
 
-- **Status:** BLOCKED (needs W4: the link line it constrains is the one W4's road generates)
+- **Status:** DONE (2026-11-13, #3716, with W4, whose road generates the link line it constrains)
 
 Measured in RFC-0130 D4: libgcc drags ARM unwind code needing
 `__exidx_start`/`__exidx_end` and `abort`. The C-rooted link line omits it,
@@ -98,9 +98,16 @@ C++ object did).
 Acceptance: the generated link line for a C and a C++ image carries no
 `-lgcc` and links with no undefined symbol; a check fails if it reappears.
 
+Done. The board overlay (`cmake/board/nano-ros-board-mps2-an385-baremetal.cmake`)
+links `-nostdlib` and names newlib-nano and rdimon only; the staticlib's
+compiler-builtins supplies the helpers. Both talkers' `link.txt` carry no
+`-lgcc` and link clean. `just check baremetal-platform-arms` rule F fails on a
+bare-metal overlay that drops `-nostdlib` or names libgcc in any spelling
+(mutation-tested both ways).
+
 ### W4 — The CMake-rooted road on mps2-an385
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-13, #3716)
 
 - The board's C-ABI start (`nros_board_<board>_start(app)`: log sinks,
   `init_hardware`, network, then `app`), in the board crate or a thin
@@ -122,9 +129,65 @@ Acceptance:
 - `just check dep-chain` passes; the stack floor and `mem-report` are
   measured on the new images and recorded here.
 
+What landed:
+- **Family.** `BoardFamily::Baremetal` in `nros-entry-lower`, runner
+  `nros_board_rtos_run_components_in`, boot shape `App`, C++ class
+  `rclcpp::board::BaremetalBoard` (ThreadX's lifecycle; nothing in it names a
+  kernel). Its sched-task key is the empty one, so a Rust image on these keys
+  resolves exactly what it did before. Every name of the bare-metal descriptor
+  is a `BOARD_KEYS` row, which lifts `nros new`'s refusal; the guard stays for
+  a board key the table does not know.
+- **Staticlib.** `nros_image_crate(... BAREMETAL_BOARD <board>)` adds the board
+  crate from `cmake/NanoRosBareMetalPlatform.cmake`'s board-crate row:
+  `c-libc`, the link feature the image's transport implies (`serial` when the
+  image env's `NROS_LINK_IP` is `0`, else `ethernet`), `rmw-<rmw>` when the
+  crate declares it (that installs the link's RX interrupt as the session's
+  wake; without it the session states no readiness form and is refused), and
+  an anchor on the C-ABI start.
+- **Link scripts.** The cargo placer copies the top-level `*.x` of
+  cortex-m-rt's, the board's and the PAC's `$OUT_DIR` into one directory the
+  staticlib target hands the link with `-L`; the overlay adds `-Tc-runtime.x`.
+- **Main.** The board's `c/c_main.c` is the C-rooted image's `main`: it hands
+  the entry's `app_main` to `nros_board_mps2_an385_start` and carries the
+  runner's exit code back through `nros_app_main_returned`.
+- **Executor storage** is the entry's `NROS_CPP_EXECUTOR_STORAGE_SIZE`, sized
+  by the build: 5,880 B for the talker (the D4 probe hand-sized 96 KiB).
+- Four defects met on the way, each fixed for its class: a locator with `#`
+  (every serial one) was dropped from the compiler command line by CMake on
+  the non-Zephyr roads too, so `nros_locator_c_define` now spells it for all
+  four sites; the bare-metal platform module lacked the in-tree
+  `_NANO_ROS_PREFIX` (a C++ message glue crate named `nros-serdes` three
+  directories above the checkout); the board's capability defines reached the
+  app but not a component library (ThreadX's phase-246 fix, applied here); and
+  the module did not include `NanoRosLink.cmake`, so no
+  `nros_app_register_backends` was generated.
+
+Measured 2026-11-13, scaffolded workspaces (`nros new <n> --lang c|cpp
+--platform baremetal`, first image on the UART at 115200):
+
+| | C talker | C++ talker |
+|---|---|---|
+| `nros build` for `mps2-an385-baremetal` | builds | builds |
+| `ros2 topic echo /chatter` (rmw_zenoh_cpp, router from `nros run`) | `Hello World: 20` | `Hello World: 24` |
+| the same package, image board `mps2-an385-freertos` | builds | builds |
+| `-lgcc` on the link line | none | none |
+| text / data / bss (B) | 542,252 / 2,612 / 173,220 | 531,876 / 2,604 / 172,296 |
+| `mem-report` RAM | 175,840 B | 174,900 B |
+| stack high-water | 11,068 B | 11,004 B |
+
+The RAM is dominated by the Rust allocator's arena (132,816 B,
+`nros_platform_mps2_an385::memory::HEAP`); newlib's heap grows from `end`
+(`__sheap`) above `.bss`, the layout W1 chose. The stack figure is a runtime
+high-water mark, not a static floor: QEMU zero-fills RAM, so after ~20
+publishes over the UART the deepest non-zero byte below `_stack_start`
+(0x20400000) is how deep the stack went. cortex-m-rt's stack is the RAM above
+`.bss` (about 4 MiB here), so the margin is large; the static floor walk
+(`NanoRosStackFloor.cmake`) checks a FreeRTOS carrier's stated stack only and
+has no bare-metal arm yet. `just check dep-chain`: 7 of 7 cells pass.
+
 ### W5 — Migrate the bare-metal C/C++ talkers
 
-- **Status:** BLOCKED (needs W4)
+- **Status:** OPEN (W4 is done)
 
 `examples/mps2-an385-baremetal/{c,cpp}/talker` become one-package workspaces
 whose package is an ordinary component, booted by the generated entry.
@@ -134,7 +197,7 @@ their runtime cells pass.
 
 ### W6 — Retire the cargo-built C/C++ bare-metal workspaces
 
-- **Status:** BLOCKED (needs W4). Owner: to be assigned; this is not claimed with
+- **Status:** OPEN. Owner: to be assigned; this is not claimed with
 W1 to W5 (the session that migrated these workspaces is the expected owner).
 
 The ten `examples/mps2-an385-baremetal/{c,cpp}/{listener,service-*,action-*}`
@@ -144,6 +207,37 @@ consumers (measured before deleting).
 
 Acceptance: no tracked `Cargo.toml` + `build.rs` compiles C or C++ for an
 example; `test_qemu_baremetal_capi_e2e` passes against the new rows.
+
+### W7 — A bounded, guarded stack on the C-rooted image
+
+- **Status:** OPEN
+
+Issue 2494. On bare-metal mps2-an385 the main stack is neither bounded nor
+guarded: cortex-m-rt grows it down from `_stack_start` (0x2040_0000), the
+`_stack_size` / `_heap_*` symbols in `mps2-an385.x` are read by nothing, and
+the Cortex-M3 has no `MSPLIM`. On the C-rooted road W1 makes newlib's `_sbrk`
+grow UP from `end` (`__sheap`) toward that same stack, so a collision corrupts
+memory with no diagnostic. W4 measured the talkers' stack high-water at about
+11 KiB with almost 4 MiB free between the two, so nothing collides today;
+nothing would say so if it did.
+
+- A real stack region in `c-runtime.x`: `_stack_size` bounds it, and link
+  `ASSERT`s fail the link when `.bss` plus the newlib heap reservation would
+  reach it.
+- newlib's `_sbrk` on this image refuses to grow past the stack's lower limit
+  (returns `-1`/`ENOMEM`, so `malloc` fails loudly), or a canary at the limit
+  that the board checks; the measurement decides which.
+- The stack size is a knob the image states, so the stack-floor check (issue
+  2400, its bare-metal arm) can compare the measured floor with it.
+
+Acceptance:
+- An image whose `.bss` plus stated stack exceeds RAM fails to LINK, naming
+  the knob.
+- A test image that allocates until `malloc` fails gets `NULL` before its
+  heap reaches the stack region (negative control: the same image without the
+  guard corrupts the stack, measured).
+- The C and C++ talkers still run, with their stated stack above the measured
+  floor.
 
 ## Not in scope
 

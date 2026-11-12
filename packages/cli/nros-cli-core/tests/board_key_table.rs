@@ -55,17 +55,11 @@ fn every_table_key_maps_to_its_family_through_every_consumer() {
 /// descriptor's second NAME then), and is back since issue 1519: it is
 /// Zephyr's id for the board, `[board.zephyr] west_board`, which no image may
 /// author — `nros build` refuses it naming `zephyr` — so no consumer may
-/// accept it as a key either. `rtic-mps2-an385` is here as a real Rust key
-/// whose board has no RTOS, so asking its family is an error by design rather
-/// than by omission.
+/// accept it as a key either. `rtic-mps2-an385` and `mps2-an385` were here
+/// until phase-553 W4 gave bare metal a family; they are rows now.
 #[test]
 fn an_unknown_key_errors_at_every_consumer() {
-    for key in [
-        "zigos",
-        "mps2-an385",
-        "rtic-mps2-an385",
-        "native_sim/native/64",
-    ] {
+    for key in ["zigos", "stm32f4", "native_sim/native/64"] {
         let err = board_family(key).expect_err(key).to_string();
         for known in known_board_keys() {
             assert!(
@@ -156,12 +150,15 @@ fn a_spelling_in_both_namespaces_names_the_same_rtos() {
         );
     }
     // 3 since the ESP32-C3 board was retired (phase-521 W6): RTIC and the two
-    // bare-metal MPS2 spellings.
-    assert!(no_rtos >= 3, "only {no_rtos} no-RTOS Rust keys resolve");
+    // bare-metal MPS2 spellings. 0 since phase-553 W4 gave bare metal a
+    // family: every Rust-pack key now has a row. Pinned, so a no-RTOS board
+    // added later re-arms this loop on purpose rather than silently.
+    assert_eq!(no_rtos, 0, "a Rust-pack key resolves with no family row");
 }
 
-/// The board family each Rust board ZST belongs to. `None` means the board has
-/// no RTOS, so no C or C++ entry family: ESP32, RTIC and bare-metal MPS2.
+/// The board family each Rust board ZST belongs to. `None` would mean the
+/// board has no C or C++ entry family; since phase-553 W4 every in-tree ZST
+/// has one (bare-metal MPS2 and its RTIC spelling are `Baremetal`).
 ///
 /// This oracle is the test's own statement, which is the point. A new ZST in
 /// `BOARD_PATHS` fails here until someone says which family it is.
@@ -193,8 +190,14 @@ fn rust_zst_family() -> BTreeMap<&'static str, Option<BoardFamily>> {
             "::nros_board_zephyr::ZephyrBoard",
             Some(BoardFamily::Zephyr),
         ),
-        ("::nros_board_mps2_an385::RticMps2An385", None),
-        ("::nros_board_mps2_an385::Mps2An385", None),
+        (
+            "::nros_board_mps2_an385::RticMps2An385",
+            Some(BoardFamily::Baremetal),
+        ),
+        (
+            "::nros_board_mps2_an385::Mps2An385",
+            Some(BoardFamily::Baremetal),
+        ),
     ])
 }
 
@@ -243,6 +246,9 @@ fn family_keys_without_a_rust_board_are_exactly_these() {
         c_cpp_only,
         BTreeSet::from([
             "an536",
+            // phase-553 W4 -- descriptor aliases of the bare-metal board.
+            "bare-metal",
+            "baremetal",
             "mps3-an536-freertos",
             "s32z270",
             "s32z270-freertos",
@@ -802,16 +808,15 @@ fn every_descriptor_name_is_an_entry_key_of_its_family() {
         missing.join("\n    "),
         wrong.join("\n    ")
     );
-    // Floors, so neither arm can go vacuous. Measured 2026-10-15: 23 names on
-    // RTOS-family descriptors, 9 on no-RTOS ones (bare-metal mps2, esp32);
-    // esp32 retired (phase-521 W6), leaving 4.
-    assert!(
-        with_family >= 20,
-        "only {with_family} RTOS-family names checked"
-    );
-    assert!(
-        without_family >= 4,
-        "only {without_family} no-RTOS names checked"
+    // Measured 2026-10-15: 23 names on RTOS-family descriptors, 9 on no-RTOS
+    // ones (bare-metal mps2, esp32); esp32 retired (phase-521 W6), leaving 4;
+    // phase-553 W4 gave bare metal a family, leaving 0. The first is a floor
+    // so its arm cannot go vacuous; the second is pinned, so a no-RTOS
+    // descriptor added later re-arms its arm on purpose.
+    assert!(with_family >= 20, "only {with_family} family names checked");
+    assert_eq!(
+        without_family, 0,
+        "a descriptor name on a platform with no entry family"
     );
 }
 

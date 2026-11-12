@@ -59,10 +59,21 @@ nros_resolve_cargo_profile()
 # the name `nros_cpp`, so every target below keeps its name. A
 # backend that is not bundled, or none, imports `nros-cpp` exactly as before.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosImageCrate.cmake")
+# phase-553 W4 (RFC-0130 D2) — on bare metal the board's Rust startup rides in
+# this staticlib, because CMake owns the final link.
+set(_nros_cpp_board_args "")
+set(_nros_cpp_bm_LINK_PACKAGES "")
+if(NROS_PLATFORM STREQUAL "baremetal" OR NROS_PLATFORM STREQUAL "bare-metal")
+    include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosBareMetalPlatform.cmake")
+    nros_baremetal_board_crate(_nros_cpp_bm "${NROS_BOARD}"
+        "${CMAKE_CURRENT_LIST_DIR}/../../..")
+    set(_nros_cpp_board_args BAREMETAL_BOARD "${NROS_BOARD}")
+endif()
 nros_image_crate(_nros_cpp_img
     FLAVOR       cpp
     RMW          "${NROS_RMW}"
     OUT_DIR      "${CMAKE_CURRENT_BINARY_DIR}/nros-cpp-image"
+    ${_nros_cpp_board_args}
     API_FEATURES ${_cpp_features})
 set(_nros_cpp_cargo_manifest "${_nros_cpp_img_MANIFEST}")
 corrosion_import_crate(
@@ -80,7 +91,16 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmak
 # writes the C++ one, and nros-c's — a dependency built in the same cargo run —
 # the C one, each into its own `$OUT_DIR`. So both packages are named.
 set(_nros_cpp_placed_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-placed")
-nros_config_header_place(nros_cpp "${_nros_cpp_placed_dir}" nros-cpp nros-c)
+if(_nros_cpp_bm_LINK_PACKAGES)
+    nros_config_header_place(nros_cpp "${_nros_cpp_placed_dir}" nros-cpp nros-c
+        LINK_SCRIPTS ${_nros_cpp_bm_LINK_PACKAGES})
+    # The startup, board and PAC linker scripts, for whichever umbrella the
+    # image links (phase-553 W4): the board overlay names the script with `-T`,
+    # this directory is where the linker finds it and what it INCLUDEs.
+    target_link_options(nros_cpp-static INTERFACE "-L${_nros_cpp_placed_dir}/link")
+else()
+    nros_config_header_place(nros_cpp "${_nros_cpp_placed_dir}" nros-cpp nros-c)
+endif()
 # The preset's definition, so the crate resolves `--profile nros-…` without a
 # `[profile.*]` block of its own. No-op for a user-owned profile.
 nros_cargo_profile_env(nros_cpp-static)

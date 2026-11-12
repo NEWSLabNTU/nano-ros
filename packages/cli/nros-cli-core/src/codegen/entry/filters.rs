@@ -42,7 +42,7 @@ fn pkg_ident(s: &str) -> String {
 /// The C++ board class a family's entry calls (`::rclcpp::board::LinuxBoard`).
 ///
 /// phase-432 W2.2 / RFC-0091 §8b defect 1 — a RENDERING of the board family,
-/// not a second table: the board keys collapse onto five families in
+/// not a second table: the board keys collapse onto six families in
 /// `nros_entry_lower::BOARD_KEYS`, and this is C++'s spelling of each. It used
 /// to be `emit_cpp::board_cpp_path`, an emitter-private function; it is a
 /// filter now because a spelling is exactly what a filter is.
@@ -60,6 +60,7 @@ fn cpp_board_class(family: &str) -> Result<String, Error> {
         BoardFamily::Nuttx => "::rclcpp::board::NuttxBoard",
         BoardFamily::Freertos => "::rclcpp::board::FreertosBoard",
         BoardFamily::Threadx => "::rclcpp::board::ThreadxBoard",
+        BoardFamily::Baremetal => "::rclcpp::board::BaremetalBoard",
     }
     .to_string())
 }

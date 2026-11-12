@@ -18,6 +18,17 @@ if(DEFINED _NROS_PLATFORM_BAREMETAL_INCLUDED)
 endif()
 set(_NROS_PLATFORM_BAREMETAL_INCLUDED TRUE)
 
+# phase-553 W4 — the in-tree prefix the interface generator resolves
+# `nros-serdes` from, as every RTOS platform module sets it. Without it the
+# generator assumes an INSTALLED layout (`<prefix>/share/nano-ros/cmake`), and
+# a C++ message glue crate names `nros-serdes` three directories above the
+# checkout. A C-only image never reads it, which is why it never showed.
+set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../.." CACHE INTERNAL "")
+
+# phase-553 W4 — `nano_ros_link_rmw()`: the generated strong
+# `nros_app_register_backends` a C/C++ image's runner calls.
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
+
 set(NROS_PLATFORM_LINK_FEATURES tcp udp_unicast udp_multicast
     CACHE STRING "Default link features for the bare-metal platform")
 
@@ -49,6 +60,22 @@ endif()
 # than only the one that reaches `nros_platform_link_app` below.
 target_compile_definitions(nros_platform_baremetal_iface INTERFACE NROS_PLATFORM_BAREMETAL)
 
+# phase-553 W4 — and the board's capability defines (`NROS_PLATFORM_HAS_MALLOC`
+# from `heap = true`), on the same INTERFACE, so a separately compiled
+# component library sees them too, not only the app target the overlay's
+# `nros_board_link_app` touches. ThreadX made the same move (phase 246) for
+# the same failure: nros-cpp's heap_string/heap_sequence headers, parsed in a
+# component TU with no `nros_platform_malloc` declaration. The overlay is
+# include-guarded, so including it here and again at link is one include.
+if(DEFINED NROS_BOARD AND NOT NROS_BOARD STREQUAL ""
+   AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
+    if(_NROS_BAREMETAL_BOARD_CAP_DEFINES)
+        target_compile_definitions(nros_platform_baremetal_iface
+            INTERFACE ${_NROS_BAREMETAL_BOARD_CAP_DEFINES})
+    endif()
+endif()
+
 function(nros_platform_link_app target)
     if(NOT DEFINED NROS_BOARD)
         message(FATAL_ERROR
@@ -70,6 +97,13 @@ function(nros_platform_link_app target)
         message(FATAL_ERROR
             "Board module ${_board_module} did not define "
             "nros_board_link_app(target).")
+    endif()
+    # phase-553 W4 — a C/C++ image on bare metal gets the generated STRONG
+    # `nros_app_register_backends`, as every RTOS platform's does: there are no
+    # constructor sections to register a backend, so the entry's runner calls
+    # this one. Idempotent.
+    if(COMMAND nano_ros_link_rmw)
+        nano_ros_link_rmw(${target})
     endif()
     nros_board_link_app(${target})
 endfunction()

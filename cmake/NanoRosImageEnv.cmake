@@ -49,6 +49,32 @@ function(nros_image_env_config out_var)
     set(${out_var} "${_cfg}" PARENT_SCOPE)
 endfunction()
 
+# nros_image_env_value(<out_var> <name>)
+#
+# phase-553 W4 — the value the image's cargo commands will see for <name>,
+# resolved as cargo resolves it: an exported variable wins, then the image's
+# row, else "". For a CMake-side choice that must agree with what a build
+# script reads (a bare-metal image's board link feature follows `NROS_LINK_IP`,
+# the row its `transport` implies). The file is this module's own output,
+# one `NAME = "value"` row per line.
+function(nros_image_env_value out_var name)
+    if(DEFINED ENV{${name}})
+        set(${out_var} "$ENV{${name}}" PARENT_SCOPE)
+        return()
+    endif()
+    set(_val "")
+    nros_image_env_config(_cfg)
+    if(NOT "${_cfg}" STREQUAL "")
+        file(STRINGS "${_cfg}" _rows REGEX "^${name}[ \t]*=")
+        foreach(_row IN LISTS _rows)
+            if(_row MATCHES "^${name}[ \t]*=[ \t]*\"([^\"]*)\"")
+                set(_val "${CMAKE_MATCH_1}")
+            endif()
+        endforeach()
+    endif()
+    set(${out_var} "${_val}" PARENT_SCOPE)
+endfunction()
+
 # nros_image_env_cargo_flags(<out_var>)
 #
 # The cargo flag(s) that hand the image's rows to one cargo command — for a

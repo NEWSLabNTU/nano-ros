@@ -1343,25 +1343,23 @@ mod tests {
 mod c_family_into_workspace_tests {
     use super::*;
 
-    /// Issue 2376 — `--to` a bringup whose image is bare metal refuses a C node
-    /// before writing its package.
+    /// Issue 2376 — `--to` a bringup whose image board has no entry family
+    /// refuses a C node before writing its package. (Bare metal was that board
+    /// until phase-553 W4; it has a family now, so an out-of-tree key stands in.)
     #[test]
-    fn a_c_node_into_a_bare_metal_bringup_is_refused_before_anything_is_written() {
+    fn a_c_node_into_a_bringup_with_no_entry_family_is_refused_before_anything_is_written() {
         let ws = tempfile::tempdir().unwrap();
         let bringup = ws.path().join("src/demo_bringup");
         std::fs::create_dir_all(&bringup).unwrap();
         std::fs::write(
             bringup.join("system.toml"),
-            "[system]\nname = \"demo\"\n\n[image.baremetal]\nboard = \"mps2-an385-baremetal\"\n",
+            "[system]\nname = \"demo\"\n\n[image.custom]\nboard = \"mps2-an385-custom\"\n",
         )
         .unwrap();
-        assert_eq!(
-            image_boards(&bringup).unwrap(),
-            vec!["mps2-an385-baremetal"]
-        );
+        assert_eq!(image_boards(&bringup).unwrap(), vec!["mps2-an385-custom"]);
         let e = crate::cmd::new::refuse_c_family_without_entry(
             nros_lang::Language::C,
-            "mps2-an385-baremetal",
+            "mps2-an385-custom",
         )
         .unwrap_err();
         assert!(e.to_string().contains("mps2-an385-freertos"));

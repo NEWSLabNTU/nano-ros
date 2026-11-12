@@ -60,7 +60,8 @@ mirroring a release, not copying its repository into your tree.
    The variables and their values are listed in
    [CMake cache variables](../../reference/environment-variables.md#cmake-cache-variables).
    Zephyr and bare metal do not enter this way: Zephyr has its own module,
-   and bare metal builds through cargo.
+   and a bare-metal image is linked by `nros build`, which supplies the
+   board's startup and linker scripts.
 
 3. Generate the message bindings your sources include:
 
