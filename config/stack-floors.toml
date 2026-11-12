@@ -45,7 +45,12 @@ mode = "fold1"
 scope = ["zenoh", "zpico"]
 
 # Allowances are per IMAGE SHAPE (ruled (A), 2026-11-10): `image` names what
-# was measured, as `<template>/<lang>/<rmw>@<board>`. The static walk's
+# was measured, by the key a build computes (PROVISIONAL, issue 2400:
+# `<bringup or entry name>@<board>`, cmake/NanoRosStackFloor.cmake's
+# `_nros_stack_floor_image_key`). The three rows below were measured on
+# `nros new nt|nc|na` projects, so they match images whose bringup is named
+# `nt_node_bringup` etc.; the same template under another name is UNMEASURED
+# (each row's `[allowance.measured] image` says which template it was). The static walk's
 # indirect charge is wrong in both directions (3-8 KB low on the Rust images
 # below, 12.6 KB HIGH on the C talker), so one image's measurement says
 # nothing about another's, and an allowance may be negative. An image with no
@@ -64,7 +69,7 @@ scope = ["zenoh", "zpico"]
 # uses this table's policy.
 
 [[allowance]]
-image = "action-server/rust/zenoh@nucleo-f767zi-zephyr"
+image = "na_node_bringup@nucleo-f767zi-zephyr"
 rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
@@ -80,7 +85,7 @@ image = "nros new --board nucleo-f767zi-zephyr --lang rust --rmw zenoh --templat
 issue = "2407"
 
 [[allowance]]
-image = "talker/rust/zenoh@nucleo-f767zi-zephyr"
+image = "nt_node_bringup@nucleo-f767zi-zephyr"
 rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
@@ -96,7 +101,7 @@ image = "nros new --board nucleo-f767zi-zephyr --lang rust --rmw zenoh --templat
 issue = "2400"
 
 [[allowance]]
-image = "talker/c/zenoh@nucleo-f767zi-zephyr"
+image = "nc_node_bringup@nucleo-f767zi-zephyr"
 rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"

@@ -390,6 +390,12 @@ endif()
 nros_detect_rust_target()
 nros_cross_cc_env(_nros_cross_cc "${NROS_RUST_TARGET}")
 list(APPEND _nros_rust_lane_env ${_nros_cross_cc})
+# Issue 2400 W4 -- and the stack-floor measurement: every crate keeps its
+# post-opt bitcode, with no sccache in the way. Empty on native_sim or with
+# NROS_STACK_FLOOR=OFF. The C lane's command carries the same rows.
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosStackFloor.cmake")
+nros_stack_floor_zephyr_cargo_env(_nros_stack_floor_env)
+list(APPEND _nros_rust_lane_env ${_nros_stack_floor_env})
 set(NROS_BOARD_FACTS_ENV "${_nros_rust_lane_env}" CACHE INTERNAL
     "issue 1662: the Zephyr Rust lane's cargo env (board facts, a leaf's descriptor, derived knobs -- issue 1796)")
 
@@ -1297,5 +1303,31 @@ nros_defer_generated_app_check()
 if(CONFIG_NROS_RMW_CYCLONEDDS)
     nros_sizing_descriptor_west_apply_cyclonedds_deferred(nros)
 endif()
+
+# Issue 2400 W4 -- the main stack against the floor this image's own frames
+# need (cmake/NanoRosStackFloor.cmake): checked after `zephyr_final` links,
+# failing only an image with a measured [[allowance]] row.
+set(_nros_sf_board "")
+foreach(_fact IN LISTS NROS_BOARD_FACTS_ENV)
+    if(_fact MATCHES "^NROS_BOARD=(.+)$")
+        set(_nros_sf_board "${CMAKE_MATCH_1}")
+    endif()
+endforeach()
+set(_nros_sf_rmw "")
+if(CONFIG_NROS_RMW_XRCE)
+    set(_nros_sf_rmw "xrce")
+elseif(CONFIG_NROS_RMW_ZENOH)
+    set(_nros_sf_rmw "zenoh")
+elseif(CONFIG_NROS_RMW_CYCLONEDDS)
+    set(_nros_sf_rmw "cyclonedds")
+endif()
+# A Rust entry's main thread enters at `rust_main`; a C/C++ one at `main`.
+if(CONFIG_NROS_RUST_API AND NOT CONFIG_NROS_C_API AND NOT CONFIG_NROS_CPP_API)
+    set(_nros_sf_root rust_main)
+else()
+    set(_nros_sf_root main)
+endif()
+nros_stack_floor_zephyr_check(BOARD "${_nros_sf_board}" RMW "${_nros_sf_rmw}"
+    ROOT "${_nros_sf_root}" BRINGUP "${NROS_IMAGE_SYSTEM_DIR}")
 
 endif() # CONFIG_NROS

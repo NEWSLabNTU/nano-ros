@@ -306,3 +306,49 @@ talker` image:
 
 A FreeRTOS row is cheap to get: every carrier image prints `app task stack
 peak` at boot.
+
+### W4: Zephyr CHECKs the main stack (2026-11-12)
+
+Same rulings as W2: CHECK by default, a MEASURED image fails, an unmeasured
+one warns, and nothing lowers a stack. The image key is still the
+provisional `<bringup or entry name>@<board>`, pending the user.
+
+| piece | how |
+| --- | --- |
+| Rust frames | `nros_stack_floor_zephyr_cargo_env` gives both Zephyr cargo commands (the C lane's `nros_cargo_build` and zephyr-lang-rust's, through `NROS_BOARD_FACTS_ENV`) `CARGO_TARGET_<TRIPLE>_RUSTFLAGS=-Csave-temps` and an empty `RUSTC_WRAPPER`. The target-scoped variable joins a config file's `[target.<triple>] rustflags` instead of replacing them, and keeps build scripts and proc-macros unflagged. The generated message FFI crates get the same rows. |
+| C frames | `zephyr_compile_options(-fstack-usage, -fcallgraph-info=su)`: every Zephyr library and the app |
+| inputs | `zephyr/zephyr.map`, which Zephyr copies from the final link's map before any extra post-build command runs |
+| check | a `zephyr_final` post-build command (`extra_post_build_commands`), `--check-stack OPEN=<CONFIG_MAIN_STACK_SIZE>` from `rust_main` (a Rust entry) or `main` (C/C++), remedy `CONFIG_MAIN_STACK_SIZE=<floor>`. Zephyr runs those commands through the shell without VERBATIM, which would expand the bitcode globs, so the walk runs from a generated `nros/stack-floor/check.cmake`. |
+| not checked | native_sim (`CONFIG_ARCH_POSIX`: a Zephyr thread runs on a host pthread's stack), a board with no nano-ros board facts, `NROS_STACK_FLOOR=OFF` |
+
+The three nucleo rows are renamed to the key a build computes:
+`nt_node_bringup`, `nc_node_bringup` and `na_node_bringup` `@nucleo-f767zi-zephyr`,
+the `nros new` projects they were measured on. Under key (a) a row matches
+only an image whose bringup has that name; the same template under any other
+project name is unmeasured and warns. Key (b), or a template key that `nros
+new` writes into the generated `system.toml`, would let a renamed project
+keep its row. That is the open question for the user.
+
+The configure-time `NROS_RUST_MAIN_STACK_FLOOR` (32 KiB, issue 2359) STAYS.
+An unmeasured image is never refused here, so removing it would put every
+unmeasured Rust image back on the silent overflow 2359 found. It can retire
+once measured rows cover the boards.
+
+Measured on the three `nros new --board nucleo-f767zi-zephyr` projects, built
+by `nros build` with the check:
+
+| image | walk | allowance | floor | `CONFIG_MAIN_STACK_SIZE` | outcome |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `nc` C talker | 16,112 | −4,416 | 12,872 | 16,384 | holds |
+| `nt` Rust talker | 22,212 | +6,676 | 31,784 | 32,768 | holds |
+| `na` Rust action server | 21,780 | +8,476 | 33,288 | 32,768 | **fails**: `Raise it: CONFIG_MAIN_STACK_SIZE=33288` |
+
+Each walk equals the static figure the row was measured with, so the build
+reproduces the hand measurement. The action server failing is ruling (A)(3):
+the image raises its own stack through its `os_config` when the CHECK says so.
+
+With `CONFIG_MAIN_STACK_SIZE=33288` in the `na` bringup's `os_config`, the
+same image builds ("OPEN stack 33288 B holds the floor 33288 B (measured)").
+A fresh `nros new nu ... --template talker` is the `nt` image under another
+name: it builds with the UNMEASURED warning, floor 24,440 B (walk + margin,
+no allowance) against 32,768 B.

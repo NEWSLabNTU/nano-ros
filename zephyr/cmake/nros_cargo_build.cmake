@@ -2538,6 +2538,8 @@ function(nros_cargo_build)
     # not available here — zephyr-lang-rust builds its own cargo command — so
     # the delivery is the same VALUES through this lane's own carrier.
     nros_resolve_board_facts()
+    # Issue 2400 W4 -- the stack-floor measurement rows the Rust lane carries too.
+    nros_stack_floor_zephyr_cargo_env(_nros_stack_floor_env)
     set(_nros_facts_env "")
     foreach(_fact IN LISTS NROS_BOARD_FACTS_ENV)
         list(APPEND _nros_facts_env "${_fact}")
@@ -2560,6 +2562,7 @@ function(nros_cargo_build)
             ${_cc_env}
             ${_nros_knob_env}
             ${_nros_facts_env}
+            ${_nros_stack_floor_env}
             ${NROS_CARGO_PROFILE_ENV}
             NROS_PLATFORM_CFFI_INCLUDE=$ENV{NROS_PLATFORM_CFFI_INCLUDE}
             # phase-400 W5.c — cargo runs UNDER the placer, not piped into it:

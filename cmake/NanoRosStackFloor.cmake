@@ -126,8 +126,17 @@ endfunction()
 function(nros_stack_floor_cargo_env_list _out)
     set(${_out} "" PARENT_SCOPE)
     _nros_stack_floor_enabled(_on)
+    if(NOT _on)
+        return()
+    endif()
+    _nros_stack_floor_zephyr_applies(_zephyr)
+    if(_zephyr)
+        nros_stack_floor_zephyr_cargo_env(_env)
+        set(${_out} "${_env}" PARENT_SCOPE)
+        return()
+    endif()
     nros_platform_family(_fam "${NROS_PLATFORM}")
-    if(NOT _on OR NOT _fam STREQUAL "freertos")
+    if(NOT _fam STREQUAL "freertos")
         return()
     endif()
     set(${_out}
@@ -171,6 +180,69 @@ endfunction()
 #   nros_stack_floor_check(<exe> ROOT <fn> STACK <bytes> KNOB <text>
 #                          BOARD <board> TARGET <triple> RMW <rmw>
 #                          PROFILE <cargo profile> [BRINGUP <dir>])
+# The walker, the table and python3, or a STATUS line saying which is missing.
+function(_nros_stack_floor_tools _what _ok)
+    set(${_ok} FALSE PARENT_SCOPE)
+    if(NOT CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        message(STATUS "nano-ros: stack floor for ${_what} not checked -- "
+            "${CMAKE_C_COMPILER_ID} has no -fstack-usage")
+        return()
+    endif()
+    set(_script "${_NROS_STACK_FLOOR_DIR}/../scripts/nros-stack-floor.py")
+    set(_table "${_NROS_STACK_FLOOR_DIR}/../config/stack-floors.toml")
+    if(NOT EXISTS "${_script}" OR NOT EXISTS "${_table}")
+        message(STATUS "nano-ros: stack floor for ${_what} not checked -- this nano-ros "
+            "has no scripts/nros-stack-floor.py or config/stack-floors.toml")
+        return()
+    endif()
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(NOT Python3_Interpreter_FOUND)
+        message(STATUS "nano-ros: stack floor for ${_what} not checked -- no python3")
+        return()
+    endif()
+    set(${_ok} TRUE PARENT_SCOPE)
+endfunction()
+
+# The walker's command line, shared by every road that CHECKs.
+#
+#   _nros_stack_floor_command(<out> KEY <image key> ROOT <fn> STACK <bytes>
+#       KNOB <text> TARGET <triple> RMW <rmw> MAP <link map> DIR <work dir>
+#       LINK_DIRS <dir>... BITCODE <glob>...)
+function(_nros_stack_floor_command _out)
+    cmake_parse_arguments(_C "" "KEY;ROOT;STACK;KNOB;TARGET;RMW;MAP;DIR" "LINK_DIRS;BITCODE" ${ARGN})
+    # The rustup llvm-tools ship no llvm-cxxfilt, so name the cross
+    # toolchain's own demangler (`arm-none-eabi-g++` -> `arm-none-eabi-c++filt`)
+    # when it sits beside the compiler; the walker falls back to the host's.
+    set(_cxxfilt_arg "")
+    if(CMAKE_CXX_COMPILER MATCHES "g\\+\\+(\\.exe)?$")
+        string(REGEX REPLACE "g\\+\\+((\\.exe)?)$" "c++filt\\1" _cxxfilt "${CMAKE_CXX_COMPILER}")
+        if(EXISTS "${_cxxfilt}")
+            set(_cxxfilt_arg --cxxfilt "${_cxxfilt}")
+        endif()
+    endif()
+    set(_cmd "${Python3_EXECUTABLE}" "${_NROS_STACK_FLOOR_DIR}/../scripts/nros-stack-floor.py"
+        --table "${_NROS_STACK_FLOOR_DIR}/../config/stack-floors.toml"
+        --rmw "${_C_RMW}" --target "${_C_TARGET}" --image "${_C_KEY}"
+        --role "OPEN=${_C_ROOT}"
+        --check-stack "OPEN=${_C_STACK}" --stack-knob "${_C_KNOB}"
+        --link-map "${_C_MAP}")
+    foreach(_d IN LISTS _C_LINK_DIRS)
+        list(APPEND _cmd --link-dir "${_d}")
+    endforeach()
+    list(APPEND _cmd --su "${CMAKE_BINARY_DIR}")
+    foreach(_b IN LISTS _C_BITCODE)
+        list(APPEND _cmd --bitcode-dir "${_b}")
+    endforeach()
+    list(APPEND _cmd --sysroot --llc-cache "${_C_DIR}/llc" ${_cxxfilt_arg})
+    set(${_out} "${_cmd}" PARENT_SCOPE)
+endfunction()
+
+# The image half. ROOT is the thread entry the stated stack belongs to, STACK
+# its size in bytes, KNOB what the user sets to raise it, with `{bytes}` / `{kb}` for the floor.
+#
+#   nros_stack_floor_check(<exe> ROOT <fn> STACK <bytes> KNOB <text>
+#                          BOARD <board> TARGET <triple> RMW <rmw>
+#                          PROFILE <cargo profile> [BRINGUP <dir>])
 function(nros_stack_floor_check _exe)
     cmake_parse_arguments(_SF "" "ROOT;STACK;KNOB;BOARD;TARGET;RMW;PROFILE;BRINGUP" "" ${ARGN})
     _nros_stack_floor_enabled(_on)
@@ -182,21 +254,8 @@ function(nros_stack_floor_check _exe)
             message(FATAL_ERROR "nros_stack_floor_check(${_exe}): ${_req} is required")
         endif()
     endforeach()
-    if(NOT CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
-        message(STATUS "nano-ros: stack floor for ${_exe} not checked -- "
-            "${CMAKE_C_COMPILER_ID} has no -fstack-usage")
-        return()
-    endif()
-    set(_script "${_NROS_STACK_FLOOR_DIR}/../scripts/nros-stack-floor.py")
-    set(_table "${_NROS_STACK_FLOOR_DIR}/../config/stack-floors.toml")
-    if(NOT EXISTS "${_script}" OR NOT EXISTS "${_table}")
-        message(STATUS "nano-ros: stack floor for ${_exe} not checked -- this nano-ros "
-            "has no scripts/nros-stack-floor.py or config/stack-floors.toml")
-        return()
-    endif()
-    find_package(Python3 COMPONENTS Interpreter QUIET)
-    if(NOT Python3_Interpreter_FOUND)
-        message(STATUS "nano-ros: stack floor for ${_exe} not checked -- no python3")
+    _nros_stack_floor_tools(${_exe} _ok)
+    if(NOT _ok)
         return()
     endif()
 
@@ -218,32 +277,15 @@ function(nros_stack_floor_check _exe)
     file(MAKE_DIRECTORY "${_dir}")
     target_link_options(${_exe} PRIVATE "-Wl,-Map=${_map}")
 
-    # The rustup llvm-tools ship no llvm-cxxfilt, so name the cross
-    # toolchain's own demangler (`arm-none-eabi-g++` -> `arm-none-eabi-c++filt`)
-    # when it sits beside the compiler; the walker falls back to the host's.
-    set(_cxxfilt_arg "")
-    if(CMAKE_CXX_COMPILER MATCHES "g\\+\\+(\\.exe)?$")
-        string(REGEX REPLACE "g\\+\\+((\\.exe)?)$" "c++filt\\1" _cxxfilt "${CMAKE_CXX_COMPILER}")
-        if(EXISTS "${_cxxfilt}")
-            set(_cxxfilt_arg --cxxfilt "${_cxxfilt}")
-        endif()
-    endif()
-
     _nros_stack_floor_image_key(_key "${_exe}" "${_SF_BRINGUP}" "${_SF_BOARD}")
     get_target_property(_bindir ${_exe} BINARY_DIR)
+    _nros_stack_floor_command(_cmd KEY "${_key}" ROOT "${_SF_ROOT}" STACK "${_SF_STACK}"
+        KNOB "${_SF_KNOB}" TARGET "${_SF_TARGET}" RMW "${_SF_RMW}" MAP "${_map}" DIR "${_dir}"
+        LINK_DIRS "${_bindir}" "${CMAKE_BINARY_DIR}"
+        BITCODE "${CMAKE_BINARY_DIR}/cargo/*/${_SF_TARGET}/${_SF_PROFILE}/deps"
+                "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_SF_TARGET}/*/deps")
     add_custom_command(TARGET ${_exe} POST_BUILD
-        COMMAND "${Python3_EXECUTABLE}" "${_script}"
-            --table "${_table}"
-            --rmw "${_SF_RMW}" --target "${_SF_TARGET}" --image "${_key}"
-            --role "OPEN=${_SF_ROOT}"
-            --check-stack "OPEN=${_SF_STACK}" --stack-knob "${_SF_KNOB}"
-            --link-map "${_map}" --link-dir "${_bindir}" --link-dir "${CMAKE_BINARY_DIR}"
-            --su "${CMAKE_BINARY_DIR}"
-            --bitcode-dir "${CMAKE_BINARY_DIR}/cargo/*/${_SF_TARGET}/${_SF_PROFILE}/deps"
-            --bitcode-dir "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_SF_TARGET}/*/deps"
-            --sysroot
-            --llc-cache "${_dir}/llc"
-            ${_cxxfilt_arg}
+        COMMAND ${_cmd}
         COMMENT "nano-ros: stack floor of ${_key}"
         VERBATIM)
     message(STATUS "nano-ros: stack floor of ${_exe} checked at build as ${_key} "
@@ -269,4 +311,102 @@ function(nros_stack_floor_freertos_check _exe _stack_bytes _bringup_dir)
         RMW     "${NROS_RMW}"
         PROFILE "${NROS_CARGO_PROFILE_DIR}"
         BRINGUP "${_bringup_dir}")
+endfunction()
+
+# --- Zephyr (issue 2400 W4) -------------------------------------------------
+#
+# The main thread runs registration and Executor::open (OPEN), so the check is
+#
+#     CONFIG_MAIN_STACK_SIZE >= floor(OPEN from rust_main | main)
+#
+# run after `zephyr_final` links, on its own `zephyr.map`. Not on native_sim
+# (CONFIG_ARCH_POSIX): a Zephyr thread there runs on a host pthread's stack,
+# and MAIN_STACK_SIZE bounds nothing the frames use. The configure-time
+# `NROS_RUST_MAIN_STACK_FLOOR` (issue 2359) stays: an UNMEASURED image is
+# never refused here (ruling (A)), and that floor is what keeps an unmeasured
+# Rust image off the silent overflow until rows cover the boards.
+
+function(_nros_stack_floor_zephyr_applies _out)
+    _nros_stack_floor_enabled(_on)
+    if(_on AND DEFINED CONFIG_BOARD AND NOT CONFIG_ARCH_POSIX
+       AND DEFINED CONFIG_MAIN_STACK_SIZE)
+        set(${_out} TRUE PARENT_SCOPE)
+    else()
+        set(${_out} FALSE PARENT_SCOPE)
+    endif()
+endfunction()
+
+# The cargo half, as `cmake -E env` rows for BOTH Zephyr lanes (the C lane's
+# `nros_cargo_build` command and zephyr-lang-rust's, through
+# NROS_BOARD_FACTS_ENV). `CARGO_TARGET_<TRIPLE>_RUSTFLAGS` is target-scoped,
+# so build scripts and proc-macros keep their flags, and cargo JOINS it with a
+# config file's `[target.<triple>] rustflags` instead of replacing them, as a
+# bare RUSTFLAGS would. RUSTC_WRAPPER is emptied: a sccache hit restores the
+# rlib and not the save-temps bitcode (issue 2400, 11 of 27 crates).
+function(nros_stack_floor_zephyr_cargo_env _out)
+    set(${_out} "" PARENT_SCOPE)
+    _nros_stack_floor_zephyr_applies(_on)
+    if(NOT _on OR NOT NROS_RUST_TARGET)
+        return()
+    endif()
+    string(TOUPPER "${NROS_RUST_TARGET}" _t)
+    string(REPLACE "-" "_" _t "${_t}")
+    string(REPLACE "." "_" _t "${_t}")
+    set(${_out} "CARGO_TARGET_${_t}_RUSTFLAGS=-Csave-temps" "RUSTC_WRAPPER=" PARENT_SCOPE)
+endfunction()
+
+# The image half: `-fstack-usage` on every Zephyr library and the app, and the
+# walk as a post-build command of `zephyr_final`.
+#
+#   nros_stack_floor_zephyr_check(BOARD <nros board> RMW <rmw>
+#                                 ROOT <rust_main|main> [BRINGUP <dir>])
+function(nros_stack_floor_zephyr_check)
+    cmake_parse_arguments(_Z "" "BOARD;RMW;ROOT;BRINGUP" "" ${ARGN})
+    _nros_stack_floor_zephyr_applies(_on)
+    if(NOT _on)
+        return()
+    endif()
+    if(_Z_BOARD STREQUAL "" OR _Z_RMW STREQUAL "" OR NOT NROS_RUST_TARGET)
+        message(STATUS "nano-ros: stack floor not checked -- no nano-ros board, RMW or "
+            "Rust target for this Zephyr image")
+        return()
+    endif()
+    _nros_stack_floor_tools(zephyr _ok)
+    if(NOT _ok)
+        return()
+    endif()
+    zephyr_compile_options(
+        "$<$<COMPILE_LANGUAGE:C,CXX>:-fstack-usage>"
+        "$<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:GNU>>:-fcallgraph-info=su>")
+
+    set(_dir "${CMAKE_BINARY_DIR}/nros/stack-floor")
+    file(MAKE_DIRECTORY "${_dir}")
+    set(_entry "zephyr")
+    _nros_stack_floor_image_key(_key "${_entry}" "${_Z_BRINGUP}" "${_Z_BOARD}")
+    set(_t "${NROS_RUST_TARGET}")
+    _nros_stack_floor_command(_cmd KEY "${_key}" ROOT "${_Z_ROOT}"
+        STACK "${CONFIG_MAIN_STACK_SIZE}" KNOB "CONFIG_MAIN_STACK_SIZE={bytes}"
+        TARGET "${_t}" RMW "${_Z_RMW}"
+        MAP "${CMAKE_BINARY_DIR}/zephyr/zephyr.map" DIR "${_dir}"
+        LINK_DIRS "${CMAKE_BINARY_DIR}"
+        BITCODE "${CMAKE_BINARY_DIR}/rust/target/${_t}/*/deps"
+                "${CMAKE_BINARY_DIR}/nros-rust*/${_t}/*/deps"
+                "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_t}/*/deps")
+    # Zephyr runs its post-build commands without VERBATIM, through the shell,
+    # which would expand the bitcode globs; the command lives in a script,
+    # each argument a bracket argument, and the shell sees one path.
+    set(_args "")
+    foreach(_a IN LISTS _cmd)
+        string(APPEND _args "\n    [==[${_a}]==]")
+    endforeach()
+    file(WRITE "${_dir}/check.cmake"
+        "# GENERATED by nros_stack_floor_zephyr_check (issue 2400 W4).\n"
+        "execute_process(COMMAND${_args}\n    RESULT_VARIABLE _rc)\n"
+        "if(NOT _rc EQUAL 0)\n"
+        "    message(FATAL_ERROR \"nano-ros: stack floor of ${_key}: see above\")\n"
+        "endif()\n")
+    set_property(GLOBAL APPEND PROPERTY extra_post_build_commands
+        COMMAND ${CMAKE_COMMAND} -P "${_dir}/check.cmake")
+    message(STATUS "nano-ros: stack floor of ${_key} checked at build (OPEN from ${_Z_ROOT} "
+        "against CONFIG_MAIN_STACK_SIZE=${CONFIG_MAIN_STACK_SIZE}; NROS_STACK_FLOOR=OFF skips)")
 endfunction()
