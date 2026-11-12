@@ -747,12 +747,49 @@ def floor_formula(static_bytes: int, allowance: int, margin_pct: int) -> int:
 
 
 def load_toml(path: Path) -> dict:
+    """The AUTHORED table. Only the maintainer side reads it (--validate-table,
+    --sync-json): a build reads the JSON twin, because a build runs on the
+    user's Python and `tomllib` is 3.11+ (Ubuntu 22.04 ships 3.10)."""
     try:
         import tomllib  # Python 3.11+
-    except ModuleNotFoundError:  # pragma: no cover - 3.10 hosts
-        import tomli as tomllib
+    except ModuleNotFoundError:
+        try:
+            import tomli as tomllib
+        except ModuleNotFoundError:
+            raise SystemExit(f"nros-stack-floor: reading {path} needs Python 3.11+ (or the "
+                             "`tomli` package); a build reads the .json twin instead")
     with open(path, "rb") as f:
         return tomllib.load(f)
+
+
+def load_table(path: Path) -> dict:
+    """The table a build passes: the `.json` twin, read with the standard
+    library on every supported Python. A `.toml` path is the authored file."""
+    if path.suffix == ".json":
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    return load_toml(path)
+
+
+def json_twin(toml_path: Path) -> Path:
+    return toml_path.with_suffix(".json")
+
+
+def render_json_twin(doc: dict) -> str:
+    """The one spelling of the twin, so a regeneration that changes nothing
+    writes the same bytes."""
+    return json.dumps(doc, indent=2, sort_keys=True) + "\n"
+
+
+def twin_problems(toml_path: Path, doc: dict) -> list[str]:
+    twin = json_twin(toml_path)
+    fix = f"run `python3 scripts/nros-stack-floor.py --sync-json {toml_path.name}`"
+    if not twin.is_file():
+        return [f"{twin.name} is missing: builds read it ({fix})"]
+    if twin.read_text(encoding="utf-8") != render_json_twin(doc):
+        return [f"{twin.name} does not match {toml_path.name}: builds read the json, so an "
+                f"edit to the toml reaches no build until the twin is regenerated ({fix})"]
+    return []
 
 
 def _matches(row: dict, rmw: str | None, target: str | None) -> bool:
@@ -896,7 +933,7 @@ def check_stacks(results: dict, stacks: dict[str, int], knob: str) -> tuple[int,
             rc = 1
             lines.append(f"nros-stack-floor: ERROR: the {role} stack is {stack} B, below the "
                          f"measured floor {r['floor']} B. Raise it: "
-                         f"{knob_text(knob, r['floor'])} (issue 2400)")
+                         f"{knob_text(knob, r['floor'])}")
         else:
             lines.append(f"nros-stack-floor: WARNING: the {role} stack is {stack} B, below the "
                          f"UNMEASURED floor {r['floor']} B. Not enforced (no [[allowance]] row); "
@@ -925,7 +962,7 @@ def refused(args: argparse.Namespace, doc, refusals: list[str]) -> int:
                       if doc is not None and find_allowance(doc, args.image, args.target, r)]
     if stacks and not measured_roles:
         print("nros-stack-floor: WARNING: the walk was refused for an UNMEASURED image; "
-              "not enforced (issue 2400)", file=sys.stderr)
+              "not enforced", file=sys.stderr)
         return 0
     return 1
 
@@ -933,7 +970,7 @@ def refused(args: argparse.Namespace, doc, refusals: list[str]) -> int:
 def run(args: argparse.Namespace) -> int:
     doc = None
     if args.table:
-        doc = load_toml(Path(args.table))
+        doc = load_table(Path(args.table))
         apply_policy(args, doc)
     if args.margin is None:
         args.margin = 0
@@ -1036,8 +1073,10 @@ def run(args: argparse.Namespace) -> int:
                           f"{role.upper()}) is UNMEASURED. Its {role.upper()} floor is the static "
                           f"walk ({best.depth} B) + margin, which can be off by more than 12 KB "
                           "either way, because calls through the RMW vtable are charged, not "
-                          "followed (issue 2402). It is reported, never enforced. Measure a twin "
-                          f"peak and add an [[allowance]] row to {args.table}.",
+                          "followed. It is reported, never enforced. Measure a twin "
+                          f"peak and add an [[allowance]] row to "
+                          f"{Path(args.table).with_suffix('.toml')}, then regenerate its "
+                          "json twin with --sync-json.",
                           file=sys.stderr)
             results[role.upper()] = {
                 "floor": floor_formula(best.depth, allowance, args.margin),
@@ -1356,9 +1395,10 @@ def self_test() -> int:
     # unmeasured image, and still fails for a measured one.
     import tempfile, io, contextlib
     with tempfile.TemporaryDirectory() as td:
-        table = Path(td, "t.toml")
-        table.write_text('[[allowance]]\nimage = "m@b"\ntarget = "t"\nrole = "OPEN"\n'
-                         'bytes = 0\nissue = "0000"\n')
+        table = Path(td, "t.json")
+        table.write_text(json.dumps({"allowance": [{"image": "m@b", "target": "t",
+                                                    "role": "OPEN", "bytes": 0,
+                                                    "issue": "0000"}]}))
         saved_run, saved_argv = g_["run"], sys.argv
         try:
             def tool_gone(args):
@@ -1374,7 +1414,7 @@ def self_test() -> int:
                         return main()
                     except SystemExit:
                         return "exit"
-            measured_row = find_allowance(load_toml(table), "m@b", "t", "OPEN") is not None
+            measured_row = find_allowance(load_table(table), "m@b", "t", "OPEN") is not None
             check("missing tool: unmeasured image warns, rc 0", gate("u@b") == 0)
             check("missing tool: the test table's row is found", measured_row)
             check("missing tool: measured image still fails", gate("m@b") == "exit")
@@ -1382,7 +1422,7 @@ def self_test() -> int:
             g_["run"], sys.argv = saved_run, saved_argv
         # a refused WALK (the fold's or a role's) degrades the same way: the
         # fold's refusal once returned 1 before the unmeasured guard ran
-        doc_ = load_toml(table)
+        doc_ = load_table(table)
         ns = lambda image, chk: argparse.Namespace(image=image, target="t", check_stack=chk)
         with contextlib.redirect_stderr(io.StringIO()):
             check("refused walk: unmeasured image under CHECK warns, rc 0",
@@ -1458,10 +1498,17 @@ def main() -> int:
                     "an image with no row is unmeasured, reported and never enforced)")
     ap.add_argument("--validate-table", metavar="TABLE",
                     help="offline: every reason, allowance issue and floor formula holds")
+    ap.add_argument("--sync-json", metavar="TABLE",
+                    help="write TABLE's .json twin, the file builds read")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     if args.self_test:
         return self_test()
+    if args.sync_json:
+        toml_path = Path(args.sync_json)
+        json_twin(toml_path).write_text(render_json_twin(load_toml(toml_path)), encoding="utf-8")
+        print(f"wrote {json_twin(toml_path)}")
+        return 0
     if args.validate_table:
         # The negative control runs on the normal path: a broken formula or
         # validator must not be able to pass the table.
@@ -1472,7 +1519,9 @@ def main() -> int:
             root = root.parent
         ids = {p.name[:4] for p in (root / "docs" / "issues").glob("[0-9][0-9][0-9][0-9]-*.md")}
         ids |= {p.name[:4] for p in (root / "docs" / "issues" / "archived").glob("[0-9][0-9][0-9][0-9]-*.md")}
-        problems = validate_table(load_toml(Path(args.validate_table)), ids, root)
+        toml_path = Path(args.validate_table)
+        doc = load_toml(toml_path)
+        problems = validate_table(doc, ids, root) + twin_problems(toml_path, doc)
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
         print(f"{args.validate_table}: {len(problems)} problem(s)")
@@ -1484,7 +1533,13 @@ def main() -> int:
     if not args.check_stack:
         return run(args)
     try:
-        return run(args)
+        try:
+            return run(args)
+        except ImportError as e:
+            # A module this Python lacks is the same as a missing tool: the
+            # walk could not run. It is never a traceback that fails the build.
+            raise SystemExit(f"nros-stack-floor: this Python ({sys.version.split()[0]}) "
+                             f"cannot run the walk: {e}")
     except SystemExit as e:
         # ruling (A): a CHECK of an UNMEASURED image never refuses, whether
         # the walk refused or could not run at all (a missing tool, an input
@@ -1493,7 +1548,7 @@ def main() -> int:
             raise
         print(e.code, file=sys.stderr)
         print("nros-stack-floor: WARNING: the floor of an UNMEASURED image could not be "
-              "computed; not enforced (issue 2400)", file=sys.stderr)
+              "computed; not enforced", file=sys.stderr)
         return 0
 
 
@@ -1501,7 +1556,7 @@ def checked_image_measured(args: argparse.Namespace) -> bool:
     """Does any --check-stack role of this image have an allowance row?"""
     if not args.table:
         return False
-    doc = load_toml(Path(args.table))
+    doc = load_table(Path(args.table))
     return any(find_allowance(doc, args.image, args.target, spec.partition("=")[0].upper())
                for spec in args.check_stack)
 

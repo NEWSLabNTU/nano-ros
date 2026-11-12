@@ -1,0 +1,179 @@
+{
+  "allowance": [
+    {
+      "bytes": 8476,
+      "image": "action-server/rust/zenoh@nucleo-f767zi-zephyr",
+      "issue": "2402",
+      "measured": {
+        "image": "nros new --board nucleo-f767zi-zephyr --lang rust --rmw zenoh --template action-server",
+        "issue": "2407",
+        "method": "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, LTO build; static from rust_main",
+        "peak": 30256,
+        "static": 21780
+      },
+      "reason": "calls through the RMW vtable the static walk charges at the deepest scoped target, not at the frame that runs; LTO's inlining merges more of them (2,992 B without LTO, before issue 2401)",
+      "rmw": "zenoh",
+      "role": "OPEN",
+      "shape": {
+        "NROS_EXECUTOR_ACTION_CLIENTS": 1,
+        "NROS_EXECUTOR_MAX_CBS": 1,
+        "NROS_EXECUTOR_MAX_NODES": 1,
+        "NROS_MAX_PUBLISHERS": 2,
+        "NROS_MAX_QUERYABLES": 4,
+        "NROS_MAX_SUBSCRIBERS": 0
+      },
+      "target": "thumbv7em-none-eabi"
+    },
+    {
+      "bytes": 6676,
+      "image": "talker/rust/zenoh@nucleo-f767zi-zephyr",
+      "issue": "2402",
+      "measured": {
+        "image": "nros new --board nucleo-f767zi-zephyr --lang rust --rmw zenoh --template talker",
+        "issue": "2400",
+        "method": "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 6 rounds, LTO build; static from rust_main",
+        "peak": 28888,
+        "static": 22212
+      },
+      "reason": "calls through the RMW vtable the static walk cannot bind to a slot",
+      "rmw": "zenoh",
+      "role": "OPEN",
+      "shape": {
+        "NROS_EXECUTOR_ACTION_CLIENTS": 0,
+        "NROS_EXECUTOR_MAX_CBS": 1,
+        "NROS_EXECUTOR_MAX_NODES": 1,
+        "NROS_MAX_PUBLISHERS": 1,
+        "NROS_MAX_QUERYABLES": 0,
+        "NROS_MAX_SUBSCRIBERS": 0
+      },
+      "target": "thumbv7em-none-eabi"
+    },
+    {
+      "bytes": -4416,
+      "image": "talker/c/zenoh@nucleo-f767zi-zephyr",
+      "issue": "2402",
+      "measured": {
+        "image": "nros new --board nucleo-f767zi-zephyr --lang c --rmw zenoh --template talker",
+        "issue": "2400",
+        "method": "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, nros-relwithdebinfo (no LTO); static from main",
+        "peak": 11696,
+        "static": 16112
+      },
+      "reason": "NEGATIVE: the static walk charges each of 51 indirect sites on the C path 8,392 B (the deepest zenoh-scoped target) while the targets that run are shallow",
+      "rmw": "zenoh",
+      "role": "OPEN",
+      "shape": {
+        "NROS_EXECUTOR_ACTION_CLIENTS": 0,
+        "NROS_EXECUTOR_MAX_CBS": 1,
+        "NROS_EXECUTOR_MAX_NODES": 1,
+        "NROS_MAX_PUBLISHERS": 1,
+        "NROS_MAX_QUERYABLES": 0,
+        "NROS_MAX_SUBSCRIBERS": 0
+      },
+      "target": "thumbv7em-none-eabi"
+    }
+  ],
+  "indirect": {
+    "default": {
+      "mode": "allowance:0"
+    },
+    "zenoh": {
+      "mode": "fold1",
+      "scope": [
+        "zenoh",
+        "zpico"
+      ]
+    }
+  },
+  "margin_pct": 10,
+  "policy": [
+    {
+      "kind": "cut",
+      "match": "4core9panicking",
+      "reason": "the panic path diverges; a panic inside the panic handler is its only cycle"
+    },
+    {
+      "kind": "cut",
+      "match": "4core3str16slice_error_fail",
+      "reason": "panic path (slice_error_fail <-> slice_error_fail_rt), diverges"
+    },
+    {
+      "kind": "cut",
+      "match": "4core3fmt",
+      "reason": "core::fmt recurses through dyn Write / Display for nested values; its own frames count, its callees do not"
+    },
+    {
+      "kind": "cut",
+      "match": "names_and_types",
+      "reason": "the graph query; an image that never calls it must not be charged for it at every indirect site. An image that does needs its own allowance (issue 2360)",
+      "rmw": "zenoh"
+    },
+    {
+      "kind": "external",
+      "match": "17compiler_builtins3mem6memcpy",
+      "reason": "compiler_builtins' memcpy as the C lane links it (a per-build crate hash, so by substring); a leaf loop with no bitcode in the inputs"
+    },
+    {
+      "kind": "external",
+      "match": "17compiler_builtins3mem6memset",
+      "reason": "compiler_builtins' memset, as memcpy"
+    },
+    {
+      "kind": "external",
+      "match": "17compiler_builtins3mem7memmove",
+      "reason": "compiler_builtins' memmove, as memcpy"
+    },
+    {
+      "kind": "external",
+      "name": "__aeabi_uldivmod",
+      "reason": "hand assembly in compiler_builtins, no bitcode; a leaf"
+    },
+    {
+      "kind": "external",
+      "name": "__aeabi_ldivmod",
+      "reason": "hand assembly in compiler_builtins, no bitcode; a leaf"
+    },
+    {
+      "kind": "external",
+      "name": "__aeabi_read_tp",
+      "reason": "hand assembly (TLS pointer read), a leaf"
+    },
+    {
+      "bytes": 0,
+      "kind": "frame",
+      "name": "z_malloc",
+      "reason": "tail call (b.w) in zpico-sys platform_aliases.c, read off the prologue; the cc build gets no -fstack-usage under Zephyr",
+      "target": "thumbv7em-none-eabi"
+    },
+    {
+      "bytes": 0,
+      "kind": "frame",
+      "name": "z_free",
+      "reason": "tail call (b.w), as z_malloc",
+      "target": "thumbv7em-none-eabi"
+    },
+    {
+      "bytes": 0,
+      "kind": "frame",
+      "name": "z_random_fill",
+      "reason": "tail call (b.w), as z_malloc",
+      "target": "thumbv7em-none-eabi"
+    },
+    {
+      "bytes": 8,
+      "kind": "frame",
+      "name": "z_sleep_us",
+      "reason": "push {r3, lr}, read off the prologue, as z_malloc",
+      "target": "thumbv7em-none-eabi"
+    },
+    {
+      "bytes": 8,
+      "kind": "frame",
+      "name": "z_sleep_ms",
+      "reason": "push {r3, lr}, read off the prologue, as z_malloc",
+      "target": "thumbv7em-none-eabi"
+    }
+  ],
+  "recursion_allowance": 0,
+  "schema": 2
+}
