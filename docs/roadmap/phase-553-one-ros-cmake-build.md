@@ -38,7 +38,9 @@ them on by taking `nros-platform-mps2-an385` with its defaults:
 board crate's defaults, so a cargo-rooted image keeps them and the C-rooted
 staticlib turns them off. newlib (nano) then owns libc. Decide and state one
 heap layout: newlib's `_sbrk` region and the Rust allocator's arena must not
-overlap.
+overlap. The main stack bounds that layout too. It is unbounded today and
+grows down from the top of RAM toward the `_sbrk` heap with no guard; see
+[issue 2494](../issues/2494-mps2-baremetal-stack-unbounded.md).
 
 Acceptance:
 - The RFC-0130 D4 probe's C component prints `Publishing: 'Hello World: N'`
