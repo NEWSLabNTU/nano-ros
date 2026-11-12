@@ -254,6 +254,27 @@ fn cmd_name(cmd: &cmd::Cmd) -> &'static str {
     }
 }
 
+/// Whether `cmd` was given `--offline` (issue 2444). Every command with the
+/// flag is listed: a new one is added here, or its flag reaches only the
+/// cargo commands it assembles itself.
+fn offline_flag(cmd: &cmd::Cmd) -> bool {
+    match cmd {
+        cmd::Cmd::Build(a) => a.offline,
+        cmd::Cmd::Sync(a) | cmd::Cmd::Configure(a) => a.sync.offline,
+        cmd::Cmd::Dev(cmd::dev::Args {
+            noun: cmd::dev::Noun::Bindings(a),
+            ..
+        }) => a.sync.offline,
+        cmd::Cmd::Ws(cmd::ws::Args {
+            command:
+                cmd::ws::Sub::EntityCensus(cmd::entity_census::EntityCensusArgs {
+                    command: cmd::entity_census::Sub::Take(a),
+                }),
+        }) => a.offline,
+        _ => false,
+    }
+}
+
 pub fn run(cmd: cmd::Cmd) -> Result<()> {
     // Issue 0363 B — self-check BEFORE dispatch. The equivalent shell guard in
     // `scripts/build/cargo.sh` only covers callers that go through `just`;
@@ -271,6 +292,9 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::user::note_old_spelling(&cmd, stderr.is_terminal(), &mut stderr.lock());
     }
     let cmd = cmd::lower(cmd);
+    // issue 2444 — `--offline` is `$NROS_OFFLINE` for the whole process, so it
+    // reaches every cargo a stage spawns, the metadata probe's included.
+    orchestration::rust_toolchain::expose_offline_flag(offline_flag(&cmd));
     if let Err(msg) = stale_guard::refuse_if_stale(cmd_name(&cmd)) {
         return Err(eyre::eyre!("{msg}"));
     }
@@ -349,5 +373,35 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Completions(args) => cmd::completions::run(args),
         #[cfg(feature = "release")]
         cmd::Cmd::Release(args) => cmd::release::run(args),
+    }
+}
+
+#[cfg(test)]
+mod offline_flag_tests {
+    use super::{cmd, offline_flag};
+    use clap::{FromArgMatches, Subcommand};
+
+    fn parse(argv: &[&str]) -> cmd::Cmd {
+        let app = cmd::Cmd::augment_subcommands(clap::Command::new("nros"));
+        let m = app
+            .try_get_matches_from(std::iter::once("nros").chain(argv.iter().copied()))
+            .expect("parses");
+        cmd::Cmd::from_arg_matches(&m).expect("a command")
+    }
+
+    /// issue 2444 — every command that takes `--offline` reports it, so the
+    /// flag becomes `$NROS_OFFLINE` for the whole process; without it, none.
+    #[test]
+    fn every_offline_flag_is_seen_before_dispatch() {
+        for argv in [
+            &["build", "--offline"][..],
+            &["configure", "--offline"],
+            &["dev", "bindings", "--offline"],
+            &["ws", "entity-census", "take", "--image", "x", "--offline"],
+        ] {
+            assert!(offline_flag(&parse(argv)), "{argv:?}");
+            let without: Vec<&str> = argv.iter().copied().filter(|a| *a != "--offline").collect();
+            assert!(!offline_flag(&parse(&without)), "{without:?}");
+        }
     }
 }

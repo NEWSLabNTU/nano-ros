@@ -1,7 +1,7 @@
 ---
 id: 2444
 title: "`nros build --offline` does not reach the metadata probe's cargo; only `NROS_OFFLINE=1` does"
-status: open
+status: resolved
 type: bug
 area: cli, offline, ux
 purpose: [industrial, education]
@@ -9,7 +9,7 @@ related: [phase-551]
 found: 2026-11-11
 ---
 
-**Home: [phase-551](../roadmap/phase-551-starter-image.md)** — W2's offline acceptance. Related: archived issue 2324 (the hint) and issue 2197 (`NROS_OFFLINE` → `CARGO_NET_OFFLINE`).
+**Home: [phase-551](../../roadmap/phase-551-starter-image.md)** — W2's offline acceptance. Related: archived issue 2324 (the hint) and issue 2197 (`NROS_OFFLINE` → `CARGO_NET_OFFLINE`).
 
 ## Measured
 
@@ -30,3 +30,19 @@ There are two spellings of "offline" and they reach different consumers:
 ## Next
 
 Make the flag one input to the same rule as the env: `--offline` should set what `$NROS_OFFLINE` sets, before any stage runs, so the two cannot reach different sets of cargos. Fixing only `metadata_build.rs` leaves the next cargo-spawning stage with the same gap.
+
+## Fix (2026-11-12)
+
+`nros_cli_core::run` asks the parsed command for `--offline` (`offline_flag`:
+`build`, `sync`/`configure`, `dev bindings`, `ws entity-census take`) before
+dispatch, and `rust_toolchain::expose_offline_flag` makes it `$NROS_OFFLINE`
+for the whole process, then maps that to `CARGO_NET_OFFLINE` by the same
+rule `main` uses. One input, so every cargo a stage spawns sees it, the
+metadata probe's included; the hand-threaded `--frozen`/`--offline` stay as
+they were. Test `every_offline_flag_is_seen_before_dispatch` parses each
+spelling with and without the flag (mutation-checked: dropping an arm fails it).
+
+Measured in the starter image (`0.6.0-nros8`, `--network none`, neither
+variable set): the release's `nros build --offline` still dies on
+`Could not resolve host: index.crates.io`; the fixed binary, placed beside
+it, builds the talker (rc 0).

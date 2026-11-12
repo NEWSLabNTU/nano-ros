@@ -75,9 +75,10 @@ first project (`nros new` then build) and the Tutorial's FreeRTOS C talker
 build and run under QEMU; the image's compressed size is printed and under
 the D7 budget.
 
-Found on the way: [issue 2444](../issues/2444-build-offline-flag-misses-metadata-probe.md)
-— offline, the first project builds only with `NROS_OFFLINE=1`; `nros build
---offline` still resolves crates.io in the metadata probe.
+Found on the way: [issue 2444](../issues/archived/2444-build-offline-flag-misses-metadata-probe.md)
+— offline, the first project built only with `NROS_OFFLINE=1`; `nros build
+--offline` resolved crates.io in the metadata probe. Fixed: the flag is
+`$NROS_OFFLINE` for the whole process (reaches a seat at the next release).
 [Issue 2445](../issues/archived/2445-installed-release-tree-written-by-builds.md)
 — builds wrote ~4.3 GB of probe caches into the installed release tree, and a
 read-only install failed to build; resolved after `0.6.0-nros8`, so the starter
