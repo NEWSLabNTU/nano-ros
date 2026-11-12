@@ -379,6 +379,8 @@ fn configure_project(
     {
         configure_stamp::record_leaf_selection(project, &t.key)?;
     }
+    // Issue 2478 — what C1-C6 read outside the project is recorded from here.
+    configure_stamp::begin_external_reads();
     let syncs_before = ws::sync_runs();
     ws::run_sync(sync)?;
 
@@ -719,7 +721,7 @@ pub(crate) fn set_env(var: &str, value: Option<&std::ffi::OsStr>) {
 }
 
 /// A single-package leaf: a `system.toml` beside a package manifest.
-fn is_leaf(project: &Path) -> bool {
+pub(crate) fn is_leaf(project: &Path) -> bool {
     project.join(leaf_system::SYSTEM_TOML).is_file() && leaf_system::is_package_dir(project)
 }
 
@@ -852,6 +854,7 @@ mod tests {
             resolved_dir: None,
             inputs: Vec::new(),
             censuses: Default::default(),
+            external: Default::default(),
         };
         configure_stamp::record(project, key, &stamp).unwrap();
     }

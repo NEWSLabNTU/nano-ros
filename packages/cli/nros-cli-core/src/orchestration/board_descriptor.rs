@@ -1706,7 +1706,9 @@ impl BoardCatalog {
             if !descriptor_path.is_file() {
                 continue;
             }
-            let text = std::fs::read_to_string(&descriptor_path)
+            // Issue 2478 — a descriptor is a configure input outside the
+            // project, so the read is recorded for the configure stamp.
+            let text = crate::configure_stamp::read_external(&descriptor_path)
                 .map_err(|e| BoardLoadError::Io(descriptor_path.clone(), e))?;
             let file = BoardFile::parse_resolving(&text, families)
                 .map_err(|e| BoardLoadError::Parse(descriptor_path.clone(), e))?;
@@ -1864,7 +1866,9 @@ impl BoardCatalog {
         for dir in dirs {
             let descriptor_path = dir.join("nros-board.toml");
             Self::require_announcement(&dir, &descriptor_path)?;
-            let text = std::fs::read_to_string(&descriptor_path)
+            // Issue 2478 — a descriptor is a configure input outside the
+            // project, so the read is recorded for the configure stamp.
+            let text = crate::configure_stamp::read_external(&descriptor_path)
                 .map_err(|e| BoardLoadError::Io(descriptor_path.clone(), e))?;
             let file = BoardFile::parse_resolving(&text, families)
                 .map_err(|e| BoardLoadError::Parse(descriptor_path.clone(), e))?;

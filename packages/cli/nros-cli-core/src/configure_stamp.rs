@@ -124,7 +124,10 @@ impl OutputFlags {
 /// * 3 -- phase-530 W6: `censuses`. Empty means "this configure read no
 ///   census", and also what a format-2 stamp reads, which let a re-taken
 ///   census leave the stamp current over knobs derived from the old one.
-pub(crate) const STAMP_FORMAT: u32 = 3;
+/// * 4 -- issue 2478: `external`. Empty means "this configure read no file
+///   outside the project", and also what a format-3 stamp reads, which kept a
+///   stamp current after a board crate's `[features]` moved.
+pub(crate) const STAMP_FORMAT: u32 = 4;
 
 /// What a configure recorded about itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -191,6 +194,15 @@ pub(crate) struct Stamp {
     /// stamp current over knobs derived from the old entities.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub(crate) censuses: std::collections::BTreeMap<String, String>,
+    /// Issue 2478 — every file OUTSIDE the project this configure read
+    /// through [`read_external`] (a board crate's `Cargo.toml` and
+    /// `nros-board.toml`, the `nros` crate's feature table, ...), by absolute
+    /// path, with the digest of the bytes it read. The project walk
+    /// ([`input_files`]) cannot see them, so a board crate's `[features]`
+    /// edit left the stamp current over a selection derived from the old
+    /// table, and only `--force` regenerated it.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub(crate) external: std::collections::BTreeMap<PathBuf, String>,
 }
 
 /// Whether a recorded stamp still describes the project.
@@ -255,13 +267,82 @@ pub(crate) fn record_leaf_selection(project: &Path, image: &str) -> Result<()> {
     atomic_write(&path, &format!("{image}\n"))
 }
 
+/// The image holding a LEAF's shared output, or `None` when `project` is not
+/// a leaf.
+///
+/// Issue 2480 — only a leaf's configure writes the marker
+/// (`configure::is_leaf`), so only a leaf's is read. A leaf migrated to a
+/// workspace keeps the gitignored marker its last leaf configure wrote, and
+/// nothing on the workspace road rewrites or removes it, so reading it there
+/// called every image of the project stale for good (the image key is now
+/// `<bringup>:<id>`, which never equals the bare id it holds).
 fn leaf_selection(project: &Path) -> Option<String> {
+    if !crate::cmd::configure::is_leaf(project) {
+        return None;
+    }
     let raw = std::fs::read_to_string(leaf_selection_file(project)).ok()?;
     Some(raw.trim().to_string()).filter(|s| !s.is_empty())
 }
 
 fn stamp_file(project: &Path, image: &str) -> PathBuf {
     stamp_dir(project, image).join("stamp.toml")
+}
+
+/// Issue 2478 — what this process read through [`read_external`] since the
+/// last [`begin_external_reads`]: path, and the digest of the bytes read.
+static EXTERNAL_READS: std::sync::Mutex<std::collections::BTreeMap<PathBuf, String>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+fn bytes_digest(bytes: &[u8]) -> String {
+    format!("sha256:{:x}", Sha256::digest(bytes))
+}
+
+/// Read a file a configure's ANSWER depends on, recording it as a stamp
+/// input. The ONE spelling for a configure-path read of a file that may sit
+/// outside the project (a board crate's manifest or descriptor, a crate whose
+/// `[features]` decide a derived feature): [`stamp_now`] keeps the reads
+/// outside the project in [`Stamp::external`], and [`currency`] compares
+/// them again. A read inside the project is already covered by the digest.
+pub(crate) fn read_external(path: &Path) -> std::io::Result<String> {
+    let raw = std::fs::read_to_string(path)?;
+    let key = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if let Ok(mut seen) = EXTERNAL_READS.lock() {
+        seen.insert(key, bytes_digest(raw.as_bytes()));
+    }
+    Ok(raw)
+}
+
+/// Start recording a configure's external reads afresh.
+pub(crate) fn begin_external_reads() {
+    if let Ok(mut seen) = EXTERNAL_READS.lock() {
+        seen.clear();
+    }
+}
+
+/// The recorded reads that lie outside `project`.
+fn external_reads(project: &Path) -> std::collections::BTreeMap<PathBuf, String> {
+    let root = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
+    EXTERNAL_READS
+        .lock()
+        .map(|seen| {
+            seen.iter()
+                .filter(|(p, _)| !p.starts_with(&root))
+                .map(|(p, d)| (p.clone(), d.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The first recorded external input whose bytes are not what the configure
+/// read: changed, or gone.
+fn external_moved(recorded: &std::collections::BTreeMap<PathBuf, String>) -> Option<String> {
+    recorded
+        .iter()
+        .find_map(|(path, digest)| match std::fs::read(path) {
+            Ok(bytes) if bytes_digest(&bytes) == *digest => None,
+            Ok(_) => Some(format!("`{}` changed", path.display())),
+            Err(_) => Some(format!("`{}` is gone", path.display())),
+        })
 }
 
 fn is_input(rel: &Path) -> bool {
@@ -755,6 +836,7 @@ pub(crate) fn stamp_now(project: &Path, flags: &OutputFlags) -> Result<Stamp> {
         resolved_dir: None,
         inputs: input_files(project),
         censuses: census_digests(project),
+        external: external_reads(project),
     })
 }
 
@@ -850,6 +932,11 @@ pub(crate) fn currency(
         return Ok(Currency::Stale(format!(
             "inputs changed (recorded {}, now {now})",
             stamp.digest
+        )));
+    }
+    if let Some(what) = external_moved(&stamp.external) {
+        return Ok(Currency::Stale(format!(
+            "input outside the project: {what}"
         )));
     }
     if stamp.launch_resolve.as_deref() != resolver {
@@ -1035,6 +1122,7 @@ mod tests {
             resolved_dir: None,
             inputs: Vec::new(),
             censuses: census_digests(project),
+            external: Default::default(),
         }
     }
 
@@ -1333,6 +1421,7 @@ mod tests {
             resolved_dir: None,
             inputs: Vec::new(),
             censuses: Default::default(),
+            external: Default::default(),
         };
         record(&p, "img", &stamp).unwrap();
         let at = |ament: Option<&str>, resolver: Option<&Path>| {
@@ -1366,6 +1455,8 @@ mod tests {
     fn leaf_output_held_by_another_image_is_stale() {
         let p = tmp("leaf-selection");
         std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        // A leaf: the `system.toml` sits beside a package manifest.
+        std::fs::write(p.join("Cargo.toml"), "[package]\nname = \"leaf\"\n").unwrap();
         record(&p, "linux", &stamp_for(&p)).unwrap();
         record(&p, "linux_xrce", &stamp_for(&p)).unwrap();
         record_leaf_selection(&p, "linux_xrce").unwrap();
@@ -1377,6 +1468,70 @@ mod tests {
             is_current_with(&p, "linux_xrce", &real_env(), None).unwrap(),
             Currency::Current
         );
+    }
+
+    /// Issue 2480: a project that is no longer a leaf (migrated to a
+    /// workspace: no `system.toml` beside a package manifest) keeps the
+    /// marker its last leaf configure wrote. Nothing on the workspace road
+    /// writes it, so it must not be read there.
+    #[test]
+    fn a_migrated_leafs_old_selection_marker_is_not_read() {
+        let p = tmp("migrated-leaf-selection");
+        std::fs::create_dir_all(p.join("src/demo_bringup")).unwrap();
+        std::fs::write(p.join("src/demo_bringup/system.toml"), "[system]\n").unwrap();
+        record(&p, "demo_bringup:zephyr_xrce", &stamp_for(&p)).unwrap();
+        record_leaf_selection(&p, "zephyr_zenoh").unwrap();
+        assert_eq!(
+            is_current_with(&p, "demo_bringup:zephyr_xrce", &real_env(), None).unwrap(),
+            Currency::Current
+        );
+    }
+
+    /// Issue 2478: a file outside the project that configure read (a board
+    /// crate's `Cargo.toml`) is a stamp input. Editing its `[features]`, or
+    /// deleting it, makes the stamp stale; a read inside the project is left
+    /// to the project digest.
+    #[test]
+    fn an_external_read_is_a_stamp_input() {
+        let p = tmp("external-read");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let board = tmp("external-read-board");
+        let manifest = board.join("Cargo.toml");
+        std::fs::write(&manifest, "[features]\ndefault = []\n").unwrap();
+        // The read the configure path makes, through the one spelling.
+        assert!(!crate::orchestration::facade::crate_declares_feature(
+            &board, "c-libc"
+        ));
+        let inner = p.join("system.toml");
+        read_external(&inner).unwrap();
+        let mut stamp = stamp_for(&p);
+        stamp.external = external_reads(&p);
+        let key = std::fs::canonicalize(&manifest).unwrap();
+        assert!(stamp.external.contains_key(&key), "{:?}", stamp.external);
+        let inner_key = std::fs::canonicalize(&inner).unwrap();
+        assert!(
+            !stamp.external.contains_key(&inner_key),
+            "{:?}",
+            stamp.external
+        );
+        // Only this test's entries matter; another test's reads may be in the
+        // process-wide record too.
+        stamp.external.retain(|k, _| *k == key);
+        record(&p, "img", &stamp).unwrap();
+        assert_eq!(
+            is_current_with(&p, "img", &real_env(), None).unwrap(),
+            Currency::Current
+        );
+        std::fs::write(&manifest, "[features]\ndefault = []\nc-libc = []\n").unwrap();
+        assert!(matches!(
+            is_current_with(&p, "img", &real_env(), None).unwrap(),
+            Currency::Stale(why) if why.contains("outside the project") && why.contains("changed")
+        ));
+        std::fs::remove_file(&manifest).unwrap();
+        assert!(matches!(
+            is_current_with(&p, "img", &real_env(), None).unwrap(),
+            Currency::Stale(why) if why.contains("is gone")
+        ));
     }
 
     #[test]

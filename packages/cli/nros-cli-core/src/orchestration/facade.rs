@@ -1467,7 +1467,7 @@ fn derive(
 /// which carries two lang items. A blanket `default-features = false` would
 /// silently drop `ethernet` and the panic handler along with the backend.
 fn crate_default_features(dir: &Path) -> Vec<String> {
-    let Ok(raw) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+    let Ok(raw) = crate::configure_stamp::read_external(&dir.join("Cargo.toml")) else {
         return Vec::new();
     };
     toml::from_str::<toml::Value>(&raw)
@@ -1526,7 +1526,7 @@ fn apply_image_link(
 /// and W5.b2 wanted a third — three copies of a four-line predicate is how a
 /// rule ends up true in two places and not the third.
 pub(crate) fn crate_declares_feature(dir: &Path, feature: &str) -> bool {
-    let Ok(raw) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+    let Ok(raw) = crate::configure_stamp::read_external(&dir.join("Cargo.toml")) else {
         // Unreadable manifest: emit nothing rather than emit something cargo
         // will reject. A missing feature is a build the user can still fix; a
         // bogus one fails resolution outright.
@@ -1552,17 +1552,18 @@ pub(crate) fn crate_declares_feature(dir: &Path, feature: &str) -> bool {
 /// that board. A name that is also one of the selection's dependency keys is
 /// skipped (cargo would read it as that dependency).
 fn board_feature_passthrough(board_crate: &str, board_dir: &Path, dep_keys: &[&str]) -> String {
-    let features: Vec<String> = std::fs::read_to_string(board_dir.join("Cargo.toml"))
-        .ok()
-        .and_then(|raw| toml::from_str::<toml::Value>(&raw).ok())
-        .and_then(|v| v.get("features").and_then(|f| f.as_table()).cloned())
-        .map(|t| {
-            t.keys()
-                .filter(|f| f.as_str() != "default" && !dep_keys.contains(&f.as_str()))
-                .cloned()
-                .collect()
-        })
-        .unwrap_or_default();
+    let features: Vec<String> =
+        crate::configure_stamp::read_external(&board_dir.join("Cargo.toml"))
+            .ok()
+            .and_then(|raw| toml::from_str::<toml::Value>(&raw).ok())
+            .and_then(|v| v.get("features").and_then(|f| f.as_table()).cloned())
+            .map(|t| {
+                t.keys()
+                    .filter(|f| f.as_str() != "default" && !dep_keys.contains(&f.as_str()))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
     if features.is_empty() {
         return String::new();
     }

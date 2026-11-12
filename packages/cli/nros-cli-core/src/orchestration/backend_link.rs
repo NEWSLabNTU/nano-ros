@@ -147,7 +147,7 @@ pub fn board_links(dir: &Path, board_features: &[String], r: &ResolvedRmwIn) -> 
     if krate.is_empty() {
         return false;
     }
-    let Some(table) = std::fs::read_to_string(dir.join("Cargo.toml"))
+    let Some(table) = crate::configure_stamp::read_external(&dir.join("Cargo.toml"))
         .ok()
         .and_then(|raw| toml::from_str::<toml::Value>(&raw).ok())
         .and_then(|v| v.get("features").and_then(|f| f.as_table()).cloned())

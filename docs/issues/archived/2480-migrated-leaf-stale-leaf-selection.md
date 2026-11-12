@@ -1,13 +1,19 @@
 ---
 id: 2480
 title: "A leaf migrated to a workspace keeps its old `.leaf-selection`, so every configure of its images reads stale and the Zephyr promise check refuses `c/talker` xrce on every rebuild"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [cli, zephyr, cmake, build]
 found: 2026-11-13
-related: [2405]
+related: [2405, 2478]
+resolved: 2026-11-13
+resolved_in: "the configure stamp reads `.leaf-selection` only for a leaf (`configure::is_leaf`)"
 ---
+
+> **Resolved (2026-11-13).** `configure_stamp::leaf_selection` reads the
+> marker only when the project is a leaf, by the predicate `configure.rs`
+> writes it under. See "Fix".
 
 ## What
 
@@ -69,13 +75,21 @@ that configured a leaf before its migration does. This worktree has 57
 `c/talker` xrce failed in this run. The other images either matched their
 fragment or take a road with no promise check.
 
-## Fix direction (not done here)
+## Fix
 
-Treat the marker as relevant only where it can be written: ignore it, or
-retire it, when the project is not a leaf (the same predicate `configure.rs`
-uses before writing it). Compare it with the bare image id too, so a qualified
-key and the marker spell the same thing. A gitignored residue should not wedge
-a build that a fresh clone passes (issue 1366's shape).
+`configure_stamp::leaf_selection` returns `None` unless
+`configure::is_leaf(project)` holds (a `system.toml` beside a package
+manifest), which is the same predicate `configure.rs` checks before it writes
+the marker. A migrated project's leftover marker is no longer read, so a
+gitignored residue cannot hold a workspace image stale. Comparing the marker
+with the bare image id was not needed: on a leaf the stamp key is the bare id.
+
+Regression test: `configure_stamp::tests::a_migrated_leafs_old_selection_marker_is_not_read`.
+With the guard removed it fails.
+
+The same fix covered issue 2478, a second stamp input written by no configure
+on the road that reads it. The sweep that classified every input
+`configure_stamp::currency` reads is in issue 2478.
 
 ## Evidence
 

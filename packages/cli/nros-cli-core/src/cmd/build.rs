@@ -5704,7 +5704,9 @@ fn bridge_entry_deps(
         .map(|k| nros_root.join("packages/boards").join(k));
     let board_manifest = board_dir
         .as_ref()
-        .and_then(|d| std::fs::read_to_string(d.join("Cargo.toml")).ok())
+        // Issue 2478 — the board crate's feature table is a configure input
+        // outside the project, so the read is recorded for the stamp.
+        .and_then(|d| crate::configure_stamp::read_external(&d.join("Cargo.toml")).ok())
         .and_then(|t| t.parse::<toml::Value>().ok());
 
     let mut rmws: Vec<String> = doc
