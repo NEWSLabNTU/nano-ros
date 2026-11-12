@@ -340,7 +340,14 @@ sched tasks share one session, each on its own thread parked in a 1 s spin, and
 200 arrivals land for the lowest. Without attribution (the slot NULL, the
 arrival a session wake, uORB's shape) one arrival wakes 2.99–3.00 of the 3
 high sched tasks, at 5.0–7.5 µs of each woken sched task's CPU (three runs; the bound the
-test states is 100 µs). With attribution (the slot filled, the arrival
+test states is 100 µs). The count is the fan-out's, not the host
+scheduler's (issue 2274): each arrival waits until every high sched task has
+ended one park before the next is fired, so a loaded host cannot merge two
+wakes into one ended park. On 2026-11-12, 400 runs at 48 in parallel beside
+48 busy loops read exactly 3.00 every time, at 2.8–5.1 µs per wake; with the
+earlier fixed 2 ms pacing, the same load read 2.96–2.99 in 26 of 400. The
+single-thread probe judges "woken" as returning inside half of a 1 s budget,
+not a quarter of 200 ms, because an unwoken sched task parks the whole budget. With attribution (the slot filled, the arrival
 naming its entity) it wakes none of them: each parks its whole budget, and
 the low sched task is woken by its own arrival.
 
