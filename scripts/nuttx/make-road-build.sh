@@ -162,4 +162,36 @@ if [ -n "$missing" ]; then
     echo "make-road-build [$id]: $elf links, but lacks:$missing — the archive did not reach the image" >&2
     exit 1
 fi
-echo "make-road-build [$id]: OK — $elf ($(stat -c %s "$elf") bytes, $nros_count nros_* functions)"
+
+# --- 4. an incremental build reaches the archive (issue 2495) ---------------
+# A second plain `make` after a Rust input changed must rebuild the archive:
+# NuttX runs an app's `context` once per stamp, so steps run only there gave
+# a first build and never another. The input touched is the generated image
+# crate's own source, under this run's build dir, so no checkout file moves.
+archive="$(find "$work/apps/external/.nros-build" \( -path '*/release/libnros_c.a' -o -path '*/release/libnros_cpp.a' \) | head -n 1)" || archive=""
+image_src="$(find "$work/apps/external/.nros-build" -path '*/image/nros-c*/src/lib.rs' | head -n 1)" || image_src=""
+if [ -z "$archive" ] || [ -z "$image_src" ]; then
+    echo "make-road-build [$id]: no archive or image crate source under $work/apps/external/.nros-build" >&2
+    exit 1
+fi
+before="$(stat -c %y "$archive")"
+sleep 1
+touch "$image_src"
+rc=0
+(
+    cd "$work/nuttx"
+    python3 "$ROOT/scripts/build/make-stall-watchdog.py" \
+        --label "nuttx make road ($id, incremental)" --diag-dir "$work" -- \
+        make -j"$(nproc)"
+) >"$work/make-incremental.log" 2>&1 || rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "make-road-build [$id]: the incremental make FAILED (exit $rc); see $work/make-incremental.log" >&2
+    tail -n 15 "$work/make-incremental.log" >&2
+    exit 1
+fi
+after="$(stat -c %y "$archive")"
+if [ "$after" = "$before" ]; then
+    echo "make-road-build [$id]: an edited Rust input did not rebuild $archive on the next make" >&2
+    exit 1
+fi
+echo "make-road-build [$id]: OK — $elf ($(stat -c %s "$elf") bytes, $nros_count nros_* functions); an edit rebuilt the archive"

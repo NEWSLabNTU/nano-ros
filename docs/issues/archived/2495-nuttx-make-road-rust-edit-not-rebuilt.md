@@ -1,7 +1,7 @@
 ---
 id: 2495
 title: "The NuttX make road rebuilds nano-ros only on the first build: an edited Rust source or project setting reaches the archive only after a clean"
-status: open
+status: resolved
 type: bug
 area: [nuttx, build]
 severity: medium
@@ -9,7 +9,7 @@ found: 2026-11-13
 related: [issue-2236, issue-2426, phase-550]
 ---
 
-**Home: [phase-550](../roadmap/phase-550-nuttx-native-build-infrastructure.md) W6b**
+**Home: [phase-550](../../roadmap/phase-550-nuttx-native-build-infrastructure.md) W6b**
 
 ## Symptom
 
@@ -45,7 +45,7 @@ Every lane built this road from a clean tree. `just nuttx build-make-road`
 (phase-550 W1) clones fresh trees on every run, so it only ever exercises a
 first build.
 
-## Fix (direction agreed with the manager session, 2026-11-13)
+## Fix direction (agreed with the manager session, 2026-11-13)
 
 - Run `nros configure` (a digest check when nothing moved) and cargo on
   EVERY build, from a phony prerequisite of the app's own archive or library
@@ -56,3 +56,27 @@ first build.
 - Measure what the no-op rebuild adds to each `make`.
 - Add an incremental case to the lane: build, edit, build, and assert that
   the archive changed.
+
+## Fix (2026-11-13, phase-550 W6b)
+
+The steps that make the archive (the object dirs, the image crate, `nros
+configure` when a project is named, then cargo) are one `define` in
+`integrations/nuttx/Makefile`, run from `context::` (the first build) and
+from `depend::` (every build). NuttX runs `make -C $(APPDIR) depend` on every
+build through `pass1dep`, a prerequisite of `libapps`, and it finishes before
+any app compiles. Cargo decides what is stale. Nothing deletes `.context`,
+and nothing lists input files.
+
+Measured in a staged `qemu-armv7a` tree:
+
+- touching a nano-ros Rust source rebuilt `libnros_c.a` on the next plain
+  `make` (7.5 s), where before the fix nothing ran;
+- a no-op `make` takes 1.9 s with the fix against 1.42 s without it, so
+  about 0.5 s more per `make` (the image-crate check, the settings file and a
+  no-op cargo).
+
+`just nuttx build-make-road` now checks this on every run. After the first
+build it touches the generated image crate's source (a build-dir file, so no
+checkout mtime moves), runs `make` again, and requires `libnros_c.a` to
+change. With the `depend::` hook removed, that check fails, naming the
+archive.
