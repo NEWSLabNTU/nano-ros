@@ -561,11 +561,33 @@ def load_ci(g: Graph, f: Path) -> None:
         g.functions.add(fn)
 
 
+def frame_files(root: Path) -> list[Path]:
+    """Every `.su` / `.ci` under `root`, THROUGH symlinked directories.
+
+    A build dir's `cargo` is a symlink into the shared cargo root whenever
+    cargo directories are shared (the fixture builds set
+    NROS_SHARED_CARGO_ROOT), and every C file a crate's build script compiles
+    -- zenoh-pico, the zpico shim -- writes its `.su` there. `Path.rglob` does
+    not enter a symlinked directory, so those frames were never read and the
+    walk refused as if the functions had none. A directory reached twice (a
+    link back up the tree) is walked once."""
+    out: list[Path] = []
+    seen: set[str] = set()
+    for d, dirs, names in os.walk(root, followlinks=True):  # walk-ok: untracked GCC build output in a build dir the caller names
+        real = os.path.realpath(d)
+        if real in seen:
+            dirs[:] = []
+            continue
+        seen.add(real)
+        out += [Path(d, n) for n in names if n.endswith((".su", ".ci"))]
+    return sorted(out, key=lambda f: (f.suffix != ".su", str(f)))
+
+
 def load_su(g: Graph, root: Path) -> None:
     if root.is_file():
         files = [root]
     else:
-        files = sorted(root.rglob("*.su")) + sorted(root.rglob("*.ci"))  # walk-ok: .su/.ci files are untracked GCC build output in a build dir the caller names
+        files = frame_files(root)
     for f in files:
         if f.suffix == ".ci":
             load_ci(g, f)
@@ -1439,6 +1461,27 @@ def self_test() -> int:
                   refused(ns("m@b", ["OPEN=4096"]), doc_, ["x"]) == 1)
             check("refused walk: no CHECK still fails",
                   refused(ns("u@b", []), doc_, ["x"]) == 1)
+
+    # Frames behind a symlinked directory are read: a build dir's `cargo` is
+    # a symlink into the shared cargo root, where every build script's C
+    # writes its `.su`. A link back up the tree is walked once.
+    import tempfile as _tf2
+    with _tf2.TemporaryDirectory() as td:
+        shared = Path(td, "shared", "out")
+        shared.mkdir(parents=True)
+        (shared / "x-zpico.su").write_text("zpico.c:10:9:zpico_graph_entry_at\t48\tstatic\n")
+        build = Path(td, "build")
+        build.mkdir()
+        (build / "app.su").write_text("app.c:1:5:app_main\t16\tstatic\n")
+        (build / "cargo").symlink_to(Path(td, "shared"), target_is_directory=True)
+        (build / "loop").symlink_to(build, target_is_directory=True)
+        g5 = Graph()
+        load_su(g5, build)
+        check("su: a frame behind a symlinked dir is read",
+              g5.frames.get("zpico_graph_entry_at") == 48)
+        check("su: the build dir's own frame is read", g5.frames.get("app_main") == 16)
+        check("su: a link back up the tree is walked once",
+              len([f for f in frame_files(build) if f.name == "app.su"]) == 1)
 
     for f in fails:
         print(f"FAIL: {f}", file=sys.stderr)

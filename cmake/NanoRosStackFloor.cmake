@@ -216,6 +216,41 @@ function(_nros_stack_floor_tools _what _ok)
     set(${_ok} TRUE PARENT_SCOPE)
 endfunction()
 
+# `-fstack-usage` on every target an image links, applied once the whole
+# configure has run. The images travel by GLOBAL property and the deferred
+# call takes no arguments: `cmake_language(DEFER … CALL fn "${_x}")` expands
+# its arguments when it runs, in a scope where a function-local `_x` is gone.
+function(_nros_stack_floor_schedule_closure _exe)
+    set_property(GLOBAL APPEND PROPERTY NROS_STACK_FLOOR_IMAGES "${_exe}")
+    get_property(_scheduled GLOBAL PROPERTY NROS_STACK_FLOOR_CLOSURE_SCHEDULED)
+    if(_scheduled)
+        return()
+    endif()
+    set_property(GLOBAL PROPERTY NROS_STACK_FLOOR_CLOSURE_SCHEDULED TRUE)
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _nros_stack_floor_apply_closures)
+endfunction()
+
+function(_nros_stack_floor_apply_closures)
+    get_property(_images GLOBAL PROPERTY NROS_STACK_FLOOR_IMAGES)
+    set(_done "")
+    foreach(_exe IN LISTS _images)
+        _nros_stack_floor_closure(${_exe} _closure)
+        foreach(_t IN LISTS _closure)
+            if("${_t}" IN_LIST _done)
+                continue()
+            endif()
+            list(APPEND _done "${_t}")
+            get_target_property(_imp "${_t}" IMPORTED)
+            get_target_property(_type "${_t}" TYPE)
+            if(NOT _imp AND _type MATCHES "^(EXECUTABLE|STATIC_LIBRARY|OBJECT_LIBRARY|SHARED_LIBRARY|MODULE_LIBRARY)$")
+                target_compile_options("${_t}" PRIVATE
+                    "$<$<COMPILE_LANGUAGE:C,CXX>:-fstack-usage>"
+                    "$<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:GNU>>:-fcallgraph-info=su>")
+            endif()
+        endforeach()
+    endforeach()
+endfunction()
+
 # The walker's command line, shared by every road that CHECKs.
 #
 #   _nros_stack_floor_command(<out> KEY <image key> ROOT <fn> STACK <bytes>
@@ -275,17 +310,13 @@ function(nros_stack_floor_check _exe)
         return()
     endif()
 
-    # C frames: every C/C++ TU this image links writes its `.su`.
-    _nros_stack_floor_closure(${_exe} _closure)
-    foreach(_t IN LISTS _closure)
-        get_target_property(_imp "${_t}" IMPORTED)
-        get_target_property(_type "${_t}" TYPE)
-        if(NOT _imp AND _type MATCHES "^(EXECUTABLE|STATIC_LIBRARY|OBJECT_LIBRARY)$")
-            target_compile_options("${_t}" PRIVATE
-                "$<$<COMPILE_LANGUAGE:C,CXX>:-fstack-usage>"
-                "$<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:GNU>>:-fcallgraph-info=su>")
-        endif()
-    endforeach()
+    # C frames: every C/C++ TU this image links writes its `.su`. The closure
+    # is walked at the END of the configure, not here: this runs when the
+    # image is created, and a project links its own libraries after that
+    # (`add_executable(app …)` then `target_link_libraries(app my_component)`),
+    # so a closure taken now missed them -- their TUs wrote no `.su` and the
+    # walk refused over frameless functions of the image's own code.
+    _nros_stack_floor_schedule_closure(${_exe})
 
     # The link's own record of what it loaded, whatever the generator.
     set(_dir "${CMAKE_BINARY_DIR}/nros/stack-floor")
