@@ -705,6 +705,40 @@ def parse_indirect(s: str | None) -> tuple[str, int | None]:
 ROLES = ("OPEN", "SPIN")
 ISSUE_ID = re.compile(r"^\d{4}$")
 POLICY_KINDS = ("cut", "external", "frame")
+# The image SHAPE an allowance was measured on: the derived entity counts the
+# build already carries (issue 2400, ruled 2026-11-12). An image whose counts
+# differ from its row's is not the image that was measured, and is warned.
+SHAPE_KNOBS = ("NROS_EXECUTOR_MAX_NODES", "NROS_MAX_PUBLISHERS", "NROS_MAX_SUBSCRIBERS",
+               "NROS_MAX_QUERYABLES", "NROS_EXECUTOR_MAX_CBS", "NROS_EXECUTOR_ACTION_CLIENTS")
+# `<template>/<lang>/<rmw>@<board>`: the key `nros new` stamps (the CLI's
+# `stack_floor_template_key`, the one spelling). Any other key is a
+# `<bringup>@<board>`.
+TEMPLATE_KEY = re.compile(r"^(?P<template>[a-z][a-z-]*)/(?P<lang>rust|c|cpp)/"
+                          r"(?P<rmw>[a-z][a-z0-9_-]*)@(?P<board>[a-z0-9][a-z0-9_.-]*)$")
+NODE_ROLE_RS = "packages/cli/cargo-nano-ros/src/node_role.rs"
+
+
+def template_names(root: Path) -> set[str]:
+    """The `--template` values `nros new` takes, read from `Role::name`."""
+    src = (root / NODE_ROLE_RS).read_text()
+    body = src.split("pub fn name(self)", 1)[1].split("\n    }\n", 1)[0]
+    return set(re.findall(r'Role::\w+ => "([a-z-]+)"', body))
+
+
+def template_key_problems(where: str, image: str, root: Path) -> list[str]:
+    """A template key must still name a template `nros new` has and a board
+    that exists, or no image can be stamped with it again (ruled 2026-11-12)."""
+    m = TEMPLATE_KEY.match(image)
+    if not m:
+        return []
+    problems = []
+    if m["template"] not in template_names(root):
+        problems.append(f"{where}: template `{m['template']}` is not a `nros new --template` "
+                        f"value any more ({NODE_ROLE_RS}); rename the row with the template")
+    if not (root / "packages" / "boards" / f"nros-board-{m['board']}" / "nros-board.toml").is_file():
+        problems.append(f"{where}: board `{m['board']}` has no packages/boards/"
+                        f"nros-board-{m['board']}/nros-board.toml any more")
+    return problems
 
 
 def floor_formula(static_bytes: int, allowance: int, margin_pct: int) -> int:
@@ -733,7 +767,7 @@ def find_allowance(doc: dict, image: str | None, target: str, role: str) -> dict
     return hits[0] if hits else None
 
 
-def validate_table(doc: dict, issue_ids: set[str]) -> list[str]:
+def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> list[str]:
     """Offline checks: needs no build output, so it can run on the fast line."""
     problems: list[str] = []
     if doc.get("schema") != 2:
@@ -779,7 +813,38 @@ def validate_table(doc: dict, issue_ids: set[str]) -> list[str]:
             if a.get("bytes") != m["peak"] - m["static"]:
                 problems.append(f"{where}: bytes = {a.get('bytes')}, but measured.peak - "
                                 f"measured.static = {m['peak'] - m['static']}")
+        shape = a.get("shape")
+        if not isinstance(shape, dict) or not shape:
+            problems.append(f"{where}: no [allowance.shape] -- the entity counts it was "
+                            f"measured on ({', '.join(SHAPE_KNOBS)})")
+        else:
+            for k, v in shape.items():
+                if k not in SHAPE_KNOBS or not isinstance(v, int):
+                    problems.append(f"{where}: shape.{k} -- a shape row is one of "
+                                    f"{SHAPE_KNOBS}, an integer")
+        if root is not None and isinstance(a.get("image"), str):
+            problems += template_key_problems(where, a["image"], root)
     return problems
+
+
+def shape_differences(row: dict, stated: dict[str, int]) -> list[str]:
+    """`<knob> measured N, this image M` for each count the build stated that
+    differs from the row's."""
+    out = []
+    for k, v in (row.get("shape") or {}).items():
+        if k in stated and stated[k] != v:
+            out.append(f"{k} measured {v}, this image {stated[k]}")
+    return out
+
+
+def parse_shape(specs: list[str]) -> dict[str, int]:
+    out = {}
+    for spec in specs:
+        k, _, v = spec.partition("=")
+        if not v.lstrip("-").isdigit():
+            raise SystemExit(f"--shape `{spec}`: write KNOB=<count>")
+        out[k] = int(v)
+    return out
 
 
 def apply_policy(args: argparse.Namespace, doc: dict) -> None:
@@ -929,6 +994,19 @@ def run(args: argparse.Namespace) -> int:
                 a = find_allowance(doc, args.image, args.target, role.upper())
                 if a is not None:
                     allowance, measured_by = int(a["bytes"]), a
+                    shape = parse_shape(args.shape or [])
+                    diff = shape_differences(a, shape)
+                    if diff:
+                        print(f"nros-stack-floor: WARNING: image `{args.image}` is NOT the shape "
+                              f"its {role.upper()} allowance was measured on ("
+                              + "; ".join(diff) + "). The allowance still applies, but it "
+                              "describes another image: re-measure this one, or drop its "
+                              "`stack_floor_image` so it is keyed by its own name.",
+                              file=sys.stderr)
+                    elif not shape:
+                        print(f"nros-stack-floor: note: the build stated no entity counts, so "
+                              f"`{args.image}`'s shape was not compared with its row",
+                              file=sys.stderr)
                 else:
                     print(f"nros-stack-floor: WARNING: image `{args.image}` ({args.target}, "
                           f"{role.upper()}) is UNMEASURED. Its {role.upper()} floor is the static "
@@ -1162,6 +1240,8 @@ def self_test() -> int:
                            "bytes": -12616, "issue": "2402", "reason": "over-charged",
                            "measured": {"peak": 11696, "static": 24312, "method": "twin",
                                         "issue": "2400"}}]}
+    for row in good["allowance"]:
+        row["shape"] = {"NROS_MAX_PUBLISHERS": 1, "NROS_EXECUTOR_MAX_NODES": 1}
     check("a valid table passes (a negative allowance included)",
           validate_table(good, {"2360", "2402", "2400"}) == [])
     bad = json.loads(json.dumps(good))
@@ -1182,6 +1262,41 @@ def self_test() -> int:
     bad = json.loads(json.dumps(good))
     del bad["allowance"][0]["image"]
     check("an allowance needs its image", any("needs `image`" in p for p in validate_table(bad, set())))
+    bad = json.loads(json.dumps(good))
+    del bad["allowance"][0]["shape"]
+    check("an allowance needs its shape",
+          any("no [allowance.shape]" in p for p in validate_table(bad, set())))
+    bad = json.loads(json.dumps(good))
+    bad["allowance"][0]["shape"]["NROS_MAX_WIDGETS"] = 1
+    check("a shape row is a known count",
+          any("shape.NROS_MAX_WIDGETS" in p for p in validate_table(bad, set())))
+    row = good["allowance"][0]
+    check("shape: equal counts are no difference",
+          shape_differences(row, {"NROS_MAX_PUBLISHERS": 1, "NROS_EXECUTOR_MAX_NODES": 1}) == [])
+    check("shape: a count that differs is named",
+          shape_differences(row, {"NROS_MAX_PUBLISHERS": 2})
+          == ["NROS_MAX_PUBLISHERS measured 1, this image 2"])
+    check("shape: a count the build did not state is not compared",
+          shape_differences(row, {}) == [])
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        r = Path(td)
+        (r / NODE_ROLE_RS).parent.mkdir(parents=True)
+        (r / NODE_ROLE_RS).write_text(
+            '    pub fn name(self) -> &\'static str {\n        match self {\n'
+            '            Role::Talker => "talker",\n            Role::ActionServer => '
+            '"action-server",\n        }\n    }\n')
+        (r / "packages/boards/nros-board-b1").mkdir(parents=True)
+        (r / "packages/boards/nros-board-b1/nros-board.toml").write_text("")
+        check("template key: a live template and board pass",
+              template_key_problems("w", "action-server/rust/zenoh@b1", r) == [])
+        check("template key: a renamed template fails loudly",
+              any("template `pub-talker`" in p
+                  for p in template_key_problems("w", "pub-talker/rust/zenoh@b1", r)))
+        check("template key: a gone board fails loudly",
+              any("board `b2`" in p for p in template_key_problems("w", "talker/c/zenoh@b2", r)))
+        check("template key: a bringup key is not a template key",
+              template_key_problems("w", "nt_node_bringup@b2", r) == [])
     check("allowance lookup is by (image, target, role)",
           find_allowance(good, "img", "t", "OPEN") is not None
           and find_allowance(good, "img", "t", "SPIN") is None
@@ -1306,6 +1421,9 @@ def main() -> int:
     ap.add_argument("--margin", type=int, default=None,
                     help="percent added to the path (default: the table's margin_pct, else 0)")
     ap.add_argument("--llvm-bin", help="directory holding llvm-readobj / llvm-objdump")
+    ap.add_argument("--shape", action="append",
+                    help="KNOB=<count>: an entity count the image was built with; a measured "
+                    "image whose counts differ from its row's [allowance.shape] is warned")
     ap.add_argument("--cxxfilt", help="an Itanium demangler (default: llvm-cxxfilt, "
                     "then c++filt)")
     ap.add_argument("--json", action="store_true")
@@ -1332,7 +1450,7 @@ def main() -> int:
             root = root.parent
         ids = {p.name[:4] for p in (root / "docs" / "issues").glob("[0-9][0-9][0-9][0-9]-*.md")}
         ids |= {p.name[:4] for p in (root / "docs" / "issues" / "archived").glob("[0-9][0-9][0-9][0-9]-*.md")}
-        problems = validate_table(load_toml(Path(args.validate_table)), ids)
+        problems = validate_table(load_toml(Path(args.validate_table)), ids, root)
         for p in problems:
             print(f"  - {p}", file=sys.stderr)
         print(f"{args.validate_table}: {len(problems)} problem(s)")

@@ -22,9 +22,9 @@
 #     compiles, which is a pre-link edge this POST_BUILD check deliberately
 #     does not add.
 #
-# The image key is PROVISIONAL: `<bringup or entry name>@<board>` (issue 2400,
-# "the image key"). It is computed in ONE place, `_nros_stack_floor_image_key`,
-# so swapping it for a key the user states is a one-function change.
+# The image key is the image's stated `stack_floor_image` (the `nros new`
+# template it came from), else `<bringup or entry name>@<board>` (issue 2400,
+# key (c)). It is decided in ONE place, `_nros_stack_floor_image_key`.
 #
 # `NROS_STACK_FLOOR=OFF` skips the whole thing (no save-temps, no .su, no walk).
 
@@ -51,9 +51,19 @@ function(_nros_stack_floor_enabled _out)
     endif()
 endfunction()
 
-# The PROVISIONAL image key (issue 2400): the bringup's name when the entry has
-# one, else the entry's, then `@<board>`. The one place it is spelled.
+# The image key (issue 2400, key (c), ruled 2026-11-12): the image's own
+# `[image.<id>] stack_floor_image` when it states one -- `nros new` writes the
+# template's `<template>/<lang>/<rmw>@<board>` there, so a renamed project keeps
+# its row -- else the bringup's name (the entry's, with none) `@<board>`. The
+# one place it is decided; the template spelling's one place is the CLI's
+# `stack_floor_template_key`.
+#
+#   _nros_stack_floor_image_key(<out> <entry> <bringup dir> <board> [<stated>])
 function(_nros_stack_floor_image_key _out _entry _bringup_dir _board)
+    if(ARGC GREATER 4 AND NOT "${ARGV4}" STREQUAL "")
+        set(${_out} "${ARGV4}" PARENT_SCOPE)
+        return()
+    endif()
     if(_bringup_dir)
         get_filename_component(_name "${_bringup_dir}" NAME)
     else()
@@ -207,9 +217,9 @@ endfunction()
 #
 #   _nros_stack_floor_command(<out> KEY <image key> ROOT <fn> STACK <bytes>
 #       KNOB <text> TARGET <triple> RMW <rmw> MAP <link map> DIR <work dir>
-#       LINK_DIRS <dir>... BITCODE <glob>...)
+#       LINK_DIRS <dir>... BITCODE <glob>... [SHAPE <KNOB=count>...])
 function(_nros_stack_floor_command _out)
-    cmake_parse_arguments(_C "" "KEY;ROOT;STACK;KNOB;TARGET;RMW;MAP;DIR" "LINK_DIRS;BITCODE" ${ARGN})
+    cmake_parse_arguments(_C "" "KEY;ROOT;STACK;KNOB;TARGET;RMW;MAP;DIR" "LINK_DIRS;BITCODE;SHAPE" ${ARGN})
     # The rustup llvm-tools ship no llvm-cxxfilt, so name the cross
     # toolchain's own demangler (`arm-none-eabi-g++` -> `arm-none-eabi-c++filt`)
     # when it sits beside the compiler; the walker falls back to the host's.
@@ -232,6 +242,9 @@ function(_nros_stack_floor_command _out)
     list(APPEND _cmd --su "${CMAKE_BINARY_DIR}")
     foreach(_b IN LISTS _C_BITCODE)
         list(APPEND _cmd --bitcode-dir "${_b}")
+    endforeach()
+    foreach(_s IN LISTS _C_SHAPE)
+        list(APPEND _cmd --shape "${_s}")
     endforeach()
     list(APPEND _cmd --sysroot --llc-cache "${_C_DIR}/llc" ${_cxxfilt_arg})
     set(${_out} "${_cmd}" PARENT_SCOPE)
@@ -381,10 +394,26 @@ function(nros_stack_floor_zephyr_check)
 
     set(_dir "${CMAKE_BINARY_DIR}/nros/stack-floor")
     file(MAKE_DIRECTORY "${_dir}")
-    set(_entry "zephyr")
-    _nros_stack_floor_image_key(_key "${_entry}" "${_Z_BRINGUP}" "${_Z_BOARD}")
+    # The stated key rides the image facts `nros dev image facts` wrote for
+    # this configure (NanoRosImageAgreement.cmake); a hand-written application
+    # outside a workspace has none and keys by its bringup.
+    set(NROS_IMAGE_STACK_FLOOR_IMAGE "")
+    get_property(_facts GLOBAL PROPERTY NROS_IMAGE_FACTS_FILE)
+    if(_facts AND EXISTS "${_facts}")
+        include("${_facts}")
+    endif()
+    _nros_stack_floor_image_key(_key zephyr "${_Z_BRINGUP}" "${_Z_BOARD}"
+        "${NROS_IMAGE_STACK_FLOOR_IMAGE}")
+    # The image's derived entity counts, which the walker compares with the
+    # shape its row was measured on (a mismatch is a loud warning).
+    set(_shape "")
+    foreach(_fact IN LISTS NROS_BOARD_FACTS_ENV)
+        if(_fact MATCHES "^(NROS_EXECUTOR_MAX_NODES|NROS_MAX_PUBLISHERS|NROS_MAX_SUBSCRIBERS|NROS_MAX_QUERYABLES|NROS_EXECUTOR_MAX_CBS|NROS_EXECUTOR_ACTION_CLIENTS)=(-?[0-9]+)$")
+            list(APPEND _shape "${CMAKE_MATCH_1}=${CMAKE_MATCH_2}")
+        endif()
+    endforeach()
     set(_t "${NROS_RUST_TARGET}")
-    _nros_stack_floor_command(_cmd KEY "${_key}" ROOT "${_Z_ROOT}"
+    _nros_stack_floor_command(_cmd KEY "${_key}" ROOT "${_Z_ROOT}" SHAPE ${_shape}
         STACK "${CONFIG_MAIN_STACK_SIZE}" KNOB "CONFIG_MAIN_STACK_SIZE={bytes}"
         TARGET "${_t}" RMW "${_Z_RMW}"
         MAP "${CMAKE_BINARY_DIR}/zephyr/zephyr.map" DIR "${_dir}"

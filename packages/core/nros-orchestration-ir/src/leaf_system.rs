@@ -361,6 +361,10 @@ pub struct LeafSystem {
     /// ahead of [`Self::ros_args`]; the build bakes the file's text into the
     /// image, which is where a board reads it from.
     pub params_files: Vec<String>,
+    /// Issue 2400 — `[image.<id>] stack_floor_image`, the key the image's
+    /// measured stack allowance is filed under (`<template>/<lang>/<rmw>@<board>`,
+    /// written by `nros new`). `None`: the build keys it `<bringup>@<board>`.
+    pub stack_floor_image: Option<String>,
 }
 
 impl LeafSystem {
@@ -1094,6 +1098,7 @@ fn image_system(
         os_config,
         ros_args,
         params_files,
+        stack_floor_image: str_key(image, "stack_floor_image"),
     })
 }
 

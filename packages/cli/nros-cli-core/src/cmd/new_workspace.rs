@@ -189,7 +189,10 @@ fn bringup_system_toml(p: &WorkspaceProject<'_>) -> String {
          # this package when you need a launch argument, a remap or a parameter.\n\
          \n[system]\nname = \"{name}\"\nrmw = \"{rmw}\"\nros_edition = \"{ed}\"\ndomain_id = 0\n\
          \n[[component]]\npkg = \"{pkg}\"\nclass = \"{class}\"\nname = \"{ros}\"\n\
-         \n[image.{id}]\nboard = \"{board}\"\n{locator}",
+         \n[image.{id}]\nboard = \"{board}\"\n{locator}\
+         # The stack allowance this image is measured under: the\n\
+         # template it was made from. Remove it once the image no longer is one.\n\
+         stack_floor_image = \"{floor_key}\"\n",
         name = p.node.name,
         rmw = p.rmw,
         ed = p.ros_edition,
@@ -198,7 +201,24 @@ fn bringup_system_toml(p: &WorkspaceProject<'_>) -> String {
         ros = p.node.ros_name(),
         id = p.image_id,
         board = p.board,
+        floor_key = stack_floor_template_key(p.node.template, p.node.lang, p.rmw, p.board),
     )
+}
+
+/// The ONE spelling of a template's stack-floor key (issue 2400, key (c),
+/// ruled 2026-11-12): `<template>/<lang>/<rmw>@<board>`, which is how
+/// `config/stack-floors.toml` files the allowance measured on a `nros new`
+/// image. `nros new` writes it into `[image.<id>] stack_floor_image`, so the
+/// key survives a project rename; `scripts/nros-stack-floor.py
+/// --validate-table` refuses a row whose template or board no longer exists.
+#[must_use]
+pub fn stack_floor_template_key(
+    template: Role,
+    lang: nros_lang::Language,
+    rmw: &str,
+    board: &str,
+) -> String {
+    format!("{}/{}/{rmw}@{board}", template.name(), lang.as_str())
 }
 
 /// The bringup's `system.contract.yaml`: what the node DECLARES, or `None`.
@@ -818,6 +838,25 @@ mod tests {
             entries,
             ["package.xml", "system.contract.yaml", "system.toml"]
         );
+        // issue 2400 -- the image names the template its stack allowance is
+        // measured under, by the one spelling, and both readers accept it.
+        let key = stack_floor_template_key(
+            Role::Talker,
+            nros_lang::Language::Rust,
+            "zenoh",
+            "mps2-an385-baremetal",
+        );
+        assert_eq!(key, "talker/rust/zenoh@mps2-an385-baremetal");
+        let leaf = nros_orchestration_ir::leaf_system::read_image(&bringup, "baremetal")
+            .unwrap()
+            .unwrap();
+        assert_eq!(leaf.stack_floor_image.as_deref(), Some(key.as_str()));
+        let doc: toml::Table =
+            toml::from_str(&std::fs::read_to_string(bringup.join("system.toml")).unwrap()).unwrap();
+        let block: crate::orchestration::image::ImageBlock =
+            doc["image"]["baremetal"].clone().try_into().unwrap();
+        assert_eq!(block.stack_floor_image.as_deref(), Some(key.as_str()));
+
         // issue 2270 -- the contract states what the talker's code does, so
         // the first build sizes from it rather than from defaults.
         let contract: serde_yaml_ng::Value = serde_yaml_ng::from_str(

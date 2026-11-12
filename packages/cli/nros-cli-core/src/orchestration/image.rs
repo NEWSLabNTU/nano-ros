@@ -358,6 +358,15 @@ pub struct ImageBlock {
     /// of [`Self::ros_args`]. The build bakes each file's text into the image.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub params_files: Vec<String>,
+
+    /// Issue 2400 — the key this image's measured stack allowance is filed
+    /// under in `config/stack-floors.toml`: `<template>/<lang>/<rmw>@<board>`.
+    /// `nros new` writes it ([`crate::cmd::new_workspace::stack_floor_template_key`]),
+    /// so a renamed project keeps matching the row measured on its template.
+    /// Unset, the build keys the image `<bringup>@<board>` (ruled 2026-11-12,
+    /// key (c)).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stack_floor_image: Option<String>,
 }
 
 /// `[image.<id>.knobs]`, flattened to `<group>.<name>` → value by the one
@@ -572,6 +581,9 @@ impl ImageBlock {
             // making a choice the base cannot have made for it.
             entry: pick(&self.entry, &base.entry),
             producers: self.producers.or(base.producers),
+            // Per IMAGE, never inherited: a key names what one image was
+            // measured as, and a base cannot have measured every image.
+            stack_floor_image: self.stack_floor_image.clone(),
             // Lists CONCATENATE base-then-specific: conf fragments are ordered
             // and later ones override earlier, which is exactly Zephyr's
             // CONF_FILE semantics. A specific block extends the base set rather
