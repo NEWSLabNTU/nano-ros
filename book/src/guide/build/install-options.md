@@ -4,9 +4,9 @@
 
 **Needs first:** [Install](../../start/install.md)
 
-[Install](../../start/install.md) is the short path. Use this page to install
-a specific release, provision a whole workspace, pin a project to a release,
-or build on a machine with no network.
+[Install](../../start/install.md) is the short path. This page covers a
+specific release, a whole workspace, pinning a project, and building with
+no network.
 
 A release carries everything a project needs: the `nros` CLI, and the library
 as source in its *SDK root*, which `nros build` compiles into your project.
@@ -308,9 +308,9 @@ Copy them to the same paths on the offline machine.
 
 ### 6. Build with `NROS_OFFLINE=1`
 
-`nros` then fetches nothing, and runs
-every cargo it starts with `CARGO_NET_OFFLINE=true`. A build that needs
-something missing stops and names it.
+`nros` fetches nothing and runs cargo with `CARGO_NET_OFFLINE=true`; a build
+missing something stops and names it. `nros build --offline` does the same
+for one build.
 
 ## If it doesn't work
 
