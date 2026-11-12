@@ -288,10 +288,20 @@ fn stamp_file(project: &Path, image: &str) -> PathBuf {
     stamp_dir(project, image).join("stamp.toml")
 }
 
-/// Issue 2478 — what this process read through [`read_external`] since the
-/// last [`begin_external_reads`]: path, and the digest of the bytes read.
-static EXTERNAL_READS: std::sync::Mutex<std::collections::BTreeMap<PathBuf, String>> =
-    std::sync::Mutex::new(std::collections::BTreeMap::new());
+thread_local! {
+    /// Issue 2478 — what this THREAD read through [`read_external`] since the
+    /// last [`begin_external_reads`]: path, and the digest of the bytes read.
+    ///
+    /// Per thread, not per process: two configures in one process (the unit
+    /// tests run hundreds) must not record each other's reads, and a stamp
+    /// naming another project's temporary board file reads "gone" forever.
+    /// A configure plans on the thread that calls it (`configure::run`'s image
+    /// loop is sequential), so its planning reads land here; a read made on a
+    /// spawned worker is not recorded, which is why the planning stage, not
+    /// the build drive, must be where configure's answer is decided.
+    static EXTERNAL_READS: std::cell::RefCell<std::collections::BTreeMap<PathBuf, String>> =
+        const { std::cell::RefCell::new(std::collections::BTreeMap::new()) };
+}
 
 fn bytes_digest(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
@@ -306,31 +316,26 @@ fn bytes_digest(bytes: &[u8]) -> String {
 pub(crate) fn read_external(path: &Path) -> std::io::Result<String> {
     let raw = std::fs::read_to_string(path)?;
     let key = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    if let Ok(mut seen) = EXTERNAL_READS.lock() {
+    EXTERNAL_READS.with_borrow_mut(|seen| {
         seen.insert(key, bytes_digest(raw.as_bytes()));
-    }
+    });
     Ok(raw)
 }
 
 /// Start recording a configure's external reads afresh.
 pub(crate) fn begin_external_reads() {
-    if let Ok(mut seen) = EXTERNAL_READS.lock() {
-        seen.clear();
-    }
+    EXTERNAL_READS.with_borrow_mut(std::collections::BTreeMap::clear);
 }
 
 /// The recorded reads that lie outside `project`.
 fn external_reads(project: &Path) -> std::collections::BTreeMap<PathBuf, String> {
     let root = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
-    EXTERNAL_READS
-        .lock()
-        .map(|seen| {
-            seen.iter()
-                .filter(|(p, _)| !p.starts_with(&root))
-                .map(|(p, d)| (p.clone(), d.clone()))
-                .collect()
-        })
-        .unwrap_or_default()
+    EXTERNAL_READS.with_borrow(|seen| {
+        seen.iter()
+            .filter(|(p, _)| !p.starts_with(&root))
+            .map(|(p, d)| (p.clone(), d.clone()))
+            .collect()
+    })
 }
 
 /// The first recorded external input whose bytes are not what the configure
@@ -1514,9 +1519,6 @@ mod tests {
             "{:?}",
             stamp.external
         );
-        // Only this test's entries matter; another test's reads may be in the
-        // process-wide record too.
-        stamp.external.retain(|k, _| *k == key);
         record(&p, "img", &stamp).unwrap();
         assert_eq!(
             is_current_with(&p, "img", &real_env(), None).unwrap(),
