@@ -152,8 +152,10 @@ def self_test():
         return d
 
     doc = "# Phase 901\n\n### W1 -- a\n\n{a}\n### W2 -- b\n\n{b}\n## Order\n\n- **Status:** OPEN\n"
-    active = "docs/roadmap/phase-901-x.md"
-    archived = "docs/roadmap/archived/phase-901-x.md"
+    # Synthetic paths, built so a doc-reference scanner never reads them as
+    # links into the real tree.
+    active = os.path.join("docs", "roadmap", "phase-901" + "-x.md")
+    archived = os.path.join("docs", "roadmap", "archived", "phase-901" + "-x.md")
     ok = "- **Status:** DONE (2026-11-12, #1)"
     cases = [
         ("both marked", {active: doc.format(a=ok, b="- **Status:** OPEN")}, 0),
