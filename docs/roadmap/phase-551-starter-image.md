@@ -206,3 +206,7 @@ runner.
 A seat with only a container engine pulls one released tag and, offline,
 builds and runs the book's first project and the current labs; the pull fits
 the budget Q9 sets; a customer image built `FROM` it is probed every release.
+That includes "pulls": GHCR creates the package private on its first push,
+so the first release needs an org admin to set it public, and `latest` does
+not move to an image an anonymous pull is refused
+([issue 2459](../issues/2459-ghcr-starter-package-private-after-first-push.md)).

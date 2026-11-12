@@ -175,6 +175,14 @@ Per release cycle, the maintainer doing the cut should:
 4. Verify via the per-ecosystem "Verification" steps above.
 5. Zephyr / NuttX / PX4 require no publish action — the git tag is
    the release surface; downstreams update their pin.
+6. **First release with the starter image only** (RFC-0127, phase-551):
+   `release-nros.yml`'s `starter-image` job pushes
+   `ghcr.io/newslabntu/nano-ros-starter:<ver>`, and GHCR creates that
+   package PRIVATE on its first push. An org admin sets it public once, at
+   <https://github.com/orgs/newslabntu/packages/container/nano-ros-starter/settings>
+   (Danger Zone > Change visibility > Public). Until then no student can
+   pull it, and `probe.yml`'s `image-track` stays red and does not move
+   `latest` (issue 2459). Later releases inherit the setting.
 
 Credential ownership and per-release CI integration are open
 questions for Phase 140 / post-1.0; until then this checklist is
