@@ -67,6 +67,79 @@ and none of them carries a backend link feature:
   than (a), and it puts an RMW-specific word in `system.toml`, which is
   where the RMW is already declared.
 
+## Decision
+
+**Question:** how does a workspace image turn on a backend link feature
+(`link-tls` first) without a node package naming the RMW?
+
+### Measured (origin/main, 2026-11-12)
+
+- `CAPABILITIES` (`packages/cli/cargo-nano-ros/src/capability_resolver.rs`)
+  has 6 rows. `nros_feature` is a required `&'static str` ("Always
+  present"), and `backend_feature`, `c_define` and `cmake_token` are already
+  `Option`. A backend-only axis therefore needs `nros_feature` to become
+  `Option` too. It is a CLI-only type change, with no core-crate feature
+  added.
+- Which backend supports a capability is already the BACKEND's statement:
+  `[rmw.capabilities]` in `nros-rmw.toml`, read through
+  `ResolvedRmwIn::declares_capability`. Zenoh declares `safety`,
+  `zero-copy-receive` and `alloc` there today.
+- zenoh's link features: `zpico-sys` has 7 (`link-ip`, `-raweth`, `-tls`,
+  `-can`, `-isotp`, `-ivc`, `-custom`). `nros-rmw-zenoh` forwards 4 of them
+  (`link-ip`, `-tls`, `-custom`, `-isotp`). Whatever is chosen here
+  generalises to those 4.
+- The board road already has the forward shape: 8 of the 23 board packages
+  carry a `safety-e2e` forward, including
+  `nros-board-linux = ["nros-rmw-zenoh?/safety-e2e"]`. One board,
+  `nros-board-mps2-an385`, already has a `link-tls` forward.
+- The C/C++ road has no TLS at all today: there is no `tls` feature in
+  `nros-c`, `nros-cpp` or `cmake/`. Either option is Rust-only for now,
+  stated explicitly (`c_define`/`cmake_token` = `None`).
+- What is blocked is small: the two `linux_tls` rows in
+  `examples/linux/rust/{talker,listener}` work, and
+  `test_tls_talker_listener_communication` passes on them. The gap is only
+  that they cannot become a `matrix::Config` cell.
+
+### Options
+
+- **(a) A backend-only capability (recommended).** Make `nros_feature`
+  optional, add a `link_tls` row (`backend_feature = "link-tls"`, no C/C++
+  token), have zenoh declare it in `[rmw.capabilities]`, and add a
+  `link-tls` forward to `nros-board-linux`. The image writes
+  `features = ["link-tls"]`.
+  - *UX:* the same key a user already uses for `safety`, with no new
+    vocabulary in `system.toml`.
+  - *Maintainability:* reuses the lowering, the backend declaration and the
+    board-forward paths. A third-party backend offers its own link features
+    the same way without a core edit.
+  - *Design:* the capability vocabulary grows a transport-link axis that is
+    backend-only. The cost is the `nros_feature` `Option`.
+- **(b) An image key, `backend_features = [...]`.**
+  - *UX:* explicit, but it is a third feature key beside `features` and
+    `node_features`, and the user must know backend crate feature names.
+  - *Maintainability:* a new key with its own schema, validation and
+    `validate-workspaces` row-agreement check, plus the same per-board
+    forward as (a).
+  - *Design:* a raw passthrough of backend crate feature names, so nothing
+    checks the backend actually offers one before cargo does.
+- **(c) Leave it.** Keep the two per-example `linux_tls` rows. They are green.
+  - *UX:* unchanged; TLS remains a single-package-leaf feature.
+  - *Maintainability:* zero change. Two example rows stay outside the
+    matrix, and the 3 other forwarded zenoh link features have no workspace
+    road either.
+  - *Design:* the gap stays documented here.
+
+### Recommendation
+
+**(a).**
+- It reuses the backend-declared capability path, which already exists so
+  that core never names a backend.
+- It adds no `system.toml` key.
+- It covers all 4 forwarded zenoh link features with one row each.
+
+(c) is acceptable if the user prefers no change at severity low. (b) costs
+more than (a) and checks less.
+
 ## Done when
 
 `examples/workspaces/rust/src/pubsub_bringup` can declare
