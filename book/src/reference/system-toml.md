@@ -47,6 +47,7 @@ Precedence, highest first: a command-line or build flag, `[image.<id>]`,
 | `entry` | The workspace package that is this image's application, when it cannot be derived |
 | `producers` | `false` builds without the host board's census recorder and profiler |
 | `params_files`, `ros_args` | Parameters and ROS arguments baked into the image for `rclcpp::init` |
+| `stack_floor_image` | The key its measured stack allowance is filed under in `config/stack-floors.toml`, `<template>/<lang>/<rmw>@<board>`. `nros new` writes it; unset, the image is keyed `<bringup>@<board>` |
 
 Retired and refused by name: `ip`, `gateway`, `netmask`, `transport`,
 `[image.<id>.net.<if>]`, and the old `[deploy.<id>]` table.
