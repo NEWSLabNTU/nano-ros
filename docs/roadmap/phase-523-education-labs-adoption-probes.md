@@ -326,7 +326,7 @@ each batch lowers its baseline in the same PR.
 | Step | PR | Rust ratchet | CMake ratchet | Status |
 | --- | --- | --- | --- | --- |
 | colcon plugin, `build_type.rs`, `package_xml.rs`, `NanoRosPackageXml.cmake` | #3593 | (gated at zero) | — | merged |
-| ratchets added | #3617 | 228 | 102 | in queue |
+| ratchets added | #3617 | 228 | 102 | merged |
 | batch 1: `entity_inventory.rs`, `cmake_root.rs`, `west_app.rs` | #3621 | 178 | 102 | in queue |
 | batch 2: `nros_image_kconfig.cmake`, `NanoRosNodeRegister.cmake`, `nros_cargo_build.cmake`, `nros_rmw_zenoh.cmake` | #3628 | 178 | 80 | open |
 | runtime logs of a default image (C lexer, log/panic rule) | — | — | — | not started |
