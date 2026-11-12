@@ -113,6 +113,19 @@ The test side (`current_workspace_fixture_signature`) runs the same script.
 `CLI planning changed: <old> -> <new>` when the running binary's baked value
 differs, and a stamp without the field is stale once.
 
+**The metadata sidecars, the configure stamp's other CLI key.** A configure
+is also stale when a probe sidecar is (`metadata_refresh::probe_inputs_key`),
+and that key named the CLI by its SOURCE stamp, so a `doctor.rs` edit
+re-probed every sidecar and re-ran every configure anyway. The harness and the
+probe driver are planning code, so the key now names the planning stamp too.
+Measured on `examples/workspaces/rust` after `just setup-cli`:
+
+| edit (then reverted) | source stamp | planning stamp | `workspace-rust-native` signature | `nros configure` |
+|---|---|---|---|---|
+| none (baseline) | `e6d379bff66873e6` | `0bc4c312367fb21b` | `18561726...` | `up to date (86 image(s))` |
+| `const` appended to `cmd/doctor.rs` | `4019e9980288d5f4` | `0bc4c312367fb21b` | `18561726...` | `up to date (86 image(s))` |
+| `const` appended to `cmd/configure.rs` | `172e5b000b9a8155` | `0600fc62e0d51ddc` | `889a73f8...` | `CLI planning changed: 0bc4c312367fb21b -> 0600fc62e0d51ddc`, 6 sidecars re-probed |
+
 **One class fix on the way.** `is_cli_input` did not watch `pack.toml`
 (entry packs, read by `nros-cli-core/build_entry_packs.rs`; emitter packs,
 read by `rosidl-codegen/build.rs`), which build scripts compile in through

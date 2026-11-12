@@ -22,7 +22,7 @@
 # and the verb's own content-addressed freshness decides every package:
 # `generate-rust-incremental.sh`'s signature (CLI binary, ament set, the
 # package's msg/srv/action/package.xml) for a standalone `generated/`, and
-# `metadata_refresh::probe_inputs_key` (the package's sources + the CLI source
+# `metadata_refresh::probe_inputs_key` (the package's sources + the CLI planning
 # stamp + every crate the probe compiles) for a sidecar. A stale restored file
 # is regenerated, never trusted — so the key decides only how OFTEN the cache
 # helps, never whether the result is right.
@@ -42,7 +42,7 @@
 #                built from one is rebuilt from cold (issue 1360's pair).
 #   key             <restore-prefix><inputs>
 #     <inputs>   the CLI binary key (`cli-bin-cache-key.sh`, a superset of
-#                the CLI source stamp every sidecar carries) + the git index
+#                the CLI planning stamp every sidecar carries) + the git index
 #                entries of every package the verb visits, every crate the
 #                probe compiles (`packages/cli/probe-source-dirs.txt`), the
 #                cmake the C/C++ probe configures through, and the verb's own
