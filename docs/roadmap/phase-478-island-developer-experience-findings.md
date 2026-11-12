@@ -212,7 +212,7 @@ every board that knows better into an override fight. The message names the
 RUNG, not the file. Zephyr merges Kconfig fragments before this code sees a
 value, so the file is in the build's `Merged configuration` lines, not here.
 
-Related, and not the same: [issue 1490](../issues/1490-kconfig-knob-forwarding-gate-tests-mention-not-table-row.md)
+Related, and not the same: [issue 1490](../issues/archived/1490-kconfig-knob-forwarding-gate-tests-mention-not-table-row.md)
 (open) is about a knob not being FORWARDED, not about a forwarded one losing;
 [issue 1368](../issues/archived/1368-frag-max-size-not-checked-against-derived-bound.md)
 (resolved 2026-10-23) was the same compare-to-nothing class for the frag ceiling
@@ -493,7 +493,7 @@ work:
 | 1596, 1424, 1425, 0374, 1565 | resolved | resolved (1424 still native_sim only; 474 I5) |
 | 1120 | open, defect fixed by `51fdfef44` | resolved, archived |
 | 1368 | open | resolved, archived (a refusal on both roads) |
-| 1490 | open | open -- forwarding, not stated-wins (D2) |
+| 1490 | open | open -- forwarding, not stated-wins (D2); resolved 2026-11-12, re-measured on main, archived |
 | 0758 | open | open; the link-only provider landed (D4), re-acquisition on the SNTP path and the FreeRTOS half (0772) remain |
 | 1533, 0852 | open | resolved, archived |
 | 1534 | open | open -- 474 T3 (I8's second half); resolved 2026-10-30, residue issue 2164 |

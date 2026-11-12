@@ -1,7 +1,9 @@
 ---
 id: 1490
 title: "check-kconfig-knob-forwarding proves a knob is MENTIONED, not that it is a table row"
-status: open
+status: resolved
+resolved: 2026-11-12
+resolved_in: "phase-468 W4 (one knob ladder, one pairing table) and phase-484 W5a (the table generated from the knob registry); re-measured 2026-11-12"
 area: build
 severity: medium
 phases: [468]
@@ -9,7 +11,7 @@ rfcs: [0049]
 related: [0460, 0751, 1233, phase-478]
 ---
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 # `check-kconfig-knob-forwarding` proves a knob is MENTIONED, not that it is a table row
 
@@ -124,3 +126,44 @@ this week's instances, the reach gap is what produces next week's.
       `SUBSCRIBER_RING_DEPTH: usize = 7` in the Rust half.
 - [ ] The widened gate fails on a table row removed, and passes on the tree
       with the rows present — both directions run.
+
+## Resolved: re-measured on main, 2026-11-12
+
+Nothing in this issue's fix list is still open. Phase-468 W4 replaced the
+eight per-crate knob ladders and the two per-crate `KCONFIG_KNOBS` tables
+with one ladder, `nros_zephyr_build::knob()`, and one pairing table,
+`KCONFIG_PAIRS`. Phase-484 W5a then generated that table from the knob
+registry (`packages/tooling/nros-zephyr-build/knobs.toml`). The gate's
+tabulating arm, which asked whether a reader MENTIONED a knob, is gone. Arm 2
+now harvests each pairing from the producer
+(`_nros_resolve_knob(<ENV> "${CONFIG_<SYM>}")` in
+`zephyr/cmake/nros_cargo_build.cmake`) and holds `KCONFIG_PAIRS` to it in
+both directions.
+
+Both acceptance boxes, measured at main `8ea4a8f2cb` on newslab-118 against
+the Zephyr 3.7 workspace:
+
+- [x] **The probe.** `examples/zephyr/rust/talker` was copied out and given
+  `subscriber_ring_depth = 7` for the `zephyr_zenoh` image. Since phase-481 a
+  nano-ros knob is stated in `system.toml` (`[image.zephyr_zenoh.knobs.zenoh.limits]`),
+  never in a leaf conf, and the module renders it into the Kconfig fragment.
+  `nros build zephyr_talker_node_bringup:zephyr_zenoh` produced:
+  - `<build>/zephyr/.config`: `CONFIG_NROS_SUBSCRIBER_RING_DEPTH=7`
+  - the Rust half's `nros-rmw-zenoh-*/out/buffer_config.rs`:
+    `pub const SUBSCRIBER_RING_DEPTH: usize = 7;`
+
+  The non-default value reached both lanes, so the knob was delivered, not
+  defaulted.
+- [x] **Both directions of the gate.** `check-kconfig-knob-forwarding` passes
+  on the tree (`87 forwarded knob(s) … 65 cmake-declared pairing(s) matched
+  against KCONFIG_PAIRS`). With the `NROS_ZENOH_SUBSCRIBER_RING_DEPTH` row
+  deleted from `KCONFIG_PAIRS` it exits 1, saying the cmake module forwards
+  it from `CONFIG_NROS_SUBSCRIBER_RING_DEPTH` while the Rust lane would
+  resolve `CONFIG_NROS_ZENOH_SUBSCRIBER_RING_DEPTH`. With the row pointing at
+  the wrong symbol (`CONFIG_NROS_MAX_SUBSCRIBERS`) it also exits 1. Restored,
+  it passes.
+
+What the gate still does not reach is written in its own header: a knob whose
+cmake value is a computed variable declares no symbol at the call site, so
+its row is authored and not checked by arm 2.
+
