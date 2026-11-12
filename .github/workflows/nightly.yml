@@ -1250,10 +1250,12 @@ jobs:
   zenoh-probe:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 7 * * *' }}
     runs-on: ubuntu-latest
-    # Measured 59 min cold on a 139-class host (2026-11-12), the most of any
-    # probe track: it runs the checkout road AND the installed one. 120 leaves
-    # the headroom a hosted runner needs.
-    timeout-minutes: 120
+    # Measured 59 min on a 139-class host (2026-11-12), the most of any probe
+    # track: it runs the checkout road AND the installed one. A hosted 4-vCPU
+    # runner, cold, can take 2-3x that, and a job that hits its timeout ends
+    # CANCELLED with no verdict (issue 2141's shape). 180 until a hosted run
+    # is measured; then set it from that run with headroom (issue 1492).
+    timeout-minutes: 180
     concurrency:
       group: nightly-zenoh-probe-${{ github.ref }}-${{ github.event_name }}
     permissions:
@@ -1275,8 +1277,16 @@ jobs:
       - name: Name the commit under test
         run: git switch -c probe-under-test 2>/dev/null || git checkout -b probe-under-test
 
+      # Cold, as installed-probe is: this track runs the installed road too, so
+      # the two verdicts mean the same thing.
       - name: Run zenoh interop probe
-        run: PROBE_BRANCH=probe-under-test PROBE_TRACK=zenoh ./scripts/probe/run-bootstrap-probe.sh
+        run: PROBE_BRANCH=probe-under-test PROBE_RELEASE_CACHE=0 PROBE_TRACK=zenoh ./scripts/probe/run-bootstrap-probe.sh
+
+      # Two roads in one hosted job is the disk-heaviest probe: print what is
+      # left, pass or fail, so a later ENOSPC reads as disk, not as a book defect.
+      - name: Disk after the probe
+        if: always()
+        run: df -h /
 
   # phase-411 — tier 2 NIGHTLY, actually invoked.
   #
