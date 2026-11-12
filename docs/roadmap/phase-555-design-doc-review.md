@@ -57,13 +57,24 @@ and either:
 A candidate is a question for a reviewer, not a verdict: two RFCs on one
 subject can be complementary.
 
-Measured: 126 RFCs give **353 candidate pairs**, 10 by subject overlap and
-343 by a citation without a link. The overlap pairs include 0024/0025 (two
-"Phase 212 workspace layout" RFCs), 0007/0041 (service and action QoS),
-0014/0099 (provisioning), 0095/0099 and 0097/0099 (the store and release
-composition). The citing side is concentrated on a few older RFCs:
-0065 is cited without a link by 13 newer RFCs, 0049 by 10, 0004 by 9, and
-0015, 0019, 0033 and 0064 by 8 each.
+The pairs are RANKED, because most citations are plain references, not
+conflicts:
+
+1. **Tier 1, subject overlap.**
+2. **Tier 2, a citation that claims a change.** The newer RFC cites the older
+   in a sentence that says it replaces, supersedes, retires, amends,
+   contradicts or deprecates it. The sentence is printed as evidence.
+3. **Tier 3, a plain citation.** Listed for completeness and not dispatched.
+
+Measured: 126 RFCs give **353 candidate pairs: 10 in tier 1, 93 in tier 2
+and 250 in tier 3**. Only tiers 1 and 2 (103 pairs) go to reviewers.
+
+- Tier 1 includes 0024/0025 (two "Phase 212 workspace layout" RFCs),
+  0007/0041 (service and action QoS), 0014/0099 (provisioning), 0095/0099
+  and 0097/0099 (the store and release composition).
+- Tier 2 includes declared amendments that never reached either RFC's
+  frontmatter. For example, RFC-0109 says it "**Amends** RFC-0004", and
+  neither RFC links the other.
 
 - **Acceptance:** the generator is committed, and its two outputs and the
   counts above reproduce from a clean tree.
@@ -99,7 +110,8 @@ composition). The citing side is concentrated on a few older RFCs:
 ### W2 -- Review, one slice per area
 
 Each area's RFCs are reviewed by the worker who knows them, when they are
-free. The manager session dispatches the slices:
+free. A slice gets a short prioritized list: its RFCs' tier 1 and tier 2
+pairs from W0, cut by W1's `area:`, never the raw pair list. The manager session dispatches the slices:
 
 | area | reviewer |
 | --- | --- |
