@@ -95,7 +95,7 @@ the action server fails until its `os_config` raises the stack, then holds.
 
 ### W5 — The cargo leaf CHECKs the board's stated stack
 
-- **Status:** DONE (2026-11-13, #PRNUM)
+- **Status:** DONE (2026-11-13, #3686)
 
 `nros build` of a single-package cargo leaf walks the image after cargo and
 checks the board's stated stack, with the same measured/unmeasured rule.
