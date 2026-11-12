@@ -14,6 +14,8 @@ Homes:
 
 - [issue 2426](../issues/2426-nuttx-make-road-board-facts-drift.md), the make
   road's verified defects (items 1 to 7): W1 to W5, W8, W12;
+- [issue 2495](../issues/2495-nuttx-make-road-rust-edit-not-rebuilt.md), the
+  make road rebuilding nano-ros only on a first build: W6b;
 - [issue 2236](../issues/2236-nuttx-make-app-as-project.md), the design
   questions: W0, W6, W7, and the gates below.
 
