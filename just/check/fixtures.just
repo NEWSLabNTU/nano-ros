@@ -36,7 +36,9 @@ action-client-arena-budget:
     python3 scripts/check-action-client-arena-budget.py
 
 # Per-example rustfmt --check (AST-only, no codegen/deps). The `check.yml`
-# per-example-fmt step as a recipe (SSoT).
+# per-example-fmt step as a recipe (SSoT). Issue 2464: the file set and the
+# rustfmt call live in `scripts/build/rustfmt-tracked.sh`, which `just format`
+# runs too, so the formatter and this gate cannot disagree about a file.
 #
 # issue 0320 — this invokes `rustfmt` DIRECTLY, not `cargo fmt`. `cargo fmt`
 # shells out to `cargo metadata`, which loads the leaf's `.cargo/config.toml`,
@@ -58,28 +60,7 @@ action-client-arena-budget:
 # per file honours the tier and cannot regress this way again.
 [private]
 example-fmt:
-    #!/usr/bin/env bash
-    set -e
-    # Enumerate via the git index (tracked files only) — no filesystem
-    # traversal, so the multi-million-file build/target trees (untracked by
-    # definition) can never slow this down or leak in. `NF>=5` = the old
-    # `-mindepth 4` (leaf crates, not workspace-root manifests).
-    git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/(target|generated|build|build-[^/]*|install|log)/|examples/zephyr/|/multi-package-workspace/|esp32-c3-baremetal/rust/dds/|examples/mps2-an385-freertos/|examples/qemu-armv7a-nuttx/|examples/threadx-linux/|examples/rv-virt-threadx/|examples/px4/' \
-        | sort | while read -r toml; do
-        dir="$(dirname "$toml")"
-        # Read the edition from the manifest rather than assuming one: rustfmt
-        # needs it explicitly (cargo fmt used to supply it), and the tree is
-        # not uniform — the zephyr leaves are not 2024.
-        edition="$(sed -n 's/^edition[[:space:]]*=[[:space:]]*"\([0-9]*\)".*/\1/p' "$toml" | head -1)"
-        edition="${edition:-2024}"
-        # Tracked .rs files only — the same index-driven discipline as above,
-        # so generated/ and build trees cannot leak in.
-        mapfile -t files < <(git ls-files "$dir/*.rs" "$dir/**/*.rs")
-        [ "${#files[@]}" -eq 0 ] && continue
-        echo "  fmt $dir (edition $edition, ${#files[@]} files)"
-        rustfmt "+{{NIGHTLY}}" --check --edition "$edition" "${files[@]}"
-    done
+    NIGHTLY="{{NIGHTLY}}" bash scripts/build/rustfmt-tracked.sh examples --check
 
 # issue 0718 — an example leaf builds in-tree (RFC-0026), so every build
 # directory a recipe gives it must be named in that leaf's own .gitignore.

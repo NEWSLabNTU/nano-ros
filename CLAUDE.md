@@ -520,10 +520,9 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   cells there too), not new hand-coordinated files — the consolidation plan is phase-329.
 - **Fixture mtime treadmill:** any pull/rebase — and any `git stash push`/`pop`, which rewrites
   tracked files just the same — refreshes source mtimes → EVERY prebuilt fixture
-  reads STALE. **`just format` is one of these and does not look like one:** `linux::format`
-  runs `cargo fmt` per example leaf, which formats that leaf's `generated/` members too, so
-  every native fixture re-stales at one timestamp. Format BEFORE building fixtures, never
-  after or during — a `format` run overlapping a fixture build costs the whole build. **A refresh re-arms the in-tree CLI's source stamp too, not just fixtures
+  reads STALE. `just format` rewrites only files it changes, and only TRACKED ones
+  (rustfmt per file since issue 2464, so no `generated/` member), yet a format run that
+  changes anything still stales what depends on it: format BEFORE building fixtures. **A refresh re-arms the in-tree CLI's source stamp too, not just fixtures
   (issue 0466)** — and the order is load-bearing: rebuild the CLI FIRST (`just setup-cli`),
   THEN fixtures, because fixtures key on that stamp; doing it the other way re-stales
   everything you just built. `just check tier-preconditions` reports every unmet

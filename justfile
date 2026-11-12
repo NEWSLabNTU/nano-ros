@@ -533,15 +533,15 @@ _cmake-cargo-stale-guard build_dir:
 
 # Format everything: Rust workspace + examples, C, C++, Python
 #
-# Issue 0474 — `_require-leaf-includes` FIRST. `linux::format` runs
-# `cargo fmt` in every example leaf, and an unsynced leaf makes cargo fail
-# during MANIFEST PARSE with a path that never mentions `nros configure` (issue
-# 0463). That guard was wired to `build-test-fixtures-leaves` and
-# `rust-rtos-link-check` — the two sites where the failure had been seen — and
-# `format` is a third walking the same leaves. CLAUDE.md tells you to run
-# `just format` BEFORE broad changes, so it is the site a newcomer hits first.
+# Issue 2464 — no `_require-leaf-includes` here any more. Issue 0474 put it
+# first because `linux::format` ran `cargo fmt` in every example leaf, and an
+# unsynced leaf failed at manifest parse. The example leaves and the cli are
+# now formatted by `rustfmt` over tracked files
+# (`scripts/build/rustfmt-tracked.sh`), which reads no manifest. So a fresh
+# worktree formats with no `nros configure`, no codegen and no PX4. The guard
+# still fronts the lanes that build those leaves.
 [group("main")]
-format: _require-leaf-includes format-workspace linux::format format-c format-cpp format-python
+format: format-workspace linux::format format-c format-cpp format-python
     @echo "All formatting completed!"
 
 # Profile a project's build — passive, read-only (phase-251). Parses the timing
@@ -4107,7 +4107,11 @@ format-workspace: format-cli
 format-cli:
     #!/usr/bin/env bash
     set -e
-    cd "{{justfile_directory()}}/packages/cli" && cargo +{{NIGHTLY}} fmt
+    # Issue 2464 -- rustfmt over the members' tracked sources, the same call
+    # `check cli-fmt` makes. `cargo fmt` here resolved the workspace first,
+    # which fetches a git-tag dep (issue 0337).
+    cd "{{justfile_directory()}}"
+    NIGHTLY="{{NIGHTLY}}" bash scripts/build/rustfmt-tracked.sh cli
     # Issue 0363 — reformatting in place makes the built CLI STALE, and
     # CLAUDE.md tells people to run `just format` before broad changes. So the
     # documented workflow creates the condition the guard then trips on, deep

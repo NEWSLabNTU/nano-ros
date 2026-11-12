@@ -43,27 +43,11 @@ c-fmt:
 # Scope matches what `cargo fmt` covered: the workspace MEMBERS only. Test
 # fixture crates under `tests/fixtures/` are separate packages, not members,
 # and were never formatted by this gate — several are deliberately on older
-# editions.
+# editions. Issue 2464: the set and the call are `scripts/build/rustfmt-tracked.sh`,
+# shared with `just format`.
 [private]
 cli-fmt:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    ws_edition="$(sed -n 's/^edition[[:space:]]*=[[:space:]]*"\([0-9]*\)".*/\1/p' packages/cli/Cargo.toml | head -1)"
-    ws_edition="${ws_edition:-2024}"
-    # Members, read from the manifest rather than duplicated here.
-    members="$(sed -n '/^members = \[/,/^]/p' packages/cli/Cargo.toml \
-        | sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p')"
-    for m in $members; do
-        toml="packages/cli/$m/Cargo.toml"
-        [ -f "$toml" ] || continue
-        edition="$(sed -n 's/^edition[[:space:]]*=[[:space:]]*"\([0-9]*\)".*/\1/p' "$toml" | head -1)"
-        edition="${edition:-$ws_edition}"   # `edition.workspace = true` inherits
-        mapfile -t files < <(git ls-files "packages/cli/$m/*.rs" "packages/cli/$m/**/*.rs" \
-            | grep -v '/tests/fixtures/' || true)
-        [ "${#files[@]}" -eq 0 ] && continue
-        echo "  fmt $m (edition $edition, ${#files[@]} files)"
-        rustfmt "+{{NIGHTLY}}" --check --edition "$edition" "${files[@]}"
-    done
+    NIGHTLY="{{NIGHTLY}}" bash scripts/build/rustfmt-tracked.sh cli --check
 
 # Issue 2200 — a configure reads the `nros` CLI's stdout line by line, never as
 # a cmake list. `string(REPLACE "\n" ";")` split a `;`-joined row value

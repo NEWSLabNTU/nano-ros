@@ -435,19 +435,15 @@ build-fixture-extras:
 build-all: build build-examples build-c build-c-xrce build-cpp build-fixtures
     @echo "Native build-all completed."
 
-# Format all Rust examples (auto-discovered, parallel)
+# Format all Rust examples: rustfmt over each leaf's tracked sources.
+#
+# Issue 2464 -- not `cargo fmt`. That loads each leaf's manifest, so a fresh
+# worktree could not format until `nros configure` and codegen had run in
+# dozens of leaves, and the PX4 companions needed `just setup px4`. It also
+# formatted the leaves' `generated/` members, which re-staled every native
+# fixture. The file set is the `check example-fmt` gate's, from one script.
 format:
-    #!/usr/bin/env bash
-    set -e
-    echo "Formatting examples..."
-    # Tracked-file enumeration via the git index (no filesystem traversal;
-    # untracked build/target trees can never slow this down or leak in).
-    git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/zephyr/|/multi-package-workspace/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/' \
-        | xargs -r -n1 dirname | sort \
-    | parallel --halt now,fail=1 --line-buffer \
-        'cd {} && cargo +{{NIGHTLY}} fmt && echo "  fmt {}"'
-    echo "All examples formatted!"
+    NIGHTLY="{{NIGHTLY}}" bash scripts/build/rustfmt-tracked.sh examples
 
 # Check all Rust examples (auto-discovered; fan-out under the make jobserver).
 check JOBS="75%":
