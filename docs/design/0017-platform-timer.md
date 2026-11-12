@@ -263,4 +263,4 @@ Stale references, each checked with `git ls-files` or `git grep` on main:
 - `last_refill_ms` is an `AtomicU32`, not an `AtomicU64`.
 - `feature = "std"` no longer exists.
 
-Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.

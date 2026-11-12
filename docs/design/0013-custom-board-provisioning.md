@@ -246,4 +246,4 @@ Stale references, each checked with `git ls-files` or `git grep` on main:
 
 - The back-links were missing. Added in this review: RFC-0087 and RFC-0062 now carry `supersedes: [0013]`. The move to `archived/` is phase-555 W3.
 
-Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.

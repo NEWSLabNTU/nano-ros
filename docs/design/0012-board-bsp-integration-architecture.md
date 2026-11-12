@@ -410,4 +410,4 @@ Where newer designs or the code disagree:
 - "Crates.io namespace is open" for overlay crates, against RFC-0040 D1: no `nros*` crate is ever published.
 - The Layer 2.5 overlay crates against RFC-0072. The banner admits this, but only in the FreeRTOS section.
 
-Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.

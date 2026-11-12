@@ -200,4 +200,4 @@ Stale references, each checked with `git ls-files` or `git grep` on main:
 
 - RFC-0130 is cited but not yet in the tree: its id is reserved, and the draft is in flight. This resolves when it merges.
 
-Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.
