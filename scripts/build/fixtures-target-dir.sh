@@ -100,10 +100,11 @@
 # not assumed, because a rule enforced over a narrower set than it covers is
 # issue 0196's shape.
 #
-# phase-531 W7 — `nuttx` and `threadx-riscv64` LEFT the list: their last Rust
-# `[[fixture]]` rows (the logging smokes) became owned-entry workspace rows,
-# and an entry here with no rust row is one the gate cannot check (A1).
-export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-baremetal linux freertos threadx-linux}"
+# phase-531 W7 — `nuttx`, `threadx-riscv64` and `freertos` LEFT the list: their
+# last Rust `[[fixture]]` rows (the logging smokes, the condvar contract and the
+# FreeRTOS benches) became owned-entry workspace rows, and an entry here with no
+# rust row is one the gate cannot check (A1).
+export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-baremetal linux threadx-linux}"
 
 # _nros_fixture_variant_sig <cargo-args> <envstr>
 # Signature of everything in the grouping key BEYOND platform+triple.

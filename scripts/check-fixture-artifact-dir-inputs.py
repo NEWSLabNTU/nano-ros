@@ -53,18 +53,18 @@ def selftest() -> None:
     import tempfile
 
     bug = ('  artifact_dir="$(nros_fixture_row_artifact_dir '
-           '"examples/mps2-an385-freertos/rust/$ex" freertos "" "")"\n')
+           '"examples/threadx-linux/rust/$ex" threadx-linux "" "")"\n')
     ok = ('  artifact_dir="$(nros_fixture_row_artifact_dir_by_id '
-          '"freertos-rust-$ex" freertos)"\n')
+          '"threadx-linux-rust-$ex" threadx-linux)"\n')
     self_consistent_body = ('  flag="$(nros_fixture_target_dir_flag nuttx "" "")"\n'
                             '  d="$(nros_fixture_row_artifact_dir "$L" nuttx "" "")"\n')
 
     # phase-472 W8 — the exemption's NEIGHBOURS: the flag in ANOTHER recipe,
     # and the flag for ANOTHER platform, do not make this packer self-consistent.
-    other_recipe = ('  flag="$(nros_fixture_target_dir_flag freertos "" "")"\n'
+    other_recipe = ('  flag="$(nros_fixture_target_dir_flag threadx-linux "" "")"\n'
                     "other:\n" + bug)
     other_plat = ('  flag="$(nros_fixture_target_dir_flag nuttx "" "")"\n' + bug)
-    dep_builder = ('  flag="$(nros_fixture_target_dir_flag freertos "" "")"\n'
+    dep_builder = ('  flag="$(nros_fixture_target_dir_flag threadx-linux "" "")"\n'
                    "consumer: recipe\n" + bug)
     for name, body, want in (("the 1025 defect", bug, 1),
                              ("the by-id fix", ok, 0),
