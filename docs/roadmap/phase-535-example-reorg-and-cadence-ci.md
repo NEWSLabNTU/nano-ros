@@ -1,5 +1,10 @@
 # Phase 535 — Example pairs into the language workspaces, single-node witnesses, and cadence-backed CI
 
+**Status (2026-11-12): W8 ruled.** Linux, Zephyr native_sim and ThreadX Linux
+are `cadence = "daily"`; `merge-runtime.yml` is a dispatch-only measurement
+tool. W8 items 1, 6 and the cadence gate have landed, and 2 to 5 are open
+(see W8).
+
 **Status (2026-11-06). W3 done; W4 next.** W0 answered (issue 2253 fixed on
 the way, #3106). W1 merged (#3107). W0.b done: C (#3112), C++ (#3120), Rust
 (#3124). W2 merged (#3125). W3: the pilot (#3129) moves the FreeRTOS pairs.
@@ -764,6 +769,100 @@ never the retired leaf shape.
   window. A gate reads both files and refuses a cadence with no job.
 - A release cannot be cut without a green tier 3 on its commit.
 
+**Ruling (user, 2026-11-12), verbatim:** "W8 = option 1.
+linux/zephyr/threadx-linux go to cadence=daily. #3594 carries only the
+cadence gate, the header fixes and the `merge` lane; merge-runtime.yml is
+dropped or made dispatch-only." The coordinator picked dispatch-only, so the
+workflow stays as a re-measurement tool.
+
+**Status (2026-11-12), #3594.** Items 1 (as dispatch-only), 6 and the cadence
+gate landed. Items 2 to 5 are open.
+
+- **1 (landed, dispatch-only).** `.github/workflows/merge-runtime.yml`, job
+  `merge-runtime`, triggers on `workflow_dispatch` ONLY. It is a measurement
+  tool and is never part of `CI`. Three hosted shards (`ubuntu-22.04`), a
+  plain matrix over the host witness boards' `just` modules: `linux` and
+  `threadx_linux` in `nano-ros-ci:humble`, `zephyr` in `nano-ros-zephyr-ci`.
+  It saves the CLI cache only on `main`, mounts the host toolchains for
+  `reclaim-disk.sh` (gate.yml's `check-build` block), and uses the
+  concurrency group `merge-runtime-<event>-<board>` without
+  cancel-in-progress. `NROS_GATE_SCOPE: merge` (`.config/gate-lanes.toml`
+  `[lane.merge]`).
+  - **Scope, reused, not listed.** A coordinate lane, `merge`
+    (`CiLane::Merge`; `_NROS_LANES` in `scripts/build/fixture-lane.sh`):
+    every zenoh `Example` cell in Rust, C and C++ on the host witness boards,
+    46 cells over 9 coordinates. `tier1_pool_matches_board_registry` asserts
+    that both the tier-1 pool and this lane's boards equal the registry's
+    host witness rows with an automated cadence. One shard is one board's
+    slice: `NROS_LANE_MODULE=<module>` narrows the coordinate file
+    (`lane-coords merge --module <m>`), the module fan-out, the stamp
+    (`lane_module=`) and the preflight together
+    (`a_merge_shard_build_covers_only_its_own_shard`). `just build merge`,
+    then `just ci merge [board]`.
+  - **Measured** (two runs of a temporary push-trigger branch; per-job time
+    from start to end, excluding queue wait). No shard built a fixture:
+
+    | run | shard | time | failed in |
+    | --- | --- | --- | --- |
+    | 43173875037 | linux | 39.7 min | gate scope unset (fixed: `[lane.merge]`) |
+    | 43173875037 | threadx_linux | 37.2 min | same |
+    | 43173875037 | zephyr | 57.2 min | same |
+    | 43181966650 | linux | 50.2 min | `check fast`: no `rosidl` source clone |
+    | 43181966650 | threadx_linux | 59.7 min | build sources not provisioned |
+    | 43181966650 | zephyr | 41.2 min | no pinned nextest in the zephyr-ci image |
+
+    Setup took 10-15 min per shard. Inside `just build merge`, the tree-wide
+    `_codegen` and the `check::fast` prerequisite took 26-49 min before any
+    fixture work. One run held 2.2-2.5 hosted runner-hours. That measurement
+    is what the ruling acted on.
+  - **Timing tool.** `scripts/ci/merge-runtime-p95.py [--days N] [--event
+    E]` reads the shard jobs from the GitHub API. It counts only successful
+    jobs as samples, prints `n_ok` and `n_fail` separately, and prints "no
+    samples" when `n_ok` is 0.
+- **6 (landed).** Stale headers fixed against the workflows: `nightly.yml`
+  (no PR trigger), `post-submit.yml` (no fixture tier runs there),
+  `queue.yml` (what `gate.yml` runs on `merge_group`), the runner topology
+  table in `docs/development/multi-agent-ci-workflow.md`, and
+  `support-status.md` (via `gen-support-status.py`). Tier 2's trigger is now
+  daily, and tier 1 no longer says "every change": no board's runtime is
+  tested on every change.
+- **The gate (landed).** `just check cadence-jobs`
+  (`scripts/check-cadence-jobs.py`, fast line, no fixtures, selftest on
+  every call, 19 cases, each with a mutation shown to turn it red).
+  - `merge` is served by a `merge-runtime` job that triggers on
+    `merge_group` with no path filter, runs the lane and has the row's shard.
+    The workflow is dispatch-only now, so a `merge` row is refused. Its
+    shards need no row while it is dispatch-only.
+  - `daily` is served by the nightly `platform` job's `just test <platform>`
+    over its `runnable` set, or, for a host witness row, by run-matrix.yml's
+    scheduled `tier1` job running `just ci tier1`.
+  - `weekly` is served by `probe-platforms.yml`'s scheduled `chapter` job
+    with weekly tracks. `manual` needs no job.
+  - An unserved row fails unless `.config/cadence-job-baseline.toml` lists it
+    with a reason and an issue, and the baseline only shrinks. One entry:
+    `ZephyrQemuCortexM` (daily), issue 2462.
+  - The gate checks that a job exists, not that it ran in the window. That
+    half is `just nightly-triage`.
+- **Registry.** `board-support.toml`: Linux, Zephyr native_sim and ThreadX
+  Linux are `cadence = "daily"`. The Linux row needs no `nightly_token`: its
+  daily lane is run-matrix.yml's tier 1.
+
+**Acceptance status:**
+- "Every `cadence` names a job; a gate refuses a cadence with no job": met by
+  the gate, with one baselined row (issue 2462). "Ran in the last window"
+  is read by `just nightly-triage`, not gated.
+- "A release cannot be cut without a green tier 3": open (item 5).
+
+**Open:**
+- **2.** Re-measure via dispatch after issue 2475 is fixed (the shards fail
+  before building a fixture), before any return to `cadence = "merge"`.
+  `merge-runtime-p95.py --event workflow_dispatch` reads the result.
+- **3.** Tier 1 full on hosted shards, daily.
+- **4.** The Zephyr nightly: 2 lines x 3 languages with native_sim runtime.
+  Closes issue 2462 and its baseline entry.
+- **5.** `release-gate` (`ci full` on dispatch) and `release-nros.yml`
+  requiring it on the tagged commit.
+
 ### W9 — Docs
 
 - RFC-0122 flips to Stable.
@@ -792,3 +891,6 @@ never the retired leaf shape.
 | [#2377](../issues/archived/2377-workspace-road-no-c-image-on-bare-metal.md) | The workspace road had no C/C++ image for a board with a Rust link root, so the bare-metal C/C++ pairs stayed leaves (W5). Resolved in W6: owned cargo entries of one-package workspaces. |
 | [#2427](../issues/archived/2427-threadx-riscv64-run-hint-mac-ignores-image-network.md) | The ThreadX riscv64 run plan gave every image peer 0's MAC, so the printed QEMU line for the W6 Cyclone listener image named the talker's MAC. Resolved 2026-11-10: the plan takes the image network's MAC. |
 | [#2452](../issues/archived/2452-c-custom-transport-loopback-session-connection-failed.md) | Found running W6's moved C/C++ fixtures: the C custom-transport loopback exits 1 (session ConnectionFailed) before and after its move; its row is build-only, so no lane saw it. **Resolved** — runtime row, `CustomLink` cell. |
+| [#2475](../issues/2475-merge-lane-fails-before-fixtures.md) | W8's two measured runs: every `merge` shard failed before building a fixture (no rosidl clone, build sources not provisioned, no pinned nextest in zephyr-ci) after 26-49 min of tree-wide codegen and `check fast`. Blocks W8.2's re-measurement. |
+| issue 2472 | The `linux-rust-zenoh-logging` fixture row claims rmw `zenoh` but its owned entry links no RMW, so `rmw_coordinate_truth` fails on it. Resolved by #3631. |
+| [#2462](../issues/2462-zephyr-daily-cadence-has-no-runtime-job.md) | Found writing W8's cadence gate: `ZephyrQemuCortexM` promises `daily`, and the Zephyr nightly D8 binds it to builds and runs nothing. Baselined in `.config/cadence-job-baseline.toml`; W8.4 closes it. |

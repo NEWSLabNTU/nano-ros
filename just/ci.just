@@ -208,6 +208,41 @@ _tier1-step step:
     esac
     bash scripts/ci/run-lane-steps.sh "tier1-{{ step }}" "${steps[@]}"
 
+# `just ci merge [board]` — RFC-0122 D8's per-merge set (phase-535 W8): every
+# zenoh Example cell in Rust, C and C++ on each host witness board, i.e. the
+# behaviour pairs plus the board's witnesses at the same coordinates. The
+# 2026-11-12 ruling set those boards to `daily`; this lane stays as the
+# re-measurement tool, run by the dispatch-only `merge-runtime.yml`.
+# The RUN half; `just build merge` is the build half, as for the tiers.
+#
+# `board` is a SHARD: one board's `just` module (`linux`, `zephyr`,
+# `threadx_linux`), exported as `NROS_LANE_MODULE` so the coordinate file, the
+# freshness gate and the run all narrow to that board's slice. `just build
+# merge` must have seen the same value: `merge-runtime.yml` sets it at job
+# level, so both steps read one value. Empty = the whole lane.
+#
+# No `check::default` step: the gates run in `gate.yml` on the same tree.
+[group("ci")]
+merge board="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{ board }}" ]; then export NROS_LANE_MODULE="{{ board }}"; fi
+    # Issue 1670 — every coordinate here is zenoh; no router, no verdict.
+    just ci::_require-lane-router merge
+    just _lane-gate merge
+    source scripts/build/fixture-lane.sh
+    coords="$(nros_lane_coords_file merge)"
+    coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
+    export NROS_FIXTURE_LANE=merge NROS_TEST_COORDS="$coords"
+    # issue 1758 — the scope's other half, as for the tiers.
+    unclaimed="$(nros_lane_unclaimed merge)"
+    export NROS_TEST_UNCLAIMED="$unclaimed"
+    # Each step prints its wall clock (issue 1500); merge-runtime.yml reads the
+    # job's step durations for RFC-0122 D9's p95.
+    steps=(test-all)
+    bash scripts/ci/run-lane-steps.sh "merge${NROS_LANE_MODULE:+-$NROS_LANE_MODULE}" "${steps[@]}"
+    echo "CI passed (merge lane${NROS_LANE_MODULE:+, shard $NROS_LANE_MODULE})!"
+
 # L3 — cross build + link + SYMBOL checks. No QEMU.
 #
 # The insight this lane rests on: `rust-rtos-link-check` already BUILDS

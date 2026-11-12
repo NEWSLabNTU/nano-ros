@@ -90,6 +90,15 @@ claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodu
 tiers = ["fast", "build"]
 claims = ["cli", "cmake", "cc", "ros2", "sources", "west"]
 
+[lane.merge]
+# `merge-runtime.yml` (phase-535 W8): a hosted shard (`nano-ros-ci` or
+# `nano-ros-zephyr-ci`) reaching the fast tier through `just build merge`,
+# BEFORE any fixture build, in a shallow checkout. Like `runner`, it claims
+# only what the image and the job's own `just setup <board>` provide; the
+# gates needing more run in gate.yml's jobs on the same merge group.
+tiers = ["fast"]
+claims = ["cli", "cmake", "cc", "ros2", "sources"]
+
 [lane.pristine]
 # `check pristine-checkout`: a worktree with no submodules and no CLI
 # (issues 0650, 1373).

@@ -88,14 +88,17 @@ permissions:
 jobs:
   # phase-395 W13 — the L1 job that used to live here is GONE.
   #
-  # `pr-checks`'s `check` job now runs the compile tier on `merge_group`, and it
-  # covers strictly more than `just ci-l1` did (check-fast + check-build +
-  # no_std + test-unit, plus the 133 source gates). Both ran on every merge
-  # group, so the same tree compiled TWICE on the critical path to landing —
-  # pure latency on the one lane that bounds how fast ten agents can merge.
+  # `gate.yml` runs the `ci gate` lane on `merge_group` as parallel `check-*`
+  # jobs that the required `CI` aggregator hears (check-fast, the fast compile
+  # gates, cli-tests, workspace-all, test-unit, template-copy-out,
+  # test-lane-contracts). The full compile tier, `check-build`, runs there on
+  # schedule/dispatch only. An L1 job here compiled the same tree a second time
+  # on the critical path to landing, and gated nothing because it was not the
+  # required context.
   #
-  # `check` is also the REQUIRED context, so this job gated nothing. Keeping it
-  # meant paying for a second opinion nobody consulted.
+  # No runtime lane runs here: the host boards are `daily` since the
+  # 2026-11-12 ruling (phase-535 W8), and `merge-runtime.yml`, which measured
+  # what a per-merge runtime lane would cost, is dispatch-only.
 
   # L3 — cross build + link + symbol checks. Needs the RTOS toolchains, so it is
   # self-hosted, so it is gated. See the header: a required check that cannot

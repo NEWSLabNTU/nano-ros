@@ -59,7 +59,21 @@ NROS_FIXTURE_STAMP="${NROS_FIXTURE_STAMP:-target/nextest/.fixtures-built}"
 #                  34 unbuilt coordinates); they now have the same ANSWER for
 #                  tier 2, which is the point of W3 rather than a reason to
 #                  collapse them again.
-_NROS_LANES="all linux tier1 tier2 tier2-nightly"
+#   merge          RFC-0122 D8's `cadence = "merge"` lane: every zenoh Example
+#                  cell in Rust/C/C++ on each merge board. Coordinate-scoped
+#                  like the tiers. CI runs it one SHARD per board
+#                  (`merge-runtime.yml`), which is `NROS_LANE_MODULE` below.
+#
+# # A shard: one module's slice of a coordinate lane (`NROS_LANE_MODULE`)
+#
+# Set `NROS_LANE_MODULE=<just module>` and every consumer of a coordinate lane
+# answers for that module's slice instead of the whole lane: the coordinate
+# file (`lane-coords <lane> --module <m>`), the module fan-out, the stamp and
+# the preflight. They read ONE computation, so a shard's build, its staleness
+# gate and its run cannot select different sets (the issue 0482 rule, applied
+# to a slice). The stamp records the module, and a stamp from one shard covers
+# no other shard and not the whole lane.
+_NROS_LANES="all linux tier1 tier2 tier2-nightly merge"
 
 # Retired spellings of the host lane / scope / `just` module — phase-500.
 # `native` named them until the maintainer's 2026-10-14 ruling (native = any
@@ -175,7 +189,10 @@ nros_lane_coords_file() {
     if [ "$lane" = "all" ] || [ "$lane" = "linux" ]; then
         return 0
     fi
-    local out="target/nextest/lane-coords-${lane}.txt"
+    local shard="${NROS_LANE_MODULE:-}"
+    local out="target/nextest/lane-coords-${lane}${shard:+-${shard}}.txt"
+    local -a slice=()
+    if [ -n "$shard" ]; then slice=(--module "$shard"); fi
     mkdir -p target/nextest
     # issue 0494 — write to a TEMP file and rename. `> "$out"` truncates the
     # file the instant the redirection is set up, and `cargo run` then COMPILES
@@ -207,12 +224,12 @@ nros_lane_coords_file() {
     local bin
     bin="$(_nros_tests_bin lane-coords)"
     if [ -n "$bin" ]; then
-        if ! "$bin" "$lane" > "$tmp"; then
+        if ! "$bin" "$lane" "${slice[@]}" > "$tmp"; then
             echo "fixture-lane: $bin failed for '$lane'" >&2
             rm -f "$tmp"
             return 1
         fi
-    elif ! cargo run -q -p nros-tests --bin lane-coords -- "$lane" > "$tmp"; then
+    elif ! cargo run -q -p nros-tests --bin lane-coords -- "$lane" "${slice[@]}" > "$tmp"; then
         echo "fixture-lane: lane-coords failed for '$lane'" >&2
         rm -f "$tmp"
         return 1
@@ -222,7 +239,7 @@ nros_lane_coords_file() {
     # look instant rather than broken — the same refusal `_coords_for` makes in
     # fixtures-manifest.py.
     if [ ! -s "$out" ]; then
-        echo "fixture-lane: lane '$lane' selected zero coordinates — refusing" >&2
+        echo "fixture-lane: lane '$lane'${shard:+ (shard $shard)} selected zero coordinates — refusing" >&2
         rm -f "$out"
         return 1
     fi
@@ -283,7 +300,7 @@ nros_lane_unclaimed() {
         # No lane claims a host bridge (phase-497 W3) or real-time scheduling
         # (phase-162 W1): both need root to grant, so their e2e runs only where
         # a person claims it on purpose.
-        tier1 | tier2 | tier2-nightly) echo "ros2,host-bridge,rt-sched" ;;
+        tier1 | tier2 | tier2-nightly | merge) echo "ros2,host-bridge,rt-sched" ;;
         # Module-level lanes claim everything they select, but those two.
         all | linux) echo "host-bridge,rt-sched" ;;
         *)
@@ -394,6 +411,8 @@ nros_lane_build_lane() {
         # unnarrowed and every coordinate had to exist — which is what made the
         # middle rung cost the top rung's build (issue 0482).
         tier2 | tier2-nightly) echo "$lane" ;;
+        # RFC-0122 D8 — coordinate-scoped like the tiers, so its own build.
+        merge) echo "$lane" ;;
         *)
             # Unreachable while `_NROS_LANES` and this case agree; a new lane
             # that lands in neither arm must fail LOUDLY, because the silent
@@ -419,7 +438,24 @@ nros_lane_modules() {
         echo linux
         return 0
     fi
-    cargo run -q -p nros-tests --bin lane-coords -- "$lane" --modules
+    local mods
+    mods="$(cargo run -q -p nros-tests --bin lane-coords -- "$lane" --modules)" || return 1
+    # A shard builds its own module only — and only one the lane selects, or
+    # the shard would build (and stamp) a slice that is not the lane's.
+    if [ -n "${NROS_LANE_MODULE:-}" ]; then
+        local m found=0
+        for m in $mods; do
+            if [ "$m" = "$NROS_LANE_MODULE" ]; then found=1; fi
+        done
+        if [ "$found" = 0 ]; then
+            echo "fixture-lane: NROS_LANE_MODULE=$NROS_LANE_MODULE is not a module of lane '$lane'" >&2
+            echo "              (its modules: $(echo $mods))" >&2
+            return 2
+        fi
+        echo "$NROS_LANE_MODULE"
+        return 0
+    fi
+    printf '%s\n' "$mods"
 }
 
 # Does the RUN IN PROGRESS need fixtures for `<platform-token>`?
@@ -562,6 +598,10 @@ nros_fixtures_stamp_write() {
             echo "started_at=$(cat "${NROS_FIXTURE_STAMP}.started")"
         fi
         echo "lane=$lane"
+        # A shard's stamp says which slice it built (see the header).
+        if [ -n "${NROS_LANE_MODULE:-}" ] && [ -n "$coords" ]; then
+            echo "lane_module=$NROS_LANE_MODULE"
+        fi
         # phase-411 W1 — what the build ACHIEVED, not only what it was asked
         # for. A consumer that reads `lane=` alone is reading an intention.
         local m
@@ -777,6 +817,20 @@ nros_fixtures_stamp_require() {
         return 1
     fi
 
+    # A shard covers its own slice only (see the header). Same lane name,
+    # different slice, is a different build.
+    local have_mod want_mod
+    have_mod="$(sed -n 's/^lane_module=//p' "$NROS_FIXTURE_STAMP" | head -1)"
+    want_mod="${NROS_LANE_MODULE:-}"
+    if [ "$have" = "$want" ] && [ "$have_mod" != "$want_mod" ]; then
+        echo "ERROR: fixtures were built for lane '$have' shard '${have_mod:-<whole lane>}'," >&2
+        echo "       and this run is shard '${want_mod:-<whole lane>}'." >&2
+        echo "" >&2
+        echo "  Run:  NROS_LANE_MODULE=${want_mod} just build-test-fixtures lane=$want" >&2
+        echo "" >&2
+        echo "  (bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+        return 1
+    fi
     if [ "$have" = "$want" ]; then
         return 0
     fi

@@ -56,9 +56,9 @@ show for it.
 
 ### Verified on host
 
-- [Linux host](linux-host.md): Verified on host (merge)
-- [Zephyr native_sim](zephyr-native-sim.md): Verified on host (merge)
-- [ThreadX Linux simulator](threadx-linux.md): Verified on host (merge)
+- [Linux host](linux-host.md): Verified on host (daily)
+- [Zephyr native_sim](zephyr-native-sim.md): Verified on host (daily)
+- [ThreadX Linux simulator](threadx-linux.md): Verified on host (daily)
 - [FreeRTOS POSIX](freertos-posix.md): Verified on host (daily)
 
 <!-- END GENERATED starter list -->

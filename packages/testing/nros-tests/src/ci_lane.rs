@@ -40,7 +40,15 @@
 //! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 28 | 12 | 21 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 14 | 12 | 21 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 49 | 42 | 75 % |
+//! | [`CiLane::Merge`] | every zenoh Example cell, Rust/C/C++, on each host witness board (not a cover) | 46 | 9 | 16 % |
 //! | tier 3 | everything | 269 | 56 | 100 % |
+//!
+//! Added 2026-11-12 (phase-535 W8, RFC-0122 D8): the merge lane. It is not
+//! a rung of the ladder below: it is the set a per-merge cadence on the host
+//! witness boards would run, three coordinates per board, built and run one
+//! board per shard by the dispatch-only `merge-runtime.yml`. The same day's
+//! ruling set those boards to `daily` (RFC-0122 D9), so the lane is how that
+//! cadence gets re-measured.
 //!
 //! Re-measured 2026-11-11 (issue 2389): the `ConnectBudget` workload joined
 //! with one Zephyr native_sim Rust zenoh Example cell. A new workload value is
@@ -316,10 +324,22 @@ pub enum CiLane {
     /// runs — the interaction coverage tier 2 gives up in exchange for being
     /// cheap. See [`ALL`] for why the split exists.
     Tier2Nightly,
+    /// RFC-0122 D8's per-merge set: on each host witness board, every zenoh
+    /// `Example` cell in Rust, C and C++. NOT a cover — every such cell. The
+    /// 2026-11-12 ruling (phase-535 W8, RFC-0122 D9) moved those boards to a
+    /// daily cadence, so this lane is a RE-MEASUREMENT tool: run per board by
+    /// the dispatch-only `merge-runtime.yml` (`NROS_LANE_MODULE`,
+    /// `scripts/build/fixture-lane.sh`), never part of `CI`.
+    Merge,
 }
 
 /// Every computed lane, so tests and tooling iterate rather than enumerate.
-pub const ALL: [CiLane; 3] = [CiLane::Tier1, CiLane::Tier2, CiLane::Tier2Nightly];
+pub const ALL: [CiLane; 4] = [
+    CiLane::Tier1,
+    CiLane::Tier2,
+    CiLane::Tier2Nightly,
+    CiLane::Merge,
+];
 
 /// How wide a lane's TEST RUN is.
 ///
@@ -355,6 +375,7 @@ impl CiLane {
             CiLane::Tier1 => "tier1",
             CiLane::Tier2 => "tier2",
             CiLane::Tier2Nightly => "tier2-nightly",
+            CiLane::Merge => "merge",
         }
     }
 
@@ -392,7 +413,7 @@ impl CiLane {
     /// `tests/lane_build_covers_run.rs` binds to this declaration.
     pub fn unclaimed(self) -> &'static [Capability] {
         match self {
-            CiLane::Tier1 | CiLane::Tier2 | CiLane::Tier2Nightly => &[
+            CiLane::Tier1 | CiLane::Tier2 | CiLane::Tier2Nightly | CiLane::Merge => &[
                 Capability::Ros2,
                 Capability::HostBridge,
                 Capability::RtScheduling,
@@ -474,6 +495,9 @@ impl CiLane {
             // outside `coords(lane)` — exactly the rows `--coords-from` told the
             // build to omit.
             CiLane::Tier2 | CiLane::Tier2Nightly => RunScope::LaneCoords,
+            // A shard builds one board's slice of these coordinates and its run
+            // resolves the same slice (`NROS_LANE_MODULE` narrows both halves).
+            CiLane::Merge => RunScope::LaneCoords,
         }
     }
 }
@@ -616,7 +640,22 @@ fn spec(lane: CiLane) -> (Vec<Axis>, Vec<Axis>) {
             vec![],
             vec![Axis::Platform, Axis::Lang, Axis::Rmw, Axis::Kind],
         ),
+        // Not a cover (every pool cell is chosen, see `cells`); the axes are
+        // the ones `lanes_touch_every_declared_value_of_every_axis_they_cover`
+        // asserts the selection reaches: every host witness board, every language.
+        CiLane::Merge => (vec![Axis::Platform, Axis::Lang], vec![]),
     }
+}
+
+/// The host witness boards with an automated cadence in `board-support.toml`
+/// (Linux, Zephyr native_sim, ThreadX Linux), asserted equal to the registry
+/// by `tier1_pool_matches_board_registry`. They were the `cadence = "merge"`
+/// boards until the phase-535 W8 ruling (2026-11-12) made them `daily`.
+fn is_host_witness_board(p: PlatformId) -> bool {
+    matches!(
+        p,
+        PlatformId::Linux | PlatformId::ZephyrNativeSim | PlatformId::ThreadxLinux
+    )
 }
 
 fn pool(lane: CiLane) -> Vec<&'static Cell> {
@@ -630,11 +669,23 @@ fn pool(lane: CiLane) -> Vec<&'static Cell> {
         // platforms, this pool named one, and `lane-filter.sh linux` excluded
         // the other two outright.
         CiLane::Tier1 => all_runtime_cells()
+            .filter(|c| is_host_witness_board(c.platform))
+            .collect(),
+        // RFC-0122 D8 — the behaviour pairs (zenoh, three languages) on each
+        // host witness board. `Example` is the pair cell's kind (RFC-0122 D4); the
+        // run is coordinate-scoped, so the board's witnesses at the same
+        // coordinates build and run with them.
+        CiLane::Merge => all_runtime_cells()
             .filter(|c| {
-                matches!(
-                    c.platform,
-                    PlatformId::Linux | PlatformId::ZephyrNativeSim | PlatformId::ThreadxLinux
-                )
+                is_host_witness_board(c.platform)
+                    && c.rmw == crate::matrix::Rmw::Zenoh
+                    && matches!(
+                        c.lang,
+                        crate::matrix::Lang::Rust
+                            | crate::matrix::Lang::C
+                            | crate::matrix::Lang::Cpp
+                    )
+                    && c.kind == crate::matrix::Kind::Example
             })
             .collect(),
         // phase-542 W5 -- a platform with its own lane is in no tier's pool. Its
@@ -668,6 +719,10 @@ fn reqs_of(c: &Cell, lane: CiLane) -> BTreeSet<Req> {
 /// selection is recomputed rather than committed.
 pub fn cells(lane: CiLane) -> Vec<&'static Cell> {
     let candidates = pool(lane);
+    // The merge lane is a promise about every pool cell, not a cover.
+    if lane == CiLane::Merge {
+        return candidates;
+    }
     let universe: BTreeSet<Req> = candidates.iter().flat_map(|c| reqs_of(c, lane)).collect();
 
     let mut covered: BTreeSet<Req> = BTreeSet::new();
@@ -855,12 +910,9 @@ mod tests {
 
     #[test]
     fn tier1_covers_only_host_executable_platforms() {
-        // Tier 1 promises runtime evidence EVERY MERGE, and only a
-        // host-executable platform can afford that cadence — a cross-run
-        // platform's evidence can only ever be nightly, which is tier 2's
-        // promise. The registry says the same with `cadence = "merge"`, which
-        // `check-board-tiers` allows only on a host executable; this is the
-        // lane's half.
+        // Tier 1 is the host-executable lane: a cross-run platform's evidence
+        // is tier 2's. (It promised every merge until the phase-535 W8
+        // ruling, 2026-11-12, moved its boards to a daily cadence.)
         for c in cells(CiLane::Tier1) {
             assert!(
                 matches!(
@@ -876,7 +928,9 @@ mod tests {
     /// Hardcoding WITHOUT this assertion is exactly how the two drifted apart:
     /// the registry promised three tier-1 platforms while the pool named one,
     /// and nothing noticed because nothing compared them. Since phase-522 W4
-    /// the registry states it as `cadence = "merge"` (RFC-0114 D10).
+    /// the registry states it as `cadence = "merge"` (RFC-0114 D10); since the
+    /// phase-535 W8 ruling (2026-11-12) those boards are `daily`, so the
+    /// registry fact is "a host witness row with an automated cadence".
     #[test]
     fn tier1_pool_matches_board_registry() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -903,7 +957,12 @@ mod tests {
                 let mut f = l.split('\t');
                 let plat = f.next()?;
                 let cadence = f.next()?;
-                (cadence == "merge").then_some(plat)
+                let runs = f.next()?;
+                let breadth = f.next()?;
+                (runs == "host"
+                    && breadth == "witness"
+                    && matches!(cadence, "merge" | "daily" | "weekly"))
+                .then_some(plat)
             })
             .collect();
         registry.sort_unstable();
@@ -917,11 +976,26 @@ mod tests {
 
         assert_eq!(
             pooled, registry,
-            "the tier-1 POOL and packages/boards/board-support.toml's \
-             `cadence = \"merge\"` rows disagree.\n\
-             The registry is the source of truth for which platforms run on every \
-             merge; update `pool(CiLane::Tier1)` to match, or change the cadence \
-             in the registry deliberately."
+            "the tier-1 POOL and packages/boards/board-support.toml's host \
+             witness rows with an automated cadence disagree.\n\
+             The registry is the source of truth for which platforms tier 1 runs; \
+             update `pool(CiLane::Tier1)` to match, or change the registry \
+             deliberately."
+        );
+
+        // phase-535 W8 — the merge lane is the re-measurement set for a
+        // per-merge cadence on the same boards, so it reaches every one of
+        // them and nothing else.
+        let mut merge: Vec<String> = cells(CiLane::Merge)
+            .iter()
+            .map(|c| format!("{:?}", c.platform))
+            .collect();
+        merge.sort_unstable();
+        merge.dedup();
+        assert_eq!(
+            merge, registry,
+            "the merge lane's boards and packages/boards/board-support.toml's \
+             host witness rows with an automated cadence disagree"
         );
     }
 
@@ -1312,6 +1386,7 @@ _tier-build:
             (CiLane::Tier1, 28, 12),
             (CiLane::Tier2, 14, 12),
             (CiLane::Tier2Nightly, 49, 42),
+            (CiLane::Merge, 46, 9),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(

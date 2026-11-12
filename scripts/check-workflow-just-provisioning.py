@@ -276,6 +276,32 @@ def audit(docs):
             container = job.get("container") or {}
             image = container.get("image") if isinstance(container, dict) else container
 
+            m = re.fullmatch(r"\$\{\{\s*matrix\.([A-Za-z0-9_-]+)\s*\}\}", image) \
+                if isinstance(image, str) else None
+            if m:
+                # phase-535 W8 — a per-shard image (`merge-runtime.yml`): every
+                # value the matrix can give the key is a container this job
+                # runs in, so EVERY one must provide `just`.
+                matrix = (job.get("strategy") or {}).get("matrix") or {}
+                values = [v for v in (matrix.get(m.group(1)) or []) if isinstance(v, str)]
+                values += [i[m.group(1)] for i in (matrix.get("include") or [])
+                           if isinstance(i, dict) and isinstance(i.get(m.group(1)), str)]
+                if not values:
+                    failures.append((
+                        path, job_name, invocations[0][0], invocations[0][1],
+                        f"container.image is `matrix.{m.group(1)}`, which the matrix "
+                        "gives no literal value"))
+                    continue
+                bad = [d for v in values
+                       for ok, d in [image_provides_just(v, dockerfiles)] if ok is not True]
+                if bad:
+                    failures.append(
+                        (path, job_name, invocations[0][0], invocations[0][1], "; ".join(bad)))
+                else:
+                    checked.append((path, job_name,
+                                    f"container (per matrix entry): {len(set(values))} image(s)"))
+                continue
+
             if isinstance(image, str) and "${{" in image:
                 # phase-489 W2 — an EVENT-ROUTED job: the CI image on the hosted
                 # arm, no container on the self-hosted arm. Both halves must be
@@ -413,6 +439,17 @@ def self_test():
             "runs-on": "${{ github.event_name == 'merge_group' && fromJSON('[\"self-hosted\"]') || 'ubuntu-22.04' }}",
             "container": {"image": "${{ !(github.event_name == 'merge_group') && 'ubuntu:24.04' || '' }}"},
             "steps": [{"name": "go", "run": "just check fast\n"}]}, True),
+        ("per-shard image, every entry bakes just", {"runs-on": "ubuntu-22.04",
+            "container": {"image": "${{ matrix.image }}"},
+            "strategy": {"matrix": {"include": [
+                {"board": "a", "image": "ghcr.io/newslabntu/nano-ros-ci:humble"}]}},
+            "steps": [{"name": "go", "run": "just ci merge\n"}]}, False),
+        ("per-shard image, one entry unknown", {"runs-on": "ubuntu-22.04",
+            "container": {"image": "${{ matrix.image }}"},
+            "strategy": {"matrix": {"include": [
+                {"board": "a", "image": "ghcr.io/newslabntu/nano-ros-ci:humble"},
+                {"board": "b", "image": "ubuntu:24.04"}]}},
+            "steps": [{"name": "go", "run": "just ci merge\n"}]}, True),
         ("no just at all", {"runs-on": "ubuntu-latest", "steps": [
             {"name": "go", "run": "cargo build --release\n"}]}, False),
         # The detector's own false positives, which decide whether this gate is

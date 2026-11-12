@@ -1,0 +1,228 @@
+# merge-runtime — a MEASUREMENT TOOL, workflow_dispatch only (phase-535 W8).
+#
+# User ruling, 2026-11-12: "W8 = option 1. linux/zephyr/threadx-linux go to
+# cadence=daily. #3594 carries only the cadence gate, the header fixes and the
+# `merge` lane; merge-runtime.yml is dropped or made dispatch-only." It was made
+# dispatch-only so a per-merge cadence for those boards can be re-measured
+# before anyone proposes it again (RFC-0122 D9). It runs on no other event,
+# and it must NEVER be added to the `CI` aggregator or to the
+# branch-protection required set. A run holds three GitHub-HOSTED runners.
+#
+# WHY: measured 2026-11-12 on two runs of a temporary push branch (43173875037,
+# 43181966650), every shard needed 37-60 min and failed before building a
+# fixture. Setup took 10-15 min, and `just build merge`'s tree-wide codegen
+# plus its `check fast` prerequisite took another 26-49 min. The open
+# pre-fixture failures are an issue of their own (merge-lane-fails-before-
+# fixtures, filed with the ruling).
+#
+# WHAT A SHARD RUNS
+#
+# The `merge` lane (`nros_tests::ci_lane::CiLane::Merge`): every zenoh Example
+# cell in Rust, C and C++ on the host witness boards (linux, zephyr
+# native_sim, threadx-linux), i.e. the behaviour pairs. Its run is
+# coordinate-scoped (`NROS_TEST_COORDS`), so each board's witnesses at the
+# same coordinates build and run with them. A shard is one board's slice of
+# the lane, `NROS_LANE_MODULE` (scripts/build/fixture-lane.sh): the build, the
+# freshness gate and the run all read that one slice. The matrix is the three
+# boards by name, a fixed partition, not a `k/n` split.
+#
+# WHERE THE TIME GOES
+#
+# `just ci merge` prints each step's wall clock (`run-lane-steps.sh`).
+# `scripts/ci/merge-runtime-p95.py` reads PER-JOB RUNTIME from the GitHub API,
+# from each job's start to its end. It excludes the wait for a runner, it is
+# not batch latency, and it counts only successful jobs as samples.
+name: merge-runtime
+
+on:
+  # Dispatch only: see the header. No merge_group, no push, no schedule.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  merge-runtime:
+    name: merge-runtime (${{ matrix.board }})
+    # Hosted, in the repo's CI images, like the nightly platform jobs that
+    # already build and run threadx_linux and zephyr there.
+    runs-on: ubuntu-22.04
+    # Bounds what one batch can cost. The hosted ceiling is 360; a shard this
+    # slow is already the "lower the cadence" answer RFC-0122 D9 asks for.
+    timeout-minutes: 150
+    # ONE group per board, NOT cancel-in-progress. GitHub keeps one running and
+    # one pending run per group and drops older PENDING ones, so at most three
+    # hosted runners are ever held, the newest speculative head always gets a
+    # verdict, and a running shard is never thrown away (queue.yml's measured
+    # lesson). Correct only while this lane is advisory: a superseded required
+    # check would block the queue.
+    concurrency:
+      group: merge-runtime-${{ github.event_name }}-${{ matrix.board }}
+      cancel-in-progress: false
+    container:
+      image: ${{ matrix.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      # Issue 2382 — the host's preinstalled toolchains, mounted so
+      # `reclaim-disk.sh` can remove them (candidate 3 there). Same list as
+      # gate.yml's `check-build` and host-tests.yml's gate shards, where the
+      # reclaim measured 32,744 MB freed and 51 GiB free after, in 107-153 s
+      # (scheduled run 42747790725). A container cannot delete host tooling
+      # any other way.
+      volumes:
+        - /usr/local/lib/android:/__host-reclaim/android
+        - /usr/share/dotnet:/__host-reclaim/dotnet
+        - /usr/local/.ghcup:/__host-reclaim/ghcup
+        - /opt/ghc:/__host-reclaim/ghc
+        - /usr/share/swift:/__host-reclaim/swift
+        - /usr/local/share/powershell:/__host-reclaim/powershell
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - board: linux
+            image: ghcr.io/newslabntu/nano-ros-ci:humble
+          - board: threadx_linux
+            image: ghcr.io/newslabntu/nano-ros-ci:humble
+          - board: zephyr
+            image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r6
+    env:
+      # The shard: every lane consumer below reads this one value.
+      NROS_LANE_MODULE: ${{ matrix.board }}
+      # `just build merge` reaches `check::fast`; in CI an unset gate scope is
+      # refused (scripts/build/gate-scope.sh). `.config/gate-lanes.toml`
+      # [lane.merge] says what this shard's machine claims.
+      NROS_GATE_SCOPE: merge
+      # Only the zenoh rows are in this lane; skip the XRCE Agent superbuild.
+      NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      # Phase 218.
+      - name: Restore CLI build cache
+        id: cli-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/
+        uses: ./.github/actions/setup-nros-cli
+
+      # Restore/save split, as in nightly.yml: the entry is the CLI build only.
+      # ON `main` ONLY (issues 2141, 2412): a merge group runs on its own
+      # `gh-readonly-queue/...` ref, whose entry no other ref can restore, so a
+      # save here only adds eviction pressure on the 10 GB budget. On
+      # merge_group this lane is therefore restore-only.
+      - name: Save CLI build cache
+        if: ${{ github.ref == 'refs/heads/main' && steps.cli-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+
+      # The router: every coordinate in this lane is zenoh, and the CI images
+      # carry no `ros-humble-rmw-zenoh-cpp` (issue 1038). Same step as nightly.
+      # phase-413 W3.
+      - name: Provision the declared system closure
+        run: |
+          source ./activate.sh
+          nros setup --system --sudo
+
+      - name: Register the baked Zephyr SDK for this HOME
+        if: matrix.board == 'zephyr'
+        run: /opt/zephyr-sdk/setup.sh -c
+
+      # Issue 1474 — Zephyr's Rust build runs `cargo clippy` as a ninja step.
+      - name: Unblock rustup clippy-preview conflict
+        if: matrix.board == 'zephyr'
+        run: ./scripts/ci/rustup-restore-clippy.sh
+
+      # zephyr-sys' build.rs runs bindgen over Zephyr headers (issue 1466:
+      # resolve first, capture the status).
+      - name: Install clang + libclang for bindgen
+        if: matrix.board == 'zephyr'
+        run: |
+          if ! pkgs="$(python3 scripts/sdk/prereq-packages.py --manager apt clang libclang-dev)"; then
+            echo "::error::prereq-packages.py could not resolve clang/libclang-dev from nros-sdk-index.toml"
+            exit 1
+          fi
+          apt-get update -q
+          # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
+          apt-get install -y --no-install-recommends $pkgs
+
+      # The dispatcher spelling, so `_setup-common` runs (nightly.yml says why).
+      - name: just setup ${{ matrix.board }}
+        run: |
+          source ./activate.sh
+          if [ "${{ matrix.board }}" = zephyr ]; then
+            just setup zephyr --skip-sdk
+          else
+            just setup ${{ matrix.board }}
+          fi
+
+      # `test-all` runs `cargo metadata` over the nros-tests workspace, whose
+      # px4-sitl-tests path dep must exist; nuttx-libc backs the workspace
+      # Entry build (nightly.yml, same reason).
+      - name: Provision the sources the test workspace loads
+        run: |
+          source ./activate.sh
+          nros setup --source px4-rs --source nuttx-libc
+
+      # Issue 1353's instruments, reused rather than re-spelled: the same two
+      # scripts gate.yml's `check-build` brackets its compile tier with.
+      # Neither can fail the job.
+      - name: Disk report (before just build merge)
+        run: scripts/ci/disk-report.sh "before just build merge"
+
+      - name: Reclaim disk before the fixture build
+        run: scripts/ci/reclaim-disk.sh "before just build merge"
+
+      # Issue 1959 — `just build merge` reaches `check::fast`, and with it
+      # check-submodule-pins, which is network-free and needs its baseline.
+      # Same three steps as every gate.yml job (`check-workflow-pin-baseline`).
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: bash scripts/ci/pin-baseline.sh provide
+      - name: Init submodules whose pin moved (commits only)
+        run: bash scripts/ci/pin-baseline.sh init-moved
+      - name: Fetch submodule history for check-submodule-pins
+        run: bash scripts/ci/pin-baseline.sh deepen
+
+      # The lane's build half, narrowed to this shard by NROS_LANE_MODULE.
+      - name: just build merge (${{ matrix.board }} shard)
+        run: |
+          source ./activate.sh
+          just build merge
+
+      - name: just ci merge (${{ matrix.board }} shard)
+        run: |
+          source ./activate.sh
+          just ci merge
+          df -h / | tail -1
+
+      - name: Upload nextest JUnit (${{ matrix.board }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merge-runtime-${{ matrix.board }}-junit
+          path: |
+            target/nextest/*/junit.xml
+            target/nextest/*/junit-real.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload fixture logs (${{ matrix.board }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merge-runtime-${{ matrix.board }}-fixture-logs
+          path: test-logs/fixtures/
+          if-no-files-found: ignore
+          retention-days: 7
