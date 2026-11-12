@@ -296,12 +296,22 @@ fn router_exit_hint(stderr: &str) -> Option<&'static str> {
 }
 
 fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestResult<()> {
+    // Issue 2457 -- every test that starts a router opens a session on it, and
+    // a failed open says why only through `nros_log`. Without a sink that
+    // line is dropped and the test prints a bare `ConnectionFailed`.
+    crate::log_sink::install_stderr_log_sink();
     let start = Instant::now();
     let timeout = Duration::from_secs(10);
     let addr = format!("127.0.0.1:{port}");
 
     while start.elapsed() < timeout {
         if TcpStream::connect(&addr).is_ok() {
+            // Issue 2457 -- printed so a failure after this point can be
+            // placed against the router's start, not guessed from a total.
+            eprintln!(
+                "zenohd: accepting on {locator} {} ms after spawn",
+                start.elapsed().as_millis()
+            );
             return Ok(());
         }
 

@@ -53,6 +53,9 @@ pub mod ci_lane;
 pub mod interop;
 pub mod lane_scope;
 pub mod levels;
+// Issue 2457 -- a stderr sink for `nros_log`, so a host test prints the
+// runtime's own failure reason (e.g. why a zenoh open got no session).
+pub mod log_sink;
 pub mod matrix;
 pub mod matrix_tally;
 pub mod output;
