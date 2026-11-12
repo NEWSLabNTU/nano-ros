@@ -281,6 +281,24 @@ build_in_tree_cli() {
     run_cmd "building nros-launch-resolve (the launch resolver)" \
         cargo build --release --manifest-path "${REPO_ROOT}/packages/cli/nros-launch-resolve/Cargo.toml" \
         || { echo "bootstrap: nros-launch-resolve build FAILED — the workspace quick start needs it (see error above; libclang missing is the common cause)" >&2; return 1; }
+    # Issue 2468 — the in-tree runner and command packages, the set
+    # `just setup-cli` builds (phase-527 W3/W5). `nros run` executes an image
+    # through its runner package, and a checkout's runner is found only at
+    # packages/runners/target/release/; without it the first `nros run` of the
+    # checkout road refused with a `just` recipe this front door does not
+    # need. Each is its own workspace and target directory (issue 0616).
+    # profile-literal-ok: host tool: the in-tree runner packages
+    run_cmd "building the in-tree runner packages (packages/runners/)" \
+        cargo build --release --locked --manifest-path "${REPO_ROOT}/packages/runners/Cargo.toml" --workspace \
+        || { echo "bootstrap: runner packages build FAILED — \`nros run\` needs them (see error above)" >&2; return 1; }
+    # profile-literal-ok: host tool: the in-tree command packages
+    run_cmd "building the zenoh command package (nros router)" \
+        cargo build --release --locked --manifest-path "${REPO_ROOT}/packages/rmw/zenoh/nros_zenoh_tools/Cargo.toml" \
+        || { echo "bootstrap: nros_zenoh_tools build FAILED (see error above)" >&2; return 1; }
+    # profile-literal-ok: host tool: the in-tree command packages
+    run_cmd "building the PX4 command package (nros px4)" \
+        cargo build --release --locked --manifest-path "${REPO_ROOT}/packages/rmw/xrce/nros_px4_tools/Cargo.toml" \
+        || { echo "bootstrap: nros_px4_tools build FAILED (see error above)" >&2; return 1; }
     export PATH="${REPO_ROOT}/packages/cli/target/release:$PATH"
 }
 
