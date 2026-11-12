@@ -52,6 +52,13 @@ curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/in
 prints the CLI, codegen and library versions, and `nros doctor`, run outside a
 workspace, checks the install itself.
 
+### One install for several users, or a read-only one
+
+A build never writes into the install, so one install can serve every account
+on a machine or sit read-only in a container image. Each project keeps its
+own build caches, a few GB; `NROS_BUILD_ROOT` set to a writable directory
+shares them.
+
 ## Provisioning with `nros setup`
 
 1. See what a board needs before fetching anything:
@@ -75,11 +82,9 @@ workspace, checks the install itself.
    nros setup <board> --rmw <zenoh|xrce|cyclonedds>
    ```
 
-   Packages are prebuilt where the index has a binary for your host and built
-   from source otherwise; `nros setup` announces a source build before it
-   starts. For every board with a CMake build it also installs Corrosion. If
-   the host has no Rust, it installs rustup into `~/.cargo` with the stable
-   toolchain.
+   Packages are prebuilt where the index has a binary for your host, else
+   built from source, announced first. A CMake board also gets Corrosion, and
+   a host with no Rust gets rustup and the stable toolchain in `~/.cargo`.
 
 ### Provision a whole workspace
 
@@ -133,13 +138,11 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
     ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
-`rmw_zenohd` reads no arguments, only `ZENOH_CONFIG_OVERRIDE`. It installs
-into `<prefix>/lib/rmw_zenoh_cpp/`, so `command -v rmw_zenohd` printing
-nothing is normal. nano-ros finds it through `NROS_RMW_ZENOHD`, then the
-prefixes you sourced, then `$ROS_DISTRO`, and never searches `PATH` or globs
-`/opt/ros/*`: a `zenohd` elsewhere is usually a different zenoh. On a distro
-with no ROS 2 packages, install ROS 2 from source or a container and source
-its `setup.bash` the same way.
+`rmw_zenohd` reads only `ZENOH_CONFIG_OVERRIDE`, and installs off `PATH`, in
+`<prefix>/lib/rmw_zenoh_cpp/`. nano-ros finds it through `NROS_RMW_ZENOHD`,
+then the prefixes you sourced, then `$ROS_DISTRO`, never `PATH`: a `zenohd`
+there is usually a different zenoh. With no ROS 2 packages for your distro,
+install ROS 2 from source or a container and source its `setup.bash`.
 
 ## Pinning a version
 
@@ -167,9 +170,9 @@ nros pin
 sdk/nros/0.6.0-nros4/share/nros/manifest.toml
 ```
 
-Only the newest release is supported, and fixes are not backported, so a
-pin is a choice to move deliberately rather than a place to stay; a pinned
-release keeps installing, because its assets stay published
+Only the newest release is supported and fixes are not backported, so move
+a pin deliberately; a pinned release keeps installing, as its assets stay
+published
 ([Release support](../../reference/support-status.md#release-support)).
 
 With no pin, `nros pin` says so:
@@ -190,9 +193,9 @@ nros build
 ```
 
 Move the pin forward only. `nros pin <newer>` reports the codegen delta
-between the two releases before it writes anything (`--dry-run` writes
-nothing), and the next `nros build` regenerates the bindings. Then run
-`nros setup <board>` again to bring the SDK store up to the new index:
+before it writes (`--dry-run` writes nothing), the next `nros build`
+regenerates the bindings, and `nros setup <board>` brings the store up to
+the new index:
 
 ```text
 curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh \

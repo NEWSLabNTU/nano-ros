@@ -44,6 +44,7 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 |------------------|----------------------------------------------------------------------------------------------------|-------------------------------------|
 | `ZENOH_PICO_DIR` | CMake install prefix for pre-built zenoh-pico (use with `system-zenohpico` feature on `zpico-sys`) | Only with `system-zenohpico`        |
 | `NROS_EXTRA_BOARD_PATH` | Extra board-search roots (PATH-style `:` separated). Each entry is a directory shaped like `packages/boards/` — subdirs carrying `nros-board.toml` crates or `*/boards/<name>/board.cmake` bundles. Read by the `nros` CLI's board catalog AND `nano_ros_use_board()` (also settable as a CMake cache var there). Board keys stay global: a name found under two roots is an error, never shadowed. | (unset) |
+| `NROS_BUILD_ROOT` | One writable directory for the probe-build caches `nros build` keeps, shared by every project that sets it. Unset, each project keeps its own; a build never writes into the installed release. See [one install for several users](../guide/build/install-options.md#one-install-for-several-users-or-a-read-only-one). | (unset) |
 
 ### ARM FVP (`FVP_BaseR_AEMv8R`)
 
