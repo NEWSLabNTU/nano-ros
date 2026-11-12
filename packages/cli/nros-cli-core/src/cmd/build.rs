@@ -4281,9 +4281,19 @@ fn drive(
     if workers == 1 {
         work();
     } else {
+        // Issue 2478 — a build inside a configure (the census take records a
+        // host image's stamp from here) reads configure inputs on these
+        // workers, so they carry the configure's external-read record.
+        let recorder = crate::configure_stamp::ExternalRecorder::current();
         std::thread::scope(|s| {
             for _ in 0..workers {
-                s.spawn(work);
+                let recorder = recorder.clone();
+                s.spawn(move || {
+                    if let Some(r) = &recorder {
+                        r.install();
+                    }
+                    work();
+                });
             }
         });
     }
