@@ -868,7 +868,18 @@ order, each step with its own PR and gate run:
      `nros-bench` programs are one-package workspaces, migrated in slices, each
      slice ticking its count here. The other two bins,
      `action-server-concurrent` and `message-info-observer`, migrate with
-     issue 2406 (a multi-image owned entry). — 11/28 done (#3485, #3501, #3529)
+     issue 2406 (a multi-image owned entry). — the 3 `nros-bench` programs
+     are done (#3588), and so are `ros-edition-pose-pub` (#3588) and the seven
+     board-only bins (#3610), after #3485, #3501 and #3529. The "28" was a
+     count of directories and did not survive the slicing, so progress is
+     now stated as what remains. Measured on `origin/main` at `d438b2369f`:
+     12 bins still carry a `system.toml` beside their code and no
+     `.colcon_workspace` (`action-raw-goal-probe`, `ament-census-port`,
+     `component-node-poc`, `component-poc`, `contract-monitor-cpp`,
+     `image-env-probe-c`, `log-arena-probe`, `matched-events-probe-c`,
+     `rosout-talker-c`, `rosout-talker-cpp`, `service-info-client-cpp`,
+     `transform-poc`). Re-run with:
+     `for d in $(git ls-tree -d --name-only HEAD packages/testing/nros-tests/bins/); do test -e $d/.colcon_workspace || { test -e $d/system.toml && echo $d; }; done`
 
    A leaf that is still one after that is a true leaf. It moves in place onto
    the owned-entry adapter (`<entry>_nros_derived`), as the fixture entries
