@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [c-api, lifecycle, runtime]
-related: [2428, 2304, phase-488]
+related: [2428, 2304, phase-488, rfc-0128]
 found: 2026-11-11
 ---
 
@@ -64,3 +64,10 @@ program, so it lands together with 2428's choice and not before.
 - Add a Linux C lifecycle cell on Cyclone and on zenoh that checks
   `ros2 lifecycle get /<node>` succeeds. No C lifecycle cell checks the
   service NAMES today.
+
+## Decided by RFC-0128 (2026-11-12)
+
+[RFC-0128](../design/0128-per-node-lifecycle.md) D8: lifecycle services are
+named only after a declared node, `register_lifecycle_services_named` refuses
+an empty name, and the executor-scoped C family retires in favour of upstream
+`rclc_lifecycle`'s per-node API (D4). The refusal lands in its phase B.
