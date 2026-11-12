@@ -832,7 +832,7 @@ queue-notify-decision:
 # executables released, what the cells and probes read kept.
 [private]
 release-fixture-intermediates:
-    @bash scripts/ci/release-fixture-intermediates.sh --self-test
+    @bash scripts/ci/release-fixture-intermediates.sh
 
 # issues 1081 + 1841 — `just setup` brings play_launch to its recorded pin. A
 # DIRTY off-pin submodule is refused in a developer tree (it may be work) and
