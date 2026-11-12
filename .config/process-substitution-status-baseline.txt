@@ -1,9 +1,7 @@
 # Unchecked `< <(...)` sites per file (issue 2424,
 # scripts/check-process-substitution-status.py). May only FALL: fix a
 # site with `wait $!` as its next statement, then `--update`.
-just/check/cmake.just	1
 just/check/docs.just	2
-just/check/fixtures.just	1
 just/check/lanes.just	1
 just/workspace.just	4
 just/zephyr-ci.just	1

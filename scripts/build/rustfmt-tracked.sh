@@ -62,13 +62,15 @@ edition_of() {
 # every `generated/` tree are untracked, so none can leak in.
 fmt_crate() {
     local dir="$1" edition="$2" exclude="${3:-}"
-    local files
+    local listed files
+    # An assignment, not a process substitution, so a failing `git ls-files`
+    # stops the script under `set -e` rather than reading as no files.
+    listed="$(git ls-files "$dir/*.rs" "$dir/**/*.rs")"
     if [ -n "$exclude" ]; then
-        mapfile -t files < <(git ls-files "$dir/*.rs" "$dir/**/*.rs" | grep -v -- "$exclude" || true)
-    else
-        mapfile -t files < <(git ls-files "$dir/*.rs" "$dir/**/*.rs")
+        listed="$(grep -v -- "$exclude" <<<"$listed" || true)"
     fi
-    [ "${#files[@]}" -eq 0 ] && return 0
+    [ -z "$listed" ] && return 0
+    mapfile -t files <<<"$listed"
     echo "  fmt $dir (edition $edition, ${#files[@]} files)"
     rustfmt "+$nightly" "${check[@]}" --edition "$edition" "${files[@]}"
 }
