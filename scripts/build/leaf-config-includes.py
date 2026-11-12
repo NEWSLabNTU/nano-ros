@@ -150,7 +150,7 @@ def main() -> int:
     gen_unprovisioned = []   # (manifest, path) — producer absent, not required
     px4_available = px4_msg_tree().is_dir()
     # Scoped to `examples/**` — the leaves the lanes this guard fronts actually
-    # walk (`linux::format` enumerates exactly this set). `packages/cli/
+    # walk (the example-leaf build lanes). `packages/cli/
     # testing_workspaces/**` also path-deps `generated/`, but those are CLI test
     # fixtures that the tests using them sync on demand, so requiring them here
     # would fail `just format` for trees that are not broken. Matching the gate

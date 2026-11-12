@@ -1,7 +1,7 @@
 ---
 id: 2464
 title: "In a fresh worktree, `just format` fails until codegen and `nros configure` have run in several leaves, and the px4 companion leaves block `linux::format` outright"
-status: open
+status: resolved
 type: bug
 area: [tooling, dev-experience]
 severity: low
@@ -69,3 +69,46 @@ Formatting reads sources, so it should not need generated trees. Either:
 
 In both cases, the px4 leaves must not block a host that never asked for
 PX4.
+
+## Fixed (2026-11-12)
+
+The first option above. `just format` now formats the example leaves and the
+`packages/cli` members with `rustfmt` over their TRACKED sources, one call per
+crate (`scripts/build/rustfmt-tracked.sh <examples|cli>`). It reads no
+manifest, so it needs no `nros-patch.toml` include, no `generated/` path dep,
+no `nros configure`, no codegen and no PX4 `.msg` tree.
+
+**The class.** Formatting had two spellings. The `--check` gates
+(`check example-fmt`, `check cli-fmt`) left `cargo fmt` for `rustfmt` per file
+years ago, in issues 0320 and 0337, for exactly the manifest-loading reason
+above. The formatters (`linux::format`, `format-cli`) never followed. So a
+tree could pass the check and fail the formatter. Now the gate and the
+formatter call the same script with the same file set and edition, and differ
+only by `--check`. The PX4 companions are out of the file set for the reason
+the gate already gave.
+
+`just format` no longer depends on `_require-leaf-includes`. Issue 0474 added
+that dependency for `cargo fmt`. The guard still fronts the lanes that build
+those leaves. Formatting tracked files only also means `generated/` members are
+never rewritten, which removes one trigger of CLAUDE.md's fixture mtime
+treadmill (the line there is corrected).
+
+**Measured** in a fresh worktree on origin/main c6daad3a37
+(`git worktree add`, `just setup-worktree`, no configure, no codegen):
+`just format` exits 0 in 19 s, formatting 59 example crates and 16 cli
+members, and rewrites no tracked `.rs` file. The issue's repro had failed at
+step 1.
+
+**Negative controls.**
+
+| case | `check` before formatting | formatter | `check` after |
+| --- | --- | --- | --- |
+| `fn   ugly( ){}` appended to `examples/linux/rust/action-client-rtic/src/native_rtic_action_client/src/main.rs` | `check example-fmt` exit 1 | `just linux::format` rewrites it to `fn ugly() {}` | exit 0 |
+| the same line appended to a cli member's `lib.rs` | `check cli-fmt` exit 1 | `just format-cli` rewrites it | exit 0 |
+
+The issue's stray `generated/` trees in `nros-bench` are issue 2470's.
+
+Sweep: `git grep -n 'cargo +{{NIGHTLY}} fmt\|cargo fmt' -- justfile 'just/**'`.
+The root workspace's `format-workspace` and its `--check` both keep
+`cargo fmt`. Its members are the committed crates, whose manifest loads from a
+bare clone.
