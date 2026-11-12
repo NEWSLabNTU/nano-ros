@@ -115,7 +115,9 @@ read. Whether the road stays a guest road is unchanged and still open
 
 ## Open questions
 
-Issue 2236 Q1 to Q20. This RFC is rewritten from shape to decisions when they
+Issue 2236 Q1 to Q20; its "Decision brief (2026-11-12)" groups the ones the
+ruled direction settles and recommends answers for the rest. This RFC is
+rewritten from shape to decisions when they
 are ruled.
 
 ## Changelog

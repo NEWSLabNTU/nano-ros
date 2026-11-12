@@ -803,3 +803,58 @@ choosing.
 20. Is retiring the vendored `libc` fork (`third-party/nuttx/libc`) in this
     phase's scope once no road builds `std` (2236 Q5 and 2426 item 1), or a
     separate phase? this phase / separate
+
+## Decision brief (2026-11-12)
+
+This section puts Q1 to Q20 in a form that can be ruled in one pass. It adds
+no new measurement. Each fact cited here is measured in a section above, and
+the section is named. The questions above stay as they were written.
+
+**Direction (ruled 2026-11-12, relayed through the manager session).** The
+direction is RFC-0126:
+
+- NuttX owns every NuttX fact, and nano-ros reads it.
+- One cargo carrier serves every road.
+- No road is offered without a lane that builds it.
+
+The direction settles some questions by itself. Section A lists them, so the
+ruling only needs to confirm them. Section B lists the questions the direction
+leaves open, each with a recommendation that fits the direction.
+
+### A. Settled by the direction (confirm as a group)
+
+| Q | Question | Answer the direction gives | Why it follows | Measured fact |
+| --- | --- | --- | --- | --- |
+| 9 | Move NuttX builds onto NuttX's own infrastructure? | **yes** | This is the direction itself. | "Using NuttX's own infrastructure" table: each invention beside its NuttX counterpart. |
+| 13 | CPU and C flags from `ARCHCPUFLAGS` / `CROSSDEV`, with the restated copies deleted? | **yes** | NuttX owns the flags. | "Measured at the pins": the arm `ARCHCPUFLAGS` equal our four copies plus `-mlittle-endian`, and rv-virt's are equal. |
+| 3 | Knob channel: B1, B2 or B3? | **B1** (cargo `--config` file, with configure run in `context::`) | B1 is the one cargo carrier the cargo and cmake roads already use. B2 adds a make-side carrier, and its `export`s land on the ladder's top rung. B3 adds a Kconfig dialect and cannot run before `olddefconfig`. | Section 2(b). Issue 1712 measured the `[env]` fingerprinting B1 relies on. |
+| 5 | The make road drops its inline `--config` literals and `-Zbuild-std=std,panic_abort` for the board's `cargo_config`, on the guest road too? | **yes** | One carrier on every road. A guest that keeps the literals keeps a second statement of the board. | Section 1 and the study: the make road's `std` build is 39.8 s of a 69 s armv7a build. |
+| 7 | Does the make road count as HOOKED (RFC-0120 D5), with D5's NuttX row and R36 amended? | **yes**, given Q1 yes and Q3 B1 | The host configure becomes the shell's `context::` step, which calls configure before cargo reads anything. | Section 3. |
+| 17 | Configure the kernel as a defconfig fragment over upstream's `qemu-armv7a:nsh` / `rv-virt:netnsh`, with `tools/configure.sh`? | **yes** | NuttX owns its configure. `build-nuttx.sh` copies a defconfig and runs `olddefconfig`, which restates `configure.sh`. | Exploration table, "configure by `cp defconfig .config`" row. |
+| 18 | Name the app in `CONFIG_INIT_ENTRYPOINT` instead of overriding `nsh_main`? | **yes** | NuttX owns the boot entry. | Exploration table, "the app runs by overriding the `nsh_main` symbol" row. |
+| 16 | NuttX's CMake flow: support it now, or delete the shell? | **(b) delete** the CMake shell and the book's sentence | No road is offered without a lane, and nothing builds this flow. It can come back as a new road with its own lane. | Issue 2426 item 7: the staged tree breaks a CMake configure today. E5: whether the pinned kernel's CMake build boots `qemu-armv7a` was not measured. |
+| 4 | When a project is named, refuse a Kconfig RMW, edition or API flavor that differs from the image's? | **yes** | This follows from rulings already in force, not from RFC-0126: RFC-0098 D10 (one source of image configuration) and Ruling R34 (the cmake and Zephyr roads already refuse an edition disagreement). | Section 2, "Where Kconfig and configure could disagree". |
+
+### B. Open: the direction does not decide these
+
+| Q | Question | Options | Measured facts | Recommendation |
+| --- | --- | --- | --- | --- |
+| 1 | Can an `apps/external` make app be a nros project? | yes, or no (the leaf road stays the only project road) | Section 1: the make road has no project, no image and no knob channel today. E7: it is the only road that builds in the user's own NuttX tree (`$(TOPDIR)`). | **yes.** Under Q5's one carrier the make road needs configure's cargo config anyway, and "no" leaves a road with no configure in a phase whose point is one carrier. |
+| 2 | Project identity | A1: Kconfig strings `CONFIG_NROS_PROJECT` + `CONFIG_NROS_IMAGE`. A2: the app's `Make.defs` sets `NROS_PROJECTS`. A3: discovery. | Section 2(a). micro-ROS's NuttX app uses Kconfig as its surface (`uros/Kconfig`, `uros/Makefile:41-54`). PX4 and Spresense also keep the project in `.config` or a fragment merged into it ("Other projects"). | **A1** (the manager's lean), plus a refusal when the named directory holds no `system.toml`. Section 3 recommended A2, before the direction was ruled. The direction puts NuttX-side settings in NuttX's own configuration surface, so A1 now fits better: the identity sits in the defconfig fragment Q17 creates, and menuconfig shows it. A2's case was that it keeps paths out of a defconfig. A1 meets that with a path relative to `$(APPDIR)`. A3 is not recommended. |
+| 6 | Must a make-app project declare its entities (no host census for make apps)? | yes, or no (teach the census to build `CSRCS` for the host) | Section 2, "Sizing a make app": the census builds a host `CMakeLists.txt`, and a make app has none. | **yes** for this phase. A make census can be a separate issue. |
+| 8 | File the guest road's knob prompts (B3's guest half) as a separate issue now? | yes / no | Section 2(b), B3: the NuttX Kconfig has no knob symbols today. | **no.** Kconfig knob symbols read through `DOTCONFIG` would be a second carrier beside Q3's `--config` file. With Q1 yes, a user who wants sized knobs names a project. Revisit only if a guest-only user asks. |
+| 10 | Which roads exist? | (a) leaf + workspace + apps, each from NuttX's pieces. (b) apps road only. (c) leaf + workspace only. | E7: 35 NuttX fixture rows and 24 test files rest on the leaf and workspace roads. The apps road has no fixtures and no census, and only it builds in the user's own tree. | **(a)**, with the apps road gaining W1's lane (the direction's lane rule). (b) moves 35 rows onto a road that has no fixtures today. (c) drops the road a NuttX user recognises. |
+| 11 | Where the armv7a triple comes from | (a) upstream PR, carried on a nuttx-apps fork patch branch. (b) our own fallback, in one place, checked against upstream's table. (c) the board's `[build] target`. | E1: upstream lacks an armv7a branch in both flows, on our pin and on `master`, and the two flows spell the arch differently. | **(a).** It keeps NuttX as the owner. The cost is that `nuttx-apps` changes shape from an untouched upstream pin to a fork with a patch branch. (c) is ruled out by the direction, because the board would restate a kernel fact. |
+| 12 | Whose cargo invocation | (a) move the nuttx-apps pin to a fixed upstream commit and use `RUST_CARGO_BUILD`. (b) keep our cargo command and take only the facts (triple, flags) from NuttX. (c) fix it upstream, then (a). | "Measured at the pins": upstream's invocation fails on both boards with our nightly. Its environment carries no `NUTTX_DIR`, no knobs and no board build-std (RFC-0126 Alternatives). | **(b).** The invocation is the carrier, and the carrier is ours (Q3, Q5). The facts it consumes are NuttX's. |
+| 14 | On the leaf road, may `nros configure` read the export's `scripts/Make.defs`, or must the host build hand the flags over? | read / hand over | E2: the make road has the flags at parse time. The leaf road has them only in the export's `scripts/Make.defs`. | **read**, through `nros locate`, with one sentence added to RFC-0120 D1: the export is a provisioned input, built once per arch and shared by every image (`build-nuttx.sh` short-circuit), not a host-build product of the image being configured. On the apps road the recipe passes them, so nothing is read there. |
+| 15 | Where the rv-virt target spec lives | (a) board JSON for every road. (b) board JSON on the leaf road only, built-in triple plus `panic = "abort"` on the apps road. (c) the two deltas into rustc's built-in target. (d) the spec into upstream NuttX's `tools/`. | E6: the board's JSON is the built-in spec plus `eh-frame-header: false` and `panic-strategy: abort`. Both are still needed where rustc links the image. The apps-road case is reasoned, not measured. | **(b) now, then (d).** (b) follows the direction where it can be checked. (d) moves the spec to NuttX's own tree; upstream already ships JSON specs for x86 and aarch64. |
+| 19 | Cadence of the make-road lane (armv7a and rv-virt, each in its own scratch kernel tree) | pull request, merge queue, or daily | E7: one armv7a make build from a configured tree takes 69 s on 4 jobs. The study measured no kernel configure time. | **daily** to start. A per-PR or merge-queue lane would configure two kernels per entry. Move it up once W1 has measured the whole lane. |
+| 20 | Retire the vendored `libc` fork in this phase, or in a separate one? | this phase / separate | 2426 item 1: the fork exists only because a road builds `std`. With Q5 yes, no road does. | **separate**, opened once W5's `std` removal has landed and been measured. The retirement is a submodule removal with its own acceptance, and it should not hold up W0. |
+
+### What the ruling then unblocks
+
+- With A confirmed and B answered as recommended, every "Gate:" line in
+  [phase-550](../roadmap/phase-550-nuttx-native-build-infrastructure.md) clears,
+  except W13's road deletion. Q10 (a) deletes no road.
+- RFC-0126 is then rewritten from a decision shape into decisions.
+- RFC-0120 D5/D8 and phase-530 R36 are amended for Q1 and Q7.
