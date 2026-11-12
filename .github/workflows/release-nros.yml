@@ -499,3 +499,17 @@ jobs:
               "$RUNNER_TEMP/nros-linux-x86_64.tar.zst" \
               "$RUNNER_TEMP/nros-linux-x86_64.tar.zst.sha256" \
               "$RUNNER_TEMP/nros-linux-x86_64.cdx.json"
+
+  # RFC-0127 D6, phase-551 W4: the starter image, on every published release
+  # (Q5), built from the tag the step above just created. It pushes only the
+  # immutable `<ver>`; `latest` is the `image` probe track's to move (D7).
+  starter-image:
+    name: starter image
+    needs: build
+    if: ${{ inputs.publish }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/starter-image.yml
+    with:
+      version: ${{ inputs.version }}

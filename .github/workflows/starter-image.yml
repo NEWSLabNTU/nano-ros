@@ -1,0 +1,207 @@
+# The starter image -- RFC-0127 D6, phase-551 W4.
+#
+# `ghcr.io/newslabntu/nano-ros-starter`, public (RFC-0127 Q1, ruled
+# 2026-11-12). Built by the RELEASE, never by hand from a session or a laptop:
+# `release-nros.yml` calls this workflow after it has published `nros-<ver>`,
+# so the image installs the asset that release just published and bakes the
+# store that release's `nros setup` resolves (RFC-0127 D5 guarantee 2). The
+# context is written from the release's own tag, not from `main`, for the
+# same reason: the index the `host` layers read is the release's.
+#
+# Three things a run can do, and only these:
+#
+#   build `starter`         on every release (workflow_call), tag `<ver>`;
+#   build `starter-zephyr`  on dispatch only (RFC-0127 Q4), tag `<ver>-zephyr`;
+#   retag                   on dispatch: point a semester or LTS tag
+#                           (`2027-spring`) at an existing `<ver>`, the
+#                           deliberate retag RFC-0127 D6 names.
+#
+# What it never does:
+#
+#   * re-push a version tag. `<ver>` and `<ver>-zephyr` are IMMUTABLE
+#     (RFC-0127 D5 guarantee 1): a customer's `FROM ...:<ver>` must mean the
+#     same bytes forever, so a tag that already exists refuses the build
+#     before anything is built;
+#   * move `latest`. That is the `image` probe track's (RFC-0127 D7, phase-551
+#     W5): `latest` moves only after a timed pull of the released tag builds
+#     the first project offline. A retag named `latest` is refused here.
+#
+# The image is over its compressed budget (2 GB `starter`, 5 GB
+# `starter-zephyr`, RFC-0127 D7) -> the build fails and nothing is pushed;
+# `scripts/ci/starter-image.sh` is the one place that budget is measured.
+#
+# ONE-TIME, by an org admin, not by this workflow: a package GHCR creates on
+# first push is PRIVATE, and GITHUB_TOKEN cannot change a package's
+# visibility. After the first release publishes `nano-ros-starter`, set it
+# public in the package's settings (RFC-0127 Q1).
+#
+# amd64 only (RFC-0127 Q6): arm64 is one more platform here when
+# `release-nros.yml`'s runner decision is made (phase-551 W8).
+name: starter image
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "released store version, e.g. 0.6.0-nros9 (its `nros-<ver>` tag must exist)"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "released store version, e.g. 0.6.0-nros9 (its `nros-<ver>` tag must exist)"
+        required: true
+        type: string
+      target:
+        description: "what to build (ignored when `retag` is set)"
+        required: false
+        default: starter-zephyr
+        type: choice
+        options:
+          - starter-zephyr
+          - starter
+      retag:
+        description: "instead of building: point this tag (e.g. 2027-spring) at the existing `<version>`"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: starter-image-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/newslabntu/nano-ros-starter
+
+jobs:
+  build:
+    name: build + push ${{ inputs.target || 'starter' }} ${{ inputs.version }}
+    if: ${{ inputs.retag == '' || inputs.retag == null }}
+    # 22.04 like the release job: the image is `FROM ubuntu:22.04`, and the
+    # runner's engine is what builds it, not what runs it, so this is for
+    # sameness rather than correctness.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The release's tree, not main's: its index and its install.sh.
+          ref: nros-${{ inputs.version }}
+
+      - name: Name the tag
+        id: tag
+        run: |
+          set -euo pipefail
+          target='${{ inputs.target || 'starter' }}'
+          case "$target" in
+            starter) tag='${{ inputs.version }}' ;;
+            starter-zephyr) tag='${{ inputs.version }}-zephyr' ;;
+            *) echo "unknown target '$target'" >&2; exit 1 ;;
+          esac
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "ref=$IMAGE:$tag" >> "$GITHUB_OUTPUT"
+          echo "image: $IMAGE:$tag ($target)"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # RFC-0127 D5 guarantee 1, checked BEFORE the build: a version tag is
+      # never re-pushed. `manifest inspect` exits non-zero for a tag that does
+      # not exist; anything it can read is a tag somebody already relies on.
+      - name: Refuse an existing version tag
+        run: |
+          set -euo pipefail
+          ref='${{ steps.tag.outputs.ref }}'
+          if docker manifest inspect "$ref" >/dev/null 2>&1; then
+            echo "starter image: $ref already exists, and version tags are immutable (RFC-0127 D5 guarantee 1)." >&2
+            echo "Release a new version instead; a semester tag moves with the retag dispatch." >&2
+            exit 1
+          fi
+          echo "$ref is free"
+
+      # A hosted runner has ~14 GB free; `starter` peaks above that while its
+      # build steps run, and `starter-zephyr` adds ~10 GB. These trees are
+      # the runner image's, not ours.
+      - name: Free runner disk
+        run: |
+          set -euo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/.ghcup /usr/share/swift /usr/local/share/powershell \
+                      /opt/hostedtoolcache
+          df -h /
+
+      - name: Build (size checked against the budget)
+        run: |
+          set -euo pipefail
+          bash scripts/ci/starter-image.sh \
+              --target '${{ steps.tag.outputs.target }}' \
+              --tag '${{ steps.tag.outputs.ref }}' \
+              -- --build-arg 'NROS_VERSION=${{ inputs.version }}' \
+                 --label 'org.opencontainers.image.source=https://github.com/${{ github.repository }}' \
+                 --label 'org.opencontainers.image.version=${{ inputs.version }}' \
+                 --label "org.opencontainers.image.revision=$(git rev-parse HEAD)"
+
+      - name: Push
+        run: |
+          set -euo pipefail
+          ref='${{ steps.tag.outputs.ref }}'
+          # Re-checked: another run may have pushed while this one built.
+          if docker manifest inspect "$ref" >/dev/null 2>&1; then
+            echo "starter image: $ref appeared during the build; not overwriting it." >&2
+            exit 1
+          fi
+          docker push "$ref"
+          digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$ref")"
+          echo "pushed $ref"
+          echo "digest $digest"
+          printf '%s\n' "### starter image" "" "\`$ref\`" "" "\`$digest\`" \
+              "" "\`latest\` is unchanged: the \`image\` probe track moves it (RFC-0127 D7)." \
+              >> "$GITHUB_STEP_SUMMARY"
+
+  retag:
+    name: retag ${{ inputs.retag }} -> ${{ inputs.version }}
+    if: ${{ inputs.retag != '' && inputs.retag != null }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Retag
+        env:
+          RETAG: ${{ inputs.retag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          # `latest` is the probe track's; a version-shaped name would be a
+          # second, mutable spelling of an immutable tag.
+          case "$RETAG" in
+            latest) echo "retag: \`latest\` moves only through the image probe track (RFC-0127 D7)" >&2; exit 1 ;;
+            [0-9]*.*|*-zephyr) echo "retag: '$RETAG' looks like a version tag, which is immutable (RFC-0127 D5)" >&2; exit 1 ;;
+          esac
+          case "$RETAG" in
+            *[!A-Za-z0-9._-]*|'') echo "retag: '$RETAG' is not a valid tag" >&2; exit 1 ;;
+          esac
+          docker buildx imagetools inspect "$IMAGE:$VERSION" >/dev/null
+          docker buildx imagetools create -t "$IMAGE:$RETAG" "$IMAGE:$VERSION"
+          docker buildx imagetools inspect "$IMAGE:$RETAG" | head -5
+          printf '%s\n' "### starter image retag" "" "\`$IMAGE:$RETAG\` -> \`$IMAGE:$VERSION\`" \
+              >> "$GITHUB_STEP_SUMMARY"
