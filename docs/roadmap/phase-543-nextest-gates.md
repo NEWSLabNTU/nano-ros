@@ -195,6 +195,8 @@ the `just` wrapper; `slice:` partitioning is 0.9.127, `group()` filtering
 
 ### W0 — Housekeeping — DONE (#3207)
 
+- **Status:** DONE (#3207)
+
 - cargo-nextest 0.9.143 -> 0.9.151 in `nros-sdk-index.toml` (both dists, sha256
   measured, floor glibc 2.27 measured on both arches unchanged). The repo's
   `.config/nextest.toml` parses under 0.9.151.
@@ -210,6 +212,8 @@ the `just` wrapper; `slice:` partitioning is 0.9.127, `group()` filtering
   tool, run with arguments).
 
 ### W1 — The harness lists every gate — DONE
+
+- **Status:** DONE (stated in the heading; no date recorded)
 
 Landed as specified, measured on this tree:
 
@@ -242,6 +246,8 @@ today's lanes. Acceptance: `cargo nextest list -p nros-gates` names all 511 + 28
 
 ### W2 — Units — DONE
 
+- **Status:** DONE (stated in the heading; no date recorded)
+
 - A gate with `[group('units')]` on its recipe answers `NROS_GATE_LIST_UNITS=1`
   with one unit per line and runs one with `NROS_GATE_UNIT=<unit>`. Each unit is
   a test `<tier>::<target>#<unit>`. The listing reads attributes through
@@ -262,6 +268,8 @@ today's lanes. Acceptance: `cargo nextest list -p nros-gates` names all 511 + 28
   still runs these gates whole.
 
 ### W3 — Scope — DONE (first pass)
+
+- **Status:** DONE (first pass)
 
 Decided (maintainer, 2026-11-06): the fast lane claims what the ci-base image
 and CI's fast job provide; Zephyr and built-artifact gates get a self-hosted
@@ -302,6 +310,8 @@ as running nowhere, visibly.
   W5 makes the lane's claims the one provisioning list.
 
 ### W4 — Resources — DONE (except order independence, moved to W5)
+
+- **Status:** DONE (except order independence, moved to W5)
 
 **Generated tool config — DONE.** `check-gate-lists.py --list nextest-config`
 writes `build/gates/nextest-gates.toml` on every `nextest-gates` run, passed as
@@ -371,6 +381,8 @@ keep caches that runs use, remove the ones they do not.
 
 ### W5 — Wrapper and lanes — DONE (the switch of `ci gate` and `pre-push` is W6)
 
+- **Status:** DONE (the switch of `ci gate` and `pre-push` is W6)
+
 `just check lane <lane> [nextest args]` runs `scripts/build/gate-lane.sh`: the
 old runner's pre- and post-steps around `just check nextest-gates`, with the
 scheduling left to nextest.
@@ -420,6 +432,8 @@ scheduling left to nextest.
 - Order independence (moved from W4): still open, W6.
 
 ### W6 — CI, then retire the old runner — DONE
+
+- **Status:** DONE (stated in the heading; no date recorded)
 
 **First half (#3252):** `just check fast`, `fast-serial` and `build` run
 `gate-lane.sh` with the lane in `NROS_GATE_SCOPE` (default `dev`), restricted

@@ -36,6 +36,8 @@ The maintainer's requirements (2026-11-03):
 
 ### W0 — Spike: the census digest as a host-configure dependency (DONE 2026-11-03)
 
+- **Status:** DONE (2026-11-03)
+
 RFC-0120 D7 depends on one behaviour. A build edge writes
 `<build>/nros/census.digest` write-if-changed (`restat = 1`). That file is in
 `CMAKE_CONFIGURE_DEPENDS`. Ninja should then:
@@ -97,6 +99,8 @@ derived values update through the same path. The Kconfig-symbol listing below
 is therefore moot, and W6 stays the census-step wiring.
 
 ### W1 — `nros configure`, with sync folded in (LANDED 2026-11-03)
+
+- **Status:** DONE (2026-11-03)
 
 - A user-tier verb in the Build group (RFC-0117). It runs C1 (today's sync)
   and C2 to C6 (today's stages 1 to 4), and writes `<build>/nros/configured/`
@@ -187,6 +191,8 @@ the per-coordinate stamps for shared host configures, retiring
 to the later items that consume them.
 
 ### W2 — Census by default (RFC-0120 D4) (LANDED 2026-11-03)
+
+- **Status:** DONE (2026-11-03)
 
 This flips an existing opt-in to the default. The hook already takes the
 census for `entities = "census"` (issue 2086), and that spelling keeps working.
@@ -332,6 +338,8 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
   linux/c/talker `unstated`, nothing taken.
 
 ### W3 — Resolve gaps: the Rust west entry, and the multi-entry union (LANDED 2026-11-03)
+
+- **Status:** DONE (2026-11-03)
 
 - **Rust west entry (RFC-0120 D6 case 2).** C5 writes the message-bound seed
   and makes the sizing-descriptor decision for a Rust entry.
@@ -1057,6 +1065,8 @@ build asserting 0 `Re-running CMake`), `cmake-sizing-descriptor`,
 `census-step`, `knob-delivery`, `knob-one-pass`.
 
 ### W8 — Vocabulary and docs (RFC-0120 D9) (LANDED 2026-11-10)
+
+- **Status:** DONE (2026-11-10)
 
 - Use "configure" for `nros configure` and "host configure" for CMake's,
   west's or make's own step, consistently across RFC-0094, CLAUDE.md, AGENTS.md

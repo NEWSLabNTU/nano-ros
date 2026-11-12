@@ -136,6 +136,8 @@ build its images; no Int32 demo marker is left in a language workspace.
 
 ### W1 — The coverage ratchet and the image-row check
 
+- **Status:** DONE (#3107)
+
 - The D5 gate: derive (platform family, language, build driver, project
   shape, launch origin) per runtime cell from the manifest. Fail when a tuple
   in the floor has no cell. The floor is a committed snapshot of the tree at

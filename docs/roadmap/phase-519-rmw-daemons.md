@@ -94,6 +94,8 @@ lowering gains the term, behind a check of the router's zenoh version.
 
 ### W3 — the ingress budget at the XRCE agent — DONE (2026-11-01)
 
+- **Status:** DONE (2026-11-01)
+
 RFC-0074 enforcement point 1 exists only for zenoh. An XRCE subscriber asks
 the agent for data with a `uxrDeliveryControl`, and nano-ros asks for
 everything (`packages/rmw/xrce/nros-rmw-xrce/src/subscriber.c`: every field
@@ -184,6 +186,8 @@ missing bound. Issue 2208 fixed it: the same shape now receives 10.34 Hz at
 100.5 ms.
 
 ### W4 — one door for starting the agent — DONE (2026-11-01)
+
+- **Status:** DONE (2026-11-01)
 
 The router has one: `nros_router_exec <locator> [model]`, run by every
 `just <platform>::zenohd`, resolved by `nros_zenohd_bin`, and gated by
