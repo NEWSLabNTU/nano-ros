@@ -41,18 +41,15 @@ NROS_APPS_ARCH  := $(patsubst "%",%,$(CONFIG_ARCH))
 NROS_APPS_BUILD := $(APPDIR)$(DELIM)external$(DELIM).nros-build$(DELIM)$(NROS_APPS_ARCH)
 PREFIX          := $(NROS_APPS_BUILD)$(DELIM)
 
-# Issue 0551 — `$(shell …)` at the top level runs on EVERY PARSE of this file,
-# and not every parse has a configured tree. `make olddefconfig` runs
-# `apps_preconfig`, which walks the apps tree before `DELIM` and `CONFIG_ARCH`
-# are defined; both then expand EMPTY, `NROS_APPS_BUILD` collapses to
-# `$(APPDIR)external.nros-build`, and the mkdir creates a junk directory
-# alongside the apps tree (observed as `third-party/nuttx/nuttx-appsexternal.nros-build/`).
-# An empty ARCH is also the shared-object-dir hazard this coordinate exists to
-# prevent, so building into it would be worse than not creating it.
-NROS_APPS_BUILD_OK := $(if $(and $(strip $(DELIM)),$(strip $(NROS_APPS_ARCH))),1,)
-ifeq ($(NROS_APPS_BUILD_OK),1)
-$(shell mkdir -p $(NROS_APPS_BUILD))
-endif
+# phase-550 W7 — nothing in this file acts while make READS it: the object
+# dirs below and the image crate are made by the `context::` recipe. A
+# top-level `$(shell …)` runs on every parse, and not every parse has a
+# configured tree: `make olddefconfig` walks the apps tree before `DELIM` and
+# `CONFIG_ARCH` are defined, so `NROS_APPS_BUILD` collapsed to
+# `$(APPDIR)external.nros-build` and a parse-time mkdir created a junk
+# directory beside the apps tree (issue 0551), while a parse-time cmake ran
+# the image-crate generator on every `make olddefconfig`. `context::` runs
+# once per build, in a configured tree, before anything compiles.
 # `CSRCS` names an ABSOLUTE path, so `$(PREFIX)<src>` mirrors that whole path
 # under the build root and upstream's compile rule does NOT create the parent
 # ("error: can't create …/.nros-build/arm//mnt/…/platform.c….o"). The two
@@ -100,19 +97,23 @@ NROS_API_FEATURES := alloc;panic-platform;ros-$(NROS_ROS_EDITION);platform-nuttx
 
 # The C and C++ images are members of ONE generated root, so one target dir
 # serves one root (issue 0616); `Make.defs` locates the archives under it.
-# `$(shell …)` runs at parse time, so it is guarded like the mkdir above
-# (issue 0551). Prints `<manifest> <feature,feature,…>`.
-nros_image_crate = $(shell cmake --log-level=WARNING \
-	-DNROS_IMAGE_FLAVOR=$(1) -DNROS_IMAGE_RMW=$(NROS_RMW) \
-	-DNROS_IMAGE_EDITION=$(NROS_ROS_EDITION) \
-	-DNROS_IMAGE_OUT_DIR=$(NROS_IMAGE_ROOT)/nros-$(1) \
-	-DNROS_IMAGE_WORKSPACE_DIR=$(NROS_IMAGE_ROOT) \
-	"-DNROS_IMAGE_API_FEATURES=$(NROS_API_FEATURES)" \
-	-P $(NANO_ROS_ROOT_DEFS)/cmake/NanoRosImageCrate.cmake)
+# A recipe line (phase-550 W7): the generator writes the image crate and
+# prints `<manifest> <feature,feature,…>`, which lands in
+# $(NROS_IMAGE_SPEC) for the cargo line and `clean::` to read.
+NROS_IMAGE_SPEC = $(NROS_IMAGE_ROOT)/image-$(NROS_IMAGE_FLAVOR).txt
+define NROS_IMAGE_CRATE
+	cmake --log-level=WARNING \
+		-DNROS_IMAGE_FLAVOR=$(NROS_IMAGE_FLAVOR) -DNROS_IMAGE_RMW=$(NROS_RMW) \
+		-DNROS_IMAGE_EDITION=$(NROS_ROS_EDITION) \
+		-DNROS_IMAGE_OUT_DIR=$(NROS_IMAGE_ROOT)/nros-$(NROS_IMAGE_FLAVOR) \
+		-DNROS_IMAGE_WORKSPACE_DIR=$(NROS_IMAGE_ROOT) \
+		"-DNROS_IMAGE_API_FEATURES=$(NROS_API_FEATURES)" \
+		-P $(NANO_ROS_ROOT_DEFS)/cmake/NanoRosImageCrate.cmake > $(NROS_IMAGE_SPEC)
+endef
 # ONE image per configuration: the one that LINKS. A C++ image links
 # `libnros_cpp.a` alone, which bundles nros-c (issue 1636, `Make.defs`), so a C
 # image built beside it reached nothing. Building both was also what broke the
-# C++ configuration outright: each `nros_image_crate` call runs in its OWN cmake
+# C++ configuration outright: each generator call runs in its OWN cmake
 # process and writes the shared root's `members` from that process alone, so
 # the second call left the first crate outside its root and cargo refused it
 # ("current package believes it's in a workspace when it's not").
@@ -125,9 +126,6 @@ NROS_IMAGE_HEADER_PACKAGES := nros-cpp nros-c
 else
 NROS_IMAGE_FLAVOR := c
 NROS_IMAGE_HEADER_PACKAGES := nros-c
-endif
-ifeq ($(NROS_APPS_BUILD_OK),1)
-NROS_IMAGE := $(call nros_image_crate,$(NROS_IMAGE_FLAVOR))
 endif
 
 # Pass the feature set + NuttX include dir to Cargo via env.
@@ -175,9 +173,6 @@ NROS_REPO_DIR := $(realpath $(APPDIR)/external/nano-ros/../..)
 #     `sem_timedwait` correctly.
 # Obviates a dedicated `nros-platform-nuttx` Rust crate.
 CSRCS = $(NROS_REPO_DIR)/packages/platform/nros-platform-posix/src/platform.c
-ifeq ($(NROS_APPS_BUILD_OK),1)
-$(shell mkdir -p $(dir $(addprefix $(NROS_APPS_BUILD),$(CSRCS))))
-endif
 # Include the platform.h header in CFLAGS so the POSIX port's
 # `#include <nros/platform.h>` resolves.
 CFLAGS += ${INCDIR_PREFIX}$(NROS_REPO_DIR)/packages/platform/nros-platform-api/include
@@ -213,8 +208,8 @@ NROS_TRIPLE_ENV := $(subst -,_,$(NROS_RUST_TRIPLE))
 # std build, the `libc` patch literal and `--target` went with it.
 NROS_CARGO_CONFIG = $(NROS_IMAGE_ROOT)/make/nros-cargo.toml
 
-# $(1) = the image crate's manifest, $(2) = its features (comma-separated) —
-# the two words `nros_image_crate` printed; $(3) = the image flavor (`c` /
+# The image crate's manifest and features are the two words of
+# $(NROS_IMAGE_SPEC), read when the line runs; $(3) = the image flavor (`c` /
 # `cpp`); $(4) = $(NROS_IMAGE_HEADER_PACKAGES).
 #
 # Issue 1824 — cargo runs under the header placer, which reads the build's
@@ -270,13 +265,13 @@ define NROS_CARGO_BUILD
 		--message-format=json-render-diagnostics \
 		--config $(NROS_CARGO_CONFIG) \
 		--no-default-features \
-		--features "$(strip $(2))" \
-		--manifest-path $(1) \
+		--features "$$(cut -d' ' -f2 $(NROS_IMAGE_SPEC))" \
+		--manifest-path "$$(cut -d' ' -f1 $(NROS_IMAGE_SPEC))" \
 		--target-dir $(NROS_IMAGE_TARGET_DIR)
 endef
 
 define NROS_CARGO_CLEAN
-	cargo clean --manifest-path $(1) --target-dir $(NROS_IMAGE_TARGET_DIR)
+	if [ -s $(NROS_IMAGE_SPEC) ]; then cargo clean --manifest-path "$$(cut -d' ' -f1 $(NROS_IMAGE_SPEC))" --target-dir $(NROS_IMAGE_TARGET_DIR); fi
 endef
 
 ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
@@ -285,10 +280,12 @@ ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
 # `RUST_CARGO_BUILD` with an empty `--target`: it could not build, and an
 # arch with no triple is now refused by `RustTriple.mk` instead.
 context::
-	$(call NROS_CARGO_BUILD,$(word 1,$(NROS_IMAGE)),$(word 2,$(NROS_IMAGE)),$(NROS_IMAGE_FLAVOR),$(NROS_IMAGE_HEADER_PACKAGES))
+	$(Q) mkdir -p $(NROS_APPS_BUILD) $(dir $(addprefix $(NROS_APPS_BUILD),$(CSRCS))) $(NROS_IMAGE_ROOT)
+	$(NROS_IMAGE_CRATE)
+	$(call NROS_CARGO_BUILD,,,$(NROS_IMAGE_FLAVOR),$(NROS_IMAGE_HEADER_PACKAGES))
 
 clean::
-	$(call NROS_CARGO_CLEAN,$(word 1,$(NROS_IMAGE)))
+	$(NROS_CARGO_CLEAN)
 endif
 
 include $(APPDIR)/Application.mk

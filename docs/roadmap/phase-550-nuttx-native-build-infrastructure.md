@@ -1,6 +1,6 @@
 # Phase 550 -- NuttX builds on NuttX's own infrastructure
 
-**Status (2026-11-13). IN PROGRESS: W0 done (every question ruled), W1, W2, W5
+**Status (2026-11-13). IN PROGRESS: W0 done (every question ruled), W1, W2, W5, W7
 and W12 done; W3a and W4's code done (W3b and W4's upstream contribution
 open); the rest not started.**
 The work for
@@ -273,6 +273,26 @@ describe what the road then does.
 - Gate: cleared (Q9 yes, ruled 2026-11-12). W6's ordering still applies if a project is named.
 - **Acceptance:** `make olddefconfig` in a staged tree runs no `cmake`; W1
   green.
+- **Status:** DONE (2026-11-13, W7 PR).
+  - **What moved.** The Makefile now does nothing while make reads it.
+    - The image-crate generator is a `context::` recipe line. It writes
+      `<manifest> <features>` to `$(NROS_IMAGE_SPEC)`
+      (`<image root>/image-<flavor>.txt`), which the cargo line and
+      `clean::` read when they run.
+    - The two `$(shell mkdir -p …)` object-dir lines moved into the same
+      recipe, so the issue 0551 guard (`NROS_APPS_BUILD_OK`) has nothing
+      left to guard, and it is deleted.
+  - **Measured** with a logging `cmake` shim on `PATH`, against the pre-W7
+    Makefile:
+    - a full `just nuttx build-make-road arm` ran the generator 4 times
+      before (once per parse of a configured tree) and once after;
+    - `make clean` ran it 0 times both ways;
+    - `make olddefconfig` in a staged tree runs no `cmake` both before and
+      after, because the old guard already skipped the call on that
+      unconfigured parse. That acceptance line holds, but it is not what
+      changed.
+  - **Results.** W1 is green on both boards (arm 5,308,348 B, riscv
+    6,435,352 B), and no `external.nros-build` junk directory appears.
 
 ### W8 -- Delete NuttX's CMake shell (2426 item 7)
 
