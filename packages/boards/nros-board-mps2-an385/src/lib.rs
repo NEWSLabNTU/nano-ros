@@ -92,6 +92,9 @@ pub use cortex_m_semihosting;
 pub use nros_platform_mps2_an385;
 
 // Re-export main types
+#[cfg(feature = "c-libc")]
+pub mod c_start;
+
 pub use config::Config;
 pub use node::{Mps2An385, init_hardware, run_bare};
 pub use nros_platform::BoardConfig;

@@ -14,4 +14,8 @@ fn main() {
         nros_board_common::board_net::ResolvedNet::platform_default(),
     );
     nros_build_paths::link_script!("mps2-an385.x" => "memory.x");
+    // A C-rooted image (CMake owns the link) links with `-Tc-runtime.x`,
+    // which includes link.x and keeps and bounds the init arrays (phase-553
+    // W2).
+    nros_build_paths::link_script!("c-runtime.x");
 }

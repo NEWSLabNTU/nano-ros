@@ -1,6 +1,6 @@
 # Phase 553 — One C/C++ build method: a ROS 2 CMake package on every board
 
-**Status (2026-11-12). IN PROGRESS: W1 done; W2 to W6 planned.**
+**Status (2026-11-12). IN PROGRESS: W1 and W2 done; W3 to W6 planned.**
 Work for [RFC-0130](../design/0130-one-ros-cmake-build.md). Maintainer ruling
 2026-11-12, "Accept the unified ROS-CMake build": a C/C++ node package is an
 ordinary ROS 2 `ament_cmake(_auto)`-style package on every board, with no
@@ -62,15 +62,29 @@ zenoh router:
 
 ### W2 — C++ static constructors run at startup
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-12, #3645). Builds on W1 (`c-libc`).
 
-cortex-m-rt runs no `.init_array`. A C-rooted image calls
-`__libc_init_array` before `main` (cortex-m-rt's `pre_init`, or the generated
-entry, whichever the measurement favours).
+cortex-m-rt runs no `.init_array`, and its `link.x` does not place
+`.preinit_array`/`.init_array` at all (an orphan section with no bounds).
+newlib's `__libc_init_array` is not usable either: it also calls `_init` from
+`crti.o`, which a `-nostartfiles` link does not have (measured: `undefined
+reference to '_init'`).
 
-Acceptance: a C++ component with a namespace-scope object whose constructor
-sets a flag reports the flag set at its first callback, on mps2-an385 under
-QEMU.
+- `packages/boards/nros-board-mps2-an385/c-runtime.x`, copied next to
+  `memory.x` by the board's build script, is a C-rooted image's link script:
+  it includes `link.x`, then keeps and bounds both arrays in flash. An
+  `INSERT` in a second `-T` script, or in a plain input script, finds no
+  `.rodata` (measured); cortex-m-rt honours `INSERT`s only from a script read
+  inside its own, hence the include.
+- `nros_board_mps2_an385_start(app)` (board crate, `c-libc` only) is the
+  C-ABI start: it walks the preinit and init arrays, then brings the board up
+  (`run_bare(Config::from_image(), …)`) and runs `app`. W4 builds the road
+  on it.
+
+Measured on the RFC-0130 D4 probe linked with `-Tc-runtime.x`: a
+namespace-scope C++ object whose constructor sets a flag to 42 reads 42 when
+the application starts (`ctor flag: 42`), and the C talker then publishes and
+logs as in W1.
 
 ### W3 — No `-lgcc` on the C-rooted link
 
@@ -78,7 +92,8 @@ QEMU.
 
 Measured in RFC-0130 D4: libgcc drags ARM unwind code needing
 `__exidx_start`/`__exidx_end` and `abort`. The C-rooted link line omits it,
-and a C++ component builds with `-fno-exceptions -fno-rtti`.
+and a C++ component builds with `-fno-exceptions -fno-rtti` (the W2 probe's
+C++ object did).
 
 Acceptance: the generated link line for a C and a C++ image carries no
 `-lgcc` and links with no undefined symbol; a check fails if it reappears.
