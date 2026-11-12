@@ -235,7 +235,7 @@ function(nros_image_kconfig_hook)
         if(NOT DEFINED NROS_IMAGE OR NROS_IMAGE STREQUAL "")
             message(FATAL_ERROR
                 "nano-ros: NROS_IMAGE_SYSTEM_DIR=${NROS_IMAGE_SYSTEM_DIR} names a bringup "
-                "but no NROS_IMAGE — a generated application states both (phase-481 W1)")
+                "but no NROS_IMAGE: pass -DNROS_IMAGE=<id> with it, as a generated application does")
         endif()
     elseif(EXISTS "${APPLICATION_SOURCE_DIR}/system.toml")
         set(_dir "${APPLICATION_SOURCE_DIR}")
@@ -254,7 +254,7 @@ function(nros_image_kconfig_hook)
             message(FATAL_ERROR
                 "nano-ros: ${_overrides}: this application has no system.toml, so its knobs "
                 "keep their Kconfig prompts -- set them in prj.conf or with -DCONFIG_<symbol> "
-                "(-DNROS_OVERRIDE_<ID> overrides a system.toml image's value; phase-484 W5b)")
+                "(-DNROS_OVERRIDE_<ID> overrides only a system.toml image's value)")
         endif()
         configure_file("${_NROS_IMAGE_KCONFIG_ROOT}/zephyr/Kconfig.knob-prompts" "${_kgen}"
             COPYONLY)
@@ -265,8 +265,10 @@ function(nros_image_kconfig_hook)
         return()
     endif()
     if(NOT EXISTS "${_dir}/system.toml")
+        # History: phase-481 W1.
         message(FATAL_ERROR
-            "nano-ros: NROS_IMAGE_SYSTEM_DIR=${_dir} holds no system.toml (phase-481 W1)")
+            "nano-ros: NROS_IMAGE_SYSTEM_DIR=${_dir} holds no system.toml: point it at "
+            "the bringup directory that has one")
     endif()
     if(DEFINED NROS_IMAGE_LANGUAGE AND NOT NROS_IMAGE_LANGUAGE STREQUAL "")
         list(APPEND _args --language "${NROS_IMAGE_LANGUAGE}")
@@ -329,12 +331,14 @@ function(nros_image_kconfig_hook)
         endif()
     endforeach()
     if(NOT _cli_knobs STREQUAL "")
+        # History: RFC-0103 D2a, phase-484 W5b.
         message(FATAL_ERROR
             "nano-ros: ${_dir}/system.toml is this image's one source of its nano-ros "
-            "knobs, and those Kconfig symbols have no prompt (RFC-0103 D2a), so the "
+            "knobs, and those Kconfig symbols have no prompt, so the "
             "command line cannot set them as CONFIG_*:${_cli_knobs}\n"
             "Zephyr re-applies a cached -DCONFIG_* on every later configure: remove it "
-            "with -UCONFIG_<SYM> -UCLI_CONFIG_<SYM> (or a pristine build). (phase-484 W5b)")
+            "with -UCONFIG_<SYM> -UCLI_CONFIG_<SYM> (or a pristine build), and set the "
+            "knob in system.toml instead.")
     endif()
     set(_override_args "")
     foreach(_id IN LISTS _overrides)
@@ -655,7 +659,7 @@ function(_nros_image_kconfig_leaf_rows _out _dir _image _west_board)
             message(FATAL_ERROR
                 "nano-ros: ${_dir}/system.toml [image.${_image}]: NROS_LEAF_CONF names "
                 "`${_c}`, which is not an existing conf file (full value: ${_image_conf}). "
-                "(issue 2200)")
+                "Correct the name, or create the file.")
         endif()
     endforeach()
     set(_kconfig "${_kconfig}" PARENT_SCOPE)
@@ -800,10 +804,11 @@ function(_nros_image_kconfig_refuse_conf_knobs files system image)
         endforeach()
     endforeach()
     if(NOT _found STREQUAL "")
+        # History: RFC-0103 D2a, phase-484 W5b.
         message(FATAL_ERROR
-            "nano-ros: ${system} is this image's one source of its nano-ros knobs "
-            "(RFC-0103 D2a); those Kconfig symbols have no prompt, so a conf file "
-            "cannot set them:${_found}\n(phase-484 W5b)")
+            "nano-ros: ${system} is this image's one source of its nano-ros knobs; "
+            "those Kconfig symbols have no prompt, so a conf file "
+            "cannot set them:${_found}\nSet them in system.toml instead.")
     endif()
 endfunction()
 
@@ -821,11 +826,12 @@ function(_nros_image_kconfig_check_snippets rmw snippets system image)
             string(TOUPPER "${CMAKE_MATCH_1}" _snip_rmw)
             if(NOT _snip_rmw STREQUAL rmw)
                 string(TOLOWER "${rmw}" _img_rmw)
+                # History: phase-481 W5.
                 message(FATAL_ERROR
                     "nano-ros: `-S ${_s}` selects ${_snip_rmw}, but ${system} "
                     "[image.${image}] has rmw = \"${_img_rmw}\", and the image wins "
                     "(it merges after the snippet). Drop the snippet, or build the image "
-                    "for that RMW (`-DNROS_IMAGE=<id>`). (phase-481 W5)")
+                    "for that RMW (`-DNROS_IMAGE=<id>`).")
             endif()
         endif()
     endforeach()

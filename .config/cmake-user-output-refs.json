@@ -16,7 +16,6 @@
     "cmake/NanoRosHostBoard.cmake": 2,
     "cmake/NanoRosImageAgreement.cmake": 2,
     "cmake/NanoRosImageEnv.cmake": 1,
-    "cmake/NanoRosNodeRegister.cmake": 5,
     "cmake/NanoRosPackageXml.cmake": 1,
     "cmake/NanoRosPromise.cmake": 4,
     "cmake/NanoRosRetiredNames.cmake": 2,
@@ -46,11 +45,8 @@
     "packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsDescriptorCap.cmake": 1,
     "packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake": 1,
     "scripts/check/rtos-feature-set-excludes-analysis.cmake": 1,
-    "zephyr/cmake/nros_cargo_build.cmake": 5,
     "zephyr/cmake/nros_checkout_guard.cmake": 2,
     "zephyr/cmake/nros_cyclonedds_typesupport.cmake": 1,
-    "zephyr/cmake/nros_image_kconfig.cmake": 7,
-    "zephyr/cmake/nros_rmw_zenoh.cmake": 5,
     "zephyr/cmake/nros_system_generate.cmake": 3,
     "zephyr/cmake/nros_system_image_agreement.cmake": 2
   }
