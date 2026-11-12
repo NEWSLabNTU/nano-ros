@@ -215,3 +215,7 @@ call:
 
 Either is a design decision for phase-535 W6 / phase-548, not a fix inside
 this issue, so the threadx-riscv64 Rust Cyclone leaves keep their rows.
+
+**Deferred (maintainer, 2026-11-12).** The choice between the two roads is
+deferred, so `examples/rv-virt-threadx/rust/talker` stays a leaf for both
+RMWs (phase-531 W6).
