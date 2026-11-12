@@ -5,7 +5,7 @@ status: Draft
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: []
-amends: [RFC-0036, RFC-0037, RFC-0060]
+amends: [RFC-0036, RFC-0037, RFC-0045, RFC-0060]
 supersedes: []
 superseded-by: null
 ---
@@ -34,12 +34,34 @@ REP-2002 the way stock ROS 2 does it.
 - **A managed publisher** drops while its node is not active, as rclcpp's
   `LifecyclePublisher` does.
 - **`autostart` per node,** defaulting to the image's `[lifecycle] autostart`.
-- **Five queryables and one publisher per managed node,** counted by the
-  derived pools. An image with no managed node pays nothing.
+- **Cost that grows slowly with managed nodes.** On zenoh, one shared
+  lifecycle queryable and dispatcher serve every managed node. Each node adds
+  its liveliness tokens and its state, not five queryables and a publisher.
+  On the DDS backends (Cyclone, XRCE) each node pays its own readers and
+  writers. Both costs are measured. An image with no managed node pays
+  nothing.
 
 Acceptance is behavioural: `ros2 lifecycle nodes`, `get`, `set` and `list`
 against a board answer exactly as they do against an rclcpp `LifecycleNode`,
 and a managed node stays silent until it is activated.
+
+## Rulings
+
+The user ruled on this RFC on 2026-11-12, relayed by the manager session:
+
+- "I'd like to ensure the interface compatibility among nano-ros and stock
+  ROS 2." This is the direction the whole RFC follows.
+- "Take your advice on lifecycle questions." Q1 and Q2 are decided as
+  recommended (D2, D3), and so is the zenoh memory design (D7).
+- On D8: "Hide the node as default." The image announces only its declared
+  nodes, and `/nros_app` is no longer announced. A read-only container is an
+  optional follow-up issue, not part of this RFC.
+- D6: autostart transitions run on the executor's first spin pass, never
+  before the spin loop.
+- D7, the DDS backends: the per-node reader and writer cost is accepted,
+  stated and measured.
+- The RFC becomes Stable only after the three upstream verifications at the
+  end.
 
 ## Motivation
 
@@ -125,9 +147,9 @@ ROS 2 the class decides. A node whose class derives from
   managed. This already holds in code.
 - **C:** a component that makes its node a lifecycle node (D4) is managed.
 - **Launch as `<lifecycle_node>` with an unmanaged component:** stock ROS 2
-  would wait for services that never appear. Here the node gets a machine
-  whose callbacks all take the defaults, so it can be driven, and its
-  publishers are gated (D3). **Open question Q1.**
+  would wait for services that never appear. Here the node is managed: it
+  gets a machine whose callbacks all take the defaults, so it can be driven,
+  and its publishers are gated (D3). Ruled 2026-11-12 (Q1).
 
 The fact reaches the runtime by ONE route: the entry registers a machine for
 exactly the nodes the resolved model marks managed. The component-side
@@ -154,10 +176,12 @@ This needs no callback API, so it ships in phase B with D1, D2, D6 and D7. In
 that phase a node's machine has default callbacks, and gating is the
 behaviour a user can see.
 
-**Verification before Stable:** whether rclcpp activates managed entities
-automatically. If it does (and from which distro), nano-ros matches. If it
-does not on Humble (the user calls `publisher->on_activate()` in
-`on_activate`), see **Q2**.
+**On every distro,** nano-ros activates a managed node's publishers when the
+node enters `active` (ruled 2026-11-12, Q2). Where rclcpp leaves that to the
+user, the user's own `publisher->on_activate()` in `on_activate` is a
+harmless no-op. Which distros activate by themselves is still recorded
+(verification item 1), so that the book can say where nano-ros does more than
+rclcpp. It does not change the behaviour.
 
 ### D4. Transition callbacks in each language
 
@@ -225,38 +249,113 @@ The code diverged from that text: `reduce_lifecycle_autostart`
 (`nros-orchestration-ir/src/overlay.rs`, phase-486 W0) builds one value per
 image and errors when nodes disagree, because "the runtime has one
 executor-wide boot transition". D1 removes that reason, so the reducer goes.
-The entry runs each managed node's autostart at boot, in launch declaration
-order, before the spin loop. This is what `launch_ros` does by service calls
-after spawning the node.
+The entry runs each managed node's autostart transitions on the executor's
+**first spin pass,** in launch declaration order. That is after every node is
+created and its services are up, and never before the spin loop (ruled
+2026-11-12). This is what `launch_ros` does: it drives the transitions by
+service calls once the node is running. A callback that publishes in
+`on_activate` therefore runs with the transport live, as it would on Linux.
 
-### D7. Five queryables and one publisher per managed node, derived
+### D7. Cost per managed node: one shared zenoh queryable; per-node DDS entities
 
-Every count of the lifecycle family becomes per managed node:
+Ruled 2026-11-12. The goal is that the RAM cost of one more managed node
+stays small on the smallest supported board, without anything a stock ROS 2
+tool can see changing.
 
-- `InfraServices::queryables`, `+1` publisher per managed node;
+**zenoh.** One lifecycle queryable per image serves every managed node.
+
+- **The queryable.** It is declared on a wildcard key that covers the five
+  service keys of all the image's managed nodes. A dispatcher reads the node
+  and the service from the request's key and routes the request to that
+  node's machine (D1).
+- **Its inbox** is sized for lifecycle requests, which are small and
+  fixed-shape, not for the image's generic service size.
+- **Responses.** `get_available_states`, `get_available_transitions` and
+  `get_transition_graph` are built on demand from const tables, so no
+  response is held in RAM.
+- **What stays per node.** Each managed node keeps its own liveliness tokens:
+  one per service and one advertising `/<node>/transition_event`. So
+  `ros2 service list`, `ros2 topic list` and `ros2 lifecycle nodes` show
+  exactly what they show for a stock node.
+- **`transition_event`** goes out as an on-demand put on
+  `/<node>/transition_event`. It is not a publisher held per node.
+
+So a managed node adds its state, its tokens and its callback record. It adds
+no queryable, publisher or service buffer.
+
+**Cyclone and XRCE.** Each managed node pays its own five service reader and
+writer pairs and its `transition_event` writer, because DDS discovery
+announces endpoints, and a shared endpoint would show in `ros2 service list`
+under the wrong name. The cost is accepted (ruled 2026-11-12), stated in the
+book's lifecycle chapter, and measured (D9).
+
+**Derived pools.** Every count of the lifecycle family becomes per managed
+node:
+
+- `InfraServices`;
 - `nros_sizing_descriptor::infra`;
 - `nros-zpico-build`'s runner;
 - `executor_sizing::LIFECYCLE_SERVICE_SLOTS`;
 - the static inbox rings.
 
-Today each counts the family once per executor ("deliberately has no twin"
-beside `param_service_slots(nodes)`). Each becomes `5 × managed_nodes`
-queryables and `1 × managed_nodes` publishers, and `MAX_LIFECYCLE_NODES` is
-derived from the same list as D2.
+Today each counts the family once per executor. On zenoh the queryable count
+is `1` for any image with a managed node, and the token count is
+`6 × managed_nodes`. On the DDS backends the counts are five service pairs
+and one writer per managed node. `MAX_LIFECYCLE_NODES` comes from the same
+list as D2. An image with no managed node pays zero, where today any image
+with a `[lifecycle]` block pays five queryables. The help text of
+`ZENOH_MAX_QUERYABLES` in `knobs.toml`, which says "five per node", is
+corrected to match.
 
-`knobs.toml`'s help for `ZENOH_MAX_QUERYABLES` already says "five per node"
-and becomes true. An image with no managed node pays zero, where today any
-image with a `[lifecycle]` block pays five.
+### D8. The image announces only its declared nodes
 
-### D8. Services are only ever named after a declared node
+Ruled 2026-11-12: "Hide the node as default." The executor's own identity is a
+session label, not a node. It is `"nros_app"` on the Rust embedded boards and
+`"node"` on hosted Rust and every C/C++ runner, and is reached only when
+nothing names the image. No backend announces that label as a node, and
+everything that uses it today moves to a declared node or is dropped.
 
-The executor-identity form `register_lifecycle_services()` retires from every
-generated entry. The C executor-scoped family goes with it (D4).
+Which declared node: an entity created **without** a node is attributed to the
+image's **primary node**, the first declared node in launch declaration order
+(`NodeId::PRIMARY`, the rule executor-level parameters already follow). An
+image with no declared node at all is a direct-API image: its executor
+identity is its one node, announced under the name its config gives. That is
+a name the user chose, so it is declared. With no name configured, such an
+image is refused at open, naming `node_name`, rather than announcing the
+default.
 
-`register_lifecycle_services_named` refuses an empty node name, which closes
-issue 2429's `//get_state`. `/nros_app` stops appearing in `ros2 lifecycle
-nodes` because nothing registers a machine for it. Whether it should appear in
-`ros2 node list` at all is RFC-0045's question, not this one.
+Each user of the identity today, and what happens to it:
+
+| Today | Backend | Becomes |
+|---|---|---|
+| zenoh's "primary" node liveliness token, declared at session open and dropped only when another node's entity appears (`shim/session.rs`) | zenoh | **Dropped.** zenoh announces a node lazily, with its first entity, as Cyclone already does (issue 1269). |
+| XRCE participant name and session-key input (`xrce/src/session.c`) | XRCE | **Kept, not a node.** It was never announced as one. It stays a label, still unique per client, because the Agent keys sessions on it. |
+| The cffi fallback that puts an entity with no `node_name` under the session's name (`rmw/cffi/src/lib.rs` `node_slot`) | all | **Moves** to the primary node. |
+| Executor-level registrations with `node_id == None` (`open_subscription`, `register_service*`, `register_service_client*`; the action fallback) | all | **Moves** to the primary node. |
+| The six parameter services and `/parameter_events` for a zero-node image | all | **Kept** for direct-API images only, under the configured name (above). With nodes declared they are already per node. |
+| Lifecycle services and `transition_event` (`register_lifecycle_services()`; the C/C++ generated entries; rclc's executor-scoped family) | all | **Moves** to each managed node (D1). The executor-identity form retires. |
+| The contract `/diagnostics` reporter (`DiagSink`, a raw session publisher) | all | **Moves** to the primary node. In stock ROS 2 a node publishes diagnostics. |
+| The node-table spare slot for "the session's own name" (`entity_inventory.rs`, issue 1740), held for the reporter and lifecycle | sizing | **Dropped.** Both now live on declared nodes. |
+| rclc's empty executor identity (issue 2429) and its legacy node without a node record | C | **Moves.** An rclc node gets a node record at init, so its entities name it. An empty name is refused. |
+| Remap resolution against the current identity | all | **Moves** to the entity's node. |
+
+Not affected:
+
+- `/rosout`, which a user creates on their own node;
+- `/clock`, which already waits for the primary node;
+- the boot-config tests, which test the rung, not the graph.
+
+Two e2e tests move:
+
+- `interop_e2e`'s `/lifecycle_demo` was the executor identity named by
+  config. Its example declares the node instead.
+- Entry tests that take the first name from `ros2 lifecycle nodes` keep
+  working, now with a declared node's name.
+
+A **read-only component container**, so that `ros2 component list` answers
+like a stock one, is an optional follow-up:
+[issue 2474](../issues/2474-readonly-component-container.md), not part of this
+RFC.
 
 ### D9. Acceptance is a diff against rclcpp, per RMW
 
@@ -266,6 +365,8 @@ it and against a board image, and compares the outputs.
 
 - **`nodes`** lists exactly the managed nodes: no `/nros_app`, no unmanaged
   node.
+- **`ros2 node list`** shows exactly the image's declared nodes, on every
+  backend, from boot onward. The executor identity never appears (D8).
 - **`get /<node>`** is the right state after each step of configure, activate,
   deactivate, cleanup and shutdown.
 - **`list /<node>`** gives the same transitions, IDs and labels as the
@@ -273,6 +374,9 @@ it and against a board image, and compares the outputs.
 - **`set /<node> <t>`:** `Transitioning successful` for a legal transition,
   and the reference's refusal for an illegal one.
 - **Two managed nodes in one image** have independent states.
+- **RAM per additional managed node,** measured with `just mem-report` on the
+  smallest supported board, for zenoh and for each DDS backend. The image
+  with N+1 managed nodes is compared against the image with N.
 - **Silent until active:** a managed talker with `autostart = "none"`
   publishes nothing on its topic until `ros2 lifecycle set /<node> activate`,
   stops at `deactivate`, and resumes at the next `activate`. This is the
@@ -288,8 +392,11 @@ services answer, gains the silence assertion.
 **Phase B: per-node machines and runtime gating.** This unblocks the issue
 2269 lab.
 
-- D1, D2 (model and launch inputs; the component declaration where it already
-  exists: C++), D3, D6, D7 and D8.
+- D8 in full: no backend announces the executor identity, and every user of
+  it moves per the D8 table.
+- D1; D2 (model and launch inputs, plus the component declaration where it
+  already exists, which is C++); D3; D6; D7 (the zenoh shared queryable and
+  dispatcher, and the DDS per-node entities).
 - The issue 2429 refusal.
 - D9's cells: `nodes`, `get`, `set` and `list`, two nodes, silent until
   active.
@@ -314,26 +421,22 @@ A phase number is reserved when this RFC is accepted.
   CREATE/DESTROY, and single-threaded transitions.
 - **RFC-0037.** The C lifecycle surface is upstream `rclc_lifecycle`'s (D4).
   The `rclc_executor_*lifecycle*` family leaves the inventory.
+- **RFC-0045.** The board compiled-default rung (`"nros_app"`) names the
+  session, not a graph node (D8).
 - **RFC-0060.** The text on per-node `lifecycle_autostart` stands. Its
   phase-486 W0 reducer, which enforced one value per image, is retired (D6).
 
 ## Open questions
 
-- **Q1. A plain component launched as `<lifecycle_node>`.** Recommended: it is
-  managed, with default callbacks and gated publishers (D2). That lets the
-  phase-B lab manage a talker that has no callbacks. Alternative: refuse it at
-  build time, naming the component, as stock ROS 2 effectively does by
-  hanging.
-- **Q2. If rclcpp on a supported distro does NOT activate managed publishers
-  by itself.** Recommended: nano-ros activates them on entering `active`
-  anyway (D3). A user who writes `publisher->on_activate()` in `on_activate`,
-  as Humble requires, gets a harmless no-op, and the lab needs no callback.
-  Alternative: match each distro exactly, which ties phase B to phase C.
+None. Q1 (a plain component launched as `<lifecycle_node>` is managed) and Q2
+(publishers are activated on entering `active` on every distro) were ruled on
+2026-11-12, as were D6 and D7.
 
 ## Verification before Stable
 
-These are claims about stock behaviour, read from rclcpp and rclc sources on
-Humble and Jazzy rather than from memory:
+The RFC becomes Stable only after these three checks (ruled 2026-11-12). Each
+is a claim about stock behaviour, read from rclcpp and rclc sources on Humble
+and Jazzy rather than from memory:
 
 1. whether rclcpp auto-activates managed entities, and from which distro (D3,
    Q2);
