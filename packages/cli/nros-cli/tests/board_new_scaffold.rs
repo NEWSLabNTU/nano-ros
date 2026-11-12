@@ -279,9 +279,8 @@ fn out_of_tree_needs_no_checkout() {
 /// catalog `nros board new`'s does. It wrote no `package.xml`, so every
 /// catalog reader refused the board it had just reported scaffolded.
 ///
-/// An in-tree platform on purpose: the descriptor's `platform` is a closed set
-/// today, so a board for a platform outside it is refused by the catalog for a
-/// reason that is not the scaffold's.
+/// An in-tree platform on purpose; the out-of-tree road is
+/// `an_out_of_tree_platform_and_its_board_resolve` (issue 2310).
 #[test]
 fn new_board_for_platform_resolves_through_the_catalog() {
     let tmp = outside_every_checkout();
@@ -483,4 +482,82 @@ fn nros_check_runs_the_board_check_on_a_scaffolded_board() {
         stderr.contains("no runner, command or board package answers to it"),
         "{stderr}"
     );
+}
+
+/// Issue 2310's "Done when", end to end: a porter scaffolds a platform and a
+/// board for it, and the board resolves with no edit outside their own
+/// directory. User ruling 2026-11-12 (option 3): the platform's `inherits`
+/// chain names its built-in family. Without `--inherits` the board is refused,
+/// naming the line that fixes it.
+#[test]
+fn an_out_of_tree_platform_and_its_board_resolve() {
+    let run = |dir: &std::path::Path, args: &[&str]| {
+        Command::new(nros())
+            .args(args)
+            .current_dir(dir)
+            .env_remove("NROS_WORKSPACE_ROOT")
+            .env("NROS_EXTRA_BOARD_PATH", dir)
+            .output()
+            .expect("run nros")
+    };
+    let into = |dir: &std::path::Path, args: &[&str]| -> Vec<String> {
+        let mut v: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        v.push("--into".into());
+        v.push(dir.display().to_string());
+        v
+    };
+    let info = |dir: &std::path::Path| {
+        let root = repo_root();
+        run(
+            dir,
+            &[
+                "board",
+                "info",
+                "acme",
+                "--workspace",
+                root.to_str().unwrap(),
+            ],
+        )
+    };
+
+    for (inherits, family) in [(Some("bare-metal"), "bare-metal"), (None, "")] {
+        let tmp = outside_every_checkout();
+        let mut plat = vec!["new", "platform", "acmeos"];
+        if let Some(f) = inherits {
+            plat.extend(["--inherits", f]);
+        }
+        for args in [
+            plat,
+            vec!["new", "board", "acme", "--for-platform", "acmeos"],
+        ] {
+            let args = into(tmp.path(), &args);
+            let args: Vec<&str> = args.iter().map(String::as_str).collect();
+            let out = run(tmp.path(), &args);
+            assert!(
+                out.status.success(),
+                "{args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        let out = info(tmp.path());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        if inherits.is_some() {
+            assert!(out.status.success(), "the board must resolve: {stderr}");
+            assert!(stdout.contains(r#""platform": "acmeos""#), "{stdout}");
+            assert!(
+                stdout.contains(&format!(r#""platform_family": "{family}""#)),
+                "{stdout}"
+            );
+        } else {
+            assert!(
+                !out.status.success(),
+                "a platform with no family must refuse: {stdout}"
+            );
+            assert!(
+                stderr.contains("inherits = \"<family>\""),
+                "the refusal names the fix: {stderr}"
+            );
+        }
+    }
 }

@@ -360,6 +360,12 @@ struct BoardInfo {
     name: String,
     board_dir: PathBuf,
     descriptor: PathBuf,
+    /// The platform the board names: its `platform` as authored.
+    platform: String,
+    /// The built-in family the board builds as. Equal to `platform` for a
+    /// built-in platform; for an out-of-tree one, the family its
+    /// `inherits` chain reaches (issue 2310).
+    platform_family: &'static str,
     /// The projection this board would produce for a Zephyr build, or `null`
     /// for a board with no `[board.zephyr]` block. Printed because "what does
     /// cmake actually see?" is the question `board info` was invented to
@@ -600,6 +606,11 @@ fn info(args: InfoArgs) -> Result<()> {
     let info = BoardInfo {
         name: args.name.clone(),
         descriptor: board_dir.join("nros-board.toml"),
+        platform: board
+            .platform_name
+            .clone()
+            .unwrap_or_else(|| board.platform.kebab().to_string()),
+        platform_family: board.platform.kebab(),
         board_dir,
         cmake_vars,
     };

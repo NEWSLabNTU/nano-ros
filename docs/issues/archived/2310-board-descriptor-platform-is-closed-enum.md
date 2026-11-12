@@ -1,14 +1,14 @@
 ---
 id: 2310
 title: "A board descriptor's `platform` is a closed enum, so no board can name an out-of-tree platform"
-status: open
+status: resolved
 type: bug
 area: cli, boards, platform
 related: [2292, 2291, phase-545]
 found: 2026-11-07
 ---
 
-**Home: [phase-545](../roadmap/phase-545-rmw-provider-scan-build-road.md).** Found while fixing issue 2292 (phase-537 W12 follow-up).
+**Home: [phase-545](../../roadmap/phase-545-rmw-provider-scan-build-road.md).** Found while fixing issue 2292 (phase-537 W12 follow-up).
 
 ## Symptom
 
@@ -155,3 +155,87 @@ the CLI get the facts a `PlatformKind` supplies today?
 `nros new platform acmeos && nros new board acme --for-platform acmeos`
 followed by `nros board info acme` resolves the board, with no edit outside
 the user's workspace. A test covers that road.
+
+## Ruling (2026-11-12)
+
+The user ruled **option 3**, relayed by the manager session: "resolve an
+out-of-tree platform via `inherits` to a built-in family; refuse with a fix
+hint when the chain hits none."
+
+## Fix (2026-11-12)
+
+**Resolution.** `PlatformKind::resolve_family` resolves the name a board
+writes. A built-in name is its own family. Any other name is looked up on the
+platform search path. The walk then follows that descriptor's `inherits`,
+exactly as written, until it reaches a built-in kind. It walks the authored
+strings, not the directories they resolve to, because `nros-platform-threadx`
+answers to both `threadx-linux` and `threadx-riscv64`.
+
+**Refusals.** Each refusal names the fix:
+
+- **No descriptor answers the name.** The message names
+  `nros new platform <name> --inherits <family>`.
+- **The chain ends without reaching a built-in.** The message names
+  `inherits = "<family>"`, the descriptor to put it in, and the families.
+- **The chain names a missing platform, or loops.** The message names the
+  chain.
+
+**Loader.** `BoardFile::parse_resolving` rewrites such a `[[board]]` before the
+typed parse:
+
+- `platform` becomes the resolved family.
+- The authored name moves to the new derived field
+  `BoardDescriptor::platform_name`, which a descriptor may not state.
+
+Every `PlatformKind` match downstream is therefore unchanged and still
+exhaustive. A file that names only built-in platforms takes the old parse
+untouched, so its error spans survive. A stated `platform_feature` that
+disagrees with the resolved family is refused.
+
+**Search path.** `PlatformFamilies` holds it, earliest root first:
+
+1. `$NROS_PLATFORMS_DIR`
+2. the catalog's extra board roots (where `nros new platform` and `nros new
+   board` write side by side)
+3. the parents of package dirs that are platform packages
+4. the checkout's `packages/platform` and `config`
+
+It is loaded lazily, so a catalog of built-in boards never reads a platform
+descriptor. `PlatformsTree::inherits_of` is the one new reader in
+`nros-platform-config`.
+
+**Scaffolds.**
+
+- `nros new platform <name> --inherits <family>` writes a live `inherits`
+  line. Without the flag the line stays commented out.
+- The board scaffold no longer writes `platform_feature = "platform-<platform>"`.
+  The field is derived from the family, and the stated line named no real
+  feature for `threadx-linux` (whose family selects `platform-threadx`) or for
+  any out-of-tree platform.
+
+**Display.** `nros board info` now prints `platform` (as written) and
+`platform_family`.
+
+**Tests.**
+
+- `platform_family_tests` (`board_descriptor.rs`) covers:
+  - a built-in name;
+  - a two-hop chain to `threadx-linux`;
+  - each refusal;
+  - a catalog over a porter's side-by-side root, which resolves to
+    `bare-metal`;
+  - the same catalog refused without `inherits`;
+  - a stated `platform_name` refused.
+- `board_new_scaffold::an_out_of_tree_platform_and_its_board_resolve` is this
+  issue's "Done when", end to end:
+  - `nros new platform acmeos --inherits bare-metal`, then
+    `nros new board acme --for-platform acmeos`, then `nros board info acme`
+    resolves, with `platform_family` `bare-metal`;
+  - without `--inherits`, the refusal names `inherits = "<family>"`.
+
+  Mutation-checked: with the loader routed back to the plain parse, the test
+  fails.
+
+**Not done here.** Whether a porter's own `nros-platform-<name>` crate is
+linked into an image is the build's question, not the catalog's. This issue
+makes the board resolve, which is what its "Done when" asks.
