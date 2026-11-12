@@ -111,6 +111,15 @@ Acceptance: a dispatch release publishes `<ver>`; a second publish of the
 same `<ver>` is refused (immutability, RFC-0127 D5 guarantee 1); `latest`
 does not move until W5 passes.
 
+Status: written (2026-11-12), first run at the next release.
+`.github/workflows/starter-image.yml`, called by `release-nros.yml` after a
+published release, builds `starter` from the release's own tag and pushes
+the immutable `<ver>`; `starter-zephyr` (`<ver>-zephyr`) and a semester
+retag are dispatch-only. An existing version tag refuses the build before it
+starts and again before the push; a retag named `latest` or shaped like a
+version is refused. Nothing in it moves `latest`. GHCR creates the package
+private, so an org admin sets it public once after the first push (Q1).
+
 ### W5 — The `image` probe track gates `latest`
 
 Gate: Q9, ruled 2026-11-12 (100 Mbit/s shared by 30 seats; the size is the
