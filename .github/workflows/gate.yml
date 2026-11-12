@@ -170,6 +170,9 @@ jobs:
     # `needs`, so it is unaffected.
     if: ${{ github.event_name != 'merge_group' }}
     runs-on: ubuntu-latest
+    # Longest successful run measured 2026-11-12: 0 min (n=25). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 10
     outputs:
       scaffold: ${{ steps.f.outputs.scaffold }}
       colcon: ${{ steps.f.outputs.colcon }}
@@ -309,6 +312,9 @@ jobs:
     if: >-
       ${{ always() && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-22.04
+    # Longest successful run measured 2026-11-12: 18 min (n=32). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 40
     permissions:
       contents: read
       packages: read
@@ -814,6 +820,9 @@ jobs:
     if: >-
       ${{ always() && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-22.04
+    # Longest successful run measured 2026-11-12: 12 min (n=32). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: read
@@ -964,6 +973,9 @@ jobs:
       ${{ always() && github.event_name == 'pull_request'
           && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-22.04
+    # Longest successful run measured 2026-11-12: 19 min (n=13). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 40
     permissions:
       contents: read
       packages: read
@@ -1213,6 +1225,9 @@ jobs:
     # `scripts/ci/runner-container.sh`. The image must be REBUILT and
     # redeployed by the runner operators before the variable is turned on.
     runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
+    # Longest successful run measured 2026-11-12: 21 min (n=28). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: read
@@ -1563,6 +1578,9 @@ jobs:
     # `check-workspace-all` comment block. The expression is spelled ONCE, and
     # `check-workflow-runner-isolation` parses it (scripts/lib/runner_route.py).
     runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
+    # Longest successful run measured 2026-11-12: 16 min (n=28). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 35
     permissions:
       contents: read
       packages: read
@@ -1797,6 +1815,9 @@ jobs:
     # `check-workspace-all` comment block. The expression is spelled ONCE, and
     # `check-workflow-runner-isolation` parses it (scripts/lib/runner_route.py).
     runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
+    # Longest successful run measured 2026-11-12: 9 min (n=15). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: read
@@ -2057,6 +2078,9 @@ jobs:
     # comment block. The expression is spelled ONCE, and
     # `check-workflow-runner-isolation` parses it (scripts/lib/runner_route.py).
     runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
+    # Longest successful run measured 2026-11-12: 24 min (n=45 over 3 shards). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 50
     permissions:
       contents: read
       packages: read
@@ -2322,6 +2346,9 @@ jobs:
     # phase-489 W2 — ROUTED, as `check-template-copy-out`; the hosted arm is the
     # Zephyr CI image.
     runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
+    # Longest successful run measured 2026-11-12: 41 min (n=15). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 85
     permissions:
       contents: read
       packages: read
@@ -2489,6 +2516,9 @@ jobs:
       ${{ always() && contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name)
           && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-22.04
+    # Longest successful run measured 2026-11-12: 15 min (n=15). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read
@@ -2683,6 +2713,9 @@ jobs:
       ${{ always() && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name)
           && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-22.04
+    # Longest successful run measured 2026-11-12: 132 min (n=17 over 3 shards, scheduled). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 240
     permissions:
       contents: read
       packages: read
@@ -3172,6 +3205,9 @@ jobs:
     name: warm the SDK-store cache [${{ matrix.kind }}] (main only)
     if: ${{ github.ref == 'refs/heads/main' && contains(fromJSON('["push","workflow_dispatch"]'), github.event_name) }}
     runs-on: ubuntu-22.04
+    # Longest successful run measured 2026-11-12: 3 min (n=8). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -3245,6 +3281,9 @@ jobs:
     name: warm the compile-tier cache (main only)
     if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-22.04
+    # Longest successful run measured 2026-11-12: 22 min (n=4). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: read
@@ -3559,6 +3598,9 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.scaffold == 'true' || github.event_name != 'pull_request' }}
     runs-on: ubuntu-22.04
+    # Longest successful run measured 2026-11-12: 10 min (n=11). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: read
@@ -3647,6 +3689,9 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.colcon == 'true' || github.event_name != 'pull_request' }}
     runs-on: ubuntu-22.04
+    # Longest successful run measured 2026-11-12: 2 min (n=15). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 10
     permissions:
       contents: read
       packages: read
@@ -3696,6 +3741,9 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.sdk_index == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
+    # Longest successful run measured 2026-11-12: 0 min (n=1). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -3770,6 +3818,9 @@ jobs:
       - colcon-parity
       - sdk-index
     runs-on: ubuntu-latest
+    # Longest successful run measured 2026-11-12: 0 min (n=40). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 10
     steps:
       - name: Require every gate to have actually passed
         run: |

@@ -321,6 +321,7 @@ west-leaf-vocabulary
 workflow-checkout-before-repo-path
 workflow-doctor-after-setup
 workflow-indexed-apt
+workflow-job-timeouts
 workflow-repo-env
 workflow-runner-isolation
 workflow-setup-spelling

@@ -104,6 +104,9 @@ jobs:
     name: L3 (cross build + link)
     if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
     runs-on: [self-hosted, linux, nros-sdk-zephyr, nros-big]
+    # Longest successful run measured 2026-11-12: 31 min (n=15). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 65
     env:
       # phase-543 — the self-hosted runner's gate lane (.config/gate-lanes.toml
       # [lane.runner]): `just build <lane>` and `just ci matrix` reach `check
@@ -216,6 +219,9 @@ jobs:
     needs: [l3]
     if: always()
     runs-on: ubuntu-22.04
+    # Longest successful run measured 2026-11-12: 0 min (n=15). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Report whether the interlocked lane ran

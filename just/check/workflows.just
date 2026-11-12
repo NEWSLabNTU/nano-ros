@@ -851,6 +851,13 @@ cli-submodule-sync:
 workflow-runner-isolation:
     @python3 scripts/check-workflow-runner-isolation.py
 
+# A merge-queue job with no `timeout-minutes` inherits GitHub's 360. One
+# stalled hosted runner held the queue for hours on 2026-11-12. Every job in a
+# workflow triggered by merge_group states a bound.
+[private]
+workflow-job-timeouts:
+    @python3 scripts/check-workflow-job-timeouts.py
+
 # Issue 1453 — a gate the maintainers DECIDED must gate the merge queue
 # (`template-copy-out`, 2026-10-17) still runs on `merge_group`, still feeds the
 # required `CI` through a `sibling` line, and is not on `pull_request`.
