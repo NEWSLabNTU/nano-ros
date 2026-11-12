@@ -110,8 +110,8 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let bin = name;
     // Issue 1027 — the row, not a literal. `<leaf>/target/…` was correct only
     // for as long as `freertos` stayed out of `NROS_FIXTURE_SHARED_PLATFORMS`;
-    // it is in that list today and the artifacts are under
-    // `build/cargo-fixtures/freertos/`, so this site was one root redirect away
+    // it was in that list (artifacts under `build/cargo-fixtures/freertos/`)
+    // until phase-531 W7 moved its last Rust rows to workspaces, so this site was one root redirect away
     // from the NuttX failure and reached the right file only because it spelled
     // the carve-out profile directly. Both halves now come from the row:
     // `row_resolved_dir` (inside the chokepoint) for the root,

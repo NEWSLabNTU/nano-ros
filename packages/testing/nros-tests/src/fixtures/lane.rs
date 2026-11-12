@@ -1005,30 +1005,32 @@ mod tests {
     use super::*;
 
     /// Issue 2112 -- a shared-group binary's path, against the shipped
-    /// manifest: a binary in the FreeRTOS group dir attributes to the row
-    /// that builds it, so a lane without `freertos,rust,zenoh` skips it
-    /// instead of reporting it MISSING. Before the fix this returned `None`.
-    /// (It was the lending cell's `loan-copy-sub`, until phase-531 W7 moved
-    /// that bench into its own workspace and out of the group.)
+    /// manifest: a binary in a shared group dir attributes to the row that
+    /// builds it, so a lane without that row's coordinate skips it instead of
+    /// reporting it MISSING. Before the fix this returned `None`. (It was the
+    /// lending cell's `loan-copy-sub`, then `logging-smoke-freertos-mps2`,
+    /// until phase-531 W7 moved both into workspaces and `freertos` left the
+    /// shared platforms; the bare-metal group is the one that keeps Rust
+    /// `[[fixture]]` rows.)
     #[test]
     fn a_shared_group_binary_attributes_to_the_row_that_builds_it() {
-        let dir = crate::fixtures::groups::group_dir("freertos")
-            .join("thumbv7m-none-eabi/nros-minsizerel/logging-smoke-freertos-mps2");
+        let dir = crate::fixtures::groups::group_dir("baremetal")
+            .join("thumbv7m-none-eabi/release/logging-smoke-mps2-baremetal");
         let row = attribute_group_binary(&dir)
-            .expect("logging-smoke-freertos-mps2 has one producing row");
+            .expect("logging-smoke-mps2-baremetal has one producing row");
         assert_eq!(
             row.dir,
-            "packages/testing/nros-tests/bins/logging-smoke-freertos-mps2"
+            "packages/testing/nros-tests/bins/logging-smoke-mps2-baremetal"
         );
 
         let c = |p: &str, l: &str, r: &str| (p.to_string(), l.to_string(), r.to_string());
-        let tier2: BTreeSet<Coord> = [c("freertos", "cpp", "cyclonedds")].into_iter().collect();
+        let tier2: BTreeSet<Coord> = [c("baremetal", "c", "zenoh")].into_iter().collect();
         let why = skip_reason_for_path(&dir, &tier2).expect("out of lane is a skip");
         assert!(
-            why.contains("is at coordinate freertos,rust,zenoh"),
+            why.contains("is at coordinate baremetal,rust,zenoh"),
             "{why}"
         );
-        let rust: BTreeSet<Coord> = [c("freertos", "rust", "zenoh")].into_iter().collect();
+        let rust: BTreeSet<Coord> = [c("baremetal", "rust", "zenoh")].into_iter().collect();
         assert_eq!(
             skip_reason_for_path(&dir, &rust),
             None,
@@ -1039,8 +1041,8 @@ mod tests {
     /// The fail-closed half: no producing row, or a path outside every group.
     #[test]
     fn a_group_binary_no_row_builds_is_not_attributable() {
-        let in_group = crate::fixtures::groups::group_dir("freertos")
-            .join("thumbv7m-none-eabi/nros-minsizerel/no-such-binary");
+        let in_group = crate::fixtures::groups::group_dir("baremetal")
+            .join("thumbv7m-none-eabi/release/no-such-binary");
         assert!(attribute_group_binary(&in_group).is_none());
         let outside = project_root().join("build/elsewhere/loan-copy-sub");
         assert!(attribute_group_binary(&outside).is_none());
