@@ -4,7 +4,7 @@ title: "Phase 110.E.b — `PlatformTimer` + `AtomicSporadicState` design"
 status: Stable
 area: platform-board-rtos
 since: 2026-05
-last-reviewed: 2026-05
+last-reviewed: 2026-11
 implements-tracked-by: [phase-274]
 supersedes: []
 superseded-by: null
@@ -251,3 +251,16 @@ Total without bare-metal + per-callback runtime: ~620 LOC across
   too — atomic state is a strict superset)
 - Per-platform integration test exercises actual ISR refill on at
   least one no-std target (FreeRTOS QEMU recommended)
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict:** amend: record the design as built.
+
+Stale references, each checked with `git ls-files` or `git grep` on main:
+
+- "Design locked, impl deferred" is false. `AtomicSporadicState` is at `nros-node/src/executor/sched_context.rs:290`.
+- The timer shipped as a C ABI, `nros_platform_timer_create_periodic` (`nros-platform-api/include/nros/platform_timer.h`), not as a Rust `trait PlatformTimer`.
+- `last_refill_ms` is an `AtomicU32`, not an `AtomicU64`.
+- `feature = "std"` no longer exists.
+
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.

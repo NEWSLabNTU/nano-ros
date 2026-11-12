@@ -4,11 +4,10 @@ title: "RTOS Scheduling Features for nano-ros"
 status: Stable
 area: platform-board-rtos
 since: 2026-03
-last-reviewed: 2026-06
+last-reviewed: 2026-11
 implements-tracked-by: [phase-228]
 supersedes: []
 superseded-by: null
-superseded-in-part-by: [rfc-0079, rfc-0110]
 ---
 
 # RTOS Scheduling Features for nano-ros
@@ -571,3 +570,19 @@ just freertos trace talker     # Capture + convert
 - [Schedulability analysis (archived)](archived/schedulability-analysis.md)
 - [WCET analysis (archived)](archived/wcet-analysis.md)
 - [Real-time analysis (book)](../../book/src/guide/realtime/analyze-timing.md)
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict:** amend.
+
+Stale references, each checked with `git ls-files` or `git grep` on main:
+
+- `nros-c/cmake/NanoRosReadConfig.cmake`, `cmake/NanoRosConfig.cmake` and `nano_ros_read_config()` no longer exist. The `[scheduling]` `config.toml` section has no reader.
+- The frontmatter field `superseded-in-part-by` was removed in this review: it is not a README field, and RFC-0079 and RFC-0110 already carry `amends: [rfc-0016]`.
+- The 64 KB app stack figure is stale: the default is 128 KiB per issue 1146 (CLAUDE.md, not re-measured here).
+
+Where newer designs or the code disagree:
+
+- The banner says scheduling config "now lives in `nros.toml [node.rt]` (RFC-0004 §7)". RFC-0004 itself records `nros.toml` as retired and the `[node.rt]` form as unused.
+
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.

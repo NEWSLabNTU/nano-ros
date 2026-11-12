@@ -309,3 +309,11 @@ The work to meet D1 is phase-541 (the prebuilt archives) and phase-542
   the pin is `v1.17.0`). D1 added: PX4 SITL targets **Verified on host
   (daily)**; Pixhawk hardware is not claimed. OQ4–OQ6 added, owned by
   phase-542, which this RFC now tracks. Stays Draft until D1 is met.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict:** keep (fresh; stays Draft until D1 is met).
+
+No stale reference was found, and no newer RFC conflicts with it.
+
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.

@@ -4,7 +4,7 @@ title: "Hierarchical platform/board configuration"
 status: Stable
 area: platform-board-rtos
 since: 2026-07
-last-reviewed: 2026-07-16
+last-reviewed: 2026-11
 implements-tracked-by: [phase-290]
 supersedes: []
 superseded-by: null
@@ -277,3 +277,20 @@ for non-express topics.
   platform packages, explicit chain, `config explain`, scaffolders) and
   the "Kconfig only where the native framework requires it" decision.
   Work breakdown: [phase-290](../roadmap/archived/phase-290-hierarchical-config.md).
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict:** amend (brief item P2).
+
+Stale references, each checked with `git ls-files` or `git grep` on main:
+
+- `config/<platform>/nros-platform.toml` survives only for `bare-metal` and `generic`. The rest moved to `packages/platform/nros-platform-*/nros-platform.toml`.
+- `ZPICO_TX_BATCH` is a legacy spelling in `knobs.toml`. The canonical name is `NROS_*`.
+- Out-of-tree board resolution is credited to RFC-0014. It was RFC-0013's, now superseded by RFC-0087.
+- Links added in this review: RFC-0086 and RFC-0098 now carry `amends: [rfc-0049]`, matching what their own text says.
+
+Where newer designs or the code disagree:
+
+- "No nros-owned Kconfig and no Kconfig generation machinery" and "generated Kconfig fragments: rejected" are contradicted by `zephyr/Kconfig`'s generated knob-registry block (RFC-0103 D2b).
+
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.

@@ -4,7 +4,7 @@ title: "Custom-board provisioning — out-of-tree boards self-describe their dep
 status: Superseded
 area: platform-board-rtos
 since: 2026-05
-last-reviewed: 2026-09
+last-reviewed: 2026-11
 implements-tracked-by: []
 supersedes: []
 superseded-by: [0087, 0062]
@@ -237,3 +237,13 @@ mirroring the Phase 195 fresh-machine gate but for a self-describing board.
 - [NXP S32 Automotive Platform](https://www.nxp.com/products/processors-and-microcontrollers/s32-automotive-platform:S32) · [NVIDIA DRIVE Orin](https://www.nevsemi.com/blog/my-deep-dive-into-nvidia-drive-orin-the-brain-of-autonomous-vehicles)
 - [rp-hal (RP2040 Rust HAL)](https://github.com/rp-rs/rp-hal) · [stm32f4xx-hal](https://github.com/stm32-rs/stm32f4xx-hal) · [embedded-hal](https://github.com/rust-embedded/embedded-hal)
 - [Yocto BSP guide](https://docs.yoctoproject.org/3.2.3/bsp-guide/bsp.html) · [TI Processor-SDK AM335x](https://www.ti.com/tool/PROCESSOR-SDK-AM335X) · [NXP i.MX Embedded Linux](https://www.nxp.com/design/design-center/software/embedded-software/i-mx-software/embedded-linux-for-i-mx-applications-processors:IMXLINUX)
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict:** archive (already Superseded by RFC-0087 and RFC-0062).
+
+Stale references, each checked with `git ls-files` or `git grep` on main:
+
+- The back-links were missing. Added in this review: RFC-0087 and RFC-0062 now carry `supersedes: [0013]`. The move to `archived/` is phase-555 W3.
+
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.
