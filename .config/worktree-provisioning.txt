@@ -18,6 +18,7 @@ packages/rmw/zenoh/zpico-sys/zenoh-pico           # check::fast — capability-c
 packages/rmw/xrce/xrce-sys/micro-cdr              # check::fast — xrce-vendored-versions
 packages/rmw/xrce/xrce-sys/micro-xrce-dds-client  # check::fast — xrce-vendored-versions
 third-party/nuttx/libc                            # check::fast — leaf-lockfiles (nros-nuttx-ffi); CI's fast job provisions it too
+third-party/nuttx/nuttx-apps                      # check::fast — nuttx-rust-triple (upstream's tools/Rust.mk triple table)
 third-party/dds/cyclonedds                        # check::build — test-targets, workspace-all, workspace-features
 packages/cli/third-party/play_launch               # check::build — cli-tests; and the launch resolver is built from it
 third-party/freertos/kernel                       # check::build — workspace-all, test-targets (nros-board-freertos build script; store-first)
