@@ -4,7 +4,7 @@ title: "Portable RMW / Platform Interface — Design Review"
 status: Stable
 area: rmw-wire
 since: 2026-05
-last-reviewed: 2026-05
+last-reviewed: 2026-11
 implements-tracked-by: [phase-276, phase-500]
 supersedes: []
 superseded-by: null
@@ -16,6 +16,14 @@ superseded-by: null
 **Date:** 2026-05-06
 **Scope:** Re-evaluate the "Rust trait + C vtable dual API" choice
 in light of multi-language consumers / providers.
+
+> **Cross-references (review note, 2026-11, phase-555 W2).** Amended by
+> [RFC-0042](0042-platform-build-determinism.md) ("C ABI is canonical" — now
+> enforced, single header). R2's "the header is the source of truth" is decided
+> and implemented by [RFC-0054](0054-c-header-abi-ssot.md) (C headers +
+> committed bindgen output, not cbindgen). The enumerated RMW slot contract is
+> [RFC-0035](0035-rmw-vtable-abi.md). The "no code yet" status line below is
+> from 2026-05-06.
 
 ---
 
@@ -321,12 +329,12 @@ Things to **NOT** do:
 
 ## See also
 
-- [`docs/roadmap/phase-115-runtime-transport-vtable.md`](../roadmap/archived/phase-115-runtime-transport-vtable.md)
+- [`docs/roadmap/archived/phase-115-runtime-transport-vtable.md`](../roadmap/archived/phase-115-runtime-transport-vtable.md)
   § A.1 — the no-`dyn` rationale that motivates this whole review.
 - [`docs/research/sdk-ux/SYNTHESIS.md`](../research/sdk-ux/SYNTHESIS.md)
   UX-22 — the original "users-fork-board-crates" pain that Phase
   115 addresses. R6's multi-language smoke test reduces the same
   pain for backend authors.
-- `book/src/internals/rmw-api-design.md`
+- `book-internals/src/rmw/rmw-api-design.md`
   — current RMW-API doc; needs an L0/L1/L2 update once Phase 117
   lands.

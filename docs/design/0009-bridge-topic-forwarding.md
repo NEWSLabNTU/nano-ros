@@ -4,8 +4,8 @@ title: "Bridge topic-forwarding (Phase 172)"
 status: Stable
 area: rmw-wire
 since: 2026-05
-last-reviewed: 2026-05
-implements-tracked-by: [phase-421]
+last-reviewed: 2026-11
+implements-tracked-by: [phase-267, phase-421]
 supersedes: []
 superseded-by: null
 ---
@@ -159,22 +159,26 @@ register_all(...) { ...; register_bridges(executor)?; }
    `.message_info()` yields `FnMut(&[u8], &RawMessageInfo)` (the relay's
    callback), not a new `register_*_with_info_on`. `NodeCtx::publisher`/
    `subscription` + `RawMessageInfo` (wire attachment) landed in 189.M1.
-2. **generator — DONE.** `register_bridges` (`generate.rs`) emits, per bridge:
+2. **generator — DONE.** `register_bridges` (`render_register_bridges_fn` in
+   `packages/cli/nros-cli-core/src/orchestration/bridge_gen.rs`; the
+   `orchestration::generate` writer it first lived in was removed) emits, per bridge:
    one bridge node per `connect` endpoint (bound via `node_builder().session_idx(idx)`,
    idx matched to the endpoint's `SESSION_SPECS` slot), then per forwarded topic
    per ordered endpoint pair `(i→j)` a generic publisher on `j` + a generic +
    `.message_info()` subscription on `i` whose callback re-publishes through it,
    with `nros-bridge` `bridge_origin` echo suppression. Called from
-   `register_all` when bridges exist; `validate_bridges` resolves each topic's
-   type from `interfaces` (errors on undeclared / unopened-session / wildcard) +
+   `register_all` when bridges exist; the type of each topic is resolved from
+   the plan's declared entities (`resolve_topic_interface`, bridge_gen.rs; the
+   `validate_bridges` named here no longer exists) (errors on undeclared / unopened-session / wildcard) +
    the build enables `nros/bridge`.
 3. **plan** — DONE (`PlanBridge`).
-4. **deploy** — DONE (`apply_bridges`).
+4. **deploy** — DONE (`apply_bridges`, since retired; the planner's
+   `bridge_plan_entries` in `orchestration/planner.rs` builds `plan.bridges` now).
 5. **check — DONE.** The `[[bridge]]` "routing not yet emitted" warning is gone
    (routing is emitted).
 6. **tests — DONE** (compile/shape).
-   `generate::register_bridges_emits_relay` (bridge plan → bridge nodes +
-   the generic-sub-callback relay + origin codec) +
+   `bridge_gen::tests::register_bridges_emits_relay` (bridge plan → bridge nodes +
+   the generic-sub-callback relay + origin codec) + the retired
    `validate_bridges_rejects_undeclared_topic`; the emitted relay was
    compile-verified against `nros` (builder + `nros::bridge` codec +
    `RawMessageInfo` + `publish_raw_with_attachment` + the `bridge` feature).

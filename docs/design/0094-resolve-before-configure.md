@@ -6,6 +6,7 @@ area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-11
 implements-tracked-by: [phase-439, phase-530]
+amends: [rfc-0065, rfc-0071, rfc-0087]
 ---
 
 # RFC-0094 — Resolve before configure: the declared thing is the thing that runs

@@ -6,6 +6,7 @@ area: workspace-system-model
 since: 2026-08
 last-reviewed: 2026-10
 implements-tracked-by: [phase-484]
+amends: [rfc-0049, rfc-0071]
 ---
 
 # RFC-0086 — Unified configuration: the transport tenant, coupling verbs, and retiring the per-lane knob
