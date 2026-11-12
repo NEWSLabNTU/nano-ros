@@ -30,11 +30,12 @@
 
 AGENTS.md	install-local
 book-internals/src/testing/creating-examples.md	install-local
-docs/design/0058-multi-edition-ros-test-harness.md	ros-edition-image
 book-internals/src/testing/test-harness.md	orin-spe
+docs/design/0058-multi-edition-ros-test-harness.md	ros-edition-image
 docs/issues/README.md	build-zenoh-pico-arm
 docs/issues/README.md	esp32
 docs/issues/README.md	native
+docs/issues/README.md	nuttx
 docs/release/migration-install-local-removal.md	install-local
 docs/research/autoware-safety-island-vs-sentinel.md	launch-autoware-baseline
 docs/research/sdk-ux/SYNTHESIS.md	new

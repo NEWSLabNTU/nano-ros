@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# The NuttX integration shell's Makefile is on a path NOTHING in CI executes.
+# The NuttX integration shell's Makefile, read statically.
+#
+# Until phase-550 W1 it was on a path NOTHING in CI executed.
 #
 # `just nuttx build` builds the KERNEL. The nano-ros app only compiles when
 # `CONFIG_NROS=y`, and no shipped defconfig sets it — `git grep CONFIG_NROS=y
 # packages/boards` returns nothing for NuttX. So the flow the book documents
-# (set CONFIG_NROS, `cd $NUTTX_DIR && make`) is not exercised by any lane, and
+# (set CONFIG_NROS, `cd $NUTTX_DIR && make`) was not exercised by any lane, and
 # in the two weeks before 2026-08-13 it accumulated THREE independent breakages,
 # each of which failed the user's very first build:
 #
@@ -17,14 +19,11 @@
 #
 # This gate covers (1) and (2), which are the two that a static reading can
 # settle: every `$(NROS_REPO_DIR)/<path>` must exist, and every make variable
-# used in a `+=` must be defined before that line. (3) needs a real compile and
-# is covered by the build recipe below, not here.
+# used in a `+=` must be defined before that line.
 #
-# It is deliberately NOT a substitute for running the flow. The honest fix is a
-# lane that sets CONFIG_NROS and builds; `just nuttx build-integration-app` is
-# that build, kept out of `check-fast` because it needs the NuttX toolchain and
-# mutates the shared tree's `.config` (issue 0525), which a fast gate must not
-# do. Run it before releasing anything that touches these Makefiles.
+# It is deliberately NOT a substitute for running the flow, and (3) needs a
+# real compile: `just nuttx build-make-road` builds the road on both boards in
+# its own trees, daily (`nightly.yml`, job `nuttx-make-road`; phase-550 W1).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -96,14 +95,14 @@ if [ "$fail" -ne 0 ]; then
     cat >&2 <<'EOF'
 
 The NuttX integration Makefile is broken for the flow in
-book/src/guide/platforms/nuttx.md, and no lane builds it.
+book/src/guide/platforms/nuttx.md.
 
   paths:  a repo layout move (packages/core -> packages/api) does not
           reach this file automatically — it names paths as text.
   order:  NuttX's CFLAGS is simply-expanded, so `+=` reads the variable's
           value AT THAT LINE. Define before use.
 
-Verify the whole flow with:  just nuttx build-integration-app
+Verify the whole flow with:  just nuttx build-make-road
 EOF
     exit 1
 fi

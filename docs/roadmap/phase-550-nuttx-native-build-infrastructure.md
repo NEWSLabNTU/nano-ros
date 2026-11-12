@@ -1,7 +1,7 @@
 # Phase 550 -- NuttX builds on NuttX's own infrastructure
 
-**Status (2026-11-12). IN PROGRESS: W0 done (every question ruled), W2 and
-W12 done; the rest not started.**
+**Status (2026-11-13). IN PROGRESS: W0 done (every question ruled), W1, W2
+and W12 done; the rest not started.**
 The work for
 [RFC-0126](../design/0126-nuttx-builds-on-nuttx-infrastructure.md), all of
 whose decisions are ruled (its "Decided" section). Each item names the question in
@@ -48,7 +48,7 @@ match (Q1, Q7).
 
 ### W1 -- A lane that builds the make road on both boards
 
-A recipe (successor of `just nuttx build-integration-app`) that, for armv7a
+A recipe (successor of the retired `build-integration-app` recipe) that, for armv7a
 and rv-virt each, configures its OWN copy of the pinned kernel and apps trees
 under the build dir (never `third-party/nuttx/nuttx`, issue 0525), stages the
 shell, sets `CONFIG_NROS=y`, adds a minimal C app that calls `nros_*` (so the
@@ -60,6 +60,28 @@ link is not vacuous), and runs `make`.
   green, and the ELF holds `nros_*` text symbols; it is reachable from the
   cadence Q19 picks, and `scripts/check-nuttx-integration-makefile.sh`'s
   "no lane" note is deleted.
+- **Status: DONE (2026-11-13).** `just nuttx build-make-road [arm|riscv|all]`
+  runs `scripts/nuttx/make-road-build.sh <config>`. It clones its own copy of
+  the kernel and apps trees the source ladder locates (`--shared`, at the
+  tree's HEAD) into `build/nuttx-make-road/<config>/`, configures with the
+  board's defconfig plus `CONFIG_APPS_DIR` (what `tools/configure.sh -a`
+  writes), `CONFIG_NROS=y` and the smoke app `tests/nuttx-make-road-app/`,
+  and runs `make` under the stall watchdog. It is green only when the ELF
+  holds the app's entry, `rcl_publish` and `nros_*` text. The board
+  `Make.defs` path is derived from the defconfig's `CONFIG_ARCH` /
+  `CONFIG_ARCH_CHIP` / `CONFIG_ARCH_BOARD`, not listed. The kconfig frontend
+  moved into `scripts/nuttx/kconfig-frontend.sh`, which `build-nuttx.sh` now
+  sources too. Cadence (Q19): job `nuttx-make-road` in `nightly.yml`, on the
+  daily 07:00 cron and on dispatch, one matrix cell per config. The recipe
+  replaces `build-integration-app`, which built in the shared tree.
+  Measured on today's tree (W2 already landed, so armv7a's
+  `NUTTX_DIR` failure is gone):
+  - `arm` is green: ELF 5,308,296 bytes, 29 `nros_*` functions.
+  - `riscv` is red at 2426 item 2, as the study measured: the host `cc`
+    gets `-mabi=ilp32` (`unrecognized argument in option '-mabi=ilp32'`),
+    compiling zenoh-pico and nros-c. W3a's scope.
+  - Until W5 drops the `libc` patch literal, the road also needs the
+    `nuttx-libc` source, which `just setup nuttx` provisions.
 
 ### W2 -- The kernel tree reaches cargo
 
