@@ -189,6 +189,15 @@ function(nros_lower_system_features features)
             # gives `param_services`: a component TU never includes the entry's
             # system_config.h.
             add_compile_definitions(NROS_SYSTEM_ROSOUT)
+        elseif(_feat STREQUAL "link-tls")
+            # Issue 2423 — a Rust-only axis, refused here BY NAME rather than
+            # as unknown: the C/C++ road has no TLS link (no nros-c / nros-cpp
+            # feature, no cmake knob), so an image that declared it would
+            # build without TLS and say nothing.
+            message(FATAL_ERROR
+                "nros_lower_system_features: capability 'link-tls' is Rust-only: "
+                "the C/C++ road has no zenoh TLS link. Build this image from a Rust "
+                "entry, or drop 'link-tls' from its features.")
         else()
             message(FATAL_ERROR
                 "nros_lower_system_features: unknown capability '${_feat}' in "

@@ -28,8 +28,11 @@ pub struct Capability {
     /// `"param_services"` (the `[param_services]` block).
     pub declared: &'static str,
     /// The `nros` umbrella feature the axis enables on the generated entry
-    /// (target 1) — e.g. `"safety-e2e"` → `nros/safety-e2e`. Always present.
-    pub nros_feature: &'static str,
+    /// (target 1) — e.g. `"safety-e2e"` → `nros/safety-e2e`. `None` ⇒ a
+    /// BACKEND-ONLY axis (issue 2423, user ruling 2026-11-12): a transport
+    /// link such as `link-tls` is a property of the backend's wire, so it has
+    /// no `nros` half and lowers to targets 2 and 3 only.
+    pub nros_feature: Option<&'static str>,
     /// The feature name on the concrete BACKEND crate (target 2, the direct
     /// `nros-rmw-<x>` dep on board-less native) AND the forwarding feature the
     /// BOARD crate carries (target 3). `None` ⇒ the axis is entry-umbrella-only
@@ -72,7 +75,7 @@ pub const CAPABILITIES: &[Capability] = &[
     // feature, so the axis no-ops there (issue 0072).
     Capability {
         declared: "safety",
-        nros_feature: "safety-e2e",
+        nros_feature: Some("safety-e2e"),
         backend_feature: Some("safety-e2e"),
         c_define: Some("NROS_SYSTEM_SAFETY_E2E"),
         cmake_token: Some("NROS_SAFETY_E2E"),
@@ -81,7 +84,7 @@ pub const CAPABILITIES: &[Capability] = &[
     // registers the services; there is no backend wire feature.
     Capability {
         declared: "param_services",
-        nros_feature: "param-services",
+        nros_feature: Some("param-services"),
         backend_feature: None,
         c_define: Some("NROS_SYSTEM_PARAM_SERVICES"),
         cmake_token: None,
@@ -93,7 +96,7 @@ pub const CAPABILITIES: &[Capability] = &[
     // sibling: the store lives in the executor, not the transport.
     Capability {
         declared: "params",
-        nros_feature: "param-store",
+        nros_feature: Some("param-store"),
         backend_feature: None,
         c_define: Some("NROS_SYSTEM_PARAM_STORE"),
         cmake_token: None,
@@ -105,7 +108,7 @@ pub const CAPABILITIES: &[Capability] = &[
     // so cmake_token is None (no separate cmake knob needed).
     Capability {
         declared: "lifecycle",
-        nros_feature: "lifecycle-services",
+        nros_feature: Some("lifecycle-services"),
         backend_feature: None,
         c_define: Some("NROS_SYSTEM_LIFECYCLE"),
         cmake_token: None,
@@ -117,9 +120,25 @@ pub const CAPABILITIES: &[Capability] = &[
     // UNSUPPORTED — so the cargo feature is the whole lowering (no cmake knob).
     Capability {
         declared: "rosout",
-        nros_feature: "rosout",
+        nros_feature: Some("rosout"),
         backend_feature: None,
         c_define: Some("NROS_SYSTEM_ROSOUT"),
+        cmake_token: None,
+    },
+    // Issue 2423, user ruling 2026-11-12 (option a) — the zenoh TLS link, for
+    // an image with no package of its own to name `nros-rmw-zenoh/link-tls`
+    // (a workspace image: its node packages may not name an RMW, issue 1509).
+    // BACKEND-ONLY: `nros` dropped its link forwards in phase 248, so the
+    // axis lowers to the backend's own feature (target 2) and a board's
+    // forward of it (target 3), and the backend says it carries one in its
+    // `[rmw.capabilities]`. RUST-ONLY, stated: the C/C++ road has no TLS link
+    // (no `nros-c` / `nros-cpp` / cmake knob), so no `c_define` / `cmake_token`,
+    // and `nros_lower_system_features` refuses it by name.
+    Capability {
+        declared: "link-tls",
+        nros_feature: None,
+        backend_feature: Some("link-tls"),
+        c_define: None,
         cmake_token: None,
     },
 ];
@@ -133,6 +152,17 @@ pub fn capability(declared: &str) -> Option<&'static Capability> {
 mod tests {
     use super::*;
 
+    /// Issue 2423 — `link-tls` is BACKEND-ONLY (no `nros` half) and Rust-only
+    /// (no C/C++ define or cmake knob, stated rather than missing).
+    #[test]
+    fn link_tls_is_a_backend_only_rust_only_axis() {
+        let c = capability("link-tls").expect("link-tls axis");
+        assert_eq!(c.nros_feature, None);
+        assert_eq!(c.backend_feature, Some("link-tls"));
+        assert_eq!(c.c_define, None);
+        assert_eq!(c.cmake_token, None);
+    }
+
     fn backend(name: &str) -> std::sync::Arc<crate::rmw_resolver::ResolvedRmwIn> {
         crate::rmw_resolver::test_support::in_tree_index()
             .resolve(name)
@@ -142,7 +172,7 @@ mod tests {
     #[test]
     fn safety_lowers_to_all_three_targets_zenoh_only() {
         let c = capability("safety").expect("safety axis");
-        assert_eq!(c.nros_feature, "safety-e2e");
+        assert_eq!(c.nros_feature, Some("safety-e2e"));
         assert_eq!(c.backend_feature, Some("safety-e2e"));
         assert!(c.backend_supports(&backend("zenoh")));
         // xrce / cyclonedds have no CRC path → no backend feature.
@@ -156,7 +186,7 @@ mod tests {
     #[test]
     fn rosout_is_entry_umbrella_only() {
         let c = capability("rosout").expect("rosout axis");
-        assert_eq!(c.nros_feature, "rosout");
+        assert_eq!(c.nros_feature, Some("rosout"));
         assert_eq!(c.backend_feature, None);
         assert!(!c.backend_supports(&backend("zenoh")));
         assert_eq!(c.c_define, Some("NROS_SYSTEM_ROSOUT"));
@@ -166,7 +196,7 @@ mod tests {
     #[test]
     fn param_services_is_entry_umbrella_only() {
         let c = capability("param_services").expect("param_services axis");
-        assert_eq!(c.nros_feature, "param-services");
+        assert_eq!(c.nros_feature, Some("param-services"));
         assert_eq!(c.backend_feature, None);
         assert!(!c.backend_supports(&backend("zenoh")));
         // Phase 261 W1 — informational `#define`, no CMake knob.
@@ -179,7 +209,7 @@ mod tests {
     #[test]
     fn params_is_the_store_without_the_services() {
         let c = capability("params").expect("params axis");
-        assert_eq!(c.nros_feature, "param-store");
+        assert_eq!(c.nros_feature, Some("param-store"));
         assert_eq!(c.backend_feature, None);
         assert_eq!(c.c_define, Some("NROS_SYSTEM_PARAM_STORE"));
         assert_eq!(c.cmake_token, None);
@@ -188,7 +218,7 @@ mod tests {
     #[test]
     fn lifecycle_is_entry_umbrella_only() {
         let c = capability("lifecycle").expect("lifecycle axis");
-        assert_eq!(c.nros_feature, "lifecycle-services");
+        assert_eq!(c.nros_feature, Some("lifecycle-services"));
         assert_eq!(c.backend_feature, None);
         assert!(!c.backend_supports(&backend("zenoh")));
         // Phase 269 W2 — informational `#define`, no CMake knob (always compiled in).

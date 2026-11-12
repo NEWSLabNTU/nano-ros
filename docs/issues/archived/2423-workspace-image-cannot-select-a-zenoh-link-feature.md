@@ -1,7 +1,7 @@
 ---
 id: 2423
 title: "A workspace image cannot turn on a zenoh link feature (`link-tls`) without a node package naming zenoh"
-status: open
+status: resolved
 type: limitation
 severity: low
 area: [cli, build, zenoh, examples]
@@ -9,7 +9,7 @@ related: [phase-535, rfc-0121, rfc-0122, rfc-0031, 1509]
 found: 2026-11-10
 ---
 
-**Home: [phase-535](../roadmap/phase-535-example-reorg-and-cadence-ci.md) W6.**
+**Home: [phase-535](../../roadmap/phase-535-example-reorg-and-cadence-ci.md) W6.**
 The `link-tls` rows of `examples/linux/rust/{talker,listener}` are each a
 `linux_tls` image of that example's own one-node workspace
 (`node_features = ["link-tls"]`, RFC-0121 D9), where
@@ -146,3 +146,77 @@ more than (a) and checks less.
 `linux_{talker,listener}_tls` images without a node package naming zenoh. At
 that point the two example `linux_tls` rows can retire into a
 `matrix::Config` TLS cell, the way phase-535 W6 moved the peer-mode rows.
+
+## Ruling (2026-11-12)
+
+The user ruled **option (a)**, relayed by the manager session. It is a
+backend-only capability row:
+
+- `nros_feature` becomes optional;
+- zenoh declares the link feature in `[rmw.capabilities]`;
+- the board forwards it;
+- the image writes `features = ["link-tls"]`;
+- Rust only, and stated as such.
+
+## Fix (2026-11-12)
+
+**Registry** (`cargo_nano_ros::capability_resolver`)
+
+- `Capability::nros_feature` is `Option<&'static str>`.
+- New row `link-tls`: `nros_feature: None`,
+  `backend_feature: Some("link-tls")`, and no `c_define` or `cmake_token`.
+- The leaf-axis agreement test compares only rows that have an `nros` half.
+  A backend-only axis has no leaf `nros::main!()` axis to match.
+
+**Backend and board**
+
+- `nros-rmw-zenoh/nros-rmw.toml` adds `link-tls = "link-tls"` under
+  `[rmw.capabilities]`.
+- `nros-board-linux` adds `link-tls = ["nros-rmw-zenoh?/link-tls"]`.
+
+**Two gaps closed on the way.** Both had to close for the ruling to reach a
+crate.
+
+1. *Image features never reached the facade.* `ImageBlock::features` is
+   documented as "capability axes for this image, over the system's own list".
+   Only the plan recorded it, so the facade derived every image's capability
+   features from `[system].features` alone.
+   - `SystemToml::with_image_features` gives the image's view.
+   - The facade derives with it, for both the board/backend lists and the
+     RFC-0071 D15 backend lines.
+   - Unknown names in an image's `features` are now refused like a typo in
+     `[system].features`.
+2. *The board forward was never applied.* The registry documents "target 3" as
+   the board crate's forward of a capability's backend feature, but `derive`
+   asked the board only for its RMW and edition features.
+   - It now also asks for each enabled capability's backend feature
+     (`backend_link::capability_features`), only where the board declares it.
+   - `derived_features` reuses the same helper.
+   - Side effect: an image with `safety` on a board that forwards `safety-e2e`
+     now turns the forward on. That forward existed for exactly that and was
+     dead.
+
+**Rust only, refused by name.** The C/C++ refusal is in three places, all with
+the same wording: `nros_lower_system_features`, `nros_feature_set` (the cmake
+road), and the Zephyr module's capability block (the west road, C or C++ API).
+The C/C++ road has no TLS link, so building on would ship an image without the
+link it declared.
+
+**Tests**
+
+- `capability_resolver::link_tls_is_a_backend_only_rust_only_axis`.
+- `facade::an_images_link_tls_reaches_its_board_and_no_other_image`. Two
+  images of one entry, one declaring `link-tls`:
+  - only that image's adapter feature turns on `nros-board-linux/link-tls`;
+  - no `nros/link-tls` appears;
+  - a typo in an image's `features` is refused.
+
+  Mutation-checked twice. Deriving from `[system]` instead of the image's view
+  makes it fail, and so does dropping the board-forward loop.
+
+**Left to phase-535 W6.** That work item's owner retires the two
+`examples/linux/rust/{talker,listener}` `linux_tls` rows into
+`linux_{talker,listener}_tls` images of
+`examples/workspaces/rust/src/pubsub_bringup` and a `matrix::Config` TLS cell.
+This issue makes those images declarable, which is what its "Done when" asks
+first.
