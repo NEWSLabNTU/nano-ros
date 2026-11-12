@@ -1721,7 +1721,18 @@ fn write_parameter_default(
     match default {
         Some(ParameterDefault::Bool(value)) => write!(out, "{}", value),
         Some(ParameterDefault::Integer(value)) => write!(out, "{}", value),
-        Some(ParameterDefault::Double(value)) => write!(out, "{}", value.as_str()),
+        // JSON has no literal for infinity or NaN: a bare `inf` (what `{:?}`
+        // prints for `f64::INFINITY`) makes the whole sidecar unparseable.
+        // A non-finite default is recorded as a string; `type` still says
+        // double.
+        Some(ParameterDefault::Double(value)) => {
+            let text = value.as_str();
+            if text.parse::<f64>().is_ok_and(f64::is_finite) {
+                write!(out, "{}", text)
+            } else {
+                write_json_string(out, text)
+            }
+        }
         Some(ParameterDefault::String(value)) => write_json_string(out, value.as_str()),
         Some(ParameterDefault::BoolArray)
         | Some(ParameterDefault::IntegerArray)
@@ -1968,6 +1979,26 @@ mod tests {
 
     use super::*;
     use crate::qos;
+
+    /// A non-finite double default (an "unbounded" timeout declared as
+    /// `std::numeric_limits<double>::infinity()`) must still produce valid
+    /// JSON; a finite one stays a JSON number.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn a_non_finite_double_default_is_valid_json() {
+        let mut out = StdString::new();
+        for (value, want) in [
+            (f64::INFINITY, "\"inf\""),
+            (f64::NEG_INFINITY, "\"-inf\""),
+            (f64::NAN, "\"NaN\""),
+            (1.5, "1.5"),
+        ] {
+            out.clear();
+            let default = ParameterDefault::from_value(&ParameterValue::Double(value)).unwrap();
+            write_parameter_default(&mut out, Some(&default)).unwrap();
+            assert_eq!(out, want);
+        }
+    }
 
     #[test]
     fn source_name_kind_preserves_unresolved_names() {
