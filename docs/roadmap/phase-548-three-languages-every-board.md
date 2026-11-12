@@ -190,6 +190,8 @@ are C.
 
 ### W3 — The NuttX cross compiler is the pinned one, with a GCC floor
 
+- **Status:** DONE (2026-11-07)
+
 **Code area:** `packages/boards/nros-board-common/src/nuttx_ffi_build.rs`.
 
 - Measured: `NUTTX_CROSS` defaults to a bare `arm-none-eabi-gcc` (line 41),
@@ -225,6 +227,8 @@ is system 10.3.1:
   not provisioned (expected …)`.
 
 ### W4 — C++ on ThreadX qemu riscv64 publishes
+
+- **Status:** DONE (2026-11-07)
 
 **Code area:** `packages/boards/nros-board-threadx-qemu-riscv64/` (the C++
 entry's start-up path on this board).
@@ -269,6 +273,8 @@ entry's start-up path on this board).
 
 ### W4b — A board fault or an early return ends the QEMU run
 
+- **Status:** DONE (2026-11-07)
+
 **Code area:** the ThreadX qemu riscv64 board's trap handler and app thread
 (`packages/boards/nros-board-threadx-qemu-riscv64/`), and how `nros run`
 learns that the emulator stopped.
@@ -303,6 +309,8 @@ reports 1, because a runner's exit is the 0/1/2 contract
 
 ### W5 — `nros setup` outside a checkout reads the current index — DONE
 
+- **Status:** DONE (2026-11-07)
+
 **Code area:** `nros-cli-core` `cmd/setup.rs` (`resolve_index`).
 
 - Measured: outside a checkout, `nros setup` read a 26-day-old
@@ -322,6 +330,8 @@ reports 1, because a runner's exit is the 0/1/2 contract
 **Done (2026-11-07).** `resolve_index` gained a rung, `own_sdk_root_index()`: the release's `share/nano-ros` index, or for an in-tree `nros` its own checkout's. It answers after the checkout walk-up and before the store's fetched cache, and `$NROS_INDEX_URL` still outranks it. The cache rung that remains prints a note when the cache is older than the binary, naming `NROS_INDEX_REFRESH=1`. `cmd::setup::tests` passes 54/54, including the acceptance test above.
 
 ### W6 — `nros build` reconfigures after a toolchain change — DONE
+
+- **Status:** DONE (stated in the heading; no date recorded)
 
 **Code area:** `cmake/toolchain/NanoRosCrossToolchain.cmake:363` and the
 cmake call in `nros build`.
@@ -408,6 +418,8 @@ std_msgs/msg/String --qos-reliability best_effort` beside it.
 
 ### W10 — `nros run --expect` lets the matching line finish — DONE
 
+- **Status:** DONE (2026-11-09)
+
 **Code area:** `nros run`'s console matcher in `nros-cli-core`.
 
 - Measured (W8 replay): on NuttX the C++ talker writes its line in pieces.
@@ -473,6 +485,8 @@ of that line before it stops the emulator.
     in a separate change.
 
 ### W9 — The RISC-V toolchain file finds rust-lld on the pinned toolchain — DONE
+
+- **Status:** DONE (2026-11-07)
 
 **Code area:** `cmake/toolchain/riscv64-threadx.cmake`,
 `packages/api/nros-c/cmake/nros-rtos-helpers.cmake` (`nros_host_rustlib_bin`),

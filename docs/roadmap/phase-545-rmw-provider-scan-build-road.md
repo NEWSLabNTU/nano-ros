@@ -95,6 +95,8 @@ crate does not name, and an acceptance test with a gate.
 
 ### W3 — The out-of-tree fixture, its e2e, and the gate (D16)
 
+- **Status:** DONE (2026-11-09)
+
 - Fixture workspace `packages/testing/nros-tests/fixtures/out-of-tree-rmw/`:
   - `src/acme_rmw/`: a `package.xml` announcing `rmw acme`, an
     `nros-rmw.toml`, and a cargo crate on `nros-rmw` that delegates to
@@ -170,6 +172,8 @@ crate does not name, and an acceptance test with a gate.
   table.
 
 ### W4 — Book
+
+- **Status:** DONE (2026-11-09)
 
 - The custom-RMW page (`book/src/extending/custom-rmw.md`) states that an
   out-of-tree backend builds on both roads, and shows the fixture's shape as

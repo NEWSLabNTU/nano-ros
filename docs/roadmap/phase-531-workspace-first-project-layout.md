@@ -52,7 +52,9 @@ workspace road reaches it, and the W7 step that deletes it. It also records how
 many tracked `system.toml` sit beside code (223 on 2026-11-03), split by tree
 (`examples/`, `packages/testing/`, templates).
 
-**Status: DONE (2026-11-05, PR #3119, measured at `03473878d6`).** The result
+- **Status:** DONE (2026-11-05, PR #3119, measured at `03473878d6`)
+
+The result
 follows.
 
 #### How reach was measured
@@ -196,7 +198,7 @@ Lines are non-test lines. "WS reach" uses the classes defined above.
 `system.toml` beside a `Cargo.toml` fails; removing one allowlisted site
 without deleting its row fails the ratchet).
 
-**Status: DONE (2026-11-05, PR #3128).**
+- **Status:** DONE (2026-11-05, PR #3128)
 
 - `just check system-toml-in-bringup` (`scripts/check-system-toml-in-bringup.py`)
   reads the tracked set.
@@ -245,7 +247,9 @@ same SystemModel as the same workspace with the generated file copied into
 `launch/` (models compared byte for byte); deleting `launch/` returns to
 generation.
 
-**Status: DONE with W4 (2026-11-05, PR #3143).** W4's scaffold needs it: its
+- **Status:** DONE (with W4, 2026-11-05, PR #3143)
+
+W4's scaffold needs it: its
 bringup has no `launch/`. `synthesise_bringup_launch` (`cmd/ws.rs`) writes the
 file from the `[[component]]` rows under a mirror root,
 `<ws>/build/nros/launch/<bringup>/` holding `launch/system.launch.xml` and a
@@ -299,7 +303,7 @@ talker && cd sensor_ws && nros run sensor_node --expect 'Publishing: 0'`
 passes on QEMU. A workspace with two bringups naming one node refuses `nros run
 <node>` and lists both.
 
-**Status: DONE (2026-11-05, PR #3143).**
+- **Status:** DONE (2026-11-05, PR #3143)
 
 Follow-up (Zephyr, issue 2290): a scaffolded Zephyr image names no `os_config`
 fragment, so its network stack comes only from the board package. The
@@ -430,7 +434,7 @@ Steps, each its own pull request:
   an RMW or edition change in `system.toml` on its next build;
 - `selection_crate_name` survives only for the leaf road W7 step 3 deletes.
 
-**Status: step 1 done (PR #3147); step 2 in review (PR #3149, 2026-11-05).**
+- **Status:** OPEN (step 1 done (PR #3147); step 2 in review (PR #3149, 2026-11-05))
 Step 2 does the following:
 
 - `builder::entry` states `facade::entry_selection` on the entry's own lines.
@@ -551,7 +555,7 @@ W6 / phase-535, and NuttX cannot build on this host.
 matrix` (tier 2) are green on the migrated tree, with fixture counts unchanged
 from before W6.
 
-**Status: in progress (2026-11-06).**
+- **Status:** OPEN (in progress (2026-11-06))
 
 - Issue 2298 fixed (PR #3208, merged 2026-11-06): a workspace image derives its payload classes and take
   buffer over its own message closure, with the leaf road's functions

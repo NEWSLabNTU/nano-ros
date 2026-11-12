@@ -159,6 +159,8 @@ Until these are answered, W2 builds nothing.
 
 ### W3 — Adoption probes, two rounds
 
+- **Status:** DONE (2026-11-01)
+
 - A one-page brief per purpose: the purpose, its budget, the host it starts
   on, the book as the only source. The industrial and education probes are
   run by Claude sessions given the brief; the field probe is run by a real
@@ -265,6 +267,8 @@ Found after round two, while fixing the probes:
 | [#2348](../issues/archived/2348-rust-workspace-listener-arena-underderived.md) | both | **Resolved** 2026-11-07: the Rust probe states the buffered row beside `in_place`; the observation outranks the backend default |
 
 ### W4 — The industrial extras
+
+- **Status:** DONE (2026-11-01)
 
 - An offline install probe: the release asset and the SDK store are staged on
   a host with no network, and the first chapter runs to its asserted line.
