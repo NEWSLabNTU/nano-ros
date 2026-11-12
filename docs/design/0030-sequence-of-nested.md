@@ -2,9 +2,9 @@
 rfc: 0030
 title: "Phase 212.K.7.4.c — sequence-of-nested design proposal"
 status: Draft
-area: build-toolchain-codegen
+area: rmw-wire
 since: 2026-06
-last-reviewed: 2026-06
+last-reviewed: 2026-11
 implements-tracked-by: []
 supersedes: []
 superseded-by: null

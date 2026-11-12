@@ -4,7 +4,7 @@ title: "Ament-aligned CMake consumption — source-backed find_package, one shap
 status: Draft
 area: build-toolchain-codegen
 since: 2026-07
-last-reviewed: 2026-07
+last-reviewed: 2026-11
 implements-tracked-by: [phase-287]
 supersedes: []
 superseded-by: null
@@ -204,7 +204,7 @@ its preset carries only `nano_ros_ROOT` (or a bare `cmake` works when
 
 ```bash
 git clone --branch v0.X.Y https://github.com/NEWSLabNTU/nano-ros   # pinned source (D2)
-./nano-ros/bootstrap.sh                 # builds nros CLI (phase-288)
+./nano-ros/scripts/bootstrap.sh         # builds nros CLI (phase-288)
 source nano-ros/activate.sh             # PATH + NROS_REPO_DIR + nano_ros_ROOT
 nros setup mps2-an385-freertos          # toolchain/SDK + ~/.nros/presets/<board>.json
 # in your project:

@@ -4,7 +4,7 @@ title: "`nros setup` — toolchain & dependency management (W.5 design)"
 status: Stable
 area: build-toolchain-codegen
 since: 2026-05
-last-reviewed: 2026-05
+last-reviewed: 2026-11
 implements-tracked-by: [phase-240, phase-287, phase-288, phase-327, phase-365, phase-431, phase-447]
 supersedes: []
 superseded-by: null
@@ -197,7 +197,7 @@ esp32-c3      → { esp-toolchain (via espup-style), baremetal, rmw }
                   port and `nros-sdk-index.toml` has never had an ESP-IDF entry,
                   so this row described a provisioning model that was never
                   implemented — issues 1525/1526)
-native        → { host cc, zenohd(optional) }
+linux         → { host cc, zenohd(optional) }
 ```
 
 `nros setup nucleo_f767zi` fetches **only** that set — not esp32+px4+….
@@ -243,7 +243,7 @@ path against an install then asks one function instead of knowing them:
   `{prefix}`. `{version}` is substituted from the row's own `version`, so the
   layout cannot drift from the pin. `nros dev sdk path` answers the ROOT;
   `sdk_store::tool_install_prefix` is the separate question "what did setup
-  write, and what does `store gc` reclaim". Before this, `nros dev sdk path` answered
+  write, and what does `toolchain gc` reclaim". Before this, `nros dev sdk path` answered
   the prefix and every consumer appended `zephyr-sdk-<version>` by hand — a
   second copy of the pin, in shell.
 - **`post_install`** — some bundles are *designed* to be completed by their own
@@ -464,7 +464,7 @@ against the *consumer's* zephyr workspace `<dir>`:
 
 `RUST_SUPPORTED` for the board's arch ships as a **board Kconfig overlay module**
 (adds `default y if <board>` — no mutation of the consumer's `lang-rust` tree),
-falling back to the existing `aarch64/cortex-r-rust-patch.sh` against the
+falling back to the existing `scripts/zephyr/cortex-r-rust-patch.sh` against the
 consumer tree if the symbol cannot be extended cross-file.
 
 **Why this shape** (vs a standalone script or a pure-west flow): the patch +
@@ -506,4 +506,4 @@ contributors.
   time+space measurement that motivates this (W.5).
 - `book-internals/src/dev-env/sdk-tiers.md` — the current `just setup` tier model (the
   source-build baseline this supersedes for users).
-- `docs/roadmap/phase-172-orchestration-deferred.md` — W.5 tracking.
+- `docs/roadmap/archived/phase-172-orchestration-deferred.md` — W.5 tracking.

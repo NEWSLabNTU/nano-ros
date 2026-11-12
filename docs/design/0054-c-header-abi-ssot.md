@@ -4,7 +4,7 @@ title: "C headers as the ABI SSoT — pure header packages + committed-bindgen R
 status: Stable
 area: build-toolchain-codegen
 since: 2026-07
-last-reviewed: 2026-07
+last-reviewed: 2026-11
 implements-tracked-by: [phase-299]
 supersedes: []
 superseded-by: null

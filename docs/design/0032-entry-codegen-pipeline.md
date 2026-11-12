@@ -4,7 +4,7 @@ title: "Entry-Codegen Pipeline — main() emission across frameworks + sched tas
 status: Draft
 area: build-toolchain-codegen
 since: 2026-06
-last-reviewed: 2026-06
+last-reviewed: 2026-11
 implements-tracked-by: [phase-212, phase-228, phase-236]
 supersedes: []
 superseded-by: null
@@ -73,7 +73,7 @@ tree the same way:
 | Emitter | Where | When | Why it exists |
 | --- | --- | --- | --- |
 | **`nros::main!()` proc-macro** | `packages/core/nros-macros/src/main_macro.rs` | the consumer's `cargo build` (compile time) | **Canonical.** Has `proc_macro::Span` for diagnostics a shell-out can't match; expands directly into the Entry crate. |
-| **`nros dev codegen entry --lang rust\|cpp\|c`** | `packages/cli/nros-cli-core/src/codegen/entry/emit_{rust,cpp,c}.rs` | host-time CLI invocation | **Mirror.** Pre-bakes the macro expansion for byte-level diffing, inspection outside a cargo build, and the C/C++ entry TUs. |
+| **`nros dev codegen entry --lang rust\|cpp\|c`** | `packages/cli/nros-cli-core/src/codegen/entry/` (`emit_rust.rs` + the language packs under `packs/entry/{rust,cpp,c}`) | host-time CLI invocation | **Mirror.** Pre-bakes the macro expansion for byte-level diffing, inspection outside a cargo build, and the C/C++ entry TUs. |
 
 Both consult the workspace pkg-index + launch parser (`nros_build::pkg_index` /
 `launch_parser`) and lower to a per-node register list. The CLI path lowers into
@@ -282,7 +282,7 @@ serde + thiserror only) owns the sched task schema (`SchedTaskDef`, `SchedTaskRt
 `resolve_sched_tasks` takes the **decomposed** inputs `(sched tasks, node_overrides,
 component_names, callback_groups, target_rtos)` rather than a whole `SystemToml`,
 so the leaf crate stays free of the full CLI config type. The macro derives
-`target_rtos` from the resolved board (`native`/`posix` → `posix`, `freertos*` →
+`target_rtos` from the resolved board (`linux` → `posix`, `freertos*` →
 `freertos`, …).
 
 ```
@@ -326,7 +326,7 @@ launch tree + system.toml (sched tasks + group_tasks)
 gate, the `.callback_group()` label, `Executor::session_ptr` /
 `open_with_session` / `set_active_groups`, `SchedTaskSpec` + RFC-0016 maps,
 `LinuxBoard::run_sched_tasks`, and the `nros-orchestration-ir` extraction. Validated by
-`phase228_sched_task_filter.rs` (two executors, one shared session, off-sched-task callbacks
+`sched_task_filter.rs` (two executors, one shared session, off-sched-task callbacks
 gated to zero) against real zenohd.
 
 **Decided (2026-06 design discussion):**
@@ -337,7 +337,7 @@ gated to zero) against real zenohd.
   (spawn the binary, observe topic output, kill it — matches the existing
   Zephyr/FreeRTOS workspace E2E). Do **not** add a bounded-spin mode to
   `run_sched_tasks`. The runtime *mechanism* is already covered by
-  `phase228_sched_task_filter.rs`.
+  `sched_task_filter.rs`.
 - **Native multi-sched-task is advisory-priority** — `LinuxBoard::run_sched_tasks` uses
   `std::thread` (default scheduler, no strict preemption); it validates the
   task-per-sched-task + filter shape + serves dev ergonomics. Real preemption is
@@ -393,7 +393,9 @@ gated to zero) against real zenohd.
 The C++ Entry path (Phase 219) emits the launch tree → register sequence →
 `NodeContext` dispatch, but only against `nros::board::LinuxBoard` and only
 with a **recording** `NodeContextOps` (every op a no-op — see
-`packages/api/nros-cpp/include/nros/main.hpp`). So a generated C++ `main()`
+`packages/api/nros-cpp/include/nros/main.hpp`, since moved to
+`packages/api/nros-cpp/include/rclcpp/detail/main.hpp`; the recording op set is
+retired). So a generated C++ `main()`
 exercises codegen + symbol resolution + launch-order dispatch end-to-end, but
 constructs **no** live publishers/subscriptions, on native or embedded.
 
@@ -455,10 +457,10 @@ constructs **no** live publishers/subscriptions, on native or embedded.
 - `run_sched_tasks` + `SchedTaskSpec`: `packages/boards/nros-board-linux/src/lib.rs`,
   `packages/platform/nros-platform/src/board/sched_task.rs`.
 - Shared resolver: `packages/core/nros-orchestration-ir/`.
-- Phase tracking: `docs/roadmap/phase-228-per-sched_task-orchestration-codegen.md`
+- Phase tracking: `docs/roadmap/archived/phase-228-per-tier-orchestration-codegen.md`
   (multi-sched-task emit); `docs/roadmap/archived/phase-236-cpp-entry-embedded-runtime.md`
   (C++ embedded board adapter + NodeContext runtime, §8a);
-  `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md` §212.O.1
+  `docs/roadmap/archived/phase-212-ux-cargo-native-and-file-consolidation.md` §212.O.1
   (embedded panic + Node-pkg crate-type, §3.1).
-- Embedded panic / crate-type: `docs/issues/0045-freertos-entry-component-staticlib-panic-handler.md`,
+- Embedded panic / crate-type: `docs/issues/archived/0045-freertos-entry-component-staticlib-panic-handler.md`,
   RFC-0024 §6.4, RFC-0031 (rmw selection — the O.1 dual-backend residual).
