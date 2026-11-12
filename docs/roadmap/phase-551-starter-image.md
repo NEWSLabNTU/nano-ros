@@ -90,6 +90,16 @@ Gate: Q4, ruled 2026-11-12: on dispatch. `starter` plus the Zephyr SDK and the a
 Acceptance: built on dispatch; a Zephyr native_sim talker builds offline in
 it; compressed size printed and under 5 GB.
 
+Status: written (2026-11-12). The stage's Zephyr steps are the `probe=`
+blocks 30/32/34/36 of `book/src/starters/zephyr-native-sim.md`, extracted
+when the context is written (`_nros_starter_zephyr_steps`, each rewrite
+exact-once), so the image cannot drift from the page. It warms the native_sim
+talker per language, then rebuilds it with `--network=none`. Measured on
+`0.6.0-nros8` with `NROS_STARTER_ZEPHYR_PROJECTS=zephyr:c`: 13.11 GB raw,
+4.01 GB compressed, the C talker built offline and `nros run` matched
+`Hello World: 1`. The Rust talker needs the next release (issue 2314's fix,
+#2314, is not in `nros8`).
+
 ### W4 — Release job and tags
 
 Gate: Q1, Q5, ruled 2026-11-12 (`ghcr.io/newslabntu/nano-ros-starter`,
@@ -111,6 +121,19 @@ built and run offline. Over the time or size budget is red.
 Acceptance: the track is `probe=`-tagged, runs in `probe.yml`, prints the
 pull time and the compressed size, and `latest` moves only on its green.
 
+Status: written (2026-11-12), first run at the next release.
+`just probe image <ref> [pull=1]` (`scripts/probe/verify-starter-image.sh`):
+the compressed size against the budget (the registry's layer sizes with
+`pull=1`) with the room's pull time for Q9's link printed beside it, the
+book page's `probe=20` block run with `--network none` against its
+`probe-expect` block, and the course recipe (the page's devcontainer.json
+names the digest; `nros doctor` names the image). probe.yml's `image-track`
+job runs it on the newest release whose image exists and only then moves
+`latest` (`scripts/ci/starter-latest.sh`). Measured locally on a starter
+built from `0.6.0-nros8`: 1.22 GB, about 49 min for a room, the newcomer
+steps green offline; the doctor check is red there, because that release's
+`nros` predates the `container` line.
+
 ### W6 — Audience recipes
 
 Gate: Q3, ruled 2026-11-12. Documented in the book:
@@ -124,6 +147,17 @@ Gate: Q3, ruled 2026-11-12. Documented in the book:
   firmware image digests today).
 
 Acceptance: each recipe is a probe-tagged book block that a probe runs.
+
+Status: written (2026-11-12). `book/src/start/starter-image.md` ("Use the
+starter image", after Install): newcomer, course (devcontainer.json by
+digest, pull before the session), no network (`docker save`/`load`), and the
+derived image with the four guarantees. `nros doctor` gains a `container`
+line from `NROS_STARTER_IMAGE`, which the image bakes. The image also bakes
+`CARGO_NET_OFFLINE=true`, so the newcomer steps build with no network and no
+flag (issue 2444's gap does not reach a seat); a project adding a crate runs
+with `-e CARGO_NET_OFFLINE=false`. Probed: the newcomer block (W5's seat)
+and the course recipe; the no-network recipe's `save`/`load` is not run by
+a probe, and the derived-image recipe is W7's.
 
 ### W7 — The customer `FROM` recipe
 
