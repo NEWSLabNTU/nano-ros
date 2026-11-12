@@ -103,6 +103,11 @@ zero when there are none.
 
 The accessors take the node: `lifecycle_state_machine(NodeId)`.
 
+Every message this RFC adds that a user can see names the node, the knob or
+the transition, and carries no issue, phase or RFC id. That covers runtime
+refusals, the dropped-publish log line (D3), build refusals and generated
+comments, per the user's ruling of 2026-11-12. The ids go in source comments.
+
 ### D2. A managed node is one the model or its component says is managed
 
 The fact already exists: `structure.nodes[].lifecycle: bool` in the
