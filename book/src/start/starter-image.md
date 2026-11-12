@@ -2,9 +2,8 @@
 
 <!-- type: how-to · level: 1 -->
 
-> **Not published yet.** The first `nros` release after 0.6.0-nros8 publishes
-> this image. Until that release is out, `docker pull` below fails with
-> `denied`. Install `nros` on your own machine meanwhile, as
+> **Not published yet.** Until the image is made public, `docker pull` below
+> fails with `denied`. Install `nros` on your own machine meanwhile, as
 > [Install](./install.md) describes.
 
 The starter image is a container with nano-ros already installed: the `nros`
