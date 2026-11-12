@@ -670,3 +670,16 @@ zenohd model="":
     set -e
     source scripts/dev/zenohd.sh
     nros_router_exec tcp/0.0.0.0:7400 "{{model}}"
+
+# issue 2400 W6 -- the stack-floor twin lane. Every measured [[allowance]] row
+# in config/stack-floors.toml whose board has a Renode twin: `nros new` the
+# row's template under build/stack-floor-twin, build it with the thread
+# analyzer, run it in the twin, and compare the main thread's peak with the
+# build's own static walk. Fails when the peak is above the floor, or when the
+# row is stale (`bytes != peak - static`), and prints the re-measured row.
+# Needs Renode (`nros setup --tool renode`) and ROS's `rmw_zenohd`; source
+# ./activate.sh first. ~2 min per row warm. ARGS: --only <key>, --seconds N.
+# Re-measure every stack-floor row on its Renode twin; fails on a stale row.
+[group("debug")]
+stack-floor-twin *ARGS:
+    python3 scripts/stack-floor-twin.py {{ARGS}}

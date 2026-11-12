@@ -978,6 +978,26 @@ def refused(args: argparse.Namespace, doc, refusals: list[str]) -> int:
     return 1
 
 
+def write_report(path: str, args: argparse.Namespace, results: dict, stacks: dict[str, int],
+                 refusals: list[str]) -> None:
+    """What this build measured, for a reader that is not a person: the twin
+    lane (`scripts/stack-floor-twin.py`) compares a twin's peak with the
+    static walk and the allowance THIS build used, so it reads them here
+    rather than parsing a message. Written before the CHECK, so a failing
+    build still says what it measured. The path list is left out; the
+    walk's own output prints it."""
+    doc = {
+        "schema": 1,
+        "image": args.image, "target": args.target, "rmw": args.rmw,
+        "roles": {role: {k: v for k, v in r.items() if k != "path"}
+                  for role, r in results.items()},
+        "stacks": stacks,
+        "refused": refusals,
+    }
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+
+
 def run(args: argparse.Namespace) -> int:
     doc = None
     if args.table:
@@ -1036,6 +1056,8 @@ def run(args: argparse.Namespace) -> int:
                                  scope=tuple(args.fold_scope or []),
                                  one_level=(mode == "fold1"))
         except WalkRefused as e:
+            if args.report:
+                write_report(args.report, args, {}, parse_check_stacks(args), [str(e)])
             return refused(args, doc, [str(e)])
     elif mode == "allowance":
         charge = allowance
@@ -1100,6 +1122,8 @@ def run(args: argparse.Namespace) -> int:
                 "path": best.chain,
             }
     stacks = parse_check_stacks(args)
+    if args.report:
+        write_report(args.report, args, results, stacks, refusals)
     if refusals:
         return refused(args, doc, refusals)
     if stacks:
@@ -1129,6 +1153,19 @@ def run(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 # Self-test (pure graph; no toolchain needed)
 # ---------------------------------------------------------------------------
+
+
+def twin_self_test() -> int:
+    """`scripts/stack-floor-twin.py`'s self-test (it imports this file, so it
+    is loaded by path, not imported at module level)."""
+    import importlib.util
+    f = Path(__file__).resolve().parent / "stack-floor-twin.py"
+    spec = importlib.util.spec_from_file_location("nros_stack_floor_twin", f)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod.self_test()
 
 
 def self_test() -> int:
@@ -1451,6 +1488,25 @@ def self_test() -> int:
             check("refused walk: no CHECK still fails",
                   refused(ns("u@b", []), doc_, ["x"]) == 1)
 
+    # --report: what the twin lane reads. Every role's numbers except the
+    # path, the stated stacks, and the refusals; a refused walk still writes.
+    import tempfile as _tf3
+    with _tf3.TemporaryDirectory() as td:
+        rp = Path(td, "sub", "report.json")
+        ns = argparse.Namespace(image="k@b", target="t", rmw="zenoh")
+        write_report(str(rp), ns, {"OPEN": {"floor": 13064, "depth": 16112, "allowance": -4236,
+                                            "measured": True, "path": ["main"]}},
+                     {"OPEN": 16384}, [])
+        r = json.loads(rp.read_text())
+        check("report: role numbers, no path",
+              r["roles"]["OPEN"] == {"floor": 13064, "depth": 16112, "allowance": -4236,
+                                     "measured": True})
+        check("report: image, stacks, schema",
+              (r["image"], r["stacks"], r["schema"]) == ("k@b", {"OPEN": 16384}, 1))
+        write_report(str(rp), ns, {}, {}, ["OPEN: no frame"])
+        check("report: a refused walk writes its refusal",
+              json.loads(rp.read_text())["refused"] == ["OPEN: no frame"])
+
     # Frames behind a symlinked directory are read: a build dir's `cargo` is
     # a symlink into the shared cargo root, where every build script's C
     # writes its `.su`. A link back up the tree is walked once.
@@ -1529,6 +1585,8 @@ def main() -> int:
     ap.add_argument("--cxxfilt", help="an Itanium demangler (default: llvm-cxxfilt, "
                     "then c++filt)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--report", help="also write what this run measured, per role, as JSON "
+                    "to this file (the twin lane reads it), refused walks included")
     ap.add_argument("--emit-defines", action="store_true")
     ap.add_argument("--table", help="config/stack-floors.toml: the walk policy for --rmw / "
                     "--target, the margin, and the measured allowance added to each role")
@@ -1553,6 +1611,10 @@ def main() -> int:
         # The negative control runs on the normal path: a broken formula or
         # validator must not be able to pass the table.
         if self_test() != 0:
+            return 1
+        # ...and the twin lane's, which reads this table and this walker's
+        # report: it runs where Renode is, so its controls run here.
+        if twin_self_test() != 0:
             return 1
         root = Path(args.validate_table).resolve().parent
         while root != root.parent and not (root / "docs" / "issues").is_dir():

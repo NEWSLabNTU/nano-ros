@@ -6,7 +6,7 @@ type: limitation
 severity: low
 area: [memory, zephyr, build]
 found: 2026-11-12
-related: [issue-2400, issue-2402]
+related: [issue-2400, issue-2402, phase-557]
 ---
 
 ## What

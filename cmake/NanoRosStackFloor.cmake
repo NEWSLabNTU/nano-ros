@@ -284,7 +284,10 @@ function(_nros_stack_floor_command _out)
     foreach(_s IN LISTS _C_SHAPE)
         list(APPEND _cmd --shape "${_s}")
     endforeach()
-    list(APPEND _cmd --sysroot --llc-cache "${_C_DIR}/llc" ${_cxxfilt_arg})
+    # report.json: what this build measured, for the twin lane
+    # (scripts/stack-floor-twin.py), which compares a twin's peak with it.
+    list(APPEND _cmd --sysroot --llc-cache "${_C_DIR}/llc" --report "${_C_DIR}/report.json"
+        ${_cxxfilt_arg})
     set(${_out} "${_cmd}" PARENT_SCOPE)
 endfunction()
 

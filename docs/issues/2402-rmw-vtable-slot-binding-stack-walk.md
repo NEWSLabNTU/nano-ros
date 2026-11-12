@@ -6,7 +6,7 @@ type: tech-debt
 severity: low
 area: [memory, tooling, rmw]
 found: 2026-11-10
-related: [issue-2400, issue-2360, issue-2398, phase-548]
+related: [issue-2400, issue-2360, issue-2398, phase-548, phase-557]
 ---
 
 **Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md)**, with

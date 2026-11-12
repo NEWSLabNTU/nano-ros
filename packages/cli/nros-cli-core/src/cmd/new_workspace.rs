@@ -941,7 +941,8 @@ mod tests {
     }
 
     /// Issue 2400 W4: the recorded floor is `floor_formula`'s, on the
-    /// committed rows (the build reproduced each of these).
+    /// committed rows (the build reproduced each of these; the C talker re-measured by the
+    /// twin lane on 2026-11-13).
     #[test]
     fn a_rows_recorded_floor_is_the_check_formula() {
         let t = std::fs::read_to_string(repo_root().join("config/stack-floors.toml")).unwrap();
@@ -951,7 +952,7 @@ mod tests {
             Some(33288)
         );
         assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(31784));
-        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(12872));
+        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(13064));
         assert_eq!(recorded_floor(&t, &k("listener/rust/zenoh")), None);
     }
 
