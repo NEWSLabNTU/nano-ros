@@ -4,7 +4,7 @@ title: "Wire encoding: XCDR2 + explicit type extensibility for modern ROS 2 inte
 status: Draft
 area: rmw-wire
 since: 2026-07
-last-reviewed: 2026-07
+last-reviewed: 2026-11
 implements-tracked-by: [phase-303]
 supersedes: []
 superseded-by: null

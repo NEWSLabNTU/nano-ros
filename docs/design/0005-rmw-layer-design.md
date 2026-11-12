@@ -4,13 +4,22 @@ title: "RMW Layer Design: Middleware Abstraction for nros"
 status: Stable
 area: rmw-wire
 since: 2026-02
-last-reviewed: 2026-04
+last-reviewed: 2026-11
 implements-tracked-by: [phase-328, phase-500]
 supersedes: []
 superseded-by: null
 ---
 
 # RMW Layer Design: Middleware Abstraction for nros
+
+> **Review note (2026-11, phase-555 W2).** The crate table, directory layout
+> and dependency diagrams below are the phase-33/34 plan as written. The tree
+> has since moved: the zenoh plumbing lives under `packages/rmw/zenoh/`
+> (`zpico-sys`, `zpico-zephyr`, `zpico-platform-custom`, …), the per-board
+> `zpico-platform-<board>` crates no longer exist (system symbols come from
+> `packages/platform/nros-platform-*`, RFC-0034), the smoltcp provider is
+> `packages/drivers/net/nros-smoltcp`, and the ESP32 boards are dormant
+> (issue 1525). The live contract in this RFC is § "Receive-buffer sizing".
 
 ## Problem Statement
 
@@ -455,7 +464,7 @@ nros-qemu (user-facing, composes everything)
 - Subscribing requires explicit `uxr_buffer_request_data` (vs zenoh's automatic data flow)
 - Entity ID management — must track allocated IDs to avoid collisions
 
-See `docs/roadmap/phase-34-rmw-abstraction.md` for implementation plan (steps 34.4-34.8).
+See `docs/roadmap/archived/phase-34-rmw-abstraction.md` for implementation plan (steps 34.4-34.8).
 
 ### Adding MQTT-SN
 
@@ -559,8 +568,8 @@ same change.
 
 - **RMW trait design inspiration**: `docs/reference/rmw-h-analysis.md` — Analysis of ROS 2's `rmw.h` for embedded, 6 limitations identified, what to adopt vs avoid
 - **XRCE-DDS feasibility**: `docs/reference/xrce-dds-analysis.md` — XRCE-DDS API analysis, platform requirements comparison, trait mapping
-- **Rename plan**: `docs/roadmap/phase-33-crate-rename.md` — Crate rename steps
-- **RMW abstraction plan**: `docs/roadmap/phase-34-rmw-abstraction.md` — Abstract RMW traits + XRCE-DDS integration
+- **Rename plan**: `docs/roadmap/archived/phase-33-crate-rename.md` — Crate rename steps
+- **RMW abstraction plan**: `docs/roadmap/archived/phase-34-rmw-abstraction.md` — Abstract RMW traits + XRCE-DDS integration
 
 ## Summary
 

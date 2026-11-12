@@ -4,7 +4,7 @@ title: "A CAN link for zenoh-rs: the host half of RFC-0080"
 status: Draft
 area: rmw-wire
 since: 2026-08
-last-reviewed: 2026-08-25
+last-reviewed: 2026-11
 implements-tracked-by: [phase-378]
 supersedes: []
 superseded-by: null
@@ -198,7 +198,10 @@ in W5. The transmit task dies before the session starts.
 99 bytes fits no CAN FD frame under any framing; the frame is 64 bytes. So this
 is a protocol limit, not a link limit, and every way out is above the link:
 fragmenting `Join`, or a compact QoS extension. RFC-0080 §4.2's blocker is
-removed on the Rust side and replaced by a different one a layer up.
+removed on the Rust side and replaced by a different one a layer up. The
+remainder is tracked as
+[issue 1822](../issues/1822-can-link-priority-mapping-blocked-by-join-size.md)
+(phase-378 was archived 2026-10-12 with W7 open).
 
 ## 4. Design
 

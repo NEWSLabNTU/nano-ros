@@ -7,6 +7,7 @@ since: 2026-06
 last-reviewed: 2026-06-15
 status-note: "STABLE (2026-06-15). D1/D2/D4 landed (phase-241.B/C, phase-243); D3 landed (single-runtime + the .init_array registration ctor, phase-249 P4b; --allow-multiple-definition removed on the C/C++ link for Linux/BSD). Residual tracked in phase-249: the macOS cyclonedds --allow-multiple-definition (needs a macOS run). The full link-closure validator extension is won't-do — subsumed by the linker once the flag is gone, infeasible at archive level (single-runtime = one archive). Neither blocks Stable (the dup-symbol gate already guards the ODR hazard)."
 implements-tracked-by: [archived/phase-241-platform-build-determinism, archived/phase-243-platform-abi-unification, phase-249-one-registration-trigger]
+amends: [rfc-0006, rfc-0031]
 supersedes: []
 superseded-by: null
 ---

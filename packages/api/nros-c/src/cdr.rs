@@ -37,9 +37,11 @@ fn reader_at(buf: &[u8], pos: usize) -> Result<CdrReader<'_>, DeserError> {
     }
 }
 
-/// Write the 4-byte CDR encapsulation header for the active ROS edition and
-/// advance the cursor: XCDR1 `00 01 00 00` (humble) or XCDR2 DELIMITED_CDR2
-/// `00 09 00 00` (iron/jazzy+). Replaces the hardcoded header the generated C
+/// Write the 4-byte CDR encapsulation header and advance the cursor: XCDR1
+/// `00 01 00 00` on every edition today, because the `XCDR2` const is `false` (the
+/// encoding is chosen per type, never per edition, and the per-type signal is
+/// parked: RFC-0055's correction). XCDR2 DELIMITED_CDR2 `00 09 00 00` is the
+/// branch that const would select. Replaces the hardcoded header the generated C
 /// `_serialize` used to emit. Returns 0 on success, -1 on overrun/null.
 ///
 /// # Safety
@@ -67,9 +69,10 @@ pub unsafe extern "C" fn rclc_cdr_write_encaps_header(ptr: *mut *mut u8, end: *c
 // DHEADER (XCDR2 appendable delimiter) — phase-303 W4 / #0267
 // ===========================================================================
 
-/// Begin a DHEADER-delimited struct. Under XCDR2 (iron/jazzy+) reserves a 4-byte
-/// DHEADER at the cursor (aligned) and advances it, returning the mark (its byte
-/// offset). Under XCDR1 (humble) this is a NO-OP returning `-1`. The generated C
+/// Begin a DHEADER-delimited struct. Under XCDR2 reserves a 4-byte DHEADER at
+/// the cursor (aligned) and advances it, returning the mark (its byte offset).
+/// Under XCDR1, the encoding on every edition today (see the `XCDR2` const), this is a
+/// NO-OP returning `-1`. The generated C
 /// `_serialize_inline` calls this at the top of every struct and passes the mark
 /// to [`rclc_cdr_end_dheader`]. Returns `-2` on any bounds/pointer failure.
 ///

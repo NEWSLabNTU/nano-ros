@@ -4,7 +4,7 @@ title: "Driving zenoh-pico 1.10's executor: one thread where the platform can bl
 status: Stable
 area: rmw-wire
 since: 2026-10
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-508]
 amends: [rfc-0016]
 supersedes: []
@@ -13,7 +13,7 @@ superseded-by: null
 
 # RFC-0110 — Driving zenoh-pico 1.10's executor
 
-**Status:** Draft (2026-10-24). Written before any code. It decides how
+**Status:** Stable (2026-10-27; drafted 2026-10-24, before any code). It decides how
 `zpico.c` drives zenoh-pico once the pin moves to 1.10.1
 ([phase-508](../roadmap/archived/phase-508-zenoh-pico-1-10-migration.md),
 [issue 0910](../issues/archived/0910-zenoh-pico-1-10-migration.md)).
