@@ -775,7 +775,7 @@ cadence gate, the header fixes and the `merge` lane; merge-runtime.yml is
 dropped or made dispatch-only." The coordinator picked dispatch-only, so the
 workflow stays as a re-measurement tool.
 
-**Status (2026-11-12), #3594.** Items 1 (as dispatch-only), 6 and the cadence
+**Status (2026-11-13), #3665 (merged; replaced the closed #3594).** Items 1 (as dispatch-only), 6 and the cadence
 gate landed. Items 2 to 5 are open.
 
 - **1 (landed, dispatch-only).** `.github/workflows/merge-runtime.yml`, job

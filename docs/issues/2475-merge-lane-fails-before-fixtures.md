@@ -23,7 +23,7 @@ was a `push:` trigger (job start to end, excluding queue wait; GitHub-hosted
 
 | run | shard | time | failed in |
 | --- | --- | --- | --- |
-| 43173875037 | linux | 39.7 min | `just build merge`: no `NROS_GATE_SCOPE` on the job (fixed in #3594: `[lane.merge]`) |
+| 43173875037 | linux | 39.7 min | `just build merge`: no `NROS_GATE_SCOPE` on the job (fixed in #3665: `[lane.merge]`) |
 | 43173875037 | threadx_linux | 37.2 min | same |
 | 43173875037 | zephyr | 57.2 min | same |
 | 43181966650 | linux | 50.2 min | `check fast` inside `just build merge`: `python-entry-provenance` NOT VERIFIED, no clone of `[source.rosidl]` under `$NROS_HOME/sources` |
