@@ -142,7 +142,8 @@ brief of RFC-0126 did.
 
 - **Acceptance:** every live RFC has a verdict and an updated
   `last-reviewed`; each area's brief is ruled.
-- **Status:** OPEN
+- **Status:** OPEN. Briefs: docs-ux-diagnostics in
+  [issue 2486](../issues/2486-docs-ux-diagnostics-review-brief.md).
 
 ### W3 -- Apply the rulings
 
