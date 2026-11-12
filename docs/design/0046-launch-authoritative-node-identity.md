@@ -4,7 +4,7 @@ title: "Launch-authoritative node identity (name + namespace), unified across la
 status: Draft
 area: workspace-system-model
 since: 2026-06
-last-reviewed: 2026-06
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-268]
 supersedes: []
 superseded-by: null
@@ -19,6 +19,9 @@ superseded-by: null
 > threads per-entity `node_name`/`namespace` into the per-call session view) with **no vtable ABI
 > change**. See phase-268 Outcome for the full data path. Flip to Stable with the ARCHITECTURE.md
 > update when convenient.
+>
+> **Review 2026-11-13 (phase-555 W2):** line cites in "One resolution site" refreshed;
+> the status question is in the phase-555 W2 workspace-system-model brief.
 
 ## Summary
 
@@ -66,9 +69,9 @@ node API usable and standalone-testable.
 ### One resolution site
 
 Both languages create nodes through `Executor::node_builder(name).build()`
-(`nros-node/src/executor/node_record.rs:270`) — Rust via `NodeContext::create_node` →
+(`nros-node/src/executor/spin.rs:5739` as of 2026-11-13) — Rust via `NodeContext::create_node` →
 `ExecutorNodeRuntime::create_node` → `node_builder`; C/C++ via `nros_cpp_node_create_ex` →
-`ctx.executor.node_builder(name).build()` (`nros-cpp/src/lib.rs:1007`). The override is applied
+`ctx.executor.node_builder(name).build()` (`nros-cpp/src/lib.rs:3340` as of 2026-11-13). The override is applied
 **there**, once: `node_builder` (or the create path just above it) checks for an injected launch
 identity and uses it in place of the caller-supplied default.
 

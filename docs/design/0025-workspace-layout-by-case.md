@@ -4,7 +4,7 @@ title: "nano-ros Phase 212 — Multi-Node Workspace Layout Reference"
 status: Draft
 area: workspace-system-model
 since: 2026-06
-last-reviewed: 2026-06
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-212]
 supersedes: []
 superseded-by: null
@@ -18,6 +18,18 @@ Canonical layout reference for nano-ros user workspaces. Matches design decision
 > root `exclude`s it. `system.toml` lives in the bringup pkg and is the universal
 > descriptor — single-node may omit it (implicit 1-component system). Config
 > authority is RFC-0004; RMW selection (declared + lowered, per-deploy) is RFC-0031.
+
+> **Review note (2026-11-13, phase-555 W2).** The five cases below predate
+> [RFC-0121](0121-workspace-first-project-layout.md) (phase-531), which makes
+> every project a workspace with a bringup, generates the entry under
+> `build/`, and builds through `nros build`. Cases 1 and 2 ("no bringup") and
+> the "Single-node → no bringup pkg" rule are the shape RFC-0121 D2 retires;
+> the hand-written Entry pkg and the root `Cargo.toml` of Cases 3 and 5 are
+> replaced by RFC-0065's generated entry. `[deploy.*]` is refused by name
+> since phase-486 W8. Case 5's `#[nros::component]` attribute never shipped:
+> the node macro is `nros::node!` (`packages/core/nros-macros/src/lib.rs:238`).
+> Whether this page is archived is the phase-555 W2 workspace-system-model
+> brief.
 
 ## Quick matrix
 
@@ -58,7 +70,7 @@ nros-node     = { path = "../../packages/core/nros-node", default-features = fal
 nros-std-msgs = { path = "../../packages/interfaces/generated/humble/nros-std-msgs" }
 
 [build-dependencies]
-nros-build = { path = "../../packages/nros-build" }
+nros-build = { path = "../../packages/cli/nros-build" }
 
 [features]
 default = ["rmw-zenoh"]

@@ -4,7 +4,7 @@ title: "Unified sched-context binding via callback groups — code-declared grou
 status: Draft
 area: workspace-system-model
 since: 2026-07
-last-reviewed: 2026-10
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-272, phase-273]
 supersedes: []
 superseded-by: null
@@ -182,11 +182,18 @@ Unchanged from phase-272: this RFC governs **binding** (which sched-context a ca
    are a separate follow-up RFC/phase. The group object reserves room for it.
 2. **`group_tasks` key shape.** By `(component, group)` under `[[component]]` (above) vs a flat
    `[group_tasks]` table keyed by `component.group`. Proposed: under `[[component]]` (co-located with
-   the node's other deployment config); settle in phase-273.
+   the node's other deployment config); settle in phase-273. *Answered: under `[[component]]`
+   (`packages/core/nros-orchestration-ir/src/lib.rs:708`).*
 3. **Default sched task.** Unmapped group → the executor default sched-context (SC 0 / the node default).
-   Proposed: yes.
+   Proposed: yes. *Answered: yes (`test_bind_group_sched_unmapped_group_falls_back_to_node_default`,
+   `packages/core/nros-node/src/executor/tests.rs:10418`).*
 4. **Namespaced identity.** Group binding keys on `(fully-qualified node name, group name)` to match
-   the node-name table's namespaced key. Proposed: yes.
+   the node-name table's namespaced key. Proposed: yes. *Answered: yes, keyed `(name, namespace,
+   group)` (`Executor::bind_group_sched`, `packages/core/nros-node/src/executor/spin.rs:3385-3400`).*
+
+Question 1 is the only one still open. The C++ API already accepts a `CallbackGroupType`, and a
+`Reentrant` group's callbacks still run one at a time
+(`packages/api/nros-cpp/include/rclcpp/callback_group.hpp:37-39`).
 
 ## Cross-references
 - RFC-0015 (rtos-orchestration) + RFC-0016 (rtos-scheduling-features) — the sched task/execution model.
@@ -194,12 +201,17 @@ Unchanged from phase-272: this RFC governs **binding** (which sched-context a ca
   code-declares / config-references-by-name pattern.
 - RFC-0026 (example-directory-layout) — packages are copy-out portable; the coupling this removes.
 - RFC-0032 (entry-codegen-pipeline) — the sched task resolver + entry seed site.
+- RFC-0063 (the SystemModel is a build artifact) — amends this RFC: the scheduling dims are authored
+  in `system.toml` and never in a committed model.
+- RFC-0079 / issue 1426 — an unauthored sched task's priority is allocated (see above).
 - #119 (C/C++ sched tasks) + #124 (rclcpp not sched-bound) — resolved by phase-272 (per-node); phase-273
   generalizes to per-group.
 - ROS 2 docs — [Using Callback Groups](https://docs.ros.org/en/jazzy/How-To-Guides/Using-callback-groups.html),
   [About Executors](https://docs.ros.org/en/foxy/Concepts/About-Executors.html).
 
 ## Changelog
+- 2026-11-13 (phase-555 W2 review) — Open questions 2-4 marked answered from the code; back-pointer
+  to RFC-0063. No design change.
 - 2026-07 (a) — created (Draft): node-name → sched-context table at `node_builder`, per-node binding.
   Delivered by phase-272 (#124 resolved).
 - 2026-07 (b) — **revised to per-callback-group binding.** Groups are code-declared, first-class
