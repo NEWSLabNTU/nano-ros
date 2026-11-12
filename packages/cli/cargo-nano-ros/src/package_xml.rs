@@ -804,6 +804,6 @@ mod tests {
         .unwrap_err();
         assert!(err.contains("runner:acme-flash"), "{err}");
         assert!(err.contains("board:acme"), "{err}");
-        assert!(err.contains("RFC-0119 D3"), "{err}");
+        assert!(err.contains("one build role"), "{err}");
     }
 }

@@ -3008,7 +3008,7 @@ mod tests {
         assert_eq!(kinds, [("command", "acme"), ("runner", "acme")]);
         assert_eq!(scan.errors.len(), 1, "{:?}", scan.errors);
         assert!(scan.errors[0].path.ends_with("mixed/package.xml"));
-        assert!(scan.errors[0].message.contains("RFC-0119 D3"));
+        assert!(scan.errors[0].message.contains("one build role"));
         // A runner and a command may share a name: they are different kinds.
         assert!(resolve_unique(&scan, "runner", "acme").is_ok());
         assert!(resolve_unique(&scan, "command", "acme").is_ok());
