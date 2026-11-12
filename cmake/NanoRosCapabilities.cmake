@@ -178,7 +178,8 @@ function(nros_lower_system_features features)
             # `nros_feature_set` on the cmake road, `_nros_cap_suffix` in
             # `zephyr/CMakeLists.txt` on the west road (issue 1681 — that road
             # mapped no lifecycle axis, and the entry's
-            # `nros_cpp_lifecycle_autostart` did not link). The C/C++ lowering
+            # `nros_cpp_lifecycle_autostart`, now `nros_cpp_lifecycle_register_node`,
+            # did not link). The C/C++ lowering
             # here is only the `#define NROS_SYSTEM_LIFECYCLE` in system_config.h.
         elseif(_feat STREQUAL "rosout")
             # Issue 1589 — Known axis, no CMake knob. The CARGO feature

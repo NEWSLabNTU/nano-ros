@@ -1778,6 +1778,87 @@ mod tests {
             executor.spin_once(Duration::from_millis(0));
         }
 
+        /// RFC-0128 D2 (phase-554 W2) -- an image with two nodes, one of them
+        /// managed, registers exactly one machine: on the managed node, under
+        /// its own name, and none on the executor's identity. The lookup is
+        /// the one the generated entries make (name + namespace, `/` = root).
+        #[test]
+        fn one_managed_node_of_two_gets_the_only_machine() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            let _plain = executor.node_builder("listener").build().expect("node");
+            let managed = executor
+                .node_builder("talker")
+                .namespace("/demo")
+                .build()
+                .expect("node");
+
+            // What the entry does for each node the model marks managed.
+            let id = executor
+                .managed_node_id("talker", "/demo/")
+                .expect("the managed node is in the node table");
+            assert_eq!(id, managed);
+            assert!(executor.managed_node_id("talker", "/").is_none());
+            executor.register_managed_node_on(id).unwrap();
+            // SAFETY: no callbacks registered.
+            unsafe { executor.drive_lifecycle_autostart_on(id, 2) }.unwrap();
+
+            let machines: std::vec::Vec<_> = executor.lifecycle_machine_nodes().collect();
+            assert_eq!(
+                machines,
+                [Some(managed)],
+                "exactly one machine, the managed node's"
+            );
+            let rec = executor.node(managed).unwrap();
+            assert_eq!(
+                (rec.name.as_str(), rec.namespace.as_str()),
+                ("talker", "/demo")
+            );
+            assert_eq!(
+                executor
+                    .lifecycle_state_machine_on(managed)
+                    .unwrap()
+                    .state(),
+                InternalState::Active
+            );
+
+            // A second pass (a node registered on two levels, or a component
+            // that registered its own machine) keeps the machine and its state.
+            executor.register_managed_node_on(id).unwrap();
+            unsafe { executor.drive_lifecycle_autostart_on(id, 2) }.unwrap();
+            assert_eq!(executor.lifecycle_machine_nodes().count(), 1);
+            assert_eq!(
+                executor
+                    .lifecycle_state_machine_on(managed)
+                    .unwrap()
+                    .state(),
+                InternalState::Active
+            );
+        }
+
+        /// Autostart `configure` stops at `inactive`, and `none` leaves the
+        /// machine `unconfigured`, each on its own node.
+        #[test]
+        fn each_managed_node_takes_its_own_autostart() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            let a = executor.node_builder("a").build().expect("node");
+            let b = executor.node_builder("b").build().expect("node");
+            for (id, code) in [(a, 1u8), (b, 0u8)] {
+                executor.register_managed_node_on(id).unwrap();
+                // SAFETY: no callbacks registered.
+                unsafe { executor.drive_lifecycle_autostart_on(id, code) }.unwrap();
+            }
+            assert_eq!(
+                executor.lifecycle_state_machine_on(a).unwrap().state(),
+                InternalState::Inactive
+            );
+            assert_eq!(
+                executor.lifecycle_state_machine_on(b).unwrap().state(),
+                InternalState::Unconfigured
+            );
+        }
+
         /// A node that already has a machine is refused, never replaced.
         #[test]
         fn a_second_registration_for_one_node_is_refused() {
@@ -1881,7 +1962,7 @@ mod tests {
 
         #[test]
         fn a_burst_before_the_first_spin_is_announced_in_order() {
-            // `nros_cpp_lifecycle_autostart(exec, 2)` runs configure then
+            // `nros_cpp_lifecycle_register_node(.., 2)` runs configure then
             // activate from `__nros_entry_setup`, before the spin loop
             // exists. Both must reach the wire, in order, at the first spin —
             // that is what TRANSITION_ANNOUNCEMENT_QUEUE is sized for.

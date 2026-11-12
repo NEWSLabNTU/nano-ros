@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::drive_lifecycle_autostart_on",
+  "verdict": "extension",
+  "why": "RFC-0128 D6 (phase-554 W2): drives one managed node's boot autostart on that node's own machine, configure only from unconfigured and activate only from inactive, so a component that already transitioned itself is not driven twice. The generated entry calls it; launch_ros does the same by service calls once the node is up. rclrs has no lifecycle node."
+}

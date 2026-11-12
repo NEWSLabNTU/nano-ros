@@ -807,8 +807,15 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // issue 0438 — the sched task names the SYSTEM declared, as opposed to the ones
     // that survived membership resolution. Empty when the schedule is derived.
     let mut authored_sched_task_names: Vec<String> = Vec::new();
-    // Phase 264 W2 — `[lifecycle]` boot autostart from `system.toml` (launch arm only).
+    // Phase 264 W2 — the self-bringup arm's `lifecycle` axis: its boot autostart
+    // (0 none / 1 configure / 2 active), managed on the first node it builds.
     let mut lifecycle_code: Option<u8> = None;
+    // RFC-0128 D2 (phase-554 W2) — the launch arm's managed nodes: per entry of
+    // `lowered_nodes`, that node's own boot autostart when the model marks it
+    // managed, else `None`. Each managed node gets its own machine, registered
+    // right after its `register` call; none is registered on the executor's
+    // identity.
+    let mut node_lifecycle: Vec<Option<u8>> = Vec::new();
     // Phase 264 W4b — the `param_services` capability (launch arm: the overlay) →
     // register the ROS 2 param services + seed the volatile store from the baked params.
     let mut param_services_enabled = false;
@@ -1032,12 +1039,22 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         declared_nodes =
             nros_orchestration_ir::declared_params::declared_params(&model, |f| keep(f));
 
-        // Walk nodes in FQN order (BTreeMap = deterministic, matches the CLI).
+        // RFC-0128 D2/D6 — the managed nodes and each one's own autostart.
+        let managed = model.managed_nodes();
+
+        // Walk nodes in launch declaration order (the model's map preserves it,
+        // and the CLI walks the same order).
         let mut idents = Vec::new();
         for (fqn, inst) in &model.structure.nodes {
             if !keep(fqn) {
                 continue;
             }
+            node_lifecycle.push(
+                managed
+                    .iter()
+                    .find(|m| &m.fqn == fqn)
+                    .map(nros_orchestration_ir::overlay::ManagedNode::autostart_code),
+            );
             let pkg = inst.pkg.clone().ok_or_else(|| {
                 syn::Error::new(
                     model_lit.span(),
@@ -1108,17 +1125,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // runtime seam does the `~`/relative expansion + matching.
             let remaps = remap_bakes_for(inst);
 
-            // Identity: bare name + namespace from the FQN.
-            let bare = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
-            let namespace = {
-                let ns = &fqn[..fqn.len() - bare.len()];
-                let ns = ns.trim_end_matches('/');
-                if ns.is_empty() {
-                    "/".to_string()
-                } else {
-                    ns.to_string()
-                }
-            };
+            // Identity: bare name + namespace from the FQN, by the one split
+            // every road names a node by.
+            let (namespace, bare) = nros_orchestration_ir::overlay::split_fqn(fqn);
             lowered_nodes.push(LoweredNode {
                 pkg: pkg.clone(),
                 params,
@@ -1452,12 +1461,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
         }
 
-        // Lifecycle autostart + param-services capability from the model.
-        // `lifecycle_code` is the u8 boot-transition level (0 none / 1
-        // configure / 2 active), as `model_capabilities` encodes it.
+        // The param-services capability and the axis asserts from the model.
+        // The managed nodes were read in the loop above.
         let model_caps = model_capabilities(&model)
             .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
-        lifecycle_code = model_caps.lifecycle_code;
         param_services_enabled = model_caps.param_services;
         param_store_enabled = model_caps.param_store;
         launch_axis_asserts = model_axis_assert_tokens(&model_caps);
@@ -1559,11 +1566,15 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
             leaf_axis_assert_tokens(&caps)
         });
+    // RFC-0128 D2 — how many lifecycle machines this image registers: one per
+    // managed node on the launch arm, the self-bringup's one node on the other.
+    let lifecycle_machines = node_lifecycle.iter().filter(|c| c.is_some()).count()
+        + usize::from(lifecycle_code.is_some());
     // Issue 1766 — RTIC splices the nodes into a framework `#[init]` and emits
     // neither the parameter nor the lifecycle services, on EITHER arm. A
     // declaration it cannot honour is refused, never dropped.
     if framework == Framework::Rtic
-        && (param_services_enabled || param_store_enabled || lifecycle_code.is_some())
+        && (param_services_enabled || param_store_enabled || lifecycle_machines > 0)
     {
         return Err(syn::Error::new(
             Span::call_site(),
@@ -1574,7 +1585,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                  or deploy on a board whose entry runs the OwnedSpin or Zephyr shape.",
                 match (
                     param_services_enabled || param_store_enabled,
-                    lifecycle_code.is_some(),
+                    lifecycle_machines > 0,
                 ) {
                     (true, true) if param_store_enabled => "`params` and `lifecycle`",
                     (true, false) if param_store_enabled => "`params`",
@@ -1646,7 +1657,22 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             None => LoweredNode::bare(&ident.to_string()),
         })
         .collect();
-    let register_calls: Vec<proc_macro2::TokenStream> = render_register_calls(&entry_nodes);
+    // RFC-0128 D2 — a managed node's machine is registered right after the
+    // node's own `register` call, inside the same statement list, so a
+    // multi-sched-task entry registers it on the level that builds the node.
+    let register_calls: Vec<proc_macro2::TokenStream> = render_register_calls(&entry_nodes)
+        .into_iter()
+        .zip(entry_nodes.iter().enumerate())
+        .map(
+            |(call, (i, node))| match node_lifecycle.get(i).copied().flatten() {
+                Some(code) => {
+                    let lc = lifecycle_node_call_tokens(node, code);
+                    quote! { #call #lc }
+                }
+                None => call,
+            },
+        )
+        .collect();
     // Node count for the Zephyr framework boot banner (literal baked at
     // expansion time so the runtime body needs no extra import).
     let num_register_calls = register_calls.len();
@@ -1691,12 +1717,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             quote! {}
         };
 
-    // Phase 264 W2 — `[lifecycle]` wiring: when `system.toml` declares it, register
-    // the REP-2002 services + drive boot autostart right after the per-node
-    // `register` calls (the executor is built, the nodes are installed). No-op token
-    // stream when absent. `apply_lifecycle` is a no-op unless the Entry enabled
-    // `nros/lifecycle-services`, so this is inert without the feature.
-    let lifecycle_call = lifecycle_call_tokens(lifecycle_code);
+    // RFC-0128 D2 (phase-554 W2) — lifecycle wiring. The launch arm's managed
+    // nodes are wired inside their own register calls (above); this stream
+    // carries the feature assert for them, and the self-bringup arm's one
+    // call. Empty when the image has no managed node.
+    let lifecycle_call = lifecycle_call_tokens(lifecycle_machines > 0, lifecycle_code);
 
     // Phase 264 W4b -- `[param_services]` wiring: when `system.toml` declares it, register
     // the 6 ROS 2 parameter services and create the param store, BEFORE the per-node
@@ -1987,7 +2012,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // over: the entry builds and the SECOND node's registration is the one that
     // fails. The multiplication has one home,
     // `executor_sizing::param_service_slots`.
-    let capability_slots = usize::from(lifecycle_code.is_some())
+    // RFC-0128 D1 — and the lifecycle half is per MANAGED node: each machine
+    // serves its own five services.
+    let capability_slots = lifecycle_machines
         * nros_orchestration_ir::executor_sizing::LIFECYCLE_SERVICE_SLOTS
         + usize::from(param_services_enabled)
             * nros_orchestration_ir::executor_sizing::param_service_slots(num_register_calls);
@@ -3501,9 +3528,9 @@ fn axis_assert_tokens(
 /// read the way the launch arm wires them.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct ModelCapabilities {
-    /// The first node `lifecycle_autostart` (0 none / 1 configure / 2 active,
-    /// the `apply_lifecycle` encoding).
-    lifecycle_code: Option<u8>,
+    /// RFC-0128 D2 — the image has at least one managed node, so its
+    /// lifecycle wiring carries the feature assert itself.
+    has_managed_nodes: bool,
     /// `param_services` is among the overlay's switches.
     param_services: bool,
     /// phase-461 W6 — `params` is, and `param_services` is not.
@@ -3513,18 +3540,12 @@ struct ModelCapabilities {
 }
 
 /// phase-486 W3 -- the switches come from the nano-ros overlay beside the
-/// model and the lifecycle level from the ONE reducer (a disagreement between
-/// nodes is a compile error), never from `execution.features` or the first
-/// node's value.
+/// model, never from `execution.features`. RFC-0128 D2 -- lifecycle is per
+/// managed node now (`LoadedModel::managed_nodes`), not one image value.
 fn model_capabilities(
     model: &nros_orchestration_ir::overlay::LoadedModel,
 ) -> Result<ModelCapabilities, String> {
-    use ros_launch_manifest_model::Autostart;
-    let lifecycle_code = model.lifecycle_autostart()?.map(|a| match a {
-        Autostart::None => 0u8,
-        Autostart::Configure => 1,
-        Autostart::Active => 2,
-    });
+    let has_managed_nodes = !model.managed_nodes().is_empty();
     let features = model.features(None);
     let mut axes: Vec<&'static nros_orchestration_ir::leaf_capabilities::LeafAxis> = Vec::new();
     for f in &features {
@@ -3535,7 +3556,7 @@ fn model_capabilities(
         }
     }
     Ok(ModelCapabilities {
-        lifecycle_code,
+        has_managed_nodes,
         param_services: features.iter().any(|f| f == "param_services"),
         param_store: !features.iter().any(|f| f == "param_services")
             && features.iter().any(|f| f == "params"),
@@ -3554,7 +3575,7 @@ fn model_axis_assert_tokens(caps: &ModelCapabilities) -> proc_macro2::TokenStrea
         .axes
         .iter()
         .filter(|a| a.declared != "param_services")
-        .filter(|a| !(a.declared == "lifecycle" && caps.lifecycle_code.is_some()))
+        .filter(|a| !(a.declared == "lifecycle" && caps.has_managed_nodes))
         .map(|a| {
             axis_assert_tokens(
                 a,
@@ -3567,32 +3588,74 @@ fn model_axis_assert_tokens(caps: &ModelCapabilities) -> proc_macro2::TokenStrea
     quote! { #( #asserts )* }
 }
 
-/// Phase 264 W2 — lifecycle wiring, on EVERY arm: register the REP-2002
-/// services and drive boot autostart right after the per-node `register`
-/// calls. Empty when nothing declares lifecycle.
-///
-/// Issue 1766 follow-up — it carries the `LIFECYCLE_SERVICES_ENABLED` assert,
-/// as `param_services_call` carries `PARAM_SERVICES_ENABLED` (phase-314).
-/// `apply_lifecycle` is a no-op without `nros/lifecycle-services`, so a
-/// declaration without the feature built, booted, and registered nothing. The
-/// launch arm (a node's `lifecycle_autostart`) had no assert at all.
-fn lifecycle_call_tokens(lifecycle_code: Option<u8>) -> proc_macro2::TokenStream {
-    let Some(code) = lifecycle_code else {
-        return quote! {};
-    };
+/// The const-assert every lifecycle wiring carries: an image that manages a
+/// node needs the `lifecycle-services` feature, or the services would be
+/// silently dropped.
+fn lifecycle_feature_assert() -> proc_macro2::TokenStream {
     quote! {
         const _: () = ::core::assert!(
             ::nros::__macro_support::LIFECYCLE_SERVICES_ENABLED,
-            "this system declares `lifecycle` (a node's lifecycle autostart, or \
-             `[system] features`) but this `nros` build does not carry the \
-             `lifecycle-services` feature, so the lifecycle services would be silently \
-             dropped. Add it to this pkg's nros dependency features (issue 1766)."
+            "this system manages a lifecycle node (a launch `<lifecycle_node>`, or \
+             `lifecycle` in a self-bringup's `[system] features`) but this `nros` build \
+             does not carry the `lifecycle-services` feature, so the lifecycle services \
+             would be silently dropped. Add it to this pkg's nros dependency features."
         );
-        // issue 0460 — carry the reason. Not a `log::` call: an entry crate
-        // need not depend on `log` (`linux_rust_qos_entry` does not).
-        runtime.apply_lifecycle(#code).map_err(|reason| {
+    }
+}
+
+/// Lifecycle wiring after the per-node `register` calls, on EVERY arm.
+///
+/// `managed` says the image registers at least one machine; it carries the
+/// `LIFECYCLE_SERVICES_ENABLED` assert (as `param_services_call` carries
+/// `PARAM_SERVICES_ENABLED`), because `apply_lifecycle_node` is a no-op
+/// without `nros/lifecycle-services`. The launch arm's machines are
+/// registered inside each managed node's register call
+/// ([`lifecycle_node_call_tokens`]); `self_bringup` is the self-bringup
+/// arm's autostart, whose one node the macro cannot name. Empty when the
+/// image manages no node.
+fn lifecycle_call_tokens(managed: bool, self_bringup: Option<u8>) -> proc_macro2::TokenStream {
+    if !managed {
+        return quote! {};
+    }
+    let assert = lifecycle_feature_assert();
+    let call = self_bringup.map(|code| {
+        quote! {
+            // issue 0460 — carry the reason. Not a `log::` call: an entry crate
+            // need not depend on `log` (`linux_rust_qos_entry` does not).
+            runtime.apply_lifecycle_self_bringup(#code).map_err(|reason| {
+                ::nros::__macro_support::nros_platform::RuntimeError::Capability {
+                    name: "lifecycle",
+                    reason,
+                }
+            })?;
+        }
+    });
+    quote! { #assert #call }
+}
+
+/// RFC-0128 D2 (phase-554 W2) — one managed node's machine, registered under
+/// the node's own name right after its `register` call, then driven to its
+/// own boot autostart (`code`: 0 none / 1 configure / 2 active).
+///
+/// The node is named exactly as its register call created it (its launch
+/// identity), and a failure names it: the capability field reads
+/// `lifecycle <fqn>`.
+fn lifecycle_node_call_tokens(node: &LoweredNode, code: u8) -> proc_macro2::TokenStream {
+    let (name, ns) = node
+        .identity_pair()
+        .unwrap_or((node.name.as_str(), node.namespace.as_str()));
+    let fqn = if ns.trim_matches('/').is_empty() {
+        format!("/{name}")
+    } else {
+        format!("/{}/{name}", ns.trim_matches('/'))
+    };
+    let what = LitStr::new(&format!("lifecycle {fqn}"), Span::call_site());
+    let name = LitStr::new(name, Span::call_site());
+    let ns = LitStr::new(ns, Span::call_site());
+    quote! {
+        runtime.apply_lifecycle_node(#ns, #name, #code).map_err(|reason| {
             ::nros::__macro_support::nros_platform::RuntimeError::Capability {
-                name: "lifecycle",
+                name: #what,
                 reason,
             }
         })?;
@@ -6881,8 +6944,9 @@ mod leaf_axis_tests {
             "features = [\"lifecycle\", \"rosout\", \"safety\"]\n\n[lifecycle]\nautostart = \"active\"",
         )
         .unwrap();
+        // RFC-0128 D2 -- a self-bringup's one node is the managed one.
         assert!(
-            out.contains("apply_lifecycle (2u8)"),
+            out.contains("apply_lifecycle_self_bringup (2u8)"),
             "lifecycle not wired:\n{out}"
         );
         for flag in [
@@ -6947,35 +7011,55 @@ mod launch_axis_tests {
     use ros_launch_manifest_model::{Autostart, NodeInstance, SystemModel};
 
     fn model(autostart: Option<Autostart>, features: &[&str]) -> LoadedModel {
+        model_of(&[("/talker", autostart.is_some(), autostart)], features)
+    }
+
+    /// Nodes `(fqn, managed, autostart)` in declaration order.
+    fn model_of(nodes: &[(&str, bool, Option<Autostart>)], features: &[&str]) -> LoadedModel {
         let mut m = SystemModel::default();
-        m.structure.nodes.insert(
-            "/talker".into(),
-            NodeInstance {
-                lifecycle_autostart: autostart,
-                ..NodeInstance::default()
-            },
-        );
+        for (fqn, lifecycle, autostart) in nodes {
+            m.structure.nodes.insert(
+                (*fqn).into(),
+                NodeInstance {
+                    lifecycle: *lifecycle,
+                    lifecycle_autostart: *autostart,
+                    ..NodeInstance::default()
+                },
+            );
+        }
         // phase-486 W3 -- the switches live in the overlay, not the model.
         let mut loaded = LoadedModel::bare(m);
         loaded.overlay.features = features.iter().map(|f| f.to_string()).collect();
         loaded
     }
 
-    /// The emitted capability tokens of a launch-arm entry over `m`.
+    /// The emitted capability tokens of a launch-arm entry over `m`: the
+    /// axis asserts, the lifecycle assert, and each managed node's call as its
+    /// register call carries it.
     fn emitted(m: &LoadedModel) -> String {
         let caps = model_capabilities(m).expect("capabilities");
-        let lifecycle = lifecycle_call_tokens(caps.lifecycle_code);
+        let lifecycle = lifecycle_call_tokens(caps.has_managed_nodes, None);
         let axes = model_axis_assert_tokens(&caps);
-        quote! { #axes #lifecycle }.to_string()
+        let per_node = m.managed_nodes().into_iter().map(|n| {
+            let node = LoweredNode {
+                identity: Some(NodeIdentity::new(&n.name, &n.namespace)),
+                ..LoweredNode::default()
+            };
+            lifecycle_node_call_tokens(&node, n.autostart_code())
+        });
+        quote! { #axes #lifecycle #( #per_node )* }.to_string()
     }
 
-    /// The case this follow-up closes: a node with a lifecycle autostart is
-    /// wired AND asserted, so a build without the feature is a named compile
-    /// error instead of a silent drop.
+    /// The case this follow-up closes: a managed node is wired AND asserted,
+    /// so a build without the feature is a named compile error instead of a
+    /// silent drop.
     #[test]
     fn a_lifecycle_node_is_asserted_on_the_launch_arm() {
         let out = emitted(&model(Some(Autostart::Active), &[]));
-        assert!(out.contains("apply_lifecycle (2u8)"), "not wired:\n{out}");
+        assert!(
+            out.contains("apply_lifecycle_node (\"/\" , \"talker\" , 2u8)"),
+            "not wired:\n{out}"
+        );
         assert!(
             out.contains("LIFECYCLE_SERVICES_ENABLED"),
             "no feature assert:\n{out}"
@@ -6990,6 +7074,52 @@ mod launch_axis_tests {
             1,
             "{out}"
         );
+    }
+
+    /// RFC-0128 D2 -- of two nodes only the managed one gets a machine, under
+    /// its own name; nothing registers on the executor's identity.
+    #[test]
+    fn only_the_managed_node_is_wired() {
+        let out = emitted(&model_of(
+            &[("/listener", false, None), ("/demo/talker", true, None)],
+            &[],
+        ));
+        assert_eq!(out.matches("apply_lifecycle_node").count(), 1, "{out}");
+        assert!(
+            out.contains("apply_lifecycle_node (\"/demo\" , \"talker\" , 0u8)"),
+            "{out}"
+        );
+        assert!(
+            out.contains("lifecycle /demo/talker"),
+            "failure names no node:\n{out}"
+        );
+        assert!(!out.contains("listener"), "{out}");
+        assert!(!out.contains("apply_lifecycle_self_bringup"), "{out}");
+    }
+
+    /// RFC-0128 D6 -- two managed nodes keep their own autostart, and their
+    /// disagreeing is not an error any more.
+    #[test]
+    fn two_managed_nodes_keep_their_own_autostart() {
+        let out = emitted(&model_of(
+            &[
+                ("/a", true, Some(Autostart::Active)),
+                ("/b", true, Some(Autostart::None)),
+            ],
+            &[],
+        ));
+        assert!(out.contains("\"a\" , 2u8"), "{out}");
+        assert!(out.contains("\"b\" , 0u8"), "{out}");
+    }
+
+    /// An autostart on a node the model does not mark managed wires nothing.
+    #[test]
+    fn an_autostart_without_a_managed_node_wires_nothing() {
+        let out = emitted(&model_of(
+            &[("/talker", false, Some(Autostart::Active))],
+            &[],
+        ));
+        assert!(out.trim().is_empty(), "emitted:\n{out}");
     }
 
     /// The sweep: every other axis the model's `execution.features` declares

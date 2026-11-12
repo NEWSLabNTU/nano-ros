@@ -275,14 +275,16 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
             peer: None,
             proof: Proof::LifecycleActive,
             note: "phase-269 W2 C: the generated __nros_entry_setup (emit_c.rs) calls \
-                   nros_cpp_lifecycle_autostart(executor, 2u)",
+                   nros_cpp_lifecycle_register_node(executor, \"/\", \"talker\", 2u) for the \
+                   <lifecycle_node>",
         },
         (ML::Cpp, MW::Lifecycle) => Exec {
             entry: || build_native_workspace_cpp_lifecycle_entry().map(|p| p.to_path_buf()),
             peer: None,
             proof: Proof::LifecycleActive,
-            note: "phase-269 W2 C++: __nros_entry_setup calls nros_cpp_lifecycle_autostart(__exec, \
-                   2u) via ::nros::global_handle()",
+            note: "phase-269 W2 C++: __nros_entry_setup calls \
+                   nros_cpp_lifecycle_register_node(::rclcpp::global_handle(), \"/\", \"talker\", 2u) \
+                   for the <lifecycle_node>",
         },
         (ML::Rust, MW::Safety) => Exec {
             entry: || build_native_workspace_rust_safety_talker_entry().map(|p| p.to_path_buf()),
@@ -884,6 +886,26 @@ fn run_cell(pcell: &MCell) {
                     lang, workload, cell.note
                 )
             });
+
+            // RFC-0128 D1/D2/D8 (phase-554 W2) -- the machine belongs to the
+            // node the launch file marks `<lifecycle_node>` (`talker` in all
+            // three lifecycle launch files), served under ITS name, and it is
+            // the ONLY one: no machine on the executor's own identity
+            // (`/nros_app` / `/node`), as `ros2 lifecycle nodes` lists for a
+            // stock rclcpp `LifecycleNode`.
+            let listed: Vec<&str> = nodes_out
+                .lines()
+                .map(|l| l.trim())
+                .filter(|l| l.starts_with('/'))
+                .collect();
+            if listed != ["/talker"] {
+                node.kill();
+                panic!(
+                    "[{} {}] `ros2 lifecycle nodes` must list exactly the managed node \
+                     `/talker`, got {listed:?} ({}):\n{nodes_out}",
+                    lang, workload, cell.note
+                );
+            }
 
             // Autostart should already have driven it to active — no manual
             // `ros2 lifecycle set` issued.

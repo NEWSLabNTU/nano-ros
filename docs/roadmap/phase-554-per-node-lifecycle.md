@@ -89,7 +89,32 @@ is refused naming the knob.
 
 ### W2 — Which nodes are managed (D2, Q1)
 
-Status: OPEN.
+Status: DONE (2026-11-13).
+
+- **Which nodes are managed.** `nros_orchestration_ir::overlay::managed_nodes`
+  returns them in launch declaration order: every node the resolved model
+  marks `lifecycle`, filtered by placement. Each one's autostart is its own
+  value, else the image's `[lifecycle] autostart`.
+- **Registration.** Every road registers each managed node right after
+  building that node:
+  - Rust: `apply_lifecycle_node`;
+  - C and C++: `nros_cpp_lifecycle_register_node(executor, ns, name, code)`.
+
+  The call is per node, not one call over the list, because a multi-level
+  entry builds each node on its own level. Nothing registers on the
+  executor's own identity. `apply_lifecycle(u8)` and
+  `nros_cpp_lifecycle_autostart` are gone.
+- **Self-managed nodes.** A node whose component registered its own machine
+  (a C++ `rclcpp_lifecycle::LifecycleNode`) keeps it.
+- **A leaf with no model.** Its `lifecycle` manages the first node the image
+  built.
+- **Examples.** The three feature-workspace lifecycle examples now declare
+  `<lifecycle_node>`.
+- **Acceptance.** Measured on linux/zenoh: the C, C++ and Rust lifecycle
+  cells (`workspace_features_e2e`) now assert that `ros2 lifecycle nodes`
+  lists exactly `/talker`, and all three pass. A negative control (expecting
+  another name) fails with the real list `["/talker"]`.
+- **Not yet measured:** the Zephyr native_sim lifecycle cell.
 
 The resolved model's per-node `lifecycle` fact is the one list the entry reads,
 on all three roads (`nros::main!`, C codegen, C++ codegen). Its inputs:

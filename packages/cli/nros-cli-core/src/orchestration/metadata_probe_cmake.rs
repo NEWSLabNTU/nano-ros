@@ -289,7 +289,7 @@ fn probe_plan(o: &CmakeProbeOptions, language: nros_lang::Language) -> Plan {
             stack_bytes: None,
         }],
         depfile_paths: Vec::new(),
-        lifecycle: None,
+        managed_nodes: Vec::new(),
         param_services: false,
         safety: None,
         sched_tasks: Default::default(),

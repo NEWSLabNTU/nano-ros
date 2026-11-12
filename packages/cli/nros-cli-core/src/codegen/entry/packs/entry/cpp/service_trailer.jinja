@@ -1,5 +1,7 @@
 {#-
-  The param-services / lifecycle block that closes a C++ setup function.
+  The param-services block that closes a C++ setup function. Lifecycle is
+  per managed node (RFC-0128 D2) and is registered in `node_body.jinja`,
+  right after the node it manages is built.
 
   Emitted at most once per TU: on the in_sched_task path only tier 0 carries it,
   because both are process facts rather than per-sched-task ones.
@@ -34,13 +36,4 @@
 {%- endif %}
     }
 {%- endif %}
-{%- if services.lifecycle_code is not none %}
-    /* Phase 269 (W2) — lifecycle-services: register + autostart. */
-    {
-{%- if not in_sched_task %}
-        void* __exec = ::rclcpp::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
-{%- endif %}
-        nros_cpp_lifecycle_autostart({% if in_sched_task %}executor{% else %}__exec{% endif %}, {{ services.lifecycle_code }}u);
-    }
-{%- endif -%}
+{#- Lifecycle is per managed node: `node_body_cpp.jinja` registers it. -#}

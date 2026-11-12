@@ -552,7 +552,7 @@ class LifecycleEngine {
 
     /// Register services (binding the `on_*` trampolines) then drive the node to
     /// `target` at boot: `Inactive` = configure; `Active` = configure + activate.
-    /// Unlike the raw `nros_cpp_lifecycle_autostart` FFI, this binds the callbacks
+    /// Unlike the raw `nros_cpp_lifecycle_register_node` FFI, this binds the callbacks
     /// first, so your overrides fire during the autostart transitions.
     ::rclcpp::Result autostart(LifecycleState target) {
         ::rclcpp::Result r = register_services();

@@ -6107,16 +6107,31 @@ nros_cpp_ret_t nros_cpp_lifecycle_register_on_error(void *executor,
                                                     void *ctx);
 
 /**
- * Register lifecycle services and optionally drive the node to a higher
- * autostart state.
+ * Make one MANAGED node of the image a lifecycle node: register the five
+ * REP-2002 services under the node's own name, then drive it to its boot
+ * autostart.
  *
- * `autostart_code`: 0 = services only (none), 1 = configure, 2 = active.
+ * The generated C and C++ entries call this right after building each node
+ * the resolved model marks managed (a launch `<lifecycle_node>`), with the
+ * node's own `autostart_code`: 0 = services only (none), 1 = configure,
+ * 2 = configure + activate. No machine is registered on the executor's own
+ * identity. A node whose component already registered its own machine (a
+ * C++ `rclcpp_lifecycle::LifecycleNode`) keeps it, with its callbacks, and
+ * each autostart step runs only from the state it starts from.
+ *
+ * Returns `NROS_CPP_RET_NOT_FOUND` (and logs the node) when no node with
+ * that name and namespace is in the executor's node table.
  *
  * # Safety
- * Same as [`nros_cpp_register_lifecycle_services`] and
- * [`nros_cpp_lifecycle_change_state`].
+ * `executor` must be a valid, live `CppContext*` produced by `nros_cpp_init`;
+ * `namespace_` and `name` must be NUL-terminated strings (`namespace_` may be
+ * null for the root). Registered transition callbacks run here, so they and
+ * their context must be live.
  */
-nros_cpp_ret_t nros_cpp_lifecycle_autostart(void *executor, uint8_t autostart_code);
+nros_cpp_ret_t nros_cpp_lifecycle_register_node(void *executor,
+                                                const char *namespace_,
+                                                const char *name,
+                                                uint8_t autostart_code);
 
 /**
  * Register the ROS 2 parameter services on the C++ executor's node.

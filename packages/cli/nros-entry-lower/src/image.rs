@@ -248,7 +248,7 @@ pub struct SchedTaskSetup {
     pub index: usize,
     pub name: String,
     pub nodes: Vec<SetupNode>,
-    /// Only tier 0 registers param services and lifecycle — process facts.
+    /// Only tier 0 registers param services — a process fact.
     pub emits_services: bool,
     /// phase-462 W1 -- the image's contract monitor rows, installed on the
     /// core's one executor before the first node. Only tier 0 (the boot
@@ -319,14 +319,15 @@ pub struct GroupBind {
     pub sched_task_index: usize,
 }
 
-/// The param-services and lifecycle registrations — PROCESS facts, which is
-/// why a sched-task entry emits them in sched task 0 alone.
+/// The param-services registration — a PROCESS fact, which is why a
+/// sched-task entry emits it in sched task 0 alone.
+///
+/// Lifecycle is not here any more: it is per managed NODE (RFC-0128 D2), so
+/// it rides [`crate::LoweredNode::lifecycle_code`] and is registered right
+/// after that node is built, on whichever sched task builds it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LoweredServices {
     pub param_services: bool,
-    /// `None` when the plan declares no lifecycle; otherwise the autostart
-    /// code the C ABI takes (0 none, 1 configure, 2 active).
-    pub lifecycle_code: Option<u8>,
 }
 
 /// The `.nros_boot_config` blob's facts (RFC-0045, issue 0794). Identity is

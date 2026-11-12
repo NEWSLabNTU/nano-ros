@@ -31,4 +31,10 @@
         void* self = __nros_c_component_{{ n.pkg | pkg_ident }}_create();
         int32_t crc = __nros_c_component_{{ n.pkg | pkg_ident }}_configure(&__nros_node_{{ idx }}, executor, self);
         if (crc != 0) return crc;
+{%- if n.lifecycle_code is not none %}
+        /* A managed node: its own lifecycle machine, under its own name, then
+         * its boot autostart (0 none, 1 configure, 2 active). */
+        nros_cpp_ret_t lc_ret = nros_cpp_lifecycle_register_node(executor, "{{ n.namespace|c_str }}", "{{ n.name|c_str }}", {{ n.lifecycle_code }}u);
+        if (lc_ret != NROS_CPP_RET_OK) return (int32_t)lc_ret;
+{%- endif %}
 {#- end of node body -#}

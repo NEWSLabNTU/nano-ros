@@ -113,4 +113,12 @@
 {%- endif %}
         if (!r.ok()) return static_cast<int32_t>(r.raw());
 {%- endif %}
+{%- endif %}
+{%- if n.lifecycle_code is not none %}
+        /* A managed node: its own lifecycle machine, under its own name, then
+         * its boot autostart (0 none, 1 configure, 2 active). */
+        {
+            const nros_cpp_ret_t __lc = nros_cpp_lifecycle_register_node({% if in_sched_task %}executor{% else %}::rclcpp::global_handle(){% endif %}, "{{ n.namespace | c_str }}", "{{ n.name | c_str }}", {{ n.lifecycle_code }}u);
+            if (__lc != NROS_CPP_RET_OK) return static_cast<int32_t>(__lc);
+        }
 {%- endif -%}

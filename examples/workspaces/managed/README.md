@@ -4,9 +4,10 @@ Phase 270 (issue 0103). This workspace exists because the lifecycle capability
 has two shapes, and only one of them fits in the `features` workspace.
 
 The `features` bringup asks the ENTRY CODEGEN to drive the machine: it emits
-`nros_cpp_lifecycle_autostart(...)` so the node boots straight to `active`. That
-is the declarative shape, and it is what `[lifecycle] autostart` in a bringup's
-`system.toml` selects.
+`nros_cpp_lifecycle_register_node(...)` for each node its launch file declares
+as a `<lifecycle_node>`, so the node boots straight to `active`. That is the
+declarative shape: `<lifecycle_node>` says which node is managed, and
+`[lifecycle] autostart` in a bringup's `system.toml` is the default boot state.
 
 Here the node drives ITSELF. `ManagedTalker` is an
 `rclcpp_lifecycle::LifecycleNode` (phase-482 W4), whose constructor registers the

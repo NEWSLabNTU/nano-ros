@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::lifecycle_machine_nodes",
+  "verdict": "extension",
+  "why": "RFC-0128 D1 (phase-554 W2): which nodes hold a lifecycle state machine on this executor, for tests and diagnostics asserting that exactly the managed nodes are managed. No upstream counterpart: rclcpp's machines are per object."
+}
