@@ -205,6 +205,13 @@ gate-units:
 workspace-fixture-units:
     @python3 scripts/build/workspace-fixture-units.py --self-test
 
+# issue 2481 — every `[[workspace_fixture]]` (platform, lang) is reached by a
+# recipe's `workspace-fixtures-build.sh <platform> [lang]` call. A language
+# filter left the bare-metal C/C++ rows built by no lane. Buildless.
+[private]
+workspace-fixture-lang-reach:
+    @python3 scripts/check-workspace-fixture-lang-reach.py
+
 #
 # phase-489 W8 — `NROS_TEMPLATE_COPY_OUT_SHARD=<k>/<n>` builds one share of the
 # units (projects, scaffolds, the self-test). The n shards together build
