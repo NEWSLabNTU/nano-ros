@@ -4,7 +4,7 @@ title: "Multi-edition ROS test harness: docker-backed RosEnv provider for codege
 status: Draft
 area: test-ci
 since: 2026-07
-last-reviewed: 2026-07
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-309]
 supersedes: []
 superseded-by: null
@@ -64,21 +64,34 @@ HostRosEnv    // sources /opt/ros/<distro>/setup.bash (+ pinned zenoh overlay).
               // Absorbs today's ros2.rs (is_ros2_distro_available, ros2_env_setup*).
               // The DEFAULT edition when the host has it.
 DockerRosEnv  // docker run --network host  nano-ros-ros:<distro>
-              // EXTRA editions. Image bakes distro + zenoh 1.7.2 + rmw_zenoh
-              // overlay + domain_bridge + codegen deps.
+              // EXTRA editions. Image bakes distro + rmw_zenoh_cpp (apt,
+              // where the distro ships it) + domain_bridge + codegen deps.
 ```
 
 `RosEnv::for_edition(distro)` resolves a backend: host if the host distro matches
 and is available, otherwise docker. A test asks for an edition and gets a uniform
 surface; it never branches on host-vs-docker.
 
+*As built (phase-309, reviewed 2026-11-13).* The trait in
+`packages/testing/nros-tests/src/ros_env.rs:94` is narrower than the sketch:
+`edition`, `available`, `shell` (a `Command` running a shell string inside the
+sourced edition), and the provided `run`, `run_text` and `spawn` (a `RosPeer`
+that kills its process group, and the container, on drop). Peers and
+`domain_bridge` are spelled as shell strings over `shell`/`spawn`, not as
+trait methods; codegen is `DockerRosEnv::generate`, an inherent method
+(`ros_env.rs:569`). The resolver is the free function
+`for_edition(distro, Middleware)` (`ros_env.rs:1167`), which also takes the
+middleware.
+
 ### Per-edition images — built locally on demand
 
 One parametric `docker/ros-editions/Dockerfile` (`ARG DISTRO`, `FROM
-ros:${DISTRO}-ros-base`) bakes the pinned zenoh 1.7.2 + `rmw_zenoh_cpp` overlay
-(wire-compat with `packages/rmw/zenoh`), `domain_bridge`, and the codegen toolchain.
-`just ros-edition-image <distro>` builds it locally (docker layer cache; the
-first build is slow — zenoh is a source build). No registry, no auth, no
+ros:${DISTRO}-ros-base`) bakes the distro's own `rmw_zenoh_cpp` from apt where it
+is packaged, `domain_bridge`, and the codegen toolchain. The draft's source-built
+zenoh 1.7.2 overlay was not built (`Dockerfile:18-21`); since RFC-0075 the router
+is ROS's own `rmw_zenohd`, and zenoh-pico's wire is proto-stable across 1.x.
+`just ros_editions image <distro>` builds it locally (docker layer cache; the
+first build is a few minutes, apt only). No registry, no auth, no
 publish flow — matches the "build locally on demand" decision. CI that wants
 speed can cache the image layer.
 
@@ -102,7 +115,7 @@ edition-specific generated code against that edition's real peer.
 ### Data flow (one edition-E lane)
 
 ```
-just ros-edition-image E                      # once, cached
+just ros_editions image E                     # once, cached
   → DockerRosEnv(E).generate(pkgs)            # codegen axis
       → generated-editions/E/  ── diff ──▶ fixtures/ros-editions/E/ (golden)
   → host build fixture against generated-editions/E/  → build/ros-editions/E/
@@ -121,8 +134,10 @@ just ros-edition-image E                      # once, cached
 - Per-edition build-tree isolation keeps the fixture-mtime treadmill off the
   default tree.
 - The docker lanes are **gated**: excluded from default `just ci` (they need
-  docker + a slow image build); a `just ros_editions ci` composite runs them
-  for internal/CI use.
+  docker + a slow image build); a `just ros_editions ci <distro>` composite runs
+  them for internal/CI use. `test-all` deselects them with
+  `not binary(~ros_editions)` (`justfile:2851-2854`). No workflow runs that
+  composite today (reviewed 2026-11-13); see RFC-0122's open questions.
 
 ## Alternatives considered
 
@@ -140,6 +155,6 @@ just ros-edition-image E                      # once, cached
 
 ## Implementation
 
-Tracked by **phase-309**. Related: RFC-0056 (the edition axis this exercises),
+Tracked by **phase-309** (archived, complete 2026-07-26). Related: RFC-0056 (the edition axis this exercises),
 issue 0267 (the depth-2 nested bug whose live verification motivated a real
 multi-edition peer harness).

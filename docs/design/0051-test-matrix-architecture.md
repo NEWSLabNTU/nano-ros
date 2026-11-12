@@ -4,7 +4,7 @@ title: "Test-matrix architecture: one generated matrix, one output checker, one 
 status: Stable
 area: test-ci
 since: 2026-07
-last-reviewed: 2026-10-22
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-295, phase-510]
 supersedes: []
 superseded-by: null
@@ -59,6 +59,17 @@ One declaration — `packages/testing/nros-tests/src/matrix.rs` (code, so the
 test parametrization consumes it natively) with a small serialized mirror
 consumed by the fixture generator:
 
+> **As built (reviewed 2026-11-13, phase-555).** Since phase-522 W2
+> ([RFC-0114](0114-board-support-registry-primitives.md) D12) the cell ROWS are
+> no longer typed in Rust: `matrix::CELLS` is `CELLS_GENERATED`, included from
+> `src/matrix_cells.rs`, which `scripts/gen-board-support.py` writes from
+> `packages/boards/board-support-cells.toml` (`matrix.rs:892-897`). The types
+> below and the fixture rows stay as this RFC states them: RFC-0114's narrowing
+> (its 2026-11-01 changelog) keeps `examples/fixtures.toml` authored and checked
+> against the matrix, not generated. The sketch below is the 2026-07 shape; the
+> shipped `Cell` uses `PlatformId`, adds `Rmw::Uorb`, `Tier::Gated` and the §7
+> `config` set.
+
 ```rust
 pub struct Cell {
     pub platform: Platform,      // Native, ZephyrNativeSim, FreertosMps2,
@@ -98,6 +109,10 @@ artifacts are NOT moved into `fixtures.toml`).
   table stays human-readable TOML but a generator (`nros-tests
   --bin matrix-gen`, build-stage) emits/verifies the derived columns
   (ports, domains, locators) so rows can never drift from the allocator.
+  *As built:* no `matrix-gen` binary shipped. The ⊆⊇ check is the test
+  `tests/matrix_fixture_coverage.rs`, and the fixture build reads every
+  baked port and domain from the `cell-isolation` binary
+  (`src/bin/cell-isolation.rs`, issue 2251) instead of recomputing them.
 
 ### 2. One output checker
 
@@ -110,8 +125,9 @@ Every example node's observable behavior is the stock ROS 2 demo's:
 | action | Fibonacci order-10: goal accepted → feedback prefixes → final sequence |
 | params/lifecycle/qos/sched tasks | the existing `output.rs` marker sets |
 
-`nros_tests::checker::StandardChecker` (one module beside `output.rs`)
-takes `(Workload, role, min_events)` and wraps the whole
+`nros_tests::checker` (one module beside `output.rs`; shipped as the free
+functions `ready_marker`, `delivery_marker` and `assert_delivery`, not a
+`StandardChecker` type) takes `(Workload, role, min_events)` and wraps the whole
 wait-for-ready → collect → count → assert-monotonic dance that ~55 files
 currently re-implement. Literal markers OUTSIDE `output.rs` become a lint
 (`non_goals_grep`-style gate: `grep -rn '"Received:"' tests/` must only hit
@@ -124,11 +140,19 @@ nano-ros nodes are behaviorally interchangeable with the ROS 2 demos.
 `nros_tests::alloc` — a pure function, no state:
 
 ```
-port(cell)   = 7000 + platform.index()*400 + workload.index()*40
-             + lang.index()*10 + rmw.index()          // tcp locator / agent
-domain(cell) = 1 + (platform.index()*24 + workload.index()*3
-             + lang.index()) % 232                     // DDS domain
+port(cell)       = 7000 + platform.index()*400
+                 + workload.port_offset() + lang.port_index()*100   // zenoh router
+xrce_port(cell)  = 2000 + platform.index()*400
+                 + workload.port_offset() + lang.port_index()*100   // XRCE Agent
+domain(cell)     = 1 + platform.index()*21 + min(port_offset/10, 6)*3
+                 + lang.port_index()                                 // DDS domain
 ```
+
+These are the formulas as shipped (`src/alloc.rs:38-117`; XRCE cells shift
+the domain, `dds_domain_of`). The 2026-07 draft's `workload*40 + lang*10 +
+rmw` layout was replaced in phase-295 W1, when the injectivity test showed
+`Mixed` colliding with `Rust`; `alloc.rs` is the source of truth, and this
+block is a copy of it.
 
 - Deterministic + collision-free across the whole matrix by construction
   (index ranges are bounded; the generator ASSERTS injectivity at build
@@ -184,7 +208,7 @@ framework's, not ours:
 coordinate". Two families the tree grew AROUND it are declared here as
 first-class tables so they stop being implicit matrices hand-listed per file:
 
-**6a. Realtime-dim matrix — `matrix::sched_dims::CELLS`.** The scheduler-dim
+**6a. Realtime-dim matrix — `matrix::SCHED_CELLS`.** The scheduler-dim
 "applied" family (`*_core_pin_applied` ×5, `zephyr_edf_deadline_applied`,
 `threadx_{preempt_threshold,time_slice}_applied`,
 `nuttx_{sporadic_budget,sched_task_priority}_applied` — 10 files, one boot each) is a
@@ -209,7 +233,10 @@ The invariant is two-mode (issue 0380): the boot emits EITHER the accept marker
 drop is the failure. One `#[rstest]` over `sched_dims::CELLS` replaces the 10
 files; a build-stage gate asserts every dim a model declares has a cell, so a
 regeneration that strips a dim (0380) fails structurally instead of silently.
-The cells boot the `ws-realtime` fixtures already in `fixtures.toml`.
+The cells boot the `realtime-{c,cpp,rust}` workspace fixtures already in
+`fixtures.toml` (the `ws-realtime-*` directories were renamed by phase-331
+W6). *As built:* `SchedDim` has grown `CorePinPlacement` and
+`DerivedSchedTaskBelowTransport` beyond the six above (`matrix.rs:1671`).
 
 **6b. Negative-diagnostic registry.** The E1 "no compilation/failure in tests"
 rule had one sanctioned exception: a diagnostic whose subject MUST fail to
@@ -315,7 +342,8 @@ lending cell that only proves delivery passes whether or not the loan avoided
 the copy, which is the "green while every byte is still copied" lane issue 0814
 already rejected.
 
-**7b. One feature-lane registry.** Every cargo feature that gates a test
+**7b. One feature-lane registry** (shipped as `.config/feature-lanes.toml`,
+read by `scripts/feature-lanes.py`). Every cargo feature that gates a test
 target — a `[[test]] required-features` entry or a file-level
 `#![cfg(feature = …)]` — is named in ONE table that says which lane enables it
 and which targets it runs. `required-features-tests`, the inline feature runs
@@ -391,6 +419,10 @@ property, built in the build stage.
 
 ## Cross-refs
 
+- **Amended by [RFC-0114](0114-board-support-registry-primitives.md) D12**
+  (phase-522 W2, 2026-11-01): the cell rows of §1 are generated from the board
+  registry; the fixture rows stay authored. Not yet recorded in either RFC's
+  frontmatter (phase-555 W3 writes the link).
 - **Amended 2026-11-04 by [RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md) D4:** a cell's `Kind` names the TEST, not
   where its artifact is built. Pair cells stay `Kind::Example` when their
   images move into workspaces; the fixture resolver, not the cell, knows the
