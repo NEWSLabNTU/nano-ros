@@ -39,6 +39,13 @@ note = "Install (W3): procedure only; its pinning, offline and vendored-install 
 
 [[page]]
 book = "user"
+path = "start/starter-image.md"
+action = "new phase-551"
+batch = "p551-w6"
+note = "Use the starter image (RFC-0127 D4/D5): the newcomer, course, no-network and derived-image recipes; its probe=20 block is the `image` probe track (phase-551 W5)"
+
+[[page]]
+book = "user"
 path = "starters/pick-your-board.md"
 action = "new phase-537"
 batch = "p537-w4"

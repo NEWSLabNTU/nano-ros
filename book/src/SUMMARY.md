@@ -5,6 +5,7 @@
 - [Welcome](./start/welcome.md)
 - [Choose your path](./start/choose-your-path.md)
 - [Install](./start/install.md)
+- [Use the starter image](./start/starter-image.md)
 
 # Get started on your board
 

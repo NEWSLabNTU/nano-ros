@@ -38,7 +38,8 @@ ctx="$(mktemp -d)"
 trap 'rm -rf "$ctx"' EXIT
 bash "$REPO_ROOT/scripts/ci/image-context.sh" starter "$ctx/context" >/dev/null
 
-DOCKER_BUILDKIT=1 "$ENGINE" build --target "$TARGET" -t "$TAG" "$@" "$ctx/context"
+DOCKER_BUILDKIT=1 "$ENGINE" build --target "$TARGET" -t "$TAG" \
+    --build-arg "NROS_STARTER_REF=$TAG" "$@" "$ctx/context"
 
 raw="$("$ENGINE" image inspect --format '{{.Size}}' "$TAG")"
 compressed="$("$ENGINE" save "$TAG" | gzip -6 | wc -c)"

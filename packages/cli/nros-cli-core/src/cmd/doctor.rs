@@ -335,6 +335,7 @@ pub fn run(args: Args) -> Result<()> {
                 store.display(),
                 crate::orchestration::store::root_origin()
             );
+            eprintln!("nros doctor: container {}", container_line());
             let (lines, problems) = install_report(&store, &exe, &cwd);
             for line in lines {
                 eprintln!("{line}");
@@ -426,6 +427,7 @@ fn support_report(config: Option<&Path>, workspace: Option<PathBuf>) -> Result<(
         store.display(),
         crate::orchestration::store::root_origin()
     );
+    println!("  container  {}", container_line());
     let index = crate::cmd::setup::locate_index(Some(&root));
     match &index {
         Some(p) => println!("  index      {}", p.display()),
@@ -503,6 +505,31 @@ fn support_report(config: Option<&Path>, workspace: Option<PathBuf>) -> Result<(
     }
     report_project_lock(pin_from);
     Ok(())
+}
+
+/// RFC-0127 D4 (phase-551 W6) — the container this `nros` runs in, so a
+/// support request names what it ran. A starter image names itself in
+/// `NROS_STARTER_IMAGE`: its immutable `<ver>` tag, baked when it was built
+/// (RFC-0127 D5 guarantee 1 makes the tag name one set of bytes). An image
+/// cannot know its own digest, so the line says where the host reads it.
+fn container_line() -> String {
+    let image = std::env::var("NROS_STARTER_IMAGE")
+        .ok()
+        .filter(|s| !s.trim().is_empty());
+    let in_container =
+        Path::new("/.dockerenv").exists() || Path::new("/run/.containerenv").exists();
+    container_line_from(image.as_deref(), in_container)
+}
+
+fn container_line_from(image: Option<&str>, in_container: bool) -> String {
+    match (image, in_container) {
+        (Some(r), _) => format!(
+            "{r} (its digest, on the host: docker image inspect --format \
+             '{{{{index .RepoDigests 0}}}}' {r})"
+        ),
+        (None, true) => "a container that is not a nano-ros starter image".to_string(),
+        (None, false) => "none".to_string(),
+    }
 }
 
 /// The sourced ROS 2 and the `rmw_zenoh_cpp` it carries, from the environment
@@ -1274,6 +1301,27 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("launch")).unwrap();
         std::fs::write(dir.path().join("launch/gone.launch.xml"), "<launch/>").unwrap();
         assert_eq!(check_bringup_blocks(&cfg).unwrap(), Some(0));
+    }
+
+    #[test]
+    fn the_container_line_names_a_starter_image_and_where_its_digest_is() {
+        let line = container_line_from(
+            Some("ghcr.io/newslabntu/nano-ros-starter:0.6.0-nros9"),
+            true,
+        );
+        assert!(
+            line.starts_with("ghcr.io/newslabntu/nano-ros-starter:0.6.0-nros9 "),
+            "{line}"
+        );
+        assert!(
+            line.contains("docker image inspect --format '{{index .RepoDigests 0}}' ghcr.io/"),
+            "{line}"
+        );
+        assert_eq!(
+            container_line_from(None, true),
+            "a container that is not a nano-ros starter image"
+        );
+        assert_eq!(container_line_from(None, false), "none");
     }
 
     #[test]

@@ -559,12 +559,30 @@ RUN --network=none export NROS_BUILD_ROOT=/tmp/nros-build; for p in ${NROS_START
     done; root="$(nros locate nano-ros)" \
     && rm -rf /tmp/starter_ws /tmp/nros-build "${root:?}/build"
 
+# The image's own name, for `nros doctor`'s `container` line (RFC-0127 D4):
+# the tag it was built as (starter-image.sh passes it), which names one set
+# of bytes because a version tag never moves (D5 guarantee 1). Last, so a
+# rename costs no layer above it.
+ARG NROS_STARTER_REF=nano-ros-starter:local
+ENV NROS_STARTER_IMAGE=${NROS_STARTER_REF}
+
+# Cargo runs offline in the image, so a seat with no network builds without
+# being told to: every cargo `nros` spawns (the metadata probe's included)
+# resolves from CARGO_HOME, which the steps above filled. Cargo's own knob,
+# not NROS_OFFLINE, because NROS_OFFLINE also stops `nros setup` fetching,
+# and a derived image's recipe adds boards with it (RFC-0127 D5). A project
+# that adds a crates.io dependency runs with `-e CARGO_NET_OFFLINE=false`
+# (book/src/start/starter-image.md says so).
+ENV CARGO_NET_OFFLINE=true
+
 # ---------------------------------------------------------------------------
 # starter-zephyr -- RFC-0127 D3. Built only when asked (`--target
 # starter-zephyr`): on dispatch, never every release (Q4, ruled 2026-11-12).
 FROM starter AS starter-zephyr
 ARG NROS_STARTER_ZEPHYR_BOARD=zephyr
 RUN nros setup "${NROS_STARTER_ZEPHYR_BOARD}" --rmw "${NROS_STARTER_RMW:-zenoh}"
+ARG NROS_STARTER_REF=nano-ros-starter-zephyr:local
+ENV NROS_STARTER_IMAGE=${NROS_STARTER_REF}
 DOCKEREOF
 }
 
