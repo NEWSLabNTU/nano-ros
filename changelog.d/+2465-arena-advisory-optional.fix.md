@@ -1,0 +1,1 @@
+The executor arena advisory on first spin now reads as optional RAM tuning ("arena larger than needed … Optional, to save RAM: NROS_EXECUTOR_ARENA_SIZE=…") instead of an instruction, so a first-node run no longer looks like it skipped a step.

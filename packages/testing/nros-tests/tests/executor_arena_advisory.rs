@@ -106,7 +106,7 @@ fn first_spin_reports_an_over_provisioned_arena(zenohd_unique: ZenohRouter) {
     let records = CAPTURED.lock().unwrap().clone();
     let advisory = records
         .iter()
-        .find(|m| m.contains("arena over-provisioned"))
+        .find(|m| m.contains("arena larger than needed"))
         .unwrap_or_else(|| {
             panic!(
                 "the first-spin arena advisory reached no sink. {} record(s) \
