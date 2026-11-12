@@ -527,24 +527,16 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
               if [ -n "$facts" ]; then export $facts; fi
               cargo build $cargo_profile_args $args $tdir_flag --quiet )
         fi
-        # Issue 1052 — assert the stack floor HERE, on the row that was just
-        # linked, because this is the only place the artifact's directory is
-        # known correctly: `$tdir_flag` comes from the row's own `$args` and
-        # `$envstr`, so it names where cargo actually wrote. (The esp32 pack
-        # loop invents empty args for the same lookup and reads a directory
-        # nothing writes — issue 1025.)
-        #
-        # Boards whose stack is the LINKER LEFTOVER after `.bss` only. On those
+        # Issue 1052 — a board whose stack is the LINKER LEFTOVER after `.bss`
+        # has its stack floor asserted HERE, on the row that was just linked,
+        # because this is the only place the artifact's directory is known
+        # correctly: `$tdir_flag` comes from the row's own `$args` and
+        # `$envstr`, so it names where cargo actually wrote. On such a board
         # there is no runtime overflow guard: a static that grows takes the
-        # stack directly and the image dies later as a wild jump somewhere
-        # unrelated. node.rs has asked for this check since issue 0190; a
-        # comment cannot run on a schedule, and the talker shipped at 18,572 B
-        # against a ~67 KB budget.
-        case "$platform" in
-            esp32)
-                nros_fixture_check_stack_floor "$platform" "$row_args" "$envstr"
-                ;;
-        esac
+        # stack directly and the image dies later as a wild jump. The retired
+        # ESP32 platform was the one such board, so no row calls
+        # `nros_fixture_check_stack_floor "$platform" "$row_args" "$envstr"`
+        # today; a new one calls it here, for its platform.
         echo "     row-time: $dir $((SECONDS - row_t0))s"
     }
     # Issue 1305 — one single-package leaf row, run under `nros_leaf_lock`:

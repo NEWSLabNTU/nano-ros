@@ -43,10 +43,6 @@ platform="$(echo "$dir" | cut -d/ -f2)"
 # the named profiles); the profiles are defined in the repo-root
 # `.cargo/config.toml`, which cargo discovers from every in-tree leaf.
 flags="${NROS_EXAMPLE_PROFILE_FLAGS:-}"
-env_prefix=()
-case "$platform" in
-    esp32 | esp32-c3-baremetal) env_prefix=(env "SSID=${SSID:-test}" "PASSWORD=${PASSWORD:-test}") ;;
-esac
 plan="${NROS_LINT_LEAF_PLAN:-}"
 if [ -n "${NROS_CHECK_VERBOSE:-}" ] && [ -z "$plan" ]; then echo "  check $dir"; fi
 
@@ -91,4 +87,4 @@ lintdir="$NROS_EXAMPLE_LINT_DIR/$(echo "${dir#examples/}" | tr '/' '-')"
 cd "$dir"
 cargo "+$NIGHTLY" fmt --check -p "$pkg"
 # shellcheck disable=SC2086  # $flags is a word list by design
-"${env_prefix[@]}" cargo clippy --quiet "${cfg[@]}" --target-dir "$lintdir" $flags
+cargo clippy --quiet "${cfg[@]}" --target-dir "$lintdir" $flags

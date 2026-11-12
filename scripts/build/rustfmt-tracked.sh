@@ -79,7 +79,7 @@ case "$set_name" in
     examples)
         # `NF>=5`: leaf crates, not workspace-root manifests.
         git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-            | grep -vE '/(target|generated|build|build-[^/]*|install|log)/|examples/zephyr/|/multi-package-workspace/|esp32-c3-baremetal/rust/dds/|examples/mps2-an385-freertos/|examples/qemu-armv7a-nuttx/|examples/threadx-linux/|examples/rv-virt-threadx/|examples/px4/' \
+            | grep -vE '/(target|generated|build|build-[^/]*|install|log)/|examples/zephyr/|/multi-package-workspace/|examples/mps2-an385-freertos/|examples/qemu-armv7a-nuttx/|examples/threadx-linux/|examples/rv-virt-threadx/|examples/px4/' \
             | sort | while read -r toml; do
                 # The tree is not on one edition: read it, never assume it.
                 fmt_crate "$(dirname "$toml")" "$(edition_of "$toml" 2024)"
