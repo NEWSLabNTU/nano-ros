@@ -2,9 +2,9 @@
 rfc: 0118
 title: "Target execution model: run, flash and monitor as separate verbs over one RunPlan, a five-level customisation ladder, and a per-machine bench file"
 status: Draft
-area: docs-ux-diagnostics
+area: platform-board-rtos
 since: 2026-11
-last-reviewed: 2026-11
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-528, phase-529, phase-533]
 amends: [0097, 0114, 0116]
 supersedes: []
@@ -135,6 +135,10 @@ so and nros multiplexes nothing: the image's transport configuration decides
 which bytes are which.
 
 ### D2 — Four verbs, one reserved
+
+> **Amended by [RFC-0121](0121-workspace-first-project-layout.md) D5 (2026-11):**
+> the target argument of `run`, `flash` and `monitor` also takes a node name,
+> which resolves to the one image that runs it (`nros run sensor_node`).
 
 | Verb | Does | Main flags |
 | --- | --- | --- |
@@ -351,6 +355,10 @@ hang. Steps are a list, not a state machine. A bench that needs board states
    does `nros run` start every image of the bringup, or one per invocation
    with `--image`? Starting one is the smaller promise; the harness needs
    several.
+   **Resolved by the implementation (phase-528):** one image per invocation.
+   The image is the positional argument (`<image>` or `<bringup>:<image>`),
+   and with none given the workspace's one image runs. A run of several
+   images is the harness's job, not the verb's.
 3. Should `wait_for` gain `tcp:<host>:<port>` for an emulator that opens a
    socket after boot (Renode's monitor), or is that the runner's job?
 
@@ -364,3 +372,9 @@ hang. Steps are a list, not a state machine. A bench that needs board states
   (new key `smp`) for the readers that are not the `west` runner. `nros run`
   keeps the `west` road for a west build; Zephyr's `board.cmake` stays the
   source of that line, and the harness compares the two before each boot.
+- 2026-11-13 -- phase-555 W2 review: `area` set to `platform-board-rtos`
+  (the facts it owns are the board descriptor's `[board.run]`,
+  `[board.flash]` and `[board.console]` tables and the bench file).
+  Open question 2 recorded as resolved by phase-528. D2 notes RFC-0121
+  D5's node rung. Questions 1 and 3 stay open: `nros debug` is still
+  reserved, and `wait_for` still takes only `usb:` and a port path.
