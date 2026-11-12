@@ -74,6 +74,31 @@ fn router_locator() -> Option<String> {
     guard.as_ref().map(|h| h.locator())
 }
 
+/// Open a client session on `locator`, root namespace, domain 0, and say how
+/// long it took.
+///
+/// Issue 2457: `cffi_pubsub_round_trip` failed once in the merge queue with
+/// `open: ConnectionFailed` at ~10 s and nothing else. The open's own reason
+/// is the `[nros_log ERROR] nros_rmw_zenoh: zenoh open: …` line, which the
+/// router fixture's stderr sink now prints. With the open's duration next to
+/// the router's `accepting … ms after spawn` line, the next sighting can be
+/// placed against the router's start and zenoh-pico's 10 s handshake bound.
+fn open_client(locator: &str, node: &str) -> CffiSession {
+    let started = Instant::now();
+    let opened = CffiSession::open(locator, /* client */ 0, 0, node, /* root ns */ "");
+    let ms = started.elapsed().as_millis();
+    match opened {
+        Ok(session) => {
+            eprintln!("open {node} on {locator}: ok after {ms} ms");
+            session
+        }
+        Err(e) => panic!(
+            "open {node} on {locator}: {e:?} after {ms} ms (the runtime's reason, \
+             if it gave one, is the `[nros_log …] nros_rmw_zenoh` line above)"
+        ),
+    }
+}
+
 /// In-process pub→sub round-trip via the C vtable.
 ///
 /// This was `#[ignore]`d as "architecturally broken" on 2026-05-11, citing
@@ -90,14 +115,7 @@ fn cffi_pubsub_round_trip() {
         router_locator().expect("zenohd unavailable — run `nros setup <board> --rmw zenoh`");
     nros_rmw_zenoh::register().expect("register");
 
-    let mut session = CffiSession::open(
-        &locator,
-        /* client */ 0,
-        0,
-        "l2_pubsub",
-        /* root ns */ "",
-    )
-    .expect("open");
+    let mut session = open_client(&locator, "l2_pubsub");
     // Match the existing nros-rmw-zenoh integration test shape: simple
     // short topic, `BEST_EFFORT` QoS (zenoh-pico's `RELIABLE` path
     // wants a full ROS-2-flavoured key prefix that the cffi shim
@@ -193,8 +211,7 @@ fn cffi_subscription_waker_fires_on_each_arrival() {
         router_locator().expect("zenohd unavailable — run `nros setup <board> --rmw zenoh`");
     nros_rmw_zenoh::register().expect("register");
 
-    let mut session =
-        CffiSession::open(&locator, /* client */ 0, 0, "l2_entity_wake", "").expect("open");
+    let mut session = open_client(&locator, "l2_entity_wake");
     let topic = TopicInfo::new("test/cffi_entity_wake", "Int32", "hash1940");
     let qos = QoSProfile::BEST_EFFORT;
 
