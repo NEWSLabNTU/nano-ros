@@ -4,7 +4,7 @@ title: "rtos-integration-pattern"
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: []
+implements-tracked-by: [phase-288]
 supersedes: []
 superseded-by: null
 ---

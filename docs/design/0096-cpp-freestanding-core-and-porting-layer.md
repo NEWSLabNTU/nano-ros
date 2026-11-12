@@ -1,3 +1,12 @@
+---
+rfc: 0096
+title: "One freestanding `rclcpp` API, identical on every platform"
+status: Stable
+since: 2026-09
+last-reviewed: 2026-11
+implements-tracked-by: [phase-209, phase-417, phase-442, phase-456, phase-476, phase-482, phase-487, phase-488, phase-518]
+---
+
 # RFC-0096 — One freestanding `rclcpp` API, identical on every platform
 
 **Status:** Stable (2026-10-07). Drafted 2026-09-09 and revised the same day —

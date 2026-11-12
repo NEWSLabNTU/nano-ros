@@ -1,3 +1,12 @@
+---
+rfc: 0061
+title: "Fixture freshness by tool OUTPUT, and a tiered test ladder"
+status: Draft
+since: 2026-07
+last-reviewed: 2026-11
+implements-tracked-by: [phase-318, phase-319, phase-329, phase-335, phase-410, phase-411, phase-475, phase-510, phase-535]
+---
+
 # RFC-0061 — Fixture freshness by tool OUTPUT, and a tiered test ladder
 
 **Status:** Draft (2026-07-28; amended 2026-08-31 — see the breadth/depth amendment; amended 2026-10-22 — the `config` axis, phase-510)

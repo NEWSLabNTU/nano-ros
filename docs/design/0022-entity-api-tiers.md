@@ -4,7 +4,7 @@ title: "Entity API tiers — convenient (`fork`) + customizable (`clone`)"
 status: Stable
 since: 2026-05
 last-reviewed: 2026-05
-implements-tracked-by: []
+implements-tracked-by: [phase-483]
 supersedes: []
 superseded-by: null
 ---

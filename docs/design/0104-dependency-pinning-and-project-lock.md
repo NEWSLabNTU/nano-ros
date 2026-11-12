@@ -1,3 +1,12 @@
+---
+rfc: 0104
+title: "Dependency pinning: one pin set, one project lock, every ecosystem"
+status: Stable
+since: 2026-10
+last-reviewed: 2026-11
+implements-tracked-by: [phase-449, phase-485]
+---
+
 # RFC-0104 — Dependency pinning: one pin set, one project lock, every ecosystem
 
 **Status:** Stable (2026-10-11; Draft 2026-10-10)

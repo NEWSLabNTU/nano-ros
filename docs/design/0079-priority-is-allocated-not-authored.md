@@ -4,7 +4,7 @@ title: "Scheduling priority is ALLOCATED from a declared address plan — the us
 status: Draft
 since: 2026-08
 last-reviewed: 2026-08
-implements-tracked-by: [issue-0506, issue-0623, issue-0736]
+implements-tracked-by: [phase-459, issue-0506, issue-0623, issue-0736]
 amends: [rfc-0016, rfc-0052]
 supersedes: []
 superseded-by: null

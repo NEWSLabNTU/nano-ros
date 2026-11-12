@@ -1,3 +1,12 @@
+---
+rfc: 0067
+title: "Env-invariant Rust message-dependency identity"
+status: Draft
+since: 2026-08
+last-reviewed: 2026-11
+implements-tracked-by: [phase-333, phase-335, phase-465]
+---
+
 <!--
 RFC-0067 — living design doc. Status flow: Draft → Stable → Superseded.
 Drafted 2026-08-02 from the issue-0378 study (prototype-validated, see §Evidence).

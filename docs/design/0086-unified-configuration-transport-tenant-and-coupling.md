@@ -1,3 +1,12 @@
+---
+rfc: 0086
+title: "Unified configuration: the transport tenant, coupling verbs, and retiring the per-lane knob"
+status: Stable
+since: 2026-08
+last-reviewed: 2026-10
+implements-tracked-by: [phase-484]
+---
+
 # RFC-0086 — Unified configuration: the transport tenant, coupling verbs, and retiring the per-lane knob
 
 **Status:** Stable for D3–D6 (2026-10-23); D1 and D2 Superseded by RFC-0098 D4

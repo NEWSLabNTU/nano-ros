@@ -4,7 +4,7 @@ title: "PX4 RMW (`nros-rmw-uorb`) — design notes"
 status: Stable
 since: 2026-04
 last-reviewed: 2026-11
-implements-tracked-by: []
+implements-tracked-by: [phase-232, phase-421]
 supersedes: []
 superseded-by: null
 ---

@@ -16,6 +16,15 @@ rationale. **New design rationale goes in an RFC, never only in a phase doc.**
 Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`,
 `implements-tracked-by` (phase slugs), `supersedes`, `superseded-by`.
 
+**The implementation work for each design is tracked by phase docs** (user
+ruling, 2026-11-12). An RFC that is not Superseded names, in
+`implements-tracked-by`, at least one phase that exists (active or archived)
+and names the RFC back. An RFC with nothing to build (a reference, an
+analysis) states `implementation: none -- <reason>` instead. The progress and
+acceptance status live in the phase doc, not the RFC. Gate:
+`just check rfc-phase-tracking`, with a baseline of the RFCs untracked on the
+day it landed, which may only shrink.
+
 ## Index
 
 ### Foundations & architecture

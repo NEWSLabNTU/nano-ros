@@ -4,7 +4,7 @@ title: "Frameworks are supported through one host-driven contract; codegen is ad
 status: Draft
 since: 2026-10
 last-reviewed: 2026-10
-implements-tracked-by: []
+implements-tracked-by: [phase-520, phase-521]
 amends: [RFC-0111]
 supersedes: []
 superseded-by: null

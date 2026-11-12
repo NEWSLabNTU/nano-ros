@@ -1,3 +1,12 @@
+---
+rfc: 0100
+title: "One sizing model: the contract states facts, every backend derives its own buffers"
+status: Draft
+since: 2026-09
+last-reviewed: 2026-11
+implements-tracked-by: [phase-454, phase-457, phase-486, phase-531]
+---
+
 # RFC-0100 — One sizing model: the contract states facts, every backend derives its own buffers
 
 **Status:** Draft (2026-09-11; last reviewed 2026-10-12 — the

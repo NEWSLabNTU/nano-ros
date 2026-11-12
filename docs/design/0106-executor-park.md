@@ -1,3 +1,12 @@
+---
+rfc: 0106
+title: "The executor waits until its next deadline, on one platform primitive"
+status: Draft
+since: 2026-10
+last-reviewed: 2026-11
+implements-tracked-by: [phase-521]
+---
+
 # RFC-0106 — The executor waits until its next deadline, on one platform primitive
 
 **Status:** Draft (2026-10-16). The mechanism is implemented and on `main`;

@@ -4,7 +4,7 @@ title: "Service / action QoS — design"
 status: Stable
 since: 2026-05
 last-reviewed: 2026-05
-implements-tracked-by: []
+implements-tracked-by: [phase-239]
 supersedes: []
 superseded-by: null
 ---

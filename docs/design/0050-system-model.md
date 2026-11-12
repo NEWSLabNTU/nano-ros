@@ -4,7 +4,7 @@ title: "SystemModel — one resolved system artifact from launch + contracts + s
 status: Draft
 since: 2026-07
 last-reviewed: 2026-07
-implements-tracked-by: []
+implements-tracked-by: [phase-296]
 supersedes: []
 superseded-by: null
 ---

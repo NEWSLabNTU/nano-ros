@@ -4,7 +4,7 @@ title: "Portable RMW / Platform Interface — Design Review"
 status: Stable
 since: 2026-05
 last-reviewed: 2026-05
-implements-tracked-by: []
+implements-tracked-by: [phase-276, phase-500]
 supersedes: []
 superseded-by: null
 ---

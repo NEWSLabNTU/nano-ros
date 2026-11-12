@@ -1,3 +1,12 @@
+---
+rfc: 0085
+title: "Where the nano-ros workspace lives, and who calls whom on Zephyr"
+status: Draft
+since: 2026-08
+last-reviewed: 2026-11
+implements-tracked-by: [phase-452]
+---
+
 # RFC-0085 — Where the nano-ros workspace lives, and who calls whom on Zephyr
 
 > **Amended by [RFC-0120](0120-nros-configure-one-resolver.md) (2026-11-03).** The supplier D2 left unnamed is `nros configure`. It now WRITES (sync, census, resolve, generated files), so D14's "a query cannot loop" is no longer the reason it cannot loop. The reason is RFC-0120 D1: `nros configure` never invokes a target build tool, and a host tool never invokes `nros build`. `nros dev image facts` stays the read-only query it is, and D2's promise that `west build -b <board> <app>` works is kept.

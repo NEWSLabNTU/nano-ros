@@ -1,3 +1,12 @@
+---
+rfc: 0099
+title: "Provisioning is planned once, prefers prebuilts, and ships what a build needs"
+status: Draft
+since: 2026-09
+last-reviewed: 2026-10
+implements-tracked-by: [phase-447, phase-517]
+---
+
 # RFC-0099 — Provisioning is planned once, prefers prebuilts, and ships what a build needs
 
 **Status:** Draft (2026-09-11)

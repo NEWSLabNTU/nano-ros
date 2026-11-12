@@ -4,7 +4,7 @@ title: "Bridge topic-forwarding (Phase 172)"
 status: Stable
 since: 2026-05
 last-reviewed: 2026-05
-implements-tracked-by: []
+implements-tracked-by: [phase-421]
 supersedes: []
 superseded-by: null
 ---

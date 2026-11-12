@@ -4,7 +4,7 @@ title: "nros-c Thin-Wrapper Discipline (Phase 122.3.a)"
 status: Stable
 since: 2026-05
 last-reviewed: 2026-05
-implements-tracked-by: []
+implements-tracked-by: [phase-270, phase-317]
 supersedes: []
 superseded-by: null
 ---

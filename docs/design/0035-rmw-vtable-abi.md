@@ -4,7 +4,7 @@ title: "RMW vtable ABI — frozen slot table + stability policy"
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: []
+implements-tracked-by: [phase-237, phase-301, phase-328, phase-421]
 supersedes: []
 superseded-by: null
 ---
