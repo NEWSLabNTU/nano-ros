@@ -578,12 +578,109 @@ ENV CARGO_NET_OFFLINE=true
 # ---------------------------------------------------------------------------
 # starter-zephyr -- RFC-0127 D3. Built only when asked (`--target
 # starter-zephyr`): on dispatch, never every release (Q4, ruled 2026-11-12).
+#
+# The Zephyr steps are the BOOK's: `zephyr-*.sh` are the `probe=` blocks of
+# book/src/starters/zephyr-native-sim.md, extracted when the context is
+# written (_nros_starter_zephyr_steps), so this image and the page a reader
+# follows cannot disagree about the host tools, the west manifest or the
+# patches. The image differs from a reader's machine in three fixed places
+# only: the apt step runs as root without `sudo`, `west` is installed for
+# every user, and the west workspace is /opt/zephyr/ws (RFC-0127 D5
+# guarantee 3: a derived image may rely on it).
 FROM starter AS starter-zephyr
-ARG NROS_STARTER_ZEPHYR_BOARD=zephyr
-RUN nros setup "${NROS_STARTER_ZEPHYR_BOARD}" --rmw "${NROS_STARTER_RMW:-zenoh}"
+ARG NROS_STARTER_RMW=zenoh
+ENV NROS_ZEPHYR_WORKSPACE=/opt/zephyr/ws \
+    ZEPHYR_BASE=/opt/zephyr/ws/zephyr \
+    ZEPHYR_SDK_INSTALL_DIR=/opt/zephyr/sdk
+ENV PATH=/home/nros/.local/bin:$PATH
+USER root
+COPY zephyr-host.sh zephyr-provision.sh zephyr-ws.sh zephyr-board.sh /opt/nros-zephyr/
+RUN bash -e /opt/nros-zephyr/zephyr-host.sh \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /opt/zephyr/ws && chown -R nros:nros /opt/zephyr
+USER nros
+RUN bash -e /opt/nros-zephyr/zephyr-provision.sh \
+    && ln -s "$(nros locate tool zephyr-sdk)" /opt/zephyr/sdk
+RUN cd /opt/zephyr && bash -e /opt/nros-zephyr/zephyr-ws.sh \
+    && cd /opt/zephyr/ws && bash -e /opt/nros-zephyr/zephyr-board.sh
+
+# The native_sim talker in each language the starter teaches, built once and
+# removed, then again with the network removed (the starter's two steps
+# above, for the `zephyr` board). A Rust app on Zephyr also needs the Rust
+# target its board implies and rustup's `clippy`: `nros setup` in the
+# workspace installs both (the book's Rust tab; clang and libclang are
+# already in `host`). This step fetches crates, so it says CARGO_NET_OFFLINE
+# itself rather than inheriting whatever `starter` sets for a seat.
+# A Rust app needs a release newer than 0.6.0-nros8 (issue 2314's fix); on
+# that release build with --build-arg NROS_STARTER_ZEPHYR_PROJECTS=zephyr:c.
+ARG NROS_STARTER_ZEPHYR_PROJECTS="zephyr:c zephyr:rust"
+RUN export NROS_BUILD_ROOT=/tmp/nros-build CARGO_NET_OFFLINE=false; for p in ${NROS_STARTER_ZEPHYR_PROJECTS}; do \
+        b="${p%%:*}"; l="${p#*:}"; \
+        cd /tmp && rm -rf zs_ws \
+        && nros new zs_ws --board "$b" --template talker --lang "$l" \
+            --rmw "${NROS_STARTER_RMW}" \
+        && (cd zs_ws && { [ "$l" != rust ] || nros setup; } && nros build) || exit 1; \
+    done; root="$(nros locate nano-ros)" \
+    && rm -rf /tmp/zs_ws /tmp/nros-build "${root:?}/build"
+RUN --network=none export NROS_BUILD_ROOT=/tmp/nros-build; for p in ${NROS_STARTER_ZEPHYR_PROJECTS}; do \
+        b="${p%%:*}"; l="${p#*:}"; \
+        cd /tmp && rm -rf zs_ws \
+        && nros new zs_ws --board "$b" --template talker --lang "$l" \
+            --rmw "${NROS_STARTER_RMW}" \
+        && (cd zs_ws && NROS_OFFLINE=1 nros build) || exit 1; \
+    done; root="$(nros locate nano-ros)" \
+    && rm -rf /tmp/zs_ws /tmp/nros-build "${root:?}/build"
+
+# This stage's own name for `nros doctor` (RFC-0127 D4), last as in `starter`.
 ARG NROS_STARTER_REF=nano-ros-starter-zephyr:local
 ENV NROS_STARTER_IMAGE=${NROS_STARTER_REF}
 DOCKEREOF
+}
+
+# The book's Zephyr steps, as the scripts the `starter-zephyr` stage runs:
+# the `probe=` blocks of the native_sim starter, each rewritten only where an
+# image is not a reader's machine. Every rewrite must match EXACTLY ONCE, so a
+# book edit that moves one fails the context write instead of building
+# something the page no longer says.
+_nros_starter_zephyr_steps() {
+    local ctx="$1"
+    python3 - "$REPO_ROOT" "$ctx" <<'PYEOF'
+import importlib.util, sys
+from pathlib import Path
+root, ctx = Path(sys.argv[1]), Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location(
+    "extract_book_steps", root / "scripts/probe/extract-book-steps.py")
+ebs = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ebs)
+page = root / "book/src/starters/zephyr-native-sim.md"
+steps, _ = ebs.extract_blocks(page)
+by_order = {}
+for st in steps:
+    by_order.setdefault(st["order"], []).append(st)
+def block(order):
+    found = by_order.get(order, [])
+    if len(found) != 1:
+        sys.exit(f"{page}: expected one untabbed probe={order} block, found {len(found)}")
+    return found[0]["body"]
+def subst(body, order, pairs):
+    for old, new in pairs:
+        n = body.count(old)
+        if n != 1:
+            sys.exit(f"{page}: probe={order}: {old!r} matches {n} times, expected 1")
+        body = body.replace(old, new)
+    return body
+files = {
+    # host tools, as root: no sudo, and west for every user.
+    "zephyr-host.sh": subst(block(30), 30, [("sudo apt-get install", "apt-get update && apt-get install"),
+                                           ("pip3 install --user west", "pip3 install west")]),
+    "zephyr-provision.sh": block(32),
+    "zephyr-ws.sh": subst(block(34), 34, [("mkdir -p my_zephyr_ws/manifest && cd my_zephyr_ws",
+                                           "mkdir -p ws/manifest && cd ws")]),
+    "zephyr-board.sh": block(36),
+}
+for name, body in files.items():
+    (ctx / name).write_text("set -euo pipefail\n" + body + "\n")
+PYEOF
 }
 
 # The starter's build context in <ctx>: its own directory, holding the host
@@ -593,6 +690,7 @@ nros_starter_context() {
     mkdir -p "$ctx"
     nros_image_copy_inputs "$ctx"
     cp "$REPO_ROOT/scripts/install.sh" "$ctx/install.sh"
+    _nros_starter_zephyr_steps "$ctx"
     {
         printf '%s\n' '# Generated by scripts/ci/image-context.sh starter — edit scripts/ci/lib/image-context.sh, not this.' \
             '# RFC-0127 option B: one generator; targets host, starter, starter-zephyr.' \
