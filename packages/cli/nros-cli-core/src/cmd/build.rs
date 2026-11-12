@@ -3514,8 +3514,14 @@ pub(crate) fn configure_implicitly(
         }
         None => args.images.clone(),
     };
-    let would_configure =
-        crate::cmd::configure::ensure_current(&root, &images, args.dry_run, args.offline, verb)?;
+    let would_configure = crate::cmd::configure::ensure_current(
+        &root,
+        &images,
+        args.dry_run,
+        args.offline,
+        verb,
+        args.zephyr_workspace.as_deref(),
+    )?;
     Ok((
         root,
         StaleModel::for_dry_run(args.dry_run, would_configure, verb),

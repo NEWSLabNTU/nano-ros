@@ -154,6 +154,7 @@ pub fn ensure_current(
     dry_run: bool,
     offline: bool,
     verb: &str,
+    zephyr_workspace: Option<&Path>,
 ) -> Result<bool> {
     // phase-530 W2 (RFC-0120 D1) retired ~~`NROS_CONFIGURE_HELD`~~: nothing a
     // configure runs calls back into `nros build` or `nros configure` any
@@ -176,9 +177,14 @@ pub fn ensure_current(
     if offline {
         argv.push("--offline".to_string());
     }
-    let sync = SyncOnly::try_parse_from(&argv)
+    let mut sync = SyncOnly::try_parse_from(&argv)
         .wrap_err("configure: building the sync arguments")?
         .sync;
+    // Issue 2467 — the caller's `--zephyr-workspace`. Without it, a configure
+    // run by `nros build --zephyr-workspace <ws>` planned every Zephyr image
+    // on the default line's store workspace, and on a host that has only the
+    // named one it refused with "no Zephyr found" before the build ever ran.
+    sync.zephyr_workspace = zephyr_workspace.map(Path::to_path_buf);
     // Ruling R43: a dry run never configures, so it writes nothing (no C1
     // codegen, model, lock seed or stamp). It says what a real run would do,
     // and the caller plans from the project as it stands.
@@ -314,6 +320,8 @@ fn configure_project(
     // here, and never read from or written to the process environment.
     sync.interface_search_path = interface_search_path_for(project);
     let flags = configure_stamp::OutputFlags::of(&sync);
+    // Issue 2467 — captured before `run_sync` consumes `sync`.
+    let zephyr_workspace = sync.zephyr_workspace.clone();
     let _lock = lock_exclusive_path(&configure_stamp::lock_path(project))?;
 
     let targets = targets(project, named)?;
@@ -385,13 +393,9 @@ fn configure_project(
     // configure (W3), else the image's own resolve.
     let mut resolved: std::collections::BTreeMap<String, PathBuf> = Default::default();
     for t in &targets {
-        match build::plan_builds(&build_args(
-            project,
-            &t.select,
-            &nano_ros_path,
-            false,
-            offline,
-        )) {
+        let mut args = build_args(project, &t.select, &nano_ros_path, false, offline);
+        args.zephyr_workspace = zephyr_workspace.clone();
+        match build::plan_builds(&args) {
             Ok(plans) => {
                 let (coord, dir) = planned_facts(project, &plans);
                 if let Some(d) = dir {
@@ -571,7 +575,9 @@ pub(crate) fn build_args(
         images: vec![image.to_string()],
         workspace: Some(project.to_path_buf()),
         nano_ros_path: nano_ros_path.clone(),
-        // Stage 4 never runs west, so no Zephyr is needed and none is looked for.
+        // Stage 4 never runs west, but stage 3's preflight and the handoff it
+        // plans DO resolve a Zephyr (issue 2467): a caller that has one sets
+        // this field on the returned `Args`.
         zephyr_workspace: None,
         board: None,
         all: false,

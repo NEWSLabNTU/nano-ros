@@ -629,6 +629,15 @@ pub struct SyncArgs {
     /// (`configure::interface_search_path_for`), never a process variable.
     #[arg(skip)]
     pub interface_search_path: Option<std::ffi::OsString>,
+
+    /// Issue 2467 — the Zephyr west workspace the caller named
+    /// (`nros build --zephyr-workspace`), carried into the configure that
+    /// `nros build` runs first so its planning and preflight resolve the same
+    /// Zephyr the build will. Not a sync flag and not a digest input: it says
+    /// where a toolchain is, not what configure writes. `None`: the ladder
+    /// (`$ZEPHYR_BASE`, `$NROS_ZEPHYR_WORKSPACE`, the store workspace).
+    #[arg(skip)]
+    pub zephyr_workspace: Option<PathBuf>,
 }
 
 #[derive(Debug, ClapArgs)]
