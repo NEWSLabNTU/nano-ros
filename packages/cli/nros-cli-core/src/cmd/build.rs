@@ -8931,7 +8931,7 @@ fn report_declared_depends(
 /// Resolved HERE so there is one call and every reader downstream — the cmake
 /// spec's `BACKEND`, `ResolvedBuild::rmw`, the `ImageIdent` that names the build
 /// directory — sees the same answer.
-fn effective_images(
+pub(crate) fn effective_images(
     sys: &crate::orchestration::cargo_metadata_schema::SystemToml,
 ) -> std::collections::BTreeMap<String, crate::orchestration::image::ImageBlock> {
     sys.image

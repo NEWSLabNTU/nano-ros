@@ -108,6 +108,21 @@ pub struct Args {
     /// directory cargo resolves the file's relative paths against.
     #[arg(long)]
     pub out: Option<PathBuf>,
+
+    /// `nuttx-cargo-config` mode, with `--project`: the RMW the kernel's
+    /// Kconfig selects, checked against the project's image.
+    #[arg(long)]
+    pub rmw: Option<String>,
+
+    /// `nuttx-cargo-config` mode, with `--project`: the ROS edition the
+    /// kernel's Kconfig selects, checked against the project's image.
+    #[arg(long)]
+    pub ros_edition: Option<String>,
+
+    /// `nuttx-cargo-config` mode, with `--project`: the kernel's `.config`,
+    /// named when its choices disagree with the image.
+    #[arg(long)]
+    pub kconfig: Option<PathBuf>,
 }
 
 /// The project directory for rung 3: explicit, else the one the generated
@@ -970,6 +985,31 @@ fn run_nuttx_cargo_config(args: &Args, sdk_root: &std::path::Path) -> Result<()>
         .map_err(|e| eyre::eyre!("load board catalog: {e}"))?;
     let board = select_nuttx_board(catalog.descriptors(), triple, arch_board)
         .map_err(|e| eyre::eyre!(e))?;
+    // A NuttX app that names a project (`NROS_PROJECTS`): check it against
+    // this kernel before anything is configured, and record the image it
+    // builds beside the settings file for the configure step to read.
+    if let Some(project) = args.project.as_deref() {
+        let kconfig = args
+            .kconfig
+            .clone()
+            .unwrap_or_else(|| PathBuf::from(".config"));
+        let key = check_nuttx_project(
+            &nros_build_paths::canonical(project),
+            args.image.as_deref(),
+            board,
+            &kconfig,
+            args.rmw.as_deref(),
+            args.ros_edition.as_deref(),
+        )
+        .map_err(|e| eyre::eyre!(e))?;
+        let key_file = out.with_file_name("image-key");
+        if let Some(dir) = key_file.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        if std::fs::read_to_string(&key_file).ok().as_deref() != Some(key.as_str()) {
+            std::fs::write(&key_file, &key)?;
+        }
+    }
     let Some(base) = crate::builder::cargo_config::base_dir(out) else {
         bail!(
             "{}: the settings file needs a grandparent directory to resolve its paths against",
@@ -990,6 +1030,233 @@ fn run_nuttx_cargo_config(args: &Args, sdk_root: &std::path::Path) -> Result<()>
     let path = crate::builder::cargo_config::write(&spec, out).map_err(|e| eyre::eyre!(e))?;
     println!("{}", path.display());
     Ok(())
+}
+
+/// One image of a project, as the make road's checks read it.
+struct ProjectImage {
+    key: String,
+    system_toml: std::path::PathBuf,
+    id: String,
+    image: crate::orchestration::image::ImageBlock,
+    sys: crate::orchestration::cargo_metadata_schema::SystemToml,
+}
+
+/// phase-550 W6a (issue 2236 Q1, Q2 A2, Q4, Q6) — the project a NuttX make
+/// app names, checked against the kernel being built, BEFORE `nros configure`
+/// runs. Returns the image's `<bringup>:<id>` key.
+///
+/// The image is `--image` when the app states `NROS_IMAGE`, else the one
+/// image whose board is the kernel's board (the same derivation a build with
+/// no project uses). Every refusal names the file, the value and the field to
+/// change.
+fn check_nuttx_project(
+    project: &std::path::Path,
+    requested: Option<&str>,
+    kernel_board: &crate::orchestration::board_descriptor::BoardDescriptor,
+    kconfig: &std::path::Path,
+    rmw: Option<&str>,
+    edition: Option<&str>,
+) -> std::result::Result<String, String> {
+    use crate::builder::discover;
+    let members = discover::cargo_members_or_walk(project);
+    let found = discover::discover(project, &members)?;
+    let mut images = Vec::new();
+    for pkg in &found.packages {
+        let system_toml = pkg.dir.join("system.toml");
+        if !system_toml.is_file() {
+            continue;
+        }
+        let text = std::fs::read_to_string(&system_toml)
+            .map_err(|e| format!("reading {}: {e}", system_toml.display()))?;
+        let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
+            toml::from_str(&text).map_err(|e| format!("parsing {}: {e}", system_toml.display()))?;
+        for (id, image) in crate::cmd::build::effective_images(&sys) {
+            images.push(ProjectImage {
+                key: crate::builder::plan::qualified(&pkg.name, &id),
+                system_toml: system_toml.clone(),
+                id,
+                image,
+                sys: sys.clone(),
+            });
+        }
+    }
+    // The board's most specific name (`qemu-armv7a-nuttx`, not its family
+    // alias `nuttx`), which is what a user writes as an image's board.
+    let kernel = kernel_board
+        .names
+        .iter()
+        .max_by_key(|n| n.len())
+        .map(String::as_str)
+        .unwrap_or("?");
+    let listing = |v: &[&ProjectImage]| {
+        v.iter()
+            .map(|i| {
+                format!(
+                    "`{}` (board `{}`)",
+                    i.key,
+                    i.image.board.as_deref().unwrap_or("none")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let all: Vec<&ProjectImage> = images.iter().collect();
+    if all.is_empty() {
+        return Err(format!(
+            "the project {} declares no `[image.<id>]`. Add one with \
+             `board = \"{kernel}\"` to its bringup's system.toml.",
+            project.display()
+        ));
+    }
+    let chosen: &ProjectImage = match requested {
+        Some(want) => {
+            let hits: Vec<&ProjectImage> = all
+                .iter()
+                .copied()
+                .filter(|i| i.key == want || i.id == want)
+                .collect();
+            match hits.as_slice() {
+                [one] => one,
+                [] => {
+                    return Err(format!(
+                        "NROS_IMAGE `{want}` names no image of the project {}. Its images: {}.",
+                        project.display(),
+                        listing(&all)
+                    ));
+                }
+                many => {
+                    return Err(format!(
+                        "NROS_IMAGE `{want}` names several images: {}. Write it as \
+                         `<bringup>:<id>` in the app's Make.defs.",
+                        listing(many)
+                    ));
+                }
+            }
+        }
+        None => {
+            let hits: Vec<&ProjectImage> = all
+                .iter()
+                .copied()
+                .filter(|i| {
+                    i.image
+                        .board
+                        .as_deref()
+                        .is_some_and(|b| kernel_board.answers_to(b))
+                })
+                .collect();
+            match hits.as_slice() {
+                [one] => one,
+                [] => {
+                    return Err(format!(
+                        "no image of the project {} is for this kernel's board `{kernel}`. \
+                         Its images: {}. Add `[image.<id>] board = \"{kernel}\"` to the \
+                         bringup's system.toml.",
+                        project.display(),
+                        listing(&all)
+                    ));
+                }
+                many => {
+                    return Err(format!(
+                        "several images of the project {} are for this kernel's board \
+                         `{kernel}`: {}. Choose one with `NROS_IMAGE := <bringup>:<id>` in \
+                         the app's Make.defs.",
+                        project.display(),
+                        listing(many)
+                    ));
+                }
+            }
+        }
+    };
+    let file = chosen.system_toml.display();
+    let id = &chosen.id;
+    // The image's board must be the kernel's: the archive links into this
+    // kernel, so a board for another one builds for the wrong target.
+    match chosen.image.board.as_deref() {
+        Some(b) if kernel_board.answers_to(b) => {}
+        other => {
+            return Err(format!(
+                "{file}: `[image.{id}] board = \"{}\"`, but this NuttX tree builds for board \
+                 `{kernel}` (its CONFIG_ARCH_BOARD and target). Set the image's board to \
+                 `{kernel}`, or name an image for this board with NROS_IMAGE.",
+                other.unwrap_or("")
+            ));
+        }
+    }
+    // The Kconfig choices and the image must agree: the image's values size
+    // and wire the archive, and Kconfig's select the cargo features.
+    // The value is the folded one; the field named is where it was WRITTEN,
+    // which is the one the user edits.
+    let image_rmw = chosen
+        .image
+        .rmw
+        .clone()
+        .unwrap_or_else(|| chosen.sys.system.rmw.clone());
+    let rmw_field = if chosen
+        .sys
+        .image
+        .get(id)
+        .and_then(|b| b.rmw.as_ref())
+        .is_some()
+    {
+        format!("[image.{id}] rmw")
+    } else if chosen
+        .sys
+        .image_defaults
+        .as_ref()
+        .and_then(|b| b.rmw.as_ref())
+        .is_some()
+    {
+        "[image_defaults] rmw".to_string()
+    } else {
+        "[system] rmw".to_string()
+    };
+    if let Some(k) = rmw
+        && !k.eq_ignore_ascii_case(&image_rmw)
+    {
+        return Err(format!(
+            "the RMW differs: {file} states `{rmw_field} = \"{image_rmw}\"`, and {} selects \
+             `CONFIG_NROS_RMW_{}=y`. Make the two agree (`make menuconfig`, or the system.toml \
+             field).",
+            kconfig.display(),
+            k.to_ascii_uppercase()
+        ));
+    }
+    let image_edition = chosen
+        .sys
+        .image_ros_edition(Some(id))
+        .map_err(|e| format!("{file}: {e}"))?;
+    if let Some(k) = edition
+        && !k.eq_ignore_ascii_case(image_edition.as_str())
+    {
+        return Err(format!(
+            "the ROS edition differs: {file} resolves image `{id}` to `{}`, and {} sets \
+             `CONFIG_NROS_ROS_EDITION=\"{k}\"`. Make the two agree (`make menuconfig`, or \
+             `ros_edition` in system.toml).",
+            image_edition.as_str(),
+            kconfig.display()
+        ));
+    }
+    // A make app has no census (issue 2236 Q6), so its components state
+    // their entities.
+    if chosen.sys.system.entities.is_none() {
+        let missing: Vec<String> = chosen
+            .sys
+            .components
+            .iter()
+            .filter(|c| c.entities.is_none())
+            .map(|c| format!("`{}`", c.name))
+            .collect();
+        if !missing.is_empty() {
+            return Err(format!(
+                "{file}: the component(s) {} declare no `entities`. A NuttX app's \
+                 project cannot be observed on the host, so each `[[component]]` states \
+                 `entities = [...]`, or `[system] entities = \"defaults\"` takes the \
+                 defaults.",
+                missing.join(", ")
+            ));
+        }
+    }
+    Ok(chosen.key.clone())
 }
 
 /// The one NuttX board that builds for `triple`. Several share it only when
@@ -1109,5 +1376,118 @@ mod nuttx_board_tests {
         set2[1].nuttx = arm.nuttx.clone();
         let e = select_nuttx_board(&set2, "armv7a-nuttx-eabihf", "qemu-armv7a").unwrap_err();
         assert!(e.contains("several"), "{e}");
+    }
+}
+
+#[cfg(test)]
+mod nuttx_project_tests {
+    use super::check_nuttx_project;
+    use crate::orchestration::board_descriptor::{BoardCatalog, BoardDescriptor};
+    use std::path::Path;
+
+    fn arm_board() -> BoardDescriptor {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let cat = BoardCatalog::load(&root).expect("catalog");
+        super::select_nuttx_board(cat.descriptors(), "armv7a-nuttx-eabihf", "qemu-armv7a")
+            .unwrap()
+            .clone()
+    }
+
+    /// A one-bringup workspace whose system.toml is `body`.
+    fn project(body: &str) -> tempfile::TempDir {
+        let ws = tempfile::tempdir().unwrap();
+        let b = ws.path().join("src/demo_bringup");
+        std::fs::create_dir_all(&b).unwrap();
+        std::fs::write(
+            b.join("package.xml"),
+            "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>demo_bringup</name>\n  \
+             <version>0.1.0</version>\n  <description>d</description>\n  \
+             <maintainer email=\"a@b.c\">a</maintainer>\n  <license>Apache-2.0</license>\n  \
+             <export>\n    <build_type>nros_cmake</build_type>\n  </export>\n</package>\n",
+        )
+        .unwrap();
+        std::fs::write(b.join("system.toml"), body).unwrap();
+        ws
+    }
+
+    const SYS: &str = "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n";
+    const COMP: &str =
+        "[[component]]\npkg = \"demo\"\nclass = \"demo::Talker\"\nname = \"talker\"\n";
+    const ENT: &str = "entities = []\n";
+
+    fn check(body: &str, image: Option<&str>, rmw: &str) -> Result<String, String> {
+        let ws = project(body);
+        check_nuttx_project(
+            ws.path(),
+            image,
+            &arm_board(),
+            Path::new("/k/.config"),
+            Some(rmw),
+            Some("humble"),
+        )
+    }
+
+    #[test]
+    fn the_one_image_for_the_kernels_board_is_chosen() {
+        let body = format!(
+            "{SYS}{COMP}{ENT}\n[image.arm]\nboard = \"qemu-armv7a-nuttx\"\n\n\
+             [image.host]\nboard = \"linux\"\n"
+        );
+        assert_eq!(check(&body, None, "zenoh").unwrap(), "demo_bringup:arm");
+    }
+
+    #[test]
+    fn a_named_image_for_another_board_is_refused_naming_the_field() {
+        let body = format!("{SYS}{COMP}{ENT}\n[image.host]\nboard = \"linux\"\n");
+        let e = check(&body, Some("host"), "zenoh").unwrap_err();
+        assert!(
+            e.contains("[image.host] board = \"linux\"") && e.contains("system.toml"),
+            "{e}"
+        );
+        assert!(e.contains("qemu-armv7a-nuttx"), "{e}");
+    }
+
+    #[test]
+    fn several_images_for_the_board_are_refused_naming_nros_image() {
+        let body = format!(
+            "{SYS}{COMP}{ENT}\n[image.a]\nboard = \"qemu-armv7a-nuttx\"\n\n\
+             [image.b]\nboard = \"qemu-armv7a-nuttx\"\n"
+        );
+        let e = check(&body, None, "zenoh").unwrap_err();
+        assert!(
+            e.contains("NROS_IMAGE") && e.contains("demo_bringup:a"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn a_kconfig_rmw_the_image_does_not_state_is_refused_naming_both() {
+        let body = format!("{SYS}{COMP}{ENT}\n[image.arm]\nboard = \"qemu-armv7a-nuttx\"\n");
+        let e = check(&body, None, "xrce").unwrap_err();
+        assert!(
+            e.contains("[system] rmw = \"zenoh\"") && e.contains("CONFIG_NROS_RMW_XRCE"),
+            "{e}"
+        );
+        assert!(e.contains("/k/.config"), "{e}");
+    }
+
+    #[test]
+    fn a_component_without_entities_is_refused_naming_the_field() {
+        let body = format!("{SYS}{COMP}\n[image.arm]\nboard = \"qemu-armv7a-nuttx\"\n");
+        let e = check(&body, None, "zenoh").unwrap_err();
+        assert!(e.contains("`talker`") && e.contains("entities"), "{e}");
+    }
+
+    #[test]
+    fn no_refusal_names_an_internal_id() {
+        let cases = [
+            format!("{SYS}{COMP}{ENT}\n[image.host]\nboard = \"linux\"\n"),
+            format!("{SYS}{COMP}\n[image.arm]\nboard = \"qemu-armv7a-nuttx\"\n"),
+        ];
+        let id = regex::Regex::new(r"(?i)\b(issue|phase|rfc)[ -]?\d").unwrap();
+        for body in &cases {
+            let e = check(body, None, "xrce").unwrap_err();
+            assert!(!id.is_match(&e), "{e}");
+        }
     }
 }
