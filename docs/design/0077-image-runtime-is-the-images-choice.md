@@ -2,10 +2,10 @@
 rfc: 0077
 title: "The image runtime is the image's choice"
 status: Draft
-area: runtime-api
+area: platform-board-rtos
 since: 2026-08
-last-reviewed: 2026-08
-implements-tracked-by: [phase-383, issue-0618, issue-0617, issue-0615]
+last-reviewed: 2026-11-13
+implements-tracked-by: [phase-366, phase-383, issue-0618, issue-0617, issue-0615]
 amends: [ARCHITECTURE.md#2-the-std-alloc-contract]  # §2 predates issue-0616; see "Where the design already is"
 supersedes: []
 superseded-by: null

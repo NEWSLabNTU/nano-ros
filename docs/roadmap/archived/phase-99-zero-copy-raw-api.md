@@ -13,7 +13,7 @@ across backends; lending capability is selected at compile time.
 90.6 working examples + 90.7 SITL integration test must land first so the
 new API can be migrated against a known-working baseline.
 
-**Design rationale:** [docs/design/zero-copy-raw-api.md](../design/zero-copy-raw-api.md)
+**Design rationale:** [RFC-0010](../../design/0010-zero-copy-raw-api.md)
 (to be authored as part of 99.A).
 
 ---

@@ -4,13 +4,15 @@ title: "Divergences from the ROS 2 standard client APIs (rclrs / rclcpp / rclc)"
 status: Draft
 area: runtime-api
 since: 2026-06
-last-reviewed: 2026-08
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-379, phase-381]
 supersedes: []
 superseded-by: null
 ---
 
 > **Amended by phase-483 (2026-10-10).** C++ user names live in `rclcpp::` / `rclcpp_action::` / `rclcpp_lifecycle::` (no `nros::`), and Rust's node is `nros::Node` with rclrs's methods. Rows below that name `nros::` C++ types or the Rust component trait as `nros::Node` describe the earlier surface.
+
+> **Amended by [RFC-0128](0128-per-node-lifecycle.md) (2026-11).** The "no lifecycle-node graph" row narrows to two differences once [phase-554](../roadmap/phase-554-per-node-lifecycle.md) lands: no CREATE/DESTROY, and single-threaded transitions. A managed node has its own REP-2002 state machine, served under its own name (RFC-0128 D5).
 
 # RFC-0036 — Divergences from the ROS 2 standard client APIs
 
@@ -182,7 +184,7 @@ Each divergence: **what ROS 2 does → what nano-ros does → why → owner**.
 `scripts/api-parity.py` (phase-379) extracts both surfaces from their real
 sources — clang JSON AST for the C and C++ headers, rustdoc JSON for the Rust
 crates — correlates them by normalised name, and reports every item that does
-not correspond. `just api-parity` runs it; `docs/reference/api-surface/*.json`
+not correspond. `just check api-parity` runs it; `docs/reference/api-surface/*.json`
 holds the recorded ROS 2 side so it runs on a host with no ROS install.
 
 The reason is this RFC's own history, and it is worse than the first telling.
@@ -205,7 +207,7 @@ nano-ros has one global allocator, so it appears in none of them — one sentenc
 not six rows.
 
 Everything the rules do not cover is expected to have a row in
-`docs/reference/api-parity-ledger.json` naming the platform constraint that
+`docs/reference/api-parity-ledger/` (one JSON file per row, grouped by topic; `SCHEMA.md` there) naming the platform constraint that
 justifies it. The ledger's verdicts are deliberately narrow — `divergence`
 requires naming a constraint (`no_std`, no exceptions, no allocator, no runtime
 env, single-threaded transport), so "we preferred it this way" cannot be

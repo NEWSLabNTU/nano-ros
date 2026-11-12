@@ -4,7 +4,7 @@ title: "Unified callback + QoS-depth receive model for clients (service/action)"
 status: Stable
 area: runtime-api
 since: 2026-06
-last-reviewed: 2026-06-12
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-239]
 supersedes: []
 superseded-by: null

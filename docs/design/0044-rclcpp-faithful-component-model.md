@@ -4,13 +4,24 @@ title: "rclcpp-faithful component model — IS-A-Node, ctor-wired, typed member 
 status: Draft
 area: runtime-api
 since: 2026-06
-last-reviewed: 2026-06-13
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-242]
+amends: [0043]
 supersedes: []
 superseded-by: null
 ---
 
 > **Amended by phase-483 W2/W3 (2026-10-10).** The Rust-parity question this RFC deferred (242.6) is answered: a Rust component's node IS the one `nros::Node`, the type a standalone program holds. See RFC-0089 §"Settled: `nros::` is deleted from C++, and Rust takes rclrs's shape with ONE node type".
+
+> **Review 2026-11-13 (C++).** The C++ names below predate RFC-0089's
+> adoption of rclcpp's: `nros::ComponentNode` is merged into `rclcpp::Node`
+> (phase-427 W4, `packages/api/nros-cpp/include/rclcpp/node.hpp:94`), the
+> ctor takes `rclcpp::NodeHandle` (`node.hpp:400`), and a stock
+> `RCLCPP_COMPONENTS_REGISTER_NODE`
+> (`packages/api/nros-cpp/include/rclcpp_components/register_node_macro.hpp:68`)
+> sits beside `NROS_COMPONENT` (`rclcpp/detail/component.hpp:736`). The cmake
+> registration surface is amended by
+> [RFC-0057](0057-ament-parity-component-registration.md).
 
 # RFC-0044 — rclcpp-faithful component model
 

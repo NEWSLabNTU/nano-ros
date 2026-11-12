@@ -126,7 +126,7 @@ Sub-items:
      rx_buf=1024) so action-client allocation works at the default
      `NROS_EXECUTOR_MAX_CBS=4`. Recovered `test_cpp_action_goal_rejection`.
 - [~] **122.3.a — nros-c thin-wrapper audit + discipline doc.**
-  In flight 2026-05-13. Output: `docs/design/nros-c-thin-wrapper-discipline.md`.
+  In flight 2026-05-13. Output: [RFC-0019](../../design/0019-nros-c-thin-wrapper-discipline.md).
   Audit result: 4 of 11 entities follow opaque-thin pattern today;
   7 are field-mirror (subscription / service / client / action_server
   / action_client / timer / guard_condition partial).

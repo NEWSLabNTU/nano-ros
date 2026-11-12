@@ -4,13 +4,25 @@ title: "Blocking API Rules"
 status: Stable
 area: runtime-api
 since: 2026-04
-last-reviewed: 2026-04
-implements-tracked-by: []
+last-reviewed: 2026-11-13
+implements-tracked-by: [phase-82]
 supersedes: []
 superseded-by: null
 ---
 
 # Blocking API Rules
+
+> **Review 2026-11-13.** The rule holds in the code. The C names below are
+> the ones the C API had before it took rclc's names (RFC-0089): the
+> blocking call is now `rclc_client_call`, the registration
+> `rclc_executor_add_client`, the executor `rclc_executor_t`, and the guard
+> returns `RCLC_RET_REENTRANT` (`packages/api/nros-c/src/service.rs:2445`,
+> `packages/api/nros-c/src/executor.rs:3447`, `executor.rs:415-423`). The
+> Rust `Promise::wait` takes a `core::time::Duration`, not milliseconds
+> (`packages/core/nros-node/src/executor/handles.rs:2788`). The C++ form is
+> `fut.wait(executor.handle(), timeout_ms, out)` or
+> `rclcpp::spin_until_future_complete`
+> (`packages/api/nros-cpp/include/rclcpp_action/client.hpp:474`).
 
 ## The rule
 

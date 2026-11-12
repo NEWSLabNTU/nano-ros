@@ -4,17 +4,27 @@ title: "Thin-Wrapper Compliance Audit"
 status: Stable
 area: runtime-api
 since: 2026-04
-last-reviewed: 2026-04
-implements-tracked-by: []
+last-reviewed: 2026-11-13
+implements-tracked-by: [phase-83]
 supersedes: []
 superseded-by: null
 ---
 
 # Thin-Wrapper Compliance Audit
 
+> **Review 2026-11-13.** The principle quoted below now lives in
+> [RFC-0019](0019-nros-c-thin-wrapper-discipline.md), not in `CLAUDE.md`.
+> The C API's names moved to rclc's (RFC-0089), so the `nros_*` names in the
+> findings table are the names of that time. There is no
+> `.claude/agents/explore.md`; any read-only search agent serves step 2. The
+> periodic codebase audit
+> ([codebase-audit-checklist.md](../development/codebase-audit-checklist.md))
+> carries the principle as its category C1, which is where a re-run happens
+> now.
+
 This document captures the methodology and findings from the Phase 83
 audit of `nros-c` and `nros-cpp` against the thin-wrapper principle
-declared in `CLAUDE.md`:
+declared in `CLAUDE.md` at the time:
 
 > `nros-c` must be a thin FFI wrapper over `nros-node` — delegate to
 > Rust types, don't reimplement logic. New C API features must first be

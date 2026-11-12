@@ -4,7 +4,7 @@ title: "Readiness is PUSHED by the arrival path, not scanned by the executor —
 status: Draft
 area: runtime-api
 since: 2026-08
-last-reviewed: 2026-10-24
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-397]
 amends: [rfc-0052]
 supersedes: []
