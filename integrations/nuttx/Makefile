@@ -184,51 +184,29 @@ endif
 CFLAGS += ${INCDIR_PREFIX}$(NROS_REPO_DIR)/packages/platform/nros-platform-api/include
 
 
-# Phase 157.C — Rust target triple resolution.
-#
-# Upstream `apps/tools/Rust.mk`'s `RUST_TARGET_TRIPLE` macro
-# enumerates thumb*, riscv32, riscv64, x86, x86_64 but is MISSING
-# the `armv7a` (non-thumb ARM-A) branch — `qemu-armv7a/nsh`
-# (the canonical QEMU NuttX board) configures CONFIG_ARM_THUMB=n
-# and ends up with `LLVM_ARCHTYPE := armv7a`, which falls through
-# every `$(filter ...)` clause and yields an empty triple. Cargo
-# then errors with `--target takes a target architecture as an
-# argument`.
-#
-# Fix: synthesize the triple ourselves when upstream returns
-# empty. Today we only need to cover the `armv7a` case; richer
-# fallbacks land alongside additional NuttX QEMU board configs.
-NROS_TARGET_TRIPLE := $(strip $(call RUST_TARGET_TRIPLE))
-ifeq ($(NROS_TARGET_TRIPLE),)
-  ifeq ($(LLVM_ARCHTYPE),armv7a)
-    NROS_TARGET_TRIPLE := armv7a-nuttx-$(LLVM_ABITYPE)
-  endif
-endif
+# phase-550 W4 — the Rust target triple is `$(NROS_RUST_TRIPLE)`, resolved
+# ONCE in `RustTriple.mk` (included by this app's Make.defs, so the archive
+# path and cargo's `--target` are the same word): upstream's
+# `RUST_TARGET_TRIPLE` first, and an armv7a fallback for the one arch it
+# lacks. An arch with neither is refused while the Makefiles are read.
 
-# Mirror upstream `RUST_CARGO_BUILD` but force --target to the
-# resolved triple so the empty-expansion bug above can't bite.
-# Includes the same `-Zbuild-std`/`-Zbuild-std-features` flags
-# upstream uses for `CONFIG_DEBUG_NOOPT`-style release builds —
-# matches what `examples/qemu-armv7a-nuttx/rust/zenoh/*/.cargo/
-# config.toml` declares.
-# Phase 157.C — `--config` overrides for the NuttX Rust build.
-# nano-ros's root workspace doesn't carry a `[patch.crates-io]
-# libc = ...` entry (it would affect every build, not just the
-# NuttX cross). Inject the same libc patch + per-target rustflags
-# the standalone examples carry in their `.cargo/config.toml`
-# (e.g. `examples/qemu-armv7a-nuttx/rust/zenoh/talker/.cargo/
-# config.toml`) via cargo's `--config <inline-toml>` flag so the
-# integration shell builds match those examples exactly.
-#
-# CPU / FPU flags are armv7a-nuttx-eabihf-specific (cortex-a7 +
-# hard-float ABI + neon-vfpv4). Extend the conditional in the
-# `context::` rule when adding more boards.
-# Use literal `"` inside the dotted-key TOML values; cargo's
-# `--config` parser expects a TOML expression. The single-quoted
-# shell arg in the recipe below preserves the `"` chars verbatim.
+# phase-550 W3a (issue 2426 item 2) — the C cross tools and CPU flags cargo's
+# build scripts compile with are NuttX's, for whatever triple was resolved:
+# `$(CROSSDEV)` is the toolchain prefix and `$(ARCHCPUFLAGS)` the CPU flags
+# the kernel itself compiles with (arch/<arch>/src/*/Toolchain.defs). The
+# armv7a-only literals that stood here gave rv-virt the HOST `cc`, which
+# refuses `-mabi=ilp32`. cc-rs reads `CC_<triple>` and friends with the
+# triple's dashes as underscores.
+NROS_TRIPLE_ENV := $(subst -,_,$(NROS_RUST_TRIPLE))
+
+# Our cargo command (issue 2236 Q12 b), not upstream's `RUST_CARGO_BUILD`:
+# it names the generated image crate, places headers, and takes the target
+# from `RustTriple.mk`. Until phase-550 W5 moves the make road onto the
+# board's cargo config, it still builds `std` against the NuttX `libc` fork,
+# patched in by `--config` because the root workspace must not carry that
+# patch for every other build. The single-quoted shell arg in the recipe
+# keeps the TOML `"` verbatim.
 NROS_LIBC_PATCH := patch.crates-io.libc.path="$(NROS_REPO_DIR)/third-party/nuttx/libc"
-NROS_RUSTFLAGS_ARMV7A := target.armv7a-nuttx-eabihf.rustflags=["-C","link-arg=-mcpu=cortex-a7","-C","link-arg=-mfloat-abi=hard","-C","link-arg=-mfpu=neon-vfpv4"]
-NROS_CFLAGS_ARMV7A := env.CFLAGS_armv7a_nuttx_eabihf.value="-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 
 # $(1) = the image crate's manifest, $(2) = its features (comma-separated) —
 # the two words `nros_image_crate` printed; $(3) = the image flavor (`c` /
@@ -268,12 +246,11 @@ define NROS_CARGO_BUILD
 	NUTTX_APPS_DIR=$(APPDIR) \
 	NUTTX_EXPORT_DIR=$(TOPDIR) \
 	NUTTX_INCLUDE_DIR=$(TOPDIR)/include:$(TOPDIR)/include/arch \
-	CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc \
-	CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
-	CXX_armv7a_nuttx_eabihf=arm-none-eabi-g++ \
-	CXX_armv7a_nuttx_eabi=arm-none-eabi-g++ \
-	AR_armv7a_nuttx_eabihf=arm-none-eabi-ar \
-	AR_armv7a_nuttx_eabi=arm-none-eabi-ar \
+	CC_$(NROS_TRIPLE_ENV)=$(CROSSDEV)gcc \
+	CXX_$(NROS_TRIPLE_ENV)=$(CROSSDEV)g++ \
+	AR_$(NROS_TRIPLE_ENV)=$(CROSSDEV)ar \
+	CFLAGS_$(NROS_TRIPLE_ENV)="$(ARCHCPUFLAGS)" \
+	CXXFLAGS_$(NROS_TRIPLE_ENV)="$(ARCHCPUFLAGS)" \
     python3 $(NROS_REPO_DIR)/scripts/build/cargo-out-dir-headers.py \
 		$(foreach p,$(4),--package $(p)) \
 		--dest $(call NROS_PLACED_DIR,$(3)) -- \
@@ -283,11 +260,9 @@ define NROS_CARGO_BUILD
 		--no-default-features \
 		--features "$(strip $(2))" \
 		--config '$(NROS_LIBC_PATCH)' \
-		--config '$(NROS_RUSTFLAGS_ARMV7A)' \
-		--config '$(NROS_CFLAGS_ARMV7A)' \
 		--manifest-path $(1) \
 		--target-dir $(NROS_IMAGE_TARGET_DIR) \
-		--target $(NROS_TARGET_TRIPLE)
+		--target $(NROS_RUST_TRIPLE)
 endef
 
 define NROS_CARGO_CLEAN
@@ -295,16 +270,12 @@ define NROS_CARGO_CLEAN
 endef
 
 ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
-# NuttX-blessed Rust path — Cargo runs in `context::` for every
-# crate listed. `clean::` mirrors. Phase 157.C overrides to the
-# armv7a-aware NROS_CARGO_BUILD when LLVM_ARCHTYPE=armv7a falls
-# through upstream's macro.
+# NuttX-blessed Rust path — cargo runs in `context::`, and `clean::` mirrors
+# it. phase-550 W4 deleted the branch that called upstream's
+# `RUST_CARGO_BUILD` with an empty `--target`: it could not build, and an
+# arch with no triple is now refused by `RustTriple.mk` instead.
 context::
-ifeq ($(NROS_TARGET_TRIPLE),)
-	$(call RUST_CARGO_BUILD,nros-$(NROS_IMAGE_FLAVOR),$(NROS_REPO_DIR)/packages/api)
-else
 	$(call NROS_CARGO_BUILD,$(word 1,$(NROS_IMAGE)),$(word 2,$(NROS_IMAGE)),$(NROS_IMAGE_FLAVOR),$(NROS_IMAGE_HEADER_PACKAGES))
-endif
 
 clean::
 	$(call NROS_CARGO_CLEAN,$(word 1,$(NROS_IMAGE)))

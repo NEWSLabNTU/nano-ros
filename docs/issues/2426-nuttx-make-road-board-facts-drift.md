@@ -197,3 +197,16 @@ flag (2236's question 5). Either way the acceptance is a make-road build on
 both boards, in a lane, whose cargo flags match the board's.
 
 Items 3-7 wait on the same ruling; this record proposes no fix for them.
+
+### Progress (phase-550)
+
+- **Item 8** (the kernel tree reaches cargo): fixed by W2.
+- **Item 2** (the target flags), make-road half: fixed by W3a. The cross
+  tools and `CFLAGS_<triple>` come from NuttX's `$(CROSSDEV)` and
+  `$(ARCHCPUFLAGS)` for the resolved triple, and rv-virt builds. The other
+  copies are W3b.
+- **Items 3 and 4** (the archive-path triple, the empty-triple fallback):
+  fixed by W4. There is one triple (`integrations/nuttx/RustTriple.mk`),
+  gated against upstream's table by `check-nuttx-rust-triple`.
+- **Both boards** build on the make road in a lane:
+  `just nuttx build-make-road`, run daily by `nightly.yml` (W1).
