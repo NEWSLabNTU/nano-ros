@@ -35,3 +35,17 @@ rule for which literals are log and panic text (an `nros_log` call, a
 `printf`/`printk`, a `panic!`/`assert!` message), because a runtime crate
 also holds data strings; a C subject needs a string lexer the gate does not
 have yet.
+
+## Progress (2026-11-12)
+
+**The colcon plugin is done.** Its two refusals that cited ids now say what
+to do: `manifest.build_path` names the `<build_type>` values to write, and
+`manifest.deploy` keeps its remedy without the RFC and phase ids, which moved
+to a comment above the raise. `check-user-surface-ids` reads the plugin as a
+subject: every Python string literal under `colcon_nano_ros/` that is not a
+docstring, baseline zero. Negative control: the same gate on the old
+`manifest.py` reports its three ids.
+
+**Left: runtime logs of a default image.** The rule for which runtime
+literals are log or panic text, and the C string lexer, are still to do.
+

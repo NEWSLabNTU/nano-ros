@@ -32,6 +32,11 @@ Subjects, all checked on every run:
   `check-cmake-user-output-refs` applies to `FATAL_ERROR` (phase-517 W5).
   A warning whose text is assembled away from its print (a `Vec` of warnings
   printed later) is not seen: a known gap, stated rather than claimed;
+* the messages of the colcon plugin (issue 2443),
+  `packages/cli/colcon-cargo-ros2/colcon_nano_ros/`: every Python string
+  literal (f-string parts included) that is not a docstring. A user's
+  `colcon build` prints its refusals; its docstrings and `#` comments keep
+  their ids;
 * the output of `nros board list`, `nros board show <board>` for every board
   the list names, and `nros doctor --report`, which in addition may hold no
   tier number (`tier 1`, `tier 2`, `tier 3` — phase-522 W5).
@@ -48,6 +53,7 @@ and runs first on every check.
 from __future__ import annotations
 
 import argparse
+import ast
 import os
 import re
 import subprocess
@@ -211,6 +217,47 @@ def build_script_warning_hits() -> list[str]:
                 continue
             for tok in ids(text):
                 bad.append(f"{rel}:{ln}: {tok!r} in {' '.join(text.split())[:90]!r}")
+    return bad
+
+
+# --- the colcon plugin ------------------------------------------------------
+
+COLCON_DIR = "packages/cli/colcon-cargo-ros2/colcon_nano_ros"
+
+
+def python_message_strings(src: str) -> list[tuple[int, str]]:
+    """Every string literal of `src` that is not a docstring, with its line.
+
+    An f-string's literal parts are read one by one. A docstring is the first
+    statement of a module, class or function, when that statement is a bare
+    string; `#` comments are not literals at all.
+    """
+    tree = ast.parse(src)
+    docs = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = node.body[0] if node.body else None
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+                docs.add(id(first.value))
+    found = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs
+    ]
+    found.sort(key=lambda node: (node.lineno, node.col_offset))
+    return [(node.lineno, node.value) for node in found]
+
+
+def colcon_hits() -> list[str]:
+    files = subprocess.run(
+        ["git", "ls-files", f"{COLCON_DIR}/*.py", f"{COLCON_DIR}/**/*.py"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout.split()
+    bad = []
+    for rel in sorted(set(files)):
+        for ln, s in python_message_strings((ROOT / rel).read_text()):
+            for tok in ids(s):
+                bad.append(f"{rel}:{ln}: {tok!r} in {' '.join(s.split())[:90]!r}")
     return bad
 
 
@@ -389,6 +436,16 @@ def self_test() -> None:
         if WARNING_PREFIX.match(text) or WARNING_CALL.search(before):
             got += [(ln, t) for t in ids(text)]
     assert got == [(1, "issue 1352"), (2, "phase-474"), (3, "RFC-0100")], f"self-test: build {got}"
+    # Issue 2443 -- a colcon refusal is read; a docstring and a comment are not.
+    py = (
+        '"""Module doc, RFC-0087 D2."""\n'
+        'def f(t):\n'
+        '    """Function doc, phase-445."""\n'
+        '    # issue 2443 in a comment\n'
+        '    raise ValueError(f"bad {t} (issue 1234)" + " see RFC-0098")\n'
+    )
+    got = [(ln, t) for ln, s in python_message_strings(py) for t in ids(s)]
+    assert got == [(5, "issue 1234"), (5, "RFC-0098")], f"self-test: colcon {got}"
     assert subcommands("Usage: x\n\nCommands:\n  new   make\n  help  h\n\nOptions:\n") == ["new"]
     assert subcommands(
         "Quick start:\n  nros new\n\nUsage: nros\n\nBuild:\n  build  b\n  sync   s\n\n"
@@ -406,7 +463,7 @@ def main() -> int:
         print(f"{NAME}: self-test OK")
         return 0
 
-    bad = source_hits() + book_hits() + build_script_warning_hits()
+    bad = source_hits() + book_hits() + build_script_warning_hits() + colcon_hits()
     cli = args.cli
     if cli is None:
         from source_locate import nros_cli_bin
@@ -433,7 +490,10 @@ def main() -> int:
         return check_skip.unverified(
             NAME, f"no in-tree nros CLI (`just setup-cli`); {rendered} not read"
         )
-    print(f"{NAME}: OK (cmd/ strings, build-script warnings, {BOOK_SCOPE}, {rendered})")
+    print(
+        f"{NAME}: OK (cmd/ strings, build-script warnings, colcon messages, {BOOK_SCOPE}, "
+        f"{rendered})"
+    )
     return 0
 
 

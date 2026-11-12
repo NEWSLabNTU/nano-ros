@@ -93,9 +93,12 @@ def build_path(pkg_type):
     try:
         return BUILD_PATH_BY_TYPE[pkg_type]
     except KeyError:
+        # The two build types are RFC-0087 D2's; the id stays here, out of the
+        # message a user's `colcon build` prints (issue 2443).
         raise ValueError(
-            f"Not a nano-ros build type: '{pkg_type}'. Expected one of "
-            f"{', '.join(sorted(BUILD_PATH_BY_TYPE))} — RFC-0087 D2."
+            f"Not a nano-ros build type: '{pkg_type}'. Set package.xml's "
+            f"<export><build_type> to one of "
+            f"{', '.join(sorted(t.removeprefix('ros.') for t in BUILD_PATH_BY_TYPE))}."
         ) from None
 
 
@@ -161,10 +164,12 @@ def deploy(pkg_path):
     """
     retired = nano_ros_export(pkg_path)
     if retired:
+        # Retired by RFC-0098 D3/D5 (phase-445); the ids stay here, out of
+        # the message a user's `colcon build` prints (issue 2443).
         raise ValueError(
             f"{pkg_path}/package.xml: the <nano_ros "
             + " ".join(f'{k}="{v}"' for k, v in sorted(retired.items()))
-            + "/> element is retired (RFC-0098 D3/D5, phase-445) — state the "
+            + "/> element is retired — state the "
             "deployment in a system.toml beside the package (`[image.<id>] "
             "board`, `[system] rmw`) and delete the element."
         )
