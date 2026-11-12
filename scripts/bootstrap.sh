@@ -281,6 +281,23 @@ build_in_tree_cli() {
     run_cmd "building nros-launch-resolve (the launch resolver)" \
         cargo build --release --manifest-path "${REPO_ROOT}/packages/cli/nros-launch-resolve/Cargo.toml" \
         || { echo "bootstrap: nros-launch-resolve build FAILED — the workspace quick start needs it (see error above; libclang missing is the common cause)" >&2; return 1; }
+    # Issue 2468 — the host packages built beside the CLI (the runner and
+    # command packages, phase-527 W3/W5): ONE list,
+    # scripts/lib/cli-companion-packages.txt, which `just setup-cli` reads too.
+    # `nros run` starts an image through a runner package, and a checkout's
+    # runner is found only at packages/runners/target/release/; without it the
+    # first `nros run` of this road refused with a `just` recipe this front
+    # door does not need. `$args` is unquoted on purpose: the line's extra
+    # cargo arguments.
+    local manifest args
+    # fd 3, not stdin: `run_cmd --prompt` reads its answer from stdin.
+    while read -r -u 3 manifest args; do
+        case "$manifest" in ''|'#'*) continue ;; esac
+        # profile-literal-ok: host tool: the in-tree runner and command packages
+        run_cmd "building ${manifest%/Cargo.toml} (built beside the CLI)" \
+            cargo build --release --locked --manifest-path "${REPO_ROOT}/${manifest}" $args \
+            || { echo "bootstrap: ${manifest} build FAILED — \`nros run\` and the in-tree commands need it (see error above)" >&2; return 1; }
+    done 3< "${REPO_ROOT}/scripts/lib/cli-companion-packages.txt"
     export PATH="${REPO_ROOT}/packages/cli/target/release:$PATH"
 }
 

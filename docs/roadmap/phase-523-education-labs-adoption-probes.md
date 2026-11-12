@@ -348,4 +348,5 @@ toolchains, ESP32 until W3 reopens it, a per-purpose book.
 | --- | --- |
 | [#2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md) | A user-tier message cites an internal issue id: an adoption stop of the same kind as issue 2332 (internal terms in a First Project build). |
 | [#2443](../issues/2443-runtime-log-and-colcon-messages-cite-ids.md) | The same, on the two surfaces 2305 does not reach: runtime logs of a default image and the colcon plugin's errors. |
+| [#2468](../issues/archived/2468-bootstrap-builds-no-runner.md) | The book's `just`-free checkout road could not `nros run`: `bootstrap.sh` never built the runner packages. Found by the zenoh probe track, which had no CI lane. |
 | [#2347](../issues/archived/2347-scaffold-next-steps-print-nros-sync.md) | `nros new` prints `nros sync` in a Rust package's next steps: an adoption-probe stop from the checkout-track log of the scheduled probe run. |

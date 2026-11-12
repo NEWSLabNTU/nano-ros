@@ -1,0 +1,18 @@
+# The host packages built BESIDE the in-tree `nros` CLI (issue 2468).
+#
+# One line per cargo workspace: its manifest, relative to the checkout root,
+# then any extra `cargo build` arguments. Each is its own workspace and target
+# directory (issue 0616). Read by `just setup-cli` and `scripts/bootstrap.sh`
+# (the `just`-free front door), so the two cannot drift; the by-hand block in
+# book-internals `orientation/contributing.md` must name the same lines, and
+# every in-tree package announcing `<nano_ros_provides kind="runner"|"command">`
+# must sit in one of these workspaces. `just check cli-companion-packages`
+# checks all three.
+#
+# phase-527 W3 (RFC-0119 D4/D5): the runner packages. `nros run` starts an
+# image through one; a checkout's are found at packages/runners/target/release/.
+packages/runners/Cargo.toml --workspace
+# phase-527 W5 (RFC-0119 D5): the first-party command packages, beside the
+# domain each serves.
+packages/rmw/zenoh/nros_zenoh_tools/Cargo.toml
+packages/rmw/xrce/nros_px4_tools/Cargo.toml
