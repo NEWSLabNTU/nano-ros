@@ -4,8 +4,11 @@ title: "Provisioning is planned once, prefers prebuilts, and ships what a build 
 status: Draft
 area: build-toolchain-codegen
 since: 2026-09
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-447, phase-517]
+amends: [0014, 0062]
+supersedes: []
+superseded-by: null
 ---
 
 # RFC-0099 — Provisioning is planned once, prefers prebuilts, and ships what a build needs
@@ -80,7 +83,7 @@ actually reads was established by BUILDING one with no checkout present
 * The root `Cargo.lock` ships. The SDK root IS a cargo workspace — corrosion
   builds `nros-c`/`nros-cpp` from it — so without the lock a first build either
   re-resolves into the install prefix or fails under the project-wide `--locked`
-  the `scripts/bin/cargo` shim injects.
+  the `scripts/bin/cargo` shim injects (that shim is since retired, RFC-0104).
 * Plus `zephyr/`, `scripts/`, the root `CMakeLists.txt`, `nano_rosConfig.cmake`,
   `nros-sdk-index.toml`, and one NuttX `rust-toolchain.toml`.
 
@@ -434,7 +437,8 @@ the trade `check-abi-bindings` already makes for committed bindgen output.
 Three of the four HALs left the allowlist (~2.29 GB off a fresh `west update`).
 `hal_espressif` stayed: measured to have NO consumer, and kept anyway, because
 deleting it settles the platform-strategy question below by accident — that is
-issue 1282. **`west update` does not prune, so this is a fresh-workspace saving
+issue 1282. (It was dropped on 2026-09-27, by issue 1282's decision: see
+`[zephyr_module.hal_espressif]` in `nros-sdk-index.toml`.) **`west update` does not prune, so this is a fresh-workspace saving
 and reclaims nothing in an existing one.**
 
 The paragraph below is the original statement of the defect, kept because it is
@@ -457,7 +461,7 @@ deleting a manifest line.
 
 ## Non-goals
 
-* `nros run` / `nros flash` — RFC-0097 D8, unchanged.
+* `nros run` / `nros flash` — RFC-0097 D8, unchanged (D8 is since amended by RFC-0118).
 * An acceptance range for `NROS_CODEGEN_VERSION` — RFC-0097 D6, unchanged.
 * rosdep's YAML syntax, and rosdep as a runtime resolver — D8.
 * A wider `host_key` — D5.

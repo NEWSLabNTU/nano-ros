@@ -6,6 +6,9 @@ area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-11
 implements-tracked-by: [phase-400, phase-470, phase-481, phase-517, phase-531]
+amends: [0032, 0049, 0065]
+supersedes: []
+superseded-by: null
 ---
 
 # RFC-0098 — A leaf's build configuration is generated from one board choice

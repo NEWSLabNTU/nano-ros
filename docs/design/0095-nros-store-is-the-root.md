@@ -6,6 +6,9 @@ area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-11
 implements-tracked-by: [phase-440, phase-443, phase-447]
+amends: [0014]
+supersedes: []
+superseded-by: null
 ---
 
 # RFC-0095 — The store is the root: nano-ros as a provisioned artifact
@@ -83,7 +86,7 @@ directories:
    store, never mirrored;
 3. **tracked content** — belongs in the repository.
 
-That is exactly why `scripts/dev/ros2-box-sync.sh` needs per-root `--include`
+That is exactly why `scripts/dev/ros2-box-sync.sh` (since retired, D12) needed per-root `--include`
 rules to rescue tracked paths from its own broad `--exclude 'target/'` and
 `'build-*/'`: build output and provisioned source live in the same directory, so
 no name-based rule can separate them. The rule set cannot keep up with a root
