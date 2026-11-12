@@ -208,5 +208,11 @@ Items 3-7 wait on the same ruling; this record proposes no fix for them.
 - **Items 3 and 4** (the archive-path triple, the empty-triple fallback):
   fixed by W4. There is one triple (`integrations/nuttx/RustTriple.mk`),
   gated against upstream's table by `check-nuttx-rust-triple`.
+- **Items 1 and 5** (the standard library it builds, the second nightly
+  pin): fixed by W5. The make road builds with the board's `cargo_config`
+  (`build-std = core, alloc, panic_abort`), passed to cargo with `--config`
+  from `nros locate nuttx-cargo-config`, and its nightly is the
+  `config/rust-toolchains.txt` row the other roads read. No `std` is
+  compiled.
 - **Both boards** build on the make road in a lane:
   `just nuttx build-make-road`, run daily by `nightly.yml` (W1).
