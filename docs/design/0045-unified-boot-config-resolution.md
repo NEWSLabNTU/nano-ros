@@ -4,7 +4,7 @@ title: "Unified boot-config resolution across languages and platforms"
 status: Draft
 area: workspace-system-model
 since: 2026-06
-last-reviewed: 2026-06
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-266]
 supersedes: []
 superseded-by: null
@@ -73,7 +73,7 @@ Per field, independently:
 ```
   env var (hosted only, when set)         e.g. NROS_LOCATOR / ROS_DOMAIN_ID / NROS_NODE_NAME
         ↓  overrides
-  baked overlay  (system.toml / [deploy.*] / launch / Kconfig)
+  baked overlay  (system.toml / [deploy.*] / launch / Kconfig)   [deploy.*] is now [image.<id>] / [host.<name>]
         ↓  falls back to
   board compiled default  ("nros_app", multicast/empty locator, domain 0)
 ```
@@ -303,6 +303,13 @@ two follow-ons are additive rather than rework:
 - Issue #80 (param persistence backends) — gates the deferred storage-backed override.
 
 ## Changelog
+
+- 2026-11-13 (phase-555 W2 review) — No design change. `[deploy.*]`, named in
+  the problem statement and the precedence diagram, is refused by name since
+  phase-486 W8; its rung is `[image.<id>]` / `[host.<name>]` (RFC-0004
+  changelog). The resolver is `ExecutorConfig::{resolve, try_resolve}` in
+  `packages/core/nros-node/src/executor/types.rs:658-687`. Phase-266 is
+  archived complete; the follow-on tracks stay unbuilt.
 
 - 2026-07-16 — issue #206: env rung completed across languages. C++'s
   parallel header implementation removed (both `init()` overloads);

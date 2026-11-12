@@ -4,7 +4,7 @@ title: "RTOS Orchestration via Launch Tree + Manifest Codegen"
 status: Stable
 area: workspace-system-model
 since: 2026-04
-last-reviewed: 2026-06
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-227, phase-228]
 supersedes: []
 superseded-by: null
@@ -23,6 +23,13 @@ superseded-by: null
 > **transitional** — deprecated in R3, removed in R4 once consumers migrate.
 > The sched task *schema* and resolver are unchanged; only the input surface moves
 > from `system.toml` to `execution.tasks` in the resolved model.
+>
+> **Review note (2026-11-13, phase-555 W2).** Since
+> [RFC-0063](0063-system-model-is-a-build-artifact.md) (phase-330) the model
+> is a build artifact that `nros configure` writes; an entry names its input
+> (`nros::main!(launch = "bringup[:file]")`), and `model =` / `MODEL` are
+> deprecated overrides. `[tasks.*]` in `system.toml` is therefore still the
+> authored home, and the model is what it resolves to.
 
 **Status:** Stable (execution model); manifest homes reconciled to Phase 212 (see banner)
 **Companion roadmap:** [Phase 94](../roadmap/archived/phase-94-rtos-orchestration.md)
@@ -36,7 +43,9 @@ superseded-by: null
 > - **Sched task definitions + group→sched task reassignment** are *deployment*-owned, in
 >   `system.toml`: `[tasks.<name>.<rtos>]` (priority/stack) + `[[node_overrides]]`
 >   (the node declares each group's default sched task; the system overrides per deploy).
-> - **Shared state** → `system.toml [[shared_state]]`, codegen-emitted accessors.
+> - **Shared state** → was `system.toml [[shared_state]]`; removed by issue 0079
+>   (resolved, archived). No `shared_state` remains in any `.rs` file
+>   (2026-11-13). See §8's banner.
 >
 > The **execution model is unchanged and current**: one binary, one RTOS task per
 > priority sched task (each owning one `Executor`), one shared session per binary;
@@ -82,7 +91,8 @@ superseded-by: null
 > C/C++ convergence is phase-274 W3. **Rust caveat:** the Rust `nros::main!`
 > **Zephyr** emit branch is the one framework arm NOT on Model 1 — it wires only
 > register+spin (no `run_sched_tasks` / param-services / lifecycle); that gap is the
-> Rust-Zephyr sibling of phase-274 W3, tracked by **issue #128**.)
+> Rust-Zephyr sibling of phase-274 W3, tracked by **issue #128**, since
+> resolved: `docs/issues/archived/0128-zephyr-entry-macro-no-params-tiers-lifecycle.md`.)
 >
 > **Entry-emit pipeline superseded by RFC-0032.** §3's "cargo nano-ros
 > generate-main" template orchestrator and §11.4 item 2 predate the current

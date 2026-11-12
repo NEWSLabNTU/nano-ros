@@ -4,7 +4,7 @@ title: "Example directory layout"
 status: Stable
 area: workspace-system-model
 since: 2026-02
-last-reviewed: 2026-10
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-263, phase-265, phase-273, phase-275, phase-276, phase-277, phase-283, phase-284, phase-287, phase-316, phase-333, phase-336, phase-338, phase-345, phase-383, phase-470, phase-531, phase-535]
 supersedes: []
 superseded-by: null
@@ -30,10 +30,9 @@ RMW is selected **at build time**, not encoded in the path:
 - C / C++ → `-DNROS_RMW=<rmw>` (the user-facing knob every example CMakeLists
   reads). The workspace helpers (`nano_ros_workspace()` /
   `nano_ros_workspace_pkg_guard()` in `cmake/NanoRosWorkspace.cmake`) publish
-  the resolved backend under **both** names — `NROS_RMW` (the short helper
-  alias) and `NROS_RMW` (the root variable the `cmake/platform/*` modules
-  consume) — so either layer sees a consistent value. Examples document only
-  `-DNROS_RMW`.
+  the resolved backend as `NROS_RMW`, the variable the `cmake/platform/*`
+  modules consume. The helper's older alias `NANO_ROS_RMW` is retired and
+  refused with the new name (`cmake/NanoRosRetiredNames.cmake:35`).
 - Zephyr → a `prj-<rmw>.conf` Kconfig overlay.
 
 So one `examples/zephyr/rust/talker/` builds against zenoh, xrce, or cyclonedds —
@@ -60,8 +59,13 @@ level names something the leaf name does not — `-aemv8r` failed that test;
 `companion/` passes it.
 
 Each example directory is a **standalone copy-out template** (RFC, per its own
-"Examples = Standalone Projects" rules): its own `Cargo.toml` + `.cargo/config.toml`
-+ `CMakeLists.txt`, no workspace walk-up.
+"Examples = Standalone Projects" rules): no workspace walk-up. Since
+[RFC-0121](0121-workspace-first-project-layout.md) (phase-531) the copied-out
+unit is a WORKSPACE (a node package plus a bringup,
+`examples/linux/rust/talker/src/{native_talker,native_talker_bringup}`), and
+since RFC-0098 D1 no example tracks a `.cargo/` file
+(`check-example-cargo-dirs`); the cargo configuration is generated into
+`build/`.
 
 The copy-out contract is **tested** (phase-277 W6): Rust manifests declare
 nano-ros crates registry-style (`nros = { version = "*" }`) with a tracked
@@ -94,9 +98,12 @@ Two rules, by who owns the dependency graph:
 
 - **Core / workspace crates → `Cargo.lock` is TRACKED.** Their dependency
   graph is fixed at the repo, so the committed lock is a genuine
-  reproducibility promise, and the `--locked` cargo shim
-  (`scripts/bin/cargo`, issues 0359/0378) enforces it: a build that would
-  rewrite the lock fails instead of drifting silently.
+  reproducibility promise. The `--locked` cargo shim that first enforced it
+  (`scripts/bin/cargo`, issues 0359/0378) is retired (phase-485 W4,
+  RFC-0104 D9). The rule is now a set comparison after resolution: a lock is
+  tracked if and only if its directory is in `nros-sdk-index.toml`'s
+  `[rust] locked_roots`, and `check-cargo-registry-pins` holds every locked
+  root to the one pin set.
 
 - **`examples/**/Cargo.lock` → gitignored repo-wide** (phase-277 W7). An
   example leaf's lock **cannot** be produced at the repo, because the leaf
@@ -147,24 +154,27 @@ Two rules, by who owns the dependency graph:
   **tracked lock ⟺ (no message deps) ∨ (committed `generated/`)**.
 
 **Tooling agrees with the policy by construction (issue 0386):** the `--locked`
-shim keys off `git check-ignore Cargo.lock`, so it forces `--locked` exactly for
-the tracked (core) locks and skips it exactly for the ignored (example/leaf)
-locks — the leaf may create its first lock and re-resolve after a later
-`nros configure`, while a core lock still cannot drift.
+shim keyed off `git check-ignore Cargo.lock`, so it forced `--locked` exactly for
+the tracked (core) locks and skipped it exactly for the ignored (example/leaf)
+locks. Since phase-485 the same split is kept differently: a leaf's lock is
+seeded from the pin set on its first `nros build`, and a locked root is checked
+by `check-cargo-registry-pins` (RFC-0104).
 
 ## Sibling categories
 
 - `examples/<plat>/<lang>/<example>/` — the canonical per-platform examples.
 - `examples/templates/<name>/` — multi-platform copy-out recipes (Pattern A workspaces, etc.).
-- `examples/workspaces/…` — multi-node workspace examples (Node pkg + Bringup
-  pkg + Entry pkg; see RFC-0024/0025), in a **two-layer scheme**:
-  - `examples/workspaces/<lang>/` — the four **base starter workspaces**
-    (`rust`, `c`, `cpp`, `mixed`): the canonical talker+listener product shape,
-    one per language mix.
-  - `examples/workspaces/ws-<topic>-<lang>[-<variant>]/` — **topic showcases**
-    (`ws-qos-rust`, `ws-lifecycle-cpp`, `ws-realtime-cpp-subnode`, …): each
-    demonstrates one feature axis (params, QoS, lifecycle, launch, safety,
-    custom-msg, bridge, realtime sched tasks) on top of the base shape.
+- `examples/workspaces/…` — multi-node workspace examples (node packages plus
+  a bringup; the entry is generated, RFC-0065/RFC-0121):
+  - `examples/workspaces/<lang>/` — the four **base workspaces**
+    (`rust`, `c`, `cpp`, `mixed`): the talker+listener shape, one per language
+    mix. Since RFC-0122 the example pairs live here as image rows.
+  - Feature demos are node packages in `examples/workspaces/features/`, and a
+    configuration is a fixture axis (RFC-0066). The `ws-<topic>-<lang>` topic
+    showcases this section used to list are gone (phase-331 W3); the other
+    directories under `examples/workspaces/` (`realtime-{c,cpp,rust}`,
+    `bridge-{cyclonedds,xrce}`, `safety`, `launch`, …) each show one axis that
+    needs a workspace of its own.
 
 There is no `examples/bridges/` category. A cross-RMW gateway is a workspace
 whose `system.toml` declares a `[[bridge]]` row (`workspaces/bridge-cyclonedds/`,
@@ -174,10 +184,11 @@ workspace. The category existed until 2026-10-03 (see Changelog).
 Variant naming uses a **suffix** form so variants sort with their peers:
 `talker-rtic`, `service-client-rtic`, `talker-rtic-mixed`.
 
-**Entry-pkg sibling dirs** use the kebab-case `-entry` suffix (`talker-entry`,
+**Entry-pkg sibling dirs** used the kebab-case `-entry` suffix (`talker-entry`,
 `listener-entry`, … on `mps2-an385-freertos`, `qemu-armv7a-nuttx`,
 `threadx-linux`),
-consistent with every other example dir. (The former snake_case `_entry` interim
+consistent with every other example dir. None remains under `examples/`
+(2026-11-13): the entry is generated (RFC-0065, RFC-0121 D6). (The former snake_case `_entry` interim
 exception was blessed only while phase-275 owned the fixture-manifest/lane
 renames; phase-275 closed 2026-07-08 and the rename landed — #136 item 4.)
 The Rust *package* names inside keep their `<plat>_rs_<role>_entry` scheme —
@@ -226,6 +237,15 @@ lint blocks untriaged cells. Non-example binaries (tests/benches/smokes) live
 under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`, not `examples/`.
 
 ## Changelog
+
+- 2026-11-13 (phase-555 W2 review) — Back-pointer to
+  [RFC-0121](0121-workspace-first-project-layout.md), which amends this page
+  (its "Amendments to other RFCs" table): an example is a copy-out WORKSPACE,
+  and a single-package example is one node package plus one bringup. Stale
+  facts corrected: no tracked `.cargo/` (RFC-0098 D1), the `--locked` shim
+  retired (phase-485, RFC-0104), `NANO_ROS_RMW` retired, the `ws-*` showcases
+  and `-entry` directories gone. The body's canonical-shape section is not
+  rewritten to the workspace shape here; that waits on the phase-555 W2 brief.
 
 - 2026-11-04 — Amended by [RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md): `examples/<plat>/<lang>/<example>/` holds
   only the single-node copy-out workspaces (one talker per platform and

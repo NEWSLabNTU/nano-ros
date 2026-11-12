@@ -4,7 +4,7 @@ title: "SystemModel → RTOS primitives — the execution/contract mapper for em
 status: Draft
 area: workspace-system-model
 since: 2026-07
-last-reviewed: 2026-11-09
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-296]
 supersedes: []
 superseded-by: null
@@ -406,6 +406,19 @@ supported; deprecation is a later decision.
 - Dynamic model reload — baked images are one variant by construction.
 
 ## Canonical path (maintainer decision, 2026-07-17)
+
+> **Review note (2026-11-13, phase-555 W2).** Two later rulings refine this
+> section without changing the mapper. [RFC-0063](0063-system-model-is-a-build-artifact.md)
+> makes the model a build artifact: `nros configure` writes it, and an entry names
+> its input (`launch = "bringup[:file]"`), so `--model` / `model =` are
+> deprecated overrides rather than the front door. RFC-0063 states that it
+> does not change this RFC's fail-loud contract. [RFC-0060](0060-launch-toolchain-three-layers.md)'s
+> 2026-10-10 amendment moves `execution.features`, the system-wide
+> `[lifecycle]` table and the `[deploy.*]` build facts OUT of the model into
+> the nano-ros `nros.toml` overlay, so the parity table's **model** verdicts on
+> those three rows are superseded; `[deploy.*]` itself is refused by name since
+> phase-486 W8 (`[image.<id>]` / `[host.<name>]`). The resolver is
+> `nros-launch-resolve` (RFC-0060 layer 2), not a `play_launch resolve` verb.
 
 The SystemModel is the **canonical** configuration path. nano-ros's own
 resolution machinery — `launch_synth`, `nros plan`'s launch-XML parsing,

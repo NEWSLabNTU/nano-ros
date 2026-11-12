@@ -4,7 +4,7 @@ title: "SystemModel — one resolved system artifact from launch + contracts + s
 status: Draft
 area: workspace-system-model
 since: 2026-07
-last-reviewed: 2026-07
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-296]
 supersedes: []
 superseded-by: null
@@ -255,11 +255,27 @@ W5); play_launch keeps `sched_derive` + the Linux realizer.
 ## Open questions
 
 - Schema of the `[deploy]` system.toml section (per-node vs per-package vs
-  per-callback-group granularity of placement).
+  per-callback-group granularity of placement). *Answered by retirement:
+  `[deploy.*]` split into `[image.<id>]` (what is built) and `[host.<name>]`
+  (where nodes run, by `nodes`), and is refused by name since phase-486 W8.
+  RFC-0060's 2026-10-10 amendment keeps `[host.<n>]` in the model as topology
+  and moves the build facts out of it.*
 - How much of layer 1 the embedded slice needs (full graph vs this node's
   neighborhood) — image size vs diagnosability.
 - Whether `nros plan` (launch → orchestration plan) folds into SystemModel
   consumption or stays a separate lighter path during migration.
+
+## Review note (2026-11-13, phase-555 W2)
+
+Read with three later RFCs. [RFC-0060](0060-launch-toolchain-three-layers.md)
+names the producer: the resolver is layer 2, `ros-launch-resolve` in the
+play_launch repository, which nano-ros runs as `nros-launch-resolve`; the
+"`play_launch resolve`" verb above is that layer. Its 2026-10-10 amendment
+rules what the model may carry, and moves nano-ros's build facts into a
+`nros.toml` overlay beside it. [RFC-0063](0063-system-model-is-a-build-artifact.md)
+makes the model a build artifact written by `nros configure`, never committed.
+[RFC-0052](0052-system-model-rtos-mapper.md) is the nano-ros consumer half of
+this RFC.
 
 ## References
 

@@ -4,7 +4,7 @@ title: "Configuration model: language-agnostic config across single-node and wor
 status: Stable
 area: workspace-system-model
 since: 2026-05
-last-reviewed: 2026-10
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-227]
 supersedes: []
 superseded-by: null
@@ -22,6 +22,26 @@ superseded-by: null
 > ecosystem has migrated. `system.toml` survives as the integrator's
 > *authoring* input that `play_launch resolve` consumes; nothing downstream
 > parses it directly on the canonical path.
+>
+> **Review note (2026-11-13, phase-555 W2).** Three facts in the banner
+> above have moved. The SystemModel is a build artifact since
+> [RFC-0063](0063-system-model-is-a-build-artifact.md) (phase-330): `nros configure`
+> resolves it into `<ws>/build/nros/models/<bringup>/`, an entry names its
+> input (`nros::main!(launch = "bringup[:file]")`), and `model =` / `MODEL`
+> are deprecated overrides (`packages/core/nros-macros/src/main_macro.rs:513`,
+> `:590`). The resolver is layer 2 of
+> [RFC-0060](0060-launch-toolchain-three-layers.md), run as
+> `nros-launch-resolve`, not a `play_launch resolve` verb. And
+> `NROS_ALLOW_LEGACY_BAKE` no longer exists in the tree. The name `nros.toml`
+> also has two later meanings that "`nros.toml` is retired" below does not
+> cover: the workspace-root search-path file (`[workspace] package_paths`,
+> `[workspace.overrides]`; RFC-0087 D6, RFC-0119 D4), which the CLI accepts
+> since phase-420 W6 (`packages/cli/nros-cli-core/src/orchestration/nros_config.rs:214-222`),
+> and the overlay `nros configure` writes beside the model (RFC-0060's 2026-10-10
+> amendment). What is retired is the Phase-172 manifest only. §2's
+> single-node case is changed by
+> [RFC-0121](0121-workspace-first-project-layout.md) D2/D3; see the phase-555
+> W2 workspace-system-model brief.
 
 > **Revised 2026-06 to the unified Phase 212 model.** The earlier Phase 172.K
 > shape — a single `nros.toml` whose *kind* (workspace root / `[component]` /
@@ -97,6 +117,19 @@ Ownership:
 | ROS identity + msg `<depend>` (codegen) | `package.xml` (both languages, both scales) |
 
 ### Config in practice (verified 2026-06)
+
+> **Re-measured 2026-11-13 (phase-555 W2): the 2026-06 sweep below no longer
+> describes the tree.** No tracked `Cargo.toml` carries a
+> `[package.metadata.nros.deploy.*]` table (`git grep -l metadata.nros.deploy
+> -- '*/Cargo.toml'` finds none), and the cited
+> `examples/mps2-an385-baremetal/rust/talker-rtic` is not tracked. An image's
+> network identity is now a bringup `system.toml` fact: `[image.<id>]
+> locator` plus `os_config = ["board-net.toml"]` (RFC-0109 D4, RFC-0098), applied
+> through the board's `Config::from_image()`
+> (`packages/boards/nros-board-mps2-an385/src/config.rs:403`; for example
+> `examples/mps2-an385-baremetal/c/action-client/src/baremetal_c_action_client_bringup/system.toml:17-28`).
+> `DeployOverlay` still exists in code. The ownership table above and this
+> section are left as written until the phase-555 W2 brief is ruled.
 
 A sweep of `examples/**` grounds the table above and corrects the §5-§7 schemas
 below (which describe an `nros.toml` home that **never materialized**):
@@ -304,6 +337,11 @@ zenoh_read_priority = 16;  zenoh_read_stack_bytes = 5120
 poll_priority = 16; poll_interval_ms = 5
 ```
 
+(The board crates parse this block from the standalone `config.toml` of §5.
+The FreeRTOS board reads `[node.rt]` on the normalised 0-31 scale and
+`[node.rt.freertos]` as raw FreeRTOS priorities,
+`packages/boards/nros-board-freertos/src/config.rs:32-33`, issue 0623.)
+
 (`zenoh_lease_priority` / `zenoh_lease_stack_bytes` were here until RFC-0110
 D2: zenoh-pico 1.10 runs the lease on its executor (read) task, and a config
 that states either is refused.)
@@ -398,10 +436,19 @@ on the next callback.
 ## See also
 
 - RFC-0031 (RMW selection & lowering), RFC-0024/0025 (multi-node workspace layout).
-- `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md` — the file-consolidation work.
+- `docs/roadmap/archived/phase-212-ux-cargo-native-and-file-consolidation.md` — the file-consolidation work.
+- RFC-0063 (the SystemModel is a build artifact), RFC-0060 (the resolver layers and the `nros.toml` overlay), RFC-0121 (workspace-first layout, which changes §2's single-node case).
 - `book/src/reference/system-toml.md` (its `nros-bridge.toml` section) — the separate runtime topic-forward bridge config.
 
 ## Changelog
+
+- 2026-11-13 (phase-555 W2 review) — Review note under the canonical-path
+  banner: the model is a build artifact (RFC-0063), the resolver is
+  `nros-launch-resolve` (RFC-0060), and the two later meanings of `nros.toml`
+  are named. §3 "Config in practice" gains a re-measurement: no
+  `[package.metadata.nros.deploy.*]` remains, and network identity is an
+  `[image.<id>]` fact. §7 says where `[node.rt]` is parsed. The phase-212
+  roadmap link points at `archived/`. No design change.
 
 - 2026-10-24 (RFC-0109) — §6 replaced. The `[[transport]]` schema retires
   from `system.toml`, sessions are `[[domain]]`, and the NIC/wiring split of

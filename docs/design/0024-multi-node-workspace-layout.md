@@ -4,7 +4,7 @@ title: "Phase 212 — Multi-Node Workspace Layout (LIVE DESIGN)"
 status: Draft
 area: workspace-system-model
 since: 2026-06
-last-reviewed: 2026-06
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-212]
 supersedes: []
 superseded-by: null
@@ -67,6 +67,28 @@ superseded-by: null
 > Bringup pkg is RETIRED is itself superseded — §11 reinstates it as
 > optional.
 
+> **Review note (2026-11-13, phase-555 W2).** Later RFCs change the shape
+> this page locks, and none of them lists this page in its frontmatter:
+> - [RFC-0121](0121-workspace-first-project-layout.md) D1/D2 (phase-531):
+>   every project is a workspace and `system.toml` lives only in a bringup.
+>   §11.2's "fold the bringup into the Entry pkg" for a one-entry workspace
+>   is the shape D2 refuses.
+> - [RFC-0065](0065-colcon-like-workspace-builder.md) D1 and RFC-0121 D6:
+>   the entry is generated under `build/` by `nros build`, so §5's and
+>   §11.2's workspace-root `Cargo.toml` and hand-written Entry pkg are no
+>   longer the user's files. `check-workspace-root-build-files` refuses a
+>   workspace-root `Cargo.toml` under `examples/{workspaces,templates}`.
+> - `[deploy.<target>]` (§4, §5, §11.2) is refused by name since phase-486 W8;
+>   it split into `[image.<id>]` and `[host.<name>]` (RFC-0004 changelog).
+> - [RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md)
+>   places the example workspaces.
+>
+> What still holds, and is cited from code: §2's constraints as amended
+> (`builder/handoff.rs` guards §2.4), §6.3's "cmake wins when the graph
+> crosses languages" (`builder/plan.rs:19`), §4's bringup lint
+> (`cmd/check_workspace.rs:153`), and §11.5/§11.8. Whether this page is
+> amended or archived is the phase-555 W2 workspace-system-model brief.
+
 ---
 
 ## 2. Constraints (locked)
@@ -95,7 +117,7 @@ superseded-by: null
 - **Zephyr west + ESP-IDF idf.py + PlatformIO** — all share shape: SSoT manifest at root (`west.yml` / `platformio.ini` / `idf` component scan) + per-component manifest (`module.yml` / `library.json` / `idf_component_register`). Tool synthesizes one CMake/SCons graph at invocation. **Takeaway:** root manifest + per-package manifest is the dominant pattern; nros.toml follows it.
 - **Corrosion** — already used Phase 175.A. `corrosion_import_crate` makes Rust staticlib a normal CMake target. **Takeaway:** when graph crosses languages, CMake should be the top-level driver because cargo cannot consume CMake targets in reverse.
 
-Citations: `docs/design/0027-ros2-user-workflow.md`, `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md` (lines 473–731), `nros-cli/packages/colcon-cargo-ros2/`, `CLAUDE.md` Examples + CMake Path Convention sections.
+Citations: `docs/design/0027-ros2-user-workflow.md`, `docs/roadmap/archived/phase-212-ux-cargo-native-and-file-consolidation.md` (lines 473–731), `packages/cli/colcon-cargo-ros2/`, `CLAUDE.md` Examples + CMake Path Convention sections.
 
 ---
 

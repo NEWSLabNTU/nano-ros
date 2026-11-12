@@ -4,8 +4,10 @@ title: "Three layers: spec, resolver, runtime"
 status: Stable
 area: workspace-system-model
 since: 2026-07
-last-reviewed: 2026-11
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-312, phase-332, phase-486]
+supersedes: []
+superseded-by: null
 ---
 
 # RFC-0060 — Three layers: spec, resolver, runtime
@@ -501,6 +503,11 @@ that path-dep runs through
 drift, but an ugly path — and the strongest argument for publishing sooner
 rather than later.
 
+> **Since phase-332 W2:** the nested path is gone. Every nano-ros crate reaches
+> rlm as a git-TAG cargo dependency, one tag across the tree (`v0.3.14` on
+> 2026-11-13; read it with `git grep 'ros-launch-manifest.*tag' -- '*/Cargo.toml'`).
+> rlm is no longer a submodule here. The publish decision below is unchanged.
+
 **2. The parser keeps its name, and the premise for renaming was wrong.**
 
 An earlier draft of this RFC said renaming "touches the pyo3 module name". That
@@ -540,7 +547,8 @@ None. The publishing question is decided below.
 ## Decision — rlm stays vendored; no crates.io publish (2026-07-28)
 
 Both triggers recorded above have now fired (W4 closed, the 0293 SSoT work
-landed), and the answer is still **no**: rlm remains a submodule.
+landed), and the answer is still **no**: rlm remains a submodule (since
+phase-332 W2, a git-tag dependency; see the note under Decision 1).
 
 Publishing buys one thing — it would remove the nested path-dep
 `third-party/ros-launch-resolve/third-party/ros-launch-manifest` that
