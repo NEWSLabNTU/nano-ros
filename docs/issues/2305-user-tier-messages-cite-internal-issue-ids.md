@@ -4,7 +4,7 @@ title: "User-tier messages cite internal issue ids (`(issue 1352)`) where they s
 status: open
 type: tech-debt
 area: cli, ux, logging, build
-related: [phase-537, rfc-0117, rfc-0116, 2270, phase-523, issue-2443]
+related: [phase-537, rfc-0117, rfc-0116, 2270, phase-523, issue-2443, phase-552]
 found: 2026-11-06
 ---
 

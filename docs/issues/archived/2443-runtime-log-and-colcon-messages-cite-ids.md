@@ -5,7 +5,7 @@ status: resolved
 type: tech-debt
 severity: low
 area: [cli, ux, logging, runtime]
-related: [issue-2305, phase-523, issue-2547]
+related: [issue-2305, phase-523, issue-2547, phase-552]
 found: 2026-11-11
 resolved: 2026-11-14
 resolved_in: "PRs #3784, #3786, #3787, #3789, #3790, #3792, #3794 and #3804 (the runtime-subject widening); gaps filed as issue 2547"
