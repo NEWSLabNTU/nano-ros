@@ -8,6 +8,9 @@
 #                cron 0 7. e2e on schedule / dispatch-with-run_e2e.
 #   - zephyr   : dual-line (3.7 + 4.4) example builds + copy-out check
 #                (`just zephyr build-one/ci-both/check-copy-out`). cron 0 5.
+#   - zenoh-probe : the book's ROS-interop road (issue 2468). WEEKLY, cron
+#                0 9 * * 1: the user ruled the 1-3 h hosted cost weekly, not
+#                daily (2026-11-12).
 #
 # The 07:00 cron is also where `just ci-matrix-nightly` lives — RFC-0061's tier-2
 # pairwise cover over platform x lang x rmw x kind. It runs DISTRIBUTED, because
@@ -47,6 +50,7 @@ on:
   schedule:
     - cron: "0 5 * * *"   # Zephyr dual-line
     - cron: "0 7 * * *"   # per-platform sweep (QEMU e2e)
+    - cron: "0 9 * * 1"   # weekly: zenoh interop probe (Mondays)
 
 permissions:
   contents: read
@@ -804,7 +808,7 @@ jobs:
             echo "old_gate_via_changes='${{ needs.changes.outputs.run_zephyr == 'true' }}'"
             # The gate the three jobs below actually use now: the event payload,
             # read directly, no `needs` edge in the way.
-            echo "gate_direct='${{ github.event_name != 'schedule' || !startsWith(github.event.schedule, '0 7 ') }}'"
+            echo "gate_direct='${{ github.event_name != 'schedule' || github.event.schedule == '0 5 * * *' }}'"
           } | tee zephyr-gate-inputs.txt
       - uses: actions/upload-artifact@v4
         with:
@@ -814,8 +818,9 @@ jobs:
 
   zephyr-example-matrix:
     # No `needs:` — see the issue-1029 block above. The gate is the event
-    # payload, and it fails OPEN on anything that is not the 07:00 platform cron.
-    if: ${{ github.event_name != 'schedule' || !startsWith(github.event.schedule, '0 7 ') }}
+    # payload: every event but a schedule, and of the schedules only the 05:00
+    # Zephyr cron (the 07:00 sweep and the weekly zenoh probe stay out).
+    if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 5 * * *' }}
     name: zephyr ${{ matrix.line }} / ${{ matrix.example }}
     runs-on: ubuntu-latest
     concurrency:
@@ -960,7 +965,7 @@ jobs:
 
   zephyr-dual-line-summary:
     # No `needs:` — issue 1029; same gate as zephyr-example-matrix.
-    if: ${{ github.event_name != 'schedule' || !startsWith(github.event.schedule, '0 7 ') }}
+    if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 5 * * *' }}
     name: zephyr ci-both (3.7 + 4.4)
     env:
       # The 4.4 line needs a Python >=3.12 venv, which nano-ros refuses to
@@ -1071,7 +1076,7 @@ jobs:
 
   zephyr-copy-out:
     # No `needs:` — issue 1029; same gate as zephyr-example-matrix.
-    if: ${{ github.event_name != 'schedule' || !startsWith(github.event.schedule, '0 7 ') }}
+    if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 5 * * *' }}
     name: zephyr copy-out check (4.4)
     env:
       # The 4.4 line needs a Python >=3.12 venv, which nano-ros refuses to
@@ -1247,8 +1252,10 @@ jobs:
   # stopped building what `nros run` needs (the runner packages) and nothing
   # noticed. Its own job for the reason installed-probe is: a red here is a
   # different defect from a red on the quickstart track.
+  # Weekly, not nightly: user ruling 2026-11-12 ("Take your recommendation"),
+  # weighing a 1-3 h hosted run against how slowly this road changes.
   zenoh-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 7 * * *' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * 1' }}
     runs-on: ubuntu-latest
     # Measured 59 min on a 139-class host (2026-11-12), the most of any probe
     # track: it runs the checkout road AND the installed one. A hosted 4-vCPU
