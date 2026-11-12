@@ -32,7 +32,16 @@ the node published from boot in `unconfigured`. The user's direction is
 
 ### W0 — Read the three stock behaviours from upstream source
 
-Status: OPEN. Gate: none. W3, W6 and W13 read its answers, so it comes first.
+Status: DONE (2026-11-12). The answers are recorded in RFC-0128's
+"Verification before Stable", against the upstream branch tips named there:
+
+1. rclcpp activates managed entities only through the base
+   `LifecycleNode::on_activate`, on both distros.
+2. rclc's API is byte-identical on Humble and Jazzy. Its callbacks are
+   `int (*)(void)`, and it answers three of the five services.
+3. Two `transition_event` messages per transition, three on ERROR.
+
+Gate: none. W3, W6 and W13 read its answers, so it came first.
 
 Read rclcpp and rclc sources on Humble and Jazzy, not memory, for each of the
 RFC's verification items:
