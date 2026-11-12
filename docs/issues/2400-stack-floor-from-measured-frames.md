@@ -350,7 +350,7 @@ How key (c) is carried:
 
 The FreeRTOS carrier (W2) does not read the stated key yet: no FreeRTOS image
 has a row, and its configure does not run the image-facts query. It keys by
-bringup until a FreeRTOS row exists.
+bringup until a FreeRTOS row exists (issue 2461).
 
 The configure-time `NROS_RUST_MAIN_STACK_FLOOR` (32 KiB, issue 2359) STAYS.
 An unmeasured image is never refused here, so removing it would put every
@@ -369,6 +369,28 @@ by `nros build` with the check:
 Each walk equals the static figure the row was measured with, so the build
 reproduces the hand measurement. The action server failing is ruling (A)(3):
 the image raises its own stack through its `os_config` when the CHECK says so.
+
+**So `nros new` raises it for the image.** A template whose recorded floor is
+above the main stack the image would otherwise get writes `stack.conf`
+(`CONFIG_MAIN_STACK_SIZE=<floor>`) into its bringup and names it in
+`[image.<id>] os_config`. Both numbers are DERIVED, not hand-set:
+
+- `template_main_stack` in `nros-cli-core` (`cmd/new_workspace.rs`) computes
+  the floor from the row (`[allowance.measured] static` + `bytes`, by
+  `floor_formula`'s arithmetic).
+- It reads the default from the board package's conf, else from
+  `zephyr/Kconfig`'s `configdefault MAIN_STACK_SIZE`.
+
+A re-measured row moves what the next `nros new` writes. Nothing is written
+when the default already holds, so nothing lowers a stack. The unit test
+`every_measured_template_gets_a_main_stack_at_its_floor` asserts it for every
+row. A fresh `nros new --template action-server --board nucleo-f767zi-zephyr`
+now builds with 33,288 B against its 33,288 B floor; the talkers get no
+`stack.conf`.
+
+On `mps2-an385-zephyr` the walk is refused (`z_malloc`/`z_free`/`z_sleep_us`
+have no frame there). Those images are unmeasured, so this only warns, but they
+get no floor: issue 2460.
 
 With `CONFIG_MAIN_STACK_SIZE=33288` in the `na` bringup's `os_config`, the
 same image builds ("OPEN stack 33288 B holds the floor 33288 B (measured)").
