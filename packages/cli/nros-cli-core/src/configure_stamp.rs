@@ -2112,7 +2112,10 @@ mod tests {
         let mut sync = A::try_parse_from(["configure"]).unwrap().sync;
         sync.zephyr_workspace = Some(PathBuf::from("/zws"));
         let with_zws = OutputFlags::of(&sync);
-        assert_eq!(with_zws.zephyr_workspace.as_deref(), Some(Path::new("/zws")));
+        assert_eq!(
+            with_zws.zephyr_workspace.as_deref(),
+            Some(Path::new("/zws"))
+        );
         assert_eq!(base, d(&with_zws), "--zephyr-workspace writes nothing");
     }
 
