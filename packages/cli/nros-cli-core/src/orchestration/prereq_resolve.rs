@@ -297,6 +297,10 @@ fn is_pruned_dir(name: &str, path: &Path) -> bool {
 /// would be the larger change.
 #[must_use]
 pub fn depend_names(xml: &str) -> Vec<String> {
+    // A comment is not markup: prose such as "declared as <depend> rows
+    // here. -->" inside one must not be read as a dependency named
+    // "rows here. -->".
+    let xml = &strip_xml_comments(xml);
     let mut out = Vec::new();
     for (i, _) in xml.match_indices("depend>") {
         // Only an OPENING tag: `</exec_depend>` also contains "depend>".
@@ -316,6 +320,22 @@ pub fn depend_names(xml: &str) -> Vec<String> {
     }
     out.sort();
     out.dedup();
+    out
+}
+
+/// `xml` with every `<!-- ... -->` comment removed. An unterminated comment
+/// runs to the end of the text, as it does for an XML parser.
+fn strip_xml_comments(xml: &str) -> String {
+    let mut out = String::with_capacity(xml.len());
+    let mut rest = xml;
+    while let Some(start) = rest.find("<!--") {
+        out.push_str(&rest[..start]);
+        match rest[start + 4..].find("-->") {
+            Some(end) => rest = &rest[start + 4 + end + 3..],
+            None => return out,
+        }
+    }
+    out.push_str(rest);
     out
 }
 
@@ -789,6 +809,20 @@ mod tests {
                    </package>";
         assert_eq!(depend_names(xml), vec!["a", "b", "c", "d"]);
         assert_eq!(package_name(xml).as_deref(), Some("p"));
+    }
+
+    /// A comment is not markup: a `<depend>` spelled inside one, or a whole
+    /// commented-out dependency, declares nothing.
+    #[test]
+    fn depends_inside_comments_are_not_read() {
+        let xml = "<package>\
+                   <!-- linked via CMake rather than declared as <depend> rows here. -->\
+                   <depend>a</depend>\
+                   <!-- <exec_depend>gone</exec_depend> -->\
+                   <exec_depend>b</exec_depend>\
+                   <!-- unterminated <depend>tail</depend>\
+                   </package>";
+        assert_eq!(depend_names(xml), vec!["a", "b"]);
     }
 
     /// Whitespace and duplicates: a name written twice is one dependency.
