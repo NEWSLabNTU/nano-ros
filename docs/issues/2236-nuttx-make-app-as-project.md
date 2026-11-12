@@ -832,7 +832,7 @@ leaves open, each with a recommendation that fits the direction.
 | 7 | Does the make road count as HOOKED (RFC-0120 D5), with D5's NuttX row and R36 amended? | **yes**, given Q1 yes and Q3 B1 | The host configure becomes the shell's `context::` step, which calls configure before cargo reads anything. | Section 3. |
 | 17 | Configure the kernel as a defconfig fragment over upstream's `qemu-armv7a:nsh` / `rv-virt:netnsh`, with `tools/configure.sh`? | **yes** | NuttX owns its configure. `build-nuttx.sh` copies a defconfig and runs `olddefconfig`, which restates `configure.sh`. | Exploration table, "configure by `cp defconfig .config`" row. |
 | 18 | Name the app in `CONFIG_INIT_ENTRYPOINT` instead of overriding `nsh_main`? | **yes** | NuttX owns the boot entry. | Exploration table, "the app runs by overriding the `nsh_main` symbol" row. |
-| 16 | NuttX's CMake flow: support it now, or delete the shell? (**ON HOLD**, see "Ruling" below) | **(b) delete** the CMake shell and the book's sentence | No road is offered without a lane, and nothing builds this flow. It can come back as a new road with its own lane. | Issue 2426 item 7: the staged tree breaks a CMake configure today. E5: whether the pinned kernel's CMake build boots `qemu-armv7a` was not measured. |
+| 16 | NuttX's CMake flow: support it now, or delete the shell? (ruled in the second step, see "Ruling" below) | **(b) delete** the CMake shell and the book's sentence | No road is offered without a lane, and nothing builds this flow. It can come back as a new road with its own lane. | Issue 2426 item 7: the staged tree breaks a CMake configure today. E5: whether the pinned kernel's CMake build boots `qemu-armv7a` was not measured. |
 | 4 | When a project is named, refuse a Kconfig RMW, edition or API flavor that differs from the image's? | **yes** | This follows from rulings already in force, not from RFC-0126: RFC-0098 D10 (one source of image configuration) and Ruling R34 (the cmake and Zephyr roads already refuse an edition disagreement). | Section 2, "Where Kconfig and configure could disagree". |
 
 ### B. Open: the direction does not decide these
@@ -861,26 +861,43 @@ leaves open, each with a recommendation that fits the direction.
 
 ### Ruling (2026-11-12)
 
-The user ruled on this brief, relayed through the manager session. Verbatim:
+The user ruled in two steps, both relayed through the manager session. All
+twenty questions are now ruled.
+
+**Step 1**, on section A, verbatim:
 
 > Accept the settled group. Hold Q10 and Q16 until 241's unified-build design
 
-| status | questions |
-| --- | --- |
-| **Decided**, as section A states them | Q3 (B1), Q4 (yes, refuse a disagreement), Q5 (yes), Q7 (yes, hooked), Q9 (yes), Q13 (yes), Q17 (yes), Q18 (yes) |
-| **On hold** | Q10 (which roads), Q16 (delete NuttX's CMake shell) |
-| **Open**: the recommendations in section B are proposals, not decisions | Q1, Q2, Q6, Q8, Q11, Q12, Q14, Q15, Q19, Q20 |
+**Step 2**, on the rest. The user asked for a review of the open questions
+that preferred "better UX and maintainability, and design cleanliness", then
+answered "Accept" to the list below. The list includes Q10 and Q16, because
+the unified-build design (RFC-0130, one ROS-CMake build, a draft from the
+241 session) now places NuttX.
 
-**Why Q10 and Q16 are held.** Both decide which NuttX build roads exist, and
-the user has also ruled that nano-ros has one unified ROS-CMake build. The two
-rulings may conflict. RFC-0130 (one ROS-CMake build) is being drafted by the
-241 session and is not yet in the tree. It will state how NuttX fits as open
-questions, and Q10 and Q16 are ruled after it.
+| Q | Ruled | Against the brief |
+| --- | --- | --- |
+| 3, 4, 5, 7, 9, 13, 17, 18 | as section A states them (step 1) | same |
+| 1 | yes: a make app may NAME a project, for its configuration and sizing | same |
+| 2 | **A2**: the app declares itself in its own `Make.defs` (`NROS_PROJECTS += ...`, optional `NROS_IMAGE`). No path in a defconfig. A guest is unchanged by construction. More than one project is refused. | changed from A1 |
+| 6 | yes: a make app declares its entities. A make census is a separate issue. | same |
+| 8 | no | same |
+| 10 | ONE road for nano-ros packages: the unified ROS-CMake road (RFC-0130 D7), building against NuttX's exported make tree. The leaf and workspace roads become that road. The `apps/` make app is a GUEST road (nano-ros entering a NuttX user's own tree), not a second way to build a nano-ros package. | new: neither (a), (b) nor (c) |
+| 11 | **(b)**: one armv7a fallback in ONE place, checked against upstream's table, PLUS an upstream contribution. No nuttx-apps fork. The fallback is deleted when the pin gains the branch. | changed from (a) |
+| 12 | (b): our cargo command, with the facts from NuttX | same |
+| 14 | read the export's `scripts/Make.defs` (a provisioned input), and add the RFC-0120 D1 sentence | same |
+| 15 | **(a)**: the board JSON on EVERY road, one statement. Upstreaming to rustc or NuttX stays possible later. | changed from (b) then (d) |
+| 16 | (b): delete the NuttX CMake shell and the book's sentence. RFC-0130 Q-N1: the exported make tree now, NuttX's upstream CMake flow only after it is measured booting both boards and a lane builds it. | same |
+| 19 | daily | same |
+| 20 | a separate phase | same |
 
-**Where the ruling is recorded.**
-[RFC-0126](../design/0126-nuttx-builds-on-nuttx-infrastructure.md) now has a
-"Decided" section, and its D4 and D6 are marked held.
+Where it is recorded:
 
-**What stays blocked.**
-[phase-550](../roadmap/phase-550-nuttx-native-build-infrastructure.md) work
-gated on Q10, on Q16, or on any open question stays blocked.
+- [RFC-0126](../design/0126-nuttx-builds-on-nuttx-infrastructure.md)'s
+  "Decided" section, and its D1 to D8.
+- [RFC-0120](../design/0120-nros-configure-one-resolver.md) D1 gains the
+  provisioned-input sentence (Q14).
+- [phase-550](../roadmap/phase-550-nuttx-native-build-infrastructure.md)'s
+  items and gates.
+
+This issue closes when phase-550 W6 lands: a make app as a project, which is
+the road it was filed about.

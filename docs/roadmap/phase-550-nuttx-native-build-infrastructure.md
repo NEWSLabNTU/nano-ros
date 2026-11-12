@@ -1,9 +1,10 @@
 # Phase 550 -- NuttX builds on NuttX's own infrastructure
 
-**Status (2026-11-11). IN PROGRESS: W2 and W12 done; the rest not started.**
-Candidate work for
-[RFC-0126](../design/0126-nuttx-builds-on-nuttx-infrastructure.md), whose
-decisions are not ruled yet. Each item names the question in
+**Status (2026-11-12). IN PROGRESS: W0 done (every question ruled), W2 and
+W12 done; the rest not started.**
+The work for
+[RFC-0126](../design/0126-nuttx-builds-on-nuttx-infrastructure.md), all of
+whose decisions are ruled (its "Decided" section). Each item names the question in
 [issue 2236](../issues/2236-nuttx-make-app-as-project.md) that gates it
 ("Gate:"); an item gated on an unruled question does not start. Items with
 "Gate: none" fix measured defects that hold whatever is ruled. Each item is
@@ -41,6 +42,9 @@ match (Q1, Q7).
 
 - **Acceptance:** each question has a recorded answer in 2236; every "Gate:"
   line below is either cleared or the item is dropped, in this doc.
+- **Status: DONE (2026-11-12).** All twenty questions are ruled, in two steps
+  (issue 2236, "Ruling"). Every gate below is cleared. W8 and W13 are
+  rewritten to the ruled road, and W14 leaves this phase (Q20).
 
 ### W1 -- A lane that builds the make road on both boards
 
@@ -50,7 +54,7 @@ under the build dir (never `third-party/nuttx/nuttx`, issue 0525), stages the
 shell, sets `CONFIG_NROS=y`, adds a minimal C app that calls `nros_*` (so the
 link is not vacuous), and runs `make`.
 
-- Gate: Q19 for the cadence only; the recipe itself is ungated.
+- Gate: cleared (Q19: daily, ruled 2026-11-12).
 - **Acceptance:** the lane runs both arches and reports red on today's tree
   (the two failures issue 2236's study measured); after W2 and W3 it is
   green, and the ELF holds `nros_*` text symbols; it is reachable from the
@@ -103,7 +107,7 @@ looks`).
   `-mfloat-abi` / `-mfpu` / `-march` / `-mabi`, the `CFLAGS_*` and
   `NUTTX_*_CFLAGS` env rows, and `cmake/toolchain/*-nuttx-*.cmake`'s
   `CMAKE_*_FLAGS_INIT` take NuttX's value (the export's
-  `scripts/Make.defs` on the leaf and workspace roads). Gate: Q14 (open); Q13 cleared (ruled 2026-11-12).
+  `scripts/Make.defs` on the leaf and workspace roads). Gate: cleared (Q13 yes, Q14 read the export's `scripts/Make.defs`, ruled 2026-11-12).
 - **Acceptance:** W1 green on rv-virt; `git grep` finds `cortex-a7` /
   `neon-vfpv4` / `rv32imac` flag literals only where W3b's ruling allows; a
   gate refuses a new copy.
@@ -114,9 +118,12 @@ looks`).
   `NROS_NUTTX_TRIPLE := armv7a-nuttx-eabihf` literal goes. Gate: none.
 - The empty-triple branch that calls upstream's `RUST_CARGO_BUILD` with an
   empty `--target` is deleted (it cannot build). Gate: none.
-- The armv7a triple comes from the source Q11 picks (upstream PR plus a
-  nuttx-apps patch branch, one checked fallback, or the board). Gate: Q11,
-  Q12.
+- The armv7a triple comes from ONE fallback, in one place, and a gate checks
+  it against upstream's table (`RUST_TARGET_TRIPLE` /
+  `nuttx_rust_target_triple`) for every triple upstream knows, so the two
+  can never disagree. The armv7a branch is contributed upstream, and the
+  fallback is deleted when the nuttx-apps pin gains it. No nuttx-apps fork.
+  Our cargo command stays (Q12 b). Gate: cleared (Q11 b, Q12 b, ruled 2026-11-12).
 - **Acceptance:** W1 links on both arches with the archive found under the
   triple cargo wrote; an arch with no triple is refused at parse time,
   naming `LLVM_ARCHTYPE`.
@@ -142,7 +149,18 @@ Project identity and `nros configure` inside the shell's `context::`, as
 ruled; the book's NuttX steps 3 and 4 (`book/src/guide/platforms/nuttx.md`)
 describe what the road then does.
 
-- Gate: Q1, Q2 and Q6 (open); Q3, Q4 and Q7 cleared (ruled 2026-11-12).
+- Identity is A2: the app declares itself in its OWN `Make.defs`, beside its
+  `CONFIGURED_APPS +=` line:
+
+      NROS_PROJECTS += $(APPDIR)/external/<app>
+      NROS_IMAGE := <image id>          # optional; default_images otherwise
+
+  The shell's `Makefile` reads `NROS_PROJECTS`. None means a guest, with a
+  byte-identical build. One is the project. More than one is refused, naming
+  them. The app template gains the idiom.
+- A make-app project declares its entities (`entities = [...]` or
+  `"defaults"`). No make census here; that is a separate issue (Q6).
+- Gate: cleared (Q1 yes, Q2 A2, Q3 B1, Q4 yes, Q6 yes, Q7 yes, ruled 2026-11-12).
 - **Acceptance:** 2236 section 5's acceptance list.
 
 ### W7 -- The image crate is generated in `context::`
@@ -150,30 +168,30 @@ describe what the road then does.
 `nros_image_crate`'s `$(shell cmake -P ...)` moves from parse time into the
 `context::` recipe, and the issue 0551 parse guard it needs goes with it.
 
-- Gate: Q9 cleared (ruled 2026-11-12); W6's ordering still applies if a project is named.
+- Gate: cleared (Q9 yes, ruled 2026-11-12). W6's ordering still applies if a project is named.
 - **Acceptance:** `make olddefconfig` in a staged tree runs no `cmake`; W1
   green.
 
-### W8 -- NuttX's CMake flow (2426 item 7)
+### W8 -- Delete NuttX's CMake shell (2426 item 7)
 
-Either: staging writes `external/CMakeLists.txt`, and the shell becomes a
-NuttX CMake app over `nuttx_add_application` / `nuttx_add_extra_library`
-that reads `CONFIG_NROS_RMW_<X>` (no undeclared `CONFIG_NROS_RMW`), with W1
-extended to a CMake build of both boards; or the CMake shell and the book's
-sentence (`nuttx.md:103-104`) are deleted.
+Ruled (Q16 b): `integrations/nuttx/CMakeLists.txt` and the book's sentence
+offering NuttX's CMake flow (`nuttx.md:103-104`) are deleted. RFC-0130 Q-N1
+holds the flow back until it is measured booting both boards and a lane
+builds it, and only then is it offered again, as new work.
 
-- Gate: Q16, ON HOLD until RFC-0130 (one ROS-CMake build) states how NuttX fits.
-- **Acceptance:** either a CMake NuttX build of a staged tree configures and
-  links on both arches in a lane, or `integrations/nuttx/CMakeLists.txt` is
-  gone and no doc offers the flow.
+- Gate: cleared (Q16 b, ruled 2026-11-12).
+- **Acceptance:** `integrations/nuttx/CMakeLists.txt` is gone, and no doc
+  offers the flow.
 
 ### W9 -- The rv-virt target spec
 
-Move or keep `riscv32imac-unknown-nuttx-elf.json` as Q15 rules. Measured
-starting point: it equals rustc's built-in spec plus `eh-frame-header:
-false` and `panic-strategy: abort`.
+Ruled (Q15 a): the board's `riscv32imac-unknown-nuttx-elf.json` is the one
+statement, on EVERY road, including the make road through the board's
+`cargo_config` (W5). Measured starting point: it equals rustc's built-in spec
+plus `eh-frame-header: false` and `panic-strategy: abort`. Upstreaming it to
+rustc or to NuttX stays possible later.
 
-- Gate: Q15.
+- Gate: cleared (Q15 a, ruled 2026-11-12).
 - **Acceptance:** the spec has one home; every road that links with rustc on
   rv-virt still links (`workspace-rust-nuttx-riscv-realtime`); the
   regeneration note names the pinned nightly it was compared with.
@@ -235,39 +253,45 @@ override in `nros-board-nuttx-qemu/src/entry.rs` goes.
   archived docs finds only this item's own text, which archives with the
   phase. `just check fast` green.
 
-### W13 -- The roads (issue 2236 Q10)
+### W13 -- One road for nano-ros packages (issue 2236 Q10)
 
-As ruled: if the apps road becomes the only NuttX road, move the 35 NuttX
-fixture rows and their tests to it and delete the leaf road's link
-restatement (the board's `link-arg` lists, the export snapshot as a link
-input); if both stay, each takes its facts from NuttX (W3b, W9, W11); if
-only the leaf and workspace roads stay, delete `integrations/nuttx/`, the
-staging script, the book's make-road section and this phase's W1 to W8.
+Ruled (Q10): nano-ros packages build on ONE road for NuttX, the unified
+ROS-CMake road of RFC-0130 D7, building against NuttX's exported make tree.
+Today's leaf and workspace roads become that one road: their NuttX fixture
+rows and tests move to it, and what they restate is taken from NuttX (W3b,
+W9, W11). The `apps/external` make app (W1 to W8) stays as a GUEST road,
+for nano-ros entering a NuttX user's own tree. It is not a second way to
+build a nano-ros package.
 
-- Gate: Q10, ON HOLD until RFC-0130 (one ROS-CMake build) states how NuttX fits.
-- **Acceptance:** the support registry (RFC-0114) names exactly the roads
-  that remain, and each has a lane.
+- Gate: cleared (Q10, ruled 2026-11-12). It is ordered after RFC-0130's own phase lands D7,
+  which this item consumes rather than builds.
+- **Acceptance:** the support registry (RFC-0114) names the one road and the
+  guest road, and each has a lane. No NuttX fixture row builds through a
+  road other than RFC-0130 D7's.
 
 ### W14 -- The vendored `libc` fork
 
-Once no road compiles `std` (W5), retire `third-party/nuttx/libc` and its
-`[patch.crates-io]` rows, which the board descriptor already calls unused.
+**Moved out of this phase (Q20: a separate phase, ruled 2026-11-12).** Once no
+road compiles `std` (W5), a separate phase retires `third-party/nuttx/libc`
+and its `[patch.crates-io]` rows, which the board descriptor already calls
+unused. It is opened with `just phase-new` after W5 lands and is measured.
+Kept here as a pointer only.
 
-- Gate: Q20 (and W5).
+- Gate: not this phase's.
 - **Acceptance:** no tracked `[patch.crates-io] libc` row; the SDK index has
   no `nuttx-libc` source; both arches' fixtures pass.
 
 ## Order
 
-W0 first. W1, W2, W3a, W4 (the ungated parts) and W12 can start before the
-ruling; W1 lands first so the rest have a verdict. Then W5, W7, W6 in that
-order; W3b, W8 to W11, W13 and W14 as ruled.
+W0 is done. W1 lands first so the rest have a verdict. Then W5, W7, W6 in
+that order; W3, W4, W8 to W11 in any order; W13 after RFC-0130's D7 lands.
+W14 is a separate phase.
 
 ## What this phase does not do
 
 - Touch the shared `third-party/nuttx/nuttx` tree's `.config` from a lane
   (issue 0525).
-- Decide anything issue 2236 leaves to the maintainer.
+- Build RFC-0130's unified road; W13 consumes it.
 
 ## Acceptance for the phase
 
@@ -275,4 +299,4 @@ order; W3b, W8 to W11, W13 and W14 as ruled.
 - No NuttX fact (triple, CPU or C flags, cross tool names, build-std, nightly)
   is written in `integrations/nuttx/`; each comes from NuttX's tree or the
   board's `cargo_config`.
-- Issue 2426 is resolved; issue 2236 is resolved or ruled wontfix.
+- Issue 2426 is resolved; issue 2236 is resolved (W6).
