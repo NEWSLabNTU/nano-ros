@@ -380,6 +380,29 @@ pub(crate) fn board_fact_layer(
     board_knob_layer(board, env, path_env)
 }
 
+/// Issue 1512 — the image's connect identity, for a C/C++ app compiled by
+/// `cc` inside a cargo-rooted image. `<rclc/detail/entry_config.h>` lets an
+/// entry bake its locator/domain by defining the macro first; the cmake road
+/// does that with `-DNROS_ENTRY_LOCATOR`, and these rows are the cargo road's
+/// carrier (`nros_cc_flags::entry_config::bake` reads them). A Rust image
+/// takes the same facts through `nros::main!`, so nothing reads these there.
+/// Absent ⇒ no row ⇒ the header's own ladder, unchanged.
+///
+/// ONE spelling for both cargo roads: the single-package leaf, and a
+/// workspace image whose OWNED entry is such a cargo-rooted C/C++ program
+/// (phase-535 W6, the mps2-an385 bare-metal C/C++ examples).
+pub(crate) fn entry_identity_env(
+    network: &nros_orchestration_ir::leaf_system::Network,
+    env: &mut BTreeMap<String, String>,
+) {
+    if let Some(loc) = &network.locator {
+        env.insert("NROS_ENTRY_LOCATOR".to_string(), loc.clone());
+    }
+    if let Some(id) = network.domain_id {
+        env.insert("NROS_ENTRY_DOMAIN_ID".to_string(), id.to_string());
+    }
+}
+
 /// Issue 2194 — the board's KNOB rung on a cargo road: the registry knobs its
 /// descriptor states that no typed tenant reads from the `NROS_BOARD_TOML`
 /// [`board_fact_layer`] just named (that file IS the descriptor). It is the
@@ -1352,19 +1375,7 @@ pub fn write_shared(
         descriptor.path,
     );
 
-    // Issue 1512 — the image's connect identity, for a C/C++ app compiled by
-    // `cc` inside a cargo-rooted image. `<rclc/detail/entry_config.h>` lets an entry
-    // bake its locator/domain by defining the macro first; the cmake road does
-    // that with `-DNROS_ENTRY_LOCATOR`, and these rows are the cargo road's
-    // carrier (`nros_cc_flags::entry_config::bake` reads them). A Rust leaf
-    // takes the same facts through `nros::main!`, so nothing reads these there.
-    // Absent ⇒ no row ⇒ the header's own ladder, unchanged.
-    if let Some(loc) = &img.decl.network.locator {
-        env.insert("NROS_ENTRY_LOCATOR".to_string(), loc.clone());
-    }
-    if let Some(id) = img.decl.network.domain_id {
-        env.insert("NROS_ENTRY_DOMAIN_ID".to_string(), id.to_string());
-    }
+    entry_identity_env(&img.decl.network, &mut env);
     // RFC-0103 D10f (phase-497 W2) — the image's resolved network, the one
     // text `nros::main!`'s deploy overlay bakes and a board that boots a C app
     // from its own `main.rs` reads (`nros_board_mps2_an385::Config::from_image`).
@@ -2444,9 +2455,11 @@ mod board_crate_tests {
         // multi-image `nros-tests` bins (phase-531 W7 step-3 prep, owned entries),
         // 39 -> 38 for the `in-place-subscriptions` bin (W7 step-3 prep),
         // 38 -> 36 for the mps2-an385 `qemu-baremetal-main-e2e` and
-        // `rtic-run-plan-e2e` bins (W7: owned entries).
+        // `rtic-run-plan-e2e` bins (W7: owned entries), 36 -> 26 for the ten
+        // mps2-an385 bare-metal C/C++ non-talker examples (phase-535 W6: cargo
+        // owned entries of one-package workspaces).
         assert!(
-            on_selection >= 36,
+            on_selection >= 26,
             "only {on_selection} leaves on the selection package"
         );
     }
@@ -2557,8 +2570,11 @@ mod board_crate_tests {
             }
         }
         assert!(pinned.is_empty(), "{}", pinned.join("\n"));
+        // phase-535 W6 — the ten mps2-an385 bare-metal C/C++ non-talker leaves
+        // became one-package workspaces (no `system.toml` beside a
+        // `Cargo.toml`): the floor 40 -> 30, the count measured.
         assert!(
-            checked >= 40,
+            checked >= 30,
             "the walk reached only {checked} cargo leaves"
         );
     }

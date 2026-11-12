@@ -203,8 +203,20 @@ nros_ws_row() {
 
 build_workspace() {
     local record="$1"
-    local id lang dir bringup entry build_subdir target_dir codegen_out defs envstr cargo_extra board conf_files image
-    IFS=$'\x1f' read -r id lang dir bringup entry build_subdir target_dir codegen_out defs envstr cargo_extra board conf_files image <<< "$record"
+    local id lang dir bringup entry build_subdir target_dir codegen_out defs envstr cargo_extra board conf_files image builder
+    IFS=$'\x1f' read -r id lang dir bringup entry build_subdir target_dir codegen_out defs envstr cargo_extra board conf_files image builder <<< "$record"
+    # phase-535 W6 — the road. The record carries a `builder` only when the row
+    # authors one (`workspace_record`): a C/C++ row whose image's OWNED entry is
+    # a cargo package takes the cargo branch below although its language is
+    # `c`/`cpp`. Otherwise the language decides, as it always has.
+    local road
+    if [ -n "$builder" ]; then
+        road="$builder"
+    elif [ "$road" = "cargo" ]; then
+        road=cargo
+    else
+        road=cmake
+    fi
 
     [ -n "$id" ] || return 0
     [ -n "$dir" ] && [ -n "$bringup" ] && [ -n "$entry" ] || {
@@ -295,7 +307,7 @@ build_workspace() {
     (
         set -e
         cd "$repo_root/$dir"
-        if [ "$lang" != "rust" ] && [ -n "$build_subdir" ] && \
+        if [ "$road" != "cargo" ] && [ -n "$build_subdir" ] && \
            [ -f "$build_subdir/CMakeCache.txt" ] && \
            [ ! -f "$build_subdir/build.ninja" ] && \
            [ ! -f "$build_subdir/Makefile" ]; then
@@ -310,7 +322,7 @@ build_workspace() {
         fi
         # phase-484 W8 — `nros build` reconfigures this dir itself, so the
         # retired-name residue rule (cmake-cache-guard.sh rule 4) runs here.
-        if [ "$lang" != "rust" ] && [ -n "$build_subdir" ]; then
+        if [ "$road" != "cargo" ] && [ -n "$build_subdir" ]; then
             nros_cmake_guard_retired_names "$build_subdir"
             # Issue 2421 — and the stale-make rule (rule 5): under the
             # sweep's FIFO pool, `nros build` joins that pool instead of
@@ -368,7 +380,7 @@ build_workspace() {
             ) 9>"$cg_lock"
         fi
 
-        if [ "$lang" = "rust" ]; then
+        if [ "$road" = "cargo" ]; then
             local profile_args=("${cargo_profile_args[@]}")
             local row_profile_dir="$profile_dir"
             # The NuttX standalone flat image miscompiles at any `lto = "off"`
@@ -617,7 +629,7 @@ build_workspace() {
         fi
 
         local stamp_dir
-        if [ "$lang" = "rust" ]; then
+        if [ "$road" = "cargo" ]; then
             stamp_dir="${target_dir:-target}"
         else
             stamp_dir="$build_subdir"

@@ -52,9 +52,16 @@ vector (`cortex-m-rt`), the clock (CMSDK Timer0) and the network (LAN9118 +
 smoltcp) are all Rust with no C entry point. The leaf is therefore rooted in
 cargo: `src/main.rs` boots the board and calls `nros_app_main()`, and `build.rs`
 compiles the leaf's `src/*.c` (or `src/talker.cpp`) into the image.
-`nano_ros_add_executable` is not available on this platform. Each leaf is a
-`[[fixture]]` row with `builder = "cargo"`, built by `just qemu build-fixtures`
-(`scripts/build/fixtures-build.sh baremetal c` / `cpp`).
+`nano_ros_add_executable` is not available on this platform. The two talkers
+(the road witnesses) are leaves, each a `[[fixture]]` row with
+`builder = "cargo"`, built by `just qemu build-fixtures`
+(`scripts/build/fixtures-build.sh baremetal c` / `cpp`). Every other C/C++
+role is a one-package workspace (RFC-0122 D3, phase-535 W6): that same cargo
+package sits at `src/<pkg>/`, and `src/<pkg>_bringup/system.toml` names it as
+the image's OWNED entry (`entry = "<pkg>"`, RFC-0071 D19), so `nros build`
+builds it on the cargo road. Those are `[[workspace_fixture]]` rows with
+`builder = "cargo"` (`scripts/build/workspace-fixtures-build.sh baremetal c` /
+`cpp`).
 
 Status: build-only. It boots in QEMU and reaches session open, but it dials
 `NROS_ENTRY_LOCATOR`'s empty bottom rung rather than the `[image.*] locator` in

@@ -916,26 +916,36 @@ def workspace_record(entry):
     # board/conf_files are zephyr-only and `image` is set only on a migrated row
     # (phase-383 W9.b); rows without them emit empty strings so the field count
     # stays uniform (14 columns).
-    return SEP.join(
-        [
-            entry["id"],
-            entry["lang"],
-            entry["dir"],
-            entry["bringup"],
-            # RFC-0071 D19 — an image naming an owned entry builds THAT
-            # package, so the record (artifact name, test resolver) does too.
-            image_entry_package(entry),
-            entry.get("build_subdir", ""),
-            entry.get("target_dir", ""),
-            entry.get("codegen_out", ""),
-            cmake_defs(entry),
-            env_str(entry),
-            cargo_args(entry, include_target_dir=False),
-            entry.get("board", ""),
-            ";".join(entry.get("conf_files", [])),
-            entry.get("image", ""),
-        ]
-    )
+    #
+    # phase-535 W6 — a 15th column, `\x1f<builder>`, ONLY when the row AUTHORS
+    # one: a C/C++ row whose image's OWNED entry is a cargo package (the
+    # mps2-an385 bare-metal C/C++ examples) builds on the cargo road although
+    # its coordinate language is `c`/`cpp`. An unauthored builder stays off the
+    # record because the record is hashed into the row's signature
+    # (`workspace-fixture-signature.sh`), and appending a column to every row
+    # would re-stale every built workspace fixture over a fact that did not move.
+    # Readers take an absent column as the language default.
+    fields = [
+        entry["id"],
+        entry["lang"],
+        entry["dir"],
+        entry["bringup"],
+        # RFC-0071 D19 — an image naming an owned entry builds THAT
+        # package, so the record (artifact name, test resolver) does too.
+        image_entry_package(entry),
+        entry.get("build_subdir", ""),
+        entry.get("target_dir", ""),
+        entry.get("codegen_out", ""),
+        cmake_defs(entry),
+        env_str(entry),
+        cargo_args(entry, include_target_dir=False),
+        entry.get("board", ""),
+        ";".join(entry.get("conf_files", [])),
+        entry.get("image", ""),
+    ]
+    if entry.get("builder"):
+        fields.append(entry["builder"])
+    return SEP.join(fields)
 
 
 _COORDS_CACHE = {}
@@ -1768,6 +1778,16 @@ def validate_workspace_fixture(entry):
     lang = entry["lang"]
     if lang not in FIXTURE_LANGS:
         _fail(entry, f"unsupported workspace fixture lang {lang!r}")
+
+    # phase-535 W6 — a workspace row's `builder` names the road its image takes
+    # when that is not its language's: a C/C++ image whose OWNED entry is a
+    # cargo package (`builder = "cargo"`). `workspace-fixtures-build.sh` and the
+    # test resolver both read it from the record (`workspace_record`).
+    if entry.get("builder") not in (None, "cargo", "cmake"):
+        _fail(
+            entry,
+            f"a workspace row's `builder` is `cargo` or `cmake`, not {entry['builder']!r}",
+        )
 
     # RFC-0121 D9 — `node_features` on a workspace row is the row's identity,
     # and restates `[image.<id>] node_features`. The two must agree, or the

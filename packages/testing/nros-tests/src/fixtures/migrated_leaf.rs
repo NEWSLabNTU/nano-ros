@@ -49,6 +49,11 @@ pub struct LeafRow {
     pub image: String,
     /// `k=v`, sorted, comma-joined.
     pub env: String,
+    /// The road the row builds on, `cargo` or `cmake`: the row's authored
+    /// `builder` (the record's 15th column, phase-535 W6), else its language's
+    /// (`rust` is cargo, everything else cmake) — the rule
+    /// `workspace-fixtures-build.sh` builds it by.
+    pub builder: String,
 }
 
 impl LeafRow {
@@ -58,6 +63,12 @@ impl LeafRow {
     /// [`owns_its_entry`] both ask it.
     pub fn builds_owned_entry(&self) -> bool {
         self.entry != format!("{}_entry", self.image.replace(['-', '.', '/'], "_"))
+    }
+
+    /// Does this row build with cargo? A C/C++ row does when its owned entry
+    /// is a cargo package (the mps2-an385 bare-metal C/C++ examples).
+    pub fn builds_with_cargo(&self) -> bool {
+        self.builder == "cargo"
     }
 }
 
@@ -118,9 +129,22 @@ pub fn rows_at(dir: &str) -> TestResult<Vec<LeafRow>> {
                 entry: field(4),
                 image: field(13),
                 env: normalise_env(field(9).split_whitespace().map(str::to_string)),
+                builder: road(&field(1), &field(14)),
             })
         })
         .collect()
+}
+
+/// The road a workspace record builds on: its authored `builder`, else the
+/// language default (see [`LeafRow::builder`]).
+fn road(lang: &str, builder: &str) -> String {
+    if !builder.is_empty() {
+        builder.to_string()
+    } else if lang == "rust" {
+        "cargo".to_string()
+    } else {
+        "cmake".to_string()
+    }
 }
 
 /// `[system] default_images` of the bringup a row builds, read from the
@@ -248,6 +272,7 @@ mod tests {
             entry: nros_orchestration_ir::entry_names::entry_package_name(image),
             image: image.into(),
             env: env.into(),
+            builder: "cargo".into(),
         }
     }
 

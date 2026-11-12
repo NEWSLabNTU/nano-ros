@@ -8,17 +8,7 @@
 # W6 and phase-535 empty it. Regenerate (shrink only):
 #   python3 scripts/check-system-toml-in-bringup.py --write-baseline
 examples/linux/c/custom-platform/system.toml
-examples/mps2-an385-baremetal/c/action-client/system.toml
-examples/mps2-an385-baremetal/c/action-server/system.toml
-examples/mps2-an385-baremetal/c/listener/system.toml
-examples/mps2-an385-baremetal/c/service-client/system.toml
-examples/mps2-an385-baremetal/c/service-server/system.toml
 examples/mps2-an385-baremetal/c/talker/system.toml
-examples/mps2-an385-baremetal/cpp/action-client/system.toml
-examples/mps2-an385-baremetal/cpp/action-server/system.toml
-examples/mps2-an385-baremetal/cpp/listener/system.toml
-examples/mps2-an385-baremetal/cpp/service-client/system.toml
-examples/mps2-an385-baremetal/cpp/service-server/system.toml
 examples/mps2-an385-baremetal/cpp/talker/system.toml
 examples/mps2-an385-baremetal/rust/listener/system.toml
 examples/mps2-an385-baremetal/rust/talker/system.toml

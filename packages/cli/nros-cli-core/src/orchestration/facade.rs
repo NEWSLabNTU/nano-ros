@@ -318,7 +318,7 @@ pub fn write_facade_in(
     // the `nros` axes (edition, capabilities) out. With neither crate there is
     // nothing to attach a feature to; that is never silent.
     if deps.nros.is_none() && deps.board.is_none() {
-        // Issue 2453 — a standalone C/C++ leaf (`examples/mps2-an385-baremetal/c/*`)
+        // Issue 2453 — a standalone C/C++ leaf (`examples/mps2-an385-baremetal/{c,cpp}/talker`)
         // names `nros-c`/`nros-cpp`, not `nros`, and reaches its board through
         // `<entry>_nros_selection = { path = "build/nros/selection" }`: the
         // LEAF road's selection package (RFC-0098 D6, issue 1305), which that

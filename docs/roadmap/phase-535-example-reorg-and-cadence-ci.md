@@ -445,6 +445,8 @@ One PR per platform directory, each rebuilding its own lane.
     to the cmake driver, which knows no bare-metal board, and the link root
     on this board has to be Rust (issue 2377). These leaves are still the
     only images for the six C/C++ Runtime cells.
+    W6 migrates the ten non-talker roles in place to one-package
+    workspaces whose cargo package is the image's owned entry (below).
 
 The coverage ratchet (`check-example-coverage-ratchet`) does not count the
 RMW: a tuple is (platform, lang, driver, shape, launch, entry), so a move
@@ -542,6 +544,20 @@ and a test asks for it by name (`resolve_coord_variant`).
   plain pair on another port: its two-priority split went in phase-244 D1,
   and its `nros/ffi-sync` reaches no code (issue 2417), so it retires into
   the RTIC pubsub images with no coverage lost.
+- **bare-metal C/C++ (in review).** The ten mps2-an385
+  `{c,cpp}/{listener,service-server,service-client,action-server,action-client}`
+  leaves migrate in place to one-package workspaces (RFC-0122 D3). The leaf's
+  cargo package moves to `src/<pkg>/` unchanged but for its dependencies (the
+  board crate plus the generated `<pkg>_nros_derived` adapter, issue 2448), and
+  `src/<pkg>_bringup/system.toml` names it as the image's OWNED entry, so
+  `nros build` builds it on the cargo road. Enablers: the workspace cargo road
+  writes the image's `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID` rows
+  (`leaf_settings::entry_identity_env`, shared with the leaf road), and a
+  `[[workspace_fixture]]` row's authored `builder = "cargo"` reaches the
+  record, the fixture builder and the test locator as the row's road. Ports
+  and locators are unchanged; `test_qemu_baremetal_capi_e2e` passes all six
+  cells. Issue 2377 is resolved. The `{c,cpp}/talker` leaves are phase-531
+  witnesses.
 - **bare-metal `rust/listener`'s `docker` image (stays).** The compose test
   (`tests/qemu-baremetal`, `just docker` recipes) builds BOTH roles' `docker`
   images in their leaves by one rule; the talker leaf is the board's witness
@@ -773,6 +789,6 @@ never the retired leaf shape.
 | --- | --- |
 | [#2336](../issues/archived/2336-board-net-is-per-configure-not-per-image.md) | An image's `os_config` network file is applied per cmake configure, so images sharing one configure clash: found in this phase's workspace images. Resolved 2026-11-10: each ThreadX entry gets its own config TU. |
 | [#2383](../issues/archived/2383-live-peer-host-fixtures-miss-c-workspace-rows.md) | W4 made the linux pairs C workspace images; live-peer's derived host fixture set still builds only Rust rows, so its bridge and interop cells are UNMET (found closing phase-466). Resolved: the derivation now reaches pair images by coordinate and by `linux_pair_image` call. |
-| [#2377](../issues/2377-workspace-road-no-c-image-on-bare-metal.md) | The workspace road has no C/C++ image for a board with a Rust link root, so the bare-metal C/C++ pairs stay leaves (W5). |
+| [#2377](../issues/archived/2377-workspace-road-no-c-image-on-bare-metal.md) | The workspace road had no C/C++ image for a board with a Rust link root, so the bare-metal C/C++ pairs stayed leaves (W5). Resolved in W6: owned cargo entries of one-package workspaces. |
 | [#2427](../issues/archived/2427-threadx-riscv64-run-hint-mac-ignores-image-network.md) | The ThreadX riscv64 run plan gave every image peer 0's MAC, so the printed QEMU line for the W6 Cyclone listener image named the talker's MAC. Resolved 2026-11-10: the plan takes the image network's MAC. |
 | [#2452](../issues/archived/2452-c-custom-transport-loopback-session-connection-failed.md) | Found running W6's moved C/C++ fixtures: the C custom-transport loopback exits 1 (session ConnectionFailed) before and after its move; its row is build-only, so no lane saw it. **Resolved** — runtime row, `CustomLink` cell. |

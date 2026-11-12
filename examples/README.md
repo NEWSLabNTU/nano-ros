@@ -117,13 +117,16 @@ the reset vector is `cortex-m-rt`, the clock is
 `nros_platform_mps2_an385::clock`, and the LAN9118/smoltcp bring-up is
 `nros_board_mps2_an385::init_hardware`, none of them with a C entry point
 (`nros-platform-mps2-an385` holds zero `.c` files, where every RTOS port holds a
-`platform.c`). So every `mps2-an385-baremetal/{c,cpp}/*` leaf is cargo-rooted:
+`platform.c`). So every `mps2-an385-baremetal/{c,cpp}/*` image is cargo-rooted:
 `src/main.rs` boots the board and calls `app_main()`, `build.rs` compiles the
 leaf's `src/*.c` (or `src/talker.cpp`) with `cc`, and `nano_ros_add_executable`
 is not available on that platform. Issue 1512; `c/talker/README.md` carries the
-table. Their `[[fixture]]` rows say `builder = "cargo"`, and the fixture driver
-and staleness probe pick each row's lane by that declared fact, never by
-`lang`. Recount it the same mechanical way — a C or C++ leaf that is a cargo
+table. The two talkers are leaves; every other role is a one-package
+workspace whose cargo package (`src/<pkg>/`) its bringup names as the image's
+OWNED entry (phase-535 W6). Their rows (`[[fixture]]` for the talkers,
+`[[workspace_fixture]]` for the rest) say `builder = "cargo"`, and the fixture
+drivers and staleness probe pick each row's road by that declared fact, never
+by `lang`. Recount it the same mechanical way — a C or C++ leaf that is a cargo
 package:
 
 ```sh
@@ -131,8 +134,9 @@ git ls-files 'examples/*/c/*/Cargo.toml' 'examples/*/cpp/*/Cargo.toml' \
   | xargs -r -n1 dirname
 ```
 
-Eight hits, and seven are images: the six `mps2-an385-baremetal/c/*` roles and
-`mps2-an385-baremetal/cpp/talker` above. The eighth is `px4/cpp/bridge/ffi`,
+Thirteen hits (git's `*` crosses `/`), and twelve are images: the six
+`mps2-an385-baremetal/c/*` roles and the six `cpp/*` roles above. The
+thirteenth is `px4/cpp/bridge/ffi`,
 which is not an example image at all — px4 is a foreign build integration
 (issue 1516) and that crate is the FFI half **PX4's own** build links. None has a
 `CMakeLists.txt`, so the count is the same either way; the distinction is whose

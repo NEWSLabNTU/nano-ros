@@ -6,17 +6,23 @@ all** — the same program as `examples/workspaces/c/src/service_server_pkg/`.
 Same shape as [`../talker`](../talker/README.md), whose README explains it: the
 link root is Rust (`src/main.rs` boots the board and calls `nros_app_main()`), and
 `build.rs` compiles `src/service_server.c` plus the message bindings into it. Both of those
-files are byte-identical to the talker's; this leaf differs in `package.xml` and
+files match the talker's but for the `use` line naming the board crate; this
+example differs in `package.xml` and
 `src/service_server.c` only. No libc, and no
 `printf` substitution — records are built by hand and emitted through
 `rclc_log_emit_at`.
+
+This directory is a one-package workspace (RFC-0122 D3): the program is
+`src/baremetal_c_service_server/` (its `Cargo.toml`, `build.rs`, `src/main.rs` and the C
+source), and `src/baremetal_c_service_server_bringup/system.toml` names it as the image's
+OWNED entry (`entry = "baremetal_c_service_server"`, RFC-0071 D19), so `nros build` builds
+that cargo package rather than generating an entry (phase-535 W6).
 
 ## Build
 
 ```sh
 source ./activate.sh
-nros configure examples/mps2-an385-baremetal/c/service-server
-cd examples/mps2-an385-baremetal/c/service-server && cargo build --release
+cd examples/mps2-an385-baremetal/c/service-server && nros build
 ```
 
 ## Status

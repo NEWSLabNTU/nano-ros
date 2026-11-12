@@ -1290,11 +1290,15 @@ fn resolve_workspace_row_entry(
         .filter(|r| matches!(r.coord.0.as_str(), "nuttx" | "nuttx-riscv"))
         .map(|_| nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE))
         .unwrap_or_else(cargo_target_profile_dir);
+    // phase-535 W6 — the ROAD, not the language: a C/C++ row whose owned entry
+    // is a cargo package lands where cargo puts it.
     let binary = match row.lang.as_str() {
-        "rust" => match crate::fixtures::baked_locator::row_str(&row.id, "target") {
-            Some(triple) => dir.join(format!("{triple}/{profile}/{entry}")),
-            None => dir.join(format!("{profile}/{entry}")),
-        },
+        _ if row.builds_with_cargo() => {
+            match crate::fixtures::baked_locator::row_str(&row.id, "target") {
+                Some(triple) => dir.join(format!("{triple}/{profile}/{entry}")),
+                None => dir.join(format!("{profile}/{entry}")),
+            }
+        }
         _ if row.image.is_empty() => dir.join(format!("src/{entry}/{entry}")),
         _ if !generated => dir
             .join("pkg")
@@ -7265,12 +7269,25 @@ pub fn qemu_baremetal_main_e2e_binary() -> TestResult<PathBuf> {
     .unwrap_or_else(|| Err(not_migrated(DIR)))
 }
 
-/// Issue 1512 — a cargo-rooted C or C++ bare-metal leaf
-/// (`examples/mps2-an385-baremetal/{c,cpp}/<role>`, `builder = "cargo"`
-/// rows), by its package name (`baremetal-c-talker`, `baremetal-cpp-action-server`,
-/// …), from the same shared `baremetal` fixture target dir as every Rust leaf.
-pub fn qemu_baremetal_capi_binary(package: &str) -> TestResult<PathBuf> {
-    require_qemu_baremetal_fixture(package)
+/// Issue 1512 — a cargo-rooted C or C++ bare-metal example
+/// (`examples/mps2-an385-baremetal/<case>`, `case` = `c/talker`,
+/// `cpp/action-server`, …).
+///
+/// phase-535 W6 — every role but the `talker` witnesses is a one-package
+/// workspace whose cargo package is its image's OWNED entry, resolved from its
+/// `[[workspace_fixture]]` row ([`migrated_leaf_binary`]). The talkers stay
+/// `builder = "cargo"` leaves, resolved by package name
+/// (`baremetal-<lang>-talker`) from the shared `baremetal` fixture target dir.
+pub fn qemu_baremetal_capi_binary(case: &str) -> TestResult<PathBuf> {
+    if let Some(r) = migrated_leaf_binary(
+        &format!("examples/mps2-an385-baremetal/{case}"),
+        Rmw::Zenoh,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+    ) {
+        return r;
+    }
+    let package = format!("baremetal-{}", case.replace('/', "-"));
+    require_qemu_baremetal_fixture(&package)
 }
 
 // Phase 169.4 — bare-metal DDS fixture builders deleted with the

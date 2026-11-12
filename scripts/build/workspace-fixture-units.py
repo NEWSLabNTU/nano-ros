@@ -48,11 +48,14 @@ SEP = "\x1f"
 
 def keys(record: str) -> list[str]:
     f = record.split(SEP)
-    f += [""] * (14 - len(f))
+    f += [""] * (15 - len(f))
     _id, lang, ws, bringup, _entry, build_subdir, target_dir = f[:7]
     image = f[13]
+    # phase-535 W6 — the row's authored builder (15th column, present only when
+    # authored) wins over the language, as in `workspace-fixtures-build.sh`.
+    road = f[14] or ("cargo" if lang == "rust" else "cmake")
     out = []
-    if lang == "rust":
+    if road == "cargo":
         out.append(f"{ws}|cargo:{target_dir or 'target'}")
     else:
         out.append(f"{ws}|cmake:{build_subdir}")
