@@ -281,6 +281,12 @@ fn as_cmake(
     if let Some(v) = &plan.stack_floor_image {
         put("STACK_FLOOR_IMAGE", v);
     }
+    // Issue 2400 W2b — `stack_floor = "raise"`: the post-build walk records a
+    // raise instead of failing, and `nros build` rebuilds once with it. Only
+    // the opt-in is emitted; absent is the default, check.
+    if plan.stack_floor_raise {
+        put("STACK_FLOOR_MODE", "raise");
+    }
     out
 }
 
@@ -327,6 +333,7 @@ mod tests {
             capabilities: capabilities.iter().map(|c| c.to_string()).collect(),
             stack_floor_image: None,
             stack_floor: None,
+            stack_floor_raise: false,
             kernel: None,
             entry_root: None,
             configure: None,
@@ -353,6 +360,11 @@ mod tests {
                 "set(NROS_IMAGE_STACK_FLOOR_IMAGE \"talker/rust/zenoh@nucleo-f767zi-zephyr\")\n"
             ),
             "{facts}"
+        );
+        assert!(!facts.contains("STACK_FLOOR_MODE"), "{facts}");
+        plan.stack_floor_raise = true;
+        assert!(
+            as_cmake(&plan, root, None).contains("set(NROS_IMAGE_STACK_FLOOR_MODE \"raise\")\n")
         );
     }
 

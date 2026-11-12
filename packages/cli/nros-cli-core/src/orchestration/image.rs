@@ -367,6 +367,26 @@ pub struct ImageBlock {
     /// key (c)).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stack_floor_image: Option<String>,
+
+    /// Issue 2400 W2b — what the build does when this image's MEASURED stack
+    /// floor is above the stack it states. `check` (the default) fails, naming
+    /// the knob. `raise` rebuilds once with the knob at the floor. The raise
+    /// is derived again on every build from that build's own walk and is
+    /// never stored, so `system.toml` stays the whole statement. It never
+    /// lowers a stack, and an unmeasured image only warns either way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stack_floor: Option<StackFloorMode>,
+}
+
+/// `[image.<id>] stack_floor` (issue 2400 W2b).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StackFloorMode {
+    /// A measured image below its floor fails the build.
+    #[default]
+    Check,
+    /// A measured image below its floor is rebuilt once at the floor.
+    Raise,
 }
 
 /// `[image.<id>.knobs]`, flattened to `<group>.<name>` → value by the one
@@ -584,6 +604,8 @@ impl ImageBlock {
             // Per IMAGE, never inherited: a key names what one image was
             // measured as, and a base cannot have measured every image.
             stack_floor_image: self.stack_floor_image.clone(),
+            // Per image too: opting in to a raise is a choice about one image.
+            stack_floor: self.stack_floor,
             // Lists CONCATENATE base-then-specific: conf fragments are ordered
             // and later ones override earlier, which is exactly Zephyr's
             // CONF_FILE semantics. A specific block extends the base set rather

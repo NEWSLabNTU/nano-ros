@@ -499,6 +499,10 @@ pub struct ResolvedBuild {
     /// is checked after cargo, and how ([`crate::cmd::stack_floor`]). Set by
     /// [`crate::cmd::stack_floor::arm`] once every plan is resolved.
     pub stack_floor: Option<crate::cmd::stack_floor::StackFloorStep>,
+    /// Issue 2400 W2b — `[image.<id>] stack_floor = "raise"`: a measured floor
+    /// above the stated stack rebuilds the image once at the floor instead of
+    /// failing. Handed to cmake by `nros image-facts`.
+    pub stack_floor_raise: bool,
 
     /// A configure that must run BEFORE the handoff, for drivers that need one.
     ///
@@ -1094,6 +1098,8 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 capabilities: owned_caps(&bringup_dir),
                 stack_floor_image: image.stack_floor_image.clone(),
                 stack_floor: None,
+                stack_floor_raise: image.stack_floor
+                    == Some(crate::orchestration::image::StackFloorMode::Raise),
                 output: None,
                 descriptor: None,
                 run_tables: Default::default(),
@@ -2737,6 +2743,8 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             capabilities: owned_caps(&bringup_dir),
             stack_floor_image: image.stack_floor_image.clone(),
             stack_floor: None,
+            stack_floor_raise: image.stack_floor
+                == Some(crate::orchestration::image::StackFloorMode::Raise),
             output,
             descriptor: Some(descriptor.clone()),
             run_tables: crate::cmd::run_plan::ImageTables::from_block(&image, image_net.as_ref()),
@@ -3024,6 +3032,7 @@ fn plan_leaf_image(
             capabilities: owned_caps(root),
             stack_floor_image: img.decl.stack_floor_image.clone(),
             stack_floor: None,
+            stack_floor_raise: img.decl.stack_floor_raise,
             kernel: None,
             configure: None,
             entry_root: None,
@@ -3129,6 +3138,7 @@ fn plan_leaf_image(
         capabilities: owned_caps(root),
         stack_floor_image: img.decl.stack_floor_image.clone(),
         stack_floor: None,
+        stack_floor_raise: img.decl.stack_floor_raise,
         output: Some(output),
         descriptor: Some(descriptor.clone()),
         run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&img.decl, image_net.as_ref()),
@@ -3295,6 +3305,7 @@ fn plan_single_package_cmake(
         capabilities: owned_caps(root),
         stack_floor_image: decl.stack_floor_image.clone(),
         stack_floor: None,
+        stack_floor_raise: decl.stack_floor_raise,
         kernel: None,
         entry_root: None,
         configure: Some(Handoff::new("cmake", a).in_dir(root)),
@@ -3466,6 +3477,9 @@ pub fn run(args: Args) -> Result<()> {
             crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &root);
         crate::cmd::stack_floor::arm(&mut plans, nros_root.as_deref(), &|k| std::env::var_os(k));
     }
+    // Issue 2400 W2b / issue 2461 — the image's stack-floor key and raise
+    // opt-in reach every cmake configure, freshly each time.
+    crate::cmd::stack_floor_raise::arm_cmake(&mut plans);
     pin_this_project(&args)?;
     if !args.dry_run {
         let drifts = drift_before_build(&plans, args.nano_ros_path.clone())?;
@@ -4107,7 +4121,9 @@ fn perform_plan(
     if let Some(sf) = &p.stack_floor {
         crate::cmd::stack_floor::check(&p.qualified, sf)?;
     }
-    Ok(())
+    // Issue 2400 W2b — an image that opted in to a stack raise is rebuilt once
+    // at its measured floor when its walk asked for one.
+    crate::cmd::stack_floor_raise::after_build(p, &run_configure, handover)
 }
 
 /// RFC-0120 D1 (phase-530 W2) -- build one planned HOST image through its own
@@ -4699,6 +4715,7 @@ fn plan_packages(
             capabilities: Vec::new(),
             stack_floor_image: None,
             stack_floor: None,
+            stack_floor_raise: false,
             kernel: None,
             entry_root: None,
             configure,
@@ -4992,6 +5009,7 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
             capabilities: Vec::new(),
             stack_floor_image: None,
             stack_floor: None,
+            stack_floor_raise: false,
             kernel: None,
             entry_root: None,
             configure: b.configure,
@@ -10050,6 +10068,7 @@ mod multi_image_drive_tests {
             capabilities: Vec::new(),
             stack_floor_image: None,
             stack_floor: None,
+            stack_floor_raise: false,
             kernel: None,
             configure: None,
             entry_root: None,

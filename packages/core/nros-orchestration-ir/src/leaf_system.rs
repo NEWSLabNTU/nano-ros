@@ -365,6 +365,10 @@ pub struct LeafSystem {
     /// measured stack allowance is filed under (`<template>/<lang>/<rmw>@<board>`,
     /// written by `nros new`). `None`: the build keys it `<bringup>@<board>`.
     pub stack_floor_image: Option<String>,
+    /// Issue 2400 W2b — `[image.<id>] stack_floor = "raise"`: a MEASURED floor
+    /// above the stated stack rebuilds the image once at the floor instead of
+    /// failing. `"check"` (the default) and absent are `false`.
+    pub stack_floor_raise: bool,
 }
 
 impl LeafSystem {
@@ -1099,7 +1103,29 @@ fn image_system(
         ros_args,
         params_files,
         stack_floor_image: str_key(image, "stack_floor_image"),
+        stack_floor_raise: stack_floor_raise(image, path, &at)?,
     })
+}
+
+/// `stack_floor = "check" | "raise"` of one `[image.<id>]` table (issue 2400
+/// W2b). Anything else is refused: a mistyped opt-in must not read as the
+/// default.
+fn stack_floor_raise(
+    block: Option<&toml::Table>,
+    path: &Path,
+    table: &str,
+) -> Result<bool, String> {
+    match block.and_then(|b| b.get("stack_floor")) {
+        None => Ok(false),
+        Some(v) => match v.as_str() {
+            Some("check") => Ok(false),
+            Some("raise") => Ok(true),
+            _ => Err(format!(
+                "{}: `[{table}] stack_floor` is `check` or `raise`; found {v}",
+                path.display()
+            )),
+        },
+    }
 }
 
 /// `<key> = ["…", …]` of one table — an array of strings, or absent.
@@ -2168,5 +2194,33 @@ domain_id = 4
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &typo)]);
         let e = read(d.path()).unwrap_err();
         assert!(e.contains("\"defaults\""), "{e}");
+    }
+
+    /// Issue 2400 W2b -- `stack_floor = "raise"` is the opt-in to a raise;
+    /// `"check"` and absent are the default, and any other word is refused so
+    /// a mistyped opt-in never reads as the default.
+    #[test]
+    fn stack_floor_raise_is_an_opt_in_and_a_typo_is_refused() {
+        let body = |line: &str| {
+            format!("[system]\nname = \"t\"\nrmw = \"zenoh\"\n[image.a]\nboard = \"x\"\n{line}\n")
+        };
+        for (line, want) in [
+            ("", false),
+            ("stack_floor = \"check\"", false),
+            ("stack_floor = \"raise\"", true),
+        ] {
+            let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &body(line))]);
+            assert_eq!(
+                read(d.path()).unwrap().unwrap().stack_floor_raise,
+                want,
+                "{line}"
+            );
+        }
+        let d = leaf(&[
+            ("Cargo.toml", CARGO),
+            ("system.toml", &body("stack_floor = \"raised\"")),
+        ]);
+        let e = read(d.path()).unwrap_err();
+        assert!(e.contains("stack_floor") && e.contains("raise"), "{e}");
     }
 }

@@ -74,6 +74,7 @@ pub mod setup;
 /// phase-440 W6 — `nros store list|gc` (RFC-0095 D11).
 pub mod sizing_descriptor;
 pub mod stack_floor;
+pub mod stack_floor_raise;
 pub mod store;
 /// phase-440 W6 — `nros toolchain uninstall` (RFC-0095 D11).
 pub mod toolchain;

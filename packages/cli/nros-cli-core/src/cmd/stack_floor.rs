@@ -70,6 +70,10 @@ pub struct CargoStackFloor {
     pub triple: String,
     pub script: PathBuf,
     pub table: PathBuf,
+    /// The image opted in to a raise (`[image.<id>] stack_floor = "raise"`):
+    /// the walk records a measured shortfall instead of failing on it, and
+    /// [`crate::cmd::stack_floor_raise::after_build`] rebuilds at the floor.
+    pub raise: bool,
 }
 
 impl CargoStackFloor {
@@ -217,6 +221,7 @@ fn plan_one(
         script,
         table,
         dir,
+        raise: p.stack_floor_raise,
     };
     // Target-scoped, so build scripts and proc-macros keep their flags, and
     // JOINED with a config file's `[target.<triple>] rustflags` rather than
@@ -285,6 +290,9 @@ pub fn walker_args(c: &CargoStackFloor, cargo_json: &Path) -> Vec<OsString> {
     put("--llc-cache", c.dir.join("llc").into());
     a.push("--sysroot".into());
     a.push("--intermediates-from-build".into());
+    if c.raise {
+        a.push("--raise".into());
+    }
     a
 }
 
@@ -360,6 +368,7 @@ mod tests {
             triple: "thumbv7m-none-eabi".into(),
             script: "/r/scripts/nros-stack-floor.py".into(),
             table: "/r/config/stack-floors.json".into(),
+            raise: false,
         };
         let a: Vec<String> = walker_args(&c, Path::new("/t/m.json"))
             .into_iter()
@@ -399,6 +408,7 @@ mod tests {
             capabilities: Vec::new(),
             stack_floor_image: None,
             stack_floor: None,
+            stack_floor_raise: false,
             kernel: None,
             entry_root: None,
             configure: None,

@@ -1131,18 +1131,35 @@ def knob_text(knob: str, floor: int) -> str:
     return knob.format(bytes=floor, kb=-(-floor // 1024))
 
 
-def check_stacks(results: dict, stacks: dict[str, int], knob: str) -> tuple[int, list[str]]:
+_KNOB_SET = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=([0-9]+)$")
+
+
+def check_stacks(results: dict, stacks: dict[str, int], knob: str,
+                 raise_: bool = False) -> tuple[int, list[str], list[dict]]:
     """A build's CHECK (issue 2400): a MEASURED role whose floor exceeds its
     stated stack fails, naming the knob that raises it; an UNMEASURED one only
-    warns (ruling (A)). A stack is never lowered here."""
-    rc, lines = 0, []
+    warns (ruling (A)). A stack is never lowered here.
+
+    Under `raise_` (an image that opted in, W2b) the measured case is not a
+    failure but a RAISE, returned as `{role, stack, floor, knob, name, value}`
+    for the driver to rebuild with, once, through the knob. A knob with no
+    `NAME=<number>` form cannot be set by a driver, so it still fails."""
+    rc, lines, raises = 0, [], []
     for role, stack in stacks.items():
         r = results.get(role)
         if r is None:
             continue
+        text = knob_text(knob, r["floor"])
+        m = _KNOB_SET.match(text)
         if r["floor"] <= stack:
             lines.append(f"nros-stack-floor: {role} stack {stack} B holds the floor "
                          f"{r['floor']} B ({'measured' if r['measured'] else 'unmeasured'})")
+        elif r["measured"] and raise_ and m:
+            raises.append({"role": role, "stack": stack, "floor": r["floor"], "knob": text,
+                           "name": m[1], "value": int(m[2])})
+            lines.append(f"nros-stack-floor: RAISE: the {role} stack is {stack} B, below the "
+                         f"measured floor {r['floor']} B; the image opted in to a raise, so "
+                         f"it is rebuilt with {text}")
         elif r["measured"]:
             rc = 1
             lines.append(f"nros-stack-floor: ERROR: the {role} stack is {stack} B, below the "
@@ -1153,7 +1170,7 @@ def check_stacks(results: dict, stacks: dict[str, int], knob: str) -> tuple[int,
                          f"UNMEASURED floor {r['floor']} B. Not enforced (no [[allowance]] row); "
                          f"if the image overflows, {knob_text(knob, r['floor'])} is the first "
                          "thing to try")
-    return rc, lines
+    return rc, lines, raises
 
 
 def parse_check_stacks(args: argparse.Namespace) -> dict[str, int]:
@@ -1182,7 +1199,7 @@ def refused(args: argparse.Namespace, doc, refusals: list[str]) -> int:
 
 
 def write_report(path: str, args: argparse.Namespace, results: dict, stacks: dict[str, int],
-                 refusals: list[str]) -> None:
+                 refusals: list[str], raises: list[dict] | None = None) -> None:
     """What this build measured, for a reader that is not a person: the twin
     lane (`scripts/stack-floor-twin.py`) compares a twin's peak with the
     static walk and the allowance THIS build used, so it reads them here
@@ -1196,6 +1213,8 @@ def write_report(path: str, args: argparse.Namespace, results: dict, stacks: dic
                   for role, r in results.items()},
         "stacks": stacks,
         "refused": refusals,
+        # the knob values an opted-in image is rebuilt with (`--raise`)
+        "raise": raises or [],
     }
     import tempfile
     out = Path(path)
@@ -1426,12 +1445,15 @@ def run(args: argparse.Namespace) -> int:
                 "path": best.chain,
             }
     stacks = parse_check_stacks(args)
+    rc, lines, raises = 0, [], []
+    if stacks and not refusals:
+        rc, lines, raises = check_stacks(results, stacks, args.stack_knob or "the stack size",
+                                         raise_=args.raise_)
     if args.report:
-        write_report(args.report, args, results, stacks, refusals)
+        write_report(args.report, args, results, stacks, refusals, raises)
     if refusals:
         return refused(args, doc, refusals)
     if stacks:
-        rc, lines = check_stacks(results, stacks, args.stack_knob or "the stack size")
         for line in lines:
             print(line, file=sys.stderr)
         if rc:
@@ -1590,14 +1612,21 @@ def self_test() -> int:
           g7.frames == {"app_main": 32, "_ZN2ns1fEi": 24})
     # the build's CHECK
     res = {"OPEN": {"floor": 40000, "measured": True}}
-    rc, lines = check_stacks(res, {"OPEN": 32768}, "K")
+    rc, lines, _ = check_stacks(res, {"OPEN": 32768}, "K")
     check("check: a measured floor above the stack fails, naming the knob",
           rc == 1 and "K >= 40000" in lines[0])
+    rc, lines, raises = check_stacks(res, {"OPEN": 32768}, "S_KB={kb}", raise_=True)
+    check("raise: a measured floor above the stack is a raise, in the knob's unit",
+          rc == 0 and "RAISE" in lines[0]
+          and raises == [{"role": "OPEN", "stack": 32768, "floor": 40000, "knob": "S_KB=40",
+                          "name": "S_KB", "value": 40}])
+    rc, lines, raises = check_stacks(res, {"OPEN": 32768}, "K", raise_=True)
+    check("raise: a knob with no NAME=<number> form still fails", rc == 1 and not raises)
     res = {"OPEN": {"floor": 40000, "measured": False}}
-    rc, lines = check_stacks(res, {"OPEN": 32768}, "K")
-    check("check: an unmeasured floor above the stack only warns",
-          rc == 0 and "WARNING" in lines[0])
-    rc, lines = check_stacks({"OPEN": {"floor": 100, "measured": True}}, {"OPEN": 65536}, "K")
+    rc, lines, raises = check_stacks(res, {"OPEN": 32768}, "S_KB={kb}", raise_=True)
+    check("check: an unmeasured floor above the stack only warns, even opted in",
+          rc == 0 and "WARNING" in lines[0] and not raises)
+    rc, lines, _ = check_stacks({"OPEN": {"floor": 100, "measured": True}}, {"OPEN": 65536}, "K")
     check("check: a stack at or above the floor passes", rc == 0 and "holds" in lines[0])
     check("knob template in the knob's unit",
           knob_text("NROS_FREERTOS_APP_STACK_KB={kb}", 15216) == "NROS_FREERTOS_APP_STACK_KB=15")
@@ -1943,6 +1972,10 @@ def main() -> int:
                     help="cargo's --message-format=json output for the image: the roles, stated "
                     "stacks and knob come from the nros-stack-stated.json one of its build "
                     "scripts wrote; none means the board states no stack (not checked)")
+    ap.add_argument("--raise", dest="raise_", action="store_true",
+                    help="the image opted in to a raise: a MEASURED role whose floor is above "
+                    "its stack is not a failure but a raise, recorded in --report for the "
+                    "driver to rebuild with (the knob must read NAME={kb} or NAME={bytes})")
     ap.add_argument("--stack-knob", help="what the user sets to raise the stack, for the "
                     "message; `{bytes}` / `{kb}` stand for the floor in the knob's unit")
     ap.add_argument("--sysroot", action="store_true",

@@ -327,13 +327,23 @@ function(nros_stack_floor_check _exe)
     file(MAKE_DIRECTORY "${_dir}")
     target_link_options(${_exe} PRIVATE "-Wl,-Map=${_map}")
 
-    _nros_stack_floor_image_key(_key "${_exe}" "${_SF_BRINGUP}" "${_SF_BOARD}")
+    # The stated key (`[image.<id>] stack_floor_image`) and the opt-in to a
+    # raise reach this configure from `nros build` as -D values it passes on
+    # every configure, empty included, so neither outlives an edit to
+    # system.toml (issue 2461; issue 2400 W2b).
+    _nros_stack_floor_image_key(_key "${_exe}" "${_SF_BRINGUP}" "${_SF_BOARD}"
+        "${NROS_IMAGE_STACK_FLOOR_IMAGE}")
     get_target_property(_bindir ${_exe} BINARY_DIR)
     _nros_stack_floor_command(_cmd KEY "${_key}" ROOT "${_SF_ROOT}" STACK "${_SF_STACK}"
         KNOB "${_SF_KNOB}" TARGET "${_SF_TARGET}" RMW "${_SF_RMW}" MAP "${_map}" DIR "${_dir}"
         LINK_DIRS "${_bindir}" "${CMAKE_BINARY_DIR}"
         BITCODE "${CMAKE_BINARY_DIR}/cargo/*/${_SF_TARGET}/${_SF_PROFILE}/deps"
                 "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_SF_TARGET}/*/deps")
+    if(NROS_IMAGE_STACK_FLOOR_MODE STREQUAL "raise")
+        # A measured floor above the stack is recorded in the report as a
+        # raise instead of failing; `nros build` rebuilds once with it.
+        list(APPEND _cmd --raise)
+    endif()
     add_custom_command(TARGET ${_exe} POST_BUILD
         COMMAND ${_cmd}
         COMMENT "nano-ros: stack floor of ${_key}"
@@ -473,6 +483,13 @@ function(nros_stack_floor_zephyr_check)
         "endif()\n")
     set_property(GLOBAL APPEND PROPERTY extra_post_build_commands
         COMMAND ${CMAKE_COMMAND} -P "${_dir}/check.cmake")
+    if(NROS_IMAGE_STACK_FLOOR_MODE STREQUAL "raise")
+        # The raise reaches a configure through `NROS_STACK_FLOOR_RAISE`, which
+        # the FreeRTOS carrier reads; CONFIG_MAIN_STACK_SIZE is Kconfig, which
+        # it does not reach, so a Zephyr image keeps the CHECK.
+        message(STATUS "nano-ros: `stack_floor = \"raise\"` is not available on Zephyr; "
+            "the stack floor is CHECKED (raise CONFIG_MAIN_STACK_SIZE in os_config)")
+    endif()
     message(STATUS "nano-ros: stack floor of ${_key} checked at build (OPEN from ${_Z_ROOT} "
         "against CONFIG_MAIN_STACK_SIZE=${CONFIG_MAIN_STACK_SIZE}; NROS_STACK_FLOOR=OFF skips)")
 endfunction()

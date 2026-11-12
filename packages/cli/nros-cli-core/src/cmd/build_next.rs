@@ -766,6 +766,7 @@ mod tests {
             capabilities: Vec::new(),
             stack_floor_image: None,
             stack_floor: None,
+            stack_floor_raise: false,
             kernel: None,
             entry_root: None,
             configure: None,
