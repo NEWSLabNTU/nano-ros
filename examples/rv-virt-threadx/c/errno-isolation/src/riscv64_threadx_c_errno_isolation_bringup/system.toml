@@ -15,3 +15,11 @@ domain_id = 0
 [image.rv-virt-threadx]
 board = "rv-virt-threadx"
 entry = "riscv64_threadx_c_errno_isolation"
+
+# No census: this program creates no ROS entity, and its two platform tasks
+# (`nros_platform_task_init`) cannot start in the HOST build a census runs, so
+# the run fails at its own setup ("SETUP failed (observer)") with nothing to
+# record. The image builds without census sizing; its pools stay at their
+# defaults, which are more than a program with no entities uses.
+[census]
+on_missing = "warn"

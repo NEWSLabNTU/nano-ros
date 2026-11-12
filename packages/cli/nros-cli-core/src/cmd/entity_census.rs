@@ -622,7 +622,7 @@ fn take_census(args: TakeArgs) -> Result<()> {
             println!("owned-entry {}", pkg.display());
             return Ok(());
         }
-        return take_owned_census(
+        let taken = take_owned_census(
             &root,
             &pkg,
             &bringup,
@@ -631,6 +631,18 @@ fn take_census(args: TakeArgs) -> Result<()> {
             args.build_step,
             &HostSteps::real(),
         );
+        let Err(err) = taken else {
+            return Ok(());
+        };
+        // The bringup's `[census] on_missing` decides what a census that
+        // could not be taken means, as it does for every other census.
+        let system_toml = bringup_dir.join("system.toml");
+        let policy = read_system_toml(Some(&system_toml))?
+            .and_then(|s| s.census)
+            .unwrap_or_default();
+        let warning = owned_census_fallback(policy.on_missing, &asked_q, &pkg, &system_toml, err)?;
+        eprintln!("{warning}");
+        return Ok(());
     }
 
     // RFC-0071 D19 — an image that boots an OWNED entry from a bringup with no
@@ -1294,6 +1306,35 @@ pub(crate) const LEAF_CENSUS_HOST_ENV: &str = "NROS_LEAF_CENSUS_HOST";
 /// they keep the road they had (the `owned_entry_without_model` arm below).
 pub(crate) fn owned_entry_is_census_sized(pkg: &Path) -> bool {
     pkg.join("CMakeLists.txt").is_file() && leaf_executable_name(pkg).is_ok()
+}
+
+/// Issue 2433 -- what an owned entry's census that could not be taken means.
+/// `[census] on_missing = "refuse"` (the default) keeps the error. `"warn"`
+/// turns it into the returned warning: the image builds without census sizing,
+/// as an owned entry did before issue 2433, and the line names the image, the
+/// package, the reason and the file that chose this.
+fn owned_census_fallback(
+    on_missing: crate::orchestration::cargo_metadata_schema::CensusPolicy,
+    asked_q: &str,
+    pkg: &Path,
+    system_toml: &Path,
+    err: eyre::Report,
+) -> Result<String> {
+    if on_missing.refuses() {
+        return Err(err);
+    }
+    let pkg_name = pkg
+        .file_name()
+        .map(|n| n.to_string_lossy())
+        .unwrap_or_default();
+    let reason = format!("{err:#}");
+    Ok(format!(
+        "warning: entity-census take {asked_q}: the census of the owned entry `{pkg_name}` \
+         could not be taken ({}); `[census] on_missing = \"warn\"` in `{}`, so the image \
+         builds without census sizing (its pools at their defaults)",
+        reason.lines().next().unwrap_or(""),
+        system_toml.display()
+    ))
 }
 
 /// The executable a standalone leaf's `CMakeLists.txt` adds: the first
@@ -2768,6 +2809,75 @@ fn summarise(recorded: &serde_json::Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Issue 2433 -- an owned entry is census-sized only when its package
+    /// builds a program a host build can run: `nano_ros_add_executable`
+    /// outside a comment. A typed carrier (`nros_components_register_node`)
+    /// and a package with no CMakeLists keep their old road.
+    #[test]
+    fn only_an_owned_entry_that_builds_a_program_is_census_sized() {
+        let t = tempfile::tempdir().unwrap();
+        let pkg = |name: &str, cmake: Option<&str>| {
+            let d = t.path().join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            if let Some(c) = cmake {
+                std::fs::write(d.join("CMakeLists.txt"), c).unwrap();
+            }
+            d
+        };
+        let program = pkg(
+            "program",
+            Some("nano_ros_add_executable(talker src/main.c)\n"),
+        );
+        assert!(owned_entry_is_census_sized(&program));
+        let carrier = pkg(
+            "carrier",
+            Some(
+                "# links through `nano_ros_add_executable()` (the entry road)\n\
+                 nros_components_register_node(lib TYPED DEPLOY threadx)\n",
+            ),
+        );
+        assert!(
+            !owned_entry_is_census_sized(&carrier),
+            "a typed carrier builds no program (the comment is not a call)"
+        );
+        assert!(!owned_entry_is_census_sized(&pkg("bare", None)));
+    }
+
+    /// Issue 2433 -- an owned entry's census that cannot be taken refuses by
+    /// default; `[census] on_missing = "warn"` turns it into one warning that
+    /// names the image, the package, the reason and the file that chose it.
+    #[test]
+    fn an_owned_census_failure_refuses_unless_the_bringup_says_warn() {
+        use crate::orchestration::cargo_metadata_schema::CensusPolicy;
+        let pkg = Path::new("/ws/src/errno_probe");
+        let toml = Path::new("/ws/src/errno_probe_bringup/system.toml");
+        let refused = owned_census_fallback(
+            CensusPolicy::Refuse,
+            "b:img",
+            pkg,
+            toml,
+            eyre::eyre!("census run exited 1"),
+        );
+        assert!(refused.is_err());
+        let w = owned_census_fallback(
+            CensusPolicy::Warn,
+            "b:img",
+            pkg,
+            toml,
+            eyre::eyre!("census run exited 1"),
+        )
+        .unwrap();
+        for part in [
+            "b:img",
+            "`errno_probe`",
+            "census run exited 1",
+            "on_missing",
+            "system.toml",
+        ] {
+            assert!(w.contains(part), "{part}: {w}");
+        }
+    }
+
     /// RFC-0071 D19 -- an owned-entry image whose bringup declares no
     /// component and no launch has no SystemModel, so the census sites skip
     /// it instead of failing to resolve one; any component row, an authored

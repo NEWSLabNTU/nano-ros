@@ -287,6 +287,17 @@ function(nros_record_owned_entity_facts)
                 "be taken:\n${_err}")
         endif()
     endif()
+    set(_census "${_o_WORKSPACE}/build/nros/census/owned/${_bringup_name}/${_o_IMAGE}.census.json")
+    # `[census] on_missing = "warn"`: the take warned and wrote no census, so
+    # this image builds without census sizing, as an owned entry did before
+    # issue 2433. Said once here too, naming the image.
+    if(NOT EXISTS "${_census}")
+        message(WARNING
+            "nano-ros: `${_bringup_name}:${_o_IMAGE}` builds the owned entry `${_pkg_name}` "
+            "with no census (its bringup's `[census] on_missing` is \"warn\"), so its pools "
+            "stay at their defaults")
+        return()
+    endif()
     include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosEntityInventory.cmake")
     include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosPromise.cmake")
     include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosSizingDescriptor.cmake")
@@ -310,7 +321,6 @@ function(nros_record_owned_entity_facts)
     endif()
     # A configure re-reads the census when it changes: its digest, as the leaf
     # road depends on it.
-    set(_census "${_o_WORKSPACE}/build/nros/census/owned/${_bringup_name}/${_o_IMAGE}.census.json")
     string(REGEX REPLACE "\\.json$" ".digest" _digest "${_census}")
     if(EXISTS "${_digest}")
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_digest}")
