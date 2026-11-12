@@ -4,7 +4,7 @@ title: "A demonstrable CAN stack: reproduce what ROS ships, in a container"
 status: Draft
 area: rmw-wire
 since: 2026-08
-last-reviewed: 2026-08-26
+last-reviewed: 2026-11
 implements-tracked-by: [phase-387]
 supersedes: []
 superseded-by: null
@@ -109,12 +109,16 @@ Keeping three lines would be a maintenance tax for nothing; the 1.8.0 line was
 only ever a stepping stone to the ROS revision and is redundant the moment
 `feat/can-link-ros` is proven.
 
+*As built (review note 2026-11):* once RFC-0083 added the ISO-TP crate, the
+container's line became `feat/can-links-ros`, carrying both link crates
+(`docker/can-demo/run.sh`, `docker/can-demo/Dockerfile`).
+
 ## 4. Design
 
 ### 4.1 Shape
 
 ```
-nros/docker/can-demo/
+docker/can-demo/
   Dockerfile        multi-stage: builders for zenoh-c and zenoh-pico, ROS runtime
   entrypoint.sh     creates vcan0, runs the demo, asserts, prints evidence, exits
   config/           three session configs: talker, listener, pico
@@ -176,6 +180,10 @@ Three hazards, each found the hard way in phase-378 and each mitigated here:
   so a stock build never associates. The symptom is one INFO line on the pico
   side and nothing at all on the other. The build pins 63 and the demo fails
   loudly rather than quietly showing two working ROS nodes beside a silent peer.
+  *(Review note 2026-11: the zenoh-pico fork now advertises the link's frame
+  size in a CAN `Join` (`_mtu_is_frame_ceiling`, fork commit `f90e7388`), so a
+  default build associates; the Dockerfile's pin of 63 is now redundant, not
+  load-bearing.)*
 
 One hazard disappears by construction: a fresh network namespace per run means
 the stray-peer problem — a leftover `ros2` daemon holding an identifier, which
@@ -211,6 +219,11 @@ thing is reproducible from a pinned, stated set of revisions.
 
 A demo that oversells is worse than none, because the first reviewer to try a
 service call will conclude the rest was oversold too.
+
+*Review note 2026-11:* the first bullet is a property of the **multicast**
+link. [RFC-0083](0083-can-unicast-over-isotp.md)'s ISO-TP unicast link carries
+services, actions, parameters and graph introspection, and the container runs
+it with `run.sh --unicast` (`docker/can-demo/README.md`).
 
 ## 6. Out of scope
 

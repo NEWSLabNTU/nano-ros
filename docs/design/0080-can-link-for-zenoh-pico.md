@@ -4,7 +4,7 @@ title: "A CAN link for zenoh-pico: a datagram link type, self-contained in the v
 status: Draft
 area: rmw-wire
 since: 2026-08
-last-reviewed: 2026-08-23
+last-reviewed: 2026-11
 implements-tracked-by: [phase-377]
 supersedes: []
 superseded-by: null
@@ -171,7 +171,10 @@ Three consequences worth carrying into any allocation design:
   `_z_f_link_write(self, ptr, len, socket)` has no priority argument, and
   `tx.c` hands the link a batch with priorities already mixed. No allocation
   policy can fix this from below; it needs per-priority batching or a priority
-  hint on the write, upstream.
+  hint on the write, upstream. (This holds for zenoh-pico. zenoh-rs has the
+  priority at the write and RFC-0081 §3.3 plumbs it through, but switching it
+  on makes a QoS `Join` 99 bytes against the 63-byte MTU — a different blocker
+  one layer up, tracked as issue 1822.)
 * **So allocation is necessary but not sufficient.** Integrating with an
   RFC-0079-style allocator would fix WHICH identifiers peers get. It would not
   give per-message priority until the link can see one.
@@ -199,6 +202,15 @@ per-link pattern.
 | `CMakeLists.txt` | `Z_FEATURE_LINK_CAN` toggle, default 0 |
 
 No `src/protocol/codec/can.c` — see §2.
+
+*As built (review note 2026-11):* the link is multicast (see the RESOLVED
+section), and the fork's later layout moved the files. The link is
+`src/link/multicast/can.c`, its config `src/link/config/can.c` +
+`include/zenoh-pico/link/config/can.h`, the platform contract
+`include/zenoh-pico/link/transport/can.h`, and the bindings
+`src/link/transport/can/can_socketcan.c` and `can_zephyr.c`. nano-ros's
+generated config emits `Z_FEATURE_LINK_CAN` from
+`packages/rmw/zenoh/nros-zpico-build/src/lib.rs`.
 
 In nano-ros, one Kconfig entry:
 
@@ -228,6 +240,11 @@ size_t     _z_send_can(const _z_sys_net_socket_t sock, const uint8_t *ptr, size_
 ```
 
 Each implementation is guarded `#if Z_FEATURE_LINK_CAN == 1`, as serial is.
+
+*As built (review note 2026-11):* the RESOLVED section below changed this
+contract — `id`/`match`/`mask` replace `tx_id`/`rx_id`, and `_z_read_can`
+gains an `_z_slice_t *addr` out-parameter. The current signatures are in
+`include/zenoh-pico/link/transport/can.h` in the fork.
 
 **Write the `unix` binding first.** It is the same code that talks to a virtual
 `vcan0`, so it unlocks the entire test loop (§7) before any target hardware or
@@ -392,3 +409,13 @@ behind that Kconfig, not behind a runtime flag.
 ISO-TP inside the link. Reading `ivc.c` next showed the datagram template that
 makes the whole segmentation problem vanish. Recorded because the wrong route
 looked strictly easier right up until the capability flag was read.
+
+## Amendment — RFC-0109 (2026-10-24, recorded here 2026-11)
+
+[RFC-0109](0109-network-config-layers.md) D10 applies to this link as it does
+to RFC-0081's and RFC-0083's: the controller's rate and its start are layer-1
+facts. The `bitrate` / `dbitrate` keys in the endpoint grammars above are
+refused in nano-ros wiring, FD-versus-classic is read from the started
+interface (§4.1), and on Zephyr nano-ros's board glue starts the
+`zephyr,canbus` controller before any session opens. `id`, `match` and `mask`
+stay in the locator.

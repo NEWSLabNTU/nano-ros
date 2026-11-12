@@ -4,7 +4,7 @@ title: "The action payload envelope: one CDR header, ROS 2's"
 status: Accepted
 area: rmw-wire
 since: 2026-08
-last-reviewed: 2026-08-05
+last-reviewed: 2026-11
 implements-tracked-by: [phase-338]
 supersedes: []
 superseded-by: null
@@ -232,4 +232,5 @@ format against a new producer. They now build header-less bodies.
   pairs the change breaks and must re-prove.
 - **Numbering.** RFC ids have no reservation tool (unlike issues), and 0062→0064
   already collided once between parallel sessions. If 0069 is taken, renumber
-  and fix the two inbound links from issue 0418 and phase-338.
+  and fix the two inbound links from issue 0418 and phase-338. (Since
+  resolved: `just rfc-new` reserves RFC ids, `justfile:655`.)

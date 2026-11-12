@@ -5,7 +5,7 @@
 **Prerequisites:** Phase 31 (Verus verification), Phase 32 (platform/transport split)
 
 **Design docs:**
-- `docs/design/e2e-safety-protocol-integration.md` — EN 50159 E2E protocol integration analysis
+- [RFC-0028](../../design/0028-e2e-safety-protocol-integration.md) — EN 50159 E2E protocol integration analysis
 - `docs/research/safety-critical-platform-study.md` — Cross-domain safety platform study
 - `docs/research/autoware-safety-island-architecture.md` — Autoware safety island architecture
 

@@ -4,7 +4,7 @@ title: "RMW backend selection and lowering"
 status: Stable
 area: rmw-wire
 since: 2026-06
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-227]
 supersedes: []
 superseded-by: null
@@ -21,6 +21,13 @@ flag), which the toolchain **lowers** to each language's native build mechanism
 target*, not the user-facing knob — which resolves a long-standing documentation
 contradiction (feature-vs-dependency) and an example inconsistency
 (zenoh/xrce wired one way, cyclonedds another).
+
+> **Cross-references (review note, 2026-11, phase-555 W2).** Amended by
+> [RFC-0042](0042-platform-build-determinism.md) (the lowered value is
+> validated against the manifest; registration is the `.init_array` ctor of
+> its §D3.3). [RFC-0071](0071-rmw-backend-descriptor.md) D7 replaces this
+> RFC's § "CycloneDDS exception" rule with a declared provision, and D13
+> retires the generated selection package for generated entries.
 
 ## Motivation
 
@@ -123,12 +130,25 @@ selected backend crate, once linked, **self-registers** through the
 walker resolves it at `Executor::open`. Selection therefore reduces to *"link the
 chosen backend,"* which every language's lowering achieves.
 
+> **Superseded mechanism (RFC-0042 §D3.3, phase-249 P4b.1).** The `linkme`
+> `RMW_INIT_ENTRIES` walker named above is gone. A hosted backend
+> self-registers from an `.init_array` ctor before `main`; on `target_os =
+> "none"` the board calls `register()` explicitly
+> (`packages/rmw/cffi/src/section.rs:1-27`). The same applies to every
+> mention of `RMW_INIT_ENTRIES` below.
+
 ### CycloneDDS exception
 
 cyclonedds is not pure-cargo linkable — its register symbol lives in the
 C++/CMake backend. Cyclone selection always routes through the CMake/Corrosion
 build path (RFC-0005 / Phase 175), even for an otherwise-Rust binary. The
 *declaration* is identical (`rmw = "cyclonedds"`); only the lowering differs.
+
+> **Review note (2026-11).** The tree no longer matches this rule for a
+> Rust binary on Linux: `nros-board-linux`'s `rmw-cyclonedds` feature pulls
+> `nros-rmw-cyclonedds-sys` through cargo
+> (`packages/boards/nros-board-linux/Cargo.toml:102,114`), the
+> cargo-consumer x cmake-provider cell of RFC-0071 D7.
 
 ### Consumer wiring (examples) — board-owned force-link (C5b)
 
@@ -156,6 +176,10 @@ build path (RFC-0005 / Phase 175), even for an otherwise-Rust binary. The
 > backend's `register`), just relocated `nros` → board. The text below is
 > retained for the transitional period while crate-less host boards still link
 > through the umbrella/direct-dep path.
+>
+> **C5c landed.** `nros` no longer has any `rmw-<x>` feature or optional
+> concrete backend dependency (`packages/api/nros/Cargo.toml:283-287`), so the
+> umbrella route described below no longer exists.
 
 **All three backends route through the `nros` umbrella feature**
 (`rmw-<x> = ["nros/rmw-<x>"]`), with **no `register()` call in user `main.rs`**.

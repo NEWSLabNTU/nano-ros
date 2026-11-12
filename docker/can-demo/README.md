@@ -9,7 +9,7 @@ sudo modprobe vcan                                    # once, on the host
 docker/can-demo/run.sh --zenoh /path/to/zenoh-fork
 ```
 
-The zenoh fork must be on `feat/can-link-ros`, which carries the CAN link on the
+The zenoh fork must be on `feat/can-links-ros`, which carries the CAN link on the
 zenoh revision `rmw_zenoh` actually builds. `run.sh --help` lists the options;
 `--negative` runs the control described below.
 
