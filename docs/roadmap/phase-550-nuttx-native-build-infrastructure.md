@@ -1,6 +1,6 @@
 # Phase 550 -- NuttX builds on NuttX's own infrastructure
 
-**Status (2026-11-13). IN PROGRESS: W0 done (every question ruled), W1, W2
+**Status (2026-11-13). IN PROGRESS: W0 done (every question ruled), W1, W2, W5
 and W12 done; W3a and W4's code done (W3b and W4's upstream contribution
 open); the rest not started.**
 The work for
@@ -218,6 +218,34 @@ image's generated cargo config (`--config`), and drops
   `Makefile:229-231`, `:254` or `:144`; `std` is not compiled (no
   `Compiling std` in the log); a nightly bump moves no line in
   `integrations/nuttx/`.
+- **Status:** DONE (2026-11-13, W5 PR).
+  - **The board's cargo settings.** The shell's `context::` recipe runs
+    `nros locate nuttx-cargo-config` first. It writes the board's
+    `cargo_config` with configure's renderer (`builder::cargo_config`) to
+    `<image root>/make/nros-cargo.toml`, and cargo reads that file with
+    `--config`.
+  - **Removed from the command:** `-Zbuild-std=std,panic_abort`, the `libc`
+    patch literal, `--target` (the file's `[build] target` states it) and
+    `export RUSTUP_TOOLCHAIN ?= nightly-…`. The nightly is now the first
+    `nightly-*` row of `config/rust-toolchains.txt`, the row the cmake road's
+    `nros_pinned_nightly` reads. It is set on the cargo command, so a nightly
+    bump moves no line in `integrations/nuttx/`.
+  - **Board identity on a build with no project** (manager ruling
+    2026-11-13, option a: the board is a kernel fact, never stated). It is
+    the one NuttX board whose `target` is the triple the tree resolved,
+    narrowed by `CONFIG_ARCH_BOARD` against `[board.nuttx] board_config`
+    only when several share it. Zero or several matches are refused, naming
+    the candidates and "name a project" as the way to choose. That is W6's
+    `NROS_PROJECTS`, so until W6 lands, the refusal names a mechanism not
+    yet built. Unit tests `cmd::locate::nuttx_board_tests` cover the two
+    in-tree boards, a target with no board, and a twin narrowed and then
+    left ambiguous.
+  - **Measured** with `just nuttx build-make-road`:
+    - arm: `Compiling std` 0 times, `core` and `alloc` once each; ELF
+      5,308,348 bytes, 29 `nros_*` functions.
+    - riscv: the same counts; ELF 6,435,352 bytes. It built with the board's
+      own `riscv32imac-unknown-nuttx-elf.json` as its target, so the make
+      road already meets W9's "one spec on every road".
 
 ### W6 -- A make app as a nros project (issue 2236 A/B; 2426 item 6)
 
