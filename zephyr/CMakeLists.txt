@@ -602,6 +602,15 @@ endif()
 # `safety` follows the cmake road's condition: the umbrella feature is only
 # meaningful when the backend carries the CRC path, which on this road is zenoh.
 set(_nros_cap_suffix "")
+# Issue 2423 — `link-tls` is a Rust-only capability: no C/C++ crate has a TLS
+# link, so a C/C++ image declaring it is refused here, as the cmake road's
+# `nros_feature_set` refuses it, rather than built without the link.
+if("link-tls" IN_LIST NROS_FEATURES AND (CONFIG_NROS_C_API OR CONFIG_NROS_CPP_API))
+    message(FATAL_ERROR
+        "nano-ros: capability 'link-tls' is Rust-only: the C/C++ road has no zenoh "
+        "TLS link. Build this image from a Rust entry, or drop 'link-tls' from its "
+        "features.")
+endif()
 if(CONFIG_NROS_CPP_API)
     if("lifecycle" IN_LIST NROS_FEATURES)
         string(APPEND _nros_cap_suffix ",lifecycle-services")

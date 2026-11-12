@@ -308,6 +308,19 @@ pub fn dependency_features(
     with_platform_features(&features, dir, platform)
 }
 
+/// The backend features the image's enabled capabilities name on backend `r`,
+/// by `r`'s `[rmw.capabilities]`: the capability half of [`derived_features`],
+/// without the edition. Also what a board crate is asked to forward (issue
+/// 2423), since a board image reaches its backend through the board.
+#[must_use]
+pub fn capability_features(r: &ResolvedRmwIn, sys: &SystemToml) -> Vec<String> {
+    cargo_nano_ros::capability_resolver::CAPABILITIES
+        .iter()
+        .filter(|cap| sys.capability_enabled(cap.declared) && cap.backend_supports(r))
+        .filter_map(|cap| r.capability_feature(cap.declared).map(str::to_string))
+        .collect()
+}
+
 /// The image-implied half of [`dependency_features`], before any crate is
 /// asked what it declares: the image's ROS edition and the capability
 /// features it declares that backend `r` implements, by the descriptor's
@@ -323,14 +336,7 @@ pub fn derived_features(
     edition: rosidl_codegen::RosEdition,
 ) -> Vec<String> {
     let mut features = vec![edition.cargo_feature().to_string()];
-    for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
-        if sys.capability_enabled(cap.declared)
-            && cap.backend_supports(r)
-            && let Some(f) = r.capability_feature(cap.declared)
-        {
-            features.push(f.to_string());
-        }
-    }
+    features.extend(capability_features(r, sys));
     features.sort();
     features.dedup();
     features

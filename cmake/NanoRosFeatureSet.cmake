@@ -379,6 +379,14 @@ function(nros_feature_set out_var)
                     "'${_FS_RMW}' does not declare it in its nros-rmw.toml "
                     "[rmw.capabilities].")
             endif()
+        elseif(_cap STREQUAL "link-tls")
+            # Issue 2423 — Rust-only, refused BY NAME (as
+            # `nros_lower_system_features` does): no C/C++ crate has a TLS link,
+            # so building on would ship an image without the link it declared.
+            message(FATAL_ERROR
+                "nros_feature_set: capability 'link-tls' is Rust-only: the C/C++ "
+                "road has no zenoh TLS link. Build this image from a Rust entry, "
+                "or drop 'link-tls' from its features.")
         else()
             message(FATAL_ERROR
                 "nros_feature_set: unknown capability '${_cap}' "

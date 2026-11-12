@@ -551,6 +551,9 @@ impl AdapterSite<'_> {
         // ---- the three declared axes --------------------------------------
         let declared_rmw = image_rmw(image_id, sys).unwrap_or_else(|| sys.system.rmw.clone());
         let edition = sys.image_ros_edition(image_id)?;
+        // Issue 2423 — the capability axes THIS image declares, not only
+        // `[system]`'s.
+        let image_sys = sys.with_image_features(image_id);
         let Derived {
             nros_features,
             mut board_features,
@@ -558,7 +561,7 @@ impl AdapterSite<'_> {
         } = derive(
             rmws,
             entry_name,
-            sys,
+            &image_sys,
             edition,
             &declared_rmw,
             &image_backends(image_id, sys),
@@ -603,7 +606,7 @@ impl AdapterSite<'_> {
             entry_dir,
             manifest,
             &backends,
-            sys,
+            &image_sys,
             edition,
             deps.board.as_ref().map(|(_, p)| p.as_path()),
             &board_features,
@@ -1331,7 +1334,9 @@ fn derive(
             );
             continue;
         }
-        nros_features.push(cap.nros_feature.to_string());
+        if let Some(f) = cap.nros_feature {
+            nros_features.push(f.to_string());
+        }
     }
     // Issue 1295 — the type-descriptor marker, when ANY backend this image
     // links (a bridge links two) registers per-type descriptors.
@@ -1415,6 +1420,19 @@ fn derive(
             // like the RMW: a board with no such feature stays silent.
             if crate_declares_feature(path, edition.cargo_feature()) {
                 f.push(edition.cargo_feature().to_string());
+            }
+            // Issue 2423 — target 3 of a capability row: the BOARD crate's
+            // forward of the backend feature (`nros-board-linux`'s
+            // `link-tls = ["nros-rmw-zenoh?/link-tls"]`). A board image links
+            // its backend through the board, so without this an image's
+            // `features = ["link-tls"]` reached no crate. Each one is asked of
+            // the board, like the RMW and the edition: a board that does not
+            // forward a feature stays silent and the backend line (target 2)
+            // is the only carrier.
+            for feat in backend_link::capability_features(&rmw, sys) {
+                if crate_declares_feature(path, &feat) {
+                    f.push(feat);
+                }
             }
             f.sort();
             f.dedup();
@@ -2329,6 +2347,81 @@ mod tests {
         assert!(!zenoh.changed, "the adapter moved between images");
         // A sync names no image and still writes it, selecting none.
         assert_eq!(write(None).image_feature, None);
+    }
+
+    /// Issue 2423, user ruling 2026-11-12 (option a) — an image's
+    /// `features = ["link-tls"]` turns on the zenoh TLS link through the
+    /// board's forward (`nros-board-linux/link-tls`), for that image only:
+    /// a workspace image has no package of its own to name the backend
+    /// feature, and its node packages may not (issue 1509).
+    #[test]
+    fn an_images_link_tls_reaches_its_board_and_no_other_image() {
+        let ws = tempfile::tempdir().unwrap();
+        let root = ws.path();
+        let sdk = cargo_nano_ros::rmw_resolver::test_support::checkout();
+        let bringup = root.join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        let system = "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+                      [image_defaults]\nboard = \"linux\"\n\n\
+                      [image.linux]\nentry = \"probe\"\n\n\
+                      [image.linux_tls]\nentry = \"probe\"\nfeatures = [\"link-tls\"]\n";
+        std::fs::write(bringup.join("system.toml"), system).unwrap();
+        let sys: SystemToml = toml::from_str(system).unwrap();
+        assert!(
+            sys.unknown_features().is_empty(),
+            "link-tls is a known axis"
+        );
+        let entry = root.join("src/probe");
+        std::fs::create_dir_all(&entry).unwrap();
+        std::fs::write(
+            entry.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"probe\"\nversion = \"0.1.0\"\n\n\
+                 [dependencies]\nnros = {{ path = \"{n}\" }}\n\
+                 nros-board-linux = {{ path = \"{b}\" }}\n",
+                n = sdk.join("packages/api/nros").display(),
+                b = sdk.join("packages/boards/nros-board-linux").display(),
+            ),
+        )
+        .unwrap();
+        let f = write_facade_in(
+            &in_tree(),
+            "probe",
+            &entry,
+            &entry.join("Cargo.toml"),
+            &bringup,
+            &sys,
+            &root.join("generated"),
+            None,
+            Some("linux_tls"),
+        )
+        .unwrap()
+        .expect("an entry");
+        let cargo = std::fs::read_to_string(f.dir.join("Cargo.toml")).unwrap();
+        let doc: toml::Table = toml::from_str(&cargo).unwrap();
+        let features = doc["features"].as_table().unwrap();
+        let acts = |f: &str| -> Vec<String> {
+            features[f]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect()
+        };
+        assert!(
+            acts("image-linux_tls").contains(&"nros-board-linux/link-tls".to_string()),
+            "{cargo}"
+        );
+        assert!(
+            !acts("image-linux").iter().any(|a| a.contains("link-tls")),
+            "{cargo}"
+        );
+        // Backend-only: no `nros` half.
+        assert!(!cargo.contains("nros/link-tls"), "{cargo}");
+
+        // A typo in an image's features is the same refusal as in `[system]`.
+        let typo: SystemToml = toml::from_str(&system.replace("link-tls", "link-tsl")).unwrap();
+        assert_eq!(typo.unknown_features(), vec!["link-tsl".to_string()]);
     }
 
     #[test]

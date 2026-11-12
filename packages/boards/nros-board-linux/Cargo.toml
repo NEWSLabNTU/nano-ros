@@ -117,6 +117,9 @@ rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
 # rmw-zenoh. This host board validates the forwarding pattern the embedded
 # boards use.
 safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
+# Issue 2423 — the zenoh TLS link, forwarded for a workspace image's
+# `features = ["link-tls"]` (the `link-tls` capability's target 3).
+link-tls = ["nros-rmw-zenoh?/link-tls"]
 # Issue 1305 (RFC-0056) — the image's ROS edition, forwarded to the backends
 # that branch on it. `nros/ros-<ed>` reaches `nros-node` only; the zenoh
 # keyexpr gates its RIHS01 type-hash tail on `nros-rmw-zenoh`'s OWN feature, so

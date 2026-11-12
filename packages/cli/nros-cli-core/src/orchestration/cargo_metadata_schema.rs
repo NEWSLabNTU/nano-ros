@@ -1116,7 +1116,7 @@ pub fn validate_and_warn_capabilities(sys: &SystemToml) -> eyre::Result<()> {
             .map(|c| c.declared)
             .collect();
         eyre::bail!(
-            "unknown capability in [system].features: {} (known axes: {})",
+            "unknown capability in [system].features or an [image.*] features: {} (known axes: {})",
             unknown.join(", "),
             known.join(", ")
         );
@@ -1195,12 +1195,27 @@ impl SystemToml {
     /// capability axis (`capability_resolver::capability`), else a hard error (typo
     /// guard). Returns the unknown names; empty ⇒ all valid.
     pub fn unknown_features(&self) -> Vec<String> {
-        self.system
+        // Issue 2423 — an image's own `features` are capability axes too, and
+        // the facade lowers them, so a typo there is the same error.
+        let image_ids: Vec<&String> = self.image.keys().collect();
+        let mut unknown: Vec<String> = self
+            .system
             .features
             .iter()
+            .chain(
+                image_ids
+                    .iter()
+                    .filter_map(|id| self.image_for(id))
+                    .flat_map(|img| img.features)
+                    .collect::<Vec<_>>()
+                    .iter(),
+            )
             .filter(|f| cargo_nano_ros::capability_resolver::capability(f).is_none())
             .cloned()
-            .collect()
+            .collect();
+        unknown.sort();
+        unknown.dedup();
+        unknown
     }
 
     /// Phase 261 W4 — the typed capability blocks (`[safety]`) present in this
@@ -1578,6 +1593,33 @@ impl SystemToml {
     pub fn image_for(&self, id: &str) -> Option<ImageBlock> {
         let base = self.image_defaults.clone().unwrap_or_default();
         self.image.get(id).map(|img| img.with_base(&base))
+    }
+
+    /// This system as image `id` sees its capability axes: `[system].features`
+    /// followed by the image's own `features` (over `[image_defaults]`), so
+    /// [`Self::capability_enabled`] answers for THAT image. `None`, or an id
+    /// no `[image.*]` names, is the system unchanged.
+    ///
+    /// Issue 2423 — `ImageBlock::features` is documented as "capability axes
+    /// for this image, over the system's own list", but only the plan recorded
+    /// it: the facade derived every image's capability features from
+    /// `[system].features` alone, so `[image.<id>] features = ["link-tls"]`
+    /// reached no crate.
+    #[must_use]
+    pub fn with_image_features(&self, id: Option<&str>) -> std::borrow::Cow<'_, Self> {
+        let extra: Vec<String> = id
+            .and_then(|i| self.image_for(i))
+            .map(|img| img.features)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|f| !self.system.features.contains(f))
+            .collect();
+        if extra.is_empty() {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        let mut owned = self.clone();
+        owned.system.features.extend(extra);
+        std::borrow::Cow::Owned(owned)
     }
 
     /// The RMW backend name for `target`: the CLI `--rmw` flag, then
@@ -1968,9 +2010,11 @@ mod tests {
         use cargo_nano_ros::capability_resolver::CAPABILITIES;
         use nros_orchestration_ir::leaf_capabilities::LEAF_CAPABILITY_AXES;
 
+        // A backend-only axis (issue 2423) has no `nros` half, so no leaf
+        // `nros::main!()` axis to match.
         let registry: Vec<(&str, &str)> = CAPABILITIES
             .iter()
-            .map(|c| (c.declared, c.nros_feature))
+            .filter_map(|c| Some((c.declared, c.nros_feature?)))
             .collect();
         let leaf: Vec<(&str, &str)> = LEAF_CAPABILITY_AXES
             .iter()

@@ -85,6 +85,10 @@ safety = "safety-e2e"
 # `$ZENOH_SESSION_CONFIG_URI` only with `alloc` (`session-config-uri`): the
 # image crate otherwise names `platform-posix` alone, and the URI went unread.
 alloc = "alloc"
+# Issue 2423 — the TLS link, for an image that cannot name this crate's
+# feature itself (a workspace image: `[image.<id>] features = ["link-tls"]`).
+# Rust only: the C/C++ road has no TLS link.
+link-tls = "link-tls"
 
 # Issue 2174 -- what this backend's wire carries, stated as booleans for the
 # checks that need it (`cargo_nano_ros::rmw_resolver::backend_states_fact`).
