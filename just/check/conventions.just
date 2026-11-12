@@ -322,6 +322,18 @@ harness-qemu-literals:
 host-tool-path-literals:
     @python3 scripts/check/check-host-tool-path-literals.py
 
+# issue 2468 — what builds beside the in-tree CLI (the runner and command
+# packages) is ONE list, scripts/lib/cli-companion-packages.txt, read by
+# `just setup-cli` and `scripts/bootstrap.sh`. The two had drifted, and the
+# book's `just`-free checkout road could not `nros run`. This refuses a reader
+# that spells a listed manifest itself, a by-hand block in contributing.md that
+# misses a line, and a runner/command package (`<nano_ros_provides
+# kind="runner"|"command">`, outside test fixtures) whose workspace is not
+# listed. Buildless, ~0.2 s; self-tests both directions on each run.
+[private]
+cli-companion-packages:
+    @python3 scripts/check/check-cli-companion-packages.py
+
 # phase-484 W4d — a cmake board module (`cmake/board/nano-ros-board-<x>.cmake`)
 # is claimed by exactly one board descriptor's `cmake_module`, and every claim
 # names an existing file. `nros build` emits the descriptor's module rather

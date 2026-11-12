@@ -48,11 +48,15 @@ have cargo? The equivalent by hand:
 git submodule update --init packages/cli/third-party/play_launch
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
 cargo build --release --manifest-path packages/cli/nros-launch-resolve/Cargo.toml
+cargo build --release --manifest-path packages/runners/Cargo.toml --workspace
+cargo build --release --manifest-path packages/rmw/zenoh/nros_zenoh_tools/Cargo.toml
+cargo build --release --manifest-path packages/rmw/xrce/nros_px4_tools/Cargo.toml
 export PATH="$PWD/packages/cli/target/release:$PATH"
 ```
 
-Both builds are needed for a workspace flow: `nros configure` and `nros
-build` call `nros-launch-resolve` to resolve launch files, so a bare
+All of them are needed for a workspace flow: `nros configure` and `nros
+build` call `nros-launch-resolve` to resolve launch files, and `nros run`
+starts an image through its runner package, so a bare
 `cargo build --bin nros` alone is not equivalent.
 
 ### Every subsequent shell
