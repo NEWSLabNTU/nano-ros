@@ -42,6 +42,11 @@ STOP = set(
 # Pairs at or above this similarity are candidates. Chosen by reading the
 # top of the ranked list, not derived: lower it to see more.
 THRESHOLD = 0.2
+# A citing sentence with one of these words claims the newer RFC changes the
+# older one: the pairs a reviewer should read first after the overlap pairs.
+CHANGE_WORDS = re.compile(
+    r"\b(replac\w*|supersed\w*|instead of|retir\w*|amend\w*|contradict\w*|"
+    r"no longer|obsolete|reverses?|overturn\w*|was wrong|deprecat\w*)\b", re.I)
 SHARED_PHASE_FLOOR = 0.08
 
 
@@ -82,13 +87,14 @@ def load():
             paras = [p.strip() for p in re.split(r"\n\s*\n", body)
                      if p.strip() and not p.lstrip().startswith(("#", "|", "```", "**Status", "> "))]
             cites = {str(int(a or b)).zfill(4) for a, b in CITE_RE.findall(body)} - {num, "0000"}
+            body_text = body
             docs[num] = dict(
                 num=num, path=os.path.relpath(p, ROOT), archived=archived, title=title,
                 status=status, reviewed=field(fm, "last-reviewed") or "-",
                 since=field(fm, "since") or "-",
                 phases=sorted(set(re.findall(r"phase-(\d+)", field(fm, "implements-tracked-by"))), key=int),
                 sup=sup, supby=supby, amends=amends, cites=cites,
-                title_words=words(title), paras=paras,
+                title_words=words(title), paras=paras, body=body_text,
             )
     # The subject statement is the first paragraph that is the RFC's own. A
     # paragraph several RFCs share (a rename note stamped across the series)
@@ -134,11 +140,36 @@ def candidates(docs):
         if sim >= THRESHOLD or (shared_phases and sim >= SHARED_PHASE_FLOOR):
             out.append((round(sim, 2), a, b, shared_phases))
         elif a["num"] in b["cites"]:
-            # A newer RFC that discusses an older one, and neither says it
-            # amends or supersedes the other: either a missing link or a
-            # complement. Ranked after the similar pairs.
+            # A newer RFC that discusses an older one, and neither declares it
+            # amends or supersedes the other. Most such citations are plain
+            # references; the ones whose citing SENTENCE says the newer RFC
+            # changes the older are ranked next, with that sentence as evidence.
             out.append((0.0, a, b, shared_phases))
     out.sort(key=lambda t: (-t[0], t[1]["num"], t[2]["num"]))
+    return out
+
+
+def change_evidence(older, newer):
+    """The first sentence in `newer` that cites `older` and says it changes it."""
+    n = int(older["num"])
+    cite = re.compile(r"RFC[- ]0*%d\b|design/(?:archived/)?%s-" % (n, older["num"]))
+    for sent in re.split(r"(?<=[.!?])\s+|\n\s*\n", newer["body"]):
+        if cite.search(sent) and CHANGE_WORDS.search(sent):
+            return re.sub(r"\s+", " ", sent).strip()[:300]
+    return None
+
+
+def ranked(pairs):
+    """(tier, sim, older, newer, phases, evidence): 1 overlap, 2 a citing
+    sentence that claims a change, 3 a plain citation."""
+    out = []
+    for sim, a, b, ph in pairs:
+        if sim > 0:
+            out.append((1, sim, a, b, ph, None))
+        else:
+            ev = change_evidence(a, b)
+            out.append((2 if ev else 3, sim, a, b, ph, ev))
+    out.sort(key=lambda t: (t[0], -t[1], t[2]["num"], t[3]["num"]))
     return out
 
 
@@ -149,8 +180,10 @@ def main(argv):
     args = ap.parse_args(argv)
     docs = load()
     pairs = candidates(docs)
+    rk = ranked(pairs)
+    tiers = {t: sum(1 for r in rk if r[0] == t) for t in (1, 2, 3)}
     if args.count:
-        print(len(pairs))
+        print(f"{len(pairs)} (overlap {tiers[1]}, citing a change {tiers[2]}, plain citation {tiers[3]})")
         return 0
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "inventory.md"), "w", encoding="utf8") as fh:
@@ -168,15 +201,19 @@ def main(argv):
         fh.write("# Candidate conflict pairs (generated; a question, not a verdict)\n\n")
         fh.write(f"Older RFC, newer RFC, subject similarity (threshold {THRESHOLD}) or a shared tracking "
                  "phase, and no supersede or amend link either way.\n\n")
-        fh.write("| similarity | older | newer | shared phases | older cites newer | newer cites older |\n")
+        fh.write("Tier 1: subject overlap. Tier 2: the newer RFC cites the older in a sentence that "
+                 "says it changes it (the sentence is the evidence). Tier 3: a plain citation, "
+                 "listed for completeness and not dispatched for review.\n\n")
+        fh.write("| tier | similarity | older | newer | shared phases | evidence |\n")
         fh.write("| --- | --- | --- | --- | --- | --- |\n")
-        for sim, a, b, ph in pairs:
+        for tier, sim, a, b, ph, ev in rk:
+            ev = (ev or "-").replace("|", "\\|")
             fh.write(
-                f"| {sim} | {a['num']} {a['title']} ({a['status']}) | {b['num']} {b['title']} ({b['status']}) | "
-                f"{', '.join(ph) or '-'} | {'yes' if b['num'] in a['cites'] else 'no'} | "
-                f"{'yes' if a['num'] in b['cites'] else 'no'} |\n"
+                f"| {tier} | {sim} | {a['num']} {a['title']} ({a['status']}) | {b['num']} {b['title']} ({b['status']}) | "
+                f"{', '.join(ph) or '-'} | {ev} |\n"
             )
-    print(f"rfc-inventory: {len(docs)} RFC(s), {len(pairs)} candidate pair(s) -> {os.path.relpath(args.out, ROOT)}/")
+    print(f"rfc-inventory: {len(docs)} RFC(s), {len(pairs)} candidate pair(s): overlap {tiers[1]}, "
+          f"citing a change {tiers[2]}, plain citation {tiers[3]} -> {os.path.relpath(args.out, ROOT)}/")
     return 0
 
 
