@@ -330,6 +330,35 @@ documented as is.
   cargo's homes) for `tar`. The book's air-gapped recipe is to name them
   (issue 2264, after phase-537's page moves).
 
+## Book probe walks
+
+Mechanical replays of book chapters with `just probe <track>`, outside the
+scheduled lanes. A walk is not an adoption probe: it checks that the commands
+print what the chapter says, not that a reader gets through.
+
+**2026-11-12, the Zephyr chapters on the installed road.** Main `7afd109a6e`,
+Zephyr 3.7.0 and SDK 0.16.8 (the pin before the 3.7.2 move). One release
+asset built with `just probe platform-asset`, then
+`PROBE_ASSET=<asset> just probe <track>` on host 139. Every track installs the
+release with no nano-ros checkout on the host.
+
+| Track | Chapter | Verdict | Wall time |
+| --- | --- | --- | --- |
+| `zephyr` | Zephyr native_sim, C | pass | 46 min |
+| `zephyr-cpp` | Zephyr native_sim, C++ | pass | 46 min |
+| `zephyr-rust` | Zephyr native_sim, Rust | pass | 50 min |
+| `zephyr-west-app` | An existing west application | pass | 34 min |
+| `zephyr-mps2` | mps2-an385-zephyr, Rust talker | **fail** | 32 min |
+
+The mps2 failure is not specific to the Zephyr version. The image links, then
+the stack-floor check (`scripts/nros-stack-floor.py`, `load_toml`) imports
+`tomllib`, which needs Python 3.11, and falls back to `tomli`, which the host
+does not have. On Ubuntu 22.04's Python 3.10 the build stops with
+`ModuleNotFoundError: No module named 'tomli'`. native_sim does not run that
+check, so its tracks pass. Archived issue 1364 fixed the same class for the CI
+image only. The fix is routed to the stack-floor owner. Re-run `zephyr-mps2`
+once it lands, and every track once the 3.7.2 pin lands.
+
 ## Out of scope
 
 Hardware runners (lab 7 stays manual cadence), Windows or macOS native
