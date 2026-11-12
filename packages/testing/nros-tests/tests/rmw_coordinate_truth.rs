@@ -34,6 +34,11 @@
 //! field 4's `entry`) removes all three at once, and is the same derivation the
 //! resolvers use.
 //!
+//! **A program that opens no session has a NOMINAL rmw** (issue 2472). Every
+//! row names one, so a session-less program (the `nros-log` demo) is recorded
+//! on zenoh; the artifact says which kind it is, by whether it links the RMW
+//! layer at all ([`RMW_LAYER`]), and such a row is held to linking no backend.
+//!
 //! **Reads PREBUILT artifacts only** (AGENTS.md "No compilation inside tests").
 //! A lane that built no readable artifact SKIPS loudly, never passes silently.
 //!
@@ -61,6 +66,46 @@ use std::{
 /// Symbols that prove a backend is linked: the backend's own C namespace, which
 /// nothing else defines. `(rmw name, symbol prefix)`.
 const BACKENDS: &[(&str, &str)] = &[("zenoh", "_z_"), ("cyclonedds", "dds_"), ("xrce", "uxr_")];
+
+/// Issue 2472 -- the count key for the RMW LAYER itself: the code of the
+/// `nros-rmw` abstraction and the `nros-node` executor that opens a session
+/// through it, which every backend sits under and every session-opening
+/// program links whatever its language (`nros-c`/`nros-cpp` carry both).
+///
+/// It is what tells a row's two kinds of "links none of it" apart:
+///
+/// * the layer is linked and the declared backend is not -- the program can
+///   open a session and has nothing to open it with. That is issue 0831's
+///   defect (or rustc's staticlib DCE dropping the backend, issue 0155), and
+///   it stays a red;
+/// * the layer is not linked -- the program opens no session at all, so the
+///   row's `rmw` is NOMINAL. Every row names one (`row_coord()` defaults it,
+///   `[[workspace_fixture]]` requires it, and `matrix_cells.rs` A5 records the
+///   logging-smoke images on zenoh for exactly this reason); there is no
+///   backend for it to be true or false about. What such a row still owes is
+///   that NO backend reached it either, which is asserted.
+///
+/// Derived from the artifact, never listed by row: `examples/linux/rust/logging`
+/// (the `nros-log` sink alone) is the one such row today, and a row that
+/// gains a session gains the layer and is checked like every other.
+const RMW_LAYER: &str = "(rmw layer)";
+
+/// The crates whose code IS the RMW layer, as the length-prefixed identifier
+/// both Rust manglings spell them with (legacy and v0 alike prefix the ident;
+/// the selftest has one of each). The digit before it must not be part of a
+/// longer length, or a crate called `nros_rmw_<ten more>` would match.
+const RMW_LAYER_CRATES: &[&str] = &["8nros_rmw", "9nros_node"];
+
+fn names_rmw_layer_crate(symbol: &str) -> bool {
+    RMW_LAYER_CRATES.iter().any(|ident| {
+        symbol.match_indices(ident).any(|(at, _)| {
+            !symbol[..at]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_ascii_digit())
+        })
+    })
+}
 
 /// Count all three namespaces in ONE read of the artifact's symbol table.
 ///
@@ -96,6 +141,7 @@ fn backend_symbols(bin: &Path) -> Result<BTreeMap<&'static str, usize>, String> 
 /// was never checked.
 fn count_backend_symbols(elf: &nros_tests::elf::Elf) -> BTreeMap<&'static str, usize> {
     let mut counts: BTreeMap<&'static str, usize> = BACKENDS.iter().map(|(n, _)| (*n, 0)).collect();
+    counts.insert(RMW_LAYER, 0);
     // `is_text` is `nm`'s `T` OR `t`: a symbol DEFINED in a code section,
     // global or local. Static linking decides which binding a backend's
     // symbols get -- the bridge workspace's 350 `dds_` symbols are all local --
@@ -113,6 +159,9 @@ fn count_backend_symbols(elf: &nros_tests::elf::Elf) -> BTreeMap<&'static str, u
             if sym.name.starts_with(prefix) {
                 *counts.get_mut(name).expect("seeded above") += 1;
             }
+        }
+        if names_rmw_layer_crate(&sym.name) {
+            *counts.get_mut(RMW_LAYER).expect("seeded above") += 1;
         }
     }
     counts
@@ -177,6 +226,28 @@ fn the_symbol_counter_reads_local_and_global_text_symbols() {
     // test's "links none of it" assertion keys on.
     let none = read(&[("unrelated_symbol", GLOBAL, "text")]);
     assert_eq!(none.values().sum::<usize>(), 0);
+
+    // Issue 2472 -- the RMW layer is counted on its own key, in both manglings,
+    // and a longer identifier that merely starts with the crate name is not it.
+    let layer = read(&[
+        (
+            "_ZN8nros_rmw6Config3new17h0123456789abcdefE",
+            GLOBAL,
+            "text",
+        ),
+        ("_RNvCs1234_9nros_node8executor4open", LOCAL, "text"),
+        (
+            "_ZN18nros_rmw_zenoh_xyz4open17h0123456789abcdefE",
+            GLOBAL,
+            "text",
+        ),
+        ("_ZN8nros_log4emit17h0123456789abcdefE", GLOBAL, "text"),
+    ]);
+    assert_eq!(
+        layer[RMW_LAYER], 2,
+        "one legacy + one v0 symbol of the layer"
+    );
+    assert_eq!(none[RMW_LAYER], 0, "an image without the layer reads zero");
 
     // A file that cannot be read is NO VERDICT (`Err`), never zero of
     // everything: zero would read as "links none of the declared backend".
@@ -483,6 +554,27 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
             };
             checked += 1;
 
+            let linked: Vec<&str> = BACKENDS
+                .iter()
+                .map(|(n, _)| *n)
+                .filter(|n| counts[n] > 0)
+                .collect();
+            // Issue 2472 -- no RMW layer: a program that opens no session, whose
+            // row's `rmw` is nominal (see `RMW_LAYER`). Nothing to compare the
+            // claim with, but a backend that reached it anyway came from
+            // nowhere the row states, and that is still wrong.
+            if counts[RMW_LAYER] == 0 {
+                if !linked.is_empty() {
+                    wrong.push(format!(
+                        "{}: {} links no RMW layer (opens no session, so its rmw \
+                         `{declared}` is nominal), yet links {}",
+                        row.label(),
+                        bin.display(),
+                        linked.join(" and ")
+                    ));
+                }
+                continue;
+            }
             if counts[declared] == 0 {
                 wrong.push(format!(
                     "{}: row declares rmw `{declared}`, but {} links none of it",
@@ -497,11 +589,7 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
             // selector was set"), so the coordinate still describes nothing that
             // runs. The fix is a facade carve-out — issue 0270's shape, because
             // cargo cannot subtract a default.
-            let extra: Vec<&str> = BACKENDS
-                .iter()
-                .map(|(n, _)| *n)
-                .filter(|n| *n != declared && counts[n] > 0)
-                .collect();
+            let extra: Vec<&str> = linked.iter().copied().filter(|n| *n != declared).collect();
             if !extra.is_empty() && !declares_a_bridge(&nros_tests::project_root().join(&row.dir)) {
                 wrong.push(format!(
                     "{}: row declares rmw `{declared}`, but {} ALSO links {} — \

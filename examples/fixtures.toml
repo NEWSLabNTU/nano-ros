@@ -2419,7 +2419,9 @@ target_dir = "target-fixtures"
 # The `nros-log` demo (`logging_smoke` asserts its output). phase-535 W6: a
 # one-package workspace whose hand-written `main` is the image's owned entry
 # (RFC-0071 D19), like `lifecycle-node`, `custom-msg` and the custom-transport
-# pair.
+# pair. It opens no session, so `rmw` is NOMINAL (the logging-smoke cells'
+# convention); `rmw_coordinate_truth` reads that off the artifact, which links
+# no RMW layer, and holds it to linking no backend (issue 2472).
 [[workspace_fixture]]
 id = "linux-rust-zenoh-logging"
 platform = "linux"
