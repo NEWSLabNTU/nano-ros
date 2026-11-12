@@ -11,7 +11,7 @@ found: 2026-10-26
 related: [phase-466, 0499, 0513, 0661, 1077, 0726]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: a self-test that gives two answers on the same script is a lane verdict nobody can trust.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: a self-test that gives two answers on the same script is a lane verdict nobody can trust.
 
 ## Measured
 
