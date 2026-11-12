@@ -747,7 +747,7 @@ done
 pinned_make="$(nros dev sdk path make)/bin/make"
 use_pool=0
 if [ "${NROS_JOBSERVER:-}" != "1" ] && [ "$unit_count" -gt 1 ] && \
-   [ -x "$pinned_make" ] && "$pinned_make" --version | head -1 | grep -q "4.4"; then
+   [ -x "$pinned_make" ] && grep -q "4.4" <<<"$("$pinned_make" --version | head -1)"; then
     use_pool=1
 fi
 

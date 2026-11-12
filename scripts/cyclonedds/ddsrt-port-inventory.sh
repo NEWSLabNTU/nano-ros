@@ -52,7 +52,7 @@ check_file "$ddsrt_dir/src/sockets/posix/socket.c" "POSIX/lwIP socket wrapper"
 check_dir "$repo_root/third-party/freertos/lwip/src/include/lwip" "lwIP headers"
 check_dir "$repo_root/third-party/threadx/netxduo" "NetX Duo tree"
 
-if find "$ddsrt_dir" -path '*threadx*' -print -quit | grep -q .; then
+if [ -n "$(find "$ddsrt_dir" -path '*threadx*' -print -quit)" ]; then
     echo "  [OK]      ThreadX ddsrt files exist in this nano-ros tree"
 else
     echo "  [TODO]    ThreadX ddsrt port is not present upstream"

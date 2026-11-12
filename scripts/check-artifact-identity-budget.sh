@@ -969,8 +969,8 @@ if [ -n "$_ref" ] && [ -n "$_all" ]; then
     # to the whole tree and label the reading unfiltered, which is exactly the
     # no-`started_at` case below and carries the same accumulation caveat.
     if [ -n "$rlibs" ] \
-        && ! printf '%s\n' "$rlibs" | grep -q "/lib${BUDGET_CRATE}-" \
-        && printf '%s\n' "$_all" | grep -q "/lib${BUDGET_CRATE}-"; then
+        && ! grep -q "/lib${BUDGET_CRATE}-" <<<"$rlibs" \
+        && grep -q "/lib${BUDGET_CRATE}-" <<<"$_all"; then
         # issue 0647 — keep THIS build's writes for the tree-wide axes; only
         # the named-budget question needs the wider set (see the note there).
         _rlibs_era="$rlibs"

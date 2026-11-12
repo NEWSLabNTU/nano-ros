@@ -125,7 +125,7 @@ echo "── downstream (domain 1) received ────────────
 echo "$OUT"
 echo "───────────────────────────────────────────────────────────────"
 
-if [ -z "$OUT" ] || echo "$OUT" | grep -qiE "no message|timed out"; then
+if [ -z "$OUT" ] || grep -qiE "no message|timed out" <<<"$OUT"; then
   echo "FAIL: downstream received nothing (publisher not present / bridge down)." >&2
   [ "$PUBLISHER" = external ] && echo "      (external mode: is the nano-ros publisher running on domain 2?)" >&2
   exit 1
@@ -133,7 +133,7 @@ fi
 
 fail=0
 for e in "${EXPECT[@]}"; do
-  if ! echo "$OUT" | grep -qF "$e"; then
+  if ! grep -qF -- "$e" <<<"$OUT"; then
     echo "FAIL: downstream is MISSING expected \"$e\" — value corrupted across the bridge." >&2
     fail=1
   fi

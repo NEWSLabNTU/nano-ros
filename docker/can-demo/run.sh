@@ -78,7 +78,7 @@ else
     echo "[can-demo] note: $EXPECTED_BASE not present locally; cannot check the base" >&2
 fi
 
-if ! modinfo vcan >/dev/null 2>&1 && ! lsmod 2>/dev/null | grep -q '^vcan'; then
+if ! modinfo vcan >/dev/null 2>&1 && ! grep -q '^vcan' <<<"$(lsmod 2>/dev/null)"; then
     die "the host has no vcan kernel module. The container cannot load it -- it
      takes no privileges beyond NET_ADMIN by design.
        sudo modprobe vcan

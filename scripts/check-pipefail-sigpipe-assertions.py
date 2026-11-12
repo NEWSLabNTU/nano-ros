@@ -52,9 +52,15 @@ THE FIX is to capture and then match without a pipe:
 A here-string has no writer PROCESS — bash fills the descriptor before grep is
 started — so the race cannot exist.  Measured 0 of 5000.
 
-The ALLOWLIST is a RATCHET, not an exoneration: those sites predate the gate
-and sit outside the `check-fast` lane where this was measured.  Each is the
-same shape and can bite the same way; convert one and delete its line.
+There is NO allowlist (issue 2090).  There was one, a ratchet of 30 sites
+that predated this gate and were said to "sit outside the `check-fast` lane
+where this was measured".  Two of them were in `check-artifact-identity-budget`,
+whose self-test runs IN `check-fast`, and that gate's case (c) went red on main
+three times over two weeks with exactly this race: the identity-budget gate's
+`! printf '%s\n' "$rlibs" | grep -q …` read a match as a miss, took its
+"crate not rebuilt" widening, and dropped the wording the case asserts.  A
+ratchet is only as true as the claim that each entry is harmless, and nobody
+re-checks that claim, so every site was converted and the list deleted.
 """
 
 from __future__ import annotations
@@ -68,96 +74,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import workflow_commands  # noqa: E402  phase-472 W1 — the CI shell population
 import shell_statements  # noqa: E402  issue 1738
 from shell_statements import statements  # noqa: E402
-
-# Sites that predate this gate. Same shape, different lane. Delete a line once
-# the site stops piping into its matcher.
-#
-# Keyed by the LINE TEXT, not by a line number: several of these files are
-# edited by whoever is passing through, and a line-numbered ratchet turns any
-# insertion above a listed site into a red that names the wrong thing. The cost
-# is that two identical lines in one file share an entry, which is the right
-# trade for a gate on the merge-queue path.
-ALLOWLIST: dict[str, tuple[str, ...]] = {
-    "docker/can-demo/run.sh": (
-        "if ! modinfo vcan >/dev/null 2>&1 && ! lsmod 2>/dev/null | grep -q '^vcan'; then",
-    ),
-    # Moved with the `just/check.just` -> `just/check/*.just` split. Re-pointed
-    # rather than deleted: the SITE is unchanged, only the file it lives in.
-    "just/check/lanes.just": (
-        'if rustup target list --installed | grep -qx aarch64-unknown-none; then',
-    ),
-    "just/workspace.just": (
-        'if ! echo "$list_out" | grep -q "^$channel"; then',
-        'if rustc +{{NIGHTLY}} --print target-list 2>/dev/null | grep -q armv7a-nuttx-eabi; then',
-    ),
-    "justfile": (
-        # The `"$bin" --version | grep -q "$want"` sibling of the line below was
-        # DELETED upstream, so its entry went with it. An allowlist entry for a
-        # line that no longer exists silences nothing and reads as though it
-        # does -- which is the exact failure this gate's stale-entry check
-        # exists to surface.
-        'if [ -x "$pinned_cf" ] && "$pinned_cf" --version 2>/dev/null | grep -q "$want_cf"; then',
-    ),
-    "packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/alloc_free_audit.sh": (
-        'if ! rustup target list --installed 2>/dev/null | grep -qx "$TARGET"; then',
-    ),
-    "scripts/build-all-jobserver.sh": (
-        'if [ ! -x "$make_bin" ] || ! "$make_bin" --version | head -1 | grep -q "4.4"; then',
-    ),
-    "scripts/build/compile-check-fixtures.sh": (
-        'if ! rustup target list --installed 2>/dev/null | grep -qx "$target"; then',
-        'elif find "$staged" -maxdepth 3 -name package.xml -print -quit 2>/dev/null | grep -q .; then',
-    ),
-    "scripts/build/fixture-make-driver.sh": (
-        '"$(nros dev sdk path make)/bin/make" --version | head -1 | grep -q "4.4" && \\',
-    ),
-    "scripts/build/fixtures-build.sh": (
-        '"$(nros dev sdk path make)/bin/make" --version | head -1 | grep -q "4.4"; then',
-    ),
-    "scripts/build/workspace-fixtures-build.sh": (
-        '[ -x "$pinned_make" ] && "$pinned_make" --version | head -1 | grep -q "4.4"; then',
-    ),
-    "scripts/build/zephyr-fixture-leaves.sh": (
-        'if [ "$rmw" = "cyclonedds" ] && ! printf \'%s\\n\' "${fixture_rmws[@]}" | grep -qx cyclonedds; then',
-    ),
-    "scripts/build/zephyr-fixture-make-driver.sh": (
-        '"$(nros dev sdk path make)/bin/make" --version | head -1 | grep -q "4.4"; then',
-    ),
-    "scripts/check-artifact-identity-budget.sh": (
-        '&& ! printf \'%s\\n\' "$rlibs" | grep -q "/lib${BUDGET_CRATE}-" \\',
-        '&& printf \'%s\\n\' "$_all" | grep -q "/lib${BUDGET_CRATE}-"; then',
-    ),
-    "scripts/check-sched-dim-arms-compile.sh": (
-        'elif ! printf \'%s\' "$out" | grep -E \'error|note\' | grep -q \'threadx_hooks[.]c\'; then',
-        'elif printf \'%s\' "$out" | grep -qE \'is required in SMP|must also be defined|Missing definition\'; then',
-    ),
-    "scripts/check-tier-preconditions.sh": (
-        '! "$_pre_make" --version 2>/dev/null | head -1 | grep -q "4\\.4"; then',
-    ),
-    "scripts/cyclonedds/ddsrt-port-inventory.sh": (
-        'if find "$ddsrt_dir" -path \'*threadx*\' -print -quit | grep -q .; then',
-    ),
-    "scripts/dev/sweep-vendored-c-decls.sh": (
-        'elif printf \'%s\' "$err" | grep -qE \'fatal error:.*No such file\'; then',
-        'if printf \'%s\' "$err" | grep -qE \'error:.*(implicit declaration|makes pointer from integer|int-conversion)\'; then',
-    ),
-    "scripts/reserve-issue-id.sh": (
-        'if printf \'%s\' "$err" | grep -qiE "already exists|non-fast-forward|fetch first|rejected"; then',
-    ),
-    "scripts/reserve-phase-id.sh": (
-        'if printf \'%s\' "$err" | grep -qiE "already exists|non-fast-forward|fetch first|rejected"; then',
-    ),
-    "scripts/ros/domain-bridge-repro.sh": (
-        'if ! echo "$OUT" | grep -qF "$e"; then',
-        'if [ -z "$OUT" ] || echo "$OUT" | grep -qiE "no message|timed out"; then',
-    ),
-    "scripts/zephyr/cargo-features-patch.sh": (
-        '"$_d/CMakeLists.txt" | grep -q .; then',
-    ),
-    "tools/setup.sh": (
-        '&& ! list_known_platforms | grep -qx "$PLATFORM" \\',
-    ),
-}
 
 # A last stage that stops reading before EOF: a MATCHER PREDICATE, whose only
 # product is an exit status, so it stops the moment it knows the answer.
@@ -328,11 +244,10 @@ def tracked_shell() -> list[str]:
     )
 
 
-def scan(root: Path) -> tuple[list[str], list[str]]:
-    """Return (violations, stale allowlist entries)."""
+def scan(root: Path) -> list[str]:
+    """Return the violations."""
     me = Path(__file__).resolve()
     violations: list[str] = []
-    seen: set[tuple[str, str]] = set()
     for rel in tracked_shell():
         path = root / rel
         if path.resolve() == me:
@@ -353,22 +268,12 @@ def scan(root: Path) -> tuple[list[str], list[str]]:
             rel.startswith(".github/") and re.search(r"^\s*(?:-\s*)?shell:\s*bash\s*$", text, re.M)
         ):
             continue
-        allowed = ALLOWLIST.get(rel, ())
         for lineno, line in enumerate(text.splitlines(), 1):
             if not flags(line):
                 continue
             stripped = line.strip()
-            if stripped in allowed:
-                seen.add((rel, stripped))
-                continue
             violations.append(f"{rel}:{lineno}: {stripped[:110]}")
-    stale = sorted(
-        f"{rel}: {line}"
-        for rel, lines in ALLOWLIST.items()
-        for line in lines
-        if (rel, line) not in seen
-    )
-    return violations, stale
+    return violations
 
 
 def main() -> int:
@@ -385,22 +290,7 @@ def main() -> int:
         return 1
 
     root = Path(__file__).resolve().parent.parent
-    violations, stale = scan(root)
-
-    if stale:
-        print(
-            "check-pipefail-sigpipe-assertions: the allowlist names "
-            f"{len(stale)} line(s) that no longer match.",
-            file=sys.stderr,
-        )
-        print(
-            "  A stale entry silences a line that has MOVED, so delete it "
-            "(or re-point it) rather than leaving it:",
-            file=sys.stderr,
-        )
-        for site in stale:
-            print(f"    {site}", file=sys.stderr)
-        return 1
+    violations = scan(root)
 
     if violations:
         print(
@@ -433,9 +323,7 @@ def main() -> int:
 
     print(
         "check-pipefail-sigpipe-assertions: OK "
-        "(no unlisted status-consuming pipeline into an early-exit matcher; "
-        f"{sum(len(v) for v in ALLOWLIST.values())} pre-existing "
-        f"site(s) in {len(ALLOWLIST)} file(s) allowlisted)"
+        "(no status-consuming pipeline into an early-exit matcher)"
     )
     return 0
 

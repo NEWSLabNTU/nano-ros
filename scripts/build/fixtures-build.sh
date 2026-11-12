@@ -233,7 +233,7 @@ run_with_make() {
     local -a make_jobs_args=("-j$jobs")
     make_bin="make"
     if [ -x "$(nros dev sdk path make)/bin/make" ] && \
-       "$(nros dev sdk path make)/bin/make" --version | head -1 | grep -q "4.4"; then
+       grep -q "4.4" <<<"$("$(nros dev sdk path make)/bin/make" --version | head -1)"; then
         make_bin="$(nros dev sdk path make)/bin/make"
         # issue 2119 — the rows find their make by NAME: a cargo row whose
         # build script configures cmake "Unix Makefiles" (`cyclonedds-sys`)

@@ -315,7 +315,7 @@ stage_tree() {
         if _cc_row_resolves_in_macro "$id"; then
             _cc_resolver_arg="--resolver"
         fi
-    elif find "$staged" -maxdepth 3 -name package.xml -print -quit 2>/dev/null | grep -q .; then
+    elif [ -n "$(find "$staged" -maxdepth 3 -name package.xml -print -quit 2>/dev/null)" ]; then
         local _sync_cli="${NROS_CLI_BIN:-$(nros_cli_bin 2>/dev/null || true)}"
         if [ -z "$_sync_cli" ]; then
             echo "compile-check: nros CLI not found — cannot resolve staged models (just setup-cli)" >&2
@@ -722,7 +722,7 @@ build_cmake_fixture() {
 stage_and_cross_build() {
     local id="$1" src="$2" subdir="$3" pkg="$4" target="$5" profiles="${6:-debug}"
     local staged="$out_root/$id"
-    if ! rustup target list --installed 2>/dev/null | grep -qx "$target"; then
+    if ! grep -qx "$target" <<<"$(rustup target list --installed 2>/dev/null)"; then
         echo "cross-build: target $target not installed — skipping $id" >&2
         return 0
     fi
@@ -1513,7 +1513,7 @@ while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     # Only the target-bearing cargo-check rows reach here; the staged ones ran above.
     [ -n "$target" ] || continue
     [ -d "$repo_root/$dir" ] || _unmet_lane_prereq "cargo-check: example dir missing for $id: $dir"
-    if ! rustup target list --installed 2>/dev/null | grep -qx "$target"; then
+    if ! grep -qx "$target" <<<"$(rustup target list --installed 2>/dev/null)"; then
         _unmet_lane_prereq "cargo-check: rust target $target not installed (needed by $id; rustup target add $target)"
     fi
     echo "== cargo-check: $id ($target) =="

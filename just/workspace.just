@@ -326,7 +326,7 @@ doctor:
             rustup_timeout+=("$channel ($f)")
             continue
         fi
-        if ! echo "$list_out" | grep -q "^$channel"; then
+        if ! grep -q "^$channel" <<<"$list_out"; then
             pinned_missing+=("$channel ($f)")
             continue
         fi
@@ -636,7 +636,7 @@ rust-targets:
         rustup component add --toolchain "{{NIGHTLY}}" "$c"
     done
     rustup +{{NIGHTLY}} target add thumbv7m-none-eabi
-    if rustc +{{NIGHTLY}} --print target-list 2>/dev/null | grep -q armv7a-nuttx-eabi; then
+    if grep -q armv7a-nuttx-eabi <<<"$(rustc +{{NIGHTLY}} --print target-list 2>/dev/null)"; then
         echo "  armv7a-nuttx-eabi (NuttX Tier 3): supported via nightly + build-std"
     else
         echo "  WARNING: armv7a-nuttx-eabi not in nightly target list — NuttX builds may fail"

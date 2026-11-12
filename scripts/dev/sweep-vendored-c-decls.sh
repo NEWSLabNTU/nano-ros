@@ -56,12 +56,12 @@ sweep_tree() {
         if [ -z "$err" ]; then
             clean=$((clean + 1)); continue
         fi
-        if printf '%s' "$err" | grep -qE 'error:.*(implicit declaration|makes pointer from integer|int-conversion)'; then
+        if grep -qE 'error:.*(implicit declaration|makes pointer from integer|int-conversion)' <<<"$err"; then
             hits=$((hits + 1))
             hitlist+="    ${f#"$repo/"}"$'\n'
             printf '%s' "$err" | grep -E 'error:.*(implicit declaration|makes pointer from integer)' |
                 head -2 | sed 's/^/      /' >>"$repo/tmp/sweep-hits.txt"
-        elif printf '%s' "$err" | grep -qE 'fatal error:.*No such file'; then
+        elif grep -qE 'fatal error:.*No such file' <<<"$err"; then
             skips=$((skips + 1))
         else
             # compiled far enough to diagnose something else — not our class
