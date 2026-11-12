@@ -1285,12 +1285,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # arm only until phase-550 W3a and W4 land. rv-virt fails today at a
-        # known defect (issue 2426 item 2: the host `cc` gets `-mabi=ilp32`),
-        # and a cell known to be red carries no signal: a new regression
-        # behind it would read as yesterday's failure. The item that makes
-        # rv-virt build adds `riscv` here in the same change.
-        config: [arm]
+        # `riscv` joined with phase-550 W3a/W4, the change that made rv-virt
+        # build: a cell known to be red carries no signal, so none is added
+        # before it is green.
+        config: [arm, riscv]
     steps:
       - uses: actions/checkout@v4
 

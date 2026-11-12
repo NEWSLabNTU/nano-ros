@@ -62,9 +62,15 @@ NROS_LINKED_PLACED_DIR := $(call NROS_PLACED_DIR,cpp)
 else
 NROS_LINKED_PLACED_DIR := $(call NROS_PLACED_DIR,c)
 endif
-NROS_NUTTX_TRIPLE := armv7a-nuttx-eabihf
+# phase-550 W4 — the ONE triple, the same one the Makefile hands cargo, so
+# the archive is looked for under the directory cargo wrote it to.
+include $(APPDIR)/external/nano-ros/RustTriple.mk
 nros_artifact = $(or $(shell $(NROS_CLI) locate artifact $(1) $(2) --index $(NANO_ROS_ROOT_DEFS)/nros-sdk-index.toml),$(error nano-ros: `$(NROS_CLI) locate artifact $(1)` answered nothing — put the nros CLI on PATH (source activate.sh) or set NROS_CLI))
-NROS_CARGO_ARCHIVE_ARGS := --target $(NROS_NUTTX_TRIPLE) --profile release --target-dir $(NROS_IMAGE_TARGET_DIR)
+# No triple means an unconfigured parse (`make olddefconfig` reads this file
+# while it resolves `.config`; `RustTriple.mk` refuses an empty triple in a
+# configured tree), so there is no archive to name yet.
+ifneq ($(NROS_RUST_TRIPLE),)
+NROS_CARGO_ARCHIVE_ARGS := --target $(NROS_RUST_TRIPLE) --profile release --target-dir $(NROS_IMAGE_TARGET_DIR)
 NROS_CARGO_LIB_DIR := $(patsubst %/,%,$(dir $(call nros_artifact,c-archive,$(NROS_CARGO_ARCHIVE_ARGS))))
 # Issue 1636 — exactly ONE Rust staticlib reaches the kernel link.
 #
@@ -84,6 +90,7 @@ else
 EXTRA_LIBS    += $(call nros_artifact,c-archive,$(NROS_CARGO_ARCHIVE_ARGS))
 endif
 EXTRA_LIBPATHS+= -L$(NROS_CARGO_LIB_DIR)
+endif
 # Phase 157.C.17 — optional per-package C++ FFI staticlibs, one
 # `EXTRA_LIBS += <path>` per line. Nothing in-tree WRITES this fragment any
 # more (the per-example staging loop that did was retired in Phase 212.M-F.12),

@@ -1,7 +1,8 @@
 # Phase 550 -- NuttX builds on NuttX's own infrastructure
 
 **Status (2026-11-13). IN PROGRESS: W0 done (every question ruled), W1, W2
-and W12 done; the rest not started.**
+and W12 done; W3a and W4's code done (W3b and W4's upstream contribution
+open); the rest not started.**
 The work for
 [RFC-0126](../design/0126-nuttx-builds-on-nuttx-infrastructure.md), all of
 whose decisions are ruled (its "Decided" section). Each item names the question in
@@ -60,7 +61,8 @@ link is not vacuous), and runs `make`.
   green, and the ELF holds `nros_*` text symbols; it is reachable from the
   cadence Q19 picks, and `scripts/check-nuttx-integration-makefile.sh`'s
   "no lane" note is deleted.
-- **Status: DONE (2026-11-13).** `just nuttx build-make-road [arm|riscv|all]`
+- **Status:** DONE (2026-11-13, PR #3646; arm-only cell, PR #3650).
+  `just nuttx build-make-road [arm|riscv|all]`
   runs `scripts/nuttx/make-road-build.sh <config>`. It clones its own copy of
   the kernel and apps trees the source ladder locates (`--shared`, at the
   tree's HEAD) into `build/nuttx-make-road/<config>/`, configures with the
@@ -135,6 +137,22 @@ looks`).
 - **Acceptance:** W1 green on rv-virt; `git grep` finds `cortex-a7` /
   `neon-vfpv4` / `rv32imac` flag literals only where W3b's ruling allows; a
   gate refuses a new copy.
+- **Status:** OPEN (W3a done 2026-11-13; W3b not started).
+  **W3a.** `NROS_CARGO_BUILD` sets `CC_` / `CXX_` / `AR_<triple>` to
+  `$(CROSSDEV)gcc` / `g++` / `ar`, and `CFLAGS_` / `CXXFLAGS_<triple>` to
+  `$(ARCHCPUFLAGS)`. `<triple>` is the resolved triple (W4) with dashes as
+  underscores, cc-rs's spelling. The six armv7a tool literals,
+  `NROS_RUSTFLAGS_ARMV7A` (link args, which a staticlib never uses) and
+  `NROS_CFLAGS_ARMV7A` are deleted.
+  - rv-virt now builds on the make road: `just nuttx build-make-road riscv`
+    is green (ELF 6,442,336 bytes, 29 `nros_*` functions), so the nightly
+    `riscv` cell is back.
+  - armv7a is unchanged: 5,308,332 bytes, 29 `nros_*` functions.
+  - cc-rs still adds its own `-march=armv7-a+neon-vfpv4` beside NuttX's
+    `-mcpu=cortex-a7`, which warns `switch '-mcpu=cortex-a7' conflicts with
+    switch '-march=...'` (4 times per build). The old literals warned the
+    same.
+  - W3b and the acceptance's "no new copy" gate remain.
 
 ### W4 -- One triple (2426 items 3 and 4)
 
@@ -151,6 +169,40 @@ looks`).
 - **Acceptance:** W1 links on both arches with the archive found under the
   triple cargo wrote; an arch with no triple is refused at parse time,
   naming `LLVM_ARCHTYPE`.
+- **Status:** OPEN (the code is done, 2026-11-13; the armv7a branch is not
+  yet offered upstream).
+  - **The one triple.** `integrations/nuttx/RustTriple.mk` resolves
+    `NROS_RUST_TRIPLE`: upstream's `RUST_TARGET_TRIPLE` first, then
+    `armv7a-nuttx-<abi>` for `LLVM_ARCHTYPE=armv7a` alone. The shell's
+    `Make.defs` includes it, so the archive path and the Makefile's
+    `--target` are one word, and `NROS_NUTTX_TRIPLE` is gone.
+  - **The empty-triple branch** (upstream's `RUST_CARGO_BUILD` with an
+    empty `--target`) is deleted.
+  - **The refusal.** A configured tree with no triple is refused while the
+    Makefiles are read, naming `LLVM_ARCHTYPE`, `LLVM_ABITYPE` and
+    `LLVM_CPUTYPE`. "Configured" means `$(TOPDIR)/include/nuttx/config.h`
+    exists. `make olddefconfig` reads the apps Makefiles while `.config` is
+    still unresolved: on rv-virt, `CONFIG_ARCH` is set but
+    `CONFIG_ARCH_RV32` is not yet derived, so every `LLVM_*` is empty
+    (measured). For the same reason, `Make.defs` asks for the archive only
+    once a triple exists.
+  - **The gate.** `just check nuttx-rust-triple` evaluates upstream's
+    `tools/Rust.mk` and `RustTriple.mk` together with GNU make over 19
+    cases: every arch upstream's macro knows, plus armv7a, armv7r, aarch64
+    and xtensa. It requires:
+    - the same answer wherever upstream answers;
+    - the fallback for armv7a alone;
+    - a refusal naming `LLVM_ARCHTYPE` for the rest.
+  - **How the gate goes red.** It fails, saying to delete the fallback, as
+    soon as the nuttx-apps pin answers armv7a itself. Its self-test (a
+    fallback that answers for every arch) must fail first. It is a recorded
+    skip without a nuttx-apps tree.
+  - **Not covered.** The gate reads the make macro, not
+    `nuttx_rust_target_triple` (upstream's CMake twin), which no nano-ros
+    road calls since W8 deletes the CMake shell.
+  - **Open:** the upstream contribution of the armv7a branch to nuttx-apps
+    `tools/Rust.mk`. It is an outward-facing PR, so it is not filed from
+    here without the maintainer's go-ahead.
 
 ### W5 -- The board's cargo config on the make road (2426 items 1 and 5)
 
