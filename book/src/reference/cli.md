@@ -127,6 +127,11 @@ Options:
           
           A platform directory name, e.g. `zephyr`, `bare-metal`, or one scaffolded via `nros new platform`.
 
+      --inherits <INHERITS>
+          The built-in platform family a `nros new platform <name>` builds as, written as its `nros-platform.toml` `inherits` (e.g. `bare-metal`, `freertos`).
+          
+          A board naming the platform builds as the first built-in platform this chain reaches. Without it the line is written commented out, and a board naming the platform is refused until it is set.
+
       --components <COMPONENTS>
           Comma-separated component package names for `nros new system <bringup> --components <list>`
 

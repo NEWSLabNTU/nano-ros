@@ -140,6 +140,9 @@ pub fn run(args: NewArgs) -> Result<()> {
 }
 
 fn render_descriptor(args: &NewArgs) -> String {
+    // History: issue 2310 -- `platform_feature = "platform-<platform>"` was
+    // written here and named no real feature for threadx-linux (family
+    // `platform-threadx`) or for any out-of-tree platform; it is derived.
     let mut out = format!(
         // See RFC-0064 R5 D1.
         "# Board descriptor for `{name}`.\n\
@@ -154,7 +157,8 @@ fn render_descriptor(args: &NewArgs) -> String {
          names = [\"{name}\"]\n\
          platform = \"{platform}\"\n\
          toolchain = \"stable\"\n\
-         platform_feature = \"platform-{platform}\"\n",
+         # `platform_feature` is derived from the platform's family, so it\n\
+         # is not written here.\n",
         name = args.name,
         platform = args.platform,
     );

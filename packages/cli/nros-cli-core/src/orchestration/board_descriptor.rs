@@ -114,6 +114,88 @@ impl PlatformKind {
         .find(|k| k.kebab() == token)
     }
 
+    /// Every built-in kind's [`kebab`](Self::kebab), for a refusal to list.
+    pub fn all_kebabs() -> Vec<&'static str> {
+        [
+            PlatformKind::Posix,
+            PlatformKind::Freertos,
+            PlatformKind::BareMetal,
+            PlatformKind::Nuttx,
+            PlatformKind::Zephyr,
+            PlatformKind::ThreadxLinux,
+            PlatformKind::ThreadxRiscv64,
+            PlatformKind::Stm32,
+        ]
+        .iter()
+        .map(|k| k.kebab())
+        .collect()
+    }
+
+    /// The built-in family a platform NAME builds as.
+    ///
+    /// Issue 2310, user ruling 2026-11-12 (option 3): "resolve an out-of-tree
+    /// platform via `inherits` to a built-in family; refuse with a fix hint
+    /// when the chain hits none". A built-in name is its own family. Any other
+    /// name is looked up through `inherits_of` (a platform descriptor's
+    /// `inherits`, as written: `None` = no descriptor answers, `Some(None)` =
+    /// one does and inherits nothing), and the walk follows the AUTHORED
+    /// strings until one is a built-in kind. The authored string, not the
+    /// directory it resolves to, because `nros-platform-threadx` answers to
+    /// both `threadx-linux` and `threadx-riscv64`.
+    ///
+    /// The enum stays closed on purpose: `link_kind` and `board_family` choose
+    /// CLI code paths, so a platform that differs from every family in those
+    /// still needs a variant here.
+    pub fn resolve_family(
+        name: &str,
+        inherits_of: &dyn Fn(&str) -> Option<Option<String>>,
+    ) -> Result<Self, String> {
+        let families = Self::all_kebabs().join(", ");
+        let mut chain: Vec<String> = Vec::new();
+        let mut cur = name.to_string();
+        loop {
+            if let Some(kind) = Self::from_kebab(&cur) {
+                return Ok(kind);
+            }
+            if chain.contains(&cur) {
+                chain.push(cur);
+                return Err(format!(
+                    "platform `{name}`: its `inherits` chain loops ({})",
+                    chain.join(" -> ")
+                ));
+            }
+            chain.push(cur.clone());
+            match inherits_of(&cur) {
+                None if chain.len() == 1 => {
+                    return Err(format!(
+                        "platform `{name}` is not a built-in platform ({families}), and no \
+                         nros-platform.toml on the platform search path answers to it. \
+                         Scaffold it with `nros new platform {name} --inherits <family>`, \
+                         or name a built-in platform"
+                    ));
+                }
+                None => {
+                    return Err(format!(
+                        "platform `{name}`: its `inherits` chain ({}) names `{cur}`, which \
+                         is not a built-in platform ({families}) and which no \
+                         nros-platform.toml answers to",
+                        chain.join(" -> ")
+                    ));
+                }
+                Some(None) => {
+                    return Err(format!(
+                        "platform `{name}` is not a built-in platform, and its `inherits` \
+                         chain ({}) reaches none, so nano-ros does not know which family's \
+                         build rules it takes. Add `inherits = \"<family>\"` to the \
+                         nros-platform.toml of `{cur}`, where <family> is one of: {families}",
+                        chain.join(" -> ")
+                    ));
+                }
+                Some(Some(parent)) => cur = parent,
+            }
+        }
+    }
+
     /// The `PLATFORM` token `nros_feature_set()` (cmake/NanoRosFeatureSet.cmake)
     /// accepts for this platform — what a generated cmake root passes as
     /// `NROS_PLATFORM` and `nano_ros_workspace(PLATFORM …)`.
@@ -454,7 +536,19 @@ pub struct BoardDescriptor {
     /// board no cmake road builds.
     #[serde(default)]
     pub cmake_module: Option<String>,
+    /// The built-in platform FAMILY this board builds as. For an out-of-tree
+    /// platform it is the family that platform's `inherits` chain reaches
+    /// (issue 2310); [`Self::platform_name`] keeps the name the board wrote.
     pub platform: PlatformKind,
+    /// The platform name the board authored, when it is not a built-in kind:
+    /// an out-of-tree platform resolved to [`Self::platform`] through its
+    /// `nros-platform.toml` `inherits` chain (issue 2310, user ruling
+    /// 2026-11-12). `None` for every built-in platform.
+    ///
+    /// DERIVED, never authored: the loader writes it, and a descriptor that
+    /// states it is refused.
+    #[serde(default)]
+    pub platform_name: Option<String>,
     /// rustc target triple this board pins, if any (`None` → take from plan).
     #[serde(default)]
     pub target: Option<String>,
@@ -1190,6 +1284,75 @@ impl BoardFile {
         Ok(file)
     }
 
+    /// [`Self::parse`], with every `[[board]]` whose `platform` is not a
+    /// built-in kind resolved to its family through `families` (issue 2310).
+    ///
+    /// The resolved family replaces `platform` and the authored name moves to
+    /// `platform_name`, so everything downstream reads a closed `PlatformKind`
+    /// exactly as it does for an in-tree board. A file naming only built-in
+    /// platforms takes [`Self::parse`] untouched, so its errors keep their
+    /// spans.
+    fn parse_resolving(text: &str, families: &PlatformFamilies) -> Result<Self, toml::de::Error> {
+        let custom = <toml::de::Error as serde::de::Error>::custom;
+        let Ok(mut table) = text.parse::<toml::Table>() else {
+            return Self::parse(text);
+        };
+        let mut rewrote = false;
+        if let Some(toml::Value::Array(boards)) = table.get_mut("board") {
+            for entry in boards.iter_mut() {
+                let toml::Value::Table(t) = entry else {
+                    continue;
+                };
+                let names = t
+                    .get("names")
+                    .and_then(|n| n.as_array())
+                    .map(|n| {
+                        n.iter()
+                            .filter_map(|v| v.as_str())
+                            .collect::<Vec<_>>()
+                            .join("/")
+                    })
+                    .unwrap_or_default();
+                if t.contains_key("platform_name") {
+                    return Err(custom(format!(
+                        "board {names}: `platform_name` is derived from `platform` and \
+                         cannot be stated; name the platform in `platform`"
+                    )));
+                }
+                let Some(authored) = t.get("platform").and_then(|p| p.as_str()) else {
+                    continue;
+                };
+                // orin-spe keeps its own refusal (`parse_typed`).
+                if PlatformKind::from_kebab(authored).is_some() || authored == "orin-spe" {
+                    continue;
+                }
+                let authored = authored.to_string();
+                let kind = families
+                    .resolve(&authored)
+                    .map_err(|e| custom(format!("board {names}: {e}")))?;
+                if let Some(stated) = t.get("platform_feature").and_then(|f| f.as_str())
+                    && stated != kind.platform_feature()
+                {
+                    return Err(custom(format!(
+                        "board {names}: `platform_feature = \"{stated}\"` disagrees with \
+                         platform `{authored}`'s family `{}`, which selects `{}`; drop the \
+                         line, it is derived",
+                        kind.kebab(),
+                        kind.platform_feature()
+                    )));
+                }
+                t.insert("platform".into(), toml::Value::String(kind.kebab().into()));
+                t.insert("platform_name".into(), toml::Value::String(authored));
+                rewrote = true;
+            }
+        }
+        if !rewrote {
+            return Self::parse(text);
+        }
+        let text = toml::to_string(&table).map_err(|e| custom(e.to_string()))?;
+        Self::parse(&text)
+    }
+
     fn parse_typed(text: &str) -> Result<Self, toml::de::Error> {
         let direct = toml::from_str::<BoardFile>(text);
         let Err(first) = direct else {
@@ -1378,6 +1541,77 @@ pub struct BoardCatalog {
     descriptors: Vec<BoardDescriptor>,
 }
 
+/// Where a board's out-of-tree platform is looked up, and the lookup
+/// (issue 2310).
+///
+/// The platform search path, earliest root winning, as
+/// `PlatformsTree::load_search_path` merges it: `$NROS_PLATFORMS_DIR`, the
+/// catalog's extra board roots (a porter's `nros new platform` and `nros new
+/// board` write side by side), the parents of package dirs that ARE platform
+/// packages, then the checkout's `packages/platform` and `config`. The tree is
+/// loaded on the first non-built-in name, so a catalog of built-in boards
+/// never reads a platform descriptor.
+#[derive(Debug, Default)]
+pub struct PlatformFamilies {
+    roots: Vec<PathBuf>,
+    tree: std::cell::OnceCell<Result<nros_board_common::platform_config::PlatformsTree, String>>,
+}
+
+impl PlatformFamilies {
+    /// Over an explicit search path (tests).
+    pub fn new(roots: Vec<PathBuf>) -> Self {
+        Self {
+            roots,
+            tree: std::cell::OnceCell::new(),
+        }
+    }
+
+    fn for_catalog(workspace: &Path, extra_roots: &[PathBuf], pkg_dirs: &[PathBuf]) -> Self {
+        let mut roots: Vec<PathBuf> = std::env::var("NROS_PLATFORMS_DIR")
+            .ok()
+            .map(|v| {
+                v.split(':')
+                    .filter(|s| !s.is_empty())
+                    .map(PathBuf::from)
+                    .collect()
+            })
+            .unwrap_or_default();
+        roots.extend(extra_roots.iter().cloned());
+        for dir in pkg_dirs {
+            if dir
+                .join(nros_board_common::platform_config::PLATFORM_CONFIG_FILENAME)
+                .is_file()
+                && let Some(parent) = dir.parent()
+            {
+                roots.push(parent.to_path_buf());
+            }
+        }
+        roots.push(workspace.join("packages/platform"));
+        roots.push(workspace.join("config"));
+        let mut seen = Vec::new();
+        roots.retain(|r| {
+            let keep = !seen.contains(r);
+            seen.push(r.clone());
+            keep
+        });
+        Self::new(roots)
+    }
+
+    /// The built-in family `name` builds as ([`PlatformKind::resolve_family`]).
+    pub fn resolve(&self, name: &str) -> Result<PlatformKind, String> {
+        let tree = self.tree.get_or_init(|| {
+            nros_board_common::platform_config::PlatformsTree::load_search_path(&self.roots)
+                .map_err(|e| e.to_string())
+        });
+        let tree = tree
+            .as_ref()
+            .map_err(|e| format!("platform `{name}`: loading platform descriptors: {e}"))?;
+        PlatformKind::resolve_family(name, &|n| {
+            tree.inherits_of(n).map(|i| i.map(str::to_string))
+        })
+    }
+}
+
 /// Extra board-search roots from `$NROS_EXTRA_BOARD_PATH` (PATH-style
 /// separator). Each entry is a directory shaped like `packages/boards/` —
 /// immediate subdirectories carrying `nros-board.toml` (or a
@@ -1410,9 +1644,18 @@ impl BoardCatalog {
         workspace: &Path,
         extra_roots: &[PathBuf],
     ) -> Result<Self, BoardLoadError> {
+        let families = PlatformFamilies::for_catalog(workspace, extra_roots, &[]);
+        Self::load_with_families(workspace, extra_roots, &families)
+    }
+
+    fn load_with_families(
+        workspace: &Path,
+        extra_roots: &[PathBuf],
+        families: &PlatformFamilies,
+    ) -> Result<Self, BoardLoadError> {
         let boards_dir = workspace.join("packages/boards");
         let mut descriptors = Vec::new();
-        Self::load_root(&boards_dir, Some(workspace), &mut descriptors)?;
+        Self::load_root(&boards_dir, Some(workspace), families, &mut descriptors)?;
         for root in extra_roots {
             // Extra-root descriptors keep an ABSOLUTE `source`: the
             // workspace-relative invariant exists so IN-TREE paths in
@@ -1420,7 +1663,7 @@ impl BoardCatalog {
             // board is by definition not in a committed nano-ros artifact.
             // `nano_ros_root.join(abs)` resolves to the absolute path, so
             // `NROS_BOARD_TOML` consumers keep working unchanged.
-            Self::load_root(root, None, &mut descriptors)?;
+            Self::load_root(root, None, families, &mut descriptors)?;
         }
         Ok(Self { descriptors })
     }
@@ -1441,8 +1684,10 @@ impl BoardCatalog {
         workspace: &Path,
         pkg_dirs: &[PathBuf],
     ) -> Result<Self, BoardLoadError> {
-        let mut catalog = Self::load_with_extra(workspace, &extra_board_roots())?;
-        catalog.absorb_packages(pkg_dirs)?;
+        let extra = extra_board_roots();
+        let families = PlatformFamilies::for_catalog(workspace, &extra, pkg_dirs);
+        let mut catalog = Self::load_with_families(workspace, &extra, &families)?;
+        catalog.absorb_packages(pkg_dirs, &families)?;
         Ok(catalog)
     }
 
@@ -1451,7 +1696,11 @@ impl BoardCatalog {
     /// Package dirs are named INDIVIDUALLY rather than scanning their parent:
     /// a workspace's layout is whatever its packages say it is, and a parent
     /// scan would also read directories that discovery deliberately excluded.
-    fn absorb_packages(&mut self, pkg_dirs: &[PathBuf]) -> Result<(), BoardLoadError> {
+    fn absorb_packages(
+        &mut self,
+        pkg_dirs: &[PathBuf],
+        families: &PlatformFamilies,
+    ) -> Result<(), BoardLoadError> {
         for dir in pkg_dirs {
             let descriptor_path = dir.join("nros-board.toml");
             if !descriptor_path.is_file() {
@@ -1459,7 +1708,7 @@ impl BoardCatalog {
             }
             let text = std::fs::read_to_string(&descriptor_path)
                 .map_err(|e| BoardLoadError::Io(descriptor_path.clone(), e))?;
-            let file = BoardFile::parse(&text)
+            let file = BoardFile::parse_resolving(&text, families)
                 .map_err(|e| BoardLoadError::Parse(descriptor_path.clone(), e))?;
             // Absolute, like an extra root and for the same reason: the
             // workspace-relative form exists so IN-TREE paths in committed
@@ -1605,6 +1854,7 @@ impl BoardCatalog {
     fn load_root(
         root: &Path,
         rel_base: Option<&Path>,
+        families: &PlatformFamilies,
         descriptors: &mut Vec<BoardDescriptor>,
     ) -> Result<(), BoardLoadError> {
         let mut dirs = Vec::new();
@@ -1616,7 +1866,7 @@ impl BoardCatalog {
             Self::require_announcement(&dir, &descriptor_path)?;
             let text = std::fs::read_to_string(&descriptor_path)
                 .map_err(|e| BoardLoadError::Io(descriptor_path.clone(), e))?;
-            let file = BoardFile::parse(&text)
+            let file = BoardFile::parse_resolving(&text, families)
                 .map_err(|e| BoardLoadError::Parse(descriptor_path.clone(), e))?;
             // Workspace-relative, forward slashes — it goes into a COMMITTED
             // generated header, so an absolute host path would be drift the
@@ -2769,6 +3019,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             west_board: None,
             cmake_module: None,
             platform: PlatformKind::ThreadxRiscv64,
+            platform_name: None,
             target: None,
             toolchain: Toolchain::Stable,
             platform_feature: "platform-threadx".into(),
@@ -3042,6 +3293,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             west_board: None,
             cmake_module: None,
             platform: PlatformKind::Posix,
+            platform_name: None,
             target: None,
             toolchain: Toolchain::Stable,
             platform_feature: "platform-posix".into(),
@@ -3610,5 +3862,143 @@ entry_kind = "zephyr-staticlib"
             msg.contains("supported_netstakcs"),
             "the error must name the offending key, got: {msg}"
         );
+    }
+}
+
+/// Issue 2310 — a board naming an out-of-tree platform resolves through that
+/// platform's `inherits` chain to a built-in family, or is refused with the
+/// line that fixes it (user ruling 2026-11-12, option 3).
+#[cfg(test)]
+mod platform_family_tests {
+    use super::*;
+
+    fn chain<'a>(
+        rows: &'a [(&'a str, Option<&'a str>)],
+    ) -> impl Fn(&str) -> Option<Option<String>> + 'a {
+        move |n| {
+            rows.iter()
+                .find(|(name, _)| *name == n)
+                .map(|(_, inh)| inh.map(str::to_string))
+        }
+    }
+
+    #[test]
+    fn a_built_in_name_is_its_own_family() {
+        let none = chain(&[]);
+        assert_eq!(
+            PlatformKind::resolve_family("freertos", &none),
+            Ok(PlatformKind::Freertos)
+        );
+    }
+
+    #[test]
+    fn an_out_of_tree_platform_takes_the_family_its_chain_reaches() {
+        let rows = [
+            ("acmeos", Some("acme-base")),
+            ("acme-base", Some("threadx-linux")),
+        ];
+        assert_eq!(
+            PlatformKind::resolve_family("acmeos", &chain(&rows)),
+            Ok(PlatformKind::ThreadxLinux),
+        );
+    }
+
+    #[test]
+    fn a_chain_that_reaches_no_built_in_is_refused_naming_the_fix() {
+        let rows = [("acmeos", Some("acme-base")), ("acme-base", None)];
+        let err = PlatformKind::resolve_family("acmeos", &chain(&rows)).unwrap_err();
+        assert!(err.contains("acmeos -> acme-base"), "{err}");
+        assert!(err.contains("inherits = \"<family>\""), "{err}");
+        assert!(err.contains("of `acme-base`"), "{err}");
+        assert!(err.contains("bare-metal"), "{err}");
+    }
+
+    #[test]
+    fn an_unanswered_name_and_a_loop_are_refused() {
+        let err = PlatformKind::resolve_family("acmeos", &chain(&[])).unwrap_err();
+        assert!(err.contains("--inherits <family>"), "{err}");
+        let rows = [("a", Some("b")), ("b", Some("a"))];
+        let err = PlatformKind::resolve_family("a", &chain(&rows)).unwrap_err();
+        assert!(err.contains("loops (a -> b -> a)"), "{err}");
+        let rows = [("a", Some("ghost"))];
+        let err = PlatformKind::resolve_family("a", &chain(&rows)).unwrap_err();
+        assert!(err.contains("names `ghost`"), "{err}");
+    }
+
+    /// A porter's platform package and board side by side under one extra
+    /// root, the layout `nros new platform` + `nros new board` write.
+    fn porter_root(inherits: Option<&str>) -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        let plat = tmp.path().join("nros-platform-acmeos");
+        std::fs::create_dir_all(&plat).unwrap();
+        let line = inherits
+            .map(|f| format!("inherits = \"{f}\"\n"))
+            .unwrap_or_default();
+        std::fs::write(
+            plat.join("nros-platform.toml"),
+            format!("names = [\"acmeos\"]\n{line}"),
+        )
+        .unwrap();
+        let board = tmp.path().join("nros-board-acme");
+        std::fs::create_dir_all(&board).unwrap();
+        std::fs::write(
+            board.join("nros-board.toml"),
+            "[[board]]\nnames = [\"acme\"]\nplatform = \"acmeos\"\n\
+             target = \"thumbv7m-none-eabi\"\ntoolchain = \"stable\"\n\
+             entry_kind = \"board-run\"\nsupported_netstacks = []\n",
+        )
+        .unwrap();
+        std::fs::write(
+            board.join("package.xml"),
+            "<package><export><nano_ros_provides kind=\"board\" name=\"acme\"/></export></package>\n",
+        )
+        .unwrap();
+        tmp
+    }
+
+    fn empty_sdk() -> tempfile::TempDir {
+        let sdk = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(sdk.path().join("packages/boards")).unwrap();
+        sdk
+    }
+
+    #[test]
+    fn the_catalog_resolves_a_board_on_an_out_of_tree_platform() {
+        let root = porter_root(Some("bare-metal"));
+        let sdk = empty_sdk();
+        let cat = BoardCatalog::load_with_extra(sdk.path(), &[root.path().to_path_buf()])
+            .expect("a board on an inheriting out-of-tree platform loads");
+        let d = cat
+            .descriptors()
+            .iter()
+            .find(|d| d.answers_to("acme"))
+            .expect("acme resolves");
+        assert_eq!(d.platform, PlatformKind::BareMetal);
+        assert_eq!(d.platform_name.as_deref(), Some("acmeos"));
+        assert_eq!(d.platform_feature, "platform-bare-metal");
+    }
+
+    #[test]
+    fn the_catalog_refuses_a_board_on_a_platform_that_inherits_nothing() {
+        let root = porter_root(None);
+        let sdk = empty_sdk();
+        let err = BoardCatalog::load_with_extra(sdk.path(), &[root.path().to_path_buf()])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("board acme"), "{err}");
+        assert!(err.contains("inherits = \"<family>\""), "{err}");
+    }
+
+    #[test]
+    fn platform_name_is_derived_never_stated() {
+        let fam = PlatformFamilies::new(Vec::new());
+        let err = BoardFile::parse_resolving(
+            "[[board]]\nnames = [\"x\"]\nplatform = \"posix\"\nplatform_name = \"posix\"\n\
+             toolchain = \"stable\"\n",
+            &fam,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("`platform_name` is derived"), "{err}");
     }
 }

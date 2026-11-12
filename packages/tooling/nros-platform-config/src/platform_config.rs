@@ -2247,6 +2247,20 @@ impl PlatformsTree {
             .unwrap_or(name)
     }
 
+    /// The `inherits` a platform NAME's descriptor states, exactly as written:
+    /// `None` when no descriptor answers to `name`, `Some(None)` when one does
+    /// and inherits nothing.
+    ///
+    /// Issue 2310 — the CLI resolves a board's out-of-tree platform to a
+    /// built-in family by walking these strings, so it needs the authored
+    /// spelling (`threadx-linux`), not the directory an alias resolves to
+    /// (`nros-platform-threadx`, which answers to three names).
+    pub fn inherits_of(&self, name: &str) -> Option<Option<&str>> {
+        self.files
+            .get(self.resolve_alias(name))
+            .map(|f| f.inherits.as_deref())
+    }
+
     /// Every name the tree answers to, directory names and aliases alike.
     /// Used to make an unknown-platform error list the real options.
     pub fn all_names(&self) -> Vec<String> {

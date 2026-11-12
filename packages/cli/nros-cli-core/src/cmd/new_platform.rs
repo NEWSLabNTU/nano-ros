@@ -41,8 +41,15 @@ fn write_new(path: &Path, content: &str) -> Result<()> {
 /// `nros new platform <name>` — a self-contained platform package:
 /// `nros-platform-<name>/` crate skeleton + `nros-platform.toml` with the
 /// RFC-0049 schema as comments.
-pub fn scaffold_platform(name: &str, into: &Path) -> Result<()> {
+pub fn scaffold_platform(name: &str, into: &Path, inherits: Option<&str>) -> Result<()> {
     validate_name(name)?;
+    // Issue 2310: the family a board naming this platform builds as. Stated,
+    // it is a live line; absent, the line stays commented and the catalog
+    // names it when a board first asks.
+    let inherits_line = match inherits {
+        Some(family) => format!("inherits = \"{family}\""),
+        None => "# inherits = \"bare-metal\"".to_string(),
+    };
     let dir = into.join(format!("nros-platform-{name}"));
     if dir.exists() {
         bail!("{} already exists", dir.display());
@@ -129,8 +136,12 @@ pub mod sleep {{
 # is only where the file lives.
 names = ["{name}"]
 
-# Inherit a sibling platform family's config (e.g. "bare-metal"):
-# inherits = "bare-metal"
+# The platform family this one builds as, and whose config it inherits.
+# A board naming `{name}` builds as the first built-in platform this chain
+# reaches (posix, freertos, bare-metal, nuttx, zephyr, threadx-linux,
+# threadx-riscv64, stm32), so a board for a platform that inherits none is
+# refused until this line is set.
+{inherits_line}
 
 [capabilities]
 # Software-stack FACTS (open vocabulary; policy below is checked against

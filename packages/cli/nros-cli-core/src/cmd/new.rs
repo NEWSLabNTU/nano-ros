@@ -45,6 +45,17 @@ pub struct Args {
     #[arg(long = "for-platform")]
     pub for_platform: Option<String>,
 
+    /// The built-in platform family a `nros new platform <name>` builds as,
+    /// written as its `nros-platform.toml` `inherits` (e.g. `bare-metal`,
+    /// `freertos`).
+    ///
+    /// A board naming the platform builds as the first built-in platform this
+    /// chain reaches. Without it the line is written commented out, and a
+    /// board naming the platform is refused until it is set.
+    // Issue 2310.
+    #[arg(long = "inherits")]
+    pub inherits: Option<String>,
+
     /// Comma-separated component package names for
     /// `nros new system <bringup> --components <list>`.
     // Phase 212.F.
@@ -484,6 +495,9 @@ pub fn run(args: Args) -> Result<()> {
     // phase-290 W4.b — package-scaffold modes: `nros new platform <name>` /
     // `nros new board <name> --for-platform <p>`.
     let keyword = args.name.as_ref().and_then(|p| p.to_str());
+    if args.inherits.is_some() && keyword != Some("platform") {
+        bail!("nros new: --inherits is for `nros new platform <name>`");
+    }
     if keyword == Some("platform") || keyword == Some("board") {
         let pkg_name = args
             .system_name
@@ -497,7 +511,7 @@ pub fn run(args: Args) -> Result<()> {
             .map(Ok)
             .unwrap_or_else(std::env::current_dir)?;
         return if keyword == Some("platform") {
-            crate::cmd::new_platform::scaffold_platform(&pkg_name, &into)
+            crate::cmd::new_platform::scaffold_platform(&pkg_name, &into, args.inherits.as_deref())
         } else {
             let platform = args.for_platform.clone().ok_or_else(|| {
                 eyre::eyre!("`nros new board <name>` requires --for-platform <platform>")
