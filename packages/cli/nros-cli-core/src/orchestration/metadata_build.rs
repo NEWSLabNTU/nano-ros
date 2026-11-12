@@ -438,7 +438,7 @@ pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
          // calls; naming the crate is what links it.\n\
          extern crate nros_platform_cffi as _;\n\
          fn main() {{\n\
-         \x20   // Bare type ⇒ default capacity const-params.\n\
+         \x20   // Bare type: default const-params, which bound nothing under `alloc` (issue 2166).\n\
          \x20   let mut recorder: nros::MetadataRecorder = nros::MetadataRecorder::default();\n\
          \x20   let _ = nros_rmw_metadata::nros_rmw_metadata_register();\n\
          \x20   let config = nros::ExecutorConfig::new(\"\").rmw(\"metadata\");\n\

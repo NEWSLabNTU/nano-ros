@@ -439,6 +439,74 @@ mod tests {
         reset();
     }
 
+    /// Issue 2166 -- Autoware's trajectory follower declares 149 parameters,
+    /// 7 subscriptions, 4 publishers and a timer, and every parameter is an
+    /// entity row. The recorder held 32 rows, so the probe panicked
+    /// (`recorder rejected parameter`) and `nros configure` reported `no
+    /// producer`. Under `alloc`, which every probe has, the recorder grows:
+    /// 200 parameters, 40 distinct timer callbacks (past the old 32 callback
+    /// slots) and two endpoints all record, and the sidecar lists every one.
+    #[test]
+    fn a_component_past_the_old_32_row_default_records_every_declaration() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset();
+        assert!(begin_node("controller", "/", 0));
+        assert!(record_entity(
+            EntityKind::Subscription,
+            "/trajectory",
+            "std_msgs/msg/Int32",
+            Some("on_trajectory"),
+            None
+        ));
+        assert!(record_entity(
+            EntityKind::Publisher,
+            "/control_cmd",
+            "std_msgs/msg/Int32",
+            None,
+            None
+        ));
+        for i in 0..40 {
+            assert!(
+                record_entity(
+                    EntityKind::Timer,
+                    &alloc::format!("tick{i}"),
+                    "",
+                    Some(&alloc::format!("tick{i}")),
+                    Some(100)
+                ),
+                "timer {i} refused"
+            );
+        }
+        for i in 0..200 {
+            assert!(
+                record_parameter(
+                    &alloc::format!("p{i}"),
+                    &crate::ParameterValue::from_double(i as f64)
+                ),
+                "parameter {i} refused: the recorder must not cap a host probe"
+            );
+        }
+        assert_eq!(entity_count(), 242);
+        let json = to_json(&SourceMetadataExport::new("p", "c")).expect("serialize");
+        for i in [0, 31, 32, 199] {
+            assert!(
+                json.contains(&alloc::format!("\"p{i}\"")),
+                "parameter p{i} missing from the sidecar"
+            );
+        }
+        // Each distinct timer callback gets its own slot, numbered in order:
+        // the last of 41 callbacks (on_trajectory + 40 ticks) is slot 40.
+        // Before, the slot count stopped at the 32nd distinct callback.
+        let timers = &json[json.find("\"timers\":").expect("array")..];
+        let timers = &timers[..timers.find(']').unwrap()];
+        assert_eq!(timers.matches("\"period_ms\":100").count(), 40, "{timers}");
+        assert!(
+            json.contains("\"callback_slot\":40"),
+            "the 41st distinct callback is slot 40: {json}"
+        );
+        reset();
+    }
+
     /// The C++ shape that motivates phase-307 and 308 together: one
     /// subscription the SystemModel can see, plus timers it cannot. Recorded
     /// through the shared recorder, emitted by the shared serializer.

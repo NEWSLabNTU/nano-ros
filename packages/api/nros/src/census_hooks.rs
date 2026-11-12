@@ -139,13 +139,15 @@ pub fn on_node_create(_name: &str, _namespace: &str, _domain_id: u32) {
     profile::set_current_node(&node_fqn(_name, _namespace));
     #[cfg(feature = "metadata-mode")]
     {
-        // A refused begin means the recorder is full; every entity after it
-        // would be silently dropped, so say so rather than produce a census
-        // that under-counts.
+        // A refused begin would silently drop every entity after it, so say so
+        // rather than produce a census that under-counts. The recorder grows
+        // under `alloc` (issue 2166) and a repeated node is re-opened (issue
+        // 1419), so the one refusal left is a name over METADATA_STRING_CAPACITY.
         if !crate::metadata_mode::begin_node(_name, _namespace, _domain_id) {
             panic!(
-                "nros metadata-mode: recorder rejected node `{_name}` — raise the \
-                 MetadataRecorder capacity"
+                "nros metadata-mode: recorder rejected node `{_name}` (namespace \
+                 `{_namespace}`): a recorded name is at most {} bytes",
+                crate::node_metadata::METADATA_STRING_CAPACITY
             );
         }
     }

@@ -1158,7 +1158,7 @@ Each issue has a `**Home:**` line pointing here.
 
 | issue | work item | why it belongs here |
 | --- | --- | --- |
-| [#2166](../issues/2166-metadata-probe-recorder-32-entities-panics-on-parameters.md) | W2 | The C/C++ metadata probe's recorder holds 32 entities and every parameter is one, so a bigger component panics and `nros sync` reports `no producer`. W2 makes the census the default entity source. |
+| [#2166](../issues/archived/2166-metadata-probe-recorder-32-entities-panics-on-parameters.md) | W2 | The C/C++ metadata probe's recorder holds 32 entities and every parameter is one, so a bigger component panics and `nros sync` reports `no producer`. W2 makes the census the default entity source. RESOLVED 2026-11-12: the recorder grows under `alloc`. |
 | [#2275](../issues/archived/2275-installed-probe-configure-needs-ament.md) | W1 | `nros run`'s implicit configure refuses an unset `AMENT_PREFIX_PATH`, so `just probe installed` stops at first-project.md's `nros run`, whose reader has not sourced ROS yet (found by phase-527 W6). |
 | [#2276](../issues/2276-reconfigure-remedy-sysbuild-and-no-west.md) | W7 | The re-configure remedy a configure-time FATAL prints assumes a non-sysbuild west build: under sysbuild it names the image subdir, and it names `west` for a Zephyr build without west. Parked as Minor from W7's review round 4; no in-tree road reaches either. |
 | [#2278](../issues/archived/2278-cmake-bundled-interfaces-fallback.md) | W1 | The CMake and west road (guest apps) still falls back to the bundled interfaces with ROS unsourced, the case issue 2275 keeps configure refusing; decide whether it refuses too. |

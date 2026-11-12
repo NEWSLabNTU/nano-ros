@@ -1,7 +1,9 @@
 ---
 id: 2166
 title: "The C/C++ metadata probe's recorder holds 32 entities and every parameter is one, so a component declaring more panics and `nros configure` reports `no producer`"
-status: open
+status: resolved
+resolved: 2026-11-12
+resolved_in: "MetadataRecorder's rows grow under alloc, which every host producer has"
 type: bug
 area: [cli, metadata, params]
 severity: low
@@ -9,7 +11,7 @@ found: 2026-10-30
 related: [phase-530, 1419, 1679, 1469, phase-463]
 ---
 
-**Home: [phase-530](../roadmap/phase-530-nros-configure-single-pass.md)** — homed 2026-11-04: W2 makes the census the default entity source, and the probe's recorder is the other one.
+**Home: [phase-530](../../roadmap/phase-530-nros-configure-single-pass.md)** — homed 2026-11-04: W2 makes the census the default entity source, and the probe's recorder is the other one.
 
 ## What was measured
 
@@ -80,3 +82,42 @@ should cover it.
 A probe test for a C++ component that declares 200 parameters plus a few
 endpoints. Its sidecar lists all of them, and `nros configure` reports it rebuilt,
 not `no producer`.
+
+## Resolved (2026-11-12)
+
+The first direction above. `MetadataRecorder`'s nodes, entities and
+callback effects are stored in a private `Rows<T, N>`: an
+`alloc::vec::Vec<T>` under `alloc`, and the old `heapless::Vec<T, N>`
+without it. Every producer of source metadata is a host process with
+`alloc` (the C/C++ probe through `metadata-mode`, and the Rust metadata
+binary, whose generated harness builds `nros` with `alloc`), so neither
+caps a component any more. A no_std caller keeps the fixed capacities and
+its `NodeMetadataError::Capacity` refusal. The one recorder covers both
+producers, so the Rust template's `MetadataRecorder::default()` needed
+only its comment changed.
+
+The same change fixes a silent sibling. Callback slots were numbered by
+collecting distinct callback ids into a `heapless::Vec<&str, 32>` and
+dropping the push result (`let _ = seen.push(..)`), so past 32 distinct
+callbacks the slot numbering stopped counting and later callbacks shared
+wrong slots, with no error. That list is a `Rows` too.
+
+`census_hooks`'s refused-node panic said "raise the MetadataRecorder
+capacity". Under `alloc` the recorder cannot fill, and a repeated node is
+re-opened (issue 1419), so it now names the one refusal left: a name over
+`METADATA_STRING_CAPACITY` bytes.
+
+**Tested.** `metadata_mode::tests::a_component_past_the_old_32_row_default_records_every_declaration`
+records one node with a subscription, a publisher, 40 timers (distinct
+callbacks) and 200 parameters through the same recorder the C/C++ hooks
+feed. All 242 rows record, the sidecar lists the parameters either side of
+the old boundary, and the 41st distinct callback is slot 40. Against the
+old recorder the same test fails at `timer 30 refused`. `cargo check -p
+nros --no-default-features` (the heapless arm) builds.
+
+Not added: an end-to-end probe fixture (a C++ workspace package declaring
+200 parameters, run through `nros configure`). The panic came from this
+recorder alone, and the test above drives the recorder through the same
+entry points the probe's hooks call. A fixture would add a workspace
+package and a fixture row to re-prove that.
+
