@@ -23,8 +23,9 @@ Two rules:
   maintain progress and acceptance status). Under each `### W<n>` heading:
   `- **Status:** OPEN`, `DONE (<when, PR>)`, `BLOCKED (<what>)` or `DROPPED (<why>)`. Mark
   DONE only what is done. A phase is archived only when no item is OPEN or BLOCKED. Gate:
-  `just check phase-item-status` (unmarked items from before the rule are a per-doc baseline
-  that may only fall; a new phase marks every item).
+  `just check phase-item-status` (unmarked items from before the rule are a per-doc baseline:
+  a doc may not rise above it, and a new phase marks every item. Marking items never requires
+  touching the baseline file; it is lowered in a periodic `--update` PR).
 - **Drift rule:** flipping an RFC to `status: Stable` requires updating the matching section of
   `ARCHITECTURE.md` in the same commit.
 
