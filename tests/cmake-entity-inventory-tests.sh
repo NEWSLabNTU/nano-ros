@@ -135,6 +135,7 @@ if [ -n "${NROS_STUB_BODY:-}" ] && [ -n "$out" ]; then
     cp "$NROS_STUB_BODY" "$out"
 fi
 if [ -n "${NROS_STUB_STDERR:-}" ]; then echo "$NROS_STUB_STDERR" >&2; fi
+if [ -n "${NROS_STUB_STDOUT:-}" ]; then printf '%s\n' "$NROS_STUB_STDOUT"; fi
 # Case J -- one line per invocation, so a case can read what the LAST call got.
 if [ -n "${NROS_STUB_ARGV:-}" ]; then printf '%s\n' "$*" >> "$NROS_STUB_ARGV"; fi
 exit "${NROS_STUB_RC:-0}"
@@ -626,40 +627,82 @@ fi
 FACTS="$PROJECT_ROOT/cmake/NanoRosEntityFacts.cmake"
 
 # ---------------------------------------------------------------------------
-log_header "a PARTIAL params: declaration is a refusal, not a default (phase-460 W2)"
+log_header "the entity facts cross from ONE producer, and its refusal is fatal (phase-550 W6b)"
 
-# The inventory writes `NROS_PARAM_DECLARATION_STATUS` in three states, and
-# `_nros_param_store_env` (NanoRosEntityFacts.cmake) is the crossing that hands
-# the store's numbers to nros-params' build script as `NROS_DECLARED_*`
-# defaults. Until phase-460 W2 the crossing `return()`ed on anything but
-# `declared`, so a REFUSED declaration -- some nodes declare `params:`, the
-# rest do not, and the inventory says which -- reached the crate as no
-# declaration at all and the store took the crate defaults (issue 1421,
-# measured on the island: 25/35/0/0/0 became 32/64/256/32/256 with no
-# build-time line). Each state gets a case:
-#
-#   declared  crosses, every number, unchanged.
-#   absent    crosses nothing and configures -- no node declares, and an image
-#             with no contract is sized by its board. NEGATIVE CONTROL.
-#   refused   is FATAL, and the fatal names the node the reason names.
-#   (none)    a fragment that predates the field, or the seed placeholder a
-#             refusal leaves for CMAKE_CONFIGURE_DEPENDS, crosses nothing and
-#             configures: only the producer's own verdict is fatal.
-param_env() {
-    # param_env <fragment body> -> cmake's whole output; the return code is
-    # cmake's, so a FATAL_ERROR is visible as rc and not only as text.
-    local dir="$TEST_TMPDIR/param"
+# `nros_entity_facts_env` (NanoRosEntityFacts.cmake) no longer composes the
+# rows: `nros dev image entity-facts` does (`cmd/image_entity_facts.rs`), for this
+# road and the NuttX make road alike, and its cases -- a DECLARED store crosses
+# the capacities, an ABSENT one crosses nothing, a REFUSED one (phase-460 W2,
+# issue 1421) stops the build naming the node -- are that verb's unit tests.
+# What is left here is the CROSSING, with the CLI stubbed like every case in
+# this file: the fragment is handed to the verb, each line it prints is one
+# row, and a non-zero exit is a FATAL_ERROR carrying the verb's own words.
+facts_env() {
+    # facts_env <fragment body> -> cmake's whole output (rc is cmake's).
+    local dir="$TEST_TMPDIR/facts"
     rm -rf "$dir"; mkdir -p "$dir/nros"
     printf '%s\n' "$1" > "$dir/nros/entity_inventory.cmake"
     cat > "$dir/run.cmake" <<EOF
 include("$MODULE")
 include("$FACTS")
-_nros_param_store_env(_out)
+nros_entity_facts_env("" ENV_OUT _out)
 message(STATUS "PARAM=[\${_out}]")
 EOF
-    (cd "$dir" && cmake -P run.cmake 2>&1)
+    (cd "$dir" && NROS_CLI="$STUB" cmake -P run.cmake 2>&1)
 }
 
+ARGV_LOG="$TEST_TMPDIR/facts-argv"
+rm -f "$ARGV_LOG"
+OUT="$(NROS_STUB_ARGV="$ARGV_LOG" \
+    NROS_STUB_STDOUT="$(printf 'NROS_DECLARED_MAX_STRING_VALUE_LEN=0\nNROS_DECLARED_MAX_ARRAY_LEN=0')" \
+    facts_env 'set(NROS_PARAM_DECLARATION_STATUS "declared")')"
+RC=$?
+check
+if [ "$RC" -ne 0 ]; then
+    fail "facts: the crossing did not configure -- $OUT"
+fi
+check
+if ! nros_grep_q "PARAM=\[NROS_DECLARED_MAX_STRING_VALUE_LEN=0;NROS_DECLARED_MAX_ARRAY_LEN=0\]" <<<"$OUT"; then
+    fail "facts: the verb's two lines did not cross as two rows -- $OUT"
+fi
+check
+if ! nros_grep_q "parameter store sized from the contract" <<<"$OUT"; then
+    fail "facts: a parameter row crossed with no build-time line -- $OUT"
+fi
+check
+if ! nros_grep_q -- "dev image entity-facts --inventory $TEST_TMPDIR/facts/nros/entity_inventory.cmake" "$ARGV_LOG"; then
+    fail "facts: the verb was not handed this configure's fragment -- $(cat "$ARGV_LOG" 2>/dev/null)"
+fi
+
+OUT="$(facts_env 'set(NROS_PARAM_DECLARATION_STATUS "absent")')"
+RC=$?
+check
+if [ "$RC" -ne 0 ] || ! nros_grep_q "PARAM=\[\]" <<<"$OUT"; then
+    fail "facts: a verb that printed nothing did not cross as nothing -- $OUT"
+fi
+
+OUT="$(NROS_STUB_RC=1 \
+    NROS_STUB_STDERR="the parameter store cannot be sized: the entity inventory REFUSED the contract's params: declaration: /system/stop_mode_operator. Declare params: on every node" \
+    facts_env 'set(NROS_PARAM_DECLARATION_STATUS "refused")' | flat)"
+RC=$?
+check
+if ! nros_grep_q -i "CMake Error" <<<"$OUT"; then
+    fail "facts: a verb that refused did not stop the configure -- $OUT"
+fi
+check
+if ! nros_grep_q "stop_mode_operator" <<<"$OUT"; then
+    fail "facts: the fatal does not carry the verb's own reason -- $OUT"
+fi
+check
+if nros_grep_q "PARAM=\[" <<<"$OUT"; then
+    fail "facts: a refusal reached the crossing's output -- $OUT"
+fi
+
+# phase-460 W2 follow-up -- the Zephyr module sizes the store from the same
+# fragment through its own ladder, and read only the NUMBERS: a refusal wrote
+# none, so it fell to the crate defaults silently. Both roads now call ONE
+# check. Asserted twice: the function itself is fatal on a refusal and silent
+# otherwise, and the Zephyr ladder calls it before its first parameter row.
 DECLARED_PARAMS='set(NROS_PARAM_DECLARATION_STATUS "declared")
 set(NROS_PARAM_DECLARED_COUNT 21)
 set(NROS_DERIVED_MAX_PARAMETERS 25)
@@ -672,70 +715,6 @@ set(NROS_PARAM_SERVICE_SHAPE "8:170:1:17:0:0:0:0:0")'
 # with the island's node in it.
 REFUSED_PARAMS='set(NROS_PARAM_DECLARATION_STATUS "refused")
 set(NROS_PARAM_DECLARATION_REASON "1 of 4 nodes in this image declare no `params:` in their contract: /system/stop_mode_operator. The parameter store holds every node'"'"'s parameters, and sizing it from the nodes that did declare would give the rest no slots. Declare `params:` on every node, or on none; until then the store knobs keep their configured values.")'
-
-OUT="$(param_env "$DECLARED_PARAMS")"
-RC=$?
-check
-if [ "$RC" -ne 0 ]; then
-    fail "param: a DECLARED store did not configure -- $OUT"
-fi
-check
-# Issue 1649 -- only the board CAPACITIES cross on this road now: the NEEDS
-# rows and the service shape ride the sizing descriptor's `[params]`, so a
-# fragment that states them must NOT produce a carrier for them.
-if ! nros_grep_q "PARAM=\[NROS_DECLARED_MAX_STRING_VALUE_LEN=0;NROS_DECLARED_MAX_ARRAY_LEN=0\]" <<<"$OUT"; then
-    fail "param: a DECLARED store did not cross with exactly the capacities -- $OUT"
-fi
-
-OUT="$(param_env 'set(NROS_PARAM_DECLARATION_STATUS "absent")')"
-RC=$?
-check
-if [ "$RC" -ne 0 ]; then
-    fail "param: an ABSENT declaration did not configure -- an image with no \
-contract is sized by its board, and that must stay a configure -- $OUT"
-fi
-check
-if ! nros_grep_q "PARAM=\[\]" <<<"$OUT"; then
-    fail "param: an ABSENT declaration carried something -- $OUT"
-fi
-check
-if nros_grep_q -i "CMake Error" <<<"$OUT"; then
-    fail "param: an ABSENT declaration raised an error -- $OUT"
-fi
-
-OUT="$(param_env "$REFUSED_PARAMS" | flat)"
-RC=$?
-check
-if [ "$RC" -eq 0 ]; then
-    fail "param: a REFUSED declaration configured -- the store would be sized from \
-the crate defaults with no build-time line, which is issue 1421 -- $OUT"
-fi
-check
-if ! nros_grep_q -i "CMake Error" <<<"$OUT"; then
-    fail "param: a REFUSED declaration did not raise a FATAL_ERROR -- $OUT"
-fi
-check
-if ! nros_grep_q "stop_mode_operator" <<<"$OUT"; then
-    fail "param: the fatal does not name the node the inventory named -- $OUT"
-fi
-check
-if ! nros_grep_q "REFUSED the contract" <<<"$OUT"; then
-    fail "param: the fatal does not say the inventory refused -- $OUT"
-fi
-check
-if ! nros_grep_q "on every node" <<<"$OUT"; then
-    fail "param: the fatal does not name the remedy -- $OUT"
-fi
-check
-if nros_grep_q "PARAM=\[" <<<"$OUT"; then
-    fail "param: a REFUSED declaration reached the crossing's output -- $OUT"
-fi
-
-# phase-460 W2 follow-up -- the Zephyr module sizes the store from the same
-# fragment through its own ladder, and read only the NUMBERS: a refusal wrote
-# none, so it fell to the crate defaults silently. Both roads now call ONE
-# check. Asserted twice: the function itself is fatal on a refusal and silent
-# otherwise, and the Zephyr ladder calls it before its first parameter row.
 refuse_direct() {
     local dir="$TEST_TMPDIR/param-direct"
     rm -rf "$dir"; mkdir -p "$dir"
@@ -765,7 +744,7 @@ if [ "$ORDER" != ok ]; then
 before NROS_MAX_PARAMETERS -- a refusal there falls to the crate defaults (phase-460 W2)"
 fi
 
-OUT="$(param_env 'set(NROS_ENTITY_INVENTORY_STATUS "refused")')"
+OUT="$(facts_env 'set(NROS_ENTITY_INVENTORY_STATUS "refused")')"
 RC=$?
 check
 if [ "$RC" -ne 0 ]; then
