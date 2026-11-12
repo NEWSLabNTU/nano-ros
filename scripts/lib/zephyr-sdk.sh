@@ -64,15 +64,13 @@ nros_zephyr_sdk_default_root() {
     (cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 }
 
-# The SDK version for the selected Zephyr line. ONE table, the same split
-# `scripts/zephyr/setup.sh` makes from `case "$MANIFEST"`: the 3.7 LTS line
-# wants 0.16.8, the 4.4 line wants 1.0.1. Callers that already know the version
-# pass it; nobody should spell the mapping again.
+# The SDK version for the selected Zephyr line, READ from that line's
+# `[tool.*]` entry in `nros-sdk-index.toml` (`nros_zephyr_sdk_tool` below), the
+# same entry `nros setup` installs from. Issue 2389: this used to be a table of
+# its own ("0.16.8" for 3.7), and it kept 0.16.8 when the index moved the 3.7
+# line to 0.16.9. Callers that already know the version pass it.
 nros_zephyr_sdk_version() {
-    case "${NROS_ZEPHYR_VERSION:-3.7}" in
-        4.4) printf '%s\n' "1.0.1" ;;
-        *)   printf '%s\n' "0.16.8" ;;
-    esac
+    python3 "$_NROS_ZEPHYR_SDK_LIB_DIR/index_tool.py" version "$(nros_zephyr_sdk_tool)"
 }
 
 # The `[tool.*]` key in `nros-sdk-index.toml` for that line. Two entries exist

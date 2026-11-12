@@ -24,7 +24,7 @@ manifest:
     # Zephyr RTOS
     - name: zephyr
       remote: zephyrproject-rtos
-      revision: v3.7.0
+      revision: v3.7.2
       import:
         # Import Zephyr's modules, filtered to essentials.
         #

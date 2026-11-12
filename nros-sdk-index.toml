@@ -311,8 +311,8 @@ dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/
 # script; `post_install` is that expression, so `nros setup --tool zephyr-sdk`
 # alone now runs the installer, and the `smoke` probes below make the difference
 # between "the bytes arrived" and "a compiler in here runs" a MEASURED one.
-version = "0.16.8"
-upstream = "v0.16.8" # sdk-ng release tag (SSOT for the URLs below)
+version = "0.16.9"
+upstream = "v0.16.9" # sdk-ng release tag (SSOT for the URLs below)
 # phase-517 W10 — the SDK's own `setup.sh` (`post_install` below) refuses to
 # run without `wget` ([prereq.wget] says why). Declared HERE so the plan asks
 # for it before the 1.4 GiB fetch rather than after: replaying
@@ -364,15 +364,15 @@ smoke = [
 # want the registry (issue 1279), and that is its decision to make, not ours.
 post_install.run = "./setup.sh -t arm-zephyr-eabi -t x86_64-zephyr-elf -h"
 post_install.why = "running the SDK's own setup.sh: install the host tools (the toolchains are already in this bundle)"
-dist.linux-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-x86_64.tar.xz", sha256 = "cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7dbc6a", floor = { glibc = "2.27", glibcxx = "3.4.21" } }
-dist.linux-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-aarch64.tar.xz", sha256 = "83782b4cf595bb3da8a6c7c1ade01eed00ad03f8ba0c72da6680693192b3668d", floor = { glibc = "2.27", glibcxx = "3.4.21" } }
-dist.macos-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_macos-aarch64.tar.xz", sha256 = "e06138c1e50cc5b4508646640bd08c50f05f0eb3f2949e756d84d3367f581593", floor = { macos = "11.0" } }
-dist.macos-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_macos-x86_64.tar.xz", sha256 = "b96c849cc63e0f0218c196be8faba548ed473894fb7fced67311aa39fe97ac21", floor = { macos = "11.0" } }
+dist.linux-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.9/zephyr-sdk-0.16.9_linux-x86_64.tar.xz", sha256 = "9b4b96f8df594801a84fce1aa112a84cdfcd430efc2a74229907b6421fb859a8", floor = { glibc = "2.27", glibcxx = "3.4.21" } }
+dist.linux-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.9/zephyr-sdk-0.16.9_linux-aarch64.tar.xz", sha256 = "a8c1731ad602553304e539a7ade9cdb34caabc1850d581585cbba0372a7493b2", floor = { glibc = "2.27", glibcxx = "3.4.21" } }
+dist.macos-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.9/zephyr-sdk-0.16.9_macos-aarch64.tar.xz", sha256 = "82e1851797cd70b18cb2e252fb303ddb5deb1044ca02af9840e6c7e872b178e5", floor = { macos = "14.0" } }
+dist.macos-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.9/zephyr-sdk-0.16.9_macos-x86_64.tar.xz", sha256 = "436eb123068cc8cd4bd6eed7596bf3046182360126ba8a268098cfc729917dce", floor = { macos = "14.0" } }
 
 [tool.zephyr-sdk-1-0-1]
 # The Zephyr SDK for the 4.4 ROLLING line. A second entry rather than a version
 # bump on `[tool.zephyr-sdk]`, because the two Zephyr lines need DIFFERENT SDKs
-# at the same time: `zephyr/SDK_VERSION` in 3.7 demands 0.16.8 and in 4.4
+# at the same time: `zephyr/SDK_VERSION` in 3.7 demands 0.16.9 and in 4.4
 # demands 1.0.1, and `FindZephyr-sdk.cmake` refuses anything older than the
 # tree asks for. `scripts/zephyr/setup.sh` selects the entry by $MANIFEST.
 #
@@ -383,7 +383,7 @@ dist.macos-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releas
 # find_package` error naming neither the SDK version nor the step that chose
 # it. Found bringing up mr_canhubk3 (S32K344, Cortex-M7).
 #
-# TWO DIFFERENCES FROM THE 0.16.8 ENTRY, both consequences of upstream's 1.0.x
+# TWO DIFFERENCES FROM THE 0.16.x ENTRY, both consequences of upstream's 1.0.x
 # repackaging, and both fine for the flow `install_sdk` already runs:
 #
 #  * These are the `_minimal` archives (~70 MiB, not 1.3 GiB). 1.0.x ships the
@@ -409,7 +409,7 @@ dist.macos-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releas
 version = "1.0.1"
 upstream = "v1.0.1" # sdk-ng release tag (SSOT for the URLs below)
 subdir = "zephyr-sdk-{version}"
-# 1.0.x moved the toolchains under `gnu/` — the 0.16.8 entry's probes are at the
+# 1.0.x moved the toolchains under `gnu/` — the 0.16.x entry's probes are at the
 # bundle root. Two layouts, two sets of probes, and `subdir` is why neither has
 # to restate the version.
 # issue 1744 — the RUN SET, as on [tool.zephyr-sdk]; the `dtc` path differs
@@ -1617,9 +1617,10 @@ lines = []
 # allowlist did not name it.
 #
 # The REVISION is not stated here and must not be: `west.yml` takes the module
-# through `import:` of zephyr v3.7.0, so it is the revision zephyr v3.7.0's own
-# `west.yml` pins (`f1317150eac951fdd8259337a47cbbc4c2e6d335`, the one the
-# spike built against), and it moves with the zephyr pin rather than beside it.
+# through `import:` of zephyr, so it is the revision zephyr's own `west.yml`
+# pins, and it moves with the zephyr pin rather than beside it. The spike built
+# against v3.7.0's (`f1317150eac951fdd8259337a47cbbc4c2e6d335`); v3.7.2's is
+# `0657d9f97d973542e438f628a704f5d8ea0cdef5` (issue 2389's pin move).
 #
 # 3.7 only: the twin is measured on the 3.7 line and no 4.4 image names an
 # STM32 board yet. `approx_mb` is the spike's shallow checkout (639 MiB); the
@@ -1640,9 +1641,9 @@ lines = ["3.7"]
 # (`docs/roadmap/data/phase-524-w1-wokwi-pico-rerun.log`); it had no row here at
 # all, so `west.yml`'s allowlist could not name it.
 #
-# The REVISION is zephyr v3.7.0's own pin, through `import:`
-# (`fba7162cc7bee06d0149622bbcaac4e41062d368`, the one the spike built
-# against), and moves with the zephyr pin. 3.7 only: the board is measured on
+# The REVISION is zephyr's own pin, through `import:`, and moves with the
+# zephyr pin. v3.7.0 and v3.7.2 pin the same one
+# (`fba7162cc7bee06d0149622bbcaac4e41062d368`, the one the spike built against). 3.7 only: the board is measured on
 # the 3.7 line. `approx_mb` is the spike's shallow checkout (11 MiB).
 #
 # The Pico W board row that names it beside its own `packages` is phase-524 W3's.

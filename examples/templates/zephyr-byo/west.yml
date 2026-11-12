@@ -20,7 +20,7 @@ manifest:
   projects:
     - name: zephyr
       remote: zephyrproject-rtos
-      revision: v3.7.0          # nano-ros-tested LTS pin
+      revision: v3.7.2          # nano-ros-tested LTS pin
       import:
         # Minimal module set for native_sim; add HALs for your real board.
         name-allowlist:

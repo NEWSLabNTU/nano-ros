@@ -11,7 +11,7 @@ resolved: 2026-11-11
 resolved_in: "zenoh-pico fork 6827fe1f (the budget bounds the TCP connect on the BSD-socket ports); ThreadX and bare-metal smoltcp remain as issue 2438"
 ---
 
-Split from [issue 2389](../2389-zephyr-a53-open-silent-past-connect-budget.md),
+Split from [issue 2389](2389-zephyr-a53-open-silent-past-connect-budget.md),
 whose fix gave the zenoh handshake the connect budget's deadline. The TCP
 connect that comes before the handshake was swept on every platform and is
 not bounded by the budget on four of them.

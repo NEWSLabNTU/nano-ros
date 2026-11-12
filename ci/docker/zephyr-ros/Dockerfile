@@ -78,7 +78,7 @@ ENV PATH=/opt/ros/humble/bin:$PATH
 # TWO SDKs, because the SDK is a PER-LINE FACT — `scripts/zephyr/setup.sh` says
 # so in as many words, and `nros-sdk-index.toml` carries a second entry
 # (`[tool.zephyr-sdk-1-0-1]`) for exactly this reason: 3.7's `zephyr/SDK_VERSION`
-# demands 0.16.8, 4.4's demands 1.0.1, and `FindZephyr-sdk.cmake` refuses
+# demands 0.16.9, 4.4's demands 1.0.1, and `FindZephyr-sdk.cmake` refuses
 # anything older than the tree asks for.
 #
 # One baked SDK could not serve both. 0.17.4 satisfies 3.7 (newer-satisfies-

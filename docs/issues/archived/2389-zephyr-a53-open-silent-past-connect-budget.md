@@ -1,7 +1,9 @@
 ---
 id: 2389
 title: "A Zephyr image whose network never answers stays silent past its connect budget instead of failing"
-status: open
+status: resolved
+resolved: 2026-11-12
+resolved_in: "the Zephyr 3.7 line moved v3.7.0 -> v3.7.2 (upstream zephyr#86499), user ruling 2026-11-12; #3566 for the open's bounds"
 type: bug
 severity: medium
 area: [zephyr, rmw-zenoh, testing]
@@ -9,8 +11,8 @@ related: [phase-466, 2384, 2207, 2437, 2438]
 found: 2026-11-10
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**.
-Split from [issue 2384](archived/2384-zephyr-a53-smp-slirp-boot-flake.md), whose two
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**.
+Split from [issue 2384](2384-zephyr-a53-smp-slirp-boot-flake.md), whose two
 failures are fixed; this is the shape left over.
 
 ## Symptom
@@ -129,10 +131,10 @@ suspect.
 
 The TCP CONNECT step was bounded by the stack rather than the budget on
 several platforms (a SYN-dropping peer). [Issue
-2437](archived/2437-zenoh-tcp-connect-unbounded-by-connect-budget.md) fixed
+2437](2437-zenoh-tcp-connect-unbounded-by-connect-budget.md) fixed
 that on the BSD-socket ports, Zephyr's included (zenoh-pico `6827fe1f`); ThreadX
 and bare-metal smoltcp followed in [issue
-2438](archived/2438-threadx-smoltcp-tcp-connect-ignores-connect-budget.md)
+2438](2438-threadx-smoltcp-tcp-connect-ignores-connect-budget.md)
 (`nros_platform_tcp_open_within`). So on
 Zephyr the whole open, connect and handshake, now ends within the budget, and
 2389's remaining suspect is after the open, not in it.
@@ -327,3 +329,23 @@ host-side socket buffers absorb the guest's ~3 KB/s, so the guest's TCP never
 sees a closed window, and there is no stalled write for the 5 s bound to time.
 This rig cannot exercise that bound on a slirp guest. The bound stays verified
 where the image's socket is the host's: native_sim and Linux, above.
+
+## Resolved: the 3.7 line is on v3.7.2 (2026-11-12)
+
+The user ruled on 2026-11-12: "move the Zephyr 3.7 pin from v3.7.0 to v3.7.2".
+`west.yml` now pins v3.7.2. That tree's `SDK_VERSION` asks for 0.16.9, so
+`[tool.zephyr-sdk]` moved with it, and the scripts that restated the SDK
+version now read it from the index.
+
+The same image (`build-ws-c-realtime-entry-smp`) was rebuilt on v3.7.2 with SDK
+0.16.9 (the console reads `Booting Zephyr OS build v3.7.2`). It ran in the same
+rig, `taskset -c 0-3` with cores 0-3 saturated by 8 busy loops, at host load
+~9, under the same `rmw_zenohd`:
+
+| Zephyr | Boots | Silent for 90 s |
+|---|---|---|
+| v3.7.0 | 359 | 3 |
+| v3.7.2 | 400 | **0** (all reached `core pin observed ... running_on=1` in 2.12 - 4.34 s, each logging 18 - 24 slirp drops) |
+
+The v3.7.2 tree's `net_if_start_rs` releases `iface->lock` before
+`net_ipv6_start_rs`, which removes one edge of the ABBA cycle the dump showed.

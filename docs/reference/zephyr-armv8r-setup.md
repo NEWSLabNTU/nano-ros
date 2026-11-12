@@ -124,7 +124,7 @@ west build -b s32z270dc2_rtu0_r52@D \
   script directly:
 
   ```bash
-  cd scripts/zephyr/sdk/zephyr-sdk-0.16.8
+  cd scripts/zephyr/sdk/zephyr-sdk-0.16.9
   ./setup.sh -t aarch64-zephyr-elf -h -c
   ```
 
