@@ -1,7 +1,7 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
-**Status (2026-11-13). OPEN: W1, W2, W4 and W6 are done; W2b, W3 and W5
-are open.** This phase tracks the implementation of
+**Status (2026-11-13). OPEN: W1, W2, W4, W5 and W6 are done; W2b, W3 and
+W5b are open.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
 runs, and every gate reads that producer instead of holding its own number.
@@ -95,13 +95,85 @@ the action server fails until its `os_config` raises the stack, then holds.
 
 ### W5 — The cargo leaf CHECKs the board's stated stack
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-13, #PRNUM)
 
 `nros build` of a single-package cargo leaf walks the image after cargo and
 checks the board's stated stack, with the same measured/unmeasured rule.
 
 Acceptance: a measured cargo-leaf image below its floor fails naming the
 board's knob; an unmeasured one warns.
+
+Scope (2026-11-13): the walk after cargo, plus FreeRTOS. On the cargo
+road, only FreeRTOS boards state a stack today. The other platforms are W5b.
+
+How it works (`packages/cli/nros-cli-core/src/cmd/stack_floor.rs`):
+
+- **The stated stack.** The board's build script is the one place that
+  resolves the stack knob's whole ladder, so it writes the number it
+  resolved into its own `OUT_DIR`, as `nros-stack-stated.json`
+  (`nros_board_common::stack_stated`). Every cross FreeRTOS board writes it
+  through `freertos_build::run_overlay`: role OPEN, root `~app_task_entry_`,
+  `app_stack_bytes`, knob `NROS_FREERTOS_APP_STACK_KB`.
+- **Arming.** `nros build` gives the image's cargo command the walk's inputs:
+  target-scoped `-C save-temps` and an LLD `-Map`, joined with the board's
+  config rustflags; `-fstack-usage` for cc-rs; and an empty `RUSTC_WRAPPER`.
+- **Finding the file.** After cargo links, `nros build` asks cargo again with
+  `--message-format=json`, which rebuilds nothing. That names the build
+  scripts that ran for this image, so a sibling feature set's `OUT_DIR` is
+  never read.
+- **Not checked.** A board that writes no file, or a platform outside the
+  list, prints "not checked: the board states no stack". It is never a pass.
+- **Off switch.** `NROS_STACK_FLOOR=OFF` skips the walk.
+
+The walker gained three inputs for this road:
+
+- **`~text` roots.** The FreeRTOS app task is a generic Rust function, one
+  instance per board and runtime shape. A `~` root that matches nothing is
+  refused.
+- **LLD maps.** `rust-lld` writes no `LOAD` lines. The C members of each rlib
+  are taken from the map and extracted with `llvm-ar`; Rust codegen units
+  come from their own bitcode.
+- **`--cfi-elf`.** The board rlib bundles newlib's `libc.a`, which has no
+  `.su`. Its frames come from the linked image's `.debug_frame`. An FDE whose
+  CFA leaves SP is not trusted.
+
+Two hand-assembly rows were added to the table: `__aeabi_cdcmple`, and the
+diverging `__assert_func` cut.
+
+Measured on `examples/mps2-an385-freertos/rust/talker` (thumbv7m, zenoh):
+
+| stack | allowance row | result |
+| --- | --- | --- |
+| 131,072 B (default) | none | holds the unmeasured floor 26,096 B (static 23,720 B) |
+| 16,384 B | none | warns and builds: unmeasured, never enforced |
+| 16,384 B | test row (not committed) | fails: "Raise it: NROS_FREERTOS_APP_STACK_KB=26" |
+| 131,072 B | test row | holds the measured floor |
+
+The bare-metal example prints "not checked: the bare-metal board
+`mps2-an385-baremetal` states no stack on this road".
+
+### W5b — The other cargo-road platforms state a stack
+
+- **Status:** OPEN
+
+On the cargo road, ThreadX, NuttX and bare metal state no stack, so W5
+reports their images as not checked. Each joins when its board build script
+calls `stack_stated::emit` and its platform is added to `STATING_PLATFORMS`:
+
+- **ThreadX (riscv64).** `nros_board_app_stack_size` is a hardcoded 512 KiB in
+  the board's C. It needs a knob before anything can be checked against it.
+- **NuttX.** The sched-task stack: `NROS_NUTTX_SCHED_TASK_STACK_BYTES`, or
+  `[tasks.*.nuttx].stack_bytes`.
+- **Bare metal (mps2-an385).** It states no stack at all, and the stack
+  grows into RAM unguarded
+  ([issue 2494](../issues/2494-mps2-baremetal-stack-unbounded.md)). The
+  board must state one first.
+
+The FreeRTOS sched tasks (`[tasks.*.freertos] stack_bytes`) are one more
+role: W5 checks the boot app task only.
+
+Acceptance: each platform's image is walked after cargo and checked against
+its board's stated stack, with the same measured/unmeasured rule as W5.
 
 ### W6 — The twin lane: a stale allowance is detected
 

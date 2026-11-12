@@ -422,3 +422,26 @@ Its first run confirmed both Rust rows exact. It found the C talker's peak
 16,112 B: the unsafe drift this wave was for. The row is now −4,236 B, floor
 13,064 B. The verdict table and the item status are in
 [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W6.
+
+### W5: the cargo leaf CHECKs the board's stated stack (2026-11-13)
+
+Same rulings: CHECK by default, a MEASURED image fails, an unmeasured one
+warns, and nothing lowers a stack. `nros build` walks a cargo image after it
+links.
+
+- **Scope.** Only FreeRTOS boards state a stack
+  on the cargo road today. ThreadX, NuttX and bare metal print "not checked:
+  the board states no stack" and are phase-557 W5b. Bare metal has no
+  stated stack at all (issue 2494).
+- **The stated number.** The board's build script resolves the knob, so it
+  writes the number. `nros build` finds the file through cargo's own
+  `build-script-executed` message for the image.
+- **The walker's three new inputs.** A `~text` root for the generic Rust
+  app-task entry; `rust-lld` maps; and newlib frames from the linked image's
+  CFI.
+- **Measured** on the FreeRTOS Rust talker: static walk 23,720 B, unmeasured
+  floor 26,096 B against 128 KiB. With a test allowance row, a 16 KiB stack
+  fails with "Raise it: NROS_FREERTOS_APP_STACK_KB=26".
+
+The detail is in
+[phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W5.

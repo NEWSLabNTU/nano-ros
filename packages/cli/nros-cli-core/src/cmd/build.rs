@@ -495,6 +495,11 @@ pub struct ResolvedBuild {
     /// stack allowance is filed under. Handed to cmake by `nros image-facts`.
     pub stack_floor_image: Option<String>,
 
+    /// Issue 2400 W5 — on the cargo road, whether the stack the board states
+    /// is checked after cargo, and how ([`crate::cmd::stack_floor`]). Set by
+    /// [`crate::cmd::stack_floor::arm`] once every plan is resolved.
+    pub stack_floor: Option<crate::cmd::stack_floor::StackFloorStep>,
+
     /// A configure that must run BEFORE the handoff, for drivers that need one.
     ///
     /// cmake is the only such driver: `cmake --build` on an unconfigured tree
@@ -1088,6 +1093,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 record: Default::default(),
                 capabilities: owned_caps(&bringup_dir),
                 stack_floor_image: image.stack_floor_image.clone(),
+                stack_floor: None,
                 output: None,
                 descriptor: None,
                 run_tables: Default::default(),
@@ -2728,6 +2734,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             },
             capabilities: owned_caps(&bringup_dir),
             stack_floor_image: image.stack_floor_image.clone(),
+            stack_floor: None,
             output,
             descriptor: Some(descriptor.clone()),
             run_tables: crate::cmd::run_plan::ImageTables::from_block(&image, image_net.as_ref()),
@@ -3014,6 +3021,7 @@ fn plan_leaf_image(
             cmake_build_dir: None,
             capabilities: owned_caps(root),
             stack_floor_image: img.decl.stack_floor_image.clone(),
+            stack_floor: None,
             kernel: None,
             configure: None,
             entry_root: None,
@@ -3118,6 +3126,7 @@ fn plan_leaf_image(
         },
         capabilities: owned_caps(root),
         stack_floor_image: img.decl.stack_floor_image.clone(),
+        stack_floor: None,
         output: Some(output),
         descriptor: Some(descriptor.clone()),
         run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&img.decl, image_net.as_ref()),
@@ -3283,6 +3292,7 @@ fn plan_single_package_cmake(
         cmake_build_dir: Some(build_dir),
         capabilities: owned_caps(root),
         stack_floor_image: decl.stack_floor_image.clone(),
+        stack_floor: None,
         kernel: None,
         entry_root: None,
         configure: Some(Handoff::new("cmake", a).in_dir(root)),
@@ -3447,6 +3457,12 @@ pub fn run(args: Args) -> Result<()> {
     }
     if let Some(tool) = args.check {
         retarget_to_check(&mut plans, tool)?;
+    } else {
+        // Issue 2400 W5 — a type-check links nothing, so only a real build is
+        // armed for the post-cargo stack walk.
+        let nros_root =
+            crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &root);
+        crate::cmd::stack_floor::arm(&mut plans, nros_root.as_deref(), &|k| std::env::var_os(k));
     }
     pin_this_project(&args)?;
     if !args.dry_run {
@@ -4080,7 +4096,16 @@ fn perform_plan(
     if let Some(er) = &p.entry_root {
         run_entry_root_check(er)?;
     }
-    handover(hand)
+    if let Some(sf) = &p.stack_floor {
+        crate::cmd::stack_floor::prepare(sf)?;
+    }
+    handover(hand)?;
+    // Issue 2400 W5 — after cargo has linked: walk the image and check the
+    // stack its board states.
+    if let Some(sf) = &p.stack_floor {
+        crate::cmd::stack_floor::check(&p.qualified, sf)?;
+    }
+    Ok(())
 }
 
 /// RFC-0120 D1 (phase-530 W2) -- build one planned HOST image through its own
@@ -4671,6 +4696,7 @@ fn plan_packages(
             cmake_build_dir: None,
             capabilities: Vec::new(),
             stack_floor_image: None,
+            stack_floor: None,
             kernel: None,
             entry_root: None,
             configure,
@@ -4963,6 +4989,7 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
             cmake_build_dir: None,
             capabilities: Vec::new(),
             stack_floor_image: None,
+            stack_floor: None,
             kernel: None,
             entry_root: None,
             configure: b.configure,
@@ -10020,6 +10047,7 @@ mod multi_image_drive_tests {
             cmake_build_dir: None,
             capabilities: Vec::new(),
             stack_floor_image: None,
+            stack_floor: None,
             kernel: None,
             configure: None,
             entry_root: None,

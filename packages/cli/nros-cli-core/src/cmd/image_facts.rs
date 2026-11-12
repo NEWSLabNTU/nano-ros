@@ -326,6 +326,7 @@ mod tests {
             cmake_build_dir: None,
             capabilities: capabilities.iter().map(|c| c.to_string()).collect(),
             stack_floor_image: None,
+            stack_floor: None,
             kernel: None,
             entry_root: None,
             configure: None,

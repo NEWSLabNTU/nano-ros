@@ -106,6 +106,9 @@ pub mod board_net;
 pub mod platform_port;
 #[cfg(feature = "build-helpers")]
 pub mod policy;
+/// Issue 2400 W5 — the stack a board's build states, for `nros build`'s check.
+#[cfg(feature = "build-helpers")]
+pub mod stack_stated;
 #[cfg(feature = "build-helpers")]
 pub mod threadx_qemu_riscv64_build;
 #[cfg(feature = "build-helpers")]
