@@ -7370,7 +7370,9 @@ fn cmake_coordinate(
 /// - `key` is one plain path component, and `build/<key>` is a real directory
 ///   (not a symlink) other than `current`;
 /// - its `CMakeLists.txt` is a regular file that opens with
-///   [`GENERATED_HEADER`](crate::builder::cmake_root::GENERATED_HEADER) and
+///   a generated root's header
+///   ([`is_generated_header`](crate::builder::cmake_root::is_generated_header),
+///   this nros's or an older one's) and
 ///   names a bringup (`SYSTEM <b>`), which every workspace-image root carries
 ///   and a package-mode root (`build/<pkg>/`, no bringup) does not;
 /// - the dir's name does not end in `-<b>`, which would make it a CURRENT
@@ -7401,7 +7403,11 @@ fn retire_legacy_cmake_root(build: &Path, key: &str, current: &Path) -> Option<P
         return None;
     }
     let body = std::fs::read_to_string(&root_file).ok()?;
-    if !body.starts_with(crate::builder::cmake_root::GENERATED_HEADER) {
+    if !body
+        .lines()
+        .next()
+        .is_some_and(crate::builder::cmake_root::is_generated_header)
+    {
         return None;
     }
     let system = body.lines().find_map(|l| {

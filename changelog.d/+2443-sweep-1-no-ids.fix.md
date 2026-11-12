@@ -1,0 +1,1 @@
+The board receive-budget refusals (`[board.rx] frame_cost_us`, a subscriber's `arrival_curve`) and the comments in the CMake, west and entity-inventory files `nros build` generates no longer cite internal design ids.
