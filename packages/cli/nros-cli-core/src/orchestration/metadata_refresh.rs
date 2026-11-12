@@ -1254,9 +1254,14 @@ fn clear_unprobeable(sidecar: &Path) {
 ///
 /// 1. the component's own sources — [`source_digest`], what the key used to be
 ///    alone;
-/// 2. the CLI that wrote the harness — `NROS_CLI_SOURCE_STAMP`, baked from the
-///    CLI's own sources by `build.rs`, because `CARGO_PKG_VERSION` (the only
-///    CLI input `source_digest` mixes) moves on a release and not on a fix;
+/// 2. the CLI that wrote the harness — `NROS_CLI_PLANNING_STAMP`, baked from
+///    the CLI's own sources by `build.rs`, because `CARGO_PKG_VERSION` (the only
+///    CLI input `source_digest` mixes) moves on a release and not on a fix.
+///    The PLANNING stamp (issue 2441), not the source stamp: the harness and
+///    the probe driver are planning code (`cli-planning-set.txt` holds every
+///    file `nros configure` reaches), and the source stamp also moves for a
+///    leaf verb such as `nros doctor`, which re-probed every sidecar and so
+///    re-ran every `nros configure` over an edit that changes neither;
 /// 3. the nano-ros crates the probe COMPILES — [`probe_closure_digest`] over
 ///    `packages/cli/probe-source-dirs.txt`. This is the half #1578 was about:
 ///    the `in_place` flag a sidecar carries comes from `nros-node`, and a change
@@ -1275,7 +1280,7 @@ fn clear_unprobeable(sidecar: &Path) {
 pub fn probe_inputs_key(package_root: &Path, nano_ros: Option<&Path>) -> Option<String> {
     let pkg = source_digest(package_root).ok()?;
     let closure = probe_closure_digest(nano_ros?)?;
-    Some(format!("{pkg}:{}:{closure}", env!("NROS_CLI_SOURCE_STAMP")))
+    Some(format!("{pkg}:{}:{closure}", env!("NROS_CLI_PLANNING_STAMP")))
 }
 
 /// The generated list of crates a probe compiles, relative to a nano-ros root.

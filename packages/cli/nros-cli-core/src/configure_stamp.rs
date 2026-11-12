@@ -1475,7 +1475,7 @@ mod tests {
         }
     }
 
-    /// A rebuilt CLI moves the `NROS_CLI_SOURCE_STAMP` part of
+    /// A rebuilt CLI moves the `NROS_CLI_PLANNING_STAMP` part of
     /// the probe key, so the resolve refuses the sidecar. The stamp compared
     /// only the source part and said "up to date". The CLI part cannot move
     /// inside one test binary, so the sidecar is stamped with the key a
@@ -1485,7 +1485,7 @@ mod tests {
         use crate::orchestration::metadata_refresh as mr;
         let (p, sidecar, root) = sidecar_fixture("sidecar-cli", None);
         let key = mr::probe_inputs_key(&p, Some(&root)).expect("keyed");
-        let cli = env!("NROS_CLI_SOURCE_STAMP");
+        let cli = env!("NROS_CLI_PLANNING_STAMP");
         assert!(key.contains(&format!(":{cli}:")), "{key} names this CLI");
         let other_cli = key.replace(&format!(":{cli}:"), ":an-older-cli:");
         assert_ne!(other_cli, key);
