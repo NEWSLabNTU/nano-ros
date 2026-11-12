@@ -467,9 +467,10 @@ function(_nros_west_leaf_sizing)
         RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0)
+        # History: issue 1662.
         message(FATAL_ERROR
-            "nros: `nros dev image west-leaf-sizing` failed for ${APPLICATION_SOURCE_DIR} "
-            "(issue 1662):\n${_err}")
+            "nros: `nros dev image west-leaf-sizing` failed for ${APPLICATION_SOURCE_DIR}:\n"
+            "${_err}")
     endif()
     if(NOT _err STREQUAL "")
         message(STATUS "nros: west-leaf-sizing: ${_err}")
@@ -1928,9 +1929,10 @@ function(nros_derived_knob_env out_var)
             # A list here would split into two `cmake -E env` arguments and
             # hand cargo a truncated value; the producer joins with `,`
             # (NROS_SUBSCRIBED_TYPE_BOUNDS), so this is a new producer's bug.
+            # History: issue 1796.
             message(FATAL_ERROR
                 "nros: derived knob ${_knob}='${_value}' holds a ';' and cannot "
-                "ride the Rust lane's env (issue 1796) -- join it with ','")
+                "ride the Rust lane's env -- join it with ','")
         endif()
         list(APPEND _env "${_knob}=${_value}")
     endforeach()
@@ -2074,10 +2076,11 @@ function(_nros_root_cargo_dir out_var features package)
     # name the per-image directory. So a cache hit still places the headers.
     if(COMMAND nros_shared_cargo_dir AND NROS_SHARED_CARGO_ROOT)
         if(NOT DEFINED NROS_RESOLVED_KNOBS)
+            # History: issue 0528.
             message(FATAL_ERROR
                 "_nros_root_cargo_dir: nros_resolve_knobs() has not run, so a "
                 "shared cargo directory would be keyed WITHOUT the pool sizes it "
-                "has to separate on (issue 0528). Resolve the knobs first.")
+                "has to separate on. Resolve the knobs first.")
         endif()
         set(_key "triple=${NROS_RUST_TARGET}" "profile=${NROS_CARGO_PROFILE}"
                  "package=${package}" "features=${features}")
@@ -2301,7 +2304,7 @@ function(nros_cargo_build)
         message(FATAL_ERROR
             "nros_cargo_build: NROS_RUST_TARGET is empty. Call "
             "nros_detect_rust_target() first — a host build names its triple "
-            "explicitly here (phase-340 W3).")
+            "explicitly here.")
     endif()
     # phase-400 W5.b — the root-workspace dir needs the triple, the profile AND
     # this package's features, so it is resolved here rather than at the branch
@@ -2319,6 +2322,7 @@ function(nros_cargo_build)
     string(MAKE_C_IDENTIFIER "${CARGO_TARGET_DIR}" _td_key)
     get_property(_td_owner GLOBAL PROPERTY "_NROS_TARGET_DIR_OWNER_${_td_key}")
     if(_td_owner AND NOT _td_owner STREQUAL _cargo_ws_root)
+        # History: issue 0616.
         message(FATAL_ERROR
             "nros_cargo_build: two cargo workspace roots would share one --target-dir.\n"
             "  target-dir: ${CARGO_TARGET_DIR}\n"
@@ -2327,7 +2331,7 @@ function(nros_cargo_build)
             "A target-dir serves exactly ONE workspace root: cargo keys a unit by the "
             "path spelling its root implies, so the same crate gets two `-C metadata` "
             "identities and `nros-platform`'s single `#[global_allocator]` is then "
-            "defined twice. Give the new root its own directory (issue 0616).")
+            "defined twice. Give the new root its own directory.")
     endif()
     set_property(GLOBAL PROPERTY "_NROS_TARGET_DIR_OWNER_${_td_key}" "${_cargo_ws_root}")
 

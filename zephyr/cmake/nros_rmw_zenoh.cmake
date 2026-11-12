@@ -24,8 +24,8 @@ if(DEFINED CONFIG_NROS_ZENOH_LOCATOR)
     if(CONFIG_NROS_ZENOH_LOCATOR MATCHES "^(can|isotp)/[^#]*#(.*;)?(d?bitrate)=")
         message(FATAL_ERROR
             "CONFIG_NROS_ZENOH_LOCATOR=\"${CONFIG_NROS_ZENOH_LOCATOR}\" states "
-            "`${CMAKE_MATCH_3}`, a fact about the CAN controller rather than wiring "
-            "(RFC-0109 D10). Zephyr sets the rate from the controller's devicetree "
+            "`${CMAKE_MATCH_3}`, a fact about the CAN controller rather than wiring. "
+            "Zephyr sets the rate from the controller's devicetree "
             "`bus-speed`, and the board starts it before any session opens. Drop "
             "`${CMAKE_MATCH_3}` from the locator.")
     endif()
@@ -261,9 +261,10 @@ zephyr_compile_definitions(Z_FEATURE_LOCAL_SUBSCRIBER=1)
 # holds this define to the resolved value.
 if(NOT DEFINED NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE
    OR "${NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE}" STREQUAL "")
+    # History: issue 1549.
     message(FATAL_ERROR
         "nros: NROS_RMW_LOCAL_QUERYABLE reached nros_rmw_zenoh.cmake "
-        "unresolved; nros_resolve_knobs() must run first (issue 1549).")
+        "unresolved; call nros_resolve_knobs() first.")
 endif()
 zephyr_compile_definitions(
     Z_FEATURE_LOCAL_QUERYABLE=${NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE})
@@ -455,19 +456,22 @@ if(DEFINED NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES AND
    NOT "${NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES}" STREQUAL "" AND
    NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES GREATER_EQUAL 0)
     if(NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES EQUAL 0)
+        # History: RFC-0074.
         message(FATAL_ERROR
             "nros: NROS_ZENOH_RX_TASK_BUDGET_FRAMES = 0 is refused: a budget of zero "
             "frames is not \"unbounded\". Use -1 (the default) for an unbounded read "
-            "task, or state at least 1 frame (RFC-0074).")
+            "task, or state at least 1 frame.")
     endif()
     # phase-462 W6b -- REST_US defaults to the `-1` DERIVE sentinel, so a
     # frame budget stated with no rest (and none derived) leaves it
     # unresolved; 1000 us is the same builtin `nros-zpico-build` uses.
     set(_nros_rx_rest_us 1000)
     if("${NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_REST_US}" STREQUAL "0")
+        # History: RFC-0074.
         message(FATAL_ERROR
             "nros: NROS_ZENOH_RX_TASK_BUDGET_REST_US = 0 with a frame budget is "
-            "refused: a budget that never rests bounds nothing (RFC-0074).")
+            "refused: a budget that never rests bounds nothing. Set it above 0, or "
+            "drop the frame budget.")
     endif()
     if(DEFINED NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_REST_US AND
        NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_REST_US GREATER 0)
@@ -553,6 +557,7 @@ if(CONFIG_NROS_ZENOH_LINK_SERIAL
                 "urgent number up to ${_nros_rr_hi}) in the board's or image's conf")
         endif()
         string(CONCAT _nros_main_fix ${_nros_main_fix})
+        # History: issues 1534, 2164.
         message(FATAL_ERROR
             "nros: CONFIG_MAIN_THREAD_PRIORITY=${CONFIG_MAIN_THREAD_PRIORITY} is not "
             "below the zenoh-pico read task (k_thread ${_nros_read_k}, from "
@@ -560,7 +565,7 @@ if(CONFIG_NROS_ZENOH_LINK_SERIAL
             "${CONFIG_NUM_PREEMPT_PRIORITIES} preempt priorities), and this image "
             "links zenoh over a SERIAL link. The main thread's registration then "
             "starves the RX drain, and a board that joins while peers already send "
-            "loses the router's interest replies (issues 1534, 2164). To fix it, "
+            "loses the router's interest replies. To fix it, "
             "${_nros_main_fix}. Also raise CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES if "
             "`_z_zephyr_serial_stats.ring_high_water` reaches its size.")
     endif()

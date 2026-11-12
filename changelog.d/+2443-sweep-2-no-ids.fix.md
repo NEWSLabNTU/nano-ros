@@ -1,0 +1,1 @@
+Zephyr and CMake build refusals (an image's Kconfig knobs, `nano_ros_node_register` carriers, cargo target directories, the zenoh RX task budget and read-task priority) now name the fix without citing internal design ids.

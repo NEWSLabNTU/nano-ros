@@ -308,6 +308,33 @@ documented as is.
   what `nros setup` would do), resolved through the same plan `nros setup`
   runs. Two runs on one host print the same text.
 
+### W5 — No internal ids on the user surface (issues 2305, 2443)
+
+**User ruling, 2026-11-12** ("Take your recommendation", option A): user-reachable
+output, build-stopping refusals included, names what, where and how to fix,
+and no phase, issue or RFC id. Ids live in source comments (`// History:`,
+`# History:`) and `-v` detail. Stable error codes (ruling C) come later, as
+phase-552; each message stays self-contained so a code can go in front.
+
+The backlog starts as counted ratchets that may only fall:
+`check-user-surface-ids` (CLI library string literals and build-script panic
+texts, `.config/user-surface-ids-ratchet.json`) and
+`check-cmake-user-output-refs` (now counting `FATAL_ERROR`/`SEND_ERROR` too,
+`.config/cmake-user-output-refs.json`). The sweep goes by file, biggest first;
+each batch lowers its baseline in the same PR.
+
+| Step | PR | Rust ratchet | CMake ratchet | Status |
+| --- | --- | --- | --- | --- |
+| colcon plugin, `build_type.rs`, `package_xml.rs`, `NanoRosPackageXml.cmake` | #3593 | (gated at zero) | — | in queue |
+| ratchets added | #3617 | 228 | 102 | in queue |
+| batch 1: `entity_inventory.rs`, `cmake_root.rs`, `west_app.rs` | #3621 | 179 | 102 | in queue |
+| batch 2: `nros_image_kconfig.cmake`, `NanoRosNodeRegister.cmake`, `nros_cargo_build.cmake`, `nros_rmw_zenoh.cmake` | this PR | 179 | 80 | open |
+| runtime logs of a default image (C lexer, log/panic rule) | — | — | — | not started |
+
+Acceptance: both ratchet baselines reach zero and their subjects become
+baseline-zero rules; runtime logs of a default image are read by a gate at
+zero; issues 2305 and 2443 are archived.
+
 ## Acceptance
 
 | Work item | Industrial | Field solutions | Education |
@@ -316,6 +343,7 @@ documented as is.
 | W2 | — | — | superseded by phase-551 (the starter image) |
 | W3 | round-two stop count, industrial | round-two time under 30 minutes on a real board | round-two stop count, education |
 | W4 | offline install passes; every fork has a delta page; `doctor --report` | — | — |
+| W5 | no internal id in a refusal or a generated file | no internal id in a refusal | no internal id in a refusal |
 
 ## Left
 

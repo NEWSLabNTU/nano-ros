@@ -524,8 +524,9 @@ function(_nros_entities_retired _call)
     if(NOT "ENTITIES" IN_LIST ARGN)
         return()
     endif()
+    # History: phase-412, RFC-0098 D8, phase-403.
     message(FATAL_ERROR
-        "${_call}: ENTITIES was retired (phase-412).\n"
+        "${_call}: ENTITIES was retired.\n"
         "  What this component creates is now stated ONCE PER SYSTEM, in a contract\n"
         "  sidecar beside the launch file that runs it:\n"
         "\n"
@@ -538,10 +539,10 @@ function(_nros_entities_retired _call)
         "  that model to `nros dev image entity-inventory`, so the pools size themselves.\n"
         "\n"
         "  A STANDALONE leaf has no bringup and no model. It states the same facts\n"
-        "  on its own `system.toml` `[[component]] entities` rows (RFC-0098 D8).\n"
+        "  on its own `system.toml` `[[component]] entities` rows.\n"
         "\n"
         "  Delete the ENTITIES argument. A system with no contract yet keeps its\n"
-        "  configured NROS_EXECUTOR_MAX_CBS, exactly as it did before phase-403.")
+        "  configured NROS_EXECUTOR_MAX_CBS, exactly as before.")
 endfunction()
 
 # ---------------------------------------------------------------------------
@@ -1080,9 +1081,10 @@ function(nano_ros_node_register)
             # Phase 257 (Stage-3) — the non-TYPED NuttX carrier drove the retired
             # `EntryNodeRuntime` interpreter (`NuttxBoard::run`); it is gone. Every
             # NuttX Node pkg is now TYPED (`RCLC_C_COMPONENT` / `configure`).
+            # History: phase-257.
             message(FATAL_ERROR
-                "nano_ros_node_register: the non-typed NuttX carrier is retired "
-                "(phase-257). Pass `TYPED` (LANGUAGE C or CPP) for the real-executor "
+                "nano_ros_node_register: the non-typed NuttX carrier is retired. "
+                "Pass `TYPED` (LANGUAGE C or CPP) for the real-executor "
                 "carrier.")
         endif()
 
@@ -1116,11 +1118,12 @@ function(nano_ros_node_register)
        AND _NRC_DEPLOY
        AND NOT TARGET ${PROJECT_NAME})
         if(NOT _NRC_TYPED)
+            # History: RFC-0043.
             message(FATAL_ERROR
                 "nano_ros_node_register: the ThreadX carrier requires TYPED — "
-                "the RFC-0043 real-callback component path. The legacy "
+                "pass `TYPED` (LANGUAGE C or CPP) for the real-callback component path. The legacy "
                 "declarative-register / NULL-context baker entry is retired on "
-                "ThreadX (phase-246).")
+                "ThreadX.")
         endif()
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
@@ -1191,11 +1194,12 @@ function(nano_ros_node_register)
        AND _NRC_DEPLOY
        AND NOT TARGET ${PROJECT_NAME})
         if(NOT _NRC_TYPED)
+            # History: RFC-0043.
             message(FATAL_ERROR
                 "nano_ros_node_register: the FreeRTOS carrier requires TYPED — "
-                "the RFC-0043 real-callback component path. The legacy "
+                "pass `TYPED` (LANGUAGE C or CPP) for the real-callback component path. The legacy "
                 "declarative-register / NULL-context baker entry is retired on "
-                "FreeRTOS (phase-240.6).")
+                "FreeRTOS.")
         endif()
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
@@ -1335,9 +1339,10 @@ function(nano_ros_node_register)
        AND _nrc_is_zephyr_carrier
        AND NOT TARGET ${PROJECT_NAME}_nros_zephyr_entry)
         if(NOT _NRC_TYPED)
+            # History: RFC-0043.
             message(FATAL_ERROR
                 "nano_ros_node_register: the Zephyr carrier requires TYPED — "
-                "the RFC-0043 real-callback component path. The legacy "
+                "pass `TYPED` (LANGUAGE C or CPP) for the real-callback component path. The legacy "
                 "declarative-register entry is not generated on Zephyr.")
         endif()
         set(_zephyr_entry_src "${CMAKE_CURRENT_BINARY_DIR}/nros-entry/zephyr_entry_main.cpp")
