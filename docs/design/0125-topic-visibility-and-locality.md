@@ -53,7 +53,7 @@ Today every topic in a nano-ros image pays for the wire, whatever its readers:
   (`packages/core/nros-rmw-abi/include/nros/rmw_entity.h`) but no backend
   sets it.
 - `use_intra_process_comms` is refused at compile time
-  (`packages/api/nros-cpp/include/nros/options.hpp`).
+  (`packages/api/nros-cpp/include/rclcpp/options.hpp`).
 
 On a microcontroller the slots and buffers are the RAM budget. A controller
 that runs its estimator and its control loop in one image pays for a network
@@ -179,3 +179,26 @@ change that turns a local topic into a wire topic is a reviewable diff.
 3. **Grammar decisions are rlm's** (no tree-wide `internal` level;
    `export-unused` is static) and are recorded in its
    `docs/design/visibility-and-exports.md`.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep** (Draft, no phase yet). Fixed: the dead path
+`packages/api/nros-cpp/include/nros/options.hpp` is
+`packages/api/nros-cpp/include/rclcpp/options.hpp` (where
+`use_intra_process_comms` is refused).
+
+- Area: kept as workspace-system-model, beside RFC-0074 (both realize a
+  contract fact on the board); the mechanism is rmw-wire.
+- Checked against the code:
+  - `local_loopback = 1` in `packages/rmw/zenoh/nros-zpico-build/src/lib.rs`;
+    `zephyr/cmake/nros_rmw_zenoh.cmake` exists; zenoh-pico `version.txt` is
+    `1.10.1`, as D2 says.
+  - `from_intra_process` is in the ABI and the C++ message info; no backend
+    sets it (no hit outside the struct, the cffi mirror and a test).
+  - `matched_only_wire` has no hit: Tier 1 is not built, as expected.
+- Unverified: the rlm document `docs/design/visibility-and-exports.md` and
+  play_launch's `docs/design/topic-visibility-linux.md`. Neither is in a
+  local checkout (`~/repos/play_launch` and the cargo rlm checkouts have no
+  such file); they may not be published yet.
+- Conflicts: none. RFC-0100's descriptor is extended, not contradicted.
+- Brief item: W5 (opening the phase).

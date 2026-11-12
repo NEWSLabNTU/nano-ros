@@ -4,7 +4,7 @@ title: "Ingress budget: the contract bounds what a device is made to receive"
 status: Stable
 area: workspace-system-model
 since: 2026-08
-last-reviewed: 2026-11-05
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-462, phase-516, phase-519]
 supersedes: []
 superseded-by: null
@@ -730,3 +730,29 @@ that, and a design that assumes one `c` per board should say so.
   that were not the one running. The replacement is measured over six
   interleaved runs per cell — zero stalls in 12/12 budgeted runs,
   dose-responsive, with chain delivery and p95 intact.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep.**
+
+- Checked against the code:
+  - The renamed names exist and the old ones are gone: `arrival_rate_mhz`
+    (13 files), `check_rx_arrival`, `RxArrivalCheck`, `DeclaredArrivalCurve`,
+    `nros_declared_arrival_table`, `HazardMonitorSpec`,
+    `nros_cpp_hazard_monitor_t`; `ingress_rate_mhz`, `check_rx_ingress` and
+    `nros_cpp_hazard_guard_t` have no hits under `packages/`.
+  - The router rule: `nros-orchestration-ir/src/router_rule.rs`
+    (`<model-stem>.router.json5`, the `ZENOH_CONFIG_OVERRIDE` form);
+    `nros ws router-config` (`cmd/ws.rs`); `just zenohd <model>`
+    (`just/linux.just`, `just/freertos.just`).
+  - `[board.rx]` is stated in board descriptors (8 files);
+    `max_bytes_per_second` is in the XRCE backend.
+  - rlm is pinned at `v0.3.14`, past the `v0.3.7` rename the status cites.
+- Stale references: issues 0506, 0760, 1948 and 1949 are archived; phases
+  462, 516 and 534 are archived; phase-519 is open, with W1 and W2 deferred
+  and W3, W4 done, which matches the changelog. `results/issue506_task_budget.md`
+  is a measurement output and not tracked; it is cited as history only.
+- Conflicts: none. RFC-0060's two-repository rule is followed (the field is
+  rlm's). Phase-519's own status text still spells `ingress_rate_mhz`; that is
+  the phase doc's wording, not this RFC's.
+- Brief items: none.

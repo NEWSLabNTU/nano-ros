@@ -358,3 +358,28 @@ removed it as a twin altogether.
 - Zephyr 3.7 board YAML and drivers read from the in-tree west workspace
   (`boards/arduino/*`, `boards/raspberrypi/rpi_pico`, `boards/st/nucleo_f767zi`,
   `drivers/wifi/infineon/Kconfig.airoc`, `drivers/sdhc`).
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep.** Its phase is live (phase-524, in progress), so Draft is
+the right status.
+
+- Checked against the registry, `packages/boards/board-support.toml`:
+  - The Nucleo-F767ZI row is `runs = "emulator"`, `cadence = "manual"`,
+    `last_run = "2026-11-01"`, on its own `matrix_platform =
+    "ZephyrNucleoF767zi"`. That is D4's ruling of 2026-11-03, and the
+    manual cadence is D4's "until a second maintainer" condition.
+  - The Pico W row is `runs = "none"` (Amendment 1).
+- The twin cell is `packages/testing/nros-tests/tests/zephyr_renode_twin.rs`.
+  Renode is a `[tool.renode]` row in `nros-sdk-index.toml`, and the
+  `renode-nucleo` probe track is generated into the registry.
+- Stale references: `phase-524-emulator-twins.md` and the spike logs under
+  `docs/roadmap/data/phase-524-w1-*.log` resolve. None dead.
+- Pairs:
+  - RFC-0114: this RFC's twin-own-`PlatformId` ruling is the reading of
+    D10 the registry applies. Consistent.
+  - RFC-0118: its runner contract gives `nros run` the `renode` runner D4
+    needed. Consistent.
+  - RFC-0124: Principle 3 consolidates D4 by reference, and D4 stays
+    authoritative, as both say.
+- `area:` platform-board-rtos is right.

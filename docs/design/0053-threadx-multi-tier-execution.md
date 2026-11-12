@@ -1,10 +1,10 @@
 ---
 rfc: 0053
-title: "ThreadX multi-sched-task execution — codegen-baked static per-sched-task stacks + native preemption-threshold"
+title: "ThreadX multi-sched-task execution — byte-pool per-sched-task stacks + native preemption-threshold"
 status: Draft
 area: platform-board-rtos
 since: 2026-07
-last-reviewed: 2026-07
+last-reviewed: 2026-11
 implements-tracked-by: [phase-297]
 supersedes: []
 superseded-by: null
@@ -15,9 +15,10 @@ superseded-by: null
 ## Summary
 
 ThreadX gains **multi-sched-task execution** — one `Executor` per sched task over one
-shared RMW session — mirroring the FreeRTOS/Zephyr/NuttX boards. The threads
-are created with **codegen-baked static per-sched-task stacks** (Option A below),
-and the sched task's `preempt_threshold` is applied through ThreadX's **native**
+shared RMW session — mirroring the FreeRTOS/Zephyr/NuttX boards. The threads'
+stacks come from the board's shared ThreadX **byte pool** (Option B: the
+Decision below chose codegen-baked static arrays, A, and the phase-297 W4
+Revision reversed it; the code is B), and the sched task's `preempt_threshold` is applied through ThreadX's **native**
 `tx_thread_preemption_change`. This makes ThreadX the **only** platform where
 the six-dim `non_preempt_scope` dimension (RFC-0052) is realized by a kernel
 primitive rather than emulated.
@@ -40,7 +41,7 @@ primitive rather than emulated.
   (the sched task→`SchedContext` lowering) that every board calls; ThreadX will call
   it per sched task once it has the per-sched-task executors.
 
-## Decision — static per-sched-task stacks (Option A), not a byte pool (Option B)
+## Decision — static per-sched-task stacks (Option A), not a byte pool (Option B) (reversed: see the Revision)
 
 Two ThreadX-canonical stack idioms were compared:
 
@@ -170,3 +171,30 @@ SchedTaskSpec per sched task i:                    run_sched_tasks(sched tasks):
   (`xTaskCreate` + `stack_bytes`); NuttX/Zephyr `run_sched_tasks`.
 - ThreadX static-stack vs byte-pool idioms; Zephyr `K_THREAD_STACK_DEFINE`;
   FreeRTOS `xTaskCreateStatic` (design exploration 2026-07-21).
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: amend** (mechanical, done here). The design matches the code.
+The status question is brief item P4.
+
+- Checked against the code:
+  - `nros_threadx_create_task` with the threshold passed at creation, and
+    `NROS_TX_MAX_TASKS 8` over a static `TX_THREAD` array:
+    `packages/boards/nros-board-common/c/threadx_hooks.c`.
+  - The shared `tx_byte_pool_create(... "nros_byte_pool" ...)`: the same
+    file.
+  - `run_sched_tasks`: `nros-board-threadx-linux/src/lib.rs`,
+    `nros-board-threadx-qemu-riscv64/src/lib.rs`, and
+    `nros-board-threadx/src/entry.rs` (`run_sched_tasks_entry`).
+  - The FreeRTOS reference `nros-board-freertos/c/freertos_run_sched_tasks.c`
+    exists.
+- Fixed: the title, the Summary and the Decision heading still said
+  Option A (static arrays), which the RFC's own Revision and the code
+  reversed to B (byte pool). They now say B. The Decision's text stays as
+  the record of what was weighed.
+- Stale references: `git grep nros_threadx_create_task / NROS_TX_MAX_TASKS`
+  resolve. phase-297 is archived and complete. None dead.
+- Conflicts: none with the newer RFCs. RFC-0108's derived threshold is
+  referenced, not contradicted.
+- Status: Draft, although phase-297 shipped all of it. Whether an
+  implemented Draft becomes Stable is brief item P4.

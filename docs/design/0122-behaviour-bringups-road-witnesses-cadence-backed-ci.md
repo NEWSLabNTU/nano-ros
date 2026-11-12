@@ -45,7 +45,7 @@ example exists to demonstrate one (D10).
 
 The CI half binds each support cadence of RFC-0114 to a named workflow job,
 because today two of them have none. `cadence = "merge"` (linux, zephyr
-native_sim, threadx-linux) is backed by nothing that runs at merge, and sched task
+native_sim, threadx-linux) is backed by nothing that runs at merge, and tier
 3 by no workflow at all. A cadence the CI cannot afford is lowered in the
 registry, not left unbacked.
 
@@ -346,3 +346,23 @@ has no job behind it.
 - 2026-11-04: Option B (maintainer ruling): the node code was not already
   shared. D1 now unifies the workspace node packages on the tutorial programs
   before the pairs move; Problem amended to say so.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep** (Draft, in flight under phase-535). Fixed: "sched task
+3" in the Summary, a rename artifact for CI "tier 3".
+
+- Area: kept as workspace-system-model; D8/D9 are CI (test-ci), but D1-D7
+  are the workspace and bringup layout.
+- Checked against the code:
+  - The behaviour bringups exist in all three language workspaces
+    (`examples/workspaces/{rust,c,cpp}/src/{pubsub,service,action}_bringup/system.toml`).
+  - Not built yet, as phase-535's status (W3 done, W4 next) says: no
+    `merge-runtime` or `release-gate` job under `.github/`, no
+    `road_witness_e2e`. `scripts/dev/measure-fixture-build.sh` exists.
+    `generate_facade_crates` is still in `cmd/ws.rs` (Constraints).
+- Stale references: none found. Frontmatter `amends:` matches the
+  Amendments table, and RFC-0026, 0051, 0061, 0066, 0114 and 0121 each cite
+  this RFC back.
+- Conflicts: none.
+- Brief items: none.

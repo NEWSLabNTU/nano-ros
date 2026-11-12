@@ -4,7 +4,7 @@ title: "An execution-time BOUND is declared per measurement profile — and a me
 status: Draft
 area: workspace-system-model
 since: 2026-08
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [issue-0404, issue-0259, issue-0403, phase-463]
 amends: []
 supersedes: []
@@ -15,7 +15,8 @@ superseded-by: null
 
 ## The problem, stated as the consumer sees it
 
-`ros-launch-manifest-sched` (pinned `v0.1.6`, rev `b9f45f1`) computes chain
+`ros-launch-manifest-sched` (pinned `v0.1.6`, rev `b9f45f1`, when this was
+written; `v0.3.14` on 2026-11-13) computes chain
 feasibility as
 
 ```
@@ -293,6 +294,12 @@ coverage           = "fixed synthetic inputs; worst path not established"
 flash-stm32f4-disco = "stm32f4-168mhz-release"
 ```
 
+*Note (2026-11-13):* phase-486 W8 retired `[deploy.*]` and the
+`DeployTarget` re-export. The `[wcet.select]` key is now the IMAGE id
+(`wcet_profile_for_image`, called from `nros build` with the image id), as the
+2026-10-07 amendment below already writes it. The paragraph below is the
+reasoning as written.
+
 **Selection is keyed by deploy-target name, not written inside
 `[deploy.<target>]`**, and that is a constraint rather than a preference:
 `DeployTarget` is a re-export of `ros_launch_manifest_model::system_config::DeployBlock`,
@@ -376,3 +383,30 @@ What transfers from a host run to the RTOS image is STRUCTURE, not time:
 
 `scripts/check-profile-against-census.py` holds both, and its self-test
 plants each disagreement on every run.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep.** Fixed: the rlm pin in the first paragraph now says it
+was the pin at writing (`v0.3.14` today), and a note says `[deploy.*]` is
+retired, so `[wcet.select]` is keyed by image id.
+
+- Checked against the code:
+  - `SystemToml::wcet_profile_for`, `wcet_profile_for_image`,
+    `is_host_wcet_profile`, `WcetSelectionError::HostProfileOnTarget` and both
+    named tests are in `nros-cli-core/src/orchestration/cargo_metadata_schema.rs`.
+    `nros build` calls `wcet_profile_for_image(&image_id, &platform)`
+    (`cmd/build.rs:975`). The native board is recognised by platform `posix`.
+  - `ChainFeasibleWithoutWcet` and `ClockRateZero`:
+    `nros-orchestration-ir/src/wcet.rs`. `$NROS_PROFILE_OUT`: `nros`,
+    `nros-cpp`. `scripts/check-profile-against-census.py` exists.
+  - `[deploy.*]` and the `DeployTarget` re-export were retired by phase-486 W8
+    (comment above `HostTarget` in `cargo_metadata_schema.rs`). The
+    "keyed by deploy-target name" paragraph is therefore history; the key is
+    the image id, which is what the 2026-10-07 amendment already writes.
+- Stale references: issues 0259, 0403 and 0404 and phase-463 are all
+  archived.
+- Found, not a design question: `HostProfileOnTarget`'s message (a user-facing
+  build refusal) prints "phase-463 W7"; RFC-0116's rule keeps ids out of user
+  messages. Reported to the manager, not edited here.
+- Conflicts: none. RFC-0079 consumes this RFC (budget from WCET) and agrees.
+- Status: Draft, though every tracked item is archived. Brief item W1.

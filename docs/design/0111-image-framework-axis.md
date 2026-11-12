@@ -4,7 +4,7 @@ title: "An image's entry framework is its own field, not a word in the board nam
 status: Draft
 area: platform-board-rtos
 since: 2026-10
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: []
 amends: [RFC-0093]
 supersedes: []
@@ -241,3 +241,27 @@ The work, for a phase to pick up:
 - **`owned-spin` as a user-facing word.** It is the internal name. Users may
   read `framework = "none"` more naturally. This RFC keeps one spelling per
   value (`FRAMEWORKS`) and does not add an alias.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep** (Draft, not started). Whether to open its phase is brief
+item P5.
+
+- Not implemented. Checked on main:
+  - `framework_for_board_key` is still the resolver
+    (`nros-orchestration-ir/src/lib.rs:261`). There is no
+    `image_framework`.
+  - No board descriptor carries `frameworks =`.
+  - `rtic-mps2-an385` is still a live board word in 37 tracked files outside
+    `docs/`, including `.config/feature-lanes.toml`'s note that "an image's
+    board word `rtic-mps2-an385` selects" the RTIC entry.
+- `implements-tracked-by: []`. The RFC says "No phase yet", which the
+  standing rule (2026-11-12) does not allow for a live design. Brief item
+  P5.
+- Stale references: none. RFC-0093, RFC-0112 and issues 2063/2134 resolve,
+  and the four consumers in its table are where it says.
+- Conflicts: RFC-0112 narrows D1/D2 to Tier 1 values, and the RFC already
+  carries that amendment. The `embassy` value was refused by issue 2134,
+  which D1 records. No contradiction.
+- `area:` platform-board-rtos is right: a board-descriptor and image-field
+  decision.

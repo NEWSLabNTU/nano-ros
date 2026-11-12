@@ -407,3 +407,34 @@ stated reversal.
   kept consistent by hand.
 - 2026-11-01 — RFC-0118 D4 amends D10: `emulator` moves to the descriptor's
   `[board.run]` and the generator reads it there (phase-528 W2).
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep.** The status question is brief item P4.
+
+- Checked against the code:
+  - `packages/boards/board-support.toml` carries `runs` on 17 rows and
+    `tier` on none, with `manual_stale_days = 120`.
+  - The generator `scripts/gen-board-support.py`, the cell table
+    `packages/boards/board-support-cells.toml` and the gate
+    `check board-registry` (`just/check/platform.just`) exist.
+  - So do the generated `book/src/reference/board-support-levels.md` and
+    the book-time staleness preprocessor `scripts/mdbook-board-status.py`.
+  - The retired `board-support-tiers.md` is gone. phase-522 is archived as
+    complete (PRs 2932, 2937, 2941, 2942).
+- Evaluation step 1's narrowing (fixture rows checked, not generated) is
+  already recorded in the decision log. The code matches that narrowing,
+  not D12's original table.
+- Stale references: the migration table lists `nros-board-esp32-qemu`,
+  which was retired after it was written (RFC-0113 D5). The table is
+  history, so it is left as written. The registry has no esp32 row.
+- Pairs:
+  - With RFC-0115 and RFC-0118: both amend D10 consistently, and the
+    `[board.run]` move is recorded here.
+  - RFC-0123 and RFC-0124 cite D10 and D12 as authoritative: no conflict.
+  - RFC-0051: D12's reversal clause was partly exercised, and RFC-0051's
+    authored fixture shape stays for fixture rows, as the log says.
+  - RFC-0112: its tier numbers are the one place this RFC's vocabulary is
+    not yet used (brief P6).
+- `area:` platform-board-rtos is right.
+- Status: Draft, though phase-522 shipped it. Brief item P4.

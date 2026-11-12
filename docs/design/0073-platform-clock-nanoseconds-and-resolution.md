@@ -4,7 +4,7 @@ title: "Platform clock: one nanosecond symbol plus a resolution query"
 status: Draft
 area: platform-board-rtos
 since: 2026-08
-last-reviewed: 2026-08
+last-reviewed: 2026-11
 implements-tracked-by: [phase-352]
 supersedes: []
 superseded-by: null
@@ -26,6 +26,15 @@ uint64_t nros_platform_clock_resolution_ns(void);
 
 The ABI stops asserting a precision it cannot keep and starts stating
 the precision it has.
+
+**As landed (phase-352, archived):** both symbols are in
+`packages/platform/nros-platform-api/include/nros/platform.h`. The
+`clock_us`/`clock_ms` wrappers and the `NROS_PLATFORM_LEGACY_CLOCK_UNITS`
+escape hatch shown below were kept for one release and are now RETIRED
+(phase-352 W6): callers divide `nros_platform_clock_ns()` themselves, and
+`scripts/check-retired-platform-clock-symbols.py` refuses a hand
+declaration of either retired name. The interface block below is the
+proposal as written.
 
 ## Motivation
 
@@ -238,3 +247,27 @@ definitions cannot coexist:
 
 - 2026-08 — initial draft, from the clock-capability survey in
   [#0532](../issues/archived/0532-platform-clock-abi-unit-and-resolution.md).
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep**, with a mechanical status note added under the Summary.
+The status question is brief item P4.
+
+- Checked against the code:
+  - `nros_platform_clock_ns` and `nros_platform_clock_resolution_ns` are in
+    `nros-platform-api/include/nros/platform.h`, mirrored in
+    `nros-platform-cffi/src/generated.rs`.
+  - The Rust trait `PlatformClock::clock_ns` / `clock_resolution_ns`:
+    `nros-platform-api/src/lib.rs`.
+  - The "advances" conformance case:
+    `nros-platform-cffi/tests/c_port_posix.rs`
+    (`clock_advances_across_a_five_ms_sleep`).
+- Further than the RFC planned: phase-352 W6 retired the wrappers and the
+  escape hatch, not only the port symbols. Fixed: the Summary now says
+  so, because the interface block still shows the wrappers as live.
+- Stale references: issues 0502, 0515, 0531 and 0532 resolve under
+  `docs/issues/archived/`. The Migration list names an `esp-idf` C port;
+  that port was deleted later (phase-468 W2). The list is history, so it
+  is left as written.
+- Conflicts: none. No newer RFC in the inventory claims a change to it.
+- Status: Draft, although phase-352 shipped it whole. Brief item P4.
