@@ -103,7 +103,7 @@ looks`).
   `-mfloat-abi` / `-mfpu` / `-march` / `-mabi`, the `CFLAGS_*` and
   `NUTTX_*_CFLAGS` env rows, and `cmake/toolchain/*-nuttx-*.cmake`'s
   `CMAKE_*_FLAGS_INIT` take NuttX's value (the export's
-  `scripts/Make.defs` on the leaf and workspace roads). Gate: Q13, Q14.
+  `scripts/Make.defs` on the leaf and workspace roads). Gate: Q14 (open); Q13 cleared (ruled 2026-11-12).
 - **Acceptance:** W1 green on rv-virt; `git grep` finds `cortex-a7` /
   `neon-vfpv4` / `rv32imac` flag literals only where W3b's ruling allows; a
   gate refuses a new copy.
@@ -130,7 +130,7 @@ image's generated cargo config (`--config`), and drops
 `export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11` (the toolchain comes from
 `tools/rust-toolchain.toml` like every other recipe).
 
-- Gate: 2236 Q3 and Q5.
+- Gate: cleared (Q3 B1 and Q5 yes, ruled 2026-11-12).
 - **Acceptance:** W1's cargo command line carries no literal from
   `Makefile:229-231`, `:254` or `:144`; `std` is not compiled (no
   `Compiling std` in the log); a nightly bump moves no line in
@@ -142,7 +142,7 @@ Project identity and `nros configure` inside the shell's `context::`, as
 ruled; the book's NuttX steps 3 and 4 (`book/src/guide/platforms/nuttx.md`)
 describe what the road then does.
 
-- Gate: 2236 Q1 to Q4, Q6, Q7.
+- Gate: Q1, Q2 and Q6 (open); Q3, Q4 and Q7 cleared (ruled 2026-11-12).
 - **Acceptance:** 2236 section 5's acceptance list.
 
 ### W7 -- The image crate is generated in `context::`
@@ -150,7 +150,7 @@ describe what the road then does.
 `nros_image_crate`'s `$(shell cmake -P ...)` moves from parse time into the
 `context::` recipe, and the issue 0551 parse guard it needs goes with it.
 
-- Gate: Q9 (and W6's ordering, if a project is named).
+- Gate: Q9 cleared (ruled 2026-11-12); W6's ordering still applies if a project is named.
 - **Acceptance:** `make olddefconfig` in a staged tree runs no `cmake`; W1
   green.
 
@@ -162,7 +162,7 @@ that reads `CONFIG_NROS_RMW_<X>` (no undeclared `CONFIG_NROS_RMW`), with W1
 extended to a CMake build of both boards; or the CMake shell and the book's
 sentence (`nuttx.md:103-104`) are deleted.
 
-- Gate: Q16.
+- Gate: Q16, ON HOLD until RFC-0130 (one ROS-CMake build) states how NuttX fits.
 - **Acceptance:** either a CMake NuttX build of a staged tree configures and
   links on both arches in a lane, or `integrations/nuttx/CMakeLists.txt` is
   gone and no doc offers the flow.
@@ -185,7 +185,7 @@ The board defconfigs become fragments over upstream's
 and `scripts/nuttx/build-nuttx.sh` calls `tools/configure.sh` instead of
 copying the defconfig and running `olddefconfig` itself.
 
-- Gate: Q17.
+- Gate: cleared (Q17 yes, ruled 2026-11-12).
 - **Acceptance:** the resolved `.config` of each board is byte-identical
   before and after (modulo `CONFIG_BASE_DEFCONFIG`); the kconfig frontend
   `configure.sh` needs is provisioned by `nros setup`, never by hand.
@@ -195,7 +195,7 @@ copying the defconfig and running `olddefconfig` itself.
 `CONFIG_INIT_ENTRYPOINT` names the image's entry, and the `nsh_main`
 override in `nros-board-nuttx-qemu/src/entry.rs` goes.
 
-- Gate: Q18.
+- Gate: cleared (Q18 yes, ruled 2026-11-12).
 - **Acceptance:** every NuttX fixture row boots and passes its test on both
   arches; no symbol named `nsh_main` is defined outside the kernel.
 
@@ -244,7 +244,7 @@ input); if both stay, each takes its facts from NuttX (W3b, W9, W11); if
 only the leaf and workspace roads stay, delete `integrations/nuttx/`, the
 staging script, the book's make-road section and this phase's W1 to W8.
 
-- Gate: Q10.
+- Gate: Q10, ON HOLD until RFC-0130 (one ROS-CMake build) states how NuttX fits.
 - **Acceptance:** the support registry (RFC-0114) names exactly the roads
   that remain, and each has a lane.
 
