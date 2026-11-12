@@ -1616,7 +1616,7 @@ Usage: nros locate [OPTIONS] [NAMES]...
 
 Arguments:
   [NAMES]...
-          Resources to locate: a `[source.<name>]` of the index, or `store` / `nano-ros` for the two roots. `artifact <name>…` instead locates a cargo-built artifact (`c-archive`, `cpp-archive`, `c-include`, `cpp-include`, `c-config-header`, `cpp-config-header`); `tool <name>` a host binary (`nros-launch-resolve`, `renode`, or `qemu-system-<arch>` through the one QEMU ladder), the install directory of an SDK tool `nros setup <board>` provisioned (`tool zephyr-sdk`), or `configured` where `nros configure` put an image's answer (with `--project` and `--image`)
+          Resources to locate: a `[source.<name>]` of the index, or `store` / `nano-ros` for the two roots. `artifact <name>…` instead locates a cargo-built artifact (`c-archive`, `cpp-archive`, `c-include`, `cpp-include`, `c-config-header`, `cpp-config-header`); `tool <name>` a host binary (`nros-launch-resolve`, `renode`, or `qemu-system-<arch>` through the one QEMU ladder), the install directory of an SDK tool `nros setup <board>` provisioned (`tool zephyr-sdk`), `configured` where `nros configure` put an image's answer (with `--project` and `--image`), or `nuttx-cargo-config`, the cargo settings a NuttX make build with no project takes from its board (with `--target`, `--nuttx-board`, `--target-dir` and `--out`)
 
 Options:
       --all
@@ -1661,6 +1661,12 @@ Options:
           The project whose `system.toml` `[sources]` is rung 3.
           
           Default: `$NROS_WORKSPACE_ROOT`, else the nearest ancestor of the working directory that holds a `system.toml`.
+
+      --nuttx-board <NUTTX_BOARD>
+          `nuttx-cargo-config` mode: the kernel's `CONFIG_ARCH_BOARD`, which picks between boards that build for the same target
+
+      --out <OUT>
+          `nuttx-cargo-config` mode: the file to write. Its grandparent is the directory cargo resolves the file's relative paths against
 
   -h, --help
           Print help (see a summary with '-h')
