@@ -832,7 +832,7 @@ leaves open, each with a recommendation that fits the direction.
 | 7 | Does the make road count as HOOKED (RFC-0120 D5), with D5's NuttX row and R36 amended? | **yes**, given Q1 yes and Q3 B1 | The host configure becomes the shell's `context::` step, which calls configure before cargo reads anything. | Section 3. |
 | 17 | Configure the kernel as a defconfig fragment over upstream's `qemu-armv7a:nsh` / `rv-virt:netnsh`, with `tools/configure.sh`? | **yes** | NuttX owns its configure. `build-nuttx.sh` copies a defconfig and runs `olddefconfig`, which restates `configure.sh`. | Exploration table, "configure by `cp defconfig .config`" row. |
 | 18 | Name the app in `CONFIG_INIT_ENTRYPOINT` instead of overriding `nsh_main`? | **yes** | NuttX owns the boot entry. | Exploration table, "the app runs by overriding the `nsh_main` symbol" row. |
-| 16 | NuttX's CMake flow: support it now, or delete the shell? | **(b) delete** the CMake shell and the book's sentence | No road is offered without a lane, and nothing builds this flow. It can come back as a new road with its own lane. | Issue 2426 item 7: the staged tree breaks a CMake configure today. E5: whether the pinned kernel's CMake build boots `qemu-armv7a` was not measured. |
+| 16 | NuttX's CMake flow: support it now, or delete the shell? (**ON HOLD**, see "Ruling" below) | **(b) delete** the CMake shell and the book's sentence | No road is offered without a lane, and nothing builds this flow. It can come back as a new road with its own lane. | Issue 2426 item 7: the staged tree breaks a CMake configure today. E5: whether the pinned kernel's CMake build boots `qemu-armv7a` was not measured. |
 | 4 | When a project is named, refuse a Kconfig RMW, edition or API flavor that differs from the image's? | **yes** | This follows from rulings already in force, not from RFC-0126: RFC-0098 D10 (one source of image configuration) and Ruling R34 (the cmake and Zephyr roads already refuse an edition disagreement). | Section 2, "Where Kconfig and configure could disagree". |
 
 ### B. Open: the direction does not decide these
@@ -858,3 +858,29 @@ leaves open, each with a recommendation that fits the direction.
   except W13's road deletion. Q10 (a) deletes no road.
 - RFC-0126 is then rewritten from a decision shape into decisions.
 - RFC-0120 D5/D8 and phase-530 R36 are amended for Q1 and Q7.
+
+### Ruling (2026-11-12)
+
+The user ruled on this brief, relayed through the manager session. Verbatim:
+
+> Accept the settled group. Hold Q10 and Q16 until 241's unified-build design
+
+| status | questions |
+| --- | --- |
+| **Decided**, as section A states them | Q3 (B1), Q4 (yes, refuse a disagreement), Q5 (yes), Q7 (yes, hooked), Q9 (yes), Q13 (yes), Q17 (yes), Q18 (yes) |
+| **On hold** | Q10 (which roads), Q16 (delete NuttX's CMake shell) |
+| **Open**: the recommendations in section B are proposals, not decisions | Q1, Q2, Q6, Q8, Q11, Q12, Q14, Q15, Q19, Q20 |
+
+**Why Q10 and Q16 are held.** Both decide which NuttX build roads exist, and
+the user has also ruled that nano-ros has one unified ROS-CMake build. The two
+rulings may conflict. RFC-0130 (one ROS-CMake build) is being drafted by the
+241 session and is not yet in the tree. It will state how NuttX fits as open
+questions, and Q10 and Q16 are ruled after it.
+
+**Where the ruling is recorded.**
+[RFC-0126](../design/0126-nuttx-builds-on-nuttx-infrastructure.md) now has a
+"Decided" section, and its D4 and D6 are marked held.
+
+**What stays blocked.**
+[phase-550](../roadmap/phase-550-nuttx-native-build-infrastructure.md) work
+gated on Q10, on Q16, or on any open question stays blocked.
