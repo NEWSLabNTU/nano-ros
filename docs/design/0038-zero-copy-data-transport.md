@@ -4,7 +4,7 @@ title: "Zero-copy data transport — shared slot pool + in-place receive dispatc
 status: Stable
 area: rmw-wire
 since: 2026-06
-last-reviewed: 2026-06
+last-reviewed: 2026-11
 implements-tracked-by: [phase-231]
 supersedes: []
 superseded-by: null
@@ -56,7 +56,7 @@ honor per-subscription ROS QoS history depth.
 ## Motivation / problem
 
 Every subscription message traverses two copies
-(`docs/issues/0008-two-copy-receive.md`):
+(`docs/issues/archived/0008-two-copy-receive.md`):
 
 ```
 Network → zpico SUBSCRIBER_BUFFERS ring → arena BufferStrategy slot → message struct
@@ -556,7 +556,7 @@ All seven open questions are resolved (2026-06; discussion folded in here):
 
 ## Relationship to other work
 
-- **issue #8** (`docs/issues/0008-two-copy-receive.md`) — this RFC is its
+- **issue #8** (`docs/issues/archived/0008-two-copy-receive.md`) — this RFC is its
   design-of-record; issue #8 flips to point here.
 - **issue #7 / RFC-0033** — copy #2 elimination for borrowed types uses D2's
   borrow window; the `is_plain` gate decides availability per type.
@@ -564,7 +564,7 @@ All seven open questions are resolved (2026-06; discussion folded in here):
   ABI change governed by 0035's evolution rule.
 - **RFC-0006** — C-ABI-is-canonical; the in-place path must be expressible across
   the vtable, not Rust-only.
-- **Phase 231** (`docs/roadmap/phase-231-zero-copy-receive.md`) carries the work
+- **Phase 231** (`docs/roadmap/archived/phase-231-zero-copy-receive.md`) carries the work
   items + acceptance tests and names this RFC in its `Implements:` header (per the
   RFC → roadmap → code flow). This RFC flips to **Stable** when Phase 231 lands.
 

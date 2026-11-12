@@ -17,9 +17,9 @@ crate-type = ["rlib"]
 [features]
 default = []
 # phase-303 W1c (RFC-0056) — the ROS-edition wire-extensibility profile. Marker
-# features (forwarded from nros-node); humble → FINAL descriptors (default),
-# iron/jazzy/rolling → APPENDABLE (DDS_OP_DLC → DHEADER under XCDR2). See
-# `dynamic_type::TYPE_EXTENSIBILITY`.
+# features (forwarded from nros-node). Every edition gets FINAL descriptors
+# today (`dynamic_type::TYPE_EXTENSIBILITY = 0`): APPENDABLE is chosen per type,
+# never per edition, and that per-type signal is parked (RFC-0055).
 ros-humble = []
 ros-iron = []
 ros-jazzy = []

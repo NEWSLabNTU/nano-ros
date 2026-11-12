@@ -1009,7 +1009,8 @@ config NROS_ZENOH_LINK_CAN
     help
       Enable CAN transport for zenoh-pico (RFC-0080). The link is a
       DATAGRAM link with a 63-byte MTU on CAN FD (64-byte frame minus a
-      length byte) or 7 bytes on classic CAN; zenoh's own transport
+      length byte); CAN FD only, a classic interface is refused at open
+      (use NROS_ZENOH_LINK_ISOTP there); zenoh's own transport
       fragments anything larger, so no segmentation layer is involved.
 
       Endpoint syntax:

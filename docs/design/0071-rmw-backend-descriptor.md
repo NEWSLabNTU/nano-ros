@@ -5,7 +5,7 @@ status: Draft
 area: rmw-wire
 since: 2026-08
 last-reviewed: 2026-11
-implements-tracked-by: [phase-347, phase-348, phase-506, phase-531]
+implements-tracked-by: [phase-347, phase-348, phase-506, phase-531, phase-545]
 supersedes: []
 superseded-by: null
 ---
@@ -180,9 +180,11 @@ signature, and a backend that declares nothing pays nothing.
 
 ### D5 — resolution is BY NAME over a SEARCH PATH OF WORKSPACES (revised twice)
 
-> **Amendment proposed 2026-11-07 (D14–D16 below, issue 2295), awaiting
-> maintainer review:** the CLI's build road resolves through the scan too,
-> and the baked in-tree table stops being a second answer.
+> **Amended 2026-11-07 (D14–D16 below, issue 2295; accepted by user ruling
+> the same day, implemented by phase-545):** the CLI's build road resolves
+> through the scan too, and the baked in-tree table stops being a second
+> answer. Also amended by [RFC-0094](0094-resolve-before-configure.md) D5
+> (this index becomes load-bearing).
 
 The first draft used a central registry. The second replaced it with name-based
 resolution plus a search path. This third revision fixes what the search path
@@ -384,6 +386,11 @@ over: a custom RMW cannot receive platform knobs, and a custom platform must
 know zenoh's name to supply them. Those sections should key on the resolved
 backend (`[knobs.<rmw>.tx]`, `[build.<rmw>]`) so the platform declares
 "here are my settings for whichever backend is selected" without naming one.
+
+> **Closed by [RFC-0086](0086-unified-configuration-transport-tenant-and-coupling.md)
+> D4** (phase-400 W2): the platform schema keys these sections on the resolved
+> backend, so `[knobs.zenoh.tx]` in a platform file is now the zenoh instance
+> of `[knobs.<rmw>.tx]` rather than a fixed name.
 
 ## Amendment 2026-10-18 — the four rulings phase-506 needed
 
@@ -1013,7 +1020,9 @@ model that sizes the image for components it no longer has.
 ## What this does NOT change
 
 * **The vtable ABI.** RFC-0035 is not the gap. A backend still populates
-  `nros_rmw_vtable_t` and self-registers through `RMW_INIT_ENTRIES`.
+  `nros_rmw_vtable_t` and self-registers (through `RMW_INIT_ENTRIES` when this
+  was written; since RFC-0042 §D3.3, through an `.init_array` ctor on hosted targets and an explicit
+  `register()` on `target_os = "none"`, `packages/rmw/cffi/src/section.rs:1-27`).
 * **Requiring a Cargo manifest from every backend** — explicitly rejected.
   `nros-rmw-xrce` (C) and `nros-rmw-uorb` (C++) have no `Cargo.toml` and should
   not gain one; mandating it would force cargo-driven builds and destroy the
