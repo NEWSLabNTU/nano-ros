@@ -862,9 +862,11 @@ fn report_arena_headroom(used: usize, capacity: usize) {
         // dropping it is also what buys the budget back. Placement is the
         // caller's, so this line names the NUMBER, which is the same whichever
         // memory the backing came from.
-        "arena over-provisioned: set NROS_EXECUTOR_ARENA_SIZE={suggest} \
-         (Zephyr: CONFIG_ prefix). {used}/{capacity} bytes claimed at first \
-         spin; later registrations need more."
+        // Issue 2465 — worded as OPTIONAL tuning: on a first-node run "set
+        // X=1024" read as a step the user had skipped, and nothing is wrong.
+        "arena larger than needed: {used}/{capacity} bytes claimed at first \
+         spin. Optional, to save RAM: NROS_EXECUTOR_ARENA_SIZE={suggest} \
+         (Zephyr: CONFIG_ prefix), plus room for anything registered later."
     );
 }
 
