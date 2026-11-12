@@ -4,7 +4,7 @@ title: "Example and fixture consolidation: workspaces carry coverage, fixtures c
 status: Draft
 area: test-ci
 since: 2026-08
-last-reviewed: 2026-08-02
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-331]
 supersedes: []
 superseded-by: null
@@ -40,6 +40,23 @@ for the first time.
 > opt into explicitly. R2 collects the feature demos into one native-only
 > workspace instead. The measurements and the fixture-axis half of R1 are
 > unchanged. See *Where a capability applies*.
+
+> **Outcome (phase-331, archived; reviewed 2026-11-13).** The design below is
+> the 2026-08-02 plan, and its numbers are that day's. Phase-331 W6 then dropped
+> the `ws-` prefix from every survivor, so `ws-managed-cpp`, `ws-launch-rust`,
+> `ws-sizing-rust`, `ws-bridge-rust` / `ws-bridge-xrce-rust` and
+> `ws-realtime-{c,cpp,rust}` are now `managed`, `launch`, `sizing`,
+> `bridge-cyclonedds` / `bridge-xrce` and `realtime-{c,cpp,rust}` under
+> `examples/workspaces/`. Where the outcome differs from the plan, phase-331
+> records it: safety became ONE workspace, not zero (its listener's validated
+> subscription is a distinct API surface, and the one-system limit keeps it out
+> of `features/`); realtime became 3 + `realtime-cpp-subnode-portable`; the
+> phase ended at 15 workspace directories, not 12 or 13. The directory set has
+> since grown with later phases (`levels-cpp`, `derived-sched-tasks-cpp`,
+> `violation-cpp`), and since [RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md)
+> the example pairs are image rows in the language workspaces. The fixture-axis
+> half held: the language workspaces carry zenoh, cyclonedds and xrce rows in
+> `examples/fixtures.toml` today.
 
 ## The measurements this rests on
 

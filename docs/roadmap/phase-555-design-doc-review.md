@@ -142,7 +142,12 @@ brief of RFC-0126 did.
 
 - **Acceptance:** every live RFC has a verdict and an updated
   `last-reviewed`; each area's brief is ruled.
-- **Status:** OPEN
+- **Where a slice records its result:** one file per area,
+  `docs/roadmap/data/phase-555-w2-<area>.md`, holding the verdict table and
+  the area's decision brief. Mechanical fixes are made in the RFCs, in the same
+  commit.
+- **Status:** OPEN. test-ci reviewed 2026-11-13, brief awaiting a ruling
+  ([data/phase-555-w2-test-ci.md](data/phase-555-w2-test-ci.md)).
 
 ### W3 -- Apply the rulings
 

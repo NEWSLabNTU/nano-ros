@@ -4,8 +4,10 @@ title: "Fixture freshness by tool OUTPUT, and a tiered test ladder"
 status: Draft
 area: test-ci
 since: 2026-07
-last-reviewed: 2026-11
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-318, phase-319, phase-329, phase-335, phase-410, phase-411, phase-475, phase-510, phase-535]
+supersedes: []
+superseded-by: null
 ---
 
 # RFC-0061 — Fixture freshness by tool OUTPUT, and a tiered test ladder
@@ -114,6 +116,9 @@ toolchain_fp       = sha256(codegen_fp || resolve_fp)   # resolve_fp only where 
 `nros configure` shells out to `nros-launch-resolve` by absolute path (RFC-0060),
 and the SystemModel that comes back **is** a fixture input — it is committed,
 consumed by `nros::main!(model = …)`, and its contents change what gets built.
+(As of 2026-08-03 a SystemModel is a build artifact, never committed, and an
+entry names its input with `nros::main!(launch = …)`; phase-330 W4.a/W7. The
+argument is unchanged: the model is still an input the resolver writes.)
 A fingerprint blind to the resolver would repeat, one layer down, exactly the
 `#182` bug it exists to prevent: a fixture built by a museum resolver verifying
 as fresh.
@@ -184,6 +189,8 @@ reviewable in a diff.
    because it runs a DIFFERENT binary over an on-disk launch tree.
 2. Signature version bump: `nros-workspace-fixture-v2` → `v3`. The bump
    invalidates once, deliberately, and never again for the same reason.
+   (The signature is at `v4` today, bumped by issue 2441 for the CLI planning
+   set: `scripts/build/workspace-fixture-signature.sh:28`.)
 3. Keep the binary hash as a *fallback* when the fingerprint cannot be computed
    (no cargo, cross-only host), so the gate degrades to today's behaviour rather
    than to "assume fresh". Failing safe matters more than the optimisation.
@@ -225,6 +232,13 @@ that drives build hours — the pairwise cover is 70 %, not 20 %. A middle tier
 costing 70 % of the sweep is one nobody runs, which is the failure mode this RFC
 exists to fix, so the affordable 1-wise cover became `ci-matrix` and the pairwise
 cover moved to a nightly lane rather than being dropped.
+
+Recipe names as of 2026-11-13: tier 0 is `just check fast`; the rungs are
+`just ci tier1` (the `just ci` default), `just ci matrix`, `just ci
+matrix-nightly` and `just ci full`, and the hyphenated `ci-matrix` /
+`ci-matrix-nightly` / `ci-full` spellings above survive as forwarders
+(`justfile:3767-3785`). Which CI job runs each rung, and how often, is not
+this table's "when" column: see the 2026-11-04 amendment below.
 
 Two rules make the ladder honest:
 
