@@ -4,7 +4,7 @@ title: "ROS edition axis: per-distro interop profile (type hash + wire encoding 
 status: Draft
 area: rmw-wire
 since: 2026-07
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-304, phase-41, phase-303]
 supersedes: []
 superseded-by: null
@@ -42,7 +42,7 @@ which RMW or platform nano-ros runs:
   **Iron+** computes real **RIHS01** SHA-256 hashes (REP-2011) and a peer may
   reject a mismatched/placeholder hash at discovery. (Already partly handled:
   `nros-rmw-zenoh::keyexpr` branches on `ros-iron`; the RIHS01 computation is
-  phase-41, not-started.)
+  phase-41, COMPLETE 2026-09-04, in `packages/cli/rosidl-resolve/src/rihs.rs`.)
 - **Wire encoding / extensibility.** **NOTE (2026-07-26): this is NOT actually an
   edition-profile field — it is per-type, so it is being removed from this axis.**
   Live verification (RFC-0055 CORRECTION, #0267) showed a **default Jazzy peer is
@@ -57,7 +57,7 @@ which RMW or platform nano-ros runs:
   `@appendable`; match the peer's edition.~~
 - **Interface set.** Message definitions and available packages differ across
   distros; nano-ros already generates interfaces into per-distro dirs
-  (`packages/interfaces/*/generated/{humble,iron}/`).
+  (`packages/interfaces/generated/<edition>/`; only `humble/` is committed).
 
 These are all facets of **one variable — the target ROS edition** — yet they
 are currently either hard-coded to Humble, branched ad-hoc (`ros-iron`), or
@@ -71,7 +71,7 @@ table row, not a scavenger hunt.
 | Edition | Feature | Status | Ubuntu / EOL | Notes |
 | --- | --- | --- | --- | --- |
 | `humble` | `ros-humble` (default) | supported | 22.04 LTS | XCDR1/placeholder-hash; the current baseline |
-| `iron` | `ros-iron` | keyexpr done; RIHS01 pending (phase-41) | 23.05 (EOL) | RIHS01 type hashes introduced |
+| `iron` | `ros-iron` | keyexpr done; RIHS01 done (phase-41, complete 2026-09-04) | 23.05 (EOL) | RIHS01 type hashes introduced |
 | `jazzy` | `ros-jazzy` | RIHS01 done; harness green (phase-309/310) | 24.04 LTS | RIHS01; **FINAL/XCDR1 on the wire** (per-type `@appendable` only; NOT XCDR2-by-edition — see the encoding note) |
 
 Mutually exclusive within the axis (compile-time), like the other two axes.

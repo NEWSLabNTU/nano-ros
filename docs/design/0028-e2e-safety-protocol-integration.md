@@ -4,8 +4,8 @@ title: "E2E Safety Protocol Integration Analysis"
 status: Stable
 area: rmw-wire
 since: 2026-02
-last-reviewed: 2026-02
-implements-tracked-by: []
+last-reviewed: 2026-11
+implements-tracked-by: [phase-35]
 supersedes: []
 superseded-by: null
 ---
@@ -14,7 +14,7 @@ superseded-by: null
 
 > Date: 2026-02-14
 > Prerequisite: `docs/research/safety-critical-platform-study.md`
-> Status: Design analysis (not yet implemented)
+> Status: Implemented by phase-35 (`docs/roadmap/archived/phase-35-safety-hardening.md`, Complete). §7 records the plan; the crate and method names it uses predate the current API.
 
 ## 1. Problem Statement
 

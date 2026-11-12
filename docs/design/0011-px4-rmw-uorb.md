@@ -23,7 +23,7 @@ and what "PX4 supported" means, is [RFC-0039](0039-px4-integration-architecture.
 
 This document focuses on the nano-ros-specific design choices. For the
 underlying async / WorkQueue / uORB story, see
-[`px4-rs/docs/architecture.md`](https://github.com/aeon/px4-rs/blob/main/docs/architecture.md).
+[`px4-rs/docs/architecture.md`](https://github.com/jerry73204/px4-rs/blob/main/docs/architecture.md).
 
 ---
 

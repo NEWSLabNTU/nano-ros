@@ -4,7 +4,7 @@ title: "Serialization format is a compile-time provider"
 status: Draft
 area: rmw-wire
 since: 2026-09
-last-reviewed: 2026-09
+last-reviewed: 2026-11
 implements-tracked-by: [phase-421]
 supersedes: []
 superseded-by: null
@@ -280,9 +280,12 @@ bump. The ladder therefore mirrors `rmw`'s, minus that rung: CLI override →
 `[image.<t>]` folded over `[image_defaults]` → `[system]` → `"cdr"`, with
 `[package.metadata.nros.deploy.<t>].serdes` — the deploy block nano-ros *does*
 own — carried into the synthesized image block exactly as `rmw` already is.
-`rmw` on `[deploy.*]` is itself deprecated (`image::DEPRECATED_DEPLOY_FIELDS`,
-RFC-0065 D6 / issue 0951), so the rung this loses is one the tree is already
-retiring.
+`rmw` on `[deploy.*]` was itself deprecated then (RFC-0065 D6 / issue 0951),
+so the rung this loses is one the tree was already retiring. *(Since retired:
+`[deploy.*]` build fields are refused by name (issue 1809), and the
+`[package.metadata.nros.deploy.<t>]` rung with them (phase-531 W7 step 1,
+RFC-0121 D3), so the ladder is now CLI override → `[image.<t>]` over
+`[image_defaults]` → `[system]` → `"cdr"`.)*
 
 A custom format that wraps a C codec is two ordinary packages: the provider, and
 a vendor package it `<depend>`s on (RFC-0087 D5).

@@ -4,7 +4,7 @@ title: "Zenoh router provenance: take the router from ROS, pin only what compile
 status: Draft
 area: rmw-wire
 since: 2026-08
-last-reviewed: 2026-08
+last-reviewed: 2026-11
 implements-tracked-by: [phase-362]
 supersedes: []
 superseded-by: null
@@ -50,7 +50,7 @@ have different constraints and should be decided separately.
 **The zenoh wire protocol is stable within 1.x.** Eclipse committed to backward
 compatibility from 1.0.0 onward, and the 1.1.0 release notes restate it for
 subsequent fixes. Our `zenoh-pico` speaks `Z_PROTO_VERSION 0x09`
-(`zenoh-pico/include/zenoh-pico/config.h:282`); that constant is what the
+(`zenoh-pico/include/zenoh-pico/config.h`, line 422 at the 1.10.1 pin); that constant is what the
 guarantee covers.
 
 **`rmw_zenoh`'s ROS-level conventions carry no guarantee at all.** Its
@@ -150,6 +150,11 @@ them is what produced a wrong version claim in issue 0609's first filing.
 Record `zenoh-pico 1.7.2 ↔ rmw_zenoh_cpp 0.1.9 (zenoh 1.8.0)` as an observed-good
 pairing in the book's support matrix, beside the ROS edition axis (RFC-0056). It
 is what a future failure gets diffed against — not a version to enforce.
+
+*Review note 2026-11 (phase-555):* the zenoh-pico pin has since moved to 1.10.1
+(phase-508), and the row lives in `book/src/reference/support-status.md`'s Zenoh
+line. D4's version report is `zenoh_pairing_versions()` in
+`packages/testing/nros-tests/src/process.rs` (phase-362 W2).
 
 ## Consequences
 

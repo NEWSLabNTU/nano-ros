@@ -5,8 +5,9 @@ title: "Network and middleware configuration in three layers: the OS owns the
 status: Draft
 area: rmw-wire
 since: 2026-10
-last-reviewed: 2026-11-07
+last-reviewed: 2026-11
 implements-tracked-by: [phase-514, phase-546]
+amends: [rfc-0004, rfc-0009, rfc-0080, rfc-0081, rfc-0083, rfc-0098, rfc-0103]
 supersedes: []
 superseded-by: null
 ---
@@ -16,7 +17,7 @@ superseded-by: null
 **Status:** Draft (2026-10-24). **Amends** RFC-0004 (§"No NIC axis", the
 2026-09-04 amendment, §6 `[[transport]]`), RFC-0103 D10 / D10a–D10g, and
 RFC-0098 D4/D11 (`conf`). **Closes** the design question phase-206 left open
-(phase-206 is archived when this lands).
+(phase-206 is archived).
 
 ## Summary
 
@@ -615,8 +616,9 @@ layer 1.
   narrows to "no parser on the target" (D8).
 - **RFC-0103 D10:** D10/D10a–D10d, D10f, D10g are superseded by D2–D6 here.
   D10e (host-OS boards own no network facts) generalises to every board whose
-  OS owns its network. D10b's collision refusal moves into
-  `nros-board-common`'s D4 parser (one image set, one board format).
+  OS owns its network. D10b's collision refusal moves to the D4 fold
+  (`nros-cli-core`'s `orchestration::image_net::check_collisions`; one image
+  set, one board format).
 - **RFC-0098:** D4's `transport` implication becomes derived (D6); D11's
   `conf` generalises to `os_config`.
 - **phase-206:** archived; its two open acceptance items are replaced by this
