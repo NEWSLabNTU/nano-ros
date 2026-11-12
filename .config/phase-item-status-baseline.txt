@@ -159,7 +159,7 @@ phase-519-rmw-daemons.md 2
 phase-520-setup-macro-host-loop.md 5
 phase-521-rt-unified-wait.md 10
 phase-522-support-registry-primitives.md 5
-phase-523-education-labs-adoption-probes.md 2
+phase-523-education-labs-adoption-probes.md 3
 phase-524-emulator-twins.md 7
 phase-525-adoption-front-doors.md 4
 phase-526-cli-two-tier-restructure.md 5
@@ -182,6 +182,7 @@ phase-546-zenoh-freertos-host-sockets.md 6
 phase-547-px4-pixhawk-emulator-spike.md 8
 phase-548-three-languages-every-board.md 4
 phase-549-px4-rust-c-uorb.md 5
-phase-550-nuttx-native-build-infrastructure.md 12
+phase-550-nuttx-native-build-infrastructure.md 9
 phase-551-starter-image.md 9
 phase-554-per-node-lifecycle.md 16
+phase-555-w2-workspace-system-model-133.md 5
