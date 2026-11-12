@@ -172,6 +172,19 @@
       "name": "z_sleep_ms",
       "reason": "push {r3, lr}, read off the prologue, as z_malloc",
       "target": "thumbv7em-none-eabi"
+    },
+    {
+      "kind": "cut",
+      "match": "__assert_func",
+      "reason": "a failed C assert prints and aborts; the path diverges, as the Rust panic path",
+      "target": "thumbv7m-none-eabi"
+    },
+    {
+      "bytes": 12,
+      "kind": "frame",
+      "name": "__aeabi_cdcmple",
+      "reason": "libgcc _arm_cmpdf2.o, hand assembly with no CFI: push {r0, lr} (8) and its bl to __nedf2 (str r12, [sp, #-4]!: 4), read off the disassembly; the call is section-internal, so no relocation names it",
+      "target": "thumbv7m-none-eabi"
     }
   ],
   "recursion_allowance": 0,

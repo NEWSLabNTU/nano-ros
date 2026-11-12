@@ -39,13 +39,8 @@ def package_matches(package_id: str, name: str) -> bool:
     return head.rstrip("/").rsplit("/", 1)[-1] == name
 
 
-def out_dirs(lines: Iterable[str], package: str) -> list[str]:
-    """Every `out_dir` cargo reported for `package`, in stream order.
-
-    Several units of one package can run their build script in one invocation
-    (one per feature set); the one a caller wants is normally the LAST.
-    """
-    found: list[str] = []
+def _executed(lines: Iterable[str]) -> Iterable[tuple[str, str]]:
+    """`(package_id, out_dir)` of every `build-script-executed` message."""
     for line in lines:
         line = line.strip()
         if not line.startswith("{"):
@@ -56,11 +51,25 @@ def out_dirs(lines: Iterable[str], package: str) -> list[str]:
             continue
         if msg.get("reason") != "build-script-executed":
             continue
-        if package_matches(msg.get("package_id", ""), package):
-            od = msg.get("out_dir")
-            if od:
-                found.append(od)
-    return found
+        od = msg.get("out_dir")
+        if od:
+            yield msg.get("package_id", ""), od
+
+
+def out_dirs(lines: Iterable[str], package: str) -> list[str]:
+    """Every `out_dir` cargo reported for `package`, in stream order.
+
+    Several units of one package can run their build script in one invocation
+    (one per feature set); the one a caller wants is normally the LAST.
+    """
+    return [od for pid, od in _executed(lines) if package_matches(pid, package)]
+
+
+def all_out_dirs(lines: Iterable[str]) -> list[str]:
+    """Every `out_dir` cargo reported, whatever the package, in stream order:
+    for a consumer that looks for a FILE a build script wrote rather than for
+    one package (issue 2400 W5, the stated stack)."""
+    return [od for _pid, od in _executed(lines)]
 
 
 def self_test() -> None:
@@ -78,4 +87,5 @@ def self_test() -> None:
         '{"reason":"build-script-executed","package_id":"path+file:///a/nros-c#1","out_dir":"/o2"}',
     ]
     assert out_dirs(stream, "nros-c") == ["/o1", "/o2"]
+    assert all_out_dirs(stream) == ["/o1", "/x", "/o2"]
     assert out_dirs(stream, "absent") == []

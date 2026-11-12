@@ -4,7 +4,7 @@ title: "mps2-an385 bare metal: the main stack has no size and no guard, so an ov
 status: open
 type: bug
 area: boards, memory
-related: [phase-553, issue-2265, issue-2400]
+related: [phase-553, phase-557, issue-2265, issue-2400]
 found: 2026-11-13
 ---
 

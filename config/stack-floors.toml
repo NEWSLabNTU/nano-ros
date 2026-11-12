@@ -229,3 +229,21 @@ name = "z_sleep_ms"
 bytes = 8
 target = "thumbv7em-none-eabi"
 reason = "push {r3, lr}, read off the prologue, as z_malloc"
+
+# The cargo road (issue 2400 W5) links newlib's `libc.a` through the board
+# crate (`rustc-link-lib=static=c`), so its members are walked; newlib is
+# prebuilt with no -fstack-usage, and the walk reads their frames from the
+# linked image's .debug_frame (`--cfi-elf`).
+
+[[policy]]
+kind = "cut"
+match = "__assert_func"
+target = "thumbv7m-none-eabi"
+reason = "a failed C assert prints and aborts; the path diverges, as the Rust panic path"
+
+[[policy]]
+kind = "frame"
+name = "__aeabi_cdcmple"
+bytes = 12
+target = "thumbv7m-none-eabi"
+reason = "libgcc _arm_cmpdf2.o, hand assembly with no CFI: push {r0, lr} (8) and its bl to __nedf2 (str r12, [sp, #-4]!: 4), read off the disassembly; the call is section-internal, so no relocation names it"

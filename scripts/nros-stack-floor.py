@@ -46,6 +46,7 @@ Tools: `llvm-readobj` and `llvm-objdump` from the pinned toolchain's
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -92,6 +93,32 @@ class Path_:
     depth: int
     chain: list[str]
     indirect: int  # indirect sites on the path that were charged
+
+
+def expand_roots(g: Graph, roots: str) -> list[str]:
+    """A role's roots, from `root[,root...]`.
+
+    A plain root is a symbol, used as written. A `~text` root is every
+    function whose symbol CONTAINS `text`, for a thread entry that is a
+    generic Rust function: each instance has its own mangled name, and the
+    name of the item is the only part a caller can state. The deepest one
+    sets the role's floor, as with any list of roots. A `~` root that matches
+    nothing is refused rather than dropped, so a renamed entry cannot turn
+    the walk into a pass."""
+    out: list[str] = []
+    known = g.functions | set(g.frames)
+    for root in roots.split(","):
+        if root.startswith("~"):
+            text = root[1:]
+            hits = sorted(fn for fn in known if text and text in fn)
+            if not hits:
+                raise WalkRefused(f"no function in the inputs has `{text}` in its name "
+                                  f"(root `{root}`); the thread entry was renamed, or its "
+                                  "code is not among the inputs")
+            out.extend(h for h in hits if h not in out)
+        elif root not in out:
+            out.append(root)
+    return out
 
 
 def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
@@ -417,23 +444,166 @@ def link_map_inputs(map_path: Path, link_dirs: list[Path]) -> tuple[list[str], l
     dropped: list[str] = []
     seen: set[str] = set()
     roots = [d.resolve() for d in link_dirs]
-    for line in map_path.read_text(errors="replace").splitlines():
-        if not line.startswith("LOAD "):
-            continue
-        raw = line[5:].strip()
-        if not raw.endswith((".o", ".obj", ".a")):
-            continue
+    text = map_path.read_text(errors="replace")
+    loads = [ln[5:].strip() for ln in text.splitlines() if ln.startswith("LOAD ")]
+    # (file, archive member or None), in link order
+    entries: list[tuple[str, str | None]] = []
+    if loads:
+        entries = [(raw, None) for raw in loads if raw.endswith((".o", ".obj", ".a"))]
+    else:
+        entries = lld_map_entries(text)
+    for raw, member in entries:
         if raw.startswith("/"):
             path = Path(raw).resolve()
         else:
             cands = [(d / raw).resolve() for d in roots]
             path = next((c for c in cands if c.exists()), cands[0])
-        key = str(path)
+        key = str(path) if member is None else f"{path}({member})"
         if key in seen:
             continue
         seen.add(key)
         (kept if any(path.is_relative_to(r) for r in roots) else dropped).append(key)
     return kept, dropped
+
+
+# An LLD `-Map` input line: VMA LMA Size Align, then `<file>:(<section>)`,
+# where <file> is `path` or `archive(member)`.
+_LLD_INPUT = re.compile(r"^\s*[0-9a-f]+\s+[0-9a-f]+\s+[0-9a-f]+\s+\d+\s+(?P<file>\S.*?):\([^)]*\)\s*$")
+_LLD_MEMBER = re.compile(r"^(?P<archive>.*\.(?:a|rlib))\((?P<member>[^()]+)\)$")
+
+
+def lld_map_entries(text: str) -> list[tuple[str, str | None]]:
+    """The inputs an LLD link (`rust-lld`, the cargo road) placed, from its
+    `-Map` file, which names each input section's file and has no `LOAD`
+    lines. A Rust codegen unit (`*.rcgu.o`, loose or an rlib member) is left
+    out: its frames and calls come from the same unit's `-C save-temps`
+    bitcode, compiled by llc. What stays is C: the objects cc-rs bundled into
+    an rlib, and plain objects and archive members."""
+    out: list[tuple[str, str | None]] = []
+    seen: set[tuple[str, str | None]] = set()
+    for line in text.splitlines():
+        m = _LLD_INPUT.match(line)
+        if not m:
+            continue
+        f = m["file"]
+        mm = _LLD_MEMBER.match(f)
+        ent: tuple[str, str | None]
+        if mm:
+            if not mm["member"].endswith((".o", ".obj")) or mm["member"].endswith(".rcgu.o"):
+                continue
+            ent = (mm["archive"], mm["member"])
+        elif f.endswith((".o", ".obj")) and not f.endswith(".rcgu.o"):
+            ent = (f, None)
+        else:
+            continue
+        if ent not in seen:
+            seen.add(ent)
+            out.append(ent)
+    return out
+
+
+_CFI_FDE = re.compile(r"\bFDE cie=\S+ pc=([0-9a-f]+)\.\.\.([0-9a-f]+)")
+_CFI_OFFSET = re.compile(r"DW_CFA_def_cfa_offset: \+?(-?\d+)")
+_CFI_DEF = re.compile(r"DW_CFA_def_cfa: (\w+) \+?(-?\d+)")
+
+
+def parse_cfi(text: str, sp_reg: str = "reg13") -> dict[int, int | None]:
+    """`llvm-objdump --dwarf=frames` of a LINKED image: function start ->
+    the deepest SP-relative CFA offset its FDE reaches, which is its frame
+    (pushed registers included). None when the FDE moves the CFA off SP (a
+    frame pointer, as a VLA or alloca uses): that frame is not static, and
+    the walk must not trust a number for it."""
+    out: dict[int, int | None] = {}
+    cur: int | None = None
+    depth: int | None = 0
+    for line in text.splitlines():
+        m = _CFI_FDE.search(line)
+        if m:
+            if cur is not None:
+                out[cur] = depth
+            cur, depth = int(m[1], 16), 0
+            continue
+        if cur is None:
+            continue
+        if " CIE" in line:
+            out[cur] = depth
+            cur = None
+            continue
+        if depth is None:
+            continue
+        if "DW_CFA_def_cfa_register" in line or "DW_CFA_def_cfa_expression" in line:
+            depth = None
+            continue
+        m = _CFI_DEF.search(line)
+        if m:
+            depth = max(depth, int(m[2])) if m[1] == sp_reg else None
+            continue
+        m = _CFI_OFFSET.search(line)
+        if m:
+            depth = max(depth, int(m[1]))
+    if cur is not None:
+        out[cur] = depth
+    return out
+
+
+def load_cfi_frames(g: Graph, elf: str, readobj: str, objdump: str) -> int:
+    """Frames, from the linked image's `.debug_frame`, for the functions no
+    input states one for (a prebuilt toolchain library such as newlib, whose
+    objects have no `.su`). An input's own frame always wins. Returns how many
+    functions got one."""
+    starts: dict[int, set[str]] = {}
+    for doc in readobj_json(readobj, ["--symbols"], [elf]):
+        for s in doc.get("Symbols", []):
+            sym = s["Symbol"]
+            typ = sym["Type"]["Name"] if isinstance(sym["Type"], dict) else sym["Type"]
+            if typ != "Function":
+                continue
+            name = sym["Name"]["Name"] if isinstance(sym["Name"], dict) else sym["Name"]
+            starts.setdefault(sym["Value"] & ~1, set()).add(name)
+    r = subprocess.run([objdump, "--dwarf=frames", elf], capture_output=True, text=True,
+                       check=True)
+    n = 0
+    for pc, depth in parse_cfi(r.stdout).items():
+        if depth is None:
+            continue
+        for fn in starts.get(pc & ~1, ()):
+            if fn not in g.frames:
+                g.frames[fn] = depth
+                g.functions.add(fn)
+                n += 1
+    return n
+
+
+def extract_members(inputs: list[str], llvm_bin: str | None, cache: Path) -> list[str]:
+    """`archive(member)` inputs (from an LLD map) as object files, extracted
+    once per archive content into the cache. Other inputs pass through."""
+    out: list[str] = []
+    by_archive: dict[str, list[str]] = {}
+    for i in inputs:
+        m = _LLD_MEMBER.match(i)
+        if m:
+            by_archive.setdefault(m["archive"], []).append(m["member"])
+        else:
+            out.append(i)
+    if not by_archive:
+        return out
+    ar = llvm_tool("llvm-ar", llvm_bin)
+    for archive, members in by_archive.items():
+        st = Path(archive).stat()
+        key = hashlib.sha256(f"{archive}\0{st.st_size}\0{st.st_mtime_ns}".encode()).hexdigest()[:16]
+        d = cache / "members" / key
+        done = d / ".done"
+        if not done.exists():
+            d.mkdir(parents=True, exist_ok=True)
+            subprocess.run([ar, "x", "--output", str(d), archive], check=True)
+            done.touch()
+        for mem in members:
+            p = d / Path(mem).name  # `llvm-ar x` writes a member by its base name
+            if not p.exists():
+                raise SystemExit(f"nros-stack-floor: {archive} has no member `{mem}` the link "
+                                 "map names; the archive changed after the link")
+            out.append(str(p))
+    return out
 
 
 def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | None,
@@ -998,7 +1168,58 @@ def write_report(path: str, args: argparse.Namespace, results: dict, stacks: dic
     Path(path).write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
 
 
+STATED_FILE = "nros-stack-stated.json"
+
+
+def stated_by_build(lines: list[str]) -> tuple[list[dict], list[str]]:
+    """The stack a board's build STATED (issue 2400 W5): the rows of the one
+    `nros-stack-stated.json` a build script of this image wrote into its
+    `OUT_DIR` (`nros_board_common::stack_stated`), found through cargo's own
+    JSON messages, and the files that held one. No file: the board states no
+    stack. Two: two crates claim one stack, which is refused by the caller."""
+    import cargo_out_dir  # the one reader of cargo's JSON stream
+    files = [f for f in (Path(d) / STATED_FILE for d in cargo_out_dir.all_out_dirs(lines))
+             if f.is_file()]
+    if len(files) != 1:
+        return [], [str(f) for f in files]
+    doc = json.loads(files[0].read_text())
+    if doc.get("schema") != 1:
+        raise SystemExit(f"nros-stack-floor: {files[0]}: schema {doc.get('schema')} "
+                         "(this walker reads 1)")
+    rows = doc.get("stacks") or []
+    for r in rows:
+        missing = [k for k in ("role", "root", "bytes", "knob") if k not in r]
+        if missing:
+            raise SystemExit(f"nros-stack-floor: {files[0]}: a stack row has no "
+                             + ", ".join(missing))
+    return rows, [str(files[0])]
+
+
+def apply_stated(args: argparse.Namespace, rows: list[dict]) -> None:
+    """The walk's roles, stated stacks and knob, from a board's stated rows."""
+    knobs = {r["knob"] for r in rows}
+    if len(knobs) > 1:
+        raise SystemExit("nros-stack-floor: the board states stacks with different knobs ("
+                         + ", ".join(sorted(knobs)) + "); one walk names one knob")
+    for r in rows:
+        args.role = list(args.role or []) + [f"{r['role']}={r['root']}"]
+        args.check_stack = list(args.check_stack or []) + [f"{r['role']}={r['bytes']}"]
+    if knobs:
+        args.stack_knob = knobs.pop()
+
+
 def run(args: argparse.Namespace) -> int:
+    if args.stated_by_build:
+        lines = Path(args.stated_by_build).read_text(errors="replace").splitlines()
+        rows, files = stated_by_build(lines)
+        if len(files) > 1:
+            raise SystemExit("nros-stack-floor: more than one build script states a stack ("
+                             + ", ".join(files) + "); one board states it")
+        if not rows:
+            print(f"nros-stack-floor: not checked: the board states no stack (no build "
+                  f"script of this image wrote {STATED_FILE})", file=sys.stderr)
+            return 0
+        apply_stated(args, rows)
     doc = None
     if args.table:
         doc = load_table(Path(args.table))
@@ -1014,8 +1235,8 @@ def run(args: argparse.Namespace) -> int:
         kept, dropped = link_map_inputs(mp, [Path(d) for d in (args.link_dir or [mp.parent])])
         if not kept:
             raise SystemExit(f"nros-stack-floor: {mp} names no input under the link directory: "
-                             "the map is not a GNU ld map, or --link-dir is wrong")
-        args.inputs = kept + list(args.inputs)
+                             "the map is not a GNU ld or LLD map, or --link-dir is wrong")
+        args.inputs = extract_members(kept, args.llvm_bin, cache) + list(args.inputs)
         if dropped:
             print(f"nros-stack-floor: {len(dropped)} toolchain input(s) outside the link "
                   "directory not walked (calls into them are external leaves)", file=sys.stderr)
@@ -1037,6 +1258,10 @@ def run(args: argparse.Namespace) -> int:
             raise SystemExit(f"--frame `{name}`: an input already states its frame "
                              f"({g.frames[name]} B); a stated frame never overrides a measured one")
         g.frames[name] = int(n)
+    if args.cfi_elf:
+        got = load_cfi_frames(g, args.cfi_elf, readobj, objdump)
+        print(f"nros-stack-floor: {got} frame(s) read from {args.cfi_elf}'s .debug_frame "
+              "(functions no input states one for)", file=sys.stderr)
     resolve_cxx_su_frames(g, lambda names: subprocess.run(
         [cxx_demangler(args.cxxfilt, args.llvm_bin)], input="\n".join(names), check=True,
         capture_output=True, text=True).stdout.splitlines())
@@ -1072,7 +1297,12 @@ def run(args: argparse.Namespace) -> int:
             raise SystemExit(f"--role `{spec}`: write ROLE=root[,root...]")
         best: Path_ | None = None
         best_root = ""
-        for root in roots.split(","):
+        try:
+            role_roots = expand_roots(g, roots)
+        except WalkRefused as e:
+            refusals.append(f"{role}: {e}")
+            role_roots = []
+        for root in role_roots:
             try:
                 p = worst_path(g, root, indirect_charge=charge,
                                recursion_allowance=args.recursion_allowance,
@@ -1183,6 +1413,19 @@ def self_test() -> int:
               functions={"root", "a", "b", "c"})
     p = worst_path(g, "root", indirect_charge=None, recursion_allowance=None)
     check("deepest of two branches", p.depth == 500 and p.chain == ["root", "b"])
+
+    # a `~text` root is every function containing `text`; none is a refusal
+    gr = Graph(frames={"_RIN22app_task_entry_bareXE": 8, "_RIN25app_task_entry_runtimeYE": 16,
+                       "main": 4},
+               functions={"_RIN22app_task_entry_bareXE", "_RIN25app_task_entry_runtimeYE", "main"})
+    check("~root: every instance, sorted",
+          expand_roots(gr, "~app_task_entry_,main")
+          == ["_RIN22app_task_entry_bareXE", "_RIN25app_task_entry_runtimeYE", "main"])
+    try:
+        expand_roots(gr, "~app_task_gone")
+        check("~root matching nothing refused", False)
+    except WalkRefused as e:
+        check("~root matching nothing names the text", "app_task_gone" in str(e))
 
     # a callee with no frame is refused, never counted as 0
     g2 = Graph(frames={"root": 100}, edges={"root": {"ghost"}}, functions={"root", "ghost"})
@@ -1296,6 +1539,53 @@ def self_test() -> int:
         check("link map: build-dir inputs kept once, in order",
               [Path(k).name for k in kept] == ["a.obj", "b.a"])
         check("link map: toolchain inputs dropped", dropped == [str(Path("/opt/gcc/lib/libc_nano.a").resolve())])
+        # an LLD map (rust-lld, the cargo road): C members of rlibs, never Rust units
+        Path(d, "deps").mkdir()
+        Path(d, "l.map").write_text(
+            "     VMA      LMA     Size Align Out     In      Symbol\n"
+            "       0        0    89b10     8 .text\n"
+            "       0        0       40     4         deps/libb-1.rlib(6355-board.o):(.isr_vector)\n"
+            "      40       40       ec     4         /opt/gcc/libc.a(libc_a-memcpy.o):(.text)\n"
+            "      41       41       ec     1                 memcpy\n"
+            "     12c      12c      1ac     4         deps/libb-1.rlib(b.b.cgu.0.rcgu.o):(.text.f)\n"
+            "     2d8      2d8       10     4         deps/libb-1.rlib(6355-board.o):(.text)\n"
+            "     2e8      2e8       10     4         deps/app.app.cgu.0.rcgu.o:(.text.main)\n"
+            "     2f8      2f8       10     4         deps/libb-1.rlib(lib.rmeta):(.rmeta)\n")
+        kept, dropped = link_map_inputs(Path(d, "l.map"), [Path(d)])
+        check("lld map: rlib C members kept once; Rust units and rmeta left out",
+              [Path(k).name for k in kept] == ["libb-1.rlib(6355-board.o)"])
+        check("lld map: toolchain members dropped",
+              dropped == [str(Path("/opt/gcc/libc.a").resolve()) + "(libc_a-memcpy.o)"])
+    # the stack a board's build states, found through cargo's JSON
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "a").mkdir(); Path(d, "b").mkdir()
+        Path(d, "b", STATED_FILE).write_text(json.dumps({"schema": 1, "stacks": [
+            {"role": "OPEN", "root": "~app_task_entry_", "bytes": 16384,
+             "knob": "NROS_FREERTOS_APP_STACK_KB={kb}"}]}))
+        msgs = [json.dumps({"reason": "build-script-executed", "package_id": "p#1",
+                            "out_dir": str(Path(d, x))}) for x in ("a", "b")]
+        rows, files = stated_by_build(msgs)
+        ns = argparse.Namespace(role=[], check_stack=None, stack_knob=None)
+        apply_stated(ns, rows)
+        check("stated stack: the one file a build script wrote",
+              ns.role == ["OPEN=~app_task_entry_"] and ns.check_stack == ["OPEN=16384"]
+              and ns.stack_knob == "NROS_FREERTOS_APP_STACK_KB={kb}")
+        check("stated stack: none written means not stated", stated_by_build(msgs[:1]) == ([], []))
+        Path(d, "a", STATED_FILE).write_text("{}")
+        check("stated stack: two files are reported, not chosen between",
+              len(stated_by_build(msgs)[1]) == 2)
+    # CFI frames from a linked image
+    cfi = ("00000000 0000000c ffffffff CIE\n  Version: 1\n"
+           "00000010 00000024 00000000 FDE cie=00000000 pc=000313dc...00031448\n"
+           "  DW_CFA_def_cfa_offset: +8\n  DW_CFA_def_cfa_offset: +112\n"
+           "  DW_CFA_remember_state:\n  DW_CFA_def_cfa_offset: +8\n"
+           "00000038 00000014 00000000 FDE cie=00000000 pc=00000040...00000050\n"
+           "00000050 00000018 00000000 FDE cie=00000000 pc=00000060...00000090\n"
+           "  DW_CFA_def_cfa_offset: +16\n  DW_CFA_def_cfa_register: reg7\n"
+           "00000070 00000018 00000000 FDE cie=00000000 pc=000000a0...000000b0\n"
+           "  DW_CFA_def_cfa: reg13 +24\n")
+    check("cfi: deepest SP offset; leaf 0; frame pointer untrusted",
+          parse_cfi(cfi) == {0x313dc: 112, 0x40: 0, 0x60: None, 0xa0: 24})
     # .su parsing
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -1546,14 +1836,22 @@ def main() -> int:
     ap.add_argument("--role", action="append", default=[],
                     help="ROLE=root[,root...]; the floor is the deepest root")
     ap.add_argument("--su", action="append", help="a .su file or a dir searched for *.su")
-    ap.add_argument("--link-map", help="a GNU ld `-Wl,-Map` file: walk the inputs its LOAD "
-                    "lines name (added to any positional inputs)")
+    ap.add_argument("--cfi-elf", help="the LINKED image: a function no input states a frame "
+                    "for (a prebuilt library's, newlib's) takes it from the image's "
+                    ".debug_frame, when its CFA stays on SP")
+    ap.add_argument("--link-map", help="a GNU ld `-Wl,-Map` file (its LOAD lines) or an LLD "
+                    "`-Map` file (its input sections; C objects only, Rust comes from "
+                    "--bitcode-dir): walk the inputs it names (added to any positional inputs)")
     ap.add_argument("--link-dir", action="append",
                     help="the linker's working directory, which relative LOAD paths are under; "
                     "repeat for candidates (default: the map's directory)")
     ap.add_argument("--check-stack", action="append",
                     help="ROLE=<bytes>: the stated stack to CHECK (a measured image whose floor "
                     "exceeds it fails; an unmeasured one warns)")
+    ap.add_argument("--stated-by-build", metavar="CARGO_JSON",
+                    help="cargo's --message-format=json output for the image: the roles, stated "
+                    "stacks and knob come from the nros-stack-stated.json one of its build "
+                    "scripts wrote; none means the board states no stack (not checked)")
     ap.add_argument("--stack-knob", help="what the user sets to raise the stack, for the "
                     "message; `{bytes}` / `{kb}` stand for the floor in the knob's unit")
     ap.add_argument("--sysroot", action="store_true",
@@ -1630,8 +1928,8 @@ def main() -> int:
         return 1 if problems else 0
     if args.table and not (args.rmw and args.target):
         ap.error("--table needs --rmw and --target (they select the policy and allowance)")
-    if not (args.inputs or args.link_map) or not args.role:
-        ap.error("need INPUT(s) and at least one --role")
+    if not (args.inputs or args.link_map) or not (args.role or args.stated_by_build):
+        ap.error("need INPUT(s) and at least one --role (or --stated-by-build)")
     if not args.check_stack:
         return run(args)
     try:

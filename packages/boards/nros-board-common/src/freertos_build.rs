@@ -519,6 +519,19 @@ pub fn run_overlay(overlay: &Overlay<'_>) {
         app_stack_bytes: app_stack_bytes_from_build_env(),
         ..FreertosScheduling::default()
     };
+    // Issue 2400 W5 — the boot app task (registration, `Executor::open`, the
+    // spin loop) runs on `app_stack_bytes`; `nros build` checks its walked
+    // floor against this number. The entry is a generic Rust function, one
+    // instance per board and runtime shape, hence the `~` root.
+    crate::stack_stated::emit(
+        &env.out_dir,
+        &[crate::stack_stated::Stated {
+            role: "OPEN",
+            root: "~app_task_entry_",
+            bytes: sched.app_stack_bytes,
+            knob: "NROS_FREERTOS_APP_STACK_KB={kb}",
+        }],
+    );
     glue.file(emit_app_config_tu(
         &env.out_dir,
         &board_base_config(&env.manifest_dir),
