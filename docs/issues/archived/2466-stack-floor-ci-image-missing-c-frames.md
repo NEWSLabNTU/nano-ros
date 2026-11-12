@@ -1,7 +1,7 @@
 ---
 id: 2466
-title: "The ci-image FreeRTOS C++ build has no stack frames for zpico C functions that a local build has, so the stack-floor walk is refused there"
-status: open
+title: "A fixture build's stack-floor walk read no frames behind its symlinked cargo dir, nor from libraries the image links after it is created"
+status: resolved
 type: bug
 severity: medium
 area: [memory, freertos, build, ci]
@@ -83,3 +83,66 @@ Re-run one of the four fixtures in the ci-image with `NROS_STACK_FLOOR` on, and 
 
 Then do the same with `RUSTC_WRAPPER=` empty. The answer decides the fix: clear the wrapper as W4
 does, or name the cargo target dir to `--su`.
+
+## Resolution (2026-11-12)
+
+Measured. Both hypotheses above were wrong as stated. The CI image is not
+special: the same failure reproduces on any host that builds the fixtures the
+way CI does (`just freertos build-fixture-extras`). It does not reproduce under
+`nros build`. Two independent defects, the second hidden behind the first.
+
+### 1. The `.su` walk did not enter a symlinked directory
+
+- The fixture recipe configures with `NROS_SHARED_CARGO_ROOT`. Each leaf's
+  `<build>/cargo` is then a SYMLINK into `build/corrosion-cargo/<platform>/<key>`.
+- The cargo target dirs therefore read as inside `build-zenoh`, as the CI log
+  shows, while their content lives in the shared root.
+- `load_su` collected frames with `Path.rglob`, which does not descend into a
+  symlinked directory.
+- So every `.su` a build script writes was never read, from zenoh-pico and the
+  zpico shim to the platform C. Measured on `cpp-port-minimal-publisher`:
+  `rglob` finds 67 `.su` files, none of them zpico's; following links finds
+  423, of which 346 are zpico-sys's.
+- The refusal named only two or three functions because the fold stops at the
+  first address-taken function whose path reaches a frameless one. Which
+  functions it named therefore varied per image.
+- `nros build` makes `<build>/cargo` a real directory, which is why the same
+  image walked locally.
+- Fix: `frame_files()` walks with `os.walk(followlinks=True)` and visits each
+  real directory once, so a link back up the tree cannot loop.
+- Self-test: a frame behind a symlinked dir is read, and a loop is walked once.
+  Restoring `rglob` fails the case.
+
+### 2. Libraries linked after the image was created got no `-fstack-usage`
+
+- `nros_stack_floor_check` ran when the image was created and took the image's
+  link closure right then.
+- A project links its own libraries AFTER `add_executable`.
+  `ament-workspace-port` does `target_link_libraries(workspace_port
+  counter_component)` two lines later.
+- So `counter.cpp` was compiled without `-fstack-usage`, and once fix 1 let the
+  walk past zpico it refused over
+  `_ZN20workspace_port_nodes7CounterC1Ev`.
+- Fix: the closure is walked by one `cmake_language(DEFER)` call at the end of
+  the top-level configure. The images travel by GLOBAL property, because a
+  deferred call's arguments expand empty.
+
+### Measured after both fixes
+
+The four leaves are built by the CI recipe, so through the symlinked cargo
+dir. Every one walks:
+
+| leaf | floor | stack |
+| --- | ---: | ---: |
+| minimal_publisher | 15,896 B | 65,536 B |
+| rclcpp_compat_smoke | 20,968 B | 65,536 B |
+| topic_state_monitor | 20,976 B | 65,536 B |
+| workspace_port | 15,904 B | 65,536 B |
+
+All four are UNMEASURED, so they warn. `minimal_publisher`'s 15,896 B equals
+what `nros build` (no shared root) computes for the same image.
+
+A missing frame was never counted as 0: the walk refused. So no floor was ever
+computed low. The cost was that the CHECK could not run on these images, which
+would have FAILED a measured one.
+
