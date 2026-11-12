@@ -4,7 +4,7 @@ title: "Unified boot-config resolution across languages and platforms"
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: []
+implements-tracked-by: [phase-266]
 supersedes: []
 superseded-by: null
 ---

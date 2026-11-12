@@ -4,7 +4,7 @@ title: "nano-ros Phase 212 — Multi-Node Workspace Layout Reference"
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
-implements-tracked-by: [phase-212, phase-227]
+implements-tracked-by: [phase-212]
 supersedes: []
 superseded-by: null
 ---

@@ -4,7 +4,7 @@ title: "Configuration model: language-agnostic config across single-node and wor
 status: Stable
 since: 2026-05
 last-reviewed: 2026-10
-implements-tracked-by: [phase-212, phase-227]
+implements-tracked-by: [phase-227]
 supersedes: []
 superseded-by: null
 ---

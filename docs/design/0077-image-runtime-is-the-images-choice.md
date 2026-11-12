@@ -4,7 +4,7 @@ title: "The image runtime is the image's choice"
 status: Draft
 since: 2026-08
 last-reviewed: 2026-08
-implements-tracked-by: [issue-0618, issue-0617, issue-0615]
+implements-tracked-by: [phase-383, issue-0618, issue-0617, issue-0615]
 amends: [ARCHITECTURE.md#2-the-std-alloc-contract]  # §2 predates issue-0616; see "Where the design already is"
 supersedes: []
 superseded-by: null

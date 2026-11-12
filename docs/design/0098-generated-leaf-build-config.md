@@ -1,3 +1,12 @@
+---
+rfc: 0098
+title: "A leaf's build configuration is generated from one board choice"
+status: Stable
+since: 2026-09
+last-reviewed: 2026-11
+implements-tracked-by: [phase-400, phase-470, phase-481, phase-517, phase-531]
+---
+
 # RFC-0098 — A leaf's build configuration is generated from one board choice
 
 **Status:** Stable (2026-10-14; amended 2026-10-26 — a message `<depend>` is one edit for Rust, phase-517 W8). Phase-445, its home phase, is complete and archived. Every decision D1-D12 is implemented, and D1's path defers to RFC-0103 D7. History: Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment; 2026-10-11 — D10–D12 IMPLEMENTED by phase-481 W1–W5: every Zephyr example states its nano-ros config in `system.toml` and no leaf conf file holds a nano-ros knob. 2026-10-11 — D1's path defers to RFC-0103 D7, and D6 covers every image-only dependency of a single-package leaf through a generated selection package. 2026-11-05 — D6's selection package retires for generated entries and leaves: the generated entry states the board, backend and features itself, and an owned entry keeps the renamed adapter `<entry>_nros_derived`, RFC-0071 D13, phase-531 W5.)

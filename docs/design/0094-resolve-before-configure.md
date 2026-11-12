@@ -1,3 +1,12 @@
+---
+rfc: 0094
+title: "Resolve before configure: the declared thing is the thing that runs"
+status: Stable
+since: 2026-09
+last-reviewed: 2026-11
+implements-tracked-by: [phase-439, phase-530]
+---
+
 # RFC-0094 — Resolve before configure: the declared thing is the thing that runs
 
 > **Amended by [RFC-0120](0120-nros-configure-one-resolver.md) (2026-11-03).** The 2026-10-23 amendment of A3 ("a configure `nros build` started takes one pass") is superseded by the original text: the fixed point is gone on every road. RFC-0120 meets it with `nros configure`, which every host configure calls before its first reader; phase-530 does the work and deletes `NanoRosReconfigure.cmake`.

@@ -4,7 +4,7 @@ title: "Phase 110.E.b — `PlatformTimer` + `AtomicSporadicState` design"
 status: Stable
 since: 2026-05
 last-reviewed: 2026-05
-implements-tracked-by: []
+implements-tracked-by: [phase-274]
 supersedes: []
 superseded-by: null
 ---

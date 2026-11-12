@@ -4,7 +4,7 @@ title: "RTOS Scheduling Features for nano-ros"
 status: Stable
 since: 2026-03
 last-reviewed: 2026-06
-implements-tracked-by: [phase-227, phase-228]
+implements-tracked-by: [phase-228]
 supersedes: []
 superseded-by: null
 superseded-in-part-by: [rfc-0079, rfc-0110]

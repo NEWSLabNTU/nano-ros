@@ -1,3 +1,12 @@
+---
+rfc: 0105
+title: "The C parameter server: one family, rclc's shape, bounded for an RTOS"
+status: Draft
+since: 2026-10
+last-reviewed: 2026-11
+implements-tracked-by: [phase-491]
+---
+
 # RFC-0105 — The C parameter server: one family, rclc's shape, bounded for an RTOS
 
 **Status:** Draft (2026-10-11; first implementation landed 2026-10-12)

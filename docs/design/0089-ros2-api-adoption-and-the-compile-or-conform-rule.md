@@ -1,3 +1,12 @@
+---
+rfc: 0089
+title: "ROS 2 API adoption, and the compile-or-conform rule"
+status: Stable
+since: 2026-09
+last-reviewed: 2026-11
+implements-tracked-by: [phase-417, phase-427, phase-438, phase-476, phase-482, phase-483, phase-492, phase-499, phase-501, phase-504, phase-515]
+---
+
 # RFC-0089 — ROS 2 API adoption, and the compile-or-conform rule
 
 **Status:** Stable (2026-10-07). Drafted 2026-09-04. Amended 2026-10-12 (the C API drops `nros_`) 2026-10-13 (the user surface: upstream include paths only, the app writes `main`) and 2026-10-15 (the C headers live under `rclc/`).

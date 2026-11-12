@@ -4,7 +4,7 @@ title: "Board / BSP Integration Architecture"
 status: Stable
 since: 2026-05
 last-reviewed: 2026-05
-implements-tracked-by: []
+implements-tracked-by: [phase-322, phase-337]
 supersedes: []
 superseded-by: null
 ---

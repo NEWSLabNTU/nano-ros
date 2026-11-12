@@ -1,3 +1,12 @@
+---
+rfc: 0060
+title: "Three layers: spec, resolver, runtime"
+status: Stable
+since: 2026-07
+last-reviewed: 2026-11
+implements-tracked-by: [phase-312, phase-332, phase-486]
+---
+
 # RFC-0060 — Three layers: spec, resolver, runtime
 
 **Status:** Stable (2026-07-28; amended 2026-10-10, revised 2026-10-12 — [what the SystemModel may carry](#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go))

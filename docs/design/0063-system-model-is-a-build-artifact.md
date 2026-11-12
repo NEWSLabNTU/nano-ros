@@ -1,3 +1,12 @@
+---
+rfc: 0063
+title: "The SystemModel is a build artifact, not a committed source"
+status: Stable
+since: 2026-08
+last-reviewed: 2026-11
+implements-tracked-by: [phase-330, phase-383]
+---
+
 # RFC-0063 — The SystemModel is a build artifact, not a committed source
 
 **Status:** Stable (2026-10-14). Drafted 2026-08-02. Implemented by phase-330

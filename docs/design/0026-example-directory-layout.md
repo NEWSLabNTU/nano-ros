@@ -4,7 +4,7 @@ title: "Example directory layout"
 status: Stable
 since: 2026-02
 last-reviewed: 2026-10
-implements-tracked-by: []
+implements-tracked-by: [phase-263, phase-265, phase-273, phase-275, phase-276, phase-277, phase-283, phase-284, phase-287, phase-316, phase-333, phase-336, phase-338, phase-345, phase-383, phase-470, phase-531, phase-535]
 supersedes: []
 superseded-by: null
 ---

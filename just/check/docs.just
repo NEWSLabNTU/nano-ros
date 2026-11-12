@@ -630,6 +630,15 @@ rustdoc-workspace:
 archived-issue-status:
     @python3 scripts/check-archived-issue-status.py
 
+# User ruling 2026-11-12: the implementation work for each design is tracked by
+# phase docs. Every RFC that is not Superseded names, in `implements-tracked-by:`,
+# a phase that exists and names it back, or states `implementation: none --
+# <reason>`. The RFCs that failed on the day it landed are a baseline that may
+# only shrink.
+[private]
+rfc-phase-tracking:
+    @python3 scripts/check-rfc-phase-tracking.py
+
 # phase-359 W0 — the `std` census ratchet. Buildless (reads sources), so it
 # belongs in the fast tier next to the other convention gates.
 #

@@ -4,7 +4,7 @@ title: "RMW Layer Design: Middleware Abstraction for nros"
 status: Stable
 since: 2026-02
 last-reviewed: 2026-04
-implements-tracked-by: []
+implements-tracked-by: [phase-328, phase-500]
 supersedes: []
 superseded-by: null
 ---
