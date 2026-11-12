@@ -443,7 +443,7 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     # coordinate-scoped — issue 1758). The emitter itself stays exit 0: the
     # gates that run it read-only on an idlc-less host must keep working.
     idlc_drop=0
-    if [ "$rmw" = "cyclonedds" ] && ! printf '%s\n' "${fixture_rmws[@]}" | grep -qx cyclonedds; then
+    if [ "$rmw" = "cyclonedds" ] && ! grep -qx cyclonedds <<<"$(printf '%s\n' "${fixture_rmws[@]}")"; then
         idlc_drop=1
     fi
 

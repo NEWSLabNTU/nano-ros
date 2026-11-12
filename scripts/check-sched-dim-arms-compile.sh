@@ -130,7 +130,7 @@ else
     rc=$?
     if [ "$rc" -eq 0 ]; then
         say "OK: the accept arm type-checks against FreeRTOS $(grep -o 'V[0-9.]*' "$FREERTOS_DIR/include/task.h" | head -1)"
-    elif printf '%s' "$out" | grep -qE 'is required in SMP|must also be defined|Missing definition'; then
+    elif grep -qE 'is required in SMP|must also be defined|Missing definition' <<<"$out"; then
         # Not our code: the vendored kernel wants a port macro this synthetic
         # config does not supply. Say so, loudly, rather than blaming the arm.
         fail=1
@@ -223,7 +223,7 @@ else
     rc=$?
     if [ "$rc" -eq 0 ]; then
         say "OK: the accept arm type-checks against the vendored ThreadX SMP headers"
-    elif ! printf '%s' "$out" | grep -E 'error|note' | grep -q 'threadx_hooks[.]c'; then
+    elif ! grep -q 'threadx_hooks[.]c' <<<"$(grep -E 'error|note' <<<"$out")"; then
         # NOTE lines count, and that is the whole subtlety. These APIs are
         # MACROS, so a bad call is blamed on the macro DEFINITION in the vendor
         # header, and our file is named only by the follow-up

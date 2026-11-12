@@ -109,7 +109,7 @@ while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
 
     # Taken by another session between our read and our write — exactly the race
     # this exists for. Step on and retry; not an error.
-    if printf '%s' "$err" | grep -qiE "already exists|non-fast-forward|fetch first|rejected"; then
+    if grep -qiE "already exists|non-fast-forward|fetch first|rejected" <<<"$err"; then
         candidate=$((candidate + 1))
         attempt=$((attempt + 1))
         continue

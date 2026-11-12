@@ -5,7 +5,7 @@ source scripts/build/cargo.sh
 
 make_bin="$(nros dev sdk path make)/bin/make"
 ninja_bin="$(nros dev sdk path ninja)/bin/ninja"
-if [ ! -x "$make_bin" ] || ! "$make_bin" --version | head -1 | grep -q "4.4"; then
+if [ ! -x "$make_bin" ] || ! grep -q "4.4" <<<"$("$make_bin" --version | head -1)"; then
     echo "jobserver build needs make >=4.4 — run: nros setup --tool make" >&2
     exit 1
 fi

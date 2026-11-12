@@ -2731,7 +2731,7 @@ cpp: cpp-fmt
     # exhaustive mapper. Check that exact composition on an embedded target.
     # The feature string is READ FROM the zephyr module's cyclone branch, so
     # this gate follows the lane instead of being a second spelling of it.
-    if rustup target list --installed | grep -qx aarch64-unknown-none; then
+    if grep -qx aarch64-unknown-none <<<"$(rustup target list --installed)"; then
         _cyc_features="$(sed -n '/CONFIG_NROS_RMW_CYCLONEDDS/,/endif()/ s/.*set(_nros_cpp_features "\([^"]*\)").*/\1/p' zephyr/CMakeLists.txt | head -1)"
         if [ -z "$_cyc_features" ]; then
             echo "check-cpp: could not extract the cyclone _nros_cpp_features line from zephyr/CMakeLists.txt" >&2

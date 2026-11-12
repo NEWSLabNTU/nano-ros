@@ -5550,7 +5550,7 @@ _doctor-host:
     want_cf="$(nros_clang_format_version)"
     want_cf="${want_cf:-17.0.6}"
     pinned_cf="${NROS_HOME:-$HOME/.nros}/sdk/clang-format/${want_cf}-nros1/bin/clang-format"
-    if [ -x "$pinned_cf" ] && "$pinned_cf" --version 2>/dev/null | grep -q "$want_cf"; then
+    if [ -x "$pinned_cf" ] && grep -q "$want_cf" <<<"$("$pinned_cf" --version 2>/dev/null)"; then
         echo "  [OK] clang-format: $want_cf (pinned, SDK store)"
     elif command -v clang-format >/dev/null 2>&1; then
         have_cf="$(clang-format --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"

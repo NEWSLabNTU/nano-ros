@@ -334,7 +334,7 @@ if _pre_cli="$(nros_cli_bin 2>/dev/null)"; then
     _pre_make="$("$_pre_cli" dev sdk path make 2>/dev/null)/bin/make"
 fi
 if [ -z "$_pre_make" ] || [ ! -x "$_pre_make" ] ||
-    ! "$_pre_make" --version 2>/dev/null | head -1 | grep -q "4\.4"; then
+    ! grep -q "4\.4" <<<"$("$_pre_make" --version 2>/dev/null | head -1)"; then
     echo "check-tier-preconditions: WARNING — pinned GNU make 4.4 absent;" >&2
     echo "  every jobserver fan-out degrades to a SERIAL walk (the system make" >&2
     echo "  is 4.3 on Ubuntu LTS, and its pipe-FD jobserver cannot be joined by" >&2

@@ -34,7 +34,7 @@ if ! command -v nm >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! rustup target list --installed 2>/dev/null | grep -qx "$TARGET"; then
+if ! grep -qx "$TARGET" <<<"$(rustup target list --installed 2>/dev/null)"; then
     echo "FAIL: $TARGET target not installed. Run: rustup target add $TARGET" >&2
     exit 1
 fi

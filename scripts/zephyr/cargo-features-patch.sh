@@ -117,9 +117,9 @@ if [ "${1:-}" = "--self-test" ]; then
         fi
         # `cargo doc` must be left alone: a second copy of the flag is the
         # failure this whole file is about.
-        if [ "$_layout" = inlined ] && \
+        if [ "$_layout" = inlined ] && [ -n "$(
            awk '/cargo doc/{d=1} d && /\$\{(EXTRA_CARGO_ARGS|NROS_IMAGE_ENV_CARGO_FLAGS)\}/{print; exit}' \
-               "$_d/CMakeLists.txt" | grep -q .; then
+               "$_d/CMakeLists.txt")" ]; then
             echo "self-test: inlined layout: EXTRA_CARGO_ARGS reached cargo doc" >&2
             _st_fail=1
         fi

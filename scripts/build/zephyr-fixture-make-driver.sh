@@ -128,7 +128,7 @@ make_args=()
 fallback_ninja_jobs="${NROS_ZEPHYR_NINJA_JOBS:-${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}}"
 jobserver_mode=0
 if [ -x "$(nros dev sdk path make)/bin/make" ] && \
-   "$(nros dev sdk path make)/bin/make" --version | head -1 | grep -q "4.4"; then
+   grep -q "4.4" <<<"$("$(nros dev sdk path make)/bin/make" --version | head -1)"; then
     make_bin="$(nros dev sdk path make)/bin/make"
     # In fifo-jobserver mode the -j value IS the shared token pool: every
     # leaf's ninja joins it, so it bounds TOTAL concurrency across the

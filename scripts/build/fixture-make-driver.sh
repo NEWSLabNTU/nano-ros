@@ -241,7 +241,7 @@ make_bin="make"
 make_args=()
 jobs="${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}"
 if [ -x "$(nros dev sdk path make)/bin/make" ] && \
-   "$(nros dev sdk path make)/bin/make" --version | head -1 | grep -q "4.4" && \
+   grep -q "4.4" <<<"$("$(nros dev sdk path make)/bin/make" --version | head -1)" && \
    [ -x "$(nros dev sdk path ninja)/bin/ninja" ]; then
     make_bin="$(nros dev sdk path make)/bin/make"
     make_args=(-j"$jobs" --jobserver-style=fifo)
