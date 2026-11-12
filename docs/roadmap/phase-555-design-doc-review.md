@@ -1,7 +1,7 @@
 # Phase 555 -- Design doc review: organize the RFCs and resolve what conflicts
 
-**Status (2026-11-12). OPEN: W0 done (the inventory and its candidate pairs);
-W1 to W4 not started.**
+**Status (2026-11-13). OPEN: W0 done (the inventory and its candidate pairs);
+W1 started (`area:` drafted on every RFC); W2 to W4 not started.**
 
 User request, 2026-11-12, verbatim: "Have a design doc review campaign. I
 would make them organized. Some design docs may be old and could conflict
@@ -16,8 +16,8 @@ recommendation, for the user to rule.
 
 ## Where the series stands (measured 2026-11-12)
 
-From `scripts/docs/rfc-inventory.py` on this branch, which carries the
-`rfc-phase-tracking` backfill:
+From `scripts/docs/rfc-inventory.py` on main, after the `rfc-phase-tracking`
+backfill (#3647):
 
 - 126 RFCs in `docs/design/`: 71 Draft, 49 Stable, 2 Accepted, 2 Superseded,
   plus one `Draft (LIVE -- under active exploration)`. The one RFC with no
@@ -66,8 +66,8 @@ conflicts:
    contradicts or deprecates it. The sentence is printed as evidence.
 3. **Tier 3, a plain citation.** Listed for completeness and not dispatched.
 
-Measured: 126 RFCs give **353 candidate pairs: 10 in tier 1, 93 in tier 2
-and 250 in tier 3**. Only tiers 1 and 2 (103 pairs) go to reviewers.
+Measured: 126 RFCs give **352 candidate pairs: 10 in tier 1, 93 in tier 2
+and 249 in tier 3**. Only tiers 1 and 2 (103 pairs) go to reviewers.
 
 - Tier 1 includes 0024/0025 (two "Phase 212 workspace layout" RFCs),
   0007/0041 (service and action QoS), 0014/0099 (provisioning), 0095/0099
@@ -105,7 +105,9 @@ and 250 in tier 3**. Only tiers 1 and 2 (103 pairs) go to reviewers.
 - **Acceptance:** every live RFC has an `area:` and a status in the
   vocabulary; `just check fast` fails on a hand edit of the index or an
   unknown area.
-- **Status:** OPEN
+- **Status:** OPEN (the `area:` drafts are in, for 125 RFCs, to be confirmed
+  per slice in W2. The index, the status mapping, the archived numbering and
+  the gates are not started.)
 
 ### W2 -- Review, one slice per area
 
