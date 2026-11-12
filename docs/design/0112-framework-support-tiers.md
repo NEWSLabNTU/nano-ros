@@ -4,7 +4,7 @@ title: "Frameworks are supported through one host-driven contract; codegen is ad
 status: Draft
 area: platform-board-rtos
 since: 2026-10
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-520, phase-521]
 amends: [RFC-0111]
 supersedes: []
@@ -13,8 +13,10 @@ superseded-by: null
 
 # RFC-0112 — Framework support tiers
 
-**Status:** Draft (2026-10-29). Written before any code. It sets the policy for
-which application frameworks nano-ros supports and how. No phase yet.
+**Status:** Draft (2026-10-29). It sets the policy for which application
+frameworks nano-ros supports and how. Written before any code; since then
+phase-520 built Tier 0's surface and retired with it, and phase-521 (complete)
+deleted that surface and admitted `px4` to Tier 1 (as of 2026-11-13).
 
 > **Tier 0 is withdrawn (2026-10-31, [RFC-0113](0113-rt-unified-wait.md) D8).**
 > A way of running nano-ros is supported only if nano-ros keeps its real-time
@@ -273,3 +275,33 @@ RFC-0111 is narrowed, not withdrawn:
   the notifier crossed the FFI in the same change as the Rust hook (issue
   2144). The readable fd stays Rust-only; a C host writes an `eventfd` from
   its notifier.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: amend.** The design questions are brief item P6. The status line
+is fixed here.
+
+- Fixed: the status line said "Written before any code ... No phase yet",
+  while the frontmatter names phase-520 (archived, retired) and phase-521
+  (archived, complete). It now says what those phases did.
+- Checked against the code:
+  - Tier 0's surface is gone, as the banner says: no `spin_async`,
+    `set_ready_notifier` or `nros::setup!` definition remains under
+    `packages/core` or `packages/api`.
+  - `FRAMEWORKS` in `nros-orchestration-ir/src/lib.rs:161` is
+    `["owned-spin", "rtic", "zephyr", "px4"]`. D5 (`zephyr` becomes a
+    board-derived entry shape and leaves the list) is NOT done; it waits on
+    RFC-0111 (brief P5).
+- Text that no longer reads true, but which only the author can rule on
+  (brief P6):
+  - D3 lists five criteria since RFC-0113 D8, but says "`rtic` meets all
+    four". Whether RTIC meets criterion 5 (bounds measured on its cell) is
+    unverified here.
+  - D1, D2 and D4 are Tier 0, which is withdrawn. They are kept as the record
+    but read as live decisions.
+- Pairs: RFC-0114 asks that this RFC's tier numbers be replaced by the
+  registry's primitives (`runs`, `cadence`, breadth) when it is next revised.
+  That is a design change: brief P6.
+- Stale references: issues 2134, 2143, 2144, 2145, 2146 and 1525 resolve.
+  `book/src/background/execution-model.md` exists.
+- `area:` platform-board-rtos is right.

@@ -4,7 +4,7 @@ title: "A board name states the reach of its build"
 status: Draft
 area: platform-board-rtos
 since: 2026-09
-last-reviewed: 2026-09
+last-reviewed: 2026-11
 implements-tracked-by: [phase-437]
 supersedes: []
 superseded-by: null
@@ -206,6 +206,9 @@ facts: it names the emulator (R3), it was never an index key, and §4 already
 selects `rv-virt-threadx`, which every in-tree leaf authors. It retired to
 `rv-virt-threadx` and is refused naming it. `rtic-mps2-an385` is still open:
 it names a framework, not an emulator, so R3 does not decide it.
+[RFC-0111](0111-image-framework-axis.md) (Draft, 2026-10-27) proposes its
+ruling: the framework becomes an `[image.<id>] framework` field and the word
+retires as a refusal. Not implemented as of 2026-11-13.
 
 **Not about config axes.** `fvp-aemv8r-smp` folds SMP into the name, and the
 NuttX crate carries `arm`, `arm-smp` and `riscv` defconfigs where the first two
@@ -224,7 +227,7 @@ non-goals.
 | `qemu-arm-nuttx` · `nuttx-qemu-arm` | machine | `qemu-armv7a-nuttx` |
 | `qemu-riscv-nuttx` · `nuttx-qemu-riscv` | machine | `rv-virt-nuttx` |
 | `qemu-riscv64-threadx` · `riscv64-qemu` | machine | `rv-virt-threadx` |
-| `qemu-esp32-baremetal` · `esp32-c3` | part | `esp32-c3-baremetal` |
+| `qemu-esp32-baremetal` · `esp32-c3` | part | `esp32-c3-baremetal` (retired later with no replacement, RFC-0113 D5: see `book/src/migrating/retired-names.md`) |
 | `threadx-linux` | system | unchanged |
 | — · `freertos-posix` | system | unchanged; add to index |
 | `zephyr` | meta — Zephyr supplies its own boards | unchanged |
@@ -275,3 +278,29 @@ crates, `cmake/board/*.cmake`, `NROS_BOARD` fixture coordinates and the
 book all spell one. Six `examples/<board>/` directories move. Nothing keys on
 the string, so the change is mechanical — which is exactly why it needs a phase
 with a staged plan rather than one sweeping commit.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep**, with two mechanical notes added. The status question is
+brief item P4.
+
+- Checked against the index, `nros-sdk-index.toml`:
+  - The `[board.*]` keys are §4's names: `mps2-an385-baremetal`,
+    `qemu-armv7a-nuttx`, `rv-virt-nuttx`, `rv-virt-threadx`,
+    `mps3-an536-freertos`, `s32z270-freertos`, `freertos-posix`,
+    `threadx-linux`, `linux`, `mps2-an385-freertos`.
+  - The boards added since follow R2: `mps2-an385-zephyr`,
+    `nucleo-f767zi-zephyr`, `rpi-pico-w-zephyr`.
+- The §5 gate is `check board-name-reach` (`just/check/platform.just`).
+  phase-437 is archived as complete (W1 to W7).
+- Fixed:
+  - §4's `esp32-c3-baremetal` row now says the board was retired with no
+    replacement (RFC-0113 D5; `book/src/migrating/retired-names.md`).
+  - §3's "`rtic-mps2-an385` is still open" now points at RFC-0111, which
+    proposes its ruling and is not implemented.
+- Stale references found outside this RFC and not fixed here:
+  `examples/README.md` lines 16 and 150 still list `esp32-c3-baremetal` as
+  a platform.
+- Conflicts: RFC-0111 amends §3 (its frontmatter says so) without
+  contradicting a rule. No other newer RFC changes R1 to R6.
+- Status: Draft, though phase-437 shipped it. Brief item P4.

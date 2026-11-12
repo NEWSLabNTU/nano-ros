@@ -23,6 +23,11 @@ which adds D13 for images sharing one cargo target dir, and
 which lets probe sidecars size a contract-less image: accepted 2026-10-26,
 landed after its evidence and the issue-2076 fix)
 
+**Amended by [RFC-0121](0121-workspace-first-project-layout.md) (2026-11-03):**
+the `--from-leaf` producer and `write_for_leaf` retire with the standalone
+package shape, and every image takes `write_for_model`. The work is
+[phase-531](../roadmap/phase-531-workspace-first-project-layout.md), still open.
+
 Builds on RFC-0049 (the four-rung knob ladder supplies the precedence this model
 needs and is not re-litigated), RFC-0033 (storage modes decide whether a cap
 bounds the wire) and RFC-0065 D2 (refuse and name the remedy). Amends the
@@ -50,7 +55,7 @@ makes the fourth place derivable instead of authored.
 It also settles a number that is currently **road-dependent and contested**, which
 is a sharper problem than a leak.
 
-`nros-node/build.rs:348` reads `NROS_SUBSCRIBER_BUFFER_SIZE`. On the **cargo
+`nros-node/build.rs` (line 348 when this was written) reads `NROS_SUBSCRIBER_BUFFER_SIZE`. On the **cargo
 road** nothing sets it, because the value exists only under the backend-named
 spelling `ZPICO_SUBSCRIBER_BUFFER_SIZE` and the crate's own comment forbids
 reading it:
@@ -803,6 +808,11 @@ inverted.
 
 ## D10 — single-source the ROS QoS defaults first
 
+**Landed, phase-454 W1.** The presets' single source is the `qos_profiles!`
+table in `nros-rmw/src/traits.rs`, and `scripts/check-qos-profile-ssot.py`
+binds the other transcriptions to it and to upstream. The paragraph below is
+the problem as written.
+
 ROS defaults are literals in four places (`nros-node/build.rs:27`, the
 `qos_profiles!` table, `nros-c/src/qos.rs`, the cffi layer, plus
 `CONFIG_NROS_PUBSUB_QOS_DEPTH`), held equal only by gates against
@@ -1476,3 +1486,28 @@ expansions and a contracted image's monitors and reporter already rode
 `ImageFrame` or the derivation. A bridge's rows now come from the runtime's own
 `nros-bridge.toml`, and its backends reach `backend_count`. Details are in
 [issue 2076](../issues/archived/2076-probe-sizing-misses-bridge-nodes.md).
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep.** Fixed: a pointer to RFC-0121's amendment (the leaf
+sizing road retires), which RFC-0121's table states and this RFC did not; a
+"Landed, phase-454 W1" marker on D10; the `nros-node/build.rs:348` line
+reference is marked as of writing (the read is now near line 916).
+
+- Checked against the code:
+  - `packages/tooling/nros-sizing-descriptor/`; `write_for_model`,
+    `write_for_leaf`, `--from-leaf`, `merged_per_kind_max`,
+    `transient_local_publishers_over`, `StatedBy::Probe`,
+    `floor_by_recorded`, `probe_inputs_key` and the shared runtime
+    descriptor `shared.toml` all have hits under `packages/`.
+  - D10: the presets' single table is `qos_profiles!` in
+    `nros-rmw/src/traits.rs`; `scripts/check-qos-profile-ssot.py` binds
+    `rmw_entity.h`, `rclcpp/qos.hpp` and `nros-c/src/qos.rs` to it.
+- Stale references: phases 454, 457, 486 and 517 are archived; phase-531 is
+  open. Issue 2076 is archived. Crate-relative paths (`nros-c/src/qos.rs`,
+  `shim/qos.rs`) resolve.
+- Conflicts: RFC-0121 retires the leaf producer (now pointed to). RFC-0060's
+  overlay amendment is already in the status line. RFC-0065 is consistent.
+- Status: Draft, though its home phase and amendments are landed; the leaf
+  retirement is the only open work and it belongs to RFC-0121. Brief item
+  W1.

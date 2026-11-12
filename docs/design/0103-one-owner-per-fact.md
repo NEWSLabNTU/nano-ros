@@ -5,10 +5,11 @@ title: "One owner per fact: every configuration fact and every resource location
 status: Stable
 area: workspace-system-model
 since: 2026-10
-last-reviewed: 2026-10-24
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-484, phase-497]
 supersedes: []
 superseded-by: null
+superseded-in-part-by: [rfc-0109]
 ---
 
 # RFC-0103 — One owner per fact
@@ -701,3 +702,33 @@ Still open:
 - 2026-10 — created from the 2026-10-09/10 location and configuration
   censuses (issue 1767). Decisions taken with the user: `nros locate` is
   acceptable; store first; no machine-wide config file; single source in files.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: amend.** D7's table of generated paths does not match two
+things the code writes. Brief item W4. Fixed: frontmatter
+`superseded-in-part-by: [rfc-0109]`, which the D10 heading and the
+2026-10-24 changelog state.
+
+- Checked against the code:
+  - `nros locate` (`cmd/user.rs`), `--format cmake` used once per configure by
+    `cmake/NanoRosLocate.cmake`; `resolved.toml` (`resolve.rs`
+    `RESOLVED_TOML_NAME`); `nros_build_paths::artifact`
+    (`packages/tooling/nros-build-paths/src/artifact.rs`);
+    `check-leaf-conf-nros-knobs` and `check-source-refs` exist.
+  - D7 row "cargo config `<build>/nros/cargo.toml`": the file is
+    `nros-cargo.toml`, written in the image's entry directory
+    (`builder/cargo_config.rs` `FILE_NAME`).
+  - D7 row "cmake locations `<build>/nros/locations.cmake`": no such file is
+    written; `NanoRosLocate.cmake` keeps the answers in GLOBAL properties.
+    D4 names the same file.
+  - D4: `just/sdk-env.just` keeps per-recipe exports (`NUTTX_DIR`, ...),
+    which D4's own W2c note allows.
+- Stale references: issue 1767, phases 481, 484 and 497 are archived.
+  `cmake/modules/kconfig.cmake` and `zephyr/.config` are Zephyr's or build
+  paths, not ours.
+- Conflicts: RFC-0109 supersedes D10 (now in frontmatter). RFC-0104's D2
+  amendment uses D5's derived `ref`, and agrees. RFC-0098's `[image.<id>]
+  env` rows are as this RFC describes. RFC-0121 relies on D1 (project layer
+  only in a bringup) and agrees.
+- Brief item: W4.

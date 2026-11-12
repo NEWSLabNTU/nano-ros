@@ -4,7 +4,7 @@ title: "The platform ABI: a caller asks, and never assumes"
 status: Draft
 area: platform-board-rtos
 since: 2026-08
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-364]
 supersedes: []
 superseded-by: null
@@ -371,3 +371,33 @@ work items.
 M1 and M2 are independent of the rest and of each other. M3 depends on M1 (it
 returns `UNSUPPORTED`). M4 should land before M5 so the priority change reaches
 the Rust ports through the generator rather than by hand.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep.** C1 to C4 and C6 are in the code as written. C5 was
+withdrawn by the RFC itself, and it says so. The status question is brief
+item P4.
+
+- Checked against the code, `nros-platform-api/include/nros/platform.h`:
+  - `typedef int8_t nros_platform_ret_t` and `NROS_PLATFORM_RET_NOMEM` /
+    `_INVALID` / `_TIMEOUT` (C3). Seven port `.c` sites return the
+    specific codes.
+  - `NROS_PLATFORM_MUTEX_STORAGE_SIZE` / `_MUTEX_REC_STORAGE_SIZE` (C1).
+  - `nros_platform_task_attr_t` with `nros_platform_task_attr_init` (C2).
+  - The normalised band with `NROS_PLATFORM_PRIORITY_RAW` (C4).
+- C2's private structs are gone: `nros_freertos_task_attr_t` and
+  `nros_esp_task_attr_t` have no hit. `nros_nuttx_spawn_sched_task`
+  survives only in comments recording its removal.
+- C6: `NROS_ZP_CONDVAR_SLICE_MS` is in
+  `zpico-sys/c/zpico/nros_zp_condvar_slice.h`, and
+  `scripts/check-no-unbounded-condvar-wait.sh` exists.
+- phase-364 is archived: W1, W2, W3 and W5 landed, and W4 was withdrawn,
+  matching D4/C5's own correction.
+- Stale references: the D2 table and the cost list name the `esp-idf` C
+  port, which phase-468 W2 later deleted. That is the state at the time
+  of writing, so it is left as written.
+- Conflicts: C4's normalised band does not contradict issue 0623's raw
+  FreeRTOS transport priorities. 0623 is the board's scheduling config,
+  one layer above this ABI, and CLAUDE.md records the two as the same fix
+  at two layers.
+- Status: Draft, though implemented. Brief item P4.

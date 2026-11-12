@@ -4,7 +4,7 @@ title: "RTOS integration: nano-ros is an imported library, and the RTOS owns its
 status: Draft
 area: platform-board-rtos
 since: 2026-08
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-349, phase-351]
 supersedes: []
 superseded-by: null
@@ -728,7 +728,9 @@ shells, the backend port tables, and its own code.
    gate that every declared capability is consumed by something.
 2. **`generic` platform dir** — nothing inherits from it and `inherits` is unset
    in all seven files. Delete or document.
-3. **`esp32` has no platform config** at all, so it declares no requirements.
+3. ~~**`esp32` has no platform config** at all, so it declares no requirements.~~
+   Moot: the ESP-IDF component left with phase-468 W2, and the ESP32-C3
+   bare-metal board with RFC-0113 D5.
 4. **Prebuilt Rust staticlib distribution** (§4.3) needs a triple × feature
    matrix decision; out of scope here.
 5. **Does `board.integration` stay inline?** One file is better UX; a shared
@@ -1012,3 +1014,35 @@ The mitigation is a scaffolder, not documentation — `nros setup presets --from
 reading `prj.conf`. Both are mechanical; the information is already in those
 files.
 
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep.** It is the fuller statement of RFC-0003's principle (§3
+quotes it) and the natural target if RFC-0003 is merged (118's brief item P1:
+merge 0003 into 0072). This review concurs with P1. The status question is
+brief item P4.
+
+- Checked against the code:
+  - §1's shells exist: `zephyr/`, `integrations/nuttx/`,
+    `integrations/s32ds/` (698 lines over four files),
+    `integrations/px4/`, `integrations/platformio/`.
+  - The FreeRTOS anomaly the RFC names is still live, as its 2026-10-18
+    review says. `nros_freertos_build_kernel` is called by
+    `cmake/board/nano-ros-board-{freertos-posix,mps2-an385-freertos,mps3-an536-freertos}.cmake`.
+  - phase-349 is archived: W1, W3 and W4 landed, W2 was absorbed, and W5/W6
+    are parked.
+  - phase-351 is archived as complete.
+- Fixed: open question 3 (`esp32` has no platform config) is moot. Both
+  esp32 roads are retired (phase-468 W2; RFC-0113 D5).
+- Still open and still true: question 2 (`generic`). `config/generic/` is
+  read only as a comment reference in
+  `nros-rmw-zenoh/nros-rmw.toml`, and no `nros-platform.toml` sets
+  `inherits`.
+- Stale references: issues 0529, 0530, 1525 and 1526 resolve.
+- Pairs:
+  - RFC-0064: this RFC's §1 table is the shells R2 asked for.
+  - RFC-0065: the ESP-IDF road it deleted is already marked RETIRED here.
+  - RFC-0120: narrows the scope to an EXISTING project, and the banner says
+    so.
+  No contradiction.
+- Status: Draft. phase-349 and phase-351 are archived, and the parked waves
+  are a documented choice. Brief item P4.

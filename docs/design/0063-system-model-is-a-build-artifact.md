@@ -14,8 +14,9 @@ implements-tracked-by: [phase-330, phase-383]
 W1-W7, and `check-no-tracked-models` enforces it. The four open questions
 below are answered in place. RFC-0060's 2026-10-10 amendment (phase-486)
 refines what the model carries: nano-ros build facts go in the `nros.toml`
-overlay beside it. That leaves this RFC's decision unchanged. One known gap
-in the freshness claim is open, as issue 1121 (see Consequences).
+overlay beside it. That leaves this RFC's decision unchanged. The one known
+gap in the freshness claim, issue 1121, was resolved on 2026-10-23: it does not
+reproduce (see Consequences).
 **Amends:** phase-296 (committed SystemModel as the sole `nros plan` input),
 issue 0320 (content-addressed model staleness), RFC-0047 / RFC-0052 (scheduling
 dims and their fail-loud contract).
@@ -85,10 +86,11 @@ provenance exists because a committed artifact can silently disagree with its
 inputs. A build-directory artifact regenerated per build cannot: the ordinary
 build-system freshness rules apply, the same way object files do not carry
 sha256 provenance of their sources.
-*Known gap (issue 1121, open):* the resolver reads a contract sidecar
-(`<stem>.contract.yaml`), but adding one does not re-resolve the model it
-feeds. So `nros configure` can leave a stale model in place. The rule above still
-stands, and the missing edge is a bug against it.
+*Known gap (issue 1121, resolved 2026-10-23):* the resolver reads a contract
+sidecar (`<stem>.contract.yaml`), and adding one was reported not to
+re-resolve the model it feeds. Phase-439 W9 measured it: adding or deleting the
+sidecar re-resolves the model on the next `nros configure`, so the gap does not
+reproduce. The rule above stands.
 
 **Issue 0380's guards become transitional.** The sync-time refusal and
 `check-model-dims` protect data that will no longer exist in a committed file.
@@ -171,3 +173,28 @@ read the marker.
 Changing what the model *contains*, or the fail-loud contract of RFC-0052. This
 RFC moves where the model lives and who authors it; the schema of a resolved
 system is unchanged.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep.** Fixed: the status line and Consequences said issue 1121
+was open; it was resolved on 2026-10-23 (does not reproduce).
+
+- Checked against the code:
+  - No tracked `system_model.yaml` under `examples/` (`git ls-files examples |
+    grep system_model.yaml` is empty); `scripts/check-no-tracked-models.sh` is
+    the gate.
+  - The dims live in `system.toml` `[tasks.<name>.<rtos>]`
+    (`nros-orchestration-ir/src/derive.rs`; for example
+    `examples/workspaces/levels-cpp/src/demo_bringup/system.toml`).
+  - The refusal gate is `nros-cli-core/src/model_gate.rs` (`pub mod
+    model_gate` in `lib.rs`); `nros dev image model-path` and `model-dims`
+    exist (`cmd/dev.rs`).
+  - Issue 0380's `check-model-dims` was retired as this RFC said it would be
+    (`just/check/codegen.just:575`).
+- Stale references: phase-296, phase-330 and phase-383 are archived and the
+  links resolve. Issues 0320, 0380, 0427, 1121 and 1420 are all under
+  `docs/issues/archived/`; only 1121's "open" was wrong.
+- Conflicts: none. RFC-0060's 2026-10-10 amendment (the `nros.toml` overlay)
+  is already recorded in the status line. RFC-0047 and RFC-0052 are amended by
+  this RFC and are 142's half.
+- Brief items: none.

@@ -6,7 +6,7 @@ area: workspace-system-model
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-531]
-amends: [0071, 0098, 0116, 0026, 0066, 0120]
+amends: [0071, 0098, 0116, 0026, 0066, 0120, 0100, 0118, 0085]
 supersedes: []
 superseded-by: null
 ---
@@ -120,8 +120,8 @@ shape, and retires with it (phase-531 W7).
 
 ### D3 — A missing launch file is generated, in every bringup
 
-If a bringup has no `launch/` directory, `nros configure` (RFC-0120 D2; today
-`nros configure`) writes `<ws>/build/nros/launch/<bringup>/system.launch.xml` from its
+If a bringup has no `launch/` directory, `nros configure` (RFC-0120 D2) writes
+`<ws>/build/nros/launch/<bringup>/system.launch.xml` from its
 `[[component]]` rows and resolves it as if it were authored. This is the one
 generation step that differs by project size; the resolver, the model, the
 entry generator, sizing and the run plan see an authored and a generated launch
@@ -395,3 +395,29 @@ some `leaf_*` code also serves workspace entries.
   replaces a leaf row's `features` for the three configured rows W6 moves
   (`link-tls`, `zenoh-reply-slots`, `unstable-zenoh-api`). A TLS knob implied
   by a `tls/` endpoint was considered and not taken.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep** (Draft, in flight under phase-531). Fixed: frontmatter
+`amends:` gains `0100`, `0118` and `0085`, which the "Amendments to other
+RFCs" table amends; a rename artifact in D3 ("`nros configure` (RFC-0120 D2;
+today `nros configure`)").
+
+- Checked against the code:
+  - Built: `nros dev migrate-bringup` (`cmd/migrate_bringup.rs`), gates
+    `scripts/check-system-toml-in-bringup.py` and
+    `scripts/check-node-package-selection-free.py`, `builder::plan::name_target`
+    and `run_plan::name_target`, `[image.<id>] node_features`
+    (`builder/entry.rs`, `orchestration/image.rs`), `<entry>_nros_derived`
+    (`builder/materialize.rs`), `synthesise_leaf_launch` (`cmd/ws.rs`).
+  - Retirements in progress: `synthesise_self_bringup` is gone;
+    `synthesise_self_model` (`orchestration/launch_synth.rs`) and
+    `write_for_leaf` are still there, as phase-531's open W5 to W7 expect.
+- Stale references: the crate-relative paths (`cmd/ws.rs`,
+  `orchestration/nros_config.rs`, ...) resolve under
+  `packages/cli/nros-cli-core/src/`. The "Problem" counts are dated
+  2026-11-03 measurements and are left as written.
+- Conflicts: RFC-0122 amends D8 (recorded in the changelog). RFC-0118 and
+  RFC-0026 carry no back-pointer to this RFC's amendment (RFC-0118 is
+  docs-ux-diagnostics, RFC-0026 is 142's); RFC-0100 now has one.
+- Brief items: none.

@@ -2,10 +2,11 @@
 rfc: 0086
 title: "Unified configuration: the transport tenant, coupling verbs, and retiring the per-lane knob"
 status: Stable
+superseded-in-part-by: [rfc-0098]
 area: workspace-system-model
 since: 2026-08
-last-reviewed: 2026-10
-implements-tracked-by: [phase-484]
+last-reviewed: 2026-11
+implements-tracked-by: [phase-400, phase-484]
 ---
 
 # RFC-0086 — Unified configuration: the transport tenant, coupling verbs, and retiring the per-lane knob
@@ -322,6 +323,11 @@ surveyed. A resolver that cannot explain itself is not finished.
 
 ## Verification
 
+*Note (2026-11-13):* the first three bullets test D1/D2, which RFC-0098 D4
+superseded. The `transport.*` explain rows were deleted with the tenant
+(issue 2006); RFC-0098's `[image.<id>] transport` is what those bullets now
+check.
+
 * `nros config explain` shows `transport.*` with provenance, including implied
   values and overrides.
 * A serial-only image builds with **no hand-written link or driver lines** —
@@ -345,3 +351,34 @@ surveyed. A resolver that cannot explain itself is not finished.
 * **Board-level transport defaults.** A board that has exactly one wired UART
   could default `transport.endpoint`. Useful, but it puts policy in a facts
   file; deferred until a second board wants it.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep.** Fixed: frontmatter `superseded-in-part-by: [rfc-0098]`
+(the status line says D1/D2 are superseded by RFC-0098 D4);
+`implements-tracked-by` gains phase-400, which the status line names as the
+implementing phase; a note under Verification that its transport bullets test
+the superseded D1/D2. `amends:` was NOT added here: other pull requests add
+`rfc-0049` and `rfc-0071` to it, and adding the same line twice would only
+conflict.
+
+- Checked against the code:
+  - D3: five platform descriptors live in their crates
+    (`packages/platform/nros-platform-{freertos,nuttx,posix,threadx,zephyr}/nros-platform.toml`);
+    `bare-metal` and `generic` are still in `config/`. Brief item W2.
+  - D3's search path: `NROS_PLATFORMS_DIR` is derived from the workspace
+    (`cmd/board_facts.rs`, `platforms_dir_entries`).
+  - D4: no platform file carries `[build.zenoh]` any more; the one
+    backend-keyed table left is `[knobs.zenoh.tx]` in the Zephyr file, which
+    is D4's `[knobs.<rmw>.tx]` shape.
+  - D5: `nros-log` reads `NROS_LOG_*` through the ladder; its pick-one
+    features are kept, marked DEPRECATED (`packages/core/nros-log/Cargo.toml`
+    lines 59-72). Brief item W3.
+- Stale references: phase-400 (`archived/phase-400-unified-configuration.md`),
+  issues 1037, 2006 and 2007 are archived. `config/freertos` and
+  `config/posix`, cited in D4 as the files edited in the past, no longer exist
+  (they moved under D3); the sentence is history.
+- Conflicts: RFC-0098 D4 supersedes D1/D2 (stated). RFC-0103 owns knob names
+  (stated). RFC-0071 has no back-pointer to this RFC's D8 change (RFC-0071 is
+  rmw-wire, not edited here).
+- Brief items: W2, W3.

@@ -4,7 +4,7 @@ title: "Scheduling priority is ALLOCATED from a declared address plan — the us
 status: Draft
 area: workspace-system-model
 since: 2026-08
-last-reviewed: 2026-08
+last-reviewed: 2026-11
 implements-tracked-by: [phase-459, issue-0506, issue-0623, issue-0736]
 amends: [rfc-0016, rfc-0052]
 supersedes: []
@@ -13,7 +13,7 @@ superseded-by: null
 
 # RFC-0079 — Priority is allocated, not authored
 
-> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` are refused since rlm v0.3.11 (phase 536 W3), naming the new key and `play_launch migrate`. The prose and nano-ros's own names move in W2.
+> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` are refused since rlm v0.3.11 (phase 536 W3), naming the new key and `play_launch migrate`. The prose and nano-ros's own names moved in W2 (phase 536 archived, 2026-11-05).
 
 **Status (2026-11-05, phase 534):** play_launch's platform-file key is
 `priority_assignment:` since ros-launch-manifest v0.3.7 (the standard term
@@ -224,11 +224,11 @@ judged against the pins of the bringup it was BUILT from — attributed through
 the `examples/fixtures.toml` row that names its build dir — never against every
 pin in the tree. Issue 1583: judged tree-wide, the derived-sched-task image
 (`READ_PRIORITY=100`, transport `[4, 9]`) failed three bringups'
-`sched_tasks.high.zephyr = 9` it does not contain and whose own images put 9 in
+`tasks.high.zephyr = 9` it does not contain and whose own images put 9 in
 `pool.app [5, 14]`. A pin no image in the run was built from is reported NOT
 JUDGED.
 
-and it finds four real violations — `sched_tasks.high.zephyr = 5` outranks the
+and it finds four real violations — `tasks.high.zephyr = 5` outranks the
 transport in every bringup that has it, undeclared, exactly as every other port
 did before its plan landed.
 
@@ -399,7 +399,7 @@ the key, the sched task runs at 5, below the transport, and the supervisor at 3;
 with `above = "transport"` on `[tasks.mrm]`, the sched task runs at 3 and the
 supervisor at 2, the numbers #2312's implicit lift gave.
 
-## The primitive reduction## The primitive reduction
+## The primitive reduction
 
 Real-time scheduling has a canonical triple — (C, T, D): execution time,
 period, deadline. Every sched task field today is one of those, derived from them, or
@@ -521,7 +521,7 @@ Four of five ports are allocated and enforced:
 | Zephyr | DERIVED (§4.1) | 8 | resolved per image — `7..7` here | `8..14` |
 | POSIX | static | 11 | `transport 90..99` (`sched_get_priority_*` range) | `1..89` |
 
-Zephyr's four `sched_tasks.high.zephyr = 5` violations are closed: moved to 9, inside
+Zephyr's four `tasks.high.zephyr = 5` violations are closed: moved to 9, inside
 the resolved pool and below the transport, in all four bringups.
 `check-sched-task-priority-plan-image` reports 8 of 8 clean against the realtime
 image's own `.config`.
@@ -607,6 +607,12 @@ order to reproduce on every existing bringup, and the declaration-order
 tiebreak is not load-bearing yet.
 
 ## Port status, and what actually blocks the rest
+
+*Note (2026-11-13):* this section is the state of 2026-08-24. Since then
+Zephyr declares a DERIVED plan (§4.1, `packages/boards/zephyr/nros-board.toml`
+`[board.priority_plan]`) and the native Linux board declares a static one
+(`packages/boards/linux/nros-board.toml`); the collision report above has a row
+for each. The table below is kept as written.
 
 Three ports declare a plan. The remaining two are blocked on different things,
 and the difference matters more than the count:
@@ -763,3 +769,37 @@ play_launch schedules processes from outside. Same target, different problem
   and runs fixed-priority. That is better than unmeasured literals and makes
   the missing evidence visible — but it means the sporadic-server path goes
   dormant until WCET declarations land, and that is a real behavioural change.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: keep.** Fixed: a doubled heading (`## The primitive
+reduction## The primitive reduction`); three `sched_tasks.high.zephyr` keys,
+a rename artifact for `tasks.high.zephyr`; the phase-536 banner now says W2
+is done; a dated note on "Port status", whose table still calls Zephyr
+blocked and POSIX n/a.
+
+- Checked against the code:
+  - Every port in the table now declares `[board.priority_plan]`: FreeRTOS
+    (mps2-an385, mps3-an536), NuttX, ThreadX, Linux, and Zephyr with
+    `derived = "zephyr"` and `resolver =
+    "scripts/lib/priority_plan.py:resolve_zephyr_plan"`
+    (`packages/boards/zephyr/nros-board.toml`).
+  - `reserved.foreign = []` on Linux (`packages/boards/linux/nros-board.toml`);
+    `empty_bands` in `scripts/lib/priority_plan.py`;
+    `scripts/dev/priority-thread-probe.py` exists.
+  - `above = "transport"`: `nros-orchestration-ir/src/derive.rs`,
+    `tests/derived_sched_tasks_precedence.rs`. The rust side of the plan is
+    `nros-orchestration-ir/src/priority_plan.rs`; gates
+    `scripts/check-sched-task-priority-plan{,-image}.py`.
+  - `[tasks.*]` is the key in tracked `system.toml` files; `[tiers.*]` is
+    refused (rlm v0.3.11).
+- Stale references: issues 0506, 0623, 0736, 0765 and phases 459 and 536 are
+  archived. RFC-0016 carries `superseded-in-part-by: [rfc-0079, rfc-0110]`
+  and RFC-0052 names this RFC as its realizer rule, as the Amendment plan
+  asked. `codegen/entry/priority_record.rs` resolves under
+  `packages/cli/nros-cli-core/src/`.
+- Conflicts: none found. CLAUDE.md's pitfall index still writes
+  `[tiers.<n>.<rtos>]`; that is CLAUDE.md, not this RFC.
+- Status: Draft, though phase-459 is archived and every port has a plan. The
+  open questions (RTOS foreign-band enumerators, headroom policy) do not block
+  a status change. Brief item W1.

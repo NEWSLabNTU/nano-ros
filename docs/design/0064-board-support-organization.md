@@ -4,7 +4,7 @@ title: "Board support organization: nano-ros as an embeddable library, not a boa
 status: Draft (LIVE — under active exploration)
 area: platform-board-rtos
 since: 2026-07
-last-reviewed: 2026-09-06
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-337, phase-375, phase-215]  # R3's matrix; 375 = tier policy + onboarding cost + R5's process; 215 = the FVP migration
 supersedes: []
 superseded-by: null
@@ -1918,3 +1918,45 @@ typed home: NuttX's board-plus-config (`[board.nuttx] board_config =
 holds nano-ros's names only, and `package.xml`'s board announcements follow it.
 `west build -b` reads `zephyr_board()` alone, so a non-Zephyr id can never
 reach it.
+
+## Review (2026-11-13, phase-555 W2)
+
+**Verdict: amend.** The design question is brief item P7. Nothing in the
+body was edited.
+
+- All three tracked phases are archived:
+  - phase-337 (all waves landed);
+  - phase-375 (archived 2026-10-11 with W0 to W9 landed; its own status
+    line was left saying "W2 to W9 open");
+  - phase-215 (complete).
+  The document still calls itself "LIVE — under active exploration".
+- 118 asked whether Sequencing step 8 landed: **no.** Step 8 is "extend the
+  RFC-0049 ladder to the build block: the board layer contributes
+  `[arch.*]`, `include_paths`, `required_env`".
+  - `nros-platform-config/src/platform_config.rs` reads `arch_profiles`,
+    `compile`, `required_env` and `[arch.*]` from the PLATFORM file only.
+  - Board descriptors carry `[capabilities]` and `[knobs]` deltas, as the
+    module doc says, and no build block.
+  - No `nros-board.toml` has an `[arch.*]`, `include_paths` or
+    `required_env` key.
+  - The `-mfpu` the step was meant to pay off is now in toolchain files and
+    `NanoRosCargoProfile.cmake`, not in board descriptors.
+- Other steps checked:
+  - Step 2 landed: `integrations/s32ds/`.
+  - Step 6 did not (`[board.*]` to `[profile.*]`): `nros-sdk-index.toml`
+    has no `[profile.*]` table.
+  - Several `[OPEN]` questions are still open (the vendor-SDK row, the
+    mandatory ABI subset, the FVP `platform` field, `generic-cmake`).
+- Already superseded in part, and recorded at the top: the book rows (by
+  RFC-0114, RFC-0115 and RFC-0124), and "The supported matrix" tier
+  definitions (by RFC-0114 D10/D11, which `amends: [RFC-0064]`).
+- Stale references (spot-checked): the `board_descriptor.rs` line numbers in
+  the open questions predate the move to `nros-cli-core/src/orchestration/`.
+  The prose is history and was not rewritten.
+- Pairs:
+  - RFC-0012: 0064 says it finishes it. No contradiction; RFC-0012 is 118's
+    to review.
+  - RFC-0040, RFC-0049, RFC-0072, RFC-0101, RFC-0114, RFC-0115: each
+    extends or narrows 0064 by an explicit amendment. None contradicts R2's
+    stance.
+- `area:` platform-board-rtos is right.
