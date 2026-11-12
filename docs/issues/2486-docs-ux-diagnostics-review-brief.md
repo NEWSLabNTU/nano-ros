@@ -44,6 +44,12 @@ Pairs (all consistent, no design change):
   `extending/runner-and-command-packages.md`, and `reference/system-toml.md`
   for `[image.<id>.run|flash|console]`. RFC-0121 D5's `nros run <node>` is
   what the tutorial teaches.
+- **0117–0123, on N4 (AUO book session).** The table 243 cites (0123 D2,
+  the `plan resolve|check|explain` row) is the user-book part table that
+  RFC-0124 D1 already superseded, and D2's banner says so. Whatever N4
+  rules, that table stays as history and is not edited. The live user book
+  spells the verbs as `nros --help` does: `reference/cli.md` is generated
+  from the tree.
 - **0118 and 0121, outside this slice.** RFC-0121's "Amends" table names
   "0118 D2" (the node rung), but its `amends:` frontmatter lacks 0118. 0118
   now carries the back-pointer. The frontmatter fix belongs to the
