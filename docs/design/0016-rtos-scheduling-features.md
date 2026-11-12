@@ -585,4 +585,4 @@ Where newer designs or the code disagree:
 
 - The banner said scheduling config "now lives in `nros.toml [node.rt]`". RFC-0004 records `nros.toml` as retired; `[node.rt]` is parsed from the standalone `config.toml` (`nros-board-freertos/src/config.rs`). Fixed in this review (found by 142).
 
-Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.

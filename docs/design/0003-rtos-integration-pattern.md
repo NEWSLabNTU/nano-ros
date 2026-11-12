@@ -241,4 +241,4 @@ Where newer designs or the code disagree:
 - Section 4's NuttX row sends readers to the cargo road. RFC-0126 D4 (ruled 2026-11-12) makes the unified ROS-CMake road the one road.
 - RFC-0072 says this RFC "already states this RFC's principle" and extends it.
 
-Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.

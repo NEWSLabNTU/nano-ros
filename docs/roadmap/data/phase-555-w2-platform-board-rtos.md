@@ -4,7 +4,7 @@
 The brief below waits for the user's ruling.**
 
 The platform-board-rtos slice of
-[phase-555](phase-555-design-doc-review.md) W2. Reviewers: 118 (0003, 0012,
+[phase-555](../phase-555-design-doc-review.md) W2. Reviewers: 118 (0003, 0012,
 0013, 0016, 0017, 0034, 0039, 0049, 0126) and 133 (the rest). Each RFC
 carries a dated "Review" section with the evidence; this page is the summary
 and the questions for the user.

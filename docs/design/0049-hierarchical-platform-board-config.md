@@ -293,4 +293,4 @@ Where newer designs or the code disagree:
 
 - "No nros-owned Kconfig and no Kconfig generation machinery" and "generated Kconfig fragments: rejected" are contradicted by `zephyr/Kconfig`'s generated knob-registry block (RFC-0103 D2b).
 
-Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.

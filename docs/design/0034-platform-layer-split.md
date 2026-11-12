@@ -349,4 +349,4 @@ Where newer designs or the code disagree:
 - The D6 table row "Zephyr: framework owns (zephyr-lang-rust)" is out of date. Since issue 1324, Zephyr Rust allocation goes through `nros_platform_alloc`, and `CONFIG_RUST_ALLOC=y` is refused.
 - D3's single bridge is still open: two `platform_aliases.c` exist, in `zpico-sys` and in `nros-rmw-xrce`.
 
-Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.

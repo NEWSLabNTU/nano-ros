@@ -316,4 +316,4 @@ The work to meet D1 is phase-541 (the prebuilt archives) and phase-542
 
 No stale reference was found, and no newer RFC conflicts with it.
 
-Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.
+Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.
