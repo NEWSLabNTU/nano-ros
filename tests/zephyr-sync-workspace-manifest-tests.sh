@@ -33,8 +33,11 @@ check() {
 
 mkdir -p "$tmp/bin"
 # Records "<cwd> <args>" per call; exits $STUB_WEST_RC (default 0).
+# `west list` (the pre-update scan for edited projects) answers "no projects"
+# and is not recorded: rows 1-8 count the UPDATEs.
 cat > "$tmp/bin/west" <<'EOF'
 #!/usr/bin/env bash
+[ "${1:-}" = list ] && exit 0
 printf '%s %s\n' "$PWD" "$*" >> "$STUB_WEST_LOG"
 exit "${STUB_WEST_RC:-0}"
 EOF
@@ -126,6 +129,8 @@ fi
 # Local `file://` repos, no network. Needs `west`; without it this row is
 # reported NOT VERIFIED through the skip ledger, never passed.
 source "$repo_root/scripts/build/zephyr-python.sh"
+# shellcheck source=scripts/lib/grep-q.sh
+source "$repo_root/scripts/lib/grep-q.sh"
 real_py="$(NROS_PYTHON= nros_zephyr_python)"
 if [ "$unit" = stubbed ]; then
     :
@@ -178,6 +183,52 @@ elif [ -n "$real_py" ] && PATH="$(dirname "$real_py"):$PATH" command -v west >/d
         [ "$r" = ok ] || printf '%s\n' "$out" | sed 's/^/        /'
     else
         check "real west: could not provision the synthetic workspace" bad
+    fi
+
+    # 10. Issue 2476 — a project our patch set edited IN PLACE, then a pin
+    # move. `west update` must check out the new revision over the edit,
+    # which git refuses ("Your local changes ... would be overwritten").
+    # The sync sets the edit aside to a diff, updates, and leaves the
+    # re-patching to the patch set that runs after it. A failed update
+    # restores the edit exactly.
+    gitq init -q -b main "$up/modC"
+    printf 'v1\n' > "$up/modC/f"; gitq -C "$up/modC" add f; gitq -C "$up/modC" commit -qm v1
+    c1="$(gitq -C "$up/modC" rev-parse HEAD)"
+    printf 'v2\n' > "$up/modC/f"; gitq -C "$up/modC" commit -qam v2
+    c2="$(gitq -C "$up/modC" rev-parse HEAD)"
+    pinned() {   # pinned <rev>
+        printf 'manifest:\n  projects:\n    - name: modC\n      url: file://%s/modC\n' "$up"
+        printf '      revision: %s\n  self:\n    path: nano-ros\n' "$1"
+    }
+    rm -rf "$tmp/ws" "$tmp/co"
+    mkdir -p "$tmp/ws/nano-ros" "$tmp/co"
+    pinned "$c1" > "$tmp/ws/nano-ros/west.yml"
+    if west_real init -l --mf west.yml nano-ros >/dev/null 2>&1 && west_real update >/dev/null 2>&1 \
+        && [ "$(cat "$tmp/ws/modC/f")" = v1 ]; then
+        printf 'v1-patched\n' > "$tmp/ws/modC/f"     # the in-place patch
+        # A pin to a revision that does not exist: the update fails, and the
+        # edit must come back as it was.
+        pinned 0000000000000000000000000000000000000000 > "$tmp/co/west.yml"
+        rc=0
+        NROS_PYTHON="$real_py" PATH="$real_bin:$PATH" env -u GIT_DIR -u GIT_WORK_TREE \
+            bash "$sync" "$tmp/ws" "$tmp/co" >/dev/null 2>&1 || rc=$?
+        [ "$rc" -ne 0 ] && [ "$(cat "$tmp/ws/modC/f")" = v1-patched ] && r=ok || r=bad
+        check "...a failed update over an in-place edit restores the edit (rc=$rc)" "$r"
+        pinned "$c2" > "$tmp/co/west.yml"
+        rc=0
+        out="$(NROS_PYTHON="$real_py" PATH="$real_bin:$PATH" env -u GIT_DIR -u GIT_WORK_TREE \
+            bash "$sync" "$tmp/ws" "$tmp/co" 2>&1)" || rc=$?
+        [ "$rc" -eq 0 ] && [ "$(cat "$tmp/ws/modC/f")" = v2 ] && r=ok || r=bad
+        check "...a pin move over an in-place edit updates (rc=$rc)" "$r"
+        [ "$r" = ok ] || printf '%s\n' "$out" | sed 's/^/        /'
+        r=bad
+        for d in "$tmp/ws/.west/nros-preupdate"/modC.*.diff; do
+            [ -f "$d" ] || continue
+            nros_grep_q '^+v1-patched' "$d"; case $? in 0) r=ok ;; 1) ;; *) r=bad; break ;; esac
+        done
+        check "...and the edit is kept in a diff, never discarded" "$r"
+    else
+        check "real west: could not provision the pinned workspace" bad
     fi
 else
     # shellcheck source=scripts/build/check-skip.sh
