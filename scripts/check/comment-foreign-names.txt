@@ -579,3 +579,7 @@ SHN_ABS
 SHN_COMMON
 SHN_XINDEX
 st_info
+
+# ros2cli (the ros2 command-line tool)
+DirectNode
+NodeStrategy
