@@ -1418,6 +1418,14 @@ def self_test() -> int:
             check("missing tool: unmeasured image warns, rc 0", gate("u@b") == 0)
             check("missing tool: the test table's row is found", measured_row)
             check("missing tool: measured image still fails", gate("m@b") == "exit")
+
+            # A module this Python lacks (stock 3.10 has no tomllib) is a
+            # missing tool by another name: the same two arms.
+            def import_gone(args):
+                raise ModuleNotFoundError("No module named 'tomllib'", name="tomllib")
+            g_["run"] = import_gone
+            check("missing module: unmeasured image warns, rc 0", gate("u@b") == 0)
+            check("missing module: measured image still fails", gate("m@b") == "exit")
         finally:
             g_["run"], sys.argv = saved_run, saved_argv
         # a refused WALK (the fold's or a role's) degrades the same way: the
