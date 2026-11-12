@@ -42,7 +42,9 @@ match (Q1, Q7).
 
 - **Acceptance:** each question has a recorded answer in 2236; every "Gate:"
   line below is either cleared or the item is dropped, in this doc.
-- **Status: DONE (2026-11-12).** All twenty questions are ruled, in two steps
+- **Status:** DONE (2026-11-12)
+
+All twenty questions are ruled, in two steps
   (issue 2236, "Ruling"). Every gate below is cleared. W8 and W13 are
   rewritten to the ruled road, and W14 leaves this phase (Q20).
 
