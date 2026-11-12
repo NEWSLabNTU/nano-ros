@@ -14,7 +14,10 @@ batch latency.
 Only a SUCCESSFUL job is a sample: a job that failed stopped early, and a p95
 over failures would report how fast the lane breaks. Failed jobs are counted
 (n_fail) and so are jobs with no verdict (cancelled, skipped), never as samples.
-A shard with no successful job prints "no samples".
+A job that hit its `timeout-minutes` (conclusion `timed_out`) is counted apart
+(n_timed_out) and makes its shard OVER budget: it is the most over-budget a
+shard can be, never "no verdict". A shard with no successful job prints
+"no samples".
 
 Usage::
 
@@ -55,7 +58,10 @@ def summarise(jobs):
         m = JOB_NAME.match(j.get("name") or "")
         if not m:
             continue
-        b = out.setdefault(m["board"], {"minutes": [], "failed": 0, "no_verdict": 0})
+        b = out.setdefault(m["board"], {"minutes": [], "failed": 0, "timed_out": 0, "no_verdict": 0})
+        if j.get("conclusion") == "timed_out":
+            b["timed_out"] += 1
+            continue
         if j.get("conclusion") == "failure":
             b["failed"] += 1
             continue
@@ -102,8 +108,13 @@ def report(stats, budget):
     for board in sorted(stats):
         m = stats[board]["minutes"]
         nf = stats[board]["failed"]
+        nt = stats[board]["timed_out"]
         nv = stats[board]["no_verdict"]
-        counts = f"n_ok={len(m)} n_fail={nf} n_no_verdict={nv}"
+        counts = f"n_ok={len(m)} n_fail={nf} n_timed_out={nt} n_no_verdict={nv}"
+        if nt:
+            print(f"{board:16} {counts}  OVER {budget:g} min (a job timed out)")
+            ok = False
+            continue
         if not m:
             print(f"{board:16} {counts}  no samples")
             ok = False
@@ -131,9 +142,9 @@ def selftest():
          "started_at": "2026-11-12T00:00:00Z", "completed_at": "2026-11-12T00:01:00Z"},
     ]
     s = summarise(jobs)
-    assert s["linux"] == {"minutes": [10.0], "failed": 0, "no_verdict": 1}, s
+    assert s["linux"] == {"minutes": [10.0], "failed": 0, "timed_out": 0, "no_verdict": 1}, s
     # A failed job is counted, never a sample.
-    assert s["zephyr"] == {"minutes": [], "failed": 1, "no_verdict": 0}, s
+    assert s["zephyr"] == {"minutes": [], "failed": 1, "timed_out": 0, "no_verdict": 0}, s
     assert "coverage report" not in s
     # A shard whose only job failed has no samples, so the report is not OK.
     assert report(s, 20) is False
@@ -145,6 +156,17 @@ def selftest():
     assert report(slow, 20) is False
     assert report({"linux": s["linux"]}, 20) is True
     assert report({}, 20) is False
+    # A timed-out job is counted apart, never no-verdict, and fails the
+    # budget even beside fast successes.
+    to = summarise([
+        {"name": "merge-runtime (linux)", "conclusion": "success",
+         "started_at": "2026-11-12T00:00:00Z", "completed_at": "2026-11-12T00:05:00Z"},
+        {"name": "merge-runtime (linux)", "conclusion": "timed_out",
+         "started_at": "2026-11-12T00:00:00Z", "completed_at": "2026-11-12T02:30:00Z"},
+    ])
+    assert to["linux"] == {"minutes": [5.0], "failed": 0, "timed_out": 1,
+                           "no_verdict": 0}, to
+    assert report(to, 20) is False
     print("merge-runtime-p95 selftest: OK")
 
 
