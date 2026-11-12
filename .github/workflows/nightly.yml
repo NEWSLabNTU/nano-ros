@@ -1240,6 +1240,54 @@ jobs:
       - name: Run installed-path probe
         run: PROBE_BRANCH=probe-under-test PROBE_RELEASE_CACHE=0 PROBE_TRACK=installed ./scripts/probe/run-bootstrap-probe.sh
 
+  # Issue 2468 — the ROS-interop track (`PROBE_TRACK=zenoh`): the book's
+  # `just`-free checkout road (clone, `bootstrap.sh`, `activate.sh`,
+  # `nros setup --rmw zenoh`), then the interop page's router, talker and
+  # `ros2 topic echo`. No lane ran it, so it rotted for a week: bootstrap.sh
+  # stopped building what `nros run` needs (the runner packages) and nothing
+  # noticed. Its own job for the reason installed-probe is: a red here is a
+  # different defect from a red on the quickstart track.
+  zenoh-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 7 * * *' }}
+    runs-on: ubuntu-latest
+    # Measured 59 min on a 139-class host (2026-11-12), the most of any probe
+    # track: it runs the checkout road AND the installed one. A hosted 4-vCPU
+    # runner, cold, can take 2-3x that, and a job that hits its timeout ends
+    # CANCELLED with no verdict (issue 2141's shape). 180 until a hosted run
+    # is measured; then set it from that run with headroom (issue 1492).
+    timeout-minutes: 180
+    concurrency:
+      group: nightly-zenoh-probe-${{ github.ref }}-${{ github.event_name }}
+    permissions:
+      contents: read
+    steps:
+      # Full history: the probe container clones from this checkout
+      # (mounted read-only), and cloning from a shallow repo fails.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reclaim host disk
+        run: |
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+              /usr/share/dotnet /usr/local/.ghcup 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
+      - name: Name the commit under test
+        run: git switch -c probe-under-test 2>/dev/null || git checkout -b probe-under-test
+
+      # Cold, as installed-probe is: this track runs the installed road too, so
+      # the two verdicts mean the same thing.
+      - name: Run zenoh interop probe
+        run: PROBE_BRANCH=probe-under-test PROBE_RELEASE_CACHE=0 PROBE_TRACK=zenoh ./scripts/probe/run-bootstrap-probe.sh
+
+      # Two roads in one hosted job is the disk-heaviest probe: print what is
+      # left, pass or fail, so a later ENOSPC reads as disk, not as a book defect.
+      - name: Disk after the probe
+        if: always()
+        run: df -h /
+
   # phase-411 — tier 2 NIGHTLY, actually invoked.
   #
   # This file's header has said "the 07:00 cron is also where
