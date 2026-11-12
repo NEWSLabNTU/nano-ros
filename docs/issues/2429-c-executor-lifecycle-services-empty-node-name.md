@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [c-api, lifecycle, runtime]
-related: [2428, 2304, phase-488, rfc-0128]
+related: [2428, 2304, phase-488, rfc-0128, phase-554]
 found: 2026-11-11
 ---
 

@@ -5,7 +5,7 @@ status: open
 type: enhancement
 area: book, education
 purpose: [education]
-related: [phase-537, phase-523, rfc-0116]
+related: [phase-537, phase-523, rfc-0116, phase-554]
 found: 2026-11-05
 ---
 
