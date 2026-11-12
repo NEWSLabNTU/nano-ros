@@ -1,6 +1,6 @@
 # Phase 550 -- NuttX builds on NuttX's own infrastructure
 
-**Status (2026-11-13). IN PROGRESS: W0 done (every question ruled), W1, W2, W5, W7
+**Status (2026-11-13). IN PROGRESS: W0 done (every question ruled), W1, W2, W5, W7, W6a
 and W12 done; W3a and W4's code done (W3b and W4's upstream contribution
 open); the rest not started.**
 The work for
@@ -266,6 +266,40 @@ describe what the road then does.
   `"defaults"`). No make census here; that is a separate issue (Q6).
 - Gate: cleared (Q1 yes, Q2 A2, Q3 B1, Q4 yes, Q6 yes, Q7 yes, ruled 2026-11-12).
 - **Acceptance:** 2236 section 5's acceptance list.
+- **Status:** OPEN (W6a done 2026-11-13; W6b and W6c not started). Split
+  into three PRs (manager, 2026-11-13).
+  - **W6a, identity.** The shell's Makefile reads `NROS_PROJECTS`:
+    - none: a guest, with the same command as before;
+    - more than one: refused in `context::`, naming every path;
+    - one: `nros locate nuttx-cargo-config --project <dir> [--image
+      NROS_IMAGE] --rmw --ros-edition --kconfig` checks it against this
+      kernel, and writes the chosen image's key beside the settings file.
+      Then `nros configure --image <key>` runs in the project.
+  - **The checks** (`check_nuttx_project`):
+    - The image is `NROS_IMAGE`, or else the one image whose board is the
+      kernel's (W5's derivation).
+    - A named image whose board is not the kernel's is refused.
+    - Kconfig's RMW and edition must match the image's (Q4).
+    - Every `[[component]]` must declare `entities`, unless `[system]
+      entities = "defaults"` (Q6).
+    - Each refusal names the file, the field and the value to change, and
+      no internal id. A unit test checks the last of these.
+  - **Tests.** Six unit tests (`cmd::locate::nuttx_project_tests`), plus a
+    manual run in a staged arm tree. With a copy of the C talker workspace
+    as `apps/external/talker_proj`, the missing-entities refusal fired.
+    With `entities = []` added, `nros configure` ran in `context::` and
+    chose `nuttx_c_talker_bringup:qemu-armv7a-nuttx`. A second
+    `NROS_PROJECTS` line was refused. The guest build is unchanged (5,308,348 B).
+  - **What W6a does not do.** The configured image's knobs do not reach
+    cargo yet; that is W6b, through the cmake road's own producer.
+  - **Measured (for W6b and W6c): NuttX's apps `context` is NOT run on
+    every build.** `tools/Unix.mk` runs it only while the `apps/.context`
+    stamp is missing. After a first build, `make` runs neither the shell's
+    `context::` nor its cargo build until a clean removes the stamp. So
+    "edit a knob, and the next `make` changes the archive with no `clean`"
+    (2236 section 5) needs an edge from `system.toml` that the stamp does
+    not give. The same holds today for an edited nano-ros Rust source on
+    this road. W6b has to answer this, not assume `context::` reruns.
 
 ### W7 -- The image crate is generated in `context::`
 
