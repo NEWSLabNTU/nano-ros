@@ -217,8 +217,11 @@ build-fixtures:
     scripts/build/fixtures-build.sh baremetal c
     scripts/build/fixtures-build.sh baremetal cpp
     # phase-535 W5 — the Rust pubsub pair as images of the Rust workspace's
-    # pubsub bringup (`baremetal_{talker,listener}`), built by `nros build`.
-    bash scripts/build/workspace-fixtures-build.sh baremetal rust
+    # pubsub bringup (`baremetal_{talker,listener}`), built by `nros build`;
+    # phase-535 W6 — the mps2 C and C++ workspaces. No language filter: a
+    # filter here left W6's C/C++ rows built by no lane (issue 2481), and
+    # `check workspace-fixture-lang-reach` now refuses that shape.
+    bash scripts/build/workspace-fixtures-build.sh baremetal
     # issue 0488 residue 1 — "remains ad-hoc until reference package coverage
     # moves into the fixture manifest" is done: it has a row, so the
     # `fixtures-build.sh` call above builds it with a coordinate and a group.

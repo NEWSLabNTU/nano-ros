@@ -1,12 +1,13 @@
 ---
 id: 2481
 title: "No recipe builds the ten mps2-an385 bare-metal C/C++ workspace rows, so every case of the bare-metal C API end-to-end test is unmet after `just build qemu`"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [build, testing, baremetal]
 found: 2026-11-13
-related: []
+related: [phase-535]
+resolved_in: "fix-2481-qemu-ws-langs: qemu build-fixtures calls workspace-fixtures-build.sh baremetal with no language filter; gate check workspace-fixture-lang-reach holds the class"
 ---
 
 ## What
@@ -69,3 +70,22 @@ the shape the qemu one lacks: `just/nuttx.just` calls
   `workspace-fixtures-build.sh baremetal rust` line.
 - The measurement table above (manifest queries, re-runnable from any
   checkout).
+
+## Resolution (2026-11-13)
+
+`just/qemu-baremetal.just` `build-fixtures` now runs
+`workspace-fixtures-build.sh baremetal` with no language, so every
+bare-metal workspace row (Rust, C, C++) is in the lane.
+
+The class is held by a new fast-line gate, `check workspace-fixture-lang-reach`
+(`scripts/check-workspace-fixture-lang-reach.py`): every `[[workspace_fixture]]`
+(platform, lang) must be reached by a recipe call with no language or with that
+language; a call narrowed by `--id` / `NROS_FIXTURE_ID` reaches one row and does
+not count, and the west-lane platforms are out of scope. On the tree before the
+fix it reported exactly `baremetal` `c` and `cpp` (5 rows each) and nothing
+else; after, all 26 platform/lang pairs are reached. Its self-test carries the
+shipped rust-only shape as a negative control.
+
+Measured after `just qemu build-fixtures` in a fresh worktree:
+`test_qemu_baremetal_capi_e2e` 6/6 and `test_qemu_bsp_pubsub_e2e` pass.
+The rows themselves are unchanged; phase-553 W6 converts them to CMake packages.
