@@ -226,7 +226,7 @@ fn stack_conf(p: &WorkspaceProject<'_>, bytes: u64) -> String {
         "# The main stack this image needs: the floor measured for the template it\n\
          # was made from ({key}, config/stack-floors.toml in nano-ros), which\n\
          # is above the stack the module gives this board by default. The build\n\
-         # CHECKs it against this image's own frames (issue 2400) and says when it\n\
+         # CHECKs it against this image's own frames and says when it\n\
          # must move; it never lowers it.\n\
          CONFIG_MAIN_STACK_SIZE={bytes}\n",
         key = stack_floor_template_key(p.node.template, p.node.lang, p.rmw, p.board),
@@ -266,7 +266,7 @@ pub fn template_main_stack(
 }
 
 /// The OPEN floor `config/stack-floors.toml` records for `key`:
-/// `ceil8(ceil((static + allowance) * (100 + margin_pct) / 100))`, exactly
+/// `static + allowance` plus `margin_pct` percent, rounded up to a multiple of 8, exactly
 /// `floor_formula` in `scripts/nros-stack-floor.py`.
 #[must_use]
 pub fn recorded_floor(table: &str, key: &str) -> Option<u64> {
@@ -992,7 +992,7 @@ mod tests {
             };
             let mut it = tmpl.split('/');
             let (_, lang, rmw) = (it.next().unwrap(), it.next().unwrap(), it.next().unwrap());
-            let rust = lang == "rust";
+            let rust = nros_lang::Language::parse(lang).expect(key) == nros_lang::Language::Rust;
             let floor = recorded_floor(&t, key).expect(key);
             let default = zephyr_main_stack_default(&r, board, rust, rmw).expect(key);
             let got = template_main_stack(&r, key, true, rust, rmw, board);
