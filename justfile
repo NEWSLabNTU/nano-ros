@@ -4480,15 +4480,16 @@ setup-cli:
     # below, because the CLI's source stamp does not cover the runner binaries;
     # cargo's own fingerprint is their freshness check, and `-q` keeps a no-op
     # silent. Their binaries land in packages/runners/target/release/.
-    # profile-literal-ok: host tool: builds the in-tree runner packages
-    cargo build -q --release --locked --manifest-path "$root/packages/runners/Cargo.toml" --workspace
-    # phase-527 W5 (RFC-0119 D5) — the first-party command packages, beside
-    # the domain each serves, each its own workspace and target directory for
-    # the same reason. Their binaries land in <package>/target/release/.
-    # profile-literal-ok: host tool: builds the in-tree command packages
-    cargo build -q --release --locked --manifest-path "$root/packages/rmw/zenoh/nros_zenoh_tools/Cargo.toml"
-    # profile-literal-ok: host tool: builds the in-tree command packages
-    cargo build -q --release --locked --manifest-path "$root/packages/rmw/xrce/nros_px4_tools/Cargo.toml"
+    # phase-527 W5 adds the first-party command packages, each its own
+    # workspace and target directory for the same reason. Issue 2468: the set
+    # is ONE list, scripts/lib/cli-companion-packages.txt, which bootstrap.sh
+    # reads too (the two had drifted). `$args` is unquoted on purpose: it is
+    # the line's extra cargo arguments.
+    while read -r manifest args; do
+        case "$manifest" in ''|'#'*) continue ;; esac
+        # profile-literal-ok: host tool: builds the in-tree runner and command packages
+        cargo build -q --release --locked --manifest-path "$root/$manifest" $args
+    done < "$root/scripts/lib/cli-companion-packages.txt"
     if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
         # Quiet on no-op — `just setup` invokes us unconditionally.
         warn_stale_shadow

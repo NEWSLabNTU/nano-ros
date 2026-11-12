@@ -27,6 +27,23 @@ phase-527 W3/W5 moved the runners and the `router` / `px4` verbs into their own 
 
 ## Fix
 
-`bootstrap.sh` builds the same three as `just setup-cli`: `packages/runners` (`--workspace`), `nros_zenoh_tools` and `nros_px4_tools`, failing loudly like the resolver step. The by-hand block in `contributing.md` gains the same three `cargo build` lines.
+The class, not the site: the set of host packages built beside the CLI is ONE
+list, `scripts/lib/cli-companion-packages.txt` (`packages/runners`
+`--workspace`, `nros_zenoh_tools`, `nros_px4_tools`). `just setup-cli` and
+`bootstrap.sh` both read it; bootstrap fails loudly on a build error, like its
+resolver step. The by-hand block in `contributing.md` gains the same three
+lines. `just check cli-companion-packages` (fast tier) refuses:
+
+- a reader that spells a listed manifest itself;
+- a by-hand block that misses a line;
+- a runner or command package (`<nano_ros_provides kind="runner"|"command">`,
+  outside test fixtures) whose cargo workspace is not listed.
+
+So the next such package fails a gate rather than a user's checkout. Negative
+controls: dropping `nros_px4_tools` from the list, and main's `bootstrap.sh`,
+each fail it.
+
+The zenoh track gets a CI lane: a `zenoh-probe` job in `nightly.yml`, beside
+`bootstrap-probe` and `installed-probe`.
 
 Acceptance: `PROBE_TRACK=zenoh just probe bootstrap` passes on the fix branch.
