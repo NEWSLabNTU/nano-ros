@@ -4,8 +4,9 @@ title: "C++/C Entry real-callback binding — executor-routed, no callback namin
 status: Stable
 area: runtime-api
 since: 2026-06
-last-reviewed: 2026-06-12
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-236, phase-240]
+amends: [0032]
 supersedes: []
 superseded-by: null
 ---

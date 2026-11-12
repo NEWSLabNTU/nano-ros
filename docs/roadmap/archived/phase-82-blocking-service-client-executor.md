@@ -10,6 +10,7 @@ inconsistency is observable across all three language bindings.
 **Priority**: Medium — soundness fix, no functional regression on currently
 passing tests, but blocks future "service-call from a callback" use cases.
 **Depends on**: Phase 77 (executor-spin pattern for blocking helpers)
+**Design**: [RFC-0021](../../design/0021-blocking-api-rules.md) records the rule this phase extends.
 
 ## Overview
 

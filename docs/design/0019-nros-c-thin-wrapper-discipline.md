@@ -4,8 +4,8 @@ title: "nros-c Thin-Wrapper Discipline (Phase 122.3.a)"
 status: Stable
 area: runtime-api
 since: 2026-05
-last-reviewed: 2026-05
-implements-tracked-by: [phase-270, phase-317]
+last-reviewed: 2026-11-13
+implements-tracked-by: [phase-122, phase-270, phase-317]
 supersedes: []
 superseded-by: null
 ---
@@ -15,6 +15,20 @@ superseded-by: null
 **Status:** Audit complete. Refactor plan TBD as 122.3.b/c/d.
 **Date:** 2026-05-13.
 **Owner:** Phase 122 (Unify C / C++ / Rust API code paths).
+
+> **Review 2026-11-13.** The principle (the Rust API is the source of truth;
+> C and C++ delegate) is in force: RFC-0089 and RFC-0105 cite it as
+> governing. The target shape below is NOT what shipped.
+> [Phase 122](../roadmap/archived/phase-122-unify-api-paths.md) landed the
+> L1 polling entry points (122.3.c) but left 122.3.b, the subscription
+> refactor, unchecked, and the C structs still mirror fields: for example
+> `rcl_subscription_t` holds `topic_name`, `type_name`, `type_hash`, `qos`
+> and `handle_id` (`packages/api/nros-c/src/subscription.rs:98-123`), and
+> `rcl_publisher_t` the same names (`packages/api/nros-c/src/publisher.rs:120`).
+> The C names moved to rclc's (RFC-0089), so `nros_<entity>_t` below is now
+> `rcl_<entity>_t` and `nros_<entity>_init*` is `rclc_<entity>_init*`.
+> Whether the opaque-only target still stands is a question for the
+> [phase-555 runtime-api brief](../roadmap/data/phase-555-w2-runtime-api-brief.md).
 
 > **Build/link contract.** The C ABI nros-c wraps resolves through one canonical
 > `<nros/platform.h>` (`nros-platform-api`); board capabilities + the RMW backend

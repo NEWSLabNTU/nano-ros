@@ -4,11 +4,25 @@ title: "Rust and C user-API surfaces"
 status: Draft
 area: runtime-api
 since: 2026-06
-last-reviewed: 2026-06
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-239]
 supersedes: []
 superseded-by: null
 ---
+
+> **Review 2026-11-13: the surfaces recorded below are out of date.**
+> RFC-0022's builder landed (phase-483): `Executor::create_node` returns
+> `nros::Node`, not `NodeCtx` (`packages/core/nros-node/src/executor/spin.rs:6531`),
+> and the builders are `node.publisher(..)` / `node.subscription(..)`
+> (`packages/core/nros-node/src/executor/node.rs:1915,1929`).
+> The C API took rclc's and rcl's names (RFC-0089): `packages/api/nros-c/src`
+> exports 447 `rcl_*`/`rclc_*` functions and one `nros_*`
+> (`nros_c_support_init_baked`), so the `nros_*` entry points and the
+> `nros_<entity>_t` structs listed below are gone. The recorded ROS 2 side
+> of both surfaces now lives in `docs/reference/api-surface/` and the
+> per-row `docs/reference/api-parity-ledger/`. RFC-0128 amends the C
+> lifecycle surface (upstream `rclc_lifecycle`). Whether this RFC is
+> rewritten or retired is a question for the [phase-555 runtime-api brief](../roadmap/data/phase-555-w2-runtime-api-brief.md).
 
 # RFC-0037 — Rust and C user-API surfaces
 

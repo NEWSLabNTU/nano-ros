@@ -4,7 +4,7 @@ title: "One ordered ready set per core, N preemption levels derived from the con
 status: Accepted
 area: runtime-api
 since: 2026-10
-last-reviewed: 2026-10
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-509]
 amends: [rfc-0002, rfc-0107]
 supersedes: []

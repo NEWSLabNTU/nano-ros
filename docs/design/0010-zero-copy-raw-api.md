@@ -4,8 +4,8 @@ title: "Zero-copy raw publish/subscribe API"
 status: Stable
 area: runtime-api
 since: 2026-04
-last-reviewed: 2026-04
-implements-tracked-by: []
+last-reviewed: 2026-11-13
+implements-tracked-by: [phase-99]
 supersedes: []
 superseded-by: null
 ---
@@ -13,6 +13,19 @@ superseded-by: null
 # Zero-copy raw publish/subscribe API
 
 **Owners:** core; **Status:** v1 (Phase 99.A–99.G + 99.D' wire-through landed; 99.H minimal; 99.I–99.K open).
+
+> **Review 2026-11-13.** [Phase 99](../roadmap/archived/phase-99-zero-copy-raw-api.md)
+> closed v1 complete; 99.J (raw-bytes examples) and 99.K (bench harness and
+> book chapter) were never done and no open phase carries them. D6 (async
+> loan) is retired by RFC-0113. The per-backend matrix below is corrected to
+> the code: XRCE-DDS and Cyclone DDS are now C backends behind the cffi
+> vtable, and both leave its loan slots `NULL`
+> (`packages/rmw/xrce/nros-rmw-xrce/src/vtable.c:219`,
+> `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/vtable.cpp:455`), so they
+> take the arena path. Native lending exists for zenoh-pico
+> (`packages/rmw/zenoh/nros-rmw-zenoh/src/shim/publisher.rs:1405`) and,
+> through the vtable, for any C backend that fills the slots
+> (`packages/rmw/cffi/src/lib.rs:4180`).
 
 ## API discipline (read first)
 
@@ -294,10 +307,10 @@ Consequence: typed pub/sub never sees the lending path. `Publisher<M>::publish(&
 | Backend | `lending` feature | Native publish | Native receive | v1 status |
 |---|---|---|---|---|
 | zenoh-pico (Phase 99.F) | yes | `z_bytes_from_static_buf` aliased publish (no payload copy; attachment still copied) | `z_bytes_get_contiguous_view` (`unstable-zenoh-api`) | landed |
-| XRCE-DDS (Phase 99.G) | yes | `uxr_prepare_output_stream` direct write into `ucdrBuffer.iterator` | per-slot view + `locked` flag (subscriber buffers static, slotted) | landed |
-| dust-dds (Phase 99) | no (today) | `publish_raw` only | `take_serialized` only | gated on SHM transport |
+| XRCE-DDS (Phase 99.G) | no (now a C backend; its vtable loan slots are `NULL`, `vtable.c:219`) | arena path | `take_serialized` | the Phase 99.G Rust impl went with the Rust backend |
+| Cyclone DDS (replaced dust-dds) | no (C++ backend; vtable loan slots `NULL`, `vtable.cpp:455`) | arena path | `take_serialized` only | `dds_loan_sample` wiring is a follow-up |
 | uORB (Phase 90) | never | arena-only — `commit` does `orb_publish` (1 memcpy into the uORB topic struct) | `take_serialized` only — uORB callback writes into static slot | arena fallback always |
-| cffi (`nros-rmw-cffi`) | no | `publish_raw` only | `take_serialized` only | not on the lending path |
+| cffi (`nros-rmw-cffi`) | yes (forwards `nros-rmw/lending`) | the vtable's `borrow_loaned_message` when the C backend fills it, else the arena | the vtable's `take_loaned_message` when filled | `packages/rmw/cffi/src/lib.rs:4180` |
 
 ## Migration plan
 
@@ -324,9 +337,9 @@ For 30 Hz × 1 KB messages on the autoware_sentinel control loop (the original m
 
 ## References
 
-- `nros-rmw/src/traits.rs:1024` — `SlotLending` trait
-- `nros-rmw/src/traits.rs:1050` — `SlotBorrowing` trait
+- `nros-rmw/src/traits.rs:3921` -- `SlotLending` trait
+- `nros-rmw/src/traits.rs:3946` -- `SlotBorrowing` trait
 - `nros-node/src/executor/handles.rs::EmbeddedRawPublisher` / `RawSubscription` / `PublishLoan` / `RecvView`
 - `nros-rmw-zenoh/src/shim/{publisher,subscriber}.rs` — Phase 99.F impls
-- `nros-rmw-xrce/src/lib.rs` (XrceSlot, XrceView) — Phase 99.G impls
-- Phase 99 roadmap: `docs/roadmap/phase-99-0010-zero-copy-raw-api.md`
+- `nros-rmw-xrce/src/lib.rs` (XrceSlot, XrceView) -- Phase 99.G impls, gone with the Rust XRCE backend
+- Phase 99 roadmap: [phase-99](../roadmap/archived/phase-99-zero-copy-raw-api.md)

@@ -4,7 +4,7 @@ title: "Every supported way to run nano-ros keeps the real-time promise; one wai
 status: Stable
 area: runtime-api
 since: 2026-10
-last-reviewed: 2026-11
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-521]
 amends: [RFC-0106, RFC-0112]
 supersedes: []

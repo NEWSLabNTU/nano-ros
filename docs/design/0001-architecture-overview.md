@@ -4,7 +4,7 @@ title: "nano-ros Architecture Overview"
 status: Stable
 area: runtime-api
 since: 2026-03
-last-reviewed: 2026-04
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-321]
 supersedes: []
 superseded-by: null
@@ -388,7 +388,7 @@ When `NROS_EXECUTOR_MAX_CBS=0` and `NROS_EXECUTOR_ARENA_SIZE=0`, the arrays are 
 
 | Method                                   | `no_std` | Description                                                        |
 |------------------------------------------|----------|--------------------------------------------------------------------|
-| `spin_once(timeout_ms)`                  | Yes      | Single iteration: drive I/O, dispatch ready callbacks              |
+| `spin_once(timeout: Duration)`          | Yes      | Single iteration: drive I/O, dispatch ready callbacks              |
 | `spin_one_period(period_ms, elapsed_ms)` | Yes      | Caller-timed loop (caller provides clock + sleep)                  |
 | `spin(SpinOptions)`             | No       | Loop with optional timeout/max_callbacks                           |
 | `spin_period(Duration)`                  | No       | Wall-clock-timed loop                                              |
@@ -491,7 +491,7 @@ Each platform provides OS-level primitives that the transport libraries (zenoh-p
 ```mermaid
 graph TD
     subgraph "C Application"
-        CMAIN["main.c<br/>nros_init(), nros_create_node(), ..."]
+        CMAIN["main.c<br/>rclc_support_init(), rclc_node_init_default(), ..."]
     end
 
     subgraph "nros-c (staticlib)"
@@ -504,13 +504,13 @@ graph TD
         RNROS["nros (façade)"]
     end
 
-    CMAIN -->|"nros_init()<br/>nros_publish()"| CAPI
+    CMAIN -->|"rclc_support_init()<br/>rcl_publish()"| CAPI
     CAPI --> CEXEC
     CEXEC --> RNODE
     CAPI --> RNROS
 ```
 
-The C API resolves the generic `S: Session` parameter to the concrete backend type via the nano-ros internals module. All C structs (`nros_publisher_t`, `nros_subscription_t`, etc.) are `#[repr(C)]` with `pub` fields for cbindgen visibility.
+The C API resolves the generic `S: Session` parameter to the concrete backend type via the nano-ros internals module. All C structs (`rcl_publisher_t`, `rcl_subscription_t`, etc.) are `#[repr(C)]` with `pub` fields for cbindgen visibility. The entry points carry rclc's and rcl's own names where upstream has a counterpart (RFC-0089).
 
 ## Message Codegen
 

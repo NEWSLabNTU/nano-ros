@@ -4,8 +4,8 @@ title: "The executor waits until its next deadline, on one platform primitive"
 status: Draft
 area: runtime-api
 since: 2026-10
-last-reviewed: 2026-11
-implements-tracked-by: [phase-521]
+last-reviewed: 2026-11-13
+implements-tracked-by: [phase-436, phase-521]
 ---
 
 # RFC-0106 — The executor waits until its next deadline, on one platform primitive
