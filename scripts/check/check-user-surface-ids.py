@@ -28,15 +28,20 @@ Subjects, all checked on every run:
   `cargo:warning=` / `cargo::warning=`, or is the text handed to a `warn(…)` /
   `.note(…)` helper (directly or through `format!`). A warning is what an
   ordinary, successful `cargo build` of a user's image prints. A build
-  script's PANIC is not read: a build that stops is being diagnosed, the rule
-  `check-cmake-user-output-refs` applies to `FATAL_ERROR` (phase-517 W5).
-  A warning whose text is assembled away from its print (a `Vec` of warnings
+  script's PANIC text (a literal handed to `panic!`, `unreachable!`,
+  `.expect(`, or an `assert!`'s message, directly or through `format!`) is
+  read too, as a counted RATCHET (below): ruling A of issue 2443 covers a
+  build that stops. A warning whose text is assembled away from its print (a `Vec` of warnings
   printed later) is not seen: a known gap, stated rather than claimed;
-* every string literal of the CLI library files whose refusals and warnings
-  stop or annotate a user's build outside `cmd/` (issue 2443): `REFUSAL_FILES`,
-  read whole like `cmd/`. Not yet every file of `nros-cli-core` and
-  `cargo-nano-ros`: the rest still holds ids, a backlog stated rather than
-  claimed;
+* every string literal of the CLI LIBRARY: `nros-cli-core/src` outside
+  `cmd/`, and `cargo-nano-ros/src` (issue 2443). Its refusals stop a user's
+  build, and its generated files land in the user's tree. Comments, doc
+  comments and test-only code (a `#[cfg(test)]` module, inline or a file of
+  its own) are not read. A RATCHET, not baseline zero: the ids present when
+  the subject was added are counted per file in `RATCHET_BASELINE`, and a count
+  may only fall, recorded in the change that lowers it (`scripts/lib/
+  ratchet.py`). The build-script panic texts above share that baseline file,
+  keyed by their own paths. `--update-ratchet` rewrites it;
 * the messages of the colcon plugin (issue 2443),
   `packages/cli/colcon-cargo-ros2/colcon_nano_ros/`: every Python string
   literal (f-string parts included) that is not a docstring. A user's
@@ -51,7 +56,7 @@ NOT VERIFIED through the skip ledger (issue 1043's middle outcome), never a
 quiet pass. The source and book subjects need nothing.
 
 Forbidden tokens: `phase-NNN`, `Phase NNN`, `issue NNNN`, `#NNNN`, `RFC-NNNN`.
-Baseline zero, no allowlist. `--self-test` runs both directions of every rule
+Baseline zero, no allowlist, except the counted CLI-library ratchet above. `--self-test` runs both directions of every rule
 and runs first on every check.
 """
 
@@ -59,6 +64,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import json
 import os
 import re
 import subprocess
@@ -71,6 +77,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 import book_contributor  # noqa: E402
 import book_pages  # noqa: E402
 import check_skip  # noqa: E402
+from ratchet import fell_instructions, judge  # noqa: E402
 
 NAME = "check-user-surface-ids"
 CMD_DIR = "packages/cli/nros-cli-core/src/cmd"
@@ -195,25 +202,99 @@ def source_hits() -> list[str]:
     return bad
 
 
-# Library files outside `cmd/` whose messages reach a user's build: a warning
-# for a retired `<build_type>`, and the package.xml refusals (issue 2443).
-REFUSAL_FILES = [
-    "packages/cli/nros-cli-core/src/build_type.rs",
-    "packages/cli/cargo-nano-ros/src/package_xml.rs",
-]
+# --- the CLI library (a counted ratchet) -----------------------------------
+
+# Issue 2443, user ruling 2026-11-12 (option A): a refusal names what, where
+# and how to fix, never an id. These crates held ids when the subject was
+# added, so it starts as a per-file count that may only fall.
+CLI_LIBRARY = ["packages/cli/nros-cli-core/src", "packages/cli/cargo-nano-ros/src"]
+RATCHET_BASELINE = ROOT / ".config" / "user-surface-ids-ratchet.json"
+TEST_MOD_DECL = re.compile(r"#\[cfg\(test\)\]\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+(\w+)\s*;")
 
 
-def refusal_file_hits() -> list[str]:
-    bad = []
-    for rel in REFUSAL_FILES:
-        path = ROOT / rel
-        if not path.is_file():
-            bad.append(f"{rel}: listed in REFUSAL_FILES but missing; update the list")
+def test_module_files(files: list[str]) -> set[str]:
+    """Files compiled only under `cfg(test)`: declared `#[cfg(test)] mod x;`
+    in their parent, and everything below such a module's directory."""
+    roots = []
+    for rel in files:
+        src = (ROOT / rel).read_text()
+        p = Path(rel)
+        base = p.parent if p.name in ("mod.rs", "lib.rs", "main.rs") else p.parent / p.stem
+        for m in TEST_MOD_DECL.finditer(src):
+            roots.append(base / m.group(1))
+    out = set()
+    for rel in files:
+        p = Path(rel)
+        for r in roots:
+            if p == r.with_suffix(".rs") or p == r / "mod.rs" or r in p.parents:
+                out.add(rel)
+    return out
+
+
+def cli_library_sites() -> dict[str, list[str]]:
+    files = []
+    for d in CLI_LIBRARY:
+        files += subprocess.run(
+            ["git", "ls-files", f"{d}/*.rs", f"{d}/**/*.rs"],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        ).stdout.split()
+    files = sorted(set(files))
+    tests = test_module_files(files)
+    found: dict[str, list[str]] = {}
+    for rel in files:
+        if rel.startswith(CMD_DIR + "/") or rel in tests:
             continue
-        for ln, s in rust_strings(path.read_text()):
+        if Path(rel).name == "tests.rs" or "/tests/" in rel:
+            continue
+        for ln, s in rust_strings((ROOT / rel).read_text()):
             for tok in ids(s):
-                bad.append(f"{rel}:{ln}: {tok!r} in {s.strip()[:90]!r}")
+                found.setdefault(rel, []).append(
+                    f"{rel}:{ln}: {tok!r} in {' '.join(s.split())[:90]!r}"
+                )
+    return found
+
+
+def ratchet_sites() -> dict[str, list[str]]:
+    found = cli_library_sites()
+    for rel, sites in build_script_panic_sites().items():
+        found.setdefault(rel, []).extend(sites)
+    return found
+
+
+def ratchet_hits() -> list[str]:
+    found = ratchet_sites()
+    now = {k: len(v) for k, v in found.items()}
+    try:
+        base = json.loads(RATCHET_BASELINE.read_text())["counts"]
+    except FileNotFoundError:
+        return [f"{RATCHET_BASELINE.relative_to(ROOT)}: missing; write it with --update-ratchet"]
+    rose, fell = judge(now, base)
+    bad = []
+    for m in rose:
+        bad.append(f"{m.key}: {m.was} -> {m.now} id(s); a new one is among:")
+        bad += [f"    {site}" for site in found.get(m.key, [])]
+    if fell:
+        bad += fell_instructions(
+            fell, str(RATCHET_BASELINE.relative_to(ROOT)),
+            lambda k, n: f'"{k}": {n}' if n else None,
+            "python3 scripts/check/check-user-surface-ids.py --update-ratchet",
+        )
     return bad
+
+
+def write_ratchet() -> int:
+    now = {k: len(v) for k, v in sorted(ratchet_sites().items())}
+    RATCHET_BASELINE.write_text(json.dumps({
+        "_comment": (
+            "Internal ids (issue/RFC/phase) in the CLI library's string literals and "
+            "in build-script panic texts, per file -- see "
+            "scripts/check/check-user-surface-ids.py. A SHRINKING "
+            "backlog (issue 2443): move each id to a source comment and lower the count."
+        ),
+        "counts": now,
+    }, indent=2) + "\n")
+    print(f"{NAME}: ratchet baseline written -- {sum(now.values())} id(s) in {len(now)} file(s).")
+    return 0
 
 
 # --- build-script warnings --------------------------------------------------
@@ -224,6 +305,43 @@ WARNING_PREFIX = re.compile(r"^cargo::?warning=")
 # A literal handed to a warning helper: `warn(`, `.note(`, optionally through
 # `&format!(` / `format!(`, with only whitespace between.
 WARNING_CALL = re.compile(r"(?:\bwarn|\.note)\(\s*&?\s*(?:format!\(\s*)?$")
+
+
+# A literal handed to a panic: `panic!(`, `unreachable!(`, `.expect(`, or an
+# `assert!`'s message after its condition, optionally through `format!(`.
+PANIC_CALL = re.compile(
+    r"(?:\b(?:panic|unreachable|todo)!\(|\.expect\(|\bassert(?:_eq|_ne)?!\([^;]*?,)"
+    r"\s*&?\s*(?:format!\(\s*)?$",
+    re.S,
+)
+
+
+def build_script_files() -> list[str]:
+    files = subprocess.run(
+        ["git", "ls-files", *BUILD_SCRIPT_GLOBS], cwd=ROOT, capture_output=True, text=True,
+        check=True,
+    ).stdout.split()
+    return [rel for rel in sorted(set(files)) if not SKIP_TREES.search("/" + rel)]
+
+
+def panic_literals(src: str) -> list[tuple[int, str]]:
+    out = []
+    for ln, start, end in rust_strings(src, spans=True):
+        before = src[max(0, start - 120) : start].rstrip('r#"b')
+        if PANIC_CALL.search(before):
+            out.append((ln, src[start:end]))
+    return out
+
+
+def build_script_panic_sites() -> dict[str, list[str]]:
+    found: dict[str, list[str]] = {}
+    for rel in build_script_files():
+        for ln, text in panic_literals((ROOT / rel).read_text()):
+            for tok in ids(text):
+                found.setdefault(rel, []).append(
+                    f"{rel}:{ln}: {tok!r} in {' '.join(text.split())[:90]!r}"
+                )
+    return found
 
 
 def build_script_warning_hits() -> list[str]:
@@ -462,6 +580,20 @@ def self_test() -> None:
         if WARNING_PREFIX.match(text) or WARNING_CALL.search(before):
             got += [(ln, t) for t in ids(text)]
     assert got == [(1, "issue 1352"), (2, "phase-474"), (3, "RFC-0100")], f"self-test: build {got}"
+    # Issue 2443 -- a build-script panic text is read; a plain literal is not.
+    rs = (
+        'fn main() {\n'
+        '    panic!("bad (issue 1896)");\n'
+        '    let v = x.expect(&format!("no {} (phase-474)", y));\n'
+        '    assert!(n < 3, "too many (RFC-0100)");\n'
+        '    let s = "data (issue 1234)";\n'
+        '}\n'
+    )
+    got = [(ln, t) for ln, text in panic_literals(rs) for t in ids(text)]
+    assert got == [(2, "issue 1896"), (3, "phase-474"), (4, "RFC-0100")], f"self-test: panic {got}"
+    # Issue 2443 -- a test-only module file is recognised, a plain one is not.
+    decl = "#[cfg(test)]\nmod golden;\n#[cfg(test)]\npub(crate) mod tests_c;\nmod lower;\n"
+    assert [m.group(1) for m in TEST_MOD_DECL.finditer(decl)] == ["golden", "tests_c"], "self-test: cfg(test) mod"
     # Issue 2443 -- a colcon refusal is read; a docstring and a comment are not.
     py = (
         '"""Module doc, RFC-0087 D2."""\n'
@@ -482,15 +614,19 @@ def self_test() -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--update-ratchet", action="store_true",
+                    help="rewrite the counted ratchet baseline from the tree")
     ap.add_argument("--cli", help="the nros binary to render (default: the in-tree build)")
     args = ap.parse_args()
     self_test()
     if args.self_test:
         print(f"{NAME}: self-test OK")
         return 0
+    if args.update_ratchet:
+        return write_ratchet()
 
     bad = (
-        source_hits() + refusal_file_hits() + book_hits() + build_script_warning_hits()
+        source_hits() + ratchet_hits() + book_hits() + build_script_warning_hits()
         + colcon_hits()
     )
     cli = args.cli
@@ -502,7 +638,7 @@ def main() -> int:
     if cli:
         bad += rendered_hits(cli)
     if bad:
-        print(f"{NAME}: {len(bad)} internal id(s) on the user surface:", file=sys.stderr)
+        print(f"{NAME}: internal ids on the user surface ({len(bad)} line(s)):", file=sys.stderr)
         for b in bad:
             print(f"  {b}", file=sys.stderr)
         print(
@@ -520,7 +656,7 @@ def main() -> int:
             NAME, f"no in-tree nros CLI (`just setup-cli`); {rendered} not read"
         )
     print(
-        f"{NAME}: OK (cmd/ strings, CLI refusal files, build-script warnings, colcon "
+        f"{NAME}: OK (cmd/ strings, CLI library + build-script panic ratchet, build-script warnings, colcon "
         f"messages, {BOOK_SCOPE}, "
         f"{rendered})"
     )

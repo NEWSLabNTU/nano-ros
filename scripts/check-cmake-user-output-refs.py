@@ -12,12 +12,13 @@ nothing to do. The explanation still exists: `nros_message_detail()`
 WHAT IS COUNTED
 
 Text a default-level configure or build shows: the string arguments of
-`message(STATUS|NOTICE|WARNING|AUTHOR_WARNING|DEPRECATION ...)` and a custom command's or
+`message(STATUS|NOTICE|WARNING|AUTHOR_WARNING|DEPRECATION|FATAL_ERROR|SEND_ERROR ...)` and a custom command's or
 target's `COMMENT "..."`, in every tracked `.cmake` file outside tests and
 examples plus the root `CMakeLists.txt`, that cite an issue (`issue 1234`,
 `#1234`), an RFC (`RFC-0100`) or a phase (`phase-517`). `FATAL_ERROR` and
-`SEND_ERROR` are NOT counted: a build that stops is being diagnosed, and the
-issue that explains it is a fair thing to name there.
+`SEND_ERROR` ARE counted (issue 2443, user ruling 2026-11-12, option A): a
+build-stopping refusal names what, where and how to fix, and its id lives in
+a comment above it or in `nros_message_detail()`.
 
 A RATCHET, keyed per file: the sites that predate this gate are recorded in
 `.config/cmake-user-output-refs.json` and may only shrink. A rise fails; a fall
@@ -44,6 +45,8 @@ REF = re.compile(r"\b(issues? \d{4}|RFC-\d{4}|phase-\d{3})|#\d{4}\b")
 # Issue 2305 -- `DEPRECATION` prints at the default level too (a warning,
 # unless CMAKE_WARN_DEPRECATED is turned off).
 SHOWN = ("STATUS", "NOTICE", "WARNING", "AUTHOR_WARNING", "DEPRECATION")
+# Issue 2443 -- ruling A: a refusal that stops the build carries no id either.
+SHOWN += ("FATAL_ERROR", "SEND_ERROR")
 STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
 
 
@@ -116,7 +119,7 @@ def selftest(verbose=False):
            'add_custom_target(x COMMENT "stamp (issues 0740, 1783)" VERBATIM)\n'
            'message(WARNING "see RFC-0100")\n')
     fatal = 'message(FATAL_ERROR "stop (issue 1525)")\n# message(STATUS "issue 1")\n'
-    ok = sites(good) == [] and len(sites(bad)) == 3 and sites(fatal) == []
+    ok = sites(good) == [] and len(sites(bad)) == 3 and len(sites(fatal)) == 1
     if verbose:
         print("check-cmake-user-output-refs: selftest " + ("ok" if ok else "FAILED"))
     if not ok:
@@ -178,7 +181,8 @@ def main():
                 print(f"      :{line}  {shown[:100]}", file=sys.stderr)
         print("\n  Say what happened in the STATUS line and move the reasoning, with its\n"
               "  issue or RFC, into nros_message_detail() (cmake/NanoRosDiagnostics.cmake),\n"
-              "  which `nros build -v` shows. An error that stops the build may name it.",
+              "  which `nros build -v` shows. An error that stops the build names what,\n"
+              "  where and how to fix; its id goes in a comment above the message.",
               file=sys.stderr)
     if fell:
         for line in fell_instructions(
