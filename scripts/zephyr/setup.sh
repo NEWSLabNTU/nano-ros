@@ -84,26 +84,28 @@ SDK_INSTALL_DIR="$SCRIPT_DIR/sdk"
 #
 # THE SDK IS A PER-LINE FACT, NOT A CONSTANT. Each Zephyr tree states the SDK it
 # needs in `zephyr/SDK_VERSION`, and `FindZephyr-sdk.cmake` refuses anything
-# older: 3.7 LTS wants 0.16.8, 4.4 wants 1.0.1. The manifest and the patch set
+# older: 3.7 LTS wants 0.16.9, 4.4 wants 1.0.1. The manifest and the patch set
 # were already dispatched per line; this was not, so
 # `NROS_ZEPHYR_VERSION=4.4 just zephyr setup` exited 0 and produced a workspace
 # that could not build any Cortex-M target. The failure surfaced only at the
 # first `west build`, as a bare `FindZephyr-sdk.cmake:160 find_package` error
 # naming neither the SDK version nor the step that chose it.
 #
-# Each arm names an INDEX ENTRY; the index stays the SSOT for URLs, checksums
-# and host keying. Adding a Zephyr line = a new `[tool.zephyr-sdk-*]` table
-# plus an arm here.
+# Each arm names an INDEX ENTRY; the index stays the SSOT for URLs, checksums,
+# host keying AND the version. Adding a Zephyr line = a new
+# `[tool.zephyr-sdk-*]` table plus an arm here.
+#
+# issue 2389 — the version is READ from that entry, never restated. This file
+# carried "0.16.8" beside the index's, so moving the 3.7 line to v3.7.2 (SDK
+# 0.16.9) installed 0.16.9 while this script resolved and logged 0.16.8.
 case "$MANIFEST" in
-    west-4.4.yml)
-        ZEPHYR_SDK_VERSION="1.0.1"
-        ZEPHYR_SDK_TOOL="zephyr-sdk-1-0-1"
-        ;;
-    *)
-        ZEPHYR_SDK_VERSION="0.16.8"
-        ZEPHYR_SDK_TOOL="zephyr-sdk"
-        ;;
+    west-4.4.yml) ZEPHYR_SDK_TOOL="zephyr-sdk-1-0-1" ;;
+    *) ZEPHYR_SDK_TOOL="zephyr-sdk" ;;
 esac
+if ! ZEPHYR_SDK_VERSION="$(python3 "$NROS_REPO_DIR/scripts/lib/index_tool.py" version "$ZEPHYR_SDK_TOOL")"; then
+    echo "[ERROR] cannot read [tool.$ZEPHYR_SDK_TOOL] version from nros-sdk-index.toml" >&2
+    exit 1
+fi
 
 # issue 1254 / phase-449 W3 — the SDK lives in the STORE, resolved by the one
 # resolver, with the in-checkout copy kept as the last arm so a host provisioned
@@ -632,7 +634,7 @@ echo "SDK:       $SDK_PATH"
 echo ""
 echo "Structure:"
 echo "  $NANO_ROS_NAME/  -> $NROS_REPO_DIR (symlink)"
-echo "  zephyr/          - Zephyr RTOS v3.7.0"
+echo "  zephyr/          - Zephyr RTOS v3.7.2"
 echo "  modules/         - Zephyr modules (lang/rust, HALs)"
 echo ""
 echo "Next steps:"

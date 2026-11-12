@@ -200,7 +200,7 @@ No run split the marker and none failed with `ConnectionFailed`.
 
 The one failure is a third shape: no output after boot, and the full 90 s cell
 timeout used without the 10 s budget ever ending in `ConnectionFailed`. That is
-[issue 2389](../2389-zephyr-a53-open-silent-past-connect-budget.md).
+[issue 2389](2389-zephyr-a53-open-silent-past-connect-budget.md).
 
 ## Acceptance
 

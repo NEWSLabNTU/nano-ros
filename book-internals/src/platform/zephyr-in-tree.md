@@ -35,7 +35,7 @@ nros/
 ├── west.yml                          # West manifest
 └── zephyr-workspace/                 # Created by setup.sh (gitignored)
     ├── nros -> ../                   # Symlink back to repo root
-    ├── zephyr/                       # Zephyr RTOS v3.7.0
+    ├── zephyr/                       # Zephyr RTOS v3.7.2
     └── modules/                      # HALs, zephyr-lang-rust
 ```
 

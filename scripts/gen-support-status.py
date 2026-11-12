@@ -64,6 +64,28 @@ def rust_toolchain():
     return tc["channel"], tc.get("targets", [])
 
 
+def macos_floor(tool):
+    """The highest `floor.macos` over `[tool.<tool>]`'s dist rows, or None.
+
+    READ from the index, never spelled here: the floor is MEASURED from the
+    artifact (`scripts/sdk/measure-dist-floor.py`) and moves with the pin, so a
+    copy on this page would be the second spelling issue 2389 removed from the
+    shell scripts (SDK 0.16.9 raised it from 11.0 to 14.0).
+    """
+    try:
+        import tomllib
+    except ImportError:  # Python < 3.11
+        import tomli as tomllib
+    with open(INDEX, "rb") as fh:
+        entry = tomllib.load(fh).get("tool", {}).get(tool, {})
+    floors = [d.get("floor", {}).get("macos")
+              for d in entry.get("dist", {}).values() if isinstance(d, dict)]
+    floors = [f for f in floors if f]
+    if not floors:
+        return None
+    return max(floors, key=lambda f: tuple(int(x) for x in f.split(".")))
+
+
 def zpico_version_txt():
     sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
     from source_locate import located_or_dest  # RFC-0103 D5: the tree is located
@@ -123,6 +145,10 @@ def render():
     ver = parse_index_versions()
     channel, targets = rust_toolchain()
     zp_idx = v(ver, "zenoh-pico")
+    zsdk_macos = macos_floor("zephyr-sdk")
+    if not zsdk_macos:
+        sys.exit("gen-support-status: `[tool.zephyr-sdk]` states no macOS dist "
+                 "floor, and the Zephyr SDK row quotes it (issue 2389).")
     zpico_version_agrees(zp_idx, zpico_version_txt())
 
     lines = [
@@ -199,7 +225,11 @@ def render():
         f"| ThreadX | `{v(ver,'threadx')}` | ThreadX (Linux sim + QEMU RISC-V64) |",
         f"| NetX Duo | `{v(ver,'threadx-netxduo')}` | ThreadX networking |",
         f"| NuttX kernel | `{v(ver,'nuttx-kernel')}` | NuttX (QEMU armv7a / rv32) |",
-        f"| Zephyr SDK | `{v(ver,'zephyr-sdk')}` (+ `{v(ver,'zephyr-sdk-1-0-1')}` for the 4.4 rolling line) | Zephyr module builds |",
+        # Maintainer ruling 2026-11-12 (issue 2389): the macOS floor that comes
+        # with the SDK is ACCEPTED, and is stated beside the pin without
+        # contradicting install.md -- nano-ros itself runs on Linux hosts only.
+        f"| Zephyr SDK | `{v(ver,'zephyr-sdk')}` (+ `{v(ver,'zephyr-sdk-1-0-1')}` for the 4.4 rolling line); "
+        f"its macOS host build needs macOS {zsdk_macos.split('.')[0]}+ (nano-ros hosts: Linux only) | Zephyr module builds |",
         f"| mbedTLS | `{v(ver,'mbedtls')}` | zenoh TLS transport |",
         "",
         "These pins are **decisions, not lags** — they move only with a",

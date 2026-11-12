@@ -13,7 +13,7 @@ to *your* workspace by `nros setup` / `west patch`, never shipped pre-applied.
 
 ```
 nano-ros-app/            # this repo (the west manifest repo)
-├── west.yml             # pins Zephyr (v3.7.0) + imports nano-ros
+├── west.yml             # pins Zephyr (v3.7.2) + imports nano-ros
 └── app/                 # the application
     ├── CMakeLists.txt   # find_package(Zephyr) + nano_ros_node_register(TYPED C)
     ├── system.toml      # the image: board + RMW (zenoh); the module renders it
@@ -45,7 +45,7 @@ export PATH="${NROS_HOME:-$HOME/.nros}/bin:$PATH"           # if it says to
 
 # 4. Zephyr SDK — nros setup does NOT provide it; install the SDK the standard
 #    Zephyr way and point ZEPHYR_SDK_INSTALL_DIR at it (or register it):
-export ZEPHYR_SDK_INSTALL_DIR=/path/to/zephyr-sdk-0.16.8
+export ZEPHYR_SDK_INSTALL_DIR=/path/to/zephyr-sdk-0.16.9
 
 # 5. nano-ros's patch set for the workspace's Zephyr line, into YOUR workspace:
 #    the native_sim socket (NSOS) patches and, in a workspace that holds
@@ -88,7 +88,7 @@ see the book.
 
 ## Notes
 
-- **Tested Zephyr pin.** `west.yml` pins `v3.7.0` (LTS). The patches + sha/anchors
+- **Tested Zephyr pin.** `west.yml` pins `v3.7.2` (LTS). The patches + sha/anchors
   are keyed to nano-ros-tested versions; bump `zephyr` revision in lockstep with a
   nano-ros release. (4.4 line: `v4.4.0`, Python ≥ 3.12, `-S nros-zenoh` snippet.)
 - **Rust apps** name their `[lib]` `rustapp` (a `zephyr-lang-rust` contract) and

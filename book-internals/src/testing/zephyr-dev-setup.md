@@ -30,7 +30,7 @@ repos/
 │
 └── nano-ros-workspace/           # Created by setup script
     ├── nros -> ../nros   # Symlink to your repo
-    ├── zephyr/                   # Zephyr RTOS v3.7.0
+    ├── zephyr/                   # Zephyr RTOS v3.7.2
     └── modules/                  # HALs, zephyr-lang-rust
 ```
 

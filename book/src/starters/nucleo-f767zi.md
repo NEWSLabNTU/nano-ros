@@ -67,7 +67,7 @@ manifest:
   projects:
     - name: zephyr
       remote: zephyrproject-rtos
-      revision: v3.7.0
+      revision: v3.7.2
       import:
         name-allowlist: [cmsis, picolibc, mbedtls, tinycrypt, mcuboot, net-tools, hal_stm32]
     # Rust support: only a Rust app builds with it. Pinned to the revision

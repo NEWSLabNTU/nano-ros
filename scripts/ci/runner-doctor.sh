@@ -870,6 +870,16 @@ nros_runner_doctor() {
 # runner-doctor-sdk-resolution` runs it on the fast line.
 _nros_runner_self_test() {
     local tmp fails=0 saved_home="${HOME}" saved_env="${ZEPHYR_SDK_INSTALL_DIR:-}"
+    # The SDK version the cases stage, READ from the index (the 3.7 line's
+    # `[tool.zephyr-sdk]`) rather than spelled here: the store arm answers
+    # through `nros dev sdk path`, which names the PINNED version whatever is
+    # asked, so a literal here passes only while it equals the pin (issue 2389:
+    # the 0.16.8 -> 0.16.9 bump turned the store case red).
+    local _stv
+    _stv="$(NROS_ZEPHYR_VERSION="" bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/zephyr-sdk.sh" version)" || {
+        printf 'runner-doctor self-test: cannot read the SDK version from the index\n' >&2
+        return 1
+    }
     tmp="$(mktemp -d)"
     # shellcheck disable=SC2064
     trap "rm -rf '$tmp'; HOME='$saved_home'" RETURN
@@ -894,7 +904,7 @@ _nros_runner_self_test() {
     # would otherwise have their own SDK leak into a staged case.
     _st_resolve() {
         HOME="$1/home" NROS_HOME="$1/store" \
-            _nros_runner_zephyr_sdk_path 0.16.8 "$1/root"
+            _nros_runner_zephyr_sdk_path "${_stv}" "$1/root"
     }
     _st_expect() { # <label> <got> <want>
         [ "$2" = "$3" ] && _st_ok "$1" || _st_bad "$1" "got '$2'"
@@ -907,28 +917,28 @@ _nros_runner_self_test() {
     # default. This is the case that failed every merge-group L3 job.
     local d got
     d="$(_st_stage outside)"
-    _st_register "$d" aaa "$tmp/elsewhere/zephyr-sdk-0.16.8" create
+    _st_register "$d" aaa "$tmp/elsewhere/zephyr-sdk-${_stv}" create
     got="$(_st_resolve "$d")"
     _st_expect "an SDK outside the checkout is found via the cmake registry" \
-        "$got" "$tmp/elsewhere/zephyr-sdk-0.16.8	cmake package registry"
+        "$got" "$tmp/elsewhere/zephyr-sdk-${_stv}	cmake package registry"
 
     # A live entry beats a stale one whatever order the glob yields them in —
     # `aaa` sorts first and points at nothing.
     d="$(_st_stage stale_and_live)"
-    _st_register "$d" aaa "$tmp/gone/zephyr-sdk-0.16.8" absent
-    _st_register "$d" bbb "$tmp/live/zephyr-sdk-0.16.8" create
+    _st_register "$d" aaa "$tmp/gone/zephyr-sdk-${_stv}" absent
+    _st_register "$d" bbb "$tmp/live/zephyr-sdk-${_stv}" create
     got="$(_st_resolve "$d")"
     _st_expect "a live registry entry beats a stale one" \
-        "$got" "$tmp/live/zephyr-sdk-0.16.8	cmake package registry"
+        "$got" "$tmp/live/zephyr-sdk-${_stv}	cmake package registry"
 
     # A stale entry ALONE is still returned, so the caller can report "cmake
     # names this path and nothing is there" instead of the misleading
     # "not registered with cmake".
     d="$(_st_stage stale_only)"
-    _st_register "$d" aaa "$tmp/gone2/zephyr-sdk-0.16.8" absent
+    _st_register "$d" aaa "$tmp/gone2/zephyr-sdk-${_stv}" absent
     got="$(_st_resolve "$d")"
     _st_expect "a stale-only entry is reported, not silently discarded" \
-        "$got" "$tmp/gone2/zephyr-sdk-0.16.8	cmake package registry"
+        "$got" "$tmp/gone2/zephyr-sdk-${_stv}	cmake package registry"
 
     # An entry for a DIFFERENT version must not be mistaken for this one —
     # `zephyr/SDK_VERSION` demands an exact version.
@@ -936,45 +946,45 @@ _nros_runner_self_test() {
     _st_register "$d" aaa "$tmp/other/zephyr-sdk-0.17.4" create
     got="$(_st_resolve "$d")"
     _st_expect "an entry for another SDK version is ignored" \
-        "$got" "$d/root/scripts/zephyr/sdk/zephyr-sdk-0.16.8	checkout default"
+        "$got" "$d/root/scripts/zephyr/sdk/zephyr-sdk-${_stv}	checkout default"
 
     # Neither env nor registry: the dev-box default, preserved.
     d="$(_st_stage bare)"
     got="$(_st_resolve "$d")"
     _st_expect "with no env and no registry the checkout default is used" \
-        "$got" "$d/root/scripts/zephyr/sdk/zephyr-sdk-0.16.8	checkout default"
+        "$got" "$d/root/scripts/zephyr/sdk/zephyr-sdk-${_stv}	checkout default"
 
     # issue 1254 — the STORE arm, and its ORDER. Both halves matter: that a
     # store copy is found at all, and that it beats the checkout copy, which is
     # staged here too so the case cannot pass by the checkout arm being absent.
     d="$(_st_stage store)"
-    mkdir -p "$d/store/sdk/zephyr-sdk/0.16.8/zephyr-sdk-0.16.8"
-    mkdir -p "$d/root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
+    mkdir -p "$d/store/sdk/zephyr-sdk/${_stv}/zephyr-sdk-${_stv}"
+    mkdir -p "$d/root/scripts/zephyr/sdk/zephyr-sdk-${_stv}"
     got="$(_st_resolve "$d")"
     _st_expect "the store copy is used, and beats the in-checkout copy" \
-        "$got" "$d/store/sdk/zephyr-sdk/0.16.8/zephyr-sdk-0.16.8	store"
+        "$got" "$d/store/sdk/zephyr-sdk/${_stv}/zephyr-sdk-${_stv}	store"
 
     # ...and the registry still outranks the store, so a host that deliberately
     # registered one SDK is not silently moved to another.
     d="$(_st_stage store_vs_registry)"
-    mkdir -p "$d/store/sdk/zephyr-sdk/0.16.8/zephyr-sdk-0.16.8"
-    _st_register "$d" aaa "$tmp/live/zephyr-sdk-0.16.8" create
+    mkdir -p "$d/store/sdk/zephyr-sdk/${_stv}/zephyr-sdk-${_stv}"
+    _st_register "$d" aaa "$tmp/live/zephyr-sdk-${_stv}" create
     got="$(_st_resolve "$d")"
     _st_expect "the cmake registry still outranks the store" \
-        "$got" "$tmp/live/zephyr-sdk-0.16.8	cmake package registry"
+        "$got" "$tmp/live/zephyr-sdk-${_stv}	cmake package registry"
 
     # The explicit override wins over the registry, in both spellings.
     d="$(_st_stage env_sdk)"
-    _st_register "$d" aaa "$tmp/live/zephyr-sdk-0.16.8" create
-    got="$(ZEPHYR_SDK_INSTALL_DIR="$tmp/chosen/zephyr-sdk-0.16.8" _st_resolve "$d")"
+    _st_register "$d" aaa "$tmp/live/zephyr-sdk-${_stv}" create
+    got="$(ZEPHYR_SDK_INSTALL_DIR="$tmp/chosen/zephyr-sdk-${_stv}" _st_resolve "$d")"
     _st_expect "ZEPHYR_SDK_INSTALL_DIR naming the SDK beats the registry" \
-        "$got" "$tmp/chosen/zephyr-sdk-0.16.8	ZEPHYR_SDK_INSTALL_DIR"
+        "$got" "$tmp/chosen/zephyr-sdk-${_stv}	ZEPHYR_SDK_INSTALL_DIR"
 
     d="$(_st_stage env_parent)"
-    _st_register "$d" aaa "$tmp/live/zephyr-sdk-0.16.8" create
+    _st_register "$d" aaa "$tmp/live/zephyr-sdk-${_stv}" create
     got="$(ZEPHYR_SDK_INSTALL_DIR="$tmp/parent" _st_resolve "$d")"
     _st_expect "ZEPHYR_SDK_INSTALL_DIR naming the parent appends the version" \
-        "$got" "$tmp/parent/zephyr-sdk-0.16.8	ZEPHYR_SDK_INSTALL_DIR"
+        "$got" "$tmp/parent/zephyr-sdk-${_stv}	ZEPHYR_SDK_INSTALL_DIR"
 
 
     # The whole zephyr check, on a host shaped like the runner that failed:
@@ -987,12 +997,12 @@ _nros_runner_self_test() {
     self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
     e2e="$tmp/e2e"
     mkdir -p "$e2e"/{home/.cmake/packages/Zephyr-sdk,root,ws/zephyr,bin} \
-             "$e2e"/sdk/zephyr-sdk-0.16.8/{cmake,arm-zephyr-eabi/bin}
-    printf '0.16.8\n' > "$e2e/ws/zephyr/SDK_VERSION"
+             "$e2e"/sdk/zephyr-sdk-${_stv}/{cmake,arm-zephyr-eabi/bin}
+    printf '%s\n' "$_stv" > "$e2e/ws/zephyr/SDK_VERSION"
     printf '#!/bin/sh\necho "West version: v1.5.0"\n' > "$e2e/bin/west"
-    printf '#!/bin/sh\nexit 0\n' > "$e2e/sdk/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
-    chmod +x "$e2e/bin/west" "$e2e/sdk/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
-    printf '%s\n' "$e2e/sdk/zephyr-sdk-0.16.8/cmake" > "$e2e/home/.cmake/packages/Zephyr-sdk/aaa"
+    printf '#!/bin/sh\nexit 0\n' > "$e2e/sdk/zephyr-sdk-${_stv}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+    chmod +x "$e2e/bin/west" "$e2e/sdk/zephyr-sdk-${_stv}/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+    printf '%s\n' "$e2e/sdk/zephyr-sdk-${_stv}/cmake" > "$e2e/home/.cmake/packages/Zephyr-sdk/aaa"
 
     _st_doctor() { # <home> -> runs the label check in a clean environment
         # `_NROS_RUNNER_SELFTEST_CHILD` stops the child re-entering the
@@ -1033,7 +1043,7 @@ _nros_runner_self_test() {
     #      shared store (RFC-0095 D2), which must not be collateral damage.
     mkdir -p "$e2e/other/packages/core/nros-core" "$e2e/other/ws/zephyr"
     : > "$e2e/other/packages/core/nros-core/Cargo.toml"
-    printf '0.16.8\n' > "$e2e/other/ws/zephyr/SDK_VERSION"
+    printf '%s\n' "$_stv" > "$e2e/other/ws/zephyr/SDK_VERSION"
     _st_doctor_ws() { # <workspace>
         PATH="$e2e/bin:$PATH" HOME="$e2e/home" NROS_RUNNER_REPO_ROOT="$e2e/root" \
         NROS_ZEPHYR_WORKSPACE="$1" NROS_RUNNER_NO_ACTIVATE=1 \

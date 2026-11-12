@@ -13,6 +13,7 @@ those use and nothing else:
     index_tool.py extract <tool>...         print those rows as TOML, verbatim
     index_tool.py check-extract <file> <tool>...
                                             fail if <file> is not that output
+    index_tool.py version <tool>            the `[tool.<tool>] version`
     index_tool.py board-packages <board>    the `[board.<board>] packages` list,
                                             one per line (issue 2413)
 
@@ -200,6 +201,13 @@ def main(argv: list[str]) -> int:
     if len(argv) in (4, 6) and argv[0] == "install" and argv[2] == "--prefix":
         index = Path(argv[5]) if len(argv) == 6 and argv[4] == "--index" else None
         install(argv[1], Path(argv[3]), load_tool(argv[1], index))
+        return 0
+    if len(argv) == 2 and argv[0] == "version":
+        # issue 2389 — a caller that needs a tool's VERSION (a store path, a log
+        # line) reads it here, never restates it: `scripts/zephyr/setup.sh`
+        # carried its own copy of the SDK version and kept 0.16.8 after the
+        # index moved to 0.16.9.
+        print(load_tool(argv[1])["version"])
         return 0
     if len(argv) == 2 and argv[0] == "board-packages":
         pkgs = board_packages(argv[1])

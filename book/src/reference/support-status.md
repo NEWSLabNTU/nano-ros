@@ -67,7 +67,7 @@ procurement view, including parts with no board package, is
 | ThreadX | `6.4.1` | ThreadX (Linux sim + QEMU RISC-V64) |
 | NetX Duo | `6.4.x` | ThreadX networking |
 | NuttX kernel | `12.13.0` | NuttX (QEMU armv7a / rv32) |
-| Zephyr SDK | `0.16.8` (+ `1.0.1` for the 4.4 rolling line) | Zephyr module builds |
+| Zephyr SDK | `0.16.9` (+ `1.0.1` for the 4.4 rolling line); its macOS host build needs macOS 14+ (nano-ros hosts: Linux only) | Zephyr module builds |
 | mbedTLS | `3.x` | zenoh TLS transport |
 
 These pins are **decisions, not lags** — they move only with a
