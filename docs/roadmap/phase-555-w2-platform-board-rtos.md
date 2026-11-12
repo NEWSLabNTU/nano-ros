@@ -1,8 +1,7 @@
 # Phase 555 W2 -- platform-board-rtos: verdicts and decision brief
 
-**Status (2026-11-13). OPEN: the 118 half is reviewed; the 133 half (0053,
-0064, 0072, 0073, 0076, 0093, 0111, 0112, 0114, 0115) is in progress. The brief
-below waits for the user's ruling.**
+**Status (2026-11-13). OPEN: both halves are reviewed (118 here; 133 in #3673).
+The brief below waits for the user's ruling.**
 
 The platform-board-rtos slice of
 [phase-555](phase-555-design-doc-review.md) W2. Reviewers: 118 (0003, 0012,
@@ -23,6 +22,16 @@ and the questions for the user.
 | 0039 | PX4 integration | keep | review note |
 | 0049 | Hierarchical platform and board config | amend (brief P2) | `amends: [rfc-0049]` added on RFC-0086 and RFC-0098 |
 | 0126 | NuttX on NuttX's infrastructure | keep; RFC-0130 still has to land | review note |
+| 0053 | ThreadX multi-sched-task execution | amend (133): the title and decision said static stacks; the code and its own revision use a byte pool | fixed in #3673 |
+| 0064 | Board support organization | amend (133): still says LIVE though all its phases are archived; steps 6 and 8 never landed (brief P7) | review note |
+| 0072 | RTOS integration: the RTOS owns its build | keep (133). Takes 0003 in under P1 | review note |
+| 0073 | Platform clock | keep (133) | review note |
+| 0076 | The platform ABI: a caller asks | keep (133) | review note |
+| 0093 | A board name states its reach | keep (133) | review note |
+| 0111 | An image's entry framework is its own field | keep (133); not started and has no phase (brief P5) | review note |
+| 0112 | Frameworks through one host-driven contract | amend (133): Tier 0 withdrawn, D5 not done (brief P6) | status line fixed in #3673 |
+| 0114 | Board support registry | keep (133) | review note |
+| 0115 | Emulator-first board policy | keep (133) | review note |
 | 0118 | Target execution model | keep. Reviewed by 139 AUO book in the docs-ux-diagnostics slice, which moved its area here (#3657) | area moved |
 
 Tier 2 pairs, read in the newer RFC's own words:
@@ -35,7 +44,7 @@ Tier 2 pairs, read in the newer RFC's own words:
 | 0014-0049 | Plain reference, wrongly attributed: the out-of-tree work was RFC-0013's, now RFC-0087's. Fix 0049. |
 | 0017-0047 | Plain reference. |
 | 0034-0042 | Plain reference: RFC-0042 says "RFC-0034 D6 stands". |
-| 0049-0064 | A proposed change: RFC-0064 item 8 extends the ladder to the build block. RFC-0064 is Draft. Whether it landed is unverified. |
+| 0049-0064 | A proposed change that did NOT land (verified by 133): `nros-platform-config` reads `arch_profiles`, `compile`, `required_env` and `[arch.*]` from platform files only, and board descriptors carry only `[capabilities]` and `[knobs]`. See P7. |
 | 0049-0098 | A real change. The frontmatter link is added in this review. |
 | 0049-0102 | Plain reference. |
 | 0040-0064 | Plain reference. |
@@ -82,4 +91,53 @@ RFC-0103?**
   respect. Under the AGENTS.md drift rule, flipping to Stable also updates
   ARCHITECTURE.md.
 
-133's items for the other half are added here when that half is reviewed.
+**P4. Does an implemented Draft become Stable?** (133)
+
+- What has changed: 0053, 0072, 0073, 0076, 0093 and 0114 are Draft, but
+  their phases are archived complete. 0072's phase-349 still has parked waves.
+- Options:
+  - (a) all six become Stable;
+  - (b) keep them Draft until each body is re-read against the code;
+  - (c) Stable only where the body has no `[OPEN]` and no parked waves:
+    0053, 0073, 0076, 0093 and 0114, not 0072.
+- Recommendation (133): (c), applied in every area, so that "Draft" means
+  something.
+- Cross-area: the workspace-system-model brief asks the same question (its
+  item 4) and recommends differently. ONE ruling should cover every area. My
+  P3 (0034) is an instance of it.
+
+**P5. RFC-0111 has no tracking phase.** (133)
+
+- What has changed: 0111 breaks the 2026-11-12 tracking rule. Its
+  `framework_for_board_key` mapping still exists in `nros-orchestration-ir`,
+  and 37 tracked files outside `docs/` name the board key it would retire.
+- Options:
+  - (a) open a phase for its seven steps;
+  - (b) archive the RFC;
+  - (c) fold it into 0112 D5 as one phase.
+- Recommendation (133): (a), with 0112 D5 as one of its items. The RTIC
+  dispatch-lint gap is a real defect.
+
+**P6. RFC-0112 after the Tier 0 withdrawal (RFC-0113 D8).** (133)
+
+- What has changed: D1, D2 and D4 are now a record of what was done. D3 and
+  D5 are still live, and RFC-0114 asks for its tier numbers in its own words.
+- Options:
+  - (a) amend in place;
+  - (b) supersede with a short RFC that holds D3 and D5;
+  - (c) merge D3 and D5 into 0113.
+- Recommendation (133): (a), plus verifying RTIC against criterion 5.
+
+**P7. RFC-0064 says LIVE, but its phases are closed.** (133)
+
+- What has changed: its tier and book sections are superseded by 0114, 0115
+  and 0124. Steps 6 and 8 never landed.
+- Options:
+  - (a) close it as Stable and file the open steps as issues;
+  - (b) split it into a short Stable RFC (the stance and R5), with the
+    ~1,100-line exploration log as an archived companion;
+  - (c) keep it LIVE and open a phase for steps 6 and 8.
+- Recommendation (133): (b), plus issues.
+
+One stale reference outside the RFCs (133): `examples/README.md` lines 16 and
+150 still list `esp32-c3-baremetal` as a platform.

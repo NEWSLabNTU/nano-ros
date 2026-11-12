@@ -14,8 +14,8 @@ superseded-by: null
 
 > **Config-home note (2026-06).** This RFC's design sections still reference
 > `config.toml [scheduling]`. That file is **retired** (Phase 172.K.6): scheduling
-> config now lives in `nros.toml` `[node.rt]` for direct-mode embedded apps
-> (RFC-0004 §7). Multi-node RT is **decided** (2026-06): node declares callback
+> config now lives in the standalone `config.toml`'s `[node.rt]` section for
+> direct-mode embedded apps (read by `nros-board-freertos/src/config.rs`; RFC-0004 §7). Multi-node RT is **decided** (2026-06): node declares callback
 > groups; `system.toml [tasks.<name>.<rtos>]` + `[[node_overrides]]` reassignment
 > own sched task config (RFC-0015 reconciliation); schema/codegen tracked by phase-227 /
 > Phase 94. The per-RTOS priority-mapping survey below is unaffected and current.
@@ -583,6 +583,6 @@ Stale references, each checked with `git ls-files` or `git grep` on main:
 
 Where newer designs or the code disagree:
 
-- The banner says scheduling config "now lives in `nros.toml [node.rt]` (RFC-0004 §7)". RFC-0004 itself records `nros.toml` as retired and the `[node.rt]` form as unused.
+- The banner said scheduling config "now lives in `nros.toml [node.rt]`". RFC-0004 records `nros.toml` as retired; `[node.rt]` is parsed from the standalone `config.toml` (`nros-board-freertos/src/config.rs`). Fixed in this review (found by 142).
 
 Any text change that alters the design waits for the area's decision brief, `docs/roadmap/phase-555-w2-platform-board-rtos.md`.
