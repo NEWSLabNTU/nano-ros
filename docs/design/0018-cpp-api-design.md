@@ -4,11 +4,22 @@ title: "C++ API Design — nros-cpp"
 status: Stable
 area: runtime-api
 since: 2026-03
-last-reviewed: 2026-06
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-287, phase-442]
 supersedes: []
 superseded-by: null
 ---
+
+> **Review 2026-11-13.** The constraints (section "Constraints": freestanding,
+> no exceptions, no heap) stand and are what
+> [RFC-0096](0096-cpp-freestanding-core-and-porting-layer.md) restores. The
+> names do not: [RFC-0089](0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
+> deleted the `nros::` C++ namespace, so the user surface is `rclcpp::`,
+> `rclcpp_action::` and `rclcpp_lifecycle::` under upstream include paths
+> (`packages/api/nros-cpp/include/rclcpp/`). The `nros::` names in "API
+> Mapping", "Detailed API Design" and "Usage Example" describe the surface
+> before phase-483. Whether those sections are rewritten or retired is a
+> question for the [phase-555 runtime-api brief](../roadmap/data/phase-555-w2-runtime-api-brief.md).
 
 # C++ API Design — nros-cpp
 

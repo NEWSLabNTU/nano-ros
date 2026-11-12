@@ -4,7 +4,7 @@ title: "RT Execution Model — Live Design Doc"
 status: Draft
 area: runtime-api
 since: 2026-05
-last-reviewed: 2026-06
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-162]
 supersedes: []
 superseded-by: null
@@ -13,6 +13,20 @@ superseded-by: null
 # RT Execution Model — Live Design Doc
 
 **Status:** Draft (in progress) · **Owner:** TBD · **Last updated:** 2026-05-04
+
+> **Review 2026-11-13: amended by four later RFCs.** Read these beside it:
+> [RFC-0084](0084-readiness-is-pushed-not-scanned.md) (readiness is pushed by
+> the arrival path), [RFC-0106](0106-executor-park.md) (how the executor waits
+> between dispatches), [RFC-0108](0108-executor-preemption-levels.md)
+> (dispatch order is the contract's rank, and a sched task splits into one
+> scheduler per core plus one worker per preemption level) and
+> [RFC-0113](0113-rt-unified-wait.md) (one wait for every platform and RMW).
+> Section 4's `ReadySet`, `SchedContext`, `Trigger::AllOf` and the overrun
+> policy exist (`packages/core/nros-node/src/executor/ready_set/mod.rs`,
+> `executor/sched_context.rs`, `executor/types.rs`, `packages/core/nros-node/src/timer.rs`);
+> `JobDescriptor` and `Activator` as named here do not. The phasing table
+> (section 9) is history: the scheduling harness is
+> [phase-162](../roadmap/archived/phase-162-rt-scheduling-harness.md), complete.
 
 > **Live doc.** Sections below are filled iteratively as design + RTOS research lands. RTOS-specific subsections marked _PENDING_ are populated by parallel research forks (`tmp/sched-research-*.md`).
 

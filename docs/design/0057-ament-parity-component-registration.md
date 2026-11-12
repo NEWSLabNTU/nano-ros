@@ -4,9 +4,10 @@ title: "Ament-parity component registration — split library/registration macro
 status: Stable
 area: runtime-api
 since: 2026-07
-last-reviewed: 2026-07
+last-reviewed: 2026-11-13
 implemented: 2026-07 (phase-305)
 implements-tracked-by: [phase-305]
+amends: [0044]
 supersedes: []
 superseded-by: null
 ---

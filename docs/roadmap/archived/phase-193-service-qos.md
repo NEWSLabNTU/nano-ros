@@ -19,8 +19,8 @@ service-create path (no silent downgrade) + the Cyclone `service_roundtrip`
 exercising a non-default profile + the RELIABLE-vs-policy-presence caveat
 documented. **Phase 193 complete** except the M3.3-deferred named-options structs.
 Design:
-[`docs/design/service-qos.md`](../design/service-qos.md); gap:
-[`docs/design/service-qos-gap.md`](../design/service-qos-gap.md).
+[RFC-0007](../../design/0007-service-qos.md); gap:
+[RFC-0008](../../design/0008-service-qos-gap.md).
 
 **Priority.** P2 — unblocks Phase 189.M3.3 (C/C++ service/action QoS + options
 parity); no MVP capability depends on it (services already work at the fixed
@@ -130,7 +130,7 @@ profiles.
       Cyclone `service_roundtrip` now drives the **non-default** path
       (RELIABLE+VOLATILE+KEEP_LAST(5) on both endpoints, exercising the
       `qos != nullptr` branch) — passes end-to-end. Caveat documented in
-      `docs/design/service-qos.md` §3: `validate_against` checks policy *presence*,
+      RFC-0007 section 3: `validate_against` checks policy *presence*,
       not the reliability *value*, so RELIABLE-for-request/reply is a documented
       contract (BEST_EFFORT is an opt-in trade), not a hard-enforced rule. Tests:
       `traits::tests::services_default_validates_and_rejects_missing_policy` +

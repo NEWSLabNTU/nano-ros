@@ -4,7 +4,7 @@ title: "Logger hierarchy: get_child, level inheritance, and what each backend se
 status: Stable
 area: runtime-api
 since: 2026-10
-last-reviewed: 2026-10
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-479]
 supersedes: []
 superseded-by: null

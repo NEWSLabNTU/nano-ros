@@ -4,13 +4,26 @@ title: "Service / action QoS — design"
 status: Stable
 area: runtime-api
 since: 2026-05
-last-reviewed: 2026-05
-implements-tracked-by: [phase-239]
-supersedes: []
+last-reviewed: 2026-11-13
+implements-tracked-by: [phase-193, phase-239]
+supersedes: [0008]
 superseded-by: null
 ---
 
 # Service / action QoS — design
+
+> **Landed (review 2026-11-13).** Built by
+> [phase-193](../roadmap/archived/phase-193-service-qos.md):
+> `Session::create_service` and `create_client` take a `qos: QoSProfile`
+> (`packages/core/nros-rmw/src/traits.rs:1985,2048`). The C names in section 4
+> predate the C API's move to rclc's names (RFC-0089). The shipped entry
+> points are `rclc_service_init_default`, `rclc_service_init_with_options`,
+> `rclc_client_init_default`, `rclc_client_init_with_options` and
+> `rclc_action_server_init_with_options`
+> (`packages/api/nros-c/src/service.rs:398,479,1353,1483`,
+> `packages/api/nros-c/src/action/server.rs:658`). How a client receives
+> into the service profile's `KEEP_LAST(10)` depth is
+> [RFC-0041](0041-unified-callback-receive-model.md).
 
 **Status:** design (2026-05-28). Closes the gap in
 [`0008-service-qos-gap.md`](0008-service-qos-gap.md) (the `create_service_*` no-QoS path),

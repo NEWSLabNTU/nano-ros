@@ -4,7 +4,7 @@ title: "A managed node has its own REP-2002 state machine, served under its own 
 status: Draft
 area: runtime-api
 since: 2026-11
-last-reviewed: 2026-11
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-554]
 amends: [RFC-0036, RFC-0037, RFC-0045, RFC-0060]
 supersedes: []

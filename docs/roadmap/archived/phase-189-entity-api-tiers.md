@@ -8,7 +8,7 @@
 a **convenient** surface matching rclcpp/rclrs/rclc (the 90% case) over **one
 customizable entity builder** that carries every knob (raw/typed, QoS,
 `rx_buffer` size, `MessageInfo`, session, sched-context). Enforce the
-[naming policy](../design/entity-api-tiers.md#naming-policy): no
+[naming policy](../../design/0022-entity-api-tiers.md#naming-policy): no
 `verb_noun_axis_axis_axis` identifiers — a new axis is one short builder method,
 never a longer name.
 
@@ -17,14 +17,14 @@ convenient surface landed (M1), and the `register_subscription_*` zoo was
 removed with all ~63 callers migrated (M2). **M3 DONE** (2026-05-29) — C/C++
 named-options parity across pub/sub/service/action + with-attachment subscription
 path; **M4** folded into M2. Phase 189 is complete. Design approved in
-([`docs/design/entity-api-tiers.md`](../design/entity-api-tiers.md)); split out
+([RFC-0022](../../design/0022-entity-api-tiers.md)); split out
 of Phase 172 (2026-05-28). Same precedent as Phase 187 (split from 172 W.5): a
 cross-cutting refactor that doesn't belong inside the orchestration follow-ups.
 
 **Priority.** P2 — ergonomics + tech-debt paydown; no MVP capability depends on
 it. **But Phase 172 bridge topic-forwarding depends on M1** (it needs the
 `.message_info()` + `.session()` knobs; see
-[`bridge-topic-forwarding.md`](../design/bridge-topic-forwarding.md)).
+[`bridge-topic-forwarding.md`](../../design/0009-bridge-topic-forwarding.md)).
 
 **Depends on.** Phase 172.K.5 (`NodeBuilder::session_idx` — the `.session()`
 knob's primitive) is landed. The `MessageInfo` attachment plumbing
@@ -56,7 +56,7 @@ application code.
       callback-capable node handle is a `NodeCtx<'_>` borrowing `&mut Executor`,
       used **one at a time** (entity handles are owned + outlive it — no `Arc`,
       matches the embedded `&mut` model; see
-      [`entity-api-tiers.md` §Borrow model](../design/entity-api-tiers.md)). The
+      [RFC-0022 "Borrow model"](../../design/0022-entity-api-tiers.md)). The
       bridge builds the dest publisher on one `NodeCtx` (dropped), then registers
       the source subscription on another.
       *Slice 1 DONE* (`5940a0c4f`): publisher builder on the session-borrowing
