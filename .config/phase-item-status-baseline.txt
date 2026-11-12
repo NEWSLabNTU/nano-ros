@@ -182,7 +182,7 @@ phase-546-zenoh-freertos-host-sockets.md 6
 phase-547-px4-pixhawk-emulator-spike.md 8
 phase-548-three-languages-every-board.md 4
 phase-549-px4-rust-c-uorb.md 5
-phase-550-nuttx-native-build-infrastructure.md 9
+phase-550-nuttx-native-build-infrastructure.md 6
 phase-551-starter-image.md 9
 phase-554-per-node-lifecycle.md 16
 phase-555-w2-workspace-system-model-133.md 5
