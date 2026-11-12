@@ -75,6 +75,8 @@ pub(crate) fn node_error_to_ret(err: nros_node::NodeError) -> rcl_ret_t {
         E::InvalidSchedContextBinding | E::BackendMismatch => RCL_RET_INVALID_ARGUMENT,
         E::DeclaredDepthMismatch | E::DeclaredQosMismatch => RCLC_RET_REJECTED,
         E::Serialization | E::Deserialization | E::ActionCreationFailed => RCL_RET_ERROR,
+        // RFC-0128 D1 -- the node already has a lifecycle state machine.
+        E::LifecycleAlreadyRegistered => RCLC_RET_ALREADY_EXISTS,
     }
 }
 

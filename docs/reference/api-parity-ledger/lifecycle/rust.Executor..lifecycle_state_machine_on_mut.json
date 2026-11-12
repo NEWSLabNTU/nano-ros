@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::lifecycle_state_machine_on_mut",
+  "verdict": "extension",
+  "why": "RFC-0128 D1 (phase-554 W1): the mutable twin of `lifecycle_state_machine_on`, used to register a node's transition callbacks and to trigger its transitions (autostart). Per node for the same reason: each managed node has its own machine."
+}

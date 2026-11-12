@@ -2243,9 +2243,13 @@ pub struct Executor<'s> {
     /// in [`crate::time_source::SilenceWatch`].
     #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
     pub(crate) sim_time_silence: crate::time_source::SilenceWatch,
+    /// RFC-0128 D1 (phase-554 W1): one REP-2002 state machine PER managed
+    /// node, keyed by the node it is served under. A heap table, so the
+    /// `Executor` value holds one `Vec` header whatever the node count (the
+    /// size ceiling of issue 0961); bounded by the node table, since a
+    /// managed node is a node.
     #[cfg(feature = "lifecycle-services")]
-    pub(crate) lifecycle:
-        Option<alloc::boxed::Box<crate::lifecycle_services::LifecycleRuntimeState>>,
+    pub(crate) lifecycle: alloc::vec::Vec<crate::lifecycle_services::LifecycleEntry>,
     /// Wall-clock instant at which the previous `spin_once` exited. The
     /// timer delta on the next call is measured from this point so any
     /// time the caller spent between `spin_once` invocations (e.g. an
@@ -2590,7 +2594,7 @@ impl<'s> Executor<'s> {
             #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
             sim_time_silence: crate::time_source::SilenceWatch::new(),
             #[cfg(feature = "lifecycle-services")]
-            lifecycle: None,
+            lifecycle: alloc::vec::Vec::new(),
             // Initialise the spin endpoint to construction time so the
             // very first `spin_once` credits time the caller spent
             // *before* it (e.g. setup, an explicit pre-spin sleep) just
@@ -12327,8 +12331,8 @@ impl<'s> Executor<'s> {
             // the common one) reaches a watching supervisor here.
             // SAFETY: see the matching invariant on the later call site.
             #[cfg(feature = "lifecycle-services")]
-            if let Some(lc) = &mut s.lifecycle {
-                let _ = unsafe { lc.process() };
+            for lc in s.lifecycle.iter_mut() {
+                let _ = unsafe { lc.state.process() };
             }
 
             // phase-474 I7 -- an idle spin is the natural slot for the queued
@@ -13011,8 +13015,8 @@ impl<'s> Executor<'s> {
         // of `register_lifecycle_services` guarantees the callback/context pair
         // stays live for as long as the executor (see that method's docs).
         #[cfg(feature = "lifecycle-services")]
-        if let Some(lc) = &mut s.lifecycle {
-            if let Ok(n) = unsafe { lc.process() } {
+        for lc in s.lifecycle.iter_mut() {
+            if let Ok(n) = unsafe { lc.state.process() } {
                 result.services_handled += n;
             }
         }
@@ -14262,7 +14266,7 @@ impl<'s> Executor<'s> {
     pub fn register_lifecycle_services(&mut self) -> Result<(), NodeError> {
         let ns = self.namespace.clone();
         let nn = self.node_name.clone();
-        self.register_lifecycle_services_named(&ns, &nn)
+        self.register_lifecycle_services_named(None, &ns, &nn)
     }
 
     /// [`register_lifecycle_services`](Self::register_lifecycle_services),
@@ -14282,10 +14286,26 @@ impl<'s> Executor<'s> {
             let r = self.node(node).ok_or(NodeError::NotInitialized)?;
             (r.namespace.clone(), r.name.clone())
         };
-        self.register_lifecycle_services_named(&ns, &nn)
+        self.register_lifecycle_services_named(Some(node), &ns, &nn)
     }
 
-    fn register_lifecycle_services_named(&mut self, ns: &str, nn: &str) -> Result<(), NodeError> {
+    /// RFC-0128 D1: adds `key`'s machine to the table. A node that already
+    /// has one is refused rather than replaced (a replacement dropped the
+    /// first machine's servers silently, and two C++ `LifecycleNode`s on one
+    /// executor overwrote each other that way); a full table is refused with
+    /// the error that names the node-table knob.
+    fn register_lifecycle_services_named(
+        &mut self,
+        key: Option<super::node_record::NodeId>,
+        ns: &str,
+        nn: &str,
+    ) -> Result<(), NodeError> {
+        if self.lifecycle.iter().any(|e| e.node == key) {
+            return Err(NodeError::LifecycleAlreadyRegistered);
+        }
+        if self.lifecycle.len() >= crate::lifecycle_services::MAX_LIFECYCLE_MACHINES {
+            return Err(NodeError::NodeTableFull);
+        }
         use crate::{
             lifecycle::LifecyclePollingNodeCtx,
             lifecycle_services::{
@@ -14446,11 +14466,16 @@ impl<'s> Executor<'s> {
         ])
         .ok_or(NodeError::Transport(TransportError::BadAlloc))?;
 
-        self.lifecycle = Some(alloc::boxed::Box::new(LifecycleRuntimeState {
+        let state = alloc::boxed::Box::new(LifecycleRuntimeState {
             state_machine: LifecyclePollingNodeCtx::new(),
             services: servers,
             transition_event: te_handle,
-        }));
+        });
+        self.lifecycle
+            .try_reserve(1)
+            .map_err(|_| NodeError::Transport(TransportError::BadAlloc))?;
+        self.lifecycle
+            .push(crate::lifecycle_services::LifecycleEntry { node: key, state });
 
         Ok(())
     }
@@ -14462,7 +14487,43 @@ impl<'s> Executor<'s> {
     /// does not compile.
     #[cfg(all(test, not(feature = "rmw-cffi")))]
     pub(crate) fn lifecycle_transition_event_publisher(&self) -> Option<&session::RmwPublisher> {
-        self.lifecycle.as_ref().map(|lc| &lc.transition_event)
+        self.lifecycle_entry(None)
+            .map(|lc| &lc.state.transition_event)
+    }
+
+    /// The single-machine view the executor-scoped accessors keep (RFC-0128
+    /// D1): the machine registered on the executor's own identity, else the
+    /// only machine there is. With several node machines and none on the
+    /// identity it is `None`, because "the" machine is not defined; callers
+    /// that know their node use the `_on` accessors.
+    fn lifecycle_entry(
+        &self,
+        node: Option<super::node_record::NodeId>,
+    ) -> Option<&crate::lifecycle_services::LifecycleEntry> {
+        match node {
+            Some(_) => self.lifecycle.iter().find(|e| e.node == node),
+            None => self.lifecycle.iter().find(|e| e.node.is_none()).or(
+                match self.lifecycle.as_slice() {
+                    [only] => Some(only),
+                    _ => None,
+                },
+            ),
+        }
+    }
+
+    fn lifecycle_entry_mut(
+        &mut self,
+        node: Option<super::node_record::NodeId>,
+    ) -> Option<&mut crate::lifecycle_services::LifecycleEntry> {
+        let idx = match node {
+            Some(_) => self.lifecycle.iter().position(|e| e.node == node),
+            None => self
+                .lifecycle
+                .iter()
+                .position(|e| e.node.is_none())
+                .or_else(|| (self.lifecycle.len() == 1).then_some(0)),
+        }?;
+        self.lifecycle.get_mut(idx)
     }
 
     /// Mutable access to the lifecycle state machine, if registered.
@@ -14472,12 +14533,33 @@ impl<'s> Executor<'s> {
     pub fn lifecycle_state_machine_mut(
         &mut self,
     ) -> Option<&mut crate::lifecycle::LifecyclePollingNodeCtx> {
-        self.lifecycle.as_mut().map(|lc| &mut lc.state_machine)
+        self.lifecycle_entry_mut(None)
+            .map(|lc| &mut lc.state.state_machine)
+    }
+
+    /// `node`'s own lifecycle state machine, if it registered one
+    /// (RFC-0128 D1).
+    pub fn lifecycle_state_machine_on_mut(
+        &mut self,
+        node: super::node_record::NodeId,
+    ) -> Option<&mut crate::lifecycle::LifecyclePollingNodeCtx> {
+        self.lifecycle_entry_mut(Some(node))
+            .map(|lc| &mut lc.state.state_machine)
+    }
+
+    /// `node`'s own lifecycle state machine, if it registered one
+    /// (RFC-0128 D1).
+    pub fn lifecycle_state_machine_on(
+        &self,
+        node: super::node_record::NodeId,
+    ) -> Option<&crate::lifecycle::LifecyclePollingNodeCtx> {
+        self.lifecycle_entry(Some(node))
+            .map(|lc| &lc.state.state_machine)
     }
 
     /// Immutable access to the lifecycle state machine, if registered.
     pub fn lifecycle_state_machine(&self) -> Option<&crate::lifecycle::LifecyclePollingNodeCtx> {
-        self.lifecycle.as_ref().map(|lc| &lc.state_machine)
+        self.lifecycle_entry(None).map(|lc| &lc.state.state_machine)
     }
 
     /// Register a safe lifecycle node (issue 0335 / phase-317).
@@ -14500,6 +14582,30 @@ impl<'s> Executor<'s> {
         self.register_lifecycle_services()?;
         let sm = self
             .lifecycle_state_machine_mut()
+            .ok_or(NodeError::NotInitialized)?;
+        sm.set_context(node as *mut T as *mut core::ffi::c_void);
+        sm.register(Slot::Configure, Some(trampolines::on_configure::<T>));
+        sm.register(Slot::Activate, Some(trampolines::on_activate::<T>));
+        sm.register(Slot::Deactivate, Some(trampolines::on_deactivate::<T>));
+        sm.register(Slot::Cleanup, Some(trampolines::on_cleanup::<T>));
+        sm.register(Slot::Shutdown, Some(trampolines::on_shutdown::<T>));
+        sm.register(Slot::Error, Some(trampolines::on_error::<T>));
+        Ok(())
+    }
+
+    /// [`register_lifecycle_node`](Self::register_lifecycle_node) for one
+    /// node of several (RFC-0128 D1): the machine is `node`'s own, served
+    /// under its name, and independent of every other node's.
+    pub fn register_lifecycle_node_on<T: crate::lifecycle::LifecycleCallbacks>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        node: &mut T,
+    ) -> Result<(), NodeError> {
+        use crate::lifecycle::{LifecycleCallbackSlot as Slot, trampolines};
+
+        self.register_lifecycle_services_on(node_id)?;
+        let sm = self
+            .lifecycle_state_machine_on_mut(node_id)
             .ok_or(NodeError::NotInitialized)?;
         sm.set_context(node as *mut T as *mut core::ffi::c_void);
         sm.register(Slot::Configure, Some(trampolines::on_configure::<T>));

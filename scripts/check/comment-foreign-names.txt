@@ -470,7 +470,6 @@ proc_macro::tracked_path::path
 result_large_err
 target_family
 tracked_path
-try_reserve
 unnecessary_sort_by
 unused_doc_comments
 wake_up_after

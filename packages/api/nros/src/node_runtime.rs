@@ -3173,6 +3173,9 @@ fn capability_reason(e: &nros_node::NodeError) -> &'static str {
             "ShutdownCallbacksFull (the executor's pre/on-shutdown callback table is \
              full — raise NROS_EXECUTOR_MAX_SHUTDOWN_CBS)"
         }
+        NodeError::LifecycleAlreadyRegistered => {
+            "LifecycleAlreadyRegistered (this node already has a lifecycle state machine)"
+        }
         // phase-454 W10. The two numbers and the topic are already on the log
         // by the time this renders — this string is the CLASS, and a reason
         // that repeated the numbers without the topic would be worse than one

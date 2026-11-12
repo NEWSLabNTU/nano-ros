@@ -851,6 +851,22 @@ impl LifecycleServiceProcessor for LifecycleServiceServers {
     }
 }
 
+/// RFC-0128 D1 (phase-554 W1) -- how many lifecycle state machines one
+/// executor can hold: one per node it can serve, the bound its inbox rings
+/// ([`LIFECYCLE_INBOX_COUNT`]) are already sized for. A managed node is a
+/// node, so the node table's knob (`NROS_EXECUTOR_MAX_NODES`) is the one that
+/// raises it, and a full table is `NodeError::NodeTableFull`, which names it.
+pub(crate) const MAX_LIFECYCLE_MACHINES: usize = crate::param_sizing::MAX_SERVICE_SETS;
+
+/// One managed node's machine in the executor's lifecycle table
+/// (RFC-0128 D1). `node` is the node record it is served under, or `None`
+/// for the executor's own identity -- the pre-RFC-0128 form, which
+/// phase-554 W3 retires.
+pub(crate) struct LifecycleEntry {
+    pub(crate) node: Option<crate::executor::NodeId>,
+    pub(crate) state: Box<LifecycleRuntimeState>,
+}
+
 /// Pairs the state machine with its registered service servers and its
 /// `~/transition_event` publisher. Stored on the executor (outside the
 /// callback arena) when lifecycle services are registered — analogous to
@@ -1719,6 +1735,111 @@ mod tests {
                 .expect("registration creates the publisher")
                 .topic_name();
             assert_eq!(topic, "/velocity_smoother/transition_event");
+        }
+
+        // ───────────────────────────────────────────────────────────────
+        // RFC-0128 D1 (phase-554 W1) -- one machine per managed node
+        // ───────────────────────────────────────────────────────────────
+
+        /// Two managed nodes on one executor each get their own machine, and
+        /// a transition on one leaves the other where it was. Before the
+        /// table, the second registration replaced the first.
+        #[test]
+        fn two_managed_nodes_have_independent_state_machines() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            let a = executor.node_builder("sensor_node").build().expect("node");
+            let b = executor.node_builder("monitor_node").build().expect("node");
+            executor.register_lifecycle_services_on(a).unwrap();
+            executor.register_lifecycle_services_on(b).unwrap();
+
+            let sm_a = executor.lifecycle_state_machine_on_mut(a).unwrap();
+            // SAFETY: no callbacks registered.
+            unsafe {
+                sm_a.trigger_transition(InternalTransition::Configure)
+                    .unwrap();
+                sm_a.trigger_transition(InternalTransition::Activate)
+                    .unwrap();
+            }
+            assert_eq!(
+                executor.lifecycle_state_machine_on(a).unwrap().state(),
+                InternalState::Active
+            );
+            assert_eq!(
+                executor.lifecycle_state_machine_on(b).unwrap().state(),
+                InternalState::Unconfigured,
+                "a transition on one node must not move another node's machine"
+            );
+            assert!(
+                executor.lifecycle_state_machine().is_none(),
+                "with two node machines there is no single executor-scoped machine"
+            );
+            // Both are pumped: a spin touches every machine without error.
+            executor.spin_once(Duration::from_millis(0));
+        }
+
+        /// A node that already has a machine is refused, never replaced.
+        #[test]
+        fn a_second_registration_for_one_node_is_refused() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            let a = executor.node_builder("sensor_node").build().expect("node");
+            executor.register_lifecycle_services_on(a).unwrap();
+            let sm = executor.lifecycle_state_machine_on_mut(a).unwrap();
+            // SAFETY: no callbacks registered.
+            unsafe { sm.trigger_transition(InternalTransition::Configure) }.unwrap();
+
+            assert!(matches!(
+                executor.register_lifecycle_services_on(a),
+                Err(NodeError::LifecycleAlreadyRegistered)
+            ));
+            assert_eq!(
+                executor.lifecycle_state_machine_on(a).unwrap().state(),
+                InternalState::Inactive,
+                "the refused registration left the existing machine as it was"
+            );
+            // The executor-identity form is keyed separately and also refuses
+            // a second registration.
+            executor.register_lifecycle_services().unwrap();
+            assert!(matches!(
+                executor.register_lifecycle_services(),
+                Err(NodeError::LifecycleAlreadyRegistered)
+            ));
+        }
+
+        /// One machine more than the executor can hold is refused with the
+        /// error that names the node-table knob.
+        #[test]
+        fn a_full_lifecycle_table_is_refused_naming_the_node_table_knob() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            // The executor-identity machine plus one per node the table holds
+            // is one more than MAX_LIFECYCLE_MACHINES.
+            executor.register_lifecycle_services().unwrap();
+            let mut refused = None;
+            for i in 0..MAX_LIFECYCLE_MACHINES {
+                let mut name = heapless::String::<16>::new();
+                core::fmt::Write::write_fmt(&mut name, format_args!("n{i}")).unwrap();
+                let id = match executor.node_builder(&name).build() {
+                    Ok(id) => id,
+                    Err(e) => panic!("node {i} of {MAX_LIFECYCLE_MACHINES}: {e}"),
+                };
+                if let Err(e) = executor.register_lifecycle_services_on(id) {
+                    refused = Some((i, e));
+                    break;
+                }
+            }
+            let (i, e) = refused.expect("the table must refuse one past its bound");
+            assert_eq!(
+                i + 1,
+                MAX_LIFECYCLE_MACHINES,
+                "refused at the bound, not before"
+            );
+            assert!(matches!(e, NodeError::NodeTableFull), "{e:?}");
+            assert!(
+                alloc::format!("{e}").contains("NROS_EXECUTOR_MAX_NODES"),
+                "the refusal names the knob: {e}"
+            );
         }
 
         #[test]
