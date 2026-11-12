@@ -293,3 +293,28 @@ turn them on where the board can afford it, for example on native Linux.
 Acceptance: the ruling is recorded here, and either the defaults move with a
 test comparing `node info` against stock, or the difference is documented
 where a user meets it.
+
+### W14 — One `/parameter_events` writer per executor
+
+- **Status:** BLOCKED (user ruling, W13)
+
+[Issue 2493](../issues/2493-parameter-events-one-writer-per-executor.md):
+in a multi-node image `/parameter_events` is announced under the first node
+only, where stock lists every node. By design since issue 2023; whether to
+change it depends on W13's ruling. The parity test keeps this half in
+expected-failure form.
+
+Acceptance: as W13; if the per-node form is chosen, the test is flipped to
+the plain check and passes.
+
+### W15 — A refused graph token leaves no trace in a hosted image's output
+
+- **Status:** OPEN
+
+[Issue 2492](../issues/2492-hosted-pool-exhaustion-log-lost.md): the
+pool-exhaustion diagnostics that would have explained W10's gap were lost
+(the Rust error never reached the console; the C line was block-buffered and
+lost when the image was killed).
+
+Acceptance: a killed hosted image keeps both diagnostics in its captured
+output, checked by a test.
