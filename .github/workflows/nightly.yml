@@ -25,10 +25,10 @@
 # Without that last job the coverage claim would be a sentence in an RFC: a new
 # platform could join the matrix, join the lane, and never be built by anything.
 #
-# PR (path-scoped, per-platform / zephyr-paths) + nightly + on-demand — NOT every
-# direct push to main (the 6-platform × 2-line load is the cadence explosion the
-# reorg removes; #57). `cancel-in-progress` only on PR. See
-# docs/development/ci-workflow-reorg.md.
+# Schedule + on-demand ONLY: no `pull_request` (phase-395, see `on:` below) and
+# no push to main (the 6-platform × 2-line load is the cadence explosion the
+# reorg removes; #57). Nothing here cancels in progress: a cancelled scheduled
+# job leaves a coordinate with no verdict. See docs/development/ci-workflow-reorg.md.
 name: nightly
 
 on:

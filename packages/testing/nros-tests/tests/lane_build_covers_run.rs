@@ -58,6 +58,7 @@ fn lane_sh_env(snippet: &str, stamp: Option<&str>, env: &[(&str, &str)]) -> (i32
         "NROS_TEST_COORDS",
         "NROS_FIXTURE_LANE",
         "NROS_FIXTURE_STAMP",
+        "NROS_LANE_MODULE",
     ] {
         cmd.env_remove(k);
     }
@@ -407,6 +408,70 @@ fn a_tier2_build_satisfies_the_tier2_run_because_that_run_is_narrowed() {
     let _ = std::fs::remove_file(&stamp);
 }
 
+/// phase-535 W8 — a merge SHARD (`NROS_LANE_MODULE`) covers its own board's
+/// slice and nothing else. Its own run passes the preflight; another shard's run,
+/// and the whole lane's, are refused even though the stamp says `lane=merge`.
+#[test]
+fn a_merge_shard_build_covers_only_its_own_shard() {
+    let dir = tmpdir();
+    let out = Command::new(lane_coords_bin())
+        .args(["merge", "--module", "zephyr"])
+        .current_dir(nros_tests::project_root())
+        .output()
+        .expect("run prebuilt lane-coords");
+    assert!(
+        out.status.success(),
+        "lane-coords merge --module zephyr failed"
+    );
+    let body = String::from_utf8_lossy(&out.stdout).into_owned();
+    let shard_coords: Vec<&str> = body.lines().filter(|l| !l.is_empty()).collect();
+    assert!(
+        !shard_coords.is_empty() && shard_coords.iter().all(|c| c.starts_with("zephyr,")),
+        "the zephyr shard must hold zephyr coordinates only: {shard_coords:?}"
+    );
+    let coords_path = dir.join("merge-zephyr.txt");
+    std::fs::write(&coords_path, &body).expect("write shard coords");
+    let coords = coords_path.to_str().unwrap();
+
+    let stamp = write_stamp(&dir, "merge", &shard_coords);
+    let mut text = std::fs::read_to_string(&stamp).expect("read stamp");
+    text.push_str("lane_module=zephyr\n");
+    std::fs::write(&stamp, text).expect("write shard stamp");
+    let s = stamp.to_str().unwrap();
+
+    let (code, out) = lane_sh_env(
+        "nros_fixtures_stamp_require merge",
+        Some(s),
+        &[("NROS_TEST_COORDS", coords), ("NROS_LANE_MODULE", "zephyr")],
+    );
+    assert_eq!(
+        code, 0,
+        "a zephyr merge shard build must satisfy its own run:\n{out}"
+    );
+
+    let (code, out) = lane_sh_env(
+        "nros_fixtures_stamp_require merge",
+        Some(s),
+        &[("NROS_TEST_COORDS", coords), ("NROS_LANE_MODULE", "linux")],
+    );
+    assert_ne!(
+        code, 0,
+        "a zephyr shard build must not satisfy the linux shard:\n{out}"
+    );
+
+    let whole = lane_coords_file("merge");
+    let (code, out) = lane_sh_env(
+        "nros_fixtures_stamp_require merge",
+        Some(s),
+        &[("NROS_TEST_COORDS", whole.as_str())],
+    );
+    assert_ne!(
+        code, 0,
+        "a zephyr shard build must not satisfy the whole merge lane:\n{out}"
+    );
+    let _ = std::fs::remove_file(&stamp);
+}
+
 /// A `lane=tier1` build must still NOT satisfy a tier-2 run.
 ///
 /// The affordability fix must not degenerate into "any stamp will do". Tier 1's
@@ -442,7 +507,7 @@ fn a_narrower_lane_build_still_does_not_satisfy_a_wider_run() {
 fn an_all_build_satisfies_every_lane() {
     let dir = tmpdir();
     let stamp = write_stamp(&dir, "all", &[]);
-    for lane in ["all", "linux", "tier1", "tier2", "tier2-nightly"] {
+    for lane in ["all", "linux", "tier1", "tier2", "tier2-nightly", "merge"] {
         let (code, out) = lane_sh(
             &format!("nros_fixtures_stamp_require {lane}"),
             Some(stamp.to_str().unwrap()),
@@ -862,7 +927,7 @@ print("\n".join(sorted(names)))
         "the manifest models no west leaves at all — `west-leaves` has broken"
     );
 
-    for lane in ["tier1", "tier2", "tier2-nightly"] {
+    for lane in ["tier1", "tier2", "tier2-nightly", "merge"] {
         let coords = lane_coords_file(lane);
         let built = west_build_names(Some(&coords));
         let stranded: Vec<&String> = vocab
@@ -932,7 +997,7 @@ print("\n".join(sorted(names)))
 #[test]
 fn every_unskippable_row_is_in_its_lane_build() {
     let repo = nros_tests::project_root();
-    for lane in ["tier1", "tier2", "tier2-nightly"] {
+    for lane in ["tier1", "tier2", "tier2-nightly", "merge"] {
         let coords = lane_coords_file(lane);
         // The whole comparison happens in the manifest's own module, so this
         // test cannot drift from the predicate it checks.

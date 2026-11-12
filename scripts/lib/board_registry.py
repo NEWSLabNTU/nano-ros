@@ -256,7 +256,12 @@ def evidence_errors(row: dict, *, runtime: set[str], nightly: set[str], probe_tr
                     "lane is host-only, so a cross-run platform's run is nightly")
     if cadence == "daily":
         tok = row.get("nightly_token")
-        if not tok or tok not in nightly:
+        # The Linux host has no nightly token: its daily runtime lane is
+        # run-matrix.yml's tier 1 (`scripts/ci/tier-health.py` HOST_TESTS_LANE),
+        # which `check-cadence-jobs` holds to a scheduled job.
+        if plat == "Linux" and not tok:
+            pass
+        elif not tok or tok not in nightly:
             errs.append(f"{where}: cadence = \"daily\" needs a `nightly_token` the "
                         f"nightly sweep runs (token {tok!r}, sweep {sorted(nightly)})")
     if cadence == "weekly":

@@ -1,0 +1,12 @@
+# Board cadences with no job that keeps them yet — `just check cadence-jobs`
+# (scripts/check-cadence-jobs.py, phase-535 W8, RFC-0122 D8/D9).
+#
+# Every entry names the registry row (its `matrix_platform`), the cadence it
+# promises, why no job keeps it, and the issue that fixes it. This list only
+# shrinks: an entry whose row is served is refused, so is one without an issue.
+
+[[unserved]]
+row = "ZephyrQemuCortexM"
+cadence = "daily"
+issue = 2462
+reason = "The Zephyr nightly builds Zephyr images and runs no cell; phase-535 W8.4 gives it a `just test zephyr` step"

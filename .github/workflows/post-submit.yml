@@ -31,13 +31,14 @@
 # `api-parity` used to be the second one. It graduated to the merge gate
 # (issue 1066) and its job is gone; the comment where it stood says why.
 #
-# WHAT THIS DOES NOT DO YET
+# WHAT THIS DOES NOT DO
 #
-# The plan names `ci-l4-tier1` — the tier-1 boards' cross-RUN coverage. That
-# recipe does not exist, and inventing its contents here would be guessing at
-# which cells belong in it. Until it exists this lane runs tier 2 (`ci-matrix`),
-# which is a real cover (1-wise over platform/lang/rmw/kind) and honestly
-# narrower than what the plan eventually wants.
+# No fixture tier runs here. Tier 2 is `run-matrix.yml` (daily, self-hosted,
+# see above); tier 1 is `run-matrix.yml`'s `tier1` job. The host boards'
+# behaviour pairs per merge are measured on demand by the dispatch-only
+# `merge-runtime.yml` (phase-535 W8; those boards are `daily` since the
+# 2026-11-12 ruling). The plan's `ci-l4-tier1` recipe never existed and is not coming:
+# RFC-0122 D8 gave that coverage its own lanes.
 name: post-submit
 
 on:

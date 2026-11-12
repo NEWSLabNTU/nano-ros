@@ -6,7 +6,7 @@ type: bug
 severity: medium
 area: [tests, fixtures, examples]
 found: 2026-11-12
-related: [issue-0831, issue-2434]
+related: [issue-0831, issue-2434, phase-535]
 ---
 
 ## What

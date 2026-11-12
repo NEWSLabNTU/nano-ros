@@ -861,6 +861,18 @@ workflow-runner-isolation:
 merge-group-gates:
     @python3 scripts/check-merge-group-gates.py
 
+# phase-535 W8 (RFC-0122 D8/D9) — every `cadence` in board-support.toml names
+# a job that keeps it: `merge` a `merge-runtime.yml` that runs on merge_group
+# (it is dispatch-only since the 2026-11-12 ruling, so no row may be `merge`),
+# `daily` the nightly `platform` job's `just test <platform>` or, for a host
+# witness board, run-matrix.yml's scheduled tier 1, `weekly` the probe
+# workflow. A cadence no job serves is refused unless
+# `.config/cadence-job-baseline.toml` lists it with an issue. Static, no
+# fixtures; the selftest runs first on every call as a negative control.
+[private]
+cadence-jobs:
+    @python3 scripts/check-cadence-jobs.py
+
 # phase-489 W6 — the self-hosted fixture lanes build in a persistent tree
 # beside the checkout (`scripts/ci/fixture-tree.sh`). Holds the workflow half
 # (self-hosted only, never a merge-gating job, every step and upload in the
