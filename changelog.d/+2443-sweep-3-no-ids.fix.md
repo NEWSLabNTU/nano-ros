@@ -1,0 +1,1 @@
+Manifest and `system.toml` refusals (retired `deploy` and `callback_groups` tables, a host WCET profile on a target image, `conf` beside `os_config`, an unbridged `[[domain]]`) and the typed-block deprecation warning no longer cite internal design ids. The examples README no longer lists the retired `esp32-c3-baremetal` platform.

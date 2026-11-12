@@ -197,10 +197,11 @@ impl PackageMetadataNros {
         .filter(|b| *b)
         .count();
         if count > 1 {
+            // History: Phase 212.L.2 / L.7, the N.12 rename.
             return Err("`[package.metadata.nros]` carries more than one of \
                  `component` / `node` / `components` / `nodes` / `application` — pick exactly \
-                 one shape (Phase 212.L.2 / L.7; N.12 rename in flight — `node` / \
-                 `nodes` are the forward-looking spellings of `component` / `components`)"
+                 one shape (`node` / `nodes` are the current spellings of `component` / \
+                 `components`)"
                 .to_string());
         }
         Ok(())
@@ -892,11 +893,12 @@ impl std::fmt::Display for WcetSelectionError {
                 platform,
             } => write!(
                 f,
+                // History: phase-463 W7, RFC-0078.
                 "[wcet.select] {target} = \"{profile}\" selects a HOST profile for a \
                  `{platform}` image. A host profile holds high-water marks measured on the \
-                 build host (phase-463 W7, `$NROS_PROFILE_OUT`); they are not a fact of this \
-                 image's CPU, and only the native image may select one (RFC-0078 amendment \
-                 2026-10-07). Measure on the target and declare a profile named for it."
+                 build host (`$NROS_PROFILE_OUT`); they are not a fact of this \
+                 image's CPU, and only the native image may select one. Measure on the \
+                 target and declare a profile named for it."
             ),
         }
     }
@@ -1048,9 +1050,9 @@ fn refuse_retired_deploy<'de, D: serde::Deserializer<'de>>(_: D) -> Result<Retir
 }
 
 /// The refusal for a node package's `[package.metadata.nros.deploy.<target>]`
-/// (phase-531 W7 step 1). Public so the message has one spelling.
-pub const RETIRED_MANIFEST_DEPLOY: &str = "`[package.metadata.nros.deploy.<target>]` is RETIRED \
-     (phase-531 W7, RFC-0121 D3): a node package names no deployment, and nothing turns a \
+/// (phase-531 W7 step 1, RFC-0121 D3). Public so the message has one spelling.
+pub const RETIRED_MANIFEST_DEPLOY: &str = "`[package.metadata.nros.deploy.<target>]` is RETIRED: \
+     a node package names no deployment, and nothing turns a \
      package into its own bringup any more. State the deployment in the workspace's bringup \
      package (`package.xml` + `system.toml`, no build file): `[image.<id>] board = \"<board>\"` \
      (+ `rmw`, `serdes`) for what is built, and `[system] domain_id` / `locator` (or one \
@@ -1082,9 +1084,10 @@ pub fn retired_callback_groups_message(decls: Option<&[CallbackGroupDecl]>) -> S
             .join(", "),
         _ => "<id> = \"<task>\"".to_string(),
     };
+    // History: RFC-0047, phase-273 W2.
     format!(
-        "`callback_groups` in a node package's `[package.metadata.nros]` is RETIRED \
-         (RFC-0047, phase-273 W2): nothing reads it any more, so the sched task binding it states \
+        "`callback_groups` in a node package's `[package.metadata.nros]` is RETIRED: \
+         nothing reads it any more, so the sched task binding it states \
          would be dropped. Move each `{{ id, tier }}` to the component's entry in the \
          bringup's `system.toml`:\n\n    [[component]]\n    group_tasks = {{ {binding} }}\n\n\
          and delete the manifest key."
@@ -1123,7 +1126,8 @@ pub fn validate_and_warn_capabilities(sys: &SystemToml) -> eyre::Result<()> {
     }
     for blk in sys.deprecated_typed_capability_blocks() {
         eprintln!(
-            "warning: the typed `[{blk}]` block is deprecated (phase-261); declare \
+            // History: phase-261.
+            "warning: the typed `[{blk}]` block is deprecated; declare \
              `features = [\"{blk}\"]` under `[system]` instead"
         );
     }
@@ -1328,7 +1332,7 @@ impl SystemToml {
             }
             Err(format!(
                 "`[{at}]` states both `conf` and `os_config`; `conf` is the Zephyr-only \
-                 spelling of `os_config` (RFC-0109 D6) — move its entries into `os_config`"
+                 spelling of `os_config` — move its entries into `os_config`"
             ))
         };
         let base = self.image_defaults.clone().unwrap_or_default();
@@ -1373,11 +1377,12 @@ impl SystemToml {
                     (None, None) => format!("declares `rmw = \"{}\"`, `id = {}`", d.rmw, d.id),
                 };
                 return Err(format!(
+                    // History: RFC-0109 D6.
                     "`[[domain]]` `{}` {what}, but no `[[bridge]]` opens that domain, so \
                      nothing would read it — a `[[domain]]` is a bridged session; a \
                      single-session image's session is `[system] rmw`, `[system] domain_id` \
                      and `[system] rmw_config` (or `[system] locator`), each overridable per \
-                     `[image.<id>]` (RFC-0109 D6)",
+                     `[image.<id>]`",
                     d.name,
                 ));
             }
@@ -3195,7 +3200,7 @@ bogus = true
                 .expect_err("a retired binding must not parse");
             let s = err.to_string();
             assert!(
-                s.contains("RETIRED") && s.contains("RFC-0047"),
+                s.contains("RETIRED") && s.contains("nothing reads it any more"),
                 "{table}: {s}"
             );
             assert!(
