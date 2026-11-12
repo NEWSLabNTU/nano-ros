@@ -1,12 +1,13 @@
 ---
 id: 2472
 title: "The `linux-rust-zenoh-logging` fixture row claims rmw `zenoh`, but its owned entry links no RMW, so `rmw_coordinate_truth` fails on it"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [tests, fixtures, examples]
 found: 2026-11-12
 related: [issue-0831, issue-2434]
+resolved_in: "fix-2472-logging-rmw: rmw_coordinate_truth reads a nominal rmw off the artifact (no RMW layer linked) and holds such a row to linking no backend"
 ---
 
 ## What
@@ -62,3 +63,34 @@ One of:
 
 Pick by what `row_coord()` and the lane selection need from a row without a
 backend; "every image names one" is the assumption to check.
+
+## Fix
+
+The first direction, without a new coordinate value. "Every image names one"
+holds: `[[workspace_fixture]]` requires `rmw`, `row_coord()` defaults it,
+`KNOWN_RMWS` has three values, and `matrix_cells.rs` A5 already records the
+session-less logging-smoke images on zenoh as a NOMINAL rmw. A fourth value
+(`none`) would enter tier 2's 1-wise cover over every platform and language
+for one row. Linking a backend the program never opens would need a
+`register_linked_rmw()` call in a logging demo, which is the worse example.
+
+So `rmw_coordinate_truth` now tells the two kinds of "links none of it" apart
+by reading the artifact for the RMW LAYER itself (`nros-rmw` / `nros-node`
+code, which every session-opening image links in every language):
+
+- layer linked, declared backend not: still a red (0831, or 0155's DCE);
+- no layer: the program opens no session, the row's rmw is nominal, and the
+  row is held to linking NO backend.
+
+Derived per artifact, not listed per row. The selftest covers the layer
+counter in both manglings and refuses a longer crate identifier.
+
+Sweep (fresh `workspace-fixtures-build.sh linux {rust,c,cpp}`, then the test
+solo): 180 workspace binaries located, 0 findings. `native_logging` is the only
+one with no layer and no backend. Every other Linux Rust owned entry from
+phase-535 W6 (`service-client-callback`, the six `*-rtic`, `custom-msg`,
+`lifecycle-node`, the custom-transport pair) links the layer and zenoh only,
+and every Linux C/C++ owned entry (`logging`, `talker`, `parameters`,
+`safety-listener`, `custom-msg`, `custom-transport-loopback`,
+`service-client`, `action-client`) links the layer and its declared backend.
+The C/C++ logging demos open a session, so the class does not extend there.
