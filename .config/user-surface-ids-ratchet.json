@@ -30,7 +30,6 @@
     "packages/cli/nros-cli-core/src/orchestration/backend_link.rs": 2,
     "packages/cli/nros-cli-core/src/orchestration/board_descriptor.rs": 3,
     "packages/cli/nros-cli-core/src/orchestration/board_projection.rs": 1,
-    "packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs": 10,
     "packages/cli/nros-cli-core/src/orchestration/drift.rs": 1,
     "packages/cli/nros-cli-core/src/orchestration/facade.rs": 9,
     "packages/cli/nros-cli-core/src/orchestration/image_net.rs": 4,

@@ -13,7 +13,7 @@ examples/
 └── templates/<name>/                          # multi-platform recipes (Pattern A workspace, etc.)
 ```
 
-- **Platform** (10): `linux`, `px4`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `esp32-c3-baremetal`, `rv-virt-nuttx`, `rv-virt-threadx`, `threadx-linux`, `zephyr`
+- **Platform** (9): `linux`, `px4`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `rv-virt-nuttx`, `rv-virt-threadx`, `threadx-linux`, `zephyr`
 - **Language**: `c`, `cpp`, `rust`
 - **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic` (linux only; on mps2-an385 RTIC is a workspace image), `-aemv8r`, etc.
 
@@ -147,7 +147,7 @@ what gets called "the Zephyr layout":
 
 | | Rust leaf files | trees |
 | --- | --- | --- |
-| **cargo owns the link** | `Cargo.toml` + `src/main.rs` (plus `src/lib.rs` where the node logic is shared) | `linux`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `esp32-c3-baremetal`, `qemu-armv7a-nuttx`, `threadx-linux` |
+| **cargo owns the link** | `Cargo.toml` + `src/main.rs` (plus `src/lib.rs` where the node logic is shared) | `linux`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `threadx-linux` |
 | **cmake owns the link** | `CMakeLists.txt` + `src/lib.rs` + `src/app_main.rs`; cargo emits a **staticlib**, and cmake links it into an image whose startup is C | `zephyr/rust/*`, `rv-virt-threadx/rust/*` |
 
 The predicate is mechanical, so recount rather than trusting the lists above —
@@ -223,7 +223,7 @@ rather than left unnamed for the next survey to invent:
   A shape that exists because something is unfinished must not get a number
   that makes it look like a design.
 - **"class 3r", Rust-only leaf families.** Not a class either. It looks like a
-  missing platform port on `mps2-an385-baremetal` and `esp32-c3-baremetal`, and
+  missing platform port on `mps2-an385-baremetal`, and
   it is not: the bare-metal heap has existed since RFC-0034 D6 landed, and the
   C/C++ cmake seam (`cmake/platform/nano-ros-baremetal.cmake`,
   `cmake/board/nano-ros-board-mps2-an385-baremetal.cmake`) is complete — with
@@ -290,7 +290,6 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `qemu-armv7a-nuttx`          | c        | 6     | –    | –          | –    |
 | `qemu-armv7a-nuttx`          | cpp      | 6     | –    | –          | –    |
 | `qemu-armv7a-nuttx`          | rust     | 6     | –    | –          | –    |
-| `esp32-c3-baremetal`    | rust     | 2     | –    | –          | –    |
 | `rv-virt-nuttx`        | c        | 1     | –    | –          | –    |
 | `rv-virt-threadx`    | c        | 6 ¹   | –    | –          | –    |
 | `rv-virt-threadx`    | cpp      | 6 ¹   | –    | –          | –    |
@@ -369,9 +368,8 @@ spin up examples here without first lifting the underlying constraint.
 
 | Cell                                                   | Why empty                                                                                                                                                                                                                                                          | Lift requires                                                                                                                                                                  |
 |--------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `esp32-c3-baremetal/{c,cpp}/*`                       | An AUTHORED decision, not a missing port (issue 1512). `PlatformKind::Esp32::cmake_deploy()` returns `None`, so the CLI's leaf-system query (the dev-tier verb cmake calls) derives no `NROS_PLATFORM` for a C/C++ leaf here: this tree is the no-IDF / pure-Rust HAL path (`esp-hal`), and C/C++ on the same silicon is the ESP-IDF component road (phase-139), which belongs under a hypothetical `esp32-idf/` tree. A `cmake/board/nano-ros-board-esp32-c3-baremetal.cmake` overlay does exist and says so in its own header ("kept for symmetry with the other board overlays"); it is for a non-IDF C parent build, not for a leaf here. | Nothing to lift on this tree. Lifting the sibling means deciding whether ESP-IDF-hosted C/C++ examples deserve their own platform dir. |
 | `px4/{c,rust}/*` (px4 has no example-tree uORB cell)   | PX4 integration is uORB-only (the platform's native pub/sub), and Phase 115.K.4 collapsed `nros-rmw-uorb` to a single C++ port (the legacy Rust crate was deleted). `packages/testing/nros-px4-register-check/` is the canonical surface (the former `examples/px4/rust/uorb/` README-only placeholder was retired in phase-277 W7). | Won't lift: C is not on the PX4 module API, and the Rust uORB backend was retired in Phase 115.K.4 (see `docs/roadmap/phase-115-runtime-transport-vtable.md`). No C/Rust PX4 examples are planned.                  |
-| `cyclonedds` on bare-metal (`mps2-an385-baremetal`, `esp32-c3-baremetal`) | Cyclone DDS requires a hosted runtime — BSD sockets, threads, heap, libc. Pure Cortex-M / esp-hal bare-metal targets have none, so the C++ Cyclone stack cannot run (Phase 171.C.gate decision). | Won't lift on bare-metal. Cyclone DDS is the hosted-platform DDS backend; embedded targets use the zenoh-pico or XRCE backends instead. |
+| `cyclonedds` on bare-metal (`mps2-an385-baremetal`) | Cyclone DDS requires a hosted runtime — BSD sockets, threads, heap, libc. Pure Cortex-M bare-metal targets have none, so the C++ Cyclone stack cannot run (Phase 171.C.gate decision). | Won't lift on bare-metal. Cyclone DDS is the hosted-platform DDS backend; embedded targets use the zenoh-pico or XRCE backends instead. |
 | `cyclonedds` on NuttX QEMU (`qemu-armv7a-nuttx` × all langs) | Deferred-upstream: a Cyclone DDS NuttX socket-shim port is an upstream-scale effort not attempted in nano-ros. FreeRTOS is no longer in this bucket; Phase 175 added FreeRTOS/lwIP Cyclone fixture wiring. | An upstream Cyclone DDS NuttX port (socket shim + config + heap budget), then a nano-ros example cell. |
 | pure-cargo `cyclonedds` Rust binaries on `linux` / `threadx-linux` | Still intentionally unsupported: `nros-rmw-cyclonedds-sys` exposes only the C register shim, so a plain Cargo build has no way to build+link the C++ Cyclone lib + `libddsc`. Native Rust Cyclone now uses the Phase 175 CMake/Corrosion path instead. | Use the CMake/Corrosion fixture path for Cyclone-backed Rust examples, or scope a new staticlib crate separately. |
 | `cyclonedds` service/action on `rv-virt-threadx` (`c`/`cpp`) — talker+listener only | De-scoped (Phase 275 W4): Cyclone on ThreadX RISC-V64 is *experimental* and its runtime still needs participant-init diagnosis (Phase 177.22). Only talker/listener are wired, exercised by the AF_UNIX two-QEMU pub/sub e2e (`test_threadx_riscv64_cyclonedds_two_qemu_pubsub`). Service/action would need bidirectional RTPS discovery over that L2 tunnel, unproven on this port; the zenoh RMW covers the full 6-role set here. | Land the Phase 177.22 participant-init fix, then a two-QEMU Cyclone request/response e2e before adding `service-*`/`action-*` cyclone fixture rows. |
@@ -455,7 +453,7 @@ Test / bench / smoke binaries are NOT under `examples/`. They live with the inte
 - **`packages/testing/nros-bench/`** — perf, fairness, stress, large-msg
   - `executor-fairness`, `stress-{zenoh,xrce}`, `large-msg-{xrce,baremetal}`, `wcet-cycles-qemu`
 - **`packages/testing/nros-smoke/`** — driver / board bringup (no nros API)
-  - `stm32f4-smoltcp-echo`, `esp32-hello-world`
+  - `stm32f4-smoltcp-echo`
 - **`packages/testing/nros-tests/bins/`** — fixture binaries that integration tests build & invoke
   - `cdr-roundtrip-qemu`, `lan9118-qemu`
 - **`packages/testing/nros-px4-register-check/`** — PX4 module whose *build* is the assertion
@@ -478,7 +476,6 @@ examples to your own board.
 | `mps2-an385-baremetal/` | Cargo-first bare-metal | [Generic board crate](../book/src/extending/add-a-board.md#before-you-start) (`nros-board-baremetal-cortex-m`) |
 | `mps2-an385-freertos/` | Cargo-first FreeRTOS | [Generic board crate](../book/src/extending/add-a-board.md#before-you-start) (`nros-board-freertos`); reference overlay `nros-board-mps2-an385-freertos`. For STM32 / NXP / Espressif FreeRTOS, write a [vendor overlay](../book/src/extending/add-a-board.md). |
 | `qemu-armv7a-nuttx/` | NuttX native shell | [NuttX integration shell](../book/src/guide/platforms/nuttx.md) — `apps/external/nano-ros/`. |
-| `esp32-c3-baremetal/` | Cargo-first bare-metal | Bare-metal `esp-hal` path; same generic-crate flow as `mps2-an385-baremetal`. |
 | `rv-virt-threadx/` | Cargo-first ThreadX | [Generic board crate](../book/src/extending/add-a-board.md#before-you-start) (`nros-board-threadx`); reference overlay `nros-board-threadx-qemu-riscv64`. For Renesas Synergy / STM32 X-CUBE-AZRTOS / NXP MCUXpresso ThreadX, write a [vendor overlay](../book/src/extending/add-a-board.md). |
 | `threadx-linux/` | Linux sim (CI) | Same as `rv-virt-threadx` but with NSOS host-kernel sockets shim. |
 | `zephyr/` | Zephyr native shell | [Zephyr integration shell](../book/src/guide/platforms/zephyr.md) — `projects:` entry in your `west.yml`. |
