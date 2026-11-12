@@ -1,8 +1,8 @@
 # Phase 556 — ROS 2 interface compatibility audit
 
-**Status (2026-11-13). IN PROGRESS: W0 is done, and a first by-hand
-measurement of W2 to W6 found three gaps (W10 to W12) and one question for
-the user (W13).**
+**Status (2026-11-13). IN PROGRESS: W0, W1 and W3 are done. A first by-hand
+measurement of W2 to W6 found three gaps (W10 to W12), each now held by an
+expected-failure test, and one question for the user (W13).**
 The user's goal is to "ensure the interface compatibility among nano-ros and
 stock ROS 2". This phase measures it: a nano-ros node and a stock `rclcpp`
 node that declare the same interface are asked the same `ros2` CLI questions,
@@ -109,7 +109,7 @@ C++ nano-ros nodes (W2); `/parameter_events` message content and
 
 ### W1 — A paired-node comparison harness
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-13, this PR)
 
 One helper that starts a nano-ros node and a stock `rclcpp` node declaring the
 same interface on one domain, runs one `ros2` query against each, normalises
@@ -120,9 +120,32 @@ fixture.
 Acceptance: the helper compares a pair whose answers are known to match and
 reports no difference, and reports a seeded difference.
 
+Result: `nros_tests::ros2_compat` (`packages/testing/nros-tests/src/ros2_compat.rs`).
+Each side runs alone on its own `rmw_zenohd`, so a graph-wide query answers
+about one implementation and both sides may use the same names. `Pair::ask`
+runs one query against both, replaces each side's own node name with `<node>`
+(nothing else, and no sorting) and returns both answers; `Compared::diff`
+compares the text and the exit status. `ros2 action list` and `action info`,
+which reject `--no-daemon`, run through ros2cli's own entry point with the
+daemon lookup and spawn turned off, so no query consults a daemon. The
+acceptance is the module's unit tests (`a_matching_pair_reports_no_difference`,
+`a_seeded_difference_is_reported_on_its_own_side`). The tests are
+`packages/testing/nros-tests/tests/ros2_cli_parity_interop.rs`, four
+`interop::CELLS` rows `native-ros2-cli-parity-{params,service,action,pubsub}-rust-zenoh`,
+run by `just linux test-ros2-cli-parity`. The stock parameter peer is an rclpy
+script, `fixtures/ros2-param-peer/param_peer.py`: no shipped node declares an
+integer range with a step.
+
 ### W2 — Parameter services
 
-- **Status:** OPEN
+- **Status:** IN PROGRESS. Plain: `declared_parameters_answer_ros2_param_as_stock_does`
+  (`param list`, `list --param-type`, `get`, `describe`, `dump`, an accepted
+  `set` and its read-back, on declared parameters) and
+  `first_node_serves_the_six_parameter_services_as_stock_does`. Expected-failure:
+  W10 to W12's tests. Not covered yet: a set of an undeclared name and of a
+  wrong type (both refused by both, with reasons that differ between rclpy and
+  rclcpp too), C and C++ nano-ros nodes, `/parameter_events` content,
+  `ros2 param load`.
 
 `ros2 param list`, `get`, `set`, `describe` and `dump` against both nodes:
 the six parameter service names and types, value types, descriptors, and the
@@ -132,7 +155,11 @@ Acceptance: one test per query, plain or strict expected-failure.
 
 ### W3 — Service and action names and types
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-13, this PR). Plain:
+  `service_list_with_types_answers_as_stock_does`,
+  `action_list_and_info_answer_as_stock_does`,
+  `hidden_action_services_and_topics_answer_as_stock_does`. The stock node's
+  six parameter services are set aside in the first: that is W13.
 
 `ros2 service list -t` and `ros2 action list -t` for a node with one service
 server and one action server: the names, the types, and the hidden services
@@ -142,7 +169,8 @@ Acceptance: as W2.
 
 ### W4 — `ros2 node info`
 
-- **Status:** OPEN
+- **Status:** OPEN. Only the parameter-service lines are compared so far
+  (W10's test); the other sections are not.
 
 Publishers, subscribers, service servers and clients, action servers and
 clients, as `ros2 node info` lists them for each node.
@@ -151,7 +179,7 @@ Acceptance: as W2.
 
 ### W5 — `ros2 topic list -t`
 
-- **Status:** OPEN
+- **Status:** OPEN. Only an action's hidden topics are compared (W3).
 
 Topic names and types, including the topics every stock node adds by itself
 (`/rosout`, `/parameter_events`).
@@ -160,7 +188,10 @@ Acceptance: as W2.
 
 ### W6 — QoS as the graph reports it
 
-- **Status:** OPEN
+- **Status:** OPEN. Plain for a default-QoS publisher:
+  `default_qos_of_a_published_topic_reads_as_stock_does` (every field but the
+  history depth, which the two examples declare differently). Non-default
+  QoS and subscriptions are not covered.
 
 `ros2 topic info -v` for a publisher and a subscription with non-default
 QoS: reliability, durability, history, depth, deadline, lifespan, liveliness.
@@ -204,7 +235,10 @@ the plain check and passes".
 
 ### W10 — The second node of an image misses a parameter service
 
-- **Status:** OPEN
+- **Status:** OPEN. Expected-failure test:
+  `ros2_cli_parity_interop::each_node_of_a_two_node_image_compared_with_stock_on_parameter_services`
+  (the missing `get_parameter_types`, and no `/parameter_events` publisher for
+  `/beta`; the first node is a plain check in the same test).
 
 [Issue 2482](../issues/2482-second-node-param-service-missing.md): in a
 two-node zenoh image the second node serves 5 of the 6 parameter services
@@ -216,7 +250,8 @@ and passing.
 
 ### W11 — `use_sim_time` is not declared
 
-- **Status:** OPEN
+- **Status:** OPEN. Expected-failure test:
+  `ros2_cli_parity_interop::use_sim_time_compared_with_stock`.
 
 [Issue 2483](../issues/2483-use-sim-time-not-declared.md): every stock node
 declares `use_sim_time`; a nano-ros node with parameter services does not, so
@@ -226,7 +261,12 @@ Acceptance: as W10, comparing `param list` and `param get use_sim_time`.
 
 ### W12 — Replies for undeclared names, and refusal reasons
 
-- **Status:** OPEN
+- **Status:** OPEN. Expected-failure tests in `ros2_cli_parity_interop`:
+  `get_parameters_reply_for_an_undeclared_name_compared_with_stock`,
+  `describe_parameters_reply_for_an_undeclared_name_compared_with_stock`,
+  `delete_refusal_reason_compared_with_stock`,
+  `off_step_refusal_reason_compared_with_stock`. The stock peer is rclpy, so
+  the delete reason compared is rclpy's.
 
 [Issue 2484](../issues/2484-param-service-undeclared-replies.md):
 `GetParameters` and `DescribeParameters` answer an undeclared name with a
