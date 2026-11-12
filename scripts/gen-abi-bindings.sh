@@ -106,7 +106,10 @@ if ! bg_version="$(bindgen --version --verbose 2>&1)"; then
     echo "error: bindgen does not run: $bg_version" >&2
     exit 2
 fi
-have="$(printf '%s\n' "$bg_version" | awk '/^bindgen /{print $2; exit}')"
+# Issue 2458 — no early `exit` in the awk: bash's `printf '%s\n'` writes one
+# line per write(2), so an awk that exits after line 1 can SIGPIPE the second
+# write, and `pipefail` turns that into rc 141 from an otherwise-good check.
+have="$(printf '%s\n' "$bg_version" | awk '/^bindgen / && !v {v = $2} END {print v}')"
 if [ "$have" != "$BINDGEN_PIN" ]; then
     echo "error: bindgen $have != pinned $BINDGEN_PIN (output would drift; reinstall the pin)" >&2
     exit 2

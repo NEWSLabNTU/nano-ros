@@ -232,7 +232,7 @@ fn collect_sources() -> SourceMap {
     out
 }
 
-/// Phase-531 W6 — a witness migrated in place is a one-node WORKSPACE
+/// Phase-531 W6 — an example migrated in place is a one-node WORKSPACE
 /// (`.colcon_workspace` at its root): its program is the node package's `src/`,
 /// not the workspace's `src/`, which also holds the bringup. `None` for a leaf,
 /// or when the workspace does not hold exactly one node package.
@@ -668,7 +668,11 @@ fn ceremony_stays_out_of_node_logic() {
                 continue;
             };
             for program in programs.flatten() {
-                let src = program.path().join("src");
+                // A one-package workspace's program is its node package's
+                // `src/` (phase-535 W6: the bare-metal C/C++ owned entries),
+                // the same rule the comparison walk applies.
+                let src =
+                    witness_node_src(&program.path()).unwrap_or_else(|| program.path().join("src"));
                 let Some(files) = classified_files(&src) else {
                     continue;
                 };

@@ -1481,6 +1481,16 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         .map_err(|e| eyre::eyre!("{e}"))?;
                     env.insert(nros_board_common::image_net::ENV.to_string(), n.text());
                 }
+                // Phase-535 W6 — the image's connect identity, as the
+                // single-package road states it: an OWNED entry that is a
+                // cargo-rooted C/C++ program (the mps2-an385 bare-metal
+                // examples) bakes it into its C/C++ TU from these rows.
+                if let Some(sys) =
+                    nros_orchestration_ir::leaf_system::read_image(&bringup_dir, &image_id)
+                        .map_err(|e| eyre::eyre!("{e}"))?
+                {
+                    crate::cmd::leaf_settings::entry_identity_env(&sys.network, &mut env);
+                }
                 // Issue 2062 — the image this build is, as the single-package
                 // road states it (`leaf_settings`): `nros::main!` picks the
                 // image's own `nros-bridge.<image>.toml` by it.

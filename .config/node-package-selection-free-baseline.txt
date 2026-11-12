@@ -7,17 +7,7 @@
 # that no longer violates fails until it is deleted. Phase-531 W6 and phase-535
 # empty it. Regenerate (shrink only):
 #   python3 scripts/check-node-package-selection-free.py --write-baseline
-examples/mps2-an385-baremetal/c/action-client/Cargo.toml  baremetal_c_action_client_nros_selection
-examples/mps2-an385-baremetal/c/action-server/Cargo.toml  baremetal_c_action_server_nros_selection
-examples/mps2-an385-baremetal/c/listener/Cargo.toml  baremetal_c_listener_nros_selection
-examples/mps2-an385-baremetal/c/service-client/Cargo.toml  baremetal_c_service_client_nros_selection
-examples/mps2-an385-baremetal/c/service-server/Cargo.toml  baremetal_c_service_server_nros_selection
 examples/mps2-an385-baremetal/c/talker/Cargo.toml  baremetal_c_talker_nros_selection
-examples/mps2-an385-baremetal/cpp/action-client/Cargo.toml  baremetal_cpp_action_client_nros_selection
-examples/mps2-an385-baremetal/cpp/action-server/Cargo.toml  baremetal_cpp_action_server_nros_selection
-examples/mps2-an385-baremetal/cpp/listener/Cargo.toml  baremetal_cpp_listener_nros_selection
-examples/mps2-an385-baremetal/cpp/service-client/Cargo.toml  baremetal_cpp_service_client_nros_selection
-examples/mps2-an385-baremetal/cpp/service-server/Cargo.toml  baremetal_cpp_service_server_nros_selection
 examples/mps2-an385-baremetal/cpp/talker/Cargo.toml  baremetal_cpp_talker_nros_selection
 examples/mps2-an385-baremetal/rust/listener/Cargo.toml  qemu_bsp_listener_nros_selection
 examples/mps2-an385-baremetal/rust/talker/Cargo.toml  qemu_bsp_talker_nros_selection

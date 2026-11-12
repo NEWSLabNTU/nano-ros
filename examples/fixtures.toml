@@ -3420,10 +3420,16 @@ dir = "packages/testing/nros-bench/large-msg-baremetal"
 # They run end to end since issue 1512 baked the entry locator into the C
 # compile.
 #
-# phase-535 W5 — these stay leaves. The workspace road sends a C/C++ image to
-# the cmake driver, whose entry pipeline has no bare-metal board, and the link
-# root here has to be Rust (issue 2377). They are the only images of the six
-# `(QemuBaremetal, C|Cpp, Zenoh, *)` Runtime cells (`test_qemu_baremetal_capi_e2e`).
+# phase-535 W6 (RFC-0122 D3) — every role but the `talker` witnesses is now a
+# one-package workspace in its own directory, whose cargo package is the image's
+# OWNED entry (RFC-0071 D19): `src/<pkg>/` keeps `main.rs` + `build.rs`, and
+# `src/<pkg>_bringup/system.toml` names `entry = "<pkg>"`. `nros build` builds
+# that package on the cargo road (its `package.xml` declares `nros_cargo`), so
+# these `[[workspace_fixture]]` rows keep `builder = "cargo"`: the APPLICATION is
+# C/C++ and the coordinate says so, the link root is cargo. They are the only
+# images of the six `(QemuBaremetal, C|Cpp, Zenoh, *)` Runtime cells
+# (`test_qemu_baremetal_capi_e2e`). Issue 2377 (resolved by this shape); a
+# GENERATED C/C++ entry on this board stays refused (issue 2376's ruling).
 # ---------------------------------------------------------------------------
 
 [[fixture]]
@@ -3432,35 +3438,65 @@ lang = "c"
 builder = "cargo"
 dir = "examples/mps2-an385-baremetal/c/talker"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "baremetal-c-zenoh-listener"
 platform = "baremetal"
 lang = "c"
 builder = "cargo"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/c/listener"
+bringup = "src/baremetal_c_listener_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target-fixtures"
+target = "thumbv7m-none-eabi"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "baremetal-c-zenoh-service-server"
 platform = "baremetal"
 lang = "c"
 builder = "cargo"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/c/service-server"
+bringup = "src/baremetal_c_service_server_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target-fixtures"
+target = "thumbv7m-none-eabi"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "baremetal-c-zenoh-service-client"
 platform = "baremetal"
 lang = "c"
 builder = "cargo"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/c/service-client"
+bringup = "src/baremetal_c_service_client_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target-fixtures"
+target = "thumbv7m-none-eabi"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "baremetal-c-zenoh-action-server"
 platform = "baremetal"
 lang = "c"
 builder = "cargo"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/c/action-server"
+bringup = "src/baremetal_c_action_server_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target-fixtures"
+target = "thumbv7m-none-eabi"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "baremetal-c-zenoh-action-client"
 platform = "baremetal"
 lang = "c"
 builder = "cargo"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/c/action-client"
+bringup = "src/baremetal_c_action_client_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target-fixtures"
+target = "thumbv7m-none-eabi"
 
 [[fixture]]
 platform = "baremetal"
@@ -3468,35 +3504,65 @@ lang = "cpp"
 builder = "cargo"
 dir = "examples/mps2-an385-baremetal/cpp/talker"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "baremetal-cpp-zenoh-listener"
 platform = "baremetal"
 lang = "cpp"
 builder = "cargo"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/cpp/listener"
+bringup = "src/baremetal_cpp_listener_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target-fixtures"
+target = "thumbv7m-none-eabi"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "baremetal-cpp-zenoh-service-server"
 platform = "baremetal"
 lang = "cpp"
 builder = "cargo"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/cpp/service-server"
+bringup = "src/baremetal_cpp_service_server_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target-fixtures"
+target = "thumbv7m-none-eabi"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "baremetal-cpp-zenoh-service-client"
 platform = "baremetal"
 lang = "cpp"
 builder = "cargo"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/cpp/service-client"
+bringup = "src/baremetal_cpp_service_client_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target-fixtures"
+target = "thumbv7m-none-eabi"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "baremetal-cpp-zenoh-action-server"
 platform = "baremetal"
 lang = "cpp"
 builder = "cargo"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/cpp/action-server"
+bringup = "src/baremetal_cpp_action_server_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target-fixtures"
+target = "thumbv7m-none-eabi"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "baremetal-cpp-zenoh-action-client"
 platform = "baremetal"
 lang = "cpp"
 builder = "cargo"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/cpp/action-client"
+bringup = "src/baremetal_cpp_action_client_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target-fixtures"
+target = "thumbv7m-none-eabi"
 
 # ===========================================================================
 # freertos (qemu MPS2-AN385) — Rust. The six role Entry pkgs. Codegen runs in
