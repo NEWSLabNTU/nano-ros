@@ -4,7 +4,7 @@ title: "Package identity and the provider format"
 status: Draft
 area: build-toolchain-codegen
 since: 2026-09
-last-reviewed: 2026-09
+last-reviewed: 2026-11
 implements-tracked-by: [phase-420]
 supersedes: []
 superseded-by: null
@@ -292,8 +292,8 @@ package_paths = ["src", "~/nros-packages", "/opt/nros/packages"]
 ```
 
 plus `NROS_PACKAGE_PATH`, colcon's `--base-paths` in source-time form. The
-nano-ros tree stays first. **Shadowing is reported, never silent**: `nros ws
-packages` prints each package's kind, the root it came from, and what it hid.
+nano-ros tree stays first. **Shadowing is reported, never silent**: `nros dev ws
+providers` prints each package's kind, the root it came from, and what it hid.
 
 ### D7 — Selection verbs
 

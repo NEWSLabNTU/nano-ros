@@ -4,8 +4,9 @@ title: "The codegen version is the compatibility token, and generated code carri
 status: Draft
 area: build-toolchain-codegen
 since: 2026-09
-last-reviewed: 2026-09
+last-reviewed: 2026-11
 implements-tracked-by: [phase-429]
+amends: [0014, 0023, 0065, 0068]
 supersedes: []
 superseded-by: null
 ---
@@ -326,7 +327,9 @@ serialization format.
 2. Where does the C/C++ anchor's `N` come from at *configure* time, for the four
    configure-time emitters phase-424 registered? The binary can be asked
    (`nros --codegen-version`), but that is a process launch per configure.
-3. Does the ESP-IDF / PlatformIO integration path (`integrations/`) get the
+3. (2026-11: the ESP-IDF half is gone, its integration deleted in phase-468 W2
+   and its build road by RFC-0065 D3's 2026-09-28 amendment; PlatformIO remains.)
+   Does the ESP-IDF / PlatformIO integration path (`integrations/`) get the
    anchor, given both emit with a soft failure today?
 
 ## Changelog
