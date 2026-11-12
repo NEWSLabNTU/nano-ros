@@ -288,19 +288,42 @@ fn stamp_file(project: &Path, image: &str) -> PathBuf {
     stamp_dir(project, image).join("stamp.toml")
 }
 
+/// Issue 2478 — one configure's record of its external reads: path, and the
+/// digest of the bytes read.
+type ExternalRecord = std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<PathBuf, String>>>;
+
 thread_local! {
-    /// Issue 2478 — what this THREAD read through [`read_external`] since the
-    /// last [`begin_external_reads`]: path, and the digest of the bytes read.
+    /// The record the current thread's reads go to, if a configure installed
+    /// one ([`begin_external_reads`], or [`ExternalRecorder::install`] on a
+    /// worker it spawned).
     ///
     /// Per thread, not per process: two configures in one process (the unit
-    /// tests run hundreds) must not record each other's reads, and a stamp
-    /// naming another project's temporary board file reads "gone" forever.
-    /// A configure plans on the thread that calls it (`configure::run`'s image
-    /// loop is sequential), so its planning reads land here; a read made on a
-    /// spawned worker is not recorded, which is why the planning stage, not
-    /// the build drive, must be where configure's answer is decided.
-    static EXTERNAL_READS: std::cell::RefCell<std::collections::BTreeMap<PathBuf, String>> =
-        const { std::cell::RefCell::new(std::collections::BTreeMap::new()) };
+    /// tests run hundreds) must not record each other's reads; a stamp naming
+    /// another project's temporary board file reads "gone" forever. The cost
+    /// of that choice is that a configure's WORKER thread records nothing
+    /// unless the configure hands it the recorder, so every thread spawn on
+    /// the configure path carries it ([`ExternalRecorder::current`] then
+    /// [`ExternalRecorder::install`]), and
+    /// `tests::every_thread_on_the_configure_path_carries_the_recorder`
+    /// refuses a spawn that does not.
+    static RECORDER: std::cell::RefCell<Option<ExternalRecord>> = const { std::cell::RefCell::new(None) };
+}
+
+/// A handle on the current configure's record of external reads, to carry
+/// to a thread the configure spawns.
+#[derive(Clone)]
+pub(crate) struct ExternalRecorder(ExternalRecord);
+
+impl ExternalRecorder {
+    /// The record the current thread writes to, if any.
+    pub(crate) fn current() -> Option<Self> {
+        RECORDER.with_borrow(|r| r.clone().map(Self))
+    }
+
+    /// Make the current thread's reads go to this record.
+    pub(crate) fn install(&self) {
+        RECORDER.with_borrow_mut(|r| *r = Some(self.0.clone()));
+    }
 }
 
 fn bytes_digest(bytes: &[u8]) -> String {
@@ -313,29 +336,37 @@ fn bytes_digest(bytes: &[u8]) -> String {
 /// `[features]` decide a derived feature): [`stamp_now`] keeps the reads
 /// outside the project in [`Stamp::external`], and [`currency`] compares
 /// them again. A read inside the project is already covered by the digest.
+/// Outside a configure (no recorder on this thread) it is a plain read.
 pub(crate) fn read_external(path: &Path) -> std::io::Result<String> {
     let raw = std::fs::read_to_string(path)?;
-    let key = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    EXTERNAL_READS.with_borrow_mut(|seen| {
-        seen.insert(key, bytes_digest(raw.as_bytes()));
-    });
+    if let Some(rec) = RECORDER.with_borrow(Clone::clone) {
+        let key = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        if let Ok(mut seen) = rec.lock() {
+            seen.insert(key, bytes_digest(raw.as_bytes()));
+        }
+    }
     Ok(raw)
 }
 
-/// Start recording a configure's external reads afresh.
+/// Start recording a configure's external reads afresh, on this thread.
 pub(crate) fn begin_external_reads() {
-    EXTERNAL_READS.with_borrow_mut(std::collections::BTreeMap::clear);
+    RECORDER.with_borrow_mut(|r| *r = Some(ExternalRecord::default()));
 }
 
 /// The recorded reads that lie outside `project`.
 fn external_reads(project: &Path) -> std::collections::BTreeMap<PathBuf, String> {
     let root = std::fs::canonicalize(project).unwrap_or_else(|_| project.to_path_buf());
-    EXTERNAL_READS.with_borrow(|seen| {
-        seen.iter()
-            .filter(|(p, _)| !p.starts_with(&root))
-            .map(|(p, d)| (p.clone(), d.clone()))
-            .collect()
-    })
+    let Some(rec) = RECORDER.with_borrow(Clone::clone) else {
+        return Default::default();
+    };
+    rec.lock()
+        .map(|seen| {
+            seen.iter()
+                .filter(|(p, _)| !p.starts_with(&root))
+                .map(|(p, d)| (p.clone(), d.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The first recorded external input whose bytes are not what the configure
@@ -1503,6 +1534,7 @@ mod tests {
         let board = tmp("external-read-board");
         let manifest = board.join("Cargo.toml");
         std::fs::write(&manifest, "[features]\ndefault = []\n").unwrap();
+        begin_external_reads();
         // The read the configure path makes, through the one spelling.
         assert!(!crate::orchestration::facade::crate_declares_feature(
             &board, "c-libc"
@@ -1534,6 +1566,87 @@ mod tests {
             is_current_with(&p, "img", &real_env(), None).unwrap(),
             Currency::Stale(why) if why.contains("is gone")
         ));
+    }
+
+    /// Issue 2478 — a configure's worker thread records into the configure's
+    /// record once it installs the handle, and a thread nobody handed it to
+    /// records nothing (which is why every spawn on the configure path must
+    /// carry it: see the next test).
+    #[test]
+    fn a_worker_read_is_recorded_only_through_the_handed_recorder() {
+        let p = tmp("external-worker");
+        let board = tmp("external-worker-board");
+        let manifest = board.join("Cargo.toml");
+        std::fs::write(&manifest, "[features]\n").unwrap();
+        let key = std::fs::canonicalize(&manifest).unwrap();
+        begin_external_reads();
+        let rec = ExternalRecorder::current().expect("installed by begin_external_reads");
+        std::thread::scope(|s| {
+            s.spawn(|| read_external(&manifest).unwrap());
+        });
+        assert!(
+            !external_reads(&p).contains_key(&key),
+            "a bare worker recorded"
+        );
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                rec.install();
+                read_external(&manifest).unwrap()
+            });
+        });
+        assert!(
+            external_reads(&p).contains_key(&key),
+            "the handed worker did not record"
+        );
+    }
+
+    /// Issue 2478 — every thread spawned in a file on the configure path
+    /// carries the configure's recorder, so a future parallel plan cannot
+    /// silently drop an input from the stamp. A spawn that never touches a
+    /// configure-path read still has to say so here.
+    #[test]
+    fn every_thread_on_the_configure_path_carries_the_recorder() {
+        const FILES: &[&str] = &[
+            "cmd/configure.rs",
+            "cmd/build.rs",
+            "configure_stamp.rs",
+            "orchestration/facade.rs",
+            "orchestration/backend_link.rs",
+            "orchestration/board_descriptor.rs",
+            "builder/entry.rs",
+        ];
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut bad = Vec::new();
+        for f in FILES {
+            let text = std::fs::read_to_string(src.join(f)).unwrap();
+            // Only the non-test half: a test may spawn what it likes.
+            let body = text
+                .split("#[cfg(test)]\nmod tests")
+                .next()
+                .unwrap_or(&text);
+            let lines: Vec<&str> = body.lines().collect();
+            for (i, line) in lines.iter().enumerate() {
+                let code = line.split("//").next().unwrap_or("");
+                let spawns = ["thread::spawn", ".spawn(", "par_iter", "rayon::"]
+                    .iter()
+                    .any(|w| code.contains(w));
+                if !spawns {
+                    continue;
+                }
+                let window = &lines[i.saturating_sub(20)..(i + 20).min(lines.len())];
+                if !window.iter().any(|l| l.contains("ExternalRecorder")) {
+                    bad.push(format!("{f}:{}: {}", i + 1, line.trim()));
+                }
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "a thread on the configure path that does not carry the configure's \
+             ExternalRecorder (take `ExternalRecorder::current()` before spawning, \
+             `.install()` it in the thread), so its external reads would leave the \
+             stamp:\n  {}",
+            bad.join("\n  ")
+        );
     }
 
     #[test]
