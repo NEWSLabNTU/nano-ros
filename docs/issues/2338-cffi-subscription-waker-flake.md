@@ -6,7 +6,7 @@ type: bug
 area: [rmw, zenoh, testing, ci]
 severity: low
 found: 2026-11-07
-related: [1940, 1976]
+related: [1940, 1976, 2457]
 ---
 
 **Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — a
