@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_lifecycle_node_on",
+  "verdict": "extension",
+  "why": "RFC-0128 D1 (phase-554 W1): `register_lifecycle_node` for one node of several -- the machine is that node's own, served under its name. rclcpp gets the same per node by construction (each `LifecycleNode` owns its state machine); rclrs has no lifecycle node."
+}

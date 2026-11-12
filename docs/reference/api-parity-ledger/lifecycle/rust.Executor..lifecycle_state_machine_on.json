@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::lifecycle_state_machine_on",
+  "verdict": "extension",
+  "why": "RFC-0128 D1 (phase-554 W1): one REP-2002 state machine per managed node, so the read accessor takes the node it is served under. rclrs has no lifecycle node; rclcpp reads the state from the node itself (`LifecycleNode::get_current_state`), which the component-level accessor of phase-554 W10 mirrors. This is the executor-level form the generated entry and the C/C++ shims reach."
+}

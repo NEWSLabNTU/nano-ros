@@ -59,7 +59,22 @@ with the upstream file and tag it was read from.
 
 ### W1 — One machine per managed node (D1)
 
-Status: OPEN.
+Status: DONE (2026-11-13).
+
+- **The table.** The executor's lifecycle slot is now a heap table of
+  `LifecycleEntry { node, state }`. The `Executor` value holds one `Vec`
+  header, which keeps it within issue 0961's size ceiling.
+- **Its bound.** The table holds at most `MAX_LIFECYCLE_MACHINES`, which is
+  the node table's bound (`NROS_EXECUTOR_MAX_NODES`). That is the same bound
+  the lifecycle inbox rings already use, so no new knob was needed.
+- **Refusals.** A second registration for the same node is
+  `NodeError::LifecycleAlreadyRegistered`, mapped to `RCLC_RET_ALREADY_EXISTS`
+  in C and `NROS_CPP_RET_ALREADY_EXISTS` in C++. A full table is
+  `NodeTableFull`, whose message names the knob.
+- **Accessors.** Per-node `lifecycle_state_machine_on[_mut]` and
+  `register_lifecycle_node_on`. The executor-scoped accessors answer for the
+  machine on the executor's identity, or for the only machine there is,
+  until W3 and W12 move their callers.
 
 - The executor's single `lifecycle` slot becomes a table keyed by `NodeId`.
 - Its capacity, `MAX_LIFECYCLE_NODES`, is derived, and is 0 for an image with

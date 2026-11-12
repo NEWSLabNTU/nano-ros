@@ -859,6 +859,10 @@ pub enum NodeError {
     /// Which policy and both values are logged by
     /// [`crate::declared_qos::check`] / [`crate::declared_qos::honour`].
     DeclaredQosMismatch,
+    /// RFC-0128 D1 -- this node already has a lifecycle state machine. A
+    /// second registration is refused, never a replacement: replacing
+    /// silently dropped the first machine's service servers.
+    LifecycleAlreadyRegistered,
 }
 
 // phase-427 W10 — `Display` + `core::error::Error`, so a ported rclrs `main`
@@ -914,6 +918,9 @@ impl core::fmt::Display for NodeError {
                 "this subscription's QoS reliability or durability disagrees with what its \
                  system DECLARED for that topic in the contract sidecar",
             ),
+            NodeError::LifecycleAlreadyRegistered => {
+                f.write_str("this node already has a lifecycle state machine")
+            }
         }
     }
 }

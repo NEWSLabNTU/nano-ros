@@ -1738,6 +1738,8 @@ fn node_error_class(err: &nros_node::NodeError) -> u32 {
         E::DeclaredDepthMismatch => 18,
         // issue 1256. APPENDED.
         E::DeclaredQosMismatch => 19,
+        // RFC-0128 D1 (phase-554 W1). APPENDED.
+        E::LifecycleAlreadyRegistered => 20,
     }
 }
 
@@ -1880,6 +1882,8 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
         // disagreement, for the same reason: the image contradicting its own
         // contract. The log line printed before it names which policy.
         E::DeclaredDepthMismatch | E::DeclaredQosMismatch => NROS_CPP_RET_DECLARED_DEPTH_MISMATCH,
+        // RFC-0128 D1 -- the node already has a lifecycle state machine.
+        E::LifecycleAlreadyRegistered => NROS_CPP_RET_ALREADY_EXISTS,
         // NO wildcard. Every `NodeError` variant is named above, and rustc
         // rejects a `_` arm here as unreachable — which is the property worth
         // keeping: adding a variant to `NodeError` now fails to compile until

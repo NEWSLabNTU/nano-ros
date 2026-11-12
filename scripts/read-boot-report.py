@@ -191,6 +191,9 @@ ERR_CLASS = {
     15: "ExecutorFull",
     16: "BackendMismatch",
     17: "ShutdownCallbacksFull",
+    18: "DeclaredDepthMismatch",
+    19: "DeclaredQosMismatch",
+    20: "LifecycleAlreadyRegistered",
 }
 
 # Assigned by `transport_error_class` in the same file.
