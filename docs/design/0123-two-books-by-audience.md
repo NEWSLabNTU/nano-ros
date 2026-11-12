@@ -4,7 +4,7 @@ title: "Two books by audience: the nano-ros Book and nano-ros Internals"
 status: Draft
 area: docs-ux-diagnostics
 since: 2026-11
-last-reviewed: 2026-11
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-532]
 supersedes: []
 superseded-by: null
@@ -331,7 +331,21 @@ tool used to work, and it is not cut along nano-ros's internal layering.
    "Reproduce" section in Internals `rmw/`.
 5. **How long redirects are kept:** two releases, or permanently?
 
+**Outcome (phase-532, recorded 2026-11-13).** 1: `book-internals/`.
+2: kept; `check-user-surface-ids` allows an RFC id only in a page's
+`## Design background` section. 3: neither proposal; `reference/rust-api.md`
+and `reference/c-api.md` keep a `## Porting only` section. 4: both the
+summary and the full ledger went to Internals `rmw/` (`rmw-vs-upstream.md`,
+`rmw-vs-upstream-ledger.md`, `rmw-api-comparison.md`), and the user book's
+`extending/custom-rmw.md` links to them. 5: two releases (`book/book.toml`).
+
 ## Appendix A — Target page list
+
+> **User-book half superseded by [RFC-0124](0124-book-user-guide-organization.md)
+> Appendix A (2026-11).** The user-book list below is the phase-532 page map
+> as it was cut along RFC-0117's groups. RFC-0124 D1 re-cut the parts, and
+> its Appendix A is the target now. The Internals half stands, except that
+> no `release/` part was created: versioning sits in `dev-env/`.
 
 User book (`book/src/`). The old path is in parentheses. *merge* folds a page
 into the one above it. *split* means the contributor half moves to Internals.
@@ -429,3 +443,7 @@ Internals (`book-internals/src/`):
 - 2026-11 — D9 added: the book follows the CLI tiers, the target model, `nros configure` and the board registry.
 - 2026-11 — D2 amended by RFC-0124: the user book's parts follow the reader's task, not the CLI groups.
 - 2026-11 — D4 amended and D3, D8, D9 consolidated by RFC-0124 (the book charter).
+- 2026-11-13 — phase-555 W2 review: Appendix A's user-book half is marked as
+  superseded by RFC-0124 Appendix A, and the open questions record what
+  phase-532 did. D6's "`docs/guides/` is deleted once empty" is not done
+  yet: 15 files remain, 14 of them the one-release "moved" stubs D6 keeps.

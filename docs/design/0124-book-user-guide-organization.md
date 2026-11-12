@@ -4,7 +4,7 @@ title: "The nano-ros Book charter: principles, topic levels and a user-guide org
 status: Draft
 area: docs-ux-diagnostics
 since: 2026-11
-last-reviewed: 2026-11
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-537]
 supersedes: []
 superseded-by: null
@@ -378,17 +378,16 @@ Two questions, two owners:
 
 Applied so far:
 - RTIC (no row) moved to Internals in #3145.
-- PX4 SITL — record of the state on 2026-11-06, not yet applied. The
-  registry row `px4-sitl@Px4` and the `px4` probe track are **not on `main`**:
-  they are on PR #3169 (`registry-px4-row`, open, failing
-  `check-flavour-lanes`), which replaced the closed #3150. This line said the
-  row and track had landed with #3150; they had not.
+- PX4 SITL — state on 2026-11-13. The registry row `px4-sitl@Px4` and the
+  `px4` probe track landed with PR #3169 (merged 2026-11-07, after the closed
+  #3150). The row's generated status is "Boots, manual (2026-11-03)" as a host
+  executable, a combination the placement table above does not list.
   [Phase-542](../roadmap/phase-542-px4-supported-platform.md) W1 plans the gate
   rule the row needs. The track's wait on
   [issue 2289](../issues/archived/2289-px4-release-ships-no-posix-archives.md)
   (the release shipped no PX4 POSIX archives) is over: phase-541 ships them,
   and the track replayed green on the installed track on 2026-11-06; its
-  `awaits` drop rides #3169. Phase-542 W3 (done 2026-11-10) settled the
+  `awaits` was dropped by #3169. Phase-542 W3 (done 2026-11-10) settled the
   dev-tier question by ruling rather than by removal: a `BRINGUP` module's
   CMake still CALLS `nros dev image model-path` and `nros dev codegen entry`,
   because a build tool calling a dev verb is RFC-0117 D3's design. What the
@@ -565,7 +564,7 @@ no current source.
      Verified on host: Linux host · Zephyr native_sim · ThreadX Linux simulator · FreeRTOS POSIX
      Verified in emulator: Bare-metal Cortex-M3 · FreeRTOS on mps2-an385 · Zephyr on mps2-an385 ·
        NuttX Arm and RISC-V · ThreadX RISC-V 64
-     Twin and hardware: Nucleo-F767ZI · Raspberry Pi Pico W
+     Twin and hardware: Nucleo-F767ZI
      Framework integration: PX4 SITL (← targets/px4; waits on issue 2289 for its probe track)
      (Arm FVP: out of the user book until a track replays it, RFC-0115 D4)
      A Zephyr app you build with west (← targets/zephyr-west-app) · Flash a real board (**new**)
@@ -613,6 +612,11 @@ task for every language.
 
 ## Changelog
 
+- 2026-11-13 - phase-555 W2 review: D8's PX4 record brought up to date (#3169
+  merged on 2026-11-07, so the row and the track are on `main`). Appendix A
+  drops the Raspberry Pi Pico W from "Twin and hardware": RFC-0115
+  Amendment 1 left it hardware-only, which D12 already says. Its generated
+  board page stays in Reference.
 - 2026-11-10 - D8's PX4 note amended (phase-542 W3, manager ruling): the
   user tier never has a dev verb typed or told (RFC-0117 D3), and a build
   tool calling one is not that. Gated outside the book by
