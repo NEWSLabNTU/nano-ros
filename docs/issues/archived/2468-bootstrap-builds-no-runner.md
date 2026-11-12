@@ -1,15 +1,16 @@
 ---
 id: 2468
 title: "`bootstrap.sh` builds no runner package, so the checkout road's first `nros run` refuses"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [install, cli, ux]
 related: [phase-527, phase-523]
 found: 2026-11-12
+resolved_in: "fix-2468 branch: one list of what builds beside the CLI, read by setup-cli and bootstrap.sh; check-cli-companion-packages; nightly zenoh-probe"
 ---
 
-**Home: [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md).** Found walking the book (`PROBE_TRACK=zenoh just probe bootstrap`, main `1df1191957`). CI never runs that track; the nightly bootstrap probe runs `quickstart` only.
+**Home: [phase-523](../../roadmap/phase-523-education-labs-adoption-probes.md).** Found walking the book (`PROBE_TRACK=zenoh just probe bootstrap`, main `1df1191957`). CI never runs that track; the nightly bootstrap probe runs `quickstart` only.
 
 ## Symptom
 
@@ -46,4 +47,4 @@ each fail it.
 The zenoh track gets a CI lane: a `zenoh-probe` job in `nightly.yml`, beside
 `bootstrap-probe` and `installed-probe`.
 
-Acceptance: `PROBE_TRACK=zenoh just probe bootstrap` passes on the fix branch.
+**Acceptance (2026-11-12):** `PROBE_TRACK=zenoh just probe bootstrap` passes on the fix branch (`7e84fb3d8d`). Both interop verdicts pass: the talker published through the documented router, and stock `ros2 topic echo` received it. Main `1df1191957` failed the same track at the first `nros run`. The run took 59 min cold.
