@@ -1,0 +1,20 @@
+# What this example deploys to (RFC-0098 D3/D5) — the bringup of a
+# one-package workspace (phase-531 W6, RFC-0122 D3). Switching board is
+# editing `[image.*] board`.
+#
+# `native_c_custom_platform` keeps its hand-written `main` (`src/main.c`): this
+# example witnesses the user-supplied-platform road (RFC-0122 D2), which is one
+# of the manual-entry demos RFC-0122 D10 keeps. So the image boots that program
+# as its OWNED entry (RFC-0071 D19) and the bringup declares no component.
+
+[system]
+name = "native_c_custom_platform"
+rmw = "zenoh"
+domain_id = 0
+default_images = ["linux"]
+
+# Host build. The locator and domain stay runtime env on native
+# (`NROS_LOCATOR` / `ROS_DOMAIN_ID`).
+[image.linux]
+board = "linux"
+entry = "native_c_custom_platform"

@@ -4020,11 +4020,15 @@ bringup = "src/native_c_custom_msg_bringup"
 image = "linux"
 build_subdir = "build/posix-zenoh-linux-native_c_custom_msg_bringup/cmake"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-c-zenoh-custom-platform"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/linux/c/custom-platform"
+bringup = "src/native_c_custom_platform_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-native_c_custom_platform_bringup/cmake"
 
 [[workspace_fixture]]
 id = "linux-c-zenoh-custom-transport-loopback"
