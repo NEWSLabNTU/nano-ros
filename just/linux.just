@@ -689,6 +689,26 @@ test-ros2-params-per-node verbose="":
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
+# Run the ROS 2 CLI parity cells (phase-556): the same `ros2` query asked of a
+# nano-ros node and of a stock node declaring the same interface, and the
+# answers compared. Known gaps are held as expected-failure cases, so the run is
+# green while they stand and red when one is fixed.
+# Fixtures: `param-two-node-talker`, `native-rust-talker`,
+# `workspace-rust-native-service-server`, `workspace-rust-native-action-server`;
+# stock peers: `demo_nodes_cpp`, `examples_rclcpp_minimal_action_server`.
+# Runs `ros2_cli_parity_interop`; needs ROS 2 + `rmw_zenoh_cpp` + `rmw_zenohd`.
+[group("debug")]
+test-ros2-cli-parity verbose="":
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    args=(-p nros-tests --test ros2_cli_parity_interop --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--failure-output never)
+    fi
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+
 # Run the C parameter-server interop cell (phase-491 W6, RFC-0105): the
 # `c-parameters` image, built only on rclc's `rclc_parameter_server_t` API,
 # driven by stock `ros2 param` -- the callback's veto, the remotely enforced
