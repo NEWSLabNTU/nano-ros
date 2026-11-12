@@ -71,6 +71,24 @@ control: the gate on main's two files reports their 5 ids.
   `check-cmake-user-output-refs` excludes those two levels on purpose ("a
   build that stops is being diagnosed"). Ruling A reverses that exclusion.
 
+**The backlog is ratcheted (2026-11-12).** The manager assigned the sweep,
+behind a ratchet so the count cannot grow meanwhile:
+- `check-user-surface-ids` counts ids per file in
+  `.config/user-surface-ids-ratchet.json`, 226 in 59 files. That is 209 in the
+  CLI library (`nros-cli-core/src` outside `cmd/`, `cargo-nano-ros/src`;
+  test-only modules not read) and 17 in build-script panic texts.
+- `check-cmake-user-output-refs` counts `FATAL_ERROR`/`SEND_ERROR` text too:
+  102 sites in `.config/cmake-user-output-refs.json`.
+- A count that rises fails, and one that falls fails until its row is
+  lowered in the same change.
+- Not counted, a stated gap: build-script text assembled away from its
+  panic, and build-script literals that are not panic or warning text (84
+  ids, mostly headers of files generated into `OUT_DIR`).
+
+The sweep goes by file, biggest first. Each message names what, where and
+how to fix; its id moves to a comment. Stable error codes (ruling C) come
+later, so each message stays self-contained, with room for a code prefix.
+
 **Left: runtime logs of a default image.** The rule for which runtime
 literals are log or panic text, and the C string lexer, are still to do.
 
