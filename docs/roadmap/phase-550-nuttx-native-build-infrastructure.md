@@ -72,7 +72,9 @@ link is not vacuous), and runs `make`.
   `CONFIG_ARCH_CHIP` / `CONFIG_ARCH_BOARD`, not listed. The kconfig frontend
   moved into `scripts/nuttx/kconfig-frontend.sh`, which `build-nuttx.sh` now
   sources too. Cadence (Q19): job `nuttx-make-road` in `nightly.yml`, on the
-  daily 07:00 cron and on dispatch, one matrix cell per config. The recipe
+  daily 07:00 cron and on dispatch, one matrix cell per config. The cell
+  list is `arm` alone until rv-virt builds: a cell known to be red carries
+  no signal, so W3a/W4 add `riscv` in the change that makes it green. The recipe
   replaces `build-integration-app`, which built in the shared tree.
   Measured on today's tree (W2 already landed, so armv7a's
   `NUTTX_DIR` failure is gone):
