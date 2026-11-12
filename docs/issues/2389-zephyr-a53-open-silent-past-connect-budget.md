@@ -244,3 +244,86 @@ fix, and the hung boot left no backtrace. With every wait in the open and
 after it now bounded and reported, the next hung a53 boot prints either the
 budget line or the close line, or else the cause is elsewhere. Acceptance is
 unchanged.
+
+## a53 runs and root cause (2026-11-12)
+
+### Runs
+
+Built on main after #3566 merged (with its zenoh-pico pin): the
+`workspace-zephyr-c-realtime-smp` fixture (`build-ws-c-realtime-entry-smp`,
+qemu_cortex_a53/smp, Zephyr v3.7.0, `connect_timeout_ms = 10000`, locator
+`tcp/10.0.2.2:7591`). It was booted as the harness boots it:
+`qemu-system-aarch64 -cpu cortex-a53 -machine virt,gic-version=3 -smp cpus=2 -nic
+user,model=e1000`, on slirp, under `taskset -c 0-3`. Times in the table are
+guest time.
+
+| Run | On the host's 7591 | Result |
+|---|---|---|
+| 11 boots | accepts the TCP connection, never answers | 11/11 end the open at 10.017 - 10.020 s: `zenoh open: no session with tcp/10.0.2.2:7591 within connect_timeout_ms=10000 (...)`, then `zpico Session -> ConnectionFailed`. Each boot logged 6 `Slirp: Failed to send packet` |
+| 3 boots | nothing listening | 3/3 the same lines at 10.018 - 10.020 s, with 16 - 20 slirp drops |
+| 50 boots, host load ~1 | `rmw_zenohd` | 50/50 reach `core pin observed sched_task=high running_on=1` in 2.08 - 2.18 s |
+| 359 boots, cores 0-3 saturated (8 busy loops pinned there) | `rmw_zenohd` | 356 pass, **3 silent for 90 s** (boots 23/50, 121/121, 188/188 of three loops) |
+
+So the acceptance clause holds: a router that never answers fails within the
+budget and says so, on boots where the e1000 drops frames. **The user-visible
+symptom still recurs**: about 1 boot in 50 - 120 under load goes silent with
+#3566's bounds in place. Boot 121's console is the original shape: banner and
+network lines at 0.05 s, 4 slirp drops at 1.05 s, then nothing (no budget line),
+then drops at 61, 62.5, 65.5, 71.5 and 83.5 s, the host side retransmitting to a
+guest that no longer answers. Boot 23 logged no drops at all.
+
+### Root cause: a lock-order deadlock in Zephyr v3.7.0's network stack
+
+On boot 188, gdb attached to the hung guest through the QEMU stub. Both vCPUs
+were in `arch_cpu_idle`, `_kernel.ready_q` was empty, and the kernel tick was
+frozen at `curr_tick = 10022`. The image has no `CONFIG_THREAD_MONITOR`, so
+every statically allocated `k_thread` was dumped by symbol: state, `pended_on`,
+and the frame chain from its saved `x29`. Each live thread is pended on a
+`k_mutex`, and each mutex's owner is itself pended:
+
+| Thread | Waits on | Owner of that mutex | Where |
+|---|---|---|---|
+| `main` | TCP conn `lock` (`tcp_conns_slab`) | `tcp_work` | `_z_tcp_zephyr_open` (tcp_zephyr.c:113, closing after the failed connect) -> `zvfs_close` -> `net_context_put` -> `net_tcp_put` |
+| `tcp_work` | `iface->lock` | `sysworkq` | `tcp_send_process` -> `tcp_send` -> `check_ip` -> `ipv4_is_broadcast_address` |
+| `rx_q[0]` | `iface->lock` | `sysworkq` | `net_arp_input` -> `net_arp_update` -> `ethernet_ipv4_dst_is_broadcast_or_mcast` -> `ipv4_is_broadcast_address` |
+| `sysworkq` | `iface->tx_lock` | `rx_q[0]` | `rs_timeout` -> `net_if_start_rs` -> `net_ipv6_send_rs` -> `net_send_data` -> `net_if_tx` |
+
+`sysworkq` and `rx_q[0]` are an ABBA pair:
+
+- `net_if_start_rs` (subsys/net/ip/net_if.c:1466) takes `iface->lock`, then
+  sends the IPv6 router solicitation, which takes `iface->tx_lock` in `net_if_tx`.
+- `net_arp_update` (subsys/net/l2/ethernet/arp.c:629) takes `iface->tx_lock`,
+  then sends the packets queued behind ARP, whose broadcast check takes
+  `iface->lock`.
+
+It needs two CPUs and the 1 s RS retransmit timer to meet the gateway's ARP
+reply. That is the 1.05 s of boot 121's drops, and why it shows up only on the
+SMP image and more often under load. Once the network deadlocks, the open's
+handshake cannot complete. The 10 s budget fires on time, and its cleanup
+`close()` then blocks on a TCP lock held by the deadlocked `tcp_work`, before
+the budget line is printed. No nano-ros bound can surface this: the thread that
+would report it is one of the blocked ones.
+
+**Upstream fixed it:** zephyrproject-rtos/zephyr#86499, "net: if: Release the
+interface lock early in IPv6 RS timeout handler" (`4926698b1cc`, in v4.1.0+). It
+was backported to the 3.7 LTS branch as `9d55a6010a3`, **first released in
+v3.7.2**: `net_if_start_rs` unlocks the interface before `net_ipv6_start_rs`.
+v3.7.0 and v3.7.1 lack it. The 3.7 line in `west.yml` pins `v3.7.0`, and the 4.4
+line has the fix.
+
+### What closes this issue
+
+User ruling, 2026-11-12: "move the Zephyr 3.7 pin from v3.7.0 to v3.7.2". That
+is a forward LTS patch release, and it fixes every 3.7 image rather than only the
+SMP one. This issue closes when a loaded a53 loop on v3.7.2 shows 0 silent boots
+over at least as many boots as found it (359).
+
+### Not verified on the a53: the post-open write stall
+
+A proxy in front of `rmw_zenohd` that stops reading the guest 8 s after connect
+(with a ROS subscriber on `/ctrl`, so the 100 Hz publications really go out:
+685 delivered before the stall) produced no close line in 60 s. Slirp's
+host-side socket buffers absorb the guest's ~3 KB/s, so the guest's TCP never
+sees a closed window, and there is no stalled write for the 5 s bound to time.
+This rig cannot exercise that bound on a slirp guest. The bound stays verified
+where the image's socket is the host's: native_sim and Linux, above.
