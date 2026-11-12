@@ -580,6 +580,8 @@ def self_test() -> None:
         if WARNING_PREFIX.match(text) or WARNING_CALL.search(before):
             got += [(ln, t) for t in ids(text)]
     assert got == [(1, "issue 1352"), (2, "phase-474"), (3, "RFC-0100")], f"self-test: build {got}"
+    # Issue 2443 -- a public diagnostic code (phase-552, ruling C) is not an id.
+    assert ids("NROS-0412: the board states no locator") == [], "self-test: NROS code"
     # Issue 2443 -- a build-script panic text is read; a plain literal is not.
     rs = (
         'fn main() {\n'
