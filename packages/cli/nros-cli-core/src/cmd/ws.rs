@@ -140,6 +140,10 @@ pub enum Sub {
     #[command(name = "board-facts", hide = true)]
     BoardFacts(crate::cmd::board_facts::BoardFactsArgs),
 
+    /// The entity facts an image's archive build hands cargo (`KEY=VALUE`).
+    #[command(name = "entity-facts", hide = true)]
+    EntityFacts(crate::cmd::image_entity_facts::EntityFactsArgs),
+
     /// Seed `<dir>/Cargo.lock` from the registry pin set the index names.
     ///
     /// For an invoker that runs cargo in a leaf itself (the fixture builder),
@@ -921,6 +925,7 @@ pub fn run(args: Args) -> Result<()> {
         }
         Sub::CentralPatch(a) => run_central_patch(a),
         Sub::BoardFacts(a) => crate::cmd::board_facts::run(a),
+        Sub::EntityFacts(a) => crate::cmd::image_entity_facts::run(a),
         Sub::SeedLock(a) => run_seed_lock(a),
         Sub::ManagedDeps(a) => run_managed_deps(a),
         Sub::CheckLock(a) => run_check_lock(a),

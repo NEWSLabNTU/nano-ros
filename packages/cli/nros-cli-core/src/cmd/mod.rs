@@ -37,6 +37,7 @@ pub mod extension_check;
 pub mod flash;
 pub mod generate;
 pub mod graph;
+pub mod image_entity_facts;
 pub mod image_facts;
 pub mod init;
 pub mod interface;
