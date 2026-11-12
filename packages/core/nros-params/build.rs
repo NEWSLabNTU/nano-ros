@@ -411,8 +411,8 @@ fn capacity(
 ///
 /// The inventory refuses the contract's `params:` when some nodes declare and
 /// the rest do not (phase-446's every-node-or-none rule), and writes the reason
-/// naming the silent nodes. The CMake road stops the configure on that status
-/// (`NanoRosEntityFacts.cmake`, `_nros_param_store_env`), so it never reaches
+/// naming the silent nodes. The CMake and NuttX make roads stop on that status
+/// (`nros dev image entity-facts`, the one producer both call), so it never reaches
 /// here; a road that forwards the inventory to cargo by environment rather than
 /// composing it in cmake gets the same rule at the same place every rung meets.
 /// `absent`, `declared`, and an unset status all pass: only the producer's own

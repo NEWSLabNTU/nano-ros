@@ -649,6 +649,14 @@ def tracked(*globs):
     return [ROOT / p for p in out]
 
 
+# phase-550 W6b -- the declared road's rows are COMPOSED by this verb, which
+# the cmake road calls (`nros_entity_facts_env`) and the NuttX make road calls
+# too. A cmake file that hands cargo the verb's output produces what the verb
+# names, so the harvest reads the verb's code through the call.
+ENTITY_FACTS_VERB_CALL = "dev image entity-facts"
+ENTITY_FACTS_VERB = "packages/cli/nros-cli-core/src/cmd/image_entity_facts.rs"
+
+
 def produced():
     """Names appearing in a `corrosion_set_env_vars` payload under cmake/."""
     names = set()
@@ -661,6 +669,11 @@ def produced():
         if "corrosion_set_env_vars" not in text:
             continue
         names |= set(NAME_RE.findall(text))
+        if ENTITY_FACTS_VERB_CALL in text:
+            verb = (ROOT / ENTITY_FACTS_VERB).read_text(errors="replace")
+            # The verb's unit tests name rows too; only its code produces.
+            code = comments.strip_comments(verb.split("#[cfg(test)]")[0], "rust")
+            names |= set(NAME_RE.findall(code))
     return names
 
 

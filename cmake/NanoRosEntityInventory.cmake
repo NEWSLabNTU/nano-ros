@@ -401,7 +401,7 @@ function(nros_refuse_refused_param_declaration _inv)
             "  ${NROS_PARAM_DECLARATION_REASON}\n"
             "Declare `params:` on every node in the image, or on none. The "
             "configure stops here rather than build the image on nros-params' "
-            "crate defaults (phase-460 W2, issue 1421).")
+            "crate defaults.")
     endif()
 endfunction()
 

@@ -10,7 +10,7 @@
     "cmake/NanoRosComponentLang.cmake": 1,
     "cmake/NanoRosCorrosion.cmake": 2,
     "cmake/NanoRosDomainAgreement.cmake": 1,
-    "cmake/NanoRosEntityInventory.cmake": 2,
+    "cmake/NanoRosEntityInventory.cmake": 1,
     "cmake/NanoRosEntry.cmake": 4,
     "cmake/NanoRosEntryAgreement.cmake": 2,
     "cmake/NanoRosHostBoard.cmake": 2,

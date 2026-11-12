@@ -121,6 +121,10 @@ pub enum Image {
     /// `KEY=VALUE` lines.
     #[command(name = "board-facts")]
     BoardFacts(board_facts::BoardFactsArgs),
+    /// Print the entity facts an image's archive build hands cargo, as
+    /// `KEY=VALUE` lines, from its inventory and sizing descriptor.
+    #[command(name = "entity-facts")]
+    EntityFacts(cmd::image_entity_facts::EntityFactsArgs),
     /// Read back the sizing descriptor `nros sync` wrote for an entry.
     #[command(name = "sizing-descriptor")]
     SizingDescriptor(sizing_descriptor::SizingDescriptorArgs),
@@ -217,6 +221,7 @@ pub fn lower(args: Args) -> Cmd {
             Image::ModelPath(a) => Cmd::ModelPath(a),
             Image::LeafSystem(a) => ws(ws::Sub::LeafSystem(a)),
             Image::BoardFacts(a) => ws(ws::Sub::BoardFacts(a)),
+            Image::EntityFacts(a) => ws(ws::Sub::EntityFacts(a)),
             Image::SizingDescriptor(a) => ws(ws::Sub::SizingDescriptor(a)),
             Image::WestLeafSizing(a) => ws(ws::Sub::WestLeafSizing(a)),
             Image::EntityInventory(a) => ws(ws::Sub::EntityInventory(a)),
@@ -272,6 +277,7 @@ pub const BORN_IN_DEV: &[&str] = &[
     "dev migrate-bringup",
     "dev bindings",
     "dev jobserver repair-makes",
+    "dev image entity-facts",
 ];
 
 /// Run a `nros dev` command [`lower`] left as it is.

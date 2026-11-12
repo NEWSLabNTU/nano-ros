@@ -24,6 +24,8 @@ include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPromise.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCliRows.cmake")
 
 # phase-486 -- `nros_record_entity_facts` / `nros_fold_entity_facts` (and the
 # `_nros_entity_fact` reader issue 1429 added for them) are RETIRED with the
@@ -285,73 +287,61 @@ endfunction()
 # while the same numbers reach pools where zero IS the answer. On this road the
 # consumer is a build script, so it floors what it takes; the leaf sidecar
 # floors at its own boundary for the same reason, one layer over.
-function(_nros_entity_budget_env _out_var)
-    set(${_out_var} "" PARENT_SCOPE)
-    if(NOT COMMAND nros_entity_inventory_knobs_file)
-        return()
-    endif()
-    nros_entity_inventory_knobs_file(_inv)
-    # phase-530 W7 (RFC-0120 D5) -- a READER: if the composer moves the
-    # fragment after this read, the end-of-configure promise check says so.
-    nros_promise_read("${_inv}")
-    if(NOT EXISTS "${_inv}")
-        return()
-    endif()
-    include("${_inv}")
-    if(NOT NROS_ENTITY_INVENTORY_STATUS STREQUAL "derived")
-        return()
-    endif()
-    # Both names are written IN FULL, and the delivered name is never built by
-    # interpolation. phase-412's second delivery failure was exactly that: a
-    # `foreach` composing `NROS_DERIVED_${_pool}` produced a name that matches
-    # nothing, and CMake yields EMPTY for an unknown variable rather than
-    # failing. A constructed name is also invisible to `grep`, which is how
-    # `check-declared-fact-carriers` reads this file -- so a fact spelled only
-    # in pieces would be delivered and still report as unproduced.
-    #
-    # `NROS_DERIVED_MAX_LIVELINESS` is NOT carried on this road (phase-412 W2).
-    # It counts a token per parameter and lifecycle server, which the fragment
-    # knows only from the model it was composed with -- on a multi-entry
-    # configure, ONE entry's model. The consumer completes it instead, as it
-    # does the queryable table: `nros-zpico-build` adds the node and
-    # infrastructure tokens from the descriptor's `[image] infra_families` and
-    # `model_nodes` to its `[image] entity_liveliness_tokens` (issue 1713; it kept the zpico default of 16
-    # until then, short for a param + lifecycle image).
-    set(_out "")
-    # Issue 1649 (RFC-0100 D12) -- NINE entity counts were retired onto the
-    # sizing descriptor: EXECUTOR_MAX_CBS, _MAX_SC, _ACTION_CLIENTS, _MAX_NODES,
-    # _MAX_MONITORS, _MAX_AGE_MONITORS, MAX_PUBLISHERS, MAX_SUBSCRIBERS and
-    # RMW_SUBSCRIBER_SLOTS. Every road this list reached names a descriptor now
-    # (a multi-entry configure its shared runtime's), the descriptor states each
-    # as an `[image]` field from the SAME `derive` (issue 1655), its consumer
-    # reads it first, and the per-carrier knob diff was ZERO on both measured
-    # images. A carrier delivering the same number a second way is the
-    # 0460/0491 shape the descriptor exists to remove.
-    #
-    # Issue 1655 -- and the per-kind cell registry capacity (issue 1130's
-    # RUNTIME_MAX_CELL_ENTITIES) followed them: `[image] cell_entities`, read
-    # first by `nros/build.rs`, zero-diff with this carrier dropped on
-    # `examples/workspaces/cpp` native, freertos_posix and freertos (mps2,
-    # zenoh).
-    #
-    # Issue 1649 -- and the last two, the service-inbox families' slot sizes
-    # (SERVICE_INBOX_BYTES, ACTION_INBOX_BYTES): `nros-rmw-zenoh` reads the
-    # descriptor's per-family request bound first, and the drop was zero-diff
-    # on the cmake road (native, five entries with service and action servers)
-    # and on the Zephyr WEST road (a service-serving `native_sim` image), while
-    # with no descriptor named the same drop moves SERVICE_INBOX_BYTES 24 ->
-    # 1024. So this list is EMPTY: every entity count this function carried is
-    # a descriptor field now. The function stays as the one place a future
-    # carrier would be produced, and returns nothing.
-    #
-    # The zenoh read-task budget (phase-462 W6b) is not carried on this road
-    # either, and was never added to it: the sizing descriptor states it
-    # (`[image] rx_task_budget_frames` / `_rest_us`, from the SAME `derive`)
-    # and `nros-zpico-build` reads it there, below every stated rung. A
-    # carrier delivering it beside the descriptor would be the 0460/0491 shape
-    # this list was emptied to end.
-    set(${_out_var} "${_out}" PARENT_SCOPE)
-endfunction()
+# phase-550 W6b -- DELETED. It returned nothing since issue 1649 emptied its
+# list, and the composition moved to `nros dev image entity-facts`
+# (`cmd/image_entity_facts.rs`), which has no budget term. Its record, kept because
+# the carriers gate quotes it:
+#
+# phase-530 W7 (RFC-0120 D5) -- a READER: if the composer moves the
+# fragment after this read, the end-of-configure promise check says so.
+# Both names are written IN FULL, and the delivered name is never built by
+# interpolation. phase-412's second delivery failure was exactly that: a
+# `foreach` composing `NROS_DERIVED_${_pool}` produced a name that matches
+# nothing, and CMake yields EMPTY for an unknown variable rather than
+# failing. A constructed name is also invisible to `grep`, which is how
+# `check-declared-fact-carriers` reads this file -- so a fact spelled only
+# in pieces would be delivered and still report as unproduced.
+#
+# `NROS_DERIVED_MAX_LIVELINESS` is NOT carried on this road (phase-412 W2).
+# It counts a token per parameter and lifecycle server, which the fragment
+# knows only from the model it was composed with -- on a multi-entry
+# configure, ONE entry's model. The consumer completes it instead, as it
+# does the queryable table: `nros-zpico-build` adds the node and
+# infrastructure tokens from the descriptor's `[image] infra_families` and
+# `model_nodes` to its `[image] entity_liveliness_tokens` (issue 1713; it kept the zpico default of 16
+# until then, short for a param + lifecycle image).
+# Issue 1649 (RFC-0100 D12) -- NINE entity counts were retired onto the
+# sizing descriptor: EXECUTOR_MAX_CBS, _MAX_SC, _ACTION_CLIENTS, _MAX_NODES,
+# _MAX_MONITORS, _MAX_AGE_MONITORS, MAX_PUBLISHERS, MAX_SUBSCRIBERS and
+# RMW_SUBSCRIBER_SLOTS. Every road this list reached names a descriptor now
+# (a multi-entry configure its shared runtime's), the descriptor states each
+# as an `[image]` field from the SAME `derive` (issue 1655), its consumer
+# reads it first, and the per-carrier knob diff was ZERO on both measured
+# images. A carrier delivering the same number a second way is the
+# 0460/0491 shape the descriptor exists to remove.
+#
+# Issue 1655 -- and the per-kind cell registry capacity (issue 1130's
+# RUNTIME_MAX_CELL_ENTITIES) followed them: `[image] cell_entities`, read
+# first by `nros/build.rs`, zero-diff with this carrier dropped on
+# `examples/workspaces/cpp` native, freertos_posix and freertos (mps2,
+# zenoh).
+#
+# Issue 1649 -- and the last two, the service-inbox families' slot sizes
+# (SERVICE_INBOX_BYTES, ACTION_INBOX_BYTES): `nros-rmw-zenoh` reads the
+# descriptor's per-family request bound first, and the drop was zero-diff
+# on the cmake road (native, five entries with service and action servers)
+# and on the Zephyr WEST road (a service-serving `native_sim` image), while
+# with no descriptor named the same drop moves SERVICE_INBOX_BYTES 24 ->
+# 1024. So this list is EMPTY: every entity count this function carried is
+# a descriptor field now. The function stays as the one place a future
+# carrier would be produced, and returns nothing.
+#
+# The zenoh read-task budget (phase-462 W6b) is not carried on this road
+# either, and was never added to it: the sizing descriptor states it
+# (`[image] rx_task_budget_frames` / `_rest_us`, from the SAME `derive`)
+# and `nros-zpico-build` reads it there, below every stated rung. A
+# carrier delivering it beside the descriptor would be the 0460/0491 shape
+# this list was emptied to end.
 
 # _nros_qos_depth_env -- RETIRED (issue 1655).
 #
@@ -389,34 +379,15 @@ endfunction()
 # The value is `,`-joined: cmake would split a `;`-separated list inside a
 # `NAME=VALUE` payload. `build.rs` accepts either separator, as the Zephyr lane
 # also hands it a comma-joined string.
-function(_nros_declared_depth_table_env _out_var)
-    set(${_out_var} "" PARENT_SCOPE)
-    if(NOT COMMAND nros_entity_inventory_knobs_file)
-        return()
-    endif()
-    nros_entity_inventory_knobs_file(_inv)
-    # phase-530 W7 (RFC-0120 D5) -- a READER: if the composer moves the
-    # fragment after this read, the end-of-configure promise check says so.
-    nros_promise_read("${_inv}")
-    if(NOT EXISTS "${_inv}")
-        return()
-    endif()
-    include("${_inv}")
-    # A table this module did not compose is a table nobody may read: a
-    # `refused` inventory has no rows, and a partial one would check call sites
-    # against declarations that were never resolved.
-    if(NOT NROS_ENTITY_DECLARED_DEPTH_STATUS STREQUAL "resolved")
-        return()
-    endif()
-    if(NOT DEFINED NROS_ENTITY_DECLARED_DEPTHS)
-        return()
-    endif()
-    string(REPLACE ";" "," _nros_depth_table "${NROS_ENTITY_DECLARED_DEPTHS}")
-    if(_nros_depth_table STREQUAL "")
-        return()
-    endif()
-    set(${_out_var} "NROS_ENTITY_DECLARED_DEPTHS=${_nros_depth_table}" PARENT_SCOPE)
-endfunction()
+# phase-550 W6b -- the table is composed by `nros dev image entity-facts`
+# (`cmd/image_entity_facts.rs`) from the same fragment, under the same guard. Its
+# record, from when this function composed it:
+#
+# phase-530 W7 (RFC-0120 D5) -- a READER: if the composer moves the
+# fragment after this read, the end-of-configure promise check says so.
+# A table this module did not compose is a table nobody may read: a
+# `refused` inventory has no rows, and a partial one would check call sites
+# against declarations that were never resolved.
 
 # _nros_param_store_env(<out-var>)
 #
@@ -440,67 +411,43 @@ endfunction()
 # forward and its store keeps the crate defaults (`check-declared-fact-carriers`
 # records why: FACT_DISPOSITION for the five capacities, ROAD_UNPAIRED for the
 # three `PARAM_NEEDS_*` inputs).
-function(_nros_param_store_env _out_var)
-    set(${_out_var} "" PARENT_SCOPE)
-    if(NOT COMMAND nros_entity_inventory_knobs_file)
-        return()
-    endif()
-    nros_entity_inventory_knobs_file(_inv)
-    # phase-530 W7 (RFC-0120 D5) -- a READER: if the composer moves the
-    # fragment after this read, the end-of-configure promise check says so.
-    nros_promise_read("${_inv}")
-    if(NOT EXISTS "${_inv}")
-        return()
-    endif()
-    include("${_inv}")
-    # phase-460 W2 (issue 1421) -- a PARTIAL declaration is heard, not sized
-    # around. The inventory refuses when some nodes declare `params:` and the
-    # rest do not (phase-446's every-node-or-none rule, which is right: a store
-    # sized from the nodes that declared gives the others no slots), and it
-    # writes WHICH nodes. This function used to `return()` on anything but
-    # `declared`, so that refusal reached nros-params' build script as no
-    # declaration at all and the store took the crate defaults. Measured on the
-    # island (brief D, E6a): one node's block deleted, 25/35/0/0/0 became
-    # 32/64/256/32/256 with no build-time line, the `set_parameters` request
-    # shape grew with the capacities (issue 1352's class), and that one node
-    # lost its DECLARED_PARAM_MISMATCH check. The producer said no and the next
-    # layer read it as "nothing to say"; the configure stops here instead.
-    #
-    # `absent` keeps its meaning -- no node declares, and an image with no
-    # contract is sized by its board -- and so does a fragment that predates
-    # the field. Only the inventory's own `refused` is fatal.
-    nros_refuse_refused_param_declaration("${_inv}")
-    if(NOT NROS_PARAM_DECLARATION_STATUS STREQUAL "declared")
-        return()
-    endif()
-    # Both names written IN FULL, for the reason `_nros_entity_budget_env`
-    # gives: an interpolated name resolves EMPTY and is invisible to grep.
-    #
-    # Issue 1649 -- MAX_PARAMETERS and MAX_PARAM_NAME_LEN left this list: the
-    # descriptor's `[params]` states both, `nros-params` reads it first, the
-    # knob diff with them dropped was zero on a parameter-declaring
-    # `examples/workspaces/cpp` native configure, and no other road carries
-    # them under these names. Then the three NEEDS rows and the service shape
-    # followed: the descriptor's `[params]` states each need and the
-    # per-node shapes, `nros-params` / `nros-node` / `nros-rmw-zenoh` read
-    # them first, and the drop was zero-diff on the cmake road AND the Zephyr
-    # WEST road (a parameter-declaring, service-serving `native_sim` image),
-    # while with no descriptor the same drop turns the declared shape to
-    # `None`. What stays are the three CAPACITIES: a board fact, never in the
-    # descriptor (RFC-0100 D1).
-    set(_out "")
-    foreach(_pair
-            "NROS_DECLARED_MAX_STRING_VALUE_LEN;NROS_DERIVED_MAX_STRING_VALUE_LEN"
-            "NROS_DECLARED_MAX_ARRAY_LEN;NROS_DERIVED_MAX_ARRAY_LEN"
-            "NROS_DECLARED_MAX_BYTE_ARRAY_LEN;NROS_DERIVED_MAX_BYTE_ARRAY_LEN")
-        list(GET _pair 0 _name)
-        list(GET _pair 1 _src)
-        if(DEFINED ${_src})
-            list(APPEND _out "${_name}=${${_src}}")
-        endif()
-    endforeach()
-    set(${_out_var} "${_out}" PARENT_SCOPE)
-endfunction()
+# phase-550 W6b -- the store's rows, and the refusal of a REFUSED
+# declaration, are `nros dev image entity-facts` now (`cmd/image_entity_facts.rs`),
+# reading the same fragment. Its record, from when this function composed them:
+#
+# phase-530 W7 (RFC-0120 D5) -- a READER: if the composer moves the
+# fragment after this read, the end-of-configure promise check says so.
+# phase-460 W2 (issue 1421) -- a PARTIAL declaration is heard, not sized
+# around. The inventory refuses when some nodes declare `params:` and the
+# rest do not (phase-446's every-node-or-none rule, which is right: a store
+# sized from the nodes that declared gives the others no slots), and it
+# writes WHICH nodes. This function used to `return()` on anything but
+# `declared`, so that refusal reached nros-params' build script as no
+# declaration at all and the store took the crate defaults. Measured on the
+# island (brief D, E6a): one node's block deleted, 25/35/0/0/0 became
+# 32/64/256/32/256 with no build-time line, the `set_parameters` request
+# shape grew with the capacities (issue 1352's class), and that one node
+# lost its DECLARED_PARAM_MISMATCH check. The producer said no and the next
+# layer read it as "nothing to say"; the configure stops here instead.
+#
+# `absent` keeps its meaning -- no node declares, and an image with no
+# contract is sized by its board -- and so does a fragment that predates
+# the field. Only the inventory's own `refused` is fatal.
+# Both names written IN FULL, for the reason `_nros_entity_budget_env`
+# gives: an interpolated name resolves EMPTY and is invisible to grep.
+#
+# Issue 1649 -- MAX_PARAMETERS and MAX_PARAM_NAME_LEN left this list: the
+# descriptor's `[params]` states both, `nros-params` reads it first, the
+# knob diff with them dropped was zero on a parameter-declaring
+# `examples/workspaces/cpp` native configure, and no other road carries
+# them under these names. Then the three NEEDS rows and the service shape
+# followed: the descriptor's `[params]` states each need and the
+# per-node shapes, `nros-params` / `nros-node` / `nros-rmw-zenoh` read
+# them first, and the drop was zero-diff on the cmake road AND the Zephyr
+# WEST road (a parameter-declaring, service-serving `native_sim` image),
+# while with no descriptor the same drop turns the declared shape to
+# `None`. What stays are the three CAPACITIES: a board fact, never in the
+# descriptor (RFC-0100 D1).
 
 # nros_entity_facts_env(<target> [ENV_OUT <var>])
 #
@@ -525,58 +472,92 @@ function(nros_entity_facts_env _target)
     if(_NEF_ENV_OUT)
         set(${_NEF_ENV_OUT} "" PARENT_SCOPE)
     endif()
-    # issue 1122 — the accumulator starts with the payload facts, which are
-    # INDEPENDENT of the entity facts below; the trio and the retention slot
-    # retired onto the sizing descriptor (issue 1649), and the take buffer
-    # stays (below).
-    set(_payload_env "")
-    _nros_entity_budget_env(_budget_env)
-    if(_budget_env)
-        list(APPEND _payload_env ${_budget_env})
+    # phase-550 W6b -- ONE producer. The rows are composed by
+    # `nros dev image entity-facts` (`cmd/image_entity_facts.rs`), the verb the NuttX
+    # make road calls too, so the two roads cannot compose one image two ways.
+    # What stays here is what only this configure knows: which inventory
+    # fragment it wrote, and which sizing descriptor to name (that depends on
+    # the entries that registered, a configure-time global).
+    set(_args "")
+    if(COMMAND nros_entity_inventory_knobs_file)
+        nros_entity_inventory_knobs_file(_inv)
+        # phase-530 W7 (RFC-0120 D5) -- a READER: if the composer moves the
+        # fragment after this read, the end-of-configure promise check says so.
+        nros_promise_read("${_inv}")
+        if(EXISTS "${_inv}")
+            list(APPEND _args --inventory "${_inv}")
+        endif()
     endif()
-
-    # phase-454 W10 -- the per-endpoint table, for the REGISTRATION check.
-    # Distinct from the maximum above, which sizes; see the two functions'
-    # guards.
-    _nros_declared_depth_table_env(_depth_table_env)
-    if(_depth_table_env)
-        list(APPEND _payload_env "${_depth_table_env}")
-    endif()
-
     # phase-454 W14 (RFC-0100 D4, issue 0460) -- the SIZING DESCRIPTOR's path.
-    #
-    # Not a derived number but the file every derived number now travels in, and
-    # it rides this carrier for the reason 0460 records: `set(ENV{...})` touches
-    # only the configure-time process, so a knob published that way reaches the
-    # C lane and not the Rust one. Putting it on the emitted command is the fix,
-    # and this is the emitted command.
-    #
-    # It is a PATH, and nothing watches the VARIABLE (issue 0491) -- the rebuild
-    # edge is on the file's CONTENT, in
-    # `nros_sizing_descriptor::load_for_build_script`.
+    # It rides the emitted command because `set(ENV{...})` reaches the C lane
+    # and not the Rust one; nothing watches the VARIABLE (issue 0491), the
+    # rebuild edge is on the file's CONTENT
+    # (`nros_sizing_descriptor::load_for_build_script`).
     if(COMMAND nros_sizing_descriptor_cargo_env)
         nros_sizing_descriptor_cargo_env(_sizing_env)
         if(_sizing_env)
-            list(APPEND _payload_env "${_sizing_env}")
+            string(REGEX REPLACE "^NROS_SIZING_DESCRIPTOR=" "" _sizing "${_sizing_env}")
+            list(APPEND _args --sizing-descriptor "${_sizing}")
         endif()
     endif()
-
-    # phase-446 W4 -- the parameter store, from the contract's `params:`.
-    _nros_param_store_env(_param_env)
-    if(_param_env)
-        list(APPEND _payload_env ${_param_env})
-        message(STATUS
-            "nano-ros: parameter store sized from the contract -- "
-            "${_param_env}")
+    if(NOT _args)
+        return()
     endif()
-
+    # A configure with no CLI wrote neither input: its fragment is the seed
+    # placeholder (`nros_derive_entity_inventory_knobs` with no CLI), which
+    # states no fact, and only the CLI writes a descriptor. So there is
+    # nothing to deliver, as there was not before the verb existed.
+    nros_resolve_cli(_nros OPTIONAL CONTEXT "nros_entity_facts_env")
+    if(NOT _nros OR NOT EXISTS "${_nros}")
+        return()
+    endif()
+    execute_process(
+        COMMAND "${_nros}" dev image entity-facts ${_args}
+        OUTPUT_VARIABLE _out
+        ERROR_VARIABLE _err
+        RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    # The rows are configure-time output, so a rebuilt `nros` must re-run
+    # the configure that asked.
+    nros_codegen_tool_reconfigure("${_nros}")
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR "${_err}")
+    endif()
+    # Line by line, never through a cmake list (`nros_cli_rows`). The answer
+    # IS a list (one `KEY=VALUE` entry each, for `corrosion_set_env_vars`), so
+    # a row a list cannot carry as one entry is refused, naming it.
+    nros_cli_rows(_row "${_out}" REQUIRE "^[A-Za-z_][A-Za-z0-9_]*="
+        CONTEXT "`nros dev image entity-facts`")
+    set(_payload_env "")
+    foreach(_i IN LISTS _row_INDICES)
+        set(_l "${_row_${_i}}")
+        string(REGEX REPLACE "[^[]" "" _open "${_l}")
+        string(REGEX REPLACE "[^]]" "" _close "${_l}")
+        string(LENGTH "${_open}" _open)
+        string(LENGTH "${_close}" _close)
+        if(_l MATCHES ";" OR NOT _open EQUAL _close)
+            message(FATAL_ERROR
+                "nano-ros: the entity fact `${_l}` holds a `;` or an unbalanced "
+                "bracket, which a cmake list cannot carry as one env entry")
+        endif()
+        list(APPEND _payload_env "${_l}")
+    endforeach()
     # phase-486 -- what remains to deliver is the descriptor's path and the
-    # payload / budget / parameter-store env above. The queryable table's
-    # inputs all come from the descriptor (issue 1649 retired the carriers of
-    # the application counts from the sizing descriptor's fields), and the node
+    # depth table and parameter-store rows. The queryable table's inputs all
+    # come from the descriptor (issue 1649 retired the carriers of the
+    # application counts from the sizing descriptor's fields), and the node
     # count and service families too (phase-486).
     if(NOT _payload_env)
         return()
+    endif()
+    set(_param_env "${_payload_env}")
+    # The store's rows are the `_MAX_<capacity>_LEN` ones (the verb names
+    # them in full); matched by shape so no carrier name is spelled in pieces.
+    list(FILTER _param_env INCLUDE REGEX "^[A-Z_]+_MAX_[A-Z_]+_LEN=")
+    if(_param_env)
+        message(STATUS
+            "nano-ros: parameter store sized from the contract -- "
+            "${_param_env}")
     endif()
     if(_NEF_ENV_OUT)
         set(${_NEF_ENV_OUT} "${_payload_env}" PARENT_SCOPE)
