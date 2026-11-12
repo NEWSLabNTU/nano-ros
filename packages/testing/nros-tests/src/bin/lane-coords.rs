@@ -66,7 +66,7 @@ use std::collections::BTreeSet;
 
 fn usage(got: Option<&str>) -> ! {
     eprintln!(
-        "usage: lane-coords <tier1|tier2|tier2-nightly> \
+        "usage: lane-coords <tier1|tier2|tier2-nightly|merge> \
 [--cells | --modules | --platform <token> | --module <name> | \
 --build-lane | --unclaimed]\n       lane-coords --scope <just module>   (got {got:?})\n\
          \n\
@@ -90,6 +90,7 @@ fn main() {
         Some("tier1") => CiLane::Tier1,
         Some("tier2") => CiLane::Tier2,
         Some("tier2-nightly") => CiLane::Tier2Nightly,
+        Some("merge") => CiLane::Merge,
         other => usage(other),
     };
 

@@ -45,10 +45,17 @@ That output is the record to attach to a review.
 
 | Tier | Lane | Runs | Guarantee |
 |---|---|---|---|
-| **1** | `ci` (every change) | Host-native builds + native fixtures, all gates | The logic and the seams are sound. Says nothing about embedded targets. |
-| **2** | `ci-matrix` (when core/codegen/cmake move) | 1-wise cover: every platform, language, RMW, and kind appears at least once (~28 % of the coordinate space) | Each axis value builds and runs somewhere — but pairings are NOT covered. |
-| **2-nightly** | `ci-matrix-nightly` | Pairwise cover (~70 %) | Platform×language and RMW×language interactions surface here, within a day. |
-| **3** | `ci-full` (pre-release) | The whole matrix | Everything the tree claims, verified together. |
+| **1** | `ci tier1` (CI: daily) | Host-executable boards (Linux, Zephyr native_sim, ThreadX Linux): builds + fixtures, all gates | The logic and the seams are sound. Says nothing about cross-built targets. |
+| **2** | `ci matrix` (CI: daily; run it locally when core, codegen or cmake move) | 1-wise cover: every platform, language, RMW, and kind appears at least once (~28 % of the coordinate space) | Each axis value builds and runs somewhere — but pairings are NOT covered. |
+| **2-nightly** | `ci matrix-nightly` (CI: daily) | Pairwise cover (~70 %) | Platform×language and RMW×language interactions surface here, within a day. |
+| **3** | `ci full` (pre-release, on demand) | The whole matrix | Everything the tree claims, verified together. |
+
+What CI runs on every change is the compile smoke and the source gates
+on a pull request, plus the unit tests in the merge queue. Runtime tests
+run daily: no board's runtime is tested on every change. The merge-queue
+candidate set (`ci merge`: the zenoh behaviour pairs in Rust, C and C++ on
+Linux, Zephyr native_sim and ThreadX Linux) can be run on demand to measure
+what a per-change cadence would cost.
 
 Per-board support levels are generated on their own page:
 [Board Support Levels](board-support-levels.md). The

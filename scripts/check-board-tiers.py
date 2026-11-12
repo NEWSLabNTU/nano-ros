@@ -35,7 +35,7 @@ Run:
   python3 scripts/check-board-tiers.py                 # the predicates
   python3 scripts/check-board-tiers.py --print-status  # status word per row
       [--today YYYY-MM-DD]                             # ... on another day
-  python3 scripts/check-board-tiers.py --print-cadence # platform/cadence/runs
+  python3 scripts/check-board-tiers.py --print-cadence # platform/cadence/runs/breadth
   python3 scripts/check-board-tiers.py --write-baseline
 """
 
@@ -188,17 +188,20 @@ def print_status(doc, matrix_txt, fixtures_txt):
 
 
 def print_cadence(doc):
-    """`platform<TAB>cadence<TAB>runs`, one line per row that runs.
+    """`platform<TAB>cadence<TAB>runs<TAB>breadth`, one line per row that runs.
 
     phase-395 W19's ONE derivation, re-keyed from tiers to cadence by
-    phase-522 W4: `ci_lane`'s tier-1 pool is the set of `cadence = "merge"`
-    platforms, and its test reads this rather than a second list.
+    phase-522 W4 and again by phase-535 W8: `ci_lane`'s tier-1 pool is the
+    set of host witness platforms with an automated cadence (`runs = "host"`,
+    `breadth = "witness"`, cadence merge/daily/weekly), and its test reads
+    this rather than a second list. Cadence alone stopped saying it when the
+    2026-11-12 ruling moved those boards from merge to daily.
     """
     for e in sorted(doc.get("board", []), key=lambda x: x.get("matrix_platform") or ""):
         plat = e.get("matrix_platform")
         if not plat or e.get("infra") or e.get("runs") in (None, "none"):
             continue
-        print(f"{plat}\t{e.get('cadence')}\t{e['runs']}")
+        print(f"{plat}\t{e.get('cadence')}\t{e['runs']}\t{e.get('breadth') or ''}")
     return 0
 
 

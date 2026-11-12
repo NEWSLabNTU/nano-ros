@@ -276,6 +276,13 @@ cell), both static.
 
 ### D9 — A cadence the CI cannot afford is lowered, not kept
 
+> **Ruled 2026-11-12 (user, phase-535 W8):** "W8 = option 1.
+> linux/zephyr/threadx-linux go to cadence=daily. #3594 carries only the
+> cadence gate, the header fixes and the `merge` lane; merge-runtime.yml is
+> dropped or made dispatch-only." Two measured runs had every shard at 37-60
+> min, failing before any fixture. `merge-runtime.yml` is now dispatch-only, a
+> re-measurement tool, and no board is `merge`.
+
 `merge-runtime` runs **advisory** on `merge_group` first. If its p95 stays at
 or under 20 minutes per shard, it joins `CI`. If not, the three boards move to
 `cadence = "daily"` in `board-support.toml`, and `support-status.md` stops

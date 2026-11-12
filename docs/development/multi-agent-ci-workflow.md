@@ -31,21 +31,28 @@ RMW change**. Two commits in this session did exactly that.
 
 ## Runner topology
 
-Split by what can physically run where.
+Split by what can physically run where. This is the topology the workflows
+implement today (re-read against `.github/workflows/` on 2026-11-12,
+phase-535 W8.6); the `L*` names are the original plan's.
 
-| lane | trigger | runner | why there |
+| lane | trigger | runner | workflow / job |
 | --- | --- | --- | --- |
-| **L0 source** | `pull_request` | hosted | buildless, seconds |
-| **L1 unit** | `pull_request` | hosted | `actions/cache` on `target/` keyed by `hashFiles` — the pattern `nightly.yml` already uses for `packages/cli/target` |
-| **L2 host-exec** | `pull_request` | hosted | host gcc only. **`ZephyrNativeSim` needs no SDK**, so three RTOS APIs fit on a hosted runner |
-| **L3 cross-build** | `merge_group` | self-hosted | needs cross toolchains; the Zephyr SDK is 9.2 GB and cannot be cached |
-| **L4 cross-run** | `push` to main, `schedule` | self-hosted | QEMU; auto-revert rather than block |
-| **L5 interop** | `schedule` | self-hosted `nros-ros2` | needs a ROS install; isolated so its flakes poison nothing |
+| **source + compile smoke** | `pull_request` | hosted | `gate.yml`: `check-fast`, `check-fast-compile`, `check-compile-smoke`, `check-cli-tests`, `check-workspace-all`, heard by the required `CI` |
+| **unit + merge-gating gates** | `merge_group` | hosted | `gate.yml`: the same plus `check-test-unit`, `check-template-copy-out`, `check-lane-contracts`, heard by `CI`. No unit tests run on a pull request |
+| **host boards' per-merge runtime (measurement)** | `workflow_dispatch` only | hosted, one shard per board | `merge-runtime.yml` (phase-535 W8): re-measures what a per-merge runtime lane would cost. The boards are `daily` since the 2026-11-12 ruling (RFC-0122 D9); never in `CI` |
+| **L3 cross-build** | `merge_group` | self-hosted | `queue.yml` `l3`, advisory, gated on `NROS_SELF_HOSTED_READY` |
+| **post-submit** | `push` to main | hosted | `post-submit.yml` `dep-chain` |
+| **tier 1 / tier 2 runtime** | `schedule` (daily) | self-hosted | `run-matrix.yml` `tier1`, `matrix` |
+| **per-platform + Zephyr nightly** | `schedule` (daily) | hosted | `nightly.yml` `platform` (build + `just test <platform>`), the Zephyr jobs (build only, issue 2462), and the self-hosted `matrix-nightly` pairwise cover |
+| **host unit + feature sweep** | `schedule` (daily) | hosted | `host-tests.yml` |
+| **L5 interop** | `schedule` (daily) | hosted | `live-peer.yml` (ROS 2 peers in the CI image) |
+| **book probe** | `schedule` (weekly) | hosted | `probe-platforms.yml` |
 | **L6 hardware** | manual | self-hosted `nros-hw` | real boards |
 
-The split is not arbitrary: everything a **hosted** runner can do is everything
-that fits in 14 GB of disk without the SDK. That line falls exactly between L2
-and L3.
+The split is not arbitrary: a **hosted** runner gets what fits in ~14 GB of
+disk with the CI images' toolchains (`nano-ros-ci`, and `nano-ros-zephyr-ci`
+for Zephyr native_sim). The cross toolchains and QEMU sets that do not fit run
+self-hosted.
 
 ### Runners behind NAT are fine
 

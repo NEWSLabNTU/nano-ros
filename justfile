@@ -187,7 +187,7 @@ default:
         "    scope = a platform   linux zephyr freertos nuttx threadx_linux" \
         "                         threadx_riscv64 qemu px4 xrce" \
         "                         cyclonedds" \
-        "         or a preset     all linux tier1 tier2 tier2-nightly" \
+        "         or a preset     all linux tier1 tier2 tier2-nightly merge" \
         "" \
         "    Naming a scope IS the specification: it is what you asked to be" \
         "    covered. Unnamed = best effort over what is provisioned, reported." \
@@ -3801,10 +3801,11 @@ ci-fast:
 _lane-gate lane:
     #!/usr/bin/env bash
     set -euo pipefail
-    coords="$(mktemp)"
-    trap 'rm -f "$coords"' EXIT
-    cargo run -q -p nros-tests --bin lane-coords -- {{lane}} > "$coords"
-    echo "[{{lane}}] $(wc -l < "$coords") fixture coordinate(s):"
+    # The same computation the build and the run read, so a shard
+    # (`NROS_LANE_MODULE`, scripts/build/fixture-lane.sh) gates its own slice.
+    source scripts/build/fixture-lane.sh
+    coords="$(nros_lane_coords_file {{lane}})"
+    echo "[{{lane}}${NROS_LANE_MODULE:+ shard $NROS_LANE_MODULE}] $(wc -l < "$coords") fixture coordinate(s):"
     sed 's/^/  /' "$coords"
     NROS_FIXTURE_SCOPE=coords NROS_FIXTURE_COORDS="$coords" \
         bash scripts/check-fixtures-stale.sh
@@ -4992,7 +4993,7 @@ setup target="" tier="" *extra:
           "" \
           "Preset scopes (a named set of platforms — the fixture lanes):" \
           "" \
-          "  all linux tier1 tier2 tier2-nightly" \
+          "  all linux tier1 tier2 tier2-nightly merge" \
           "" \
           "Readiness checks:" \
           "" \

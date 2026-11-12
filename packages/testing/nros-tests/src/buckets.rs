@@ -19,6 +19,11 @@ use crate::ci_lane::CiLane;
 /// selection.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CiTier {
+    /// `just ci merge <board>` — RFC-0122 D8's per-merge set: the zenoh
+    /// behaviour pairs on each host witness board, one shard per board, run by
+    /// the dispatch-only `merge-runtime.yml` to re-measure a per-merge cadence
+    /// (the boards are `daily` since the phase-535 W8 ruling, RFC-0122 D9).
+    Merge,
     /// `just ci` — host only, minutes, every commit / pre-push.
     Tier1,
     /// `just ci-matrix` — 1-wise over platform×lang×rmw×kind, per-change gate.
@@ -37,6 +42,7 @@ impl CiTier {
             CiLane::Tier1 => CiTier::Tier1,
             CiLane::Tier2 => CiTier::Tier2,
             CiLane::Tier2Nightly => CiTier::Tier2Nightly,
+            CiLane::Merge => CiTier::Merge,
         }
     }
 
@@ -71,6 +77,7 @@ impl CiTier {
             // still resolve, but naming a deprecated spelling in the SSoT is
             // how the ladder drifts from the surface — which is exactly what
             // this ladder exists to prevent, one level up.
+            CiTier::Merge => "ci merge",
             CiTier::Tier1 => "ci tier1",
             CiTier::Tier2 => "ci matrix",
             CiTier::Tier2Nightly => "ci matrix-nightly",
@@ -79,6 +86,7 @@ impl CiTier {
     }
 
     pub const ALL: &'static [CiTier] = &[
+        CiTier::Merge,
         CiTier::Tier1,
         CiTier::Tier2,
         CiTier::Tier2Nightly,
@@ -139,12 +147,13 @@ pub const BUCKET_TIERS: &[BucketTier] = &[
     BucketTier {
         bucket: Bucket::CellMatrix,
         tiers: &[
+            CiTier::Merge,
             CiTier::Tier1,
             CiTier::Tier2,
             CiTier::Tier2Nightly,
             CiTier::Tier3,
         ],
-        reason: "native subset @ tier1, 1-wise @ tier2, pairwise @ nightly, FULL @ tier3 \
+        reason: "zenoh pairs per host witness board @ merge (dispatch), native subset @ tier1, 1-wise @ tier2, pairwise @ nightly, FULL @ tier3 \
                  — the three computed lanes live in ci_lane; tier3 runs every cell",
     },
     BucketTier {

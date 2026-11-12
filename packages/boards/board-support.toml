@@ -66,7 +66,14 @@
 #   - an automated run (merge/daily/weekly) => >=1 `Runtime` cell for the platform
 #   - runs = "none"                         => ZERO Runtime cells for the platform
 #   - cadence merge  => a host executable, and in `ci_lane`'s tier-1 pool
-#   - cadence daily  => a `nightly_token` the nightly sweep runs
+#   - cadence daily  => a `nightly_token` the nightly sweep runs (the Linux host
+#                       needs none: its daily lane is run-matrix.yml's tier 1)
+#   - `ci_lane`'s tier-1 pool = the rows with runs = "host", breadth =
+#     "witness" and an automated cadence (Linux, Zephyr native_sim, ThreadX
+#     Linux). Their cadence is "daily" by the 2026-11-12 ruling (phase-535 W8):
+#     a per-merge runtime job measured 37-60 min per shard before building a
+#     fixture, so "merge" was a promise no job could keep.
+# Every cadence must name a job that keeps it: `just check cadence-jobs`.
 #   - cadence weekly => `probe` tracks of the weekly probe workflow
 #   - cadence manual => `last_run`
 #   - every board directory appears; every row names a real one or is `external`
@@ -110,7 +117,7 @@ board_keys = ["linux"]
 book_run = "starters/linux-host.md#run-it-on-this-machine"
 book_platform = "guide/platforms/linux-host.md"
 runs = "host"
-cadence = "merge"
+cadence = "daily"
 breadth = "witness"
 maintainers = []
 # Maintainer evidence (moved out of `notes`, which renders on the user
@@ -129,7 +136,7 @@ nightly_token = "zephyr"
 book_run = "starters/zephyr-native-sim.md#run-it-on-this-machine"
 book_platform = "guide/platforms/zephyr-native-sim.md"
 runs = "host"
-cadence = "merge"
+cadence = "daily"
 breadth = "witness"
 maintainers = []
 notes = "CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardware board is built by anything."
@@ -230,7 +237,7 @@ link_check_example = "examples/threadx-linux/rust/talker"
 book_run = "starters/threadx-linux.md#run-it-on-this-machine"
 book_platform = "guide/platforms/threadx-linux.md"
 runs = "host"
-cadence = "merge"
+cadence = "daily"
 breadth = "witness"
 maintainers = []
 

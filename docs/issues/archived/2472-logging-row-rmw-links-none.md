@@ -6,7 +6,7 @@ type: bug
 severity: medium
 area: [tests, fixtures, examples]
 found: 2026-11-12
-related: [issue-0831, issue-2434]
+related: [issue-0831, issue-2434, phase-535]
 resolved_in: "fix-2472-logging-rmw: rmw_coordinate_truth reads a nominal rmw off the artifact (no RMW layer linked) and holds such a row to linking no backend"
 ---
 
