@@ -48,19 +48,20 @@ checkout.
 
 ## Status
 
-- K.4.0 (this commit): scaffold + smoke test. Every vtable slot
-  returns `NROS_RMW_RET_UNSUPPORTED`.
-- K.4.1 (next): session lifecycle — stash node_name / namespace,
-  `drive_io` returns OK (uORB push-based).
-- K.4.2: pub/sub data plane — `orb_advertise_multi`,
-  `orb_publish`, `orb_subscribe_multi`, `orb_register_callback` +
-  per-subscriber ringbuffer.
-- K.4.3: type-hash correlation — static topic registry mapping
-  `(name, type_name) → orb_metadata *`.
-- K.4.4: services (decision pending — service-over-topics vs
-  permanent UNSUPPORTED).
-- K.4.5: remove the legacy Rust stack (`nros-rmw-uorb`,
-  `nros-px4`, `third-party/px4/px4-rs`).
+The planned K.4.0 to K.4.5 steps are done. What the backend implements today:
 
-See [`docs/roadmap/phase-115-runtime-transport-vtable.md` §D.7](../../../../docs/roadmap/archived/phase-115-runtime-transport-vtable.md)
-for the detailed plan.
+- **Sessions:** `session.cpp`.
+- **Pub/sub over uORB:** `publisher.cpp` and `subscriber.cpp`.
+  - Subscribers are woken by the PX4 WorkItem `ScheduleNow()`
+    (`px4_callback_glue.cpp`).
+  - Off-PX4 there is a polling fallback (`callback_default.cpp`,
+    `register_fallback.c`).
+- **Topic registry:** a fixed-capacity `(name, type_name) -> orb_metadata *`
+  table, sized per image (`topic_registry.cpp`).
+- **Services:** every service slot returns `NROS_RMW_RET_UNSUPPORTED`
+  (`service.cpp`). uORB has no request/reply primitive.
+- **The legacy Rust stack** (the Rust `nros-rmw-uorb` and `nros-px4`) is
+  removed. RFC-0011 still describes it; its rewrite is pending in the
+  phase-555 design-doc review.
+
+The original plan is kept in [`docs/roadmap/phase-115-runtime-transport-vtable.md` §D.7](../../../../docs/roadmap/archived/phase-115-runtime-transport-vtable.md).
