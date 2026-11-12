@@ -23,6 +23,7 @@ and the questions for the user.
 | 0039 | PX4 integration | keep | review note |
 | 0049 | Hierarchical platform and board config | amend (brief P2) | `amends: [rfc-0049]` added on RFC-0086 and RFC-0098 |
 | 0126 | NuttX on NuttX's infrastructure | keep; RFC-0130 still has to land | review note |
+| 0118 | Target execution model | keep. Reviewed by 139 AUO book in the docs-ux-diagnostics slice, which moved its area here (#3657) | area moved |
 
 Tier 2 pairs, read in the newer RFC's own words:
 
