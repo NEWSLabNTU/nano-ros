@@ -38,9 +38,11 @@ pub struct Args {
     /// `cpp-include`, `c-config-header`, `cpp-config-header`); `tool <name>`
     /// a host binary (`nros-launch-resolve`, `renode`, or `qemu-system-<arch>`
     /// through the one QEMU ladder), the install directory of an SDK tool
-    /// `nros setup <board>` provisioned (`tool zephyr-sdk`), or `configured`
+    /// `nros setup <board>` provisioned (`tool zephyr-sdk`), `configured`
     /// where `nros configure` put an image's answer (with `--project` and
-    /// `--image`).
+    /// `--image`), or `nuttx-cargo-config`, the cargo settings a NuttX make
+    /// build with no project takes from its board (with `--target`,
+    /// `--nuttx-board`, `--target-dir` and `--out`).
     pub names: Vec<String>,
 
     /// Every `[source.*]` row. A row that resolves nowhere is skipped in
@@ -96,6 +98,16 @@ pub struct Args {
     // The rung ladder is RFC-0103 D3.
     #[arg(long)]
     pub project: Option<PathBuf>,
+
+    /// `nuttx-cargo-config` mode: the kernel's `CONFIG_ARCH_BOARD`, which
+    /// picks between boards that build for the same target.
+    #[arg(long)]
+    pub nuttx_board: Option<String>,
+
+    /// `nuttx-cargo-config` mode: the file to write. Its grandparent is the
+    /// directory cargo resolves the file's relative paths against.
+    #[arg(long)]
+    pub out: Option<PathBuf>,
 }
 
 /// The project directory for rung 3: explicit, else the one the generated
@@ -205,6 +217,9 @@ pub fn run(args: Args) -> Result<()> {
     }
     if args.names.first().map(String::as_str) == Some("tool") {
         return run_tool(&args, checkout.as_deref(), &sdk_root, &index);
+    }
+    if args.names.first().map(String::as_str) == Some("nuttx-cargo-config") {
+        return run_nuttx_cargo_config(&args, &sdk_root);
     }
 
     let mut names = args.names.clone();
@@ -924,5 +939,175 @@ mod tests {
             var_name("micro-xrce-dds-client"),
             "NROS_LOCATE_MICRO_XRCE_DDS_CLIENT"
         );
+    }
+}
+
+/// `nros locate nuttx-cargo-config` — phase-550 W5 (RFC-0126 D2, issue 2236
+/// Q5): the cargo settings a NuttX make build with NO project takes from its
+/// board, written to `--out` and printed.
+///
+/// The board is a kernel fact (manager ruling 2026-11-13, option a): the
+/// NuttX board whose target is the triple the kernel's configuration resolved
+/// (`--target`), narrowed by `CONFIG_ARCH_BOARD` (`--nuttx-board`) only when
+/// several share it. Nothing states it, so a build that needs a board the
+/// kernel cannot pick names a project, whose image states its board. The file
+/// is configure's renderer's (`builder::cargo_config`), over the board's
+/// `cargo_config` alone: no knobs and no entity facts, because a build with
+/// no project declares none. Unchanged content is not rewritten.
+fn run_nuttx_cargo_config(args: &Args, sdk_root: &std::path::Path) -> Result<()> {
+    let (Some(triple), Some(arch_board), Some(target_dir), Some(out)) = (
+        args.target.as_deref(),
+        args.nuttx_board.as_deref(),
+        args.target_dir.as_deref(),
+        args.out.as_deref(),
+    ) else {
+        bail!(
+            "`nros locate nuttx-cargo-config` needs --target <triple>, --nuttx-board \
+             <CONFIG_ARCH_BOARD>, --target-dir <dir> and --out <file>"
+        );
+    };
+    let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(sdk_root)
+        .map_err(|e| eyre::eyre!("load board catalog: {e}"))?;
+    let board = select_nuttx_board(catalog.descriptors(), triple, arch_board)
+        .map_err(|e| eyre::eyre!(e))?;
+    let Some(base) = crate::builder::cargo_config::base_dir(out) else {
+        bail!(
+            "{}: the settings file needs a grandparent directory to resolve its paths against",
+            out.display()
+        );
+    };
+    let spec = crate::builder::cargo_config::CargoConfigSpec {
+        image_id: "nuttx-make".into(),
+        board: board.names.first().cloned().unwrap_or_default(),
+        cargo_config: board.cargo_config.clone(),
+        target: board.target.clone(),
+        nano_ros_root: sdk_root.to_path_buf(),
+        workspace: base.to_path_buf(),
+        target_dir: target_dir.to_path_buf(),
+        build_hint: Some("the NuttX make build passes this file to cargo with --config".into()),
+        ..Default::default()
+    };
+    let path = crate::builder::cargo_config::write(&spec, out).map_err(|e| eyre::eyre!(e))?;
+    println!("{}", path.display());
+    Ok(())
+}
+
+/// The one NuttX board that builds for `triple`. Several share it only when
+/// they differ by NuttX board, so `CONFIG_ARCH_BOARD` narrows them by the
+/// board part of their `[board.nuttx] board_config` (`qemu-armv7a-nsh`,
+/// `rv-virt:netnsh`). None, or still several, is refused, naming what was
+/// found: the kernel's facts do not pick a board, and a project does.
+fn select_nuttx_board<'a>(
+    boards: &'a [crate::orchestration::board_descriptor::BoardDescriptor],
+    triple: &str,
+    arch_board: &str,
+) -> Result<&'a crate::orchestration::board_descriptor::BoardDescriptor, String> {
+    use crate::orchestration::board_descriptor::PlatformKind;
+    let by_target: Vec<_> = boards
+        .iter()
+        .filter(|b| b.platform == PlatformKind::Nuttx && b.target.as_deref() == Some(triple))
+        .collect();
+    let names_board = |b: &&crate::orchestration::board_descriptor::BoardDescriptor| {
+        b.nuttx.as_ref().is_some_and(|n| {
+            n.board_config == arch_board
+                || n.board_config
+                    .strip_prefix(arch_board)
+                    .is_some_and(|rest| rest.starts_with(['-', ':']))
+        })
+    };
+    let chosen: Vec<_> = if by_target.len() > 1 {
+        by_target.iter().copied().filter(names_board).collect()
+    } else {
+        by_target.clone()
+    };
+    let label = |v: &[&crate::orchestration::board_descriptor::BoardDescriptor]| {
+        v.iter()
+            .map(|b| format!("`{}`", b.names.first().map(String::as_str).unwrap_or("?")))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match chosen.as_slice() {
+        [one] => Ok(one),
+        [] if by_target.is_empty() => Err(format!(
+            "no nano-ros board builds NuttX for `{triple}` (CONFIG_ARCH_BOARD `{arch_board}`). \
+             Name a project in the app's Make.defs (`NROS_PROJECTS += <dir>`); its image \
+             names the board."
+        )),
+        [] => Err(format!(
+            "the nano-ros boards that build NuttX for `{triple}` ({}) name no NuttX board \
+             `{arch_board}`. Name a project in the app's Make.defs (`NROS_PROJECTS += <dir>`) \
+             to choose one.",
+            label(&by_target)
+        )),
+        many => Err(format!(
+            "several nano-ros boards build NuttX for `{triple}` on `{arch_board}`: {}. Name a \
+             project in the app's Make.defs (`NROS_PROJECTS += <dir>`) to choose one.",
+            label(many)
+        )),
+    }
+}
+
+#[cfg(test)]
+mod nuttx_board_tests {
+    use super::select_nuttx_board;
+    use crate::orchestration::board_descriptor::BoardCatalog;
+
+    fn boards() -> Vec<crate::orchestration::board_descriptor::BoardDescriptor> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        BoardCatalog::load(&root)
+            .expect("catalog")
+            .descriptors()
+            .to_vec()
+    }
+
+    #[test]
+    fn each_in_tree_nuttx_target_picks_its_one_board() {
+        let b = boards();
+        let arm = select_nuttx_board(&b, "armv7a-nuttx-eabihf", "qemu-armv7a").unwrap();
+        assert!(
+            arm.names.iter().any(|n| n == "qemu-armv7a-nuttx"),
+            "{:?}",
+            arm.names
+        );
+        let rv = select_nuttx_board(&b, "riscv32imac-unknown-nuttx-elf", "rv-virt").unwrap();
+        assert!(
+            rv.names.iter().any(|n| n == "rv-virt-nuttx"),
+            "{:?}",
+            rv.names
+        );
+    }
+
+    #[test]
+    fn a_target_no_nuttx_board_builds_is_refused_naming_a_project() {
+        let e = select_nuttx_board(&boards(), "thumbv7em-nuttx-eabihf", "nucleo-f4").unwrap_err();
+        assert!(
+            e.contains("thumbv7em-nuttx-eabihf") && e.contains("NROS_PROJECTS"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn several_boards_on_one_target_narrow_by_the_nuttx_board() {
+        let b = boards();
+        let arm = select_nuttx_board(&b, "armv7a-nuttx-eabihf", "qemu-armv7a")
+            .unwrap()
+            .clone();
+        let mut twin = arm.clone();
+        twin.names = vec!["other-armv7a-nuttx".into()];
+        twin.nuttx = Some(crate::orchestration::board_descriptor::BoardNuttx {
+            board_config: "sabre-6quad:nsh".into(),
+        });
+        let set = vec![arm.clone(), twin];
+        let got = select_nuttx_board(&set, "armv7a-nuttx-eabihf", "qemu-armv7a").unwrap();
+        assert_eq!(got.names, arm.names);
+        let e = select_nuttx_board(&set, "armv7a-nuttx-eabihf", "imx6").unwrap_err();
+        assert!(
+            e.contains("name no NuttX board") && e.contains("NROS_PROJECTS"),
+            "{e}"
+        );
+        let mut set2 = set.clone();
+        set2[1].nuttx = arm.nuttx.clone();
+        let e = select_nuttx_board(&set2, "armv7a-nuttx-eabihf", "qemu-armv7a").unwrap_err();
+        assert!(e.contains("several"), "{e}");
     }
 }

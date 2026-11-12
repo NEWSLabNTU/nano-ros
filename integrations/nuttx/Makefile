@@ -134,14 +134,13 @@ endif
 # `apps/tools/Rust.mk` reads CARGO_BUILD_ARGS to inject extras.
 export NUTTX_INCLUDE_DIR := $(TOPDIR)/include:$(TOPDIR)/include/arch
 
-# Phase 157.C — nano-ros's repo-root `rust-toolchain.toml` pins
-# stable. The NuttX `-Zbuild-std=std,panic_abort` flags need
-# nightly. Pin via env var so the Cargo invocation from
-# `RUST_CARGO_BUILD` picks the same nightly the rest of the
-# NuttX examples use (`examples/qemu-armv7a-nuttx/
-# rust-toolchain.toml`). Override via env before `make` if you
-# need a different nightly.
-export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11
+# phase-550 W5 — the nightly is the one every other road builds with: the
+# first `nightly-*` row of `config/rust-toolchains.txt`, the generated fold of
+# every tracked `rust-toolchain.toml` (the cmake road's `nros_pinned_nightly`
+# reads the same row). `-Z build-std` needs a nightly, and this road runs
+# cargo from the user's tree, where no `rust-toolchain.toml` picks one. Set on
+# the cargo command, not exported, and read only when the recipe runs.
+NROS_RUST_NIGHTLY = $(shell awk '/^nightly-/ { print $$1; exit }' $(NROS_REPO_DIR)/config/rust-toolchains.txt)
 
 # issue 0488 follow-up — this definition sits ABOVE its first use on
 # purpose. It used to come 9 lines after the `CFLAGS +=` below, and NuttX's
@@ -200,13 +199,19 @@ CFLAGS += ${INCDIR_PREFIX}$(NROS_REPO_DIR)/packages/platform/nros-platform-api/i
 NROS_TRIPLE_ENV := $(subst -,_,$(NROS_RUST_TRIPLE))
 
 # Our cargo command (issue 2236 Q12 b), not upstream's `RUST_CARGO_BUILD`:
-# it names the generated image crate, places headers, and takes the target
-# from `RustTriple.mk`. Until phase-550 W5 moves the make road onto the
-# board's cargo config, it still builds `std` against the NuttX `libc` fork,
-# patched in by `--config` because the root workspace must not carry that
-# patch for every other build. The single-quoted shell arg in the recipe
-# keeps the TOML `"` verbatim.
-NROS_LIBC_PATCH := patch.crates-io.libc.path="$(NROS_REPO_DIR)/third-party/nuttx/libc"
+# it names the generated image crate and places headers.
+#
+# phase-550 W5 (issue 2426 items 1 and 5; 2236 Q5) — and it builds with the
+# BOARD's cargo settings, the one carrier every road uses (RFC-0126 D2):
+# `[build] target` (rv-virt's is its own target spec), `[unstable]
+# build-std` (`core, alloc, panic_abort`: no `std`), and the rest of the
+# board's `cargo_config`. `nros locate nuttx-cargo-config` writes them with
+# configure's renderer and cargo reads the file with `--config`. The board is
+# the kernel's: the NuttX board whose target is the triple this tree
+# resolved, narrowed by CONFIG_ARCH_BOARD; a tree whose board that does not
+# pick is refused there, naming a project as the way to choose. The inline
+# std build, the `libc` patch literal and `--target` went with it.
+NROS_CARGO_CONFIG = $(NROS_IMAGE_ROOT)/make/nros-cargo.toml
 
 # $(1) = the image crate's manifest, $(2) = its features (comma-separated) —
 # the two words `nros_image_crate` printed; $(3) = the image flavor (`c` /
@@ -242,6 +247,12 @@ NROS_LIBC_PATCH := patch.crates-io.libc.path="$(NROS_REPO_DIR)/third-party/nuttx
 # `libs/` half (`nuttx_export::snapshot_root`) is read only by board crates,
 # which this image does not build, and falls through when `libs/` is absent.
 define NROS_CARGO_BUILD
+	$(NROS_CLI) locate nuttx-cargo-config \
+		--index $(NROS_REPO_DIR)/nros-sdk-index.toml \
+		--target $(NROS_RUST_TRIPLE) \
+		--nuttx-board $(patsubst "%",%,$(CONFIG_ARCH_BOARD)) \
+		--target-dir $(NROS_IMAGE_TARGET_DIR) \
+		--out $(NROS_CARGO_CONFIG) >/dev/null
 	NUTTX_DIR=$(TOPDIR) \
 	NUTTX_APPS_DIR=$(APPDIR) \
 	NUTTX_EXPORT_DIR=$(TOPDIR) \
@@ -251,18 +262,17 @@ define NROS_CARGO_BUILD
 	AR_$(NROS_TRIPLE_ENV)=$(CROSSDEV)ar \
 	CFLAGS_$(NROS_TRIPLE_ENV)="$(ARCHCPUFLAGS)" \
 	CXXFLAGS_$(NROS_TRIPLE_ENV)="$(ARCHCPUFLAGS)" \
+	RUSTUP_TOOLCHAIN=$(or $(NROS_RUST_NIGHTLY),$(error nano-ros: no nightly-* row in $(NROS_REPO_DIR)/config/rust-toolchains.txt)) \
     python3 $(NROS_REPO_DIR)/scripts/build/cargo-out-dir-headers.py \
 		$(foreach p,$(4),--package $(p)) \
 		--dest $(call NROS_PLACED_DIR,$(3)) -- \
     cargo build --release \
 		--message-format=json-render-diagnostics \
-		-Zbuild-std=std,panic_abort \
+		--config $(NROS_CARGO_CONFIG) \
 		--no-default-features \
 		--features "$(strip $(2))" \
-		--config '$(NROS_LIBC_PATCH)' \
 		--manifest-path $(1) \
-		--target-dir $(NROS_IMAGE_TARGET_DIR) \
-		--target $(NROS_RUST_TRIPLE)
+		--target-dir $(NROS_IMAGE_TARGET_DIR)
 endef
 
 define NROS_CARGO_CLEAN
