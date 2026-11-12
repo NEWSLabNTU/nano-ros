@@ -59,8 +59,18 @@ const SCHED_TASKS: usize = 4;
 /// Arrivals in the cost run.
 const ARRIVALS: usize = 200;
 /// The spin budget a sched task that was NOT woken waits out. A woken sched task returns
-/// in microseconds, so anything under a quarter of this is a wake.
-const PROBE: Duration = Duration::from_millis(200);
+/// in microseconds, so anything under half of this is a wake.
+///
+/// Issue 2274: the discriminator is "returned well before the budget", and a
+/// woken spin on a loaded host can be switched out for tens of milliseconds
+/// before it returns. At 200 ms with a 50 ms threshold that was a narrow
+/// margin; at 1 s with a 500 ms threshold, a woken spin would have to be held
+/// off the CPU for half a second to read as not woken. A sched task that was
+/// NOT woken still parks the whole budget, so the two cannot meet.
+const PROBE: Duration = Duration::from_secs(1);
+/// How long the threaded run waits for every high sched task to take one
+/// arrival's wake before it calls that arrival unanswered.
+const WAKE_WAIT: Duration = Duration::from_secs(2);
 const TYPE: &str = "std_msgs/msg/Empty";
 /// A CDR-encapsulated `std_msgs/Empty` (the 4-byte header and one pad byte).
 const PAYLOAD: &[u8] = &[0, 1, 0, 0, 0];
@@ -391,7 +401,7 @@ fn high_sched_tasks_woken_by_one_low_arrival(sched_tasks: &mut [Box<Executor<'st
     for exec in sched_tasks[1..].iter_mut() {
         let start = Instant::now();
         exec.spin_once(PROBE);
-        if start.elapsed() < PROBE / 4 {
+        if start.elapsed() < PROBE / 2 {
             woken += 1;
         }
     }
@@ -414,9 +424,18 @@ fn a_non_attributing_backend_wakes_every_high_sched_task_and_each_wake_is_bounde
 
     // The cost, measured as a deployment pays it: every sched task on its own
     // thread, parked in a long `spin_once`, as a sched task is. ARRIVALS
-    // arrivals for the low sched task, 2 ms apart; each high sched task counts how often
+    // arrivals for the low sched task; each high sched task counts how often
     // its park ended and what its thread spent in CPU over the run, which
     // includes the wake itself (the futex, the switch-in), not only the pass.
+    //
+    // Issue 2274: the next arrival waits until every high sched task has
+    // taken this one's wake (bounded by WAKE_WAIT). With a fixed 2 ms pacing,
+    // a loaded host could leave a woken thread off the CPU across two
+    // arrivals; its two wakes then coalesced into one ended park, and the
+    // count measured the host's scheduler instead of the fan-out. Now a
+    // fan-out that wakes every member counts exactly one wake per member per
+    // arrival, however slowly the host runs them, and a member the fan-out
+    // missed is still a missing wake, because the wait gives up on it.
     let (spurious, per_wake, per_arrival) = threaded_fanout_cost(sched_tasks);
     eprintln!(
         "fan-out over {SCHED_TASKS} sched tasks, one thread each: {per_arrival:.2} high-sched-task wakes per \
@@ -450,6 +469,9 @@ fn threaded_fanout_cost(sched_tasks: Vec<Box<Executor<'static>>>) -> (u32, Durat
     use std::sync::{Arc, Barrier};
     let stop = Arc::new(AtomicBool::new(false));
     let ready = Arc::new(Barrier::new(SCHED_TASKS + 1));
+    // Ended parks per sched task, read by the arrival loop (issue 2274).
+    let ended: Arc<[AtomicUsize; SCHED_TASKS]> =
+        Arc::new([const { AtomicUsize::new(0) }; SCHED_TASKS]);
     let mut handles = Vec::new();
     // Spawn the members first and the owner last, so the owner (index 0) is
     // joined and dropped last.
@@ -461,6 +483,7 @@ fn threaded_fanout_cost(sched_tasks: Vec<Box<Executor<'static>>>) -> (u32, Durat
     for (idx, exec) in owned {
         let stop = stop.clone();
         let ready = ready.clone();
+        let ended = ended.clone();
         handles.push((
             idx,
             std::thread::spawn(move || {
@@ -471,6 +494,7 @@ fn threaded_fanout_cost(sched_tasks: Vec<Box<Executor<'static>>>) -> (u32, Durat
                 while !stop.load(SeqCst) {
                     exec.0.spin_once(Duration::from_secs(1));
                     wakes += 1;
+                    ended[idx].fetch_add(1, SeqCst);
                 }
                 (wakes, thread_cpu() - c0, exec)
             }),
@@ -479,9 +503,29 @@ fn threaded_fanout_cost(sched_tasks: Vec<Box<Executor<'static>>>) -> (u32, Durat
     ready.wait();
     // Let every sched task reach its park before the first arrival.
     std::thread::sleep(Duration::from_millis(50));
+    let mut unanswered = 0usize;
     for _ in 0..ARRIVALS {
+        let before: Vec<usize> = ended[1..].iter().map(|n| n.load(SeqCst)).collect();
         arrive(0);
+        let deadline = Instant::now() + WAKE_WAIT;
+        while ended[1..]
+            .iter()
+            .zip(&before)
+            .any(|(n, b)| n.load(SeqCst) == *b)
+        {
+            if Instant::now() >= deadline {
+                unanswered += 1;
+                break;
+            }
+            std::thread::sleep(Duration::from_micros(100));
+        }
         std::thread::sleep(Duration::from_millis(2));
+    }
+    if unanswered > 0 {
+        eprintln!(
+            "{unanswered} of {ARRIVALS} arrivals were not answered by every high sched task \
+             within {WAKE_WAIT:?}"
+        );
     }
     std::thread::sleep(Duration::from_millis(20));
     stop.store(true, SeqCst);
@@ -537,7 +581,7 @@ fn an_attributing_backend_does_not_wake_a_high_sched_task_for_a_low_sched_task_a
     let start = Instant::now();
     sched_tasks[0].spin_once(PROBE);
     assert!(
-        start.elapsed() < PROBE / 4,
+        start.elapsed() < PROBE / 2,
         "the low sched task was not woken by its own arrival, so the high sched tasks sleeping proves nothing"
     );
     drop_sched_tasks(sched_tasks);

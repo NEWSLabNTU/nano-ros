@@ -516,7 +516,7 @@ nextest test, and runs its shard by name.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#2274](../issues/2274-tier-wake-fanout-load-sensitive.md) | A timing bound that fails under the gate's parallel load and passes solo: the load is what phase-543's nextest resource groups bound. |
+| [#2274](../issues/archived/2274-tier-wake-fanout-load-sensitive.md) | RESOLVED 2026-11-12: arrivals now wait for the wakes, so the count is the fan-out's. A timing bound that fails under the gate's parallel load and passes solo: the load is what phase-543's nextest resource groups bound. |
 | [#2306](../issues/archived/2306-interrupted-submodule-checkout-reads-provisioned.md) | An interrupted submodule checkout reads as provisioned and the lane fails three gates later: a gate precondition that should refuse up front. |
 | [#2308](../issues/archived/2308-sparse-zephyr-tree-reads-as-west-workspace.md) | A sparse Zephyr source tree reads as a provisioned west workspace: the same gate-precondition class as issue 2306. |
 | [#2352](../issues/2352-entity-wake-race-hangs-beside-build-gates.md) | entity_wake's race test hangs beside the build gates: found by W3's gate-order check. |
