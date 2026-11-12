@@ -23,10 +23,13 @@ Rules:
    BLOCKED. Archiving is the claim that the phase is finished.
 3. A missing status line is a RATCHET. `.config/phase-item-status-baseline.txt`
    counts the unmarked items per phase doc, keyed by file name so that
-   archiving a doc keeps its count. A doc's count may only fall. A doc not in
-   the baseline (every new phase) must mark every item. A count that falls
-   below the baseline fails until the baseline is lowered (`--update`), so
-   the debt can only shrink.
+   archiving a doc keeps its count. A doc's count may not RISE above its
+   baseline, and a doc not in the baseline (every new phase) must mark every
+   item. A count that FALLS passes silently: a phase PR that marks items never
+   has to touch the baseline file, so two PRs marking items in one doc never
+   conflict on it (the issue 0883/0884 shape, a committed file every PR edits).
+   The baseline is lowered in its own periodic `--update` PR; `--report` shows
+   how far it has fallen behind.
 
 A self-test runs on every invocation.
 
@@ -126,11 +129,9 @@ def judge(root):
                 f"  {rel}: {len(unmarked)} item(s) with no `- **Status:**` line "
                 f"(baseline {allowed}): {', '.join(unmarked)}"
             )
-        elif len(unmarked) < allowed:
-            lines.append(f"  {rel}: baseline {allowed} but {len(unmarked)} unmarked -- lower it (--update)")
-    stale = sorted(n for n in base if n not in m)
-    for n in stale:
-        lines.append(f"  {n}: in the baseline but no such phase doc -- remove it (--update)")
+    # A count below its baseline, or a baseline entry for a doc that is gone,
+    # passes: lowering the baseline is a periodic `--update`, never a duty of
+    # the PR that marked the items (see the module docstring).
     if lines:
         return 1, ["phase work items without a valid status line:"] + lines + [
             "Each `### W<n>` item carries one line: `- **Status:** OPEN`, "
@@ -138,7 +139,9 @@ def judge(root):
             "Mark DONE only what is done."
         ]
     total = sum(len(v[1]) for v in m.values())
-    return 0, [f"OK -- {len(m)} phase doc(s); {total} unmarked item(s) baselined."]
+    slack = sum(max(0, base.get(n, 0) - len(v[1])) for n, v in m.items())
+    tail = f"; the baseline is {slack} above the tree (lower it with --update)" if slack else ""
+    return 0, [f"OK -- {len(m)} phase doc(s); {total} unmarked item(s) baselined{tail}."]
 
 
 def self_test():
@@ -162,7 +165,10 @@ def self_test():
         ("one unmarked, no baseline", {active: doc.format(a=ok, b="text")}, 1),
         ("one unmarked, baselined", {active: doc.format(a=ok, b="text"),
                                      BASELINE: "phase-901-x.md 1\n"}, 0),
+        # One-directional: a doc that marked items since the baseline passes.
         ("baseline above the count", {active: doc.format(a=ok, b=ok),
+                                      BASELINE: "phase-901-x.md 1\n"}, 0),
+        ("count above the baseline", {active: doc.format(a="text", b="text"),
                                       BASELINE: "phase-901-x.md 1\n"}, 1),
         ("DONE with no parenthesis", {active: doc.format(a="- **Status:** DONE", b=ok)}, 1),
         ("unknown word", {active: doc.format(a="- **Status:** LANDED (x)", b=ok)}, 1),
@@ -172,7 +178,7 @@ def self_test():
         ("archived keeps its baseline", {archived: doc.format(a=ok, b="text"),
                                          BASELINE: "phase-901-x.md 1\n"}, 0),
         ("stale baseline entry", {active: doc.format(a=ok, b=ok),
-                                  BASELINE: "phase-999-gone.md 2\n"}, 1),
+                                  BASELINE: "phase-999-gone.md 2\n"}, 0),
         # A status line after `## Order` belongs to no item.
         ("line outside any item", {active: doc.format(a=ok, b="text")}, 1),
     ]
