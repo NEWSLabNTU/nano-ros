@@ -811,11 +811,35 @@ no-std-entry-emission:
 core-crates-are-no-std:
     @python3 scripts/check-core-crates-are-no-std.py
 
-# issue 0488 residue 4 follow-up — the NuttX integration Makefile is on a path no
-# lane executes (`CONFIG_NROS` is set by no shipped defconfig), so it rots.
+# issue 0488 residue 4 follow-up — what a static read of the NuttX integration
+# Makefile settles. The build itself is `just nuttx build-make-road`, run daily
+# by `nightly.yml` (phase-550 W1).
 [private]
 nuttx-integration-makefile:
     @bash scripts/check-nuttx-integration-makefile.sh
+
+# phase-550 W4 (issue 2236 Q11 b) — the make road's ONE Rust target triple
+# (`integrations/nuttx/RustTriple.mk`: upstream's `RUST_TARGET_TRIPLE`, then an
+# armv7a fallback) agrees with upstream's table for every arch that table
+# knows, answers only armv7a beyond it, and refuses the rest naming
+# LLVM_ARCHTYPE. When the nuttx-apps pin gains its own armv7a branch, this
+# goes red and says to delete the fallback. Reads upstream's `tools/Rust.mk`,
+# so with no nuttx-apps tree it is a RECORDED skip. Self-tests first. ~1 s.
+[private]
+[group('needs:submodules')]
+nuttx-rust-triple:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rc=0
+    out="$(python3 scripts/check-nuttx-rust-triple.py)" || rc=$?
+    if [ "$rc" -eq 78 ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip nuttx-rust-triple "$out"
+        exit 0
+    fi
+    printf '%s\n' "$out"
+    exit "$rc"
 
 [private]
 nuttx-libc-struct-sizes:
