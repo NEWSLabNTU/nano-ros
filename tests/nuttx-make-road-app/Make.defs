@@ -1,0 +1,4 @@
+# phase-550 W1 — see Kconfig.
+ifneq ($(CONFIG_NROS_MAKE_ROAD_SMOKE),)
+CONFIGURED_APPS += $(APPDIR)/external/nros-make-road-smoke
+endif

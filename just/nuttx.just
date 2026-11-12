@@ -42,44 +42,36 @@ build:
     # lane linked against missing/foreign objects (arm_vectortab.o absent).
     scripts/nuttx/build-nuttx.sh
 
-# Build the nano-ros integration app the way the BOOK tells a user to
-# (issue 0488 residue 4 follow-up). No shipped defconfig sets `CONFIG_NROS`, so
-# `just nuttx build` compiles the kernel and never this app — which is how the
-# documented flow accumulated three independent breakages in two weeks (a stale
-# `packages/core` cargo path, a `+=` reading `NROS_REPO_DIR` before it was
-# defined, and a missing object dir under `PREFIX`).
+# phase-550 W1 — build the make road (the `apps/external` guest road,
+# `integrations/nuttx/`) the way a NuttX user does: in this run's OWN copy of
+# the pinned kernel and apps trees under build/nuttx-make-road/<config>/ (never
+# the shared tree, issue 0525), with `CONFIG_NROS=y` and a small C app that
+# calls the API, then `make`. Green only when the kernel ELF holds the app's
+# entry, the API call and `nros_*` text. `config` is `arm`, `riscv`, or `all`.
 #
-# NOT in `check::fast`: it needs the NuttX toolchain and it mutates the shared
-# tree's `.config`, which is issue 0525's last-configured-wins state. It
-# restores the config afterwards, including on failure. `check::nuttx-integration-makefile`
-# covers the two classes a static read can settle; this covers the compile.
+# Successor of `build-integration-app`, which built in the SHARED tree and
+# reached no lane, so the road broke three times unseen (issue 0488 residue 4)
+# and twice more in issue 2236's study. The daily `nuttx-make-road` job in
+# `nightly.yml` runs it on both configs. `check::nuttx-integration-makefile`
+# covers what a static read settles; this covers the build.
+#
+# Build the NuttX make road in its own trees and check the ELF (arm|riscv|all)
 [group("main")]
-build-integration-app:
+build-make-road config="all":
     #!/usr/bin/env bash
-    set -e
-    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
-    if [ ! -d "$nuttx_dir/arch" ]; then
-        echo "NuttX not provisioned — run 'just nuttx setup' first."; exit 0
+    set -uo pipefail
+    case "{{config}}" in
+        all) configs="arm riscv" ;;
+        *)   configs="{{config}}" ;;
+    esac
+    failed=""
+    for c in $configs; do
+        scripts/nuttx/make-road-build.sh "$c" || failed="$failed $c"
+    done
+    if [ -n "$failed" ]; then
+        echo "nuttx make road: FAILED on:$failed" >&2
+        exit 1
     fi
-    scripts/nuttx/stage-external-apps.sh "${NUTTX_APPS_DIR:-$(pwd)/third-party/nuttx/nuttx-apps}"
-    backup="$(mktemp)"
-    cp "$nuttx_dir/.config" "$backup"
-    # Issue 0551 — `make olddefconfig` runs `clean_context`, which DELETES the
-    # generated `include/nuttx/config.h` (tools/Unix.mk: olddefconfig ->
-    # clean_context -> `DELFILE include/nuttx/config.h`). So restoring `.config`
-    # byte-for-byte still leaves the tree DE-CONTEXTUALIZED, and nothing puts
-    # the header back: `build-nuttx.sh`'s snapshot short-circuit keys on
-    # HEAD+defconfig+snapshot, all of which still match, so it no-ops forever.
-    # That took the whole NuttX fixture lane down with
-    # `fatal error: nuttx/config.h: No such file or directory`.
-    # `make context` regenerates the header and the dirlinks; it does not
-    # rebuild, so the restore stays cheap.
-    restore() { cp "$backup" "$nuttx_dir/.config"; ( cd "$nuttx_dir" && make olddefconfig >/dev/null 2>&1 && make context >/dev/null 2>&1 ); rm -f "$backup"; }
-    trap restore EXIT
-    # issue 1403 — under the stall watchdog, like every `make -j`.
-    repo="$(pwd)"
-    ( cd "$nuttx_dir" && echo "CONFIG_NROS=y" >> .config && make olddefconfig >/dev/null && python3 "$repo/scripts/build/make-stall-watchdog.py" --label "nuttx integration app" --diag-dir "$nuttx_dir" -- make -j"$(nproc)" )
-    echo "integration app built; objects under \$APPDIR/external/.nros-build/<arch>/"
 
 # Build NuttX QEMU ARM virt examples
 [group("main")]

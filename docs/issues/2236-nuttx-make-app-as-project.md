@@ -176,9 +176,9 @@ format. The cmake road's knob carrier is a cargo `--config` file with an
 are not `force`, so an exported variable still wins, and cargo fingerprints
 the values, so an edited row re-runs the build script.
 
-**No lane runs it.** `scripts/check-nuttx-integration-makefile.sh` (header)
-records that no shipped defconfig sets `CONFIG_NROS=y` and no CI lane builds
-this road; `just nuttx build-integration-app` is the manual build.
+**No lane ran it** when this was written: no shipped defconfig sets
+`CONFIG_NROS=y` and no CI lane built this road. Since phase-550 W1,
+`just nuttx build-make-road` builds it daily on both boards, in its own trees.
 
 Two of the board facts the make road restates by hand have already drifted
 from the board's `cargo_config` (`-Zbuild-std=std` against `core,alloc`, and
@@ -399,7 +399,7 @@ means a make app is never census-tight, which is a ruling to make on purpose.
   values and both files named (if question 4 is yes); two apps declaring a
   project are refused naming both (A2); an image whose board does not match
   the kernel's arch is refused.
-- `just nuttx build-integration-app` (or a successor) builds the project case
+- `just nuttx build-make-road` (or a successor) builds the project case
   and is reachable from a lane, so the road stops being one nothing runs
   (`scripts/check-nuttx-integration-makefile.sh`'s note).
 - RFC-0120 D5 and phase-530 W5's R36 text are amended to match.

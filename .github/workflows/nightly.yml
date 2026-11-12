@@ -1254,6 +1254,76 @@ jobs:
   # different defect from a red on the quickstart track.
   # Weekly, not nightly: user ruling 2026-11-12 ("Take your recommendation"),
   # weighing a 1-3 h hosted run against how slowly this road changes.
+  # phase-550 W1 — the NuttX make road (the `apps/external` guest road,
+  # `integrations/nuttx/`), built daily on both boards.
+  #
+  # No other lane builds it: every fixture row reaches NuttX through the cmake
+  # or cargo roads, so the road issue 2236's study found broken on both boards
+  # was found by READING (issue 2426). `just nuttx build-make-road` builds in
+  # its own copy of the pinned trees and checks the archive reached the ELF.
+  # Daily per issue 2236 Q19. Its own job, so a red here withholds no
+  # platform cell's verdict.
+  nuttx-make-road:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 7 * * *' }}
+    name: nuttx make road (${{ matrix.config }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    concurrency:
+      group: nightly-nuttx-make-road-${{ matrix.config }}-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [arm, riscv]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Restore only; the `platform` job is this key's one saver.
+      - name: Restore CLI build cache (Phase 218)
+        uses: actions/cache/restore@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
+        uses: ./.github/actions/setup-nros-cli
+
+      - name: Provision the declared system closure (phase-413 W3)
+        run: |
+          source ./activate.sh
+          nros setup --system --sudo
+
+      - name: just setup nuttx
+        run: |
+          source ./activate.sh
+          just setup nuttx
+
+      - name: just nuttx build-make-road ${{ matrix.config }}
+        run: |
+          source ./activate.sh
+          just nuttx build-make-road ${{ matrix.config }}
+
+      - name: Upload the make log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuttx-make-road-${{ matrix.config }}-log
+          path: build/nuttx-make-road/${{ matrix.config }}/make.log
+          if-no-files-found: ignore
+
   zenoh-probe:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * 1' }}
     runs-on: ubuntu-latest
