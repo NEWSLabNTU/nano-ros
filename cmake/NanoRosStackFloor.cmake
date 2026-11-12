@@ -199,10 +199,13 @@ function(_nros_stack_floor_tools _what _ok)
         return()
     endif()
     set(_script "${_NROS_STACK_FLOOR_DIR}/../scripts/nros-stack-floor.py")
-    set(_table "${_NROS_STACK_FLOOR_DIR}/../config/stack-floors.toml")
+    # The build reads the table's JSON twin: stdlib `json` loads it on every
+    # Python the build supports, where `tomllib` needs 3.11. The TOML is what
+    # people edit; `--validate-table` refuses a twin that no longer matches it.
+    set(_table "${_NROS_STACK_FLOOR_DIR}/../config/stack-floors.json")
     if(NOT EXISTS "${_script}" OR NOT EXISTS "${_table}")
         message(STATUS "nano-ros: stack floor for ${_what} not checked -- this nano-ros "
-            "has no scripts/nros-stack-floor.py or config/stack-floors.toml")
+            "has no scripts/nros-stack-floor.py or config/stack-floors.json")
         return()
     endif()
     find_package(Python3 COMPONENTS Interpreter QUIET)
@@ -231,7 +234,7 @@ function(_nros_stack_floor_command _out)
         endif()
     endif()
     set(_cmd "${Python3_EXECUTABLE}" "${_NROS_STACK_FLOOR_DIR}/../scripts/nros-stack-floor.py"
-        --table "${_NROS_STACK_FLOOR_DIR}/../config/stack-floors.toml"
+        --table "${_NROS_STACK_FLOOR_DIR}/../config/stack-floors.json"
         --rmw "${_C_RMW}" --target "${_C_TARGET}" --image "${_C_KEY}"
         --role "OPEN=${_C_ROOT}"
         --check-stack "OPEN=${_C_STACK}" --stack-knob "${_C_KNOB}"

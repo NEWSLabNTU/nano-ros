@@ -503,6 +503,14 @@ zephyr-rust-main-stack:
 stack-floor-table:
     @python3 scripts/nros-stack-floor.py --validate-table config/stack-floors.toml
 
+# A script a USER build runs (every `.py` a tracked CMake file names, and the
+# repo modules it imports) needs only Python 3.10's standard library: that is
+# Ubuntu 22.04's system Python, and it has no `tomllib`. The stack-floor CHECK
+# once imported `tomli` and stopped a stock 22.04 user's Zephyr build.
+[group("checks")]
+build-python-stdlib:
+    @python3 scripts/check-build-python-stdlib.py
+
 # issue 2365 — nano-ros's Zephyr task stacks have their own default and never
 # follow CONFIG_MAIN_STACK_SIZE: 2359's 16 -> 32 KiB main raise used to double
 # both zenoh stacks too, which overflowed the nucleo C talker's RAM.
