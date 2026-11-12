@@ -1,7 +1,7 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
-**Status (2026-11-13). OPEN: W1, W2 and W4 have landed, and W6 lands with
-this doc; W2b, W3 and W5 are open.** This phase tracks the implementation of
+**Status (2026-11-13). OPEN: W1, W2, W4 and W6 are done; W2b, W3 and W5
+are open.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
 runs, and every gate reads that producer instead of holding its own number.
@@ -105,7 +105,7 @@ board's knob; an unmeasured one warns.
 
 ### W6 — The twin lane: a stale allowance is detected
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-13, #3663)
 
 An allowance is the twin's peak minus the static walk at the time it was
 measured. When a frame on the walk shrinks and the row stays, the floor falls
