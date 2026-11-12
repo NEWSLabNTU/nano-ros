@@ -446,8 +446,8 @@ function(_nros_node_register_bake_locator _target)
         message(FATAL_ERROR
             "_nros_node_register_bake_locator: '${_target}' is not a target")
     endif()
-    target_compile_definitions(${_target} PRIVATE
-        "NROS_ENTRY_LOCATOR=\"${NROS_ENTRY_LOCATOR}\"")
+    nros_locator_c_define(_loc_def NROS_ENTRY_LOCATOR "${NROS_ENTRY_LOCATOR}")
+    target_compile_definitions(${_target} PRIVATE "${_loc_def}")
 endfunction()
 
 # Issue 1003 — derive the RTOS board class from the family NAME, so a family is

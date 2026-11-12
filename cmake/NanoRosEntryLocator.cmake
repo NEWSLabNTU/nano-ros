@@ -227,3 +227,26 @@ function(_nros_resolve_entry_locator lane platform board out_var)
 
     set(${out_var} "${_loc}" PARENT_SCOPE)
 endfunction()
+
+# nros_locator_c_define(<out_var> <macro> <locator>)
+#
+# The compile definition `<macro>="<locator>"`, spelled so it survives the
+# compiler command line. Two characters of a locator do not:
+#
+# - `#` — CMake DROPS a definition containing one ("Preprocessor definitions
+#   containing '#' may not be passed on the compiler command line"; a
+#   configure warning, nothing else), and every serial locator has one:
+#   `serial/<dev>#baudrate=<n>`. The image then bakes no locator and opens no
+#   session. Issue 1955 fixed this on the Zephyr road only; phase-553 W4 met
+#   it again on a bare-metal C image, so it is one helper now.
+# - `;` — CMake's list separator, which splits an ISO-TP or multi-option CAN
+#   locator into two definitions.
+#
+# Each travels as its C octal escape (`\043`, `\073`: at most three digits, so
+# a following digit cannot extend it); the string literal the compiler sees is
+# the locator unchanged.
+function(nros_locator_c_define out_var macro locator)
+    string(REPLACE "#" "\\043" _l "${locator}")
+    string(REPLACE ";" "\\073" _l "${_l}")
+    set(${out_var} "${macro}=\"${_l}\"" PARENT_SCOPE)
+endfunction()

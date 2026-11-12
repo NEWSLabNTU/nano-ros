@@ -108,7 +108,20 @@ set(_NROS_CFG_PLACER_PY
 #
 # <dest-dir> receives `<dest-dir>/nros-{c,cpp}-generated/<subdir>/<name>`; read
 # it with `nros_config_header_placed()` rather than spelling that path.
+#
+# `LINK_SCRIPTS <package>...` (phase-553 W4, RFC-0130 D2): packages whose
+# build scripts publish linker scripts (a bare-metal image's startup, board and
+# PAC crates). Their top-level `*.x` land in `<dest-dir>/link/`, which the
+# board's cmake overlay hands the C link with `-L`; a named package that
+# publishes none fails the cargo step.
 function(nros_config_header_place _target _dest)
+    set(_link_pkgs "")
+    list(FIND ARGN LINK_SCRIPTS _ls_at)
+    if(NOT _ls_at EQUAL -1)
+        math(EXPR _ls_from "${_ls_at} + 1")
+        list(SUBLIST ARGN ${_ls_from} -1 _link_pkgs)
+        list(SUBLIST ARGN 0 ${_ls_at} ARGN)
+    endif()
     if(NOT ARGN)
         message(FATAL_ERROR "nros_config_header_place(${_target}): no package named")
     endif()
@@ -124,6 +137,9 @@ function(nros_config_header_place _target _dest)
     set(_pkg_args "")
     foreach(_p IN LISTS ARGN)
         string(APPEND _pkg_args "--package \"${_p}\" ")
+    endforeach()
+    foreach(_p IN LISTS _link_pkgs)
+        string(APPEND _pkg_args "--link-scripts \"${_p}\" ")
     endforeach()
     set(_wrapper "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_target}-cargo-placer.sh")
     file(WRITE "${_wrapper}"

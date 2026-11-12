@@ -43,7 +43,7 @@ pub use node::{LoweredEntry, LoweredNode, NodeIdentity, QosOverride, sanitize_pk
 
 /// The board families the entry pipeline distinguishes.
 ///
-/// Every key in [`BOARD_KEYS`] collapses onto one of five families. The KEY is
+/// Every key in [`BOARD_KEYS`] collapses onto one of six families. The KEY is
 /// what a user writes and what cmake passes; the FAMILY is what the lowering
 /// reasons about, and what a pack turns into a call.
 #[derive(
@@ -58,6 +58,10 @@ pub enum BoardFamily {
     Nuttx,
     Freertos,
     Threadx,
+    /// A board with no RTOS (phase-553 W4, RFC-0130): the board crate's
+    /// Rust startup (cortex-m-rt) owns reset, and its C-ABI start hands
+    /// control to the entry's `app_main`. One executor, no sched tasks.
+    Baremetal,
 }
 
 /// The boot wrapper a generated entry gets.
@@ -80,12 +84,13 @@ pub enum BootShape {
 impl BoardFamily {
     /// Every family, in a stable order — so a consumer that must handle all of
     /// them iterates rather than lists, and cannot go stale.
-    pub const ALL: [BoardFamily; 5] = [
+    pub const ALL: [BoardFamily; 6] = [
         BoardFamily::Linux,
         BoardFamily::Zephyr,
         BoardFamily::Nuttx,
         BoardFamily::Freertos,
         BoardFamily::Threadx,
+        BoardFamily::Baremetal,
     ];
 
     /// Does this family boot through the board's own `startup.c`?
@@ -258,7 +263,11 @@ impl BoardFamily {
                     derives_level_stacks: true,
                 }),
             }),
-            BoardFamily::Threadx => Some(CAbiRunners {
+            // phase-553 W4 -- bare metal takes ThreadX's shape: the shared
+            // runner (its per-tick yield is Zephyr-only), and nothing per
+            // task, because there is no scheduler to spawn one on. The
+            // board's cmake overlay compiles the runner TU into the app.
+            BoardFamily::Threadx | BoardFamily::Baremetal => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_sched_tasks: None,
                 run_sched_tasks_backed: None,
@@ -305,6 +314,11 @@ impl BoardFamily {
     pub fn sched_task_rtos_key(self) -> &'static str {
         match self {
             BoardFamily::Linux => "posix",
+            // phase-553 W4 -- a board with no RTOS has no
+            // `[tasks.<name>.<rtos>]` sub-table. Giving it a family for its
+            // C/C++ entry must not change what a Rust image on the same key
+            // resolves, which was this key before the family existed.
+            BoardFamily::Baremetal => NO_RTOS_SCHED_TASK_KEY,
             other => other.as_str(),
         }
     }
@@ -314,7 +328,13 @@ impl BoardFamily {
         match self {
             BoardFamily::Zephyr => BootShape::Kernel,
             BoardFamily::Linux => BootShape::Host,
-            BoardFamily::Nuttx | BoardFamily::Freertos | BoardFamily::Threadx => BootShape::App,
+            // Bare metal: the board's start (`nros_board_<board>_start`,
+            // called from the board overlay's `main`) dispatches to
+            // `app_main` like an RTOS `startup.c` does.
+            BoardFamily::Nuttx
+            | BoardFamily::Freertos
+            | BoardFamily::Threadx
+            | BoardFamily::Baremetal => BootShape::App,
         }
     }
 
@@ -326,6 +346,7 @@ impl BoardFamily {
             BoardFamily::Nuttx => "nuttx",
             BoardFamily::Freertos => "freertos",
             BoardFamily::Threadx => "threadx",
+            BoardFamily::Baremetal => "baremetal",
         }
     }
 }
@@ -496,9 +517,10 @@ impl CAbiRunners {
 ///   `app_main` came up undefined.
 /// - ThreadX (phase 246): the host sim and bare-metal qemu-riscv64.
 ///
-/// Board keys with no RTOS are NOT here: `rtic-mps2-an385` and
-/// the bare-metal `mps2-an385`. A C or C++ entry has no runner for them, so
-/// asking for their family is an error, not a guess.
+/// - Bare metal (phase-553 W4, RFC-0130): every name of the mps2-an385
+///   bare-metal descriptor, plus the bare `mps2-an385` Rust key. The family's
+///   sched task key is still [`NO_RTOS_SCHED_TASK_KEY`], so a Rust image on
+///   these keys resolves exactly what it did before they had a family.
 pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
     // Issue 1109 / phase-500 — the host board's key is its descriptor's
     // `names` (`packages/boards/linux/nros-board.toml`), and nothing else:
@@ -545,6 +567,11 @@ pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
     // the catalog accepted it and the typed entry refused it.
     ("threadx-riscv64", BoardFamily::Threadx),
     ("rv-virt-threadx", BoardFamily::Threadx),
+    ("mps2-an385-baremetal", BoardFamily::Baremetal),
+    ("baremetal", BoardFamily::Baremetal),
+    ("bare-metal", BoardFamily::Baremetal),
+    ("mps2-an385", BoardFamily::Baremetal),
+    ("rtic-mps2-an385", BoardFamily::Baremetal),
 ];
 
 /// A board key that is not in [`BOARD_KEYS`].
@@ -709,8 +736,9 @@ pub const NO_RTOS_SCHED_TASK_KEY: &str = "";
 ///
 /// Read from [`BOARD_KEYS`]. A key the table does not know gets
 /// [`NO_RTOS_SCHED_TASK_KEY`], never a guess from how the key is spelled. That covers
-/// a no-RTOS Rust board (`rtic-mps2-an385`, bare `mps2-an385`)
-/// and an out-of-tree board. The old substring match read `my-freertos-board`
+/// an out-of-tree board. A bare-metal key (`rtic-mps2-an385`, bare
+/// `mps2-an385`) has a family since phase-553 W4, and that family's key is
+/// this same empty string. The old substring match read `my-freertos-board`
 /// as FreeRTOS and `s32z270` as the host.
 ///
 /// Two callers are lenient because the issue documents that the key there is
@@ -748,7 +776,8 @@ mod tests {
 
     /// An unknown key names no RTOS, including one whose NAME contains an RTOS.
     /// The substring match read those as that RTOS, and every other key as the
-    /// host.
+    /// host. The two bare-metal keys are known (phase-553 W4) and still name
+    /// none.
     #[test]
     fn an_unknown_key_names_no_rtos() {
         for key in [
@@ -783,9 +812,11 @@ mod tests {
         // `freertos-qemu-mps2-an385`). Issue 2101: minus `threadx-qemu-riscv64`,
         // which named the emulator (refused, naming `rv-virt-threadx`).
         // Phase-524 W3: plus `nucleo-f767zi-zephyr` and `rpi-pico-w-zephyr`.
+        // Phase-553 W4: plus the four bare-metal descriptor names and the
+        // bare `mps2-an385` Rust key.
         assert_eq!(
             BOARD_KEYS.len(),
-            22,
+            27,
             "a key was added or removed without a row"
         );
     }
@@ -813,12 +844,17 @@ mod tests {
     }
 
     /// Each tier-key spelling is what rlm's `SchedTaskDef::platform` matches. The
-    /// host is `posix` there, not `native`.
+    /// host is `posix` there, not `native`, and bare metal has no sub-table
+    /// at all (phase-553 W4).
     #[test]
     fn sched_task_rtos_key_is_the_spelling_the_sched_task_tables_use() {
         assert_eq!(BoardFamily::Linux.sched_task_rtos_key(), "posix");
+        assert_eq!(
+            BoardFamily::Baremetal.sched_task_rtos_key(),
+            NO_RTOS_SCHED_TASK_KEY
+        );
         for f in BoardFamily::ALL {
-            if f != BoardFamily::Linux {
+            if f != BoardFamily::Linux && f != BoardFamily::Baremetal {
                 assert_eq!(f.sched_task_rtos_key(), f.as_str());
             }
         }
@@ -969,7 +1005,7 @@ mod tests {
     #[test]
     fn an_unknown_key_is_an_error_naming_the_known_keys() {
         use alloc::string::ToString;
-        for key in ["zigos", "", "mps2-an385", "NATIVE"] {
+        for key in ["zigos", "", "stm32f4", "NATIVE"] {
             let err = board_family(key).expect_err(key);
             assert_eq!(err.key, key);
             let msg = err.to_string();
@@ -1002,9 +1038,10 @@ mod tests {
                 BoardFamily::Nuttx => "nuttx",
                 BoardFamily::Freertos => "freertos",
                 BoardFamily::Threadx => "threadx",
+                BoardFamily::Baremetal => "baremetal",
             };
             assert_eq!(named, f.as_str());
         }
-        assert_eq!(BoardFamily::ALL.len(), 5);
+        assert_eq!(BoardFamily::ALL.len(), 6);
     }
 }

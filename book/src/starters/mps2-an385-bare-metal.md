@@ -15,10 +15,12 @@ the board this book teaches nano-ros on, because it costs nothing and behaves
 like a real microcontroller. The talker runs as one loop with no scheduler
 under it, which is what "bare-metal" means.
 
-This starter is Rust only: nano-ros builds C and C++ nodes for boards with an
-operating system under them, not for bare metal. To write the talker in C or C++, take the
-[MPS2-AN385 FreeRTOS starter](mps2-an385-freertos.md), the same emulated board
-with a small RTOS under it.
+This starter is written in Rust. A C or C++ talker runs on this board too: it
+is an ordinary ROS 2 CMake package, the same one you would build for an RTOS
+board, and `nros new <name> --lang c --platform baremetal` (or `--lang cpp`)
+scaffolds it. The [MPS2-AN385 FreeRTOS starter](mps2-an385-freertos.md) walks
+through a C and C++ talker step by step, on the same emulated board with a
+small RTOS under it.
 
 ## What you need
 

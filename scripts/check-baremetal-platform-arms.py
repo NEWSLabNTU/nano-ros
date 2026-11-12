@@ -26,6 +26,13 @@ spelling gets invented:
      bare-metal row of its allocator table reads `on`) and
      `nros-log/platform-clock` (issue 1152: a linked port is exactly the
      condition under which `nros_platform_clock_ns` resolves).
+  E. (phase-553 W4) every bare-metal overlay has a row in the BOARD-CRATE map
+     (`_NROS_BAREMETAL_BOARD_CRATES`: the crate a C-rooted image's staticlib
+     carries), and every row names an overlay that exists;
+  F. (phase-553 W3, RFC-0130 D4) every bare-metal overlay links `-nostdlib`
+     and names no libgcc. libgcc drags ARM unwind code needing `__exidx_*`
+     and `abort` into an image whose helpers the Rust staticlib's
+     compiler-builtins already supplies; the C-rooted link must not carry it.
 
 WHAT IS DERIVED, and why it matters: the SET in (A) is not a list kept here. A
 `platform-*` feature of `nros-platform` is bare-metal iff its body names a
@@ -134,6 +141,33 @@ def parse_map() -> list[tuple[str, str]]:
         sys.exit(f"{MAP_CMAKE}: _NROS_BAREMETAL_BOARD_FEATURES has an {e}")
 
 
+def parse_board_crates() -> set[str]:
+    """The board tokens of `_NROS_BAREMETAL_BOARD_CRATES` (first `|` column)."""
+    text = MAP_CMAKE.read_text()
+    m = re.search(
+        r"set\(_NROS_BAREMETAL_BOARD_CRATES\s*(.*?)CACHE INTERNAL", text, re.DOTALL
+    )
+    if not m:
+        sys.exit(f"{MAP_CMAKE}: could not find the _NROS_BAREMETAL_BOARD_CRATES set()")
+    return set(re.findall(r'"([^"|]+)\|', m.group(1)))
+
+
+def code_only(cmake: str) -> str:
+    """CMake text with `#` comments removed (a comment may name libgcc)."""
+    return "\n".join(line.split("#", 1)[0] for line in cmake.splitlines())
+
+
+def link_lib_violations(cmake: str) -> list[str]:
+    """Rule F over one overlay's text: what is wrong with its link line."""
+    code = code_only(cmake)
+    out = []
+    if not re.search(r"-nostdlib(?![\w-])", code):
+        out.append("does not link `-nostdlib`")
+    if re.search(r"-lgcc\b|\blibgcc\b|(?<![\w./-])gcc(?![\w./-])", code):
+        out.append("names libgcc")
+    return out
+
+
 def self_test(quiet: bool = False) -> int:
     """Negative controls — a gate whose rule never fires proves nothing.
 
@@ -178,8 +212,18 @@ def self_test(quiet: bool = False) -> int:
         raise AssertionError("an odd token count must be refused")
     assert pair_tokens(["a", "feat-a"]) == [("a", "feat-a")]
 
+    # 4. Rule F fires on libgcc in any spelling, and on a missing `-nostdlib`,
+    #    but not on a comment that names it or on a path containing `gcc`.
+    good = 'target_link_options(t PRIVATE "-nostdlib")\n# no -lgcc here\n'
+    assert link_lib_violations(good) == [], link_lib_violations(good)
+    assert link_lib_violations(good + 'target_link_libraries(t PRIVATE gcc)\n')
+    assert link_lib_violations(good + 'target_link_options(t PRIVATE "-lgcc")\n')
+    assert link_lib_violations('target_link_options(t PRIVATE "-nostartfiles")\n')
+    assert link_lib_violations('target_link_options(t PRIVATE "-nostdlibx")\n')
+    assert link_lib_violations(good + 'set(X "/opt/arm-none-eabi-gcc/bin")\n') == []
+
     if not quiet:
-        print("check-baremetal-platform-arms: self-test OK (3 negative controls)")
+        print("check-baremetal-platform-arms: self-test OK (4 negative controls)")
     return 0
 
 
@@ -295,6 +339,30 @@ def main() -> int:
             f"cmake/NanoRosBareMetalPlatform.cmake: row `{extra}` names no board "
             f"overlay — expected cmake/board/nano-ros-board-{extra}.cmake."
         )
+    # ---- E: the board-crate map --------------------------------------
+    crate_rows = parse_board_crates()
+    for missing in sorted(overlays - crate_rows):
+        errors.append(
+            f"cmake/NanoRosBareMetalPlatform.cmake: no `_NROS_BAREMETAL_BOARD_CRATES` "
+            f"row for board `{missing}`: a C or C++ image on it has no board crate "
+            f"(startup, PAC, C-ABI start) in its staticlib."
+        )
+    for extra in sorted(crate_rows - overlays):
+        errors.append(
+            f"cmake/NanoRosBareMetalPlatform.cmake: board-crate row `{extra}` names "
+            f"no overlay — expected cmake/board/nano-ros-board-{extra}.cmake."
+        )
+
+    # ---- F: no libgcc on the C-rooted link ----------------------------
+    for board in sorted(overlays):
+        path = BOARD_DIR / f"nano-ros-board-{board}.cmake"
+        for why in link_lib_violations(path.read_text()):
+            errors.append(
+                f"{path.relative_to(ROOT)} {why}: the C-rooted bare-metal link "
+                f"carries no libgcc (its unwind code needs `__exidx_*` and `abort`; "
+                f"the staticlib's compiler-builtins supplies the helpers)."
+            )
+
     for board, feat in rows:
         if feat not in want:
             errors.append(
@@ -312,7 +380,8 @@ def main() -> int:
     print(
         f"check-baremetal-platform-arms: OK — {len(want)} bare-metal platform "
         f"feature(s) ({', '.join(sorted(want))}) carried by nros-platform, nros-c "
-        f"and nros-cpp; {len(rows)} board row(s) resolve."
+        f"and nros-cpp; {len(rows)} board row(s) resolve; {len(overlays)} overlay(s) "
+        f"carry a board crate and link without libgcc."
     )
     return 0
 

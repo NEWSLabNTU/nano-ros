@@ -1,6 +1,7 @@
 # FILE scope: an include() inside the function below would resolve
 # CMAKE_CURRENT_LIST_DIR against its caller.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosLocate.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosEntryLocator.cmake")
 
 function(nros_zephyr_configure_rmw_zenoh)
 # RFC-0071 D10 (phase-506 W3) — this backend's spelling of the transport
@@ -13,9 +14,8 @@ function(nros_zephyr_configure_rmw_zenoh)
 # locator has one: `serial/<dev>#baudrate=<n>`. Since this mapping moved here
 # from `entry_config.h` (2ccf662c0d), every Zephyr serial image baked the
 # empty bottom rung and opened no session (a board: `nros_cpp_init` -100,
-# Transport ConnectionFailed at stage 2). So the `#` travels as the C octal
-# escape `\043` (at most three digits, so a following digit cannot extend it);
-# the string literal the compiler sees is the locator unchanged.
+# Transport ConnectionFailed at stage 2). `nros_locator_c_define` spells it
+# (NanoRosEntryLocator.cmake, shared with every other road since phase-553 W4).
 if(DEFINED CONFIG_NROS_ZENOH_LOCATOR)
     # RFC-0109 D10 (phase-514 W5) -- a CAN rate is the controller's (devicetree
     # `bus-speed`), never wiring, and zenoh-pico no longer applies one. This is
@@ -29,14 +29,11 @@ if(DEFINED CONFIG_NROS_ZENOH_LOCATOR)
             "`bus-speed`, and the board starts it before any session opens. Drop "
             "`${CMAKE_MATCH_3}` from the locator.")
     endif()
-    string(REPLACE "#" "\\043" _nros_entry_locator "${CONFIG_NROS_ZENOH_LOCATOR}")
-    # And `;`, for the same reason one layer up: it is CMake's LIST separator,
-    # so `zephyr_compile_definitions` split `isotp/can#tx_id=..;rx_id=..` into
-    # two definitions and every TU failed on an unterminated string -- every
-    # ISO-TP and multi-option CAN locator, since the `#` fix above moved this
-    # mapping here. `\073` is `;` in the literal the compiler sees.
-    string(REPLACE ";" "\\073" _nros_entry_locator "${_nros_entry_locator}")
-    zephyr_compile_definitions("NROS_ENTRY_LOCATOR=\"${_nros_entry_locator}\"")
+    # `;` too: it is CMake's list separator, and split
+    # `isotp/can#tx_id=..;rx_id=..` into two definitions.
+    nros_locator_c_define(_nros_entry_loc_def NROS_ENTRY_LOCATOR
+        "${CONFIG_NROS_ZENOH_LOCATOR}")
+    zephyr_compile_definitions("${_nros_entry_loc_def}")
 endif()
 
 # -------------------------------------------------------------------------

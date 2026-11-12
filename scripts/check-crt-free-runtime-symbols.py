@@ -45,6 +45,7 @@ NEVER_EXITS = {
     "cmake/board/nano-ros-board-mps3-an536-freertos.cmake": "FreeRTOS on Cortex-R52",
     "cmake/board/nano-ros-board-s32z270-freertos.cmake": "FreeRTOS on the S32Z RTU",
     "cmake/board/nano-ros-board-rv-virt-threadx.cmake": "ThreadX on RV64 QEMU virt (issue 1753)",
+    "cmake/board/nano-ros-board-mps2-an385-baremetal.cmake": "bare metal on Cortex-M3: the board's C-ABI start is `-> !` and halts (phase-553 W4)",
     "packages/boards/nros-board-freertos/build.rs": "the FreeRTOS cross family's cargo lane",
 }
 HOSTED_CRT = {

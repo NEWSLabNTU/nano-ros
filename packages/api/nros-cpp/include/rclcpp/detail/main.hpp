@@ -936,6 +936,17 @@ class ThreadxBoard {
     }
 };
 
+/// Phase-553 W4 (RFC-0130) — bare-metal board adapter (C/C++ component
+/// packages on a board with no RTOS, e.g. mps2-an385).
+///
+/// The board crate's Rust startup owns reset; its C-ABI start
+/// (`nros_board_<board>_start`, called from the board overlay's `main`) brings
+/// the network up and then calls the typed entry's `app_main`. So, as on
+/// ThreadX, `run_components` runs inside an environment that is already up and
+/// enters no kernel: the lifecycle is [`ThreadxBoard`]'s line for line, and
+/// nothing in it names a kernel.
+using BaremetalBoard = ThreadxBoard;
+
 /// Phase 240.6 (RFC-0043) — FreeRTOS board adapter (C/C++ declarative
 /// components on the QEMU MPS2-AN385 + lwIP stack), routing the typed entry to
 /// the real executor.

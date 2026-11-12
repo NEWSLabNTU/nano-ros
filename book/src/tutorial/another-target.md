@@ -24,8 +24,8 @@ with every other line of its console the same as the bare-metal image's. The
 bare-metal image keeps working beside it, and you choose which one runs by
 its name.
 
-A C or C++ project has run on FreeRTOS since chapter 1, because bare metal
-runs Rust only. Its second target is your Linux host: the same six nodes,
+A C or C++ project has run on FreeRTOS since chapter 1. Its second target is
+your Linux host: the same six nodes,
 built as an ordinary program on your machine. The C and C++ tabs below take
 that path; every step has the same shape.
 
