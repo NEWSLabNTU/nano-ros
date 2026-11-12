@@ -4,7 +4,7 @@ title: "A managed node has its own REP-2002 state machine, served under its own 
 status: Draft
 since: 2026-11
 last-reviewed: 2026-11
-implements-tracked-by: []
+implements-tracked-by: [phase-554]
 amends: [RFC-0036, RFC-0037, RFC-0045, RFC-0060]
 supersedes: []
 superseded-by: null
@@ -12,7 +12,8 @@ superseded-by: null
 
 # RFC-0128 — Per-node lifecycle
 
-**Status:** Draft (2026-11-12). Written before any code. No phase yet; the
+**Status:** Draft (2026-11-12). Every question is ruled. Written before any
+code. Work: [phase-554](../roadmap/phase-554-per-node-lifecycle.md), whose
 delivery order is at the end. Closes the design question of
 [issue 2428](../issues/2428-workspace-lifecycle-is-one-machine-per-image.md)
 and decides [issue 2429](../issues/2429-c-executor-lifecycle-services-empty-node-name.md).
@@ -412,7 +413,8 @@ succeed.
 - D5's conformance and the state accessor in the callback context.
 - D9's cells per language, with a callback returning FAILURE and ERROR.
 
-A phase number is reserved when this RFC is accepted.
+The work items and their acceptance are in
+[phase-554](../roadmap/phase-554-per-node-lifecycle.md).
 
 ## Amendments
 

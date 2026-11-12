@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [runtime, lifecycle, book, education]
-related: [2269, phase-537, rfc-0045, rfc-0128]
+related: [2269, phase-537, rfc-0045, rfc-0128, phase-554]
 found: 2026-11-11
 ---
 
@@ -110,7 +110,8 @@ The design is [RFC-0128](../design/0128-per-node-lifecycle.md) (Draft): one
 machine per managed node under its own name, publisher gating, per-node
 `autostart`, five queryables per managed node, and callbacks in each language.
 Phase B (machines and gating) unblocks the issue 2269 lab; phase C adds the
-callbacks.
+callbacks. The work is tracked in
+[phase-554](../roadmap/phase-554-per-node-lifecycle.md).
 
 ## Next
 
