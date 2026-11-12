@@ -208,6 +208,25 @@ NROS_TRIPLE_ENV := $(subst -,_,$(NROS_RUST_TRIPLE))
 # std build, the `libc` patch literal and `--target` went with it.
 NROS_CARGO_CONFIG = $(NROS_IMAGE_ROOT)/make/nros-cargo.toml
 
+# phase-550 W6a (issue 2236 Q1, Q2 A2) — an app may name a nano-ros PROJECT,
+# in its own Make.defs beside its `CONFIGURED_APPS +=` line:
+#
+#     NROS_PROJECTS += $(APPDIR)/external/<app>
+#     NROS_IMAGE := <bringup>:<id>     # optional
+#
+# None: a guest, built exactly as before. One: `nros locate
+# nuttx-cargo-config` checks it against this kernel (its image is
+# NROS_IMAGE, else the one image whose board is the kernel's; the board,
+# Kconfig's RMW and edition, and declared entities must agree), writes the
+# image key beside the settings file, and `nros configure` configures that
+# image in the project. More than one is refused: one NuttX build takes one
+# project.
+NROS_PROJECT_LIST := $(strip $(NROS_PROJECTS))
+NROS_IMAGE_KEY = $(NROS_IMAGE_ROOT)/make/image-key
+NROS_PROJECT_ARGS = $(if $(NROS_PROJECT_LIST),--project $(NROS_PROJECT_LIST) \
+	$(if $(NROS_IMAGE),--image $(NROS_IMAGE)) --rmw $(NROS_RMW) \
+	--ros-edition $(NROS_ROS_EDITION) --kconfig $(TOPDIR)/.config)
+
 # The image crate's manifest and features are the two words of
 # $(NROS_IMAGE_SPEC), read when the line runs; $(3) = the image flavor (`c` /
 # `cpp`); $(4) = $(NROS_IMAGE_HEADER_PACKAGES).
@@ -247,7 +266,8 @@ define NROS_CARGO_BUILD
 		--target $(NROS_RUST_TRIPLE) \
 		--nuttx-board $(patsubst "%",%,$(CONFIG_ARCH_BOARD)) \
 		--target-dir $(NROS_IMAGE_TARGET_DIR) \
-		--out $(NROS_CARGO_CONFIG) >/dev/null
+		--out $(NROS_CARGO_CONFIG) $(NROS_PROJECT_ARGS) >/dev/null
+	$(if $(NROS_PROJECT_LIST),cd $(NROS_PROJECT_LIST) && $(NROS_CLI) configure --image "$$(cat $(NROS_IMAGE_KEY))")
 	NUTTX_DIR=$(TOPDIR) \
 	NUTTX_APPS_DIR=$(APPDIR) \
 	NUTTX_EXPORT_DIR=$(TOPDIR) \
@@ -280,6 +300,7 @@ ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
 # `RUST_CARGO_BUILD` with an empty `--target`: it could not build, and an
 # arch with no triple is now refused by `RustTriple.mk` instead.
 context::
+	$(if $(word 2,$(NROS_PROJECT_LIST)),$(error nano-ros: more than one app names a project in NROS_PROJECTS: $(NROS_PROJECT_LIST). One NuttX build takes one project; keep a single `NROS_PROJECTS +=` line across the apps' Make.defs files))
 	$(Q) mkdir -p $(NROS_APPS_BUILD) $(dir $(addprefix $(NROS_APPS_BUILD),$(CSRCS))) $(NROS_IMAGE_ROOT)
 	$(NROS_IMAGE_CRATE)
 	$(call NROS_CARGO_BUILD,,,$(NROS_IMAGE_FLAVOR),$(NROS_IMAGE_HEADER_PACKAGES))

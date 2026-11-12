@@ -2,3 +2,11 @@
 ifneq ($(CONFIG_NROS_MAKE_ROAD_SMOKE),)
 CONFIGURED_APPS += $(APPDIR)/external/nros-make-road-smoke
 endif
+
+# An app that is a nano-ros PROJECT names itself here, beside its
+# `CONFIGURED_APPS +=` line (the shell's Makefile reads it in `context::`):
+#
+#   NROS_PROJECTS += $(APPDIR)/external/<app>
+#   NROS_IMAGE := <bringup>:<id>     # optional: else the one image for this board
+#
+# This smoke app names none, so it builds as a guest.
