@@ -6,6 +6,9 @@ area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-11
 implements-tracked-by: [phase-439, phase-530]
+amends: [0065, 0071, 0087]
+supersedes: []
+superseded-by: null
 ---
 
 # RFC-0094 — Resolve before configure: the declared thing is the thing that runs
@@ -109,7 +112,7 @@ Between stage 3 (preflight) and stage 4 (emit root):
 **Correction, from phase-439 W2.** An earlier draft named
 `nano_ros_node_register(… ENTITIES …)` as the cmake-side declaration. That
 argument was RETIRED by phase-412 and is now a `FATAL_ERROR`
-(`cmake/NanoRosNodeRegister.cmake:1229`); it stays PARSED only so the refusal can
+(`_nros_entities_retired` in `cmake/NanoRosNodeRegister.cmake`); it stays PARSED only so the refusal can
 name it. The live declarative source is the contract sidecar folded into the
 SystemModel, which is what stage 3.5 reads — still no compiled artifact, which is
 the property that matters.

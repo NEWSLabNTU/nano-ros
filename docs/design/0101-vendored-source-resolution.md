@@ -4,7 +4,7 @@ title: "Vendored source resolution: one owner per graph, and the hand-off is `li
 status: Draft
 area: build-toolchain-codegen
 since: 2026-09
-last-reviewed: 2026-09-29
+last-reviewed: 2026-11
 implements-tracked-by: [phase-471]
 supersedes: []
 superseded-by: null
@@ -431,3 +431,7 @@ BSP developers"*.
 - 2026-09 — created (phase-471 W5). `links` ordering, one-hop scope and
   single-owner enforcement measured rather than asserted; the tree checked
   against the rule and the non-conformances filed as issues 1558 and 1560.
+- 2026-11 — reviewed (phase-555 W2). Issues 1558 and 1560 were resolved on
+  2026-09-29, so §5's "no" rows are the measurement before those fixes. The
+  board crates now resolve their trees through `nros_build_paths::locate::source`
+  (RFC-0103's location ladder), which is still D3's "through `nros_build_paths`".
