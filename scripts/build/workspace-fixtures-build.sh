@@ -212,7 +212,7 @@ build_workspace() {
     local road
     if [ -n "$builder" ]; then
         road="$builder"
-    elif [ "$road" = "cargo" ]; then
+    elif [ "$lang" = "rust" ]; then
         road=cargo
     else
         road=cmake
