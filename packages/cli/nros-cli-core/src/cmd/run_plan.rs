@@ -846,12 +846,16 @@ fn finish(
 
     // ---- link: the image's locator (RFC-0109 D6), else the board's default ---
     //
-    // A host target takes none from the board: `run_exec::decorate` gives it
+    // A host PROCESS takes none from the board: `run_exec::decorate` gives it
     // the zenoh default at run time, honouring `$NROS_LOCATOR` the way the
-    // host image itself does.
+    // host image itself does. A west-built host target (Zephyr native_sim)
+    // is not that: its locator was baked from the merged Kconfig and nothing
+    // reads the environment at run time, so it takes the rung the build's
+    // `.config` answered, like an emulated Zephyr board (issue 2367).
+    let baked = matches!(i.output, Some(BuildOutput::West { .. }));
     let (locator, rung) = match (&i.tables.locator, &i.tables.board_locator) {
         (Some(l), _) => (Some(l), IMAGE),
-        (None, Some(l)) if !plan.target.host => (Some(l), BOARD),
+        (None, Some(l)) if !plan.target.host || baked => (Some(l), BOARD),
         _ => (None, IMAGE),
     };
     if let Some(loc) = locator {
@@ -2134,6 +2138,71 @@ mod tests {
         };
         let p = go(Verb::Run, &d, &out, &by_image, &inv).unwrap();
         assert_eq!(p.provenance["link"], IMAGE);
+    }
+
+    /// Issue 2367 -- a native_sim image is a host target, but its locator was
+    /// baked from the merged Kconfig and nothing reads `$NROS_LOCATOR` at run
+    /// time, so the plan links to what its west build's `.config` says, not
+    /// to the zenoh default `decorate` gives a host process. With no
+    /// `.config` there is no evidence, and `decorate`'s default stands.
+    #[test]
+    fn a_native_sim_image_links_to_the_locator_its_build_baked() {
+        use crate::cmd::run_exec::{
+            HostSide, RouterMode, ZENOH_DEFAULT_LOCATOR, decorate, host_side,
+        };
+        use nros_extension::plan::HostPeer;
+        let root = repo_root();
+        let cat = BoardCatalog::load(&root).unwrap();
+        let inv = Invocation::default();
+        let z = board(&cat, "zephyr");
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("b_west");
+        std::fs::create_dir_all(dir.join("zephyr")).unwrap();
+        let out = BuildOutput::West {
+            build_dir: Some(dir.clone()),
+        };
+        let zenoh = Ok((HostPeer::ZenohRouter, "rmw `zenoh`".into()));
+        let plan = |tables: &ImageTables| {
+            let mut p = go(Verb::Run, &z, &out, tables, &inv).unwrap();
+            assert!(p.target.host, "native_sim is a host target");
+            decorate(&mut p, Some("zenoh"), &zenoh, &Default::default());
+            p
+        };
+
+        // No `.config`: the host default.
+        let none = ImageTables {
+            board_locator: board_default_locator(&z, "zephyr", Some(&root), None, Some(&dir))
+                .unwrap(),
+            ..ImageTables::default()
+        };
+        assert_eq!(none.board_locator, None);
+        let p = plan(&none);
+        assert_eq!(
+            p.link.as_ref().map(|l| l.locator.as_str()),
+            Some(ZENOH_DEFAULT_LOCATOR)
+        );
+
+        // A build that baked another port: the router goes where the image dials.
+        std::fs::write(
+            dir.join("zephyr/.config"),
+            "CONFIG_NROS_RMW_ZENOH=y\nCONFIG_NROS_ZENOH_LOCATOR=\"tcp/127.0.0.1:9100\"\n",
+        )
+        .unwrap();
+        let baked = ImageTables {
+            board_locator: board_default_locator(&z, "zephyr", Some(&root), None, Some(&dir))
+                .unwrap(),
+            ..ImageTables::default()
+        };
+        let p = plan(&baked);
+        assert_eq!(
+            p.link.as_ref().map(|l| l.locator.as_str()),
+            Some("tcp/127.0.0.1:9100")
+        );
+        assert_eq!(p.provenance["link"], BOARD);
+        assert_eq!(
+            host_side(&p, &RouterMode::Auto),
+            HostSide::ZenohListen("tcp/127.0.0.1:9100".into())
+        );
     }
 
     /// The `--dry-run --why` snapshots: mps2-an385 bare metal, linux, and
