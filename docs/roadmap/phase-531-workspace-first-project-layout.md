@@ -517,9 +517,12 @@ W6 / phase-535, and NuttX cannot build on this host.
 > one-package workspace (RFC-0122 D3), so every remaining leaf migrates; the
 > split is only about who does it:
 > - **phase-531 W6:** the 22 `<plat>/<lang>/talker` witnesses (the linux Rust
->   talker's `link-tls` and peer rows included), `linux/c/custom-platform`, the
->   templates, and the nros-tests bins `action-server-concurrent` and
->   `message-info-observer` (issue 2406).
+>   talker's `link-tls` and peer rows included), `linux/c/custom-platform`,
+>   and the nros-tests bins `action-server-concurrent` and
+>   `message-info-observer` (issue 2406). The templates are not on the list:
+>   maintainer ruling 2026-11-12, "Take your recommendation" on the question
+>   of whether templates stay single-package, keeps them as RFC-0122 D2's
+>   table says, "unchanged".
 > - **phase-535 W6:** the linux Rust listener, `service-*` and `action-*` leaves
 >   (the per-edition ones per issue 2409, the listener's `link-tls` row and its
 >   docker image), the feature demos (linux Rust logging, lifecycle-node,
@@ -810,6 +813,30 @@ from before W6.
     or the cmake road for a cmake-only backend). The zenoh image alone could
     move, but one directory cannot be a workspace for one RMW and a leaf for
     the other, so the talker stays a leaf until that decision.
+    The maintainer DEFERRED that decision on 2026-11-12, so the talker stays
+    a leaf until it is taken.
+- **`examples/linux/c/custom-platform` (branch
+  `phase-531-w6-linux-c-custom-platform`).** A one-package workspace where it
+  stands (RFC-0122 D2: "stays a single-node workspace: it witnesses the
+  user-supplied-platform road"). It keeps its hand-written `main` as a
+  manual-entry demo (RFC-0122 D10 names a user-supplied platform), so the
+  `linux` image boots `native_c_custom_platform` as its OWNED entry (RFC-0071
+  D19) and the bringup declares no component; on posix an owned entry takes no
+  census. `nros dev migrate-bringup` made the layout; the bringup's
+  `system.toml` was then turned from its one `[[component]]` to `entry =`. Its
+  `[[fixture]]` row is the `[[workspace_fixture]]` row
+  `linux-c-zenoh-custom-platform`, same coordinate; it builds, and
+  `linux_example_executor_bound_node_e2e` passes against it (3/3).
+- **To do: the mps2-an385 bare-metal C/C++ talkers as components.** Maintainer
+  ruling 2026-11-12, option (a) ("Take your recommendation"): build the
+  generated cargo entry that compiles the bringup's C/C++ COMPONENTS (RFC-0122
+  D10), and only then migrate `examples/mps2-an385-baremetal/{c,cpp}/talker`
+  as components. They do NOT take the manual-entry owned-entry road
+  [issue 2377](../issues/archived/2377-workspace-road-no-c-image-on-bare-metal.md)
+  gave the ten non-talker leaves in the meantime. This is 2377's first fix
+  direction: a C/C++ image on a board whose link root is Rust is routed to a
+  generated cargo entry, whose build compiles the bringup's C/C++ component
+  packages the way issue 1512's leaf `build.rs` does.
 
 ### W7 — Retirement
 
