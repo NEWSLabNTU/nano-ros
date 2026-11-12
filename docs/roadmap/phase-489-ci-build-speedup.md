@@ -119,6 +119,8 @@ Ordered by expected payoff on the merge rate.
 
 ### W1 — split the required `check` job into parallel jobs
 
+- **Status:** DONE (2026-10-12)
+
 The seven steps in the table above are independent: fast, lane-contracts,
 workspace-all, cli-tests, test-unit and compile-smoke. Run them as sibling
 jobs that the `CI` aggregator waits on, so the critical path is the longest
@@ -291,6 +293,8 @@ turning it back on needs no code change.
 
 ### W3 — make the CLI cache cost seconds, not 3.8 minutes
 
+- **Status:** DONE (2026-10-12)
+
 "Cache CLI build" restores `packages/cli/target` and
 `nros-launch-resolve/target` on every event, in a constant 3.8 min. That is
 a large tarball for one `nros` binary. Measure what the job actually needs.
@@ -321,6 +325,8 @@ merge-group runs, the restore step in `check-fast` took 0–1 s against the
 30-s target and the 3.8-min baseline.
 
 ### W4 — stop regenerating message bindings from cold (19–22 min)
+
+- **Status:** DONE (2026-10-13, PR #2072)
 
 `just generate-bindings` costs 21.7 min in the scheduled `gate` and 18.7 min
 in `host-tests`, every run. Before changing anything, find out which part is
@@ -422,6 +428,8 @@ lane's commit, to see the scheduled hit, and how often a night's first lane
 gets a prefix hit rather than a cold restore.
 
 ### W5 — shorten the slowest fast-line gates
+
+- **Status:** DONE (2026-10-12)
 
 `knob-single-reader` (270 s), `probe-workspace-caps` (257 s) and
 `api-parity` (167–190 s) set the fast line's floor, and the fast line also

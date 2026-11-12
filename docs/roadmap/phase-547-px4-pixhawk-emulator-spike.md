@@ -102,6 +102,8 @@ RFC amendment (RFC-0039 / RFC-0115) and the implementation phase follow.
 
 ### W1 — stock build (done, 2026-11-07)
 
+- **Status:** DONE (2026-11-07)
+
 `make px4_fmu-v6x_default` at the PX4-Autopilot commit our
 `third-party/px4/PX4-Autopilot` submodule pins (dated 2026-04-24; PX4 1.17.0,
 NuttX 12.12.0), Arm GNU 13.2.1 from the SDK store, PX4's

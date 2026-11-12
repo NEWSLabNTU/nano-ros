@@ -97,7 +97,9 @@ looks`).
 - Gate: none.
 - **Acceptance:** W1's armv7a build passes with `third-party/nuttx/nuttx`
   uninitialised and `NUTTX_DIR` unset in the caller's environment.
-- **Status: DONE (2026-11-11).** `NROS_CARGO_BUILD` sets
+- **Status:** DONE (2026-11-11)
+
+`NROS_CARGO_BUILD` sets
   `NUTTX_DIR=$(TOPDIR)`, `NUTTX_APPS_DIR=$(APPDIR)` and
   `NUTTX_EXPORT_DIR=$(TOPDIR)` on the cargo command. The first two are the
   `env` names of `[source.nuttx-kernel]` / `[source.nuttx-apps]`, the
@@ -400,7 +402,9 @@ override in `nros-board-nuttx-qemu/src/entry.rs` goes.
 - **Acceptance:** `git grep external-Kconfig.in` finds only archived docs;
   every renamed path is updated in `nros-board.toml`, the docs and the SDK
   index; `just check fast` green.
-- **Status: DONE (2026-11-11).** The template is deleted and
+- **Status:** DONE (2026-11-11)
+
+The template is deleted and
   `integrations/nuttx/Kconfig`'s comment names what writes
   `apps/external/Kconfig` (`stage-external-apps.sh`, one explicit `source`
   line). The rust-toolchain comment says why the nightly is pinned

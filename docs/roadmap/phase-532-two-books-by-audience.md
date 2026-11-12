@@ -49,6 +49,8 @@ tool's own groups.
 
 ### W0 — The page map and its tools — DONE (2026-11-03)
 
+- **Status:** DONE (2026-11-03)
+
 Landed: `book/page-map.toml` (161 rows: 143 existing pages, including the two
 gitignored generated ones, and 18 new pages), `scripts/lib/book_pages.py`,
 `scripts/book-move.py` (`--plan`, `--apply`, `--rewrite`, `--summary`) and
@@ -105,6 +107,8 @@ not only `.md` links. The trial's last dead link was a directory link.
 
 ### W1 — Scaffold nano-ros Internals — DONE (2026-11-03)
 
+- **Status:** DONE (2026-11-03)
+
 Landed with W2 in one commit, because the Orientation pages link to W2's
 pages:
 
@@ -137,6 +141,8 @@ staged `internals/index.html` is "Start Here".
 
 ### W2 — Move contributor-only pages into Internals — DONE (2026-11-03)
 
+- **Status:** DONE (2026-11-03)
+
 `book-move.py --apply w2` moved 17 pages, repaired 74 links and rewrote path
 literals in 30 files, including `gen-rmw-api-comparison` through the map, the
 bootstrap probe's path to `contributing.md`, and the `doc-recipe-refs`
@@ -168,6 +174,8 @@ scripts that hardcode these paths through `book_pages.py`.
   - redirects are in place.
 
 ### W3 — Split the mixed pages; widen the gates; delete the exemption — DONE (2026-11-03)
+
+- **Status:** DONE (2026-11-03)
 
 **Gates.** `check-user-surface-ids`, `check-book-no-just` and
 `check-book-no-checkout` read every user-book page through
@@ -322,6 +330,8 @@ The batches found four defects in `book-move`, fixed here:
 
 ### W5 — Merges: one topic, one page (RFC-0123 D4) — DONE (2026-11-04)
 
+- **Status:** DONE (2026-11-04)
+
 **Progress (2026-11-03).** Four merges landed:
 
 - **`rmw-backends` into `communicate/choosing-an-rmw.md`.** It gains "How
@@ -407,6 +417,8 @@ redirects. Pages still teaching the leaf shape (the platform chapters,
 
 ### W6 — `migrating/` and retired material (RFC-0123 D5) — DONE (2026-11-03)
 
+- **Status:** DONE (2026-11-03)
+
 Landed:
 
 - `migrating/` holds retired-names, install-local-removal,
@@ -458,6 +470,8 @@ is hand-typed status, so replacing it with the generated support page is W9
   `migrating/` and generated pages.
 
 ### W7 — `docs/` consolidation (RFC-0123 D6) — DONE (2026-11-03)
+
+- **Status:** DONE (2026-11-03)
 
 **W7a: contributor documents.** `book-move` gained `import <repo path>`. The
 document moves into its Internals page and its old path keeps a one-line
@@ -527,6 +541,8 @@ should list the POSIX frag/batch default as 65535, not 65536.
 
 ### W8 — `check-book-audience` on the fast line (RFC-0123 D8) — DONE (2026-11-03)
 
+- **Status:** DONE (2026-11-03)
+
 `scripts/check-book-audience.py` replaces the `book-page-map` recipe. It folds
 `check-book-page-map`, and its self-test covers each of these three rules:
 
@@ -565,6 +581,8 @@ URL).
   fails the gate.
 
 ### W9 — Follow the CLI and the registry (RFC-0123 D9) — DONE (2026-11-03)
+
+- **Status:** DONE (2026-11-03)
 
 **Gates.** `check-book-audience` gains two rules:
 
@@ -670,6 +688,8 @@ phase-531 W8.
   owner.
 
 ### W10 — Front matter — DONE (2026-11-04)
+
+- **Status:** DONE (2026-11-04)
 
 - Rewrite the introduction's "Key Features" as user benefits, and move the
   evidence prose (the `example_portability` test) to Internals.

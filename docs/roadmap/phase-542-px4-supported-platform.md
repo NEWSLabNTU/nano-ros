@@ -312,6 +312,8 @@ drops them.
 
 ### W10 — The uORB backend compiles for PX4 NuttX on every pull request (S) — DONE 2026-11-10
 
+- **Status:** DONE (2026-11-10)
+
 Issue 2403's fix reached main with three files that did not compile for a PX4
 NuttX target, and only the phase-547 Renode harness noticed. Gate
 `px4-uorb-nuttx-compile` (fast tier, so every event) now compiles every TU

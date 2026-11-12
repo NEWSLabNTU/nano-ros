@@ -639,6 +639,15 @@ archived-issue-status:
 rfc-phase-tracking:
     @python3 scripts/check-rfc-phase-tracking.py
 
+# User ruling 2026-11-12: a phase doc maintains its progress and acceptance
+# status. Every `### W<n>` item carries one `- **Status:**` line (OPEN, DONE
+# (<when, PR>), BLOCKED (<what>), DROPPED (<why>)), an archived phase holds no
+# OPEN or BLOCKED item, and the unmarked items of the day it landed are a
+# per-doc baseline that may only fall.
+[private]
+phase-item-status:
+    @python3 scripts/check-phase-item-status.py
+
 # phase-359 W0 — the `std` census ratchet. Buildless (reads sources), so it
 # belongs in the fast tier next to the other convention gates.
 #

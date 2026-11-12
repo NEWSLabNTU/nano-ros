@@ -19,6 +19,12 @@ Two rules:
 
 - **Design rationale goes in an RFC, never only in a phase doc.** Phase docs in `docs/roadmap/`
   are work breakdowns; they name the RFC they implement in an `Implements: RFC-NNNN` header.
+- **Every work item states its status on one line** (user ruling 2026-11-12: phase docs
+  maintain progress and acceptance status). Under each `### W<n>` heading:
+  `- **Status:** OPEN`, `DONE (<when, PR>)`, `BLOCKED (<what>)` or `DROPPED (<why>)`. Mark
+  DONE only what is done. A phase is archived only when no item is OPEN or BLOCKED. Gate:
+  `just check phase-item-status` (unmarked items from before the rule are a per-doc baseline
+  that may only fall; a new phase marks every item).
 - **Drift rule:** flipping an RFC to `status: Stable` requires updating the matching section of
   `ARCHITECTURE.md` in the same commit.
 
