@@ -206,7 +206,7 @@ naming the package and the manual step.
 | board | driver | stage 4 emits |
 | --- | --- | --- |
 | pure-Rust package set | **cargo** | the generated entry `build/<coord>/<entry>/Cargo.toml` as its own root, plus `build/<coord>/nros-cargo.toml` read through `--config` — **no workspace root** (RFC-0098 D9; the 2026-08-26 correction below is superseded) |
-| any C/C++ package in the set | **cmake** | `CMakeLists.txt` calling `nano_ros_workspace(…)` |
+| any C/C++ package in the set (on every board, bare metal included: [RFC-0130](0130-one-ros-cmake-build.md)) | **cmake** | `CMakeLists.txt` calling `nano_ros_workspace(…)` |
 | zephyr | **west** | nothing — sets env, `exec west build -b <board>` |
 | esp32 with a graph that crosses languages | **none** | nothing — the choice REFUSES, naming issue 1525. See the 2026-09-28 amendment. The esp-hal bare-metal esp32-c3 board is NOT this row: pure Rust on a `board-run` esp32 board is a **cargo** image, decided by the board descriptor's kind and not by the chip family (`plan::driver_for_board`, phase-445 W4 / PR #880 — `nros build esp32` had been exec'ing `idf.py` for an esp-hal image). |
 

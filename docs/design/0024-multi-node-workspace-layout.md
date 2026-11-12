@@ -213,6 +213,8 @@ Diagnostics: gcc/clang → stderr → user terminal. No wrapping.
 
 **CMake is the top-level driver.** Rule: cargo can be consumed as a cmake target (via Corrosion); cmake cannot be consumed as a cargo target. So when graph crosses languages, cmake wins:
 
+(Holds on boards whose startup is Rust too: there the Corrosion staticlib also carries the board's startup and CMake still owns the link, [RFC-0130](0130-one-ros-cmake-build.md) D2.)
+
 ```cmake
 project(my_ws)
 add_subdirectory(<nano-ros-repo-root>)
