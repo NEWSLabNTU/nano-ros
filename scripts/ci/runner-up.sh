@@ -43,6 +43,7 @@ while [ $# -gt 0 ]; do
     shift
 done
 . "$REPO_ROOT/scripts/lib/runner-name.sh"
+. "$REPO_ROOT/scripts/lib/runner-token.sh"
 CONTAINER_NAME="$(nros_require_runner_name runner-up)"
 
 [ -n "$LABELS" ] || die "need <labels>, e.g. nros-qemu,nros-sdk-zephyr,nros-big"
@@ -81,8 +82,7 @@ if [ -z "$TOKEN" ] && [ "$CHECK" -eq 1 ]; then
     fi
 elif [ -z "$TOKEN" ]; then
     if have_gh; then
-        if TOKEN="$(gh api -X POST "repos/${REPO}/actions/runners/registration-token" \
-                      --jq .token 2>/dev/null)" && [ -n "$TOKEN" ]; then
+        if TOKEN="$(nros_mint_runner_token runner-up "$REPO")"; then
             TOKEN_SOURCE="minted via gh"
         else
             TOKEN=""

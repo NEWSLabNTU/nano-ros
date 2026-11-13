@@ -29,6 +29,7 @@
 # broken; stopping on 0 leaves the queue hanging. So:
 #
 #     0   job done            -> sweep, start a fresh container
+#     75  token refused       -> mint again (own budget: a bad API minute)
 #     78  labels not true     -> re-provision ONCE, then STOP if still untrue
 #     *   run.sh failed       -> back off, and stop after 3 IN A ROW
 #
@@ -42,7 +43,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENGINE="${NROS_CONTAINER_ENGINE:-docker}"
-LABELS="" ONCE=0 MAX=0 CHECK=0 N=0 FAILS=0 HEALED=0
+LABELS="" ONCE=0 MAX=0 CHECK=0 N=0 FAILS=0 HEALED=0 MINT_FAILS=0
 MAX_CONSECUTIVE_FAILURES=3
 
 while [ $# -gt 0 ]; do
@@ -76,9 +77,12 @@ fi
 # so it is minted PER ITERATION rather than once. Minting up front and reusing
 # it is what makes a loop die overnight with an authentication error six hours
 # after the operator stopped watching.
-mint_token() {
-    gh api -X POST "repos/${REPO}/actions/runners/registration-token" --jq .token 2>/dev/null
-}
+. "$REPO_ROOT/scripts/lib/runner-token.sh"
+# A failed mint is the API's bad minute far more often than a lost permission
+# (2026-11-13: three registrations refused in a row, a clean token minutes
+# later), so it has its OWN budget — about half an hour of trying — rather than
+# spending the run-failure one, which used to stop the loop in 45 seconds.
+MAX_MINT_ROUNDS=6
 
 if [ "$CHECK" -eq 1 ]; then
     say "repo=$REPO labels=$LABELS"
@@ -87,6 +91,7 @@ if [ "$CHECK" -eq 1 ]; then
     echo "    $ENGINE rm -f $NAME  (only if a stale container of that name exists)"
     echo "    runner-container.sh $LABELS --run --attach"
     echo "    runner-container.sh $LABELS --sweep  (in a throwaway container: the volumes are not on the host)"
+    echo "  on a failed mint or exit 75 (token refused): mint again, $MAX_MINT_ROUNDS rounds"
     echo "  on exit 78 (labels not true): runner-bootstrap.sh $LABELS once, then retry"
     echo "  stops on a second exit 78 in a row or $MAX_CONSECUTIVE_FAILURES failures in a row"
     exit 0
@@ -114,11 +119,17 @@ while :; do
     # reads like a runner problem and is not one.
     "$ENGINE" rm -f "$NAME" >/dev/null 2>&1 || true
 
-    TOKEN="$(mint_token || true)"
-    [ -n "$TOKEN" ] || {
-        echo "runner-loop-container: could not mint a registration token for $REPO." >&2
-        echo "  This needs ADMIN on the repo; an authenticated gh is not enough." >&2
-        exit 1; }
+    if ! TOKEN="$(nros_mint_runner_token runner-loop-container "$REPO")"; then
+        MINT_FAILS=$((MINT_FAILS + 1))
+        if [ "$MINT_FAILS" -ge "$MAX_MINT_ROUNDS" ]; then
+            echo "runner-loop-container: no registration token after $MINT_FAILS rounds — stopping." >&2
+            exit 1
+        fi
+        say "no token (round $MINT_FAILS of $MAX_MINT_ROUNDS); trying again in 5 minutes"
+        sleep 300
+        continue
+    fi
+    MINT_FAILS=0
 
     say "starting container for iteration $((N + 1))"
     RC=0
@@ -135,6 +146,18 @@ while :; do
             # and never reached the disk the jobs fill.
             GH_REPO="$REPO" "$REPO_ROOT/scripts/ci/runner-container.sh" "$LABELS" --sweep \
                 || say "(sweep reported a problem — continuing)"
+            ;;
+        75)
+            # EX_TEMPFAIL: the entrypoint refused the token's SHAPE before
+            # config.sh saw it. A fresh mint is the fix, so this spends the mint
+            # budget, not the run-failure one.
+            MINT_FAILS=$((MINT_FAILS + 1))
+            if [ "$MINT_FAILS" -ge "$MAX_MINT_ROUNDS" ]; then
+                echo "runner-loop-container: the container refused $MINT_FAILS tokens in a row — stopping." >&2
+                exit 75
+            fi
+            say "the container refused the token (round $MINT_FAILS of $MAX_MINT_ROUNDS); minting again"
+            sleep 60
             ;;
         78)
             # Issue 2497 — the commonest 78 is not a broken host but a moved

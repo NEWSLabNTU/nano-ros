@@ -287,12 +287,8 @@ fi
 # written to a file: nothing needs it after `config.sh`, and a token on disk is
 # a credential somebody eventually copies.
 echo "runner-register: minting a registration token for $gh_repo..."
-token="$(gh api -X POST "repos/$gh_repo/actions/runners/registration-token" --jq .token)"
-if [ -z "$token" ]; then
-    echo "runner-register: the API returned no token." >&2
-    echo "  The authenticated account needs ADMIN on $gh_repo to mint one." >&2
-    exit 1
-fi
+. "$repo_root/scripts/lib/runner-token.sh"
+token="$(nros_mint_runner_token runner-register "$gh_repo")" || exit 1
 
 echo "runner-register: configuring..."
 (
