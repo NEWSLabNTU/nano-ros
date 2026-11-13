@@ -336,7 +336,7 @@ variants of each unit. So the walk's flags do not thrash a shared dir.
 
 ### W5b — The other cargo-road platforms state a stack
 
-- **Status:** OPEN. Bare metal is DONE (2026-11-13, #PRNUM); ThreadX and
+- **Status:** OPEN. Bare metal is DONE (2026-11-14, #3757); ThreadX and
   NuttX are open.
 
 On the cargo road, ThreadX, NuttX and bare metal stated no stack, so W5
