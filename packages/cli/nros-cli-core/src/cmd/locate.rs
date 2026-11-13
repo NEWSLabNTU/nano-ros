@@ -1095,16 +1095,18 @@ fn run_nuttx_image_env(args: &Args, sdk_root: &std::path::Path) -> Result<()> {
                 project.display()
             )
         })?;
+    let board = crate::cmd::board_facts::resolve(&bringup_dir, sdk_root, Some(id), None, &|k| {
+        std::env::var(k).ok()
+    })?;
+    let triple = board_target(sdk_root, board.get("NROS_BOARD").map(String::as_str))?;
+    let descriptor = make_road_sizing_descriptor(&project, key, id, triple, out)?;
     let mut rows = Vec::new();
-    for row in
-        crate::cmd::image_entity_facts::rows(Some(&inventory), None).map_err(|e| eyre::eyre!(e))?
+    for row in crate::cmd::image_entity_facts::rows(Some(&inventory), descriptor.as_deref())
+        .map_err(|e| eyre::eyre!(e))?
     {
         let (k, v) = row.split_once('=').unwrap_or((row.as_str(), ""));
         rows.push((k.to_string(), v.to_string()));
     }
-    let board = crate::cmd::board_facts::resolve(&bringup_dir, sdk_root, Some(id), None, &|k| {
-        std::env::var(k).ok()
-    })?;
     // The board's own cargo `[env]` rows are among its facts (the cmake road
     // has no other carrier for them), but this road already hands cargo the
     // board's whole cargo config, `[env]` included, with each row's own
@@ -1147,14 +1149,130 @@ fn run_nuttx_image_env(args: &Args, sdk_root: &std::path::Path) -> Result<()> {
         overrides: Vec::new(),
         language: None,
     })?;
-    eprintln!(
-        "warning: nano-ros: `{key}` is built without a sizing descriptor. The NuttX make \
-         build does not produce one yet, so the image's executor, node table and \
-         transport pools take the board's defaults instead of sizes derived from its \
-         declared entities, and can be too small for them. Build it with `nros build` \
-         to size it from its declarations."
-    );
+    if descriptor.is_none() {
+        eprintln!(
+            "warning: nano-ros: `{key}` is built without a sizing descriptor: the metadata \
+             probe `nros configure` ran recorded none of its components' entities. Its \
+             executor, node table and transport pools take the board's defaults instead of \
+             sizes derived from what it creates, and can be too small for it."
+        );
+    }
     Ok(())
+}
+
+/// phase-550 W6d (RFC-0100 D4) -- the image's sizing descriptor, from the
+/// producer the cmake road's entry calls (`nros dev image sizing-descriptor
+/// --from-model`), over the same inputs that road hands it:
+///
+/// * the model `nros configure` resolved (its `resolved.toml` names it);
+/// * `--workspace` = the project, whose metadata-probe sidecars the configure
+///   just refreshed -- with no contract they ARE the image's entity rows, so
+///   the descriptor's `[meta] basis` is `probe`, and honestly: the probe ran
+///   on this app's code;
+/// * the bound tables the probe's codegen wrote for the image's language;
+/// * the board's target triple and the image's RMW.
+///
+/// `None` when the probe recorded no component of the image: there is then
+/// nothing observed to size from, and the caller says so.
+fn make_road_sizing_descriptor(
+    project: &std::path::Path,
+    key: &str,
+    id: &str,
+    triple: Option<String>,
+    out: &std::path::Path,
+) -> Result<Option<PathBuf>> {
+    // The per-IMAGE resolve record names the model (the configured
+    // coordinate's union record names the composition instead); its
+    // directory is configure's own helper's.
+    let (bringup, _) = key.split_once(':').unwrap_or((key, id));
+    let resolved_toml = project
+        .join("build")
+        .join(crate::resolve::dir_name_for(bringup, id))
+        .join(crate::resolve::RESOLVED_TOML_NAME);
+    let resolved: toml::Table = std::fs::read_to_string(&resolved_toml)
+        .map_err(|e| eyre::eyre!("reading {}: {e}", resolved_toml.display()))?
+        .parse()
+        .map_err(|e| eyre::eyre!("parsing {}: {e}", resolved_toml.display()))?;
+    let Some(model) = resolved
+        .get("provenance")
+        .and_then(|p| p.get("source"))
+        .and_then(toml::Value::as_str)
+        .map(PathBuf::from)
+        .filter(|m| m.is_file())
+    else {
+        return Ok(None);
+    };
+    let image = resolved.get("image").and_then(toml::Value::as_table);
+    let field = |k: &str| {
+        image
+            .and_then(|t| t.get(k))
+            .and_then(toml::Value::as_str)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    let loaded = crate::cmd::sizing_descriptor::load_model(&model)?;
+    let (probed, _, notes) = crate::orchestration::metadata_refresh::probe_inventory(
+        model.display().to_string(),
+        project,
+        &loaded,
+    );
+    if probed.is_none() {
+        // Why the probe could not answer: a stale or missing sidecar names
+        // its remedy.
+        for n in notes {
+            eprintln!("nano-ros: {n}");
+        }
+        return Ok(None);
+    }
+    let probe_codegen = crate::cmd::build::metadata_probe_build_dir(project).join("nros-codegen");
+    let mut bound_inventory = Vec::new();
+    if let Ok(langs) = std::fs::read_dir(&probe_codegen) {
+        let mut langs: Vec<_> = langs.flatten().map(|e| e.path()).collect();
+        langs.sort();
+        for lang in langs {
+            let Ok(pkgs) = std::fs::read_dir(&lang) else {
+                continue;
+            };
+            let mut pkgs: Vec<_> = pkgs.flatten().map(|e| e.path()).collect();
+            pkgs.sort();
+            bound_inventory.extend(
+                pkgs.into_iter()
+                    .map(|p| p.join(rosidl_codegen::INVENTORY_JSON_NAME))
+                    .filter(|t| t.is_file()),
+            );
+        }
+    }
+    let build_dir = out
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default();
+    let entry = nros_orchestration_ir::entry_names::entry_package_name(id);
+    crate::cmd::sizing_descriptor::run(crate::cmd::sizing_descriptor::SizingDescriptorArgs {
+        from_model: vec![model],
+        build_dir: Some(build_dir.clone()),
+        entry: Some(entry.clone()),
+        workspace: Some(project.to_path_buf()),
+        bound_inventory,
+        rmw: field("rmw"),
+        target_triple: triple.clone(),
+        host_build: triple.is_none(),
+        road: Some("a NuttX make app".to_string()),
+        descriptor: None,
+        output_cmake: None,
+        composed_entry: Vec::new(),
+        from_leaf: None,
+        leaf_image: None,
+        entity_cmake: None,
+        owned_entry: None,
+        metadata: None,
+        heap_budget_bytes: None,
+        board_rx_frame_cost_us: None,
+        board_rx_floor_us: None,
+        sched_task_record: None,
+    })
+    .map_err(|e| eyre::eyre!("`{key}`'s sizing descriptor: {e}"))?;
+    let path = nros_sizing_descriptor::descriptor_path(&build_dir, &entry);
+    Ok(path.is_file().then_some(path))
 }
 
 /// The keys of a board's own cargo `[env]` table, which `nuttx-cargo-config`
@@ -1182,6 +1300,17 @@ fn board_cargo_env_keys(
         .and_then(toml::Value::as_table)
         .map(|t| t.keys().cloned().collect())
         .unwrap_or_default())
+}
+
+/// The rustc triple a board builds for (its descriptor's `target`), `None`
+/// for a host build.
+fn board_target(sdk_root: &std::path::Path, board: Option<&str>) -> Result<Option<String>> {
+    let Some(board) = board else {
+        return Ok(None);
+    };
+    let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(sdk_root)
+        .map_err(|e| eyre::eyre!("load board catalog: {e}"))?;
+    Ok(crate::cmd::board_facts::resolve_board(&catalog, board).and_then(|d| d.target.clone()))
 }
 
 /// The image-env cargo config [`run_nuttx_image_env`] writes beside `--out`.
