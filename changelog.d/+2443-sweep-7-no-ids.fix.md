@@ -1,0 +1,1 @@
+The XRCE symbol-prefix build checks and the header they generate, the `cargo-nano-ros` build script's backend and serdes table refusals, and the entity census's verdict notes no longer cite internal design ids. The two serdes refusals now say how to fix them: add the `<nano_ros_provides kind="serdes"/>` announcement to `package.xml`, or delete the descriptor.

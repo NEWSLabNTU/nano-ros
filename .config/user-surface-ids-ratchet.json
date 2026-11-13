@@ -1,7 +1,6 @@
 {
   "_comment": "Internal ids (issue/RFC/phase) in the CLI library's string literals and in build-script panic texts, per file -- see scripts/check/check-user-surface-ids.py. A SHRINKING backlog (issue 2443): move each id to a source comment and lower the count.",
   "counts": {
-    "packages/cli/cargo-nano-ros/build.rs": 4,
     "packages/cli/cargo-nano-ros/src/extension_descriptor.rs": 3,
     "packages/cli/cargo-nano-ros/src/lib.rs": 1,
     "packages/cli/cargo-nano-ros/src/rmw_descriptor.rs": 3,
@@ -22,7 +21,6 @@
     "packages/cli/nros-cli-core/src/codegen/entry/px4.rs": 1,
     "packages/cli/nros-cli-core/src/contract_join.rs": 2,
     "packages/cli/nros-cli-core/src/declared_params_header.rs": 1,
-    "packages/cli/nros-cli-core/src/entity_census.rs": 4,
     "packages/cli/nros-cli-core/src/orchestration/backend_link.rs": 2,
     "packages/cli/nros-cli-core/src/orchestration/board_descriptor.rs": 3,
     "packages/cli/nros-cli-core/src/orchestration/board_projection.rs": 1,
@@ -44,7 +42,6 @@
     "packages/core/nros-node/build.rs": 5,
     "packages/core/nros-params/build.rs": 1,
     "packages/rmw/cyclonedds/cyclonedds-sys/build.rs": 1,
-    "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs": 1,
-    "packages/rmw/xrce/nros-rmw-xrce-cffi/build_symbol_prefix.rs": 5
+    "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs": 1
   }
 }
