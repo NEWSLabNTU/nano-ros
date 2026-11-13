@@ -221,14 +221,17 @@ the user ruled; all five stand:
   49.0. The per-step split is in phase-535 W10. Every shard reached its fixture
   build and failed in it:
 
-  | shard | job | free at start | failed on |
+  | shard | job | free after reclaim | failed on |
   | --- | --- | --- | --- |
-  | linux | 141.5 min | 74 G | ENOSPC writing an `nros-cpp` rmeta (`build/sizes-probe`), 97 min into the fixture build (14:45 first fixture, 16:22 failure), on row `workspace-cpp-native-talker-cyclonedds`; 77 rows had finished |
-  | threadx_linux | 91.8 min | 74 G | `build-compile-check-fixtures`: two FreeRTOS cross-build rows, `freertos-kernel` not provisioned ([issue 2510](../issues/2510-compile-check-cross-rows-unprovisioned-kernel.md)); the same exit as the before-run |
-  | zephyr | 64.4 min | 50 G | `west_board_import`: the image bakes SDK 0.17.4, the 3.7 workspace pins 0.16.9 ([issue 2511](../issues/2511-zephyr-ci-image-lacks-pinned-sdk.md)); 6 of 7 west fixtures built |
+  | linux | 141.5 min | 105 G | ENOSPC writing an `nros-cpp` rmeta (`build/sizes-probe`), 97 min into the fixture build (14:45 first fixture, 16:22 failure), on row `workspace-cpp-native-talker-cyclonedds`; 77 rows had finished |
+  | threadx_linux | 91.8 min | 105 G | `build-compile-check-fixtures`: two FreeRTOS cross-build rows, `freertos-kernel` not provisioned ([issue 2510](../issues/2510-compile-check-cross-rows-unprovisioned-kernel.md)); the same exit as the before-run |
+  | zephyr | 64.4 min | 80 G | `west_board_import`: the image bakes SDK 0.17.4, the 3.7 workspace pins 0.16.9 ([issue 2511](../issues/2511-zephyr-ci-image-lacks-pinned-sdk.md)); 6 of 7 west fixtures built |
 
-  **Disk, linux: does not fit, measured twice.** The second run had 74 G free
-  and ran out at the same file the first did. The before-run's cyclonedds
+  **Disk, linux: does not fit, measured twice.** Both runs had ~105 G free
+  when `reclaim-disk.sh` finished (109,917,100 KB on the second run), and the
+  second ran out at the same file the first did, with 75 of the shard's 219
+  rows built. (The `disk-report.sh` "before" figure, 74 G, is read before the
+  reclaim step runs, so it is not the build's budget.) The before-run's cyclonedds
   `MultiArrayDimension_` error did not recur, so it was ENOSPC fallout, and the
   zephyr xrce row that failed before built this time. Neither is filed.
   threadx_linux and zephyr stopped on the two issues above, so their disk
