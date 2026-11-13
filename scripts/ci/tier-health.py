@@ -205,6 +205,9 @@ HOST_TESTS_LANE = Lane(
 # `nightly.yml`'s `elsewhere` map records the same home ("zephyr -> nightly.yml
 # zephyr-* jobs — cron 0 5").
 ZEPHYR_JOB_PREFIX = "zephyr "
+# The one board those jobs build (`just zephyr build-one`'s default,
+# `native_sim/native/64`). phase-558: a zephyr-* verdict is this board's alone.
+ZEPHYR_JOB_BOARD = "ZephyrNativeSim"
 
 
 def nightly_platform_tokens(text):
@@ -215,9 +218,10 @@ def nightly_platform_tokens(text):
     spelling left in the file is a COMMENT describing the old hand-written
     shape, and a parser that matches it reads a set nothing schedules.
 
-    The platform job's display name is `${{ matrix.plat }}`, so a token in this
-    set IS a job name in a nightly run — which is what makes the outcome
-    lookup below a name match rather than a guess.
+    These are `just` MODULES. Since phase-558 the platform job's display name
+    is the row's BOARD (`${{ matrix.board }}`, a `matrix_platform`), one job
+    per daily row of a runnable module, so the lookup below matches a row's
+    `matrix_platform` against job names, never its module.
     """
     for line in text.splitlines():
         stripped = line.strip()
@@ -316,13 +320,25 @@ def resolve_lanes(row, nightly_tokens):
                 "UNCHECKED",
                 f"no `nightly_token` and not the native host — nothing maps "
                 f"{platform!r} to a daily lane"))
+    elif token == "zephyr" and platform != ZEPHYR_JOB_BOARD:
+        # phase-558 — per board, not per family: every zephyr-* job builds
+        # `native_sim` (`just zephyr build-one`'s default board), so none of
+        # them is evidence for another Zephyr board. Before the split this
+        # row borrowed native_sim's verdict.
+        notes.append((
+            "UNCHECKED",
+            f"no nightly job builds or runs {platform!r}: the zephyr-* jobs "
+            f"build {ZEPHYR_JOB_BOARD} only (issue 2462)"))
     elif token == "zephyr":
         lanes.append(Lane("daily", "nightly.yml", ZEPHYR_JOB_PREFIX,
                           "nightly.yml zephyr-* jobs — cron 0 5",
                           events=("schedule", "workflow_dispatch")))
-    elif token in nightly_tokens:
-        lanes.append(Lane("daily", "nightly.yml", token,
-                          f"nightly.yml platform matrix job '{token}' — cron 0 7",
+    elif token in nightly_tokens and platform:
+        # phase-558 — the platform matrix runs one job per BOARD, named after
+        # its `matrix_platform` (`scripts/ci/nightly-boards.py`), so this row's
+        # verdict is its own job's and no sibling's.
+        lanes.append(Lane("daily", "nightly.yml", platform,
+                          f"nightly.yml platform matrix job '{platform}' — cron 0 7",
                           events=("schedule", "workflow_dispatch")))
     else:
         # A real finding, not a tool bug: the registry names a nightly job that
@@ -617,16 +633,30 @@ def selftest(quiet=False):
           "a nightly_token the matrix cannot schedule must resolve to NO lane "
           "plus an UNCHECKED note — not silently to the sibling job")
 
+    # phase-558 — two boards of ONE module resolve to two jobs, each named
+    # after its board, so a red on one cannot stand for the other.
+    a, _ = resolve_lanes({"runs": "emulator", "cadence": "daily",
+                          "matrix_platform": "FreertosMps2", "nightly_token": "freertos"}, toks)
+    b, _ = resolve_lanes({"runs": "host", "cadence": "daily",
+                          "matrix_platform": "FreertosPosix", "nightly_token": "freertos"}, toks)
+    check([lane.job for lane in a] == ["FreertosMps2"] and [lane.job for lane in b] == ["FreertosPosix"],
+          "two boards of one module must resolve to their OWN per-board jobs")
+    lanes, notes = resolve_lanes(
+        {"runs": "emulator", "cadence": "daily", "matrix_platform": "ZephyrQemuCortexM",
+         "nightly_token": "zephyr"}, toks)
+    check(not lanes and [k for k, _ in notes] == ["UNCHECKED"],
+          "a Zephyr board the zephyr-* jobs do not build must not borrow native_sim's verdict")
+
     lanes, notes = resolve_lanes(
         {"runs": "emulator", "cadence": "manual", "matrix_platform": "Fvp"}, toks)
     check(not lanes and not notes,
           "tier 3 needs no lane and owes no explanation beyond its own tier")
 
     lanes, _ = resolve_lanes(
-        {"runs": "emulator", "cadence": "daily", "matrix_platform": "ZephyrQemuCortexM", "nightly_token": "zephyr"},
+        {"runs": "host", "cadence": "daily", "matrix_platform": "ZephyrNativeSim", "nightly_token": "zephyr"},
         toks)
     check(len(lanes) == 1 and lanes[0].job == ZEPHYR_JOB_PREFIX,
-          "`zephyr` resolves to the 05:00 cron's templated jobs by prefix")
+          "`zephyr` native_sim resolves to the 05:00 cron's templated jobs by prefix")
 
     lanes, _ = resolve_lanes({"infra": True, "crate": "nros-board-common"}, toks)
     check(not lanes, "infra carries no tier promise, so it gets no lane")

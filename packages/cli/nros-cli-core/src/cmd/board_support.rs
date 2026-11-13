@@ -36,9 +36,14 @@ pub struct Row {
     pub emulator: Option<String>,
     pub hardware: Option<String>,
     pub cadence: Option<String>,
-    /// The nightly sweep's per-platform job that verifies this row (a daily row).
+    /// The `just` module the nightly sweep runs this row's board with.
     #[serde(default)]
     pub nightly_token: Option<String>,
+    /// The nightly sweep's per-BOARD job that verifies this row (a daily row;
+    /// phase-558). A record cut before the split names jobs by module, which
+    /// `nightly_token` still matches.
+    #[serde(default)]
+    pub nightly_job: Option<String>,
     /// The weekly probe tracks that verify this row.
     #[serde(default)]
     pub probe_tracks: Vec<String>,
@@ -188,8 +193,11 @@ impl Row {
             .jobs
             .iter()
             .filter(|(name, _)| {
-                self.nightly_token
+                // phase-558 — the board's own job first; the module's name
+                // only matches a record cut while jobs were per module.
+                self.nightly_job
                     .as_deref()
+                    .or(self.nightly_token.as_deref())
                     .is_some_and(|t| name.as_str() == t)
                     || self
                         .probe_tracks
@@ -366,6 +374,7 @@ mod tests {
             runs: Some("emulator".into()),
             emulator: Some("fvp:FVP_BaseR_AEMv8R".into()),
             nightly_token: None,
+            nightly_job: None,
             probe_tracks: Vec::new(),
             hardware: None,
             cadence: Some("manual".into()),
@@ -533,6 +542,19 @@ mod tests {
         r.nightly_token = Some("esp32".into());
         let t = r.last_run_text(Some(&runs)).unwrap();
         assert!(t.contains("failure (the whole run"), "{t}");
+        // phase-558 — a per-board job is matched by the board, not the module.
+        let per_board: LaneRuns = serde_json::from_str(
+            r#"{"recorded":"2026-11-14","lanes":{"daily":{"workflow":"nightly.yml",
+              "run":{"url":"https://x/runs/8","date":"2026-11-14","conclusion":"failure",
+                     "commit":"658f2d8ac19d49e6"},
+              "jobs":{"FreertosMps2":"failure","FreertosPosix":"success"}}}}"#,
+        )
+        .unwrap();
+        r.nightly_token = Some("freertos".into());
+        r.nightly_job = Some("FreertosPosix".into());
+        let t = r.last_run_text(Some(&per_board)).unwrap();
+        assert!(t.starts_with("2026-11-14 success (FreertosPosix)"), "{t}");
+        r.nightly_job = None;
         r.cadence = Some("weekly".into());
         assert!(
             r.last_run_text(Some(&runs))

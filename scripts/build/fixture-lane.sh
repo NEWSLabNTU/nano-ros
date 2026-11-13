@@ -313,6 +313,9 @@ nros_lane_unclaimed() {
 
 # nros_scope_coords_file <just module> — a PLATFORM scope's coordinate file.
 #
+# With `NROS_SCOPE_BOARD=<PlatformId>` set, the file holds that one board's
+# rows instead (phase-558), and a board the module does not own is refused.
+#
 # Issue 1758. `just test <platform>` runs that module's suite; unscoped, a test
 # of ANOTHER platform its filter reaches would claim its coordinate and fail on
 # a fixture this scope never built. This writes every manifest row (west leaves
@@ -325,14 +328,20 @@ nros_lane_unclaimed() {
 # laundering this exists to prevent, in the other direction.
 nros_scope_coords_file() {
     local module="${1:?usage: nros_scope_coords_file <just module>}"
-    local out="target/nextest/scope-coords-${module}.txt"
+    # phase-558 — `NROS_SCOPE_BOARD=<PlatformId>` narrows the scope to ONE
+    # board of the module (the nightly's per-board job). Its own file name, so
+    # a board's slice never reads as the module's whole scope.
+    local board="${NROS_SCOPE_BOARD:-}"
+    local out="target/nextest/scope-coords-${module}${board:+-${board}}.txt"
     local tmp="${out}.tmp.$$" rc=0 bin
+    local -a slice=(--scope "$module")
+    if [ -n "$board" ]; then slice+=(--board "$board"); fi
     mkdir -p target/nextest
     bin="$(_nros_tests_bin lane-coords)"
     if [ -n "$bin" ]; then
-        "$bin" --scope "$module" > "$tmp" 2> "${tmp}.err" || rc=$?
+        "$bin" "${slice[@]}" > "$tmp" 2> "${tmp}.err" || rc=$?
     else
-        cargo run -q -p nros-tests --bin lane-coords -- --scope "$module" \
+        cargo run -q -p nros-tests --bin lane-coords -- "${slice[@]}" \
             > "$tmp" 2> "${tmp}.err" || rc=$?
     fi
     case "$rc" in
@@ -343,6 +352,14 @@ nros_scope_coords_file() {
             ;;
         1 | 2)
             # lane-coords' two refusals: no rows (1), not a platform module (2).
+            # For a BOARD slice either is fatal: running the module unscoped
+            # would hand one board's verdict every other board's tests.
+            if [ -n "$board" ]; then
+                echo "fixture-lane: lane-coords ${slice[*]} refused (rc $rc):" >&2
+                cat "${tmp}.err" >&2
+                rm -f "$tmp" "${tmp}.err"
+                return 1
+            fi
             rm -f "$tmp" "${tmp}.err"
             ;;
         *)

@@ -419,6 +419,18 @@ def breadth_of(reg: Registry, plat: str | None) -> str:
     return "; ".join(parts)
 
 
+def nightly_job(row):
+    """The nightly platform job that is this row's daily verdict, or None.
+
+    phase-558: one job per board, named after `matrix_platform`, for a daily
+    row whose module the platform matrix runs (`nightly-boards.py`). Zephyr's
+    jobs are the 05:00 cron's, which name no board (issue 2462).
+    """
+    if row.get("cadence") != "daily" or row.get("nightly_token") in (None, "zephyr"):
+        return None
+    return row.get("matrix_platform")
+
+
 def breadth_text(reg: Registry, row: dict) -> str:
     b = row.get("breadth")
     if row.get("infra"):
@@ -860,9 +872,12 @@ def render_status_json(reg: Registry) -> str:
             "hardware": row.get("hardware"),
             "cadence": row.get("cadence"),
             # Issue 2325 — the lane job that verifies this row, so a reader can
-            # name its last run: the nightly sweep's per-platform job is named
-            # after the token, and a weekly row's evidence is its probe tracks.
+            # name its last run; a weekly row's evidence is its probe tracks.
             "nightly_token": row.get("nightly_token"),
+            # phase-558 — the nightly sweep runs one job per BOARD, named
+            # after its `matrix_platform` (scripts/ci/nightly-boards.py), so a
+            # daily row's job is its board. The token is the `just` module.
+            "nightly_job": nightly_job(row),
             "probe_tracks": [p["track"] for p in reg.probes
                              if p.get("row") == board_registry.row_name(row)],
             "last_run": row.get("last_run"),
