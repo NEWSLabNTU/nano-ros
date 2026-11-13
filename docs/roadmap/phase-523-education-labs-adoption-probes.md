@@ -336,7 +336,8 @@ each batch lowers its baseline in the same PR.
 | batch 3: `cargo_metadata_schema.rs` (manifest and `system.toml` refusals, the WCET host-profile refusal) | #3666 | 168 | 80 | merged |
 | batch 4: `leaf_entity_env.rs`, `facade.rs`, `sizing_descriptor.rs` (generated-file headers, the sizing refusals) | #3698 | 139 | 80 | merged |
 | batch 5: `resolve.rs`, `metadata_build.rs`, `scaffold.rs` (the resolve record, the metadata-probe harness, `nros new` output) | #3734 | 115 | 80 | merged |
-| batch 6: `nros_config.rs`, `metadata_probe_cmake.rs`, `message_bound_knobs.rs` (+ its CMake twin), `builder/dist.rs` (the retired-`nros.toml` and node-alias refusals, the metadata-probe CMakeLists, the derived knobs file, the image manifest and its refusals) | this PR | 88 | 80 | open |
+| batch 6: `nros_config.rs`, `metadata_probe_cmake.rs`, `message_bound_knobs.rs` (+ its CMake twin), `builder/dist.rs` (the retired-`nros.toml` and node-alias refusals, the metadata-probe CMakeLists, the derived knobs file, the image manifest and its refusals) | #3740 | 88 | 80 | merged |
+| batch 7: `nros-rmw-xrce-cffi/build_symbol_prefix.rs`, `cargo-nano-ros/build.rs`, `entity_census.rs` (the XRCE symbol-prefix build checks and generated header, the backend/serdes table refusals and generated headers, the census verdict notes) | this PR | 75 | 80 | open |
 | runtime logs of a default image (C lexer, log/panic rule) | — | — | — | not started |
 
 Acceptance: both ratchet baselines reach zero and their subjects become

@@ -213,26 +213,23 @@ impl Verdict {
             Verdict::Unwired => {
                 "the resolver drops it silently; the model and the inventory never see it"
             }
-            Verdict::DepthMismatch => {
-                "the arena is sized from the declaration (phase-403 step 2), in both directions"
-            }
-            Verdict::QosMismatch => {
-                "RFC-0100 W3: a keep_all or transient-local endpoint prices differently"
-            }
+            // Sources: depth sizing phase-403 step 2; QoS pricing RFC-0100 W3;
+            // the param refusal phase-446; the absence rule RFC-0078.
+            Verdict::DepthMismatch => "the arena is sized from the declaration, in both directions",
+            Verdict::QosMismatch => "a keep_all or transient-local endpoint prices differently",
             Verdict::TypeMismatch => "the bound inventory priced the wrong type",
             Verdict::PeriodMismatch => {
                 "the sched task derivation and the rate hierarchy read the declared rate"
             }
             Verdict::ParamMissingInContract => {
-                "the store has no slot counted for it; the phase-446 refusal, one build earlier"
+                "the store has no slot counted for it; the build refuses it one step earlier"
             }
             Verdict::ParamPhantom => "a launch value that can reach nothing",
             Verdict::ParamTypeMismatch => {
                 "play_launch rejects the launch value; the store's reader rejects the write"
             }
             Verdict::Unobserved => {
-                "evidence absent is not evidence of absence (RFC-0078's rule, applied to \
-                 structure)"
+                "evidence absent is not evidence of absence, applied to structure"
             }
         }
     }
