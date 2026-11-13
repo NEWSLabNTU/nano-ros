@@ -849,6 +849,22 @@ gate landed. Items 2 to 5 are open.
   Linux are `cadence = "daily"`. The Linux row needs no `nightly_token`: its
   daily lane is run-matrix.yml's tier 1.
 
+**Status (2026-11-13): the Zephyr template copy-out is daily.** User ruling,
+verbatim: "Do Zephyr template check daily". `gate.yml`'s
+`check-template-copy-out-zephyr` (the `zephyr` part, issue 2219) runs on
+`schedule` (02:00 UTC daily) and `workflow_dispatch`, not `merge_group`. The
+three `no-zephyr` shards still gate every merge group. `CI`'s `sibling` row for
+it names `schedule workflow_dispatch`, so a merge group reads it as "no work
+on merge_group" and the daily run's red is `CI`'s red.
+`check-merge-group-gates` gained `DEFERRED_PARTS` (selftest 22 cases): the
+zephyr part may run on `schedule` only, heard by `CI` there. Measured over 12
+successful merge groups: the job's median was 37.3 min (26.8-42.6) against
+~21 min for the next-longest job, so each queue entry saves ~37 runner-min of
+~168 (22 %), and its critical path drops to the slowest remaining job (~21
+min). RFC-0122 D9 is amended with the ruling. `check-cadence-jobs` and its
+baseline are unchanged: they bind BOARD run cadences (D8), and the copy-out
+templates are not a board row.
+
 **Acceptance status:**
 - "Every `cadence` names a job; a gate refuses a cadence with no job": met by
   the gate, with one baselined row (issue 2462). "Ran in the last window"

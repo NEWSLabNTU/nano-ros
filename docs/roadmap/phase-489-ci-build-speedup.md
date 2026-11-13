@@ -1053,6 +1053,14 @@ the one lever left on this job, and it moves `cli-tests` too, so it belongs to
 a change that builds the CLI once per merge group for every job, not to W8.
 W8 is closed on its time target, with the second half recorded as not met.
 
+**2026-11-13: the Zephyr part left the merge queue.** By 2026-11-12/13 it had
+grown to a median of 37.3 min (26.8-42.6, 12 successful merge groups) against
+~21 min for the next job, so it alone set the queue's critical path. User
+ruling, verbatim: "Do Zephyr template check daily". It now runs on gate.yml's
+daily `schedule` (RFC-0122 D9 amendment, phase-535 W8 status), and the
+critical path falls to `cli-tests` / the `no-zephyr` shards (~21 min).
+Why the part nearly doubled since 2026-11-05 was not investigated here.
+
 ## Self-hosted runner cache observations (2026-10-09..14)
 
 From the runner-sweep logs of the three self-hosted runners:

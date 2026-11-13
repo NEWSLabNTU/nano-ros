@@ -2031,8 +2031,9 @@ jobs:
   # cross sub-projects are built too (pinned compiler + kernel + lwIP are
   # provisioned below). The Zephyr ones are NOT this job's: it runs the
   # `no-zephyr` part, and `check-template-copy-out-zephyr` runs the complement
-  # on a runner with a west workspace (issue 2219). Until then those five were
-  # NOT VERIFIED on every merge group while this comment blamed issue 1782,
+  # on a runner with a west workspace (issue 2219) — DAILY, not per merge group,
+  # since the user's ruling of 2026-11-13 (see that job). Before issue 2219
+  # those five were NOT VERIFIED anywhere while this comment blamed issue 1782,
   # which had already given them a copy-out road.
   #
   # ROUTED like `check-test-unit` (the expression is spelled ONCE and
@@ -2321,8 +2322,20 @@ jobs:
   # Its own job, not a fourth matrix entry, because it needs a different image
   # (`nano-ros-zephyr-ci`, the SDK baked in, as nightly's `zephyr-copy-out`)
   # and a west workspace the shards do not pay for. The parts are complements
-  # by construction, so the four runners build every unit exactly once;
-  # `check-merge-group-gates` rule 6 refuses a part with no complement.
+  # by construction, so together the four runners build every unit exactly
+  # once; `check-merge-group-gates` rule 6 refuses a part with no complement.
+  #
+  # DAILY, NOT PER MERGE GROUP. User ruling 2026-11-13, verbatim: "Do Zephyr
+  # template check daily". This job was the merge queue's critical path:
+  # median 37.3 min (26.8-42.6) over 12 successful merge groups of 2026-11-12/13,
+  # against ~21 min for the next-longest job, and the four copy-out runners
+  # were 95 of ~168 runner-minutes per queue entry. So it runs on gate.yml's daily
+  # `schedule` (02:00 UTC) and on dispatch, and the three `no-zephyr` shards
+  # stay on `merge_group`. A Zephyr template that breaks now reaches `main` and
+  # is caught by the next day's run, which goes red through `CI` like any
+  # sibling. `check-merge-group-gates` records the ruling as a DEFERRED part:
+  # the complement may run on `schedule`, and only there, and `CI` must still
+  # hear it on that event.
   #
   # Zephyr 3.7, the gate's default line (`scripts/lib/zephyr-workspace.sh`) and
   # the line the templates are documented for (`zephyr-byo/west.yml` pins
@@ -2338,14 +2351,14 @@ jobs:
   # STRICT: the workspace IS provisioned here, so a Zephyr project that
   # reaches a NOT VERIFIED is a failure of this job, not a skip.
   check-template-copy-out-zephyr:
-    name: check / template-copy-out [zephyr] (merge group + manual)
+    name: check / template-copy-out [zephyr] (daily + manual)
     needs: changes
     if: >-
-      ${{ always() && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)
+      ${{ always() && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name)
           && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
     # phase-489 W2 — ROUTED, as `check-template-copy-out`; the hosted arm is the
     # Zephyr CI image.
-    runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
+    runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
     # Longest successful run measured 2026-11-12: 41 min (n=15). Twice that, so a
     # stalled runner fails fast instead of holding the merge queue for 6 h.
     timeout-minutes: 85
@@ -2353,7 +2366,7 @@ jobs:
       contents: read
       packages: read
     container:
-      image: ${{ !(vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r6' || '' }}
+      image: ${{ !(vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r6' || '' }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -2473,7 +2486,7 @@ jobs:
           just setup-launch-resolve
 
       - name: just check template-copy-out (the Zephyr part, copied out)
-        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         env:
           NROS_CHECK_SKIP_STRICT: "1"
         run: |
@@ -3875,7 +3888,7 @@ jobs:
           sibling check-workspace-all  "${{ needs.check-workspace-all.result }}"  "pull_request merge_group schedule workflow_dispatch"
           sibling check-test-unit      "${{ needs.check-test-unit.result }}"      "merge_group schedule workflow_dispatch"
           sibling check-template-copy-out "${{ needs.check-template-copy-out.result }}" "merge_group workflow_dispatch"
-          sibling check-template-copy-out-zephyr "${{ needs.check-template-copy-out-zephyr.result }}" "merge_group workflow_dispatch"
+          sibling check-template-copy-out-zephyr "${{ needs.check-template-copy-out-zephyr.result }}" "schedule workflow_dispatch"
           sibling check-lane-contracts "${{ needs.check-lane-contracts.result }}" "merge_group schedule workflow_dispatch"
           sibling check-build          "${{ needs.check-build.result }}"          "schedule workflow_dispatch"
           sibling warm-cache           "${{ needs.warm-cache.result }}"           "push workflow_dispatch"
