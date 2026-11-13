@@ -36,6 +36,8 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Longest green run 3.5 min (n=40); 2x rounds to 10.
+    timeout-minutes: 10
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4

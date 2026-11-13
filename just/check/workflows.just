@@ -851,9 +851,10 @@ cli-submodule-sync:
 workflow-runner-isolation:
     @python3 scripts/check-workflow-runner-isolation.py
 
-# A merge-queue job with no `timeout-minutes` inherits GitHub's 360. One
-# stalled hosted runner held the queue for hours on 2026-11-12. Every job in a
-# workflow triggered by merge_group states a bound.
+# A job with no `timeout-minutes` inherits GitHub's 360 (hosted) or five days
+# (self-hosted). One stalled hosted runner held the queue for hours on
+# 2026-11-12. Every job in every workflow states a bound, sized from its
+# measured longest green run.
 [private]
 workflow-job-timeouts:
     @python3 scripts/check-workflow-job-timeouts.py

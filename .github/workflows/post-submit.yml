@@ -99,6 +99,8 @@ jobs:
   dep-chain:
     name: dep-chain (7 board×rmw cells)
     runs-on: ubuntu-22.04
+    # Longest green run 10.3 min (n=40); twice that, rounded up.
+    timeout-minutes: 25
     container:
       image: ghcr.io/newslabntu/nano-ros-ci:humble
       credentials:
@@ -172,6 +174,8 @@ jobs:
     needs: [dep-chain]
     if: always()
     runs-on: ubuntu-22.04
+    # Longest green run 0.3 min (n=40); floor 10.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       # Every lane reports, THEN the verdicts combine — NOT a run of commands

@@ -124,6 +124,8 @@ jobs:
     # will not run on the LTS the book's install instructions target. The floor
     # is a property of the release, so it is pinned rather than inherited.
     runs-on: ubuntu-22.04
+    # Longest green run 8.7 min (n=13); twice that, rounded up.
+    timeout-minutes: 20
     permissions:
       contents: write
       # issue 2325 — read the board-verifying lanes' last runs (record-lane-runs.py).

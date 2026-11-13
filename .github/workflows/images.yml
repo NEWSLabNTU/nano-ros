@@ -50,6 +50,8 @@ on:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    # Longest green run 0.2 min (n=31); floor 10.
+    timeout-minutes: 10
     outputs:
       ci_base: ${{ steps.f.outputs.ci_base }}
       zephyr: ${{ steps.f.outputs.zephyr }}
@@ -82,6 +84,8 @@ jobs:
       ${{ needs.changes.outputs.ci_base == 'true'
           || (github.event_name == 'workflow_dispatch' && inputs.image != 'zephyr') }}
     runs-on: ubuntu-latest
+    # Longest green run 23.7 min (n=27); twice that, rounded up.
+    timeout-minutes: 50
     concurrency:
       group: images-ci-base
       cancel-in-progress: false
@@ -173,6 +177,8 @@ jobs:
       ${{ needs.changes.outputs.zephyr == 'true'
           || (github.event_name == 'workflow_dispatch' && inputs.image != 'ci-base') }}
     runs-on: ubuntu-latest
+    # Longest green run 31.2 min (n=11); twice that, rounded up.
+    timeout-minutes: 65
     concurrency:
       group: images-zephyr
       cancel-in-progress: false

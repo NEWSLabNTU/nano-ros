@@ -173,6 +173,8 @@ jobs:
     name: retag ${{ inputs.retag }} -> ${{ inputs.version }}
     if: ${{ inputs.retag != '' && inputs.retag != null }}
     runs-on: ubuntu-22.04
+    # NEVER RUN, so unmeasured. A registry retag; re-measure from its first run.
+    timeout-minutes: 15
     permissions:
       contents: read
       packages: write
