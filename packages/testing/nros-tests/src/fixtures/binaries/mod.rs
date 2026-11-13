@@ -5479,6 +5479,48 @@ fn require_stamped_launch_resolver(stamp: &Path, id: &str) -> TestResult<()> {
     ))
 }
 
+/// The `platform` a `[[compile_check_fixture]]` row states, if any (issue 2510).
+///
+/// Read from the row itself, the same field `fixtures-manifest.py
+/// list-compile-checks --coords-from` narrows the BUILD by, so build and run
+/// answer "is this row in the lane?" from one fact.
+fn compile_check_row_platform(id: &str) -> Option<String> {
+    static ROWS: std::sync::OnceLock<Vec<toml::Value>> = std::sync::OnceLock::new();
+    let rows = ROWS.get_or_init(|| {
+        let path = crate::project_root().join("examples/fixtures.toml");
+        let text =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let doc: toml::Table =
+            toml::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
+        doc.get("compile_check_fixture")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+    });
+    rows.iter()
+        .find(|r| r.get("id").and_then(|v| v.as_str()) == Some(id))?
+        .get("platform")?
+        .as_str()
+        .map(str::to_owned)
+}
+
+/// Deselect a compile-check consumer whose row states a platform this run's
+/// lane does not hold (issue 2510). The build omits exactly those rows, so
+/// without this the run would report the absent stamp as a failure. A row
+/// stating no platform is in every lane, as before.
+fn require_compile_check_row_in_lane(id: &str) {
+    let Some(token) = compile_check_row_platform(id) else {
+        return;
+    };
+    let platform = crate::matrix::PlatformId::from_fixture_token(&token).unwrap_or_else(|| {
+        panic!(
+            "compile-check row `{id}` states platform `{token}`, which names no test \
+             platform; fix the row in examples/fixtures.toml"
+        )
+    });
+    crate::fixtures::lane::require_platform_in_lane(&[platform], id);
+}
+
 /// Resolve a build-stage "compile-check" fixture's `.compile-ok` stamp (issue
 /// 0034). `scripts/build/compile-check-fixtures.sh` (run by
 /// `build-test-fixtures`) stages the template, rewrites placeholders, runs
@@ -5486,6 +5528,7 @@ fn require_stamped_launch_resolver(stamp: &Path, id: &str) -> TestResult<()> {
 /// instead of running `cargo check` at run time. Absent ⇒ a failure in every
 /// run (issue 1758) → run `build-test-fixtures`.
 pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
+    require_compile_check_row_in_lane(id);
     let stamp = build_dir(crate::kind::COMPILE_CHECK, &[id]).join(".compile-ok");
     require_stamped_launch_resolver(&stamp, id)?;
     require_prebuilt_binary_fresh(&stamp)
@@ -5497,6 +5540,7 @@ pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
 /// `target/debug/demo_entry`) that a test executes. Sched-task-aware like
 /// `require_compile_check`.
 pub fn require_compile_check_bin(id: &str, rel: &str) -> TestResult<PathBuf> {
+    require_compile_check_row_in_lane(id);
     let dir = build_dir(crate::kind::COMPILE_CHECK, &[id]);
     // issue 1454 — same stamp, same question. A build-fixture's BINARY is baked
     // from the same resolved SystemModel as its sibling `.compile-ok` row, so a
@@ -5556,6 +5600,7 @@ impl CompileVerdict {
 /// missing one is a hard failure in a gated run (issue 0584: never a skip), a
 /// stale one is STALE, and the launch-resolver identity is checked (issue 1454).
 pub fn require_compile_verdict(id: &str) -> TestResult<CompileVerdict> {
+    require_compile_check_row_in_lane(id);
     let dir = build_dir(crate::kind::COMPILE_CHECK, &[id]);
     let stamp = dir.join(".verdict");
     require_stamped_launch_resolver(&stamp, id)?;

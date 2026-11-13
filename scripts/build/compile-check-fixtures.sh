@@ -836,8 +836,16 @@ compile_check_records() {
     # condition. The counts at the end then report 0 for it, which is honest:
     # nothing was asked for and nothing was built.
     _cc_builder_enabled "$1" || return 0
+    # Issue 2510 — the lane's coordinates narrow the rows exactly as they
+    # narrow every other fixture family: a row stating a `platform` the lane
+    # does not hold is not built (and its tests skip by the same field). A
+    # named id is built whatever the lane, because whoever named it asked.
+    local -a scope=()
+    if [ -z "$id_filter" ] && [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
+        scope=(--coords-from "$NROS_FIXTURE_COORDS")
+    fi
     python3 "$repo_root/scripts/build/fixtures-manifest.py" list-compile-checks \
-        --builder "$1" ${id_filter:+--id "$id_filter"}
+        --builder "$1" ${id_filter:+--id "$id_filter"} "${scope[@]}"
 }
 
 # Issue 0406 — a narrowing that selects no compile-check row used to run every
@@ -949,12 +957,18 @@ if [ -z "$id_filter" ] && { [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ] || [ -n "$
         # shellcheck source=scripts/build/jobserver-pool.sh
         source "$repo_root/scripts/build/jobserver-pool.sh"
         _cc_rc=0
+        # Issue 2510 — a unit that fails says WHICH row it was, in place and
+        # in the stage's own summary. A unit can die under errexit before it
+        # prints its one-row summary, and the units' output interleaves, so
+        # without this the only evidence of a failed row was its build
+        # error somewhere among thousands of lines.
+        _cc_fail_dir="$(mktemp -d "${TMPDIR:-/tmp}/compile-check-failed.XXXXXX")"
         # `env -u NROS_FIXTURE_IDS`: a unit is ONE row, and the set filter it
         # would otherwise inherit is exclusive with the id filter it is given.
         _cc_units() {
             for _id in $_cc_ids; do
-                printf 'env -u NROS_FIXTURE_IDS NROS_FIXTURE_ID=%s NROS_COMPILE_CHECK_POOL=0 bash %s/scripts/build/compile-check-fixtures.sh\n' \
-                    "$_id" "$repo_root"
+                printf 'env -u NROS_FIXTURE_IDS NROS_FIXTURE_ID=%s NROS_COMPILE_CHECK_POOL=0 bash %s/scripts/build/compile-check-fixtures.sh || { echo "compile-check: row %s FAILED" >&2; : > %s/%s; exit 1; }\n' \
+                    "$_id" "$repo_root" "$_id" "$_cc_fail_dir" "$_id"
             done
         }
         if [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ]; then
@@ -971,8 +985,16 @@ if [ -z "$id_filter" ] && { [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ] || [ -n "$
         # Each unit prints its OWN one-row summary, so the parent must print the
         # aggregate itself — otherwise the last unit's counts (check=1 …) read
         # as the whole stage's.
+        _cc_failed="$(cd "$_cc_fail_dir" && ls -1 | sort | tr '\n' ' ')"
+        rm -rf "$_cc_fail_dir"
         if [ "$_cc_rc" = "0" ]; then
             echo "compile-check fixtures built: $(printf '%s\n' $_cc_ids | wc -l) row(s) across $(printf '%s\n' $_cc_all_builders | wc -l) builders."
+        elif [ -n "$_cc_failed" ]; then
+            echo "compile-check: FAILED — $(printf '%s\n' $_cc_failed | wc -l) row(s) did not build: ${_cc_failed% }" >&2
+            echo "  Each row's output ends at its error; search the log for 'row <id> FAILED'." >&2
+            echo "  Rebuild one alone: NROS_FIXTURE_ID=<id> bash scripts/build/compile-check-fixtures.sh" >&2
+        else
+            echo "compile-check: FAILED (exit $_cc_rc) with no row reporting a failure — the pool itself failed; read its output above." >&2
         fi
         exit $_cc_rc
     fi

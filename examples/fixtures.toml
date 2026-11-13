@@ -5056,6 +5056,14 @@ dir = "packages/testing/nros-tests/bins/matched-events-probe-c"
 #
 # `builder` selects the recipe; `output` names what a test resolves, relative to
 # the row's build root.
+#
+# `platform` (optional, issue 2510) scopes a row to the lanes holding that
+# platform. A lane builds the row only if its coordinates include one on that
+# platform, and `require_compile_check` skips the row's tests in every other
+# lane by the same field. A row with no `platform` is built by every lane. State
+# it when the row's image can be built for one platform only (a FreeRTOS
+# cross-build needs the FreeRTOS kernel, which a ThreadX shard does not
+# provision).
 # =============================================================================
 
 # --- cargo-check: stage the tree, `cargo check`, stamp `.compile-ok`. The
@@ -5242,6 +5250,8 @@ output = ".compile-ok"
 id = "borrowed_e2e"
 builder = "fixture-script"
 dir = "packages/testing/nros-tests/fixtures/borrowed-e2e"
+# Issue 2510: a host (linux) proof; its test was already linux-scoped.
+platform = "linux"
 output = ".compile-ok"
 
 # issue 1903 — the Cyclone backend's `ros2_pub`, the slirp "guest"
@@ -5254,6 +5264,8 @@ output = ".compile-ok"
 id = "cyclone_slirp_guest"
 builder = "fixture-script"
 dir = "packages/testing/nros-tests/fixtures/cyclone-slirp-guest"
+# Issue 2510: the slirp pair's host guest; its test was already linux-scoped.
+platform = "linux"
 output = "nros_rmw_cyclonedds_ros2_pub"
 
 # --- cargo-build: the binary is the point; tests run it.
@@ -5432,6 +5444,9 @@ dir = "packages/testing/nros-tests/fixtures/multi_pkg_workspace_freertos"
 manifest_dir = "src/firmware"
 pkg = "firmware"
 target = "thumbv7m-none-eabi"
+# Issue 2510: a FreeRTOS image, so only a lane holding a `freertos`
+# coordinate builds it (its tests skip in every other lane by the same field).
+platform = "freertos"
 output = "target/thumbv7m-none-eabi/debug/firmware"
 
 [[compile_check_fixture]]
@@ -5441,6 +5456,8 @@ dir = "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_freertos"
 manifest_dir = "."
 pkg = "demo_entry"
 target = "thumbv7m-none-eabi"
+# Issue 2510: as `freertos_firmware`.
+platform = "freertos"
 profiles = ["debug", "release"]
 output = "target/thumbv7m-none-eabi/debug/demo_entry"
 
