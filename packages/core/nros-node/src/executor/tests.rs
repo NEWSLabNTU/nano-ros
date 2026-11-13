@@ -19352,3 +19352,137 @@ fn a_cpp_subscription_feeds_its_age_row_from_the_stamp() {
         );
     }
 }
+
+// ============================================================================
+// phase-556 W13 -- the executor owns one `/rosout` writer per node
+// ============================================================================
+
+#[cfg(feature = "rosout")]
+mod rosout_writers {
+    use super::*;
+
+    fn writer<'a>(executor: &'a Executor<'_>, node: NodeId) -> &'a crate::mock::MockPublisher {
+        executor.nodes[node.index()]
+            .rosout
+            .publisher()
+            .expect("the node's /rosout writer is up")
+    }
+
+    /// Each node gets ONE writer on `/rosout`, created by the spin after the
+    /// node is built, and a second spin creates no more.
+    #[test]
+    fn each_node_gets_one_rosout_writer_on_the_next_spin() {
+        let mut executor = executor_with_clock(MockSession::new());
+        let a = executor.node_builder("rosout_a").build().unwrap();
+        let b = executor.node_builder("rosout_b").build().unwrap();
+        assert!(!executor.rosout_writer_is_up(a), "not before the spin");
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        assert!(executor.rosout_writer_is_up(a));
+        assert!(executor.rosout_writer_is_up(b));
+        assert_eq!(writer(&executor, a).topic_name(), "/rosout");
+        assert_eq!(writer(&executor, b).topic_name(), "/rosout");
+        assert!(
+            !core::ptr::eq(writer(&executor, a), writer(&executor, b)),
+            "one writer per node, not one per executor"
+        );
+        assert!(!executor.rosout_pending());
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        assert!(!executor.rosout_pending(), "settled after the first spin");
+    }
+
+    /// A node that turned `/rosout` off has no writer, and a later spin does
+    /// not create one; `close()` drops every writer.
+    #[test]
+    fn a_disabled_node_gets_no_rosout_writer_and_close_drops_the_rest() {
+        let mut executor = executor_with_clock(MockSession::new());
+        let on = executor.node_builder("rosout_on").build().unwrap();
+        let off = executor.node_builder("rosout_off").build().unwrap();
+        executor.disable_rosout_on(off);
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        assert!(executor.rosout_writer_is_up(on));
+        assert!(!executor.rosout_writer_is_up(off));
+
+        executor.disable_rosout_on(on);
+        assert!(
+            !executor.rosout_writer_is_up(on),
+            "disable drops a live writer"
+        );
+
+        let mut executor = executor_with_clock(MockSession::new());
+        let n = executor.node_builder("rosout_closed").build().unwrap();
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        assert!(executor.rosout_writer_is_up(n));
+        let _ = executor.close();
+        assert!(!executor.rosout_writer_is_up(n));
+        assert!(
+            !executor.rosout_pending(),
+            "close leaves nothing to recreate"
+        );
+    }
+
+    /// A record goes to the writer of the node whose logger raised it, a child
+    /// logger's to its node's, and anything else to the first node's.
+    #[test]
+    fn a_record_routes_to_the_writer_of_the_node_that_logged_it() {
+        let mut executor = executor_with_clock(MockSession::new());
+        let a = executor.node_builder("route_a").build().unwrap();
+        let b = executor.node_builder("route_b").build().unwrap();
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        let route = |logger: &str| {
+            super::super::spin::rosout_route(&executor.nodes, logger)
+                .map(|p| p as *const crate::mock::MockPublisher)
+        };
+        let wa = writer(&executor, a) as *const _;
+        let wb = writer(&executor, b) as *const _;
+        assert_eq!(route("route_a"), Some(wa));
+        assert_eq!(route("route_b"), Some(wb));
+        assert_eq!(route("route_b.child"), Some(wb), "a child goes to its node");
+        assert_eq!(route("route_bx"), Some(wa), "a prefix is not a child");
+        assert_eq!(
+            route("nros_rosout"),
+            Some(wa),
+            "anything else: the first node"
+        );
+
+        executor.disable_rosout_on(a);
+        assert_eq!(
+            super::super::spin::rosout_route(&executor.nodes, "route_a")
+                .map(|p| p as *const crate::mock::MockPublisher),
+            Some(wb),
+            "a node without a writer falls to the first one that has one"
+        );
+    }
+
+    /// The pump puts a queued record on the wire, encoded as a `Log` whose
+    /// name is the logger's. The queue is process-wide, so the record may be
+    /// drained by another test's executor; this asserts only what reached
+    /// this one, and that the pump counted it.
+    #[test]
+    fn the_spin_pumps_a_node_record_onto_its_rosout_writer() {
+        let mut executor = executor_with_clock(MockSession::new());
+        let id = executor.node_builder("rosout_pumped").build().unwrap();
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+        let logger = nros_log::resolve_node_logger("rosout_pumped");
+        let before = crate::rosout::published();
+        for _ in 0..20 {
+            nros_log::log_info!(logger, "pumped record");
+            let _ = executor.spin_once(core::time::Duration::from_millis(0));
+            if writer(&executor, id).publish_count() > 0 {
+                break;
+            }
+        }
+        assert!(
+            crate::rosout::published() > before,
+            "a queued node record was never published by any spin"
+        );
+        if writer(&executor, id).publish_count() > 0 {
+            let (bytes, len) = writer(&executor, id).last_published().unwrap();
+            let needle = b"rosout_pumped";
+            assert!(
+                bytes[..len].windows(needle.len()).any(|w| w == needle),
+                "the Log carries the node logger's name"
+            );
+        }
+    }
+}

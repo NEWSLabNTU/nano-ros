@@ -11,35 +11,47 @@
 //! allocation, no RMW. This module is the far half: drain that ring and put
 //! each record on the wire.
 //!
-//! The shape below is the one `packages/testing/nros-tests/bins/rosout-talker`
-//! runs, so it is known to work rather than merely to read well:
+//! # The executor owns the writer, one per node
+//!
+//! In an image built with the `rosout` capability the
+//! EXECUTOR creates one `/rosout` publisher per node, on the spin after the
+//! node is built, and every spin pumps the queue into them: a record goes to
+//! the writer of the node whose logger raised it (a child logger's goes to
+//! its node's), and a record no node's logger claims goes to the first
+//! node's. That is upstream's shape -- rcl creates a `/rosout` publisher in
+//! every node's constructor -- so a program logs and does nothing else:
 //!
 //! ```ignore
-//! use nros_rcl_interfaces::msg::Log;
-//!
 //! let mut executor = Executor::open(&cfg)?;
-//! let rosout = executor
-//!     .create_node("talker")?
-//!     .create_publisher_with_qos::<Log>(rosout::TOPIC, rosout::qos_bounded())?;
-//!
-//! // AFTER the publisher: `enable` starts the queue filling, and a queue with
-//! // nowhere to drain to just reaches its depth and starts counting drops.
-//! rosout::enable();
+//! let node = executor.create_node("talker")?;
+//! let logger = node.logger();
 //! loop {
-//!     executor.spin_once(budget);
-//!     let _ = rosout::pump(&rosout);
+//!     nros_log::log_info!(logger, "tick");
+//!     executor.spin_once(budget); // creates the writer once, then pumps
 //! }
 //! ```
 //!
-//! # Why the publisher is YOURS and the pump is explicit
+//! The writer is [`qos_bounded`]: VOLATILE, a documented divergence from
+//! upstream's TRANSIENT_LOCAL (user ruling 2026-11-13). A node turns its own
+//! off with `Executor::disable_rosout_on`; the writer is dropped with the
+//! executor, and at `close()`.
 //!
-//! `nros-node` does not create this publisher for you, and that is not an
-//! omission. A publisher is an ENTITY: it reaches
-//! `EntityInventory::derive`'s counts, the zenoh session's pools and the
-//! sizing descriptor. An entity the runtime conjures below the declaration is
-//! exactly the shape of issue 1341 — the action server's `/status` publisher,
-//! which appears in no `[[endpoint]]` row and fills the queryable table at
-//! boot anyway. Declaring it like any other publisher keeps one derivation.
+//! **Counted, not conjured.** A publisher is an ENTITY: it reaches
+//! `EntityInventory::derive`'s counts, the zenoh pools and the sizing
+//! descriptor. The `rosout` capability is a declared feature of the image
+//! (`[system] features`, or the stock node interfaces), and the inventory
+//! prices [`ROSOUT_PUBLISHERS`] per node from it -- the rule issue 1341 asks
+//! for, which an undeclared runtime entity broke.
+//!
+//! **The explicit spelling is deprecated.** Before step 2 the application
+//! created the publisher and called [`pump`]. Both still compile and still
+//! work (the executor's pump runs first, so the explicit one usually finds
+//! the queue empty), but they add a second `/rosout` writer to the node, so
+//! [`pump`] is `#[deprecated]`, as is C++'s `rclcpp::rosout::Publisher`. C's
+//! `rclc_rosout_publisher_init` / `rclc_rosout_pump` are NOT: a legacy
+//! `rclc_node_init_default` node is not in the executor's node table, so the
+//! executor has no writer for it, and the explicit spelling is its only road.
+//! An executor with no writer of its own leaves the queue for that pump.
 //!
 //! # Why this cannot re-enter
 //!
@@ -96,13 +108,24 @@ pub fn enable() -> bool {
 /// The topic. Absolute and un-namespaced, as upstream's is.
 pub const TOPIC: &str = "/rosout";
 
-/// phase-556 W13 -- the publishers the `rosout` capability claims in an
-/// image's sizing: one `/rosout` writer per image. The host CLI's entity
-/// inventory and the shared sizing library mirror it (neither can read this
-/// crate), and `check-infra-queryable-counts` holds every mirror to this one.
-/// The publisher is the application's today (see the module docs); the
-/// runtime-owned per-node writer moves the count's meaning, not its home.
+/// The publishers the `rosout` capability claims PER NODE:
+/// the one `/rosout` writer the executor creates for each node
+/// (`create_rosout_pub` in `executor/spin.rs`, the one creation site
+/// `check-infra-queryable-counts` holds this to). The host CLI's entity
+/// inventory, the shared sizing library and the zenoh liveliness default
+/// mirror it (none can read this crate) and multiply it by the node count.
 pub const ROSOUT_PUBLISHERS: usize = 1;
+
+/// Records the executor's pump has handed to a `/rosout` writer since boot.
+static PUBLISHED: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
+
+/// How many records the executor's per-node `/rosout` writers have published
+/// since boot (saturating at `usize::MAX`). With [`dropped`] and
+/// [`suppressed`] it is the bridge's whole accounting.
+#[must_use]
+pub fn published() -> usize {
+    PUBLISHED.load(portable_atomic::Ordering::Relaxed)
+}
 
 /// Every `rcl_interfaces/msg/Log` string field is a `heapless::String<256>`,
 /// so no field can carry more than this however wide the logging format
@@ -215,6 +238,10 @@ pub fn qos_bounded() -> QoSProfile {
 /// WARN record from the logger `nros_rosout`, so an operator watching the
 /// topic learns about the gap on the channel the gap is in rather than only
 /// from a counter nobody reads.
+#[deprecated(
+    note = "the executor now creates a /rosout publisher for every node and publishes the \
+            log queue from spin_once; remove this call and the explicit /rosout publisher"
+)]
 pub fn pump(publisher: &EmbeddedPublisher<Log>) -> Result<usize, (usize, NodeError)> {
     pump_with(|msg| publisher.publish_with_buffer::<TX_BUF>(msg))
 }
@@ -240,6 +267,44 @@ pub fn pump_raw(
         let len = writer.position();
         send(&buffer[..len]).map_err(|()| NodeError::Transport(TransportError::PublishFailed))
     })
+}
+
+/// The executor's pump: [`pump_raw`] that also hands `send` the record's
+/// LOGGER NAME, so the caller can route it to the writer of the node that
+/// logged it. `send` answering `Err` is a transport failure, reported as
+/// [`pump`] reports one. Counts every record that reached a writer into
+/// [`published`]. No allocation; [`TX_BUF`] bytes of this frame per record.
+pub(crate) fn pump_routed(
+    mut send: impl FnMut(&str, &[u8]) -> Result<(), ()>,
+) -> Result<usize, (usize, NodeError)> {
+    use nros_core::Serialize as _;
+    let result = pump_with(|msg| {
+        let mut buffer = [0u8; TX_BUF];
+        let mut writer = crate::tx_writer(&mut buffer).map_err(|_| NodeError::BufferTooSmall)?;
+        msg.serialize(&mut writer)
+            .map_err(|_| NodeError::Serialization)?;
+        let len = writer.position();
+        send(msg.name.as_str(), &buffer[..len])
+            .map_err(|()| NodeError::Transport(TransportError::PublishFailed))
+    });
+    let sent = match &result {
+        Ok(n) => *n,
+        Err((n, _)) => *n,
+    };
+    let _ = PUBLISHED.fetch_update(
+        portable_atomic::Ordering::Relaxed,
+        portable_atomic::Ordering::Relaxed,
+        |v| Some(v.saturating_add(sent)),
+    );
+    result
+}
+
+/// Whether the queue holds anything the pump would publish: a record, or a
+/// loss it reports on `/rosout` itself. The cheap test `spin_once` makes
+/// before it enters the pump's frame.
+#[inline]
+pub(crate) fn has_work() -> bool {
+    !queue::is_empty() || queue::dropped() > 0 || queue::suppressed() > 0
 }
 
 /// `rcl_interfaces/msg/Log`'s wire identity, for a surface that creates the
@@ -420,6 +485,16 @@ mod tests {
             );
             assert_eq!(msg.level, expected, "{severity:?}");
         }
+    }
+
+    /// The profile the executor's per-node writer uses is VOLATILE and
+    /// RELIABLE (user ruling 2026-11-13: a documented divergence from
+    /// upstream's TRANSIENT_LOCAL, which on zenoh costs a queryable slot).
+    #[test]
+    fn the_runtime_writer_profile_is_volatile_and_reliable() {
+        let qos = qos_bounded();
+        assert_eq!(qos.durability, QoSDurabilityPolicy::Volatile);
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::Reliable);
     }
 
     /// A field one byte over the message's capacity is CLIPPED, never dropped.

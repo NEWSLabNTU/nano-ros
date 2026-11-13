@@ -1,9 +1,10 @@
 /// issue 1589 — the C++ twin of `bins/rosout-talker`.
 ///
 /// Logs through its NODE's logger (RFC-0102 D4: on Humble only node loggers
-/// reach `/rosout`) and pumps `rclcpp::rosout::Publisher` from its spin loop,
-/// printing the markers the Rust probe prints so `rosout_interop.rs` reads
-/// all three languages with one set of assertions.
+/// reach `/rosout`) and spins. Nothing else: since phase-556 W13 the executor
+/// creates the node's `/rosout` writer and publishes the log queue from every
+/// spin, as rclcpp's node does. Prints the markers the Rust probe prints so
+/// `rosout_interop.rs` reads all three languages with one set of assertions.
 ///
 ///   ROSOUT_PROBE_RECORDS    records to log (default 60)
 ///   ROSOUT_PROBE_PERIOD_MS  spin period per record (default 250)
@@ -52,38 +53,17 @@ int main(int argc, char** argv) {
     return rc;
 }
 
-// Its own frame, so the `/rosout` publisher is destroyed BEFORE
-// `rclcpp::shutdown()` closes the session it lives on.
 static int run(rclcpp::Node& node, int records, int period_ms) {
-    rclcpp::rosout::Publisher rosout;
-    auto made = rosout.create(node);
-    if (!made.ok()) {
-        fprintf(stderr, "rosout.create failed: %d\n", made.raw());
-        return 1;
-    }
     auto probe = node.get_logger();
-    if (!rclcpp::rosout::enable().ok()) {
-        printf("ROSOUT_PROBE_SINK_FULL\n");
-        return 4;
-    }
     printf("ROSOUT_PROBE_READY\n");
 
-    size_t total = 0;
     for (int i = 0; i < records; i++) {
         RCLC_LOG_INFO(probe, "nros rosout probe record %d", i);
         if (i % 2 == 1) {
             RCLC_LOG_WARN(probe, "nros rosout probe warning at %d", i);
         }
         (void)rclcpp::spin_once(period_ms);
-        size_t sent = 0;
-        auto pumped = rosout.pump(&sent);
-        total += sent;
-        if (!pumped.ok()) {
-            printf("ROSOUT_PROBE_PUBLISH_ERR pumped=%zu ret=%d\n", total, pumped.raw());
-            return 5;
-        }
-        printf("ROSOUT_PROBE_PUMPED %zu\n", total);
     }
-    printf("ROSOUT_PROBE_DONE pumped=%zu\n", total);
+    printf("ROSOUT_PROBE_DONE\n");
     return 0;
 }
