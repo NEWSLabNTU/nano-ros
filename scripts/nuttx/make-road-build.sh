@@ -194,4 +194,120 @@ if [ "$after" = "$before" ]; then
     echo "make-road-build [$id]: an edited Rust input did not rebuild $archive on the next make" >&2
     exit 1
 fi
-echo "make-road-build [$id]: OK — $elf ($(stat -c %s "$elf") bytes, $nros_count nros_* functions); an edit rebuilt the archive"
+echo "make-road-build [$id]: guest OK — $elf ($(stat -c %s "$elf") bytes, $nros_count nros_* functions); an edit rebuilt the archive"
+
+# --- 5. a PROJECT build (phase-550 W6c, issue 2236 section 5) ---------------
+# An app names a nano-ros project (`NROS_PROJECTS` in its Make.defs), and the
+# same make then configures that project's image (W6a), hands cargo its facts
+# (W6b) and sizes it from the probe `nros configure` ran (W6d). The project is
+# an in-tree example whose image is for this kernel's board, copied into this
+# run's apps tree as a user's would be.
+#
+# Only where an in-tree example's image is for the config's board: the arm
+# config builds `qemu-armv7a-nuttx`, and no example has an `rv-virt-nuttx`
+# image yet, so the riscv cell builds the guest case alone.
+case "$id" in
+    arm) proj_src="$ROOT/examples/qemu-armv7a-nuttx/c/talker" ;;
+    *) proj_src="" ;;
+esac
+if [ -z "$proj_src" ]; then
+    echo "make-road-build [$id]: no in-tree example has an image for this board; project case not run"
+    exit 0
+fi
+
+# run_make <label> <log>: one plain `make` in the kernel tree, under the
+# stall watchdog; fails the lane naming the log.
+run_make() {
+    local label="$1" mlog="$2" mrc=0
+    (
+        cd "$work/nuttx"
+        python3 "$ROOT/scripts/build/make-stall-watchdog.py" \
+            --label "nuttx make road ($id, $label)" --diag-dir "$work" -- \
+            make -j"$(nproc)"
+    ) >"$mlog" 2>&1 || mrc=$?
+    if [ "$mrc" -ne 0 ]; then
+        echo "make-road-build [$id]: the $label make FAILED (exit $mrc); see $mlog" >&2
+        grep -nE '(^|[^a-z_])(error|Error)([:[ ]|$)|\*\*\*' "$mlog" | cut -c1-300 | head -n 20 >&2 || true
+        tail -n 15 "$mlog" >&2
+        exit 1
+    fi
+}
+
+proj="$APPDIR/external/nros-make-road-project"
+mkdir -p "$proj"
+cp -r "$proj_src/src" "$proj/src"
+bringup_toml="$(find "$proj/src" -path '*_bringup/system.toml' | head -n 1)" || bringup_toml=""
+if [ -z "$bringup_toml" ]; then
+    echo "make-road-build [$id]: $proj_src has no bringup system.toml" >&2
+    exit 1
+fi
+# A make app's components state their entities (W6a, issue 2236 Q6); these
+# are the talker's own.
+sed -i 's|^name = "talker"$|&\nentities = ["publisher:std_msgs/msg/String:/chatter", "timer"]|' "$bringup_toml"
+nros_grep_q -F 'entities = [' "$bringup_toml" || {
+    echo "make-road-build [$id]: could not declare the talker's entities in $bringup_toml" >&2
+    exit 1
+}
+# shellcheck disable=SC2016  # $(APPDIR) is make's variable
+echo 'NROS_PROJECTS += $(APPDIR)/external/nros-make-road-project' \
+    >> "$APPDIR/external/nros-make-road-smoke/Make.defs"
+
+plog="$work/make-project.log"
+echo "make-road-build [$id]: project make (log: $plog)"
+run_make project "$plog"
+
+make_dir="$(find "$work/apps/external/.nros-build" -path '*/image/make/image-key' -printf '%h\n' | head -n 1)" || make_dir=""
+facts="$make_dir/nros-image-facts.toml"
+if [ -z "$make_dir" ] || [ ! -f "$facts" ]; then
+    echo "make-road-build [$id]: the project build wrote no image facts under $work/apps/external/.nros-build" >&2
+    exit 1
+fi
+key="$(cat "$make_dir/image-key")"
+# The image is configured, and current.
+located=""
+located="$("$NROS_CLI" locate configured --project "$proj" --image "$key")" || located=""
+if ! nros_grep_q -Fx $'current\tyes' <<<"$located"; then
+    echo "make-road-build [$id]: \`$key\` is not configured (or not current) after the project make" >&2
+    exit 1
+fi
+# It is sized: a descriptor named to cargo, written from the probe.
+descriptor="$(sed -n '/^\[env\.NROS_SIZING_DESCRIPTOR\]/,/^\[/ s/^value = "\(.*\)"$/\1/p' "$facts")"
+if [ -z "$descriptor" ] || [ ! -f "$descriptor" ]; then
+    echo "make-road-build [$id]: $facts names no sizing descriptor" >&2
+    exit 1
+fi
+if ! nros_grep_q -Fx 'basis = "probe"' "$descriptor"; then
+    echo "make-road-build [$id]: $descriptor is not the probe's (basis: $(grep '^basis' "$descriptor"))" >&2
+    exit 1
+fi
+if nros_grep_q -F 'built without a sizing descriptor' "$plog"; then
+    echo "make-road-build [$id]: the project build warned it is unsized; see $plog" >&2
+    exit 1
+fi
+
+# A second make with nothing changed: configure is a no-op and the archive
+# is not rebuilt.
+stamp="$(sed -n 's/^configured\t//p' <<<"$located")/stamp.toml"
+stamp_before="$(stat -c %y "$stamp")"
+archive_before="$(stat -c %y "$archive")"
+sleep 1
+run_make "project, unchanged" "$work/make-project-again.log"
+if [ "$(stat -c %y "$stamp")" != "$stamp_before" ] || [ "$(stat -c %y "$archive")" != "$archive_before" ]; then
+    echo "make-road-build [$id]: a second make with nothing changed reconfigured or rebuilt the archive" >&2
+    exit 1
+fi
+
+# Editing a knob row in the app's system.toml reaches the archive on the next
+# make, with no clean.
+printf '\n[image.qemu-armv7a-nuttx.knobs.zenoh.wire]\nbatch_unicast_size = 2048\n' >> "$bringup_toml"
+sleep 1
+run_make "project, knob edited" "$work/make-project-knob.log"
+if ! nros_grep_q -F 'NROS_ZENOH_BATCH_UNICAST_SIZE = "2048"' "$make_dir/nros-image-env.toml"; then
+    echo "make-road-build [$id]: the edited knob row is not in $make_dir/nros-image-env.toml" >&2
+    exit 1
+fi
+if [ "$(stat -c %y "$archive")" = "$archive_before" ]; then
+    echo "make-road-build [$id]: an edited knob row did not rebuild $archive on the next make" >&2
+    exit 1
+fi
+echo "make-road-build [$id]: project OK — \`$key\` configured in the make, sized from the probe ($descriptor); a second make was a no-op; a knob edit rebuilt the archive"

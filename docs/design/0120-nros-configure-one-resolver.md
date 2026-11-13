@@ -292,7 +292,7 @@ A hooked host calls `nros configure` before its first reader:
 | --- | --- |
 | Zephyr west | `nros_image_kconfig_hook`, which runs from `zephyr_module.cmake` before Kconfig |
 | CMake (`find_package(nano_ros)`, `add_subdirectory`) | the top of the package config, before any knob reader |
-| NuttX `apps/external` | none: a GUEST road. Its make build compiles only the runtime archive, from Kconfig (`CONFIG_NROS_RMW_*`, `CONFIG_NROS_ROS_EDITION`, `CONFIG_NROS_*_API`), and carries no nros project (no `system.toml`, no image; the app is not an input), so layer 0 has nothing to configure and the archive is sized by crate defaults and any exported `NROS_*` variables, since no NuttX Kconfig symbol states a knob (corrected 2026-11-11, issue 2236). A NuttX image built as a nros project uses the CMake leaf road, which is hooked. Making a make app a project needs a project identity and a knob channel ([issue 2236](../issues/2236-nuttx-make-app-as-project.md)) |
+| NuttX `apps/external` | HOOKED when an app names a project, a GUEST otherwise (amended 2026-11-13, phase-550 W6; RFC-0126 decision 7). An app that states `NROS_PROJECTS += <dir>` (and optionally `NROS_IMAGE`) in its own `Make.defs` makes the make build a project build: the shell's `context::`/`depend::` steps run `nros configure --image <key>` in that project on every build (a digest check when nothing moved), and hand cargo the image's board settings, entity and board facts, own env layers and sizing descriptor through the cmake road's own producers (`nros locate nuttx-cargo-config` / `nuttx-image-env`). With no project the make build compiles only the runtime archive, from Kconfig (`CONFIG_NROS_RMW_*`, `CONFIG_NROS_ROS_EDITION`, `CONFIG_NROS_*_API`), sized by crate defaults and any exported `NROS_*` variables ([issue 2236](../issues/2236-nuttx-make-app-as-project.md)) |
 
 The early readers then READ the seeds. The late producers (`nros_find_interfaces`,
 the node-register composer, `nano_ros_entry`, the sizing descriptor) still
@@ -503,6 +503,10 @@ configure, is answered by D2: the stamp records it.)
   configure (phase-530 W5, Ruling R36; issue 2236 tracks making a make app a
   project). A NuttX image built as a nros project takes the hooked CMake leaf
   road.
+- 2026-11-13 — D5: the NuttX `apps/external` make road is HOOKED when an app
+  names a project in its `Make.defs` (`NROS_PROJECTS`), a guest otherwise:
+  configure runs in the make build, and the image's facts reach cargo through
+  the cmake road's producers (phase-550 W6a–W6d; RFC-0126 decision 7).
 - 2026-11 — D5, D6: a promise is owed to a reader, and a seed is held to itself
   whatever the reader order; an unseeded read is held to the same end check
   (defaults WARN, FATAL over a derived answer; a moved earlier answer is

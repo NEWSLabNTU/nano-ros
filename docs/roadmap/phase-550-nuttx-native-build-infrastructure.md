@@ -270,9 +270,9 @@ describe what the road then does.
   `"defaults"`). No make census here; that is a separate issue (Q6).
 - Gate: cleared (Q1 yes, Q2 A2, Q3 B1, Q4 yes, Q6 yes, Q7 yes, ruled 2026-11-12).
 - **Acceptance:** 2236 section 5's acceptance list.
-- **Status:** OPEN (W6a done 2026-11-13, PR #3685; W6b done 2026-11-13,
-  PR #3690; W6d done 2026-11-13; W6c not started). Split into three PRs (manager,
-  2026-11-13).
+- **Status:** DONE (2026-11-13, PRs #3685, #3690, #3718 and the W6c PR).
+  W6a landed via #3685, W6b in #3690, W6d in #3718, and W6c with this
+  change. Split into PRs by the manager (2026-11-13).
   - **W6a, identity.** The shell's Makefile reads `NROS_PROJECTS`:
     - none: a guest, with the same command as before;
     - more than one: refused in `context::`, naming every path;
@@ -345,6 +345,36 @@ describe what the road then does.
       prints a warning every time that the image's pools take the board's
       defaults rather than sizes from its declarations.
 
+  - **W6c, the lane's project case: DONE (2026-11-13).** The arm cell of
+    `just nuttx build-make-road` (`scripts/nuttx/make-road-build.sh`) now
+    builds a project after its guest build. It copies the C talker into the
+    run's apps tree, declares its entities, and names it in an app's
+    `Make.defs`. Then it asserts, against 2236 section 5:
+    - `nros configure` ran inside the make, and the image is configured and
+      current (`nros locate configured`);
+    - a sizing descriptor reaches cargo with `basis = "probe"`, and the
+      build does not warn that it is unsized;
+    - a second plain `make` reconfigures nothing and leaves the archive
+      untouched;
+    - an added `[image.qemu-armv7a-nuttx.knobs.zenoh.wire]
+      batch_unicast_size = 2048` row reaches the image-env file and
+      rebuilds the archive on the next `make`, with no `clean`.
+
+    Measured green on arm. The riscv cell builds the guest case alone: no
+    in-tree example has an `rv-virt-nuttx` image, and it says so. The
+    nightly job builds `nros-launch-resolve` first, because the project's
+    configure needs it. RFC-0120 D5's NuttX row and phase-530's R36 are
+    amended (RFC-0126 decision 7).
+
+    Section 5 items NOT asserted by the lane:
+    - **Byte-equality with `nros build`.** Measured by hand in W6b and W6d
+      (the facts rows, the descriptor and the placed header); the lane has
+      no cmake-road build to compare against.
+    - **An exported `NROS_<ID>` winning over the image's row.** True by
+      construction, not asserted: the image's rows are unforced `[env]`, as
+      on the cmake road.
+    - **The refusals.** Unit-tested in W6a (`nuttx_project_tests`).
+
 ### W6d -- The make road sizes a project image
 
 A project image on the make road built with no sizing descriptor, so
@@ -393,7 +423,7 @@ measured this way). W6b said so on every build; this item closes the gap
   refuses at the entity facts (W6b), before the fallback runs. Making such
   a package configurable is the question W13 and the make-app census (Q6,
   under user ruling) answer.
-- **Status:** DONE (2026-11-13, W6d PR).
+- **Status:** DONE (2026-11-13, PR #3718).
 
 ### W7 -- The image crate is generated in `context::`
 
