@@ -110,6 +110,21 @@ ensure() {
     echo "runner-store: ensuring stores under $ROOT for container uid $uid"
     for s in "${STORES[@]}"; do
         local p="$ROOT/$s"
+        # Only a directory's OWNER may set its ACL. A store dir that a container
+        # created first (before this ensure ever ran for it) belongs to the
+        # container's uid, and every setfacl below then fails with "Operation
+        # not permitted" (host 241, 2026-11-14: an empty `work-queue` a
+        # container had made five days earlier). An empty one holds nothing, so
+        # it is recreated as ours; a non-empty one is somebody's data, so this
+        # stops and names it rather than guess.
+        if [ -d "$p" ] && [ "$(stat -c %u "$p")" != "$(id -u)" ]; then
+            local owner; owner="$(stat -c %u "$p")"
+            if rmdir "$p" 2>/dev/null; then
+                echo "  $s: recreated (was an empty dir owned by uid $owner, whose ACL only that uid could set)"
+            else
+                die "$p is owned by uid $owner, not $(id -u), and is not empty, so its ACL cannot be set here. Move its contents out as uid $owner, remove the dir, and re-run --ensure"
+            fi
+        fi
         mkdir -p "$p"
         # Access entry for the running container, plus DEFAULT entries so what
         # it creates stays reachable to both it and the operator.
