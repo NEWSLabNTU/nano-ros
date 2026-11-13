@@ -413,3 +413,11 @@ Status: OPEN. Gate: W0, and W1-W14 done.
 
 Acceptance: the RFC status and ARCHITECTURE change land in one commit, and
 both issues are archived.
+
+## Known issues found on the way
+
+- [Issue 2518](../issues/2518-census-entities-attach-to-last-opened-node.md):
+  the metadata census records each entity on the node opened last, not on
+  the node that owns it. Seen while writing W2.b's census test. W5's
+  per-node lifecycle sizing reads the census per node, so it needs this
+  fixed or ruled out first.
