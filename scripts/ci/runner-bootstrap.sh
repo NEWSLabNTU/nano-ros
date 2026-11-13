@@ -46,6 +46,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$REPO_ROOT/scripts/lib/runner-tmpfs.sh"
+. "$REPO_ROOT/scripts/lib/runner-work-volume.sh"
 # Resolved once, up front: a bad size must stop here, not reach `docker run`.
 TMPFS_ARG="$(nros_runner_tmpfs_arg)"
 IMAGE="${NROS_RUNNER_IMAGE:-nano-ros-runner:local}"
@@ -224,7 +225,7 @@ docker run --rm \
     --user runner \
     --cap-drop ALL --security-opt no-new-privileges \
     --tmpfs "$TMPFS_ARG" \
-    -v "nros-runner-work:/home/runner/_work" \
+    -v "$(nros_runner_work_volume "$LABELS"):/home/runner/_work" \
     -v "nros-runner-cargo:/home/runner/.cargo" \
     -v "nros-runner-rustup:/home/runner/.rustup" \
     -v "nros-runner-local:/home/runner/.local" \

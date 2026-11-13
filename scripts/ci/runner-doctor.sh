@@ -67,7 +67,7 @@
 # below, and a provisioning arm in runner-provision.sh. Three edits, all in this
 # directory, none in a workflow file — which is the point of labelling by
 # CAPABILITY rather than by hostname.
-NROS_RUNNER_LABELS="nros-sdk-zephyr nros-qemu nros-ros2 nros-big"
+NROS_RUNNER_LABELS="nros-sdk-zephyr nros-qemu nros-ros2 nros-big nros-queue"
 
 # Labels GitHub applies itself, or that an operator may add for their own
 # routing. They assert nothing about this repo, so there is nothing to verify —
@@ -679,6 +679,48 @@ _nros_runner_check_ros2() {
 # refuses to register instead. Opt-in, per runner: a default floor would stop a
 # smaller runner that is doing fine from registering at all, and queue L3 is a
 # REQUIRED check, so that is a merge queue waiting forever.
+# `nros-queue` — the merge queue's OWN runner. A ROLE, not a capability: what
+# it asserts is about the rest of the label set, so it is checked against that.
+#
+# Why it exists: the queue's L3 and the scheduled self-hosted lanes (run-matrix,
+# the nightly) used to ask for overlapping label sets, so one long scheduled run
+# held the only runner that could take L3, and L3's constant concurrency group
+# then held every later queue run behind it (647 min measured on 2026-11-12).
+# So a queue runner must be able to do L3's work AND be unable to win any
+# scheduled lane's job:
+#
+#   - it carries `nros-sdk-zephyr` and `nros-big`, which is what L3 builds with;
+#   - it does NOT carry `nros-qemu`, the label every scheduled self-hosted lane
+#     requests. GitHub matches a job to a runner holding ALL of its labels, so a
+#     runner without it can never be handed one of those jobs.
+#
+# `check-queue-runner-label` holds the workflow half: only queue-event jobs ask
+# for `nros-queue`, and every scheduled self-hosted job asks for `nros-qemu`.
+_nros_runner_check_queue() {
+    local have=" ${_NROS_RUNNER_DOCTOR_LABELS:-} " fail=0 need
+    for need in nros-sdk-zephyr nros-big; do
+        case "$have" in
+            *" $need "*) _nros_runner_ok "carries $need (L3 builds with it)" ;;
+            *)
+                _nros_runner_missing "nros-queue without $need — this runner could win L3 and not build it"
+                _nros_runner_fix "Register the queue runner as: nros-queue,nros-sdk-zephyr,nros-big"
+                fail=1
+                ;;
+        esac
+    done
+    case "$have" in
+        *" nros-qemu "*)
+            _nros_runner_missing "nros-queue together with nros-qemu — scheduled lanes would land here"
+            _nros_runner_fix "Every scheduled self-hosted lane requests nros-qemu, so a queue runner"
+            _nros_runner_fix "carrying it is no longer reserved for the queue. Run the scheduled"
+            _nros_runner_fix "lanes on a second runner (its own NROS_RUNNER_NAME) without nros-queue."
+            fail=1
+            ;;
+        *) _nros_runner_ok "no nros-qemu — no scheduled lane can take this runner" ;;
+    esac
+    return "$fail"
+}
+
 _nros_runner_check_big() {
     local want="${NROS_RUNNER_BIG_CORES:-16}" have
     have="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)"
@@ -783,6 +825,7 @@ nros_runner_check_label() {
         nros-qemu)       _nros_runner_check_qemu ;;
         nros-ros2)       _nros_runner_check_ros2 ;;
         nros-big)        _nros_runner_check_big ;;
+        nros-queue)      _nros_runner_check_queue ;;
         *)               _nros_runner_unknown_label "$1" ;;
     esac
 }
@@ -838,6 +881,9 @@ nros_runner_doctor() {
     _nros_runner_activate
     [ -n "${NROS_RUNNER_QUIET:-}" ] || printf '\n=== every runner ===\n'
     _nros_runner_check_cache_home || fail=1
+    # The whole set, for the one label whose claim is about the OTHERS
+    # (`nros-queue`): every other label is a fact about the host on its own.
+    _NROS_RUNNER_DOCTOR_LABELS="$(nros_runner_labels_split "$labels" | tr '\n' ' ')"
     while read -r label; do
         [ -n "$label" ] || continue
         n=$((n + 1))

@@ -859,6 +859,14 @@ workflow-runner-isolation:
 workflow-job-timeouts:
     @python3 scripts/check-workflow-job-timeouts.py
 
+# The merge queue's self-hosted runners carry `nros-queue` and never
+# `nros-qemu`. Only queue-event jobs may request `nros-queue`, and every
+# scheduled self-hosted job requests `nros-qemu`, so a scheduled run can never
+# hold the runner L3 needs (647 min on 2026-11-12, issue 2497).
+[private]
+queue-runner-label:
+    @python3 scripts/check-queue-runner-label.py
+
 # Issue 1453 — a gate the maintainers DECIDED must gate the merge queue
 # (`template-copy-out`, 2026-10-17) still runs on `merge_group`, still feeds the
 # required `CI` through a `sibling` line, and is not on `pull_request`.

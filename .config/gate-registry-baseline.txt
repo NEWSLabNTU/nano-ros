@@ -240,13 +240,13 @@ px4-archive-header-pairing
 python
 qos-profile-ssot
 queue-notify-decision
+queue-runner-label
 readiness-marker-literals
 reconfigure-stale
 release-fixture-intermediates
 release-manifest
 repr-memory-agreement
 required-contexts-reportable
-rfc-phase-tracking
 required-features-reachable
 required-features-tests
 resolved-seed
@@ -254,6 +254,7 @@ ret-code-citations
 retired-cmake-keywords
 retired-platform-clock-symbols
 retired-submodule-refs
+rfc-phase-tracking
 rmw-abi-shape
 rmw-alloc-sites
 rmw-api-comparison

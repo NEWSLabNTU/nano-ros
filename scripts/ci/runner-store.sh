@@ -52,7 +52,10 @@
 # fail somewhere less obvious than here.
 set -euo pipefail
 
-STORES=(work cargo rustup local cmake sccache nros src)
+# `work-queue` is the merge-queue runner's job tree
+# (scripts/lib/runner-work-volume.sh); a host running only one role leaves the
+# other's directory empty.
+STORES=(work work-queue cargo rustup local cmake sccache nros src)
 ROOT="${NROS_RUNNER_STORE_ROOT:-$HOME/nros-runner}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE="${NROS_RUNNER_IMAGE:-nano-ros-runner:local}"
