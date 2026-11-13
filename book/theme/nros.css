@@ -1,0 +1,12 @@
+/* nano-ros book: site-wide additions to mdBook's theme (book.toml
+   `additional-css`; book-internals links the same file).
+
+   Code blocks get a visible edge. In the dark themes the highlight
+   background sits within a few percent of the page's, so a block's extent
+   was hard to see. The edge derives from the theme's own --fg/--bg, so it
+   holds in every theme. Language tab groups draw their own frame
+   (scripts/mdbook-lang-tabs.py) and drop this edge inside it. */
+pre > code {
+    border: 1px solid color-mix(in srgb, var(--fg) 25%, var(--bg));
+    border-radius: 6px;
+}

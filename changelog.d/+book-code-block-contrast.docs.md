@@ -1,0 +1,1 @@
+The book's code blocks have a visible edge in every theme; in the dark themes a block was hard to tell from the page. A Rust | C | C++ tab group now reads as one framed card: the tabs sit in a strip above their panel, the selected tab opens into it with an accent line, and the code sits flush inside the frame.

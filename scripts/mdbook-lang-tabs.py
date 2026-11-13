@@ -48,18 +48,38 @@ _HIDE = "\n".join(
     for lang in book_tabs.LABELS.values())
 
 STYLE = """<style>
-.nros-tabs { margin: 1em 0; }
-.nros-tabs-bar { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--table-border-color); }
-.nros-tab { position: relative; padding: 0.3em 1em; margin-bottom: -1px; cursor: pointer;
-  border: 1px solid transparent; border-bottom: none; border-radius: 4px 4px 0 0; color: var(--fg); }
-.nros-tab:hover { background: var(--theme-hover); }
-.nros-tab:has(input:checked) { border-color: var(--table-border-color); background: var(--bg);
-  color: var(--links); font-weight: 600; }
+/* One group is one card: a frame around the tab strip and the panel, so the
+   tabs read as the panel's own labels. The selected tab takes the page colour
+   and an accent line, and opens into the panel; a code block inside sits flush
+   against the frame instead of drawing a second border. Colours derive from
+   mdBook's --fg/--bg/--links, so every theme applies. */
+.nros-tabs { --nros-tabs-edge: color-mix(in srgb, var(--fg) 25%%, var(--bg));
+  margin: 1em 0; border: 1px solid var(--nros-tabs-edge); border-radius: 6px; overflow: hidden; }
+.nros-tabs-bar { display: flex; flex-wrap: wrap;
+  background: color-mix(in srgb, var(--fg) 7%%, var(--bg));
+  border-bottom: 1px solid var(--nros-tabs-edge); }
+.nros-tab { position: relative; padding: 0.4em 1.1em; margin-bottom: -1px; cursor: pointer;
+  border-right: 1px solid transparent; border-top: 2px solid transparent; color: var(--fg); }
+.nros-tab:hover { background: color-mix(in srgb, var(--fg) 12%%, var(--bg)); }
+.nros-tab:has(input:checked) { background: var(--bg); color: var(--links); font-weight: 600;
+  border-top-color: var(--links); border-right-color: var(--nros-tabs-edge);
+  border-bottom: 1px solid var(--bg); }
+.nros-tab:first-child:has(input:checked) { border-left: none; }
+.nros-tab:not(:first-child):has(input:checked) { border-left: 1px solid var(--nros-tabs-edge); }
 .nros-tab:has(input:focus-visible) { outline: 2px solid var(--links); outline-offset: -2px; }
 .nros-tab input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
-.nros-tab-panel > :first-child { margin-top: 0.6em; }
+.nros-tab-panel > * { margin-left: 1rem; margin-right: 1rem; }
+.nros-tab-panel > :first-child { margin-top: 0.8em; }
+.nros-tab-panel > :last-child { margin-bottom: 0.8em; }
+.nros-tab-panel > pre { margin-left: 0; margin-right: 0; }
+.nros-tab-panel > pre:first-child { margin-top: 0; }
+.nros-tab-panel > pre:last-child { margin-bottom: 0; }
+.nros-tab-panel > pre > code { border: none; border-radius: 0; }
+.nros-tab-panel > pre:not(:first-child) > code { border-top: 1px solid var(--nros-tabs-edge); }
+.nros-tab-panel > pre:not(:last-child) > code { border-bottom: 1px solid var(--nros-tabs-edge); }
 %s
 @media print {
+  .nros-tabs { border: none; }
   .nros-tabs-bar { display: none; }
   .nros-tab-panel { display: block !important; }
   .nros-tab-panel::before { content: attr(aria-label); font-weight: 600; }
