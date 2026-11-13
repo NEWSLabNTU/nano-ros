@@ -26,6 +26,17 @@
 # freshness gate and the run all read that one slice. The matrix is the three
 # boards by name, a fixed partition, not a `k/n` split.
 #
+# THE `lane` INPUT (phase-559 W5b, 2026-11-13)
+#
+# `lane: tier1` runs the same per-board shards over tier 1 instead of the
+# merge lane: `just build tier1` then `just ci tier1 run`, each narrowed to the
+# board by `NROS_LANE_MODULE`. It exists to MEASURE whether one board's tier-1
+# slice fits a hosted runner. Tier 1 runs on the self-hosted runner today
+# (run-matrix.yml) because the WHOLE tier did not fit a hosted one (issues
+# 1684/1685: +37 G for the linux half alone against ~16 G free). The disk
+# report after each step and each step's time are the measurement; phase-559
+# W5b records them, and tier 1 moves to hosted shards only if they fit.
+#
 # WHERE THE TIME GOES
 #
 # `just ci merge` prints each step's wall clock (`run-lane-steps.sh`).
@@ -37,6 +48,12 @@ name: merge-runtime
 on:
   # Dispatch only: see the header. No merge_group, no push, no schedule.
   workflow_dispatch:
+    inputs:
+      lane:
+        description: "Coordinate lane each board shard builds and runs"
+        type: choice
+        options: [merge, tier1]
+        default: merge
 
 permissions:
   contents: read
@@ -44,13 +61,17 @@ permissions:
 
 jobs:
   merge-runtime:
-    name: merge-runtime (${{ matrix.board }})
+    name: merge-runtime ${{ inputs.lane || 'merge' }} (${{ matrix.board }})
     # Hosted, in the repo's CI images, like the nightly platform jobs that
     # already build and run threadx_linux and zephyr there.
     runs-on: ubuntu-22.04
-    # Bounds what one batch can cost. The hosted ceiling is 360; a shard this
-    # slow is already the "lower the cadence" answer RFC-0122 D9 asks for.
-    timeout-minutes: 150
+    # 355, the gate's ceiling under the hosted 360, for BOTH lanes. This was 150
+    # while the job could reach a merge batch; it is dispatch-only now, and a
+    # tier-1 shard (phase-559 W5b) needs the room: the self-hosted tier-1 job's
+    # budget is 405, and a shard that times out measures nothing. A merge shard
+    # over 150 min is still the D9 "lower the cadence" answer, read from the
+    # job's own time by merge-runtime-p95.py.
+    timeout-minutes: 355
     # ONE group per board, NOT cancel-in-progress. GitHub keeps one running and
     # one pending run per group and drops older PENDING ones, so at most three
     # hosted runners are ever held, the newest speculative head always gets a
@@ -58,7 +79,7 @@ jobs:
     # lesson). Correct only while this lane is advisory: a superseded required
     # check would block the queue.
     concurrency:
-      group: merge-runtime-${{ github.event_name }}-${{ matrix.board }}
+      group: merge-runtime-${{ github.event_name }}-${{ inputs.lane || 'merge' }}-${{ matrix.board }}
       cancel-in-progress: false
     container:
       image: ${{ matrix.image }}
@@ -196,22 +217,29 @@ jobs:
         run: bash scripts/ci/pin-baseline.sh deepen
 
       # The lane's build half, narrowed to this shard by NROS_LANE_MODULE.
-      - name: just build merge (${{ matrix.board }} shard)
+      - name: just build ${{ inputs.lane || 'merge' }} (${{ matrix.board }} shard)
         run: |
           source ./activate.sh
-          just build merge
+          just build "${{ inputs.lane || 'merge' }}"
+          scripts/ci/disk-report.sh "after just build ${{ inputs.lane || 'merge' }}"
 
-      - name: just ci merge (${{ matrix.board }} shard)
+      - name: just ci ${{ inputs.lane || 'merge' }} (${{ matrix.board }} shard)
         run: |
           source ./activate.sh
-          just ci merge
+          # One command per line, not a `case` arm: check-tier-has-ci-owner
+          # reads statements, and owns `ci merge` through this one.
+          if [ "${{ inputs.lane || 'merge' }}" = tier1 ]; then
+            just ci tier1 run
+          else
+            just ci merge
+          fi
           df -h / | tail -1
 
       - name: Upload nextest JUnit (${{ matrix.board }})
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: merge-runtime-${{ matrix.board }}-junit
+          name: merge-runtime-${{ inputs.lane || 'merge' }}-${{ matrix.board }}-junit
           path: |
             target/nextest/*/junit.xml
             target/nextest/*/junit-real.xml
@@ -222,7 +250,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: merge-runtime-${{ matrix.board }}-fixture-logs
+          name: merge-runtime-${{ inputs.lane || 'merge' }}-${{ matrix.board }}-fixture-logs
           path: test-logs/fixtures/
           if-no-files-found: ignore
           retention-days: 7
