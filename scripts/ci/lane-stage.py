@@ -767,6 +767,22 @@ def _workflow_consistency(chk):
     return notes
 
 
+REPORT_ACTION = "./.github/actions/report-lane-stage"
+# The composite's input for each env variable the bare reporter step set.
+_REPORT_INPUTS = {
+    "NROS_LANE_STEPS": "steps",
+    "NROS_LANE_STEP_RECORD": "step-record",
+    "NROS_LANE_CELLS_RAN": "cells-ran",
+}
+
+
+def _reporter_field(step, env_name):
+    """One reporter value, from a bare step's `env:` or the composite's `with:`."""
+    if str(step.get("uses", "")) == REPORT_ACTION:
+        return (step.get("with") or {}).get(_REPORT_INPUTS[env_name])
+    return (step.get("env") or {}).get(env_name)
+
+
 def _one_lane_consistency(chk, lane, doc):
     w = lane.workflow
     job = doc["jobs"][lane.job]
@@ -777,10 +793,14 @@ def _one_lane_consistency(chk, lane, doc):
     # tells the reader to add a scope here. Matching on the filename alone found
     # it, called the job's reporter ambiguous, and then died on the env of the
     # wrong step.
+    #
+    # The composite `.github/actions/report-lane-stage` IS this reporter, with
+    # the env moved to `with:` inputs (`_reporter_field` reads either form).
     reporter = [
         s for s in steps
-        if "lane-stage.py" in str(s.get("run", ""))
-        and "--report" in str(s.get("run", ""))
+        if ("lane-stage.py" in str(s.get("run", ""))
+            and "--report" in str(s.get("run", "")))
+        or str(s.get("uses", "")) == REPORT_ACTION
     ]
 
     chk(f"{w} has exactly one lane-stage reporter", len(reporter) == 1)
@@ -789,7 +809,7 @@ def _one_lane_consistency(chk, lane, doc):
 
     declared = json.loads(
         re.sub(r"\$\{\{[^}]*\}\}", "success",
-               reporter[0]["env"]["NROS_LANE_STEPS"]))
+               _reporter_field(reporter[0], "NROS_LANE_STEPS") or "[]"))
     declared_names = [d["name"] for d in declared]
 
     chk(f"{w}: every reported step name is a real step in `{lane.job}`",
@@ -811,7 +831,7 @@ def _one_lane_consistency(chk, lane, doc):
                 bool(mine))
             chk(f"{w}: the `{lane.job}` reporter reads the SAME record",
                 bool(mine) and mine ==
-                (reporter[0].get("env") or {}).get("NROS_LANE_STEP_RECORD"))
+                _reporter_field(reporter[0], "NROS_LANE_STEP_RECORD"))
     chk(f"{w}: the reporter runs `if: always()` — a stage report that is "
         "skipped when the lane dies is no report",
         "always()" in str(reporter[0].get("if", "")))

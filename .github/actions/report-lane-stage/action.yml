@@ -1,0 +1,65 @@
+name: Report which stage a lane reached
+description: >
+  The one spelling of a lane's stage report (`scripts/ci/lane-stage.py
+  --report`): which stage of an ordered pipeline the job got to, written to the
+  run summary and returned as outputs the lane's report job puts in its own
+  check-run NAME. It is how a red lane says whether it is a verdict about the
+  code (the cells ran) or about the lane (it stopped before them). See issue
+  1158 and `check-lane-stage-reporting`.
+
+  The caller passes its own step outcomes, because a composite cannot read the
+  calling job's `steps` context. Use `steps.<id>.outcome`, not `.conclusion`:
+  the outcome is the step's own result before any `continue-on-error`
+  rewrite, and it uses the same words `gh run view --json jobs` returns.
+
+  Call it with `if: always()` and `id: stage`. A stage report that is skipped
+  when the lane dies is no report.
+
+inputs:
+  lane:
+    description: The lane's name as `lane-stage.py` knows it (its LANES table).
+    required: true
+  steps:
+    description: >
+      JSON list of {"name": <step name>, "conclusion": <steps.<id>.outcome>},
+      one entry per staged step, in pipeline order.
+    required: true
+  step-record:
+    description: >
+      Path the cells step's `just ci <lane>` writes its markers to
+      (NROS_LANE_STEP_RECORD). Required when the cells step runs a preflight
+      first, so its outcome alone cannot say a cell ran (issue 1754).
+    required: false
+    default: ""
+  cells-ran:
+    description: >
+      The cells step's own answer to "did any cell produce a result", when it
+      states one. Empty means nobody said, which changes nothing.
+    required: false
+    default: ""
+
+outputs:
+  stage:
+    description: The furthest stage reached, or `none`.
+    value: ${{ steps.report.outputs.stage }}
+  kind:
+    description: verdict or no-verdict.
+    value: ${{ steps.report.outputs.kind }}
+  label:
+    description: The human label the report job's name carries.
+    value: ${{ steps.report.outputs.label }}
+  reached_cells:
+    description: "'true' when the cells ran."
+    value: ${{ steps.report.outputs.reached_cells }}
+
+runs:
+  using: composite
+  steps:
+    - id: report
+      shell: bash
+      env:
+        NROS_LANE_STEPS: ${{ inputs.steps }}
+        NROS_LANE_STEP_RECORD: ${{ inputs.step-record }}
+        NROS_LANE_CELLS_RAN: ${{ inputs.cells-ran }}
+        NROS_LANE_NAME: ${{ inputs.lane }}
+      run: python3 scripts/ci/lane-stage.py --report --lane "$NROS_LANE_NAME"
