@@ -326,6 +326,11 @@ boards self-describe their dependencies.
   system once a version constraint can say "good enough" (phase-404).
 - Cross-RTOS launch tree + manifest codegen → RFC-0015; per-RTOS scheduling survey → RFC-0016.
 - Real-time timer primitive → RFC-0017; the RT executor model → RFC-0002.
+- An image with several sched tasks shares ONE executor core (node tables, sessions,
+  parameters, scheduling contexts, the arena); launch remaps are one `const` table in
+  flash, and the arena floor applies only where demand is unknown → RFC-0107. Per core,
+  one ready set ordered by the contract's rank, run by N preemption levels → RFC-0108,
+  which amends RFC-0107's per-tier dispatcher.
 
 ## 5. Codegen, workspace & user workflow
 
