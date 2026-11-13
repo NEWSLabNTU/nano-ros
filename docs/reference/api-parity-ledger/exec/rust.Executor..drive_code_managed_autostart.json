@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::drive_code_managed_autostart",
+  "verdict": "extension",
+  "why": "RFC-0128 D2 (ruled 2026-11-13, phase-554 W2.b): a single-package leaf has no launch file, so its managed nodes are exactly those whose own code registered a lifecycle machine, as in ROS 2 where the class decides. This drives each of them to the image's autostart in node-table order and leaves plain nodes alone. launch_ros drives a lifecycle node only when a launch file names it; rclrs has no lifecycle node."
+}

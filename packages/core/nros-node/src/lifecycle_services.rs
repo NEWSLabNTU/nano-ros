@@ -1836,6 +1836,46 @@ mod tests {
             );
         }
 
+        /// RFC-0128 D2 (ruled 2026-11-13) -- with no launch file, the code
+        /// decides: of two nodes, only the one whose code registered a machine
+        /// is managed and driven, whichever was built first. The plain node
+        /// gets no machine.
+        #[test]
+        fn with_no_launch_file_only_the_node_whose_code_registered_is_managed() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            // The plain node is built FIRST, so build order cannot pick it.
+            let plain = executor.node_builder("talker").build().expect("node");
+            let coded = executor.node_builder("managed").build().expect("node");
+            // What a component using the lifecycle API does while it is built.
+            executor.register_lifecycle_services_on(coded).unwrap();
+
+            // SAFETY: no callbacks registered.
+            let driven = unsafe { executor.drive_code_managed_autostart(2) }.unwrap();
+            assert_eq!(driven, 1);
+            let machines: std::vec::Vec<_> = executor.lifecycle_machine_nodes().collect();
+            assert_eq!(machines, [Some(coded)], "only the node whose code asked");
+            assert!(executor.lifecycle_state_machine_on(plain).is_none());
+            assert_eq!(
+                executor.lifecycle_state_machine_on(coded).unwrap().state(),
+                InternalState::Active
+            );
+        }
+
+        /// A self-bringup whose code registers no machine manages nothing:
+        /// its node stays plain.
+        #[test]
+        fn with_no_launch_file_a_plain_node_stays_plain() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            let plain = executor.node_builder("talker").build().expect("node");
+            // SAFETY: no machine, so nothing runs.
+            let driven = unsafe { executor.drive_code_managed_autostart(2) }.unwrap();
+            assert_eq!(driven, 0);
+            assert_eq!(executor.lifecycle_machine_nodes().count(), 0);
+            assert!(executor.lifecycle_state_machine_on(plain).is_none());
+        }
+
         /// Autostart `configure` stops at `inactive`, and `none` leaves the
         /// machine `unconfigured`, each on its own node.
         #[test]

@@ -808,7 +808,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // that survived membership resolution. Empty when the schedule is derived.
     let mut authored_sched_task_names: Vec<String> = Vec::new();
     // Phase 264 W2 — the self-bringup arm's `lifecycle` axis: its boot autostart
-    // (0 none / 1 configure / 2 active), managed on the first node it builds.
+    // (0 none / 1 configure / 2 active), applied to every node whose own code
+    // registered a lifecycle machine (RFC-0128 D2, ruled 2026-11-13).
     let mut lifecycle_code: Option<u8> = None;
     // RFC-0128 D2 (phase-554 W2) — the launch arm's managed nodes: per entry of
     // `lowered_nodes`, that node's own boot autostart when the model marks it
@@ -3611,7 +3612,8 @@ fn lifecycle_feature_assert() -> proc_macro2::TokenStream {
 /// without `nros/lifecycle-services`. The launch arm's machines are
 /// registered inside each managed node's register call
 /// ([`lifecycle_node_call_tokens`]); `self_bringup` is the self-bringup
-/// arm's autostart, whose one node the macro cannot name. Empty when the
+/// arm's autostart, applied at run time to the nodes whose own code
+/// registered a machine (RFC-0128 D2, ruled 2026-11-13). Empty when the
 /// image manages no node.
 fn lifecycle_call_tokens(managed: bool, self_bringup: Option<u8>) -> proc_macro2::TokenStream {
     if !managed {

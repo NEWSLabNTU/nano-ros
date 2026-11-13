@@ -135,9 +135,10 @@ pub trait NodeDispatchRuntime {
 
     /// RFC-0128 D2 (phase-554 W2) — the self-bringup form of
     /// [`apply_lifecycle_node`](Self::apply_lifecycle_node). A single-package
-    /// self-bringup has no model to name its node, so the managed node is the
-    /// first node the image built (its component's launch node, the node its
-    /// launch parameters are seeded on). Default no-op, as above.
+    /// self-bringup has no launch file to mark a node managed, so the managed
+    /// nodes are those whose own code registered a lifecycle machine (RFC-0128
+    /// D2, ruled 2026-11-13: the code decides, as in ROS 2); each is driven to
+    /// `autostart`. A plain node is left alone. Default no-op, as above.
     fn apply_lifecycle_self_bringup(&mut self, autostart: u8) -> Result<(), &'static str> {
         let _ = autostart;
         Ok(())
