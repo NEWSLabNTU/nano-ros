@@ -102,7 +102,10 @@ build verb, `make`, the way Zephyr owns `west build`:
    `kconfig-frontends` package: `NROS`, the API you use (`NROS_C_API`,
    `NROS_CPP_API`), and the RMW. These options decide what the shell
    compiles into `libnros_c.a`; they must name the same RMW as your
-   `system.toml`.
+   `system.toml`. The board's config starts `nros_nuttx_entry`, the entry a
+   `nros build` image defines. A make-built kernel that boots NSH sets
+   `CONFIG_INIT_ENTRYPOINT="nsh_main"` back
+   (`kconfig-tweak --set-str CONFIG_INIT_ENTRYPOINT nsh_main`).
 4. Prepare the workspace, so the generated message bindings exist before
    anything compiles against them: `nros configure`, in the workspace.
 5. Build the kernel with `make` in `$NUTTX_DIR`. The Rust static libraries

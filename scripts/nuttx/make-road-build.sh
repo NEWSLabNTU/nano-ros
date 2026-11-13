@@ -112,6 +112,10 @@ nros_nuttx_configure "$work/nuttx" "$APPDIR" "$defconfig" "$work/nuttx/$makedefs
 (
     cd "$work/nuttx"
     kconfig-tweak --file .config --enable CONFIG_NROS --enable CONFIG_NROS_MAKE_ROAD_SMOKE
+    # A make-road kernel boots NSH, which runs the app as a builtin. The board
+    # config names `nros_nuttx_entry`, the entry a `nros build` image defines;
+    # nothing here defines it, so the entry goes back to NSH's.
+    kconfig-tweak --file .config --set-str CONFIG_INIT_ENTRYPOINT nsh_main
     make olddefconfig >/dev/null
 )
 for sym in CONFIG_NROS CONFIG_NROS_MAKE_ROAD_SMOKE; do

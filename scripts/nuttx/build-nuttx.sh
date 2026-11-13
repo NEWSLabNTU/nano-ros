@@ -200,7 +200,13 @@ CURRENT_HEAD=$(git -C "$NUTTX_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 # config when the shared NuttX tree was already configured for a different board
 # (the single in-tree .config can only hold one board at a time).
 DEFCONFIG_HASH=$(sha256sum "$DEFCONFIG" 2>/dev/null | cut -d' ' -f1)
-CURRENT_KEY="${CURRENT_HEAD}:${DEFCONFIG_HASH}"
+# The scripts that build the export are inputs too: a change to WHAT gets
+# built or packed (the configure, the `pass2` targets, the board library) must
+# rebuild an export the old script produced. Without this edge an export
+# missing the board library read as current after the script learned to build it.
+BUILD_SCRIPTS_HASH=$(cat "$SCRIPT_DIR/build-nuttx.sh" "$SCRIPT_DIR/kconfig-frontend.sh" \
+    | sha256sum | cut -d' ' -f1)
+CURRENT_KEY="${CURRENT_HEAD}:${DEFCONFIG_HASH}:${BUILD_SCRIPTS_HASH}"
 STORED_KEY=$(cat "$MARKER" 2>/dev/null || echo "none")
 
 # phase-339 W1 — SNAPSHOT SHORT-CIRCUIT, deliberately ahead of every tree check.
@@ -294,6 +300,11 @@ fi
 
 echo "Building NuttX..."
 NCPUS=$(nproc 2>/dev/null || echo 4)
+# `pass2`, not the default target: the libraries `make export` packs, and no
+# final link. The board config names the image's entry in
+# CONFIG_INIT_ENTRYPOINT (`nros_nuttx_entry`), which only an image defines,
+# so a bare kernel has nothing to start and cannot link. Nothing links the
+# shared tree's `nuttx` anyway: every consumer links the per-arch export.
 # issue 1403 — every `make -j` runs under the stall watchdog
 # (`check-jobserver-makes-watched`): a kernel make that stalls inside a fixture
 # fan-out keeps the OUTER make's child alive, so only a watchdog on this make
@@ -301,7 +312,16 @@ NCPUS=$(nproc 2>/dev/null || echo 4)
 # NROS_JOBSERVER_STALL_SECS; otherwise transparent.
 python3 "$PROJECT_ROOT/scripts/build/make-stall-watchdog.py" \
     --label "nuttx kernel" --diag-dir "$PWD" -- \
-    make -j"$NCPUS"
+    make -j"$NCPUS" pass2
+# Two things only the final link's rule builds, which `pass2` therefore
+# skips: the board library (`make export` packs it only if it exists; without
+# it an image links with no `board_app_initialize` / `board_autoled_on`) and
+# the arch's head object (arm's `arm_vectortab.o`, which the snapshot copies
+# below and the board crate links; without it the crate skips its image-link
+# staging and the link finds no kernel libraries). The arch Makefile's `all`
+# builds the head object (and the already-built `libarch`).
+make -C "arch/$(sed -n 's/^CONFIG_ARCH="\(.*\)"$/\1/p' .config)/src" TOPDIR="$PWD" \
+    all "board/libboard.a"
 
 # --- Export NuttX for external C/C++ apps ---
 
@@ -352,21 +372,5 @@ fi
 
 echo ""
 echo "=== Build Complete ==="
-echo "  NuttX ELF: $NUTTX_DIR/nuttx"
-echo ""
-# 194.3c — arch-aware run hint (was hardcoded arm). Derive the qemu machine from
-# the configured board arch so a riscv (rv-virt) export prints the right command.
-_BUILT_ARCH=$(grep -E '^CONFIG_ARCH=' .config 2>/dev/null | cut -d'"' -f2)
-echo "Run with QEMU:"
-case "$_BUILT_ARCH" in
-    risc-v)
-        echo "  qemu-system-riscv32 -M virt -bios none -nographic \\"
-        echo "      -kernel $NUTTX_DIR/nuttx \\"
-        echo "      -netdev user,id=u1 -device virtio-net-device,netdev=u1"
-        ;;
-    *)
-        echo "  qemu-system-arm -M virt -cpu cortex-a7 -nographic \\"
-        echo "      -kernel $NUTTX_DIR/nuttx \\"
-        echo "      -nic tap,ifname=tap-qemu0,script=no,downscript=no"
-        ;;
-esac
+echo "  NuttX export: $NUTTX_DIR/$NUTTX_SNAPSHOT"
+echo "  An image links against it; \`nros run\` boots the image."
