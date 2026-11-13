@@ -145,9 +145,9 @@ verus:
             "$verus_bin" --version
             ;;
         *)
-            # Issue 0368 F6. Verification gates no merge (verify-verus.yml is
-            # weekly and advisory, issue 2499), so a host that cannot run this
-            # tool must NOT have its setup fail — exit 0 with an
+            # Issue 0368 F6. Verification gates no merge (weekly.yml's
+            # `verify-verus` job is advisory, issue 2499), so a host that cannot
+            # run this tool must NOT have its setup fail — exit 0 with an
             # explanation, not a raw loader error.
             printf '%s\n' \
                 "[verus] The Verus binary could not run on this host — almost always a" \

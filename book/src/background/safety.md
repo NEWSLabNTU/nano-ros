@@ -156,10 +156,9 @@ detects a single flipped bit, the expected sequence advances on a normal
 message, a gap is reported as exactly the number of missing messages, and
 `is_valid` holds exactly when there is no gap, no duplicate and a CRC that
 was checked and matched. The proofs run against a model of the validator's
-state, which the production tests tie to the real type. The `is_valid` proof
-has not been re-run since `is_valid` began requiring a checked CRC: the Verus
-toolchain currently fails before it reaches these proofs. The production
-tests cover the new rule.
+state, which the production tests tie to the real type. CI runs them weekly,
+and the `is_valid` proof covers the rule that a message with no CRC is not
+valid.
 
 ## Where nano-ros differs from ROS 2
 
