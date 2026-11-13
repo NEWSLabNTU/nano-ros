@@ -252,15 +252,16 @@ jobs:
       - name: Which stage did this lane reach?
         id: stage
         if: always()
-        env:
-          NROS_LANE_STEPS: >-
+        uses: ./.github/actions/report-lane-stage
+        with:
+          lane: "tier 2 (1-wise matrix)"
+          steps: >-
             [{"name": "Check out the persistent fixture tree at this commit", "conclusion": "${{ steps.tree.outcome }}"},
              {"name": "just setup tier2", "conclusion": "${{ steps.setup.outcome }}"},
              {"name": "Verify this runner's labels are true", "conclusion": "${{ steps.doctor.outcome }}"},
              {"name": "just build tier2", "conclusion": "${{ steps.build.outcome }}"},
              {"name": "just ci matrix", "conclusion": "${{ steps.cells.outcome }}"}]
-          NROS_LANE_STEP_RECORD: ${{ runner.temp }}/lane-steps-tier2
-        run: python3 scripts/ci/lane-stage.py --report --lane "tier 2 (1-wise matrix)"
+          step-record: ${{ runner.temp }}/lane-steps-tier2
 
   # TIER 1's cells — issues 1684/1685.
   #
@@ -423,15 +424,16 @@ jobs:
       - name: Which stage did this lane reach?
         id: stage
         if: always()
-        env:
-          NROS_LANE_STEPS: >-
+        uses: ./.github/actions/report-lane-stage
+        with:
+          lane: "tier 1 (cells)"
+          steps: >-
             [{"name": "Check out the persistent fixture tree at this commit", "conclusion": "${{ steps.tree.outcome }}"},
              {"name": "just setup tier1", "conclusion": "${{ steps.setup.outcome }}"},
              {"name": "Verify this runner's labels are true", "conclusion": "${{ steps.doctor.outcome }}"},
              {"name": "just build tier1", "conclusion": "${{ steps.build.outcome }}"},
              {"name": "just ci tier1 run", "conclusion": "${{ steps.cells.outcome }}"}]
-          NROS_LANE_STEP_RECORD: ${{ runner.temp }}/lane-steps-tier1
-        run: python3 scripts/ci/lane-stage.py --report --lane "tier 1 (cells)"
+          step-record: ${{ runner.temp }}/lane-steps-tier1
 
   coverage-tier1:
     # issue 1790 — `report-interlock-coverage.sh` reads the gated job's

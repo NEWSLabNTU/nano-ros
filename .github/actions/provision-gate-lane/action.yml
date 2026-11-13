@@ -1,0 +1,28 @@
+name: Provision what a gate lane claims
+description: >
+  The one spelling of "give this job what its gate lane claims beyond the CI
+  image": `scripts/ci/provision-gate-lane.sh <lane>`, driven by the lane's own
+  `[lane.<name>]` claims in `.config/gate-lanes.toml` (submodules, base-branch
+  history, the Zephyr header slice, the ARM toolchain).
+
+  Every job that runs a lane whose claims need fetching calls this BEFORE the
+  lane runs. `check-gate-lane-provisioned` refuses a job that runs such a lane
+  without it. That rule exists because the build lane's jobs once provided
+  none of its claims, so every shard stopped in the lane preflight and no gate
+  ran (issue 2382).
+
+  Give the calling step a `timeout-minutes`: a submodule or history fetch that
+  hangs on the network should fail the step, not the job's whole budget.
+
+inputs:
+  lane:
+    description: The gate lane, as named in .config/gate-lanes.toml (fast, build, ...).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        NROS_PROVISION_LANE: ${{ inputs.lane }}
+      run: bash scripts/ci/provision-gate-lane.sh "$NROS_PROVISION_LANE"

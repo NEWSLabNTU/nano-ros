@@ -686,7 +686,9 @@ jobs:
         # own claims (.config/gate-lanes.toml). This was two copies of a step
         # plus two copies of the history fetch, and they drifted (issue 1483;
         # issue 2382 is the build lane missing both).
-        run: bash scripts/ci/provision-gate-lane.sh fast
+        uses: ./.github/actions/provision-gate-lane
+        with:
+          lane: fast
 
       # phase-543 W6 — the `fast` lane of .config/gate-lanes.toml, through the
       # nextest harness. Its claims are what this image provides; a gate needing
@@ -2911,7 +2913,9 @@ jobs:
       # this step every shard stopped in the lane preflight, no gate run.
       - name: Provision what the build lane claims (submodules, history, sources)
         timeout-minutes: 12
-        run: bash scripts/ci/provision-gate-lane.sh build
+        uses: ./.github/actions/provision-gate-lane
+        with:
+          lane: build
 
       - name: just check build (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
@@ -3287,7 +3291,9 @@ jobs:
         # own claims (.config/gate-lanes.toml). This was two copies of a step
         # plus two copies of the history fetch, and they drifted (issue 1483;
         # issue 2382 is the build lane missing both).
-        run: bash scripts/ci/provision-gate-lane.sh fast
+        uses: ./.github/actions/provision-gate-lane
+        with:
+          lane: fast
 
       # NOT `continue-on-error`: this runs a gate, and `ci-ok` hears it
       # (`check-default-gates-run-somewhere`). The save below is `!cancelled()`

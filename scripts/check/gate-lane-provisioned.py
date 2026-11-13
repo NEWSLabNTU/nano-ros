@@ -43,6 +43,9 @@ def fetched_claims(lanes: dict, lane: str) -> set[str] | None:
     return FETCHED & set(decl.get("claims", []))
 
 
+PROVISION_ACTION = "./.github/actions/provision-gate-lane"
+
+
 def check_workflow(name: str, wf: dict, lanes: dict) -> list[str]:
     problems = []
     for job_id, job in (wf.get("jobs") or {}).items():
@@ -54,6 +57,11 @@ def check_workflow(name: str, wf: dict, lanes: dict) -> list[str]:
             run = step.get("run") or ""
             for m in re.finditer(r"provision-gate-lane\.sh\s+([A-Za-z0-9_-]+)", run):
                 provided.add(m.group(1))
+            # The composite that wraps the script (`.github/actions/provision-gate-lane`).
+            if str(step.get("uses", "")) == PROVISION_ACTION:
+                lane_in = (step.get("with") or {}).get("lane")
+                if lane_in:
+                    provided.add(str(lane_in))
             lane = (step.get("env") or {}).get("NROS_GATE_SCOPE")
             if lane and lane not in first_use:
                 first_use[lane] = i
@@ -75,8 +83,8 @@ def check_workflow(name: str, wf: dict, lanes: dict) -> list[str]:
             if step_level_unprovided or job_level_unprovided:
                 problems.append(
                     f"  {name} job `{job_id}`: runs lane `{lane}`, which claims "
-                    f"{', '.join(sorted(claims))}, with no `bash scripts/ci/provision-gate-lane.sh "
-                    f"{lane}` step before it (issue 2382: its preflight then refuses and no gate runs)")
+                    f"{', '.join(sorted(claims))}, with no `provision-gate-lane` step (lane: "
+                    f"{lane}) before it (issue 2382: its preflight then refuses and no gate runs)")
     return problems
 
 
@@ -89,6 +97,11 @@ def self_test(lanes: dict) -> None:
     prov = {"run": "bash scripts/ci/provision-gate-lane.sh build"}
     use = {"run": "just check build", "env": {"NROS_GATE_SCOPE": "build"}}
     assert check_workflow("t", wf(prov, use), lanes) == []
+    comp = {"uses": PROVISION_ACTION, "with": {"lane": "build"}}
+    assert check_workflow("t", wf(comp, use), lanes) == [], "the composite did not count"
+    assert check_workflow("t", wf(use, comp), lanes), "the composite AFTER the lane passed"
+    assert check_workflow("t", wf({"uses": PROVISION_ACTION, "with": {"lane": "fast"}}, use),
+                          lanes), "the composite for another lane passed"
     assert check_workflow("t", wf(use), lanes), "an unprovisioned build lane passed"
     assert check_workflow("t", wf(use, prov), lanes), "provisioning AFTER the lane passed"
     wrong = {"run": "bash scripts/ci/provision-gate-lane.sh fast"}
