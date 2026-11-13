@@ -1,0 +1,1 @@
+The resolve record `nros build` writes, the metadata probe's generated harness, and the files `nros new` scaffolds (`system.toml`, `Cargo.toml`, `CMakeLists.txt`, `nros.toml`, Zephyr `prj.conf`) no longer cite internal design ids in their comments.
