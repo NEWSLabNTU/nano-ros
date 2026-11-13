@@ -1,0 +1,5 @@
+{
+  "key": "rust:sinks_installed",
+  "verdict": "extension",
+  "why": "phase-556 W15 -- whether `nros-log` has any sink installed (`init` or `add_sink`). A record raised with no sink is held in the early ring, so a boot hook that installs a DEFAULT must only do so when nobody chose sinks; `nros_board_linux::register_linked_rmw` asks this before installing the platform default for a plain-API `main`. rclrs has no correspondent: rcutils logging always has its console output handler, so there is no 'no sink yet' state to ask about."
+}
