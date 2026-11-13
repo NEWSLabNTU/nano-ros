@@ -181,10 +181,10 @@ struct ClientOptions {
 //
 // It is not fixable by implementing them, either: nano-ros has no runtime
 // ComponentManager, no intra-process transport and no topic-statistics
-// collector; `/rosout` EXISTS in all three languages (C++'s is
-// `rclcpp::rosout::Publisher`, `<rclcpp/rosout.hpp>`) but is never automatic: the
-// publisher is a declared entity the program creates, so `enable_rosout(true)`
-// still has nothing to switch.
+// collector. `/rosout` is automatic: the executor creates one writer per
+// node when the image declares the `rosout` capability. It is switched per
+// IMAGE at build time, not per node here, so `enable_rosout` still refuses
+// rather than pretend; a per-node switch is a follow-up.
 // Their parameters and remaps are resolved from the
 // LAUNCH FILE at BUILD time — `nros configure` projects them into the generated
 // entry as `nros_cpp_declare_remap` / `nros_cpp_declare_param` calls, not into

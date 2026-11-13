@@ -90,7 +90,8 @@ lists every knob and what it sizes.
 A ROS 2 node serves six parameter services and publishes `/rosout` without
 being asked. In nano-ros those are capability axes, `param_services` and
 `rosout`, and each costs pool slots: six queryables per node and a
-`/parameter_events` publisher for the first, one publisher for the second.
+`/parameter_events` publisher for the first, one publisher per node for the
+second (the executor creates each node's `/rosout` writer).
 Today an image gets them only when its `system.toml` declares them in
 `features`. The `node_interfaces` key changes that per image:
 

@@ -1736,28 +1736,32 @@ pub const MEM_REPORT_RUNTIME_LOGGER_CAPACITY: &str = "capacity       ";
 // installed in `nros_log`'s dispatch walk.
 // ---------------------------------------------------------------------------
 
-/// The `/rosout` publisher exists and `nros_log::rosout`'s sink is installed.
-/// Records raised after this line have somewhere to go.
+/// The probe's node exists. Since phase-556 W13 the executor creates the
+/// node's `/rosout` writer on the next spin and the node builder has already
+/// started the queue, so records raised after this line have somewhere to go.
 pub const ROSOUT_PROBE_READY: &str = "ROSOUT_PROBE_READY";
 
-/// A PREFIX: the running total of records handed to `publish` follows. A
-/// prefix rather than a whole line because the number is the point — a probe
-/// that printed a bare marker would pass having pumped zero.
+/// A PREFIX (Rust probe only): the running total of records the executor's
+/// writers have published (`nros::rosout::published`) follows.
 pub const ROSOUT_PROBE_PUMPED: &str = "ROSOUT_PROBE_PUMPED";
 
-/// The run's accounting: `pumped=`, `dropped=`, `suppressed=`. Printed at the
-/// end so a short echo can be told apart from a full queue.
+/// The run ended. The Rust probe follows it with its accounting: `pumped=`,
+/// `dropped=`, `suppressed=`, so a short echo can be told apart from a full
+/// queue.
 pub const ROSOUT_PROBE_DONE: &str = "ROSOUT_PROBE_DONE";
 
-/// `nros_log`'s appendable sink list was already full (`MAX_ADDED_SINKS`), so
-/// the bridge is NOT installed. Its own marker because "no records arrived"
-/// otherwise reads identically to a transport failure.
-pub const ROSOUT_PROBE_SINK_FULL: &str = "ROSOUT_PROBE_SINK_FULL";
+/// The RUNTIME's line when a node's `/rosout` writer could not be created
+/// (`nros_node`'s `report_rosout_refused`). A probe that prints it published
+/// nothing for that node.
+pub const ROSOUT_WRITER_REFUSED: &str = "/rosout could not be created for node";
 
-/// The transport refused a `/rosout` publish. Distinct from
-/// [`ROSOUT_PROBE_SINK_FULL`] for the reason [`QOS_EVENT_PROBE_NONE`] is
-/// distinct from [`QOS_EVENT_PROBE_UNSUPPORTED`].
-pub const ROSOUT_PROBE_PUBLISH_ERR: &str = "ROSOUT_PROBE_PUBLISH_ERR";
+/// The RUNTIME's line when the transport refused a `/rosout` publish.
+pub const ROSOUT_PUBLISH_REFUSED: &str = "a /rosout publish was refused";
+
+/// The RUNTIME's line when `nros_log`'s appendable sink list was already full
+/// (`MAX_ADDED_SINKS`), so the queue is NOT installed. Its own line because
+/// "no records arrived" otherwise reads identically to a transport failure.
+pub const ROSOUT_QUEUE_REFUSED: &str = "the /rosout log queue could not be installed";
 
 // ---------------------------------------------------------------------------
 // phase-433 W6 — the ADVERTISED-STATE probe (`advertised-state-probe`).

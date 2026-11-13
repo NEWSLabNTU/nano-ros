@@ -2,9 +2,10 @@
  * issue 1589 — the C twin of `bins/rosout-talker`.
  *
  * Logs through its NODE's logger (RFC-0102 D4: on Humble only node loggers
- * reach `/rosout`) and pumps `rclc_rosout_*` from its spin loop, printing the
- * same markers the Rust probe prints so `rosout_interop.rs` reads all three
- * languages with one set of assertions.
+ * reach `/rosout`) and spins. Nothing else: since phase-556 W13 the executor
+ * creates the `/rosout` writer of every node bound with
+ * rclc_executor_node_init() and publishes the log queue from every spin. Prints the same markers the Rust probe prints so `rosout_interop.rs`
+ * reads all three languages with one set of assertions.
  *
  *   ROSOUT_PROBE_RECORDS    records to log (default 60)
  *   ROSOUT_PROBE_PERIOD_MS  spin period per record (default 250)
@@ -25,7 +26,6 @@ static int env_int(const char* key, int fallback) {
 static struct {
     rclc_support_t support;
     rcl_node_t node;
-    rcl_publisher_t rosout;
     rclc_executor_t executor;
 } app;
 
@@ -54,35 +54,23 @@ int main(int argc, char** argv) {
     RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
     // Executor first, then the node bound to it.
     RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 1, NULL), 1);
+    /* Bound to the executor, so the node is in its table and the executor
+     * creates its `/rosout` writer. A legacy rclc_node_init_default() node is
+     * not in that table and keeps the explicit rclc_rosout_* spelling. */
     RCLC_CHECK_RET(rclc_executor_node_init(&app.executor, &app.node, "rosout_talker", NULL), 1);
-    RCLC_CHECK_RET(rclc_rosout_publisher_init(&app.rosout, &app.node, NULL), 1);
 
     rclc_logger_t probe = rclc_node_get_logger(&app.node);
-    if (rclc_rosout_enable() != RCL_RET_OK) {
-        printf("ROSOUT_PROBE_SINK_FULL\n");
-        return 4;
-    }
     printf("ROSOUT_PROBE_READY\n");
 
-    size_t total = 0;
     for (int i = 0; i < records; i++) {
         RCLC_LOG_INFO(probe, "nros rosout probe record %d", i);
         if (i % 2 == 1) {
             RCLC_LOG_WARN(probe, "nros rosout probe warning at %d", i);
         }
         (void)rclc_executor_spin_some(&app.executor, (uint64_t)period_ms * 1000000ULL);
-        size_t sent = 0;
-        rcl_ret_t ret = rclc_rosout_pump(&app.rosout, &sent);
-        total += sent;
-        if (ret != RCL_RET_OK) {
-            printf("ROSOUT_PROBE_PUBLISH_ERR pumped=%zu ret=%d\n", total, (int)ret);
-            return 5;
-        }
-        printf("ROSOUT_PROBE_PUMPED %zu\n", total);
     }
-    printf("ROSOUT_PROBE_DONE pumped=%zu\n", total);
+    printf("ROSOUT_PROBE_DONE\n");
 
-    rcl_publisher_fini(&app.rosout, &app.node);
     rcl_node_fini(&app.node);
     rclc_executor_fini(&app.executor);
     rclc_support_fini(&app.support);
