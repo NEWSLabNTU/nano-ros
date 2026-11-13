@@ -1,13 +1,19 @@
 ---
 id: 2477
 title: "From a detached HEAD, `ci gate`'s pristine checkout measures commit citations against the clone's stale local `main` and reports landed commits as missing"
-status: open
+status: resolved
 type: bug
 area: [ci, testing]
 severity: low
 found: 2026-11-13
 related: [1205, 1476, 1043]
+resolved: 2026-11-13
+resolved_in: "`default_branch_ref()` follows a local `origin` to the source's own `origin/main`, and reports NOT VERIFIED when the source has none"
 ---
+
+> **Resolved (2026-11-13).** A clone whose `origin` is a local path now
+> measures citations against the SOURCE's `origin/main`, never the source's
+> local `main`. See "Fix".
 
 ## What happens
 
@@ -54,3 +60,25 @@ have `default_branch_ref()` refuse to treat a local clone's `origin/main` as
 the default branch when the source's `origin/main` exists. A negative control:
 gate from a detached HEAD with a stale local `main`, and expect step 4 to
 pass.
+
+## Fix
+
+`check-doc-commit-citations.py` `default_branch_ref()` now asks whether
+`origin` is a local path (`_local_origin`). When it is, the clone's
+`refs/remotes/origin/*` are the source's local branches, so the function
+follows the source and returns the commit the SOURCE's default-branch ref
+(`origin/HEAD`, else `origin/main`) names. It follows at most four local
+hops, and checks that the commit exists in the clone. When the source has no
+upstream view, it returns `None` and the gate exits 78: NOT VERIFIED (issue
+1043's third outcome), recorded in the skip ledger. It never answers against
+a stale local branch.
+
+This also fixes the named-branch case, which passed for the wrong reason.
+There the clone's `origin/HEAD` was the source's checked-out work branch, so
+that branch's unlanded commits resolved, against issue 1205's rule.
+
+Negative control: `local_clone_self_test`, which runs on the normal path. It
+builds a source whose local `main` is stale and whose `origin/main` is
+current, clones it `--local --shared` and detaches the clone, then expects
+the source's `origin/main`. With the source's remote removed, it expects
+`None`. With the local-origin branch reverted, both cases fail.

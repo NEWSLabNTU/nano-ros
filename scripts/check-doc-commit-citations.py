@@ -113,16 +113,61 @@ def citations(files):
     return found
 
 
-def default_branch_ref():
+def _git(root, *args, env=None):
+    return subprocess.run(["git", "-C", root, *args], capture_output=True,
+                          text=True, env=env)
+
+
+def _local_origin(root, env=None):
+    """The source repository's directory when `origin` is a LOCAL path.
+
+    Issue 2477. A `git clone --local` (what `pristine-checkout-fast.sh`
+    builds) records the source checkout's path as `origin`, so the clone's
+    `refs/remotes/origin/*` are the source's LOCAL branches.
+    """
+    r = _git(root, "remote", "get-url", "origin", env=env)
+    if r.returncode != 0:
+        return None
+    url = r.stdout.strip()
+    if url.startswith("file://"):
+        url = url[len("file://"):]
+    elif "://" in url or re.match(r"^[^/]+:", url):
+        return None  # a network URL, or scp-like `host:path`
+    path = url if os.path.isabs(url) else os.path.join(root, url)
+    return path if os.path.isdir(path) else None
+
+
+def default_branch_ref(root=ROOT, env=None, _hops=0):
     """The ref whose history a citation must be in: the default branch.
 
     Issue 1205. `origin/HEAD` names it when the clone recorded one, else
-    `origin/main`; a checkout with neither (no remote at all) falls back to
-    `HEAD`, which is the only history it has.
+    `origin/main`; a checkout with no remote at all falls back to `HEAD`,
+    which is the only history it has.
+
+    Issue 2477. When `origin` is a local path, its `origin/main` is the
+    source's LOCAL `main`, which nobody maintains in an agent setup (measured
+    3,721 commits behind) -- and its `origin/HEAD` is whatever branch the
+    source had checked out, a work branch whose unlanded commits must not
+    resolve. So follow the source and use ITS default-branch view, returned
+    as a commit id (the objects are shared). A source with no such view
+    returns `None`: the default branch is unknown here, which the caller
+    reports as NOT VERIFIED rather than answering against a stale branch.
     """
+    src = _local_origin(root, env)
+    if src is not None:
+        if _hops >= 4:
+            return None
+        up = default_branch_ref(src, env, _hops + 1)
+        if up is None or up == "HEAD":
+            return None
+        sha = _git(src, "rev-parse", "--verify", "--quiet", up + "^{commit}",
+                   env=env).stdout.strip()
+        if not sha or _git(root, "cat-file", "-e", sha + "^{commit}",
+                           env=env).returncode != 0:
+            return None
+        return sha
     for ref in ("refs/remotes/origin/HEAD", "refs/remotes/origin/main"):
-        r = subprocess.run(["git", "-C", ROOT, "rev-parse", "--verify", "--quiet",
-                            ref + "^{commit}"], capture_output=True, text=True)
+        r = _git(root, "rev-parse", "--verify", "--quiet", ref + "^{commit}", env=env)
         if r.returncode == 0:
             return ref
     return "HEAD"
@@ -159,7 +204,7 @@ def resolve(hashes, ref=None):
     """
     if not hashes:
         return set()
-    r = subprocess.run(["git", "-C", ROOT, "rev-list", ref or default_branch_ref()],
+    r = subprocess.run(["git", "-C", ROOT, "rev-list", ref or default_branch_ref() or "HEAD"],
                        capture_output=True, text=True)
     revs = r.stdout.split()
     reachable = {line[:9] for line in revs} | {line[:10] for line in revs}
@@ -190,10 +235,70 @@ def is_shallow():
     return git_history.is_truncated(ROOT)
 
 
+def local_clone_self_test():
+    """Issue 2477's negative control, on repositories this test builds.
+
+    A source whose LOCAL `main` is stale and whose `origin/main` is current,
+    cloned `--local --shared` and detached (the pristine checkout's shape):
+    the clone's default branch must be the source's `origin/main`, never its
+    local `main`. With the source's remote gone it must be unknown (`None`).
+    """
+    import tempfile
+
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+    from git_hook_env import nros_clear_inherited_git_env
+
+    env = nros_clear_inherited_git_env(dict(os.environ))
+    env.update(GIT_AUTHOR_NAME="selftest", GIT_AUTHOR_EMAIL="selftest@invalid",
+               GIT_COMMITTER_NAME="selftest", GIT_COMMITTER_EMAIL="selftest@invalid",
+               GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+    bad = 0
+    with tempfile.TemporaryDirectory() as d:
+        src = os.path.join(d, "source")
+        clone = os.path.join(d, "clone")
+
+        def run(*cmd):
+            subprocess.run(cmd, capture_output=True, text=True, env=env, check=True)
+
+        def tip(repo):
+            return _git(repo, "rev-parse", "HEAD", env=env).stdout.strip()
+
+        try:
+            run("git", "init", "-q", "-b", "main", src)
+            run("git", "-C", src, "commit", "-q", "--allow-empty", "-m", "old")
+            old = tip(src)
+            run("git", "-C", src, "commit", "-q", "--allow-empty", "-m", "landed")
+            landed = tip(src)
+            run("git", "-C", src, "remote", "add", "origin", "https://example.invalid/r.git")
+            run("git", "-C", src, "update-ref", "refs/remotes/origin/main", landed)
+            run("git", "-C", src, "checkout", "-q", "--detach", landed)
+            run("git", "-C", src, "update-ref", "refs/heads/main", old)
+            run("git", "clone", "-q", "--local", "--shared", "--no-checkout", src, clone)
+            run("git", "-C", clone, "checkout", "-q", "--detach", landed)
+        except subprocess.CalledProcessError as e:
+            print(f"  self-test FAIL: could not build the local-clone fixture: {e.stderr}")
+            return 1
+
+        got = default_branch_ref(clone, env)
+        if got != landed:
+            print(f"  self-test FAIL: a local clone's default branch is {got!r}, "
+                  f"want the source's origin/main {landed[:9]} (issue 2477: "
+                  f"never the source's stale local main {old[:9]})")
+            bad += 1
+        run("git", "-C", src, "remote", "remove", "origin")
+        got = default_branch_ref(clone, env)
+        if got is not None:
+            print(f"  self-test FAIL: a local clone whose source has no upstream "
+                  f"resolved its default branch to {got!r}; want None (NOT VERIFIED)")
+            bad += 1
+    return bad
+
+
 def main():
+    base = default_branch_ref()
     if "--self-test" in sys.argv:
-        return self_test()
-    if self_test() != 0:
+        return self_test(base or "HEAD")
+    if self_test(base or "HEAD") != 0:
         return 1
 
     if is_shallow():
@@ -201,6 +306,12 @@ def main():
         # the recipe hands it to `nros_check_skip`.
         print("shallow clone — `git cat-file` cannot tell a dead commit from "
               "an unfetched one (git fetch --unshallow)")
+        return 78
+
+    if base is None:
+        # rc 78: NOT VERIFIED (issue 2477), reason on stdout for the ledger.
+        print("origin is a local clone whose source has no origin/main -- the "
+              "default branch is unknown here (git fetch origin in the source)")
         return 78
 
     files = tracked_markdown()
@@ -213,7 +324,7 @@ def main():
         return 1
 
     hashes = sorted(found)
-    live = resolve(hashes)
+    live = resolve(hashes, ref=base)
     baseline = read_baseline()
     dangling = [h for h in hashes if h not in live]
 
@@ -268,13 +379,14 @@ def main():
     return 0
 
 
-def self_test():
-    """Prove the gate can fail, on synthetic input rather than on the tree."""
-    import tempfile
+def self_test(base):
+    """Prove the gate can fail, on synthetic input rather than on the tree.
 
-    # The default branch's tip, not HEAD: on a work branch or a PR's merge
-    # commit HEAD is not landed, and issue 1205's rule says it must not resolve.
-    base = default_branch_ref()
+    `base` is the default branch's tip, not HEAD: on a work branch or a PR's
+    merge commit HEAD is not landed, and issue 1205's rule says it must not
+    resolve. (`HEAD` only when the default branch is unknown here.)
+    """
+    import tempfile
     real = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short=9", base],
                           capture_output=True, text=True).stdout.strip()[:9]
     real10 = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short=10", base],
@@ -329,7 +441,7 @@ def self_test():
                 for n, line in enumerate(fh.read().split("\n"), 1):
                     for m in CITATION.finditer(line):
                         found.setdefault(m.group(1), []).append(("doc.md", n))
-            got_fail = bool([h for h in found if h not in resolve(sorted(found))])
+            got_fail = bool([h for h in found if h not in resolve(sorted(found), ref=base)])
             if got_fail != want_fail:
                 print(f"  self-test FAIL: {name} -> fails={got_fail}, "
                       f"want {want_fail}")
@@ -356,6 +468,8 @@ def self_test():
         if set(entries) != {dead}:
             print(f"  self-test FAIL: baseline parse -> {sorted(entries)}")
             bad += 1
+
+    bad += local_clone_self_test()
 
     if bad:
         print(f"check-doc-commit-citations self-test: {bad} case(s) FAILED")
