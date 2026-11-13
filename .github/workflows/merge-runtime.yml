@@ -261,6 +261,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: merge-runtime-${{ inputs.lane || 'merge' }}-${{ matrix.board }}-fixture-logs
-          path: test-logs/fixtures/
+          # The BUILD's logs, not only the run's: `test-logs/fixtures/` is
+          # what tests write, and on a shard whose fixture build fails it is
+          # empty. `build-test-fixtures` writes one log per stage under
+          # `tmp/build-test-fixtures-<stamp>/` and the Zephyr driver one per
+          # west leaf; without them a failed leaf names itself and nothing
+          # more (run 43420012895 uploaded no artifact at all).
+          path: |
+            test-logs/fixtures/
+            tmp/build-test-fixtures-*/
+            build/zephyr-fixture-make-driver/logs/
+            build/zephyr-fixtures/*.log
           if-no-files-found: ignore
           retention-days: 7
