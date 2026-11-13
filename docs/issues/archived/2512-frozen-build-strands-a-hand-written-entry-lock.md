@@ -1,7 +1,7 @@
 ---
 id: 2512
 title: "A dependency bump on main strands the untracked lock of a hand-written entry, and `nros build --offline` refuses it without saying to delete or update it"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [cli, build, cargo, testing]
@@ -61,10 +61,36 @@ user does not pass, and names neither of the two real remedies:
 
 Deleting the untracked lock clears it: the next build re-seeds it.
 
-## Fix direction (not done here)
+## Fix (2026-11-14)
 
-- Either re-seed or realign an untracked, pin-set-seeded lock before a
-  `--frozen` build (the pin-set comparison phase-485 W4 describes for
-  seeded leaf locks),
-- or catch cargo's refusal and say which lock it is, that it is
-  untracked, and to delete it or run `nros update`.
+Two halves, split on the one question that decides whether `--frozen`
+protects anything: is the lock a promise?
+
+- **A lock is a promise exactly when it is tracked.** In a checkout that is
+  a `[rust] locked_roots` row of the index (RFC-0104 D3). Every other lock
+  in a checkout was seeded from the pin set by an earlier build: it is build
+  output. `nros build` now treats such a lock like a generated entry's
+  (`lock_is_seeded_output` in `cmd/build.rs`). It runs the prepare step,
+  `cargo update --workspace` (`--offline` when the build is), before the
+  `--frozen` build on the workspace cargo road, where the repro's entry
+  builds. That moves only what the manifests no longer accept, and keeps
+  every other resolution. A standalone leaf is left as it was: `nros
+  configure` already seeds and prunes its lock (ruling R10), and a test
+  holds that a configured leaf gets no second prune. A stale leaf lock gets
+  the refusal below.
+- **A tracked lock, and any lock outside a checkout, is left alone.**
+  `--frozen` still refuses to move it. When a `--frozen` cargo build fails,
+  `nros build` asks `cargo metadata --locked --offline` with the build's own
+  manifest, settings and environment whether the lock is the cause. If it
+  is, it prints which lock no longer matches its manifests and the two
+  remedies: `nros update` (or `cargo update --workspace`) to keep it, or
+  delete it to re-seed it.
+
+Measured on the repro, with the lock edited back to `v0.3.14`:
+
+- The pre-fix CLI fails with cargo's refusal alone.
+- With the fix, the untracked lock is re-resolved offline (`Removing …
+  v0.3.14` / `Adding … v0.3.15`, five crates) and the build succeeds.
+- With the same lock listed as a locked root, the build still fails, the
+  lock is untouched (still `v0.3.14`), and the new refusal names it and both
+  remedies.

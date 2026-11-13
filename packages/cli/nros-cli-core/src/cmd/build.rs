@@ -1737,6 +1737,11 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // refused to add the entry's path packages.
                 let had_lock = lock_names_package(&manifest_dir);
                 crate::orchestration::registry_pins::seed(&manifest_dir, Some(nros_root))?;
+                // Issue 2512 — a hand-written entry's lock in a checkout that
+                // no `[rust] locked_roots` row tracks is seeded build output
+                // too, so a dependency that moved under it (a git tag, a pin
+                // bump) is resolved here rather than refused by `--frozen`.
+                let lock_is_ours = lock_is_ours || lock_is_seeded_output(&manifest_dir, nros_root);
                 if lock_is_ours || !had_lock {
                     let mut u = vec![
                         "update".to_string(),
@@ -4011,6 +4016,9 @@ fn perform(hand: &Handoff) -> Result<()> {
     #[cfg(not(unix))]
     let signal: Option<i32> = None;
     let code = st.code().or(signal.map(|s| 128 + s)).unwrap_or(1);
+    if let Some(refusal) = stale_lock_refusal(hand) {
+        eprintln!("{refusal}");
+    }
     Err(ChildExit {
         code,
         shown: hand.display(),
@@ -9349,6 +9357,100 @@ fn run_entry_root_check(er: &crate::builder::materialize::EntryRoot) -> Result<(
 /// its own root is a seed from the pin set no resolve has touched (issue
 /// 2451). A lock listing no package at all, or one cargo cannot parse, is
 /// left alone as the user's.
+/// Issue 2512 — is `dir`'s `Cargo.lock` seeded BUILD OUTPUT rather than a
+/// promise? It is when `nano_ros_root` is a checkout, `dir` is inside it, and
+/// no `[rust] locked_roots` row of the index names `dir` (a lock is tracked
+/// exactly when its directory is a locked root, RFC-0104 D3). Such a lock was
+/// seeded from the pin set by an earlier build, so re-resolving it breaks no
+/// promise; `--frozen` still guards every lock somebody committed, and every
+/// lock outside a checkout.
+fn lock_is_seeded_output(dir: &Path, nano_ros_root: &Path) -> bool {
+    if !crate::orchestration::nano_ros_root::is_checkout(nano_ros_root)
+        || !dir.join("Cargo.lock").is_file()
+    {
+        return false;
+    }
+    let canon = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let (dir, root) = (canon(dir), canon(nano_ros_root));
+    let Ok(rel) = dir.strip_prefix(&root) else {
+        return false;
+    };
+    let Ok(index) =
+        crate::orchestration::sdk_index::SdkIndex::load(&root.join("nros-sdk-index.toml"))
+    else {
+        return false;
+    };
+    !is_locked_root(rel, &index.rust.locked_roots)
+}
+
+/// Is `rel` (relative to the index) one of the index's `[rust] locked_roots`?
+fn is_locked_root(rel: &Path, locked_roots: &[String]) -> bool {
+    locked_roots
+        .iter()
+        .any(|r| Path::new(r.trim_end_matches('/')) == rel)
+}
+
+/// Issue 2512 — after a `--frozen` cargo build failed: is it because the lock
+/// no longer matches its manifests? Asked once, after the failure, with the
+/// build's own manifest, settings and environment (`cargo metadata --locked
+/// --offline` resolves without building). `Some(refusal)` names the lock and
+/// the remedies; cargo's own text only suggests dropping a flag the user did
+/// not pass.
+fn stale_lock_refusal(hand: &Handoff) -> Option<String> {
+    let is_cargo_build = Path::new(&hand.program).file_name()? == "cargo"
+        && hand.args.first().is_some_and(|a| a == "build")
+        && hand.args.iter().any(|a| a == "--frozen");
+    if !is_cargo_build {
+        return None;
+    }
+    let mut check = vec![
+        std::ffi::OsString::from("metadata"),
+        "--format-version".into(),
+        "1".into(),
+        "--locked".into(),
+        "--offline".into(),
+    ];
+    let mut manifest = None;
+    let mut it = hand.args.iter();
+    while let Some(a) = it.next() {
+        if a == "--manifest-path" || a == "--config" {
+            let v = it.next()?;
+            if a == "--manifest-path" {
+                manifest = Some(PathBuf::from(v));
+            }
+            check.push(a.clone());
+            check.push(v.clone());
+        }
+    }
+    let manifest = manifest?;
+    let mut probe = Handoff::new(hand.program.clone(), check);
+    probe.cwd = hand.cwd.clone();
+    probe.env = hand.env.clone();
+    let out = probe
+        .command()
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output()
+        .ok()?;
+    let err = String::from_utf8_lossy(&out.stderr);
+    if out.status.success() || !err.contains("cannot update the lock file") {
+        return None;
+    }
+    let lock = hand
+        .cwd
+        .as_deref()
+        .map_or_else(|| manifest.clone(), |d| d.join(&manifest))
+        .with_file_name("Cargo.lock");
+    Some(format!(
+        "nros build: {} no longer matches its manifests: a dependency it names moved \
+         (a git tag, a version requirement or a pin-set bump), and an offline build \
+         (`--frozen`) never moves a lock. If you keep this lock, move it on purpose with \
+         `nros update` (or `cargo update --workspace` beside it). If you never meant to \
+         keep it, delete it; the next `nros build` seeds a fresh one from the pin set.",
+        lock.display()
+    ))
+}
+
 fn lock_names_package(manifest_dir: &Path) -> bool {
     let Ok(text) = std::fs::read_to_string(manifest_dir.join("Cargo.lock")) else {
         return false;
@@ -9418,7 +9520,41 @@ fn with_rust_channel(h: Handoff, channel: Option<&str>) -> Handoff {
 }
 #[cfg(test)]
 mod lock_names_package_tests {
-    use super::lock_names_package;
+    use super::{is_locked_root, lock_is_seeded_output, lock_names_package};
+    use std::path::Path;
+
+    /// Issue 2512 — a tracked lock (a `[rust] locked_roots` row) is a promise;
+    /// any other lock in a checkout is seeded build output.
+    #[test]
+    fn only_a_locked_root_is_a_promise() {
+        let roots = vec!["packages/cli".to_string(), "packages/core/x/".to_string()];
+        assert!(is_locked_root(Path::new("packages/cli"), &roots));
+        assert!(is_locked_root(Path::new("packages/core/x"), &roots));
+        assert!(!is_locked_root(
+            Path::new("packages/testing/nros-tests/bins/a/src/a"),
+            &roots
+        ));
+        assert!(!is_locked_root(Path::new("packages"), &roots));
+    }
+
+    /// A lock outside a checkout is the user's, whatever it holds; so is a
+    /// directory with no lock at all (nothing to re-resolve).
+    #[test]
+    fn outside_a_checkout_no_lock_is_build_output() {
+        let root = tempfile::tempdir().unwrap();
+        let leaf = root.path().join("leaf");
+        std::fs::create_dir_all(&leaf).unwrap();
+        std::fs::write(leaf.join("Cargo.lock"), "version = 4\n").unwrap();
+        assert!(
+            !lock_is_seeded_output(&leaf, root.path()),
+            "no .git: not a checkout"
+        );
+        let here = nros_build_paths::repo_root();
+        assert!(
+            !lock_is_seeded_output(&here.join("packages/cli/no-such-dir"), &here),
+            "no lock"
+        );
+    }
 
     /// A seed from the pin set names only registry crates; the lock cargo
     /// resolves names the root too. Only the second is a resolved lock the
