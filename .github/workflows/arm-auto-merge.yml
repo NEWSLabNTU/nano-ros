@@ -87,11 +87,42 @@
 # third-party PR has ever existed to test it. It is written to fail CLOSED for
 # that reason -- an unrecognised association is not armed.
 
+# ARMED IS NOT ENQUEUED WHEN THIS WORKFLOW ARMED IT
+#
+# Measured 2026-11-13 over the last 80 pull requests: auto-merge was enabled
+# 64 times by a user's own `gh pr merge --auto` and 22 times by this workflow.
+# For the first kind, GitHub put the pull request in the merge queue itself,
+# as that user, once `CI` went green. For the second kind it never did: 21
+# were enqueued later BY HAND, and the other one was still waiting. GitHub
+# does not act later on an auto-merge request a `GITHUB_TOKEN` made, the same
+# rule that stops a `GITHUB_TOKEN` event from starting a workflow.
+#
+# The token CAN enqueue directly. When this workflow arms a pull request that
+# is ALREADY clean, `gh pr merge --auto` enqueues it on the spot (#3696, 6 s
+# after arming, and its merge_group runs started normally). So the `enqueue`
+# job below waits for the moment arming alone misses: `gate` finishing green
+# for a pull request. If that pull request is armed, CLEAN and not queued, it
+# is enqueued, pinned to the commit `gate` judged, so a push in between is
+# never enqueued in its place. `workflow_dispatch` runs the same check over
+# every open pull request, as a backstop.
+#
+# Arming with a user's token instead (a PAT or an App secret) would make
+# GitHub do this itself. That is a new credential, so it is a maintainer's
+# call and is not done here.
+
 name: arm auto-merge
 
 on:
   pull_request_target:
     types: [opened, reopened, ready_for_review, synchronize]
+  # `workflows:` names the workflow by its `name:`, and `gate.yml` is `gate`.
+  # Only a workflow on the default branch is ever triggered by this event,
+  # and, like `pull_request_target`, it runs with the base repository's token
+  # and checks out nothing.
+  workflow_run:
+    workflows: [gate]
+    types: [completed]
+  workflow_dispatch:
 
 permissions:
   # Issue 1338 (second fault) -- `enablePullRequestAutoMerge` needs CONTENTS
@@ -105,7 +136,9 @@ permissions:
 
 concurrency:
   # One arm per PR; a burst of pushes does not need a queue of identical calls.
-  group: arm-auto-merge-${{ github.event.pull_request.number }}
+  # A `workflow_run` has no pull request number in its payload; its head
+  # commit stands in. A dispatch sweep never cancels anything else.
+  group: arm-auto-merge-${{ github.event.pull_request.number || github.event.workflow_run.head_sha || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -115,7 +148,8 @@ jobs:
     # the same statement for a PR that must not land on its own -- a spike, a
     # discussion, anything wanting a human at the end.
     if: >-
-      ${{ github.event.pull_request.draft == false
+      ${{ github.event_name == 'pull_request_target'
+          && github.event.pull_request.draft == false
           && !contains(github.event.pull_request.labels.*.name, 'no-auto-merge') }}
     runs-on: ubuntu-latest
     # Longest green run 0.1 min (n=40); floor 10.
@@ -222,3 +256,96 @@ jobs:
             # second, confusing signal beside the real `CI` one.
             echo "::warning::could not arm auto-merge on #$NUMBER"
           fi
+
+  enqueue:
+    name: enqueue an armed, clean pull request
+    # Only a green `gate` run for a pull request (a merge_group or push run of
+    # `gate` judges no pull request), or a dispatched sweep.
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch'
+          || (github.event_name == 'workflow_run'
+              && github.event.workflow_run.event == 'pull_request'
+              && github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    # A query and a mutation per pull request, plus at most a minute of
+    # waiting for GitHub to finish computing the merge state; floor 10.
+    timeout-minutes: 10
+    steps:
+      - name: Enqueue each armed, clean pull request that is not queued
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # Which pull requests to look at: the one(s) whose head `gate` just
+          # judged, or every open one for a dispatched sweep.
+          if [ -n "$HEAD_SHA" ]; then
+            if ! numbers="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" \
+                --jq '.[] | select(.state == "open") | .number')"; then
+              echo "::warning::could not list the pull requests for $HEAD_SHA"
+              exit 0
+            fi
+          else
+            if ! numbers="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open \
+                --limit 200 --json number --jq '.[].number')"; then
+              echo "::error::could not list open pull requests"
+              exit 1
+            fi
+          fi
+          [ -n "$numbers" ] || { echo "no open pull request to look at"; exit 0; }
+
+          owner="${GITHUB_REPOSITORY%/*}"
+          name="${GITHUB_REPOSITORY#*/}"
+          query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){id isDraft headRefOid isInMergeQueue mergeStateStatus autoMergeRequest{enabledAt}}}}'
+          for n in $numbers; do
+            # `mergeStateStatus` is computed lazily and reads UNKNOWN for a
+            # while after a check completes, so ask again a few times.
+            state=""
+            for _ in 1 2 3 4 5 6; do
+              if ! pr="$(gh api graphql -f query="$query" -f o="$owner" -f r="$name" -F n="$n" \
+                  --jq '.data.repository.pullRequest')"; then
+                echo "::warning::#$n: could not read its state"
+                continue 2
+              fi
+              state="$(jq -r '.mergeStateStatus' <<<"$pr")"
+              [ "$state" = UNKNOWN ] || break
+              sleep 10
+            done
+            id="$(jq -r '.id' <<<"$pr")"
+            head="$(jq -r '.headRefOid' <<<"$pr")"
+            armed="$(jq -r '.autoMergeRequest != null' <<<"$pr")"
+            queued="$(jq -r '.isInMergeQueue' <<<"$pr")"
+            draft="$(jq -r '.isDraft' <<<"$pr")"
+            echo "#$n: state=$state armed=$armed queued=$queued draft=$draft head=$head"
+
+            if [ "$armed" != true ] || [ "$queued" = true ] || [ "$draft" = true ]; then
+              echo "  nothing to do"
+              continue
+            fi
+            if [ -n "$HEAD_SHA" ] && [ "$head" != "$HEAD_SHA" ]; then
+              echo "  its head moved past the commit gate judged; that commit's own run decides"
+              continue
+            fi
+            if [ "$state" != CLEAN ]; then
+              echo "  not CLEAN, so not enqueued"
+              continue
+            fi
+
+            rc=0
+            gh api graphql \
+              -f query='mutation($id:ID!,$sha:GitObjectID!){enqueuePullRequest(input:{pullRequestId:$id,expectedHeadOid:$sha}){mergeQueueEntry{position}}}' \
+              -f id="$id" -f sha="$head" > /tmp/enqueue.log 2>&1 || rc=$?
+            sed 's/^/  /' /tmp/enqueue.log
+            if [ "$rc" -eq 0 ]; then
+              echo "  enqueued #$n"
+            elif grep -q 'Resource not accessible by integration' /tmp/enqueue.log; then
+              # As for arming (issue 1338): a permission refusal is this job
+              # unable to do its work for every pull request. Say so loudly.
+              echo "::error::arm-auto-merge lacks the token permission to enqueue #$n"
+              exit 1
+            else
+              # A race with a push, a conflict, or a human who enqueued it a
+              # moment earlier: a state to report, not a red mark on the PR.
+              echo "::warning::could not enqueue #$n"
+            fi
+          done
