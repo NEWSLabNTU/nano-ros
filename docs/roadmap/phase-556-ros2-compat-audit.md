@@ -139,7 +139,7 @@ integer range with a step.
 
 ### W2 — Parameter services
 
-- **Status:** IN PROGRESS. Plain: `declared_parameters_answer_ros2_param_as_stock_does`
+- **Status:** OPEN (in progress). Plain: `declared_parameters_answer_ros2_param_as_stock_does`
   (`param list`, `list --param-type`, `get`, `describe`, `dump`, an accepted
   `set` and its read-back, on declared parameters) and
   `first_node_serves_the_six_parameter_services_as_stock_does`. Expected-failure:

@@ -67,12 +67,3 @@
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
-packages/boards/nros-board-linux/src/lib.rs:2492
-packages/core/nros-log/src/lib.rs:2492
-packages/rmw/zenoh/zpico-sys/c/zpico/zpico.c:2482
-packages/rmw/zenoh/zpico-sys/c/zpico/zpico.c:2492
-packages/testing/nros-tests/src/fixtures/binaries/mod.rs:2492
-packages/testing/nros-tests/src/matrix.rs:2492
-packages/testing/nros-tests/src/output.rs:2492
-packages/testing/nros-tests/tests/hosted_pool_exhaustion_console.rs:2482
-packages/testing/nros-tests/tests/hosted_pool_exhaustion_console.rs:2492
