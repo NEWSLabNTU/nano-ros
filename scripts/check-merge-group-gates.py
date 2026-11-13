@@ -29,7 +29,11 @@ So for each gate in `MERGE_GATING` below this asserts, against `gate.yml`:
      `*_PART=<x>` variable) has, among the steps that run it on
      `merge_group`, the complement of every part it names: `zephyr` needs
      `no-zephyr` and the reverse. The parts are complements by construction,
-     so a missing side is a whole class of units nobody builds.
+     so a missing side is a whole class of units nobody builds. A part listed
+     in `DEFERRED_PARTS` is the one exception: a recorded decision moved it to
+     another event, so its complement is satisfied by a job that runs it on
+     THAT event, through `CI` with a `sibling` line naming it — and the part
+     must then not ALSO run on `merge_group`, or the record is stale.
 
 AUTHORED, deliberately: the list is a record of decisions, and there is nothing
 to derive a decision from. Each entry names the decision that put it here.
@@ -54,6 +58,16 @@ SHARD_WORKFLOWS = [GATE_YML, ROOT / ".github" / "workflows" / "host-tests.yml"]
 MERGE_GATING = {
     "template-copy-out": "issue 1453 — maintainer decision 2026-10-17: the FULL "
                          "set on merge_group, not on pull_request",
+}
+
+# (gate, part) -> (the event it runs on instead of merge_group, the decision).
+# A part here still runs SOMEWHERE through the required `CI`; it is the
+# merge-queue placement that was decided away, never the coverage.
+DEFERRED_PARTS = {
+    ("template-copy-out", "zephyr"): (
+        "schedule",
+        'user ruling 2026-11-13: "Do Zephyr template check daily" — the zephyr '
+        "part was the merge queue's critical path (median 37 min vs ~21)"),
 }
 
 EVENTS = ("pull_request", "merge_group", "push", "schedule", "workflow_dispatch")
@@ -145,6 +159,7 @@ def check(doc, text):
             continue
         heard = False
         parts = set()
+        deferred_heard = set()
         for jid, job, step in hosts:
             job_ev = _events_of(job.get("if"), wf_events)
             step_ev = _events_of(step.get("if"), job_ev) & job_ev
@@ -152,6 +167,20 @@ def check(doc, text):
             if "pull_request" in step_ev:
                 errs.append(f"{where} runs `{gate}` on pull_request — the decision is "
                             f"merge_group, not the PR lane ({why})")
+            for part in _parts_of(step):
+                deferred = DEFERRED_PARTS.get((gate, part))
+                if deferred is None:
+                    continue
+                ev, dwhy = deferred
+                if "merge_group" in step_ev:
+                    errs.append(f"{where} runs part `{part}` on merge_group, but DEFERRED_PARTS "
+                                f"moved it to {ev} ({dwhy}) — drop the record or the placement")
+                if ev in step_ev and not step.get("continue-on-error") and jid in needs:
+                    m = re.search(r"^\s*sibling\s+" + re.escape(jid)
+                                  + r'\s+"\$\{\{\s*needs\.' + re.escape(jid)
+                                  + r'\.result\s*\}\}"\s+"([^"]*)"', agg_text, re.M)
+                    if m and ev in m.group(1).split():
+                        deferred_heard.add(part)
             if "merge_group" not in step_ev:
                 continue
             if step.get("continue-on-error"):
@@ -180,7 +209,16 @@ def check(doc, text):
             heard = True
             parts.update(_parts_of(step))
         for p in sorted(parts):
-            if _complement(p) not in parts:
+            c = _complement(p)
+            if c not in parts and c in deferred_heard:
+                continue
+            if c not in parts and (gate, c) in DEFERRED_PARTS:
+                ev, dwhy = DEFERRED_PARTS[(gate, c)]
+                errs.append(f"`{gate}` part `{c}` is deferred to {ev} ({dwhy}), but no job "
+                            f"runs it on {ev} through `CI` with a `sibling` line naming {ev} — "
+                            f"its units are built by nobody")
+                continue
+            if c not in parts:
                 errs.append(f"`{gate}` runs part `{p}` on merge_group but no job runs part "
                             f"`{_complement(p)}` — that part's units are built by nobody ({why})")
         if not heard:
@@ -264,6 +302,15 @@ PARTED = SAMPLE.replace(
 )
 assert PARTED.count("_PART=") == 2 and "check-template-copy-out-zephyr.result" in PARTED
 
+# The 2026-11-13 ruling's shape: the zephyr part on the daily schedule.
+_Z = PARTED.index("  check-template-copy-out-zephyr:\n")
+DEFERRED = (PARTED[:_Z] + PARTED[_Z:].replace('["merge_group","workflow_dispatch"]',
+                                              '["schedule","workflow_dispatch"]', 2)).replace(
+    'sibling check-template-copy-out-zephyr "${{ needs.check-template-copy-out-zephyr.result }}" "merge_group workflow_dispatch"',
+    'sibling check-template-copy-out-zephyr "${{ needs.check-template-copy-out-zephyr.result }}" "schedule workflow_dispatch"',
+).replace("  merge_group:\n", "  merge_group:\n  schedule:\n")
+assert DEFERRED.count('["schedule","workflow_dispatch"]') == 2
+
 
 def selftest():
     def run(text):
@@ -292,11 +339,23 @@ def selftest():
         ("a shard dropped from the matrix", SHARDED.replace("shard: [1, 2, 3]", "shard: [1, 3]"), True),
         ("a fixed shard, no matrix", SHARDED.replace("${{ matrix.shard }}/3", "2/3"), True),
         ("the matrix shorter than the spec", SHARDED.replace("}}/3", "}}/4"), True),
-        ("split into both parts", PARTED, False),
+        # Both parts on merge_group was the placement before 2026-11-13; with
+        # the zephyr part recorded as deferred, it is a stale record now.
+        ("both parts on merge_group against the deferral record", PARTED, True),
         ("one part dropped",
          PARTED.replace("export NROS_TEMPLATE_COPY_OUT_PART=zephyr\n", ""), True),
         ("the complement renamed away",
          PARTED.replace("NROS_TEMPLATE_COPY_OUT_PART=no-zephyr", "NROS_TEMPLATE_COPY_OUT_PART=host"), True),
+        ("the zephyr part deferred to schedule, as ruled", DEFERRED, False),
+        ("the deferred part heard on no event",
+         DEFERRED.replace('"schedule workflow_dispatch"\n', '"workflow_dispatch"\n'), True),
+        ("the deferred part dropped from CI's needs",
+         DEFERRED.replace("      - check-template-copy-out-zephyr\n", ""), True),
+        ("the deferred part on merge_group AND schedule",
+         DEFERRED.replace('["schedule","workflow_dispatch"]', '["merge_group","schedule","workflow_dispatch"]'), True),
+        ("the no-zephyr part may not be deferred",
+         DEFERRED.replace("_PART=zephyr", "_PART=TMP").replace("_PART=no-zephyr", "_PART=zephyr")
+                 .replace("_PART=TMP", "_PART=no-zephyr"), True),
         ("a longer gate name is not this gate",
          SAMPLE.replace("just check template-copy-out", "just check template-copy-out-extra"), True),
     ]

@@ -289,6 +289,21 @@ or under 20 minutes per shard, it joins `CI`. If not, the three boards move to
 saying "every change". A smaller promise that is kept beats a larger one that
 has no job behind it.
 
+**Amended 2026-11-13 — the Zephyr template copy-out is a DAILY promise.**
+User ruling, verbatim: "Do Zephyr template check daily". The copy-out
+templates whose board takes the Zephyr road (the `zephyr` part of
+`just check template-copy-out`, issue 2219) are built once a day on
+`gate.yml`'s `schedule` and on dispatch, no longer on every merge group. The
+three `no-zephyr` shards stay on `merge_group`. So "every copy-out template is
+built before it merges" now holds for every road but Zephyr; a Zephyr
+template that breaks reaches `main` and the next daily run reports it, red,
+through `CI`. The same rule as above, applied to a gate rather than a board:
+the Zephyr part was the queue's critical path (median 37 min against ~21 for
+the next job, 12 merge groups measured), and a promise the queue could not
+afford per entry is lowered to one a daily job keeps.
+`check-merge-group-gates` records it as a deferred part and refuses the
+zephyr part on `merge_group`, or on no event `CI` hears.
+
 ## Constraints this rests on
 
 - **Multi-bringup Rust workspaces.** `nros configure` today generates no selection
