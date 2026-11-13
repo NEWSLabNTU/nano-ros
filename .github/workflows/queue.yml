@@ -106,7 +106,13 @@ jobs:
   l3:
     name: L3 (cross build + link)
     if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
-    runs-on: [self-hosted, linux, nros-sdk-zephyr, nros-big]
+    # `nros-queue` — the merge queue's own runners, which no scheduled lane can
+    # take (docs/development/multi-agent-ci-workflow.md, "The merge queue has
+    # its own runners"; `check-queue-runner-label`). runner-doctor holds that a
+    # runner carrying it also carries nros-sdk-zephyr + nros-big, which is what
+    # this job builds with. runner-watchdog.yml cancels this run if no runner
+    # takes the job within 30 min, so a missing runner cannot hold `queue-l3`.
+    runs-on: [self-hosted, linux, nros-queue]
     # Longest successful run measured 2026-11-12: 31 min (n=15). Twice that, so a
     # stalled runner fails fast instead of holding the merge queue for 6 h.
     timeout-minutes: 65
@@ -180,7 +186,7 @@ jobs:
       # A genuinely mislabeled runner still fails here, and `setup` would have
       # failed on it first.
       - name: Verify this runner's labels are true
-        run: ./scripts/ci/runner-doctor.sh nros-sdk-zephyr,nros-big
+        run: ./scripts/ci/runner-doctor.sh nros-queue,nros-sdk-zephyr,nros-big
 
       # `ci matrix build` — the (breadth, depth) pair, not a lane letter.
       # phase-410 W4: `l3` survives as the implementation; this spelling says
