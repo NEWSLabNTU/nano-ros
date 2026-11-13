@@ -1113,3 +1113,76 @@ fn the_tier2_build_carries_every_pinned_cell_leaf() {
         }
     }
 }
+
+/// phase-535 W10 (issue 2475 defect 4) — a lane's NARROWED codegen covers its
+/// fixture build. `_codegen <lane>` generates only the codegen units
+/// `scripts/lib/codegen_scope.py` selects for the lane; a unit it skipped that
+/// a built row needs is a fresh-runner build failure the developer host (with
+/// every unit's `generated/` lying around) never sees.
+///
+/// The comparison lives in `scripts/check-codegen-scope-covers-lane.py`, which
+/// enumerates the build through the build's OWN commands rather than through
+/// the selection it checks, and also follows `path =` deps into another unit's
+/// output. Every coordinate lane, whole and as each merge-board shard.
+/// MEMBERSHIP, mutation-tested: its `--self-test` drops a needed unit from a
+/// real selection and must report it.
+#[test]
+fn every_lane_codegen_scope_covers_its_fixture_build() {
+    let repo = nros_tests::project_root();
+    let check = "scripts/check-codegen-scope-covers-lane.py";
+    let shard = |lane: &str, module: Option<&str>| -> String {
+        let mut cmd = Command::new(lane_coords_bin());
+        cmd.arg(lane).current_dir(&repo);
+        if let Some(m) = module {
+            cmd.args(["--module", m]);
+        }
+        let out = cmd.output().expect("run prebuilt lane-coords");
+        assert!(
+            out.status.success(),
+            "lane-coords {lane} {module:?} failed:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let path = tmpdir().join(format!("codegen-{lane}-{}.txt", module.unwrap_or("all")));
+        std::fs::write(&path, &out.stdout).expect("write coords");
+        path.display().to_string()
+    };
+    let mut cases: Vec<(String, Option<&str>)> = ["tier1", "tier2", "tier2-nightly", "merge"]
+        .iter()
+        .map(|l| (l.to_string(), None))
+        .collect();
+    for lane in ["tier1", "merge"] {
+        for m in ["linux", "threadx_linux", "zephyr"] {
+            cases.push((lane.to_string(), Some(m)));
+        }
+    }
+    for (lane, module) in &cases {
+        let coords = shard(lane, *module);
+        let out = Command::new("python3")
+            .arg(check)
+            .arg(&coords)
+            .current_dir(&repo)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("run the codegen-scope coverage check");
+        assert!(
+            out.status.success(),
+            "{lane} {module:?}: the lane's codegen scope misses part of its fixture \
+             build:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    let coords = shard("merge", Some("zephyr"));
+    let out = Command::new("python3")
+        .args([check, "--self-test"])
+        .arg(&coords)
+        .current_dir(&repo)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("run the coverage self-test");
+    assert!(
+        out.status.success(),
+        "the coverage check cannot fail (its mutation went unreported):\n{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

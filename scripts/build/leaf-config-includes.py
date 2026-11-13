@@ -64,6 +64,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import codegen_scope  # noqa: E402
 
 # `include` is a top-level key, so it precedes the first table header. Scanning
 # only that prefix keeps a `[target.…]` value that happens to contain the word
@@ -160,6 +162,22 @@ def main() -> int:
         ["git", "ls-files", "examples/**/Cargo.toml"],
         cwd=ROOT, capture_output=True, text=True, check=True,
     ).stdout.split()
+    # phase-535 W10 — when a lane narrowed the codegen
+    # (`NROS_CODEGEN_COORDS`), check only the manifests inside the units it
+    # generated: the same selection `regenerate-bindings.sh` read, so a leaf
+    # the lane never generates is not refused for lacking its `generated/`.
+    # A path dep from an in-scope manifest into an OUT-of-scope tree is still
+    # checked, and still refused — that is exactly the gap to report.
+    units, narrowed = codegen_scope.scoped_units()
+    if narrowed:
+        unit_dirs = [d for _, d in units]
+        all_manifests = len(manifests)
+        manifests = [
+            m for m in manifests
+            if any(m.startswith(u + "/") for u in unit_dirs)
+        ]
+        print(f"note: {len(manifests)} of {all_manifests} example manifests "
+              "checked: the lane narrowed codegen to its own fixture rows.")
     for rel in manifests:
         man = ROOT / rel
         try:

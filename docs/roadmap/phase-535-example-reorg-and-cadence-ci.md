@@ -898,6 +898,78 @@ templates are not a board row.
   paths), and `book/src/reference/support-status.md`.
 - One pointer line in CLAUDE.md.
 
+### W10 — A lane builds only its own codegen
+
+- **Status:** OPEN (acceptance written 2026-11-13, before work started;
+  issue 2475 defect 4. Items 1 and 2 implemented; the before/after dispatch
+  is open.)
+
+`just build <lane>` reaches `build-test-fixtures`, whose prerequisites were
+the same for every lane:
+
+- `check::fast` (issue 0677: static gates before an expensive build), about
+  13.5 min on a 4-vCPU hosted runner;
+- `_codegen` = `setup-launch-resolve` + `generate-bindings` +
+  `_require-leaf-includes`. `scripts/regenerate-bindings.sh` generated EVERY
+  codegen unit: 199 of them (88 colcon roots, 25 standalone examples, 86
+  test-bin packages), whatever the lane. Measured inside `just build tier1`
+  on run 43390508641: about 38-40 min before the first fixture.
+
+A one-board shard (`NROS_LANE_MODULE`) paid for the whole tree. The
+coordinates already say which rows a shard builds, so the codegen set is
+derived from the same predicate instead of from "every `package.xml` git
+tracks".
+
+**Work:**
+
+1. **(done)** One discovery of the units, `scripts/lib/codegen_scope.py`,
+   read by both `regenerate-bindings.sh` and the `_require-leaf-includes`
+   guard (`leaf-config-includes.py`), so the guard checks exactly what was
+   generated. With `NROS_CODEGEN_COORDS` unset it selects every unit: the
+   `lane=all` unit set is identical to the old script's (diffed with the
+   generators stubbed: same 88 workspaces and 111 per-package generations;
+   only the order changed, `sort -u` vs code-point order).
+2. **(done)** `_codegen <lane>`, `generate-bindings <lane>` and
+   `_require-leaf-includes <lane>` take the lane; `nros_codegen_scope_export`
+   (`scripts/build/fixture-lane.sh`) points `NROS_CODEGEN_COORDS` at the
+   lane's coordinate file (shard-aware) and clears it for `all`/`linux`. A
+   unit is kept when it is nested, either way, with a row dir from
+   `fixtures-manifest.py lane-dirs`: `matches_filters` over both builder
+   families, the unskippable rows `--coords-from` keeps, and every
+   compile-check row (`build-compile-check-fixtures` runs for every lane).
+   Selected units per shard, of 199:
+
+   | lane | linux | threadx_linux | zephyr | whole lane |
+   | --- | --- | --- | --- | --- |
+   | tier1 | 113 | 19 | 26 | 118 |
+   | merge | 104 | 31 | 33 | 120 |
+
+   The linux shard stays large because its rows cover every linux language
+   (56 of 88 colcon roots). The other two drop by about 85 %.
+3. **`check::fast` in front of a shard: kept** (coordinator, 2026-11-13).
+   Revisit only after the before/after numbers: if a shard is still too slow
+   with codegen cut, propose skipping the edge only when a green gate run
+   exists for the same SHA, with the measured saving. Never unconditionally.
+
+**Acceptance:**
+
+- **(met)** A coverage test, `lane_build_covers_run::
+  every_lane_codegen_scope_covers_its_fixture_build`, over tier1, tier2,
+  tier2-nightly and merge, whole and per merge-board shard, through
+  `scripts/check-codegen-scope-covers-lane.py`. It enumerates the build with
+  the build's own commands (`list`, `list-workspaces`, `west-leaves`,
+  `list-compile-checks`), not with `lane-dirs`, and also refuses a `path =`
+  dep from an in-scope manifest into a skipped unit's `generated/` (0
+  cross-unit deps today, so that arm is a forward guard). Membership, not
+  counts. Mutations: its `--self-test` drops a needed unit and must report
+  it; removing the compile-check arm from `lane-dirs` turned the test red
+  (measured).
+- **(met)** `lane=all` regenerates the same units as before (above).
+- **(open)** A `merge-runtime.yml` dispatch: each shard's time from the start
+  of `just build <lane>` to its first fixture command, before and after, per
+  shard, recorded here.
+- No user-visible message names an issue or phase id (ruling 2026-11-12).
+
 ## Acceptance (phase)
 
 - The ratchet floor from W1 holds at every merge of this phase.

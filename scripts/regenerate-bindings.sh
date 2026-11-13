@@ -34,72 +34,47 @@ echo "Refreshing Rust bindings..."
 # Bindings are build-time + ROS-version-dependent, so `generated/` is gitignored
 # (content depends on the ROS msg pkg versions on the build host) — never shipped.
 
-# --- discover MULTI-PACKAGE workspace roots (colcon layout) ---
-# The distinction is LAYOUT, not `[workspace]`: standalone copy-out examples ALSO
-# carry an (empty) `[workspace]` table to stop cargo walking up to the repo root
-# (CLAUDE.md "Examples are standalone copy-out projects; no workspace walk-up"). A
-# multi-package workspace is a dir whose `src/<member>/package.xml` exists (the
-# colcon shape `nros configure` shares one root `generated/` across) — exactly the
-# `ws.rs` colcon heuristic. A standalone example carries its `package.xml` at the
-# cargo root (no `src/<member>/package.xml`) and owns a per-package `generated/`.
+# --- the codegen UNITS: one discovery, `scripts/lib/codegen_scope.py` ---
+# Three kinds, each generated its own way below:
+#
+#   workspace   a MULTI-PACKAGE colcon root (`<root>/src/<member>/package.xml`),
+#               ONE shared `generated/` via `nros dev bindings`. The distinction
+#               is LAYOUT, not `[workspace]` (a standalone example also carries
+#               an empty `[workspace]` to stop cargo walking up), and a colcon
+#               root needs no root `Cargo.toml` (every C/C++ workspace and six
+#               templates have none; generating them per-leaf left fossils that
+#               masked a wrong dep spelling).
+#   standalone  an example `package.xml` dir outside every colcon root, with a
+#               per-package `generated/`.
+#   testbin     nros-bench / nros-tests bins / nros-smoke packages.
+#
+# Discovery reads `git ls-files`, never `find`: the pruned `find` this once was
+# took 7m36s on a built tree to return what the index returns in 0.8s (a
+# tracked file is an index lookup; a brand-new `package.xml` must be `git add`ed
+# before it is generated, which is a visible failure, not a silent one).
+#
+# phase-535 W10 (issue 2475 defect 4): `NROS_CODEGEN_COORDS=<lane coords file>`
+# narrows the units to those the lane's fixture rows live in, so a one-board
+# shard stops generating the whole tree. `just build <lane>` sets it through
+# `_codegen <lane>`; unset (lane `all`, a bare `just generate-bindings`) means
+# every unit, as before. The `_require-leaf-includes` guard reads the SAME
+# selection, so it checks exactly what was generated here.
 ws_roots=()
-while IFS= read -r member_pxml; do
-    member_dir="$(dirname "$member_pxml")"  # <root>/src/<member>
-    src_dir="$(dirname "$member_dir")"       # <root>/src
-    [ "$(basename "$src_dir")" = "src" ] || continue
-    root="$(dirname "$src_dir")"             # <root>
-    # NO `[ -f "$root/Cargo.toml" ]` test. The comment above already says the
-    # distinction is LAYOUT and names ws.rs's rule — "colcon-mode iff <root>/src/
-    # exists AND at least one immediate subdir contains package.xml" — but the
-    # code carried a second, narrower rule, and 19 colcon roots have no root
-    # cargo manifest (every C/C++ workspace, six templates). Those fell through
-    # to the standalone loop below, which generated a PER-LEAF `generated/` that
-    # `nros configure` neither writes nor reads: the fossils dated 2026-05-24 under
-    # `templates/{multi-package-workspace,local-msg-package}` came from exactly
-    # this path, and they masked the wrong dep spelling by making it resolve on
-    # a developer tree while failing on a fresh clone.
-    ws_roots+=("$(cd "$root" && pwd)")
-# `git ls-files`, NOT `find`. A `package.xml` is tracked, so this is an index
-# lookup rather than a filesystem walk, and the difference is not marginal:
-# measured on a built tree, the pruned `find` this replaces took **7m36s** to
-# return the same 232 paths `git ls-files` returns in **0.8s**. It burned 0%
-# CPU the whole time — pure I/O starvation, and this script ran that scan three
-# times, which was the bulk of a two-hour fixture build.
-#
-# Pruning did not save it. `find` must still stat every directory on the way to
-# deciding whether to prune it, so `-prune` cuts the descent but not the walk.
-# The comment that used to sit here claimed pruning made the scan fast; it did
-# not, and that claim is why the cost went unexamined for so long.
-#
-# Rule: never `find` for a file git tracks. Artifact scans (*.o, built ELFs,
-# `target/` dirs being deleted) still need `find` — git cannot see untracked
-# files — but those must be scoped to a build dir, not to `examples/`.
-#
-# ONE behaviour change, deliberate: a brand-new example whose `package.xml` is
-# not yet `git add`ed is no longer discovered. That is a visible failure (its
-# bindings simply do not generate) rather than a silent one, and staging a new
-# file before building it is already how everything else in this repo behaves.
-# It also drops the untracked `package.xml` COPIES that live under staged
-# fixture dirs, which the old scan reached whenever a `build*` prune missed
-# them.
-# Two depths: `examples/<ws>/src/<member>` and `examples/templates/<t>/src/<member>`.
-# The single-depth glob silently skipped every template workspace.
-done < <(git ls-files 'examples/*/src/*/package.xml' 'examples/*/*/src/*/package.xml')
-# de-duplicate (one entry per workspace, not per member)
-if [ "${#ws_roots[@]}" -gt 0 ]; then
-    mapfile -t ws_roots < <(printf '%s\n' "${ws_roots[@]}" | sort -u)
+standalone_dirs=()
+testbin_dirs=()
+if ! units="$(python3 scripts/lib/codegen_scope.py units </dev/null)"; then
+    echo "regenerate-bindings: could not list the codegen units" >&2
+    exit 1
 fi
-
-is_workspace_member() {
-    # true iff $1 is at or below any discovered workspace root
-    local dir
-    dir="$(cd "$1" && pwd)"
-    local root
-    for root in "${ws_roots[@]}"; do
-        case "$dir/" in "$root"/*) return 0 ;; esac
-    done
-    return 1
-}
+while IFS=$'\t' read -r kind dir; do
+    [ -n "$kind" ] || continue
+    case "$kind" in
+        workspace) ws_roots+=("$PWD/$dir") ;;
+        standalone) standalone_dirs+=("$dir") ;;
+        testbin) testbin_dirs+=("$dir") ;;
+        *) echo "regenerate-bindings: unknown unit kind '$kind'" >&2; exit 1 ;;
+    esac
+done <<< "$units"
 
 # --- 1. workspaces: ONE shared `generated/` at the root via `nros configure` ---
 for root in "${ws_roots[@]}"; do
@@ -132,19 +107,13 @@ for root in "${ws_roots[@]}"; do
     "$NROS" dev bindings --no-provider-index "$root" >/dev/null
 done
 
-# --- 2. standalone examples: per-package `generated/` (skip workspace members) ---
-for pkg in $(git ls-files 'examples/**/package.xml' | sort); do
-    dir="$(dirname "$pkg")"
-    is_workspace_member "$dir" && continue
+# --- 2. standalone examples: per-package `generated/` (workspace members excluded) ---
+for dir in "${standalone_dirs[@]}"; do
     nros_generate_rust_if_needed "$dir" "$NROS"
 done
 
 # --- 3. standalone test-bin pkgs (nros-bench / nros-tests/bins / nros-smoke) ---
-for pkg in $(git ls-files \
-        'packages/testing/nros-bench/**/package.xml' \
-        'packages/testing/nros-tests/bins/**/package.xml' \
-        'packages/testing/nros-smoke/**/package.xml' | sort); do
-    dir="$(dirname "$pkg")"
+for dir in "${testbin_dirs[@]}"; do
     nros_generate_rust_if_needed "$dir" "$NROS"
 done
 

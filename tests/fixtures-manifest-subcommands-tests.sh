@@ -40,8 +40,12 @@ choices="${choices//,/ }"
 
 # Arguments for the subcommands that refuse to run without one.
 first_id="$(grep -m1 -oE '^id = "[^"]+"' "$ROOT/examples/fixtures.toml" | cut -d'"' -f2)"
+# `lane-dirs` refuses without a lane's coordinates (it names a scope); give it
+# one real coordinate.
+printf 'linux,rust,zenoh\n' > "$WORK/coords"
 declare -A ARGS=(
     [describe-id]="--id $first_id"
+    [lane-dirs]="--coords-from $WORK/coords"
 )
 
 fail=0

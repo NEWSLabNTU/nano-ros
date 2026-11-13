@@ -159,6 +159,7 @@ key() {
         nano_rosConfig.cmake
         "$probe_list"
         scripts/regenerate-bindings.sh
+        scripts/lib/codegen_scope.py
         scripts/build/generate-rust-incremental.sh
         scripts/build/cargo.sh
         scripts/lib/checkout-paths.sh

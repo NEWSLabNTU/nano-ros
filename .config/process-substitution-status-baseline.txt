@@ -76,7 +76,6 @@ scripts/lib/prepush-log.sh	1
 scripts/lib/zephyr-workspace.sh	2
 scripts/nros-reconfigure-stale.sh	1
 scripts/qemu/build-zenoh-pico.sh	2
-scripts/regenerate-bindings.sh	1
 scripts/reserve-claim.sh	2
 scripts/reserve-issue-id.sh	2
 scripts/reserve-phase-id.sh	2

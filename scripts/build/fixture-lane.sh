@@ -179,6 +179,22 @@ _nros_tests_bin() {
     printf '%s' "$best"
 }
 
+# phase-535 W10 (issue 2475 defect 4) — scope `generate-bindings` and the
+# `_require-leaf-includes` guard to one lane's fixture rows. Exports
+# `NROS_CODEGEN_COORDS` (read by `scripts/lib/codegen_scope.py`) when the lane
+# narrows by coordinate, and clears it otherwise, so an `all`/`linux` build
+# never inherits a narrowing from its environment.
+nros_codegen_scope_export() {
+    local lane f
+    lane="$(nros_lane_arg "${1:-all}")"
+    unset NROS_CODEGEN_COORDS
+    f="$(nros_lane_coords_file "$lane")" || return $?
+    if [ -n "$f" ]; then
+        NROS_CODEGEN_COORDS="$(cd "$(dirname "$f")" && pwd)/$(basename "$f")"
+        export NROS_CODEGEN_COORDS
+    fi
+}
+
 nros_lane_coords_file() {
     local lane="$1"
     nros_lane_validate "$lane" || return 2

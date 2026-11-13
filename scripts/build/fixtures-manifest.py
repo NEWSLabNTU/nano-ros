@@ -2095,6 +2095,9 @@ def main():
             # their own census (RFC-0120 D4: by default), so a fixture build can
             # take each census before it cross-configures the leaf.
             "census-leaves",
+            # phase-535 W10 — the source dirs of every row a lane's fixture
+            # build can reach, which is what scopes that build's codegen.
+            "lane-dirs",
         ],
     )
     p.add_argument("--manifest", default=DEFAULT_MANIFEST)
@@ -2370,6 +2373,46 @@ def main():
                     )
                     + "\n"
                 )
+        return
+
+    if a.command == "lane-dirs":
+        # phase-535 W10 (issue 2475 defect 4). One repo-relative dir per line:
+        # every row the lane's fixture BUILD can reach, so `_codegen` can scope
+        # `regenerate-bindings.sh` to the codegen units those rows live in
+        # (`scripts/build/codegen-scope.py`).
+        #
+        # The selection is `matches_filters` itself, the predicate the build
+        # uses, so the two cannot disagree. It errs WIDE on purpose, since a
+        # unit generated for nothing costs a few seconds and a missing one
+        # fails a build:
+        #   * both builder families (cargo/cmake AND west), whatever modules
+        #     the shard fans out to;
+        #   * a row the run cannot skip (issue 0828's shared roots) is kept,
+        #     exactly as `--coords-from` keeps it;
+        #   * every compile-check row, because `build-compile-check-fixtures`
+        #     runs for every lane.
+        # With no `--coords-from` there is no narrowing to do, and the caller
+        # generates everything; this subcommand refuses rather than print the
+        # whole tree under a name that suggests a scope.
+        if not a.coords_from:
+            sys.stderr.write("lane-dirs: needs --coords-from <file>\n")
+            sys.exit(2)
+        dirs = set()
+        for kind, rows in (
+            ("fixture", load(a.manifest)),
+            ("workspace_fixture", load_workspace_fixtures(a.manifest)),
+        ):
+            for builder in (None, "west"):
+                a.builder = builder
+                for e in rows:
+                    if matches_filters(e, a, all_entries=rows, kind=kind) and e.get("dir"):
+                        dirs.add(e["dir"].rstrip("/"))
+        a.builder = None
+        for e in load_compile_check_fixtures(a.manifest):
+            if not e.get("skip_build") and e.get("dir"):
+                dirs.add(e["dir"].rstrip("/"))
+        for d in sorted(dirs):
+            sys.stdout.write(d + "\n")
         return
 
     if a.command == "fixture-groups":
