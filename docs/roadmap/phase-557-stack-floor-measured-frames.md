@@ -342,7 +342,7 @@ reports their images as not checked. Each joins when its board build script
 calls `stack_stated::emit` and its platform is added to `STATING_PLATFORMS`:
 
 - **ThreadX (riscv64).** The board states its app-thread stack since
-  2026-11-14 (#PRNUM). The stack is the `[knobs.memory] app_stack_bytes` rung
+  2026-11-14 (#3770). The stack is the `[knobs.memory] app_stack_bytes` rung
   under a ThreadX env front-end, `NROS_THREADX_APP_STACK_KB` (512 KiB by
   default). The board's build script resolves it, passes it to the C getter as
   `-DNROS_THREADX_APP_STACK_BYTES`, and writes `nros-stack-stated.json` (root
