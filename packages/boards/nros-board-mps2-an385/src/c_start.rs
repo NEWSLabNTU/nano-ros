@@ -65,6 +65,8 @@ pub type CApp = unsafe extern "C" fn() -> i32;
 /// is reported as an application error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_board_mps2_an385_start(app: Option<CApp>) -> ! {
+    // phase-553 W7 — guard the main stack before the constructors run on it.
+    crate::stack_guard::install();
     // SAFETY: cortex-m-rt's `Reset` initialised `.data`/`.bss` before `main`.
     unsafe { run_static_constructors() };
     run_bare(Config::from_image(), |_cfg| {

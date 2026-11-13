@@ -202,10 +202,12 @@ calls `stack_stated::emit` and its platform is added to `STATING_PLATFORMS`:
   the board's C. It needs a knob before anything can be checked against it.
 - **NuttX.** The sched-task stack: `NROS_NUTTX_SCHED_TASK_STACK_BYTES`, or
   `[tasks.*.nuttx].stack_bytes`.
-- **Bare metal (mps2-an385).** It states no stack at all, and the stack
-  grows into RAM unguarded
-  ([issue 2494](../issues/2494-mps2-baremetal-stack-unbounded.md)). The
-  board must state one first.
+- **Bare metal (mps2-an385).** The board states its main stack since
+  phase-553 W7 ([issue 2494](../issues/archived/2494-mps2-baremetal-stack-unbounded.md)):
+  `NROS_BAREMETAL_STACK_KB`, 256 KiB by default, written to
+  `nros-stack-stated.json` with root `main`. What is left is turning the
+  platform on in `nros build`'s `STATING_PLATFORMS` (`bare-metal`) and
+  checking the walk from `main`.
 
 The FreeRTOS sched tasks (`[tasks.*.freertos] stack_bytes`) are one more
 role: W5 checks the boot app task only.

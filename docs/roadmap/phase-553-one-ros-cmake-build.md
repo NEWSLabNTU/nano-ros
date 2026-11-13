@@ -43,10 +43,9 @@ Cargo features are additive, so the opt-out is its own feature: `c-libc` on
 Heap layout, one owner per heap and no overlap: the Rust allocator's arena is
 a static array in `.bss` (`nros_platform_mps2_an385::memory::HEAP`, 132,816
 bytes in the probe); newlib's `_sbrk` grows from `end` = `__sheap`, the end
-of `.bss`, upward toward the stack. The main stack bounds that layout too. It
-is unbounded today and grows down from the top of RAM toward the `_sbrk` heap
-with no guard; see
-[issue 2494](../issues/2494-mps2-baremetal-stack-unbounded.md).
+of `.bss`, upward toward the stack. The main stack bounds that layout too:
+W7 gives it a stated size and a guard, and caps the `_sbrk` heap below the
+guard.
 
 Measured on the RFC-0130 D4 probe with the board's `c-libc` on, against a
 zenoh router:
@@ -210,7 +209,7 @@ example; `test_qemu_baremetal_capi_e2e` passes against the new rows.
 
 ### W7 — A bounded, guarded stack on the C-rooted image
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-13). FreeRTOS task stacks are not covered: [issue 2507](../issues/2507-freertos-task-stack-overflow-reads-as-malloc-failed.md).
 
 Issue 2494. On bare-metal mps2-an385 the main stack is neither bounded nor
 guarded: cortex-m-rt grows it down from `_stack_start` (0x2040_0000), the
@@ -238,6 +237,64 @@ Acceptance:
   guard corrupts the stack, measured).
 - The C and C++ talkers still run, with their stated stack above the measured
   floor.
+
+Landed, for every mps2-an385 bare-metal image (cargo-rooted and C-rooted;
+`c-runtime.x` includes `link.x`, which includes the board's `memory.x`):
+
+- `memory.x` states the main stack: `_stack_size` from `nros-stack.x`, which
+  the board's build script writes from `NROS_BAREMETAL_STACK_KB` (default
+  256 KiB). The stack sits at the top of RAM, `_stack_end` is its real lower
+  bound, and a 1 KiB guard (`_nros_stack_guard`) sits below it. `ASSERT`s fail
+  the link when the statics reach the guard, or when the size is not whole
+  KiB.
+- The guard is an MPU region with no access, armed first thing at boot on
+  both start paths (`stack_guard::install`). A canary was not chosen: it
+  reports an overflow only after the stack has already written over what lay
+  below. Flip-link was measured and rejected: QEMU's mps2-an385 accepts a
+  write below the SRAM base without a fault (QEMU 6.2 and 11.0), so a stack
+  placed at the RAM base overflows silently. The MPU faults on both QEMUs.
+  MemManage stays off and `HFNMIENA` clear, so the fault escalates to
+  HardFault and the frame lands in the guard. The board's HardFault handler
+  prints `nros: stack overflow: …` (any other fault prints its `pc`/`lr`) and
+  exits QEMU with a failure status. The guard catches a stack that grows past
+  its limit; one frame larger than 1 KiB can still step over it.
+- The C-rooted image's `_sbrk` is the board's (`c/c_main.c`, strong over
+  rdimon's weak one): newlib's heap grows from `end` and stops at the guard
+  with `ENOMEM`. rdimon's stops only at the current stack pointer.
+- The board states the stack for `nros build`'s floor check
+  (`nros-stack-stated.json`, root `main`, knob `NROS_BAREMETAL_STACK_KB`).
+  The check does not yet arm for this platform; turning it on belongs to
+  phase-557.
+
+Measured (QEMU 11.0, `-icount shift=auto`):
+
+| image | stack | result |
+| --- | --- | --- |
+| C talker (scaffolded, serial) | 256 KiB (default) | runs, 14 published in 20 s |
+| C talker | 4 KiB | `nros: stack overflow`, QEMU exits 1, nothing published |
+| C++ talker | 256 KiB | runs, 15 published in 20 s |
+| Rust talker (`examples/mps2-an385-baremetal/rust/talker`, ethernet) | 256 KiB | runs, 25 published in 25 s |
+| Rust talker | 4 KiB | `nros: stack overflow`, QEMU exits 1 |
+| Rust talker | 4000 KiB | link fails: "the image's statics run into the main stack and its guard. Lower NROS_BAREMETAL_STACK_KB …" |
+
+Heap acceptance, a C talker that mallocs 16 KiB blocks until `NULL`, then
+frees them and runs on:
+
+| board | `_sbrk` | heap top at `NULL` | where that is |
+| --- | --- | --- | --- |
+| with W7 | the board's | 0x203b_fa08, 229 blocks | below the guard (0x203b_fc00) |
+| before W7 (negative control) | rdimon's (weak) | 0x203f_ba90, 244 blocks | 15.9 KiB below the live stack pointer, 246 KiB into what is now the stack region |
+
+Both runs then published normally. The negative control shows the overlap
+rather than a corruption: the heap reached within 15.9 KiB of the stack
+pointer, and a stack deeper than that writes over live heap blocks with no
+diagnostic.
+
+Not covered: FreeRTOS images. Their task stacks are heap_4 blocks, and an
+overflow already surfaces (as `MALLOC FAILED`, the misattribution recorded in
+`freertos_config.rs`), so guarding them means reprogramming the MPU on every
+context switch. That is separate work, tracked in
+[issue 2507](../issues/2507-freertos-task-stack-overflow-reads-as-malloc-failed.md).
 
 ## Not in scope
 

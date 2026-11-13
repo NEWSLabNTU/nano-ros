@@ -74,8 +74,14 @@ generated entry's dependencies.
 - **One entry shape: direct execution.** The generated entry runs your
   executor in one loop on the reset path. `qemu-arm-baremetal` is a retired
   spelling of the same board; use `mps2-an385-baremetal`.
-- **Rust only.** The C and C++ APIs assume an RTOS's startup, heap and libc,
-  so they do not build here.
+- **A bounded, guarded main stack.** The whole image runs on one stack at the
+  top of RAM, 256 KiB unless the image says otherwise. Below it sits a small
+  region the MPU blocks. A stack that grows past its size hits that region
+  and stops the image with
+  `nros: stack overflow: the main stack grew past its stated size`. Nothing
+  below the stack is overwritten. Raise the size with
+  `NROS_BAREMETAL_STACK_KB` in the image's build environment. A size too big
+  for the image's statics fails the link, naming the same knob.
 - **No `alloc` by default.** The build is `no_std` with `heapless`
   collections. To use `alloc`, enable the board crate's `alloc` feature and
   supply a `#[global_allocator]`.
