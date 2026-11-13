@@ -1,0 +1,1 @@
+`nros build` now checks a bare-metal mps2-an385 cargo image's main stack against the floor walked from `main`. The board states the stack as `NROS_BAREMETAL_STACK_KB` (256 KiB by default). An unmeasured image warns when the stack is below the floor; a measured one fails and names the value to set.

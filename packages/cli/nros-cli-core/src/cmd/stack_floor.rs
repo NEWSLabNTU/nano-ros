@@ -40,7 +40,8 @@ pub const STATED_FILE: &str = "nros-stack-stated.json";
 /// Platforms whose boards state a stack on the cargo road. A platform joins
 /// when its board build scripts call `nros_board_common::stack_stated::emit`;
 /// until then its images are reported as not checked, and pay nothing.
-const STATING_PLATFORMS: &[&str] = &["freertos"];
+/// Bare metal states the mps2-an385 main stack (root `main`) since issue 2494.
+const STATING_PLATFORMS: &[&str] = &["freertos", "bare-metal"];
 
 /// What [`arm`] decided for one image.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -439,6 +440,59 @@ mod tests {
                 .any(|(k, v)| k == "CARGO_PROFILE_NROS_MINSIZEREL_STRIP" && v == "none"),
             "{:?}",
             hand.env
+        );
+    }
+
+    /// Bare metal states its main stack (issue 2494), so its image is walked;
+    /// a platform whose board states nothing is reported, not walked.
+    #[test]
+    fn a_stating_platform_is_walked_and_another_is_reported() {
+        let root = std::env::temp_dir().join(format!("nros-sf-plat-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("scripts")).unwrap();
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::write(root.join("scripts/nros-stack-floor.py"), "").unwrap();
+        std::fs::write(root.join("config/stack-floors.json"), "{}").unwrap();
+        let image = |platform: &str| ResolvedBuild {
+            qualified: "demo:b".into(),
+            board: "b".into(),
+            platform: platform.into(),
+            driver: Driver::Cargo,
+            handoff: Some(Handoff::new("cargo", ["build", "--release"])),
+            rmw: None,
+            entry_package: None,
+            target: None,
+            profile: None,
+            cmake_build_dir: None,
+            capabilities: Vec::new(),
+            stack_floor_image: None,
+            stack_floor: None,
+            stack_floor_raise: false,
+            kernel: None,
+            entry_root: None,
+            configure: None,
+            record: Default::default(),
+            output: Some(BuildOutput::Cargo {
+                target_dir: "/t".into(),
+                triple: Some("thumbv7m-none-eabi".into()),
+                profile_dir: "release".into(),
+                bin: Some("e".into()),
+            }),
+            descriptor: None,
+            run_tables: Default::default(),
+            package_depends: None,
+        };
+        let mut v = vec![image("bare-metal"), image("threadx")];
+        arm(&mut v, Some(&root), &|_| None);
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            matches!(v[0].stack_floor, Some(StackFloorStep::Check(_))),
+            "{:?}",
+            v[0].stack_floor
+        );
+        assert!(
+            matches!(&v[1].stack_floor, Some(StackFloorStep::NotChecked(w)) if w.contains("states no stack")),
+            "{:?}",
+            v[1].stack_floor
         );
     }
 
