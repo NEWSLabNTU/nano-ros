@@ -64,6 +64,7 @@ NROS_SMOLTCP_BUFFER_SIZE | pool | nros_smoltcp::bridge::SOCKET_RX_BUFFERS,nros_s
 NROS_ZEPHYR_HEAP_SIZE | heap | nros_platform::zephyr_heap::HEAP | the rlsf arena both zenoh-pico's `z_malloc` and Rust's allocator draw from on Zephyr; the symbol IS the region, measured per image
 NROS_FREERTOS_HEAP_KB | heap | ucHeap | FreeRTOS heap_4's `ucHeap[configTOTAL_HEAP_SIZE]`; the symbol IS the region, measured per image
 NROS_FREERTOS_APP_STACK_KB | stack | | the application task's stack, which FreeRTOS allocates out of `ucHeap` — it is inside that heap's figure, never a symbol of its own
+NROS_THREADX_APP_STACK_KB | stack | | the rv-virt-threadx app thread's stack, which ThreadX allocates out of its byte pool — inside that pool's figure, never a symbol of its own
 NROS_ZENOH_BATCH_UNICAST_SIZE | heap | | zenoh-pico allocates its unicast TX/RX batch buffers (`_z_wbuf_make`/`_z_zbuf_make`) when a session opens — heap bytes, no symbol
 NROS_ZENOH_BATCH_MULTICAST_SIZE | heap | | the multicast twin of the unicast batch buffers — heap at session open, no symbol
 NROS_ZENOH_FRAG_MAX_SIZE | heap | | zenoh-pico's defragmentation buffer, `_z_wbuf_make(Z_FRAG_MAX_SIZE)` on first fragment — heap, no symbol
