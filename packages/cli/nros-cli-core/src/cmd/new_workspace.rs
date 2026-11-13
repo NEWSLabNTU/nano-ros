@@ -988,11 +988,16 @@ mod tests {
         let mut raised = 0;
         for row in rows {
             let key = row["image"].as_str().unwrap();
+            // A template key is `<template>/<lang>/<rmw>@<board>`; a
+            // `<bringup>@<board>` key (an in-tree example) is no template.
             let Some((tmpl, board)) = key.split_once('@') else {
-                continue; // not a template key
+                continue;
             };
-            let mut it = tmpl.split('/');
-            let (_, lang, rmw) = (it.next().unwrap(), it.next().unwrap(), it.next().unwrap());
+            let parts: Vec<&str> = tmpl.split('/').collect();
+            let [_, lang, rmw] = parts.as_slice() else {
+                continue;
+            };
+            let (lang, rmw) = (*lang, *rmw);
             let rust = nros_lang::Language::parse(lang).expect(key) == nros_lang::Language::Rust;
             let floor = recorded_floor(&t, key).expect(key);
             let default = zephyr_main_stack_default(&r, board, rust, rmw).expect(key);
