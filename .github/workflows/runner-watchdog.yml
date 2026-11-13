@@ -1,0 +1,53 @@
+# Bounds how long a job may wait for a self-hosted runner, and makes the wait
+# visible (issue 2497).
+#
+# A self-hosted job that no online runner can take does not fail. It stays
+# `queued` for up to 24 hours. queue.yml's L3 holds the constant concurrency
+# group `queue-l3` while it waits, so every later queue run waits behind it:
+# 647 minutes on 2026-11-12. And a runner loop that stopped because its labels
+# were not true on its host (exit 78) said so only on that host.
+#
+# Every 15 minutes, `scripts/ci/self-hosted-wait-watchdog.py`:
+#   - CANCELS a merge-queue run whose self-hosted job has waited for a runner
+#     longer than 30 minutes. That releases the group. queue.yml is not a
+#     required check, so the cancel ejects nothing.
+#   - REPORTS any other self-hosted job that has waited longer than 6 hours.
+#     Scheduled lanes wait behind each other by design, so those are left alone.
+# The job goes red whenever it found either, and the run summary names the
+# labels nobody served.
+#
+# Hosted, and NOT a required check: it never runs on `pull_request`. A check
+# that produces no verdict for a PR would block it forever.
+#
+# IF L3 EVER BECOMES REQUIRED, revisit the cancel in the same edit. A cancelled
+# required check is a failed one, and the queue then ejects the batch.
+name: runner-watchdog
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: runner-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    name: self-hosted runner wait
+    runs-on: ubuntu-22.04
+    # A dozen `gh api` calls. Anything near this is GitHub's API, not the work.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/ci/self-hosted-wait-watchdog.py
+          sparse-checkout-cone-mode: false
+      - name: Bound and report self-hosted waits
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/self-hosted-wait-watchdog.py --queue-budget 30 --budget 360

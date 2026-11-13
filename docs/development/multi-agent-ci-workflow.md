@@ -77,10 +77,29 @@ label:
 | `nros-qemu` | QEMU + the RTOS toolchains |
 | `nros-ros2` | a real ROS 2 install for interop lanes |
 | `nros-big` | ≥16 cores, for fixture fan-out |
+| `nros-queue` | the merge queue's own runner: a role, not a capability. It must carry `nros-sdk-zephyr` + `nros-big` and must NOT carry `nros-qemu` |
 
 Then `runs-on: [self-hosted, nros-sdk-zephyr]` rather than naming a machine.
 Adding a second runner is registration plus labels; nothing in the workflows
 changes.
+
+### The merge queue has its own runners
+
+Queue jobs (`queue.yml`'s L3 and `gate.yml`'s `merge_group` self-hosted jobs)
+request `[self-hosted, linux, nros-queue]`. Every scheduled self-hosted lane
+(run-matrix, the nightly) requests `nros-qemu`. A queue runner is registered as
+`nros-queue,nros-sdk-zephyr,nros-big` and never with `nros-qemu`, so no scheduled
+job can be handed to it. GitHub gives a job only to a runner that holds every
+label the job requests. Before this split, one long scheduled run on the only
+capable runner held L3, and L3's constant concurrency group then held every
+later queue run behind it: 647 minutes on 2026-11-12. `runner-doctor.sh` refuses
+a `nros-queue` set that breaks either rule, and `just check queue-runner-label`
+holds the workflow side.
+
+To run both kinds on one host, run two loops with different `NROS_RUNNER_NAME`s.
+The job tree volume is keyed by role (`nros-runner-work` for a scheduled runner,
+`nros-runner-work-queue` for a queue runner), so the two containers never share
+`_work`. The SDK store and the caches are shared.
 
 ### Capacity: one runner serialises the queue
 

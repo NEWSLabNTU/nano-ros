@@ -100,6 +100,7 @@ while [ $# -gt 0 ]; do
 done
 . "$REPO_ROOT/scripts/lib/runner-name.sh"
 . "$REPO_ROOT/scripts/lib/runner-tmpfs.sh"
+. "$REPO_ROOT/scripts/lib/runner-work-volume.sh"
 NAME="$(nros_require_runner_name runner-container)"
 
 [ -n "$LABELS" ] || { echo "runner-container: need <labels>, e.g. nros-qemu,nros-sdk-zephyr,nros-big" >&2; exit 2; }
@@ -109,7 +110,7 @@ if [ "$DO_BUILD" -eq 0 ] && [ "$DO_RUN" -eq 0 ] && [ "$DO_SWEEP" -eq 0 ]; then D
 # The runner's volumes, ONE list for the job container and the sweep container:
 # a sweep that mounted a different set would measure a different disk.
 VOLUME_ARGS=(
-    -v "nros-runner-work:/home/runner/_work"
+    -v "$(nros_runner_work_volume "$LABELS"):/home/runner/_work"
     -v "nros-runner-cargo:/home/runner/.cargo"
     -v "nros-runner-sccache:/home/runner/.cache/sccache"
     -v "nros-runner-nros:/home/runner/.nros"

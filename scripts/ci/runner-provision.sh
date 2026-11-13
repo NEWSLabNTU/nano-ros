@@ -145,6 +145,11 @@ _plan_for_label() {
             # Nothing to install: the label is a hardware fact. runner-doctor
             # verifies it; there is no verb that can make a 4-core box big.
             ;;
+        nros-queue)
+            # Nothing to install: the label is a ROLE (the merge queue's own
+            # runner). What it needs is provisioned by `nros-sdk-zephyr` and
+            # `nros-big`, which runner-doctor requires beside it.
+            ;;
         *)
             : # unknown labels are runner-doctor's problem, not this script's
             ;;
