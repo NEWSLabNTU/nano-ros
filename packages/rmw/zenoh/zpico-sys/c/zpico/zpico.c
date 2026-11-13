@@ -65,6 +65,9 @@
 #if defined(CONFIG_POSIX_MULTI_PROCESS)
 #include <zephyr/posix/unistd.h>
 #endif
+#if defined(CONFIG_NETWORKING)
+#include <zephyr/net/net_if.h>
+#endif
 #elif defined(ZENOH_FREERTOS_LWIP)
 // On FreeRTOS, route printk to semihosting for debug output.
 // Uses SYS_WRITE0 semihosting call (null-terminated string to stdout).
@@ -1112,6 +1115,51 @@ static void zpico_nuttx_mix_mac(uint64_t* seed) {
 }
 #endif
 
+#if defined(ZENOH_ZEPHYR) && defined(CONFIG_NETWORKING)
+/* Fold the default interface's link-layer address and IPv4 address into the
+ * Zephyr session ZID seed below -- the NuttX `zpico_nuttx_mix_mac` above, for
+ * the same reason.
+ *
+ * Every other Zephyr input is a property of the IMAGE, not of the instance:
+ * on a board without an entropy driver `sys_rand_get` is the timer-seeded
+ * test generator, and `k_cycle_get_64`, the session address and the counter
+ * are what one image computes on every boot. Two QEMU instances of one
+ * `mps2/an385` image were measured to draw distinct ZIDs anyway (8 of 8
+ * concurrent pairs), but only through `-icount shift=auto`'s idle warp, which
+ * is host timing, not identity. The interface's addresses are identity: a
+ * board's own MAC on hardware, and on an emulator whatever the launcher
+ * gives each instance. Both are hashed first, so they cannot cancel against
+ * the linear terms. No default interface, or none of either address, keeps
+ * the old seed.
+ *
+ * `net_linkaddr.addr` is a pointer on Zephyr 3.7 and an array on 4.4, and
+ * the IPv4 getter returns `struct in_addr *` on one and `struct net_in_addr *`
+ * on the other; indexing and a byte cast read both. */
+static void zpico_zephyr_mix_netif(uint64_t* seed) {
+    struct net_if* iface = net_if_get_default();
+    if (iface == NULL) {
+        return;
+    }
+    const struct net_linkaddr* ll = net_if_get_link_addr(iface);
+    if (ll != NULL && ll->len > 0) {
+        uint64_t mac = 0;
+        for (size_t i = 0; i < ll->len; i++) {
+            mac = (mac << 8) | ll->addr[i];
+        }
+        *seed ^= zpico_splitmix64(&mac);
+    }
+#if defined(CONFIG_NET_IPV4)
+    const uint8_t* ip = (const uint8_t*)net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED);
+    if (ip != NULL) {
+        uint64_t v4 = ((uint64_t)ip[0] << 24) | ((uint64_t)ip[1] << 16) | ((uint64_t)ip[2] << 8) |
+                      (uint64_t)ip[3];
+        v4 |= UINT64_C(0x4950) << 48; // keep it apart from a MAC with the same low bytes
+        *seed ^= zpico_splitmix64(&v4);
+    }
+#endif
+}
+#endif
+
 static uint32_t zpico_next_session_zid_counter(void) {
 #if defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
     return g_session_zid_counter++;
@@ -1144,6 +1192,9 @@ static void zpico_fill_session_zid(struct zpico_session* s, uint8_t bytes[ZPICO_
     zephyr_seed ^= (uint64_t)zpico_next_session_zid_counter();
 #if defined(CONFIG_POSIX_MULTI_PROCESS)
     zephyr_seed ^= (uint64_t)getpid() << 32;
+#endif
+#if defined(CONFIG_NETWORKING)
+    zpico_zephyr_mix_netif(&zephyr_seed);
 #endif
     for (size_t i = 0; i < ZPICO_ZID_SIZE; i += sizeof(uint64_t)) {
         uint64_t word = zpico_splitmix64(&zephyr_seed);
