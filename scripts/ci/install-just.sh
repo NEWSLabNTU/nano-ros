@@ -5,7 +5,7 @@
 #   bash scripts/ci/install-just.sh --to <dir>      install into <dir>
 #   bash scripts/ci/install-just.sh --print-version print the pin and exit
 #
-# Used by `.github/workflows/probe.yml` (both tracks, bare hosted runners) and
+# Used by `.github/workflows/host-tests.yml` (both book-probe tracks, bare hosted runners) and
 # by both CI images (`ci/docker/ci-base/Dockerfile`,
 # `ci/docker/zephyr-ros/Dockerfile`). `check-workflow-just-provisioning` refuses
 # the spelling this replaced anywhere under `.github/` or `ci/docker/`.

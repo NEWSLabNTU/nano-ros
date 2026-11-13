@@ -373,7 +373,7 @@ def report(failures, self_hosted, checked, quiet=False):
         print("  recipe, and `just doctor` needs `just`. Give the job one of:")
         print("    * container: ghcr.io/newslabntu/nano-ros-ci:humble  (bakes it), or")
         print("    * a step BEFORE the first invocation, copying the one in")
-        print("      .github/workflows/probe.yml (\"Install just\"): `command -v just` guard,")
+        print("      .github/workflows/host-tests.yml (\"Install just\"): `command -v just` guard,")
         print("      `bash scripts/ci/install-just.sh --to \"$HOME/.local/bin\"`,")
         print("      then append that dir to $GITHUB_PATH.")
         return 1

@@ -181,7 +181,7 @@ Per release cycle, the maintainer doing the cut should:
    package PRIVATE on its first push. An org admin sets it public once, at
    <https://github.com/orgs/newslabntu/packages/container/nano-ros-starter/settings>
    (Danger Zone > Change visibility > Public). Until then no student can
-   pull it, and `probe.yml`'s `image-track` stays red and does not move
+   pull it, and `host-tests.yml`'s `image-track` stays red and does not move
    `latest` (issue 2459). Later releases inherit the setting. Once an
    anonymous `docker pull ghcr.io/newslabntu/nano-ros-starter:latest`
    works, delete the "Not published yet" note at the top of

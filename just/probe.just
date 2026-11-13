@@ -455,7 +455,7 @@ starter-recipe starter="nano-ros-starter:local":
 # (book/src/start/starter-image.md) run in it with no network, and its
 # course recipe (devcontainer.json by digest, `nros doctor`'s container
 # line). `pull=1` removes the local copy and times a registry pull first;
-# probe.yml runs it that way on the newest release before moving `latest`.
+# host-tests.yml (image-track) runs it that way on the newest release before moving `latest`.
 [group("main")]
 image ref="nano-ros-starter:local" pull="0":
     ./scripts/probe/verify-starter-image.sh {{ref}} {{ if pull == "1" { "--pull" } else { "" } }}

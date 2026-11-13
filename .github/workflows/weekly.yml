@@ -45,7 +45,7 @@ jobs:
   #
   # The QEMU platform chapters, EXECUTED — phase-517 W10.
   #
-  # `probe.yml` replays the Linux front doors (the checkout track and the
+  # `host-tests.yml`'s book-probe jobs replay the Linux front doors (the checkout track and the
   # installed track's first-project.md, the serial QEMU chapter). Every other user chapter — bare-metal,
   # FreeRTOS, ThreadX, NuttX, Zephyr — had only been proofread: their setup,
   # scaffold, build and run lines were checked to PLAN (`nros build --dry-run`),
@@ -96,7 +96,7 @@ jobs:
             exit 1
           fi
           echo "tracks=$tracks" >> "$GITHUB_OUTPUT"
-      # See probe.yml for why these lanes install `just` themselves.
+      # See host-tests.yml's book-probe jobs for why these lanes install `just` themselves.
       - name: Install just (if absent)
         run: |
           set -euo pipefail

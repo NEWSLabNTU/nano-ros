@@ -12,7 +12,7 @@
 #                (`just zephyr build-one/ci-both/check-copy-out`). cron 0 5.
 #   (the weekly `zenoh-probe` and the book bootstrap/installed probes left this
 #   file in phase-559 W4: zenoh-probe for weekly.yml, the two book probes
-#   because probe.yml runs the same tracks every day.)
+#   because host-tests.yml runs the same tracks every day.)
 #
 # The 07:00 cron is also where `just ci-matrix-nightly` lives — RFC-0061's tier-2
 # pairwise cover over platform x lang x rmw x kind. It runs DISTRIBUTED, because
