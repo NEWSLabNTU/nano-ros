@@ -1,12 +1,13 @@
 ---
 id: 2487
 title: "`safety` on a backend with no CRC path reports every sample valid: E2E integrity fails open on Cyclone and XRCE"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [safety, rmw, build]
 related: [0072, rfc-0028, rfc-0071]
 found: 2026-11-13
+resolved_in: "fix-2487-safety-fail-open: a declared capability the backend does not carry is refused on every road; IntegrityStatus::is_valid needs a checked CRC; RFC-0028 §7 As built"
 ---
 
 **Found by** the phase-555 W2 review of RFC-0028. The decision brief is
@@ -116,3 +117,49 @@ image declared `safety`. That half is also the user's call.
 - The zenoh safety cells stay green.
 - A negative fixture row records the refusal: exit code plus stderr, per the
   "must it fail to compile" rule.
+
+## Resolution (2026-11-13)
+
+User ruling (relayed by the manager session): **(b) plus (a)**, with the
+runtime half as defence in depth.
+
+**(b) Refuse.** A declared capability that has a backend half and that the
+image's backend does not declare in `[rmw.capabilities]` is now a build-time
+refusal on every road that lowers capabilities. It used to be omitted with a
+warning.
+
+- Cargo road (workspace facade and leaf selection) and the Zephyr west Rust
+  road: one predicate, `backend_link::undeclared_capability_refusal`, called
+  from `facade::derive` and `west_app`. The message names the backend and the
+  backends that carry the capability, and carries no tracker id.
+- cmake road: `nros_feature_set` (`cmake/NanoRosFeatureSet.cmake`), reached by
+  both `nros-c` and `nros-cpp`, so `-DNROS_SAFETY_E2E=ON` by hand is refused
+  too. `WARNING` became `FATAL_ERROR`.
+- Zephyr C/C++ road (`zephyr/CMakeLists.txt`): the same, now for every API
+  rather than C++ only.
+- The class, not the site: the predicate covers every capability with a backend
+  half, so `link-tls` on a backend without it is refused the same way. The plan
+  check's warning (`planner::check_plan_file`) now says the build will refuse.
+
+**(a) Document.** RFC-0028 §7 is replaced by an "As built" section (E2E is
+zenoh-only; what a subscriber is told), §8's matrix is corrected, and the
+book's safety page says the build refuses `safety` on Cyclone DDS or XRCE-DDS.
+
+**Defence in depth.** `IntegrityStatus::is_valid()` is true only for
+`crc_valid == Some(true)`. `None` (no CRC: a non-safety publisher, or a backend
+default that checked nothing) is no longer valid. The Verus model
+(`integrity_is_valid`, proof 5) and the production/ghost correspondence test
+moved with it. The C and C++ surfaces were already strict (`crc_valid == 1`).
+Behaviour change: a safety subscriber on zenoh now reports a sample from a
+publisher built without safety as not valid. It is still delivered.
+
+**Acceptance.**
+- Negative row `cmake_safety_unsupported_rmw_refused`
+  (`cmake-configure-verdict`): configure exits 1 with the refusal, asserted by
+  `cmake_platform_matrix::safety_on_an_rmw_without_crc_is_refused_at_configure`.
+- Unit tests: `backend_link::a_capability_the_backend_does_not_carry_is_refused`
+  (cyclonedds and xrce, `safety` and `link-tls`, no tracker id in the message)
+  and `facade::a_capability_the_images_rmw_does_not_carry_is_refused` (refused
+  on cyclonedds and xrce, selected on zenoh).
+- The zenoh safety cells are unchanged: the C and C++ listeners already counted
+  only `crc_valid == 1`, and the Rust listener's samples carry a CRC.

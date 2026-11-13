@@ -297,11 +297,10 @@ fn collect_plan_warnings(
         ));
     }
     // phase-259 W2 (issue 0076 §B) — the safety-e2e CRC path lives only in the
-    // backends the capability registry lists (zenoh today). On any other resolved
-    // RMW the axis silently no-ops (the backend feature is never added) — so a
-    // declared `[safety]` leaves the validation surface present but DEAD. Make it
-    // loud: warn per linked RMW the registry doesn't support. SSoT = the registry,
-    // no hardcoded backend list.
+    // backends whose descriptors declare `safety` (zenoh today). The BUILD
+    // refuses `[safety]` on any other RMW (issue 2487); this plan check says so
+    // ahead of the build, per linked RMW. SSoT = the descriptors, no hardcoded
+    // backend list.
     if plan.safety.is_some()
         && let Some(cap) = crate::orchestration::capability("safety")
     {
@@ -310,9 +309,8 @@ fn collect_plan_warnings(
             if !index.resolve(rmw).is_ok_and(|r| cap.backend_supports(&r)) {
                 warnings.push(format!(
                     "[safety] is declared but the resolved RMW `{rmw}` has no E2E \
-                     integrity (CRC) path; the axis no-ops on this backend (only {} \
-                     carries CRC). The validation surface compiles but is dead — \
-                     switch the RMW or drop [safety].",
+                     integrity (CRC) path (only {} carries CRC), so the build will \
+                     refuse this image. Switch the RMW or drop [safety].",
                     // phase-347 W4 — derived from the descriptors, so this
                     // message cannot name a stale set.
                     index.backends_declaring(cap.declared).join("/"),

@@ -371,13 +371,20 @@ function(nros_feature_set out_var)
             # backend calls its own implementation — the right-hand side of
             # `[rmw.capabilities]`, which core never learns. What moved is the
             # CONDITION: which backends offer the capability.
+            #
+            # Issue 2487 — REFUSED, not ignored. This warned and built on, so
+            # an image that asked for E2E integrity on a backend with no CRC
+            # carrier got none, and the backend's default take reported every
+            # sample unchecked. The message carries no tracker id.
             if("safety" IN_LIST NROS_RMW_CAPABILITIES)
                 list(APPEND _feats safety-e2e)
             else()
-                message(WARNING
-                    "nros_feature_set: capability 'safety' ignored — RMW "
-                    "'${_FS_RMW}' does not declare it in its nros-rmw.toml "
-                    "[rmw.capabilities].")
+                message(FATAL_ERROR
+                    "nros_feature_set: capability 'safety' is declared, but the "
+                    "'${_FS_RMW}' RMW does not carry it, so the image would be built "
+                    "without end-to-end integrity checks. Select an RMW whose "
+                    "nros-rmw.toml [rmw.capabilities] declares 'safety', or drop "
+                    "'safety' from the features.")
             endif()
         elseif(_cap STREQUAL "link-tls")
             # Issue 2423 — Rust-only, refused BY NAME (as

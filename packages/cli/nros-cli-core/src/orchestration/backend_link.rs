@@ -342,6 +342,63 @@ pub fn derived_features(
     features
 }
 
+/// The refusal for an image that declares a capability backend `r` does not
+/// carry, or `None` when `r` carries every declared capability.
+///
+/// Issue 2487: a capability with a backend half (`backend_feature`) that the
+/// backend's `[rmw.capabilities]` does not declare used to be OMITTED with a
+/// warning, so the image built without what it asked for. For `safety` that
+/// is a fail-open: the validated-subscription API still compiles in (a node
+/// package may name `nros/safety-e2e` itself), the backend's default
+/// `take_validated` makes no check, and every sample reaches the application
+/// unverified. Every road that lowers a capability onto a backend asks this
+/// ONE predicate, so a declared capability is either built or refused, never
+/// dropped. The message carries no tracker id (user ruling 2026-11-12).
+#[must_use]
+pub fn undeclared_capability_refusal(
+    rmws: &RmwIndex,
+    r: &ResolvedRmwIn,
+    sys: &SystemToml,
+) -> Option<String> {
+    let missing: Vec<&str> = cargo_nano_ros::capability_resolver::CAPABILITIES
+        .iter()
+        .filter(|cap| {
+            sys.capability_enabled(cap.declared)
+                && cap.backend_feature.is_some()
+                && !cap.backend_supports(r)
+        })
+        .map(|cap| cap.declared)
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+    let lines: Vec<String> = missing
+        .iter()
+        .map(|cap| {
+            let carriers = rmws.backends_declaring(cap);
+            let who = if carriers.is_empty() {
+                "no available RMW carries it".to_string()
+            } else {
+                format!(
+                    "RMWs that carry it: {}",
+                    carriers
+                        .iter()
+                        .map(|c| format!("`{c}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            };
+            format!(
+                "capability `{cap}` is declared, but the `{}` RMW does not carry it, \
+                 so the image would be built without it ({who}). Select an RMW that \
+                 carries `{cap}`, or drop `{cap}` from the features.",
+                r.declared
+            )
+        })
+        .collect();
+    Some(lines.join("\n"))
+}
+
 /// `derived` (a backend dependency's edition and capability features, as
 /// [`dependency_features`] computes them) followed by each of the board's
 /// `platform` features the crate at `dir` declares, without repeats.
@@ -449,6 +506,47 @@ mod tests {
                 .is_none()
         );
         assert!(crate_dir(&idx.resolve("uorb").unwrap()).unwrap().is_none());
+    }
+
+    /// Issue 2487 — a declared capability the backend does not carry is
+    /// refused, naming the backend and the backends that carry it, and the
+    /// refusal carries no tracker id. A backend that carries it is not refused.
+    #[test]
+    fn a_capability_the_backend_does_not_carry_is_refused() {
+        let idx = test_support::in_tree_index();
+        let sys = |rmw: &str, features: &str| -> SystemToml {
+            toml::from_str(&format!(
+                "[system]\nname = \"t\"\nrmw = \"{rmw}\"\ndomain_id = 0\n\
+                 features = [{features}]\n"
+            ))
+            .unwrap()
+        };
+        for rmw in ["cyclonedds", "xrce"] {
+            let r = idx.resolve(rmw).unwrap();
+            let e = undeclared_capability_refusal(&idx, &r, &sys(rmw, "\"safety\""))
+                .unwrap_or_else(|| panic!("`safety` on {rmw} must be refused"));
+            assert!(e.contains(&format!("`{rmw}` RMW")), "{e}");
+            assert!(e.contains("capability `safety`"), "{e}");
+            assert!(e.contains("`zenoh`"), "the carriers are named: {e}");
+            for id in ["issue", "RFC-", "phase-", "#"] {
+                assert!(!e.contains(id), "no tracker id in a user message: {e}");
+            }
+            // The other backend-half axis takes the same predicate.
+            assert!(
+                undeclared_capability_refusal(&idx, &r, &sys(rmw, "\"link-tls\"")).is_some(),
+                "`link-tls` on {rmw}"
+            );
+            // Entry-umbrella-only axes have no backend half: never refused.
+            assert_eq!(
+                undeclared_capability_refusal(&idx, &r, &sys(rmw, "\"params\"")),
+                None
+            );
+        }
+        let z = idx.resolve("zenoh").unwrap();
+        assert_eq!(
+            undeclared_capability_refusal(&idx, &z, &sys("zenoh", "\"safety\"")),
+            None
+        );
     }
 
     /// Amended ruling 3 — a `crate` whose directory holds a different package

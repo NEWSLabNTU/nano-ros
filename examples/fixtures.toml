@@ -5147,6 +5147,15 @@ builder = "cmake-configure-verdict"
 dir = "packages/testing/nros-tests/fixtures/cmake_platform_requires_board"
 output = ".verdict"
 
+# Issue 2487 — `safety` on an RMW with no E2E integrity path is refused at
+# configure time (it used to warn and build an image whose every sample read
+# as valid). Consumer: `cmake_platform_matrix.rs`.
+[[compile_check_fixture]]
+id = "cmake_safety_unsupported_rmw_refused"
+builder = "cmake-configure-verdict"
+dir = "packages/testing/nros-tests/fixtures/cmake_safety_unsupported_rmw"
+output = ".verdict"
+
 # `cmake_node_register_misuse` — one fixture, one `cases/<id>.cmake` per row.
 [[compile_check_fixture]]
 id = "cmake_register_unqualified_class"
