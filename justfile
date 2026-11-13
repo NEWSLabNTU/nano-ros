@@ -276,9 +276,25 @@ build *scope:
     # messages; so does this. It used to be reachable only from the unscoped
     # path below, so `just build <scope>` — the spelling every CI job uses —
     # built against whatever `generated/` the tree happened to carry.
-    just _codegen
+    #
+    # A LANE token needs no codegen here: its `build-test-fixtures` runs
+    # `_codegen <lane>` itself, narrowed to that lane's rows (phase-535 W10).
+    # Running the whole tree's codegen first cost a hosted shard ~30 min that
+    # the narrowed pass then repeated. A PLATFORM token's `build-fixtures` has
+    # no such stage of its own, so any such token (and the unscoped path)
+    # still runs the whole tree's codegen up front.
+    needs_codegen=1
     if [ "${#scoped[@]}" -gt 0 ]; then
         nros_scope_validate_all "${scoped[@]}" || exit 2
+        needs_codegen=0
+        for tok in "${scoped[@]}"; do
+            nros_scope_is_lane "$(nros_scope_normalize "$tok")" || needs_codegen=1
+        done
+    fi
+    if [ "$needs_codegen" = 1 ]; then
+        just _codegen
+    fi
+    if [ "${#scoped[@]}" -gt 0 ]; then
         nros_scope_report build "${scoped[@]}"
         for tok in "${scoped[@]}"; do
             just _build-scope "$tok"
