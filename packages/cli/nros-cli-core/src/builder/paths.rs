@@ -47,9 +47,10 @@ pub fn relative(from: &Path, to: &Path) -> Option<String> {
 /// which two.
 pub fn relative_or_err(from: &Path, to: &Path) -> Result<String, String> {
     relative(from, to).ok_or_else(|| {
+        // phase-383 W3.c.
         format!(
             "cannot express {} relative to {} — a generated file must carry no \
-             absolute path (phase-383 W3.c)",
+             absolute path",
             to.display(),
             from.display()
         )
@@ -177,7 +178,10 @@ mod tests {
         let e = relative_or_err(Path::new("rel"), Path::new("/abs")).expect_err("must fail");
         assert!(e.contains("/abs"), "{e}");
         assert!(e.contains("rel"), "{e}");
-        assert!(e.contains("W3.c"), "cites the rule: {e}");
+        assert!(
+            e.contains("must carry no absolute path"),
+            "states the rule: {e}"
+        );
     }
 
     #[test]

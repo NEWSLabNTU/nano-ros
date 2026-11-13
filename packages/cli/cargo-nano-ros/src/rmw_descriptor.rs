@@ -250,7 +250,7 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             ("rmw", "cffi_feature") => {
                 return Err(format!(
                     "{origin}: [rmw].cffi_feature is retired — `nros-c` and `nros-cpp` \
-                     have no backend features any more (RFC-0071 D9). Delete the line."
+                     have no backend features any more. Delete the line."
                 ));
             }
             ("rmw.provides.cmake", "target") => d.cmake_target = scalar(),
@@ -272,7 +272,7 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             ("rmw.link", "c_cffi_feature") => {
                 return Err(format!(
                     "{origin}: [rmw.link].c_cffi_feature is retired — `nros-c` and \
-                     `nros-cpp` name no backend (RFC-0071 D9); an image bundles the \
+                     `nros-cpp` name no backend; an image bundles the \
                      backend through `[rmw.provides.cargo] crate`. Delete the line."
                 ));
             }
@@ -412,9 +412,10 @@ pub fn agree_with_convention(
     derived: &str,
 ) -> Result<(), String> {
     if !stated.is_empty() && stated != derived {
+        // RFC-0087 D4.
         return Err(format!(
             "{origin}: [rmw].{field} states {stated:?} but convention derives \
-             {derived:?} (RFC-0087 D4). Delete the field — it is derived from the \
+             {derived:?}. Delete the field — it is derived from the \
              provider's announced name — or fix the name it disagrees with."
         ));
     }
@@ -637,7 +638,7 @@ mod tests {
         assert!(agree_with_convention("acme", "cmake_value", "acme", "acme").is_ok());
         assert!(agree_with_convention("acme", "cmake_value", "", "acme").is_ok());
         let err = agree_with_convention("acme", "cmake_value", "acme-rmw", "acme").unwrap_err();
-        assert!(err.contains("RFC-0087 D4"), "{err}");
+        assert!(err.contains("convention derives"), "{err}");
     }
 
     /// phase-349 W2b — the zenoh descriptor carries zenoh-pico's

@@ -128,13 +128,12 @@ pub fn driver_for(platform: &str, has_non_rust: bool) -> Result<Driver, NoRoad> 
 /// phase-521 W6 — the ESP32-C3 board (`nros-board-esp32-qemu`, the only esp32
 /// board) is retired. Until then a pure-Rust image was a cargo image and one
 /// whose graph crossed languages refused (issue 1525: no ESP-IDF road).
-// issue 1525.
+// issue 1525; the real-time wait promise is RFC-0113 D5.
 const ESP32_RETIRED: &str = "\
 this image's board is an ESP32 board, and the ESP32 board is retired: it had no \
 receive interrupt and no one-shot timer behind a wake object, so an executor on \
 it could not park, and nano-ros does not support a board where it cannot keep its \
-real-time wait promise (RFC-0113 D5). C or C++ on an ESP32 never had a road \
-.";
+real-time wait promise. C or C++ on an ESP32 never had a road.";
 
 /// [`driver_for`], refined by the BOARD's entry shape.
 ///
@@ -700,7 +699,7 @@ mod tests {
             for has_non_rust in [false, true] {
                 let e = driver_for_board("esp32", entry_kind, has_non_rust)
                     .expect_err("an esp32 image has no road");
-                assert!(e.0.contains("RFC-0113 D5"), "{e}");
+                assert!(e.0.contains("real-time wait promise"), "{e}");
                 assert!(!e.0.contains("1525"), "no tracker id in user text: {e}");
             }
         }

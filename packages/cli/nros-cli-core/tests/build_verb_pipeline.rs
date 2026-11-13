@@ -402,7 +402,7 @@ fn an_authored_workspace_root_is_refused_and_never_touched() {
 
     let e = plan_builds(&args(tmp.path(), &["linux"])).expect_err("refused");
     let msg = format!("{e:#}");
-    assert!(msg.contains("RFC-0098 D9"), "{msg}");
+    assert!(msg.contains("a workspace has no root build file"), "{msg}");
     assert_eq!(
         std::fs::read_to_string(tmp.path().join("Cargo.toml")).unwrap(),
         authored,
