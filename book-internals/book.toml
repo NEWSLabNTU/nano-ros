@@ -23,4 +23,6 @@ build-dir = "book"
 command = "python3 ../scripts/mdbook-lang-tabs.py"
 
 [output.html]
+# Same file as the user book (book-internals/theme links ../book/theme).
+additional-css = ["theme/nros.css"]
 git-repository-url = "https://github.com/NEWSLabNTU/nano-ros"

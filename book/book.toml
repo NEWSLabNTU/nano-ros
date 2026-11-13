@@ -32,6 +32,8 @@ command = "python3 ../scripts/mdbook-level-badge.py"
 [output.html]
 git-repository-url = "https://github.com/NEWSLabNTU/nano-ros"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
+# Code-block edge for the dark themes; see the file's header.
+additional-css = ["theme/nros.css"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
