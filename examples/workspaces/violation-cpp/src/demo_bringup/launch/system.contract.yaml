@@ -4,7 +4,7 @@
 # 50 ms `max_latency`, which the generated entry installs as a
 # `max-latency-runtime` monitor row on that publisher. The handler arms the
 # monitors on its third tick (INIT -> RUN, like the safety island's
-# mrm_handler) and busy-waits 150 ms in its sixth, so the run must store
+# mrm_handler) and busy-waits 110 ms in its sixth, so the run must store
 # exactly one verdict, `max-latency-runtime /handler/state`, and none for the
 # 80 ms of start-up work it does in its first tick (counted as suppressed).
 #
@@ -13,8 +13,9 @@
 # `react` is an input-triggered path from that take to `/t4/answer`, 180 ms,
 # installed as a `route-latency-runtime` row (and as a 180 ms
 # `max-latency-runtime` row on `/t4/answer`, which no single dispatch here
-# reaches). An on-time route is one period, ~100 ms. Two routes exceed it:
-# tick 6's (the take waits for tick 6, which then busy-waits 150 ms) and
+# reaches: tick 6's is the longest, ~147 ms on mps2/an385 under icount,
+# issue 2508). An on-time route is one period, ~100 ms. Two routes exceed it:
+# tick 6's (the take waits for tick 6, which then busy-waits 110 ms) and
 # tick 10's (the take of tick 9's sample busy-waits 250 ms, so tick 10 is
 # late and short).
 version: 1

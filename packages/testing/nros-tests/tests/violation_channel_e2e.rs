@@ -9,8 +9,8 @@
 //!
 //! The handler overruns in INIT (tick 1, 80 ms, before arming: counted, not
 //! stored), arms on tick 3 (`nros::arm_monitors()`), and overruns once on tick
-//! 6 (150 ms). Asserted on the console: exactly one drain-hook line
-//! `contract violation #<n>: max-latency-runtime /handler/state measured=>=150
+//! 6 (110 ms). Asserted on the console: exactly one drain-hook line
+//! `contract violation #<n>: max-latency-runtime /handler/state measured=>=110
 //! declared=50`, after the RUN line, and the arming line's suppressed count.
 //! Release-jitter verdicts are not asserted: the overrun delays the spin as
 //! well, and on native_sim's 1 ms cadence a wake reads exactly one period late
@@ -20,7 +20,7 @@
 //! `/t4/avail`, which the handler takes itself, and `/t4/answer`, the output of
 //! the input-triggered `react` path (180 ms from that take). Asserted: exactly
 //! two `route-latency-runtime /handler/answer ... declared=180` verdicts after
-//! RUN, tick 6's (the take waits for tick 6, which busy-waits 150 ms) and tick
+//! RUN, tick 6's (the take waits for tick 6, which busy-waits 110 ms) and tick
 //! 10's (the take of tick 9's sample busy-waits 250 ms, so tick 10 is late and
 //! short); the on-time ticks record none, and `/t4/answer`'s callback-level
 //! 180 ms (`max-latency-runtime`) records nothing.
@@ -88,7 +88,7 @@ fn measured_ms(line: &str) -> u32 {
 
 /// The assertion both legs share: the handler reached RUN and kept ticking,
 /// exactly one `max-latency-runtime` verdict was stored, on the contracted
-/// path with its 50 ms bound, measured at least the 150 ms overrun, AFTER the
+/// path with its 50 ms bound, measured at least the 110 ms overrun, AFTER the
 /// RUN line, and the arming line counts INIT's suppressed verdicts. Returns
 /// the RUN line's offset and the verdict line.
 ///
@@ -129,8 +129,8 @@ fn assert_one_latency_verdict_after_arming<'a>(
     );
     let measured = measured_ms(line);
     assert!(
-        measured >= 150,
-        "measured {measured} ms for a 150 ms overrun: `{line}`"
+        measured >= 110,
+        "measured {measured} ms for a 110 ms overrun: `{line}`"
     );
     assert!(
         at > run_at,

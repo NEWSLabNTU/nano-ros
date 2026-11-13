@@ -56,9 +56,16 @@ void Handler::on_timer() {
         std::printf("[handler] RUN at tick %d: arming the monitors\n", tick_);
         ::rclcpp::arm_monitors();
     }
+    // Issue 2508: the overrun is sized for headroom on BOTH sides of the
+    // 180 ms `react` budget. The whole dispatch (this busy-wait plus three
+    // publishes and a printf) must stay under the callback-level 180 ms row
+    // on /t4/answer: on mps2/an385 under icount the publishes cost ~37 ms, so
+    // 150 ms read 189 and fired it. Tick 6's route (the take waits one
+    // period, then this) must still exceed 180. At 110 ms both margins are
+    // about 30 ms on the slowest board that runs it.
     if (tick_ == OVERRUN_AT_TICK) {
-        std::printf("[handler] overrun at tick %d: 150 ms\n", tick_);
-        busy_ms(150);
+        std::printf("[handler] overrun at tick %d: 110 ms\n", tick_);
+        busy_ms(110);
     }
     std::printf("[handler] tick=%d\n", tick_);
 }
