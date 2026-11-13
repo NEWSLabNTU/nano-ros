@@ -52,9 +52,17 @@ use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 ///   the call site stated or the closure buffer (`RX_BUF`). Written beside
 ///   `in_place` by the same observation, and absent exactly when it is.
 ///
+/// Version 5 (phase-554 W2.b, RFC-0128 D2) is additive again:
+///
+/// * a `nodes[]` row may carry `"lifecycle": true` -- the node's OWN code
+///   registered a lifecycle state machine while the probe ran it
+///   ([`NodeMetadata::code_managed`]). Observed at the executor's lifecycle
+///   funnel, never declared. Absent means no registration was observed, and
+///   the node is plain, which is the run-time rule too.
+///
 /// Serialised in exactly one place (this module), as phase-308's layer rule
 /// requires: the adapters that feed the recorder contain no JSON.
-pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 4;
+pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 5;
 
 /// Issue 1648 -- the BUFFERED registration row a subscription claimed, as the
 /// registration funnel observed it.
@@ -423,6 +431,14 @@ pub struct NodeMetadata {
     pub name: MetadataString,
     pub namespace: MetadataString,
     pub domain_id: u32,
+    /// RFC-0128 D2 (phase-554 W2.b) -- did this node's OWN code register a
+    /// lifecycle state machine while the probe ran it?
+    ///
+    /// Set only by [`MetadataRecorder::observe_lifecycle_registration`], i.e.
+    /// by the executor's lifecycle funnel, never by an adapter declaring it.
+    /// `false` is "no registration was observed", which is exactly the run-time
+    /// rule: a node with no machine is plain.
+    pub code_managed: bool,
 }
 
 /// Recorded entity declaration.
@@ -812,6 +828,26 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
     /// so a second observation lands on the next unset row rather than
     /// re-stating the first — the difference matters exactly when two rows
     /// disagree, which is the case this whole field exists for.
+    /// RFC-0128 D2 (phase-554 W2.b) -- the join for a lifecycle registration:
+    /// mark the recorded node the executor named as code-managed.
+    ///
+    /// Matched on the final name and on the namespace without its leading and
+    /// trailing `/` (the executor's `managed_node_id` rule), so `""`, `/` and
+    /// `/` + `/` are one root namespace. Returns `false` when no recorded node
+    /// matches: a registration the sidecar cannot attribute is a fact lost, and
+    /// the caller must say so rather than drop it.
+    #[must_use]
+    pub fn observe_lifecycle_registration(&mut self, name: &str, namespace: &str) -> bool {
+        let want = namespace.trim_matches('/');
+        for node in self.nodes.iter_mut() {
+            if node.name.as_str() == name && node.namespace.as_str().trim_matches('/') == want {
+                node.code_managed = true;
+                return true;
+            }
+        }
+        false
+    }
+
     #[must_use]
     pub fn observe_subscription_registration(
         &mut self,
@@ -904,6 +940,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 name: copy_str(name)?,
                 namespace: copy_str(namespace)?,
                 domain_id,
+                code_managed: false,
             })
             .map_err(|_| NodeMetadataError::Capacity)
     }
@@ -1094,6 +1131,12 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             } else {
                 write_json_field(out, "namespace", node.namespace.as_str())?;
                 out.write_char(',')?;
+            }
+            // Schema v5 (phase-554 W2.b): written only when the executor's
+            // lifecycle funnel reported this node, so a reader's default
+            // (`false`, plain) is the run-time rule for every other node.
+            if node.code_managed {
+                write!(out, "\"lifecycle\":true,")?;
             }
             self.write_node_entities(out, node.id.as_str())?;
             write!(out, "}}")?;
@@ -2466,5 +2509,54 @@ mod tests {
             "a client registers no callback; emitting one would misdescribe it"
         );
         assert!(json.contains("\"generator\":\"nros-metadata-rust\""));
+    }
+
+    /// RFC-0128 D2 (phase-554 W2.b) -- the sidecar states `lifecycle` for
+    /// exactly the node whose code registered, in both directions: the
+    /// registered node carries it, the plain one does not, and a
+    /// registration naming no recorded node is refused rather than dropped.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn only_the_node_whose_code_registered_a_machine_is_stated_managed() {
+        let mut recorder = MetadataRecorder::<2, 1, 1>::new();
+        recorder
+            .push_node(NodeId::new("plain"), "talker", "/", 0)
+            .unwrap();
+        recorder
+            .push_node(NodeId::new("coded"), "managed", "/demo", 0)
+            .unwrap();
+
+        // Nothing observed: no node is stated managed.
+        let json = recorder
+            .to_source_metadata_json(&SourceMetadataExport::new("p", "c"))
+            .unwrap();
+        assert!(
+            !json.contains("\"lifecycle\""),
+            "nothing registered, got {json}"
+        );
+
+        // The executor names the namespace as its node table holds it; the
+        // join ignores leading/trailing `/` the way `managed_node_id` does.
+        assert!(recorder.observe_lifecycle_registration("managed", "/demo/"));
+        assert!(
+            !recorder.observe_lifecycle_registration("ghost", "/"),
+            "a registration naming no recorded node is refused"
+        );
+        assert!(
+            !recorder.observe_lifecycle_registration("managed", "/"),
+            "the namespace is part of the key"
+        );
+
+        let json = recorder
+            .to_source_metadata_json(&SourceMetadataExport::new("p", "c"))
+            .unwrap();
+        assert_eq!(json.matches("\"lifecycle\":true").count(), 1, "got {json}");
+        let coded = json.find("\"id\":\"coded\"").unwrap();
+        let mark = json.find("\"lifecycle\":true").unwrap();
+        let plain = json.find("\"id\":\"plain\"").unwrap();
+        assert!(
+            plain < coded && coded < mark,
+            "the mark is on the coded node's row, got {json}"
+        );
     }
 }

@@ -144,8 +144,8 @@ exactly one machine, on each road, and the managed node's model row says so.
 
 ### W2.b — The code decides which nodes are managed (D2, ruled 2026-11-13)
 
-- **Status:** OPEN. Part 1 (the run-time half) is done; part 2 (the probe
-  field) is open.
+- **Status:** OPEN. Part 1 (the run-time half) is done. Part 2's probe field
+  is done; its two readers (the model road and the leaf road) are open.
 
 Two rulings, both 2026-11-13. The first: "Go option c for lifecycle node that
 code decides, as in ROS 2". The second, on how the build learns it: "reuse
@@ -169,13 +169,23 @@ inferred from build order.
   first, so a build-order rule fails them. A mutation that restores
   "first node" fails both tests.
 
-**Part 2: the probe field (open).**
+**Part 2: the probe field.**
 
-- The registration observer reports a lifecycle registration, with its node.
-- The metadata probe writes it as one per-node field in its sidecar, beside
-  `in_place`. Both directions are gated as the other probe facts are: a
-  registration the sidecar does not record fails, and so does a recorded
-  field nothing registered.
+- **Done.** The registration observer reports a lifecycle registration, with
+  its node. It fires from the CODE-facing registrations
+  (`register_lifecycle_services`, `register_lifecycle_services_on`) after the
+  machine exists. A launch file's machine (`register_managed_node_on`) is
+  not reported, so a plain node that one launch file marks is not stated
+  code-managed for every other launch file.
+- **Done.** The metadata probe writes it as one per-node field in its
+  sidecar, `"lifecycle": true` on the node row (sidecar schema v5), written
+  only when observed. Both directions are gated as the other probe facts
+  are, end to end through the C++ ABI in `nros-cpp`'s
+  `census_lifecycle_tests` (run by `check census-hooks-complete`): the coded node
+  carries the field; a plain node and a launch-marked node do not. A
+  registration naming no recorded node is refused, not dropped
+  (`only_the_node_whose_code_registered_a_machine_is_stated_managed`).
+  Mutation-checked: a join that stops marking the node fails the C++ test.
 - The model road folds it into each node's `lifecycle` fact
   (`overlay::managed_nodes`).
 - The leaf road (`--from-leaf`, the single-package cargo leaf) reads it from

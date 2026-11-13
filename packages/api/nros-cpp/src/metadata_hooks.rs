@@ -919,3 +919,113 @@ mod census_hooks_reach_every_api {
         nros::metadata_mode::reset();
     }
 }
+
+/// RFC-0128 D2 (phase-554 W2.b) -- the census states which nodes their OWN
+/// code made lifecycle nodes, observed at the executor's lifecycle funnel.
+///
+/// Both directions, end to end through the C++ ABI:
+///
+/// * the node whose code registered a machine
+///   (`nros_cpp_register_lifecycle_services_for_node`, what
+///   `rclcpp_lifecycle::LifecycleNode` calls) carries `"lifecycle":true`;
+/// * a plain node carries nothing, and so does a node whose machine came from
+///   the LAUNCH file's path (`nros_cpp_lifecycle_register_node`, what a
+///   generated entry calls for a `<lifecycle_node>`): that machine is the
+///   launch file's, and stating it as the code's would manage the node under
+///   every other launch file too.
+#[cfg(all(
+    test,
+    feature = "metadata-mode",
+    feature = "lifecycle-services",
+    feature = "rmw-cffi"
+))]
+mod census_lifecycle_tests {
+    use core::{ffi::c_void, mem::MaybeUninit};
+
+    use crate::{
+        NROS_CPP_RET_OK,
+        lifecycle_shim::{
+            nros_cpp_lifecycle_register_node, nros_cpp_register_lifecycle_services_for_node,
+        },
+        nros_cpp_fini, nros_cpp_init_rmw, nros_cpp_node_create_ex, nros_cpp_node_options_t,
+        nros_cpp_node_t,
+    };
+
+    #[repr(C, align(16))]
+    struct ExecutorStorage([u64; crate::CPP_EXECUTOR_OPAQUE_U64S]);
+
+    /// The JSON of one node row, from its `id` to the next node's.
+    fn node_row<'a>(json: &'a str, id: &str) -> &'a str {
+        let key = alloc::format!("{{\"id\":\"{id}\"");
+        let start = json
+            .find(&key)
+            .unwrap_or_else(|| panic!("no node row {id} in {json}"));
+        let rest = &json[start + 1..];
+        let end = rest.find("{\"id\":\"").map_or(rest.len(), |e| e);
+        &json[start..start + 1 + end]
+    }
+
+    #[test]
+    fn census_states_lifecycle_for_exactly_the_code_managed_node() {
+        nros::metadata_mode::reset();
+        let _ = nros_rmw_metadata::nros_rmw_metadata_register();
+
+        let mut storage = MaybeUninit::<ExecutorStorage>::uninit();
+        let exec = storage.as_mut_ptr().cast::<c_void>();
+        let rc = unsafe {
+            nros_cpp_init_rmw(
+                c"metadata".as_ptr(),
+                core::ptr::null(),
+                0,
+                c"census_lifecycle".as_ptr(),
+                c"/".as_ptr(),
+                exec,
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK, "the metadata backend must open");
+
+        let opts = nros_cpp_node_options_t::default();
+        let mut nodes = [const { MaybeUninit::<nros_cpp_node_t>::uninit() }; 3];
+        for (slot, name) in
+            nodes
+                .iter_mut()
+                .zip([c"plain_node", c"coded_node", c"launch_marked_node"])
+        {
+            let rc =
+                unsafe { nros_cpp_node_create_ex(exec, name.as_ptr(), &opts, slot.as_mut_ptr()) };
+            assert_eq!(rc, NROS_CPP_RET_OK);
+        }
+
+        // The code's path: a `LifecycleNode` bound to its node.
+        let rc = unsafe { nros_cpp_register_lifecycle_services_for_node(nodes[1].as_ptr()) };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+        // The launch file's path, autostart none.
+        let rc = unsafe {
+            nros_cpp_lifecycle_register_node(exec, c"/".as_ptr(), c"launch_marked_node".as_ptr(), 0)
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+
+        let export = nros::node_metadata::SourceMetadataExport::new("pkg", "census_lifecycle")
+            .language("cpp");
+        let json = nros::metadata_mode::to_json(&export).expect("serialize");
+        let rc = unsafe { nros_cpp_fini(exec) };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+        nros::metadata_mode::reset();
+
+        assert_eq!(
+            json.matches("\"lifecycle\":true").count(),
+            1,
+            "exactly one node is code-managed: {json}"
+        );
+        assert!(
+            node_row(&json, "coded_node").contains("\"lifecycle\":true"),
+            "the node whose code registered a machine: {json}"
+        );
+        for plain in ["plain_node", "launch_marked_node"] {
+            assert!(
+                !node_row(&json, plain).contains("\"lifecycle\""),
+                "`{plain}` carries no code-managed fact: {json}"
+            );
+        }
+    }
+}
