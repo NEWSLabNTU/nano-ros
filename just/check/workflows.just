@@ -879,8 +879,6 @@ merge-group-gates:
 [private]
 cadence-jobs:
     @python3 scripts/check-cadence-jobs.py
-    @# phase-558 — the derivation the per-board daily job's matrix comes from.
-    @python3 scripts/ci/nightly-boards.py --self-test
 
 # phase-489 W6 — the self-hosted fixture lanes build in a persistent tree
 # beside the checkout (`scripts/ci/fixture-tree.sh`). Holds the workflow half

@@ -110,6 +110,13 @@ def main() -> int:
     args = ap.parse_args()
     if args.self_test:
         return self_test()
+    # The negative control runs on the normal path too, so the derivation the
+    # nightly matrix comes from cannot stop being checked. Its report goes to
+    # stderr: stdout is the matrix JSON the workflow reads.
+    import contextlib
+    with contextlib.redirect_stdout(sys.stderr):
+        if self_test() != 0:
+            return 1
     rows = board_registry.load(REGISTRY).get("board", [])
     print(json.dumps(boards(rows, set(args.modules.split())), separators=(",", ":")))
     return 0

@@ -40,7 +40,9 @@ said which board it was about.
 
 ## Work items
 
-### W1 -- A board slice of a module scope -- DONE
+### W1 -- A board slice of a module scope
+
+- **Status:** DONE (2026-11-13, branch `ci/nightly-per-board`)
 
 `lane-coords --scope <module> --board <PlatformId>` prints the rows of that
 board's fixture tokens and refuses a board the module does not own.
@@ -52,7 +54,9 @@ one board's verdict every other board's tests).
 writes only `nuttx-riscv` rows; `NROS_SCOPE_BOARD=Bogus` fails naming
 `NuttxArm, NuttxRiscv`. Measured.
 
-### W2 -- Module stages that belong to one board skip on the other -- DONE
+### W2 -- Module stages that belong to one board skip on the other
+
+- **Status:** DONE (2026-11-13, branch `ci/nightly-per-board`)
 
 The coordinate-filtered builders already narrow. The stages that do not go
 through them now ask `nros_lane_wants_platform`, as nuttx's arm/riscv fixture
@@ -65,7 +69,9 @@ halves already did:
 **Acceptance:** with a NuttxRiscv slice, `just nuttx build` prints
 `nuttx skip: the arm kernel: no nuttx (arm) coordinate in this run`. Measured.
 
-### W3 -- `nightly.yml` runs one job per board -- DONE
+### W3 -- `nightly.yml` runs one job per board
+
+- **Status:** DONE (2026-11-13, branch `ci/nightly-per-board`)
 
 `changes` emits `boards`; `platform` is `matrix: include:` over it, named
 `${{ matrix.board }}`, with a `Board scope` step that exports
@@ -76,7 +82,9 @@ On the live registry the matrix is 7 jobs where it was 5: `FreertosMps2`,
 `FreertosPosix`, `NuttxArm`, `NuttxRiscv`, `QemuBaremetal`, `ThreadxLinux`,
 `ThreadxRiscv64`.
 
-### W4 -- Every verdict reader keys on the board -- DONE
+### W4 -- Every verdict reader keys on the board
+
+- **Status:** DONE (2026-11-13, branch `ci/nightly-per-board`)
 
 - `check-cadence-jobs`: a daily job is served only when it is named
   `${{ matrix.board }}`, its matrix is `include:` over `boards`, the `changes`
@@ -92,12 +100,16 @@ On the live registry the matrix is 7 jobs where it was 5: `FreertosMps2`,
   split).
 - `record-lane-runs.py`: wording.
 
-### W5 -- RFC wording -- DONE
+### W5 -- RFC wording
+
+- **Status:** DONE (2026-11-13, branch `ci/nightly-per-board`)
 
 RFC-0122 D8's `daily` row and an amendment note; RFC-0114's `nightly_token`
 predicate and its open question.
 
-### W6 -- The hosted-minute delta, measured -- OPEN
+### W6 -- The hosted-minute delta, measured
+
+- **Status:** OPEN
 
 Estimated from the three runs above: each platform job pays a fixed ~6-10
 min before it builds anything (container init ~80 s, CLI build 190-375 s,
@@ -109,7 +121,9 @@ fixture builds split rather than repeat.
 **Acceptance:** the first scheduled 07:00 run after merge, per-job and total
 minutes against run 43172962836's 5-job total, recorded here.
 
-### W7 -- Zephyr's second board -- OPEN
+### W7 -- Zephyr's second board
+
+- **Status:** OPEN
 
 The zephyr-* jobs (05:00 cron) build `native_sim/native/64` only, so they are
 ZephyrNativeSim's. ZephyrQemuCortexM has no daily job at all; that is issue
