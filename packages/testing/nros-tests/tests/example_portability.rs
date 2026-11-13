@@ -343,8 +343,8 @@ enum FileKind {
 /// `src/lib.rs`", which is a PROXY for the rule and not the rule. It held while
 /// every split package split into two RUST files. It stops holding for a leaf
 /// whose node logic is C and whose `main.rs` is nothing but the boot chain
-/// (`examples/mps2-an385-baremetal/c/talker`, the only shape a board with no C
-/// startup can take): there the glue file is glue by construction, and the proxy
+/// (`examples/mps2-an385-baremetal/c/talker` until phase-553 W5, the only shape
+/// a board with no C startup could take): there the glue file is glue by construction, and the proxy
 /// called it logic and then failed it for containing `#![no_main]`.
 ///
 /// The generalisation is MEASURED, not assumed: across every tracked

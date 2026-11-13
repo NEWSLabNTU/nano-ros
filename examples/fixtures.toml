@@ -3460,17 +3460,28 @@ target = "thumbv7m-none-eabi"
 # `src/<pkg>_bringup/system.toml` names `entry = "<pkg>"`. `nros build` builds
 # that package on the cargo road (its `package.xml` declares `nros_cargo`), so
 # these `[[workspace_fixture]]` rows keep `builder = "cargo"`: the APPLICATION is
-# C/C++ and the coordinate says so, the link root is cargo. They are the only
-# images of the six `(QemuBaremetal, C|Cpp, Zenoh, *)` Runtime cells
-# (`test_qemu_baremetal_capi_e2e`). Issue 2377 (resolved by this shape); a
-# GENERATED C/C++ entry on this board stays refused (issue 2376's ruling).
+# C/C++ and the coordinate says so, the link root is cargo. With the talkers
+# below they are the only images of the six `(QemuBaremetal, C|Cpp, Zenoh, *)`
+# Runtime cells (`test_qemu_baremetal_capi_e2e`). Issue 2377.
+#
+# phase-553 W4 gave this board a CMake-rooted road (the board's C start is the
+# image's `main`), so a GENERATED C/C++ entry builds here now. W5 moved the two
+# talkers onto it, as `builder = "cmake"` rows; W6 moves the other roles.
 # ---------------------------------------------------------------------------
 
-[[fixture]]
+# phase-553 W5 — the C talker is a one-package workspace whose package is an
+# ordinary component, so it builds on the CMake road: the generated entry is
+# the image's program and the board's C start is its `main` (phase-553 W4).
+[[workspace_fixture]]
+id = "baremetal-c-zenoh-talker"
 platform = "baremetal"
 lang = "c"
-builder = "cargo"
+builder = "cmake"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/c/talker"
+bringup = "src/baremetal_c_talker_bringup"
+image = "mps2-an385-baremetal"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_c_talker_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-c-zenoh-listener"
@@ -3532,11 +3543,19 @@ image = "mps2-an385-baremetal"
 target_dir = "target-fixtures"
 target = "thumbv7m-none-eabi"
 
-[[fixture]]
+# phase-553 W5 — the C++ talker is a one-package workspace whose package is an
+# ordinary component, so it builds on the CMake road: the generated entry is
+# the image's program and the board's C start is its `main` (phase-553 W4).
+[[workspace_fixture]]
+id = "baremetal-cpp-zenoh-talker"
 platform = "baremetal"
 lang = "cpp"
-builder = "cargo"
+builder = "cmake"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/cpp/talker"
+bringup = "src/baremetal_cpp_talker_bringup"
+image = "mps2-an385-baremetal"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_cpp_talker_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-cpp-zenoh-listener"

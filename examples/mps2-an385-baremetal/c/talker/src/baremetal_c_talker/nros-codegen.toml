@@ -1,0 +1,5 @@
+# The capacity of the stock `std_msgs/String` this node carries.
+# The type states no serialized-size bound, so the consumer states one here,
+# beside package.xml. 256 is generous for the demo's one-line payloads.
+[fields]
+"std_msgs/String.data" = 256

@@ -155,6 +155,12 @@ build:
     # (RFC-0122 D3): `nros build` generates its entry and builds the image.
     echo "  build examples/mps2-an385-baremetal/rust/talker (workspace)"
     (cd examples/mps2-an385-baremetal/rust/talker && "$nros_cli" build mps2-an385-baremetal -- $cargo_profile_args)
+    # phase-553 W5 — the C and C++ talkers are one-package CMake workspaces:
+    # `nros build` generates the entry and links it on the CMake road.
+    for lang in c cpp; do
+        echo "  build examples/mps2-an385-baremetal/$lang/talker (workspace, cmake)"
+        (cd "examples/mps2-an385-baremetal/$lang/talker" && "$nros_cli" build)
+    done
     # Phase 131.B — bench/test-fixture binaries that used to live under
     # examples/mps2-an385-baremetal/rust/{core,standalone,zenoh/large-msg-test}
     # now sit under packages/testing/.

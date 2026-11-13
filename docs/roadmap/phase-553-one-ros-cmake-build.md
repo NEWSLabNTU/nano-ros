@@ -1,6 +1,6 @@
 # Phase 553 — One C/C++ build method: a ROS 2 CMake package on every board
 
-**Status (2026-11-13). IN PROGRESS: W1 to W4 done; W5 to W7 open.**
+**Status (2026-11-14). IN PROGRESS: W1 to W5 and W7 done; W6 open.**
 Work for [RFC-0130](../design/0130-one-ros-cmake-build.md). Maintainer ruling
 2026-11-12, "Accept the unified ROS-CMake build": a C/C++ node package is an
 ordinary ROS 2 `ament_cmake(_auto)`-style package on every board, with no
@@ -186,13 +186,40 @@ has no bare-metal arm yet. `just check dep-chain`: 7 of 7 cells pass.
 
 ### W5 — Migrate the bare-metal C/C++ talkers
 
-- **Status:** OPEN (W4 is done)
+- **Status:** DONE (2026-11-14)
 
 `examples/mps2-an385-baremetal/{c,cpp}/talker` become one-package workspaces
 whose package is an ordinary component, booted by the generated entry.
 
 Acceptance: their fixture rows are workspace rows on the cmake road, and
 their runtime cells pass.
+
+Done. Each talker is `src/baremetal_<lang>_talker/` (a typed component:
+`nano_ros_add_node(talker ... )`, no `main`, no board name, from the
+`nros new` talker template) beside `src/baremetal_<lang>_talker_bringup/`
+(`system.toml`, `board-net.toml`, `system.contract.yaml`). The leaf's
+`Cargo.toml`, `build.rs` and `src/main.rs` are gone. The node target is named
+`talker`, the component's instance name, because the plan joins the probed
+metadata to the launch row by that name; naming it after the package failed
+configure with `missing-source-metadata`.
+
+- Fixture rows: the two `[[fixture]]` rows are `[[workspace_fixture]]` rows
+  `baremetal-{c,cpp}-zenoh-talker`, `builder = "cmake"`.
+- `qemu_baremetal_capi_binary` resolves every case from its workspace row;
+  the cargo-leaf fallback is gone.
+- `just qemu build-examples` builds the two workspaces with `nros build`.
+- The root `Cargo.toml` excludes and the two ratchet baselines that named the
+  leaves lose those entries.
+- Three CLI tests count cargo leaves or node packages with a floor. Two lower
+  by the two talkers (measured, 14 -> 12 and 18 -> 16). The third,
+  `example_metadata_coverage`, missed them because its classifier knew only
+  `nano_ros_node_register(`; it now also knows `nano_ros_add_node(`, and its
+  wider blind spot (82 `nano_ros_auto_add_library` packages) is
+  [issue 2552](../issues/2552-metadata-coverage-classifier-misses-ament-auto-components.md).
+
+Measured 2026-11-14 (QEMU 11.0): `test_qemu_baremetal_capi_e2e`, 6/6 pass,
+both talkers' pub/sub pairs among them (each against the still cargo-rooted
+listener of its language).
 
 ### W6 — Retire the cargo-built C/C++ bare-metal workspaces
 
@@ -209,7 +236,7 @@ example; `test_qemu_baremetal_capi_e2e` passes against the new rows.
 
 ### W7 — A bounded, guarded stack on the C-rooted image
 
-- **Status:** DONE (2026-11-13). FreeRTOS task stacks are not covered: [issue 2507](../issues/2507-freertos-task-stack-overflow-reads-as-malloc-failed.md).
+- **Status:** DONE (2026-11-13, #3737). FreeRTOS task stacks are not covered: [issue 2507](../issues/2507-freertos-task-stack-overflow-reads-as-malloc-failed.md).
 
 Issue 2494. On bare-metal mps2-an385 the main stack is neither bounded nor
 guarded: cortex-m-rt grows it down from `_stack_start` (0x2040_0000), the

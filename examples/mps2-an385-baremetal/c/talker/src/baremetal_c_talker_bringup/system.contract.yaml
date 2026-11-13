@@ -1,0 +1,26 @@
+# What this image's node DECLARES, beside system.toml. The build sizes its
+# buffers and its callback table from this, so it must list everything the
+# node creates: when you add a timer, a publisher, a subscription or a
+# parameter in the code, state it here too.
+# `nros build --explain-sizing` lists anything still left to a default.
+
+version: 1
+
+nodes:
+  talker:
+    params: {}
+    paths:
+      on_tick:
+        trigger: { timer: { rate_hz: 1 } }
+        output: [chatter]
+    pub:
+      chatter:
+        qos:
+          durability: volatile
+
+topics:
+  /chatter:
+    type: std_msgs/msg/String
+    pub: [talker/chatter]
+    # Read outside this workspace, by `ros2 topic echo` or a ROS 2 node.
+    external: sub

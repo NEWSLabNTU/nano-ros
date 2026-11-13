@@ -1,4 +1,4 @@
-/target/
-/target-*/
-/generated/
 /build/
+/generated/
+/target/
+/src/*/metadata/

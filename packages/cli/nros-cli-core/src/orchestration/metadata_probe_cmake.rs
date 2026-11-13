@@ -95,7 +95,7 @@ pub fn render_probe_cmakelists(comps: &[CmakeProbeOptions]) -> String {
         "# add_subdirectory; only the probe executables are synthesized here.\n",
         "cmake_minimum_required(VERSION 3.22)\n",
         "project(nros_metadata_probes LANGUAGES C CXX)\n\n",
-        "set(CMAKE_CXX_STANDARD 14)\n",
+        "set(CMAKE_CXX_STANDARD 17)\n",
         "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n\n",
         "# The recording RMW backend rides in on nros-cpp's `metadata-mode` cargo\n",
         "# feature, appended to the umbrella's feature list. Host build only —\n",

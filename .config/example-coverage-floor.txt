@@ -8,8 +8,8 @@
 # (RFC-0122 D10: a hand-written `main` that is not a manual-entry demo).
 #
 # platform lang driver shape launch entry
-baremetal c cargo single generated generated
-baremetal cpp cargo single generated generated
+baremetal c cmake single generated generated
+baremetal cpp cmake single generated generated
 baremetal rust cargo single generated generated
 baremetal rust cargo single generated manual
 freertos c cmake multi authored generated

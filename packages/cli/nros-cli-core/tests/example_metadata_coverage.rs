@@ -85,7 +85,11 @@ fn classify(pkg_dir: &Path) -> Shape {
         .map(|l| l.split('#').next().unwrap_or(""))
         .collect::<Vec<_>>()
         .join("\n");
-    if cmake_calls.contains("nano_ros_node_register(") {
+    // phase-553 W5 — `nano_ros_add_node(` is the verb `nros new` emits and the
+    // bare-metal talkers moved to; matching only `nano_ros_node_register(`
+    // dropped them from the count the day they became CMake components.
+    if cmake_calls.contains("nano_ros_node_register(") || cmake_calls.contains("nano_ros_add_node(")
+    {
         return Shape::CmakeNode;
     }
     if read("nros.toml").contains("[component]") || pkg_dir.join("component_nros.toml").is_file() {

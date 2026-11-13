@@ -802,7 +802,7 @@ fn scaffold_component_cpp(dir: &Path, cfg: &ComponentScaffoldConfig) -> Result<(
 # §212.L.4 — class prefix must equal PROJECT_NAME.
 project({pkg_sym} VERSION 0.1.0 LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(nano_ros REQUIRED)
@@ -1202,7 +1202,7 @@ fn scaffold_cxx_executable(
         ),
         _ => (
             "C CXX",
-            "set(CMAKE_CXX_STANDARD 14)\nset(CMAKE_CXX_STANDARD_REQUIRED ON)",
+            "set(CMAKE_CXX_STANDARD 17)\nset(CMAKE_CXX_STANDARD_REQUIRED ON)",
             "src/main.cpp",
         ),
     };

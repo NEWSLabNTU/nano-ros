@@ -1,111 +1,47 @@
 # Bare-metal C talker (MPS2-AN385, no RTOS)
 
 Publishes `std_msgs/String` `"Hello World: N"` on `/chatter` once a second from
-an ordinary nano-ros **C** application, on a Cortex-M3 with **no RTOS at all**.
+an ordinary nano-ros **C** component, on a Cortex-M3 with **no RTOS at all**.
 
-This is the first C leaf in either bare-metal family (issue 1512), and the one
-whose README explains the family: `c/{listener,service-server,service-client,
-action-server,action-client}` and `cpp/talker` beside it take the same shape.
-Read the next section before copying any of them: the *shape* differs from
-every other C example in the tree, and the reason is the board, not the C API.
+## Layout
 
-`build.rs` and `src/main.rs` are **leaf-agnostic** and byte-identical across the
-six C leaves, but for the one `use` line in `src/main.rs` that reaches the board
-through the leaf's own generated selection package: the script compiles every
-`src/*.c` and binds every interface package `nros interface generate c` resolves from
-`package.xml`, so a leaf differs from its siblings in `package.xml`, its own C
-file, that package name and (for a receiver of `std_msgs/String`) an
-`nros-codegen.toml` bound — nowhere else.
+A one-package workspace, the same shape as an RTOS board's C example:
 
-The manifest names no board crate. The board (and with it the RMW backend,
-`cortex-m-rt` and `cortex-m`) comes from `<pkg>_nros_selection`, which `nros
-sync` / `nros build` generate under `build/nros/selection/` from `system.toml`
-(RFC-0098 D6, issue 1305); the image states `panic = "platform"` so that
-package links no second panic handler beside `nros-c`'s.
-
-## Why the link root is Rust here
-
-On FreeRTOS, NuttX, Zephyr and ThreadX a C example is a C program: the RTOS
-supplies `main`, a C startup and a C platform port, and `libnros_c.a` is linked
-*in*. `examples/threadx-linux/c/talker/` is that shape — a `CMakeLists.txt`
-calling `nano_ros_add_executable`, nine lines long.
-
-A board with no RTOS has none of those pieces in C:
-
-| What an image needs | Where it lives on this board |
+| Path | What it is |
 | --- | --- |
-| reset vector, `.data` copy, `.bss` zero | `cortex-m-rt` (Rust) |
-| monotonic clock | CMSDK Timer0, `nros_platform_mps2_an385::clock` (Rust) |
-| network | LAN9118 + `smoltcp`, `nros_board_mps2_an385::init_hardware` (Rust) |
-| console | semihosting, `cortex-m-semihosting` (Rust) |
-| heap | `zpico_alloc::FreeListHeap` in `.bss` (Rust; 128 KB, `NROS_HEAP_SIZE`) |
+| `src/baremetal_c_talker/` | the component: `CMakeLists.txt` (`nano_ros_add_node(... TYPED)`), `src/talker.c`, `package.xml`, `nros-codegen.toml` |
+| `src/baremetal_c_talker_bringup/` | what it runs on: `system.toml` (board, RMW, locator), `board-net.toml` (the image's network), `system.contract.yaml` (what the node declares, for sizing) |
 
-Only the last one has a C-visible face (`malloc`/`free`, from
-`nros-baremetal-common`'s `libc-heap`). There is no C entry point for the other
-four, so a C-rooted link would have to re-implement them — a second bring-up
-path beside the Rust one, which is the duplication this repo treats as a defect.
+`talker.c` has no `main` and names no board. `RCLC_C_COMPONENT` emits the C-ABI
+factory and configure hooks; the entry the build generates for the bringup's
+image calls them on the image's executor.
 
-So the image is rooted in **cargo**, `src/main.rs` owns the reset entry and the
-board bring-up, and `build.rs` compiles `src/talker.c` into it. The program
-writes `main`; `build.rs` compiles it as `nros_ported_main` and generates the
-`nros_app_main` that `src/main.rs` calls after platform init (network,
-executor arena, board hw) — `nros_cc_flags::app_main`, the cargo twin of the
-cmake road's generated entry (phase-499).
+## How it boots with no RTOS
 
-`cmake/platform/nano-ros-baremetal.cmake` and
-`cmake/board/nano-ros-board-mps2-an385-baremetal.cmake` still exist and are what
-an **out-of-tree** C parent build would use. They remain without a consumer, and
-issue 1512 records the three things they would need first (a `SECTIONS` linker
-script — the one the overlay names is a `MEMORY{}`-only `cortex-m-rt` fragment —
-a C reset/vector startup, and a C-callable board init).
+On this board the entry's `main` is the board's C start,
+`nros_board_mps2_an385_start` (`nros-board-mps2-an385`'s `c/c_main.c`). It runs
+the board bring-up written in Rust (CMSDK Timer0 clock, LAN9118 + smoltcp
+network, semihosting console, the `nros_log` sinks), then calls the entry. The
+board crate, `cortex-m-rt` and the PAC come in through the image's Rust
+staticlib, so the link is rooted in CMake like every RTOS board's (phase-553
+W4). The C library is newlib-nano, so `printf` and `snprintf` work.
 
-## What is ordinary about it
+The main stack is 256 KiB with an MPU guard below it; raise it with
+`NROS_BAREMETAL_STACK_KB`. An overflow stops the image with
+`nros: stack overflow`.
 
-`src/talker.c` is the same program as its FreeRTOS sibling: `rclc_support_init`,
-`rclc_node_init_default`, `rclc_publisher_init_default`, a 1 Hz
-`rclc_timer_init_default`, `rclc_executor_init`, `rclc_executor_spin_period`. The C API
-is not subset here — `nros-c` is built with the `platform-mps2-an385` arm and
-carries its whole surface.
-
-## Two bare-metal C facts worth knowing
-
-* **No libc.** No `stdio.h`, no `getenv`, no `signal`. `memset`/`memcpy`/`malloc`
-  and the `str*` helpers come from `nros-baremetal-common`; anything else is an
-  undefined symbol at link time, which is the honest answer.
-* **`printf`-style logging does not substitute.** `nros-baremetal-common`'s
-  `vsnprintf` copies its format string **verbatim** (a deliberate choice: an
-  unsubstituted message still names the failure, where an empty buffer is
-  silence). So `RCLC_LOG_INFO(logger, "n=%d", n)` prints `n=%d` on this
-  platform. Build the text and call `rclc_log_emit_at`, as this example does.
-
-## Build
+## Build and run
 
 ```sh
 source ./activate.sh          # puts this checkout's `nros` on PATH
-nros configure examples/mps2-an385-baremetal/c/talker
-cd examples/mps2-an385-baremetal/c/talker && cargo build --release
+cd examples/mps2-an385-baremetal/c/talker
+nros build                    # prints the artifact and the QEMU command line
 ```
 
-`nros configure` renders the board's settings into
-`build/mps2-an385-baremetal/nros-cargo.toml` (triple, QEMU runner,
-`--gc-sections`, `CC_thumbv7m_none_eabi`) and writes a gitignored
-`.cargo/config.toml` that includes it beside the `[patch.crates-io]` rows.
-`build.rs` then runs `nros interface generate c` for the `<depend>` list in `package.xml`
-and compiles the bindings beside `talker.c`. The fixture lane builds the same
-leaf as a `[[fixture]]` row (`builder = "cargo"`):
-`scripts/build/fixtures-build.sh baremetal c`.
+The image dials the router at the `locator` in `system.toml`
+(`tcp/10.0.2.2:10300`: 10.0.2.2 is the host as seen from QEMU's slirp network).
 
-## Status
-
-Runs end to end under QEMU (issue 1512): `tests/emulator.rs`'s
-`test_qemu_baremetal_capi_e2e` pairs it with its peer against a router on the
-port its `system.toml` locator names (this cell's `alloc::port`). The locator
-reaches the C TU as `NROS_ENTRY_LOCATOR` and the boot config as
-`Config::from_image()`.
-
-How it got there: the image used to dial `NROS_ENTRY_LOCATOR`'s empty bottom
-rung, so the backend substituted its own default (the guest's loopback). The
-leaf still derives nothing — `<rclc/detail/entry_config.h>` stays the one producer of
-that ladder (issue 0946); `nros configure` writes the image's declared values into
-`build/<image>/nros-cargo.toml` as `NROS_ENTRY_*` rows, and
-`nros_cc_flags::entry_config::bake` defines the macro from them.
+The fixture lane builds it from its `[[workspace_fixture]]` row
+(`builder = "cmake"`): `scripts/build/workspace-fixtures-build.sh baremetal c`.
+`tests/emulator.rs`'s `test_qemu_baremetal_capi_e2e` pairs it with
+`../listener` against a router on that port.

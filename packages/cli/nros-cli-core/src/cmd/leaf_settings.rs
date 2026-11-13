@@ -2469,9 +2469,10 @@ mod board_crate_tests {
         // one-package workspace), 21 -> 14 for the seven board-only
         // `nros-tests` bins (the condvar-contract, logging-smoke and
         // pool-exhaustion images; W7: owned entries whose adapter carries only
-        // the board half, issue 2448).
+        // the board half, issue 2448), 14 -> 12 for the mps2-an385 bare-metal
+        // C and C++ talkers (phase-553 W5: CMake components, no cargo leaf).
         assert!(
-            on_selection >= 14,
+            on_selection >= 12,
             "only {on_selection} leaves on the selection package"
         );
     }
@@ -2589,10 +2590,11 @@ mod board_crate_tests {
         // 30 -> 26 for the three `nros-bench` programs and
         // `bins/ros-edition-pose-pub` (phase-531 W7), 26 -> 25 for the
         // mps2-an385 bare-metal Rust talker (phase-531 W6), 25 -> 18 for the
-        // seven board-only `nros-tests` bins (phase-531 W7). Each count
-        // measured.
+        // seven board-only `nros-tests` bins (phase-531 W7), 18 -> 16 for the
+        // mps2-an385 bare-metal C and C++ talkers (phase-553 W5: CMake
+        // components, no cargo leaf). Each count measured.
         assert!(
-            checked >= 18,
+            checked >= 16,
             "the walk reached only {checked} cargo leaves"
         );
     }

@@ -11,9 +11,10 @@ fn main() {
 /// For the cmake road these are already known — the root `CMakeLists.txt` puts
 /// `include/` and the mirrored per-build header on `nros_c-static`'s INTERFACE.
 /// The consumer this is for is a build SCRIPT: an image whose application is C
-/// but whose link root is Rust, which is the only shape a pure bare-metal board
-/// can take (no C startup, no C-reachable board init — see
-/// `examples/mps2-an385-baremetal/c/talker/README.md`).
+/// but whose link root is Rust: the bare-metal C roles under
+/// `examples/mps2-an385-baremetal/c/` other than the talker, whose
+/// `src/<pkg>/build.rs` compiles the C into the cargo image. (The board has
+/// had a C start since phase-553 W4, so this shape is retiring: W6.)
 ///
 /// `CONFIG_INCLUDE` is the OUT_DIR copy — the only one since issue 1824 retired
 /// the shared `$CARGO_TARGET_DIR/nros-c-generated/` path, whose header could be

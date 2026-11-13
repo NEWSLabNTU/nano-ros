@@ -1,7 +1,7 @@
 //! Compile `src/poc.cpp` into this image -- issue 2131.
 //!
-//! The bare-metal C++ build (`examples/mps2-an385-baremetal/cpp/talker`'s
-//! `build.rs` explains each flag) minus what this image does not have: no
+//! The bare-metal C++ build (`examples/mps2-an385-baremetal/cpp/listener`'s
+//! `src/baremetal_cpp_listener/build.rs` explains each flag) minus what this image does not have: no
 //! messages, so no `nros generate cpp`, and no RMW, so no backend crate
 //! announces itself for `nros_cc_flags::backends::generate` to register. The
 //! registration TU is written from an EMPTY list instead, through the same

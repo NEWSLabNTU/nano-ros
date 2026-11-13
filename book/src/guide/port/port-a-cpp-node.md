@@ -52,7 +52,7 @@ nano-ros has no exceptions, and a few handles observe rather than own.
    ```cmake
    cmake_minimum_required(VERSION 3.22)
    project(my_workspace LANGUAGES CXX)
-   set(CMAKE_CXX_STANDARD 14)
+   set(CMAKE_CXX_STANDARD 17)
 
    set(NROS_PLATFORM posix)
    set(NROS_RMW zenoh)
