@@ -41,6 +41,18 @@
 #define ZPICO_FREERTOS_KERNEL 1
 #endif
 
+/* issue 2492 — a hosted printk FLUSHES. stdout to a pipe or file is
+ * block-buffered, and a test harness stops an image with a signal, so a
+ * diagnostic that sat in the buffer was lost with the process: a refused
+ * liveliness token left no trace, and issue 2482 went unexplained for that
+ * reason. These lines are rare (faults and pool exhaustion), so a flush each
+ * costs nothing that matters. Used by every hosted arm below. */
+#define ZPICO_HOSTED_PRINTK(...)                                                                   \
+    do {                                                                                           \
+        printf(__VA_ARGS__);                                                                       \
+        fflush(stdout);                                                                            \
+    } while (0)
+
 #ifdef ZENOH_ZEPHYR
 #include <zephyr/kernel.h> // For printk
 #include <zephyr/random/random.h>
@@ -78,7 +90,7 @@ static void _freertos_printk(const char* fmt, ...) {
 #include <stdio.h>
 #if defined(__linux__)
 #include <sys/select.h>
-#define printk(...) printf(__VA_ARGS__)
+#define printk(...) ZPICO_HOSTED_PRINTK(__VA_ARGS__)
 #else
 #include "nxd_bsd.h"
 extern void uart_puts(const char* s);
@@ -106,7 +118,7 @@ static void _threadx_printk(const char* fmt, ...) {
 // so a NuttX failure could only ever be read through the collapsed Rust-side
 // return code, which is how 0870 spent three diagnoses on the wrong layer.
 #include <stdio.h>
-#define printk(...) printf(__VA_ARGS__)
+#define printk(...) ZPICO_HOSTED_PRINTK(__VA_ARGS__)
 #elif defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
 #define printk(...) // No libc printf on bare-metal
 #elif defined(ZENOH_LINUX) || defined(ZENOH_MACOS)
@@ -116,7 +128,7 @@ static void _threadx_printk(const char* fmt, ...) {
 // platform where a developer is most likely to be reading them. A host has
 // full stdio; there is no reason for it to be the quietest target in the tree.
 #include <stdio.h>
-#define printk(...) printf(__VA_ARGS__)
+#define printk(...) ZPICO_HOSTED_PRINTK(__VA_ARGS__)
 #else
 #define printk(...) // No-op on other platforms
 #endif

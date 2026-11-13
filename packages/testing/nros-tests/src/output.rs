@@ -723,6 +723,15 @@ pub const FREERTOS_ASSERT_FAILED: &str = "FreeRTOS ASSERT FAILED";
 /// consuming test's ~~`pool_exhaustion_marker_matches_the_backend`~~ did.
 pub const ZENOH_SESSION_POOL_EXHAUSTED: &str = "zenoh session pool exhausted";
 
+/// Issue 2492 — the zenoh C shim's line for a refused liveliness token
+/// (`zpico_declare_liveliness` in `zpico-sys/c/zpico/zpico.c`). A MIRROR, like
+/// [`ZENOH_SESSION_POOL_EXHAUSTED`].
+pub const ZPICO_LIVELINESS_POOL_EXHAUSTED: &str = "zpico: liveliness pool exhausted";
+
+/// Issue 2492 — `nros-rmw-zenoh`'s record for the same refusal
+/// (`declare_keyexpr` in `shim/session.rs`), which names the knob to raise.
+pub const ZENOH_LIVELINESS_DECLARE_FULL: &str = "liveliness: declare failed (Full)";
+
 /// The verdict line the issue-0697 fixture prints when BOTH halves hold.
 pub const POOL_EXHAUSTION_VERDICT: &str = "second session refused with Full";
 
