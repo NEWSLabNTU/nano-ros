@@ -266,8 +266,7 @@ describe what the road then does.
   `"defaults"`). No make census here; that is a separate issue (Q6).
 - Gate: cleared (Q1 yes, Q2 A2, Q3 B1, Q4 yes, Q6 yes, Q7 yes, ruled 2026-11-12).
 - **Acceptance:** 2236 section 5's acceptance list.
-- **Status:** OPEN (W6a and W6b done 2026-11-13; W6c not started; the
-  sizing descriptor moved to W6d). Split into three PRs (manager,
+- **Status:** OPEN (W6a, W6b and W6d done 2026-11-13; W6c not started). Split into three PRs (manager,
   2026-11-13).
   - **W6a, identity.** The shell's Makefile reads `NROS_PROJECTS`:
     - none: a guest, with the same command as before;
@@ -341,31 +340,55 @@ describe what the road then does.
       prints a warning every time that the image's pools take the board's
       defaults rather than sizes from its declarations.
 
-### W6d -- The make road sizes a project image from its declarations
+### W6d -- The make road sizes a project image
 
-A project image on the make road builds with no sizing descriptor, so
-`NROS_SIZING_DESCRIPTOR` is absent and its executor, node table and
-transport pools take the board's defaults, which can be smaller than the
-image's declarations need (a liveliness table of 16 for an image that needs
-17 was measured this way). W6b says so on every build; this item removes the gap. Next after W6b
+A project image on the make road built with no sizing descriptor, so
+`NROS_SIZING_DESCRIPTOR` was absent and its executor, node table and
+transport pools took the board's defaults, which can be smaller than the
+image needs (a liveliness table of 16 for an image that needs 17 was
+measured this way). W6b said so on every build; this item closes the gap
 (manager, 2026-11-13).
 
-- Every descriptor today is written inside a cmake configure by `nros dev
-  image sizing-descriptor`, whose model road reads `nros-metadata.json`
-  (written by `nano_ros_node_register`), the bound inventory, the target
-  triple and the board's heap and receive-cost facts. The make road has
-  none of the cmake-side inputs.
-- **Design (to settle in the PR):** the metadata comes from the project's
-  declared `entities`, which W6a already requires of every `[[component]]`
-  (preferred: no build of the app's sources is needed, and the
-  declarations are the contract the image states), rather than from a
-  census of the app. The verb is called after `nros configure`, its output
-  named to cargo by `nros locate nuttx-image-env` through `entity-facts
-  --sizing-descriptor`, and the W6b warning is deleted.
-- **Acceptance (moved from W6b, acceptance 3):** for the C talker, the
-  cargo `[env]` and the placed `nros_config_generated.h` of a make-road
-  build are byte-identical to `nros build`'s on the cmake road.
-- **Status:** OPEN (2026-11-13).
+- **Design, as ruled (manager, 2026-11-13).** The draft planned to read
+  the declared `entities`. Measuring the cmake road changed that: its
+  descriptor for a contract-less image comes from `sizing-descriptor
+  --from-model --workspace`, whose inventory is the workspace's
+  **metadata-probe sidecars**. `nros configure`, which the make road
+  already runs, refreshes the same sidecars. So:
+  - **Primary: the probe.** `nros locate nuttx-image-env` calls that
+    producer over the same inputs: the configured model, the project as
+    `--workspace`, the probe's bound tables, the board's triple and the
+    image's RMW. `basis = "probe"` is honest, because the probe ran on this
+    app's code.
+  - **Fallback: the declaration.** It applies only when the probe recorded
+    none of the image's components. The bringup's `[[component]] entities`
+    feed the same model-road writer. The descriptor says `basis =
+    "declared"` (RFC-0100 Amendment 4), never `probe`. The build prints
+    every declared entity it sized from, because nothing on this road
+    checks a declaration against the code.
+  - The W6b warning stays only for an image neither one sizes, and prints
+    the probe's own notes (a stale or missing sidecar names its remedy).
+- **Acceptance (moved from W6b, acceptance 3, restated by the manager).**
+  The C talker, staged as a make-app project in a W1 arm tree, against
+  `nros build` of the same example on the cmake road:
+  - the sizing descriptor is byte-identical, `[meta]` included (comment
+    header aside);
+  - the placed `nros_config_generated.h` is byte-identical, and it is
+    driven by the descriptor (`NROS_EXECUTOR_MAX_HANDLES 1`, an executor
+    of 11 448 bytes);
+  - the cargo `[env]` rows match value for value, apart from the
+    descriptor's path.
+  The fallback was exercised by hiding the probe sidecar. With the
+  talker's entities declared to match its code (`publisher:std_msgs/msg/
+  String:/chatter`, `timer`), the descriptor equals the cmake road's
+  except `basis = "declared"`.
+- **Not reachable yet: a make app the probe cannot configure.** Without a
+  `CMakeLists.txt` in the package, `nros configure` resolves the image as a
+  cargo-road image and writes no `resolved.cmake`. The make road then
+  refuses at the entity facts (W6b), before the fallback runs. Making such
+  a package configurable is the question W13 and the make-app census (Q6,
+  under user ruling) answer.
+- **Status:** DONE (2026-11-13, W6d PR).
 
 ### W7 -- The image crate is generated in `context::`
 

@@ -894,6 +894,10 @@ pub enum StatedBy {
     Probe,
     /// A contract described the image's wiring ([`EntityInventory::from_model`]).
     Contract,
+    /// The bringup's `[[component]] entities` declared the rows, and neither a
+    /// contract nor a probe sidecar described the image (phase-550 W6d, the
+    /// NuttX make road's fallback). Nothing checked them against the code.
+    Declared,
 }
 
 /// Issue 2076 -- the bringup's generated `nros-bridge.toml`, reduced to what
@@ -3284,6 +3288,24 @@ impl EntityInventory {
     /// phase-517 W5 -- who stated this inventory's rows. See [`StatedBy`].
     pub fn stated_by(&self) -> StatedBy {
         self.stated_by
+    }
+
+    /// phase-550 W6d -- a DECLARED inventory placed in its model's frame
+    /// (families, sched tasks, monitor tables, launch set), as
+    /// [`Self::from_probe`] places a probed one, and stated by
+    /// [`StatedBy::Declared`].
+    #[must_use]
+    pub fn declared_in_model_frame(
+        mut self,
+        model: &nros_orchestration_ir::overlay::LoadedModel,
+    ) -> Self {
+        let declared_infra = self.infra;
+        self.apply_frame(&ImageFrame::from_model(model));
+        // The bringup's own service families, which the declaration read from
+        // the same `system.toml`, are never narrowed by the frame.
+        self.infra = self.infra.union(declared_infra);
+        self.stated_by = StatedBy::Declared;
+        self
     }
 
     /// phase-517 W5 -- record who stated the rows.

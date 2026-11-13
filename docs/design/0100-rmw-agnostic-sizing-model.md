@@ -1487,6 +1487,23 @@ expansions and a contracted image's monitors and reporter already rode
 `nros-bridge.toml`, and its backends reach `backend_count`. Details are in
 [issue 2076](../issues/archived/2076-probe-sizing-misses-bridge-nodes.md).
 
+### Amendment 4 (2026-11-13) — `basis = "declared"` (phase-550 W6d)
+
+The NuttX make road sizes a project image with the producer the cmake road's
+entry calls (`sizing-descriptor --from-model`), over the metadata-probe
+sidecars `nros configure` writes, so its descriptor is the cmake road's, byte
+for byte, `basis = "probe"` included. When the probe recorded nothing for
+the image, the road falls back to the bringup's `[[component]] entities`
+declaration, composed by the same model-road writer.
+
+Those rows are neither authored wiring (`contract`) nor an observation of the
+code (`probe`), and a reader must never mistake one for the other, so they get
+a basis of their own: **`declared`**. It describes the image
+(`Basis::describes_image`), so every pool consumer sizes from it exactly as
+from `probe`. A consumer that wants observed or authored facts only can tell
+it apart. The road also prints every declared entity it sized from, because
+nothing on it checks a declaration against the code.
+
 ## Review (2026-11-13, phase-555 W2)
 
 **Verdict: keep.** Fixed: a pointer to RFC-0121's amendment (the leaf
