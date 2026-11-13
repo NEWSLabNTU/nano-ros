@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-px4-thread-stacks.sh -- issue 2398.
+# check-px4-thread-stacks.sh -- issue 2398, and issue 2400 W3's walked floors.
 #
 # A generated PX4 entry runs nano-ros on its module's main task (which opens the
 # session) and on one PX4 work queue per sched task (which runs every pass).
@@ -31,6 +31,8 @@ GOLDEN="$ROOT/packages/cli/nros-cli-core/testdata/entry/px4_sched_tasks.cpp.gold
 
 # shellcheck source=scripts/build/check-skip.sh
 source "$ROOT/scripts/build/check-skip.sh"
+# shellcheck source=scripts/lib/grep-q.sh
+source "$ROOT/scripts/lib/grep-q.sh"
 command -v cmake >/dev/null 2>&1 || {
     nros_check_unverified px4-thread-stacks "cmake not on PATH" || exit 1
     exit 0
@@ -48,6 +50,17 @@ printf '%s\n' \
     '#if CONFIG_MAIN_STACK_SIZE < NROS_EXECUTOR_MAIN_STACK_MIN' \
     '#endif' >"$TMP/header.h"
 printf '%s\n' '#define NROS_EXECUTOR_VALUE_SIZE 1904' >"$TMP/no-floor.h"
+# Issue 2400 W3 -- the same header with the floors a placer's stack walk wrote:
+# measured (enforced) and unmeasured (reported only).
+walked() { # <file> <open> <open measured> <spin> <spin measured>
+    { cat "$TMP/header.h"
+      printf '#define NROS_STACK_FLOOR_OPEN %s\n#define NROS_STACK_FLOOR_OPEN_MEASURED %s\n' "$2" "$3"
+      printf '#define NROS_STACK_FLOOR_SPIN %s\n#define NROS_STACK_FLOOR_SPIN_MEASURED %s\n' "$4" "$5"
+    } >"$TMP/$1"
+}
+walked measured.h 12000 1 5000 1
+walked unmeasured.h 12000 0 5000 0
+walked sitl-measured.h 12000 1 37576 1
 printf '%s\n' '#define NROS_EXECUTOR_MAIN_STACK_MIN 30000' >"$TMP/big-floor.h"
 
 printf '%s\n' \
@@ -56,9 +69,12 @@ printf '%s\n' \
     'if(NOT floor EQUAL EXPECT_FLOOR)' \
     '    message(FATAL_ERROR "floor read as ${floor}, expected ${EXPECT_FLOOR}")' \
     'endif()' \
+    'nros_px4_read_walked_floors(w "${HEADER}")' \
     'string(REPLACE "," ";" queues "${QUEUES}")' \
     'nros_px4_check_thread_stacks(MODULE m PLATFORM "${PLATFORM}" POINTER_SIZE "${PTR}"' \
-    '    FLOOR "${floor}" FLOOR_SOURCE "${HEADER}" QUEUES ${queues} STACK_MAIN "${MAIN}")' \
+    '    FLOOR "${floor}" FLOOR_SOURCE "${HEADER}" QUEUES ${queues} STACK_MAIN "${MAIN}"' \
+    '    WALK_OPEN "${w_OPEN}" WALK_OPEN_MEASURED "${w_OPEN_MEASURED}"' \
+    '    WALK_SPIN "${w_SPIN}" WALK_SPIN_MEASURED "${w_SPIN_MEASURED}")' \
     'message(STATUS "accepted")' >"$TMP/check.cmake"
 
 printf '%s\n' \
@@ -131,6 +147,32 @@ self_test() {
     case_ "qurt at 3150 (no overhead, no doubling)" refuse CONFIG_WQ_RATE_CTRL_STACKSIZE \
         -DPLATFORM=qurt -DQUEUES=high=rate_ctrl -DCONFIG_WQ_RATE_CTRL_STACKSIZE=3150
 
+    # --- issue 2400 W3: the placer's walked floors --------------------------------
+    # Above the executor's minimum (3808), so only the walk can refuse these.
+    case_ "measured SPIN floor refuses a queue above the minimum" refuse \
+        "the measured stack floor of its deepest path" -DHEADER="$TMP/measured.h" \
+        -DPLATFORM=nuttx -DQUEUES=high=rate_ctrl -DCONFIG_WQ_RATE_CTRL_STACKSIZE=4096 -DMAIN=16384
+    case_ "measured OPEN floor refuses STACK_MAIN above the minimum" refuse "STACK_MAIN 12000 or more" \
+        -DHEADER="$TMP/measured.h" \
+        -DPLATFORM=nuttx -DQUEUES=high=rate_ctrl -DCONFIG_WQ_RATE_CTRL_STACKSIZE=8192 -DMAIN=8192
+    # The remedy names the CONFIGURED value, which PX4 scales: on 64-bit SITL
+    # (37576 - 24576) / 2 = 6500, never the 37576 PX4 would double again.
+    case_ "SITL remedy names the configured queue size" refuse "CONFIG_WQ_RATE_CTRL_STACKSIZE=6500\` or more" \
+        -DHEADER="$TMP/sitl-measured.h" \
+        -DPLATFORM=posix -DPTR=8 -DQUEUES=high=rate_ctrl -DCONFIG_WQ_RATE_CTRL_STACKSIZE=3150
+    case_ "SITL at that configured size holds" accept - -DHEADER="$TMP/sitl-measured.h" \
+        -DPLATFORM=posix -DPTR=8 -DQUEUES=high=rate_ctrl -DCONFIG_WQ_RATE_CTRL_STACKSIZE=6500
+    case_ "measured floors held" accept - -DHEADER="$TMP/measured.h" \
+        -DPLATFORM=nuttx -DQUEUES=high=rate_ctrl -DCONFIG_WQ_RATE_CTRL_STACKSIZE=5000 -DMAIN=12000
+    case_ "unmeasured floors only warn" accept "UNMEASURED stack floor 5000" \
+        -DHEADER="$TMP/unmeasured.h" \
+        -DPLATFORM=nuttx -DQUEUES=high=rate_ctrl -DCONFIG_WQ_RATE_CTRL_STACKSIZE=4096 -DMAIN=8192
+    case_ "an unmeasured walk never lowers the minimum" refuse CONFIG_WQ_RATE_CTRL_STACKSIZE \
+        -DHEADER="$TMP/unmeasured.h" \
+        -DPLATFORM=nuttx -DQUEUES=high=rate_ctrl -DCONFIG_WQ_RATE_CTRL_STACKSIZE=3000 -DMAIN=16384
+    case_ "an archive placed without a walk says so" accept "without a stack walk" \
+        -DPLATFORM=nuttx -DQUEUES=high=rate_ctrl -DCONFIG_WQ_RATE_CTRL_STACKSIZE=8192 -DMAIN=16384
+
     # --- the floor comes from the header ----------------------------------------
     rc=0
     cmake -DM="$MODULE" -DHEADER="$TMP/no-floor.h" -DEXPECT_FLOOR=0 -DPTR=4 -DMAIN=8192 \
@@ -158,13 +200,31 @@ self_test
 # --- wiring -----------------------------------------------------------------
 consumer="$(cat "$CONSUMER")"
 for want in "NanoRosPx4ThreadStacks.cmake" "nros_px4_read_stack_floor(" \
-    "nros_px4_entry_work_queues(" "nros_px4_check_thread_stacks("; do
+    "nros_px4_read_walked_floors(" "nros_px4_entry_work_queues(" \
+    "nros_px4_check_thread_stacks(" "WALK_SPIN_MEASURED"; do
     if [[ "$consumer" == *"$want"* ]]; then
         printf '  ok  %s\n' "NanoRosPx4Module.cmake names $want"
     else
         bad "NanoRosPx4Module.cmake does not name $want"
     fi
 done
+
+# Issue 2400 W3 -- every placer of the uORB archive walks it, with the one
+# preset (`STACK_FLOOR_PRESETS` in the placer), so no spelling can drift.
+for f in integrations/px4/NanoRosPx4Module.cmake just/px4.just scripts/stage-px4-posix-archives.sh; do
+    nros_grep_q -F -- '--stack-floor px4-uorb' "$ROOT/$f"
+    case $? in
+        0) printf '  ok  %s\n' "$f places the uORB archive with --stack-floor px4-uorb" ;;
+        1) bad "$f places the uORB archive without --stack-floor px4-uorb" ;;
+        *) bad "grep could not read $f" ;;
+    esac
+done
+nros_grep_q -F '"px4-uorb"' "$ROOT/scripts/build/cargo-out-dir-headers.py"
+case $? in
+    0) printf '  ok  %s\n' "the placer defines the px4-uorb preset" ;;
+    1) bad "scripts/build/cargo-out-dir-headers.py defines no px4-uorb preset" ;;
+    *) bad "grep could not read scripts/build/cargo-out-dir-headers.py" ;;
+esac
 
 if [ $fail -ne 0 ]; then
     echo "check-px4-thread-stacks: FAILED" >&2

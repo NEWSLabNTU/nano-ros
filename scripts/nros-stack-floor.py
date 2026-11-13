@@ -1254,7 +1254,7 @@ def stated_by_build(lines: list[str]) -> tuple[list[dict], list[str]]:
     return rows, [str(files[0])]
 
 
-def build_profile_dirs(lines: list[str], target: str) -> list[Path]:
+def build_profile_dirs(lines: list[str], target: str | None) -> list[Path]:
     """Where cargo put this image's TARGET intermediates (`deps/`, `build/`):
     `<build dir>/<target>/<profile>`, read off the `out_dir` cargo reported for
     each build script (`<that>/build/<pkg>-<hash>/out`). Cargo's
@@ -1268,7 +1268,9 @@ def build_profile_dirs(lines: list[str], target: str) -> list[Path]:
         if p.name != "out" or p.parent.parent.name != "build":
             continue
         prof = p.parent.parent.parent
-        if prof.parent.name == target and prof not in found:
+        # `target` None: a cargo command that named no `--target`, whose units
+        # all sit in `<build dir>/<profile>` with no triple segment.
+        if (target is None or prof.parent.name == target) and prof not in found:
             found.append(prof)
     return found
 
@@ -1287,8 +1289,12 @@ def apply_stated(args: argparse.Namespace, rows: list[dict]) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
+    stream = args.stated_by_build or args.cargo_messages
+    if args.stated_by_build and args.cargo_messages:
+        raise SystemExit("nros-stack-floor: give --stated-by-build or --cargo-messages, not both "
+                         "(the first IS cargo's messages)")
+    lines = Path(stream).read_text(errors="replace").splitlines() if stream else []
     if args.stated_by_build:
-        lines = Path(args.stated_by_build).read_text(errors="replace").splitlines()
         rows, files = stated_by_build(lines)
         if len(files) > 1:
             raise SystemExit("nros-stack-floor: more than one build script states a stack ("
@@ -1298,21 +1304,22 @@ def run(args: argparse.Namespace) -> int:
                   f"script of this image wrote {STATED_FILE})", file=sys.stderr)
             return 0
         apply_stated(args, rows)
-        if args.intermediates_from_build:
-            if not args.target:
-                raise SystemExit("nros-stack-floor: --intermediates-from-build needs --target")
-            profs = build_profile_dirs(lines, args.target)
-            if not profs:
-                raise SystemExit(
-                    f"nros-stack-floor: cargo reported no build script output for "
-                    f"{args.target} in {args.stated_by_build}, so where this image's "
-                    "intermediates are is unknown")
-            for prof in profs:
-                args.link_dir = (args.link_dir or []) + [str(prof / "deps"), str(prof / "build")]
-                args.su = (args.su or []) + [str(prof / "build")]
-                args.bitcode_dir = (args.bitcode_dir or []) + [str(prof / "deps")]
-    elif args.intermediates_from_build:
-        raise SystemExit("nros-stack-floor: --intermediates-from-build needs --stated-by-build")
+    if args.intermediates_from_build:
+        if not stream:
+            raise SystemExit("nros-stack-floor: --intermediates-from-build needs cargo's "
+                             "messages (--stated-by-build or --cargo-messages)")
+        if not args.target:
+            raise SystemExit("nros-stack-floor: --intermediates-from-build needs --target")
+        profs = build_profile_dirs(lines, None if args.untargeted else args.target)
+        if not profs:
+            raise SystemExit(
+                f"nros-stack-floor: cargo reported no build script output for "
+                f"{args.target} in {stream}, so where this image's "
+                "intermediates are is unknown")
+        for prof in profs:
+            args.link_dir = (args.link_dir or []) + [str(prof / "deps"), str(prof / "build")]
+            args.su = (args.su or []) + [str(prof / "build")]
+            args.bitcode_dir = (args.bitcode_dir or []) + [str(prof / "deps")]
     doc = None
     if args.table:
         doc = load_table(Path(args.table))
@@ -1689,6 +1696,10 @@ def self_test() -> int:
           == [Path("/t/nros-class/k/build/thumbv7m-none-eabi/nros-minsizerel")])
     check("intermediates: none for a target nothing was built for",
           build_profile_dirs(bmsgs, "riscv32imc-unknown-none-elf") == [])
+    hmsgs = [json.dumps({"reason": "build-script-executed", "package_id": "p",
+                         "out_dir": "/t/release/build/a-1/out"})]
+    check("intermediates: an untargeted build's profile dir has no triple segment",
+          build_profile_dirs(hmsgs, None) == [Path("/t/release")])
     # CFI frames from a linked image
     cfi = ("00000000 0000000c ffffffff CIE\n  Version: 1\n"
            "00000010 00000024 00000000 FDE cie=00000000 pc=000313dc...00031448\n"
@@ -1964,10 +1975,16 @@ def main() -> int:
                     help="ROLE=<bytes>: the stated stack to CHECK (a measured image whose floor "
                     "exceeds it fails; an unmeasured one warns)")
     ap.add_argument("--intermediates-from-build", action="store_true",
-                    help="with --stated-by-build and --target: the link dirs, .su dir and "
+                    help="with --stated-by-build or --cargo-messages, and --target: the link dirs, .su dir and "
                     "bitcode dir are <build dir>/<target>/<profile>/{deps,build}, found from "
                     "the out_dir cargo reported for each build script (cargo's build-dir may "
                     "be anywhere)")
+    ap.add_argument("--untargeted", action="store_true",
+                    help="with --intermediates-from-build: the cargo command named no --target, "
+                    "so its intermediates are <build dir>/<profile> with no triple segment")
+    ap.add_argument("--cargo-messages", metavar="CARGO_JSON",
+                    help="cargo's --message-format=json output for an image whose stack nothing "
+                    "states (a library a placer built): read only for --intermediates-from-build")
     ap.add_argument("--stated-by-build", metavar="CARGO_JSON",
                     help="cargo's --message-format=json output for the image: the roles, stated "
                     "stacks and knob come from the nros-stack-stated.json one of its build "

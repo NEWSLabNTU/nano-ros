@@ -48,7 +48,7 @@
 # From a CHECKOUT, build these first:
 #
 #   python3 scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c \
-#       --dest build/nros-px4/placed -- \
+#       --dest build/nros-px4/placed --stack-floor px4-uorb -- \
 #       cargo rustc -p nros-cpp --lib --crate-type staticlib --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release \
 #       --message-format=json-render-diagnostics
 #   cmake -S packages/platform/nros-platform-posix -B build/nros-platform-posix
@@ -170,7 +170,7 @@ nros_locate_artifact(_NROS_PX4_C_CONFIG_HEADER c-config-header PLACED_DIR "${_NR
 # had).
 # profile-literal-ok: prebuilt archive — the instruction that builds it
 set(_NROS_PX4_UORB_ARCHIVE_CMD
-    "python3 ${NROS_REPO_DIR}/scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c --dest ${_NROS_PX4_HEADER_DIR} -- cargo rustc -p nros-cpp --lib --crate-type staticlib --no-default-features --features ${_NROS_PX4_UORB_FEATURES} --release --message-format=json-render-diagnostics")
+    "python3 ${NROS_REPO_DIR}/scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c --dest ${_NROS_PX4_HEADER_DIR} --stack-floor px4-uorb -- cargo rustc -p nros-cpp --lib --crate-type staticlib --no-default-features --features ${_NROS_PX4_UORB_FEATURES} --release --message-format=json-render-diagnostics")
 set(_NROS_PX4_PLATFORM_ARCHIVE_CMD
     "cmake -S ${NROS_REPO_DIR}/packages/platform/nros-platform-posix -B ${NROS_REPO_DIR}/build/nros-platform-posix && cmake --build ${NROS_REPO_DIR}/build/nros-platform-posix")
 if(_NROS_PX4_USE_PREBUILT)
@@ -523,14 +523,24 @@ function(nros_px4_add_module)
         # Issue 2398 -- the main task opens the executors and each sched task's
         # work queue runs them; both must hold the executor's stack floor, and
         # neither is nano-ros's to size, so a shortfall is refused by knob name.
+        # Issue 2400 W3 -- and the stack floors the placer's walk wrote into the
+        # same header: OPEN for the main task, SPIN for each work queue.
         nros_px4_read_stack_floor(_npx_floor "${_NROS_PX4_CPP_CONFIG_HEADER}")
+        nros_px4_read_walked_floors(_npx_walk "${_NROS_PX4_CPP_CONFIG_HEADER}")
+        # The floors are read at configure, so a re-placed header (a new walk,
+        # a new allowance row) must re-run it. The placer keeps the header's
+        # mtime when its content is unchanged, so this costs no reconfigure.
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+            "${_NROS_PX4_CPP_CONFIG_HEADER}")
         nros_px4_entry_work_queues(_npx_queues "${_npx_entry}")
         nros_px4_check_thread_stacks(
             MODULE "${NPX_MODULE}" PLATFORM "${PX4_PLATFORM}"
             POINTER_SIZE "${CMAKE_SIZEOF_VOID_P}"
             FLOOR "${_npx_floor}" FLOOR_SOURCE "${_NROS_PX4_CPP_CONFIG_HEADER}"
             QUEUES ${_npx_queues}
-            STACK_MAIN "${NPX_STACK_MAIN}")
+            STACK_MAIN "${NPX_STACK_MAIN}"
+            WALK_OPEN "${_npx_walk_OPEN}" WALK_OPEN_MEASURED "${_npx_walk_OPEN_MEASURED}"
+            WALK_SPIN "${_npx_walk_SPIN}" WALK_SPIN_MEASURED "${_npx_walk_SPIN_MEASURED}")
     elseif(NPX_COMPONENTS OR NPX_LAUNCH)
         message(FATAL_ERROR "nros_px4_add_module(${NPX_MODULE}): COMPONENTS and LAUNCH "
             "describe a generated entry and need BRINGUP")

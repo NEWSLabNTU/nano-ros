@@ -65,6 +65,28 @@ def out_dirs(lines: Iterable[str], package: str) -> list[str]:
     return [od for pid, od in _executed(lines) if package_matches(pid, package)]
 
 
+def artifact_files(lines: Iterable[str], package: str, suffix: str) -> list[str]:
+    """The files cargo reported building for `package` (`compiler-artifact`'s
+    `filenames`) that end in `suffix`, in stream order: where a staticlib
+    actually landed, whatever target dir, build dir or profile made it so
+    (issue 2400 W3, the archive a placer walks)."""
+    found: list[str] = []
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            continue
+        if msg.get("reason") != "compiler-artifact":
+            continue
+        if not package_matches(msg.get("package_id", ""), package):
+            continue
+        found += [f for f in msg.get("filenames") or [] if f.endswith(suffix)]
+    return found
+
+
 def all_out_dirs(lines: Iterable[str]) -> list[str]:
     """Every `out_dir` cargo reported, whatever the package, in stream order:
     for a consumer that looks for a FILE a build script wrote rather than for
@@ -88,4 +110,12 @@ def self_test() -> None:
     ]
     assert out_dirs(stream, "nros-c") == ["/o1", "/o2"]
     assert all_out_dirs(stream) == ["/o1", "/x", "/o2"]
+    art = [
+        '{"reason":"compiler-artifact","package_id":"path+file:///a/nros-cpp#1",'
+        '"filenames":["/t/x/release/libnros_cpp.a","/t/x/release/libnros_cpp.rlib"]}',
+        '{"reason":"compiler-artifact","package_id":"path+file:///a/nros-c#1",'
+        '"filenames":["/t/x/release/libnros_c.a"]}',
+    ]
+    assert artifact_files(art, "nros-cpp", ".a") == ["/t/x/release/libnros_cpp.a"]
+    assert artifact_files(art, "absent", ".a") == []
     assert out_dirs(stream, "absent") == []
