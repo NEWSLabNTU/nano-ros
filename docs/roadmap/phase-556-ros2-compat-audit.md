@@ -1,8 +1,9 @@
 # Phase 556 — ROS 2 interface compatibility audit
 
-**Status (2026-11-13). IN PROGRESS: W0, W1 and W3 are done. A first by-hand
-measurement of W2 to W6 found three gaps (W10 to W12), each now held by an
-expected-failure test, and one question for the user (W13).**
+**Status (2026-11-13). IN PROGRESS: W0, W1, W3 and W10 are done. A first by-hand
+measurement of W2 to W6 found three gaps (W10 to W12), each held by an
+expected-failure test; W10 is fixed and its test is the plain check now. One
+question for the user (W13).**
 The user's goal is to "ensure the interface compatibility among nano-ros and
 stock ROS 2". This phase measures it: a nano-ros node and a stock `rclcpp`
 node that declare the same interface are asked the same `ros2` CLI questions,
@@ -235,14 +236,22 @@ the plain check and passes".
 
 ### W10 — The second node of an image misses a parameter service
 
-- **Status:** OPEN. Expected-failure test:
-  `ros2_cli_parity_interop::each_node_of_a_two_node_image_compared_with_stock_on_parameter_services`
-  (the missing `get_parameter_types`, and no `/parameter_events` publisher for
-  `/beta`; the first node is a plain check in the same test).
+- **Status:** DONE (2026-11-13, this PR). Plain test:
+  `ros2_cli_parity_interop::each_node_of_a_two_node_image_serves_the_parameter_services_as_stock_does`.
+  The `/parameter_events` half is a separate design gap (one writer per
+  executor), held in expected-failure form by
+  `ros2_cli_parity_interop::second_node_as_parameter_events_publisher_compared_with_stock`;
+  its issue is filed separately.
 
-[Issue 2482](../issues/2482-second-node-param-service-missing.md): in a
-two-node zenoh image the second node serves 5 of the 6 parameter services
-(`get_parameter_types` is missing) and publishes no `/parameter_events`.
+[Issue 2482](../issues/archived/2482-second-node-param-service-missing.md): in a
+two-node zenoh image the second node served 5 of the 6 parameter services
+(`get_parameter_types` was missing). Cause: the image is an owned entry with
+no launch, so no sizing descriptor was written and its zenoh liveliness pool
+was the flat undeclared 16 against 17 tokens (XRCE, measured on the same
+image, kept the header's 4 service slots). Fixed as a class: the owned-entry
+road states its families in a descriptor and refuses its node count, an
+unknown node count is never priced below the undeclared budget, and the
+hosted undeclared zenoh liveliness default prices the runtime families.
 
 Acceptance: a test asks `ros2 node info` for each node of a two-node image,
 held in expected-failure form until the fix, then flipped to the plain check

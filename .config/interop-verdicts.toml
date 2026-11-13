@@ -319,10 +319,10 @@ evidence = "3 of 3 consecutive runs passed against examples_rclcpp_minimal_actio
 cell = "native-ros2-cli-parity-params-rust-zenoh"
 date = "2026-11-13"
 verdict = "pass"
-tests = ["declared_parameters_answer_ros2_param_as_stock_does", "first_node_serves_the_six_parameter_services_as_stock_does", "each_node_of_a_two_node_image_compared_with_stock_on_parameter_services", "use_sim_time_compared_with_stock", "get_parameters_reply_for_an_undeclared_name_compared_with_stock", "describe_parameters_reply_for_an_undeclared_name_compared_with_stock", "delete_refusal_reason_compared_with_stock", "off_step_refusal_reason_compared_with_stock"]
+tests = ["declared_parameters_answer_ros2_param_as_stock_does", "first_node_serves_the_six_parameter_services_as_stock_does", "each_node_of_a_two_node_image_serves_the_parameter_services_as_stock_does", "second_node_as_parameter_events_publisher_compared_with_stock", "use_sim_time_compared_with_stock", "get_parameters_reply_for_an_undeclared_name_compared_with_stock", "describe_parameters_reply_for_an_undeclared_name_compared_with_stock", "delete_refusal_reason_compared_with_stock", "off_step_refusal_reason_compared_with_stock"]
 run = "just linux test-ros2-cli-parity"
-where = "ros2 distrobox (Ubuntu 22.04, Humble, rmw_zenoh_cpp), phase-556-w1 branch on top of phase-556-w0"
-evidence = "3 of 3 consecutive runs passed against an rclpy node (fixtures/ros2-param-peer); six of the eight cases hold a measured gap in expected-failure form"
+where = "ros2 distrobox (Ubuntu 22.04, Humble, rmw_zenoh_cpp), issue-2482-fix branch on top of phase-556-w1"
+evidence = "3 of 3 consecutive runs passed against an rclpy node (fixtures/ros2-param-peer); six of the nine cases hold a measured gap in expected-failure form, and the two-node parameter-services case is a plain check since issue 2482's fix"
 
 [[verdict]]
 cell = "native-ros2-cli-parity-pubsub-rust-zenoh"

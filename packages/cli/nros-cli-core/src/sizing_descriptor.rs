@@ -2818,6 +2818,24 @@ fn compose_unwired(
     // act on for an image with no node.)
     if model_nodes.is_some() {
         desc.image.set_infra_families(Some(families_of(infra)));
+    } else if infra.param_services || infra.lifecycle {
+        // Issue 2482 -- a bringup that turns a family ON states it with or
+        // without a node count: an owned entry (its own `main`, no launch) and
+        // a standalone leaf that declares no entities both name their families
+        // in `system.toml` and create their nodes in their own code. Dropping
+        // the families with the count left every sizing build script at its
+        // undeclared default, which priced a two-node parameter image's
+        // liveliness pool one token short. The count is REFUSED rather than
+        // absent so the file says why; each consumer then prices the per-node
+        // term in the large direction (`infra::per_node_term_is_unknown`).
+        // A family OFF is not stated: such a program may still register one
+        // itself, so absence there is not evidence of none.
+        desc.image.set_infra_families(Some(families_of(infra)));
+        desc.image.refuse(
+            "model_nodes",
+            "nothing before the build counts this image's nodes: its program creates them \
+             in its own code, so the per-node parameter services are sized as if unknown",
+        );
     }
     if !img.bound_inventories.is_empty() {
         let (bounds, bounds_error) =
@@ -2840,6 +2858,7 @@ fn compose_unwired(
     // No stated fact, no file (RFC-0100's 2026-10-10 ruling): a refusal
     // states nothing.
     if model_nodes.is_none()
+        && !desc.image.infra_families().is_stated()
         && !desc.params.implies_store()
         && !desc.types.max_wire_bound_bytes().is_stated()
     {
@@ -5614,6 +5633,61 @@ execution:
             bound_inventories: &[],
             horizon: ModelHorizon::new("a test model road"),
         }
+    }
+
+    /// Issue 2482 -- an OWNED entry with no launch has no model: its
+    /// `system.toml` states the families and nothing counts its nodes. The
+    /// file states the families and REFUSES the count, and the shared rule
+    /// then reads the per-node term as unknown -- which every sizing consumer
+    /// prices in the large direction. Before, the families were dropped with
+    /// the count, no file was written, and a two-node parameter image sized
+    /// its zenoh liveliness pool at the flat undeclared 16 against 17 tokens.
+    #[test]
+    fn an_owned_entry_states_its_families_and_refuses_its_node_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let infra = InfraServices::from_features(&["param_services"], 0);
+        let written = write_for_model(&ModelImage {
+            wiring: Wiring::Unwired {
+                params: &ParamDeclarations::Absent,
+                infra,
+                model_nodes: None,
+                roots: &[],
+            },
+            ..unwired(dir.path(), "img", &ParamDeclarations::Absent, infra)
+        })
+        .unwrap()
+        .expect("a stated family earns a file");
+        let back = nros_sizing_descriptor::read(&written.path).unwrap();
+        let families = back
+            .image
+            .infra_families()
+            .stated()
+            .map(|f| f.tag().to_string());
+        assert_eq!(families.as_deref(), Some("param"));
+        assert_eq!(back.image.model_nodes().tag(), "refused");
+        let nodes = back.image.model_nodes().stated().map(usize::to_string);
+        assert!(nros_sizing_descriptor::infra::per_node_term_is_unknown(
+            families.as_deref(),
+            nodes.as_deref()
+        ));
+        // The store the family implies rides along, as on the model road.
+        assert!(back.params.implies_store());
+
+        // Negative control: no family ON states nothing, so no file -- an owned
+        // program may register a family itself, so OFF is not evidence.
+        let off = InfraServices::from_features(&[] as &[&str], 0);
+        let none = write_for_model(&ModelImage {
+            wiring: Wiring::Unwired {
+                params: &ParamDeclarations::Absent,
+                infra: off,
+                model_nodes: None,
+                roots: &[],
+            },
+            ..unwired(dir.path(), "img", &ParamDeclarations::Absent, off)
+        })
+        .unwrap();
+        assert!(none.is_none());
+        assert!(!written.path.exists(), "the stale file is removed");
     }
 
     /// Issue 1706 -- a model with NO wiring still says whether the image builds
