@@ -1,0 +1,4 @@
+# This directory is a workspace ROOT. `nros::main!` walks up from a generated
+# entry under build/ to find the packages; without this marker, on a road
+# that names no workspace (a bare `west build`, a bare `cargo` run inside an
+# entry), it stopped at the entry's own `[workspace]` table and found none.

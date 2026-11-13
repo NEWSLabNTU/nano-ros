@@ -7391,25 +7391,23 @@ pub fn qemu_baremetal_main_e2e_binary() -> TestResult<PathBuf> {
     .unwrap_or_else(|| Err(not_migrated(DIR)))
 }
 
-/// Issue 1512 — a cargo-rooted C or C++ bare-metal example
+/// Issue 1512 — a C or C++ bare-metal example
 /// (`examples/mps2-an385-baremetal/<case>`, `case` = `c/talker`,
-/// `cpp/action-server`, …).
+/// `cpp/action-server`, …), resolved from its `[[workspace_fixture]]` row
+/// ([`migrated_leaf_binary`]).
 ///
-/// phase-535 W6 — every role but the `talker` witnesses is a one-package
-/// workspace whose cargo package is its image's OWNED entry, resolved from its
-/// `[[workspace_fixture]]` row ([`migrated_leaf_binary`]). The talkers stay
-/// `builder = "cargo"` leaves, resolved by package name
-/// (`baremetal-<lang>-talker`) from the shared `baremetal` fixture target dir.
+/// Every case is a one-package workspace. The talkers build on the CMake road
+/// (phase-553 W5: an ordinary component, booted by the generated entry); the
+/// other roles still build an OWNED cargo entry (phase-535 W6) until phase-553
+/// W6 moves them too. The row says which, so this resolver does not.
 pub fn qemu_baremetal_capi_binary(case: &str) -> TestResult<PathBuf> {
-    if let Some(r) = migrated_leaf_binary(
-        &format!("examples/mps2-an385-baremetal/{case}"),
+    let leaf = format!("examples/mps2-an385-baremetal/{case}");
+    migrated_leaf_binary(
+        &leaf,
         Rmw::Zenoh,
         crate::fixtures::migrated_leaf::LeafVariant::Plain,
-    ) {
-        return r;
-    }
-    let package = format!("baremetal-{}", case.replace('/', "-"));
-    require_qemu_baremetal_fixture(&package)
+    )
+    .unwrap_or_else(|| Err(not_migrated(&leaf)))
 }
 
 // Phase 169.4 — bare-metal DDS fixture builders deleted with the
@@ -8581,9 +8579,11 @@ mod tests {
     /// Issue 1874 -- a lane that selects the platform at ONE coordinate (tier 2:
     /// `baremetal,c,zenoh`) skips a shared-dir binary whose own row sits at
     /// another (`qemu-bsp-listener`, a Rust row), and still sends an in-lane row's
-    /// binary (`baremetal-c-talker`) to the hard presence check. Before, both
-    /// fell through and the Rust one failed as "MISSING for an in-lane
-    /// coordinate" because the build had, correctly, not built it.
+    /// binary to the hard presence check: the same binary, under a lane that
+    /// selects its row's coordinate. Before, both fell through and the Rust one
+    /// failed as "MISSING for an in-lane coordinate" because the build had,
+    /// correctly, not built it. (The in-lane arm was the C talker's binary until
+    /// phase-553 W5 moved that example to the CMake road and out of this group.)
     #[test]
     fn a_shared_group_binary_skips_by_its_own_rows_coordinate() {
         use std::collections::BTreeSet;
@@ -8611,8 +8611,15 @@ mod tests {
             Ok(r) => panic!("an out-of-lane ROW must skip, got {r:?}"),
         };
         assert_eq!(crate::skip_marker::class_in(&msg), Some("lane"), "{msg}");
+        let rust_lane: BTreeSet<_> = [(
+            "baremetal".to_string(),
+            "rust".to_string(),
+            "zenoh".to_string(),
+        )]
+        .into_iter()
+        .collect();
         assert!(
-            shared_group_lane_check("baremetal", "baremetal-c-talker", Some(&tier2)).is_ok(),
+            shared_group_lane_check("baremetal", "qemu-bsp-listener", Some(&rust_lane)).is_ok(),
             "an in-lane row's binary still falls through to the presence check"
         );
         assert!(

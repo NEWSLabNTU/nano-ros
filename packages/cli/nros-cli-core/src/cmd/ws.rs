@@ -6292,8 +6292,9 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
         // for as long as every C/C++ image was a cmake image that was invisible:
         // cmake imports them by MANIFEST PATH through Corrosion and never asks
         // for a patch row. A pure bare-metal board has no C startup and no
-        // C-reachable board init, so its C image is rooted in cargo instead
-        // (`examples/mps2-an385-baremetal/c/talker`), and a cargo consumer names
+        // C-reachable board init, so its C image was rooted in cargo instead
+        // (the `examples/mps2-an385-baremetal/c/*` roles; the talker moved to
+        // the cmake road in phase-553 W5), and a cargo consumer names
         // `nros-c = { version = "*" }` like it names `nros`. Without the row,
         // `nros sync` skipped it as an unknown runtime crate and the leaf failed
         // to resolve with `no matching package named \`nros-c\` found`.
@@ -6328,8 +6329,9 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
         ("nros-zephyr-build", "packages/tooling/nros-zephyr-build"),
         // issue 1542 — the cc policy helper (strict declarations, issue 0383;
         // the gcc-safe frame pointer, issue 0478). A [build-dependencies] row in
-        // any example whose build.rs drives `cc::Build`, the first being
-        // `examples/mps2-an385-baremetal/c/talker`.
+        // any example whose build.rs drives `cc::Build`, the first being the
+        // bare-metal C talker (a cmake component since phase-553 W5; its
+        // `c/*` siblings still are).
         ("nros-cc-flags", "packages/tooling/nros-cc-flags"),
         (
             "nros-transport-callbacks",
@@ -8390,8 +8392,8 @@ nros-rmw-zenoh = { path = "../../../packages/rmw/zenoh/nros-rmw-zenoh" }
 
     /// issue 1512 — the two language-surface crates resolve to a patch row.
     ///
-    /// A cargo-rooted C image (`examples/mps2-an385-baremetal/c/talker`, the
-    /// only shape a board with no C startup can take) names `nros-c` the way
+    /// A cargo-rooted C image (the bare-metal `examples/mps2-an385-baremetal/c/*`
+    /// roles, the shape that board took before it had a C start) names `nros-c` the way
     /// every Rust leaf names `nros`. Before this they were absent from the
     /// table, which `nros sync` reports as an unknown runtime crate and cargo
     /// then reports as `no matching package named 'nros-c' found` — two messages

@@ -281,7 +281,7 @@ render_probe() {
     {
         echo 'cmake_minimum_required(VERSION 3.22)'
         echo 'project(nros_metadata_probes LANGUAGES C CXX)'
-        echo 'set(CMAKE_CXX_STANDARD 14)'
+        echo 'set(CMAKE_CXX_STANDARD 17)'
         echo 'set(CMAKE_CXX_STANDARD_REQUIRED ON)'
         echo 'set(NROS_EXTRA_CPP_FEATURES "metadata-mode")'
         echo 'set(NROS_GEN_CACHE_DIR "${CMAKE_BINARY_DIR}/nros-codegen")'

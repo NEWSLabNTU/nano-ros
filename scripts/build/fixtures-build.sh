@@ -147,8 +147,8 @@ bash scripts/build/census-prepass.sh --only leaves --platform "$platform" --lang
 #     variable name: `export: 'build-cyclonedds': not a valid identifier`. The
 #     fix then was `--builder cargo` for the non-C languages, which repaired
 #     that direction and kept the proxy for the other.
-#   * issue 1512 — `examples/mps2-an385-baremetal/c/talker` is a C leaf whose
-#     link root is CARGO, because on a board with no RTOS the startup, clock and
+#   * issue 1512 — `examples/mps2-an385-baremetal/c/talker` was a C leaf whose
+#     link root was CARGO (until phase-553 W5), because on a board with no RTOS the startup, clock and
 #     network bring-up are Rust (the leaf's README has the table). Under the
 #     proxy a `lang = "c"` row with `builder = "cargo"` went to the CMAKE lane,
 #     whose record reader takes `dir`/`build_subdir`/defs/target out of a cargo

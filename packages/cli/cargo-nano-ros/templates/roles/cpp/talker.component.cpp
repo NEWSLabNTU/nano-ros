@@ -22,7 +22,8 @@ void Talker::on_tick() {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;
-    // Member-function pointer as a template parameter: a no-alloc trampoline, `this` is the context.
+    // Member-function pointer as a template parameter: a no-alloc trampoline, `this` is the
+    // context.
     return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 1000, this);
 }
 

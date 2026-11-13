@@ -290,21 +290,17 @@ exclude = [
     "packages/testing/nros-bench/port-metric",
     "packages/testing/nros-bench/large-msg-baremetal",
     "packages/testing/nros-tests/bins/lan9118-qemu",
-    # issue 1512 — the C/C++ leaves whose link root is CARGO. They are under
-    # `c/`/`cpp/` rather than `rust/` and are still cargo packages, because a
-    # board with no RTOS has no C startup to root the image in; see
-    # `c/talker/README.md`. Listed for the same reason as their `rust/` siblings
-    # above, which also carry their own `[workspace]` table: both halves, per
-    # the CLAUDE.md rule. Every role but the talkers is a one-package workspace
-    # now (phase-535 W6) whose cargo package sits at `src/<pkg>/` and keeps its
-    # own `[workspace]`; the prefix match still covers it.
-    "examples/mps2-an385-baremetal/c/talker",
+    # issue 1512 — the C/C++ workspaces whose package is still a CARGO crate
+    # (a hand-written link root at `src/<pkg>/`, with its own `[workspace]`
+    # table). Listed for the same reason as their `rust/` siblings above: both
+    # halves, per the CLAUDE.md rule. The talkers are not here: since
+    # phase-553 W5 they are CMake workspaces with no cargo package at all, and
+    # phase-553 W6 retires the rest.
     "examples/mps2-an385-baremetal/c/listener",
     "examples/mps2-an385-baremetal/c/service-server",
     "examples/mps2-an385-baremetal/c/service-client",
     "examples/mps2-an385-baremetal/c/action-server",
     "examples/mps2-an385-baremetal/c/action-client",
-    "examples/mps2-an385-baremetal/cpp/talker",
     # Phase 169.2 — Rust DDS examples deleted (no Rust→Cyclone
     # path yet; see Phase 169 doc work item .9).
     # Phase 169.2 — mps2-an385-freertos rust/dds deleted.

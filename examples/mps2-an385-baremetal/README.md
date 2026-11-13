@@ -43,29 +43,27 @@ Test lanes: `just qemu test`, `test-basic`, `test-zenoh`, `test-all`.
 | c | action-server / action-client | plain (issue 1512) |
 | cpp | talker | plain (issue 1512) |
 
-**The C/C++ leaves' SHAPE differs from every other C/C++ example in the tree,
-and the reason is the board rather than the API** — read
-[`c/talker/README.md`](c/talker/README.md) before copying one. On an RTOS a C
-example is a C program: the RTOS supplies `main`, a C startup and a C platform
-port, and `libnros_c.a` is linked *in*. This board has no RTOS, so the reset
-vector (`cortex-m-rt`), the clock (CMSDK Timer0) and the network (LAN9118 +
-smoltcp) are all Rust with no C entry point. The leaf is therefore rooted in
-cargo: `src/main.rs` boots the board and calls `nros_app_main()`, and `build.rs`
-compiles the leaf's `src/*.c` (or `src/talker.cpp`) into the image.
-`nano_ros_add_executable` is not available on this platform. The two talkers
-(the road witnesses) are leaves, each a `[[fixture]]` row with
-`builder = "cargo"`, built by `just qemu build-fixtures`
-(`scripts/build/fixtures-build.sh baremetal c` / `cpp`). Every other C/C++
-role is a one-package workspace (RFC-0122 D3, phase-535 W6): that same cargo
-package sits at `src/<pkg>/`, and `src/<pkg>_bringup/system.toml` names it as
-the image's OWNED entry (`entry = "<pkg>"`, RFC-0071 D19), so `nros build`
-builds it on the cargo road. Those are `[[workspace_fixture]]` rows with
-`builder = "cargo"` (`scripts/build/workspace-fixtures-build.sh baremetal c` /
-`cpp`).
+**The talkers are ordinary C/C++ components; the other C/C++ roles are not
+yet.** The two talkers (`c/talker`, `cpp/talker`) are one-package CMake
+workspaces, the same shape as an RTOS board's: the package at `src/<pkg>/` is a
+component with no `main` and no board name, and `src/<pkg>_bringup/system.toml`
+names the board. `nros build` generates the image's entry and links it on the
+CMake road, where the board's C start (`nros_board_mps2_an385_start`, in
+`nros-board-mps2-an385`'s `c/c_main.c`) is `main`: it brings up the clock, the
+LAN9118 and the network, then runs the entry (phase-553 W4/W5). Their
+`[[workspace_fixture]]` rows say `builder = "cmake"`
+(`scripts/build/workspace-fixtures-build.sh baremetal c` / `cpp`).
 
-Status: build-only. It boots in QEMU and reaches session open, but it dials
-`NROS_ENTRY_LOCATOR`'s empty bottom rung rather than the `[image.*] locator` in
-its `system.toml`, so there is no runtime lane yet — see issue 1512.
+Every other C/C++ role is still rooted in cargo, the shape this board needed
+before it had a C start: a one-package workspace (RFC-0122 D3, phase-535 W6)
+whose package at `src/<pkg>/` is a cargo crate, with `src/main.rs` booting the
+board and `build.rs` compiling the role's C or C++ into it. The bringup names
+that package as the image's OWNED entry (`entry = "<pkg>"`, RFC-0071 D19), so
+`nros build` builds it on the cargo road; those rows say `builder = "cargo"`.
+phase-553 W6 moves them to the talkers' shape.
+
+`test_qemu_baremetal_capi_e2e` in `tests/emulator.rs` runs every C/C++ pair end
+to end under QEMU, each against its own router.
 
 The UART configurations (zenoh `serial/UART_0` pair, XRCE `custom://uart`
 talker) are images of `examples/workspaces/rust/src/pubsub_bringup`:
