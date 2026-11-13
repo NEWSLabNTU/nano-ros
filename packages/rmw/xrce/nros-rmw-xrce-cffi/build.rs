@@ -383,6 +383,7 @@ fn main() {
         desc.as_ref(),
         infra_families.as_deref(),
         model_nodes.as_deref(),
+        host_is_posix,
     );
     if knobs.stated(ENV_SERVICE_SERVERS, 0, &config_path).is_some() {
         demand.keep_stated_server_total();
@@ -1018,6 +1019,9 @@ const ENV_PARAM_REQUEST: &str = "NROS_PARAM_SERVICE_INBOX_BYTES";
 // Issue 1743 — the service-server slot count. The two facts that complete it
 // with the runtime's own parameter and lifecycle servers are the descriptor's.
 const ENV_SERVICE_SERVERS: &str = "NROS_XRCE_MAX_SERVICE_SERVERS";
+/// `XRCE_MAX_SERVICE_SERVERS`'s default in `nros-rmw-xrce/src/internal.h`: the
+/// application's slots when nothing states how many it serves (issue 2482).
+const HEADER_SERVICE_SERVERS: usize = 4;
 // phase-400 W6 — the service-client slot count, the last of issue 1033's three.
 const ENV_SERVICE_CLIENTS: &str = "NROS_XRCE_MAX_SERVICE_CLIENTS";
 // Issue 1808 — the bytes one service-client reply slot holds.
@@ -1195,6 +1199,15 @@ impl XrceDemand {
     /// stated by the resolver, and reading an absent fact as "every family
     /// present" here would only be a second, larger answer below it.
     ///
+    /// Issue 2482 -- and a build with no fact at all keeps the header's
+    /// default, deliberately, unlike zenoh's hosted guess: `just check
+    /// rmw-xrce`'s CMake harness compiles the backend at the header's values
+    /// and links this crate's bare-build archive, so a bare-build value other
+    /// than the header's splits one struct across two layouts (measured: the
+    /// harness's service and reply tests failed, others segfaulted). Every
+    /// `nros build` road that knows a family states it (the owned-entry road
+    /// since this issue), so the measured image reaches the branches below.
+    ///
     /// UNFLOORED (D7, issue 1033): an image with no servers derives 0, which is
     /// the answer — the slot array is gone and the heap gets its bytes back.
     /// A stated knob still wins, as for every row (rungs 1-3 beat 3.5).
@@ -1203,15 +1216,36 @@ impl XrceDemand {
         desc: Option<&SizingDescriptor>,
         infra: Option<&str>,
         nodes: Option<&str>,
+        hosted: bool,
     ) {
-        use nros_sizing_descriptor::infra::{infra_service_servers, stated};
+        use nros_sizing_descriptor::infra::{
+            infra_service_servers, per_node_term_is_unknown, stated,
+        };
         if stated(infra).is_none() {
             return;
         }
+        // The floor for a guessed per-node term on a HOSTED target: every
+        // runtime family on one node (the shared rule's undeclared reading,
+        // so the same constants), plus the header's own slots for the
+        // application -- what zenoh's hosted guess buys, priced in this
+        // backend's slots.
+        let undeclared = hosted.then(|| infra_service_servers(None, None) + HEADER_SERVICE_SERVERS);
         let runtime = infra_service_servers(infra, nodes);
+        // Issue 2482 -- the families are stated and the node count is not, so
+        // `runtime` priced ONE node: never below the undeclared budget, and no
+        // builtin split (its share would be the same guess).
+        let guessed = per_node_term_is_unknown(infra, nodes);
+        let at_least = |n: usize| match (guessed, undeclared) {
+            (true, Some(u)) => n.max(u),
+            _ => n,
+        };
         match desc.and_then(|d| d.image.service_server_queryables().stated().copied()) {
             Some(app) => {
-                self.values.insert(ENV_SERVICE_SERVERS, app + runtime);
+                self.values
+                    .insert(ENV_SERVICE_SERVERS, at_least(app + runtime));
+                if guessed {
+                    return;
+                }
                 // Issue 1808 — and which of them are the runtime's, so the
                 // application's slots can be sized from its own requests.
                 self.values.insert(ENV_BUILTIN_SERVERS, runtime);
@@ -1219,18 +1253,18 @@ impl XrceDemand {
                     self.derive_service_request(desc, app);
                 }
             }
-            // The runtime half is known and the application half is not, so no
-            // number here describes the image. Keep the header's default, and
-            // say how short it can be: a refusal would fail an image that may
-            // fit, a guess is how this issue's 4 got there.
-            None if runtime > 0 => self.note(format!(
-                // issue 1743.
-                "the parameter / lifecycle services need {runtime} service-server slot(s), \
-                 and the sizing descriptor states no `[image] service_server_queryables` \
-                 for the application's own, so {ENV_SERVICE_SERVERS} keeps its header \
-                 default. State it if the image serves more than that default allows \
-"
-            )),
+            // Issue 2482 -- the runtime half is known and the application half
+            // is not. Keeping the header's 4 (issue 1743's choice) is a boot
+            // failure for ANY parameter or lifecycle image, since either family
+            // alone needs at least 5; so the runtime's servers PLUS the
+            // header's own slots, the same shape as zenoh's undeclared
+            // application headroom.
+            None if runtime > 0 => {
+                self.values.insert(
+                    ENV_SERVICE_SERVERS,
+                    at_least(runtime + HEADER_SERVICE_SERVERS),
+                );
+            }
             None => {}
         }
     }
@@ -1561,7 +1595,10 @@ fn sizing_descriptor() -> Option<SizingDescriptor> {
 // --- negative controls, run on the normal path -----------------------------
 
 fn xrce_demand_selftest() {
-    use nros_sizing_descriptor::{History, RegistrationPath, Status};
+    use nros_sizing_descriptor::{
+        History, RegistrationPath, Status,
+        infra::{LIFECYCLE_SERVICE_QUERYABLES, PARAM_SERVICE_QUERYABLES},
+    };
 
     // A descriptor shaped like a real one: contract basis, nothing undeclared.
     let image = |eps: Vec<Endpoint>| -> SizingDescriptor {
@@ -1774,7 +1811,7 @@ fn xrce_demand_selftest() {
         let mut d = image(vec![]);
         d.image.set_service_server_queryables(app);
         let mut x = XrceDemand::derive(Some(&d));
-        x.derive_service_servers(Some(&d), infra, nodes);
+        x.derive_service_servers(Some(&d), infra, nodes, false);
         (x.for_knob(ENV_SERVICE_SERVERS), x.notes.len())
     };
     // The measured image: no application servers, both families on one node.
@@ -1794,10 +1831,52 @@ fn xrce_demand_selftest() {
         (None, 0),
         "empty is undeclared"
     );
-    // A fact without the application half: no number, but a note naming it.
-    let (v, notes) = servers(None, Some("lifecycle"), None);
-    assert_eq!(v, None);
-    assert_eq!(notes, 1, "the runtime's 5 servers must not pass silently");
+    // A fact without the application half (issue 2482): the runtime's servers
+    // plus the header's own slots. Keeping the header's 4 failed every such
+    // image at its fifth runtime server.
+    let (v, _) = servers(None, Some("lifecycle"), None);
+    assert_eq!(
+        v,
+        Some(LIFECYCLE_SERVICE_QUERYABLES + HEADER_SERVICE_SERVERS)
+    );
+    assert_eq!(servers(None, Some("none"), None).0, None, "nothing to add");
+
+    // 13a. Issue 2482 -- the owned-entry road: hosted, the parameter family
+    //      stated, the node count refused. Measured on a two-node image: the
+    //      header's 4 lost the fifth service of the FIRST node.
+    let hosted = |app: Option<usize>, infra: Option<&str>, nodes: Option<&str>| {
+        let mut d = image(vec![]);
+        d.image.set_service_server_queryables(app);
+        let mut x = XrceDemand::derive(Some(&d));
+        x.derive_service_servers(Some(&d), infra, nodes, true);
+        x
+    };
+    let two_nodes = 2 * PARAM_SERVICE_QUERYABLES;
+    // Nothing stated at all keeps the header's default even when hosted: the
+    // CMake harness compiles the backend at it and links this archive.
+    assert_eq!(hosted(None, None, None).for_knob(ENV_SERVICE_SERVERS), None);
+    let undeclared =
+        PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES + HEADER_SERVICE_SERVERS;
+    assert!(undeclared >= two_nodes);
+    // The family stated, the node count not: never below that budget, and no
+    // builtin split over a guessed share.
+    let owned = hosted(None, Some("param"), None);
+    assert_eq!(owned.for_knob(ENV_SERVICE_SERVERS), Some(undeclared));
+    assert_eq!(owned.for_knob(ENV_BUILTIN_SERVERS), None);
+    // A stated count is exact again.
+    let counted = hosted(Some(0), Some("param"), Some("2"));
+    assert_eq!(counted.for_knob(ENV_SERVICE_SERVERS), Some(two_nodes));
+    assert_eq!(counted.for_knob(ENV_BUILTIN_SERVERS), Some(two_nodes));
+    // Embedded, the family stated and the node count not: one node's servers
+    // plus the header's, with no hosted floor.
+    let mut d = image(vec![]);
+    d.image.set_service_server_queryables(None);
+    let mut x = XrceDemand::derive(Some(&d));
+    x.derive_service_servers(Some(&d), Some("param"), None, false);
+    assert_eq!(
+        x.for_knob(ENV_SERVICE_SERVERS),
+        Some(PARAM_SERVICE_QUERYABLES + HEADER_SERVICE_SERVERS)
+    );
 
     // 13b. Issue 1808 — the split: the builtin share is the runtime's servers,
     //      and the application's request slot is its own declared servers'
@@ -1806,7 +1885,7 @@ fn xrce_demand_selftest() {
         let mut d = image(eps);
         d.image.set_service_server_queryables(Some(app));
         let mut x = XrceDemand::derive(Some(&d));
-        x.derive_service_servers(Some(&d), Some("param+lifecycle"), Some("1"));
+        x.derive_service_servers(Some(&d), Some("param+lifecycle"), Some("1"), false);
         x
     };
     let server = |kind: EndpointKind, topic: &str, bound: Option<usize>| {

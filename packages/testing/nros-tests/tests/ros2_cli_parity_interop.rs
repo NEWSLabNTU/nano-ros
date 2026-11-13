@@ -202,46 +202,41 @@ fn first_node_serves_the_six_parameter_services_as_stock_does() {
     c.assert_same("the parameter services of a node");
 }
 
-/// Each node of a two-node image, against one stock node, on the parameter
-/// services `ros2 node info` lists and on `/parameter_events`.
+/// Matches stock: each node of a two-node image serves the six parameter
+/// services `ros2 node info` lists for a stock node.
 ///
-/// `/alpha` matches stock (plain). `/beta` is held in expected-failure form,
-/// issue 2482: it serves 5 of the 6 services (`get_parameter_types` is
-/// missing) and publishes no `/parameter_events`, where every stock node
-/// serves all six and publishes its own.
+/// Issue 2482 (resolved): the second node served 5 of the 6. The image's
+/// liveliness pool was sized for one node's services, so `/beta`'s last
+/// service had no graph token and `ros2 node info` omitted it.
 #[test]
-fn each_node_of_a_two_node_image_compared_with_stock_on_parameter_services() {
+fn each_node_of_a_two_node_image_serves_the_parameter_services_as_stock_does() {
     let mut pair = param_pair();
     params_discovered(&pair);
-    let ready = |a: &CliAnswer| has_line(a, "/set_parameters: ");
+    // Ready once the side lists its LAST-declared parameter service, so a
+    // half-discovered node is not compared.
+    let ready = |a: &CliAnswer| has_line(a, "/get_parameter_types: ");
 
-    // /alpha: plain.
-    pair.ask_until("node info {node}", SETTLE, ready)
-        .filtered(is_parameter_service_line)
-        .assert_same("the parameter services `ros2 node info` lists for the first node");
+    for node in ["/alpha", "/beta"] {
+        pair.nano.node = node.to_string();
+        pair.ask_until("node info {node}", SETTLE, ready)
+            .filtered(is_parameter_service_line)
+            .assert_same(&format!(
+                "the parameter services `ros2 node info` lists for node {node} of a \
+                 two-node image"
+            ));
+    }
+}
 
-    // /beta: expected-failure (issue 2482).
-    pair.nano.node = "/beta".to_string();
-    let c = pair
-        .ask_until("node info {node}", SETTLE, ready)
-        .filtered(is_parameter_service_line);
-    hold_gap(
-        &c,
-        "the parameter services of the second node of an image",
-        |c| {
-            c.diff().is_some_and(|d| {
-                changed_lines(&d)
-                    == vec![format!(
-                        "+     {NODE_PLACEHOLDER}/get_parameter_types: \
-                         rcl_interfaces/srv/GetParameterTypes"
-                    )]
-            })
-        },
-    );
+/// Expected-failure: every stock node publishes its own `/parameter_events`;
+/// in a two-node nano-ros image only the first node does.
+// design gap: one /parameter_events writer per executor (issue 2023); separate issue pending
+#[test]
+fn second_node_as_parameter_events_publisher_compared_with_stock() {
+    let pair = param_pair();
+    params_discovered(&pair);
 
-    // /parameter_events: every stock node publishes its own. The query is
-    // graph-wide, so the publishers are read per side rather than diffed: the
-    // nano-ros graph holds two nodes and the stock graph one.
+    // The query is graph-wide, so the publishers are read per side rather than
+    // diffed: the nano-ros graph holds two nodes and the stock graph one.
     let publishers = |side: &GraphSide| {
         let a = side.query_until("topic info -v /parameter_events", SETTLE, |a| {
             has_line(a, "Endpoint type: PUBLISHER")

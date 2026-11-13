@@ -34,7 +34,9 @@ type ZenohBufferConfig = crate::ZenohBufferConfig;
 // phase-392 W5.
 #[cfg(test)]
 use nros_sizing_descriptor::infra::LIFECYCLE_SERVICE_QUERYABLES;
-use nros_sizing_descriptor::infra::{PARAM_SERVICE_QUERYABLES, declared_nodes, stated};
+use nros_sizing_descriptor::infra::{
+    PARAM_SERVICE_QUERYABLES, declared_families, declared_nodes, per_node_term_is_unknown, stated,
+};
 
 /// Publishers the REP-2002 lifecycle family claims (`~/transition_event`),
 /// mirroring `nros_node::lifecycle_services::LIFECYCLE_SERVICE_PUBLISHERS`.
@@ -65,6 +67,12 @@ const UNDECLARED_LIVELINESS: usize = 16;
 /// hosted guess once every image declares; until then it is the fallback, not
 /// the answer.
 const UNDECLARED_HEADROOM: usize = 8;
+
+/// The queryable table of a HOSTED build that declares nothing: the
+/// historical hosted guess, room for every runtime service on a few nodes plus
+/// the application's own. A literal because nothing here knows the answer;
+/// RAM on a host is cheap, a short table is a service that never appears.
+const HOSTED_UNDECLARED_QUERYABLES: usize = 32;
 
 /// RTOS `target_os` values that are NOT hosted, however much they name
 /// themselves (issue 1028).
@@ -535,7 +543,13 @@ fn resolve_liveliness_default() -> usize {
     let components = desc
         .as_ref()
         .and_then(|d| d.image.node_count().stated().copied());
-    liveliness_default_from(entities, components, infra.as_deref(), nodes.as_deref())
+    liveliness_default_from(
+        entities,
+        components,
+        infra.as_deref(),
+        nodes.as_deref(),
+        target_os_is_hosted(std::env::var("CARGO_CFG_TARGET_OS").as_deref().ok()),
+    )
 }
 
 /// [`resolve_liveliness_default`]'s rule, with the environment lifted out.
@@ -548,23 +562,61 @@ fn resolve_liveliness_default() -> usize {
 ///   parsers the queryable table uses, so the two pools cannot disagree about
 ///   which families an image carries or on how many nodes.
 ///
-/// Nothing declared at all keeps [`UNDECLARED_LIVELINESS`] exactly: no fact,
-/// no claim, the historical pool.
+/// Nothing declared at all keeps [`UNDECLARED_LIVELINESS`] exactly on an
+/// embedded target: no fact, no claim, the historical pool. A HOSTED target
+/// that declares nothing assumes the runtime's own families present, exactly
+/// as its queryable table does (issue 2482): the same rule, priced through the
+/// same terms, with nothing stated.
 fn liveliness_default_from(
     entities: Option<usize>,
     components: Option<usize>,
     infra: Option<&str>,
     nodes: Option<&str>,
+    hosted: bool,
 ) -> usize {
     let infra = stated(infra);
+    // Issue 2482 -- archived issue 1713 kept the flat 16 for an undeclared
+    // image, which held while every hosted image with a parameter family
+    // reached here with its families stated. An owned entry (its own `main`, no
+    // launch) has no model and stated nothing, so a two-node parameter image
+    // got 16 tokens against the 17 it declares and its seventeenth service had
+    // no graph token. The queryable table had answered this case since
+    // phase-392 W5 (hosted 32, infrastructure assumed present); this is the
+    // same answer for the liveliness pool, from the same terms.
+    let undeclared = if hosted {
+        liveliness_with_runtime(None, components, None, None)
+    } else {
+        UNDECLARED_LIVELINESS
+    };
     if entities.is_none() && infra.is_none() {
-        return UNDECLARED_LIVELINESS;
+        return undeclared;
     }
+    let derived = liveliness_with_runtime(entities, components, infra, nodes);
+    // The families are stated but the node count is not: the per-node term
+    // priced one node, so never below the undeclared budget.
+    if per_node_term_is_unknown(infra, nodes) {
+        derived.max(undeclared)
+    } else {
+        derived
+    }
+}
+
+/// [`liveliness_default_from`]'s arithmetic: the session's node, a token per
+/// node NAME, the runtime families' servers and publishers, and the
+/// application's entities (or [`UNDECLARED_LIVELINESS`] for them). An absent
+/// `infra` prices every family present.
+fn liveliness_with_runtime(
+    entities: Option<usize>,
+    components: Option<usize>,
+    infra: Option<&str>,
+    nodes: Option<&str>,
+) -> usize {
     // Undeclared infrastructure is assumed PRESENT, as for the queryable
     // table: a short liveliness pool is a silent graph outage (issue 0283),
     // an over-long one is a few bytes a slot.
-    let lifecycle = !matches!(infra, Some("none") | Some("param"));
-    let param = !matches!(infra, Some("none") | Some("lifecycle"));
+    // The SHARED parser, so this pool and the queryable table cannot read one
+    // `infra_families` tag two ways.
+    let (param, lifecycle) = declared_families(infra).unwrap_or((true, true));
     // One token per node NAME: the larger of the components and the model's
     // nodes (the parameter family is per node), plus the executor's when the
     // lifecycle family registers under it. Errs high by one where the
@@ -631,15 +683,34 @@ fn queryable_default_from(
         // `cargo build`. The historical budgets, unchanged. W5.f retires both
         // once every image declares; that needs the hand-written-`main`
         // question settled first (phase-392 W5, Open).
-        None => return if hosted { 32 } else { UNDECLARED_HEADROOM },
+        None => return undeclared_queryables(hosted),
     };
 
+    let per_node_unknown = per_node_term_is_unknown(infra, nodes);
     let infra = infra_queryables(infra, nodes);
 
     // A table of zero would make every service-server registration fail, so an
     // entry declaring none still gets one slot rather than a pool nothing can
     // index.
-    core::cmp::max(app + infra + transient_local_publishers, 1)
+    let derived = core::cmp::max(app + infra + transient_local_publishers, 1);
+    // Issue 2482 -- the families are stated and the node count is not (an
+    // owned entry creates its nodes in its own code), so the per-node term
+    // above priced ONE node. Never below what the same image would get had it
+    // stated nothing.
+    if per_node_unknown {
+        derived.max(undeclared_queryables(hosted))
+    } else {
+        derived
+    }
+}
+
+/// The queryable table of a build that states nothing about its services.
+fn undeclared_queryables(hosted: bool) -> usize {
+    if hosted {
+        HOSTED_UNDECLARED_QUERYABLES
+    } else {
+        UNDECLARED_HEADROOM
+    }
 }
 
 #[cfg(test)]
@@ -912,7 +983,7 @@ mod queryable_default_tests {
         );
         // An image that carries both: the headroom PLUS what they cost.
         assert_eq!(
-            queryable_default_from(None, Some("param+lifecycle"), None, 0, true),
+            queryable_default_from(None, Some("param+lifecycle"), Some("1"), 0, true),
             UNDECLARED_HEADROOM + PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
         );
         // And it is the same number on an embedded target: the hosted/embedded
@@ -930,6 +1001,27 @@ mod queryable_default_tests {
     #[should_panic(expected = "infra_families")]
     fn an_unknown_infra_spelling_panics_even_without_an_app_count() {
         queryable_default_from(None, Some("safety"), None, 0, true);
+    }
+
+    /// Issue 2482 -- the owned-entry road states the families and refuses the
+    /// node count. The per-node term then priced one node, so the table is
+    /// never below the budget the same image gets stating nothing.
+    #[test]
+    fn a_stated_param_family_with_an_unknown_node_count_keeps_the_undeclared_budget() {
+        let two_nodes = 2 * PARAM_SERVICE_QUERYABLES;
+        let hosted = queryable_default_from(None, Some("param"), None, 0, true);
+        assert_eq!(hosted, queryable_default_from(None, None, None, 0, true));
+        assert!(hosted >= two_nodes + UNDECLARED_HEADROOM);
+        // Embedded keeps its derivation: the undeclared budget is smaller.
+        assert_eq!(
+            queryable_default_from(None, Some("param"), None, 0, false),
+            UNDECLARED_HEADROOM + PARAM_SERVICE_QUERYABLES
+        );
+        // Lifecycle alone has no per-node term, so nothing is guessed.
+        assert_eq!(
+            queryable_default_from(None, Some("lifecycle"), None, 0, true),
+            UNDECLARED_HEADROOM + LIFECYCLE_SERVICE_QUERYABLES
+        );
     }
 
     #[test]
@@ -955,15 +1047,15 @@ mod queryable_default_tests {
     fn infrastructure_is_added_here_not_by_the_declarer() {
         // Issue 0460: codegen sees the user's entities and never the runtime's.
         assert_eq!(
-            queryable_default_from(Some("0"), Some("param+lifecycle"), None, 0, true),
+            queryable_default_from(Some("0"), Some("param+lifecycle"), Some("1"), 0, true),
             11
         );
         assert_eq!(
-            queryable_default_from(Some("2"), Some("param+lifecycle"), None, 0, true),
+            queryable_default_from(Some("2"), Some("param+lifecycle"), Some("1"), 0, true),
             13
         );
         assert_eq!(
-            queryable_default_from(Some("2"), Some("param"), None, 0, true),
+            queryable_default_from(Some("2"), Some("param"), Some("1"), 0, true),
             8
         );
         assert_eq!(
@@ -1016,19 +1108,19 @@ mod liveliness_default_tests {
         // The facts that image's sidecar carries; it names no descriptor
         // (its bringup has no contract), so the application half is the
         // undeclared budget.
-        let got = liveliness_default_from(None, None, Some("param+lifecycle"), Some("2"));
+        let got = liveliness_default_from(None, None, Some("param+lifecycle"), Some("2"), false);
         assert!(
             got >= NATIVE_RUST_QOS_TOKENS,
             "derived {got} tokens for an image that declares {NATIVE_RUST_QOS_TOKENS}"
         );
     }
 
-    /// The negative control: the same image with NO facts is the old flat
-    /// default, and the same assertion rejects it -- which is the eight
+    /// The negative control: the same image with NO facts on an EMBEDDED
+    /// target is the old flat default, and the same assertion rejects it -- which is the eight
     /// `declare failed (Full)` lines the issue measured.
     #[test]
     fn negative_control_the_undeclared_default_is_short_for_that_image() {
-        let got = liveliness_default_from(None, None, None, None);
+        let got = liveliness_default_from(None, None, None, None, false);
         assert_eq!(got, UNDECLARED_LIVELINESS);
         assert!(got < NATIVE_RUST_QOS_TOKENS);
         assert_eq!(
@@ -1043,48 +1135,91 @@ mod liveliness_default_tests {
     /// one the lifecycle node name errs high by when it shares a component's.
     #[test]
     fn a_described_image_is_counted_exactly() {
-        let got = liveliness_default_from(Some(3), Some(2), Some("param+lifecycle"), Some("2"));
+        let got =
+            liveliness_default_from(Some(3), Some(2), Some("param+lifecycle"), Some("2"), false);
         assert_eq!(got, NATIVE_RUST_QOS_TOKENS + 1);
     }
 
     #[test]
     fn each_family_costs_its_own_tokens() {
-        let base = liveliness_default_from(Some(2), Some(1), Some("none"), Some("1"));
+        let base = liveliness_default_from(Some(2), Some(1), Some("none"), Some("1"), false);
         assert_eq!(
             base,
             1 + 1 + 2,
             "session node + one node name + two entities"
         );
-        let param = liveliness_default_from(Some(2), Some(1), Some("param"), Some("1"));
+        let param = liveliness_default_from(Some(2), Some(1), Some("param"), Some("1"), false);
         // six servers per node, one `/parameter_events` writer per executor.
         assert_eq!(
             param - base,
             PARAM_SERVICE_QUERYABLES + PARAM_EVENT_PUBLISHERS
         );
-        let lc = liveliness_default_from(Some(2), Some(1), Some("lifecycle"), Some("1"));
+        let lc = liveliness_default_from(Some(2), Some(1), Some("lifecycle"), Some("1"), false);
         // five servers, the `transition_event` publisher, the executor's node.
         assert_eq!(
             lc - base,
             LIFECYCLE_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_PUBLISHERS + 1
         );
         // The parameter family is per NODE.
-        let two = liveliness_default_from(Some(2), Some(2), Some("param"), Some("2"));
+        let two = liveliness_default_from(Some(2), Some(2), Some("param"), Some("2"), false);
         assert_eq!(two - param, 1 + PARAM_SERVICE_QUERYABLES);
     }
 
     #[test]
     fn undeclared_infrastructure_is_assumed_present() {
         assert_eq!(
-            liveliness_default_from(Some(2), Some(1), None, None),
-            liveliness_default_from(Some(2), Some(1), Some("param+lifecycle"), Some("1"))
+            liveliness_default_from(Some(2), Some(1), None, None, false),
+            liveliness_default_from(Some(2), Some(1), Some("param+lifecycle"), Some("1"), false)
         );
     }
 
     #[test]
     fn a_fact_never_shrinks_an_undescribed_pool() {
         assert!(
-            liveliness_default_from(None, None, Some("none"), Some("1")) >= UNDECLARED_LIVELINESS
+            liveliness_default_from(None, None, Some("none"), Some("1"), false)
+                >= UNDECLARED_LIVELINESS
         );
+    }
+
+    /// Issue 2482 -- the tokens a two-node owned image declares
+    /// (`param-two-node-talker`): the session's node, two node names, a
+    /// publisher on each, the parameter family on both nodes and its one
+    /// `/parameter_events` writer.
+    const TWO_NODE_PARAM_TOKENS: usize = 1 + 2 + 2 + 6 * 2 + PARAM_EVENT_PUBLISHERS;
+
+    /// Issue 2482 -- a HOSTED image that states nothing (an owned entry with
+    /// no model) prices the runtime's families present, as its queryable
+    /// table does. The flat 16 lost `/beta`'s seventeenth token.
+    #[test]
+    fn a_hosted_undeclared_image_prices_the_runtime_families() {
+        let got = liveliness_default_from(None, None, None, None, true);
+        assert!(
+            got >= TWO_NODE_PARAM_TOKENS,
+            "derived {got} tokens for an image that declares {TWO_NODE_PARAM_TOKENS}"
+        );
+        // The same terms as a stated image with both families, nothing less.
+        assert_eq!(
+            got,
+            liveliness_default_from(None, None, Some("param+lifecycle"), Some("1"), true)
+        );
+        // Negative control: the embedded budget is still the flat pool, and it
+        // is exactly what was short.
+        let embedded = liveliness_default_from(None, None, None, None, false);
+        assert_eq!(embedded, UNDECLARED_LIVELINESS);
+        assert!(embedded < TWO_NODE_PARAM_TOKENS);
+    }
+
+    /// Issue 2482 -- the owned-entry descriptor states `infra_families` and
+    /// refuses `model_nodes`; the per-node term then priced one node, so the
+    /// pool is never below the undeclared budget.
+    #[test]
+    fn a_stated_family_with_an_unknown_node_count_is_never_below_undeclared() {
+        let hosted = liveliness_default_from(None, None, Some("param"), None, true);
+        assert!(hosted >= liveliness_default_from(None, None, None, None, true));
+        assert!(hosted >= TWO_NODE_PARAM_TOKENS);
+        // A stated count is exact again: no undeclared floor.
+        let counted = liveliness_default_from(Some(2), Some(2), Some("param"), Some("2"), true);
+        assert_eq!(counted, TWO_NODE_PARAM_TOKENS);
     }
 }
 

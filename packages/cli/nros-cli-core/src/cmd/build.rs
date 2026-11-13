@@ -6315,6 +6315,11 @@ struct ResolvedImage {
     /// model RESOLVED, wiring or not: a model with no wiring writes no full
     /// descriptor, and still says whether the image builds a store.
     store_infra: Option<crate::entity_inventory::InfraServices>,
+    /// Issue 2482 -- `store_infra` came from `system.toml` alone, because the
+    /// image boots an OWNED entry with no launch and so has no model: its
+    /// families are stated, its node count is not (the program creates its
+    /// nodes in its own code). The descriptor then refuses `model_nodes`.
+    nodes_unknown: bool,
 }
 
 /// `resolved.toml`'s `[locations]` — phase-484 W6c (RFC-0103 D7).
@@ -6569,6 +6574,41 @@ fn resolve_image(
         })
     })();
 
+    // Issue 2482 -- an image that boots an OWNED entry with no launch has no
+    // model, so the closure above refused and stated nothing -- yet its
+    // `system.toml` states the runtime's service families, and with no
+    // descriptor no sizing build script saw them: a two-node parameter image
+    // sized its zenoh liveliness pool at the flat undeclared 16 against the 17
+    // tokens it declares, and its XRCE service slots at the header's 4. The
+    // families are what that file states; the node count it cannot state, so
+    // the descriptor refuses it and every consumer prices that term in the
+    // large direction (`infra::per_node_term_is_unknown`).
+    let mut nodes_unknown = false;
+    if store_infra.is_none()
+        && inventory.is_err()
+        && crate::cmd::entity_census::owned_entry_without_model(bringup_dir, image)
+    {
+        match nros_orchestration_ir::leaf_system::read_image(bringup_dir, image_id) {
+            Ok(Some(sys)) => {
+                let features: Vec<&str> = sys
+                    .features
+                    .iter()
+                    .chain(image.features.iter())
+                    .map(String::as_str)
+                    .collect();
+                store_infra = Some(crate::entity_inventory::InfraServices::from_features(
+                    &features, 0,
+                ));
+                nodes_unknown = true;
+            }
+            Ok(None) => {}
+            Err(e) => eprintln!(
+                "nros build:   `{image_id}`'s service families were not read ({e}); every \
+                 consumer keeps its own defaults"
+            ),
+        }
+    }
+
     // Cloned BEFORE `write_resolved` consumes the reference, so the second
     // descriptor producer (phase-454 W14) reads the SAME composition this
     // resolve published rather than re-parsing the model into a second one --
@@ -6619,6 +6659,7 @@ fn resolve_image(
                 model: composed.as_ref().map(|(_, m)| m.clone()),
                 inventory: composed.map(|(i, _)| i),
                 store_infra,
+                nodes_unknown,
             })
         }
     }
@@ -6725,19 +6766,21 @@ fn write_image_descriptor(
     // no `params:` either (issue 1436's predicate), so the declarations are
     // `Absent`.
     let infra = resolved.and_then(|r| r.store_infra)?;
+    let nodes_unknown = resolved.is_some_and(|r| r.nodes_unknown);
     let params = crate::entity_inventory::ParamDeclarations::Absent;
     match crate::sizing_descriptor::write_for_model(&image_for(
         crate::sizing_descriptor::Wiring::Unwired {
             params: &params,
             infra,
-            model_nodes: Some(infra.model_nodes),
+            // Issue 2482 -- an owned entry's node count is its program's.
+            model_nodes: (!nodes_unknown).then_some(infra.model_nodes),
             roots: &[root],
         },
     )) {
         Ok(Some(written)) => {
             eprintln!(
                 // issue 1706, phase-486 W9.
-                "nros build:   sizing descriptor (no wiring: the model's facts only) → {}",
+                "nros build:   sizing descriptor (no wiring: the bringup's facts only) → {}",
                 written.path.display()
             );
             Some((written, false))

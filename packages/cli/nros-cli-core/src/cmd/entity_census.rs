@@ -480,7 +480,7 @@ fn census_producer_for<'a>(
 /// launch for it (`ws::synthesise_bringup_launch`) and it has no SystemModel:
 /// no contract, and nothing for a census to take or check. Both census sites
 /// ask this before resolving the model.
-fn owned_entry_without_model(
+pub(crate) fn owned_entry_without_model(
     bringup_dir: &Path,
     image: &crate::orchestration::image::ImageBlock,
 ) -> bool {

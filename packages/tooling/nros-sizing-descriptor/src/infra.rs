@@ -115,6 +115,20 @@ pub fn infra_service_servers(infra: Option<&str>, nodes: Option<&str>) -> usize 
         }
 }
 
+/// Issue 2482 -- is the PER-NODE term of [`infra_service_servers`] a guess?
+///
+/// True when the parameter family is stated ON and the node count is not
+/// stated. [`declared_nodes`] then prices ONE node, which is the small
+/// direction: an owned entry (its own `main`, no launch) states its families
+/// in `system.toml` but creates its nodes in its own code, so nothing before
+/// the build counts them. Measured: a two-node owned image priced as one lost
+/// `/beta`'s parameter services on both zenoh (liveliness) and XRCE (service
+/// slots). A consumer seeing `true` must not size below its own UNDECLARED
+/// budget -- the number it would use had the families not been stated at all.
+pub fn per_node_term_is_unknown(infra: Option<&str>, nodes: Option<&str>) -> bool {
+    declared_families(infra).is_some_and(|(param, _)| param) && stated(nodes).is_none()
+}
+
 /// Service clients an action CLIENT opens: `send_goal`, `cancel_goal` and
 /// `get_result`.
 ///
@@ -186,6 +200,19 @@ mod tests {
         assert_eq!(infra_service_servers(None, None), 11);
         assert_eq!(infra_service_servers(Some(""), Some(" ")), 11);
         assert_eq!(declared_families(Some("  ")), None);
+    }
+
+    #[test]
+    fn the_per_node_term_is_unknown_only_for_a_stated_param_family_without_nodes() {
+        assert!(per_node_term_is_unknown(Some("param"), None));
+        assert!(per_node_term_is_unknown(Some("param+lifecycle"), Some(" ")));
+        assert!(!per_node_term_is_unknown(Some("param"), Some("2")));
+        // Lifecycle is once per executor: no per-node term to guess.
+        assert!(!per_node_term_is_unknown(Some("lifecycle"), None));
+        assert!(!per_node_term_is_unknown(Some("none"), None));
+        // Nothing stated is the UNDECLARED road, which each consumer already
+        // prices at its own budget.
+        assert!(!per_node_term_is_unknown(None, None));
     }
 
     #[test]
