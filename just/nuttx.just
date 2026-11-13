@@ -627,7 +627,7 @@ doctor:
     if command -v kconfig-tweak &>/dev/null && command -v kconfig-conf &>/dev/null; then
         echo "  [OK] kconfig tools"
     else
-        echo "  [MISSING] kconfig-frontends-nox (run: sudo apt install kconfig-frontends-nox)"
+        echo "  [MISSING] kconfig-frontends tools (run: nros setup qemu-armv7a-nuttx --sudo, or rv-virt-nuttx)"
         fail=1
     fi
     # genromfs — builds the `etc/` ROMFS image for the riscv rv-virt board

@@ -5543,7 +5543,7 @@ _doctor-host:
         echo "  [OK] kconfig-frontends (kconfig-tweak, kconfig-conf) on PATH"
     else
         echo "  [INFO] no kconfig-frontends tools: a NuttX build will refuse."
-        echo "         Install them: sudo apt install kconfig-frontends-nox"
+        echo "         Install:  nros setup qemu-armv7a-nuttx --sudo   (or rv-virt-nuttx; declared in nros-sdk-index.toml)"
     fi
     # clang-format pin (consistent C/C++ formatting across machines + CI).
     #

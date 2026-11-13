@@ -191,6 +191,7 @@ builtin_for_index
 builtin_isavail
 clean_context
 kmm_malloc
+nsh_main
 sporadic_alloc_repl
 task_create
 
