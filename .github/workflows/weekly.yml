@@ -3,11 +3,12 @@
 # good to me."). Schedule + dispatch only: nothing here gates a merge, and no
 # job is named `CI`.
 #
-# One file, because the three lanes share a cadence and a runner class (hosted,
+# One file, because the lanes share a cadence and a runner class (hosted,
 # advisory) and nothing forces them apart (phase-559: a file boundary exists
-# only where a named constraint forces it). They were three files with three
-# Monday crons: probe-platforms.yml (09:00), next-stable.yml (04:17), and
-# nightly.yml's `zenoh-probe` (09:00, the only weekly cron in a daily file).
+# only where a named constraint forces it). The first three were three files
+# with three Monday crons: probe-platforms.yml (09:00), next-stable.yml
+# (04:17), and nightly.yml's `zenoh-probe` (09:00, the only weekly cron in a
+# daily file). The Verus proofs joined as the fourth lane (issue 2499).
 #
 # Each lane keeps its own jobs, so a red still names which lane broke.
 # Dispatch runs ONE lane (`lane:`) or all of them; `candidate:` is
@@ -28,7 +29,7 @@ on:
       lane:
         description: "Which weekly lane to run"
         type: choice
-        options: [all, probe-platforms, zenoh-probe, next-stable]
+        options: [all, probe-platforms, zenoh-probe, next-stable, verify-verus]
         default: all
       candidate:
         description: "next-stable: toolchain to try against the pin (stable, beta, 1.100.0, ...)"
@@ -292,3 +293,47 @@ jobs:
           path: tmp/next-stable/
           if-no-files-found: warn
           retention-days: 30
+
+  # ===== verify-verus (issue 2499) =====
+  #
+  # The Verus proofs (`just verify-verus`). No lane ran them, so the lane
+  # rotted unseen: the crate's rust toolchain and a caret `vstd` drifted from
+  # the pinned Verus binary, and `cargo verus verify` panicked inside `vstd`
+  # before any nano-ros proof, which let issue 2487's spec change land unproven.
+  # `scripts/check-verus-pins.py`, at the head of the recipe, now refuses that
+  # drift by name. `just verification verus` downloads the `[tool.verus]` pin
+  # and installs the rust toolchain that binary was built with.
+  verify-verus:
+    if: ${{ github.event_name == 'schedule' || inputs.lane == 'all' || inputs.lane == 'verify-verus' }}
+    concurrency:
+      group: weekly-verify-verus
+      cancel-in-progress: true
+    name: verify-verus (advisory — gates nothing)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Build the in-tree nros CLI
+        uses: ./.github/actions/setup-nros-cli
+
+      # Downloads the `[tool.verus]` pin and installs the rust toolchain that
+      # binary was built with.
+      - name: Provision Verus
+        run: |
+          source ./activate.sh
+          just verification verus
+
+      - name: Run the Verus proofs
+        run: |
+          source ./activate.sh
+          just verify-verus

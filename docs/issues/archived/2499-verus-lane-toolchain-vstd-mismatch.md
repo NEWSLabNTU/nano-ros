@@ -1,12 +1,13 @@
 ---
 id: 2499
 title: "`just verify-verus` cannot run: the Verus binary, the crate's rust pin and the resolved `vstd` are three different versions"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [verification, tooling]
-related: [2487, rfc-0028]
+related: [2487, rfc-0028, phase-559]
 found: 2026-11-13
+resolved_in: "fix-2499-verus-lane: vstd pinned exactly to the binary's bundle, toolchain 1.96.0, check-verus-pins.py refuses drift, weekly.yml runs the proofs"
 ---
 
 **Found by** issue 2487's fix, which changed the spec of `integrity_is_valid`
@@ -60,3 +61,24 @@ is the panic.
 
 `just verify-verus` exits 0 on a fresh host after `nros setup --tool verus`,
 with no hand-installed toolchain.
+
+## Resolution (2026-11-13)
+
+- `packages/verification/nros-verification/rust-toolchain.toml` is `1.96.0`,
+  the `toolchain` the `[tool.verus]` binary's `version.json` names. `vstd` is
+  `=0.0.0-2026-06-14-0213`, the version in the binary's own
+  `vstd/Cargo.toml`. The lock moved with `cargo update -p vstd --precise`, and
+  the registry pin set moved with `nros update --pins --prune`.
+- `scripts/check-verus-pins.py` runs at the head of `just verify-verus`. It
+  compares the toolchain file, the `vstd` requirement (which must be `=`) and
+  the locked `vstd` against the binary's bundle, and refuses a mismatch,
+  naming the value to set. `--self-test` includes the shape that shipped (all
+  three wrong).
+- `weekly.yml` job `verify-verus` (Sunday, advisory) runs the proofs, so the
+  lane cannot rot unseen again.
+
+Measured: `just verify-verus` gives 104 verified, 0 errors on main after
+issue 2487 merged. That includes proof 5 (`is_valid_correctness`), whose
+`!crc_known ==> !integrity_is_valid` clause is 2487's change. Negative
+control: putting the old `integrity_is_valid` back under the new
+postconditions gives 103 verified, 1 error ("postcondition not satisfied").
