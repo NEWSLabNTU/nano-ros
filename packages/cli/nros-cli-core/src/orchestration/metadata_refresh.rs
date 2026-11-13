@@ -374,21 +374,23 @@ pub fn refresh_stale_sidecars(
                         .push(format!("{}::{} ({why})", opts.package, opts.component));
                 }
             }
-            // A configure failure is the whole project, not one component.
+            // A configure failure is the whole project, not one component, and
+            // nothing a component's inputs key can fix: it was a compiler the
+            // probe inherited, a missing tool, a broken cache. A marker keyed
+            // on the components' sources outlived exactly such a fix and kept
+            // every C/C++ component of five workspaces on DEFAULT sizes with
+            // one quiet line each. So no marker, and a warning that says the
+            // sizes are defaults until the probe configures.
             Err(why) => {
                 let text = format!("probe project configure failed: {why:#}");
+                eprintln!(
+                    "nros: WARNING: the C/C++ metadata probe project did not configure, so \
+                     {} component(s) keep DEFAULT sizes this sync (nothing is recorded; \
+                     the next sync tries again): {}",
+                    cpp_batch.len(),
+                    first_error_line(&text)
+                );
                 for opts in &cpp_batch {
-                    // Every component in the batch shares the project that
-                    // failed to configure, so every one of them is unprobeable
-                    // until something changes — mark each, or the next sync
-                    // rebuilds the same broken project.
-                    mark_unprobeable_now(
-                        &opts.output_path,
-                        &opts.package_dir,
-                        nano_ros,
-                        compile_root().as_deref(),
-                        &text,
-                    );
                     report
                         .unsupported
                         .push(format!("{}::{} ({text})", opts.package, opts.component));
@@ -1203,7 +1205,14 @@ fn first_error_line(why: &str) -> String {
     const CAP: usize = 300;
     let pick = first_error_with_cause(why, |l| {
         let lower = l.to_ascii_lowercase();
-        lower.starts_with("error") || lower.contains("error:") || lower.contains("error[")
+        lower.starts_with("error")
+            || lower.contains("error:")
+            || lower.contains("error[")
+            // CMake's own shape, `CMake Error at <file>:<line> (<cmd>):`, has
+            // none of the three, so a configure failure recorded only the
+            // `failed for `workspace` (exit 1):` header and every later sync
+            // printed an empty "last error".
+            || lower.starts_with("cmake error")
     })
     .or_else(|| {
         why.lines()
@@ -1614,6 +1623,20 @@ pub fn stale_recorded_inputs(root: &Path, inputs: &[RecordedInput]) -> Vec<Stale
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A probe configure that fails CMake's compiler check records CMake's
+    /// error, not just the `failed for `workspace`` header — the shape CI
+    /// printed as an empty "last error" for a ThreadX and a NuttX leaf.
+    #[test]
+    fn a_cmake_configure_error_is_the_recorded_reason() {
+        let why = "metadata probe configure failed for `workspace` (exit 1):\n\
+                   -- The C compiler identification is GNU 13.2.1\n\n\
+                   CMake Error at /usr/share/cmake-3.22/Modules/CMakeTestCCompiler.cmake:69 (message):\n  \
+                   The C compiler\n\n    \"/opt/arm-none-eabi-gcc\"\n\n  \
+                   is not able to compile a simple test program.\n";
+        let line = first_error_line(why);
+        assert!(line.contains("CMake Error at"), "got {line:?}");
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let dir = crate::test_support::scratch_dir(&format!("md-refresh-{name}"));

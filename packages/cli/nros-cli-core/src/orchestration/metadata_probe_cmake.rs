@@ -599,6 +599,99 @@ fn run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> Result<()> 
 /// executor's `u64` ready-set (`ExecutorSizing::cbs` must be <= 64).
 pub const PROBE_EXECUTOR_MAX_CBS: usize = 64;
 
+/// The variables that would make the host probe compile for another target
+/// (see [`pin_probe_env`]).
+///
+/// The compiler half is what CMake itself exports to a configure's children:
+/// one variable per enabled language, `CMAKE_<LANG>_COMPILER_ENV_VAR`.
+/// Measured on CMake 3.22 with `project(p C CXX ASM)` under a cross toolchain,
+/// a child saw exactly `CC`, `CXX` and `ASM` set to the cross compilers; the
+/// other languages' names are listed because a project enabling them exports
+/// them the same way. The flag half and `CMAKE_TOOLCHAIN_FILE` are what CMake
+/// READS from the environment on a first configure, so a caller exporting
+/// them would cross-compile the probe just as surely.
+const INHERITED_TOOLCHAIN_ENV: [&str; 22] = [
+    // compilers, one per CMake language
+    "CC",
+    "CXX",
+    "ASM",
+    "ASM_NASM",
+    "ASM_MASM",
+    "OBJC",
+    "OBJCXX",
+    "FC",
+    "CUDACXX",
+    "HIPCXX",
+    "ISPC",
+    // flags CMake seeds its first configure from
+    "CFLAGS",
+    "CXXFLAGS",
+    "ASMFLAGS",
+    "OBJCFLAGS",
+    "OBJCXXFLAGS",
+    "FFLAGS",
+    "CUDAFLAGS",
+    "HIPFLAGS",
+    "CPPFLAGS",
+    "LDFLAGS",
+    // the toolchain itself (CMake >= 3.21 reads it from the environment)
+    "CMAKE_TOOLCHAIN_FILE",
+];
+
+/// Does `compiler` build for this host? Asks the compiler (`-dumpmachine`),
+/// never its name: a host compiler is anything whose target's architecture is
+/// this process's. `None` when it cannot be asked.
+fn compiler_targets_host(compiler: &Path) -> Option<bool> {
+    let out = Command::new(compiler).arg("-dumpmachine").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let machine = String::from_utf8_lossy(&out.stdout);
+    let arch = machine.trim().split('-').next()?.to_string();
+    let host = std::env::consts::ARCH;
+    Some(arch == host || (host == "aarch64" && arch == "arm64"))
+}
+
+/// A probe cache that records a compiler which does not build for this host was
+/// configured from another target's environment, and CMake never swaps a
+/// cached compiler in place. Set its cache aside (renamed, kept as the
+/// evidence) so this configure detects the host compiler afresh, and say so.
+fn set_aside_cross_cache(build_dir: &Path) -> Result<()> {
+    let cache = build_dir.join("CMakeCache.txt");
+    let Ok(text) = std::fs::read_to_string(&cache) else {
+        return Ok(());
+    };
+    let Some(compiler) = text
+        .lines()
+        .find_map(|l| l.strip_prefix("CMAKE_C_COMPILER:"))
+        .and_then(|l| l.split_once('=').map(|(_, v)| PathBuf::from(v.trim())))
+    else {
+        return Ok(());
+    };
+    if compiler_targets_host(&compiler) != Some(false) {
+        return Ok(());
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    for name in ["CMakeCache.txt", "CMakeFiles"] {
+        let from = build_dir.join(name);
+        if from.exists() {
+            std::fs::rename(&from, build_dir.join(format!("{name}.cross-{stamp}")))
+                .wrap_err_with(|| format!("set aside {}", from.display()))?;
+        }
+    }
+    eprintln!(
+        "nros: metadata probe cache {} recorded the compiler {}, which does not build \
+         for this host; the probe is a host build, so its cache was set aside \
+         (`CMakeCache.txt.cross-{stamp}`) and it is configured afresh",
+        build_dir.display(),
+        compiler.display()
+    );
+    Ok(())
+}
+
 /// One configure of the probe project.
 ///
 /// Issue 1593 — the configure is PINNED to `nano_ros` on every probe. The build
@@ -611,6 +704,7 @@ pub const PROBE_EXECUTOR_MAX_CBS: usize = 64;
 /// and the cache is then READ BACK ([`check_probe_root`]) so a value some
 /// other rung re-derived cannot slip past.
 fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path, rmw: &str) -> Result<()> {
+    set_aside_cross_cache(build_dir)?;
     let mut cmd = Command::new("cmake");
     cmd.arg("-S")
         .arg(probe_dir)
@@ -695,6 +789,20 @@ pub fn probe_rmw<'a>(rmws: impl IntoIterator<Item = &'a str>) -> &'static str {
 /// of the shared cargo dir's knob key (`nros_knob_key_fields`, road 2), so it
 /// never reaches a firmware build's directory.
 fn pin_probe_env(cmd: &mut Command, nano_ros: &Path) {
+    // The probe is a HOST build: it runs what it builds. CMake exports the
+    // compiler it configured as `CC` / `CXX` to every child of a configure, so
+    // a probe reached from a CROSS configure (a NuttX image's configure hook
+    // runs `nros configure`, which runs this) inherited
+    // `CC=arm-none-eabi-gcc`, and the probe's first configure recorded the
+    // cross compiler in its cache for good. Measured: every C/C++ workspace
+    // with a NuttX CMake image had a probe cache naming `arm-none-eabi-gcc`
+    // under a `Linux` CMakeSystem, and every probe there failed CMake's
+    // compiler check. The leak is CMake's, not NuttX's, so it reaches the
+    // probe from every cross cmake road (FreeRTOS, ThreadX, Zephyr, bare
+    // metal). So the compiler and its flags are never inherited.
+    for var in INHERITED_TOOLCHAIN_ENV {
+        cmd.env_remove(var);
+    }
     cmd.env("NROS_WORKSPACE", nano_ros);
     cmd.env("NROS_EXECUTOR_MAX_CBS", PROBE_EXECUTOR_MAX_CBS.to_string());
     if let Ok(exe) = std::env::current_exe() {
@@ -1266,5 +1374,88 @@ mod probe_root_tests {
         )
         .unwrap();
         assert_eq!(cached_probe_root(&build), None);
+    }
+}
+
+#[cfg(test)]
+mod host_intent_tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = crate::test_support::scratch_dir(&format!("probe-host-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A probe reached from a cross configure inherits that configure's
+    /// `CC`/`CXX`; the probe removes every one of them, so its first configure
+    /// detects the host compiler whoever started it.
+    #[test]
+    fn the_probe_inherits_no_compiler_from_its_caller() {
+        let mut cmd = Command::new("cmake");
+        pin_probe_env(&mut cmd, Path::new("/nano-ros"));
+        for var in INHERITED_TOOLCHAIN_ENV {
+            let entry = cmd.get_envs().find(|(k, _)| *k == var);
+            assert_eq!(
+                entry,
+                Some((std::ffi::OsStr::new(var), None)),
+                "{var} is not removed"
+            );
+        }
+    }
+
+    fn cache_naming(dir: &Path, compiler: &Path) {
+        std::fs::write(
+            dir.join("CMakeCache.txt"),
+            format!("CMAKE_C_COMPILER:FILEPATH={}\n", compiler.display()),
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.join("CMakeFiles")).unwrap();
+    }
+
+    fn fake_compiler(dir: &Path, machine: &str) -> PathBuf {
+        let cc = dir.join("fake-gcc");
+        crate::test_support::write_executable_stub(&cc, &format!("#!/bin/sh\necho {machine}\n"));
+        cc
+    }
+
+    /// A cache already holding a cross compiler is set aside, kept, and the
+    /// live names are free for a fresh host configure.
+    #[test]
+    fn a_cache_recording_a_cross_compiler_is_set_aside() {
+        let dir = scratch("cross");
+        let cc = fake_compiler(&dir, "arm-none-eabi");
+        cache_naming(&dir, &cc);
+        set_aside_cross_cache(&dir).unwrap();
+        assert!(!dir.join("CMakeCache.txt").exists());
+        assert!(!dir.join("CMakeFiles").exists());
+        let kept: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok()?.file_name().into_string().ok())
+            .filter(|n| n.contains(".cross-"))
+            .collect();
+        assert_eq!(
+            kept.len(),
+            2,
+            "the evidence is renamed, not deleted: {kept:?}"
+        );
+    }
+
+    /// A host compiler's cache, and one whose compiler cannot be asked, are
+    /// left alone.
+    #[test]
+    fn a_host_or_unaskable_cache_is_kept() {
+        let dir = scratch("host");
+        let host = format!("{}-pc-linux-gnu", std::env::consts::ARCH);
+        let cc = fake_compiler(&dir, &host);
+        cache_naming(&dir, &cc);
+        set_aside_cross_cache(&dir).unwrap();
+        assert!(dir.join("CMakeCache.txt").exists());
+
+        let gone = scratch("unaskable");
+        cache_naming(&gone, &gone.join("no-such-cc"));
+        set_aside_cross_cache(&gone).unwrap();
+        assert!(gone.join("CMakeCache.txt").exists());
     }
 }
