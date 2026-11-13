@@ -12,7 +12,9 @@ verify = true
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(verus_keep_ghost_body)', 'cfg(verus_keep_ghost)'] }
 
 [dependencies]
-vstd = "0.0.0-2026-02-08-0120"
+# EXACT: the `vstd` bundled with the `[tool.verus]` binary (its `vstd/Cargo.toml`).
+# A newer crates.io vstd is not compiled by that binary (issue 2499).
+vstd = "=0.0.0-2026-06-14-0213"
 nros-serdes = { path = "../../core/nros-serdes", default-features = false }
 nros-core = { path = "../../core/nros-core", default-features = false }
 nros-params = { path = "../../core/nros-params", default-features = false }

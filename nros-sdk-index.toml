@@ -928,8 +928,11 @@ dist.macos-x86_64 = { url = "https://github.com/rust-lang/mdBook/releases/downlo
 # What is NOT expressible here, and stays in `just verification verus`: the
 # rustup toolchain the release pins (a `verus --version` on a host without it
 # prints `required rust toolchain <tc> not found`), and the informative degrade
-# when the binary cannot run at all. Verification is gated in no CI tier, so a
-# host that cannot run this tool must not have its setup fail.
+# when the binary cannot run at all. Verification gates no merge (a weekly,
+# advisory `verify-verus.yml` runs it — issue 2499), so a host that cannot run
+# this tool must not have its setup fail. Bumping this pin moves the Verus
+# crate's `rust-toolchain.toml` and its exact `vstd` pin with it;
+# `scripts/check-verus-pins.py` refuses a mismatch.
 #
 # sha256s VERIFIED 2026-09-05 by downloading each asset and hashing it; all three
 # also match GitHub's own published `digest` field for the release.

@@ -4279,6 +4279,13 @@ verify-verus:
         exit 1
     fi
     export PATH="$VERUS_DIR:$PATH"
+    # Issue 2499: the Verus binary, the crate's rust toolchain and `vstd` are
+    # ONE release. The binary compiles `vstd`, so a newer crates.io `vstd`
+    # makes rustc panic on a diagnostic item the binary does not know, and the
+    # binary runs only under the toolchain it was built with. Its bundle states
+    # both; refuse a tracked pin that disagrees, naming the fix, instead of
+    # failing inside rustc.
+    python3 scripts/check-verus-pins.py "$VERUS_DIR"
     cd packages/verification/nros-verification
     cargo verus verify
     echo "[OK] All Verus proofs verified"
