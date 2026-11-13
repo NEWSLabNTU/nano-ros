@@ -1235,6 +1235,25 @@ def stated_by_build(lines: list[str]) -> tuple[list[dict], list[str]]:
     return rows, [str(files[0])]
 
 
+def build_profile_dirs(lines: list[str], target: str) -> list[Path]:
+    """Where cargo put this image's TARGET intermediates (`deps/`, `build/`):
+    `<build dir>/<target>/<profile>`, read off the `out_dir` cargo reported for
+    each build script (`<that>/build/<pkg>-<hash>/out`). Cargo's
+    `build.build-dir` moves intermediates out of `<target dir>` — `nros build`
+    sets it for a caller-named `--target-dir` (RFC-0100 D13), a caller may set
+    it, and so may a config file — so only cargo knows where they are."""
+    import cargo_out_dir  # the one reader of cargo's JSON stream
+    found: list[Path] = []
+    for od in cargo_out_dir.all_out_dirs(lines):
+        p = Path(od)
+        if p.name != "out" or p.parent.parent.name != "build":
+            continue
+        prof = p.parent.parent.parent
+        if prof.parent.name == target and prof not in found:
+            found.append(prof)
+    return found
+
+
 def apply_stated(args: argparse.Namespace, rows: list[dict]) -> None:
     """The walk's roles, stated stacks and knob, from a board's stated rows."""
     knobs = {r["knob"] for r in rows}
@@ -1260,6 +1279,21 @@ def run(args: argparse.Namespace) -> int:
                   f"script of this image wrote {STATED_FILE})", file=sys.stderr)
             return 0
         apply_stated(args, rows)
+        if args.intermediates_from_build:
+            if not args.target:
+                raise SystemExit("nros-stack-floor: --intermediates-from-build needs --target")
+            profs = build_profile_dirs(lines, args.target)
+            if not profs:
+                raise SystemExit(
+                    f"nros-stack-floor: cargo reported no build script output for "
+                    f"{args.target} in {args.stated_by_build}, so where this image's "
+                    "intermediates are is unknown")
+            for prof in profs:
+                args.link_dir = (args.link_dir or []) + [str(prof / "deps"), str(prof / "build")]
+                args.su = (args.su or []) + [str(prof / "build")]
+                args.bitcode_dir = (args.bitcode_dir or []) + [str(prof / "deps")]
+    elif args.intermediates_from_build:
+        raise SystemExit("nros-stack-floor: --intermediates-from-build needs --stated-by-build")
     doc = None
     if args.table:
         doc = load_table(Path(args.table))
@@ -1614,6 +1648,18 @@ def self_test() -> int:
         Path(d, "a", STATED_FILE).write_text("{}")
         check("stated stack: two files are reported, not chosen between",
               len(stated_by_build(msgs)[1]) == 2)
+    # Where a cargo build-dir put the target's intermediates: the TARGET out
+    # dirs only (a build script for the host is in `<build dir>/<profile>`).
+    bmsgs = [json.dumps({"reason": "build-script-executed", "package_id": "p",
+                         "out_dir": o}) for o in (
+        "/t/nros-class/k/build/nros-minsizerel/build/zpico-sys-1/out",
+        "/t/nros-class/k/build/thumbv7m-none-eabi/nros-minsizerel/build/b-2/out",
+        "/t/nros-class/k/build/thumbv7m-none-eabi/nros-minsizerel/build/c-3/out")]
+    check("intermediates: the target profile dir under cargo's build dir, once",
+          build_profile_dirs(bmsgs, "thumbv7m-none-eabi")
+          == [Path("/t/nros-class/k/build/thumbv7m-none-eabi/nros-minsizerel")])
+    check("intermediates: none for a target nothing was built for",
+          build_profile_dirs(bmsgs, "riscv32imc-unknown-none-elf") == [])
     # CFI frames from a linked image
     cfi = ("00000000 0000000c ffffffff CIE\n  Version: 1\n"
            "00000010 00000024 00000000 FDE cie=00000000 pc=000313dc...00031448\n"
@@ -1888,6 +1934,11 @@ def main() -> int:
     ap.add_argument("--check-stack", action="append",
                     help="ROLE=<bytes>: the stated stack to CHECK (a measured image whose floor "
                     "exceeds it fails; an unmeasured one warns)")
+    ap.add_argument("--intermediates-from-build", action="store_true",
+                    help="with --stated-by-build and --target: the link dirs, .su dir and "
+                    "bitcode dir are <build dir>/<target>/<profile>/{deps,build}, found from "
+                    "the out_dir cargo reported for each build script (cargo's build-dir may "
+                    "be anywhere)")
     ap.add_argument("--stated-by-build", metavar="CARGO_JSON",
                     help="cargo's --message-format=json output for the image: the roles, stated "
                     "stacks and knob come from the nros-stack-stated.json one of its build "
