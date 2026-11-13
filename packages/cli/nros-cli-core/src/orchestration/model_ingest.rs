@@ -342,11 +342,11 @@ pub fn derive_execution_in_plan(
     // degradation, and into the plan for the same reason (issue 0259): the
     // person who wrote the number is the one who needs to see what it beat.
     for s in &derived.shadowed {
+        // The allocation rule is RFC-0079.
         let reason = format!(
             "`[tasks.{}]` authors priority {} for this board, so it wins; the \
              contract's rank would have allocated {}. Remove every platform \
-             sub-table from that sched task to have the priority allocated instead \
-             (RFC-0079).",
+             sub-table from that sched task to have the priority allocated instead.",
             s.sched_task, s.authored, s.allocated
         );
         eprintln!(
@@ -729,13 +729,14 @@ pub fn resolve_cyclonedds_max_descriptor_types_with(
     match user_pin {
         Some(user) => {
             if counted > user {
+                // phase-454 W6.c.
                 bail!(
                     "codegen-system: the SystemModel registers {counted} distinct DDS types but \
                      `NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES` is pinned to {user}: raise it to at \
                      least {counted} in the build env and rebuild, or unset it to let nros size \
                      it. Over the cap `descriptors.cpp` drops registrations from a static \
                      constructor that cannot report, and the drop surfaces later as \
-                     publisher_create UNSUPPORTED. phase-454 W6.c"
+                     publisher_create UNSUPPORTED."
                 );
             }
             Ok(None)
@@ -803,7 +804,8 @@ pub fn manage_cyclonedds_max_descriptor_types(
         workspace,
         "NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES",
         value,
-        "phase-454 W6.c; derived from the SystemModel",
+        // phase-454 W6.c.
+        "sizes the CycloneDDS descriptor table; derived from the SystemModel",
     )
 }
 
@@ -1999,7 +2001,7 @@ mod transport_tests {
             m.execution.transports.push(t);
             let e = plan_transports(&m).unwrap_err().to_string();
             assert!(
-                e.contains("[image.<id>.net.<if>]") && e.contains("D10"),
+                e.contains("[image.<id>.net.<if>]") && e.contains("retired"),
                 "{e}"
             );
         }
@@ -2256,7 +2258,7 @@ mod cyclonedds_type_capacity_tests {
         );
         assert!(cfg.contains("value = \"300\""), "{cfg}");
         assert!(
-            cfg.contains("phase-454 W6.c"),
+            cfg.contains("sizes the CycloneDDS descriptor table"),
             "the reason is per key: {cfg}"
         );
         // Removing one leaves the other alone -- the tag is per row.

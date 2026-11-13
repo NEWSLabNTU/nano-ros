@@ -185,9 +185,10 @@ pub fn board_links(dir: &Path, board_features: &[String], r: &ResolvedRmwIn) -> 
 /// D7's refusal for a cargo-rooted image whose backend offers no cargo crate.
 #[must_use]
 pub fn cmake_only_refusal(image: &str, r: &ResolvedRmwIn, board: &str) -> String {
+    // RFC-0071 D7.
     format!(
         "image `{image}`: backend `{rmw}` provides only a cmake target; a Rust-rooted \
-         build needs a `sys_crate` bridge (RFC-0071 D7). Its `[rmw.provides.cargo]` \
+         build needs a `sys_crate` bridge. Its `[rmw.provides.cargo]` \
          names no `crate`, and board crate `{board}` does not link it through \
          `{feature}`.",
         rmw = r.declared,
@@ -260,11 +261,12 @@ fn image_backend(
         "" => None,
         rc if rc == krate => Some(r.descriptor.register_fn.clone()),
         rc => {
+            // RFC-0071 D15.
             return Err(format!(
                 "image `{image}`: backend `{}` links crate `{krate}` but registers \
                  through `{rc}`, which the image does not depend on. A backend the board \
                  does not link must register through its `[rmw.provides.cargo] crate` \
-                 (RFC-0071 D15).",
+                 instead.",
                 r.declared
             ));
         }

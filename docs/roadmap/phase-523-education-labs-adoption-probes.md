@@ -338,6 +338,7 @@ each batch lowers its baseline in the same PR.
 | batch 5: `resolve.rs`, `metadata_build.rs`, `scaffold.rs` (the resolve record, the metadata-probe harness, `nros new` output) | #3734 | 115 | 80 | merged |
 | batch 6: `nros_config.rs`, `metadata_probe_cmake.rs`, `message_bound_knobs.rs` (+ its CMake twin), `builder/dist.rs` (the retired-`nros.toml` and node-alias refusals, the metadata-probe CMakeLists, the derived knobs file, the image manifest and its refusals) | #3740 | 88 | 80 | merged |
 | batch 7: `nros-rmw-xrce-cffi/build_symbol_prefix.rs`, `cargo-nano-ros/build.rs`, `entity_census.rs` (the XRCE symbol-prefix build checks and generated header, the backend/serdes table refusals and generated headers, the census verdict notes) | this PR | 75 | 80 | open |
+| batch 8: `nros-node/build.rs` and the orchestration `plan.rs`, `image_net.rs`, `rmw_config.rs`, `board_descriptor.rs`, `model_ingest.rs`, `release_manifest.rs`, `backend_link.rs` (the sizing refusals, the retired-key remedies, the resolved-network and release-manifest headers, the RMW-file and backend-link refusals) | — | 47 | 80 | open |
 | runtime logs of a default image (C lexer, log/panic rule) | — | — | — | not started |
 
 Acceptance: both ratchet baselines reach zero and their subjects become
