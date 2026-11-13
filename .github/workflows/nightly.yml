@@ -82,6 +82,8 @@ jobs:
     if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 7 * * *' }}
     name: tier-2 nightly lane selection
     runs-on: ubuntu-latest
+    # Longest green run 2.6 min (n=30); floor 10.
+    timeout-minutes: 10
     outputs:
       modules: ${{ steps.lane.outputs.modules }}
     steps:
@@ -174,6 +176,8 @@ jobs:
     needs: lane
     if: ${{ always() }}
     runs-on: ubuntu-latest
+    # Longest green run 0.2 min (n=60); floor 10.
+    timeout-minutes: 10
     outputs:
       platforms: ${{ steps.set.outputs.platforms }}
       zephyr: ${{ steps.set.outputs.zephyr }}
@@ -310,6 +314,8 @@ jobs:
     if: ${{ needs.changes.outputs.platforms != '[]' && (github.event_name != 'schedule' || github.event.schedule == '0 7 * * *') }}
     name: ${{ matrix.plat }}
     runs-on: ubuntu-22.04
+    # Longest green leg 146.8 min (threadx_linux, n=25); twice that, rounded up.
+    timeout-minutes: 295
     concurrency:
       group: nightly-platform-${{ matrix.plat }}-${{ github.ref }}-${{ github.event_name }}
       # `pull_request` is no longer a trigger here, so this was permanently
@@ -580,6 +586,8 @@ jobs:
     if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 7 * * *' }}
     name: px4 sitl
     runs-on: ubuntu-22.04
+    # Longest green run 19.4 min (n=3); twice that, rounded up.
+    timeout-minutes: 40
     concurrency:
       group: nightly-px4-sitl-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
@@ -687,6 +695,8 @@ jobs:
     if: ${{ always() && github.event_name != 'pull_request' && (github.event_name != 'schedule' || github.event.schedule == '0 7 * * *') }}
     name: tier-2 nightly lane coverage
     runs-on: ubuntu-latest
+    # Longest green run 0.2 min (n=30); floor 10.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Every lane module has a home in nightly CI
@@ -792,6 +802,8 @@ jobs:
     if: ${{ always() }}
     name: zephyr gate inputs (issue 1029)
     runs-on: ubuntu-latest
+    # Longest green run 0.1 min (n=60); floor 10.
+    timeout-minutes: 10
     steps:
       - name: record the gate inputs
         run: |
@@ -823,6 +835,8 @@ jobs:
     if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 5 * * *' }}
     name: zephyr ${{ matrix.line }} / ${{ matrix.example }}
     runs-on: ubuntu-latest
+    # Longest green leg 32.1 min (4.4 / rust/action-server); twice that, rounded up.
+    timeout-minutes: 65
     concurrency:
       group: nightly-zephyr-matrix-${{ matrix.line }}-${{ matrix.example }}-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
@@ -973,6 +987,8 @@ jobs:
       # ships `uv` for this. Issue 0933 follow-up.
       NROS_ZEPHYR_CREATE_VENV: "1"
     runs-on: ubuntu-latest
+    # Longest green run 16.5 min (n=29); twice that, rounded up.
+    timeout-minutes: 35
     concurrency:
       group: nightly-zephyr-summary-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
@@ -1084,6 +1100,8 @@ jobs:
       # ships `uv` for this. Issue 0933 follow-up.
       NROS_ZEPHYR_CREATE_VENV: "1"
     runs-on: ubuntu-latest
+    # Longest green run 15.2 min (n=25); twice that, rounded up.
+    timeout-minutes: 35
     concurrency:
       group: nightly-zephyr-copyout-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
@@ -1380,6 +1398,10 @@ jobs:
     name: tier 2 nightly (pairwise cover)
     if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
     runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]
+    # NO green run in the last 60. The longest completed run was 243.8 min
+    # (a failure); twice that, rounded up. Self-hosted, so above 360 is legal.
+    # Re-measure from the first green run.
+    timeout-minutes: 490
     env:
       # phase-543 — the self-hosted runner's gate lane (.config/gate-lanes.toml
       # [lane.runner]): `just build <lane>` and `just ci matrix` reach `check
@@ -1515,6 +1537,8 @@ jobs:
     needs: [matrix-nightly]
     if: always()
     runs-on: ubuntu-latest
+    # Longest green run 0.4 min (n=60); floor 10.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Report whether the interlocked lane ran

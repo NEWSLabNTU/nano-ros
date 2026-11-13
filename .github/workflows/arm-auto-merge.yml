@@ -118,6 +118,8 @@ jobs:
       ${{ github.event.pull_request.draft == false
           && !contains(github.event.pull_request.labels.*.name, 'no-auto-merge') }}
     runs-on: ubuntu-latest
+    # Longest green run 0.1 min (n=40); floor 10.
+    timeout-minutes: 10
     steps:
       # The trust decision is a STEP, not another `if:` on the job, so that
       # "why was my pull request not armed?" has an answer in a log somewhere.

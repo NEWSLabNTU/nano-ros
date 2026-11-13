@@ -39,6 +39,8 @@ jobs:
     # stating, and a reporter that only speaks on failure cannot tell you the
     # difference between a quiet lane and a healthy one.
     runs-on: ubuntu-latest
+    # Longest green run 1.2 min (n=40); floor 10.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 

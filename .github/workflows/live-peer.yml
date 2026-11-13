@@ -53,6 +53,8 @@ jobs:
   membership:
     name: which recorded rows need which runner
     runs-on: ubuntu-22.04
+    # Longest green run 2.0 min (n=12); floor 10.
+    timeout-minutes: 10
     container:
       image: ghcr.io/newslabntu/nano-ros-ci:humble
       credentials:
@@ -123,6 +125,9 @@ jobs:
   regression:
     name: rows whose board IS this runner
     runs-on: ubuntu-22.04
+    # Longest green run 177.7 min (n=12). Twice that is 356, so capped at 350:
+    # GitHub ends a hosted job at 360, and a timeout must sit below it to bind.
+    timeout-minutes: 350
     # The distro comes from the image, which is why grepping this file for
     # `ros-humble` finds nothing (that reading cost issue 1127 a wrong revision).
     container:
@@ -481,6 +486,8 @@ jobs:
     needs: [membership]
     if: needs.membership.outputs.has_board == 'true'
     runs-on: ubuntu-22.04
+    # Longest green run 76.5 min (n=12); twice that, rounded up.
+    timeout-minutes: 155
     container:
       image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r6
       credentials:
@@ -753,6 +760,8 @@ jobs:
     needs: [membership]
     if: needs.membership.outputs.has_ci_board == 'true'
     runs-on: ubuntu-22.04
+    # Longest green run 104.1 min (n=12); twice that, rounded up.
+    timeout-minutes: 210
     container:
       image: ghcr.io/newslabntu/nano-ros-ci:humble
       credentials:
@@ -921,6 +930,8 @@ jobs:
     needs: [regression]
     if: always()
     runs-on: ubuntu-22.04
+    # Longest green run 0.1 min (n=12); floor 10.
+    timeout-minutes: 10
     steps:
       # Through `env:`, never interpolated into the script body — a `${{ }}`
       # expansion is substituted as TEXT before the shell parses the line, so a
@@ -954,6 +965,8 @@ jobs:
     needs: [membership, board]
     if: always()
     runs-on: ubuntu-22.04
+    # Longest green run 0.1 min (n=12); floor 10.
+    timeout-minutes: 10
     steps:
       - name: Say in the run list what the log would have to be opened for
         env:
@@ -1000,6 +1013,8 @@ jobs:
     needs: [membership, board-ci]
     if: always()
     runs-on: ubuntu-22.04
+    # Longest green run 0.1 min (n=12); floor 10.
+    timeout-minutes: 10
     steps:
       - name: Say in the run list what the log would have to be opened for
         env:

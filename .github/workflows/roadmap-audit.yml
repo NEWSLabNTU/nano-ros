@@ -42,6 +42,8 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    # Longest green run 0.1 min (n=2); floor 10.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
