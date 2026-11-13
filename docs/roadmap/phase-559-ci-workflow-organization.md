@@ -102,7 +102,7 @@ rules; flagged to the user):
   `check-workflow-job-timeouts` widens from its current scope to every file.
 - **Acceptance:** the gate passes over all workflow files, and its selftest
   refuses a job with no timeout in a file it did not read before.
-- **Status:** open.
+- **Status:** OPEN
 
 ### W2 — Composite actions
 
@@ -111,12 +111,12 @@ rules; flagged to the user):
   CLI in any workflow), and `provision-gate-lane` and `report-lane-stage` are
   extracted.
 - **Acceptance:** a gate refuses an inline CLI build in a workflow.
-- **Status:** open.
+- **Status:** OPEN
 
 ### W3 — The queue's L3 on its dedicated label
 
 - **Owner:** nros 118 (in flight).
-- **Status:** in flight.
+- **Status:** OPEN — in flight (nros 118).
 
 ### W4 — `nightly.yml` has one cron; `weekly.yml` runs on Sunday
 
@@ -138,13 +138,13 @@ rules; flagged to the user):
   `schedule` entry, and `weekly.yml`'s is a Sunday. No two files duplicate a
   probe track. Every gate that reads a moved name passes and was changed in
   the same PR.
-- **Status:** W4a (`weekly.yml` on Sunday, the duplicate probes) is #3713.
-  W4b (one daily cron) waits for #3715.
+- **Status:** OPEN — W4a (`weekly.yml` on Sunday, the duplicate probes)
+  done in #3713 (2026-11-13). W4b (one daily cron) waits for #3715.
 
 ### Per-board platform jobs — tracked in phase-558, not here
 
-- **Status:** in [phase-558](phase-558-nightly-per-board-verdicts.md), PR
-  #3715 (nros 142). One platform job per board in `nightly.yml`'s 07:00
+- **Status:** in phase-558 (its doc lands with PR #3715, nros 142). One
+  platform job per board in `nightly.yml`'s 07:00
   matrix, instead of one per platform family. Its work items, acceptance and
   status live there only; this phase depends on it (W4b, W5) and does not
   restate it.
@@ -160,7 +160,7 @@ rules; flagged to the user):
 - **Acceptance:** `check-tier-has-ci-owner` and `check-cadence-jobs` pass with
   the new owners. A host witness row's daily binding names the nightly
   per-board shard.
-- **Status:** open.
+- **Status:** OPEN
 
 ### W6 — `host-tests.yml` absorbs `check-build`, the census and the book probes
 
@@ -170,7 +170,7 @@ rules; flagged to the user):
 - **Acceptance:** `lane-census.yml` and `probe.yml` are gone, and each of their
   jobs runs in `host-tests.yml` under the same `just` verb. `CI` no longer
   lists `check-build`, which moves off `gate.yml` in W7.
-- **Status:** open.
+- **Status:** OPEN
 
 ### W7 — `gate.yml` drops its schedule; the Zephyr copy-out goes to nightly
 
@@ -187,7 +187,7 @@ rules; flagged to the user):
 - **Acceptance:** a merge-group run of the PR is green, with `CI` listing no
   job that no longer exists. `check-default-gates-run-somewhere` and
   `check-merge-group-gates` pass and refuse the old placement.
-- **Status:** open.
+- **Status:** OPEN
 
 ### W8 — `publish.yml`, then `automation.yml`
 
@@ -196,7 +196,7 @@ rules; flagged to the user):
   workflows merge into `automation.yml` (H6: none of them runs PR code).
 - **Acceptance:** 13 files. Every `workflow_run` consumer names the new
   workflow names.
-- **Status:** open.
+- **Status:** OPEN
 
 ## Acceptance (phase)
 
