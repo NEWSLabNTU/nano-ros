@@ -55,6 +55,15 @@ pub struct SourceNode {
     pub source: Option<SourceLocation>,
     pub unresolved_name: SourceName,
     pub namespace: Option<String>,
+    /// RFC-0128 D2 (phase-554 W2.b, schema v5) -- this node's own code
+    /// registered a lifecycle state machine while the probe ran it.
+    ///
+    /// Observed at the executor's lifecycle funnel, never declared, and
+    /// written only when true: `false` (absent) is a plain node, which is the
+    /// run-time rule as well. Declared here for the `deny_unknown_fields`
+    /// reason `in_place` is (issue 0518).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lifecycle: bool,
     pub publishers: Vec<SourcePublisher>,
     pub subscribers: Vec<SourceSubscriber>,
     pub timers: Vec<SourceTimer>,

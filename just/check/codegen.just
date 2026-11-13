@@ -324,8 +324,11 @@ census-hooks-complete:
     # process-global too. Run concurrently they exhaust the recorder's capacity
     # and fail as `recorder rejected node` — measured, the first time the widened
     # filter put the funnel beside the fixture in one process.
+    # phase-554 W2.b -- `lifecycle-services` too, for `census_lifecycle_tests`:
+    # the lifecycle funnel's observation is compiled only with it, and this is
+    # the one lane that builds `metadata-mode`.
     cargo test -p nros-cpp --lib --no-default-features \
-        --features alloc,env,log,rmw-cffi,metadata-mode,param-services --quiet \
+        --features alloc,env,log,rmw-cffi,metadata-mode,param-services,lifecycle-services --quiet \
         -- census --test-threads=1
     # issue 1679 -- and WITHOUT the store: the census of a C++ image whose
     # bringup declares no `param_services`. Every declare answers UNSUPPORTED

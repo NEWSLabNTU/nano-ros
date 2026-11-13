@@ -14249,6 +14249,20 @@ impl<'s> Executor<'s> {
 // Lifecycle services (cfg lifecycle-services)
 // ============================================================================
 
+/// RFC-0128 D2 (phase-554 W2.b) -- tell a metadata probe that a node's own
+/// code made it a lifecycle node. Called by the CODE-facing registrations
+/// only, after their machine exists, so a refused registration reports
+/// nothing and a launch file's machine (`register_managed_node_on`) is not
+/// mistaken for the code's.
+#[cfg(feature = "lifecycle-services")]
+#[cfg_attr(not(feature = "registration-observer"), allow(unused_variables))]
+fn observe_code_managed(namespace: &str, name: &str) {
+    #[cfg(feature = "registration-observer")]
+    super::registration_observer::observe_lifecycle(
+        super::registration_observer::ObservedLifecycle { name, namespace },
+    );
+}
+
 #[cfg(feature = "lifecycle-services")]
 impl<'s> Executor<'s> {
     /// Register the five REP-2002 lifecycle services on this executor.
@@ -14266,7 +14280,9 @@ impl<'s> Executor<'s> {
     pub fn register_lifecycle_services(&mut self) -> Result<(), NodeError> {
         let ns = self.namespace.clone();
         let nn = self.node_name.clone();
-        self.register_lifecycle_services_named(None, &ns, &nn)
+        self.register_lifecycle_services_named(None, &ns, &nn)?;
+        observe_code_managed(&ns, &nn);
+        Ok(())
     }
 
     /// [`register_lifecycle_services`](Self::register_lifecycle_services),
@@ -14282,11 +14298,19 @@ impl<'s> Executor<'s> {
         &mut self,
         node: super::node_record::NodeId,
     ) -> Result<(), NodeError> {
-        let (ns, nn) = {
-            let r = self.node(node).ok_or(NodeError::NotInitialized)?;
-            (r.namespace.clone(), r.name.clone())
-        };
-        self.register_lifecycle_services_named(Some(node), &ns, &nn)
+        let (ns, nn) = self.node_identity(node)?;
+        self.register_lifecycle_services_named(Some(node), &ns, &nn)?;
+        observe_code_managed(&ns, &nn);
+        Ok(())
+    }
+
+    /// `node`'s namespace and final name, as the node table holds them.
+    fn node_identity(
+        &self,
+        node: super::node_record::NodeId,
+    ) -> Result<(heapless::String<64>, heapless::String<64>), NodeError> {
+        let r = self.node(node).ok_or(NodeError::NotInitialized)?;
+        Ok((r.namespace.clone(), r.name.clone()))
     }
 
     /// RFC-0128 D1: adds `key`'s machine to the table. A node that already
@@ -14661,7 +14685,12 @@ impl<'s> Executor<'s> {
         if self.lifecycle_state_machine_on(node).is_some() {
             return Ok(());
         }
-        self.register_lifecycle_services_on(node)
+        // Not through `register_lifecycle_services_on`: this machine is the
+        // LAUNCH file's, not the code's, so a metadata probe must not record
+        // it as a code-managed node (phase-554 W2.b). A plain node a launch
+        // file marks would otherwise be managed under every other launch file.
+        let (ns, nn) = self.node_identity(node)?;
+        self.register_lifecycle_services_named(Some(node), &ns, &nn)
     }
 
     /// RFC-0128 D6 — drive `node`'s machine toward its boot `autostart`

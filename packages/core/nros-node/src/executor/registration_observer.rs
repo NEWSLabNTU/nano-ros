@@ -131,9 +131,68 @@ pub(crate) fn observe(reg: ObservedRegistration<'_>) {
     }
 }
 
+/// RFC-0128 D2 (phase-554 W2.b) -- a node whose own code registered a
+/// lifecycle state machine.
+///
+/// "The code decides which nodes are managed, as in ROS 2" (ruled
+/// 2026-11-13), and the build learns it the way it learns `in_place`: the
+/// probe runs the code, and the one funnel every lifecycle registration passes
+/// through (`register_lifecycle_services_named`) says so. No source is
+/// scanned and no component declares the fact by hand.
+///
+/// The node is named as the executor's node table holds it -- the same final
+/// name and namespace `managed_node_id` matches on -- so the recorder joins it
+/// onto the node row it recorded for that node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ObservedLifecycle<'a> {
+    /// The node's final name.
+    pub name: &'a str,
+    /// The node's namespace, as the node table holds it (`""`, `/` or `/ns`).
+    pub namespace: &'a str,
+}
+
+/// A sink a metadata probe installs to hear every lifecycle registration.
+pub type LifecycleObserver = fn(ObservedLifecycle<'_>);
+
+static LIFECYCLE_OBSERVER: Mutex<Option<LifecycleObserver>> = Mutex::new(None);
+
+/// Install the lifecycle sink. Same contract as [`set_observer`]: only
+/// `nros::metadata_mode` calls it, and the last caller wins.
+pub fn set_lifecycle_observer(observer: LifecycleObserver) {
+    LIFECYCLE_OBSERVER.with(|slot| *slot = Some(observer));
+}
+
+/// Remove the lifecycle sink.
+pub fn clear_lifecycle_observer() {
+    LIFECYCLE_OBSERVER.with(|slot| *slot = None);
+}
+
+/// Report one lifecycle registration. A no-op when nothing is listening.
+///
+/// Called only AFTER the machine and its servers exist, so a refused
+/// registration (a second machine on one node, a full table) reports nothing:
+/// a node the sidecar calls managed must be one the image really manages.
+#[cfg(any(all(has_rmw, feature = "lifecycle-services"), test))]
+pub(crate) fn observe_lifecycle(reg: ObservedLifecycle<'_>) {
+    // Released before the sink runs, as in `observe`.
+    let sink = LIFECYCLE_OBSERVER.with(|slot| *slot);
+    if let Some(sink) = sink {
+        sink(reg);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn observing_a_lifecycle_registration_with_no_sink_is_a_no_op() {
+        clear_lifecycle_observer();
+        observe_lifecycle(ObservedLifecycle {
+            name: "talker",
+            namespace: "/",
+        });
+    }
 
     /// The unlistened path is what every shipped image compiles, so it is the
     /// one that must not panic or block.

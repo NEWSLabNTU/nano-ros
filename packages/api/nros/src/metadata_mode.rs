@@ -312,6 +312,8 @@ pub fn record_parameter(name: &str, value: &crate::ParameterValue) -> bool {
 ///
 /// [cap]: https://docs.rs/nros-node
 pub fn listen_for_registrations() {
+    #[cfg(feature = "lifecycle-services")]
+    listen_for_lifecycle_registrations();
     nros_node::executor::registration_observer::set_observer(|reg| {
         // A dropped `false` here is a fact silently lost, which is the shape
         // every other recorder entry point is `#[must_use]` against. It is NOT
@@ -347,6 +349,35 @@ pub fn listen_for_registrations() {
             );
         }
     });
+}
+
+/// RFC-0128 D2 (phase-554 W2.b) -- start hearing which nodes' own code
+/// registers a lifecycle state machine. Armed beside
+/// [`listen_for_registrations`]'s subscription sink, from the same place.
+#[cfg(feature = "lifecycle-services")]
+fn listen_for_lifecycle_registrations() {
+    nros_node::executor::registration_observer::set_lifecycle_observer(|reg| {
+        // Same reporting rule as a subscription miss: a registration that
+        // names no recorded node is news only in a census run.
+        if !record_lifecycle_registration(reg.name, reg.namespace)
+            && crate::census_hooks::recording_run()
+        {
+            nros_log::log_warn!(
+                nros_log::get_logger("nros::metadata_mode"),
+                "lifecycle registration of node `{}` (namespace `{}`) matched no recorded \
+                 node; the build will treat it as a plain node",
+                reg.name,
+                reg.namespace
+            );
+        }
+    });
+}
+
+/// Mark the recorded node `name` in `namespace` as code-managed. See
+/// [`MetadataRecorder::observe_lifecycle_registration`].
+#[must_use]
+pub fn record_lifecycle_registration(name: &str, namespace: &str) -> bool {
+    state().with(|st| st.recorder.observe_lifecycle_registration(name, namespace))
 }
 
 /// Attach one observed registration fact to the subscription row it belongs to.
