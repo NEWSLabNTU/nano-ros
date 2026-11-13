@@ -29,7 +29,7 @@
 # broken; stopping on 0 leaves the queue hanging. So:
 #
 #     0   job done            -> sweep, start a fresh container
-#     78  labels not true     -> STOP and say what to run
+#     78  labels not true     -> re-provision ONCE, then STOP if still untrue
 #     *   run.sh failed       -> back off, and stop after 3 IN A ROW
 #
 # The third case is a compromise with evidence on both sides: a single failure
@@ -42,7 +42,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENGINE="${NROS_CONTAINER_ENGINE:-docker}"
-LABELS="" ONCE=0 MAX=0 CHECK=0 N=0 FAILS=0
+LABELS="" ONCE=0 MAX=0 CHECK=0 N=0 FAILS=0 HEALED=0
 MAX_CONSECUTIVE_FAILURES=3
 
 while [ $# -gt 0 ]; do
@@ -87,7 +87,8 @@ if [ "$CHECK" -eq 1 ]; then
     echo "    $ENGINE rm -f $NAME  (only if a stale container of that name exists)"
     echo "    runner-container.sh $LABELS --run --attach"
     echo "    runner-container.sh $LABELS --sweep  (in a throwaway container: the volumes are not on the host)"
-    echo "  stops on exit 78 (labels not true) or $MAX_CONSECUTIVE_FAILURES failures in a row"
+    echo "  on exit 78 (labels not true): runner-bootstrap.sh $LABELS once, then retry"
+    echo "  stops on a second exit 78 in a row or $MAX_CONSECUTIVE_FAILURES failures in a row"
     exit 0
 fi
 
@@ -126,7 +127,7 @@ while :; do
 
     case "$RC" in
         0)
-            N=$((N + 1)); FAILS=0
+            N=$((N + 1)); FAILS=0; HEALED=0
             say "job $N finished; sweeping"
             # Issue 2191 — IN a container. The job's tree lives in the
             # `nros-runner-work` volume, which the host cannot see, so the host
@@ -136,9 +137,28 @@ while :; do
                 || say "(sweep reported a problem — continuing)"
             ;;
         78)
+            # Issue 2497 — the commonest 78 is not a broken host but a moved
+            # pin: a PR bumps an SDK the labels promise, and the STORE still
+            # holds the old one. That is exactly what the bootstrap provisions,
+            # with no privilege, so the loop runs it ONCE and tries again. It
+            # used to stop here, which turned every SDK bump into a lane that
+            # queued with no runner and no red until an operator happened to
+            # look. A second 78 straight after a re-provision is the real
+            # "this host cannot do it" — restarting again is the storm the exit
+            # code exists to prevent, so that one still stops.
+            if [ "$HEALED" -eq 0 ]; then
+                HEALED=1
+                say "the container refused to register (labels not true here);"
+                say "re-provisioning the store once, then retrying"
+                if NROS_RUNNER_NAME="$NAME" "$REPO_ROOT/scripts/ci/runner-bootstrap.sh" "$LABELS"; then
+                    continue
+                fi
+                echo "runner-loop-container: re-provisioning did not make the labels true." >&2
+            fi
             echo "runner-loop-container: the container refused to register — its" >&2
-            echo "  labels are not true in the store it was given. Restarting" >&2
-            echo "  cannot change that, so this loop stops here." >&2
+            echo "  labels are not true in the store it was given, and one" >&2
+            echo "  re-provision did not fix it. Restarting cannot change that," >&2
+            echo "  so this loop stops here. The doctor's report is above." >&2
             echo "      just runner-bootstrap $LABELS" >&2
             exit 78
             ;;
