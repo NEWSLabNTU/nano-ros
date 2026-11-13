@@ -514,7 +514,7 @@ notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, s
 # `runs = "host"`; it is its own family on `PlatformId::Px4`, so `witness`.
 #
 # Why `manual`, not `daily`, although nightly.yml's `px4-sitl` job runs the
-# cell every 07:00 cron (RFC-0122 D8/D9: a cadence must name a job that keeps
+# cell on every daily run (RFC-0122 D8/D9: a cadence must name a job that keeps
 # it, and a value with no such job is lowered):
 #   - the `(Px4, Cpp, Uorb, Pubsub, Example)` cell is `Runtime` since phase-542
 #     W5, so the D10 predicate "an automated cadence needs a Runtime cell" no
