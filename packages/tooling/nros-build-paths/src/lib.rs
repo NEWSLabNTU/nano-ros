@@ -1105,6 +1105,72 @@ version = \"not-this-one\"
     }
 }
 
+/// One variable of a NuttX kernel export's `scripts/Make.defs` — phase-550
+/// W3b, the ONE reader of what NuttX says about a CPU.
+///
+/// `make export` writes that file with every variable already expanded
+/// (`ARCHCPUFLAGS     = -mcpu=cortex-a7 -mfloat-abi=hard …`), so a value is
+/// the text after the first `=` of the line naming it, trimmed. The CPU flags a
+/// nano-ros build passes to gcc, cc-rs, rustc's link driver or CMake are
+/// NuttX's (`ARCHCPUFLAGS`), read here and never restated, so a kernel
+/// reconfigured for another CPU cannot leave nano-ros compiling for the old
+/// one.
+///
+/// `None` when the file or the variable is absent. Pure: a build script adds
+/// its own `cargo:rerun-if-changed` on [`nuttx_export_make_defs`].
+///
+/// Twins, because the build systems cannot call each other:
+/// `nros_nuttx_write_cargo_cpu_config` in `scripts/nuttx/build-nuttx.sh`
+/// (which hands cargo the same value as `nros-cargo.toml`), and
+/// `$(ARCHCPUFLAGS)` itself on the make road.
+pub fn nuttx_export_make_var(export_root: &std::path::Path, var: &str) -> Option<String> {
+    let text = std::fs::read_to_string(nuttx_export_make_defs(export_root)).ok()?;
+    make_defs_var(&text, var)
+}
+
+/// The export's `scripts/Make.defs`.
+pub fn nuttx_export_make_defs(export_root: &std::path::Path) -> PathBuf {
+    export_root.join("scripts").join("Make.defs")
+}
+
+fn make_defs_var(text: &str, var: &str) -> Option<String> {
+    text.lines().find_map(|line| {
+        let (name, value) = line.split_once('=')?;
+        // `VAR = v`, never `VAR += v` / `VAR := v` (the export writes none).
+        (name.trim() == var && !name.ends_with(['+', ':', '?'])).then(|| value.trim().to_string())
+    })
+}
+
+#[cfg(test)]
+mod make_defs_tests {
+    use super::make_defs_var;
+
+    const DEFS: &str = "ARCHCFLAGS       = -Wstrict-prototypes\n\
+ARCHCPUFLAGS     = -mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4 -mlittle-endian   \n\
+ARCHCPUFLAGSX    = wrong\n\
+CROSSDEV         = arm-none-eabi-\n\
+EMPTY            = \n";
+
+    #[test]
+    fn reads_the_named_variable_trimmed() {
+        assert_eq!(
+            make_defs_var(DEFS, "ARCHCPUFLAGS").as_deref(),
+            Some("-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4 -mlittle-endian")
+        );
+        assert_eq!(
+            make_defs_var(DEFS, "CROSSDEV").as_deref(),
+            Some("arm-none-eabi-")
+        );
+    }
+
+    #[test]
+    fn a_prefix_is_not_the_variable_and_absence_is_none() {
+        assert_eq!(make_defs_var(DEFS, "ARCHCPU"), None);
+        assert_eq!(make_defs_var(DEFS, "NOPE"), None);
+        assert_eq!(make_defs_var(DEFS, "EMPTY").as_deref(), Some(""));
+    }
+}
+
 /// Where a cargo-built artifact (staticlib, per-build config header) lands —
 /// phase-484 W6b, RFC-0103 D7.
 pub mod artifact;

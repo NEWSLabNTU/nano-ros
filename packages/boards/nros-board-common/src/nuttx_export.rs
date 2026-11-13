@@ -162,3 +162,43 @@ pub fn include_root(nuttx_dir: &Path) -> PathBuf {
     // unreferenced, but the shared spelling is the point, not the consumer.)
     nros_build_paths::nuttx_include_root(nuttx_dir)
 }
+
+/// The CPU flags NuttX compiled this build's kernel with: its export's
+/// `ARCHCPUFLAGS` (phase-550 W3b). Every C compile and every link a NuttX
+/// board crate runs takes these, never a restated `-mcpu` / `-march`, so a
+/// kernel reconfigured for another CPU moves nano-ros with it.
+///
+/// `None` when this arch has no export yet: a caller skips its cross-compile
+/// exactly as it does for an unprovisioned tree, and the image link then fails
+/// loudly. The export's `Make.defs` is watched whether or not it exists
+/// (issue 0477's rule), so the export appearing reruns the caller.
+pub fn cpu_flags(nuttx_dir: &Path) -> Option<Vec<String>> {
+    let root = snapshot_root(nuttx_dir).or_else(|| {
+        let arch = snapshot_arch(&std::env::var("CARGO_CFG_TARGET_ARCH").ok()?)?;
+        Some(nuttx_dir.join(format!("nros-nuttx-export-{arch}")))
+    })?;
+    let defs = nros_build_paths::nuttx_export_make_defs(&root);
+    println!("cargo:rerun-if-changed={}", defs.display());
+    // And the cargo config the kernel step derives from it (the rustflags and
+    // cc-rs flags every NuttX cargo run takes): a rebuilt kernel reruns this.
+    println!(
+        "cargo:rerun-if-changed={}",
+        root.join("nros-cargo.toml").display()
+    );
+    let flags = nros_build_paths::nuttx_export_make_var(&root, "ARCHCPUFLAGS")?;
+    Some(flags.split_whitespace().map(String::from).collect())
+}
+
+/// [`cpu_flags`], or a refusal naming the kernel build, for a caller that
+/// cannot skip (it was asked to compile for NuttX and has no other answer).
+pub fn require_cpu_flags(nuttx_dir: &Path) -> Vec<String> {
+    cpu_flags(nuttx_dir).unwrap_or_else(|| {
+        panic!(
+            "no NuttX kernel export for this target under {}: its \
+             scripts/Make.defs states the CPU flags (ARCHCPUFLAGS) every \
+             nano-ros compile for NuttX uses. Build the kernel first \
+             (`just nuttx build-fixtures`, or scripts/nuttx/build-nuttx.sh).",
+            nuttx_dir.display()
+        )
+    })
+}

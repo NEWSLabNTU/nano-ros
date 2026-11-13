@@ -542,11 +542,33 @@ function(nros_nuttx_build_example)
         nros_image_env_config(_nnbe_image_env_file)
     endif()
 
+    # phase-550 W3b — NuttX's CPU flags reach cargo as the cargo config the
+    # provision step writes beside the export (`nros-cargo.toml`, from the
+    # export's `scripts/Make.defs` ARCHCPUFLAGS): rustflags for the link
+    # driver and `TARGET_CFLAGS` for cc-rs. Nothing restates them, so a missing
+    # file stops the build naming the kernel step rather than falling back.
+    # The export is `nros-nuttx-export-<config id>`, the id being the
+    # defconfig's directory name (build-nuttx.sh's derivation).
+    if(DEFINED ENV{NUTTX_EXPORT_DIR} AND NOT "$ENV{NUTTX_EXPORT_DIR}" STREQUAL "")
+        set(_nnbe_export_dir "$ENV{NUTTX_EXPORT_DIR}")
+    elseif(NROS_NUTTX_DEFCONFIG)
+        get_filename_component(_nnbe_cfg_dir "${NROS_NUTTX_DEFCONFIG}" DIRECTORY)
+        get_filename_component(_nnbe_cfg_id "${_nnbe_cfg_dir}" NAME)
+        set(_nnbe_export_dir "${NUTTX_DIR}/nros-nuttx-export-${_nnbe_cfg_id}")
+    else()
+        message(FATAL_ERROR
+            "nros_nuttx_build_example(${_NNBE_NAME}): the board overlay names no "
+            "NROS_NUTTX_DEFCONFIG, so there is no kernel export to take the CPU "
+            "flags from (set NUTTX_EXPORT_DIR to an export instead)")
+    endif()
+    set(_nnbe_cpu_config "${_nnbe_export_dir}/nros-cargo.toml")
+
     # Issue 1304 — see NanoRosRustTool.cmake (arrives via nros-rtos-helpers).
     nros_rust_tool(_nnbe_cargo cargo)
     add_custom_command(
         OUTPUT "${_output_binary}"
         ${_provision_cmd}
+        COMMAND bash -c "test -f '${_nnbe_cpu_config}' || { echo 'nros: no ${_nnbe_cpu_config}: it carries the CPU flags NuttX built the kernel with (the export Make.defs ARCHCPUFLAGS), and nothing else states them. Rebuild the kernel: scripts/nuttx/build-nuttx.sh' >&2; exit 1; }"
         # phase-517 W10 — the carve-out profile's DEFINITION travels with its
         # name. `--profile nros-minsizerel` resolved only because a checkout's
         # root `.cargo/config.toml` defines it; an installed SDK root ships no
@@ -569,6 +591,7 @@ function(nros_nuttx_build_example)
             "NUTTX_APPS_DIR=${NUTTX_APPS_DIR}"
             "CARGO_TARGET_DIR=${_cargo_target_dir}"
             "${_nnbe_cargo}" build --profile ${_NROS_NUTTX_PROFILE} ${_artifact_dir_arg}
+                --config "${_nnbe_cpu_config}"
                 ${_nnbe_image_env_flags}
         ${_depfile_retarget_cmd}
         # Issue 0159 — make `cmake --build` itself honest: an exit-0 build with

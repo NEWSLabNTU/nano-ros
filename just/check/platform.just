@@ -1241,3 +1241,8 @@ road-dispatch-platform-family:
 # image's 0.17.4.
 zephyr-sdk-env:
     @bash scripts/check-zephyr-sdk-env.sh
+
+# phase-550 W3b — NuttX states its CPU flags once (the export Make.defs
+# ARCHCPUFLAGS); a NuttX build file that restates one is refused.
+nuttx-cpu-flag-copies:
+    @python3 scripts/check/check-nuttx-cpu-flag-copies.py
