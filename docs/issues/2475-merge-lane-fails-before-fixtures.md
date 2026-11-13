@@ -75,6 +75,9 @@ self-hosted runner.
 3. Defect 4 (per-board codegen scope) becomes its own phase-535 work item,
    with acceptance written before it starts; if large, the coordinator hears
    first.
+   **Now [phase-535 W10](../roadmap/phase-535-example-reorg-and-cadence-ci.md)**
+   (coordinator go 2026-11-13 for its items 1-2; the `check::fast` edge stays).
+   `_codegen <lane>` generates only the codegen units the lane's rows live in.
 4. phase-559 W7 (the `CI` aggregator change) stays last and alone.
 
 ## Done when

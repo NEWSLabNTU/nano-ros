@@ -2050,7 +2050,7 @@ build-compile-check-fixtures builder="":
 # `test-all` to mean anything, so the honest order is build-then-test, which
 # puts the expensive step first by construction.
 [group("full-matrix")]
-build-test-fixtures lane="all": _require-owned-provisioned-roots check::fast _require-build-sources _clear-fixture-stamp _codegen build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
+build-test-fixtures lane="all": _require-owned-provisioned-roots check::fast _require-build-sources _clear-fixture-stamp (_codegen lane) build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
     #!/usr/bin/env bash
     set -e
     source scripts/build/fixture-lane.sh
@@ -2155,7 +2155,7 @@ _clear-fixture-stamp:
 # keeps the self-contained UX; aggregate paths that already ran `build` use
 # this to avoid repeating `generate-bindings` and `build-zenoh-posix-fixture`.
 [private]
-build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots _require-leaf-includes
+build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots (_require-leaf-includes lane)
     #!/usr/bin/env bash
     set -e
     # (The phase-177.9 `NROS_FIXTURE_SHARED_SIG` export lived here until
@@ -2556,11 +2556,15 @@ _require-fixtures:
 # measured on 1.97.1 it does not.) Say "run `nros configure`" once here rather than
 # once per leaf in cargo's words. Bypass with NROS_SKIP_LEAF_INCLUDE_CHECK=1.
 [private]
-_require-leaf-includes:
+_require-leaf-includes lane="all":
     #!/usr/bin/env bash
+    set -e
     if [ "${NROS_SKIP_LEAF_INCLUDE_CHECK:-0}" != "0" ]; then
         exit 0
     fi
+    # phase-535 W10 — check the leaves `generate-bindings <lane>` generated.
+    source scripts/build/fixture-lane.sh
+    nros_codegen_scope_export "{{lane}}"
     python3 scripts/build/leaf-config-includes.py
 
 # issue 1038 — WRITE the central `nros-patch.toml` that 47 tracked leaf
@@ -2616,8 +2620,12 @@ _ensure-central-patch:
 # The verify step stays a CHECK, not a repair: after codegen has run, an
 # unresolved `include` means something is wrong with the generated tree, and
 # 0463's message is the right one to print.
+#
+# phase-535 W10 (issue 2475 defect 4) — `lane` scopes both the generator and
+# the check to the codegen units the lane's fixture rows live in. `all` (and
+# `linux`, a module-level lane) generate everything, as before.
 [private]
-_codegen: setup-launch-resolve generate-bindings _require-leaf-includes
+_codegen lane="all": setup-launch-resolve (generate-bindings lane) (_require-leaf-includes lane)
 
 # issue 0390 — preflight: the repo's build stage needs the UNION of vendored
 # `[source.*]` (every RMW's `-sys` source + the platform sources the workspace
@@ -4827,9 +4835,16 @@ setup-launch-resolve:
 
 # Regenerate Rust bindings in all examples and rcl-interfaces
 # Uses bundled interfaces (std_msgs, builtin_interfaces) — no ROS 2 environment required
+#
+# `lane` (phase-535 W10): generate only the units that lane's fixture rows
+# live in. Default `all` generates every unit.
 [group("maintenance")]
-generate-bindings:
-    ./scripts/regenerate-bindings.sh
+generate-bindings lane="all":
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/fixture-lane.sh
+    nros_codegen_scope_export "{{lane}}"
+    exec ./scripts/regenerate-bindings.sh
 
 # Remove generated/ directories in examples (not rcl-interfaces — it's a workspace member)
 [group("maintenance")]
