@@ -900,9 +900,10 @@ templates are not a board row.
 
 ### W10 — A lane builds only its own codegen
 
-- **Status:** OPEN (acceptance written 2026-11-13, before work started;
-  issue 2475 defect 4. Items 1 and 2 implemented; the before/after dispatch
-  is open.)
+- **Status:** DONE (2026-11-14, #3756)
+
+  Issue 2475 defect 4. Items 1 and 2 are implemented and measured. Item 3's
+  revisit is proposed below and waits on the coordinator.
 
 `just build <lane>` reaches `build-test-fixtures`, whose prerequisites were
 the same for every lane:
@@ -950,6 +951,9 @@ tracks".
    Revisit only after the before/after numbers: if a shard is still too slow
    with codegen cut, propose skipping the edge only when a green gate run
    exists for the same SHA, with the measured saving. Never unconditionally.
+   **Measured (below): `check fast` is 6.5-13.3 min of each shard's time to
+   its first fixture, i.e. 34-55 %.** Proposed to the coordinator
+   (2026-11-14): the conditional skip, saving that much per shard.
 
 **Acceptance:**
 
@@ -965,10 +969,31 @@ tracks".
   it; removing the compile-check arm from `lane-dirs` turned the test red
   (measured).
 - **(met)** `lane=all` regenerates the same units as before (above).
-- **(open)** A `merge-runtime.yml` dispatch: each shard's time from the start
+- **(met)** A `merge-runtime.yml` dispatch: each shard's time from the start
   of `just build <lane>` to its first fixture command, before and after, per
-  shard, recorded here.
-- No user-visible message names an issue or phase id (ruling 2026-11-12).
+  shard, recorded here. `lane=tier1`, hosted `ubuntu-22.04`. Before: run
+  43420012895 (main, 2026-11-13). After: run 43438754804 (this branch at
+  7bff8a9356, 2026-11-13). Both were cold: no bindings cache.
+
+  | shard | before | after | saved | after: `check fast` | after: lane codegen | units |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | linux | 43.6 min | 38.7 min | 4.9 min | 13.2 min | 23.0 min | 113 of 199 |
+  | threadx_linux | 48.2 min | 24.3 min | 23.9 min | 13.3 min | 8.5 min | 19 of 199 |
+  | zephyr | 49.0 min | 16.7 min | 32.3 min | 6.5 min | 8.6 min (incl. Zephyr prep) | 26 of 199 |
+
+  "Lane codegen" runs from the `codegen scope:` line to `build-test-fixtures:
+  lane=`. Before, the tree-wide pass took 30.4-35.6 min, followed by a warm
+  2.7-3.0 min lane pass. Linux saves least because its shard keeps 113 units
+  (every linux language). `check fast` ran 13.2-13.3 min on the two
+  `nano-ros-ci` shards in the after-run, against 10.5-11.1 min before, with the
+  same 552 tests. That is runner variance, not this change: no gate changed.
+  All three shards reached their fixture build both times, and all three were
+  red both times. Their reds are recorded in
+  [phase-559](phase-559-ci-workflow-organization.md) W5b and issue 2510 and issue 2511;
+  none is in codegen.
+- **(met)** No user-visible message names an issue or phase id (ruling
+  2026-11-12): the messages this item adds (`codegen scope: N of M unit(s)`,
+  the coverage check's `FAIL`/usage lines) carry none.
 
 ## Acceptance (phase)
 
