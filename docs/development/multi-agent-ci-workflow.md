@@ -85,8 +85,9 @@ changes.
 
 ### The merge queue has its own runners
 
-Queue jobs (`queue.yml`'s L3 and `gate.yml`'s `merge_group` self-hosted jobs)
-request `[self-hosted, linux, nros-queue]`. Every scheduled self-hosted lane
+`queue.yml`'s L3 requests `[self-hosted, linux, nros-queue]`. `gate.yml`'s
+`merge_group` jobs do not: they feed the required `CI` and run hosted, so a
+self-hosted outage can never block the required path. Every scheduled self-hosted lane
 (run-matrix, the nightly) requests `nros-qemu`. A queue runner is registered as
 `nros-queue,nros-sdk-zephyr,nros-big` and never with `nros-qemu`, so no scheduled
 job can be handed to it. GitHub gives a job only to a runner that holds every
