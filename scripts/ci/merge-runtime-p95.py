@@ -37,7 +37,10 @@ import subprocess
 import sys
 
 WORKFLOW = "merge-runtime.yml"
-JOB_NAME = re.compile(r"^merge-runtime \((?P<board>[^)]+)\)$")
+# phase-559 W5b: the job name carries the dispatched lane (`merge-runtime
+# tier1 (linux)`); the old `merge-runtime (linux)` is the merge lane. Only
+# merge-lane jobs are samples here: a tier-1 shard is a different measurement.
+JOB_NAME = re.compile(r"^merge-runtime (?:(?P<lane>[a-z0-9_-]+) )?\((?P<board>[^)]+)\)$")
 
 
 def percentile(values, q):
@@ -56,7 +59,7 @@ def summarise(jobs):
     out = {}
     for j in jobs:
         m = JOB_NAME.match(j.get("name") or "")
-        if not m:
+        if not m or (m["lane"] or "merge") != "merge":
             continue
         b = out.setdefault(m["board"], {"minutes": [], "failed": 0, "timed_out": 0, "no_verdict": 0})
         if j.get("conclusion") == "timed_out":
@@ -167,6 +170,13 @@ def selftest():
     assert to["linux"] == {"minutes": [5.0], "failed": 0, "timed_out": 1,
                            "no_verdict": 0}, to
     assert report(to, 20) is False
+    lanes = summarise([
+        {"name": "merge-runtime merge (linux)", "conclusion": "success",
+         "started_at": "2026-11-12T00:00:00Z", "completed_at": "2026-11-12T00:10:00Z"},
+        {"name": "merge-runtime tier1 (linux)", "conclusion": "success",
+         "started_at": "2026-11-12T00:00:00Z", "completed_at": "2026-11-12T03:00:00Z"},
+    ])
+    assert lanes["linux"]["minutes"] == [10.0], lanes  # the tier1 shard is not a sample
     print("merge-runtime-p95 selftest: OK")
 
 
