@@ -95,6 +95,12 @@ static inline void k_thread_priority_set(k_tid_t tid, int prio) {
     NROS_HOST_SHIM_UNREACHABLE("k_thread_priority_set");
 }
 
+static inline int k_thread_priority_get(k_tid_t tid) {
+    (void)tid;
+    NROS_HOST_SHIM_UNREACHABLE("k_thread_priority_get");
+    return 0;
+}
+
 /* ---- the heap the timer shims use --------------------------------------- */
 
 static inline void* k_malloc(size_t n) {
