@@ -173,7 +173,7 @@ def default_branch_ref(root=ROOT, env=None, _hops=0):
     return "HEAD"
 
 
-def resolve(hashes, ref=None):
+def resolve(hashes, ref=None, root=ROOT, env=None):
     """The subset of `hashes` naming a commit in the DEFAULT BRANCH's history.
 
     Reachable from the default branch, not merely present and not reachable
@@ -204,8 +204,8 @@ def resolve(hashes, ref=None):
     """
     if not hashes:
         return set()
-    r = subprocess.run(["git", "-C", ROOT, "rev-list", ref or default_branch_ref() or "HEAD"],
-                       capture_output=True, text=True)
+    r = subprocess.run(["git", "-C", root, "rev-list", ref or default_branch_ref() or "HEAD"],
+                       capture_output=True, text=True, env=env)
     revs = r.stdout.split()
     reachable = {line[:9] for line in revs} | {line[:10] for line in revs}
     return {h for h in hashes if h in reachable}
@@ -278,6 +278,21 @@ def local_clone_self_test():
         except subprocess.CalledProcessError as e:
             print(f"  self-test FAIL: could not build the local-clone fixture: {e.stderr}")
             return 1
+
+        # An object the store HOLDS and no ref REACHES -- what a rebase leaves
+        # behind, and what a second checkout sharing the store contributes.
+        # `cat-file` says "commit" for it; the gate must not. Built here, in
+        # the fixture: writing it into the checkout under test is a side
+        # effect `check-hook-repo-side-effects` refuses.
+        tree = _git(src, "rev-parse", "HEAD^{tree}", env=env).stdout.strip()
+        unreachable = _git(src, "commit-tree", tree, "-m", "unreachable",
+                           env=env).stdout.strip()
+        if not unreachable or resolve([unreachable[:9], landed[:9]], ref=landed,
+                                      root=src, env=env) != {landed[:9]}:
+            print("  self-test FAIL: an object present but UNREACHABLE resolved "
+                  "(it is the post-rebase state), or the fixture could not "
+                  "build one")
+            bad += 1
 
         got = default_branch_ref(clone, env)
         if got != landed:
@@ -392,18 +407,6 @@ def self_test(base):
     real10 = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short=10", base],
                             capture_output=True, text=True).stdout.strip()[:10]
     dead = "0123456789"[:9]          # not a commit, and never will be
-    # An object this store HOLDS and no ref REACHES -- what a rebase leaves
-    # behind, and what a second checkout sharing the store contributes.
-    # `cat-file` says "commit" for it; the gate must not.
-    tree = subprocess.run(["git", "-C", ROOT, "rev-parse", "HEAD^{tree}"],
-                          capture_output=True, text=True).stdout.strip()
-    unreachable = subprocess.run(
-        ["git", "-C", ROOT, "commit-tree", tree, "-m", "unreachable self-test object"],
-        capture_output=True, text=True,
-        env={**os.environ,
-             "GIT_AUTHOR_NAME": "selftest", "GIT_AUTHOR_EMAIL": "selftest@invalid",
-             "GIT_COMMITTER_NAME": "selftest", "GIT_COMMITTER_EMAIL": "selftest@invalid"},
-    ).stdout.strip()[:9]
     cases = [
         ("a resolving citation passes", f"see `{real}` for it\n", False),
         ("a dangling citation fails", f"see `{dead}` for it\n", True),
@@ -423,13 +426,6 @@ def self_test(base):
     parent = subprocess.run(["git", "-C", ROOT, "rev-parse", "--verify", "--quiet",
                              base + "~1^{commit}"], capture_output=True, text=True)
     off_base = parent.stdout.strip() if parent.returncode == 0 else None
-    if unreachable:
-        # Only when `commit-tree` actually produced one -- a read-only object
-        # store cannot, and a gate must not fail because it could not build its
-        # own fixture.
-        cases.append(
-            ("an object present but UNREACHABLE fails (it is the post-rebase state)",
-             f"see `{unreachable}` for it\n", True))
     bad = 0
     with tempfile.TemporaryDirectory() as d:
         for name, text, want_fail in cases:
