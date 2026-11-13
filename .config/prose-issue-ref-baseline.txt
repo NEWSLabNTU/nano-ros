@@ -53,6 +53,11 @@
 #         keyed without the entity facts). Issue 1684 cites it as what blocked
 #         the tier-1 fixture build. REMOVE THIS ROW when #1707 merges.
 #
+#   2482, 2492  IN FLIGHT — both filed on PR #3696 (phase-556), which was
+#         UNMERGEABLE in the queue on 2026-11-13. The issue 2492 fix cites
+#         both: 2492 is what it fixes, 2482 the defect the lost diagnostics hid.
+#         REMOVE THESE ROWS when #3696 merges.
+#
 #   2376  IN FLIGHT — reserved (`refs/issue-ids/2376`) and filed by the nros 243
 #         session with the user's ruling that C/C++ is refused on bare metal.
 #         Its PR was not open on 2026-11-10 (`gh pr list --search 2376` finds
@@ -62,3 +67,12 @@
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
+packages/boards/nros-board-linux/src/lib.rs:2492
+packages/core/nros-log/src/lib.rs:2492
+packages/rmw/zenoh/zpico-sys/c/zpico/zpico.c:2482
+packages/rmw/zenoh/zpico-sys/c/zpico/zpico.c:2492
+packages/testing/nros-tests/src/fixtures/binaries/mod.rs:2492
+packages/testing/nros-tests/src/matrix.rs:2492
+packages/testing/nros-tests/src/output.rs:2492
+packages/testing/nros-tests/tests/hosted_pool_exhaustion_console.rs:2482
+packages/testing/nros-tests/tests/hosted_pool_exhaustion_console.rs:2492
