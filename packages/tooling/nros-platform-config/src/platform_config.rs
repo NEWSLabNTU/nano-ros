@@ -1562,17 +1562,14 @@ pub struct MemoryKnobs {
 /// Every memory knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
 pub const MEMORY_KNOBS: &[&str] = &["heap_bytes", "app_stack_bytes"];
 
-/// The env front-end for a memory knob. As with the executor tenant these are
-/// the EXISTING names, kept verbatim — migrating a knob into the ladder must
-/// not change how anyone sets it.
-///
-/// The FreeRTOS pair is the platform that sizes both today; Zephyr's heap has
-/// its own spelling and is resolved by `nros-platform`'s build script.
-pub fn memory_env_key(knob: &str) -> &'static str {
-    memory_env_key_for("freertos", knob)
-}
+/// The names of the FreeRTOS platform, as `packages/platform/nros-platform-freertos/nros-platform.toml`
+/// lists them. `memory_front_ends_match_the_platform_files` holds the two equal.
+const FREERTOS_NAMES: &[&str] = &["freertos", "freertos-lwip"];
+/// The names of the ThreadX platform (`packages/platform/nros-platform-threadx/nros-platform.toml`).
+const THREADX_NAMES: &[&str] = &["threadx", "threadx-linux", "threadx-riscv64"];
 
-/// The env front-end for a memory knob ON A GIVEN PLATFORM.
+/// The env front-end for a memory knob ON A GIVEN PLATFORM, or `None` when
+/// that platform has no env spelling for it.
 ///
 /// The same knob has different front-end spellings per platform — a heap is
 /// `NROS_FREERTOS_HEAP_KB` on FreeRTOS and `NROS_ZEPHYR_HEAP_SIZE` on Zephyr —
@@ -1580,31 +1577,37 @@ pub fn memory_env_key(knob: &str) -> &'static str {
 /// how anyone sets it. The RUNG is one knob; only its front-end differs, so
 /// this is where the difference lives rather than in two knob names.
 ///
-/// Without this, `nros config explain --platform zephyr` would print the
-/// FreeRTOS variable beside the Zephyr heap — telling a reader to set something
-/// that does nothing, in the report whose whole job is to say where a value
-/// came from.
-pub fn memory_env_key_for(platform: &str, knob: &str) -> &'static str {
-    match (platform, knob) {
-        ("zephyr", "heap_bytes") => "NROS_ZEPHYR_HEAP_SIZE",
-        (_, "heap_bytes") => "NROS_FREERTOS_HEAP_KB",
-        (_, "app_stack_bytes") => "NROS_FREERTOS_APP_STACK_KB",
-        (_, other) => panic!("unknown memory knob `{other}`"),
+/// Every platform has its own arm and there is NO default arm (issue 2400
+/// W5b): this used to answer `NROS_FREERTOS_APP_STACK_KB` and
+/// `NROS_FREERTOS_HEAP_KB` for every platform it did not name, so a FreeRTOS
+/// variable left in the environment silently sized a ThreadX image's stack. A
+/// platform with no spelling answers `None`: the ladder then reads no env rung
+/// for it, and `nros config explain` says so.
+///
+/// Without the per-platform spelling, `nros config explain --platform zephyr`
+/// would print the FreeRTOS variable beside the Zephyr heap — telling a reader
+/// to set something that does nothing, in the report whose whole job is to say
+/// where a value came from.
+pub fn memory_env_key_for(platform: &str, knob: &str) -> Option<&'static str> {
+    if !MEMORY_KNOBS.contains(&knob) {
+        panic!("unknown memory knob `{knob}`");
     }
-}
-
-/// Whether a memory knob's env front-end is spelled in KiB rather than bytes.
-/// The ladder stores bytes; this is the one place the difference lives.
-pub fn memory_env_is_kib(knob: &str) -> bool {
-    memory_env_is_kib_for("freertos", knob)
+    let freertos = FREERTOS_NAMES.contains(&platform);
+    let threadx = THREADX_NAMES.contains(&platform);
+    match knob {
+        "heap_bytes" if platform == "zephyr" => Some("NROS_ZEPHYR_HEAP_SIZE"),
+        "heap_bytes" if freertos => Some("NROS_FREERTOS_HEAP_KB"),
+        "app_stack_bytes" if freertos => Some("NROS_FREERTOS_APP_STACK_KB"),
+        "app_stack_bytes" if threadx => Some("NROS_THREADX_APP_STACK_KB"),
+        _ => None,
+    }
 }
 
 /// Whether a memory knob's front-end is KiB on this platform. The unit travels
 /// with the SPELLING, not with the knob: `NROS_FREERTOS_HEAP_KB` is KiB and
 /// `NROS_ZEPHYR_HEAP_SIZE` is bytes, for the same `heap_bytes` rung.
 pub fn memory_env_is_kib_for(platform: &str, knob: &str) -> bool {
-    !matches!((platform, knob), ("zephyr", "heap_bytes"))
-        && matches!(knob, "heap_bytes" | "app_stack_bytes")
+    memory_env_key_for(platform, knob).is_some_and(|k| k.ends_with("_KB"))
 }
 
 /// The board > platform > builtin pick, then the env front-end, for one
@@ -1637,7 +1640,7 @@ fn resolve_usize_tenant(
                 ResolvedUsize {
                     value,
                     source,
-                    env_key,
+                    env_key: Some(env_key),
                 },
             )
         })
@@ -1651,7 +1654,9 @@ fn resolve_usize_tenant(
 pub struct ResolvedUsize {
     pub value: usize,
     pub source: KnobSource,
-    pub env_key: &'static str,
+    /// The env front-end that sets this knob, or `None` where the platform has
+    /// none (a memory knob on a platform that does not size it from the env).
+    pub env_key: Option<&'static str>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -2649,7 +2654,7 @@ impl PlatformsTree {
                 ResolvedUsize {
                     value,
                     source,
-                    env_key,
+                    env_key: Some(env_key),
                 },
             ));
         }
@@ -2811,7 +2816,7 @@ impl PlatformsTree {
                 ResolvedUsize {
                     value,
                     source,
-                    env_key,
+                    env_key: Some(env_key),
                 },
             ));
         }
@@ -2858,7 +2863,7 @@ impl PlatformsTree {
                 ResolvedUsize {
                     value,
                     source,
-                    env_key,
+                    env_key: Some(env_key),
                 },
             ));
         }
@@ -2907,7 +2912,7 @@ impl PlatformsTree {
                 ResolvedUsize {
                     value,
                     source,
-                    env_key,
+                    env_key: Some(env_key),
                 },
             ));
         }
@@ -2962,7 +2967,7 @@ impl PlatformsTree {
                 ResolvedUsize {
                     value,
                     source,
-                    env_key,
+                    env_key: Some(env_key),
                 },
             ));
         }
@@ -3009,7 +3014,7 @@ impl PlatformsTree {
                 ResolvedUsize {
                     value,
                     source,
-                    env_key,
+                    env_key: Some(env_key),
                 },
             ));
         }
@@ -3092,7 +3097,8 @@ impl PlatformsTree {
                     (None, None) => (*builtin, KnobSource::Builtin),
                 };
             let env_key = memory_env_key_for(platform, name);
-            if let Some(raw) = knob_env(env, env_key)
+            if let Some(key) = env_key
+                && let Some(raw) = knob_env(env, key)
                 && let Ok(n) = raw.trim().parse::<usize>()
             {
                 // The front-ends disagree about units and the ladder does not:
@@ -3163,7 +3169,7 @@ impl PlatformsTree {
                 ResolvedUsize {
                     value,
                     source,
-                    env_key,
+                    env_key: Some(env_key),
                 },
             ));
         }
@@ -4763,7 +4769,7 @@ mod tests {
         let cbs = r.iter().find(|(n, _)| *n == "max_cbs").unwrap();
         assert_eq!(cbs.1.value, 13);
         assert_eq!(cbs.1.source, KnobSource::Env);
-        assert_eq!(cbs.1.env_key, "NROS_EXECUTOR_MAX_CBS");
+        assert_eq!(cbs.1.env_key, Some("NROS_EXECUTOR_MAX_CBS"));
     }
 
     // ---- phase-400 W2 / RFC-0071 D8 — knobs keyed by backend ----
@@ -4868,6 +4874,94 @@ mod tests {
         );
         tree.as_platform_manifest(&ports)
             .expect("every [port.*] row names a platform on the search path");
+    }
+
+    /// issue 2400 W5b — a FreeRTOS variable left in the environment must not
+    /// size another platform's stack or heap. `memory_env_key_for` used to
+    /// answer the FreeRTOS spellings for every platform it did not name.
+    #[test]
+    fn a_freertos_variable_sizes_no_other_platform() {
+        let tree = PlatformsTree::default();
+        let env = |k: &str| match k {
+            "NROS_FREERTOS_APP_STACK_KB" => Some("16".to_string()),
+            "NROS_FREERTOS_HEAP_KB" => Some("8".to_string()),
+            _ => None,
+        };
+        let defaults = [("heap_bytes", 4096), ("app_stack_bytes", 65536)];
+        for platform in [
+            "threadx-riscv64",
+            "threadx-linux",
+            "bare-metal",
+            "zephyr",
+            "nuttx",
+            "posix",
+        ] {
+            for (name, r) in
+                tree.resolve_memory_from(platform, &MemoryKnobs::default(), None, &env, &defaults)
+            {
+                assert_eq!(
+                    r.source,
+                    KnobSource::Builtin,
+                    "{platform} {name} read {:?}",
+                    r.env_key
+                );
+                assert!(
+                    !r.env_key.is_some_and(|k| k.starts_with("NROS_FREERTOS_")),
+                    "{platform} {name} names {:?}",
+                    r.env_key
+                );
+            }
+        }
+        // FreeRTOS itself still reads them, in KiB.
+        let r =
+            tree.resolve_memory_from("freertos", &MemoryKnobs::default(), None, &env, &defaults);
+        assert_eq!(r[1].1.value, 16 * 1024);
+        assert_eq!(r[1].1.source, KnobSource::Env);
+        // ThreadX has its own spelling, also KiB.
+        let tx = |k: &str| (k == "NROS_THREADX_APP_STACK_KB").then(|| "40".to_string());
+        let r = tree.resolve_memory_from(
+            "threadx-riscv64",
+            &MemoryKnobs::default(),
+            None,
+            &tx,
+            &defaults,
+        );
+        assert_eq!(r[1].1.value, 40 * 1024);
+        assert_eq!(r[1].1.env_key, Some("NROS_THREADX_APP_STACK_KB"));
+        // No platform answers a heap spelling it does not size.
+        assert_eq!(memory_env_key_for("threadx-riscv64", "heap_bytes"), None);
+    }
+
+    /// The name lists `memory_env_key_for` matches on are the platform files'
+    /// own `names`, so a new alias cannot fall off its arm unnoticed.
+    #[test]
+    fn memory_front_ends_match_the_platform_files() {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap()
+            .to_path_buf();
+        let path = PlatformsTree::default_search_path(&repo, None);
+        if !path.iter().any(|p| p.is_dir()) {
+            return; // out-of-tree consumer; nothing to check
+        }
+        let tree =
+            PlatformsTree::load_search_path(&path).expect("the real platform search path loads");
+        for (canonical, list) in [("freertos", FREERTOS_NAMES), ("threadx", THREADX_NAMES)] {
+            let f = tree
+                .files
+                .values()
+                .find(|f| f.names.first().map(String::as_str) == Some(canonical))
+                .unwrap_or_else(|| panic!("no platform file is canonically `{canonical}`"));
+            let mut have: Vec<&str> = f.names.iter().map(String::as_str).collect();
+            let mut want = list.to_vec();
+            have.sort_unstable();
+            want.sort_unstable();
+            assert_eq!(
+                have, want,
+                "`{canonical}`'s names moved; update its memory arm"
+            );
+        }
     }
 
     /// issue 0534 — exactly which platforms keep cargo out of the vendored C

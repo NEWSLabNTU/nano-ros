@@ -341,8 +341,19 @@ On the cargo road, ThreadX, NuttX and bare metal state no stack, so W5
 reports their images as not checked. Each joins when its board build script
 calls `stack_stated::emit` and its platform is added to `STATING_PLATFORMS`:
 
-- **ThreadX (riscv64).** `nros_board_app_stack_size` is a hardcoded 512 KiB in
-  the board's C. It needs a knob before anything can be checked against it.
+- **ThreadX (riscv64).** The board states its app-thread stack since
+  2026-11-14 (#PRNUM). The stack is the `[knobs.memory] app_stack_bytes` rung
+  under a ThreadX env front-end, `NROS_THREADX_APP_STACK_KB` (512 KiB by
+  default). The board's build script resolves it, passes it to the C getter as
+  `-DNROS_THREADX_APP_STACK_BYTES`, and writes `nros-stack-stated.json` (root
+  `~app_task_entry_`).
+  - **Class fix.** `memory_env_key_for` used to hand every platform the
+    FreeRTOS spellings, so `NROS_FREERTOS_APP_STACK_KB` silently sized a
+    ThreadX stack. Each platform now has its own arm, and a platform with no
+    spelling answers none.
+  - **Still not checked.** `threadx-riscv64` is not in `STATING_PLATFORMS`
+    yet: the walk refuses, because the board's bundled libc objects carry no
+    frame and no CFI ([issue 2514](../issues/2514-stack-floor-walk-riscv-libc-no-frames.md)).
 - **NuttX.** The sched-task stack: `NROS_NUTTX_SCHED_TASK_STACK_BYTES`, or
   `[tasks.*.nuttx].stack_bytes`.
 - **Bare metal (mps2-an385).** The board states its main stack since

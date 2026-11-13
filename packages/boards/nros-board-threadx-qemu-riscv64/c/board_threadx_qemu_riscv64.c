@@ -13,7 +13,7 @@
  *     socket bring-up.
  *   - `nros_board_compute_rng_seed` → configured IP/MAC + device MAC + CLINT
  *     time (issue 2357).
- *   - Strong-override `nros_board_app_stack_size` (512 KB) and
+ *   - Strong-override `nros_board_app_stack_size` (the knob, 512 KB default) and
  *     `nros_board_app_priority` (15, below zenoh-pico read/lease
  *     priority 14 per the 120.3 keep-alive fix).
  *   - Global `errno` (bare-metal has no TLS).
@@ -47,7 +47,15 @@ extern void uart_puts(const char *s);
  * this override → Rust closure stack overflowed silently). Functions
  * can't be const-folded across the TU boundary, so the override wins
  * deterministically and the workaround is no longer load-bearing. */
-uint32_t nros_board_app_stack_size(void) { return 512 * 1024; }
+/* issue 2400 W5b — the size is the knob ladder's (`[knobs.memory]
+ * app_stack_bytes`, env `NROS_THREADX_APP_STACK_KB`), resolved by the cargo
+ * road's build script and handed in as `-DNROS_THREADX_APP_STACK_BYTES`. The
+ * cmake road compiles this TU without it and keeps the board's 512 KiB, the
+ * same number as `threadx_qemu_riscv64_build::APP_STACK_BYTES`. */
+#ifndef NROS_THREADX_APP_STACK_BYTES
+#define NROS_THREADX_APP_STACK_BYTES (512u * 1024u)
+#endif
+uint32_t nros_board_app_stack_size(void) { return NROS_THREADX_APP_STACK_BYTES; }
 /* zenoh-pico's read/lease tasks default to ThreadX priority 14
  * (`Z_TASK_PRIORITY` in `zenoh-pico/src/system/threadx/.../platform.h`).
  * App must run at strictly lower priority (= higher numeric value)

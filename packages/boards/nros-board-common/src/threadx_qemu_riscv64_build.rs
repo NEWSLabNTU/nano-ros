@@ -260,6 +260,23 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     glue.file(manifest_dir.join("c/trap.c"));
     crate::threadx_sources::add_threadx_hooks_source(&mut glue);
     glue.file(manifest_dir.join("c/board_threadx_qemu_riscv64.c"));
+    // issue 2400 W5b — the app thread's stack, resolved on the knob ladder
+    // instead of a constant in the board's C, and stated for `nros build`'s
+    // stack-floor check.
+    let app_stack = app_stack_bytes_from_build_env();
+    glue.define(
+        "NROS_THREADX_APP_STACK_BYTES",
+        app_stack.to_string().as_str(),
+    );
+    crate::stack_stated::emit(
+        &out_dir,
+        &[crate::stack_stated::Stated {
+            role: "OPEN",
+            root: "~app_task_entry_",
+            bytes: app_stack,
+            knob: "NROS_THREADX_APP_STACK_KB={kb}",
+        }],
+    );
     glue.file(manifest_dir.join("c/syscalls.c"));
     glue.file(manifest_dir.join("c/hwtimer.c"));
 
@@ -561,4 +578,31 @@ const nros_app_config_t NROS_APP_CONFIG = {
     build.file(&src_path);
     nros_cc_flags::header_deps::track_header_deps(&mut build);
     build.compile("nros_app_config_def");
+}
+
+/// The board's app-thread stack when nothing states one: the value its C
+/// carried as a constant before issue 2400 W5b. The cmake road compiles the
+/// same C with no `-D`, so `board_threadx_qemu_riscv64.c` keeps this number as
+/// its `#ifndef` fallback; the two are the board's one value on two roads.
+pub const APP_STACK_BYTES: u32 = 512 * 1024;
+
+/// The app-thread stack for this build: the `[knobs.memory] app_stack_bytes`
+/// rung of the RFC-0049 ladder, under its ThreadX env front-end
+/// `NROS_THREADX_APP_STACK_KB` (KiB). Emits the `rerun-if-env-changed` lines.
+pub fn app_stack_bytes_from_build_env() -> u32 {
+    crate::platform_config::watch_knob_env("NROS_THREADX_APP_STACK_KB");
+    match crate::platform_config::BuildRungs::from_build_env() {
+        Some(rungs) => rungs.memory_value("app_stack_bytes", APP_STACK_BYTES as usize) as u32,
+        // A bare `cargo build` names no platform: the env rung alone, as the
+        // ladder reads it.
+        None => {
+            crate::platform_config::knob_env(&|k| env::var(k).ok(), "NROS_THREADX_APP_STACK_KB")
+                .map(|v| {
+                    v.trim().parse::<u32>().unwrap_or_else(|_| {
+                        panic!("NROS_THREADX_APP_STACK_KB must be a decimal KiB count, got `{v}`")
+                    }) * 1024
+                })
+                .unwrap_or(APP_STACK_BYTES)
+        }
+    }
 }

@@ -645,7 +645,9 @@ def ladder_env_keys():
     src = re.sub(r"(?m)^\s*///.*$", "", src)
     out = set()
     for pat in (
-        r'=>\s*"((?:NROS|ZPICO)_[A-Z0-9_]+)"',
+        # `=> Some("...")`: a per-platform front-end that may have none
+        # (`memory_env_key_for`, issue 2400 W5b).
+        r'=>\s*(?:Some\(\s*)?"((?:NROS|ZPICO)_[A-Z0-9_]+)"',
         r'\benv\(\s*"((?:NROS|ZPICO)_[A-Z0-9_]+)"',
         r'\bflag\(\s*"((?:NROS|ZPICO)_[A-Z0-9_]+)"',
     ):
@@ -1143,6 +1145,7 @@ def self_test() -> None:
     # hand-kept one.
     src = (
         '        "field" => "NROS_FROM_MATCH_ARM",\n'
+        '        "other" if freertos => Some("NROS_FROM_OPTIONAL_ARM"),\n'
         '        env("NROS_FROM_ENV_CALL")\n'
         '        flag("ZPICO_FROM_FLAG_CALL", BUILTIN)\n'
         '        /// env("NROS_IN_A_DOC_COMMENT")\n'
@@ -1163,6 +1166,7 @@ def self_test() -> None:
             ROOT = real
     assert got == {
         "NROS_FROM_MATCH_ARM",
+        "NROS_FROM_OPTIONAL_ARM",
         "NROS_FROM_ENV_CALL",
         "ZPICO_FROM_FLAG_CALL",
     }, f"selftest: ladder-mapping reader got {sorted(got)!r}"

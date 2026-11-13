@@ -762,6 +762,18 @@ pub const KNOBS: &[KnobRow] = &[
         retired: None,
     },
     KnobRow {
+        id: "THREADX_APP_STACK_KB",
+        env: "NROS_THREADX_APP_STACK_KB",
+        legacy: &[],
+        kconfig: "CONFIG_NROS_THREADX_APP_STACK_KB",
+        toml: None,
+        image_key: "threadx.app_stack_kb",
+        ty: None,
+        range: None,
+        names: &[],
+        retired: None,
+    },
+    KnobRow {
         id: "XRCE_BUFFER_SIZE",
         env: "NROS_XRCE_BUFFER_SIZE",
         legacy: &[],

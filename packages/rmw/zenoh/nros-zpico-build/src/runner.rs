@@ -2058,7 +2058,7 @@ pub fn run() {
                         platform_config::ResolvedUsize {
                             value,
                             source,
-                            env_key: key,
+                            env_key: Some(key),
                         },
                     )
                 })
