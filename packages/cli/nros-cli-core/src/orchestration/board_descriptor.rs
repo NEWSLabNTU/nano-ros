@@ -1600,8 +1600,7 @@ impl PlatformFamilies {
     /// The built-in family `name` builds as ([`PlatformKind::resolve_family`]).
     pub fn resolve(&self, name: &str) -> Result<PlatformKind, String> {
         let tree = self.tree.get_or_init(|| {
-            crate::configure_stamp::load_platforms_tree(&self.roots)
-                .map_err(|e| e.to_string())
+            crate::configure_stamp::load_platforms_tree(&self.roots).map_err(|e| e.to_string())
         });
         let tree = tree
             .as_ref()
