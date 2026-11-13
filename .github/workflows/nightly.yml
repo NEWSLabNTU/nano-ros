@@ -14,7 +14,9 @@
 #   file in phase-559 W4: zenoh-probe for weekly.yml, the two book probes
 #   because host-tests.yml runs the same tracks every day.)
 #
-# This file is also where `just ci-matrix-nightly` lives — RFC-0061's tier-2
+# This file is also where the DISTRIBUTED half of `just ci-matrix-nightly` lives
+# (the self-hosted monolithic job moved to run-matrix.yml, phase-559 W5a) —
+# RFC-0061's tier-2
 # pairwise cover over platform x lang x rmw x kind. It runs DISTRIBUTED, because
 # the fixture build scripts need per-platform toolchain env that only the
 # `just <module>` recipes export and the cover spans eight modules whose SDKs do
@@ -52,7 +54,8 @@ on:
   schedule:
     # ONE cron (phase-559 W4b; S1: tools read "the latest scheduled run").
     # Before, 05:00 ran the Zephyr jobs and 07:00 the platform sweep, and
-    # `matrix-nightly`, which had no guard, ran on both.
+    # `matrix-nightly`, which had no guard, ran on both (it is run-matrix.yml's
+    # now, phase-559 W5a).
     - cron: "0 5 * * *"
 
 permissions:
@@ -1282,166 +1285,3 @@ jobs:
           name: nuttx-make-road-${{ matrix.config }}-log
           path: build/nuttx-make-road/${{ matrix.config }}/make.log
           if-no-files-found: ignore
-
-  # phase-411 — tier 2 NIGHTLY, actually invoked.
-  #
-  # This file's header has said "the 07:00 cron is also where
-  # `just ci-matrix-nightly` lives" since RFC-0061, and three places echo that
-  # string into a summary — but nothing ran it. `check-tier-has-ci-owner`
-  # found the tier declared in the ladder and owned by no workflow. Prose is
-  # not an owner.
-  #
-  # Interlocked like post-submit's tier-2 job: the pairwise cover needs the
-  # RTOS toolchains, so it is self-hosted, so a job that cannot start must not
-  # look like one that passed. `coverage-matrix-nightly` reports the skip.
-  matrix-nightly:
-    name: tier 2 nightly (pairwise cover)
-    if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
-    runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]
-    # NO green run in the last 60. The longest completed run was 243.8 min
-    # (a failure); twice that, rounded up. Self-hosted, so above 360 is legal.
-    # Re-measure from the first green run.
-    timeout-minutes: 490
-    env:
-      # phase-543 — the self-hosted runner's gate lane (.config/gate-lanes.toml
-      # [lane.runner]): `just build <lane>` and `just ci matrix` reach `check
-      # fast`/`check build`, and an unset scope is refused in CI.
-      NROS_GATE_SCOPE: runner
-    defaults:
-      run:
-        shell: bash
-        working-directory: ${{ github.workspace }}/../nros-fixture-tree
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-      # phase-489 W6 — the fixture lanes build in a PERSISTENT tree beside the
-      # checkout (`_work/<repo>/nros-fixture-tree`), not in the checkout
-      # `actions/checkout` just `git clean -ffdx`-ed. Every later step runs
-      # there (the job's `defaults.run.working-directory`). The tree is a
-      # user's checkout after `git pull`: this commit, tracked files restored,
-      # build output kept and NOT trusted — `just build` re-derives freshness
-      # and the test half re-probes it. See scripts/ci/fixture-tree.sh.
-      - name: Check out the persistent fixture tree at this commit
-        working-directory: ${{ github.workspace }}
-        run: scripts/ci/fixture-tree.sh sync
-      - name: just setup tier2-nightly
-        run: |
-          source ./activate.sh
-          just setup tier2-nightly
-      # AFTER `setup` — phase-413 W2, same as run-matrix (#279), queue (#253)
-      # and build-wide (#249).
-      #
-      # `runner-doctor.sh` checks `$root/build/qemu/bin/qemu-system-arm` FIRST
-      # ("the project-local patched build is the PRIMARY path (phase-143) … a
-      # host with it needs nothing from the system") and falls back to the
-      # system qemu only when that is absent. That path is inside the CHECKOUT,
-      # and `just setup tier2-nightly` creates it — the lane expands to
-      # `freertos linux nuttx qemu threadx_linux threadx_riscv64 zephyr`,
-      # and the `qemu` module's `setup` ends in `just qemu setup-qemu`.
-      #
-      # Asserting before provisioning asks the host for something the next step
-      # supplies. This job carries the same `nros-qemu` label on the same runner
-      # class as `run-matrix`, where it failed at step 2 against a system qemu
-      # 6.2 in every run — provisioning nothing, testing nothing, and reporting
-      # it as a host that needs `runner-provision.sh`.
-      #
-      # A genuinely mislabeled runner still fails, one step later, and `setup`
-      # would have failed on it first.
-      - name: Verify this runner's labels are true
-        run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
-
-      # Issue 1959 — `just build <lane>` reaches `check::fast`, and with it
-      # check-submodule-pins, which is network-free and FAILS in CI when its
-      # baseline does not resolve. Since issue 1912 that baseline is the tested
-      # commit's own (the first parent, on schedule/dispatch), which a depth-1
-      # tree does not hold. Same three steps as every gate.yml job;
-      # `check-workflow-pin-baseline` keeps a job that reaches the gate from
-      # dropping them.
-      - name: Fetch the pin baseline for check-submodule-pins
-        run: bash scripts/ci/pin-baseline.sh provide
-      - name: Init submodules whose pin moved (commits only)
-        run: bash scripts/ci/pin-baseline.sh init-moved
-      - name: Fetch submodule history for check-submodule-pins
-        run: bash scripts/ci/pin-baseline.sh deepen
-      # THE MISSING MIDDLE — phase-413 W2.
-      #
-      # The documented chain is `setup` -> `build` -> `test` (phase-411 W4), and
-      # this job went straight from setup to the test lane. `ci matrix-nightly`
-      # opens with `_lane-gate tier2-nightly`, which runs `check-fixtures-stale.sh` — a
-      # FRESHNESS GATE, not a build. So the lane asked "are the fixtures fresh?"
-      # of a tree that had never built them.
-      #
-      # On a self-hosted runner with a persistent workspace that can look like it
-      # works, because a previous run left artifacts behind. It stops looking
-      # like it works the moment the per-leaf `generated/` msg crates are absent,
-      # and then the gate cannot even build a fixture to judge it:
-      #
-      #   ERROR: 104 rust fixture(s) could NOT be built by the staleness probe:
-      #     examples/linux/rust/talker
-      #         error: failed to load manifest for dependency `std_msgs`
-      #     examples/linux/rust/service-client
-      #         error: failed to load manifest for dependency `example_interfaces`
-      #
-      # `just build <scope>` is the stage that produces them: it runs `_codegen`
-      # (issue 0992) and then the lane's fixtures. Naming the SAME scope as
-      # setup and test keeps one vocabulary across the three steps, which is the
-      # property phase-411 exists to give.
-      - name: just build tier2-nightly
-        run: |
-          source ./activate.sh
-          just build tier2-nightly
-
-      # Issue 1991 — the panic text goes into the job log as well as the junit
-      # below, so `gh run view --log` names a red without an artifact download.
-      # `test-all` honours this knob and defaults it to `never`; the live-peer
-      # lane sets `final` for the same reason. A `lane_skip!` is a panic too, so
-      # its one-line reason prints beside the real failures.
-      - name: just ci matrix-nightly
-        env:
-          NROS_TEST_FAILURE_OUTPUT: final
-        run: |
-          source ./activate.sh
-          just ci matrix-nightly
-      # Issue 1991 — the same step run-matrix's tier-1 and tier-2 jobs carry.
-      # Without it this lane counted its real failures ("Real failures: 14")
-      # and named none: `test-all` runs nextest with `--failure-output never`,
-      # and the junit stayed in the persistent fixture tree, where the next
-      # nextest run there rewrote it. The fixture-build logs ride along, so a
-      # red build step is readable too (issue 1842).
-      # Issue 1991 -- the tree is kept across runs, and so is an earlier run's
-      # junit: a run whose tests never started uploaded it as its own. Upload
-      # only the reports this run wrote (`fixture-tree.sh reports`).
-      - name: Collect this run's junit and logs
-        if: always()
-        run: scripts/ci/fixture-tree.sh reports "${{ runner.temp }}/nros-run-reports"
-      - name: Upload junit and logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: tier2-nightly-junit
-          path: ${{ runner.temp }}/nros-run-reports/
-          if-no-files-found: ignore
-          retention-days: 14
-      - name: Sweep orphans and disk
-        if: always()
-        run: ./scripts/ci/runner-sweep.sh --provision || true
-
-  coverage-matrix-nightly:
-    # issue 1790 — `report-interlock-coverage.sh` reads the gated job's
-    # step record when the job left no stage label (a lost runner).
-    permissions:
-      contents: read
-      actions: read
-    name: coverage report (did tier 2 nightly run?)
-    needs: [matrix-nightly]
-    if: always()
-    runs-on: ubuntu-latest
-    # Longest green run 0.4 min (n=60); floor 10.
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - name: Report whether the interlocked lane ran
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./scripts/ci/report-interlock-coverage.sh "tier 2 nightly (pairwise cover)" "${{ needs.matrix-nightly.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}"

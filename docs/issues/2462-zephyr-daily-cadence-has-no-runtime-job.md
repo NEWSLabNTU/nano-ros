@@ -6,7 +6,7 @@ type: limitation
 area: [ci, zephyr, testing]
 severity: medium
 found: 2026-11-12
-related: [1029, 1720, phase-535, phase-558]
+related: [1029, 1720, phase-535, phase-558, phase-559]
 ---
 
 **Home: [phase-535](../roadmap/phase-535-example-reorg-and-cadence-ci.md) W8.4.**

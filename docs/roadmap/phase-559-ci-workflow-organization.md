@@ -153,15 +153,25 @@ rules; flagged to the user):
 ### W5 — `matrix-nightly` to `run-matrix.yml`; tier 1 to nightly per-board shards
 
 - **Owner:** nros 175.
-- `nightly.yml`'s `matrix-nightly` and `coverage-matrix-nightly` move to
-  `run-matrix.yml` (self-hosted tier 2, one daily cron). `run-matrix.yml`'s
-  hosted `tier1` / `coverage-tier1` move to `nightly.yml` as per-board shards,
-  in the per-board job layout phase-558 gives the platform job (see "Per-board
-  platform jobs" below).
-- **Acceptance:** `check-tier-has-ci-owner` and `check-cadence-jobs` pass with
-  the new owners. A host witness row's daily binding names the nightly
-  per-board shard.
-- **Status:** OPEN
+- **W5a.** `nightly.yml`'s `matrix-nightly` and `coverage-matrix-nightly`
+  move to `run-matrix.yml` (self-hosted, one daily cron), chained after
+  `tier1` on the single-occupancy runner.
+- **W5b.** `run-matrix.yml`'s `tier1` runs on the SELF-HOSTED runner, not a
+  hosted one. It left the hosted runner because the full tier-1 fixture build
+  did not fit (issues 1684/1685: +37 G for the linux half alone against ~16 G
+  free, and `just setup linux` does not provision Zephyr native_sim or
+  ThreadX-Linux). So tier 1 moves to hosted per-board shards in `nightly.yml`
+  ONLY IF a measurement says each shard fits. First a dispatch-only job runs
+  one shard per host witness board (linux, zephyr native_sim, threadx-linux)
+  under phase-558's per-board narrowing, and records disk and time. If the
+  shards fit, tier 1 moves; if not, the numbers go to the user, because
+  RFC-0122's "tier 1, daily, hosted shards" would then be a D9 lowering
+  (user's call, coordinator nros 241 manager).
+- **Acceptance:** W5a: `check-tier-has-ci-owner` passes with the new owner,
+  and `matrix-nightly` runs once a day. W5b: the measurement is recorded
+  here; if tier 1 moves, a host witness row's daily binding names the nightly
+  per-board shard and `check-cadence-jobs` passes.
+- **Status:** OPEN — W5a in this PR; W5b is next (measure first).
 
 ### W6 — `host-tests.yml` absorbs `check-build`, the census and the book probes
 
@@ -209,6 +219,34 @@ rules; flagged to the user):
 - No job runs in two files.
 - `docs/development/ci-workflow-reorg.md` (the phase-253 plan) is replaced by
   the table above, or points here.
+
+## Coverage note: what the merge queue builds for Zephyr (2026-11-13)
+
+[phase-410](archived/phase-410-ci-breadth-depth-restructure.md) states "Build+link
+is MANDATORY and WIDE. Build+run is SCHEDULED and NARROW." What merges get
+today is narrower than that, for Zephyr in particular:
+
+- **Per merge group.** `queue.yml`'s L3 (`just ci matrix build`), measured by
+  nros 243 on run 43385631926, links 3 cross ELFs: the FreeRTOS, NuttX and
+  ThreadX-Linux Rust talkers. Zephyr leaves only go through `nros sync`; no
+  Zephyr image is built or linked. The one per-merge Zephyr BUILD was
+  `gate.yml`'s `check-template-copy-out-zephyr`, and #3710 moved it to the
+  daily schedule (user ruling "Do Zephyr template check daily"). So since
+  #3710, **no per-merge lane builds or links a Zephyr image**.
+- **Daily.** `nightly.yml`'s Zephyr jobs build and link Zephyr images every
+  day: `zephyr-example-matrix` runs `just zephyr build-one` (a west build to an
+  ELF) for 4 examples (c/talker, cpp/talker, rust/talker, rust/action-server)
+  on both lines (3.7, 4.4), `zephyr-dual-line-summary` runs `ci-both`, and
+  `zephyr-copy-out` plus `gate.yml`'s daily `template-copy-out [zephyr]` build
+  copied-out projects. A Zephyr link regression is caught within a day.
+- **phase-535 W8 item 4 (2 lines × 3 languages with native_sim runtime) does
+  not change the link answer.** Daily link coverage already exists. W8.4 adds
+  RUNTIME (native_sim cells) and reshapes the matrix; it closes issue 2462
+  ("Zephyr daily cadence has no runtime job"), not a link gap.
+
+Per-merge Zephyr link coverage, if wanted, is a question for the user (it
+would cost a Zephyr SDK + west workspace on the queue's critical path, which is
+what #3710 just took off it). Not added here.
 
 ## Issues homed here
 
