@@ -1229,6 +1229,9 @@ jobs:
   nuttx-make-road:
     name: nuttx make road (${{ matrix.config }})
     runs-on: ubuntu-22.04
+    # The registry's `roads` lane for both NuttX boards (check-cadence-jobs).
+    env:
+      NROS_BOARD_ROADS: "NuttxArm:guest-make NuttxRiscv:guest-make"
     timeout-minutes: 90
     concurrency:
       group: nightly-nuttx-make-road-${{ matrix.config }}-${{ github.ref }}-${{ github.event_name }}
