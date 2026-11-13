@@ -8,9 +8,9 @@
 #                cron 0 7. e2e on schedule / dispatch-with-run_e2e.
 #   - zephyr   : dual-line (3.7 + 4.4) example builds + copy-out check
 #                (`just zephyr build-one/ci-both/check-copy-out`). cron 0 5.
-#   - zenoh-probe : the book's ROS-interop road (issue 2468). WEEKLY, cron
-#                0 9 * * 1: the user ruled the 1-3 h hosted cost weekly, not
-#                daily (2026-11-12).
+#   (the weekly `zenoh-probe` and the book bootstrap/installed probes left this
+#   file in phase-559 W4: zenoh-probe for weekly.yml, the two book probes
+#   because probe.yml runs the same tracks every day.)
 #
 # The 07:00 cron is also where `just ci-matrix-nightly` lives — RFC-0061's tier-2
 # pairwise cover over platform x lang x rmw x kind. It runs DISTRIBUTED, because
@@ -50,7 +50,6 @@ on:
   schedule:
     - cron: "0 5 * * *"   # Zephyr dual-line
     - cron: "0 7 * * *"   # per-platform sweep (QEMU e2e)
-    - cron: "0 9 * * 1"   # weekly: zenoh interop probe (Mondays)
 
 permissions:
   contents: read
@@ -1166,94 +1165,6 @@ jobs:
           source ./activate.sh
           just zephyr check-copy-out c/talker zenoh
 
-  # Clean-system bootstrap probe (issue #204): execute the book's documented
-  # setup steps VERBATIM in a pristine ubuntu:24.04 container (steps are
-  # extracted from the `probe=NN`-tagged book blocks — scripts/probe/ — so
-  # the probe cannot drift from what users read) and assert the first-node
-  # chapter's documented outcome (talker prints `Publishing: 'Hello World: 1'`).
-  # 07:00 cron + dispatch only — NOT per-PR (cold bootstrap builds the nros
-  # CLI + the talker from source inside the container, ~45 min).
-  bootstrap-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 7 * * *' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    concurrency:
-      group: nightly-bootstrap-probe-${{ github.ref }}-${{ github.event_name }}
-    permissions:
-      contents: read
-    steps:
-      # Full history: the probe container clones from this checkout
-      # (mounted read-only), and cloning from a shallow repo fails.
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # Hosted runners leave ~14 GB free; the in-container rustup + CLI +
-      # talker builds need more. Drop the preinstalled SDK bloat.
-      - name: Reclaim host disk
-        run: |
-          echo "before:"; df -h / | tail -1
-          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
-              /usr/share/dotnet /usr/local/.ghcup 2>/dev/null || true
-          echo "after:";  df -h / | tail -1
-
-      # actions/checkout leaves a detached HEAD; the probe clones by branch.
-      - name: Name the commit under test
-        run: git switch -c probe-under-test 2>/dev/null || git checkout -b probe-under-test
-
-      - name: Run bootstrap probe
-        run: PROBE_BRANCH=probe-under-test ./scripts/probe/run-bootstrap-probe.sh
-
-  # phase-447 A3 — the same probe down the USER's front door: build the asset
-  # `release-nros.yml` would publish (its own steps, extracted from this commit,
-  # on its own `runs-on` image), install it into a second pristine container
-  # that has no checkout mounted, then run first-project.md's scaffold -> build
-  # -> run. The released `nros` could not build anything (RFC-0099 D1) and
-  # nothing noticed, because every host that ever ran it had a checkout the
-  # SDK-root ladder reached first.
-  #
-  # Its OWN job, not a step after the checkout track: a red here and a red there
-  # are different defects on different machines, and one job carrying both
-  # would report the first and hide the second.
-  installed-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 7 * * *' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    concurrency:
-      group: nightly-installed-probe-${{ github.ref }}-${{ github.event_name }}
-    permissions:
-      contents: read
-    steps:
-      # Full history: the asset builder fetches the commit under test from this
-      # checkout's git dir, and fetching from a shallow repo fails.
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Reclaim host disk
-        run: |
-          echo "before:"; df -h / | tail -1
-          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
-              /usr/share/dotnet /usr/local/.ghcup 2>/dev/null || true
-          echo "after:";  df -h / | tail -1
-
-      - name: Name the commit under test
-        run: git switch -c probe-under-test 2>/dev/null || git checkout -b probe-under-test
-
-      # Cold, as a release runner is: the named cache volumes would only be
-      # empty on a hosted runner anyway, and saying so keeps the verdict honest.
-      - name: Run installed-path probe
-        run: PROBE_BRANCH=probe-under-test PROBE_RELEASE_CACHE=0 PROBE_TRACK=installed ./scripts/probe/run-bootstrap-probe.sh
-
-  # Issue 2468 — the ROS-interop track (`PROBE_TRACK=zenoh`): the book's
-  # `just`-free checkout road (clone, `bootstrap.sh`, `activate.sh`,
-  # `nros setup --rmw zenoh`), then the interop page's router, talker and
-  # `ros2 topic echo`. No lane ran it, so it rotted for a week: bootstrap.sh
-  # stopped building what `nros run` needs (the runner packages) and nothing
-  # noticed. Its own job for the reason installed-probe is: a red here is a
-  # different defect from a red on the quickstart track.
-  # Weekly, not nightly: user ruling 2026-11-12 ("Take your recommendation"),
-  # weighing a 1-3 h hosted run against how slowly this road changes.
   # phase-550 W1 — the NuttX make road (the `apps/external` guest road,
   # `integrations/nuttx/`), built daily on both boards.
   #
@@ -1323,47 +1234,6 @@ jobs:
           name: nuttx-make-road-${{ matrix.config }}-log
           path: build/nuttx-make-road/${{ matrix.config }}/make.log
           if-no-files-found: ignore
-
-  zenoh-probe:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 9 * * 1' }}
-    runs-on: ubuntu-latest
-    # Measured 59 min on a 139-class host (2026-11-12), the most of any probe
-    # track: it runs the checkout road AND the installed one. A hosted 4-vCPU
-    # runner, cold, can take 2-3x that, and a job that hits its timeout ends
-    # CANCELLED with no verdict (issue 2141's shape). 180 until a hosted run
-    # is measured; then set it from that run with headroom (issue 1492).
-    timeout-minutes: 180
-    concurrency:
-      group: nightly-zenoh-probe-${{ github.ref }}-${{ github.event_name }}
-    permissions:
-      contents: read
-    steps:
-      # Full history: the probe container clones from this checkout
-      # (mounted read-only), and cloning from a shallow repo fails.
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Reclaim host disk
-        run: |
-          echo "before:"; df -h / | tail -1
-          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
-              /usr/share/dotnet /usr/local/.ghcup 2>/dev/null || true
-          echo "after:";  df -h / | tail -1
-
-      - name: Name the commit under test
-        run: git switch -c probe-under-test 2>/dev/null || git checkout -b probe-under-test
-
-      # Cold, as installed-probe is: this track runs the installed road too, so
-      # the two verdicts mean the same thing.
-      - name: Run zenoh interop probe
-        run: PROBE_BRANCH=probe-under-test PROBE_RELEASE_CACHE=0 PROBE_TRACK=zenoh ./scripts/probe/run-bootstrap-probe.sh
-
-      # Two roads in one hosted job is the disk-heaviest probe: print what is
-      # left, pass or fail, so a later ENOSPC reads as disk, not as a book defect.
-      - name: Disk after the probe
-        if: always()
-        run: df -h /
 
   # phase-411 — tier 2 NIGHTLY, actually invoked.
   #

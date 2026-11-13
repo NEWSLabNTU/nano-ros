@@ -43,7 +43,7 @@ installed:
 # ROS's `rmw_zenohd`), then replay the chapter's `probe=NN` blocks — setup,
 # scaffold, build, and each Run step, which must print the output block the
 # chapter documents beside it (`probe-expect`). Opt-in: never part of a tier or
-# a merge-gating lane; the weekly `probe-platforms` workflow runs every one.
+# a merge-gating lane; the weekly `weekly.yml` workflow runs every one.
 # PROBE_ASSET=<dir> skips the asset build (`platform-asset` below makes one).
 # `platform` is the one recipe; the named ones below spell each chapter.
 # Replay one platform chapter on the installed track (see the recipes below).

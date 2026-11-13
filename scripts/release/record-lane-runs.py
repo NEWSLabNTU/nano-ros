@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 
 LANES = {
     "daily": ("nightly.yml", "schedule"),
-    "weekly": ("probe-platforms.yml", "schedule"),
+    "weekly": ("weekly.yml", "schedule"),
     "merge": ("queue.yml", "merge_group"),
 }
 
@@ -83,7 +83,7 @@ def self_test() -> None:
     def fake(args):
         if args[:2] == ["run", "list"]:
             wf = args[args.index("--workflow") + 1]
-            if wf == "probe-platforms.yml":
+            if wf == "weekly.yml":
                 return []
             return [{"databaseId": 7, "conclusion": "failure", "createdAt": "2026-11-07T05:07:15Z",
                      "headSha": "abc", "url": "https://x/runs/7"}]

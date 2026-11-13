@@ -2,7 +2,7 @@
 """Every book probe track still EXTRACTS — phase-517 W10.
 
 `just probe <platform>` replays a chapter's `probe=NN` blocks in a container,
-tens of minutes per chapter, so it runs weekly (`probe-platforms.yml`) and not
+tens of minutes per chapter, so it runs weekly (`weekly.yml`) and not
 per push. What CAN be checked per push, for free, is that each track's script
 still assembles: the chapter's tags survive an edit, every `probe-run` step
 keeps the `probe-expect` output block it is asserted against (and every such
@@ -32,7 +32,7 @@ REPO = Path(__file__).resolve().parent.parent
 HARNESS = REPO / "scripts/probe/run-bootstrap-probe.sh"
 EXTRACTOR = REPO / "scripts/probe/extract-book-steps.py"
 # phase-522 W2 — the track list is generated from the board registry; this is
-# the same reader the harness and probe-platforms.yml use.
+# the same reader the harness and weekly.yml use.
 TRACK_LIST = REPO / "scripts/probe/probe-track.py"
 
 

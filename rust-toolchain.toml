@@ -24,7 +24,7 @@
 # The cost this buys is a recurring chore, and the risk it creates is drift —
 # a pin that ages silently is how a six-week bump becomes a sixty-site one.
 #
-# What keeps the pin from AGING silently is `.github/workflows/next-stable.yml`
+# What keeps the pin from AGING silently is `.github/workflows/weekly.yml` (job `next-stable`)
 # (issue 1642): weekly, advisory, it runs the merge-gating lint gates under
 # this pin and under the current `stable` and reports the sites a bump would
 # cost. Green there means the bump is free — take it. It gates nothing.

@@ -654,7 +654,7 @@ notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `qemu_cor
 # phase-517 W10): the chapter it replays and the `variant=` of the chapter's
 # blocks it selects. `scripts/gen-board-support.py` writes them to
 # `scripts/probe/probe-tracks.json`, which `run-bootstrap-probe.sh` resolves a
-# track from and `probe-platforms.yml` takes its weekly matrix from: the two
+# track from and `weekly.yml` takes its weekly matrix from: the two
 # lists that used to be typed separately.
 #
 #   track       the `just probe <track>` / PROBE_PLATFORM name
@@ -671,7 +671,7 @@ notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `qemu_cor
 #   also_rows   further board rows (crate@platform) a Tutorial chapter's steps
 #               run on, beside `row`; the chapter's generated status header
 #               names every row its tracks list, and each must be Verified
-#   weekly      true when `probe-platforms.yml` replays it every Monday
+#   weekly      true when `weekly.yml` replays it every Sunday
 #   row         the board row (crate@platform) whose evidence this is, if any
 #   qemu_board  the board the image is built for, when the run step boots QEMU;
 #               these are the ROWS of issue 2169's printed-run-command test

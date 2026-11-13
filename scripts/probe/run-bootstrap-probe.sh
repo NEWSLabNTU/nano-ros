@@ -169,7 +169,7 @@ else
 fi
 PROBE_VARIANT=""
 # phase-522 W2 — the track table is the board registry's `[[probe]]` list,
-# generated into probe-tracks.json; probe-platforms.yml reads the same file.
+# generated into probe-tracks.json; weekly.yml reads the same file.
 # Each track's history is its `notes` in packages/boards/board-support.toml.
 if ! track_row="$(python3 "$SCRIPT_DIR/probe-track.py" "$PROBE_PLATFORM")"; then
     exit 2
@@ -243,7 +243,7 @@ eval "$twin_env"
 # (CLAUDE.md: never a skip). Not under PROBE_EXTRACT_ONLY, which is the
 # per-push drift check and runs where no secret exists.
 if [[ -n "$NROS_TWIN_SECRET" && -z "${PROBE_EXTRACT_ONLY:-}" && -z "${!NROS_TWIN_SECRET:-}" ]]; then
-    echo "probe: [UNMET PRECONDITION] track $PROBE_PLATFORM boots $NROS_TWIN_BOARD in $NROS_TWIN_EMULATOR, which needs $NROS_TWIN_SECRET in the environment (in CI, the repository secret of that name; probe-platforms.yml passes it on schedule and dispatch)" >&2
+    echo "probe: [UNMET PRECONDITION] track $PROBE_PLATFORM boots $NROS_TWIN_BOARD in $NROS_TWIN_EMULATOR, which needs $NROS_TWIN_SECRET in the environment (in CI, the repository secret of that name; weekly.yml passes it on schedule and dispatch)" >&2
     exit 1
 fi
 if [[ "$PROBE_PLATFORM" != linux && "$PROBE_TRACK" != installed ]]; then

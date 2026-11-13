@@ -743,7 +743,7 @@ workflow-just-provisioning:
 # path. It runs the lint gates under an UNPINNED toolchain, so the day it gated a
 # merge it would re-create issue 1447: every pull request blocked on a compiler
 # nobody chose. Three properties keep it out, each a one-line edit from lost and
-# none of which would fail anything on the day it was lost: `next-stable.yml` is
+# none of which would fail anything on the day it was lost: `weekly.yml` (job `next-stable`) is
 # triggered on `schedule`/`workflow_dispatch` only, it is a separate file from
 # `gate.yml` (whose `ci-ok` job is the required `CI` context), and no job in it is
 # named `CI` (the ruleset requires that context by bare name). Also checks the

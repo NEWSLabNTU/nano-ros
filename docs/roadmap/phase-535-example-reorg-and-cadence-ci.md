@@ -838,7 +838,7 @@ gate landed. Items 2 to 5 are open.
   - `daily` is served by the nightly `platform` job's `just test <platform>`
     over its `runnable` set, or, for a host witness row, by run-matrix.yml's
     scheduled `tier1` job running `just ci tier1`.
-  - `weekly` is served by `probe-platforms.yml`'s scheduled `chapter` job
+  - `weekly` is served by `weekly.yml`'s scheduled `chapter` job (was `probe-platforms.yml`, phase-559 W4)
     with weekly tracks. `manual` needs no job.
   - An unserved row fails unless `.config/cadence-job-baseline.toml` lists it
     with a reason and an issue, and the baseline only shrinks. One entry:
