@@ -172,6 +172,9 @@ cargo_config = '''
 # Regenerate on toolchain bumps:
 #   rustc -Z unstable-options --print target-spec-json \
 #     --target riscv32imac-unknown-nuttx-elf   (then re-apply the two deltas)
+# Last compared with nightly-2026-04-11 (the `nightly-*` row of
+# config/rust-toolchains.txt), 2026-11-13: the file equals that output plus
+# exactly the two deltas above, and nothing else differs.
 [build]
 target = "${workspace}/packages/boards/nros-board-nuttx-qemu/riscv32imac-unknown-nuttx-elf.json"
 
