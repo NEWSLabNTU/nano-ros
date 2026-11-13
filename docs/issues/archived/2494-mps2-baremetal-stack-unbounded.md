@@ -1,11 +1,13 @@
 ---
 id: 2494
 title: "mps2-an385 bare metal: the main stack has no size and no guard, so an overflow corrupts RAM silently"
-status: open
+status: resolved
 type: bug
 area: boards, memory
 related: [phase-553, phase-557, issue-2265, issue-2400]
 found: 2026-11-13
+resolved: 2026-11-13
+resolved_in: "phase-553 W7: a stated main stack (NROS_BAREMETAL_STACK_KB), an MPU guard below it with a HardFault report, and the C-rooted _sbrk capped at the guard"
 ---
 
 ## What is wrong
@@ -37,3 +39,22 @@ Issue 2400 W5 (the cargo-leaf stack-floor CHECK) compares a measured floor again
 3. **A knob.** The stated size is something a user can raise. Issue 2400 W5b then CHECKs the walked floor against it.
 
 phase-553 W1 is already deciding the heap layout ("newlib's `_sbrk` region and the Rust allocator's arena must not overlap"). The stack limit belongs in the same link script (`c-runtime.x` on that road).
+
+## Resolution
+
+phase-553 W7 fixed it for every mps2-an385 bare-metal image, cargo-rooted and
+C-rooted. The phase doc records the design and the measurements.
+
+1. **A stated stack.** `memory.x` takes `_stack_size` from `nros-stack.x`,
+   which the board's build script writes from `NROS_BAREMETAL_STACK_KB`
+   (default 256 KiB). `ASSERT`s fail the link when the statics reach the
+   stack's guard, and name the knob.
+2. **A guard.** A 1 KiB MPU region with no access sits below the stack,
+   armed at boot. An overflow faults into the board's HardFault handler,
+   which prints `nros: stack overflow: …` and exits QEMU with a failure
+   status. The C-rooted image's `_sbrk` stops at the guard (`ENOMEM`).
+   Flip-link was measured and rejected: QEMU's mps2-an385 does not fault on a
+   write below the SRAM base.
+3. **A knob.** The board writes `nros-stack-stated.json` (root `main`), so
+   the floor check can compare against it once `nros build` arms it for this
+   platform (issue 2400).

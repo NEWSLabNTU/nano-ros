@@ -480,6 +480,10 @@ fn init_serial(config: &Config) {
 /// Panics if hardware initialization fails (Ethernet, network stack).
 /// Must be called exactly once before any nros operations.
 pub fn init_hardware(config: &Config) {
+    // phase-553 W7 (issue 2494) — guard the main stack first, before anything
+    // deepens it.
+    crate::stack_guard::install();
+
     // Initialize CMSDK Timer0 as the monotonic clock source.
     // This must happen before any clock reads (including smoltcp interface
     // creation which reads the clock). On QEMU, pair with

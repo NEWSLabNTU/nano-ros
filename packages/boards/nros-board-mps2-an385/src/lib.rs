@@ -43,6 +43,9 @@ mod entry;
 #[cfg(feature = "ethernet")]
 pub mod network;
 mod node;
+// phase-553 W7 (issue 2494) — the main stack's MPU guard, armed at boot by
+// `init_hardware`, and the HardFault handler that reports an overflow.
+pub mod stack_guard;
 // phase-337 W6.a — the RTIC entry surface, formerly the separate
 // `nros-board-rtic-mps2-an385` crate. Behind a feature so the direct-exec
 // consumers don't pull heapless / the PAC / the `nros` umbrella.

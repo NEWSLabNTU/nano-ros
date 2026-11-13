@@ -311,6 +311,7 @@ lan9118_receive
 qemu_net_queue
 
 # Arm: CMSIS, semihosting, instructions, the STM32 reference manual
+MSPLIM
 ADP_Stopped_ApplicationExit
 CPS
 SYS_EXIT
