@@ -5017,6 +5017,26 @@ pub fn build_native_param_two_node_talker_cyclonedds() -> TestResult<&'static Pa
         .map(|p| p.as_path())
 }
 
+/// Issue 2492 — the two-node image with a liveliness pool of 4
+/// (`[image.linux_short_liveliness]`, row
+/// `param-two-node-talker-short-liveliness`), too small for its ~18 tokens, so
+/// a run exhausts the pool. Consumed by
+/// tests/hosted_pool_exhaustion_console.rs.
+pub fn build_native_param_two_node_talker_short_liveliness() -> TestResult<&'static Path> {
+    static BINARY: OnceCell<PathBuf> = OnceCell::new();
+    BINARY
+        .get_or_try_init(|| {
+            let dir = "packages/testing/nros-tests/bins/param-two-node-talker";
+            migrated_leaf_binary(
+                dir,
+                crate::fixtures::Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Image("linux_short_liveliness"),
+            )
+            .unwrap_or_else(|| Err(not_migrated(dir)))
+        })
+        .map(|p| p.as_path())
+}
+
 /// Resolve the prebuilt `int32-sink` fixture (cached).
 ///
 /// phase-277 W4: was `examples/linux/rust/listener` with its `NROS_SUB_TOPIC`

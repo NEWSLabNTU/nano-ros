@@ -1189,6 +1189,17 @@ fn has_destination() -> bool {
     !SINKS_PTR.load(Ordering::Acquire).is_null() || ADDED.len.load(Ordering::Acquire) > 0
 }
 
+/// Whether any sink is installed ([`init`] or [`add_sink`]).
+///
+/// Issue 2492 — for a boot hook that installs a DEFAULT only when nobody chose
+/// one: a record raised with no sink is held in the early ring and reaches no
+/// console until something installs a sink, so a hosted image that never
+/// called a board funnel lost every framework diagnostic.
+#[must_use]
+pub fn sinks_installed() -> bool {
+    has_destination()
+}
+
 /// Hand `record` to every sink, appended ones first. Called with the dispatch
 /// guard held.
 fn deliver(record: &Record<'_>) {

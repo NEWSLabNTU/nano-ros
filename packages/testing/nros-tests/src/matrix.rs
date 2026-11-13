@@ -1268,6 +1268,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ),
     ("generated_message_code_compiles", NonCell::CompileCheck),
     (
+        "hosted_pool_exhaustion_console",
+        NonCell::Probe(
+            "a killed hosted image keeps its pool-exhaustion diagnostics on the console (issue 2492)",
+        ),
+    ),
+    (
         "image_config_workspace",
         NonCell::Probe("a per-image config knob reaches the image"),
     ),

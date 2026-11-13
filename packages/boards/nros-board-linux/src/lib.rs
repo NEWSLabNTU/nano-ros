@@ -157,8 +157,20 @@ impl BoardExit for LinuxBoard {
 /// no-op. Apps that boot through `nros::main!()` or any `BoardEntry::run*` /
 /// `run_sched_tasks` entry point never need to call this themselves — every boot path
 /// below funnels through `boot_hosted` / `run_sched_tasks`, which call it.
+///
+/// Issue 2492 — it is also where such a `main` gets its log sinks. The
+/// framework's diagnostics (`nros-rmw-zenoh`'s pool-exhaustion record first)
+/// go through `nros_log`, which HOLDS a record until a sink is installed, and
+/// a plain-API image reached no call that installs one: the record that
+/// explains a missing graph token sat in the early ring until the process
+/// died. So this installs the platform default (host stderr) when no sink is
+/// installed yet, and replays what was held. A `main` that installed its own
+/// sinks first keeps them; one that installs them later replaces these.
 #[inline]
 pub fn register_linked_rmw() {
+    if !::nros_log::sinks_installed() {
+        ::nros_platform_cffi::log::init_default();
+    }
     #[cfg(feature = "rmw-zenoh")]
     {
         let _ = nros_rmw_zenoh::register();

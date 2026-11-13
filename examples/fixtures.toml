@@ -2593,6 +2593,21 @@ bringup = "src/param_two_node_talker_bringup"
 image = "linux"
 target_dir = "target-linux"
 
+# issue 2492 — the SAME two-node image with a liveliness pool of 4
+# (`[image.linux_short_liveliness]`), so a run exhausts it. The test asserts
+# that both exhaustion diagnostics reach the captured console of an image a
+# harness KILLS, which is how every test stops one. Consumed by
+# tests/hosted_pool_exhaustion_console.rs.
+[[workspace_fixture]]
+id = "param-two-node-talker-short-liveliness"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/param-two-node-talker"
+bringup = "src/param_two_node_talker_bringup"
+image = "linux_short_liveliness"
+target_dir = "target-linux-short-liveliness"
+
 # issue 1268 / phase-444 W6 — the SAME two-node image on Cyclone.
 #
 # Cyclone creates a service only if its request and reply types have a registered

@@ -27,3 +27,15 @@ entry = "param-two-node-talker"
 [image.linux_cyclonedds]
 entry = "param-two-node-talker"
 rmw = "cyclonedds"
+
+# Issue 2492 — the SAME image with a liveliness pool too small for it. Two
+# nodes, two publishers and two sets of six parameter services want ~18
+# tokens; 4 makes the zenoh shim refuse most of them, which is the pool
+# exhaustion whose two diagnostics (the C shim's and `nros-rmw-zenoh`'s) a
+# killed hosted image used to lose. Consumed by
+# tests/hosted_pool_exhaustion_console.rs.
+[image.linux_short_liveliness]
+entry = "param-two-node-talker"
+
+[image.linux_short_liveliness.knobs.zenoh]
+max_liveliness = 4
