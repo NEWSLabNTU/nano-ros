@@ -118,6 +118,11 @@ and ignore the rest.
 | nano-ros with safety | nano-ros without, or ROS 2 | ignored | not tracked | works, no protection |
 | nano-ros without, or ROS 2 | nano-ros with safety | `None` | tracked | delivered, `is_valid()` false |
 
+This includes every stock ROS 2 node. On zenoh, a nano-ros subscriber with
+safety receives a ROS 2 node's messages normally, and reports every one of
+them as not valid: `is_valid()` is false and `crc_valid` is `None`, because
+ROS 2 sends no CRC. Earlier releases reported them as valid.
+
 So mixing protected and unprotected nodes degrades protection; it never
 stops traffic. A subscriber that wants to accept messages from an unprotected
 publisher reads `crc_valid` itself and decides; `is_valid()` never vouches for
@@ -149,9 +154,12 @@ and the state machine are missing.
 The CRC and the validator have Verus proofs: the CRC is deterministic and
 detects a single flipped bit, the expected sequence advances on a normal
 message, a gap is reported as exactly the number of missing messages, and
-`is_valid` holds exactly when there is no gap, no duplicate and no known-bad
-CRC. The proofs run against a model of the validator's state, which the
-production tests tie to the real type.
+`is_valid` holds exactly when there is no gap, no duplicate and a CRC that
+was checked and matched. The proofs run against a model of the validator's
+state, which the production tests tie to the real type. The `is_valid` proof
+has not been re-run since `is_valid` began requiring a checked CRC: the Verus
+toolchain currently fails before it reaches these proofs. The production
+tests cover the new rule.
 
 ## Where nano-ros differs from ROS 2
 
@@ -159,8 +167,9 @@ ROS 2's client libraries and `rmw_zenoh` do not check a message end to end;
 a ROS 2 subscriber gets the message and its info, and nothing else. nano-ros
 adds the check below the client API, so it is a system feature you declare
 in the bringup, not code in a node. A ROS 2 peer still talks to a protected
-nano-ros node, but its messages carry no CRC, and a protected nano-ros
-publisher's CRC is invisible to it.
+nano-ros node, but its messages carry no CRC, so a protected subscriber
+reports them as not valid while still delivering them, and a protected
+nano-ros publisher's CRC is invisible to it.
 
 ## Design background
 

@@ -149,7 +149,9 @@ book's safety page says the build refuses `safety` on Cyclone DDS or XRCE-DDS.
 `crc_valid == Some(true)`. `None` (no CRC: a non-safety publisher, or a backend
 default that checked nothing) is no longer valid. The Verus model
 (`integrity_is_valid`, proof 5) and the production/ghost correspondence test
-moved with it. The C and C++ surfaces were already strict (`crc_valid == 1`).
+moved with it; the Verus spec change is UNPROVEN, because the Verus lane
+cannot run at all (issue 2499). The C and C++ surfaces were already strict
+(`crc_valid == 1`).
 Behaviour change: a safety subscriber on zenoh now reports a sample from a
 publisher built without safety as not valid. It is still delivered.
 

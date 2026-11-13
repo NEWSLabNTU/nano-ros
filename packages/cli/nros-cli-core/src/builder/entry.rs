@@ -1569,7 +1569,11 @@ mod tests {
     #[test]
     fn a_cmake_only_backend_the_board_does_not_link_is_refused() {
         let idx = cargo_nano_ros::rmw_resolver::test_support::in_tree_index();
-        let sys = d15_sys("freertos", "cyclonedds", "");
+        // `d15_sys` declares `safety`, which cyclonedds does not carry and the
+        // selection refuses (issue 2487) before D15's question is asked. This
+        // test is about the backend link, so it declares no capability.
+        let mut sys = d15_sys("freertos", "cyclonedds", "");
+        sys.system.features.clear();
         let mut s = d15_spec(&idx, "freertos", &sys, "nros-board-mps2-an385-freertos");
         let e = render_manifest(&s, &freertos(), Path::new(DIR)).unwrap_err();
         assert!(
