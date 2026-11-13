@@ -46,11 +46,7 @@ WHAT IS OUT OF SCOPE, and why
   * `examples/**`, `packages/testing/**/fixtures/**`, `integrations/**` — a
     consumer writing `target_link_libraries(<my_app> PRIVATE NanoRos::NanoRos)`
     is using the published API, and that line is what the book tells a user to
-    write. `integrations/nuttx/CMakeLists.txt` surfaces the umbrella on NuttX's
-    `apps` INTERFACE target; NuttX has no Rust-staticlib app seam
-    (`CRATE_TYPES staticlib` appears once in the tree, in the ThreadX RV64
-    board), so rule 2 cannot fire there, while the literal name is what the
-    NuttX board walkers match.
+    write.
   * `cmake/NanoRosRuntimeUmbrella.cmake` itself — it IS the resolver.
 """
 

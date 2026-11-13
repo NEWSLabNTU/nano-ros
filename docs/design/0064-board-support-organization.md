@@ -94,8 +94,9 @@ That is **every ESP32 part supported**, with no board crate, no board module, no
 NROS_BOARD requirement — IDF supplies every artefact the FreeRTOS board
 overlays would have shipped."*
 
-The same shape already exists for NuttX (`integrations/nuttx/` — CMake entry plus
-Kconfig/Make.defs siblings for the make-driven configs), PX4, PlatformIO, and
+The same shape already exists for NuttX (`integrations/nuttx/` — Kconfig, `Make.defs`
+and a `Makefile` for NuttX's make build; its CMake entry was deleted by
+RFC-0126 decision 16), PX4, PlatformIO, and
 Zephyr (nano-ros ships `zephyr/module.yml` declaring `build.cmake`,
 `build.kconfig`, `snippet_root`, and Twister `samples`). Four ecosystems, all
 integrated, none of them enumerated dimension by dimension.
