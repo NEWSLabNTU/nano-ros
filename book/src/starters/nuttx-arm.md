@@ -24,8 +24,9 @@ and every tab on the page follows.
   ([which edition](../start/install.md#install-ros-2-first)). ROS 2 provides the zenoh
   router the board talks to, and the message definitions the build generates
   the talker's code from.
-- Two host packages the NuttX kernel build uses, the Python venv module and
-  `unzip`. The provision step installs them for you when you allow it.
+- Two host packages the NuttX kernel build uses: the kconfig-frontends
+  tools, which configure the kernel, and `unzip`. The provision step
+  installs them for you when you allow it.
 
 No board, no cable: QEMU's user-mode network carries the guest's ethernet to
 your machine, with no TAP device to create. WiFi is deferred to the Zephyr
@@ -41,7 +42,7 @@ That fetches the NuttX cross-compiler, the QEMU that emulates the machine, and
 the NuttX kernel and apps sources into a shared store under `~/.nros`. Before
 it downloads anything it names the host packages that are missing, and
 `--sudo` lets it run the one install command it composed for your package
-manager (`sudo apt-get install -y python3-venv unzip` on Debian or Ubuntu).
+manager (`sudo apt-get install -y kconfig-frontends-nox unzip` on Debian or Ubuntu).
 Leave `--sudo` off and it only prints that command. It installs no router:
 the router is ROS's `rmw_zenohd`.
 
@@ -148,7 +149,7 @@ which receives nothing from it. That is why the command asks for best-effort.
 
 ## If it doesn't work
 
-- **`nros setup` stops and names `python3-venv` or `unzip`:** you left
+- **`nros setup` stops and names `kconfig-frontends-nox` or `unzip`:** you left
   `--sudo` off. Run the command it printed, or run the step again with
   `--sudo`.
 - **No `Publishing:` line within a minute of boot:** the talker did not reach

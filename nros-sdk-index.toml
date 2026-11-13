@@ -1133,13 +1133,12 @@ builds_in_place = true
 # Issue 2068 — host tools the KERNEL BUILD needs, asked by `nros setup <board>`
 # before anything is fetched (the same plan code that reads a `[tool.*]`
 # `system`). `unzip`: NuttX's own build downloads and unpacks the `dtc` and
-# `libmetal` archives. `python3-venv`: with no `kconfig-frontends` on the host,
-# `scripts/nuttx/build-nuttx.sh` provisions `kconfiglib` into a venv. That one
-# is an ALTERNATIVE to `[prereq.kconfig-frontends]`, which the prereq model has
-# no way to say (its `providers` order ways to satisfy ONE key, not a choice
-# between keys), so the venv is asked for: it is the route that works on every
-# host and needs no sudo at build time.
-system = ["python3-venv", "unzip"]
+# `libmetal` archives. `kconfig-frontends`: the board configs are fragments
+# that NuttX's own `tools/configure.sh` expands and resolves, and its host step
+# runs `kconfig-tweak`, which only the kconfig-frontends tools ship (a
+# kconfiglib venv has no `kconfig-tweak`, so that route is gone). Maintainer
+# ruling 2026-11-13: a NuttX build requires the distro package.
+system = ["kconfig-frontends", "unzip"]
 env = "NUTTX_DIR"
 version = "12.13.0"
 dest = "third-party/nuttx/nuttx"
@@ -2156,9 +2155,10 @@ check = { pkg_config = "python3" }
 role = "buildtool"
 # phase-468 W2 — "ESP-IDF install" was the first half of this reason and went
 # with the port. The second half is what keeps the row: `scripts/zephyr/setup.sh`
-# and `scripts/zephyr/provision-py312-venv.sh` build west venvs, and
-# `scripts/nuttx/build-nuttx.sh` builds a kconfiglib one.
-why = "west + kconfiglib tool venvs (issue 0368 F7)"
+# and `scripts/zephyr/provision-py312-venv.sh` build west venvs. (The NuttX
+# build no longer builds a kconfiglib one: it requires
+# `[prereq.kconfig-frontends]`.)
+why = "west tool venvs (issue 0368 F7)"
 apt = ["python3-venv"]
 dnf = ["python3"]
 pacman = ["python"]
@@ -2244,9 +2244,11 @@ apt = ["picolibc-riscv64-unknown-elf"]
 
 [prereq.kconfig-frontends]
 role = "workspace"
-why = "NuttX configuration (kconfig-conf/kconfig-mconf)"
+why = "NuttX configuration: tools/configure.sh runs kconfig-tweak, olddefconfig runs kconfig-conf"
 apt = ["kconfig-frontends-nox"]
-check = { cmd = "kconfig-conf" }
+# `kconfig-tweak`, not `kconfig-conf`: it is the one only this package ships
+# (a kconfiglib install provides an `olddefconfig` and no `kconfig-tweak`).
+check = { cmd = "kconfig-tweak" }
 
 # --- Rust layer (phase-327 W1) ----------------------------------------------
 #

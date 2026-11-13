@@ -490,9 +490,23 @@ and `scripts/nuttx/build-nuttx.sh` calls `tools/configure.sh` instead of
 copying the defconfig and running `olddefconfig` itself.
 
 - Gate: cleared (Q17 yes, ruled 2026-11-12).
+- **Ruling (2026-11-13, maintainer, option a):** a NuttX build REQUIRES the
+  distro kconfig-frontends tools (`kconfig-frontends-nox` on Debian and
+  Ubuntu). `configure.sh`'s host step (`tools/sethost.sh`) runs
+  `kconfig-tweak` unconditionally, and only that package ships it; the
+  self-provisioned kconfiglib venv had none, so it is retired rather than kept
+  as a second path. Measured for the ruling: the package exists with
+  `/usr/bin/kconfig-tweak` on Ubuntu 22.04, 24.04 and 26.04; Homebrew has no
+  kconfig formula, and NuttX's docs tell macOS and Fedora users to build it
+  from source. No macOS support is claimed.
 - **Acceptance:** the resolved `.config` of each board is byte-identical
-  before and after (modulo `CONFIG_BASE_DEFCONFIG`); the kconfig frontend
-  `configure.sh` needs is provisioned by `nros setup`, never by hand.
+  before and after (modulo `CONFIG_BASE_DEFCONFIG`); `nros setup <board>`
+  asks for the kconfig-frontends tools (`[source.nuttx-kernel] system`) and
+  `--sudo` installs them, and a host without them is refused with the install
+  line, never configured by hand.
+- **Status:** OPEN (fragments, configure helper, index row and docs written
+  2026-11-13; the before/after `.config` comparison and the kernel builds on
+  both arches pending).
 
 ### W11 -- The boot entry
 
