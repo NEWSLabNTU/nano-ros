@@ -210,9 +210,30 @@ the user ruled; all five stand:
 - **Status:** OPEN — W5a DONE (#3727, 2026-11-13). W5b's tool landed in
   #3731: `merge-runtime.yml` (`lane: tier1`). Issue 2475's provisioning
   defects 1-3 are fixed (#3733), defect 4 (tree-wide codegen) is
-  [phase-535](phase-535-example-reorg-and-cadence-ci.md) W10, and the
-  re-measure is dispatched (runs 43420012895 on main, 43422521724 with W10).
-  Remains: the W5b numbers, recorded here, then the move or the user's call.
+  [phase-535](phase-535-example-reorg-and-cadence-ci.md) W10, and both
+  re-measures ran (43420012895 on main, 43438754804 with W10). Remains: the
+  three shard reds below (linux disk, issues 2510 and 2511), then the move or
+  the user's call.
+
+  Third measurement, run 43438754804 (2026-11-13, W10 branch at 7bff8a9356,
+  fixture build logs uploaded this time). Time to first fixture fell to
+  38.7 / 24.3 / 16.7 min (linux / threadx_linux / zephyr), from 43.6 / 48.2 /
+  49.0. The per-step split is in phase-535 W10. Every shard reached its fixture
+  build and failed in it:
+
+  | shard | job | free at start | failed on |
+  | --- | --- | --- | --- |
+  | linux | 141.5 min | 74 G | ENOSPC writing an `nros-cpp` rmeta (`build/sizes-probe`), 97 min into the fixture build (14:45 first fixture, 16:22 failure), on row `workspace-cpp-native-talker-cyclonedds`; 77 rows had finished |
+  | threadx_linux | 91.8 min | 74 G | `build-compile-check-fixtures`: two FreeRTOS cross-build rows, `freertos-kernel` not provisioned ([issue 2510](../issues/2510-compile-check-cross-rows-unprovisioned-kernel.md)); the same exit as the before-run |
+  | zephyr | 64.4 min | 50 G | `west_board_import`: the image bakes SDK 0.17.4, the 3.7 workspace pins 0.16.9 ([issue 2511](../issues/2511-zephyr-ci-image-lacks-pinned-sdk.md)); 6 of 7 west fixtures built |
+
+  **Disk, linux: does not fit, measured twice.** The second run had 74 G free
+  and ran out at the same file the first did. The before-run's cyclonedds
+  `MultiArrayDimension_` error did not recur, so it was ENOSPC fallout, and the
+  zephyr xrce row that failed before built this time. Neither is filed.
+  threadx_linux and zephyr stopped on the two issues above, so their disk
+  answer is still open. Their disk report was never reached: the step's
+  `disk-report.sh "after just build tier1"` line sits behind the failing build.
 
   Second measurement, run 43420012895 (2026-11-13, main, before W10): all
   three shards REACHED their fixture build, so 2475's defects 1-3 hold. Time

@@ -78,9 +78,17 @@ self-hosted runner.
    **Now [phase-535 W10](../roadmap/phase-535-example-reorg-and-cadence-ci.md)**
    (coordinator go 2026-11-13 for its items 1-2; the `check::fast` edge stays).
    `_codegen <lane>` generates only the codegen units the lane's rows live in.
+   Measured on run 43438754804: time to first fixture is now 38.7 / 24.3 /
+   16.7 min (linux / threadx_linux / zephyr), from 43.6 / 48.2 / 49.0.
 4. phase-559 W7 (the `CI` aggregator change) stays last and alone.
 
 ## Done when
 
 A dispatch of `merge-runtime.yml` reaches `just ci merge` on all three shards,
 and `scripts/ci/merge-runtime-p95.py` reports samples.
+
+Still blocked after defect 4 (tier1 after-run 43438754804, all three shards
+red in the fixture build): the linux shard runs out of disk (phase-559 W5b);
+threadx_linux fails on [issue 2510](2510-compile-check-cross-rows-unprovisioned-kernel.md);
+zephyr fails on [issue 2511](2511-zephyr-ci-image-lacks-pinned-sdk.md). The
+`merge` lane reaches the same fixture build, so expect the same three.
