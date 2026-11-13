@@ -62,7 +62,7 @@ its own unit; without the row it only warns.
 
 ### W2b — Raise the stack automatically, opt-in
 
-- **Status:** DONE (2026-11-13, #PRNUM)
+- **Status:** DONE (2026-11-13, #3728)
 
 **No pre-link edge is possible.** heap_4 hands out the task stack, and
 `configTOTAL_HEAP_SIZE` is fixed at configure, before anything is linked
