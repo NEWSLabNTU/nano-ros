@@ -32,7 +32,7 @@ and the questions for the user.
 | 0112 | Frameworks through one host-driven contract | amend (133): Tier 0 withdrawn, D5 not done (brief P6) | status line fixed in #3673 |
 | 0114 | Board support registry | keep (133) | review note |
 | 0115 | Emulator-first board policy | keep (133) | review note |
-| 0118 | Target execution model | keep. Reviewed by 139 AUO book in the docs-ux-diagnostics slice, which moved its area here (#3657) | area moved |
+| 0118 | Target execution model | keep. Reviewed by 139 AUO book in the docs-ux-diagnostics slice, which moved its area here ([phase-555-w2-docs-ux-diagnostics.md](phase-555-w2-docs-ux-diagnostics.md)) | area moved |
 
 Tier 2 pairs, read in the newer RFC's own words:
 
