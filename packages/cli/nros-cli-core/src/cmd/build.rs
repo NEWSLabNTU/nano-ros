@@ -1672,6 +1672,11 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     "--config".to_string(),
                     config_arg.clone(),
                 ];
+                // phase-550 W3b — NuttX's CPU flags, from the kernel export.
+                if let Some(cpu) = nuttx_cpu_config_for(descriptor, nros_root) {
+                    a.push("--config".to_string());
+                    a.push(cpu.display().to_string());
+                }
                 if !owned_features.is_empty() {
                     a.push("--features".to_string());
                     a.push(owned_features.join(","));
@@ -3061,6 +3066,11 @@ fn plan_leaf_image(
     eprintln!("nros build:   settings → {}", img.config_path.display());
 
     let (cwd, mut a) = crate::cmd::leaf_settings::build_command(&img);
+    // phase-550 W3b — NuttX's CPU flags, from the kernel export.
+    if let Some(cpu) = nuttx_cpu_config_for(descriptor, &nros_root) {
+        a.push("--config".to_string());
+        a.push(cpu.display().to_string());
+    }
     // RFC-0104 D3 (phase-485 W2): a leaf with no lock starts from the registry
     // pin set, and is resolved ONCE before the build — the same prepare step a
     // generated entry takes above, because `--frozen` (and the PATH shim's
@@ -9212,24 +9222,82 @@ fn nuttx_kernel_step(
             script.display()
         );
     }
+    let cpu_config = nuttx_cpu_config_path(nros_root, &defconfig);
     let mut h = Handoff::new("bash", [script.into_os_string()])
         .with_env("NUTTX_DEFCONFIG", defconfig.into_os_string());
     for (k, v) in nuttx_env_rows(descriptor.cargo_config.as_deref()) {
         h = h.with_env(k, v);
     }
-    if let Ok(index) =
-        crate::orchestration::sdk_index::SdkIndex::load(&nros_root.join("nros-sdk-index.toml"))
-    {
-        for (env, source) in [
-            ("NUTTX_DIR", "nuttx-kernel"),
-            ("NUTTX_APPS_DIR", "nuttx-apps"),
-        ] {
-            if let Ok(p) = crate::cmd::locate::locate_source(&index, nros_root, source) {
-                h = h.with_env(env, p.into_os_string());
-            }
+    if let Some((nuttx_dir, apps_dir)) = nuttx_trees(nros_root) {
+        h = h.with_env("NUTTX_DIR", nuttx_dir.into_os_string());
+        if let Some(apps) = apps_dir {
+            h = h.with_env("NUTTX_APPS_DIR", apps.into_os_string());
         }
     }
+    // Read back by [`run_kernel_step`], which refuses the build when the step
+    // left no CPU config behind.
+    h = h.with_env(NUTTX_CPU_CONFIG_ENV, cpu_config.into_os_string());
     Ok(Some(h))
+}
+
+/// phase-550 W3b — the env key carrying [`nuttx_cpu_config_path`] on the
+/// kernel step, for [`run_kernel_step`]'s check.
+const NUTTX_CPU_CONFIG_ENV: &str = "NROS_NUTTX_CARGO_CPU_CONFIG";
+
+/// `nros locate`'s NuttX kernel and apps trees, when the index answers.
+fn nuttx_trees(nros_root: &Path) -> Option<(PathBuf, Option<PathBuf>)> {
+    let index =
+        crate::orchestration::sdk_index::SdkIndex::load(&nros_root.join("nros-sdk-index.toml"))
+            .ok()?;
+    let kernel = crate::cmd::locate::locate_source(&index, nros_root, "nuttx-kernel").ok()?;
+    let apps = crate::cmd::locate::locate_source(&index, nros_root, "nuttx-apps").ok();
+    Some((kernel, apps))
+}
+
+/// phase-550 W3b — the cargo config the kernel step writes beside the export:
+/// `<nuttx>/nros-nuttx-export-<config id>/nros-cargo.toml`, NuttX's CPU flags
+/// (`ARCHCPUFLAGS`) as rustflags and cc-rs flags. The config id is the
+/// defconfig's directory name, as `build-nuttx.sh` derives it. Every cargo run
+/// for a NuttX image passes it with `--config`, so no CPU flag is restated.
+/// Known at plan time; it exists once the kernel step has run.
+fn nuttx_cpu_config_path(nros_root: &Path, defconfig: &Path) -> PathBuf {
+    let nuttx_dir = nros_build_paths::env_path("NUTTX_EXPORT_DIR")
+        .map(|export| (export, true))
+        .or_else(|| nuttx_trees(nros_root).map(|(k, _)| (k, false)))
+        .unwrap_or_else(|| (nros_root.join("third-party/nuttx/nuttx"), false));
+    let export = match nuttx_dir {
+        (export, true) => export,
+        (tree, false) => {
+            let id = defconfig
+                .parent()
+                .and_then(Path::file_name)
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            tree.join(format!("nros-nuttx-export-{id}"))
+        }
+    };
+    export.join("nros-cargo.toml")
+}
+
+/// [`nuttx_cpu_config_path`] for a NuttX board, or `None` for any other
+/// board (or one with no `[board.net] kernel_config`, which the kernel step
+/// refuses on its own).
+fn nuttx_cpu_config_for(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    nros_root: &Path,
+) -> Option<PathBuf> {
+    use crate::orchestration::board_descriptor::PlatformKind;
+    if descriptor.platform != PlatformKind::Nuttx {
+        return None;
+    }
+    let src = nros_root.join(descriptor.source.as_deref()?);
+    let rel = crate::orchestration::image_net::board_net(&src, &descriptor.names[0])
+        .ok()?
+        .kernel_config?;
+    let defconfig = src
+        .parent()
+        .map_or_else(|| PathBuf::from(&rel), |d| d.join(&rel));
+    Some(nuttx_cpu_config_path(nros_root, &defconfig))
 }
 
 /// The `NUTTX_*` string rows of a board `cargo_config`'s `[env]`.
@@ -9319,6 +9387,21 @@ fn run_kernel_step(h: &Handoff) -> Result<()> {
             "NuttX kernel configure/export failed ({status}): {}",
             h.display()
         );
+    }
+    // phase-550 W3b — the export's CPU config is how cargo learns NuttX's CPU
+    // flags; there is no fallback flag, so its absence stops the build here
+    // rather than as cargo's unrelated "dotted key expression" error.
+    if let Some((_, cfg)) = h.env.iter().find(|(k, _)| k == NUTTX_CPU_CONFIG_ENV) {
+        let cfg = Path::new(cfg);
+        if !cfg.is_file() {
+            eyre::bail!(
+                "the NuttX kernel step left no {}: that file carries the CPU flags NuttX \
+                 built the kernel with (its export's ARCHCPUFLAGS), and nothing else \
+                 states them. Rebuild the kernel: {}",
+                cfg.display(),
+                h.display()
+            );
+        }
     }
     Ok(())
 }

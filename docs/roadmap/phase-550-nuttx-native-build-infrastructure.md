@@ -141,7 +141,40 @@ looks`).
 - **Acceptance:** W1 green on rv-virt; `git grep` finds `cortex-a7` /
   `neon-vfpv4` / `rv32imac` flag literals only where W3b's ruling allows; a
   gate refuses a new copy.
-- **Status:** OPEN (W3a done 2026-11-13; W3b not started).
+- **Status:** DONE (W3a 2026-11-13, W3b 2026-11-14).
+  **W3b.** NuttX states its CPU flags once: the export's `scripts/Make.defs`
+  `ARCHCPUFLAGS`. One reader, `nros_build_paths::nuttx_export_make_var`.
+  - `build-nuttx.sh` writes `<export>/nros-cargo.toml` beside the snapshot,
+    only when its text changes. It holds
+    `[target.'cfg(target_os = "nuttx")'] rustflags = ["-C",
+    "link-args=<ARCHCPUFLAGS>"]`, which cargo joins with the board's own
+    triple rustflags, and `[env] TARGET_CFLAGS` / `TARGET_CXXFLAGS`, cc-rs's
+    cross spelling. Every cargo run for a NuttX image passes it with
+    `--config`: `nros build` on the workspace and leaf cargo roads, and the
+    cmake road's `nros_nuttx_build_example`. The make road keeps
+    `$(ARCHCPUFLAGS)` (W3a).
+  - A missing file stops the build after the kernel step and names the
+    kernel rebuild; there is no fallback flag. The board build scripts
+    (`nuttx_export::cpu_flags`) read the same value and watch both
+    `Make.defs` and `nros-cargo.toml`, so a rebuilt kernel reruns them.
+  - Deleted: the CPU rustflags and `CFLAGS_<triple>` rows of both boards'
+    `cargo_config`, riscv's `NUTTX_{ARCH,PLATFORM,LIBGCC}_CFLAGS`, both FFI
+    crates' copies, `riscv-env.sh`'s, and the build-script defaults. The
+    cmake toolchain files carry no CPU flags at all. Measured: no object
+    CMake compiles reaches a NuttX image (cargo compiles and links it all),
+    so a flag there could only be a stale copy.
+  - Two values moved to NuttX's. The arm FFI app compile used its own
+    `vfpv3-d16` beside the kernel's `neon-vfpv4`, and now uses
+    `neon-vfpv4 -mlittle-endian`. riscv moved from `rv32imac` to NuttX's
+    `rv32imac_zicsr_zifencei`.
+  - Gate: `check-nuttx-cpu-flag-copies` refuses a non-comment
+    `-mcpu`/`-mfpu`/`-mfloat-abi`/`-march`/`-mabi` in any NuttX build file,
+    with no allowlist. Against main's files before W3b it reports 32
+    copies.
+  - Measured: every NuttX fixture builds on both arches; the make road
+    builds on both arches; the NuttX tests pass 28 of 28 on QEMU (arm and
+    riscv; Rust, C and C++); every NuttX row of `realtime_sched_tasks`
+    passes.
   **W3a.** `NROS_CARGO_BUILD` sets `CC_` / `CXX_` / `AR_<triple>` to
   `$(CROSSDEV)gcc` / `g++` / `ar`, and `CFLAGS_` / `CXXFLAGS_<triple>` to
   `$(ARCHCPUFLAGS)`. `<triple>` is the resolved triple (W4) with dashes as

@@ -37,13 +37,18 @@ set(CMAKE_ASM_COMPILER  ${_NROS_RV32_PREFIX}-gcc)
 set(CMAKE_AR            ${_NROS_RV32_PREFIX}-ar  CACHE FILEPATH "Archiver")
 set(CMAKE_RANLIB        ${_NROS_RV32_PREFIX}-ranlib CACHE FILEPATH "Ranlib")
 
-# rv32imac / ilp32 SOFT-float — must match the NuttX kernel ABI (the board
-# defconfig disables the FPU so the kernel is ilp32 soft, matching the
-# soft-float riscv32imac-unknown-nuttx-elf Rust target; rustc ships no
-# riscv32imafdc-nuttx target to pair with a hard-float kernel).
-set(CMAKE_C_FLAGS_INIT   "-march=rv32imac -mabi=ilp32 -ffunction-sections -fdata-sections")
-set(CMAKE_CXX_FLAGS_INIT "-march=rv32imac -mabi=ilp32 -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -std=c++14")
-set(CMAKE_ASM_FLAGS_INIT "-march=rv32imac -mabi=ilp32")
+# phase-550 W3b — no CPU flags here. NuttX states them (its export's
+# `scripts/Make.defs` ARCHCPUFLAGS), and every object a NuttX image links is
+# compiled inside the cargo build, which takes them from the export's
+# `nros-cargo.toml` (`nros_nuttx_build_example`). CMake compiles nothing that
+# reaches the image (measured: no object outside cargo-target/ in a NuttX
+# build dir), so restating `-mcpu`/`-march` here would only be a second copy,
+# one a reconfigured kernel would leave behind. Do not add one back: there is
+# nothing for it to fix here, and `just check nuttx-cpu-flag-copies` refuses it.
+# (The board defconfig disables the FPU, so the kernel is ilp32 soft-float,
+# matching the soft-float riscv32imac-unknown-nuttx-elf Rust target.)
+set(CMAKE_C_FLAGS_INIT   "-ffunction-sections -fdata-sections")
+set(CMAKE_CXX_FLAGS_INIT "-ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -std=c++14")
 
 # Rust target triple — Tier 3, requires nightly + build-std. Keep the nightly
 # pin in lockstep with the arm NuttX toolchain file / the example's

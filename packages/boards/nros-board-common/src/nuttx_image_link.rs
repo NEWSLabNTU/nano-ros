@@ -29,14 +29,14 @@
 //! ARM intrinsics without an absolute `-print-libgcc-file-name` path.
 //!
 //! Arch-specifics come from the `NUTTX_*` env family (the board overlay sets
-//! them); defaults are the qemu-arm cortex-a7 hardfloat values, mirroring
-//! [`crate::nuttx_platform_build::run_platform`].
+//! them), except the CPU flags, which are NuttX's own (the export's
+//! `ARCHCPUFLAGS`), as in [`crate::nuttx_platform_build::run_platform`].
 //!
 //! Env (all optional, arm defaults):
 //! - `NUTTX_CROSS` — cross C compiler driver (default `arm-none-eabi-gcc`);
 //!   the archiver is derived by swapping the trailing `gcc` for `ar`.
-//! - `NUTTX_PLATFORM_CFLAGS` — arch flags for the stub compile (default
-//!   `-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4`).
+//! - CPU flags for the stub compile: NuttX's, the export's `ARCHCPUFLAGS`
+//!   ([`crate::nuttx_export::cpu_flags`], phase-550 W3b).
 //! - `NUTTX_ARCH_INCLUDES` — space-separated include dirs relative to
 //!   `NUTTX_DIR` (default `arch/arm/src/{chip,common,armv7-a}`). Same var
 //!   the platform/FFI helpers read, so a board sets it once.
@@ -68,7 +68,6 @@ pub fn run_image_link(builtins_stub: &Path) {
     // PLACE, so watching its tree would leave this permanently dirty after
     // every kernel build. The specific inputs are declared per file.
     println!("cargo:rerun-if-env-changed=NUTTX_CROSS");
-    println!("cargo:rerun-if-env-changed=NUTTX_PLATFORM_CFLAGS");
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH_INCLUDES");
     println!("cargo:rerun-if-env-changed=NUTTX_LD_SCRIPT");
     println!("cargo:rerun-if-env-changed=NUTTX_VECTORTAB");
@@ -99,11 +98,10 @@ pub fn run_image_link(builtins_stub: &Path) {
     let cross = crate::nuttx_toolchain::resolve();
     let nuttx_cross = cross.gcc.clone();
     let nuttx_ar = cross.sibling("ar");
-    let cflags: Vec<String> = env::var("NUTTX_PLATFORM_CFLAGS")
-        .unwrap_or_else(|_| "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4".to_string())
-        .split_whitespace()
-        .map(String::from)
-        .collect();
+    // phase-550 W3b — NuttX's own CPU flags (the export's ARCHCPUFLAGS).
+    let Some(cflags) = crate::nuttx_export::cpu_flags(&nuttx_dir) else {
+        return;
+    };
     let arch_includes: Vec<String> = env::var("NUTTX_ARCH_INCLUDES")
         .unwrap_or_else(|_| {
             "arch/arm/src/chip arch/arm/src/common arch/arm/src/armv7-a".to_string()

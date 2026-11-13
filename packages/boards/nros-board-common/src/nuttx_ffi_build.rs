@@ -15,9 +15,9 @@ pub fn run_qemu_arm() {
 /// `NUTTX_*` env (the board overlay sets them); the defaults are the
 /// qemu-arm cortex-a7 hardfloat values, so a build with no overrides is
 /// identical to the old `run_qemu_arm`. A new-arch NuttX board (e.g. riscv)
-/// supplies its own `NUTTX_CROSS` / `NUTTX_ARCH` / `NUTTX_ARCH_CFLAGS` /
-/// `NUTTX_LIBGCC_FLAGS` / `NUTTX_VECTORTAB_OBJ` / `NUTTX_LINKER_SCRIPT` /
-/// `NUTTX_ARCH_INCLUDES`.
+/// supplies its own `NUTTX_CROSS` / `NUTTX_ARCH` / `NUTTX_VECTORTAB_OBJ` /
+/// `NUTTX_LINKER_SCRIPT` / `NUTTX_ARCH_INCLUDES`. The CPU flags are never an
+/// input: they are NuttX's own, the export's `ARCHCPUFLAGS` (phase-550 W3b).
 pub fn run_nuttx() {
     // APP_MAIN_CPP: path to the C or C++ source file to compile (set by CMake)
     // APP_INCLUDE_DIRS: semicolon-separated include directories (set by CMake)
@@ -35,26 +35,17 @@ pub fn run_nuttx() {
     let nros_c_include = nros_build_paths::nros_c_include();
     let nros_cpp_include = nros_build_paths::nros_cpp_include();
 
-    // 194.2: cross-compiler + arch cflags are per-board (the board overlay / env
-    // sets them); defaults = the qemu-arm cortex-a7 hardfloat values so the
-    // existing board is unchanged. A new-arch NuttX board overrides these.
+    // 194.2: the cross-compiler is per-board; the CPU flags are NuttX's own
+    // (below).
     // phase-548 W3 — the store pin, never a bare PATH lookup (nuttx_toolchain).
     let cross = crate::nuttx_toolchain::resolve();
     let nuttx_cross = cross.gcc.clone();
-    let arch_cflags: Vec<String> = env::var("NUTTX_ARCH_CFLAGS")
-        .unwrap_or_else(|_| "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=vfpv3-d16".to_string())
-        .split_whitespace()
-        .map(String::from)
-        .collect();
-    // The libgcc multilib probe keeps its own flag set: on qemu-arm it
-    // deliberately differs from the compile flags (neon-vfpv4 selects
-    // `v7ve+simd/hard`, vfpv3-d16 selects `v7-a+fp/hard` — different libgcc.a),
-    // and that is the variant the linked closure expects. Per-board override.
-    let libgcc_flags: Vec<String> = env::var("NUTTX_LIBGCC_FLAGS")
-        .unwrap_or_else(|_| "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4".to_string())
-        .split_whitespace()
-        .map(String::from)
-        .collect();
+    // phase-550 W3b — NuttX's own CPU flags (the export's ARCHCPUFLAGS), for
+    // the app compile AND the libgcc multilib probe, so both pick the
+    // multilib the kernel was built for. The compile used to restate a
+    // different FPU (`vfpv3-d16`) than the kernel's `neon-vfpv4`.
+    let arch_cflags = crate::nuttx_export::require_cpu_flags(&nros_build_paths::nuttx_dir());
+    let libgcc_flags = arch_cflags.clone();
     // 194.3: NuttX flat-build link internals live under `arch/<arch>/src`; the
     // vector-table object is arch-specific (ARM's `arm_vectortab.o`; arches
     // without one set NUTTX_VECTORTAB_OBJ=""). Defaults = qemu-arm.
@@ -77,8 +68,6 @@ pub fn run_nuttx() {
         .split_whitespace()
         .map(String::from)
         .collect();
-    println!("cargo:rerun-if-env-changed=NUTTX_ARCH_CFLAGS");
-    println!("cargo:rerun-if-env-changed=NUTTX_LIBGCC_FLAGS");
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH");
     println!("cargo:rerun-if-env-changed=NUTTX_VECTORTAB_OBJ");
     println!("cargo:rerun-if-env-changed=NUTTX_LINKER_SCRIPT");
@@ -452,7 +441,7 @@ pub fn run_nuttx() {
     let board_src = arch_src.join("board");
 
     // Find libgcc.a — 194.2: per-board cross-compiler + libgcc-probe flags
-    // (defaults = qemu-arm's neon-vfpv4 → v7ve+simd/hard, unchanged).
+    // (NuttX's ARCHCPUFLAGS, so the multilib is the kernel's).
     let gcc_out = Command::new(&nuttx_cross)
         .args(&libgcc_flags)
         .arg("-print-libgcc-file-name")

@@ -30,7 +30,6 @@
 # why this is recipe/shell-level rather than per-fixture-row env in
 # `examples/fixtures.toml`: the row serialization cannot carry them.
 export NUTTX_CROSS="riscv-none-elf-gcc"
-export NUTTX_PLATFORM_CFLAGS="-march=rv32imac -mabi=ilp32"
 export NUTTX_ARCH_INCLUDES="arch/risc-v/src/chip arch/risc-v/src/common"
 export NUTTX_LD_SCRIPT="boards/risc-v/qemu-rv/rv-virt/scripts/ld.script"
 # EMPTY = "this arch has no vector-table head object". rv-virt's reset path

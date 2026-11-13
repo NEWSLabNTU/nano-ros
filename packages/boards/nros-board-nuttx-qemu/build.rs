@@ -1,7 +1,7 @@
 // 194.3c.2 — the NuttX C platform-port compile (platform.c/net.c) is a
 // shared, parameterized helper in `nros-board-common`. The helper's DEFAULTS
-// are arm (compiler `arm-none-eabi-gcc`, `-mcpu=cortex-a7 -mfloat-abi=hard
-// -mfpu=neon-vfpv4`, `arch/arm/src/*` includes); the riscv witness overrides
+// are arm (compiler `arm-none-eabi-gcc`, `arch/arm/src/*` includes; the CPU
+// flags are always NuttX's own ARCHCPUFLAGS); the riscv witness overrides
 // them through the `NUTTX_*` env in its `[[board]]` entry of `nros-board.toml`
 // (and, for a cmake-driven build, the riscv FFI subcrate's `.cargo/config.toml`
 // `[env]`, which cargo applies to the whole build graph and so reaches here).

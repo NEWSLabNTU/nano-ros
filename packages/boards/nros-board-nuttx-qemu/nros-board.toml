@@ -51,9 +51,11 @@ build-std-features = ["compiler-builtins-mem"]
 # board OUT_DIR, the vectortab+builtins-stub boot archive, the -L search
 # dirs for OUT_DIR / $NUTTX_DIR/staging / arch/arm/src/board) PROPAGATE
 # from this board crate's build.rs (`nros_board_common::nuttx_image_link`).
-# ZERO entry build.rs. The cpu flags make the gcc driver pick the
-# cortex-a7 hard-float multilib, so the trailing `-lgcc` resolves the ARM
-# intrinsics without an absolute `-print-libgcc-file-name` path.
+# ZERO entry build.rs. The CPU flags are NOT here (phase-550 W3b): they are
+# NuttX's (its export's ARCHCPUFLAGS), joined to these rustflags from the
+# export's `nros-cargo.toml`, which every cargo run for this board passes with
+# `--config`. They make the gcc driver pick the kernel's multilib, so the
+# trailing `-lgcc` resolves without an absolute `-print-libgcc-file-name` path.
 # `-Tdramboot.ld` is by NAME — GNU ld resolves it through the propagated
 # `-L` search path. The kernel libs are mutually recursive ->
 # `--start-group`; the Rust rlibs precede this group, so libsched's
@@ -62,9 +64,6 @@ build-std-features = ["compiler-builtins-mem"]
 [target.armv7a-nuttx-eabihf]
 linker = "arm-none-eabi-gcc"
 rustflags = [
-    "-C", "link-arg=-mcpu=cortex-a7",
-    "-C", "link-arg=-mfloat-abi=hard",
-    "-C", "link-arg=-mfpu=neon-vfpv4",
     "-C", "link-arg=-Tdramboot.ld",
     "-C", "link-arg=--entry=__start",
     "-C", "link-arg=-nostartfiles",
@@ -90,7 +89,6 @@ rustflags = [
 
 [env]
 CC_armv7a_nuttx_eabihf = "arm-none-eabi-gcc"
-CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 
 # #127 blocker-1: the patched libc for build-std lives UNDER this single
 # [patch.crates-io] table (the pinned nightly's `std` references
@@ -200,8 +198,9 @@ build-std-features = ["compiler-builtins-mem"]
 # dynamic pieces (processed rv-virt `ld.script` in the board OUT_DIR, the
 # builtins-stub boot archive — riscv has no vectortab head object — and the -L
 # search dirs) PROPAGATE from this board crate's build.rs
-# (`nros_board_common::nuttx_image_link`). ZERO entry build.rs. The -march/-mabi
-# flags pick the gcc driver's rv32imac/ilp32 multilib, so `-lgcc` resolves.
+# (`nros_board_common::nuttx_image_link`). ZERO entry build.rs. The CPU flags
+# (NuttX's ARCHCPUFLAGS) arrive from the export's `nros-cargo.toml`, as on arm,
+# and pick the kernel's multilib, so `-lgcc` resolves.
 # The kernel-lib group is what the rv-virt:netnsh export stages: `-laudio`
 # (CONFIG_AUDIO=y in nuttx-config/riscv/defconfig) and no `-lxx` (no C++ in
 # that config — the arm group's `-lxx` would be `cannot find -lxx` here).
@@ -213,8 +212,6 @@ build-std-features = ["compiler-builtins-mem"]
 [target.riscv32imac-unknown-nuttx-elf]
 linker = "riscv-none-elf-gcc"
 rustflags = [
-    "-C", "link-arg=-march=rv32imac",
-    "-C", "link-arg=-mabi=ilp32",
     "-C", "link-arg=-Tld.script",
     "-C", "link-arg=--entry=__start",
     "-C", "link-arg=-nostartfiles",
@@ -240,13 +237,9 @@ rustflags = [
 
 [env]
 CC_riscv32imac_unknown_nuttx_elf = "riscv-none-elf-gcc"
-CFLAGS_riscv32imac_unknown_nuttx_elf = "-march=rv32imac -mabi=ilp32"
 # 194.3c.1/.2/.3 — arch knobs the shared build helpers read (defaults are arm).
 NUTTX_CROSS = "riscv-none-elf-gcc"
 NUTTX_ARCH = "risc-v"
-NUTTX_ARCH_CFLAGS = "-march=rv32imac -mabi=ilp32"
-NUTTX_PLATFORM_CFLAGS = "-march=rv32imac -mabi=ilp32"
-NUTTX_LIBGCC_FLAGS = "-march=rv32imac -mabi=ilp32"
 NUTTX_VECTORTAB_OBJ = ""
 NUTTX_ARCH_INCLUDES = "arch/risc-v/src/chip arch/risc-v/src/common"
 NUTTX_LINKER_SCRIPT = "boards/risc-v/qemu-rv/rv-virt/scripts/ld.script"

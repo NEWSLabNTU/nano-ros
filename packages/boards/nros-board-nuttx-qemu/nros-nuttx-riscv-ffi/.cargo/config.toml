@@ -16,8 +16,6 @@ build-std-features = ["compiler-builtins-mem"]
 [target.riscv32imac-unknown-nuttx-elf]
 linker = "riscv-none-elf-gcc"
 rustflags = [
-    "-C", "link-arg=-march=rv32imac",
-    "-C", "link-arg=-mabi=ilp32",
     # NOT `-Wl,--wrap=poll` (issue 2198): it bridged Rust `std`'s `pollfd` to
     # NuttX's (#167), and `__wrap_poll` lived in the libc fork's `std` path. The
     # image is `no_std` since phase-359 W7, so nothing defines `__wrap_poll`,
@@ -28,14 +26,10 @@ rustflags = [
 
 [env]
 CC_riscv32imac_unknown_nuttx_elf = "riscv-none-elf-gcc"
-CFLAGS_riscv32imac_unknown_nuttx_elf = "-march=rv32imac -mabi=ilp32"
 # 194.3c — arch knobs read by the shared FFI (run_nuttx) + platform build
 # helpers. Default values in the helpers are arm; these override for riscv.
 NUTTX_CROSS = "riscv-none-elf-gcc"
 NUTTX_ARCH = "risc-v"
-NUTTX_ARCH_CFLAGS = "-march=rv32imac -mabi=ilp32"
-NUTTX_PLATFORM_CFLAGS = "-march=rv32imac -mabi=ilp32"
-NUTTX_LIBGCC_FLAGS = "-march=rv32imac -mabi=ilp32"
 NUTTX_VECTORTAB_OBJ = ""
 NUTTX_ARCH_INCLUDES = "arch/risc-v/src/chip arch/risc-v/src/common"
 NUTTX_LINKER_SCRIPT = "boards/risc-v/qemu-rv/rv-virt/scripts/ld.script"
