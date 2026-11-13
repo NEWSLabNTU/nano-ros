@@ -26,6 +26,9 @@
 #include <unistd.h>
 #endif
 #ifdef ZENOH_NUTTX
+#include <net/if.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #endif
 
@@ -1069,6 +1072,46 @@ static void zpico_mix_clock_bytes(uint64_t* seed, const void* data, size_t len) 
 }
 #endif
 
+#if defined(ZENOH_NUTTX)
+/* Fold `eth0`'s MAC into the session ZID seed below.
+ *
+ * Without it a NuttX ZID is the session's ADDRESS, a counter and
+ * CLOCK_REALTIME -- and on NuttX that clock is the system tick (1 ms on the
+ * QEMU boards, no RTC, so it starts at 0 every boot). Both images of a QEMU
+ * pair link the shared runtime at one layout (`g_sessions` measured at the
+ * same address in the C service server and client) and boot the same way
+ * under `-icount`, so the pair drew the SAME ZID often: measured 2 of 5, then
+ * 4 of 10, with only two ZIDs ever seen across all runs. The router refuses
+ * the second session with that ZID, every declare after it fails -100/-103,
+ * and the service client never gets a reply. A free-running hardware counter
+ * does not help there: under `-icount` it is as deterministic as the tick.
+ *
+ * Same class as the rv-virt-threadx pair (issue 2357): no clock a guest reads
+ * before its first packet tells two identical guests apart, so the identity
+ * has to come from outside -- the launcher gives each peer its own virtio-net
+ * MAC, and NuttX's virtio-net takes it from the device (VIRTIO_NET_F_MAC).
+ * On hardware the MAC is the board's own. A port with no `eth0`, or a failed
+ * read, keeps the old seed. */
+static void zpico_nuttx_mix_mac(uint64_t* seed) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return;
+    }
+    struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, "eth0", IFNAMSIZ - 1);
+    if (ioctl(fd, SIOCGIFHWADDR, (unsigned long)(uintptr_t)&ifr) == 0) {
+        uint64_t mac = 0;
+        for (size_t i = 0; i < IFHWADDRLEN; i++) {
+            mac = (mac << 8) | (uint8_t)ifr.ifr_hwaddr.sa_data[i];
+        }
+        // Hashed first, so it cannot cancel against the linear clock terms.
+        *seed ^= zpico_splitmix64(&mac);
+    }
+    close(fd);
+}
+#endif
+
 static uint32_t zpico_next_session_zid_counter(void) {
 #if defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
     return g_session_zid_counter++;
@@ -1134,6 +1177,9 @@ static void zpico_fill_session_zid(struct zpico_session* s, uint8_t bytes[ZPICO_
         seed ^= (uint64_t)ts.tv_sec;
         seed ^= (uint64_t)ts.tv_nsec << 1;
     }
+#if defined(ZENOH_NUTTX)
+    zpico_nuttx_mix_mac(&seed);
+#endif
 #endif
 
     for (size_t i = 0; i < ZPICO_ZID_SIZE; i += sizeof(uint64_t)) {
