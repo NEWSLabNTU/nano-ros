@@ -526,8 +526,9 @@ fn scaffold_system_toml(
             name.replace('-', "_")
         )
     } else if rust_node {
+        // phase-216 A.5
         let dispatch = if self_bringup {
-            "# `dispatch = \"deferred\"`: callbacks hand off to a ring (phase-216 A.5).\n"
+            "# `dispatch = \"deferred\"`: callbacks hand off to a ring.\n"
         } else {
             ""
         };
@@ -545,8 +546,9 @@ fn scaffold_system_toml(
     } else {
         String::new()
     };
+    // RFC-0098 D3/D5
     format!(
-        "# What this package deploys to (RFC-0098 D3/D5) — the same schema a workspace\n\
+        "# What this package deploys to — the same schema a workspace\n\
          # bringup uses. Switching board, RMW or ROS edition is editing this file\n\
          # and re-running `nros configure`.\n\
          \n[system]\nname = \"{name}\"\nrmw = \"{rmw_value}\"\nros_edition = \"{ros_edition}\"\n\
@@ -690,7 +692,8 @@ nros-log = {{ version = "*", default-features = false }}
 
     // Folded `[component]` manifest (Phase 172 W.1). Minimal — no `[linkage]`
     // (derived) and no `[overrides]` (defaults to empty). The `crate::module`
-    // component id is required by `nros metadata --build`.
+    // component id is required by `nros metadata --build`. The type path is
+    // phase-307 W1 / issue 1412.
     let nros_toml = format!(
         r#"# nano-ros component manifest (planned mode). A reusable node linked into a
 # system by `nros plan` and Entry codegen. See
@@ -700,7 +703,7 @@ nros-log = {{ version = "*", default-features = false }}
 version = 1
 package = "{name}"
 component = "{crate_name}::{module}"
-# phase-307 W1 / issue 1412 — the registered type's fully qualified path.
+# The registered type's fully qualified path.
 # Without it the metadata harness falls back to guessing
 # `<crate>::<module>::Component`, which the shipping `nros::node!(Class)` shape
 # (`impl Component for Class` at the crate root, no `Component`, no module segment)
@@ -1010,7 +1013,7 @@ codegen-units = 1
 fn scaffold_rust_hosted(name: &str, dir: &Path, lib_rs: &str) -> Result<()> {
     let selection = selection_dep(name);
     let cargo_toml = format!(
-        // See RFC-0098 D6, issue 1305, RFC-0098, phase-517 W8.
+        // See RFC-0098 D3/D5/D6, issue 1305, phase-517 W8.
         r#"[package]
 name = "{name}"
 version = "0.1.0"
@@ -1030,7 +1033,7 @@ path = "src/lib.rs"
 crate-type = ["rlib"]
 
 # The board, RMW, ROS edition and node live in `system.toml` beside this
-# manifest (RFC-0098 D3/D5) — nothing here names a board, an RMW or an edition.
+# manifest — nothing here names a board, an RMW or an edition.
 # They reach the build through the generated selection package below, which
 # `nros configure` writes.
 
@@ -1092,7 +1095,7 @@ fn scaffold_rust_self_bringup(
     };
 
     let cargo_toml = format!(
-        // See issue 0100, RFC-0098, phase-517 W8, issue 1265.
+        // See issue 0100, RFC-0098 D3, phase-517 W8, issue 1265.
         r#"[package]
 name = "{name}"
 version = "0.1.0"
@@ -1113,7 +1116,7 @@ path = "src/lib.rs"
 crate-type = ["rlib"]
 
 # `nros::main!()` resolves the board from `system.toml` beside this manifest
-# (`[image.*] board = "{deploy}"`, RFC-0098 D3).
+# (`[image.*] board = "{deploy}"`).
 
 [dependencies]
 # `macros` because `lib.rs` calls `nros::node!` itself: inheriting the feature
@@ -1204,13 +1207,13 @@ fn scaffold_cxx_executable(
         ),
     };
     let cmake = format!(
-        // See RFC-0098 D3.
+        // See RFC-0098 D3; the ament shape is RFC-0048.
         r#"cmake_minimum_required(VERSION 3.22)
 project({name} VERSION 0.1.0 LANGUAGES {languages})
 
 {std_line}
 
-# RFC-0048 — ament shape. Board + RMW live in the system.toml beside this
+# The ament shape. Board + RMW live in the system.toml beside this
 # file; find_package(nano_ros) reads it.
 find_package(nano_ros REQUIRED)
 find_package({iface} REQUIRED)
@@ -1341,7 +1344,7 @@ nano_ros_auto_add_library({lib} STATIC src/{file})
     Ok(())
 }
 
-/// The `prj.conf` a Zephyr C/C++ scaffold writes.
+/// The `prj.conf` a Zephyr C/C++ scaffold writes. The heap split is issue 2202.
 const ZEPHYR_PRJ_CONF: &str = r#"# Zephyr's own settings. nano-ros's half (RMW, endpoint, domain, knobs) is
 # system.toml's: the module renders it into a fragment merged AFTER this file,
 # so a CONFIG_NROS_* line here would be dead.
@@ -1372,7 +1375,7 @@ CONFIG_MAX_PTHREAD_COND_COUNT=16
 CONFIG_POSIX_THREAD_THREADS_MAX=16
 # CONFIG_MAIN_STACK_SIZE: the nano-ros module decides it per image
 # CONFIG_HEAP_MEM_POOL_SIZE: the nano-ros module states a small kernel heap;
-# nano-ros allocates from CONFIG_NROS_ZEPHYR_HEAP_SIZE (issue 2202)
+# nano-ros allocates from CONFIG_NROS_ZEPHYR_HEAP_SIZE
 CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE=4096
 CONFIG_NET_PKT_RX_COUNT=32
 CONFIG_NET_PKT_TX_COUNT=32
