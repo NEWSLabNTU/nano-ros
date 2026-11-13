@@ -41,7 +41,7 @@
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 14 | 12 | 21 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 49 | 42 | 75 % |
 //! | [`CiLane::Merge`] | every zenoh Example cell, Rust/C/C++, on each host witness board (not a cover) | 46 | 9 | 16 % |
-//! | tier 3 | everything | 269 | 56 | 100 % |
+//! | tier 3 | everything | 273 | 56 | 100 % |
 //!
 //! Added 2026-11-12 (phase-535 W8, RFC-0122 D8): the merge lane. It is not
 //! a rung of the ladder below: it is the set a per-merge cadence on the host
@@ -1408,8 +1408,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 269,
-            "the table's tier-3 cell count (269) is stale; recomputed {total_cells}"
+            total_cells, 273,
+            "the table's tier-3 cell count (273) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 56,
