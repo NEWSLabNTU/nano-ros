@@ -60,21 +60,25 @@ There were two independent gaps.
 
 ## Remaining
 
-- **A stopped loop is still invisible.** The heal removes the pin-move cause.
-  Any other 78, three run failures in a row, or a host that went away still
-  leave jobs queued with no red. Wanted: a scheduled check that fails when a
-  job for a self-hosted label has been queued longer than a lane's budget.
-  Listing runners needs admin, but `actions:read` can see queued jobs and their
-  labels, so a `GITHUB_TOKEN` can do it.
-- **A queued-job check cannot see a stopped loop while another runner keeps
-  up.** Measured 2026-11-13: host 118's loop stopped after three registrations
-  refused with "New-line characters are not allowed in header values", and host
-  241 took every job, so no job waited and a wait budget had nothing to report.
-  The loss was capacity, not a stuck queue, and it was found by someone reading
-  the runner list. Telling those apart needs the runners that are EXPECTED, and
-  listing runners needs admin, which `GITHUB_TOKEN` is not. `actions:read` does
-  give each finished job's `runner_name`, so a declared runner that has taken no
-  job while jobs for its labels ran elsewhere is visible without admin.
+- **A stopped loop now turns red when its jobs wait.** The heal removes the
+  pin-move cause. Any other 78, three run failures in a row, or a host that
+  went away still stop the loop, but `runner-watchdog.yml` now runs
+  `scripts/ci/self-hosted-wait-watchdog.py` on a schedule and fails when a job
+  for a self-hosted label has been queued longer than its lane's budget. It
+  needs only `actions:read` (queued jobs and their labels), so a
+  `GITHUB_TOKEN` can do it.
+- **Second sighting, 2026-11-13.** Host 118's loop stopped at 08:58Z after
+  three registrations refused with "New-line characters are not allowed in
+  header values". No self-hosted job started anywhere until 10:55Z, and the
+  merge queue's runs from 09:31Z to 10:44Z ended cancelled. It was found by
+  someone reading the runner list. The queue-wait watchdog had not merged yet
+  (it went live at 11:05Z); this is the case its 30-minute budget is for.
+  A case it still cannot see: a stopped runner whose jobs another runner with
+  the same labels absorbs. Nothing waits then, and the loss is capacity.
+  Seeing that needs the runners that are EXPECTED. Listing runners needs admin,
+  which `GITHUB_TOKEN` is not, but `actions:read` gives each job's
+  `runner_name`, so a declared runner that took no job while jobs it serves ran
+  elsewhere is visible without admin.
 - The token that stopped it: the loop kept `gh api`'s output even when the call
   failed, and checked only that it was non-empty. Every mint site now goes
   through `scripts/lib/runner-token.sh` (exit status and shape, retried), the
