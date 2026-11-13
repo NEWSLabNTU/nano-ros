@@ -1,7 +1,8 @@
 # Phase 559 — CI workflow organization: 21 files to 13, each split named by a constraint
 
-**Status (2026-11-13). OPEN: the layout is ruled, no migration item has
-landed.** User ruling 2026-11-13, verbatim: "Change weekly.yml to run on
+**Status (2026-11-13). OPEN: W1, W2 and W4 are DONE; W3 and W6 have
+landed, each with a named remainder; W5b waits on issue 2475; W7 and W8
+have not started.** User ruling 2026-11-13, verbatim: "Change weekly.yml to run on
 Sundays. The overall organization is good to me. Update phase docs and
 implement it." This phase is the record for how `.github/workflows/` is laid
 out. [RFC-0122](../design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md)
@@ -102,7 +103,12 @@ rules; flagged to the user):
   `check-workflow-job-timeouts` widens from its current scope to every file.
 - **Acceptance:** the gate passes over all workflow files, and its selftest
   refuses a job with no timeout in a file it did not read before.
-- **Status:** OPEN
+- **Status:** DONE (#3719, 2026-11-13). Every job in every workflow states
+  a measured timeout; `check-workflow-job-timeouts` reads every file, with
+  self-test cases for the hosted (355) and self-hosted (720) ceilings. Two
+  values are provisional and say so in place: `matrix-nightly` (sized from a
+  failed run, re-measure after its first green) and starter-image `retag`
+  (never run).
 
 ### W2 — Composite actions
 
@@ -138,8 +144,11 @@ rules; flagged to the user):
 
 ### W3 — The queue's L3 on its dedicated label
 
-- **Owner:** nros 118 (in flight).
-- **Status:** OPEN — in flight (nros 118).
+- **Owner:** nros 118.
+- **Status:** OPEN — PR-A landed (#3714, 2026-11-13): the `nros-queue` label
+  in the doctor and provisioner, a per-role `_work` volume,
+  `just check queue-runner-label`, and `runner-watchdog.yml`. Remains: PR-B,
+  switching the queue's L3 to `nros-queue` once a runner carries the label.
 
 ### W4 — `nightly.yml` has one cron; `weekly.yml` runs on Sunday
 
@@ -162,8 +171,11 @@ rules; flagged to the user):
   `schedule` entry, and `weekly.yml`'s is a Sunday. No two files duplicate a
   probe track. Every gate that reads a moved name passes and was changed in
   the same PR.
-- **Status:** OPEN — W4a (`weekly.yml` on Sunday, the duplicate probes)
-  done in #3713 (2026-11-13). W4b (one daily cron) is unblocked: #3715 merged.
+- **Status:** DONE (#3713, #3726, 2026-11-13) — W4a (`weekly.yml` on
+  Sunday, the duplicate probes) in #3713, W4b (`nightly.yml` on one daily
+  cron) in #3726.
+  The `board-support.toml` linux note naming `probe.yml` did not move in W4b;
+  it goes with W7 (below).
 
 ### Per-board platform jobs — tracked in phase-558, not here
 
@@ -194,8 +206,31 @@ rules; flagged to the user):
   and `matrix-nightly` runs once a day. W5b: the measurement is recorded
   here; if tier 1 moves, a host witness row's daily binding names the nightly
   per-board shard and `check-cadence-jobs` passes.
-- **Status:** BLOCKED (issue 2475) — W5a DONE (#3727, 2026-11-13).
-  W5b's tool is in `merge-runtime.yml` (`lane: tier1`). Its first
+- **Status:** OPEN — W5a DONE (#3727, 2026-11-13). W5b's tool landed in
+  #3731: `merge-runtime.yml` (`lane: tier1`). Issue 2475's provisioning
+  defects 1-3 are fixed (#3733), defect 4 (tree-wide codegen) is
+  [phase-535](phase-535-example-reorg-and-cadence-ci.md) W10, and the
+  re-measure is dispatched (runs 43420012895 on main, 43422521724 with W10).
+  Remains: the W5b numbers, recorded here, then the move or the user's call.
+
+  Second measurement, run 43420012895 (2026-11-13, main, before W10): all
+  three shards REACHED their fixture build, so 2475's defects 1-3 hold. Time
+  from the start of `just build tier1` to the first fixture command:
+
+  | shard | to first fixture | tree-wide codegen | `check fast` | lane codegen (warm) |
+  | --- | --- | --- | --- | --- |
+  | linux | 43.6 min | 30.4 min | 10.5 min | 2.7 min |
+  | threadx_linux | 48.2 min | 34.1 min | 11.1 min | 3.0 min |
+  | zephyr | 49.0 min | 35.6 min | 10.6 min | 2.6 min (+9 min Zephyr prep) |
+
+  Disk: the linux shard ran OUT. `reclaim-disk.sh` left ~104 GB free
+  (109,150,560 KB) at the start of the build, and the linux fixture build
+  hit `No space left on device` about 70 min in (12:42 first fixture, 13:52
+  ENOSPC). So on that commit the linux tier-1 shard does not fit a hosted
+  runner. threadx_linux and zephyr failed in their fixture builds for
+  reasons not yet attributed (their logs were not uploaded; fixed with W10),
+  so their disk answer is open. Re-check on the W10 after-run, where
+  codegen is scoped to the lane. Its first
   measurement, run 43390508641 (2026-11-13, hosted `ubuntu-22.04`, one shard
   per host-witness board), reached NO fixture build. All three shards failed
   on issue 2475's provisioning defects, the ones that already stop the merge
@@ -229,7 +264,12 @@ rules; flagged to the user):
 - **Acceptance:** `lane-census.yml` and `probe.yml` are gone, and each of their
   jobs runs in `host-tests.yml` under the same `just` verb. `CI` no longer
   lists `check-build`, which moves off `gate.yml` in W7.
-- **Status:** OPEN
+- **Status:** OPEN — the census and the three book-probe tracks landed
+  (#3724, 2026-11-13): `lane-census.yml` and `probe.yml` are deleted and
+  their four jobs run in `host-tests.yml` unchanged. Remains, all done in W7
+  so `check-build` never runs in two files: `check-build` itself, the
+  `board-support.toml` linux note, and the two `ci/docker/` comments that
+  still name `probe.yml` (an edit there rebuilds the CI images).
 
 ### W7 — `gate.yml` drops its schedule; the Zephyr copy-out goes to nightly
 
