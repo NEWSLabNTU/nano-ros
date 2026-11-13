@@ -82,3 +82,10 @@ builds a source whose local `main` is stale and whose `origin/main` is
 current, clones it `--local --shared` and detaches the clone, then expects
 the source's `origin/main`. With the source's remote removed, it expects
 `None`. With the local-origin branch reverted, both cases fail.
+
+Found on the way: the self-test's "object present but unreachable" case ran
+`git commit-tree` in the checkout under test, so every run of the gate wrote
+an object into that repository's store. `check-hook-repo-side-effects` had
+never run this script, because it only covers scripts that build a
+repository. Once the new fixture added a `git init`, it refused the script.
+That case now builds its object in the fixture repository.
