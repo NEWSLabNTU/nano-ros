@@ -453,7 +453,7 @@ def self_test():
         ("no just at all", {"runs-on": "ubuntu-latest", "steps": [
             {"name": "go", "run": "cargo build --release\n"}]}, False),
         # The detector's own false positives, which decide whether this gate is
-        # usable: `queue-notify.yml` posts a comment whose TEXT says `just ci l1`.
+        # usable: `automation.yml` `notify` posts a comment whose TEXT says `just ci l1`.
         ("heredoc text is not a command", {"runs-on": "ubuntu-latest", "steps": [
             {"name": "comment", "run": "body=\"$(cat <<MSG\nRun: just ci l1\nMSG\n)\"\ngh pr comment\n"}]}, False),
         ("comment prose is not a command", {"runs-on": "ubuntu-latest", "steps": [

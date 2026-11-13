@@ -1842,7 +1842,7 @@ jobs:
       # required `CI` on a pull request does NOT mean the unit tests passed. It
       # means the source gates and the compile smoke held. Nothing broken lands
       # — the queue runs them before merging — but the feedback arrives as a
-      # queue ejection (`queue-notify.yml` comments on the PR) rather than on the
+      # queue ejection (`automation.yml`'s `notify` job comments on the PR) rather than on the
       # PR itself. `just ci gate` locally is the same lane, sooner.
       #
       # Phase-395 W4 — with `check-fast` beside it, `test-unit` makes the gate
@@ -2493,7 +2493,7 @@ jobs:
       #
       # merge_group, not pull_request: same "PR cheap, batch thorough" split as
       # `test-unit` directly above, and the same consequence — an orphan row is
-      # caught by the queue, and `queue-notify.yml` comments on the PR.
+      # caught by the queue, and `automation.yml`'s `notify` job comments on the PR.
       - name: just test-lane-contracts (completes the gate lane)
         if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |

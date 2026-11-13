@@ -1,0 +1,863 @@
+# Repository plumbing — phase-559 W8.
+#
+# Five workflows that judge no code and run none from a pull request:
+#
+#   job       from                 runs on
+#   arm       arm-auto-merge.yml   pull_request_target
+#   enqueue   arm-auto-merge.yml   workflow_run of `gate`; dispatch job=enqueue
+#   notify    queue-notify.yml     workflow_run of `gate` and `queue`
+#   sweep     pr-verdicts.yml      schedule 09:00 + 21:00; dispatch job=pr-verdicts
+#   audit     roadmap-audit.yml    schedule 07:00 on the 1st; dispatch job=roadmap-audit
+#   triage    nightly-report.yml   workflow_run of `nightly`; dispatch job=nightly-report
+#
+# They share a file because nothing forces them apart (phase-559's rule: a file
+# boundary exists only where a named constraint forces it). The constraint that
+# keeps them OUT of every other file is H6: privileged plumbing
+# (`pull_request_target`, `workflow_run` with a write token) never shares a file
+# with a job that runs pull-request code. Nothing here checks out a pull
+# request; `arm` and `enqueue` check out nothing at all.
+#
+# What a shared file costs, and how each cost is paid:
+#   - The trigger list is the UNION, so every job states the event it serves in
+#     its own `if:`, and the `workflow_run` jobs name the workflow they read.
+#     A job without such a guard would run on every event below.
+#   - Permissions are per job, and the workflow grants nothing (`{}`), so a
+#     job's token is exactly what it was in its own file.
+#   - Concurrency is per job: `arm`'s cancel-in-progress group would otherwise
+#     cancel the other jobs.
+#   - `workflow_dispatch` has one input form (S3), the `job` to run.
+#
+# `runner-watchdog.yml` stays its own file (S4): it is the alarm for a dead
+# runner, so a YAML error in an unrelated job here must not silence it, and its
+# 15-minute cron would start this workflow 96 times a day.
+#
+# None of these jobs is a required check, and none runs on `pull_request`, so
+# none can become a context a PR must satisfy (the #0975 deadlock).
+
+# ============================================================================
+# arm, enqueue (was arm-auto-merge.yml)
+# ============================================================================
+#
+# Arm auto-merge on every pull request that is ready for one.
+#
+# WHY THIS EXISTS
+#
+# `main` requires a pull request and the merge queue, so a PR reaches `main`
+# only if someone arms auto-merge. Nobody does it reliably, and the cost was
+# measured on 2026-09-06: of 23 open pull requests, **16 were not armed**. An
+# unarmed PR never enters the queue, so it sits while `main` moves -- 56 to 71
+# commits in a day at the current rate -- until it conflicts and needs a
+# rebase that nobody asked for.
+#
+# The loop closes on itself, which is the part worth naming: **a force-push
+# CANCELS auto-merge.** So the rebase that unsticks a stale PR also disarms it,
+# and the PR goes straight back to rotting. Nine PRs were rebased by hand that
+# morning and every one came out unarmed. Work in, no throughput out.
+#
+# `synchronize` in the trigger list is what closes it: a rebase re-arms.
+#
+# WHY `pull_request_target`
+#
+# `pull_request` from a fork gets a READ-ONLY token, so it cannot arm
+# anything -- which is the case that most needs arming. `pull_request_target`
+# runs with the base repository's token.
+#
+# That trigger is dangerous when a workflow CHECKS OUT the pull request's code,
+# because untrusted code then runs with a writable token. This one checks out
+# NOTHING and runs no code from the PR: it makes a single API call, by number.
+# Do not add `actions/checkout` here.
+#
+# NO `branches:` OR `paths:` FILTER, deliberately
+#
+# The same trap `gate.yml` documents at length. A `branches: [main]` filter
+# silently drops every event from a STACKED pull request (base is not `main`),
+# and retargeting a PR emits `edited`, which is not in the default type list --
+# so PR #71 sat thirteen hours with zero check suites. A filter here would fail
+# the same way, and the failure looks like "auto-merge just doesn't work
+# sometimes".
+#
+# WHAT IT DOES NOT CHANGE
+#
+# Arming auto-merge is not merging. The PR still waits for the required `CI`
+# context and still goes through the merge queue, which runs `test-unit` and
+# the rest before anything lands. This changes WHO pushes the button, not what
+# the button checks.
+#
+# Opt out per-PR with the `no-auto-merge` label, or by leaving the PR a draft.
+#
+# WHOSE PULL REQUESTS GET ARMED
+#
+# `author_association` is OWNER, MEMBER or COLLABORATOR. That is the whole
+# test, and it carries the distinction on its own -- those three are exactly
+# the values that mean the account has access to THIS repository.
+#
+# The one that looks close and is not is `CONTRIBUTOR`. GitHub gives it to
+# anyone who has had a commit merged here, so an outside contributor's SECOND
+# pull request arrives as `CONTRIBUTOR` with no more access than their first.
+# It is a history, not a permission. `FIRST_TIME_CONTRIBUTOR` and `NONE` are
+# the same case, said differently.
+#
+# WHERE THE BRANCH LIVES IS REPORTED, NOT ENFORCED
+#
+# An earlier version also required the head branch to be in this repository,
+# on the argument that pushing it proved write access. True, but the converse
+# does not hold: a member who prefers to work from their own fork has the same
+# access and was getting the outsider's treatment, and "not armed" would then
+# depend on the contributor's workflow rather than on their permissions. The
+# fork flag is still printed, because it is the first thing anyone asks when
+# reading one of these logs.
+#
+# Nothing is lost by dropping it. A fork PR from a non-member still fails the
+# association test, which is the check that was doing the work.
+#
+# Everything else -- a fork PR from an outsider, a first-time contributor,
+# `NONE` -- is simply NOT ARMED. Nothing is blocked and nothing is rejected:
+# CI still runs, the PR is still reviewable, and a maintainer who wants it to
+# land arms it by hand after reading it. Auto-merge is a convenience for work
+# that was already going to land unattended; an outside contribution is
+# exactly the case that wants a human at the end.
+#
+# `AUTO_MERGE_AUTHORS` (a repository variable, optional) narrows it further:
+# a comma-separated list of accounts, and when set, ONLY those accounts are
+# armed. Use it to name the agent accounts explicitly instead of trusting
+# every member. Unset -- the default -- means the association decides.
+#
+# Note this rule has NO history to validate against: all 556 pull requests
+# ever opened here are from one MEMBER account on non-fork branches, so no
+# third-party PR has ever existed to test it. It is written to fail CLOSED for
+# that reason -- an unrecognised association is not armed.
+
+# ARMED IS NOT ENQUEUED WHEN THIS WORKFLOW ARMED IT
+#
+# Measured 2026-11-13 over the last 80 pull requests: auto-merge was enabled
+# 64 times by a user's own `gh pr merge --auto` and 22 times by this workflow.
+# For the first kind, GitHub put the pull request in the merge queue itself,
+# as that user, once `CI` went green. For the second kind it never did: 21
+# were enqueued later BY HAND, and the other one was still waiting. GitHub
+# does not act later on an auto-merge request a `GITHUB_TOKEN` made, the same
+# rule that stops a `GITHUB_TOKEN` event from starting a workflow.
+#
+# The token CAN enqueue directly. When this workflow arms a pull request that
+# is ALREADY clean, `gh pr merge --auto` enqueues it on the spot (#3696, 6 s
+# after arming, and its merge_group runs started normally). So the `enqueue`
+# job below waits for the moment arming alone misses: `gate` finishing green
+# for a pull request. If that pull request is armed, CLEAN and not queued, it
+# is enqueued, pinned to the commit `gate` judged, so a push in between is
+# never enqueued in its place. `workflow_dispatch` runs the same check over
+# every open pull request, as a backstop.
+#
+# Arming with a user's token instead (a PAT or an App secret) would make
+# GitHub do this itself. That is a new credential, so it is a maintainer's
+# call and is not done here.
+
+# ============================================================================
+# notify (was queue-notify.yml)
+# ============================================================================
+#
+# Tell the author when the merge queue ejects their pull request — phase-395.
+#
+# GitHub records `removed_from_merge_queue` in the PR's TIMELINE and posts
+# NOTHING. There is no comment, no assignment, no push signal of any kind. So an
+# agent that opens a pull request, enables auto-merge and moves on never learns
+# it was ejected: the PR simply sits `OPEN`, looking queued, forever.
+#
+# That is the unattended-CI failure this campaign exists to remove, one level up
+# from where it started. The reds that went unread for six days were unread
+# because nothing told anyone; a merge-queue ejection is the same shape, and it
+# is worse, because the author has already stopped watching by the time it
+# happens.
+#
+# `workflow_run` rather than a step inside `pr-checks`: a failing run cannot
+# reliably report on itself — the failure may be the runner, the container, or a
+# cancellation — and a notifier that shares a fate with the thing it reports is
+# not a notifier. This is a separate workflow, on a separate runner, that reads
+# the completed run.
+
+# ============================================================================
+# sweep (was pr-verdicts.yml)
+# ============================================================================
+#
+# Issue 0994 — sweep for pull requests that can never merge because nothing
+# ever ran on them.
+#
+# `scripts/ci/pr-verdict-check.sh` answers this exactly, and has since PR #71
+# sat thirteen hours with auto-merge armed against a check that was never
+# requested. What it lacked was a caller: it is `just pr-verdicts`, in the
+# `setup` group, run only when a human thinks to ask. On 2026-09-02 PR #207 sat
+# silently ineligible — zero check suites for its head sha — and was found by
+# eye, with a working detector one command away.
+#
+# WHY A SCHEDULE AND NOT A GATE
+#
+# The script needs the network and an authenticated `gh`, so it cannot be a
+# gate: gates are buildless, offline and deterministic. It also asks a question
+# about OTHER pull requests, which is not a property of the diff under review.
+# A schedule is the right shape — the failure it looks for is silence, and
+# silence has no event to hook.
+#
+# WHY NOT A JOB IN `nightly.yml`
+#
+# nightly is the L3/L4 cross-build matrix: it provisions SDKs and runs QEMU. A
+# 20-second `gh` sweep that must run whether or not that matrix is healthy does
+# not belong inside it — a red build there would take this with it, and this is
+# the check that notices when nothing is reporting.
+#
+# NOT A REQUIRED CHECK, deliberately. It runs on `schedule` and never on
+# `pull_request`, so it can never become a context a PR must satisfy. Adding a
+# scheduled job to the required set is the #0975 deadlock: a check that produces
+# no verdict for a PR blocks it forever.
+
+# ============================================================================
+# audit (was roadmap-audit.yml)
+# ============================================================================
+#
+# phase-419 W3 — the monthly roadmap verification pass.
+#
+# W2's `check-roadmap-claims` is a GATE and takes the mechanical half: a phase
+# that contradicts its own body. This is the other half, and it is deliberately
+# NOT a gate. Supersession, a reversed premise and a claim of absence each need
+# judgment — 4 of the 11 findings on 2026-09-04 were that kind — and a gate that
+# guessed at them would flag honest documents, which is how a gate gets switched
+# off.
+#
+# NOT A REQUIRED CHECK, and it never runs on `pull_request`, so it can never
+# become a context a PR must satisfy. A scheduled job in the required set is the
+# #0975 deadlock: a check that produces no verdict for a PR blocks it forever.
+# `sweep` above documents the same shape for the same reason.
+#
+# It writes the report into the RUN SUMMARY rather than only stdout. That is not
+# cosmetic: issue 1029 was eight nights of a lane producing no zephyr verdict,
+# and what made it un-debuggable was that the deciding value existed only in a
+# log this workflow family renders lossily (steps as `UNKNOWN STEP`, whole lines
+# missing). A report nobody can read back is the same as no report.
+#
+# Issue 1489's section rides here too: an open work item naming API-parity
+# ledger keys the ledger has closed. Its verdict moves when a SIBLING phase
+# merges, so as a gate it would blame that sibling's PR; its negative control
+# runs on the fast line instead, inside `check-roadmap-claims`.
+#
+# MONTHLY, not nightly. The thing it watches moves at the speed of phases being
+# written, and a report that arrives faster than anyone acts on it becomes noise
+# — the same reason `sweep` runs twice a day and not every hour.
+
+# ============================================================================
+# triage (was nightly-report.yml)
+# ============================================================================
+#
+# Say whether the nightly REPORTED — issue 0878.
+#
+# A red nightly cell means one of two unrelated things, and GitHub paints them
+# the same colour:
+#
+#   the lane ran and the code is broken   -> a verdict, fix the code
+#   the lane never ran and could not      -> no verdict, fix the lane
+#
+# Only the first is information. A lane in the second state has no signal
+# capacity: a regression landing in it looks exactly like yesterday's failure.
+# That is how issue 0876 survived — the nightly HAD a `zephyr 3.7 / c/talker`
+# cell that would have caught an unbuildable conf, and that cell reported
+# `failure` both before and after the change, because all 21 Zephyr cells were
+# dying in `just zephyr setup` on a missing Python package.
+#
+# `workflow_run` rather than a job inside `nightly`: a run cannot reliably
+# report on itself. If the failure is the runner or the container — which is
+# exactly the no-verdict case this exists to name — an in-run reporter dies with
+# it. Separate workflow, separate runner, reads the completed run.
+#
+# Sibling of `notify`, which does the same job for merge-queue
+# ejections. Same reason both exist: the signal is already in GitHub's data and
+# nothing surfaces it.
+
+name: automation
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+  # `workflows:` names a workflow by its `name:`. A rename of any of these
+  # breaks the consumer SILENTLY: it simply stops firing. Only a workflow on
+  # the default branch is ever triggered by this event, and it runs with the
+  # base repository's token.
+  workflow_run:
+    workflows: [gate, queue, nightly]
+    types: [completed]
+  schedule:
+    - cron: "0 9 * * *"   # sweep
+    - cron: "0 21 * * *"  # sweep
+    - cron: "0 7 1 * *"   # audit
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Which job to run"
+        type: choice
+        default: enqueue
+        options: [enqueue, pr-verdicts, roadmap-audit, nightly-report]
+
+permissions: {}
+
+jobs:
+  arm:
+    name: arm auto-merge
+    permissions:
+      # Issue 1338 (second fault) -- `enablePullRequestAutoMerge` needs CONTENTS
+      # write as well: with `pull-requests: write` alone GitHub answers
+      # `Resource not accessible by integration`, and it did on every run of the
+      # 40 measured on 2026-10-12 (0 armed). On a branch with a merge queue,
+      # arming is an enqueue, which is a contents operation. Still no checkout:
+      # the job runs `gh` against the API and executes nothing from the PR.
+      contents: write
+      pull-requests: write
+    concurrency:
+      # One arm per PR; a burst of pushes does not need a queue of identical
+      # calls.
+      group: arm-auto-merge-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    # A draft is a statement that the author is not done. `no-auto-merge` is
+    # the same statement for a PR that must not land on its own -- a spike, a
+    # discussion, anything wanting a human at the end.
+    if: >-
+      ${{ github.event_name == 'pull_request_target'
+          && github.event.pull_request.draft == false
+          && !contains(github.event.pull_request.labels.*.name, 'no-auto-merge') }}
+    runs-on: ubuntu-latest
+    # Longest green run 0.1 min (n=40); floor 10.
+    timeout-minutes: 10
+    steps:
+      # The trust decision is a STEP, not another `if:` on the job, so that
+      # "why was my pull request not armed?" has an answer in a log somewhere.
+      # A job skipped by an expression leaves no record of which clause was
+      # false, and this one has four.
+      - name: Decide whether this author's pull requests arm themselves
+        id: trust
+        env:
+          IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          ASSOCIATION: ${{ github.event.pull_request.author_association }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          ALLOWLIST: ${{ vars.AUTO_MERGE_AUTHORS }}
+        run: |
+          # `fork=` is REPORTED and not tested: a member working from their own
+          # fork has the same access as one pushing a branch here, and it is
+          # the first thing anyone asks when reading this log.
+          echo "author=$AUTHOR association=$ASSOCIATION fork=$IS_FORK"
+
+          arm=yes
+          case "$ASSOCIATION" in
+            # The three values that mean access to THIS repository. CONTRIBUTOR
+            # is deliberately absent: GitHub gives it to anyone who has had a
+            # commit merged, so it is a history rather than a permission.
+            OWNER|MEMBER|COLLABORATOR) ;;
+            *)
+              echo "not arming — author_association is '$ASSOCIATION', not OWNER/MEMBER/COLLABORATOR"
+              arm=no
+              ;;
+          esac
+          if [ -n "$ALLOWLIST" ]; then
+            # An explicit list, when the repository sets one: name the agent
+            # accounts rather than trusting every member.
+            case ",$ALLOWLIST," in
+              *",$AUTHOR,"*) ;;
+              *)
+                echo "not arming — '$AUTHOR' is not in AUTO_MERGE_AUTHORS"
+                arm=no
+                ;;
+            esac
+          fi
+
+          if [ "$arm" = yes ]; then
+            echo "arming — the author already has write access to this repository"
+          else
+            echo "This is not a rejection. CI still runs and the pull request is"
+            echo "still mergeable; a maintainer arms it by hand after reading it."
+          fi
+          echo "arm=$arm" >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge
+        if: steps.trust.outputs.arm == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # `--rebase` names the method for repositories without a queue; where
+          # a queue IS configured GitHub owns the method and `gh` says so on
+          # stderr ("The merge strategy for main is set by the merge queue")
+          # while arming correctly. That notice is not an error.
+          #
+          # Already-armed is also not an error, and `synchronize` will re-run
+          # this on every push, so the common case is a no-op.
+          # issue 1338 — TWO faults lived in the single line this replaces, and
+          # they compounded in the worst direction: one made it always fail,
+          # the other made it always report success.
+          #
+          #   * No `--repo`. This job checks out NOTHING, on purpose (see the
+          #     `pull_request_target` note above — do not add a checkout to fix
+          #     this). `gh pr merge` resolves the repository from the local git
+          #     remote, so with no local git it died on EVERY run with
+          #     `failed to run git: fatal: not a git repository`.
+          #   * `if cmd | tee ...` tests the PIPELINE's status, which is
+          #     `tee`'s and is 0 either way. The `else` below was unreachable,
+          #     so the `::warning::` had never once been emitted and the run
+          #     printed `armed #N` three lines under the git error.
+          #
+          # So the workflow written to fix "16 of 23 PRs are not armed" had
+          # never armed one, and the only visible evidence was a green check
+          # saying it had. Issue 1226's shape with the sign flipped.
+          #
+          # `rc=0; cmd || rc=$?` is this repo's ONE spelling for a status you
+          # mean to INSPECT under `set -e` (issue 1249) — and a pipe destroys
+          # it, which is why the redirect replaces the `tee`.
+          rc=0
+          gh pr merge "$NUMBER" --repo "$GITHUB_REPOSITORY" --auto --rebase \
+            > /tmp/arm.log 2>&1 || rc=$?
+          sed 's/^/  /' /tmp/arm.log
+          if [ "$rc" -eq 0 ]; then
+            echo "armed #$NUMBER"
+          elif grep -q 'Resource not accessible by integration' /tmp/arm.log; then
+            # Issue 1338 -- a PERMISSION refusal is not a PR state; it is this
+            # workflow being unable to do its job for every PR, which a
+            # warning hid for a month. Fail loudly instead.
+            echo "::error::arm-auto-merge lacks the token permission to arm #$NUMBER (issue 1338)"
+            exit 1
+          else
+            # Never fail the workflow for this. A PR that cannot be armed yet
+            # (queued, closed, conflicting) is a state to report, not a red X
+            # on someone's pull request -- and a red check here would be a
+            # second, confusing signal beside the real `CI` one.
+            echo "::warning::could not arm auto-merge on #$NUMBER"
+          fi
+
+  enqueue:
+    name: enqueue an armed, clean pull request
+    permissions:
+      # Same as `arm`; issue 1338 (second fault) -- `enablePullRequestAutoMerge` needs CONTENTS
+      # write as well: with `pull-requests: write` alone GitHub answers
+      # `Resource not accessible by integration`, and it did on every run of the
+      # 40 measured on 2026-10-12 (0 armed). On a branch with a merge queue,
+      # arming is an enqueue, which is a contents operation. Still no checkout:
+      # the job runs `gh` against the API and executes nothing from the PR.
+      contents: write
+      pull-requests: write
+    concurrency:
+      # A `workflow_run` has no pull request number in its payload; its head
+      # commit stands in. A dispatch sweep never cancels anything else.
+      group: arm-auto-merge-enqueue-${{ github.event.workflow_run.head_sha || github.run_id }}
+      cancel-in-progress: true
+    # Only a green `gate` run for a pull request (a merge_group or push run of
+    # `gate` judges no pull request), or a dispatched sweep.
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' && inputs.job == 'enqueue')
+          || (github.event_name == 'workflow_run'
+              && github.event.workflow_run.name == 'gate'
+              && github.event.workflow_run.event == 'pull_request'
+              && github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    # A query and a mutation per pull request, plus at most a minute of
+    # waiting for GitHub to finish computing the merge state; floor 10.
+    timeout-minutes: 10
+    steps:
+      - name: Enqueue each armed, clean pull request that is not queued
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # Which pull requests to look at: the one(s) whose head `gate` just
+          # judged, or every open one for a dispatched sweep.
+          if [ -n "$HEAD_SHA" ]; then
+            if ! numbers="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" \
+                --jq '.[] | select(.state == "open") | .number')"; then
+              echo "::warning::could not list the pull requests for $HEAD_SHA"
+              exit 0
+            fi
+          else
+            if ! numbers="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open \
+                --limit 200 --json number --jq '.[].number')"; then
+              echo "::error::could not list open pull requests"
+              exit 1
+            fi
+          fi
+          [ -n "$numbers" ] || { echo "no open pull request to look at"; exit 0; }
+
+          owner="${GITHUB_REPOSITORY%/*}"
+          name="${GITHUB_REPOSITORY#*/}"
+          query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){id isDraft headRefOid isInMergeQueue mergeStateStatus autoMergeRequest{enabledAt}}}}'
+          for n in $numbers; do
+            # `mergeStateStatus` is computed lazily and reads UNKNOWN for a
+            # while after a check completes, so ask again a few times.
+            state=""
+            for _ in 1 2 3 4 5 6; do
+              if ! pr="$(gh api graphql -f query="$query" -f o="$owner" -f r="$name" -F n="$n" \
+                  --jq '.data.repository.pullRequest')"; then
+                echo "::warning::#$n: could not read its state"
+                continue 2
+              fi
+              state="$(jq -r '.mergeStateStatus' <<<"$pr")"
+              [ "$state" = UNKNOWN ] || break
+              sleep 10
+            done
+            id="$(jq -r '.id' <<<"$pr")"
+            head="$(jq -r '.headRefOid' <<<"$pr")"
+            armed="$(jq -r '.autoMergeRequest != null' <<<"$pr")"
+            queued="$(jq -r '.isInMergeQueue' <<<"$pr")"
+            draft="$(jq -r '.isDraft' <<<"$pr")"
+            echo "#$n: state=$state armed=$armed queued=$queued draft=$draft head=$head"
+
+            if [ "$armed" != true ] || [ "$queued" = true ] || [ "$draft" = true ]; then
+              echo "  nothing to do"
+              continue
+            fi
+            if [ -n "$HEAD_SHA" ] && [ "$head" != "$HEAD_SHA" ]; then
+              echo "  its head moved past the commit gate judged; that commit's own run decides"
+              continue
+            fi
+            if [ "$state" != CLEAN ]; then
+              echo "  not CLEAN, so not enqueued"
+              continue
+            fi
+
+            rc=0
+            gh api graphql \
+              -f query='mutation($id:ID!,$sha:GitObjectID!){enqueuePullRequest(input:{pullRequestId:$id,expectedHeadOid:$sha}){mergeQueueEntry{position}}}' \
+              -f id="$id" -f sha="$head" > /tmp/enqueue.log 2>&1 || rc=$?
+            sed 's/^/  /' /tmp/enqueue.log
+            if [ "$rc" -eq 0 ]; then
+              echo "  enqueued #$n"
+            elif grep -q 'Resource not accessible by integration' /tmp/enqueue.log; then
+              # As for arming (issue 1338): a permission refusal is this job
+              # unable to do its work for every pull request. Say so loudly.
+              echo "::error::arm-auto-merge lacks the token permission to enqueue #$n"
+              exit 1
+            else
+              # A race with a push, a conflict, or a human who enqueued it a
+              # moment earlier: a state to report, not a red mark on the PR.
+              echo "::warning::could not enqueue #$n"
+            fi
+          done
+
+  notify:
+    permissions:
+      contents: read
+      pull-requests: write
+      # issue 1843 — the ejection decision reads the completed run's JOBS, and
+      # `queue-triage` lists merge-group runs; both are the Actions API.
+      actions: read
+    # Only a FAILED merge-group run of `gate` or `queue`. A failed pull_request
+    # run already shows on the PR's own checks list, where the author is
+    # looking; this exists for the case where they are not.
+    if: >-
+      ${{ github.event_name == 'workflow_run'
+          && contains(fromJSON('["gate","queue"]'), github.event.workflow_run.name)
+          && github.event.workflow_run.event == 'merge_group'
+          && github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    # Longest green run 0.8 min (n=40); floor 10.
+    timeout-minutes: 10
+    steps:
+      # issue 1843 — this job runs `scripts/ci/*.sh`, and until 2026-10-12 it
+      # had no checkout: `bash scripts/ci/queue-triage.sh 2>/dev/null` failed
+      # on a missing file, the failure was swallowed, and the verdict was
+      # `UNKNOWN` on every run, so the INFRA notice phase-396 W4 wrote was
+      # unreachable. A `workflow_run` job checks out the DEFAULT branch — the
+      # trusted tree, never the pull request's head — and needs no token in
+      # `.git/config` (gate: `check-workflow-checkout-before-repo-path`).
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Comment on the ejected pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          NROS_QUEUE_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+
+          # issue 1843 — did this run EJECT anything? A merge group is decided
+          # by the REQUIRED status checks alone (on `main`: the one context
+          # `CI`, gate.yml's `ci-ok`). `queue` carries none, so its red L3
+          # (issue 1841) posted "Ejected ... do not re-queue" on #2045 and
+          # #2047, which then merged. A run with no failed required context is
+          # not an ejection; the run that carries one fires this notifier on
+          # its own completion, so skipping here loses nothing.
+          decision="$(bash scripts/ci/queue-ejected.sh "$RUN_ID" "$RUN_ATTEMPT")" \
+            || decision="UNVERIFIED queue-ejected.sh exited non-zero"
+          echo "ejection decision: $decision"
+          case "$decision" in
+            EJECTED*) ;;
+            NOT_EJECTED*)
+              echo "::notice::\`$WORKFLOW\` failed on a merge group, but no REQUIRED check failed (${decision#*[[:space:]]}) — not an ejection, nothing posted"
+              exit 0 ;;
+            *)
+              # A missed ejection is worse than a false notice: the author
+              # would wait on a pull request that never merges.
+              echo "::warning::could not decide whether this run ejected anything (${decision#*[[:space:]]}) — posting the notice anyway" ;;
+          esac
+
+          # `gh-readonly-queue/main/pr-19-<sha>` — the queue puts the PR number
+          # in the ref, which is the only place it appears.
+          pr="$(printf '%s' "$HEAD_BRANCH" | sed -n 's#.*/pr-\([0-9][0-9]*\)-.*#\1#p')"
+          if [ -z "$pr" ]; then
+            echo "::warning::could not parse a PR number from '$HEAD_BRANCH' — nothing to notify"
+            exit 0
+          fi
+          echo "ejected pull request: #$pr"
+
+          # phase-396 W4 — is this red MINE, or is it red for EVERYONE?
+          #
+          # `queue-triage` already answers that: one check failing across several
+          # DIFFERENT pull requests is not a property of any one of them. Nothing
+          # ran it, so a human had to suspect the problem before the tool that
+          # detects it got used — and meanwhile six merge groups across three
+          # authors failed on one job while every notice told its author to
+          # rebase.
+          #
+          # In the infra case that advice is not merely unhelpful, it is WRONG.
+          # Rebasing cannot fix a check that is red before it sees the change,
+          # and re-queuing burns a batch slot against a check that cannot go
+          # green for anyone.
+          verdict=UNKNOWN
+          # Scoped to the workflow that ejected (issue 1843): `queue`'s L3, red
+          # for everyone, would otherwise label every `gate` ejection INFRA.
+          if triage="$(NROS_TRIAGE_WORKFLOW="$WORKFLOW" bash scripts/ci/queue-triage.sh)"; then
+            case "$triage" in
+              *"NOT YOUR PULL REQUEST"*)    verdict=INFRA ;;
+              *"LIKELY YOUR PULL REQUEST"*) verdict=MINE ;;
+            esac
+          fi
+          echo "triage verdict: $verdict"
+
+          # Post once per run, not once per re-check: a comment per attempt
+          # turns a bad afternoon into an unreadable thread.
+          body="$(cat <<MSG
+          **Ejected from the merge queue** — \`$WORKFLOW\` failed on the merge group.
+
+          [Run log]($RUN_URL)
+
+          A merge group tests \`main\` + your PR, a commit that exists nowhere else, so
+          "green on my PR" and "red in the queue" are both true. Before re-queuing:
+
+          \`\`\`
+          just queue-triage $pr     # is this yours, or is the check red for everyone?
+          \`\`\`
+
+          If it is yours, reproduce the merged state rather than re-running your branch:
+
+          \`\`\`
+          git fetch origin && git rebase origin/main
+          just ci l1                 # the SAME tier the merge group runs
+          \`\`\`
+
+          **Do not re-queue an unchanged commit.** The queue re-runs the same tree and
+          fails the same way. Re-queue with a new commit, or with evidence the failure
+          was a flake — and if it was, capture the log first so the next author does not
+          pay the same hour.
+
+          <sub>Posted by \`queue-notify\`; GitHub itself records an ejection only in the
+          PR timeline, with no comment and no notification.</sub>
+          MSG
+          )"
+
+          # Strip the heredoc's leading indentation.
+          printf '%s\n' "$body" | sed 's/^          //' > /tmp/body.md
+
+          # An INFRA verdict REPLACES the advice above rather than adding to it.
+          # Leaving "rebase and re-run just ci-l1" on the page next to "this is
+          # not your pull request" is worse than either alone: the author acts on
+          # the first thing they can act on, which is the wrong one.
+          #
+          # Indented heredoc + the same `sed` strip as above — the body must sit
+          # inside this YAML block scalar, so a column-0 heredoc is a parse
+          # error, not a formatting nit.
+          if [ "$verdict" = "INFRA" ]; then
+            infra="$(cat <<MSG
+          **Ejected from the merge queue** — \`$WORKFLOW\` failed on the merge group.
+
+          [Run log]($RUN_URL)
+
+          > [!IMPORTANT]
+          > **This is almost certainly not your pull request.** The same check has
+          > failed in the merge group for two or more *different* pull requests, and
+          > a check that fails across unrelated changes is not a property of any one
+          > of them.
+
+          **Do not rebase, and do not re-queue.** Neither can fix a check that is red
+          before it sees your change — every entry is the culprit — and each re-queue
+          burns a batch slot against a check that cannot go green for anyone.
+
+          Say so where the other authors will see it, then either fix the check or
+          drop it from the required set until it is fixed. An always-red required
+          check freezes merging exactly as a pending one does.
+
+          \`\`\`
+          just queue-triage $pr     # the evidence: which check, across how many PRs
+          \`\`\`
+
+          <sub>Posted by \`queue-notify\`; verdict from \`scripts/ci/queue-triage.sh\`.
+          GitHub records an ejection only in the PR timeline, with no comment and no
+          notification.</sub>
+          MSG
+          )"
+            printf '%s\n' "$infra" | sed 's/^          //' > /tmp/body.md
+          fi
+
+          if gh pr comment "$pr" --repo "${{ github.repository }}" --body-file /tmp/body.md; then
+            echo "commented on #$pr"
+          else
+            # A notifier that fails the workflow teaches people to ignore it.
+            echo "::warning::could not comment on #$pr — the ejection is still real"
+          fi
+
+  sweep:
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    # Twice daily (09:00 and 21:00). The failure mode is a PR sitting
+    # ineligible, which costs hours rather than minutes, so this does not need
+    # to be frequent — and each run is one `gh` call per open PR.
+    if: >-
+      ${{ (github.event_name == 'schedule'
+           && contains(fromJSON('["0 9 * * *","0 21 * * *"]'), github.event.schedule))
+          || (github.event_name == 'workflow_dispatch' && inputs.job == 'pr-verdicts') }}
+    runs-on: ubuntu-latest
+    # Longest green run 0.3 min (n=40); floor 10.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sweep for no-verdict pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # `--min-age 15`: a PR opened seconds ago legitimately has no checks
+        # yet. The script's own default is smaller; on a schedule there is no
+        # reason to be impatient, and a false "stuck" would teach people to
+        # ignore this.
+        run: bash scripts/ci/pr-verdict-check.sh --min-age 15
+
+  audit:
+    permissions:
+      contents: read
+    # 07:00 on the 1st. Away from the 05:00 Zephyr and 07:00 platform crons in
+    # `nightly.yml` by date rather than by hour, so a busy runner pool on the
+    # 1st does not delay either of them.
+    if: >-
+      ${{ (github.event_name == 'schedule' && github.event.schedule == '0 7 1 * *')
+          || (github.event_name == 'workflow_dispatch' && inputs.job == 'roadmap-audit') }}
+    runs-on: ubuntu-latest
+    # Longest green run 0.1 min (n=2); floor 10.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `just setup` and no provisioning: the script reads `docs/roadmap/`,
+      # `docs/issues/` and `.github/workflows/` off the checkout and shells out
+      # to nothing. phase-413's rule is that a workflow step which hand-rolls
+      # what a verb does hides defects in the verb — the inverse also holds, and
+      # provisioning a toolchain this job never uses would be boilerplate that
+      # says the script needs something it does not.
+      - name: Roadmap verification candidates
+        run: |
+          python3 scripts/roadmap-audit.py --markdown >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/roadmap-audit.py
+
+  triage:
+    # Runs on success too. "Everything passed" and "nothing ran" are both worth
+    # stating, and a reporter that only speaks on failure cannot tell you the
+    # difference between a quiet lane and a healthy one.
+    permissions:
+      contents: read
+      actions: read
+    if: >-
+      ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'nightly')
+          || (github.event_name == 'workflow_dispatch' && inputs.job == 'nightly-report') }}
+    runs-on: ubuntu-latest
+    # Longest green run 1.2 min (n=40); floor 10.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Did the nightly report?
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NROS_QUEUE_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          # Never fail the build. A tool that can go red about the nightly being
+          # red adds a second thing to ignore.
+          python3 scripts/ci/nightly-triage.py --runs 3 | tee /tmp/triage.txt || true
+
+          {
+            echo '## Did the nightly report?'
+            echo
+            echo '```'
+            cat /tmp/triage.txt
+            echo '```'
+            echo
+            echo 'A **NO VERDICT** cell never reached the thing it tests — fix the lane, not the code.'
+            echo 'Locally: `just nightly-triage`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The same question one level up: not "did THIS nightly report" but
+      # "which lanes on main have stopped reporting at all". gate.yml's push
+      # lane was red for 100 consecutive runs and host-tests finished 3 of 29,
+      # and nothing said so, because nothing that reads a pull request's
+      # checks reads these. Daily, because this job already is.
+      - name: Which lanes on main produce no signal?
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NROS_QUEUE_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          python3 scripts/ci/lane-health.py --markdown | tee /tmp/lanes.md || true
+          {
+            echo
+            echo '## Which lanes on main produce no signal?'
+            echo
+            cat /tmp/lanes.md
+            echo
+            echo 'Locally: `just lane-health`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          n="$(sed -n 's/^lane-health: \([0-9][0-9]*\) of .*/\1/p' /tmp/lanes.md | head -1)"
+          if [ "${n:-0}" -gt 0 ]; then
+            echo "::warning title=$n lane(s) on main produce no signal::$(sed -n 's/^lane-health: [0-9]* of [0-9]* lane(s) on main produce no signal: //p' /tmp/lanes.md)"
+          fi
+
+      # Issue 1629: the queue ejects an entry `checks_timed_out` while its gate
+      # is still running once the lane outgrows `check_response_timeout_minutes`.
+      # A warning, not a red: the fix is a ruleset edit only an admin makes.
+      - name: Does the queue's check timeout still fit the gate lane?
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NROS_QUEUE_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          rc=0
+          python3 scripts/ci/queue-timeout-agreement.py > /tmp/queue-timeout.txt 2>&1 || rc=$?
+          cat /tmp/queue-timeout.txt
+          {
+            echo
+            echo '## Does the merge queue timeout fit the gate lane?'
+            echo
+            echo '```'
+            cat /tmp/queue-timeout.txt
+            echo '```'
+            echo
+            echo 'Locally: `just queue-timeout`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning title=Merge queue timeout disagrees with the gate lane::$(grep -m1 '^\[FAIL\]' /tmp/queue-timeout.txt)"
+          fi
+
+      - name: Annotate when the lane produced no verdict
+        if: ${{ always() }}
+        run: |
+          set -uo pipefail
+          n="$(sed -n 's/^  NO VERDICT *\([0-9][0-9]*\).*/\1/p' /tmp/triage.txt | head -1)"
+          [ -n "${n:-}" ] || exit 0
+          if [ "$n" -gt 0 ]; then
+            echo "::warning title=Nightly produced no verdict for $n cell(s)::Those cells failed before running what they test, so they cannot report a regression. See the job summary."
+          fi

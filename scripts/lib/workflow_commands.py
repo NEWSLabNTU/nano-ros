@@ -10,7 +10,7 @@ nothing, and both were live in the tree when 0933 was written:
 
   * **Prose.** `nightly.yml`'s CLI-build step has a COMMENT about `nros configure`
     and does not run it.
-  * **Command text inside a heredoc.** `queue-notify.yml` builds a pull-request
+  * **Command text inside a heredoc.** `automation.yml` `notify` builds a pull-request
     comment whose TEXT tells the author to run `just queue-triage` and
     `just ci l1`. Those are strings being posted to GitHub.
 

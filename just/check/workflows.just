@@ -810,7 +810,7 @@ workflow-repo-env:
 
 # issue 1843 — a step that reaches the repository (`scripts/…`, `just`,
 # `./activate.sh`, `uses: ./…`) must run after a checkout. A job starts in an
-# EMPTY workspace; `queue-notify.yml` had no checkout and ran its triage script
+# EMPTY workspace; `queue-notify.yml` (now `automation.yml` `notify`) had no checkout and ran its triage script
 # inside `if "$(… 2>/dev/null)"`, so the missing file read as a verdict of
 # UNKNOWN on every run and nothing ever failed. Same command/prose split as
 # `workflow-repo-env` (`scripts/lib/workflow_commands.py`).

@@ -39,7 +39,7 @@ were found in the tree while writing it:
   comment about `nros configure` and does not run it. Counting words in comments is
   the mistake that makes a grep-based gate useless.
 
-* **Command text inside a heredoc.** `queue-notify.yml` builds a pull-request
+* **Command text inside a heredoc.** `automation.yml` `notify` builds a pull-request
   comment with `body="$(cat <<MSG ... MSG)"` whose text tells the author to run
   `just queue-triage` and `just ci l1`. Those are STRINGS being posted to
   GitHub, not commands, and "fixing" that step would source an environment

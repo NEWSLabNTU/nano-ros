@@ -324,7 +324,7 @@ def ci_lane_recipes(lane, recipes):
     Bounded to the lane's own body, exactly like `ci_lane_gates` and for the same
     reason. A forwarder whose body is empty (`l1: gate`) therefore credits
     nothing, which is the conservative direction: `just ci l1` appears inside a
-    heredoc in `queue-notify.yml`, and crediting a step from a line that only
+    heredoc in `automation.yml` (`notify`), and crediting a step from a line that only
     TELLS a human to run it is how a placement gate stops being one.
     """
     body = "\n".join(l for l in _ci_lane_body(lane) if not l.lstrip().startswith("#"))
@@ -619,7 +619,7 @@ def self_test():
         g == {"f1", "f2", "lane-exempt-x"})
 
     # A recipe step is credited by a bare `just <recipe>` and NOT by a line that
-    # merely mentions it — `just ci l1` sits inside a heredoc in queue-notify.yml
+    # merely mentions it — `just ci l1` sits inside a heredoc in automation.yml (notify)
     # telling a human what to run, and crediting that is how this stops being a
     # placement gate.
     probe_recipes = ["test-lane-contracts"]

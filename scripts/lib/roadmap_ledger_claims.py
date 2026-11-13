@@ -63,7 +63,7 @@ of the phase it would be blamed for, ejecting the merge-queue batch behind it.
 That is the coupling issue 1489 says it exists to REMOVE ("Nothing here says
 phase-444 should have edited phase-417"), and phase-419 put its cross-file
 work on the report for the same reason. So the verdict lives in `just
-roadmap-audit` / the monthly `roadmap-audit.yml`, which exit 0 on a finding.
+roadmap-audit` / the monthly `audit` job in `automation.yml`, which exit 0 on a finding.
 
 What DOES run on every push is the negative control. `self_test()` is called
 from `check-roadmap-claims.py`'s own self-test on the fast line: synthetic

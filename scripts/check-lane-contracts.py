@@ -454,7 +454,7 @@ REPORTING_EVENTS = {"push", "schedule", "workflow_dispatch"}
 # can merge into" still reads differently from "a bad nightly". Dropping the
 # lane was never the only way to say that.
 #
-# `workflow_run` is deliberately absent. `queue-notify.yml` runs on it and its
+# `workflow_run` is deliberately absent. `automation.yml` (`notify`) runs on it and its
 # `just ci l1` is TEXT — a line in the comment it posts telling a human what to
 # run — so scanning it attributes lanes to a workflow that runs none of them.
 SCANNED_EVENTS = GATING_EVENTS | REPORTING_EVENTS

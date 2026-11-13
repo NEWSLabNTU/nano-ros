@@ -103,7 +103,7 @@ gate:
     exit 1
 
 # Deprecated spelling of `just ci gate`. Kept because it is what CLAUDE.md,
-# queue-notify.yml and the docs say today.
+# automation.yml (`notify`) and the docs say today.
 [group("main")]
 l1: gate
 

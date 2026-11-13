@@ -11,7 +11,7 @@ documents or teach people to ignore it.
 
 So this prints CANDIDATES with the evidence beside them, and a person or an
 agent decides. Exit status is 0 unless the script itself broke; a finding is not
-a failure. `pr-verdicts.yml` documents the same shape and why it stays advisory:
+a failure. `automation.yml`'s `sweep` job documents the same shape and why it stays advisory:
 a check that produces no verdict for a pull request blocks it forever (#0975).
 
 WHAT IT LOOKS FOR, and why each is here
