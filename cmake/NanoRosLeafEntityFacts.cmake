@@ -245,7 +245,7 @@ function(nros_record_leaf_entity_facts _dir)
             "from the declaration, add `entities = [...]` to its `[[component]]` "
             "— e.g. entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]; "
             "the runtime's own service families are "
-            "`[system] features`.")
+            "`[system] features` and `node_interfaces`.")
     endif()
     # A configure re-runs when the declaration changes. `nano_ros_read_leaf_system`
     # already registers this file, but that is its dependency and not ours: a

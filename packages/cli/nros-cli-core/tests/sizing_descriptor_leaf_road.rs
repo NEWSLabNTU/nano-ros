@@ -183,6 +183,58 @@ fn the_leaves_issue_1378_measured_get_a_descriptor_that_states_their_queryables(
     assert_eq!(checked, 2, "both language leaves must be measured");
 }
 
+/// phase-556 W13 -- the node-interface switch reaches the leaf road's
+/// descriptor: the same leaf with `node_interfaces = "stock"` states the
+/// parameter family and `/rosout` in `infra_families`, and `"none"` beside a
+/// declared `param_services` states neither.
+#[test]
+fn the_node_interface_switch_reaches_the_leaf_descriptor() {
+    let dir = tempfile::tempdir().expect("scratch");
+    let mut families = Vec::new();
+    for (i, line) in [
+        "node_interfaces = \"stock\"",
+        "features = [\"param_services\", \"rosout\"]\nnode_interfaces = \"none\"",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let leaf = leaf_copy(
+            "c",
+            &dir.path().join(i.to_string()),
+            &format!("[\"{ACTION_SERVER}\"]"),
+        );
+        let toml = leaf.join("system.toml");
+        let text = std::fs::read_to_string(&toml).expect("reads");
+        std::fs::write(
+            &toml,
+            text.replace("domain_id = 0\n", &format!("domain_id = 0\n{line}\n")),
+        )
+        .expect("write");
+        let build_dir = dir.path().join(format!("b{i}"));
+        run(SizingDescriptorArgs {
+            from_leaf: Some(leaf.clone()),
+            build_dir: Some(build_dir.clone()),
+            entry: Some("c_action_server".into()),
+            host_build: true,
+            ..args()
+        })
+        .expect("a described leaf gets a descriptor");
+        let desc = nros_sizing_descriptor::read(&nros_sizing_descriptor::descriptor_path(
+            &build_dir,
+            "c_action_server",
+        ))
+        .expect("reads back");
+        families.push(*desc.image.infra_families().stated().expect("stated"));
+    }
+    assert_eq!(
+        families,
+        vec![
+            nros_sizing_descriptor::InfraFamilies::ParamRosout,
+            nros_sizing_descriptor::InfraFamilies::None,
+        ]
+    );
+}
+
 /// The descriptor is RELATIVE and self-contained on this road too (issue 0320).
 ///
 /// `write_for_model` runs `portability_violation` against the directories it read

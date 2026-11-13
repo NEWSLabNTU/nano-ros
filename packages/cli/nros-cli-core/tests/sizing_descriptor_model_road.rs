@@ -348,6 +348,7 @@ fn bound_tables_turn_the_model_roads_payload_refusals_into_facts() {
         infra_families: Some(nros_sizing_descriptor::InfraFamilies::from_switches(
             inv.infra().param_services,
             inv.infra().lifecycle,
+            inv.infra().rosout,
         )),
         language: Some(EntryLanguage::CFamily),
         backend_schema: None,

@@ -307,6 +307,33 @@ Acceptance: on every board a node has the parameter services, `/rosout` and
 against stock; the per-image off switch exists and is documented; and the RAM
 each node costs is measured on the smallest board and recorded here.
 
+Progress (2026-11-13, step 1 of 5; no default changed yet):
+
+- ONE decision: `nros_orchestration_ir::node_interfaces::effective_features`
+  turns an image's declared axes into the axes it is built with. The stock
+  set is `param_services` + `rosout`; the policy constant
+  `DEFAULT_NODE_INTERFACES` is still "as declared", and step 3 flips it.
+- The switch: `node_interfaces = "stock" | "none"` in `[system]`,
+  `[image_defaults]` or `[image.<id>]`, the most specific table winning.
+  `stock` adds the stock set now (so it is testable before the flip); `none`
+  removes it, even where a broader table declared it. Read by the overlay
+  (`nros.toml` version 3 carries it), the leaf reader (`LeafSystem.features`
+  is the effective list), and the strict `SystemToml`
+  (`capability_enabled`, `effective_features`, `with_image_features`), so
+  the Zephyr `NROS_FEATURES` and Kconfig symbols (a new
+  `CONFIG_NROS_CAPABILITY_ROSOUT`), the cmake `NROS_FEATURES` and the sizing
+  descriptor follow. No environment carrier.
+- `/rosout` joined the runtime families: `InfraServices.rosout`, one VOLATILE
+  publisher per image (`ROSOUT_PUBLISHERS`, mirrored and held by
+  `check-infra-queryable-counts`); `infra_families` is a `+`-joined subset of
+  `param`, `lifecycle`, `rosout` or `none`, and the descriptor schema is 3.
+  An undeclared image is priced with all three families present.
+- Gate `check-node-interface-readers` refuses a read of the declared list
+  that bypasses the function (self-test first).
+- Open for later steps: the runtime owns `/rosout` per node (step 2), the
+  default flips with the Pico W and PX4 opt-outs (step 3), W14, and the RAM
+  measurement.
+
 ### W14 — One `/parameter_events` writer per executor
 
 - **Status:** OPEN

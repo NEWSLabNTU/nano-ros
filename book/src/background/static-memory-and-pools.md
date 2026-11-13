@@ -85,6 +85,30 @@ that looks larger than its entities suggest is expected, and turning those
 knobs down is the remedy. The [Static pool inventory](../reference/static-pool-inventory.md)
 lists every knob and what it sizes.
 
+## The node interfaces an image carries
+
+A ROS 2 node serves six parameter services and publishes `/rosout` without
+being asked. In nano-ros those are capability axes, `param_services` and
+`rosout`, and each costs pool slots: six queryables per node and a
+`/parameter_events` publisher for the first, one publisher for the second.
+Today an image gets them only when its `system.toml` declares them in
+`features`. The `node_interfaces` key changes that per image:
+
+```toml
+[system]
+node_interfaces = "stock"   # add param_services and rosout to every image
+
+[image.pico]
+board = "rpi-pico-w-zephyr"
+node_interfaces = "none"    # this image keeps neither, even if declared above
+```
+
+`"stock"` adds both axes, `"none"` removes both, and the most specific table
+wins: `[image.<id>]`, then `[image_defaults]`, then `[system]`. The pools,
+the sizing descriptor's `infra_families` and the C/C++ and Zephyr capability
+settings all follow the result, so turning the interfaces off is how a
+memory-tight image gives their slots back.
+
 ## The three service inboxes (zenoh)
 
 The zenoh backend shows how a pool is split so that each part is sized for its

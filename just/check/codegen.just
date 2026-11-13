@@ -876,3 +876,11 @@ cmake-entry-agreement:
 [group("check")]
 launch-model-boundary:
     @python3 scripts/check-launch-model-boundary.py
+
+# phase-556 W13 -- every reader of a bringup's or leaf's capability `features`
+# goes through `node_interfaces::effective_features`, the one decision of which
+# node interfaces (parameter services, `/rosout`) an image gets, so the
+# `node_interfaces` switch reaches every road. Buildless; self-test first.
+[group("check")]
+node-interface-readers:
+    @python3 scripts/check-node-interface-readers.py

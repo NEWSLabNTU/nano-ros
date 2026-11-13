@@ -1183,7 +1183,10 @@ impl SystemToml {
         // Phase 261 W4 — the generic `[system].features = [...]` surface enables an
         // axis by declared name, equivalently to the typed `[<name>] enabled = true`
         // block. Either source flips the axis on.
-        if self.system.features.iter().any(|f| f == declared) {
+        //
+        // phase-556 W13 -- through the node-interface switch, the one decision
+        // of which stock interfaces the image gets.
+        if self.effective_features().iter().any(|f| f == declared) {
             return true;
         }
         match declared {
@@ -1193,6 +1196,17 @@ impl SystemToml {
             "lifecycle" => self.lifecycle.is_some(),
             _ => false,
         }
+    }
+
+    /// phase-556 W13 -- `[system].features` through `[system] node_interfaces`
+    /// (or, on the system [`Self::with_image_features`] returns, the image's
+    /// resolved switch): the capability axes this system is built with.
+    #[must_use]
+    pub fn effective_features(&self) -> Vec<String> {
+        nros_orchestration_ir::node_interfaces::effective_features(
+            &self.system.features,
+            self.system.node_interfaces,
+        )
     }
 
     /// Phase 261 W4 — validate `[system].features`: every entry must name a known
@@ -1612,18 +1626,26 @@ impl SystemToml {
     /// reached no crate.
     #[must_use]
     pub fn with_image_features(&self, id: Option<&str>) -> std::borrow::Cow<'_, Self> {
-        let extra: Vec<String> = id
-            .and_then(|i| self.image_for(i))
+        let img = id.and_then(|i| self.image_for(i));
+        // phase-556 W13 -- the image's `node_interfaces` (already over
+        // `[image_defaults]`) wins over the system's.
+        let switch = nros_orchestration_ir::node_interfaces::resolve(
+            img.as_ref().and_then(|i| i.node_interfaces),
+            None,
+            self.system.node_interfaces,
+        );
+        let extra: Vec<String> = img
             .map(|img| img.features)
             .unwrap_or_default()
             .into_iter()
             .filter(|f| !self.system.features.contains(f))
             .collect();
-        if extra.is_empty() {
+        if extra.is_empty() && switch == self.system.node_interfaces {
             return std::borrow::Cow::Borrowed(self);
         }
         let mut owned = self.clone();
         owned.system.features.extend(extra);
+        owned.system.node_interfaces = switch;
         std::borrow::Cow::Owned(owned)
     }
 
@@ -1791,6 +1813,12 @@ pub struct SystemHeader {
     /// deprecated). Absent ⇒ empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
+    /// phase-556 W13 -- `node_interfaces = "stock" | "none"`, the switch every
+    /// image without its own falls back to. Read only through
+    /// [`SystemToml::capability_enabled`], which applies it with
+    /// `nros_orchestration_ir::node_interfaces::effective_features`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_interfaces: Option<nros_orchestration_ir::node_interfaces::NodeInterfaces>,
     /// phase-530 W2 (Ruling R29) -- `entities = "defaults"`: the census
     /// opt-out for a leaf with no `[[component]]` to write it on. Only that
     /// word; `leaf_system` reads the same key.

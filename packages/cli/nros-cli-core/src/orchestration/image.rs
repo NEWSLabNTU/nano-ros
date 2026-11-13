@@ -318,6 +318,13 @@ pub struct ImageBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
 
+    /// phase-556 W13 -- `node_interfaces = "stock" | "none"`: add or remove
+    /// the stock node interfaces (parameter services, `/rosout`) for this
+    /// image, over `[image_defaults]` and `[system]`. Applied only through
+    /// `nros_orchestration_ir::node_interfaces::effective_features`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_interfaces: Option<nros_orchestration_ir::node_interfaces::NodeInterfaces>,
+
     /// `env = { KEY = "VALUE" }` — the RFC-0049 APP rung for a build knob this
     /// IMAGE states (RFC-0098 D4, phase-445 W6).
     ///
@@ -601,6 +608,8 @@ impl ImageBlock {
             // making a choice the base cannot have made for it.
             entry: pick(&self.entry, &base.entry),
             producers: self.producers.or(base.producers),
+            // Scalar: the image's own switch, else the base's.
+            node_interfaces: self.node_interfaces.or(base.node_interfaces),
             // Per IMAGE, never inherited: a key names what one image was
             // measured as, and a base cannot have measured every image.
             stack_floor_image: self.stack_floor_image.clone(),

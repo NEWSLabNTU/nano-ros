@@ -32,6 +32,7 @@ SPIN = "packages/core/nros-node/src/executor/spin.rs"
 PARAMS = "packages/core/nros-node/src/parameter_services.rs"
 LIFECYCLE = "packages/core/nros-node/src/lifecycle_services.rs"
 ACTION = "packages/core/nros-node/src/executor/action.rs"
+ROSOUT = "packages/core/nros-node/src/rosout.rs"
 
 # (label, creation fn, constant, file that must define it)
 #
@@ -142,7 +143,8 @@ def read(root, rel):
 # reporting that every count agrees.
 MIRROR = re.compile(
     r"^(?:pub )?const (PARAM_SERVICE_QUERYABLES|LIFECYCLE_SERVICE_QUERYABLES|ACTION_SERVER_QUERYABLES"
-    r"|ACTION_CLIENT_SERVICE_CLIENTS|LIFECYCLE_SERVICE_PUBLISHERS|PARAM_EVENT_PUBLISHERS)"
+    r"|ACTION_CLIENT_SERVICE_CLIENTS|LIFECYCLE_SERVICE_PUBLISHERS|PARAM_EVENT_PUBLISHERS"
+    r"|ROSOUT_PUBLISHERS)"
     r": usize = (\d+);",
     re.M,
 )
@@ -281,6 +283,19 @@ def check(root, rmw_dir="packages/rmw"):
         )
     except OSError:
         definitions["ACTION_CLIENT_SERVICE_CLIENTS"] = None
+    # phase-556 W13 -- the `/rosout` family's publisher count. Its creation
+    # site is still the application's (the runtime-owned writer is a later
+    # step, which adds the GROUPS row that ties it to a creation call), so
+    # only the definition and its mirrors are held here.
+    try:
+        definitions["ROSOUT_PUBLISHERS"] = declared(read(root, ROSOUT), "ROSOUT_PUBLISHERS")
+    except OSError:
+        definitions["ROSOUT_PUBLISHERS"] = None
+    if definitions["ROSOUT_PUBLISHERS"] is None:
+        problems.append(
+            f"ROSOUT_PUBLISHERS not found in {ROSOUT} -- the count must have "
+            f"exactly one definition, beside the code it counts."
+        )
 
     scanned = list(rmw_rust_files(root, rmw_dir))
     scanned += [r for r in EXTRA_MIRROR_FILES if os.path.isfile(os.path.join(root, r))]
@@ -349,8 +364,8 @@ def check(root, rmw_dir="packages/rmw"):
 def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
            c_cli_action=3, c_inv_param=6, cli_chans=3, c_inv_cli=3,
            n_lc_pub=1, c_lc_pub=1, c_inv_lc_pub=1, c_shared_lc=5,
-           n_pe_pub=1, c_pe_pub=1, c_inv_pe_pub=1):
-    for rel in (SPIN, PARAMS, LIFECYCLE, ACTION, "packages/rmw/zenoh/x/src/service.rs"):
+           n_pe_pub=1, c_pe_pub=1, c_inv_pe_pub=1, c_rosout=1, c_inv_rosout=1):
+    for rel in (SPIN, PARAMS, LIFECYCLE, ACTION, ROSOUT, "packages/rmw/zenoh/x/src/service.rs"):
         os.makedirs(os.path.join(root, os.path.dirname(rel)), exist_ok=True)
     body = "".join(f"        let h{i} = create_param_srv::<T>(\n" for i in range(n_param))
     body += "".join(f"        let l{i} = create_lc_srv::<T>(\n" for i in range(n_lc))
@@ -392,6 +407,11 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
         act += "    .create_subscription(&feedback_topic, qos)\n"
         act += "".join(f"    .create_client(&cli{i}_info, qos)\n" for i in range(cli_chans))
     open(os.path.join(root, ACTION), "w").write(act)
+    if c_rosout is not None:
+        open(os.path.join(root, ROSOUT), "w").write(
+            f"pub const ROSOUT_PUBLISHERS: usize = {c_rosout};\n")
+    else:
+        open(os.path.join(root, ROSOUT), "w").write("// no definition\n")
     open(os.path.join(root, "packages/rmw/zenoh/x/src/service.rs"), "w").write(rmw_line + "\n")
     # The CLI mirror lives outside `packages/rmw`, so it is reached by a
     # different arm of the scan — exercise it rather than assume it.
@@ -408,6 +428,7 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
         "const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;\n"
         f"const LIFECYCLE_SERVICE_PUBLISHERS: usize = {c_inv_lc_pub};\n"
         f"const PARAM_EVENT_PUBLISHERS: usize = {c_inv_pe_pub};\n"
+        f"const ROSOUT_PUBLISHERS: usize = {c_inv_rosout};\n"
         f"const ACTION_CLIENT_SERVICE_CLIENTS: usize = {c_inv_cli};\n")
     # Issue 1743 -- the shared build-script mirror, spelled `pub const`.
     shared = EXTRA_MIRROR_FILES[2]
@@ -468,6 +489,16 @@ def self_test():
          "the entity inventory's /parameter_events mirror drifted"),
         ((6, 5, 6, 5, "const PARAM_EVENT_PUBLISHERS: usize = 1;"), 0,
          "a build-script /parameter_events mirror that agrees"),
+        # phase-556 W13 -- the `/rosout` publisher: a mirror drifts, a
+        # build-script mirror agrees or drifts, the definition goes missing.
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 1, 1, 2), 1,
+         "the entity inventory's /rosout mirror drifted"),
+        ((6, 5, 6, 5, "pub const ROSOUT_PUBLISHERS: usize = 1;"), 0,
+         "a build-script /rosout mirror that agrees"),
+        ((6, 5, 6, 5, "pub const ROSOUT_PUBLISHERS: usize = 2;"), 1,
+         "a build-script /rosout mirror that drifted"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 1, None), 1,
+         "the /rosout publisher count lost its definition"),
     ]
     failures = 0
     tmp = tempfile.mkdtemp()

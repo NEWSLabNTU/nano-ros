@@ -267,3 +267,84 @@ fn the_model_carries_no_switch_and_the_overlay_carries_every_bringups() {
     // something; if none did, this test would compare only empty sets.
     assert!(stating >= 3, "only {stating} bringups state an overlay");
 }
+
+/// phase-556 W13 -- the lax overlay reader (the model road) and the strict
+/// `SystemToml` (the CLI's cmake, Zephyr and facade roads) build every image
+/// with the SAME capability axes, node-interface switch applied. Asked of
+/// every tracked `system.toml`, plus synthetic files that state the switch at
+/// each level, since no tracked file states one yet.
+#[test]
+fn both_readers_build_every_image_with_the_same_node_interfaces() {
+    /// (image id, the overlay's axes, the strict reader's axes).
+    type Row = (String, Vec<String>, Vec<String>);
+    fn effective_both(text: &str, origin: &Path) -> Option<Vec<Row>> {
+        let sys: SystemToml = toml::from_str(text).ok()?;
+        let ov = Overlay::from_system_toml_str(text, origin).ok()?;
+        let sorted = |mut v: Vec<String>| {
+            v.sort();
+            v
+        };
+        let mut rows = vec![(
+            "<system>".to_string(),
+            sorted(ov.system_features()),
+            sorted(sys.effective_features()),
+        )];
+        for id in sys.image.keys() {
+            rows.push((
+                id.clone(),
+                sorted(ov.features_for_image(id)),
+                sorted(sys.with_image_features(Some(id)).effective_features()),
+            ));
+        }
+        Some(rows)
+    }
+    let base = "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n";
+    let synthetic = [
+        format!("{base}node_interfaces = \"stock\"\n[image.a]\nboard = \"linux\"\n"),
+        format!(
+            "{base}features = [\"param_services\", \"lifecycle\"]\n\
+             [image_defaults]\nnode_interfaces = \"none\"\n[image.a]\nboard = \"linux\"\n\
+             [image.b]\nboard = \"linux\"\nnode_interfaces = \"stock\"\n"
+        ),
+        format!("{base}[image.a]\nboard = \"linux\"\nfeatures = [\"rosout\"]\n"),
+    ];
+    let root = repo_root();
+    let mut compared = 0usize;
+    let mut bad = Vec::new();
+    let tracked: Vec<(String, String)> = tracked_system_tomls(&root)
+        .into_iter()
+        .map(|f| {
+            (
+                f.strip_prefix(&root).unwrap_or(&f).display().to_string(),
+                std::fs::read_to_string(&f).unwrap(),
+            )
+        })
+        .collect();
+    let all = tracked.into_iter().chain(
+        synthetic
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (format!("<synthetic {i}>"), t.clone())),
+    );
+    for (name, text) in all {
+        let Some(rows) = effective_both(&text, Path::new(&name)) else {
+            continue;
+        };
+        for (id, overlay, strict) in rows {
+            compared += 1;
+            if overlay != strict {
+                bad.push(format!(
+                    "{name} {id}: overlay {overlay:?}, strict {strict:?}"
+                ));
+            }
+        }
+    }
+    assert!(bad.is_empty(), "the readers disagree:\n{}", bad.join("\n"));
+    assert!(compared >= 10, "only {compared} images compared");
+    // The synthetic files mean what they say (a check on the fixture).
+    let rows = effective_both(&synthetic[1], Path::new("s")).unwrap();
+    let get = |id: &str| rows.iter().find(|r| r.0 == id).unwrap().1.clone();
+    assert_eq!(get("<system>"), vec!["lifecycle", "param_services"]);
+    assert_eq!(get("a"), vec!["lifecycle"]);
+    assert_eq!(get("b"), vec!["lifecycle", "param_services", "rosout"]);
+}

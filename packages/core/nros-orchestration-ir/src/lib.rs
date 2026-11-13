@@ -74,6 +74,9 @@ pub mod mode_variants;
 // phase-330 W3.b — the ONE place that decides where a SystemModel is read
 // from, shared by the proc-macro, `nros-build` and (via its default) cmake.
 pub mod model_location;
+// phase-556 W13 -- the ONE decision of which node interfaces (parameter
+// services, `/rosout`) an image gets; every features reader routes through it.
+pub mod node_interfaces;
 // issue 1895 — `[system] default_launch` + `[[model]]`, parsed one way.
 pub mod system_launch;
 // RFC-0103 D10 (phase-497 W1) — `[network.*]` + `[image.<id>.net.<if>]`, parsed one way.

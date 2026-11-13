@@ -35,7 +35,8 @@ type ZenohBufferConfig = crate::ZenohBufferConfig;
 #[cfg(test)]
 use nros_sizing_descriptor::infra::LIFECYCLE_SERVICE_QUERYABLES;
 use nros_sizing_descriptor::infra::{
-    PARAM_SERVICE_QUERYABLES, declared_families, declared_nodes, per_node_term_is_unknown, stated,
+    Families, PARAM_SERVICE_QUERYABLES, ROSOUT_PUBLISHERS, declared_families, declared_nodes,
+    per_node_term_is_unknown, stated,
 };
 
 /// Publishers the REP-2002 lifecycle family claims (`~/transition_event`),
@@ -616,7 +617,11 @@ fn liveliness_with_runtime(
     // an over-long one is a few bytes a slot.
     // The SHARED parser, so this pool and the queryable table cannot read one
     // `infra_families` tag two ways.
-    let (param, lifecycle) = declared_families(infra).unwrap_or((true, true));
+    let Families {
+        param,
+        lifecycle,
+        rosout,
+    } = declared_families(infra).unwrap_or(Families::ALL);
     // One token per node NAME: the larger of the components and the model's
     // nodes (the parameter family is per node), plus the executor's when the
     // lifecycle family registers under it. Errs high by one where the
@@ -628,7 +633,9 @@ fn liveliness_with_runtime(
         } else {
             0
         }
-        + if param { PARAM_EVENT_PUBLISHERS } else { 0 };
+        + if param { PARAM_EVENT_PUBLISHERS } else { 0 }
+        // phase-556 W13 -- the `/rosout` writer's token.
+        + if rosout { ROSOUT_PUBLISHERS } else { 0 };
     PRIMARY_NODE_LIVELINESS_TOKENS
         + node_names
         + runtime
@@ -1163,13 +1170,25 @@ mod liveliness_default_tests {
         // The parameter family is per NODE.
         let two = liveliness_default_from(Some(2), Some(2), Some("param"), Some("2"), false);
         assert_eq!(two - param, 1 + PARAM_SERVICE_QUERYABLES);
+        // phase-556 W13 -- `/rosout`: one writer's token, no server, no node.
+        let rosout = liveliness_default_from(Some(2), Some(1), Some("rosout"), Some("1"), false);
+        assert_eq!(rosout - base, ROSOUT_PUBLISHERS);
+        let stock =
+            liveliness_default_from(Some(2), Some(1), Some("param+rosout"), Some("1"), false);
+        assert_eq!(stock - param, ROSOUT_PUBLISHERS);
     }
 
     #[test]
     fn undeclared_infrastructure_is_assumed_present() {
         assert_eq!(
             liveliness_default_from(Some(2), Some(1), None, None, false),
-            liveliness_default_from(Some(2), Some(1), Some("param+lifecycle"), Some("1"), false)
+            liveliness_default_from(
+                Some(2),
+                Some(1),
+                Some("param+lifecycle+rosout"),
+                Some("1"),
+                false
+            )
         );
     }
 
@@ -1197,10 +1216,10 @@ mod liveliness_default_tests {
             got >= TWO_NODE_PARAM_TOKENS,
             "derived {got} tokens for an image that declares {TWO_NODE_PARAM_TOKENS}"
         );
-        // The same terms as a stated image with both families, nothing less.
+        // The same terms as a stated image with every family, nothing less.
         assert_eq!(
             got,
-            liveliness_default_from(None, None, Some("param+lifecycle"), Some("1"), true)
+            liveliness_default_from(None, None, Some("param+lifecycle+rosout"), Some("1"), true)
         );
         // Negative control: the embedded budget is still the flat pool, and it
         // is exactly what was short.

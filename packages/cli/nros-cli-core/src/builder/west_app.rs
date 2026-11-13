@@ -191,6 +191,9 @@ pub fn image_statement_cmake(image: Option<&ImageStatement>) -> String {
 pub const CAPABILITY_KCONFIG: &[(&str, &str)] = &[
     ("param_services", "CONFIG_NROS_CAPABILITY_PARAM_SERVICES"),
     ("lifecycle", "CONFIG_NROS_CAPABILITY_LIFECYCLE"),
+    // phase-556 W13 -- `/rosout` is a stock node interface; the symbol lets a
+    // hand-written Zephyr application's module derive `NROS_FEATURES` from it.
+    ("rosout", "CONFIG_NROS_CAPABILITY_ROSOUT"),
     (PARAM_STORE_AXIS, "CONFIG_NROS_PARAM_STORE"),
 ];
 
@@ -566,12 +569,12 @@ pub fn resolve_cmake(
             deploy: platform.to_string(),
             panic: panic.map(str::to_string),
             rust_node_dirs,
-            features: crate::cmd::build::declared_capabilities(bringup_dir)
+            features: crate::cmd::build::declared_capabilities_for(bringup_dir, Some(image_id))
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
         }),
-        capabilities: crate::cmd::build::declared_capabilities(bringup_dir)
+        capabilities: crate::cmd::build::declared_capabilities_for(bringup_dir, Some(image_id))
             .into_iter()
             .map(str::to_string)
             .collect(),
@@ -1651,6 +1654,42 @@ mod tests {
         .unwrap();
         let typed = code(&cmake_app(td.path(), &nodes, None));
         assert!(typed.contains("set(NROS_FEATURES \"safety\")"), "{typed}");
+    }
+
+    /// phase-556 W13 -- the node-interface switch reaches the Zephyr road
+    /// (`NROS_FEATURES` and the Kconfig capability symbols) for THIS image:
+    /// `stock` adds the parameter services and `/rosout`, `none` on the image
+    /// removes what `[system]` declared, and no switch changes nothing.
+    #[test]
+    fn the_node_interface_switch_reaches_nros_features_and_kconfig() {
+        let td = tempfile::tempdir().unwrap();
+        let nodes = cmake_workspace(td.path(), &[("srv_pkg", true, false)]);
+        let bringup = td.path().join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        let base = "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n";
+        let write = |extra: &str| {
+            std::fs::write(bringup.join("system.toml"), format!("{base}{extra}")).unwrap();
+            render_cmakelists(&cmake_app(td.path(), &nodes, None))
+        };
+        let off = write("");
+        assert!(!off.contains("set(NROS_FEATURES"), "{off}");
+        assert!(
+            off.contains("set(CONFIG_NROS_CAPABILITY_ROSOUT n "),
+            "every axis is written, `n` when undeclared: {off}"
+        );
+        let stock = write("node_interfaces = \"stock\"\n");
+        assert!(
+            stock.contains("set(NROS_FEATURES \"param_services;rosout\")"),
+            "{stock}"
+        );
+        assert!(stock.contains("set(CONFIG_NROS_CAPABILITY_PARAM_SERVICES y "));
+        assert!(stock.contains("set(CONFIG_NROS_CAPABILITY_ROSOUT y "));
+        let none = write(
+            "features = [\"param_services\", \"lifecycle\"]\n\
+             [image.zephyr]\nboard = \"x\"\nnode_interfaces = \"none\"\n",
+        );
+        assert!(none.contains("set(NROS_FEATURES \"lifecycle\")"), "{none}");
+        assert!(none.contains("set(CONFIG_NROS_CAPABILITY_PARAM_SERVICES n "));
     }
 
     /// The two lines `mixed` needs, in the order that makes them work.
