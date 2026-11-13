@@ -76,7 +76,8 @@ extern int nros_zephyr_sched_task_create_static(void* (*entry)(void*), void* arg
 /* Issue 1232 — what the kernel recorded for the CALLING thread's stack (0 when
  * the image keeps no stack info). */
 extern size_t nros_zephyr_current_stack_size(void);
-extern void nros_zephyr_set_current_priority(int32_t priority);
+/* Returns the priority the kernel reports afterwards (k_thread_priority_get). */
+extern int32_t nros_zephyr_set_current_priority(int32_t priority);
 /* issue 1537 — judge one sched task against the transport band the kernel actually
  * gave this image's explicitly-prioritised tasks; prints the boot report (see
  * `nros_platform_zephyr_shims.c`). Shared with the Rust arm. */
@@ -1102,7 +1103,19 @@ static int32_t zephyr_run_sched_tasks(const char* locator, uint8_t domain_id, co
         } else if (bp < (int64_t)INT32_MIN) {
             bp = (int64_t)INT32_MIN;
         }
-        nros_zephyr_set_current_priority((int32_t)bp);
+        /* Read back and say so, in the marker the FreeRTOS and NuttX seams
+         * print (`nros_tests::output::*_SCHED_TASK_PRIORITY_MARKER`): Zephyr
+         * 3.7 traces no `k_thread_priority_set`, so this line is the only
+         * evidence that the boot sched task left the main-thread default. */
+        int32_t got = nros_zephyr_set_current_priority((int32_t)bp);
+        const char* bn = (boot->name != NULL) ? boot->name : "?";
+        if (got == (int32_t)bp) {
+            printk("nros: sched task priority set sched_task=`%s` prio=%d\n", bn, (int)got);
+        } else {
+            printk("nros: sched task priority FAILED sched_task=`%s` prio=%d - the kernel "
+                   "reports %d, sched task does NOT hold its declared priority\n",
+                   bn, (int)bp, (int)got);
+        }
     }
     /* phase-296 W5.5/W5.7 — boot sched task self-applies its declared CPU pin +
      * kernel EDF deadline too. */

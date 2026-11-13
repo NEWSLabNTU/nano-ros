@@ -1324,6 +1324,20 @@ pub const FREERTOS_SCHED_TASK_PRIORITY_MARKER: &str = "nros: sched task priority
 pub const FREERTOS_SCHED_TASK_PRIORITY_FAILED_MARKER: &str =
     "nros: sched task priority FAILED sched_task=";
 
+/// The Zephyr seam's boot-sched-task priority markers, printed by
+/// `zephyr_run_sched_tasks.c` (C/C++) and `entry_sched_tasks.rs` (Rust) after
+/// the boot thread adopts `sched_tasks[0]`'s priority, from the value
+/// `k_thread_priority_get` reads back. Zephyr 3.7 has no tracing hook in
+/// `k_thread_priority_set`, so before these a boot sched task that kept the
+/// main-thread default left no trace. The same literals as the FreeRTOS and
+/// NuttX seams.
+pub const ZEPHYR_SCHED_TASK_PRIORITY_MARKER: &str = "nros: sched task priority set sched_task=";
+
+/// The loud-failure sibling of [`ZEPHYR_SCHED_TASK_PRIORITY_MARKER`]: the kernel
+/// reports a priority other than the declared one after the set.
+pub const ZEPHYR_SCHED_TASK_PRIORITY_FAILED_MARKER: &str =
+    "nros: sched task priority FAILED sched_task=";
+
 /// Render the per-sched-task form of a sched-task-priority marker, so a test can assert
 /// that a SPECIFIC sched task adopted a SPECIFIC declared priority rather than that
 /// some sched task adopted something.
