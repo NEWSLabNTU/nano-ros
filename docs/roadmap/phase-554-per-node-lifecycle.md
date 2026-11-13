@@ -17,6 +17,19 @@ Every message an item adds that a user can see names the node, the knob or the
 transition, and carries no issue, phase or RFC id (user ruling 2026-11-12).
 Ids go in source comments.
 
+**Which CI tier a lifecycle PR runs** (user ruling 2026-11-13, "Go option c
+for CI tier for the lifecycle PRs"):
+
+- A PR runs tier 2 itself (`just build-test-fixtures lane=tier2`, then
+  `just ci matrix`) when it touches the C or C++ API or FFI, generated code,
+  a board crate, or embedded sizing and pools.
+- A PR that changes only Rust runtime logic, covered by unit tests and the
+  Linux e2e cells, waits for one batch tier-2 run at the end of phase B
+  (W1-W9) and another at the end of phase C (W10-W14).
+- Each PR body states which rule applied and why.
+- Catch-up: W1 (a new error mapped into C and C++) and W2 (new FFI, removed
+  C++ symbols) both touched C/C++. One tier-2 pass on main covers both.
+
 ---
 
 ## Why
@@ -106,8 +119,8 @@ Status: DONE (2026-11-13).
   `nros_cpp_lifecycle_autostart` are gone.
 - **Self-managed nodes.** A node whose component registered its own machine
   (a C++ `rclcpp_lifecycle::LifecycleNode`) keeps it.
-- **A leaf with no model.** Its `lifecycle` manages the first node the image
-  built.
+- **A leaf with no model.** ~~Its `lifecycle` manages the first node the
+  image built.~~ Withdrawn by the 2026-11-13 ruling; see W2.b.
 - **Examples.** The three feature-workspace lifecycle examples now declare
   `<lifecycle_node>`.
 - **Acceptance.** Measured on linux/zenoh: the C, C++ and Rust lifecycle
@@ -128,6 +141,61 @@ callbacks (Q1).
 
 Acceptance: a workspace with one managed and one unmanaged node registers
 exactly one machine, on each road, and the managed node's model row says so.
+
+### W2.b — The code decides which nodes are managed (D2, ruled 2026-11-13)
+
+- **Status:** OPEN. Part 1 (the run-time half) is done; part 2 (the probe
+  field) is open.
+
+Two rulings, both 2026-11-13. The first: "Go option c for lifecycle node that
+code decides, as in ROS 2". The second, on how the build learns it: "reuse
+information the component registration already reports". RFC-0128 D2
+records both.
+
+A node is managed when its own code uses the lifecycle API (Rust
+`LifecycleComponent`, C `rclc_lifecycle`, C++ `rclcpp_lifecycle::LifecycleNode`)
+or when the launch model marks it `<lifecycle_node>`. Every other node stays
+plain and publishes at once, with or without a launch file. Nothing is
+inferred from build order.
+
+**Part 1: run time (done).**
+
+- `Executor::drive_code_managed_autostart(autostart)` drives every node that
+  holds a machine its own code registered, in node-table order. A node with
+  no machine is left alone.
+- A single-package leaf's `lifecycle` axis (`apply_lifecycle_self_bringup`)
+  calls it. W2's "manage the first node built" is removed.
+- Unit tests in `nros-node` (`with_no_launch_file_*`) build the plain node
+  first, so a build-order rule fails them. A mutation that restores
+  "first node" fails both tests.
+
+**Part 2: the probe field (open).**
+
+- The registration observer reports a lifecycle registration, with its node.
+- The metadata probe writes it as one per-node field in its sidecar, beside
+  `in_place`. Both directions are gated as the other probe facts are: a
+  registration the sidecar does not record fails, and so does a recorded
+  field nothing registered.
+- The model road folds it into each node's `lifecycle` fact
+  (`overlay::managed_nodes`).
+- The leaf road (`--from-leaf`, the single-package cargo leaf) reads it from
+  the same sidecar for pool and queryable sizing.
+- Sources are not scanned, and no component declares the fact by hand.
+
+Acceptance (all three roads, on linux/zenoh):
+
+- A standalone leaf whose node uses the lifecycle API appears in
+  `ros2 lifecycle nodes`.
+- A standalone plain talker does NOT appear there, and publishes immediately.
+- A two-node leaf manages exactly the node that uses the API.
+- A launch file that marks a node with plain code `<lifecycle_node>` gets a
+  machine with default callbacks (Q1).
+- A node whose code uses the API, with no launch mark, takes the image's
+  `[lifecycle] autostart` (D6, on W7's first spin pass).
+
+The Rust and C cells need the language API first: Rust `LifecycleComponent`
+is W10 and C `rclc_lifecycle` per node is W11. C++ `LifecycleNode` already
+registers per node, so its cell can land with part 2.
 
 ### W3 — The image announces only its declared nodes (D8)
 

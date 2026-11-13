@@ -65,6 +65,25 @@ The user ruled on this RFC on 2026-11-12, relayed by the manager session:
 - The RFC becomes Stable only after the three upstream verifications at the
   end.
 
+Two more rulings on 2026-11-13, relayed by the manager session:
+
+- On which node a single-package leaf with no launch file manages: "Go option
+  c for lifecycle node that code decides, as in ROS 2". A node is managed when
+  its own code uses the lifecycle API (Rust `LifecycleComponent`, C
+  `rclc_lifecycle`, C++ `rclcpp_lifecycle::LifecycleNode`), or when the launch
+  model marks it `<lifecycle_node>`. Every other node stays plain and
+  publishes at once, with or without a launch file. Nothing is inferred from
+  build order: phase-554 W2's interim rule that a leaf with no model manages
+  the first node it built is withdrawn. A launch-marked node whose code is
+  plain still takes Q1's default callbacks.
+- On how the build learns which code uses the API: "reuse information the
+  component registration already reports". The fact comes from the
+  component-registration path, the registration observer and the metadata
+  probe sidecar that already report `in_place` per endpoint. It does not come
+  from scanning sources or from a new hand-written declaration. The sidecar
+  gains one per-node field, gated in both directions like the other probe
+  facts, and every road reads the managed set from there (D2).
+
 ## Motivation
 
 Issue 2428 measured a workspace image with `[lifecycle] autostart = "none"`:
@@ -153,11 +172,35 @@ ROS 2 the class decides. A node whose class derives from
   gets a machine whose callbacks all take the defaults, so it can be driven,
   and its publishers are gated (D3). Ruled 2026-11-12 (Q1).
 
-The fact reaches the runtime by ONE route: the entry registers a machine for
-exactly the nodes the resolved model marks managed. The component-side
-declaration is folded into the model by the probe (the metadata sidecar
-already reports per-component facts), so `nros::main!` and C/C++ codegen
-read one list.
+**The code decides, with or without a launch file** (ruled 2026-11-13). The
+inputs are OR'd: a node is managed if its code uses the API or the launch
+model marks it. A node that neither marks nor codes as a lifecycle node is
+plain, including in a single-package leaf that has no launch file. No rule
+picks a node by position.
+
+**How the fact is learned** (ruled 2026-11-13: "reuse information the
+component registration already reports"). A component that uses the API
+registers its node's machine while it is built
+(`Executor::register_lifecycle_services_on`). That registration is the fact,
+and two consumers read it:
+
+- **Run time.** The machine exists, so the node already serves its five
+  services. The entry adds only what the code did not: autostart for a
+  code-managed node takes the image's `[lifecycle] autostart` (D6), and a
+  launch-marked node with plain code gets a default machine. In a
+  single-package leaf the entry drives exactly the nodes that hold a machine
+  after their components are built (`Executor::drive_code_managed_autostart`).
+- **Build time.** Pools and the queryable budget are sized before anything
+  runs, so the build needs the same fact ahead of time. The registration
+  observer reports the lifecycle registration as it reports every other
+  entity, and the metadata probe writes it as one per-node field in its
+  sidecar (beside `in_place`). The model road folds it into each node's
+  `lifecycle` fact. The leaf road reads it from the same sidecar. Sources are
+  never scanned, and no component declares it by hand.
+
+The entry still registers a machine for each node the resolved model marks
+managed, so `nros::main!` and C/C++ codegen read one list. A node whose code
+already registered one keeps it (`register_managed_node_on`).
 
 ### D3. A managed node's publishers follow its state
 
@@ -402,8 +445,9 @@ services answer, gains the silence assertion.
 
 - D8 in full: no backend announces the executor identity, and every user of
   it moves per the D8 table.
-- D1; D2 (model and launch inputs, plus the component declaration where it
-  already exists, which is C++); D3; D6; D7 (the zenoh shared queryable and
+- D1; D2 (model and launch inputs; the code-decides rule with no inference
+  from build order; and the probe's per-node lifecycle field, read by every
+  road); D3; D6; D7 (the zenoh shared queryable and
   dispatcher, and the DDS per-node entities).
 - The issue 2429 refusal.
 - D9's cells: `nodes`, `get`, `set` and `list`, two nodes, silent until

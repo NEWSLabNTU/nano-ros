@@ -14695,6 +14695,34 @@ impl<'s> Executor<'s> {
         }
         Ok(())
     }
+
+    /// RFC-0128 D2 (ruled 2026-11-13: "the code decides, as in ROS 2") —
+    /// drive every node whose own code registered a lifecycle machine to
+    /// `autostart`, in node-table order, and return how many were driven.
+    ///
+    /// This is a self-bringup's whole managed set: it has no launch file to
+    /// mark a node, so a node is managed exactly when its component made it a
+    /// lifecycle node. A node with no machine is plain and is left alone;
+    /// nothing is inferred from which node was built first.
+    ///
+    /// # Safety
+    /// As [`drive_lifecycle_autostart_on`](Self::drive_lifecycle_autostart_on).
+    pub unsafe fn drive_code_managed_autostart(
+        &mut self,
+        autostart: u8,
+    ) -> Result<usize, crate::lifecycle::LifecycleError> {
+        let mut driven = 0;
+        for index in 0..self.nodes.len() {
+            let node = super::node_record::NodeId::from_raw(index as u8);
+            if self.lifecycle_state_machine_on(node).is_none() {
+                continue;
+            }
+            // SAFETY: forwarded through this function's contract.
+            unsafe { self.drive_lifecycle_autostart_on(node, autostart) }?;
+            driven += 1;
+        }
+        Ok(driven)
+    }
 }
 
 // ============================================================================

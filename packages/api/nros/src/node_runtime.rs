@@ -1585,17 +1585,20 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
         manage_node(&mut self.executor, node, autostart)
     }
 
-    // RFC-0128 D2 — a self-bringup has no model to name its node, so its
-    // managed node is the first one the image built (the component's launch
-    // node, where its launch parameters are seeded too).
+    // RFC-0128 D2, ruled 2026-11-13 ("the code decides, as in ROS 2"): a
+    // self-bringup has no launch file to mark a node managed, so the managed
+    // nodes are exactly those whose own code registered a machine while its
+    // component was built. Nothing is inferred from build order: a plain node
+    // stays plain and publishes at once. Each code-managed node is driven to
+    // the image's `[lifecycle] autostart`, in node-table order.
     #[cfg(feature = "lifecycle-services")]
     fn apply_lifecycle_self_bringup(&mut self, autostart: u8) -> Result<(), &'static str> {
-        if self.executor.nodes().is_empty() {
-            return Err("this self-bringup declares `lifecycle` but its component \
-                        created no node to manage");
-        }
-        let node = nros_node::executor::NodeId::from_raw(0);
-        manage_node(&mut self.executor, node, autostart)
+        // SAFETY: each machine and its callbacks were registered by the
+        // node's own component, which the runtime keeps alive for the
+        // executor's life.
+        unsafe { self.executor.drive_code_managed_autostart(autostart) }
+            .map(|_| ())
+            .map_err(|_| "a node's boot autostart transition was refused by its callback")
     }
 
     // Phase 264 W4b -- register the 6 ROS 2 parameter services on the owned executor
