@@ -2458,7 +2458,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // C-runtime families' leaves do.
             //
             // The `(argc, argv)` signature is not decoration: the board's
-            // `nsh_main` (nros-board-nuttx-qemu `entry.rs`) declares
+            // `nros_nuttx_entry` (nros-board-nuttx-qemu `entry.rs`) declares
             // `fn main(argc: i32, argv: *const *const c_char) -> i32` and calls
             // it with both. Ignoring them would work by accident on these ABIs
             // — the caller passes them in registers the callee may leave alone
@@ -5381,14 +5381,14 @@ enum Framework {
 
 // Phase 225.O follow-up (known-issue #18) — NOTE on NuttX. NuttX does
 // NOT get its own `Framework` variant: it rides `Framework::OwnedSpin`.
-// The NuttX flat-build init task calls `CONFIG_INIT_ENTRYPOINT="nsh_main"`,
-// but the board crate (`nros-board-nuttx-qemu`'s `entry.rs`) already
-// exports a `#[no_mangle] nsh_main` that runs `nsh_initialize()` (virtio
+// The NuttX flat-build init task calls the board defconfig's
+// `CONFIG_INIT_ENTRYPOINT="nros_nuttx_entry"`, which the board crate
+// (`nros-board-nuttx-qemu`'s `entry.rs`) exports; it runs `nsh_initialize()` (virtio
 // FDT discovery + network bringup) and then calls the Rust `main`
 // lang-start symbol. OwnedSpin emits exactly that `fn main()` (NuttX is
 // `target_os = "nuttx"`, the `not(target_os = "none")` hosted arm), which
 // delegates to `<QemuArmVirt as BoardEntry>::run`. So no NuttX-specific
-// emit is needed; emitting our own `nsh_main` would both collide with
+// emit is needed; emitting our own init entry would both collide with
 // the board's and skip the critical `nsh_initialize()` network bringup.
 
 /// Map a canonical framework NAME (the `nros-orchestration-ir` spelling) to the

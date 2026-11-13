@@ -57,7 +57,8 @@ build-std-features = ["compiler-builtins-mem"]
 # `-Tdramboot.ld` is by NAME — GNU ld resolves it through the propagated
 # `-L` search path. The kernel libs are mutually recursive ->
 # `--start-group`; the Rust rlibs precede this group, so libsched's
-# `nsh_main` reference resolves to the board crate's.
+# `CONFIG_INIT_ENTRYPOINT` reference resolves to the board crate's
+# `nros_nuttx_entry`.
 [target.armv7a-nuttx-eabihf]
 linker = "arm-none-eabi-gcc"
 rustflags = [
@@ -264,7 +265,8 @@ NUTTX_BOARD_LIB_DIR = "arch/risc-v/src/board"
 libc = { path = "${workspace}/third-party/nuttx/libc" }
 '''
 # NuttX is BoardRun, no entry block — hosted `fn main` shim drives it (the
-# nsh_main override in src/entry.rs), identical to the arm witness.
+# `nros_nuttx_entry` in src/entry.rs, named by CONFIG_INIT_ENTRYPOINT),
+# identical to the arm witness.
 
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
 # RFC-0109 D2 (phase-514 W4) — NuttX owns this board's network: its address,

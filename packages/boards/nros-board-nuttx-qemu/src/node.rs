@@ -102,4 +102,4 @@ fn read_eth0_ipv4() -> Result<[u8; 4], core::ffi::c_int> {
 // opener over the retired ~~`nros_board_common::board_init`~~ traits) is GONE. The
 // live entry is `<NuttxQemu as nros_platform::board::BoardEntry>::run`
 // (entry_212n.rs), used by `nros::main!`; NuttX dispatches the logging/init-only
-// fixtures' plain `fn main` directly via `nsh_main`, so they need no board entry.
+// fixtures' plain `fn main` directly via `nros_nuttx_entry`, so they need no board entry.

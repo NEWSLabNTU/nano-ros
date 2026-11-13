@@ -502,6 +502,12 @@ override in `nros-board-nuttx-qemu/src/entry.rs` goes.
 - Gate: cleared (Q18 yes, ruled 2026-11-12).
 - **Acceptance:** every NuttX fixture row boots and passes its test on both
   arches; no symbol named `nsh_main` is defined outside the kernel.
+- **Status:** OPEN (code done 2026-11-13; the boot sweep on both arches is
+  pending). The board's entry is `nros_nuttx_entry` (`src/entry.rs`), and
+  the three board defconfigs (`arm`, `arm-smp`, `riscv`) name it in
+  `CONFIG_INIT_ENTRYPOINT`. The kernel's build marker is keyed on the
+  defconfig's sha256, so every kernel rebuilds. The make road's guest case
+  is untouched: it builds no board crate and boots the user's own NSH.
 
 ### W12 -- Retire what is dead or stale (ungated)
 

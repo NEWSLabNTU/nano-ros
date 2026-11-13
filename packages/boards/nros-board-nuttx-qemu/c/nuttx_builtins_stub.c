@@ -1,7 +1,7 @@
 /* Phase 225.O follow-up (known-issue #18) — empty NuttX builtins table.
  *
- * The standalone nano-ros image provides its OWN `nsh_main` (the
- * flat-build `CONFIG_INIT_ENTRYPOINT`), so it never dispatches NSH
+ * The standalone nano-ros image provides its OWN init entry
+ * (`nros_nuttx_entry`, named by `CONFIG_INIT_ENTRYPOINT`), so it never dispatches NSH
  * builtin commands and needs no builtins registry.
  *
  * NuttX's prebuilt `libapps.a` ships `builtin_list.o`, which DEFINES

@@ -55,7 +55,7 @@ macro_rules! println {
 }
 
 mod config;
-// Issue 2117 — NuttX's init entry (`nsh_main` → the image's C `main`) exists
+// Issue 2117 — NuttX's init entry (`nros_nuttx_entry` → the image's C `main`) exists
 // only on NuttX. Unconditional, its `extern "C" fn main` declaration collided
 // with the host test harness's own `main` ("entry symbol `main` declared
 // multiple times"), so this crate's unit tests could not link and no lane ran

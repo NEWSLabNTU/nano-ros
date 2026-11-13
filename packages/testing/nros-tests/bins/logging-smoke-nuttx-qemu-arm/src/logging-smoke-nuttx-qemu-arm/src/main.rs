@@ -1,7 +1,7 @@
 //! Phase 88.15.c — NuttX QEMU ARM nros-log smoke fixture.
 //!
-//! Boots NuttX through the board crate's `nsh_main` override
-//! (`nros-board-nuttx-qemu/src/entry.rs`: NuttX init → `nsh_main` →
+//! Boots NuttX through the board crate's `nros_nuttx_entry`
+//! (`nros-board-nuttx-qemu/src/entry.rs`: NuttX init → `nros_nuttx_entry` →
 //! `nsh_initialize()` → Rust `main`), then drives every severity through
 //! `nros-log`. The NuttX C platform path routes records through syslog so
 //! the QEMU harness can assert the captured UART output.
@@ -14,7 +14,7 @@
 
 // phase-359 W7 — the NuttX family is `no_std`; the board crate supplies this
 // image's `#[global_allocator]`, and `nros::main!` is not used here, so this bin
-// spells out the `extern "C" fn main` that `nsh_main` calls (libstd's
+// spells out the `extern "C" fn main` that `nros_nuttx_entry` calls (libstd's
 // `lang_start` used to supply that symbol).
 //
 // phase-366 W5.c/W5.d — the `#[panic_handler]` is no longer the board's. This
@@ -56,7 +56,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     unsafe { nros_platform_panic(buf.bytes.as_ptr(), buf.used) }
 }
 
-// Link-anchor the board crate: its `entry.rs` `nsh_main` (the NuttX
+// Link-anchor the board crate: its `entry.rs` `nros_nuttx_entry` (the NuttX
 // `CONFIG_INIT_ENTRYPOINT`) and its build.rs's propagating image-link
 // directives are the whole point of the dependency.
 use nros_board_nuttx_qemu as _;
@@ -67,13 +67,13 @@ use nros_log::{
 
 static LOGGER: Logger = Logger::new("smoke");
 
-/// The image entry NuttX's `nsh_main` calls; signature matches the
+/// The image entry the board's `nros_nuttx_entry` calls; signature matches the
 /// `extern "C" fn main(argc, argv)` that the board's `entry.rs` declares.
 #[unsafe(no_mangle)]
 pub extern "C" fn main(_argc: i32, _argv: *const *const core::ffi::c_char) -> i32 {
     register_logger(&LOGGER);
     // issue 0710 — deliberately NO `init(sinks::default())`: the board's
-    // `nsh_main` funnel publishes the sink list. Relying on it is what makes
+    // `nros_nuttx_entry` funnel publishes the sink list. Relying on it is what makes
     // this an assertion about the BOARD rather than about the platform ABI.
     LOGGER.set_level(Severity::Trace);
 

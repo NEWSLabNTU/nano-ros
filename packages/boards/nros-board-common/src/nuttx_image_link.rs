@@ -293,9 +293,7 @@ pub fn run_image_link(builtins_stub: &Path) {
     // `+whole-archive` — same constraint `run_platform` documents,
     // issue-0048) and puts the `-l` at the FINAL binary link, BEFORE the
     // `.cargo/config.toml` trailing `-C link-arg` kernel group — so the
-    // builtins stub preempts `-lapps`' contaminated `builtin_list.o`, and
-    // the board rlib's `nsh_main` (earlier still, in the rlib list) preempts
-    // NSH's.
+    // builtins stub preempts `-lapps`' contaminated `builtin_list.o`.
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-search=native={}", staging.display());
     println!("cargo:rustc-link-search=native={}", board_lib_dir.display());
