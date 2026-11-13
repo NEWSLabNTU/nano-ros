@@ -2186,14 +2186,15 @@ jobs:
   #
   # Zephyr 3.7, the gate's default line (`scripts/lib/zephyr-workspace.sh`) and
   # the line the templates are documented for (`zephyr-byo/west.yml` pins
-  # v3.7.2, LTS). The image's baked SDK (0.17.4) does NOT build it for an ARM
-  # board: 3.7 pins 0.16.9, a newer SDK fails in Zephyr's own libc-hooks.c
-  # (issue 1811), and `nros build` refuses the mismatch by name — measured on
-  # this job's first dispatch, where the four `mps2-an385-zephyr` projects
-  # failed that way and only native_sim's `zephyr-byo/app` (host compiler)
-  # built. So `just setup zephyr` provisions the index's pinned SDK
-  # (`[tool.zephyr-sdk]`, 0.16.9) into the store, and the image contributes
-  # only its west/Python toolchain.
+  # v3.7.2, LTS). Up to image r7 the baked SDK was 0.17.4, which does NOT
+  # build it for an ARM board: 3.7 pins 0.16.9, a newer SDK fails in Zephyr's
+  # own libc-hooks.c (issue 1811), and `nros build` refuses the mismatch by
+  # name — measured on this job's first dispatch, where the four
+  # `mps2-an385-zephyr` projects failed that way and only native_sim's
+  # `zephyr-byo/app` (host compiler) built. So `just setup zephyr` provisions
+  # the index's pinned SDK (`[tool.zephyr-sdk]`, 0.16.9) into the store. Image
+  # r8 bakes that pin too (issue 2511), so this download is now redundant;
+  # dropping it is a separate change.
   #
   # STRICT: the workspace IS provisioned here, so a Zephyr project that
   # reaches a NOT VERIFIED is a failure of this job, not a skip.
@@ -2215,7 +2216,7 @@ jobs:
       contents: read
       packages: read
     container:
-      image: ${{ !(vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r7' || '' }}
+      image: ${{ !(vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r8' || '' }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

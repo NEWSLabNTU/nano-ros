@@ -122,6 +122,19 @@ nros_zephyr_sdk_registered() {
     return 1
 }
 
+# nros_zephyr_board_label <board>
+#
+# How a message names a board. An EMPTY board is legitimate: a west app that
+# carries its own `board.cmake` (the board-import fixture) names no board, and
+# printing it bare gave "board ``" (issue 2511).
+nros_zephyr_board_label() {
+    if [ -n "${1:-}" ]; then
+        printf 'board `%s`' "$1"
+    else
+        printf "the board the app's board.cmake names"
+    fi
+}
+
 # nros_zephyr_sdk_env <board> <zephyr tree>
 #
 # Prints `ZEPHYR_SDK_INSTALL_DIR=<sdk>` when the pinned SDK is installed, and
@@ -151,11 +164,12 @@ nros_zephyr_sdk_env() {
     case "$board" in
         native_sim | native_sim/* | native_sim*) return 0 ;;
     esac
+    # Issue 2511 — no issue id in the text, and a name for an empty board.
     {
-        echo "error: board \`$board\` builds with the Zephyr SDK, and this tree pins SDK $want"
+        echo "error: $(nros_zephyr_board_label "$board") builds with the Zephyr SDK, and this tree pins SDK $want"
         echo "       ($zephyr_tree/SDK_VERSION), which is not installed. Refusing rather than"
         echo "       letting the build take whichever SDK the CMake registry holds: on 3.7 a"
-        echo "       newer SDK fails in Zephyr's own libc-hooks.c (issue 1811)."
+        echo "       newer SDK fails in Zephyr's own libc-hooks.c."
         echo "       Remedy: just setup zephyr   (without --skip-sdk), or set"
         echo "       ZEPHYR_SDK_INSTALL_DIR to an SDK you mean to use."
     } >&2

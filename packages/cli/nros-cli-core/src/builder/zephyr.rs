@@ -586,9 +586,15 @@ pub fn resolve_toolchain(
     if is_native_sim(board) {
         return done(None);
     }
+    // Issue 2511 — an app with its own `board.cmake` names no board.
+    let board_label = if board.is_empty() {
+        "the board the app's board.cmake names".to_string()
+    } else {
+        format!("board `{board}`")
+    };
     Err(format!(
         // issues 1811, 2147.
-        "board `{board}` builds with the Zephyr SDK, and this tree pins SDK {want} \
+        "{board_label} builds with the Zephyr SDK, and this tree pins SDK {want} \
          ({}), which is not installed. Refusing rather than letting the build take \
          whichever SDK the CMake registry holds: on 3.7 a newer SDK fails in \
          Zephyr's own libc-hooks.c, and another checkout's is refused \

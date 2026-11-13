@@ -111,7 +111,7 @@ jobs:
           - board: threadx_linux
             image: ghcr.io/newslabntu/nano-ros-ci:humble
           - board: zephyr
-            image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r7
+            image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r8
     env:
       # The shard: every lane consumer below reads this one value.
       NROS_LANE_MODULE: ${{ matrix.board }}
@@ -159,7 +159,7 @@ jobs:
 
       - name: Register the baked Zephyr SDK for this HOME
         if: matrix.board == 'zephyr'
-        run: /opt/zephyr-sdk/setup.sh -c
+        run: nros-zephyr-sdks-register
 
       # Issue 1474 — Zephyr's Rust build runs `cargo clippy` as a ninja step.
       - name: Unblock rustup clippy-preview conflict

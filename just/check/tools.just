@@ -254,6 +254,11 @@ tier-preconditions:
 # edit to any other row leaves the image alone. That file is GENERATED; this
 # fails when it no longer matches the index, naming the regenerate command.
 # Buildless, no CLI: `index_tool.py` is what the image and the gate runner use.
+#
+# Issue 2511 — the zephyr-ci image bakes its Zephyr SDKs, one per Zephyr line,
+# from `config/zephyr-ci-tools.toml` the same way, so this holds that file to
+# the index too.
 [private]
 ci-base-tools:
     @python3 scripts/lib/index_tool.py check-extract config/ci-base-tools.toml cargo-nextest
+    @python3 scripts/lib/index_tool.py check-extract config/zephyr-ci-tools.toml zephyr-sdk zephyr-sdk-1-0-1

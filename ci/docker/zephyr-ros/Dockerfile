@@ -75,31 +75,6 @@ ENV AMENT_PREFIX_PATH=/opt/ros/humble \
     ROS_LOCALHOST_ONLY=0
 ENV PATH=/opt/ros/humble/bin:$PATH
 
-# TWO SDKs, because the SDK is a PER-LINE FACT — `scripts/zephyr/setup.sh` says
-# so in as many words, and `nros-sdk-index.toml` carries a second entry
-# (`[tool.zephyr-sdk-1-0-1]`) for exactly this reason: 3.7's `zephyr/SDK_VERSION`
-# demands 0.16.9, 4.4's demands 1.0.1, and `FindZephyr-sdk.cmake` refuses
-# anything older than the tree asks for.
-#
-# One baked SDK could not serve both. 0.17.4 satisfies 3.7 (newer-satisfies-
-# older, and 3.7 sets no upper bound) but 4.4 asks for `find_package(Zephyr-sdk
-# 1.0)` and correctly rejects it:
-#
-#   Could not find a configuration file for package "Zephyr-sdk" that is
-#   compatible with requested version "1.0".
-#     considered: /opt/zephyr-sdk/cmake/Zephyr-sdkConfig.cmake, version: 0.17.4
-#
-# That killed every `zephyr 4.4 /*` nightly cell. The comment below used to say
-# 4.4 "must fall through to its own west-managed SDK" — but every CI job runs
-# `just zephyr setup --skip-sdk`, so there was no west-managed SDK to fall
-# through to, and the fallback the design relied on did not exist.
-ARG ZEPHYR_SDK_VERSION=0.17.4
-ARG ZEPHYR_SDK_VERSION_44=1.0.1
-# Zephyr SDK toolchains the dual-line + aemv8r reference need (setup.sh
-# DEFAULT_TARGETS + the phase-117 aarch64 target). Keep in sync with
-# scripts/zephyr/setup.sh.
-ARG SDK_TARGETS="x86_64-zephyr-elf arm-zephyr-eabi aarch64-zephyr-elf"
-
 ENV DEBIAN_FRONTEND=noninteractive
 
 # The apt closure EVERY image installs, from the one list (phase-466).
@@ -148,55 +123,58 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         aria2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Zephyr SDK — pinned, with the CMake package registered (`-c`) IN the image so
-# `find_package(Zephyr-sdk)` resolves without a per-run setup step. (A file-only
-# cache that skips registration is exactly what broke Phase 196.3's first cut.)
-RUN curl -fsSL -o /tmp/sdk.tar.xz \
-        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION}/zephyr-sdk-${ZEPHYR_SDK_VERSION}_linux-x86_64.tar.xz" \
-    && mkdir -p /opt/zephyr-sdk \
-    && tar xf /tmp/sdk.tar.xz -C /opt/zephyr-sdk --strip-components=1 \
-    # setup.sh wants one `-t` per toolchain (mirrors scripts/zephyr/setup.sh).
-    && sdk_args="" && for t in ${SDK_TARGETS}; do sdk_args="$sdk_args -t $t"; done \
-    && /opt/zephyr-sdk/setup.sh $sdk_args -h -c \
-    && rm /tmp/sdk.tar.xz
-
-# ...and the 4.4 line's own SDK, registered the same way. Separate prefix, so
-# both Config packages sit in the CMake user registry and each line's
-# `find_package` picks the one that satisfies it: 3.7 accepts either, 4.4
-# accepts only this one.
+# Zephyr SDKs: ONE PER ZEPHYR LINE, each at the version that line pins
+# (issue 2511).
 #
-# `_gnu`, and the suffix is NOT optional — sdk-ng REPACKAGED at 1.0.
+# The SDK is a per-line fact. 3.7's `zephyr/SDK_VERSION` pins 0.16.9 and 4.4's
+# pins 1.0.1, and the build takes nothing else: `nros_zephyr_sdk_env`
+# (scripts/build/zephyr-toolchain.sh) refuses an SDK board whose exact pinned
+# SDK is not installed, because a newer SDK fails in Zephyr 3.7's own
+# `libc-hooks.c`. This image used to name its versions in `ARG`s (0.17.4
+# "for 3.7, since newer satisfies older", and 1.0.1). That premise was
+# measured false, the ARGs drifted from the index, and the 3.7 line's only
+# SDK board fixture refused on every run of this image.
 #
-# The 0.x line ships one bundle per host, `zephyr-sdk-<ver>_linux-x86_64.tar.xz`.
-# The 1.x line splits it by toolchain flavour, so the same name without a
-# suffix simply does not exist and the build 404'd on its first run:
+# So every version, URL and checksum comes from `config/zephyr-ci-tools.toml`:
+# the index's `[tool.zephyr-sdk]` (3.7) and `[tool.zephyr-sdk-1-0-1]` (4.4)
+# rows, extracted verbatim (gate `ci-base-tools`). Moving a pin in the index
+# fails that gate until the file is regenerated, and a regenerated file changes
+# this image's inputs. Each SDK is unpacked as `/opt/zephyr-sdks/<subdir>`,
+# its checksum verified, and its row's own `post_install` run.
 #
-#   curl: (22) The requested URL returned error: 404
-#   ERROR: failed to build: process "/bin/sh -c curl -fsSL -o /tmp/sdk44.tar.xz …"
+# `aarch64-zephyr-elf` is added to each `post_install`: the aemv8r FVP
+# reference needs it, and the 1.0.1 row's `_minimal` bundle fetches only the
+# toolchains it is asked for. 0.16.9's bundle already carries every toolchain.
 #
-# Measured against the release API rather than guessed — v1.0.1 offers
-# `_gnu` (2033 MiB), `_llvm` (319 MiB) and `_minimal` (67 MiB), and no
-# unsuffixed bundle at all. `_gnu` is the one that corresponds to 0.17.4's
-# 1907 MiB bundle and carries the GNU toolchains `SDK_TARGETS` registers below;
-# `_minimal` is host tools only and would need a per-target download each.
-#
-# That 404 is why this image was never published with the second SDK: the
-# `images.yml` run for the commit that added it failed here, so the registry
-# kept serving the previous `-r3` content and every `zephyr 4.4 /*` nightly cell
-# went on failing `find_package(Zephyr-sdk 1.0)` against 0.17.4 — the exact
-# symptom the comment above says this block exists to fix.
-RUN curl -fsSL -o /tmp/sdk44.tar.xz \
-        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION_44}/zephyr-sdk-${ZEPHYR_SDK_VERSION_44}_linux-x86_64_gnu.tar.xz" \
-    && mkdir -p /opt/zephyr-sdk-${ZEPHYR_SDK_VERSION_44} \
-    && tar xf /tmp/sdk44.tar.xz -C /opt/zephyr-sdk-${ZEPHYR_SDK_VERSION_44} --strip-components=1 \
-    && sdk_args="" && for t in ${SDK_TARGETS}; do sdk_args="$sdk_args -t $t"; done \
-    && /opt/zephyr-sdk-${ZEPHYR_SDK_VERSION_44}/setup.sh $sdk_args -h -c \
-    && rm /tmp/sdk44.tar.xz
-# NB: deliberately NOT setting ZEPHYR_SDK_INSTALL_DIR. That env makes Zephyr's
-# FindZephyr-sdk use ONE directory exclusively, which is precisely wrong when
-# two lines need two SDKs. Both are exposed as CMake-package-registry
-# *candidates* instead (each registered by its own `setup.sh -c`), and
-# `FindZephyr-sdk` picks per line: 3.7 accepts either, 4.4 accepts only 1.0.1.
+# NOT `ZEPHYR_SDK_INSTALL_DIR`: that names ONE SDK for every line. Each SDK is
+# a CMake package registry candidate, and the toolchain helper picks the one
+# whose `sdk_version` equals the tree's pin. The registry lives in `$HOME`,
+# which a CI job does not share with this build, so a job registers them for
+# its own HOME with `/usr/local/bin/nros-zephyr-sdks-register` (below).
+COPY config/zephyr-ci-tools.toml /opt/nros-ssot/config/zephyr-ci-tools.toml
+COPY scripts/lib/index_tool.py scripts/lib/index_packages.py /opt/nros-ssot/scripts/lib/
+RUN set -eu; \
+    plan="$(python3 /opt/nros-ssot/scripts/lib/index_tool.py sdk-plan \
+        --index /opt/nros-ssot/config/zephyr-ci-tools.toml)"; \
+    n="$(printf '%s\n' "$plan" | grep -c .)"; \
+    if [ "$n" -lt 2 ]; then echo "sdk-plan yielded $n SDK(s); expected one per Zephyr line" >&2; exit 1; fi; \
+    mkdir -p /opt/zephyr-sdks; \
+    printf '%s\n' "$plan" | while IFS="$(printf '\t')" read -r name version url sha subdir run; do \
+        echo "baking [tool.$name] $version -> /opt/zephyr-sdks/$subdir"; \
+        curl -fsSL -o /tmp/sdk.tar.xz "$url"; \
+        echo "$sha  /tmp/sdk.tar.xz" | sha256sum -c -; \
+        tar xf /tmp/sdk.tar.xz -C /opt/zephyr-sdks; \
+        rm /tmp/sdk.tar.xz; \
+        test "$(tr -d '[:space:]' < "/opt/zephyr-sdks/$subdir/sdk_version")" = "$version"; \
+        (cd "/opt/zephyr-sdks/$subdir" && sh -c "$run -t aarch64-zephyr-elf"); \
+    done
+# One command registers every baked SDK for the CALLER's $HOME. A job runs it
+# once before building; it is the only step a job needs for the SDKs.
+RUN printf '%s\n' '#!/bin/sh' 'set -eu' \
+        'for sdk in /opt/zephyr-sdks/zephyr-sdk-*/; do "$sdk/setup.sh" -c; done' \
+        > /usr/local/bin/nros-zephyr-sdks-register \
+    && chmod 755 /usr/local/bin/nros-zephyr-sdks-register \
+    && /usr/local/bin/nros-zephyr-sdks-register
 ENV ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 
 # Zephyr's Python build prerequisites — issue 0878.
@@ -265,7 +243,6 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-
 # bake (gate `ci-base-tools`), so an edit to any other index row does not
 # rebuild this image either.
 COPY config/ci-base-tools.toml /opt/nros-ssot/config/ci-base-tools.toml
-COPY scripts/lib/index_tool.py scripts/lib/index_packages.py /opt/nros-ssot/scripts/lib/
 RUN python3 /opt/nros-ssot/scripts/lib/index_tool.py install cargo-nextest --prefix /usr/local \
         --index /opt/nros-ssot/config/ci-base-tools.toml \
     && cargo-nextest nextest --version

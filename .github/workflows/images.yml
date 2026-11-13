@@ -38,6 +38,9 @@ on:
       # phase-543 W0 — the pinned cargo-nextest ci-base bakes, and its installer.
       - "config/ci-base-tools.toml"
       - "scripts/lib/index_tool.py"
+      # issue 2511 — the Zephyr SDK rows (one per Zephyr line) the zephyr image
+      # bakes.
+      - "config/zephyr-ci-tools.toml"
       - "scripts/lib/index_packages.py"
   workflow_dispatch:
     inputs:
@@ -80,6 +83,8 @@ jobs:
               - 'config/ci-base-tools.toml'
               - 'scripts/lib/index_tool.py'
               - 'scripts/lib/index_packages.py'
+              # issue 2511 — the Zephyr SDK pins it bakes.
+              - 'config/zephyr-ci-tools.toml'
 
   ci-base:
     name: build + push ci-base image
@@ -192,8 +197,8 @@ jobs:
     env:
       # Tag encodes ROS distro + SDK version + `-rN` content revision — bump the
       # SDK/distro part when either changes, `-rN` when the Dockerfile changes
-      # without an SDK/distro bump. Keep in lockstep with the Dockerfile ARG + the
-      # nightly Zephyr `container:`. r2 (#59): added ros-humble-example-interfaces.
+      # without an SDK/distro bump. Keep in lockstep with
+      # `config/zephyr-ci-tools.toml` + every Zephyr `container:`. r2 (#59): added ros-humble-example-interfaces.
       # r3 (#0878): baked Zephyr's pinned Python build prereqs (west, pyelftools,
       # PyYAML, pykwalify, packaging) — without them every nightly cell failed at
       # `just zephyr setup` before any build.
@@ -230,8 +235,15 @@ jobs:
       # Consumers (nightly.yml, live-peer.yml, merge-runtime.yml, gate.yml's
       # daily zephyr copy-out) are schedule/dispatch-only, so moving them in the
       # same commit has the r3 note's slack.
+      # r8 (issue 2511): the SDKs are the index's per-line pins, 0.16.9 for 3.7
+      # and 1.0.1 for 4.4, read from `config/zephyr-ci-tools.toml`; 0.17.4,
+      # which no line pins, is gone. The SDK part of the tag moves with it.
+      # Jobs register the SDKs with `nros-zephyr-sdks-register`, which replaces
+      # `/opt/zephyr-sdk/setup.sh -c` (that registered 0.17.4 alone). Consumers
+      # are schedule/dispatch-only, so moving them in the same commit has the
+      # r3 note's slack.
       IMAGE: ghcr.io/newslabntu/nano-ros-zephyr-ci
-      TAG: humble-sdk0.17.4-r7
+      TAG: humble-sdk0.16.9-r8
     steps:
       - uses: actions/checkout@v4
       # The same CONTENT tag ci-base carries, for the same reason and now for a
@@ -247,6 +259,7 @@ jobs:
           sha="$(cat ci/docker/zephyr-ros/Dockerfile ci/docker/apt-packages.txt \
                      scripts/ci/install-just.sh config/ci-base-tools.toml \
                      scripts/lib/index_tool.py scripts/lib/index_packages.py \
+                     config/zephyr-ci-tools.toml \
                  | sha256sum | cut -c1-12)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "content tag: ${{ env.IMAGE }}:${{ env.TAG }}-$sha"
