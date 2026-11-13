@@ -333,7 +333,8 @@ each batch lowers its baseline in the same PR.
 | ratchets added | #3617 | 228 | 102 | merged |
 | batch 1: `entity_inventory.rs`, `cmake_root.rs`, `west_app.rs` | #3621 | 178 | 102 | merged |
 | batch 2: `nros_image_kconfig.cmake`, `NanoRosNodeRegister.cmake`, `nros_cargo_build.cmake`, `nros_rmw_zenoh.cmake` | #3628 | 178 | 80 | merged |
-| batch 3: `cargo_metadata_schema.rs` (manifest and `system.toml` refusals, the WCET host-profile refusal) | #3666 | 168 | 80 | open |
+| batch 3: `cargo_metadata_schema.rs` (manifest and `system.toml` refusals, the WCET host-profile refusal) | #3666 | 168 | 80 | merged |
+| batch 4: `leaf_entity_env.rs`, `facade.rs`, `sizing_descriptor.rs` (generated-file headers, the sizing refusals) | this PR | 139 | 80 | open |
 | runtime logs of a default image (C lexer, log/panic rule) | — | — | — | not started |
 
 Acceptance: both ratchet baselines reach zero and their subjects become

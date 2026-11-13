@@ -1,0 +1,1 @@
+The files `nros configure` and `nros build` generate (the cargo env sidecar, the selection adapters, the image-dependency package, the CMake sizing descriptor) and the sizing descriptor's refusals no longer cite internal design ids. A QoS-conflict refusal no longer prints a run of spaces in the middle of its sentence.
