@@ -361,6 +361,15 @@ set -euo pipefail
 : "${NROS_RUNNER_LABELS:?labels required}"
 : "${GH_REPO:?GH_REPO required, e.g. NEWSLabNTU/nano-ros}"
 : "${RUNNER_TOKEN:?RUNNER_TOKEN required — a SHORT-LIVED registration token}"
+# config.sh puts the token in an HTTP header, and a value with a newline (an
+# error body a failed mint kept) dies there as "New-line characters are not
+# allowed in header values" with exit 1 — indistinguishable from a run failure.
+# Refuse it here as 75 (EX_TEMPFAIL), which the loop answers with a fresh mint.
+# Same shape as scripts/lib/runner-token.sh; the image carries no checkout yet.
+if ! [[ "$RUNNER_TOKEN" =~ ^[A-Za-z0-9_-]{20,}$ ]]; then
+    echo "entrypoint: RUNNER_TOKEN is not a registration token (${#RUNNER_TOKEN} chars) — refusing." >&2
+    exit 75
+fi
 # The checkout the label gate reads. A VOLUME, not a layer: the image carries no
 # nano-ros source, so code changes never rebuild it, and `runner-bootstrap`
 # refreshes this with a fetch rather than a 2.8 GB clone per start.

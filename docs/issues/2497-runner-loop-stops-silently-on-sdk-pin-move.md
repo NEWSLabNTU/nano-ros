@@ -66,6 +66,20 @@ There were two independent gaps.
   job for a self-hosted label has been queued longer than a lane's budget.
   Listing runners needs admin, but `actions:read` can see queued jobs and their
   labels, so a `GITHUB_TOKEN` can do it.
+- **A queued-job check cannot see a stopped loop while another runner keeps
+  up.** Measured 2026-11-13: host 118's loop stopped after three registrations
+  refused with "New-line characters are not allowed in header values", and host
+  241 took every job, so no job waited and a wait budget had nothing to report.
+  The loss was capacity, not a stuck queue, and it was found by someone reading
+  the runner list. Telling those apart needs the runners that are EXPECTED, and
+  listing runners needs admin, which `GITHUB_TOKEN` is not. `actions:read` does
+  give each finished job's `runner_name`, so a declared runner that has taken no
+  job while jobs for its labels ran elsewhere is visible without admin.
+- The token that stopped it: the loop kept `gh api`'s output even when the call
+  failed, and checked only that it was non-empty. Every mint site now goes
+  through `scripts/lib/runner-token.sh` (exit status and shape, retried), the
+  entrypoint refuses a malformed token as 75 before `config.sh`, and the loop
+  gives a failed mint its own half-hour budget instead of the three-failure one.
 - The host-118 runner is restored by hand: the SDK is provisioned into its
   store with `nros setup --tool zephyr-sdk` inside the runner image, and the
   doctor must pass before the loop is restarted.
