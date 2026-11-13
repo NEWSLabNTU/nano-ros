@@ -211,9 +211,21 @@ the user ruled; all five stand:
   #3731: `merge-runtime.yml` (`lane: tier1`). Issue 2475's provisioning
   defects 1-3 are fixed (#3733), defect 4 (tree-wide codegen) is
   [phase-535](phase-535-example-reorg-and-cadence-ci.md) W10, and both
-  re-measures ran (43420012895 on main, 43438754804 with W10). Remains: the
-  three shard reds below (linux disk, issues 2510 and 2511), then the move or
-  the user's call.
+  re-measures ran (43420012895 on main, 43438754804 with W10). The user ruled
+  on the linux shard (below). Remains: issues 2510 and 2511, then a re-measure
+  of the threadx_linux and zephyr shards to completion, final disk included,
+  then their move.
+
+  **User ruling, 2026-11-14 (option B): linux tier 1 stays SELF-HOSTED**
+  (`run-matrix.yml`'s `tier1`). Only threadx_linux and zephyr move to hosted
+  per-board shards. Measured basis: a hosted runner has ~104 G free after
+  `reclaim-disk.sh`, and the linux tier-1 shard ran out of disk 97 min into its
+  fixture build with 75 of its 219 rows built (run 43438754804; the first run,
+  before W10, ran out after 70 min). The rejected option was splitting the linux
+  shard into 3-4 hosted shards by coordinate, sized from a measurement not yet
+  taken. The linux shard is therefore out of the hosted plan:
+  `merge-runtime.yml` keeps it only as a measurement of the `merge` lane
+  (issue 2475's "done when"), never as a tier-1 home.
 
   Third measurement, run 43438754804 (2026-11-13, W10 branch at 7bff8a9356,
   fixture build logs uploaded this time). Time to first fixture fell to
