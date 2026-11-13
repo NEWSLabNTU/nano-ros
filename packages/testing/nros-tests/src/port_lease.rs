@@ -112,7 +112,31 @@ impl Drop for PortLease {
         // after it finds the path no longer names its inode, and retries
         // (`claim`'s identity check). A file we fail to remove holds no lock,
         // so it costs nothing.
-        let _ = std::fs::remove_file(&self.lock);
+        //
+        // Only while the path still names OUR inode. If it was unlinked under
+        // us and someone else has since claimed the port, the path is THEIR
+        // lock, and removing it hands the port to a third claimer while the
+        // second still holds it. A merge-queue run measured exactly that: a
+        // handed-over port lost its new owner's lock to the old lease's drop.
+        if self.names_our_inode() {
+            let _ = std::fs::remove_file(&self.lock);
+        }
+    }
+}
+
+impl PortLease {
+    #[cfg(unix)]
+    fn names_our_inode(&self) -> bool {
+        use std::os::unix::fs::MetadataExt;
+        match (self._held.metadata(), std::fs::metadata(&self.lock)) {
+            (Ok(ours), Ok(now)) => ours.dev() == now.dev() && ours.ino() == now.ino(),
+            _ => false,
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn names_our_inode(&self) -> bool {
+        true
     }
 }
 
@@ -564,6 +588,24 @@ mod tests {
                 .is_none()
         );
         drop(got);
+    }
+
+    /// A lease whose lock path was unlinked and re-claimed under it must not
+    /// remove the new owner's lock when it drops.
+    #[cfg(unix)]
+    #[test]
+    fn dropping_a_lease_leaves_a_lock_that_is_no_longer_its_own() {
+        let old = lease_port(Transport::Tcp).expect("lease");
+        let lock = old.lock.clone();
+        std::fs::remove_file(&lock).expect("unlinked under the lease");
+        std::fs::write(&lock, "someone else").expect("re-claimed by another owner");
+        drop(old);
+        assert_eq!(
+            std::fs::read_to_string(&lock).ok().as_deref(),
+            Some("someone else"),
+            "the old lease removed a lock it no longer owns"
+        );
+        let _ = std::fs::remove_file(&lock);
     }
 
     /// A holder that never lets go is a failure that names it, not a hang.
