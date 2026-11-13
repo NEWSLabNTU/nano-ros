@@ -23,8 +23,9 @@
 # coordinate-scoped (`NROS_TEST_COORDS`), so each board's witnesses at the
 # same coordinates build and run with them. A shard is one board's slice of
 # the lane, `NROS_LANE_MODULE` (scripts/build/fixture-lane.sh): the build, the
-# freshness gate and the run all read that one slice. The matrix is the three
-# boards by name, a fixed partition, not a `k/n` split.
+# freshness gate and the run all read that one slice. The matrix names the
+# boards, a fixed partition, not a `k/n` split: threadx_linux and zephyr. The
+# linux slice runs self-hosted (user ruling 2026-11-14, see the matrix).
 #
 # THE `lane` INPUT (phase-559 W5b, 2026-11-13)
 #
@@ -107,9 +108,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # No `linux` shard (user ruling 2026-11-14, phase-559 W5b option B).
+        # Linux tier 1 ran out of disk on a hosted runner twice (~104 G after
+        # reclaim, ENOSPC at row 75 of 219, run 43438754804), and a shard that
+        # runs out of disk measures nothing. Linux is measured on the
+        # self-hosted lane (run-matrix.yml), where it lives.
         include:
-          - board: linux
-            image: ghcr.io/newslabntu/nano-ros-ci:humble
           - board: threadx_linux
             image: ghcr.io/newslabntu/nano-ros-ci:humble
           - board: zephyr

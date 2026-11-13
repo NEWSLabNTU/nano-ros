@@ -84,8 +84,15 @@ self-hosted runner.
 
 ## Done when
 
-A dispatch of `merge-runtime.yml` reaches `just ci merge` on all three shards,
-and `scripts/ci/merge-runtime-p95.py` reports samples.
+Amended 2026-11-14 for the user's ruling on the linux shard (phase-559 W5b,
+option B: linux tier 1 stays self-hosted, and `merge-runtime.yml` no longer
+has a hosted linux shard):
+
+- Hosted: a dispatch of `merge-runtime.yml` reaches `just ci merge` on the
+  threadx_linux and zephyr shards, and `scripts/ci/merge-runtime-p95.py`
+  reports samples for both.
+- Linux: measured on the self-hosted lane (`run-matrix.yml`), not on a hosted
+  runner, which ran out of disk at row 75 of 219.
 
 Still blocked after defect 4 (tier1 after-run 43438754804, all three shards
 red in the fixture build): the linux shard runs out of disk (phase-559 W5b);
