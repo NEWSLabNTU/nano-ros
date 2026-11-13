@@ -247,7 +247,8 @@ Acceptance: a measured cargo-leaf image below its floor fails naming the
 board's knob; an unmeasured one warns.
 
 Scope (2026-11-13): the walk after cargo, plus FreeRTOS. On the cargo
-road, only FreeRTOS boards state a stack today. The other platforms are W5b.
+road, FreeRTOS and (since W5b) bare-metal boards state a stack. ThreadX and
+NuttX are W5b's remaining platforms.
 
 How it works (`packages/cli/nros-cli-core/src/cmd/stack_floor.rs`):
 
@@ -335,9 +336,10 @@ variants of each unit. So the walk's flags do not thrash a shared dir.
 
 ### W5b — The other cargo-road platforms state a stack
 
-- **Status:** OPEN
+- **Status:** OPEN. Bare metal is DONE (2026-11-13, #PRNUM); ThreadX and
+  NuttX are open.
 
-On the cargo road, ThreadX, NuttX and bare metal state no stack, so W5
+On the cargo road, ThreadX, NuttX and bare metal stated no stack, so W5
 reports their images as not checked. Each joins when its board build script
 calls `stack_stated::emit` and its platform is added to `STATING_PLATFORMS`:
 
@@ -348,9 +350,15 @@ calls `stack_stated::emit` and its platform is added to `STATING_PLATFORMS`:
 - **Bare metal (mps2-an385).** The board states its main stack since
   phase-553 W7 ([issue 2494](../issues/archived/2494-mps2-baremetal-stack-unbounded.md)):
   `NROS_BAREMETAL_STACK_KB`, 256 KiB by default, written to
-  `nros-stack-stated.json` with root `main`. What is left is turning the
-  platform on in `nros build`'s `STATING_PLATFORMS` (`bare-metal`) and
-  checking the walk from `main`.
+  `nros-stack-stated.json` with root `main`. W5b turned the platform on in
+  `nros build`'s `STATING_PLATFORMS` (`bare-metal`). Measured on
+  `examples/mps2-an385-baremetal/rust/talker`: the walk from `main` is
+  23,968 B static, an unmeasured floor of 26,368 B against the default
+  256 KiB. A stated 16 KiB warns and names `NROS_BAREMETAL_STACK_KB=26`. With a
+  test allowance row, 16 KiB fails with "Raise it: NROS_BAREMETAL_STACK_KB=26"
+  and 26 KiB holds. An unchanged rebuild compiles nothing. Interrupt handlers
+  also run on the main stack (MSP) and are not on the walk from `main`; the
+  board's MPU guard still catches an overflow they cause.
 
 The FreeRTOS sched tasks (`[tasks.*.freertos] stack_bytes`) are one more
 role: W5 checks the boot app task only.

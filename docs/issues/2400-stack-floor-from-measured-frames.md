@@ -478,3 +478,12 @@ links.
 
 The detail is in
 [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W5.
+
+### W5b: bare metal joins the cargo-leaf check (2026-11-13)
+
+Since issue 2494 the mps2-an385 bare-metal board states its main stack
+(`NROS_BAREMETAL_STACK_KB`, root `main`). `nros build` now walks those images
+too. The Rust talker's walk from `main` is 23,968 B static, a floor of
+26,368 B against 256 KiB. A measured image at 16 KiB fails and names
+`NROS_BAREMETAL_STACK_KB=26`. ThreadX and NuttX remain. The detail is in
+[phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W5b.
