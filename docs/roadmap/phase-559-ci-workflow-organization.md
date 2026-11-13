@@ -129,7 +129,8 @@ rules; flagged to the user):
   proofs (issue 2499's lane lands as a `weekly.yml` job, not a file of its
   own).
 - The Zephyr 05:00 and platform 07:00 blocks share the one daily cron.
-  `github.event.schedule` guards go.
+  `github.event.schedule` guards go. This half (W4b) rebases onto phase-558's
+  #3715, which rewrites the 07:00 platform matrix and the board job names.
 - Consumers updated in the same PR: `check-cadence-jobs` (`WEEKLY_WF`),
   `check-board-registry`, `check-book-probe-tracks`, `gen-board-support`,
   `next-stable-delta.py`, `nightly-triage`, and the `nightly-report` name list.
@@ -137,15 +138,25 @@ rules; flagged to the user):
   `schedule` entry, and `weekly.yml`'s is a Sunday. No two files duplicate a
   probe track. Every gate that reads a moved name passes and was changed in
   the same PR.
-- **Status:** open.
+- **Status:** W4a (`weekly.yml` on Sunday, the duplicate probes) is #3713.
+  W4b (one daily cron) waits for #3715.
+
+### Per-board platform jobs — tracked in phase-558, not here
+
+- **Status:** in [phase-558](phase-558-nightly-per-board-verdicts.md), PR
+  #3715 (nros 142). One platform job per board in `nightly.yml`'s 07:00
+  matrix, instead of one per platform family. Its work items, acceptance and
+  status live there only; this phase depends on it (W4b, W5) and does not
+  restate it.
 
 ### W5 — `matrix-nightly` to `run-matrix.yml`; tier 1 to nightly per-board shards
 
 - **Owner:** nros 175.
 - `nightly.yml`'s `matrix-nightly` and `coverage-matrix-nightly` move to
   `run-matrix.yml` (self-hosted tier 2, one daily cron). `run-matrix.yml`'s
-  hosted `tier1` / `coverage-tier1` move to `nightly.yml` as per-board shards
-  (with nros 142's per-board split of the platform job).
+  hosted `tier1` / `coverage-tier1` move to `nightly.yml` as per-board shards,
+  in the per-board job layout phase-558 gives the platform job (see "Per-board
+  platform jobs" below).
 - **Acceptance:** `check-tier-has-ci-owner` and `check-cadence-jobs` pass with
   the new owners. A host witness row's daily binding names the nightly
   per-board shard.
