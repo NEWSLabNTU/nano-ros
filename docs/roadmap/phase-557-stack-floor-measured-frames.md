@@ -152,7 +152,7 @@ Measured on `examples/mps2-an385-freertos/rust/talker` (thumbv7m, zenoh):
 The bare-metal example prints "not checked: the bare-metal board
 `mps2-an385-baremetal` states no stack on this road".
 
-**Fix forward (2026-11-13, #PRNUM): a caller-named `--target-dir`.** The
+**Fix forward (2026-11-13, #3717): a caller-named `--target-dir`.** The
 first L3 run after #3686 went red in `rust-rtos-link-check`, which builds the
 talker with `nros build -- --profile nros-minsizerel --target-dir
 target-link-check`. A caller-named target dir gets a cargo `build.build-dir`
