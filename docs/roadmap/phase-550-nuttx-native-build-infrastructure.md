@@ -481,6 +481,11 @@ rustc or to NuttX stays possible later.
 - **Acceptance:** the spec has one home; every road that links with rustc on
   rv-virt still links (`workspace-rust-nuttx-riscv-realtime`); the
   regeneration note names the pinned nightly it was compared with.
+- **Status:** DONE (2026-11-13). The spec's one home is the board's
+  `riscv32imac-unknown-nuttx-elf.json`, and its regeneration note in
+  `nros-board.toml` names the pinned nightly. `workspace-rust-nuttx-riscv-realtime`
+  builds and links on the W10/W11 kernel, and the realtime sched-task
+  test passes on every NuttX row of both arches.
 
 ### W10 -- Configure the kernel with NuttX's configure
 
@@ -504,9 +509,11 @@ copying the defconfig and running `olddefconfig` itself.
   asks for the kconfig-frontends tools (`[source.nuttx-kernel] system`) and
   `--sudo` installs them, and a host without them is refused with the install
   line, never configured by hand.
-- **Status:** OPEN (fragments, configure helper, index row and docs written
-  2026-11-13; the before/after `.config` comparison and the kernel builds on
-  both arches pending).
+- **Status:** DONE (2026-11-13). Measured: each board's resolved `.config`
+  from its fragment is identical to the one its full defconfig resolved to,
+  except `CONFIG_BASE_DEFCONFIG`, on `arm`, `arm-smp` and `riscv`. The kernel
+  builds on both arches, and so does the make road, which configures through
+  the same helper (`nros_nuttx_configure`).
 
 ### W11 -- The boot entry
 
@@ -516,8 +523,15 @@ override in `nros-board-nuttx-qemu/src/entry.rs` goes.
 - Gate: cleared (Q18 yes, ruled 2026-11-12).
 - **Acceptance:** every NuttX fixture row boots and passes its test on both
   arches; no symbol named `nsh_main` is defined outside the kernel.
-- **Status:** OPEN (code done 2026-11-13; the boot sweep on both arches is
-  pending). The board's entry is `nros_nuttx_entry` (`src/entry.rs`), and
+- **Status:** DONE (2026-11-13). Measured: every NuttX fixture builds on
+  both arches, 54 NuttX images define `nros_nuttx_entry` and none defines
+  `nsh_main`, and the NuttX tests pass 28 of 28 on QEMU (arm and riscv; Rust,
+  C and C++). With an image entry the kernel is no longer linked on its own:
+  the build stops at the export, and builds the board library and the arm
+  vector-table object itself, which only the dropped final link used to
+  build. The export's freshness key covers the scripts that build it. The
+  make road keeps NuttX's shell: it sets `CONFIG_INIT_ENTRYPOINT` back to
+  `nsh_main`. The board's entry is `nros_nuttx_entry` (`src/entry.rs`), and
   the three board defconfigs (`arm`, `arm-smp`, `riscv`) name it in
   `CONFIG_INIT_ENTRYPOINT`. The kernel's build marker is keyed on the
   defconfig's sha256, so every kernel rebuilds. The make road's guest case
