@@ -510,7 +510,9 @@ pub(crate) fn board_rx_cost(
 }
 
 /// Read one SystemModel and apply the two refusals every model producer makes.
-fn load_model(model_path: &std::path::Path) -> Result<nros_orchestration_ir::overlay::LoadedModel> {
+pub(crate) fn load_model(
+    model_path: &std::path::Path,
+) -> Result<nros_orchestration_ir::overlay::LoadedModel> {
     let raw = std::fs::read_to_string(model_path)
         .wrap_err_with(|| format!("reading `{}`", model_path.display()))?;
     let model = ros_launch_manifest_model::SystemModel::from_yaml_str(&raw)

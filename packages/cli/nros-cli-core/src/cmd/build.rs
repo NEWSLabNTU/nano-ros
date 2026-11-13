@@ -6001,7 +6001,7 @@ fn launch_closure(
 /// The build dir of `nros sync`'s metadata probe for this workspace, which
 /// holds every workspace component's `nros-metadata.json` row and the codegen
 /// output (`nros-codegen/`) the message-bound seed reads.
-fn metadata_probe_build_dir(root: &std::path::Path) -> std::path::PathBuf {
+pub(crate) fn metadata_probe_build_dir(root: &std::path::Path) -> std::path::PathBuf {
     crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(
         &root.join("build").join("nros-metadata"),
     )
