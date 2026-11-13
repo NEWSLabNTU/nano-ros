@@ -76,8 +76,9 @@ unsafe extern "C" {
     fn nros_zephyr_current_stack_size() -> usize;
     /// Adopt a raw Zephyr priority on the CALLING thread — the boot thread
     /// runs `sched_tasks[0]` itself, so it must take that sched task's declared priority
-    /// (`k_thread_priority_set(k_current_get(), …)`).
-    fn nros_zephyr_set_current_priority(priority: i32);
+    /// (`k_thread_priority_set(k_current_get(), …)`). Returns the priority the
+    /// kernel reports for the thread afterwards (`k_thread_priority_get`).
+    fn nros_zephyr_set_current_priority(priority: i32) -> i32;
     /// phase-296 W5.5 — apply an earliest-deadline (µs) on the CALLING
     /// thread via `k_thread_deadline_set`. Returns 1 when the kernel
     /// actually applied it (EDF present), 0 when it was a no-op (image
@@ -587,11 +588,25 @@ impl ZephyrBoard {
 
         spawn_next_level(core, sched_tasks, &sched_tasks[1..], task_memory, setup);
 
-        unsafe {
-            nros_zephyr_set_current_priority(
-                boot_sched_task
-                    .priority
-                    .clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+        let want = boot_sched_task
+            .priority
+            .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        // Read back and say so, in the marker the C arm and the FreeRTOS and
+        // NuttX seams print: Zephyr 3.7 traces no `k_thread_priority_set`.
+        let got = unsafe { nros_zephyr_set_current_priority(want) };
+        if got == want {
+            ::log::info!(
+                "nros: sched task priority set sched_task=`{}` prio={}",
+                boot_sched_task.name,
+                got
+            );
+        } else {
+            ::log::error!(
+                "nros: sched task priority FAILED sched_task=`{}` prio={} - the kernel reports \
+                 {}, sched task does NOT hold its declared priority",
+                boot_sched_task.name,
+                want,
+                got
             );
         }
         apply_sched_task_deadline(boot_sched_task);

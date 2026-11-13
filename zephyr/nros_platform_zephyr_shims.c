@@ -1077,9 +1077,20 @@ static int nros_zephyr_sched_task_thread_start(struct k_thread* thread, k_thread
  * Set the CALLING thread's priority to a raw Zephyr priority. The sched task
  * boot thread (`rust_main`) runs `sched_tasks[0]` itself, so it must adopt that
  * sched task's declared priority instead of keeping the main-thread default.
+ *
+ * Returns the priority the kernel reports for the thread AFTERWARDS
+ * (`k_thread_priority_get`), so both callers can print what the boot sched task
+ * actually runs at. Zephyr 3.7 has no tracing hook in
+ * `z_impl_k_thread_priority_set`, so a CTF capture cannot show the change, and
+ * without the read-back a boot sched task that kept the main-thread default
+ * was silent: the spawned sched tasks get theirs at `k_thread_create`, and the
+ * transport report (`nros_zephyr_report_sched_task_vs_transport`) judges the
+ * DECLARED value.
  */
-void nros_zephyr_set_current_priority(int32_t priority) {
-    k_thread_priority_set(k_current_get(), (int)priority);
+int32_t nros_zephyr_set_current_priority(int32_t priority) {
+    k_tid_t self = k_current_get();
+    k_thread_priority_set(self, (int)priority);
+    return (int32_t)k_thread_priority_get(self);
 }
 
 /**
