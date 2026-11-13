@@ -2002,6 +2002,35 @@ _test-scope tok verbose="":
     fi
     nros_scope_reject "$tok"
 
+# `check fast`, or the proof that it already passed on this exact commit.
+#
+# The skip needs ALL of: the opt-in, no tracked edits (a gate run checks a
+# commit, not a working tree), and `scripts/ci/green-gate-run.sh` finding a
+# successful `gate` run whose head is HEAD. The run's URL goes in the log, so
+# a reader of the shard can open the check fast it relied on.
+[private]
+_check-fast-unless-green-gate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Not a lane skip: the gates DID run, green, on this exact commit, and the
+    # line names the run that holds their result.
+    reused=""
+    if [ "${NROS_REUSE_GREEN_GATE:-}" = "1" ]; then
+        sha="$(git rev-parse HEAD)"
+        if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            echo "check fast: running — the tree has uncommitted edits, so no gate run covers it"
+        elif url="$(bash scripts/ci/green-gate-run.sh "$sha")"; then
+            reused="$url"
+        else
+            echo "check fast: running — no green gate run found for $sha"
+        fi
+    fi
+    if [ -n "$reused" ]; then
+        echo "check fast: passed on $sha in gate run $reused (reused, not re-run)"
+    else
+        just check fast
+    fi
+
 # Build ONLY the compile-check fixtures (issue 0034 / issue 0871).
 #
 # `check::source-gates` runs three `cargo test`s that ASSERT a prebuilt
@@ -2065,8 +2094,14 @@ build-compile-check-fixtures builder="":
 # "Run `just ci` first" is not a substitute: fixtures must already be fresh for
 # `test-all` to mean anything, so the honest order is build-then-test, which
 # puts the expensive step first by construction.
+#
+# phase-535 W10 item 3 — the edge is `_check-fast-unless-green-gate`, which IS
+# `check fast` except in one proven case: a CI job that opts in
+# (`NROS_REUSE_GREEN_GATE=1`, merge-runtime.yml only), on a tree with no
+# tracked edits, whose HEAD a successful `gate` run already checked. Then it
+# names that run and skips. Every other case, including any doubt, runs it.
 [group("full-matrix")]
-build-test-fixtures lane="all": _require-owned-provisioned-roots check::fast _require-build-sources _clear-fixture-stamp (_codegen lane) build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
+build-test-fixtures lane="all": _require-owned-provisioned-roots _check-fast-unless-green-gate _require-build-sources _clear-fixture-stamp (_codegen lane) build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
     #!/usr/bin/env bash
     set -e
     source scripts/build/fixture-lane.sh
