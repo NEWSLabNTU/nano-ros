@@ -799,6 +799,25 @@ impl QemuProcess {
         )
     }
 
+    /// [`Self::start_nuttx_virt`] for one peer of a two-image pair, on its
+    /// own virtio-net MAC: peer 0 (talker / server) keeps QEMU's default,
+    /// peer 1 (listener / client) gets the next one.
+    ///
+    /// Both images of a NuttX pair link the shared runtime at one layout and
+    /// boot the same way under `-icount`, so nothing a guest reads before its
+    /// first packet tells them apart, and they drew one zenoh session ZID in
+    /// 4 of 10 measured runs -- the router then refused the second session.
+    /// The zenoh shim folds `eth0`'s MAC into the ZID seed on NuttX, and the
+    /// MAC is what this launcher makes distinct. Same scheme, and the same
+    /// spelling, as the ThreadX riscv64 pair.
+    pub fn start_nuttx_virt_peer(binary: &Path, peer_index: u8) -> TestResult<Self> {
+        Self::start(
+            binary,
+            nuttx_virt_boot(nros_qemu_ladder::Board::NuttxArmVirt, true)
+                .arg("mac", &nros_qemu_ladder::threadx_riscv64_mac(peer_index)),
+        )
+    }
+
     /// #165 — boot a riscv32 rv-virt NuttX kernel image (the riscv sibling of
     /// [`Self::start_nuttx_virt`]). The line mirrors the canonical rv-virt export
     /// `scripts/nuttx/build-nuttx.sh` emits: `-M virt -bios none` + a

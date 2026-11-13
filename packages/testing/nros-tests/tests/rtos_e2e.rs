@@ -358,10 +358,11 @@ impl Platform {
     /// Spawn a platform-specific emulator / process for the given binary.
     ///
     /// `node_idx` is 0 for the "first" node (talker / server) and 1 for
-    /// the "second" node (listener / client). It's only meaningful for
-    /// ThreadX QEMU RISC-V, where the MAC address is derived from the
-    /// index. Other platforms either use slirp (per-instance NAT) or
-    /// pre-assigned static IPs in the firmware and ignore the index.
+    /// the "second" node (listener / client). ThreadX QEMU RISC-V and NuttX
+    /// derive the peer's MAC address from it (on NuttX the MAC is what keeps
+    /// the two images' zenoh session ids apart). Other platforms either use
+    /// slirp (per-instance NAT) or pre-assigned static IPs in the firmware
+    /// and ignore the index.
     fn start_process(
         self,
         binary: &Path,
@@ -381,7 +382,9 @@ impl Platform {
                 let _ = lang;
                 QemuProcess::start_mps2_an385_networked(binary).map(RtosProcess::Qemu)
             }
-            Platform::Nuttx => QemuProcess::start_nuttx_virt(binary, true).map(RtosProcess::Qemu),
+            Platform::Nuttx => {
+                QemuProcess::start_nuttx_virt_peer(binary, node_idx).map(RtosProcess::Qemu)
+            }
             Platform::ThreadxLinux => {
                 ManagedProcess::spawn(binary, &[], name).map(RtosProcess::Managed)
             }
