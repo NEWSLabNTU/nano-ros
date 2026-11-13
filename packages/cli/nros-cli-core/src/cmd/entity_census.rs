@@ -615,9 +615,12 @@ fn take_census(args: TakeArgs) -> Result<()> {
     // Issue 2433 -- an image whose program is an OWNED C/C++ entry (RFC-0071
     // D19) has no launch and no model: the census is of THAT entry, a host
     // build of its package run once, the way a standalone leaf's is
-    // (maintainer ruling 2026-11-11).
+    // (maintainer ruling 2026-11-11). Only when the bringup declares no
+    // component: an owned entry that boots the bringup's `[[component]]` rows
+    // has a model, and its entities are the components', which the model
+    // road below takes (`owned_entry_census_applies`).
     if let Some(pkg) = crate::cmd::build::owned_entry_dir(&root, &image_id, &image)?
-        .filter(|d| owned_entry_is_census_sized(d))
+        .filter(|d| owned_entry_census_applies(&bringup_dir, d))
     {
         if args.plan {
             // Not a `producer` line: no host IMAGE is built, the package is.
@@ -1308,6 +1311,34 @@ pub(crate) const LEAF_CENSUS_HOST_ENV: &str = "NROS_LEAF_CENSUS_HOST";
 /// they keep the road they had (the `owned_entry_without_model` arm below).
 pub(crate) fn owned_entry_is_census_sized(pkg: &Path) -> bool {
     pkg.join("CMakeLists.txt").is_file() && leaf_executable_name(pkg).is_ok()
+}
+
+/// Issue 2433 -- whether an owned entry is sized by ITS census: it builds a
+/// program ([`owned_entry_is_census_sized`]) AND its bringup declares no
+/// `[[component]]` row.
+///
+/// The census of an owned entry exists because such an image has no model:
+/// the bringup declares no component and authors no launch, so the entry's own
+/// `main` is the whole program. A bringup that DOES declare components gives
+/// the image a model, and a hand-written entry that boots it (a launch-only
+/// `nano_ros_add_executable(... BRINGUP .. LAUNCH ..)`, which matches the
+/// `<image>_entry` spelling `owned_entry_dir` looks for) creates no entity of
+/// its own -- the components do, and the model road counts them. Taking the
+/// entry's census there configures the package standalone for the host, which
+/// a launch-only entry cannot do (it relies on the workspace that adds its
+/// components), so every configure printed a failed host build for an image
+/// that needed no census.
+pub(crate) fn owned_entry_census_applies(bringup_dir: &Path, pkg: &Path) -> bool {
+    owned_entry_is_census_sized(pkg) && !bringup_declares_components(bringup_dir)
+}
+
+/// Does the bringup's `system.toml` declare a `[[component]]` row? An
+/// unreadable or unparseable file answers `false`, the old behaviour.
+fn bringup_declares_components(bringup_dir: &Path) -> bool {
+    std::fs::read_to_string(bringup_dir.join("system.toml"))
+        .ok()
+        .and_then(|t| crate::cmd::ws::component_rows(&t).ok())
+        .is_some_and(|rows| !rows.is_empty())
 }
 
 /// Issue 2433 -- what an owned entry's census that could not be taken means.
@@ -2843,6 +2874,37 @@ mod tests {
             "a typed carrier builds no program (the comment is not a call)"
         );
         assert!(!owned_entry_is_census_sized(&pkg("bare", None)));
+    }
+
+    /// An owned entry is sized by its census only when its bringup declares no
+    /// component. One that boots the bringup's `[[component]]` rows (a
+    /// launch-only entry named `<image>_entry`) has a model, and the model road
+    /// counts the components' entities.
+    #[test]
+    fn an_owned_entry_of_a_bringup_with_components_takes_no_census() {
+        let t = tempfile::tempdir().unwrap();
+        let entry = t.path().join("freertos_posix_entry");
+        std::fs::create_dir_all(&entry).unwrap();
+        std::fs::write(
+            entry.join("CMakeLists.txt"),
+            "nano_ros_add_executable(app BOARD freertos-posix BRINGUP ../b LAUNCH default \
+             TYPED DEPLOY freertos-posix)\n",
+        )
+        .unwrap();
+        let bringup = |name: &str, toml: &str| {
+            let d = t.path().join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("system.toml"), toml).unwrap();
+            d
+        };
+        let with_components = bringup(
+            "with_components",
+            "[system]\nname = \"b\"\n\n[[component]]\npkg = \"p\"\nclass = \"p::C\"\nname = \"c\"\n",
+        );
+        let without = bringup("without", "[system]\nname = \"b\"\n");
+        assert!(owned_entry_is_census_sized(&entry));
+        assert!(!owned_entry_census_applies(&with_components, &entry));
+        assert!(owned_entry_census_applies(&without, &entry));
     }
 
     /// Issue 2433 -- an owned entry's census that cannot be taken refuses by

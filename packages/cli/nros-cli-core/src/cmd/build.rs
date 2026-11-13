@@ -2004,7 +2004,9 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     let census = match owned_entry_dir(&root, &id, &img) {
                         Ok(Some(pkg))
                             if platform != "posix"
-                                && crate::cmd::entity_census::owned_entry_is_census_sized(&pkg) =>
+                                && crate::cmd::entity_census::owned_entry_census_applies(
+                                    &bd, &pkg,
+                                ) =>
                         {
                             Some(crate::builder::cmake_root::OwnedCensus {
                                 bringup: bringup.clone(),
