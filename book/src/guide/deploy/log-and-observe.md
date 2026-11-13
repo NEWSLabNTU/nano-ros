@@ -67,7 +67,8 @@ log_warn!(node.logger().throttle(Duration::from_millis(500)), "lag {} ms", lag);
 int main(void) {
     rclc_support_t support = rclc_support_get_zero_initialized();
     rcl_allocator_t allocator = rcl_get_default_allocator();
-    rclc_support_init(&support, 0, NULL, &allocator); /* locator: build, then NROS_LOCATOR */
+    /* locator: build, then NROS_LOCATOR */
+    rclc_support_init(&support, 0, NULL, &allocator);
 
     rcl_node_t node = rcl_get_zero_initialized_node();
     rclc_node_init_default(&node, "my_node", "/", &support);
@@ -162,7 +163,10 @@ use nros_rcl_interfaces::msg::Log;
 
 let rosout = executor
     .create_node("my_node")?
-    .create_publisher_with_qos::<Log>(nros::rosout::TOPIC, nros::rosout::qos_bounded())?;
+    .create_publisher_with_qos::<Log>(
+        nros::rosout::TOPIC,
+        nros::rosout::qos_bounded(),
+    )?;
 nros::rosout::enable();
 loop {
     executor.spin_once(budget);

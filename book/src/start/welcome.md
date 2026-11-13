@@ -17,11 +17,18 @@ code is a ROS 2 talker. This excerpt is the part that does the work:
 fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
     let mut node = ctx.create_node(nros::NodeOptions::new("talker"))?;
     node.create_publisher_for_topic::<StringMsg>("/chatter")?;
-    node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
+    node.create_timer_for_callback_name(
+        "on_tick",
+        TimerDuration::from_millis(1000),
+    )?;
     Ok(())
 }
 
-fn on_callback(state: &mut i32, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+fn on_callback(
+    state: &mut i32,
+    callback: Callback<'_>,
+    ctx: &mut CallbackCtx<'_>,
+) {
     if callback.as_str() == "on_tick" {
         *state = state.wrapping_add(1);
         let mut msg = StringMsg::default();

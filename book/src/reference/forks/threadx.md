@@ -23,5 +23,7 @@ nano-ros builds `third-party/threadx/kernel` from the fork [NEWSLabNTU/threadx](
 Reproduce:
 
 ```bash
-gh api repos/eclipse-threadx/threadx/compare/v6.4.5.202504_rel...NEWSLabNTU:threadx:9a29f1bd3f07bd19d085b9e90f8fa7a77479dfa7 --jq '.ahead_by'
+base=v6.4.5.202504_rel
+head=NEWSLabNTU:threadx:9a29f1bd3f07bd19d085b9e90f8fa7a77479dfa7
+gh api "repos/eclipse-threadx/threadx/compare/$base...$head" --jq '.ahead_by'
 ```

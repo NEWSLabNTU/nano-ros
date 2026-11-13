@@ -205,10 +205,12 @@ in any of its four forms (`const M&`, `std::shared_ptr<const M>`,
 
 ```cpp
 auto sub = node->create_subscription<std_msgs::msg::Int32>(
-    "/chatter", 10, [](const std_msgs::msg::Int32& msg, const rclcpp::MessageInfo& info) {
+    "/chatter", 10,
+    [](const std_msgs::msg::Int32& msg, const rclcpp::MessageInfo& info) {
         const auto& r = info.get_rmw_message_info();
         printf("%d from seq %llu at %lld ns\n", msg.data,
-               (unsigned long long)r.publication_sequence_number, (long long)r.source_timestamp);
+               (unsigned long long)r.publication_sequence_number,
+               (long long)r.source_timestamp);
     });
 ```
 
@@ -232,29 +234,41 @@ using GoalHandle = rclcpp_action::ServerGoalHandle<Fibonacci>;
 using namespace std::placeholders;
 
 // Server: free factory over the node interfaces, std::bind-ed members.
-rclcpp_action::Server<Fibonacci>::SharedPtr server = rclcpp_action::create_server<Fibonacci>(
-    get_node_base_interface(), get_node_clock_interface(), get_node_logging_interface(),
-    get_node_waitables_interface(), "fibonacci",
-    std::bind(&MyNode::handle_goal, this, _1, _2),    // (const GoalUUID&, shared_ptr<const Goal>)
-    std::bind(&MyNode::handle_cancel, this, _1),      // (shared_ptr<GoalHandle>)
-    std::bind(&MyNode::handle_accepted, this, _1));   // (shared_ptr<GoalHandle>)
+rclcpp_action::Server<Fibonacci>::SharedPtr server =
+    rclcpp_action::create_server<Fibonacci>(
+        get_node_base_interface(), get_node_clock_interface(),
+        get_node_logging_interface(), get_node_waitables_interface(),
+        "fibonacci",
+        // (const GoalUUID&, shared_ptr<const Goal>)
+        std::bind(&MyNode::handle_goal, this, _1, _2),
+        // (shared_ptr<GoalHandle>)
+        std::bind(&MyNode::handle_cancel, this, _1),
+        // (shared_ptr<GoalHandle>)
+        std::bind(&MyNode::handle_accepted, this, _1));
 // in handle_accepted: goal_handle->get_goal(), ->publish_feedback(fb),
 // ->is_canceling(), ->succeed(result) / ->abort(result) / ->canceled(result)
 
 // Client: SendGoalOptions' upstream fields, bound per goal by async_send_goal.
 auto client = rclcpp_action::create_client<Fibonacci>(this, "fibonacci");
 auto opts = rclcpp_action::Client<Fibonacci>::SendGoalOptions();
-opts.goal_response_callback = [](rclcpp_action::ClientGoalHandle<Fibonacci>::SharedPtr h) {};
-opts.feedback_callback = [](auto h, const std::shared_ptr<const Fibonacci::Feedback> fb) {};
-opts.result_callback = [](const rclcpp_action::Client<Fibonacci>::WrappedResult& r) {
-    // r.code: rclcpp_action::ResultCode::SUCCEEDED / ABORTED / CANCELED; r.result
-};
+opts.goal_response_callback =
+    [](rclcpp_action::ClientGoalHandle<Fibonacci>::SharedPtr h) {};
+opts.feedback_callback =
+    [](auto h, const std::shared_ptr<const Fibonacci::Feedback> fb) {};
+opts.result_callback =
+    [](const rclcpp_action::Client<Fibonacci>::WrappedResult& r) {
+        // r.code: rclcpp_action::ResultCode::SUCCEEDED / ABORTED / CANCELED;
+        // r.result
+    };
 auto fut = client->async_send_goal(goal, opts);   // rclcpp::Future<GoalAccept>
 
 // The handle-taking calls return upstream's std::shared_future.
-auto result = client->async_get_result(goal_handle);   // shared_future<WrappedResult>
-auto cancel = client->async_cancel_goal(goal_handle);  // shared_future<CancelResponse::SharedPtr>
-if (rclcpp::spin_until_future_complete(node, result) == rclcpp::FutureReturnCode::SUCCESS) {
+// shared_future<WrappedResult>
+auto result = client->async_get_result(goal_handle);
+// shared_future<CancelResponse::SharedPtr>
+auto cancel = client->async_cancel_goal(goal_handle);
+if (rclcpp::spin_until_future_complete(node, result) ==
+    rclcpp::FutureReturnCode::SUCCESS) {
     const auto& wrapped = result.get();
 }
 // server, after handle_goal returned ACCEPT_AND_DEFER:
@@ -340,10 +354,11 @@ rclcpp's node does:
 ```cpp
 rclcpp::Node node;
 RCLCPP_TRY(executor.create_node(node, "ctrl"));
-node.declare_parameter<int64_t>("gain", 3);   // before or after: both reported
-RCLCPP_TRY(node.start_parameter_services());  // start-up event: new_parameters = [gain]
-node.set_parameter<int64_t>("gain", 4);       // changed_parameters = [gain]
-node.undeclare_parameter("gain");             // deleted_parameters = [gain]
+node.declare_parameter<int64_t>("gain", 3);  // before or after: both reported
+// start-up event: new_parameters = [gain]
+RCLCPP_TRY(node.start_parameter_services());
+node.set_parameter<int64_t>("gain", 4);      // changed_parameters = [gain]
+node.undeclare_parameter("gain");            // deleted_parameters = [gain]
 ```
 
 Each event names the node's fully qualified name in `node`; the events are

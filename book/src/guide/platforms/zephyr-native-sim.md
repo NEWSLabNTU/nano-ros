@@ -31,7 +31,8 @@ rmw = "zenoh"
 domain_id = 0
 
 [image.zephyr]
-board = "zephyr"                  # a nano-ros board id; west gets native_sim/native/64
+# a nano-ros board id; west gets native_sim/native/64
+board = "zephyr"
 locator = "tcp/127.0.0.1:7447"
 os_config = ["prj-zenoh.conf"]    # Zephyr settings only
 

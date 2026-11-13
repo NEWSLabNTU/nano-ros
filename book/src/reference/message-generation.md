@@ -206,7 +206,8 @@ my_ws/
 │   └── builtin_interfaces/  # Transitive dependency
 │       └── ...
 └── build/                   # Build output (do not commit)
-    └── …/<image>_entry/     # each image's generated entry and its cargo settings, incl. the patches
+    └── …/<image>_entry/     # each image's generated entry and
+                             # its cargo settings, incl. the patches
 ```
 
 ## Generated Code Features

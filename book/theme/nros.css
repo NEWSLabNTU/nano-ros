@@ -10,3 +10,12 @@ pre > code {
     border: 1px solid color-mix(in srgb, var(--fg) 25%, var(--bg));
     border-radius: 6px;
 }
+
+/* Console output (```text blocks) wraps instead of scrolling sideways. The
+   lines are what a program prints, so the book cannot break them by hand:
+   the probes match them verbatim. Commands and source code still scroll;
+   the book keeps those within about 80 columns instead. */
+pre > code.language-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

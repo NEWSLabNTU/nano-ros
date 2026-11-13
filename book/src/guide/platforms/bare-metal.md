@@ -106,7 +106,7 @@ nros run bm_node --dry-run --why
 
 The parts that matter, trimmed, for the starter's serial image:
 
-```text
+```toml
 [runner]
 package = "nros_runner_qemu"
 name = "qemu"

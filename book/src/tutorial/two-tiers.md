@@ -115,9 +115,8 @@ cat > src/control_node/src/lib.rs <<'EOF'
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
-    NodeResult,
-    TimerDuration,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode,
+    NodeContext, NodeOptions, NodeResult, TimerDuration,
 };
 use nros_log::{Logger, log_info};
 
@@ -131,15 +130,18 @@ pub struct Talker;
 impl Component for Talker {
     const NAME: &'static str = "control_node";
 
-    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
+    const ENTITY_BOUNDS: nros::EntityBounds =
+        nros::EntityBounds::exact(0, 0, 0, 0, 0);
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(NodeOptions::new("control_node"))?;
         // Everything created after this line belongs to the group `ctrl`.
         node.callback_group("ctrl")?;
-        let _timer =
-            node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(10))?;
+        let _timer = node.create_timer_for_callback_name(
+            "on_tick",
+            TimerDuration::from_millis(10),
+        )?;
         Ok(())
     }
 }
@@ -160,7 +162,11 @@ impl ExecutableNode for Talker {
         Loop { ticks: 0, last_us: 0, worst_us: 0, late: 0 }
     }
 
-    fn on_callback(s: &mut Self::State, callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(
+        s: &mut Self::State,
+        callback: Callback<'_>,
+        _ctx: &mut CallbackCtx<'_>,
+    ) {
         if callback.as_str() != "on_tick" {
             return;
         }
@@ -231,8 +237,9 @@ static void on_tick(rcl_timer_t* timer, int64_t since_last) {
         if (late) {
             self->late++;
         }
-        printf("[control_node] ticks %d-%d: longest gap %lld us (%s)\n", (int)self->ticks - 99,
-               (int)self->ticks, (long long)(self->worst_ns / 1000), late ? "late" : "on time");
+        printf("[control_node] ticks %d-%d: longest gap %lld us (%s)\n",
+               (int)self->ticks - 99, (int)self->ticks,
+               (long long)(self->worst_ns / 1000), late ? "late" : "on time");
         self->worst_ns = 0;
         if (self->ticks == 1000) {
             printf("[control_node] 10 windows, %d late\n", (int)self->late);
@@ -240,14 +247,16 @@ static void on_tick(rcl_timer_t* timer, int64_t since_last) {
     }
 }
 
-static rcl_ret_t control_configure(rcl_node_t* node, rclc_executor_t* executor, control_t* self) {
+static rcl_ret_t control_configure(rcl_node_t* node, rclc_executor_t* executor,
+                                   control_t* self) {
     (void)node;
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->ticks = 0;
     self->worst_ns = 0;
     self->late = 0;
     self->timer = rcl_get_zero_initialized_timer();
-    rcl_ret_t rc = rclc_timer_init_default(&self->timer, NULL, 10ULL * 1000000ULL, on_tick);
+    rcl_ret_t rc = rclc_timer_init_default(&self->timer, NULL,
+                                           10ULL * 1000000ULL, on_tick);
     if (rc != RCL_RET_OK) {
         return rc;
     }
@@ -304,10 +313,13 @@ void Talker::on_tick() {
     if (ticks_ % 100 == 0) {
         const bool late = worst_ns_ > kBudgetNs;
         if (late) ++late_;
-        std::printf("[control_node] ticks %d-%d: longest gap %lld us (%s)\n", ticks_ - 99, ticks_,
-                    (long long)(worst_ns_ / 1000), late ? "late" : "on time");
+        std::printf("[control_node] ticks %d-%d: longest gap %lld us (%s)\n",
+                    ticks_ - 99, ticks_, (long long)(worst_ns_ / 1000),
+                    late ? "late" : "on time");
         worst_ns_ = 0;
-        if (ticks_ == 1000) std::printf("[control_node] 10 windows, %d late\n", late_);
+        if (ticks_ == 1000) {
+            std::printf("[control_node] 10 windows, %d late\n", late_);
+        }
     }
 }
 
@@ -355,9 +367,8 @@ cat > src/telemetry_node/src/lib.rs <<'EOF'
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
-    NodeResult,
-    TimerDuration,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode,
+    NodeContext, NodeOptions, NodeResult, TimerDuration,
 };
 
 pub struct Talker;
@@ -365,13 +376,16 @@ pub struct Talker;
 impl Component for Talker {
     const NAME: &'static str = "telemetry_node";
 
-    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
+    const ENTITY_BOUNDS: nros::EntityBounds =
+        nros::EntityBounds::exact(0, 0, 0, 0, 0);
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("telemetry_node"))?;
         node.callback_group("telem")?;
-        let _timer =
-            node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(100))?;
+        let _timer = node.create_timer_for_callback_name(
+            "on_tick",
+            TimerDuration::from_millis(100),
+        )?;
         Ok(())
     }
 }
@@ -382,7 +396,11 @@ impl ExecutableNode for Talker {
 
     fn init() -> Self::State {}
 
-    fn on_callback(_s: &mut Self::State, callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(
+        _s: &mut Self::State,
+        callback: Callback<'_>,
+        _ctx: &mut CallbackCtx<'_>,
+    ) {
         if callback.as_str() == "on_tick" {
             // Stand-in for real work: compress a log, format a report.
             let t0 = nros::time::now_us();
@@ -434,7 +452,8 @@ static rcl_ret_t telemetry_configure(rcl_node_t* node, rclc_executor_t* executor
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_default(&self->timer, NULL, 100ULL * 1000000ULL, on_tick);
+    rc = rclc_timer_init_default(&self->timer, NULL, 100ULL * 1000000ULL,
+                                 on_tick);
     if (rc != RCL_RET_OK) {
         return rc;
     }
@@ -505,15 +524,19 @@ Nothing to change.
 #### C
 
 ```bash probe=2145 track=installed variant=qemu
-sed -i 's|^    SOURCES |    CALLBACK_GROUPS ctrl\n    SOURCES |' src/control_node/CMakeLists.txt
-sed -i 's|^    SOURCES |    CALLBACK_GROUPS telem\n    SOURCES |' src/telemetry_node/CMakeLists.txt
+sed -i 's|^    SOURCES |    CALLBACK_GROUPS ctrl\n    SOURCES |' \
+    src/control_node/CMakeLists.txt
+sed -i 's|^    SOURCES |    CALLBACK_GROUPS telem\n    SOURCES |' \
+    src/telemetry_node/CMakeLists.txt
 ```
 
 #### C++
 
 ```bash probe=2145 track=installed variant=qemu
-sed -i 's|^    SOURCES |    CALLBACK_GROUPS ctrl\n    SOURCES |' src/control_node/CMakeLists.txt
-sed -i 's|^    SOURCES |    CALLBACK_GROUPS telem\n    SOURCES |' src/telemetry_node/CMakeLists.txt
+sed -i 's|^    SOURCES |    CALLBACK_GROUPS ctrl\n    SOURCES |' \
+    src/control_node/CMakeLists.txt
+sed -i 's|^    SOURCES |    CALLBACK_GROUPS telem\n    SOURCES |' \
+    src/telemetry_node/CMakeLists.txt
 ```
 
 <!-- /tabs -->

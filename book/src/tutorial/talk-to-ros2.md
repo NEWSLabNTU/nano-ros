@@ -160,7 +160,8 @@ offers sees the truth about the board.
 Messages go the other way just as well. From the second terminal:
 
 ```bash probe=1050 track=installed variant=qemu
-ros2 topic pub --times 3 /sensor/reading tutorial_msgs/msg/Reading '{sequence: 1000, temperature_mc: 25000}'
+ros2 topic pub --times 3 /sensor/reading tutorial_msgs/msg/Reading \
+    '{sequence: 1000, temperature_mc: 25000}'
 ```
 
 ```text

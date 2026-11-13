@@ -42,10 +42,11 @@ you build from.
 checksum it cannot verify.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh \
-    | sh -s -- --version 0.6.0-nros4     # a specific release instead of the newest
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh \
-    | sh -s -- --dry-run                 # print what would happen, change nothing
+url=https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh
+# a specific release instead of the newest
+curl -fsSL "$url" | sh -s -- --version 0.6.0-nros4
+# print what would happen, change nothing
+curl -fsSL "$url" | sh -s -- --dry-run
 ```
 
 `NROS_HOME` moves the install root away from `~/.nros`. `nros version` then
@@ -228,8 +229,10 @@ docker run --rm -v "$PWD/debs:/debs" ubuntu:24.04 bash -c '
   set -e
   apt-get update
   apt-get install -y curl ca-certificates
+  codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+  base=https://github.com/ros-infrastructure/ros-apt-source/releases/download
   curl -fL -o /tmp/ros2-apt-source.deb \
-    "https://github.com/ros-infrastructure/ros-apt-source/releases/download/1.3.0/ros2-apt-source_1.3.0.$(. /etc/os-release && echo "$VERSION_CODENAME")_all.deb"
+    "$base/1.3.0/ros2-apt-source_1.3.0.${codename}_all.deb"
   dpkg -i /tmp/ros2-apt-source.deb
   apt-get update
   : > /tmp/nothing-installed

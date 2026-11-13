@@ -37,7 +37,7 @@ does the last two; on hardware `nros flash --monitor` does.
    nros run host_node_bringup:linux --dry-run --why
    ```
 
-   ```text
+   ```toml
    image = "host_node_bringup:linux"
    verb = "run"
 

@@ -148,7 +148,7 @@ reaches the router on your host through USART3, which Zephyr calls
 grep '^locator' src/nucleo_node_bringup/system.toml
 ```
 
-```text
+```toml
 locator = "serial/serial@40004800#baudrate=115200"
 ```
 

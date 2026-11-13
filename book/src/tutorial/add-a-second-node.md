@@ -85,13 +85,19 @@ src/monitor_node/
 fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
     nros_log::register_logger(&LOGGER);
     let mut node = ctx.create_node(NodeOptions::new("monitor_node"))?;
-    let _sub =
-        node.create_subscription_for_callback_name::<StringMsg>("on_chatter", "/chatter")?;
+    let _sub = node.create_subscription_for_callback_name::<StringMsg>(
+        "on_chatter",
+        "/chatter",
+    )?;
     log_info!(&LOGGER, "Subscriber created for topic: /chatter");
     Ok(())
 }
 
-fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+fn on_callback(
+    state: &mut Self::State,
+    callback: Callback<'_>,
+    ctx: &mut CallbackCtx<'_>,
+) {
     if callback.as_str() == "on_chatter"
         && let Ok(msg) = ctx.message::<StringMsg>()
     {
@@ -144,17 +150,19 @@ static void on_msg(const void* msgin, void* ctx) {
     self->recv++;
 }
 
-static rcl_ret_t listener_configure(rcl_node_t* node, rclc_executor_t* executor, listener_t* self) {
+static rcl_ret_t listener_configure(rcl_node_t* node, rclc_executor_t* executor,
+                                    listener_t* self) {
     self->recv = 0;
     std_msgs__msg__String__init_in(&self->msg, &self->msg_storage);
     self->sub = rcl_get_zero_initialized_subscription();
     rcl_ret_t rc = rclc_subscription_init_default(
-        &self->sub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "/chatter");
+        &self->sub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+        "/chatter");
     if (rc != RCL_RET_OK) {
         return rc;
     }
-    return rclc_executor_add_subscription_with_context(executor, &self->sub, &self->msg, on_msg,
-                                                       self, ON_NEW_DATA);
+    return rclc_executor_add_subscription_with_context(
+        executor, &self->sub, &self->msg, on_msg, self, ON_NEW_DATA);
 }
 
 RCLC_C_COMPONENT(listener_t, listener_configure)
@@ -187,8 +195,8 @@ void Listener::on_msg(const ::std_msgs::msg::String& msg) {
 }
 
 ::rclcpp::Result Listener::configure(::rclcpp::Node& node) {
-    return ::rclcpp::bind_subscription<::std_msgs::msg::String, Listener, &Listener::on_msg>(
-        node, "/chatter", this);
+    return ::rclcpp::bind_subscription<::std_msgs::msg::String, Listener,
+                                       &Listener::on_msg>(node, "/chatter", this);
 }
 ```
 

@@ -76,8 +76,8 @@ cat > src/sensor_node/src/lib.rs <<'EOF'
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
-    NodeResult, TimerDuration,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode,
+    NodeContext, NodeOptions, NodeResult, TimerDuration,
 };
 use nros_log::{Logger, log_info};
 use tutorial_msgs::msg::Reading;
@@ -88,7 +88,8 @@ pub struct Talker;
 
 impl Component for Talker {
     const NAME: &'static str = "sensor_node";
-    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(1, 0, 0, 0, 0);
+    const ENTITY_BOUNDS: nros::EntityBounds =
+        nros::EntityBounds::exact(1, 0, 0, 0, 0);
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         nros_log::register_logger(&LOGGER);
@@ -100,8 +101,10 @@ impl Component for Talker {
             .unwrap_or(1000);
         let mut node = ctx.create_node(NodeOptions::new("sensor_node"))?;
         let pub_reading = node.create_publisher_for_topic::<Reading>("/reading")?;
-        let _timer =
-            node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(period_ms))?;
+        let _timer = node.create_timer_for_callback_name(
+            "on_tick",
+            TimerDuration::from_millis(period_ms),
+        )?;
         log_info!(&LOGGER, "Publishing every {} ms", period_ms);
         node.callback_for_name("on_tick")
             .publishes_entity(&pub_reading)?;
@@ -118,7 +121,11 @@ impl ExecutableNode for Talker {
         0
     }
 
-    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(
+        state: &mut Self::State,
+        callback: Callback<'_>,
+        ctx: &mut CallbackCtx<'_>,
+    ) {
         if callback.as_str() == "on_tick" {
             *state = state.wrapping_add(1);
             let msg = Reading {
@@ -126,7 +133,12 @@ impl ExecutableNode for Talker {
                 temperature_mc: 21_000 + (*state % 10) * 100,
             };
             let _ = ctx.publish_to_topic::<Reading, 32>("/reading", &msg);
-            log_info!(&LOGGER, "Publishing: reading {} ({} mC)", msg.sequence, msg.temperature_mc);
+            log_info!(
+                &LOGGER,
+                "Publishing: reading {} ({} mC)",
+                msg.sequence,
+                msg.temperature_mc
+            );
         }
     }
 }
@@ -172,11 +184,13 @@ static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
     msg.sequence = self->count;
     msg.temperature_mc = 21000 + (self->count % 10) * 100;
     if (rcl_publish(&self->pub, &msg, NULL) == RCL_RET_OK) {
-        printf("Publishing: reading %d (%d mC)\n", (int)msg.sequence, (int)msg.temperature_mc);
+        printf("Publishing: reading %d (%d mC)\n", (int)msg.sequence,
+               (int)msg.temperature_mc);
     }
 }
 
-static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor, talker_t* self) {
+static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor,
+                                  talker_t* self) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->count = 0;
     // The launch file's <param name="period_ms" .../>; 1000 ms when it sets none.
@@ -189,12 +203,14 @@ static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor, t
     printf("Publishing every %d ms\n", (int)period_ms);
     self->pub = rcl_get_zero_initialized_publisher();
     rc = rclc_publisher_init_default(
-        &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(tutorial_msgs, msg, Reading), "/reading");
+        &self->pub, node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(tutorial_msgs, msg, Reading), "/reading");
     if (rc != RCL_RET_OK) {
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_default(&self->timer, NULL, (uint64_t)period_ms * 1000000ULL, on_tick);
+    rc = rclc_timer_init_default(&self->timer, NULL,
+                                 (uint64_t)period_ms * 1000000ULL, on_tick);
     if (rc != RCL_RET_OK) {
         return rc;
     }
@@ -209,7 +225,8 @@ The C node reads parameters through rclc's parameter server, which needs the
 image's parameter services:
 
 ```bash probe=725 track=installed variant=qemu
-sed -i 's#^domain_id = 0#domain_id = 0\nfeatures = ["param_services"]#' src/sensor_node_bringup/system.toml
+sed -i 's#^domain_id = 0#domain_id = 0\nfeatures = ["param_services"]#' \
+    src/sensor_node_bringup/system.toml
 ```
 
 #### C++
@@ -228,7 +245,8 @@ void Talker::on_tick() {
     msg.sequence = count_;
     msg.temperature_mc = 21000 + (count_ % 10) * 100;
     if (pub_.publish(msg).ok()) {
-        std::printf("Publishing: reading %d (%d mC)\n", static_cast<int>(msg.sequence),
+        std::printf("Publishing: reading %d (%d mC)\n",
+                    static_cast<int>(msg.sequence),
                     static_cast<int>(msg.temperature_mc));
     }
 }
@@ -241,8 +259,8 @@ void Talker::on_tick() {
     int64_t period_ms = 1000;
     (void)node.get_parameter<int64_t>("period_ms", period_ms);
     std::printf("Publishing every %d ms\n", static_cast<int>(period_ms));
-    return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, static_cast<uint32_t>(period_ms),
-                                                            this);
+    return node.create_wall_timer<Talker, &Talker::on_tick>(
+        timer_, static_cast<uint32_t>(period_ms), this);
 }
 
 } // namespace sensor_node
@@ -253,7 +271,8 @@ EOF
 `params` feature adds:
 
 ```bash probe=725 track=installed variant=qemu
-sed -i 's#^domain_id = 0#domain_id = 0\nfeatures = ["params"]#' src/sensor_node_bringup/system.toml
+sed -i 's#^domain_id = 0#domain_id = 0\nfeatures = ["params"]#' \
+    src/sensor_node_bringup/system.toml
 ```
 
 <!-- /tabs -->

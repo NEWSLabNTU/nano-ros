@@ -29,7 +29,8 @@ your RTOS yet, [add the platform](add-a-platform.md) first.
 1. Scaffold the board package outside nano-ros:
 
    ```sh
-   nros board new my-board --platform freertos --out-of-tree ./boards --workspace "$(nros locate nano-ros)"
+   nros board new my-board --platform freertos --out-of-tree ./boards \
+       --workspace "$(nros locate nano-ros)"
    ```
 
    ```text

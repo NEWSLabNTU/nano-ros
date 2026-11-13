@@ -78,7 +78,11 @@ The server answers each request in its callback:
 #### Rust
 
 ```rust
-fn on_callback(_state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+fn on_callback(
+    _state: &mut Self::State,
+    callback: Callback<'_>,
+    ctx: &mut CallbackCtx<'_>,
+) {
     if callback.as_str() == "handle_add" {
         if let Ok(req) = ctx.message::<AddTwoIntsRequest>() {
             log_info!(&LOGGER, "Incoming request");
@@ -100,12 +104,13 @@ service server.
 
 ```c
 static void on_request(const example_interfaces__srv__AddTwoInts_Request* req,
-                       example_interfaces__srv__AddTwoInts_Response* resp, void* ctx) {
+                       example_interfaces__srv__AddTwoInts_Response* resp,
+                       void* ctx) {
     add_server_t* self = (add_server_t*)ctx;
     self->request_count++;
     resp->sum = req->a + req->b;
-    printf("[server_node] %lld + %lld = %lld\n", (long long)req->a, (long long)req->b,
-           (long long)resp->sum);
+    printf("[server_node] %lld + %lld = %lld\n", (long long)req->a,
+           (long long)req->b, (long long)resp->sum);
 }
 ```
 
@@ -118,11 +123,13 @@ service type, `example_interfaces__srv__AddTwoInts__service_init` and
 
 ```cpp
 example_interfaces::srv::AddTwoInts::Response
-AddTwoIntsServer::on_request(const example_interfaces::srv::AddTwoInts::Request& req) {
+AddTwoIntsServer::on_request(
+    const example_interfaces::srv::AddTwoInts::Request& req) {
     example_interfaces::srv::AddTwoInts::Response resp;
     resp.sum = req.a + req.b;
-    std::printf("[server_node] %lld + %lld = %lld\n", static_cast<long long>(req.a),
-                static_cast<long long>(req.b), static_cast<long long>(resp.sum));
+    std::printf("[server_node] %lld + %lld = %lld\n",
+                static_cast<long long>(req.a), static_cast<long long>(req.b),
+                static_cast<long long>(resp.sum));
     return resp;
 }
 ```
@@ -145,7 +152,11 @@ would stop. The client splits the call in two:
 #### Rust
 
 ```rust
-fn on_callback(state: &mut Self::State, callback: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
+fn on_callback(
+    state: &mut Self::State,
+    callback: Callback<'_>,
+    _ctx: &mut CallbackCtx<'_>,
+) {
     if callback.as_str() == "issue_call" && !state.done {
         state.pending = true;                        // decide; do not call here
     }
@@ -157,9 +168,10 @@ fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
     }
     state.pending = false;
     let req = AddTwoIntsRequest { a: 2, b: 3 };
-    match ctx
-        .call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>("/add_two_ints", &req)
-    {
+    match ctx.call_for_name::<AddTwoIntsRequest, AddTwoIntsResponse, 64, 64>(
+        "/add_two_ints",
+        &req,
+    ) {
         Ok(reply) => {
             log_info!(&LOGGER, "Result of add_two_ints: {}", reply.sum);
             state.done = true;
@@ -194,22 +206,28 @@ adds 1 to a counter: `a` counts up, `b` is 1.
 #### Rust
 
 ```bash probe=620 track=installed variant=qemu
-nros new action_server_node --template action-server --lang rust --to sensor_node_bringup
-nros new action_client_node --template action-client --lang rust --to sensor_node_bringup
+nros new action_server_node --template action-server --lang rust \
+    --to sensor_node_bringup
+nros new action_client_node --template action-client --lang rust \
+    --to sensor_node_bringup
 ```
 
 #### C
 
 ```bash probe=620 track=installed variant=qemu
-nros new action_server_node --template action-server --lang c --to sensor_node_bringup
-nros new action_client_node --template action-client --lang c --to sensor_node_bringup
+nros new action_server_node --template action-server --lang c \
+    --to sensor_node_bringup
+nros new action_client_node --template action-client --lang c \
+    --to sensor_node_bringup
 ```
 
 #### C++
 
 ```bash probe=620 track=installed variant=qemu
-nros new action_server_node --template action-server --lang cpp --to sensor_node_bringup
-nros new action_client_node --template action-client --lang cpp --to sensor_node_bringup
+nros new action_server_node --template action-server --lang cpp \
+    --to sensor_node_bringup
+nros new action_client_node --template action-client --lang cpp \
+    --to sensor_node_bringup
 ```
 
 <!-- /tabs -->

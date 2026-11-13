@@ -27,5 +27,7 @@ nano-ros builds `third-party/nuttx/nuttx` from the fork [jerry73204/nuttx](https
 Reproduce:
 
 ```bash
-gh api repos/apache/nuttx/compare/nuttx-12.13.0...jerry73204:nuttx:aea00d736d698994a7c0a7339b56b04af30ec21e --jq '.ahead_by'
+base=nuttx-12.13.0
+head=jerry73204:nuttx:aea00d736d698994a7c0a7339b56b04af30ec21e
+gh api "repos/apache/nuttx/compare/$base...$head" --jq '.ahead_by'
 ```

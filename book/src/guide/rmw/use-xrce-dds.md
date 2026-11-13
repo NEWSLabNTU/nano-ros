@@ -87,7 +87,8 @@ connectivity until it comes back.
    on your desk, start the agent on the board's USB serial device yourself:
 
    ```bash
-   "$(nros locate tool xrce-agent)/bin/MicroXRCEAgent" serial --dev /dev/ttyACM0 -b 115200
+   "$(nros locate tool xrce-agent)/bin/MicroXRCEAgent" serial \
+       --dev /dev/ttyACM0 -b 115200
    ```
 
    How a bare-metal board carries XRCE-DDS over its UART is the board's: the

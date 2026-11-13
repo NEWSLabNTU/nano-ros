@@ -33,7 +33,7 @@ a board needs to find the router.
    The `[link]` table is the image's locator. The scaffold's first image
    reaches the router over the board's serial port:
 
-   ```text
+   ```toml
    [link]
    kind = "serial"
    locator = "serial/UART_0#baudrate=115200"

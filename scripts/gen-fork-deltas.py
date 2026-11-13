@@ -141,9 +141,12 @@ def render(row: dict, pin: str, fork: str, branch: str, cmp: dict) -> str:
     if len(commits) < cmp["ahead_by"]:
         lines += ["", f"The compare API lists {len(commits)} of {cmp['ahead_by']}; "
                   f"the rest: `git log {base_sha[:12]}..{pin[:12]}` in the fork."]
+    # Base and head in variables: the compare path with a 40-hex pin runs past
+    # the book's code width on one line.
     lines += ["", "Reproduce:", "", "```bash",
-              f"gh api repos/{row['upstream']}/compare/{row['base']}..."
-              f"{fork.replace('/', ':')}:{pin} --jq '.ahead_by'",
+              f"base={row['base']}",
+              f"head={fork.replace('/', ':')}:{pin}",
+              f"gh api \"repos/{row['upstream']}/compare/$base...$head\" --jq '.ahead_by'",
               "```", ""]
     return "\n".join(lines)
 

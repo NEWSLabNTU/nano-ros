@@ -112,7 +112,8 @@ On a machine with network access, save a version to a file:
 
 ```bash probe=50
 docker pull ghcr.io/newslabntu/nano-ros-starter:<version>
-docker save ghcr.io/newslabntu/nano-ros-starter:<version> | gzip > nano-ros-starter.tar.gz
+docker save ghcr.io/newslabntu/nano-ros-starter:<version> \
+    | gzip > nano-ros-starter.tar.gz
 ```
 
 Move the file across, then load and run it:

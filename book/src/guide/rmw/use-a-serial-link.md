@@ -103,7 +103,7 @@ see [Use XRCE-DDS](use-xrce-dds.md); WiFi is not covered yet.
    joining a busy domain misses the router's replies. Put this in the
    image's Zephyr fragment, the file its `os_config` names:
 
-   ```text
+   ```ini
    CONFIG_MAIN_THREAD_PRIORITY=5
    ```
 

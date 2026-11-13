@@ -247,7 +247,8 @@ Start from the default profile and change one field:
 rclc_qos_t qos = RCLC_QOS_DEFAULT;
 qos.durability = RCLC_QOS_DURABILITY_TRANSIENT_LOCAL;
 rcl_ret_t rc = rclc_publisher_init_with_qos(
-    &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "/chatter", &qos);
+    &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "/chatter", &qos);
 ```
 
 The listener's `src/monitor_node/src/Listener.c` does the same with

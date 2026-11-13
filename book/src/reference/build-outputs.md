@@ -192,9 +192,12 @@ Which of `.exe` and `.bin` appears is Zephyr's choice, not nano-ros's: a
 (`nros build` prints whichever the board supports):
 
 ```bash
-west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run   # native_sim and emulated boards
-west flash -d build/zephyr-zenoh/demo_bringup__zephyr_west          # hardware: the board's flash runner
-./build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.exe    # native_sim: the same as -t run
+# native_sim and emulated boards
+west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run
+# hardware: the board's flash runner
+west flash -d build/zephyr-zenoh/demo_bringup__zephyr_west
+# native_sim: the same as -t run
+./build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.exe
 ```
 
 The `-d` is not optional here: without it `west` uses `build/` under the

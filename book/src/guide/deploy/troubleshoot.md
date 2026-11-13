@@ -58,7 +58,8 @@ image names at start-up; the knobs are in
 because the router is the one ROS ships:
 
 ```bash
-grep 'define ZENOH_C ' /opt/ros/$ROS_DISTRO/opt/zenoh_cpp_vendor/include/zenoh_configure.h
+grep 'define ZENOH_C ' \
+    /opt/ros/$ROS_DISTRO/opt/zenoh_cpp_vendor/include/zenoh_configure.h
 nros setup --list | grep zenoh-pico
 ```
 

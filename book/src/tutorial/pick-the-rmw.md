@@ -118,7 +118,8 @@ locator = "tcp/10.0.2.2:7447"
 Edit the line in `src/sensor_node_bringup/system.toml` by hand, or run:
 
 ```bash probe=420 track=installed variant=qemu
-sed -i 's#^locator = .*#locator = "tcp/10.0.2.2:7447"#' src/sensor_node_bringup/system.toml
+sed -i 's#^locator = .*#locator = "tcp/10.0.2.2:7447"#' \
+    src/sensor_node_bringup/system.toml
 ```
 
 A zenoh locator is `<link>/<address>`: `serial/UART_0#baudrate=115200` was

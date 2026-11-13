@@ -24,5 +24,7 @@ nano-ros builds `third-party/threadx/netxduo` from the fork [NEWSLabNTU/netxduo]
 Reproduce:
 
 ```bash
-gh api repos/eclipse-threadx/netxduo/compare/v6.4.5.202504_rel...NEWSLabNTU:netxduo:393b862521d1dc43d6d12b6fa1fd377de963acff --jq '.ahead_by'
+base=v6.4.5.202504_rel
+head=NEWSLabNTU:netxduo:393b862521d1dc43d6d12b6fa1fd377de963acff
+gh api "repos/eclipse-threadx/netxduo/compare/$base...$head" --jq '.ahead_by'
 ```

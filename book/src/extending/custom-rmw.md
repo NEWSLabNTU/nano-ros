@@ -197,8 +197,8 @@ use core::{
 };
 
 use nros_rmw_cffi::{
-    NROS_RMW_RET_OK, NrosRmwRet, NrosRmwVtable, RustBackendAdapter, nros_rmw_cffi_register_named,
-    rmw_byte_span_t, rmw_publisher_t, rmw_ret_t,
+    NROS_RMW_RET_OK, NrosRmwRet, NrosRmwVtable, RustBackendAdapter,
+    nros_rmw_cffi_register_named, rmw_byte_span_t, rmw_publisher_t, rmw_ret_t,
 };
 use nros_rmw_zenoh::ZenohRmw;
 
@@ -221,7 +221,10 @@ unsafe extern "C" fn acme_publish(
     payload: rmw_byte_span_t,
 ) -> rmw_ret_t {
     if !ANNOUNCED.swap(true, Ordering::AcqRel) {
-        nros_log::log_info!(nros_log::get_logger("acme_rmw"), "publishing through backend acme");
+        nros_log::log_info!(
+            nros_log::get_logger("acme_rmw"),
+            "publishing through backend acme"
+        );
     }
     match ZENOH.publish {
         Some(inner) => unsafe { inner(publisher, payload) },
@@ -232,7 +235,8 @@ unsafe extern "C" fn acme_publish(
 pub struct RegisterError(pub NrosRmwRet);
 
 pub fn register() -> Result<(), RegisterError> {
-    let rc = unsafe { nros_rmw_cffi_register_named(c"acme".as_ptr(), &ACME_VTABLE) };
+    let rc =
+        unsafe { nros_rmw_cffi_register_named(c"acme".as_ptr(), &ACME_VTABLE) };
     if rc == NROS_RMW_RET_OK { Ok(()) } else { Err(RegisterError(rc)) }
 }
 EOF
@@ -313,14 +317,21 @@ impl Publisher for EchoPub {
         }
         Ok(())
     }
-    fn buffer_error(&self) -> TransportError { TransportError::BufferTooSmall }
-    fn serialization_error(&self) -> TransportError { TransportError::SerializationError }
+    fn buffer_error(&self) -> TransportError {
+        TransportError::BufferTooSmall
+    }
+    fn serialization_error(&self) -> TransportError {
+        TransportError::SerializationError
+    }
 }
 
 pub struct EchoSub;
 impl Subscription for EchoSub {
     type Error = TransportError;
-    fn take_serialized(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
+    fn take_serialized(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<Option<usize>, TransportError> {
         unsafe {
             if ECHO_LEN == 0 {
                 return Ok(None);
@@ -331,7 +342,9 @@ impl Subscription for EchoSub {
             Ok(Some(len))
         }
     }
-    fn deserialization_error(&self) -> TransportError { TransportError::DeserializationError }
+    fn deserialization_error(&self) -> TransportError {
+        TransportError::DeserializationError
+    }
 }
 ```
 

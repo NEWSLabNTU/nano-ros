@@ -227,7 +227,10 @@ sed -i 's#      period_ms: { type: integer }#      period: { type: integer }#' \
 and build:
 
 ```bash probe=855 track=installed variant=qemu
-if nros build; then echo "the build accepted a contract that disagrees with the launch file" >&2; exit 1; fi
+if nros build; then
+    echo "the build accepted a contract that disagrees with the launch file" >&2
+    exit 1
+fi
 ```
 
 The build refuses, before it compiles anything:
