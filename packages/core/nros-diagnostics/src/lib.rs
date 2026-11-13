@@ -61,6 +61,35 @@ pub const RULE_MODE_SWITCH: &str = "mode-switch-runtime";
 /// detection to that output, or to the tick that saw the route pass with none;
 /// declared: the rung's `route_ms`. A GUARANTEE, like `hazard-reaction`.
 pub const RULE_HAZARD_ROUTE: &str = "hazard-route-runtime";
+/// phase-560 W8 (play_launch phase 102 M5 E7) -- the fallback level a detected
+/// hazard's ladder is on: reported at detection and on every fall to a lower
+/// level, the answer play_launch's observer gives as `mode-availability`, keyed
+/// here by the hazard. Measured: the level's 0-based index in the ladder;
+/// declared: the ladder's length; the level's NAME is the report's `level`
+/// (and its message). A GUARANTEE: which level this image is on is its own
+/// behaviour.
+pub const RULE_HAZARD_LEVEL: &str = "hazard-level-runtime";
+
+/// The human message of one report. `level` is the level a
+/// [`RULE_HAZARD_LEVEL`] report names; every other rule passes `""` and reads
+/// `measured <m> vs declared <d>`, as it always has.
+fn violation_message(rule: &str, measured: u32, declared: u32, level: &str) -> MessageText {
+    use core::fmt::Write as _;
+    let mut message = MessageText::new();
+    if rule == RULE_HAZARD_LEVEL {
+        let _ = write!(
+            message,
+            "level '{level}', index {measured} of a {declared}-level ladder"
+        );
+    } else {
+        let _ = write!(message, "measured {measured} vs declared {declared}");
+    }
+    message
+}
+
+/// A report's message: the wire field's capacity (128), so a level name that
+/// fits the field is never cut by the buffer that renders it.
+type MessageText = heapless::String<128>;
 
 /// Which side of the contract the violated field belongs to — drives the
 /// 4-quadrant diagnosis (RFC-0050 §contracts): a violated GUARANTEE with
@@ -186,7 +215,8 @@ impl DiagnosticReporter {
     /// `rule` keeps the executor's own spelling — it is already the
     /// play_launch vocabulary — and the message carries both numbers, whose
     /// unit is the rule's (milli-Hz for rate, ms for age/latency, us for a
-    /// deadline miss).
+    /// deadline miss). `level` is the executor's `Violation::level`: the level
+    /// a `hazard-level-runtime` report names, `""` otherwise.
     pub fn report_violation(
         &mut self,
         now_us: u64,
@@ -194,10 +224,9 @@ impl DiagnosticReporter {
         fqn: &str,
         measured: u32,
         declared: u32,
+        level: &str,
     ) -> Option<DiagnosticArray> {
-        use core::fmt::Write as _;
-        let mut message = heapless::String::<64>::new();
-        let _ = write!(message, "measured {measured} vs declared {declared}");
+        let message = violation_message(rule, measured, declared, level);
         self.report(
             now_us,
             rule,
@@ -232,12 +261,13 @@ pub fn write_violation_report(
     fqn: &str,
     measured: u32,
     declared: u32,
+    level: &str,
 ) -> Result<(), nros_serdes::SerError> {
-    write_violation_reports(w, &[(rule, fqn, measured, declared)])
+    write_violation_reports(w, &[(rule, fqn, measured, declared, level)])
 }
 
 /// phase-474 I7 -- several violation reports COALESCED into one
-/// `DiagnosticArray`: one status per `(rule, fqn, measured, declared)`, in
+/// `DiagnosticArray`: one status per `(rule, fqn, measured, declared, level)`, in
 /// order, each byte-identical to the status [`write_violation_report`] sends
 /// for it alone. The executor queues verdicts and hands them over off the
 /// judged dispatch; on a slow link one message for several verdicts is what
@@ -248,9 +278,8 @@ pub fn write_violation_report(
 /// before anything is written.
 pub fn write_violation_reports(
     w: &mut nros_serdes::CdrWriter<'_>,
-    reports: &[(&str, &str, u32, u32)],
+    reports: &[(&str, &str, u32, u32, &str)],
 ) -> Result<(), nros_serdes::SerError> {
-    use core::fmt::Write as _;
     use nros_serdes::Serialize as _;
     fn fit(s: &str, cap: usize) -> &str {
         if s.len() <= cap {
@@ -266,9 +295,8 @@ pub fn write_violation_reports(
     let array = w.begin_dheader()?;
     nros_std_msgs::msg::Header::default().serialize(w)?;
     w.write_u32(reports.len() as u32)?;
-    for &(rule, fqn, measured, declared) in reports {
-        let mut message = heapless::String::<64>::new();
-        let _ = write!(message, "measured {measured} vs declared {declared}");
+    for &(rule, fqn, measured, declared, level) in reports {
+        let message = violation_message(rule, measured, declared, level);
         // DiagnosticStatus { level, name, message, hardware_id, values: [one] }
         let status = w.begin_dheader()?;
         w.write_u8(Severity::Error.level())?;
@@ -297,19 +325,26 @@ mod tests {
     fn a_coalesced_report_is_one_array_of_the_single_reports() {
         use nros_serdes::{CdrWriter, Serialize as _};
         let reports = [
-            (RULE_MAX_LATENCY, "/mrm_handler/mrm_state", 250u32, 206u32),
+            (
+                RULE_MAX_LATENCY,
+                "/mrm_handler/mrm_state",
+                250u32,
+                206u32,
+                "",
+            ),
             (
                 RULE_MAX_LATENCY,
                 "/mrm_handler/takeover_request_state",
                 250,
                 206,
+                "",
             ),
-            (RULE_SILENCE, "/n/in", 0, 500),
+            (RULE_HAZARD_LEVEL, "demo.launch.xml/scan_lost", 1, 3, "stop"),
         ];
         let mut value = DiagnosticArray::default();
-        for (rule, fqn, m, d) in reports {
+        for (rule, fqn, m, d, l) in reports {
             let one = DiagnosticReporter::new(0)
-                .report_violation(0, rule, fqn, m, d)
+                .report_violation(0, rule, fqn, m, d, l)
                 .unwrap();
             for st in one.status.iter() {
                 value.status.push(st.clone()).unwrap();
@@ -349,12 +384,19 @@ mod tests {
         let long = "/a/very/long/node/name/that/does/not/fit/in/ninety/six/bytes/of/hardware/id/at/all/really/truly/not/even/close";
         assert!(long.len() > 96);
         let cases = [
-            (RULE_SILENCE, "/n/in", 0u32, 200u32),
-            (RULE_MAX_LATENCY, "/mrm_handler/mrm_state", 250, 206),
-            (RULE_RATE_HIERARCHY, long, 9_984, 10_000),
+            (RULE_SILENCE, "/n/in", 0u32, 200u32, ""),
+            (RULE_MAX_LATENCY, "/mrm_handler/mrm_state", 250, 206, ""),
+            (RULE_RATE_HIERARCHY, long, 9_984, 10_000, ""),
+            (
+                RULE_HAZARD_LEVEL,
+                "demo.launch.xml/scan_lost",
+                2,
+                3,
+                "estop",
+            ),
         ];
         for xcdr2 in [false, true] {
-            for (rule, fqn, m, d) in cases {
+            for (rule, fqn, m, d, l) in cases {
                 let mut a = [0u8; 512];
                 let mut b = [0u8; 512];
                 let mut wa = if xcdr2 {
@@ -363,7 +405,7 @@ mod tests {
                     CdrWriter::new_with_header(&mut a).unwrap()
                 };
                 DiagnosticReporter::new(0)
-                    .report_violation(0, rule, fqn, m, d)
+                    .report_violation(0, rule, fqn, m, d, l)
                     .unwrap()
                     .serialize(&mut wa)
                     .unwrap();
@@ -373,7 +415,7 @@ mod tests {
                 } else {
                     CdrWriter::new_with_header(&mut b).unwrap()
                 };
-                write_violation_report(&mut wb, rule, fqn, m, d).unwrap();
+                write_violation_report(&mut wb, rule, fqn, m, d, l).unwrap();
                 let lb = wb.position();
                 assert_eq!(a[..la], b[..lb], "xcdr2={xcdr2} {rule} {fqn}");
             }
@@ -384,7 +426,7 @@ mod tests {
     fn a_violation_report_keeps_the_rule_and_classifies_its_side() {
         let mut r = DiagnosticReporter::new(0);
         let arr = r
-            .report_violation(1, RULE_SILENCE, "/n/in", 0, 200)
+            .report_violation(1, RULE_SILENCE, "/n/in", 0, 200, "")
             .expect("first report always emits");
         let st = &arr.status[0];
         assert_eq!(st.name.as_str(), RULE_SILENCE);
@@ -397,6 +439,31 @@ mod tests {
             ContractKind::Guarantee
         );
         assert_eq!(kind_for_rule(RULE_MAX_AGE), ContractKind::Assumption);
+    }
+
+    /// phase-560 W8 -- a level report names its level in the message, and is
+    /// this image's own behaviour (a guarantee).
+    #[test]
+    fn a_level_report_names_its_level() {
+        let arr = DiagnosticReporter::new(0)
+            .report_violation(
+                1,
+                RULE_HAZARD_LEVEL,
+                "demo.launch.xml/scan_lost",
+                1,
+                3,
+                "stop",
+            )
+            .unwrap();
+        let st = &arr.status[0];
+        assert_eq!(st.name.as_str(), RULE_HAZARD_LEVEL);
+        assert_eq!(st.hardware_id.as_str(), "demo.launch.xml/scan_lost");
+        assert_eq!(
+            st.message.as_str(),
+            "level 'stop', index 1 of a 3-level ladder"
+        );
+        assert_eq!(st.values[0].value.as_str(), "guarantee");
+        assert_eq!(kind_for_rule(RULE_HAZARD_LEVEL), ContractKind::Guarantee);
     }
 
     #[test]

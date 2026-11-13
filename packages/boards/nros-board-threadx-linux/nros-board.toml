@@ -133,8 +133,8 @@ pool.app = [15, 31]
 # `cargo check` (11,070 refused, 11,071 accepted), not re-measured with `nm`.
 #
 # The cost is real and is the price of one statement per board: a talker
-# reserves 11,076 words where its own executor needs ~2,917, and gives back the
-# same 11,076 from the pool. The image's total is unchanged either way — this
+# reserves 11,084 words where its own executor needs ~2,917, and gives back the
+# same 11,084 from the pool. The image's total is unchanged either way — this
 # rung MOVES bytes between `.bss` and the pool, it does not save them — so
 # over-stating costs `mem-report` accuracy, not memory.
 #
@@ -147,8 +147,12 @@ pool.app = [15, 31]
 # the level that registered it (`ComponentSlot::level`), 24 -> 32 B per slot,
 # 4 node slots x 8 B = 32 B = 4 words (`executor_backing_claims` measured
 # 11,076 on the 64-bit host).
+# 11,084 since phase-560 W8 (2026-11-14): a stored violation carries the
+# level a `hazard-level-runtime` report names (`Violation::level`, a `&str`),
+# which grows the violation ring by 8 words (`executor_backing_claims`
+# measured 11,084 on the 64-bit host).
 [knobs.executor]
-backing_u64s = 11076
+backing_u64s = 11084
 
 # phase-479 W5 (RFC-0102 D5) — the runtime-logger arenas. MEASURED as a host board: no
 # `target` is stated (`toolchain = "stable"` builds for the host triple) —

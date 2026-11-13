@@ -472,6 +472,10 @@ pub struct HazardRung {
     pub role: u8,
     /// The guard members of the rung's `starts_at` node.
     pub starts_at: Vec<HazardMember>,
+    /// phase-560 W8 -- the level's name as the model spells it
+    /// (`degradation_levels[].level`), which `hazard-level-runtime` reports.
+    #[serde(default)]
+    pub level: String,
 }
 
 /// phase-462 W3b -- one guard of a [`HazardRow`].

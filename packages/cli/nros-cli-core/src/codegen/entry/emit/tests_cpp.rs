@@ -2370,9 +2370,9 @@ fn typed_emit_wires_a_hazards_safe_state_reaction_to_the_hook() {
     .expect("hazard emit ok");
     assert!(
         src.contains("__nros_hz_monitors_0, 1u, 0u, 1u, __nros_hz_rungs_0, 1u },")
-            && src.contains("{ 65535u, 0u, 13u, 2u, __nros_hz_starts_0_0, 1u },")
+            && src.contains("{ 65535u, 0u, 13u, 2u, __nros_hz_starts_0_0, 1u, \"react\" },")
             && src.contains("{ 0u, 0u },"),
-        "sink rate row 0, reaction id 1, one floor rung (no mode) on rate row 0 at 13 ms \
+        "sink rate row 0, reaction id 1, one floor rung (no mode, level \"react\") on rate row 0 at 13 ms \
          whose clock starts at the listener's age row; src:\n{src}"
     );
     assert!(

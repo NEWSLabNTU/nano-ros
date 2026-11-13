@@ -17445,6 +17445,7 @@ fn check_deadline_miss(
         fqn: "sched-context",
         measured: elapsed_us,
         declared: deadline_us,
+        level: "",
     };
     match sc.deadline_action {
         DeadlineAction::Ignore => {}

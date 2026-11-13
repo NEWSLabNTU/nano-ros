@@ -154,7 +154,7 @@ static const nros_cpp_hazard_member_t __nros_hz_starts_{{ hi }}_{{ loop.index0 }
 {%- endif %}{% endfor %}
 static const nros_cpp_hazard_rung_t __nros_hz_rungs_{{ hi }}[{{ h.rungs | length }}] = {
 {%- for r in h.rungs %}
-    { {{ r.mode }}u, {{ r.output_row }}u, {{ r.route_ms }}u, {{ r.role }}u, {% if r.starts_at %}__nros_hz_starts_{{ hi }}_{{ loop.index0 }}{% else %}NULL{% endif %}, {{ r.starts_at | length }}u },
+    { {{ r.mode }}u, {{ r.output_row }}u, {{ r.route_ms }}u, {{ r.role }}u, {% if r.starts_at %}__nros_hz_starts_{{ hi }}_{{ loop.index0 }}{% else %}NULL{% endif %}, {{ r.starts_at | length }}u, "{{ r.level | c_str }}" },
 {%- endfor %}
 };
 {%- endif %}
