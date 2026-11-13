@@ -168,7 +168,7 @@ build-sitl-example:
     # The PX4 link and this build must name the same profile dir, and PX4 knows
     # nothing about nano-ros profiles. (Marker on one line: the gate looks 3 up.)
     # profile-literal-ok: symbol fixture
-    python3 scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c --dest "$(pwd)/build/nros-px4/placed" -- \
+    python3 scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c --dest "$(pwd)/build/nros-px4/placed" --stack-floor px4-uorb -- \
     cargo rustc -p nros-cpp --lib --crate-type staticlib --no-default-features \
         --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release \
         --message-format=json-render-diagnostics

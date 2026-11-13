@@ -293,6 +293,10 @@ green; one scheduled run of their lane green.
     (`CONFIG_WQ_<Q>_STACKSIZE`) is below the executor's stack floor, which
     PX4's stock sizes are. The measured Cortex-M7 frames to size them from are
     in [issue 2398](../issues/archived/2398-px4-thread-stacks-below-executor-floor.md).
+  - Its placer should pass `--stack-floor px4-uorb`, and its lane should
+    assert the placed header carries the walked floors. That is
+    [phase-557](phase-557-stack-floor-measured-frames.md) W3b, which waits on
+    this item rather than writing a second NuttX recipe.
 
 ### W9 — The two open design questions (S)
 
