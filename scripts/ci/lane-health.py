@@ -53,7 +53,7 @@ Usage::
 
     lane-health.py                    # every harvested lane, last 10 runs each
     lane-health.py --runs 20 --threshold 5
-    lane-health.py --markdown         # the table nightly-report.yml writes
+    lane-health.py --markdown         # the table automation.yml's triage job writes
     lane-health.py --selftest
 """
 
@@ -76,7 +76,7 @@ VERDICTS = {"success", "failure"}
 
 def triggers(text: str) -> set[str]:
     """The event names in a workflow's top-level `on:`. Text, not PyYAML:
-    `nightly-report.yml` runs this on a bare `ubuntu-latest`, which promises
+    `automation.yml`'s `triage` job runs this on a bare `ubuntu-latest`, which promises
     no PyYAML, and the shape here is fixed (`on:` at column 0, events as keys
     at the next indent, or the inline `on: push` / `on: [a, b]` forms)."""
     lines = text.splitlines()
@@ -228,8 +228,12 @@ def selftest(verbose: bool = False) -> int:
     lanes = harvest()
     chk("the harvest finds gate.yml (push + schedule)", "gate.yml" in lanes)
     chk("the harvest leaves out queue.yml (merge_group only)", "queue.yml" not in lanes)
-    chk("the harvest leaves out queue-notify.yml (workflow_run only)",
-        "queue-notify.yml" not in lanes)
+    # No workflow_run-only file is left in the tree (phase-559 W8 folded
+    # queue-notify.yml and nightly-report.yml into automation.yml, which also
+    # has a schedule), so the exclusion is checked on text.
+    chk("a workflow_run-only workflow is not a lane",
+        not triggers("on:\n  workflow_run:\n    workflows: [gate]\n"
+                     "    types: [completed]\n\njobs:\n  a:\n") & {"schedule", "push"})
     return fails
 
 

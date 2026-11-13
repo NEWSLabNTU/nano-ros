@@ -19,8 +19,8 @@ same PR, every consumer that reads the name. The known readers:
 `check-tier-has-ci-owner`, `check-board-registry`, `check-book-probe-tracks`,
 `gen-support-status`, `gen-board-support`, `next-stable-delta.py`,
 `check-workflow-job-timeouts`, `check-workflow-runner-isolation`,
-`check-workflow-just-provisioning`, and the workflow-name lists in
-`queue-notify.yml`, `nightly-report.yml` and `pr-verdicts.yml`. A PR finds the
+`check-workflow-just-provisioning`, and the `workflow_run` workflow-name list
+in `automation.yml` (its `enqueue`, `notify` and `triage` jobs). A PR finds the
 rest with `git grep -n '<old file or job name>'`.
 
 ## Why
@@ -255,7 +255,18 @@ rules; flagged to the user):
   workflows merge into `automation.yml` (H6: none of them runs PR code).
 - **Acceptance:** 13 files. Every `workflow_run` consumer names the new
   workflow names.
-- **Status:** OPEN
+- **Status:** OPEN. `automation.yml` DONE (2026-11-14): arm-auto-merge,
+  queue-notify, pr-verdicts, roadmap-audit and nightly-report are its jobs
+  `arm`, `enqueue`, `notify`, `sweep`, `audit` and `triage`, each keeping its
+  job name and trigger. Each job's `if:` names its event (and, for
+  `workflow_run`, the workflow it reads), the workflow grants no permissions
+  and each job states its own, concurrency is per job, and dispatch takes one
+  `job` input. Nothing consumes these workflows by `workflow_run`, so no
+  consumer needed renaming. `runner-watchdog.yml` stays its own file (S4,
+  manager's decision of 2026-11-14): it is the dead-runner alarm, so an error
+  in an unrelated job must not silence it, and its 15-minute cron would start
+  `automation.yml` 96 times a day. `publish.yml` (docs + images) follows
+  nros 175's zephyr-ci image fix (r8), which edits `images.yml`.
 
 ## Acceptance (phase)
 

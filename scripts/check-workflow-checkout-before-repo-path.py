@@ -11,7 +11,7 @@ exists until a step checks it out, so a step that runs `scripts/…`, `just`,
 running a file that is not there.
 
 That is a loud failure in most shells, and it was SILENT in the one that
-mattered: `queue-notify.yml` had no checkout at all and ran
+mattered: `queue-notify.yml` (now `automation.yml` `notify`) had no checkout at all and ran
 
     if triage="$(bash scripts/ci/queue-triage.sh 2>/dev/null)"; then
 
@@ -34,7 +34,7 @@ A step needs the checkout when it
 
 Comments and heredoc bodies are not commands — ONE spelling of that,
 `scripts/lib/workflow_commands.py` (the same reason `check-workflow-repo-env`
-gives: `queue-notify.yml`'s comment TEXT tells an author to run `just …`).
+gives: `automation.yml` `notify`'s comment TEXT tells an author to run `just …`).
 
 A checkout is `uses: actions/checkout@…`. A job with no steps (a reusable
 workflow call) is skipped. Composite actions under `.github/actions/` are NOT
@@ -117,7 +117,7 @@ def self_test():
     co = {"uses": "actions/checkout@v4"}
     cases = [
         # (name, steps, expected offender?)
-        # The measured defect: queue-notify.yml, no checkout, runs a repo script.
+        # The measured defect: queue-notify.yml (now automation.yml notify), no checkout, runs a repo script.
         (
             "repo script, no checkout (queue-notify)",
             [{"name": "notify", "run": 'if t="$(bash scripts/ci/queue-triage.sh 2>/dev/null)"; then :; fi\n'}],
