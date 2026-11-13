@@ -12,6 +12,9 @@
 name = "rosout_talker"
 rmw = "zenoh"
 domain_id = 0
+# phase-556 W13 -- the executor creates the node's `/rosout` writer, so the
+# image declares the capability that prices it (one publisher per node).
+features = ["rosout"]
 # The image a bare `nros configure` / `nros build` / `cargo build` builds.
 default_images = ["linux"]
 
