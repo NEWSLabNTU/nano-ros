@@ -58,6 +58,8 @@ on:
 permissions:
   contents: read
   packages: read
+  # `scripts/ci/green-gate-run.sh` reads `gate` runs (the check fast reuse).
+  actions: read
 
 jobs:
   merge-runtime:
@@ -228,6 +230,11 @@ jobs:
 
       # The lane's build half, narrowed to this shard by NROS_LANE_MODULE.
       - name: just build ${{ inputs.lane || 'merge' }} (${{ matrix.board }} shard)
+        env:
+          # Skip `check fast` when a green `gate` run already checked this
+          # commit, naming that run (`_check-fast-unless-green-gate`).
+          NROS_REUSE_GREEN_GATE: "1"
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           source ./activate.sh
           just build "${{ inputs.lane || 'merge' }}"

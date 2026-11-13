@@ -954,6 +954,14 @@ tracks".
    **Measured (below): `check fast` is 6.5-13.3 min of each shard's time to
    its first fixture, i.e. 34-55 %.** Proposed to the coordinator
    (2026-11-14): the conditional skip, saving that much per shard.
+   **Approved (coordinator, 2026-11-14), only when a green `gate` run exists
+   for the same SHA, and naming that run in the shard log.** Implemented as
+   `build-test-fixtures`' edge `_check-fast-unless-green-gate`. It skips only
+   when the job opts in (`NROS_REUSE_GREEN_GATE=1`, set by
+   `merge-runtime.yml` alone), the tree has no tracked edits, and
+   `scripts/ci/green-gate-run.sh` finds a successful `gate.yml` run whose
+   head is HEAD; it then prints that run's URL. Any doubt (no token, an API
+   error, no such run) runs `check fast`.
 
 **Acceptance:**
 
