@@ -78,6 +78,32 @@ setup *ARGS:
         # not an error here, for the same reason the script's own absent-dir
         # case is not one: `--skip-sdk` reaches this branch too.
         sdk_want="$(cat "$WORKSPACE/zephyr/SDK_VERSION" 2>/dev/null || echo "")"
+        # issue 2497 — the SAME skip one step earlier: the SDK FETCH. Moving
+        # the SDK pin (a Zephyr point release asks for a new SDK in
+        # `zephyr/SDK_VERSION`) left every existing workspace on a host that
+        # held only the old SDK, and this branch resolved, found nothing, and
+        # said nothing. The self-hosted runner's doctor then refused its labels
+        # and its supervision loop stopped, so the lane queued with no runner
+        # and no red. Fetching is `nros setup --tool` — idempotent and
+        # store-keyed — so this costs nothing when the SDK is present.
+        # `--skip-sdk` still means "leave the SDK alone". The line is passed
+        # explicitly: `zephyr-sdk.sh tool` reads it from the environment, and a
+        # just variable is not exported.
+        export NROS_ZEPHYR_VERSION="{{NROS_ZEPHYR_VERSION}}"
+        if [ -n "$sdk_want" ] && [[ "$ARGS" != *--skip-sdk* ]] \
+            && ! bash scripts/lib/zephyr-sdk.sh --version "$sdk_want" resolve >/dev/null; then
+            sdk_tool="$(bash scripts/lib/zephyr-sdk.sh tool)"
+            echo "[zephyr setup] Zephyr SDK $sdk_want absent — provisioning [tool.$sdk_tool]..."
+            "$nros_bin" setup --tool "$sdk_tool" --index "$(pwd)/nros-sdk-index.toml"
+            if ! bash scripts/lib/zephyr-sdk.sh --version "$sdk_want" resolve >/dev/null; then
+                echo "[zephyr setup] ERROR: this workspace asks for Zephyr SDK $sdk_want, but" >&2
+                echo "  [tool.$sdk_tool] in nros-sdk-index.toml provisions" \
+                    "$(bash scripts/lib/zephyr-sdk.sh version)." >&2
+                echo "  Move that index entry to $sdk_want, or re-create the workspace on the" \
+                    "line the index names: just zephyr setup --force" >&2
+                exit 1
+            fi
+        fi
         if [ -n "$sdk_want" ] \
             && sdk_dir="$(bash scripts/lib/zephyr-sdk.sh --version "$sdk_want" resolve)"; then
             bash scripts/zephyr/ensure-sdk-registered.sh "$sdk_dir"
