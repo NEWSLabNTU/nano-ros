@@ -6,7 +6,7 @@ type: bug
 severity: medium
 area: [cli, build]
 found: 2026-11-13
-related: [2478, 2480]
+related: [2478, 2480, 2498]
 resolved: 2026-11-13
 resolved_in: "`SdkIndex::load` reads through `configure_stamp::read_external`; the platform tree reports the descriptors it read and `configure_stamp::load_platforms_tree` records them"
 ---
@@ -79,7 +79,8 @@ and `configure_stamp::tests::a_platform_descriptor_is_a_stamp_input`. Each
 edits the input after the configure, then removes it, and expects the stamp
 to go stale both times. With its fix reverted, each fails.
 
-Not covered: a NEW `<root>/<name>/nros-platform.toml` added to a search root
-after a configure. The stamp records the files that were read, not the
-directory listings, so a new platform that shadows an existing name is not
-seen until something else stales the stamp.
+Not covered, and tracked as open issue 2498: a NEW
+`<root>/<name>/nros-platform.toml` added to a search root after a configure.
+The stamp records the files that were read, not the directory listings, so a
+new platform that shadows an existing name is not seen until something else
+stales the stamp.
