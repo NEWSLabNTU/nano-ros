@@ -1657,10 +1657,10 @@ const LIFECYCLE_SERVICE_PUBLISHERS: usize = 1;
 const PARAM_EVENT_PUBLISHERS: usize = 1;
 
 /// MIRROR of `nros_node::rosout::ROSOUT_PUBLISHERS`, held the same way
-/// (phase-556 W13): the `/rosout` family's one writer per image. VOLATILE (the
-/// user's ruling, a documented divergence from rclcpp's TRANSIENT_LOCAL), so a
-/// term in [`DerivedEntityKnobs::max_publishers`] and the liveliness pool and
-/// nothing else.
+/// (phase-556 W13): the `/rosout` writer the executor creates for EACH node.
+/// VOLATILE (the user's ruling, a documented divergence from rclcpp's
+/// TRANSIENT_LOCAL), so a term in [`DerivedEntityKnobs::max_publishers`] and
+/// the liveliness pool and nothing else.
 const ROSOUT_PUBLISHERS: usize = 1;
 
 /// MIRROR of `nros_node::executor::action::ACTION_CLIENT_SERVICE_CLIENTS`,
@@ -1715,8 +1715,9 @@ pub struct InfraServices {
     /// `param_services` is a `param_services` image.
     pub param_store: bool,
     /// phase-556 W13 -- the bringup's effective features carry `rosout`: one
-    /// `/rosout` publisher ([`ROSOUT_PUBLISHERS`]). A stock node interface, so
-    /// `node_interfaces = "stock"` turns it on with the parameter family.
+    /// `/rosout` publisher ([`ROSOUT_PUBLISHERS`]) per node. A stock node
+    /// interface, so `node_interfaces = "stock"` turns it on with the
+    /// parameter family.
     pub rosout: bool,
 }
 
@@ -1820,6 +1821,18 @@ impl InfraServices {
         }
     }
 
+    /// Nodes carrying a runtime `/rosout` writer on an image of `components`
+    /// components; zero when the family is not declared. Counted as the
+    /// parameter family's nodes are: the larger of the components and the
+    /// model's nodes, floored at one.
+    pub fn rosout_nodes(self, components: usize) -> usize {
+        if self.rosout {
+            self.model_nodes.max(components).max(1)
+        } else {
+            0
+        }
+    }
+
     /// Queryables (service servers) the two families claim at boot.
     pub fn queryables(self, components: usize) -> usize {
         let lifecycle = if self.lifecycle {
@@ -1840,15 +1853,17 @@ impl InfraServices {
     ///
     /// Counted here rather than conjured below the declaration. The bringup
     /// states the FEATURE, so this inventory can see it — the same argument
-    /// issue 1270 makes for the five queryables, and the reason
-    /// `crate::rosout`'s publisher is the user's to declare while this one is
-    /// not: `/rosout` is an opt-in capability with no feature in the model,
-    /// and the lifecycle family has one.
+    /// issue 1270 makes for the five queryables, and the one `/rosout` met
+    /// once it became a declared feature (phase-556 W13).
     ///
     /// Issue 2023 — plus [`PARAM_EVENT_PUBLISHERS`] when the bringup declares
     /// `param_services`: every node served that way publishes
     /// `/parameter_events`, through ONE writer per executor.
-    pub fn publishers(self) -> usize {
+    ///
+    /// phase-556 W13 -- plus [`ROSOUT_PUBLISHERS`] per node
+    /// ([`Self::rosout_nodes`]) when the effective features carry `rosout`:
+    /// the executor creates each node's `/rosout` writer.
+    pub fn publishers(self, components: usize) -> usize {
         let lifecycle = if self.lifecycle {
             LIFECYCLE_SERVICE_PUBLISHERS
         } else {
@@ -1859,8 +1874,8 @@ impl InfraServices {
         } else {
             0
         };
-        // phase-556 W13 -- `/rosout`, once per image.
-        let rosout = if self.rosout { ROSOUT_PUBLISHERS } else { 0 };
+        // phase-556 W13 -- `/rosout`, once per node.
+        let rosout = ROSOUT_PUBLISHERS * self.rosout_nodes(components);
         lifecycle + params + rosout
     }
 
@@ -4897,7 +4912,7 @@ impl EntityInventory {
         // `~/transition_event`, and `register_lifecycle_services` creates it.
         // VOLATILE (measured against upstream), so it lands here and in the
         // liveliness pool below, and NOT in `tl_queryables`.
-        let infra_publishers = self.infra.publishers();
+        let infra_publishers = self.infra.publishers(components);
         // Issue 1676 -- and a CONTRACTED image's `/diagnostics` reporter: one
         // publisher per executor that installs a non-empty monitor table
         // (`nros::contract::DiagSink`, armed by `install_contract_monitors` and
@@ -8686,11 +8701,12 @@ contracts:
     }
 
     /// phase-556 W13 -- `/rosout` joins the families: one VOLATILE publisher
-    /// (a slot, no queryable, no retention), and `node_interfaces = "stock"`
-    /// on the overlay turns on the parameter family and `/rosout` together,
-    /// stated as `param+rosout` in the descriptor's `infra_families`.
+    /// PER NODE (a slot, no queryable, no retention; the executor creates each
+    /// node's writer), and `node_interfaces = "stock"` on the overlay turns on
+    /// the parameter family and `/rosout` together, stated as `param+rosout`
+    /// in the descriptor's `infra_families`.
     #[test]
-    fn rosout_pays_one_publisher_and_stock_states_param_plus_rosout() {
+    fn rosout_pays_one_publisher_per_node_and_stock_states_param_plus_rosout() {
         let knobs = |m: &nros_orchestration_ir::overlay::LoadedModel| {
             EntityInventory::from_model("t", m)
                 .expect("model describes wiring")
@@ -8701,9 +8717,10 @@ contracts:
         };
         let none = knobs(&infra_model(""));
         let rosout = knobs(&infra_model("rosout"));
+        // The fixture model has two nodes, so two writers.
         assert_eq!(
             rosout.max_publishers - none.max_publishers,
-            ROSOUT_PUBLISHERS
+            2 * ROSOUT_PUBLISHERS
         );
         assert_eq!(rosout.max_queryables, none.max_queryables);
         assert_eq!(rosout.tl_publishers, none.tl_publishers);
@@ -8724,9 +8741,15 @@ contracts:
             nros_sizing_descriptor::InfraFamilies::ParamRosout
         );
         assert_eq!(infra.families().tag(), "param+rosout");
+        // The model's two nodes: `/parameter_events` once per executor,
+        // `/rosout` once per node, and a third component adds one writer.
         assert_eq!(
-            infra.publishers(),
-            PARAM_EVENT_PUBLISHERS + ROSOUT_PUBLISHERS
+            infra.publishers(1),
+            PARAM_EVENT_PUBLISHERS + 2 * ROSOUT_PUBLISHERS
+        );
+        assert_eq!(
+            infra.publishers(3),
+            PARAM_EVENT_PUBLISHERS + 3 * ROSOUT_PUBLISHERS
         );
         // (c) `none` on the image removes what the system declared.
         let mut off = infra_model("param_services");

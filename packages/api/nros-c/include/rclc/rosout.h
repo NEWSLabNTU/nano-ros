@@ -5,22 +5,31 @@
  *
  * Upstream republishes every node's log records on `/rosout` as
  * `rcl_interfaces/msg/Log`; that topic is what `ros2 topic echo /rosout` and
- * `rqt_console` read. Here it is three calls, and the application makes them:
+ * `rqt_console` read. Here, as upstream, the runtime does it for every node
+ * in the executor's table: in an image built with the `rosout` capability the
+ * executor creates one `/rosout` publisher per node bound with
+ * rclc_executor_node_init(), and publishes the log queue from every
+ * rclc_executor_spin_some(). Such a program only logs:
  *
  * @code
- * rcl_publisher_t rosout = rcl_get_zero_initialized_publisher();
- * rclc_rosout_publisher_init(&rosout, &node, NULL);   // NULL = bounded QoS
- * rclc_rosout_enable();                               // AFTER the publisher
+ * rclc_executor_node_init(&executor, &node, "talker", NULL);
+ * rclc_logger_t log = rclc_node_get_logger(&node);
  * for (;;) {
+ *     RCLC_LOG_INFO(log, "tick");
  *     rclc_executor_spin_some(&executor, 10000000);
- *     rclc_rosout_pump(&rosout, NULL);
  * }
  * @endcode
  *
- * **Not automatic, deliberately.** The publisher is an ENTITY — it counts
- * against the image's pools and its sizing descriptor — so it is created by
- * the program like any other, never conjured by the runtime (issue 1341's
- * shape). The Rust bridge (`nros::rosout`) has the same three steps.
+ * The runtime's publisher is VOLATILE (KEEP_LAST(queue depth), RELIABLE,
+ * 10 s lifespan), where upstream's is TRANSIENT_LOCAL: a tool that subscribes
+ * after boot misses the boot records; `ros2 topic echo /rosout` still matches
+ * it. It counts against the image's pools, priced per node from the declared
+ * capability.
+ *
+ * **A legacy node** (rclc_node_init_default(), which is not in the
+ * executor's table) gets no runtime publisher. For it the explicit spelling
+ * below stays: rclc_rosout_publisher_init() once, rclc_rosout_pump() from the
+ * spin loop. Do not use it for a bound node: that adds a second publisher.
  *
  * **Which records.** Decided by the image's ROS release (RFC-0102 D4): on
  * Humble, and with no release named, records from node loggers only (the
@@ -77,9 +86,8 @@ rcl_ret_t rclc_rosout_publisher_init(rcl_publisher_t* publisher, const rcl_node_
 rclc_qos_t rclc_rosout_qos_default(void);
 
 /**
- * Start queueing log records for `/rosout`. Call it after
- * rclc_rosout_publisher_init(): records queued with nowhere to drain to are
- * only counted as dropped.
+ * Start queueing log records for `/rosout`. Creating a node already does
+ * this, so a program never needs to; kept for the explicit spelling.
  *
  * @return ::RCL_RET_OK; ::RCL_RET_ERROR if the queueing sink could not be
  *         registered (sink table full); ::RCL_RET_UNSUPPORTED without the

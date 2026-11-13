@@ -43,10 +43,12 @@ pub const PARAM_SERVICE_QUERYABLES: usize = 6;
 /// the same way.
 pub const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 
-/// phase-556 W13 -- the `/rosout` publisher the `rosout` family claims, once
-/// per image. VOLATILE (a documented divergence from rclcpp's
-/// TRANSIENT_LOCAL), so a publisher slot and a liveliness token and nothing
-/// else. Mirrors `nros_node::rosout::ROSOUT_PUBLISHERS`, held the same way.
+/// phase-556 W13 -- the `/rosout` publishers the `rosout` family claims PER
+/// NODE: the executor creates one writer for each node. VOLATILE (a
+/// documented divergence from rclcpp's TRANSIENT_LOCAL), so a publisher slot
+/// and a liveliness token each and nothing else; a consumer multiplies it by
+/// the node count. Mirrors `nros_node::rosout::ROSOUT_PUBLISHERS`, held the
+/// same way.
 pub const ROSOUT_PUBLISHERS: usize = 1;
 
 /// Issue 1429 — the ONE predicate for "did this carrier state anything".

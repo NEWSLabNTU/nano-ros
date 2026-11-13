@@ -1,20 +1,11 @@
 //! `/rosout` from C — issue 1589.
 //!
-//! The Rust bridge (`nros_node::rosout`) in three calls, plus the predicate
-//! rcl has. Same shape, same reasons: the application creates the publisher
-//! (it is an ENTITY, so it reaches the inventory like any other — issue
-//! 1341's shape is a publisher the runtime conjures below the declaration),
-//! turns the queue on AFTER it, and pumps from its spin loop.
-//!
-//! ```c
-//! rcl_publisher_t rosout = rcl_get_zero_initialized_publisher();
-//! rclc_rosout_publisher_init(&rosout, &node, NULL);  // NULL = bounded QoS
-//! rclc_rosout_enable();
-//! for (;;) {
-//!     rclc_executor_spin_some(&executor, 10000000);
-//!     rclc_rosout_pump(&rosout, NULL);
-//! }
-//! ```
+//! The EXECUTOR creates one `/rosout` publisher for every node
+//! in its table (bound with `rclc_executor_node_init`) and pumps the queue from
+//! every spin, so such a program only logs. A legacy `rclc_node_init_default`
+//! node is not in that table, so for it the explicit spelling below stays the
+//! way: `rclc_rosout_publisher_init` once, `rclc_rosout_pump` from the spin
+//! loop. The executor leaves the queue alone when it has no writer of its own.
 //!
 //! An image built without the `rosout` capability still LINKS every symbol
 //! here: the predicate answers `false` (upstream's contract for a build with
@@ -127,9 +118,7 @@ pub extern "C" fn rclc_rosout_qos_default() -> rclc_qos_t {
 }
 
 /// Start queueing log records for `/rosout`, scoped to what this image's ROS
-/// release publishes (RFC-0102 D4). Call it AFTER
-/// `rclc_rosout_publisher_init`: a queue with nowhere to drain only counts
-/// drops.
+/// release publishes (RFC-0102 D4). Creating a node already does this.
 ///
 /// # Returns
 /// `RCL_RET_OK`; `RCL_RET_ERROR` if the queueing sink could not be

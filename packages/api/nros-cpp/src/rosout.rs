@@ -7,6 +7,10 @@
 //! hands the C++ side a `Log` to fill: [`nros_node::rosout::pump_raw`] encodes
 //! each record, so all three languages share one `Log` mapping.
 //!
+//! The executor now creates one `/rosout` publisher per node
+//! and pumps the queue from every spin, so this explicit publisher is a
+//! second writer; `rclcpp::rosout::Publisher` is deprecated in the header.
+//!
 //! Every symbol links without the `rosout` capability and answers
 //! `NROS_CPP_RET_UNSUPPORTED` / `false`, the phase-426 W4 rule for a surface
 //! an image may not have compiled in.

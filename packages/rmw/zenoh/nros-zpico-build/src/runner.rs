@@ -627,7 +627,8 @@ fn liveliness_with_runtime(
     // nodes (the parameter family is per node), plus the executor's when the
     // lifecycle family registers under it. Errs high by one where the
     // executor shares a component's name -- the inventory's rule.
-    let node_names = components.unwrap_or(1).max(declared_nodes(nodes)) + usize::from(lifecycle);
+    let nodes_here = components.unwrap_or(1).max(declared_nodes(nodes));
+    let node_names = nodes_here + usize::from(lifecycle);
     let runtime = infra_queryables(infra, nodes)
         + if lifecycle {
             LIFECYCLE_SERVICE_PUBLISHERS
@@ -635,8 +636,12 @@ fn liveliness_with_runtime(
             0
         }
         + if param { PARAM_EVENT_PUBLISHERS } else { 0 }
-        // phase-556 W13 -- the `/rosout` writer's token.
-        + if rosout { ROSOUT_PUBLISHERS } else { 0 };
+        // phase-556 W13 -- each node's `/rosout` writer's token.
+        + if rosout {
+            ROSOUT_PUBLISHERS * nodes_here
+        } else {
+            0
+        };
     PRIMARY_NODE_LIVELINESS_TOKENS
         + node_names
         + runtime
@@ -1172,12 +1177,17 @@ mod liveliness_default_tests {
         // The parameter family is per NODE.
         let two = liveliness_default_from(Some(2), Some(2), Some("param"), Some("2"), false);
         assert_eq!(two - param, 1 + PARAM_SERVICE_QUERYABLES);
-        // phase-556 W13 -- `/rosout`: one writer's token, no server, no node.
+        // phase-556 W13 -- `/rosout`: one writer's token per node, no server,
+        // no node name.
         let rosout = liveliness_default_from(Some(2), Some(1), Some("rosout"), Some("1"), false);
         assert_eq!(rosout - base, ROSOUT_PUBLISHERS);
         let stock =
             liveliness_default_from(Some(2), Some(1), Some("param+rosout"), Some("1"), false);
         assert_eq!(stock - param, ROSOUT_PUBLISHERS);
+        let two_bare = liveliness_default_from(Some(2), Some(2), Some("none"), Some("2"), false);
+        let two_rosout =
+            liveliness_default_from(Some(2), Some(2), Some("rosout"), Some("2"), false);
+        assert_eq!(two_rosout - two_bare, 2 * ROSOUT_PUBLISHERS);
     }
 
     #[test]

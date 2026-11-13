@@ -63,6 +63,16 @@ GROUPS = [
         "PARAM_EVENT_PUBLISHERS",
         PARAMS,
     ),
+    # phase-556 W13 -- the `/rosout` writer the executor creates for EACH node.
+    # Same reasoning as the two publisher rows: VOLATILE, so no queryable, but
+    # a publisher slot and a liveliness token per node that the entity
+    # inventory and the zenoh liveliness default multiply by the node count.
+    (
+        "ROS /rosout publisher (per node)",
+        "create_rosout_pub",
+        "ROSOUT_PUBLISHERS",
+        ROSOUT,
+    ),
 ]
 
 # An RMW backend must NOT restate these: it does not depend on `nros-node` and
@@ -283,19 +293,6 @@ def check(root, rmw_dir="packages/rmw"):
         )
     except OSError:
         definitions["ACTION_CLIENT_SERVICE_CLIENTS"] = None
-    # phase-556 W13 -- the `/rosout` family's publisher count. Its creation
-    # site is still the application's (the runtime-owned writer is a later
-    # step, which adds the GROUPS row that ties it to a creation call), so
-    # only the definition and its mirrors are held here.
-    try:
-        definitions["ROSOUT_PUBLISHERS"] = declared(read(root, ROSOUT), "ROSOUT_PUBLISHERS")
-    except OSError:
-        definitions["ROSOUT_PUBLISHERS"] = None
-    if definitions["ROSOUT_PUBLISHERS"] is None:
-        problems.append(
-            f"ROSOUT_PUBLISHERS not found in {ROSOUT} -- the count must have "
-            f"exactly one definition, beside the code it counts."
-        )
 
     scanned = list(rmw_rust_files(root, rmw_dir))
     scanned += [r for r in EXTRA_MIRROR_FILES if os.path.isfile(os.path.join(root, r))]
@@ -364,7 +361,8 @@ def check(root, rmw_dir="packages/rmw"):
 def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
            c_cli_action=3, c_inv_param=6, cli_chans=3, c_inv_cli=3,
            n_lc_pub=1, c_lc_pub=1, c_inv_lc_pub=1, c_shared_lc=5,
-           n_pe_pub=1, c_pe_pub=1, c_inv_pe_pub=1, c_rosout=1, c_inv_rosout=1):
+           n_pe_pub=1, c_pe_pub=1, c_inv_pe_pub=1, c_rosout=1, c_inv_rosout=1,
+           n_rosout=1):
     for rel in (SPIN, PARAMS, LIFECYCLE, ACTION, ROSOUT, "packages/rmw/zenoh/x/src/service.rs"):
         os.makedirs(os.path.join(root, os.path.dirname(rel)), exist_ok=True)
     body = "".join(f"        let h{i} = create_param_srv::<T>(\n" for i in range(n_param))
@@ -382,6 +380,11 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
     body += "fn create_param_event_pub(\n"
     body += "".join(
         f"        let e{i} = create_param_event_pub(self, node, qos)?;\n" for i in range(n_pe_pub)
+    )
+    # phase-556 W13 -- the per-node `/rosout` creator, same two shapes.
+    body += "fn create_rosout_pub(\n"
+    body += "".join(
+        f"            let r{i} = create_rosout_pub(self, node);\n" for i in range(n_rosout)
     )
     open(os.path.join(root, SPIN), "w").write(body)
     open(os.path.join(root, PARAMS), "w").write(
@@ -499,6 +502,14 @@ def self_test():
          "a build-script /rosout mirror that drifted"),
         ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 1, None), 1,
          "the /rosout publisher count lost its definition"),
+        # The per-node creation site: a second one appears, the constant
+        # drifts off it, the pattern goes blind.
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 1, 1, 1, 2), 1,
+         "a second /rosout publisher per node was created and the constant stayed 1"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 1, 2, 2, 1), 1,
+         "ROSOUT_PUBLISHERS drifted to 2 with one creation site"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 1, 1, 1, 0), 1,
+         "the /rosout publisher's creation pattern stopped matching"),
     ]
     failures = 0
     tmp = tempfile.mkdtemp()

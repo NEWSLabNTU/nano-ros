@@ -8,24 +8,19 @@
  *
  * Upstream republishes every node's log records on `/rosout` as
  * `rcl_interfaces/msg/Log`; that topic is what `ros2 topic echo /rosout` and
- * `rqt_console` read. Here it is three steps, and the program takes them:
+ * `rqt_console` read. Here, as upstream, the runtime does it: in an image
+ * built with the `rosout` capability the executor creates one `/rosout`
+ * publisher per node and publishes the log queue from every spin. A program
+ * only logs through `node.get_logger()`.
  *
- * @code
- * rclcpp::rosout::Publisher rosout;
- * RCLCPP_TRY(rosout.create(node));          // bounded QoS; or create(node, rclcpp::RosoutQoS())
- * RCLCPP_TRY(rclcpp::rosout::enable());       // AFTER the publisher
- * for (;;) {
- *     executor.spin_some(10ms);
- *     rosout.pump();
- * }
- * @endcode
+ * The runtime's publisher is VOLATILE (KEEP_LAST(queue depth), RELIABLE,
+ * 10 s lifespan), where upstream's `rclcpp::RosoutQoS` is TRANSIENT_LOCAL: a
+ * tool that subscribes after boot misses the boot records; `ros2 topic echo
+ * /rosout` still matches it.
  *
- * **Why `rclcpp::NodeOptions::enable_rosout(true)` still refuses.** Upstream's
- * flag turns on a publisher the runtime creates for you. A publisher is an
- * ENTITY here — it counts against the image's pools and sizing descriptor — so
- * the runtime never conjures one below the declaration (issue 1341's shape).
- * This class is the explicit spelling; the Rust bridge (`nros::rosout`) and
- * the C one (`<rclc/rosout.h>`) have the same three steps.
+ * `rclcpp::rosout::Publisher` is the explicit spelling from before the runtime
+ * owned the publisher. It still works, but adds a second `/rosout` publisher
+ * to the node, and is deprecated.
  *
  * **Which records** follow the image's ROS release (RFC-0102 D4): on Humble,
  * and with no release named, node loggers only (`node.get_logger()`); on
@@ -58,9 +53,8 @@ inline bool enabled() {
     return nros_cpp_rosout_enabled();
 }
 
-/// Start queueing log records for `/rosout`. Call it after
-/// `Publisher::create`: records queued with nowhere to drain to are only
-/// counted as dropped.
+/// Start queueing log records for `/rosout`. Creating a node already does
+/// this; kept for the explicit spelling.
 inline Result enable() {
     return Result(nros_cpp_rosout_enable());
 }
@@ -68,7 +62,8 @@ inline Result enable() {
 /// The `/rosout` publisher: topic `/rosout` (absolute — no namespace or remap
 /// moves it), type `rcl_interfaces/msg/Log`. Non-copyable, non-movable: the
 /// runtime's publisher lives in this object's storage.
-class Publisher {
+class [[deprecated("the executor now creates a /rosout publisher for every node and "
+                   "publishes the log queue from every spin; remove this object")]] Publisher {
   public:
     Publisher() : storage_(), initialized_(false) {}
     Publisher(const Publisher&) = delete;

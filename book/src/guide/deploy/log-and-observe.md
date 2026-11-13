@@ -152,64 +152,64 @@ need no init step.
 1. Declare the capability, `[system] features = ["rosout"]` in `system.toml`
    (or `set(NROS_FEATURES "rosout")` in a bare CMake project).
 
-2. Create the publisher and pump the queue from your spin loop:
+2. Log through the node's logger and spin. The executor creates one
+   `/rosout` publisher for each node on the spin after the node is built,
+   and publishes the queued records from every spin:
 
 <!-- tabs -->
 
 ### Rust
 
 ```rust
-use nros_rcl_interfaces::msg::Log;
-
-let rosout = executor
-    .create_node("my_node")?
-    .create_publisher_with_qos::<Log>(
-        nros::rosout::TOPIC,
-        nros::rosout::qos_bounded(),
-    )?;
-nros::rosout::enable();
+let logger = executor.create_node("my_node")?.logger();
 loop {
+    nros_log::log_info!(logger, "tick");
     executor.spin_once(budget);
-    let _ = nros::rosout::pump(&rosout);
 }
 ```
 
 ### C
 
 ```c
-rcl_publisher_t rosout = rcl_get_zero_initialized_publisher();
-rclc_rosout_publisher_init(&rosout, &node, NULL);   /* NULL = bounded QoS */
-rclc_rosout_enable();
+rclc_executor_node_init(&executor, &node, "my_node", NULL);
+rclc_logger_t log = rclc_node_get_logger(&node);
 for (;;) {
+    RCLC_LOG_INFO(log, "tick");
     rclc_executor_spin_some(&executor, 10000000);
-    rclc_rosout_pump(&rosout, NULL);
 }
 ```
 
 ### C++
 
 ```cpp
-rclcpp::rosout::Publisher rosout;
-RCLCPP_TRY(rosout.create(node));
-RCLCPP_TRY(rclcpp::rosout::enable());
+auto log = node.get_logger();
 for (;;) {
+    RCLC_LOG_INFO(log, "tick");
     rclcpp::spin_once(10);
-    rosout.pump();
 }
 ```
 
 <!-- /tabs -->
 
+   A node that should not publish `/rosout` calls
+   `executor.disable_rosout_on(node_id)` (Rust). In C the node must be bound
+   with `rclc_executor_node_init`; a legacy `rclc_node_init_default` node is
+   not in the executor's table, so it keeps the explicit
+   `rclc_rosout_publisher_init` once and `rclc_rosout_pump` from the spin
+   loop. The explicit spelling in Rust (`nros::rosout::pump`) and C++
+   (`rclcpp::rosout::Publisher`) still works but adds a second publisher to
+   the node, and is deprecated.
+
 3. Read them from ROS 2: `ros2 topic echo /rosout`, or `rqt_console`.
 
 Where this differs from ROS 2:
 
-- **It is not automatic.** The publisher is an entity, so you create it, and
-  it counts in the image's pools like any other.
-- **The default QoS is bounded.** `qos_bounded()` is volatile at the queue
-  depth. Upstream's profile (`nros::rosout::qos()`, keep-last 1000,
-  transient-local) is expensive on a board; with the bounded one a late
-  subscriber misses the boot records.
+- **It is switched per image.** The `rosout` capability turns it on for every
+  node of the image; each node's publisher counts in the image's pools.
+- **The QoS is volatile.** The executor's publisher is `qos_bounded()`:
+  volatile at the queue depth. Upstream's profile (`nros::rosout::qos()`,
+  keep-last 1000, transient-local) is expensive on a board; with the bounded
+  one a late subscriber misses the boot records.
 - **Which loggers publish follows the ROS release.** On Humble only a node's
   logger reaches `/rosout`, not a child or a free `get_logger("x")`; Iron and
   Jazzy also publish a node's children.
@@ -219,9 +219,10 @@ Where this differs from ROS 2:
   An image without the feature pays nothing.
 
 The sink never publishes from inside a log call: it copies the record into a
-ring, and `pump()` publishes on your spin thread. Records lost to a full ring
-or logged during a publish are counted (`nros::rosout::dropped()`,
-`suppressed()`) and reported on `/rosout` itself. The buffer sizes are knobs:
+ring, and the executor publishes it on the spin thread. Records published,
+lost to a full ring, or logged during a publish are counted
+(`nros::rosout::published()`, `dropped()`, `suppressed()`), and losses are
+reported on `/rosout` itself. The buffer sizes are knobs:
 see [Logging](../../reference/environment-variables.md#logging).
 
 ## Observe a board with no console
