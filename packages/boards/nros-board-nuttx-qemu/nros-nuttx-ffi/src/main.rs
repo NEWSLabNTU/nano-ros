@@ -5,7 +5,7 @@
 
 // phase-359 W7 — `no_std` + `no_main`, like the other C-runtime families' bins.
 // The image no longer compiles the standard library, so libstd's `lang_start`
-// does not supply the `main` symbol NuttX's `nsh_main` calls; this bin defines
+// does not supply the `main` symbol the board's `nros_nuttx_entry` calls; this bin defines
 // it directly. `nros-c` (linked below) owns the image's `#[panic_handler]` and
 // `#[global_allocator]`, which is why the board crate is taken here with
 // `default-features = false`.
@@ -24,7 +24,7 @@ unsafe extern "C" {
     fn nros_app_main(argc: i32, argv: *mut *mut core::ffi::c_char) -> i32;
 }
 
-/// The image entry NuttX's `nsh_main` calls. Signature matches the
+/// The image entry the board's `nros_nuttx_entry` calls. Signature matches the
 /// `extern "C" fn main(argc, argv)` that `nros-board-nuttx-qemu`'s `entry.rs`
 /// declares and calls.
 #[unsafe(no_mangle)]
@@ -35,7 +35,7 @@ pub extern "C" fn main(_argc: i32, _argv: *const *const core::ffi::c_char) -> i3
     nros_rmw_zenoh::register().expect("Failed to register RMW backend");
 
     // Issue 2048 — NuttX owns `eth0` (RFC-0109 D2): the kernel brought it up
-    // from its `defconfig` before `nsh_main` reached us. This used to push an
+    // from its `defconfig` before `nros_nuttx_entry` reached us. This used to push an
     // address in (issue #130, ~~`configure_entry_eth0`~~ from a never-baked
     // ~~`NROS_IP`~~/~~`NROS_GATEWAY`~~/~~`NROS_PREFIX`~~); it now reports what the kernel
     // applied, the same line the Rust entry path prints.

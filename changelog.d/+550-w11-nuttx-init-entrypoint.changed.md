@@ -1,0 +1,1 @@
+The NuttX QEMU board starts its image through `CONFIG_INIT_ENTRYPOINT="nros_nuttx_entry"`, NuttX's own mechanism, instead of defining a second `nsh_main` that won over NSH's by link order. A board defconfig that copies this board's must name `nros_nuttx_entry`.

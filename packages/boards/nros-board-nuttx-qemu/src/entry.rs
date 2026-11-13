@@ -1,21 +1,21 @@
-//! NuttX init entry point override.
+//! NuttX init entry point.
 //!
-//! NuttX boots the kernel, then starts the init task by calling
-//! `CONFIG_INIT_ENTRYPOINT` (default: `nsh_main`). The default `nsh_main`
-//! from NuttX's apps library starts an interactive shell — our application
-//! code is never called.
+//! NuttX boots the kernel, then starts the init task by calling the function
+//! `CONFIG_INIT_ENTRYPOINT` names. This board's defconfigs name
+//! `nros_nuttx_entry`, defined here, so the kernel starts the image directly
+//! (RFC-0126 decision 18, phase-550 W11).
 //!
-//! This module provides a custom `nsh_main` that calls the image's `main`
-//! symbol. Because this symbol is in the main binary, it takes precedence over
-//! the archive definition in `libapps.a`.
+//! Call chain: NuttX init → `nros_nuttx_entry` → `main`
 //!
-//! Call chain: NuttX init → `nsh_main` (ours) → `main`
+//! This used to override the `nsh_main` symbol instead, relying on the board
+//! rlib preceding `libapps.a` on the link line so that ours won over NSH's.
+//! Naming the entry in `CONFIG_INIT_ENTRYPOINT` is NuttX's own mechanism, and
+//! it depends on no link order.
 //!
 //! phase-359 W7 — that `main` used to be libstd's `lang_start` shim, which then
 //! called the user's Rust `fn main()`. The family is `no_std` now, so
 //! `nros::main!()` emits this exact C-ABI symbol directly and the chain is one
-//! call shorter. Nothing here changed: this file always went through the C ABI,
-//! which is why it kept working.
+//! call shorter.
 
 use core::ffi::c_char;
 
@@ -24,7 +24,7 @@ unsafe extern "C" {
     fn nsh_initialize() -> i32;
 }
 
-/// Override NuttX's default `nsh_main` to run the Rust application.
+/// The init task NuttX starts (`CONFIG_INIT_ENTRYPOINT`), which runs the image.
 ///
 /// NuttX's scheduler calls this as the init task (PID 1). We first call
 /// `nsh_initialize()` to run the standard NSH init sequence (board bringup,
@@ -34,11 +34,11 @@ unsafe extern "C" {
 /// network interface configuration (via netinit), and other board-level
 /// initialization would be skipped.
 #[unsafe(no_mangle)]
-pub extern "C" fn nsh_main(argc: i32, argv: *const *const c_char) -> i32 {
+pub extern "C" fn nros_nuttx_entry(argc: i32, argv: *const *const c_char) -> i32 {
     // issue 0710 — publish the nros_log sink list HERE.
     //
     // This is a boot funnel that issue 0708's rule cannot see: it is
-    // `pub extern "C" fn nsh_main`, not `pub fn run*`, so neither that fix nor
+    // `pub extern "C" fn nros_nuttx_entry`, not `pub fn run*`, so neither that fix nor
     // `check-board-log-sink` reached it. An image entering this way — the
     // logging smoke fixture does — ran with no sink list and dropped every
     // record, which is how it emitted nothing while the gate stayed green.
@@ -52,8 +52,10 @@ pub extern "C" fn nsh_main(argc: i32, argv: *const *const c_char) -> i32 {
     }
 }
 
-// Prevent linker from garbage-collecting nsh_main when --gc-sections is active.
-// The NuttX kernel (libsched.a) references nsh_main, but the Rust linker may
-// not see that reference early enough to keep the symbol.
+// Prevent the linker from garbage-collecting the entry when --gc-sections is
+// active. The NuttX kernel (libsched.a) references it through
+// CONFIG_INIT_ENTRYPOINT, but the Rust linker may not see that reference early
+// enough to keep the symbol.
 #[used]
-static _NSH_MAIN_REF: unsafe extern "C" fn(i32, *const *const c_char) -> i32 = nsh_main;
+static _NROS_NUTTX_ENTRY_REF: unsafe extern "C" fn(i32, *const *const c_char) -> i32 =
+    nros_nuttx_entry;
