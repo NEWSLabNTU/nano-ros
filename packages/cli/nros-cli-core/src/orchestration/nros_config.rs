@@ -37,12 +37,14 @@ pub enum NrosConfigError {
     /// A pre-212 `nros.toml` sits at the workspace root. Clean break — point
     /// the user at the migration path (#186 retired the one-shot
     /// `migrate workspace` verb; it lives in the nros-v0.5.0 tag's CLI).
+    // Phase 212.B; layout: docs/roadmap/archived/phase-212-ux-cargo-native-and-file-consolidation.md
     #[error(
-        "nros.toml at workspace root is no longer supported (Phase 212.B); \
-         run `nros migrate workspace .` from the nros-v0.5.0 tag's CLI (the \
+        "nros.toml at the workspace root is no longer supported; its settings \
+         now live in `[workspace.metadata.nros]` of the workspace Cargo.toml \
+         and in the bringup's system.toml. \
+         Run `nros migrate workspace .` from the nros-v0.5.0 tag's CLI (the \
          verb is retired on newer trees), or start fresh from \
-         `nros new system <bringup>` \
-         (see docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md)"
+         `nros new system <bringup>`"
     )]
     NrosTomlNotSupported { path: PathBuf },
 
@@ -630,13 +632,14 @@ fn refuse_retired_entities_key(nros: &serde_json::Value) -> Result<(), String> {
     if found.is_empty() {
         return Ok(());
     }
+    // Retired in phase-454 W9; phase-445 W5 removed the manifest fallback.
+    // The system.toml form follows RFC-0098 D8.
     Err(format!(
-        "{} — RETIRED (phase-454 W9): nothing has read it since phase-445 W5 removed the \
-         manifest fallback, so it was accepted and then dropped, and the pools were sized \
+        "{} — RETIRED: nothing has read it since the manifest fallback was removed, so it was accepted and then dropped, and the pools were sized \
          without it. State what the component creates in the leaf's `system.toml`:\n\
          \n    [[component]]\n    name = \"<component>\"\n    entities = \
          [\"sub:std_msgs/msg/Int32:/chatter\", \"timer\"]\n\n\
-         (RFC-0098 D8 — same grammar, one surface.) An image that runs from a launch file \
+         (Same grammar as the manifest key, in one place.) An image that runs from a launch file \
          states it once per system instead, in the contract sidecar beside that file \
          (<bringup>/launch/<stem>.contract.yaml), which the resolver folds into the \
          SystemModel. Delete the manifest key.",
@@ -665,7 +668,7 @@ fn normalise_node_alias(mut nros: serde_json::Value) -> Result<serde_json::Value
     match (has_node, has_component) {
         (true, true) => Err(
             "`[package.metadata.nros]` declares BOTH `node` (canonical) and \
-             `component` (deprecated alias) — pick exactly one (Phase 212.N.12)"
+             `component` (deprecated alias) — keep `node` and delete `component`"
                 .to_string(),
         ),
         (true, false) => {
@@ -680,8 +683,8 @@ fn normalise_node_alias(mut nros: serde_json::Value) -> Result<serde_json::Value
         (false, true) => {
             // Deprecated alias kept working — warn once per parse.
             eprintln!(
-                "warning: `[package.metadata.nros.component]` is the pre-N.12 \
-                 alias; use `[package.metadata.nros.node]` (Phase 212.N.12)."
+                "warning: `[package.metadata.nros.component]` is a deprecated \
+                 alias; rename it to `[package.metadata.nros.node]`."
             );
             Ok(nros)
         }
@@ -936,8 +939,12 @@ board = "linux"
             "diagnostic must mention the migration tool: {msg}"
         );
         assert!(
-            msg.contains("Phase 212.B") || msg.contains("phase-212"),
-            "diagnostic must point at the phase doc: {msg}"
+            msg.contains("Cargo.toml") && msg.contains("system.toml"),
+            "diagnostic must say where the settings live now: {msg}"
+        );
+        assert!(
+            !msg.contains("Phase 212") && !msg.contains("phase-212"),
+            "user-facing text carries no phase id: {msg}"
         );
     }
 
