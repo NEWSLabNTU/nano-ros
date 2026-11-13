@@ -215,5 +215,5 @@ rules; flagged to the user):
 - [issue 2502](../issues/2502-zephyr-template-copy-out-doubled.md) — the
   Zephyr template copy-out job nearly doubled in a week (filed with #3711).
   W7 moves the job, and the slowdown goes with it.
-- [issue 2499](../issues/2499-verus-lane-toolchain-vstd-mismatch.md) — the
-  Verus lane. Its weekly job lands in `weekly.yml` (W4).
+- [issue 2499](../issues/archived/2499-verus-lane-toolchain-vstd-mismatch.md) — the
+  Verus lane, resolved by #3723: its job is `verify-verus` in `weekly.yml`.
