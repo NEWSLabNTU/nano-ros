@@ -28,6 +28,15 @@ The binding (D8), and what "serves" means here — all static, no fixtures:
           probe-tracks.json).
   manual  no job: the row's `last_run` date is the evidence (check-board-tiers).
 
+A row's `roads` (the build roads its packages reach the board by) bind the
+same way, both directions. A road with no `lane` is the default road, kept by
+the cadence job above. A road with `lane = "<workflow>:<job>"` needs that job,
+on a scheduled workflow, carrying `NROS_BOARD_ROADS` in its `env:` with the
+token `<row>:<road>` (`<row>` is the row's `matrix_platform`, else its crate).
+In reverse, every `NROS_BOARD_ROADS` token in any workflow must be a road the
+registry lists with that job as its lane. So a road with no lane fails, and so
+does a lane serving a road nobody listed.
+
 A row's MODULE (its `just` scope) is `linux` for the Linux host and its
 `nightly_token` otherwise, the same derivation `check-board-tiers` makes.
 
@@ -248,7 +257,56 @@ def weekly_unserved(rows, wf_text, weekly_tracks):
     return unserved
 
 
-def evaluate(rows, workflows, baseline, weekly_tracks):
+ROADS_ENV = "NROS_BOARD_ROADS"
+
+
+def _job_road_tokens(job):
+    env = job.get("env") or {}
+    return str(env.get(ROADS_ENV, "")).split() if isinstance(env, dict) else []
+
+
+def road_errors(rows, all_workflows):
+    """Both directions of the `roads` binding. all_workflows: {file: text}."""
+    errs = []
+    docs = {name: (yaml.safe_load(text) or {}) for name, text in all_workflows.items()
+            if text is not None}
+    listed = {}
+    for r in rows:
+        for road in r.get("roads") or []:
+            lane = road.get("lane")
+            if not lane:
+                continue
+            token = f"{row_key(r)}:{road.get('name')}"
+            listed[token] = lane
+            wf, _, job_name = lane.partition(":")
+            doc = docs.get(wf)
+            if doc is None:
+                errs.append(f"{token}: lane `{lane}` names no workflow file {wf}")
+                continue
+            job = _job(doc, job_name)
+            if job is None:
+                errs.append(f"{token}: lane `{lane}`: {wf} has no job `{job_name}`")
+                continue
+            if "schedule" not in _on(doc):
+                errs.append(f"{token}: lane `{lane}`: {wf} has no schedule, so the "
+                            "road is kept by nothing that runs on its own")
+            if token not in _job_road_tokens(job):
+                errs.append(f"{token}: lane `{lane}` does not say it keeps this road: "
+                            f"add `{token}` to the job's `env: {ROADS_ENV}`")
+    for wf, doc in sorted(docs.items()):
+        for job_name, job in sorted((doc.get("jobs") or {}).items()):
+            if not isinstance(job, dict):
+                continue
+            for token in _job_road_tokens(job):
+                lane = f"{wf}:{job_name}"
+                if listed.get(token) != lane:
+                    errs.append(f"{lane}: `{ROADS_ENV}` names road `{token}`, which the "
+                                "registry does not list with this job as its lane; "
+                                "list it under the row's `roads`, or drop the token")
+    return errs
+
+
+def evaluate(rows, workflows, baseline, weekly_tracks, all_workflows=None):
     """workflows: {file name: text or None}; baseline: {key: entry}."""
     errs = []
     for r in rows:
@@ -260,6 +318,7 @@ def evaluate(rows, workflows, baseline, weekly_tracks):
     unserved.update(daily_unserved(rows, workflows.get(DAILY_WF),
                                    workflows.get(TIER1_WF)))
     unserved.update(weekly_unserved(rows, workflows.get(WEEKLY_WF), weekly_tracks))
+    errs += road_errors(rows, all_workflows if all_workflows is not None else workflows)
     cadence_of = {row_key(r): r.get("cadence") for r in rows}
     reported = []
     for key, why in sorted(unserved.items()):
@@ -421,6 +480,39 @@ jobs:
          wfs={**wfs, MERGE_WF: wf_dispatch})
     case("an unknown cadence is refused", True,
          rows=rows + [{"matrix_platform": "Y", "cadence": "hourly"}])
+    wf_guest = """
+on:
+  schedule:
+    - cron: "0 8 * * *"
+jobs:
+  guest:
+    env:
+      NROS_BOARD_ROADS: "QemuBaremetal:guest-make"
+    steps: []
+"""
+    road_rows = [r if r.get("matrix_platform") != "QemuBaremetal" else
+                 {**r, "roads": [{"name": "workspace"},
+                                 {"name": "guest-make", "lane": "g.yml:guest"}]}
+                 for r in rows]
+    case("a road whose lane carries its token is clean", False, rows=road_rows,
+         wfs={**wfs, "g.yml": wf_guest})
+    case("a road naming a missing workflow is refused", True, rows=road_rows)
+    case("a road naming a missing job is refused", True, rows=road_rows,
+         wfs={**wfs, "g.yml": wf_guest.replace("  guest:", "  other:")})
+    case("a road on an unscheduled workflow is refused", True, rows=road_rows,
+         wfs={**wfs, "g.yml": wf_guest.replace(
+             '  schedule:\n    - cron: "0 8 * * *"\n', "  workflow_dispatch:\n")})
+    case("a road whose job does not carry its token is refused", True, rows=road_rows,
+         wfs={**wfs, "g.yml": wf_guest.replace("QemuBaremetal:guest-make", "")})
+    case("a job token for a road the registry does not list is refused", True,
+         wfs={**wfs, "g.yml": wf_guest})
+    case("a job token whose road names another lane is refused", True,
+         rows=[r if r.get("matrix_platform") != "QemuBaremetal" else
+               {**r, "roads": [{"name": "workspace"},
+                               {"name": "guest-make", "lane": "h.yml:guest"}]}
+               for r in rows],
+         wfs={**wfs, "g.yml": wf_guest, "h.yml": wf_guest.replace(
+             "QemuBaremetal:guest-make", "")})
     bad = [c for c in cases if not c[1]]
     for name, ok, errs in cases:
         print(f"  {'ok ' if ok else 'BAD'} {name}" + ("" if ok else f": {errs}"))
@@ -449,10 +541,12 @@ def main():
     for name in (MERGE_WF, DAILY_WF, TIER1_WF, WEEKLY_WF):
         p = WORKFLOWS / name
         wfs[name] = p.read_text() if p.exists() else None
+    # Every workflow, for the `roads` lanes, which may live in any of them.
+    all_wfs = {p.name: p.read_text() for p in sorted(WORKFLOWS.glob("*.y*ml"))}
     import json
     weekly = {t["track"] for t in json.loads(PROBE_TRACKS.read_text())["tracks"]
               if t.get("weekly")}
-    e, reported = evaluate(rows, wfs, baseline, weekly)
+    e, reported = evaluate(rows, wfs, baseline, weekly, all_wfs)
     errs += e
     for line in reported:
         print(f"check-cadence-jobs: NOTE {line}")

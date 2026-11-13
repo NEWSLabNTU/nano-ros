@@ -5,7 +5,7 @@ status: Draft
 area: platform-board-rtos
 since: 2026-10
 last-reviewed: 2026-11
-implements-tracked-by: [phase-522]
+implements-tracked-by: [phase-522, phase-550]
 amends: [RFC-0064]
 supersedes: []
 superseded-by: null
@@ -131,11 +131,25 @@ Each `[[board]]` row carries, in place of `tier`:
 | `last_run` | an ISO date | Required when `cadence = "manual"`; refused otherwise, because a lane's last run is a question for the lane, not the registry. |
 | `infra` | `true` | Replaces `tier = "infra"`: shared traits, family drivers, ABI mirrors, PACs. No other evidence field is allowed on an infra row. |
 | `flavour` | `std`, `no_std` | Only on an `external` row (its board package is in someone else's tree), and required there when the row has a `matrix_platform`: no board crate here can say the image's std flavour, so the row states it and `check-flavour-lanes` checks the stated value like a read one. Refused on every other row, whose flavour is read from its crate. Added 2026-11-07 (phase-542 W0.2). |
+| `roads` | `[{ name = "<road>", lane = "<workflow>:<job>" }, …]` | Optional. The build roads a board's packages reach it by, each with the lane that keeps it. A row without it has ONE road, kept by its cadence's job. With it, exactly one entry has no `lane`: the default road, kept by that same job. Added 2026-11-13 (phase-550 W13); see the amendment below. |
 
 **Amended 2026-11-04 by [RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md) D8/D9:** each `cadence` value names exactly
 one workflow job that runs the board's cells at that cadence (`merge` is the
 `merge-runtime` job on `merge_group`). A value with no such job is lowered,
 not kept: the registry may not promise a cadence the CI does not run.
+
+**Amended 2026-11-13 (`roads`, phase-550 W13):** a board may be reached by
+more than one build road, and the registry names each with the lane that
+keeps it. The first user is NuttX: the workspace road (`nros build`, a C/C++
+package through CMake against the kernel's export, RFC-0130 D7) is the one
+road, and the make app in NuttX's own apps tree is a GUEST road with its own
+nightly job. The field is generic. A lane is bound both ways, like a cadence:
+the named job must exist on a scheduled workflow and list `<row>:<road>` in
+its `env: NROS_BOARD_ROADS`, and every such token in any workflow must be a
+road some row lists with that job as its lane. `check-cadence-jobs` holds
+both directions; the board's evidence page shows a "Build roads" line. The
+roads add no status word: the status stays the cadence's, and a road is
+evidence of reach, not of a run.
 
 The status word is generated, never typed:
 
@@ -413,6 +427,9 @@ stated reversal.
   kept consistent by hand.
 - 2026-11-01 — RFC-0118 D4 amends D10: `emulator` moves to the descriptor's
   `[board.run]` and the generator reads it there (phase-528 W2).
+- 2026-11-13 — D10 gains the optional `roads` field (phase-550 W13): generic
+  rather than a NuttX special case, absent meaning one road on the cadence's
+  lane, and each lane checked in both directions.
 
 ## Review (2026-11-13, phase-555 W2)
 
