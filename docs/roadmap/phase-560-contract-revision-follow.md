@@ -1,6 +1,6 @@
 # Phase 560 — Follow the contract revision on the RTOS side
 
-**Status (2026-11-13). PLANNED.** nano-ros's share of two play_launch
+**Status (2026-11-13). W1-W5 DONE** (rlm v0.3.15, play_launch 0.32.0); W6-W8 planned. nano-ros's share of two play_launch
 phases: phase 103 (defects the contract grammar review found in shipped
 behaviour) and phase 104 (the grammar revision itself). The design of
 record is rlm `docs/design/grammar-revision/` (an overview and one file per
@@ -24,8 +24,8 @@ realizers then follow it. nano-ros does not choose its own reading.
 
 | Item | Follows | What changes here | Size |
 |---|---|---|---|
-| **W1** entering a mode | play_launch 103 D4, after rlm states the meaning | `ftti_budget::reaction_path` (`ftti_budget.rs:386`) reads a mode-form hazard the way rlm defines it. Today it takes the entered mode's own `reaction` and, with none, treats entering as the reaction. The checker instead walks the mode's `fallback` levels, and play_launch's observer uses the last level. The observer rows built from it follow. | S |
-| **W2** the omitted `on:` | play_launch 103 D5, after rlm states the meaning | `ftti_budget::classes` (`ftti_budget.rs:243`) returns rlm's default. Today it returns the five pre-v0.3.13 classes, rlm's doc says every class, and play_launch's message says omission, late and loss. | S |
+| **W1** entering a mode | play_launch 103 D4, after rlm states the meaning | `ftti_budget::reaction_path` (`ftti_budget.rs:386`) reads a mode-form hazard the way rlm defines it. Today it takes the entered mode's own `reaction` and, with none, treats entering as the reaction. The checker instead walks the mode's `fallback` levels. **Done:** rlm v0.3.15 states that the entered mode is the one taken away and its last fallback level, the minimal risk condition, is charged against `ftti`; `reaction_path` resolves that level, so the budget and the observer rows follow it. | S |
+| **W2** the omitted `on:` | play_launch 103 D5, after rlm states the meaning | `ftti_budget::classes` (`ftti_budget.rs:243`) returns rlm's default. Today it returns the five pre-v0.3.13 classes, rlm's doc says every class, and play_launch's message says omission, late and loss. **Done:** rlm v0.3.15 defines `FaultKind::DEFAULT` as those five; the local copy is deleted and the budget reads `HazardContract::classes()`. | S |
 | **W3** constant predicates | play_launch 103 D1 (rlm model `Constant { constant, value }`) | Tag bump only. No nano-ros code reads `when`, `commands` or a predicate's value today. If the image ever judges a value, it reads `value`, never the constant's name. | S |
 | **W4** criticality through the resolver | play_launch 103 D3 | Picks up through the play_launch submodule bump. Check every changed criticality in the generated tables against the hazard that now reaches the node. | S |
 | **W5** removals | play_launch 104 S1 (one rlm release) | Tag bump. None of the removed keys (`external_topics:`, topic-level `max_transport`, `paths.input`, `exit.on`, a mode in `hazards.reaction`, `links.monitor`, `tolerance`) is written in nano-ros's contracts or read by its code (`links.monitor` is in the model; nano-ros reads no `contracts.links`). Run `migrate` over the corpus to confirm zero changes. | S |

@@ -18,9 +18,10 @@
 //!
 //! - `contracts.hazards.<scope>/<name>`: `monitors` (each one fault: topic
 //!   FQNs, faulting when ANY member does, or every member when `all_of`),
-//!   `on` (the fault classes; empty means every class), `ftti_ms`, and
-//!   `reaction` -- a key into `contracts.modes` (whose own `reaction` is a
-//!   path key), else a path key directly.
+//!   `on` (the fault classes; empty means rlm's `FaultKind::DEFAULT`),
+//!   `ftti_ms`, and `reaction` -- a key into `contracts.modes` (the mode the
+//!   hazard takes away; its last `fallback` level's `reaction` is the path
+//!   charged), else a path key directly.
 //! - the reaction path is a `contracts.scope_paths` entry, or a
 //!   `contracts.node_paths` one.
 //!
@@ -184,7 +185,8 @@ impl fmt::Display for HazardBudget {
 pub enum FttiBudgetError {
     /// The hazard's `reaction` is neither a mode nor a path in this model.
     UnknownReaction { hazard: String, reaction: String },
-    /// The mode a hazard enters names a reaction that is no path.
+    /// The last fallback level of the mode a hazard enters names a reaction
+    /// that is no path.
     UnknownModeReaction {
         hazard: String,
         mode: String,
@@ -209,8 +211,9 @@ impl fmt::Display for FttiBudgetError {
                 reaction,
             } => write!(
                 f,
-                "contract: hazard `{hazard}` enters mode `{mode}`, whose `reaction` names \
-                 `{reaction}` -- not a path in this model."
+                "contract: hazard `{hazard}` enters mode `{mode}`, whose minimal risk \
+                 condition (its last fallback level) names `{reaction}` -- not a path in this \
+                 model."
             ),
             FttiBudgetError::Exceeded(bs) => {
                 writeln!(
@@ -232,27 +235,6 @@ impl fmt::Display for FttiBudgetError {
 }
 
 impl std::error::Error for FttiBudgetError {}
-
-/// The classes a hazard reports; an empty `on` means every class.
-///
-/// "Every class" is the five the contract had before rlm v0.3.13: the
-/// communication classes it added (`repetition`, `resequencing`,
-/// `insertion`) are judged only where a hazard's `on:` names them, as
-/// play_launch's observer judges them, so an `on:`-less hazard's
-/// unobserved list does not grow with the vocabulary.
-fn classes(h: &HazardContract) -> Vec<FaultKind> {
-    if h.on.is_empty() {
-        vec![
-            FaultKind::Omission,
-            FaultKind::Late,
-            FaultKind::Loss,
-            FaultKind::Reported,
-            FaultKind::Overrun,
-        ]
-    } else {
-        h.on.clone()
-    }
-}
 
 /// The fastest detector this image bakes for `kind` on `topic`.
 fn detector(model: &SystemModel, topic: &str, kind: FaultKind) -> Option<Detector> {
@@ -379,10 +361,21 @@ pub struct ResolvedReaction<'m> {
 
 /// The path a hazard's `reaction` resolves to, and the mode it is reached
 /// through when the hazard enters one -- `None` when the hazard names no
-/// reaction, or enters a mode that names no path (entering it IS the
-/// reaction). One resolver, read by this check and by the observer rows
-/// (`contract_monitors::hazard_rows`), so the two cannot follow different
-/// reactions.
+/// reaction, or enters a mode whose last fallback level names no path
+/// (entering that level IS the reaction). One resolver, read by this check
+/// and by the observer rows (`contract_monitors::hazard_rows`), so the two
+/// cannot follow different reactions.
+///
+/// A mode is read as rlm v0.3.15 states it (`hazards.<h>.enters`, play_launch
+/// phase 103 D4): "The mode this hazard takes away. The reaction is that
+/// mode's `fallback:` sequence: each level in order, by its own `reaction:`,
+/// each checked in its own right (`degradation-level-time`) and the minimal
+/// risk condition (the last level) against `ftti`. The named mode's own
+/// `reaction:`, if it has one, is not what this hazard runs." The image
+/// budget is the FTTI check, so it resolves the minimal risk condition; the
+/// levels above it reach the image as the hazard's rungs
+/// (`contract_monitors::hazard_rungs`). A mode with no fallback has no
+/// reaction here.
 pub fn reaction_path<'m>(
     model: &'m SystemModel,
     hazard: &str,
@@ -393,10 +386,19 @@ pub fn reaction_path<'m>(
     };
     // A mode first, the way the checker resolves it (the model's own rule).
     let (key, via_mode): (&str, Option<&'m str>) = match model.contracts.modes.get(r) {
-        Some(mode) => match mode.reaction.as_deref() {
-            Some(k) => (k, Some(r)),
-            None => return Ok(None),
-        },
+        Some(mode) => {
+            let Some(mrc) = mode
+                .fallback
+                .last()
+                .and_then(|level| model.contracts.modes.get(level))
+            else {
+                return Ok(None);
+            };
+            match mrc.reaction.as_deref() {
+                Some(k) => (k, Some(r)),
+                None => return Ok(None),
+            }
+        }
         None => (r, None),
     };
     let found = model
@@ -444,7 +446,11 @@ pub fn hazard_budgets(model: &SystemModel) -> Result<Vec<HazardBudget>, FttiBudg
     for (key, h) in &model.contracts.hazards {
         let mut detection: Option<Detector> = None;
         let mut unobserved = Vec::new();
-        for kind in classes(h) {
+        // rlm v0.3.15 (`FaultKind::DEFAULT`, play_launch phase 103 D5): "The
+        // classes an omitted `on:` means: the five the grammar had before
+        // v0.3.13. ... This is the one definition: the Linux and RTOS
+        // realizers both read it."
+        for kind in h.classes() {
             for guard in &h.monitors {
                 for member in &guard.members {
                     match detector(model, member, kind) {
@@ -684,9 +690,41 @@ pub(crate) mod tests {
         assert!(err.to_string().contains("/handler/nowhere"), "{err}");
     }
 
-    /// A hazard that enters a mode reacts through the mode's own path.
+    /// A hazard that enters a mode reacts through the mode's fallback, and
+    /// the budget charges its minimal risk condition (the last level), not
+    /// the entered mode's own `reaction` (rlm v0.3.15, play_launch phase 103
+    /// D4). The entered mode here names a reaction of its own, a path with
+    /// no budget; reading it, as the image did before, charges nothing.
     #[test]
-    fn a_mode_reaction_resolves_through_the_mode() {
+    fn a_mode_reaction_resolves_through_the_fallback() {
+        let hazard = HAZARD.replace("/handler/stop_path", "demo.launch.xml/driving");
+        let drive = "    /handler/drive_path:\n      input: [/handler/scan]\n      \
+                     output: [/handler/stop]\n";
+        let yaml = model_yaml(
+            AGE_100,
+            drive,
+            &format!("{hazard}      ftti_ms: 500.0\n"),
+            "",
+        )
+        .replace(
+            "\n  hazards:",
+            "\n  modes:\n    demo.launch.xml/driving:\n      \
+                 reaction: /handler/drive_path\n      \
+                 fallback: [demo.launch.xml/slow, demo.launch.xml/safe_stop]\n    \
+             demo.launch.xml/slow:\n      reaction: /handler/drive_path\n    \
+             demo.launch.xml/safe_stop:\n      reaction: /handler/stop_path\n  hazards:",
+        );
+        let m = parse(&yaml);
+        let b = &hazard_budgets(&m).expect("resolves")[0];
+        let r = b.reaction.as_ref().expect("reaction");
+        assert_eq!(r.path, "/handler/stop_path");
+        assert_eq!(r.max_latency_ms, Some(20.0));
+        assert_eq!(r.via_mode.as_deref(), Some("demo.launch.xml/driving"));
+    }
+
+    /// A mode with no fallback takes away nothing the image can run.
+    #[test]
+    fn a_mode_without_fallback_has_no_reaction() {
         let hazard = HAZARD.replace("/handler/stop_path", "demo.launch.xml/safe_stop");
         let yaml = model_yaml(AGE_100, "", &format!("{hazard}      ftti_ms: 500.0\n"), "").replace(
             "\n  hazards:",
@@ -694,10 +732,7 @@ pub(crate) mod tests {
                  reaction: /handler/stop_path\n  hazards:",
         );
         let m = parse(&yaml);
-        let b = &hazard_budgets(&m).expect("resolves")[0];
-        let r = b.reaction.as_ref().expect("reaction");
-        assert_eq!(r.path, "/handler/stop_path");
-        assert_eq!(r.via_mode.as_deref(), Some("demo.launch.xml/safe_stop"));
+        assert!(hazard_budgets(&m).expect("resolves")[0].reaction.is_none());
     }
 
     /// A model with no hazards is untouched.
