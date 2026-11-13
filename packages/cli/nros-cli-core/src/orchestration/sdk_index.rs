@@ -1621,10 +1621,10 @@ pub struct SourcePackage {
     /// `nros setup <board>` names them before anything is fetched.
     ///
     /// `nuttx-kernel` is the motivating one: NuttX's own build unzips the
-    /// `dtc`/`libmetal` archives it downloads, and with no `kconfig-frontends`
-    /// on the host `scripts/nuttx/build-nuttx.sh` provisions `kconfiglib` into
-    /// a venv. Neither is a fetch dependency, so they live on the source rather
-    /// than on any tool the board provisions.
+    /// `dtc`/`libmetal` archives it downloads, and its `tools/configure.sh`
+    /// runs `kconfig-tweak` from the kconfig-frontends tools. Neither is a
+    /// fetch dependency, so they live on the source rather than on any tool
+    /// the board provisions.
     #[serde(default)]
     pub system: Vec<String>,
 }

@@ -5533,23 +5533,17 @@ _doctor-host:
         echo "$zws_out" | sed 's/^/         /'
         host_rc=1
     fi
-    # NuttX's kconfig frontend. This one nano-ros DOES self-provision, into a
-    # repo-local venv (scripts/nuttx/build-nuttx.sh), and it stays that way:
-    # issue 0431 was every NuttX cell silently skipping on a host that had the
-    # toolchain, qemu and sources but no kconfig, and `pip install kconfiglib`
-    # is refused on PEP 668 distros while a venv's own pip is not. It differs
-    # from the Zephyr venv on the three counts that matter — repo-local so
-    # nothing outside NuttX sees it, last-resort (only when neither
-    # `kconfig-conf` nor `olddefconfig` is present), and self-cleaning on
-    # failure. Reported here so it is visible rather than invisible.
-    if command -v kconfig-conf >/dev/null 2>&1 || command -v olddefconfig >/dev/null 2>&1; then
-        echo "  [OK] kconfig frontend on PATH (NuttX needs no venv)"
-    elif [ -x "{{justfile_directory()}}/build/nuttx-kconfig-venv/bin/olddefconfig" ]; then
-        echo "  [OK] kconfig: repo-local venv (build/nuttx-kconfig-venv) — NuttX only"
+    # NuttX's kconfig tools. A NuttX kernel is configured by NuttX's own
+    # `tools/configure.sh`, which runs `kconfig-tweak`, and only the
+    # kconfig-frontends tools ship it (maintainer ruling 2026-11-13: the build
+    # requires the distro package; the old self-provisioned kconfiglib venv had
+    # no `kconfig-tweak` and is gone). Reported, not failed: only the NuttX
+    # lanes need it, and they refuse with the same install line.
+    if command -v kconfig-tweak >/dev/null 2>&1 && command -v kconfig-conf >/dev/null 2>&1; then
+        echo "  [OK] kconfig-frontends (kconfig-tweak, kconfig-conf) on PATH"
     else
-        echo "  [INFO] no kconfig frontend; the NuttX lane will provision one into"
-        echo "         build/nuttx-kconfig-venv on first use (issue 0431), or install"
-        echo "         a distro kconfig-frontends-nox package."
+        echo "  [INFO] no kconfig-frontends tools: a NuttX build will refuse."
+        echo "         Install them: sudo apt install kconfig-frontends-nox"
     fi
     # clang-format pin (consistent C/C++ formatting across machines + CI).
     #

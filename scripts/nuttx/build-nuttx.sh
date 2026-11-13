@@ -10,9 +10,9 @@
 # Prerequisites:
 #   - ARM cross-compiler: arm-none-eabi-gcc
 #   - Run `just setup-nuttx` to download sources
-#   - kconfig frontend: a native kconfig-conf, an existing kconfiglib, OR nothing
-#     — this script self-provisions kconfiglib into a repo-local venv when neither
-#     is present (issue 0431; works on PEP-668 distros where `pip install` is refused).
+#   - the kconfig-frontends tools (`kconfig-conf`, `kconfig-tweak`); on
+#     Debian/Ubuntu the `kconfig-frontends-nox` package. NuttX's own
+#     `tools/configure.sh` needs both, and the script refuses without them.
 #
 # Environment (auto-resolved from project root if not set):
 #   - NUTTX_DIR — NuttX source (default: third-party/nuttx/nuttx)
@@ -79,13 +79,14 @@ if ! command -v "$NUTTX_CROSS" &>/dev/null; then
     exit 1
 fi
 
-# kconfig: NuttX's `make olddefconfig` needs a kconfig frontend. One provider
-# for every script that configures a NuttX tree (this one and the make-road
-# lane, `make-road-build.sh`): a native `kconfig-conf`, an existing
-# `kconfiglib`, or a self-provisioned repo-local venv (issue 0431).
+# kconfig: the board config is a fragment that NuttX's own configure expands
+# and resolves, and that needs the kconfig-frontends tools. One helper for
+# every script that configures a NuttX tree (this one and the make road,
+# `make-road-build.sh`); it refuses, saying how to install them, when they are
+# missing.
 # shellcheck source=scripts/nuttx/kconfig-frontend.sh
 source "$SCRIPT_DIR/kconfig-frontend.sh"
-nros_nuttx_kconfig_frontend "$PROJECT_ROOT" || exit 1
+nros_nuttx_kconfig_frontend || exit 1
 
 # --- Handle arguments ---
 
@@ -101,8 +102,12 @@ case "${1:-}" in
         echo "Running NuttX menuconfig..."
         cd "$NUTTX_DIR"
         if [ ! -f .config ]; then
-            cp "$DEFCONFIG" .config
-            make olddefconfig
+            # The board config is a fragment (an `#include` of an upstream
+            # config plus this board's differences), so it is configured,
+            # never copied.
+            _mk="$(pwd)/${NUTTX_BOARD_MAKEDEFS:-boards/arm/qemu/qemu-armv7a/scripts/Make.defs}"
+            nros_nuttx_configure "$NUTTX_DIR" "$NUTTX_APPS_DIR" "$DEFCONFIG" "$_mk" \
+                "$PROJECT_ROOT/build/nuttx-configure/menuconfig" || exit 1
         fi
         make menuconfig
         echo "Save defconfig with: make savedefconfig"
@@ -131,9 +136,9 @@ flock 9
 # Set apps directory for NuttX build system
 export APPDIR="$NUTTX_APPS_DIR"
 
-# Configure NuttX: symlink Make.defs from the board, copy our defconfig, resolve.
-# This replicates what tools/configure.sh does without requiring the full script
-# (which has additional dependencies like kconfig-tweak for host detection).
+# Configure NuttX with its own `tools/configure.sh`: the board config is a
+# fragment over an upstream config, which configure.sh expands, links the
+# board's Make.defs for, and resolves (`nros_nuttx_configure`).
 #
 # Also detect a stale build tree: .depend files generated against a previous
 # NuttX checkout can reference files that have since been moved (e.g.
@@ -259,10 +264,7 @@ fi
 if [ "$NEEDS_RECONFIG" -eq 1 ]; then
     echo "Configuring NuttX..."
     make distclean 2>/dev/null || true
-    rm -f .config Make.defs
-    ln -sf "$BOARD_MAKEDEFS" Make.defs
-    cp "$DEFCONFIG" .config
-    # #165 — regenerate a VALID apps/external staging before olddefconfig. The
+    # #165 — regenerate a VALID apps/external staging before the configure. The
     # kernel distclean above does NOT touch the apps tree, so a STALE
     # external/Kconfig survives across reconfigures/arch-switches — e.g. an old
     # per-example staging (pre-212.M-F.12) that `source`s per-example Kconfigs
@@ -273,7 +275,8 @@ if [ "$NEEDS_RECONFIG" -eq 1 ]; then
     # (a NuttX tree that is not a nano-ros apps tree just keeps its own external/).
     bash "$PROJECT_ROOT/scripts/nuttx/stage-external-apps.sh" "$NUTTX_APPS_DIR" \
         >/dev/null 2>&1 || true
-    make olddefconfig
+    nros_nuttx_configure "$NUTTX_DIR" "$NUTTX_APPS_DIR" "$DEFCONFIG" "$BOARD_MAKEDEFS" \
+        "$PROJECT_ROOT/build/nuttx-configure/$NUTTX_CONFIG_ID" || exit 1
     echo "$CURRENT_KEY" > "$MARKER"
 fi
 

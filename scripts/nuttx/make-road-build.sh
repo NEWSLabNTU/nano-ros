@@ -79,7 +79,7 @@ own_tree nuttx-kernel "$work/nuttx"
 own_tree nuttx-apps "$work/apps"
 
 # --- 2. configure -----------------------------------------------------------
-nros_nuttx_kconfig_frontend "$ROOT"
+nros_nuttx_kconfig_frontend || exit 1
 
 defval() { sed -n "s/^$1=\"\{0,1\}\([^\"]*\)\"\{0,1\}$/\1/p" "$defconfig" | head -1; }
 arch="$(defval CONFIG_ARCH)"
@@ -104,17 +104,14 @@ cp -r "$ROOT/tests/nuttx-make-road-app" "$APPDIR/external/nros-make-road-smoke"
 # shellcheck disable=SC2016  # $APPSDIR is kconfig's variable, expanded by kconfig
 echo 'source "$APPSDIR/external/nros-make-road-smoke/Kconfig"' >> "$APPDIR/external/Kconfig"
 
+# Configure the way a user does: NuttX's own configure over the board config
+# (a fragment), then nano-ros and the app switched on with `kconfig-tweak`, as
+# the NuttX book page says, and resolved again.
+nros_nuttx_configure "$work/nuttx" "$APPDIR" "$defconfig" "$work/nuttx/$makedefs" \
+    "$work/configure" >/dev/null || exit 1
 (
     cd "$work/nuttx"
-    ln -sf "$work/nuttx/$makedefs" Make.defs
-    cp "$defconfig" .config
-    {
-        # What `tools/configure.sh -a <appdir>` writes: the kernel finds its
-        # apps tree through this symbol (tools/Unix.mk), not through $APPDIR.
-        echo "CONFIG_APPS_DIR=\"$APPDIR\""
-        echo "CONFIG_NROS=y"
-        echo "CONFIG_NROS_MAKE_ROAD_SMOKE=y"
-    } >> .config
+    kconfig-tweak --file .config --enable CONFIG_NROS --enable CONFIG_NROS_MAKE_ROAD_SMOKE
     make olddefconfig >/dev/null
 )
 for sym in CONFIG_NROS CONFIG_NROS_MAKE_ROAD_SMOKE; do

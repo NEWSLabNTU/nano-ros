@@ -624,10 +624,10 @@ doctor:
         echo "  [MISSING] arm-none-eabi-gcc (run: nros setup --tool arm-none-eabi-gcc — prebuilt, no sudo; or apt gcc-arm-none-eabi) — 0368 F2"
         fail=1
     fi
-    if command -v kconfig-conf &>/dev/null || command -v olddefconfig &>/dev/null; then
+    if command -v kconfig-tweak &>/dev/null && command -v kconfig-conf &>/dev/null; then
         echo "  [OK] kconfig tools"
     else
-        echo "  [MISSING] kconfig-frontends-nox (run: just workspace apt-packages)"
+        echo "  [MISSING] kconfig-frontends-nox (run: sudo apt install kconfig-frontends-nox)"
         fail=1
     fi
     # genromfs — builds the `etc/` ROMFS image for the riscv rv-virt board

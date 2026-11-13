@@ -57,10 +57,11 @@ With two images, name the one you run: `nros run nuttx` or
   for the board's `riscv32imac-unknown-nuttx-elf` target with `build-std`.
 - **C is the runtime-checked language;** read the board's support page for
   what its Rust and C++ rows show.
-- **A Rust node needs a configured kernel.** For one, `nros build`
-  configures and exports the NuttX kernel from the board's defconfig first
-  (a current export is a no-op), then builds the entry with the board's
-  pinned nightly toolchain.
+- **A Rust node needs a configured kernel.** For one, `nros build` first
+  configures and exports the NuttX kernel from the board's config (a current
+  export is a no-op), then builds the entry with the board's pinned nightly
+  toolchain. The configure is NuttX's own `tools/configure.sh`, which needs
+  the kconfig-frontends tools; `nros setup <board> --sudo` installs them.
 - **The console is the NSH console.** A `nros build` image runs your node at
   boot. The readiness signal is the first `Publishing: 'Hello World: 1'`,
   within about six seconds of boot.
@@ -85,9 +86,15 @@ build verb, `make`, the way Zephyr owns `west build`:
    `apps/external/Kconfig`.
 2. Bring the symbols nano-ros needs into your configuration. Stock
    `qemu-armv7a/nsh` has no `CONFIG_NET`, no virtio-net and no `TLS_NELEM`.
-   With no configuration of your own, copy the board's defconfig,
-   `packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/defconfig`, to
-   `$NUTTX_DIR/.config`. With a vendor defconfig, merge the requirements into
+   With no configuration of your own, configure from the board's config,
+   `packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/defconfig`. It
+   `#include`s upstream's `qemu-armv7a:nsh` and lists only what differs, so
+   NuttX's own `tools/configure.sh` must expand it; copying it to `.config`
+   does not work. Put it in a directory beside a link to
+   `boards/arm/qemu/qemu-armv7a/scripts/Make.defs`, and pass that directory to
+   `tools/configure.sh -a <apps dir, relative to the kernel>`. configure.sh
+   runs `kconfig-tweak`, so it needs the kconfig-frontends tools (Debian and
+   Ubuntu: `kconfig-frontends-nox`). With a vendor defconfig, merge the requirements into
    it instead: `CONFIG_NET=y`, `CONFIG_NET_TCP=y`, `CONFIG_NET_IPv4=y`, the
    virtio-net options, `CONFIG_TLS_NELEM=8`, `CONFIG_LIBCXXTOOLCHAIN=y` and
    `CONFIG_ALLSYMS=n`. Then run `make olddefconfig`.

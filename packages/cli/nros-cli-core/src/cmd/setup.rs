@@ -5828,7 +5828,7 @@ mod tests {
     }
 
     /// Issue 2068, against the REAL index: on a host with neither, `nros setup`
-    /// for each NuttX board asks for the venv module and `unzip` — the two host
+    /// for each NuttX board asks for the kconfig-frontends tools and `unzip` — the two host
     /// tools the kernel build needs, which nothing tied to a NuttX board before
     /// `[source.*]` could carry a `system` list. Same plan, same state probe
     /// shape the board path builds; only the host's answers are injected.
@@ -5841,7 +5841,7 @@ mod tests {
         let host = host_key();
         for board in ["qemu-armv7a-nuttx", "rv-virt-nuttx"] {
             let pkgs = resolve_packages_with_rmw(&idx, board, None).unwrap();
-            let lacking = ["python3-venv", "unzip"];
+            let lacking = ["kconfig-frontends", "unzip"];
             let plan = SessionPlan::resolve(
                 &idx,
                 &pkgs,
@@ -5876,7 +5876,7 @@ mod tests {
                 None,
             );
             assert!(
-                text.contains("python3-venv") && text.contains("unzip"),
+                text.contains("kconfig-frontends-nox") && text.contains("unzip"),
                 "{board}: the apt command names both:\n{text}"
             );
         }
@@ -5909,7 +5909,7 @@ mod tests {
                 let installed = std::cell::Cell::new(false);
                 let mut ran: Vec<String> = Vec::new();
                 let mut state = |k: &str| {
-                    if ["python3-venv", "unzip"].contains(&k) && !installed.get() {
+                    if ["kconfig-frontends", "unzip"].contains(&k) && !installed.get() {
                         PrereqState::Missing
                     } else {
                         PrereqState::Present
@@ -5935,7 +5935,7 @@ mod tests {
                 if let Some(cmd) = ran.first() {
                     assert!(cmd.starts_with("sudo apt-get install -y"), "{case}: {cmd}");
                     assert!(
-                        cmd.contains("python3-venv") && cmd.contains("unzip"),
+                        cmd.contains("kconfig-frontends-nox") && cmd.contains("unzip"),
                         "{case}: {cmd}"
                     );
                     assert!(
@@ -5944,7 +5944,7 @@ mod tests {
                     );
                 } else {
                     assert!(
-                        plan.system.os.contains_key("python3-venv")
+                        plan.system.os.contains_key("kconfig-frontends")
                             && plan.system.os.contains_key("unzip"),
                         "{case}: without an install the ask stands"
                     );

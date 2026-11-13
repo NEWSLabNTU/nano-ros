@@ -24,8 +24,9 @@ a tab and every tab on the page follows.
   ([which edition](../start/install.md#install-ros-2-first)). ROS 2 provides the zenoh
   router the board talks to, and the message definitions the build generates
   the talker's code from.
-- Two host packages the NuttX kernel build uses, the Python venv module and
-  `unzip`, which the provision step installs for you when you allow it.
+- Two host packages the NuttX kernel build uses: the kconfig-frontends
+  tools, which configure the kernel, and `unzip`. The provision step
+  installs them for you when you allow it.
 - A `qemu-system-riscv32` from your distribution. The QEMU in nano-ros's
   store is built for Arm and 64-bit RISC-V only, so this board takes yours.
   On Debian or Ubuntu it is in `qemu-system-misc`.
@@ -165,7 +166,7 @@ which receives nothing from it. That is why the command asks for best-effort.
   the router. If you run your own
   router with `--router auto`, check that it listens on `0.0.0.0:7447`: one on
   `127.0.0.1` is out of the guest's reach.
-- **`nros setup` stops and names `python3-venv` or `unzip`:** you left
+- **`nros setup` stops and names `kconfig-frontends-nox` or `unzip`:** you left
   `--sudo` off. Run the command it printed.
 - **Everything else:** [Troubleshooting - First 10 Minutes](../reference/troubleshooting-index.md).
 
