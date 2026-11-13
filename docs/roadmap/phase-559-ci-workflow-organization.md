@@ -171,7 +171,26 @@ rules; flagged to the user):
   and `matrix-nightly` runs once a day. W5b: the measurement is recorded
   here; if tier 1 moves, a host witness row's daily binding names the nightly
   per-board shard and `check-cadence-jobs` passes.
-- **Status:** OPEN — W5a in this PR; W5b is next (measure first).
+- **Status:** BLOCKED (issue 2475) — W5a DONE (#3727, 2026-11-13).
+  W5b's tool is in `merge-runtime.yml` (`lane: tier1`). Its first
+  measurement, run 43390508641 (2026-11-13, hosted `ubuntu-22.04`, one shard
+  per host-witness board), reached NO fixture build. All three shards failed
+  on issue 2475's provisioning defects, the ones that already stop the merge
+  lane:
+
+  | shard | time | setup | `just build tier1` | failed on |
+  | --- | --- | --- | --- | --- |
+  | linux | 58.8 min | ~6.4 min | 51.9 min | `check fast`: `python-entry-provenance` NOT VERIFIED (no `rosidl` clone) |
+  | threadx_linux | 61.8 min | ~6.4 min | 54.4 min | `check fast` 551/551, then `_require-build-sources`: micro-xrce-dds-client, micro-cdr, px4-autopilot |
+  | zephyr | 53.3 min | ~10.6 min | 42.2 min | lane preflight: no pinned cargo-nextest in the zephyr-ci image |
+
+  What it does say: free disk at the start of the build was 74-76 G (the
+  `nano-ros-ci` shards) and 50 G (zephyr-ci), after `reclaim-disk.sh`, far
+  more than the ~16 G issue 1684 measured. And `just build <lane>` spends
+  42-54 min in tree-wide codegen and `check fast` before its first fixture
+  (issue 2475 defect 4). So the disk question is still open, and the time
+  question already looks bad for a daily hosted tier 1 unless defect 4 is
+  fixed. W5b re-measures once issue 2475 lands.
 
 ### W6 — `host-tests.yml` absorbs `check-build`, the census and the book probes
 

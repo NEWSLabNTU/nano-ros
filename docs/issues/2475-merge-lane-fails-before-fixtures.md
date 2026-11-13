@@ -6,7 +6,7 @@ type: bug
 area: [ci, testing, tooling]
 severity: medium
 found: 2026-11-12
-related: [2462, phase-535]
+related: [2462, phase-535, phase-559]
 ---
 
 **Home: [phase-535](../roadmap/phase-535-example-reorg-and-cadence-ci.md) W8.2.**
@@ -53,6 +53,14 @@ already exceeded 2-3 times before a fixture was built.
    4-vCPU hosted runner that is most of the budget. A per-board shard should
    generate only its own coordinates' trees, and the gates already run in
    `gate.yml` on the same commit.
+
+## Also blocks tier 1 on hosted shards (2026-11-13)
+
+phase-559 W5b dispatched `merge-runtime.yml` with `lane: tier1` (run
+43390508641). All three shards failed on defects 1-3 above, exactly as the
+merge lane does, after 42-54 min inside `just build tier1` (defect 4). So
+this issue also gates the measurement of whether tier 1 can leave the
+self-hosted runner.
 
 ## Done when
 
