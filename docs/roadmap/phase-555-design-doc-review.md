@@ -154,7 +154,7 @@ brief of RFC-0126 did.
   ruling
   ([data/phase-555-w2-platform-board-rtos.md](data/phase-555-w2-platform-board-rtos.md)).
   docs-ux-diagnostics reviewed 2026-11-13 (both halves, 8 RFCs), brief
-  awaiting a ruling ([issue 2486](../issues/2486-docs-ux-diagnostics-review-brief.md)).
+  awaiting a ruling ([data/phase-555-w2-docs-ux-diagnostics.md](data/phase-555-w2-docs-ux-diagnostics.md)).
 
 ### W3 -- Apply the rulings
 
