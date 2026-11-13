@@ -72,8 +72,8 @@ validates.
 | `duplicate` | the sequence number is below the expected one |
 | `crc_valid` | `Some(true)` matched, `Some(false)` corrupted, `None` no CRC sent |
 
-`is_valid()` is true when there is no gap, no duplicate, and the CRC is
-correct or absent. The first message a subscriber sees sets the expected
+`is_valid()` is true when there is no gap, no duplicate, and the CRC was
+checked and matched. A message with no CRC is not valid: nothing checked it. The first message a subscriber sees sets the expected
 sequence, so joining late is not a gap.
 
 The CRC is CRC-32/ISO-HDLC, the Ethernet polynomial, through a lookup table
@@ -116,15 +116,20 @@ and ignore the rest.
 | --- | --- | --- | --- | --- |
 | nano-ros with safety | nano-ros with safety | checked | tracked | full protection |
 | nano-ros with safety | nano-ros without, or ROS 2 | ignored | not tracked | works, no protection |
-| nano-ros without, or ROS 2 | nano-ros with safety | `None` | tracked | sequence only |
+| nano-ros without, or ROS 2 | nano-ros with safety | `None` | tracked | delivered, `is_valid()` false |
 
 So mixing protected and unprotected nodes degrades protection; it never
-stops traffic. A safety argument has to check that every link it relies on is
+stops traffic. A subscriber that wants to accept messages from an unprotected
+publisher reads `crc_valid` itself and decides; `is_valid()` never vouches for
+a message nothing checked. A safety argument has to check that every link it relies on is
 protected at both ends, because nothing on the wire will refuse an
 unprotected one.
 
 The CRC path lives in the zenoh backend, which is why the safety workspace
-also states `rmw = "zenoh"`: the protocol is zenoh-only.
+also states `rmw = "zenoh"`: the protocol is zenoh-only. Cyclone DDS and
+XRCE-DDS have no place to carry the CRC, so an image that declares `safety`
+with one of them as its RMW does not build: the build stops and names the
+RMWs that carry it.
 
 ## Compared with AUTOSAR E2E
 

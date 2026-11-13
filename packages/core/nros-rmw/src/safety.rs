@@ -68,17 +68,25 @@ pub struct IntegrityStatus {
     /// CRC validation result:
     /// - `Some(true)` = CRC matched
     /// - `Some(false)` = CRC mismatch (data corrupted)
-    /// - `None` = no CRC present (sender doesn't have safety-e2e)
+    /// - `None` = NOT CHECKED: no CRC reached this subscriber. Either the
+    ///   sender was built without safety-e2e, or the backend has no CRC
+    ///   carrier and its `take_validated` default made no check at all.
     pub crc_valid: Option<bool>,
 }
 
 impl IntegrityStatus {
     /// Returns true if the message passed all integrity checks.
     ///
-    /// Valid means: no sequence gap, not a duplicate, and CRC is
-    /// either correct or absent (interop with non-safety publishers).
+    /// Valid means: no sequence gap, not a duplicate, and a CRC that was
+    /// CHECKED and matched. A sample with no CRC (`crc_valid == None`) is not
+    /// valid: it was never checked, so calling it valid would vouch for
+    /// something nobody verified. That `None` is also what a backend with no
+    /// CRC carrier returns for every sample (issue 2487), so treating it as
+    /// valid made E2E integrity fail open there. A subscriber that wants to
+    /// accept samples from publishers built without safety reads
+    /// `crc_valid` itself and decides.
     pub fn is_valid(&self) -> bool {
-        self.gap == 0 && !self.duplicate && self.crc_valid != Some(false)
+        self.gap == 0 && !self.duplicate && self.crc_valid == Some(true)
     }
 }
 
@@ -259,14 +267,15 @@ mod tests {
     }
 
     #[test]
-    fn integrity_status_valid_no_crc() {
-        // No CRC (interop with non-safety publisher) is still valid
+    fn integrity_status_no_crc_is_not_valid() {
+        // No CRC means no check was made (a non-safety publisher, or a
+        // backend with no CRC carrier). Unchecked is never valid (issue 2487).
         let status = IntegrityStatus {
             gap: 0,
             duplicate: false,
             crc_valid: None,
         };
-        assert!(status.is_valid());
+        assert!(!status.is_valid());
     }
 
     #[test]
@@ -366,10 +375,13 @@ mod tests {
 
     #[test]
     fn validator_no_crc_interop() {
-        // Messages from non-safety publishers have no CRC
+        // Messages from non-safety publishers have no CRC. The sample is
+        // delivered and its sequence tracked, but it was never checked, so it
+        // is not valid (issue 2487).
         let mut v = SafetyValidator::new();
         let status = v.validate(0, None);
-        assert!(status.is_valid());
+        assert_eq!((status.gap, status.duplicate), (0, false));
+        assert!(!status.is_valid());
         assert_eq!(status.crc_valid, None);
     }
 
@@ -455,12 +467,12 @@ mod tests {
         assert!(!ghost.crc_ok);
 
         // Verify is_valid correspondence for all cases
-        // is_valid: gap == 0 && !duplicate && crc_valid != Some(false)
-        // ghost:    gap == 0 && !duplicate && !(crc_known && !crc_ok)
+        // is_valid: gap == 0 && !duplicate && crc_valid == Some(true)
+        // ghost:    gap == 0 && !duplicate && crc_known && crc_ok
         let cases: &[(i64, bool, Option<bool>)] = &[
             (0, false, Some(true)),  // valid
             (0, false, Some(false)), // invalid: CRC bad
-            (0, false, None),        // valid: no CRC
+            (0, false, None),        // invalid: no CRC, not checked
             (3, false, Some(true)),  // invalid: gap
             (0, true, Some(true)),   // invalid: duplicate
         ];
@@ -477,8 +489,7 @@ mod tests {
                 crc_ok: prod.crc_valid == Some(true),
             };
             let prod_valid = prod.is_valid();
-            let ghost_valid =
-                ghost.gap == 0 && !ghost.duplicate && !(ghost.crc_known && !ghost.crc_ok);
+            let ghost_valid = ghost.gap == 0 && !ghost.duplicate && ghost.crc_known && ghost.crc_ok;
             assert_eq!(
                 prod_valid, ghost_valid,
                 "Mismatch for gap={}, dup={}, crc={:?}: prod={}, ghost={}",

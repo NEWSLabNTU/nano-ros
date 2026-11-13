@@ -61,9 +61,11 @@ impl Capability {
     /// `true` if this capability's backend feature applies to `backend`, a
     /// backend the provider scan resolved (RFC-0071 D14).
     pub fn backend_supports(&self, backend: &crate::rmw_resolver::ResolvedRmwIn) -> bool {
-        // Asks the backend's descriptor, not a list kept here. A capability the
-        // backend does not declare no-ops exactly as before — the difference is
-        // only WHERE the relation is recorded.
+        // Asks the backend's descriptor, not a list kept here. A declared
+        // capability the backend does not carry is REFUSED by every road that
+        // lowers it (issue 2487, `backend_link::undeclared_capability_refusal`
+        // and the cmake/west twins); it used to no-op, which for `safety`
+        // reported every sample valid without a check.
         self.backend_feature.is_some() && backend.declares_capability(self.declared)
     }
 }
@@ -71,8 +73,10 @@ impl Capability {
 /// The capability axes nano-ros lowers today.
 pub const CAPABILITIES: &[Capability] = &[
     // E2E message integrity. CRC attach (publisher) + validate (subscriber) live
-    // behind the zenoh backend's own `safety-e2e`; xrce / cyclonedds carry no such
-    // feature, so the axis no-ops there (issue 0072).
+    // behind the backend's own feature (zenoh's `safety-e2e`); a backend that
+    // declares no `safety` in its `[rmw.capabilities]` has no CRC carrier, and
+    // an image declaring `safety` on it is refused (issue 2487; was a silent
+    // no-op, issue 0072).
     Capability {
         declared: "safety",
         nros_feature: Some("safety-e2e"),

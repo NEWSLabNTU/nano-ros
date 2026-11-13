@@ -21,6 +21,8 @@
 //!   supply) and the Phase 139 `integrations/<rtos>/` shells. The
 //!   placeholder matrix cells (which only ever `skip!`ed, deferred to a
 //!   never-tracked "Phase 139") were removed. POSIX guards the dispatch path.
+//! - `safety` on an RMW with no E2E integrity path is refused at configure
+//!   (issue 2487), from the `cmake_safety_unsupported_rmw_refused` verdict row.
 //! - bare-metal exercises the FATAL_ERROR path in
 //!   `nros-baremetal.cmake` (missing `NROS_BOARD`) via a configure-
 //!   only check; the rest of the link is board-specific and lives in
@@ -71,5 +73,39 @@ fn cmake_platform_threadx_requires_board() -> TestResult<()> {
         "expected the FATAL_ERROR message to mention NROS_BOARD; got:\n{}",
         v.stderr
     );
+    Ok(())
+}
+
+/// Issue 2487 — a declared `safety` capability on an RMW that carries no E2E
+/// integrity path is REFUSED at configure time, naming the RMW. It used to
+/// warn and build on: the image kept the validated-subscription API, the
+/// backend made no check, and every sample read as valid. Row
+/// `cmake_safety_unsupported_rmw_refused` (`fixtures/cmake_safety_unsupported_rmw/`).
+/// The refusal is a user-facing message, so it must carry no tracker id.
+#[test]
+fn safety_on_an_rmw_without_crc_is_refused_at_configure() -> TestResult<()> {
+    let v = require_compile_verdict("cmake_safety_unsupported_rmw_refused")?.outcome;
+    assert!(
+        !v.success(),
+        "expected `safety` with NROS_RMW=cyclonedds to FATAL_ERROR at configure \
+         time, but cmake exited 0.\nstdout:\n{}\nstderr:\n{}",
+        v.stdout,
+        v.stderr
+    );
+    // cmake wraps a long message, so compare with whitespace collapsed.
+    let err = v.stderr.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        err.contains("capability 'safety' is declared, but the 'cyclonedds' RMW does not carry it"),
+        "expected the refusal to name the capability and the RMW; got:\n{}",
+        v.stderr
+    );
+    let refusal = &err[err.find("capability 'safety'").unwrap()..];
+    let refusal = &refusal[..refusal.find("Call Stack").unwrap_or(refusal.len())];
+    for id in ["issue", "RFC-", "phase-"] {
+        assert!(
+            !refusal.contains(id),
+            "a user-facing refusal names `{id}`: {refusal}"
+        );
+    }
     Ok(())
 }

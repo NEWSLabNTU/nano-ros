@@ -9,7 +9,7 @@
 /// 2. **`crc32_single_bit_detection`** — flipping any single bit in 1-byte data changes CRC
 /// 3. **`validator_sequence_monotonicity`** — normal message increments expected_seq
 /// 4. **`gap_detection_completeness`** — gap equals msg_seq - expected_seq when msg_seq > expected_seq
-/// 5. **`is_valid_correctness`** — is_valid iff gap==0, not duplicate, CRC not known-bad
+/// 5. **`is_valid_correctness`** — is_valid iff gap==0, not duplicate, CRC checked and good
 ///
 /// ## Trust levels
 ///
@@ -160,16 +160,15 @@ pub open spec fn validate_spec(
 
 /// Spec: `IntegrityStatus::is_valid()` behavior.
 ///
-/// Models (safety.rs:80-82):
+/// Models `IntegrityStatus::is_valid` in nros-rmw/src/safety.rs:
 /// ```ignore
-/// self.gap == 0 && !self.duplicate && self.crc_valid != Some(false)
+/// self.gap == 0 && !self.duplicate && self.crc_valid == Some(true)
 /// ```
 ///
-/// Ghost decomposition of `crc_valid != Some(false)`:
-/// - `Some(false)` means `crc_known && !crc_ok`
-/// - `!= Some(false)` means `!(crc_known && !crc_ok)`
+/// Ghost decomposition of `crc_valid == Some(true)`: `crc_known && crc_ok`.
+/// An absent CRC (`!crc_known`) is NOT valid: no check was made (issue 2487).
 pub open spec fn integrity_is_valid(s: IntegrityStatusGhost) -> bool {
-    s.gap == 0 && !s.duplicate && !(s.crc_known && !s.crc_ok)
+    s.gap == 0 && !s.duplicate && s.crc_known && s.crc_ok
 }
 
 // ======================================================================
@@ -320,11 +319,11 @@ proof fn gap_detection_completeness(v: SafetyValidatorGhost, msg_seq: i64)
 /// `integrity_is_valid` returns true if and only if:
 /// - gap == 0 (no missing messages)
 /// - duplicate == false (not a redelivery)
-/// - CRC is not known-bad (either correct or absent)
+/// - CRC was checked and matched (`crc_valid == Some(true)`)
 ///
-/// This is the boolean decomposition of `crc_valid != Some(false)`:
-/// - `Some(false)` maps to `crc_known && !crc_ok`
-/// - Therefore `!= Some(false)` maps to `!(crc_known && !crc_ok)`
+/// This is the boolean decomposition of `crc_valid == Some(true)`:
+/// `crc_known && crc_ok`. An absent CRC was never checked, so it is not
+/// valid (issue 2487).
 ///
 /// Safety relevance: The is_valid() check is the safety gate — messages that
 /// pass this check are safe to deliver to the application. No false positives
@@ -333,17 +332,17 @@ proof fn gap_detection_completeness(v: SafetyValidatorGhost, msg_seq: i64)
 proof fn is_valid_correctness(s: IntegrityStatusGhost)
     ensures
         // Forward: all conditions met implies valid
-        (s.gap == 0 && !s.duplicate && !(s.crc_known && !s.crc_ok))
+        (s.gap == 0 && !s.duplicate && s.crc_known && s.crc_ok)
             ==> integrity_is_valid(s),
         // Reverse: valid implies all conditions met
         integrity_is_valid(s)
-            ==> (s.gap == 0 && !s.duplicate && !(s.crc_known && !s.crc_ok)),
+            ==> (s.gap == 0 && !s.duplicate && s.crc_known && s.crc_ok),
         // Specific cases: known-good CRC is valid
         (s.gap == 0 && !s.duplicate && s.crc_known && s.crc_ok)
             ==> integrity_is_valid(s),
-        // No CRC (interop) is valid
-        (s.gap == 0 && !s.duplicate && !s.crc_known)
-            ==> integrity_is_valid(s),
+        // No CRC means no check was made: never valid
+        (!s.crc_known)
+            ==> !integrity_is_valid(s),
         // Known-bad CRC is invalid
         (s.crc_known && !s.crc_ok)
             ==> !integrity_is_valid(s),
@@ -364,7 +363,7 @@ proof fn is_valid_correctness(s: IntegrityStatusGhost)
 /// **Helper: `validate_first_message_valid`**
 ///
 /// The first message to an uninitialized validator always produces gap==0,
-/// duplicate==false (i.e., the message is valid if CRC is ok or absent).
+/// duplicate==false (i.e., the message is valid if its CRC is ok).
 ///
 /// Models the first-message branch at safety.rs:113-122.
 proof fn validate_first_message_valid(v: SafetyValidatorGhost, msg_seq: i64)

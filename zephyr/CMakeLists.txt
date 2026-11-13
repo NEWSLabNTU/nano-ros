@@ -620,15 +620,19 @@ if(CONFIG_NROS_CPP_API)
     if("rosout" IN_LIST NROS_FEATURES)
         string(APPEND _nros_cap_suffix ",rosout")
     endif()
-    if("safety" IN_LIST NROS_FEATURES)
-        if(CONFIG_NROS_RMW_ZENOH)
-            string(APPEND _nros_cap_suffix ",safety-e2e")
-        else()
-            message(WARNING
-                "nano-ros: capability 'safety' ignored -- only the zenoh RMW carries the "
-                "E2E integrity path on the Zephyr C/C++ road")
-        endif()
+    if("safety" IN_LIST NROS_FEATURES AND CONFIG_NROS_RMW_ZENOH)
+        string(APPEND _nros_cap_suffix ",safety-e2e")
     endif()
+endif()
+# Issue 2487 — `safety` on a backend with no CRC carrier is REFUSED, for every
+# API, not only C++. This warned and built on, so the image had no integrity
+# check while its declaration said it did. The message carries no tracker id.
+if("safety" IN_LIST NROS_FEATURES AND NOT CONFIG_NROS_RMW_ZENOH)
+    message(FATAL_ERROR
+        "nano-ros: capability 'safety' is declared, but this image's RMW does not "
+        "carry it on the Zephyr road (only zenoh does), so the image would be built "
+        "without end-to-end integrity checks. Select the zenoh RMW, or drop 'safety' "
+        "from the features.")
 endif()
 
 # Issue 1547 — the ROS edition cargo feature, resolved ONCE through the one

@@ -435,6 +435,13 @@ pub fn resolve_in(
         let resolved = rmws
             .resolve(declared)
             .map_err(|e| format!("`{image_id}`: {e}"))?;
+        // Issue 2487 — a declared capability this backend does not carry is
+        // refused here as on the cargo road, never dropped.
+        if let Some(refusal) =
+            crate::orchestration::backend_link::undeclared_capability_refusal(rmws, &resolved, sys)
+        {
+            return Err(format!("`{image_id}`: {refusal}"));
+        }
         // RFC-0071 D15 — the crate is `[rmw.provides.cargo] crate`, at the
         // directory the scan resolved (amended ruling 3), so a backend outside
         // the SDK root is found the same way as one inside it. No `crate` is a

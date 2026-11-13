@@ -4,7 +4,7 @@ title: "E2E Safety Protocol Integration Analysis"
 status: Stable
 area: rmw-wire
 since: 2026-02
-last-reviewed: 2026-11
+last-reviewed: 2026-11-13
 implements-tracked-by: [phase-35]
 supersedes: []
 superseded-by: null
@@ -14,7 +14,7 @@ superseded-by: null
 
 > Date: 2026-02-14
 > Prerequisite: `docs/research/safety-critical-platform-study.md`
-> Status: Implemented by phase-35 (`docs/roadmap/archived/phase-35-safety-hardening.md`, Complete). §7 records the plan; the crate and method names it uses predate the current API.
+> Status: Implemented by phase-35 (`docs/roadmap/archived/phase-35-safety-hardening.md`, Complete), on zenoh only. §7 records what was built (amended 2026-11-13).
 
 ## 1. Problem Statement
 
@@ -211,40 +211,60 @@ trait MonotonicClock {
 
 **Recommendation**: Defer freshness validation to a follow-up. CRC + sequence tracking provides strong integrity without a clock dependency.
 
-## 7. Integration Approach
+## 7. As built
 
-### Feature flag: `safety-e2e`
+This section replaces the 2026-02 integration plan, which said the zenoh
+backend needed no change and that every backend would carry the protocol
+through `nros-rmw`. Neither held. Amended 2026-11-13 (issue 2487).
 
-A compile-time feature flag on `nros-rmw` that:
-- Publisher: computes CRC-32 over CDR payload, appends to attachment
-- Subscriber: validates CRC, tracks sequences, reports `IntegrityStatus`
-- Zero cost when disabled (no code compiled)
+### E2E integrity is zenoh-only
 
-The feature propagates through the crate hierarchy:
-```
-nros (top-level) → nros-node → nros-rmw
-  safety-e2e        safety-e2e   safety-e2e
-```
+- **The carrier is the zenoh attachment** (§4 option A). The CRC is computed
+  and checked in the zenoh backend's own `safety-e2e` feature
+  (`nros-rmw-zenoh`'s shim), not in `nros-rmw`. `nros-rmw/safety-e2e` holds
+  only the shared types: `crc32`, `IntegrityStatus` and `SafetyValidator`.
+- **A backend states that it carries the protocol** in its `nros-rmw.toml`:
+  `[rmw.capabilities] safety = "<its feature>"`. Only zenoh declares it.
+  Cyclone DDS, XRCE-DDS and uORB declare nothing and have no CRC carrier:
+  §4 option B, a payload footer, was rejected for interop, and no DDS inline-QoS
+  carrier exists.
+- **A `safety` declaration on a backend that does not carry it is refused at
+  build time**, on every road that lowers the capability: the cargo road's
+  facade and leaf selection, the Zephyr west Rust road
+  (`backend_link::undeclared_capability_refusal`), the cmake road
+  (`nros_feature_set`), and the Zephyr C/C++ road (`zephyr/CMakeLists.txt`).
+  The refusal names the backend and the backends that do carry the capability.
+  It used to warn and build on, which left the validated-subscription API in
+  the image with no check behind it. The same rule covers every capability
+  with a backend half, `link-tls` included.
 
-### Changes by layer
+### What a subscriber is told
 
-**`nros-rmw`** (core changes):
-- New `safety` module: CRC-32 function, `IntegrityStatus` type, `SafetyValidator` state tracker
-- `ShimPublisher::publish_raw()`: behind `#[cfg(feature = "safety-e2e")]`, compute CRC and extend attachment from 33 to 37 bytes
-- `SubscriberBuffer`: increase attachment buffer from 33 to 37 bytes when feature enabled
-- `ShimSubscriber`: add `SafetyValidator` field, add `take_validated()` method
+- The `nros-rmw` trait default `take_validated`, and the cffi seam that
+  Cyclone, XRCE and uORB sit behind, return `crc_valid: None`, `gap: 0` and
+  `duplicate: false`. That means "not checked". It does not mean valid.
+- **`IntegrityStatus::is_valid()` is true only for a checked, matching CRC**:
+  `gap == 0 && !duplicate && crc_valid == Some(true)`. A sample with no CRC is
+  never valid, whatever the reason the CRC is missing. Before 2026-11-13 it
+  accepted `None`, which made the check fail open on a backend with no
+  carrier. The Verus model (`nros-verification/src/safety.rs`,
+  `integrity_is_valid`) states the same rule.
+- The C and C++ surfaces pass the raw verdict: `crc_valid` is `1` (match),
+  `0` (mismatch) or `-1` (no CRC). The in-tree C and C++ safety listeners
+  already count only `1` as valid.
+- An application that wants to accept samples from publishers built without
+  safety reads `crc_valid` itself and decides. `is_valid()` does not make
+  that choice for it.
 
-**`nros-node`** (API surface):
-- `ShimNodeSubscription`: add `try_recv_safe()` method returning `(M, IntegrityStatus)` when feature enabled
+### Feature wiring
 
-**No changes to**:
-- CDR serialization (`nros-serdes`) — payload format unchanged
-- Core types (`nros-core`) — no new traits needed
-- Transport traits (`traits.rs`) — shim-specific, not trait-level
-- Zenoh backend (`nros-rmw-zenoh`) — attachment handling already supports variable sizes
-- Existing `take()` API — remains available, unchanged behavior
+`nros/safety-e2e` enables `nros-node/safety-e2e`, `nros-rmw/safety-e2e` and
+`nros-rmw-cffi?/safety-e2e`. It names no backend, because cargo features do
+not propagate upward. The backend's own feature is reached through the
+capability lowering (`capability_resolver::CAPABILITIES`, row `safety`) and
+the board crate's forward of it.
 
-### Memory impact
+### Memory impact (design estimate, 2026-02, not re-measured)
 
 | Component                           | Without `safety-e2e` | With `safety-e2e`        |
 |-------------------------------------|----------------------|--------------------------|
@@ -262,10 +282,13 @@ Negligible for any embedded target (even Cortex-M0 has 16+ KB SRAM).
 | nano-ros (safety)    | nano-ros (safety)    | Validated                        | Tracked     | Full E2E protection  |
 | nano-ros (safety)    | nano-ros (no safety) | Ignored (extra attachment bytes) | Not tracked | Works, no protection |
 | nano-ros (safety)    | ROS 2 (rmw_zenoh)    | Ignored (extra attachment bytes) | Not tracked | Works, no protection |
-| nano-ros (no safety) | nano-ros (safety)    | `crc_valid: None`                | Tracked     | Partial (seq only)   |
-| ROS 2 (rmw_zenoh)    | nano-ros (safety)    | `crc_valid: None`                | Tracked     | Partial (seq only)   |
+| nano-ros (no safety) | nano-ros (safety)    | `crc_valid: None`                | Tracked     | Delivered, `is_valid()` false |
+| ROS 2 (rmw_zenoh)    | nano-ros (safety)    | `crc_valid: None`                | Tracked     | Delivered, `is_valid()` false |
 
-No interoperability is broken. Safety degrades gracefully when one side doesn't support it.
+No interoperability is broken: every sample is delivered. A sample with no CRC
+is reported as unchecked, never as valid (§7 "What a subscriber is told"). On
+a backend other than zenoh there is no row here: an image declaring `safety`
+on one is refused at build time.
 
 ## 9. AUTOSAR E2E Comparison
 

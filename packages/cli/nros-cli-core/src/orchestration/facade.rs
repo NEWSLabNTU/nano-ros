@@ -1315,23 +1315,19 @@ fn derive(
     // W4d — it was `nros/rmw-cyclonedds`).
     let mut nros_features = vec![edition.cargo_feature().to_string()];
     // Issue 2448 — no `nros` dependency, no `nros` axes. The capability loop
-    // below still runs: its warnings are about the declaration, not the crate.
+    // below still runs: its refusal is about the declaration, not the crate.
+    //
+    // Issue 2487 — a declared capability the backend does not carry is
+    // REFUSED, never omitted. This warned and dropped the `nros` half, which
+    // did not stop a node package naming `nros/safety-e2e` itself, so a
+    // `safety` image on a backend with no CRC carrier built and reported every
+    // sample valid. One predicate for every road:
+    // `backend_link::undeclared_capability_refusal`.
+    if let Some(refusal) = backend_link::undeclared_capability_refusal(rmws, &rmw, sys) {
+        return Err(eyre::eyre!("image `{entry_name}`: {refusal}"));
+    }
     for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
         if !sys.capability_enabled(cap.declared) {
-            continue;
-        }
-        // `safety` is zenoh-only — the CRC path lives in that backend. Mirrors
-        // the same guard in `nros_feature_set` (cmake), which warns rather than
-        // silently dropping it.
-        // phase-347 W4 — "does this axis have a backend half at all" is now
-        // `backend_feature.is_some()`; which backends carry it comes from their
-        // descriptors, not a list in the registry.
-        if cap.backend_feature.is_some() && !cap.backend_supports(&rmw) {
-            eprintln!(
-                "sync: facade `{entry_name}`: capability `{}` declared but the \
-                 `{}` RMW does not carry it — omitted.",
-                cap.declared, rmw.declared,
-            );
             continue;
         }
         if let Some(f) = cap.nros_feature {
@@ -2030,6 +2026,44 @@ mod tests {
         // The in-tree answer is unknown to the SDK-only index, and refused.
         assert!(
             entry_selection_in(&in_tree(), "linux_acme_entry", &sys, &root, Some(&board)).is_err()
+        );
+    }
+
+    /// Issue 2487 — an image that declares `safety` on an RMW with no CRC
+    /// carrier is REFUSED by the selection, never built with the axis
+    /// dropped: a node package that names `nros/safety-e2e` itself would
+    /// otherwise reach the backend's no-check `take_validated`, and every
+    /// sample read as valid. The same image on zenoh selects.
+    #[test]
+    fn a_capability_the_images_rmw_does_not_carry_is_refused() {
+        let root = cargo_nano_ros::rmw_resolver::test_support::checkout();
+        let board = root.join("packages/boards/nros-board-linux");
+        let sys = |rmw: &str| -> SystemToml {
+            toml::from_str(&format!(
+                "[system]\nname = \"demo\"\nrmw = \"{rmw}\"\ndomain_id = 0\n\
+                 features = [\"safety\"]\n\n[image.linux]\nboard = \"linux\"\n"
+            ))
+            .unwrap()
+        };
+        for rmw in ["cyclonedds", "xrce"] {
+            let e = entry_selection_in(&in_tree(), "linux_entry", &sys(rmw), &root, Some(&board))
+                .expect_err("`safety` on an RMW with no CRC carrier must be refused")
+                .to_string();
+            assert!(e.contains("capability `safety`"), "{e}");
+            assert!(e.contains(&format!("`{rmw}` RMW")), "{e}");
+        }
+        let sel = entry_selection_in(
+            &in_tree(),
+            "linux_entry",
+            &sys("zenoh"),
+            &root,
+            Some(&board),
+        )
+        .expect("zenoh carries `safety`");
+        assert!(
+            sel.nros_features.iter().any(|f| f == "safety-e2e"),
+            "{:?}",
+            sel.nros_features
         );
     }
 
