@@ -114,7 +114,7 @@ allowance row:
 
 ### W3 — PX4
 
-- **Status:** DONE (2026-11-13, #PRNUM). SITL is covered. The NuttX half was
+- **Status:** DONE (2026-11-13, #3735). SITL is covered. The NuttX half was
   measured once and has no lane; that is W3b.
 
 The placer runs the walk. `scripts/build/cargo-out-dir-headers.py --stack-floor
