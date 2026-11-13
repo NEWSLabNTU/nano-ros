@@ -40,6 +40,13 @@ consumer expects to find). And since `probe-workspace-caps` and `api-parity` lef
 the fast lane for the `check-fast-compile` job, every `just check <gate>` that job
 runs must ALSO run in `warm-cache` in the same window (`WARMED_GATE_JOBS`).
 
+The CLI binary cache's steps live in the composite `.github/actions/setup-nros-cli`
+(the one CLI build road). A job that USES the composite is read as if the
+composite's cache steps were written in it (`expand_composites`), and a
+`steps.<id>.outputs.key` naming that step is read as the composite's own key.
+Otherwise the consumers would have no cache step in their text and the warm
+job's key would match nothing.
+
 Run:  python3 scripts/check-gate-cache-keys-agree.py [--self-test]
 """
 
@@ -50,6 +57,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GATE = os.path.join(ROOT, ".github", "workflows", "gate.yml")
 WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
+CLI_ACTION = "./.github/actions/setup-nros-cli"
+CLI_ACTION_FILE = os.path.join(ROOT, ".github", "actions", "setup-nros-cli", "action.yml")
 
 # (consumer job-name PREFIX, warmer job, what the pair caches). A prefix, not a
 # name: phase-489 W1 split the one `check` consumer into `check-*` siblings,
@@ -150,6 +159,51 @@ def restore_only_keys(body):
         if key:
             out.append(key.group(1).strip())
     return out
+
+
+def _composite_cache_steps(path=CLI_ACTION_FILE):
+    """The composite's actions/cache steps, as job-step text (6-space steps)."""
+    import yaml  # local: the rest of this gate is regex-only
+
+    with open(path, encoding="utf8") as fh:
+        steps = (yaml.safe_load(fh).get("runs") or {}).get("steps") or []
+    out = []
+    for st in steps:
+        uses = str(st.get("uses", ""))
+        if not uses.startswith("actions/cache"):
+            continue
+        w = st.get("with") or {}
+        lines = ["      - name: (%s) %s" % (CLI_ACTION, st.get("id", "cache")),
+                 "        uses: %s" % uses, "        with:"]
+        paths = [x for x in str(w.get("path", "")).split("\n") if x.strip()]
+        lines.append("          path: |")
+        lines += ["            " + x.strip() for x in paths]
+        lines.append("          key: %s" % str(w.get("key", "")).strip())
+        if w.get("lookup-only"):
+            lines.append("          lookup-only: true")
+        out.append("\n".join(lines))
+    return out
+
+
+def expand_composites(body, composite_steps=None):
+    """Inline the CLI composite's cache steps into a job that uses it.
+
+    `steps.<id>.outputs.key` of the composite step becomes the composite's
+    internal `steps.cli-key.outputs.key`, which is what its cache steps name.
+    """
+    if CLI_ACTION not in body:
+        return body
+    if composite_steps is None:
+        composite_steps = _composite_cache_steps()
+    ids = set()
+    for st in _steps(body):
+        if CLI_ACTION in st[1]:
+            m = re.search(r"^\s*(?:- )?id:\s*(\S+)", st[1], re.M)
+            if m:
+                ids.add(m.group(1))
+    for i in ids:
+        body = body.replace("steps.%s.outputs.key" % i, "steps.cli-key.outputs.key")
+    return body + "\n" + "\n".join(composite_steps)
 
 
 def produced_keys(body):
@@ -334,6 +388,18 @@ def self_test():
         assert concurrency_problems(cw % bad), "concurrency rule missed: " + bad
     assert concurrency_problems("name: x\n"), "missing concurrency must be reported"
 
+    # The CLI composite: a job that only USES it reads the composite's key, and
+    # the warm job's `steps.<id>.outputs.key` names that same key.
+    fake = ["      - name: (c) restore\n        uses: actions/cache/restore@v4\n        with:\n"
+            "          path: |\n            p\n          key: k-${{ steps.cli-key.outputs.key }}"]
+    use = "      - name: b\n        uses: %s\n" % CLI_ACTION
+    warm = ("      - name: b\n        id: w\n        uses: %s\n"
+            "      - name: s\n        uses: actions/cache/save@v4\n        with:\n"
+            "          path: |\n            p\n          key: k-${{ steps.w.outputs.key }}\n" % CLI_ACTION)
+    assert restore_only_keys(expand_composites(use, fake)) == ["k-${{ steps.cli-key.outputs.key }}"]
+    assert "k-${{ steps.cli-key.outputs.key }}" in produced_keys(expand_composites(warm, fake))
+    assert expand_composites("      - name: z\n        run: x\n", fake) == "      - name: z\n        run: x\n"
+
     t = (
         "jobs:\n"
         "  a:\n"
@@ -485,7 +551,7 @@ def main():
     self_test()
 
     with open(GATE, encoding="utf8") as fh:
-        js = jobs(fh.read())
+        js = {k: expand_composites(v) for k, v in jobs(fh.read()).items()}
 
     problems = []
     checked = 0

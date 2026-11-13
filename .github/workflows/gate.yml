@@ -508,65 +508,12 @@ jobs:
       # It sits AFTER the sccache steps deliberately: `RUSTC_WRAPPER` has to be
       # exported before the first cargo invocation or this build is the one
       # compile in the job that misses the cache.
-      # phase-489 W3 — cache the BINARIES, not the build tree.
-      #
-      # This step used to restore all of `packages/cli/target` and
-      # `nros-launch-resolve/target`: main's entry was 2967 MB and took a
-      # constant 3.8 min on every event, to hand this job one 28 MB `nros`.
-      # What the job actually consumes is `nros` (asked for its own freshness
-      # by `source-stamp` below), and `nros-launch-resolve` with the two files
-      # `just setup-launch-resolve` keeps beside it: the content stamp its skip
-      # path compares, and the Python half it `dlopen`s. Four files, ~42 MB
-      # uncompressed.
-      #
-      # THE KEY IS A SUPERSET OF THE STAMP. The old key hashed
-      # `packages/cli/**/{Cargo.lock,Cargo.toml,*.rs}` and was narrower than
-      # `source_stamp.rs`'s watch set — no `.jinja`, `askama.toml`,
-      # `cli-source-dirs.txt`, out-of-tree crate dirs or `play_launch` pin — so
-      # an exact hit existed for a tree whose stamp had moved, and only cargo's
-      # mtime luck stood between it and a stale binary. The script hashes the
-      # git index entries of EVERY file in the stamp's closure (packages/cli plus
-      # each dir `cli-source-dirs.txt` lists) — the submodule gitlinks
-      # included, so the pin is in it — plus the toolchain pin. No restore-keys:
-      # a partial hit is by definition a binary for another tree.
-      #
-      # The key is still not the authority. `nros source-stamp` in the next step
-      # is: it refuses a binary whose baked stamp is not this checkout's, and the
-      # step then builds rather than trusting the cache.
-      #
-      # RESTORE-ONLY, for the scoping reason the sccache step gives;
-      # `warm-cache` on push to main is the one writer.
-      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
-        id: cli-key
-        run: |
-          key="$(scripts/ci/cli-bin-cache-key.sh)"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the nros + nros-launch-resolve binaries (every event)
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            packages/cli/target/release/nros
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
-            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
-
-      # The user's verb, not a CI-only build: `just setup-cli` runs on every
-      # event, and ITS freshness check (`nros source-stamp`) decides whether
-      # the restored binary is this tree's — skip if so, `cargo build --locked`
-      # if not. The cache only pre-populates what setup-cli would build; it
-      # never replaces the step.
-      # phase-429 W5 — then ASSERT the binary matches the checkout, whichever
-      # path produced it. `play_launch` is initialised FIRST: its pin is a
-      # stamp input.
+      # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
+      # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
       - name: Build the in-tree nros CLI (every event)
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          source ./activate.sh
-          just setup-cli
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
 
       # ----- shared setup -----
       #
@@ -875,29 +822,12 @@ jobs:
             sed 's/^/  /' /tmp/sccache-start.log || true
           fi
 
-      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
-        id: cli-key
-        run: |
-          key="$(scripts/ci/cli-bin-cache-key.sh)"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the nros + nros-launch-resolve binaries (every event)
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            packages/cli/target/release/nros
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
-            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
-
+      # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
+      # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
       - name: Build the in-tree nros CLI (every event)
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          source ./activate.sh
-          just setup-cli
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
 
       - name: Provision Corrosion (pinned by [tool.corrosion])
         run: |
@@ -1033,29 +963,12 @@ jobs:
             sed 's/^/  /' /tmp/sccache-start.log || true
           fi
 
-      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
-        id: cli-key
-        run: |
-          key="$(scripts/ci/cli-bin-cache-key.sh)"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the nros + nros-launch-resolve binaries (every event)
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            packages/cli/target/release/nros
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
-            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
-
+      # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
+      # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
       - name: Build the in-tree nros CLI (every event)
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          source ./activate.sh
-          just setup-cli
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
 
       - name: Provision clang-format (pinned by [tool.clang-format])
         run: |
@@ -1316,29 +1229,12 @@ jobs:
           restore-keys: |
             nros-cli-${{ runner.os }}-
 
-      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
-        id: cli-key
-        run: |
-          key="$(scripts/ci/cli-bin-cache-key.sh)"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the nros + nros-launch-resolve binaries (every event)
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            packages/cli/target/release/nros
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
-            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
-
+      # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
+      # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
       - name: Build the in-tree nros CLI (every event)
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          source ./activate.sh
-          just setup-cli
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
 
       - name: Provision clang-format (pinned by [tool.clang-format])
         run: |
@@ -1661,29 +1557,12 @@ jobs:
             sed 's/^/  /' /tmp/sccache-start.log || true
           fi
 
-      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
-        id: cli-key
-        run: |
-          key="$(scripts/ci/cli-bin-cache-key.sh)"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the nros + nros-launch-resolve binaries (every event)
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            packages/cli/target/release/nros
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
-            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
-
+      # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
+      # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
       - name: Build the in-tree nros CLI (every event)
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          source ./activate.sh
-          just setup-cli
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
 
       - name: Provision clang-format (pinned by [tool.clang-format])
         run: |
@@ -1898,29 +1777,12 @@ jobs:
             sed 's/^/  /' /tmp/sccache-start.log || true
           fi
 
-      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
-        id: cli-key
-        run: |
-          key="$(scripts/ci/cli-bin-cache-key.sh)"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the nros + nros-launch-resolve binaries (every event)
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            packages/cli/target/release/nros
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
-            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
-
+      # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
+      # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
       - name: Build the in-tree nros CLI (every event)
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          source ./activate.sh
-          just setup-cli
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
 
       - name: Provision clang-format (pinned by [tool.clang-format])
         run: |
@@ -2149,29 +2011,12 @@ jobs:
             sed 's/^/  /' /tmp/sccache-start.log || true
           fi
 
-      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
-        id: cli-key
-        run: |
-          key="$(scripts/ci/cli-bin-cache-key.sh)"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the nros + nros-launch-resolve binaries (every event)
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            packages/cli/target/release/nros
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
-            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
-
+      # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
+      # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
       - name: Build the in-tree nros CLI (every event)
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          source ./activate.sh
-          just setup-cli
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
 
       # Issue 2369 — the store prefixes this job fetches or builds
       # (arm-none-eabi-gcc, Corrosion), restored as one entry keyed on exactly
@@ -2387,29 +2232,12 @@ jobs:
         run: scripts/ci/report-runner-hardware.sh
 
       # Same CLI cache as `check-template-copy-out`.
-      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
-        id: cli-key
-        run: |
-          key="$(scripts/ci/cli-bin-cache-key.sh)"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the nros + nros-launch-resolve binaries (every event)
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            packages/cli/target/release/nros
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
-            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
-
+      # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
+      # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
       - name: Build the in-tree nros CLI (every event)
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          source ./activate.sh
-          just setup-cli
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
 
       - name: Disk report (before Zephyr setup) — issue 1353
         if: ${{ !cancelled() }}
@@ -2589,29 +2417,12 @@ jobs:
             sed 's/^/  /' /tmp/sccache-start.log || true
           fi
 
-      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
-        id: cli-key
-        run: |
-          key="$(scripts/ci/cli-bin-cache-key.sh)"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the nros + nros-launch-resolve binaries (every event)
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            packages/cli/target/release/nros
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
-            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
-
+      # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
+      # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
       - name: Build the in-tree nros CLI (every event)
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          source ./activate.sh
-          just setup-cli
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
 
       - name: Provision clang-format (pinned by [tool.clang-format])
         run: |
@@ -2800,29 +2611,12 @@ jobs:
             sed 's/^/  /' /tmp/sccache-start.log || true
           fi
 
-      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
-        id: cli-key
-        run: |
-          key="$(scripts/ci/cli-bin-cache-key.sh)"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the nros + nros-launch-resolve binaries (every event)
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            packages/cli/target/release/nros
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
-            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
-
+      # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
+      # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
       - name: Build the in-tree nros CLI (every event)
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          source ./activate.sh
-          just setup-cli
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
 
       - name: Provision clang-format (pinned by [tool.clang-format])
         run: |
@@ -3255,30 +3049,16 @@ jobs:
           key: ${{ steps.store-key.outputs.key }}
           lookup-only: true
 
-      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+      - name: Build the in-tree nros CLI (on a miss)
         if: ${{ steps.store-cache.outputs.cache-hit != 'true' }}
-        id: cli-key
-        run: |
-          key="$(scripts/ci/cli-bin-cache-key.sh)"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the nros + nros-launch-resolve binaries
-        if: ${{ steps.store-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/restore@v4
+        uses: ./.github/actions/setup-nros-cli
         with:
-          path: |
-            packages/cli/target/release/nros
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
-            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+          launch-resolve: 'false'
 
       - name: Provision the kind's tools (on a miss)
         if: ${{ steps.store-cache.outputs.cache-hit != 'true' }}
         run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
           source ./activate.sh
-          just setup-cli
           for t in ${{ steps.store-key.outputs.tools }}; do
             nros setup --tool "$t"
           done
@@ -3417,50 +3197,25 @@ jobs:
             sed 's/^/  /' /tmp/sccache-start.log || true
           fi
 
-      # phase-489 W3 — the binary cache the `check-*` siblings restore. Same key
-      # step and paths as theirs (`check-gate-cache-keys-agree`). `lookup-only`:
-      # this job only needs to know whether main already holds the entry.
-      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
-        id: cli-key
-        run: |
-          key="$(scripts/ci/cli-bin-cache-key.sh)"
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Look up the CLI binary cache
-        id: cli-bin-cache
-        uses: actions/cache/restore@v4
-        with:
-          lookup-only: true
-          path: |
-            packages/cli/target/release/nros
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
-            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
-            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
-
+      # phase-489 W3 — the binary cache the `check-*` siblings restore, through
+      # the same composite (`check-gate-cache-keys-agree`). `cache: lookup`:
+      # this job only needs to know whether main already holds the entry, and
+      # it is the one job that SAVES it (below).
       - name: Build nros CLI + the launch resolver
+        id: cli
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          cache: lookup
+
+      # `check cli-tests` is 338 s of the 20 min job and it is COMPILE-bound
+      # (measured: 350 CPU-s to build, tests run in under a second). Warming
+      # only the binary left the biggest step cold — main's warm entry was
+      # 208 MB against the 1.78 GB a `check` run actually caches. `--no-run`
+      # compiles the test harnesses without executing them, which is exactly
+      # the artifact that step waits on.
+      - name: Compile the CLI test harnesses
         run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
           source ./activate.sh
-          just setup-cli
-          # phase-429 W5 — ASSERT the binary matches the checkout, do not hope.
-          # The other four acquisition sites carried this and this one did not,
-          # which is worse than a missing check: four green steps taught that
-          # the rule was in force here too. A warmed cache whose key is narrower
-          # than `source_stamp.rs`'s watch set hands `check cli-tests` a binary
-          # from a different tree (phase-431 W2, `check-ci-cli-from-source`).
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          # phase-489 W3 — the user's verbs, not bare `cargo build`s: the
-          # binary cache carries the content stamp and the Python half
-          # `setup-launch-resolve` writes beside the resolver, and a consumer's
-          # `just setup-launch-resolve` skips only when both are there.
-          just setup-launch-resolve
-          # `check cli-tests` is 338 s of the 20 min job and it is COMPILE-bound
-          # (measured: 350 CPU-s to build, tests run in under a second). Warming
-          # only the binary left the biggest step cold — main's warm entry was
-          # 208 MB against the 1.78 GB a `check` run actually caches. `--no-run`
-          # compiles the test harnesses without executing them, which is exactly
-          # the artifact that step waits on.
           cargo test --no-run --manifest-path packages/cli/Cargo.toml
 
       # SAVE NOW, before anything else writes into these paths (nothing after
@@ -3477,7 +3232,7 @@ jobs:
           key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
 
       - name: Save the CLI binary cache (phase-489 W3)
-        if: steps.cli-bin-cache.outputs.cache-hit != 'true'
+        if: steps.cli.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
@@ -3485,7 +3240,7 @@ jobs:
             packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
             packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
             packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
-          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli.outputs.key }}
 
       # phase-489 W5 — warm what the `check-fast` job actually COMPILES.
       #
