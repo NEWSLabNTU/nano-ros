@@ -130,7 +130,8 @@ rules; flagged to the user):
   own).
 - The Zephyr 05:00 and platform 07:00 blocks share the one daily cron.
   `github.event.schedule` guards go. This half (W4b) rebases onto phase-558's
-  #3715, which rewrites the 07:00 platform matrix and the board job names.
+  #3715 (merged), which rewrote the 07:00 platform matrix and the board job
+  names.
 - Consumers updated in the same PR: `check-cadence-jobs` (`WEEKLY_WF`),
   `check-board-registry`, `check-book-probe-tracks`, `gen-board-support`,
   `next-stable-delta.py`, `nightly-triage`, and the `nightly-report` name list.
@@ -139,11 +140,11 @@ rules; flagged to the user):
   probe track. Every gate that reads a moved name passes and was changed in
   the same PR.
 - **Status:** OPEN — W4a (`weekly.yml` on Sunday, the duplicate probes)
-  done in #3713 (2026-11-13). W4b (one daily cron) waits for #3715.
+  done in #3713 (2026-11-13). W4b (one daily cron) is unblocked: #3715 merged.
 
 ### Per-board platform jobs — tracked in phase-558, not here
 
-- **Status:** in phase-558 (its doc lands with PR #3715, nros 142). One
+- **Status:** in [phase-558](phase-558-nightly-per-board-verdicts.md) (#3715, merged 2026-11-13; nros 142). One
   platform job per board in `nightly.yml`'s 07:00
   matrix, instead of one per platform family. Its work items, acceptance and
   status live there only; this phase depends on it (W4b, W5) and does not
