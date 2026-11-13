@@ -522,7 +522,7 @@ fn resolve_max_cbs_through_ladder(platform: &str) -> Option<usize> {
         &repo,
         std::env::var("NROS_PLATFORMS_DIR").ok().as_deref(),
     );
-    let tree = PlatformsTree::load_search_path(&path).ok()?;
+    let tree = crate::configure_stamp::load_platforms_tree(&path).ok()?;
     let env_get = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
     let resolved = tree
         .resolve_executor(

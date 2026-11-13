@@ -1881,7 +1881,9 @@ impl SdkIndex {
 
     /// Read, parse, + validate an `nros-sdk-index.toml`.
     pub fn load(path: &Path) -> Result<Self> {
-        let raw = std::fs::read_to_string(path)
+        // Issue 2485 — the index decides toolchain pins and preflight skips,
+        // so on the configure path it is a stamp input.
+        let raw = crate::configure_stamp::read_external(path)
             .wrap_err_with(|| format!("failed to read SDK index {}", path.display()))?;
         let idx =
             Self::parse(&raw).wrap_err_with(|| format!("invalid SDK index {}", path.display()))?;

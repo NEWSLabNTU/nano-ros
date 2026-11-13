@@ -1891,6 +1891,10 @@ pub struct PlatformsTree {
     /// tolerated).
     arch: BTreeMap<String, ArchEntry>,
     root: PathBuf,
+    /// Every descriptor file the load read, in read order, shadowed ones
+    /// included. A caller whose answer must go stale when a descriptor
+    /// changes (the CLI's configure stamp) records these.
+    sources: Vec<PathBuf>,
 }
 
 /// Load / resolution errors. `Manifest` wraps the underlying shared
@@ -2041,6 +2045,7 @@ impl PlatformsTree {
             match merged.as_mut() {
                 None => merged = Some(tree),
                 Some(acc) => {
+                    acc.sources.extend(tree.sources);
                     for (name, file) in tree.files {
                         acc.files.entry(name).or_insert(file);
                     }
@@ -2117,6 +2122,7 @@ impl PlatformsTree {
                 path: file.display().to_string(),
                 source: e,
             })?;
+            tree.sources.push(file.clone());
             let parsed: PlatformConfigFile =
                 toml::from_str(&text).map_err(|e| ConfigError::Parse {
                     path: file.display().to_string(),
@@ -2157,6 +2163,11 @@ impl PlatformsTree {
             tree.files.insert(key, parsed);
         }
         Ok(tree)
+    }
+
+    /// Every `nros-platform.toml` the load read, shadowed ones included.
+    pub fn source_files(&self) -> &[PathBuf] {
+        &self.sources
     }
 
     /// Platform names present in the tree.

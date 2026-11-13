@@ -127,7 +127,10 @@ impl OutputFlags {
 /// * 4 -- issue 2478: `external`. Empty means "this configure read no file
 ///   outside the project", and also what a format-3 stamp reads, which kept a
 ///   stamp current after a board crate's `[features]` moved.
-pub(crate) const STAMP_FORMAT: u32 = 4;
+/// * 5 -- issue 2485: `external` also holds the SDK index and the platform
+///   `nros-platform.toml` files. A format-4 stamp recorded neither, so it
+///   could not vouch for them.
+pub(crate) const STAMP_FORMAT: u32 = 5;
 
 /// What a configure recorded about itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -346,6 +349,29 @@ pub(crate) fn read_external(path: &Path) -> std::io::Result<String> {
         }
     }
     Ok(raw)
+}
+
+/// Load the platform descriptor tree over `roots`, recording every
+/// `nros-platform.toml` it read as a stamp input (issue 2485).
+///
+/// The loader lives in `nros-platform-config`, which cannot reach this
+/// crate, so it reports the files it read
+/// (`PlatformsTree::source_files`) and this records them. Each file is read
+/// a second time for the digest; outside a configure (no recorder) nothing
+/// is re-read.
+pub(crate) fn load_platforms_tree(
+    roots: &[PathBuf],
+) -> std::result::Result<
+    nros_board_common::platform_config::PlatformsTree,
+    nros_board_common::platform_config::ConfigError,
+> {
+    let tree = nros_board_common::platform_config::PlatformsTree::load_search_path(roots)?;
+    if RECORDER.with_borrow(Option::is_some) {
+        for file in tree.source_files() {
+            let _ = read_external(file);
+        }
+    }
+    Ok(tree)
 }
 
 /// Start recording a configure's external reads afresh, on this thread.
@@ -1566,6 +1592,67 @@ mod tests {
             is_current_with(&p, "img", &real_env(), None).unwrap(),
             Currency::Stale(why) if why.contains("is gone")
         ));
+    }
+
+    /// The shared tail of the issue 2485 tests: a stamp recorded after the
+    /// reads is current, goes stale when `input` changes, and again when it
+    /// is gone.
+    fn assert_external_input(p: &Path, input: &Path, edit: &str) {
+        let mut stamp = stamp_for(p);
+        stamp.external = external_reads(p);
+        let key = std::fs::canonicalize(input).unwrap();
+        assert!(stamp.external.contains_key(&key), "{:?}", stamp.external);
+        record(p, "img", &stamp).unwrap();
+        assert_eq!(
+            is_current_with(p, "img", &real_env(), None).unwrap(),
+            Currency::Current
+        );
+        let mut text = std::fs::read_to_string(input).unwrap();
+        text.push_str(edit);
+        std::fs::write(input, text).unwrap();
+        assert!(matches!(
+            is_current_with(p, "img", &real_env(), None).unwrap(),
+            Currency::Stale(why) if why.contains("outside the project") && why.contains("changed")
+        ));
+        std::fs::remove_file(input).unwrap();
+        assert!(matches!(
+            is_current_with(p, "img", &real_env(), None).unwrap(),
+            Currency::Stale(why) if why.contains("is gone")
+        ));
+    }
+
+    /// Issue 2485 — the SDK index a configure loads (toolchain pins,
+    /// preflight skips) is a stamp input: editing it after the configure
+    /// makes the stamp stale.
+    #[test]
+    fn the_sdk_index_is_a_stamp_input() {
+        let p = tmp("external-index");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let sdk = tmp("external-index-root");
+        let index = sdk.join("nros-sdk-index.toml");
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        std::fs::copy(repo.join("nros-sdk-index.toml"), &index).unwrap();
+        begin_external_reads();
+        crate::orchestration::sdk_index::SdkIndex::load(&index).expect("the checkout's index");
+        assert_external_input(&p, &index, "\n# edited\n");
+    }
+
+    /// Issue 2485 — a platform's `nros-platform.toml`, read when a board
+    /// names a platform outside the built-in set, is a stamp input.
+    #[test]
+    fn a_platform_descriptor_is_a_stamp_input() {
+        let p = tmp("external-platform");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let root = tmp("external-platform-root");
+        let pkg = root.join("acme");
+        std::fs::create_dir_all(&pkg).unwrap();
+        let descriptor = pkg.join(nros_board_common::platform_config::PLATFORM_CONFIG_FILENAME);
+        std::fs::write(&descriptor, "names = [\"acme\"]\n").unwrap();
+        begin_external_reads();
+        // The read the board catalog makes; the answer does not matter here.
+        let _ = crate::orchestration::board_descriptor::PlatformFamilies::new(vec![root])
+            .resolve("acme");
+        assert_external_input(&p, &descriptor, "\n# edited\n");
     }
 
     /// Issue 2478 — a configure's worker thread records into the configure's
