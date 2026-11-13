@@ -1684,9 +1684,18 @@ impl BoardCatalog {
         workspace: &Path,
         pkg_dirs: &[PathBuf],
     ) -> Result<Self, BoardLoadError> {
-        let extra = extra_board_roots();
-        let families = PlatformFamilies::for_catalog(workspace, &extra, pkg_dirs);
-        let mut catalog = Self::load_with_families(workspace, &extra, &families)?;
+        Self::load_with_packages_and_extra(workspace, &extra_board_roots(), pkg_dirs)
+    }
+
+    /// [`Self::load_with_packages`] with the extra roots stated rather than read
+    /// from the environment.
+    fn load_with_packages_and_extra(
+        workspace: &Path,
+        extra: &[PathBuf],
+        pkg_dirs: &[PathBuf],
+    ) -> Result<Self, BoardLoadError> {
+        let families = PlatformFamilies::for_catalog(workspace, extra, pkg_dirs);
+        let mut catalog = Self::load_with_families(workspace, extra, &families)?;
         catalog.absorb_packages(pkg_dirs, &families)?;
         Ok(catalog)
     }
@@ -1701,9 +1710,22 @@ impl BoardCatalog {
         pkg_dirs: &[PathBuf],
         families: &PlatformFamilies,
     ) -> Result<(), BoardLoadError> {
+        // A package that is ALSO on `$NROS_EXTRA_BOARD_PATH` was loaded from
+        // there already. It is one board reached by two roads, not two boards:
+        // absorbing it again made every image naming it "ambiguous -- 2
+        // descriptors claim it", both rows citing the same file.
+        let loaded: std::collections::HashSet<PathBuf> = self
+            .descriptors
+            .iter()
+            .filter_map(|d| d.source.as_deref())
+            .filter_map(|s| std::fs::canonicalize(s).ok())
+            .collect();
         for dir in pkg_dirs {
             let descriptor_path = dir.join("nros-board.toml");
             if !descriptor_path.is_file() {
+                continue;
+            }
+            if std::fs::canonicalize(&descriptor_path).is_ok_and(|p| loaded.contains(&p)) {
                 continue;
             }
             // Issue 2478 — a descriptor is a configure input outside the
@@ -2543,6 +2565,35 @@ mod tests {
             ),
         )
         .unwrap();
+    }
+
+    /// A workspace board package that is ALSO on `$NROS_EXTRA_BOARD_PATH` is one
+    /// board, not two: before, every image naming it was refused as ambiguous,
+    /// both candidates citing the same `nros-board.toml`.
+    #[test]
+    fn a_package_also_on_the_extra_path_is_one_board() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let pkg = tmp.path().join("twice_board");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(
+            pkg.join("nros-board.toml"),
+            STM32_TOML.replace("stm32f4\"", "twicex\""),
+        )
+        .unwrap();
+        write_board_package_xml(&pkg, &["twicex"]);
+
+        let catalog = BoardCatalog::load_with_packages_and_extra(
+            &repo_root_for_tests(),
+            std::slice::from_ref(&pkg),
+            std::slice::from_ref(&pkg),
+        )
+        .expect("loads");
+        let claims = catalog
+            .descriptors
+            .iter()
+            .filter(|d| d.names.iter().any(|n| n == "twicex"))
+            .count();
+        assert_eq!(claims, 1, "one descriptor file is one board");
     }
 
     #[test]
