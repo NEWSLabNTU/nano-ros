@@ -3171,7 +3171,8 @@ fn build_zenoh_pico_unified(
     let mut build = cc::Build::new();
     // issue 0383 — implicit-function-declaration / int-conversion as errors.
     // This is the zenoh-pico library compile: the TWO calls that made 0383 a
-    // real outage (`_z_open_serial_from_*`, `_z_open_custom`) are in this tree.
+    // real outage (then ~~`_z_open_serial_from_*`~~, now `_z_serial_open_from_*`, and
+    // `_z_open_custom`) are in this tree.
     nros_cc_flags::strict_decls(&mut build);
 
     // Step 2 — version header (shared with embedded path).

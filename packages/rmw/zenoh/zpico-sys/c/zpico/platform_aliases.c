@@ -15,7 +15,7 @@
  *     that does not match the platform ABI's task shapes 1:1 (the ABI takes
  *     a `void *`; ~~`nros_platform_task_t`~~ was its typed handle).
  *   - smoltcp / serial / IVC bridge hooks (`smoltcp_clock_now_ms`,
- *     `_z_open_serial_from_dev`, IVC helpers) — per-board / per-rtos.
+ *     `_z_serial_open_from_dev`, IVC helpers) — per-board / per-rtos.
  *
  * Linkage discipline:
  *

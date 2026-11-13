@@ -377,27 +377,9 @@ size_t _z_send_udp_multicast(const _z_sys_net_socket_t sock, const uint8_t *ptr,
 
 #if Z_FEATURE_LINK_SERIAL == 1
 
-z_result_t _z_open_serial_from_dev(_z_sys_net_socket_t *sock, char *dev, uint32_t baudrate) {
-    (void)sock; (void)dev; (void)baudrate;
-    return _Z_ERR_GENERIC;
-}
-
-z_result_t _z_open_serial_from_pins(_z_sys_net_socket_t *sock, uint32_t txpin, uint32_t rxpin, uint32_t baudrate) {
-    (void)sock; (void)txpin; (void)rxpin; (void)baudrate;
-    return _Z_ERR_GENERIC;
-}
-
-z_result_t _z_listen_serial_from_dev(_z_sys_net_socket_t *sock, char *dev, uint32_t baudrate) {
-    (void)sock; (void)dev; (void)baudrate;
-    return _Z_ERR_GENERIC;
-}
-
-z_result_t _z_listen_serial_from_pins(_z_sys_net_socket_t *sock, uint32_t txpin, uint32_t rxpin, uint32_t baudrate) {
-    (void)sock; (void)txpin; (void)rxpin; (void)baudrate;
-    return _Z_ERR_GENERIC;
-}
-
-void _z_close_serial(_z_sys_net_socket_t *sock) { (void)sock; }
+/* zenoh-pico 1.9 renamed the open/listen/close ABI to
+ * `_z_serial_{open,listen}_from_*` / `_z_serial_close`; the weak defaults in
+ * zpico/platform_aliases.c supply those. Only the framed pair stays here. */
 
 size_t _z_read_serial_internal(const _z_sys_net_socket_t sock, uint8_t *header, uint8_t *ptr, size_t len) {
     (void)sock; (void)header; (void)ptr; (void)len;
