@@ -28,6 +28,25 @@ ARM B -- every from-source build ASSERTS the binary matches the checkout.
     warms the CLI for `check cli-tests` and asserted nothing, so four of five
     sites carried the rule and the fifth read exactly like the other four.
 
+ARM C -- the build is spelled in ONE place: `.github/actions/setup-nros-cli`.
+
+    phase-559 W2. Arm B alone accepts a second road as long as it asserts the
+    stamp, and every copy of the road is a copy of its cache key, its
+    `play_launch` init and its `$GITHUB_PATH` line, which is how gate.yml came
+    to carry twelve. So a CLI build written in a workflow's own `run:` text is
+    refused outright, stamp or not: `cargo build|install|run` selecting the
+    `nros` binary or the `packages/cli` workspace, `just setup-cli`, and
+    `scripts/bootstrap.sh` (which builds it). Only the action and the release
+    PRODUCER may spell it.
+
+    Not counted, deliberately: a `just` verb whose recipe REACHES `setup-cli`
+    (`just setup <scope>`, `just scaffold-journey`). That is the user's own
+    command, a lane is "`just setup <scope>` then one command" (phase-411 W4),
+    and `setup-cli`'s freshness check builds the tree it runs in. Nor `cargo
+    test --manifest-path packages/cli/...`: it compiles test harnesses in the
+    test profile and puts no `nros` on PATH. The jobs this leaves on a verb are
+    listed in phase-559 W2, with the decision that keeps them there.
+
 Run:  python3 scripts/check-ci-cli-from-source.py [--self-test]
 """
 
@@ -40,8 +59,26 @@ sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 import workflow_commands  # noqa: E402  phase-472 W1 — workflows AND composite actions
 
 # The from-source build, and the assertion that must accompany it.
-BUILD_RE = re.compile(r"cargo build\b.*--bin nros\b")
 STAMP_RE = re.compile(r"\bsource-stamp\b")
+
+# Arm C. Every way a workflow line can build the CLI itself. A cargo verb that
+# PRODUCES the binary (`build`/`install`/`run`; `test` is not one, see the
+# docstring) selecting it by bin, by package or by the CLI workspace's
+# manifest; the user verb that wraps that; and the contributor bootstrap.
+# A word at COMMAND position: `echo "run just setup-cli first"` names the verb
+# and runs nothing.
+CMD_POS = r"(?:^|[;&|(]\s*|\b(?:then|do|else|time|exec)\s+)"
+CLI_BUILD_RES = [
+    re.compile(
+        r"\bcargo\s+(?:\+\S+\s+)?(?:build|install|run)\b.*"
+        r"(?:--bin[= ]nros(?![\w-])|(?:-p|--package)[= ]nros(?![\w-])|packages/cli/Cargo\.toml|--path[= ]packages/cli(?:/nros-cli)?/?(?![\w/-]))"
+    ),
+    re.compile(CMD_POS + r"just\s+(?:--?[A-Za-z][\w-]*(?:[ =]\S+)?\s+)*setup-cli(?![\w-])"),
+    re.compile(CMD_POS + r"(?:bash\s+|sh\s+)?(?:\./)?scripts/bootstrap\.sh\b"),
+]
+
+# The one road. Arm B still applies to it: it must assert the stamp.
+ROAD = ".github/actions/setup-nros-cli/action.yml"
 
 # Arm A. Each entry is (regex, what it would do). Matched against every
 # non-comment LOGICAL line of every workflow (backslash continuations joined),
@@ -104,6 +141,12 @@ EXEMPT = {}
 # Arm B is what keeps this from being a hole: a producer must still build the
 # CLI from source and assert its source stamp, which matters most for the one
 # artifact nobody downstream can re-check.
+#
+# Arm C does not apply either, and the road cannot serve it: the release builds
+# on a pinned ubuntu-22.04 host because the asset's glibc floor is measured off
+# it (phase-447 D1), and the road restores a binary cache written by a
+# container job. A release built from that cache would ship a binary built on a
+# different host from the one its floor was read on.
 RELEASE_WORKFLOWS = {
     ".github/workflows/release-nros.yml": (
         "phase-431 W5 -- it BUILDS the release, and installs its own asset as "
@@ -146,19 +189,43 @@ def run_blocks(text):
     return out
 
 
+def body_commands(body):
+    """[(offset, command)] over a `run:` body: comments dropped, `\\`
+    continuations joined and attributed to their first line."""
+    out = []
+    start = None
+    buf = []
+    for offset, raw in enumerate(body):
+        line = raw.strip()
+        if start is None:
+            if not line or line.startswith("#"):
+                continue
+            start = offset
+        cont = line.endswith("\\")
+        buf.append(line[:-1].rstrip() if cont else line)
+        if cont:
+            continue
+        out.append((start, " ".join(buf).strip()))
+        start = None
+        buf = []
+    if buf:
+        out.append((start, " ".join(buf).strip()))
+    return out
+
+
+def is_cli_build(command):
+    return any(r.search(command) for r in CLI_BUILD_RES)
+
+
 def build_sites(text):
-    """[(lineno, line, asserts_stamp)] for every from-source CLI build."""
+    """[(lineno, command, asserts_stamp)] for every from-source CLI build."""
     out = []
     for start, body in run_blocks(text):
-        has_stamp = any(
-            STAMP_RE.search(b) for b in body if not b.strip().startswith("#")
-        )
-        for offset, line in enumerate(body):
-            stripped = line.strip()
-            if stripped.startswith("#"):
-                continue
-            if BUILD_RE.search(stripped):
-                out.append((start + 1 + offset, stripped, has_stamp))
+        cmds = body_commands(body)
+        has_stamp = any(STAMP_RE.search(c) for _, c in cmds)
+        for offset, cmd in cmds:
+            if is_cli_build(cmd):
+                out.append((start + 1 + offset, cmd, has_stamp))
     return out
 
 
@@ -263,6 +330,52 @@ def self_test():
     )
     assert build_sites(y2)[0][2] is False, build_sites(y2)
 
+    # --- arm C: every spelling of a CLI build, and what is not one ---
+    builds = [
+        "cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros",
+        "cargo build --release --bin nros",
+        "cargo build -p nros --release",
+        "cargo +nightly build --package=nros",
+        "cargo install --path packages/cli/nros-cli",
+        "cargo install --path packages/cli",
+        "cargo run --manifest-path packages/cli/Cargo.toml -- --version",
+        "just setup-cli",
+        "source ./activate.sh && just setup-cli",
+        "just --justfile justfile setup-cli",
+        "./scripts/bootstrap.sh",
+        "bash scripts/bootstrap.sh --yes",
+    ]
+    for b in builds:
+        assert is_cli_build(b), b
+    not_builds = [
+        # the CLI's tests: test profile, nothing on PATH
+        "cargo test --no-run --manifest-path packages/cli/Cargo.toml",
+        # other binaries whose names START with nros
+        "cargo build --release -p nros-tests --bin lane-coords",
+        "cargo build --release --bin nros-launch-resolve",
+        "cargo build --release --manifest-path packages/cli/nros-launch-resolve/Cargo.toml",
+        "cargo build --release --locked -p nros-build-profile",
+        # user verbs that REACH setup-cli are not a second road (docstring)
+        "just setup tier2",
+        "just setup-launch-resolve",
+        "just scaffold-journey",
+        "echo run just setup-cli first",
+    ]
+    for b in not_builds:
+        assert not is_cli_build(b), b
+
+    # A build wrapped over lines is one command, attributed to its first line.
+    wrapped_build = "\n".join(
+        [
+            "        run: |",
+            "          # comment",
+            "          cargo build --release \\",
+            "            --bin nros",
+        ]
+    )
+    got = build_sites(wrapped_build)
+    assert [(g[0], g[2]) for g in got] == [(3, False)], got
+
     # --- arm A ---
     bad = "\n".join(
         [
@@ -342,6 +455,7 @@ def main():
     problems = []
     seen_exempt = set()
     total_builds = 0
+    road_builds = 0
 
     known = set(workflow_files())
     for name, reason in RELEASE_WORKFLOWS.items():
@@ -368,13 +482,29 @@ def main():
                 "    staying green -- and the codegen version does not catch it,\n"
                 "    because a release at the same version is not incompatible,\n"
                 "    merely different (RFC-0090, phase-431 W1/W2).\n"
-                "    Build it:  cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros\n"
-                "               \"$GITHUB_WORKSPACE/packages/cli/target/release/nros\" source-stamp >/dev/null"
-                % (fn, lineno, what, line)
+                "    Get it the one way CI does:\n"
+                "        - uses: ./%s"
+                % (fn, lineno, what, line, ROAD)
             )
 
         for lineno, line, has_stamp in build_sites(text):
             total_builds += 1
+            if fn == ROAD:
+                road_builds += 1
+            elif fn not in RELEASE_WORKFLOWS:
+                problems.append(
+                    "%s:%d builds the CLI in the workflow itself\n"
+                    "      %s\n"
+                    "    The CLI has ONE road in CI (phase-559 W2): the composite\n"
+                    "    action, which keys the binary cache on the whole source stamp,\n"
+                    "    builds with `just setup-cli`, asserts the stamp and puts the\n"
+                    "    binary on PATH. A second spelling is a second copy of all four,\n"
+                    "    and copies drift. Replace the step with:\n"
+                    "        - uses: ./%s\n"
+                    "    (with `launch-resolve: 'false'` if the job never syncs)."
+                    % (fn, lineno, line, ROAD)
+                )
+                continue
             if has_stamp or (fn, line) in EXEMPT:
                 if (fn, line) in EXEMPT:
                     seen_exempt.add((fn, line))
@@ -401,12 +531,14 @@ def main():
     # Anti-vacuity. Arm A passes on a tree that acquires the CLI nowhere, and
     # arm B on a tree that builds it nowhere -- both of which mean the workflows
     # were restructured out from under this gate, not that they are clean.
-    if total_builds == 0:
+    if road_builds == 0:
         sys.stderr.write(
-            "error: no workflow builds the nros CLI from source.\n"
-            "This gate would then pass vacuously. Either the build moved into a\n"
-            "recipe (teach BUILD_RE about it) or CI stopped building the CLI,\n"
-            "which is the very thing phase-431 W2 forbids.\n"
+            "error: %s builds no nros CLI.\n"
+            "Arm C would then pass vacuously: every workflow is refused a build\n"
+            "of its own, so the road must hold one. Either the build moved into a\n"
+            "recipe the action calls (teach CLI_BUILD_RES about it) or CI stopped\n"
+            "building the CLI, which is the very thing phase-431 W2 forbids.\n"
+            % ROAD
         )
         return 1
 
@@ -419,8 +551,10 @@ def main():
         return 1
 
     sys.stdout.write(
-        "check-ci-cli-from-source OK -- %d from-source CLI build(s), each asserting\n"
-        "its source stamp; no workflow installs the release.\n" % total_builds
+        "check-ci-cli-from-source OK -- %d from-source CLI build(s), each\n"
+        "asserting its source stamp: %d in %s,\n"
+        "the rest in the release producer. No workflow installs the release.\n"
+        % (total_builds, road_builds, ROAD)
     )
     return 0
 

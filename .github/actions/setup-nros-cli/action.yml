@@ -24,7 +24,9 @@ description: >
     decides whether the restored binary is this tree's. The cache only fills
     in what the verb would build.
   - `nros source-stamp` (phase-429 W5): the binary's own answer to "do I match
-    these sources". `check-ci-cli-from-source` requires it beside every build.
+    these sources". `check-ci-cli-from-source` requires it beside every build,
+    and (phase-559 W2) refuses a CLI build in any workflow but this action and
+    the release producer, so this is the only place the build is spelled.
   - `play_launch` is initialised FIRST, at depth 1: its pin is a stamp input.
   - `just setup-launch-resolve` (issue 0797): `nros sync` refuses a workspace
     with no resolver, which once aborted five of eight nightly jobs in 2-5 s.

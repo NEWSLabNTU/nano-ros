@@ -111,7 +111,30 @@ rules; flagged to the user):
   CLI in any workflow), and `provision-gate-lane` and `report-lane-stage` are
   extracted.
 - **Acceptance:** a gate refuses an inline CLI build in a workflow.
-- **Status:** OPEN
+- **Status:** DONE (2026-11-13). `provision-gate-lane` and
+  `report-lane-stage` are composite actions (#3725). `check-ci-cli-from-source`
+  arm C refuses a CLI build spelled in any workflow's own `run:` text, with or
+  without a stamp assertion: `cargo build|install|run` selecting the `nros`
+  binary or the `packages/cli` workspace, `just setup-cli`, and
+  `scripts/bootstrap.sh`. Only `setup-nros-cli` may spell it, and the gate
+  fails if that action builds nothing. The one exemption is `release-nros.yml`,
+  the release producer, which builds cold on the host its glibc floor is
+  measured on. Measured at landing: no workflow other than that one spelled a
+  build.
+- **Deliberately NOT counted — do not "fix" these.** A job whose `just` verb
+  reaches `setup-cli` through its recipe is on the user's own road, and
+  `setup-cli`'s freshness assert checks the binary against the tree it runs
+  in. Manager's decision of 2026-11-13 (not a user ruling): no move onto
+  the action. At landing:
+  - `host-tests.yml` `feature-sweep` — `just setup linux`
+  - `queue.yml` `l3` — `just setup tier2`
+  - `run-matrix.yml` `matrix` — `just setup tier2`
+  - `run-matrix.yml` `tier1` — `just setup tier1`
+  - `run-matrix.yml` `matrix-nightly` — `just setup tier2-nightly`
+  - `gate.yml` `scaffold-journey` — `just scaffold-journey`
+
+  Jobs that run the action first and then a `just setup` verb (the rest) get
+  the binary from the action, and the verb's `setup-cli` finds it fresh.
 
 ### W3 — The queue's L3 on its dedicated label
 
