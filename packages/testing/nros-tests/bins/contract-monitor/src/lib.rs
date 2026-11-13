@@ -48,7 +48,7 @@ pub fn violation_to_report(
     reporter: &mut DiagnosticReporter,
     v: &Violation,
 ) -> Option<DiagnosticArray> {
-    reporter.report_violation(now_us(), v.rule, v.fqn, v.measured, v.declared)
+    reporter.report_violation(now_us(), v.rule, v.fqn, v.measured, v.declared, v.level)
 }
 
 /// Drain every pending violation from the executor and hand each report to

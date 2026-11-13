@@ -131,5 +131,9 @@ toolchain_file = "cmake/toolchain/riscv64-threadx.cmake"
 # the level that registered it (`ComponentSlot::level`), 24 -> 32 B per slot,
 # 4 node slots x 8 B = 32 B = 4 words (`executor_backing_claims` measured
 # 11,076 on the 64-bit host).
+# 11,084 since phase-560 W8 (2026-11-14): a stored violation carries the
+# level a `hazard-level-runtime` report names (`Violation::level`, a `&str`),
+# which grows the violation ring by 8 words (`executor_backing_claims`
+# measured 11,084 on the 64-bit host).
 [knobs.executor]
-backing_u64s = 11076
+backing_u64s = 11084

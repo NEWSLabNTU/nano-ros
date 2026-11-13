@@ -113,11 +113,11 @@ unsafe fn publish_violations(ctx: *mut c_void, pending: &[Violation]) -> usize {
     // thread's on its first stored violation. What stays on this frame is the
     // 512 B buffer and four borrowed tuples.
     let mut buf = [0u8; REPORT_BUF];
-    let mut rows: [(&str, &str, u32, u32); nros_node::executor::monitor::REPORT_QUEUE] =
-        [("", "", 0, 0); nros_node::executor::monitor::REPORT_QUEUE];
+    let mut rows: [(&str, &str, u32, u32, &str); nros_node::executor::monitor::REPORT_QUEUE] =
+        [("", "", 0, 0, ""); nros_node::executor::monitor::REPORT_QUEUE];
     let n_max = pending.len().min(rows.len());
     for (row, v) in rows.iter_mut().zip(pending.iter()) {
-        *row = (v.rule, v.fqn, v.measured, v.declared);
+        *row = (v.rule, v.fqn, v.measured, v.declared, v.level);
     }
     // The most that fit one buffer: a status is 100-300 B, so two or three
     // usually do; whatever does not fit waits for the next slot.

@@ -546,7 +546,8 @@ pub struct Violation {
     /// `"stack-headroom-runtime"` | `"alive-supervision-runtime"` |
     /// `"silence-runtime"` (phase-462 W2) | `"route-latency-runtime"`
     /// (phase10-B3) | `"route-deadline-runtime"` (phase-503) |
-    /// `"hazard-route-runtime"` (play_launch phase 96 W4.2).
+    /// `"hazard-route-runtime"` (play_launch phase 96 W4.2) |
+    /// `"hazard-level-runtime"` (phase-560 W8).
     pub rule: &'static str,
     /// Violating endpoint ref (from the spec's `fqn`; the SC name for
     /// deadline misses).
@@ -557,6 +558,21 @@ pub struct Violation {
     pub measured: u32,
     /// Declared bound, same unit as `measured`.
     pub declared: u32,
+    /// phase-560 W8 -- the NAME of the fallback level a
+    /// `hazard-level-runtime` report is about, as the model spells it (the
+    /// mode key / `degradation_levels[].level`); `""` for every other rule.
+    ///
+    /// A field, and not a lookup at rendering time, because everything that
+    /// renders a verdict for a person -- the log line, the drain-and-report
+    /// line, the `/diagnostics` message and the C/C++ drain -- receives the
+    /// `Violation` alone, and none of them holds the hazard table that would
+    /// resolve `measured` (the level's index) back to a name. The text is a
+    /// `'static` borrow of the baked `RungSpec::level`, so it costs a pointer
+    /// and a length and copies nothing. The trace markers and the SWD record
+    /// do NOT carry it: they keep their four words and seven-word slots, and a
+    /// reader resolves the index through the model, as it already resolves
+    /// `fqn` through its hash.
+    pub level: &'static str,
 }
 
 /// phase-474 I1 -- every rule id the executor reports, in WIRE ORDER: a rule's
@@ -567,7 +583,7 @@ pub struct Violation {
 /// can carry a string. Append only: a capture or a RAM dump taken before a
 /// reorder would silently decode as the wrong rule, which is the class the
 /// callback-trace marker ids are frozen against (`callback_trace.rs`).
-pub const RULE_IDS: [&str; 16] = [
+pub const RULE_IDS: [&str; 17] = [
     "rate-hierarchy-runtime",
     "max-age-runtime",
     "max-latency-runtime",
@@ -590,6 +606,9 @@ pub const RULE_IDS: [&str; 16] = [
     "mode-switch-runtime",
     // play_launch phase 96 W4.2 (phase 85 D4) -- a hazard's rung route.
     "hazard-route-runtime",
+    // phase-560 W8 (play_launch phase 102 M5 E7) -- the fallback level a
+    // hazard's ladder is on, at detection and on every fall.
+    "hazard-level-runtime",
 ];
 
 /// The wire code of `rule` ([`RULE_IDS`] index + 1), or 0 for a rule the
@@ -915,6 +934,7 @@ pub(crate) fn check_mode_switch(t: &ModeTables, waited_ms: Option<u32>) -> Optio
         fqn: t.reaction,
         measured: waited,
         declared: t.switch_budget_ms,
+        level: "",
     })
 }
 
@@ -1302,6 +1322,7 @@ pub(crate) fn check_rate(
             fqn: spec.fqn,
             measured: measured_milli_hz,
             declared: spec.min_rate_hz_milli,
+            level: "",
         })
     } else {
         state.violated_last_window = false;
@@ -1330,6 +1351,7 @@ pub(crate) fn check_latency(spec: &MonitorSpec, state: &mut MonitorState) -> Opt
             fqn: spec.fqn,
             measured: max_ms,
             declared: spec.max_latency_ms,
+            level: "",
         })
     } else {
         // A quiet window (no dispatch attributed) also counts as clean —
@@ -1442,6 +1464,7 @@ pub(crate) fn route_judge(
                     fqn: spec.fqn,
                     measured: measured_ms,
                     declared: spec.route_max_latency_ms,
+                    level: "",
                 },
                 true,
                 false,
@@ -1455,6 +1478,7 @@ pub(crate) fn route_judge(
                     fqn: spec.fqn,
                     measured: measured_ms,
                     declared: spec.route_deadline_ms,
+                    level: "",
                 },
                 first,
                 true,
@@ -1603,6 +1627,7 @@ pub(crate) fn route_overdue(
                 fqn: spec.fqn,
                 measured: waited_us / 1_000,
                 declared: spec.route_deadline_ms,
+                level: "",
             },
             w & ROUTE_VIOLATED == 0,
         );
@@ -1742,6 +1767,7 @@ pub(crate) fn check_age(
             // Takes in the window, against the window the contract declares.
             measured: 0,
             declared: window_ms,
+            level: "",
         });
     }
     if spec.max_age_ms == 0 {
@@ -1758,6 +1784,7 @@ pub(crate) fn check_age(
             fqn: spec.fqn,
             measured: max_ms,
             declared: spec.max_age_ms,
+            level: "",
         })
     } else {
         state.violated_last_window = false;
@@ -1882,6 +1909,10 @@ pub struct RungSpec {
     pub route_ms: u32,
     /// [`RUNG_ROLE_RUNG`], [`RUNG_ROLE_WINDOW`] or [`RUNG_ROLE_FLOOR`].
     pub role: u8,
+    /// phase-560 W8 -- the level's name as the model spells it (the mode key,
+    /// `degradation_levels[].level`): what `hazard-level-runtime` reports in
+    /// [`Violation::level`] when the ladder is on this rung.
+    pub level: &'static str,
     /// The hazard's guard members that belong to the rung's `starts_at` node:
     /// the route clock starts when one of them reports faulted. Empty when
     /// this executor does not observe that node as a detector (a rung below a
@@ -1987,7 +2018,14 @@ fn hazard_fault(
 ///   start to the first publish on its output, or, when none came, to the
 ///   tick that saw the route pass; declared is the rung's `route_ms`. A rung
 ///   that answers within its route reports nothing. Each rung that becomes
-///   active is judged at most once.
+///   active is judged at most once;
+/// - `hazard-level-runtime` (phase-560 W8, play_launch phase 102 M5 E7)
+///   whenever a rung becomes active: at detection, right after
+///   `hazard-detected`, and on every fall. measured is the level's 0-based
+///   index in the ladder, declared the ladder's length, and
+///   [`Violation::level`] the level's name -- the report play_launch's
+///   observer makes as `mode-availability`, keyed here by the hazard. A
+///   ladder that stays on one level reports it once.
 ///
 /// Which rung is active comes from `mode`, the mode the executor judges by:
 /// at detection it is the rung whose mode the executor is already in (the
@@ -2018,6 +2056,7 @@ pub(crate) fn check_hazard(
         fqn: spec.key,
         measured,
         declared: spec.ftti_ms,
+        level: "",
     };
     match (state, fault) {
         (HAZARD_CLEAR, Some(since)) => {
@@ -2031,8 +2070,8 @@ pub(crate) fn check_hazard(
                 .iter()
                 .position(|r| r.mode != NO_MODE && r.mode == mode)
                 .unwrap_or(0);
-            arm_rung(spec, active, now_ms);
             emit(v("hazard-detected", now_ms.wrapping_sub(at)));
+            arm_rung(spec, active, now_ms, &mut emit);
         }
         (HAZARD_DETECTED, Some(_)) => {
             if let Some(count) = sink_count
@@ -2064,16 +2103,24 @@ pub(crate) fn check_hazard(
     }
 }
 
-/// Make rung `active` the one being judged, from `now_ms`.
-fn arm_rung(spec: &HazardSpec, active: usize, now_ms: u32) {
+/// Make rung `active` the one being judged, from `now_ms`, and report the
+/// level the ladder is now on (`hazard-level-runtime`).
+fn arm_rung(spec: &HazardSpec, active: usize, now_ms: u32, emit: &mut impl FnMut(Violation)) {
     let cell = spec.cell;
-    if active >= spec.rungs.len() {
+    let Some(rung) = spec.rungs.get(active) else {
         cell.rung_state.store(RUNG_IDLE, Ordering::Relaxed);
         return;
-    }
+    };
     cell.rung_active.store(active as u32, Ordering::Relaxed);
     cell.rung_armed_ms.store(now_ms, Ordering::Relaxed);
     cell.rung_state.store(RUNG_ARMED, Ordering::Relaxed);
+    emit(Violation {
+        rule: "hazard-level-runtime",
+        fqn: spec.key,
+        measured: active as u32,
+        declared: spec.rungs.len() as u32,
+        level: rung.level,
+    });
 }
 
 /// play_launch phase 96 W4.2 -- while the hazard holds: follow a fall to a
@@ -2103,7 +2150,7 @@ fn check_rung(
         .find(|(_, r)| r.mode != NO_MODE && r.mode == mode)
         .map(|(i, _)| i)
     {
-        arm_rung(spec, lower, now_ms);
+        arm_rung(spec, lower, now_ms, emit);
     }
     let active = cell.rung_active.load(Ordering::Relaxed) as usize;
     let Some(rung) = spec.rungs.get(active) else {
@@ -2150,6 +2197,7 @@ fn check_rung(
                     fqn: spec.key,
                     measured: elapsed,
                     declared: rung.route_ms,
+                    level: "",
                 });
             }
         }
@@ -2436,6 +2484,7 @@ mod hazard_tests {
                 output_row: 0u16,
                 route_ms: 25u32,
                 role: 2u8,
+                level: "stop",
                 starts_at: &[HazardMonitorRef::Age(0u16)],
             }],
             cell: &NROS_HAZARD_CELL_0,
@@ -2499,6 +2548,7 @@ mod hazard_tests {
                 output_row: 0,
                 route_ms: 20,
                 role: RUNG_ROLE_FLOOR,
+                level: "brake",
                 starts_at: &[],
             }],
             cell: &CELL,
@@ -2591,6 +2641,7 @@ mod hazard_tests {
                 output_row: 0,
                 route_ms: 0,
                 role: RUNG_ROLE_FLOOR,
+                level: "k",
                 starts_at: &[],
             }],
             cell: &CELL,
@@ -2640,6 +2691,7 @@ mod hazard_tests {
                 output_row: 0,
                 route_ms: 10,
                 role: RUNG_ROLE_WINDOW,
+                level: "slow",
                 starts_at: &[HazardMonitorRef::Age(0)],
             },
             RungSpec {
@@ -2647,6 +2699,7 @@ mod hazard_tests {
                 output_row: 1,
                 route_ms: 20,
                 role: RUNG_ROLE_RUNG,
+                level: "stop",
                 starts_at: &[],
             },
             RungSpec {
@@ -2654,6 +2707,7 @@ mod hazard_tests {
                 output_row: 2,
                 route_ms: 30,
                 role: RUNG_ROLE_FLOOR,
+                level: "estop",
                 starts_at: &[],
             },
         ];
@@ -2699,12 +2753,36 @@ mod hazard_tests {
                 }
             }
             pub fn tick(&self, age: &[AgeState], mode: u16, now: u32) -> std::vec::Vec<(u32, u32)> {
+                self.verdicts(age, mode, now)
+                    .iter()
+                    .filter(|v| v.rule == "hazard-route-runtime")
+                    .map(|v| (v.measured, v.declared))
+                    .collect()
+            }
+            /// Every verdict of one tick, in emission order.
+            pub fn verdicts(
+                &self,
+                age: &[AgeState],
+                mode: u16,
+                now: u32,
+            ) -> std::vec::Vec<Violation> {
                 let mon = [MonitorState::default(); 3];
                 let mut out = std::vec::Vec::new();
                 check_hazard(&self.spec, self.rows, &mon, age, mode, now, |v| out.push(v));
-                out.iter()
-                    .filter(|v| v.rule == "hazard-route-runtime")
-                    .map(|v| (v.measured, v.declared))
+                out
+            }
+            /// phase-560 W8 -- the `hazard-level-runtime` reports of one tick,
+            /// as `(level, index, ladder length)`.
+            pub fn levels(
+                &self,
+                age: &[AgeState],
+                mode: u16,
+                now: u32,
+            ) -> std::vec::Vec<(&'static str, u32, u32)> {
+                self.verdicts(age, mode, now)
+                    .iter()
+                    .filter(|v| v.rule == "hazard-level-runtime")
+                    .map(|v| (v.level, v.measured, v.declared))
                     .collect()
             }
             pub fn publish(&self, i: usize) {
@@ -2718,6 +2796,48 @@ mod hazard_tests {
             }
             age
         }
+    }
+
+    /// phase-560 W8 -- a detection in the base mode reports the TOP level,
+    /// index 0 of 3, right after `hazard-detected`, keyed by the hazard.
+    #[test]
+    fn a_detection_reports_the_top_level() {
+        let rig = ladder::Ladder::new();
+        let age = ladder::faulted([true, false]);
+        let v = rig.verdicts(&age, 0, 1_000);
+        let rules: std::vec::Vec<&str> = v.iter().map(|v| v.rule).collect();
+        assert_eq!(rules, ["hazard-detected", "hazard-level-runtime"]);
+        assert_eq!(v[1].fqn, "demo.launch.xml/scan_lost");
+        assert_eq!((v[1].level, v[1].measured, v[1].declared), ("slow", 0, 3));
+        assert!(v[0].level.is_empty(), "only the level report names a level");
+    }
+
+    /// phase-560 W8 -- a detection while the executor is already in a lower
+    /// rung's mode reports THAT level, not the top.
+    #[test]
+    fn a_detection_after_a_fall_reports_the_level_the_ladder_is_on() {
+        let rig = ladder::Ladder::new();
+        let age = ladder::faulted([true, false]);
+        assert_eq!(rig.levels(&age, 2, 2_000), [("stop", 1, 3)]);
+    }
+
+    /// phase-560 W8 -- a fall reports the lower level, once; a tick on the
+    /// same level, a rise, and a mode that is no rung report nothing.
+    #[test]
+    fn a_fall_reports_the_lower_level_once() {
+        let rig = ladder::Ladder::new();
+        let age = ladder::faulted([true, false]);
+        assert_eq!(rig.levels(&age, 0, 1_000), [("slow", 0, 3)]);
+        assert!(rig.levels(&age, 0, 1_010).is_empty(), "level unchanged");
+        assert!(rig.levels(&age, 1, 1_020).is_empty(), "still the top level");
+        assert_eq!(rig.levels(&age, 2, 1_500), [("stop", 1, 3)], "the fall");
+        assert!(rig.levels(&age, 2, 1_510).is_empty(), "level unchanged");
+        assert!(rig.levels(&age, 1, 1_520).is_empty(), "a rise is no fall");
+        assert_eq!(rig.levels(&age, 3, 1_600), [("estop", 2, 3)], "the floor");
+        assert!(rig.levels(&age, 3, 1_700).is_empty(), "level unchanged");
+        // A recovery and a fresh detection report the level again.
+        rig.verdicts(&ladder::faulted([false, false]), 0, 1_800);
+        assert_eq!(rig.levels(&age, 0, 1_900), [("slow", 0, 3)]);
     }
 
     /// A fault in the base mode is judged against the TOP rung: its output
@@ -3236,14 +3356,28 @@ mod tests {
 /// site sits inside a loop that already borrows the executor's spec
 /// tables.
 pub(crate) fn log_violation(v: &Violation) {
-    nros_log::log_warn!(
-        nros_log::get_logger("nros"),
-        "contract violation: {} {} measured={} declared={}",
-        v.rule,
-        v.fqn,
-        v.measured,
-        v.declared
-    );
+    // phase-560 W8 -- a level report names its level; every other line is
+    // unchanged (log readers match the prefix).
+    if v.level.is_empty() {
+        nros_log::log_warn!(
+            nros_log::get_logger("nros"),
+            "contract violation: {} {} measured={} declared={}",
+            v.rule,
+            v.fqn,
+            v.measured,
+            v.declared
+        );
+    } else {
+        nros_log::log_warn!(
+            nros_log::get_logger("nros"),
+            "contract violation: {} {} measured={} declared={} level={}",
+            v.rule,
+            v.fqn,
+            v.measured,
+            v.declared,
+            v.level
+        );
+    }
 }
 
 /// phase-474 I1 -- the drain-and-report hook's line: the issue-0514 line plus
@@ -3251,17 +3385,32 @@ pub(crate) fn log_violation(v: &Violation) {
 /// `#12` after `#9` knows two were missed, and `dropped` says whether the ring
 /// lost any before this drain.
 fn log_drained_violation(seq: u32, total: u32, dropped: u32, v: &Violation) {
-    nros_log::log_warn!(
-        nros_log::get_logger("nros"),
-        "contract violation #{}: {} {} measured={} declared={} (total={} dropped={})",
-        seq,
-        v.rule,
-        v.fqn,
-        v.measured,
-        v.declared,
-        total,
-        dropped
-    );
+    if v.level.is_empty() {
+        nros_log::log_warn!(
+            nros_log::get_logger("nros"),
+            "contract violation #{}: {} {} measured={} declared={} (total={} dropped={})",
+            seq,
+            v.rule,
+            v.fqn,
+            v.measured,
+            v.declared,
+            total,
+            dropped
+        );
+    } else {
+        nros_log::log_warn!(
+            nros_log::get_logger("nros"),
+            "contract violation #{}: {} {} measured={} declared={} level={} (total={} dropped={})",
+            seq,
+            v.rule,
+            v.fqn,
+            v.measured,
+            v.declared,
+            v.level,
+            total,
+            dropped
+        );
+    }
 }
 
 /// Issue #505 — periodic activations a timer dropped because its
@@ -3298,6 +3447,7 @@ pub(crate) fn check_timer_overrun(
         fqn: "timer",
         measured: dropped,
         declared: tolerated,
+        level: "",
     })
 }
 
@@ -3348,6 +3498,7 @@ pub(crate) fn check_release_jitter(
         fqn: "spin",
         measured: max_jitter_us.min(u32::MAX as u64) as u32,
         declared: period_us.min(u32::MAX as u64) as u32,
+        level: "",
     })
 }
 
@@ -3391,6 +3542,7 @@ pub(crate) fn check_stack_headroom(
         fqn: "stack",
         measured: unused_bytes.min(u32::MAX as usize) as u32,
         declared: min_bytes.min(u32::MAX as usize) as u32,
+        level: "",
     })
 }
 
@@ -3598,6 +3750,7 @@ pub(crate) fn check_alive(
         fqn: "sched-context",
         measured: 0,
         declared: (window_us / period_us).min(u32::MAX as u64) as u32,
+        level: "",
     })
 }
 
@@ -3778,6 +3931,7 @@ mod ring_record_tests {
             fqn,
             measured,
             declared: 10,
+            level: "",
         }
     }
 
