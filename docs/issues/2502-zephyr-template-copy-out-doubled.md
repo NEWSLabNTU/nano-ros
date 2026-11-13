@@ -5,7 +5,7 @@ status: open
 type: tech-debt
 severity: low
 area: [ci, build, templates]
-related: [2219, rfc-0122]
+related: [2219, rfc-0122, phase-559]
 found: 2026-11-13
 ---
 
