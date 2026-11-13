@@ -6949,14 +6949,12 @@ fn leaf_to_root_prefix(leaf_dir: &Path, nano_ros_root: &Path) -> Option<String> 
 /// The `[patch.crates-io]` rows a board descriptor declares, as
 /// `(crate, leaf-relative path)` — sync's managed-entry shape.
 ///
-/// phase-351 W3. `nros-board-nuttx-qemu` declares the NuttX-patched `libc`
-/// fork that `-Z build-std` needs, and until now that declaration reached a
-/// leaf by THREE separate spellings: the descriptor row (withheld, so inert),
-/// a hand-authored row in each of the twelve NuttX leaf configs, and
-/// `scripts/build/nuttx-libc-patch.sh`, a shell re-append written against
-/// "nros 0.3.7" whose header says it exists "until the upstream CLI bug is
-/// fixed" — the CLI has been in-tree since phase 218. Delivering the row from
-/// the descriptor retires the other two.
+/// phase-351 W3 made the descriptor the ONE spelling of a board's patch rows.
+/// Before it, `nros-board-nuttx-qemu`'s patched `libc` reached a leaf three ways:
+/// the descriptor row, a hand-authored row in each NuttX leaf config, and a
+/// shell re-append. Phase-561 retired that fork, so no in-tree board declares
+/// a patch row today. The mechanism is generic and stays, so that a board
+/// that needs one has exactly one place to say it.
 fn board_patch_rows(cargo_config: &str, leaf_prefix: &str) -> Result<Vec<(String, String)>> {
     let doc: toml::Value = toml::from_str(cargo_config)
         .wrap_err("parse a board descriptor's `cargo_config` for [patch] rows")?;

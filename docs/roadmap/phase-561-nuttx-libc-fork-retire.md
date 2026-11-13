@@ -1,6 +1,6 @@
 # Phase 561 -- Retire the vendored NuttX `libc` fork
 
-**Status (2026-11-14). IN PROGRESS: W0 done; W1 to W4 not started.**
+**Status (2026-11-14). IN PROGRESS: W0 to W2 done; W3 and W4 not started.**
 The work moved out of
 [phase-550](phase-550-nuttx-native-build-infrastructure.md) W14 by the
 maintainer's ruling Q20 (2026-11-12): a separate phase that retires
@@ -82,7 +82,21 @@ as the board's `cargo_config` does.
 - Gate: W0 shows no FFI-crate dependency needs `std`.
 - **Acceptance:** every cmake NuttX fixture row builds on both arches, and
   its tests pass on QEMU.
-- **Status:** OPEN.
+- **Status:** DONE (2026-11-14). Both FFI configs say
+  `build-std = ["core", "alloc", "panic_abort"]`.
+  `just nuttx build-fixtures` built every NuttX row on arm and riscv, and
+  `just nuttx build-make-road` built both arches. The make road's arm
+  project case was sized from the probe. On QEMU, 26 of the 29 NuttX tests
+  passed in one batch; that batch also ran `realtime_sched_tasks`. The 3
+  reds were not NuttX failures:
+  - two needed a native Linux peer that a disk-full Linux fixture build had
+    left stale;
+  - `realtime_sched_tasks`'s rows need Zephyr, FreeRTOS and ThreadX
+    fixtures this run did not build.
+
+  After the Linux peers were rebuilt, both peer tests passed:
+  `c_riscv_nuttx_talker_delivers_cross_process` and
+  `nuttx_arm_carves_the_parameter_store_and_delivers`.
 
 ### W2 -- Delete the `libc` patch rows and the code that writes them
 
@@ -98,7 +112,22 @@ Delete:
 - Gate: W1.
 - **Acceptance:** `git grep` finds no tracked `[patch.crates-io] libc`
   row; every NuttX fixture builds on both arches.
-- **Status:** OPEN.
+- **Status:** DONE (2026-11-14). The rows are gone from both boards'
+  `cargo_config` and both FFI configs, and the FFI locks re-resolved to
+  crates.io `libc`. `nros-sizes-build` lost `find_nuttx_patched_libc`, its
+  libc injection and the cargo-minor lockfile seeding that existed only for
+  that patch.
+  Measured, not as planned: three of the listed renderers were never
+  fork code. They are generic mechanisms that the fork happened to use:
+  - `cmd/ws.rs`'s `board_patch_rows` (a board descriptor's `[patch]`
+    rows, the one spelling phase-351 W3 gave them);
+  - `builder/cargo_config.rs`'s patch merge;
+  - `orchestration/metadata_build.rs`'s build-std probe blocker.
+
+  They stay, with their prose updated, so a board that needs a patch row
+  has one place to say it. The remedy strings that name `nuttx-libc` in
+  `metadata_{build,refresh}.rs` and the `nros-cargo-profile` diagnostic
+  name the SOURCE, so they go with it in W3.
 
 ### W3 -- Retire the source
 

@@ -448,17 +448,8 @@ fn find_dep_rlib_isolated(
     // `size_of::<Executor>()` and trips the `EXECUTOR_OPAQUE_U64S too small`
     // const assertion.
     //
-    // Mirror the board FFI's `.cargo/config.toml`
-    // (`packages/boards/nros-board-nuttx-*/nros-nuttx-ffi/.cargo/config.toml`):
-    //   * `[unstable] build-std = ["std", "panic_abort"]`
-    //   * `build-std-features = ["compiler-builtins-mem"]`
-    //   * `[patch.crates-io] libc = { path = "third-party/nuttx/libc" }`
-    // The libc patch is mandatory: std's NuttX port references symbols the
-    // crates.io libc lacks (e.g. `_SC_HOST_NAME_MAX`), so without it
-    // std-from-source fails with `error[E0425]: cannot find value
-    // _SC_HOST_NAME_MAX in crate libc`. The patched libc lives at a stable
-    // repo-relative path shared by every NuttX board, so it's discoverable by
-    // walking up from `CARGO_MANIFEST_DIR`; inject it via `--config`.
+    // Mirror the board's cargo settings: `build-std = ["core", "alloc",
+    // "panic_abort"]` with `compiler-builtins-mem`.
     //
     // The nightly toolchain is inherited from the outer NuttX build (its
     // `rust-toolchain.toml` pins the nightly that `-Z build-std` requires);
@@ -468,28 +459,13 @@ fn find_dep_rlib_isolated(
     // untouched, and on a non-nightly toolchain the `-Z` flags just fail the
     // nested build → the existing filesystem fallback runs (no worse than
     // before).
-    // Set when this invocation injects a `[patch]` the outer workspace's own
-    // lockfile does not record. Such a patch makes the nested cargo REWRITE
-    // that lockfile (issue 1307), so it decides the lock discipline below.
-    let mut injects_unrecorded_patch = false;
     if target.contains("nuttx") {
-        cmd.arg("-Z").arg("build-std=std,panic_abort");
+        // phase-561 W2 — `core`/`alloc`, as the board's own cargo settings: no
+        // NuttX image compiles `std`, so neither does its probe, and no
+        // `libc` patch is needed (crates.io `libc` serves the host side).
+        cmd.arg("-Z").arg("build-std=core,alloc,panic_abort");
         cmd.arg("-Z")
             .arg("build-std-features=compiler-builtins-mem");
-        if let Some(libc_dir) = find_nuttx_patched_libc() {
-            cmd.arg("--config").arg(format!(
-                "patch.crates-io.libc.path=\"{}\"",
-                libc_dir.display()
-            ));
-            injects_unrecorded_patch = true;
-        } else {
-            println!(
-                "cargo:warning=nros-sizes-build: NuttX target {target} but the patched \
-                 libc (third-party/nuttx/libc) was not found relative to \
-                 CARGO_MANIFEST_DIR; std-from-source will likely fail and the probe \
-                 will fall back to the committed NuttX fallback sizes"
-            );
-        }
     }
 
     // Phase 118.E.2 (corrosion compat): scrub env vars that the outer
@@ -545,14 +521,6 @@ fn find_dep_rlib_isolated(
         cmd.arg("--features").arg(forwarded.join(","));
     }
 
-    // issue 1307 — the nested cargo must not write the outer workspace's
-    // tracked `Cargo.lock`. See `apply_nested_lock_discipline`.
-    apply_nested_lock_discipline(
-        &cargo,
-        &mut cmd,
-        &probe_target_dir,
-        injects_unrecorded_patch,
-    );
     // Backstop, not the mechanism: the flags above are version-dependent, and
     // a silently-ignored redirect is exactly how this class regresses. Snapshot
     // the workspace lock and restore it if the nested build moved it.
@@ -644,164 +612,9 @@ fn find_dep_rlib_isolated(
     })
 }
 
-/// Locate the NuttX-patched `libc` (`third-party/nuttx/libc`) by walking up
-/// from `CARGO_MANIFEST_DIR`. Used to inject the board FFI crate's
-/// `[patch.crates-io] libc` into the nested build-std probe for NuttX targets
-/// (the consumer crates `nros-c` / `nros-cpp` live at
-/// `packages/core/<crate>`, so the repo root — and thus `third-party/nuttx/libc`
-/// — is a few levels up). Returns `None` when no such directory exists on the
-/// ancestry (e.g. the patched-libc submodule isn't checked out).
-fn find_nuttx_patched_libc() -> Option<PathBuf> {
-    let start = env::var("CARGO_MANIFEST_DIR").ok()?;
-    let mut dir = PathBuf::from(start);
-    loop {
-        let candidate = dir.join("third-party/nuttx/libc");
-        if candidate.join("Cargo.toml").is_file() {
-            return Some(candidate);
-        }
-        if !dir.pop() {
-            return None;
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Lock discipline for the nested probe cargo (issue 1307)
 // ---------------------------------------------------------------------------
-
-/// The cargo release that stabilized the `resolver.lockfile-path` config key.
-///
-/// Measured (2026-09-18, this repo's toolchains, `cargo metadata --config
-/// 'resolver.lockfile-path="…"'`):
-///
-/// * cargo 1.96.0-nightly — `warning: ignoring `resolver.lockfile-path`, pass
-///   `-Zlockfile-path` to enable it`, and the root lock was written anyway;
-/// * cargo 1.97.0-nightly — honoured; `-Z lockfile-path` now warns `has been
-///   stabilized in the 1.97 release, and is no longer necessary`;
-/// * cargo 1.98.1 (stable) — honoured, and any `-Z` is a hard error.
-///
-/// So the `-Z` opt-in is passed only BELOW this minor. The pinned NuttX
-/// nightly is 1.96, which is exactly the version that needs it; hard-coding
-/// "always pass it" would break the day the pin moves onto a cargo that has
-/// dropped the stabilized name.
-const LOCKFILE_PATH_STABLE_MINOR: u64 = 97;
-
-/// Decide, and apply, what the nested probe cargo may do to a lockfile.
-///
-/// Issue 1307: every NuttX build appended
-///
-/// ```toml
-/// [[patch.unused]]
-/// name = "libc"
-/// version = "0.2.183"
-/// ```
-///
-/// to the repo's ROOT `Cargo.lock`. Measured cause, in two halves:
-///
-/// * the nested cargo is `$CARGO` — the REAL binary the outer cargo exported,
-///   not the `scripts/bin/cargo` PATH shim — so the project-wide `--locked`
-///   (issues 0359/0378, then injected by a PATH shim) never reached it;
-/// * the NuttX branch injects `--config patch.crates-io.libc.path=…`, and the
-///   root lock pins `libc 0.2.186` from the registry while the patched libc is
-///   `0.2.183`. The versions cannot meet, so the patch is genuinely unused —
-///   cargo records that fact, in the root lock.
-///
-/// `--locked` alone is not the fix: it converts the silent rewrite into
-/// `error: cannot update the lock file … because --locked was passed`
-/// (measured), and `find_dep_rlib` has no fallback by design (issue 0464), so
-/// every NuttX build would fail instead. The nested build has to stop writing
-/// that file at all, which is what `resolver.lockfile-path` does: the probe
-/// resolves against its OWN copy, seeded from the workspace lock so resolution
-/// — and therefore every `__NROS_SIZE_*` the probe reports — is unchanged.
-///
-/// Nothing is forwarded from the outer invocation any more. The project-wide
-/// `--locked` used to arrive through the PATH shim's environment variable;
-/// phase-485 W4 retired both (RFC-0104 D9), and cargo hands a build script no
-/// other trace of its own flags. What protects the workspace lock is what
-/// always did the work: the redirect below for an invocation that injects a
-/// `[patch]` the lock cannot record, and [`WorkspaceLockGuard`] restoring the
-/// file around every nested build. A root lock that still moves is refused by
-/// `check-cargo-registry-pins`.
-fn apply_nested_lock_discipline(
-    cargo: &std::ffi::OsStr,
-    cmd: &mut Command,
-    probe_target_dir: &Path,
-    injects_unrecorded_patch: bool,
-) {
-    if !injects_unrecorded_patch {
-        return;
-    }
-    match seed_probe_lockfile(probe_target_dir) {
-        Ok(lockfile) => {
-            cmd.arg("--config")
-                .arg(format!("resolver.lockfile-path=\"{}\"", lockfile.display()));
-            if cargo_minor(cargo).is_none_or(|m| m < LOCKFILE_PATH_STABLE_MINOR) {
-                cmd.arg("-Z").arg("lockfile-path");
-            }
-        }
-        Err(e) => {
-            // No copy to resolve against: the nested build resolves the
-            // workspace lock directly, and `WorkspaceLockGuard` restores it.
-            println!(
-                // issue 1307.
-                "cargo:warning=nros-sizes-build: could not seed the probe's own \
-                 lockfile ({e}); the nested build will resolve the workspace lock \
-                 directly"
-            );
-        }
-    }
-}
-
-/// `cargo --version`'s minor number, or `None` if it cannot be read.
-///
-/// Asks the binary that will run the nested build, not `rustc` and not the
-/// crate's own build-time version: corrosion can point `CARGO_BUILD_RUSTC` at
-/// a different toolchain than `$CARGO`, so the two are not interchangeable.
-fn cargo_minor(cargo: &std::ffi::OsStr) -> Option<u64> {
-    let out = Command::new(cargo).arg("--version").output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    parse_cargo_minor(&String::from_utf8_lossy(&out.stdout))
-}
-
-/// `"cargo 1.96.0-nightly (eb94155a9 2026-04-09)"` -> `Some(96)`.
-fn parse_cargo_minor(line: &str) -> Option<u64> {
-    let version = line.split_whitespace().nth(1)?;
-    let mut parts = version.split('.');
-    let _major = parts.next()?;
-    parts.next()?.parse().ok()
-}
-
-/// Copy the outer workspace's `Cargo.lock` into the probe target dir and
-/// return the copy's path, so the nested build has an identical starting
-/// resolution it is free to rewrite.
-///
-/// Seeded, not generated: a probe that re-resolves from scratch could pick
-/// different versions than the outer build, and the probe's answer sizes a C
-/// caller's buffer (issue 0464). The seed is kept beside the copy so the copy
-/// is refreshed exactly when the workspace lock's CONTENT changes — never on
-/// an mtime, which every rebase and `git stash` moves.
-fn seed_probe_lockfile(probe_target_dir: &Path) -> Result<PathBuf, Error> {
-    let workspace_lock = workspace_lockfile()?;
-    let bytes = std::fs::read(&workspace_lock)?;
-    let dir = probe_target_dir.join("probe-lockfile");
-    std::fs::create_dir_all(&dir)?;
-    let lockfile = dir.join("Cargo.lock");
-    let seed = dir.join("Cargo.lock.seed");
-    let stale = match std::fs::read(&seed) {
-        Ok(recorded) => recorded != bytes,
-        Err(_) => true,
-    };
-    if stale || !lockfile.is_file() {
-        // Write-then-rename: two consumers (`nros-c` and `nros-cpp`) probe the
-        // same key concurrently and write identical bytes, so a lost race is
-        // harmless, but a half-written lockfile would not be.
-        write_atomic(&lockfile, &bytes)?;
-        write_atomic(&seed, &bytes)?;
-    }
-    Ok(lockfile)
-}
 
 /// Write-then-rename, so no reader ever sees a half-written lockfile.
 ///
@@ -850,11 +663,10 @@ fn workspace_lockfile() -> Result<PathBuf, Error> {
 /// Snapshot of the outer workspace's `Cargo.lock`, restored if the nested
 /// build moved it.
 ///
-/// The backstop behind `apply_nested_lock_discipline`, and deliberately not
-/// the mechanism: which flag switches the redirect on depends on the cargo
-/// version (see [`LOCKFILE_PATH_STABLE_MINOR`]), and a redirect cargo silently
-/// IGNORES is indistinguishable from one that worked — which is how issue 1307
-/// would come back. The guard makes the invariant observable instead: after
+/// Issue 1307's guard. The nested probe once injected a `[patch]` the outer
+/// lock could not record, which made the nested cargo rewrite that lock; the
+/// injection is gone (phase-561), and this stays as the observable invariant:
+/// after
 /// the probe, the file is byte-identical to what it was before, and if it was
 /// not, the build says so.
 ///
@@ -1993,25 +1805,6 @@ mod tests {
             b.sort();
             b
         });
-    }
-
-    /// The `-Z lockfile-path` opt-in is version-gated, so the version has to
-    /// be read and not guessed.
-    #[test]
-    fn cargo_version_minor_is_parsed_from_the_version_line() {
-        assert_eq!(
-            parse_cargo_minor("cargo 1.96.0-nightly (eb94155a9 2026-04-09)\n"),
-            Some(96)
-        );
-        assert_eq!(
-            parse_cargo_minor("cargo 1.98.1 (797e8a9bc 2026-08-05)\n"),
-            Some(98)
-        );
-        assert_eq!(parse_cargo_minor("not a version line"), None);
-        assert_eq!(parse_cargo_minor(""), None);
-        // 96 < 97 <= 98: the gate's direction, stated where it can break.
-        const { assert!(96 < LOCKFILE_PATH_STABLE_MINOR) };
-        const { assert!(98 >= LOCKFILE_PATH_STABLE_MINOR) };
     }
 
     /// The backstop restores byte-for-byte, and says nothing when the file did

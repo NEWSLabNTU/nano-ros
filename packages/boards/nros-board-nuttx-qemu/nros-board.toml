@@ -35,14 +35,10 @@ target = "armv7a-nuttx-eabihf"
 # phase-359 W7 — was `["std", "panic_abort"]`. The family is `no_std`, so the
 # standard library is no longer compiled from source for this target.
 #
-# This makes the vendored `libc` fork at `third-party/nuttx/libc` UNNECESSARY —
-# all four of its patches exist to make std's NuttX port link
-# (`_SC_HOST_NAME_MAX`, the pthread symbols, `pthread_attr_t`'s size, the
-# `poll()` ABI shim) and nothing in nano-ros's own Rust needs them. The
-# `[patch.crates-io]` below is left in place and simply goes unused: actually
-# retiring the fork touches the SDK index, `nros-sizes-build` and the CLI's
-# patch emission, which is its own change and belongs after this one is proven
-# on hardware, not bundled ahead of it.
+# The vendored `libc` fork that std needed (`_SC_HOST_NAME_MAX`, the pthread
+# symbols, `pthread_attr_t`'s size, the `poll()` ABI shim) is retired with it
+# (phase-561): no NuttX image compiles `std`, nothing in nano-ros's own Rust
+# needs those patches, and crates.io `libc` serves the host side.
 build-std = ["core", "alloc", "panic_abort"]
 build-std-features = ["compiler-builtins-mem"]
 
@@ -90,14 +86,6 @@ rustflags = [
 [env]
 CC_armv7a_nuttx_eabihf = "arm-none-eabi-gcc"
 
-# #127 blocker-1: the patched libc for build-std lives UNDER this single
-# [patch.crates-io] table (the pinned nightly's `std` references
-# `libc::_SC_HOST_NAME_MAX`, which crates.io libc does not define for
-# NuttX; the fork at third-party/nuttx/libc adds it). Renderers /
-# fix-up scripts must never append a second `[patch.crates-io]` header —
-# duplicate tables are invalid TOML (see nuttx-libc-patch.sh).
-[patch.crates-io]
-libc = { path = "${workspace}/third-party/nuttx/libc" }
 '''
 # NuttX is BoardRun but ships no entry block — the hosted `fn main` shim drives
 # it (preserves the pre-195.C behaviour byte-for-byte).
@@ -183,14 +171,10 @@ json-target-spec = true
 # phase-359 W7 — was `["std", "panic_abort"]`. The family is `no_std`, so the
 # standard library is no longer compiled from source for this target.
 #
-# This makes the vendored `libc` fork at `third-party/nuttx/libc` UNNECESSARY —
-# all four of its patches exist to make std's NuttX port link
-# (`_SC_HOST_NAME_MAX`, the pthread symbols, `pthread_attr_t`'s size, the
-# `poll()` ABI shim) and nothing in nano-ros's own Rust needs them. The
-# `[patch.crates-io]` below is left in place and simply goes unused: actually
-# retiring the fork touches the SDK index, `nros-sizes-build` and the CLI's
-# patch emission, which is its own change and belongs after this one is proven
-# on hardware, not bundled ahead of it.
+# The vendored `libc` fork that std needed (`_SC_HOST_NAME_MAX`, the pthread
+# symbols, `pthread_attr_t`'s size, the `poll()` ABI shim) is retired with it
+# (phase-561): no NuttX image compiles `std`, nothing in nano-ros's own Rust
+# needs those patches, and crates.io `libc` serves the host side.
 build-std = ["core", "alloc", "panic_abort"]
 build-std-features = ["compiler-builtins-mem"]
 
@@ -254,8 +238,6 @@ NUTTX_LD_SCRIPT = "boards/risc-v/qemu-rv/rv-virt/scripts/ld.script"
 NUTTX_VECTORTAB = ""
 NUTTX_BOARD_LIB_DIR = "arch/risc-v/src/board"
 
-[patch.crates-io]
-libc = { path = "${workspace}/third-party/nuttx/libc" }
 '''
 # NuttX is BoardRun, no entry block — hosted `fn main` shim drives it (the
 # `nros_nuttx_entry` in src/entry.rs, named by CONFIG_INIT_ENTRYPOINT),
