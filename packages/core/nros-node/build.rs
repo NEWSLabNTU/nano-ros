@@ -697,9 +697,10 @@ fn main() {
             _ => 16,
         },
     );
+    // phase-474 I1
     assert!(
         (1..=256).contains(&max_violations),
-        "NROS_EXECUTOR_MAX_VIOLATIONS={max_violations}: must be 1..=256 (phase-474 I1)"
+        "NROS_EXECUTOR_MAX_VIOLATIONS={max_violations}: must be 1..=256"
     );
     // phase-474 I1 -- the drain-and-report hook's DEFAULT (an executor can still
     // flip it, `Executor::set_violation_drain_report`). A build-time default
@@ -730,9 +731,10 @@ fn main() {
         .stated()
         .is_some_and(|v| v != 0);
     let trace_timer_every = env_usize("NROS_TRACE_TIMER_EVERY", 1);
+    // phase-474 I3
     assert!(
         trace_timer_every < u16::MAX as usize,
-        "NROS_TRACE_TIMER_EVERY={trace_timer_every}: must be below 65535 (phase-474 I3)"
+        "NROS_TRACE_TIMER_EVERY={trace_timer_every}: must be below 65535"
     );
     assert!(
         monitor_arm_grace_ms <= u32::MAX as usize,
@@ -1913,10 +1915,11 @@ fn declared_param_service_shapes(
                         .collect::<Vec<_>>()
                         .join(", ")
                 ),
+                // The entity inventory is phase-446 F3.
                 _ => panic!(
                     "\n\nnros-node: the sizing descriptor's `[params] service_shape` = \
                      `{raw}` is malformed at `{node}`: each node must be nine `:`-separated \
-                     counts. It is written by the entity inventory (phase-446 F3); a stale or \
+                     counts. It is written by the entity inventory; a stale or \
                      hand-edited value would size the parameter-service buffer wrongly, so the \
                      build stops here.\n"
                 ),
@@ -2019,11 +2022,13 @@ fn declared_qos_rows(
         // containing one does not shift the field -- the same rule
         // ~~`_nros_qos_depth_env`~~ stated in `cmake/NanoRosEntityFacts.cmake` and
         // `subs_arena` follows above.
+        // The entity inventory writes this from the contract sidecar per
+        // phase-454 W10.
         let malformed = || -> ! {
             panic!(
                 "\n\nnros-node: NROS_ENTITY_DECLARED_DEPTHS=`{raw}` is malformed at `{entry}`: \
                  each row must be `type|topic=depth` with a non-negative integer depth. It is \
-                 written by the entity inventory from the contract sidecar (phase-454 W10); a \
+                 written by the entity inventory from the contract sidecar; a \
                  row dropped here would disable the declared-depth check for that endpoint \
                  while every gate stayed green, so the build stops instead.\n"
             )
@@ -2110,11 +2115,12 @@ fn declared_qos_rows(
             if let (Some(other), Some(depth)) = (row.depth, depth)
                 && other != depth
             {
+                // One fact, two statements: RFC-0100 D8.
                 panic!(
                     "\n\nnros-node: two carriers state a declared QoS depth for `{}` on \
                      `{}` and they disagree: NROS_ENTITY_DECLARED_DEPTHS says {other}, this \
                      image's sizing descriptor says {depth}. They are two statements about one \
-                     fact (RFC-0100 D8), so the build stops rather than picking one -- the \
+                     fact, so the build stops rather than picking one -- the \
                      registration check would otherwise hold every subscription to a number \
                      nobody on this road wrote.\n",
                     row.type_name, row.topic

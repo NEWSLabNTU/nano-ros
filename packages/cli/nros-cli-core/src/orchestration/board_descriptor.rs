@@ -718,11 +718,12 @@ pub use nros_orchestration_ir::target_exec::{
     EMULATOR_KINDS, FlashTable, PrepareStep, UsbId, WaitFor,
 };
 
-/// Refusal for a launch string in the retired places (phase-528 W2).
+/// Refusal for a launch string in the retired places (phase-528 W2;
+/// RFC-0118 D4).
 const RETIRED_RUNNER: &str = "a board's launch is stated in `[board.run]` (`emulator = \
      \"qemu:<machine>\"`, or `host = true`) and its runner table (`[board.run.qemu]`: \
      `system`, `cpu`, `machine`, `icount`, `semihosting`, `nic_model`), with the console in \
-     `[board.console]` — RFC-0118 D4, phase-528 W2. `nros build` renders the cargo `runner` \
+     `[board.console]`. `nros build` renders the cargo `runner` \
      from them";
 
 /// `[board.zephyr]` — the Zephyr facts, and only the ones no convention gives.
@@ -1456,9 +1457,11 @@ fn retired_runner(table: &toml::Table) -> Option<String> {
 /// "unknown variant" list. The Orin SPE is a BOARD over FreeRTOS (NVIDIA's
 /// FSP kernel), never a platform of its own (RFC-0064): the ~~`OrinSpe`~~ kind it
 /// replaced built such a descriptor as bare-metal. Orin SPE is not supported (phase-418, closed).
+// Why: docs/roadmap/archived/phase-418-orin-safety-island-and-spe.md.
 const RETIRED_ORIN_SPE_PLATFORM: &str = "`platform = \"orin-spe\"` is not a platform: the Orin SPE \
      runs FreeRTOS (NVIDIA's FSP), so its descriptor states `platform = \"freertos\"`. \
-     Orin SPE is not supported — see docs/roadmap/archived/phase-418-orin-safety-island-and-spe.md";
+     nano-ros does not support the Orin SPE: no board package for it exists, \
+     so there is no board to build for";
 
 /// The `[build]` / `[target.<triple>]` shape of a `cargo_config` template.
 #[derive(Debug, Default, Deserialize)]
@@ -3854,7 +3857,7 @@ entry_kind = "zephyr-staticlib"
         .expect_err("platform = \"orin-spe\" must not load");
         let msg = err.to_string();
         assert!(msg.contains("platform = \"freertos\""), "{msg}");
-        assert!(msg.contains("phase-418"), "{msg}");
+        assert!(msg.contains("does not support the Orin SPE"), "{msg}");
     }
 
     /// phase-462 W6c -- `[board.rx]` is the board's per-frame receive cost:

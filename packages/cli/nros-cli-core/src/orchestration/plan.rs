@@ -665,13 +665,14 @@ impl TransportKind {
 /// and read by nothing. The address is the image's (`[image.<id>.net.<if>]`)
 /// and the gateway the network's (`[network.<name>]`).
 pub const RETIRED_TRANSPORT_ADDRESS_REMEDY: &str = "`ip` / `mac` / `gateway` on a \
-     transport are retired (RFC-0103 D10, phase-497 W1): an image's address is \
+     transport are retired (nano-ros never used them): an image's address is \
      `[image.<id>.net.<if>] network = \"…\", host = N` in `system.toml`, and the \
      gateway is the network's (`[network.<name>] gateway`). Remove the keys from the \
      transport.";
 
-pub const RETIRED_INTERFACES_REMEDY: &str = "`interfaces` is not a nano-ros \
-     setting (retired phase-206 W5): nano-ros does not model NICs. Bind the \
+// Retired in phase-206 W5.
+pub const RETIRED_INTERFACES_REMEDY: &str = "`interfaces` is no longer a \
+     nano-ros setting: nano-ros does not model NICs. Bind the \
      middleware to an interface in the middleware's own config — CycloneDDS \
      `<General><Interfaces><NetworkInterface name=\"…\"/></Interfaces>` via \
      `CYCLONEDDS_URI`, or a zenoh config's `listen`/`connect` endpoints and \
@@ -794,9 +795,9 @@ pub struct PlanBuildOptions {
 /// nano-ros has no per-layer compiler-flag carrier on any build road (see
 /// `book-internals/src/pipeline/canonical-build-path.md`), so the remedy names the build
 /// tool's own knobs rather than a nano-ros one.
-// issue 2153.
+// issue 2153; the `[build.cargo]` / `[build.cc]` tables came from phase-204.15.
 pub const RETIRED_BUILD_TUNING_REMEDY: &str = "the plan build keys `optimize`, \
-     `cargo` and `cc` (phase-204.15's `[build.cargo]` / `[build.cc]`) are retired \
+     `cargo` and `cc` (the `[build.cargo]` / `[build.cc]` tables) are retired \
 : no build road applied them, so they parsed and changed nothing. \
      Choose the cargo profile with `[image.<id>] profile` in `system.toml` and tune \
      it in the leaf's own `[profile.*]`; pass C/C++ flags through the build tool \

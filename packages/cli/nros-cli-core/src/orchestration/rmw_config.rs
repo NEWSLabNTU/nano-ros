@@ -157,9 +157,10 @@ pub fn resolve_in(
     }
     let Some(cfg) = declared(rmws, rmw) else {
         if let Some(f) = explicit {
+            // RFC-0109 D8.
             return Err(format!(
                 "`[{at}]` names the RMW file `{f}`, but backend `{}` reads no configuration \
-                 file (RFC-0109 D8) — state its endpoint as `locator` instead",
+                 file — state its endpoint as `locator` instead",
                 rmw.unwrap_or("?")
             ));
         }
@@ -168,8 +169,9 @@ pub fn resolve_in(
     if !cfg.retired.is_empty() {
         let retired = dir.join(&cfg.retired);
         if retired.is_file() {
+            // RFC-0109 D8.
             return Err(format!(
-                "{}: this format is retired (RFC-0109 D8) — write the same settings in the \
+                "{}: this format is retired — write the same settings in the \
                  middleware's own configuration language as `{}`, the document its ROS 2 \
                  implementation reads",
                 retired.display(),
@@ -189,9 +191,10 @@ pub fn resolve_in(
         return Ok(None);
     }
     if let Some(loc) = image_locator {
+        // RFC-0109 D9.
         return Err(format!(
             "`[{at}]` states `locator = \"{loc}\"` and has the RMW file `{name}`: the file is \
-             this session's wiring, so the endpoint has two homes (RFC-0109 D9) — state it in \
+             this session's wiring, so the endpoint has two homes — state it in \
              the file, or drop the file"
         ));
     }
@@ -413,9 +416,10 @@ fn check_xml_domain(path: &Path, domain_id: u32, at: &str) -> Result<(), String>
         };
         let id = v[1..].split(q).next().unwrap_or("");
         if id != "any" && id.parse::<u32>().ok() != Some(domain_id) {
+            // RFC-0109 D9.
             return Err(format!(
                 "{}: `<Domain id=\"{id}\">` configures a domain `[{at}]` never joins (it is on \
-                 domain {domain_id}) — write `id=\"any\"` or `id=\"{domain_id}\"` (RFC-0109 D9)",
+                 domain {domain_id}) — write `id=\"any\"` or `id=\"{domain_id}\"`",
                 path.display()
             ));
         }
