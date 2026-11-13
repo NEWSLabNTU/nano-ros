@@ -70,7 +70,7 @@ EXEMPT = {
         "separate fixture tree, which `fixture-tree.sh sync` fetches whole",
     ("scripts/probe/run-bootstrap-probe.sh", "show"):
         "not a gate: `show <under_test>:<file>` reads the tip under test "
-        "(HEAD or PROBE_BRANCH), and the daily probe.yml checkout track checks "
+        "(HEAD or PROBE_BRANCH), and the daily host-tests.yml checkout track checks "
         "out with fetch-depth: 0 (a full clone)",
 }
 

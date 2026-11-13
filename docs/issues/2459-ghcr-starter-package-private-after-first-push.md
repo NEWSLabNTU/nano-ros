@@ -27,7 +27,7 @@ package page. Later pushes keep the visibility the package has.
 
 ## Why nothing noticed
 
-`probe.yml`'s `image-track` logs into GHCR before it pulls, so its own pull
+`host-tests.yml`'s `image-track` logs into GHCR before it pulls, so its own pull
 succeeds against a private package, and it would have moved `latest` to an
 image no student can pull.
 

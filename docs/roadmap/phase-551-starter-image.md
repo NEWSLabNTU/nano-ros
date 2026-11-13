@@ -128,7 +128,7 @@ gate and the room's pull time is printed, RFC-0127 D7). A new probe track: a tim
 runner (with a throttled link once Q9 sets its speed), then the first project
 built and run offline. Over the time or size budget is red.
 
-Acceptance: the track is `probe=`-tagged, runs in `probe.yml`, prints the
+Acceptance: the track is `probe=`-tagged, runs in `host-tests.yml` (was `probe.yml`), prints the
 pull time and the compressed size, and `latest` moves only on its green.
 
 Status: written (2026-11-12), first run at the next release.
@@ -137,7 +137,7 @@ the compressed size against the budget (the registry's layer sizes with
 `pull=1`) with the room's pull time for Q9's link printed beside it, the
 book page's `probe=20` block run with `--network none` against its
 `probe-expect` block, and the course recipe (the page's devcontainer.json
-names the digest; `nros doctor` names the image). probe.yml's `image-track`
+names the digest; `nros doctor` names the image). host-tests.yml's `image-track`
 job runs it on the newest release whose image exists and only then moves
 `latest` (`scripts/ci/starter-latest.sh`). Measured locally on a starter
 built from `0.6.0-nros8`: 1.22 GB, about 49 min for a room, the newcomer

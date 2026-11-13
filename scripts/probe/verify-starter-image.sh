@@ -2,7 +2,7 @@
 # scripts/probe/verify-starter-image.sh <image-ref> [--pull]
 #
 # The `image` probe track -- RFC-0127 D7, phase-551 W5/W6. Run against a
-# released starter tag before `latest` is moved to it (probe.yml, through
+# released starter tag before `latest` is moved to it (host-tests.yml image-track, through
 # scripts/ci/starter-latest.sh), or against a locally built one
 # (`just probe image nano-ros-starter:local`).
 #

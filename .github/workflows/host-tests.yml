@@ -10,6 +10,12 @@
 #   - (no gates job: `just check` runs in gate.yml's schedule, issue 2141)
 #   - rt-sched    : `rt_sched_levels_e2e` (phase-162) in a container granted
 #                   `SYS_NICE`, the only lane that claims `rt-sched`.
+#   - census      : the periodic lane census (phase-475 W5), was lane-census.yml.
+#   - checkout-track / installed-track / image-track : the book's setup flow
+#                   executed (issue 1107, phase-551), was probe.yml.
+#   Both joined this file's one daily cron in phase-559 W6: same cadence, same
+#   hosted runner class, and nothing forced a separate file. Their jobs keep
+#   their names, so a red still names which lane broke.
 #
 # Tier 1's OTHER half — `just build-test-fixtures lane=tier1` + `just ci tier1
 # run` (preconditions + rust-rtos-link-check + `test-all`) — is NOT here. It
@@ -352,3 +358,234 @@ jobs:
           source ./activate.sh
           cargo nextest run -p nros-tests --test rt_sched_levels_e2e \
             --no-fail-fast --success-output immediate
+
+  # ===== lane census (was lane-census.yml, cron 04:40; phase-559 W6) =====
+  #
+  # phase-475 W5 — the periodic lane census.
+  #
+  # Runs every nros-tests target in the gate lane's OWN image, twice, with nothing
+  # staged, and compares what would be admitted with `.config/lane-admission/
+  # gate.txt` — the list `test-lane-contracts` runs. It reports newly admissible
+  # targets (a missed opportunity) and admitted targets that would no longer pass
+  # (the gate goes red on those anyway — W4 — this names them sooner, with a
+  # reason), and the missing-capability table for whoever owns the image.
+  #
+  # It fails ONLY on a TIMEOUT: a test that hangs instead of skipping is always a
+  # defect. Everything else is information; failing on every new red would make
+  # this a second gate nobody asked for.
+  #
+  # Provisions exactly what the gate's `check` job provisions before
+  # `test-lane-contracts`, step for step, because the census is only a statement
+  # about that environment.
+
+  census:
+    concurrency:
+      group: host-tests-census-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Trust the checkout inside the container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # The same road the gate job takes: `.github/actions/setup-nros-cli`.
+      - name: Build the in-tree nros CLI (as the gate job does)
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
+
+      # Both of these were missing here while the gate job ran them, so the
+      # census measured a poorer environment than the lane it describes: on
+      # 2026-10-29 `cmake_platform_matrix` failed here on "the pinned Corrosion
+      # is not in the SDK store", while the same target passes in the gate.
+      - name: Provision clang-format (as the gate job does)
+        run: |
+          source ./activate.sh
+          just setup-clang-format
+
+      - name: Provision Corrosion (as the gate job does)
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
+      - name: Provision compile-tier sources (as the gate job does)
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Census (2 runs, in this image)
+        run: |
+          # `tee` opens its file when the pipeline STARTS, before the script
+          # creates its out dir — the first scheduled run (37182733460) measured
+          # a clean census (0 FAIL, 0 TIMEOUT) and a red step from exactly that.
+          mkdir -p census-out
+          scripts/test/lane-census.sh --here census-out --runs 2 \
+            --admit census-out/gate.txt | tee census-out/summary.txt
+
+      - name: Compare with the committed admission list
+        run: |
+          python3 scripts/test/lane-census-diff.py \
+            .config/lane-admission/gate.txt census-out/gate.txt \
+            census-out/per-target.json | tee census-out/diff.txt
+          { echo '```'; cat census-out/summary.txt census-out/diff.txt; echo '```'; } \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the census
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lane-census
+          path: census-out/
+          retention-days: 14
+
+  # ===== book probes (was probe.yml, cron 08:00; phase-559 W6) =====
+  #
+  # The book's setup flow, EXECUTED — issue 1107 / phase-452 W3.
+  #
+  # `just probe` has existed since issue 0204 and no workflow ran it. The
+  # `probe=NN` blocks in the book are extracted and run verbatim in pristine
+  # containers, which is the difference between a page that has been proofread
+  # and a page that has been executed — and the book is the one surface where
+  # being wrong is REPLICATED rather than merely observed, because a new user
+  # copies it.
+  #
+  # Both front doors, because they are two different machines:
+  #
+  #   * the CHECKOUT track — clone + bootstrap, then the first-node chapter.
+  #     What everyone does until a release is cut.
+  #   * the INSTALLED track — build the asset `release-nros.yml` would publish,
+  #     install it into a second pristine container with nothing else mounted,
+  #     and run `first-project.md` on a host with NO checkout: the book's first
+  #     chapter (an mps2-an385 talker on QEMU over a serial link, `nros run`,
+  #     then `ros2 topic echo`), timed from the first `nros setup` against the
+  #     30-minute field budget (phase-525 W4). The Linux multi-node chapter is
+  #     the `linux` track, replayed weekly by weekly.yml.
+  #     The released `nros` could once build nothing and nothing noticed, because
+  #     every host that ran it had a checkout the SDK-root ladder reached first.
+  #
+  # NOT on pull_request, and not in a merge-gating lane: ~30-60 min per track
+  # cold. Schedule plus dispatch, the `check-build` placement, for the same
+  # reason — a lane nobody can afford per push gets skipped, which is worse than
+  # a smaller one that runs.
+  #
+  # The two tracks are SEPARATE JOBS rather than one `just probe bootstrap` so a
+  # failure names which front door broke; run serially, the second never reports
+  # when the first is red.
+
+  checkout-track:
+    concurrency:
+      group: host-tests-checkout-track-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    name: book probe — checkout track
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      # `just` is not on a bare `ubuntu-latest` runner, and this is the one
+      # workflow that does not run inside `ghcr.io/newslabntu/nano-ros-ci`,
+      # which is where every other lane gets it from. It cannot run there: the
+      # probe drives `docker run` itself (`scripts/probe/run-bootstrap-probe.sh`
+      # asserts a host `docker`), so it needs the runner rather than a
+      # container. Without this step both jobs died with `just: command not
+      # found` and exit 127 on this workflow's first scheduled run, before
+      # either probe container started.
+      #
+      # The `~/.local/bin` destination is the one a contributor's checkout
+      # uses, so PATH reads the same way.
+      - name: Install just (if absent)
+        run: |
+          set -euo pipefail
+          if ! command -v just >/dev/null 2>&1; then
+            # issue 1760 — the pinned, checksummed release asset, retried on
+            # every error class; never a piped installer script.
+            bash scripts/ci/install-just.sh --to "$HOME/.local/bin"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+      - name: just probe checkout
+        env:
+          # `actions/checkout` leaves a DETACHED HEAD, and the probe refuses
+          # one by design ("set PROBE_BRANCH to a branch/tag to clone") rather
+          # than guessing which tree to test. Naming the ref is what makes the
+          # container clone the commit under test.
+          PROBE_BRANCH: ${{ github.ref_name }}
+        run: |
+          source ./activate.sh
+          just probe checkout
+
+  installed-track:
+    concurrency:
+      group: host-tests-installed-track-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    name: book probe — installed track
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      # See the checkout track above for why this lane installs `just` itself.
+      - name: Install just (if absent)
+        run: |
+          set -euo pipefail
+          if ! command -v just >/dev/null 2>&1; then
+            # issue 1760 — the pinned, checksummed release asset, retried on
+            # every error class; never a piped installer script.
+            bash scripts/ci/install-just.sh --to "$HOME/.local/bin"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+      - name: just probe installed
+        env:
+          PROBE_BRANCH: ${{ github.ref_name }}
+        run: |
+          source ./activate.sh
+          just probe installed
+
+  # RFC-0127 D7, phase-551 W5 — the `image` track. The newest released
+  # starter image is pulled (timed), held to its size budget, and the book's
+  # newcomer steps (book/src/start/starter-image.md) run in it with no
+  # network; `latest` moves to it only when all of that passes
+  # (scripts/ci/starter-latest.sh). A release's own job never moves `latest`
+  # (starter-image.yml), so a starter is `latest` within a day of its
+  # release, and only once probed.
+  image-track:
+    concurrency:
+      group: host-tests-image-track-${{ github.ref }}
+      cancel-in-progress: false
+    name: image probe — starter
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Probe the newest starter, then move latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/starter-latest.sh

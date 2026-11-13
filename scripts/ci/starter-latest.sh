@@ -3,7 +3,7 @@
 #
 # RFC-0127 D7 (phase-551 W5): move `ghcr.io/newslabntu/nano-ros-starter:latest`
 # to the newest released starter, and ONLY after the `image` probe track
-# passes on it. Run by probe.yml; never by hand from a session.
+# passes on it. Run by host-tests.yml (image-track); never by hand from a session.
 #
 #   1. find the newest `nros-<ver>` release whose `<ver>` image exists. A
 #      release whose image job failed has no image; the one before it is then
@@ -64,7 +64,7 @@ if [ "$status" != 200 ]; then
     echo "starter-latest: $ref exists but an anonymous pull is refused ($status):" >&2
     echo "  the package is private. An org admin sets it public once, at" >&2
     echo "  https://github.com/orgs/newslabntu/packages/container/nano-ros-starter/settings" >&2
-    echo "  (Danger Zone > Change visibility > Public); then re-run probe.yml." >&2
+    echo "  (Danger Zone > Change visibility > Public); then re-run host-tests.yml (image-track)." >&2
     exit 1
 fi
 echo "starter-latest: $ref is pullable with no credentials"
