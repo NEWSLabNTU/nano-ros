@@ -100,8 +100,7 @@ build verb, `make`, the way Zephyr owns `west build`:
    anything compiles against them: `nros configure`, in the workspace.
 5. Build the kernel with `make` in `$NUTTX_DIR`. The Rust static libraries
    build as a sub-step of the app build, and the kernel ELF is
-   `$NUTTX_DIR/nuttx`. A CMake-driven NuttX build takes one
-   `-DBOARD_CONFIG=<board>:<config>` instead.
+   `$NUTTX_DIR/nuttx`.
 
 A kernel built this way boots to the NSH prompt. Run your app by its
 program name there, for example `nsh> nuttx_c_talker`: the build registers

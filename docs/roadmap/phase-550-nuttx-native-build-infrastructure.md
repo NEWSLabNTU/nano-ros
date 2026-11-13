@@ -464,6 +464,10 @@ builds it, and only then is it offered again, as new work.
 - Gate: cleared (Q16 b, ruled 2026-11-12).
 - **Acceptance:** `integrations/nuttx/CMakeLists.txt` is gone, and no doc
   offers the flow.
+- **Status:** DONE (2026-11-13). The file is deleted, and so is the book's
+  sentence in `nuttx.md`. RFC-0064's sentence that pointed at it and the
+  umbrella gate's note about it are rewritten. `integration_nuttx.rs` now
+  asserts that the file is absent, so it cannot come back without a lane.
 
 ### W9 -- The rv-virt target spec
 

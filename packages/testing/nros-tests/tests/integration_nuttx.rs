@@ -34,7 +34,7 @@ fn nuttx_integration_shell_smoke() {
 
     let root = nros_tests::project_root();
     let shell = root.join("integrations/nuttx");
-    for f in &["Make.defs", "Makefile", "Kconfig", "CMakeLists.txt"] {
+    for f in &["Make.defs", "Makefile", "Kconfig"] {
         let p = shell.join(f);
         assert!(p.exists(), "integrations/nuttx/{} missing", f);
     }
@@ -55,14 +55,11 @@ fn nuttx_integration_shell_smoke() {
         "NuttX Kconfig must declare config NROS",
     );
 
-    let cmake_shell =
-        std::fs::read_to_string(shell.join("CMakeLists.txt")).expect("read NuttX CMakeLists.txt");
+    // NuttX's make build is the one road into a NuttX tree; its CMake flow
+    // stays unoffered until it is measured booting both boards and a lane
+    // builds it (RFC-0126 decision 16, RFC-0130 Q-N1).
     assert!(
-        cmake_shell.contains("NROS_PLATFORM"),
-        "NuttX shell CMake must set NROS_PLATFORM",
-    );
-    assert!(
-        cmake_shell.contains("add_subdirectory"),
-        "NuttX shell CMake must add_subdirectory the root CMake",
+        !shell.join("CMakeLists.txt").exists(),
+        "integrations/nuttx/CMakeLists.txt must not come back without a lane that builds it",
     );
 }

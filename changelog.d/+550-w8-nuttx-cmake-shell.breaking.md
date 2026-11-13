@@ -1,0 +1,1 @@
+The NuttX CMake shell, `integrations/nuttx/CMakeLists.txt`, is removed. No lane built it, and it was never measured booting a board. NuttX's make build (`CONFIG_NROS=y` with `integrations/nuttx/` as an `apps/external` app) is the supported way into a NuttX tree.
