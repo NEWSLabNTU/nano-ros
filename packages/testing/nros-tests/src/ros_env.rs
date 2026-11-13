@@ -756,7 +756,7 @@ impl DockerRosEnv {
     /// require THIS router — and the nano-ros zpico node reaches the same router
     /// via `NROS_LOCATOR=tcp/127.0.0.1:7447`. RAII: `docker kill`ed on drop.
     ///
-    /// Proto version `0x09` is stable across zenoh 1.x, so the pinned zpico 1.7.2
+    /// Proto version `0x09` is stable across zenoh 1.x, so the pinned zpico (its `version.txt`)
     /// interoperates with a stock jazzy router (1.11.2); the interop key is the
     /// RIHS01 type-hash tail (baked by the `ros-<edition>` build), not the zenoh
     /// version — see issue #0291.
@@ -900,7 +900,7 @@ pub fn test_edition() -> String {
 /// a nano-ros example node reaches a live ROS 2 edition peer:
 /// - `Cyclone` — nano-ros `rmw-cyclonedds` ↔ `rmw_cyclonedds_cpp` on a shared
 ///   RTPS domain (phase-310).
-/// - `Zenoh` — nano-ros `rmw-zenoh` (zpico, pinned 1.7.2) ↔ a `rmw_zenohd`
+/// - `Zenoh` — nano-ros `rmw-zenoh` (zpico, pinned; see its `version.txt`) ↔ a `rmw_zenohd`
 ///   router ↔ `rmw_zenoh_cpp`.
 /// - `Xrce` — nano-ros `rmw-xrce` → a micro-XRCE Agent ↔ `rmw_fastrtps_cpp`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
