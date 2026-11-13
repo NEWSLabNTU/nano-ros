@@ -483,7 +483,10 @@ The detail is in
 
 Since issue 2494 the mps2-an385 bare-metal board states its main stack
 (`NROS_BAREMETAL_STACK_KB`, root `main`). `nros build` now walks those images
-too. The Rust talker's walk from `main` is 23,968 B static, a floor of
-26,368 B against 256 KiB. A measured image at 16 KiB fails and names
-`NROS_BAREMETAL_STACK_KB=26`. ThreadX and NuttX remain. The detail is in
+too. The Rust talker's walk from `main` is 23,968 B static, which gave an
+unmeasured floor of 26,368 B. Booted at 26 KiB, it tripped the board's MPU
+guard. The guard bisects the real peak to between 31 and 32 KiB, so the walk is
+about 8 KB short (issue 2402's RMW vtable gap). The example now has a measured
+row (allowance 8,800 B, floor 36,048 B), and a 26 KiB build fails with
+`NROS_BAREMETAL_STACK_KB=36`. ThreadX and NuttX remain. The detail is in
 [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W5b.

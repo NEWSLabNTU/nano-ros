@@ -352,13 +352,26 @@ calls `stack_stated::emit` and its platform is added to `STATING_PLATFORMS`:
   `NROS_BAREMETAL_STACK_KB`, 256 KiB by default, written to
   `nros-stack-stated.json` with root `main`. W5b turned the platform on in
   `nros build`'s `STATING_PLATFORMS` (`bare-metal`). Measured on
-  `examples/mps2-an385-baremetal/rust/talker`: the walk from `main` is
-  23,968 B static, an unmeasured floor of 26,368 B against the default
-  256 KiB. A stated 16 KiB warns and names `NROS_BAREMETAL_STACK_KB=26`. With a
-  test allowance row, 16 KiB fails with "Raise it: NROS_BAREMETAL_STACK_KB=26"
-  and 26 KiB holds. An unchanged rebuild compiles nothing. Interrupt handlers
-  also run on the main stack (MSP) and are not on the walk from `main`; the
-  board's MPU guard still catches an overflow they cause.
+  `examples/mps2-an385-baremetal/rust/talker`:
+  - **Static walk.** From `main` it is 23,968 B, which gave an unmeasured
+    floor of 26,368 B.
+  - **The run disagreed.** Booted in QEMU at that floor (26 KiB), the image
+    tripped the board's MPU guard ("nros: stack overflow") right after the
+    network came up. Bisected over `NROS_BAREMETAL_STACK_KB`: 31 KiB overflows
+    and 32 KiB publishes, both deterministic over three or more runs. The
+    walk is 7.8 to 8.8 KB under the run, the RMW vtable gap issue 2402 names.
+  - **Now a measured row.** `config/stack-floors.toml` holds the image's OPEN
+    allowance: peak 32,768 B (the passing bound) minus static 23,968 B, so
+    8,800 B. The floor is 36,048 B. A 26 KiB build now fails with "Raise it:
+    NROS_BAREMETAL_STACK_KB=36", and 36 KiB and the default 256 KiB build and
+    publish.
+  - **Rebuilds.** An unchanged rebuild compiles nothing.
+  - **Interrupt handlers.** They also run on the main stack (MSP), so their
+    frames are inside the measured peak but not on the static walk.
+  - **Coverage.** The row is keyed to the in-tree example
+    (`qemu_bsp_talker_bringup@mps2-an385-baremetal`). An `nros new` project on
+    this board is keyed by its template and stays unmeasured until it gets a
+    row of its own.
 
 The FreeRTOS sched tasks (`[tasks.*.freertos] stack_bytes`) are one more
 role: W5 checks the boot app task only.

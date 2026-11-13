@@ -49,6 +49,30 @@
       "target": "thumbv7em-none-eabi"
     },
     {
+      "bytes": 8800,
+      "image": "qemu_bsp_talker_bringup@mps2-an385-baremetal",
+      "issue": "2402",
+      "measured": {
+        "image": "examples/mps2-an385-baremetal/rust/talker",
+        "issue": "2400",
+        "method": "QEMU 11.0 mps2-an385, the board's MPU stack guard (issue 2494) bisected over NROS_BAREMETAL_STACK_KB: 31 KiB trips 'nros: stack overflow' right after the network comes up, 32 KiB publishes for 45 s, each 3 runs or more; peak is the passing bound. dev profile (optimized + debuginfo), router reachable; static from main in the same build",
+        "peak": 32768,
+        "static": 23968
+      },
+      "reason": "calls through the RMW vtable the static walk charges, not follows; the walk from main (23,968 B) is 7.8-8.8 KB under the run",
+      "rmw": "zenoh",
+      "role": "OPEN",
+      "shape": {
+        "NROS_EXECUTOR_ACTION_CLIENTS": 0,
+        "NROS_EXECUTOR_MAX_CBS": 1,
+        "NROS_EXECUTOR_MAX_NODES": 1,
+        "NROS_MAX_PUBLISHERS": 1,
+        "NROS_MAX_QUERYABLES": 0,
+        "NROS_MAX_SUBSCRIBERS": 0
+      },
+      "target": "thumbv7m-none-eabi"
+    },
+    {
       "bytes": -4236,
       "image": "talker/c/zenoh@nucleo-f767zi-zephyr",
       "issue": "2402",
