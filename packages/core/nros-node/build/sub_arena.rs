@@ -212,20 +212,31 @@ pub(crate) fn row_slot_bytes(row: &SubEndpoint, rx_buf_size: usize) -> usize {
 ///
 ///   * the rows are not attributable at all ([`descriptor_subscriptions`]);
 ///   * the row count disagrees with the declared subscription count, so the
-///     table describes a different set of endpoints than the one being summed;
-///   * some row states no `depth`. A receive region is sized from it and a
-///     default is wrong by up to 10x in either direction, which is the same
-///     refusal `set_storage_bytes` makes one layer up.
+///     table describes a different set of endpoints than the one being summed.
 ///
 /// A refused PATH is not in that list on purpose: it has a safe direction and
 /// the row still carries its depth, so it is priced loudly at the closure
 /// buffer rather than dragging the whole image back to the worst case.
+///
+/// Neither is a row that states no `depth`. Such a row is priced at
+/// `budgeted_depth` -- `arena_model::BUDGETED_QOS_DEPTH`, the image-wide
+/// `NROS_PUBSUB_QOS_DEPTH` ladder (env > Kconfig/board > the descriptor's
+/// declared maximum > ROS's KEEP_LAST(10)). That is the depth the env road
+/// below prices EVERY subscription at when this sum refuses, and the depth the
+/// runtime's exhaustion report names, so refusing here never bought a better
+/// depth. It only lost the per-row slot: the env road charges each
+/// subscription the image-wide receive class, which on an image with one
+/// large subscribed type and a stated 64 KiB closure buffer priced seven
+/// subscriptions at 3 x 64 KiB each (1,385,536 B modelled against 90,552 B
+/// claimed, the Autoware Safety Island on mps3-an536). A row's own declared
+/// depth still wins over the budget.
 pub(crate) fn subs_arena_from_descriptor(
     rows: &[SubEndpoint],
     subs: usize,
     entry_struct: usize,
     ring_len_bytes: usize,
     rx_buf_size: usize,
+    budgeted_depth: usize,
 ) -> Option<usize> {
     if rows.len() != subs {
         return None;
@@ -239,11 +250,9 @@ pub(crate) fn subs_arena_from_descriptor(
         // on a stated fact rather than on a bound — hence the predicate, and hence
         // the descriptor stating it only from an OBSERVED registration.
         //
-        // The DEPTH is still required, before the branch: a row with no depth
-        // describes an endpoint this table cannot price at all, and letting an
-        // in-place row through without one would make the guard depend on which
-        // path the row happens to state.
-        let depth = row.depth?;
+        // A row with no declared depth is priced at the image's budgeted depth
+        // (see the doc comment): the same depth the env road would charge it.
+        let depth = row.depth.map_or(budgeted_depth, |d| d as usize);
         if row.claims_no_region {
             // Still the buffered entry struct, which OVER-states the in-place
             // entry (`SubInplaceEntry` is smaller than `SubBufferedEntry`).
@@ -253,11 +262,8 @@ pub(crate) fn subs_arena_from_descriptor(
             total += entry_struct;
             continue;
         }
-        total += buffered_region(
-            depth as usize,
-            row_slot_bytes(row, rx_buf_size),
-            ring_len_bytes,
-        ) + entry_struct;
+        total +=
+            buffered_region(depth, row_slot_bytes(row, rx_buf_size), ring_len_bytes) + entry_struct;
     }
     Some(total)
 }
