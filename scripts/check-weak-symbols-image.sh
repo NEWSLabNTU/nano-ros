@@ -85,8 +85,8 @@ COVERAGE=(
     # nothing and, before W3b, said nothing about it.
     # phase-535 W6 — the serial pair is a configuration of the Rust workspace's
     # pubsub images now, so the rows name those images' target dirs.
-    "examples/workspaces/rust/target-fixtures/baremetal-talker-serial|baremetal_talker_serial_entry|_z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal"
-    "examples/workspaces/rust/target-fixtures/baremetal-listener-serial|baremetal_listener_serial_entry|_z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal"
+    "examples/workspaces/rust/target-fixtures/baremetal-talker-serial|baremetal_talker_serial_entry|_z_serial_open_from_dev _z_serial_close _z_send_serial_internal _z_read_serial_internal"
+    "examples/workspaces/rust/target-fixtures/baremetal-listener-serial|baremetal_listener_serial_entry|_z_serial_open_from_dev _z_serial_close _z_send_serial_internal _z_read_serial_internal"
     # (smoltcp_init/smoltcp_cleanup are NOT image-checked: re-audited 2026-06-15
     #  to optional-hook. They are legacy no-op stubs the post-Phase-80 path no
     #  longer overrides — real bring-up is `nros_smoltcp` + the board

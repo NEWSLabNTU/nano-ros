@@ -65,13 +65,11 @@ for t in "${TRANSPORTS[@]}"; do
     # gate. `write` maps to `send` on the impl side.
     #
     # Serial is special: zenoh-pico's `src/link/unicast/serial.c`
-    # wrappers (`_z_f_link_open_serial`, `_z_f_link_listen_serial`)
-    # call `_z_open_serial_from_{dev,pins}` /
-    # `_z_listen_serial_from_{dev,pins}` rather than a single
-    # `_z_open_serial`; `_z_f_link_read_socket_serial` calls
-    # `_z_read_serial_internal`; `write` maps to
-    # `_z_send_serial_internal`. Encode the divergence so the
-    # parity check measures the right contract.
+    # wrappers (`_z_f_link_{open,listen,close}_serial`) call the
+    # protocol layer (`_z_serial_protocol_*`), which in turn calls
+    # `_z_serial_{open,listen}_from_{dev,pins}` / `_z_serial_close`,
+    # rather than a single `_z_open_serial`. The case below encodes
+    # that divergence so the parity check measures the right contract.
     missing=()
     for w in "${WRAPPERS[@]}"; do
         op="${w#_z_f_link_}"; op="${op%_$t}"
