@@ -423,6 +423,23 @@ Its first run confirmed both Rust rows exact. It found the C talker's peak
 13,064 B. The verdict table and the item status are in
 [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W6.
 
+### W3: PX4 checks its threads against the walked floors (2026-11-13)
+
+The placer walks the uORB archive it builds (`cargo-out-dir-headers.py
+--stack-floor px4-uorb`) and writes `NROS_STACK_FLOOR_OPEN/_SPIN` into the
+placed C++ config header. At configure, `nros_px4_add_module` checks
+STACK_MAIN against OPEN and each work queue against SPIN. The same rulings
+apply: a measured floor is enforced, an unmeasured one warns, and the
+executor's minimum always holds.
+
+- **SITL** is acceptance-measured: a test row refused PX4's configure.
+- **NuttX fmu-v6x** was measured once from the spike recipe, with OPEN 7,528 B
+  and SPIN 3,672 B at O3. It has no lane until phase-557 W3b.
+
+At `opt-level="z"` the walk conflates callers through the machine outliner
+(issue 2506). The detail is in
+[phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W3.
+
 ### W5: the cargo leaf CHECKs the board's stated stack (2026-11-13)
 
 Same rulings: CHECK by default, a MEASURED image fails, an unmeasured one

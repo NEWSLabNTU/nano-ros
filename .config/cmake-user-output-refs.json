@@ -39,7 +39,6 @@
     "cmake/toolchain/NanoRosCrossToolchain.cmake": 1,
     "integrations/px4/NanoRosArchivePairing.cmake": 3,
     "integrations/px4/NanoRosPx4Module.cmake": 1,
-    "integrations/px4/NanoRosPx4ThreadStacks.cmake": 1,
     "packages/api/nros-c/cmake/nros-nuttx-depfile.cmake": 1,
     "packages/api/nros-c/cmake/nros-nuttx.cmake": 1,
     "packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsDescriptorCap.cmake": 1,

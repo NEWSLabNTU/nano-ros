@@ -1,7 +1,7 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
-**Status (2026-11-13). OPEN: W1, W2, W4, W5 and W6 are done; W2b, W3 and
-W5b are open.** This phase tracks the implementation of
+**Status (2026-11-13). OPEN: W1, W2, W3, W4, W5 and W6 are done; W2b, W3b
+and W5b are open.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
 runs, and every gate reads that producer instead of holding its own number.
@@ -28,6 +28,7 @@ Related: [issue 2402](../issues/2402-rmw-vtable-slot-binding-stack-walk.md)
 slot), [issue 2414](../issues/2414-stack-floor-bitcode-store-under-sccache.md)
 (the deferred bitcode store),
 [issue 2460](../issues/2460-stack-floor-mps2-zephyr-walk-refused.md),
+[issue 2506](../issues/2506-stack-floor-walk-machine-outliner.md),
 [issue 2461](../issues/2461-stack-floor-freertos-stated-key.md), and the
 resolved [2466](../issues/archived/2466-stack-floor-ci-image-missing-c-frames.md)
 and [2473](../issues/archived/2473-stack-floor-table-needs-toml-parser.md).
@@ -71,15 +72,115 @@ builds with the floor, and an image that did not opt in still fails.
 
 ### W3 — PX4
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-13, #PRNUM). SITL is covered. The NuttX half was
+  measured once and has no lane; that is W3b.
 
-The placer runs the walk, writes `NROS_STACK_FLOOR_OPEN/_SPIN` into the placed
-header, and `nros_px4_read_stack_floor` checks STACK_MAIN and the work-queue
-stacks at configure. `check-px4-thread-stacks` reads that value and holds no
-literal.
+The placer runs the walk. `scripts/build/cargo-out-dir-headers.py --stack-floor
+px4-uorb` arms the cargo command for the walk: target-scoped `-Csave-temps`,
+`-fstack-usage` for cc-rs, and no `RUSTC_WRAPPER`. Neither flag changes the
+code. After cargo, the placer walks the archive that cargo reported for
+`nros-cpp`. It writes `NROS_STACK_FLOOR_OPEN/_SPIN` and their `_MEASURED`
+into the placed `nros_cpp_config_generated.h`, inside the include guard. The
+header keeps its mtime when the floors are unchanged.
 
-Acceptance: a PX4 image whose STACK_MAIN is below its measured floor is
-refused at configure, and the gate holds no literal.
+The preset names both roles:
+
+- **OPEN** = `nros_cpp_init`, `nros_cpp_executor_open_over_session`. The
+  main task's `start` opens the session and borrows it for every other sched
+  task.
+- **SPIN** = `nros_cpp_spin_once`. One pass per work-queue `Run()`.
+
+All three placers of the uORB archive spell `--stack-floor px4-uorb`: the
+module's remedy text, `just px4 build-sitl-example`, and
+`scripts/stage-px4-posix-archives.sh` (the release). The walker finds the
+build's intermediates from cargo's messages (`--cargo-messages`, with
+`--untargeted` when the command names no `--target`). It skips `--sysroot`
+under `-Zbuild-std`.
+
+At configure, `nros_px4_read_walked_floors` reads the header.
+`nros_px4_check_thread_stacks` then checks STACK_MAIN against OPEN and each
+work queue against SPIN:
+
+- **Measured floor:** enforced like the executor's minimum. The minimum is
+  still always enforced.
+- **Unmeasured floor:** a WARNING, never a refusal.
+- **Header with no walk:** a STATUS line saying only the minimum was checked.
+- **The remedy** names the CONFIGURED value, inverting PX4's scaling. On
+  64-bit SITL a 37,576 B floor is `CONFIG_WQ_RATE_CTRL_STACKSIZE=6500`, not
+  37,576.
+- **Configure dependency:** the header is now one, so a re-placed floor is
+  checked again.
+- **No issue id** appears in the user text any more.
+
+Gate `check-px4-thread-stacks` has 33 checks. Eight are new:
+
+- measured refusal on each thread;
+- measured held;
+- unmeasured warns;
+- unmeasured never lowers the minimum;
+- no-walk STATUS;
+- the SITL remedy's configured value, both ways.
+
+It also checks the wiring of all three placers. Mutations caught: the
+measured branch disabled, and the unmeasured warning dropped. The gate holds
+no floor of its own: its synthetic headers are shaped like the placer's
+output.
+
+Acceptance (SITL, measured 2026-11-13, `just px4 build-sitl-example`, PX4
+1.17.0 at our pin):
+
+| run | archive floors | result |
+| --- | --- | --- |
+| stock | OPEN 10,712 B (static 9,736), SPIN 4,576 B (static 4,160), both unmeasured | configure and build pass; `wq:rate_ctrl` is 30,876 B on SITL |
+| test row: SPIN +30,000 B, measured | SPIN 37,576 B, measured | **refused at PX4's configure**, naming `wq:rate_ctrl` (30,876 B) and the measured floor |
+| row removed | as stock | passes again; a further run keeps the header's mtime |
+
+**NuttX fmu-v6x: measured once, no lane (evidence, not coverage).** The
+recipe was phase-547's `31-nros-cross.sh`, re-run from that doc's text
+against a stock `px4_fmu-v6x_default` configure of PX4 1.17.0 in this
+worktree:
+
+- `cargo +nightly-2026-04-11 build -p nros-cpp --target thumbv7em-nuttx-eabihf`
+  with `-Zbuild-std=core,alloc,panic_abort`;
+- features `alloc,log,panic-platform,rmw-cffi,platform-nuttx`;
+- `NUTTX_DIR` = PX4's configured NuttX tree, Arm GNU 13.2.1;
+- under `cargo-out-dir-headers.py --stack-floor px4-uorb`.
+
+| profile | OPEN static (floor) | SPIN static (floor) |
+| --- | --- | --- |
+| release, `opt-level=3` | 7,528 B (8,288) | 3,672 B (4,040) |
+| spike, `opt-level="z"`, fat LTO, 1 CGU | 77,240 B | 69,680 B: wrong, [issue 2506](../issues/2506-stack-floor-walk-machine-outliner.md) |
+
+The O3 numbers agree with issue 2398's frames: SPIN 3,624 B. OPEN is lower
+only because issue 2401 shrank `open_marshalling_properties` from 8,472 B to
+240 B. Both floors are above PX4's stock sizes: OPEN's 8,288 B is above
+the 2,048 B STACK_MAIN, and SPIN's 4,040 B is above `wq:rate_ctrl`'s 3,150 B.
+The executor's 3,808 B minimum already refuses both stock sizes. A measured
+row would name the walked floor instead. The `z` numbers come from the machine outliner's shared `OUTLINED_FUNCTION_*`
+bodies conflating callers. They are a false HIGH, so an unmeasured image
+only warns.
+
+### W3b — A NuttX PX4 placer recipe and a lane that builds it
+
+- **Status:** OPEN (blocked on
+  [phase-542](phase-542-px4-supported-platform.md) W8.b)
+
+W3 checks the NuttX threads wherever an archive is placed with
+`--stack-floor px4-uorb`. But no in-repo recipe cross-builds the NuttX
+archive: the one above is an out-of-tree spike script, re-run by hand. Per
+"no road without a lane that builds it", the NuttX case is not covered until
+a recipe and a lane exist.
+
+Phase-542 W8.b already owns "prebuilt NuttX archives for one `px4_fmu-*`
+target". It is deferred pending a maintainer ruling on hardware. So W3b is
+not a second recipe: when W8.b lands, its placer passes `--stack-floor
+px4-uorb`, and its lane asserts the floors are in the placed header. W3b
+also needs [issue 2506](../issues/2506-stack-floor-walk-machine-outliner.md)
+fixed, if that recipe ships at `opt-level="z"` as the spike did.
+
+Acceptance: a lane builds the fmu-v6x archive through the placer, and the
+placed header carries `NROS_STACK_FLOOR_OPEN/_SPIN`. A configure with a
+test allowance row refuses stock STACK_MAIN by the measured floor.
 
 ### W4 — Zephyr CHECKs the main stack; key (c)
 
