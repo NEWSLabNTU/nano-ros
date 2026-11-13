@@ -422,7 +422,7 @@ while IFS= read -r record; do
     tc_env=(ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant "$board")")
     # issue 1811 — the SDK this Zephyr tree pins, not the registry's highest.
     if ! _sdk_env="$(nros_zephyr_sdk_env "$board" "$ZEPHYR_BASE")"; then
-        echo "   SKIPPED $id — no pinned Zephyr SDK for $board (see above)." >&2
+        echo "   SKIPPED $id — no pinned Zephyr SDK for $(nros_zephyr_board_label "$board") (see above)." >&2
         failed=$((failed + 1))
         continue
     fi

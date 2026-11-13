@@ -16,6 +16,12 @@ those use and nothing else:
     index_tool.py version <tool>            the `[tool.<tool>] version`
     index_tool.py board-packages <board>    the `[board.<board>] packages` list,
                                             one per line (issue 2413)
+    index_tool.py sdk-plan --index <toml>   one tab-separated line per `[tool.*]`
+                                            in <toml>: name, version, this host's
+                                            dist url and sha256, the unpacked
+                                            `subdir`, and `post_install.run`
+                                            (issue 2511: what the zephyr-ci image
+                                            bakes, one SDK per Zephyr line)
 
 `extract` writes `config/ci-base-tools.toml`, the rows the ci-base image bakes.
 The image COPYs that file rather than the whole index, so an index edit to
@@ -170,6 +176,56 @@ def self_test() -> None:
         assert "no prebuilt dist" in str(e), e
     else:
         raise AssertionError("a tool with no dist for this host installed")
+    # sdk-plan: one line per row, `{version}` expanded; a row it cannot bake
+    # (no post_install) is refused rather than skipped.
+    host = index_packages.host_key()
+    with tempfile.TemporaryDirectory(prefix="index-tool-selftest-") as tmp:
+        idx = Path(tmp) / "i.toml"
+        idx.write_text(
+            '[tool.s]\nversion = "9.8"\nsubdir = "s-{version}"\n'
+            'post_install.run = "./setup.sh -h"\n'
+            f'dist.{host} = {{ url = "https://x/s.tar.xz", sha256 = "ab" }}\n'
+        )
+        assert sdk_plan(idx) == ["s\t9.8\thttps://x/s.tar.xz\tab\ts-9.8\t./setup.sh -h"]
+        idx.write_text(idx.read_text().replace('post_install.run = "./setup.sh -h"\n', ""))
+        try:
+            sdk_plan(idx)
+        except SystemExit as e:
+            assert "post_install.run" in str(e), e
+        else:
+            raise AssertionError("sdk-plan baked a row with no post_install")
+
+
+def sdk_plan(index: Path) -> list[str]:
+    """Issue 2511 — every tool row in `index`, as the image's bake loop reads it.
+
+    The zephyr-ci image used to name its SDK versions in Dockerfile `ARG`s,
+    and they drifted from the index: it baked 0.17.4 for the 3.7 line, which
+    pins 0.16.9 and refuses any other version. Reading the row makes the pin
+    the only place a version is stated.
+    """
+    with open(index, "rb") as fh:
+        tools = tomllib.load(fh).get("tool", {})
+    host = index_packages.host_key()
+    lines = []
+    for name, tool in tools.items():
+        dist = (tool.get("dist") or {}).get(host)
+        if not dist:
+            raise SystemExit(f"index_tool: [tool.{name}] has no prebuilt dist for {host}")
+        subdir = tool.get("subdir", "").replace("{version}", tool["version"])
+        run = (tool.get("post_install") or {}).get("run", "")
+        if not subdir or not run:
+            raise SystemExit(
+                f"index_tool: [tool.{name}] needs `subdir` and `post_install.run` "
+                "to be baked by sdk-plan"
+            )
+        fields = (name, tool["version"], dist["url"], dist["sha256"], subdir, run)
+        if any("\t" in f or "\n" in f for f in fields):
+            raise SystemExit(f"index_tool: [tool.{name}] has a tab or newline in a field")
+        lines.append("\t".join(fields))
+    if not lines:
+        raise SystemExit(f"index_tool: no [tool.*] rows in {index}")
+    return lines
 
 
 def board_packages(board: str, index: Path | None = None) -> list[str] | None:
@@ -209,6 +265,9 @@ def main(argv: list[str]) -> int:
         # index moved to 0.16.9.
         print(load_tool(argv[1])["version"])
         return 0
+    if len(argv) == 3 and argv[0] == "sdk-plan" and argv[1] == "--index":
+        print("\n".join(sdk_plan(Path(argv[2]))))
+        return 0
     if len(argv) == 2 and argv[0] == "board-packages":
         pkgs = board_packages(argv[1])
         if pkgs is None:
@@ -229,7 +288,7 @@ def main(argv: list[str]) -> int:
                   f"  python3 scripts/lib/index_tool.py extract {' '.join(argv[2:])} > {argv[1]}",
                   file=sys.stderr)
             return 1
-        print(f"ci-base-tools OK: {argv[1]} matches the index rows {', '.join(argv[2:])}")
+        print(f"OK: {argv[1]} matches the index rows {', '.join(argv[2:])}")
         return 0
     print(__doc__.split("\n\n")[2], file=sys.stderr)
     return 2

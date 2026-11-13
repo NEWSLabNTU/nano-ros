@@ -242,7 +242,7 @@ toolchain_env=(ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant "$board
 # issue 1811 — and WHICH SDK: the one this Zephyr tree pins, never the highest
 # the CMake registry happens to hold.
 if ! _sdk_env="$(nros_zephyr_sdk_env "$board" "$workspace/zephyr")"; then
-    die "no pinned Zephyr SDK for $board ($id); see the error above"
+    die "no pinned Zephyr SDK for $(nros_zephyr_board_label "$board") ($id); see the error above"
 fi
 [ -n "$_sdk_env" ] && toolchain_env+=("$_sdk_env")
 

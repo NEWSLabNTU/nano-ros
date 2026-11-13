@@ -876,7 +876,7 @@ jobs:
       group: nightly-zephyr-matrix-${{ matrix.line }}-${{ matrix.example }}-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
     container:
-      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r7
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r8
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -949,7 +949,7 @@ jobs:
       # with HOME=/github/home → re-register for this HOME (4.4's FindZephyr-sdk
       # needs the user CMake-package registry).
       - name: Register the baked Zephyr SDK for this HOME
-        run: /opt/zephyr-sdk/setup.sh -c
+        run: nros-zephyr-sdks-register
 
       # Issue 0078 — container host-disk headroom before `just setup zephyr`
       # (west update + pip). Option A (requirements-base.txt only) dropped
@@ -1027,7 +1027,7 @@ jobs:
       group: nightly-zephyr-summary-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
     container:
-      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r7
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r8
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1073,7 +1073,7 @@ jobs:
           key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
 
       - name: Register the baked Zephyr SDK for this HOME
-        run: /opt/zephyr-sdk/setup.sh -c
+        run: nros-zephyr-sdks-register
 
       # Issue 0078 — container host-disk headroom before `just setup zephyr`
       # (west update + pip). Option A (requirements-base.txt only) dropped
@@ -1139,7 +1139,7 @@ jobs:
       group: nightly-zephyr-copyout-${{ github.ref }}-${{ github.event_name }}
       cancel-in-progress: false
     container:
-      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r7
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r8
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1185,7 +1185,7 @@ jobs:
           key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
 
       - name: Register the baked Zephyr SDK for this HOME
-        run: /opt/zephyr-sdk/setup.sh -c
+        run: nros-zephyr-sdks-register
 
       # Issue 0078 — container host-disk headroom before `just setup zephyr`
       # (west update + pip). Option A (requirements-base.txt only) dropped
