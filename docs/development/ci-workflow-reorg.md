@@ -1,5 +1,10 @@
 # CI workflow reorg — plan (review draft)
 
+> **Superseded as the layout record by
+> [phase-559](../roadmap/phase-559-ci-workflow-organization.md)** (user ruling
+> 2026-11-13). This file is the phase-253 history; the current file table,
+> and the constraint behind each split, is there.
+
 Status: **IN PROGRESS.** Step A (local `just` mirrors of every CI job + `ci-fast`)
 landed `52de496b2`. Applied since:
 - **SSoT** — `just check` now chains every `check.yml` gate (alloc-gate scoped to

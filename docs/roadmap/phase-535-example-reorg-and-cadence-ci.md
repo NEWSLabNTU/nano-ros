@@ -748,6 +748,12 @@ never the retired leaf shape.
 
 ### W8 — CI follows the cadences
 
+**Where the jobs live: [phase-559](phase-559-ci-workflow-organization.md)**
+(user ruling 2026-11-13, "The overall organization is good to me"). Items 3
+(tier 1 hosted, daily) and 4 (the Zephyr nightly, 2 lines × 3 languages) are
+carried out there as phase-559 W5 and W4; this section keeps their
+acceptance.
+
 1. `merge-runtime` on `merge_group`, **advisory**: one hosted shard per merge
    board, running the behaviour bringups (zenoh, three languages) plus that
    board's witnesses, then their pair cells.
