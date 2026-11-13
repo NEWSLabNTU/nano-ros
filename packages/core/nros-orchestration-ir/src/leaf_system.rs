@@ -332,7 +332,18 @@ pub struct LeafSystem {
     /// ~~`cmd::entity_facts::declared_infra`~~ read it as `"none"`). The claim is worth exactly as
     /// much as the `entities` declaration beside it, which is why it is read
     /// only where that declaration exists.
+    ///
+    /// phase-556 W13 -- this is the EFFECTIVE list: [`Self::declared_features`]
+    /// through [`crate::node_interfaces::effective_features`] with
+    /// [`Self::node_interfaces`]. Every leaf consumer reads this one.
     pub features: Vec<String>,
+    /// phase-556 W13 -- `[system] features` exactly as written, before the
+    /// node-interface switch. For a consumer that adds a list of its own (an
+    /// image's `features`) and must apply the switch over the union.
+    pub declared_features: Vec<String>,
+    /// phase-556 W13 -- `node_interfaces`: `[image.<id>]` over
+    /// `[image_defaults]` over `[system]`. `None` = stated nowhere.
+    pub node_interfaces: Option<crate::node_interfaces::NodeInterfaces>,
     /// The RTOS's own config fragments among [`Self::os_config`] (every file
     /// but a board network file), in merge order: `[image_defaults]`'s first,
     /// then the image's own, CONCATENATED (the overlay `ImageBlock::with_base`
@@ -1085,6 +1096,25 @@ fn image_system(
     ros_args.extend(string_list(image, path, &at, "ros_args")?);
     let mut params_files = string_list(defaults, path, "image_defaults", "params_files")?;
     params_files.extend(string_list(image, path, &at, "params_files")?);
+    // phase-556 W13 -- the node-interface switch, most specific table wins, and
+    // the effective list every leaf consumer reads.
+    let node_interfaces = {
+        use crate::node_interfaces::{from_table, resolve};
+        let ni = |t: Option<&toml::Value>, what: &str| {
+            from_table(t, what).map_err(|e| format!("{}: {e}", path.display()))
+        };
+        let image_v = doc
+            .get("image")
+            .and_then(|t| t.as_table())
+            .and_then(|t| t.get(id));
+        resolve(
+            ni(image_v, &format!("[{at}]"))?,
+            ni(doc.get("image_defaults"), "[image_defaults]")?,
+            ni(doc.get("system"), "[system]")?,
+        )
+    };
+    let declared_features = features_key(system, path)?;
+    let features = crate::node_interfaces::effective_features(&declared_features, node_interfaces);
 
     Ok(LeafSystem {
         origin,
@@ -1097,7 +1127,9 @@ fn image_system(
         system_entities_defaults: system_entities_key(system, path)?,
         env,
         knobs,
-        features: features_key(system, path)?,
+        features,
+        declared_features,
+        node_interfaces,
         conf,
         os_config,
         ros_args,
@@ -1546,6 +1578,57 @@ locator = "tcp/10.0.2.2:9800"
         ]);
         let e = read(d.path()).unwrap_err();
         assert!(e.contains("ARRAY") && e.contains("system.toml"), "{e}");
+    }
+
+    /// phase-556 W13 -- the leaf road's switch: (a) absent is as declared,
+    /// (b) `stock` adds the stock set, (c) `none` removes it, (d) the image's
+    /// table wins over `[image_defaults]` over `[system]`.
+    #[test]
+    fn the_node_interface_switch_reaches_the_leaf_features() {
+        let at = |system: &str, rest: &str| {
+            let d = leaf(&[
+                ("Cargo.toml", CARGO),
+                (
+                    "system.toml",
+                    &format!("[system]\nname = \"t\"\n{system}\n{rest}"),
+                ),
+            ]);
+            read_image(d.path(), "i").unwrap().expect("declared")
+        };
+        let img = "[image.i]\nboard = \"linux\"\n";
+        // (a)
+        let l = at("", img);
+        assert!(l.features.is_empty() && l.node_interfaces.is_none());
+        // (b)
+        let l = at("node_interfaces = \"stock\"", img);
+        assert_eq!(l.features, vec!["param_services", "rosout"]);
+        assert!(
+            l.declared_features.is_empty(),
+            "the declared list is kept apart"
+        );
+        // (c)
+        let l = at(
+            "features = [\"param_services\", \"lifecycle\"]",
+            "[image.i]\nboard = \"linux\"\nnode_interfaces = \"none\"\n",
+        );
+        assert_eq!(l.features, vec!["lifecycle"]);
+        assert_eq!(l.declared_features, vec!["param_services", "lifecycle"]);
+        // (d)
+        let l = at(
+            "node_interfaces = \"none\"",
+            "[image_defaults]\nnode_interfaces = \"stock\"\n[image.i]\nboard = \"linux\"\n",
+        );
+        assert_eq!(
+            l.features,
+            vec!["param_services", "rosout"],
+            "defaults over system"
+        );
+        let l = at(
+            "node_interfaces = \"stock\"",
+            "[image_defaults]\nnode_interfaces = \"stock\"\n\
+             [image.i]\nboard = \"linux\"\nnode_interfaces = \"none\"\n",
+        );
+        assert!(l.features.is_empty(), "image over defaults");
     }
 
     #[test]

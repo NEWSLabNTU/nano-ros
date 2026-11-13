@@ -10,9 +10,10 @@
 //! half arrives as two FACTS:
 //!
 //! * the descriptor's `[image] infra_families` — which families are compiled
-//!   in: `none`, `param`, `lifecycle` or `param+lifecycle` (`all` is a
-//!   synonym). It arrived as ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ until phase-486;
-//!   the build scripts pass its tag here, the same four spellings.
+//!   in: `none`, or a `+`-joined subset of `param`, `lifecycle` and (since
+//!   phase-556 W13) `rosout`, in that order (`all` names all three). It arrived
+//!   as ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ until phase-486; the build scripts
+//!   pass its tag here.
 //! * the descriptor's `[image] model_nodes` — how many nodes; the parameter
 //!   family registers once PER NODE (phase-426 W3), the lifecycle family once
 //!   per executor. It arrived as ~~`NROS_DECLARED_NODES`~~ until phase-486 W9; the
@@ -41,6 +42,12 @@ pub const PARAM_SERVICE_QUERYABLES: usize = 6;
 /// Mirrors `nros_node::lifecycle_services::LIFECYCLE_SERVICE_QUERYABLES`, held
 /// the same way.
 pub const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
+
+/// phase-556 W13 -- the `/rosout` publisher the `rosout` family claims, once
+/// per image. VOLATILE (a documented divergence from rclcpp's
+/// TRANSIENT_LOCAL), so a publisher slot and a liveliness token and nothing
+/// else. Mirrors `nros_node::rosout::ROSOUT_PUBLISHERS`, held the same way.
+pub const ROSOUT_PUBLISHERS: usize = 1;
 
 /// Issue 1429 — the ONE predicate for "did this carrier state anything".
 ///
@@ -73,24 +80,71 @@ pub fn declared_nodes(nodes: Option<&str>) -> usize {
     }
 }
 
-/// Which families an `[image] infra_families` tag names, as
-/// `(param, lifecycle)`, or `None` when it states nothing.
+/// The runtime's node-interface families an image carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Families {
+    /// The ROS parameter services (and `/parameter_events`).
+    pub param: bool,
+    /// The REP-2002 lifecycle services (and `~/transition_event`).
+    pub lifecycle: bool,
+    /// The `/rosout` publisher (phase-556 W13).
+    pub rosout: bool,
+}
+
+impl Families {
+    /// Every family: what an UNDECLARED image is priced as.
+    pub const ALL: Families = Families {
+        param: true,
+        lifecycle: true,
+        rosout: true,
+    };
+}
+
+/// Which families an `[image] infra_families` tag names, or `None` when it
+/// states nothing.
 ///
 /// # Panics
-/// On a word that is not one of the four. The producer writes exactly those
-/// (`InfraServices::token` in the CLI), so anything else is a broken carrier,
-/// and sizing from a guess about it is how a pool comes out short.
-pub fn declared_families(infra: Option<&str>) -> Option<(bool, bool)> {
-    match stated(infra)?.trim() {
-        "none" => Some((false, false)),
-        "param" => Some((true, false)),
-        "lifecycle" => Some((false, true)),
-        "param+lifecycle" | "all" => Some((true, true)),
-        other => panic!(
-            "infra_families = {other:?} is not one of \
-             none|param|lifecycle|param+lifecycle (phase-392 W5)."
-        ),
+/// On a spelling that is not `none`, `all` or a `+`-joined subset of
+/// `param`, `lifecycle`, `rosout`. The producer writes exactly those
+/// (`InfraFamilies::tag`), so anything else is a broken carrier, and sizing
+/// from a guess about it is how a pool comes out short.
+pub fn declared_families(infra: Option<&str>) -> Option<Families> {
+    let tag = stated(infra)?.trim();
+    let bad = || -> ! {
+        panic!(
+            "infra_families = {tag:?} is not one of `none`, `all` or a `+`-joined \
+             subset of param, lifecycle, rosout."
+        )
+    };
+    match tag {
+        "none" => {
+            return Some(Families {
+                param: false,
+                lifecycle: false,
+                rosout: false,
+            });
+        }
+        "all" => return Some(Families::ALL),
+        _ => {}
     }
+    let mut f = Families {
+        param: false,
+        lifecycle: false,
+        rosout: false,
+    };
+    for word in tag.split('+') {
+        let slot = match word {
+            "param" => &mut f.param,
+            "lifecycle" => &mut f.lifecycle,
+            "rosout" => &mut f.rosout,
+            _ => bad(),
+        };
+        if *slot {
+            bad();
+        }
+        *slot = true;
+    }
+    Some(f)
 }
 
 /// The service servers the runtime registers on the image's behalf, from the
@@ -101,7 +155,9 @@ pub fn declared_families(infra: Option<&str>) -> Option<(bool, bool)> {
 /// that must not take that direction (a FLOOR it refuses on) checks
 /// [`stated`] itself before calling.
 pub fn infra_service_servers(infra: Option<&str>, nodes: Option<&str>) -> usize {
-    let (param, lifecycle) = declared_families(infra).unwrap_or((true, true));
+    let Families {
+        param, lifecycle, ..
+    } = declared_families(infra).unwrap_or(Families::ALL);
     let params = if param {
         PARAM_SERVICE_QUERYABLES * declared_nodes(nodes)
     } else {
@@ -126,7 +182,7 @@ pub fn infra_service_servers(infra: Option<&str>, nodes: Option<&str>) -> usize 
 /// slots). A consumer seeing `true` must not size below its own UNDECLARED
 /// budget -- the number it would use had the families not been stated at all.
 pub fn per_node_term_is_unknown(infra: Option<&str>, nodes: Option<&str>) -> bool {
-    declared_families(infra).is_some_and(|(param, _)| param) && stated(nodes).is_none()
+    declared_families(infra).is_some_and(|f| f.param) && stated(nodes).is_none()
 }
 
 /// Service clients an action CLIENT opens: `send_goal`, `cancel_goal` and
@@ -213,6 +269,27 @@ mod tests {
         // Nothing stated is the UNDECLARED road, which each consumer already
         // prices at its own budget.
         assert!(!per_node_term_is_unknown(None, None));
+    }
+
+    /// phase-556 W13 -- `rosout` joins the families: any `+`-joined subset
+    /// parses, a repeated or unknown word refuses, and `rosout` claims no
+    /// service server.
+    #[test]
+    fn rosout_is_a_family_and_claims_no_server() {
+        let f = declared_families(Some("param+lifecycle+rosout")).unwrap();
+        assert_eq!(f, Families::ALL);
+        let r = declared_families(Some("rosout")).unwrap();
+        assert!(r.rosout && !r.param && !r.lifecycle);
+        assert_eq!(declared_families(Some("all")), Some(Families::ALL));
+        assert_eq!(infra_service_servers(Some("rosout"), None), 0);
+        assert_eq!(infra_service_servers(Some("param+rosout"), Some("2")), 12);
+        assert!(!per_node_term_is_unknown(Some("rosout"), None));
+    }
+
+    #[test]
+    #[should_panic(expected = "infra_families")]
+    fn a_repeated_family_word_refuses() {
+        declared_families(Some("param+param"));
     }
 
     #[test]

@@ -32,7 +32,7 @@ use std::{
 pub const OVERLAY_FILE: &str = "nros.toml";
 
 /// Overlay schema version. A reader refuses a newer one.
-pub const OVERLAY_VERSION: u32 = 2;
+pub const OVERLAY_VERSION: u32 = 3;
 
 /// The resolved nano-ros facts for one bringup.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -60,6 +60,15 @@ pub struct Overlay {
     /// creates these entities, so no probe sidecar and no contract row describes
     /// them; the entity inventory sizes them from here. Declaration order.
     pub bridges: Vec<OverlayBridge>,
+    /// phase-556 W13 (version 3) -- `[system] node_interfaces`, the switch
+    /// every image falls back to. Read only through
+    /// [`crate::node_interfaces::effective_features`] ([`Self::system_features`],
+    /// [`Self::features_for_image`]).
+    pub node_interfaces: Option<crate::node_interfaces::NodeInterfaces>,
+    /// phase-556 W13 -- the switch each `[image.<id>]` resolves to from its
+    /// own table over `[image_defaults]`. Only images where one of the two
+    /// states it appear; the rest fall back to [`Self::node_interfaces`].
+    pub image_node_interfaces: BTreeMap<String, crate::node_interfaces::NodeInterfaces>,
 }
 
 /// Issue 2076 -- one `[[bridge]]`, reduced to what sizes the image: its name,
@@ -86,18 +95,32 @@ impl Overlay {
             && self.images.is_empty()
             && self.component_stacks.is_empty()
             && self.bridges.is_empty()
+            && self.node_interfaces.is_none()
+            && self.image_node_interfaces.is_empty()
     }
 
     /// The switches image `id` builds with: the system list plus whatever the
-    /// image adds, first spelling kept.
+    /// image adds, first spelling kept, through the node-interface switch that
+    /// applies to it (phase-556 W13).
     pub fn features_for_image(&self, id: &str) -> Vec<String> {
-        let mut out = self.features.clone();
+        let mut declared = self.features.clone();
         for f in self.images.get(id).into_iter().flatten() {
-            if !out.contains(f) {
-                out.push(f.clone());
+            if !declared.contains(f) {
+                declared.push(f.clone());
             }
         }
-        out
+        let switch = self
+            .image_node_interfaces
+            .get(id)
+            .copied()
+            .or(self.node_interfaces);
+        crate::node_interfaces::effective_features(&declared, switch)
+    }
+
+    /// The switches the bringup builds with when no image is named: the
+    /// system list through `[system] node_interfaces` (phase-556 W13).
+    pub fn system_features(&self) -> Vec<String> {
+        crate::node_interfaces::effective_features(&self.features, self.node_interfaces)
     }
 
     /// Derive the overlay from a bringup's `system.toml` text.
@@ -178,9 +201,22 @@ impl Overlay {
             Ok(out)
         };
         let defaults = list_at(doc.get("image_defaults"), "[image_defaults]")?;
+        // phase-556 W13 -- `node_interfaces`, most specific table wins.
+        let at = |e: String| format!("{}: {e}", origin.display());
+        let node_interfaces =
+            crate::node_interfaces::from_table(doc.get("system"), "[system]").map_err(at)?;
+        let defaults_switch =
+            crate::node_interfaces::from_table(doc.get("image_defaults"), "[image_defaults]")
+                .map_err(at)?;
+        let mut image_node_interfaces = BTreeMap::new();
         let mut images = BTreeMap::new();
         if let Some(tbl) = doc.get("image").and_then(|i| i.as_table()) {
             for (id, block) in tbl {
+                let own = crate::node_interfaces::from_table(Some(block), &format!("[image.{id}]"))
+                    .map_err(at)?;
+                if let Some(sw) = crate::node_interfaces::resolve(own, defaults_switch, None) {
+                    image_node_interfaces.insert(id.clone(), sw);
+                }
                 let mut add = defaults.clone();
                 for f in list_at(Some(block), &format!("[image.{id}]"))? {
                     if !add.contains(&f) {
@@ -258,6 +294,8 @@ impl Overlay {
             images,
             component_stacks,
             bridges,
+            node_interfaces,
+            image_node_interfaces,
         })
     }
 
@@ -276,19 +314,41 @@ impl Overlay {
              # the SystemModel beside it — do not edit; re-run `nros configure`.\n",
         );
         out.push_str(&format!("[meta]\nversion = {OVERLAY_VERSION}\n"));
+        if !self.features.is_empty() || self.node_interfaces.is_some() {
+            out.push_str("\n[system]\n");
+        }
         if !self.features.is_empty() {
             let items: Vec<String> = self.features.iter().map(|f| format!("{f:?}")).collect();
-            out.push_str(&format!("\n[system]\nfeatures = [{}]\n", items.join(", ")));
+            out.push_str(&format!("features = [{}]\n", items.join(", ")));
+        }
+        if let Some(sw) = self.node_interfaces {
+            out.push_str(&format!(
+                "{} = {:?}\n",
+                crate::node_interfaces::KEY,
+                sw.as_str()
+            ));
         }
         if let Some(a) = &self.lifecycle_autostart {
             out.push_str(&format!("\n[lifecycle]\nautostart = {a:?}\n"));
         }
-        for (id, feats) in &self.images {
-            let items: Vec<String> = feats.iter().map(|f| format!("{f:?}")).collect();
-            out.push_str(&format!(
-                "\n[image.{id:?}]\nfeatures = [{}]\n",
-                items.join(", ")
-            ));
+        let ids: std::collections::BTreeSet<&String> = self
+            .images
+            .keys()
+            .chain(self.image_node_interfaces.keys())
+            .collect();
+        for id in ids {
+            out.push_str(&format!("\n[image.{id:?}]\n"));
+            if let Some(feats) = self.images.get(id) {
+                let items: Vec<String> = feats.iter().map(|f| format!("{f:?}")).collect();
+                out.push_str(&format!("features = [{}]\n", items.join(", ")));
+            }
+            if let Some(sw) = self.image_node_interfaces.get(id) {
+                out.push_str(&format!(
+                    "{} = {:?}\n",
+                    crate::node_interfaces::KEY,
+                    sw.as_str()
+                ));
+            }
         }
         for (name, bytes) in &self.component_stacks {
             out.push_str(&format!("\n[component.{name:?}]\nstack_bytes = {bytes}\n"));
@@ -354,9 +414,22 @@ impl Overlay {
             .and_then(|l| l.get("autostart"))
             .and_then(|a| a.as_str())
             .map(str::to_string);
+        let at = |e: String| format!("{}: {e}", origin.display());
+        let node_interfaces =
+            crate::node_interfaces::from_table(doc.get("system"), "[system]").map_err(at)?;
+        let mut image_node_interfaces = BTreeMap::new();
         let mut images = BTreeMap::new();
         if let Some(tbl) = doc.get("image").and_then(|i| i.as_table()) {
             for (id, block) in tbl {
+                if let Some(sw) =
+                    crate::node_interfaces::from_table(Some(block), &format!("[image.{id}]"))
+                        .map_err(at)?
+                {
+                    image_node_interfaces.insert(id.clone(), sw);
+                }
+                if block.get("features").is_none() {
+                    continue;
+                }
                 let feats: Vec<String> = block
                     .get("features")
                     .and_then(|f| f.as_array())
@@ -407,6 +480,8 @@ impl Overlay {
             images,
             component_stacks,
             bridges,
+            node_interfaces,
+            image_node_interfaces,
         })
     }
 }
@@ -561,7 +636,7 @@ impl LoadedModel {
     pub fn features(&self, image: Option<&str>) -> Vec<String> {
         match image {
             Some(id) => self.overlay.features_for_image(id),
-            None => self.overlay.features.clone(),
+            None => self.overlay.system_features(),
         }
     }
 
@@ -791,6 +866,99 @@ mod tests {
     #[test]
     fn a_bringup_with_no_switches_states_nothing() {
         assert!(o("[system]\nname = \"t\"\nrmw = \"zenoh\"\n").is_empty());
+    }
+
+    // ---- phase-556 W13: the node-interface switch on the model road -------
+
+    /// (a) A bringup that states no switch builds exactly what it declares:
+    /// the default is still "as declared" in this step.
+    #[test]
+    fn a_featureless_bringup_gets_no_node_interface_by_default() {
+        let ov = o("[system]\nname = \"t\"\n[image.a]\nboard = \"linux\"\n");
+        assert!(ov.is_empty());
+        assert!(ov.system_features().is_empty());
+        assert!(ov.features_for_image("a").is_empty());
+    }
+
+    /// (b) `stock` yields the stock set, at every level it can be stated.
+    #[test]
+    fn stock_yields_the_parameter_services_and_rosout() {
+        for text in [
+            "[system]\nname = \"t\"\nnode_interfaces = \"stock\"\n[image.a]\nboard = \"x\"\n",
+            "[system]\nname = \"t\"\n[image_defaults]\nnode_interfaces = \"stock\"\n\
+             [image.a]\nboard = \"x\"\n",
+            "[system]\nname = \"t\"\n[image.a]\nboard = \"x\"\nnode_interfaces = \"stock\"\n",
+        ] {
+            let ov = o(text);
+            assert_eq!(
+                ov.features_for_image("a"),
+                vec!["param_services", "rosout"],
+                "{text}"
+            );
+            // And it survives the file `nros sync` writes beside the model.
+            let back = Overlay::parse(&ov.render(), Path::new("nros.toml")).unwrap();
+            assert_eq!(back, ov, "{text}");
+            assert_eq!(
+                back.features_for_image("a"),
+                vec!["param_services", "rosout"]
+            );
+        }
+    }
+
+    /// (c) `none` removes a stock axis a broader table declared.
+    #[test]
+    fn none_removes_what_the_system_declared() {
+        let ov = o(
+            "[system]\nname = \"t\"\nfeatures = [\"param_services\", \"rosout\", \
+                    \"lifecycle\"]\n[image.mcu]\nboard = \"x\"\nnode_interfaces = \"none\"\n\
+                    [image.host]\nboard = \"linux\"\n",
+        );
+        assert_eq!(ov.features_for_image("mcu"), vec!["lifecycle"]);
+        assert_eq!(
+            ov.features_for_image("host"),
+            vec!["param_services", "rosout", "lifecycle"]
+        );
+        let lm = LoadedModel {
+            overlay: ov,
+            ..LoadedModel::default()
+        };
+        assert_eq!(lm.features(Some("mcu")), vec!["lifecycle"]);
+        assert_eq!(
+            lm.features(None),
+            vec!["param_services", "rosout", "lifecycle"]
+        );
+    }
+
+    /// (d) image > image_defaults > system.
+    #[test]
+    fn the_most_specific_node_interface_switch_wins() {
+        let ov = o("[system]\nname = \"t\"\nnode_interfaces = \"stock\"\n\
+                    [image_defaults]\nnode_interfaces = \"none\"\n\
+                    [image.a]\nboard = \"x\"\n\
+                    [image.b]\nboard = \"x\"\nnode_interfaces = \"stock\"\n");
+        assert_eq!(ov.system_features(), vec!["param_services", "rosout"]);
+        assert!(
+            ov.features_for_image("a").is_empty(),
+            "defaults over system"
+        );
+        assert_eq!(
+            ov.features_for_image("b"),
+            vec!["param_services", "rosout"],
+            "image over defaults"
+        );
+    }
+
+    #[test]
+    fn an_unknown_node_interface_word_is_refused_naming_the_table() {
+        let e = Overlay::from_system_toml_str(
+            "[image.a]\nboard = \"x\"\nnode_interfaces = \"some\"\n",
+            Path::new("system.toml"),
+        )
+        .unwrap_err();
+        assert!(
+            e.contains("[image.a]") && e.contains("\"stock\", \"none\""),
+            "{e}"
+        );
     }
 
     /// phase-486 W8 — the retired tables are refused by name, never folded in

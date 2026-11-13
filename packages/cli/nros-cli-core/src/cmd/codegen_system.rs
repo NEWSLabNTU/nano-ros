@@ -2917,6 +2917,30 @@ structure:
         assert!(render_system_config_cmake(&bare).contains("set(NROS_FEATURES \"\""));
     }
 
+    /// phase-556 W13 -- the cmake list carries the node-interface switch:
+    /// `stock` lists the parameter services and `/rosout`, `none` drops them
+    /// from what `features` declared, and a system with neither is unchanged.
+    #[test]
+    fn system_config_cmake_applies_the_node_interface_switch() {
+        let sys = |extra: &str| -> SystemToml {
+            toml::from_str(&format!(
+                "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n{extra}"
+            ))
+            .unwrap()
+        };
+        assert!(
+            render_system_config_cmake(&sys("node_interfaces = \"stock\"\n"))
+                .contains("set(NROS_FEATURES \"param_services;rosout\"")
+        );
+        assert!(
+            render_system_config_cmake(&sys(
+                "features = [\"rosout\", \"safety\"]\nnode_interfaces = \"none\"\n"
+            ))
+            .contains("set(NROS_FEATURES \"safety\"")
+        );
+        assert!(render_system_config_cmake(&sys("")).contains("set(NROS_FEATURES \"\""));
+    }
+
     /// Phase 261 W4 — an unknown `[system].features` entry is a hard error (typo
     /// guard); a known entry validates.
     #[test]

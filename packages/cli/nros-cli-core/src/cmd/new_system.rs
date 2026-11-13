@@ -399,6 +399,8 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             // migrate off.
             default_target: None,
             features: Vec::new(),
+            // phase-556 W13 -- no switch: the policy default applies.
+            node_interfaces: None,
             entities: None,
         },
         components: entries,

@@ -1654,6 +1654,8 @@ mod tests {
             // in here asks about the runtime service families, so the helper
             // states the empty claim once instead of per test.
             features: Vec::new(),
+            declared_features: Vec::new(),
+            node_interfaces: None,
             conf: Vec::new(),
             os_config: Vec::new(),
             ros_args: Vec::new(),

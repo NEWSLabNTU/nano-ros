@@ -1301,6 +1301,14 @@ config NROS_CAPABILITY_LIFECYCLE
       Set by `nros build` from the bringup's `[system] features` or its
       `[lifecycle]` block (issue 1702). See NROS_CAPABILITY_PARAM_SERVICES.
 
+config NROS_CAPABILITY_ROSOUT
+    bool "The image's bringup declares the rosout capability"
+    help
+      Set by `nros build` from the bringup's `[system] features` and its
+      `node_interfaces` switch (phase-556 W13). See
+      NROS_CAPABILITY_PARAM_SERVICES. A hand-written application's module
+      reads it to choose the `rosout` cargo feature.
+
 config NROS_PARAM_STORE
     bool "The image's launch file seeds a parameter"
     help

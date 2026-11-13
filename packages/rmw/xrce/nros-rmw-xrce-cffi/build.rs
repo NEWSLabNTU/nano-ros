@@ -370,6 +370,9 @@ fn main() {
     // (`[image] infra_families` and `model_nodes`; their `NROS_DECLARED_*`
     // carriers retired), passed in those carriers' spellings so the shared
     // rule keeps its one parser.
+    // phase-556 W13 -- the tag may name `rosout` too; that family claims a
+    // publisher and no service server, so it reaches XRCE through the
+    // descriptor's publisher count, never through this term.
     let infra_families = desc.as_ref().and_then(|d| {
         d.image
             .infra_families()

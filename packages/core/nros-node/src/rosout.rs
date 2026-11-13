@@ -96,6 +96,14 @@ pub fn enable() -> bool {
 /// The topic. Absolute and un-namespaced, as upstream's is.
 pub const TOPIC: &str = "/rosout";
 
+/// phase-556 W13 -- the publishers the `rosout` capability claims in an
+/// image's sizing: one `/rosout` writer per image. The host CLI's entity
+/// inventory and the shared sizing library mirror it (neither can read this
+/// crate), and `check-infra-queryable-counts` holds every mirror to this one.
+/// The publisher is the application's today (see the module docs); the
+/// runtime-owned per-node writer moves the count's meaning, not its home.
+pub const ROSOUT_PUBLISHERS: usize = 1;
+
 /// Every `rcl_interfaces/msg/Log` string field is a `heapless::String<256>`,
 /// so no field can carry more than this however wide the logging format
 /// buffer is. Joined to the generated type by

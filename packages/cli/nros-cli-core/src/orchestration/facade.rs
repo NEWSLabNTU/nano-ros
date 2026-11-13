@@ -1795,7 +1795,7 @@ fn render_manifest(
         sys.system.name,
         edition.as_str(),
         sys.system.rmw,
-        sys.system.features,
+        sys.effective_features(),
     ));
     s.push_str(&format!(
         "[package]\n\

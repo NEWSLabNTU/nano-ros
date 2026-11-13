@@ -496,35 +496,56 @@ vocabulary! {
 }
 
 vocabulary! {
-    /// `[image] infra_families` — which of the runtime's own service families
-    /// the image builds: the ROS parameter services (six servers per node) and
-    /// the REP-2002 lifecycle services (five per executor). The spellings are
-    /// the four the ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier used, which this
-    /// field retired; [`crate::infra::declared_families`] parses them, so the
-    /// two readers that price these servers keep one parser.
+    /// `[image] infra_families` — which of the runtime's own node-interface
+    /// families the image builds: the ROS parameter services (six servers per
+    /// node, plus the `/parameter_events` writer), the REP-2002 lifecycle
+    /// services (five per executor, plus `~/transition_event`) and, since
+    /// phase-556 W13, the `/rosout` publisher. A `+`-joined subset of
+    /// `param`, `lifecycle`, `rosout` in that order, or `none`.
+    /// [`crate::infra::declared_families`] parses them, so every reader that
+    /// prices these entities keeps one parser.
     ///
-    /// `None` is a statement ("neither family"), not an absence.
+    /// `None` is a statement ("no family"), not an absence.
     InfraFamilies {
-        /// Neither family.
+        /// No family.
         None => "none",
         /// The parameter services only.
         Param => "param",
         /// The lifecycle services only.
         Lifecycle => "lifecycle",
-        /// Both.
+        /// The parameter and lifecycle services.
         ParamLifecycle => "param+lifecycle",
+        /// `/rosout` only.
+        Rosout => "rosout",
+        /// The parameter services and `/rosout`.
+        ParamRosout => "param+rosout",
+        /// The lifecycle services and `/rosout`.
+        LifecycleRosout => "lifecycle+rosout",
+        /// All three.
+        ParamLifecycleRosout => "param+lifecycle+rosout",
     }
 }
 
 impl InfraFamilies {
-    /// From the two switches.
-    pub fn from_switches(param_services: bool, lifecycle: bool) -> Self {
-        match (param_services, lifecycle) {
-            (true, true) => Self::ParamLifecycle,
-            (true, false) => Self::Param,
-            (false, true) => Self::Lifecycle,
-            (false, false) => Self::None,
+    /// From the three switches.
+    pub fn from_switches(param_services: bool, lifecycle: bool, rosout: bool) -> Self {
+        match (param_services, lifecycle, rosout) {
+            (false, false, false) => Self::None,
+            (true, false, false) => Self::Param,
+            (false, true, false) => Self::Lifecycle,
+            (true, true, false) => Self::ParamLifecycle,
+            (false, false, true) => Self::Rosout,
+            (true, false, true) => Self::ParamRosout,
+            (false, true, true) => Self::LifecycleRosout,
+            (true, true, true) => Self::ParamLifecycleRosout,
         }
+    }
+
+    /// The three switches, `(param, lifecycle, rosout)`.
+    pub fn switches(self) -> (bool, bool, bool) {
+        let t = self.tag();
+        let has = |w: &str| t.split('+').any(|x| x == w);
+        (has("param"), has("lifecycle"), has("rosout"))
     }
 }
 
@@ -571,6 +592,27 @@ mod tests {
         round_trip!(Durability);
         round_trip!(RegistrationPath);
         round_trip!(InfraFamilies);
+    }
+
+    /// phase-556 W13 -- the tag is the `+`-join of the switches in
+    /// `param`, `lifecycle`, `rosout` order, and the two directions agree.
+    #[test]
+    fn infra_families_are_the_joined_subset_of_three_switches() {
+        for v in InfraFamilies::ALL {
+            let (p, l, r) = v.switches();
+            assert_eq!(InfraFamilies::from_switches(p, l, r), *v);
+            let words: Vec<&str> = [(p, "param"), (l, "lifecycle"), (r, "rosout")]
+                .into_iter()
+                .filter_map(|(on, w)| on.then_some(w))
+                .collect();
+            let want = if words.is_empty() {
+                "none".to_string()
+            } else {
+                words.join("+")
+            };
+            assert_eq!(v.tag(), want);
+        }
+        assert_eq!(InfraFamilies::ALL.len(), 8);
     }
 
     /// The one vocabulary the macro does not build, held to the same rule.

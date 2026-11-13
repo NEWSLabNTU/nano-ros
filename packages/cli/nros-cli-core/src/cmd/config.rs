@@ -744,7 +744,8 @@ fn render_resolved(workspace: &Path, system: &str) -> Result<String> {
         ),
     ] {
         let typed = detail.is_some();
-        let via_features = sys.system.features.iter().any(|f| f == name);
+        // phase-556 W13 -- the list the image is built with, switch applied.
+        let via_features = sys.effective_features().iter().any(|f| f == name);
         let enabled = sys.capability_enabled(name);
         // Show the typed block's detail when there is one; the generic form
         // carries no detail beyond "on", and a disabled typed block that the

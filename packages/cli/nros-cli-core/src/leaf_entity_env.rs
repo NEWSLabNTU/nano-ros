@@ -1610,6 +1610,7 @@ mod tests {
                 model_nodes: nodes,
                 launch_seeds_params: false,
                 param_store: false,
+                rosout: false,
             })
         };
         let bare = derive(None);
@@ -1644,7 +1645,7 @@ mod tests {
         use nros_sizing_descriptor::InfraFamilies;
         let tag = |m: &nros_orchestration_ir::overlay::LoadedModel, manifest| {
             let i = leaf_infra(Some(m), manifest).expect("a model states the families");
-            InfraFamilies::from_switches(i.param_services, i.lifecycle)
+            InfraFamilies::from_switches(i.param_services, i.lifecycle, i.rosout)
         };
         let none = leaf_model_with("");
         assert_eq!(tag(&none, (false, true)), InfraFamilies::Lifecycle);

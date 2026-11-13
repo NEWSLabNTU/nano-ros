@@ -473,14 +473,21 @@ impl Workspace {
                 .wrap_err_with(|| format!("failed to read {}", path.display()))?
                 .parse()
                 .wrap_err_with(|| format!("failed to parse {}", path.display()))?;
-            let listed = |name: &str| {
-                doc.get(name).is_some()
-                    || doc
-                        .get("system")
-                        .and_then(|s| s.get("features"))
-                        .and_then(|f| f.as_array())
-                        .is_some_and(|a| a.iter().any(|v| v.as_str() == Some(name)))
-            };
+            // phase-556 W13 -- the declared list through the node-interface
+            // switch: a family the switch adds is declared.
+            let declared: Vec<&str> = doc
+                .get("system")
+                .and_then(|s| s.get("features"))
+                .and_then(|f| f.as_array())
+                .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+                .unwrap_or_default();
+            let switch =
+                nros_orchestration_ir::node_interfaces::from_table(doc.get("system"), "[system]")
+                    .map_err(|e| eyre::eyre!("{}: {e}", path.display()))?;
+            let effective =
+                nros_orchestration_ir::node_interfaces::effective_features(&declared, switch);
+            let listed =
+                |name: &str| doc.get(name).is_some() || effective.iter().any(|f| f == name);
             let Some(system) = declaring_system(&bringup.root)? else {
                 continue;
             };

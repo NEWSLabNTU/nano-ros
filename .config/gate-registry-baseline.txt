@@ -203,6 +203,7 @@ no-tracked-file-find
 no-tracked-models
 no-tracked-workspace-roots
 no-vacuous-tests
+node-interface-readers
 node-package-invariance
 node-package-selection-free
 node-std-tests

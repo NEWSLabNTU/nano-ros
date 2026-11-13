@@ -1588,6 +1588,13 @@ const LIFECYCLE_SERVICE_PUBLISHERS: usize = 1;
 /// else.
 const PARAM_EVENT_PUBLISHERS: usize = 1;
 
+/// MIRROR of `nros_node::rosout::ROSOUT_PUBLISHERS`, held the same way
+/// (phase-556 W13): the `/rosout` family's one writer per image. VOLATILE (the
+/// user's ruling, a documented divergence from rclcpp's TRANSIENT_LOCAL), so a
+/// term in [`DerivedEntityKnobs::max_publishers`] and the liveliness pool and
+/// nothing else.
+const ROSOUT_PUBLISHERS: usize = 1;
+
 /// MIRROR of `nros_node::executor::action::ACTION_CLIENT_SERVICE_CLIENTS`,
 /// held there by `check-infra-queryable-counts`: the three service clients an
 /// action client opens, each of which declares a liveliness token.
@@ -1639,6 +1646,10 @@ pub struct InfraServices {
     /// (`[params] store = "params"`). An image declaring both `params` and
     /// `param_services` is a `param_services` image.
     pub param_store: bool,
+    /// phase-556 W13 -- the bringup's effective features carry `rosout`: one
+    /// `/rosout` publisher ([`ROSOUT_PUBLISHERS`]). A stock node interface, so
+    /// `node_interfaces = "stock"` turns it on with the parameter family.
+    pub rosout: bool,
 }
 
 /// Issue 1706 -- does any node of `model` have a launch-seeded parameter?
@@ -1715,15 +1726,20 @@ impl InfraServices {
             // A feature list has no launch tree to seed from.
             launch_seeds_params: false,
             param_store: has("params"),
+            rosout: has("rosout"),
         }
     }
 
-    /// The `[image] infra_families` statement of these two switches -- the
+    /// The `[image] infra_families` statement of these three switches -- the
     /// spelling the descriptor carries and both zenoh and XRCE build scripts
     /// parse (it was the ~~`NROS_DECLARED_INFRA_QUERYABLES`~~ carrier's until
-    /// phase-486). One place spells the four strings: the vocabulary.
+    /// phase-486). One place spells the strings: the vocabulary.
     pub fn families(self) -> nros_sizing_descriptor::InfraFamilies {
-        nros_sizing_descriptor::InfraFamilies::from_switches(self.param_services, self.lifecycle)
+        nros_sizing_descriptor::InfraFamilies::from_switches(
+            self.param_services,
+            self.lifecycle,
+            self.rosout,
+        )
     }
 
     /// Nodes carrying the parameter family on an image of `components`
@@ -1775,7 +1791,9 @@ impl InfraServices {
         } else {
             0
         };
-        lifecycle + params
+        // phase-556 W13 -- `/rosout`, once per image.
+        let rosout = if self.rosout { ROSOUT_PUBLISHERS } else { 0 };
+        lifecycle + params + rosout
     }
 
     /// Either source declaring a family declares it: this is a fact about the
@@ -1787,6 +1805,7 @@ impl InfraServices {
             model_nodes: self.model_nodes.max(other.model_nodes),
             launch_seeds_params: self.launch_seeds_params || other.launch_seeds_params,
             param_store: self.param_store || other.param_store,
+            rosout: self.rosout || other.rosout,
         }
     }
 }
@@ -8595,6 +8614,65 @@ contracts:
             lifecycle.tl_publishers, none.tl_publishers,
             "and it is not a transient-local publisher, so the retention pool \
              and `transient_local_publishers_over`'s count do not move either"
+        );
+    }
+
+    /// phase-556 W13 -- `/rosout` joins the families: one VOLATILE publisher
+    /// (a slot, no queryable, no retention), and `node_interfaces = "stock"`
+    /// on the overlay turns on the parameter family and `/rosout` together,
+    /// stated as `param+rosout` in the descriptor's `infra_families`.
+    #[test]
+    fn rosout_pays_one_publisher_and_stock_states_param_plus_rosout() {
+        let knobs = |m: &nros_orchestration_ir::overlay::LoadedModel| {
+            EntityInventory::from_model("t", m)
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
+        };
+        let none = knobs(&infra_model(""));
+        let rosout = knobs(&infra_model("rosout"));
+        assert_eq!(
+            rosout.max_publishers - none.max_publishers,
+            ROSOUT_PUBLISHERS
+        );
+        assert_eq!(rosout.max_queryables, none.max_queryables);
+        assert_eq!(rosout.tl_publishers, none.tl_publishers);
+
+        // (a) no switch: the featureless image is unchanged.
+        let bare = infra_model("");
+        assert_eq!(
+            InfraServices::from_model(&bare, None).families(),
+            nros_sizing_descriptor::InfraFamilies::None
+        );
+        // (b) `stock`: the parameter family and `/rosout`.
+        let mut stock = infra_model("");
+        stock.overlay.node_interfaces =
+            Some(nros_orchestration_ir::node_interfaces::NodeInterfaces::Stock);
+        let infra = InfraServices::from_model(&stock, None);
+        assert_eq!(
+            infra.families(),
+            nros_sizing_descriptor::InfraFamilies::ParamRosout
+        );
+        assert_eq!(infra.families().tag(), "param+rosout");
+        assert_eq!(
+            infra.publishers(),
+            PARAM_EVENT_PUBLISHERS + ROSOUT_PUBLISHERS
+        );
+        // (c) `none` on the image removes what the system declared.
+        let mut off = infra_model("param_services");
+        off.overlay.image_node_interfaces.insert(
+            "mcu".into(),
+            nros_orchestration_ir::node_interfaces::NodeInterfaces::None,
+        );
+        assert_eq!(
+            InfraServices::from_model(&off, Some("mcu")).families(),
+            nros_sizing_descriptor::InfraFamilies::None
+        );
+        assert_eq!(
+            InfraServices::from_model(&off, None).families(),
+            nros_sizing_descriptor::InfraFamilies::Param
         );
     }
 

@@ -540,7 +540,12 @@ pub fn transient_local_publishers_from_build_env() -> Result<Fact<usize>, Descri
 /// closure fact `RX_BUF` is sized from). Both are new KEYS, and the reader
 /// refuses unknown keys, so a version-1 reader handed either would fail on the
 /// key rather than on the version — the bump makes that failure say why.
-pub const SCHEMA_VERSION: u32 = 2;
+///
+/// **3** (phase-556 W13): `[image] infra_families` gained the `rosout` family,
+/// so it is a `+`-joined subset of three words instead of one of four. A
+/// version-2 reader handed `param+rosout` would refuse the TAG; the bump makes
+/// it refuse the version, which names the remedy.
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// Where descriptors live under a build directory.
 pub const SIZING_SUBDIR: &str = "nros/sizing";
@@ -1534,7 +1539,7 @@ mod tests {
     #[test]
     fn a_descriptor_with_no_params_section_parses_and_reads_absent() {
         let text = "\
-schema_version = 2
+schema_version = 3
 
 [meta]
 entry = \"legacy\"
@@ -1671,8 +1676,8 @@ basis = \"contract\"
     /// than read with two keys it could not have had.
     #[test]
     fn a_version_one_descriptor_is_refused_after_the_d12_bump() {
-        assert_eq!(SCHEMA_VERSION, 2);
-        let text = render(&island()).replace("schema_version = 2", "schema_version = 1");
+        assert_eq!(SCHEMA_VERSION, 3);
+        let text = render(&island()).replace("schema_version = 3", "schema_version = 1");
         let err = parse(&text, Path::new("t.toml")).unwrap_err();
         assert!(err.to_string().contains("nros configure"), "{err}");
     }

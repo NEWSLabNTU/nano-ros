@@ -483,7 +483,7 @@ pub struct ResolvedBuild {
     /// restates it. `None` for every other driver.
     pub cmake_build_dir: Option<String>,
     /// The capability axes the image's `system.toml` declares
-    /// ([`declared_capabilities`]) — what codegen generates calls for.
+    /// ([`declared_capabilities_for`]) — what codegen generates calls for.
     ///
     /// Issue 1261: a west build picks nros-c/nros-cpp's cargo features from
     /// `NROS_FEATURES` during `find_package(Zephyr)`, and a hand-written
@@ -1095,7 +1095,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 target: descriptor.target.clone(),
                 profile: image.profile.clone(),
                 record: Default::default(),
-                capabilities: owned_caps(&bringup_dir),
+                capabilities: owned_caps(&bringup_dir, Some(&image_id)),
                 stack_floor_image: image.stack_floor_image.clone(),
                 stack_floor: None,
                 stack_floor_raise: image.stack_floor
@@ -2740,7 +2740,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 cargo_roots,
                 build_dirs: record_dirs,
             },
-            capabilities: owned_caps(&bringup_dir),
+            capabilities: owned_caps(&bringup_dir, Some(&image_id)),
             stack_floor_image: image.stack_floor_image.clone(),
             stack_floor: None,
             stack_floor_raise: image.stack_floor
@@ -3029,7 +3029,7 @@ fn plan_leaf_image(
             target: img.target.clone(),
             profile: None,
             cmake_build_dir: None,
-            capabilities: owned_caps(root),
+            capabilities: owned_caps(root, Some(&img.image_id)),
             stack_floor_image: img.decl.stack_floor_image.clone(),
             stack_floor: None,
             stack_floor_raise: img.decl.stack_floor_raise,
@@ -3135,7 +3135,7 @@ fn plan_leaf_image(
                 .map(|d| vec![d.to_path_buf()])
                 .unwrap_or_default(),
         },
-        capabilities: owned_caps(root),
+        capabilities: owned_caps(root, Some(&img.image_id)),
         stack_floor_image: img.decl.stack_floor_image.clone(),
         stack_floor: None,
         stack_floor_raise: img.decl.stack_floor_raise,
@@ -3302,7 +3302,7 @@ fn plan_single_package_cmake(
         target: descriptor.target.clone(),
         profile: None,
         cmake_build_dir: Some(build_dir),
-        capabilities: owned_caps(root),
+        capabilities: owned_caps(root, Some(&image_id)),
         stack_floor_image: decl.stack_floor_image.clone(),
         stack_floor: None,
         stack_floor_raise: decl.stack_floor_raise,
@@ -4540,15 +4540,23 @@ fn run_configure_step(cfg: &Handoff) -> Result<()> {
 /// to ESCALATE a warning into a hard error, and a system that cannot be read is
 /// not evidence that a capability is declared. Whatever is wrong with it will be
 /// reported by the code whose job that is, with better words than this has.
-/// [`declared_capabilities`], owned, for a plan to carry.
-fn owned_caps(bringup_dir: &std::path::Path) -> Vec<String> {
-    declared_capabilities(bringup_dir)
+/// [`declared_capabilities_for`], owned, for a plan to carry.
+fn owned_caps(bringup_dir: &std::path::Path, image: Option<&str>) -> Vec<String> {
+    declared_capabilities_for(bringup_dir, image)
         .into_iter()
         .map(str::to_string)
         .collect()
 }
 
-pub(crate) fn declared_capabilities(bringup_dir: &std::path::Path) -> Vec<&'static str> {
+/// The capability axes a bringup's `system.toml` turns on, as image `image`
+/// sees them: its own `features` and `node_interfaces` (phase-556 W13) over
+/// `[image_defaults]` and `[system]`. `None`, or an id no `[image.*]` names, is
+/// the system alone. Empty when the file is absent or unparseable (see
+/// [`owned_caps`]).
+pub(crate) fn declared_capabilities_for(
+    bringup_dir: &std::path::Path,
+    image: Option<&str>,
+) -> Vec<&'static str> {
     let Ok(raw) = std::fs::read_to_string(bringup_dir.join("system.toml")) else {
         return Vec::new();
     };
@@ -4556,6 +4564,7 @@ pub(crate) fn declared_capabilities(bringup_dir: &std::path::Path) -> Vec<&'stat
     else {
         return Vec::new();
     };
+    let sys = sys.with_image_features(image);
     cargo_nano_ros::capability_resolver::CAPABILITIES
         .iter()
         .filter(|c| sys.capability_enabled(c.declared))
@@ -5377,7 +5386,7 @@ fn generate_entry(
                 .and_then(|mut app| {
                     // Issue 1702 -- the declared axes reach Kconfig from the
                     // generated CMakeLists (see `capability_kconfig_cmake`).
-                    app.capabilities = declared_capabilities(bringup_dir)
+                    app.capabilities = declared_capabilities_for(bringup_dir, Some(image_id))
                         .into_iter()
                         .map(str::to_string)
                         .collect();
@@ -6590,12 +6599,19 @@ fn resolve_image(
     {
         match nros_orchestration_ir::leaf_system::read_image(bringup_dir, image_id) {
             Ok(Some(sys)) => {
-                let features: Vec<&str> = sys
-                    .features
+                // phase-556 W13 -- the image's own `features` join the
+                // leaf's DECLARED list, and the node-interface switch applies
+                // over the union (so `node_interfaces = "none"` removes a stock
+                // axis whichever table declared it).
+                let declared: Vec<&String> = sys
+                    .declared_features
                     .iter()
                     .chain(image.features.iter())
-                    .map(String::as_str)
                     .collect();
+                let features = nros_orchestration_ir::node_interfaces::effective_features(
+                    &declared,
+                    sys.node_interfaces,
+                );
                 store_infra = Some(crate::entity_inventory::InfraServices::from_features(
                     &features, 0,
                 ));
@@ -9425,7 +9441,7 @@ domain_id = 0
         let d = bringup_with(&format!(
             "{BASE}features = [\"param_services\", \"lifecycle\"]\n"
         ));
-        let mut got = declared_capabilities(d.path());
+        let mut got = declared_capabilities_for(d.path(), None);
         got.sort_unstable();
         assert_eq!(got, vec!["lifecycle", "param_services"]);
     }
@@ -9436,7 +9452,7 @@ domain_id = 0
     #[test]
     fn typed_block_is_seen() {
         let d = bringup_with(&format!("{BASE}\n[safety]\nenabled = true\n"));
-        assert_eq!(declared_capabilities(d.path()), vec!["safety"]);
+        assert_eq!(declared_capabilities_for(d.path(), None), vec!["safety"]);
     }
 
     /// A system that declares nothing keeps the WARNING path: a missing facade
@@ -9445,7 +9461,44 @@ domain_id = 0
     #[test]
     fn no_capabilities_is_not_fatal() {
         let d = bringup_with(BASE);
-        assert!(declared_capabilities(d.path()).is_empty());
+        assert!(declared_capabilities_for(d.path(), None).is_empty());
+    }
+
+    /// phase-556 W13 -- `node_interfaces`: (a) absent leaves the declared
+    /// list, (b) `stock` adds the parameter services and `/rosout`, (c) `none`
+    /// removes them, (d) the image's table over `[image_defaults]` over
+    /// `[system]`.
+    #[test]
+    fn the_node_interface_switch_decides_the_stock_axes() {
+        let caps = |extra: &str, image: Option<&str>| {
+            let d = bringup_with(&format!("{BASE}{extra}"));
+            let mut got = declared_capabilities_for(d.path(), image);
+            got.sort_unstable();
+            got
+        };
+        assert!(caps("", None).is_empty());
+        assert_eq!(
+            caps("node_interfaces = \"stock\"\n", None),
+            vec!["param_services", "rosout"]
+        );
+        assert_eq!(
+            caps(
+                "features = [\"param_services\", \"lifecycle\"]\nnode_interfaces = \"none\"\n",
+                None
+            ),
+            vec!["lifecycle"]
+        );
+        let layered = "node_interfaces = \"none\"\n\
+                       [image_defaults]\nnode_interfaces = \"stock\"\n\
+                       [image.a]\nboard = \"linux\"\n\
+                       [image.b]\nboard = \"linux\"\nnode_interfaces = \"none\"\n";
+        assert!(caps(layered, None).is_empty(), "system alone");
+        assert_eq!(
+            caps(layered, Some("a")),
+            vec!["param_services", "rosout"],
+            "defaults over system"
+        );
+        assert!(caps(layered, Some("b")).is_empty(), "image over defaults");
     }
 
     /// Absent or unparseable input must NOT read as "capabilities declared".
@@ -9454,10 +9507,10 @@ domain_id = 0
     #[test]
     fn unreadable_system_is_empty_not_fatal() {
         let empty = tempfile::tempdir().expect("tempdir");
-        assert!(declared_capabilities(empty.path()).is_empty());
+        assert!(declared_capabilities_for(empty.path(), None).is_empty());
 
         let junk = bringup_with("this is not toml {{{");
-        assert!(declared_capabilities(junk.path()).is_empty());
+        assert!(declared_capabilities_for(junk.path(), None).is_empty());
     }
 }
 
