@@ -499,7 +499,7 @@ _matrix-run:
 # same class of defect, caught a day later instead of pre-merge.
 #
 # This monolithic form is for a machine that has every SDK — i.e. a developer's.
-# In CI the same lane runs DISTRIBUTED across the 07:00 nightly cron, because the
+# In CI the same lane runs DISTRIBUTED across the daily nightly.yml run, because the
 # per-platform toolchains do not coexist on one runner: `.github/workflows/
 # nightly.yml` computes the cover with `lane-coords tier2-nightly`, derives the
 # platform matrix from it, and its `lane-coverage` job asserts every module in the

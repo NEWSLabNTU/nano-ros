@@ -1,20 +1,20 @@
 # Nightly tier (CI reorg / phase-253) — the heavy per-platform + Zephyr sweeps.
 #
-# Folds the two heaviest lanes into one tier file. They keep SEPARATE nightly
-# crons and SEPARATE job-level concurrency, so a `github.event.schedule` guard
-# routes each cron to its own job set (the 07:00 platform sweep does not drag in
-# the Zephyr jobs, and vice-versa):
+# Folds the two heaviest lanes into one tier file, on ONE daily cron (05:00
+# UTC) since phase-559 W4b: the 05:00 Zephyr and 07:00 platform crons and the
+# `github.event.schedule` guards that routed between them are gone, so every
+# job runs on every scheduled run, each under its own job-level concurrency:
 #   - platform : per-BOARD setup/build/test matrix (phase-558): one job per
 #                daily registry row, named after its `matrix_platform`,
 #                running its module's verbs (`just <module> …`) narrowed to
-#                that board. cron 0 7. e2e on schedule / dispatch-with-run_e2e.
+#                that board. e2e on schedule / dispatch-with-run_e2e.
 #   - zephyr   : dual-line (3.7 + 4.4) example builds + copy-out check
-#                (`just zephyr build-one/ci-both/check-copy-out`). cron 0 5.
+#                (`just zephyr build-one/ci-both/check-copy-out`).
 #   (the weekly `zenoh-probe` and the book bootstrap/installed probes left this
 #   file in phase-559 W4: zenoh-probe for weekly.yml, the two book probes
 #   because host-tests.yml runs the same tracks every day.)
 #
-# The 07:00 cron is also where `just ci-matrix-nightly` lives — RFC-0061's tier-2
+# This file is also where `just ci-matrix-nightly` lives — RFC-0061's tier-2
 # pairwise cover over platform x lang x rmw x kind. It runs DISTRIBUTED, because
 # the fixture build scripts need per-platform toolchain env that only the
 # `just <module>` recipes export and the cover spans eight modules whose SDKs do
@@ -22,8 +22,8 @@
 #   - `lane`          computes the cover (`lane-coords tier2-nightly`)
 #   - `changes`       derives the platform matrix from it, instead of a hand list
 #   - `lane-coverage` asserts every lane module actually has a job somewhere in
-#                     nightly CI — `linux` in host-tests.yml, `zephyr` on the
-#                     05:00 cron, the rest in the platform matrix
+#                     nightly CI — `linux` in host-tests.yml, `zephyr` in the
+#                     zephyr-* jobs, the rest in the platform matrix
 # Without that last job the coverage claim would be a sentence in an RFC: a new
 # platform could join the matrix, join the lane, and never be built by anything.
 #
@@ -50,8 +50,10 @@ on:
         type: boolean
         default: true
   schedule:
-    - cron: "0 5 * * *"   # Zephyr dual-line
-    - cron: "0 7 * * *"   # per-platform sweep (QEMU e2e)
+    # ONE cron (phase-559 W4b; S1: tools read "the latest scheduled run").
+    # Before, 05:00 ran the Zephyr jobs and 07:00 the platform sweep, and
+    # `matrix-nightly`, which had no guard, ran on both.
+    - cron: "0 5 * * *"
 
 permissions:
   contents: read
@@ -76,11 +78,9 @@ jobs:
   # lane on paper and nothing on the runners — the rot `ci_lane` exists to
   # prevent, reintroduced one layer out in a workflow yml.
   #
-  # Its OWN job, not a step in `changes`: `changes` gates the Zephyr cron too, and
-  # a cargo failure here must not take down jobs that never needed the lane.
-  # Skipped on the 05:00 cron together with `platform`, its only consumer.
+  # Its OWN job, not a step in `changes`: a cargo failure here must not take
+  # down jobs that never needed the lane.
   lane:
-    if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 7 * * *' }}
     name: tier-2 nightly lane selection
     runs-on: ubuntu-latest
     # Longest green run 2.6 min (n=30); floor 10.
@@ -164,15 +164,13 @@ jobs:
 
   # Per-platform path filter → a JSON list of platforms + a zephyr flag. On a PR,
   # only the platforms / lines whose code (or the shared core) changed; on
-  # main/dispatch/schedule, all (the per-job `github.event.schedule` guard then
-  # routes each cron to its own job set).
+  # main/dispatch/schedule, all.
   #
-  # ISSUE 1029, and read this before adding a `needs: changes` to anything:
-  # THIS JOB IS ONLY USABLE ON THE 07:00 CRON. It `needs: lane`, `lane` is
-  # skipped on the 05:00 cron, and `if: always()` makes THIS job run there
-  # without making anything downstream of it run — measured over 29 scheduled
-  # runs, and it silenced the whole Zephyr lane for three weeks. A job on the
-  # 05:00 cron reads `github.event.schedule` itself.
+  # ISSUE 1029 (history): while this file had two crons, `lane` was skipped on
+  # the 05:00 one, and `if: always()` made THIS job run there without making
+  # anything downstream of it run — it silenced the whole Zephyr lane for three
+  # weeks. phase-559 W4b left one cron, on which `lane` always runs; the
+  # zephyr jobs still gate on the event payload rather than on `changes`.
   changes:
     needs: lane
     if: ${{ always() }}
@@ -187,9 +185,8 @@ jobs:
       boards: ${{ steps.set.outputs.boards }}
       zephyr: ${{ steps.set.outputs.zephyr }}
       # Issue 1029 — DIAGNOSTIC ONLY since the third pass. This decides nothing:
-      # the three zephyr jobs gate on the event payload directly, because
-      # nothing downstream of `changes` runs on the 05:00 cron (`changes`
-      # `needs: lane`, and `lane` is skipped there). It is still computed, and
+      # the three zephyr jobs carry no `needs: changes` (see the issue-1029
+      # block at the Zephyr jobs; one cron since phase-559 W4b). It is still computed, and
       # `zephyr-gate-report` still publishes it, so the next incident on this
       # edge has a value to read instead of a hypothesis.
       run_zephyr: ${{ steps.set.outputs.run_zephyr }}
@@ -232,13 +229,12 @@ jobs:
         run: |
           set -euo pipefail
           # Modules THIS job can run. The lane also needs `linux` and `zephyr`,
-          # which have their own homes in the tier (host-tests / the 05:00 cron) —
+          # which have their own homes in the tier (host-tests / the zephyr-* jobs) —
           # `lane-coverage` asserts that, rather than this list quietly implying it.
           runnable="qemu freertos nuttx threadx_linux threadx_riscv64"
           # Derived from the lane, not listed: adding a platform to `matrix::CELLS`
           # must extend the sweep with no second edit here. Empty when the `lane`
-          # job did not run (the 05:00 Zephyr cron) — the `platform` job is gated
-          # off on that cron anyway.
+          # job did not run.
           all=""
           for m in $(jq -r ".[]?" <<<"${LANE_MODULES:-[]}"); do
             case " $runnable " in *" $m "*) all="$all $m" ;; esac
@@ -304,7 +300,6 @@ jobs:
           else
             case "$sched" in
               "0 5 "*) run_zephyr="true";  why="the zephyr cron" ;;
-              "0 7 "*) run_zephyr="false"; why="the platform cron, which is not this lane" ;;
               *)       run_zephyr="true";  why="UNRECOGNISED schedule -- failing OPEN (issue 1029)" ;;
             esac
           fi
@@ -322,7 +317,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "selected platforms: $json ; zephyr: $zephyr"
 
-  # ===== per-board sweep (cron 0 7) =====================================
+  # ===== per-board sweep ================================================
   # phase-558 — one job per BOARD, named after its `matrix_platform`. The job
   # runs its module's verbs (`matrix.module`) narrowed to the board's own
   # coordinates: `NROS_SCOPE_BOARD` scopes `just test <module>`, and the same
@@ -331,8 +326,7 @@ jobs:
   # job each over two boards, and one red board withdrew both boards' verdicts.
   platform:
     needs: changes
-    # The 05:00 cron is Zephyr-only; the 07:00 cron + PR/dispatch run platforms.
-    if: ${{ needs.changes.outputs.boards != '[]' && (github.event_name != 'schedule' || github.event.schedule == '0 7 * * *') }}
+    if: ${{ needs.changes.outputs.boards != '[]' }}
     name: ${{ matrix.board }}
     runs-on: ubuntu-22.04
     # Longest green leg 146.8 min (threadx_linux, n=25); twice that, rounded up.
@@ -621,7 +615,6 @@ jobs:
   # the authority, installed here into the job's throwaway container, never
   # restated as a list.
   px4-sitl:
-    if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 7 * * *' }}
     name: px4 sitl
     runs-on: ubuntu-22.04
     # Longest green run 19.4 min (n=3); twice that, rounded up.
@@ -730,7 +723,7 @@ jobs:
     # Not on pull_request: there the matrix is deliberately narrowed by path
     # filters, so it is SUPPOSED to be a subset of the lane. Asserting coverage
     # there would fail every PR and teach people to ignore this job.
-    if: ${{ always() && github.event_name != 'pull_request' && (github.event_name != 'schedule' || github.event.schedule == '0 7 * * *') }}
+    if: ${{ always() && github.event_name != 'pull_request' }}
     name: tier-2 nightly lane coverage
     runs-on: ubuntu-latest
     # Longest green run 0.2 min (n=30); floor 10.
@@ -781,8 +774,12 @@ jobs:
           echo
           echo "All tier-2 nightly lane modules have a home (platform matrix result: $PLATFORM_RESULT)."
 
-  # ===== Zephyr dual-line (cron 0 5) ====================================
+  # ===== Zephyr dual-line ===============================================
 
+  # phase-559 W4b (2026-11-13): this file now has ONE cron, so the mechanism
+  # below (a job skipped on one cron and not the other) cannot recur. The
+  # history stays because it is why the zephyr jobs carry no `needs: changes`.
+  #
   # Issue 1029, THIRD pass — and this one has the measurement the first two were
   # missing. `gh api .../actions/jobs/<id>/logs` DOES return the `changes` job's
   # log; it was the run-level `gh run view --log` that mangled it. From the
@@ -826,9 +823,8 @@ jobs:
   # never running costs the ability to tell a Zephyr regression from a healthy
   # Zephyr, which is what the last three weeks cost.
   #
-  # RULE for anything added here later: a job on the 05:00 cron must NOT gate on
-  # a `changes` output. `changes` is the platform sweep's job and shares `lane`'s
-  # lifetime.
+  # RULE (kept after W4b): do not gate a zephyr job on a `changes` output.
+  # `changes` is the platform sweep's job and shares `lane`'s lifetime.
   #
   # This report job stays, and keeps its `needs: changes` on purpose: it is the
   # only thing that can say, from inside a scheduled run, whether the outputs
@@ -867,10 +863,8 @@ jobs:
           retention-days: 14
 
   zephyr-example-matrix:
-    # No `needs:` — see the issue-1029 block above. The gate is the event
-    # payload: every event but a schedule, and of the schedules only the 05:00
-    # Zephyr cron (the 07:00 sweep and the weekly zenoh probe stay out).
-    if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 5 * * *' }}
+    # No `needs:` — see the issue-1029 block above. Runs on every event this
+    # file triggers on (one cron since phase-559 W4b, and dispatch).
     name: zephyr ${{ matrix.line }} / ${{ matrix.example }}
     runs-on: ubuntu-latest
     # Longest green leg 32.1 min (4.4 / rust/action-server); twice that, rounded up.
@@ -1017,7 +1011,6 @@ jobs:
 
   zephyr-dual-line-summary:
     # No `needs:` — issue 1029; same gate as zephyr-example-matrix.
-    if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 5 * * *' }}
     name: zephyr ci-both (3.7 + 4.4)
     env:
       # The 4.4 line needs a Python >=3.12 venv, which nano-ros refuses to
@@ -1130,7 +1123,6 @@ jobs:
 
   zephyr-copy-out:
     # No `needs:` — issue 1029; same gate as zephyr-example-matrix.
-    if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 5 * * *' }}
     name: zephyr copy-out check (4.4)
     env:
       # The 4.4 line needs a Python >=3.12 venv, which nano-ros refuses to
@@ -1232,7 +1224,6 @@ jobs:
   # Daily per issue 2236 Q19. Its own job, so a red here withholds no
   # platform cell's verdict.
   nuttx-make-road:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 7 * * *' }}
     name: nuttx make road (${{ matrix.config }})
     runs-on: ubuntu-22.04
     timeout-minutes: 90

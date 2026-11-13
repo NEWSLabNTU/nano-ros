@@ -184,8 +184,9 @@ def standing_reds(per_job_history):
 
     A `skipped` entry is a run that did not schedule the job, which says
     nothing about it either way, so it is dropped rather than read as green.
-    nightly.yml has two crons (05:00 and 07:00) and some jobs run on one only:
-    the `px4 sitl` job is 07:00-only, so with the skips counted its history
+    nightly.yml had two crons (05:00 and 07:00) until phase-559 W4b, and some
+    jobs ran on one only: the `px4 sitl` job was 07:00-only, so with the
+    skips counted its history
     read `verdict/skipped/verdict` and three red scheduled runs in a row were
     never reported (phase-542 W5). `cancelled` stays in and breaks a streak:
     a cancelled run produced no evidence that the job is still red.
