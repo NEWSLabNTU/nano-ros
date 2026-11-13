@@ -118,15 +118,24 @@ vocabulary! {
         /// closure; unlike it, nobody authored the rows, so a consumer that
         /// wants authored facts only can tell them apart.
         Probe => "probe",
+        /// The rows describe THIS IMAGE's own endpoint set as its bringup's
+        /// `[[component]] entities` DECLARE it, on a road that could neither
+        /// probe the code nor read a contract (a NuttX make app the metadata
+        /// probe recorded nothing for; phase-550 W6d). Like [`Basis::Probe`]
+        /// nobody observed the rows; unlike it, nothing checked them against
+        /// the code either, so a consumer can tell a declaration from an
+        /// observation.
+        Declared => "declared",
     }
 }
 
 impl Basis {
     /// Do the rows describe THIS IMAGE's endpoint set (as opposed to the link
-    /// closure)? True for [`Basis::Contract`] and [`Basis::Probe`]: the D6
+    /// closure)? True for [`Basis::Contract`], [`Basis::Probe`] and
+    /// [`Basis::Declared`]: the D6
     /// question every pool consumer asks before sizing from the rows.
     pub fn describes_image(self) -> bool {
-        matches!(self, Basis::Contract | Basis::Probe)
+        matches!(self, Basis::Contract | Basis::Probe | Basis::Declared)
     }
 }
 

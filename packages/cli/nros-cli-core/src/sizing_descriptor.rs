@@ -483,8 +483,13 @@ pub fn build(inputs: &DescriptorInputs<'_>) -> SizingDescriptor {
         }
         Some(inv) => {
             // phase-517 W5 -- rows only the probe stated (no contract) say so.
-            if inv.stated_by() == crate::entity_inventory::StatedBy::Probe {
-                desc.meta.basis = Basis::Probe;
+            match inv.stated_by() {
+                crate::entity_inventory::StatedBy::Probe => desc.meta.basis = Basis::Probe,
+                // phase-550 W6d -- declared rows never read as observed ones.
+                crate::entity_inventory::StatedBy::Declared => {
+                    desc.meta.basis = Basis::Declared;
+                }
+                _ => {}
             }
             let rows = endpoint_rows(inv, inputs, &desc.target);
             desc.meta
@@ -4875,6 +4880,27 @@ mod tests {
         assert_eq!(d.meta.basis, Basis::Probe);
         assert!(d.meta.basis.describes_image());
         assert_eq!(d.meta.status, contract.meta.status);
+        assert_eq!(d.endpoints, contract.endpoints);
+        assert_eq!(d.image, contract.image);
+    }
+
+    /// phase-550 W6d -- rows a bringup only DECLARED (the NuttX make road's
+    /// fallback) never read as observed or authored ones: `basis =
+    /// "declared"`, every other field composed as the contract's would be.
+    #[test]
+    fn a_declared_inventory_writes_basis_declared() {
+        let rows = vec![sub_observed(
+            "std_msgs/msg/String",
+            "/chatter",
+            Some(3),
+            None,
+        )];
+        let contract = build(&model_only(&inventory(rows.clone())));
+        let mut declared = inventory(rows);
+        declared.set_stated_by(crate::entity_inventory::StatedBy::Declared);
+        let d = build(&model_only(&declared));
+        assert_eq!(d.meta.basis, Basis::Declared);
+        assert!(d.meta.basis.describes_image());
         assert_eq!(d.endpoints, contract.endpoints);
         assert_eq!(d.image, contract.image);
     }

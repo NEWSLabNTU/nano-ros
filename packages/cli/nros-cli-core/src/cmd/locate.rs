@@ -1216,14 +1216,39 @@ fn make_road_sizing_descriptor(
         project,
         &loaded,
     );
-    if probed.is_none() {
-        // Why the probe could not answer: a stale or missing sidecar names
-        // its remedy.
+    // The probe recorded nothing for the image (a make app with no package
+    // the probe can configure): the bringup's `[[component]] entities`
+    // declaration is all there is. Said, with every declared entity, because
+    // nothing on this road can check a declaration against the code.
+    let declared = if probed.is_none() {
         for n in notes {
             eprintln!("nano-ros: {n}");
         }
-        return Ok(None);
-    }
+        let Some(bringup_dir) = model_bringup_dir(project, bringup) else {
+            return Ok(None);
+        };
+        let decl = crate::cmd::sizing_descriptor::leaf_declaration(&bringup_dir, Some(id))?;
+        let Some(inv) = decl.inventory else {
+            return Ok(None);
+        };
+        eprintln!(
+            "nano-ros: `{key}` is sized from the entities its bringup DECLARES (no probe \
+             recorded its code), {}:",
+            bringup_dir.join("system.toml").display()
+        );
+        for c in &decl.system.components {
+            let name = c.name.as_deref().or(c.class.as_deref()).unwrap_or("?");
+            let what = match &c.entities {
+                Some(specs) if specs.is_empty() => "none".to_string(),
+                Some(specs) => specs.join(", "),
+                None => "not declared".to_string(),
+            };
+            eprintln!("nano-ros:   {name}: {what}");
+        }
+        Some(inv.declared_in_model_frame(&loaded))
+    } else {
+        None
+    };
     let probe_codegen = crate::cmd::build::metadata_probe_build_dir(project).join("nros-codegen");
     let mut bound_inventory = Vec::new();
     if let Ok(langs) = std::fs::read_dir(&probe_codegen) {
@@ -1247,6 +1272,23 @@ fn make_road_sizing_descriptor(
         .map(std::path::Path::to_path_buf)
         .unwrap_or_default();
     let entry = nros_orchestration_ir::entry_names::entry_package_name(id);
+    if let Some(inv) = &declared {
+        let horizon_road = "a NuttX make app";
+        crate::sizing_descriptor::write_for_model(&crate::sizing_descriptor::ModelImage {
+            build_dir: &build_dir,
+            entry: &entry,
+            wiring: crate::sizing_descriptor::Wiring::Composed(inv),
+            target_triple: triple.clone(),
+            host_build: triple.is_none(),
+            heap_budget_bytes: None,
+            rmw: field("rmw"),
+            bound_inventories: &bound_inventory,
+            horizon: crate::sizing_descriptor::ModelHorizon::new(horizon_road),
+        })
+        .map_err(|e| eyre::eyre!("`{key}`'s sizing descriptor: {e}"))?;
+        let path = nros_sizing_descriptor::descriptor_path(&build_dir, &entry);
+        return Ok(path.is_file().then_some(path));
+    }
     crate::cmd::sizing_descriptor::run(crate::cmd::sizing_descriptor::SizingDescriptorArgs {
         from_model: vec![model],
         build_dir: Some(build_dir.clone()),
@@ -1300,6 +1342,17 @@ fn board_cargo_env_keys(
         .and_then(toml::Value::as_table)
         .map(|t| t.keys().cloned().collect())
         .unwrap_or_default())
+}
+
+/// The directory of the project package named `bringup`.
+fn model_bringup_dir(project: &std::path::Path, bringup: &str) -> Option<PathBuf> {
+    let members = crate::builder::discover::cargo_members_or_walk(project);
+    let found = crate::builder::discover::discover(project, &members).ok()?;
+    found
+        .packages
+        .into_iter()
+        .find(|p| p.name == bringup)
+        .map(|p| p.dir)
 }
 
 /// The rustc triple a board builds for (its descriptor's `target`), `None`
