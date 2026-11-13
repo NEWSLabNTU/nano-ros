@@ -2204,8 +2204,10 @@ jobs:
       ${{ always() && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name)
           && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
     # phase-489 W2 — ROUTED, as `check-template-copy-out`; the hosted arm is the
-    # Zephyr CI image.
-    runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
+    # Zephyr CI image. The self-hosted arm (off unless NROS_GATE_SELF_HOSTED is
+    # set) runs on `schedule`, so it requests `nros-qemu`, the scheduled lanes'
+    # label: no merge-queue runner carries it (`check-queue-runner-label`).
+    runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-qemu","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
     # Longest successful run measured 2026-11-12: 41 min (n=15). Twice that, so a
     # stalled runner fails fast instead of holding the merge queue for 6 h.
     timeout-minutes: 85
