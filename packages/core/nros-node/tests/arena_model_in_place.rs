@@ -114,6 +114,7 @@ fn price(rows: &[SubEndpoint]) -> Option<usize> {
         arena_model::PUBSUB_STRUCT,
         RING_LEN_BYTES,
         DEFAULT_RX_BUF_SIZE,
+        arena_model::BUDGETED_QOS_DEPTH as usize,
     )
 }
 
@@ -206,15 +207,45 @@ fn a_row_nobody_observed_in_place_keeps_its_region_beside_ones_that_were() {
 }
 
 #[test]
-fn an_in_place_row_with_no_depth_refuses_the_whole_sum() {
-    // A depth-less row describes an endpoint the table cannot price; letting an
-    // in-place row through without one would make the guard depend on which
-    // path the row happens to state.
+fn an_in_place_row_with_no_depth_still_claims_no_region() {
+    // A depth-less row is priced at the budgeted depth, and an in-place row
+    // claims no region whatever its depth, so it costs the entry struct alone.
     let desc = descriptor(&[
         sub_row("/a", Some(1), Some("in_place")),
         sub_row("/b", None, Some("in_place")),
     ]);
-    assert_eq!(price(&rows(&desc, true)), None);
+    assert_eq!(
+        price(&rows(&desc, true)),
+        Some(2 * arena_model::PUBSUB_STRUCT)
+    );
+}
+
+/// A buffered row that states no depth is priced at the image's budgeted depth
+/// (`arena_model::BUDGETED_QOS_DEPTH`, the `NROS_PUBSUB_QOS_DEPTH` ladder), at
+/// its OWN slot. Refusing the sum instead sent the whole image to the env road,
+/// which charges every subscription the image-wide receive class at that same
+/// depth: the Autoware Safety Island on mps3-an536 (seven KEEP_LAST(1)
+/// subscriptions, one of them a 27,100-byte trajectory, a stated 64 KiB
+/// closure buffer) was modelled at 1,385,536 B against 90,552 B claimed.
+#[test]
+fn a_buffered_row_with_no_depth_is_priced_at_the_budgeted_depth() {
+    let desc = descriptor(&[
+        sub_row("/declared", Some(1), Some("unbounded")),
+        sub_row("/silent", None, Some("unbounded")),
+    ]);
+    let rows = rows(&desc, true);
+    assert_eq!(rows[1].depth, None);
+    let slot = row_slot_bytes(&rows[1], DEFAULT_RX_BUF_SIZE);
+    let budget = arena_model::BUDGETED_QOS_DEPTH as usize;
+    assert_eq!(
+        price(&rows),
+        Some(
+            buffered_region(1, slot, RING_LEN_BYTES)
+                + buffered_region(budget, slot, RING_LEN_BYTES)
+                + 2 * arena_model::PUBSUB_STRUCT
+        ),
+        "the declared row keeps its own depth and the silent one takes the budget"
+    );
 }
 
 /// Issue 2041 -- an endpoint that is NOT a subscription and declared nothing
@@ -250,10 +281,11 @@ fn an_unknown_undeclared_count_still_refuses() {
     );
 }
 
-/// Issue 2041 -- a SUBSCRIPTION that declared nothing still refuses the sum,
-/// row by row, whatever the image-wide count says.
+/// Issue 2041 -- a SUBSCRIPTION that declared nothing keeps the descriptor
+/// road too: it is priced row by row at the budgeted depth, whatever the
+/// image-wide count says.
 #[test]
-fn an_undeclared_subscription_still_refuses_the_sum() {
+fn an_undeclared_subscription_is_priced_at_the_budgeted_depth() {
     let desc = descriptor_undeclared(
         &[
             sub_row("/a", Some(1), Some("in_place")),
@@ -265,7 +297,7 @@ fn an_undeclared_subscription_still_refuses_the_sum() {
         .expect("the count is known");
     assert_eq!(
         price(&rows),
-        None,
-        "a depth-less subscription row refuses the sum"
+        Some(2 * arena_model::PUBSUB_STRUCT),
+        "a depth-less in-place subscription row is priced, not refused"
     );
 }

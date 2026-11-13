@@ -1146,6 +1146,7 @@ fn main() {
                         PUBSUB_ENTRY_STRUCT,
                         ring_len_bytes,
                         rx_buf_size,
+                        pubsub_depth,
                     )
                 })
                 .unwrap_or_else(|| {
