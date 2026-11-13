@@ -41,15 +41,14 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
+      - name: Trust the checkout inside the container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # The same road the gate job takes: `.github/actions/setup-nros-cli`.
       - name: Build the in-tree nros CLI (as the gate job does)
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          # phase-429 W5 — ASSERT the binary matches the checkout, as the gate
-          # job does; a census run against a stale CLI measures a different tree.
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
 
       # Both of these were missing here while the gate job ran them, so the
       # census measured a poorer environment than the lane it describes: on

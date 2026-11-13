@@ -175,15 +175,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The one CLI build road: `.github/actions/setup-nros-cli`. It asserts the
+      # binary matches the checkout: a stale CLI re-stales every fixture keyed
+      # on its source stamp, so this lane would report a fixture problem for a
+      # CLI one.
       - name: Build the nros CLI
         id: cli
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          # phase-429 W5 — ASSERT the binary matches the checkout rather than
-          # hoping. A stale CLI re-stales every fixture keyed on its source
-          # stamp, so this lane would report a fixture problem for a CLI one.
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
+        uses: ./.github/actions/setup-nros-cli
 
       - name: Report what the ledger claims, before running anything
         id: ledger
@@ -514,12 +512,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The one CLI build road: `.github/actions/setup-nros-cli`. It asserts the
+      # binary matches the checkout: a stale CLI re-stales every fixture keyed
+      # on its source stamp, so this lane would report a fixture problem for a
+      # CLI one.
       - name: Build the nros CLI
         id: cli
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
+        uses: ./.github/actions/setup-nros-cli
 
       # The image registered the SDK CMake package as root; the container runs
       # with HOME=/github/home → re-register for this HOME.
@@ -775,12 +774,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The one CLI build road: `.github/actions/setup-nros-cli`. It asserts the
+      # binary matches the checkout: a stale CLI re-stales every fixture keyed
+      # on its source stamp, so this lane would report a fixture problem for a
+      # CLI one.
       - name: Build the nros CLI
         id: cli
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
+        uses: ./.github/actions/setup-nros-cli
 
       - name: Reclaim disk before the SDK setup
         id: disk

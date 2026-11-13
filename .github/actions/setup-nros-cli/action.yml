@@ -1,72 +1,104 @@
 name: Build the in-tree nros CLI
 description: >
-  phase-413 W5 — build `packages/cli/target/release/nros` and put it on
-  `$GITHUB_PATH`, plus the `nros-launch-resolve` helper the CLI refuses to work
-  without.
+  The ONE road by which a workflow gets the in-tree `nros` CLI: key the binary
+  cache on the CLI's whole source stamp, restore it, run the user's verb
+  `just setup-cli`, ASSERT the binary matches the checkout, put it on
+  `$GITHUB_PATH`, and (by default) build the `nros-launch-resolve` helper.
 
-  This body was copied VERBATIM in four `nightly.yml` jobs (platform,
-  zephyr-example-matrix, zephyr-dual-line-summary, zephyr-copy-out). Four
-  copies of a 24-line block is four places to update when the CLI's build
-  changes, and the phase's own finding is that a workflow which hand-rolls what
-  a verb does hides defects in the verb — issue 0992 was invisible to the queue
-  for exactly that reason.
+  gate.yml carried this as three hand-written steps in ten jobs, plus two
+  variants, while nightly.yml and three other workflows used an earlier
+  version of this action that ran `cargo build` and no cache. Twelve copies of
+  one rule is twelve places for it to drift. phase-431 W2's finding was
+  exactly that: four sites asserted the stamp and the fifth did not, and read
+  like the other four.
 
-  DELIBERATELY NOT `just _setup-common`, which already does all three of these
-  steps and is what `just setup <tier>` calls. The only delta is `--depth 1` on
-  the submodule init: `_setup-common` clones play_launch in full. Routing
-  through the verb is the RIGHT end state and is what W5 asks for, but it
-  changes clone cost in a lane that is currently red, and a behaviour change
-  landed into a lane with no signal cannot be verified. So this step is a
-  faithful de-duplication with no behavioural delta, and the verb conversion is
-  left as its own change once W2 gets the lane green.
+  WHY EACH STEP:
 
-  PREREQUISITE: `just` must already be on PATH — the last step runs
-  `just setup-launch-resolve`, and this action installs nothing. Every consumer
-  today is a `nano-ros-ci` / `nano-ros-zephyr-ci` container, which bakes it, so
-  the requirement is invisible here; a consumer on a bare `ubuntu-latest` would
-  reproduce `probe.yml`'s exit 127 with the failure pointing at this file rather
-  than at the workflow that reached it. `check-workflow-just-provisioning`
-  (phase-466 W2) expands this action into each consuming job and answers the
-  question there. A step that installs `just` itself (`probe.yml`'s
-  "Install just (if absent)") is the other legitimate answer.
+  - The cache key is `scripts/ci/cli-bin-cache-key.sh`, a hash of every file
+    in `source_stamp.rs`'s watch set (packages/cli, each dir
+    `cli-source-dirs.txt` lists, the submodule gitlinks, the toolchain pin).
+    There are no restore-keys: a partial hit is a binary built for another
+    tree. RESTORE-ONLY. `gate.yml`'s `warm-cache` job on push to main is the
+    only writer, and it asks with `cache: lookup` and saves the result itself.
+  - `just setup-cli`, not `cargo build`: the verb's own freshness check
+    decides whether the restored binary is this tree's. The cache only fills
+    in what the verb would build.
+  - `nros source-stamp` (phase-429 W5): the binary's own answer to "do I match
+    these sources". `check-ci-cli-from-source` requires it beside every build.
+  - `play_launch` is initialised FIRST, at depth 1: its pin is a stamp input.
+  - `just setup-launch-resolve` (issue 0797): `nros sync` refuses a workspace
+    with no resolver, which once aborted five of eight nightly jobs in 2-5 s.
+    A job that never syncs passes `launch-resolve: 'false'`.
+
+  PREREQUISITE: `just` must already be on PATH. This action installs nothing.
+  Every consumer today runs in a `nano-ros-ci` / `nano-ros-zephyr-ci`
+  container, which bakes it. `check-workflow-just-provisioning` expands this
+  action into each consuming job and checks there.
+
+inputs:
+  cache:
+    description: >
+      `restore` (default): restore the binary cache before building.
+      `lookup`: only report whether an entry exists (for the job that writes
+      the cache), and build regardless.
+    required: false
+    default: restore
+  launch-resolve:
+    description: "'true' (default) also builds the nros-launch-resolve helper."
+    required: false
+    default: "true"
+
+outputs:
+  key:
+    description: The binary cache key, for a job that saves the cache.
+    value: ${{ steps.cli-key.outputs.key }}
+  cache-hit:
+    description: "'true' when the binary cache had an exact entry."
+    value: ${{ steps.restore.outputs.cache-hit || steps.lookup.outputs.cache-hit }}
 
 runs:
   using: composite
   steps:
+    - id: cli-key
+      shell: bash
+      run: |
+        case "${{ inputs.cache }}" in
+          restore|lookup) ;;
+          *) echo "setup-nros-cli: cache must be 'restore' or 'lookup', got '${{ inputs.cache }}'" >&2; exit 2 ;;
+        esac
+        key="$(scripts/ci/cli-bin-cache-key.sh)"
+        echo "key=$key" >> "$GITHUB_OUTPUT"
+
+    - id: restore
+      if: ${{ inputs.cache == 'restore' }}
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          packages/cli/target/release/nros
+          packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+          packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+          packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+        key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+
+    - id: lookup
+      if: ${{ inputs.cache == 'lookup' }}
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          packages/cli/target/release/nros
+          packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+          packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+          packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+        key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+        lookup-only: true
+
     - shell: bash
       run: |
-        source ./activate.sh
         git submodule update --init --depth 1 packages/cli/third-party/play_launch
-        cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-        # phase-429 W5 — ASSERT the binary matches the checkout, do not hope.
-        #
-        # The `actions/cache` key above (and in every sibling that restores
-        # `packages/cli/target`) is
-        # `hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml',
-        # 'packages/cli/**/*.rs')`. `source_stamp.rs` watches MORE than that:
-        # `.jinja` templates, `askama.toml`, `cli-source-dirs.txt`, the
-        # out-of-tree crate dirs that file lists, and the `play_launch` pin. So
-        # an EXACT-key cache hit exists for a tree whose stamp has moved. A
-        # fresh checkout's mtimes usually make cargo rebuild anyway — usually is
-        # not a guarantee, and "a binary that emits code the runtime did not
-        # expect" is the exact failure RFC-0090 exists to stop. Cheap to ask.
+        source ./activate.sh
+        just setup-cli
         "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
         echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
-        # issue 0797 — `--bin nros` does NOT build `nros-launch-resolve`: the
-        # helper is its own cargo workspace (RFC-0060 layer 2). Without it
-        # `nros sync` refuses any workspace with an unresolved SystemModel,
-        # which aborted five of eight nightly jobs in 2-5 s — nightly looked
-        # like it exercised six platforms and exercised one.
-        #
-        # The refusal is CORRECT and must not be loosened: issue 0409 records
-        # that proceeding without a resolver let a stale one silently drop
-        # every `params` projection from 22 models.
-        #
-        # No copying needed. `nros` finds it by walking up from its own path
-        # (ws.rs `resolver_from`, arm 3: `<repo>/packages/cli/
-        # nros-launch-resolve/target/release/`), which is exactly where this
-        # recipe builds — `nros` lands in `packages/cli/target/release`, four
-        # ancestors below the repo root. Verified against that code, because
-        # the error message says "next to the `nros` binary" (arm 2) and that
-        # phrasing would send you to copy the binary instead.
-        just setup-launch-resolve
+        if [ "${{ inputs.launch-resolve }}" = "true" ]; then
+          just setup-launch-resolve
+        fi
