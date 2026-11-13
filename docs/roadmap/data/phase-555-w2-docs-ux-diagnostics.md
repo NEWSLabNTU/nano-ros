@@ -1,23 +1,13 @@
----
-id: 2486
-title: "Phase-555 W2 decision brief, docs-ux-diagnostics: what the review of the area's RFCs leaves for the user to rule"
-status: open
-type: tech-debt
-area: [docs, design]
-found: 2026-11-13
-related: [phase-555, rfc-0027, rfc-0029, rfc-0116, rfc-0117, rfc-0118, rfc-0123, rfc-0124, rfc-0127]
----
+# Phase-555 W2, slice `docs-ux-diagnostics`: verdicts and decision brief, 2026-11-13
 
-# Phase-555 W2 decision brief: docs-ux-diagnostics
-
-[Phase-555](../roadmap/phase-555-design-doc-review.md) W2 reviews each
-area's RFCs. Mechanical fixes go straight into the review PR. Anything that
-would change a design comes here, as one brief for the area, for the user
-to rule.
+The docs-ux-diagnostics slice of [phase-555](../phase-555-design-doc-review.md)
+W2. It holds one verdict per RFC in the area and the area's one decision
+brief. Mechanical fixes were made in the RFCs themselves; nothing here changes
+a design until it is ruled.
 
 Reviewers: the AUO book session (RFC-0118, 0123, 0124 and 0127, with their
 pairs) and nros 243 (RFC-0027, 0029, 0116 and 0117, with theirs). Each
-reviewer appends their own section.
+reviewer has their own section.
 
 ## Verdicts (AUO book session, 2026-11-13)
 
