@@ -39,7 +39,15 @@ RUNS = ("none", "host", "emulator", "hardware")
 CADENCES = ("merge", "daily", "weekly", "manual")
 EMULATOR_KINDS = ("qemu", "renode", "fvp")  # free and open source only (RFC-0115 Amendment 1)
 FLAVOURS = ("std", "no_std")
-EVIDENCE_FIELDS = ("runs", "emulator", "hardware", "cadence", "last_run", "breadth")
+EVIDENCE_FIELDS = ("runs", "emulator", "hardware", "cadence", "last_run", "breadth",
+                   "roads")
+# `roads`: the build roads a board's packages reach it by, each with the lane
+# that keeps it. A row with no `roads` has one road, kept by its cadence's job.
+# An entry with no `lane` IS that default road; every other entry names a
+# `<workflow file>:<job id>` that check-cadence-jobs holds to it both ways.
+ROAD_NAME = re.compile(r"[a-z][a-z0-9]*(-[a-z0-9]+)*")
+ROAD_LANE = re.compile(r"[A-Za-z0-9_.-]+\.ya?ml:[A-Za-z0-9_-]+")
+ROAD_KEYS = ("name", "lane")
 DEFAULT_STALE_DAYS = 120
 
 
@@ -65,6 +73,13 @@ def dumps(doc: dict) -> str:
             return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
         if isinstance(v, list) and all(isinstance(x, str) for x in v):
             return "[" + ", ".join(scalar(x) for x in v) + "]"
+        # A list of flat string tables (`roads`), written as inline tables.
+        if isinstance(v, list) and all(
+                isinstance(x, dict) and all(isinstance(y, str) for y in x.values())
+                for x in v):
+            return "[" + ", ".join(
+                "{ " + ", ".join(f"{k} = {scalar(y)}" for k, y in x.items()) + " }"
+                for x in v) + "]"
         raise TypeError(f"registry value of unsupported shape: {v!r}")
 
     def is_tables(v):
@@ -218,6 +233,8 @@ def shape_errors(row: dict, platforms: set[str]) -> list[str]:
         errs.append(f"{where}: `last_run` is only for cadence = \"manual\"; a lane's "
                     "last run is a question for the lane, not the registry")
 
+    errs += road_errors(row)
+
     breadth = row.get("breadth")
     if breadth is None and runs == "none":
         # A board nothing boots has no breadth to claim yet; `nros board new`
@@ -231,6 +248,41 @@ def shape_errors(row: dict, platforms: set[str]) -> list[str]:
     elif m and m.group(1) not in platforms:
         errs.append(f"{where}: breadth inherits {m.group(1)!r}, which is not a "
                     "PlatformId variant")
+    return errs
+
+
+def road_errors(row: dict) -> list[str]:
+    """The `roads` field's shape (its lanes are check-cadence-jobs')."""
+    if "roads" not in row:
+        return []
+    where = row_name(row)
+    roads = row["roads"]
+    if not isinstance(roads, list) or not roads or not all(
+            isinstance(r, dict) for r in roads):
+        return [f"{where}: `roads` is a non-empty list of {{ name, lane }} tables"]
+    errs = []
+    if row.get("runs") == "none":
+        errs.append(f"{where}: a row that runs nothing has no lane to name, so no `roads`")
+    names = []
+    for r in roads:
+        extra = sorted(set(r) - set(ROAD_KEYS))
+        if extra:
+            errs.append(f"{where}: a road takes only {', '.join(ROAD_KEYS)} "
+                        f"(got {', '.join(extra)})")
+        name = r.get("name")
+        if not isinstance(name, str) or not ROAD_NAME.fullmatch(name):
+            errs.append(f"{where}: road name {name!r} is not lower-case-with-dashes")
+        names.append(name)
+        lane = r.get("lane")
+        if lane is not None and (not isinstance(lane, str) or not ROAD_LANE.fullmatch(lane)):
+            errs.append(f"{where}: road {name!r} lane {lane!r} must read "
+                        "<workflow file>:<job id>")
+    dup = sorted({n for n in names if names.count(n) > 1 and isinstance(n, str)})
+    if dup:
+        errs.append(f"{where}: road(s) {', '.join(dup)} listed twice")
+    if sum(1 for r in roads if "lane" not in r) != 1:
+        errs.append(f"{where}: exactly one road has no `lane`: the default road, "
+                    "kept by the row's cadence job")
     return errs
 
 
@@ -432,6 +484,19 @@ def self_test() -> None:
         "breadth must inherit a real platform"
     assert shape_errors({"crate": "i", "infra": True, "runs": "host"}, plats), \
         "infra carries no evidence field"
+    two = [{"name": "workspace"}, {"name": "guest-make", "lane": "nightly.yml:mk"}]
+    assert not shape_errors({**ok, "roads": two}, plats), shape_errors({**ok, "roads": two}, plats)
+    assert shape_errors({**ok, "roads": []}, plats), "an empty roads list must fail"
+    assert shape_errors({**ok, "roads": two[1:]}, plats), "roads need the default road"
+    assert shape_errors({**ok, "roads": [two[0], {"name": "x"}]}, plats), \
+        "only one road may lack a lane"
+    assert shape_errors({**ok, "roads": [two[0], two[1], two[1]]}, plats), \
+        "a road listed twice must fail"
+    assert shape_errors({**ok, "roads": [two[0], {"name": "g", "lane": "nightly"}]}, plats), \
+        "a lane must read <workflow>:<job>"
+    assert shape_errors({**ok, "roads": [{"name": "Guest Make"}]}, plats), "road name shape"
+    assert shape_errors({**ok, "roads": [{"name": "w", "job": "x"}]}, plats), "unknown road key"
+    assert not round_trip_errors({"board": [{**ok, "roads": two}]}), "roads round-trip"
     assert not shape_errors({"crate": "n", "runs": "none"}, plats), \
         "a new board (runs none, no breadth) must pass"
     assert shape_errors({**ok, "breadth": None}, plats) or \

@@ -46,6 +46,14 @@
 #              directory (`linux`). `nros doctor --report` maps an image's
 #              board through it; the gate requires every key to name a
 #              descriptor and no key to answer for two rows.
+#   roads      the build roads a board's packages reach it by, each with the
+#              lane that keeps it: `[{ name = "<road>", lane = "<workflow>:<job>" }]`.
+#              Optional: a row without it has ONE road, kept by its cadence's
+#              job. Exactly one entry has no `lane`, and that is the default
+#              road. Each other lane's job lists `<row>:<road>` in its
+#              `env: NROS_BOARD_ROADS`, and `just check cadence-jobs` holds the
+#              two to each other both ways (a road with no lane fails, and so
+#              does a lane serving a road no row lists).
 #
 # The STATUS WORD is derived, never typed (scripts/lib/board_registry.py):
 #
@@ -227,6 +235,10 @@ book_platform = "guide/platforms/nuttx.md"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
+# The one road is the workspace road (`nros build`; a C/C++ package through
+# CMake against the kernel's export); the make app in NuttX's own apps tree is
+# a GUEST road, built daily by its own job.
+roads = [{ name = "workspace" }, { name = "guest-make", lane = "nightly.yml:nuttx-make-road" }]
 maintainers = []
 
 [[board]]
@@ -336,6 +348,7 @@ book_platform = "guide/platforms/nuttx.md"
 runs = "emulator"
 cadence = "daily"
 breadth = "inherits NuttxArm"
+roads = [{ name = "workspace" }, { name = "guest-make", lane = "nightly.yml:nuttx-make-road" }]
 maintainers = []
 notes = "HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveOuts and every EntryPubsub row is BuildOnly."
 

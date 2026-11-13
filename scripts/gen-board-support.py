@@ -459,6 +459,17 @@ def where_text(row: dict) -> str:
     return ", ".join(parts) or "—"
 
 
+def roads_text(row: dict) -> str | None:
+    """The row's build roads and the lane that keeps each, or None for a row
+    with the one default road (no `roads` field)."""
+    roads = row.get("roads")
+    if not roads:
+        return None
+    return "; ".join(
+        f"{r['name']} (`{r['lane']}`)" if r.get("lane")
+        else f"{r['name']} (the {row.get('cadence')} lane)" for r in roads)
+
+
 def chapter_link(ref: str, prefix: str) -> str:
     chapter, _, anchor = ref.partition("#")
     title = Path(chapter).stem.replace("-", " ")
@@ -516,6 +527,8 @@ def render_board_page(reg: Registry, row: dict) -> str:
            f"| Cadence | {row.get('cadence') or '—'}"
            + (f", last run {row['last_run']}" if row.get("last_run") else "") + " |",
            f"| Breadth | {breadth_text(reg, row)} |"]
+    if roads_text(row):
+        out.append(f"| Build roads | {roads_text(row)} |")
     links = []
     for key, verb in (("book_run", "Run"), ("book_flash", "Flash")):
         if row.get(key):
@@ -880,6 +893,9 @@ def render_status_json(reg: Registry) -> str:
             "nightly_job": nightly_job(row),
             "probe_tracks": [p["track"] for p in reg.probes
                              if p.get("row") == board_registry.row_name(row)],
+            # The build roads, each with its lane; empty is the one default
+            # road, kept by the cadence's job.
+            "roads": row.get("roads") or [],
             "last_run": row.get("last_run"),
             "stale_from": until.isoformat() if until else None,
             "breadth": breadth_text(reg, row),

@@ -590,6 +590,26 @@ build a nano-ros package.
 - **Acceptance:** the support registry (RFC-0114) names the one road and the
   guest road, and each has a lane. No NuttX fixture row builds through a
   road other than RFC-0130 D7's.
+- **Status:** DONE (2026-11-13).
+  - **Fixture rows (measured, no move needed).** All 34 NuttX fixture rows,
+    on both boards and in Rust, C and C++, are `[[workspace_fixture]]` rows
+    with a bringup, built by `nros build`. No standalone-package row is
+    left; phase-531 retired that shape. The C and C++ rows reach CMake
+    against the kernel's export (`cmake/platform/nano-ros-nuttx.cmake`).
+    Their staticlib comes from the shared `nros_image_crate()` generator,
+    which the guest make road also calls in script mode. The Rust rows build
+    through cargo, as on every board: RFC-0130 covers C and C++ only.
+  - **The registry names both roads.** RFC-0114 D10 gains an optional
+    `roads` field. It is generic: a row without it has one road, kept by its
+    cadence's job. Both NuttX rows list `workspace` (the daily lane) and
+    `guest-make` (`nightly.yml:nuttx-make-road`). That job states
+    `NROS_BOARD_ROADS: "NuttxArm:guest-make NuttxRiscv:guest-make"`.
+    `check-cadence-jobs` refuses a lane missing from either side: a road
+    whose job is absent, unscheduled or does not carry its token, and a
+    token naming a road no row lists with that job. Seven selftest cases
+    cover these.
+  - The board pages show a "Build roads" line, and
+    `board-support-status.json` carries `roads`.
 
 ### W14 -- The vendored `libc` fork
 
