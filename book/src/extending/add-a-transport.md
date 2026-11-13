@@ -52,7 +52,9 @@ but the session may never see it.
 #### Rust
 
 ```rust
-use nros_rmw::{NrosTransportOps, NROS_TRANSPORT_OPS_ABI_VERSION_V1, set_custom_transport};
+use nros_rmw::{
+    NrosTransportOps, NROS_TRANSPORT_OPS_ABI_VERSION_V1, set_custom_transport,
+};
 
 unsafe {
     set_custom_transport(Some(NrosTransportOps {
@@ -99,7 +101,9 @@ if (rclc_set_custom_transport(&ops) != RCL_RET_OK) {
 
 rclcpp::TransportOps ops;
 ops.user_data = &my_link;
-ops.open  = [](void* ud, const void*) -> nros_cpp_transport_ret_t { return my_open(ud); };
+ops.open  = [](void* ud, const void*) -> nros_cpp_transport_ret_t {
+    return my_open(ud);
+};
 ops.close = [](void* ud) { my_close(ud); };
 ops.write = [](void* ud, const uint8_t* buf, size_t len) -> nros_cpp_transport_ret_t {
     return my_write(ud, buf, len);
@@ -124,7 +128,10 @@ without stating it, turns on the backend's `link-custom` option instead,
 beside its other dependencies:
 
 ```toml
-nros-rmw-zenoh = { version = "*", default-features = false, features = ["link-custom"] }
+[dependencies.nros-rmw-zenoh]
+version = "*"
+default-features = false
+features = ["link-custom"]
 ```
 
 ### 3. Or register them, for XRCE-DDS

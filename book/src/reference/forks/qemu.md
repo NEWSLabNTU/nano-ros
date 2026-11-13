@@ -28,5 +28,7 @@ nano-ros builds `third-party/qemu/qemu` from the fork [NEWSLabNTU/qemu](https://
 Reproduce:
 
 ```bash
-gh api repos/qemu/qemu/compare/v11.0.0...NEWSLabNTU:qemu:7689da2d98389ee9b86372d51e5380da9f847e23 --jq '.ahead_by'
+base=v11.0.0
+head=NEWSLabNTU:qemu:7689da2d98389ee9b86372d51e5380da9f847e23
+gh api "repos/qemu/qemu/compare/$base...$head" --jq '.ahead_by'
 ```

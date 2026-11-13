@@ -284,7 +284,8 @@ let _ = write!(msg.data, "Hello World: {}", *state);
 The text is in `src/sensor_node/src/Talker.c`, in `on_tick`:
 
 ```c
-snprintf(self->msg.data.data, self->msg.data.capacity, "Hello World: %d", (int)self->count);
+snprintf(self->msg.data.data, self->msg.data.capacity, "Hello World: %d",
+         (int)self->count);
 ```
 
 #### C++

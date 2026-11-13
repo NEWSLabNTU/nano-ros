@@ -26,5 +26,7 @@ The pin is 5 upstream commit(s) behind `main`'s tip; the delta below is against 
 Reproduce:
 
 ```bash
-gh api repos/ros2-rust/examples/compare/main...jerry73204:ros2_rust_examples:c30b901dcb2ed5cb7e9056857f71a7232b3c480c --jq '.ahead_by'
+base=main
+head=jerry73204:ros2_rust_examples:c30b901dcb2ed5cb7e9056857f71a7232b3c480c
+gh api "repos/ros2-rust/examples/compare/$base...$head" --jq '.ahead_by'
 ```

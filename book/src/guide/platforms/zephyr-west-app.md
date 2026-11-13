@@ -144,12 +144,14 @@ static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor,
     self->count = 0;
     self->pub = rcl_get_zero_initialized_publisher();
     rcl_ret_t rc = rclc_publisher_init_default(
-        &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/chatter");
+        &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+        "/chatter");
     if (rc != RCL_RET_OK) {
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_default(&self->timer, NULL, 1000ULL * 1000000ULL, on_tick);
+    rc = rclc_timer_init_default(&self->timer, NULL, 1000ULL * 1000000ULL,
+                                 on_tick);
     if (rc != RCL_RET_OK) {
         return rc;
     }
@@ -304,10 +306,22 @@ crate-type = ["staticlib"]
 [dependencies]
 zephyr = "0.1.0"
 log = "0.4"
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
-nros-platform = { version = "*", default-features = false, features = ["platform-zephyr"] }
-nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-zephyr"] }
 std_msgs = { version = "*", default-features = false }
+
+[dependencies.nros]
+version = "*"
+default-features = false
+features = ["alloc", "rmw-cffi", "macros"]
+
+[dependencies.nros-platform]
+version = "*"
+default-features = false
+features = ["platform-zephyr"]
+
+[dependencies.nros-rmw-zenoh]
+version = "*"
+default-features = false
+features = ["platform-zephyr"]
 
 [build-dependencies]
 zephyr-build = "0.1.0"
@@ -330,8 +344,8 @@ cat > apps/my_app/src/lib.rs <<'EOF'
 extern crate zephyr;
 
 use nros::{
-    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
-    NodeResult, TimerDuration,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode,
+    NodeContext, NodeOptions, NodeResult, TimerDuration,
 };
 use std_msgs::msg::Int32;
 
@@ -339,13 +353,16 @@ pub struct Talker;
 
 impl Component for Talker {
     const NAME: &'static str = "talker";
-    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(1, 0, 0, 0, 0);
+    const ENTITY_BOUNDS: nros::EntityBounds =
+        nros::EntityBounds::exact(1, 0, 0, 0, 0);
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("talker"))?;
         let chatter = node.create_publisher_for_topic::<Int32>("/chatter")?;
-        let _timer =
-            node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
+        let _timer = node.create_timer_for_callback_name(
+            "on_tick",
+            TimerDuration::from_millis(1000),
+        )?;
         node.callback_for_name("on_tick").publishes_entity(&chatter)?;
         Ok(())
     }
@@ -359,7 +376,11 @@ impl ExecutableNode for Talker {
         0
     }
 
-    fn on_callback(count: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(
+        count: &mut Self::State,
+        callback: Callback<'_>,
+        ctx: &mut CallbackCtx<'_>,
+    ) {
         if callback.as_str() == "on_tick" {
             let msg = Int32 { data: *count };
             if ctx.publish_to_topic::<Int32, 16>("/chatter", &msg).is_ok() {
@@ -485,7 +506,8 @@ the C++ API for the Rust one in `prj.conf`. `build.rs` hands the Kconfig
 values, among them the locator and the domain, to the crate:
 
 ```bash probe=47 track=installed variant=west-app-rust
-sed -i -e '/^CONFIG_NROS_CPP_API=y$/d' -e '/^CONFIG_STD_CPP17=y$/d' apps/my_app/prj.conf
+sed -i -e '/^CONFIG_NROS_CPP_API=y$/d' -e '/^CONFIG_STD_CPP17=y$/d' \
+    apps/my_app/prj.conf
 cat >> apps/my_app/prj.conf <<'EOF'
 CONFIG_RUST=y
 CONFIG_NROS_RUST_API=y

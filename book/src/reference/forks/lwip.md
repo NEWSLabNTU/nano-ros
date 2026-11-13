@@ -24,5 +24,7 @@ nano-ros builds `third-party/freertos/lwip` from the fork [jerry73204/lwip](http
 Reproduce:
 
 ```bash
-gh api repos/lwip-tcpip/lwip/compare/STABLE-2_2_1_RELEASE...jerry73204:lwip:96b63e3115dfc010c07d4a4231d93195a814e82c --jq '.ahead_by'
+base=STABLE-2_2_1_RELEASE
+head=jerry73204:lwip:96b63e3115dfc010c07d4a4231d93195a814e82c
+gh api "repos/lwip-tcpip/lwip/compare/$base...$head" --jq '.ahead_by'
 ```

@@ -28,5 +28,7 @@ The pin is 728 upstream commit(s) behind `libc-0.2`'s tip; the delta below is ag
 Reproduce:
 
 ```bash
-gh api repos/rust-lang/libc/compare/libc-0.2...jerry73204:libc:994735191a4bd3872cd61e6210dc65e584c2c161 --jq '.ahead_by'
+base=libc-0.2
+head=jerry73204:libc:994735191a4bd3872cd61e6210dc65e584c2c161
+gh api "repos/rust-lang/libc/compare/$base...$head" --jq '.ahead_by'
 ```

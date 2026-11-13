@@ -58,5 +58,7 @@ Why each patch exists, and what retires it: [cyclonedds-fork-delta.md](../../int
 Reproduce:
 
 ```bash
-gh api repos/eclipse-cyclonedds/cyclonedds/compare/0.10.5...NEWSLabNTU:cyclonedds:404fc5d9603dd80af624e3557d52fa1369e274d0 --jq '.ahead_by'
+base=0.10.5
+head=NEWSLabNTU:cyclonedds:404fc5d9603dd80af624e3557d52fa1369e274d0
+gh api "repos/eclipse-cyclonedds/cyclonedds/compare/$base...$head" --jq '.ahead_by'
 ```

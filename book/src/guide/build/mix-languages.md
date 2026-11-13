@@ -63,7 +63,8 @@ does not change with the language, and neither does `system.toml`.
        self->count = 0;
        self->pub = rcl_get_zero_initialized_publisher();
        rcl_ret_t rc = rclc_publisher_init_default(
-           &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/chatter");
+           &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+           "/chatter");
        if (rc != RCL_RET_OK) return rc;
        self->timer = rcl_get_zero_initialized_timer();
        rc = rclc_timer_init_default(&self->timer, NULL, 1000000000ULL, on_tick);
@@ -78,7 +79,8 @@ does not change with the language, and neither does `system.toml`.
    does, with `TYPED`:
 
    ```cmake
-   find_package(std_msgs REQUIRED)   # declared as <depend>std_msgs</depend> in package.xml
+   # declared as <depend>std_msgs</depend> in package.xml
+   find_package(std_msgs REQUIRED)
    nano_ros_auto_add_library(talker_lib STATIC src/Talker.c)
    nros_components_register_node(talker_lib
        PLUGIN c_talker_pkg::Talker

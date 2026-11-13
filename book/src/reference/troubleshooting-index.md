@@ -20,7 +20,7 @@ one to try.
 
 ### A1. Cargo cannot find `nros`
 
-```
+```text
 error: no matching package named `nros` found
 ```
 
@@ -75,7 +75,7 @@ PATH / `${NROS_HOME:-~/.nros}/bin/`;
 
 ### A3. Rust target not installed
 
-```
+```text
 error: could not compile … due to previous error
 the target `thumbv7m-none-eabi` is not installed
 ```
@@ -93,7 +93,7 @@ your bringup's `system.toml` names.
 
 ### A4. Cross linker not found
 
-```
+```text
 error: linker `arm-none-eabi-gcc` not found
 ```
 
@@ -106,7 +106,7 @@ nros setup mps2-an385-freertos       # or qemu-armv7a-nuttx / mps2-an385-baremet
 
 ### A5. Cyclone DDS runtime missing
 
-```
+```text
 ld: cannot find -lddsc
 ld: cannot find -lcyclonedds-ddsc
 ```
@@ -119,7 +119,7 @@ nros setup linux --rmw cyclonedds
 
 ### A6. `cargo build --features rmw-cyclonedds` can't link
 
-```
+```text
 undefined reference to `nros_rmw_cyclonedds_register`
 undefined reference to `dds_create_participant`
 ```
@@ -153,7 +153,7 @@ through `nros-rmw-cyclonedds-sys`.
 
 ### A7. The board name is a typo
 
-```
+```text
 …/system.toml: board `mps2-an358` is claimed by no board descriptor under /…/nano-ros
 ```
 
@@ -166,7 +166,7 @@ descriptor).
 
 The neighbouring refusals, when the image is missing rather than misspelt:
 
-```
+```text
 this workspace declares no `[image.*]`. An image is the buildable unit: add `[image.<id>] board = "<board>"` to system.toml.
 …/system.toml: names no board; add `[image.<id>] board = "<board>"`
 ```
@@ -193,7 +193,7 @@ scaffolded project never hits it.
 
 ### A9. `direnv allow` reminder
 
-```
+```text
 NROS_PLATFORM_CFFI_INCLUDE not set (direnv allow, or build via just)
 FREERTOS_PORT not set
 ```
@@ -210,7 +210,7 @@ hit it. If a cargo command you drive yourself does, you skipped the
 `nros build`, `nros run` or `nros configure` stops before building anything.
 The message names the command you ran; from `nros build`:
 
-```
+```text
 Error: configure: `AMENT_PREFIX_PATH` is unset, and `/home/you/sensor_ws` has no earlier configure that recorded one. Source ROS 2 in this shell (`source /opt/ros/<distro>/setup.bash`, or your overlay's `install/setup.bash`) and run `nros build` again; later shells need not source it.
 ```
 
@@ -235,7 +235,7 @@ project records its own, so its first build needs a sourced shell again.
 
 ### B1. Rust: `RMW session open failed — Transport(ConnectionFailed)`
 
-```
+```text
 [ERROR nros] RMW session open failed — Transport(ConnectionFailed)
 ```
 
@@ -244,7 +244,8 @@ talker is pointed at. The router comes from ROS 2 (nano-ros no longer
 ships one) — start it in another terminal:
 
 ```bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
 Default ports: `tcp/127.0.0.1:7447` on POSIX,
@@ -254,7 +255,7 @@ ThreadX-Linux, `7447` Zephyr.
 
 ### B2. C: `RCLC_CHECK failed: rclc_support_init(...) -> -4`
 
-```
+```text
 RCLC_CHECK failed at src/main.c:92: rclc_support_init(&app.support, argc, argv, &allocator) -> -4
 ```
 
@@ -269,7 +270,7 @@ which don't exist in the C API.
 
 ### B3. C++: process exits 156 after a `rclcpp::init_in` failure
 
-```
+```text
 nros::init returned NROS_CPP_RET_TRANSPORT_ERROR (-100)
 ```
 
@@ -316,7 +317,7 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp # for Cyclone
 
 ### C2. QoS mismatch — echo silent, list sees the topic
 
-```
+```text
 ros2 topic list           # /chatter shown
 ros2 topic echo /chatter  # … nothing
 ```

@@ -165,7 +165,8 @@ late samples, on any backend:
 ```rust
 use core::time::Duration;
 
-let mut sub = node.create_polling_subscription::<VehicleAttitude>("/vehicle_attitude")?;
+let mut sub = node
+    .create_polling_subscription::<VehicleAttitude>("/vehicle_attitude")?;
 sub.on_liveliness_changed(|status| {
     if status.alive_count == 0 {
         request_minimum_risk_manoeuvre();

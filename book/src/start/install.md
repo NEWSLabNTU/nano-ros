@@ -31,8 +31,10 @@ Ubuntu release:
 sudo apt-get update
 sudo apt-get install -y curl ca-certificates software-properties-common
 sudo add-apt-repository -y universe
+codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+base=https://github.com/ros-infrastructure/ros-apt-source/releases/download
 curl -fL -o /tmp/ros2-apt-source.deb \
-    "https://github.com/ros-infrastructure/ros-apt-source/releases/download/1.3.0/ros2-apt-source_1.3.0.$(. /etc/os-release && echo "$VERSION_CODENAME")_all.deb"
+    "$base/1.3.0/ros2-apt-source_1.3.0.${codename}_all.deb"
 sudo dpkg -i /tmp/ros2-apt-source.deb
 sudo apt-get update
 ```
@@ -44,7 +46,11 @@ A newer release of `ros2-apt-source` works the same way: replace both
 Then install ROS 2 and its zenoh middleware:
 
 ```sh probe=5 track=installed variant=fresh-host
-sudo apt-get install -y ros-jazzy-ros-base ros-jazzy-rmw-zenoh-cpp ros-jazzy-example-interfaces   # humble on 22.04
+# Ubuntu 24.04 (Jazzy); on 22.04, write humble for jazzy
+sudo apt-get install -y \
+    ros-jazzy-ros-base \
+    ros-jazzy-rmw-zenoh-cpp \
+    ros-jazzy-example-interfaces
 ```
 
 nano-ros generates your project's message bindings from this install, and

@@ -1,0 +1,1 @@
+Book: long commands and code lines are broken to fit the page (the ROS 2 `apt-get install` line among them), console output wraps instead of scrolling sideways, CMake and JSON5 blocks are highlighted, and TOML shown as plain text is now highlighted as TOML.

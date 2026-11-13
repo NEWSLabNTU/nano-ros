@@ -107,5 +107,7 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 Reproduce:
 
 ```bash
-gh api repos/eclipse-zenoh/zenoh-pico/compare/1.10.1...jerry73204:zenoh-pico:fb5f5cdc6c86f4781838df07f6d12000d52fceab --jq '.ahead_by'
+base=1.10.1
+head=jerry73204:zenoh-pico:fb5f5cdc6c86f4781838df07f6d12000d52fceab
+gh api "repos/eclipse-zenoh/zenoh-pico/compare/$base...$head" --jq '.ahead_by'
 ```

@@ -55,7 +55,7 @@ registry, not written here:
    nros config show
    ```
 
-   ```text
+   ```toml
    [system]
    rmw                = cyclonedds                   # system.toml [system]
    ```
@@ -96,7 +96,8 @@ registry, not written here:
    ```
 
    ```bash
-   ROS_DOMAIN_ID=5 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
+   ROS_DOMAIN_ID=5 ros2 topic echo /chatter std_msgs/msg/String \
+       --qos-reliability best_effort
    ```
 
 6. Configure Cyclone itself, if the defaults do not fit your network: which
@@ -109,7 +110,8 @@ registry, not written here:
      <Domain id="any">
        <General>
          <Interfaces>
-           <NetworkInterface autodetermine="true" priority="default" multicast="default" />
+           <NetworkInterface autodetermine="true" priority="default"
+                             multicast="default" />
          </Interfaces>
          <AllowMulticast>default</AllowMulticast>
        </General>

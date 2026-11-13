@@ -156,7 +156,8 @@ sed -i 's#find_package(std_msgs REQUIRED)#find_package(tutorial_msgs REQUIRED)#'
 #### C++
 
 ```bash probe=535 track=installed variant=qemu
-sed -i 's#find_package(std_msgs REQUIRED)#find_package(tutorial_msgs REQUIRED)#; s#std_msgs__nano_ros_cpp#tutorial_msgs__nano_ros_cpp#' \
+sed -i -e 's#find_package(std_msgs REQUIRED)#find_package(tutorial_msgs REQUIRED)#' \
+    -e 's#std_msgs__nano_ros_cpp#tutorial_msgs__nano_ros_cpp#' \
     src/sensor_node/CMakeLists.txt src/monitor_node/CMakeLists.txt
 ```
 
@@ -182,8 +183,8 @@ cat > src/sensor_node/src/lib.rs <<'EOF'
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
-    NodeResult, TimerDuration,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode,
+    NodeContext, NodeOptions, NodeResult, TimerDuration,
 };
 use nros_log::{Logger, log_info};
 use tutorial_msgs::msg::Reading;
@@ -194,14 +195,17 @@ pub struct Talker;
 
 impl Component for Talker {
     const NAME: &'static str = "sensor_node";
-    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(1, 0, 0, 0, 0);
+    const ENTITY_BOUNDS: nros::EntityBounds =
+        nros::EntityBounds::exact(1, 0, 0, 0, 0);
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(NodeOptions::new("sensor_node"))?;
         let pub_reading = node.create_publisher_for_topic::<Reading>("/reading")?;
-        let _timer =
-            node.create_timer_for_callback_name("on_tick", TimerDuration::from_millis(1000))?;
+        let _timer = node.create_timer_for_callback_name(
+            "on_tick",
+            TimerDuration::from_millis(1000),
+        )?;
         node.callback_for_name("on_tick")
             .publishes_entity(&pub_reading)?;
         Ok(())
@@ -217,7 +221,11 @@ impl ExecutableNode for Talker {
         0
     }
 
-    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(
+        state: &mut Self::State,
+        callback: Callback<'_>,
+        ctx: &mut CallbackCtx<'_>,
+    ) {
         if callback.as_str() == "on_tick" {
             *state = state.wrapping_add(1);
             let msg = Reading {
@@ -225,7 +233,12 @@ impl ExecutableNode for Talker {
                 temperature_mc: 21_000 + (*state % 10) * 100,
             };
             let _ = ctx.publish_to_topic::<Reading, 32>("/reading", &msg);
-            log_info!(&LOGGER, "Publishing: reading {} ({} mC)", msg.sequence, msg.temperature_mc);
+            log_info!(
+                &LOGGER,
+                "Publishing: reading {} ({} mC)",
+                msg.sequence,
+                msg.temperature_mc
+            );
         }
     }
 }
@@ -269,16 +282,19 @@ static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
     msg.sequence = self->count;
     msg.temperature_mc = 21000 + (self->count % 10) * 100;
     if (rcl_publish(&self->pub, &msg, NULL) == RCL_RET_OK) {
-        printf("Publishing: reading %d (%d mC)\n", (int)msg.sequence, (int)msg.temperature_mc);
+        printf("Publishing: reading %d (%d mC)\n", (int)msg.sequence,
+               (int)msg.temperature_mc);
     }
 }
 
-static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor, talker_t* self) {
+static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor,
+                                  talker_t* self) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->count = 0;
     self->pub = rcl_get_zero_initialized_publisher();
     rcl_ret_t rc = rclc_publisher_init_default(
-        &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(tutorial_msgs, msg, Reading), "/reading");
+        &self->pub, node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(tutorial_msgs, msg, Reading), "/reading");
     if (rc != RCL_RET_OK) {
         return rc;
     }
@@ -340,7 +356,8 @@ void Talker::on_tick() {
     msg.sequence = count_;
     msg.temperature_mc = 21000 + (count_ % 10) * 100;
     if (pub_.publish(msg).ok()) {
-        std::printf("Publishing: reading %d (%d mC)\n", static_cast<int>(msg.sequence),
+        std::printf("Publishing: reading %d (%d mC)\n",
+                    static_cast<int>(msg.sequence),
                     static_cast<int>(msg.temperature_mc));
     }
 }
@@ -378,8 +395,8 @@ cat > src/monitor_node/src/lib.rs <<'EOF'
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
-    NodeResult,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode,
+    NodeContext, NodeOptions, NodeResult,
 };
 use nros_log::{Logger, log_info};
 use tutorial_msgs::msg::Reading;
@@ -390,13 +407,16 @@ pub struct Listener;
 
 impl Component for Listener {
     const NAME: &'static str = "monitor_node";
-    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
+    const ENTITY_BOUNDS: nros::EntityBounds =
+        nros::EntityBounds::exact(0, 0, 0, 0, 0);
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         nros_log::register_logger(&LOGGER);
         let mut node = ctx.create_node(NodeOptions::new("monitor_node"))?;
-        let _sub =
-            node.create_subscription_for_callback_name::<Reading>("on_reading", "/reading")?;
+        let _sub = node.create_subscription_for_callback_name::<Reading>(
+            "on_reading",
+            "/reading",
+        )?;
         Ok(())
     }
 }
@@ -410,12 +430,21 @@ impl ExecutableNode for Listener {
         0
     }
 
-    fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+    fn on_callback(
+        state: &mut Self::State,
+        callback: Callback<'_>,
+        ctx: &mut CallbackCtx<'_>,
+    ) {
         if callback.as_str() == "on_reading"
             && let Ok(msg) = ctx.message::<Reading>()
         {
             *state = state.wrapping_add(1);
-            log_info!(&LOGGER, "I heard: reading {} ({} mC)", msg.sequence, msg.temperature_mc);
+            log_info!(
+                &LOGGER,
+                "I heard: reading {} ({} mC)",
+                msg.sequence,
+                msg.temperature_mc
+            );
         }
     }
 }
@@ -446,22 +475,26 @@ typedef struct {
 
 static void on_msg(const void* msgin, void* ctx) {
     listener_t* self = (listener_t*)ctx;
-    const tutorial_msgs__msg__Reading* msg = (const tutorial_msgs__msg__Reading*)msgin;
-    printf("I heard: reading %d (%d mC)\n", (int)msg->sequence, (int)msg->temperature_mc);
+    const tutorial_msgs__msg__Reading* msg =
+        (const tutorial_msgs__msg__Reading*)msgin;
+    printf("I heard: reading %d (%d mC)\n", (int)msg->sequence,
+           (int)msg->temperature_mc);
     self->recv++;
 }
 
-static rcl_ret_t listener_configure(rcl_node_t* node, rclc_executor_t* executor, listener_t* self) {
+static rcl_ret_t listener_configure(rcl_node_t* node, rclc_executor_t* executor,
+                                    listener_t* self) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->recv = 0;
     self->sub = rcl_get_zero_initialized_subscription();
     rcl_ret_t rc = rclc_subscription_init_default(
-        &self->sub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(tutorial_msgs, msg, Reading), "/reading");
+        &self->sub, node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(tutorial_msgs, msg, Reading), "/reading");
     if (rc != RCL_RET_OK) {
         return rc;
     }
-    return rclc_executor_add_subscription_with_context(executor, &self->sub, &self->msg, on_msg,
-                                                       self, ON_NEW_DATA);
+    return rclc_executor_add_subscription_with_context(
+        executor, &self->sub, &self->msg, on_msg, self, ON_NEW_DATA);
 }
 
 RCLC_C_COMPONENT(listener_t, listener_configure)
@@ -506,7 +539,8 @@ cat > src/monitor_node/src/Listener.cpp <<'EOF'
 namespace monitor_node {
 
 void Listener::on_reading(const ::tutorial_msgs::msg::Reading& msg) {
-    std::printf("I heard: reading %d (%d mC)\n", static_cast<int>(msg.sequence),
+    std::printf("I heard: reading %d (%d mC)\n",
+                static_cast<int>(msg.sequence),
                 static_cast<int>(msg.temperature_mc));
     ++recv_;
 }

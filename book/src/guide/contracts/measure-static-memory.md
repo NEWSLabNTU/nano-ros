@@ -54,7 +54,7 @@ You get RAM broken down by symbol, by owner, by storage role and by pool, plus
 the section totals, so you can see how much is *not* attributable to any
 symbol:
 
-```
+```text
 RAM (writable allocated sections): 518,234 bytes
 RAM attributed to symbols:         489,771 bytes
 unattributed (padding, linker reservations, symbol-less data): 28,463 bytes (5.5%)
@@ -70,7 +70,7 @@ the per-file `.noinit.*` sections holding thread stacks and the kernel heap.
 
 The `RAM by owner` table puts every byte under the owner you would name:
 
-```
+```text
        177,112   34.2%  [executor storage]
        206,358   39.8%  nros_rmw_zenoh
         88,280   17.0%  (C / asm / no path)
@@ -91,7 +91,7 @@ The `RAM by owner` table puts every byte under the owner you would name:
 For the C and C++ executor storage, the report also reads the build's own sizes
 header and tells you how many executors' worth the image reserved:
 
-```
+```text
         95,904  executor storage   __nros_sched_task_executor_storage
                                    = 4 x 23,976 (NROS_CPP_EXECUTOR_STORAGE_SIZE = 23,976)
 ```
@@ -106,7 +106,7 @@ pricing.
 The per-symbol list is sorted, so the first few lines are usually the whole
 story:
 
-```
+```text
 ## top 5 RAM symbols
 
        131,072   25.3%  nros_rmw_zenoh::shim::subscriber::LARGE_PAYLOADS
@@ -121,7 +121,7 @@ The last two sections of the report join these symbols to their knobs for you:
 agrees with it), and `knob-sized pools` lists every other static the inventory
 knows a knob for, with its exact measured size:
 
-```
+```text
         87,072  g_sessions
                 pool sized by NROS_ZENOH_MAX_SESSIONS, NROS_ZENOH_MAX_PUBLISHERS, ...
 ```

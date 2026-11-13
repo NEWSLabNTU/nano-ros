@@ -31,7 +31,7 @@ command = "python3 ../scripts/mdbook-level-badge.py"
 
 [output.html]
 git-repository-url = "https://github.com/NEWSLabNTU/nano-ros"
-additional-js = ["mermaid.min.js", "mermaid-init.js"]
+additional-js = ["mermaid.min.js", "mermaid-init.js", "theme/nros-highlight.js"]
 # Code-block edge for the dark themes; see the file's header.
 additional-css = ["theme/nros.css"]
 

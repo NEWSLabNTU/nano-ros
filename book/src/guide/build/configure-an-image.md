@@ -39,7 +39,7 @@ file and table each value came from:
 nros config show
 ```
 
-```text
+```toml
 # Resolved config for system 'host_node' (bringup pkg: host_node_bringup)
 # source: …/src/host_node_bringup/system.toml
 

@@ -144,9 +144,11 @@ uint64_t nros_platform_epoch_us(void) {
     return 0;                                         /* no wall clock */
 }
 
-void *nros_platform_alloc(size_t size)              { return myos_malloc(size); }
-void *nros_platform_realloc(void *ptr, size_t size) { return myos_realloc(ptr, size); }
-void  nros_platform_dealloc(void *ptr)              { myos_free(ptr); }
+void *nros_platform_alloc(size_t size) { return myos_malloc(size); }
+void *nros_platform_realloc(void *ptr, size_t size) {
+    return myos_realloc(ptr, size);
+}
+void nros_platform_dealloc(void *ptr) { myos_free(ptr); }
 
 void nros_platform_sleep_ms(size_t ms) { myos_task_delay(ms); }
 
