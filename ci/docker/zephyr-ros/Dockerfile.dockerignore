@@ -14,3 +14,6 @@
 !ci/docker/zephyr-ros/
 !ci/docker/apt-packages.txt
 !scripts/ci/install-just.sh
+!config/ci-base-tools.toml
+!scripts/lib/index_tool.py
+!scripts/lib/index_packages.py
