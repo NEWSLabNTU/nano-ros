@@ -81,9 +81,9 @@ pub fn retire(root: &Path) -> Result<Option<PathBuf>, String> {
             let _ = std::fs::remove_file(root.join("Cargo.lock"));
             Ok(Some(manifest))
         }
+        // RFC-0098 D9.
         RootState::Authored => Err(format!(
-            "{} declares a cargo `[workspace]`, and a workspace has no root build file \
-             (RFC-0098 D9).\n\
+            "{} declares a cargo `[workspace]`, and a workspace has no root build file.\n\
              \n\
              `nros build` gives each image its own cargo root — the generated entry under \
              `build/<coord>/` — and a `[workspace]` above it claims that entry, which cargo \
@@ -128,7 +128,7 @@ mod tests {
         let authored = "[workspace]\nmembers = [\"src/a\"]\n";
         std::fs::write(tmp.path().join("Cargo.toml"), authored).unwrap();
         let e = retire(tmp.path()).expect_err("refused");
-        assert!(e.contains("RFC-0098 D9"), "{e}");
+        assert!(e.contains("a workspace has no root build file"), "{e}");
         assert_eq!(
             std::fs::read_to_string(tmp.path().join("Cargo.toml")).unwrap(),
             authored,

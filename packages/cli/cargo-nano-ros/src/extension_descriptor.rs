@@ -134,9 +134,10 @@ pub fn parse_runner_descriptor(text: &str, origin: &str) -> Result<RunnerDescrip
         ));
     }
     if let Some(bad) = d.needs.iter().find(|n| Placeholder::parse(n).is_none()) {
+        // RFC-0118 D5.
         return Err(format!(
             "{origin}: needs {bad:?}, which is not a plan placeholder (known: {}, \
-             tool:<name>; RFC-0118 D5)",
+             tool:<name>)",
             nros_extension::plan::PLACEHOLDERS.join(", ")
         ));
     }
@@ -227,9 +228,10 @@ pub fn resolve_bin(
 ) -> Result<String, String> {
     let bins = cargo_bins(package_dir);
     match (stated, bins.as_slice()) {
+        // RFC-0087 D4.
         (Some(s), [one]) if s != one => Err(format!(
             "{origin}: states bin = {s:?}, but the package's only bin target is {one:?} — \
-             a stated field must equal its derived value (RFC-0087 D4); drop the line or \
+             a stated field must equal its derived value; drop the line or \
              rename the target"
         )),
         (Some(s), many) if many.len() > 1 && !many.iter().any(|b| b == s) => Err(format!(
@@ -432,9 +434,10 @@ fn resolve_host(
         .map(|p| p.name.clone())
         .ok_or_else(|| fail(format!("announces no {kind} provision")))?;
     let path = pkg.descriptor_path(kind);
+    // RFC-0119 D2.
     let text = std::fs::read_to_string(&path).map_err(|e| {
         fail(format!(
-            "read {}: {e} — a {kind} provider needs a descriptor (RFC-0119 D2)",
+            "read {}: {e} — a {kind} provider needs a descriptor",
             path.display()
         ))
     })?;

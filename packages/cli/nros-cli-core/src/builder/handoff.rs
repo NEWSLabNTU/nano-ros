@@ -286,10 +286,11 @@ pub fn wait(handoff: &Handoff) -> Result<std::process::ExitStatus, String> {
 /// Non-Unix: refuse rather than silently degrade to spawn-and-wait.
 #[cfg(not(unix))]
 pub fn exec(handoff: &Handoff) -> Result<std::convert::Infallible, String> {
+    // The guarantee is RFC-0065 D1.
     Err(format!(
         "`nros build` hands off with execvp, which this platform does not \
-         provide, so the diagnostic guarantee (RFC-0065 D1) cannot be kept \
-         here. Run the native command directly:\n  {}",
+         provide, so it cannot promise that the native tool's diagnostics \
+         and exit code reach you untouched here. Run the native command directly:\n  {}",
         handoff.display()
     ))
 }

@@ -214,9 +214,10 @@ pub fn resolve_serdes_in(
     let manifest = pkg.dir.join("Cargo.toml");
     let crate_name = std::fs::read_to_string(&manifest)
         .map_err(|e| {
+            // RFC-0087 D4.
             fail(format!(
                 "read {}: {e} — the serdes `crate` is DERIVED from the provider's \
-                 Cargo.toml (RFC-0087 D4), so a provider without one cannot be linked",
+                 Cargo.toml, so a provider without one cannot be linked",
                 manifest.display()
             ))
         })

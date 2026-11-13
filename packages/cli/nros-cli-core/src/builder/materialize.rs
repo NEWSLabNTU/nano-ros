@@ -344,10 +344,11 @@ pub fn owned_manifest(text: &str, entry: &str, adapter_rel: &str) -> String {
         }
         out.push('\n');
         if line.trim() == "[dependencies]" {
+            // RFC-0071 D13.
             out.push_str(&format!(
                 "# The features this image's declarations imply, and the backend\n\
                  # registration, come from this adapter, which `nros configure`\n\
-                 # regenerates (RFC-0071 D13). Edit `system.toml`, not this line.\n\
+                 # regenerates. Edit `system.toml`, not this line.\n\
                  {adapter} = {{ path = \"{adapter_rel}\" }}\n"
             ));
         }

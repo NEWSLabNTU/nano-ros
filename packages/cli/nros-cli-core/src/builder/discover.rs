@@ -341,6 +341,7 @@ fn settle_duplicates(
         }
     }
     if !errors.is_empty() {
+        // RFC-0119 D4.
         return Err(format!(
             "{}\n\nA package name names one package, as in colcon: the source roots \
              (the workspace, its `nros.toml` `package_paths`, or `--base-paths`) are \
@@ -351,7 +352,7 @@ fn settle_duplicates(
              one root (`--base-paths`, or the `package_paths` entry), or — for a \
              provider package — by pinning the one you mean in \
              `{}` or passing `--allow-overriding <name>` to keep the later \
-             root's (RFC-0119 D4).",
+             root's.",
             errors.join("\n"),
             policy.file.label()
         ));

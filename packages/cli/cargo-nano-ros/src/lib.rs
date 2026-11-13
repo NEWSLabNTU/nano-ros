@@ -2492,10 +2492,11 @@ fn write_b8_alias_header(alias_path: &Path, canonical_filename: &str) -> Result<
         .unwrap_or("nros_alias")
         .to_uppercase()
         .replace('-', "_");
+    // Phase 123.B.8.
     let content = format!(
         "#ifndef NROS_ALIAS_{guard}_HPP_\n\
          #define NROS_ALIAS_{guard}_HPP_\n\
-         // Auto-generated ROS-style alias header (Phase 123.B.8).\n\
+         // Auto-generated ROS-style alias header.\n\
          // Forwards to the canonical prefixed header.\n\
          #include \"{canonical_filename}\"\n\
          #endif // NROS_ALIAS_{guard}_HPP_\n"

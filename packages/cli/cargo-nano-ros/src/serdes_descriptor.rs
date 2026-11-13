@@ -115,9 +115,10 @@ pub fn parse_serdes_descriptor(text: &str, origin: &str) -> Result<SerdesDescrip
                     format!("{origin}: [serdes].format_id = {value} is not a u8 ({e})")
                 })?;
                 if parsed == 0 {
+                    // RFC-0088 D2.
                     return Err(format!(
                         "{origin}: [serdes].format_id = 0 is reserved for \"no format\" — \
-                         in-tree formats hold low values from 1 (RFC-0088 D2)"
+                         in-tree formats hold low values from 1"
                     ));
                 }
                 format_id = Some(parsed);
