@@ -1,0 +1,1 @@
+The `rv-virt-threadx` app thread's stack is now a knob: `NROS_THREADX_APP_STACK_KB` (512 KiB by default), or `[image.<id>.knobs.threadx] app_stack_kb` in `system.toml`. `NROS_FREERTOS_APP_STACK_KB` no longer sizes the stack of a non-FreeRTOS image, and `nros config explain` says when a platform has no env knob for a memory setting.

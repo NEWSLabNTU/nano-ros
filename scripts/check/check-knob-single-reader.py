@@ -100,6 +100,9 @@ OWNERS: dict[str, str] = {
     # The memory tenant (phase-400 W6). The stack is read inside the crate that
     # owns the ladder; the heap by the board crate that sizes `ucHeap`.
     "NROS_FREERTOS_APP_STACK_KB": "packages/boards/nros-board-common/src/freertos_build.rs",
+    # issue 2400 W5b — the ThreadX front-end of the same rung, read by the
+    # riscv64 board's build helper.
+    "NROS_THREADX_APP_STACK_KB": "packages/boards/nros-board-common/src/threadx_qemu_riscv64_build.rs",
     # The Zephyr heap joined the memory tenant once `nros-platform` could reach
     # the ladder — it could not while the reader lived in `nros-board-common`,
     # which depends on `nros-platform`.

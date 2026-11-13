@@ -279,7 +279,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
             format!("executor.{name}"),
             shown,
             r.source.as_str(),
-            r.env_key
+            r.env_key.unwrap_or("no env knob on this platform")
         );
     }
 
@@ -308,7 +308,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
             format!("runtime.{name}"),
             r.value,
             r.source.as_str(),
-            r.env_key
+            r.env_key.unwrap_or("no env knob on this platform")
         );
     }
 
@@ -342,7 +342,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
             format!("log.{name}"),
             value,
             r.source.as_str(),
-            r.env_key
+            r.env_key.unwrap_or("no env knob on this platform")
         );
     }
 
@@ -371,7 +371,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
             format!("net.{name}"),
             r.value,
             r.source.as_str(),
-            r.env_key
+            r.env_key.unwrap_or("no env knob on this platform")
         );
     }
 
@@ -400,7 +400,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
             format!("rmw.{name}"),
             r.value,
             r.source.as_str(),
-            r.env_key
+            r.env_key.unwrap_or("no env knob on this platform")
         );
     }
 
@@ -436,7 +436,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
             format!("params.{name}"),
             r.value,
             r.source.as_str(),
-            r.env_key
+            r.env_key.unwrap_or("no env knob on this platform")
         );
     }
 
@@ -477,7 +477,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
             format!("zenoh.wire.{name}"),
             r.value,
             r.source.as_str(),
-            r.env_key
+            r.env_key.unwrap_or("no env knob on this platform")
         );
     }
 
@@ -514,7 +514,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
             format!("zenoh.limits.{name}"),
             r.value,
             r.source.as_str(),
-            r.env_key
+            r.env_key.unwrap_or("no env knob on this platform")
         );
     }
 
@@ -535,7 +535,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
             format!("xrce.{name}"),
             r.value,
             r.source.as_str(),
-            r.env_key
+            r.env_key.unwrap_or("no env knob on this platform")
         );
     }
 
@@ -559,7 +559,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
             format!("memory.{name}"),
             r.value,
             r.source.as_str(),
-            r.env_key
+            r.env_key.unwrap_or("no env knob on this platform")
         );
     }
 
