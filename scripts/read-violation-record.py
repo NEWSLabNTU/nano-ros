@@ -76,6 +76,10 @@ RULES = (
     "hazard-recovered",
     "mode-switch-runtime",
     "hazard-route-runtime",
+    # The fallback level a hazard's ladder is on: measured is the level's
+    # index in the ladder, declared the ladder's length (the record carries no
+    # name; resolve the index through the model's degradation levels).
+    "hazard-level-runtime",
 )
 
 

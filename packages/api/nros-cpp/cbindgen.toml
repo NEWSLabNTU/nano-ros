@@ -53,10 +53,11 @@ after_includes = """
 
 /**
  * play_launch phase 96 W4.2 -- bytes of caller storage ONE hazard rung needs
- * (its `RungSpec`): 32 on a 64-bit host, 24 on a 32-bit target. Its
- * `starts_at` members count toward NROS_CPP_HAZARD_MEMBER_STORAGE.
+ * (its `RungSpec`): 48 on a 64-bit host, 32 on a 32-bit target (phase-560
+ * W8: the level's name). Its `starts_at` members count toward
+ * NROS_CPP_HAZARD_MEMBER_STORAGE.
  */
-#define NROS_CPP_HAZARD_RUNG_STORAGE (sizeof(void *) == 8 ? 32 : 24)
+#define NROS_CPP_HAZARD_RUNG_STORAGE (sizeof(void *) == 8 ? 48 : 32)
 
 /**
  * phase-462 W4b -- bytes of caller storage `nros_cpp_install_modes` needs per

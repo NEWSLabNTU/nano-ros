@@ -14833,6 +14833,7 @@ fn the_violation_ring_keeps_the_latest_and_numbers_them() {
             fqn: "timer",
             measured: m,
             declared: 0,
+            level: "",
         });
     }
     assert_eq!(executor.violations_total(), cap + 3);
@@ -14851,6 +14852,7 @@ fn the_violation_ring_keeps_the_latest_and_numbers_them() {
         fqn: "/n/in",
         measured: 0,
         declared: 500,
+        level: "",
     });
     let mut last = alloc::vec::Vec::new();
     executor.drain_violations_numbered(|seq, v| last.push((seq, v.rule)));
@@ -14870,6 +14872,7 @@ fn the_drain_report_hook_drains_at_the_end_of_the_spin() {
         fqn: "/n/out",
         measured: 25,
         declared: 10,
+        level: "",
     };
     executor.violations.record(one());
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
@@ -14915,6 +14918,7 @@ fn a_stored_violation_emits_its_trace_markers() {
         fqn: "/trace/out",
         measured: 30,
         declared: 10,
+        level: "",
     };
     executor.violations.record(v.clone());
     let seen = EVENTS.with(|e| e.borrow().clone());
@@ -14960,6 +14964,7 @@ fn startup_verdict(measured: u32) -> super::monitor::Violation {
         fqn: "spin",
         measured,
         declared: 10_000,
+        level: "",
     }
 }
 

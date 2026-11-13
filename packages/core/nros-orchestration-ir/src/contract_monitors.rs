@@ -578,7 +578,8 @@ pub fn requirement_text(h: &ros_launch_manifest_model::HazardContract) -> String
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct HazardRungRow {
     /// The rung's name (`contracts.hazards.<h>.degradation_levels[].level`,
-    /// `rungs[].rung` before rlm v0.3.3), for comments.
+    /// `rungs[].rung` before rlm v0.3.3): for comments, and (phase-560 W8) the
+    /// level `hazard-level-runtime` names when the ladder is on this rung.
     pub name: String,
     /// The baked mode id of the mode the rung is ([`crate::mode_variants::mode_ids`]);
     /// `None` when the rung is not a mode (a single-path reaction).
@@ -874,10 +875,11 @@ fn render_hazards_rs(hazards: &[HazardRow], paths: RenderPaths) -> String {
                 let starts_at: Vec<String> = r.starts_at.iter().map(member_ref).collect();
                 format!(
                     "{m}::RungSpec {{ mode: {mode}, output_row: {row}, route_ms: {rt}u32, \
-                     role: {role}u8, starts_at: &[{sa}] }}",
+                     role: {role}u8, level: {lv:?}, starts_at: &[{sa}] }}",
                     m = paths.monitor,
                     rt = r.route_ms,
                     role = r.role,
+                    lv = r.name,
                     sa = starts_at.join(", "),
                 )
             })
@@ -1450,7 +1452,7 @@ mod hazard_row_tests {
         assert!(
             text.contains(&format!(
                 "RungSpec {{ mode: 2u16, output_row: {stop_row}u16, route_ms: 8u32, role: 2u8, \
-                 starts_at: &[] }}"
+                 level: \"stop\", starts_at: &[] }}"
             )),
             "{text}"
         );

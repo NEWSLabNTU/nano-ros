@@ -5888,6 +5888,12 @@ pub struct nros_cpp_hazard_rung_t {
     /// the rung becomes active.
     pub starts_at: *const nros_cpp_hazard_member_t,
     pub n_starts_at: usize,
+    /// phase-560 W8 -- the level's name as the model spells it, which
+    /// `hazard-level-runtime` reports when the ladder is on this rung;
+    /// NUL-terminated UTF-8 with static lifetime (a literal in the entry).
+    /// NULL reads as an empty name, which is also what an entry generated
+    /// before this field reads as.
+    pub level: *const c_char,
 }
 
 /// One install: the rows, and one static 8-aligned buffer of at least
@@ -5916,13 +5922,14 @@ pub const NROS_CPP_HAZARD_ROW_STORAGE: usize = if core::mem::size_of::<usize>() 
     80
 };
 /// play_launch phase 96 W4.2 -- bytes of caller storage ONE rung needs
-/// (`RungSpec`): 32 on a 64-bit host, 24 on a 32-bit target. Its `starts_at`
-/// members count toward `NROS_CPP_HAZARD_MEMBER_STORAGE`.
+/// (`RungSpec`): 48 on a 64-bit host, 32 on a 32-bit target (phase-560 W8:
+/// the level's name). Its `starts_at` members count toward
+/// `NROS_CPP_HAZARD_MEMBER_STORAGE`.
 #[cfg(feature = "rmw-cffi")]
 pub const NROS_CPP_HAZARD_RUNG_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
-    32
+    48
 } else {
-    24
+    32
 };
 /// Bytes of caller storage ONE guard needs (`HazardMonitorSpec`).
 #[cfg(feature = "rmw-cffi")]
@@ -5969,7 +5976,8 @@ const _: () = {
 /// `handle` must be a live executor handle from this ABI, or NULL. `table`
 /// must point at a valid `nros_cpp_hazard_table_t` whose rows, guard and
 /// member arrays, key strings and storage all outlive the executor (statics
-/// in the generated entry). Each `key` must be NUL-terminated UTF-8.
+/// in the generated entry). Each `key`, and each rung `level` that is not NULL, must be
+/// NUL-terminated UTF-8.
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_install_hazards(
@@ -6118,6 +6126,15 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
             let Some(starts_at) = put_members(starts) else {
                 return NROS_CPP_RET_INVALID_ARGUMENT;
             };
+            // `'static` is the caller's contract (see Safety); NULL is "".
+            let level = if g.level.is_null() {
+                ""
+            } else {
+                match unsafe { cstr_to_str(g.level) } {
+                    Some(l) => l,
+                    None => return NROS_CPP_RET_INVALID_ARGUMENT,
+                }
+            };
             unsafe {
                 core::ptr::write(
                     rung_slots.add(r_next),
@@ -6126,6 +6143,7 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
                         output_row: g.output_row,
                         route_ms: g.route_ms,
                         role: g.role,
+                        level,
                         starts_at,
                     },
                 )
@@ -6553,6 +6571,11 @@ pub struct nros_cpp_violation_t {
     pub measured: u32,
     /// Declared bound, same unit as `measured`.
     pub declared: u32,
+    /// phase-560 W8 -- the level a `hazard-level-runtime` report names (not
+    /// NUL-terminated, like `rule`); empty, with `level_len` 0, for every
+    /// other rule.
+    pub level: *const c_char,
+    pub level_len: usize,
 }
 
 /// Drain callback: called once per pending violation, in ring order.
@@ -6592,6 +6615,8 @@ pub unsafe extern "C" fn nros_cpp_executor_drain_violations(
             fqn_len: v.fqn.len(),
             measured: v.measured,
             declared: v.declared,
+            level: v.level.as_ptr() as *const c_char,
+            level_len: v.level.len(),
         };
         unsafe { cb(ctx, &out) };
     });

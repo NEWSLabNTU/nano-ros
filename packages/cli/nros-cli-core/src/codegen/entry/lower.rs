@@ -813,6 +813,7 @@ fn monitor_table(
                     route_ms: r.route_ms,
                     role: r.role,
                     starts_at: r.starts_at.into_iter().map(member).collect(),
+                    level: r.name,
                 })
                 .collect(),
             requirement: h.requirement,

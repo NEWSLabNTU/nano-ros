@@ -43,10 +43,11 @@
 
 /**
  * play_launch phase 96 W4.2 -- bytes of caller storage ONE hazard rung needs
- * (its `RungSpec`): 32 on a 64-bit host, 24 on a 32-bit target. Its
- * `starts_at` members count toward NROS_CPP_HAZARD_MEMBER_STORAGE.
+ * (its `RungSpec`): 48 on a 64-bit host, 32 on a 32-bit target (phase-560
+ * W8: the level's name). Its `starts_at` members count toward
+ * NROS_CPP_HAZARD_MEMBER_STORAGE.
  */
-#define NROS_CPP_HAZARD_RUNG_STORAGE (sizeof(void *) == 8 ? 32 : 24)
+#define NROS_CPP_HAZARD_RUNG_STORAGE (sizeof(void *) == 8 ? 48 : 32)
 
 /**
  * phase-462 W4b -- bytes of caller storage `nros_cpp_install_modes` needs per
@@ -820,6 +821,14 @@ typedef struct nros_cpp_hazard_rung_t {
    */
   const struct nros_cpp_hazard_member_t *starts_at;
   size_t n_starts_at;
+  /**
+   * phase-560 W8 -- the level's name as the model spells it, which
+   * `hazard-level-runtime` reports when the ladder is on this rung;
+   * NUL-terminated UTF-8 with static lifetime (a literal in the entry).
+   * NULL reads as an empty name, which is also what an entry generated
+   * before this field reads as.
+   */
+  const char *level;
 } nros_cpp_hazard_rung_t;
 
 /**
@@ -990,6 +999,13 @@ typedef struct nros_cpp_violation_t {
    * Declared bound, same unit as `measured`.
    */
   uint32_t declared;
+  /**
+   * phase-560 W8 -- the level a `hazard-level-runtime` report names (not
+   * NUL-terminated, like `rule`); empty, with `level_len` 0, for every
+   * other rule.
+   */
+  const char *level;
+  size_t level_len;
 } nros_cpp_violation_t;
 
 /**
@@ -2856,7 +2872,8 @@ nros_cpp_ret_t nros_cpp_install_monitors(void *handle,
  * `handle` must be a live executor handle from this ABI, or NULL. `table`
  * must point at a valid `nros_cpp_hazard_table_t` whose rows, guard and
  * member arrays, key strings and storage all outlive the executor (statics
- * in the generated entry). Each `key` must be NUL-terminated UTF-8.
+ * in the generated entry). Each `key`, and each rung `level` that is not NULL, must be
+ * NUL-terminated UTF-8.
  */
 nros_cpp_ret_t nros_cpp_install_hazards(void *handle, const struct nros_cpp_hazard_table_t *table);
 
