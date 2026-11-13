@@ -221,7 +221,10 @@ KNOB_UNWRAP_OR_CONST = re.compile(
 # Their default is deliberately recorded as COMPUTED: a ladder knob's builtin
 # may be per-platform (`nros-zpico-build` picks a batch size from the
 # transport), so a single number here would be a claim this file cannot make.
-LADDER_ENV_KEY = re.compile(r'=>\s*"([A-Z][A-Z0-9_]+)"\s*,')
+#
+# A front-end a platform may lack answers `Option`, so its arm is
+# `=> Some("NROS_...")` (`memory_env_key_for`, issue 2400 W5b).
+LADDER_ENV_KEY = re.compile(r'=>\s*(?:Some\(\s*)?"([A-Z][A-Z0-9_]+)"\s*\)?\s*,')
 
 # ---------------------------------------------------------------------------
 # The XRCE backend's knobs, which have no Rust declaration site at all.
