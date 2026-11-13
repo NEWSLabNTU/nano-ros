@@ -286,7 +286,7 @@ Acceptance: as W10, one test per reply shape and refusal reason.
 
 ### W13 — Which interfaces a node has by default
 
-- **Status:** BLOCKED (user ruling)
+- **Status:** OPEN
 
 A stock node always serves the six parameter services, publishes `/rosout`
 and `/parameter_events`, and subscribes to `/parameter_events`. A nano-ros
@@ -295,26 +295,34 @@ off", and `/rosout` is opt-in through `nros-log`. The cost a user sees:
 `ros2 param list /talker` prints nothing with exit 0, and
 `ros2 param get /talker x` fails with `Wait for service timed out`.
 
-Question for the user: keep the defaults off (each service is a zenoh
-queryable and costs RAM on small targets) and document the difference, or
-turn them on where the board can afford it, for example on native Linux.
+Ruling (user, 2026-11-13, relayed by the manager session): "Take your advice
+on default services." That is option (c): parameter services, `/rosout` and
+`/parameter_events` are ON by default on every board, as on stock ROS 2. Their
+pools are sized from the derived counts, and an image has a switch to turn
+them off where memory is tight. Starts after W10 lands (same derived pools);
+phase-554's lifecycle pool work is kept in the loop.
 
-Acceptance: the ruling is recorded here, and either the defaults move with a
-test comparing `node info` against stock, or the difference is documented
-where a user meets it.
+Acceptance: on every board a node has the parameter services, `/rosout` and
+`/parameter_events` without opting in; a parity test compares `node info`
+against stock; the per-image off switch exists and is documented; and the RAM
+each node costs is measured on the smallest board and recorded here.
 
 ### W14 — One `/parameter_events` writer per executor
 
-- **Status:** BLOCKED (user ruling, W13)
+- **Status:** OPEN
 
 [Issue 2493](../issues/2493-parameter-events-one-writer-per-executor.md):
 in a multi-node image `/parameter_events` is announced under the first node
-only, where stock lists every node. By design since issue 2023; whether to
-change it depends on W13's ruling. The parity test keeps this half in
-expected-failure form.
+only, where stock lists every node. By design since issue 2023. Under W13's
+ruling (user, 2026-11-13) it moves to stock's shape: every node is a
+`/parameter_events` publisher. On zenoh this is one shared helper in the
+shim (one data key expression, one publisher liveliness token per node),
+which phase-554 reuses for lifecycle `transition_event`. The parity test
+keeps this half in expected-failure form until then.
 
-Acceptance: as W13; if the per-node form is chosen, the test is flipped to
-the plain check and passes.
+Acceptance: `ros2 topic info -v /parameter_events` lists every node of a
+multi-node image, as stock does; the test is flipped to the plain check and
+passes.
 
 ### W15 — A refused graph token leaves no trace in a hosted image's output
 

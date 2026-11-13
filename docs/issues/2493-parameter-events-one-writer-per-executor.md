@@ -53,16 +53,17 @@ instead of per node.
   zenoh shim.
 - On DDS: one writer per node.
 
-## Decision pending
+## Ruling
 
-This waits on the user's ruling recorded as phase-556 W13 (whether a
-nano-ros node has parameter services and `/parameter_events` by default),
-which decides how much per-node cost is acceptable. No code changes until
-then.
+User ruling 2026-11-13 (phase-556 W13, relayed by the manager session):
+"Take your advice on default services." Parameter services, `/rosout` and
+`/parameter_events` are on by default on every board, and `/parameter_events`
+takes stock's shape: one publisher per node. On zenoh that is the second
+option above (one data key expression, one publisher liveliness token per
+node). Work item: phase-556 W14, after the issue 2482 fix.
 
 ## Acceptance
 
-The ruling is recorded here; then either `ros2 topic info -v
-/parameter_events` lists every node of a multi-node image, as stock does
-(test in phase-556's parity binary, flipped from expected-failure), or the
-difference is documented where a user meets it.
+`ros2 topic info -v /parameter_events` lists every node of a multi-node image,
+as stock does (test in phase-556's parity binary, flipped from
+expected-failure).
