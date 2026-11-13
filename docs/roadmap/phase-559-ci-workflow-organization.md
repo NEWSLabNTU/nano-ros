@@ -85,13 +85,14 @@ SOFT (chosen, each for a tool or an operator):
 Composite actions: `setup-nros-cli` (the ONLY road that builds the CLI in
 CI), `provision-gate-lane`, `report-lane-stage`.
 
-**Provisional defaults** (open questions, taken as below until the user
-rules; flagged to the user):
+**Defaults, confirmed (user, 2026-11-13).** These were provisional until
+the user ruled; all five stand:
 
 - L3 stays advisory.
 - The release check lives in `release-nros.yml`.
 - The book probe tracks live in `host-tests.yml`.
 - Tier 2 keeps its 1-wise cover.
+- `merge-runtime.yml` stays as the dispatch-only re-measure tool.
 
 ## Work items
 
