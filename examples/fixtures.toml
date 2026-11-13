@@ -2676,8 +2676,9 @@ image = "linux_xrce"
 target_dir = "target-linux-xrce"
 
 # phase-467 Q4 — the `/rosout` bridge probe (ledger row
-# `c:logging_rosout_enabled`). Logs through `nros_log` and pumps
-# `nros_node::rosout` onto `/rosout`, so `rosout_interop.rs` can ask a STOCK
+# `c:logging_rosout_enabled`). Logs through its node's logger and spins; the
+# executor's per-node writer (phase-556 W13) publishes onto `/rosout`, so
+# `rosout_interop.rs` can ask a STOCK
 # `ros2 topic echo /rosout` whether it sees a nano-ros node's logs. One RMW
 # row: the bridge is a publisher of one generated message type and nothing in
 # it is backend-specific, so a second row would buy a second build and no
@@ -2692,8 +2693,8 @@ bringup = "src/rosout_talker_bringup"
 image = "linux"
 target_dir = "target"
 
-# issue 1589 — the same probe through the C and C++ surfaces
-# (`nros_rosout_*`, `nros::rosout::Publisher`). Each declares the `rosout`
+# issue 1589 — the same probe through the C and C++ surfaces (each logs and
+# spins; the executor owns the writer). Each declares the `rosout`
 # capability, so the runtime it links is built with the bridge rather than the
 # UNSUPPORTED stubs; `rosout_interop.rs` reads all three with one set of
 # assertions. One RMW for the reason above.

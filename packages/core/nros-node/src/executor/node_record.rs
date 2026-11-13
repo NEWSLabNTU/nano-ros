@@ -101,6 +101,35 @@ pub struct NodeRecord {
     ///
     /// Empty by default: a system with no overrides pays nothing.
     pub qos_overrides: &'static [QoSOverrideCode],
+    /// phase-556 W13 -- this node's `/rosout` writer, which the executor owns.
+    /// Created on the spin after the node is built (see
+    /// `Executor::reconcile_rosout`) and dropped with the record, by
+    /// `Executor::disable_rosout_on`, or at `close()`.
+    #[cfg(feature = "rosout")]
+    pub(crate) rosout: RosoutWriter,
+}
+
+/// phase-556 W13 -- the state of one node's runtime-owned `/rosout` writer.
+#[cfg(feature = "rosout")]
+pub(crate) enum RosoutWriter {
+    /// Not created yet; the next spin creates it.
+    Pending,
+    /// Up: the pump routes this node's records here.
+    Up(crate::session::RmwPublisher),
+    /// Creation failed with an error a retry cannot change; reported once.
+    Refused,
+    /// Turned off for this node (`Executor::disable_rosout_on`).
+    Off,
+}
+
+#[cfg(feature = "rosout")]
+impl RosoutWriter {
+    pub(crate) fn publisher(&self) -> Option<&crate::session::RmwPublisher> {
+        match self {
+            Self::Up(p) => Some(p),
+            _ => None,
+        }
+    }
 }
 
 /// Issue #52 / 0303 — one baked QoS override, re-exported from `nros-rmw`
@@ -137,6 +166,8 @@ impl NodeRecord {
             session_idx: 0,
             rank: 0,
             qos_overrides: &[],
+            #[cfg(feature = "rosout")]
+            rosout: RosoutWriter::Pending,
         }
     }
 }
@@ -445,6 +476,8 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
             // Installed after creation by `Executor::set_node_qos_overrides`
             // (the entry codegen's bake) — a builder never carries them.
             qos_overrides: &[],
+            #[cfg(feature = "rosout")]
+            rosout: RosoutWriter::Pending,
         };
 
         self.executor
@@ -457,6 +490,13 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
             // below u8::MAX; defensive only.
             return Err(NodeError::NodeTableFull);
         }
+        // phase-556 W13 -- start queueing for `/rosout` as soon as a node
+        // exists, so records logged before the first spin (the boot story)
+        // are published when that spin creates the node's writer. Idempotent.
+        // A sink table that is full is reported by the reconcile, which
+        // asks again.
+        #[cfg(feature = "rosout")]
+        let _ = crate::rosout::enable();
         Ok(NodeId(idx as u8))
     }
 }

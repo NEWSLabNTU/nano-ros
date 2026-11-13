@@ -336,9 +336,41 @@ Progress (2026-11-13, step 1 of 5; no default changed yet):
   An undeclared image is priced with all three families present.
 - Gate `check-node-interface-readers` refuses a read of the declared list
   that bypasses the function (self-test first).
-- Open for later steps: the runtime owns `/rosout` per node (step 2), the
-  default flips with the Pico W and PX4 opt-outs (step 3), W14, and the RAM
-  measurement.
+- Open for later steps: the default flips with the Pico W and PX4 opt-outs
+  (step 3), W14, and the RAM measurement.
+
+Progress (2026-11-14, step 2 of 5; no default changed yet):
+
+- The executor owns `/rosout`: in an image built with the `rosout`
+  capability it creates one VOLATILE writer per node (`qos_bounded`) on the
+  spin after the node is built (`create_rosout_pub`, a reconcile beside the
+  parameter services'), and every spin pumps the `nros_log` queue into them,
+  out of line and only when the queue has work. A record goes to the writer
+  of the node whose logger raised it (a `<node>.<child>` logger to its
+  node's); anything else to the first node's. Building a node starts the
+  queue, so records logged before the first spin are published by it.
+  `Executor::disable_rosout_on` drops one node's writer; `close()` and drop
+  release all of them. Refusals are logged once, with no id in the text.
+- The count is per node: `ROSOUT_PUBLISHERS` (1) is multiplied by the node
+  count in the entity inventory (`InfraServices::rosout_nodes`, the
+  parameter family's rule) and in the zenoh liveliness default; the sizing
+  descriptor's mirror says so. `check-infra-queryable-counts` now ties the
+  constant to its one creation site.
+- The explicit spelling is deprecated rather than wrapped (the smaller
+  change) in Rust (`nros::rosout::pump`) and C++
+  (`rclcpp::rosout::Publisher`): it still compiles and works, but adds a
+  second writer to the node. C's `rclc_rosout_publisher_init` /
+  `rclc_rosout_pump` stay undeprecated: a legacy `rclc_node_init_default`
+  node is not in the executor's node table (measured: the C probe on that
+  road published nothing), so the executor has no writer for it and the
+  explicit spelling is its only road; an executor with no writer leaves the
+  queue for that pump. The three `rosout-talker` probes now only log and
+  spin (the C one binds its node with `rclc_executor_node_init`);
+  `nros::rosout::published()` is the Rust accounting.
+- Not done here: legacy C nodes get no runtime writer;
+  `rclcpp::NodeOptions::enable_rosout` still refuses at compile time (the
+  switch is per image, not per node); zenoh uses a plain publisher per node
+  until W14's shared writer.
 
 ### W14 — One `/parameter_events` writer per executor
 

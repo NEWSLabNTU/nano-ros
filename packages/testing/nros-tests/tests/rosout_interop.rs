@@ -2,10 +2,10 @@
 //!
 //! phase-467 Q4, ledger row `c:logging_rosout_enabled` (log.json). Interop
 //! cells `native-logging-{rust,c,cpp}-zenoh-n2r` — the C and C++ twins since
-//! issue 1589, which put the bridge on those surfaces. One encoder serves all
-//! three (`nros_node::rosout::pump_raw`), so the twins ask about the SURFACE:
-//! a publisher created by name, the capability declared, the pump driven
-//! through a C/C++ handle.
+//! issue 1589, which put the bridge on those surfaces. Since phase-556 W13
+//! the EXECUTOR owns the writer (one per node) and pumps the queue from every
+//! spin, so each probe only logs through its node's logger and spins; the
+//! twins ask whether each surface's spin reaches that pump.
 //!
 //! # Why this needs a live peer and cannot be a unit test
 //!
@@ -109,8 +109,9 @@ fn a_nano_ros_log_call_reaches_ros2_topic_echo_rosout() {
     run_cell(probe_bin);
 }
 
-/// issue 1589 — the C surface: `rclc_rosout_publisher_init` / `_enable` /
-/// `_pump` (`bins/rosout-talker-c`, fixture row `rosout-talker-c`).
+/// issue 1589 — the C surface: a node's log reaches `/rosout` through the
+/// executor's writer, driven by `rclc_executor_spin_some`
+/// (`bins/rosout-talker-c`, fixture row `rosout-talker-c`).
 #[test]
 fn a_c_log_call_reaches_ros2_topic_echo_rosout() {
     let probe_bin = fixtures::build_cmake_leaf_rmw(
@@ -122,7 +123,8 @@ fn a_c_log_call_reaches_ros2_topic_echo_rosout() {
     run_cell(&probe_bin);
 }
 
-/// issue 1589 — the C++ surface: `nros::rosout::Publisher`
+/// issue 1589 — the C++ surface: a node's log reaches `/rosout` through the
+/// executor's writer, driven by `rclcpp::spin_once`
 /// (`bins/rosout-talker-cpp`, fixture row `rosout-talker-cpp`).
 #[test]
 fn a_cpp_log_call_reaches_ros2_topic_echo_rosout() {
@@ -159,7 +161,7 @@ fn run_cell(probe_bin: &Path) {
     let mut probe = spawn_probe(probe_bin, &locator, 80);
     probe
         .wait_for_output_pattern(output::ROSOUT_PROBE_READY, Duration::from_secs(20))
-        .expect("rosout-talker never installed its sink and publisher");
+        .expect("rosout-talker never created its node");
 
     // The probe's own records carry this body. Waiting on the PROBE's text
     // rather than on a bare `msg:` matters: `ros2 topic echo`'s own node also
@@ -220,21 +222,27 @@ fn run_cell(probe_bin: &Path) {
          arbitrarily in every tool that reads it.\nROS 2 side:\n{out}"
     );
 
-    // The probe's own accounting. A run that lost records to a full queue
-    // still delivers, so the assertions above would pass — and the operator
-    // would be reading an incomplete log without being told.
+    // The probe ran to the end. The Rust probe also prints its accounting
+    // there (`published`, `dropped`, `suppressed`), so a reader of a short
+    // echo can tell a delivery failure from a full queue.
     assert!(
-        probe_out.contains(&format!("{} pumped=", output::ROSOUT_PROBE_DONE))
-            || probe_out.contains(output::ROSOUT_PROBE_PUMPED),
-        "the probe never reported what it pumped:\n{probe_out}"
+        probe_out.contains(output::ROSOUT_PROBE_DONE),
+        "the probe never finished its run:\n{probe_out}"
     );
-    assert!(
-        !probe_out.contains(output::ROSOUT_PROBE_PUBLISH_ERR),
-        "the transport refused a /rosout publish:\n{probe_out}"
-    );
-    assert!(
-        !probe_out.contains(output::ROSOUT_PROBE_SINK_FULL),
-        "`nros_log`'s appendable sink list was full, so the bridge never \
-         installed:\n{probe_out}"
-    );
+    for (line, what) in [
+        (
+            output::ROSOUT_WRITER_REFUSED,
+            "the node's /rosout writer was refused",
+        ),
+        (
+            output::ROSOUT_PUBLISH_REFUSED,
+            "the transport refused a /rosout publish",
+        ),
+        (
+            output::ROSOUT_QUEUE_REFUSED,
+            "the /rosout log queue was never installed",
+        ),
+    ] {
+        assert!(!probe_out.contains(line), "{what}:\n{probe_out}");
+    }
 }

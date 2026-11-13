@@ -905,6 +905,79 @@ fn create_param_event_pub(
         .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))
 }
 
+/// phase-556 W13 -- create `node`'s `/rosout` writer:
+/// `rcl_interfaces/msg/Log` on the absolute topic `/rosout`, announced under
+/// the node (its session, QoS overrides and the declared-QoS check, through
+/// the node publisher path), with [`crate::rosout::qos_bounded`] -- VOLATILE,
+/// the documented divergence from upstream's TRANSIENT_LOCAL.
+///
+/// The ONE creation site `check-infra-queryable-counts` holds
+/// [`ROSOUT_PUBLISHERS`](crate::rosout::ROSOUT_PUBLISHERS) to, per node.
+#[cfg(feature = "rosout")]
+fn create_rosout_pub(
+    exec: &mut Executor<'_>,
+    node: super::node_record::NodeId,
+) -> Result<session::RmwPublisher, NodeError> {
+    type Log = nros_rcl_interfaces::msg::Log;
+    crate::rmw_type_registry::register_type::<Log>()?;
+    exec.create_raw_publisher_handle_on(
+        node,
+        crate::rosout::TOPIC,
+        <Log as RosMessage>::TYPE_NAME,
+        <Log as RosMessage>::TYPE_HASH,
+        crate::rosout::qos_bounded(),
+    )
+}
+
+/// phase-556 W13 -- the `/rosout` writer a record from `logger` goes to: the
+/// writer of the node whose logger it is, or of the node it is a child of
+/// (`<node>.<child>`); otherwise the first node with a writer. `None` when no
+/// node has one.
+///
+/// The fallback is also what a multi-executor image (spawned tiers) gets:
+/// the queue is process-wide and whichever executor spins first drains it, so
+/// a record from another executor's node is published under this executor's
+/// first node. Its `Log.name` still names the logger that raised it.
+#[cfg(feature = "rosout")]
+pub(crate) fn rosout_route<'a>(
+    nodes: &'a [super::node_record::NodeRecord],
+    logger: &str,
+) -> Option<&'a session::RmwPublisher> {
+    let mut first = None;
+    for r in nodes {
+        let Some(p) = r.rosout.publisher() else {
+            continue;
+        };
+        if first.is_none() {
+            first = Some(p);
+        }
+        let name = r.name.as_str();
+        if logger == name
+            || (logger.len() > name.len()
+                && logger.starts_with(name)
+                && logger.as_bytes()[name.len()] == b'.')
+        {
+            return Some(p);
+        }
+    }
+    first
+}
+
+/// phase-556 W13 -- say, once per node, that its `/rosout` writer could not
+/// be created. Cold: it formats.
+#[cfg(feature = "rosout")]
+#[cold]
+#[inline(never)]
+fn report_rosout_refused(node: &str, e: NodeError) {
+    nros_log::log_error!(
+        nros_log::get_logger("nros"),
+        "/rosout could not be created for node {} ({:?}); its log records are not \
+         published. A publisher slot the image did not size for is the usual cause.",
+        node,
+        e
+    );
+}
+
 /// Issue 2023 — say that `/parameter_events` could not be created for a node
 /// whose parameter services did come up. Cold: it formats.
 #[cfg(feature = "param-services")]
@@ -6776,6 +6849,10 @@ impl<'s> Executor<'s> {
         // it has to be discharged in the same place for the same reason.
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         self.clear_graph_change_signal();
+        // phase-556 W13 -- the runtime's `/rosout` writers go before the
+        // session that holds them.
+        #[cfg(feature = "rosout")]
+        self.release_rosout();
         let result = self
             .session
             .close()
@@ -13222,6 +13299,21 @@ impl<'s> Executor<'s> {
             s.report_parameter_service_reconcile_failure(e);
         }
 
+        // phase-556 W13 -- every node's `/rosout` writer, created on the spin
+        // after the node (a node table scan once settled), then the queue
+        // pumped into them. Both out of line: the pump's frame holds one `Log`
+        // and one encode buffer, which `spin_once`'s frame must not carry on
+        // every spin (issue 0756's rule). Entered only when there is work.
+        #[cfg(feature = "rosout")]
+        {
+            if s.rosout_pending() {
+                s.reconcile_rosout();
+            }
+            if crate::rosout::has_work() {
+                s.pump_rosout();
+            }
+        }
+
         // Release jitter, measured HERE rather than in `spin_period`, because
         // this is the function every driver goes through.
         //
@@ -13804,6 +13896,145 @@ impl<'s> Executor<'s> {
         SpinPeriodPollingResult {
             work: result,
             remaining_ms: period_ms.saturating_sub(elapsed_ms),
+        }
+    }
+}
+
+// ============================================================================
+// `/rosout` (cfg rosout) -- phase-556 W13
+// ============================================================================
+
+#[cfg(feature = "rosout")]
+impl<'s> Executor<'s> {
+    /// Is there a node whose `/rosout` writer has not been created yet?
+    #[inline]
+    pub(crate) fn rosout_pending(&self) -> bool {
+        self.nodes
+            .iter()
+            .any(|r| matches!(r.rosout, super::node_record::RosoutWriter::Pending))
+    }
+
+    /// Create the `/rosout` writer of every node that does not have one yet.
+    ///
+    /// A reconcile at the head of the spin, as the parameter services are,
+    /// for their reason: a node may be built before the transport can serve
+    /// it, and an entry builds its nodes before it spins. A failure is
+    /// reported once per node and not retried: the usual cause is a pool the
+    /// image did not size, which a later spin cannot change.
+    #[inline(never)]
+    pub(crate) fn reconcile_rosout(&mut self) {
+        use super::node_record::RosoutWriter;
+        for index in 0..self.nodes.len() {
+            if !matches!(self.nodes[index].rosout, RosoutWriter::Pending) {
+                continue;
+            }
+            let node = super::node_record::NodeId::from_raw(index as u8);
+            let created = create_rosout_pub(self, node);
+            let state = match created {
+                Ok(handle) => RosoutWriter::Up(handle),
+                Err(e) => {
+                    let mut fqn = heapless::String::<256>::new();
+                    let r = &self.nodes[index];
+                    if let Ok(f) = crate::names::fully_qualified_name(&r.name, &r.namespace) {
+                        let _ = fqn.push_str(f.as_str());
+                    }
+                    report_rosout_refused(fqn.as_str(), e);
+                    RosoutWriter::Refused
+                }
+            };
+            self.nodes[index].rosout = state;
+        }
+        // The node builder already asked; asking again is free once installed,
+        // and a refusal here is the one that is reported.
+        if !crate::rosout::enable() {
+            Self::report_rosout_queue_refused();
+        }
+    }
+
+    /// Say, once, that the `/rosout` queue could not be installed.
+    #[cold]
+    #[inline(never)]
+    fn report_rosout_queue_refused() {
+        static REPORTED: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
+        if REPORTED.swap(true, portable_atomic::Ordering::Relaxed) {
+            return;
+        }
+        nros_log::log_error!(
+            nros_log::get_logger("nros"),
+            "the /rosout log queue could not be installed because the log sink table is \
+             full ({} sinks); no record reaches /rosout.",
+            nros_log::MAX_ADDED_SINKS
+        );
+    }
+
+    /// Publish every queued log record on the `/rosout` writer of the node
+    /// whose logger raised it.
+    ///
+    /// Routing: a record from a node's logger, or from a logger below it
+    /// (`<node>.<child>`, Iron and Jazzy), goes to that node's writer; any
+    /// other record (the pump's own loss report, a scope that admits free
+    /// loggers) goes to the first node's. No allocation.
+    #[inline(never)]
+    pub(crate) fn pump_rosout(&mut self) {
+        if !self.nodes.iter().any(|r| r.rosout.publisher().is_some()) {
+            // Nowhere to publish. Leave the queue alone: a node outside the
+            // table (a legacy C `rclc_node_init_default` node) may be pumping
+            // it through the explicit spelling.
+            return;
+        }
+        let nodes = &self.nodes;
+        let result = crate::rosout::pump_routed(|logger, bytes| {
+            use nros_rmw::Publisher as _;
+            match rosout_route(nodes, logger) {
+                Some(p) => p.publish_raw(bytes).map_err(|_| ()),
+                None => Err(()),
+            }
+        });
+        if let Err((_, e)) = result {
+            Self::report_rosout_publish_failed(e);
+        }
+    }
+
+    /// Say, once, that a `/rosout` publish was refused. Once, because the
+    /// line itself is a log record bound for `/rosout`.
+    #[cold]
+    #[inline(never)]
+    fn report_rosout_publish_failed(e: NodeError) {
+        static REPORTED: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
+        if REPORTED.swap(true, portable_atomic::Ordering::Relaxed) {
+            return;
+        }
+        nros_log::log_warn!(
+            nros_log::get_logger("nros"),
+            "a /rosout publish was refused ({:?}); records are lost until the transport \
+             accepts them again. Reported once.",
+            e
+        );
+    }
+
+    /// `node` publishes no `/rosout` (rclcpp's `NodeOptions::enable_rosout(false)`).
+    /// Drops its writer if it has one, and keeps the next spin from creating
+    /// it. Its logger's records then go to the first node that still has a
+    /// writer.
+    pub fn disable_rosout_on(&mut self, node: super::node_record::NodeId) {
+        if let Some(r) = self.nodes.get_mut(node.index()) {
+            r.rosout = super::node_record::RosoutWriter::Off;
+        }
+    }
+
+    /// Whether `node`'s runtime-owned `/rosout` writer is up.
+    #[must_use]
+    pub fn rosout_writer_is_up(&self, node: super::node_record::NodeId) -> bool {
+        self.nodes
+            .get(node.index())
+            .is_some_and(|r| r.rosout.publisher().is_some())
+    }
+
+    /// Drop every node's `/rosout` writer (close and drop). Every node is
+    /// left `Off`, so a later spin does not recreate one.
+    pub(crate) fn release_rosout(&mut self) {
+        for r in self.nodes.iter_mut() {
+            r.rosout = super::node_record::RosoutWriter::Off;
         }
     }
 }
@@ -17281,6 +17512,11 @@ impl<'s> Drop for Executor<'s> {
                 (meta.drop_fn)(data_ptr);
             }
         }
+        // phase-556 W13 -- the runtime's `/rosout` writers are entities too:
+        // dropped here, with the others, not when the node table drops after
+        // the session field. A no-op after `close()`.
+        #[cfg(feature = "rosout")]
+        self.release_rosout();
         // Issue 0790 — the post-teardown half, after the entities are gone.
         // Same "already empty after `close()`" note as the pre pass above.
         self.run_shutdown_hooks(super::types::ShutdownPhase::Post);

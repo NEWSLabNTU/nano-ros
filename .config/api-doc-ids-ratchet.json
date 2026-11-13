@@ -153,7 +153,7 @@
  "packages/core/nros-node/src/primitive_options.rs": 1,
  "packages/core/nros-node/src/rmw_type_registry.rs": 16,
  "packages/core/nros-node/src/ros_args.rs": 6,
- "packages/core/nros-node/src/rosout.rs": 6,
+ "packages/core/nros-node/src/rosout.rs": 5,
  "packages/core/nros-node/src/session.rs": 1,
  "packages/core/nros-node/src/time_source.rs": 4,
  "packages/core/nros-node/src/timer.rs": 5,
