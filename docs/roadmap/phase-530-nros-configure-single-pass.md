@@ -665,7 +665,10 @@ against a stand-in CLI.
   configure runs inside sets `NROS_LEAF_CENSUS_HOST`, which the helper
   honours first. No change was needed.
 - **NuttX `apps/external` is a GUEST road (Ruling R36; RFC-0120 D5/D8
-  amended).** The make road builds only the integration shell's runtime
+  amended).** *Superseded in part, 2026-11-13: an app that names a project
+  (`NROS_PROJECTS` in its `Make.defs`) makes the make road a hooked project
+  road (phase-550 W6, RFC-0126 decision 7, RFC-0120 D5's NuttX row); a make
+  build with no project is still the guest road described here.* The make road builds only the integration shell's runtime
   archive, from Kconfig (`CONFIG_NROS_RMW_*`, `CONFIG_NROS_ROS_EDITION`,
   `CONFIG_NROS_*_API`) through `NanoRosImageCrate.cmake -P`. It carries no
   nros project -- no `system.toml`, no image, and the user's application is

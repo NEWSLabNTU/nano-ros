@@ -1273,6 +1273,14 @@ jobs:
           source ./activate.sh
           just setup nuttx
 
+      # phase-550 W6c — the lane's project case runs `nros configure` inside
+      # the make build, which resolves the project's launch tree with
+      # `nros-launch-resolve` beside the `nros` binary.
+      - name: Build nros-launch-resolve (the project case configures)
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
+
       - name: just nuttx build-make-road ${{ matrix.config }}
         run: |
           source ./activate.sh
