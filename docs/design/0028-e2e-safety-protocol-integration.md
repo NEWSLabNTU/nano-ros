@@ -248,7 +248,8 @@ through `nros-rmw`. Neither held. Amended 2026-11-13 (issue 2487).
   never valid, whatever the reason the CRC is missing. Before 2026-11-13 it
   accepted `None`, which made the check fail open on a backend with no
   carrier. The Verus model (`nros-verification/src/safety.rs`,
-  `integrity_is_valid`) states the same rule.
+  `integrity_is_valid`) states the same rule; that proof has not run since
+  the change, because the Verus lane fails before any proof (issue 2499).
 - The C and C++ surfaces pass the raw verdict: `crc_valid` is `1` (match),
   `0` (mismatch) or `-1` (no CRC). The in-tree C and C++ safety listeners
   already count only `1` as valid.
