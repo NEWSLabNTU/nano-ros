@@ -146,10 +146,13 @@ the user ruled; all five stand:
 ### W3 — The queue's L3 on its dedicated label
 
 - **Owner:** nros 118.
-- **Status:** OPEN — PR-A landed (#3714, 2026-11-13): the `nros-queue` label
-  in the doctor and provisioner, a per-role `_work` volume,
-  `just check queue-runner-label`, and `runner-watchdog.yml`. Remains: PR-B,
-  switching the queue's L3 to `nros-queue` once a runner carries the label.
+- **Status:** DONE (2026-11-14). PR-A landed first (#3714, 2026-11-13): the
+  `nros-queue` label in the doctor and provisioner, a per-role `_work`
+  volume, `just check queue-runner-label`, and `runner-watchdog.yml`. PR-B
+  then moved `queue.yml`'s L3 to `[self-hosted, linux, nros-queue]` once a
+  runner carried that label (`nano-ros-runner-newslab-server-241-queue`:
+  nros-queue, nros-sdk-zephyr, nros-big). With one queue runner, a dead one
+  costs at most the watchdog's 30 minutes before the queue run is cancelled.
 
 ### W4 — `nightly.yml` has one cron; `weekly.yml` runs on Sunday
 
