@@ -159,7 +159,10 @@ so by hand".
 The gate predicates become: `runs = emulator|hardware|host` requires at least
 one Runtime cell for the row's platform; `runs = none` requires zero Runtime
 cells; `cadence = merge` requires the platform in the gate lane's coordinate
-file; `cadence = daily` requires a `nightly_token`; `cadence = weekly`
+file; `cadence = daily` requires a `nightly_token` (the `just` module that builds
+and tests the board; since phase-558 the nightly runs one job per board, named
+after its `matrix_platform`, so the token picks the verbs and the board names the
+verdict); `cadence = weekly`
 requires a probe track in the generated probe matrix; `cadence = manual`
 requires `last_run`. Maintainer counts key on the status word: a Verified row
 needs two named maintainers, a Boots or Builds row one, with the existing
@@ -342,7 +345,10 @@ stated reversal.
 ## Open questions
 
 - Whether `nightly_token` stays an authored field or is derived from the
-  platform family (every family has exactly one today).
+  board's `PlatformId::just_module`. Phase-558 made the nightly verdict
+  per board (one job per `matrix_platform`), so the token now names only the
+  module whose verbs a board's job runs; `lane-coords --scope <module> --board
+  <PlatformId>` refuses a token and board that disagree.
 - Whether the per-board evidence page should also carry the measured
   numbers RFC-0115 asks for (time to first output on that board, install
   minutes), or link to where the probe records them.

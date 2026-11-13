@@ -5,7 +5,7 @@ status: Draft
 area: workspace-system-model
 since: 2026-11
 last-reviewed: 2026-11
-implements-tracked-by: [phase-535]
+implements-tracked-by: [phase-535, phase-558]
 amends: [0026, 0051, 0061, 0066, 0114, 0121]
 supersedes: []
 superseded-by: null
@@ -266,13 +266,22 @@ job, and that job runs the board's cells at that cadence.
 | `merge` | **`merge-runtime`** (new), in the `CI` aggregator on `merge_group`; one shard per merge board | hosted (zephyr shard in the zephyr-ci image) | the three behaviour bringups in rust/c/cpp, zenoh, plus that board's witnesses, then their pair cells |
 | tier 1 (full) | daily, hosted shards, off the self-hosted runner | hosted | `lane=tier1`, every rmw and feature image for the merge boards |
 | tier 2, 2-nightly | as today | self-hosted | `ci matrix`, `ci matrix-nightly` |
-| `daily` | nightly `platform` jobs; the Zephyr nightly becomes 2 lines × 3 languages = 6 jobs **with native_sim runtime** | hosted | workspace rows of the platform, then `just test <plat>` |
+| `daily` | nightly `platform` jobs, **one per board** (amended 2026-11-13, below); the Zephyr nightly becomes 2 lines × 3 languages = 6 jobs **with native_sim runtime** | hosted | the board's slice of its module's rows, then `just test <module>` narrowed to that board |
 | `weekly` | `probe-platforms`, chapters retargeted to the witnesses | hosted | the book replay |
 | tier 3 | **`release-gate`** (new): `ci full` on dispatch; `release-nros` requires a green run on the tagged commit | self-hosted | the whole matrix |
 
 The PR lane stays a compile smoke. It gains only the D5 ratchet and an
 image-row check (every `[image.*]` resolves to a board, a launch file and a
 cell), both static.
+
+> **Amended 2026-11-13 (user ruling, phase-558):** "Have results per board
+> instead of per platform family". The `daily` row's `platform` jobs are one
+> job per daily registry row, named after its `matrix_platform`, with the matrix
+> derived from `board-support.toml` (`scripts/ci/nightly-boards.py`). A job runs
+> its module's verbs narrowed to its board's coordinates (`NROS_SCOPE_BOARD`,
+> `NROS_FIXTURE_COORDS`), so a red board withdraws its own daily verdict and no
+> sibling's. Before this, `freertos` and `nuttx` were one job each over two
+> boards. `check-cadence-jobs` refuses a daily job that is not keyed by board.
 
 ### D9 — A cadence the CI cannot afford is lowered, not kept
 

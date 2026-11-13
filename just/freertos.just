@@ -116,6 +116,13 @@ _examples-leaves:
     # once, emit `[PREREQ]` + exit 0 if absent rather than cascading
     # into clap "unrecognized subcommand 'ws'" stack traces per example.
     nros_require_sync "$nros_cli"
+    # phase-558 — a run whose coordinates name no `freertos` row (the nightly's
+    # other-board job) does not build the MPS2-AN385 examples.
+    source scripts/build/fixture-lane.sh
+    if ! nros_lane_wants_platform freertos; then
+        nros_lane_out_of_scope_note freertos "the MPS2-AN385 examples: no freertos coordinate in this run — skipping"
+        exit 0
+    fi
     echo "Building FreeRTOS QEMU MPS2-AN385 examples..."
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just freertos setup"
@@ -207,6 +214,13 @@ build-fixtures-posix:
     source scripts/build/codegen-stamp.sh
     nros_cli="$(nros_cli_bin)"
     nros_require_sync "$nros_cli"
+    # phase-558 — a run whose coordinates name no `freertos-posix` row (the nightly's
+    # other-board job) does not build the POSIX-simulator fixtures.
+    source scripts/build/fixture-lane.sh
+    if ! nros_lane_wants_platform freertos-posix; then
+        nros_lane_out_of_scope_note freertos "the POSIX-simulator fixtures: no freertos-posix coordinate in this run — skipping"
+        exit 0
+    fi
     # The kernel source is the one thing this board still needs; lwIP is not.
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         nros_lane_skip_note freertos \
@@ -278,6 +292,13 @@ build-fixture-extras:
     # stack traces (shipped 0.3.7 release predates the verb).
     nros_require_sync "$nros_cli"
     export cargo_profile_args
+    # phase-558 — a run whose coordinates name no `freertos` row (the nightly's
+    # other-board job) does not build the MPS2-AN385 C/C++ fixtures.
+    source scripts/build/fixture-lane.sh
+    if ! nros_lane_wants_platform freertos; then
+        nros_lane_out_of_scope_note freertos "the MPS2-AN385 C/C++ fixtures: no freertos coordinate in this run — skipping"
+        exit 0
+    fi
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         nros_lane_skip_note freertos "arm-none-eabi-gcc not found"; exit 0
     fi

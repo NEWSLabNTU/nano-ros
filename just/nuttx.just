@@ -29,6 +29,15 @@ default:
 build:
     #!/usr/bin/env bash
     set -e
+    # phase-558 — a run whose coordinates name no `nuttx` (arm) row (the
+    # nightly's NuttxRiscv job) does not build the arm kernel: the riscv half
+    # reconfigures the same tree for rv-virt.
+    source scripts/build/lane-skip.sh
+    source scripts/build/fixture-lane.sh
+    if ! nros_lane_wants_platform nuttx; then
+        nros_lane_out_of_scope_note nuttx "the arm kernel: no nuttx (arm) coordinate in this run — skipping"
+        exit 0
+    fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     if [ ! -d "$nuttx_dir/arch" ]; then
         echo "NuttX core: $nuttx_dir not provisioned — run 'just nuttx setup' first."
@@ -95,6 +104,15 @@ build-examples:
     # Idempotent — a process spawn when the file is already current.
     nros_ensure_central_patch
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    # phase-558 — a run whose coordinates name no `nuttx` (arm) row (the
+    # nightly's NuttxRiscv job) does not build the arm examples: the riscv half
+    # reconfigures the same tree for rv-virt.
+    source scripts/build/lane-skip.sh
+    source scripts/build/fixture-lane.sh
+    if ! nros_lane_wants_platform nuttx; then
+        nros_lane_out_of_scope_note nuttx "the arm examples: no nuttx (arm) coordinate in this run — skipping"
+        exit 0
+    fi
     if [ ! -d "$NUTTX_DIR/include" ]; then
         nros_lane_skip_note nuttx "Skipping NuttX QEMU examples (NuttX not found). Run: just nuttx setup"
         exit 0

@@ -9,7 +9,17 @@
 //! $ lane-coords tier2 --build-lane               # build-test-fixtures lane= it needs
 //! $ lane-coords tier2 --unclaimed                # NROS_TEST_UNCLAIMED for this lane
 //! $ lane-coords --scope nuttx                    # every row a `just nuttx` run owns
+//! $ lane-coords --scope nuttx --board NuttxRiscv  # …only that board's rows
 //! ```
+//!
+//! # `--scope <module> --board <PlatformId>` is ONE board's slice (phase-558)
+//!
+//! The nightly runs one job per BOARD (user ruling 2026-11-13: "Have results
+//! per board instead of per platform family"), and a board's job runs its
+//! module's verbs. Those verbs build and test every board the module owns, so
+//! the job narrows both to this slice: `NROS_FIXTURE_COORDS` for the build and
+//! `NROS_TEST_COORDS` for the run, one file, so the two cannot select different
+//! sets. A board the module does not own is refused, as is one with no row.
 //!
 //! # `--scope <module>` is a PLATFORM scope's coordinates (issue 1758)
 //!
@@ -68,7 +78,7 @@ fn usage(got: Option<&str>) -> ! {
     eprintln!(
         "usage: lane-coords <tier1|tier2|tier2-nightly|merge> \
 [--cells | --modules | --platform <token> | --module <name> | \
---build-lane | --unclaimed]\n       lane-coords --scope <just module>   (got {got:?})\n\
+--build-lane | --unclaimed]\n       lane-coords --scope <just module> [--board <PlatformId>]   (got {got:?})\n\
          \n\
          Prints `platform,lang,rmw` triples — the FIXTURE coordinates a lane\n\
          needs, which is what its cost is measured in. Cells share fixtures, so\n\
@@ -83,7 +93,13 @@ fn main() {
         let Some(module) = args.get(1) else {
             usage(Some("--scope without a module"))
         };
-        print_scope(module);
+        match (args.get(2).map(String::as_str), args.get(3)) {
+            (None, _) => print_scope(module, &module_tokens(module)),
+            (Some("--board"), Some(board)) => {
+                print_scope(module, board_tokens(module, board));
+            }
+            (other, _) => usage(other),
+        }
         return;
     }
     let lane = match args.first().map(String::as_str) {
@@ -200,8 +216,7 @@ fn module_tokens(want: &str) -> Vec<&'static str> {
 /// module owns. A module with no rows is REFUSED: `NROS_TEST_COORDS` over an
 /// empty file is itself refused by the resolver, and printing nothing would
 /// hand the caller a file that fails every test for a reason about the file.
-fn print_scope(module: &str) {
-    let tokens = module_tokens(module);
+fn print_scope(module: &str, tokens: &[&str]) {
     let set: BTreeSet<String> = manifest_rows()
         .iter()
         .map(|r| &r.coord)
@@ -210,11 +225,35 @@ fn print_scope(module: &str) {
         .map(|(p, l, r)| format!("{p},{l},{r}"))
         .collect();
     if set.is_empty() {
-        eprintln!("module {module:?} owns no fixture row — refusing an empty scope");
+        eprintln!("{tokens:?} of module {module:?} own no fixture row — refusing an empty scope");
         std::process::exit(1);
     }
     for c in set {
         println!("{c}");
+    }
+}
+
+/// The fixture-platform tokens of ONE board (`PlatformId`, spelled as
+/// `matrix_platform` is in `board-support.toml`) that `module` owns, or exit 2
+/// naming the module's boards.
+fn board_tokens(module: &str, board: &str) -> &'static [&'static str] {
+    let owned: Vec<&PlatformId> = PlatformId::ALL
+        .iter()
+        .filter(|p| p.just_module() == module)
+        .collect();
+    match owned.iter().find(|p| format!("{p:?}") == board) {
+        Some(p) => p.fixture_tokens(),
+        None => {
+            eprintln!(
+                "board {board:?} is not a board of just module {module:?} — expected one of: {}",
+                owned
+                    .iter()
+                    .map(|p| format!("{p:?}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            std::process::exit(2);
+        }
     }
 }
 

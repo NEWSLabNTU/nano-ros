@@ -167,6 +167,30 @@ def tier1_serves(wf_text):
     return ""
 
 
+def daily_job_per_board(doc, job):
+    """Why the daily job is NOT one job per board, or [] (phase-558).
+
+    User ruling 2026-11-13: "Have results per board instead of per platform
+    family". So the job's matrix is the registry's daily boards
+    (`scripts/ci/nightly-boards.py`, run by the `changes` job), each job is
+    named after its board, and it runs its module's tests.
+    """
+    why = []
+    if str(job.get("name", "")) != "${{ matrix.board }}":
+        why.append(f"job `{DAILY_JOB}` is not named `${{{{ matrix.board }}}}`, so a "
+                   "verdict does not name one board")
+    matrix = ((job.get("strategy") or {}).get("matrix") or {})
+    if "outputs.boards" not in str(matrix.get("include", "")):
+        why.append(f"job `{DAILY_JOB}`'s matrix is not `include:` over the "
+                   "`changes` job's `boards` output")
+    if "nightly-boards.py" not in _run_text(_job(doc, "changes") or {}):
+        why.append("the `changes` job does not derive `boards` with "
+                   "scripts/ci/nightly-boards.py")
+    if "just test ${{ matrix.module }}" not in _run_text(job):
+        why.append(f"job `{DAILY_JOB}` does not run `just test <module>`")
+    return why
+
+
 def daily_unserved(rows, wf_text, tier1_text):
     unserved = {}
     daily = [r for r in rows if r.get("cadence") == "daily"]
@@ -181,18 +205,21 @@ def daily_unserved(rows, wf_text, tier1_text):
         job = _job(doc, DAILY_JOB)
         if job is None:
             why.append(f"{DAILY_WF} has no job `{DAILY_JOB}`")
-        elif "just test ${{ matrix.plat }}" not in _run_text(job):
-            why.append(f"job `{DAILY_JOB}` does not run `just test <platform>`")
+        else:
+            why += daily_job_per_board(doc, job)
         runnable = nightly_runnable(wf_text)
     tier1_why = tier1_serves(tier1_text)
     for r in daily:
         tok = row_module(r)
         if is_host_witness(r) and not tier1_why:
             continue
-        if not why and tok in runnable:
+        # phase-558 — the job is the ROW's board, so a row with no board names
+        # no job, whatever module it shares with one that does.
+        if not why and tok in runnable and r.get("matrix_platform"):
             continue
-        parts = why or [f"module {tok!r} is not in the `{DAILY_JOB}` job's runnable "
-                        f"set {sorted(runnable)}"]
+        parts = why or ([f"module {tok!r} is not in the `{DAILY_JOB}` job's runnable "
+                         f"set {sorted(runnable)}"] if tok not in runnable else
+                        ["the row names no `matrix_platform`, so no per-board job is its"])
         if is_host_witness(r):
             parts = parts + [tier1_why]
         else:
@@ -301,9 +328,14 @@ jobs:
     steps:
       - run: |
           runnable="qemu freertos"
+          boards="$(python3 scripts/ci/nightly-boards.py --modules "$sel")"
   platform:
+    name: ${{ matrix.board }}
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.boards) }}
     steps:
-      - run: just test ${{ matrix.plat }}
+      - run: just test ${{ matrix.module }}
 """
     wf_tier1 = """
 on:
@@ -342,6 +374,13 @@ jobs:
     case("a merge job that does not run the lane is refused", True,
          wfs={**wfs, MERGE_WF: wf_merge.replace("just ci merge", "echo")})
     case("a missing merge workflow is refused", True, wfs={**wfs, MERGE_WF: None})
+    case("a per-FAMILY daily job is refused (phase-558)", True,
+         wfs={**wfs, DAILY_WF: wf_daily.replace("name: ${{ matrix.board }}",
+                                                "name: ${{ matrix.plat }}")})
+    case("a daily job whose matrix is not the registry's boards is refused", True,
+         wfs={**wfs, DAILY_WF: wf_daily.replace("outputs.boards", "outputs.platforms")})
+    case("a daily row with no board is refused", True,
+         rows=rows + [{"crate": "c", "cadence": "daily", "nightly_token": "qemu"}])
     case("a daily token outside the runnable set is refused", True,
          rows=rows + [{"matrix_platform": "ZephyrQemuCortexM", "cadence": "daily",
                        "nightly_token": "zephyr"}])

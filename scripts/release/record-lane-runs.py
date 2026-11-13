@@ -12,9 +12,10 @@ merge queue.
 
 A lane's run is its newest COMPLETED run on `main` from the event that IS the
 cadence (a schedule, or the merge queue), never a manual dispatch. Each run
-records its per-job conclusions, because the nightly sweep's per-platform job
-is named after the row's `nightly_token`, and a sweep red on one platform says
-nothing about another.
+records its per-job conclusions, because the nightly sweep runs one job per
+board, named after the row's `matrix_platform` (phase-558; before it, after
+the row's `nightly_token`), and a sweep red on one board says nothing about
+another.
 
 Usage:
     record-lane-runs.py --repo OWNER/NAME --out <file>     (needs `gh`, GH_TOKEN)

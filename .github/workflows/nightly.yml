@@ -4,8 +4,10 @@
 # crons and SEPARATE job-level concurrency, so a `github.event.schedule` guard
 # routes each cron to its own job set (the 07:00 platform sweep does not drag in
 # the Zephyr jobs, and vice-versa):
-#   - platform : per-platform setup/build/test matrix (`just <plat> …`).
-#                cron 0 7. e2e on schedule / dispatch-with-run_e2e.
+#   - platform : per-BOARD setup/build/test matrix (phase-558): one job per
+#                daily registry row, named after its `matrix_platform`,
+#                running its module's verbs (`just <module> …`) narrowed to
+#                that board. cron 0 7. e2e on schedule / dispatch-with-run_e2e.
 #   - zephyr   : dual-line (3.7 + 4.4) example builds + copy-out check
 #                (`just zephyr build-one/ci-both/check-copy-out`). cron 0 5.
 #   - zenoh-probe : the book's ROS-interop road (issue 2468). WEEKLY, cron
@@ -176,6 +178,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       platforms: ${{ steps.set.outputs.platforms }}
+      # phase-558 — the `platform` job's matrix: one entry per BOARD
+      # (`{board, module}`), derived from `board-support.toml` by
+      # `scripts/ci/nightly-boards.py` over the modules selected above.
+      boards: ${{ steps.set.outputs.boards }}
       zephyr: ${{ steps.set.outputs.zephyr }}
       # Issue 1029 — DIAGNOSTIC ONLY since the third pass. This decides nothing:
       # the three zephyr jobs gate on the event payload directly, because
@@ -253,6 +259,16 @@ jobs:
           fi
           json=$(printf '%s\n' $sel | jq -R . | jq -cs .)
           echo "platforms=$json" >> "$GITHUB_OUTPUT"
+          # phase-558 — user ruling 2026-11-13: "Have results per board instead
+          # of per platform family". One job per daily registry row whose module
+          # is selected, named after its board, so one red board no longer
+          # withdraws its siblings' verdicts. `if !` so a failing derivation is
+          # fatal rather than an empty matrix that reads as "nothing to run".
+          if ! boards="$(python3 scripts/ci/nightly-boards.py --modules "$sel")"; then
+            echo "::error::nightly-boards.py could not derive the board matrix"; exit 1
+          fi
+          echo "boards=$boards" >> "$GITHUB_OUTPUT"
+          echo "selected boards: $boards"
           echo "zephyr=$zephyr" >> "$GITHUB_OUTPUT"
           # Issue 1029 -- decide the zephyr CRON here, once, and SAY what the
           # payload contained.
@@ -303,15 +319,21 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "selected platforms: $json ; zephyr: $zephyr"
 
-  # ===== per-platform sweep (cron 0 7) ==================================
+  # ===== per-board sweep (cron 0 7) =====================================
+  # phase-558 — one job per BOARD, named after its `matrix_platform`. The job
+  # runs its module's verbs (`matrix.module`) narrowed to the board's own
+  # coordinates: `NROS_SCOPE_BOARD` scopes `just test <module>`, and the same
+  # coordinate file is `NROS_FIXTURE_COORDS` for every build, so the board's
+  # build and run select one set. Before this, `freertos` and `nuttx` were one
+  # job each over two boards, and one red board withdrew both boards' verdicts.
   platform:
     needs: changes
     # The 05:00 cron is Zephyr-only; the 07:00 cron + PR/dispatch run platforms.
-    if: ${{ needs.changes.outputs.platforms != '[]' && (github.event_name != 'schedule' || github.event.schedule == '0 7 * * *') }}
-    name: ${{ matrix.plat }}
+    if: ${{ needs.changes.outputs.boards != '[]' && (github.event_name != 'schedule' || github.event.schedule == '0 7 * * *') }}
+    name: ${{ matrix.board }}
     runs-on: ubuntu-22.04
     concurrency:
-      group: nightly-platform-${{ matrix.plat }}-${{ github.ref }}-${{ github.event_name }}
+      group: nightly-platform-${{ matrix.board }}-${{ github.ref }}-${{ github.event_name }}
       # `pull_request` is no longer a trigger here, so this was permanently
       # false. Keep it that way deliberately: a cancelled matrix job on a
       # schedule leaves a coordinate with NO verdict, which reads the same as
@@ -331,7 +353,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plat: ${{ fromJSON(needs.changes.outputs.platforms) }}
+        include: ${{ fromJSON(needs.changes.outputs.boards) }}
+    env:
+      NROS_SCOPE_BOARD: ${{ matrix.board }}
     steps:
       - uses: actions/checkout@v4
 
@@ -408,10 +432,25 @@ jobs:
       # facts every tier asserts (cross Rust targets, pinned corrosion, the CLI,
       # the resolver, clang-format). The module spelling silently skips all of
       # it, which is why this job needed a hand-rolled cross-target step below.
-      - name: just setup ${{ matrix.plat }}
+      - name: just setup ${{ matrix.module }}
         run: |
           source ./activate.sh
-          just setup ${{ matrix.plat }}
+          just setup ${{ matrix.module }}
+
+      # phase-558 — this board's slice of the module: `NROS_FIXTURE_COORDS` for
+      # every build below, including the `build-fixtures` a module's `test`
+      # verb depends on, so the other board's fixtures are neither built nor
+      # charged to this board. Fatal when the board has no slice: an unscoped
+      # module run here would be the per-family verdict this split removes.
+      - name: Board scope (${{ matrix.board }})
+        run: |
+          source ./activate.sh
+          if ! coords="$(bash -c 'source scripts/build/fixture-lane.sh; nros_scope_coords_file "$1"' _ "${{ matrix.module }}")" \
+             || [ -z "$coords" ]; then
+            echo "::error::no coordinate file for board ${{ matrix.board }} of module ${{ matrix.module }}"; exit 1
+          fi
+          echo "NROS_FIXTURE_COORDS=$coords" >> "$GITHUB_ENV"
+          echo "board ${{ matrix.board }}: $(wc -l < "$coords") coordinate(s)"; cat "$coords"
 
       # Container-job host-disk headroom before the heavy SDK+cargo build (the
       # freertos/zephyr cells exhaust the ~14 GB runner). cargo/SDK caches stay.
@@ -428,7 +467,7 @@ jobs:
       # row. Before this the first red row ended the job and withheld every
       # cell verdict on the platform (run 36977810939: one `realtime-cpp` link
       # failure hid issue 1657's six red FreeRTOS cells).
-      - name: Build (${{ matrix.plat }})
+      - name: Build (${{ matrix.board }})
         id: build
         run: |
           source ./setup.bash
@@ -461,10 +500,10 @@ jobs:
           if [ "${{ github.event_name }}" = "schedule" ] || \
              { [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.run_e2e }}" = "true" ]; }; then
             bash scripts/ci/fixture-rows-keep-going.sh "$RUNNER_TEMP/failed-rows-build.tsv" -- \
-              just ${{ matrix.plat }} build-all
+              just ${{ matrix.module }} build-all
           else
             bash scripts/ci/fixture-rows-keep-going.sh "$RUNNER_TEMP/failed-rows-build.tsv" -- \
-              just ${{ matrix.plat }} build-examples
+              just ${{ matrix.module }} build-examples
           fi
 
       # Issue 1671 — runs after a FAILED build too (never after a cancellation,
@@ -472,7 +511,7 @@ jobs:
       # reports. A failed row's own cell fails on its missing fixture and names
       # it. `test` depends on `build-fixtures`, which re-visits the failed row;
       # the same wrapper keeps that rebuild from ending the step before nextest.
-      - name: Test / e2e (${{ matrix.plat }})
+      - name: Test / e2e (${{ matrix.board }})
         if: ${{ !cancelled() && steps.build.outcome != 'skipped' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_e2e)) }}
         run: |
           source ./setup.bash
@@ -487,7 +526,7 @@ jobs:
           # riscv and threadx-linux rows too, whose fixtures this job never
           # builds, and failed on them.
           bash scripts/ci/fixture-rows-keep-going.sh "$RUNNER_TEMP/failed-rows-test.tsv" -- \
-            just test ${{ matrix.plat }}
+            just test ${{ matrix.module }}
 
       # Issue 1720 — the platform C-port smokes: the REAL kernel (ThreadX linux
       # port, FreeRTOS POSIX port) over the port's own `platform.c`. They ran in
@@ -501,11 +540,11 @@ jobs:
       # no QEMU. `!cancelled()` so a red build or e2e step above still lets
       # this report its own verdict, and one step per platform with the module
       # spelled literally, so `check-default-gates-run-somewhere` can see the
-      # placement (a `${{ matrix.plat }}` it cannot resolve credits nothing).
+      # placement (a `${{ matrix.board }}` it cannot resolve credits nothing).
       # STRICT because this lane provisions the kernel: a missing one is the
       # defect here, not a skip.
       - name: Platform C-port smoke (threadx_linux, issue 1720)
-        if: ${{ !cancelled() && matrix.plat == 'threadx_linux' }}
+        if: ${{ !cancelled() && matrix.board == 'ThreadxLinux' }}
         env:
           NROS_CHECK_SKIP_STRICT: "1"
         run: |
@@ -513,7 +552,7 @@ jobs:
           just threadx_linux test-c-port
 
       - name: Platform C-port smoke (freertos, issue 1720)
-        if: ${{ !cancelled() && matrix.plat == 'freertos' }}
+        if: ${{ !cancelled() && matrix.board == 'FreertosPosix' }}
         env:
           NROS_CHECK_SKIP_STRICT: "1"
         run: |
@@ -526,11 +565,11 @@ jobs:
       # so triaging `threadx_linux` meant re-deriving from a job log that
       # records the count and not the cause. host-tests has kept its junit since
       # #29; this is the same step for the platform matrix.
-      - name: Upload nextest JUnit (${{ matrix.plat }})
+      - name: Upload nextest JUnit (${{ matrix.board }})
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nightly-${{ matrix.plat }}-junit
+          name: nightly-${{ matrix.board }}-junit
           # GLOB the profile, do not name it. `nros_nextest_junit_path` resolves
           # `target/nextest/<profile>/junit.xml`, where the profile is
           # `$NROS_NEXTEST_RUN_PROFILE` (default `default`), and honours
@@ -554,11 +593,11 @@ jobs:
       # image's side, this holds the router's. A few KB per cell. The log is
       # per PORT, so a later cell on the same baked port overwrites it; the
       # failing cell also prints its router's state into the junit.
-      - name: Upload fixture logs (${{ matrix.plat }})
+      - name: Upload fixture logs (${{ matrix.board }})
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nightly-${{ matrix.plat }}-fixture-logs
+          name: nightly-${{ matrix.board }}-fixture-logs
           path: test-logs/fixtures/
           if-no-files-found: ignore
           retention-days: 7
