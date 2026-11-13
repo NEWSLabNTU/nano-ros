@@ -665,7 +665,7 @@ build-std = ["core", "alloc"]
     fn descriptor_patch_rows_merge_with_the_callers_relative_to_the_base() {
         let mut s = spec();
         s.cargo_config = Some(
-            "[patch.crates-io]\nlibc = { path = \"${workspace}/third-party/nuttx/libc\" }\n".into(),
+            "[patch.crates-io]\nvendored = { path = \"${workspace}/third-party/vendor/vendored\" }\n".into(),
         );
         s.target = None;
         s.patches.insert(
@@ -675,8 +675,8 @@ build-std = ["core", "alloc"]
         let v = parsed(&render(&s, &cfg_path()).unwrap());
         let rows = &v["patch"]["crates-io"];
         assert_eq!(
-            rows["libc"]["path"].as_str(),
-            Some("../../../../../third-party/nuttx/libc")
+            rows["vendored"]["path"].as_str(),
+            Some("../../../../../third-party/vendor/vendored")
         );
         assert_eq!(
             rows["nros-core"]["path"].as_str(),

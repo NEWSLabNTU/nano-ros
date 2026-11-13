@@ -90,11 +90,10 @@ fn crate_name(o: &MetadataBuildOptions) -> Option<&str> {
 /// **`[unstable] build-std` is not target-scoped.** A config that sets
 /// `build-std = ["std", "panic_abort"]` makes cargo rebuild `std` FROM SOURCE
 /// for whatever it is building — including the harness under
-/// `--target <host>`. NuttX's workspace does exactly this and additionally
-/// points `libc` at a NuttX-patched copy (declared by
-/// `packages/boards/nros-board-nuttx-qemu/nros-board.toml`, delivered by sync
-/// as a `# nros-managed` row since phase-351 W3), so the host `std` rebuild
-/// fails on members that patched libc does not carry:
+/// `--target <host>`. NuttX's workspace did exactly this until phase-359 W7
+/// took it off `std`, and also pointed `libc` at a NuttX-patched copy, which
+/// phase-561 retired. The host `std` rebuild then failed on members that the
+/// patched libc did not carry:
 ///
 /// ```text
 /// error[E0599]: no function or associated item named `default` found for

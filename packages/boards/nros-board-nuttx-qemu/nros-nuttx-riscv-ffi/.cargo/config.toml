@@ -10,7 +10,7 @@ target = "../riscv32imac-unknown-nuttx-elf.json"
 
 [unstable]
 json-target-spec = true
-build-std = ["std", "panic_abort"]
+build-std = ["core", "alloc", "panic_abort"]
 build-std-features = ["compiler-builtins-mem"]
 
 [target.riscv32imac-unknown-nuttx-elf]
@@ -38,4 +38,3 @@ NUTTX_BOARD_MAKEDEFS = "boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs"
 [patch.crates-io]
 nros-core = { path = "../../../../packages/core/nros-core" }
 nros-serdes = { path = "../../../../packages/core/nros-serdes" }
-libc = { path = "../../../../third-party/nuttx/libc" }
