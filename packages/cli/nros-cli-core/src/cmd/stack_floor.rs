@@ -56,11 +56,12 @@ pub enum StackFloorStep {
 pub struct CargoStackFloor {
     /// The image's own cargo command plus `--message-format=json`.
     pub rerun: Handoff,
-    /// The linked executable.
+    /// The linked executable, uplifted to `<target dir>/<triple>/<profile>`.
+    /// Its intermediates (`deps/`, `build/`) are wherever cargo's build dir
+    /// put them, which only cargo's own messages say (`nros build` moves them
+    /// for a caller-named `--target-dir`, RFC-0100 D13), so the walk reads
+    /// them from there (`--intermediates-from-build`), never from here.
     pub exe: PathBuf,
-    /// `<target dir>/<triple>/<profile>`: `deps/` (bitcode) and `build/`
-    /// (cc-rs `.su`, build-script outputs).
-    pub profile_dir: PathBuf,
     /// Where the map, report and llc cache go.
     pub dir: PathBuf,
     /// The allowance key: `stack_floor_image`, else `<bringup>@<board>`.
@@ -75,6 +76,20 @@ impl CargoStackFloor {
     pub fn map(&self) -> PathBuf {
         self.dir.join("image.map")
     }
+}
+
+/// The cargo environment variable for a profile's `strip`, from the profile's
+/// output directory name (`debug` is the `dev` profile).
+fn profile_strip_env(profile_dir: &str) -> String {
+    let name = if profile_dir == "debug" {
+        "dev"
+    } else {
+        profile_dir
+    };
+    format!(
+        "CARGO_PROFILE_{}_STRIP",
+        name.to_ascii_uppercase().replace('-', "_")
+    )
 }
 
 /// `NROS_STACK_FLOOR=OFF` (or `0`, `FALSE`, `NO`) turns the walk off, as on
@@ -190,14 +205,12 @@ fn plan_one(
     let hand = p.handoff.as_mut()?;
     let profile = target_dir.join(&triple).join(&profile_dir);
     let dir = target_dir.join("nros-stack-floor");
-    let step = CargoStackFloor {
-        rerun: {
-            let mut r = hand.clone();
-            r.args.push("--message-format=json".into());
-            r
-        },
+    let mut step = CargoStackFloor {
+        // Set below, once the build is armed: the rerun must be the SAME
+        // command, or cargo rebuilds the image without the walk's flags and
+        // relinks over the one the walk reads.
+        rerun: hand.clone(),
         exe: profile.join(&bin),
-        profile_dir: profile,
         key: image_key(p.stack_floor_image.as_deref(), &p.qualified, &p.board),
         rmw: p.rmw.clone().unwrap_or_else(|| "zenoh".into()),
         triple: triple.clone(),
@@ -221,8 +234,24 @@ fn plan_one(
         .or_else(|| env("TARGET_CFLAGS"))
         .or_else(|| env("CFLAGS"));
     merge_env(hand, &cf, "-fstack-usage -fcallgraph-info=su", inherited);
+    // A profile with no debuginfo (release, nros-minsizerel) makes cargo pass
+    // `-C strip=debuginfo`, which drops the `.debug_frame` the walk reads
+    // newlib's frames from (`--cfi-elf`). The profile's own knob keeps it, so
+    // cargo passes no strip at all, unless the caller chose one. The sections
+    // are not loaded: the image's bytes on the target are unchanged.
+    let strip = profile_strip_env(&profile_dir);
+    if env(&strip).is_none()
+        && !hand
+            .env
+            .iter()
+            .any(|(k, _)| k.as_os_str() == strip.as_str())
+    {
+        hand.env.push((strip.into(), "none".into()));
+    }
     hand.env.retain(|(k, _)| k != "RUSTC_WRAPPER");
     hand.env.push(("RUSTC_WRAPPER".into(), "".into()));
+    step.rerun = hand.clone();
+    step.rerun.args.push("--message-format=json".into());
     Some(StackFloorStep::Check(Box::new(step)))
 }
 
@@ -251,14 +280,11 @@ pub fn walker_args(c: &CargoStackFloor, cargo_json: &Path) -> Vec<OsString> {
     put("--image", c.key.clone().into());
     put("--stated-by-build", cargo_json.into());
     put("--link-map", c.map().into());
-    put("--link-dir", c.profile_dir.join("deps").into());
-    put("--link-dir", c.profile_dir.join("build").into());
-    put("--su", c.profile_dir.join("build").into());
-    put("--bitcode-dir", c.profile_dir.join("deps").into());
     put("--cfi-elf", c.exe.clone().into());
     put("--report", c.dir.join("report.json").into());
     put("--llc-cache", c.dir.join("llc").into());
     a.push("--sysroot".into());
+    a.push("--intermediates-from-build".into());
     a
 }
 
@@ -316,6 +342,103 @@ mod tests {
             "freertos_rs_talker_bringup@freertos"
         );
         assert_eq!(image_key(Some(""), "a:b", "c"), "a@c");
+    }
+
+    /// The link-check lane's road (`nros build -- --target-dir <d>`): `nros
+    /// build` gives cargo a `build.build-dir` under `<d>/nros-class/<key>/`, so
+    /// `<d>/<triple>/<profile>/deps` holds nothing the link map names. The walk
+    /// therefore takes the intermediates from cargo's own messages and is never
+    /// handed a dir derived from the target dir.
+    #[test]
+    fn the_walk_reads_the_intermediates_from_cargo_not_from_the_target_dir() {
+        let c = CargoStackFloor {
+            rerun: Handoff::new("cargo", ["build"]),
+            exe: "/t/thumbv7m-none-eabi/nros-minsizerel/e".into(),
+            dir: "/t/nros-stack-floor".into(),
+            key: "k".into(),
+            rmw: "zenoh".into(),
+            triple: "thumbv7m-none-eabi".into(),
+            script: "/r/scripts/nros-stack-floor.py".into(),
+            table: "/r/config/stack-floors.json".into(),
+        };
+        let a: Vec<String> = walker_args(&c, Path::new("/t/m.json"))
+            .into_iter()
+            .map(|s| s.into_string().unwrap())
+            .collect();
+        assert!(a.iter().any(|s| s == "--intermediates-from-build"), "{a:?}");
+        for flag in ["--link-dir", "--su", "--bitcode-dir"] {
+            assert!(!a.iter().any(|s| s == flag), "{flag} in {a:?}");
+        }
+    }
+
+    /// The json rerun is the build's own command: cloned before arming, it
+    /// lacked the walk's flags, so cargo rebuilt the whole image without them
+    /// and relinked over the ELF the walk reads (stripped, on a profile with
+    /// no debuginfo: the link-check lane's `nros-minsizerel`).
+    #[test]
+    fn the_rerun_is_the_armed_build_plus_json() {
+        let root = std::env::temp_dir().join(format!("nros-sf-rerun-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("scripts")).unwrap();
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        std::fs::write(root.join("scripts/nros-stack-floor.py"), "").unwrap();
+        std::fs::write(root.join("config/stack-floors.json"), "{}").unwrap();
+        let mut p = ResolvedBuild {
+            qualified: "demo:b".into(),
+            board: "b".into(),
+            platform: "freertos".into(),
+            driver: Driver::Cargo,
+            handoff: Some(Handoff::new(
+                "cargo",
+                ["build", "--profile", "nros-minsizerel"],
+            )),
+            rmw: None,
+            entry_package: None,
+            target: None,
+            profile: None,
+            cmake_build_dir: None,
+            capabilities: Vec::new(),
+            stack_floor_image: None,
+            stack_floor: None,
+            kernel: None,
+            entry_root: None,
+            configure: None,
+            record: Default::default(),
+            output: Some(BuildOutput::Cargo {
+                target_dir: "/t".into(),
+                triple: Some("thumbv7m-none-eabi".into()),
+                profile_dir: "nros-minsizerel".into(),
+                bin: Some("e".into()),
+            }),
+            descriptor: None,
+            run_tables: Default::default(),
+            package_depends: None,
+        };
+        arm(std::slice::from_mut(&mut p), Some(&root), &|_| None);
+        let _ = std::fs::remove_dir_all(&root);
+        let Some(StackFloorStep::Check(c)) = &p.stack_floor else {
+            panic!("{:?}", p.stack_floor);
+        };
+        let hand = p.handoff.as_ref().unwrap();
+        assert_eq!(c.rerun.env, hand.env);
+        let mut args = hand.args.clone();
+        args.push("--message-format=json".into());
+        assert_eq!(c.rerun.args, args);
+        assert!(
+            hand.env
+                .iter()
+                .any(|(k, v)| k == "CARGO_PROFILE_NROS_MINSIZEREL_STRIP" && v == "none"),
+            "{:?}",
+            hand.env
+        );
+    }
+
+    #[test]
+    fn the_strip_knob_is_the_profile_of_the_output_dir() {
+        assert_eq!(profile_strip_env("debug"), "CARGO_PROFILE_DEV_STRIP");
+        assert_eq!(
+            profile_strip_env("nros-minsizerel"),
+            "CARGO_PROFILE_NROS_MINSIZEREL_STRIP"
+        );
     }
 
     #[test]

@@ -152,6 +152,44 @@ Measured on `examples/mps2-an385-freertos/rust/talker` (thumbv7m, zenoh):
 The bare-metal example prints "not checked: the bare-metal board
 `mps2-an385-baremetal` states no stack on this road".
 
+**Fix forward (2026-11-13, #PRNUM): a caller-named `--target-dir`.** The
+first L3 run after #3686 went red in `rust-rtos-link-check`, which builds the
+talker with `nros build -- --profile nros-minsizerel --target-dir
+target-link-check`. A caller-named target dir gets a cargo `build.build-dir`
+per configuration (`<d>/nros-class/<key>/build`, RFC-0100 D13). The binary
+is still uplifted to `<d>/<triple>/<profile>/`, but its intermediates are
+not. The walk looked for `deps/` and `build/` beside the binary, found none
+of the map's inputs there, and refused: "names no input under the link
+directory".
+
+The intermediates now come from cargo's own messages
+(`--intermediates-from-build`): `<build dir>/<triple>/<profile>`, read off
+the `out_dir` cargo reports for each target build script. That covers a build
+dir set by `nros build`, by the caller or by a config file, so the walk is
+never handed a dir derived from the target dir again.
+
+Two more defects sat behind the first:
+
+- **The json rerun rebuilt the image.** The `--message-format=json` rerun
+  was cloned from the cargo command BEFORE the walk's flags were merged
+  into it. So cargo rebuilt the whole image a second time without them,
+  relinked over the ELF the walk reads, and doubled every walked build.
+  The rerun is now the armed command plus `--message-format=json`.
+- **Release profiles strip the frames.** A profile with no debuginfo
+  (`nros-minsizerel`, `release`) makes cargo pass `-C strip=debuginfo`,
+  which drops the `.debug_frame` that newlib's frames are read from, so
+  `__assert_func` had no frame. The walk now sets the profile's own
+  `CARGO_PROFILE_<P>_STRIP=none`, unless the caller set it. Those
+  sections are not loaded, so the image's bytes on the target are
+  unchanged.
+
+Measured with the lane's command: the walk reads 104 CFI frames, and the
+OPEN stack of 131,072 B holds the unmeasured floor of 25,824 B. The LTO
+build's static walk is 23,476 B, against 23,720 B for debug. Alternating
+`NROS_STACK_FLOOR` on, off, on, on, off, off in one target dir relinks
+nothing after the first build of each kind, because cargo keeps both
+variants of each unit. So the walk's flags do not thrash a shared dir.
+
 ### W5b — The other cargo-road platforms state a stack
 
 - **Status:** OPEN
