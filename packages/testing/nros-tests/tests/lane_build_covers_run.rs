@@ -1186,3 +1186,121 @@ fn every_lane_codegen_scope_covers_its_fixture_build() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+/// Issue 2510 — a lane BUILDS exactly the compile-check rows its RUN reads.
+///
+/// `build-compile-check-fixtures` narrows by a row's stated `platform`
+/// (`fixtures-manifest.py list-compile-checks --coords-from`), and
+/// `require_compile_check` deselects a consumer by the same field through the
+/// run's own platform predicate (`lane::platforms_selected`). Two
+/// implementations of one question, so this compares their answers row by
+/// row, in BOTH directions, for every coordinate lane, whole and per merge
+/// shard: a row the run reads but the build omits is a missing stamp; a row
+/// the build makes but no run reads is a shard paying for another board.
+/// MEMBERSHIP, never counts.
+#[test]
+fn every_lane_builds_exactly_the_compile_check_rows_its_run_reads() {
+    let repo = nros_tests::project_root();
+    let manifest = std::fs::read_to_string(repo.join("examples/fixtures.toml"))
+        .expect("read examples/fixtures.toml");
+    let doc: toml::Table = toml::from_str(&manifest).expect("parse examples/fixtures.toml");
+    let rows: Vec<(String, Option<String>)> = doc
+        .get("compile_check_fixture")
+        .and_then(|v| v.as_array())
+        .expect("[[compile_check_fixture]] rows")
+        .iter()
+        .filter(|r| {
+            !r.get("builder")
+                .and_then(|b| b.as_str())
+                .unwrap_or("")
+                .starts_with("west-")
+        })
+        .map(|r| {
+            (
+                r["id"].as_str().expect("id").to_string(),
+                r.get("platform")
+                    .and_then(|p| p.as_str())
+                    .map(str::to_owned),
+            )
+        })
+        .collect();
+    assert!(
+        rows.iter().any(|(_, p)| p.is_some()),
+        "no compile-check row states a platform, so this test compares nothing"
+    );
+
+    let mut cases: Vec<(String, Option<&str>)> = ["tier1", "tier2", "tier2-nightly", "merge"]
+        .iter()
+        .map(|l| (l.to_string(), None))
+        .collect();
+    for lane in ["tier1", "merge"] {
+        for m in ["linux", "threadx_linux", "zephyr"] {
+            cases.push((lane.to_string(), Some(m)));
+        }
+    }
+    for (lane, module) in &cases {
+        let mut cmd = Command::new(lane_coords_bin());
+        cmd.arg(lane).current_dir(&repo);
+        if let Some(m) = module {
+            cmd.args(["--module", m]);
+        }
+        let out = cmd.output().expect("run prebuilt lane-coords");
+        assert!(out.status.success(), "lane-coords {lane} {module:?} failed");
+        let text = String::from_utf8(out.stdout).expect("utf-8 coords");
+        let coords: BTreeSet<nros_tests::fixtures::lane::Coord> = text
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| {
+                let p: Vec<&str> = l.trim().split(',').collect();
+                (p[0].to_string(), p[1].to_string(), p[2].to_string())
+            })
+            .collect();
+        let path = tmpdir().join(format!("cc-{lane}-{}.txt", module.unwrap_or("all")));
+        std::fs::write(&path, &text).expect("write coords");
+
+        let listed = Command::new("python3")
+            .args([
+                "scripts/build/fixtures-manifest.py",
+                "list-compile-checks",
+                "--coords-from",
+            ])
+            .arg(&path)
+            .current_dir(&repo)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("run list-compile-checks");
+        assert!(
+            listed.status.success(),
+            "list-compile-checks failed for {lane} {module:?}"
+        );
+        let built: BTreeSet<String> = String::from_utf8_lossy(&listed.stdout)
+            .lines()
+            .filter_map(|l| l.split('\x1f').next())
+            .filter(|id| !id.is_empty())
+            .map(str::to_owned)
+            .collect();
+
+        for (id, platform) in &rows {
+            let read = match platform {
+                None => true,
+                Some(tok) => {
+                    let p = nros_tests::matrix::PlatformId::from_fixture_token(tok)
+                        .unwrap_or_else(|| panic!("row {id}: platform {tok} names no PlatformId"));
+                    nros_tests::fixtures::lane::platforms_selected(&[p], &coords)
+                }
+            };
+            assert_eq!(
+                read,
+                built.contains(id),
+                "{lane} {module:?}: compile-check row `{id}` (platform {platform:?}) is \
+                 {} by the run but {} by the build",
+                if read { "read" } else { "skipped" },
+                if built.contains(id) {
+                    "built"
+                } else {
+                    "omitted"
+                },
+            );
+        }
+    }
+}

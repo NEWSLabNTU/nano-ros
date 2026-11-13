@@ -7,9 +7,10 @@ that selection against an INDEPENDENT enumeration of what the build reaches,
 so the two cannot agree by sharing a bug:
 
   1. Every row the build enumerates — through the commands the build itself
-     runs (`list`, `list-workspaces`, `west-leaves` with `--coords-from`, and
-     `list-compile-checks` unscoped, since `build-compile-check-fixtures` runs
-     for every lane) — has every codegen unit nested with its dir in scope.
+     runs (`list`, `list-workspaces`, `west-leaves` and `list-compile-checks`,
+     each with `--coords-from`, as `build-test-fixtures` passes the lane's
+     coordinates to all four) — has every codegen unit nested with its dir in
+     scope.
   2. No `path =` dep from a manifest inside an in-scope unit lands in the
      OUTPUT of a skipped unit (`<unit>/generated`, the only tree this codegen
      writes). This is the cross-unit case nesting cannot see: a leaf that
@@ -59,7 +60,7 @@ def built_dirs(coords: str) -> set[str]:
     dirs |= {r[0] for r in _fm("list", "--coords-from", coords)}
     dirs |= {r[2] for r in _fm("list-workspaces", "--coords-from", coords)}
     dirs |= {r[5] for r in _fm("west-leaves", "--coords-from", coords) if len(r) > 5}
-    dirs |= {r[2] for r in _fm("list-compile-checks") if len(r) > 2}
+    dirs |= {r[2] for r in _fm("list-compile-checks", "--coords-from", coords) if len(r) > 2}
     return {d.rstrip("/") for d in dirs if d}
 
 

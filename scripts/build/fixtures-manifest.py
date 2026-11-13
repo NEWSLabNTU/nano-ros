@@ -21,6 +21,7 @@ the profile is added by the caller; word-split <cargo-args> into an argv array.
 """
 
 import argparse
+import functools
 import re
 import subprocess
 import sys
@@ -222,6 +223,18 @@ def _reject_work_item_id(entry, fixture_id):
         )
 
 
+@functools.lru_cache(maxsize=None)
+def _fixture_platforms():
+    """Every platform a `[[fixture]]` or `[[workspace_fixture]]` row names."""
+    manifest = SCRIPT_ROOT / "examples/fixtures.toml"
+    return {
+        e["platform"]
+        for rows in (load(manifest), load_workspace_fixtures(manifest))
+        for e in rows
+        if e.get("platform")
+    }
+
+
 def validate_compile_check_fixture(entry):
     """Shape-check one compile-check row. Raises ValueError via `_fail`."""
     for key in ("id", "builder"):
@@ -279,6 +292,19 @@ def validate_compile_check_fixture(entry):
                 f"builder 'cxx-compile-verdict' reads its arguments from {args}, "
                 "which does not exist — the argument list is a FILE so the "
                 "row's signature (which hashes `dir`) covers it (issue 1656)",
+            )
+
+    # Issue 2510 — `platform` scopes the row to the lanes holding that
+    # platform, so it must be a platform some fixture row is built for.
+    # Otherwise no lane would ever build the row, and the misspelling would
+    # surface only as a test that skips everywhere.
+    if "platform" in entry:
+        known = _fixture_platforms()
+        if entry["platform"] not in known:
+            _fail(
+                entry,
+                f"platform {entry['platform']!r} is no fixture row's platform "
+                f"(known: {', '.join(sorted(known))})",
             )
 
     if builder == "cross-build" and not entry.get("target"):
@@ -1152,6 +1178,21 @@ def row_in_coords(entry, coords):
     if row_coord(entry) in coords:
         return True
     return any(c in coords for c in row_serves(entry))
+
+
+def compile_check_in_coords(entry, coords):
+    """Is this compile-check row in the lane `coords` describes? Issue 2510.
+
+    A compile-check row has no (platform, lang, rmw) coordinate of its own, so
+    by default every lane builds it. A row whose image only one platform can
+    build states that platform (`platform = "freertos"`), and the row is then
+    in a lane exactly when the lane holds ANY coordinate on it: the
+    platform-level question the run side's `require_platform_in_lane` asks.
+    `nros_tests::fixtures::require_compile_check` reads the same field, so the
+    build omits a row exactly when the run skips it.
+    """
+    platform = entry.get("platform")
+    return not platform or any(c[0] == platform for c in coords)
 
 
 def matches_filters(entry, args, *, for_probe=False, all_entries=None, kind="fixture"):
@@ -2389,8 +2430,9 @@ def main():
         #     the shard fans out to;
         #   * a row the run cannot skip (issue 0828's shared roots) is kept,
         #     exactly as `--coords-from` keeps it;
-        #   * every compile-check row, because `build-compile-check-fixtures`
-        #     runs for every lane.
+        #   * every compile-check row `build-compile-check-fixtures` builds
+        #     for the lane: all of them, less those whose stated `platform`
+        #     the lane does not hold (issue 2510, the same predicate).
         # With no `--coords-from` there is no narrowing to do, and the caller
         # generates everything; this subcommand refuses rather than print the
         # whole tree under a name that suggests a scope.
@@ -2408,8 +2450,13 @@ def main():
                     if matches_filters(e, a, all_entries=rows, kind=kind) and e.get("dir"):
                         dirs.add(e["dir"].rstrip("/"))
         a.builder = None
+        lane = _coords_for(a.coords_from)
         for e in load_compile_check_fixtures(a.manifest):
-            if not e.get("skip_build") and e.get("dir"):
+            if (
+                not e.get("skip_build")
+                and e.get("dir")
+                and compile_check_in_coords(e, lane)
+            ):
                 dirs.add(e["dir"].rstrip("/"))
         for d in sorted(dirs):
             sys.stdout.write(d + "\n")
@@ -2528,6 +2575,14 @@ def main():
             # that backend (`west_compile_check_rmw`); a non-west row has no
             # RMW to match and is never selected by it.
             if a.rmw and west_compile_check_rmw(e) != a.rmw:
+                continue
+            # Issue 2510 — a row stating a platform is built only by a lane
+            # that holds that platform. A row stating none stays in every lane.
+            if (
+                a.command == "list-compile-checks"
+                and a.coords_from
+                and not compile_check_in_coords(e, _coords_for(a.coords_from))
+            ):
                 continue
             entries.append(e)
 
