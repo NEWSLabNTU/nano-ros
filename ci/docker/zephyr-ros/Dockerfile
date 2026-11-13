@@ -257,6 +257,19 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-
         thumbv7m-none-eabi thumbv7em-none-eabi \
         riscv64imac-unknown-none-elf
 
+# cargo-nextest at the INDEX's pin, exactly as ci-base installs it (issue 2475
+# defect 3). Without it every lane preflight that claims `nextest` refused in
+# this image ("the pinned cargo-nextest is not installed"): merge-runtime's
+# zephyr shard, merge and tier1 alike, died there before any gate ran.
+# `config/ci-base-tools.toml` is the generated subset of index rows the images
+# bake (gate `ci-base-tools`), so an edit to any other index row does not
+# rebuild this image either.
+COPY config/ci-base-tools.toml /opt/nros-ssot/config/ci-base-tools.toml
+COPY scripts/lib/index_tool.py scripts/lib/index_packages.py /opt/nros-ssot/scripts/lib/
+RUN python3 /opt/nros-ssot/scripts/lib/index_tool.py install cargo-nextest --prefix /usr/local \
+        --index /opt/nros-ssot/config/ci-base-tools.toml \
+    && cargo-nextest nextest --version
+
 # git-as-root in CI containers: avoid "dubious ownership" on the checkout +
 # the source submodules `nros setup` provisions.
 RUN git config --system --add safe.directory '*'

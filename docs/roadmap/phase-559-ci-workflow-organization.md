@@ -192,6 +192,12 @@ rules; flagged to the user):
   question already looks bad for a daily hosted tier 1 unless defect 4 is
   fixed. W5b re-measures once issue 2475 lands.
 
+  Order (2026-11-13, coordinator): issue 2475 defects 1-3 first (owner
+  nros 175: provisioning in `merge-runtime.yml`, nextest baked into the
+  zephyr-ci image); then the W5b re-measure, numbers reported even if only
+  the time is bad; then 2475 defect 4 scoped as a phase-535 work item; W7
+  last and alone.
+
 ### W6 — `host-tests.yml` absorbs `check-build`, the census and the book probes
 
 - **Owner:** nros 175; the Humble + Jazzy edition lane is wtf's.

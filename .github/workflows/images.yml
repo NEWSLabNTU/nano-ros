@@ -76,6 +76,10 @@ jobs:
               - 'ci/docker/zephyr-ros/**'
               - 'ci/docker/apt-packages.txt'
               - 'scripts/ci/install-just.sh'
+              # issue 2475 — the nextest pin both images bake, and its installer.
+              - 'config/ci-base-tools.toml'
+              - 'scripts/lib/index_tool.py'
+              - 'scripts/lib/index_packages.py'
 
   ci-base:
     name: build + push ci-base image
@@ -221,8 +225,13 @@ jobs:
       # served at build time. Consumers (nightly.yml, live-peer.yml) are
       # schedule-only, so moving them in the same commit has the slack the r3
       # note above relies on.
+      # r7 (issue 2475 defect 3): cargo-nextest at the index pin, baked the way
+      # ci-base bakes it, so a lane preflight claiming `nextest` passes here.
+      # Consumers (nightly.yml, live-peer.yml, merge-runtime.yml, gate.yml's
+      # daily zephyr copy-out) are schedule/dispatch-only, so moving them in the
+      # same commit has the r3 note's slack.
       IMAGE: ghcr.io/newslabntu/nano-ros-zephyr-ci
-      TAG: humble-sdk0.17.4-r6
+      TAG: humble-sdk0.17.4-r7
     steps:
       - uses: actions/checkout@v4
       # The same CONTENT tag ci-base carries, for the same reason and now for a
@@ -236,7 +245,8 @@ jobs:
         id: ctag
         run: |
           sha="$(cat ci/docker/zephyr-ros/Dockerfile ci/docker/apt-packages.txt \
-                     scripts/ci/install-just.sh \
+                     scripts/ci/install-just.sh config/ci-base-tools.toml \
+                     scripts/lib/index_tool.py scripts/lib/index_packages.py \
                  | sha256sum | cut -c1-12)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "content tag: ${{ env.IMAGE }}:${{ env.TAG }}-$sha"

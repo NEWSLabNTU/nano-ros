@@ -111,7 +111,7 @@ jobs:
           - board: threadx_linux
             image: ghcr.io/newslabntu/nano-ros-ci:humble
           - board: zephyr
-            image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r6
+            image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r7
     env:
       # The shard: every lane consumer below reads this one value.
       NROS_LANE_MODULE: ${{ matrix.board }}
@@ -192,10 +192,20 @@ jobs:
       # `test-all` runs `cargo metadata` over the nros-tests workspace, whose
       # px4-sitl-tests path dep must exist; nuttx-libc backs the workspace
       # Entry build (nightly.yml, same reason).
+      #
+      # issue 2475 defects 1-2. `rosidl`: `[lane.merge]` claims `sources`, so
+      # `check fast` inside `just build <lane>` runs `python-entry-provenance`,
+      # which compares the python mirror against a provisioned rosidl clone and
+      # is NOT VERIFIED (a failure, strict) without one. `--build-sources`:
+      # `build-test-fixtures` refuses (`_require-build-sources`) until the
+      # index's build-stage sources exist (micro-xrce-dds-client, micro-cdr,
+      # px4-autopilot on the 2026-11-13 run). Two commands, the same split the
+      # gate jobs use.
       - name: Provision the sources the test workspace loads
         run: |
           source ./activate.sh
-          nros setup --source px4-rs --source nuttx-libc
+          nros setup --source px4-rs --source nuttx-libc --source rosidl
+          nros setup --build-sources
 
       # Issue 1353's instruments, reused rather than re-spelled: the same two
       # scripts gate.yml's `check-build` brackets its compile tier with.

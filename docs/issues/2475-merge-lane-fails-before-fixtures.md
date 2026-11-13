@@ -62,6 +62,21 @@ merge lane does, after 42-54 min inside `just build tier1` (defect 4). So
 this issue also gates the measurement of whether tier 1 can leave the
 self-hosted runner.
 
+## Order (2026-11-13, coordinator nros 241 manager; owner nros 175)
+
+1. Defects 1-3 first (small; together they unblock both measurements).
+   **Done in fix-2475-merge-lane-provisioning:** `merge-runtime.yml` runs
+   `nros setup --source rosidl` and `nros setup --build-sources`
+   (defects 1-2); the zephyr-ci image bakes cargo-nextest at the index pin
+   the way ci-base does, tag `humble-sdk0.17.4-r7` (defect 3, an IMAGE fix,
+   not a run-time step).
+2. Re-run the phase-559 W5b tier-1 measurement and report the numbers, even
+   if only the time is bad.
+3. Defect 4 (per-board codegen scope) becomes its own phase-535 work item,
+   with acceptance written before it starts; if large, the coordinator hears
+   first.
+4. phase-559 W7 (the `CI` aggregator change) stays last and alone.
+
 ## Done when
 
 A dispatch of `merge-runtime.yml` reaches `just ci merge` on all three shards,
