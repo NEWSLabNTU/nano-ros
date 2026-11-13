@@ -5,7 +5,7 @@ status: Draft
 area: platform-board-rtos
 since: 2026-11
 last-reviewed: 2026-11
-implements-tracked-by: [phase-550]
+implements-tracked-by: [phase-550, phase-561]
 amends: [0120]
 supersedes: []
 superseded-by: null
