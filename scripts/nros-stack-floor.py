@@ -400,10 +400,20 @@ def llc_object(bc: Path, llc: str, cache: Path) -> Path:
     h.update(bc.read_bytes())
     out = cache / f"{h.hexdigest()}.o"
     if not out.exists():
+        import tempfile
         cache.mkdir(parents=True, exist_ok=True)
-        tmp = out.with_suffix(".o.tmp")
-        subprocess.run([llc, *LLC_FLAGS, "-o", str(tmp), str(bc)], check=True)
-        tmp.replace(out)
+        # A temporary name of this process's own, then one atomic replace.
+        # Two links in one configure lower the same bitcode at once, and a
+        # FIXED `<hash>.o.tmp` let one `llc` write into the file the other
+        # was writing or had just renamed away (issue 2500).
+        fd, tmp_name = tempfile.mkstemp(dir=cache, prefix=f"{out.name}.", suffix=".tmp")
+        os.close(fd)
+        tmp = Path(tmp_name)
+        try:
+            subprocess.run([llc, *LLC_FLAGS, "-o", str(tmp), str(bc)], check=True)
+            tmp.replace(out)
+        finally:
+            tmp.unlink(missing_ok=True)
     return out
 
 
@@ -413,22 +423,45 @@ def rlib_bitcode(rlib: Path, llvm_bin: str | None, cache: Path) -> list[Path]:
     import hashlib
     ar = llvm_tool("llvm-ar", llvm_bin)
     objcopy = llvm_tool("llvm-objcopy", llvm_bin)
-    d = cache / "rlib" / hashlib.sha256(rlib.read_bytes()).hexdigest()
+    import shutil
+    import tempfile
+    root = cache / "rlib"
+    d = root / hashlib.sha256(rlib.read_bytes()).hexdigest()
     done = d / ".complete"
     if done.exists():
         return sorted(d.glob("*.bc"))
-    d.mkdir(parents=True, exist_ok=True)
-    subprocess.run([ar, "x", str(rlib.resolve())], cwd=d, check=True)
-    out = []
-    for m in sorted(d.glob("*.o")):
+    # Extracted into a directory of this process's own, then renamed into
+    # place whole. Several links in one configure walk the same sysroot rlibs
+    # at once (two entries of one image), and extracting in place let one
+    # process delete the members another had just written (`m.unlink()` on a
+    # file already gone). A rename is atomic: the cache directory either does
+    # not exist or holds a finished extraction.
+    root.mkdir(parents=True, exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(dir=root, prefix=f"{d.name}.tmp-"))
+    subprocess.run([ar, "x", str(rlib.resolve())], cwd=tmp, check=True)
+    for m in sorted(tmp.glob("*.o")):
         bc = m.with_suffix(".bc")
         r = subprocess.run([objcopy, "--dump-section", f".llvmbc={bc}", str(m), os.devnull],
                            capture_output=True)
-        if r.returncode == 0 and bc.exists() and bc.stat().st_size:
-            out.append(bc)
+        if not (r.returncode == 0 and bc.exists() and bc.stat().st_size):
+            bc.unlink(missing_ok=True)
         m.unlink()
-    done.touch()
-    return out
+    (tmp / ".complete").touch()
+    try:
+        tmp.rename(d)
+    except OSError:
+        # Another process finished first (or an older, in-place extraction
+        # left an unfinished directory, which is replaced).
+        if not done.exists():
+            shutil.rmtree(d, ignore_errors=True)
+            try:
+                tmp.rename(d)
+            except OSError:
+                pass
+        shutil.rmtree(tmp, ignore_errors=True)
+    if not done.exists():
+        raise RuntimeError(f"could not place the extraction of {rlib} at {d}")
+    return sorted(d.glob("*.bc"))
 
 
 def link_map_inputs(map_path: Path, link_dirs: list[Path]) -> tuple[list[str], list[str]]:
@@ -1164,8 +1197,15 @@ def write_report(path: str, args: argparse.Namespace, results: dict, stacks: dic
         "stacks": stacks,
         "refused": refusals,
     }
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+    import tempfile
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # Both entries of one image write this one file (issue 2500): a private
+    # name, then one atomic replace, so a reader never sees half of it.
+    fd, tmp_name = tempfile.mkstemp(dir=out.parent, prefix=f"{out.name}.", suffix=".tmp")
+    with os.fdopen(fd, "w") as f:
+        f.write(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+    Path(tmp_name).replace(out)
 
 
 STATED_FILE = "nros-stack-stated.json"
