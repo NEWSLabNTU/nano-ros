@@ -118,7 +118,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
         .first()
         .cloned()
         .unwrap_or_else(|| PathBuf::from("config"));
-    let tree = PlatformsTree::load_search_path(&search).map_err(|e| {
+    let tree = crate::configure_stamp::load_platforms_tree(&search).map_err(|e| {
         eyre!(
             "load platforms from {}: {e}",
             search
