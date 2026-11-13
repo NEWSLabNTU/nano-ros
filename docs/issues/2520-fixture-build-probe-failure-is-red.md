@@ -47,9 +47,8 @@ next cause of a whole-project probe failure will ship the same way.
    - A whole-project configure failure under `refuse` exits non-zero. The
      refusal names the batch and CMake's error (`first_error_line`), and says
      that the image would otherwise be built on default sizes.
-   - Per-component failures stay as they are. A component whose own sources
-     do not build is the component's problem, and its existing marker already
-     records the reason.
+   - Per-component failures keep their marker. Under `refuse` they also
+     refuse (see the ruling below).
 2. Every fixture builder sets `refuse`: `fixtures-build.sh`,
    `workspace-fixtures-build.sh` and `compile-check-fixtures.sh`. It is
    DECLARED by the lane, never inferred from `CI` or from a TTY, so that a
@@ -65,9 +64,14 @@ next cause of a whole-project probe failure will ship the same way.
    cannot configure, and asserts a red with the reason in its output. It is the
    negative control for step 2.
 
-## Open question
+## Ruling on per-component failures
 
-Should the per-component marker path also refuse under `refuse`? A fixture
-that registers a component the probe cannot build is, by the same argument,
-not the image it claims to be. That was left out of the proposal only because
-nothing has been measured shipping that way yet.
+Per-component probe failures also refuse in a fixture build. A component
+on default sizes is the same silent risk at a smaller scale. A component
+that legitimately has no inventory says so in its manifest row, under the
+same no-inventory rule as step 3, so `refuse` is never answered by a
+blanket exemption. Under `warn` nothing changes. Under `refuse` the
+per-component arm refuses too, and its marker still keeps the reason.
+
+This is the manager's call (2026-11-14). The maintainer has not ruled on
+it. Implementation follows phase-550 W3b.
