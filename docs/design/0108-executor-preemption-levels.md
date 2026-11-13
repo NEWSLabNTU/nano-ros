@@ -22,9 +22,10 @@ The open questions of the first draft are decided (see Decisions); the work is
 tracked by [phase-509](../roadmap/archived/phase-509-executor-preemption-levels.md).
 
 **Amends:** [RFC-0002](0002-rt-execution-model.md) (dispatch order inside an
-executor becomes the contract's rank, not registration order) and RFC-0107
-(shared executor core; branch `docs/rfc-0107-shared-executor-core`, steps 1-3
-merged, steps 4-6 open): its per-sched-task dispatcher is split into one scheduler
+executor becomes the contract's rank, not registration order) and
+[RFC-0107](0107-shared-executor-core.md) (shared executor core; steps 1-3
+built as written, steps 4-6 built as amended here by phase-509 P6, P9 and
+P10): its per-sched-task dispatcher is split into one scheduler
 per core plus one worker per preemption level. **Builds on:**
 [RFC-0079](0079-priority-is-allocated-not-authored.md) (the rank and the
 priority address plan) and [RFC-0106](0106-executor-park.md) (how a worker
@@ -1111,7 +1112,8 @@ executor's lock and the thread identity:
     `nros_cpp_dispatcher_open(core, sched_task)`. Generated sizes become
     `NROS_CPP_CORE_BACKING_SIZE`, `NROS_CPP_SCHEDULER_BACKING_SIZE_<core>` and
     a per-level stack.
-  - When RFC-0107 lands on `main`, its steps 4-6 get a pointer to this RFC.
+  - RFC-0107 landed on `main` on 2026-11-13, and its steps 4-6 each point
+    here.
 
 ## Alternatives considered
 
