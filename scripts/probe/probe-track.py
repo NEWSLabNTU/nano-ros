@@ -3,7 +3,7 @@
 
 `scripts/probe/probe-tracks.json` is generated from the board registry's
 `[[probe]]` entries by `scripts/gen-board-support.py`. This is its one reader
-for the shell and the workflow, so the probe harness and `probe-platforms.yml`
+for the shell and the workflow, so the probe harness and `weekly.yml`
 cannot list different tracks.
 
   probe-track.py <track>      print "<chapter path>\\t<variant>\\t<board row>\\t<offline>\\t<budget>"
@@ -14,7 +14,7 @@ cannot list different tracks.
                               minutes from the first `nros setup`, "" for none)
   probe-track.py --list       print every track name, one per line
   probe-track.py --weekly     print the weekly tracks as a JSON array (the
-                              `probe-platforms.yml` matrix)
+                              `weekly.yml` matrix)
   probe-track.py --twin <track>
                               print a twin track's board facts (phase-524 W4a)
                               as shell assignments `NROS_TWIN_<FIELD>=<quoted>`,

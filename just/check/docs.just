@@ -177,7 +177,7 @@ book-board-names:
 # inside `board-registry` (just/check/platform.just) since phase-522 W3.
 
 # phase-517 W10 — every book probe track still EXTRACTS. `just probe <platform>`
-# replays a QEMU chapter in a container weekly (probe-platforms.yml); per push,
+# replays a QEMU chapter in a container weekly (weekly.yml); per push,
 # this asserts the cheap half: each track's tags still assemble (a `probe-run`
 # step keeps its `probe-expect` output block, a `variant=` selects something,
 # the harness substitution matches once) and the script parses. Tracks are read

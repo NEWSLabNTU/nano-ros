@@ -165,7 +165,7 @@ board-build-target:
 # requires every board row's book run/flash section
 # (scripts/check-book-board-run-sections.py), and refuses a board fact typed
 # outside the registry where the layout shows one: a `cell(...)` in matrix.rs,
-# a hand track list in probe-platforms.yml or the probe harness, a hand ROWS
+# a hand track list in weekly.yml or the probe harness, a hand ROWS
 # tuple in issue 2169's test, a `just probe` recipe with no track, a QEMU run
 # block no track covers, a fixture row naming an undeclared board. It replaced
 # the `board-tiers` and `book-board-run-sections` recipes, and keeps their

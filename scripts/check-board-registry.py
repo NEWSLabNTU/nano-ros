@@ -14,7 +14,7 @@ table it names) is the only place a board fact is typed. This gate holds that:
      the book run/flash sections of `check-book-board-run-sections.py`.
   3. NO BOARD FACT IS TYPED ELSEWHERE, where the file layout lets one be seen:
        - a `cell(...)` in matrix.rs outside the generated list
-       - a literal track list in `probe-platforms.yml`'s matrix
+       - a literal track list in `weekly.yml`'s matrix
        - a literal `PLATFORM_CHAPTER=` track table in run-bootstrap-probe.sh
        - a `("<chapter>.md", ...)` tuple in the 2169 test instead of the
          generated include
@@ -58,7 +58,7 @@ sys.path.insert(0, str(ROOT / "scripts/lib"))
 import board_registry  # noqa: E402
 
 MATRIX_RS = "packages/testing/nros-tests/src/matrix.rs"
-WORKFLOW = ".github/workflows/probe-platforms.yml"
+WORKFLOW = ".github/workflows/weekly.yml"
 HARNESS = "scripts/probe/run-bootstrap-probe.sh"
 BUILD_NEXT = "packages/cli/nros-cli-core/src/cmd/build_next.rs"
 PROBE_JUST = "just/probe.just"

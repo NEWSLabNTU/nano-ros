@@ -17,7 +17,7 @@
 #     chapter (an mps2-an385 talker on QEMU over a serial link, `nros run`,
 #     then `ros2 topic echo`), timed from the first `nros setup` against the
 #     30-minute field budget (phase-525 W4). The Linux multi-node chapter is
-#     the `linux` track, replayed weekly by probe-platforms.yml.
+#     the `linux` track, replayed weekly by weekly.yml.
 #     The released `nros` could once build nothing and nothing noticed, because
 #     every host that ran it had a checkout the SDK-root ladder reached first.
 #

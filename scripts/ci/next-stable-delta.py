@@ -24,7 +24,7 @@ not. That set is the bump's price, visible before anyone pays it.
 
 A gating lane on an unpinned toolchain blocks every pull request on a compiler
 nobody chose — issue 1447 exactly. So the workflow that runs this
-(`.github/workflows/next-stable.yml`) is `schedule` + `workflow_dispatch` ONLY,
+(`.github/workflows/weekly.yml`, job `next-stable`) is `schedule` + `workflow_dispatch` ONLY,
 lives outside `gate.yml` (whose `ci-ok` job — the `CI` context, the one
 required check — can `needs:` only jobs in its own file), and its job is not
 named `CI`, the bare context string the ruleset requires. `--selftest` checks
@@ -73,7 +73,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLCHAIN_FILE = ROOT / "rust-toolchain.toml"
-WORKFLOW = ROOT / ".github" / "workflows" / "next-stable.yml"
+WORKFLOW = ROOT / ".github" / "workflows" / "weekly.yml"
 GATE_WORKFLOW = ROOT / ".github" / "workflows" / "gate.yml"
 
 # The gates a bump PR must clear that a TOOLCHAIN can move — i.e. the

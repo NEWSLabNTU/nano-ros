@@ -14,7 +14,7 @@ in the registry restamps nothing).
         the `matrix::CELLS` list, `include!`d by matrix.rs
   scripts/probe/probe-tracks.json
         the probe tracks: `run-bootstrap-probe.sh` resolves a track's chapter
-        and variant from it, and `probe-platforms.yml` reads its weekly list;
+        and variant from it, and `weekly.yml` reads its weekly list;
         a twin track (phase-524 W4a) also carries its board's twin facts, from
         the descriptor's `[board.run]` and the index's Zephyr module set
   packages/cli/nros-cli-core/src/cmd/probe_boot_rows.rs

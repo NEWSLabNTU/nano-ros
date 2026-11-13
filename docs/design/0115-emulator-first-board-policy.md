@@ -95,7 +95,7 @@ and an ESP32 revival are dropped for now, each for a stated reason.
 
 1. **Nobody holds QEMU.** The book's platform chapters boot `mps2-an385`,
    `qemu-armv7a`, `rv-virt`, `native_sim` and a Linux simulator. The weekly
-   `probe-platforms.yml` tracks prove those lines run. A technician, a student
+   `weekly.yml` tracks prove those lines run. A technician, a student
    or an industrial integrator has a board on the desk, and the chapter's flash
    line for it is the one line no probe runs (issue 2176 made every such line
    say so).

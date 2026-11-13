@@ -81,7 +81,7 @@ out as the registry keying on the wrong thing.
 Adding the NuttX rv-virt Rust probe track on 2026-10-31 (issue 2178) touched:
 the book chapter's `probe=` tags, `scripts/probe/run-bootstrap-probe.sh`'s
 `case` table and its `want` list, `just/probe.just`, the
-`probe-platforms.yml` matrix, and the `ROWS` table of
+`weekly.yml` matrix, and the `ROWS` table of
 `every_probed_chapter_boot_line_is_the_printed_run_command` in
 `packages/cli/nros-cli-core/src/cmd/build_next.rs`. The board itself is also
 a `[[board]]` row in `board-support.toml`, a `PlatformId` and a set of
@@ -212,7 +212,7 @@ hash; the `check-board-registry` gate (a fast-line recipe phase-522 W3 adds)
 regenerates into a temporary directory and
 fails on any byte difference, and refuses a board fact typed outside the
 registry where it can detect one (a `cell(...)` line in `matrix.rs` outside
-the generated region, a `probe-platforms.yml` matrix entry the registry does
+the generated region, a `weekly.yml` matrix entry the registry does
 not name, a `ROWS` entry with no row).
 
 Generated views, with the hand-authored thing each replaces:
@@ -222,7 +222,7 @@ Generated views, with the hand-authored thing each replaces:
 | `matrix::CELLS` rows per board | hand `cell(...)` lines in `matrix.rs` | a generated `include!` region; the witness rows come from the family's feature × language × RMW × edition table in the registry, inheriting rows get the smoke cells. Comments that carry history move into the row's `notes`. |
 | `interop::CELLS` smoke rows | hand `ic(...)` lines | one row per inheriting board whose smoke needs a ROS 2 peer |
 | emulator fixture rows in `examples/fixtures.toml` | hand `[[fixture]]` rows for emulator builds | the row names a coordinate and a locator port; build arguments come from the descriptor and the family defaults |
-| `probe-platforms.yml` matrix and the probe case table | the `matrix:` list and `run-bootstrap-probe.sh`'s `case` | one JSON file the workflow and the script both read |
+| `weekly.yml` matrix and the probe case table | the `matrix:` list and `run-bootstrap-probe.sh`'s `case` | one JSON file the workflow and the script both read |
 | the `ROWS` table of the issue 2169 test | hand table in `build_next.rs` | generated include |
 | `book/src/reference/board-support-levels.md` | `board-support-tiers.md` | the status word, breadth text, cadence, emulator and hardware per row |
 | `book/src/reference/boards/<name>.md` | nothing (new) | the per-board evidence page: status, breadth, last green per lane, emulator twin, hardware status, chapter links |
@@ -303,7 +303,7 @@ stated reversal.
 
 1. **Round-trip first, change nothing.** The generator's first milestone is
    to regenerate today's `matrix.rs` cell region, `fixtures.toml` emulator
-   rows, `probe-platforms.yml` matrix, the probe case table and the 2169
+   rows, `weekly.yml` matrix, the probe case table and the 2169
    `ROWS` byte-identical from a registry that still carries the OLD fields
    plus the new ones. Evidence: a clean `git diff` after `gen-board-support.py
    --write` on the current tree. Decision: if the round-trip needs more than

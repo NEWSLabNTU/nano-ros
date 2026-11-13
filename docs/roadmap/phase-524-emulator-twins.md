@@ -514,7 +514,7 @@ shape.
 ### W4 — Probe tracks and serial-first chapters
 
 Generate the tracks `renode-uno-r4`, `renode-nucleo`, `wokwi-pico` from the
-registry (RFC-0114 D12): the `probe-platforms.yml` matrix rows, the
+registry (RFC-0114 D12): the `weekly.yml` matrix rows, the
 `run-bootstrap-probe.sh` lookup, and the issue 2169 run-command rows. Write one
 getting-started chapter per board in RFC-0116 D5's serial-first shape: setup
 (`nros setup <board>`), scaffold (the single-package front door, RFC-0116 D6),
@@ -558,7 +558,7 @@ generator.
   writes it into `scripts/probe/probe-tracks.json`: the west board,
   `[board.run] emulator`, the twin's wiring, and the HAL module, which is the
   index's `[zephyr_module.*]` row whose `needed_by` names the board on its
-  Zephyr line. `probe-platforms.yml` lists both tracks through the existing
+  Zephyr line. `weekly.yml` lists both tracks through the existing
   `--weekly` read, and `run-bootstrap-probe.sh` gets the facts from
   `probe-track.py --twin <track>`. No board fact is typed outside the
   registry and the descriptors. The generator refuses a twin whose board
@@ -593,7 +593,7 @@ generator.
   nothing a runner would not; W4b replaces them with `nros run`. `socat` comes
   from `[prereq.socat]` through `scripts/sdk/prereq-packages.py`, installed by
   the harness's container shim, and only for the kind that needs it.
-- **The Wokwi token.** `probe-platforms.yml` passes
+- **The Wokwi token.** `weekly.yml` passes
   `secrets.WOKWI_CLI_TOKEN` to the step, and the harness passes it into the
   `wokwi-pico` container by name (`-e WOKWI_CLI_TOKEN`), never as a value in
   an argv. The workflow is schedule and dispatch only, so a fork pull request
@@ -605,7 +605,7 @@ generator.
 - **Wokwi out of CI (maintainer ruling 2026-11-02).** The free plan's 50
   simulation minutes ran out, and a metered hosted simulator in a weekly lane
   goes red whenever the quota does. So the `wokwi-pico` `[[probe]]` row is
-  `weekly = false`, `probe-platforms.yml` no longer passes
+  `weekly = false`, `weekly.yml` no longer passes
   `secrets.WOKWI_CLI_TOKEN`, and no repository secret is needed. Everything a
   user needs stays: `[tool.wokwi-cli]`, the board's `emulator =
   "wokwi:pi-pico-w"`, `scripts/probe/twin/wokwi.sh` and `just probe
