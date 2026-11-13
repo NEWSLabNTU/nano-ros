@@ -1,7 +1,7 @@
 # Phase 560 — Follow the contract revision on the RTOS side
 
 **Status (2026-11-13). W1-W5 DONE** (rlm v0.3.15, play_launch v0.32.0,
-#3745); W6 and W7 BLOCKED on releases not yet tagged; W8 OPEN. nano-ros's
+#3745); W6 and W7 BLOCKED on releases not yet tagged; W8 DONE. nano-ros's
 share of two play_launch phases: phase 103 (defects the contract grammar review found in shipped
 behaviour) and phase 104 (the grammar revision itself). The design of
 record is rlm `docs/design/grammar-revision/` (an overview and one file per
@@ -104,7 +104,9 @@ reads one model per board, unchanged.
 
 ### W8 -- E7, the same answer as play_launch
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-14, rule `hazard-level-runtime`)
+
+The image reports each level its ladder becomes active on, by index and name.
 
 Follows play_launch 102 M5 E7, which play_launch's report records as not run.
 The image reports the fallback level it fell to, so the evaluation can compare
