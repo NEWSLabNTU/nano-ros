@@ -376,6 +376,10 @@ calls `stack_stated::emit` and its platform is added to `STATING_PLATFORMS`:
     8,800 B. The floor is 36,048 B. A 26 KiB build now fails with "Raise it:
     NROS_BAREMETAL_STACK_KB=36", and 36 KiB and the default 256 KiB build and
     publish.
+  - **Superseded by W7 (2026-11-14).** The walk now binds every indirect call
+    and reads 51,240 B, so the row became an `[[observed]]` row (peak
+    32,768 B) and the floor is 56,368 B. A 26 KiB build fails with "Raise it:
+    NROS_BAREMETAL_STACK_KB=56", and the 256 KiB default holds.
   - **Rebuilds.** An unchanged rebuild compiles nothing.
   - **Interrupt handlers.** They also run on the main stack (MSP), so their
     frames are inside the measured peak but not on the static walk.
