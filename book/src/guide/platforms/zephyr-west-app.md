@@ -53,7 +53,9 @@ write no Rust application:
 
 ```bash probe=34 track=installed variant=west-app,west-app-cpp,west-app-rust,west-app-flash
 mkdir -p my_zephyr_ws/manifest && cd my_zephyr_ws
-cat > manifest/west.yml <<'WEST_YML'
+```
+
+```yaml probe=34 track=installed variant=west-app,west-app-cpp,west-app-rust,west-app-flash file=manifest/west.yml
 manifest:
   remotes:
     - name: zephyrproject-rtos
@@ -70,7 +72,9 @@ manifest:
       path: modules/lang/rust
   self:
     path: manifest
-WEST_YML
+```
+
+```bash probe=34 track=installed variant=west-app,west-app-cpp,west-app-rust,west-app-flash
 west init -l manifest
 west update --narrow -o=--depth=1
 pip3 install --user -r zephyr/scripts/requirements-base.txt
@@ -114,7 +118,9 @@ the node is a nano-ros Rust component, built by zephyr-lang-rust.
 
 ```bash probe=40 track=installed variant=west-app,west-app-flash
 mkdir -p apps/my_app/src
-cat > apps/my_app/src/Talker.c <<'EOF'
+```
+
+```c probe=40 track=installed variant=west-app,west-app-flash file=apps/my_app/src/Talker.c
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -159,14 +165,12 @@ static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor,
 }
 
 RCLC_C_COMPONENT(talker_t, talker_configure)
-EOF
 ```
 
 `RCLC_C_COMPONENT` registers the struct and its `configure` function with the
 generated entry point; the rest is the ROS 2 `rclc` API. The build file:
 
-```bash probe=42 track=installed variant=west-app,west-app-flash
-cat > apps/my_app/CMakeLists.txt <<'EOF'
+```cmake probe=42 track=installed variant=west-app,west-app-flash file=apps/my_app/CMakeLists.txt
 cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(my_app)
@@ -182,7 +186,6 @@ nros_components_register_node(talker_lib
     SHAPE configure
     TYPED
     DEPLOY zephyr)
-EOF
 ```
 
 `find_package(nano_ros)` and `find_package(std_msgs)` come from the module.
@@ -194,7 +197,9 @@ Your application's other sources still go into `app` with `target_sources`.
 
 ```bash probe=41 track=installed variant=west-app-cpp
 mkdir -p apps/my_app/src
-cat > apps/my_app/src/Talker.hpp <<'EOF'
+```
+
+```cpp probe=41 track=installed variant=west-app-cpp file=apps/my_app/src/Talker.hpp
 #pragma once
 #include <rclcpp/rclcpp.hpp>
 #include "std_msgs.hpp"
@@ -210,11 +215,9 @@ class Talker {
     ::rclcpp::Result configure(::rclcpp::Node& node);
 };
 }  // namespace my_app
-EOF
 ```
 
-```bash probe=43 track=installed variant=west-app-cpp
-cat > apps/my_app/src/Talker.cpp <<'EOF'
+```cpp probe=43 track=installed variant=west-app-cpp file=apps/my_app/src/Talker.cpp
 #include "Talker.hpp"
 #include <cstdio>
 
@@ -235,7 +238,6 @@ void Talker::on_tick() {
     return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 1000, this);
 }
 }  // namespace my_app
-EOF
 ```
 
 `::setvbuf` turns off stdout's buffering; it is the global one because
@@ -244,8 +246,7 @@ names the class's header, and registers the component with
 `nros_components_register_node(... DEPLOY zephyr)`, which makes the module
 generate the entry point into Zephyr's `app` target:
 
-```bash probe=45 track=installed variant=west-app-cpp
-cat > apps/my_app/CMakeLists.txt <<'EOF'
+```cmake probe=45 track=installed variant=west-app-cpp file=apps/my_app/CMakeLists.txt
 cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(my_app LANGUAGES C CXX)
@@ -262,7 +263,6 @@ nros_components_register_node(talker_lib
     SHAPE configure
     TYPED
     DEPLOY zephyr)
-EOF
 ```
 
 #### Rust
@@ -286,14 +286,17 @@ script and its node:
 
 ```bash probe=39 track=installed variant=west-app-rust
 mkdir -p apps/my_app/src
-cat > apps/my_app/CMakeLists.txt <<'EOF'
+```
+
+```cmake probe=39 track=installed variant=west-app-rust file=apps/my_app/CMakeLists.txt
 cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(my_app)
 
 rust_cargo_application()
-EOF
-cat > apps/my_app/Cargo.toml <<'EOF'
+```
+
+```toml probe=39 track=installed variant=west-app-rust file=apps/my_app/Cargo.toml
 [package]
 name = "my_app"
 version = "0.1.0"
@@ -331,14 +334,16 @@ nros-zephyr-build = "*"
 opt-level = "s"
 lto = true
 debug = false
-EOF
-cat > apps/my_app/build.rs <<'EOF'
+```
+
+```rust probe=39 track=installed variant=west-app-rust file=apps/my_app/build.rs
 fn main() {
     zephyr_build::export_kconfig_bool_options();
     nros_zephyr_build::bake_nros_config();
 }
-EOF
-cat > apps/my_app/src/lib.rs <<'EOF'
+```
+
+```rust probe=39 track=installed variant=west-app-rust file=apps/my_app/src/lib.rs
 #![no_std]
 
 extern crate zephyr;
@@ -397,7 +402,6 @@ nros::node!(Talker);
 // application's entry point around the component.
 nros::force_link_backend!(nros_rmw_zenoh);
 nros::zephyr_component_main!(crate::Talker);
-EOF
 ```
 
 <!-- /tabs -->
@@ -408,8 +412,7 @@ nano-ros reads its settings from Kconfig, so they go in `prj.conf` beside
 Zephyr's own; `west build -t menuconfig` shows them under
 **nros ROS 2 client library**:
 
-```bash probe=44 track=installed variant=west-app,west-app-cpp,west-app-rust,west-app-flash
-cat > apps/my_app/prj.conf <<'EOF'
+```text probe=44 track=installed variant=west-app,west-app-cpp,west-app-rust,west-app-flash file=apps/my_app/prj.conf
 # Zephyr: console and networking
 CONFIG_LOG=y
 CONFIG_PRINTK=y
@@ -443,7 +446,6 @@ CONFIG_STD_CPP17=y
 CONFIG_NROS_RMW_ZENOH=y
 CONFIG_NROS_ZENOH_LOCATOR="tcp/127.0.0.1:7447"
 CONFIG_NROS_DOMAIN_ID=0
-EOF
 ```
 
 | Setting | What it chooses |
@@ -470,8 +472,7 @@ On Zephyr 4.x, the module's snippets (`-S nros-zenoh`, `-S nros-xrce`,
 You run no generator. The build generates the types for every message package
 `package.xml` lists, the same file a ROS 2 package uses:
 
-```bash probe=46 track=installed variant=west-app,west-app-cpp,west-app-rust,west-app-flash
-cat > apps/my_app/package.xml <<'EOF'
+```xml probe=46 track=installed variant=west-app,west-app-cpp,west-app-rust,west-app-flash file=apps/my_app/package.xml
 <?xml version="1.0"?>
 <package format="3">
   <name>my_app</name>
@@ -486,7 +487,6 @@ cat > apps/my_app/package.xml <<'EOF'
     <build_type>nros_cmake</build_type>
   </export>
 </package>
-EOF
 ```
 
 Each `<depend>` also gets a `find_package(<pkg> REQUIRED)` line in
@@ -508,10 +508,11 @@ values, among them the locator and the domain, to the crate:
 ```bash probe=47 track=installed variant=west-app-rust
 sed -i -e '/^CONFIG_NROS_CPP_API=y$/d' -e '/^CONFIG_STD_CPP17=y$/d' \
     apps/my_app/prj.conf
-cat >> apps/my_app/prj.conf <<'EOF'
+```
+
+```text probe=47 track=installed variant=west-app-rust append=apps/my_app/prj.conf
 CONFIG_RUST=y
 CONFIG_NROS_RUST_API=y
-EOF
 ```
 
 `nros configure`, run in the application directory, generates the Rust types
@@ -571,8 +572,8 @@ Published: 2
 To see the messages from ROS 2, run
 `ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort`
 in a third terminal, with ROS 2 sourced and `RMW_IMPLEMENTATION=rmw_zenoh_cpp`.
-The talker publishes best-effort, and an echo that asks for reliable delivery
-receives nothing.
+The talker's publisher is reliable; asking for best-effort receives from a
+publisher of either kind.
 
 ## Build for a real board
 
@@ -596,7 +597,9 @@ for the board's 384 KiB of RAM:
 
 ```bash probe=54 track=installed variant=west-app-flash
 mkdir -p apps/my_app/boards
-cat > apps/my_app/boards/nucleo_f767zi.conf <<'EOF'
+```
+
+```text probe=54 track=installed variant=west-app-flash file=apps/my_app/boards/nucleo_f767zi.conf
 # zenoh over USART3, the ST-LINK USB serial port; no IP stack
 CONFIG_NETWORKING=n
 CONFIG_NROS_TRANSPORT_SERIAL=y
@@ -612,15 +615,15 @@ CONFIG_TEST_RANDOM_GENERATOR=y
 # 384 KiB of RAM
 CONFIG_HEAP_MEM_POOL_SIZE=16384
 CONFIG_NROS_MAX_LARGE_SUBSCRIBERS=0
-EOF
-cat > apps/my_app/boards/nucleo_f767zi.overlay <<'EOF'
+```
+
+```text probe=54 track=installed variant=west-app-flash file=apps/my_app/boards/nucleo_f767zi.overlay
 / {
 	chosen {
 		zephyr,console = &usart6;
 		zephyr,shell-uart = &usart6;
 	};
 };
-EOF
 ```
 
 Build into the board's own directory:

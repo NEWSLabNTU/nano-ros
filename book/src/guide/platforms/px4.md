@@ -24,17 +24,17 @@ hooked in at PX4's host configure. The template — shipped in the SDK root at
 the PX4-required
 `src/modules/<name>/` shape:
 
-```text
+```tree
 my_drone_firmware/
-├── PX4-Autopilot/                          # PX4 source tree (submodule)
-└── px4-modules/                            # passed via EXTERNAL_MODULES_LOCATION
-    └── nano-ros/                           # copy-out from integrations/px4/module-template/
+├── PX4-Autopilot/                        # PX4 source tree (submodule)
+└── px4-modules/                          # EXTERNAL_MODULES_LOCATION
+    └── nano-ros/                         # copied from the module template
         └── src/
-            ├── CMakeLists.txt              # populates config_module_list_external
+            ├── CMakeLists.txt            # fills config_module_list_external
             └── modules/
                 └── nano_ros_app/
-                    ├── CMakeLists.txt      # px4_add_module(... MAIN nano_ros_app)
-                    └── nano_ros_app.cpp    # the user-editable app
+                    ├── CMakeLists.txt    # px4_add_module(MAIN nano_ros_app)
+                    └── nano_ros_app.cpp  # the user-editable app
 ```
 
 > **Prereq.** PX4 is your own checkout — the firmware tree you
@@ -202,7 +202,7 @@ Ctrl-C stops the daemon.
 To fly a simulated vehicle, run SITL against a simulator instead. With
 Gazebo (Harmonic) installed per PX4's documentation:
 
-```text
+```console
 make -C PX4-Autopilot px4_sitl_default gz_x500 \
     EXTERNAL_MODULES_LOCATION="$PWD/px4-modules/nano-ros"
 # In the PX4 console:

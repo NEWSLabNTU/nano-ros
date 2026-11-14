@@ -121,8 +121,7 @@ mkdir -p src/acme_rmw/src
 
 The backend's package. The `nano_ros_provides` line is what the build finds:
 
-```bash probe=630 track=installed
-cat > src/acme_rmw/package.xml <<'EOF'
+```xml probe=630 track=installed file=src/acme_rmw/package.xml
 <?xml version="1.0"?>
 <package format="3">
   <name>acme_rmw</name>
@@ -135,15 +134,13 @@ cat > src/acme_rmw/package.xml <<'EOF'
     <nano_ros_provides kind="rmw" name="acme"/>
   </export>
 </package>
-EOF
 ```
 
 Its descriptor. The image links the crate `acme-rmw` and calls its
 `register()`; the linux board's `platform-posix` feature and the ROS edition
 pass through to it. `acme` speaks zenoh, so it needs a zenoh router:
 
-```bash probe=640 track=installed
-cat > src/acme_rmw/nros-rmw.toml <<'EOF'
+```toml probe=640 track=installed file=src/acme_rmw/nros-rmw.toml
 [rmw]
 cpp_define = "NROS_RMW_ACME"
 
@@ -161,14 +158,12 @@ platform-posix = "platform-posix"
 rlib_dep = "acme-rmw"
 edition_feature = "ros-{edition}"
 needs_cxx_linker = false
-EOF
 ```
 
 Its crate. It names nano-ros's crates by version, as any third-party crate
 would; the build points each one at the nano-ros it builds against:
 
-```bash probe=650 track=installed
-cat > src/acme_rmw/Cargo.toml <<'EOF'
+```toml probe=650 track=installed file=src/acme_rmw/Cargo.toml
 [package]
 name = "acme-rmw"
 version = "0.1.0"
@@ -187,8 +182,9 @@ platform-posix = ["nros-rmw-zenoh/platform-posix"]
 ros-humble = ["nros-rmw-zenoh/ros-humble"]
 ros-iron = ["nros-rmw-zenoh/ros-iron"]
 ros-jazzy = ["nros-rmw-zenoh/ros-jazzy"]
-EOF
-cat > src/acme_rmw/src/lib.rs <<'EOF'
+```
+
+```rust probe=650 track=installed file=src/acme_rmw/src/lib.rs
 #![no_std]
 
 use core::{
@@ -239,7 +235,6 @@ pub fn register() -> Result<(), RegisterError> {
         unsafe { nros_rmw_cffi_register_named(c"acme".as_ptr(), &ACME_VTABLE) };
     if rc == NROS_RMW_RET_OK { Ok(()) } else { Err(RegisterError(rc)) }
 }
-EOF
 ```
 
 Select it in the bringup:
@@ -263,7 +258,7 @@ nros run acme_node
 
 ```text probe-expect=680
 publishing through backend acme
-Publishing: 'Hello World:
+Publishing: 'Hello World: …'
 ```
 
 The first line is your backend's: every message goes through `acme_publish`.

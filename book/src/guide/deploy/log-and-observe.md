@@ -245,7 +245,7 @@ on its own about a minute after it resumes. Keep halted reads short.
    first one's file and line. After the run, halt the core and save it, with
    the address and size from the image's own symbol table:
 
-   ```text
+   ```console
    read ADDR LEN <<< "$(arm-none-eabi-nm -S build/zephyr/zephyr.elf \
        | awk '$4=="NROS_BOOT_REPORT"{print "0x"$1, "0x"$2}')"
    pyocd commander -t <target> -c halt -c "savemem $ADDR $LEN report.bin"
@@ -265,7 +265,7 @@ on its own about a minute after it resumes. Keep halted reads short.
 3. **Read a live log over RTT, last.** Move the console to an unwired UART in
    a devicetree overlay, and read SEGGER RTT over the SWD link:
 
-   ```text
+   ```console
    script -qec "pyocd rtt -t <target> -a $(arm-none-eabi-nm build/zephyr/zephyr.elf \
        | awk '$3==\"_SEGGER_RTT\"{print \"0x\"$1}')" /dev/null
    ```

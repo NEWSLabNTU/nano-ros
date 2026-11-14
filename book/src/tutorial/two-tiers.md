@@ -52,12 +52,10 @@ callback.
 ## Make the workspace
 
 Start beside `sensor_ws`, not inside it: `nros new` inside a workspace adds
-a package to that workspace. Provision the FreeRTOS board, which a Rust
-reader of chapter 1 has not done yet; running it again is harmless:
+a package to that workspace. Chapter 1 already provisioned the board:
 
 ```bash probe=2105 track=installed variant=qemu
 cd ..
-nros setup mps2-an385-freertos --rmw zenoh
 ```
 
 Make a workspace whose first node is the control loop, and add the
@@ -94,7 +92,16 @@ nros new telemetry_node --template talker --lang cpp --to control_node_bringup
 
 `nros new control_ws` named the node package `control_node` and the bringup
 `control_node_bringup`, as chapter 1's did for `sensor_ws`. Run every step
-from here on in `control_ws`.
+from here on in `control_ws`. The steps below then rewrite both nodes' code
+and the bringup's contract, and add to its `system.toml`:
+
+```tree
+control_ws/                   (new)
+└── src/
+    ├── control_node/         (new)
+    ├── telemetry_node/       (new)
+    └── control_node_bringup/ (new)
+```
 
 ## Write the control loop
 
@@ -107,8 +114,7 @@ budget of 50 ms, five periods. Replace the talker's code:
 
 #### Rust
 
-```bash probe=2130 track=installed variant=qemu
-cat > src/control_node/src/lib.rs <<'EOF'
+```rust probe=2130 track=installed variant=qemu file=src/control_node/src/lib.rs
 //! A 100 Hz control loop that measures itself: the longest gap between
 //! two of its ticks, judged against a 50 ms budget.
 
@@ -198,13 +204,11 @@ impl ExecutableNode for Talker {
 }
 
 nros::node!(Talker);
-EOF
 ```
 
 #### C
 
-```bash probe=2130 track=installed variant=qemu
-cat > src/control_node/src/Talker.c <<'EOF'
+```c probe=2130 track=installed variant=qemu file=src/control_node/src/Talker.c
 // A 100 Hz control loop that measures itself: the longest gap between two
 // of its ticks, judged against a 50 ms budget.
 
@@ -264,13 +268,11 @@ static rcl_ret_t control_configure(rcl_node_t* node, rclc_executor_t* executor,
 }
 
 RCLC_C_COMPONENT(control_t, control_configure)
-EOF
 ```
 
 #### C++
 
-```bash probe=2130 track=installed variant=qemu
-cat > src/control_node/include/control_node/Talker.hpp <<'EOF'
+```cpp probe=2130 track=installed variant=qemu file=src/control_node/include/control_node/Talker.hpp
 #pragma once
 
 #include <rclcpp/rclcpp.hpp>
@@ -294,8 +296,9 @@ class Talker {
 };
 
 } // namespace control_node
-EOF
-cat > src/control_node/src/Talker.cpp <<'EOF'
+```
+
+```cpp probe=2130 track=installed variant=qemu file=src/control_node/src/Talker.cpp
 #include "control_node/Talker.hpp"
 
 #include <cstdio>
@@ -329,7 +332,6 @@ void Talker::on_tick() {
 }
 
 } // namespace control_node
-EOF
 ```
 
 <!-- /tabs -->
@@ -360,8 +362,7 @@ which is what a long computation does.
 
 #### Rust
 
-```bash probe=2140 track=installed variant=qemu
-cat > src/telemetry_node/src/lib.rs <<'EOF'
+```rust probe=2140 track=installed variant=qemu file=src/telemetry_node/src/lib.rs
 //! A 10 Hz telemetry job whose every run takes 60 ms of processor time.
 
 #![no_std]
@@ -412,13 +413,11 @@ impl ExecutableNode for Talker {
 }
 
 nros::node!(Talker);
-EOF
 ```
 
 #### C
 
-```bash probe=2140 track=installed variant=qemu
-cat > src/telemetry_node/src/Talker.c <<'EOF'
+```c probe=2140 track=installed variant=qemu file=src/telemetry_node/src/Talker.c
 // A 10 Hz telemetry job whose every run takes 60 ms of processor time.
 
 #include <stdint.h>
@@ -461,13 +460,11 @@ static rcl_ret_t telemetry_configure(rcl_node_t* node, rclc_executor_t* executor
 }
 
 RCLC_C_COMPONENT(telemetry_t, telemetry_configure)
-EOF
 ```
 
 #### C++
 
-```bash probe=2140 track=installed variant=qemu
-cat > src/telemetry_node/include/telemetry_node/Talker.hpp <<'EOF'
+```cpp probe=2140 track=installed variant=qemu file=src/telemetry_node/include/telemetry_node/Talker.hpp
 #pragma once
 
 #include <rclcpp/rclcpp.hpp>
@@ -486,8 +483,9 @@ class Talker {
 };
 
 } // namespace telemetry_node
-EOF
-cat > src/telemetry_node/src/Talker.cpp <<'EOF'
+```
+
+```cpp probe=2140 track=installed variant=qemu file=src/telemetry_node/src/Talker.cpp
 #include "telemetry_node/Talker.hpp"
 
 namespace telemetry_node {
@@ -504,7 +502,6 @@ void Talker::on_tick() {
 }
 
 } // namespace telemetry_node
-EOF
 ```
 
 <!-- /tabs -->
@@ -523,20 +520,30 @@ Nothing to change.
 
 #### C
 
-```bash probe=2145 track=installed variant=qemu
-sed -i 's|^    SOURCES |    CALLBACK_GROUPS ctrl\n    SOURCES |' \
-    src/control_node/CMakeLists.txt
-sed -i 's|^    SOURCES |    CALLBACK_GROUPS telem\n    SOURCES |' \
-    src/telemetry_node/CMakeLists.txt
+```diff probe=2145 track=installed variant=qemu edit=src/control_node/CMakeLists.txt
+ nano_ros_add_node(control_node CLASS control_node::Talker TYPED
++    CALLBACK_GROUPS ctrl
+     SOURCES src/Talker.c)
+```
+
+```diff probe=2145 track=installed variant=qemu edit=src/telemetry_node/CMakeLists.txt
+ nano_ros_add_node(telemetry_node CLASS telemetry_node::Talker TYPED
++    CALLBACK_GROUPS telem
+     SOURCES src/Talker.c)
 ```
 
 #### C++
 
-```bash probe=2145 track=installed variant=qemu
-sed -i 's|^    SOURCES |    CALLBACK_GROUPS ctrl\n    SOURCES |' \
-    src/control_node/CMakeLists.txt
-sed -i 's|^    SOURCES |    CALLBACK_GROUPS telem\n    SOURCES |' \
-    src/telemetry_node/CMakeLists.txt
+```diff probe=2145 track=installed variant=qemu edit=src/control_node/CMakeLists.txt
+ nano_ros_add_node(control_node CLASS control_node::Talker
++    CALLBACK_GROUPS ctrl
+     SOURCES src/Talker.cpp)
+```
+
+```diff probe=2145 track=installed variant=qemu edit=src/telemetry_node/CMakeLists.txt
+ nano_ros_add_node(telemetry_node CLASS telemetry_node::Talker
++    CALLBACK_GROUPS telem
+     SOURCES src/Talker.cpp)
 ```
 
 <!-- /tabs -->
@@ -547,8 +554,7 @@ The scaffold wrote a contract for two talkers that publish on `/chatter`
 once a second. The nodes now publish nothing and tick at 100 Hz and 10 Hz,
 so replace it with one that says so:
 
-```bash probe=2150 track=installed variant=qemu
-cat > src/control_node_bringup/system.contract.yaml <<'EOF'
+```yaml probe=2150 track=installed variant=qemu file=src/control_node_bringup/system.contract.yaml
 version: 1
 
 nodes:
@@ -564,7 +570,6 @@ nodes:
       on_tick:
         trigger: { timer: { rate: 10Hz } }
         output: []
-EOF
 ```
 
 Each node has a timer path with its rate and no output, and an empty
@@ -577,33 +582,26 @@ First put both groups on one sched task, `main`. Add the task to the
 bringup's `system.toml`, and bind each node's group to it on its
 `[[component]]` row:
 
-```bash probe=2160 track=installed variant=qemu
-cat >> src/control_node_bringup/system.toml <<'EOF'
+```toml probe=2160 track=installed variant=qemu append=src/control_node_bringup/system.toml
 
 [tasks.main]
 spin_period = "10000us"
 [tasks.main.freertos]
 priority = 2
-EOF
-sed -i -e '/^pkg = "control_node"$/a group_tasks = { ctrl = "main" }' \
-       -e '/^pkg = "telemetry_node"$/a group_tasks = { telem = "main" }' \
-       src/control_node_bringup/system.toml
 ```
 
-The two rows now read:
+```diff probe=2160 track=installed variant=qemu edit=src/control_node_bringup/system.toml
+ [[component]]
+ pkg = "control_node"
++group_tasks = { ctrl = "main" }
+ class = "control_node::Talker"
+```
 
-```toml
-[[component]]
-pkg = "control_node"
-group_tasks = { ctrl = "main" }
-class = "control_node::Talker"
-name = "control_node"
-
-[[component]]
-pkg = "telemetry_node"
-group_tasks = { telem = "main" }
-class = "telemetry_node::Talker"
-name = "telemetry_node"
+```diff probe=2160 track=installed variant=qemu edit=src/control_node_bringup/system.toml
+ [[component]]
+ pkg = "telemetry_node"
++group_tasks = { telem = "main" }
+ class = "telemetry_node::Talker"
 ```
 
 `spin_period` is how long the sched task's executor may sleep when nothing
@@ -611,10 +609,11 @@ is due. Priority 2 is below the network stack's tasks, which this board runs
 at 4; a sched task that outranked them would starve the transport it
 depends on, and the build refuses one unless it says so.
 
-Run it, and wait for the tenth window. The run takes about 40 seconds:
+Run it, and wait for the tenth window, about 40 seconds after boot; then
+press Ctrl-C:
 
 ```bash probe=2170 probe-run=900 track=installed variant=qemu
-nros run --expect '10 windows, 10 late'
+nros run
 ```
 
 ```text probe-expect=2170 variant=qemu
@@ -648,22 +647,25 @@ Now give the loop a sched task of its own, `high`, at priority 3, above
 `main` and still below the network stack. Only the loop's binding changes;
 the telemetry job stays on `main`:
 
-```bash probe=2180 track=installed variant=qemu
-cat >> src/control_node_bringup/system.toml <<'EOF'
+```toml probe=2180 track=installed variant=qemu append=src/control_node_bringup/system.toml
 
 [tasks.high]
 spin_period = "1000us"
 [tasks.high.freertos]
 priority = 3
-EOF
-sed -i 's/group_tasks = { ctrl = "main" }/group_tasks = { ctrl = "high" }/' \
-    src/control_node_bringup/system.toml
 ```
 
-Run it again:
+```diff probe=2180 track=installed variant=qemu edit=src/control_node_bringup/system.toml
+ pkg = "control_node"
+-group_tasks = { ctrl = "main" }
++group_tasks = { ctrl = "high" }
+ class = "control_node::Talker"
+```
+
+Run it again, and press Ctrl-C after the tenth window:
 
 ```bash probe=2190 probe-run=900 track=installed variant=qemu
-nros run --expect '10 windows, 0 late'
+nros run
 ```
 
 ```text probe-expect=2190 variant=qemu
@@ -723,16 +725,16 @@ Predict each result before you run it, then check it against the console.
 
 - **The build refuses a priority:** a sched task's priority must stay below
   the board's network stack (4 on this board). The refusal names the band.
-- **Both runs print `0 late`:** check that the two `group_tasks` lines
-  landed on the `[[component]]` rows, not elsewhere: `grep -n group_tasks
-  src/control_node_bringup/system.toml`. A group that no row binds is not on
-  `main`.
+- **Both runs print `0 late`:** check that the two `group_tasks` lines sit
+  in the `[[component]]` rows of `system.toml`, as above. A group that no row
+  binds is not on `main`.
 - **No `ticks` lines at all:** the loop's timer never ran. In C or C++, the
   `CALLBACK_GROUPS` line must sit inside `nano_ros_add_node(...)`, before
   `SOURCES`; in Rust, `callback_group` must come before the timer is
   created.
-- **`nros run` stops before the tenth window:** with `--timeout`, give the
-  one-task run about a minute; it takes four times as long as the other.
+- **The one-task run seems stuck before the tenth window:** it takes four
+  times as long as the other, about 40 seconds of the board's time; wait
+  for it before pressing Ctrl-C.
 
 ## What just happened
 

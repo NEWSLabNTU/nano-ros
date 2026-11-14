@@ -78,11 +78,11 @@ cd tx_ws
 
 That wrote a workspace with two packages:
 
-```text
+```tree
 tx_ws/
 └── src/
-    ├── tx_node/                 # the talker: package.xml, Cargo.toml or CMakeLists.txt, its source
-    └── tx_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
+    ├── tx_node/          # the talker: manifest, build file, source
+    └── tx_node_bringup/  # what it runs on: board, RMW
 ```
 
 `tx_node` is the talker, a library with no `main()` that names no board. It
@@ -103,33 +103,21 @@ In the workspace, source ROS 2 and build and run
 the talker. This first run records the ROS 2 prefix in the workspace, so
 later runs of it need no sourced shell:
 
-```bash probe=60 probe-run=1500
+```bash probe=60 probe-run=1500 probe-keep
 source /opt/ros/humble/setup.bash
-nros run tx_node --expect "Publishing: 'Hello World: 1'"
+nros run tx_node
 ```
 
 ```text probe-expect=60
 Publishing: 'Hello World: 1'
-nros run: matched after
-```
-
-`nros run` builds the firmware (the first build compiles ThreadX, NetX Duo
-and nano-ros, a few minutes; later builds take seconds), then boots it with
-the store's `qemu-system-riscv64` on the `virt` machine, the UART on your
-terminal and virtio-net on the user-mode network. What it prints is the
-board's console. With `--expect` it stops QEMU and exits 0 at the first
-console line containing that text, and exits 1 if the board stops first. It stops the router it started, too.
-
-Without `--expect` it keeps running until you press Ctrl-C, which stops QEMU:
-
-```bash probe=65 probe-run=150 probe-keep
-nros run tx_node
-```
-
-```text probe-expect=65
-Publishing: 'Hello World: 1'
 Publishing: 'Hello World: 2'
 ```
+
+`nros run` builds the firmware (the first build compiles ThreadX, NetX Duo and
+nano-ros, a few minutes; later builds take seconds), then boots it with the
+store's `qemu-system-riscv64` on the `virt` machine, the UART on your terminal
+and virtio-net on the user-mode network. What it prints is the board's
+console. It keeps running until you press Ctrl-C.
 
 ## See it in ROS 2
 
@@ -143,11 +131,12 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ```text probe-expect=70
-data: 'Hello World:
+data: 'Hello World: …'
 ```
 
-The talker publishes best-effort, and `ros2 topic echo` defaults to reliable,
-which receives nothing from it. That is why the command asks for best-effort.
+The talker's publisher is reliable, as `ros2 topic info -v /chatter` shows.
+Asking for best-effort receives from a publisher of either kind, so the
+command works whatever QoS a publisher offers.
 
 ## If it doesn't work
 

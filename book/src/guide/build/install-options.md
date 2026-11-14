@@ -79,7 +79,7 @@ shares them.
 2. Provision the board and the RMW's host tools. `--rmw` defaults to
    `zenoh`:
 
-   ```text
+   ```console
    nros setup <board> --rmw <zenoh|xrce|cyclonedds>
    ```
 
@@ -199,7 +199,7 @@ before it writes (`--dry-run` writes nothing), the next `nros build`
 regenerates the bindings, and `nros setup <board>` brings the store up to
 the new index:
 
-```text
+```console
 curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh \
     | sh -s -- --version <newer>
 nros pin <newer>

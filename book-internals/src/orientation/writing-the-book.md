@@ -74,8 +74,10 @@ with a migration page for each.
     the contract, static pools, the execution sched tasks. Start from the example in
     front of the reader, not from the model. For what a ROS 2 user knows, link
     to the ROS 2 documentation.
-12. **The simplest working path first.** Serial before ethernet, with WiFi
-    stated as deferred. The first chapter names no launch file, image or
+12. **The simplest working path first.** The Tutorial runs one board in
+    every language, the FreeRTOS MPS2-AN385 on QEMU's user network (see
+    [One board for every language](#one-board-for-every-language)); serial
+    links are a how-to, and WiFi is stated as deferred. The first chapter names no launch file, image or
     entry. One run verb, `nros run`, with `nros flash --monitor` on hardware.
 13. **Say plainly where nano-ros differs from ROS 2.** Never imply a symmetry
     that is not there.
@@ -302,6 +304,96 @@ tab.
 
 `scripts/mdbook-lang-tabs.py` renders the groups and `scripts/lib/book_tabs.py`
 parses them. `check-book-audience` refuses a malformed group.
+
+## Code blocks
+
+The reader types into a terminal and edits in an editor such as VS Code. A
+page shows each of those as what it is, so the reader can tell at a glance
+what to type, what to expect and what to change. The rendered book labels a
+block from its fence (`book/theme/nros.css`); the probe replays the same
+blocks (`scripts/probe/extract-book-steps.py`).
+
+| The block holds | Fence | Renders as |
+| --- | --- | --- |
+| commands the reader types, probed | ```` ```bash probe=NN ```` | Terminal, accent edge |
+| a command that is not a step (a `<placeholder>`, hardware only) | ```` ```console ```` | Terminal |
+| what a program prints | ```` ```text ```` | Output, tinted, wraps |
+| a new file | ```` ```<lang> file=PATH ```` | the path above the file |
+| lines added to the end of a file | ```` ```<lang> append=PATH ```` | "Add to the end of PATH" |
+| a change to part of a file | ```` ```diff edit=PATH ```` | "In PATH, change the marked lines" |
+| a directory layout | ```` ```tree ```` | coloured, never wraps |
+| other plain text (a formula, a sketch) | ```` ```txt ```` | no label |
+
+- **A Terminal block holds commands only.** No output, no file content, no
+  `cat > PATH <<'EOF'`. One block may hold the few commands of one step.
+- **Show the output, short.** After a command whose result matters, show
+  what it prints in its own Output block, trimmed to the lines the reader
+  looks for. A value that changes per run is written `…`
+  (`data: 'Hello World: …'`); in a `probe-expect` block the run must print
+  the text before the `…`. Say "trimmed" when you cut lines.
+- **No text tools for the reader's work.** A Tutorial or how-to never edits
+  a file with `sed`, `awk` or `perl`, never writes one with a heredoc, and
+  does not pipe output through `grep`, `tee`, `head` or `cut` for the reader
+  to read. Edits are file, append or diff blocks. Use `grep` only when the
+  output runs to pages and the reader needs one line of it, and say so.
+- **A diff shows where.** Keep two or three unchanged lines (a space first)
+  around the `-` and `+` lines, enough for the reader to find the place in
+  an editor, and for the probe: the unchanged and `-` lines must occur in
+  the file exactly once.
+- **Several blocks, one step.** A command, the file it needs and the command
+  after it are three blocks under one `probe=NN`; the probe runs them in
+  page order.
+- **`nros run` runs until Ctrl-C.** A Tutorial chapter or starter runs it
+  plainly, shows the first lines it prints, and tells the reader to press
+  Ctrl-C. `--expect` and `--timeout` are for scripts and CI: the deploy
+  how-to and the CLI reference name them; a chapter does not. The probe
+  asserts the Output block (`probe-run=SECS`, `probe-expect=NN`), and
+  `probe-keep` keeps a run going for the step after it.
+- **Trees fit the page.** Each line within about 80 columns; a note longer
+  than a few words goes in the prose under the tree.
+- **Width.** Commands and source lines stay within about 80 columns: break a
+  long command with `\` continuations, one argument or package per line.
+
+### The Tutorial project's tree
+
+The Tutorial grows one workspace, `sensor_ws`, chapter by chapter. A chapter
+that adds or changes files shows the part of the tree it touches, near its
+start or where the work begins, and marks each file it adds `(new)` and each
+it changes `(changed)`:
+
+```tree
+sensor_ws/
+└── src/
+    ├── sensor_node/
+    └── sensor_node_bringup/
+        ├── system.toml        (changed)
+        └── launch/
+            └── system.launch.xml  (new)
+```
+
+Show only the branches the chapter touches, with their parents for
+orientation; leave the rest out. The reader then sees where this chapter's
+work sits in what the earlier chapters built.
+
+### One board for every language
+
+Every Tutorial chapter runs on one board in Rust, C and C++ alike, the
+FreeRTOS MPS2-AN385 in QEMU (`mps2-an385-freertos`), so a tab differs only in
+the code, never in the board, the commands or the output. A board's own
+page or starter shows the others.
+
+### Consistency and length
+
+- Name a thing once and keep the name: "router", not "router" in one
+  paragraph and "zenoh daemon" in the next; "image", "bringup", "board" as
+  [the glossary](../../../book/src/reference/glossary.md) defines them.
+- Headings are sentence case and verb phrases on task pages.
+- A step is: one sentence saying what and why, the block, its output, one or
+  two sentences on what the output shows. Explanations longer than that go
+  in "What just happened" or a Background page.
+- The budgets in checklist item 15 count prose only, not code blocks. A
+  revision that adds a block takes words out elsewhere: prefer a block the
+  reader can see to a paragraph describing it.
 
 ## Templates
 

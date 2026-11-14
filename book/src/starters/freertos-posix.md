@@ -88,11 +88,11 @@ cd fp_ws
 
 That wrote a workspace with two packages:
 
-```text
+```tree
 fp_ws/
 └── src/
-    ├── fp_node/                 # the talker: package.xml, Cargo.toml or CMakeLists.txt, its source
-    └── fp_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
+    ├── fp_node/          # the talker: manifest, build file, source
+    └── fp_node_bringup/  # what it runs on: board, RMW
 ```
 
 `fp_node` is the talker, a library with no `main()` that names no board. It
@@ -108,29 +108,16 @@ Build and run from the same shell, where ROS 2 is sourced. This first run
 records the ROS 2 prefix in the workspace, so later runs of it need no
 sourced shell:
 
-```bash probe=50
-nros run fp_node --expect "Publishing: 'Hello World: 1'" --timeout 600
-```
-
-`nros run` builds the talker with CMake (the first build compiles the
-FreeRTOS kernel, Cyclone DDS and nano-ros, a few minutes; later builds take
-seconds) and runs it. With `--expect` it stops the talker and exits 0 at the
-first line containing that text, and exits 1 if the talker stops first or
-`--timeout` runs out. It prints lines like:
-
-```text
-Publishing: 'Hello World: 1'
-nros run: matched after
-```
-
-Without `--expect` it keeps running until you press Ctrl-C. Start it that way
-in one terminal:
-
-```bash probe=60 probe-run=120 probe-keep
+```bash probe=50 probe-run=900 probe-keep
 nros run fp_node
 ```
 
-```text probe-expect=60
+`nros run` builds the talker with CMake (the first build compiles the FreeRTOS
+kernel, Cyclone DDS and nano-ros, a few minutes; later builds take seconds)
+and runs it. It keeps running until you press Ctrl-C. It prints:
+
+```text probe-expect=50
+Publishing: 'Hello World: 1'
 Publishing: 'Hello World: 2'
 ```
 
@@ -146,7 +133,7 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ```text probe-expect=70
-data: 'Hello World:
+data: 'Hello World: …'
 ```
 
 Both sides use domain 0, the ROS 2 default, so they find each other with no
@@ -198,27 +185,17 @@ Build and run the talker. `nros run` starts a zenoh router on
 `tcp/127.0.0.1:7447` for the run and stops it after, so there is nothing to
 start beside it:
 
-```bash probe=86 probe-run=900 variant=zenoh
+```bash probe=86 probe-run=900 probe-keep variant=zenoh
 source /opt/ros/humble/setup.bash
-nros run fpz_node --expect "Publishing: 'Hello World: 1'" --timeout 600
+nros run fpz_node
 ```
 
 ```text probe-expect=86 variant=zenoh
 Publishing: 'Hello World: 1'
-nros run: matched after
-```
-
-Start it again without `--expect` and leave it going; its router stays up
-while it runs. In another terminal, `ros2` reads it through that router, with
-`RMW_IMPLEMENTATION` set to `rmw_zenoh_cpp`:
-
-```bash probe=88 probe-run=120 probe-keep variant=zenoh
-nros run fpz_node
-```
-
-```text probe-expect=88 variant=zenoh
 Publishing: 'Hello World: 2'
 ```
+
+Leave it going. In a second terminal:
 
 ```bash probe=89 probe-run=90 variant=zenoh
 source /opt/ros/humble/setup.bash
@@ -227,7 +204,7 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ```text probe-expect=89 variant=zenoh
-data: 'Hello World:
+data: 'Hello World: …'
 ```
 
 ## If it doesn't work

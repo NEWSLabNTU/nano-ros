@@ -168,7 +168,7 @@ nros setup <board> --rmw <zenoh|xrce|cyclonedds>
 Replace `<board>` and the middleware with the ones you run first:
 
 - For the first Tutorial chapter, the emulated Cortex-M3 board:
-  `mps2-an385-baremetal` with `zenoh`. The chapter runs this step for you.
+  `mps2-an385-freertos` with `zenoh`. The chapter runs this step for you.
 - For a talker on this machine: `linux` with `cyclonedds`. Cyclone DDS runs
   inside your process, so it needs no router and no agent.
 - For any other board, its name from `nros board list`.

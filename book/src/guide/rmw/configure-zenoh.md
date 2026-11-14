@@ -58,13 +58,13 @@ a board needs to find the router.
    reaches it, and starts `rmw_zenohd` on the matching local port first:
 
    ```bash
-   nros run sensor_node --expect 'Publishing:'
+   nros run sensor_node
    ```
 
    ```text
    nros run: starting the zenoh router on tcp/127.0.0.1:7447
    Publishing: 'Hello World: 1'
-   nros run: matched after
+   Publishing: 'Hello World: 2'
    ```
 
 3. Use a router on another host instead. Name its address in the locator:
@@ -159,7 +159,7 @@ writes a router `downsampling` rule beside the resolved model.
 `ZENOH_CONFIG_OVERRIDE` entry `rmw_zenohd` reads (`--format json5` prints the
 rule file itself):
 
-```text
+```console
 ZENOH_CONFIG_OVERRIDE="$(nros router config --model build/nros/models/<bringup>/<stem>.yaml)" rmw_zenohd
 ```
 

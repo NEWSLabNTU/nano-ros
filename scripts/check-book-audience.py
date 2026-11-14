@@ -255,6 +255,7 @@ def main() -> int:
     book_charter.self_test()
     load("mdbook_lang_tabs", HERE / "mdbook-lang-tabs.py").self_test()
     load("mdbook_level_badge", HERE / "mdbook-level-badge.py").self_test()
+    load("mdbook_file_blocks", HERE / "mdbook-file-blocks.py").self_test()
     assert rule_g("a.md", "<!-- tabs -->\n#### Rust\nx\n<!-- /tabs -->\n")[0].startswith("a.md:1:")
     errs: list[str] = []
     pm = load("check_book_page_map", HERE / "check-book-page-map.py")

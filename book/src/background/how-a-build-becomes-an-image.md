@@ -27,7 +27,7 @@ to, and how nano-ros fits into a project whose build you already own.
 
 An image is your nodes and the layers under them, linked into one binary:
 
-```text
+```txt
 Application       your Rust, C or C++ node packages
 Board package     hardware and network bring-up, the entry point
 Core runtime      executor, nodes, publishers, services, actions,
@@ -42,7 +42,7 @@ Rust, C or C++ types with CDR serialization, and the RMW backend receives
 serialized bytes only. Publishing runs one way through the stack and receiving
 runs back:
 
-```text
+```txt
 your message -> CDR serializer -> RMW publish (bytes) -> transport
 transport -> RMW receive (bytes) -> CDR deserializer -> your callback
 ```

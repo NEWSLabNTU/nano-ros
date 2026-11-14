@@ -45,13 +45,13 @@ see [Use XRCE-DDS](use-xrce-dds.md); WiFi is not covered yet.
    terminal device of your host, then starts the router on that device:
 
    ```bash
-   nros run serial_node --expect 'Publishing:'
+   nros run serial_node
    ```
 
    ```text
    nros run: starting the zenoh router on serial//dev/pts/4#baudrate=115200
    Publishing: 'Hello World: 1'
-   nros run: matched after
+   Publishing: 'Hello World: 2'
    ```
 
    The device number differs from run to run. The router also listens on

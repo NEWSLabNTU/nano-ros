@@ -59,7 +59,9 @@ which only a Rust talker builds with:
 
 ```bash probe=34 track=installed
 mkdir -p nucleo_ws/manifest && cd nucleo_ws
-cat > manifest/west.yml <<'WEST_YML'
+```
+
+```yaml probe=34 track=installed file=manifest/west.yml
 manifest:
   remotes:
     - name: zephyrproject-rtos
@@ -78,7 +80,9 @@ manifest:
       path: modules/lang/rust
   self:
     path: manifest
-WEST_YML
+```
+
+```bash probe=34 track=installed
 west init -l manifest
 west update --narrow -o=--depth=1
 pip3 install --user -r zephyr/scripts/requirements-base.txt
@@ -165,33 +169,21 @@ definitions are what the build generates the talker's `std_msgs` code from.
 This first run records the ROS 2 prefix in the workspace, so later runs of it
 need no sourced shell:
 
-```bash probe=50 probe-run=1500 track=installed
+```bash probe=50 probe-run=1500 probe-keep track=installed
 source /opt/ros/humble/setup.bash
-nros run nucleo_node --expect "Publishing: 'Hello World: 1'"
+nros run nucleo_node
 ```
 
 ```text probe-expect=50
 Publishing: 'Hello World: 1'
-nros run: matched after
+Publishing: 'Hello World: 2'
 ```
 
 `nros run` builds the firmware through west (the first build takes a few
 minutes; later ones take seconds), boots it in Renode's `nucleo_f767zi`
 machine with USART3 on a terminal device of your host, starts `rmw_zenohd` on
-that device, and prints the board's console, USART6. With `--expect` it stops
-everything and exits 0 at the first console line containing that text, and
-exits 1 if the board stops first.
-
-Without `--expect` it keeps running until you press Ctrl-C. Start it that way
-in one terminal:
-
-```bash probe=60 probe-run=300 probe-keep track=installed
-nros run nucleo_node
-```
-
-```text probe-expect=60
-Publishing: 'Hello World: 2'
-```
+that device, and prints the board's console, USART6. It keeps running until
+you press Ctrl-C.
 
 ## Flash the board
 
@@ -227,10 +219,11 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ```text probe-expect=70
-data: 'Hello World:
+data: 'Hello World: …'
 ```
 
-The talker publishes best-effort, so the echo asks for best-effort too.
+The talker's publisher is reliable; asking for best-effort receives from a
+publisher of either kind.
 Ctrl-C in the first terminal stops Renode and the router together.
 
 ## If it doesn't work

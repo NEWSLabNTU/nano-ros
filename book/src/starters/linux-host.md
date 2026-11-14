@@ -82,11 +82,11 @@ cd host_ws
 
 That wrote a workspace with two packages:
 
-```text
+```tree
 host_ws/
 └── src/
-    ├── host_node/              # the talker: package.xml, Cargo.toml or CMakeLists.txt, its source
-    └── host_node_bringup/      # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
+    ├── host_node/          # the talker: manifest, build file, source
+    └── host_node_bringup/  # what it runs on: board, RMW
 ```
 
 `host_node` is the talker, a library with no `main()` that names no board. It
@@ -100,30 +100,18 @@ The build generates the message bindings from your ROS 2 install, so source it
 before the first run. That run records the ROS 2 prefix in the workspace, so
 later runs of `host_ws` need no sourced shell:
 
-```bash probe=50 track=installed
+```bash probe=50 probe-run=900 probe-keep track=installed
 source /opt/ros/humble/setup.bash
-nros run host_node --expect "Publishing: 'Hello World: 1'" --timeout 120
-```
-
-`nros run` builds the talker (the first build compiles nano-ros, a minute or
-two; later builds take seconds) and runs it. With `--expect` it stops the
-talker and exits 0 at the first line containing that text, and exits 1 if the
-talker stops first or `--timeout` runs out. It prints lines like:
-
-```text
-Publishing: 'Hello World: 1'
-nros run: matched after
-```
-
-Without `--expect` it keeps running until you press Ctrl-C. Start it that way
-in one terminal:
-
-```bash probe=60 probe-run=120 probe-keep track=installed
 nros run host_node
 ```
 
-```text probe-expect=60
-Publishing:
+`nros run` builds the talker (the first build compiles nano-ros, a minute or
+two; later builds take seconds) and runs it. It keeps running until you press
+Ctrl-C. It prints:
+
+```text probe-expect=50
+Publishing: 'Hello World: 1'
+Publishing: 'Hello World: 2'
 ```
 
 ## See it in ROS 2
@@ -138,7 +126,7 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ```text probe-expect=70
-data: 'Hello World:
+data: 'Hello World: …'
 ```
 
 Both sides use domain 0, the ROS 2 default, so they find each other with no

@@ -96,7 +96,7 @@ name = "listener"
    The build generates the launch file and copies your contract beside it. In
    a workspace, both are under `build/nros/launch/<bringup>/launch/`:
 
-   ```text
+   ```console
    ls build/nros/launch/<bringup>/launch/
    ```
 

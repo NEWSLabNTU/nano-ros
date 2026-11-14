@@ -20,7 +20,9 @@
 #   the page every `probe=` block of book/src/start/starter-image.md, in
 #            order. Blocks 20-29 are the SEAT's (typed inside the container):
 #            they run in the image with `--network none`, and every line of
-#            their `probe-expect` block must appear. Every other block is the
+#            their `probe-expect` block must appear. A `probe-run=SECS` seat
+#            step (`nros run`, which runs until Ctrl-C) is stopped after SECS
+#            and judged on those lines alone. Every other block is the
 #            HOST's (pull, run, mount, digest, save/load) and runs here, with
 #            the page's image name replaced by <image-ref> and `-it` dropped
 #            to `-i` with no input, so each container starts and exits.
@@ -35,6 +37,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/grep-q.sh
 . "$REPO_ROOT/scripts/lib/grep-q.sh"
+# shellcheck source=scripts/lib/deadline.sh
+. "$REPO_ROOT/scripts/lib/deadline.sh"
 NAME=verify-starter-image
 ENGINE="${NROS_IMAGE_ENGINE:-docker}"
 PAGE="$REPO_ROOT/book/src/start/starter-image.md"
@@ -121,7 +125,9 @@ for st in sorted(steps, key=lambda s: s["order"]):
             body = body.replace("docker pull ", "docker image inspect --format '{{.Id}}' ")
     # A reader's shell: -e, but no -u (ROS's setup.bash reads unset variables).
     (out / f"{kind}-{n}.sh").write_text("set -eo pipefail\n" + body + "\n")
-    order.append(f"{kind} {n}")
+    # A `probe-run=SECS` seat step never exits (`nros run` until Ctrl-C): it is
+    # stopped after SECS and passes on its expected lines alone.
+    order.append(f"{kind} {n} {st['run'] or 0}")
 (out / "order").write_text("\n".join(order) + "\n")
 (out / "expect.txt").write_text("\n".join(l for e in expects for l in e["lines"]) + "\n")
 # The course recipe: the page's one devcontainer.json block.
@@ -141,11 +147,21 @@ PYEOF
 work="$steps_dir/work"
 mkdir -p "$work"
 chmod 777 "$work" # block 30 mounts it as /work for `nros`
-while read -r kind n; do
+while read -r kind n secs; do
     case "$kind" in
         seat)
-            if "$ENGINE" run --rm --network none -v "$steps_dir:/probe:ro" "$REF" \
-                    bash "/probe/seat-$n.sh" >"$steps_dir/seat-$n.log" 2>&1; then
+            seat_rc=0
+            if [ "$secs" != 0 ]; then
+                # Stopped by `timeout` inside the container (Ctrl-C's signal),
+                # so its exit says nothing; the expected lines decide.
+                "$ENGINE" run --rm --network none -v "$steps_dir:/probe:ro" "$REF" \
+                    "${NROS_DEADLINE[@]}" --signal=INT "$secs" bash "/probe/seat-$n.sh" \
+                    >"$steps_dir/seat-$n.log" 2>&1 || true
+            else
+                "$ENGINE" run --rm --network none -v "$steps_dir:/probe:ro" "$REF" \
+                    bash "/probe/seat-$n.sh" >"$steps_dir/seat-$n.log" 2>&1 || seat_rc=$?
+            fi
+            if [ "$seat_rc" = 0 ]; then
                 seat_log="$(cat "$steps_dir/seat-$n.log")"
                 while IFS= read -r want; do
                     [ -n "$want" ] || continue

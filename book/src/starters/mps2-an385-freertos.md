@@ -77,11 +77,11 @@ cd fr_ws
 
 That wrote a workspace with two packages:
 
-```text
+```tree
 fr_ws/
 └── src/
-    ├── fr_node/                 # the talker: package.xml, Cargo.toml or CMakeLists.txt, its source
-    └── fr_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
+    ├── fr_node/          # the talker: manifest, build file, source
+    └── fr_node_bringup/  # what it runs on: board, RMW
 ```
 
 `fr_node` is the talker, a library with no `main()` that names no board. It
@@ -102,33 +102,21 @@ In the workspace, source ROS 2 and build and run the talker. This
 first run records the ROS 2 prefix in the workspace, so later runs of it need
 no sourced shell:
 
-```bash probe=60 probe-run=1500
+```bash probe=60 probe-run=1500 probe-keep
 source /opt/ros/humble/setup.bash
-nros run fr_node --expect "Publishing: 'Hello World: 1'"
+nros run fr_node
 ```
 
 ```text probe-expect=60
 Publishing: 'Hello World: 1'
-nros run: matched after
+Publishing: 'Hello World: 2'
 ```
 
 `nros run` builds the firmware (the first build cross-compiles nano-ros, the
 FreeRTOS kernel and lwIP, about three minutes for C and five for Rust; later
 builds take seconds), then boots it in QEMU with the board's LAN9118 on the
-user-mode network. What it prints is the board's console. With `--expect` it
-stops the board and exits 0 at the first console line containing that text,
-and exits 1 if the board stops first. It stops the router it started, too.
-
-Without `--expect` it keeps running until you press Ctrl-C, which stops QEMU:
-
-```bash probe=65 probe-run=120 probe-keep
-nros run fr_node
-```
-
-```text probe-expect=65
-Publishing: 'Hello World: 1'
-Publishing: 'Hello World: 2'
-```
+user-mode network. What it prints is the board's console. It keeps running
+until you press Ctrl-C.
 
 ## See it in ROS 2
 
@@ -144,11 +132,12 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 It prints a `data:` line per message:
 
 ```text probe-expect=70
-data: 'Hello World:
+data: 'Hello World: …'
 ```
 
-The talker publishes best-effort, and `ros2 topic echo` defaults to reliable,
-which receives nothing from it. That is why the command asks for best-effort.
+The talker's publisher is reliable, as `ros2 topic info -v /chatter`
+shows. Asking for best-effort receives from a publisher of either kind, so
+the command works whatever QoS a publisher offers.
 
 ## If it doesn't work
 
@@ -170,4 +159,5 @@ which receives nothing from it. That is why the command asks for best-effort.
   hardware:** [FreeRTOS on mps2-an385](../guide/platforms/freertos.md).
 - **The same FreeRTOS on this machine, with no QEMU:**
   [FreeRTOS POSIX](freertos-posix.md).
-- **The project, grown:** the [Tutorial](../tutorial/run-a-talker.md).
+- **The project, grown:** the [Tutorial](../tutorial/run-a-talker.md) starts
+  from this same talker on this same board.
