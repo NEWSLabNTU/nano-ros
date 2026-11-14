@@ -137,7 +137,6 @@ day it landed, which may only shrink.
 | 0024 | [multi-node-workspace-layout](0024-multi-node-workspace-layout.md) | Draft | overall multi-node workspace shape + open questions |
 | 0025 | [workspace-layout-by-case](0025-workspace-layout-by-case.md) | Draft | concrete file trees per case (single/multi × rust/cpp) |
 | 0026 | [example-directory-layout](0026-example-directory-layout.md) | Stable | canonical `examples/<plat>/<lang>/<example>/` shape |
-| 0027 | [ros2-user-workflow](0027-ros2-user-workflow.md) | Stable | user-facing workflow + `nros new` scaffolding |
 | 0030 | [sequence-of-nested](0030-sequence-of-nested.md) | Draft | nested-sequence message handling (Phase 212 spike) |
 | 0032 | [entry-codegen-pipeline](0032-entry-codegen-pipeline.md) | Draft | how `main()` is emitted: proc-macro + CLI mirror, BoardEntry run/run_sched_tasks, sched task resolver |
 | 0033 | [message-field-capacity-config](0033-message-field-capacity-config.md) | Stable | per-field, language-agnostic message capacity via `nros-codegen.toml`; owned/heap/borrowed modes |
@@ -180,6 +179,10 @@ day it landed, which may only shrink.
 ## Superseded
 
 Retired RFCs live in [archived/](archived/) with `status: Superseded` and a forward pointer.
+
+| RFC | Title | Superseded by | Why |
+| --- | --- | --- | --- |
+| 0027 | [ros2-user-workflow](archived/0027-ros2-user-workflow.md) | RFC-0121 | RFC-0121 decides the project shape it argued for (phase-555 W3, 2026-11-14) |
 
 ## How a decision moves: RFC → roadmap → code
 

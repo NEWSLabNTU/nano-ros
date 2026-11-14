@@ -1,21 +1,30 @@
 ---
 rfc: 0027
 title: "ROS 2 User Workflow for nano-ros"
-status: Stable
+status: Superseded
 area: workspace-system-model
 since: 2026-05
 last-reviewed: 2026-11
 implements-tracked-by: [phase-263]
 supersedes: []
-superseded-by: null
+superseded-by: 0121
 ---
 
 # ROS 2 User Workflow for nano-ros
 
+> **Superseded by [RFC-0121](../0121-workspace-first-project-layout.md)**
+> (phase-555 W3, ruled 2026-11-14). RFC-0121 now decides the project shape:
+> every project is a colcon workspace, and `system.toml` lives only in a
+> bringup package. RFC-0024 and RFC-0025 own the layout. This document is
+> kept as history; its notes below rename half its vocabulary, and its
+> CLI-verb note is no longer true (`nros build` and `nros run` are user-tier
+> verbs again: RFC-0116 D7, RFC-0117 D2, RFC-0118 D2). Read RFC-0121 for
+> the current design.
+
 > **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` are refused since rlm v0.3.11 (phase 536 W3), naming the new key and `play_launch migrate`. The prose and nano-ros's own names move in W2.
 
 **Status:** Stable (origin/rationale doc — current layout authority is RFC-0024/0025)
-**Related:** [Phase 123](../roadmap/archived/phase-123-build-and-api-revision.md), [RTOS orchestration](0015-rtos-orchestration.md), [Colcon build type](archived/colcon-nano-ros-build-type.md)
+**Related:** [Phase 123](../../roadmap/archived/phase-123-build-and-api-revision.md), [RTOS orchestration](../0015-rtos-orchestration.md), [Colcon build type](colcon-nano-ros-build-type.md)
 **Related repo:** `~/repos/play_launch`
 
 > **Terminology note (Phase 212.L.9 rename).** This doc predates the rename and

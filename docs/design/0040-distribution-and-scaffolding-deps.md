@@ -46,7 +46,8 @@ tree beside it, so the path-patch trick has nothing to point at until the user
 says where their nano-ros checkout lives.
 
 There is no RFC home for this decision today: `nros new` scaffolding is gestured
-at in RFC-0027 (a Stable *rationale* doc that predates Phase 222) and the layout
+at in RFC-0027 (a rationale doc that predates Phase 222, since superseded by
+RFC-0121) and the layout
 RFCs 0024/0025, but the source-release **dependency convention** is unwritten.
 
 ## Design
