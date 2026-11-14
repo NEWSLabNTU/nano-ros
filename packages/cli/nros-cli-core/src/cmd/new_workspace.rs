@@ -959,10 +959,10 @@ mod tests {
         let k = |s: &str| format!("{s}@nucleo-f767zi-zephyr");
         assert_eq!(
             recorded_floor(&t, &k("action-server/rust/zenoh")),
-            Some(84288)
+            Some(83600)
         );
-        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(79784));
-        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(140744));
+        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(79464));
+        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(114600));
         assert_eq!(recorded_floor(&t, &k("listener/rust/zenoh")), None);
     }
 
@@ -1036,8 +1036,8 @@ mod tests {
                 "zenoh",
                 "nucleo-f767zi-zephyr"
             ),
-            // issue 2402: the bind walk, 76,624 B, plus the 10 % margin
-            Some(84288)
+            // issue 2402: the bind walk, 76,000 B, plus the 10 % margin
+            Some(83600)
         );
         assert!(raised >= 1);
         // not a Zephyr board: the knob is not CONFIG_MAIN_STACK_SIZE

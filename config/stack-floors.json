@@ -24,7 +24,7 @@
         "NROS_MAX_QUERYABLES": 4,
         "NROS_MAX_SUBSCRIBERS": 0
       },
-      "static": 76624,
+      "static": 76000,
       "target": "thumbv7em-none-eabi"
     },
     {
@@ -42,7 +42,7 @@
         "NROS_MAX_QUERYABLES": 0,
         "NROS_MAX_SUBSCRIBERS": 0
       },
-      "static": 72528,
+      "static": 72240,
       "target": "thumbv7em-none-eabi"
     },
     {
@@ -78,7 +78,7 @@
         "NROS_MAX_QUERYABLES": 0,
         "NROS_MAX_SUBSCRIBERS": 0
       },
-      "static": 127948,
+      "static": 104180,
       "target": "thumbv7em-none-eabi"
     }
   ],

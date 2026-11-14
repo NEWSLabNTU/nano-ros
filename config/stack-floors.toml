@@ -81,7 +81,7 @@ rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
 peak = 30256
-static = 76624
+static = 76000
 method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, LTO build; static from rust_main"
 issue = "2402"
 
@@ -99,7 +99,7 @@ rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
 peak = 28888
-static = 72528
+static = 72240
 method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 6 rounds, LTO build; static from rust_main"
 issue = "2402"
 
@@ -135,7 +135,7 @@ rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
 peak = 11876
-static = 127948
+static = 104180
 method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 14 rounds, nros-relwithdebinfo (no LTO); static from main"
 issue = "2402"
 

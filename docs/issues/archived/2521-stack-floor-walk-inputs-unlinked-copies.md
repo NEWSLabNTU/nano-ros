@@ -1,7 +1,7 @@
 ---
 id: 2521
 title: "The stack walk reads unlinked copies of a crate's bitcode, so the same template walks differently per build"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [memory, tooling]
@@ -47,3 +47,32 @@ projects from one template walk the same graph up to symbol names.
 ## Acceptance
 
 Two `nros new` projects from one template walk to the same depth.
+
+## Resolution (2026-11-14, phase-557 W7c)
+
+The walk now selects the bitcode the link used:
+
+- `linked_codegen_units` reads every Rust codegen unit (`<unit>.rcgu.o`) a
+  GNU ld or LLD map names, as an archive member or a loose object.
+- `select_linked_bitcode` keeps a `--bitcode-dir` module only when its unit
+  is one of them, and walks a unit found twice with the same bytes once. A
+  fat-LTO dir's merged module is always kept (the map does not name it by
+  unit). With no map, nothing changes.
+- `--sysroot` takes the core / alloc / compiler_builtins rlibs the link used,
+  matched by crate hash across the installed toolchains, and only for crates
+  `--bitcode-dir` does not already supply (build-std). This found that a
+  fresh Zephyr Rust project links the `stable` toolchain's sysroot, not the
+  pinned one (issue 2546), so the walk had been reading the pinned
+  toolchain's bitcode for code the image did not contain.
+
+**Measured.** Three `nros new` projects per nucleo template, at three paths
+(so three sets of crate hashes), each walk to identical bytes:
+
+| template | before | after |
+| --- | ---: | ---: |
+| Rust action server | 76,624 | 76,000 |
+| Rust talker | 72,528 | 72,240 |
+| C talker | 127,852 / 127,948 | 104,180 |
+
+The mps2 bare-metal talker (cargo road) is unchanged at 90,200: 415 unlinked
+units are left out, none on its path.

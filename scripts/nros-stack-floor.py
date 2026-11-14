@@ -300,18 +300,43 @@ def cxx_demangler(stated: str | None, llvm_bin: str | None) -> str:
                       "or `c++filt` is present")
 
 
-def sysroot_rlibs(target: str) -> list[str]:
-    """The pinned toolchain's core / alloc / compiler_builtins rlibs for
-    `target`: their embedded bitcode is what build-std would have compiled."""
+SYSROOT_CRATES = ("core", "alloc", "compiler_builtins")
+
+
+def sysroot_rlibs(target: str, units: set[str] | None = None) -> list[str]:
+    """The core / alloc / compiler_builtins rlibs for `target`: their
+    embedded bitcode is what build-std would have compiled.
+
+    Without `units`, the pinned toolchain's. With them (the link map's
+    codegen units), the rlibs the link USED, matched by crate name and hash
+    (`compiler_builtins-<hash>`) across the installed toolchains: a lane may
+    link another toolchain's sysroot than the pinned one, and the pinned
+    toolchain's bitcode is then not the image's code (issue 2521)."""
     sysroot = subprocess.run(["rustc", "--print", "sysroot"], check=True, cwd=CHECKOUT,
                              capture_output=True, text=True).stdout.strip()
-    lib = Path(sysroot, "lib", "rustlib", target, "lib")
-    found = [str(p) for stem in ("core", "alloc", "compiler_builtins")
-             for p in sorted(lib.glob(f"lib{stem}-*.rlib"))]
-    if not found:
-        sys.exit(f"nros-stack-floor: --sysroot: no rlibs under {lib} "
+    pinned = Path(sysroot, "lib", "rustlib", target, "lib")
+    if units is not None:
+        want = {u.split(".", 1)[0] for u in units
+                if u.split(".", 1)[0].rsplit("-", 1)[0] in SYSROOT_CRATES}
+        home = Path(os.environ.get("RUSTUP_HOME") or Path.home() / ".rustup")
+        libs = [pinned] + sorted(home.glob(f"toolchains/*/lib/rustlib/{target}/lib"))
+        found: dict[str, str] = {}
+        for lib in libs:
+            for w in sorted(want):
+                p = lib / f"lib{w}.rlib"
+                if w not in found and p.exists():
+                    found[w] = str(p)
+        missing = sorted(want - set(found))
+        if missing:
+            print(f"nros-stack-floor: --sysroot: the link used {', '.join(missing)}, which no "
+                  f"installed `{target}` toolchain holds: its functions take frames from the "
+                  "linked image or refuse", file=sys.stderr)
+        return [found[w] for w in sorted(found)]
+    found_p = [str(p) for stem in SYSROOT_CRATES for p in sorted(pinned.glob(f"lib{stem}-*.rlib"))]
+    if not found_p:
+        sys.exit(f"nros-stack-floor: --sysroot: no rlibs under {pinned} "
                  f"(is the `{target}` target installed for the pinned toolchain?)")
-    return found
+    return found_p
 
 
 def bitcode_dirs_expanded(dirs: list[str]) -> list[str]:
@@ -654,15 +679,76 @@ def extract_members(inputs: list[str], llvm_bin: str | None, cache: Path) -> lis
     return out
 
 
+# A Rust codegen unit as a link map names it: an archive member
+# `lib.a(<unit>.rcgu.o)` or a loose `<dir>/<unit>.rcgu.o`.
+_RCGU_UNIT = re.compile(r"(?:^|[\s(/])([^\s()/]+\.rcgu)\.o(?=[):\s]|$)", re.M)
+
+
+def linked_codegen_units(map_text: str) -> set[str]:
+    """Every Rust codegen unit a link LOADED, by name (`<unit>.rcgu`), from a
+    GNU ld or LLD `-Map` file. A unit's object and its `-C save-temps` bitcode
+    share that name, so it says which bitcode is the image's (issue 2521)."""
+    return set(_RCGU_UNIT.findall(map_text))
+
+
+def unit_key(bc: Path) -> str | None:
+    """The codegen unit a bitcode module was compiled for, or None when the
+    name is not a codegen unit's (a module given by hand)."""
+    n = bc.name
+    for suf in (".thin-lto-after-pm.bc", ".bc"):
+        if n.endswith(suf) and n[: -len(suf)].endswith(".rcgu"):
+            return n[: -len(suf)]
+    return None
+
+
+def select_linked_bitcode(bcs: list[Path], units: set[str] | None) -> tuple[list[Path], int]:
+    """The bitcode the link used (issue 2521). A build tree holds more Rust
+    bitcode than one image links: a crate built by two cargo invocations (the
+    C and C++ lanes), an rlib copy beside a staticlib. Walking the extra
+    copies gave a path through functions the image does not contain, and
+    which copy a site reached depended on the crate hashes, so on the
+    project's path. With `units` (from the link map) a codegen unit the link
+    did not load is left out, and one unit found twice with the same bytes is
+    walked once. Without it, every module is kept, as before.
+    Returns (kept, how many were left out)."""
+    if units is None:
+        return bcs, 0
+    kept: list[Path] = []
+    seen: dict[str, set[bytes]] = {}
+    left = 0
+    for bc in bcs:
+        k = unit_key(bc)
+        if k is None:
+            kept.append(bc)
+            continue
+        if k not in units:
+            left += 1
+            continue
+        digest = hashlib.sha256(bc.read_bytes()).digest()
+        if digest in seen.setdefault(k, set()):
+            left += 1
+            continue
+        seen[k].add(digest)
+        kept.append(bc)
+    return kept, left
+
+
 def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | None,
-                  cache: Path) -> list[str]:
+                  cache: Path, units: set[str] | None = None) -> list[str]:
     """Objects and archives pass through; `.bc`, `.rlib` and every
-    `--bitcode-dir` become llc objects (cached by bitcode + flags + llc)."""
+    `--bitcode-dir` become llc objects (cached by bitcode + flags + llc).
+    With `units` (the link map's codegen units), only the bitcode the link
+    used is compiled."""
     llc = llvm_tool("llc", llvm_bin)
     out: list[str] = []
     bcs: list[Path] = []
+    # Fat LTO merges a dir's crates into one module the map does not name
+    # by unit: that dir's module is the image's code and is always kept.
+    fat_bcs: list[Path] = []
     for d in bitcode_dirs:
-        bcs += pick_codegen_bitcode(list(Path(d).glob("*.bc")))  # flat dir, not a walk
+        names = list(Path(d).glob("*.bc"))  # flat dir, not a walk
+        fat = any(p.name.endswith(".rcgu.lto.input.bc") for p in names)
+        (fat_bcs if fat else bcs).extend(pick_codegen_bitcode(names))
     for i in inputs:
         p = Path(i)
         if p.suffix == ".bc":
@@ -671,6 +757,12 @@ def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | No
             bcs += rlib_bitcode(p, llvm_bin, cache)
         else:
             out.append(i)
+    bcs, left = select_linked_bitcode(bcs, units)
+    bcs = fat_bcs + bcs
+    if left:
+        print(f"nros-stack-floor: {left} Rust codegen unit(s) under --bitcode-dir are not in "
+              "the link (another build of the crate, or a duplicate): not walked",
+              file=sys.stderr)
     ir_objs = [str(llc_object(bc, llc, cache)) for bc in bcs]
     out += ir_objs
     EXPANDED_BITCODE[:] = bcs
@@ -1865,8 +1957,10 @@ def run(args: argparse.Namespace) -> int:
     g = Graph()
     externals_unlinked: set[str] = set()
     cache = Path(args.llc_cache or Path.home() / ".cache" / "nros-stack-floor")
+    units: set[str] | None = None
     if args.link_map:
         mp = Path(args.link_map)
+        units = linked_codegen_units(mp.read_text(errors="replace")) or None
         kept, dropped = link_map_inputs(mp, [Path(d) for d in (args.link_dir or [mp.parent])])
         if not kept:
             raise SystemExit(f"nros-stack-floor: {mp} names no input under the link directory: "
@@ -1878,9 +1972,14 @@ def run(args: argparse.Namespace) -> int:
     if args.sysroot:
         if not args.target:
             raise SystemExit("nros-stack-floor: --sysroot needs --target")
-        args.inputs = list(args.inputs) + sysroot_rlibs(args.target)
+        # a crate whose linked units have bitcode under --bitcode-dir (build-std)
+        # is not the sysroot's to supply
+        in_dirs = {k for d in bitcode_dirs_expanded(args.bitcode_dir or [])
+                   for k in (unit_key(p) for p in Path(d).glob("*.bc")) if k}
+        args.inputs = list(args.inputs) + sysroot_rlibs(
+            args.target, None if units is None else units - in_dirs)
     args.inputs = expand_inputs(args.inputs, bitcode_dirs_expanded(args.bitcode_dir or []),
-                                args.llvm_bin, cache)
+                                args.llvm_bin, cache, units)
     for i in range(0, len(args.inputs), LOAD_CHUNK):
         load_object(g, args.inputs[i:i + LOAD_CHUNK], readobj, objdump)
     for su in args.su or []:
@@ -2365,6 +2464,31 @@ def self_test() -> int:
               [Path(k).name for k in kept] == ["libb-1.rlib(6355-board.o)"])
         check("lld map: toolchain members dropped",
               dropped == [str(Path("/opt/gcc/libc.a").resolve()) + "(libc_a-memcpy.o)"])
+        # issue 2521: the codegen units a link loaded, from either map
+        check("lld map: linked Rust units, members and loose",
+              linked_codegen_units(Path(d, "l.map").read_text())
+              == {"b.b.cgu.0.rcgu", "app.app.cgu.0.rcgu"})
+        check("gnu map: linked Rust units from archive members",
+              linked_codegen_units(
+                  " .text.f  0x08000100  0x10 nros-rust-cpp/deps/libx.a(x-1.x.2-cgu.03.rcgu.o)\n"
+                  "libx.a(x-1.x.2-cgu.04.rcgu.o)\n                              main.c.obj (f)\n")
+              == {"x-1.x.2-cgu.03.rcgu", "x-1.x.2-cgu.04.rcgu"})
+        for n, body in (("u-1.u.a-cgu.0.rcgu.bc", b"A"), ("u-2.u.b-cgu.0.rcgu.bc", b"B"),
+                        ("dup.rcgu.bc", b"D"), ("hand.bc", b"H")):
+            Path(d, "deps", n).write_bytes(body)
+        Path(d, "dup2").mkdir()
+        Path(d, "dup2", "dup.rcgu.bc").write_bytes(b"D")
+        Path(d, "dup2", "w.rcgu.thin-lto-after-pm.bc").write_bytes(b"W")
+        bcs = [Path(d, "deps", n) for n in ("u-1.u.a-cgu.0.rcgu.bc", "u-2.u.b-cgu.0.rcgu.bc",
+                                             "dup.rcgu.bc", "hand.bc")] + \
+              [Path(d, "dup2", "dup.rcgu.bc"), Path(d, "dup2", "w.rcgu.thin-lto-after-pm.bc")]
+        kept_bc, left = select_linked_bitcode(
+            bcs, {"u-1.u.a-cgu.0.rcgu", "dup.rcgu", "w.rcgu"})
+        check("bitcode: only the linked units, a same-bytes duplicate once, hand-given kept",
+              [p.name for p in kept_bc] == ["u-1.u.a-cgu.0.rcgu.bc", "dup.rcgu.bc", "hand.bc",
+                                            "w.rcgu.thin-lto-after-pm.bc"] and left == 2)
+        check("bitcode: no map, nothing left out",
+              select_linked_bitcode(bcs, None) == (bcs, 0))
     # the stack a board's build states, found through cargo's JSON
     with tempfile.TemporaryDirectory() as d:
         Path(d, "a").mkdir(); Path(d, "b").mkdir()

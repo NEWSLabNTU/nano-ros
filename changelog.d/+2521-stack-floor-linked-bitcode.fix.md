@@ -1,0 +1,1 @@
+The stack walk now reads only the Rust bitcode the link used, so two projects made from one template walk to the same floor whatever their path; it also takes the sysroot crates the link used rather than the pinned toolchain's.
