@@ -7,7 +7,7 @@
  * goal handle nor a `std::shared_future`, so it is a `static_assert` naming
  * the goal-id-keyed form. `just check cpp` compiles this WITHOUT
  * `NROS_CPP_STD` and requires it to FAIL with `REFUSED by nano-ros` AND
- * `issue 2015` (the goal-handle refusal it shares) in the text.
+ * `goal-handle shapes` (the goal-handle refusal it shares) in the text.
  */
 
 #include <rclcpp/rclcpp.hpp>
