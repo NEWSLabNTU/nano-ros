@@ -1258,9 +1258,10 @@ function(_nros_resolve_codegen_tool _cv)
             set(${_cv} "${_found}")
         endif()
         if(NOT ${_cv})
+            # Phase 218: the CLI is built in-tree.
             message(FATAL_ERROR
                 "nros (codegen tool) not found on PATH or in ~/.nros/bin. nano-ros "
-                "builds the `nros` CLI in-tree from packages/cli/ (Phase 218):\n"
+                "builds the `nros` CLI in-tree from packages/cli/:\n"
                 "  ./scripts/bootstrap.sh && source ./activate.sh   (contributors: just setup-cli)\n"
                 "or pre-set the cache var: -D${_cv}=<path-to-nros> (Zephyr also "
                 "accepts prj.conf CONFIG_NROS_CODEGEN_TOOL / west "

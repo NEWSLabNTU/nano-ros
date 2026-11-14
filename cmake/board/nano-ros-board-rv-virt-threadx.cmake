@@ -175,9 +175,11 @@ if(NOT EXISTS "${_NROS_BOARD_STARTUP_C}")
         "${_NROS_BOARD_STARTUP_C}.")
 endif()
 if(NOT EXISTS "${_NROS_BOARD_C_DIR}/board_threadx_qemu_riscv64.c")
+    # Phase 152.2.B.1 renamed this file from app_define.c.
     message(FATAL_ERROR
         "nano-ros-board-rv-virt-threadx: board_threadx_qemu_riscv64.c not found at "
-        "${_NROS_BOARD_C_DIR}/board_threadx_qemu_riscv64.c (Phase 152.2.B.1 renamed from app_define.c).")
+        "${_NROS_BOARD_C_DIR}/board_threadx_qemu_riscv64.c (it was once named "
+        "app_define.c). Restore it from the nano-ros source tree.")
 endif()
 
 # ---------------------------------------------------------------------------

@@ -216,9 +216,10 @@ function(nros_nuttx_build_example)
         get_filename_component(_nros_cpp_include
             "${_NANO_ROS_PREFIX}/packages/api/nros-cpp/include" ABSOLUTE)
     else()
+        # _NANO_ROS_PREFIX is the Phase 137 add_subdirectory shape.
         message(FATAL_ERROR
             "nros_nuttx_build_example: neither NanoRos_DIR (legacy "
-            "find_package shape) nor _NANO_ROS_PREFIX (Phase 137 "
+            "find_package shape) nor _NANO_ROS_PREFIX ("
             "add_subdirectory shape) is defined. The platform module "
             "should set one of them before calling this function.")
     endif()

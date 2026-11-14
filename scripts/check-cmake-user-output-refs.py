@@ -15,7 +15,7 @@ Text a default-level configure or build shows: the string arguments of
 `message(STATUS|NOTICE|WARNING|AUTHOR_WARNING|DEPRECATION|FATAL_ERROR|SEND_ERROR ...)` and a custom command's or
 target's `COMMENT "..."`, in every tracked `.cmake` file outside tests and
 examples plus the root `CMakeLists.txt`, that cite an issue (`issue 1234`,
-`#1234`), an RFC (`RFC-0100`) or a phase (`phase-517`). `FATAL_ERROR` and
+`#1234`), an RFC (`RFC-0100`) or a phase (`phase-517`, `Phase 218`). `FATAL_ERROR` and
 `SEND_ERROR` ARE counted (issue 2443, user ruling 2026-11-12, option A): a
 build-stopping refusal names what, where and how to fix, and its id lives in
 a comment above it or in `nros_message_detail()`.
@@ -39,7 +39,7 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REF = re.compile(r"\b(issues? \d{4}|RFC-\d{4}|phase-\d{3})|#\d{4}\b")
+REF = re.compile(r"\b(issues? \d{4}|RFC-\d{4}|[Pp]hase[- ]\d{3})|#\d{4}\b")
 # Issue 2305 -- `DEPRECATION` prints at the default level too (a warning,
 # unless CMAKE_WARN_DEPRECATED is turned off).
 SHOWN = ("STATUS", "NOTICE", "WARNING", "AUTHOR_WARNING", "DEPRECATION")
@@ -115,9 +115,10 @@ def selftest(verbose=False):
     good = 'message(STATUS "nros: sizes kept")\nnros_message_detail("why (issue 0991)")\n'
     bad = ('message(STATUS\n  "a (issue 0991)")\n'
            'add_custom_target(x COMMENT "stamp (issues 0740, 1783)" VERBATIM)\n'
-           'message(WARNING "see RFC-0100")\n')
+           'message(WARNING "see RFC-0100")\n'
+           'message(FATAL_ERROR "built in-tree (Phase 218)")\n')
     fatal = 'message(FATAL_ERROR "stop (issue 1525)")\n# message(STATUS "issue 1")\n'
-    ok = sites(good) == [] and len(sites(bad)) == 3 and len(sites(fatal)) == 1
+    ok = sites(good) == [] and len(sites(bad)) == 4 and len(sites(fatal)) == 1
     if verbose:
         print("check-cmake-user-output-refs: selftest " + ("ok" if ok else "FAILED"))
     if not ok:
