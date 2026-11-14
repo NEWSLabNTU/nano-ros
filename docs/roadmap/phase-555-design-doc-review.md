@@ -164,7 +164,10 @@ brief of RFC-0126 did.
   AGENTS.md drift rule).
 - Each `implements-tracked-by` is updated where a ruling moves work.
 - **Acceptance:** `rfc-inventory.py` reports no candidate pair that a ruling
-  resolved, and `check rfc-phase-tracking` stays green.
+  resolved, and `check rfc-phase-tracking` stays green. A ruling resolves a
+  pair either with a link (supersedes, amends) or, when no link applies (two
+  subjects, or complementary), with an entry in
+  `docs/design/reviewed-pairs.toml` naming the ruling.
 - **Status:** OPEN
 
 ### W4 -- Keep it organized
