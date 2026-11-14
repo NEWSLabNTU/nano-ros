@@ -280,14 +280,7 @@ fn is_pruned_dir(name: &str, path: &Path) -> bool {
     if name.starts_with("build-") || name.starts_with("target-") {
         return true;
     }
-    [
-        "COLCON_IGNORE",
-        "AMENT_IGNORE",
-        "NROS_IGNORE",
-        ".nros-ignore",
-    ]
-    .iter()
-    .any(|marker| path.join(marker).exists())
+    nros_pkg_index::is_ignored_dir(path)
 }
 
 /// `<depend>`, `<build_depend>`, `<exec_depend>`, `<test_depend>` … all of them.

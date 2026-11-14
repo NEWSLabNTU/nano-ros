@@ -603,3 +603,7 @@ this phase will fix it.
 ## Issues homed here (2026-11-02)
 
 - [issue 2165](../issues/2165-zephyr-smp-nros-log-stops-after-four-records.md): on the island's Zephyr SMP image (`fvp_baser_aemv8r_smp`), only the four early-ring `nros_log` records reach the console. Every later record is lost with no `report_lost` warning. The same sources log normally on FreeRTOS.
+
+## Issues homed here (2026-11-15)
+
+- [issue 2584](../issues/archived/2584-configure-ignores-no-marker.md) (GitHub #3871, resolved): `nros configure` resolved a package that carried an ignore marker, so a contract-only bringup kept under `src/` failed the whole workspace. The marker list now has one home, `nros_pkg_index::is_ignored_dir`, and every package walk asks it.

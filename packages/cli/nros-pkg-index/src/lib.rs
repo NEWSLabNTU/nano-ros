@@ -45,8 +45,37 @@ use walkdir::WalkDir;
 /// Workspace-root markers consulted by [`detect_workspace_root`]. The
 /// `NROS_WORKSPACE_ROOT` env var short-circuits the walk entirely.
 const COLCON_WORKSPACE_MARKER: &str = ".colcon_workspace";
-const COLCON_IGNORE_MARKER: &str = "COLCON_IGNORE";
-const NROS_IGNORE_MARKER: &str = ".nros-ignore";
+
+/// Marker files that exclude a directory's subtree from every nano-ros walk,
+/// honoured as colcon and ament spell them plus our own. A user who already
+/// knows `COLCON_IGNORE` should not have to learn a second spelling to get the
+/// same effect.
+///
+/// This is the ONE spelling of the list. Every walk that discovers packages,
+/// launch trees, boards or crates asks [`is_ignored_dir`]; a walk that spells
+/// its own list drifts from this one, which is how `nros configure` came to
+/// honour no marker at all while the provider scan honoured four.
+// issue 0809 — `.nros-ignore` is the spelling that EXISTS. `NROS_IGNORE` was
+// the provider walk's guess at nano-ros's marker; issue 0621 then established
+// `.nros-ignore` here and did not sweep the other walks. Both spellings are
+// accepted rather than one replaced: `NROS_IGNORE` may exist in a consumer
+// tree that predates 0621, and silently dropping support would be the same
+// defect pointed the other way.
+pub const IGNORE_MARKERS: &[&str] = &[
+    "COLCON_IGNORE",
+    "AMENT_IGNORE",
+    "NROS_IGNORE",
+    ".nros-ignore",
+];
+
+/// Does `dir` carry a marker opting its subtree out of discovery?
+///
+/// The caller decides whether a ROOT may opt itself out: a root the user named
+/// explicitly is a root they meant, so the walks ask this below the root only.
+#[must_use]
+pub fn is_ignored_dir(dir: &Path) -> bool {
+    IGNORE_MARKERS.iter().any(|m| dir.join(m).exists())
+}
 
 /// Directory names skipped during the recursive `package.xml` walk —
 /// build / cache artefacts and source-control internals.
@@ -199,10 +228,8 @@ pub fn build_pkg_index(workspace_root: &Path) -> Result<PkgIndex> {
             if file_name.starts_with("build-") {
                 return false;
             }
-            // Ament convention: a dir carrying `COLCON_IGNORE` or
-            // `.nros-ignore` is opaque to discovery.
-            let path = entry.path();
-            if path.join(COLCON_IGNORE_MARKER).exists() || path.join(NROS_IGNORE_MARKER).exists() {
+            // A dir carrying any ignore marker is opaque to discovery.
+            if is_ignored_dir(entry.path()) {
                 return false;
             }
         }
@@ -533,5 +560,29 @@ mod worktree_tests {
 
         let idx = build_pkg_index(root).expect("the worktree copy must not collide");
         assert_eq!(idx.resolve_pkg("native_talker").unwrap(), real);
+    }
+
+    /// Every marker in [`IGNORE_MARKERS`] hides a package from the index. This
+    /// walk honoured two of the four until the list got one home, so a
+    /// package under `AMENT_IGNORE` was indexed here and skipped by colcon.
+    #[test]
+    fn every_ignore_marker_hides_a_package() {
+        for marker in IGNORE_MARKERS {
+            let tmp = Scratch::new("ignore");
+            let root = tmp.0.as_path();
+            let kept = root.join("src/kept");
+            let hidden = root.join("src/hidden");
+            for (dir, name) in [(&kept, "kept"), (&hidden, "hidden")] {
+                std::fs::create_dir_all(dir).unwrap();
+                std::fs::write(dir.join("package.xml"), pkg_xml(name)).unwrap();
+            }
+            std::fs::write(hidden.join(marker), "").unwrap();
+            let idx = build_pkg_index(root).unwrap();
+            assert_eq!(idx.resolve_pkg("kept").unwrap(), kept, "{marker}");
+            assert!(
+                idx.resolve_pkg("hidden").is_err(),
+                "{marker} did not hide the package"
+            );
+        }
     }
 }
