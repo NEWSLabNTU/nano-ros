@@ -62,7 +62,6 @@ build_sources = [
     "micro-cdr",              # nros-rmw-xrce-cffi build.rs (root member)
     "px4-rs",                 # px4-sitl-tests is a root cargo path-dep — the
                               # workspace cannot even LOAD without it
-    "nuttx-libc",             # build-test-fixtures metadata refresh path-deps it
     "px4-autopilot",          # px4_bridge_ffi compile check reads its msg/ tree
 ]
 
@@ -1027,16 +1026,6 @@ submodule = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 git = "https://github.com/jerry73204/zenoh-pico.git"
 ref = "fb5f5cdc6c86f4781838df07f6d12000d52fceab"
 
-# NuttX Rust libc fork — the qemu-armv7a-nuttx examples path-dep it via their
-# .cargo/config (`libc = { path = third-party/nuttx/libc }`), so it must be
-# provisioned by `nros setup qemu-armv7a-nuttx`, not hand-checked-out by the user.
-[source.nuttx-libc]
-version = "0.2-nuttx"
-dest = "third-party/nuttx/libc"
-submodule = "third-party/nuttx/libc"
-git = "https://github.com/jerry73204/libc.git"
-ref = "994735191a4bd3872cd61e6210dc65e584c2c161"
-
 # px4-rs Rust bindings fork. The px4 examples path-dep its crates, AND the root
 # workspace lists `packages/testing/nros-tests` which path-deps px4-sitl-tests
 # here — so cargo can't even *load* the workspace without it. Provisioned by
@@ -1125,8 +1114,7 @@ git = "https://github.com/NEWSLabNTU/netxduo.git"
 ref = "393b862521d1dc43d6d12b6fa1fd377de963acff"
 
 # NuttX kernel + apps — the qemu-armv7a-nuttx board build.rs / build-nuttx.sh expect
-# them present (the export is built with the app, per Phase 194). The Rust libc
-# fork is the separate `[source.nuttx-libc]` (it's a board package).
+# them present (the export is built with the app, per Phase 194).
 [source.nuttx-kernel]
 # Issue 1834 — built in place, so `locate` does not watch the whole tree.
 builds_in_place = true
@@ -1347,9 +1335,8 @@ packages = ["arm-none-eabi-gcc", "qemu"]
 [board.qemu-armv7a-nuttx]
 arch = "cortex-a7"
 platform = "nuttx" # NuttX kernel/apps are submodule SDKs (built with the app)
-# nuttx-libc is the one source the Rust example path-deps, so `nros setup` must
-# provision it. (Kernel/apps are pulled by the full west/make build, not here.)
-packages = ["arm-none-eabi-gcc", "qemu", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
+# Kernel/apps: the NuttX export every road builds against (phase-550).
+packages = ["arm-none-eabi-gcc", "qemu", "nuttx-kernel", "nuttx-apps"]
 
 # 194.3c — the riscv (rv-virt) NuttX board: the 2nd-arch proof that the NuttX
 # provisioning path is arch-agnostic. Same source set as qemu-armv7a-nuttx but the
@@ -1361,7 +1348,7 @@ packages = ["arm-none-eabi-gcc", "qemu", "nuttx-libc", "nuttx-kernel", "nuttx-ap
 arch = "riscv32" # rv-virt (rv32imac); riscv32imac-unknown-nuttx-elf
 platform = "nuttx"
 # genromfs: the rv-virt board bakes an etc/ ROMFS at export time (arm doesn't).
-packages = ["riscv-none-elf-gcc", "qemu", "genromfs", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
+packages = ["riscv-none-elf-gcc", "qemu", "genromfs", "nuttx-kernel", "nuttx-apps"]
 
 # phase-437 W4 (RFC-0093 R1/R3/R4) — `rv-virt` is QEMU's own machine name for
 # the RISC-V virt board. ThreadX ships no board layer, so there is no vendor

@@ -111,14 +111,12 @@ UNSYNCED_RE='failed to load config include|failed to read configuration file .*n
 # trees, and it does not fetch submodules. A tree can be fully synced with no
 # submodule checked out at all.
 #
-# Two leaves prove it. `nros-nuttx-ffi` and `nros-nuttx-riscv-ffi` carry, in the
-# TRACKED half of their `.cargo/config.toml` (authored, not sync-managed, so
-# present in a fresh clone):
+# Two leaves proved it, until phase-561 retired the fork they patched:
+# `nros-nuttx-ffi` and `nros-nuttx-riscv-ffi` carried, in the TRACKED half of
+# their `.cargo/config.toml` (authored, not sync-managed, so present in a
+# fresh clone), a `[patch.crates-io]` row pointing `libc` at a submodule.
 #
-#     [patch.crates-io]
-#     libc = { path = "../../../../third-party/nuttx/libc" }
-#
-# With `third-party/nuttx/libc` absent, cargo says `failed to load source for
+# With that submodule absent, cargo says `failed to load source for
 # dependency libc` — which `UNSYNCED_RE` matches — and the patch-table branch
 # then reported "their patch tables or `generated/` trees are wrong" and sent
 # the reader to `nros configure`, which cannot fetch a submodule and, run at the repo

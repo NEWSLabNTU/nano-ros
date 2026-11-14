@@ -152,8 +152,8 @@ PY
         cell_ok=0
     else
         # 1. the actual user step: `nros setup <board>` — provisions the board's
-        #    prebuilt toolchains AND its source submodules (e.g. nuttx-libc the
-        #    example path-deps). NOT --dry-run: the user does not hand-checkout
+        #    prebuilt toolchains AND its source submodules (e.g. the NuttX kernel
+        #    and apps). NOT --dry-run: the user does not hand-checkout
         #    submodules, so neither does CI — if a build needs a source, the index
         #    + `nros setup` must provide it (that's part of what this validates).
         #    The store dedups across cells, so toolchains download once.

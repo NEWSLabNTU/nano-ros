@@ -3171,7 +3171,7 @@ rust-rtos-link-check: _codegen
         # links without NuttX cannot exist — a skip here would be the vacuous
         # green the lane exists to prevent.
         echo "  nuttx kernel (prerequisite for the leaf below):"
-        nros_link_check_sources --source nuttx-kernel --source nuttx-apps --source nuttx-libc
+        nros_link_check_sources --source nuttx-kernel --source nuttx-apps
         scripts/nuttx/build-nuttx.sh >/dev/null
         echo "  nuttx talker ($(nros_cargo_platform_profile nuttx)):"
         mapfile -t nuttx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile nuttx)")

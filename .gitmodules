@@ -32,10 +32,6 @@
 	path = third-party/threadx/netxduo
 	url = https://github.com/NEWSLabNTU/netxduo.git
 	branch = nano-ros
-[submodule "third-party/nuttx/libc"]
-	path = third-party/nuttx/libc
-	url = https://github.com/jerry73204/libc.git
-	branch = nuttx-0.2
 [submodule "third-party/xrce/agent"]
 	path = third-party/xrce/agent
 	url = https://github.com/eProsima/Micro-XRCE-DDS-Agent.git

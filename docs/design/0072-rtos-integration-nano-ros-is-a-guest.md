@@ -516,8 +516,10 @@ sdk.nuttx      = "{env:NUTTX_DIR}"
 sdk.nuttx_apps = "{env:NUTTX_APPS_DIR}"
 ```
 
-This is where today's `${workspace}/third-party/nuttx/libc` goes — it was always
-a site fact, which is why the withholding filter had to strip it.
+This is where `${workspace}/third-party/nuttx/libc` would have gone: it was
+always a site fact, which is why the withholding filter had to strip it.
+Phase-561 retired the fork instead, since no NuttX graph compiles `libc` for
+the target.
 
 ### 6.6 PX4 — the hookless case, and what the design must NOT promise
 

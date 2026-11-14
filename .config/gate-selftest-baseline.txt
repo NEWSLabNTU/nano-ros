@@ -36,7 +36,6 @@ scripts/check-no-direct-kernel-alloc.sh
 scripts/check-no-silent-sample-drop.py
 scripts/check-no-tracked-models.sh
 scripts/check-nuttx-integration-makefile.sh
-scripts/check-nuttx-libc-struct-sizes.py
 scripts/check-nuttx-links-snapshot.sh
 scripts/check-ps-zombie-blind.sh
 scripts/check-readiness-marker-literals.sh

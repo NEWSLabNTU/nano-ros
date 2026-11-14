@@ -189,6 +189,12 @@ build-fixtures: build-fixtures-arm build-fixtures-riscv
     # anything. Both halves note their skips; this is where that is answered.
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
+    # phase-561 W4 graph half: no NuttX root this lane just resolved compiles
+    # `libc` for the image. Needs the entries the build generated, so it runs
+    # here, after them, and only where the kernel (hence the build) was there.
+    if [ -d "${NUTTX_DIR:-}/include" ]; then
+        just check nuttx-libc-graph
+    fi
     nros_lane_skip_flush nuttx "NuttX test fixtures built (arm + riscv)."
 
 # `just nuttx test` depends on THIS rather than on `build-fixtures`: the
@@ -225,12 +231,6 @@ build-fixtures-arm:
     if nros_sdk_missing NUTTX_DIR include; then
         nros_lane_skip_note nuttx "NuttX not found at $NUTTX_DIR — run: just setup nuttx"; exit 0
     fi
-    # Issue 0583 — drop the build-std artifacts when the vendored NuttX libc
-    # pin moves. `workspace-fixture-signature.sh` hashes the pin so the STAMP
-    # is honest, but a stale stamp only makes cargo run again and cargo reuses
-    # the `std` it already built. A `std` compiled against the old opaque-struct
-    # sizes smashes the caller's frame on every thread spawn.
-    bash scripts/build/nuttx-libc-pin-guard.sh
     # Provision the NuttX kernel first: each example's build.rs compiles
     # platform.c (`#include <nuttx/config.h>`) and links staging/libc.a, so
     # the configured kernel must exist before the cargo fixtures run. On a
@@ -389,9 +389,6 @@ build-fixtures-riscv:
         nros_lane_out_of_scope_note nuttx "NuttX riscv: no nuttx-riscv coordinate in this run's lane — skipping"
         exit 0
     fi
-    # Issue 0583 — same build-std/vendored-libc coupling as the arm half; the
-    # riscv rows build `std` from the same fork.
-    bash scripts/build/nuttx-libc-pin-guard.sh
     # Serial, same stage: they share ONE kernel tree, so they cannot overlap.
     # (phase-531 W6 — no riscv C leaf is left; `build-riscv-c` is now
     # `build-riscv-c-workspaces`, so it is not called a second time here.)
@@ -531,18 +528,8 @@ test-all verbose="":
     cargo nextest run "${cargo_nextest_args[@]}" "${e2e_args[@]}"
 
 # CI: check prerequisites + test
-#
-# Issue 0570 — `check::nuttx-libc-struct-sizes` also sits in `check::fast`, but it
-# can only MEASURE where a kernel has been configured and a cross compiler is on
-# PATH; there it degrades to NOT CHECKED. This lane is where both hold, so it is
-# the one that actually enforces the rule.
 [group("full-matrix")]
-ci: doctor check-libc-struct-sizes test
-
-# Issue 0570 — see `check::nuttx-libc-struct-sizes` in the root justfile.
-[group("full-matrix")]
-check-libc-struct-sizes:
-    @python3 {{ justfile_directory() }}/scripts/check-nuttx-libc-struct-sizes.py
+ci: doctor test
 
 # Install NuttX prerequisites. Phase 197.4 — provisioning delegated to
 # `nros setup qemu-{arm,riscv}-nuttx` (toolchains + sources); the NuttX-specific
@@ -552,7 +539,7 @@ setup:
     #!/usr/bin/env bash
     set -e
     # Phase 197.4 — `nros setup <board>` provisions the toolchain + sources
-    # (arm-none-eabi-gcc, qemu, nuttx-libc/kernel/apps, zenoh-pico, …) from the
+    # (arm-none-eabi-gcc, qemu, nuttx kernel/apps, zenoh-pico, …) from the
     # SDK index; the host-env helper handles rustup. Kernel build + external-app
     # staging stay below (NuttX-specific). `source setup.bash` to PATH the tools.
     nros setup qemu-armv7a-nuttx

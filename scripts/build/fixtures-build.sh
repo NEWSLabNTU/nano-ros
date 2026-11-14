@@ -435,12 +435,6 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     export -f nros_codegen_stamp_compute nros_codegen_stamp_check_or_wipe \
               nros_codegen_stamp_write _codegen_stamp_repo_root _codegen_stamp_sources \
               nros_codegen_fingerprint nros_cli_bin
-    # phase-351 W3 — the NuttX `libc` re-append (Phase 214.M.2,
-    # `scripts/build/nuttx-libc-patch.sh`) is GONE. It existed because sync
-    # WITHHELD every `${workspace}`-bearing key from the board projection, so
-    # the row the board declares never reached a leaf. Sync now delivers it as
-    # a `# nros-managed` `[patch.crates-io]` row, leaf-relative — one spelling,
-    # in the file the leaf already had.
     nros_fixture_build_one() {
         local dir envstr args
         IFS=$'\x1f' read -r dir envstr args <<< "$1"

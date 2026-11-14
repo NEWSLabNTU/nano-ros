@@ -655,7 +655,7 @@ unused. Opened as [phase-561](phase-561-nuttx-libc-fork-retire.md)
 - Gate: not this phase's.
 - **Acceptance:** no tracked `[patch.crates-io] libc` row; the SDK index has
   no `nuttx-libc` source; both arches' fixtures pass.
-- **Status:** MOVED (2026-11-14) to
+- **Status:** DROPPED (2026-11-14: moved, not done here) to
   [phase-561](phase-561-nuttx-libc-fork-retire.md).
 
 ## Order

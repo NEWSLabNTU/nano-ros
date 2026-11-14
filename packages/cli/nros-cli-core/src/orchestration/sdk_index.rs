@@ -70,7 +70,7 @@ pub struct SdkIndex {
     /// (distinct from the per-board/per-rmw `build_sources`, which cover building
     /// an APP for one target). `just test` links every RMW's `-sys` crate, and
     /// `build-test-fixtures` resolves graphs that path-dep platform sources
-    /// (`nuttx-libc`, `px4-rs`) even for a native component — so the contributor
+    /// (`px4-rs`) even for a native component — so the contributor
     /// build needs this whole set regardless of which board/rmw was provisioned.
     /// `nros setup --build-sources` provisions them; `--build-sources --check` is
     /// the preflight `just test` / `build-test-fixtures` run before building.

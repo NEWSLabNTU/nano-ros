@@ -1,6 +1,6 @@
 # Phase 561 -- Retire the vendored NuttX `libc` fork
 
-**Status (2026-11-14). IN PROGRESS: W0 to W2 done; W3 and W4 not started.**
+**Status (2026-11-14). W0 to W4 done; the phase acceptance is measured below.**
 The work moved out of
 [phase-550](phase-550-nuttx-native-build-infrastructure.md) W14 by the
 maintainer's ruling Q20 (2026-11-12): a separate phase that retires
@@ -146,7 +146,17 @@ it; nothing in this tree needs it once this lands.
 - Gate: W2.
 - **Acceptance:** the index has no `nuttx-libc` source; a fresh
   `nros setup --build-sources` fetches no libc tree.
-- **Status:** OPEN.
+- **Status:** DONE (2026-11-14). The index lost `[source.nuttx-libc]`, its
+  `build_sources` entry and both NuttX boards' `packages` rows. The
+  `.gitmodules` entry and the gitlink are gone; the gitlink came out with
+  `git rm --cached` only, so the shared `.git/config` and other worktrees'
+  checkouts are untouched. Also gone: the worktree-provisioning row, the
+  gate/merge-runtime/nightly provisioning (`--source nuttx-libc`, and the
+  fast job's submodule init), the book page with its page-map and SUMMARY
+  rows, and the `forks.toml` row. The CI comments that said a root-workspace
+  path dep reached the tree were stale: no tracked manifest named it. CLI
+  tests that used `nuttx-libc` as a sample source now use `px4-rs`, which is
+  still a real path-dep source.
 
 ### W4 -- Retire the fork-only machinery, and gate the lesson instead
 
@@ -175,7 +185,29 @@ configuration, with a size gate, and never plain crates.io `libc`.
 - Gate: W3.
 - **Acceptance:** both halves fail their own negative controls; the
   struct-size and pin-guard scripts are gone.
-- **Status:** OPEN.
+- **Status:** DONE (2026-11-14). Deleted:
+  - `scripts/build/nuttx-libc-pin-guard.sh` and its two calls in
+    `just/nuttx.just`;
+  - the `sdk:nuttx-libc` pin row in `workspace-fixture-signature.sh`;
+  - `check-nuttx-libc-struct-sizes.py`, with its `check::` recipe, its
+    `just nuttx` recipe, its place in `just nuttx ci`, and both baseline rows.
+
+  `check-leaf-lockfiles.sh` keeps its submodule-path-dep logic, which is
+  generic and self-tested on a synthetic tree; only its NuttX example went.
+  New gate `scripts/check/check-nuttx-libc-retired.py`:
+  - **Static half:** `check::nuttx-libc-retired`, on the fast line, about
+    0.03 s. It covers `[patch.*]` libc rows in every tracked TOML (both the
+    key and the header form), the index, and `.gitmodules`. Its self-test
+    has 6 cases.
+  - **Graph half:** `check::nuttx-libc-graph`, tier-exempt with a reason.
+    `just nuttx build-fixtures` runs it at its end. It runs `cargo tree -i
+    libc --target <nuttx>` over normal, non-proc-macro edges. Its negative
+    control is two synthetic graphs: a direct `libc` dependency is seen for
+    the NuttX target, and a host-cfg-only one is not. Measured on this
+    tree, both FFI crates and 10 workspace entries show no `libc` for the
+    image.
+
+  Both halves print the lesson when they refuse.
 
 ## Acceptance (phase)
 

@@ -210,7 +210,6 @@ node-std-tests
 nros-installer
 nros-log-riscv32
 nuttx-integration-makefile
-nuttx-libc-struct-sizes
 nuttx-links-snapshot
 nuttx-shared-tree-headers
 one-producer-per-tool

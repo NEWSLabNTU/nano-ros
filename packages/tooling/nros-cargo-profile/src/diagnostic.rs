@@ -163,12 +163,12 @@ Caused by:
 
     #[test]
     fn a_one_line_caused_by_is_read_too() {
-        let text = "error: failed to load source for dependency `libc`\n  \
-                    Caused by: unable to update /x/nuttx-libc\n  \
-                    Caused by: failed to read `/x/nuttx-libc/Cargo.toml`\n";
+        let text = "error: failed to load source for dependency `px4`\n  \
+                    Caused by: unable to update /x/px4-rs\n  \
+                    Caused by: failed to read `/x/px4-rs/Cargo.toml`\n";
         assert_eq!(
             root_cause(text).as_deref(),
-            Some("failed to read `/x/nuttx-libc/Cargo.toml`")
+            Some("failed to read `/x/px4-rs/Cargo.toml`")
         );
     }
 

@@ -843,10 +843,6 @@ nuttx-rust-triple:
     printf '%s\n' "$out"
     exit "$rc"
 
-[private]
-nuttx-libc-struct-sizes:
-    @python3 scripts/check-nuttx-libc-struct-sizes.py
-
 # phase-339 W3 / issue 0433 — no NuttX consumer may link the SHARED live kernel
 # tree. Both arches build in one in-tree checkout, so `staging/` belongs to
 # whichever built last; a consumer that links it silently stales the OTHER
@@ -1246,3 +1242,18 @@ zephyr-sdk-env:
 # ARCHCPUFLAGS); a NuttX build file that restates one is refused.
 nuttx-cpu-flag-copies:
     @python3 scripts/check/check-nuttx-cpu-flag-copies.py
+
+# phase-561 W4 — NuttX images take no `libc` crate, patched or plain: NuttX
+# sizes opaque C types from Kconfig, and two fixed-size mirrors smashed stack
+# frames (issues 0167, 0570). Static half: no tracked `[patch]` row for `libc`,
+# no `nuttx-libc` source.
+nuttx-libc-retired:
+    @python3 scripts/check/check-nuttx-libc-retired.py
+
+# phase-561 W4 graph half — `cargo tree -i libc` for the NuttX target over every
+# NuttX cargo root. The workspace entries exist only after a NuttX fixture
+# build, so `just nuttx build-fixtures` runs it at its end.
+[private]
+[metadata("tier", "exempt", "resolves the NuttX workspace entries a NuttX fixture build generates; `just nuttx build-fixtures` runs it after building them")]
+nuttx-libc-graph:
+    @python3 scripts/check/check-nuttx-libc-retired.py --graph

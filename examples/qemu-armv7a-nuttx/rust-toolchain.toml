@@ -4,20 +4,14 @@
 # `core` / `alloc` / `panic_abort` from source with `-Z build-std`, which is
 # nightly-only.
 #
-# The examples are `no_std` and do not build `std` (phase-359 W7), so they do
-# not use the patched `libc` at third-party/nuttx/libc. The board's
-# `[patch.crates-io]` still names it, and the NuttX make road
-# (`integrations/nuttx/Makefile`) still builds `std` against it until
-# phase-550 W5. Cargo's `[patch]` only applies when the version matches
-# exactly, so while that remains, the fork's version in
-# third-party/nuttx/libc/Cargo.toml tracks the libc version that the pinned
-# nightly's std depends on.
+# No road builds `std` for NuttX (phase-359 W7, phase-550 W5), and no NuttX
+# graph compiles `libc` for the target (phase-561 W0), so the nightly is not
+# tied to a `libc` version any more.
 #
 # To bump:
 #   1. Pick a new nightly:  rustup toolchain install nightly-YYYY-MM-DD
-#   2. Read its libc dep:   grep libc ~/.rustup/toolchains/nightly-YYYY-MM-DD-.../lib/rustlib/src/rust/library/std/Cargo.toml
-#   3. Update both this file and third-party/nuttx/libc/Cargo.toml `version =`.
-#   4. Build + run the nuttx tests to catch any new upstream libc API changes.
+#   2. Update this file.
+#   3. Build + run the nuttx tests on both arches.
 [toolchain]
 channel = "nightly-2026-04-11"
 components = ["rust-src", "rustfmt"]
