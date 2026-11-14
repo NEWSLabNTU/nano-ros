@@ -5,11 +5,11 @@ status: open
 type: test
 severity: medium
 area: [testing, gates, ci]
-related: [phase-543, 2373, 2274]
+related: [phase-489, phase-543, 2373, 2274]
 found: 2026-11-09
 ---
 
-**Home: [phase-543](../roadmap/phase-543-nextest-gates.md)**. A gate whose verdict depends on how loaded the host is: the class that phase's resource groups bound, next to issue [2373](archived/2373-nros-node-yielding-park-test-flakes-under-load.md).
+**Home: [phase-489](../roadmap/phase-489-ci-build-speedup.md)** (rehomed 2026-11-15, when phase-543 was archived): the fix is making `linux-check` cheaper, or splitting it into units, which is that phase's W5 shape. The harness and its timeout are [RFC-0131](../design/0131-gates-are-nextest-tests.md). A gate whose verdict depends on how loaded the host is: the class that phase's resource groups bound, next to issue [2373](archived/2373-nros-node-yielding-park-test-flakes-under-load.md).
 
 ## What
 

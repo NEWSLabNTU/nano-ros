@@ -10,7 +10,7 @@ resolved: 2026-11-09
 related: [1513, phase-543]
 ---
 
-**Home: [phase-543](../../roadmap/phase-543-nextest-gates.md).**
+**Home: [phase-543](../../roadmap/archived/phase-543-nextest-gates.md).**
 
 ## Measured
 

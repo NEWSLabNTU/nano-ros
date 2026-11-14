@@ -5,11 +5,11 @@ status: open
 type: tech-debt
 severity: medium
 area: [build, ci, cmake]
-related: [0616, 1353, 2191, phase-543]
+related: [0616, 1353, 2191, phase-489, phase-543]
 found: 2026-11-07
 ---
 
-**Home:** [phase-543](../roadmap/phase-543-nextest-gates.md), whose W4 records
+**Home:** [phase-489](../roadmap/phase-489-ci-build-speedup.md) (rehomed 2026-11-15, when phase-543 was archived): one CMake leaf recompiling host tooling is build cost on the lanes that phase speeds up. [Phase-543](../roadmap/archived/phase-543-nextest-gates.md)'s W4 records
 `build/corrosion-cargo` growing 51 -> 160 G over five gate runs ("nothing
 prunes them"). This issue is the measurement of WHY one run is that large.
 

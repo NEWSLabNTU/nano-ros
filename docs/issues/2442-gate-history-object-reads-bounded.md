@@ -6,10 +6,10 @@ type: bug
 severity: high
 area: [ci, gates, git]
 found: 2026-11-11
-related: [phase-543, issue-1476, issue-1043, issue-0650]
+related: [phase-543, rfc-0131, issue-1476, issue-1043, issue-0650]
 ---
 
-**Home: [phase-543](../roadmap/phase-543-nextest-gates.md)** (gate lanes as scopes, the harness and its provisioning).
+**Home: standalone** (since 2026-11-15, when [phase-543](../roadmap/archived/phase-543-nextest-gates.md) was archived). The design it falls under is [RFC-0131](../design/0131-gates-are-nextest-tests.md) D3: lanes as capability claims, and how a lane's `git-history` claim is provisioned.
 
 ## Measured
 
