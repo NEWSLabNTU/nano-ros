@@ -104,25 +104,48 @@ container_uid() {
     echo "${d:-1001}"
 }
 
+ensure_volume() {
+    local s="$1" p="$2"
+    if docker volume inspect "nros-runner-$s" >/dev/null 2>&1; then
+        local dev; dev="$(docker volume inspect "nros-runner-$s" --format '{{.Options.device}}' 2>/dev/null || true)"
+        [ "$dev" = "$p" ] || echo "  WARN nros-runner-$s is backed by '${dev:-<not a bind>}', not $p — remove it to re-point" >&2
+    else
+        docker volume create --driver local \
+            --opt type=none --opt o=bind --opt device="$p" \
+            "nros-runner-$s" >/dev/null
+    fi
+}
+
 ensure() {
     local uid; uid="$(container_uid)"
     command -v setfacl >/dev/null 2>&1 || die "setfacl not found — install acl, or the container's UID cannot be granted access without chmod 0777"
     echo "runner-store: ensuring stores under $ROOT for container uid $uid"
     for s in "${STORES[@]}"; do
         local p="$ROOT/$s"
-        # Only a directory's OWNER may set its ACL. A store dir that a container
-        # created first (before this ensure ever ran for it) belongs to the
-        # container's uid, and every setfacl below then fails with "Operation
-        # not permitted" (host 241, 2026-11-14: an empty `work-queue` a
-        # container had made five days earlier). An empty one holds nothing, so
-        # it is recreated as ours; a non-empty one is somebody's data, so this
-        # stops and names it rather than guess.
+        # Only a directory's OWNER may set its ACL. Three owners are possible:
+        #   - ours: set the ACL below, as always;
+        #   - the CONTAINER's uid: Docker copies an image directory into an
+        #     EMPTY named volume on its first mount and gives the target the
+        #     image directory's owner. The container then reaches it by
+        #     ownership, no ACL needed, so it is left alone. Host 241,
+        #     2026-11-14: `work-queue` became uid 1001's on the queue
+        #     runner's first job, filled with 37 GB of job trees, and every
+        #     later start died here on "setfacl: Operation not permitted",
+        #     three times, after which the loop stopped and the runner
+        #     deregistered for 15 hours;
+        #   - anyone else: an empty dir holds nothing and is recreated as
+        #     ours; a non-empty one is somebody's data, so this stops and
+        #     names it.
         if [ -d "$p" ] && [ "$(stat -c %u "$p")" != "$(id -u)" ]; then
             local owner; owner="$(stat -c %u "$p")"
-            if rmdir "$p" 2>/dev/null; then
+            if [ "$owner" = "$uid" ]; then
+                echo "  $s: owned by the container uid $uid already; it needs no ACL"
+                ensure_volume "$s" "$p"
+                continue
+            elif rmdir "$p" 2>/dev/null; then
                 echo "  $s: recreated (was an empty dir owned by uid $owner, whose ACL only that uid could set)"
             else
-                die "$p is owned by uid $owner, not $(id -u), and is not empty, so its ACL cannot be set here. Move its contents out as uid $owner, remove the dir, and re-run --ensure"
+                die "$p is owned by uid $owner, which is neither $(id -u) nor the container uid $uid, and is not empty, so its ACL cannot be set here. Move its contents out as uid $owner, remove the dir, and re-run --ensure"
             fi
         fi
         mkdir -p "$p"
@@ -131,14 +154,7 @@ ensure() {
         setfacl -m "u:$uid:rwx" "$p"
         setfacl -d -m "u:$uid:rwx" "$p"
         setfacl -d -m "u:$(id -u):rwx" "$p"
-        if docker volume inspect "nros-runner-$s" >/dev/null 2>&1; then
-            local dev; dev="$(docker volume inspect "nros-runner-$s" --format '{{.Options.device}}' 2>/dev/null || true)"
-            [ "$dev" = "$p" ] || echo "  WARN nros-runner-$s is backed by '${dev:-<not a bind>}', not $p — remove it to re-point" >&2
-        else
-            docker volume create --driver local \
-                --opt type=none --opt o=bind --opt device="$p" \
-                "nros-runner-$s" >/dev/null
-        fi
+        ensure_volume "$s" "$p"
         printf '  %-10s %s\n' "$s" "$p"
     done
     echo "runner-store: ready"
