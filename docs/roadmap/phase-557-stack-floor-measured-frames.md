@@ -440,7 +440,7 @@ lane then reads it exact.
 
 ### W7 — Every indirect call is bound, and peaks are observations (issue 2402)
 
-- **Status:** DONE (2026-11-14, #PRNUM)
+- **Status:** DONE (2026-11-14, #3788)
 
 **Why.** Booted at its 26 KiB static floor, the mps2 bare-metal talker
 overflowed the board's MPU guard. A gdb watchpoint found the peak path: four

@@ -2,7 +2,7 @@
 id: 2402
 title: "The stack walk charges every indirect call the deepest address-taken target, because it cannot bind a call through the RMW vtable to the slot it loads"
 status: resolved
-resolved_in: "PR #PRNUM (phase-557 W7): --indirect bind follows every indirect call; measured peaks are [[observed]] rows"
+resolved_in: "PR #3788 (phase-557 W7): --indirect bind follows every indirect call; measured peaks are [[observed]] rows"
 type: tech-debt
 severity: low
 area: [memory, tooling, rmw]
