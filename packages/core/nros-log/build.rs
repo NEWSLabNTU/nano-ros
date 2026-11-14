@@ -148,9 +148,10 @@ fn main() {
     }
 
     let mut contents = String::new();
+    // phase-479 W5, issue 1037.
     let _ = write!(
         contents,
-        "// Written by `build.rs` (phase-479 W5, issue 1037). See its module docs.\n\
+        "// Written by `build.rs`. See its module docs.\n\
          /// `NROS_LOG_DYNAMIC_LOGGERS`: loggers `get_or_create_logger` may create (0 = lookup only).\n\
          pub(crate) const DYNAMIC_LOGGER_CAPACITY: usize = {dynamic_loggers};\n\
          /// `NROS_LOG_MAX_LEVEL`: the compile-time ceiling, as an index into \
@@ -168,7 +169,8 @@ fn main() {
     std::fs::write(Path::new(&out_dir).join("nros_log_config.rs"), contents).unwrap();
 }
 
-/// One knob and the deprecated feature family it replaced.
+/// One knob and the deprecated feature family it replaced (every family here
+/// came with phase-479 W5).
 struct Family {
     /// The env front-end; the Kconfig symbol is `CONFIG_<knob>`.
     knob: &'static str,
@@ -179,8 +181,6 @@ struct Family {
     range: (usize, usize),
     /// The deprecated features, by the value each one names.
     features: &'static [(usize, &'static str)],
-    /// Who added the knob, for the messages.
-    since: &'static str,
 }
 
 const DYNAMIC_LOGGERS: Family = Family {
@@ -193,7 +193,6 @@ const DYNAMIC_LOGGERS: Family = Family {
         (8, "dynamic-loggers-8"),
         (32, "dynamic-loggers-32"),
     ],
-    since: "phase-479 W5",
 };
 
 /// Below 128 a C++ runtime refusal (`RUNTIME_REFUSAL_MAX` = 160 with its
@@ -209,7 +208,6 @@ const BUFFER_SIZE: Family = Family {
         (512, "buffer-size-512"),
         (1024, "buffer-size-1024"),
     ],
-    since: "phase-479 W5",
 };
 
 const EARLY_RECORDS: Family = Family {
@@ -222,7 +220,6 @@ const EARLY_RECORDS: Family = Family {
         (8, "early-records-8"),
         (16, "early-records-16"),
     ],
-    since: "phase-479 W5",
 };
 
 /// A depth of 0 would be a `KEEP_LAST(0)` `/rosout` publisher, which is not a
@@ -237,7 +234,6 @@ const ROSOUT_RECORDS: Family = Family {
         (32, "rosout-records-32"),
         (64, "rosout-records-64"),
     ],
-    since: "phase-479 W5",
 };
 
 /// Indices into [`LOG_LEVELS`]; `fatal` (5) had no feature.
@@ -254,7 +250,6 @@ const MAX_LEVEL: Family = Family {
         (4, "max-level-error"),
         (6, "max-level-off"),
     ],
-    since: "phase-479 W5",
 };
 
 /// Resolve one family: print its warnings, or stop the build.
@@ -295,12 +290,7 @@ fn resolve(
     stated: Option<usize>,
     selected: &[(usize, &str)],
 ) -> Result<(usize, Vec<String>), String> {
-    let Family {
-        knob,
-        toml_key,
-        since,
-        ..
-    } = f;
+    let Family { knob, toml_key, .. } = f;
     let names = || {
         selected
             .iter()
@@ -328,7 +318,7 @@ fn resolve(
         return Err(format!(
             "the deprecated features {} are ALL selected, and they name different values. \
              Cargo unions features with no precedence, so there is no answer to which one the \
-             image meant. Drop them and state the value once as {knob}=<v> ({where_}). {since}.",
+             image meant. Drop them and state the value once as {knob}=<v> ({where_}).",
             names()
         ));
     }
@@ -337,7 +327,7 @@ fn resolve(
             "the deprecated feature `{feat}` asks for {knob}={}, and {knob} is stated as {} \
              (environment, `[image.<id>] env`, Kconfig, or the board's `[knobs.log] \
              {toml_key}`). Refusing to pick one silently -- drop the feature; the knob is the \
-             one mechanism with a precedence. {since}.",
+             one mechanism with a precedence.",
             show(*n),
             show(v)
         )),

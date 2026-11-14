@@ -210,15 +210,16 @@ template <typename T> struct refuse {
 // compile cannot tell "the refusal fired" from "the file is not there", so the
 // exit code alone proves nothing.
 
+// RFC-0089, phase-417 W3.f; parameters and remaps from the launch file: RFC-0046, RFC-0060.
 #define NROS_RCLCPP_REFUSE_NODE_OPTIONS                                                            \
-    "rclcpp::NodeOptions' option setters and getters are REFUSED by nano-ros "                     \
-    "(RFC-0089, phase-417 W3.f). Each one used to store its argument in a private field that "     \
+    "rclcpp::NodeOptions' option setters and getters are REFUSED by nano-ros. "                    \
+    "Each one used to store its argument in a private field that "                                 \
     "NOTHING read and return *this, so the idiomatic chained call compiled and configured "        \
     "nothing -- a silent drop of configuration, which the compile-or-conform rule requires to "    \
     "fail to compile instead. nano-ros resolves parameters and remaps from the LAUNCH FILE "       \
     "at BUILD time -- `nros configure` projects them into the generated entry as "                 \
-    "nros_cpp_declare_remap / nros_cpp_declare_param calls, not into the process environment "     \
-    "(RFC-0046, RFC-0060); it has no runtime ComponentManager, no intra-process transport and "    \
+    "nros_cpp_declare_remap / nros_cpp_declare_param calls, not into the process "                 \
+    "environment; it has no runtime ComponentManager, no intra-process transport and "             \
     "no topic statistics collector, and its /rosout bridge is explicit, not automatic "            \
     "(rclcpp::rosout::Publisher in <rclcpp/rosout.hpp>), so there is nothing for these knobs to "  \
     "switch. "                                                                                     \
@@ -236,7 +237,7 @@ template <typename T> struct refuse {
 // them up: RFC-0089, the `cpp:init` ledger row, and the Rust twin
 // `REFUSE_INIT_ARGS` in `packages/api/nros/src/init.rs`.
 #define NROS_RCLCPP_REFUSE_INIT_ARGV                                                               \
-    "--ros-args carries an argument nano-ros cannot honour (RFC-0089). Honoured: -r/--remap; "     \
+    "--ros-args carries an argument nano-ros cannot honour. Honoured: -r/--remap; "                \
     "-p/--params-file with a parameter store. A configured image bakes both."
 
 // phase-428 W5 finding 9. Runtime, like `NROS_RCLCPP_REFUSE_INIT_ARGV` above
@@ -245,13 +246,15 @@ template <typename T> struct refuse {
 // name and the code are printed on the line before it by
 // `rclcpp::detail::abort_failed_create`. Short for the same reason as the
 // text above (issue 1303); why aborting is the loudest honest answer is
-// argued on `require_created` in `rclcpp/rclcpp.hpp`.
+// argued on `require_created` in `rclcpp/rclcpp.hpp`. No exceptions: RFC-0018.
+// user-surface: table
 #define NROS_RCLCPP_ABORT_FAILED_CREATE                                                            \
-    "Upstream throws here; nano-ros has no exceptions (RFC-0018), so it aborts. To handle it, "    \
+    "Upstream throws here; nano-ros has no exceptions, so it aborts. To handle it, "               \
     "use the Result form: node.create_publisher(pub, topic, qos)."
 
+// RFC-0089 W3.f, issue 0829.
 #define NROS_RCLCPP_REFUSE_SYSTEM_DEFAULTS_QOS                                                     \
-    "rclcpp::SystemDefaultsQoS is REFUSED by nano-ros (RFC-0089 W3.f, issue 0829). Upstream's "    \
+    "rclcpp::SystemDefaultsQoS is REFUSED by nano-ros. Upstream's "                                \
     "rmw_qos_profile_system_default names NO concrete policy: every field is a sentinel meaning "  \
     "'let the RMW decide', and the two reference RMWs resolve the depth sentinel differently "     \
     "(rmw_cyclonedds_cpp -> KEEP_LAST 1, rmw_zenoh_cpp -> 42). rclcpp::QoS has no sentinel, "      \
@@ -261,8 +264,9 @@ template <typename T> struct refuse {
     "profile. Name the policy you want: rclcpp::QoS(10) for the ROS default, "                     \
     "rclcpp::SensorDataQoS(), rclcpp::ServicesQoS(), or rclcpp::QoS().best_effort().keep_last(1)."
 
+// RFC-0089 W3.a, issues 1019 and 1302.
 #define NROS_RCLCPP_REFUSE_THROTTLE                                                                \
-    "RCLCPP_*_THROTTLE is REFUSED by nano-ros (RFC-0089 W3.a, issues 1019 and 1302). Upstream "    \
+    "RCLCPP_*_THROTTLE is REFUSED by nano-ros. Upstream "                                          \
     "measures the window on the `clock` argument you pass; nano-ros's throttle measures it on "    \
     "nros_log's own clock, so forwarding this macro would drop `clock` and compile and differ -- " \
     "the defect this family had when it expanded to the plain RCLCPP_* macro. For a throttle "     \
@@ -274,19 +278,20 @@ template <typename T> struct refuse {
 // both are the same request written two ways — the no-argument form (upstream's
 // default IS -1) and an explicit negative timeout. The first is knowable from
 // the SIGNATURE, so it is a `static_assert`; the second only from the VALUE, so
-// it is a loud return at the call (RFC-0089 §"Where the refusal fires").
+// it is a loud return at the call (RFC-0089 §"Where the refusal fires"). The
+// busy loop is RFC-0020 violation class 2; the ready set is RFC-0002 section 3.
 #define NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN                                                          \
-    "an UNBOUNDED rclcpp::Executor::spin_once is REFUSED by nano-ros (RFC-0089 stage 3, "          \
-    "phase-417 W3.a). Upstream's spin_once(timeout = -1) BLOCKS INDEFINITELY and executes ONE "    \
+    "an UNBOUNDED rclcpp::Executor::spin_once is REFUSED by nano-ros. "                            \
+    "Upstream's spin_once(timeout = -1) BLOCKS INDEFINITELY and executes ONE "                     \
     "ready item. nano-ros takes a millisecond budget and returns when it expires. Nothing here "   \
     "can block forever: building that out of this call would be a polling loop inside the "        \
-    "wrapper, which is RFC-0020 violation class 2 -- the loop belongs Rust-side, where `spin()` "  \
+    "wrapper, a busy loop no budget bounds -- the loop belongs Rust-side, where `spin()` "         \
     "already is. Two silent differences used to live here: the no-argument form substituted a "    \
     "10 ms budget nobody chose, and a -1 was clamped to 0, so the call POLLED where upstream "     \
     "blocks. NAME YOUR BUDGET: spin_once(10) sleeps up to 10 ms and then returns; spin_once(0) "   \
     "is upstream's spin_some -- drain what is ready, never wait; spin() blocks until cancel(). "   \
     "ENVELOPE, unchanged by this refusal: our spin_once DRAINS every ready arena entry "           \
-    "(RFC-0002 section 3 computes the ready bitmap once) where upstream executes the next one; "   \
+    "(it computes the ready set once) where upstream executes the next one; "                      \
     "that is `cpp:Executor::spin_some`'s open question, not this one."
 
 // The RUNTIME form of the same refusal, for `spin_once(-1)`. SHORT because it
@@ -295,16 +300,17 @@ template <typename T> struct refuse {
 // the bound). It still names the constraint and the alternative; the long text
 // above is what the compiler prints for the no-argument form.
 #define NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN_RUNTIME                                                  \
-    "spin_once(negative) REFUSED by nano-ros: no unbounded spin (RFC-0089/RFC-0020). Use "         \
+    "spin_once(negative) REFUSED by nano-ros: no unbounded spin. Use "                             \
     "spin_once(0) to drain, spin_once(ms) to wait, spin() until cancel()."
 
 // phase-417 stage 3 (W3.a). ONE concept, TWO call sites: `Client::wait_for_service`
 // and `rclcpp_action::Client::wait_for_action_server` had the identical defect
 // (a 5000 ms default standing in for upstream's -1), so they share the message.
+// RFC-0089 stage 3; no unbounded wait: RFC-0021.
 #define NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT                                                          \
-    "an UNBOUNDED wait_for_service / wait_for_action_server is REFUSED by nano-ros (RFC-0089 "     \
-    "stage 3, phase-417 W3.a). Upstream's default timeout is -1, which means WAIT FOREVER. "       \
-    "These helpers drive the executor cooperatively while they probe, and RFC-0021 is why that "   \
+    "an UNBOUNDED wait_for_service / wait_for_action_server is REFUSED by nano-ros. "              \
+    "Upstream's default timeout is -1, which means WAIT FOREVER. "                                 \
+    "These helpers drive the executor cooperatively while they probe, and that is why it "         \
     "cannot be unbounded: a wait that never returns starves every other entity on a "              \
     "single-threaded transport. The budget is an unsigned millisecond count, so there is no "      \
     "value to port -1 to either. The no-argument form used to substitute 5000 ms -- a budget "     \
@@ -313,9 +319,9 @@ template <typename T> struct refuse {
     "keep doing other work while you wait, poll PollClient::service_is_ready() from your own "     \
     "spin loop, or call the action form with a short budget inside a loop you control."
 
-// phase-488 — `rclcpp::executors::MultiThreadedExecutor`.
+// phase-488 — `rclcpp::executors::MultiThreadedExecutor` (RFC-0002).
 #define NROS_RCLCPP_REFUSE_MULTI_THREADED_EXECUTOR                                                 \
-    "rclcpp::executors::MultiThreadedExecutor is REFUSED by nano-ros (RFC-0002, phase-488). An "   \
+    "rclcpp::executors::MultiThreadedExecutor is REFUSED by nano-ros. An "                         \
     "executor dispatches on ONE task with run-to-completion callbacks, and nano-ros starts no "    \
     "threads behind your back, so a worker pool is not a shape it has; callback groups are "       \
     "therefore all mutually exclusive. Use rclcpp::executors::SingleThreadedExecutor (or "         \
@@ -323,17 +329,18 @@ template <typename T> struct refuse {
     "RTOS "                                                                                        \
     "task, declared in system.toml -- rather than its own callback group."
 
-// phase-515 P2 — `Executor::remove_node` / `SingleThreadedExecutor::remove_node`.
+// phase-515 P2 — `Executor::remove_node` / `SingleThreadedExecutor::remove_node`
+// (arena registration: RFC-0002).
 #define NROS_RCLCPP_REFUSE_REMOVE_NODE                                                             \
     "remove_node REFUSED by nano-ros: a node's entities live in the arena of the executor that "   \
-    "created it, and arena registration is one-way (RFC-0002), so a node cannot leave it. Keep "   \
+    "created it, and arena registration is one-way, so a node cannot leave it. Keep "              \
     "the node on its executor, or stop spinning that executor."
 
 // phase-515 P4 — rclcpp's name-only `create_generic_publisher` /
 // `create_generic_subscription`.
 #define NROS_RCLCPP_REFUSE_GENERIC_BY_NAME                                                         \
-    "create_generic_publisher / create_generic_subscription by type NAME is REFUSED by nano-ros "  \
-    "(phase-515 P4). rclcpp resolves the name to a typesupport library at runtime; nano-ros "      \
+    "create_generic_publisher / create_generic_subscription by type NAME is REFUSED by nano-ros. " \
+    "rclcpp resolves the name to a typesupport library at runtime; nano-ros "                      \
     "links "                                                                                       \
     "its types at build time, and the wire key needs the type's RIHS01 HASH, which nothing can "   \
     "derive from a name here. Pass the hash yourself: "                                            \
@@ -341,10 +348,10 @@ template <typename T> struct refuse {
     "create_generic_subscription(topic, type, type_hash, qos, callback), where a generated type "  \
     "states both as M::TYPE_NAME and M::TYPE_HASH. Or use create_publisher<M>() with the type."
 
-// phase-515 P2 — `Executor::add_node` on a node another executor created.
+// phase-515 P2 — `Executor::add_node` on a node another executor created (RFC-0002).
 #define NROS_RCLCPP_REFUSE_FOREIGN_NODE                                                            \
     "add_node REFUSED: this node was created on another executor, and its entities live in "       \
-    "that executor's arena (RFC-0002). Spin that executor instead."
+    "that executor's arena. Spin that executor instead."
 
 // phase-488 — `SingleThreadedExecutor::add_node` on a node from another executor.
 #define NROS_RCLCPP_REFUSE_FOREIGN_EXECUTOR_NODE                                                   \
@@ -353,10 +360,10 @@ template <typename T> struct refuse {
 
 // phase-488 — the runtime form, for the `std::chrono` overloads of the same two
 // helpers: a NEGATIVE duration is upstream's "wait forever", and a duration's
-// sign is only known at run time.
+// sign is only known at run time. RFC-0021.
 #define NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT_RUNTIME                                                  \
-    "wait_for_service/wait_for_action_server(negative) REFUSED by nano-ros: no unbounded wait "    \
-    "(RFC-0021). Name a budget: wait_for_service(10s)."
+    "wait_for_service/wait_for_action_server(negative) REFUSED by nano-ros: no unbounded wait. "   \
+    "Name a budget: wait_for_service(10s)."
 
 // issue 1996 — `rclcpp::Future::get()`. Upstream returns an OWNING
 // `std::shared_ptr<Response>` and BLOCKS until the reply arrives. A hosted
@@ -364,10 +371,10 @@ template <typename T> struct refuse {
 // not the second, because a wait that does not drive the executor is what
 // RFC-0021 forbids; so `get()` there answers a reply that HAS arrived and says
 // the runtime refusal below otherwise. A freestanding build has neither
-// `<memory>` nor an allocator, so the name is refused at compile time.
+// `<memory>` nor an allocator, so the name is refused at compile time (RFC-0089).
 #define NROS_RCLCPP_REFUSE_FUTURE_GET                                                              \
-    "rclcpp::Future::get() is REFUSED by nano-ros on a freestanding build (RFC-0089, issue "       \
-    "1996). Upstream returns an owning std::shared_ptr<Response>, which needs <memory> and a "     \
+    "rclcpp::Future::get() is REFUSED by nano-ros on a freestanding build. Upstream returns an "   \
+    "owning std::shared_ptr<Response>, which needs <memory> and a "                                \
     "heap allocation per reply; this build has neither. On a hosted build (-DNROS_CPP_STD) get() " \
     "exists and returns that shared_ptr once the reply has arrived. Here, take the reply into "    \
     "storage you own: `S::Response resp; if (fut.try_take(resp).ok()) { ... resp.sum ... }` "      \
@@ -376,16 +383,18 @@ template <typename T> struct refuse {
 
 // The RUNTIME half: `get()` on a hosted build before the reply arrived (or on a
 // consumed future). Short, because `say_refused` enforces nros_log's buffer.
+// RFC-0021.
 #define NROS_RCLCPP_REFUSE_FUTURE_GET_NOT_READY_RUNTIME                                            \
-    "Future::get() before the reply: nano-ros never blocks without spinning (RFC-0021). "          \
+    "Future::get() before the reply: nano-ros never blocks without spinning. "                     \
     "Call spin_until_future_complete first. Returning nullptr."
 
 // issue 2037 — `FutureAndRequestId::share()`. The shared future a request
 // shares into is a `std::shared_future` over a `std::promise`, which a
 // freestanding build (and a hosted libstdc++ without threads) does not have.
+// RFC-0089.
 #define NROS_RCLCPP_REFUSE_SHARED_FUTURE                                                           \
-    "FutureAndRequestId::share() is REFUSED by nano-ros without std::promise (RFC-0089, issue "    \
-    "2037): a SharedFutureAndRequestId is a std::shared_future, which needs std::promise and a "   \
+    "FutureAndRequestId::share() is REFUSED by nano-ros without std::promise: a "                  \
+    "SharedFutureAndRequestId is a std::shared_future, which needs std::promise and a "            \
     "heap; a freestanding build, or a hosted libstdc++ built without threads, has neither. Keep "  \
     "the one FutureAndRequestId: its .request_id is there, and .future.try_take(resp) / "          \
     ".future.wait(executor_handle, timeout_ms, resp) read the reply into storage you own."
@@ -393,19 +402,21 @@ template <typename T> struct refuse {
 // issue 2024 — `rclcpp::ParameterEventHandler` hands its callbacks
 // `std::function`s, `std::string` names and an owning `shared_ptr` per
 // registration, and decodes each event into heap-backed `rclcpp::Parameter`s.
+// RFC-0089.
 #define NROS_RCLCPP_REFUSE_PARAMETER_EVENT_HANDLER                                                 \
-    "rclcpp::ParameterEventHandler is REFUSED by nano-ros on a freestanding build (RFC-0089, "     \
-    "issue 2024): its callbacks are std::function, its handles std::shared_ptr and the "           \
+    "rclcpp::ParameterEventHandler is REFUSED by nano-ros on a freestanding build: its callbacks " \
+    "are std::function, its handles std::shared_ptr and the "                                      \
     "rclcpp::Parameter it decodes each event into holds std::string / std::vector values. A "      \
     "hosted build (-DNROS_CPP_STD) takes it as written. Freestanding, subscribe to "               \
     "/parameter_events (rcl_interfaces/msg/ParameterEvent) with Node::create_subscription and "    \
     "read the generated message."
 
+// RFC-0089, phase-417 W2.c; no allocator on the delivery path: RFC-0022.
 #define NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK                                             \
-    "the shared_ptr service-callback shape is REFUSED by nano-ros (RFC-0089, phase-417 W2.c). "    \
+    "the shared_ptr service-callback shape is REFUSED by nano-ros. "                               \
     "rclcpp's create_service/create_client callback takes std::shared_ptr<Request> and "           \
     "std::shared_ptr<Response> (plus a request header), which needs a per-request heap "           \
-    "allocation on the delivery path. nano-ros has no allocator there (RFC-0022) and hands the "   \
+    "allocation on the delivery path. nano-ros has no allocator there and hands the "              \
     "request and response BY REFERENCE into caller-owned storage instead, so adopting that "       \
     "signature would mean a second delivery path. Change the handler to "                          \
     "void(const S::Request&, S::Response&) for a service, or void(const S::Response&) for a "      \
@@ -415,8 +426,9 @@ template <typename T> struct refuse {
 
 // phase-488 — what is still refused on the SERVICE side once the shared_ptr
 // handler shape is taken (hosted, function pointer or capture-less lambda).
+// RFC-0089.
 #define NROS_RCLCPP_REFUSE_SERVICE_CALLBACK_SHAPE                                                  \
-    "this service-callback shape is REFUSED by nano-ros (RFC-0089, phase-488). A service handler " \
+    "this service-callback shape is REFUSED by nano-ros. A service handler "                       \
     "must be invocable as void(const S::Request&, S::Response&) or as upstream's "                 \
     "void([std::shared_ptr<rmw_request_id_t>,] std::shared_ptr<S::Request>, "                      \
     "std::shared_ptr<S::Response>) (hosted builds). A plain function, a lambda with or without "   \
@@ -431,9 +443,9 @@ template <typename T> struct refuse {
 // delivers `const M&`; a HOSTED build (`NROS_CPP_STD`) also takes upstream's
 // pointer shapes by copying the message into a heap object per delivery, so a
 // freestanding build — no allocator on the delivery path — refuses them here,
-// instead of `InplaceFn` failing to convert the callable.
+// instead of `InplaceFn` failing to convert the callable. RFC-0089.
 #define NROS_RCLCPP_REFUSE_SUBSCRIPTION_CALLBACK_SHAPE                                             \
-    "this subscription-callback shape is REFUSED by nano-ros (RFC-0089, issue 1995). The "         \
+    "this subscription-callback shape is REFUSED by nano-ros. The "                                \
     "executor delivers the message as const M& from its dispatch frame, so the callback must be "  \
     "callable as void(const M&). On a hosted build (-DNROS_CPP_STD) upstream's pointer shapes "    \
     "are ALSO taken -- M::UniquePtr, M::SharedPtr, M::ConstSharedPtr, std::shared_ptr<const M> "   \
@@ -447,7 +459,7 @@ template <typename T> struct refuse {
 // cannot do.
 #define NROS_RCLCPP_REFUSE_MESSAGE_INFO_CALLBACK                                                   \
     "a subscription callback taking const rclcpp::MessageInfo& is REFUSED by nano-ros on a "       \
-    "freestanding build (issue 2036): the metadata path keeps the callable on the heap. Build "    \
+    "freestanding build: the metadata path keeps the callable on the heap. Build "                 \
     "hosted (-DNROS_CPP_STD), or take void(const M&) and drop the MessageInfo argument."
 
 // issue 2015 — upstream rclcpp_action's goal-handle shapes. `ClientGoalHandle`
@@ -456,10 +468,10 @@ template <typename T> struct refuse {
 // `async_send_goal`) are `std::function`s: a hosted build (`NROS_CPP_STD`)
 // takes all of them as drop-ins, at the price of a heap goal handle per goal.
 // A freestanding build has no allocator for either, so each is refused here.
+// RFC-0089.
 #define NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE                                                      \
-    "rclcpp_action's goal-handle shapes are REFUSED by nano-ros on a freestanding build "          \
-    "(RFC-0089, "                                                                                  \
-    "issue 2015): ClientGoalHandle / ServerGoalHandle ::SharedPtr, the std::function callbacks "   \
+    "rclcpp_action's goal-handle shapes are REFUSED by nano-ros on a freestanding build: "         \
+    "ClientGoalHandle / ServerGoalHandle ::SharedPtr, the std::function callbacks "                \
     "of "                                                                                          \
     "rclcpp_action::create_server and Client::SendGoalOptions (goal_response_callback, "           \
     "feedback_callback, result_callback) and Client::async_send_goal. They need std::shared_ptr "  \

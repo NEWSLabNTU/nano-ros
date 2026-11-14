@@ -633,30 +633,33 @@ impl core::error::Error for UnknownBoard {}
 ///
 /// Issue 2101 — `threadx-qemu-riscv64` named the emulator the same way for the
 /// board whose RFC-0093 §4 name is `rv-virt-threadx`.
+// user-surface: table
 pub const RETIRED_BOARD_KEYS: &[(&str, &str, &str)] = &[
+    // phase-500.
     (
         "native",
         "linux",
-        "`native` names every general-purpose host, and the host board builds on Linux only \
-         (phase-500)",
+        "`native` names every general-purpose host, and the host board builds on Linux only",
     ),
+    // phase-500.
     (
         "posix",
         "linux",
-        "`posix` is the platform (`nros-platform-posix`), not a board (phase-500)",
+        "`posix` is the platform (`nros-platform-posix`), not a board",
     ),
+    // RFC-0093 R3, issue 2063.
     (
         "qemu-mps2-an385",
         "mps2-an385-baremetal",
         "`qemu-mps2-an385` names the emulator, not the board: QEMU is how the AN385 image is \
-         RUN, and the board's one name is its index key (RFC-0093 R3, issue 2063)",
+         RUN, and the board's one name is its index key",
     ),
+    // RFC-0093 R3, issue 2101.
     (
         "threadx-qemu-riscv64",
         "rv-virt-threadx",
         "`threadx-qemu-riscv64` names the emulator, not the board: QEMU is how the RISC-V \
-         `virt` image is RUN, and the board's one name is its index key (RFC-0093 R3, \
-         issue 2101)",
+         `virt` image is RUN, and the board's one name is its index key",
     ),
 ];
 
@@ -670,6 +673,7 @@ pub const RETIRED_BOARD_KEYS: &[(&str, &str, &str)] = &[
 /// it answered to) retired under RFC-0113 D5: it had no receive interrupt and
 /// no one-shot timer behind a wake object, so its executor could not park and
 /// nano-ros could not keep its real-time wait promise there.
+// user-surface: table
 pub const REMOVED_BOARD_KEYS: &[(&str, &str)] = &[
     ("esp32-c3-baremetal", ESP32_REMOVED),
     ("esp32-qemu", ESP32_REMOVED),
@@ -678,10 +682,12 @@ pub const REMOVED_BOARD_KEYS: &[(&str, &str)] = &[
     ("esp32", ESP32_REMOVED),
 ];
 
+// RFC-0113 D5; issue 1525.
+// user-surface: table
 const ESP32_REMOVED: &str = "the ESP32-C3 board is retired with no replacement: it had \
      no receive interrupt and no one-shot timer behind a wake object, so an executor \
      on it could not park, and nano-ros does not support a board where it cannot keep \
-     its real-time wait promise (RFC-0113 D5; issue 1525)";
+     its real-time wait promise";
 
 /// The refusal for a retired board key (see [`RETIRED_BOARD_KEYS`] and
 /// [`REMOVED_BOARD_KEYS`]), naming its replacement or its reason; `None` for
@@ -980,10 +986,11 @@ mod tests {
         );
     }
 
-    /// phase-521 W6 — every removed esp32 key is refused naming RFC-0113,
-    /// never offered a replacement and never mapped.
+    /// phase-521 W6 — every removed esp32 key is refused with RFC-0113 D5's
+    /// reason (in words, no id: issue 2547), never offered a replacement and
+    /// never mapped.
     #[test]
-    fn a_removed_esp32_key_is_refused_naming_rfc_0113() {
+    fn a_removed_esp32_key_is_refused_naming_its_reason() {
         for key in [
             "esp32-c3-baremetal",
             "esp32-qemu",
@@ -993,7 +1000,9 @@ mod tests {
         ] {
             let hint = retired_board_key_hint(key).expect(key);
             assert!(
-                hint.contains("RFC-0113 D5") && !hint.contains("write `"),
+                hint.contains("real-time wait promise")
+                    && !hint.contains("RFC-")
+                    && !hint.contains("write `"),
                 "{hint}"
             );
             assert!(board_family(key).is_err(), "`{key}` still has a family");

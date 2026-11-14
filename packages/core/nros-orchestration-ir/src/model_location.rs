@@ -764,13 +764,14 @@ pub fn ensure_model(
         // name a checkout, which is exactly the audience that cannot act on
         // them: a release now ships this binary beside `nros` and fronts it at
         // `$NROS_HOME/bin`, so a toolchain missing it is one that predates that
-        // or was installed by hand, and reinstalling is the fix.
+        // or was installed by hand, and reinstalling is the fix. Never through
+        // $PATH: issue 0285.
         "cannot resolve the SystemModel: `nros-launch-resolve` not found. A released \
          toolchain ships it beside `nros` and fronts it at `$NROS_HOME/bin`, so \
          re-running the installer gets you one. From a checkout: \
          `./scripts/bootstrap.sh` (contributors: `just setup-launch-resolve`). Either \
          way, `$NROS_LAUNCH_RESOLVE` points at one explicitly. (Never resolved \
-         through $PATH — a stale copy there resolves with an older schema, issue 0285.)"
+         through $PATH — a stale copy there resolves with an older schema.)"
             .to_string()
     })?;
 

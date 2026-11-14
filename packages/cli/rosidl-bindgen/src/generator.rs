@@ -614,8 +614,9 @@ fn generate_lib_rs(src_dir: &Path, package: &Package) -> Result<()> {
 /// the crate does not carry. A message that can lie is worse than a message
 /// that points at the constant, which is right there.
 fn emit_codegen_version_token() -> String {
+    // phase-429 W1; the monomorphisation-timed block is RFC-0088's `format_check`.
     format!(
-        r#"/// The nros dev codegen version this crate was emitted at (phase-429 W1).
+        r#"/// The nros dev codegen version this crate was emitted at.
 ///
 /// The runtime declares the versions it accepts in `nros_core::codegen_version`;
 /// the assertion below is what turns a disagreement into a build failure rather
@@ -624,7 +625,7 @@ pub const NROS_EMITTED_CODEGEN_VERSION: u32 = {version};
 
 // Crate scope, deliberately: rustc evaluates a crate-scope `const` item for a
 // crate that is merely COMPILED, so `cargo check` reports this. An inline
-// `const {{}}` block inside a generic (RFC-0088's `format_check`) is
+// `const {{}}` block inside a generic (a message's format check) is
 // monomorphisation-timed, and `cargo check` never sees it.
 const _: () = assert!(
     nros_core::codegen_version::accepts(NROS_EMITTED_CODEGEN_VERSION),

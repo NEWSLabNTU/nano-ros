@@ -504,7 +504,7 @@ fn unanswered_platform_message(
         known.join(", ")
     };
     format!(
-        // issue 1145.
+        // issue 1145; fatal, not a fall-through: phase-468 W1.
         "NROS_PLATFORM_NAME={platform}: no nros-platform.toml answers to `{platform}`, \
          so the {what} knobs have no platform rung.\n\
          \n  searched (every root, in order):\n    {roots}\n\
@@ -518,8 +518,7 @@ fn unanswered_platform_message(
          nros-platform.toml. A descriptor that declares only `names` is a legitimate \
          answer — 'this platform states no rungs' — and an absent file is not an answer \
          at all, which is why this is fatal rather than a fall-through to the builtin \
-         defaults (phase-468 W1; falling through is how `threadx-linux` stopped \
-         compiling).\n\
+         defaults (falling through is how `threadx-linux` stopped compiling).\n\
          \n  `just check platform-name-answered` asks this question for the whole tree \
          without a build."
     )
@@ -3331,7 +3330,8 @@ impl BoardEntryFacts {
             return Err(ConfigError::DerivedBoardCapability {
                 capability: HOST_STACK_CAPABILITY.to_string(),
                 boards: boards(),
-                detail: "is derived from `[board.net] stack` (RFC-0109 D2); remove the \
+                // RFC-0109 D2.
+                detail: "is derived from `[board.net] stack`; remove the \
                          `[board.capabilities]` row and state `[board.net] stack = \"host\"` \
                          instead"
                     .to_string(),
@@ -3872,9 +3872,10 @@ impl BoardKnobsFile {
 /// are retired in the same words.
 #[must_use]
 pub fn retired_board_knobs_refusal() -> String {
+    // RFC-0103 D6.
     nros_zephyr_build::RETIRED_TEMPLATE
         .replace("{legacy}", "`[board.knobs]`")
-        .replace("{env}", "a top-level `[knobs]` (RFC-0103 D6)")
+        .replace("{env}", "a top-level `[knobs]`")
 }
 
 #[cfg(test)]

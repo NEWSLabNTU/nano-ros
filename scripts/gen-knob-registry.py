@@ -83,9 +83,11 @@ KCONFIG_TYPES = {"bool", "int", "hex", "string"}
 # in the same words. Rust format braces are NOT used — both sides do a plain
 # replace. Release 0.5.0-nros2 printed W5a's deprecation for one release; this
 # is what that deprecation promised.
+# The text names the release, never the design ids (RFC-0103 D2b, phase-484
+# W8): it is a user's build error.
 RETIRED = (
-    "{legacy} is a retired spelling of {env} (RFC-0103 D2b; retired in phase-484 W8, "
-    "after release 0.5.0-nros2 deprecated it) -- set {env} instead"
+    "{legacy} is a retired spelling of {env} (retired after release 0.5.0-nros2 "
+    "deprecated it) -- set {env} instead"
 )
 # The error an `[image.<id>] env` row earns when its key is a registry knob
 # (phase-484 W8, RFC-0103 D6): the knob's one spelling is
@@ -98,7 +100,7 @@ RETIRED = (
 RETIRED_KNOB = "{spelling} is a retired knob: {reason}"
 IMAGE_ENV_RETIRED = (
     "[image.{image}] env {env} names the knob [image.{image}.knobs.{group}] {name} "
-    "(RFC-0103 D6; refused in phase-484 W8, after release 0.6.0 deprecated it) -- "
+    "(refused after release 0.6.0 deprecated it) -- "
     "move the row there"
 )
 

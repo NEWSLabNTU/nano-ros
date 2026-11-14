@@ -3423,7 +3423,7 @@ class = "listener_pkg::Listener"
         for (body, want) in [
             (
                 "[network.lab]\nsubnet = \"10.0.2.0/24\"\n",
-                "`[network]` is retired (RFC-0109",
+                "`[network]` is retired (board network files",
             ),
             ("[[transport]]\nname = \"t\"\n", "`[transport]` is retired"),
             (
@@ -3434,8 +3434,14 @@ class = "listener_pkg::Listener"
                 "[image.a]\nboard = \"b\"\n[image.a.run]\nnic = \"tap\"\n",
                 "the bare value is \"slirp\"",
             ),
-            ("[image.a]\nboard = \"b\"\nip = \"10.0.2.50\"\n", "D10g"),
-            ("[image_defaults]\nnetmask = \"255.255.255.0\"\n", "D10g"),
+            (
+                "[image.a]\nboard = \"b\"\nip = \"10.0.2.50\"\n",
+                "which is retired",
+            ),
+            (
+                "[image_defaults]\nnetmask = \"255.255.255.0\"\n",
+                "which is retired",
+            ),
         ] {
             let parsed = toml::from_str::<SystemToml>(&format!("{head}{body}"));
             let e = match parsed {

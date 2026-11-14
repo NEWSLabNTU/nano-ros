@@ -115,11 +115,12 @@ pub fn read(
 ) -> Result<LeafCapabilities, String> {
     let mut out = LeafCapabilities::default();
     for f in features {
+        // issue 1766.
         let a = axis(f).ok_or_else(|| {
             format!(
                 "{}: `[system] features` names `{f}`, which is not a capability axis \
                  (known axes: {}). An axis nothing knows would be dropped in silence, \
-                 so it is refused (issue 1766).",
+                 so it is refused.",
                 file.display(),
                 LEAF_CAPABILITY_AXES
                     .iter()

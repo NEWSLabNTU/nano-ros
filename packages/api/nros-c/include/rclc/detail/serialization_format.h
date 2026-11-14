@@ -110,10 +110,12 @@
  * @param msg_format_id  the type's own `NROS_MSG_FORMAT_ID_<type>` macro
  * @param type_literal   the type's name, as a string literal, so the
  *                       diagnostic names the message rather than the header
+ *
+ * One image, one backend, one encoding: RFC-0088.
  */
 #define NROS_ASSERT_MESSAGE_FORMAT(msg_format_id, type_literal)                                    \
     NROS_STATIC_ASSERT((msg_format_id) == NROS_SERIALIZATION_FORMAT_ID,                            \
-                       "RFC-0088: " type_literal                                                   \
+                       "serialization format: " type_literal                                       \
                        " is not encoded in the format the linked backend speaks "                  \
                        "(NROS_SERIALIZATION_FORMAT) — one image, one backend, one encoding")
 

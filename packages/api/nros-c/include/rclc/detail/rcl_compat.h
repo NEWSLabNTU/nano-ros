@@ -190,16 +190,16 @@ NROS_RCL_COMPAT_ASSERT(RCL_RET_UNSUPPORTED == -16,
  *     C++ and Rust FFI seams. OK is the sole code where the two agree. */
 NROS_RCL_COMPAT_ASSERT(RCL_RET_OK == 0, "RCL_RET_OK must be 0 -- the one value ours and rcl share");
 NROS_RCL_COMPAT_ASSERT(RCL_RET_ERROR != 1,
-                       "rcl_ret_t was renumbered to rcl's values; see RFC-0089 -- MAP, never "
+                       "rcl_ret_t was renumbered to rcl's values -- MAP them, never "
                        "renumber (three FFI seams store these)");
 NROS_RCL_COMPAT_ASSERT(RCL_RET_TIMEOUT != 2,
-                       "rcl_ret_t was renumbered to rcl's values; see RFC-0089");
+                       "rcl_ret_t was renumbered to rcl's values -- map, never renumber");
 NROS_RCL_COMPAT_ASSERT(RCL_RET_UNSUPPORTED != 3,
-                       "rcl_ret_t was renumbered to rcl's values; see RFC-0089");
+                       "rcl_ret_t was renumbered to rcl's values -- map, never renumber");
 NROS_RCL_COMPAT_ASSERT(RCL_RET_INVALID_ARGUMENT != 11,
-                       "rcl_ret_t was renumbered to rcl's values; see RFC-0089");
+                       "rcl_ret_t was renumbered to rcl's values -- map, never renumber");
 NROS_RCL_COMPAT_ASSERT(RCL_RET_NOT_INIT != 101,
-                       "rcl_ret_t was renumbered to rcl's values; see RFC-0089");
+                       "rcl_ret_t was renumbered to rcl's values -- map, never renumber");
 
 /* The type alias must be able to hold what upstream's `int32_t` holds. */
 NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as upstream's rmw_ret_t");

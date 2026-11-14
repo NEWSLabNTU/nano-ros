@@ -507,12 +507,13 @@ impl<'a> ExecutorConfig<'a> {
     /// the feature and this setter go together.
     ///
     /// [`Executor::create_node`]: crate::executor::Executor::create_node
+    // Several named nodes per executor: RFC-0047.
     #[cfg_attr(
         feature = "deprecate-node-name-setter",
         deprecated(
             since = "0.5.0",
             note = "name the node at `Executor::create_node(name)` -- one executor holds \
-                    several named nodes (RFC-0047), so a name on the session config can only \
+                    several named nodes, so a name on the session config can only \
                     describe the first. Open with `Context::create_executor()` / \
                     `create_executor_in(backing)`."
         )

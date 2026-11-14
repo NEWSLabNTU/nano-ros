@@ -280,7 +280,8 @@ impl PriorityPlan {
                 ZEPHYR_DEFAULT_NUM_PREEMPT,
                 ZEPHYR_DEFAULT_NUM_COOP,
                 &[ZEPHYR_TRANSPORT_BAND_DEFAULT],
-                "derived from the Kconfig DEFAULTS (RFC-0079 section 4.1); an \
+                // RFC-0079 section 4.1.
+                "derived from the Kconfig DEFAULTS; an \
                  image's own .config refines it",
             ),
             // packages/platform/nros-platform-freertos/nros-platform.toml.
@@ -400,7 +401,8 @@ impl PriorityPlan {
             num_preempt,
             num_coop,
             &bands,
-            "derived from an image .config (RFC-0079 section 4.1)",
+            // RFC-0079 section 4.1.
+            "derived from an image .config",
         );
         plan.max_levels = cfg
             .get("CONFIG_NROS_EXECUTOR_MAX_LEVELS")

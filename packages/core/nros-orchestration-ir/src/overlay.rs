@@ -309,8 +309,9 @@ impl Overlay {
     /// The file's text. Deterministic, so write-if-changed is byte-exact.
     pub fn render(&self) -> String {
         let mut out = String::new();
+        // phase-486.
         out.push_str(
-            "# Written by nros (phase-486). The nano-ros facts that do not belong in\n\
+            "# Written by nros. The nano-ros facts that do not belong in\n\
              # the SystemModel beside it — do not edit; re-run `nros configure`.\n",
         );
         out.push_str(&format!("[meta]\nversion = {OVERLAY_VERSION}\n"));

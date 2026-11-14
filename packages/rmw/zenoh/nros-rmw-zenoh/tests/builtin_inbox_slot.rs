@@ -65,7 +65,10 @@ fn a_declared_string_parameter_refuses_rather_than_guessing() {
         panic!("a string parameter must refuse, not guess");
     };
     assert!(why.contains("NROS_PARAM_SERVICE_INBOX_BYTES"), "{why}");
-    assert!(why.contains("issue 1352"), "{why}");
+    assert!(
+        why.contains("was DROPPED") && !why.contains("issue "),
+        "{why}"
+    );
     // Every array kind abstains the same way.
     for shape in [
         "1:4:0:0:0:1:0:0:0",

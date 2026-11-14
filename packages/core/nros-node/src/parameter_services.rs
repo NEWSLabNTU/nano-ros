@@ -1316,8 +1316,9 @@ pub(crate) const fn param_service_buffer_derived() -> bool {
 
 /// The overflow log's account of where the buffer's size came from.
 const fn param_service_buffer_origin() -> &'static str {
+    // phase-446 F3.
     if param_service_buffer_derived() {
-        " The size was DERIVED from the contract's declared parameters (phase-446 F3), so \
+        " The size was DERIVED from the contract's declared parameters, so \
          this message carries more, or longer, parameters than the contract declares."
     } else {
         ""

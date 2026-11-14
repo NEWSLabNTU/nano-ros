@@ -54,8 +54,9 @@ fn main() {
     let out_dir =
         PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR is set for a build script"));
     let kb = stack_kb();
+    // phase-553 W7.
     let script = format!(
-        "/* Written by nros-board-mps2-an385's build script (phase-553 W7). */\n\
+        "/* Written by nros-board-mps2-an385's build script. */\n\
          _stack_size = {kb}K;\n"
     );
     let path = out_dir.join("nros-stack.x");

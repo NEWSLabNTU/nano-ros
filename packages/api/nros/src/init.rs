@@ -756,14 +756,18 @@ pub fn init() -> Result<Context, InitError> {
 /// refused argument. `NROS_RCLCPP_REFUSE_INIT_ARGV` is the C++ twin
 /// (`packages/api/nros-cpp/include/rclcpp/logging.hpp`), and since phase-467 Row 11's
 /// C++ half it states the same honoured and refused sets, from the same parser.
+///
+/// The rule is RFC-0089's (phase-417 W3.b); the remap fallback is RFC-0046's
+/// (rcl's local-before-global), the parameter application RFC-0015 section 9.
 #[cfg(feature = "env")]
+// user-surface: table
 pub const REFUSE_INIT_ARGS: &str = "nros::init_with_args / nros::Context::new was given a --ros-args \
-argument nano-ros cannot honour (RFC-0089, phase-417 W3.b). Proceeding would DISCARD it -- the \
+argument nano-ros cannot honour. Proceeding would DISCARD it -- the \
 'compiles and differs' the rule forbids. HONOURED inside --ros-args ... --: -r / --remap \
 [node:]from:=to, applied as the FALLBACK beneath any remap the launch file projected for the same \
-name (RFC-0046; rcl's local-before-global), through Context::create_executor / \
+name (rcl's local-before-global), through Context::create_executor / \
 create_executor_in; and, in an image with a parameter store, -p / --param [node:]name:=value and \
---params-file <path>, applied when a node declares the parameter (RFC-0015 section 9). REFUSED: \
+--params-file <path>, applied when a node declares the parameter. REFUSED: \
 node-identity remaps (__node, __name, __ns), -e / --enclave, the log flags, any token that is not a \
 ROS flag, and -p / --params-file in an image without a parameter store. A nros configure \
 image does not read argv at all: its launch remaps and parameters are projected into the \

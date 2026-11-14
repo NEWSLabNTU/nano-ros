@@ -482,11 +482,12 @@ pub fn realize_rtos(
                 degradations.push(Degradation {
                     node: (*name).to_string(),
                     dim: "priority",
+                    // RFC-0079.
                     reason: format!(
                         "rank {rank} is past the board's application pool {}, so this \
                          node shares the pool's least urgent priority {p} with the \
                          rank above it. The derived ORDER is weaker than the ranking \
-                         asked for (RFC-0079).",
+                         asked for.",
                         pool()
                     ),
                 });
@@ -502,13 +503,15 @@ pub fn realize_rtos(
                 degradations.push(Degradation {
                     node: (*name).to_string(),
                     dim: "priority",
+                    // RFC-0079 §6, issue 1427: only an authored sched task names a
+                    // reserved band.
                     reason: format!(
                         "the board's application pool {} is EMPTY - the reserved bands \
                          {:?} leave the application nothing to be allocated from, so \
-                         NO derived sched task is allocated for this node (RFC-0079, issue \
-                         1427). Deriving one would mean handing it a priority the \
-                         transport owns, and RFC-0079 §6 lets only an AUTHORED sched task \
-                         name a reserved band. Widen the pool - on Zephyr that means \
+                         NO derived sched task is allocated for this node. Deriving \
+                         one would mean handing it a priority the transport owns, and \
+                         only a sched task you AUTHOR in system.toml may name a \
+                         reserved band. Widen the pool - on Zephyr that means \
                          the image's transport-priority Kconfig, which is what the \
                          band is computed from.",
                         pool(),
@@ -607,12 +610,13 @@ pub fn realize_rtos(
                 degradations.push(Degradation {
                     node: (*name).to_string(),
                     dim: "feasibility",
+                    // issue 0259.
                     reason: format!(
                         "execution + blocking exceeds the deadline before any \
                          interference is considered: C={c_us}us + B={b_shown} > \
                          D={d_us}us. No priority, core pin or preemption \
                          threshold can recover this; the declaration itself is \
-                         infeasible (issue 0259)."
+                         infeasible."
                     ),
                 });
             }
@@ -687,10 +691,11 @@ pub fn realize_rtos(
             degradations.push(Degradation {
                 node: "<system>".to_string(),
                 dim: "utilization",
+                // issue 0259.
                 reason: format!(
                     "the {counted} measured periodic node(s) demand {:.2} processors, \
                      and this deployment declares {cores}{caveat}. No priority \
-                     assignment can run a taskset that does not fit (issue 0259).",
+                     assignment can run a taskset that does not fit.",
                     total
                 ),
             });
@@ -775,11 +780,12 @@ pub fn realize_rtos(
                 degradations.push(Degradation {
                     node: "<system>".to_string(),
                     dim: "placement",
+                    // issue 0259.
                     reason: format!(
                         "no assignment of the {} measured periodic node(s) to {cores} core(s) \
                          fits: the least-loaded packing still demands {:.2} of one processor. \
                          Total utilisation can fit while no PARTITION does, because a task \
-                         runs on one core (issue 0259).",
+                         runs on one core.",
                         measured.len(),
                         worst
                     ),

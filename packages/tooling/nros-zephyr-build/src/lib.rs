@@ -873,7 +873,10 @@ mod tests {
         for s in RETIRED {
             let n = retired_spelling_refusal(s).expect("a retired knob");
             assert!(n.starts_with(&format!("{s} is a retired knob: ")), "{n}");
-            assert!(n.contains("RFC-0110 D2") && !n.contains('{'), "{n}");
+            assert!(
+                n.contains("no lease task to prioritise") && !n.contains('{'),
+                "{n}"
+            );
         }
         let set = |k: &str| (k == GONE).then(|| "16".to_string());
         let refused = std::panic::catch_unwind(|| read_spelled(GONE, &set));

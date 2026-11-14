@@ -1047,7 +1047,7 @@ pub const KNOBS: &[KnobRow] = &[
         ty: None,
         range: None,
         names: &[],
-        retired: Some("zenoh-pico 1.10 runs the lease and keep-alive on its executor thread, so there is no lease task to prioritise (RFC-0110 D2) -- remove it, and set NROS_ZENOH_READ_PRIORITY, which now prioritises that thread"),
+        retired: Some("zenoh-pico 1.10 runs the lease and keep-alive on its executor thread, so there is no lease task to prioritise -- remove it, and set NROS_ZENOH_READ_PRIORITY, which now prioritises that thread"),
     },
     KnobRow {
         id: "ZENOH_MAX_LARGE_SUBSCRIBERS",
@@ -1857,7 +1857,7 @@ pub const KCONFIG_KNOBS: &[crate::KconfigKnob] = &[
 
 /// The refusal when a knob arrives under a RETIRED spelling (phase-484 W8).
 /// Substitute `{legacy}` and `{env}`; the cmake twin refuses in the same words.
-pub const RETIRED_TEMPLATE: &str = "{legacy} is a retired spelling of {env} (RFC-0103 D2b; retired in phase-484 W8, after release 0.5.0-nros2 deprecated it) -- set {env} instead";
+pub const RETIRED_TEMPLATE: &str = "{legacy} is a retired spelling of {env} (retired after release 0.5.0-nros2 deprecated it) -- set {env} instead";
 
 /// The refusal any spelling of a RETIRED knob earns (a row with `retired`).
 /// Substitute `{spelling}` and `{reason}`; the cmake twin refuses in the same words.
@@ -1865,4 +1865,4 @@ pub const RETIRED_KNOB_TEMPLATE: &str = "{spelling} is a retired knob: {reason}"
 
 /// The refusal an `[image.<id>] env` row earns when it names a registry knob
 /// (phase-484 W8). Substitute `{image}`, `{env}`, `{group}` and `{name}`.
-pub const IMAGE_ENV_RETIRED_TEMPLATE: &str = "[image.{image}] env {env} names the knob [image.{image}.knobs.{group}] {name} (RFC-0103 D6; refused in phase-484 W8, after release 0.6.0 deprecated it) -- move the row there";
+pub const IMAGE_ENV_RETIRED_TEMPLATE: &str = "[image.{image}] env {env} names the knob [image.{image}.knobs.{group}] {name} (refused after release 0.6.0 deprecated it) -- move the row there";

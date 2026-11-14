@@ -95,11 +95,12 @@ FILE *const stderr = &_uart_file;
  * definition here would be a syntax error before it was a duplicate symbol. Its
  * FILE machinery reaches the same console through `_write` below. */
 #else
+/* issue 0674. */
 #error "nros-board-threadx-qemu-riscv64: unrecognised C library — neither \
 picolibc (NROS_LIBC_PICOLIBC / __PICOLIBC__ / PICOLIBC_STDIO_GLOBALS) nor newlib \
 (__NEWLIB__). This board must know which one owns stdout/stderr: defining them \
 under newlib is a syntax error, and NOT defining them under picolibc is an \
-undefined symbol at link time, in whatever links first (issue 0674)."
+undefined symbol at link time, in whatever links first."
 #endif
 
 /* picolibc _write syscall for other output (fprintf to fd, etc.) */

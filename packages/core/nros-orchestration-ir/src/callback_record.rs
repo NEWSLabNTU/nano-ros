@@ -466,8 +466,9 @@ pub struct UnanalysableOnSafetyImage {
 }
 
 fn render_refusal(supervised: &BTreeSet<String>, unanalysable: &[CallbackRecord]) -> String {
+    // RFC-0108 D1.
     let mut s = format!(
-        "RFC-0108 D1: this image supervises a deadline (`supervise:` on {}), and {} \
+        "this image supervises a deadline (`supervise:` on {}), and {} \
          callback(s) have nothing that bounds their arrivals. An input with unbounded \
          arrivals adds interference no analysis can bound, which can break the \
          supervised reaction. Each one:",

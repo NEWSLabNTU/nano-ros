@@ -424,8 +424,9 @@ pub fn render_mode_tables_rs(
     if modes.is_empty() {
         return String::new();
     }
+    // phase-462 W4.
     let mut out = String::from(
-        "// phase-462 W4 -- the contract's modes: the base rows, the base cells, the\n\
+        "// The contract's modes: the base rows, the base cells, the\n\
          // mode's numbers.\n",
     );
     for (k, (rows, ages)) in modes.iter().enumerate() {

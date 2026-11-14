@@ -228,8 +228,9 @@ pub struct BlockingCallRefused {
 }
 
 fn render_refusal(refused: &[CallFinding]) -> String {
+    // RFC-0108 D8.3.
     let mut s = format!(
-        "RFC-0108 D8.3: {} blocking call(s) wait for a server at a level that cannot \
+        "{} blocking call(s) wait for a server at a level that cannot \
          preempt the client:",
         refused.len()
     );

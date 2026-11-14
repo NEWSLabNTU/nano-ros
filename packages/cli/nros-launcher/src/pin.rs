@@ -153,16 +153,17 @@ pub fn find_and_load(start: &Path) -> Result<Option<Pin>> {
 /// schema without a filesystem, and so the header lives in one place.
 #[must_use]
 pub fn render(version: &str) -> String {
+    // RFC-0095 D9; `self update` moves no pin: D7.
     format!(
         "# nano-ros toolchain pin — written by `nros build` on the first build\n\
-         # of this project (RFC-0095 D9). It names the nano-ros that builds it,\n\
+         # of this project. It names the nano-ros that builds it,\n\
          # the way `rust-toolchain.toml` names a Rust.\n\
          #\n\
          # It is SOURCE: commit it. Without it the build floats, and firmware\n\
          # built from a floating toolchain is only reproducible by accident.\n\
          #\n\
          # To move it, edit this line. Nothing else does — `nros self update`\n\
-         # moves the launcher and no pin (RFC-0095 D7), so an update never\n\
+         # moves the launcher and no pin, so an update never\n\
          # silently rebuilds your image with a different codegen.\n\
          [toolchain]\n\
          version = \"{version}\"\n"
@@ -411,6 +412,7 @@ pub fn describe(outcome: &PinOutcome) -> Option<String> {
         // it BESIDE the file, never instead of it — a user reading a refusal on
         // a runner cannot run a verb there either, and the file is what they
         // have to commit.
+        // RFC-0097 D11; the Cargo.lock rule of issues 0359/0378, one layer up.
         PinOutcome::RefusedInCi { version, dir, var } => Some(format!(
             "nros build: this project is UNPINNED and ${var} is set, so nothing \
              was pinned.\n\
@@ -420,7 +422,7 @@ pub fn describe(outcome: &PinOutcome) -> Option<String> {
              build green\n\
              \x20   against an unrecorded toolchain is the bug the pin exists to \
              prevent\n\
-             \x20   (RFC-0097 D11; the Cargo.lock rule of issues 0359/0378, one \
+             \x20   (the rule a committed Cargo.lock keeps for crates, one \
              layer up).\n\
              \x20   Fix it on a developer machine — run `nros build` there once, \
              or write\n\

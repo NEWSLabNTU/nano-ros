@@ -808,11 +808,12 @@ fn entities_key(t: &toml::Table, file: &Path) -> Result<EntitiesKey, String> {
         }
         _ => {}
     }
+    // The census word: issue 1556.
     let arr = v.as_array().ok_or_else(|| {
         format!(
             "{}: `entities` must be an ARRAY of strings, e.g. \
              [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"], the word \
-             \"{ENTITIES_FROM_CENSUS}\" (read from the leaf's census, issue 1556), or the word \
+             \"{ENTITIES_FROM_CENSUS}\" (read from the leaf's census), or the word \
              \"{ENTITIES_DEFAULTS}\" (the crate defaults, chosen)",
             file.display()
         )
@@ -940,10 +941,11 @@ fn image_system(
     // defines (`ImageBlock::with_base`), applied key by key.
     let pick = |key: &str| str_key(image, key).or_else(|| str_key(defaults, key));
 
+    // RFC-0098 D3.
     let board = pick("board").ok_or_else(|| {
         format!(
             "{}: `[image.{id}]` names no `board` — every image is built for exactly one \
-             board (RFC-0098 D3)",
+             board: add `board = \"<board>\"` (`nros board list` names them)",
             path.display()
         )
     })?;
@@ -1956,7 +1958,10 @@ domain_id = 4
             let t = format!("[system]\nname = \"t\"\n{extra}");
             let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &t)]);
             let e = read(d.path()).unwrap_err();
-            assert!(e.contains(&format!("`{at}`")) && e.contains("D10g"), "{e}");
+            assert!(
+                e.contains(&format!("`{at}`")) && e.contains("which is retired"),
+                "{e}"
+            );
         }
     }
 
@@ -1982,7 +1987,7 @@ domain_id = 4
             let t = format!("[system]\nname = \"t\"\n{extra}");
             let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &t)]);
             let e = read(d.path()).unwrap_err();
-            assert!(e.contains(names) && e.contains("RFC-0109"), "{e}");
+            assert!(e.contains(names) && e.contains("is retired ("), "{e}");
         }
         let t = "[system]\nname = \"t\"\nlocator = \"tcp/10.0.2.2:7447\"\n\
                  [image.a]\nboard = \"x\"\nos_config = [\"lab.toml\"]\n\
