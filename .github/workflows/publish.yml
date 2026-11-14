@@ -220,6 +220,29 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
+      # A content tag names ONE image forever. A rebuild resolves apt and pip
+      # afresh, so the same inputs give different bytes, and pushing them
+      # under an existing content tag (and moving the alias with it) changes
+      # what every consumer pinned to it runs. Run 43569744391 (2026-11-14)
+      # did exactly that, 20 minutes after 43568245513 built the same inputs.
+      # So if the content tag exists, nothing is built or pushed. To publish
+      # new bytes, change an input (which changes the content tag).
+      - name: Refuse to overwrite an existing content tag
+        id: exists
+        env:
+          REF: ${{ env.IMAGE }}:${{ env.TAG }}-${{ steps.ctag.outputs.sha }}
+        run: |
+          rc=0; out="$(docker buildx imagetools inspect "$REF" 2>&1)" || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$REF already exists; not rebuilding or re-pushing it, and not moving the alias."
+          elif printf '%s' "$out" | grep -qiE 'not found|manifest unknown'; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "$REF is new; building it."
+          else
+            echo "::error::could not ask the registry whether $REF exists: $out"
+            exit 1
+          fi
       # issue 1201 — the context is the REPO ROOT, not the Dockerfile's dir.
       #
       # `436035894` (2026-09-04) made the Dockerfile `COPY
@@ -239,6 +262,7 @@ jobs:
       # files the Dockerfile names — a hosted checkout has no build output or
       # initialised submodules, but the rule should not depend on that.
       - name: Build + push
+        if: steps.exists.outputs.exists != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -343,6 +367,29 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
+      # A content tag names ONE image forever. A rebuild resolves apt and pip
+      # afresh, so the same inputs give different bytes, and pushing them
+      # under an existing content tag (and moving the alias with it) changes
+      # what every consumer pinned to it runs. Run 43569744391 (2026-11-14)
+      # did exactly that, 20 minutes after 43568245513 built the same inputs.
+      # So if the content tag exists, nothing is built or pushed. To publish
+      # new bytes, change an input (which changes the content tag).
+      - name: Refuse to overwrite an existing content tag
+        id: exists
+        env:
+          REF: ${{ env.IMAGE }}:${{ env.TAG }}-${{ steps.ctag.outputs.sha }}
+        run: |
+          rc=0; out="$(docker buildx imagetools inspect "$REF" 2>&1)" || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$REF already exists; not rebuilding or re-pushing it, and not moving the alias."
+          elif printf '%s' "$out" | grep -qiE 'not found|manifest unknown'; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "$REF is new; building it."
+          else
+            echo "::error::could not ask the registry whether $REF exists: $out"
+            exit 1
+          fi
       # phase-466 — the context is the REPO ROOT, not the Dockerfile's dir,
       # because the Dockerfile now COPYs `ci/docker/apt-packages.txt`. This is
       # the change issue 1201 records ci-base needing and NOT getting: a COPY of
@@ -352,6 +399,7 @@ jobs:
       # `ci/docker/zephyr-ros/Dockerfile.dockerignore` keeps the root context to
       # the files this Dockerfile names.
       - name: Build + push
+        if: steps.exists.outputs.exists != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
