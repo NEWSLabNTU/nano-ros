@@ -811,7 +811,7 @@ generated-root-profiles:
 # phase-517 W5 -- default-level cmake output (STATUS/NOTICE/WARNING, build
 # COMMENTs) names no issue, RFC or phase: a correct build tells its user what
 # happened, and the reasoning goes to nros_message_detail() for `nros build -v`.
-# A ratchet over the sites that predate it; static, ~0.2 s.
+# Baseline zero: any site fails, named by file:line; static, ~0.2 s.
 [private]
 cmake-user-output-refs:
     @python3 scripts/check-cmake-user-output-refs.py

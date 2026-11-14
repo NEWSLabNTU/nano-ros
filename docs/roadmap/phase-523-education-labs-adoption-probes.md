@@ -327,7 +327,8 @@ texts, `.config/user-surface-ids-ratchet.json`) and
 `.config/cmake-user-output-refs.json`). The sweep goes by file, biggest first;
 each batch lowers its baseline in the same PR. When a ratchet reaches zero it
 becomes a hard rule in the next change: its baseline file goes, and any id
-fails with its file and line (the Rust half did so after batch 10).
+fails with its file and line (the Rust half did so after batch 10, the
+CMake half after CMake batch 2).
 
 | Step | PR | Rust ratchet | CMake ratchet | Status |
 | --- | --- | --- | --- | --- |
@@ -346,6 +347,7 @@ fails with its file and line (the Rust half did so after batch 10).
 | Rust half a hard rule: `check-user-surface-ids` drops `.config/user-surface-ids-ratchet.json`; any id in a CLI-library string or build-script panic text fails with its file and line | #3784 | rule | 80 | merged |
 | CMake batch 1: every module under `cmake/` (`NanoRos*.cmake`, `board/`, `find/`, `toolchain/`: the configure refusals for retired names and keywords, domain, edition and deploy disagreements, missing tools, inventories and generated files, the SystemModel, promise and codegen-version refusals, the cross-toolchain change) | #3786 | 0 | 17 | merged |
 | CMake batch 2: the PX4 (`NanoRosArchivePairing.cmake`, `NanoRosPx4Module.cmake`), NuttX (`nros-nuttx.cmake`, `nros-nuttx-depfile.cmake`), Cyclone DDS (`NrosRmwCycloneddsDescriptorCap.cmake`, `NrosRmwCycloneddsTypeSupport.cmake`) and Zephyr (`nros_checkout_guard.cmake`, `nros_cyclonedds_typesupport.cmake`, `nros_system_generate.cmake`, `nros_system_image_agreement.cmake`) modules and `scripts/check/rtos-feature-set-excludes-analysis.cmake` (the header/archive pairing and stray-backend refusals, the missing NuttX tree and dep-info, the descriptor-cap and idlc refusals, the two-checkout and foreign-SDK refusals, the baked-domain, bringup and image-agreement refusals) | #3787 | 0 | 0 | open |
+| CMake half a hard rule: `check-cmake-user-output-refs` drops `.config/cmake-user-output-refs.json` and `--update`; any id in a default-level `message()` or `COMMENT` fails with its file and line | #3787 | rule | rule | open |
 | runtime logs and panic text of a default image (C lexer, log/panic rule; 101 ids in 33 files fixed) | #3789 | (gated at zero) | — | merged |
 | shell-script output (user-run scripts) | #3790 | (gated at zero) | — | merged |
 | compile-time text (`#error`, `static_assert`, `compile_error!`, `#[deprecated]`, proc-macro errors) | #3792 | (gated at zero) | — | open |
