@@ -325,7 +325,9 @@ The backlog starts as counted ratchets that may only fall:
 texts, `.config/user-surface-ids-ratchet.json`) and
 `check-cmake-user-output-refs` (now counting `FATAL_ERROR`/`SEND_ERROR` too,
 `.config/cmake-user-output-refs.json`). The sweep goes by file, biggest first;
-each batch lowers its baseline in the same PR.
+each batch lowers its baseline in the same PR. When a ratchet reaches zero it
+becomes a hard rule in the next change: its baseline file goes, and any id
+fails with its file and line (the Rust half did so after batch 10).
 
 | Step | PR | Rust ratchet | CMake ratchet | Status |
 | --- | --- | --- | --- | --- |
@@ -341,6 +343,7 @@ each batch lowers its baseline in the same PR.
 | batch 8: `nros-node/build.rs` and the orchestration `plan.rs`, `image_net.rs`, `rmw_config.rs`, `board_descriptor.rs`, `model_ingest.rs`, `release_manifest.rs`, `backend_link.rs` (the sizing refusals, the retired-key remedies, the resolved-network and release-manifest headers, the RMW-file and backend-link refusals) | #3773 | 47 | 80 | merged |
 | batch 9: the `cargo-nano-ros` `extension_descriptor.rs`, `rmw_descriptor.rs`, `serdes_descriptor.rs`, `serdes_resolver.rs`, `lib.rs` and the builder `cargo_config.rs`, `cargo_root.rs`, `discover.rs`, `entry.rs`, `handoff.rs`, `materialize.rs`, `paths.rs`, `plan.rs` (the extension, RMW and serdes descriptor refusals, the C++ alias header, the generated cargo config and entry headers, the workspace-root, duplicate-package, execvp and ESP32 refusals) | #3780 | 27 | 80 | merged |
 | batch 10: the codegen `builtin_verbs.rs`, `entry/lower.rs`, `entry/mod.rs`, `entry/priority_record.rs`, `entry/px4.rs`, `contract_join.rs`, `declared_params_header.rs`, `queue_depth.rs`, `routing.rs`, `stale_guard.rs`, the orchestration `board_projection.rs`, `drift.rs`, `metadata_refresh.rs`, `planner.rs`, `registry_pins.rs`, `release_packages.rs`, `sdk_index.rs`, `workspace.rs`, and the `nros-params`, `cyclonedds-sys`, `nros-rmw-xrce-cffi` build scripts (the built-in verb list, priority-plan, declared-params, board cmake-vars and registry pin-set headers, the sched-task, PX4 and contract-join refusals, the drift, deprecation, build-type and stale-CLI messages, the build-script panics) | — | 0 | 80 | open |
+| Rust half a hard rule: `check-user-surface-ids` drops `.config/user-surface-ids-ratchet.json`; any id in a CLI-library string or build-script panic text fails with its file and line | — | rule | 80 | open |
 | runtime logs of a default image (C lexer, log/panic rule) | — | — | — | not started |
 | shell-script output (user-run scripts) | — | (gated at zero) | — | open |
 | compile-time text (`#error`, `static_assert`, `compile_error!`, `#[deprecated]`, proc-macro errors): its own subject, baseline zero | — | — | — | planned |

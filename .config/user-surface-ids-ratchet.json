@@ -1,4 +1,0 @@
-{
-  "_comment": "Internal ids (issue/RFC/phase) in the CLI library's string literals and in build-script panic texts, per file -- see scripts/check/check-user-surface-ids.py. A SHRINKING backlog (issue 2443): move each id to a source comment and lower the count.",
-  "counts": {}
-}

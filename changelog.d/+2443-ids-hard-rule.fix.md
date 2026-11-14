@@ -1,0 +1,1 @@
+`check-user-surface-ids` now refuses any design id in the CLI library's strings and in build-script panic texts outright, naming the file and line, instead of counting them against a per-file baseline: the sweep reached zero, so `.config/user-surface-ids-ratchet.json` and `--update-ratchet` are gone.
