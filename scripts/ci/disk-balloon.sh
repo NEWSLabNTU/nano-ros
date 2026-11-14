@@ -89,6 +89,9 @@ summarise() {
             examples/*/*/target* packages/*/*/target* \
             "$HOME/.cache" "$HOME/.cache"/* "$HOME/.nros" "$HOME/.nros"/* \
             "$HOME/.cargo" /tmp 2>/dev/null | sort -rh | head -60
+        # Issue 2318: how much of the per-leaf cargo dirs is one unit stored
+        # several times, the number a shared host half would return.
+        "${NROS_DEADLINE[@]}" 300 python3 "$here/cargo-dir-dupes.py" build/corrosion-cargo 2>/dev/null
     } > "$summary" 2>&1
     NROS_DISK_TRANSCRIPT="${NROS_DISK_TRANSCRIPT:-}" "${NROS_DEADLINE[@]}" 300 bash "$here/disk-report.sh" "disk exhausted" || true
 }
