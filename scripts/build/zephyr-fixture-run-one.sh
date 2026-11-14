@@ -410,6 +410,7 @@ else
         #
         # `--offline`: this lane must not reach the network mid-sweep, matching
         # `workspace-fixtures-build.sh`'s migrated arms.
+        bash "$nros_root/scripts/build/warm-offline-cargo.sh"  # root + std deps for an offline build (issue 2560)
         build_argv=("$nros_bin" build "$nros_image" --workspace "$ws_dir" --offline \
             -- -d "$build_dir" -p "$actual_pristine" "${extra_args[@]}")
     else

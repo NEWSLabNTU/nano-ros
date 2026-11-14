@@ -87,11 +87,7 @@ nros_warm_leaf_cache() {
     # fixed half the failure and looked like a fix.
     if [ -z "$_NROS_WARMED_ROOT" ]; then
         _NROS_WARMED_ROOT=1
-        if ( cd "$repo_root" && cargo fetch >/dev/null 2>&1 ); then
-            :
-        else
-            echo "  leaf-fetch: could NOT warm the cargo cache for the repo root." >&2
-        fi
+        bash "$repo_root/scripts/build/warm-offline-cargo.sh"  # root + std deps for an offline build (issue 2560)
     fi
 
     # The LEAF half warms the graph the build will actually resolve: the
