@@ -1,10 +1,10 @@
 ---
 rfc: 0044
 title: "rclcpp-faithful component model — IS-A-Node, ctor-wired, typed member callbacks"
-status: Draft
+status: Stable
 area: runtime-api
 since: 2026-06
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-242]
 amends: [0043]
 supersedes: []
@@ -13,15 +13,18 @@ superseded-by: null
 
 > **Amended by phase-483 W2/W3 (2026-10-10).** The Rust-parity question this RFC deferred (242.6) is answered: a Rust component's node IS the one `nros::Node`, the type a standalone program holds. See RFC-0089 §"Settled: `nros::` is deleted from C++, and Rust takes rclrs's shape with ONE node type".
 
-> **Review 2026-11-13 (C++).** The C++ names below predate RFC-0089's
-> adoption of rclcpp's: `nros::ComponentNode` is merged into `rclcpp::Node`
-> (phase-427 W4, `packages/api/nros-cpp/include/rclcpp/node.hpp:94`), the
-> ctor takes `rclcpp::NodeHandle` (`node.hpp:400`), and a stock
-> `RCLCPP_COMPONENTS_REGISTER_NODE`
-> (`packages/api/nros-cpp/include/rclcpp_components/register_node_macro.hpp:68`)
-> sits beside `NROS_COMPONENT` (`rclcpp/detail/component.hpp:736`). The cmake
-> registration surface is amended by
-> [RFC-0057](0057-ament-parity-component-registration.md).
+> **Stable (2026-11-14, phase-555 W3).** Built by phase-242 (closed
+> 2026-07-16). The C++ names are RFC-0089's: `nros::ComponentNode` was merged
+> into `rclcpp::Node` (phase-427 W4, `packages/api/nros-cpp/include/rclcpp/node.hpp`),
+> whose `Node(rclcpp::NodeHandle, name, ns)` constructor is the one a
+> component forwards to. Section 1's example and "Migration" use the current
+> names; the open-question sections below keep the names of their date. A
+> component is registered in CMake with `nros_components_register_node(...
+> SHAPE rclcpp)`, keyword for keyword with upstream's
+> `rclcpp_components_register_node` (RFC-0057, which amends this RFC's
+> registration surface); a stock `RCLCPP_COMPONENTS_REGISTER_NODE` in the
+> source compiles too. No open questions remain: Q5 (Rust parity) was
+> answered by phase-483 (above).
 
 # RFC-0044 — rclcpp-faithful component model
 
@@ -87,27 +90,42 @@ a firmware whose boot either fully succeeds or halts.
 
 ### 1. The node base
 
-A user node derives an `nros` node base (working name `nros::ComponentNode`,
-final name in 242.1) that **wraps/owns** the executor-bound `nros::Node`:
+A user node derives `rclcpp::Node` (the base was first designed as a
+separate `nros::ComponentNode` wrapping a node; phase-427 W4 merged the two),
+and its constructor takes the executor-bound `rclcpp::NodeHandle`:
 
 ```cpp
-class Controller : public nros::ComponentNode {
-    nros::Publisher<ControlMsg> pub_cmd_;
+class Controller : public rclcpp::Node {
+    rclcpp::Publisher<ControlMsg> pub_cmd_;
     LatestCache<TrajectoryMsg> traj_;            // member state
     MpcLateralController mpc_;                    // takes *this as the param/node source
   public:
-    explicit Controller(nros::NodeHandle h)      // executor-bound handle from the entry
-        : nros::ComponentNode(h, "controller") {
-        pub_cmd_ = create_publisher<ControlMsg>(topics::control_cmd);
-        create_subscription<TrajectoryMsg>(topics::trajectory, &Controller::on_trajectory);
-        create_wall_timer(ctrl_period_ms_, &Controller::on_control_tick);
-        auto w = declare_parameter<std::vector<double>>("mpc_weights", {…});   // gap (3)
+    explicit Controller(rclcpp::NodeHandle h)    // executor-bound handle from the entry
+        : rclcpp::Node(h, "controller") {
+        pub_cmd_ = create_publisher_in<ControlMsg>(topics::control_cmd);
+        create_subscription_in<TrajectoryMsg, Controller, &Controller::on_trajectory>(
+            topics::trajectory, rclcpp::QoS(1));                                  // typed member cb
+        create_wall_timer_in<Controller, &Controller::on_control_tick>(ctrl_period_ms_);
+        auto w = declare_parameter<std::vector<double>>("mpc_weights", {...});   // gap (2)
     }
-    void on_trajectory(const TrajectoryMsg& m) { traj_.set(m); }               // typed member cb
-    void on_control_tick() { auto cmd = mpc_.compute(traj_.get(), …); pub_cmd_.publish(cmd); }
+    void on_trajectory(const TrajectoryMsg& m) { traj_.set(m); }
+    void on_control_tick() { auto cmd = mpc_.compute(traj_.get(), ...); pub_cmd_.publish(cmd); }
 };
-NROS_COMPONENT(Controller);   // factory + sizeof + metadata (class/header)
 ```
+
+```cmake
+nano_ros_auto_add_library(controller_lib STATIC src/Controller.cpp)
+nros_components_register_node(controller_lib     # RFC-0057: upstream's keywords
+    PLUGIN controller_pkg::Controller
+    EXECUTABLE controller
+    HEADER controller_pkg/Controller.hpp
+    SHAPE rclcpp)
+```
+
+The registration generates the factory the entry calls (placement-new of
+`Controller(rclcpp::NodeHandle(...))` into the entry's arena slot), the
+class string and the `shape: "rclcpp"` marker. In-tree examples:
+`examples/workspaces/derived-sched-tasks-cpp/src/*_pkg/`.
 
 - The ctor receives the **executor-bound node handle** (not a default-constructed
   shell) — the entry constructs it *after* `nros::init`, in arena storage.
@@ -149,22 +167,27 @@ NROS_COMPONENT(Controller);   // factory + sizeof + metadata (class/header)
 The typed entry (`emit_cpp::emit_typed` + the NuttX/Zephyr carriers) shifts from
 `default-construct + configure(node)` to **construct-with-handle**: `static
 Storage<Controller> __c; __c.emplace(entry_node_handle);` (placement-new into the
-arena slot). `NROS_COMPONENT` supplies the factory + `sizeof` the entry needs.
+arena slot). The registration supplies the factory (`NROS_COMPONENT(Class)`
+in `rclcpp/detail/component.hpp` is the macro under it); `sizeof` is a
+compile-time fact in the entry, which includes the component's header.
 The carrier templates (`{nuttx,zephyr}_entry_main_typed.cpp.in`) change the
 construct line; `run_components` + the board lifecycle are unchanged.
 
 ## Migration
 
 - RFC-0043's `configure(Node&)` + `bind_*` **stay** (lower-level / no-base-class
-  path). rclcpp-faithful `ComponentNode` is the recommended convention.
+  path, `SHAPE configure`). The rclcpp shape (deriving `rclcpp::Node`) is the
+  recommended convention.
 - ASI's vendored `Controller`: **drop the legacy `common/node` shim base, derive
-  `nros::ComponentNode`** — its ctor (create subs/pubs, declare vector params)
+  `rclcpp::Node`** — its ctor (create subs/pubs, declare vector params)
   works ~unchanged; make the private compute reachable from the timer member
   (it already is, within the class). No control-math rewrite.
-- The Rust side already runs real bodies via `ExecutableNode`; whether Rust adopts
-  an IS-A-node ctor shape for parity is a follow-up (242.6), not gating ASI.
+- The Rust side: answered by phase-483 W2/W3 (above), a Rust component's node
+  is the one `nros::Node`.
 
-## Open questions
+## Open questions (all resolved; see "Open-question resolutions")
+
+Kept as asked on 2026-06-13, in that day's names.
 
 1. **Base name + shape** — `nros::ComponentNode` (wraps a `Node`) vs the user
    deriving `nros::Node` directly. Wrapping keeps `Node`'s value-semantics + the
@@ -258,6 +281,9 @@ builds on is proven, not theoretical.
   by phase-272 W3 + the phase-281 native matrix cell). The ASI/FVP consumer
   proof (242.5) is owned by phase-236's 236.C acceptance. Q5 (Rust parity)
   remains the RFC's one deferred open question; no phase holds it.
+- 2026-11-14 - Stable (phase-555 W3). Section 1 and "Migration" rewritten to
+  RFC-0089's names (`rclcpp::Node`, `rclcpp::NodeHandle`) and RFC-0057's
+  registration; Q5 recorded as answered by phase-483.
 
 ## References
 

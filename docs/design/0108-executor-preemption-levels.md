@@ -1,10 +1,10 @@
 ---
 rfc: 0108
 title: "One ordered ready set per core, N preemption levels derived from the contract -- ordering is separated from preemption"
-status: Accepted
+status: Stable
 area: runtime-api
 since: 2026-10
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-509]
 amends: [rfc-0002, rfc-0107]
 supersedes: []
@@ -15,9 +15,15 @@ superseded-by: null
 
 > **Phase 536 W0 (2026-11-05):** the per-callback "task record" is the **callback record** (`nros_orchestration_ir::callback_record`, `CallbackRecord`), so "task" is free for the scheduling unit rlm names; an authored tier is a **sched task** in nano-ros's own names. The table is RFC-0052 "Names".
 
-**Status:** Accepted (2026-10-24). Phase 509 built every step (P1-P11, P9b)
-and the island ran on derived levels with its board check green (I1-I4).
-Follow-ups are issues 2016-2021.
+**Status:** Stable (2026-11-14, phase-555 W3: `Accepted`, which is outside
+the Draft / Stable / Superseded vocabulary, maps to Stable). Accepted
+2026-10-24: phase 509 built every step (P1-P11, P9b) and the island ran on
+derived levels with its board check green (I1-I4). Follow-ups were issues
+2016-2021, all resolved. The deferred items are issues: EDF across levels and
+per-callback preemption thresholds are
+[issue 2544](../issues/2544-preemption-level-model-extensions.md), and
+assigning callbacks to cores and splitting a deadline across images are
+[issue 2545](../issues/2545-callback-core-partitioning.md).
 The open questions of the first draft are decided (see Decisions); the work is
 tracked by [phase-509](../roadmap/archived/phase-509-executor-preemption-levels.md).
 
@@ -1381,8 +1387,8 @@ The first draft's open questions, as decided:
 
 | question | decided when |
 | --- | --- |
-| EDF across levels: Zephyr's deadline mode to order levels by deadline, or EDF per level only (D6) | When an image first needs EDF with more than one level; not before P9. Until then EDF orders within a level. |
-| Who splits an end-to-end deadline across heterogeneous images: rlm, or each image's derivation from a stated segment budget (D5) | In the load-partitioning phase, which also assigns callbacks to cores. |
+| EDF across levels: Zephyr's deadline mode to order levels by deadline, or EDF per level only (D6) | When an image first needs EDF with more than one level; not before P9. Until then EDF orders within a level. Tracked: [issue 2544](../issues/2544-preemption-level-model-extensions.md), with Decision 1's per-callback thresholds. |
+| Who splits an end-to-end deadline across heterogeneous images: rlm, or each image's derivation from a stated segment budget (D5) | In the load-partitioning phase, which also assigns callbacks to cores. Tracked: [issue 2545](../issues/2545-callback-core-partitioning.md); no phase exists yet. |
 
 ## Changelog
 
@@ -1427,3 +1433,5 @@ The first draft's open questions, as decided:
   on nano-ros c602d4d504 passes every planning act and the 300 ms overrun
   with SWT0 silent, and the handler's tick spread against its 100 ms grid is
   0.30-0.31 ms, from 2.11-2.86 ms on one thread. The level cost is measured.
+- 2026-11-14: Stable (phase-555 W3; `Accepted` is outside the status
+  vocabulary). The deferred items filed as issues 2544 and 2545.

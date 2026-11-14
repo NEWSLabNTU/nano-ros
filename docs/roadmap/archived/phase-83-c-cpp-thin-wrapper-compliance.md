@@ -19,7 +19,7 @@ scattered as magic numbers across both crates.
 state, Step 2 ID-card handle redesign + C++ rewrite all landed on
 `main` in commits `d24a28ef`, `220ea8fa`, `c1c6b2be`, and the 83.12 /
 83.15 / 83.16 follow-ups)
-**Design**: the audit method and its checklist are [RFC-0020](../../design/0020-thin-wrapper-audit.md); the rule is [RFC-0019](../../design/0019-nros-c-thin-wrapper-discipline.md).
+**Design**: the audit method and its checklist were [RFC-0020](../../design/archived/0020-thin-wrapper-audit.md), merged on 2026-11-14 into the rule, [RFC-0019](../../design/0019-nros-c-thin-wrapper-discipline.md).
 **Priority**: Medium — architectural cleanup, no user-visible regression on
 passing tests. Blocks future multi-goal / multi-language consistency work
 because the current duplication means any arena change needs parallel

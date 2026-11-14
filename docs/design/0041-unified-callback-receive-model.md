@@ -251,7 +251,7 @@ subscription path; only the node layer changes.
 - RFC-0021 / RFC-0036 (spin-driven `Promise`; the deliberate non-blocking
   divergence this RFC preserves).
 - RFC-0015 (priority sched tasks / reentrant groups — same-thread callback safety).
-- RFC-0037 (user API surface — adds the `create_*_with_callback` entries).
+- RFC-0037 (user API surface; adds the `create_*_with_callback` entries). Superseded by RFC-0089, whose generated surface records them.
 - Code: `executor/spin.rs` (`drive_io` + dispatch), `executor/arena.rs`
   (`ActionClientRawArenaEntry`, `ServiceClientRawArenaEntry`,
   `*_raw_try_process`), `executor/{triple_buffer,spsc_ring}.rs`,

@@ -70,3 +70,39 @@ were read against their pairs and the code on the review branch.
 - W3: the status flips of Q1 with their ARCHITECTURE.md sections; 0008 and,
   per Q2/Q5, 0037 and 0020 move to `archived/` with forward pointers.
 - Q4 (a) or Q7 (a) each needs a new phase doc, per the tracking ruling.
+
+## Ruling (user, 2026-11-14) and what W3 changed
+
+Each question took the recommendation, except Q6. Before any RFC flipped to
+Stable, its open questions and unbuilt work were filed as issues and the RFC
+points at them.
+
+- **Q1 (a).** Stable: RFC-0077, 0084, 0105, 0106 and 0108 (`Accepted` maps to
+  Stable), each with its `ARCHITECTURE.md` line. RFC-0044 flipped after its
+  section 1 example was rewritten to `rclcpp::Node`, `rclcpp::NodeHandle` and
+  RFC-0057's `nros_components_register_node(... SHAPE rclcpp)`. RFC-0002
+  stays Draft. Issues filed: 2541 (64-callback ceiling, from 0084), 2542
+  (XRCE, uORB and bare metal do not attribute arrivals, from 0084 and 0106),
+  2543 (the smoltcp deadline source never run on hardware, from 0106), 2544
+  (EDF across levels and per-callback thresholds, from 0108), 2545 (callbacks
+  to cores and the cross-image deadline split, from 0108). RFC-0044, 0077
+  and 0105 had nothing open.
+- **Q2 (b).** RFC-0037 superseded by RFC-0089 and archived; RFC-0128's
+  amendment of it now amends RFC-0089.
+- **Q3 (b).** RFC-0018's "API Mapping", "Detailed API Design", "Usage
+  Example" and "Callback Pattern Comparison" cut, and its error-handling code
+  and file list (both in deleted `nros::` names) replaced by pointers to
+  RFC-0089 and `include/rclcpp/`.
+- **Q4 (b).** RFC-0019's opaque-only target and the 122.3.b/c/d plan dropped;
+  the rule keeps "no logic or state machine in the wrapper" and accepts
+  mirrored registration fields.
+- **Q5 (b).** RFC-0020's checklist merged into RFC-0019, its method into
+  audit category C1; RFC-0020 superseded by RFC-0019 and archived.
+- **0008** moved to `archived/`.
+- **Q6, not the recommendation.** Per the default-services ruling (phase-556
+  W13), graph interfaces are ON by default with a per-image
+  `node_interfaces = "none"` switch. RFC-0036 states that once, points at
+  RFC-0060 and phase-556, and has a row per name for what still diverges.
+- **Q7 (b).** RFC-0010 records 99.J, 99.K and Cyclone `dds_loan_sample` as
+  not planned until someone needs measured zero-copy on a DDS backend.
+- **Q8.** Done already (#3755).

@@ -135,7 +135,27 @@ verdict).**
   machines, or duplicated behavior in the C/C++ layer; it forwards to Rust
   (CFFI) and only adapts types/ergonomics. Flag any C/C++ that reimplements
   what Rust already does, or holds logic that belongs in the core. Check
-  `packages/api/nros-cpp/include/`, `nros-c/`, the CFFI seam.
+  `packages/api/nros-cpp/include/`, `nros-c/`, the CFFI seam. The rule and
+  its per-change checklist are
+  [RFC-0019](../design/0019-nros-c-thin-wrapper-discipline.md); mirrored
+  registration fields (name, type, QoS, callback, handle id, written once)
+  are accepted there, lifecycle state is not.
+  Method (merged from RFC-0020, the phase-83 audit, 2026-11-14): scope
+  `packages/api/nros-c/src/` and `packages/api/nros-cpp/src/` plus their
+  headers, and have a read-only search agent list every site, as
+  `path:line`, a one-sentence description and a severity (blocker / warn /
+  nit), grouped by crate, no suggestions, for each of five violation
+  classes: (1) a reimplemented state machine (goal lifecycle, request and
+  reply tracking); (2) a retry, timeout or polling loop that spins an
+  executor of its own instead of the caller's; (3) CDR framing in the C/C++
+  layer instead of `nros-serdes` / `nros::cdr`; (4) key-expression or topic
+  construction outside `TopicInfo` / `ServiceInfo` / `ActionInfo`; (5) a
+  direct transport call (`zpico_*`, `uxr_*`) instead of `Session` /
+  `Publisher` and friends. Triage: a blocker becomes an issue (and phase
+  work); warn and nit are filed or fixed in passing. One finding per commit
+  where possible, so each closure reverts on its own. Phase-83's findings
+  and the commits that closed them are in
+  [archived RFC-0020](../design/archived/0020-thin-wrapper-audit.md).
 - **C2 Layer-map conformance (RFC-0001).** Deps flow the right direction;
   no lower layer reaching up; `packages/drivers/` category split (RFC-0012).
 - **C3 Generated-vs-handwritten boundary.** No hand edits to

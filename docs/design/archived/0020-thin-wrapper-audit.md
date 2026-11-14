@@ -1,24 +1,31 @@
 ---
 rfc: 0020
 title: "Thin-Wrapper Compliance Audit"
-status: Stable
+status: Superseded
 area: runtime-api
 since: 2026-04
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-83]
 supersedes: []
-superseded-by: null
+superseded-by: 0019
 ---
 
 # Thin-Wrapper Compliance Audit
 
+> **Superseded by [RFC-0019](../0019-nros-c-thin-wrapper-discipline.md)
+> (2026-11-14, phase-555 W3).** The compliance checklist below is merged into
+> RFC-0019 ("Compliance checklist"), and the audit method into category C1 of
+> [codebase-audit-checklist.md](../../development/codebase-audit-checklist.md),
+> where the periodic re-run lives. This file is kept for the phase-83
+> findings table and the commits that closed each finding.
+
 > **Review 2026-11-13.** The principle quoted below now lives in
-> [RFC-0019](0019-nros-c-thin-wrapper-discipline.md), not in `CLAUDE.md`.
+> [RFC-0019](../0019-nros-c-thin-wrapper-discipline.md), not in `CLAUDE.md`.
 > The C API's names moved to rclc's (RFC-0089), so the `nros_*` names in the
 > findings table are the names of that time. There is no
 > `.claude/agents/explore.md`; any read-only search agent serves step 2. The
 > periodic codebase audit
-> ([codebase-audit-checklist.md](../development/codebase-audit-checklist.md))
+> ([codebase-audit-checklist.md](../../development/codebase-audit-checklist.md))
 > carries the principle as its category C1, which is where a re-run happens
 > now.
 

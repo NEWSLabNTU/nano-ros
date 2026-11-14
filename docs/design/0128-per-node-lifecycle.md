@@ -6,7 +6,7 @@ area: runtime-api
 since: 2026-11
 last-reviewed: 2026-11-13
 implements-tracked-by: [phase-554]
-amends: [RFC-0036, RFC-0037, RFC-0045, RFC-0060]
+amends: [RFC-0036, RFC-0089, RFC-0045, RFC-0060]
 supersedes: []
 superseded-by: null
 ---
@@ -243,7 +243,7 @@ shutdown, and Failure for `on_error`.
   at runtime: its node, its publishers and its parameters. The existing
   `LifecycleCallbacks` trait stays as the executor-level form for a
   hand-written entry.
-- **C:** upstream `rclc_lifecycle`'s API, since RFC-0037 makes the C surface
+- **C:** upstream `rclc_lifecycle`'s API, since RFC-0089 makes the C surface
   rclc and only rclc. That is `rclc_lifecycle_node_t`,
   `rclc_make_node_a_lifecycle_node(...)`, `rclc_lifecycle_register_on_*`, and
   the service-server initialiser upstream names. A C component calls it from
@@ -472,8 +472,10 @@ The work items and their acceptance are in
 - **RFC-0036.** "No lifecycle-node graph — a simplified state model for
   embedded executors" narrows to D5's two remaining differences: no
   CREATE/DESTROY, and single-threaded transitions.
-- **RFC-0037.** The C lifecycle surface is upstream `rclc_lifecycle`'s (D4).
-  The `rclc_executor_*lifecycle*` family leaves the inventory.
+- **RFC-0089.** The C lifecycle surface is upstream `rclc_lifecycle`'s (D4).
+  The `rclc_executor_*lifecycle*` family leaves the surface. (Written first
+  as an amendment of RFC-0037, which RFC-0089 superseded on 2026-11-14,
+  phase-555 W3.)
 - **RFC-0045.** The board compiled-default rung (`"nros_app"`) names the
   session, not a graph node (D8).
 - **RFC-0060.** The text on per-node `lifecycle_autostart` stands. Its

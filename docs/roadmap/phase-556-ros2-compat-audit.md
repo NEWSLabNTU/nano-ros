@@ -307,6 +307,12 @@ Acceptance: on every board a node has the parameter services, `/rosout` and
 against stock; the per-image off switch exists and is documented; and the RAM
 each node costs is measured on the smallest board and recorded here.
 
+The design record is
+[RFC-0036](../design/0036-ros2-api-divergences.md) section "Graph interfaces
+a node has by default" (phase-555 W3, 2026-11-14): the default stated once,
+the switch, and a row per name for what still diverges. Its rows move as
+steps 2 and 3, W11, W12 and W14 land.
+
 Progress (2026-11-13, step 1 of 5; no default changed yet):
 
 - ONE decision: `nros_orchestration_ir::node_interfaces::effective_features`

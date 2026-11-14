@@ -170,6 +170,11 @@ real consumer.
 
 ### Post-v1 (99.J + 99.K)
 
+**Not planned (2026-11-14, phase-555 W3).** RFC-0010 records 99.J, 99.K and
+Cyclone `dds_loan_sample` wiring as not planned until a user needs measured
+zero-copy on a DDS backend; that need opens a phase for them. The boxes below
+stay open because the work is not done.
+
 - [ ] 99.J — **New** raw-bytes zero-copy examples for Zenoh + XRCE +
       DDS (separate example tree; not migration of typed examples).
       Demonstrates `try_loan` / `try_borrow` over backend lending.

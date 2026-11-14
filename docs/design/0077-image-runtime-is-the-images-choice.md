@@ -1,10 +1,10 @@
 ---
 rfc: 0077
 title: "The image runtime is the image's choice"
-status: Draft
+status: Stable
 area: platform-board-rtos
 since: 2026-08
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-366, phase-383, issue-0618, issue-0617, issue-0615]
 amends: [ARCHITECTURE.md#2-the-std-alloc-contract]  # §2 predates issue-0616; see "Where the design already is"
 supersedes: []
@@ -12,6 +12,13 @@ superseded-by: null
 ---
 
 # RFC-0077 — The image runtime is the image's choice
+
+**Status:** Stable (2026-11-14, phase-555 W3). Built by
+[phase-366](../roadmap/archived/phase-366-image-runtime-panic-api.md)
+(complete 2026-08-18: M1-M6 and R1-R4, the acceptance list below met), with
+the heap measurement of the 2026-09-23 amendment built by phase-460 W5.
+`ARCHITECTURE.md` section 2 carries the rule. No open questions; nothing is
+left unbuilt.
 
 ## Summary
 

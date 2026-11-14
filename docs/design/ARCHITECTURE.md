@@ -279,9 +279,12 @@ The RMW layer is a Rust trait with a parallel C vtable (`nros_rmw_vtable_t`); ba
 explicitly (no constructor/linker-set assumption on Zephyr/native_sim). Slots that a backend
 cannot implement fall back in the runtime or return `RET_UNSUPPORTED` — no obligation creep.
 
-- QoS for services/actions, and the gap it closes → RFC-0007, RFC-0008.
+- QoS for services/actions: RFC-0007 (its gap analysis, RFC-0008, is archived).
 - In-binary cross-session topic relay → RFC-0009 (bridge-topic-forwarding).
-- Zero-copy loan/commit/borrow/release with arena fallback → RFC-0010.
+- Zero-copy loan/commit/borrow/release with arena fallback: RFC-0010. Native lending is
+  zenoh-pico's, and any C backend's that fills the vtable loan slots; XRCE and Cyclone DDS
+  leave them NULL and take the arena path. A DDS lending path, the raw-bytes examples and the
+  bench are not planned until someone needs measured zero-copy on a DDS backend.
 - PX4 uORB backend → RFC-0011.
 - **Single-copy receive** → RFC-0038 (zero-copy-data-transport). The executor's arena
   dispatches subscription callbacks **in-place** from the backend's receive slot via the
@@ -325,7 +328,14 @@ boards self-describe their dependencies.
   is the drift RFC-0075 removed for the zenoh router — and the remainder prefers the
   system once a version constraint can say "good enough" (phase-404).
 - Cross-RTOS launch tree + manifest codegen → RFC-0015; per-RTOS scheduling survey → RFC-0016.
-- Real-time timer primitive → RFC-0017; the RT executor model → RFC-0002.
+- Real-time timer primitive: RFC-0017; the RT executor model: RFC-0002 (Draft; its settled
+  parts are carried by RFC-0084, RFC-0106, RFC-0108 and RFC-0113).
+- Readiness is PUSHED: the backend's arrival path names the entity and the executor that owns
+  it (upstream's `*_set_on_new_*_callback` slots), so an arrival sets one bit and wakes one
+  executor; a slot whose backend cannot attribute arrivals keeps its `has_data` probe: RFC-0084.
+- The executor waits until the minimum of its declared deadlines, on ONE platform park on its
+  own wake object, rounded up to the port's stated granularity; it parks only when data can
+  end the park: RFC-0106, amended by RFC-0113 (a session states its readiness or is refused).
 - An image with several sched tasks shares ONE executor core (node tables, sessions,
   parameters, scheduling contexts, the arena); launch remaps are one `const` table in
   flash, and the arena floor applies only where demand is unknown → RFC-0107. Per core,
@@ -376,9 +386,22 @@ The map of how this meets the three build roads is
 
 ## 6. Language API surfaces
 
-- C++ surface mirrors rclcpp over typed extern "C" FFI to `nros-node` → RFC-0018.
-- nros-c is a thin wrapper that delegates and never re-implements logic → RFC-0019, with the
-  compliance audit in RFC-0020.
+- The user-facing names are upstream's (`rclcpp::`, `rclc_`/`rcl_`, rclrs's shape for Rust),
+  under the compile-or-conform rule; the measured surface is the generated, gated
+  `docs/reference/api-surface/` + `api-parity-ledger/`: RFC-0089 (it superseded RFC-0037's
+  hand-written record). What differs from ROS 2 and why: RFC-0036. A node has the stock
+  graph interfaces by default (parameter services, `/rosout`, `/parameter_events`), with a
+  per-image `node_interfaces = "none"` off switch (ruled for phase-556 W13).
+- C++ constraints: freestanding, no exceptions, no heap, and a typed extern "C" FFI to
+  `nros-node` that bypasses `nros-c`: RFC-0018 (RFC-0096 is the freestanding core).
+- nros-c / nros-cpp hold no logic and no state machine, and delegate to Rust; mirrored
+  registration fields are accepted: RFC-0019, which carries the review checklist (RFC-0020,
+  archived); the periodic audit is category C1 of `docs/development/codebase-audit-checklist.md`.
+- A C++ component IS-A `rclcpp::Node`, takes the executor-bound `rclcpp::NodeHandle` in its
+  constructor and wires typed member callbacks there: RFC-0044; registered with upstream's
+  `rclcpp_components_register_node` keywords: RFC-0057.
+- One C parameter server, rclc's `rclc_parameter_server_t` shape, a handle over the executor's
+  store with no allocator: RFC-0105.
 - Blocking helpers always take an executor handle (no hidden global) → RFC-0021.
 - Entity constructors come in two tiers: convenient `fork` + customizable `clone` → RFC-0022.
 

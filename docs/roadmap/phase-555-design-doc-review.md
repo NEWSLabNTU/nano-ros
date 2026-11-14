@@ -165,7 +165,13 @@ brief of RFC-0126 did.
 - Each `implements-tracked-by` is updated where a ruling moves work.
 - **Acceptance:** `rfc-inventory.py` reports no candidate pair that a ruling
   resolved, and `check rfc-phase-tracking` stays green.
-- **Status:** OPEN
+- **Status:** OPEN. runtime-api applied 2026-11-14 (the ruling and what
+  changed are recorded under "Ruling" in
+  [data/phase-555-w2-runtime-api-brief.md](data/phase-555-w2-runtime-api-brief.md)):
+  RFC-0008, RFC-0020 and RFC-0037 moved to `archived/`; RFC-0044, 0077, 0084,
+  0105, 0106 and 0108 flipped to Stable with their ARCHITECTURE.md lines; open
+  items filed as issues [2541](../issues/2541-executor-callback-slots-capped-at-64.md), [2542](../issues/2542-arrival-attribution-xrce-uorb-baremetal.md), [2543](../issues/2543-deadline-source-unmeasured-on-hardware.md), [2544](../issues/2544-preemption-level-model-extensions.md), [2545](../issues/2545-callback-core-partitioning.md).
+  Other areas wait on their rulings.
 
 ### W4 -- Keep it organized
 
