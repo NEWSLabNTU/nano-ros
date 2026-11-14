@@ -641,9 +641,34 @@ pub struct MockSession {
     /// test asserts what the executor requested of the transport instead of
     /// timing how long a no-op took on a host that may be loaded.
     pub(crate) last_drive_timeout_ms: Option<i32>,
+    /// RFC-0128 D8 (phase-554 W3) -- `(entity name, node name)` of every
+    /// entity this session created, in order, so a test can assert which node
+    /// each one is announced under. `""` when the executor named none. The
+    /// Heap-held (`std` is always present in a test build): the session sits
+    /// INLINE in the `Executor`, so an inline table here would count against
+    /// `executor_stays_small_enough_to_construct_on_a_stack`.
+    #[allow(clippy::type_complexity)]
+    pub(crate) created_on: RefCell<std::vec::Vec<(std::string::String, std::string::String)>>,
 }
 
 impl MockSession {
+    /// RFC-0128 D8 -- record which node `name` was created under.
+    fn record_node(&self, name: &str, node_name: Option<&str>) {
+        self.created_on
+            .borrow_mut()
+            .push((name.into(), node_name.unwrap_or("").into()));
+    }
+
+    /// The node the entity named `name` was created under (`""` = none), if
+    /// it was created.
+    pub fn created_node(&self, name: &str) -> Option<std::string::String> {
+        self.created_on
+            .borrow()
+            .iter()
+            .find(|(n, _)| n.as_str() == name)
+            .map(|(_, o)| o.clone())
+    }
+
     /// Issue 1913 — record one created entity (see the `created` field).
     fn record_created(&self, name: &str, type_hash: &str, qos: QoSProfile) {
         let mut n = heapless::String::new();
@@ -680,6 +705,7 @@ impl MockSession {
             graph: false,
             subscribers_dispatch_in_place: false,
             created: RefCell::new(heapless::Vec::new()),
+            created_on: RefCell::new(std::vec::Vec::new()),
             last_drive_timeout_ms: None,
         }
     }
@@ -706,6 +732,7 @@ impl MockSession {
             graph: false,
             subscribers_dispatch_in_place: false,
             created: RefCell::new(heapless::Vec::new()),
+            created_on: RefCell::new(std::vec::Vec::new()),
             last_drive_timeout_ms: None,
         }
     }
@@ -719,6 +746,7 @@ impl MockSession {
             graph: false,
             subscribers_dispatch_in_place: false,
             created: RefCell::new(heapless::Vec::new()),
+            created_on: RefCell::new(std::vec::Vec::new()),
             last_drive_timeout_ms: None,
         }
     }
@@ -739,6 +767,7 @@ impl MockSession {
             graph: true,
             subscribers_dispatch_in_place: false,
             created: RefCell::new(heapless::Vec::new()),
+            created_on: RefCell::new(std::vec::Vec::new()),
             last_drive_timeout_ms: None,
         }
     }
@@ -824,6 +853,7 @@ impl Session for MockSession {
         qos: QoSProfile,
     ) -> Result<MockPublisher, TransportError> {
         self.record_created(topic.name, topic.type_hash, qos);
+        self.record_node(topic.name, topic.node_name);
         Ok(MockPublisher::new_named(topic.name))
     }
 
@@ -833,6 +863,7 @@ impl Session for MockSession {
         qos: QoSProfile,
     ) -> Result<MockSubscriber, TransportError> {
         self.record_created(topic.name, topic.type_hash, qos);
+        self.record_node(topic.name, topic.node_name);
         let sub = MockSubscriber::new_named(topic.name);
         sub.set_in_place(self.subscribers_dispatch_in_place);
         Ok(sub)
@@ -850,6 +881,7 @@ impl Session for MockSession {
             return Err(e.clone());
         }
         self.record_created(service.name, service.type_hash, qos);
+        self.record_node(service.name, service.node_name);
         Ok(MockServiceServer::new_named(service.name))
     }
 
@@ -859,6 +891,7 @@ impl Session for MockSession {
         qos: QoSProfile,
     ) -> Result<MockServiceClient, TransportError> {
         self.record_created(service.name, service.type_hash, qos);
+        self.record_node(service.name, service.node_name);
         Ok(MockServiceClient::new_named(service.name))
     }
 

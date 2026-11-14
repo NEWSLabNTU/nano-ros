@@ -387,7 +387,7 @@ Each user of the identity today, and what happens to it:
 | Lifecycle services and `transition_event` (`register_lifecycle_services()`; the C/C++ generated entries; rclc's executor-scoped family) | all | **Moves** to each managed node (D1). The executor-identity form retires. |
 | The contract `/diagnostics` reporter (`DiagSink`, a raw session publisher) | all | **Moves** to the primary node. In stock ROS 2 a node publishes diagnostics. |
 | The node-table spare slot for "the session's own name" (`entity_inventory.rs`, issue 1740), held for the reporter and lifecycle | sizing | **Dropped.** Both now live on declared nodes. |
-| rclc's empty executor identity (issue 2429) and its legacy node without a node record | C | **Moves.** An rclc node gets a node record at init, so its entities name it. An empty name is refused. |
+| rclc's empty executor identity (issue 2429) and its legacy node without a node record | C | **Moves.** A node record comes from BINDING (`rclc_executor_node_init`), not from `rclc_node_init_default`, which reaches no executor (amended 2026-11-14). An executor with a bound node refuses an unbound node's entities, naming the fix; the unbound (legacy) path is retired and its in-tree callers migrate to binding. An empty name is refused. |
 | Remap resolution against the current identity | all | **Moves** to the entity's node. |
 
 Not affected:
@@ -478,6 +478,11 @@ The work items and their acceptance are in
   phase-555 W3.)
 - **RFC-0045.** The board compiled-default rung (`"nros_app"`) names the
   session, not a graph node (D8).
+- **This RFC, D8, 2026-11-14 (user ruling).** The rclc row first said "an
+  rclc node gets a node record at init". `rclc_node_init_default` takes no
+  executor, so there is no node table to record into there. The record comes
+  from binding instead, mixing a bound and an unbound node on one executor is
+  refused, and the unbound path is retired.
 - **RFC-0060.** The text on per-node `lifecycle_autostart` stands. Its
   phase-486 W0 reducer, which enforced one value per image, is retired (D6).
 

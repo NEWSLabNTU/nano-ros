@@ -773,16 +773,7 @@ impl<'s> Executor<'s> {
         // the same reason `node_name`/`ns` are cloned here: the `&mut session`
         // in the create scope would otherwise conflict with `&self`.
         let domain_id = self.domain_id;
-        let (node_name, ns, session_idx) = match node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
+        let (node_name, ns, session_idx) = self.entity_identity(node_id)?;
 
         // Thread node identity through each underlying ServiceInfo /
         // TopicInfo so the Zenoh shim declares a liveliness token for
@@ -1682,16 +1673,7 @@ impl<'s> Executor<'s> {
         // the same reason `node_name`/`ns` are cloned here: the `&mut session`
         // in the create scope would otherwise conflict with `&self`.
         let domain_id = self.domain_id;
-        let (node_name, ns, session_idx) = match node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
+        let (node_name, ns, session_idx) = self.entity_identity(node_id)?;
 
         let (send_goal_client, cancel_goal_client, get_result_client, feedback_sub) = {
             // phase-338 W3 — per-channel types, matching the raw SERVER path.
@@ -1904,16 +1886,7 @@ impl<'s> Executor<'s> {
         // the same reason `node_name`/`ns` are cloned here: the `&mut session`
         // in the create scope would otherwise conflict with `&self`.
         let domain_id = self.domain_id;
-        let (node_name, ns, session_idx) = match node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
+        let (node_name, ns, session_idx) = self.entity_identity(node_id)?;
 
         let (send_goal_client, cancel_goal_client, get_result_client, feedback_sub) = {
             // phase-338 W3 — per-channel types, matching the raw SERVER path.

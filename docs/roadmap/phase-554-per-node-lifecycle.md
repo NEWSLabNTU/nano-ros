@@ -227,20 +227,28 @@ registers per node, so its cell can land with part 2.
 
 ### W3 — The image announces only its declared nodes (D8)
 
-Status: OPEN.
+Status: OPEN. Slice A is in review; slices B and C are open.
 
 Each row of RFC-0128's D8 table, as ruled:
 
-- **Dropped:** zenoh's primary node token at session open.
+- **Dropped:** zenoh's primary node token at session open. **Slice A.** A
+  node is announced with its first entity.
 - **Moved to the primary node:**
-  - the cffi and executor-level `node_id == None` fallbacks;
-  - the contract `/diagnostics` reporter;
-  - remap resolution.
-- **Dropped:** the node-table spare slot.
-- **rclc:** a node gets a node record at init, and an empty name is refused
-  (issue 2429).
+  - the cffi and executor-level `node_id == None` fallbacks. **Slice A.**
+    One helper (`Executor::entity_identity`) replaces the seven copies that
+    fell back to the executor label, and the typed executor-level service
+    follows it. A direct-API image (no declared node) keeps its configured
+    name. The cffi fallback is then reached only by such an image.
+  - the contract `/diagnostics` reporter. Slice B.
+  - remap resolution. Slice B.
+- **Dropped:** the node-table spare slot. Slice B.
+- **rclc** (amended 2026-11-14, user ruling): a node record comes from
+  binding (`rclc_executor_node_init`). **Slice A:** an executor with a bound
+  node refuses an unbound node's entity at all seven registration sites,
+  naming the fix. The unbound path itself is retired in W3.b. An empty name
+  is refused (issue 2429).
 - **Zero-node direct-API images:** keep their configured name as their one
-  node, and are refused at open with no name.
+  node, and are refused at open with no name. Slice C.
 
 Acceptance:
 
@@ -248,6 +256,32 @@ Acceptance:
   on zenoh, Cyclone and XRCE, from boot.
 - No `/nros_app` and no `//get_state` anywhere.
 - `interop_e2e`'s lifecycle example declares its node.
+
+### W3.b — Retire the unbound rclc node path (D8, ruled 2026-11-14)
+
+- **Status:** OPEN
+
+The user ruled that the legacy writing (`rclc_node_init_default` with no
+`rclc_executor_node_init`) retires. W3 slice A already refuses mixing the
+two on one executor. This item migrates every in-tree caller to binding,
+then refuses the unbound path outright.
+
+- Migrate the C examples (linux, mps2-an385-baremetal, threadx-linux), the
+  `cargo-nano-ros` C role templates, the nros-tests C probe bins, the nros-c
+  compile and run tests, and the nros-c docs (`getting-started.md`,
+  `mainpage.md`).
+- Book pages: `background/differences-from-ros2.md`,
+  `guide/deploy/log-and-observe.md`, `reference/c-api.md` (handed to the book
+  owner).
+- Then the executor refuses an unbound node's entity with no bound node
+  beside it as well, and the refusal names `rclc_executor_node_init`.
+
+Sweep: `git grep -l "rclc_node_init_default\|rclc_node_init_with_options"
+-- '*.c' '*.h' '*.cpp' '*.md' '*.jinja'`, minus files that also call
+`rclc_executor_node_init`.
+
+Acceptance: the sweep finds no unbound caller outside the nros-c headers and
+this item's own negative test, and `just check c` is green.
 
 ### W4 — zenoh: one shared lifecycle queryable and a dispatcher (D7)
 
