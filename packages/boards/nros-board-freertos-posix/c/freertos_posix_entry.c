@@ -151,8 +151,9 @@ static volatile size_t s_heap_peak_reported = 0;
 
 static void heap_peak_report(const char *when) {
     size_t peak = s_heap_peak;
+    /* issue 1778: the sampled heap peak a heap default is sized from. */
     printf("nros: heap peak %zu bytes (sampled every %u ms; heap_3 = host malloc, "
-           "%zu bytes in the arena) — %s (issue 1778)\n",
+           "%zu bytes in the arena) — %s\n",
            peak, (unsigned)HEAP_PEAK_PERIOD_MS, nros_platform_heap_total_bytes(), when);
     s_heap_peak_reported = peak;
 }

@@ -325,9 +325,10 @@ where
 
     let total = unsafe { nros_platform_heap_total_bytes() };
     let free = unsafe { nros_platform_threadx_pool_min_ever_free_bytes() };
+    // issue 1145: the pool base a board raises from this line.
     B::println(format_args!(
         "nros: byte pool peak {} of {} bytes ({} free) \
-         — the base is BYTE_POOL_BASE_SIZE in threadx_hooks.c (issue 1145)",
+         — the base is BYTE_POOL_BASE_SIZE in threadx_hooks.c",
         total.saturating_sub(free),
         total,
         free

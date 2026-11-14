@@ -394,10 +394,12 @@ pub fn parse_direct_toml(
 
     for_each_toml_field(toml, |section, key, value| {
         if section == "transport" {
+            // RFC-0109 D6 retired `[[transport]]`; D4 and issue 2047 give the
+            // replacement spelling.
             panic!(
-                "config.toml: `[[transport]]` is retired (RFC-0109 D6); write the interface \
+                "config.toml: `[[transport]]` is retired; write the interface \
                  as `[eth0]` with `network`, `host` or `address`, and `mac`, and the router \
-                 as `[node] locator` (RFC-0109 D4, issue 2047)"
+                 as `[node] locator`"
             );
         }
         if let Some(name) = section.strip_prefix("network.") {
@@ -436,9 +438,10 @@ pub fn parse_direct_toml(
         }
         if is_interface_section(section) && matches!(key, "network" | "host" | "address" | "mac") {
             match iface {
+                // RFC-0109 D4, issue 2047: one interface per direct-mode board.
                 Some(prev) if prev != section => panic!(
                     "config.toml: `[{prev}]` and `[{section}]` both address an interface; a \
-                     direct-mode board brings up one (RFC-0109 D4, issue 2047)"
+                     direct-mode board brings up one: keep the address keys in one of them"
                 ),
                 _ => iface = Some(section),
             }

@@ -199,10 +199,11 @@ fn apply_boot_sched_task_core_pin(sched_task: &SchedTaskSpec<'_>) {
                 cpu
             );
         } else {
+            // issue 0655
             ::log::warn!(
                 "nros: core pin FAILED sched_task=`{}` cpu={} rc={} — this is the BOOT sched task, which \
                  Zephyr started before nros ran, and a cpu mask is only settable before a \
-                 thread starts (issue 0655). Declare the `core` on a SPAWNED sched task, which is \
+                 thread starts. Declare the `core` on a SPAWNED sched task, which is \
                  pinned in its create->start window. -88/ENOSYS instead means the image lacks \
                  CONFIG_SCHED_CPU_MASK. Sched task runs unpinned",
                 sched_task.name,
@@ -345,9 +346,10 @@ fn report_core_pin(name: &str, cpu: u32, rc: i32) {
     if rc == 0 {
         ::log::info!("nros: core pin sched_task=`{}` cpu={}", name, cpu);
     } else {
+        // issue 0655
         ::log::warn!(
             "nros: core pin FAILED sched_task=`{}` cpu={} rc={} (-22/EINVAL: the thread was already \
-             RUNNING — Zephyr accepts a cpu mask only before start, issue 0655; -88/ENOSYS: \
+             RUNNING — Zephyr accepts a cpu mask only before start; -88/ENOSYS: \
              image lacks CONFIG_SCHED_CPU_MASK) — sched task runs unpinned",
             name,
             cpu,
@@ -469,10 +471,12 @@ impl ZephyrBoard {
     where
         F: Fn(&mut RuntimeCtx<'_>) -> Result<(), RuntimeError> + Copy + 'static,
     {
+        // issue 1232
         if !task_memory.is_empty() && task_memory.len() != sched_tasks.len().saturating_sub(1) {
             ::log::error!(
                 "nros: sched task memory holds {} row(s) but {} sched task(s) are spawned — the \
-                 entry was generated for a different sched task table (issue 1232)",
+                 entry was generated for a different sched task table; regenerate it with \
+                 `nros build`",
                 task_memory.len(),
                 sched_tasks.len().saturating_sub(1)
             );

@@ -70,10 +70,11 @@ pub fn declared_nodes(nodes: Option<&str>) -> usize {
     match stated(nodes) {
         Some(v) => match v.trim().parse::<usize>() {
             Ok(n) => n.max(1),
+            // phase-426 W3: parameter services are registered per node.
             Err(_) => panic!(
                 "the model's node count {v:?} is not a count. It is the number of \
                  nodes the entry's model declares, and the ROS parameter \
-                 services are registered once PER NODE (phase-426 W3)."
+                 services are registered once PER NODE: give a whole number."
             ),
         },
         None => 1,

@@ -68,10 +68,11 @@ pub fn collect(vars: impl Iterator<Item = (String, String)>) -> Vec<String> {
 pub fn generate(build: &mut cc::Build) {
     let backends = collect(std::env::vars());
     let backends: Vec<&str> = backends.iter().map(String::as_str).collect();
+    // RFC-0071 D9: an image registers the backends it depends on.
     assert!(
         !backends.is_empty(),
         "this image depends on no RMW backend, so it has none to register: add the \
-         backend crate (e.g. `nros-rmw-zenoh`) as a dependency (RFC-0071 D9)"
+         backend crate (e.g. `nros-rmw-zenoh`) as a dependency"
     );
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
     let path = out.join("nros_app_register_backends.c");

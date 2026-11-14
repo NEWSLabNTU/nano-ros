@@ -26,8 +26,9 @@
 #[cfg(target_os = "nuttx")]
 pub fn report_kernel_eth0() {
     match read_eth0_ipv4() {
+        // RFC-0109 D2: NuttX owns eth0's address.
         Ok(a) => println!(
-            "{ETH0_REPORT_PREFIX}{}.{}.{}.{} (kernel-owned, RFC-0109 D2)",
+            "{ETH0_REPORT_PREFIX}{}.{}.{}.{} (kernel-owned)",
             a[0], a[1], a[2], a[3]
         ),
         Err(rc) => println!("{ETH0_REPORT_PREFIX}unreadable (SIOCGIFADDR rc={rc})"),

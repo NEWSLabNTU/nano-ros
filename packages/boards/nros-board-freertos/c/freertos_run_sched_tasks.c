@@ -743,9 +743,10 @@ int32_t nros_board_freertos_run_sched_tasks_in(const char* locator, uint8_t doma
 static size_t freertos_boot_sched_task_index(const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks) {
     for (size_t i = 1u; i < n_sched_tasks; ++i) {
         if (sched_tasks[i].priority > sched_tasks[i - 1u].priority) {
+            /* issue 0636 */
             nros_board_freertos_console_write(
                 "nros: sched task table is not sorted highest-priority-first — "
-                "boot sched task falls back to index 0 (issue 0636)\n");
+                "boot sched task falls back to index 0\n");
             return 0u;
         }
     }
@@ -1318,8 +1319,9 @@ int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id
         nros_board_freertos_console_write("nros: multi-level run — ");
         nros_board_freertos_console_write(freertos_u32_dec((uint32_t)n_sched_tasks, nb, sizeof(nb)));
         nros_board_freertos_console_write(" level(s) over one executor\n");
+        /* issue 2017: a level image wants slicing OFF. */
         nros_board_freertos_console_write(nros_freertos_kernel_time_slicing()
-                                              ? "nros: kernel time slicing ON (issue 2017)\n"
+                                              ? "nros: kernel time slicing ON\n"
                                               : "nros: kernel time slicing OFF\n");
     }
 

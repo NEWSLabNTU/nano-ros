@@ -174,7 +174,7 @@ Authoritative homes:
   [issue 2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md),
   enforced by the ratchets `check-user-surface-ids` and
   `check-cmake-user-output-refs`; runtime logs and the colcon plugin are
-  [issue 2443](../issues/2443-runtime-log-and-colcon-messages-cite-ids.md).
+  [issue 2443](../issues/archived/2443-runtime-log-and-colcon-messages-cite-ids.md).
 - Stable diagnostic codes (ruling C): phase-552 and its diagnostic-code RFC,
   named in phase-523 W5.
 
