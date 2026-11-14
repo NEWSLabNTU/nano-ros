@@ -1,7 +1,7 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
 **Status (2026-11-14). OPEN: W1, W2, W2b, W3, W4, W5, W6 and W7 are done;
-W3b and W5b are open; W7f is a design awaiting the user's review.** This phase tracks the implementation of
+W3b, W5b and W7f are open.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
 runs, and every gate reads that producer instead of holding its own number.
@@ -621,7 +621,7 @@ pins the case where sorted order under-states (112 vs 121 B); every
 
 ### W7f — Field- and parameter-sensitive binding (issue 2550 step 3)
 
-- **Status:** OPEN (design only; no code until the user reviews this item)
+- **Status:** OPEN (design approved 2026-11-15; implementation not started)
 
 **Why.** Typing every call site does not break the walk's cycle: the bound
 graph's SCC stays at 962 / 970 / 2,037 functions against 24 on direct edges
@@ -643,14 +643,35 @@ bitcode, clang IR of the C):
    `_z_closure_sample_t.call` is stored `sample_handler` and
    `pending_get_reply_handler` in one place each, so a site calling
    `closure->call` reaches those, not every `void(ptr,ptr)`.
-2. **A parameter.** The site calls a value that is (at -O0, through its
-   alloca) the function's own parameter P. The site can hold what each
-   direct caller passes at position P: a `@fn` argument directly, or the
-   caller's own parameter (followed transitively), or a field load (rule 1).
+2. **A parameter.** The site calls a value that is the function's own
+   parameter P. The site can hold what each direct caller passes at
+   position P: a `@fn` argument directly, the caller's own parameter
+   (followed transitively), or a field load (rule 1).
    Example: `_z_svec_clear(v, _z_foo_elem_clear)`.
 
 Each (T, F) and each (function, P) becomes a node in a small points-to
 problem, solved to a fixed point (sets only grow).
+
+**Which IR form the parameter channel reads.** The walk reads two IR
+forms, and the channel handles both:
+
+- **SSA parameters.** Rust bitcode is optimised, so the call's callee
+  operand is the function argument `%P` itself. That counts as the
+  parameter. A `phi` or `select` counts only when every incoming value is
+  trusted.
+- **-O0 allocas.** The C IR is clang `-O0`, so `%P` is first stored to an
+  alloca and the call loads it back. That load counts as the parameter
+  only if:
+  - the alloca has exactly one store, of `%P`, in the entry block;
+  - every other use of the alloca is a plain load;
+  - the alloca's address never escapes (it is not passed, stored, cast or
+    GEP'd).
+
+  An alloca that fails any of these is untrusted, because a second write
+  could hold anything.
+
+The field channel's loads are the same in both forms: a `gep %T, 0, F`
+followed by a load.
 
 **The fallback rule (what keeps it sound).** A channel is TRUSTED only if
 every way a value enters it is one of the forms above. Any other entry makes
@@ -680,12 +701,28 @@ everything ever stored), no heap shape, no context sensitivity beyond the
 direct-caller step. A channel the rules cannot prove stays at today's
 binding, so the result is never looser than now.
 
-**Measure before landing.**
+**Measure in this order, and stop early.**
 
-- The reachable SCC with and without the new binding, on the three nucleo
-  templates and the mps2 talker.
-- The share of indirect sites that become trusted.
-- The exact search's node count once the SCC is small, against a budget.
+1. **First, before the solver exists:** the share of indirect sites that
+   become trusted. The channel classification above needs no fixed point,
+   so this is a cheap pass.
+   - Report it per image (the three nucleo templates and the mps2 talker),
+     for the sites inside the reachable SCC.
+   - Break it down by the zenoh-pico containers that pass `void*`-cast
+     callbacks (`_z_svec`, `_z_list`, `_z_slist`, `_z_hashmap` and the
+     closure types), since those are expected to be the hard cases.
+   - If the share is low, stop there and report, before building the
+     solver. "Low" means under half of the SCC's sites. That threshold is
+     this item's call, and the review may move it.
+2. The reachable SCC with and without the new binding, on the same images.
+3. The exact search's node count once the SCC is small, against a budget.
+
+**Cost and fallback.** This is multi-day work: the IR pass, the solver,
+the self-test mutations and the measurements. The fallback is the floor
+accepted on 2026-11-14 and in force today, the deepest of 8 fixed orders.
+A shortfall at any step therefore ships nothing worse than now: the binding
+lands only where it is proven, and the floors stay as recorded until an
+exact search finishes under its budget.
 
 **Acceptance.**
 
