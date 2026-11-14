@@ -81,7 +81,10 @@ generated entry's dependencies.
   `nros: stack overflow: the main stack grew past its stated size`. Nothing
   below the stack is overwritten. Raise the size with
   `NROS_BAREMETAL_STACK_KB` in the image's build environment. A size too big
-  for the image's statics fails the link, naming the same knob.
+  for the image's statics fails the link, naming the same knob. A size below
+  the image's stack floor, a heuristic estimate of what nano-ros needs, fails
+  the build with the value to set
+  ([A11](../../reference/troubleshooting-index.md#a11-the-stack-is-below-the-images-floor)).
 - **No `alloc` by default.** The build is `no_std` with `heapless`
   collections. To use `alloc`, enable the board crate's `alloc` feature and
   supply a `#[global_allocator]`.

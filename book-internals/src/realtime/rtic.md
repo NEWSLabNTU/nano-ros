@@ -7,6 +7,13 @@
 > it (RFC-0114 D10: the book claims only what the registry backs). What
 > follows is the integration as built, for whoever maintains it or gives it a
 > registry row.
+>
+> **Support status: a documented recipe, not a support tier.** RFC-0112 D3
+> demoted RTIC from Tier 1 on 2026-11-14 (issue 2540): its priorities are
+> fixed by hand and its CI cells assert delivery only. The `rtic` board value
+> and the entry macro's RTIC branch stay, so this recipe keeps building.
+> Re-promotion waits on a generated priority mapping and a measured bound
+> its CI cell asserts (phase-562 W10).
 
 RTIC ([Real-Time Interrupt-driven Concurrency](https://rtic.rs)) is a
 concurrency framework for ARM Cortex-M that compiles tasks directly to

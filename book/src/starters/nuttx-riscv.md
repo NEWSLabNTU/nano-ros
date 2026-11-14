@@ -45,8 +45,9 @@ sudo apt-get install -y qemu-system-misc
 The first line fetches the RISC-V cross-compiler and the NuttX kernel and apps
 sources into a shared store under `~/.nros`. Before it downloads anything it
 names the host packages that are missing, and `--sudo` lets it run the one
-install command it composed for your package manager. Leave `--sudo` off and
-it only prints that command. The second line installs the emulator. Neither
+install command it composed for your package manager
+(`sudo apt-get install -y kconfig-frontends-nox unzip` on Debian or Ubuntu).
+Leave `--sudo` off and it only prints that command. The second line installs the emulator. Neither
 installs a router: the router is ROS's `rmw_zenohd`.
 
 ## Scaffold the project
