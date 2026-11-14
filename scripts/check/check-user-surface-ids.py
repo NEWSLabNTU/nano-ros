@@ -129,6 +129,14 @@ Subjects, all checked on every run:
   `///`/`//!` doc line a literal emits (generated rustdoc). Baseline zero.
   Gaps, stated in its section below; `--list-tables` lists the id-bearing
   `&str` tables no reading reads;
+* the PUBLIC API'S DOCUMENTATION (issue 2581): what `cargo doc`, an IDE
+  hover or a header shows an app author. In every crate under `packages/`
+  except `cli/`, `tooling/` and `testing/` (vendored, test, bench, example
+  and build trees skipped): the `///` lines of a `pub` item and every `//!`
+  line; and the comment text of every installed header under `include/`,
+  cbindgen's included. The one counted subject: a per-file ratchet in
+  `.config/api-doc-ids-ratchet.json` that may only fall, and a fall must be
+  written back (`--update-ratchet`). At zero it becomes baseline zero;
 * the output of `nros board list`, `nros board show <board>` for every board
   the list names, and `nros doctor --report`, which in addition may hold no
   tier number (`tier 1`, `tier 2`, `tier 3` — phase-522 W5).
@@ -138,7 +146,7 @@ NOT VERIFIED through the skip ledger (issue 1043's middle outcome), never a
 quiet pass. The source and book subjects need nothing.
 
 Forbidden tokens: `phase-NNN`, `Phase NNN`, `issue NNNN`, `#NNNN`, `RFC-NNNN`.
-Baseline zero, no allowlist. `--self-test` runs both directions of every rule
+Baseline zero, no allowlist, but for the public-API-doc ratchet. `--self-test` runs both directions of every rule
 and runs first on every check.
 """
 
@@ -2384,6 +2392,113 @@ def report_bringup() -> str:
 # --- self-test --------------------------------------------------------------
 
 
+# --- the public API's documentation (issue 2581) ------------------------------
+
+# What `cargo doc` and an IDE hover show an app author: the `///` doc of a
+# `pub` item and a module's `//!` doc, in every crate an app links (not the
+# CLI, tooling or test crates, whose docs never reach one), and the comments
+# of every installed header (`include/`), cbindgen's output included. The
+# backlog is large, so this subject is a counted ratchet per file that may
+# only fall, in `.config/api-doc-ids-ratchet.json`; `--update-ratchet`
+# rewrites it after a sweep. Once every row is zero the ratchet goes and the
+# subject becomes baseline zero like the rest (issue 2443's path).
+API_DOC_RATCHET = ROOT / ".config" / "api-doc-ids-ratchet.json"
+API_DOC_SKIP = re.compile(r"^packages/(cli|tooling|testing)/")
+PUB_ITEM = re.compile(r"pub(?:\s|$)")  # `pub fn`, `pub extern "C"`; not `pub(crate)`
+
+
+def rust_api_doc_lines(src: str) -> list[tuple[int, str]]:
+    """The `//!` lines, and the `///` lines whose item is `pub`. Attributes
+    (one or many lines) and blank lines between a doc and its item are
+    skipped. Gaps, stated: `/** */` docs, and a `pub` item inside an inline
+    `#[cfg(test)]` module."""
+    out, block, depth = [], [], 0
+    for ln, line in enumerate(src.split("\n"), 1):
+        s = line.strip()
+        if depth:
+            depth += s.count("[") - s.count("]")
+            continue
+        if s.startswith("//!"):
+            out.append((ln, s))
+            continue
+        if s.startswith("///"):
+            block.append((ln, s))
+            continue
+        if not block:
+            continue
+        if s.startswith("#["):
+            depth = max(0, s.count("[") - s.count("]"))
+            continue
+        if s == "" or s.startswith("//"):
+            continue
+        if PUB_ITEM.match(s):
+            out.extend(block)
+        block = []
+    return out
+
+
+def header_comment_lines(src: str, lang: str) -> list[tuple[int, str]]:
+    """Each line's comment text (code and string literals blanked)."""
+    mask = comments.code_mask(src, lang, strings=False)
+    text = "".join(ch if ch == "\n" or not code else " " for ch, code in zip(src, mask))
+    return [(ln, s.strip()) for ln, s in enumerate(text.split("\n"), 1) if s.strip()]
+
+
+def api_doc_files() -> list[str]:
+    files = subprocess.run(
+        ["git", "ls-files", "packages/**/*.rs", "packages/**/include/**"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout.split()
+    files = [f for f in files if not API_DOC_SKIP.match(f) and not LIBRARY_SKIP.search("/" + f)]
+    tests = test_module_files([f for f in files if f.endswith(".rs")])
+    return [
+        f for f in files
+        if f not in tests and (f.endswith(".rs") or (
+            "/include/" in f and f.endswith((".h", ".hpp", ".hh", ".hxx"))))
+    ]
+
+
+def api_doc_sites() -> dict[str, list[str]]:
+    sites = {}
+    for rel in api_doc_files():
+        src = (ROOT / rel).read_text(errors="replace")
+        lines = (rust_api_doc_lines(src) if rel.endswith(".rs")
+                 else header_comment_lines(src, "c" if rel.endswith(".h") else "cpp"))
+        hits = [f"{rel}:{ln}: {tok!r} in {s[:90]!r}" for ln, s in lines for tok in ids(s)]
+        if hits:
+            sites[rel] = hits
+    return sites
+
+
+def api_doc_hits(update: bool = False) -> list[str]:
+    import json
+
+    sites = api_doc_sites()
+    counts = {rel: len(h) for rel, h in sorted(sites.items())}
+    if update:
+        API_DOC_RATCHET.write_text(json.dumps(counts, indent=1, sort_keys=True) + "\n")
+        print(f"{NAME}: wrote {API_DOC_RATCHET.relative_to(ROOT)} "
+              f"({sum(counts.values())} id(s) in {len(counts)} file(s))")
+        return []
+    base = json.loads(API_DOC_RATCHET.read_text()) if API_DOC_RATCHET.exists() else {}
+    bad, fell = [], []
+    for rel, hits in sorted(sites.items()):
+        allowed = base.get(rel, 0)
+        if len(hits) > allowed:
+            bad.append(f"{rel}: {len(hits)} id(s) in public API docs, ratchet allows {allowed}:")
+            bad.extend(f"    {h}" for h in hits)
+    for rel, allowed in sorted(base.items()):
+        if counts.get(rel, 0) < allowed:
+            fell.append(f"{rel}: {counts.get(rel, 0)} < {allowed}")
+    if fell:
+        bad.append(
+            "the public-API-doc ratchet fell; lower it with "
+            "`python3 scripts/check/check-user-surface-ids.py --update-ratchet`: "
+            + "; ".join(fell)
+        )
+    return bad
+
+
 def self_test() -> None:
     must = ["see phase-525 W1", "Phase 401", "issue 1043", "(#2169)", "RFC-0116", "issues #0628"]
     for s in must:
@@ -2392,6 +2507,21 @@ def self_test() -> None:
               "tier 1"]:
         assert not ids(s), f"self-test: {s!r} wrongly caught"
     assert ids("tier 2 board", tiers=True), "self-test: tier not caught"
+    # Issue 2581: a `pub` item's `///` and a module's `//!` are read, through
+    # attributes and blank lines; a private or `pub(crate)` item's are not.
+    doc = (
+        "//! Module (phase-100).\n"
+        "/// Public, issue 1234.\n#[cfg(any(\n  feature = \"a\",\n))]\n\n#[inline]\npub fn a() {}\n"
+        "/// Private, RFC-0001.\nfn b() {}\n"
+        "/// Crate-wide, #4321.\npub(crate) fn c() {}\n"
+        "/// Extern, RFC-0002.\npub unsafe extern \"C\" fn d() {}\n"
+        "// phase-300, a plain comment\npub struct E;\n"
+    )
+    found = [t for _, s in rust_api_doc_lines(doc) for t in ids(s)]
+    assert found == ["phase-100", "issue 1234", "RFC-0002"], f"self-test: api docs {found}"
+    hdr = '/** See RFC-0003. */\nint f(void); // issue 2222\nconst char *s = "phase-400";\n/*\n * #1111\n */\n'
+    found = [t for _, s in header_comment_lines(hdr, "c") for t in ids(s)]
+    assert found == ["RFC-0003", "issue 2222", "#1111"], f"self-test: header comments {found}"
     src = (
         '// phase-100 in a comment\n'
         'fn a() { bail!("see issue 1234"); let c = \'"\'; let l: &\'a str = r#"RFC-0001"#; }\n'
@@ -2815,6 +2945,8 @@ def main() -> int:
     ap.add_argument("--cli", help="the nros binary to render (default: the in-tree build)")
     ap.add_argument("--measure", action="store_true",
                     help="print the 'reaches a print later' hits tagged by reading, then stop")
+    ap.add_argument("--update-ratchet", action="store_true",
+                    help="rewrite the public-API-doc ratchet from the tree, then stop")
     ap.add_argument("--list-tables", action="store_true",
                     help="list the id-bearing &str tables no reading reads, then stop")
     args = ap.parse_args()
@@ -2829,11 +2961,14 @@ def main() -> int:
     if args.list_tables:
         print("\n".join(list_tables()))
         return 0
+    if args.update_ratchet:
+        api_doc_hits(update=True)
+        return 0
 
     bad = (
         source_hits() + library_hits() + book_hits() + build_script_warning_hits()
         + colcon_hits() + shell_hits() + runtime_hits() + compile_time_hits() + assembled_hits()
-        + deferred_hits()
+        + deferred_hits() + api_doc_hits()
     )
     cli = args.cli
     if cli is None:
@@ -2864,7 +2999,8 @@ def main() -> int:
     print(
         f"{NAME}: OK (cmd/ strings, CLI library, build-script panics, build-script warnings, colcon "
         f"messages, user-run shell scripts, runtime log and panic text, compile-time text, "
-        f"assembled error text, text that reaches a print later, {BOOK_SCOPE}, "
+        f"assembled error text, text that reaches a print later, public API docs (ratchet), "
+        f"{BOOK_SCOPE}, "
         f"{rendered})"
     )
     return 0
