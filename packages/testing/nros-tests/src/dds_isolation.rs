@@ -586,7 +586,11 @@ mod tests {
     fn a_slirp_guest_is_refused_the_loopback_profile_by_name() {
         use crate::matrix::PlatformId as P;
         let refused = cyclone_peer_config_uri(P::ZephyrQemuCortexM).unwrap_err();
-        assert!(refused.contains("issue 1251") && refused.contains("CycloneSlirpPair"));
+        // What the refusal says, not the issue it cites: ids leave user text
+        // (ruling A, issues 2547/2551), and a needle on one breaks when they do.
+        assert!(
+            refused.contains("cannot use the loopback") && refused.contains("CycloneSlirpPair")
+        );
         assert!(cyclone_peer_config_uri(P::FreertosMps2).is_err());
         assert!(cyclone_peer_config_uri(P::Linux).is_ok());
         assert!(cyclone_peer_config_uri(P::ZephyrNativeSim).is_ok());
