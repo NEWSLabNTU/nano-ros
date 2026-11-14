@@ -6,6 +6,7 @@ area: docs-ux-diagnostics
 since: 2026-11
 last-reviewed: 2026-11-14
 implements-tracked-by: [phase-537]
+amends: [RFC-0064]  # its book rows (phase-555 W3)
 supersedes: []
 superseded-by: null
 ---

@@ -52,11 +52,11 @@ index kinds; builds consume nros-store tools), Phase 197.5 (nros-0.3.1 index sch
 + the deny-unknown-fields lesson — schema additions must be released).
 
 **Design.** Full exploration + real-board survey + simulated walkthrough in
-[`docs/design/0013-custom-board-provisioning.md`](../design/0013-custom-board-provisioning.md)
+[`docs/design/archived/0013-custom-board-provisioning.md`](../../design/archived/0013-custom-board-provisioning.md)
 — **also marked Superseded (2026-09-04)**, and kept for the survey rather than
 the mechanism: it is the evidence for what a third-party board actually needs,
 which RFC-0087 inherits without restating.
-Builds on [`docs/design/0012-board-bsp-integration-architecture.md`](../design/0012-board-bsp-integration-architecture.md)
+Builds on [`docs/design/0012-board-bsp-integration-architecture.md`](../../design/0012-board-bsp-integration-architecture.md)
 (the build-side / overlay-crate model).
 
 ---

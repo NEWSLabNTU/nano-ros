@@ -1,16 +1,21 @@
 ---
 rfc: 0073
 title: "Platform clock: one nanosecond symbol plus a resolution query"
-status: Draft
+status: Stable
 area: platform-board-rtos
 since: 2026-08
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-352]
 supersedes: []
 superseded-by: null
 ---
 
 # RFC-0073 — Platform clock: one nanosecond symbol plus a resolution query
+
+> **Stable (2026-11-14, phase-555 W3, user ruling P4 (c)).** phase-352
+> shipped the interface whole. The three open questions below are measurement
+> or policy questions about it, not unbuilt design, and are filed as
+> [issue 2535](../issues/2535-platform-clock-open-questions.md).
 
 ## Summary
 
@@ -234,6 +239,8 @@ definitions cannot coexist:
 
 ## Open questions
 
+Filed as [issue 2535](../issues/2535-platform-clock-open-questions.md) (2026-11-14).
+
 - Whether the executor's per-spin read is frequent enough to justify
   the deferred coarse variant. Measurable on the existing lane.
 - Whether `resolution_ns` should be permitted to change after init for
@@ -271,3 +278,5 @@ The status question is brief item P4.
   is left as written.
 - Conflicts: none. No newer RFC in the inventory claims a change to it.
 - Status: Draft, although phase-352 shipped it whole. Brief item P4.
+
+**W3 (2026-11-14).** P4 (c) under A1: the open questions filed as issue 2535 and pointed at; then Stable. ARCHITECTURE §4 updated.

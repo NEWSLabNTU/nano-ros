@@ -1,10 +1,10 @@
 ---
 rfc: 0114
 title: "Board support registry: primitives and derivation"
-status: Draft
+status: Stable
 area: platform-board-rtos
 since: 2026-10
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-522, phase-550]
 amends: [RFC-0064]
 supersedes: []
@@ -13,7 +13,11 @@ superseded-by: null
 
 # RFC-0114 — Board support registry: primitives and derivation
 
-**Status:** Draft (2026-10-31). Written from the adoption discussion of
+> **Stable (2026-11-14, phase-555 W3, user ruling P4 (c)).** phase-522
+> shipped it. The three open questions are filed as
+> [issue 2536](../issues/2536-board-registry-open-questions.md).
+
+**Status:** Stable (2026-11-14); drafted 2026-10-31. Written from the adoption discussion of
 2026-10-31 (three purposes: industrial, field solutions, education) and
 before any code. Implemented by
 [phase-522](../roadmap/archived/phase-522-support-registry-primitives.md). The
@@ -358,6 +362,8 @@ stated reversal.
 
 ## Open questions
 
+Filed as [issue 2536](../issues/2536-board-registry-open-questions.md) (2026-11-14).
+
 - Whether `nightly_token` stays an authored field or is derived from the
   board's `PlatformId::just_module`. Phase-558 made the nightly verdict
   per board (one job per `matrix_platform`), so the token now names only the
@@ -461,3 +467,5 @@ stated reversal.
     not yet used (brief P6).
 - `area:` platform-board-rtos is right.
 - Status: Draft, though phase-522 shipped it. Brief item P4.
+
+**W3 (2026-11-14).** P4 (c) under A1: the open questions filed as issue 2536 and pointed at; then Stable. ARCHITECTURE §4 updated.

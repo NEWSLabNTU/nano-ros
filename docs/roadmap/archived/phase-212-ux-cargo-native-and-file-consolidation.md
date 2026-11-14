@@ -66,7 +66,7 @@ See companion design documents (live, expected to iterate):
   open questions
 - `docs/design/0025-workspace-layout-by-case.md` — concrete file trees for
   single/multi × rust/cpp + mixed
-- `docs/design/0003-rtos-integration-pattern.md` — universal embedded pattern
+- `docs/design/archived/0003-rtos-integration-pattern.md` — universal embedded pattern
 
 **Decision summary** (locked, see design docs for rationale):
 
@@ -533,7 +533,7 @@ utilities for `nros migrate workspace` only. No CLI surface.
 ### 212.H — RTOS adapter audit + alignment
 
 Each `integrations/<rtos>/` shell stays ≤200 LoC, matches the universal
-pattern from `docs/design/0003-rtos-integration-pattern.md`, and consumes the
+pattern from `docs/design/archived/0003-rtos-integration-pattern.md`, and consumes the
 baked tree from 212.E.
 
 - [x] **H.1 Zephyr** — Landed: feat(212.H) `8278955b9` (sweep) + fix(212.H.1+H.5) `9abb85b28` + fix(212.H) `330450e82`.
@@ -4234,4 +4234,4 @@ surface area (CLI help text, fixture trees, book docs).
 - Companion design docs (kept up-to-date as work proceeds):
   - `docs/design/0024-multi-node-workspace-layout.md` (LIVE)
   - `docs/design/0025-workspace-layout-by-case.md` (LIVE)
-  - `docs/design/0003-rtos-integration-pattern.md` (LIVE)
+  - `docs/design/archived/0003-rtos-integration-pattern.md` (LIVE)

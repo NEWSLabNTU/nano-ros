@@ -4,7 +4,7 @@ title: "Hierarchical platform/board configuration"
 status: Stable
 area: platform-board-rtos
 since: 2026-07
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-290]
 supersedes: []
 superseded-by: null
@@ -56,6 +56,16 @@ defaults at the hardware layers.
 > fragment, so Kconfig stays the mechanism while a leaf's conf files stop being
 > a second source for nano-ros knobs. Workspace images whose configuration
 > differs no longer share a configure.
+
+> **Amended in place (2026-11-14, phase-555 W3, user ruling P2 (a)) for
+> [RFC-0103](0103-one-owner-per-fact.md) D2b.** The knob registry
+> (`packages/tooling/nros-zephyr-build/knobs.toml`) now GENERATES the module
+> `zephyr/Kconfig`'s knob section (`scripts/gen-knob-registry.py`; the block
+> between `# >>> knob registry >>>` and `# <<< knob registry <<<`), and
+> `just check zephyr-kconfig-knobs` holds the committed file equal to the
+> render. That reverses one rule here, "no Kconfig generation machinery"
+> (Front-ends, and the rejected "generated Kconfig fragments" alternative).
+> The fixed ladder and the package-duty rule stand unchanged.
 
 ## Design
 
@@ -115,7 +125,8 @@ Per RFC-0004's rule this is a **fixed, short precedence ladder, not an open
 merge**. The chain is explicit: the app names its board (deploy key, as
 today) → the board toml names its platform → the loader follows that
 two-hop chain. Out-of-tree board/platform directories resolve through the
-existing RFC-0014 board-provisioning mechanism — no second resolver, no
+existing RFC-0013 board-provisioning mechanism (since superseded by RFC-0087,
+where a board is an ordinary package) — no second resolver, no
 cross-package walk-ups. (This named phase-201 as the out-of-tree half; that
 phase was archived unstarted 2026-09-04 and the resolution moves to phase-420
 W6's search path — `[workspace] package_paths` + `NROS_PACKAGE_PATH`. The
@@ -144,10 +155,14 @@ policy; policy that contradicts fact never silently ships.
 | Zephyr / NuttX / ESP-IDF packaging | the **host's own Kconfig**, hand-wired in that framework-integration layer (as `zephyr/Kconfig` does today), forwarding to the same `-D`s |
 
 Kconfig is a per-framework packaging detail implemented only when the native
-framework requires it. There is **no nros-owned Kconfig and no Kconfig
+framework requires it. ~~There is **no nros-owned Kconfig and no Kconfig
 generation machinery**. A framework fragment's `default` lines mirror the
 platform toml; a **drift test** (not a generator) asserts the mirror —
-cheap, and the fragment count is small (one per Kconfig-native framework).
+cheap, and the fragment count is small (one per Kconfig-native framework).~~
+**Amended 2026-11-14 (RFC-0103 D2b):** the knob section of `zephyr/Kconfig`
+is generated from the knob registry, and a gate holds the committed file equal
+to the render. Kconfig stays a per-framework front-end; only the hand-wired
+mirror was replaced by a generator.
 
 Front-end semantics are explicit both ways: an unset env/Kconfig means
 "defer to the ladder below"; a set value (including explicit `0`/`n`)
@@ -225,6 +240,9 @@ for non-express topics.
   hand-wired fragments + a drift test: the generator is machinery serving
   ~3 small files, and framework fragments carry framework-specific
   dependencies (`depends on NET_SOCKETS`, …) a generator would fight.
+  **Reversed 2026-11-14 by RFC-0103 D2b**: the registry generates the knob
+  section, and a row's `kconfig_if` / `kconfig_attrs` carry the framework
+  dependencies this bullet expected a generator to fight.
 - **Keeping `zenoh_platforms.toml` for the build blocks** — rejected: the
   central file is the out-of-tree wall, and "platform build sources" is
   precisely platform-package duty.
@@ -237,9 +255,14 @@ for non-express topics.
   RFC is the BUILD-time sibling and does not touch `system.toml`).
 - RFC-0042 (`nros-board.toml` board descriptor + `[board.capabilities]` —
   this RFC extends that file, not a new one).
-- RFC-0014 (out-of-tree board/platform dir resolution). Was RFC-0014 /
-  phase-201; phase-201 archived unstarted 2026-09-04, superseded by RFC-0087 —
-  the search path is phase-420 W6.
+- RFC-0013 (out-of-tree board/platform dir resolution, now
+  [archived](archived/0013-custom-board-provisioning.md)) and its phase-201;
+  phase-201 archived unstarted 2026-09-04, and RFC-0013 is superseded by
+  RFC-0087 — the search path is phase-420 W6. (Until 2026-11-14 this line
+  named the `nros setup` RFC instead, which never owned out-of-tree
+  resolution.)
+- RFC-0103 D2b (the knob registry generates the Zephyr Kconfig knob section;
+  amends this RFC's front-end rule).
 - RFC-0033 (config-file precedent: `deny_unknown_fields`, deep-merge
   mechanics, discovery — note codegen capacity config remains its own
   file/system; message capacities are app-scoped, not platform-scoped).
@@ -294,3 +317,8 @@ Where newer designs or the code disagree:
 - "No nros-owned Kconfig and no Kconfig generation machinery" and "generated Kconfig fragments: rejected" are contradicted by `zephyr/Kconfig`'s generated knob-registry block (RFC-0103 D2b).
 
 Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.
+
+**W3 (2026-11-14).** The user ruled P2 (a): amend in place. Applied: the
+RFC-0103 D2b banner, the Front-ends paragraph and the rejected alternative
+marked as reversed, and the out-of-tree resolution credited to its real
+owner, RFC-0013 (now RFC-0087). RFC-0103 now carries `amends: [rfc-0049]`.

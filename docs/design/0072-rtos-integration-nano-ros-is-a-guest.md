@@ -4,9 +4,9 @@ title: "RTOS integration: nano-ros is an imported library, and the RTOS owns its
 status: Draft
 area: platform-board-rtos
 since: 2026-08
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-349, phase-351]
-supersedes: []
+supersedes: [0003]
 superseded-by: null
 ---
 
@@ -79,20 +79,25 @@ Any design where nano-ros compiles the RTOS must reimplement all of that. Under
 Documented before proposing changes, because two prior drafts of this RFC
 re-derived things the tree already had.
 
-### RFC-0003 already states this RFC's principle
+### The adapter taxonomy (merged from RFC-0003, 2026-11-14)
 
-[RFC-0003](0003-rtos-integration-pattern.md) §1 (Draft, 2026-06):
+[RFC-0003](archived/0003-rtos-integration-pattern.md) (Draft, 2026-06) stated
+this RFC's principle three months earlier, and is now superseded by this RFC
+(phase-555 W3, user ruling P1 (a)). Its deploy contract, host workflow and
+`std`-per-platform sections were overtaken by RFC-0098, RFC-0118, RFC-0120 and
+RFC-0126, and by phase-359 (no core crate has a `std` feature, and
+`nros-board-nuttx` is `no_std`), so they stay in the archive. What survives is
+the taxonomy below, which this RFC must respect.
 
-> *"Vendor SDK keep native build tool — west, make+Kconfig, cmake, idf.py, pio.
-> Always. nano-ros never replace. nano-ros instead plug into vendor's external
-> library / external module / component hook."*
+**The universal rule.** The vendor owns build and link. nano-ros owns (a) a
+per-vendor adapter shim that exposes the runtime as a vendor-native library,
+component or module, and (b) host-time codegen that bakes `system.toml` and
+the launch files into compile-time config. The bringup package never reaches
+the device; only its baked output does. (RFC-0120 narrows where this applies:
+it is the rule for an existing project adopting nano-ros, while `nros build`
+is the front door for a new one.)
 
-and its universal rule: **vendor owns build + link; nano-ros owns a per-vendor
-adapter shim plus host-time codegen.** §1 is this RFC's §1, three months
-earlier. What this RFC adds is not the principle but **where board information
-lives** — which RFC-0003 does not address.
-
-RFC-0003 also supplies a taxonomy this RFC must respect:
+**Hook-capable and hookless vendors.**
 
 | | vendors | codegen runs |
 | --- | --- | --- |
@@ -100,6 +105,29 @@ RFC-0003 also supplies a taxonomy this RFC must respect:
 | **hookless** | PlatformIO, **PX4** | *ahead* of the vendor tool, emitting a vendor-native tree |
 
 A design that assumes a configure-time hook silently excludes PX4 and PIO.
+For a hook-capable vendor the configure-time run is an idempotent convenience:
+it runs the same codegen and yields the same tree as running ahead, so there
+is one contract and an optional second trigger, not two code paths.
+
+**The hook each vendor offers**, and the shell that uses it today:
+
+| vendor | its external-code hook | nano-ros shell |
+| --- | --- | --- |
+| Zephyr | west module | `zephyr/` |
+| NuttX | `apps/external/` app | `integrations/nuttx/` |
+| ThreadX | the user's CMake `add_subdirectory` | `cmake/platform/nano-ros-threadx.cmake` (shared, no per-RTOS shim) |
+| FreeRTOS | none of its own (the kernel ships no build) | `cmake/platform/nano-ros-freertos.cmake`, `integrations/freertos/`, and `integrations/s32ds/` over a vendor IDE project |
+| PX4 | `EXTERNAL_MODULES` / `px4_add_module` | `integrations/px4/` |
+| PlatformIO | `library.json` + a pre-build `extra_script` | repo-root `library.json`, `integrations/platformio/` |
+| ESP-IDF | component | **retired** (phase-468 W2; issues 1525/1526) |
+
+**The shim budget: ≤ 200 code lines per adapter shim.** When a shim exceeds
+it, split it into a shared core plus per-board overlays and count only the
+per-board part (the ThreadX precedent: one platform module plus board
+overlays). Do not raise the budget; raise it only when the shared core is
+genuinely irreducible. Issue 1610 applied this rule to the Zephyr shim. Gate:
+`packages/testing/nros-tests/tests/loc_budgets.rs`
+(`rtos_adapter_shims_under_200_loc_each`).
 
 ### Where board information lives today — five homes
 
@@ -127,7 +155,7 @@ A design that assumes a configure-time hook silently excludes PX4 and PIO.
 
 Three observations that shape the redesign:
 
-1. **`entry_kind` already encodes RFC-0003's adapter shape** — `hosted-main`,
+1. **`entry_kind` already encodes the adapter shape above** — `hosted-main`,
    `board-run`, `zephyr-staticlib`. The integration axis is present and named.
 2. **`net_stack` is a real ownership axis** (`rtos-owned` for Zephyr/NuttX,
    `nanoros-owned` elsewhere) — but it is parsed and never read, and it does not
@@ -253,7 +281,7 @@ we must design around rather than discover:
 * The `EXTERNAL` keyword on `px4_add_module()` is parsed and **never read**, and
   `external_module_paths` is accumulated and never read. Neither is a hook.
 
-This is RFC-0003's *hookless vendor* case, now with the precise reason: not that
+This is the taxonomy's *hookless vendor* case, now with the precise reason: not that
 PX4 lacks a configure-time hook, but that its configuration namespace is closed
 to out-of-tree contributors.
 
@@ -541,7 +569,7 @@ px4.target = "px4_fmu-v6x_default"        # <vendor>_<model>_<label>
 PX4's configuration namespace is **closed to out-of-tree code**: everything a
 board declares is Kconfig-selectable per label; nothing an external module
 provides is. So no block in `system.toml` **can** produce a `<label>.px4board`
-opt-in, and codegen must run *ahead* of the vendor tool (RFC-0003's hookless
+opt-in, and codegen must run *ahead* of the vendor tool (the taxonomy's hookless
 path), emitting module dirs into `$PX4_DIR/src/modules/`. Per-board selection
 would require being in-tree, as PX4 itself did for zenoh.
 
@@ -737,6 +765,14 @@ shells, the backend port tables, and its own code.
    `stm32cube-h7` integration reused across boards argues for factoring it into
    its own discovered provider package. Inline first, factor when a second board
    needs it.
+6. **PX4 multi-component mapping** (moved from RFC-0003 §7, 2026-11-14):
+   one PX4 module per component, or one module hosting N? RFC-0113 D9's
+   generated entry answers it for sched tasks (one module, one
+   `SchedTaskWorkItem` per sched task, and a node whose groups span two sched
+   tasks is refused); phase-542 W9 records that answer here or rules
+   otherwise. RFC-0003's other §7 questions are moot: one session per image
+   is the shared-session design (RFC-0107), the RMW is stated in `system.toml`
+   (phase-481), and the Orin SPE platform was dropped with its board crate.
 
 ## 12. Prerequisites
 
@@ -1046,3 +1082,9 @@ brief item P4.
   No contradiction.
 - Status: Draft. phase-349 and phase-351 are archived, and the parked waves
   are a documented choice. Brief item P4.
+
+**W3 (2026-11-14).** The user ruled P1 (a): RFC-0003's surviving adapter
+taxonomy merged into §3 above (the universal rule, hook-capable vs hookless,
+the per-vendor hook table, the 200-line shim budget), and its PX4
+multi-component question moved to §11. RFC-0003 is Superseded by this RFC and
+archived. Status stays Draft under P4 (c): phase-349 has parked waves (W5, W6).

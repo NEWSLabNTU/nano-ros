@@ -26,7 +26,7 @@ piece, `Driver::IdfPy` (issue 1525).
 
 | file | line | what it claims |
 | --- | --- | --- |
-| `docs/design/0003-rtos-integration-pattern.md` | 45 | diagram box `integrations/nano-ros/ — ESP-IDF component` |
+| `docs/design/archived/0003-rtos-integration-pattern.md` | 45 | diagram box `integrations/nano-ros/ — ESP-IDF component` |
 | | 73 | table row: `ESP-IDF │ idf.py │ integrations/nano-ros/ ESP-IDF component (idf_component_register + Kconfig.projbuild)` |
 | | 112–114 | a three-step user workflow ending `idf.py -B build/<b> flash monitor` |
 | | 145 | `ESP-IDF │ ~150 (CMakeLists.txt + Kconfig.projbuild + idf_component.yml) │ comfortable │ **already shipped**` |

@@ -4,7 +4,7 @@ title: "RTOS Scheduling Features for nano-ros"
 status: Stable
 area: platform-board-rtos
 since: 2026-03
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-228]
 supersedes: []
 superseded-by: null
@@ -12,10 +12,15 @@ superseded-by: null
 
 # RTOS Scheduling Features for nano-ros
 
-> **Config-home note (2026-06).** This RFC's design sections still reference
-> `config.toml [scheduling]`. That file is **retired** (Phase 172.K.6): scheduling
-> config now lives in the standalone `config.toml`'s `[node.rt]` section for
-> direct-mode embedded apps (read by `nros-board-freertos/src/config.rs`; RFC-0004 §7). Multi-node RT is **decided** (2026-06): node declares callback
+> **Config-home note (2026-06, corrected 2026-11-14).** This RFC's design sections
+> still reference `config.toml [scheduling]`. The `[scheduling]` SECTION is
+> retired (Phase 172.K.6, RFC-0004 §8); the standalone `config.toml` FILE is not.
+> RFC-0004 §5 keeps it as the supported direct-mode file, and §7 says what it
+> carries: `[node.rt]` on the normalised 0-31 scale and `[node.rt.freertos]` as
+> raw FreeRTOS priorities (read by `nros-board-freertos/src/config.rs`, issue
+> 0623). RFC-0004 §7 also records that in practice single-node RT is set through
+> board-crate features and Kconfig, and that the zenoh lease fields are refused
+> since RFC-0110 D2. Multi-node RT is **decided** (2026-06): node declares callback
 > groups; `system.toml [tasks.<name>.<rtos>]` + `[[node_overrides]]` reassignment
 > own sched task config (RFC-0015 reconciliation); schema/codegen tracked by phase-227 /
 > Phase 94. The per-RTOS priority-mapping survey below is unaffected and current.
@@ -57,7 +62,7 @@ these is essential for scheduling customization:
 
 | Task | FreeRTOS | ThreadX | NuttX | Zephyr |
 |------|----------|---------|-------|--------|
-| **App task** | xTaskCreate, pri=3, 64KB | tx_thread_create, pri=4, 64KB | main() context | main thread |
+| **App task** | xTaskCreate, pri=3, 64KB (128 KiB default since issue 1146) | tx_thread_create, pri=4, 64KB | main() context | main thread |
 | **Net poll** | xTaskCreate, pri=4, 1KB | — (NetX handles) | — (kernel) | — (kernel) |
 | **Zenoh read** | xTaskCreate, pri=4, 5KB | tx_thread_create, pri=14, 8KB | pthread_create | pthread_create |
 | **Zenoh lease** | xTaskCreate, pri=4, 5KB | tx_thread_create, pri=14, 8KB | pthread_create | pthread_create |
@@ -364,9 +369,9 @@ fn to_threadx_priority(normalized: u8) -> u32 {
 |-----------|--------|-------|
 | **zpico C API** (`zpico_set_task_config`) | Done | `zpico-sys/c/zpico/zpico.c`, `zpico.h` |
 | **zpico Rust FFI** | Done | `zpico-sys/src/lib.rs`, `ffi.rs` |
-| **FreeRTOS board crate Config** | Done | `nros-board-mps2-an385-freertos/src/config.rs` |
+| **FreeRTOS board crate Config** | Done | `nros-board-mps2-an385-freertos/src/config.rs` (now `nros-board-freertos/src/config.rs`, reading `[node.rt]`) |
 | **FreeRTOS board crate wiring** | Done | `nros-board-mps2-an385-freertos/src/node.rs` |
-| **CMake config parser** | Done | `nros-c/cmake/NanoRosReadConfig.cmake` |
+| **CMake config parser** | **Removed** (checked 2026-11-14): `NanoRosReadConfig.cmake` and `nano_ros_read_config()` no longer exist, and no cmake code reads `[scheduling]` | ~~`nros-c/cmake/NanoRosReadConfig.cmake`~~ |
 | **FreeRTOS Rust examples** | Done | talker + listener have `[scheduling]` |
 | **FreeRTOS C example** | Done (CMake wired) | talker has `[scheduling]` + `APP_*` defs |
 | **E2E validation** | Done | `just freertos test` passes; broken-value test confirms config is applied |
@@ -395,6 +400,10 @@ use config values instead of hardcoded constants. `zpico_set_task_config()`
 is called before `Executor::open()`.
 
 ### CMake Config Parser
+
+> **Removed (checked 2026-11-14).** Neither `NanoRosReadConfig.cmake`,
+> `cmake/NanoRosConfig.cmake` nor `nano_ros_read_config()` exists any more. The
+> paragraph below and the "CMake Config Parser Update" section are history.
 
 `nano_ros_read_config()` in `NanoRosReadConfig.cmake` parses `[scheduling]`
 fields and exports `NROS_CONFIG_APP_PRIORITY`, `NROS_CONFIG_APP_STACK_BYTES`,
@@ -479,6 +488,8 @@ unsafe {
 ```
 
 ### CMake Config Parser Update
+
+*(History: the function this section extends was removed; see above.)*
 
 `cmake/NanoRosConfig.cmake`'s `nano_ros_read_config()` adds `[scheduling]` parsing:
 
@@ -586,3 +597,9 @@ Where newer designs or the code disagree:
 - The banner said scheduling config "now lives in `nros.toml [node.rt]`". RFC-0004 records `nros.toml` as retired; `[node.rt]` is parsed from the standalone `config.toml` (`nros-board-freertos/src/config.rs`). Fixed in this review (found by 142).
 
 Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.
+
+**W3 (2026-11-14).** The verdict-table amend applied: the banner now reads
+RFC-0004 correctly (the `[scheduling]` section is retired, the standalone
+`config.toml` is not, and `[node.rt]` lives there), the dead cmake rows and
+sections are marked removed, and the FreeRTOS app-stack figure points at issue
+1146's 128 KiB default. The survey itself is unchanged.

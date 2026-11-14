@@ -1,16 +1,20 @@
 ---
 rfc: 0076
 title: "The platform ABI: a caller asks, and never assumes"
-status: Draft
+status: Stable
 area: platform-board-rtos
 since: 2026-08
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-364]
 supersedes: []
 superseded-by: null
 ---
 
 # RFC-0076 — The platform ABI: a caller asks, and never assumes
+
+> **Stable (2026-11-14, phase-555 W3, user ruling P4 (c)).** C1 to C4 and C6
+> are built (phase-364); C5 was withdrawn by this RFC itself. The body has no
+> `[OPEN]` item and phase-364 has no parked wave (W4 was withdrawn with C5).
 
 ## Summary
 
@@ -401,3 +405,5 @@ item P4.
   one layer above this ABI, and CLAUDE.md records the two as the same fix
   at two layers.
 - Status: Draft, though implemented. Brief item P4.
+
+**W3 (2026-11-14).** P4 (c): Stable. No `[OPEN]`, no parked wave. ARCHITECTURE §4 updated.

@@ -1,14 +1,34 @@
 ---
 rfc: 0003
 title: "rtos-integration-pattern"
-status: Draft
+status: Superseded
 area: platform-board-rtos
 since: 2026-06
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-288]
 supersedes: []
-superseded-by: null
+superseded-by: 0072
 ---
+
+# RFC-0003 — RTOS integration pattern
+
+> **Superseded by [RFC-0072](../0072-rtos-integration-nano-ros-is-a-guest.md)
+> (2026-11-14, phase-555 W3, user ruling P1 (a)). Archived.** RFC-0072 states
+> the same principle (nano-ros is a library the RTOS imports) and now holds
+> what survived from here: the universal rule, the hook-capable / hookless
+> taxonomy, the per-vendor hook table and the 200-line shim budget (RFC-0072
+> §3, "The adapter taxonomy"). The PX4 multi-component question moved to
+> RFC-0072 §11. Everything else below is history:
+>
+> - §4 and §5 (no deploy verb, the three-step native sequence) were overtaken
+>   by RFC-0098 D2 and RFC-0118, which restored `nros build` / `run` / `flash`
+>   / `monitor`, and by RFC-0120 (`nros configure`).
+> - §4's NuttX row was retired (issue 1883); RFC-0126 makes the ROS-CMake road
+>   the one NuttX road.
+> - §8's recommendations were the plan for phase-212, which is archived.
+> - §9 is false today: no core crate has a `std` feature (phase-359), and
+>   `nros-board-nuttx` is `no_std` (phase-359 W7). ARCHITECTURE §2 holds the
+>   current `std` / `alloc` contract.
 
 ## 1. The universal pattern
 
@@ -242,3 +262,8 @@ Where newer designs or the code disagree:
 - RFC-0072 says this RFC "already states this RFC's principle" and extends it.
 
 Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.
+
+**W3 (2026-11-14).** The user ruled P1 (a). Applied: the surviving taxonomy
+merged into RFC-0072 §3, the PX4 question into RFC-0072 §11, this RFC marked
+Superseded by 0072 and moved to `archived/`, and every link to its old path
+repointed.

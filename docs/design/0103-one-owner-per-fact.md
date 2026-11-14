@@ -10,6 +10,7 @@ implements-tracked-by: [phase-484, phase-497]
 supersedes: []
 superseded-by: null
 superseded-in-part-by: [rfc-0109]
+amends: [rfc-0049]  # D2b: the knob registry generates the Zephyr Kconfig knob section
 ---
 
 # RFC-0103 — One owner per fact
