@@ -2120,7 +2120,7 @@ cpp: cpp-fmt
             echo "ERROR: $_ap COMPILED -- a goal-handle shape was accepted with no allocator." >&2
             exit 1
         fi
-        for _needle in "REFUSED by nano-ros" "issue 2015"; do
+        for _needle in "REFUSED by nano-ros" "goal-handle shapes"; do
             nros_grep_q "$_needle" "$_ap_log" && _rc=0 || _rc=$?
             if [ "$_rc" -ne 0 ]; then
                 echo "ERROR: $_ap failed WITHOUT '$_needle' -- it broke for another reason. See $_ap_log" >&2
@@ -2257,7 +2257,7 @@ cpp: cpp-fmt
         echo "ERROR: $_cfg COMPILED -- share() was accepted with no std::promise." >&2
         exit 1
     fi
-    for _needle in "REFUSED by nano-ros" "issue 2037"; do
+    for _needle in "REFUSED by nano-ros" "FutureAndRequestId::share()"; do
         nros_grep_q "$_needle" tmp/refuse-client-share-freestanding.log && _rc=0 || _rc=$?
         if [ "$_rc" -ne 0 ]; then
             echo "ERROR: $_cfg failed WITHOUT '$_needle' -- it broke for another reason." >&2
@@ -2696,7 +2696,7 @@ cpp: cpp-fmt
         echo "ERROR: $_peh COMPILED -- ParameterEventHandler was accepted with no allocator." >&2
         exit 1
     fi
-    for _needle in "REFUSED by nano-ros" "issue 2024"; do
+    for _needle in "REFUSED by nano-ros" "rclcpp::ParameterEventHandler is REFUSED"; do
         nros_grep_q "$_needle" tmp/refuse-parameter-event-handler.log && _rc=0 || _rc=$?
         if [ "$_rc" -ne 0 ]; then
             echo "ERROR: $_peh failed WITHOUT '$_needle' -- it broke for another reason." >&2
