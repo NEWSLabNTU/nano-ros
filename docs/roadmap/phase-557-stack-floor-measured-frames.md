@@ -620,7 +620,7 @@ pins the case where sorted order under-states (112 vs 121 B); every
 
 ### W7e — zpico.c is typed too, and the SCC step is parked (issue 2550)
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-15, #3851)
 
 **Why.** W7d left zpico.c's 96 functions untyped, because clang 14 refuses
 GCC's `__atomic_*_n` on an `_Atomic bool`. Untyped functions join every
