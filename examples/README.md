@@ -109,38 +109,27 @@ whichever tree shows it most vividly, and re-attributed to that tree's platform.
 
 ### Question 1 — who owns the link?
 
-For **C and C++** the answer is cmake on every tree but one, because cmake is the
-only C build here. The exception is a board with no RTOS, and it is this same
-rule taken one step further rather than a hole in it: **the link belongs to
-whoever owns the STARTUP**, and on `mps2-an385-baremetal` nothing owns it in C —
-the reset vector is `cortex-m-rt`, the clock is
-`nros_platform_mps2_an385::clock`, and the LAN9118/smoltcp bring-up is
-`nros_board_mps2_an385::init_hardware`, none of them with a C entry point
-(`nros-platform-mps2-an385` holds zero `.c` files, where every RTOS port holds a
-`platform.c`). So every `mps2-an385-baremetal/{c,cpp}/*` image is cargo-rooted:
-`src/main.rs` boots the board and calls `app_main()`, `build.rs` compiles the
-leaf's `src/*.c` (or `src/talker.cpp`) with `cc`, and `nano_ros_add_executable`
-is not available on that platform. Issue 1512; `c/talker/README.md` carries the
-table. The two talkers are leaves; every other role is a one-package
-workspace whose cargo package (`src/<pkg>/`) its bringup names as the image's
-OWNED entry (phase-535 W6). Their rows (`[[fixture]]` for the talkers,
-`[[workspace_fixture]]` for the rest) say `builder = "cargo"`, and the fixture
-drivers and staleness probe pick each row's road by that declared fact, never
-by `lang`. Recount it the same mechanical way — a C or C++ leaf that is a cargo
-package:
+For **C and C++** the answer is cmake on every tree, the bare-metal one
+included. **The link belongs to whoever owns the STARTUP**, and on
+`mps2-an385-baremetal` the startup is Rust (`cortex-m-rt`'s reset vector, the
+CMSDK Timer0 clock, the LAN9118/smoltcp bring-up), so the board exports a C
+start, `nros_board_mps2_an385_start`, that runs that bring-up and then the
+image's entry. The generated entry's `main` calls it, the Rust half arrives as
+a Corrosion staticlib, and CMake owns the final link exactly as on an RTOS
+board (RFC-0130, phase-553 W4). Every `mps2-an385-baremetal/{c,cpp}/*` example
+is therefore a one-package workspace whose package is an ordinary component
+(phase-553 W5/W6), and its `[[workspace_fixture]]` row says
+`builder = "cmake"`. No C or C++ example is a cargo package; recount it the same
+mechanical way:
 
 ```sh
 git ls-files 'examples/*/c/*/Cargo.toml' 'examples/*/cpp/*/Cargo.toml' \
   | xargs -r -n1 dirname
 ```
 
-Thirteen hits (git's `*` crosses `/`), and twelve are images: the six
-`mps2-an385-baremetal/c/*` roles and the six `cpp/*` roles above. The
-thirteenth is `px4/cpp/bridge/ffi`,
-which is not an example image at all — px4 is a foreign build integration
-(issue 1516) and that crate is the FFI half **PX4's own** build links. None has a
-`CMakeLists.txt`, so the count is the same either way; the distinction is whose
-build owns the image, which is the question this section asks.
+One hit (git's `*` crosses `/`): `px4/cpp/bridge/ffi`, which is not an example
+image at all — px4 is a foreign build integration (issue 1516) and that crate is
+the FFI half **PX4's own** build links.
 
 For **Rust it varies by platform**, and that variation is the whole of
 what gets called "the Zephyr layout":
@@ -193,9 +182,9 @@ by phase-445 W5).
 | **1** | workspace, generated entry | `.colcon_workspace` + `src/*_bringup/system.toml`; no `*_entry` package claims the image | every workspace under `workspaces/`, for every non-Zephyr `[image.*]` row |
 | **1z** | workspace, Zephyr image | the image row builds through `west`; its application is GENERATED (phase-470 W5) unless a hand-written `src/*_entry` package still claims it | every Zephyr `[image.*]` row. None in-tree is hand-written since phase-477 W1 — [issue 1288](../docs/issues/archived/1288-zephyr-rust-workspace-entries-not-generated.md); count them with the command below, not from this table |
 | **1b** | workspace with **no bringup** | `.colcon_workspace`, no `*_bringup` — builds every package in dependency order, colcon's default | `templates/local-msg-package` (a `system.toml` beside a *package*) and `templates/workspace-shadowing` (none at all) |
-| **3** | leaf, cargo owns the link, node-class | leaf has `Cargo.toml`, no `CMakeLists.txt`, and a `system.toml` | most Rust leaves (question 1, first row) **and** the cargo-rooted bare-metal C/C++ leaves |
+| **3** | leaf, cargo owns the link, node-class | leaf has `Cargo.toml`, no `CMakeLists.txt`, and a `system.toml` | most Rust leaves (question 1, first row) |
 | **3a** | leaf, cargo owns the link, **application-shaped** | `[package.metadata.nros.application]` in `Cargo.toml`; the leaf owns `main` and its executor; **no `system.toml`**, never built through `nros build` | 14 `linux/rust/*` leaves — the RTIC, custom-transport, serial, lifecycle and logging demos. They show what the node-class shape cannot express (the imperative executor API, a user-supplied transport, an RTIC app), so they are a class, not a backlog |
-| **4** | leaf, cmake owns the link | leaf has `CMakeLists.txt` (`+ prj*.conf` on Zephyr) | every C and C++ leaf on a platform whose startup is C — all but the bare-metal ones; plus `zephyr/rust/*` and `rv-virt-threadx/rust/*` |
+| **4** | leaf, cmake owns the link | leaf has `CMakeLists.txt` (`+ prj*.conf` on Zephyr) | every C and C++ leaf; plus `zephyr/rust/*` and `rv-virt-threadx/rust/*` |
 | **X** | foreign-build integration | no `system.toml` and nothing for `nros build` to generate; a *foreign* build consumes the tree | `examples/px4/` — see below |
 
 **1 and 1z are properties of an IMAGE, not of a directory.** The same workspace
@@ -281,8 +270,8 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `linux`                   | rust     | 6+    | 6+   | 6          | –    |
 | `px4`                     | cpp      | –     | –    | –          | – ²  |
 | `px4`                     | rust     | –     | companion+stub | – | –    |
-| `mps2-an385-baremetal`      | c        | 6 ³   | –    | –          | –    |
-| `mps2-an385-baremetal`      | cpp      | 1 ³   | –    | –          | –    |
+| `mps2-an385-baremetal`      | c        | 6     | –    | –          | –    |
+| `mps2-an385-baremetal`      | cpp      | 6     | –    | –          | –    |
 | `mps2-an385-baremetal`      | rust     | 6+rtic+serial | – | –     | –    |
 | `mps2-an385-freertos`       | c        | 6     | –    | –          | –    |
 | `mps2-an385-freertos`       | cpp      | 6     | –    | –          | –    |
@@ -309,13 +298,6 @@ there is nothing to copy out. phase-316 W3.1 moved it out of this tree.
 example fixtures compile, but the action runtime lanes were
 deliberately dropped from the run matrix in 182.5 (pub/sub + service
 remain runtime-tested).
-
-³ `mps2-an385-baremetal` C/C++ leaves are cargo-rooted (see "Question 1"
-above) and build-only: each `[[fixture]]` row builds in the `baremetal` lane and
-the image boots in QEMU as far as the session open, but the C/C++ entry dials
-`NROS_ENTRY_LOCATOR`'s empty bottom rung — the backend's own default, which the
-guest cannot reach — instead of its `system.toml` locator. Baking that is what
-the runtime lane needs (issue 1512). `cpp/` has the talker only.
 
 `rv-virt-nuttx` currently ships only `c/talker`, built by the separate
 `build-riscv-c` recipe in `just/nuttx.just` (its own riscv toolchain/board

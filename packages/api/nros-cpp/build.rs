@@ -80,8 +80,8 @@ fn emit_config_include() {
         nros_build_helpers::CPP_GENERATED_DIR
     );
     // issue 1512 — this crate's own headers (`<rclcpp/rclcpp.hpp>` …), the twin of
-    // `nros-c`'s `cargo:include`. A cargo-rooted C++ image (the bare-metal
-    // leaves, whose `build.rs` compiles the application) reads it as
+    // `nros-c`'s `cargo:include`. A cargo-rooted C++ image (one whose
+    // `build.rs` compiles the application) reads it as
     // `DEP_NROS_CPP_INCLUDE` instead of guessing a path into this checkout.
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     println!("cargo:include={manifest_dir}/include");

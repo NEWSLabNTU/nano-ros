@@ -864,12 +864,12 @@ with = '&[Config::Rtic]'
 
 [[cell]]
 comment = '''
-// issue 1512 — the C/C++ API on the same board. Cargo-rooted leaves
-// (`builder = "cargo"` rows): the Rust startup owns the link and compiles
-// the C/C++ application in. RUNTIME since the image's declared locator
-// reaches the C/C++ compile (`nros_cc_flags::entry_config`) and the boot
-// `Config` (`Config::from_image`); each leaf's `[image.*] locator` names
-// its cell's `alloc::port`, and `tests/emulator.rs`
+// issue 1512 — the C/C++ API on the same board. One-package CMake
+// workspaces (`builder = "cmake"` rows, phase-553 W5/W6): each role is an
+// ordinary component on a generated entry whose `main` is the board's C
+// start. RUNTIME since the image's declared locator reaches the C/C++
+// compile (`NanoRosEntry.cmake`) and the boot `Config`; each image's
+// `[image.*] locator` names its cell's `alloc::port`, and `tests/emulator.rs`
 // (`test_qemu_baremetal_capi_e2e`) runs every pair. The action pairs
 // joined once the smoltcp read stopped desynchronising on a burst of
 // batches (issue 1797).

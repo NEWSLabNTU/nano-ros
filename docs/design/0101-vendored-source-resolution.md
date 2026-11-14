@@ -12,13 +12,14 @@ superseded-by: null
 
 # RFC-0101 — Where a vendored source tree comes from
 
-> **Amended by [RFC-0130](0130-one-ros-cmake-build.md) (2026-11-14).** Wherever this
-> RFC names a bare-metal C example as the `DEP_NROS_C_*` consumer (§1's census, §2.1,
-> the table in §5), that consumer is a C application built on a cargo link root, the
-> shape RFC-0130 D3 retires: on the bare-metal board a C/C++ package is now an
-> ordinary CMake component, and the CMake road reads `nros-c`'s headers from the
-> `nros_c-static` target, not through `links`. The rule itself is unchanged. The
-> example consumer is struck when phase-553 W6 moves the last such role.
+> **Amended by [RFC-0130](0130-one-ros-cmake-build.md) (2026-11-14).** This RFC
+> used to name a bare-metal C example as its `DEP_NROS_C_*` consumer (§1's census,
+> §2.1, the table in §5). That example was a C application built on a cargo link
+> root, the shape RFC-0130 D3 retires, and phase-553 W6 moved the last such role:
+> on the bare-metal board a C/C++ package is an ordinary CMake component, and the
+> CMake road reads `nros-c`'s headers from the `nros_c-static` target, not through
+> `links`. The consumer named now is the one left,
+> `packages/testing/nros-tests/bins/heap-free-cpp-poc-mps2`. The rule is unchanged.
 
 ## Summary
 
@@ -59,8 +60,8 @@ the things that resolve a vendored tree are
 * **backends** — `cyclonedds-sys` (Cyclone DDS), `nros-zpico-build`
   (zenoh-pico, mbedTLS), `nros-rmw-xrce-cffi` (micro-XRCE-DDS-Client,
   micro-CDR);
-* **an example leaf** — `examples/mps2-an385-baremetal/c/listener/src/baremetal_c_listener`, which is
-  neither, and reads `DEP_NROS_C_*` off `nros-c` (issue 1512);
+* **a test image** — `packages/testing/nros-tests/bins/heap-free-cpp-poc-mps2`,
+  which is neither, and reads `DEP_NROS_C_*` off `nros-c`;
 * **a driver** — `packages/drivers/ipc/nvidia-ivc`, whose `NV_SPE_FSP_DIR` is
   the tree's only genuinely out-of-tree SDK root;
 * **three RFC-0049 platform descriptors**, which carry nine SDK roots as
@@ -104,9 +105,9 @@ plain    END   1790633936962      <- 7 991 ms AFTER the consumer already ran
 A dependent's build script is ordered after a `links` dependency's build script
 and is **not** ordered after a plain one. So a value a sibling build script
 merely *sets in the environment* cannot be read at all: nothing says the sibling
-has run. This is why `examples/mps2-an385-baremetal/c/listener/src/baremetal_c_listener` takes the channel
-rather than a path — its own comment: *"`links` is also what makes cargo run
-THIS script after the one that writes the config header, instead of racing it."*
+has run. This is why a C consumer of `nros-c` takes the channel rather than a path: `links`
+is also what makes cargo run its script after the one that writes the config
+header, instead of racing it.
 
 ### 2.2 The channel is exactly ONE HOP — order and metadata both
 
@@ -343,7 +344,7 @@ the descriptor road, neither of which the census models.
 | NuttX | `nros-board-common` | `nuttx_dir()`, plus three raw `NUTTX_DIR` reads | open — phase-471 W6 |
 | Cyclone DDS | `cyclonedds-sys` | `env_or_repo_path("CYCLONEDDS_SOURCE_DIR", …)`, published as `DEP_DDSC_*` | yes — the exemplar |
 | Cyclone DDS (consumer) | `nros-rmw-cyclonedds-sys` | `links` hand-off | yes — the exemplar |
-| `nros-c` headers (consumer) | `examples/mps2-an385-baremetal/c/listener/src/baremetal_c_listener` | `links` hand-off (`DEP_NROS_C_*`) | yes (issue 1512) |
+| `nros-c` headers (consumer) | `packages/testing/nros-tests/bins/heap-free-cpp-poc-mps2` | `links` hand-off (`DEP_NROS_C_*`) | yes |
 | `nros-c` headers (boards) | three FreeRTOS overlays + two ThreadX | hop-counted `.parent()` walk | **no** — issue 1558 |
 | micro-XRCE-DDS-Client, micro-CDR | `nros-rmw-xrce-cffi` | four-`.parent()` walk, then a literal; no override | **no** — issue 1558 |
 | zenoh-pico, mbedTLS | `nros-zpico-build` | `CARGO_MANIFEST_DIR`-relative; the override is a raw `env::var("ZENOH_PICO_DIR")` | **partly** — issues 1558, 1560 |

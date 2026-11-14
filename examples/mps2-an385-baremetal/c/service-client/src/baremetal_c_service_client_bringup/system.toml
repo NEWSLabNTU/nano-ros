@@ -1,26 +1,25 @@
-# What this example deploys to (RFC-0098 D3/D5) — the bringup of a one-package
-# workspace (RFC-0122 D3). The program is the owned entry
-# `src/baremetal_c_service_client` (RFC-0071 D19): a cargo package whose `src/main.rs` boots the
-# board and calls the C application `build.rs` compiles into it, because
-# on a board with no RTOS the link root is Rust (issue 1512). So the image
-# names that package and the bringup declares no component table.
+# What this example deploys to (RFC-0098 D3/D5): the bringup of a one-package
+# workspace (RFC-0122 D3). The component `baremetal_c_service_client` is an ordinary
+# C package; the build generates the image's entry, and on this board the
+# entry's `main` is the board's C start (`nros_board_mps2_an385_start`), so
+# the image is rooted in CMake like every RTOS board's (phase-553 W4).
 
 [system]
 name = "baremetal_c_service_client"
 rmw = "zenoh"
+ros_edition = "humble"
 domain_id = 0
 # The image a bare `nros configure` / `nros build` builds.
 default_images = ["mps2-an385-baremetal"]
 
-# Bare-metal MPS2-AN385 (QEMU). The network identity overlays the board's
-# compiled-in `Config::default()` through `Config::from_image()`.
+[[component]]
+pkg = "baremetal_c_service_client"
+class = "baremetal_c_service_client::AddClient"
+name = "add_client"
+
+# Bare-metal MPS2-AN385 (QEMU).
 [image.mps2-an385-baremetal]
 board = "mps2-an385-baremetal"
-entry = "baremetal_c_service_client"
-# The C/C++ runtime brings the panic handler (`nros-c`'s `panic-platform`,
-# RFC-0077), so the board's adapter must not link the board's own provider
-# beside it (issue 1305).
-panic = "platform"
 # `nros_tests::alloc::port_of(QemuBaremetal, C, Service)` —
 # THIS cell's router port, so `tests/emulator.rs` runs each pair against its
 # own router (issue 1512). 10.0.2.2 is the guest's route to the host (slirp).

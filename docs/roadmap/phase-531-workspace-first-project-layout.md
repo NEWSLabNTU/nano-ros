@@ -841,11 +841,12 @@ from before W6.
   which superseded the cargo entry this item named: phase-553 W1 to W4 gave
   the board a C start, so CMake owns the final link and the runtime arrives as
   a Corrosion staticlib.
-  [Phase-553 W5](phase-553-one-ros-cmake-build.md) migrated
+  [Phase-553 W5](archived/phase-553-one-ros-cmake-build.md) migrated
   `examples/mps2-an385-baremetal/{c,cpp}/talker` as typed components on that
   road; their rows are `[[workspace_fixture]]` rows
   `baremetal-{c,cpp}-zenoh-talker` with `builder = "cmake"`. The ten
-  non-talker leaves are phase-553 W6.
+  non-talker leaves followed in phase-553 W6, each a one-package workspace
+  in its own directory (issue 2555 says why not a language workspace).
 
 ### W7 — Retirement
 

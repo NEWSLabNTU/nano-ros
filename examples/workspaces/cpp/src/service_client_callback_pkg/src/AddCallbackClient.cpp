@@ -14,7 +14,7 @@ int g_replies = 0;
 
 void on_response(const example_interfaces::srv::AddTwoInts::Response& resp) {
     g_replies++;
-    std::printf("Result of add_two_ints: %lld\n", static_cast<long long>(resp.sum));
+    std::printf("Result of add_two_ints: %ld\n", static_cast<long>(resp.sum));
 }
 } // namespace
 

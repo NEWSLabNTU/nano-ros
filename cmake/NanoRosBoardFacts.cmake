@@ -281,6 +281,22 @@ function(nros_board_facts_env _target)
     # gets the image too. Before the early return, because an image may state
     # rows on a board with no facts to carry.
     nros_image_env_attach("${_target}")
+    # phase-553 W6 — the image's resolved network (`NROS_IMAGE_NET`, RFC-0103
+    # D10f), which the workspace road hands this configure as
+    # `-DNROS_IMAGE_NET=`. A board crate that boots the image from Rust reads it
+    # at compile time (mps2-an385's `Config::from_image`, reached through the
+    # board's C start on the CMake road), so it must reach the cargo build, not
+    # only the C lane's `nros_board_net_c`. Without it every C-rooted
+    # bare-metal image booted the board's default MAC and IP, and two of them
+    # on one QEMU network collided: the second never opened its session.
+    # The cargo road carries the same fact as an `[env]` row.
+    if(NOT "${NROS_IMAGE_NET}" STREQUAL "")
+        if(NOT COMMAND corrosion_set_env_vars)
+            message(FATAL_ERROR "nros_board_facts_env(${_target}): Corrosion not loaded")
+        endif()
+        nros_corrosion_env_target("${_target}" _net_target)
+        corrosion_set_env_vars(${_net_target} "NROS_IMAGE_NET=${NROS_IMAGE_NET}")
+    endif()
     nros_resolve_board_facts()
     if(NROS_BOARD_FACTS_ENV STREQUAL "")
         return()

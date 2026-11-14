@@ -268,8 +268,8 @@ pub unsafe extern "C" fn rclc_support_init(
 /// `<rclc/detail/baked_rmw.h>`'s `rclc_support_init` macro forwards to: the RMW
 /// selector (`NROS_ENTRY_RMW`, issue 1531) and, since phase-499 W2, the
 /// locator and domain (`NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`). Those
-/// are macros defined in the CALLER's translation unit — a cargo-rooted C
-/// image bakes them there (`nros_cc_flags::entry_config`) — so only a header
+/// are macros defined in the CALLER's translation unit — the cmake road bakes
+/// them there (`-DNROS_ENTRY_LOCATOR`, `NanoRosEntry.cmake`) — so only a header
 /// can carry them here; without this a C image calling rclc's form dialled
 /// the backend default (measured: every bare-metal C cell, ConnectionFailed),
 /// while C++'s inline `init_in()` read them. They are the BAKED rung: the

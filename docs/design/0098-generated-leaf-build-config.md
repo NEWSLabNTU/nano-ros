@@ -503,11 +503,10 @@ a generated workspace entry, which names both, is unchanged.
 
 **Every single-package shape, as implemented (2026-10-13, issue 1305 phase E).**
 
-> **Amended by [RFC-0130](0130-one-ros-cmake-build.md) (2026-11-14).** The "mps2
-> bare-metal C/C++ apps on a cargo link root" below are a shape RFC-0130 D3 retires:
-> a C/C++ package on that board is an ordinary CMake component, and CMake owns the
-> link with the board's C start as `main`. The talkers moved in phase-553 W5; the
-> other roles move in W6, and the clause is struck then. Do not copy the shape.
+> **Amended by [RFC-0130](0130-one-ros-cmake-build.md) (2026-11-14).** The mps2
+> bare-metal C/C++ apps on a cargo link root that this list named are gone
+> (phase-553 W5/W6): a C/C++ package on that board is an ordinary CMake
+> component, and CMake owns the link with the board's C start as `main`.
 Two shapes the first sweep left out take the same package, with no second
 mechanism:
 
@@ -515,13 +514,11 @@ mechanism:
   packages, a `[package]` manifest with its own `system.toml` under `src/`):
   `nros configure` in the workspace writes each such package's selection before
   its first cargo call, as it does for a single-package leaf;
-- a leaf with a hand-written `main` instead of `nros::main!` (the mps2
-  bare-metal C/C++ apps on a cargo link root, the native Rust examples that
-  open an `Executor` themselves): its `main.rs` names the board's re-exports
-  through the package (`<pkg>_nros_selection::nros_board_<x>::…`), the path
-  `nros::main!` emits for a Rust leaf. Such a native leaf gained a
-  `system.toml` with no component table. A C/C++ image states
-  `panic = "platform"` because the C runtime brings the handler.
+- a leaf with a hand-written `main` instead of `nros::main!` (the native Rust
+  examples that open an `Executor` themselves): its `main.rs` names the board's
+  re-exports through the package (`<pkg>_nros_selection::nros_board_<x>::…`),
+  the path `nros::main!` emits for a Rust leaf. Such a native leaf gained a
+  `system.toml` with no component table.
 
 A leaf whose board the registry (`packages/boards/board-support.toml`) marks
 `tier = "scaffold"` — the dormant ESP32 (issue 1525) — is out of scope and
@@ -667,11 +664,10 @@ scan in `cmd/ws.rs`):
 - The rows go to every Rust package the scan reads, including a package a
   single-package leaf reaches through a path dependency (the Zephyr leaves'
   `node/`), with the path relative from that package. A package whose `src/`
-  holds C or C++ translation units is skipped: it is a C/C++ application with
-  a Rust link root (the bare-metal C leaves, issue 1512), and its messages
-  reach it as C bindings from the same `<depend>`s. *(Amended by RFC-0130: that
-  shape retires, phase-553 W5/W6; a C/C++ component is a CMake package the scan
-  never reads as a Rust package.)*
+  holds C or C++ translation units is skipped, because its messages reach it as
+  C bindings from the same `<depend>`s. No in-tree package has that shape since
+  RFC-0130 (phase-553 W6): a C/C++ component is a CMake package the scan never
+  reads as a Rust package. The guard stays for a user's package.
 - A tagged row whose `<depend>` is still declared but did not resolve on this
   host is KEPT, not removed: resolution depends on the host's ament install,
   and removing a row one host cannot see would churn a tracked file. A user

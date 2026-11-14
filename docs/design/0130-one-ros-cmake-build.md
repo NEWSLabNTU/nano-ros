@@ -15,7 +15,7 @@ superseded-by: null
 **Status:** Draft (2026-11-12). Direction ACCEPTED by the maintainer
 (2026-11-12, "Accept the unified ROS-CMake build"); the RFC stays Draft until
 D6's work items land and dep-chain and the stack floor are measured on the new
-road. The work is [phase-553](../roadmap/phase-553-one-ros-cmake-build.md). Amends RFC-0065 D3 and RFC-0024 §6.3 for boards whose startup is Rust.
+road. The work is [phase-553](../roadmap/archived/phase-553-one-ros-cmake-build.md). Amends RFC-0065 D3 and RFC-0024 §6.3 for boards whose startup is Rust.
 
 **Supersedes [RFC-0048](archived/0048-cmake-ament-consumption.md)** (2026-11-14,
 phase-555 W3): this RFC finishes what 0048 started, an ament-shaped C/C++ package
@@ -117,10 +117,20 @@ re-implement the user's CMakeLists (or ignore it).
   (`Cargo.toml` + `build.rs` + `src/main.rs`, issue 1512 shape, moved in by
   phase-535 W6): they become ordinary CMake component packages in the
   language workspaces' bringups, like every RTOS.
+  *As built (phase-553 W6, 2026-11-14):* ordinary CMake components, but each
+  in its own one-package workspace where it stood, with a copy of the
+  language workspace's component. A bare-metal image's network is baked into
+  its configure's one Rust staticlib, so a bringup's server and client cannot
+  share a configure the way an RTOS bringup's do
+  ([issue 2555](../issues/2555-baremetal-c-rooted-image-network-baked-per-configure.md)).
+  Joining the language workspaces waits on that issue.
 - The two bare-metal C/C++ talker witnesses: same, no cargo.
 - `nros-cc-flags`' leaf-only modules (`app_main`, `entry_config::bake`,
-  `backends`) lose their consumers once no leaf compiles C through cargo
-  (to be measured; `backends` has a cmake twin already).
+  `backends`) lose their consumers once no leaf compiles C through cargo.
+  *Measured (phase-553 W6):* `entry_config` had no consumer left and is
+  deleted; `app_main` and `backends` keep one,
+  `packages/testing/nros-tests/bins/heap-free-cpp-poc-mps2`, a test image (not
+  an example) that still compiles its C++ through cargo.
 - `nros new --lang c|cpp` stops refusing bare metal (issue 2376's ruling is
   superseded by this direction).
 - The cargo-entry design (a generated cargo entry compiling component

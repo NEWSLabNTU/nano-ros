@@ -384,21 +384,22 @@ use nros_board_common::base_config::parse_u32;
 
 impl Config {
     /// The board default overlaid with the IMAGE's declared network identity —
-    /// issue 1512, for a cargo-rooted C/C++ leaf.
+    /// issue 1512, for a C or C++ image.
     ///
-    /// A Rust leaf gets `[image.<id>] locator/domain_id` and its resolved
-    /// network from `nros::main!`'s deploy overlay (`entry.rs::config_with_overlay`). A
-    /// C or C++ leaf whose link root is Rust (`run_bare` from its own
-    /// `main.rs`) has no such macro, so it booted `Config::default()` whatever
-    /// its `system.toml` said. `nros sync` renders the same declared values
-    /// into the image's `build/<image>/nros-cargo.toml` as `NROS_ENTRY_*`
-    /// `[env]` rows, and its resolved network as `NROS_IMAGE_NET` (RFC-0103
-    /// D10f); this reads them at compile time. An absent row keeps the board
-    /// default — nothing here is derived.
+    /// A Rust image gets `[image.<id>] locator/domain_id` and its resolved
+    /// network from `nros::main!`'s deploy overlay (`entry.rs::config_with_overlay`).
+    /// A C or C++ image boots through the board's C start
+    /// (`c_start.rs::nros_board_mps2_an385_start`, phase-553 W4), which has no
+    /// such macro, so it would boot `Config::default()` whatever its
+    /// `system.toml` said. The build renders the declared values into the
+    /// image's runtime staticlib build as `NROS_ENTRY_*` env rows, and its
+    /// resolved network as `NROS_IMAGE_NET` (RFC-0103 D10f); this reads them at
+    /// compile time. An absent row keeps the board default — nothing here is
+    /// derived.
     ///
-    /// `NROS_ENTRY_LOCATOR` also reaches the C/C++ TU as the macro the app
-    /// dials (`nros_cc_flags::entry_config`); the copy here keeps the board's
-    /// own `BoardConfig::locator()` saying the same thing.
+    /// `NROS_ENTRY_LOCATOR` also reaches the generated entry's C compile as the
+    /// macro `rclc_support_init` dials (`NanoRosEntry.cmake`); the copy here
+    /// keeps the board's own `BoardConfig::locator()` saying the same thing.
     #[must_use]
     pub fn from_image() -> Self {
         let mut cfg = Self::default();

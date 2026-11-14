@@ -21,7 +21,7 @@ held hand-written gateways was deleted in phase-477 — no lane built them.
 
 The `<plat>` × `<lang>` coverage matrix (RMW chosen at build time) is authoritative in
 [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).
-Intentionally empty cells (bare-metal C/C++, PX4 Rust, …) are listed
+Intentionally empty cells (PX4 Rust, …) are listed
 in the same file; do not fill them without lifting the underlying
 constraint.
 
@@ -156,12 +156,7 @@ crates (RFC-0098 D6). So a new leaf names none of those, and switching
 `nros::main!(panic = "platform")`, state `panic = "platform"` in the
 `[image.*]` too, or the package also links the board's panic handler. Naming
 a board crate beside the selection package is refused at `nros configure`, and a
-unit test walks every in-tree leaf for it. The bare-metal C/C++ roles still
-on a cargo link root (`examples/mps2-an385-baremetal/{c,cpp}/*` except the
-talkers, which are CMake components since phase-553 W5) are one-package
-workspaces whose cargo package is the image's OWNED entry, which names the
-board crate itself plus the generated `<pkg>_nros_derived` adapter
-(phase-535 W6, issue 2448). The leaves
+unit test walks every in-tree leaf for it. The leaves
 outside this shape BY SHAPE (board code in the node, harness-templated test
 fixtures, a lib a CMake image links) are listed with their reasons in
 `leaf_settings::NOT_ON_THE_SELECTION`; see

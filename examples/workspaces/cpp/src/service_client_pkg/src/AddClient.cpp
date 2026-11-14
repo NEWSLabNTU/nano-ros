@@ -30,7 +30,7 @@ void AddClient::on_tick() {
             if (Svc::Response::ffi_deserialize(resp, rlen, &r) == 0) {
                 in_flight_ = false;
                 done_ = true;
-                std::printf("Result of add_two_ints: %lld\n", static_cast<long long>(r.sum));
+                std::printf("Result of add_two_ints: %ld\n", static_cast<long>(r.sum));
                 return;
             }
         } else if (++waits_ > 6) {
