@@ -509,5 +509,5 @@ unmeasured floor of 26,368 B. Booted at 26 KiB, it tripped the board's MPU
 guard. The guard bisects the real peak to between 31 and 32 KiB, so the walk is
 about 8 KB short (issue 2402's RMW vtable gap). The example now has a measured
 row (allowance 8,800 B, floor 36,048 B), and a 26 KiB build fails with
-`NROS_BAREMETAL_STACK_KB=36`. ThreadX and NuttX remain. The detail is in
+`NROS_BAREMETAL_STACK_KB=36`. Superseded by ruling (B) the next day: the walk now binds every indirect call and reads 51,240 B, the row is an `[[observed]]` row, and a 26 KiB build fails with `NROS_BAREMETAL_STACK_KB=56`. ThreadX and NuttX remain. The detail is in
 [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W5b.
