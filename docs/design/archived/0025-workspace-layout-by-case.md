@@ -1,18 +1,27 @@
 ---
 rfc: 0025
 title: "nano-ros Phase 212 — Multi-Node Workspace Layout Reference"
-status: Draft
+status: Superseded
 area: workspace-system-model
 since: 2026-06
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-15
 implements-tracked-by: [phase-212]
 supersedes: []
-superseded-by: null
+superseded-by: 0121
 ---
 
 # nano-ros Phase 212 — Multi-Node Workspace Layout Reference
 
-Canonical layout reference for nano-ros user workspaces. Matches design decisions in [RFC-0024](0024-multi-node-workspace-layout.md). Five cases: single rust, single cpp, multi rust, multi cpp, mixed.
+> **Superseded by [RFC-0121](../0121-workspace-first-project-layout.md)**
+> (phase-555 W3, ruled 2026-11-14). RFC-0121 now decides the project shape:
+> every project is a colcon workspace with a bringup, `system.toml` lives
+> only there, and `nros build` generates the entry under `build/`. This
+> page's five file trees predate that; cases 1 and 2 ("single node, no
+> bringup") are the shape RFC-0121 D2 refuses. The rationale behind the
+> layout stays in [RFC-0024](../0024-multi-node-workspace-layout.md). This
+> document is kept as history.
+
+Canonical layout reference for nano-ros user workspaces. Matches design decisions in [RFC-0024](../0024-multi-node-workspace-layout.md). Five cases: single rust, single cpp, multi rust, multi cpp, mixed.
 
 > **2026-06.** Path A (bringup pkg has no `Cargo.toml`) is settled; the workspace
 > root `exclude`s it. `system.toml` lives in the bringup pkg and is the universal
@@ -20,7 +29,7 @@ Canonical layout reference for nano-ros user workspaces. Matches design decision
 > authority is RFC-0004; RMW selection (declared + lowered, per-deploy) is RFC-0031.
 
 > **Review note (2026-11-13, phase-555 W2).** The five cases below predate
-> [RFC-0121](0121-workspace-first-project-layout.md) (phase-531), which makes
+> [RFC-0121](../0121-workspace-first-project-layout.md) (phase-531), which makes
 > every project a workspace with a bringup, generates the entry under
 > `build/`, and builds through `nros build`. Cases 1 and 2 ("no bringup") and
 > the "Single-node → no bringup pkg" rule are the shape RFC-0121 D2 retires;

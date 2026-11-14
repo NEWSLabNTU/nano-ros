@@ -133,8 +133,7 @@ day it landed, which may only shrink.
 | RFC | Doc | Status | One-liner |
 | --- | --- | --- | --- |
 | 0023 | [codegen-workspace-discovery](0023-codegen-workspace-discovery.md) | Stable | unmodified ROS 2 msg pkg builds against nano-ros |
-| 0024 | [multi-node-workspace-layout](0024-multi-node-workspace-layout.md) | Draft | overall multi-node workspace shape + open questions |
-| 0025 | [workspace-layout-by-case](0025-workspace-layout-by-case.md) | Draft | concrete file trees per case (single/multi × rust/cpp) |
+| 0024 | [multi-node-workspace-layout](0024-multi-node-workspace-layout.md) | Stable | the rationale behind the workspace layout that code still cites (bringup rules, cmake wins across languages, launch XML verbatim); RFC-0121 owns the layout |
 | 0026 | [example-directory-layout](0026-example-directory-layout.md) | Stable | canonical `examples/<plat>/<lang>/<example>/` shape |
 | 0030 | [sequence-of-nested](archived/0030-sequence-of-nested.md) | Archived (landed) | nested-sequence message handling (Phase 212 spike); Path A built in `705e1b245` |
 | 0032 | [entry-codegen-pipeline](0032-entry-codegen-pipeline.md) | Stable | how `main()` is emitted: proc-macro + CLI mirror, BoardEntry run/run_sched_tasks, sched task resolver |
@@ -183,6 +182,7 @@ Retired RFCs live in [archived/](archived/) with `status: Superseded` and a forw
 | --- | --- | --- | --- |
 | 0008 | [service-qos-gap](archived/0008-service-qos-gap.md) | RFC-0007 | gap analysis of the `create_service_*` no-QoS path, resolved by RFC-0007 (Phase 189.M3.3) |
 | 0020 | [thin-wrapper-audit](archived/0020-thin-wrapper-audit.md) | RFC-0019 | the phase-83 thin-wrapper audit; its checklist moved to RFC-0019, its method to audit category C1 |
+| 0025 | [workspace-layout-by-case](archived/0025-workspace-layout-by-case.md) | RFC-0121 | its five file trees predate RFC-0121's workspace-first layout, and its "single node, no bringup" cases are what RFC-0121 D2 refuses (phase-555 W3, 2026-11-14) |
 | 0027 | [ros2-user-workflow](archived/0027-ros2-user-workflow.md) | RFC-0121 | RFC-0121 decides the project shape it argued for (phase-555 W3, 2026-11-14) |
 | 0037 | [rust-c-user-api-surface](archived/0037-rust-c-user-api-surface.md) | RFC-0089 | a hand-written record of the Rust and C user surfaces; replaced by the generated, gated api-surface and api-parity ledger |
 | 0048 | [cmake-ament-consumption](archived/0048-cmake-ament-consumption.md) | RFC-0130 | RFC-0130 makes a C/C++ node package an ordinary ROS 2 CMake package on every board, which is 0048's goal carried through; its `find_package`, verbs and presets live on in RFC-0130 D1 (phase-555 W3, 2026-11-14) |

@@ -372,14 +372,13 @@ Messages are generated from `package.xml` by the in-tree `nros` CLI (`packages/c
 hand-written. Unmodified ROS 2 message packages build against nano-ros via codegen workspace
 discovery → RFC-0023.
 
-The workspace shape (single vs multi-node, Rust/C++/mixed) and its concrete file trees are the
-active design front:
+The workspace shape (single vs multi-node, Rust/C++/mixed):
 
-- Overall multi-node workspace shape + open questions → RFC-0024 (Draft).
-- Concrete per-case file trees → RFC-0025 (Draft).
-- Canonical standalone-example layout → RFC-0026.
 - Project shape (every project is a workspace; `system.toml` only in a bringup) and `nros new`
-  scaffolding → RFC-0121. Nested-sequence message handling → RFC-0030 (archived: landed in
+  scaffolding → RFC-0121, which superseded RFC-0025's per-case file trees.
+- The rationale that layout rests on (bringup rules, cmake drives when the graph crosses
+  languages, launch XML verbatim) → RFC-0024 (Stable).
+- Canonical standalone-example layout → RFC-0026. Nested-sequence message handling → RFC-0030 (archived: landed in
   phase-212).
 
 Configuration is **language-agnostic and scale-uniform**: `system.toml` (universal system
@@ -444,7 +443,7 @@ how this meets the three build roads is
 ## Open design fronts (today)
 
 `Draft` RFCs are where the design is still moving, among them RFC-0072 (RTOS integration,
-which absorbed the archived RFC-0003), RFC-0024 / RFC-0025 (multi-node workspace) and, for
+which absorbed the archived RFC-0003), RFC-0121 (the workspace-first layout) and, for
 the build, RFC-0040 (distribution), RFC-0119 (CLI extension packages), RFC-0120
 (`nros configure`) and RFC-0130 (one C/C++ build method). [docs/design/README.md](README.md)
 holds each RFC's status; a `Stable` RFC changes by refinements tracked in its Changelog.

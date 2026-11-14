@@ -1,0 +1,48 @@
+---
+id: 2587
+title: "Two bringups in one workspace cannot share a `system.toml` fragment, so shared topology is duplicated"
+status: open
+type: limitation
+area: [workspace, cli]
+severity: low
+found: 2026-11-15
+related: [2556, phase-555]
+---
+
+Filed from RFC-0024's open question 2 by phase-555 W3 (ruling A1: a design
+doc goes Stable only after its open questions are filed and it points at
+them).
+
+## What is true now
+
+A workspace may hold several bringups, each with its own `system.toml`
+(RFC-0121 D2). There is no way for two of them to share a fragment, such as
+the `[[domain]]` / `[[bridge]]` topology or a knob table: no `include =`
+key, and no workspace-level defaults table. Every bringup states everything
+itself, which is RFC-0024 §5's option (a), "duplicate".
+
+Measured 2026-11-15 with `git ls-files`: no tracked `system.toml` has an
+`include` key or a `[defaults]` table. Several example workspaces hold
+several bringups: `workspaces/cpp` 5, `workspaces/c` 4, `workspaces/rust` 4,
+and `workspaces/realtime-c` and `workspaces/realtime-rust` 2 each.
+
+## Why it is only a limitation
+
+Duplication is honest and traceable, and RFC-0024 §5 chose it deliberately
+"until a real workspace hits the pain". This issue records that the question
+is still open, so the RFC can be Stable without carrying it.
+
+## Options (from RFC-0024 §5)
+
+- (a) Duplicate (today).
+- (b) An `include = "<path>"` key in `system.toml` that the resolver
+  expands. This adds path-resolution rules, and every consumer of
+  `system.toml` would have to read the expanded form.
+- (c) A workspace-level defaults table that each bringup inherits and
+  overrides. RFC-0024 §9 rejects a workspace-root `nros.toml`, so this would
+  need a home RFC-0121 allows.
+
+## Done when
+
+A workspace with two bringups that share a fragment states it once and both
+images build from it, or this is closed as wontfix with the reason.

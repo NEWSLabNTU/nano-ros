@@ -6,6 +6,7 @@ area: build-toolchain-codegen
 since: 2026-06
 last-reviewed: 2026-11
 implements-tracked-by: [phase-212, phase-228, phase-236]
+amends: [0015]
 supersedes: []
 superseded-by: null
 ---

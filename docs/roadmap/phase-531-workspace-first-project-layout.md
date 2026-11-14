@@ -9,7 +9,7 @@ step 3 measured (finding 3 already holds on the workspace road; finding 4
 open).**
 Implements [RFC-0121](../design/0121-workspace-first-project-layout.md) D1 to
 D8, with its amendments to RFC-0098, RFC-0116 D6, RFC-0026/0066, RFC-0100,
-RFC-0118 D2 and RFC-0120.
+RFC-0118 D2, RFC-0120, and RFC-0004 (W7 step 10).
 
 Depends on:
 
@@ -915,6 +915,11 @@ order, each step with its own PR and gate run:
    that flow in W8. The adapter crate stays: a materialised entry
    uses it too (RFC-0071 D13);
 9. W2's warning becomes a refusal.
+10. RFC-0004 and RFC-0026 are restated against the workspace shape, once,
+   after steps 1 to 9 (phase-555 W3, ruling C11): RFC-0004's §2
+   (single-node `system.toml` optional and synthesised), §3's ownership
+   table and §5's `DeployOverlay` example, and RFC-0026's "Canonical shape".
+   Each page's review note and changelog list what moved meanwhile.
 
 Each deletion is listed in `book/src/migrating/retired-names.md` with its
 replacement.

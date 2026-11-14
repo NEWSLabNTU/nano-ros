@@ -193,6 +193,24 @@ brief of RFC-0126 did.
     complementary.
   - `rfc-inventory.py` lists no test-ci pair.
 
+  **workspace-system-model applied, 133's part (2026-11-15):**
+  - B8: RFC-0025 is Superseded by RFC-0121 and moved to `archived/`.
+    RFC-0024 is cut down to the rationale code cites, under its original
+    section numbers, and is Stable. Its one open question is
+    [issue 2587](../issues/2587-multi-bringup-shared-system-fragments.md),
+    per A1. Five code comments that named 0025 point at RFC-0121 or the
+    book's `system.toml` reference.
+  - C11: RFC-0004 and RFC-0026 are restated once, as phase-531 W7 step 10.
+    Each page's review note and changelog say what moved; RFC-0121 lists
+    0004 and 0024 in `amends`; RFC-0026 records RFC-0065's amendment.
+  - Links: RFC-0063 `amends` 0047 and 0052, RFC-0032 `amends` 0015, RFC-0125
+    `amends` 0100. Fourteen of the area's pairs are in `reviewed-pairs.toml`,
+    each naming its W2 verdict.
+  - ARCHITECTURE.md names RFC-0121 for the layout and RFC-0024 (Stable) for
+    its rationale.
+  - Left for a verdict (no W2 verdict recorded): 0065-0121, 0087-0121,
+    0098-0100 and 0121-0123.
+
 ### W4 -- Keep it organized
 
 - `last-reviewed` is required, and must be a date.

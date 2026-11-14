@@ -6,8 +6,8 @@ area: workspace-system-model
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-531]
-amends: [0071, 0098, 0116, 0026, 0066, 0120, 0100, 0118, 0085, 0119]
-supersedes: [0027]
+amends: [0071, 0098, 0116, 0026, 0066, 0120, 0100, 0118, 0085, 0119, 0024, 0004]
+supersedes: [0027, 0025]
 superseded-by: null
 ---
 
@@ -326,6 +326,8 @@ registry of declared capabilities rather than one package's cargo features.
 | 0100 | The `--from-leaf` producer and `write_for_leaf` retire; every image takes `write_for_model` |
 | 0118 D2 | The target argument gains the node rung (D5) |
 | 0085 D13 | `nros new entry` retires. Its three outside writes move: the `[image.*]` row to `nros new --image`, the cargo excludes become unnecessary because the entry is generated under `build/`, and the node path deps are derived from `[[component]]`. The "own the app" case is `nros materialize` (RFC-0065 D5) |
+| 0024 | Owns no layout any more: D1, D2 and D6 replace its §5, §7, §11.2 and §11.4. It keeps the rationale code cites (cut down 2026-11-15, phase-555 W3) |
+| 0004 | Its §2 (single-node `system.toml` optional, synthesised), §3's ownership table and §5's `DeployOverlay` example describe the standalone shape D8 migrates. It is restated once, when phase-531 W7 retires that shape (phase-555 W3, ruling C11) |
 
 ## Retirements
 

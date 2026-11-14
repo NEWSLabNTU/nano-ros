@@ -495,7 +495,7 @@ pub struct AmentMaintainer {
 
 /// `<bringup>/system.toml` — the authoritative system spec.
 ///
-/// Sections (see `docs/design/0025-workspace-layout-by-case.md` Case 3/4 and
+/// Sections (see `docs/design/0121-workspace-first-project-layout.md` D2 and
 /// `0024-multi-node-workspace-layout.md` §4):
 ///
 /// * `[system]` — name, RMW, domain, optional locator.
