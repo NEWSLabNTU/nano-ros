@@ -359,7 +359,9 @@ Acceptance: both ratchet baselines reach zero and their subjects become
 baseline-zero rules; runtime logs of a default image are read by a gate at
 zero; issues 2305 and 2443 are archived (2443 is: its stated gaps, text
 printed through a variable, a table or a returned literal, are
-[issue 2547](../issues/archived/2547-user-surface-text-formatted-away-or-tabled-cites-ids.md)).
+[issue 2547](../issues/archived/2547-user-surface-text-formatted-away-or-tabled-cites-ids.md),
+resolved; what its readings cannot see is
+[issue 2551](../issues/2551-user-surface-text-beyond-function-flow-cites-ids.md)).
 
 ## Acceptance
 
@@ -432,5 +434,6 @@ toolchains, ESP32 until W3 reopens it, a per-purpose book.
 | [#2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md) | A user-tier message cites an internal issue id: an adoption stop of the same kind as issue 2332 (internal terms in a First Project build). |
 | [#2443](../issues/archived/2443-runtime-log-and-colcon-messages-cite-ids.md) | The same, on the two surfaces 2305 does not reach: runtime logs of a default image and the colcon plugin's errors. |
 | [#2547](../issues/archived/2547-user-surface-text-formatted-away-or-tabled-cites-ids.md) | What 2443 closed with: messages formatted into a variable, kept in a message table or returned for a caller to print. Resolved: read by the gate at zero. |
+| [#2551](../issues/2551-user-surface-text-beyond-function-flow-cites-ids.md) | What 2547 closed with: text that crosses a function, a struct field, an unmarked table, C++ stream output, and the rustdoc build scripts write into `OUT_DIR`. Open, with a gate plan. |
 | [#2468](../issues/archived/2468-bootstrap-builds-no-runner.md) | The book's `just`-free checkout road could not `nros run`: `bootstrap.sh` never built the runner packages. Found by the zenoh probe track, which had no CI lane. |
 | [#2347](../issues/archived/2347-scaffold-next-steps-print-nros-sync.md) | `nros new` prints `nros sync` in a Rust package's next steps: an adoption-probe stop from the checkout-track log of the scheduled probe run. |

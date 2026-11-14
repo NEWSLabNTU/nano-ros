@@ -5,7 +5,7 @@ status: resolved
 type: tech-debt
 severity: low
 area: [cli, ux, logging, runtime]
-related: [issue-2443, phase-523]
+related: [issue-2443, issue-2551, phase-523]
 found: 2026-11-14
 resolved: 2026-11-14
 resolved_in: "#3815 (the subject and its sweep, one change)"
@@ -166,4 +166,5 @@ printed, returned or raised later, message tables by name or marker, C/C++
 message macros and wrapper macros, and generated-file headers. The sweep in
 the same change took the 126 ids those readings found (and 54 more the
 readings still miss, in the same files) to zero. What the readings cannot
-see is stated as the checker's gaps above.
+see is stated as the checker's gaps above, and is tracked as
+[issue 2551](../2551-user-surface-text-beyond-function-flow-cites-ids.md), with a gate plan.
