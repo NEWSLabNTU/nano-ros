@@ -2988,10 +2988,29 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
 #
 # Best-effort: each RTOS's build skips cleanly if its cross
 # toolchain or board crate prerequisites are absent.
+#
+# Issue 2548 — scoped to the run's lane. A tier-1 merge SHARD runs this inside
+# `just ci tier1 run` with its coordinates in `NROS_TEST_COORDS`; unscoped, the
+# zephyr shard regenerated all 199 codegen units and then failed linking the
+# NuttX talker it neither provisions nor tests (merge-runtime run 43568845036).
+# A leaf is built when the run holds a coordinate on its platform
+# (`nros_lane_wants_platform`, the fixture builders' own predicate), and the
+# codegen it needs is the lane's (`_codegen <lane>`). No lane (`just ci`,
+# `lane=all`): every leaf, every unit, as before.
 [private]
-rust-rtos-link-check: _codegen
+rust-rtos-link-check:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/fixture-lane.sh
+    just _codegen "${NROS_FIXTURE_LANE:-all}"
+    link_check_in_lane() {
+        local token="$1" dir="$2"
+        if NROS_FIXTURE_COORDS="${NROS_TEST_COORDS:-}" nros_lane_wants_platform "$token"; then
+            return 0
+        fi
+        echo "  $dir: out of this lane (no \`$token\` coordinate in ${NROS_TEST_COORDS})"
+        return 1
+    }
     source scripts/build/cargo.sh
     # Issue 0511 — build each leaf at ITS PLATFORM's profile, not the ambient
     # one. This lane used `nros_cargo_profile_arg_string` for all three, which
@@ -3032,9 +3051,11 @@ rust-rtos-link-check: _codegen
     # (`just/px4.just`, `just/freertos.just`, and `scripts/ci/dep-chain-check.sh`
     # since #971); this was the last site without the precondition.
     nros_cli="$(nros_cli_bin)"
-    for dir in examples/mps2-an385-freertos/rust/talker \
-               examples/qemu-armv7a-nuttx/rust/talker \
-               examples/threadx-linux/rust/talker; do
+    for pair in freertos:examples/mps2-an385-freertos/rust/talker \
+                nuttx:examples/qemu-armv7a-nuttx/rust/talker \
+                threadx-linux:examples/threadx-linux/rust/talker; do
+        dir="${pair#*:}"
+        link_check_in_lane "${pair%%:*}" "$dir" >/dev/null || continue
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
         "$nros_cli" configure "$dir" >/dev/null
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
@@ -3138,7 +3159,9 @@ rust-rtos-link-check: _codegen
     # The names are the boards' `[source.*]` sets as `nros setup <board>
     # --dry-run` reports them, minus what `build_sources` already guarantees.
     nros_link_check_sources() { "$nros_cli" setup "$@" >/dev/null; }
-    if command -v arm-none-eabi-gcc >/dev/null; then
+    if ! link_check_in_lane freertos examples/mps2-an385-freertos/rust/talker; then
+        :
+    elif command -v arm-none-eabi-gcc >/dev/null; then
         nros_link_check_sources --source freertos-kernel --source lwip
         echo "  freertos talker ($(nros_cargo_platform_profile freertos)):"
         # #60 T5: the freertos talker Node pkg is platform/RMW-agnostic now —
@@ -3146,6 +3169,12 @@ rust-rtos-link-check: _codegen
         # crate). Build with default features, mirroring the nuttx talker below.
         mapfile -t freertos_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile freertos)")
         link_check_build examples/mps2-an385-freertos/rust/talker mps2-an385-freertos target-link-check "${freertos_profile[@]}"
+    else
+        echo "  [SKIPPED] freertos: arm-none-eabi-gcc not installed"
+    fi
+    if ! link_check_in_lane nuttx examples/qemu-armv7a-nuttx/rust/talker; then
+        :
+    elif command -v arm-none-eabi-gcc >/dev/null; then
         # issue 0551's error, from the one lane that never provisioned what it
         # consumes. `just/nuttx.just` states the rule this violated:
         #
@@ -3177,16 +3206,18 @@ rust-rtos-link-check: _codegen
         mapfile -t nuttx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile nuttx)")
         link_check_build examples/qemu-armv7a-nuttx/rust/talker qemu-armv7a-nuttx target-link-check "${nuttx_profile[@]}"
     else
-        echo "  [SKIPPED] freertos + nuttx: arm-none-eabi-gcc not installed"
+        echo "  [SKIPPED] nuttx: arm-none-eabi-gcc not installed"
     fi
     # threadx-linux is HOSTED — no ROM region, so the ambient profile is right
     # for it and `nros_cargo_platform_profile` returns exactly that. Routed
     # through the same accessor anyway, so the three leaves read alike and a
     # future carve-out reaches this one without an edit here.
-    nros_link_check_sources --source threadx --source threadx-netxduo
-    echo "  threadx-linux talker ($(nros_cargo_platform_profile threadx-linux)):"
-    mapfile -t threadx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile threadx-linux)")
-    link_check_build examples/threadx-linux/rust/talker threadx-linux target-zenoh "${threadx_profile[@]}"
+    if link_check_in_lane threadx-linux examples/threadx-linux/rust/talker; then
+        nros_link_check_sources --source threadx --source threadx-netxduo
+        echo "  threadx-linux talker ($(nros_cargo_platform_profile threadx-linux)):"
+        mapfile -t threadx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile threadx-linux)")
+        link_check_build examples/threadx-linux/rust/talker threadx-linux target-zenoh "${threadx_profile[@]}"
+    fi
     echo "Rust-RTOS link check OK."
 
 # Run CI: format check + clippy + every test tier (never modifies code).

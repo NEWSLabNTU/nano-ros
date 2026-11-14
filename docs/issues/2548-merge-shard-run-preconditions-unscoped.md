@@ -97,6 +97,34 @@ Bound by `lane_build_covers_run`:
 - `every_lane_builds_exactly_the_compile_check_rows_its_run_reads`: now over
   every row's effective platform, west rows included.
 
+## Second round, run 43568845036 (main 36f665bedc, with #3805)
+
+- **zephyr:** `just build tier1` PASSED with 6.2 G left of ~95 G after
+  reclaim. The balloon never fired; the lowest point was 4.2 G free.
+  `build/zephyr-workspace-builds` 44 G, `build/corrosion-cargo` 23 G (up
+  11 G: the Linux rows that serve zephyr coordinates, which the run needs),
+  `build/sizes-probe` 6.3 G, `build/metadata-probe` 3.0 G; compile-check
+  fixtures dropped to ~0 (4 rows) and `build/cmake-fixtures` to nothing. Then
+  `just ci tier1 run` failed in `rust-rtos-link-check`. That step is
+  unscoped: it regenerated all 199 codegen units and linked the NuttX talker,
+  whose cross GCC the zephyr image does not carry.
+- **threadx_linux:** codegen narrowed to 2 units, so nothing wrote the
+  gitignored central `nros-patch.toml`, and `_require-leaf-includes` refused
+  the `include` of two QEMU test bins (`nros-bench/wcet-cycles-qemu`,
+  `nros-tests/bins/cdr-roundtrip-qemu`) that the lane never builds. The
+  include arm of `leaf-config-includes.py` was the one arm W10 did not scope.
+
+Fixed together (fix-2548-run-scope-2):
+
+- `leaf-config-includes.py` scopes its `include` arm like its path-dep arm:
+  under a lane narrowing, it checks only configs whose leaf is nested with a
+  scoped unit or a lane row dir (`codegen_scope`). Both arms now list every
+  miss instead of 5, and the text no longer names issue ids.
+- `rust-rtos-link-check` runs `_codegen <lane>` instead of an unscoped
+  `_codegen`. It builds a leaf only when the run holds a coordinate on its
+  platform (`nros_lane_wants_platform`, the fixture builders' predicate),
+  and names each leaf it leaves out.
+
 ## Done when
 
 A `merge-runtime.yml` tier-1 dispatch runs tests on the threadx_linux shard
