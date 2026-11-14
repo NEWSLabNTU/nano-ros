@@ -95,6 +95,9 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     Depth is a positional arg on the tiers: `just ci matrix` runs, `just ci
     matrix build` builds+links only (27 s) — `name=value` does NOT parse for a
     module recipe.
+    **The tier is chosen by the diff** (user ruling 2026-11-14): a docs-only diff
+    needs `just check fast` alone, and `just ci gate` detects one and runs only that
+    (`scripts/ci/gate-tier.py`; a `.md` that Rust source reads does not count).
     Run this before every push. It is `check` + `test-unit`, and it needs no
     fixture build, no SDK, no QEMU and no cross toolchain — only `test`/
     `test-all` depend on fixtures, and 74 of 163 test files never needed them.

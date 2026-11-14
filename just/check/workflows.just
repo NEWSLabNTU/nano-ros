@@ -84,6 +84,14 @@ ci-cli-from-source:
 ci-doc-workflow-refs:
     @python3 scripts/check-ci-doc-workflow-refs.py
 
+# `just ci gate` picks its tier from the diff (user ruling 2026-11-14): a
+# docs-only diff runs `check fast` alone. The classifier's cases include the
+# negative control (docs plus one `.rs` takes the full gate) and the Markdown a
+# Rust test reads as input. Buildless, under a second.
+[private]
+gate-tier:
+    @python3 scripts/ci/gate-tier.py --self-test
+
 # issue 1514 — a lane's LABEL must not claim an event its step does not run on.
 #
 # `just check build` is `schedule`/`workflow_dispatch` only, and the job it lives
