@@ -1,11 +1,11 @@
 # Phase 561 -- Retire the vendored NuttX `libc` fork
 
-**Status (2026-11-14). W0 to W4 done; the phase acceptance is measured below.**
+**Status (2026-11-14). DONE: W0 to W4 done, and the phase acceptance is met (measured below).**
 The work moved out of
-[phase-550](phase-550-nuttx-native-build-infrastructure.md) W14 by the
+[phase-550](../phase-550-nuttx-native-build-infrastructure.md) W14 by the
 maintainer's ruling Q20 (2026-11-12): a separate phase that retires
 `third-party/nuttx/libc` once no road compiles `std`. It implements
-[RFC-0126](../design/0126-nuttx-builds-on-nuttx-infrastructure.md)'s
+[RFC-0126](../../design/0126-nuttx-builds-on-nuttx-infrastructure.md)'s
 direction: every NuttX fact comes from NuttX, and nano-ros keeps no
 second copy. Each item is claimed with `just claim phase-561-wN` before it
 starts.
@@ -217,6 +217,26 @@ configuration, with a size gate, and never plain crates.io `libc`.
   both arches.
 - The NuttX tests and every NuttX row of `realtime_sched_tasks` pass on
   QEMU.
+
+**Measured 2026-11-14, on the branch rebased onto `main`. All met.**
+
+- **No tracked `libc` patch row and no `nuttx-libc` source.**
+  `check::nuttx-libc-retired` (the static half) is OK on the fast line, and
+  `nros setup --build-sources --check` names no `libc`.
+- **Fixtures and the make road.** `just nuttx build-fixtures` built every
+  arm and riscv row, then ran `check::nuttx-libc-graph`: both FFI crates
+  and 11 workspace entries have no `libc` for the image.
+  `just nuttx build-make-road` built both arches, and the arm project case
+  was sized from the probe.
+- **Tests on QEMU.**
+  - `just test nuttx`: 10/10 (action, pubsub and service in Rust, C and C++,
+    plus the quiet-link session test).
+  - `realtime_sched_tasks`, scoped to the NuttX coordinates plus
+    `linux,rust,zenoh` for its `int32-sink` peer: 8 of 8 rows passed. That is
+    all six NuttX rows (arm and riscv, each in C, C++ and Rust) and the two
+    native rows the peer coordinate brings in. The 14 other rows are other
+    platforms' and were out of lane.
+- **`just ci gate`:** 10/10.
 
 ## Order
 

@@ -649,14 +649,14 @@ build a nano-ros package.
 **Moved out of this phase (Q20: a separate phase, ruled 2026-11-12).** Once no
 road compiles `std` (W5), a separate phase retires `third-party/nuttx/libc`
 and its `[patch.crates-io]` rows, which the board descriptor already calls
-unused. Opened as [phase-561](phase-561-nuttx-libc-fork-retire.md)
+unused. Opened as [phase-561](archived/phase-561-nuttx-libc-fork-retire.md)
 (2026-11-14). Kept here as a pointer only.
 
 - Gate: not this phase's.
 - **Acceptance:** no tracked `[patch.crates-io] libc` row; the SDK index has
   no `nuttx-libc` source; both arches' fixtures pass.
 - **Status:** DROPPED (2026-11-14: moved, not done here) to
-  [phase-561](phase-561-nuttx-libc-fork-retire.md).
+  [phase-561](archived/phase-561-nuttx-libc-fork-retire.md).
 
 ## Order
 
