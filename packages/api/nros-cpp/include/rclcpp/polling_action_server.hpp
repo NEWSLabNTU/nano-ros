@@ -6,7 +6,7 @@
  * @ingroup grp_action
  * @brief `rclcpp::PollingActionServer<A>` — caller-polls action server.
  *
- * Phase 122.3.d.b — typed C++ wrapper over the L1 polling FFI added
+ * Typed C++ wrapper over the L1 polling FFI added
  * in 122.3.d.a. Mirrors `ActionServer<A>` but drops the executor
  * registration / callback model: the caller drives `take_*` /
  * `accept_goal` / `complete_goal` / `try_handle_get_result` from a
@@ -23,7 +23,7 @@
 
 #include "rclcpp_action/server.hpp" // GoalResponse / CancelResponse / GoalStatus
 #include "rclcpp/detail/config.hpp"
-#include "rclcpp/detail/entity_name.hpp" // phase-444 — the one entity-name copy
+#include "rclcpp/detail/entity_name.hpp" // The one entity-name copy
 #include "rclcpp/node.hpp"
 #include "rclcpp/detail/nros_cpp_config_generated.h"
 #include "rclcpp/result.hpp"
@@ -31,7 +31,7 @@
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
-// phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
+// `Node` is DEFINED in `rclcpp::` (that namespace is
 // the home). The friend declaration below is qualified, and a qualified friend
 // names an existing entity rather than introducing one, so the name has to be
 // declared first — and in `rclcpp::`, because an elaborated `class Node;` in
@@ -63,7 +63,7 @@ namespace rclcpp {
 /// ```
 template <typename A> class PollingActionServer {
   public:
-    /// phase-417 W4.b — one spelling for all four action classes; see
+    /// One spelling for all four action classes; see
     /// `rclcpp_action::ACTION_NAME_MAX` in `action_server.hpp`. Kept as a member
     /// name so existing `PollingActionServer<A>::ACTION_NAME_MAX` /
     /// `PollingActionClient<A>::ACTION_NAME_MAX` call sites still resolve.
@@ -98,7 +98,7 @@ template <typename A> class PollingActionServer {
     }
 
     /// @ref try_recv_goal_request writing the id into a `GoalUUID` value
-    /// (phase-417 W4.b) — the shape you can key a `{goal -> state}` map on.
+    /// — the shape you can key a `{goal -> state}` map on.
     Result try_recv_goal_request(::rclcpp_action::GoalUUID& goal_id, GoalType& out_goal,
                                  int64_t& out_sequence_number) {
         return try_recv_goal_request_sized<::rclcpp::rx_buffer_capacity<GoalType>::value>(
@@ -113,7 +113,7 @@ template <typename A> class PollingActionServer {
     }
 
     /// @ref try_recv_goal_request with the receive buffer sized by the CALLER.
-    /// See @ref Subscription::try_recv_sized (issue 0964).
+    /// See @ref Subscription::try_recv_sized.
     template <size_t Cap>
     Result try_recv_goal_request_sized(uint8_t goal_id[16], GoalType& out_goal,
                                        int64_t& out_sequence_number) {
@@ -136,7 +136,7 @@ template <typename A> class PollingActionServer {
             storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), sequence_number));
     }
 
-    /// @ref accept_goal taking a `GoalUUID` value (phase-417 W4.b).
+    /// @ref accept_goal taking a `GoalUUID` value.
     Result accept_goal(const ::rclcpp_action::GoalUUID& goal_id, int64_t sequence_number) {
         return accept_goal(goal_id.data(), sequence_number);
     }
@@ -158,7 +158,7 @@ template <typename A> class PollingActionServer {
             storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, len));
     }
 
-    /// @ref publish_feedback taking a `GoalUUID` value (phase-417 W4.b).
+    /// @ref publish_feedback taking a `GoalUUID` value.
     Result publish_feedback(const ::rclcpp_action::GoalUUID& goal_id, const FeedbackType& fb) {
         return publish_feedback(goal_id.data(), fb);
     }
@@ -176,13 +176,13 @@ template <typename A> class PollingActionServer {
             buf, len));
     }
 
-    /// @ref complete_goal taking a `GoalUUID` value (phase-417 W4.b).
+    /// @ref complete_goal taking a `GoalUUID` value.
     Result complete_goal(const ::rclcpp_action::GoalUUID& goal_id,
                          ::rclcpp_action::GoalStatus status, const ResultType& result) {
         return complete_goal(goal_id.data(), status, result);
     }
 
-    /// Terminate `goal_id` as SUCCEEDED — phase-417 W4.b.
+    /// Terminate `goal_id` as SUCCEEDED.
     ///
     /// The same three terminal verbs `ActionServer<A>` grew, for the same
     /// reason: C spells them `rclc_action_succeed` / `_abort` / `_canceled`,
@@ -218,7 +218,7 @@ template <typename A> class PollingActionServer {
         return complete_goal(goal_id.data(), ::rclcpp_action::GoalStatus::Canceled, result);
     }
 
-    /// Phase 122.3.c.6.d — peek a pending cancel-goal request.
+    /// Peek a pending cancel-goal request.
     /// On success fills `goal_id`, `out_sequence_number`,
     /// `out_current_status` (matches `rclcpp_action::GoalStatus` discriminants).
     /// Returns Result::success() if a request was peeked,
@@ -235,20 +235,19 @@ template <typename A> class PollingActionServer {
         return Result::success();
     }
 
-    /// @ref try_recv_cancel_request writing the id into a `GoalUUID` value
-    /// (phase-417 W4.b).
+    /// @ref try_recv_cancel_request writing the id into a `GoalUUID` value.
     Result try_recv_cancel_request(::rclcpp_action::GoalUUID& goal_id, int64_t& out_sequence_number,
                                    ::rclcpp_action::GoalStatus& out_current_status) {
         return try_recv_cancel_request(goal_id.data(), out_sequence_number, out_current_status);
     }
 
-    /// Phase 122.3.c.6.d — reply to a previously-peeked cancel
+    /// Reply to a previously-peeked cancel
     /// request. `return_code` is a `rclcpp_action::CancelReturnCode`:
     /// 0 = Ok (one+ goals canceling), 1 = Rejected, 2 = UnknownGoal,
     /// 3 = GoalTerminated. `accepted` is a contiguous array of
     /// 16-byte goal IDs that will transition to CANCELING.
     ///
-    /// Issue 0796 — this doc said `rclcpp_action::CancelResponse`, which in C++ is the
+    /// This doc said `rclcpp_action::CancelResponse`, which in C++ is the
     /// PER-GOAL Reject/Accept decision and has never had four values. Prefer
     /// the `CancelReturnCode` overload below; the `int8_t` one is kept because
     /// callers pass the raw byte they read off the wire.
@@ -259,7 +258,7 @@ template <typename A> class PollingActionServer {
             storage_, sequence_number, return_code, accepted, accepted_count));
     }
 
-    /// Typed overload of `send_cancel_reply` (issue 0796).
+    /// Typed overload of `send_cancel_reply`.
     Result send_cancel_reply(int64_t sequence_number, ::rclcpp_action::CancelReturnCode return_code,
                              const uint8_t (*accepted)[16], size_t accepted_count) {
         return send_cancel_reply(sequence_number, static_cast<int8_t>(return_code), accepted,
@@ -267,7 +266,7 @@ template <typename A> class PollingActionServer {
     }
 
     /// @ref send_cancel_reply reading the accepted ids from an array of
-    /// `GoalUUID` values (phase-417 W4.b) — the array you can actually build,
+    /// `GoalUUID` values — the array you can actually build,
     /// now that a goal id is a value type. `GoalUUID` is standard-layout with
     /// a single `uint8_t[16]` member and the static_asserts beside its
     /// definition pin `sizeof`/`alignof`, so an array of them IS the
@@ -278,7 +277,7 @@ template <typename A> class PollingActionServer {
                                  reinterpret_cast<const uint8_t(*)[16]>(accepted), accepted_count);
     }
 
-    /// Phase 122.3.c.6.e — caller-owned wake-state slot. One per
+    /// Caller-owned wake-state slot. One per
     /// (channel) pair; declare next to the server, pass into
     /// `set_*_wake_callback`. Must outlive the server.
     struct WakeState {

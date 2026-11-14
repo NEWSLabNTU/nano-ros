@@ -7,8 +7,8 @@
  * @brief `rmw_request_id_t` — upstream's request header (`<rmw/types.h>`).
  *
  * Both service halves hand it out: the three-argument service handler
- * (`rclcpp/service.hpp`, issue 2081) and `PollClient<S>::take_response`
- * (`rclcpp/polling_client.hpp`, issue 2148). One header, so the two cannot
+ * (`rclcpp/service.hpp`) and `PollClient<S>::take_response`
+ * (`rclcpp/polling_client.hpp`). One header, so the two cannot
  * drift apart.
  */
 

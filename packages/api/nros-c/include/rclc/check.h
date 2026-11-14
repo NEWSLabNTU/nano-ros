@@ -13,7 +13,7 @@
  *   - `RCLC_SOFTCHECK(call)` — non-fatal: log and continue.
  *
  * The macros log file:line, the literal call text, and the integer
- * return code. Issue 0332 — the default logger is `printf` ONLY on a hosted
+ * return code. The default logger is `printf` ONLY on a hosted
  * target (`__STDC_HOSTED__`) or when `RCLC_CHECK_STDIO` is defined; on a
  * freestanding embedded target it defaults to a no-op, so a no_std C node does
  * not silently pull `<stdio.h>` into every TU.
@@ -38,7 +38,7 @@
 #define RCLC_CHECK_LOG(file, line, expr, ret)                                                      \
     printf("[nros] %s:%d %s -> %d\n", (file), (line), (expr), (int)(ret))
 #else
-/* Issue 0332 — freestanding default: no-op, no `<stdio.h>` pulled. Define
+/* Freestanding default: no-op, no `<stdio.h>` pulled. Define
    RCLC_CHECK_STDIO for the printf form, or RCLC_CHECK_LOG to route to a board
    UART / RTT / nros-log. The `(void)` casts keep -Wunused quiet at the sites. */
 #define RCLC_CHECK_LOG(file, line, expr, ret)                                                      \

@@ -1,8 +1,7 @@
-//! phase-308 — the C++ ABI's half of the host metadata probe and census.
+//! The C++ ABI's half of the host metadata probe and census.
 //!
 //! The four executor-side HOOKS (node / timer / guard condition / parameter)
-//! used to live here. They moved to `nros::census_hooks` (issue 1419, issue
-//! 1556 item 1, RFC-0100 Amendment 1): a census instrument whose hooks sit on
+//! used to live here. They moved to `nros::census_hooks`: a census instrument whose hooks sit on
 //! one language's ABI cannot attribute a Rust node or a C node that opens its
 //! own node through `nros-c`, and `nros` is the crate all three node APIs sit
 //! on. The `nros_cpp_*` entry points call them there — unconditionally, with
@@ -15,12 +14,12 @@
 //!
 //! This module records nothing and serializes nothing itself. No JSON, no
 //! schema struct, no slot arithmetic — those live once in
-//! `nros::node_metadata` (phase-308's layer constraint).
+//! `nros::node_metadata` (a layer constraint).
 
-/// phase-308 — write the recorded sidecar. The probe's last call.
+/// Write the recorded sidecar. The probe's last call.
 ///
 /// Exported from `nros-cpp` rather than from the backend crate so the probe TU
-/// links exactly one Rust staticlib (the `nros-cpp` umbrella, phase-241 D3-rev)
+/// links exactly one Rust staticlib (the `nros-cpp` umbrella)
 /// and needs no extra link line.
 ///
 /// Serialization is `nros::metadata_mode::to_json` — the SAME emitter the Rust

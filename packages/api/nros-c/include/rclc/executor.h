@@ -17,7 +17,7 @@
 #include "rclc/detail/nros_generated.h"
 
 /*
- * Issue 0338 — the entity-registration family is spelled `nros_executor_add_*`,
+ * The entity-registration family is spelled `nros_executor_add_*`,
  * matching rclc (`rclc_executor_add_subscription` / `_add_timer` /
  * `_add_client` / ...). It used to be ~~`nros_executor_register_*`~~ for every kind
  * EXCEPT `add_client`, which kept the rclc spelling — so the family was not even
@@ -28,7 +28,7 @@
  * recompile is all a consumer needs. Code compiled against the old SYMBOLS must
  * be rebuilt.
  *
- * phase-417 stage 6 step B — the ~~`nros_executor_add_timer`~~ forwarder this
+ * The ~~`nros_executor_add_timer`~~ forwarder this
  * macro used to route through is DELETED, so `rclc_executor_register_timer`
  * now names `rclc_executor_add_timer` directly. It is the only member of the
  * family whose target moved: every other `nros_executor_add_*` here is a live
@@ -36,12 +36,12 @@
  * one macro — it used to warn on the way through, and now resolves silently
  * until the 0338 aliases are themselves retired.
  *
- * phase-487 W1 — ~~`nros_executor_register_subscription`~~ is gone with its target:
+ * ~~`nros_executor_register_subscription`~~ is gone with its target:
  * the three-argument ~~`nros_executor_add_subscription`~~ dispatched a callback the
  * subscription struct stored, and that struct no longer stores one. Its
  * replacement takes the callback, `rclc_executor_add_subscription_raw`, so the
  * alias could not forward without changing arity. `_in_group` kept its alias
- * and gained the same two arguments. phase-487 W2 retired
+ * and gained the same two arguments. A later change retired
  * ~~`nros_executor_register_service`~~ the same way: its target, the two-argument
  * ~~`nros_executor_add_service`~~, is gone, and `rclc_executor_add_service_raw`
  * takes the callback.
@@ -59,8 +59,8 @@
 
 #endif /* NROS_EXECUTOR_H */
 
-/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does
- * (phase-492): a ported file that includes only `<rclc/executor.h>` still finds
+/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does:
+ * a ported file that includes only `<rclc/executor.h>` still finds
  * `RCLC_CHECK_RET`, `RCLC_LOG_*` and the rcl spellings. Outside the guard, so
  * this header's own declarations are complete before the umbrella reads them. */
 #include "rclc/rclc.h"

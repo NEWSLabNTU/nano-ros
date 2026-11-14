@@ -1,4 +1,4 @@
-// nros-cpp: entity named-options structs (Phase 189.M3)
+// nros-cpp: entity named-options structs
 // Freestanding C++ — no exceptions, no STL required
 
 /**
@@ -11,7 +11,7 @@
  * convention — QoS is its own positional parameter) and carries the
  * non-QoS creation axes. The `QoS` value class lives in `qos.hpp`.
  *
- * Phase 189.M3.1 introduces a single live field — `sched_context` — on
+ * There is a single live field — `sched_context` — on
  * `SubscriptionOptions`, plus a reserved `message_info` flag. The
  * `PublisherOptions` struct is deliberately empty-with-comment: a
  * publisher has no callback, so it has neither a scheduling context nor
@@ -23,10 +23,10 @@
 #define NROS_RCLCPP_OPTIONS_HPP
 
 #include <cstdint>
-// phase-417 stage 6 step A — `rclcpp::detail::refuse` and
+// `rclcpp::detail::refuse` and
 // `NROS_RCLCPP_REFUSE_NODE_OPTIONS`, used by `rclcpp::NodeOptions` below.
 #include "rclcpp/logging.hpp"
-#include "rclcpp/callback_group.hpp" // phase-488 — `SubscriptionOptions::callback_group`
+#include "rclcpp/callback_group.hpp" // `SubscriptionOptions::callback_group`
 
 namespace rclcpp {
 
@@ -64,7 +64,7 @@ struct SubscriptionOptions {
     /// after the subscription is created (create-then-bind); a failing
     /// bind surfaces as the create call's `Result`.
     ///
-    /// NOTE (Phase 189.M3.1): the C++ subscription is a *thin wrapper*
+    /// NOTE: the C++ subscription is a *thin wrapper*
     /// over a bare `RmwSubscriber` polled via `take_serialized` — it does
     /// **not** register a callback entry in the executor, so today's
     /// `nros_cpp_subscription_create` exposes no bindable executor
@@ -77,12 +77,12 @@ struct SubscriptionOptions {
     /// FFI grows a handle id.
     int sched_context = SCHED_CONTEXT_UNSET;
 
-    /// `options.callback_group = group_;` — upstream's anonymous group token
-    /// (phase-488). Accepted and read as the node default, the same as every
+    /// `options.callback_group = group_;` — upstream's anonymous group token.
+    /// Accepted and read as the node default, the same as every
     /// other group-taking verb's null group; see `rclcpp::CallbackGroupToken`.
     ::rclcpp::CallbackGroup::SharedPtr callback_group;
 
-    /// Issue 2036 — upstream has no such field: rclcpp delivers metadata to a
+    /// Upstream has no such field: rclcpp delivers metadata to a
     /// callback that TAKES it, `(msg, const rclcpp::MessageInfo&)`, and so
     /// does `create_subscription` here. Kept for source compatibility and
     /// READ: `true` with a callback that takes no `rclcpp::MessageInfo` is
@@ -107,7 +107,7 @@ struct PublisherOptions {
 
 /// rclcpp-style named options for `Node::create_action_server<A>()`.
 ///
-/// Phase 189.M3.3.c — `sched_context` is **functional** here (unlike the
+/// `sched_context` is **functional** here (unlike the
 /// poll-style `SubscriptionOptions` no-op): the C++ action server is
 /// arena-registered (`nros_cpp_action_server_register` →
 /// `Executor::register_action_server_raw`), so it owns a real executor
@@ -131,8 +131,7 @@ struct ActionServerOptions {
 };
 
 /// rclcpp-style named options for the **callback-style**
-/// `Node::create_service<S>(out, name, callback, qos, options)` overload
-/// (Phase 189.M3.3.e).
+/// `Node::create_service<S>(out, name, callback, qos, options)` overload.
 ///
 /// `sched_context` is **functional** for callback-style services: that path
 /// arena-registers the service (`nros_cpp_service_server_register`), so it owns
@@ -147,8 +146,8 @@ struct ServiceOptions {
 };
 
 /// rclcpp-style named options for the **callback-style**
-/// `Node::create_client<S>(out, name, callback, qos, options)` overload
-/// (Phase 189.M3.3.f). `sched_context` is functional for callback-style clients
+/// `Node::create_client<S>(out, name, callback, qos, options)` overload.
+/// `sched_context` is functional for callback-style clients
 /// (arena-registered → real executor handle whose response dispatch runs during
 /// `spin_once`); N/A for the future-style `create_client(out, name, qos)`.
 struct ClientOptions {
@@ -160,36 +159,36 @@ struct ClientOptions {
 } // namespace rclcpp
 
 // ============================================================================
-// rclcpp::NodeOptions (RFC-0089 stage 6, step A)
+// rclcpp::NodeOptions
 // ============================================================================
 //
 // Moved here from `nros/rclcpp_compat.hpp`. This header is where the
 // rclcpp-shaped named-options structs live, so it is where the node's own
 // options object belongs.
 //
-// The TYPE survives; every OPTION on it is REFUSE-LOUD (RFC-0089 W3.f) --
-// except `clock_type()` (issue 1975), the one option with something behind it:
+// The TYPE survives; every OPTION on it is REFUSE-LOUD --
+// except `clock_type()`, the one option with something behind it:
 // the node's clock is a real member, so the option is a real field the node
 // constructor reads, not one more inert setter.
 //
 // What was here: ten setters that stored their argument in a private field
 // nothing read, and returned `*this` so the idiomatic chain compiled and
 // configured nothing. The header called them "intentionally inert today". That
-// is the second of RFC-0089's two live inversions, and it is the one a rename
+// is the second of the two live inversions, and it is the one a rename
 // would inherit most quietly — `NodeOptions().use_intra_process_comms(true)`
 // correlates `same` against upstream by name AND shape, so the parity
 // instrument cannot see the defect it is measuring.
 //
 // It is not fixable by implementing them, either: nano-ros has no runtime
 // ComponentManager, no intra-process transport and no topic-statistics
-// collector; `/rosout` EXISTS in all three languages (issue 1589 — C++'s is
+// collector; `/rosout` EXISTS in all three languages (C++'s is
 // `rclcpp::rosout::Publisher`, `<rclcpp/rosout.hpp>`) but is never automatic: the
 // publisher is a declared entity the program creates, so `enable_rosout(true)`
 // still has nothing to switch.
 // Their parameters and remaps are resolved from the
 // LAUNCH FILE at BUILD time — `nros configure` projects them into the generated
 // entry as `nros_cpp_declare_remap` / `nros_cpp_declare_param` calls, not into
-// the process environment (RFC-0046, RFC-0060). There is nothing behind these
+// the process environment. There is nothing behind these
 // knobs to switch. So they refuse, with one message.
 //
 // The DEFAULT CONSTRUCTOR stays, because `rclcpp::NodeOptions{}` and
@@ -202,7 +201,7 @@ struct ClientOptions {
 // claim about a switch that does not exist — the same silent difference one
 // step further from the call site.
 //
-// phase-442 W5 — `NodeOptions` EXISTS ON EVERY TARGET.
+// `NodeOptions` EXISTS ON EVERY TARGET.
 //
 // It used to sit inside `#if defined(NROS_CPP_HAS_STD_STRING) &&
 // defined(NROS_CPP_HAS_STD_VECTOR)`, on the argument that upstream's
@@ -210,7 +209,7 @@ struct ClientOptions {
 // was paying for ONE member out of 23: every other accessor is
 // `static_assert`-only and mentions no `std` type whatsoever. A whole type
 // disappearing on a toolchain, to keep one decorative parameter type, is the
-// shape RFC-0096 exists to remove — a node written against `rclcpp::NodeOptions`
+// shape the freestanding-API design exists to remove — a node written against `rclcpp::NodeOptions`
 // compiled on a host and vanished on ThreadX.
 //
 // And the parameter type WAS decorative. `arguments()` is REFUSE-LOUD: the
@@ -223,14 +222,14 @@ struct ClientOptions {
 // The getter returns `const char* const*` — argv's own shape, null here — for
 // the same reason its predecessor returned a reference to a static empty
 // vector: so the refusal is ONE diagnostic rather than two. Deliberately NOT
-// `rclcpp::Span<StringView>`, which RFC-0096 D6 suggested: `span.hpp` is reached
+// `rclcpp::Span<StringView>`, which was once suggested: `span.hpp` is reached
 // by nothing else in these headers, and `graph.hpp:105` already ruled that
 // pulling it in would newly expose `Span` / `StringView` / `LeSpan` on the
 // public C++ surface as a side effect of an unrelated change. Measured: doing
 // it costs 16 unledgered API-parity items. That classification is a decision
 // for whoever makes it, not a consequence of un-gating this class.
 #include "rclcpp/detail/std_detect.hpp"
-// issue 1975 -- `clock_type()` is spelled in rcl's `rcl_clock_type_t`, the
+// `clock_type()` is spelled in rcl's `rcl_clock_type_t`, the
 // vocabulary `rclcpp::Clock` already takes (`clock.hpp`).
 #include "rclc/types.h"
 
@@ -243,7 +242,7 @@ class NodeOptions {
     // --- LIVE: the options with something behind them -----------------------
 
     /// `rclcpp::NodeOptions::clock_type()` (Jazzy) -- which clock the node's
-    /// own clock (`Node::get_clock()`, `Node::now()`) is. issue 1975.
+    /// own clock (`Node::get_clock()`, `Node::now()`) is.
     ///
     /// Defaults to `RCL_ROS_TIME`, upstream's default and what a node's clock
     /// was before this option existed, so `NodeOptions{}` changes nothing.
@@ -256,19 +255,19 @@ class NodeOptions {
     /// A type that is not a clock (`RCL_CLOCK_UNINITIALIZED`) is not refused
     /// here, where upstream also accepts it; the NODE refuses it at
     /// construction, latching `ok() == false` where upstream's constructor
-    /// throws (RFC-0018).
+    /// throws.
     NodeOptions& clock_type(const rcl_clock_type_t& clock_type) {
         clock_type_ = clock_type;
         return *this;
     }
 
-    /// `rclcpp::NodeOptions::start_parameter_event_publisher()` -- issue 2035.
+    /// `rclcpp::NodeOptions::start_parameter_event_publisher()`.
     /// Whether the node publishes `/parameter_events` once its parameters are
-    /// served. Defaults to `true`, upstream's default (issue 2023 made every
-    /// served node publish).
+    /// served. Defaults to `true`, upstream's default (every
+    /// served node publishes).
     bool start_parameter_event_publisher() const { return start_parameter_event_publisher_; }
 
-    /// Turn one node's `/parameter_events` off (or back on) -- issue 2035, the
+    /// Turn one node's `/parameter_events` off (or back on) -- the
     /// setter upstream pairs with the getter. READ by the `Node(name, options)`
     /// constructors: `false` opts the node out in the executor
     /// (`Executor::disable_parameter_events_on`, the switch C's
@@ -380,7 +379,7 @@ class NodeOptions {
     static const char* const* no_arguments_() { return nullptr; }
 
     rcl_clock_type_t clock_type_ = RCL_ROS_TIME;
-    // issue 2035 -- unconditional, so `sizeof(NodeOptions)` (a `Node` member)
+    // Unconditional, so `sizeof(NodeOptions)` (a `Node` member)
     // stays probe-independent.
     bool start_parameter_event_publisher_ = true;
 };

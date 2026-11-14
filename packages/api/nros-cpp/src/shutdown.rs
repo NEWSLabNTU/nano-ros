@@ -1,8 +1,8 @@
-//! Shutdown-hook FFI for the C++ API (issue 0790).
+//! Shutdown-hook FFI for the C++ API.
 //!
 //! rclcpp hangs these on `Context`, in two ORDERED phases: pre-shutdown
 //! callbacks run before entities are torn down, on-shutdown callbacks after.
-//! There is no `Context` here — phase-379's init stage records the collapse
+//! There is no `Context` here — init collapses
 //! into one support/executor object — so the executor owns them, which is also
 //! what `close` / `fini` is called on.
 //!
@@ -13,7 +13,7 @@
 //! needs the entities to still WORK, so the node can publish a final state or
 //! answer a last request.
 //!
-//! Issue 0436 — the executor handle is tag-validated via `cpp_ctx_checked`
+//! The executor handle is tag-validated via `cpp_ctx_checked`
 //! rather than blind-cast, like every other shim in this crate.
 
 use core::ffi::c_void;

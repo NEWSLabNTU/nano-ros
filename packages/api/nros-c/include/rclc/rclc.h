@@ -6,7 +6,7 @@
  * names, the nano-ros-only parts (`RCLC_C_COMPONENT`, `RCLC_CHECK_RET`,
  * `RCLC_LOG_*`), and the rcl spellings of the return codes. Every other
  * upstream-path header (`<rclc/node.h>`, `<rcl/rcl.h>`, ...) includes it.
- * Headers under `rclc/detail/` are internal (phase-501).
+ * Headers under `rclc/detail/` are internal.
  */
 
 #ifndef RCLC_H
@@ -28,18 +28,18 @@
 #include "rclc/action.h"
 #include "rclc/detail/node_pkg.h"
 /* `RCLC_C_COMPONENT` — so a C component includes only <rclc/rclc.h>; the nros/
- * headers are internal (phase-492, maintainer ruling 2026-10-13). */
+ * headers are internal. */
 #include "rclc/component.h"
 #include "rclc/detail/cdr.h"
-/* issue 0795 — the RFC-0033 zero-copy reader (`rclc_cdr_borrow_*`,
+/* The zero-copy reader (`rclc_cdr_borrow_*`,
  * `rclc_view_str_t`, the `rclc_le_slice_view_*_t` family). Reached only
  * from generated message headers until now, so a user who included the
  * umbrella had no zero-copy read path and the C surface read as lacking one. */
 #include "rclc/detail/view.h"
 #include "rclc/types.h"
-/* issue 0795 — `nros.hpp` has always included its C++ twin; C had no logging
+/* `nros.hpp` has always included its C++ twin; C had no logging
  * surface through the umbrella at all. A C author who finds no logger reaches
- * for `printf`, and issue 0589 makes the equivalent fatal on Zephyr
+ * for `printf`, and the equivalent is fatal on Zephyr
  * native_sim, so the logger has to be the thing found first. */
 #include "rclc/log.h"
 #include "rclc/rosout.h"

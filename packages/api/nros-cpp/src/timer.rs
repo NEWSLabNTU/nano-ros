@@ -1,6 +1,6 @@
 //! Timer FFI functions for the C++ API.
 //!
-//! Issue 0436 — user-supplied executor handles are tag-validated via
+//! User-supplied executor handles are tag-validated via
 //! `cpp_ctx_checked` instead of being blind-cast to `*mut CppContext`.
 
 use core::ffi::{c_char, c_void};
@@ -16,7 +16,7 @@ use nros_node::executor::ffi::ExecutorFfi as _;
 /// C callback type for timers: `void callback(void* context)`.
 pub type nros_cpp_timer_callback_t = Option<unsafe extern "C" fn(context: *mut c_void)>;
 
-/// When a timer activation was due and when it ran — issue 1974, the FFI face
+/// When a timer activation was due and when it ran — the FFI face
 /// of `rclcpp::TimerInfo`.
 ///
 /// Nanoseconds on the timer's own clock. A field-for-field copy of the
@@ -47,14 +47,14 @@ impl From<nros_node::TimerCallInfo> for nros_cpp_timer_call_info_t {
     }
 }
 
-/// Timer callback that receives the activation's call info (issue 1974):
+/// Timer callback that receives the activation's call info:
 /// `void callback(const nros_cpp_timer_call_info_t* info, void* context)`.
 /// `info` is valid for the duration of the call only.
 pub type nros_cpp_timer_info_callback_t =
     Option<unsafe extern "C" fn(info: *const nros_cpp_timer_call_info_t, context: *mut c_void)>;
 
 /// [`nros_cpp_timer_create_capturing`] with the call info handed to the
-/// callback, a callback group and an `autostart` flag — issue 1974, what the
+/// callback, a callback group and an `autostart` flag — what the
 /// value-returning C++ `create_wall_timer(period, cb, group, autostart)` and
 /// `rclcpp::create_timer(node, clock, period, cb, group, autostart)` call for
 /// EVERY callable: one taking `const rclcpp::TimerInfo&` reads `info`, a
@@ -193,7 +193,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create(
     }
 }
 
-/// Create a repeating timer driven by a CLOCK — phase-425 W4, the shape rclcpp
+/// Create a repeating timer driven by a CLOCK — the shape rclcpp
 /// spells `create_timer(node, clock, period, cb)`.
 ///
 /// `nros_cpp_timer_create` is the WALL timer: it advances with the executor's
@@ -278,7 +278,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
     }
 }
 
-/// Create a repeating timer whose CAPTURE the arena holds — phase-476 W2.
+/// Create a repeating timer whose CAPTURE the arena holds.
 ///
 /// The timer twin of `nros_cpp_subscription_register_capturing`, and what the
 /// value-returning C++ `create_wall_timer` / `rclcpp::create_timer` call. The
@@ -288,7 +288,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
 /// handle and no heap cell.
 ///
 /// The timer is registered for `node`, which becomes its owner:
-/// `nros_cpp_node_destroy` releases it (phase-476 W0), and the capture with it.
+/// `nros_cpp_node_destroy` releases it, and the capture with it.
 ///
 /// `capture_drop`, when non-NULL, is called with the capture's arena copy when
 /// the timer is released (or the executor finalised): the capture's bytes were
@@ -414,7 +414,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_oneshot(
     }
 }
 
-/// Phase 273 (RFC-0047) — create a repeating timer **in** a named callback group.
+/// Create a repeating timer **in** a named callback group.
 ///
 /// Identical to `nros_cpp_timer_create` but additionally associates the timer
 /// with a callback group. The executor resolves `(node, group_name)` via its
@@ -523,14 +523,14 @@ pub unsafe extern "C" fn nros_cpp_timer_cancel(
     }
 }
 
-/// Release a timer — phase-476 W2: the timer stops for good, its arena entry
+/// Release a timer: the timer stops for good, its arena entry
 /// and capture are freed, and the slot goes to the next registration. From
 /// inside the timer's own callback the release takes effect when the callback
-/// returns (issue 1667).
+/// returns.
 ///
 /// What `TimerHandle::reset()` (upstream `timer_.reset()`) calls. Safe on a
 /// stale or copied handle: the handle carries the generation of the slot it was
-/// issued for (phase-476 W0), so once released every copy of it answers
+/// issued for, so once released every copy of it answers
 /// `NROS_CPP_RET_ERROR` here and nothing reaches the slot's next occupant.
 ///
 /// # Safety
@@ -568,8 +568,8 @@ pub unsafe extern "C" fn nros_cpp_timer_reset(
 
 /// Would this timer fire on the next `spin_once()` pass?
 ///
-/// phase-417 G6, ledger row `cpp:Timer::is_ready`. `rcl_timer_is_ready` had
-/// shipped for C since stage 3 and `rclcpp::Timer` had `cancel`, `reset`,
+/// Ledger row `cpp:Timer::is_ready`. `rcl_timer_is_ready` had
+/// shipped for C and `rclcpp::Timer` had `cancel`, `reset`,
 /// `is_canceled` and `is_valid` and not this.
 ///
 /// Forwards to `Executor::timer_is_ready`, which evaluates
@@ -602,14 +602,14 @@ pub unsafe extern "C" fn nros_cpp_timer_is_ready(
 
 /// Nanoseconds until this timer next fires — NEGATIVE when it is overdue.
 ///
-/// phase-417 G6, ledger row `cpp:Timer::time_until_trigger`. rclcpp's
+/// Ledger row `cpp:Timer::time_until_trigger`. rclcpp's
 /// `TimerBase::time_until_trigger()` is the RELATIVE form, so this forwards to
 /// `Executor::timer_time_until_next_call_ns` — the same computation
 /// `rcl_timer_get_time_until_next_call` reads, in one place, because rcl's own
 /// relative and absolute accessors cannot disagree upstream either.
 ///
 /// Two envelope facts the C++ doc comment repeats: the arena's timer
-/// accounting is MICROSECOND-based (issue #505), so a nanosecond answer is a
+/// accounting is MICROSECOND-based, so a nanosecond answer is a
 /// microsecond quantity scaled by 1000; and a wall timer answers on the
 /// platform steady clock while a `create_timer(clock, …)` timer answers on its
 /// own.
@@ -618,7 +618,7 @@ pub unsafe extern "C" fn nros_cpp_timer_is_ready(
 /// executor handle that does not validate, and `NROS_CPP_RET_NOT_FOUND` when
 /// the handle is not a registered timer — an unregistered timer is dispatched
 /// by nobody, so it has no time until its next call rather than a time of
-/// zero, which is the defect issue 1008 was.
+/// zero, which was a real defect.
 ///
 /// # Safety
 /// `executor_handle` must be a valid executor handle and `out_ns` writable.
@@ -650,7 +650,7 @@ pub unsafe extern "C" fn nros_cpp_timer_time_until_next_call_ns(
 }
 
 /// The clock that advances this timer, as an `rcl_clock_type_t` discriminant
-/// — issue 1975, `rclcpp::TimerBase::get_clock()`.
+/// — `rclcpp::TimerBase::get_clock()`.
 ///
 /// Read from the executor (`Executor::timer_clock_source`), the field the
 /// dispatcher itself reads, so the C++ side keeps no copy that could disagree:

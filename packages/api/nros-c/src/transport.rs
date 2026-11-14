@@ -1,7 +1,7 @@
-//! Phase 115.C — runtime-pluggable custom transport (C surface).
+//! Runtime-pluggable custom transport (C surface).
 //!
-//! Wraps the `nros_rmw::custom_transport::NrosTransportOps` vtable
-//! defined by Phase 115.A. Users register four C function pointers
+//! Wraps the `nros_rmw::custom_transport::NrosTransportOps` vtable.
+//! Users register four C function pointers
 //! before `rclc_support_init`; whichever RMW backend is active
 //! consumes the registered ops via `nros_rmw::take_custom_transport`
 //! during `Rmw::open`.
@@ -18,7 +18,7 @@ use core::ffi::c_void;
 
 use crate::error::{RCL_RET_ERROR, RCL_RET_INVALID_ARGUMENT, RCL_RET_OK, rcl_ret_t};
 
-/// Phase 115.A.2 — current ABI version of [`nros_transport_ops_t`].
+/// Current ABI version of [`nros_transport_ops_t`].
 ///
 /// C / C++ callers MUST fill in `ops.abi_version =
 /// NROS_TRANSPORT_OPS_ABI_VERSION_V1` before passing the struct to
@@ -29,14 +29,13 @@ use crate::error::{RCL_RET_ERROR, RCL_RET_INVALID_ARGUMENT, RCL_RET_OK, rcl_ret_
 #[unsafe(no_mangle)]
 pub static NROS_TRANSPORT_OPS_ABI_VERSION_V1: u32 = nros_rmw::NROS_TRANSPORT_OPS_ABI_VERSION_V1;
 
-/// Phase 115.C — C-side mirror of
+/// C-side mirror of
 /// `nros_rmw::custom_transport::NrosTransportOps`. Same `#[repr(C)]`
 /// layout — single ABI, no parallel definitions.
 ///
 /// Field semantics:
 ///
-/// - `abi_version`: must be [`NROS_TRANSPORT_OPS_ABI_VERSION_V1`]
-///   (Phase 115.A.2).
+/// - `abi_version`: must be [`NROS_TRANSPORT_OPS_ABI_VERSION_V1`].
 /// - `_reserved`: padding for future minor-version detection. Set to 0.
 /// - `user_data`: opaque caller context, threaded back into every
 ///   callback as the first argument. Lifetime: must outlive the
@@ -69,7 +68,7 @@ pub struct nros_transport_ops_t {
     ) -> i32,
 }
 
-/// Phase 115.C — register a custom transport vtable.
+/// Register a custom transport vtable.
 ///
 /// Must be called BEFORE `rclc_support_init`. Subsequent calls
 /// before init overwrite the slot. After init, behaviour is
@@ -115,7 +114,7 @@ pub unsafe extern "C" fn rclc_set_custom_transport(ops: *const nros_transport_op
     }
 }
 
-/// Phase 115.C — clear any previously-registered custom transport.
+/// Clear any previously-registered custom transport.
 /// Equivalent to `rclc_set_custom_transport(NULL)`. Convenience for
 /// teardown paths.
 #[unsafe(no_mangle)]
@@ -127,7 +126,7 @@ pub unsafe extern "C" fn rclc_clear_custom_transport() -> rcl_ret_t {
     }
 }
 
-/// Phase 115.C — query whether a custom transport is currently
+/// Query whether a custom transport is currently
 /// registered. Returns `1` if a transport is registered, `0`
 /// otherwise. Useful for board crates that want to fall back to
 /// a static transport when no runtime override has been provided.

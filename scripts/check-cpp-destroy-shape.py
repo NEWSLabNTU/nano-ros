@@ -28,7 +28,8 @@ producing. So this gate reads both sides —
   * every `nros_cpp_*destroy*` FFI in the crate has a row;
   * every row names a real function, and the type the row claims is the type
     that function actually drops;
-  * a `NO_OP` row's function documents the consequence, naming issue 1496.
+  * a `NO_OP` row's function documents the consequence in its doc comment
+    (which an app author reads, so it names the fact, not an issue id).
 
 A row is not a blessing. It records which of the two a function is; if the answer
 is `NO_OP`, the documentation has to carry that to whoever calls it.
@@ -65,17 +66,17 @@ ROW = re.compile(
     re.M,
 )
 
-# What a `NO_OP` row's doc comment has to carry. The issue id so the next reader
-# can find the measurement, and a phrase that states the consequence — one of
-# these, because there is no single right wording and demanding a fixed sentence
-# is how a gate turns documentation into a password.
+# What a `NO_OP` row's doc comment has to carry: a phrase that states the
+# consequence — one of these, because there is no single right wording and
+# demanding a fixed sentence is how a gate turns documentation into a password.
+# No issue id: the doc is public API documentation, and user-reachable text
+# cites no ids (issue 2581); the history lives in the issue and in git.
 NO_OP_PHRASES = (
     "runs no destructor",
     "releases nothing",
     "release nothing",
     "no-op",
 )
-ISSUE = "1496"
 
 # phase-476 W0 — the third shape. A destroy that drops NO storage and instead
 # releases arena entries through the executor (`nros_cpp_node_destroy`, which
@@ -143,7 +144,7 @@ def problems(sources: dict[str, str], table: str) -> list[str]:
             f"  {found[fn]['file']}: `{fn}` has no row in destroy_shape.rs.\n"
             f"      Add `{fn} drops <Type> => NO_OP|RELEASES;` there. The\n"
             f"      `needs_drop` assert will tell you which; if it is NO_OP, say\n"
-            f"      so in the function's doc comment and name issue 1496."
+            f"      so in the function's doc comment."
         )
     for fn in sorted(set(declared) - set(found)):
         out.append(
@@ -182,12 +183,12 @@ def problems(sources: dict[str, str], table: str) -> list[str]:
             )
         if shape == "NO_OP":
             doc = found[fn]["doc"].lower()
-            if ISSUE not in doc or not any(p in doc for p in NO_OP_PHRASES):
+            if not any(p in doc for p in NO_OP_PHRASES):
                 out.append(
                     f"  {found[fn]['file']}: `{fn}` is classified NO_OP and its doc\n"
                     f"      comment does not say so. A caller reads `destroy` as a\n"
-                    f"      release; this one is not. Say what is NOT released and\n"
-                    f"      name issue {ISSUE} (one of: "
+                    f"      release; this one is not. Say what is NOT released\n"
+                    f"      (one of: "
                     + ", ".join(f"`{p}`" for p in NO_OP_PHRASES)
                     + ")."
                 )
@@ -195,7 +196,7 @@ def problems(sources: dict[str, str], table: str) -> list[str]:
 
 
 GOOD_SRC = '''
-/// ABANDON the storage — issue 1496.
+/// ABANDON the storage.
 ///
 /// `drop_in_place` runs no destructor here; the state is in the arena.
 #[unsafe(no_mangle)]

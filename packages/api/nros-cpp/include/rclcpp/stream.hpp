@@ -21,12 +21,12 @@ extern "C" {
 typedef int nros_cpp_ret_t;
 nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 /// Monotonic time in nanoseconds. Stream::wait_next() budgets its spin
-/// loop by wall-clock, not iteration count (Phase 118.C — same fix
-/// Future::wait() got in Phase 89.2; Stream was missed).
+/// loop by wall-clock, not iteration count (the same fix
+/// Future::wait() got; Stream was missed at first).
 uint64_t nros_cpp_time_ns(void);
 }
 
-// phase-428 (RFC-0089): the entity types that reach into this one's private
+// The entity types that reach into this one's private
 // constructor are DEFINED in the upstream namespace now, so the friend
 // declarations below name them there. A qualified friend cannot introduce a
 // name, hence these declarations.
@@ -34,7 +34,7 @@ namespace rclcpp {
 template <typename S> class Client;
 } // namespace rclcpp
 
-// phase-456 W2b — the subscription that BINDS a stream is the poll one: a
+// The subscription that BINDS a stream is the poll one: a
 // stream reads through `nros_cpp_subscription_take_serialized` on a
 // caller-owned `RmwSubscriber`, which a dispatch registration does not have.
 namespace rclcpp {
@@ -72,7 +72,7 @@ template <typename T> class Stream {
     Result try_next(T& out) { return try_next_sized<::rclcpp::rx_buffer_capacity<T>::value>(out); }
 
     /// @ref try_next with the receive buffer sized by the CALLER.
-    /// See @ref PollSubscription::take_sized (issue 0964).
+    /// See @ref PollSubscription::take_sized.
     template <size_t Cap> Result try_next_sized(T& out) {
         if (!take_fn_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[Cap];
@@ -100,18 +100,18 @@ template <typename T> class Stream {
     }
 
     /// @ref wait_next with the receive buffer sized by the CALLER.
-    /// See @ref PollSubscription::take_sized (issue 0964).
+    /// See @ref PollSubscription::take_sized.
     template <size_t Cap>
     Result wait_next_sized(void* executor_handle, uint32_t timeout_ms, T& out,
                            uint32_t poll_ms = 10) {
         if (!take_fn_) return Result(ErrorCode::NotInitialized);
         if (poll_ms == 0) poll_ms = 1;
-        // Phase 118.C: budget by wall-clock. Accumulating `step` per
+        // Budget by wall-clock. Accumulating `step` per
         // iteration breaks when `zpico_spin_once` returns early on a
         // signaled condvar (keep-alives, discovery gossip) — the
         // iteration loop collapses into milliseconds and returns
         // Timeout before the message has a chance to land. Mirrors the
-        // Phase 89.2 fix on Future::wait().
+        // fix on Future::wait().
         const uint64_t start_ns = nros_cpp_time_ns();
         const uint64_t budget_ns = static_cast<uint64_t>(timeout_ms) * 1000000ULL;
         while (true) {

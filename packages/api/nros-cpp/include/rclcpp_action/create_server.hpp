@@ -4,7 +4,7 @@
 /**
  * @file create_server.hpp
  * @ingroup grp_action
- * @brief `rclcpp_action::create_server<A>(...)` — issue 2015.
+ * @brief `rclcpp_action::create_server<A>(...)`.
  *
  * Upstream's free function, at upstream's path, taking upstream's three
  * callbacks — `handle_goal(const GoalUUID&, std::shared_ptr<const Goal>)`,
@@ -18,7 +18,7 @@
  *
  * Two upstream shapes: the four node interfaces (what the stock examples
  * pass) and a node (`create_server<A>(node, name, ...)`). A failed create
- * ABORTS naming the action (`detail::require_created`; RFC-0018). Upstream's
+ * ABORTS naming the action (`detail::require_created`). Upstream's
  * trailing `rcl_action_server_options_t` and callback-group arguments are not
  * taken.
  */

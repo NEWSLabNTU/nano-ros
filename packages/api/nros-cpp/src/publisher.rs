@@ -1,11 +1,11 @@
 //! Publisher FFI functions for the C++ API.
 //!
-//! Phase 87.6 (thin-wrapper refactor): the caller's opaque storage holds the
+//! The caller's opaque storage holds the
 //! `RmwPublisher` handle -- no `CppPublisher` wrapper bundling topic-name
 //! metadata. The `rclcpp::Publisher<M>` C++ class owns the topic name buffer
 //! alongside the storage.
 //!
-//! phase-462 W1 (RFC-0052): the storage is [`CppPublisher`] again, but it is
+//! The storage is [`CppPublisher`] again, but it is
 //! the Rust handle's own shape, not metadata: `EmbeddedPublisher` carries its
 //! contracted endpoint's `PubMonitorCell` beside the RMW handle and bumps it
 //! on every publish, and this is the only place a C++ publish passes through
@@ -230,7 +230,7 @@ pub unsafe extern "C" fn nros_cpp_publish_raw(
     }
 }
 
-/// Phase 124.E.1 — streamed publish.
+/// Streamed publish.
 ///
 /// Two callbacks: `size_cb` reports total payload length once,
 /// `chunk_cb` fills the slot in chunks. Backends that support
@@ -285,7 +285,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_publish_streamed(
 // Phase 124.A.7 — zero-copy publisher loan / commit / discard
 // ============================================================================
 
-/// Phase 124.A.7 — loan a writable slot of `requested_len` bytes from
+/// Loan a writable slot of `requested_len` bytes from
 /// the publisher's outbound buffer.
 ///
 /// # AVAILABILITY — read this before calling
@@ -308,7 +308,6 @@ pub unsafe extern "C" fn nros_cpp_publisher_publish_streamed(
 /// backend-cannot-lend error, the same in every build. The surface every
 /// backend serves is `publish_streamed` and its receive twin
 /// `process_raw_in_place`: no feature, no token, no arena, no size ceiling.
-/// See issue 0814.
 ///
 /// On success, `*out_buf` points at `*out_cap` writable bytes the
 /// caller fills in place. Pass `*out_token` back to
@@ -356,10 +355,10 @@ pub unsafe extern "C" fn nros_cpp_publisher_loan(
     }
 }
 
-/// Phase 124.A.7 — commit a previously loaned slot.
+/// Commit a previously loaned slot.
 ///
 /// **Availability:** `lending`-only, and no shipped build enables it —
-/// see `nros_cpp_publisher_loan`. Issue 0814.
+/// see `nros_cpp_publisher_loan`.
 ///
 /// # Safety
 /// `storage` must be the publisher the token was loaned from. `token`
@@ -386,10 +385,10 @@ pub unsafe extern "C" fn nros_cpp_publisher_commit(
     }
 }
 
-/// Phase 124.A.7 — abandon a previously loaned slot.
+/// Abandon a previously loaned slot.
 ///
 /// **Availability:** `lending`-only, and no shipped build enables it —
-/// see `nros_cpp_publisher_loan`. Issue 0814.
+/// see `nros_cpp_publisher_loan`.
 ///
 /// # Safety
 /// `storage` must be the publisher the token was loaned from. `token`
@@ -505,7 +504,7 @@ pub type nros_cpp_publisher_count_cb_t = Option<
 >;
 
 /// Register a liveliness-lost callback — rclcpp's
-/// `PublisherEventCallbacks::liveliness_callback`, issue 1993. Observed on the
+/// `PublisherEventCallbacks::liveliness_callback`. Observed on the
 /// publisher's poll points (publish, `assert_liveliness`).
 ///
 /// Returns `NROS_CPP_RET_OK`, `NROS_CPP_RET_INVALID_ARGUMENT` (NULL storage or
@@ -535,7 +534,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_set_liveliness_lost(
 }
 
 /// Register an offered-deadline-missed callback — rclcpp's
-/// `PublisherEventCallbacks::deadline_callback`, issue 1993. `deadline_ms`
+/// `PublisherEventCallbacks::deadline_callback`. `deadline_ms`
 /// reaches the backend's registration (zenoh uses it when the QoS states no
 /// deadline; Cyclone DDS takes the QoS deadline). Same returns as
 /// [`nros_cpp_publisher_set_liveliness_lost`].
@@ -648,7 +647,7 @@ unsafe fn publisher_set_slot(
 }
 
 /// Register a matched callback — rclcpp's
-/// `PublisherEventCallbacks::matched_callback`, issue 1972. Observed on the
+/// `PublisherEventCallbacks::matched_callback`. Observed on the
 /// publisher's poll points (publish, `assert_liveliness`).
 ///
 /// # Safety
@@ -672,7 +671,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_set_matched(
 }
 
 /// Register an incompatible-type callback — rclcpp's
-/// `PublisherEventCallbacks::incompatible_type_callback`, issue 1972.
+/// `PublisherEventCallbacks::incompatible_type_callback`.
 ///
 /// # Safety
 /// See [`nros_cpp_publisher_set_matched`].
@@ -694,15 +693,15 @@ pub unsafe extern "C" fn nros_cpp_publisher_set_incompatible_type(
     }
 }
 
-/// Phase 108.B.7 — manually assert this publisher's liveliness.
+/// Manually assert this publisher's liveliness.
 ///
 /// Required for entities created with QoS `liveliness_kind =
 /// MANUAL_BY_TOPIC` / `MANUAL_BY_NODE`; nothing to assert otherwise, and
 /// those answer `OK` on every backend.
 ///
 /// **`NROS_CPP_RET_UNSUPPORTED` under a manual kind on a backend with no
-/// per-topic lease** (zenoh-pico, XRCE-DDS, uORB) — the phase-467 RMW
-/// gap-closure design study's Row 7. This doc said "Backends without
+/// per-topic lease** (zenoh-pico, XRCE-DDS, uORB).
+/// This doc used to say "Backends without
 /// manual-assertion wiring return `OK` (the trait default)", and the mapping
 /// below flattened every error to `NROS_CPP_RET_ERROR`, so neither half of
 /// the answer reached a C++ caller. cyclonedds performs the assertion for
@@ -728,11 +727,11 @@ pub unsafe extern "C" fn nros_cpp_publisher_assert_liveliness(
 /// This publisher's own global identifier — upstream
 /// `rmw_get_gid_for_publisher`, `rclcpp::PublisherBase::get_gid`.
 ///
-/// The phase-467 RMW gap-closure design study's Q1. Writes 24 bytes into
+/// Writes 24 bytes into
 /// `out_gid` and touches nothing on any other verdict.
 ///
 /// Upstream returns `const rmw_gid_t &`, which cannot fail. Ours can and must
-/// (RFC-0018: no exceptions, caller-placed storage), so the value leaves
+/// (no exceptions, caller-placed storage), so the value leaves
 /// through an out-param and the verdict through the return code.
 ///
 /// * `NROS_CPP_RET_OK` — 24 bytes written
@@ -767,7 +766,7 @@ pub unsafe extern "C" fn nros_cpp_publisher_get_gid(
     }
 }
 
-/// The QoS profile this publisher is ACTUALLY running — issue 1437.
+/// The QoS profile this publisher is ACTUALLY running.
 ///
 /// `rmw_publisher_get_actual_qos`: what the backend GRANTED, which differs
 /// from the request whenever the backend serves something else (zenoh clamps

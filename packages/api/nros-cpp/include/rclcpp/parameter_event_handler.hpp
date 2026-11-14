@@ -4,10 +4,10 @@
 /**
  * @file parameter_event_handler.hpp
  * @ingroup grp_params
- * @brief `rclcpp::ParameterEventHandler` (issue 2024). The `rclcpp::Parameter`
- *        it hands its callbacks is `rclcpp/parameter_value.hpp`'s (issue 2056).
+ * @brief `rclcpp::ParameterEventHandler`. The `rclcpp::Parameter`
+ *        it hands its callbacks is `rclcpp/parameter_value.hpp`'s.
  *
- * Every surface PUBLISHES `/parameter_events` since issue 2023. This is the
+ * Every surface PUBLISHES `/parameter_events`. This is the
  * subscribing half: one `rcl_interfaces/msg/ParameterEvent` subscription per
  * handler, created on the node through `Node::create_subscription` (so the
  * entity inventory counts it like any other subscription), and two kinds of
@@ -59,7 +59,7 @@
 #endif
 
 #ifndef NROS_PARAM_EVENT_RX_BYTES
-/// Issue 2024 — the receive buffer of a `ParameterEventHandler`'s
+/// The receive buffer of a `ParameterEventHandler`'s
 /// `/parameter_events` subscription, in bytes. A frame larger than this (a
 /// peer announcing many parameters, or long string arrays, in ONE event) is
 /// truncated and therefore dropped. Hosted only, so the default is generous;
@@ -67,7 +67,7 @@
 #define NROS_PARAM_EVENT_RX_BYTES 4096
 #endif
 #if NROS_PARAM_EVENT_RX_BYTES < 1
-// issue 1015 -- a zero here sizes a C array to nothing.
+// A zero here sizes a C array to nothing.
 #error "NROS_PARAM_EVENT_RX_BYTES must be >= 1: it sizes a C array"
 #endif
 
@@ -86,7 +86,7 @@ struct ParameterEventHandleNoCopy {
     ParameterEventHandleNoCopy& operator=(const ParameterEventHandleNoCopy&) = delete;
 };
 
-/// Issue 2024 — the `/parameter_events` subscription's message type: the raw
+/// The `/parameter_events` subscription's message type: the raw
 /// CDR frame. The handler decodes it itself (`ParameterEventDecoder`), and an
 /// event callback's own `EventT::ffi_deserialize` reads it again.
 struct ParameterEventFrame {
@@ -111,12 +111,12 @@ struct ParameterEventFrame {
 } // namespace detail
 
 // `rclcpp::Parameter`, what a parameter callback receives, is the ONE
-// value object in `rclcpp/parameter_value.hpp` (issue 2056): the node's own
-// `get_parameter` and on-set callback hand back the same type. Issue 2024
-// landed a second, event-only `Parameter` here the same day; the decoder below
+// value object in `rclcpp/parameter_value.hpp`: the node's own
+// `get_parameter` and on-set callback hand back the same type. A second,
+// event-only `Parameter` once landed here the same day; the decoder below
 // builds the shared one instead.
 
-/// `rclcpp::ParameterEventCallbackHandle` — issue 2024: the owning handle
+/// `rclcpp::ParameterEventCallbackHandle`: the owning handle
 /// `ParameterEventHandler::add_parameter_event_callback` returns, as a
 /// `SharedPtr` on a hosted build. Dropping every copy unregisters the
 /// callback (the handler keeps a weak reference).
@@ -140,7 +140,7 @@ struct ParameterEventCallbackHandle : private detail::ParameterEventHandleNoCopy
     void (*free_)(void*) = nullptr;
 };
 
-/// `rclcpp::ParameterCallbackHandle` — issue 2114: the owning handle
+/// `rclcpp::ParameterCallbackHandle`: the owning handle
 /// `ParameterEventHandler::add_parameter_callback` returns, as a `SharedPtr`
 /// on a hosted build, for one parameter of one node. Dropping every copy
 /// unregisters the callback (the handler keeps a weak reference).
@@ -170,9 +170,9 @@ struct ParameterCallbackHandle : private detail::ParameterEventHandleNoCopy {
 #ifdef NROS_CPP_STD // hosted-family: container-interop
 namespace detail {
 
-/// Issue 2024 — a little-endian CDR reader over one `rcl_interfaces/msg/ParameterEvent`
+/// A little-endian CDR reader over one `rcl_interfaces/msg/ParameterEvent`
 /// frame, enough to build `rclcpp::Parameter`s. Any short read fails the
-/// whole frame: a truncation is not "no parameters" (issue 0223's rule).
+/// whole frame: a truncation is not "no parameters".
 struct ParameterEventDecoder {
     const uint8_t* p;
     size_t len;
@@ -305,13 +305,13 @@ template <typename R, typename A> struct param_event_arg<R (*)(A)> {
 
 using ParameterEventFn = ::std::function<void(const uint8_t*, size_t)>;
 
-/// Issue 2080 — a generated string field (`rclcpp::FixedString<N>`,
+/// A generated string field (`rclcpp::FixedString<N>`,
 /// `rclcpp::HeapString` or `std::string`) as a `std::string`.
 template <typename S>::std::string param_msg_string(const S& s) {
     return ::std::string(s.c_str(), s.length());
 }
 
-/// Issue 2080 — upstream's `rclcpp::Parameter::from_parameter_msg` over the
+/// upstream's `rclcpp::Parameter::from_parameter_msg` over the
 /// caller's GENERATED `rcl_interfaces::msg::Parameter` (any type with that
 /// message's fields): the same conversion `ParameterEventDecoder::parameter`
 /// applies to the wire frame.
@@ -402,7 +402,7 @@ struct ParameterEventHandlerAccess {
 } // namespace detail
 #endif
 
-/// `rclcpp::ParameterEventHandler` — issue 2024, HOSTED.
+/// `rclcpp::ParameterEventHandler` — HOSTED.
 ///
 /// One `/parameter_events` subscription (`rcl_interfaces/msg/ParameterEvent`)
 /// on the node it is constructed with, and two kinds of callback on it; see
@@ -425,7 +425,7 @@ class ParameterEventHandler {
     using SharedPtr = ::std::shared_ptr<ParameterEventHandler>;
 
     /// `rclcpp::ParameterCallbackHandle`, also reachable through the handler
-    /// (the name nano-ros nested it under before issue 2114).
+    /// (the name nano-ros used to nest it under).
     using ParameterCallbackHandle = ::rclcpp::ParameterCallbackHandle;
     using ParameterCallbackType = ParameterCallbackHandle::ParameterCallbackType;
 
@@ -502,8 +502,8 @@ class ParameterEventHandler {
         return h;
     }
 
-    /// `get_parameter_from_event(event, parameter, parameter_name, node_name = "")`
-    /// (issue 2080): when `event.node == node_name` and `parameter_name` is
+    /// `get_parameter_from_event(event, parameter, parameter_name, node_name = "")`:
+    /// when `event.node == node_name` and `parameter_name` is
     /// among the event's new or changed parameters, writes it to `parameter`
     /// and returns true; false otherwise. As upstream, `node_name` is compared
     /// verbatim (no namespace resolution) — pass the fully qualified name.
@@ -533,8 +533,8 @@ class ParameterEventHandler {
         return false;
     }
 
-    /// `get_parameter_from_event(event, parameter_name, node_name = "")`
-    /// (issue 2080): the parameter, or `Parameter(parameter_name)` (type
+    /// `get_parameter_from_event(event, parameter_name, node_name = "")`:
+    /// the parameter, or `Parameter(parameter_name)` (type
     /// `PARAMETER_NOT_SET`) when the event does not carry it. Upstream THROWS
     /// `std::runtime_error` when `node_name` is not the event's node; nothing
     /// here throws, so that case also returns the `NOT_SET` parameter — call
@@ -549,7 +549,7 @@ class ParameterEventHandler {
         return p;
     }
 
-    /// `get_parameters_from_event(event)` (issue 2080): every new and changed
+    /// `get_parameters_from_event(event)`: every new and changed
     /// parameter of `event`, in that order (deleted ones are not included, as
     /// upstream). `ParameterEventT` as for `get_parameter_from_event`.
     template <typename ParameterEventT>
@@ -572,7 +572,7 @@ class ParameterEventHandler {
             });
     }
 #else
-    /// **REFUSED** on a freestanding build (issue 2024): its callbacks are
+    /// **REFUSED** on a freestanding build: its callbacks are
     /// `std::function`s, its handles `shared_ptr`s and the parameters it
     /// decodes hold `std::string` / `std::vector` values.
     template <typename N, typename... Rest> explicit ParameterEventHandler(N&&, Rest&&...) {

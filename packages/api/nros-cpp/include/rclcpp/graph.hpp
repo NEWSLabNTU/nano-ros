@@ -1,18 +1,18 @@
-// nros-cpp: graph value types (phase-417 stage 2b, RFC-0089)
+// nros-cpp: graph value types
 // Freestanding C++14 — no exceptions, no RTTI, no STL, no allocation.
 //
 // The graph QUERIES live on `rclcpp::Executor` (`executor.hpp:205-301`) because
-// one session per image makes the executor the graph's receiver (RFC-0002);
+// one session per image makes the executor the graph's receiver;
 // `rclcpp::Node` and the lifecycle engine forward to it so a ported rclcpp file
 // reaches them where rclcpp puts them, on the node. This header holds the one
 // thing those calls need that the FFI does not already give C++ a name for: a
 // value type for a discovered endpoint.
 //
-// RFC-0019: the Rust API is the implementation source of truth. Nothing here
+// The Rust API is the implementation source of truth. Nothing here
 // implements graph behaviour — `TopicEndpointInfo` copies an FFI struct and
 // renames its fields to rclcpp's accessors, and the trampoline converts and
-// delegates. Both are ergonomics, which RFC-0089 §"Who implements an adopted
-// name" allows in the wrapper; behaviour is not.
+// delegates. Both are ergonomics, which the adoption rule
+// allows in the wrapper; behaviour is not.
 
 /**
  * @file graph.hpp
@@ -47,7 +47,7 @@ enum class EndpointType : uint8_t {
 ///
 /// Handed to the visitor of `get_publishers_info_by_topic` /
 /// `get_subscriptions_info_by_topic`. rclcpp returns a
-/// `std::vector<TopicEndpointInfo>`; there is no allocator here (RFC-0022), so
+/// `std::vector<TopicEndpointInfo>`; there is no allocator here, so
 /// the same information streams one endpoint at a time and this is the element.
 ///
 /// **Copyable, but the three strings BORROW the backend's own storage for the
@@ -63,7 +63,7 @@ enum class EndpointType : uint8_t {
 /// grant, so reporting it would be the plausible wrong answer the omission
 /// exists to avoid. The accessor is absent rather than present-and-empty: a
 /// ported file that asks for it fails to COMPILE instead of reading a QoS
-/// nobody granted (RFC-0089's rule — never compile and differ). Cyclone can
+/// nobody granted (never compile and differ). Cyclone can
 /// read a real grant and will need one; adding it then is additive.
 class TopicEndpointInfo {
   public:
@@ -134,7 +134,7 @@ static_assert(sizeof(nros_cpp_endpoint_info_t::endpoint_gid) == kEndpointGidSize
 ///
 /// A plain function pointer plus an opaque `ctx`, not a `std::function`: these
 /// headers compile `-nostdinc++` against Zephyr's minimal libcpp, where
-/// `<functional>` does not exist (issue 0112), and a `std::function` is a heap
+/// `<functional>` does not exist, and a `std::function` is a heap
 /// allocation per registration.
 using TopicEndpointInfoVisitFn = bool (*)(void* ctx, const TopicEndpointInfo& info);
 

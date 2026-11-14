@@ -1,4 +1,4 @@
-//! phase-313 — force-link for the RECORDING backend (`metadata-mode`).
+//! Force-link for the RECORDING backend (`metadata-mode`).
 //!
 //! `nros-cpp` is the C++ umbrella's staticlib root, so an optional dependency
 //! nothing references is dead-code-eliminated out of `libnros_cpp.a`: the
@@ -6,10 +6,10 @@
 //! `.init_array` self-registration was never in the image. This anchor keeps it.
 //!
 //! The TRANSPORT backends used to be force-linked here too, one `cfg` arm per
-//! backend. RFC-0071 D9 (phase-506 W4d) moved that to the image crate
+//! backend. That moved to the image crate
 //! `cmake/NanoRosImageCrate.cmake` generates, which depends on the backend the
 //! image's descriptor names and anchors its `register()` itself — so this crate
-//! names no backend (issue 1297). The recorder stays: it is not a backend an
+//! names no backend. The recorder stays: it is not a backend an
 //! image selects, it is what `metadata-mode` means.
 
 #[used]

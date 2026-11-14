@@ -1,7 +1,7 @@
 /**
  * @file main.h
  * @ingroup grp_node
- * @brief Phase 219.E — `<rclc/detail/main.h>` Entry-pkg header (C variant).
+ * @brief `<rclc/detail/main.h>` Entry-pkg header (C variant).
  *
  * Symmetric to `<rclcpp/detail/main.hpp>`: the cmake fn `nano_ros_entry(LAUNCH
  * "<bringup>:<file>.launch.xml")` drives per-Entry-pkg codegen via
@@ -16,10 +16,10 @@
  *
  *   2. the typed C Entry lifecycle the generated TU calls —
  *      `nros_board_rtos_run_components` and the per-RTOS
- *      `nros_board_<rtos>_run_sched_tasks` (Phase 257 retired the
+ *      `nros_board_<rtos>_run_sched_tasks` (an earlier change retired the
  *      ~~`nros_board_native_run(nros_node_register_fn entry)`~~ adapter).
  *
- * Phase 212.L.2 keeps Entry pkgs `native`-only at the cmake surface
+ * Entry pkgs stay `native`-only at the cmake surface
  * for v1.
  */
 
@@ -29,7 +29,7 @@
 #include "rclc/detail/node_pkg.h"
 #include "rclc/visibility_control.h"
 
-/* phase-432 W3.1 — the compile-time connect configuration, one ladder, in the
+/* The compile-time connect configuration, one ladder, in the
  * header that DECLARES the entry points whose contract names it.
  *
  * `nros_board_rtos_run_components` and every `nros_board_<rtos>_run_sched_tasks`
@@ -56,7 +56,7 @@
 extern "C" {
 #endif
 
-/* Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle. The C-ABI sibling of
+/* Typed C Entry lifecycle. The C-ABI sibling of
  * the C++ `LinuxBoard::run_components`; the generated typed C TU (emitted by
  * `nros dev codegen entry --lang c --typed`) calls this from `main`. `setup` is
  * invoked once after `init`, with the executor handle, to create each node and
@@ -66,7 +66,7 @@ extern "C" {
 typedef int32_t (*nros_c_entry_setup_fn)(void* executor);
 NROS_PUBLIC int32_t nros_board_native_run_components(nros_c_entry_setup_fn setup);
 
-/* Phase 266 (W5b) — named variant: `session_name` sets the primary session /
+/* Named variant: `session_name` sets the primary session /
  * node name visible via `ros2 node list` (the #98 fix for C entries). NULL or
  * empty → falls back to `"node"`. The generated typed C entry (emitted by
  * `nros dev codegen entry --lang c --typed`) calls this from `main`, passing
@@ -74,26 +74,26 @@ NROS_PUBLIC int32_t nros_board_native_run_components(nros_c_entry_setup_fn setup
 NROS_PUBLIC int32_t nros_board_native_run_components_named(const char* session_name,
                                                            nros_c_entry_setup_fn setup);
 
-/* Issue 1434 — the same runner, plus the primary session's NAMESPACE.
+/* The same runner, plus the primary session's NAMESPACE.
  *
  * `node_namespace` is the launch-declared namespace the generated entry reads
  * out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or empty
  * means the image declares none, which resolves to the ROOT — never to the
  * empty namespace, which would read as "configured to nothing" to every rung
- * above it. Both identity fields are the BAKED rung of RFC-0045's precedence
- * model A; this runner is HOSTED, so `$NROS_NODE_NAME` and
+ * above it. Both identity fields are the BAKED rung of the boot-config precedence
+ * ladder; this runner is HOSTED, so `$NROS_NODE_NAME` and
  * `$NROS_NODE_NAMESPACE` still outrank them.
  *
  * Additive rather than a third parameter above, for the reason
- * `nros_cpp_init_rmw` is additive over `nros_cpp_init` (issue 1050): an entry
+ * `nros_cpp_init_rmw` is additive over `nros_cpp_init`: an entry
  * TU generated before this existed still calls the two-parameter spelling.
  * Defined in nros-cpp. */
 NROS_PUBLIC int32_t nros_board_native_run_components_named_ns(const char* session_name,
                                                               const char* node_namespace,
                                                               nros_c_entry_setup_fn setup);
 
-/* Issue 1597 — the same runner over CALLER-SUPPLIED executor storage: the host
- * twin of `nros_board_rtos_run_components_in` below (issue 1568), and the one a
+/* The same runner over CALLER-SUPPLIED executor storage: the host
+ * twin of `nros_board_rtos_run_components_in` below, and the one a
  * generated native C entry calls. `executor_storage` is `storage_bytes` bytes,
  * 8-byte aligned — the entry's `__nros_executor_storage` static, sized from the
  * per-build NROS_CPP_EXECUTOR_STORAGE_SIZE. A block the linked library says is
@@ -106,7 +106,7 @@ NROS_PUBLIC int32_t nros_board_native_run_components_named_in(const char* sessio
                                                               void* executor_storage,
                                                               size_t storage_bytes);
 
-/* Phase 274.W2 (RFC-0015 Model 1) — per-sched-task spec for
+/* Per-sched-task spec for
  * `nros_board_native_run_sched_tasks`.
  *
  * `name`           — sched task name (null-terminated), informational.
@@ -116,7 +116,7 @@ NROS_PUBLIC int32_t nros_board_native_run_components_named_in(const char* sessio
  * `n_groups`       — number of TRIPLES, so the array holds three times this
  *                    many strings.
  *
- *                    issue 1172 — the key used to be the group NAME alone, so
+ *                    The key used to be the group NAME alone, so
  *                    two nodes' `ctrl` were one key and a sched task naming either
  *                    admitted both. It is flat rather than an array of structs
  *                    so this struct stays byte-identical across its eight
@@ -128,12 +128,12 @@ NROS_PUBLIC int32_t nros_board_native_run_components_named_in(const char* sessio
  * `setup`          — called once on the sched task thread (after set_active_groups)
  *                    with the sched task executor handle; returns 0 on success or
  *                    NULL to skip setup (sched task receives no nodes of its own).
- * `core_plus1`     — RFC-0052 W2: CPU pin + 1; 0 = unpinned. Consumed where
+ * `core_plus1`     — CPU pin + 1; 0 = unpinned. Consumed where
  *                    the kernel offers affinity (SMP builds); ignored with a
  *                    note on uniprocessor targets.
  * `preempt_threshold` — ThreadX preemption threshold; -1 = unset. Bake-time
  *                    validated ThreadX-only (other targets never see it).
- * `sched_task_class`     — phase-296 W5.7 append: RTOS-agnostic scheduling class
+ * `sched_task_class`     — appended field: RTOS-agnostic scheduling class
  *                    ("best_effort" | "real_time" | "time_triggered");
  *                    NULL = unset. Static string from codegen.
  * `period_us` / `budget_us` / `deadline_us` — generic real-time policy
@@ -154,7 +154,7 @@ typedef struct {
     nros_c_entry_setup_fn setup;
     uint32_t core_plus1;
     int64_t preempt_threshold;
-    /* phase-296 W5.7 — appended. THIS DECLARATION IS CANONICAL. The struct is
+    /* appended. THIS DECLARATION IS CANONICAL. The struct is
      * mirrored by hand in five more places — main.hpp `NativeSchedTaskSpec`,
      * nros-cpp `NativeSchedTaskSpecC`, and the THREE board `nros_sched_task_spec_t`
      * mirrors (zephyr / nuttx-qemu / freertos) — and initialised by the two
@@ -162,8 +162,8 @@ typedef struct {
      * shifts every field after it in whichever mirror missed the edit.
      * Gated by `check-ffi-struct-mirrors` (push lane), which compares all
      * eight sites against this one; the templates use DESIGNATED
-     * initialisers so a rename is a compile error at the generated TU too
-     * (phase-432, RFC-0091 §5). */
+     * initialisers so a rename is a compile error at the generated TU too.
+     * */
     const char* sched_task_class;
     uint64_t period_us;
     uint64_t budget_us;
@@ -171,7 +171,7 @@ typedef struct {
     const char* deadline_policy;
 } nros_native_sched_task_spec_t;
 
-/* Phase 274.W2 (RFC-0015 Model 1) — run a multi-sched-task native entry over one
+/* Run a multi-sched-task native entry over one
  * shared RMW session. Opens ONE session on the boot thread; spawns one
  * std::thread per non-boot sched task, each with a borrowed executor (no second
  * RMW session, no double-close). Each sched task: open borrowed executor →
@@ -183,29 +183,29 @@ NROS_PUBLIC int32_t nros_board_native_run_sched_tasks(
     const char* session_name, const nros_native_sched_task_spec_t* sched_tasks,
     size_t n_sched_tasks);
 
-/* Issue 1442 — the same runner, plus the primary session's NAMESPACE.
+/* The same runner, plus the primary session's NAMESPACE.
  *
- * Issue 1434 threaded the launch-declared namespace to the single-executor
+ * An earlier change threaded the launch-declared namespace to the single-executor
  * runners and carved the sched-task ones out; this is that carve-out closed. The
  * parameter means exactly what it means one runner over
  * (`nros_board_native_run_components_named_ns`): NULL or empty is "this image
  * declares none", which resolves to the ROOT, never to the empty namespace.
- * It is the BAKED rung of RFC-0045's precedence model A, and this runner is
+ * It is the BAKED rung of the boot-config precedence ladder, and this runner is
  * HOSTED, so `$NROS_NODE_NAME` and `$NROS_NODE_NAMESPACE` still outrank it.
  *
  * The SESSION is what this names. A sched task's own nodes carry their own
  * `(name, namespace, group)` triples in `nros_native_sched_task_spec_t::groups`
- * (issue 1172) and are unaffected.
+ * and are unaffected.
  *
  * Additive rather than a fourth parameter above, for the reason
- * `nros_cpp_init_rmw` is additive over `nros_cpp_init` (issue 1050): an entry
+ * `nros_cpp_init_rmw` is additive over `nros_cpp_init`: an entry
  * TU generated before this existed still calls the three-parameter spelling.
  * Defined in nros-cpp. */
 NROS_PUBLIC int32_t nros_board_native_run_sched_tasks_ns(
     const char* session_name, const char* node_namespace,
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks);
 
-/* Issue 1597 — the same runner over CALLER-SUPPLIED executor storage, the RTOS
+/* The same runner over CALLER-SUPPLIED executor storage, the RTOS
  * runners' shape (`nros_board_zephyr_run_sched_tasks_in` below is the model).
  * `executor_storage` is `n_sched_tasks` blocks of `storage_stride` bytes; block `i`
  * is sched task `i`'s executor. The generated entry passes a file-scope static sized
@@ -219,7 +219,7 @@ NROS_PUBLIC int32_t nros_board_native_run_sched_tasks_in(
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks, void* executor_storage,
     size_t storage_stride);
 
-/* Phase 235.B — weak network-readiness hook for embedded board runners.
+/* Weak network-readiness hook for embedded board runners.
  *
  * Default: no-op. The canonical in-tree Zephyr path auto-brings-up networking
  * at boot (`CONFIG_NET_CONFIG_AUTO_INIT` — static IP / DHCP), and NuttX brings
@@ -229,7 +229,7 @@ NROS_PUBLIC int32_t nros_board_native_run_sched_tasks_in(
  * symbol, which the linker prefers over the weak default. Mirrors the
  * weak-default discipline already used for `nros_app_register_backends`.
  *
- * WHY THE DEFINITION LIVES IN THIS C HEADER (phase-432 W3.1 prerequisite).
+ * WHY THE DEFINITION LIVES IN THIS C HEADER.
  * It used to sit in `<rclcpp/detail/main.hpp>`, the C++ sibling, while the three RTOS
  * `run_sched_tasks.c` files below call it `extern`. That linked only because every
  * generated embedded entry is a `.cpp` including `main.hpp`, so the weak body
@@ -240,7 +240,7 @@ NROS_PUBLIC int32_t nros_board_native_run_sched_tasks_in(
  * `main.hpp` includes this header, so there is still exactly ONE definition
  * and the C++ path is byte-for-byte what it was; the C path now reaches the
  * same one. A separate C stub TU would have been a SECOND spelling of one
- * symbol — the defect class phase-432 exists to remove — and would also have
+ * symbol — the defect class this header exists to remove — and would also have
  * depended on archive extraction pulling a member nothing else references.
  * A header-emitted weak definition has no link-graph dependency at all: the
  * entry TU that includes this header emits it, exactly as the C++ TU did.
@@ -256,7 +256,7 @@ void nros_board_network_wait(void);
 __attribute__((weak)) void nros_board_network_wait(void) {}
 #endif
 
-/* Phase 274.W3 (RFC-0015 Model 1) — run a multi-sched-task embedded C/C++ entry on
+/* Run a multi-sched-task embedded C/C++ entry on
  * FreeRTOS: open ONE RMW session, spawn one FreeRTOS task per non-boot sched task
  * (each with a borrowed executor sharing the session), run the boot sched task on the
  * caller's task (the startup.c app task). `locator` is the connect endpoint;
@@ -266,7 +266,7 @@ NROS_PUBLIC int32_t nros_board_freertos_run_sched_tasks(
     const char* locator, uint8_t domain_id, const char* session_name,
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks);
 
-/* Issue 1442 — the same runner, plus the primary session's NAMESPACE.
+/* The same runner, plus the primary session's NAMESPACE.
  *
  * `node_namespace` is the launch-declared namespace the generated entry reads
  * out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or
@@ -276,13 +276,13 @@ NROS_PUBLIC int32_t nros_board_freertos_run_sched_tasks(
  * baked by cmake through `<rclc/detail/entry_config.h>`.
  *
  * Additive rather than a fifth parameter above: an entry TU generated before
- * this existed still calls the four-parameter spelling (issue 1050's rule).
+ * this existed still calls the four-parameter spelling.
  * Same file, same lane. */
 NROS_PUBLIC int32_t nros_board_freertos_run_sched_tasks_ns(
     const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks);
 
-/* Issue 1568 — the same runner over CALLER-SUPPLIED executor storage, and the
+/* The same runner over CALLER-SUPPLIED executor storage, and the
  * one a generated sched-task FreeRTOS entry calls. Zephyr's
  * `nros_board_zephyr_run_sched_tasks_in` below is the model, and the contract is
  * the same: `executor_storage` is `n_sched_tasks` blocks of `storage_stride` bytes,
@@ -299,7 +299,7 @@ NROS_PUBLIC int32_t nros_board_freertos_run_sched_tasks_in(
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks, void* executor_storage,
     size_t storage_stride);
 
-/* Issues 1598 + 1232 — one sched task's memory, owned by the generated entry:
+/* One sched task's memory, owned by the generated entry:
  * the task's stack and its control block, as statics the linker places, prices
  * and `mem-report` names. THIS DECLARATION IS CANONICAL; the RTOS sched task runners
  * (compiled where no nros header is in reach) mirror it, and each asserts the
@@ -309,7 +309,7 @@ NROS_PUBLIC int32_t nros_board_freertos_run_sched_tasks_in(
  *                 `k_thread_stack_t[]`); NULL means "this sched task has none" —
  *                 the boot sched task, which runs on the caller's own task.
  * `stack_bytes` — the size the kernel is handed, in bytes. The entry's macro
- *                 has already applied the port's floor (issue 0667: the floor
+ *                 has already applied the port's floor (the floor
  *                 belongs to the port, so the declared size is raised, never
  *                 refused) and, on Zephyr, the kernel's reserved area.
  * `tcb`         — FreeRTOS `StaticTask_t*` / Zephyr `struct k_thread*`.
@@ -322,7 +322,7 @@ typedef struct {
     void* tcb;
 } nros_sched_task_memory_t;
 
-/* Issue 1598 — the same runner, plus each sched task's memory from the entry,
+/* The same runner, plus each sched task's memory from the entry,
  * and the one a generated sched-task FreeRTOS entry calls. `task_memory[i]` is
  * `sched_tasks[i]`'s: every SPAWNED sched task is `xTaskCreateStatic`d over its stack and
  * TCB (no heap_4 block; stacks that do not fit RAM fail at LINK), and the boot
@@ -334,7 +334,7 @@ NROS_PUBLIC int32_t nros_board_freertos_run_sched_tasks_memory_in(
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks, void* executor_storage,
     size_t storage_stride, const nros_sched_task_memory_t* task_memory);
 
-/* phase-432 W3.1 — run a SINGLE-executor embedded C entry on ANY RTOS board:
+/* Run a SINGLE-executor embedded C entry on ANY RTOS board:
  * the C-ABI twin of `rclcpp::board::<Rtos>Board::run_components`, so a C-only
  * consumer (certified C compiler, MISRA-style, no C++ runtime) can boot an
  * image without a C++ toolchain in the build.
@@ -367,7 +367,7 @@ NROS_PUBLIC int32_t nros_board_rtos_run_components(const char* locator, uint8_t 
                                                    const char* session_name,
                                                    nros_c_entry_setup_fn setup);
 
-/* Issue 1434 — the same runner, plus the primary session's NAMESPACE.
+/* The same runner, plus the primary session's NAMESPACE.
  *
  * `node_namespace` is the launch-declared namespace the generated entry reads
  * out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or empty
@@ -383,7 +383,7 @@ NROS_PUBLIC int32_t nros_board_rtos_run_components_ns(const char* locator, uint8
                                                       const char* node_namespace,
                                                       nros_c_entry_setup_fn setup);
 
-/* Issue 1568 — the same runner over CALLER-SUPPLIED executor storage, and the
+/* The same runner over CALLER-SUPPLIED executor storage, and the
  * one a generated C entry calls: the sched-task runners' method with one block.
  * `executor_storage` is `storage_bytes` bytes, 8-byte aligned; the entry
  * passes a `.bss` static sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE` — the C
@@ -397,7 +397,7 @@ NROS_PUBLIC int32_t nros_board_rtos_run_components_in(const char* locator, uint8
                                                       nros_c_entry_setup_fn setup,
                                                       void* executor_storage, size_t storage_bytes);
 
-/* phase-281 W3a (RFC-0015 Model 1) — run a multi-sched-task embedded C/C++ entry on
+/* Run a multi-sched-task embedded C/C++ entry on
  * Zephyr: open ONE RMW session on the caller's thread (the Zephyr `main()`
  * thread), spawn one `k_thread` per non-boot sched task via the
  * `nros_zephyr_sched_task_create` shim (each with a borrowed executor sharing
@@ -410,15 +410,15 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_sched_tasks(
     const char* locator, uint8_t domain_id, const char* session_name,
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks);
 
-/* Issue 1442 — the same runner, plus the primary session's NAMESPACE. Same
+/* The same runner, plus the primary session's NAMESPACE. Same
  * contract as `nros_board_freertos_run_sched_tasks_ns` above: NULL or empty resolves
  * to the ROOT, the bake is the only rung on an RTOS, locator and domain stay
- * the board's. Additive for issue 1050's reason. */
+ * the board's. Additive, so an older generated entry still compiles. */
 NROS_PUBLIC int32_t nros_board_zephyr_run_sched_tasks_ns(
     const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks);
 
-/* Issue 1551 — the same runner over CALLER-SUPPLIED executor storage, and the
+/* The same runner over CALLER-SUPPLIED executor storage, and the
  * one a generated sched-task Zephyr entry calls.
  *
  * `executor_storage` is `n_sched_tasks` consecutive blocks of `storage_stride`
@@ -439,7 +439,7 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_sched_tasks_in(
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks, void* executor_storage,
     size_t storage_stride);
 
-/* Issue 1232 — the same runner, plus each sched task's memory from the entry,
+/* The same runner, plus each sched task's memory from the entry,
  * and the one a generated sched-task Zephyr entry calls. `task_memory[i]` is
  * `sched_tasks[i]`'s thread object + `K_THREAD_STACK_DEFINE` stack, sized from the
  * sched task's declared `stack_bytes` (`<rclc/detail/sched_task_memory_zephyr.h>`), so the
@@ -452,7 +452,7 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_sched_tasks_memory_in(
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks, void* executor_storage,
     size_t storage_stride, const nros_sched_task_memory_t* task_memory);
 
-/* Issue 1970 — one sched task's own executor backing, owned by the generated entry:
+/* One sched task's own executor backing, owned by the generated entry:
  * `bytes` from the per-build header's NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>, 8-aligned.
  * The array a runner takes is indexed by SCHED TASK. */
 typedef struct {
@@ -460,7 +460,7 @@ typedef struct {
     size_t bytes;
 } nros_sched_task_backing_t;
 
-/* Issue 1970 — `_tasks_in` for an image whose per-build header publishes
+/* `_tasks_in` for an image whose per-build header publishes
  * NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>: each sched task's executor is carved from
  * `backings[i]`, sized for what that sched task hosts, and the `storage_stride`
  * blocks hold the sched tasks' contexts only (they carry no inline backing on such an
@@ -472,9 +472,9 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_sched_tasks_backed_in(
     size_t storage_stride, const nros_sched_task_backing_t* backings,
     const nros_sched_task_memory_t* task_memory);
 
-/* phase-509 P9 (RFC-0108) — the bytes a core's level scheduler takes for `n`
+/* The bytes a core's level scheduler takes for `n`
  * levels: an 8-byte head, the session and the core's one executor, then one
- * seat per level, rounded up to 8. phase-509 P9b: a seat is the level's WORKER
+ * seat per level, rounded up to 8. A seat is the level's WORKER
  * (its record, its wake object's waiter, the executor it works on, its stack
  * bytes, its name), at most 8 pointers + 40 bytes on every target; this
  * reserves that bound, and `nros_cpp_scheduler_backing_size(n)` (the exact
@@ -483,12 +483,12 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_sched_tasks_backed_in(
 #define NROS_CPP_SCHEDULER_BACKING_SIZE(n)                                                         \
     (((8u + 2u * sizeof(void*) + (size_t)(n) * (8u * sizeof(void*) + 40u)) + 7u) & ~(size_t)7u)
 
-/* phase-509 P9 (RFC-0108 D3; the amended RFC-0107 step 5) — the runner a
+/* The runner a
  * generated Zephyr entry calls: each row of `sched_tasks` is one LEVEL (a derived
  * level, or an authored sched task, which is one band). The boot level owns the
  * session; the core's scheduler, held in `scheduler_backing`
  * (`NROS_CPP_SCHEDULER_BACKING_SIZE_0` bytes, the entry's static), seats every
- * level. phase-509 P9b (RFC-0108 "As built in P9b"): the boot level opens the
+ * level. The boot level opens the
  * core's ONE executor -- block 0 of `executor_storage`, carved from
  * `backings[0]` (the entry's NROS_CPP_LEVELS_BACKING_SIZE static) when the
  * build sizes its levels, else inline -- and every spawned level is a WORKER
@@ -502,7 +502,7 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_levels_in(
     size_t storage_stride, const nros_sched_task_backing_t* backings,
     const nros_sched_task_memory_t* task_memory, void* scheduler_backing, size_t scheduler_bytes);
 
-/* phase-509 P10 (RFC-0108; the amended RFC-0107 step 6) -- the HOSTED level
+/* The HOSTED level
  * runner (`LinuxBoard::run_levels`): each row of `sched_tasks` is one level, placed
  * by its urgency (POSIX SCHED_FIFO, bigger is more urgent). The core's ONE
  * executor is block 0 of `executor_storage`, carved from `backings[0]` when
@@ -518,7 +518,7 @@ NROS_PUBLIC int32_t nros_board_native_run_levels_in(
     size_t storage_stride, const nros_sched_task_backing_t* backings,
     const nros_sched_task_memory_t* task_memory, void* scheduler_backing, size_t scheduler_bytes);
 
-/* phase-509 P10 (RFC-0108) -- the FreeRTOS level runner
+/* The FreeRTOS level runner
  * (`FreertosBoard::run_levels`): each row of `sched_tasks` is one level, placed by
  * its urgency (FreeRTOS, bigger is more urgent). The core's ONE executor is
  * block 0 of `executor_storage`, carved from `backings[0]` when the build
@@ -536,13 +536,13 @@ NROS_PUBLIC int32_t nros_board_freertos_run_levels_in(
     size_t storage_stride, const nros_sched_task_backing_t* backings,
     const nros_sched_task_memory_t* task_memory, void* scheduler_backing, size_t scheduler_bytes);
 
-/* phase-281 W3 (nuttx) (RFC-0015 Model 1) — run a multi-sched-task embedded C/C++
+/* Run a multi-sched-task embedded C/C++
  * entry on NuttX: open ONE RMW session on the caller's thread (the NuttX
  * `app_main` thread), spawn one `pthread` per non-boot sched task (NuttX is POSIX —
  * SCHED_FIFO at the sched task's raw priority, per-sched-task stack; each with a borrowed
  * executor sharing the session), and run the boot sched task on the caller. NuttX
- * owns boot + networking (the board FFI main brings up eth0 before app_main,
- * phase-280), so there is no network bring-up. `locator` is the connect
+ * owns boot + networking (the board FFI main brings up eth0 before app_main),
+ * so there is no network bring-up. `locator` is the connect
  * endpoint; `domain_id` is the ROS domain id; `session_name` names the primary
  * session. Defined in nros-board-nuttx-qemu (compiled by the board's
  * build.rs via `nuttx_platform_build::compile_entry_seams`). */
@@ -550,15 +550,15 @@ NROS_PUBLIC int32_t nros_board_nuttx_run_sched_tasks(
     const char* locator, uint8_t domain_id, const char* session_name,
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks);
 
-/* Issue 1442 — the same runner, plus the primary session's NAMESPACE. Same
+/* The same runner, plus the primary session's NAMESPACE. Same
  * contract as `nros_board_freertos_run_sched_tasks_ns` above: NULL or empty resolves
  * to the ROOT, the bake is the only rung on an RTOS, locator and domain stay
- * the board's. Additive for issue 1050's reason. */
+ * the board's. Additive, so an older generated entry still compiles. */
 NROS_PUBLIC int32_t nros_board_nuttx_run_sched_tasks_ns(
     const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks);
 
-/* Issue 1568 — the same runner over CALLER-SUPPLIED executor storage, and the
+/* The same runner over CALLER-SUPPLIED executor storage, and the
  * one a generated sched-task NuttX entry calls; the contract is
  * `nros_board_freertos_run_sched_tasks_in`'s. This is also what retires a real
  * shortfall: the seam is compiled by `build.rs` with no nros header in reach,
@@ -566,14 +566,14 @@ NROS_PUBLIC int32_t nros_board_nuttx_run_sched_tasks_ns(
  * build measured at 88,560. The size is now the linked library's.
  *
  * On NuttX the entry's static is sized from the per-build header like every
- * other board's (issue 1569 — it used to be a committed upper-bound snapshot
+ * other board's (it used to be a committed upper-bound snapshot
  * that over-reserved), so it equals what the library checks. */
 NROS_PUBLIC int32_t nros_board_nuttx_run_sched_tasks_in(
     const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
     const nros_native_sched_task_spec_t* sched_tasks, size_t n_sched_tasks, void* executor_storage,
     size_t storage_stride);
 
-/* phase-509 P10 (RFC-0108) -- the NuttX level runner
+/* The NuttX level runner
  * (`NuttxBoard::run_levels`): each row of `sched_tasks` is one level, placed by its
  * urgency (SCHED_FIFO, bigger is more urgent). The core's ONE executor is block
  * 0 of `executor_storage`, carved from `backings[0]` when the build sizes its
@@ -594,7 +594,7 @@ NROS_PUBLIC int32_t nros_board_nuttx_run_levels_in(
 } /* extern "C" */
 #endif
 
-/* Phase 536 W2 -- the old "tier" names, kept one release (RFC-0052 "Names").
+/* The old "tier" names, kept one release.
  * A scheduling tier is a sched task now: each old name below still compiles,
  * with a warning naming the new one. Define
  * `NROS_NO_DEPRECATED_TIER_NAMES` to drop them early. The struct field
@@ -647,7 +647,7 @@ typedef nros_sched_task_backing_t nros_tier_backing_t NROS_TIER_DEPRECATED_TYPE_
 // clang-format on
 #endif /* NROS_NO_DEPRECATED_TIER_NAMES */
 
-/* Phase 219.E — `NROS_MAIN_C(<board_id>, "<launch_spec>")` declarative
+/* `NROS_MAIN_C(<board_id>, "<launch_spec>")` declarative
  * marker. Expands to a sentinel TU-local symbol; the cmake fn detects
  * presence via `target_compile_definitions` to avoid double-emit when
  * the user wrote it. The generated TU (emitted by

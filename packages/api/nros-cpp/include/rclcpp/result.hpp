@@ -17,7 +17,7 @@
 #include "rclcpp/detail/traits.hpp"
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
 #include <cstdio>
-// <stdio.h> + unqualified `::fprintf` (issue 0942 / phase-472 W5): `<cstdio>` need not put
+// <stdio.h> + unqualified `::fprintf`: `<cstdio>` need not put
 // the C names in `std` on a freestanding libstdc++, and `std::fprintf` then fails.
 #include <stdio.h>
 #endif
@@ -35,7 +35,7 @@
 /// has, not the target what library it ships, and it never gates a MEMBER — so
 /// `sizeof(Result)` and `sizeof(ResultOf<T>)` are the same number in every
 /// configuration. That is the rule `scripts/check-cpp-capability-layout.sh`
-/// measures, both types are named in its list, and it is why phase-427 W8
+/// measures, both types are named in its list, and it is why the rule
 /// forbids this header a third capability gate. The two it has stay two:
 /// `<cstdio>` for the default `RCLCPP_TRY_LOG`, and the body of that macro.
 ///
@@ -77,9 +77,9 @@
 
 /// `NROS_CPP_DEPRECATED_MSG(msg)` — a deprecation that names its replacement.
 ///
-/// Phase-482 W6 retired every deprecated item and kept this for the next
+/// A cleanup retired every deprecated item and kept this for the next
 /// forwarder, so it does not get re-invented with a second spelling; its user
-/// now is `Publisher::publish_raw` (phase-515 C8).
+/// now is `Publisher::publish_raw`.
 /// Declared here because `result.hpp` is the one header every other
 /// `nros/*.hpp` already pulls in — the same reason `NROS_NODISCARD` lives above.
 ///
@@ -107,7 +107,7 @@ namespace rclcpp {
 /// Error codes returned by nros-cpp functions.
 ///
 /// Values match the C `nros_cpp_ret_t` enum in `<nros/nros_cpp_generated.h>`.
-/// Issue #229 — value-identical to the C `RCLC_RET_*` codes AND the
+/// Value-identical to the C `RCLC_RET_*` codes AND the
 /// `NROS_CPP_RET_*` FFI codes (one numbering across all three spaces), so
 /// `Result(<any C-ABI return>)` is correct by identity. The static_assert
 /// pin tables below and in parameter.hpp fail the build on re-divergence.
@@ -142,7 +142,7 @@ enum class ErrorCode : int32_t {
     /// Request was rejected — the peer considered it and declined.
     /// A goal rejected by an action server, or a QoS/ABI
     /// incompatibility. Distinct from `Error`, which means the
-    /// request never got that far (issue 0868).
+    /// request never got that far.
     Rejected = -13,
     /// Transient — no data ready yet (non-blocking take). Retry later.
     TryAgain = -14,
@@ -154,7 +154,7 @@ enum class ErrorCode : int32_t {
     TransportError = -100,
 };
 
-// Issue #229 pin (self-consistency half): the values above ARE the shared
+// Pin (self-consistency half): the values above ARE the shared
 // numbering. The cross-space asserts against the real C constants live in
 // parameter.hpp (vs NROS_RET_*) and node.hpp (vs NROS_CPP_RET_*), where
 // those headers are visible.
@@ -169,12 +169,12 @@ static_assert(static_cast<int32_t>(ErrorCode::NotFound) == -4 &&
 
 /// The result of a fallible operation: `Result` when it produces nothing,
 /// `ResultOf<T>` when it produces a value. This is the whole error channel —
-/// RFC-0018 forbids exceptions, so nothing here throws, and RFC-0089
-/// §"The error channel, settled" is the rule for which one an API picks.
+/// the C++ API has no exceptions, so nothing here throws, and the adoption
+/// rule's error-channel clause is the rule for which one an API picks.
 /// Use the RCLCPP_TRY macro for early return on error.
 ///
 /// ONE TEMPLATE, TWO SPELLINGS — and the second spelling is forced by the
-/// language rather than chosen. RFC-0089 asks for one template named `Result`,
+/// language rather than chosen. The adoption rule asks for one template named `Result`,
 /// the value-less case as `Result<void>`, and `Result` as its alias. C++
 /// cannot express that: an identifier in a scope is a class, a class template,
 /// or an alias, never two of those. Measured on gcc 12.3 and clang 14, every
@@ -195,7 +195,7 @@ static_assert(static_cast<int32_t>(ErrorCode::NotFound) == -4 &&
 /// specialization, and there are no longer two unrelated types to learn. Only
 /// the template's own spelling differs, because `Result` is what 1100+ call
 /// sites and the entire public API already write for the void case, and a bare
-/// name is the one worth keeping bare. phase-427 W8.
+/// name is the one worth keeping bare.
 ///
 /// The primary template is DECLARED here and defined below `Result`, because
 /// the value-less specialization is what `ResultOf<T>::error(const Result&)`
@@ -265,7 +265,7 @@ using Result = ResultOf<void>;
 /// Like RCLCPP_TRY but for callers that need a custom return value
 /// (e.g. `int main` examples returning 1 on failure).
 ///
-/// Phase 123.B.1 — when `NROS_CPP_STD` is defined (POSIX / Zephyr
+/// When `NROS_CPP_STD` is defined (POSIX / Zephyr
 /// native_sim / threadx-linux + any host with `<cstdio>`), the
 /// default logger writes `[nros] <file>:<line> <expr> -> <ret>` to
 /// `stderr` so first-time users see failures immediately. Embedded
@@ -306,8 +306,8 @@ using Result = ResultOf<void>;
         }                                                                                          \
     } while (0)
 
-/// `ResultOf<T>` — a fallible operation that produces a value (phase 123.B.4;
-/// this was `Expected<T>` until phase-427 W8 folded both halves of the error
+/// `ResultOf<T>` — a fallible operation that produces a value (this
+/// used to be `Expected<T>`, before a change folded both halves of the error
 /// channel into one template).
 ///
 /// Lets factory functions return constructed entities by value
@@ -366,18 +366,18 @@ template <typename T> class NROS_NODISCARD ResultOf {
 } // namespace rclcpp
 
 // ============================================================================
-// rclcpp:: — the ROS 2 spelling (RFC-0089 stage 6, step A)
+// rclcpp:: — the ROS 2 spelling
 // ============================================================================
 //
 // Moved here from `nros/rclcpp_compat.hpp`, which no longer carries a surface
-// of its own: RFC-0089 §"Naming: replace, with alias as the migration step"
+// of its own: the adoption rule (replace, with an alias as the migration step)
 // makes the ROS 2 spelling a first-class name declared by the API header that
 // owns the concept, at which point a shim has nothing left to bridge.
 
 // `rclcpp::Result` is NOT an upstream rclcpp name — it is a convenience the
 // compat header carried, kept here because step A must not lose anything. It
-// re-exported `nros::Result` until phase-483 W1 made it the type itself (the
-// using-declaration below is now a no-op); RFC-0018 forbids exceptions, so
+// re-exported `nros::Result` until it became the type itself (the
+// using-declaration below is now a no-op); the C++ API has no exceptions, so
 // there is no upstream error type to adopt in its place.
 namespace rclcpp {
 using ::rclcpp::Result;
@@ -386,7 +386,7 @@ using ::rclcpp::Result;
 #if defined(NROS_CPP_STD) // hosted-family: ported-publish
 namespace rclcpp {
 namespace detail {
-/// phase-488 — what a call upstream returns `void` from answers on the std
+/// What a call upstream returns `void` from answers on the std
 /// surface (`timer_->cancel()`, `timer_->reset()`): the same `Result`, minus
 /// `[[nodiscard]]`, because ported code calls it as a statement under
 /// `-Werror` (Nav2 builds `-Wall -Wextra -Wpedantic -Werror`). A derived class

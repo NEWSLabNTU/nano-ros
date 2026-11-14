@@ -3,7 +3,7 @@
   "disposition": "adopt-bounded",
   "envelope": {
     "file": "packages/api/nros-cpp/include/rclcpp/logging.hpp",
-    "text": "- `get_child` exists (RFC-0102) with two bounds of its own, stated on it: a"
+    "text": "- `get_child` exists with two bounds of its own, stated on it: a"
   },
   "provides": [
     "nros::Node::get_logger",

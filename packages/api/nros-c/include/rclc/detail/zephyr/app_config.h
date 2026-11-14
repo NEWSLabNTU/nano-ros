@@ -2,7 +2,7 @@
  * @file app_config.h
  * @brief Typed application configuration struct (`NROS_APP_CONFIG`).
  *
- * Phase 112.D contract: every nros example exposes a `static const
+ * Contract: every nros example exposes a `static const
  * nros_app_config_t NROS_APP_CONFIG` populated from the example's own
  * configuration source. User code reads fields like
  * `NROS_APP_CONFIG.transport.locator` or `NROS_APP_CONFIG.network.ip`
@@ -11,7 +11,7 @@
  * Two binding paths:
  *
  *   1. **Board crate `build.rs` emission** (FreeRTOS, NuttX, ThreadX,
- *      native — Path C post-Phase 212.M-F.10): each board crate's
+ *      native): each board crate's
  *      `build.rs` writes a generated `nros_app_config_def.c` into
  *      `$OUT_DIR/` defining `const nros_app_config_t NROS_APP_CONFIG`
  *      with values from the board's Rust `Config` defaults. The C
@@ -56,7 +56,7 @@ typedef struct {
         /* The transport's receive task -- zenoh-pico 1.10's executor thread,
          * which also runs the lease and keep-alive. The ~~`keepalive_priority`~~ /
          * ~~`keepalive_stack_bytes`~~ fields that sized a separate lease task are
-         * gone with that task (RFC-0110 D2); an initializer naming one fails to
+         * gone with that task; an initializer naming one fails to
          * compile, which is the refusal. */
         uint32_t rx_priority;
         uint32_t poll_priority;
@@ -67,11 +67,11 @@ typedef struct {
 } nros_app_config_t;
 
 #ifdef __ZEPHYR__
-/* Phase 112.D.2 — Kconfig binding. Zephyr examples set CONFIG_NROS_*
+/* Kconfig binding. Zephyr examples set CONFIG_NROS_*
  * via prj.conf; we synthesize NROS_APP_CONFIG without an extra codegen
  * step. Defaults cover values the user can omit.
  *
- * RFC-0071 D10 (phase-506 W3) — the locator and domain are the ROLES
+ * The locator and domain are the ROLES
  * `entry_config.h` resolves (`NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`),
  * which each backend's Zephyr module maps its own Kconfig onto. This header
  * names no backend; it read `CONFIG_NROS_ZENOH_LOCATOR` here, so an XRCE or
@@ -97,7 +97,7 @@ static const nros_app_config_t NROS_APP_CONFIG = {
 };
 
 #else  /* !__ZEPHYR__ */
-/* Phase 212.M-F.10 Path C — non-Zephyr branch.
+/* Non-Zephyr branch.
  *
  * The universal `NROS_APP_CONFIG` read promise is preserved across
  * platforms (every example reads `NROS_APP_CONFIG.transport.locator` /

@@ -6,8 +6,8 @@
  * @ingroup grp_clock
  * @brief `rclcpp::Clock` — reads the current time, mirroring upstream's `rclcpp::Clock`.
  *
- * Issue 0789. A thin C++ face over the `rclc_clock_*` C surface (RFC-0073
- * defines the platform clock contract underneath it); this header invents no
+ * A thin C++ face over the `rclc_clock_*` C surface (the platform
+ * clock contract sits underneath it); this header invents no
  * capability of its own.
  */
 
@@ -24,13 +24,13 @@
 #include "rclc/types.h"
 
 // ============================================================================
-// `rclcpp::Clock` — DEFINED here (RFC-0089: rclcpp:: is the home)
+// `rclcpp::Clock` — DEFINED here (rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::` to `rclcpp::` (the `nros::`
-// alias went in phase-483 W1). `rclcpp::Node::get_clock()` (`rclcpp/rclcpp.hpp`) hands back a
+// The definition moved from `nros::` to `rclcpp::` (the `nros::`
+// alias is gone). `rclcpp::Node::get_clock()` (`rclcpp/rclcpp.hpp`) hands back a
 // pointer to the node's own, because there is no allocator here to hand back a
-// `SharedPtr` from (RFC-0022); the `node->get_clock()->now()` spelling is
+// `SharedPtr` from; the `node->get_clock()->now()` spelling is
 // unchanged, and so is the type.
 namespace rclcpp {
 
@@ -55,7 +55,7 @@ class Context; // rclcpp.hpp; `sleep_until` / `sleep_for` take one.
 /// an allocator) there is nothing for a destructor to release.
 ///
 /// A `RCL_ROS_TIME` clock can be driven by a simulator's or a bag
-/// player's `/clock` (issue 0789): `ros_time_is_active()` reports whether it
+/// player's `/clock`: `ros_time_is_active()` reports whether it
 /// is, `started()` whether a sample has arrived. The switches that INSTALL a
 /// time are the C ones (`rcl_set_ros_time_override` and friends) rather than
 /// members here, because the override is process-global — one simulated clock
@@ -63,7 +63,7 @@ class Context; // rclcpp.hpp; `sleep_until` / `sleep_for` take one.
 /// read as per-clock state.
 class Clock {
   public:
-    /// `Clock::SharedPtr` (phase-488) — what `Node::get_clock()` returns: a
+    /// `Clock::SharedPtr` — what `Node::get_clock()` returns: a
     /// pointer to the clock the node holds, valid as long as the node is.
     /// Ported code stores it (`rclcpp::Clock::SharedPtr clock_ = get_clock();`)
     /// and calls through it; a clock it would `std::make_shared` itself is a
@@ -81,7 +81,7 @@ class Clock {
     /// The clock type is the C enum `rcl_clock_type_t` rather than a second
     /// C++ spelling of the same four values: rclcpp likewise takes rcl's
     /// `rcl_clock_type_t`, and one vocabulary across the two languages is the
-    /// point of issue 0789.
+    /// point.
     explicit Clock(rcl_clock_type_t clock_type = RCL_SYSTEM_TIME)
         : clock_(rclc_clock_get_zero_initialized()) {
         rcl_clock_init(clock_type, &clock_, NULL);
@@ -90,7 +90,7 @@ class Clock {
     /// The current time.
     ///
     /// Infallible, following the C surface: `rcl_clock_get_now` cannot fail
-    /// once the clock is valid, because the platform seam (RFC-0073) either has
+    /// once the clock is valid, because the platform seam either has
     /// a clock or the image did not boot. An INVALID clock — one built with
     /// `RCL_CLOCK_UNINITIALIZED` — reads zero; `is_valid()` is how that is
     /// detected, not a `Result` on every timestamp.
@@ -129,12 +129,12 @@ class Clock {
     /// For a ROS-time clock this is "the simulator has published at least one
     /// `/clock` sample"; a system or steady clock has started as soon as it is
     /// valid. (`rclcpp::Clock::wait_until_started` is deliberately absent —
-    /// RFC-0021 forbids a blocking helper that does not drive the executor.)
+    /// the blocking-API rule forbids a blocking helper that does not drive the executor.)
     bool started() const { return rcl_clock_time_started(&clock_); }
 
-    /// `rclcpp::Clock::sleep_until(until, context)` — phase-515 P5.
+    /// `rclcpp::Clock::sleep_until(until, context)`.
     ///
-    /// ADOPT-BOUNDED (RFC-0021): the wait DRIVES the context's executor — its
+    /// ADOPT-BOUNDED: the wait DRIVES the context's executor — its
     /// callbacks run while this blocks — because a sleep on a single-threaded
     /// image that did not would starve the transport. Upstream's sleep runs
     /// nothing. The deadline is on THIS clock, so a ROS-time clock driven by
@@ -162,10 +162,10 @@ class Clock {
 namespace detail {
 
 /// What `rclcpp::Timer::get_clock()` returns -- a `Clock` HELD BY VALUE behind
-/// a pointer's spelling. issue 1975.
+/// a pointer's spelling.
 ///
 /// Upstream returns `const rclcpp::Clock::SharedPtr&`, a reference to a clock
-/// the timer co-owns. There is no allocator here to own one (RFC-0022), and a
+/// the timer co-owns. There is no allocator here to own one, and a
 /// timer handle is two words with nowhere to keep a reference into, so the
 /// accessor hands back the clock itself. `Clock` is copyable and trivially
 /// destructible (it owns nothing; the ROS-time override is process-global), so

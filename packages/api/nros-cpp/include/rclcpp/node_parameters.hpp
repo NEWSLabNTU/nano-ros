@@ -8,7 +8,7 @@
  *        the executor's parameter store, across the
  *        `nros_cpp_node_declare_param_*` family of FFI calls.
  *
- * ## Why this header exists (phase-426 W4, RFC-0089)
+ * ## Why this header exists
  *
  * Three stores existed for one concept: the executor's `nros_params` table —
  * the one the six `rcl_interfaces/srv/...` servers read and therefore the one
@@ -16,18 +16,18 @@
  * `rclcpp::Node` and another on `nros::ComponentNode`. A parameter declared
  * through either C++ facade was invisible to `ros2 param get`, and two nodes in
  * one image could not see each other's. That is not a missing feature; it is a
- * second implementation of one, which RFC-0019/0020 forbids and RFC-0089
- * §"Parameters" closes.
+ * second implementation of one, which the thin-wrapper discipline forbids and the
+ * adoption rule closes.
  *
  * Both C++ members are gone. Both facades call the functions below, which are
  * the same call in both languages: the storage, the typing, the read-only and
  * range rules and the node keying all live in Rust
  * (`nros_params::ParameterServer`), and this header is the call-shape adapter
- * RFC-0019 permits a wrapper to be.
+ * the thin-wrapper discipline permits a wrapper to be.
  *
  * ## What a node's parameters are keyed by
  *
- * The `nros_cpp_node_t*` — its `node_id` IS the key (phase-426 W1). So two
+ * The `nros_cpp_node_t*` — its `node_id` IS the key. So two
  * nodes on one executor may declare the same name with different values, and
  * `ros2 param list` enumerates per node. Pass a node's `ffi_handle()`; a null
  * handle (an `rclcpp::Node` that was never opened) is an error, never a silent
@@ -60,10 +60,10 @@
 // precedent).
 #include <stddef.h>
 
-#include "rclcpp/detail/declared_params.hpp" // phase-446 W6 -- `rclcpp::param_type`
-#include "rclcpp/parameter.hpp"              // phase-426 W4 -- `rclcpp::Seq<T, N>`
+#include "rclcpp/detail/declared_params.hpp" // `rclcpp::param_type`
+#include "rclcpp/parameter.hpp"              // `rclcpp::Seq<T, N>`
 #include "rclcpp/result.hpp"
-#include "rclcpp/detail/traits.hpp" // issue 1678 -- `enable_if` without <type_traits>
+#include "rclcpp/detail/traits.hpp" // `enable_if` without <type_traits>
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
 #ifdef NROS_CPP_STD // hosted-family: container-interop
@@ -83,7 +83,7 @@
 #define NROS_NODE_PARAM_STRING_BUF 256
 #endif
 // AFTER the `#endif`, deliberately, and not inside the block above. Both other
-// placements are broken and neither is obvious (issues 1167, 1015):
+// placements are broken and neither is obvious:
 //
 //   * BEFORE the `#define`, the preprocessor reads an undefined macro as 0, so
 //     `< 1` is true on every build that does not `-D` it — the guard fires
@@ -95,7 +95,7 @@
 // Here it sees whatever value actually reached the translation unit, from
 // either source. `check-c-array-guard-probe` compiles this both ways.
 #if NROS_NODE_PARAM_STRING_BUF < 1
-// issue 1015 -- a zero here sizes a C array to nothing.
+// A zero here sizes a C array to nothing.
 #error "NROS_NODE_PARAM_STRING_BUF must be >= 1: it sizes a C array"
 #endif
 
@@ -104,12 +104,12 @@ namespace detail {
 
 // --- the ONE type table -----------------------------------------------------
 //
-// phase-446 W6 -- the contract type a `declare_parameter<T>` declares, as the
+// The contract type a `declare_parameter<T>` declares, as the
 // rcl_interfaces code the declared-parameter table carries: `bool`, any other
 // integer, a floating-point type, and a string. `Node::declare_parameter`
 // passes it to `Node::check_declared_param`.
 //
-// Issue 1678: it is ALSO what selects the store call below. The table used to
+// It is ALSO what selects the store call below. The table used to
 // sit after a separate overload set (`bool`, `int`, `int64_t`, `double`,
 // `const char*`) and claim more than that set took -- `long long`, `unsigned`,
 // `short`, `float` were INTEGER / DOUBLE here and bound to no call, and which
@@ -234,7 +234,7 @@ using node_param_if_kind =
 // is an exact non-template match, so it wins over the template for its own
 // type; any other type reaches the template, where it is an exact match too —
 // so no call is left to a conversion ranking, and none can be ambiguous on
-// either data model (issue 1678).
+// either data model.
 
 inline Result node_param_declare(const nros_cpp_node_t* node, const char* name, bool v) {
     return Result(nros_cpp_node_declare_param_bool(node, name, v));
@@ -355,7 +355,7 @@ inline bool node_param_has(const nros_cpp_node_t* node, const char* name) {
 // builds, which is why this block sits OUTSIDE `NROS_CPP_STD`:
 //
 //   * `Seq<T, N>` (`rclcpp/parameter.hpp`) - freestanding, fixed capacity, no
-//     heap. Phase-426 W4: this is what `nros::ParameterServer<Cap>` used to
+//     heap. This is what `nros::ParameterServer<Cap>` used to
 //     serve out of an inline bump pool, moved onto the one store so a
 //     sequence parameter is visible to `ros2 param get` like every scalar.
 //   * `std::vector<T>` - hosted, below, behind `NROS_CPP_STD`. A ported
@@ -410,7 +410,7 @@ inline nros_cpp_ret_t node_param_set_array_ffi(const nros_cpp_node_t* node, cons
     return nros_cpp_node_set_param_bool_array(node, name, d, len);
 }
 
-// --- element conversion for the array calls (issue 1678) ---------------------
+// --- element conversion for the array calls ---------------------
 //
 // The FFI carries an array as its SLOT type (`bool`, `int64_t`, `double`), and
 // `node_param_type` calls `Seq<int, N>` / `std::vector<float>` INTEGER_ARRAY /
@@ -537,7 +537,7 @@ inline Result node_param_declare(const nros_cpp_node_t* node, const char* name,
 
 /// Set a declared array parameter from a `std::vector<T>`.
 ///
-/// phase-426 W4 -- the hosted twin of the `Seq` setter. It was missing with
+/// The hosted twin of the `Seq` setter. It was missing with
 /// the rest of the array setters, so `set_parameter<std::vector<double>>` did
 /// not compile while `declare_parameter<std::vector<double>>` did: an ASI
 /// weight matrix could be declared and never updated.
@@ -600,7 +600,7 @@ inline Result node_param_get(const nros_cpp_node_t* node, const char* name, ::st
                                         ::rclcpp::tr::is_same<T, node_param_slot<T>>::value>());
 }
 
-// --- std::vector<bool> (issue 2056) ------------------------------------------
+// --- std::vector<bool> ------------------------------------------
 //
 // `std::vector<bool>` is a bit-packed specialization with no `data()`, so the
 // templates above did not compile for it: `declare_parameter<std::vector<bool>>`
@@ -641,7 +641,7 @@ inline Result node_param_get(const nros_cpp_node_t* node, const char* name,
 
 #endif // NROS_CPP_STD
 
-// --- descriptors, undeclare, listing and the on-set hook (phase-417 W4.a) ----
+// --- descriptors, undeclare, listing and the on-set hook ----
 //
 // Forwarders onto the same one store. TEXT crosses the FFI as a borrowed
 // `const char*` in and a caller-owned `char*` out; there is no descriptor
@@ -713,7 +713,7 @@ namespace rclcpp {
 /// `rclcpp::ParameterType` — the `rcl_interfaces/msg/ParameterType` codes,
 /// under upstream's own name and with upstream's own enumerator spellings.
 ///
-/// phase-417 W4.a — C had `rclc_parameter_type_t` and Rust had
+/// C had `rclc_parameter_type_t` and Rust had
 /// `ParameterType`, both mirroring the same message, and C++ named neither, so
 /// a ported file that wrote `rclcpp::ParameterType::PARAMETER_DOUBLE` did not
 /// compile and no C++ accessor could have returned one.
@@ -799,7 +799,7 @@ inline ParameterDescriptor parameter_descriptor() {
 /// (`node_interfaces::OnSetParametersCallbackHandle`). The token form has no
 /// allocator, so there is nothing to own: this is a plain slot id and
 /// unregistering is explicit. A nano-ros name: `rclcpp::ParameterCallbackHandle`
-/// is upstream's `ParameterEventHandler` handle (issue 2114).
+/// is upstream's `ParameterEventHandler` handle.
 using OnSetParametersCallbackToken = uint16_t;
 
 } // namespace rclcpp
@@ -819,7 +819,7 @@ inline Result node_param_remove_on_set_callback(const nros_cpp_node_t* node,
     return Result(nros_cpp_node_remove_on_set_params_callback(node, handle));
 }
 
-/// Issue 2057 — each `-p` / `--params-file` override that applies to `node`,
+/// Each `-p` / `--params-file` override that applies to `node`,
 /// handed to `callback` as a write; `out_count` may be NULL.
 inline Result node_param_list_overrides(const nros_cpp_node_t* node,
                                         ::rclcpp::OnSetParametersCallbackType callback,

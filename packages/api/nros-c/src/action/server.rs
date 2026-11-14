@@ -37,12 +37,12 @@ pub enum rclc_action_server_state_t {
 
 /// An action server the executor dispatches.
 ///
-/// phase-487 W4 (RFC-0096 D9, the C half): the executor arena owns the five
+/// The executor arena owns the five
 /// channels, the goal table and every buffer; this struct holds the arena
 /// handle (`_internal`), the registration description and the one callback
 /// record, which the arena's trampolines read with this struct as their
 /// context. That record stays here, as the C++ action server's does
-/// (phase-456 W3b-ii refused moving it into the arena: the trampolines
+/// (moving it into the arena was refused: the trampolines
 /// translate the ABI and reframe the goal payload). A server the caller
 /// drives itself is a [`rclc_polling_action_server_t`].
 #[repr(C)]
@@ -61,7 +61,7 @@ pub struct rcl_action_server_t {
     pub type_hash: [u8; MAX_TYPE_HASH_LEN],
     /// Type hash length
     pub type_hash_len: usize,
-    /// Issue 1913 — the per-endpoint hashes, copied from the type support at
+    /// The per-endpoint hashes, copied from the type support at
     /// init (static-storage pointers; NULL falls back to `type_hash`).
     pub endpoint_hashes: crate::action::common::rclc_action_endpoint_hashes_t,
     /// Goal callback
@@ -74,13 +74,13 @@ pub struct rcl_action_server_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: crate::node::rclc_node_ref_t,
-    /// Phase 193.4b — action-server QoS, applied to the three underlying
+    /// Action-server QoS, applied to the three underlying
     /// service servers (send_goal / cancel_goal / get_result). The feedback +
     /// status publishers keep their own profiles. Defaults to the services
     /// profile (RELIABLE+VOLATILE+KEEP_LAST(10)); set via
     /// `rclc_action_server_init_with_qos`.
     pub qos: crate::qos::rclc_qos_t,
-    /// Phase 189.M3.3.b — scheduling-context slot to bind the action server's
+    /// Scheduling-context slot to bind the action server's
     /// executor handle to (the goal-service slot; governs the action's callback
     /// dispatch). `0` = inherit the executor / Node default; set via
     /// `rclc_action_server_init_with_options`. When non-zero,
@@ -90,17 +90,17 @@ pub struct rcl_action_server_t {
     /// Internal state — set by `rclc_executor_attach_action_server`.
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ActionServerInternal,
-    /// phase-515 C4b — the descriptor this server was created with, kept so
+    /// The descriptor this server was created with, kept so
     /// rclc's typed API places a goal, result or feedback in its envelope
     /// through the descriptor's codec and layout. A generated `static const`.
     pub type_support: *const rclc_action_type_t,
-    /// phase-515 C4b — rclc's typed registration
+    /// rclc's typed registration
     /// (`rclc_executor_add_action_server`): its callbacks and goal handles.
     /// Unused by a server registered through `rclc_action_server_init_with_callbacks`.
     pub _rclc: rclc_action_server_rclc_state_t,
 }
 
-/// rclc's `rclc_action_server_t` (phase-515 C4b). One struct serves rcl's
+/// rclc's `rclc_action_server_t`. One struct serves rcl's
 /// spelling and rclc's: `rclc_action_server_init_default` and
 /// `rclc_executor_add_action_server` take this.
 pub type rclc_action_server_t = rcl_action_server_t;
@@ -121,7 +121,7 @@ pub type rclc_action_server_handle_cancel_callback_t = Option<
     unsafe extern "C" fn(goal_handle: *mut rclc_action_goal_handle_t, context: *mut c_void) -> bool,
 >;
 
-/// rclc's `rclc_action_goal_handle_t` (phase-515 C4b): one goal of an rclc
+/// rclc's `rclc_action_goal_handle_t`: one goal of an rclc
 /// action server, handed to the goal and cancel callbacks and back to
 /// `rclc_action_send_result` / `rclc_action_publish_feedback`.
 ///
@@ -182,7 +182,7 @@ impl rclc_action_goal_handle_t {
     };
 }
 
-/// The rclc registration's state, inside the server (phase-515 C4b).
+/// The rclc registration's state, inside the server.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct rclc_action_server_rclc_state_t {
@@ -215,13 +215,13 @@ impl rclc_action_server_rclc_state_t {
     };
 }
 
-/// An action server the CALLER drives, with no executor (phase-487 W4).
+/// An action server the CALLER drives, with no executor.
 ///
 /// The C counterpart of C++'s `nros::PollingActionServer<A>`. `_opaque` holds
 /// an `ActionServerCore` (five channels, goal table, buffers) from
 /// `rclc_polling_action_server_init` until
 /// `rclc_polling_action_server_fini`. Zero-initialised is UNINITIALIZED.
-/// Until phase-487 it was the ~~`NROS_ACTION_SERVER_STATE_POLLING`~~ state of
+/// It used to be the ~~`NROS_ACTION_SERVER_STATE_POLLING`~~ state of
 /// `rcl_action_server_t`.
 #[repr(C)]
 pub struct rclc_polling_action_server_t {
@@ -292,7 +292,7 @@ impl rcl_action_server_t {
 /// always present, with the sentinel `INVALID_ENTRY_INDEX` indicating
 /// "not registered yet". Use `is_handle_set()` to check.
 ///
-/// phase-487 W4 — this used to carry a SECOND copy of the server's callback
+/// This used to carry a SECOND copy of the server's callback
 /// record (~~`c_goal_callback`~~, ~~`c_cancel_callback`~~, ~~`c_accepted_callback`~~,
 /// `c_context`) plus a `server_ptr` back to the struct that contains it, so
 /// the trampolines could take `&_internal` as their context. The trampolines
@@ -549,7 +549,7 @@ unsafe fn action_server_init_impl(
     RCL_RET_OK
 }
 
-/// Phase 193.4b — initialize an action server with an explicit QoS profile
+/// Initialize an action server with an explicit QoS profile
 /// (rclc's `_with_options`). The profile applies to the three underlying
 /// service servers (send_goal / cancel_goal / get_result); the feedback +
 /// status publishers keep their own profiles. `qos` NULL ⇒ the services
@@ -586,7 +586,7 @@ pub unsafe extern "C" fn rclc_action_server_init_with_qos(
     ret
 }
 
-/// Phase 189.M3.3.b — rclc-style named action-server options. QoS is passed
+/// rclc-style named action-server options. QoS is passed
 /// separately; this carries the non-QoS axes. Zero-init = default behaviour.
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
@@ -614,7 +614,7 @@ impl rcl_action_server_options_t {
 
 /// rcl's `rcl_action_server_get_options(server)`: the options the action server was
 /// initialised with -- all zero when it was initialised without any -- or
-/// NULL for a NULL or unusable handle (phase-515 C6).
+/// NULL for a NULL or unusable handle.
 ///
 /// ADOPT-BOUNDED: nano-ros's options carry the scheduling context, not rcl's `qos`,
 /// `allocator` or rmw-specific options, so a ported `->qos` does not compile;
@@ -645,7 +645,7 @@ pub extern "C" fn rcl_action_server_get_default_options() -> rcl_action_server_o
     rcl_action_server_options_t::default()
 }
 
-/// Phase 189.M3.3.b — initialize an action server with custom QoS + named
+/// Initialize an action server with custom QoS + named
 /// options. Like [`rclc_action_server_init_with_qos`] except a non-zero
 /// `options->sched_context` is stashed so `rclc_executor_attach_action_server`
 /// binds the resulting executor handle to that scheduling context once known.
@@ -891,7 +891,7 @@ pub unsafe extern "C" fn rclc_action_execute(
 
 /// Get the number of currently active goals.
 ///
-/// Phase-379 W6 decision 3: ONE function in rcl's shape, serving both
+/// ONE function in rcl's shape, serving both
 /// tiers. Upstream ships no count function; its nearest neighbour is
 /// `rcl_action_server_get_goal_handles(server, ***handles, size_t
 /// *num_goals) -> rcl_ret_t`, which reports the count through an
@@ -905,8 +905,8 @@ pub unsafe extern "C" fn rclc_action_execute(
 /// Reads the executor arena through
 /// `ActionServerRawHandle::active_goal_count`. A polled server, whose
 /// `ActionServerCore` is inline, answers through
-/// [`rclc_polling_action_server_get_active_goal_count`]; until phase-487 W4
-/// both tiers shared this entry point and were told apart by state.
+/// [`rclc_polling_action_server_get_active_goal_count`]; the two
+/// tiers used to share this entry point and were told apart by state.
 ///
 /// Returns:
 ///
@@ -946,7 +946,7 @@ pub unsafe extern "C" fn rclc_action_server_get_active_goal_count(
 ///
 /// rcl's `rcl_action_server_get_action_name`, the server twin of
 /// [`rcl_action_client_get_action_name`](crate::action::client::rcl_action_client_get_action_name)
-/// — phase-417 W4.b, ledger row `c:action_server_get_action_name`. The name is
+/// — ledger row `c:action_server_get_action_name`. The name is
 /// the caller's own string, copied NUL-terminated into the handle at init, so
 /// this hands back a pointer into the handle and costs nothing.
 ///
@@ -977,7 +977,7 @@ pub unsafe extern "C" fn rcl_action_server_get_action_name(
 /// Is `goal` a goal this server still knows about?
 ///
 /// rcl's `rcl_action_server_goal_exists` over OUR goal handle, hence the
-/// distinct `rclc_` name (phase-492 W1.b) — phase-417 W4.b, ledger row
+/// distinct `rclc_` name — ledger row
 /// `c:action_server_goal_exists`. TRUE while the goal is ACTIVE and while its
 /// completed result is still retained for a later `get_result`, which is
 /// rcl's own window (its goal-handle table keeps a terminated goal until
@@ -1028,7 +1028,7 @@ pub unsafe extern "C" fn rclc_action_server_goal_exists(
 /// Eagerly reclaim every completed result whose `get_result` reply has already
 /// been sent, and report how many were reclaimed.
 ///
-/// rcl's `rcl_action_expire_goals` — phase-417 W4.b, ledger row
+/// rcl's `rcl_action_expire_goals` — ledger row
 /// `c:action_expire_goals`. **ADOPT-BOUNDED, and the envelope is the whole
 /// point of the row**: upstream's trigger is a CLOCK (a goal expires
 /// `result_timeout` after it terminates, 15 min by default) and it fills a
@@ -1036,7 +1036,7 @@ pub unsafe extern "C" fn rclc_action_server_goal_exists(
 /// Neither half survives here:
 ///
 /// * **No timeout.** `ActionServerCore` is `no_std` with no time source
-///   threaded through it (RFC-0036), so there is nothing to measure a
+///   threaded through it, so there is nothing to measure a
 ///   `result_timeout` against. The trigger is the CALLER, and reclamation
 ///   otherwise happens on demand when a completion needs slab room — which is
 ///   what already bounds the memory upstream's timer exists to bound.
@@ -1149,7 +1149,7 @@ fn c_status_to_rust(status: rclc_goal_status_t) -> nros_node::GoalStatusCode {
 
 /// Finalize an action server.
 ///
-/// Issue 1609 — `fini` does NOT remove the server from an executor. It is
+/// `fini` does NOT remove the server from an executor. It is
 /// handed only the entity, and an executor-registered server's arena entry
 /// (its three service servers, two publishers and the callback `context`,
 /// which is `server` itself) is undone by
@@ -1321,7 +1321,7 @@ unsafe extern "C" fn rclc_cancel_trampoline(
 }
 
 /// rclc's `rclc_action_server_init_default(action_server, node, support,
-/// type_support, action_name)` — phase-515 C4.
+/// type_support, action_name)`.
 ///
 /// Records the server's name and descriptor; the callbacks arrive at
 /// [`rclc_executor_add_action_server`], as in rclc.
@@ -1375,7 +1375,7 @@ pub unsafe extern "C" fn rclc_action_server_init_default(
 
 /// rclc's `rclc_executor_add_action_server(executor, action_server,
 /// handles_number, ros_goal_request, ros_goal_request_size, goal_callback,
-/// cancel_callback, context)` — phase-515 C4.
+/// cancel_callback, context)`.
 ///
 /// Registers the server with the executor and binds rclc's callbacks. Each
 /// incoming goal takes one of `handles_number` goal handles; its request is
@@ -1512,8 +1512,7 @@ unsafe fn rclc_serialize_part(
     (rc == 0 && len <= buf.len()).then_some(len)
 }
 
-/// rclc's `rclc_action_send_result(goal_handle, status, ros_response)` —
-/// phase-515 C4.
+/// rclc's `rclc_action_send_result(goal_handle, status, ros_response)`.
 ///
 /// Ends the goal with `status` (`GOAL_STATE_SUCCEEDED`, `_CANCELED` or
 /// `_ABORTED`) and the result in `ros_response`, the action's
@@ -1582,8 +1581,7 @@ pub unsafe extern "C" fn rclc_action_send_result(
     ret
 }
 
-/// rclc's `rclc_action_publish_feedback(goal_handle, ros_feedback)` —
-/// phase-515 C4.
+/// rclc's `rclc_action_publish_feedback(goal_handle, ros_feedback)`.
 ///
 /// Publishes `ros_feedback`, the action's `<Action>_FeedbackMessage`, for the
 /// goal; its `goal_id` is written from the handle first, as rclc does.
@@ -1625,7 +1623,7 @@ pub unsafe extern "C" fn rclc_action_publish_feedback(
     unsafe { rclc_action_publish_feedback_raw(server_ptr, &goal, buf.as_ptr(), len) }
 }
 
-/// rclc's `rclc_action_server_fini(action_server, node)` — phase-515 C4:
+/// rclc's `rclc_action_server_fini(action_server, node)`:
 /// [`rcl_action_server_fini`] under rclc's name.
 ///
 /// # Safety
@@ -1642,7 +1640,7 @@ pub unsafe extern "C" fn rclc_action_server_fini(
 // Phase 122.3.c.6.b — Layer-1 primitive entry points (caller polls)
 // ============================================================================
 
-/// Phase 122.3.c.6.b — initialize an L1 polling-mode action server.
+/// Initialize an L1 polling-mode action server.
 ///
 /// Creates the 5 transport channels immediately and stores the
 /// `ActionServerCore` inline in the `rclc_polling_action_server_t`. The caller drives the
@@ -1892,7 +1890,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_init(
 /// * `RCL_RET_OK` on success
 /// * `RCL_RET_INVALID_ARGUMENT` if `server` is NULL
 /// * `RCL_RET_NOT_INIT` if it is not initialised
-/// * `RCLC_RET_STALE_NODE` if its node has already been finalised (issue 1386)
+/// * `RCLC_RET_STALE_NODE` if its node has already been finalised
 ///
 /// # Safety
 /// `server` must be a valid pointer.
@@ -2025,7 +2023,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_expire_goals(
     }
 }
 
-/// Phase 122.3.c.6.b — L1 polling: try to receive a goal request.
+/// L1 polling: try to receive a goal request.
 ///
 /// On success writes the goal payload bytes (already stripped of CDR
 /// framing) into `buf`, returns the number of bytes copied (>= 0),
@@ -2087,7 +2085,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_try_recv_goal_request_raw(
     }
 }
 
-/// Phase 122.3.c.6.b — L1 polling: accept a goal received via
+/// L1 polling: accept a goal received via
 /// `rclc_polling_action_server_try_recv_goal_request_raw`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_server_accept_goal_raw(
@@ -2116,7 +2114,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_accept_goal_raw(
     }
 }
 
-/// Phase 122.3.c.6.b — L1 polling: reject a goal received via
+/// L1 polling: reject a goal received via
 /// `rclc_polling_action_server_try_recv_goal_request_raw`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_server_reject_goal_raw(
@@ -2143,7 +2141,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_reject_goal_raw(
     }
 }
 
-/// Phase 122.3.c.6.b — L1 polling: publish a feedback message.
+/// L1 polling: publish a feedback message.
 ///
 /// `feedback_cdr` is the CDR-encoded `<Action>_Feedback_` payload
 /// (without the goal_id prefix — the core wraps it).
@@ -2176,7 +2174,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_publish_feedback_raw(
     }
 }
 
-/// Phase 122.3.c.6.b — L1 polling: mark a goal terminal.
+/// L1 polling: mark a goal terminal.
 ///
 /// `status` must be one of SUCCEEDED / ABORTED / CANCELED.
 /// `result_cdr` is the CDR-encoded `<Action>_Result_` payload (the
@@ -2214,7 +2212,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_complete_goal_raw(
     }
 }
 
-/// Phase 122.3.c.6.d — L1 polling: peek a pending cancel-goal
+/// L1 polling: peek a pending cancel-goal
 /// request. Writes the named goal_id, the matching service
 /// sequence number, and the goal's current status (matches the
 /// `rclc_goal_status_t` discriminants — pass it back unchanged).
@@ -2263,11 +2261,11 @@ pub unsafe extern "C" fn rclc_polling_action_server_try_recv_cancel_request_raw(
     }
 }
 
-/// Phase 122.3.c.6.d — overall cancel-RPC return code. Distinct from
+/// Overall cancel-RPC return code. Distinct from
 /// the per-goal `rclc_cancel_response_t` (ACCEPT/REJECT) used by the
 /// L2 callback path. These four discriminants mirror
 /// `nros_core::CancelResponseCode` and the `action_msgs/srv/CancelGoal`
-/// wire-CDR `return_code` field. (Issue 0796 — the Rust type was called
+/// wire-CDR `return_code` field. (The Rust type was called
 /// `CancelResponse` until it was split; this pair of C names is what the
 /// Rust names now follow.)
 #[repr(C)]
@@ -2279,7 +2277,7 @@ pub enum rclc_cancel_return_code_t {
     RCLC_CANCEL_RC_GOAL_TERMINATED = 3,
 }
 
-/// Phase 122.3.c.6.d — L1 polling: reply to a cancel-goal request
+/// L1 polling: reply to a cancel-goal request
 /// previously peeked via `_try_recv_cancel_request_raw`. `accepted`
 /// points to `accepted_count` goal-ID byte arrays that will
 /// transition to `CANCELING`. Pass an empty list (`accepted=NULL,
@@ -2341,7 +2339,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_send_cancel_reply_raw(
     }
 }
 
-/// Phase 122.3.c.6.b — L1 polling: serve a pending get_result query.
+/// L1 polling: serve a pending get_result query.
 ///
 /// `default_result_cdr` is the default serialized result (without
 /// status byte / CDR header) returned to the client when no
@@ -2378,7 +2376,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_try_handle_get_result_raw(
     }
 }
 
-/// Phase 122.3.c.6.e — register a C wake callback on the
+/// Register a C wake callback on the
 /// send_goal channel of an L1 polling-mode action server. `state`
 /// is a caller-owned `rclc_wake_state_t` that must outlive the
 /// server and not move.
@@ -2392,7 +2390,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_set_goal_wake_callback(
     set_action_server_wake_callback(server, state, cb, ctx, ChannelKind::Goal)
 }
 
-/// Phase 122.3.c.6.e — register a C wake callback on the
+/// Register a C wake callback on the
 /// cancel_goal channel of an L1 polling-mode action server. The
 /// primary use case from the .c.6.e design discussion — RTOS /
 /// event-driven cancel handling.
@@ -2406,7 +2404,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_set_cancel_wake_callback(
     set_action_server_wake_callback(server, state, cb, ctx, ChannelKind::Cancel)
 }
 
-/// Phase 122.3.c.6.e — register a C wake callback on the
+/// Register a C wake callback on the
 /// get_result channel of an L1 polling-mode action server.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_server_set_get_result_wake_callback(

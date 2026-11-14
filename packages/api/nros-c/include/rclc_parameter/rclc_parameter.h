@@ -3,12 +3,12 @@
  * @ingroup grp_parameter
  * @brief The C parameter server: rclc's API over the executor's store.
  *
- * RFC-0105 / phase-491. ONE parameter family for C, under rclc's own names and
+ * ONE parameter family for C, under rclc's own names and
  * at rclc's include path, so a ported `#include <rclc_parameter/rclc_parameter.h>`
  * finds it. Every parameter declared here is served by the six
  * `rcl_interfaces` services (`ros2 param list/get/set/describe/dump/load`).
  *
- * What differs from upstream rclc, and why (RFC-0105 "bounded envelope"):
+ * What differs from upstream rclc, and why:
  *
  *  - Nothing here allocates. The store is the executor's, sized at build time
  *    (`NROS_MAX_PARAMETERS`); `max_params` is a per-node quota inside it.
@@ -25,7 +25,7 @@
  *    read `size`.
  *  - `notify_changed_over_dds` (default on) gives the node one
  *    `/parameter_events` publisher, and each accepted change is published
- *    on it (phase-491 W3, RFC-0105 D8).
+ *    on it.
  *
  * Calling context: the executor's task only, never an ISR. Like rclc, nothing
  * here takes a lock.
@@ -33,8 +33,8 @@
  * Types are spelled with nano-ros's names (`rcl_ret_t`, `struct rcl_node_t`,
  * `struct rclc_executor_t`); `<rclc/detail/rcl_compat.h>` makes `rcl_ret_t`,
  * `rcl_node_t`, `rclc_executor_t` and the `RCL_RET_*` codes the same types, so
- * a ported file that includes it compiles unchanged. phase-492 makes the rcl
- * spellings primary across the C API.
+ * a ported file that includes it compiles unchanged. The rcl
+ * spellings are primary across the C API.
  */
 
 #ifndef RCLC_PARAMETER__RCLC_PARAMETER_H_
@@ -46,7 +46,7 @@
 
 #include "rclc/types.h"
 
-/* Issue 0865 — this surface exists only in an image built with the
+/* This surface exists only in an image built with the
  * `param-services` capability. Say so here rather than in `ld`'s output. */
 #if defined(NROS_HAS_PARAM_SERVICES) && !NROS_HAS_PARAM_SERVICES
 #error "<rclc_parameter/rclc_parameter.h> needs the param_services capability: declare \
@@ -98,8 +98,8 @@ typedef struct rclc_parameter_options_t {
     bool low_mem_mode;
 } rclc_parameter_options_t;
 
-/* rosidl's C runtime shapes, from their one definition site in nano-ros
- * (phase-492 W7). Each is guarded with upstream's include guard, so a
+/* rosidl's C runtime shapes, from their one definition site in nano-ros.
+ * Each is guarded with upstream's include guard, so a
  * translation unit that already has rosidl's definition (same layout) keeps
  * it. */
 #include <rosidl_runtime_c/primitives_sequence.h>

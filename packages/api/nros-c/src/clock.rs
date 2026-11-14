@@ -48,7 +48,7 @@ pub enum rcl_clock_type_t {
     RCL_STEADY_TIME = 3,
 }
 
-/// phase-430 W1 — the ONE mapping from a C clock kind to the executor's
+/// The ONE mapping from a C clock kind to the executor's
 /// timer clock source, and the reason it lives here rather than in
 /// `nros-node`: these discriminants belong to `rcl_clock_type_t`, so a copy
 /// of them a crate away is the hand-mirror drift 0135/0160 measured one layer
@@ -60,9 +60,9 @@ pub enum rcl_clock_type_t {
 /// out-of-range byte a C caller widened into the parameter. Both are REJECTED
 /// by the callers rather than defaulted to `Steady` — a timer created on a
 /// clock the caller never initialised would silently be a wall timer, which is
-/// the exact confusion phase-425 exists to remove.
+/// the exact confusion the clock kinds exist to remove.
 ///
-/// issue 1177 -- GATED on `rmw-cffi`, and the gate follows the TYPE. The return
+/// GATED on `rmw-cffi`, and the gate follows the TYPE. The return
 /// type `nros_node::executor::TimerClockSource` is re-exported behind
 /// `#[cfg(any(has_rmw, test))]`, and `has_rmw` is set from
 /// `CARGO_FEATURE_RMW_CFFI` -- so without an RMW seam the type does not exist
@@ -77,7 +77,7 @@ pub enum rcl_clock_type_t {
 /// compiled under `nros-c`'s bare default (`panic-platform`), where every
 /// CALLER is absent: `executor` and `timer` here, and `nros-cpp`'s `timer`, are
 /// all `#[cfg(feature = "rmw-cffi")]` modules. A gated item with an ungated
-/// caller is the shape issues 1175 and 1177 both name; this is the same defect
+/// caller is a known defect shape; this is the same defect
 /// with the two sides swapped -- the caller is gated and the callee was not.
 #[cfg(feature = "rmw-cffi")]
 pub fn nros_timer_clock_source(clock_type: u8) -> Option<nros_node::executor::TimerClockSource> {
@@ -93,9 +93,9 @@ pub fn nros_timer_clock_source(clock_type: u8) -> Option<nros_node::executor::Ti
 
 /// The `rcl_clock_type_t` discriminant a `TimerClockSource` is spelled as --
 /// the inverse of [`nros_timer_clock_source`], kept beside it so the two cannot
-/// disagree about what a clock kind means. issue 1975: `nros-cpp` reads a
+/// disagree about what a clock kind means. `nros-cpp` reads a
 /// timer's clock back for `rclcpp::TimerBase::get_clock()`. Gated like its
-/// sibling, for the same reason (issue 1177).
+/// sibling, for the same reason.
 #[cfg(feature = "rmw-cffi")]
 pub fn nros_timer_clock_type(source: nros_node::executor::TimerClockSource) -> u8 {
     use nros_node::executor::TimerClockSource;
@@ -196,7 +196,7 @@ pub extern "C" fn rclc_clock_get_zero_initialized() -> rcl_clock_t {
     rcl_clock_t::default()
 }
 
-/// Initialize a clock — rcl's signature (phase-492 W1.b):
+/// Initialize a clock — rcl's signature:
 /// `rcl_clock_init(type, &clock, &allocator)`. `allocator` must be NULL or
 /// `rcl_get_default_allocator()`'s; a clock allocates nothing.
 ///
@@ -241,7 +241,7 @@ pub unsafe extern "C" fn rcl_clock_init(
 /// Get the current time from a clock as an `rclc_time_t` (seconds +
 /// nanoseconds). rcl's `rcl_clock_get_now` writes a nanosecond count; that is
 /// [`rcl_clock_get_now`] here, and this is the struct-valued sibling
-/// (phase-492 W1.b — it was the one spelled `rcl_clock_get_now`, with a
+/// (it used to be the one spelled `rcl_clock_get_now`, with a
 /// different out-type than rcl's).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_clock_get_now_time(
@@ -273,7 +273,7 @@ pub unsafe extern "C" fn rclc_clock_get_now_time(
 }
 
 /// Get the current time from a clock as a nanosecond count — rcl's contract
-/// (`rcl_time_point_value_t *`). phase-492 W1.b: was ~~`rclc_clock_get_now_ns`~~.
+/// (`rcl_time_point_value_t *`). Was ~~`rclc_clock_get_now_ns`~~.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_clock_get_now(
     clock: *const rcl_clock_t,
@@ -571,7 +571,7 @@ pub extern "C" fn rclc_time_from_nanoseconds(nanoseconds: i64) -> rclc_time_t {
 ///
 /// The duration half of `rclc_time_from_nanoseconds`, and the same encoding —
 /// `builtin_interfaces/msg/Duration` has the identical `{sec, nanosec}` shape
-/// and the identical `[0, 1e9)` rule on `nanosec`. Issue 0799: a negative span
+/// and the identical `[0, 1e9)` rule on `nanosec`. A negative span
 /// is ordinary ("how far ahead of the deadline are we" is negative half the
 /// time), and until this existed the C++ `Duration::to_msg` open-coded the
 /// split rather than delegate to a `_time_` entry point that got negatives

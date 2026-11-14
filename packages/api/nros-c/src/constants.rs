@@ -99,7 +99,7 @@ pub use crate::opaque_sizes::{
 // (Same contract as the `MAX_*` mirrors above; see the module docs.)
 
 /// Image-local discriminant of the linked backend's serialization format
-/// (`nros_serdes::format::SerializationFormatId`). RFC-0088 D2 — image-local:
+/// (`nros_serdes::format::SerializationFormatId`). Image-local:
 /// never persist it, never compare it across images.
 pub const NROS_SERIALIZATION_FORMAT_ID: u8 = 1;
 

@@ -20,8 +20,8 @@ namespace detail {
 /// translation units of one image are allowed to disagree about a capability
 /// (`examples/px4/cpp/bridge/.../CMakeLists.txt` sets `-DNROS_CPP_STD=1` on one
 /// module of a larger image, deliberately), so a member behind a probe is a
-/// silent one-definition hazard. Issue 0135's class; issues 1225 and 1204 are
-/// the two most recent sightings.
+/// silent one-definition hazard, and it has been
+/// seen more than once.
 ///
 /// State that EXCEEDS a pointer therefore hides behind one unconditional
 /// `void*`. But the pointee's type is capability-dependent, and the owner's

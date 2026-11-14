@@ -41,8 +41,8 @@
 /// | 19          | end      | `handle`                                  |
 ///
 /// and, with the later blocks, 20 (handle-tagged name chunk), 21-24 (a stored
-/// contract violation, phase-474 I1) and 25-27 (a take and its source stamp,
-/// phase-474 I3, see [`rclc_trace_set_take`]); the full table is in
+/// contract violation) and 25-27 (a take and its source stamp,
+/// see [`rclc_trace_set_take`]); the full table is in
 /// `nros_node::executor::callback_trace`.
 ///
 /// Call it once at startup, BEFORE anything is registered on the executor: a
@@ -95,7 +95,7 @@ pub unsafe extern "C" fn rclc_set_default_trace_sink(
     }
 }
 
-/// phase-474 I2 -- the application's start-up is over: arm the contract
+/// The application's start-up is over: arm the contract
 /// monitors of every executor that waits for this
 /// (`CONFIG_NROS_MONITOR_ARM_ON_CALL`). Call it where the application enters
 /// its running state, for example an INIT/RUN state machine's RUN transition.
@@ -111,7 +111,7 @@ pub extern "C" fn rclc_monitors_arm() {
     nros_node::executor::monitor::request_monitor_arming();
 }
 
-/// phase-474 I3 -- trace each sample TAKEN by the subscription in `handle`
+/// Trace each sample TAKEN by the subscription in `handle`
 /// (its slot index: the `handle` its register event carries), or stop.
 ///
 /// A take is marker 25 (`handle << 24 | take seq`), emitted before the
@@ -135,7 +135,7 @@ pub extern "C" fn rclc_trace_set_take(handle: u8, on: bool, stamp_offset: i32) {
     let _ = (handle, on, stamp_offset);
 }
 
-/// phase-474 I3 -- trace one tick in `every` of the timer in `handle` (its
+/// Trace one tick in `every` of the timer in `handle` (its
 /// slot index): 1 = every tick, 0 = none. Overrides
 /// `CONFIG_NROS_TRACE_TIMER_EVERY` for this slot; the first tick after the
 /// call is traced. A 30 Hz tick whose jitter is the measurement can stay

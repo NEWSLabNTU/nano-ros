@@ -4,7 +4,7 @@
 /**
  * @file declared_qos.hpp
  * @ingroup grp_qos
- * @brief phase-403 step 2 -- the QoS history depth an image DECLARED, reaching the
+ * @brief The QoS history depth an image DECLARED, reaching the
  *        compiler.
  *
  * # The problem
@@ -33,7 +33,7 @@
  *           qos: { depth: 1 }
  *
  * The row is keyed on the TOPIC, which is what a call site writes, and not on
- * the endpoint ref the contract addresses it by (issue 1084).
+ * the endpoint ref the contract addresses it by.
  *
  * # Two authoring modes, and only one number
  *
@@ -48,7 +48,7 @@
  * and a disagreement is a `static_assert` failure naming the topic and both
  * depths. Nothing is checked at runtime on that path and nothing costs a byte.
  *
- * # Reliability and durability too (issue 1256)
+ * # Reliability and durability too
  *
  * A contract can also state `reliability:` and `durability:` for a
  * subscription, and the table carries both beside the depth. A disagreement
@@ -77,7 +77,7 @@
  *
  * # The C++14 subset, deliberately
  *
- * Not the project minimum — that is C++17 since issue 1118. This is the
+ * Not the project minimum — that is C++17. This is the
  * stricter property `just check cpp` still enforces: it parses every header
  * here with `-std=c++14 -ffreestanding`,
  * so the table is a `constexpr` array and the search is a recursive `constexpr`
@@ -114,12 +114,12 @@ namespace rclcpp {
 /// said. Negative so that no arithmetic on it can pass for a queue size.
 constexpr int DECLARED_DEPTH_UNDECLARED = -1;
 
-/// issue 1256 -- "No reliability (or durability) was declared for this
+/// "No reliability (or durability) was declared for this
 /// endpoint." The same third state as @ref DECLARED_DEPTH_UNDECLARED, for a
 /// POLICY column: nothing asserts against it.
 constexpr int DECLARED_POLICY_UNDECLARED = -1;
 
-// issue 1256 -- the policy TOKENS the generated header carries, mapped to this
+// The policy TOKENS the generated header carries, mapped to this
 // language's own enumerator ordinals (`rclcpp::ReliabilityPolicy` /
 // `rclcpp::DurabilityPolicy` in `rclcpp/qos.hpp`). The header carries TOKENS rather
 // than numbers because C numbers the same enums differently
@@ -174,7 +174,7 @@ constexpr Entry TABLE[] = {{nullptr, nullptr, ::rclcpp::DECLARED_DEPTH_UNDECLARE
 constexpr size_t COUNT = 0;
 #endif
 
-// Issue 1608 -- the PUBLISHER rows, a table of their own: the generated header
+// The PUBLISHER rows, a table of their own: the generated header
 // keys rows on `(type, topic)`, and a publisher and a subscription on one pair
 // are two endpoints with one key. Same `Entry`, same sentinel, same COUNT rule.
 #if defined(NROS_DECLARED_PUB_QOS_ROWS)
@@ -260,7 +260,7 @@ constexpr int declared_depth_or(int declared, int passed) {
     return (declared == ::rclcpp::DECLARED_DEPTH_UNDECLARED) ? passed : declared;
 }
 
-/// issue 1256 -- the reliability verdict, shaped like `declared_depth_agrees`
+/// The reliability verdict, shaped like `declared_depth_agrees`
 /// for the same reason: the two ORDINALS reach the reader as template
 /// arguments, the one part of a diagnostic a compiler prints for you.
 template <int Declared, int Passed> struct declared_reliability_agrees {
@@ -276,7 +276,7 @@ template <int Declared, int Passed> struct declared_reliability_agrees {
     static constexpr bool value = (Declared == Passed);
 };
 
-/// issue 1256 -- the durability verdict. See `declared_reliability_agrees`.
+/// The durability verdict. See `declared_reliability_agrees`.
 template <int Declared, int Passed> struct declared_durability_agrees {
     static_assert(Declared == Passed,
                   "nros: this subscription's QoS DURABILITY disagrees with the durability its "
@@ -295,7 +295,7 @@ constexpr int declared_policy_or(int declared, int passed) {
     return (declared == ::rclcpp::DECLARED_POLICY_UNDECLARED) ? passed : declared;
 }
 
-/// Issue 1608 -- the PUBLISHER verdicts, shaped like the three above so the
+/// The PUBLISHER verdicts, shaped like the three above so the
 /// two values reach the diagnostic as template arguments; only the subject and
 /// the contract key in the message differ.
 template <int Declared, int Passed> struct declared_pub_depth_agrees {
@@ -344,7 +344,7 @@ constexpr int declared_depth(const char* type, const char* topic) {
     return detail::declared_qos_find(declared_qos::TABLE, declared_qos::COUNT, type, topic);
 }
 
-/// issue 1256 -- the declared RELIABILITY for `(type, topic)`, as a
+/// The declared RELIABILITY for `(type, topic)`, as a
 /// `rclcpp::ReliabilityPolicy` ordinal, or @ref DECLARED_POLICY_UNDECLARED.
 /// `constexpr` on the same terms as @ref declared_depth.
 constexpr int declared_reliability(const char* type, const char* topic) {
@@ -355,7 +355,7 @@ constexpr int declared_reliability(const char* type, const char* topic) {
                      ->reliability;
 }
 
-/// issue 1256 -- the declared DURABILITY for `(type, topic)`, as a
+/// The declared DURABILITY for `(type, topic)`, as a
 /// `rclcpp::DurabilityPolicy` ordinal, or @ref DECLARED_POLICY_UNDECLARED.
 constexpr int declared_durability(const char* type, const char* topic) {
     return (detail::declared_qos_row(declared_qos::TABLE, declared_qos::COUNT, type, topic) ==
@@ -365,13 +365,13 @@ constexpr int declared_durability(const char* type, const char* topic) {
                      ->durability;
 }
 
-/// Issue 1608 -- the declared depth of the PUBLISHER on `(type, topic)`, or
+/// The declared depth of the PUBLISHER on `(type, topic)`, or
 /// @ref DECLARED_DEPTH_UNDECLARED. `constexpr` on the terms of @ref declared_depth.
 constexpr int declared_pub_depth(const char* type, const char* topic) {
     return detail::declared_qos_find(declared_qos::PUB_TABLE, declared_qos::PUB_COUNT, type, topic);
 }
 
-/// Issue 1608 -- the PUBLISHER's declared RELIABILITY ordinal.
+/// The PUBLISHER's declared RELIABILITY ordinal.
 constexpr int declared_pub_reliability(const char* type, const char* topic) {
     return (detail::declared_qos_row(declared_qos::PUB_TABLE, declared_qos::PUB_COUNT, type,
                                      topic) == nullptr)
@@ -381,7 +381,7 @@ constexpr int declared_pub_reliability(const char* type, const char* topic) {
                      ->reliability;
 }
 
-/// Issue 1608 -- the PUBLISHER's declared DURABILITY ordinal.
+/// The PUBLISHER's declared DURABILITY ordinal.
 constexpr int declared_pub_durability(const char* type, const char* topic) {
     return (detail::declared_qos_row(declared_qos::PUB_TABLE, declared_qos::PUB_COUNT, type,
                                      topic) == nullptr)
@@ -430,7 +430,7 @@ constexpr int declared_pub_durability(const char* type, const char* topic) {
                      ::rclcpp::declared_depth((type_name), (topic_expr)), (qos_expr).depth()),     \
                  (qos_expr).depth()>)
 
-/// issue 1256 -- fail the BUILD when a declared RELIABILITY and the passed
+/// Fail the BUILD when a declared RELIABILITY and the passed
 /// QoS's disagree. Same four arguments and the same two-statement shape as
 /// @ref NROS_ASSERT_DECLARED_DEPTH; `qos_expr` must have a `constexpr
 /// reliability()` (an `rclcpp::QoS` does).
@@ -454,7 +454,7 @@ constexpr int declared_pub_durability(const char* type, const char* topic) {
                      static_cast<int>((qos_expr).reliability())),                                  \
                  static_cast<int>((qos_expr).reliability())>)
 
-/// issue 1256 -- the same for DURABILITY. `qos_expr` must have a `constexpr
+/// The same for DURABILITY. `qos_expr` must have a `constexpr
 /// durability()`.
 #define NROS_ASSERT_DECLARED_DURABILITY(type_name, topic_expr, qos_expr, topic_text)               \
     static_assert(::rclcpp::declared_durability((type_name), (topic_expr)) ==                      \
@@ -471,7 +471,7 @@ constexpr int declared_pub_durability(const char* type, const char* topic) {
                      static_cast<int>((qos_expr).durability())),                                   \
                  static_cast<int>((qos_expr).durability())>)
 
-/// issue 1256 -- every declared column at once: depth, reliability and
+/// Every declared column at once: depth, reliability and
 /// durability. What `NROS_SUBSCRIBE`'s four-argument form asserts, and what a
 /// call site that registers through `rclcpp::bind_subscription` writes beside it
 /// when it states its QoS (see `examples/workspaces/cpp/src/listener_pkg`).
@@ -480,7 +480,7 @@ constexpr int declared_pub_durability(const char* type, const char* topic) {
     NROS_ASSERT_DECLARED_RELIABILITY(type_name, topic_expr, qos_expr, topic_text);                 \
     NROS_ASSERT_DECLARED_DURABILITY(type_name, topic_expr, qos_expr, topic_text)
 
-/// Issue 1608 -- @ref NROS_ASSERT_DECLARED_DEPTH for a PUBLISHER: the same four
+/// @ref NROS_ASSERT_DECLARED_DEPTH for a PUBLISHER: the same four
 /// arguments and the same two-statement expansion, against the publisher rows
 /// (`contracts.pub_endpoints.<ep>.qos`). There is no ~~`NROS_PUBLISH`~~ macro form
 /// -- `create_publisher_in` is a plain call -- so this is written BESIDE that
@@ -501,7 +501,7 @@ constexpr int declared_pub_durability(const char* type, const char* topic) {
                      ::rclcpp::declared_pub_depth((type_name), (topic_expr)), (qos_expr).depth()), \
                  (qos_expr).depth()>)
 
-/// Issue 1608 -- @ref NROS_ASSERT_DECLARED_RELIABILITY for a PUBLISHER.
+/// @ref NROS_ASSERT_DECLARED_RELIABILITY for a PUBLISHER.
 #define NROS_ASSERT_DECLARED_PUB_RELIABILITY(type_name, topic_expr, qos_expr, topic_text)          \
     static_assert(                                                                                 \
         ::rclcpp::declared_pub_reliability((type_name), (topic_expr)) ==                           \
@@ -518,7 +518,7 @@ constexpr int declared_pub_durability(const char* type, const char* topic) {
                      static_cast<int>((qos_expr).reliability())),                                  \
                  static_cast<int>((qos_expr).reliability())>)
 
-/// Issue 1608 -- @ref NROS_ASSERT_DECLARED_DURABILITY for a PUBLISHER.
+/// @ref NROS_ASSERT_DECLARED_DURABILITY for a PUBLISHER.
 #define NROS_ASSERT_DECLARED_PUB_DURABILITY(type_name, topic_expr, qos_expr, topic_text)           \
     static_assert(::rclcpp::declared_pub_durability((type_name), (topic_expr)) ==                  \
                           ::rclcpp::DECLARED_POLICY_UNDECLARED ||                                  \
@@ -534,7 +534,7 @@ constexpr int declared_pub_durability(const char* type, const char* topic) {
                      static_cast<int>((qos_expr).durability())),                                   \
                  static_cast<int>((qos_expr).durability())>)
 
-/// Issue 1608 -- every declared column of a PUBLISHER at once: the exact
+/// Every declared column of a PUBLISHER at once: the exact
 /// mirror of @ref NROS_ASSERT_DECLARED_QOS (same four arguments, same three
 /// assertions), over the publisher rows.
 #define NROS_ASSERT_DECLARED_PUB_QOS(type_name, topic_expr, qos_expr, topic_text)                  \

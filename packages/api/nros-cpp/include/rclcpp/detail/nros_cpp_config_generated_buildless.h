@@ -1,10 +1,10 @@
-/* Issue 1569 — BUILDLESS sizes header. NOT a platform's fallback any more.
+/* BUILDLESS sizes header. NOT a platform's fallback any more.
  *
  * This file used to be what every NuttX C/C++ image was sized from
  * (`nros_config_generated_nuttx.h`, dispatched under `NROS_PLATFORM_NUTTX`),
  * because the per-build header was on no NuttX include path. It was a
- * hand-kept UPPER BOUND, and it kept failing to be one: #167, #464, #954 and
- * issue 1568 each found a value below the build, the last as a live 36-byte
+ * hand-kept UPPER BOUND, and it kept failing to be one: four separate fixes
+ * each found a value below the build, the last as a live 36-byte
  * publisher overrun. It could not even be made right by hand — one file stood
  * for two architectures that measure differently, and `rcl_subscription_t`
  * carries a field after its opaque array, so any value but the build's own
@@ -21,9 +21,9 @@
  * must only be self-consistent (the asserts below) and define every macro
  * generated code reads (the same gate). The values are the last snapshot's,
  * kept as they were. */
-/* Phase 159 (Path C) — NuttX fallback.
+/* NuttX fallback.
  *
- * #167 — this fallback is a snapshot and MUST be a safe UPPER BOUND: when the
+ * This fallback is a snapshot and MUST be a safe UPPER BOUND: when the
  * per-build `<rclcpp/detail/nros_cpp_config_generated.h>` mirror does not reach a TU that
  * emits `Node::GlobalStorageHolder<>::storage` (ODR-picked across the nros-cpp
  * library + entry), the C++ side falls back to these sizes. The old 79304 was
@@ -34,8 +34,8 @@
  */
 #ifndef NROS_CPP_CONFIG_GENERATED_BUILDLESS_H
 #define NROS_CPP_CONFIG_GENERATED_BUILDLESS_H
-/* #464 postscript — this was 98304, i.e. `NROS_EXECUTOR_SIZE + 8`, which is the
- * PRE-issue-0436 overhead. The generator's invariant is
+/* Postscript — this was 98304, i.e. `NROS_EXECUTOR_SIZE + 8`, which is the
+ * overhead before the context grew. The generator's invariant is
  *
  *     storage_bytes = EXECUTOR_SIZE + CPP_CONTEXT_OVERHEAD   (nros-build-helpers/src/cpp.rs)
  *
@@ -47,18 +47,18 @@
  * EXECUTOR_OPAQUE_U64S: a hand-maintained number left behind by a fix that
  * moved the thing it was derived from. Asserted below. */
 #define NROS_CPP_EXECUTOR_STORAGE_SIZE 98312
-/* issue 0796 — was 80. `CppActionServer` gained the accepted-goal callback
+/* Was 80. `CppActionServer` gained the accepted-goal callback
  * slot (one function pointer), so every per-build value rose by one pointer
  * width: the host generator now emits 128 where it emitted 120. Raised by 8 to
  * keep this snapshot the UPPER BOUND its header comment requires. */
 #define NROS_CPP_ACTION_SERVER_STORAGE_SIZE 88
-/* issue 2034 — was 48. `CppActionClient` gained the cancel-reply callback
+/* Was 48. `CppActionClient` gained the cancel-reply callback
  * slot (one function pointer), so the host value rose from 48 to 56. Raised
  * by 8 to keep this snapshot the upper bound. */
 #define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE 56
 #define NROS_EXECUTOR_SIZE 98296
 #define NROS_GUARD_CONDITION_SIZE 24
-/* Issue 1568 — MEASURED BELOW THE BUILD and raised: the realtime-c
+/* MEASURED BELOW THE BUILD and raised: the realtime-c
  * qemu-armv7a-nuttx fixture built at this commit wrote a per-build header with
  * NROS_PUBLISHER_SIZE 596, NROS_SUBSCRIBER_SIZE 620, NROS_SERVICE_SERVER_SIZE
  * 568, raw subscription / service-server 209 / 199 u64s and PUBLISHER_OPAQUE_U64S
@@ -66,7 +66,7 @@
  * short (the ctrl component's publisher buffer was 564 bytes for a 600-byte
  * write, overrunning into the telem instance the linker placed after it). The
  * values below are that measurement rounded up with margin, still hand-kept:
- * issue 1569 is the exact fix (the per-build header on the NuttX path). */
+ * the exact fix is (the per-build header on the NuttX path). */
 #define NROS_PUBLISHER_SIZE 640
 #define NROS_SUBSCRIBER_SIZE 672
 #define NROS_SERVICE_CLIENT_SIZE 4632
@@ -74,11 +74,11 @@
 #define NROS_CPP_RAW_SUBSCRIPTION_OPAQUE_U64S 224
 #define NROS_CPP_RAW_SERVICE_SERVER_OPAQUE_U64S 216
 #define NROS_CPP_RAW_SERVICE_CLIENT_OPAQUE_U64S 707
-/* #464 postscript — was 786, which is BELOW a real per-build value: a host
+/* Postscript — was 786, which is BELOW a real per-build value: a host
  * probe of the same type measures 799. This file's contract is "MUST be a safe
  * UPPER BOUND … above the largest per-build value", and 786 is not. Raised with
  * margin; an over-sized bound costs static RAM, an under-sized one is the
- * overflow #167 describes.
+ * overflow an earlier fix describes.
  *
  * Stated plainly: this is NOT verified against a 32-bit NuttX build, where the
  * true size is probably smaller than the host's. It is raised because the
@@ -87,7 +87,7 @@
 #define NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S 832
 #define NROS_CPP_RAW_ACTION_CLIENT_OPAQUE_U64S 2193
 
-/* RFC-0090 / issue 1115 — the codegen-version anchors, mirroring the per-build
+/* The codegen-version anchors, mirroring the per-build
  * `nros_cpp_config_generated.h` (`nros-build-helpers/src/cpp.rs`), which emits
  * the same pair from `nros_core::codegen_version`.
  *
@@ -96,7 +96,7 @@
  * languages, and it is the C one), so the C twin of this file is what unbroke
  * the NuttX build. They are here because this fallback stands in for a
  * per-build header that DOES define them, and a fallback that carries a
- * strict subset of its twin is the drift issue 1115 is: identical token
+ * strict subset of its twin is a known drift: identical token
  * sequences, so a TU that reaches both headers sees a benign redefinition.
  *
  * EXACT values, not upper bounds — a version range has no bound to be safe on.
@@ -104,12 +104,12 @@
 #define NROS_CODEGEN_VERSION 21
 #define NROS_CODEGEN_VERSION_MIN 18
 
-/* Issue 0464 — the generator computes
+/* The generator computes
  *   NROS_CPP_EXECUTOR_STORAGE_SIZE = NROS_EXECUTOR_SIZE + CPP_CONTEXT_OVERHEAD
  * with the overhead currently 16 (`nros-build-helpers/src/cpp.rs`). A snapshot
  * cannot observe the type it describes, but it CAN refuse to encode a
  * relationship the generator no longer holds — which is exactly how the old
- * `+ 8` survived issue 0436's bump.
+ * `+ 8` survived the context's growth.
  *
  * If the overhead changes again, this assertion fires at the including TU and
  * names the file to update, instead of the next reader discovering it from a

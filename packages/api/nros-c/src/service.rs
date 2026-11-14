@@ -118,7 +118,7 @@ pub type rclc_service_raw_callback_t = Option<
     ) -> bool,
 >;
 
-/// Issue 2081 — upstream `rmw_request_id_t`: who sent a service request (the
+/// Upstream `rmw_request_id_t`: who sent a service request (the
 /// client's writer GUID) and the sequence number it assigned.
 ///
 /// Declared in C by `<rclc/detail/request_id.h>` (cbindgen does not emit it);
@@ -127,7 +127,7 @@ pub type rclc_service_raw_callback_t = Option<
 #[allow(non_camel_case_types)]
 pub type rmw_request_id_t = nros_node::RawRequestId;
 
-/// Issue 2081 — a raw service callback that also receives the request's
+/// A raw service callback that also receives the request's
 /// [`rmw_request_id_t`], registered with
 /// `rclc_executor_add_service_raw_with_request_id`.
 ///
@@ -172,7 +172,7 @@ pub enum rclc_service_state_t {
 
 /// A service server the executor dispatches (rclc's `rcl_service_t`).
 ///
-/// phase-487 W2 (RFC-0096 D9, the C half): the arena entry owns the server,
+/// The arena entry owns the server,
 /// its request and reply buffers, the callback and its context. This struct
 /// keeps the arena handle (`_internal`) and the description the
 /// registration reads. A server the caller drains itself is a
@@ -195,23 +195,23 @@ pub struct rcl_service_t {
     pub type_hash_len: usize,
     /// Pointer to parent node
     pub node: crate::node::rclc_node_ref_t,
-    /// phase-515 C3 — the descriptor this service was created with, kept so
+    /// The descriptor this service was created with, kept so
     /// `rclc_executor_add_service` (de)serialises through its codec with
-    /// rclc's arguments, as a subscription keeps its own (phase-492 W8).
+    /// rclc's arguments, as a subscription keeps its own.
     /// Descriptors are generated `static const`s, so the pointer outlives the
     /// service.
     pub type_support: *const rclc_service_type_t,
-    /// Phase 193.4 — service QoS (applied to both request + reply endpoints).
+    /// Service QoS (applied to both request + reply endpoints).
     /// Defaults to the services profile (RELIABLE+VOLATILE+KEEP_LAST(10));
     /// set via `rclc_service_init_with_qos`.
     pub qos: crate::qos::rclc_qos_t,
-    /// Phase 189.M3.3.a — scheduling-context slot to bind the service's
+    /// Scheduling-context slot to bind the service's
     /// executor handle to. `0` = inherit the executor / Node default (no
     /// explicit bind); set via `rclc_service_init_with_options`. When non-zero,
     /// `rclc_executor_add_service_raw` binds the freshly-created handle to
     /// this SC after registration.
     pub options: rcl_service_options_t,
-    /// Internal state (arena entry index + executor pointer). Phase 87.5:
+    /// Internal state (arena entry index + executor pointer).
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ServiceServerInternal,
 }
@@ -246,12 +246,12 @@ type RawClient = nros_node::RawServiceClient<
     { crate::config::MESSAGE_BUFFER_SIZE },
 >;
 
-/// A service server the CALLER drains, with no executor (phase-487 W2).
+/// A service server the CALLER drains, with no executor.
 ///
 /// The C counterpart of C++'s `nros::PollService<S>`. Nothing dispatches it,
 /// so it has no arena slot: `_opaque` holds a `RawServiceServer` from
 /// `rclc_polling_service_init` until `rclc_polling_service_fini`.
-/// Zero-initialised is UNINITIALIZED. Until phase-487 it was the
+/// Zero-initialised is UNINITIALIZED. It used to be the
 /// ~~`NROS_SERVICE_STATE_POLLING`~~ state of `rcl_service_t`, which made every
 /// dispatched server carry this storage unused.
 #[repr(C)]
@@ -319,8 +319,8 @@ pub extern "C" fn rcl_get_zero_initialized_service() -> rcl_service_t {
 /// * `RCL_RET_NOT_INIT` if node is not initialized
 /// * `RCL_RET_ERROR` on initialization failure
 ///
-/// phase-487 W2 removed the `callback` and `context` this took between the
-/// name and the QoS: the struct stored them only for the (since removed)
+/// The `callback` and `context` this took between the
+/// name and the QoS are gone: the struct stored them only for the (since removed)
 /// two-argument ~~`nros_executor_add_service`~~ to read back, while the arena
 /// entry kept its own copies. The callback is supplied at registration, by
 /// `rclc_executor_add_service_raw` or a generated
@@ -379,18 +379,17 @@ pub unsafe extern "C" fn rclc_service_init_with_qos(
 }
 
 /// rclc's `rclc_service_init_default`, in rclc's argument order and at rclc's
-/// ARITY (phase-417 stage 6). The old ~~`nros_service_init`~~ carried `callback`
-/// and `context` in positions 5 and 6; RFC-0089 records that the binding site
-/// was never mandated (RFC-0041 governs the DISPATCH MODEL, and
+/// ARITY. The old ~~`nros_service_init`~~ carried `callback`
+/// and `context` in positions 5 and 6; the binding site
+/// was never mandated (the receive model governs the DISPATCH MODEL, and
 /// `executor-owns-no-entity-storage` is defined nowhere), so the callback moves
 /// to registration where rclc puts it — `rclc_executor_add_service_raw`.
 ///
-/// The typesupport parameter keeps OUR type for the reason RFC-0089 settled on
+/// The typesupport parameter keeps OUR type for the reason settled on
 /// 2026-09-04: a rosidl typesupport's members are its contract, including a
 /// `func` dispatcher we do not have.
 ///
-/// The six-argument ~~`nros_service_init`~~ is GONE (phase-417 stage 6 step B
-/// retired it), and since phase-487 no init entry point takes a callback.
+/// The six-argument ~~`nros_service_init`~~ is GONE, and no init entry point takes a callback.
 ///
 /// # Safety
 /// All non-NULL pointers must be valid + the node initialized.
@@ -404,7 +403,7 @@ pub unsafe extern "C" fn rclc_service_init_default(
     rclc_service_init_with_qos(service, node, type_info, service_name, core::ptr::null())
 }
 
-/// Phase 189.M3.3.a — rclc-style named service options.
+/// rclc-style named service options.
 ///
 /// Sits ALONGSIDE the QoS profile (same convention as
 /// `rcl_subscription_options_t`): QoS is passed separately, this struct
@@ -437,7 +436,7 @@ impl rcl_service_options_t {
 
 /// rcl's `rcl_service_get_options(service)`: the options the service was
 /// initialised with -- all zero when it was initialised without any -- or
-/// NULL for a NULL or unusable handle (phase-515 C6).
+/// NULL for a NULL or unusable handle.
 ///
 /// ADOPT-BOUNDED: nano-ros's options carry the scheduling context, not rcl's `qos`,
 /// `allocator` or rmw-specific options, so a ported `->qos` does not compile;
@@ -465,7 +464,7 @@ pub extern "C" fn rcl_service_get_default_options() -> rcl_service_options_t {
     rcl_service_options_t::default()
 }
 
-/// Phase 189.M3.3.a — initialize a service server with custom QoS + named
+/// Initialize a service server with custom QoS + named
 /// options. Behaves like [`rclc_service_init_with_qos`] except a non-zero
 /// `options->sched_context` is stashed on the service so that
 /// `rclc_executor_add_service_raw` binds the resulting executor handle to
@@ -542,7 +541,7 @@ pub unsafe extern "C" fn rcl_service_fini(
 // RTIC / embassy / FreeRTOS-task-per-entity patterns and the C/C++
 // FFI shims for callers that drive their own poll loops.
 
-/// Phase 122.3.c.4 — initialize an L1 polling-mode service server.
+/// Initialize an L1 polling-mode service server.
 ///
 /// Creates the underlying RMW server immediately and stores it inline
 /// in the service's `_opaque` field. The caller drains received
@@ -664,7 +663,7 @@ pub unsafe extern "C" fn rclc_polling_service_init(
 /// * `RCL_RET_INVALID_ARGUMENT` if `service` is NULL
 /// * `RCL_RET_NOT_INIT` if it is not initialised
 /// * `RCLC_RET_STALE_NODE` if its node has already been finalised — the
-///   teardown order was wrong, and nothing is dropped (issue 1386)
+///   teardown order was wrong, and nothing is dropped
 ///
 /// # Safety
 /// `service` must be a valid pointer.
@@ -690,7 +689,7 @@ pub unsafe extern "C" fn rclc_polling_service_fini(
     RCL_RET_OK
 }
 
-/// Phase 122.3.c.6.e — C-ABI wake-state slot. Caller declares one
+/// C-ABI wake-state slot. Caller declares one
 /// per (entity, channel) pair next to the entity, passes a pointer
 /// to it into the matching `nros_*_set_wake_callback` and keeps it
 /// alive at the same address for as long as the entity is in
@@ -702,13 +701,13 @@ pub struct rclc_wake_state_t {
     pub _opaque: [u64; 2],
 }
 
-/// Phase 122.3.c.6.e — zero-initialise a wake-state slot.
+/// Zero-initialise a wake-state slot.
 #[unsafe(no_mangle)]
 pub extern "C" fn rclc_wake_state_get_zero_initialized() -> rclc_wake_state_t {
     rclc_wake_state_t::default()
 }
 
-/// Phase 122.3.c.6.e — register a C wake callback on an L1
+/// Register a C wake callback on an L1
 /// polling-mode service server. `state` must point to a
 /// `rclc_wake_state_t` allocated by the caller; it must outlive
 /// the service (typically declared inline next to the
@@ -718,7 +717,7 @@ pub extern "C" fn rclc_wake_state_get_zero_initialized() -> rclc_wake_state_t {
 ///
 /// Returns `RCL_RET_UNSUPPORTED` when the backend cannot name the entity
 /// whose data arrived (uORB, a poll-only link) — it has no
-/// per-entity new-data slot, so the callback would never fire (issue 1940).
+/// per-entity new-data slot, so the callback would never fire.
 ///
 /// # Safety
 /// All pointers valid; `state` storage stable for the entity's
@@ -766,7 +765,7 @@ pub unsafe extern "C" fn rclc_polling_service_set_wake_callback(
     }
 }
 
-/// Phase 122.3.c.6.e — register a C wake callback on an L1
+/// Register a C wake callback on an L1
 /// polling-mode service client. Wakes when a reply lands. See
 /// `rclc_polling_service_set_wake_callback` for the lifetime contract
 /// and the `RCL_RET_UNSUPPORTED` return.
@@ -808,7 +807,7 @@ pub unsafe extern "C" fn rclc_polling_client_set_wake_callback(
     }
 }
 
-/// Phase 122.3.c.4 — non-blocking poll for a pending request on an L1
+/// Non-blocking poll for a pending request on an L1
 /// polling-mode service. Writes the request bytes into the caller's
 /// `buf` and the matching `sequence_number` (required for reply).
 ///
@@ -816,7 +815,7 @@ pub unsafe extern "C" fn rclc_polling_client_set_wake_callback(
 /// * `>= 0` — number of bytes written to `buf` (0 = no request)
 /// * `RCLC_RET_TRY_AGAIN` if a request IS pending but every reply slot is
 ///   held by a request not yet answered — send a response, then take again
-///   (issue 1088; distinct from the `0` that means nothing is pending)
+///   (distinct from the `0` that means nothing is pending)
 /// * `RCL_RET_INVALID_ARGUMENT` if pointers / state wrong
 /// * `RCL_RET_ERROR` on transport failure
 ///
@@ -865,7 +864,7 @@ pub unsafe extern "C" fn rclc_polling_service_take_request_raw(
     }
 }
 
-/// Phase 122.3.c.4 — send a reply on an L1 polling-mode service.
+/// Send a reply on an L1 polling-mode service.
 ///
 /// `sequence_number` must equal the value returned by the most recent
 /// `rclc_polling_service_take_request_raw` for the request being replied
@@ -1098,7 +1097,7 @@ pub unsafe extern "C" fn rcl_service_is_valid(service: *const rcl_service_t) -> 
 // Service Server Internal
 // ============================================================================
 
-/// Internal state for the service server (Phase 82.7).
+/// Internal state for the service server.
 ///
 /// Lightweight — stores only the arena entry index and the executor
 /// pointer where the actual transport handle lives. Mirrors
@@ -1144,7 +1143,7 @@ impl Default for ServiceServerInternal {
 /// RMW paths no longer disagree.
 const NROS_DEFAULT_SERVICE_TIMEOUT_MS: u32 = crate::config::SERVICE_DEFAULT_TIMEOUT_MS;
 
-/// Service-client response callback type (Phase 82).
+/// Service-client response callback type.
 ///
 /// Invoked by the executor's `spin_some` dispatch when a previously-sent
 /// request has its response delivered. The CDR bytes are owned by the
@@ -1153,7 +1152,7 @@ const NROS_DEFAULT_SERVICE_TIMEOUT_MS: u32 = crate::config::SERVICE_DEFAULT_TIME
 pub type rclc_response_callback_t =
     Option<unsafe extern "C" fn(response: *const u8, response_len: usize, context: *mut c_void)>;
 
-/// Internal state for the service client (Phase 82).
+/// Internal state for the service client.
 ///
 /// Lightweight — stores only the arena entry index and the executor
 /// pointer where the actual transport handle lives. Mirrors
@@ -1200,13 +1199,13 @@ pub enum rclc_client_state_t {
 
 /// A service client the executor dispatches (rclc's `rcl_client_t`).
 ///
-/// phase-487 W2 (RFC-0096 D9, the C half): the arena entry owns the client,
+/// The arena entry owns the client,
 /// its reply buffer, the response callback and its context. This struct
 /// keeps the arena handle (`_internal`, with the `rclc_client_call` timeout)
 /// and the description the registration reads. Before W2 the arena entry's
 /// callback was a trampoline that read the callback out of THIS struct, a
 /// back-reference that made a late reply after `rcl_client_fini` a
-/// use-after-free (issue 1631); the entry now holds the user's callback
+/// use-after-free; the entry now holds the user's callback
 /// directly. A client the caller drives itself is a
 /// [`rclc_polling_client_t`].
 #[repr(C)]
@@ -1227,17 +1226,17 @@ pub struct rcl_client_t {
     pub type_hash_len: usize,
     /// Pointer to parent node
     pub node: crate::node::rclc_node_ref_t,
-    /// phase-515 C3 — the descriptor this client was created with, kept so
+    /// The descriptor this client was created with, kept so
     /// `rclc_executor_add_client` (de)serialises through its codec with
-    /// rclc's arguments, as a subscription keeps its own (phase-492 W8).
+    /// rclc's arguments, as a subscription keeps its own.
     /// Descriptors are generated `static const`s, so the pointer outlives the
     /// client.
     pub type_support: *const rclc_service_type_t,
-    /// Phase 193.4b — service-client QoS (applied to both request + reply
+    /// Service-client QoS (applied to both request + reply
     /// endpoints). Defaults to the services profile
     /// (RELIABLE+VOLATILE+KEEP_LAST(10)); set via `rclc_client_init_with_qos`.
     pub qos: crate::qos::rclc_qos_t,
-    /// Phase 189.M3.3.a — scheduling-context slot to bind the client's executor
+    /// Scheduling-context slot to bind the client's executor
     /// handle to. `0` = inherit the executor / Node default; set via
     /// `rclc_client_init_with_options`. When non-zero,
     /// `rclc_executor_attach_client` binds the freshly-created handle to this
@@ -1267,12 +1266,12 @@ impl Default for rcl_client_t {
     }
 }
 
-/// A service client the CALLER drives, with no executor (phase-487 W2).
+/// A service client the CALLER drives, with no executor.
 ///
 /// The C counterpart of C++'s `nros::PollClient<S>`. `_opaque` holds a
 /// `RawServiceClient` from `rclc_polling_client_init` until
-/// `rclc_polling_client_fini`. Zero-initialised is UNINITIALIZED. Until
-/// phase-487 it was the ~~`NROS_CLIENT_STATE_POLLING`~~ state of
+/// `rclc_polling_client_fini`. Zero-initialised is UNINITIALIZED. It
+/// used to be the ~~`NROS_CLIENT_STATE_POLLING`~~ state of
 /// `rcl_client_t`.
 #[repr(C)]
 pub struct rclc_polling_client_t {
@@ -1324,7 +1323,7 @@ pub extern "C" fn rcl_get_zero_initialized_client() -> rcl_client_t {
     rcl_client_t::default()
 }
 
-/// Initialize a service client (Phase 82: metadata-only).
+/// Initialize a service client (metadata-only).
 ///
 /// Stores the service name/type metadata and a `ServiceClientInternal`
 /// blob; the actual transport handle (`RmwServiceClient`) is created
@@ -1393,7 +1392,7 @@ pub unsafe extern "C" fn rclc_client_init_default(
     RCL_RET_OK
 }
 
-/// Phase 193.4b — initialize a service client with an explicit QoS profile
+/// Initialize a service client with an explicit QoS profile
 /// (rclc's `_with_options`; the profile applies to both the request + reply
 /// endpoints). `qos` NULL ⇒ the services default. Same as
 /// [`rclc_client_init_default`] otherwise.
@@ -1415,7 +1414,7 @@ pub unsafe extern "C" fn rclc_client_init_with_qos(
     ret
 }
 
-/// Phase 189.M3.3.a — rclc-style named service-client options (mirrors
+/// rclc-style named service-client options (mirrors
 /// `rcl_service_options_t`). QoS is passed separately; this carries the
 /// non-QoS axes. Zero-init selects the default behaviour.
 #[repr(C)]
@@ -1443,7 +1442,7 @@ impl rcl_client_options_t {
 
 /// rcl's `rcl_client_get_options(client)`: the options the client was
 /// initialised with -- all zero when it was initialised without any -- or
-/// NULL for a NULL or unusable handle (phase-515 C6).
+/// NULL for a NULL or unusable handle.
 ///
 /// ADOPT-BOUNDED: nano-ros's options carry the scheduling context, not rcl's `qos`,
 /// `allocator` or rmw-specific options, so a ported `->qos` does not compile;
@@ -1471,7 +1470,7 @@ pub extern "C" fn rcl_client_get_default_options() -> rcl_client_options_t {
     rcl_client_options_t::default()
 }
 
-/// Phase 189.M3.3.a — initialize a service client with custom QoS + named
+/// Initialize a service client with custom QoS + named
 /// options. Like [`rclc_client_init_with_qos`] except a non-zero
 /// `options->sched_context` is stashed so `rclc_executor_attach_client`
 /// binds the resulting executor handle to that scheduling context once known.
@@ -1500,7 +1499,7 @@ pub unsafe extern "C" fn rclc_client_init_with_options(
 
 /// Finalize a service client.
 ///
-/// Phase 82: the underlying transport handle lives in the executor's
+/// The underlying transport handle lives in the executor's
 /// arena and is dropped automatically when the executor is finalised.
 /// This function only resets the C-side metadata + internal blob.
 ///
@@ -1542,7 +1541,7 @@ pub unsafe extern "C" fn rcl_client_fini(
 // Phase 122.3.c.5 — Layer-1 primitive entry points for service client
 // ============================================================================
 
-/// Phase 122.3.c.5 — initialize an L1 polling-mode service client.
+/// Initialize an L1 polling-mode service client.
 ///
 /// Creates the underlying RMW client immediately and stores it inline
 /// in the client's `_opaque` field. The caller drives the
@@ -1663,7 +1662,7 @@ pub unsafe extern "C" fn rclc_polling_client_init(
 /// * `RCL_RET_OK` on success
 /// * `RCL_RET_INVALID_ARGUMENT` if `client` is NULL
 /// * `RCL_RET_NOT_INIT` if it is not initialised
-/// * `RCLC_RET_STALE_NODE` if its node has already been finalised (issue 1386)
+/// * `RCLC_RET_STALE_NODE` if its node has already been finalised
 ///
 /// # Safety
 /// `client` must be a valid pointer.
@@ -1687,7 +1686,7 @@ pub unsafe extern "C" fn rclc_polling_client_fini(client: *mut rclc_polling_clie
     RCL_RET_OK
 }
 
-/// Phase 122.3.c.5 — send a raw request on an L1 polling-mode client.
+/// Send a raw request on an L1 polling-mode client.
 /// Non-blocking. Poll for the reply via
 /// `rclc_polling_client_take_response_raw`.
 ///
@@ -1724,7 +1723,7 @@ pub unsafe extern "C" fn rclc_polling_client_send_request_raw(
     }
 }
 
-/// Issue 2009 — [`rclc_polling_client_send_request_raw`] that also reports the
+/// [`rclc_polling_client_send_request_raw`] that also reports the
 /// request's SEQUENCE NUMBER, upstream's `rcl_send_request(client, request,
 /// &sequence_number)`.
 ///
@@ -1777,7 +1776,7 @@ pub unsafe extern "C" fn rclc_polling_client_send_request_raw_seq(
     }
 }
 
-/// Phase 122.3.c.5 — non-blocking poll for a reply on an L1
+/// Non-blocking poll for a reply on an L1
 /// polling-mode client. Writes reply bytes into the caller's `buf`.
 ///
 /// # Returns
@@ -1825,7 +1824,7 @@ pub unsafe extern "C" fn rclc_polling_client_take_response_raw(
     }
 }
 
-/// Issue 2009 — [`rclc_polling_client_take_response_raw`] that also reports
+/// [`rclc_polling_client_take_response_raw`] that also reports
 /// the SEQUENCE NUMBER of the request the reply answers: the number
 /// [`rclc_polling_client_send_request_raw_seq`] returned for it. Upstream's
 /// `rcl_take_response(client, &request_header, response)`, whose header
@@ -1947,12 +1946,12 @@ unsafe fn client_entry_callback(
 /// Set the response callback fired by `rclc_executor_spin_some` when an
 /// async request has its reply delivered.
 ///
-/// phase-487 W2 — the callback and `context` are written into the client's
+/// The callback and `context` are written into the client's
 /// executor-arena entry, which owns them; the client struct keeps neither.
 /// So the client must be ADDED first (`rclc_executor_attach_client`), and a
 /// client removed and re-added starts with no callback. Before W2 the setter
 /// wrote the struct and the arena dispatched through a trampoline that read
-/// it back, which is the back-reference RFC-0096 D9 removes.
+/// it back, which is the back-reference executor-owned storage removes.
 ///
 /// # Returns
 /// * `RCL_RET_OK` on success
@@ -1999,7 +1998,7 @@ pub unsafe extern "C" fn rclc_client_set_timeout(
     RCL_RET_OK
 }
 
-/// Phase 124.C.3 — synchronous, graph-aware "is the matching server up?"
+/// Synchronous, graph-aware "is the matching server up?"
 /// probe. Unlike [`rclc_client_wait_for_service`] this never spins the
 /// executor: it asks the active RMW backend whether at least one
 /// matching server has been observed on the RMW graph and returns
@@ -2011,7 +2010,7 @@ pub unsafe extern "C" fn rclc_client_set_timeout(
 /// hard yes/no should treat `-1` as "unknown — assume yes" or use
 /// [`rclc_client_wait_for_service`] instead.
 ///
-/// Superseded by [`rcl_service_server_is_available`] (phase-515 C8), rcl's
+/// Superseded by [`rcl_service_server_is_available`], rcl's
 /// name and shape, whose `RCL_RET_UNSUPPORTED` is this function's `-1`; kept
 /// one release.
 ///
@@ -2083,15 +2082,15 @@ pub unsafe extern "C" fn rclc_client_server_available(
 /// `rclc_executor_attach_client`. A spin on `rclc_client_service_is_ready`'s
 /// query: the executor is spun cooperatively between checks, and each check
 /// is a synchronous read of the discovery state the backend maintains (on
-/// zenoh, the matched-server set fed by liveliness PUT/DELETE — phase-428
-/// W13). Nothing is latched.
+/// zenoh, the matched-server set fed by liveliness PUT/DELETE).
+/// Nothing is latched.
 ///
 /// # Returns
 /// * `RCL_RET_OK` — server is visible (proceed with `rclc_client_call`).
 /// * `RCL_RET_TIMEOUT` — `timeout_ms` elapsed without seeing a token.
 /// * `RCL_RET_UNSUPPORTED` — the backend cannot know (XRCE), returned at
-///   once: issue 1087 made such a backend wait out the budget and report
-///   TIMEOUT, which every client read as "no server" (issue 1686). A caller
+///   once: an earlier version made such a backend wait out the budget and report
+///   TIMEOUT, which every client read as "no server". A caller
 ///   that may send blind proceeds; the call's own timeout is the probe.
 /// * `RCL_RET_NOT_INIT` — client not registered with an executor.
 /// * `RCL_RET_ERROR` — transport-level failure.
@@ -2158,7 +2157,7 @@ pub unsafe extern "C" fn rclc_client_wait_for_service(
 }
 
 /// rcl's `rcl_service_server_is_available(node, client, is_available)`,
-/// argument for argument (phase-515 C8).
+/// argument for argument.
 ///
 /// Writes whether at least one matching service server is visible on the RMW
 /// graph, without spinning. ADOPT-BOUNDED: a backend that cannot answer
@@ -2222,7 +2221,7 @@ pub unsafe extern "C" fn rcl_service_server_is_available(
 /// currently visible. Mirrors `rclcpp::ClientBase::service_is_ready`
 /// and rcl's `rcl_service_server_is_available`.
 ///
-/// Superseded by [`rcl_service_server_is_available`] (phase-515 C8), rcl's
+/// Superseded by [`rcl_service_server_is_available`], rcl's
 /// name and shape; kept one release. Returns `false` when
 /// the client isn't registered with an executor or the backend lacks
 /// liveliness discovery (in which case use `rclc_client_wait_for_service`
@@ -2259,7 +2258,7 @@ pub unsafe extern "C" fn rclc_client_service_is_ready(client: *const rcl_client_
     }
 }
 
-/// Send a service request asynchronously (Phase 82).
+/// Send a service request asynchronously.
 ///
 /// Non-blocking. The reply is delivered via the registered
 /// ~~`response_callback`~~ during `rclc_executor_spin_some`. The user must
@@ -2420,7 +2419,7 @@ pub unsafe extern "C" fn rclc_client_take_response(
 
 /// Call a service (blocking convenience over the async pair).
 ///
-/// Phase 82: signature unchanged, but no longer blocks at the transport
+/// Signature unchanged, but no longer blocks at the transport
 /// layer. Internally calls `rclc_client_send_request_async` and spins
 /// the registered executor via `rclc_executor_spin_some` until the
 /// response arrives or the client's `timeout_ms` elapses. The client

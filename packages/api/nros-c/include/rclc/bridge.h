@@ -3,7 +3,7 @@
 
 /**
  * @file bridge.h
- * @brief Multi-RMW bridge surface (Phase 128.F.5).
+ * @brief Multi-RMW bridge surface.
  *
  * Lets a binary that links more than one RMW backend forward raw CDR
  * payloads between Nodes bound to different backends. Single-backend
@@ -42,9 +42,9 @@ extern "C" {
  * `NROS_RMW_RET_UNKNOWN_BACKEND` at the matching `init_multi` call.
  */
 /**
- * @brief One RMW session property (issue 2123): a backend property name and
+ * @brief One RMW session property: a backend property name and
  *        its value, as `nros dev rmw session-properties` writes a domain's RMW file
- *        lowered on the host (RFC-0109 D8). Same layout as
+ *        lowered on the host. Same layout as
  *        `nros_cpp_session_property_t`.
  */
 typedef struct {
@@ -58,7 +58,7 @@ typedef struct {
     uint32_t domain_id;     /**< ROS domain id. 0 unless otherwise. */
     const char* node_name;  /**< Session-default node name. NULL = empty. */
     const char* namespace_; /**< Session-default namespace. NULL = "/". */
-    /** Issue 2123 -- this session's RMW properties (its domain's RMW file).
+    /** This session's RMW properties (its domain's RMW file).
      *  NULL with `properties_len == 0` = none. Read during `rclc_init_multi`
      *  only; the rows and their strings must outlive that call. */
     const rclc_session_property_t* properties;
@@ -129,7 +129,7 @@ typedef struct {
  * Returns `NROS_RMW_RET_OK` on success and writes the bridge handle
  * to `*out`.
  *
- * RFC-0088 D3 — returns `NROS_RMW_RET_ERROR` when the two sides speak
+ * Returns `NROS_RMW_RET_ERROR` when the two sides speak
  * different serialization formats. The bytes are forwarded untouched, so
  * bridging a uORB session to a CDR one would hand each side the other's
  * encoding; construction refuses instead. The log line on the

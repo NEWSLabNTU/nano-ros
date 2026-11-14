@@ -1,12 +1,12 @@
 //! Service server and client FFI functions for the C++ API.
 //!
-//! Phase 87.6 (thin-wrapper refactor): caller's opaque storage holds a bare
+//! The caller's opaque storage holds a bare
 //! `RmwServiceServer` / `RmwServiceClient` handle. Service-name buffers live
 //! on the C++ `rclcpp::Service<S>` / `rclcpp::Client<S>` classes. Received CDR
 //! bytes are copied directly into caller-provided output buffers — no
 //! runtime scratch.
 //!
-//! Issue 0436 — user-supplied executor handles are tag-validated via
+//! User-supplied executor handles are tag-validated via
 //! `cpp_ctx_checked`. Handles reached through an already-validated node/client
 //! (`node_ref.executor`) inherit that provenance and stay direct casts.
 
@@ -149,7 +149,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
     }
 }
 
-/// Phase 189.M3.3.e — register a **callback-style** service server in the
+/// Register a **callback-style** service server in the
 /// executor arena (rclcpp dispatch model), as opposed to the poll-style
 /// `nros_cpp_service_server_create` above. The arena owns the server; spin
 /// dispatches `callback(request_cdr) → reply_cdr`. Returns the executor
@@ -159,7 +159,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
 /// schedule). `callback` is the C++ template's raw trampoline; `context` is
 /// whatever capture that trampoline needs, copied in by value.
 ///
-/// phase-456 W3: the C++ side passes the USER'S HANDLER here, one word, rather
+/// The C++ side passes the USER'S HANDLER here, one word, rather
 /// than the address of its `rclcpp::Service<S>` object. That is W1's "the arena
 /// carries the callback's capture" for a capture that already fits the slot, and
 /// it is why a callback-style service is movable again.
@@ -199,7 +199,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_register(
     }
 }
 
-/// phase-488 — [`nros_cpp_service_server_register`] whose handler carries
+/// [`nros_cpp_service_server_register`] whose handler carries
 /// STATE, the service twin of `nros_cpp_subscription_register_capturing`.
 ///
 /// The first `capture_len` bytes at `capture` are COPIED into the arena entry,
@@ -251,7 +251,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_register_capturing(
     }
 }
 
-/// Issue 2081 — [`nros_cpp_service_server_register`] /
+/// [`nros_cpp_service_server_register`] /
 /// [`nros_cpp_service_server_register_capturing`] for a trampoline that also
 /// receives the request's `rmw_request_id_t` (client writer GUID + client
 /// sequence number), which fills the request header of rclcpp's three-argument
@@ -733,14 +733,14 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
     }
 }
 
-/// Phase 189.M3.3.f — register a **callback-style** service client in the
+/// Register a **callback-style** service client in the
 /// executor arena (rclcpp async dispatch), as opposed to the poll/future-style
 /// `nros_cpp_service_client_create`. The arena owns the client; spin dispatches
 /// `callback(response_cdr)` when a reply arrives. Requests are sent via
 /// `nros_cpp_service_client_send_on_handle` using the returned `out_handle_id`.
 /// Binds the handle to `sched_context` when non-zero (the payoff). `callback` is
 /// the C++ template's raw response trampoline; `context` is that trampoline's
-/// capture, copied in by value — since phase-456 W3 the C++ side passes the
+/// capture, copied in by value — the C++ side passes the
 /// user's HANDLER rather than the address of its `Client<S>` object.
 ///
 /// # Safety
@@ -840,7 +840,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_register(
     }
 }
 
-/// Phase 189.M3.3.f — send a request on a callback-style (arena-registered)
+/// Send a request on a callback-style (arena-registered)
 /// service client identified by `handle_id` (from
 /// `nros_cpp_service_client_register`). The reply is delivered to the client's
 /// registered response callback during spin. Mirrors the C arena send path.
@@ -898,7 +898,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_on_handle(
 
 /// Send a service request asynchronously (non-blocking).
 ///
-/// Issue 2009 — the single-request spelling: the id the backend assigned is
+/// The single-request spelling: the id the backend assigned is
 /// not reported. `rclcpp::PollClient` sends through
 /// [`nros_cpp_service_client_send_request_seq`], which reports it, so every
 /// future it hands out is keyed by its own request.
@@ -954,7 +954,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_request_seq(
 /// Returns `NROS_CPP_RET_OK` and fills `resp_data`/`resp_len` on success,
 /// `NROS_CPP_RET_TRY_AGAIN` if no reply is available yet.
 ///
-/// Issue 2009 — the single-request spelling: the reply's id is not reported,
+/// The single-request spelling: the reply's id is not reported,
 /// so this cannot tell which request a reply answers. `rclcpp::Future` takes
 /// through [`nros_cpp_service_client_take_response_seq`].
 ///
@@ -980,7 +980,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_take_response(
 }
 
 /// Try to receive a reply (non-blocking) and report the SEQUENCE ID of the
-/// request it answers — issue 2009.
+/// request it answers.
 ///
 /// `NROS_CPP_RET_OK`: `resp_data[..*resp_len]` holds the reply and
 /// `*sequence_id` the id [`nros_cpp_service_client_send_request_seq`] returned
@@ -1023,7 +1023,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_take_response_seq(
     }
 }
 
-/// Try to receive a reply (non-blocking) with its REQUEST HEADER — issue 2148.
+/// Try to receive a reply (non-blocking) with its REQUEST HEADER.
 ///
 /// Upstream `rmw_take_response`'s `rmw_request_id_t` (inside its
 /// `rmw_service_info_t`), which rclcpp's
@@ -1118,14 +1118,14 @@ unsafe fn client_either_road<'a>(
     Some(unsafe { crate::Locked::new(client, Some(ctx)) })
 }
 
-/// Phase 124.C.3 — graph-aware "is the matching server up?" probe.
+/// Graph-aware "is the matching server up?" probe.
 ///
 /// Writes `1` to `*out` if the backend has discovered ≥ 1 matching
 /// server, `0` if not yet, or `-1` if the backend cannot answer
 /// (e.g. XRCE). Never spins the executor — callers that want a
 /// blocking wait should use the higher-level Promise / Future API.
 ///
-/// **Two roads, one entry point** — phase-456 W9 follow-up (2026-09-28).
+/// **Two roads, one entry point.**
 /// `storage` non-NULL is the future-style client that owns its
 /// `RmwServiceClient`; otherwise `(executor, handle_id)` names the arena entry,
 /// which is what a DISPATCH client holds and therefore what a ported `rclcpp`
@@ -1171,9 +1171,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_server_available(
     }
 }
 
-/// phase-338 W8 — block until a matching service server is discoverable.
+/// Block until a matching service server is discoverable.
 ///
-/// The C API has had `rclc_client_wait_for_service` since phase-124; C++ never
+/// The C API has had `rclc_client_wait_for_service` for a long time; C++ never
 /// bound it, so every C++ client example hand-rolled a retry loop around the
 /// first request instead (three attempts, spin in between) to paper over slow
 /// discovery. This is the primitive those loops were approximating.
@@ -1182,9 +1182,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_server_available(
 /// `service_is_ready`, the same shape as `Client::wait_for_service`
 /// (`nros-node/src/executor/handles.rs`) — each check is a synchronous read
 /// of the discovery state the backend maintains, nothing is latched, and a
-/// backend that cannot answer returns `NROS_CPP_RET_UNSUPPORTED` at once (issue 1686).
+/// backend that cannot answer returns `NROS_CPP_RET_UNSUPPORTED` at once.
 ///
-/// **Two roads, one entry point** — phase-456 W9 follow-up (2026-09-28), the
+/// **Two roads, one entry point** — the
 /// same split `nros_cpp_service_client_server_available` above takes. `storage`
 /// non-NULL is the future-style client that owns its `RmwServiceClient`;
 /// otherwise `(executor_handle, handle_id)` names the arena entry a dispatch
@@ -1199,7 +1199,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_server_available(
 /// * `NROS_CPP_RET_OK` — server visible.
 /// * `NROS_CPP_RET_TIMEOUT` — budget elapsed without seeing a token.
 /// * `NROS_CPP_RET_UNSUPPORTED` — the backend cannot know (XRCE), returned at
-///   once rather than after the budget (issue 1686); a caller that may send
+///   once rather than after the budget; a caller that may send
 ///   blind proceeds.
 /// * `NROS_CPP_RET_INVALID_ARGUMENT` — null executor, or neither road resolves.
 /// * `NROS_CPP_RET_TRANSPORT_ERROR` — transport-level failure.
@@ -1273,7 +1273,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
     }
 }
 
-/// Release a dispatch service server — issue 1667: the handler stops, the
+/// Release a dispatch service server: the handler stops, the
 /// server leaves the graph, and the arena entry and its capture are freed for
 /// the next registration.
 ///
@@ -1299,7 +1299,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_release(
     }
 }
 
-/// Release a dispatch service client — issue 1667: the client leaves the
+/// Release a dispatch service client: the client leaves the
 /// graph, a reply it was waiting for is abandoned, and the arena entry and its
 /// response handler are freed for the next registration.
 ///
@@ -1376,7 +1376,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_relocate(
 // be absent where it is used.
 // ============================================================================
 
-/// The QoS the backend GRANTED a service server's two endpoints — issue 1437.
+/// The QoS the backend GRANTED a service server's two endpoints.
 ///
 /// `out_request` is `rmw_service_request_subscription_get_actual_qos`,
 /// `out_response` is `rmw_service_response_publisher_get_actual_qos`. Either
@@ -1424,7 +1424,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_get_actual_qos(
     NROS_CPP_RET_OK
 }
 
-/// The QoS the backend GRANTED a service client's two endpoints — issue 1437.
+/// The QoS the backend GRANTED a service client's two endpoints.
 ///
 /// `out_request` is `rmw_client_request_publisher_get_actual_qos`,
 /// `out_response` is `rmw_client_response_subscription_get_actual_qos`.

@@ -17,7 +17,7 @@
  * rclc_polling_subscription_take_serialized() — or
  * rclc_polling_subscription_take_sequence() for a batch and
  * rclc_polling_subscription_take_validated() for the E2E-safety variant.
- * The two types are separate since phase-487: a dispatched subscription's
+ * The two types are separate: a dispatched subscription's
  * storage is in the executor arena, a polled one's is in the struct.
  */
 
@@ -28,7 +28,7 @@
  * This per-module header is kept as a thin shim so existing code that
  * does `#include <rclc/subscription.h>` continues to compile. */
 #include "rclc/types.h"
-/* phase-454 W10 — the DECLARED QoS depth of this component's subscriptions,
+/* The DECLARED QoS depth of this component's subscriptions,
  * and `NROS_ASSERT_DECLARED_DEPTH` over it. Included HERE, from the subscribe
  * surface, so a C call site that spells a depth reaches the check without
  * naming a second header — and so `<rclc/rclc.h>` carries it, which is what
@@ -38,7 +38,7 @@
 #include "rclc/detail/declared_qos.h"
 
 #ifndef __cplusplus
-/* issue 1256 -- `rclc/detail/declared_qos.h` is freestanding, so the policy values its
+/* `rclc/detail/declared_qos.h` is freestanding, so the policy values its
  * table answers in are literals there. This is the first header that sees both
  * them and the enums they stand for, so the two are held equal HERE: a drift
  * fails every C build that includes the subscribe surface, rather than checking
@@ -57,7 +57,7 @@ _Static_assert(_NROS_DQ_C_NROS_DQ_TRANSIENT_LOCAL == RCLC_QOS_DURABILITY_TRANSIE
 /**
  * @brief rclc's best-effort preset constructor for a subscription.
  *
- * phase-417 W5.d; the sibling of rclc_publisher_init_best_effort() and the
+ * The sibling of rclc_publisher_init_best_effort() and the
  * same argument. rclc's body (`rclc/src/rclc/subscription.c` @ `10eadcc`) is
  * `rclc_subscription_init(..., &rmw_qos_profile_sensor_data)` — best-effort,
  * volatile, KEEP_LAST(5) — which ::RCLC_QOS_SENSOR_DATA mirrors.
@@ -85,8 +85,8 @@ static inline rcl_ret_t rclc_subscription_init_best_effort(
 
 #endif /* NROS_SUBSCRIPTION_H */
 
-/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does
- * (phase-492): a ported file that includes only `<rclc/subscription.h>` still finds
+/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does:
+ * a ported file that includes only `<rclc/subscription.h>` still finds
  * `RCLC_CHECK_RET`, `RCLC_LOG_*` and the rcl spellings. Outside the guard, so
  * this header's own declarations are complete before the umbrella reads them. */
 #include "rclc/rclc.h"

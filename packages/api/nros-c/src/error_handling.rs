@@ -1,4 +1,4 @@
-//! rcl's error state — `rcl_get_error_string` and its family (phase-515 C5).
+//! rcl's error state — `rcl_get_error_string` and its family.
 //!
 //! rcl keeps a THREAD-LOCAL error state that every failing call fills with a
 //! message, file and line; a caller reads it back with

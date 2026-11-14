@@ -24,13 +24,13 @@ template <typename S> class Service;
 
 namespace rclcpp {
 
-/// A registered dispatch service server — phase-456 W5.
+/// A registered dispatch service server.
 ///
 /// WHAT IT IS, AND WHY IT IS NOT A POINTER TO A `Service<S>`
 ///
 /// A service created with a HANDLER is owned by the Rust executor arena:
 /// `nros_cpp_service_server_register` returns a handle id, the arena holds the
-/// `RmwServiceServer`, and since phase-456 W3 it holds the user's handler as
+/// `RmwServiceServer`, and it holds the user's handler as
 /// its own trampoline context. Nothing of the caller's is referenced after
 /// registration, so there is no C++ object to point at and none is made.
 ///
@@ -54,9 +54,9 @@ namespace rclcpp {
 ///
 /// No `operator->`, because there is nothing to dereference. A ported file that
 /// calls a method on its service handle gets a compile error naming the handle,
-/// which is the mechanical edit RFC-0089 asks for.
+/// which is the mechanical edit the adoption rule asks for.
 ///
-/// HOW IT ENDS (issue 1667)
+/// HOW IT ENDS
 ///
 /// `srv_.reset()` RELEASES the service, as `timer_.reset()` releases a timer:
 /// the handler stops, the server leaves the graph, and the arena entry and the
@@ -64,7 +64,7 @@ namespace rclcpp {
 /// that created it does the same. Dropping or overwriting a handle does NOT.
 ///
 /// What a stale COPY does: it carries the generation of the registration it was
-/// issued for (phase-476 W0), so once one copy is reset the others resolve to
+/// issued for, so once one copy is reset the others resolve to
 /// nothing and can never reach the slot's next occupant. From inside the
 /// handler the release takes effect when the handler returns.
 template <typename S> class ServiceHandle {
@@ -91,7 +91,7 @@ template <typename S> class ServiceHandle {
     /// is nothing to do with it through this API today.
     constexpr size_t handle_id() const { return handle_id_; }
 
-    /// `srv_.reset()` — release the service (issue 1667): the handler stops,
+    /// `srv_.reset()` — release the service: the handler stops,
     /// the server leaves the graph, and this handle becomes empty. Other copies
     /// become stale and fail safely. A no-op on an empty handle.
     void reset() {

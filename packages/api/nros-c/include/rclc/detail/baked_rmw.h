@@ -8,15 +8,15 @@
  *
  * `nano_ros_entry()` bakes `NROS_ENTRY_RMW="<name>"` onto every entry target,
  * whatever its language — it is on the C compile line exactly as it is on the
- * C++ one. Until issue 1531 it had only C++ consumers
+ * C++ one. It used to have only C++ consumers
  * (`nros-cpp/include/rclcpp/executor.hpp`, `node.hpp`), so a C image held its own
  * answer in its own preprocessor and never passed it: every C main called a
  * support init whose `rmw` is `NULL`.
  *
- * That was half of issue 1050. The same commit that added the baked rung made a
+ * That was half of a larger fix. The same commit that added the baked rung made a
  * selector-less open with more than one registered backend a hard refusal
  * (`BackendResolution::Ambiguous`), so the C road got the new failure mode and
- * not the new capability. Issue 1530 is what that cost: a recorder
+ * not the new capability. What that cost: a recorder
  * self-registering into every native C and C++ image made the registry
  * ambiguous, and every native C example failed `rclc_support_init` with
  * `RCL_RET_INVALID_ARGUMENT` for eighteen days.
@@ -28,7 +28,7 @@
  * rather than the class. A function-like macro is the C analogue of what the C++
  * headers do at their own call site, and it only expands when followed by `(`,
  * so `&rclc_support_init` is still the function's address. rclc's
- * `rclc_support_init(&support, argc, argv, &allocator)` (phase-492 W1.b) has no
+ * `rclc_support_init(&support, argc, argv, &allocator)` has no
  * selector argument to fill, so its macro forwards to the seam
  * `nros_c_support_init_baked`, which is that init plus the selector.
  *
@@ -51,7 +51,7 @@
  *
  * ## Precedence
  *
- * This is the BAKED rung of RFC-0045's precedence model A, and it stays below
+ * This is the BAKED rung of the boot-config precedence ladder, and it stays below
  * the environment: `rclc_support_init_rmw` hands the selector to
  * `ExecutorConfig::try_resolve`, where `$NROS_RMW` still wins, alongside every
  * other field's precedence. An entry that wants to name a backend explicitly
@@ -61,7 +61,7 @@
  * NULL selector, so a single-backend registry resolves namelessly as it
  * always has.
  *
- * ## The locator and domain (phase-499 W2)
+ * ## The locator and domain
  *
  * `rclc_support_init` also forwards `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`
  * (`<rclc/detail/entry_config.h>`'s ladder), for the same reason as the selector: they
@@ -81,7 +81,7 @@
 /* `argv` is cast because a program's `main` hands over `char**`, and C has no
  * implicit `char**` -> `const char* const*` conversion (C++ does). GCC 14 makes
  * `-Wincompatible-pointer-types` an error, so the riscv-none-elf 14.2 images
- * stopped compiling once phase-499 W2 had every C example pass its own argv.
+ * stopped compiling once every C example passed its own argv.
  * The callee only reads it, so the cast adds const and nothing else. */
 /* The nameless spellings forward the bake. `rclc_support_init_rmw` is the
  * one that takes a selector, so it is deliberately NOT wrapped — a caller
@@ -89,8 +89,8 @@
  *
  * An empty `NROS_ENTRY_RMW` is "unset", not a backend named "": the bake macro
  * expands to a string literal and an unresolved cmake variable produces `""`,
- * which `rclc_support_init_rmw` already treats as no selector (issue 1050
- * defect 3). So no `#if` on the VALUE is needed here, only on its presence. */
+ * which `rclc_support_init_rmw` already treats as no selector. So no `#if` on the VALUE is
+ * needed here, only on its presence. */
 #define rclc_support_init(support, argc, argv, allocator)                                          \
     nros_c_support_init_baked(                                                                     \
         (support), (argc), (const char* const*)(argv), (allocator), NROS_ENTRY_RMW,                \

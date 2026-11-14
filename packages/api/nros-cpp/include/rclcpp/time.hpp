@@ -6,7 +6,7 @@
  * @ingroup grp_clock
  * @brief `rclcpp::Time` — a timestamp, mirroring upstream's `rclcpp::Time`.
  *
- * Issue 0789. `rclc_time_t` and the `rclc_time_*` arithmetic have existed in C
+ * `rclc_time_t` and the `rclc_time_*` arithmetic have existed in C
  * since the C API shipped; this is the C++ face over them, so
  * `msg.header.stamp` can be filled from `node.now()` instead of by hand.
  */
@@ -24,11 +24,11 @@
 #include "rclc/types.h"
 
 // ============================================================================
-// `rclcpp::Time` — DEFINED here (RFC-0089: rclcpp:: is the home)
+// `rclcpp::Time` — DEFINED here (rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::` to `rclcpp::` (the `nros::`
-// alias went in phase-483 W1), so a ported `rclcpp::Time stamp = node->now();`
+// The definition moved from `nros::` to `rclcpp::` (the `nros::`
+// alias is gone), so a ported `rclcpp::Time stamp = node->now();`
 // and in-tree code name the same type.
 namespace rclcpp {
 
@@ -38,7 +38,7 @@ namespace rclcpp {
 /// rclcpp, so a steady-clock reading and a system-clock reading are
 /// distinguishable after the fact.
 ///
-/// Divergence from rclcpp, forced by `-fno-exceptions` (RFC-0018): rclcpp
+/// Divergence from rclcpp, forced by `-fno-exceptions`: rclcpp
 /// throws `std::runtime_error` when two `Time`s of different clock types are
 /// compared or subtracted. There is no way to report that from an operator
 /// here, so the comparison is on nanoseconds alone. Check `get_clock_type()`
@@ -67,7 +67,7 @@ class Time {
           clock_type_(clock_type) {}
 
     /// From a generated `builtin_interfaces/msg/Time` — anything with `sec` and
-    /// `nanosec` members, the shape `to_msg` below binds to (phase-488).
+    /// `nanosec` members, the shape `to_msg` below binds to.
     /// Upstream's `Time(const builtin_interfaces::msg::Time&, rcl_clock_type_t
     /// = RCL_ROS_TIME)` is implicit, and ported code leans on that:
     /// `rclcpp::Time(msg->header.stamp)` appears in 78 of the 2944 sources of
@@ -136,7 +136,7 @@ class Time {
     /// user package, so the client library cannot name one; a template that
     /// binds to the generated struct is the same conversion without the
     /// dependency. (`rust:Time::to_ros_msg` is the same call one language over.
-    /// Rust has no structural bound, so phase-467 Q3 shipped it as an AUTHORED
+    /// Rust has no structural bound, so it ships as an AUTHORED
     /// trait `nros_core::SecNanosecMsg` that codegen implements for the same
     /// `{ sec, nanosec }` shape this template binds to.)
     ///
@@ -146,7 +146,7 @@ class Time {
     template <typename TimeMsgT> void to_msg(TimeMsgT& out) const {
         // The C decomposition floors and keeps `nanosec` in `[0, 1e9)`, which
         // is what `Time.msg` specifies — for a time before the epoch as much
-        // as after it (issue 0799). `Duration::to_msg` is the same call on the
+        // as after it. `Duration::to_msg` is the same call on the
         // duration entry point.
         rclc_time_t t = rclc_time_from_nanoseconds(ns_);
         out.sec = t.sec;
@@ -154,7 +154,7 @@ class Time {
     }
 
     /// Upstream's implicit `operator builtin_interfaces::msg::Time()`
-    /// (phase-488; Nav2 writes `msg.header.stamp = now();`). The same
+    /// (Nav2 writes `msg.header.stamp = now();`). The same
     /// `{sec, nanosec}` template as the constructor above, through `to_msg`.
     template <typename TimeMsgT, typename = decltype(static_cast<int64_t>(TimeMsgT().sec) +
                                                      static_cast<int64_t>(TimeMsgT().nanosec))>
@@ -179,7 +179,7 @@ constexpr Time operator+(const Duration& lhs, const Time& rhs) {
 
 /// Upstream's `builtin_interfaces::msg::Time operator+(const
 /// builtin_interfaces::msg::Time&, const rclcpp::Duration&)` and its `-`
-/// (phase-488; Nav2 writes `stamp + delta`). Over any `{sec, nanosec}`
+/// (Nav2 writes `stamp + delta`). Over any `{sec, nanosec}`
 /// message, found by argument-dependent lookup through `Duration`.
 template <typename TimeMsgT, typename = decltype(static_cast<int64_t>(TimeMsgT().sec) +
                                                  static_cast<int64_t>(TimeMsgT().nanosec))>

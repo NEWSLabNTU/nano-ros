@@ -1,7 +1,7 @@
 /**
  * @file request_id.h
  * @ingroup grp_service
- * @brief `rmw_request_id_t` — the identity of one service request (issue 2081).
+ * @brief `rmw_request_id_t` — the identity of one service request.
  *
  * Upstream's `rmw_request_id_t` (`<rmw/types.h>`), field for field: the
  * requesting client's writer GUID and the sequence number it assigned. A

@@ -16,21 +16,21 @@
 
 #include "rclcpp/detail/traits.hpp"
 #include "rclcpp/detail/config.hpp"
-#include "rclcpp/detail/std_detect.hpp"  // phase-488 — `NROS_CPP_HAS_SHARED_PTR`
-#include "rclcpp/detail/entity_name.hpp" // phase-444 — the one entity-name copy
-#include "rclcpp/executor.hpp"           // phase-444 — the graph counter these forward to
-#include "rclcpp/owned.hpp" // phase-456 W5 — `Publisher<M>::SharedPtr` IS `Owned<Publisher<M>>`
+#include "rclcpp/detail/std_detect.hpp"  // `NROS_CPP_HAS_SHARED_PTR`
+#include "rclcpp/detail/entity_name.hpp" // the one entity-name copy
+#include "rclcpp/executor.hpp"           // the graph counter these forward to
+#include "rclcpp/owned.hpp"              // `Publisher<M>::SharedPtr` IS `Owned<Publisher<M>>`
 #include "rclcpp/result.hpp"
 #if defined(NROS_CPP_STD) // hosted-family: ported-publish
-#include <rclc/log.h>     // phase-488 — `detail::report_failed_publish`
+#include <rclc/log.h>     // `detail::report_failed_publish`
 #endif
-// RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creator below.
+// NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creator below.
 #include "rclcpp/detail/serialization_format.hpp"
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
-#include "rclcpp/event.hpp" // issue 1972 — MatchedInfo / IncompatibleTypeInfo
+#include "rclcpp/event.hpp" // MatchedInfo / IncompatibleTypeInfo
 
-// issue 1437 — `get_actual_qos()` returns a `rclcpp::QoS` BY VALUE from an
+// `get_actual_qos()` returns a `rclcpp::QoS` BY VALUE from an
 // inline body, so the complete type must be here, not only by the time
 // `rclcpp/node.hpp` is pulled in below.
 //
@@ -39,20 +39,20 @@
 // reaching it first makes the cbindgen header a REDEFINITION of all four.
 #include "rclcpp/qos.hpp"
 
-// phase-456 W5 — THIS HEADER NO LONGER DETECTS ANYTHING, and the include that
+// THIS HEADER NO LONGER DETECTS ANYTHING, and the include that
 // used to sit here is gone with the block it served.
 //
-// From phase-417 W1.a until now, `Publisher<M>::SharedPtr` and friends were
+// `Publisher<M>::SharedPtr` and friends used to be
 // `std::shared_ptr` / `std::unique_ptr`, so they needed `<memory>` — which a
 // MINIMAL freestanding libcpp does not ship (Zephyr's is `<cstddef>`,
 // `<cstdint>`, `<new>`, plus this repo's `zephyr/cxx-compat/`) — and the
 // aliases were therefore ABSENT on exactly the targets ported source needs them
 // on. The predicate that decided it needed three separate corrections to get
-// right (issues 0112, 1187, 1240).
+// right.
 //
 // The aliases name `rclcpp::Owned<Publisher<M>>` now, which is ours and exists
 // everywhere, so there is no capability left to probe: the alias is present
-// unconditionally and means the same thing on every target. That is RFC-0096 D1
+// unconditionally and means the same thing on every target. That is the freestanding-API rule
 // — one API, no shape decided by a toolchain flag — reached by deleting the
 // question rather than by answering it more carefully.
 
@@ -61,7 +61,7 @@ namespace rclcpp {
 /// Maximum topic name length stored inside a publisher (256).
 /// The topic name is owned C++-side, not inside the runtime handle.
 ///
-/// Stays in `rclcpp::`: RFC-0089's flip moves the nine TYPES, and this is an
+/// Stays in `rclcpp::`: the namespace flip moves the nine TYPES, and this is an
 /// implementation bound of one of them, not a name upstream declares.
 static constexpr size_t PUBLISHER_TOPIC_NAME_MAX = 256;
 
@@ -73,17 +73,17 @@ static constexpr size_t PUBLISHER_TOPIC_NAME_MAX = 256;
 /// has the definition; a qualified friend needs the name to EXIST first, which
 /// an unqualified `friend class Node;` used to supply implicitly.
 ///
-/// phase-427 W7 — declared in `rclcpp::`, which is where the definition lives.
+/// Declared in `rclcpp::`, which is where the definition lives.
 namespace rclcpp {
 class Node;
 }
 
 // ============================================================================
-// `rclcpp::Publisher<M>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
+// `rclcpp::Publisher<M>` -- DEFINED here (rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::` to `rclcpp::` (the `nros::`
-// alias went in phase-483 W1). The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
+// The definition moved from `nros::` to `rclcpp::` (the `nros::`
+// alias is gone). The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
 // aliases live on the class itself, so `rclcpp::Publisher<M>::SharedPtr` -- the
 // way rclcpp users index types -- resolves with no wrapper in between.
 namespace rclcpp {
@@ -97,14 +97,14 @@ namespace rclcpp {
 ///
 /// Inline storage holds the runtime publisher handle directly
 /// (`NROS_PUBLISHER_SIZE` bytes; size auto-derived from the runtime) plus
-/// one pointer: the contracted endpoint's monitor cell (phase-462 W1,
-/// RFC-0052), which the runtime resolves at create time against the table
+/// one pointer: the contracted endpoint's monitor cell, which the runtime resolves at create
+/// time against the table
 /// the entry installed with `nros_cpp_install_monitors` and bumps on every
 /// publish, exactly as the Rust `EmbeddedPublisher` does. Null on an
 /// uncontracted publisher. Topic name metadata lives C++-side in
 /// `topic_name_`, avoiding a runtime hop for `get_topic_name()`.
 ///
-/// WHY THIS ONE IS NOT AN ARENA HANDLE — phase-456 W4
+/// WHY THIS ONE IS NOT AN ARENA HANDLE
 ///
 /// Every other entity in this API is moving to a two-word handle over the Rust
 /// executor arena, because the arena already owns the entity and the C++ object
@@ -122,7 +122,7 @@ namespace rclcpp {
 ///
 /// It was also argued that it could not be moved without losing something —
 /// the arena then had no removal path, so an arena publisher could never have
-/// been destroyed before its executor. `9768795b1d` (issue 1496) retired that
+/// been destroyed before its executor. `9768795b1d` retired that
 /// argument; the one above, that an arena slot would make C++ diverge from the
 /// Rust lifetime, is what carries the decision.
 ///
@@ -144,7 +144,7 @@ namespace rclcpp {
 /// ```
 #if defined(NROS_CPP_STD) // hosted-family: ported-publish
 namespace detail {
-/// phase-488 — what `Publisher<M>::publish` returns on the std surface (the one
+/// What `Publisher<M>::publish` returns on the std surface (the one
 /// ported code gets, through the ament verbs): the same `Result`, minus
 /// `[[nodiscard]]`. Upstream's `publish()` returns `void` and throws, so ported
 /// code writes `pub->publish(msg);` as a statement, and Autoware builds every
@@ -177,7 +177,7 @@ template <typename M> inline void report_failed_publish(const char* topic, int32
 
 template <typename M> class Publisher {
   public:
-    /// `rclcpp::Publisher<M>::SharedPtr` — phase-456 W5.
+    /// `rclcpp::Publisher<M>::SharedPtr`.
     ///
     /// `rclcpp::Publisher<M>::SharedPtr member_;` is close to universal in
     /// ported source, so this alias must exist on EVERY target — which
@@ -189,7 +189,7 @@ template <typename M> class Publisher {
     /// omission — W4 measured the case and refused it. It was first argued from
     /// the arena having no removal path (`EntryKind` has no publisher at all), so
     /// that `~Publisher()` and `Owned<T>::reset()` would become no-ops; that
-    /// argument expired with `9768795b1d` (issue 1496). The Rust side is what
+    /// argument expired with `9768795b1d`. The Rust side is what
     /// settles it: `create_publisher_with_qos`
     /// returns an `EmbeddedPublisher<M>` BY VALUE, with a `Drop`, and this
     /// phase's principle is that the C++ lifetime mirrors the Rust one.
@@ -212,13 +212,13 @@ template <typename M> class Publisher {
     ///
     /// `Owned<T>` IS unique ownership — move-only, one owner, destroys on scope
     /// exit — so a separate alias would be a second spelling of one type.
-    /// Measured before the collapse (phase-456 W5): zero uses in the tree
+    /// Measured before the collapse: zero uses in the tree
     /// outside this definition and the one probe asserting its old shape.
     using UniquePtr = ::rclcpp::Owned<Publisher<M>>;
 
     /// Width of the buffer `get_gid()` fills — upstream's
-    /// `RMW_GID_STORAGE_SIZE`, the phase-467 RMW gap-closure design study's
-    /// Q1(a). Named here so a call site spells the size once and the compiler
+    /// `RMW_GID_STORAGE_SIZE`.
+    /// Named here so a call site spells the size once and the compiler
     /// checks it, rather than copying a `24` that has already moved once.
     static constexpr size_t GID_SIZE = 24;
 
@@ -227,7 +227,7 @@ template <typename M> class Publisher {
     /// Calls the codegen-generated `M::ffi_publish()` which serializes the
     /// message to CDR and publishes it.
     ///
-    /// phase-417 stage 3 — the `initialized_` guard. `publish` was the ONLY
+    /// The `initialized_` guard. `publish` was the ONLY
     /// entry point on this class without one, and the one that matters most:
     /// `M::ffi_publish` reaches `nros_cpp_publish_raw`, whose only check is
     /// `storage.is_null()`, and `storage_` is an in-object array that is never
@@ -238,11 +238,11 @@ template <typename M> class Publisher {
     /// on failure.
     ///
     /// Returns `Result`, where upstream returns `void` and throws: no exceptions
-    /// here (RFC-0018). An uninitialised publisher answers `NotInitialized` and
+    /// here. An uninitialised publisher answers `NotInitialized` and
     /// sends nothing. In freestanding code `Result` is `[[nodiscard]]`, so a
     /// dropped one warns. On the std surface (ported code) the result may be
     /// dropped, as upstream's `void` is, and a failure is logged instead
-    /// (`detail::PublishResult`, phase-488).
+    /// (`detail::PublishResult`).
 #if defined(NROS_CPP_STD) // hosted-family: ported-publish
     ::rclcpp::detail::PublishResult publish(const M& msg) {
         const Result r = initialized_ ? Result(M::ffi_publish(storage_, &msg))
@@ -251,7 +251,7 @@ template <typename M> class Publisher {
         return r;
     }
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
-    /// Upstream's `publish(std::unique_ptr<M, D>)` (phase-488, ros2/demos
+    /// Upstream's `publish(std::unique_ptr<M, D>)` (ros2/demos
     /// `composition`'s talker: `pub_->publish(std::move(msg));`). Upstream hands
     /// the message to intra-process delivery without a copy; here every publish
     /// serializes, so this publishes `*msg` and the message is freed when the
@@ -275,7 +275,7 @@ template <typename M> class Publisher {
 
     /// Publish CDR bytes — rclcpp's `publish(const SerializedMessage&)`.
     ///
-    /// phase-515 C8: renamed from `publish_raw`, so the transmit verb reads as
+    /// Renamed from `publish_raw`, so the transmit verb reads as
     /// the receive side's `take_serialized` does. ADOPT-BOUNDED: the payload
     /// is a `(data, len)` pair, not an `rclcpp::SerializedMessage`, which owns
     /// a growable buffer through an allocator this API does not have.
@@ -284,11 +284,11 @@ template <typename M> class Publisher {
         return Result(nros_cpp_publish_raw(storage_, data, len));
     }
 
-    /// Renamed to `publish_serialized` (phase-515 C8); kept one release.
+    /// Renamed to `publish_serialized`; kept one release.
     NROS_CPP_DEPRECATED_MSG("renamed to publish_serialized; call that instead")
     Result publish_raw(const uint8_t* data, size_t len) { return publish_serialized(data, len); }
 
-    /// Phase 124.E.1 — streamed publish.
+    /// Streamed publish.
     ///
     /// `total_len` declares the full payload size; `writer` is
     /// invoked one or more times with a writable chunk and must
@@ -317,10 +317,10 @@ template <typename M> class Publisher {
     }
 
     // ====================================================================
-    // Phase 124.A.7 — zero-copy publish (loan / commit / discard)
+    // Zero-copy publish (loan / commit / discard)
     // ====================================================================
 
-    /// Phase 124.A.7 — writable slot returned by `Publisher::loan`. RAII:
+    /// Writable slot returned by `Publisher::loan`. RAII:
     /// `commit(actual_len)` sends + consumes; `discard()` abandons + consumes;
     /// `Drop` without either calls discard automatically.
     class Loan {
@@ -400,7 +400,7 @@ template <typename M> class Publisher {
     ///
     /// Zero-copy only where the backend lends, which is zenoh alone; on
     /// Cyclone, XRCE and uORB this returns an error, permanently and in every
-    /// build (issue 0814) — publish with `publish()` or `publish_streamed()`
+    /// build — publish with `publish()` or `publish_streamed()`
     /// there.
     ::rclcpp::ResultOf<Loan> loan(size_t requested_len) {
         if (!initialized_)
@@ -416,7 +416,7 @@ template <typename M> class Publisher {
     /// Get the topic name.
     const char* get_topic_name() const { return initialized_ ? topic_name_ : ""; }
 
-    /// The QoS profile this publisher is ACTUALLY running — issue 1437.
+    /// The QoS profile this publisher is ACTUALLY running.
     ///
     /// `rclcpp::Publisher::get_actual_qos`: what the BACKEND GRANTED, which
     /// differs from what `create_publisher` was handed whenever the backend
@@ -445,7 +445,6 @@ template <typename M> class Publisher {
 
     /// `rclcpp::PublisherBase::is_durability_transient_local()` (Jazzy) --
     /// whether this publisher keeps samples for late-joining subscribers.
-    /// issue 1975.
     ///
     /// Read off `get_actual_qos()`, as upstream reads it off
     /// `rcl_publisher_get_actual_qos`: the GRANTED durability, not the
@@ -459,7 +458,7 @@ template <typename M> class Publisher {
     }
 
     /// How many subscriptions are on this publisher's topic, RIGHT NOW —
-    /// rclcpp's `Publisher::get_subscription_count`. phase-444.
+    /// rclcpp's `Publisher::get_subscription_count`.
     ///
     /// **A WEAKER QUESTION THAN UPSTREAM'S, and it is stated here rather than
     /// discovered.** Upstream counts the subscriptions MATCHED to THIS
@@ -477,10 +476,10 @@ template <typename M> class Publisher {
     /// **Takes the executor and an out-parameter**, neither of which upstream
     /// does. The executor because we open ONE transport session per image and
     /// it owns the session, so the graph is the executor's to read — the same
-    /// receiver difference as every `Executor::get_*` graph verb (phase-381
-    /// W4). The out-parameter because RFC-0018 forbids exceptions, so the
+    /// receiver difference as every `Executor::get_*` graph verb.
+    /// The out-parameter because the C++ API has no exceptions, so the
     /// error has to be the return value. Both weakenings are ones the compiler
-    /// makes a porter notice, which is RFC-0089's mechanical-edit test.
+    /// makes a porter notice, which is the adoption rule's mechanical-edit test.
     ///
     /// Reports what has been DISCOVERED and never blocks, so a small answer
     /// right after startup is "not seen yet", never "not there"; a backend
@@ -533,11 +532,11 @@ template <typename M> class Publisher {
     Publisher() : storage_(), topic_name_{}, initialized_(false) {}
 
     // ====================================================================
-    // Phase 108 — status events
+    // Status events
     // ====================================================================
 
     /// Register a callback for liveliness-lost events on this publisher —
-    /// rclcpp's `PublisherEventCallbacks::liveliness_callback` (issue 1993).
+    /// rclcpp's `PublisherEventCallbacks::liveliness_callback`.
     /// `cb(storage, count status, user_context)`, observed on this
     /// publisher's poll points (`publish`, `assert_liveliness()`).
     /// `ErrorCode::Unsupported` on a backend that does not generate the event
@@ -560,7 +559,7 @@ template <typename M> class Publisher {
                                                                      user_context));
     }
 
-    /// Issue 1972 — rclcpp's `PublisherEventCallbacks::matched_callback`:
+    /// rclcpp's `PublisherEventCallbacks::matched_callback`:
     /// `cb(storage, MatchedInfo, user_context)` when a subscription starts or
     /// stops matching this publisher.
     ///
@@ -575,7 +574,7 @@ template <typename M> class Publisher {
         return Result(nros_cpp_publisher_set_matched(storage_, cb, user_context));
     }
 
-    /// Issue 1972 — rclcpp's
+    /// rclcpp's
     /// `PublisherEventCallbacks::incompatible_type_callback`: a subscription
     /// on this topic NAME with a different type was seen.
     Result on_incompatible_type(IncompatibleTypeCallbackType cb, void* user_context = nullptr) {
@@ -583,14 +582,14 @@ template <typename M> class Publisher {
         return Result(nros_cpp_publisher_set_incompatible_type(storage_, cb, user_context));
     }
 
-    /// Phase 108.B.7 — manually assert liveliness. Required for
+    /// Manually assert liveliness. Required for
     /// publishers configured with `LivelinessPolicy::ManualByTopic` /
     /// `ManualByNode`; nothing to assert for `Automatic` / `None`, which
     /// answer `Ok` on every backend.
     ///
     /// **`ErrorCode::Unsupported` under a manual kind on a backend with no
-    /// per-topic lease** — zenoh-pico, XRCE-DDS, uORB (the phase-467 RMW
-    /// gap-closure design study's Row 7). The entity is fine; the assertion
+    /// per-topic lease** — zenoh-pico, XRCE-DDS, uORB.
+    /// The entity is fine; the assertion
     /// simply did not reach a peer, which is the one thing a caller uses this
     /// for. cyclonedds performs it for real.
     Result assert_liveliness() {
@@ -600,11 +599,11 @@ template <typename M> class Publisher {
 
     /// This publisher's own global identifier — `rclcpp::PublisherBase::get_gid`.
     ///
-    /// The phase-467 RMW gap-closure design study's Q1. Fills `out_gid` with
+    /// Fills `out_gid` with
     /// [`GID_SIZE`](GID_SIZE) bytes on `Ok`, and writes nothing otherwise.
     ///
     /// Upstream returns `const rmw_gid_t &` and cannot fail. Ours can — a
-    /// backend may have no identity for this publisher — and RFC-0018 leaves
+    /// backend may have no identity for this publisher — and the C++ API has
     /// no exceptions to say so with, so the value leaves through a reference
     /// to a caller-placed array and the verdict through the `Result`. An
     /// array REFERENCE rather than a pointer is what makes the width a
@@ -617,7 +616,7 @@ template <typename M> class Publisher {
     ///   two gids naming one entity compare equal. Gids produced by two
     ///   different backends in one image are never comparable.
     /// * **Comparable with the gid on a RECEIVED sample** on zenoh and
-    ///   Cyclone, which derive both from one source (issue 1495): a
+    ///   Cyclone, which derive both from one source: a
     ///   subscriber's `MessageInfo` names this publisher by these bytes.
     /// * **An all-zero gid is never handed back as an answer.** A backend
     ///   with no identity for this publisher reports
@@ -644,7 +643,7 @@ template <typename M> class Publisher {
 
 } // namespace rclcpp
 
-// Phase 84.G8: out-of-line definition of Node::create_publisher<M>().
+// Out-of-line definition of Node::create_publisher<M>().
 // Placed here so consumers only pay for this template when they actually
 // use publishers — including `rclcpp/node.hpp` alone no longer drags in
 // every entity's code path.
@@ -655,7 +654,7 @@ namespace rclcpp {} // namespace rclcpp
 namespace rclcpp {
 template <typename M>
 Result Node::create_publisher(Publisher<M>& out, const char* topic, const ::rclcpp::QoS& qos) {
-    // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
+    // One image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
     if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
@@ -674,7 +673,7 @@ Result Node::create_publisher(Publisher<M>& out, const char* topic, const ::rclc
 
 namespace rclcpp {
 
-/// Phase 189.M3.1 — named-options overload. `PublisherOptions` is a
+/// Named-options overload. `PublisherOptions` is a
 /// reserved/empty struct (a publisher has no callback ⇒ no sched-context
 /// or message-info axis), so this simply forwards to the qos-only create.
 /// It exists for rclcpp symmetry and as the seam for future intra-process
@@ -692,7 +691,7 @@ Result Node::create_publisher(Publisher<M>& out, const char* topic, const ::rclc
 
 namespace rclcpp {
 
-/// Phase 123.B.4 — value-returning publisher factory. Wraps the
+/// Value-returning publisher factory. Wraps the
 /// out-param `Node::create_publisher` in `ResultOf<Publisher<M>>`
 /// so users can write
 /// `auto pub = rclcpp::create_publisher<Int32>(node, "/chatter");`

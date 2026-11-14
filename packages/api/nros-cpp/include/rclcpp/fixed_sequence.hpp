@@ -54,7 +54,7 @@ template <typename T, size_t N> struct FixedSequence {
     /// Current number of elements.
     uint32_t length() const { return size; }
 
-    /// Upstream's bounded-sequence `resize(n)` (phase-488; Nav2 writes
+    /// Upstream's bounded-sequence `resize(n)` (Nav2 writes
     /// `descriptor.floating_point_range.resize(1)`). New elements are
     /// value-initialized. A length past the capacity is refused: the sequence
     /// is unchanged and the answer is `false`, where rosidl's `BoundedVector`

@@ -11,12 +11,12 @@ use crate::{
 use nros_node::executor::ffi::ExecutorFfi as _;
 
 /// rcl's timer callback — `typedef void (*)(rcl_timer_t *, int64_t)`, the ONE
-/// timer callback contract (phase-515 D2).
+/// timer callback contract.
 ///
 /// The second argument is rcl's: the time since the previous call, or since
 /// init/reset for the first one, in nanoseconds. It is the value
 /// [`rcl_timer_get_time_since_last_call`] reports just before the call, so it
-/// carries that function's envelope — microsecond resolution (issue #505),
+/// carries that function's envelope — microsecond resolution,
 /// measured from the previous DUE POINT rather than the previous callback
 /// start, which for a timer running on time is the same number.
 ///
@@ -24,7 +24,7 @@ use nros_node::executor::ffi::ExecutorFfi as _;
 /// through the timer it is handed: embed the `rcl_timer_t` in the state struct
 /// and recover the struct with `offsetof` (`RCLC_CONTAINER_OF` in
 /// `<rclc/timer.h>`). The executor always passes the caller's own timer, never
-/// a copy. Until phase-515 C1 ours passed a `void *context` instead, which made
+/// a copy. Ours used to pass a `void *context` instead, which made
 /// a ported rclc callback a different function.
 ///
 /// # Parameters
@@ -34,7 +34,7 @@ pub type rcl_timer_callback_t =
     Option<unsafe extern "C" fn(timer: *mut rcl_timer_t, last_call_time: i64)>;
 
 /// When a timer activation was due and when it ran — Jazzy rcl's
-/// `rcl_timer_call_info_t` (issue 1974), same name, same two fields.
+/// `rcl_timer_call_info_t`, same name, same two fields.
 ///
 /// Both are `rcl_time_point_value_t` nanoseconds on the TIMER'S clock: the
 /// clock it was initialised on (`rcl_timer_init*`), or the platform
@@ -62,13 +62,13 @@ impl From<nros_node::TimerCallInfo> for rcl_timer_call_info_t {
     }
 }
 
-/// Timer callback that also receives the activation's call info — issue 1974.
+/// Timer callback that also receives the activation's call info.
 ///
 /// rcl hands call info out through `rcl_timer_call_with_info`, a dispatch
 /// entry point the caller's own wait-set loop calls; here the executor
 /// dispatches, so the info rides on the callback instead. `info` is valid for
 /// the duration of the call only. Like [`rcl_timer_callback_t`] it carries no
-/// context pointer (phase-515 D2): the state is reached through `timer`.
+/// context pointer: the state is reached through `timer`.
 ///
 /// # Parameters
 /// * `timer` - Pointer to the timer that triggered
@@ -92,16 +92,16 @@ pub enum rclc_timer_state_t {
 
 /// Timer structure.
 ///
-/// Already an arena handle before phase-487: `rclc_executor_add_timer`
+/// An arena handle: `rclc_executor_add_timer`
 /// creates the timer inside the executor arena and records
 /// `(handle_id, _executor)` here, and every live accessor forwards there. The
 /// period, callback and clock are the REGISTRATION INPUTS:
 /// rclc's `rclc_timer_init_default(timer, support, period, callback)` takes
 /// them at init, before any executor exists, and a removed timer can be added
-/// again, so they stay. phase-487 W3 removed the one field that was a copy,
+/// again, so they stay. The one field that was a copy is gone,
 /// ~~`last_call_time_ns`~~: written by init and reset, read by nothing, and stale
-/// for any timer the executor ran (issue 1049). phase-515 C1 removed the
-/// `context` pointer with the callback contract that carried it.
+/// for any timer the executor ran. So is the
+/// `context` pointer, with the callback contract that carried it.
 #[repr(C)]
 pub struct rcl_timer_t {
     /// Current state
@@ -111,7 +111,7 @@ pub struct rcl_timer_t {
     /// User callback function
     pub callback: rcl_timer_callback_t,
     /// The clock this timer is scheduled against, or NULL for the WALL timer
-    /// `rclc_timer_init_default` creates (phase-430 W1).
+    /// `rclc_timer_init_default` creates.
     ///
     /// rcl's `rcl_timer_init` takes a `rcl_clock_t *` here and rcl's timer
     /// keeps it; ours does the same, in the same position, so a reader of one
@@ -122,8 +122,8 @@ pub struct rcl_timer_t {
     pub handle_id: usize,
     /// Opaque pointer to internal executor (set by rclc_executor_add_timer)
     pub _executor: *mut c_void,
-    /// The call-info callback `rclc_timer_init_with_info` registers, or NULL
-    /// (issue 1974). Exactly one of `callback` / `info_callback` is set on an
+    /// The call-info callback `rclc_timer_init_with_info` registers, or NULL.
+    /// Exactly one of `callback` / `info_callback` is set on an
     /// initialised timer. APPENDED, so every field above keeps its offset.
     pub info_callback: rclc_timer_callback_with_info_t,
 }
@@ -172,11 +172,11 @@ pub extern "C" fn rcl_get_zero_initialized_timer() -> rcl_timer_t {
 }
 
 /// rclc's `rclc_timer_init_default`, signature for signature — a WALL timer
-/// (phase-515 C1, decision D2).
+/// (rclc's contract, taken whole).
 ///
 /// `rclc_timer_init_default(&timer, &support, RCL_MS_TO_NS(100), cb)`
 /// compiles as an rclc program writes it, and `cb` is rclc's
-/// [`rcl_timer_callback_t`]. Until phase-515 this name was refused, because
+/// [`rcl_timer_callback_t`]. This name used to be refused, because
 /// ours handed the callback a `void *context` where rclc hands it the time
 /// since its last call; D2 took rclc's contract and removed ours
 /// (~~`rclc_timer_init_with_context`~~).
@@ -226,7 +226,7 @@ pub unsafe extern "C" fn rclc_timer_init_default(
 }
 
 /// Jazzy rclc's `rclc_timer_init_default2` — [`rclc_timer_init_default`]
-/// with `autostart` (issue 1974).
+/// with `autostart`.
 ///
 /// `autostart == false` creates the timer CANCELLED: `rclc_executor_add_timer`
 /// registers it cancelled and it does not fire until `rcl_timer_reset`, whose
@@ -255,11 +255,11 @@ pub unsafe extern "C" fn rclc_timer_init_default2(
 }
 
 /// rcl's `rcl_timer_init`, signature for signature — a timer scheduled
-/// against `clock` (phase-430 W1; rcl's NAME since phase-515 C1).
+/// against `clock`, under rcl's NAME.
 ///
 /// `rcl_timer_init(timer, clock, context, period, callback, allocator)`.
-/// Until phase-515 this was ~~`rclc_timer_init_on_clock`~~, taking rcl's argument
-/// ORDER but not its name, because the callback contract differed; D2 took
+/// This used to be ~~`rclc_timer_init_on_clock`~~, taking rcl's argument
+/// ORDER but not its name, because the callback contract differed; we took
 /// rcl's contract, so the name followed.
 ///
 /// The clock's TYPE selects the schedule, through the one mapping
@@ -310,8 +310,8 @@ pub unsafe extern "C" fn rcl_timer_init(
     unsafe { rcl_timer_init2(timer, clock, context, period, callback, allocator, true) }
 }
 
-/// Jazzy rcl's `rcl_timer_init2` — [`rcl_timer_init`] with `autostart`
-/// (issue 1974): clock second, as rcl's, and `autostart` last, as rcl's.
+/// Jazzy rcl's `rcl_timer_init2` — [`rcl_timer_init`] with `autostart`:
+/// clock second, as rcl's, and `autostart` last, as rcl's.
 ///
 /// `autostart == false` creates the timer cancelled; `rcl_timer_reset` starts
 /// it, and its first period counts from that reset on the timer's own clock.
@@ -347,7 +347,7 @@ pub unsafe extern "C" fn rcl_timer_init2(
 }
 
 /// Initialise a timer whose callback receives the activation's
-/// [`rcl_timer_call_info_t`] — issue 1974, the C counterpart of Jazzy's
+/// [`rcl_timer_call_info_t`] — the C counterpart of Jazzy's
 /// `rcl_timer_call_with_info` / `rclcpp::TimerInfoCallbackType`.
 ///
 /// `clock` NULL is the wall timer ([`rclc_timer_init_default`]'s
@@ -523,8 +523,8 @@ pub unsafe extern "C" fn rcl_timer_reset(timer: *mut rcl_timer_t) -> rcl_ret_t {
 /// return on those paths — `RCL_RET_INVALID_ARGUMENT` for NULL,
 /// `RCL_RET_NOT_INIT` for a second `fini` — are values upstream promises never
 /// to produce, and `RCL_WARN_UNUSED` asks the caller to check, so a ported
-/// cleanup reported a shutdown failure that had not happened (phase-417 stage 3,
-/// ledger row `c:timer_fini`). Nothing about a fixed arena forbids accepting the
+/// cleanup reported a shutdown failure that had not happened (ledger
+/// row `c:timer_fini`). Nothing about a fixed arena forbids accepting the
 /// call: there is no allocation to release and the release is already idempotent.
 ///
 /// # Parameters
@@ -605,8 +605,8 @@ pub unsafe extern "C" fn rclc_timer_get_period(timer: *const rcl_timer_t) -> u64
 /// Nanoseconds until this timer next fires — NEGATIVE if it is overdue.
 ///
 /// rcl's `rcl_timer_get_time_until_next_call(timer, int64_t *)`, marked
-/// `RCL_WARN_UNUSED`. phase-417 stage 3 (ledger row
-/// `c:timer_get_time_until_next_call`) and issue 1049 are the same defect seen
+/// `RCL_WARN_UNUSED`. Ledger row
+/// `c:timer_get_time_until_next_call` and a stale-field bug are the same defect seen
 /// from two sides, and the old shape — `uint64_t f(timer, uint64_t now)` — lost
 /// three things at once:
 ///
@@ -617,15 +617,15 @@ pub unsafe extern "C" fn rclc_timer_get_period(timer: *const rcl_timer_t) -> u64
 ///   overdue by that amount". Unsigned cannot express it, so lateness read as
 ///   `0` — which is also what "fires now" reads as.
 /// * the SOURCE OF TRUTH. It computed from ~~`rcl_timer_t::last_call_time_ns`~~
-///   (removed by phase-487 W3), which the timer init and `rcl_timer_reset`
+///   (since removed), which the timer init and `rcl_timer_reset`
 ///   wrote and no dispatch path ever updated, so for any timer the executor was actually running the
-///   answer was permanently `0` (issue 1049). It forwards to the arena now, the
+///   answer was permanently `0`. It forwards to the arena now, the
 ///   same way W5.c's [`rcl_timer_get_time_since_last_call`] and
 ///   [`rcl_timer_is_ready`] do, and the caller-supplied "now" is gone with it —
 ///   a second time base is what let the two drift apart.
 ///
 /// **Divergence from rcl, inherited from the sibling accessors:** the arena's
-/// timer accounting is MICROSECOND-based (issue #505), so this nanosecond value
+/// timer accounting is MICROSECOND-based, so this nanosecond value
 /// is a microsecond quantity scaled by 1000. The unit is rcl's; the resolution
 /// is ours.
 ///
@@ -830,10 +830,10 @@ pub unsafe extern "C" fn rcl_timer_is_ready(
 /// to reach the executor:** ~~`rcl_timer_t::last_call_time_ns`~~ was written by
 /// the timer init and `rcl_timer_reset` and by nothing else — no
 /// dispatch path updated it — so a struct-local computation answered `0` for
-/// every timer that had ever fired. phase-487 W3 removed the field.
+/// every timer that had ever fired. The field is gone.
 ///
 /// **Divergence from rcl, inherited:** the executor's timer accounting is
-/// MICROSECOND-based (issue #505), so the nanosecond value this reports is a
+/// MICROSECOND-based, so the nanosecond value this reports is a
 /// microsecond quantity scaled by 1000, not a nanosecond measurement. The
 /// unit and the `int64_t` out-type are rcl's; the resolution is ours.
 ///
@@ -907,13 +907,13 @@ pub unsafe extern "C" fn rcl_timer_get_time_since_last_call(
 /// * `rcl_timer_t::period_ns` always — the registration INPUT
 ///   `rclc_executor_add_timer` re-reads, and what `rclc_timer_get_period`
 ///   returns. Leaving it stale would make the getter disagree with the
-///   dispatcher, which is the "compiles and differs" RFC-0089 exists to stop.
+///   dispatcher, which is the "compiles and differs" the adoption rule exists to stop.
 ///
 /// **`old_period` is the exact nanosecond value last supplied**, not the
 /// microsecond-quantised one the arena holds: the struct's copy is written
 /// unquantised by the timer init and by this function, so a caller reading
 /// back what it wrote gets what it wrote. The DISPATCHER's resolution is still
-/// microseconds (issue #505), so a period below 1 µs schedules as 0 — the same
+/// microseconds, so a period below 1 µs schedules as 0 — the same
 /// quantisation `rcl_timer_init` has always applied, surfaced here rather than
 /// introduced.
 ///
@@ -992,7 +992,7 @@ pub unsafe extern "C" fn rcl_timer_exchange_period(
 /// `c:timer_get_next_call_time` recorded C as lacking it; the row's `why` said
 /// "Rust has it (`Timer::time_until_next_call`)", which named the RELATIVE
 /// sibling — upstream ships both, and `rcl_timer_get_time_until_next_call`
-/// (phase-417 stage 3) is the relative one. This is the absolute one, and it is
+/// is the relative one. This is the absolute one, and it is
 /// `now + remaining` over the SAME derivation, so the pair cannot disagree.
 ///
 /// ## Which clock "now" is read from
@@ -1011,7 +1011,7 @@ pub unsafe extern "C" fn rcl_timer_exchange_period(
 ///   actually scheduled on rather than a wall-clock approximation of it.
 ///
 /// **Divergence from rcl, inherited from the sibling accessors:** the arena's
-/// timer accounting is MICROSECOND-based (issue #505), so the remaining half of
+/// timer accounting is MICROSECOND-based, so the remaining half of
 /// this sum has microsecond resolution. The clock read does not.
 ///
 /// `RCL_RET_TIMER_INVALID` and `RCL_RET_TIMER_CANCELED` have no counterpart in

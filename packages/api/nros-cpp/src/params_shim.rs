@@ -1,10 +1,10 @@
-//! Phase 269 (W0) — executor-shim: parameter-service FFI over the CppContext handle.
+//! Executor-shim: parameter-service FFI over the CppContext handle.
 //!
 //! Mirrors `nros-c/src/parameter.rs`'s executor-backed functions but recovers the
 //! executor from `CppContext*` instead of `rclc_executor_t*`. W1 emitters call these;
 //! no emitter wires them yet this wave.
 //!
-//! Issue 0436 — user-supplied executor handles are tag-validated via
+//! User-supplied executor handles are tag-validated via
 //! `cpp_ctx_checked` instead of being blind-cast to `*mut CppContext`.
 
 // phase-426 W4 — the node-scoped entry points below are defined whatever the
@@ -60,7 +60,7 @@ pub unsafe extern "C" fn nros_cpp_register_parameter_services(
     }
 }
 
-/// Issue 2035 — `node` publishes no `/parameter_events`: rclcpp's
+/// `node` publishes no `/parameter_events`: rclcpp's
 /// `NodeOptions::start_parameter_event_publisher(false)`, the C++ binding of
 /// `Executor::disable_parameter_events_on` (which C's
 /// `notify_changed_over_dds = false` also reaches).
@@ -95,8 +95,8 @@ pub unsafe extern "C" fn nros_cpp_node_disable_parameter_events(
 /// Seed a launch parameter, given as a string, on the node the executor will
 /// build NEXT.
 ///
-/// issue 1272 -- the generated entry calls this for each launch `<param>` of a
-/// node BEFORE it constructs that node (issue 0745: an rclcpp-shape
+/// The generated entry calls this for each launch `<param>` of a
+/// node BEFORE it constructs that node (an rclcpp-shape
 /// constructor reads its `declare_parameter` initials immediately), so the
 /// node has no handle yet. `node` is the index the executor's `node_builder`
 /// will give it: its position among the nodes its setup function builds on
@@ -108,8 +108,8 @@ pub unsafe extern "C" fn nros_cpp_node_disable_parameter_events(
 ///
 /// The value's type is still INFERRED from the string (bool, integer, double,
 /// then string: `infer_param_value`, the same order `nros::main!` uses).
-/// phase-446 carries the declared type from the launch contract instead; the
-/// shim's one `infer_param_value` call is the place that changes.
+/// Carrying the declared type from the launch contract instead would change
+/// only the shim's one `infer_param_value` call.
 ///
 /// # Safety
 /// `executor` must be a valid, live `CppContext*`. `name` and `value` must be
@@ -162,10 +162,10 @@ pub unsafe extern "C" fn nros_cpp_declare_param(
 /// Seed a launch parameter, given as a string, on the node the executor will
 /// build NEXT, naming that node rather than counting it.
 ///
-/// phase-509 P9b -- the call the generated entry makes (C and C++ packs). The
+/// The call the generated entry makes (C and C++ packs). The
 /// shim resolves the node itself: the index is the executor's own next node
 /// (`nodes().len()` at this call), not a number the build counted. Under
-/// RFC-0108's one executor per core, every level's setup registers on the
+/// one executor per core, every level's setup registers on the
 /// SAME executor, one after another, so a build-time index restarted per sched task
 /// (what [`nros_cpp_declare_param`] is handed) names node 0 in every level:
 /// the second level's seed was refused and its setup failed. A build-time
@@ -175,11 +175,11 @@ pub unsafe extern "C" fn nros_cpp_declare_param(
 /// and a component that builds two nodes.
 ///
 /// `node_name` labels the seed. Seeds for one node arrive back to back,
-/// directly before it is built (issue 0745), so a seed for ANOTHER node that
+/// directly before it is built, so a seed for ANOTHER node that
 /// lands on the index the previous one was seeded for means that node was
 /// never built: REFUSED with `NROS_CPP_RET_INVALID_ARGUMENT` and a log line
 /// naming both nodes, rather than handing the earlier node's values to the
-/// later one (issue 1272's failure). The label is not compared with the name
+/// later one. The label is not compared with the name
 /// the node is built under: an rclcpp-shape component may build its node
 /// under the class's own literal when the launch file names none.
 ///
@@ -319,10 +319,10 @@ pub unsafe extern "C" fn nros_cpp_get_param_double(
 
 /// Get a boolean parameter by name from the C++ executor's parameter store.
 ///
-/// Issue 0745 follow-up — the missing bool getter: without it, seeded bool
+/// The missing bool getter: without it, seeded bool
 /// launch params were not ctor-adoptable (the C++ facades' launch-seed helpers
 /// fell through to the compiled default for `bool`). Those helpers are gone
-/// since phase-426 W4 — with one store there is nothing to copy across — but
+/// now — with one store there is nothing to copy across — but
 /// this getter stays: it is the executor-scoped read the C API and the
 /// generated entry still use.
 ///
@@ -1513,7 +1513,7 @@ fn infer_param_value(raw: &str) -> ParameterValue {
 /// points at a buffer that lives only for the duration of the call.
 ///
 /// A byte, bool, integer or double ARRAY arrives through the matching
-/// `*_array` pointer plus `array_len` (issue 2056); the other pointers are
+/// `*_array` pointer plus `array_len`; the other pointers are
 /// NULL. The elements are the proposed value the store is validating, borrowed
 /// for the call only, exactly like `string_value`. A STRING array still
 /// arrives as its `param_type` with every value field zeroed: the store holds
@@ -2028,7 +2028,7 @@ pub unsafe extern "C" fn nros_cpp_node_list_params(
 }
 
 /// Enumerate the `-p` / `--params-file` overrides that apply to this node —
-/// rclcpp's `NodeParametersInterface::get_parameter_overrides()` (issue 2057).
+/// rclcpp's `NodeParametersInterface::get_parameter_overrides()`.
 ///
 /// `callback` runs once per overridden name, synchronously, with the name and
 /// the typed value as an on-set hook sees a write: the last override of a
@@ -2037,7 +2037,7 @@ pub unsafe extern "C" fn nros_cpp_node_list_params(
 /// call only. The callback's return value is ignored. `*out_count` receives
 /// the number listed.
 ///
-/// An image built without `alloc` has no argv overrides to list (issue 1812),
+/// An image built without `alloc` has no argv overrides to list,
 /// so it lists none and returns OK.
 ///
 /// # Safety

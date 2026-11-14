@@ -2,7 +2,7 @@
 //!
 //! Alloc-free: all internal state is written into caller-provided inline storage.
 //!
-//! Issue 0436 — user-supplied executor handles are tag-validated via
+//! User-supplied executor handles are tag-validated via
 //! `cpp_ctx_checked`. Handles reached through an already-validated node/client
 //! (`node_ref.executor`, `client.executor_ptr`) inherit that provenance and stay
 //! direct casts.
@@ -22,17 +22,17 @@ use nros_node::{
     },
 };
 
-/// Issue 2014 — byte of a get_result reply where the result fields start
+/// Byte of a get_result reply where the result fields start
 /// (`[encap 4][status i8][pad → 8][fields]`). The C++ `PollingActionClient`
 /// decodes the raw reply itself, so it needs the number; this is the C ABI
 /// mirror of `nros_node::action_frame::RESULT_PAYLOAD_OFFSET` (a literal,
 /// because cbindgen emits only literals — the assert below binds the two).
 pub const NROS_CPP_ACTION_RESULT_PAYLOAD_OFFSET: usize = 8;
-/// Issue 2014 — byte of a feedback message where the feedback fields start
+/// Byte of a feedback message where the feedback fields start
 /// (`[encap 4][GoalUuid.uuid 16][fields]`); mirror of
 /// `nros_node::action_frame::FEEDBACK_PAYLOAD_OFFSET`.
 pub const NROS_CPP_ACTION_FEEDBACK_PAYLOAD_OFFSET: usize = 20;
-/// Issue 2014 — length of the CDR encapsulation header a raw action frame
+/// Length of the CDR encapsulation header a raw action frame
 /// starts with; mirror of `nros_node::action_frame::CDR_HEADER_LEN`.
 pub const NROS_CPP_ACTION_CDR_HEADER_LEN: usize = 4;
 const _: () = assert!(NROS_CPP_ACTION_RESULT_PAYLOAD_OFFSET == action_frame::RESULT_PAYLOAD_OFFSET);
@@ -85,7 +85,7 @@ pub type CppCancelCallback =
 
 /// Accepted-goal callback type invoked by the arena's post-accept hook.
 ///
-/// Issue 0796 — the C++ callback tier had no way to register one, so a user
+/// The C++ callback tier had no way to register one, so a user
 /// who returned `AcceptAndDefer` from the goal callback was never told the
 /// goal had been accepted: the exact point at which a deferred goal is
 /// supposed to start executing. C takes `rclc_accepted_callback_t` at
@@ -231,7 +231,7 @@ unsafe extern "C" fn accepted_callback_trampoline(
 
 /// Create an action server on a node.
 ///
-/// Phase 87.6: this call only zero-initialises the storage. Names and
+/// This call only zero-initialises the storage. Names and
 /// executor registration happen in `nros_cpp_action_server_register`
 /// below, same as before — the split exists to avoid a FreeRTOS QEMU
 /// deadlock where eagerly declaring the five underlying entities blocks
@@ -240,7 +240,7 @@ unsafe extern "C" fn accepted_callback_trampoline(
 /// # Safety
 /// `storage` must point to an 8-byte-aligned buffer of at least
 /// `NROS_CPP_ACTION_SERVER_STORAGE_SIZE` bytes.
-/// Issue 1913 — the hash each of an action's five endpoints is keyed on.
+/// The hash each of an action's five endpoints is keyed on.
 ///
 /// The C++ twin of nros-c's `rclc_action_endpoint_hashes_t` (same layout, and
 /// converted through it so the NULL-fallback rule has one spelling). An Iron+
@@ -469,7 +469,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_set_callbacks(
     NROS_CPP_RET_OK
 }
 
-/// Register the accepted-goal callback on the action server (issue 0796).
+/// Register the accepted-goal callback on the action server.
 ///
 /// Separate from `nros_cpp_action_server_set_callbacks` so that adding the
 /// third callback did not change an existing FFI signature; `ctx` is the SAME
@@ -604,7 +604,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
     }
 }
 
-/// Start EXECUTING an accepted goal — issue 2027, `ServerGoalHandle::execute`.
+/// Start EXECUTING an accepted goal — `ServerGoalHandle::execute`.
 ///
 /// Upstream's `execute()` moves a goal from ACCEPTED to EXECUTING and
 /// publishes the status array; it is how a goal the goal callback answered
@@ -695,7 +695,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_for_each_active_goal(
     NROS_CPP_RET_OK
 }
 
-/// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
+/// Is `goal_id` a goal this server still knows about?.
 ///
 /// The C++ sched task's binding of `rclc_action_server_goal_exists` /
 /// `ActionServerRawHandle::goal_exists`. TRUE while the goal is active AND
@@ -732,7 +732,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_goal_exists(
     arena_handle.goal_exists(executor_ctx.executor, &goal)
 }
 
-/// RELEASE the arena entry this storage registered — issue 1496.
+/// RELEASE the arena entry this storage registered.
 ///
 /// (Named `detach` because it first landed as one; since resolution 2 it ends
 /// the entry outright. The symbol is kept: it is cbindgen output reached from
@@ -741,7 +741,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_goal_exists(
 ///
 /// Call this BEFORE [`nros_cpp_action_server_destroy`], from the destructor or
 /// move-assignment of whatever owns `storage`. The two are separate calls for
-/// the reason issue 0796 gives one line up: `nros_cpp_action_server_destroy`
+/// the reason given one line up: `nros_cpp_action_server_destroy`
 /// takes one argument and is declared in three places, so growing it to take
 /// the executor would have broken every caller. `CppActionServer` does not keep
 /// an executor pointer of its own (the client does — see
@@ -796,7 +796,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_detach(
     NROS_CPP_RET_OK
 }
 
-/// ABANDON an action server's local storage — issue 1496.
+/// ABANDON an action server's local storage.
 ///
 /// Named `destroy` and shaped like a release, but `CppActionServer` is a handle
 /// plus three callback pointers and a QoS block: every field is `Copy` or a raw
@@ -808,7 +808,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_detach(
 /// releases nothing by itself.
 ///
 /// What a caller MUST do is call [`nros_cpp_action_server_detach`] first —
-/// since issue 1496's resolution 2 that RELEASES the arena entry (drops it,
+/// that RELEASES the arena entry (drops it,
 /// frees its callback slot, returns its arena bytes for reuse). `~Server()` in
 /// `action_server.hpp` does both, in that order.
 ///
@@ -853,11 +853,11 @@ pub unsafe extern "C" fn nros_cpp_action_server_relocate(
 }
 
 /// Re-point the executor's arena entry at a server's NEW storage after
-/// [`nros_cpp_action_server_relocate`] — issue 2015.
+/// [`nros_cpp_action_server_relocate`].
 ///
 /// The arena entry's callback `context` is the storage address
 /// `nros_cpp_action_server_register` registered, so it must follow a move, as
-/// the client's does (issue 1496, `nros_cpp_action_client_relocate`). Left
+/// the client's does (`nros_cpp_action_client_relocate`). Left
 /// alone it named the moved-from storage: a server moved into an
 /// `rclcpp::Owned` (what `rclcpp_action::create_server` returns) dispatched its
 /// first goal through dead memory and rejected every later one. A separate
@@ -916,7 +916,7 @@ pub(crate) struct CppActionClientCallbacks {
             ctx: *mut c_void,
         ),
     >,
-    /// Issue 2034 — a `CancelGoal` reply the executor's spin (or `poll`) took,
+    /// A `CancelGoal` reply the executor's spin (or `poll`) took,
     /// with the sequence id of the request it answers and its whole CDR frame
     /// (decode with [`nros_cpp_action_cancel_reply_decode`]). Installed with
     /// [`nros_cpp_action_client_set_cancel_reply_callback`].
@@ -1375,21 +1375,21 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
 ///
 /// # Safety
 /// All pointers must be valid.
-/// phase-338 W8 — block until the action server's send-goal queryable is
+/// Block until the action server's send-goal queryable is
 /// discoverable.
 ///
 /// C++ sibling of `rclc_action_client_wait_for_action_server`, which the C API
-/// has had since phase-124 while C++ bound neither it nor a readiness probe —
+/// has had for a long time while C++ bound neither it nor a readiness probe —
 /// so the C++ action-client examples hand-rolled a 3-attempt retry around
 /// `send_goal`. Mirrors `rclcpp_action::Client::wait_for_action_server`.
 ///
 /// Spins on the `send_goal` service client's readiness, which is the
 /// load-bearing entity for the first `send_goal`; the same shape as
 /// `ActionClient::wait_for_action_server` in
-/// `nros-node/src/executor/handles.rs` (phase-428 W13).
+/// `nros-node/src/executor/handles.rs`.
 ///
 /// Returns `NROS_CPP_RET_UNSUPPORTED` at once when the backend cannot know
-/// whether a server is up (XRCE) — issue 1686; it used to wait out the budget
+/// whether a server is up (XRCE); it used to wait out the budget
 /// and report TIMEOUT, which every C++ client read as "no server".
 ///
 /// # Safety
@@ -1443,7 +1443,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_wait_for_action_server(
     }
 }
 
-/// Non-blocking snapshot of action-server visibility — phase-417 W4.b.
+/// Non-blocking snapshot of action-server visibility.
 ///
 /// `rclcpp_action::ClientBase::action_server_is_ready`, the non-blocking half
 /// of [`nros_cpp_action_client_wait_for_action_server`] and the C++ binding of
@@ -1479,7 +1479,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_action_server_is_ready(
 ///
 /// # Returns
 ///
-/// Three outcomes, three codes — they were two before issue 0868, and callers
+/// Three outcomes, three codes — they used to be two, and callers
 /// could not tell a server decision from a failed send:
 ///
 /// * `NROS_CPP_RET_OK` — the server ACCEPTED; `goal_id_out` is filled.
@@ -1832,7 +1832,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response(
 
 /// Decode the goal-acceptance payload into split out-params.
 ///
-/// Issue 0329 — the goal-accept wire layout (16-byte goal_id, then one
+/// The goal-accept wire layout (16-byte goal_id, then one
 /// `accepted` byte) is produced by
 /// `nros_cpp_action_client_try_recv_goal_response` above. It was ALSO decoded by
 /// hand in the C++ `action_client.hpp` header (`GoalAccept::ffi_deserialize`) —
@@ -1929,8 +1929,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
     }
 }
 
-/// RELEASE the arena entry, then ABANDON an action client's local storage —
-/// issue 1496.
+/// RELEASE the arena entry, then ABANDON an action client's local storage.
 ///
 /// The `drop_in_place` at the bottom runs no destructor: `CppActionClient` is
 /// three callback pointers, a context pointer, an `i32` index and an executor
@@ -1945,7 +1944,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
 /// reply can dispatch through this storage's address; its callback slot is
 /// freed; and its arena bytes go on the executor's free list for the next
 /// registration that fits. A create/destroy loop therefore no longer exhausts
-/// `NROS_EXECUTOR_MAX_CBS` and then the arena (issue 1496's resolution 2).
+/// `NROS_EXECUTOR_MAX_CBS` and then the arena.
 ///
 /// # Safety
 /// `storage` must be a valid initialized action client storage, or NULL (no-op).
@@ -2097,7 +2096,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result_async(
     }
 }
 
-/// Cancel a goal (non-blocking) — issue 0796.
+/// Cancel a goal (non-blocking).
 ///
 /// Sends the `action_msgs/srv/CancelGoal` request for `goal_id` and returns.
 /// The RPC's return code arrives later; drain it with
@@ -2138,7 +2137,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_cancel_goal(
 ///
 /// Writes the `action_msgs/srv/CancelGoal` RETURN CODE (0 = Ok, 1 = Rejected,
 /// 2 = UnknownGoal, 3 = GoalTerminated — `rclcpp_action::CancelResponseCode`, not the
-/// per-goal `rclcpp_action::CancelResponse`; issue 0796) to `out_return_code`.
+/// per-goal `rclcpp_action::CancelResponse`) to `out_return_code`.
 ///
 /// Returns `NROS_CPP_RET_OK` when a reply was consumed,
 /// `NROS_CPP_RET_TRY_AGAIN` when none has arrived yet.
@@ -2176,15 +2175,15 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_cancel_response(
     }
 }
 
-/// Issue 2027 — the `send_goal` sub-client, for
+/// The `send_goal` sub-client, for
 /// [`nros_cpp_action_client_forget`].
 pub const NROS_CPP_ACTION_CHANNEL_SEND_GOAL: i32 = 0;
-/// Issue 2027 — the `cancel_goal` sub-client.
+/// The `cancel_goal` sub-client.
 pub const NROS_CPP_ACTION_CHANNEL_CANCEL: i32 = 1;
-/// Issue 2027 — the `get_result` sub-client.
+/// The `get_result` sub-client.
 pub const NROS_CPP_ACTION_CHANNEL_GET_RESULT: i32 = 2;
 
-/// Forget ONE pending request about `goal_id` on one sub-client — issue 2027.
+/// Forget ONE pending request about `goal_id` on one sub-client.
 ///
 /// Each sub-client holds at most `MAX_CONCURRENT_GOALS` requests in flight,
 /// and a slot used to come back only when its reply arrived. A C++ future
@@ -2228,7 +2227,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_forget(
     i32::from(forgotten)
 }
 
-/// Send a `CancelGoal` request carrying a goal id AND a stamp — issue 2027.
+/// Send a `CancelGoal` request carrying a goal id AND a stamp.
 ///
 /// `rclcpp_action::Client::async_cancel_all_goals` is the zero id with a zero
 /// stamp, `async_cancel_goals_before(stamp)` the zero id with `stamp`. The
@@ -2270,7 +2269,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_cancel_goals(
     }
 }
 
-/// One `action_msgs/msg/GoalInfo` of a `CancelGoal` reply — issue 2027.
+/// One `action_msgs/msg/GoalInfo` of a `CancelGoal` reply.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct nros_cpp_action_goal_info_t {
@@ -2282,7 +2281,7 @@ pub struct nros_cpp_action_goal_info_t {
     pub stamp_nanosec: u32,
 }
 
-/// Take one `CancelGoal` reply, attributed to the request it answers — issue 2027.
+/// Take one `CancelGoal` reply, attributed to the request it answers.
 ///
 /// Writes the goal the REQUEST named (the zero id for a cancel-all /
 /// cancel-before) to `goal_id_out`, that request's sequence id to `seq_out`
@@ -2295,7 +2294,7 @@ pub struct nros_cpp_action_goal_info_t {
 /// Returns `NROS_CPP_RET_OK` when a reply was taken, `NROS_CPP_RET_TRY_AGAIN`
 /// when none is pending, and `NROS_CPP_RET_ERROR` for a malformed reply (it
 /// is consumed, and `goal_id_out` / `seq_out` still name the request it
-/// answered; issue 0223's rule — a truncation is not "no goals").
+/// answered; a truncation is not "no goals").
 ///
 /// # Safety
 /// All non-NULL pointers must be valid; `infos` must hold `infos_cap` entries.
@@ -2361,7 +2360,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_take_cancel_reply(
     NROS_CPP_RET_OK
 }
 
-/// Install the client's cancel-reply callback — issue 2034.
+/// Install the client's cancel-reply callback.
 ///
 /// While one is installed the executor's spin (and
 /// [`nros_cpp_action_client_poll`]) TAKES every `CancelGoal` reply off this
@@ -2391,14 +2390,14 @@ pub unsafe extern "C" fn nros_cpp_action_client_set_cancel_reply_callback(
     NROS_CPP_RET_OK
 }
 
-/// Decode a `CancelGoal` reply frame — issue 2034.
+/// Decode a `CancelGoal` reply frame.
 ///
 /// The frame a cancel-reply callback receives
 /// ([`nros_cpp_action_client_set_cancel_reply_callback`]). Writes the RPC
 /// return code to `return_code_out`, the `goals_canceling` count to
 /// `count_out` and the first `min(count, infos_cap)` goals to `infos` (may be
 /// NULL when `infos_cap` is 0). Returns `NROS_CPP_RET_OK`, or
-/// `NROS_CPP_RET_ERROR` for a malformed frame (issue 0223's rule: a
+/// `NROS_CPP_RET_ERROR` for a malformed frame (a
 /// truncation is not "no goals").
 ///
 /// # Safety
@@ -2600,7 +2599,7 @@ unsafe fn install_waker_on(
     NROS_CPP_RET_OK
 }
 
-/// Phase 122.3.c.6.e — wake on subscription rx.
+/// Wake on subscription rx.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_subscription_set_wake_callback(
     storage: *mut c_void,
@@ -2616,7 +2615,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_set_wake_callback(
     unsafe { install_waker_on(state, cb, ctx, |w| sub.register_waker(w)) }
 }
 
-/// Phase 122.3.c.6.e — wake on service-server rx.
+/// Wake on service-server rx.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_service_server_set_wake_callback(
     storage: *mut c_void,
@@ -2632,7 +2631,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_set_wake_callback(
     unsafe { install_waker_on(state, cb, ctx, |w| srv.register_waker(w)) }
 }
 
-/// Phase 122.3.c.6.e — wake on service-client reply.
+/// Wake on service-client reply.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_service_client_set_wake_callback(
     storage: *mut c_void,
@@ -2769,7 +2768,7 @@ pub(crate) type PollingActionServerCore =
 pub(crate) type PollingActionClientCore =
     nros_node::ActionClientCore<DEFAULT_RX_BUF_SIZE, DEFAULT_RX_BUF_SIZE, DEFAULT_RX_BUF_SIZE>;
 
-/// Phase 122.3.d — initialize an L1 polling-mode action server.
+/// Initialize an L1 polling-mode action server.
 ///
 /// Builds the 5 channels via the node's session and writes the
 /// `ActionServerCore` into `storage` (must be at least
@@ -2998,7 +2997,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
     NROS_CPP_RET_OK
 }
 
-/// Phase 122.3.d — L1 polling: try to receive a goal request.
+/// L1 polling: try to receive a goal request.
 ///
 /// On success copies the goal payload (CDR-framing-stripped) into
 /// `buf`, fills `goal_id_out` (16 bytes) + `sequence_number_out`,
@@ -3044,7 +3043,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_try_recv_goal_request_raw(
     }
 }
 
-/// Phase 122.3.d — L1 polling: accept a goal received via
+/// L1 polling: accept a goal received via
 /// `nros_cpp_action_server_try_recv_goal_request_raw`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_accept_goal_raw(
@@ -3065,7 +3064,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_accept_goal_raw(
     }
 }
 
-/// Phase 122.3.d — L1 polling: reject a goal.
+/// L1 polling: reject a goal.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_reject_goal_raw(
     storage: *mut c_void,
@@ -3081,7 +3080,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_reject_goal_raw(
     }
 }
 
-/// Phase 122.3.d — L1 polling: publish feedback.
+/// L1 polling: publish feedback.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_publish_feedback_raw(
     storage: *mut c_void,
@@ -3103,7 +3102,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_publish_feedback_raw(
     }
 }
 
-/// Phase 122.3.d — L1 polling: mark a goal terminal.
+/// L1 polling: mark a goal terminal.
 /// `status_code`: 4 = Succeeded, 5 = Canceled, 6 = Aborted (matches
 /// the `nros_core::GoalStatusCode` discriminants).
 #[unsafe(no_mangle)]
@@ -3135,7 +3134,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal_raw(
     }
 }
 
-/// Phase 122.3.c.6.d / .d — L1 polling: peek a pending
+/// L1 polling: peek a pending
 /// cancel-goal request. Writes goal_id + sequence_number +
 /// current_status (matches `nros::GoalStatusCode` discriminants).
 /// Returns `1` on peek, `0` if none pending, negative on error.
@@ -3168,7 +3167,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_try_recv_cancel_request_raw(
     }
 }
 
-/// Phase 122.3.c.6.d / .d — L1 polling: reply to a cancel-goal
+/// L1 polling: reply to a cancel-goal
 /// request. `return_code` matches `nros_core::CancelResponseCode`
 /// (0 = Ok, 1 = Rejected, 2 = UnknownGoal, 3 = GoalTerminated) — the
 /// `action_msgs/srv/CancelGoal` RPC status, NOT the per-goal
@@ -3211,7 +3210,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_send_cancel_reply_raw(
     }
 }
 
-/// Phase 122.3.d — L1 polling: serve a pending get_result query.
+/// L1 polling: serve a pending get_result query.
 /// Returns `1` if served, `0` if none pending, negative on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_try_handle_get_result_raw(
@@ -3232,7 +3231,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_try_handle_get_result_raw(
     }
 }
 
-/// Phase 122.3.d — L1 polling: drop the inline `ActionServerCore`.
+/// L1 polling: drop the inline `ActionServerCore`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_destroy_polling(
     storage: *mut c_void,
@@ -3250,7 +3249,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_destroy_polling(
 // Action client L1 polling
 // ----------------------------------------------------------------------------
 
-/// Phase 122.3.d — initialize an L1 polling-mode action client.
+/// Initialize an L1 polling-mode action client.
 ///
 /// Builds the 3 service clients + feedback subscriber via the
 /// session and writes the `ActionClientCore` into `storage`.
@@ -3444,7 +3443,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
     NROS_CPP_RET_OK
 }
 
-/// Phase 122.3.d — L1 polling: send a goal. Writes 16-byte UUID
+/// L1 polling: send a goal. Writes 16-byte UUID
 /// into `goal_id_out`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_client_send_goal_raw(
@@ -3482,7 +3481,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal_raw(
     }
 }
 
-/// Phase 122.3.d — L1 polling: try receiving the send_goal RPC reply.
+/// L1 polling: try receiving the send_goal RPC reply.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response_raw(
     storage: *mut c_void,
@@ -3495,8 +3494,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response_raw(
     }
 }
 
-/// Issue 2011 — [`nros_cpp_action_client_try_recv_goal_response_raw`] that also writes the goal the reply is ABOUT (the
-/// goal of the request whose sequence id it names, issue 2009) into
+/// [`nros_cpp_action_client_try_recv_goal_response_raw`] that also writes the goal the reply is ABOUT (the
+/// goal of the request whose sequence id it names) into
 /// `goal_id_out`. With several goals in flight the bytes alone cannot say
 /// which one a reply answers. A reply naming no pending request (an abandoned
 /// one's) is dropped, as before. `goal_id_out` is written only when a reply is
@@ -3526,7 +3525,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response_raw_for(
     }
 }
 
-/// Phase 122.3.d — L1 polling: send a get_result request.
+/// L1 polling: send a get_result request.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_client_send_get_result_request_raw(
     storage: *mut c_void,
@@ -3545,7 +3544,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_get_result_request_raw(
     }
 }
 
-/// Phase 122.3.d — L1 polling: try receiving the get_result reply.
+/// L1 polling: try receiving the get_result reply.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result_raw(
     storage: *mut c_void,
@@ -3556,8 +3555,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result_raw(
     unsafe { nros_cpp_action_client_try_recv_result_raw_for(storage, buf, buf_len, &mut goal_id) }
 }
 
-/// Issue 2011 — [`nros_cpp_action_client_try_recv_result_raw`] that also writes the goal the reply is ABOUT (the
-/// goal of the request whose sequence id it names, issue 2009) into
+/// [`nros_cpp_action_client_try_recv_result_raw`] that also writes the goal the reply is ABOUT (the
+/// goal of the request whose sequence id it names) into
 /// `goal_id_out`. With several goals in flight the bytes alone cannot say
 /// which one a reply answers. A reply naming no pending request (an abandoned
 /// one's) is dropped, as before. `goal_id_out` is written only when a reply is
@@ -3587,7 +3586,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result_raw_for(
     }
 }
 
-/// Phase 122.3.d — L1 polling: send a cancel request.
+/// L1 polling: send a cancel request.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_client_send_cancel_request_raw(
     storage: *mut c_void,
@@ -3606,7 +3605,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_cancel_request_raw(
     }
 }
 
-/// Phase 122.3.d / .c.6.c — L1 polling: try receiving the cancel
+/// L1 polling: try receiving the cancel
 /// RPC reply.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_client_try_recv_cancel_response_raw(
@@ -3620,8 +3619,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_cancel_response_raw(
     }
 }
 
-/// Issue 2011 — [`nros_cpp_action_client_try_recv_cancel_response_raw`] that also writes the goal the reply is ABOUT (the
-/// goal of the request whose sequence id it names, issue 2009) into
+/// [`nros_cpp_action_client_try_recv_cancel_response_raw`] that also writes the goal the reply is ABOUT (the
+/// goal of the request whose sequence id it names) into
 /// `goal_id_out`. With several goals in flight the bytes alone cannot say
 /// which one a reply answers. A reply naming no pending request (an abandoned
 /// one's) is dropped, as before. `goal_id_out` is written only when a reply is
@@ -3651,7 +3650,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_cancel_response_raw_for
     }
 }
 
-/// Phase 122.3.d — L1 polling: try receiving feedback. Writes
+/// L1 polling: try receiving feedback. Writes
 /// goal_id_out + bytes copied.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback_raw(
@@ -3678,7 +3677,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback_raw(
     }
 }
 
-/// Phase 122.3.d — L1 polling: drop the inline `ActionClientCore`.
+/// L1 polling: drop the inline `ActionClientCore`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_client_destroy_polling(
     storage: *mut c_void,

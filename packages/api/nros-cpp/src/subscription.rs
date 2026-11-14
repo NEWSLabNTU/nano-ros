@@ -1,6 +1,6 @@
 //! Subscription FFI functions for the C++ API.
 //!
-//! Phase 87.6 (thin-wrapper refactor): caller's opaque storage holds a
+//! The caller's opaque storage holds a
 //! bare `RmwSubscriber` handle. Topic name lives on the C++
 //! `rclcpp::Subscription<M>` class. Received CDR bytes are copied directly
 //! into the caller's output buffer — no runtime 1 KiB scratch buffer.
@@ -220,7 +220,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
     }
 }
 
-/// Subscription creation options (phase-402).
+/// Subscription creation options.
 ///
 /// The three register functions differ in exactly one thing — the callback
 /// type — and used to duplicate eight parameters to say it. The duplication had
@@ -234,7 +234,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
 /// luck elsewhere)". A NULL options pointer is all-defaults, which is exactly
 /// the previous behaviour and cannot be misread as garbage.
 ///
-/// Precedent is issue 0808 on `create_session`, whose resolution `rmw_entity.h`
+/// Precedent is `create_session`, whose design `rmw_entity.h`
 /// records: take one options struct, because
 /// `rmw_{publisher,subscription}_options_t` already solved this for entities.
 #[repr(C)]
@@ -242,7 +242,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
 pub struct nros_cpp_subscription_options_t {
     /// Receive-buffer size hint in bytes; `0` = use the image default.
     ///
-    /// Issue 0896: a subscription that states none takes the small size class
+    /// A subscription that states none takes the small size class
     /// whatever its message type. Codegen's `{Msg}_RX_MAX_SERIALIZED_SIZE` is
     /// the number to pass.
     pub rx_buffer_hint: u32,
@@ -250,7 +250,7 @@ pub struct nros_cpp_subscription_options_t {
     pub sched_context: u8,
     /// Reserved; must be zero.
     pub _reserved: u8,
-    /// Issue 2215 — the CDR byte offset of the message's `stamp.sec`
+    /// The CDR byte offset of the message's `stamp.sec`
     /// (encapsulation header included), or `0` when the type carries no
     /// stamp. The C++ templates fill it from the message type's
     /// `STAMP_OFFSET`; with it the subscription feeds its topic's contracted
@@ -458,7 +458,7 @@ unsafe fn subscription_register_impl(
     }
 }
 
-/// Phase 189.M3.x — the callback-style registration, unchanged.
+/// The callback-style registration, unchanged.
 ///
 /// `context` is passed through to the dispatch as-is, so the caller owns
 /// whatever it points at and the old contract applies: no move after register.
@@ -493,7 +493,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
     }
 }
 
-/// phase-456 W1 — register a callback-style subscription whose CAPTURE the
+/// Register a callback-style subscription whose CAPTURE the
 /// arena holds.
 ///
 /// The difference from `nros_cpp_subscription_register` is the lifetime, not
@@ -508,7 +508,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
 /// caller's is referenced after this returns, so the caller may keep nothing at
 /// all — which is the point: the C++ side becomes a handle.
 ///
-/// **`capture_len` is a LENGTH, not a budget — phase-456 W8.** W1 copied the
+/// **`capture_len` is a LENGTH, not a budget.** An earlier version copied the
 /// capture into a fixed `[u8; CALLBACK_CAPTURE_BYTES]` inside the arena entry
 /// and refused anything longer, where that constant had to equal the C++
 /// `NROS_CPP_CALLBACK_CAPACITY` macro by construction; the refusal was
@@ -521,7 +521,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
 /// `capture_len == 0` (or a NULL `capture`) is exactly
 /// `nros_cpp_subscription_register`.
 ///
-/// **phase-476 W2 — `capture_drop`.** Copying the capture's bytes MOVES whatever
+/// **`capture_drop`.** Copying the capture's bytes MOVES whatever
 /// the capture owns, so the caller relinquishes its own copy without destroying
 /// it, and `capture_drop` (when non-NULL) is called on the arena's copy when the
 /// subscription is released. Before W2 the caller destroyed its copy right
@@ -570,7 +570,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_capturing(
     }
 }
 
-/// Phase 189.M3.4 — register a **callback-style** subscription that also delivers
+/// Register a **callback-style** subscription that also delivers
 /// the sample's wire **attachment**. The callback analogue of the poll-side
 /// `nros_cpp_subscription_take_serialized_with_attachment` (M3.4b), and the C++
 /// mirror of the C `rclc_executor_add_subscription_raw_with_info`: same
@@ -675,7 +675,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
     }
 }
 
-/// Issue 2036 — one sample's metadata, upstream's `rmw_message_info_t` field
+/// One sample's metadata, upstream's `rmw_message_info_t` field
 /// for field (`rclcpp::MessageInfo::get_rmw_message_info()` is filled from
 /// it). A backend that reports none (XRCE, uORB) hands every field zeroed.
 #[repr(C)]
@@ -739,7 +739,7 @@ impl Drop for CppMessageInfoSink {
 }
 
 /// Register a **callback-style** subscription whose callback receives each
-/// sample's metadata — issue 2036, the runtime half of the C++
+/// sample's metadata — the runtime half of the C++
 /// `(const M&, const rclcpp::MessageInfo&)` subscription callback (hosted).
 ///
 /// `invoke(data, len, info, context)` runs during `spin_once` with the CDR
@@ -841,7 +841,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_message_info(
     }
 }
 
-/// Phase 269 W3 — register a **callback-style** subscription that surfaces the
+/// Register a **callback-style** subscription that surfaces the
 /// sample's E2E integrity status (CRC + sequence gap/dup) alongside the CDR bytes
 /// — the C/C++ component-callback analog of Rust's
 /// `register_subscription_buffered_raw_safety_on` / `CallbackCtx::integrity()`.
@@ -1015,7 +1015,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_serialized(
     }
 }
 
-/// Phase 252 / issue 0073 — E2E message-integrity status for the C++ receive
+/// E2E message-integrity status for the C++ receive
 /// path ([`nros_cpp_subscription_take_validated`]). The C++ analog of the
 /// Rust `IntegrityStatus` / `rclc_integrity_status_t`.
 #[cfg(feature = "safety-e2e")]
@@ -1029,7 +1029,7 @@ pub struct nros_cpp_integrity_status_t {
     pub crc_valid: i8,
 }
 
-/// Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E integrity
+/// Non-blocking poll that ALSO returns the E2E integrity
 /// status (CRC + sequence gap/dup). The safety-e2e analog of
 /// [`nros_cpp_subscription_take_serialized`]; the backend recomputes + compares the
 /// CRC attachment and tracks the sequence. Requires `safety-e2e` on both ends
@@ -1094,7 +1094,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_validated(
     }
 }
 
-/// Phase 189.M3.4b — try to receive raw CDR data **plus the sample's wire
+/// Try to receive raw CDR data **plus the sample's wire
 /// attachment** (non-blocking). The C++ poll-side analog of the Rust
 /// `node.subscription(t).generic(..).message_info()` builder: writes the
 /// payload into `out_data` and the attachment into `out_att`. `*out_att_len`
@@ -1161,11 +1161,11 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_serialized_with_attachment(
     }
 }
 
-/// Issue 2074 — the POLL-side take with metadata: upstream's
+/// The POLL-side take with metadata: upstream's
 /// `rclcpp::Subscription::take(msg, message_info)`. Writes the CDR bytes into
 /// `out_data` and the sample's metadata into `*out_info`, both from ONE
 /// `take_serialized_with_info`, the take the callback-side MessageInfo path
-/// (issue 2036) uses. `*out_len` is `0` and `*out_info` is zeroed (with
+/// uses. `*out_len` is `0` and `*out_info` is zeroed (with
 /// `has_info = false`) when nothing was waiting.
 ///
 /// `out_info->has_info` tells "the backend reported metadata for this sample"
@@ -1222,10 +1222,10 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_with_info(
 // Phase 124.A.7 — zero-copy subscription borrow / release
 // ============================================================================
 
-/// Phase 124.A.7 — borrow the next message in place.
+/// Borrow the next message in place.
 ///
 /// **Availability:** `lending`-only, and no shipped build enables it —
-/// see `nros_cpp_publisher_loan`. Issue 0814.
+/// see `nros_cpp_publisher_loan`.
 ///
 /// On success, `*out_buf` points at `*out_len` bytes (read-only) until
 /// the caller calls `nros_cpp_subscription_release(storage, token)`.
@@ -1273,10 +1273,10 @@ pub unsafe extern "C" fn nros_cpp_subscription_borrow(
     }
 }
 
-/// Phase 124.A.7 — release a previously borrowed view.
+/// Release a previously borrowed view.
 ///
 /// **Availability:** `lending`-only, and no shipped build enables it —
-/// see `nros_cpp_publisher_loan`. Issue 0814.
+/// see `nros_cpp_publisher_loan`.
 ///
 /// # Safety
 /// `storage` must be the subscription the token was borrowed from.
@@ -1296,7 +1296,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_release(
     NROS_CPP_RET_OK
 }
 
-/// Phase 124.D.1 — burst-take.
+/// Burst-take.
 ///
 /// Drain up to `max_msgs` queued samples into the contiguous `buf`
 /// block in a single call. The i-th delivered sample lives at
@@ -1344,14 +1344,14 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_sequence(
     }
 }
 
-/// Release a dispatch subscription — issue 1667: the callback stops, the
+/// Release a dispatch subscription: the callback stops, the
 /// subscriber leaves the graph, and the arena entry and its capture are freed
 /// for the next registration.
 ///
 /// What `SubscriptionHandle<M>::reset()` (upstream `sub_.reset()`) calls. Safe
 /// on a stale or copied handle and from inside the subscription's own callback;
 /// see `release_dispatch_entry`. Not `_release` like its timer and service
-/// twins: `nros_cpp_subscription_release` is the loan-release verb (phase-124).
+/// twins: `nros_cpp_subscription_release` is the loan-release verb.
 ///
 /// # Safety
 /// `executor_handle` must be a valid executor handle (one `nros_cpp_fini`
@@ -1494,7 +1494,7 @@ pub type nros_cpp_subscriber_count_cb_t = Option<
 >;
 
 /// Register a liveliness-changed callback on a poll-style subscription —
-/// rclcpp's `SubscriptionEventCallbacks::liveliness_callback`, issue 1993.
+/// rclcpp's `SubscriptionEventCallbacks::liveliness_callback`.
 /// Observed as the subscription is polled (`has_data` / take).
 ///
 /// Returns `NROS_CPP_RET_OK`, `NROS_CPP_RET_INVALID_ARGUMENT` (NULL storage or
@@ -1524,7 +1524,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_set_liveliness_changed(
 }
 
 /// Register a requested-deadline-missed callback — rclcpp's
-/// `SubscriptionEventCallbacks::deadline_callback`, issue 1993. `deadline_ms`
+/// `SubscriptionEventCallbacks::deadline_callback`. `deadline_ms`
 /// reaches the backend's registration (zenoh uses it when the QoS states no
 /// deadline; Cyclone DDS takes the QoS deadline). Same returns as
 /// [`nros_cpp_subscription_set_liveliness_changed`].
@@ -1551,7 +1551,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_set_requested_deadline_missed(
 }
 
 /// Register a message-lost callback — rclcpp's
-/// `SubscriptionEventCallbacks::message_lost_callback`, issue 1993. Same
+/// `SubscriptionEventCallbacks::message_lost_callback`. Same
 /// returns as [`nros_cpp_subscription_set_liveliness_changed`].
 ///
 /// # Safety
@@ -1608,7 +1608,7 @@ unsafe fn subscription_set_slot(
 }
 
 /// Register a matched callback on a poll-style subscription — rclcpp's
-/// `SubscriptionEventCallbacks::matched_callback`, issue 1972. Observed as the
+/// `SubscriptionEventCallbacks::matched_callback`. Observed as the
 /// subscription is polled (`has_data` / take).
 ///
 /// # Safety
@@ -1655,7 +1655,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_set_incompatible_type(
     }
 }
 
-/// The QoS profile this subscription is ACTUALLY running — issue 1437.
+/// The QoS profile this subscription is ACTUALLY running.
 ///
 /// `rmw_subscription_get_actual_qos`. See
 /// [`nros_cpp_publisher_get_actual_qos`](crate::publisher::nros_cpp_publisher_get_actual_qos)
@@ -1702,7 +1702,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_get_actual_qos(
 
 #[cfg(test)]
 mod tests {
-    //! phase-460 W7 / issue 1425 -- the C++ take counts and NAMES a sample it
+    //! The C++ take counts and NAMES a sample it
     //! threw away for being too big.
     //!
     //! WHAT THIS TEST IS, AND WHAT THE PHASE DOC ASKED FOR. The wave's gate is
@@ -1717,7 +1717,7 @@ mod tests {
     //! by exactly one, and the line a reader sees carries the number they have
     //! to act on.
     //!
-    //! The sample size is issue 1612. A too-small `take` now carries the size
+    //! The sample size: a too-small `take` now carries the size
     //! the sample needed in the span's `len`; each backend's own suite proves
     //! it writes that number, `nros-rmw-cffi`'s `refused_take_len.rs` proves
     //! it reaches [`SubscriberTrait::refused_sample_len`], and the cells below

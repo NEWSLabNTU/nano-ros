@@ -17,7 +17,7 @@
 namespace rclcpp {
 namespace detail {
 
-/// WHY THIS EXISTS — phase-456 W3.
+/// WHY THIS EXISTS.
 ///
 /// An arena registration takes a `void* context` and hands it back to the
 /// trampoline. What a dispatch SERVICE or CLIENT needs to carry across that
@@ -32,7 +32,7 @@ namespace detail {
 /// about — a warning the API only needed because the C++ side kept an object
 /// the arena did not.
 ///
-/// This is phase-456 W1's answer (the arena carries the callback's capture)
+/// This is the answer (the arena carries the callback's capture)
 /// for the case where the capture fits in the slot that already exists: the
 /// handler IS the context, so the arena copies it by value like any other
 /// capture and nothing of the caller's is referenced after registration. W1's

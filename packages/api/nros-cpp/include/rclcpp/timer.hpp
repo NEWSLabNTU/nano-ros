@@ -15,24 +15,24 @@
 
 #include "rclcpp/result.hpp"
 #include "rclcpp/detail/hosted_block.hpp"
-// phase-417 G6 — `time_until_trigger()` returns `rclcpp::Duration`, so this
+// `time_until_trigger()` returns `rclcpp::Duration`, so this
 // header NAMES it and must be includable first (the rule `qos.hpp` states for
 // the same dependency). `duration.hpp` includes nothing of ours.
 #include "rclcpp/duration.hpp"
 
-// phase-476 W2 — nothing in this header is hosted-only any more: the pointer
+// Nothing in this header is hosted-only any more: the pointer
 // aliases name `TimerHandle` rather than `std::shared_ptr`, and the callable
 // lives in the executor arena rather than a `std::function` cell. So it
 // includes no capability probe.
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
-// issue 1975 -- `get_clock()` returns the clock the timer runs on. AFTER
+// `get_clock()` returns the clock the timer runs on. AFTER
 // `nros_cpp_ffi.h`, the order `node.hpp` already includes the two in.
 #include "rclcpp/clock.hpp"
-// issue 1974 -- `TimerInfoCallbackType` is an `InplaceFn`.
+// `TimerInfoCallbackType` is an `InplaceFn`.
 #include "rclcpp/inplace_fn.hpp"
 
-// phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
+// `Node` is DEFINED in `rclcpp::` (that namespace is
 // the home). The friend declaration below is qualified, and a qualified friend
 // names an existing entity rather than introducing one, so the name has to be
 // declared first, in `rclcpp::`.
@@ -60,7 +60,7 @@ inline ClockValuePtr timer_clock(void* executor, size_t handle_id) {
 } // namespace detail
 
 /// What `timer_->...` reaches on a [`TimerHandle`]: the operations a timer
-/// registration supports, over the same two words — phase-476 W2.
+/// registration supports, over the same two words.
 ///
 /// A separate type from the handle because ported code says BOTH
 /// `timer_->reset()` (restart the timer) and `timer_.reset()` (drop it), and
@@ -126,10 +126,10 @@ class TimerOps {
 };
 
 /// The handle `create_wall_timer` / `rclcpp::create_timer` return, and what
-/// `Timer::SharedPtr` names — phase-476 W2.
+/// `Timer::SharedPtr` names.
 ///
 /// Two words, trivially copyable, no allocation, and present on every target:
-/// the timer's callable lives in the executor arena (phase-476 W2), so there is
+/// the timer's callable lives in the executor arena, so there is
 /// nothing on the C++ side for a `std::shared_ptr` to own. That is what freed
 /// `timer.hpp` from `<memory>` and `<functional>`.
 ///
@@ -141,14 +141,14 @@ class TimerOps {
 ///
 ///  * The handle does not OWN the timer. Dropping or overwriting it leaves the
 ///    timer firing, where upstream destroys a timer when its last `shared_ptr`
-///    goes. The node owns its timers: destroying the node releases them
-///    (phase-476 W0). That matches what this API did before W2, when the node
+///    goes. The node owns its timers: destroying the node releases them.
+///    That matches what this API did before W2, when the node
 ///    co-owned a heap cell for every timer.
 ///  * `timer_.reset()` RELEASES the timer, for every copy at once: the closest
 ///    thing to upstream's "drop my reference" that a non-counting handle can
 ///    offer, and the spelling ported code uses to stop a timer for good.
 ///  * A copy that outlives a release is SAFE. The handle carries the generation
-///    of the slot it was issued for (phase-476 W0), so every operation through a
+///    of the slot it was issued for, so every operation through a
 ///    stale copy fails instead of reaching whatever registration took the slot.
 class TimerHandle : private TimerOps {
   public:
@@ -228,7 +228,7 @@ class Timer {
     /// `rclcpp::Timer::SharedPtr timer_;` (or `rclcpp::TimerBase::SharedPtr`,
     /// the alias below).
     ///
-    /// phase-476 W2 — a [`TimerHandle`], not a `std::shared_ptr<Timer>`, and
+    /// A [`TimerHandle`], not a `std::shared_ptr<Timer>`, and
     /// UNCONDITIONAL: the timer's callable lives in the executor arena, so the
     /// C++ side owns nothing a smart pointer could hold, and a freestanding
     /// target gets the ported spelling too. See `TimerHandle` for what differs
@@ -272,7 +272,7 @@ class Timer {
     /// Would this timer fire on the next `spin_once()` pass? — rclcpp's
     /// `TimerBase::is_ready()`.
     ///
-    /// phase-417 G6. The answer is the EXECUTOR's, read from the arena entry
+    /// The answer is the EXECUTOR's, read from the arena entry
     /// the timer is registered in: a cancelled timer is never ready, a fired
     /// one-shot is never ready again, and otherwise `elapsed >= period`. That
     /// is `arena::timer_try_process`'s own guard rather than a second opinion
@@ -289,14 +289,14 @@ class Timer {
     /// Time until this timer next fires — NEGATIVE when it is overdue.
     /// rclcpp's `TimerBase::time_until_trigger()`.
     ///
-    /// phase-417 G6. Two deliberate differences from rclcpp, both recorded on
+    /// Two deliberate differences from rclcpp, both recorded on
     /// the ledger row:
     ///
     ///  * upstream returns `std::chrono::nanoseconds`; this returns
     ///    [`rclcpp::Duration`], because this header is freestanding and
-    ///    `<chrono>` is not reachable from every target it serves (issue 0112).
+    ///    `<chrono>` is not reachable from every target it serves.
     ///    The UNIT is the same — `d.nanoseconds()` is upstream's count.
-    ///  * the arena's timer accounting is MICROSECOND-based (issue #505), so
+    ///  * the arena's timer accounting is MICROSECOND-based, so
     ///    the nanosecond value is a microsecond quantity scaled by 1000. The
     ///    unit is rclcpp's; the resolution is ours.
     ///
@@ -319,7 +319,6 @@ class Timer {
     }
 
     /// The clock this timer runs on -- rclcpp's `TimerBase::get_clock()`.
-    /// issue 1975.
     ///
     /// A wall timer (`create_wall_timer`) answers `RCL_STEADY_TIME`, as
     /// rclcpp's wall timers do; a `create_timer(clock, …)` timer answers the
@@ -329,7 +328,7 @@ class Timer {
     ///
     /// ADOPT-BOUNDED. Upstream returns `const Clock::SharedPtr&`; this returns
     /// a [`detail::ClockValuePtr`], the clock held by value behind `->` and
-    /// `*`, because there is no allocator to share one from (RFC-0022) and the
+    /// `*`, because there is no allocator to share one from and the
     /// clock owns nothing a copy could lose. `timer->get_clock()->now()` keeps
     /// its spelling. An uninitialized timer answers a value whose
     /// `operator bool` is false and whose clock reads zero.
@@ -414,7 +413,7 @@ class Timer {
     /// C callback leaves it null. Freed automatically when the Timer is
     /// destroyed or moved-from.
     ///
-    /// UNCONDITIONAL, and that is the point (issue 1225, phase-442 W1): a
+    /// UNCONDITIONAL, and that is the point: a
     /// member behind `NROS_CPP_STD` made `sizeof(rclcpp::Timer)` 24 or 32
     /// depending on a flag one module of an image may set on its own, and
     /// carried `nros::ComponentNode` (`Timer timers_[8]`) and the
@@ -425,13 +424,13 @@ class Timer {
 } // namespace rclcpp
 
 // ============================================================================
-// rclcpp::Timer — FLAT. No `TimerBase`, no hierarchy (phase-430 W7 ruling)
+// rclcpp::Timer — FLAT. No `TimerBase`, no hierarchy
 // ============================================================================
 //
-// RFC-0089 §"Timer, studied against RTOS semantics" decided this and the tree
-// disagreed with it: phase-417 W1.a had landed `class TimerBase` with a virtual
+// The design decided this and the tree
+// disagreed with it: an earlier change had landed `class TimerBase` with a virtual
 // destructor and `detail::WallTimer : TimerBase` under it — exactly the
-// hierarchy the RFC refused. phase-430 W7 called for a ruling either way. The
+// hierarchy the design refused. A ruling was called for either way. The
 // ruling is DELETE, and it is argued from the executor's dispatch:
 //
 //   1. THE VTABLE HAS NO CALLER. The only virtual member was `~TimerBase()`,
@@ -450,13 +449,13 @@ class Timer {
 //      `GenericTimer` are upstream's siblings under `TimerBase`, and both stay
 //      absent by decision: the clock axis is a RUNTIME FIELD on the flat timer
 //      plus a second VERB (`create_timer(clock, …)` beside `create_wall_timer`),
-//      never a type parameter — phase-425 landed ROS time in exactly that
+//      never a type parameter — ROS time landed in exactly that
 //      shape. A base whose one leaf is `detail::`-private advertises a taxonomy
 //      the header itself refuses two paragraphs later.
 //
 //   3. THE FLAT SHAPE IS A STRICTLY BETTER KEEP-ALIVE. `create_wall_timer`
 //      returned `std::shared_ptr<::rclcpp::Timer>` aliased onto a private cell,
-//      as `create_subscription` did. Since phase-476 W2 both return a two-word
+//      as `create_subscription` did. Both now return a two-word
 //      handle and there is no cell: the callable is in the executor arena.
 //
 // The migration cost is one mechanical rename the compiler demands:
@@ -465,8 +464,8 @@ class Timer {
 // what the RFC calls the honest outcome — we do not have the hierarchy, so we
 // do not take the name for it. Zero non-test call sites in this tree used it.
 //
-// `rclcpp::Timer` is an ours-only name in upstream's namespace (RFC-0089
-// §"Settled: `nros::` is phased out entirely"), so it carries a ledger row with
+// `rclcpp::Timer` is an ours-only name in upstream's namespace (`nros::`
+// is phased out entirely), so it carries a ledger row with
 // `disposition: extension` and the collision gate watches for `rclcpp::Timer`
 // appearing in the recorded upstream surface.
 //
@@ -483,15 +482,15 @@ class Timer {
 //     drained and the mean cadence is preserved. `rcl_timer_call` instead skips
 //     whole missed periods and re-phases onto the grid, firing once. Closing
 //     the gap means a missed-deadline POLICY on the executor's timer —
-//     Rust-side work, not a loop re-added here (issue 1041).
+//     Rust-side work, not a loop re-added here.
 //
-// phase-417 — ONE DISPATCH PATH. `create_wall_timer` registers an EXECUTOR
+// ONE DISPATCH PATH. `create_wall_timer` registers an EXECUTOR
 // timer via `rclcpp::Node::create_wall_timer` (`node.hpp`), so the period
 // arithmetic, the missed-deadline policy and the clock are the executor's,
 // Rust-side. Until this landed, `WallTimer` carried its own
 // `std::chrono::steady_clock` deadline and a `Node::pump()` fired it from
 // `rclcpp::spin` / `spin_some` ONLY. Scheduling in the wrapper is
-// RFC-0019/RFC-0020 violation class 2. Do not reintroduce a second dispatch
+// thin-wrapper violation class 2. Do not reintroduce a second dispatch
 // loop.
 
 namespace rclcpp {
@@ -501,8 +500,8 @@ namespace rclcpp {
 /// Timer>::value` is true and no vtable exists behind either spelling.
 ///
 /// KEPT, and NOT deprecated, and the reason is MEASURED rather than stylistic.
-/// phase-430 W7 first deleted the name outright — RFC-0089 §"Timer, studied
-/// against RTOS semantics" argues that an alias "sells a taxonomy we do not
+/// A change first deleted the name outright — the design
+/// argues that an alias "sells a taxonomy we do not
 /// have". The `colcon-parity` gate then failed, and it named the constraint
 /// that argument had not considered:
 ///
@@ -523,7 +522,7 @@ namespace rclcpp {
 /// `class TimerBase` had a virtual destructor and `detail::WallTimer` derived
 /// from it. The executor dispatches through a raw `void(*)(void*)` recovered by
 /// a STATIC trampoline, so no virtual call through a `TimerBase*` existed or
-/// can — a vtable with no caller, which clause 1 refuses. phase-476 W2 then
+/// can — a vtable with no caller, which clause 1 refuses. A later change
 /// deleted `detail::WallTimer` itself; `create_wall_timer` returns a
 /// `TimerHandle`.
 ///
@@ -535,7 +534,7 @@ namespace rclcpp {
 using TimerBase = ::rclcpp::Timer;
 
 /// When a timer activation was due and when it ran — Jazzy's
-/// `rclcpp::TimerInfo` (issue 1974), same name, same two members.
+/// `rclcpp::TimerInfo`, same name, same two members.
 ///
 /// Both are `rclcpp::Time` on the TIMER'S clock: `RCL_STEADY_TIME` for a
 /// `create_wall_timer` timer, the clock's own type for `rclcpp::create_timer`.
@@ -553,19 +552,18 @@ struct TimerInfo {
     Time actual_call_time;
 };
 
-/// `rclcpp::TimerInfoCallbackType` — a callback taking `const TimerInfo&`
-/// (issue 1974).
+/// `rclcpp::TimerInfoCallbackType` — a callback taking `const TimerInfo&`.
 ///
 /// DIVERGENCE: upstream's is `std::function<void(const TimerInfo&)>`; ours is
 /// the inline-storage `rclcpp::InplaceFn` every freestanding callback here
-/// uses (no allocator, no `<functional>` — RFC-0096 D2). A lambda converts to
+/// uses (no allocator, no `<functional>`). A lambda converts to
 /// either, so `TimerInfoCallbackType cb = [](const TimerInfo& i) {...};`
 /// compiles. An `InplaceFn` is MOVE-only: pass a named variable as
 /// `std::move(cb)` (a copy is a compile error), and a capture larger than
 /// `NROS_CPP_CALLBACK_CAPACITY` is a `static_assert`.
 using TimerInfoCallbackType = InplaceFn<void(const TimerInfo&)>;
 
-// phase-476 W2 deleted `detail::WallTimer`, the heap cell (a `std::function`
+// `detail::WallTimer` is deleted: the heap cell (a `std::function`
 // plus an `rclcpp::Timer`) that gave a capturing timer callback a stable address
 // and that the node kept alive through ~~`owned_entities`~~. The callable now lives
 // in the executor arena (`nros_cpp_timer_create_capturing`), destroyed when the

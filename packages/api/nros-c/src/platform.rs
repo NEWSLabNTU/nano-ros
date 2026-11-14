@@ -27,13 +27,13 @@
 // of the tree does on both flavours since this campaign unified `nros-node`'s
 // clock. The `std` twins these replaced are described at each function.
 unsafe extern "C" {
-    /// Monotonic nanoseconds since a platform-defined epoch (RFC-0073).
+    /// Monotonic nanoseconds since a platform-defined epoch.
     fn nros_platform_clock_ns() -> u64;
 
     /// Sleep at least `us` microseconds.
     fn nros_platform_sleep_us(us: usize);
 
-    /// Nanoseconds since the Unix epoch (issue 0532).
+    /// Nanoseconds since the Unix epoch.
     ///
     /// ONE symbol, replacing the `time_since_epoch_{secs,nanos}` pair. Those are
     /// RETIRED — nothing defines them any more, so a reference here is not a
@@ -47,11 +47,11 @@ unsafe extern "C" {
 
 /// Get current monotonic time in nanoseconds.
 ///
-/// phase-359 W10 — one implementation. The `std` twin kept its own epoch in a
+/// One implementation. The `std` twin kept its own epoch in a
 /// `OnceLock<Instant>` while the platform already had one, so the two flavours
 /// answered "how long have we been running" from different clocks.
 ///
-/// RFC-0073 made nanoseconds the ABI's own unit, so this stopped fabricating
+/// Nanoseconds are the ABI's own unit, so this stopped fabricating
 /// them by multiplying microseconds. What the low digits are worth is a
 /// question `nros_platform_clock_resolution_ns` answers.
 pub fn get_time_ns() -> u64 {
@@ -62,8 +62,8 @@ pub fn get_time_ns() -> u64 {
 
 /// Get system time in nanoseconds since the Unix epoch.
 ///
-/// phase-359 W10 — this FIXES the no_std answer rather than merely merging two.
-/// (Amended: written against `time_since_epoch_{secs,nanos}`, which issue 0532
+/// This FIXES the no_std answer rather than merely merging two.
+/// (Amended: written against `time_since_epoch_{secs,nanos}`, which were later
 /// collapsed into ONE `nros_platform_time_now_ns` mid-flight. One symbol means
 /// one sample, so the bounded re-read this used to carry is gone — exactly the
 /// deletion 0532 promised.)
@@ -74,7 +74,7 @@ pub fn get_time_ns() -> u64 {
 /// presented as time-since-1970.
 ///
 /// That sentence used to name ~~`nros_platform_time_since_epoch_*`~~ as the symbols
-/// providing it. Issue 0532 retired them, so the doc comment was left asserting
+/// providing it. They were retired, so the doc comment was left asserting
 /// that a pair nothing defines is implemented everywhere — four lines above the
 /// comment explaining their deletion. Naming the FACT rather than the spelling
 /// keeps it true across the next rename.
@@ -112,7 +112,7 @@ pub fn get_system_time_ns() -> i64 {
 
 /// Sleep for the specified duration in nanoseconds.
 ///
-/// phase-359 W10 — one implementation, the platform's own pacing primitive.
+/// One implementation, the platform's own pacing primitive.
 /// Rounded to microseconds because that is the ABI's unit; the `std` twin took
 /// nanoseconds and handed them to `thread::sleep`, whose sub-microsecond
 /// precision is nominal on every OS this runs on.
@@ -127,7 +127,7 @@ pub fn sleep_ns(ns: u64) {
 
 /// Atomically store a boolean value with release semantics.
 ///
-/// phase-243: `core::sync::atomic` on BOTH std and no_std (was an FFI call to the
+/// `core::sync::atomic` on BOTH std and no_std (was an FFI call to the
 /// A-only `nros_platform_atomic_store_bool` on no_std). A naturally-aligned
 /// `AtomicBool` store is lock-free on every target nros builds.
 ///
@@ -143,7 +143,7 @@ pub fn atomic_store_bool(ptr: *mut bool, value: bool) {
 
 /// Atomically load a boolean value with acquire semantics.
 ///
-/// phase-243: `core::sync::atomic` on BOTH std and no_std.
+/// `core::sync::atomic` on BOTH std and no_std.
 ///
 /// # Safety
 /// `ptr` must be valid + properly aligned for the access.

@@ -1,10 +1,10 @@
-/* Issue 1569 — BUILDLESS sizes header. NOT a platform's fallback any more.
+/* BUILDLESS sizes header. NOT a platform's fallback any more.
  *
  * This file used to be what every NuttX C/C++ image was sized from
  * (`nros_config_generated_nuttx.h`, dispatched under `NROS_PLATFORM_NUTTX`),
  * because the per-build header was on no NuttX include path. It was a
- * hand-kept UPPER BOUND, and it kept failing to be one: #167, #464, #954 and
- * issue 1568 each found a value below the build, the last as a live 36-byte
+ * hand-kept UPPER BOUND, and it kept failing to be one: four separate fixes
+ * each found a value below the build, the last as a live 36-byte
  * publisher overrun. It could not even be made right by hand — one file stood
  * for two architectures that measure differently, and `rcl_subscription_t`
  * carries a field after its opaque array, so any value but the build's own
@@ -21,18 +21,18 @@
  * must only be self-consistent (the asserts below) and define every macro
  * generated code reads (the same gate). The values are the last snapshot's,
  * kept as they were. */
-/* Phase 159 (Path C) — NuttX fallback. */
+/* NuttX fallback. */
 #ifndef NROS_CONFIG_GENERATED_BUILDLESS_H
 #define NROS_CONFIG_GENERATED_BUILDLESS_H
 #include <stdint.h>
 
-/* #167 — safe upper bound (was 79296, stale): current codegen needs ~80704 on
+/* Safe upper bound (was 79296, stale): current codegen needs ~80704 on
  * rv-virt; too-small here overflows the executor storage buffer. Keep above the
  * largest per-build value; the per-build header supersedes this when mirrored. */
 #define NROS_EXECUTOR_STORAGE_SIZE 98304
 #define NROS_EXECUTOR_SIZE 98296
 #define NROS_GUARD_CONDITION_SIZE 24
-/* Issue 1568 — MEASURED BELOW THE BUILD and raised: the realtime-c
+/* MEASURED BELOW THE BUILD and raised: the realtime-c
  * qemu-armv7a-nuttx fixture built at this commit wrote a per-build header with
  * NROS_PUBLISHER_SIZE 596, NROS_SUBSCRIBER_SIZE 620, NROS_SERVICE_SERVER_SIZE
  * 568, raw subscription / service-server 209 / 199 u64s and PUBLISHER_OPAQUE_U64S
@@ -40,23 +40,23 @@
  * short (the ctrl component's publisher buffer was 564 bytes for a 600-byte
  * write, overrunning into the telem instance the linker placed after it). The
  * values below are that measurement rounded up with margin, still hand-kept:
- * issue 1569 is the exact fix (the per-build header on the NuttX path). */
+ * the exact fix is (the per-build header on the NuttX path). */
 #define NROS_PUBLISHER_SIZE 640
 #define NROS_SUBSCRIBER_SIZE 672
 #define NROS_SERVICE_CLIENT_SIZE 4632
 #define NROS_SERVICE_SERVER_SIZE 608
-/* issue 0954 — was 528 / 66 u64s. `_z_session_t` grew 8 bytes when it gained
- * `_mutex_transport` + `_reconnecting` (issues 0899 / 0924), and this file must
+/* Was 528 / 66 u64s. `_z_session_t` grew 8 bytes when it gained
+ * `_mutex_transport` + `_reconnecting`, and this file must
  * be an UPPER BOUND over every per-build value: freshly built headers now read
  * 536, so 66 * 8 = 528 left the opaque array eight bytes short of the struct it
- * stores. Same shape as #167 and #464 above — a per-build size moved and this
+ * stores. Same shape as the two fixes above — a per-build size moved and this
  * hand-maintained twin did not. */
 #define NROS_SESSION_SIZE 536
 #define NROS_LIFECYCLE_CTX_SIZE 64
 #define NROS_ACTION_SERVER_INTERNAL_SIZE 72
-#define SESSION_OPAQUE_U64S 67 /* 67 * 8 = 536, issue 0954 */
+#define SESSION_OPAQUE_U64S 67 /* 67 * 8 = 536 */
 #define PUBLISHER_OPAQUE_U64S 80
-/* #464 — was 9912, i.e. 79296 bytes: the value #167 REPLACED in the two macros
+/* Was 9912, i.e. 79296 bytes: the value an earlier fix REPLACED in the two macros
  * above and missed here, even though this is the one that sizes the array
  * (`uint64_t _opaque[EXECUTOR_OPAQUE_U64S]` in nros_generated.h). The comment
  * above states rv-virt needs ~80704, so 9912 was already too small by this
@@ -65,7 +65,7 @@
 #define EXECUTOR_OPAQUE_U64S 12288
 #define GUARD_HANDLE_OPAQUE_U64S 3
 #define NROS_LIFECYCLE_CTX_OPAQUE_U64S 8
-/* phase-417 stage 3 — width of `rclc_executor_t._handle_entities`, the entity
+/* Width of `rclc_executor_t._handle_entities`, the entity
  * pointer per handle slot that `rclc_executor_trigger_one` compares its `obj`
  * against. The per-build header states NROS_EXECUTOR_MAX_CBS; this snapshot
  * states the CEILING instead, 64, which is the most handles the executor can
@@ -86,7 +86,7 @@
 #undef SERVICE_CLIENT_OPAQUE_U64S
 #define SERVICE_CLIENT_OPAQUE_U64S 707
 #undef ACTION_SERVER_OPAQUE_U64S
-/* #464 postscript — was 786, below a real per-build value (a host probe of the
+/* Postscript — was 786, below a real per-build value (a host probe of the
  * same type measures 799). This file must be an upper bound over ALL per-build
  * values; raised with margin, matching the C++ twin. NOT verified against a
  * 32-bit NuttX build, where the true size is likely smaller — raised because
@@ -96,7 +96,7 @@
 #undef ACTION_CLIENT_OPAQUE_U64S
 #define ACTION_CLIENT_OPAQUE_U64S 2193
 
-/* RFC-0090 / issue 1115 — the codegen-version anchors, and the ONE pair in this
+/* The codegen-version anchors, and the ONE pair in this
  * file that is not a bound.
  *
  * Every generated C and C++ header emits `NROS_EMITTED_CODEGEN_VERSION` and
@@ -108,7 +108,7 @@
  * `<rclc/detail/nros_config_generated.h>` dispatches to THIS file under
  * `NROS_PLATFORM_NUTTX`, the per-build header is on no include path (measured:
  * `nros-c-generated` appears nowhere in a NuttX leaf's `build.ninja`), and
- * phase-429 W1 added the macros to the template and to the artifacts without
+ * a change added the macros to the template and to the artifacts without
  * adding them here. Result: every NuttX C and C++ image failed to compile on
  * the FIRST `#error` arm — "the generated config header did not define
  * NROS_CODEGEN_VERSION" — from a clean clone, for two days.
@@ -120,16 +120,16 @@
  * requires these two to equal the Rust constants, and by
  * `check-config-header-producers`.
  *
- * DEFINED ONCE. Two same-day fixes for the same break (phase-413 W2 and issue
- * 1115) each added this pair, in different hunks, so both landed; the file then
+ * DEFINED ONCE. Two same-day fixes for the same break
+ * each added this pair, in different hunks, so both landed; the file then
  * carried it twice. Identical redefinitions are legal C and GCC keeps the LAST,
  * while both gates read the FIRST — a bump that edited one copy would pass them
  * and compile against the other. Both gates now refuse a second definition. */
 #define NROS_CODEGEN_VERSION 21
 #define NROS_CODEGEN_VERSION_MIN 18
 
-/* Issue 0464 — this file is a hand-maintained SNAPSHOT, so the pairs below can
- * drift against each other, and one of them did: #167 bumped
+/* This file is a hand-maintained SNAPSHOT, so the pairs below can
+ * drift against each other, and one of them did: a fix bumped
  * NROS_EXECUTOR_{STORAGE_,}SIZE and left EXECUTOR_OPAQUE_U64S at the stale
  * 9912, leaving the array 19008 bytes shorter than the size the same file
  * declared for what goes in it. Nothing noticed, because a snapshot cannot

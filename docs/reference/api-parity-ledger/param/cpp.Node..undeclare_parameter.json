@@ -3,7 +3,7 @@
   "disposition": "adopt-bounded",
   "envelope": {
     "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
-    "text": "throws; ours reports (RFC-0089's error-channel rule"
+    "text": "throws; ours reports (the adoption rule's error-channel clause"
   },
   "verdict": "divergence",
   "foreign_names": [

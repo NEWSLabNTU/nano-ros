@@ -14,7 +14,7 @@
 
 #include "rclcpp/detail/traits.hpp"
 
-/// How many bytes of capture a callback may carry — phase-442 W0.
+/// How many bytes of capture a callback may carry.
 ///
 /// MEASURED, not chosen. Every capture in this tree and in the porting corpus
 /// is a whole number of POINTERS, and the widest is three:
@@ -47,7 +47,7 @@ namespace rclcpp {
 
 template <typename Sig, tr::size_type Cap = NROS_CPP_CALLBACK_CAPACITY> class InplaceFn;
 
-/// A callable with INLINE storage and a compile-time capacity — RFC-0096 D2.
+/// A callable with INLINE storage and a compile-time capacity.
 ///
 /// WHAT IT IS FOR
 ///
@@ -71,7 +71,7 @@ template <typename Sig, tr::size_type Cap = NROS_CPP_CALLBACK_CAPACITY> class In
 /// The alternative designs are a silent heap fallback (which defeats the point
 /// on a target with no allocator, and hides the cost on one that has) or a
 /// runtime failure (which moves a compile-time fact to the field). A
-/// `static_assert` naming the knob is the mechanical edit RFC-0089 asks for:
+/// `static_assert` naming the knob is the mechanical edit the adoption rule asks for:
 /// the compiler points at the exact callback and says which macro to raise.
 ///
 /// NOT A `std::function`, AND NOT PRETENDING TO BE
@@ -149,7 +149,7 @@ template <typename R, typename... A, tr::size_type Cap> class InplaceFn<R(A...),
     }
 
     /// Forget the callable WITHOUT destroying it, because its bytes were moved
-    /// elsewhere by copy and the copy owns it now — phase-476 W2.
+    /// elsewhere by copy and the copy owns it now.
     ///
     /// This is the move constructor's own second half (`copy_storage` then
     /// `release` on the source), offered to a caller that did the copy itself:

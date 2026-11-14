@@ -56,7 +56,7 @@ pub enum rclc_cancel_response_t {
 // Action Type Info
 // ============================================================================
 
-/// Issue 1913 — the hash each of an action's five endpoints is keyed on.
+/// The hash each of an action's five endpoints is keyed on.
 ///
 /// An Iron+ `rmw_zenoh_cpp` peer keys every endpoint on its OWN type (the
 /// `SendGoal` / `GetResult` services, `action_msgs/srv/CancelGoal`, the
@@ -130,7 +130,7 @@ pub struct rclc_action_type_t {
     pub result_serialized_size_max: usize,
     /// Maximum serialized size of feedback message
     pub feedback_serialized_size_max: usize,
-    /// phase-492 W8 — the goal part's serialiser (NULL in a descriptor built
+    /// The goal part's serialiser (NULL in a descriptor built
     /// from names alone). Generated as `<pkg>__action__<Name>__nros_type`,
     /// what `ROSIDL_GET_ACTION_TYPE_SUPPORT(pkg, action, Name)` yields.
     pub goal_serialize: crate::publisher::rclc_message_serialize_fn_t,
@@ -144,10 +144,10 @@ pub struct rclc_action_type_t {
     pub feedback_serialize: crate::publisher::rclc_message_serialize_fn_t,
     /// The feedback part's deserialiser.
     pub feedback_deserialize: crate::publisher::rclc_message_deserialize_fn_t,
-    /// Issue 1913 — the hash each endpoint is keyed on (an older generator's
+    /// The hash each endpoint is keyed on (an older generator's
     /// designated initializer leaves it NULL).
     pub endpoint_hashes: rclc_action_endpoint_hashes_t,
-    /// phase-515 C4a — `sizeof(<Action>_SendGoal_Request)`, the generated
+    /// `sizeof(<Action>_SendGoal_Request)`, the generated
     /// envelope rclc's `rclc_executor_add_action_server` takes an array of.
     /// `0` in a descriptor from an older generator (or built from names
     /// alone): the envelope API refuses it rather than guess a layout.
@@ -171,7 +171,7 @@ pub struct rclc_action_type_t {
 // Goal UUID
 // ============================================================================
 
-/// phase-515 C4b — rcl_action's `rcl_action_goal_state_t`: a goal's status
+/// rcl_action's `rcl_action_goal_state_t`: a goal's status
 /// as `action_msgs/msg/GoalStatus` numbers it, the type an rclc goal handle's
 /// `status` and `rclc_action_send_result`'s `status` carry.
 pub type rcl_action_goal_state_t = i8;
@@ -191,7 +191,7 @@ pub const GOAL_STATE_CANCELED: rcl_action_goal_state_t = 5;
 pub const GOAL_STATE_ABORTED: rcl_action_goal_state_t = 6;
 
 /// rosidl's `unique_identifier_msgs__msg__UUID`, declared in C by
-/// `<rclc/detail/uuid.h>` (phase-515 C4a) and excluded from cbindgen's export,
+/// `<rclc/detail/uuid.h>` and excluded from cbindgen's export,
 /// as `rmw_request_id_t` is. Same layout as [`rclc_goal_uuid_t`].
 pub type unique_identifier_msgs__msg__UUID = rclc_goal_uuid_t;
 
@@ -293,7 +293,7 @@ pub type rclc_result_callback_t = Option<
     ),
 >;
 
-/// Cancel-response callback type (for client) — issue 2030.
+/// Cancel-response callback type (for client).
 ///
 /// Called from the executor's spin when the server answers a
 /// `rclc_action_cancel_goal`. `goal_uuid` is the goal the request named;

@@ -1,5 +1,5 @@
 //! `rcl_allocator_t` — upstream's allocator argument, accepted and never used
-//! to allocate (phase-492 W1.b).
+//! to allocate.
 //!
 //! rcl and rclc thread an allocator through every init call
 //! (`rclc_support_init(&support, argc, argv, &allocator)`,
@@ -8,14 +8,14 @@
 //! as rcl's, so a ported call site compiles unchanged — which needs the type
 //! and `rcl_get_default_allocator()` to exist.
 //!
-//! The envelope (RFC-0089 ADOPT-BOUNDED): nothing here allocates. Every
-//! object lives in caller storage or the executor's carved backing
-//! (RFC-0105 D10), so the allocator has nothing to do. The default one says
+//! The envelope (ADOPT-BOUNDED): nothing here allocates. Every
+//! object lives in caller storage or the executor's carved backing,
+//! so the allocator has nothing to do. The default one says
 //! so if called: `allocate` / `reallocate` / `zero_allocate` return NULL and
 //! `deallocate` does nothing. An init that takes an allocator accepts NULL or
 //! the default and REFUSES any other one with `RCL_RET_INVALID_ARGUMENT`,
 //! because a caller who supplies their own allocator expects it to be used,
-//! and silently ignoring it is the "compiles and differs" RFC-0089 forbids.
+//! and silently ignoring it is the "compiles and differs" the adoption rule forbids.
 
 use core::ffi::c_void;
 

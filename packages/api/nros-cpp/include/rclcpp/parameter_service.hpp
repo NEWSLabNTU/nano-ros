@@ -1,6 +1,6 @@
 // nros-cpp: <rclcpp/parameter_service.hpp>
 //
-// phase-488 — upstream's `rclcpp::ParameterService` lives here. nros-cpp
+// upstream's `rclcpp::ParameterService` lives here. nros-cpp
 // serves the six parameter services from the node itself
 // (`Node::start_parameter_services`, started by the constructor on an
 // ament-built host target), so there is no class to declare. Ported code

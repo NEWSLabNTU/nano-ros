@@ -1,4 +1,4 @@
-//! Issue 1556 item 2 — the census switch for a C application that owns its own
+//! The census switch for a C application that owns its own
 //! `main` and its own spin loop (`nros_app_main` + `rclc_executor_spin*`).
 //!
 //! The C++ funnel (`nros_board_native_run_components_named_ns`) and the Rust
@@ -25,7 +25,7 @@
 //!
 //! Hosted only: `$NROS_CENSUS_OUT` is an environment variable and the census a
 //! file, so the bodies need a C library — read and written through
-//! `nros::env`, which exists on every Linux target (phase-359 W10 stage C; it
+//! `nros::env`, which exists on every Linux target (it
 //! used to be `std`). No RTOS image has one, and there both calls are empty. A
 //! Linux image without `metadata-mode` has no recorder; it REFUSES a census at
 //! support init rather than booting normally with no file.

@@ -1,7 +1,7 @@
 /**
  * @file message_type_support_struct.h
  * @brief `ROSIDL_GET_MSG_TYPE_SUPPORT`, adopted as a pass-through
- *        (phase-492 W8, RFC-0089 2026-10-12).
+ *        (2026-10-12).
  *
  * The macro yields the address of the generated descriptor:
  *

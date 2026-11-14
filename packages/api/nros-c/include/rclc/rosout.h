@@ -1,7 +1,7 @@
 /**
  * @file rosout.h
  * @ingroup grp_log
- * @brief `/rosout` from C — the log bridge rcl gives every node (issue 1589).
+ * @brief `/rosout` from C — the log bridge rcl gives every node.
  *
  * Upstream republishes every node's log records on `/rosout` as
  * `rcl_interfaces/msg/Log`; that topic is what `ros2 topic echo /rosout` and
@@ -19,10 +19,10 @@
  *
  * **Not automatic, deliberately.** The publisher is an ENTITY — it counts
  * against the image's pools and its sizing descriptor — so it is created by
- * the program like any other, never conjured by the runtime (issue 1341's
- * shape). The Rust bridge (`nros::rosout`) has the same three steps.
+ * the program like any other, never conjured by the runtime.
+ * The Rust bridge (`nros::rosout`) has the same three steps.
  *
- * **Which records.** Decided by the image's ROS release (RFC-0102 D4): on
+ * **Which records.** Decided by the image's ROS release: on
  * Humble, and with no release named, records from node loggers only (the
  * logger `rclc_node_get_logger()` returns); on Iron/Jazzy, node loggers and
  * their `rclc_logger_get_child()` descendants. Free loggers

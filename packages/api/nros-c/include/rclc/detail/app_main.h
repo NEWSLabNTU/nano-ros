@@ -3,7 +3,7 @@
  * @brief The platform entry that reaches the program's `main` — INTERNAL.
  *
  * An application writes `int main(int argc, char **argv)`, as an rclc or
- * rclcpp program does (RFC-0089 amendment 2026-10-13, phase-499 W5). The build
+ * rclcpp program does. The build
  * compiles its sources with `main` renamed to `nros_ported_main` and generates
  * one TU that defines `nros_app_main` to call it and expands
  * `NROS_APP_MAIN_REGISTER()` here — `nano_ros_add_executable` on the cmake
@@ -47,11 +47,11 @@ extern "C" {
 ///
 /// Returns 0 on success, non-zero on failure. The `int main` shims return
 /// it; the `void app_main(void)` shim hands it to the board through
-/// `nros_app_main_returned()` (issue 1752), which a host-process board turns
+/// `nros_app_main_returned()`, which a host-process board turns
 /// into the process exit status and an MCU board ignores.
 int nros_app_main(int argc, char** argv);
 
-/// The VOID shim's status hand-off (issue 1752) — see the note above
+/// The VOID shim's status hand-off — see the note above
 /// `NROS_APP_MAIN_REGISTER_VOID`. `exit_code` is
 /// `nros_app_exit_code(nros_app_main(...))`.
 void nros_app_main_returned(int exit_code);
@@ -60,7 +60,7 @@ void nros_app_main_returned(int exit_code);
 }
 #endif
 
-/* ---- Portable connect defaults (phase-287 W6) ----
+/* ---- Portable connect defaults ----
  *
  * One example source builds native AND embedded: on the host these fall back
  * to "let the backend decide" / domain 0 (with `$NROS_LOCATOR` /
@@ -69,15 +69,15 @@ void nros_app_main_returned(int exit_code);
  * definitions (NanoRosEntry.cmake board gate — e.g. `tcp/10.0.2.2:7447` for
  * QEMU slirp), so the `#ifndef` defaults below never fire there.
  *
- * phase-432 (W3.1 prerequisite) — this used to define both macros HERE, as
+ * This used to define both macros HERE, as
  * `""` and `0`, with no derivation, while `<rclcpp/detail/main.hpp>` derived them from
  * Kconfig. Same two names, two answers: a TU that saw only this header dialled
  * nothing on a board whose locator comes from `CONFIG_NROS_ZENOH_LOCATOR`.
  * That is free today only because an embedded C entry is routed to the C++
  * emitter; it stops being free the moment a pure C entry exists, and it would
- * arrive as issue #174's silent no-connect rather than as an error.
+ * arrive as a silent no-connect (an empty locator dials nothing) rather than as an error.
  *
- * One ladder now, in a C header both entry languages include. Issue 0330's
+ * One ladder now, in a C header both entry languages include. One
  * rule still holds and lives there: the bottom rung is the EMPTY STRING, not a
  * router endpoint, and the macro must keep expanding to a string literal
  * because callers pass it by VALUE rather than as a nullable pointer. */
@@ -94,7 +94,7 @@ void nros_app_main_returned(int exit_code);
 #define NROS_APP_MAIN_LINKAGE
 #endif
 
-/* Issue 1752 — the VOID shim's status hand-off.
+/* The VOID shim's status hand-off.
  *
  * `void app_main(void)` has nowhere to return a status, and this shim used to
  * DISCARD `nros_app_main`'s, so a host-process board (freertos-posix,
@@ -143,7 +143,7 @@ static inline int nros_app_exit_code(int status) {
         return nros_app_main(argc, argv);                                                          \
     }
 
-/* Phase 157 — NuttX external-app entry point. NuttX's
+/* NuttX external-app entry point. NuttX's
  * `apps/Application.mk` defines `-Dmain=<PROGNAME>_main` so the
  * `int main(int argc, char** argv)` symbol below gets renamed to
  * `<PROGNAME>_main` at compile time, which is what nshlib expects

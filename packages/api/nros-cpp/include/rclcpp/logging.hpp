@@ -5,7 +5,7 @@
 /**
  * @file log.hpp
  * @ingroup grp_misc
- * @brief Phase 123.B.7 — `NROS_INFO` / `NROS_WARN` / `NROS_ERROR` /
+ * @brief `NROS_INFO` / `NROS_WARN` / `NROS_ERROR` /
  *        `NROS_DEBUG` printf-style log macros.
  *
  * Routes through a single configurable sink. By default, on hosted
@@ -14,7 +14,7 @@
  * Freestanding builds route through `nros_log`'s C ABI
  * (`rclc_log_emit_fmt_at` on the default logger), which reaches
  * `LOG_ERR`/`printk` on Zephyr and the per-platform sink on every other
- * `no_std` target (issue 1576). They used to compile to a no-op, so a
+ * `no_std` target. They used to compile to a no-op, so a
  * freestanding image's `report_component_failure` line — the only thing
  * naming the node and call that failed — never appeared.
  *
@@ -34,7 +34,7 @@
 #ifndef NROS_LOG_SINK
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
 #include <cstdio>
-// <stdio.h> + unqualified `::fprintf` (issue 0942 / phase-472 W5): `<cstdio>` need not put
+// <stdio.h> + unqualified `::fprintf`: `<cstdio>` need not put
 // the C names in `std` on a freestanding libstdc++, and `std::fprintf` then fails.
 #include <stdio.h>
 #define NROS_LOG_SINK(level, file, line, ...)                                                      \
@@ -48,7 +48,7 @@
 #else
 // Freestanding default: the `nros_log` C ABI, which every nros-cpp image
 // links (the staticlib bundles nros-c) and which `ensure_default_sinks()`
-// wires to the platform console since issue 1576. `level` is the literal the
+// wires to the platform console. `level` is the literal the
 // family passes ("ERROR", …); `sink_severity` maps it without string
 // compares beyond the first byte.
 #include <rclc/log.h>
@@ -82,11 +82,11 @@ constexpr rcl_log_severity_t sink_severity(const char* level) {
 #define NROS_DEBUG(...) NROS_LOG_SINK("DEBUG", __FILE__, __LINE__, __VA_ARGS__)
 #endif
 
-/* ---- Phase 88.12 — node-/logger-keyed surface ----
+/* ---- node-/logger-keyed surface ----
  *
- * The macros above are legacy (Phase 123.B.7) — file:line-prefixed
+ * The macros above are legacy — file:line-prefixed
  * stderr printf with no per-logger routing. The macros below carry
- * a Logger handle through to the post-Phase-88 dispatcher
+ * a Logger handle through to the dispatcher
  * (`rclc_log_emit_fmt` → per-platform sinks, see
  * `<nros/platform.h>` for the ABI).
  *
@@ -101,12 +101,12 @@ constexpr rcl_log_severity_t sink_severity(const char* level) {
  *
  * Below-threshold filtering happens runtime-side via the
  * `nros_log::Logger`'s `set_level`, under the image's compile-time ceiling,
- * the `NROS_LOG_MAX_LEVEL` knob (issue 1037; it replaced the
+ * the `NROS_LOG_MAX_LEVEL` knob (it replaced the
  * `nros-log/max-level-*` Cargo features). Both are applied in the Rust facade
  * this header's macros reach, so a C++ record below the ceiling is refused
  * there rather than compiled out. */
 
-/* `<rclc/log.h>` already defines the six Phase-88 macros
+/* `<rclc/log.h>` already defines the six level macros
  * (`RCLC_LOG_TRACE` … `RCLC_LOG_FATAL`) — include it here so C++
  * call sites pick up the same definitions without re-emitting
  * them (would trigger -Wmacro-redefined on identical-but-redeclared
@@ -114,18 +114,18 @@ constexpr rcl_log_severity_t sink_severity(const char* level) {
 #include <rclc/log.h>
 
 // ============================================================================
-// rclcpp:: — the ROS 2 spelling (RFC-0089 stage 6, step A)
+// rclcpp:: — the ROS 2 spelling
 // ============================================================================
 //
 // These names used to live in `nros/rclcpp_compat.hpp`, a separate source-compat
-// shim a ported file had to be force-included with. RFC-0089 §"Naming: replace,
-// with alias as the migration step" makes the ROS 2 spelling a FIRST-CLASS name
+// shim a ported file had to be force-included with. The adoption rule
+// (replace, with an alias as the migration step) makes the ROS 2 spelling a FIRST-CLASS name
 // declared by the API headers themselves, at which point the shim has nothing
-// left to bridge and dissolves by construction. Step B, retiring the `nros::`
-// spelling, landed in phase-483 W1.
+// left to bridge and dissolves by construction. The `nros::`
+// spelling is retired.
 //
 // This header carries the REFUSAL VOCABULARY as well as the logging surface,
-// and the two belong together for a reason RFC-0089 states: a REFUSE-LOUD name
+// and the two belong together for a reason the adoption rule states: a REFUSE-LOUD name
 // EMITS NO CODE — it is a diagnostic, and this is nano-ros's diagnostic header.
 // It is also the only header the umbrella pulls before everything else while
 // including nothing of ours, so `qos.hpp`, `options.hpp`, `service.hpp` and the
@@ -146,14 +146,14 @@ constexpr rcl_log_severity_t sink_severity(const char* level) {
 // the transitive include path of every freestanding TU in the API.
 #include "rclcpp/detail/std_detect.hpp"
 
-// phase-417 W4.d -- `Logger::set_level` reports through the house channel.
+// `Logger::set_level` reports through the house channel.
 // Acyclic by inspection: `result.hpp` includes `<cstdint>`, `rclcpp/detail/traits.hpp`
 // (which includes nothing) and a `NROS_CPP_STD`-gated `<cstdio>`, and neither
 // reaches back here.
 #include "rclcpp/result.hpp"
 #include "rclcpp/fixed_string.hpp"
 // `LogStream::format` below renders one value with `snprintf`. It used to get
-// <stdio.h> through <rclc/log.h>, which phase-492 made freestanding (the C
+// <stdio.h> through <rclc/log.h>, which is freestanding now (the C
 // API's public headers need no libc); the C++ binding's freestanding surface
 // still has the target C library's <stdio.h> (every probe in `check cpp`
 // supplies one), so name it here rather than inherit it.
@@ -161,9 +161,9 @@ constexpr rcl_log_severity_t sink_severity(const char* level) {
 
 namespace rclcpp {
 
-// --- REFUSE-LOUD infrastructure (RFC-0089 stage 3) ---------------------------
+// --- REFUSE-LOUD infrastructure ---------------------------
 //
-// RFC-0089's rule:
+// The adoption rule:
 //
 //   An upstream name may be adopted only if its observable contract is the
 //   same, or strictly weaker in a documented, non-inverting way. A contract
@@ -210,7 +210,7 @@ template <typename T> struct refuse {
 // compile cannot tell "the refusal fired" from "the file is not there", so the
 // exit code alone proves nothing.
 
-// RFC-0089, phase-417 W3.f; parameters and remaps from the launch file: RFC-0046, RFC-0060.
+// Parameters and remaps come from the launch file.
 #define NROS_RCLCPP_REFUSE_NODE_OPTIONS                                                            \
     "rclcpp::NodeOptions' option setters and getters are REFUSED by nano-ros. "                    \
     "Each one used to store its argument in a private field that "                                 \
@@ -234,25 +234,24 @@ template <typename T> struct refuse {
 // `rclcpp::detail::RUNTIME_REFUSAL_MAX` (a longer body is DROPPED by
 // `nros_log`, not truncated). The refused token itself is printed on the line
 // before it. The full honoured and refused sets live where a reader looks
-// them up: RFC-0089, the `cpp:init` ledger row, and the Rust twin
+// them up: the `cpp:init` ledger row, and the Rust twin
 // `REFUSE_INIT_ARGS` in `packages/api/nros/src/init.rs`.
 #define NROS_RCLCPP_REFUSE_INIT_ARGV                                                               \
     "--ros-args carries an argument nano-ros cannot honour. Honoured: -r/--remap; "                \
     "-p/--params-file with a parameter store. A configured image bakes both."
 
-// phase-428 W5 finding 9. Runtime, like `NROS_RCLCPP_REFUSE_INIT_ARGV` above
+// Runtime, like `NROS_RCLCPP_REFUSE_INIT_ARGV` above
 // and for the same reason: only the VALUE carries the defect, so the earliest
 // point loudness is available is the call. Prose tail only — the verb, the
 // name and the code are printed on the line before it by
 // `rclcpp::detail::abort_failed_create`. Short for the same reason as the
-// text above (issue 1303); why aborting is the loudest honest answer is
-// argued on `require_created` in `rclcpp/rclcpp.hpp`. No exceptions: RFC-0018.
+// text above; why aborting is the loudest honest answer is
+// argued on `require_created` in `rclcpp/rclcpp.hpp`. No exceptions.
 // user-surface: table
 #define NROS_RCLCPP_ABORT_FAILED_CREATE                                                            \
     "Upstream throws here; nano-ros has no exceptions, so it aborts. To handle it, "               \
     "use the Result form: node.create_publisher(pub, topic, qos)."
 
-// RFC-0089 W3.f, issue 0829.
 #define NROS_RCLCPP_REFUSE_SYSTEM_DEFAULTS_QOS                                                     \
     "rclcpp::SystemDefaultsQoS is REFUSED by nano-ros. Upstream's "                                \
     "rmw_qos_profile_system_default names NO concrete policy: every field is a sentinel meaning "  \
@@ -264,7 +263,7 @@ template <typename T> struct refuse {
     "profile. Name the policy you want: rclcpp::QoS(10) for the ROS default, "                     \
     "rclcpp::SensorDataQoS(), rclcpp::ServicesQoS(), or rclcpp::QoS().best_effort().keep_last(1)."
 
-// RFC-0089 W3.a, issues 1019 and 1302.
+// Throttling is refused loudly rather than ignored.
 #define NROS_RCLCPP_REFUSE_THROTTLE                                                                \
     "RCLCPP_*_THROTTLE is REFUSED by nano-ros. Upstream "                                          \
     "measures the window on the `clock` argument you pass; nano-ros's throttle measures it on "    \
@@ -273,13 +272,13 @@ template <typename T> struct refuse {
     "on nros_log's clock, write RCLC_LOG_INFO_THROTTLE(logger, interval_ms, ...) and its "         \
     "siblings (<rclc/log.h>) directly; otherwise rate-limit at the call site."
 
-// phase-417 stage 3 (W3.a). ONE concept: "spin until work arrives, with no
+// ONE concept: "spin until work arrives, with no
 // budget". It backs BOTH halves of `Executor::spin_once`'s loudness, because
 // both are the same request written two ways — the no-argument form (upstream's
 // default IS -1) and an explicit negative timeout. The first is knowable from
 // the SIGNATURE, so it is a `static_assert`; the second only from the VALUE, so
-// it is a loud return at the call (RFC-0089 §"Where the refusal fires"). The
-// busy loop is RFC-0020 violation class 2; the ready set is RFC-0002 section 3.
+// it is a loud return at the call. The
+// busy loop is thin-wrapper violation class 2; the ready set is computed once per cycle.
 #define NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN                                                          \
     "an UNBOUNDED rclcpp::Executor::spin_once is REFUSED by nano-ros. "                            \
     "Upstream's spin_once(timeout = -1) BLOCKS INDEFINITELY and executes ONE "                     \
@@ -303,10 +302,10 @@ template <typename T> struct refuse {
     "spin_once(negative) REFUSED by nano-ros: no unbounded spin. Use "                             \
     "spin_once(0) to drain, spin_once(ms) to wait, spin() until cancel()."
 
-// phase-417 stage 3 (W3.a). ONE concept, TWO call sites: `Client::wait_for_service`
+// ONE concept, TWO call sites: `Client::wait_for_service`
 // and `rclcpp_action::Client::wait_for_action_server` had the identical defect
 // (a 5000 ms default standing in for upstream's -1), so they share the message.
-// RFC-0089 stage 3; no unbounded wait: RFC-0021.
+// No unbounded wait.
 #define NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT                                                          \
     "an UNBOUNDED wait_for_service / wait_for_action_server is REFUSED by nano-ros. "              \
     "Upstream's default timeout is -1, which means WAIT FOREVER. "                                 \
@@ -319,7 +318,7 @@ template <typename T> struct refuse {
     "keep doing other work while you wait, poll PollClient::service_is_ready() from your own "     \
     "spin loop, or call the action form with a short budget inside a loop you control."
 
-// phase-488 — `rclcpp::executors::MultiThreadedExecutor` (RFC-0002).
+// `rclcpp::executors::MultiThreadedExecutor`.
 #define NROS_RCLCPP_REFUSE_MULTI_THREADED_EXECUTOR                                                 \
     "rclcpp::executors::MultiThreadedExecutor is REFUSED by nano-ros. An "                         \
     "executor dispatches on ONE task with run-to-completion callbacks, and nano-ros starts no "    \
@@ -329,14 +328,14 @@ template <typename T> struct refuse {
     "RTOS "                                                                                        \
     "task, declared in system.toml -- rather than its own callback group."
 
-// phase-515 P2 — `Executor::remove_node` / `SingleThreadedExecutor::remove_node`
-// (arena registration: RFC-0002).
+// `Executor::remove_node` / `SingleThreadedExecutor::remove_node`
+// (arena registration is one-way).
 #define NROS_RCLCPP_REFUSE_REMOVE_NODE                                                             \
     "remove_node REFUSED by nano-ros: a node's entities live in the arena of the executor that "   \
     "created it, and arena registration is one-way, so a node cannot leave it. Keep "              \
     "the node on its executor, or stop spinning that executor."
 
-// phase-515 P4 — rclcpp's name-only `create_generic_publisher` /
+// rclcpp's name-only `create_generic_publisher` /
 // `create_generic_subscription`.
 #define NROS_RCLCPP_REFUSE_GENERIC_BY_NAME                                                         \
     "create_generic_publisher / create_generic_subscription by type NAME is REFUSED by nano-ros. " \
@@ -348,30 +347,30 @@ template <typename T> struct refuse {
     "create_generic_subscription(topic, type, type_hash, qos, callback), where a generated type "  \
     "states both as M::TYPE_NAME and M::TYPE_HASH. Or use create_publisher<M>() with the type."
 
-// phase-515 P2 — `Executor::add_node` on a node another executor created (RFC-0002).
+// `Executor::add_node` on a node another executor created.
 #define NROS_RCLCPP_REFUSE_FOREIGN_NODE                                                            \
     "add_node REFUSED: this node was created on another executor, and its entities live in "       \
     "that executor's arena. Spin that executor instead."
 
-// phase-488 — `SingleThreadedExecutor::add_node` on a node from another executor.
+// `SingleThreadedExecutor::add_node` on a node from another executor.
 #define NROS_RCLCPP_REFUSE_FOREIGN_EXECUTOR_NODE                                                   \
     "add_node REFUSED: this node was created on an explicit rclcpp::Executor, not the process "    \
     "executor; spin that Executor instead."
 
-// phase-488 — the runtime form, for the `std::chrono` overloads of the same two
+// The runtime form, for the `std::chrono` overloads of the same two
 // helpers: a NEGATIVE duration is upstream's "wait forever", and a duration's
-// sign is only known at run time. RFC-0021.
+// sign is only known at run time.
 #define NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT_RUNTIME                                                  \
     "wait_for_service/wait_for_action_server(negative) REFUSED by nano-ros: no unbounded wait. "   \
     "Name a budget: wait_for_service(10s)."
 
-// issue 1996 — `rclcpp::Future::get()`. Upstream returns an OWNING
+// `rclcpp::Future::get()`. Upstream returns an OWNING
 // `std::shared_ptr<Response>` and BLOCKS until the reply arrives. A hosted
 // build (`NROS_CPP_STD`) has the first half — one heap copy of the reply — and
 // not the second, because a wait that does not drive the executor is what
-// RFC-0021 forbids; so `get()` there answers a reply that HAS arrived and says
+// the blocking-API rule forbids; so `get()` there answers a reply that HAS arrived and says
 // the runtime refusal below otherwise. A freestanding build has neither
-// `<memory>` nor an allocator, so the name is refused at compile time (RFC-0089).
+// `<memory>` nor an allocator, so the name is refused at compile time.
 #define NROS_RCLCPP_REFUSE_FUTURE_GET                                                              \
     "rclcpp::Future::get() is REFUSED by nano-ros on a freestanding build. Upstream returns an "   \
     "owning std::shared_ptr<Response>, which needs <memory> and a "                                \
@@ -383,15 +382,13 @@ template <typename T> struct refuse {
 
 // The RUNTIME half: `get()` on a hosted build before the reply arrived (or on a
 // consumed future). Short, because `say_refused` enforces nros_log's buffer.
-// RFC-0021.
 #define NROS_RCLCPP_REFUSE_FUTURE_GET_NOT_READY_RUNTIME                                            \
     "Future::get() before the reply: nano-ros never blocks without spinning. "                     \
     "Call spin_until_future_complete first. Returning nullptr."
 
-// issue 2037 — `FutureAndRequestId::share()`. The shared future a request
+// `FutureAndRequestId::share()`. The shared future a request
 // shares into is a `std::shared_future` over a `std::promise`, which a
 // freestanding build (and a hosted libstdc++ without threads) does not have.
-// RFC-0089.
 #define NROS_RCLCPP_REFUSE_SHARED_FUTURE                                                           \
     "FutureAndRequestId::share() is REFUSED by nano-ros without std::promise: a "                  \
     "SharedFutureAndRequestId is a std::shared_future, which needs std::promise and a "            \
@@ -399,10 +396,9 @@ template <typename T> struct refuse {
     "the one FutureAndRequestId: its .request_id is there, and .future.try_take(resp) / "          \
     ".future.wait(executor_handle, timeout_ms, resp) read the reply into storage you own."
 
-// issue 2024 — `rclcpp::ParameterEventHandler` hands its callbacks
+// `rclcpp::ParameterEventHandler` hands its callbacks
 // `std::function`s, `std::string` names and an owning `shared_ptr` per
 // registration, and decodes each event into heap-backed `rclcpp::Parameter`s.
-// RFC-0089.
 #define NROS_RCLCPP_REFUSE_PARAMETER_EVENT_HANDLER                                                 \
     "rclcpp::ParameterEventHandler is REFUSED by nano-ros on a freestanding build: its callbacks " \
     "are std::function, its handles std::shared_ptr and the "                                      \
@@ -411,7 +407,7 @@ template <typename T> struct refuse {
     "/parameter_events (rcl_interfaces/msg/ParameterEvent) with Node::create_subscription and "    \
     "read the generated message."
 
-// RFC-0089, phase-417 W2.c; no allocator on the delivery path: RFC-0022.
+// No allocator on the delivery path.
 #define NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK                                             \
     "the shared_ptr service-callback shape is REFUSED by nano-ros. "                               \
     "rclcpp's create_service/create_client callback takes std::shared_ptr<Request> and "           \
@@ -424,9 +420,8 @@ template <typename T> struct refuse {
     "overload create_service<S>(name, qos) / create_client<S>(name, qos) and drain it from your "  \
     "spin loop."
 
-// phase-488 — what is still refused on the SERVICE side once the shared_ptr
+// What is still refused on the SERVICE side once the shared_ptr
 // handler shape is taken (hosted, function pointer or capture-less lambda).
-// RFC-0089.
 #define NROS_RCLCPP_REFUSE_SERVICE_CALLBACK_SHAPE                                                  \
     "this service-callback shape is REFUSED by nano-ros. A service handler "                       \
     "must be invocable as void(const S::Request&, S::Response&) or as upstream's "                 \
@@ -434,16 +429,16 @@ template <typename T> struct refuse {
     "std::shared_ptr<S::Response>) (hosted builds). A plain function, a lambda with or without "   \
     "captures and std::bind(&C::method, this, _1, _2) all qualify; its return value is ignored."
 
-// phase-488 — a shared_ptr service handler kept a request/response past its call.
+// A shared_ptr service handler kept a request/response past its call.
 #define NROS_RCLCPP_REFUSE_RETAINED_SERVICE_PTR                                                    \
     "service handler kept its request/response shared_ptr past the call: nano-ros lends them "     \
     "from the dispatch frame (no heap). Copy the message instead."
 
-// issue 1995 — a subscription callback the executor cannot call. The arena
+// A subscription callback the executor cannot call. The arena
 // delivers `const M&`; a HOSTED build (`NROS_CPP_STD`) also takes upstream's
 // pointer shapes by copying the message into a heap object per delivery, so a
 // freestanding build — no allocator on the delivery path — refuses them here,
-// instead of `InplaceFn` failing to convert the callable. RFC-0089.
+// instead of `InplaceFn` failing to convert the callable.
 #define NROS_RCLCPP_REFUSE_SUBSCRIPTION_CALLBACK_SHAPE                                             \
     "this subscription-callback shape is REFUSED by nano-ros. The "                                \
     "executor delivers the message as const M& from its dispatch frame, so the callback must be "  \
@@ -453,7 +448,7 @@ template <typename T> struct refuse {
     "A freestanding build has no allocator on the delivery path: write `const M& msg` and "        \
     "`msg.` for `msg->`, and copy the message out if you need it after the call."
 
-// issue 2036 — a `(message, const rclcpp::MessageInfo&)` subscription callback
+// A `(message, const rclcpp::MessageInfo&)` subscription callback
 // on a freestanding build. The metadata path owns its callable on the heap
 // (the registration frees it on release), which a build with no allocator
 // cannot do.
@@ -462,13 +457,12 @@ template <typename T> struct refuse {
     "freestanding build: the metadata path keeps the callable on the heap. Build "                 \
     "hosted (-DNROS_CPP_STD), or take void(const M&) and drop the MessageInfo argument."
 
-// issue 2015 — upstream rclcpp_action's goal-handle shapes. `ClientGoalHandle`
+// Upstream rclcpp_action's goal-handle shapes. `ClientGoalHandle`
 // / `ServerGoalHandle` are owned through `std::shared_ptr`, and the callbacks
 // that take them (`create_server`'s three, `SendGoalOptions`' three,
 // `async_send_goal`) are `std::function`s: a hosted build (`NROS_CPP_STD`)
 // takes all of them as drop-ins, at the price of a heap goal handle per goal.
 // A freestanding build has no allocator for either, so each is refused here.
-// RFC-0089.
 #define NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE                                                      \
     "rclcpp_action's goal-handle shapes are REFUSED by nano-ros on a freestanding build: "         \
     "ClientGoalHandle / ServerGoalHandle ::SharedPtr, the std::function callbacks "                \
@@ -480,7 +474,7 @@ template <typename T> struct refuse {
     "set_accepted_callback_with_ctx and Server::succeed(goal_id, result); on the client "          \
     "set_callbacks(SendGoalOptions{goal_response, feedback, result, context}) + send_goal_async."
 
-/// Bytes of name an `rclcpp::Logger` keeps (issue 1682). 128 is
+/// Bytes of name an `rclcpp::Logger` keeps. 128 is
 /// `nros_node::names::MAX_RESOLVED_NAME_LEN`, the longest name the stack
 /// resolves; override with `-DNROS_CPP_LOGGER_NAME_CAPACITY=<n>`.
 #ifndef NROS_CPP_LOGGER_NAME_CAPACITY
@@ -498,25 +492,25 @@ namespace rclcpp {
 // logger it was emitted on and a THRESHOLD can be moved per logger.
 //
 // This banner used to read "the logger NAME is lost (nros has no per-logger
-// dispatch yet)". That stopped being true in two steps -- phase-417 W3.a
-// routed the `RCLCPP_*` family through the handle (issue 1019), and W4.d gave
+// dispatch yet)". That stopped being true in two steps -- first the
+// `RCLCPP_*` family was routed through the handle, then a change gave
 // `<rclc/log.h>` a named lookup and the three threshold accessors -- and the
 // correction is recorded rather than merely made, because a stale "we cannot
 // do this" comment is how a capability stays unused for two phases after it
-// ships. `get_child` arrived with RFC-0102 and states its own bounds.
+// ships. `get_child` arrived with the logger hierarchy and states its own bounds.
 
 /// `rclcpp::Logger` — the name plus the `nros_log` handle records dispatch on.
 ///
 /// ADOPT-BOUNDED against upstream's value type, which owns a `std::string`:
 /// - The name is OWNED, as upstream's is, so `get_name()` stays valid however
-///   short-lived the string it was built from (issue 1682: this used to borrow,
+///   short-lived the string it was built from (this used to borrow,
 ///   and `rclcpp::get_logger(node_name + ".planner").get_name()` read freed
 ///   memory). It is a `FixedString`, not a `std::string`, so it needs no heap
 ///   and exists on freestanding targets too: a name longer than
 ///   `NROS_CPP_LOGGER_NAME_CAPACITY` bytes (default 128, the longest resolved
 ///   name the stack produces) is truncated in `get_name()`. Records dispatch on
 ///   the interned `nros_log` handle, which is unaffected.
-/// - `get_child` exists (RFC-0102) with two bounds of its own, stated on it: a
+/// - `get_child` exists with two bounds of its own, stated on it: a
 ///   child over 48 bytes, or past the runtime-logger arena, emits through its
 ///   parent and refuses `set_level`.
 /// `get_name()`, `set_level()` and passing it to an `RCLCPP_*` macro behave as
@@ -525,7 +519,7 @@ class Logger {
   public:
     explicit Logger(const char* name = "") : handle_(nullptr), owns_level_(true) { name_ = name; }
 
-    /// phase-427 W5 — the name PLUS the opaque `nros_log::Logger` handle the
+    /// The name PLUS the opaque `nros_log::Logger` handle the
     /// `NROS_LOG_*` macros dispatch through. `rclcpp::Node::get_logger()` builds
     /// one of these; `rclcpp::get_logger("free")` leaves the handle null,
     /// because a free-standing name has no node behind it.
@@ -535,27 +529,26 @@ class Logger {
 
     const char* get_name() const { return name_.c_str(); }
 
-    /// `rclcpp::Logger::Level` -- upstream's nested severity enum, phase-417
-    /// W4.d.
+    /// `rclcpp::Logger::Level` -- upstream's nested severity enum.
     ///
     /// The values ARE `rcl_log_severity_t`'s, which are rcutils's
     /// (`UNSET=0, DEBUG=10 ... FATAL=50`, `<rclc/log.h>`), so the casts below
     /// are identities and there is no second number line to drift. That
-    /// numbering is not this row's doing: phase-417 stage 3 moved the C enum
-    /// onto it (issue 1330), and naming the constants here rather than
+    /// numbering is not this row's doing: an earlier fix moved the C enum
+    /// onto it, and naming the constants here rather than
     /// restating `0/10/20/...` is what keeps the two from parting.
     ///
     /// `Trace` is ours and has no rclcpp counterpart -- `nros_log` has the
     /// level, and a `Level` that could not name it would make `set_level`
     /// unable to reach a threshold the C and Rust surfaces both reach.
     ///
-    /// `Unset` is NOT a level: it means INHERIT (phase-467, ledger row
+    /// `Unset` is NOT a level: it means INHERIT (ledger row
     /// `c:log_severity_t`). `set_level(Level::Unset)` takes this logger's own
     /// level away, after which it filters on the process default
     /// (`rclc_log_get_default_level()`, `<rclc/log.h>`). It reached that
     /// meaning without a line changing here, because the cast is an identity
-    /// and the C entry point is where the decision lives -- which is RFC-0019
-    /// working.
+    /// and the C entry point is where the decision lives -- which is the
+    /// thin-wrapper discipline working.
     enum class Level : int {
         Unset = RCLC_LOG_SEVERITY_UNSET,
         Trace = RCLC_LOG_SEVERITY_TRACE,
@@ -567,16 +560,16 @@ class Logger {
     };
 
     /// `rclcpp::Logger::set_level(Level)` -- raise or lower THIS logger's
-    /// runtime threshold. phase-417 W4.d.
+    /// runtime threshold.
     ///
     /// A forwarder onto `rclc_logger_set_level` (`<rclc/log.h>`), which
     /// forwards to `nros_log::Logger::set_level`. No level table, and no
-    /// comparison against one, lives on this side: RFC-0019 makes the Rust API
+    /// comparison against one, lives on this side: the Rust API is
     /// the implementation and C++ a shim, and a second threshold store is the
     /// defect this campaign has removed three times.
     ///
-    /// ADOPT-BOUNDED (RFC-0089). Upstream returns `void` and throws on a level
-    /// it cannot set; RFC-0018 forbids exceptions, so a call that can fail says
+    /// ADOPT-BOUNDED. Upstream returns `void` and throws on a level
+    /// it cannot set; the C++ API has no exceptions, so a call that can fail says
     /// so in its return type -- the same widening as `Executor::cancel`, and
     /// loud for the same reason, because `Result` is `NROS_NODISCARD`.
     ///
@@ -585,13 +578,13 @@ class Logger {
     /// a RECORD with no owner belongs in the catch-all. A THRESHOLD WRITE with
     /// no owner does not -- redirecting it would quietly move the level of
     /// every unnamed logger in the image instead of the one the caller named,
-    /// which is issue 1019's third defect pointing the other way. A `Logger`
+    /// which is a known defect pointing the other way. A `Logger`
     /// carries a null handle when it was built from a name alone
     /// (`Logger("planner")`, the one-argument constructor) or from an
     /// uninitialised node; `rclcpp::get_logger("planner")` resolves the name
     /// and does not.
     ///
-    /// Also refused on a child `get_child` could not create (RFC-0102 D3):
+    /// Also refused on a child `get_child` could not create:
     /// that child emits through its parent's handle, and writing a threshold
     /// through it would move the PARENT's level.
     ::rclcpp::Result set_level(Level level) {
@@ -604,9 +597,9 @@ class Logger {
     }
 
     /// This logger's EFFECTIVE runtime threshold -- its own level if it has
-    /// one, else its nearest ancestor's (RFC-0102), else the process default,
+    /// one, else its nearest ancestor's, else the process default,
     /// so it is never `Level::Unset`.
-    /// OURS-ONLY, phase-417 W4.d.
+    /// OURS-ONLY.
     ///
     /// rclcpp has no getter. C (`rclc_logger_get_level`) and Rust
     /// (`nros_log::Logger::level`) both do, and W4.d is about our own three
@@ -621,14 +614,14 @@ class Logger {
 
     /// `rclcpp::Logger::get_effective_level()` (Jazzy) -- the threshold this
     /// logger actually filters on: its own level if set, else its nearest
-    /// ancestor's, else the process default. issue 1975.
+    /// ancestor's, else the process default.
     ///
     /// The same answer as `get_level()`, which already reported the EFFECTIVE
     /// level before upstream named one; this is upstream's spelling of it, and
     /// it forwards rather than re-deriving so the two cannot part. Never
     /// `Level::Unset`. A null handle answers `Fatal`, the C entry point's rule
     /// (see `get_level`) -- where upstream throws on a logger it cannot
-    /// resolve, which RFC-0018 forbids.
+    /// resolve, and the C++ API has no exceptions.
     Level get_effective_level() const { return get_level(); }
 
     /// Would a record at `level` pass this logger's threshold? -- OURS-ONLY.
@@ -650,7 +643,7 @@ class Logger {
     /// there were two: `rclcpp::Node::get_logger() -> const void*` for
     /// `RCLC_LOG_INFO(logger, …)`, and the shim's `-> rclcpp::Logger` for
     /// `RCLCPP_INFO(get_logger(), …)`. Two overloads differing only in return
-    /// type are ill-formed, so the ported channel won (RFC-0089 clause 2) and
+    /// type are ill-formed, so the ported channel won and
     /// the native one is reached by conversion — including `logger == nullptr`,
     /// which `examples/linux/cpp/logging` writes.
     ///
@@ -658,7 +651,7 @@ class Logger {
     /// uninitialized node.
     operator const void*() const { return handle_; }
 
-    /// `rclcpp::Logger::get_child` -- ADOPT-BOUNDED (RFC-0102).
+    /// `rclcpp::Logger::get_child` -- ADOPT-BOUNDED.
     ///
     /// A logger named `<this>.<suffix>` whose level, while it has none of its
     /// own, is its nearest ancestor's -- so `parent.set_level(Debug)` reaches
@@ -715,13 +708,13 @@ class Logger {
     bool owns_level_;
 };
 
-/// `rclcpp::get_logger(name)` — issue 1019, phase-417 W3.a.
+/// `rclcpp::get_logger(name)`.
 ///
 /// RESOLVES the name now. It used to build a name-only sentinel with a null
 /// handle, so `rclcpp::get_logger("planner")` selected nothing and every
 /// `RCLCPP_*` call through it shared one threshold with every other logger in
-/// the image — issue 1019's third defect. `rclc_log_get_logger` (phase-417
-/// W4.d, `<rclc/log.h>`) is the C surface that made this possible; it is
+/// the image. `rclc_log_get_logger`
+/// (`<rclc/log.h>`) is the C surface that made this possible; it is
 /// TOTAL, so this is too, and a NULL or over-long name answers the catch-all
 /// logger rather than a null handle.
 inline Logger get_logger(const char* name) {
@@ -739,7 +732,7 @@ inline Logger get_logger(const std::string& name) {
 namespace detail {
 
 /// The handle the `NROS_LOG_*` dispatcher takes, from whatever a `RCLCPP_*`
-/// call site was handed — issue 1019.
+/// call site was handed.
 ///
 /// Two overloads rather than one, and the fallback is the point.
 /// `rclc_log_emit_fmt_at` RETURNS EARLY on a null handle, so routing the
@@ -759,7 +752,7 @@ inline rclc_logger_t log_handle(const Logger& logger) {
     return log_handle(static_cast<const void*>(logger));
 }
 
-/// The longest a RUNTIME refusal may be — phase-417 stage 3, MEASURED.
+/// The longest a RUNTIME refusal may be — MEASURED.
 ///
 /// `nros_log`'s formatting buffer is 256 bytes by default
 /// (`nros_log::format_buffer_capacity`; `NROS_LOG_BUFFER_SIZE` can make it 128),
@@ -776,7 +769,7 @@ inline rclc_logger_t log_handle(const Logger& logger) {
 /// text, which the compiler prints in full.
 const size_t RUNTIME_REFUSAL_MAX = 160;
 
-/// Say a `NROS_RCLCPP_REFUSE_*_RUNTIME` message at runtime — phase-417 stage 3.
+/// Say a `NROS_RCLCPP_REFUSE_*_RUNTIME` message at runtime.
 ///
 /// Takes the literal BY REFERENCE so its length is a compile-time constant, and
 /// then refuses at compile time to emit one that would vanish. A runtime
@@ -800,7 +793,7 @@ inline void say_refused(const char (&message)[N], const char* file, uint32_t lin
 }
 
 #if defined(NROS_CPP_HAS_STD_CHRONO) // hosted-family: chrono-interop
-/// phase-488 — a `std::chrono` wait budget as the millisecond count the
+/// A `std::chrono` wait budget as the millisecond count the
 /// `wait_for_service` / `wait_for_action_server` helpers take: rounded UP (a
 /// 1500 us budget must not become a 1 ms one), clamped to `UINT32_MAX`, and
 /// `-1` for a NEGATIVE duration — upstream's "wait forever", which the caller
@@ -834,7 +827,7 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 //
 // Same call shape as rclcpp.
 //
-// THE LOGGER IS CARRIED, NOT DISCARDED (issue 1019, phase-417 W3.a). The family
+// THE LOGGER IS CARRIED, NOT DISCARDED. The family
 // used to expand to `(void)(logger); NROS_<LEVEL>(__VA_ARGS__)`, and that one
 // line was three defects at once:
 //
@@ -864,13 +857,13 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 // `NDEBUG`. It is runtime-filtered by the logger's threshold now, which is what
 // upstream does.
 //
-// `_STREAM` no longer discards its message (issue 1019). It used to expand to
+// `_STREAM` no longer discards its message. It used to expand to
 // `RCLCPP_INFO(logger, "%s", "")` with `args` NEVER REFERENCED, which is the
 // worst outcome available: the call compiled, the level was right, the file and
 // line were right, and the text was gone. It now formats through
 // `std::ostringstream` and hands the result to the same sink — a string
-// conversion that copies and calls through, which RFC-0089 §"Who implements an
-// adopted name" allows in the wrapper. Since the move into this header
+// conversion that copies and calls through, which the adoption rule
+// allows in the wrapper. Since the move into this header
 // `<sstream>` is GATED rather than unconditional, so the `_STREAM` family is
 // declared only where the standard library that backs it exists.
 //
@@ -917,22 +910,22 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
     ::rclcpp::detail::throttle_is_refused((logger), (clock), (period_ms), __VA_ARGS__)
 #endif // RCLCPP_INFO
 
-/// Emit a refusal message, with the call site — phase-417 stage 3.
+/// Emit a refusal message, with the call site.
 ///
 /// The RUNTIME half of REFUSE-LOUD, for the cases where only the VALUE carries
-/// the defect and a `static_assert` therefore cannot reach it (RFC-0089
-/// §"Where the refusal fires"). The argument must be a string LITERAL, which
+/// the defect and a `static_assert` therefore cannot reach it. The argument must be a string
+/// LITERAL, which
 /// every `NROS_RCLCPP_REFUSE_*_RUNTIME` is, and must fit
 /// `rclcpp::detail::RUNTIME_REFUSAL_MAX` — enforced there, not here.
 #define NROS_RCLCPP_SAY_REFUSED(msg)                                                               \
     ::rclcpp::detail::say_refused((msg), __FILE__, (uint32_t)__LINE__)
 
-// The stream family, carrying its message — on EVERY target since phase-476
-// W4. `NROS_RCLCPP_STREAM_` builds the text once in a fixed-size
+// The stream family, carrying its message — on EVERY target. `NROS_RCLCPP_STREAM_` builds
+// the text once in a fixed-size
 // `rclcpp::detail::LogStream` and forwards it as a single `%s` argument, so a `%`
 // inside the user's text can never be read as a conversion.
 //
-// THE DECISION (phase-476 W4, 2026-10-06): a minimal freestanding formatter,
+// THE DECISION (2026-10-06): a minimal freestanding formatter,
 // ONE implementation, rather than declaring the family hosted-only. It was
 // `std::ostringstream` behind `NROS_CPP_HAS_STD_SSTREAM`, so on a
 // freestanding target `RCLCPP_INFO_STREAM` did not exist and every ported line

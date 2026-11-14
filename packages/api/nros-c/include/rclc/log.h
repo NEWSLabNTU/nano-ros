@@ -1,13 +1,13 @@
 /**
  * @file log.h
  * @ingroup grp_log
- * @brief Phase 88.12 — ROS 2 style leveled logging surface for the C API.
+ * @brief ROS 2 style leveled logging surface for the C API.
  *
  * Mirrors the Rust [`nros_log`] facade. Each `rcl_node_t` exposes a
  * `&'static nros_log::Logger` via `rclc_node_get_logger(node)`; the
  * `NROS_LOG_*` macros render the message, attach severity + line
  * info, and dispatch through the same per-platform sink chain as
- * Rust call sites (see Phase 88.5 onwards).
+ * Rust call sites.
  *
  * Usage:
  * @code
@@ -38,7 +38,7 @@ extern "C" {
 /**
  * Severity levels, on **rcutils's number line**. Lower value = more verbose.
  *
- * phase-417 stage 3 (ledger row `c:log_severity_t`). rcutils — which
+ * Ledger row `c:log_severity_t`. rcutils — which
  * `rcl_log_severity_t` mirrors — numbers `UNSET=0, DEBUG=10, INFO=20, WARN=30,
  * ERROR=40, FATAL=50`, and these values cross ABIs as plain integers: read from
  * a configuration file, read from the environment, or written by a ported file
@@ -54,8 +54,8 @@ extern "C" {
  * `RCLC_LOG_SEVERITY_TRACE` is ours; rcutils has no trace level. It takes `5`,
  * inside rcutils's own `UNSET`..`DEBUG` gap, which is what that gap is for.
  *
- * **`UNSET` MEANS INHERIT, NOT "THE FLOOR"** (phase-467; it meant the floor
- * until then, and that was ledger row `c:log_severity_t`'s whole debt).
+ * **`UNSET` MEANS INHERIT, NOT "THE FLOOR"** (it used to mean the floor,
+ * and that was ledger row `c:log_severity_t`'s whole debt).
  * `rclc_logger_set_level(logger, RCLC_LOG_SEVERITY_UNSET)` takes away that
  * logger's own level, after which it filters on its nearest ancestor's level
  * (below), else the PROCESS DEFAULT — `rclc_log_get_default_level()`,
@@ -66,7 +66,7 @@ extern "C" {
  *
  * **ENVELOPE — dotted ancestry resolves through loggers that exist.** As
  * upstream, an unset logger takes the level of its nearest dotted ancestor
- * (`x.y.z` → `x.y` → `x`) and only then the process default (RFC-0102 D2).
+ * (`x.y.z` → `x.y` → `x`) and only then the process default.
  * Setting `nav`'s level moves `nav.costmap`'s too, unless `nav.costmap` has its
  * own. The bound: upstream keys a level by NAME in an allocator-backed map, so
  * an ancestor can carry a level without being a logger; here a level lives in
@@ -75,7 +75,7 @@ extern "C" {
  * which is the case that matters. The links are made when a logger is created,
  * in either order, so the log path never parses a name. Names are capped at 48
  * bytes and the runtime-logger arena is bounded; see `rclc_logger_get_child`.
- * (RFC-0089: the envelope is part of the API, not a footnote.)
+ * (The envelope is part of the API, not a footnote.)
  *
  * `UNSET` is only special where a LEVEL IS STORED. Passed as a record's
  * severity (`rclc_log_emit`) or as a threshold question
@@ -92,7 +92,7 @@ typedef enum rcl_log_severity_t {
     RCLC_LOG_SEVERITY_WARN = 30,
     RCLC_LOG_SEVERITY_ERROR = 40,
     RCLC_LOG_SEVERITY_FATAL = 50,
-    /* NOT a level — a WIDTH PIN (issue 1330). Every ARM EABI compiler defaults
+    /* NOT a level — a WIDTH PIN. Every ARM EABI compiler defaults
      * to `-fshort-enums` (it is the AAPCS default, not a flag this tree picks),
      * so an enum whose largest value is 50 is packed to ONE byte there. That
      * contradicts both the Rust mirror (`repr(transparent)` over `c_int`) and
@@ -112,8 +112,8 @@ typedef enum rcl_log_severity_t {
 /* ── Width guard ──────────────────────────────────────────────────────────────
  * This `enum` is HAND-MIRRORED in Rust (`packages/api/nros-c/src/log.rs`), which
  * is the class `check-ffi-struct-mirrors` polices one layer over. The mirror is
- * `#[repr(transparent)]` over `c_int`; it was `#[repr(u8)]` until phase-417
- * stage 3, so one side passed a byte where the other passed four and the values
+ * `#[repr(transparent)]` over `c_int`; it used to be `#[repr(u8)]`,
+ * so one side passed a byte where the other passed four and the values
  * survived only by how the ABIs in play happen to pass small integers. Nothing
  * asserted the width anywhere in `include/` or `src/`. It does now. */
 #if defined(__cplusplus) && __cplusplus >= 201103L
@@ -163,7 +163,7 @@ void rclc_log_emit_fmt(rclc_logger_t logger, rcl_log_severity_t severity, const 
     __attribute__((format(printf, 3, 4)));
 
 /**
- * phase-417 W4.d — emit WITH the call site.
+ * Emit WITH the call site.
  *
  * `rclc_log_emit` above hardcoded `file = "<nros-c>"`, `line = 0` and
  * `timestamp_ns = 0` into every record, contradicting this file's own header
@@ -183,7 +183,7 @@ void rclc_log_emit_at(rclc_logger_t logger, rcl_log_severity_t severity, const c
 
 /** Stack buffer the located printf-style entry point below renders into.
  *
- * NOT the `NROS_LOG_BUFFER_SIZE` knob (issue 1037): `c-stubs/log_fmt.c`
+ * NOT the `NROS_LOG_BUFFER_SIZE` knob: `c-stubs/log_fmt.c`
  * renders into this from a header with no per-build value to read, so its
  * frame stays 256. The knob sizes nros-log's Rust formatter and
  * the slots that store records, so a C record is bounded by the smaller of
@@ -191,12 +191,12 @@ void rclc_log_emit_at(rclc_logger_t logger, rcl_log_severity_t severity, const c
 #define NROS_LOG_FMT_BUFFER_SIZE 256
 
 /**
- * phase-417 W4.d — printf-style emit carrying `__FILE__` / `__LINE__`.
+ * printf-style emit carrying `__FILE__` / `__LINE__`.
  *
  * Defined beside `rclc_log_emit_fmt` in `c-stubs/log_fmt.c` (the variadic
  * entry point cannot be written in Rust: `c_variadic` is unstable), and
  * rendered there into a @ref NROS_LOG_FMT_BUFFER_SIZE stack buffer. It was a
- * `static inline` here until phase-492, which made this header include
+ * `static inline` here once, which made this header include
  * `<stdio.h>` for `vsnprintf`; the C API's public headers are freestanding
  * now, so formatting happens in the library, where a libc is linked anyway.
  */
@@ -208,7 +208,7 @@ void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity, con
 /* The macros stage the printf args into a stack buffer inside
  * `rclc_log_emit_fmt_at`, which attaches `__FILE__` / `__LINE__`.
  * Filtering happens on the Rust side: the image's compile-time CEILING
- * (`NROS_LOG_MAX_LEVEL`, issue 1037 — `trace` unless stated) and then the
+ * (`NROS_LOG_MAX_LEVEL`, `trace` unless stated) and then the
  * per-logger threshold (`rclc_logger_set_level`), both inside the same check
  * `rclc_logger_is_enabled` answers. The call site still formats; guard it with
  * `rclc_logger_is_enabled` if the arguments are expensive. */
@@ -233,7 +233,7 @@ void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity, con
                          __VA_ARGS__)
 
 /**
- * Phase 88.16.H — explicit installation of the default sink list.
+ * Explicit installation of the default sink list.
  *
  * Cross-language `no_std` builds (FreeRTOS / NuttX / ThreadX C and
  * C++ examples) must call this once after the board crate's
@@ -249,7 +249,7 @@ void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity, con
 void rclc_log_init(void);
 
 /**
- * Phase 88.16.H — opaque handle to the catch-all `nros` logger.
+ * Opaque handle to the catch-all `nros` logger.
  *
  * Lets C callers emit through `NROS_LOG_*` without standing up a
  * full `rcl_node_t` (useful for boot diagnostics, panic hooks,
@@ -260,9 +260,9 @@ void rclc_log_init(void);
 rclc_logger_t rclc_log_default_logger(void);
 
 /* -------------------------------------------------------------------------
- * phase-417 W4.d — named loggers, per-logger levels, sinks, throttle.
+ * Named loggers, per-logger levels, sinks, throttle.
  *
- * Every entry point below is a thin forwarder onto `nros_log` (RFC-0019: the
+ * Every entry point below is a thin forwarder onto `nros_log` (the
  * Rust API is the implementation, C delegates). No level table, no throttle
  * arithmetic and no sink list lives on this side.
  * ------------------------------------------------------------------------- */
@@ -270,7 +270,7 @@ rclc_logger_t rclc_log_default_logger(void);
 /**
  * Look up a logger by name, CREATING one if the name is new.
  *
- * `rclcpp::get_logger("x")`'s shape. Until phase-417 the C surface had only
+ * `rclcpp::get_logger("x")`'s shape. The C surface used to have only
  * `rclc_log_default_logger()`, so every C node in an image shared one logger
  * and therefore one threshold.
  *
@@ -314,7 +314,7 @@ bool rclc_logger_set_level(rclc_logger_t logger, rcl_log_severity_t severity);
 
 /**
  * A logger that is a descendant of `logger` — `rclcpp::Logger::get_child`'s C
- * half (RFC-0102). Named `<parent>.<suffix>`; the catch-all's
+ * half. Named `<parent>.<suffix>`; the catch-all's
  * (`rclc_log_default_logger()`) children are top-level names (`suffix`).
  *
  * A child with no level of its own filters at its nearest ancestor's, so
@@ -348,7 +348,7 @@ rcl_log_severity_t rclc_logger_get_level(rclc_logger_t logger);
 /**
  * Move the threshold that every logger WITHOUT a level of its own filters on.
  *
- * phase-467. Retroactive: a logger interned long before this call follows it,
+ * Retroactive: a logger interned long before this call follows it,
  * because "no level of its own" is a stored state and not a value copied in at
  * construction. A logger that states its own level is NOT overridden.
  *
@@ -385,7 +385,7 @@ bool rclc_logger_is_enabled(rclc_logger_t logger, rcl_log_severity_t severity);
  * Flat arguments rather than a `const nros_log_record_t *` on purpose: a struct
  * crossing this FFI would be hand-mirrored (cbindgen skips the logging module),
  * and a mirror that misses an appended field passes a SHORTER struct than the
- * reader reads — issue 0160's class, which has bitten three times. With flat
+ * reader reads — the hand-mirror class, which has bitten three times. With flat
  * arguments an appended field changes this TYPE, so every sink fails to compile
  * instead of reading stack garbage.
  *
@@ -403,7 +403,7 @@ typedef void (*rclc_log_sink_fn)(void* user_data, rcl_log_severity_t severity,
 /**
  * Install a C callback as a log sink.
  *
- * Until phase-417 the C surface could not install a sink at all: `rclc_log_init`
+ * The C surface used to be unable to install a sink at all: `rclc_log_init`
  * takes no arguments and hardcodes the platform default. This APPENDS, so a
  * consumer teeing records to its own transport does not discard whatever the
  * board installed.
@@ -453,7 +453,7 @@ bool rclc_log_timestamp_available(void);
  * The rule itself is `nros_log::throttle_decide` — the same function the Rust
  * `nros_*_throttle!` macros use. Only the storage differs. A clock that wraps
  * still measures real elapsed time across the wrap; a clock that is STUCK (at
- * any value, 0 included) admits once and then never (issue 1152).
+ * any value, 0 included) admits once and then never.
  *
  * Without a monotonic clock every timestamp is 0, the window can never elapse,
  * and each site emits its first record and nothing after it; the first such

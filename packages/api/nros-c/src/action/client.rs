@@ -16,13 +16,13 @@ use nros_node::{
     executor::ffi::{ActionClientCoreFfi as _, ExecutorFfi as _},
 };
 
-/// Issue 2014 — byte of a get_result reply where the result fields start
+/// Byte of a get_result reply where the result fields start
 /// (`[encap 4][status i8][pad → 8][fields]`), for a C caller decoding what
 /// `rclc_polling_action_client_try_recv_result_raw` returns. C ABI mirror of
 /// `nros_node::action_frame::RESULT_PAYLOAD_OFFSET` (a literal, because
 /// cbindgen emits only literals — the assert below binds the two).
 pub const RCLC_ACTION_RESULT_PAYLOAD_OFFSET: usize = 8;
-/// Issue 2014 — byte of a feedback message where the feedback fields start
+/// Byte of a feedback message where the feedback fields start
 /// (`[encap 4][GoalUuid.uuid 16][fields]`), for a caller of
 /// `rclc_polling_action_client_try_recv_feedback_raw`; mirror of
 /// `nros_node::action_frame::FEEDBACK_PAYLOAD_OFFSET`.
@@ -98,7 +98,7 @@ pub enum rclc_action_client_state_t {
 
 /// An action client the executor dispatches.
 ///
-/// phase-487 W4 (RFC-0096 D9, the C half): the executor arena owns the
+/// The executor arena owns the
 /// channels and buffers; this struct holds the arena handle (`_internal`),
 /// the registration description and the callback record the arena's
 /// trampolines read, as the C++ action client does. A client the caller
@@ -119,7 +119,7 @@ pub struct rcl_action_client_t {
     pub type_hash: [u8; MAX_TYPE_HASH_LEN],
     /// Type hash length
     pub type_hash_len: usize,
-    /// Issue 1913 — the per-endpoint hashes, copied from the type support at
+    /// The per-endpoint hashes, copied from the type support at
     /// init (static-storage pointers; NULL falls back to `type_hash`).
     pub endpoint_hashes: crate::action::common::rclc_action_endpoint_hashes_t,
     /// Goal response callback (for async send_goal)
@@ -128,30 +128,30 @@ pub struct rcl_action_client_t {
     pub feedback_callback: rclc_feedback_callback_t,
     /// Result callback
     pub result_callback: rclc_result_callback_t,
-    /// Issue 2030 — cancel-response callback (optional; see
+    /// Cancel-response callback (optional; see
     /// [`rclc_action_client_set_cancel_response_callback`]).
     pub cancel_response_callback: rclc_cancel_response_callback_t,
     /// User context pointer
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: crate::node::rclc_node_ref_t,
-    /// Phase 189.M3.3.b — scheduling-context slot to bind the action client's
+    /// Scheduling-context slot to bind the action client's
     /// executor handle to. `0` = inherit the executor / Node default; set via
     /// `rcl_action_client_init`'s `options`. When non-zero,
     /// `rclc_executor_attach_action_client` binds the handle after
     /// registration. No effect on the L1 polling path.
     pub options: rcl_action_client_options_t,
-    /// Internal state (arena entry index + executor pointer). Phase 87.5:
+    /// Internal state (arena entry index + executor pointer).
     /// Typed C-ABI handle field.
     pub _internal: ActionClientInternal,
 }
 
-/// An action client the CALLER drives, with no executor (phase-487 W4).
+/// An action client the CALLER drives, with no executor.
 ///
 /// The C counterpart of C++'s `nros::PollingActionClient<A>`. `_opaque` holds
 /// an `ActionClientCore` from `rclc_polling_action_client_init` until
 /// `rclc_polling_action_client_fini`. Zero-initialised is UNINITIALIZED.
-/// Until phase-487 it was the ~~`NROS_ACTION_CLIENT_STATE_POLLING`~~ state of
+/// It used to be the ~~`NROS_ACTION_CLIENT_STATE_POLLING`~~ state of
 /// `rcl_action_client_t`.
 #[repr(C)]
 pub struct rclc_polling_action_client_t {
@@ -218,10 +218,10 @@ pub extern "C" fn rcl_action_get_zero_initialized_client() -> rcl_action_client_
     rcl_action_client_t::default()
 }
 
-/// Initialize an action client — rcl's signature (phase-492 W1.b):
+/// Initialize an action client — rcl's signature:
 /// `rcl_action_client_init(&client, &node, ROSIDL_GET_ACTION_TYPE_SUPPORT(...),
 /// "name", &options)`. The type support is our descriptor
-/// (`ROSIDL_GET_ACTION_TYPE_SUPPORT` yields its address, RFC-0089 2026-10-12).
+/// (`ROSIDL_GET_ACTION_TYPE_SUPPORT` yields its address).
 /// `options` may be NULL for the defaults; a non-zero `sched_context` is
 /// applied by `rclc_executor_attach_action_client` once the handle exists.
 ///
@@ -277,7 +277,7 @@ pub unsafe extern "C" fn rcl_action_client_init(
     RCL_RET_OK
 }
 
-/// Phase 189.M3.3.b — rclc-style named action-client options (action clients
+/// rclc-style named action-client options (action clients
 /// carry no QoS field, so this is options-only). Zero-init = default behaviour.
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
@@ -305,7 +305,7 @@ impl rcl_action_client_options_t {
 
 /// rcl's `rcl_action_client_get_options(client)`: the options the action client was
 /// initialised with -- all zero when it was initialised without any -- or
-/// NULL for a NULL or unusable handle (phase-515 C6).
+/// NULL for a NULL or unusable handle.
 ///
 /// ADOPT-BOUNDED: nano-ros's options carry the scheduling context, not rcl's `qos`,
 /// `allocator` or rmw-specific options, so a ported `->qos` does not compile;
@@ -368,7 +368,7 @@ pub unsafe extern "C" fn rclc_action_client_set_result_callback(
     RCL_RET_OK
 }
 
-/// Set the cancel-response callback — issue 2030.
+/// Set the cancel-response callback.
 ///
 /// Called during `rclc_executor_spin_some` (or `rclc_action_client_poll`) when
 /// the server answers a `rclc_action_cancel_goal`. The executor takes cancel
@@ -396,14 +396,14 @@ pub unsafe extern "C" fn rclc_action_client_set_cancel_response_callback(
 /// underlying `ActionClient::wait_for_action_server`. Spins on the
 /// action's `send_goal` service client's readiness (the goal queryable is
 /// the load-bearing entity for the first `rclc_action_send_goal` call) via
-/// the same primitive as `rclc_client_wait_for_service` (phase-428 W13).
+/// the same primitive as `rclc_client_wait_for_service`.
 ///
 /// # Returns
 /// * `RCL_RET_OK` — server visible.
 /// * `RCL_RET_TIMEOUT` — `timeout_ms` elapsed without seeing a token.
 /// * `RCL_RET_UNSUPPORTED` — the backend cannot know whether a server is up
 ///   (XRCE: the Agent owns the DDS graph), returned at once rather than after
-///   the budget, because no answer can arrive (issue 1686). A caller that may
+///   the budget, because no answer can arrive. A caller that may
 ///   send blind proceeds; the goal request's own timeout is then the probe.
 /// * `RCL_RET_NOT_INIT` — client not registered with an executor.
 /// * `RCL_RET_ERROR` — transport-level failure.
@@ -477,7 +477,7 @@ pub unsafe extern "C" fn rclc_action_client_wait_for_action_server(
 /// surface's name accessors — `rcl_service_get_service_name`,
 /// `rcl_subscription_get_topic_name` and `rcl_publisher_get_topic_name`
 /// already had this shape, and the action client and server were the two
-/// entities that did not (phase-417 W4.b, ledger row
+/// entities that did not (ledger row
 /// `c:action_client_get_action_name`). The name is the caller's own string,
 /// copied NUL-terminated into the handle at init, so this hands back a
 /// pointer into the handle and costs nothing.
@@ -487,8 +487,8 @@ pub unsafe extern "C" fn rclc_action_client_wait_for_action_server(
 ///
 /// # Returns
 /// * Pointer to the action name (NUL-terminated), or NULL when `client` is
-///   NULL or was never initialised. A polled client is its own type since
-///   phase-487 W4 (`rclc_polling_action_client_t`) and keeps no name.
+///   NULL or was never initialised. A polled client is its own type
+///   (`rclc_polling_action_client_t`) and keeps no name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_action_client_get_action_name(
     client: *const rcl_action_client_t,
@@ -553,7 +553,7 @@ pub unsafe extern "C" fn rclc_action_client_action_server_is_ready(
 ///
 /// # Returns
 ///
-/// Three outcomes, three codes — they were two before issue 0868 (see the C++
+/// Three outcomes, three codes — they used to be two (see the C++
 /// twin `nros_cpp_action_client_send_goal`):
 ///
 /// * `RCL_RET_OK` — the server ACCEPTED; `goal_uuid` is filled.
@@ -1077,7 +1077,7 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
 
 /// Finalize an action client.
 ///
-/// Issue 1609 — `fini` does NOT remove the client from an executor; its arena
+/// `fini` does NOT remove the client from an executor; its arena
 /// entry holds this struct as its callback `context`. Call
 /// `rclc_executor_remove_action_client(executor, client)` first, which drops
 /// the entry (the action leaves the graph) and brings the executor's
@@ -1118,7 +1118,7 @@ pub unsafe extern "C" fn rcl_action_client_fini(
 // Phase 122.3.c.6.b — Layer-1 primitive entry points (caller polls)
 // ============================================================================
 
-/// Phase 122.3.c.6.b — initialize an L1 polling-mode action client.
+/// Initialize an L1 polling-mode action client.
 ///
 /// Creates the 4 transport channels (3 service clients + feedback
 /// subscriber) immediately and stores the `ActionClientCore` inline
@@ -1335,7 +1335,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_init(
 /// * `RCL_RET_OK` on success
 /// * `RCL_RET_INVALID_ARGUMENT` if `client` is NULL
 /// * `RCL_RET_NOT_INIT` if it is not initialised
-/// * `RCLC_RET_STALE_NODE` if its node has already been finalised (issue 1386)
+/// * `RCLC_RET_STALE_NODE` if its node has already been finalised
 ///
 /// # Safety
 /// `client` must be a valid pointer.
@@ -1387,7 +1387,7 @@ unsafe fn polling_client_core(
     Some(&mut *(client_mut._opaque.as_mut_ptr() as *mut PollingClientCore))
 }
 
-/// Phase 122.3.c.6.b — L1 polling: send a goal. Writes the generated
+/// L1 polling: send a goal. Writes the generated
 /// 16-byte UUID into `goal_id_out`. Poll for the accept/reject reply
 /// via `rclc_polling_action_client_try_recv_goal_response_raw`.
 #[unsafe(no_mangle)]
@@ -1435,7 +1435,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_send_goal_raw(
     }
 }
 
-/// Phase 122.3.c.6.b — L1 polling: try to receive a send_goal reply
+/// L1 polling: try to receive a send_goal reply
 /// (the accept/reject response). Returns `0` when no reply yet, `>0`
 /// bytes when one was copied into `buf`, negative on error.
 #[unsafe(no_mangle)]
@@ -1455,8 +1455,8 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_goal_response_raw(
     }
 }
 
-/// Issue 2011 — [`rclc_polling_action_client_try_recv_goal_response_raw`] that also writes the goal the reply is ABOUT (the
-/// goal of the request whose sequence id it names, issue 2009) into
+/// [`rclc_polling_action_client_try_recv_goal_response_raw`] that also writes the goal the reply is ABOUT (the
+/// goal of the request whose sequence id it names) into
 /// `goal_id_out`. With several goals in flight the bytes alone cannot say
 /// which one a reply answers. A reply naming no pending request (an abandoned
 /// one's) is dropped. `goal_id_out` is written only when a reply is returned
@@ -1496,7 +1496,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_goal_response_raw_f
     }
 }
 
-/// Phase 122.3.c.6.b — L1 polling: send a get_result request for the
+/// L1 polling: send a get_result request for the
 /// given goal. Reply lands via `_try_recv_result_raw`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_client_send_get_result_request_raw(
@@ -1525,7 +1525,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_send_get_result_request_raw(
     }
 }
 
-/// Phase 122.3.c.6.b — L1 polling: try to receive a get_result
+/// L1 polling: try to receive a get_result
 /// reply. Returns `0` when no reply yet, `>0` bytes copied, negative
 /// on error.
 #[unsafe(no_mangle)]
@@ -1540,8 +1540,8 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_result_raw(
     }
 }
 
-/// Issue 2011 — [`rclc_polling_action_client_try_recv_result_raw`] that also writes the goal the reply is ABOUT (the
-/// goal of the request whose sequence id it names, issue 2009) into
+/// [`rclc_polling_action_client_try_recv_result_raw`] that also writes the goal the reply is ABOUT (the
+/// goal of the request whose sequence id it names) into
 /// `goal_id_out`. With several goals in flight the bytes alone cannot say
 /// which one a reply answers. A reply naming no pending request (an abandoned
 /// one's) is dropped. `goal_id_out` is written only when a reply is returned
@@ -1581,7 +1581,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_result_raw_for(
     }
 }
 
-/// Phase 122.3.c.6.b — L1 polling: send a cancel request.
+/// L1 polling: send a cancel request.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_client_send_cancel_request_raw(
     client: *mut rclc_polling_action_client_t,
@@ -1609,7 +1609,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_send_cancel_request_raw(
     }
 }
 
-/// Phase 122.3.c.6.c — L1 polling: try to receive the cancel-RPC
+/// L1 polling: try to receive the cancel-RPC
 /// reply. Returns `0` when no reply yet, `>0` bytes copied into
 /// `buf`, negative on error.
 #[unsafe(no_mangle)]
@@ -1629,8 +1629,8 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_cancel_response_raw
     }
 }
 
-/// Issue 2011 — [`rclc_polling_action_client_try_recv_cancel_response_raw`] that also writes the goal the reply is ABOUT (the
-/// goal of the request whose sequence id it names, issue 2009) into
+/// [`rclc_polling_action_client_try_recv_cancel_response_raw`] that also writes the goal the reply is ABOUT (the
+/// goal of the request whose sequence id it names) into
 /// `goal_id_out`. With several goals in flight the bytes alone cannot say
 /// which one a reply answers. A reply naming no pending request (an abandoned
 /// one's) is dropped. `goal_id_out` is written only when a reply is returned
@@ -1670,7 +1670,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_cancel_response_raw
     }
 }
 
-/// Phase 122.3.c.6.e — register a C wake callback on the
+/// Register a C wake callback on the
 /// send_goal-reply channel of an L1 polling-mode action client.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_client_set_goal_response_wake_callback(
@@ -1682,7 +1682,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_set_goal_response_wake_callb
     set_action_client_wake_callback(client, state, cb, ctx, ClientChannel::GoalResponse)
 }
 
-/// Phase 122.3.c.6.e — wake on the cancel-reply channel.
+/// Wake on the cancel-reply channel.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_client_set_cancel_response_wake_callback(
     client: *mut rclc_polling_action_client_t,
@@ -1693,7 +1693,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_set_cancel_response_wake_cal
     set_action_client_wake_callback(client, state, cb, ctx, ClientChannel::CancelResponse)
 }
 
-/// Phase 122.3.c.6.e — wake on the get_result-reply channel.
+/// Wake on the get_result-reply channel.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_client_set_result_wake_callback(
     client: *mut rclc_polling_action_client_t,
@@ -1704,7 +1704,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_set_result_wake_callback(
     set_action_client_wake_callback(client, state, cb, ctx, ClientChannel::Result)
 }
 
-/// Phase 122.3.c.6.e — wake on the feedback channel.
+/// Wake on the feedback channel.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_polling_action_client_set_feedback_wake_callback(
     client: *mut rclc_polling_action_client_t,
@@ -1764,7 +1764,7 @@ unsafe fn set_action_client_wake_callback(
     }
 }
 
-/// Phase 122.3.c.6.b — L1 polling: try to receive feedback for any
+/// L1 polling: try to receive feedback for any
 /// goal. Returns `0` when no feedback yet, `>0` bytes copied (with
 /// `goal_id_out` filled), negative on error.
 #[unsafe(no_mangle)]

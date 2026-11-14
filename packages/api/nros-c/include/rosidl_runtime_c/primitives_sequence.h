@@ -1,6 +1,6 @@
 /**
  * @file primitives_sequence.h
- * @brief rosidl's primitive sequences, in rosidl's shape (phase-492 W7).
+ * @brief rosidl's primitive sequences, in rosidl's shape.
  *
  * `rosidl_runtime_c__<prim>__Sequence` is `{data, size, capacity}` over memory
  * the CALLER owns. The names are rosidl's, after its `.msg` -> IDL mapping:

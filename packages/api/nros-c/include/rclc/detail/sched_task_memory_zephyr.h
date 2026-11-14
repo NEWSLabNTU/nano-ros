@@ -1,5 +1,5 @@
 /*
- * sched_task_memory_zephyr.h — issue 1232: how a generated Zephyr entry spells
+ * sched_task_memory_zephyr.h — how a generated Zephyr entry spells
  * one sched task's memory.
  *
  * The entry declares each SPAWNED sched task's thread object and stack, the stack
@@ -35,7 +35,7 @@
 #define NROS_SCHED_TASK_STACK_BYTES_(bytes)                                                        \
     ((bytes) > 0u ? (bytes) : NROS_SCHED_TASK_STACK_DEFAULT_)
 
-/* phase-509 P9 (RFC-0108 D3) — a LEVEL's stack, derived from its members: the
+/* A LEVEL's stack, derived from its members: the
  * largest member's stated stack, or the per-callback default for a member that
  * states none, plus the worker's own frame (the spin loop, spin_once and the
  * transport drive under it). Never the platform's thread default. The
@@ -46,9 +46,9 @@
  * report (`scripts/nros-mem-report.py --levels`) checks the static against the
  * same arithmetic.
  *
- * Issue 2019 -- the frame covers the level's own setup (open_level, the
+ * The frame covers the level's own setup (open_level, the
  * members' registration), which runs on the level's stack before its first
- * pass and is that stack's peak on every port measured. Issue 2065 measured
+ * pass and is that stack's peak on every port measured. We measured
  * the C runner on Zephyr (the S32K344 island: setup peak 12,464 B, steady
  * 6,920 B), so the default is 13,312 B; a board whose members register more
  * measures its own and sets CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME. */
@@ -66,7 +66,7 @@ BUILD_ASSERT(
     "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME must stay below "
     "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE: their difference is the per-callback default");
 
-/* Issue 2084 -- a declared level stack follows the same placement rule as the
+/* A declared level stack follows the same placement rule as the
  * shim's pool (`nros_sched_task_stacks`): CONFIG_NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM
  * puts both in the devicetree's "DTCM" region (the shim refuses a devicetree
  * without one, and CONFIG_USERSPACE). Without the knob it is the stock

@@ -72,7 +72,7 @@ pub enum rclc_node_state_t {
     RCLC_NODE_STATE_SHUTDOWN = 2,
 }
 
-/// phase-379 W4 — a checkable reference to the node an entity was created on.
+/// A checkable reference to the node an entity was created on.
 ///
 /// Replaces the `*const rcl_node_t` each entity used to store. That pointer
 /// was never dereferenced anywhere in the C API — it was assigned, nulled, and
@@ -100,7 +100,7 @@ pub struct rclc_node_ref_t {
     /// Executor node slot (`rcl_node_t::node_id`). 0 = the primary node.
     pub node_id: u8,
     /// Was the node bound to an EXECUTOR (`rclc_executor_node_init`) rather
-    /// than initialised on the legacy support path? (issue 1405)
+    /// than initialised on the legacy support path?
     ///
     /// Both carry slot 0 when they are the first node, so `node_id` alone
     /// cannot say whether there is a `NodeRecord` to register under. The
@@ -215,18 +215,18 @@ pub struct rcl_node_t {
     /// Per-Node domain ID. `NROS_DOMAIN_ID_INHERIT` (== u32::MAX) means
     /// "use the support context's domain_id".
     pub domain_id_override: u32,
-    /// SchedContext slot to inherit on every handle created by this Node
-    /// (Phase 104.C.4). 0 = inherit the executor's default Fifo context.
+    /// SchedContext slot to inherit on every handle created by this Node.
+    /// 0 = inherit the executor's default Fifo context.
     pub sched_context_id: u8,
     /// Reserved for future use (alignment + ABI stability).
     pub _reserved: [u8; 3],
     /// Opaque NodeId slot returned by `Executor::node_builder(...).build()`
     /// when this Node is bound to an Executor. 0 = the PRIMARY slot, which an
     /// executor-bound node gets whenever it is the first one built — it is NOT
-    /// a "this node is legacy" marker (issue 1384; the legacy marker is a NULL
+    /// a "this node is legacy" marker (the legacy marker is a NULL
     /// `executor`). Internal use only — readers should treat as opaque.
     pub node_id: u8,
-    /// Phase 156 / 104.C.8.b — executor pointer for the executor-bound
+    /// Executor pointer for the executor-bound
     /// dispatch path. `rclc_executor_node_init` populates this when
     /// the Node is bound; per-entity `nros_*_init` paths
     /// (`rclc_publisher_init_default`, `rclc_subscription_init`, etc.) branch
@@ -302,7 +302,7 @@ pub unsafe extern "C" fn rclc_node_set_qos_overrides(
     RCL_RET_OK
 }
 
-/// Phase 104.C.8 — extended node-creation options.
+/// Extended node-creation options.
 ///
 /// Mirrors the Rust `Executor::node_builder(name).rmw(rmw_name).
 /// locator(...).domain_id(...).namespace(...).sched(...)` chain. Pass an
@@ -375,7 +375,7 @@ pub extern "C" fn rcl_get_zero_initialized_node() -> rcl_node_t {
 /// Initialize a node with default options — rclc's `rclc_node_init_default`,
 /// in rclc's argument ORDER.
 ///
-/// **The parameters were REORDERED at phase-417 stage 6.** This is the one
+/// **The parameters were REORDERED when the C API took rcl's names.** This is the one
 /// entry point in the whole C surface that is a pure PERMUTATION of its
 /// upstream counterpart (measured over the surface, not assumed):
 ///
@@ -385,12 +385,12 @@ pub extern "C" fn rcl_get_zero_initialized_node() -> rcl_node_t {
 /// ```
 ///
 /// The rename and the reorder land TOGETHER, and that is not stylistic.
-/// RFC-0089's corrected hazard note: in C an incompatible pointer argument is
+/// The corrected hazard note: in C an incompatible pointer argument is
 /// a **WARNING**, not an error, even under `-Wall -Wextra`, so a reorder alone
 /// is silent-by-default for out-of-tree callers who do not build with our
 /// flags. Renaming makes a stale call fail on the IDENTIFIER, which C does
-/// diagnose fatally, and that is the whole guard now: phase-417 stage 6 step B
-/// retired the ~~`nros_node_init`~~ forwarder, so the old identifier resolves to
+/// diagnose fatally, and that is the whole guard now: the
+/// ~~`nros_node_init`~~ forwarder is retired, so the old identifier resolves to
 /// nothing. While it existed it was a `static inline` naming each parameter
 /// and never a macro, because a macro would have forwarded positionally and
 /// silently built a node with its name in the support slot.
@@ -431,7 +431,7 @@ pub unsafe extern "C" fn rclc_node_init_default(
     unsafe { rclc_node_init_ex(node, support, name, &options) }
 }
 
-/// Phase 104.C.8 — initialize a Node with extended options.
+/// Initialize a Node with extended options.
 ///
 /// Thin C wrapper over the Rust `Executor::node_builder(name).rmw(...)
 /// .locator(...).domain_id(...).namespace(...).sched(...).build()`
@@ -439,16 +439,16 @@ pub unsafe extern "C" fn rclc_node_init_default(
 /// NROS_DOMAIN_ID_INHERIT`) inherit from the support context, matching
 /// the legacy single-Node behaviour `rclc_node_init_default` provides.
 ///
-/// The `rmw_name` selector drives Phase 104 multi-RMW Node binding: a
+/// The `rmw_name` selector drives multi-RMW Node binding: a
 /// bridge node can be initialised with `options.rmw_name = "cyclonedds"` while
 /// the support context's primary backend is `"zenoh"`, and subsequent
 /// publishers/subscribers created via this Node route through the named
 /// backend's session. (Internal multi-Session dispatch piggy-backs on
-/// the executor's `extra_sessions` cache; see Phase 104.C.3.)
+/// the executor's `extra_sessions` cache.)
 ///
 /// Currently the inline `node_id` slot stays 0; per-Node multi-RMW
 /// dispatch in C lands once the C executor surfaces
-/// `Executor::node_builder` (Phase 104.C.8 follow-up). Options fields
+/// `Executor::node_builder`. Options fields
 /// round-trip into the node struct today so users can write code
 /// against the final API surface without waiting for that follow-up.
 ///
@@ -556,8 +556,8 @@ pub unsafe extern "C" fn rclc_node_init_ex(
 ///
 /// # Returns
 /// * `RCL_RET_OK` on success, AND for a node that was never initialised or is
-///   already finalised — `fini` is IDEMPOTENT (phase-417 stage 3, the same
-///   sweep as `rcl_guard_condition_fini`). `rcl/src/rcl/node.c` @ humble says
+///   already finalised — `fini` is IDEMPOTENT (the same
+///   rule as `rcl_guard_condition_fini`). `rcl/src/rcl/node.c` @ humble says
 ///   it in words: `if (!node->impl) { // Repeat calls to fini or calling fini
 ///   on a zero initialized node is ok. return RCL_RET_OK; }`. Ours returned
 ///   `RCL_RET_NOT_INIT`, so a ported cleanup path that checks the return —
@@ -672,7 +672,7 @@ pub unsafe extern "C" fn rcl_node_get_namespace(node: *const rcl_node_t) -> *con
 ///   `FULL` and not `BUFFER_TOO_SMALL` because `rcl_ret_t` has no such code:
 ///   that one exists on the RMW ABI (~~`nros_rmw_ret_t`~~). It was CITED by a doc
 ///   comment on `rclc_publisher_publish_streamed`, which returns
-///   `RCLC_RET_PUBLISH_FAILED` instead — corrected under issue 1126, so this
+///   `RCLC_RET_PUBLISH_FAILED` instead — corrected since, so this
 ///   is now the only place the two ABIs' spellings are contrasted. Naming a
 ///   constant the header does not define would have made that two wrong
 ///   references rather than one.
@@ -719,7 +719,7 @@ pub unsafe extern "C" fn rclc_get_fully_qualified_name(
 /// (`Executor::resolve_entity_name_for`), so a node's FQN and its entities'
 /// FQNs can never disagree about namespace normalisation. A second
 /// `push(namespace); push('/'); push(name)` in the C layer is exactly
-/// RFC-0020's violation class 4, name construction in a wrapper, and it is
+/// the thin-wrapper audit's violation class 4, name construction in a wrapper, and it is
 /// what the four sibling implementations of this already spelled differently.
 ///
 /// # Safety
@@ -785,7 +785,7 @@ unsafe fn write_fqn(
     RCL_RET_OK
 }
 
-/// RFC-0088 D4 / phase-421 W2 — the serialization format the backend behind
+/// The serialization format the backend behind
 /// THIS node speaks, as its cross-image identity string (`"cdr"`, `"uorb"`).
 ///
 /// Resolved through the node's own session, not from an image-wide constant.
@@ -890,7 +890,7 @@ pub unsafe extern "C" fn rclc_node_get_rmw_implementation_identifier(
     }
 }
 
-/// Phase 88.12 — return the `nros::Logger` keyed on this node's name.
+/// Return the `nros::Logger` keyed on this node's name.
 ///
 /// The returned handle is opaque from the C side; pass it to
 /// `RCLC_LOG_INFO(...)` / `RCLC_LOG_WARN(...)` / etc. (declared in
@@ -1008,10 +1008,10 @@ unsafe fn write_cstr_out(s: &str, out: *mut c_char, out_size: usize) -> rcl_ret_
 ///   dereferenced the zeroed `_opaque`.
 ///
 /// The context is reached by a different route per node SHAPE, and NEITHER
-/// route is skipped now (issue 1386): a legacy (`rclc_node_init_default`) node
+/// route is skipped now: a legacy (`rclc_node_init_default`) node
 /// records its support directly, while `rclc_executor_node_init` leaves
 /// `support` NULL on purpose (the multi-Node paths key off `node_id` +
-/// executor, phase-156 sub-bug D) and reaches the same support through the
+/// executor) and reaches the same support through the
 /// executor — `crate::executor::executor_context_is_valid`, which consults
 /// [`crate::support::rclc_support_is_valid`] rather than re-deriving it. An
 /// executor-bound node had NO context check at all before: the arm that stood
@@ -1020,9 +1020,9 @@ unsafe fn write_cstr_out(s: &str, out: *mut c_char, out_size: usize) -> rcl_ret_
 /// **What this deliberately does NOT claim.** C has no move semantics, so
 /// `rcl_node_t copy = original;` is legal and silent, and after
 /// `rcl_node_fini(&original)` the copy still reads `INITIALIZED` over a live
-/// context. This answers `true` for it — measured, issue 1386 — and so does
+/// context. This answers `true` for it — measured — and so does
 /// upstream for the analogous `rcl_node_t` copy, because a copy carries no
-/// evidence that its original was finalised. The phase-379 W4 generation
+/// evidence that its original was finalised. The node GENERATION
 /// (`rclc_node_ref_t`) is what catches that class, and it can only catch it
 /// where a reference was STORED before the fini: an entity's
 /// `publisher.node` / `subscription.node` fails its own `_fini` with
@@ -1065,7 +1065,7 @@ pub unsafe extern "C" fn rcl_node_is_valid(node: *const rcl_node_t) -> bool {
 ///
 /// So this forwards to `resolve_session_and_domain` — the one place the
 /// ladder is decoded (per-node override → C-ABI byte → the session's own
-/// domain). Re-deriving it here is precisely issue 0972's defect: the same
+/// domain). Re-deriving it here is precisely a known defect: the same
 /// decode at a third call site, where `NROS_DOMAIN_ID_EXPLICIT_ZERO` (255)
 /// reads as an out-of-range domain and plain `0` reads as domain 0 rather
 /// than "unset".
@@ -1074,8 +1074,8 @@ pub unsafe extern "C" fn rcl_node_is_valid(node: *const rcl_node_t) -> bool {
 /// fail to answer — an uninitialised support context, a node whose slot names
 /// no session on its executor, or a domain byte above `DOMAIN_ID_MAX` all have
 /// no domain to report, and `0` is a legal domain that must not stand in for
-/// any of them. (Issue 1386: this said "a retired node slot", which is not one
-/// of them — `rcl_node_fini` retires the phase-379 W4 GENERATION, and nothing
+/// any of them. (This used to say "a retired node slot", which is not one
+/// of them — `rcl_node_fini` retires the node GENERATION, and nothing
 /// on this path reads it. What the executor lookup can fail on is a slot that
 /// names no `NodeRecord`.)
 ///
@@ -1117,10 +1117,10 @@ pub unsafe extern "C" fn rcl_node_get_domain_id(
 /// actually become on the wire.
 ///
 /// rcl's `rcl_node_resolve_name` without its allocator: the caller supplies
-/// the output buffer, hence the distinct `rclc_` name (phase-492 W1.b).
+/// the output buffer, hence the distinct `rclc_` name.
 /// Gap `c:node_resolve_name` records the
-/// reason it was missing: our names are resolved at codegen/launch time
-/// (RFC-0046), so a C caller constructing one dynamically had no way to ask.
+/// reason it was missing: our names are resolved at codegen/launch time,
+/// so a C caller constructing one dynamically had no way to ask.
 ///
 /// Forwards to `Executor::resolve_entity_name_for` — the identical call the
 /// registration paths in `executor.rs` make for every publisher,
@@ -1143,8 +1143,8 @@ pub unsafe extern "C" fn rcl_node_get_domain_id(
 /// allocator, so the caller owns the buffer and `RCLC_RET_FULL` reports a
 /// short one), and no `is_service` (it selects between rcl's topic- and
 /// service-name VALIDATORS, which we do not ship; taking the argument and
-/// ignoring it would be the inert-parameter defect RFC-0089 §"The hazard"
-/// names).
+/// ignoring it would be the inert-parameter defect the
+/// adoption rule names).
 ///
 /// # Safety
 /// * `node` must be NULL or point to a valid `rcl_node_t`.

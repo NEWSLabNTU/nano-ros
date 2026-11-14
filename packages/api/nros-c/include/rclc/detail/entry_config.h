@@ -16,12 +16,12 @@
  *
  * Today that costs nothing, because an embedded C entry is routed to the C++
  * emitter and compiles as a `.cpp` that includes `main.hpp`. The moment a pure
- * C entry becomes possible (phase-432 W3.1) it stops being free: the image
+ * C entry becomes possible it stops being free: the image
  * would compile, link, boot — and dial nothing, because `""` reaches the
- * backend as "absent". That is a byte-for-byte re-run of issue #174, which the
+ * backend as "absent". That is a byte-for-byte re-run of an earlier silent no-connect, which the
  * XRCE arm below exists to fix, and it would arrive with no diagnostic.
  *
- * Same class as issue 0946 one layer down: that gate made the CMAKE-side
+ * Same class as a fix one layer down: that gate made the CMAKE-side
  * locator ladders one producer. This makes the HEADER-side ones one producer.
  *
  * ## The contract
@@ -41,7 +41,7 @@
 
 /* ---- NROS_ENTRY_LOCATOR / NROS_ENTRY_DOMAIN_ID — the transport ROLES ----
  *
- * RFC-0071 D10 (phase-506 W3, issue 1299): this header names no backend. It
+ * This header names no backend. It
  * used to read `CONFIG_NROS_ZENOH_LOCATOR`, synthesise XRCE's `addr:port` from
  * `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` and prefer `CONFIG_NROS_CYCLONE_DOMAIN_ID`
  * under `NROS_RMW_CYCLONEDDS` — three backends' spellings in an API header, so
@@ -54,9 +54,9 @@
  *   * NuttX / FreeRTOS / ThreadX — `nano_ros_entry()` defines them from the
  *     entry-locator resolver (`cmake/NanoRosEntryLocator.cmake`).
  *
- * The bottom rungs are backend-neutral. Issue 0330: the locator's is the EMPTY
+ * The bottom rungs are backend-neutral: the locator's is the EMPTY
  * STRING — "absent, let the backend discover" — which travels through
- * `rclc_support_init_with_locator` / `nros_cpp_init` to the RFC-0045
+ * `rclc_support_init_with_locator` / `nros_cpp_init` to the boot-config
  * resolver's empty rung and then to the linked backend's own default. The
  * domain is compile-time on embedded, never a runtime env.
  */

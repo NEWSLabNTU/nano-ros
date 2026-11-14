@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // <rclcpp_lifecycle/transition.hpp> — the upstream include path for the nano-ros
-// `rclcpp_lifecycle::` names, which `<rclcpp_lifecycle/lifecycle_node.hpp>` declares
-// (phase-482 W4). Not a shim: the names are declared once, there.
+// `rclcpp_lifecycle::` names, which `<rclcpp_lifecycle/lifecycle_node.hpp>` declares.
+// Not a shim: the names are declared once, there.
 #ifndef NROS_RCLCPP_LIFECYCLE_TRANSITION_HPP
 #define NROS_RCLCPP_LIFECYCLE_TRANSITION_HPP
 #include "rclcpp_lifecycle/lifecycle_node.hpp"

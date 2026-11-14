@@ -291,12 +291,12 @@ fn registration_node_id_of(
 ///
 /// This is the array element `rclc_executor_trigger_t` walks — rclc's
 /// `rclc_executor_handle_t` narrowed to the two things a trigger may
-/// legitimately read. It deliberately does NOT take rclc's name (RFC-0089: an
+/// legitimately read. It deliberately does NOT take rclc's name (an
 /// upstream name may be adopted only if the contract is the same), so a ported
 /// custom trigger that reaches for `handles[i].subscription` fails to COMPILE
 /// rather than reading a field that is not there.
 ///
-/// phase-417 stage 3: the array exists so `rclc_executor_trigger_one` can
+/// The array exists so `rclc_executor_trigger_one` can
 /// compare its `obj` against the ENTITY POINTER, which is upstream's contract.
 /// The previous shape passed only a `const bool *` readiness array, which
 /// carried no entity identity at all — see `rclc_executor_trigger_one`.
@@ -423,7 +423,7 @@ pub struct rclc_executor_t {
     /// etc.) check this flag and return `RCLC_RET_REENTRANT` if set.
     pub in_dispatch: bool,
     /// Entity pointer per registered handle slot, indexed by the executor's
-    /// handle id (phase-417 stage 3).
+    /// handle id.
     ///
     /// Written by every `..._add_*` that registers a handle, read only when
     /// building the [`rclc_executor_trigger_handle_t`] array a trigger
@@ -441,7 +441,7 @@ pub struct rclc_executor_t {
     /// states the 64-handle ceiling) only changes how much slack the C object
     /// carries, exactly like the `_opaque` bounds.
     pub _handle_entities: [*mut core::ffi::c_void; NROS_EXECUTOR_MAX_HANDLES],
-    /// phase-492 W4 — NULL for an executor `rclc_executor_init` built. Non-NULL
+    /// NULL for an executor `rclc_executor_init` built. Non-NULL
     /// when a HOST owns the executor (`host_executor_init`: the C++ binding's
     /// context embeds this struct), pointing at the executor in `_opaque`.
     /// `rclc_executor_fini` then drops nothing; the host does. Internal; no C
@@ -482,7 +482,7 @@ pub extern "C" fn rclc_executor_get_zero_initialized_executor() -> rclc_executor
     rclc_executor_t::default()
 }
 
-/// Initialize an executor — rclc's signature (phase-492 W1.b).
+/// Initialize an executor — rclc's signature.
 ///
 /// `rclc_executor_init(&executor, &support.context, n, &allocator)`, as an
 /// rclc program writes it. `context` must be the `context` member of an
@@ -671,7 +671,7 @@ pub unsafe extern "C" fn rclc_executor_set_timeout(
     RCL_RET_OK
 }
 
-/// Phase 124.F.3 — session-level connectivity probe.
+/// Session-level connectivity probe.
 ///
 /// Sends a wire-level round-trip ("is the peer / agent / router
 /// reachable?") and waits up to `timeout_ms`. Mirrors micro-ROS's
@@ -721,7 +721,7 @@ pub unsafe extern "C" fn rclc_executor_ping(
     }
 }
 
-/// phase-381 W4 — visit one node on the graph.
+/// Visit one node on the graph.
 ///
 /// `node_namespace` is a ROS namespace (`"/"`, `"/demo"`). `enclave` is NULL
 /// where the backend does not track one, which is what lets one call answer
@@ -738,7 +738,7 @@ pub type rclc_node_visit_fn = Option<
     ) -> bool,
 >;
 
-/// phase-381 W4 — visit one name and the types on it.
+/// Visit one name and the types on it.
 ///
 /// `types_count` may legitimately be 0 on a partially discovered graph:
 /// reporting the name without a type beats dropping it. Strings are BORROWED.
@@ -752,7 +752,7 @@ pub type rclc_names_and_types_visit_fn = Option<
     ) -> bool,
 >;
 
-/// phase-381 W4 — every node on the graph, with its namespace.
+/// Every node on the graph, with its namespace.
 ///
 /// A VISITOR rather than an out-array: upstream's `rcutils_string_array_t`
 /// allocates two levels deep, there is no allocator here, and a
@@ -837,7 +837,7 @@ pub unsafe extern "C" fn rclc_executor_get_node_names(
     }
 }
 
-/// phase-381 W4 — every topic on the graph, with the types on it.
+/// Every topic on the graph, with the types on it.
 ///
 /// Called once per distinct TOPIC: a topic carrying two types is one call with
 /// two entries, not two calls. `types_count` may legitimately be 0 on a
@@ -865,7 +865,7 @@ pub unsafe extern "C" fn rclc_executor_get_topic_names_and_types(
     nros_executor_names_and_types_impl(executor, visit, ctx, NamesAndTypesKind::Topics)
 }
 
-/// phase-381 W4 — every service on the graph, with its types. As
+/// Every service on the graph, with its types. As
 /// `rclc_executor_get_topic_names_and_types`, over servers and clients.
 ///
 /// # Safety
@@ -880,7 +880,7 @@ pub unsafe extern "C" fn rclc_executor_get_service_names_and_types(
     nros_executor_names_and_types_impl(executor, visit, ctx, NamesAndTypesKind::Services)
 }
 
-/// phase-381 W4 — how many publishers are visible on `topic_name`.
+/// How many publishers are visible on `topic_name`.
 ///
 /// `topic_name` is a ROS name (`"/chatter"`). The count reflects what has been
 /// DISCOVERED, so it can be low right after startup and is never a proof of
@@ -899,7 +899,7 @@ pub unsafe extern "C" fn rclc_executor_count_publishers(
     nros_executor_count_impl(executor, topic_name, out_count, CountKind::Publishers)
 }
 
-/// phase-381 W4 — how many subscribers are visible on `topic_name`. See
+/// How many subscribers are visible on `topic_name`. See
 /// `rclc_executor_count_publishers` for the caveats.
 ///
 /// # Safety
@@ -915,7 +915,7 @@ pub unsafe extern "C" fn rclc_executor_count_subscribers(
     nros_executor_count_impl(executor, topic_name, out_count, CountKind::Subscribers)
 }
 
-/// Issue 1978 — how many service CLIENTS are visible on `service_name`,
+/// How many service CLIENTS are visible on `service_name`,
 /// upstream (Jazzy) `rcl_count_clients`, under the executor receiver every
 /// graph verb here uses (`rclc_executor_count_publishers`). `service_name` is a
 /// ROS name (`"/add_two_ints"`); same caveats as the publisher count, and a
@@ -934,7 +934,7 @@ pub unsafe extern "C" fn rclc_executor_count_clients(
     nros_executor_count_impl(executor, service_name, out_count, CountKind::Clients)
 }
 
-/// Issue 1978 — how many service SERVERS are visible on `service_name`,
+/// How many service SERVERS are visible on `service_name`,
 /// upstream (Jazzy) `rcl_count_services`. See `rclc_executor_count_clients`.
 ///
 /// # Safety
@@ -950,14 +950,14 @@ pub unsafe extern "C" fn rclc_executor_count_services(
     nros_executor_count_impl(executor, service_name, out_count, CountKind::Services)
 }
 
-/// phase-444 — block until at least `count` publishers are visible on
+/// Block until at least `count` publishers are visible on
 /// `topic_name`, or `timeout_ms` elapses. Upstream's `rcl_wait_for_publishers`.
 ///
 /// The startup-ordering primitive one entity kind over from
 /// [`rclc_client_wait_for_service`](crate::service::rclc_client_wait_for_service),
 /// and built the same way: a spin on the discovery count, so other
-/// subscriptions and timers keep making progress while it waits (RFC-0021 —
-/// a blocking helper takes the executor and drives it, which is what makes
+/// subscriptions and timers keep making progress while it waits (a
+/// blocking helper takes the executor and drives it, which is what makes
 /// the timeout reliable on a single-threaded transport).
 ///
 /// This is the one BLOCKING member of the graph family, and it does not
@@ -968,11 +968,11 @@ pub unsafe extern "C" fn rclc_executor_count_services(
 /// A backend that cannot see the graph at all (XRCE) returns
 /// `RCL_RET_UNSUPPORTED` IMMEDIATELY rather than waiting out the budget.
 /// That differs deliberately from `rclc_client_wait_for_service`, which waits
-/// and reports `RCL_RET_TIMEOUT` (issue 1087): for a service probe,
+/// and reports `RCL_RET_TIMEOUT`: for a service probe,
 /// not-yet-answerable is a transient; for the graph it is permanent, and
 /// spending the budget to say `TIMEOUT` would report "none appeared" for a
 /// backend that cannot see publishers at all — collapsing "cannot tell you"
-/// into "not there", which is the distinction RFC-0036 exists to keep.
+/// into "not there", which is the distinction the divergence catalog exists to keep.
 ///
 /// `count == 0` returns `RCL_RET_OK` immediately without asking the backend:
 /// "at least zero" is true of every graph and needs no discovery.
@@ -998,7 +998,7 @@ pub unsafe extern "C" fn rclc_executor_wait_for_publishers(
     nros_executor_wait_for_endpoints_impl(executor, topic_name, count, timeout_ms, true)
 }
 
-/// phase-444 — block until at least `count` subscribers are visible on
+/// Block until at least `count` subscribers are visible on
 /// `topic_name`. Upstream's `rcl_wait_for_subscribers`. See
 /// `rclc_executor_wait_for_publishers` for the contract, the return codes,
 /// and why a backend with no graph answers immediately.
@@ -1222,7 +1222,7 @@ unsafe fn nros_executor_count_impl(
     }
 }
 
-/// phase-381 W4 — visit one discovered endpoint on a topic.
+/// Visit one discovered endpoint on a topic.
 ///
 /// Strings are BORROWED for the duration of the call. Return `false` to stop.
 ///
@@ -1243,7 +1243,7 @@ pub struct rclc_endpoint_info_t {
     pub endpoint_gid: [u8; 24],
 }
 
-/// phase-381 W4 — visit one endpoint. Return `false` to stop.
+/// Visit one endpoint. Return `false` to stop.
 pub type rclc_endpoint_info_visit_fn = Option<
     unsafe extern "C" fn(ctx: *mut core::ffi::c_void, info: *const rclc_endpoint_info_t) -> bool,
 >;
@@ -1329,7 +1329,7 @@ unsafe fn nros_executor_by_node_impl(
     }
 }
 
-/// phase-381 W4 — what one named node PUBLISHES, with the types.
+/// What one named node PUBLISHES, with the types.
 ///
 /// # Safety
 /// * `executor` must point to an initialised executor.
@@ -1346,14 +1346,13 @@ pub unsafe extern "C" fn rclc_executor_get_publisher_names_and_types_by_node(
     nros_executor_by_node_impl(executor, node_name, node_namespace, visit, ctx, 0)
 }
 
-/// phase-381 W4 — what one named node SUBSCRIBES to, with the types.
+/// What one named node SUBSCRIBES to, with the types.
 ///
 /// **`subscriber`, not `subscription`** — rcl spells it
 /// `rcl_get_subscriber_names_and_types_by_node`, and the C surface takes its
 /// vocabulary from rcl so a user porting C ROS 2 code types what they already
 /// know. The C++ and Rust surfaces say `subscription` because rclcpp and rclrs
-/// do. Three layers, three upstreams, one word each — not drift. Issue 0788
-/// owns the wider verb sweep.
+/// do. Three layers, three upstreams, one word each — not drift.
 ///
 /// # Safety
 /// * `executor` must point to an initialised executor.
@@ -1370,7 +1369,7 @@ pub unsafe extern "C" fn rclc_executor_get_subscriber_names_and_types_by_node(
     nros_executor_by_node_impl(executor, node_name, node_namespace, visit, ctx, 1)
 }
 
-/// phase-381 W4 — what services one named node SERVES, with the types.
+/// What services one named node SERVES, with the types.
 ///
 /// # Safety
 /// As `rclc_executor_get_publisher_names_and_types_by_node`.
@@ -1385,7 +1384,7 @@ pub unsafe extern "C" fn rclc_executor_get_service_names_and_types_by_node(
     nros_executor_by_node_impl(executor, node_name, node_namespace, visit, ctx, 2)
 }
 
-/// phase-381 W4 — what services one named node CALLS, with the types.
+/// What services one named node CALLS, with the types.
 ///
 /// # Safety
 /// As `rclc_executor_get_publisher_names_and_types_by_node`.
@@ -1473,7 +1472,7 @@ unsafe fn nros_executor_endpoint_info_impl(
     }
 }
 
-/// phase-381 W4 — the publishers on `topic_name`, one visit each.
+/// The publishers on `topic_name`, one visit each.
 ///
 /// # Safety
 /// * `executor` must point to an initialised executor.
@@ -1489,7 +1488,7 @@ pub unsafe extern "C" fn rclc_executor_get_publishers_info_by_topic(
     nros_executor_endpoint_info_impl(executor, topic_name, visit, ctx, true)
 }
 
-/// phase-381 W4 — the subscriptions on `topic_name`, one visit each.
+/// The subscriptions on `topic_name`, one visit each.
 ///
 /// # Safety
 /// As `rclc_executor_get_publishers_info_by_topic`.
@@ -1540,7 +1539,7 @@ pub unsafe extern "C" fn rclc_executor_set_semantics(
     RCL_RET_OK
 }
 
-/// Phase 104.C.8.b — initialize a Node via the executor's
+/// Initialize a Node via the executor's
 /// [`node_builder`](nros_node::Executor::node_builder) chain.
 ///
 /// Thin wrapper over Rust's
@@ -1709,7 +1708,7 @@ pub unsafe extern "C" fn rclc_executor_node_init(
     RCL_RET_OK
 }
 
-/// phase-492 W4 — make `executor` the C-API face of an executor a HOST owns,
+/// Make `executor` the C-API face of an executor a HOST owns,
 /// and return the inline storage the host builds that executor in.
 ///
 /// The C++ binding's context (`nros-cpp`'s `CppContext`) embeds an
@@ -1722,7 +1721,7 @@ pub unsafe extern "C" fn rclc_executor_node_init(
 /// The host keeps ownership: `_host` is set, so `rclc_executor_fini` drops
 /// nothing and the host's own teardown drops the executor. Only the header is
 /// written; `_opaque` is the caller's to fill (no 100 KiB zero-fill and no
-/// stack temporary — RFC-0105 D10).
+/// stack temporary).
 ///
 /// # Safety
 /// `executor` must point at writable storage for an `rclc_executor_t` that is
@@ -1760,7 +1759,7 @@ pub unsafe fn host_executor_init(
     opaque as *mut nros_node::ExecutorInlineStorage
 }
 
-/// phase-492 W4 — make `node` the executor-bound C handle of the node a host
+/// Make `node` the executor-bound C handle of the node a host
 /// already created on `executor` as `node_id` (see [`host_executor_init`]).
 ///
 /// The generated entry creates every node itself — it applies the launch
@@ -1954,7 +1953,7 @@ pub unsafe extern "C" fn rclc_executor_trigger_any(
 ///
 /// An EMPTY handle array fires, because "every handle has data" is vacuously
 /// true — upstream's loop simply does not execute and returns `true`. Ours
-/// returned `false` for that case until phase-417 stage 3; it was the same
+/// used to return `false` for that case; it was the same
 /// compile-and-differ class as `rclc_executor_trigger_one` one function over,
 /// found by sweeping the siblings rather than by a report.
 ///
@@ -2005,11 +2004,11 @@ pub unsafe extern "C" fn rclc_executor_trigger_always(
 /// rclc_executor_set_trigger(&exec, rclc_executor_trigger_one, &my_subscription);
 /// ```
 ///
-/// Until phase-417 stage 3 this function read `*(size_t *)obj` and used it as an
+/// This function used to read `*(size_t *)obj` and used it as an
 /// INDEX into the readiness array. The upstream spelling above compiled with no
 /// warning and then reinterpreted the entity's address as an index, which is
 /// essentially always out of range — so the trigger never fired, the executor
-/// dispatched nothing, and nothing said so (RFC-0089: never compile and differ).
+/// dispatched nothing, and nothing said so (never compile and differ).
 /// The index form still exists under its own name,
 /// [`rclc_executor_trigger_index`].
 ///
@@ -2038,7 +2037,7 @@ pub unsafe extern "C" fn rclc_executor_trigger_one(
 
 /// Built-in trigger: fire when the handle at the index stored in `obj` has data.
 ///
-/// OURS, not rclc's — ROS 2 has no counterpart. It is the pre-phase-417
+/// OURS, not rclc's — ROS 2 has no counterpart. It is the earlier
 /// behaviour of `rclc_executor_trigger_one`, kept under a name that cannot be
 /// confused with upstream's entity-pointer contract. Reach for it only when the
 /// image genuinely knows its registration order; naming the entity is safer and
@@ -2223,7 +2222,7 @@ unsafe fn register_subscription_entry(
     RCL_RET_OK
 }
 
-/// phase-492 W4 — register a raw subscription whose callback also receives
+/// Register a raw subscription whose callback also receives
 /// the sample's E2E integrity status (CRC + sequence gap / duplicate): the
 /// C API's form of what a C component used to reach through the C++ FFI
 /// (`nros_cpp_subscription_register_validated`), and the callback-style
@@ -2279,7 +2278,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_validated(
     }
 }
 
-/// phase-417 W5.a — a subscription callback that receives the DESERIALISED
+/// A subscription callback that receives the DESERIALISED
 /// message, the shape rclc delivers
 /// (`rclc_subscription_callback_with_context_t`, the alias `<rclc/executor.h>`
 /// declares).
@@ -2291,8 +2290,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_validated(
 pub type rclc_subscription_callback_with_context_t =
     Option<unsafe extern "C" fn(msg: *const core::ffi::c_void, context: *mut core::ffi::c_void)>;
 
-/// rclc's `rclc_executor_add_subscription_with_context`, argument for argument
-/// (phase-492 W8):
+/// rclc's `rclc_executor_add_subscription_with_context`, argument for argument:
 ///
 /// ```c
 /// rclc_executor_add_subscription_with_context(&exec, &sub, &msg, &cb, &ctx, ON_NEW_DATA);
@@ -2301,11 +2299,11 @@ pub type rclc_subscription_callback_with_context_t =
 /// The deserialiser and the receive-buffer hint come from the descriptor the
 /// subscription was created with (`ROSIDL_GET_MSG_TYPE_SUPPORT(...)`, kept on
 /// the struct by `rclc_subscription_init_*`), which is why this takes no more
-/// arguments than rclc's. Before phase-492 the descriptor had no codec, so the
+/// arguments than rclc's. When the descriptor had no codec, so the
 /// typed registration carried a seventh argument and a generated per-type
 /// macro collapsed it away; both are gone.
 ///
-/// The CONTEXT-LESS form is [`rclc_executor_add_subscription`] (phase-515 C2):
+/// The CONTEXT-LESS form is [`rclc_executor_add_subscription`]:
 /// this registration with a fixed trampoline, the user's callback held in the
 /// arena entry's `context` slot -- executor state, not wrapper state.
 ///
@@ -2393,8 +2391,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_with_context(
     )
 }
 
-/// rclc's context-LESS subscription callback, `void (*)(const void *msgin)`
-/// (phase-515 C2).
+/// rclc's context-LESS subscription callback, `void (*)(const void *msgin)`.
 pub type rclc_subscription_callback_t =
     Option<unsafe extern "C" fn(msgin: *const core::ffi::c_void)>;
 
@@ -2418,7 +2415,7 @@ unsafe extern "C" fn context_less_subscription_trampoline(
 }
 
 /// rclc's context-LESS `rclc_executor_add_subscription`, argument for
-/// argument (phase-515 C2):
+/// argument:
 ///
 /// ```c
 /// rcl_ret_t rclc_executor_add_subscription(rclc_executor_t *executor,
@@ -2430,7 +2427,7 @@ unsafe extern "C" fn context_less_subscription_trampoline(
 /// [`rclc_executor_add_subscription_with_context`] with a fixed trampoline as
 /// the callback and the user's `callback` in the arena entry's `context` slot.
 /// That slot is the executor's state, not the wrapper's, which is why this is
-/// RFC-0019/0020-compliant where a wrapper-side table would not be.
+/// thin-wrapper compliant where a wrapper-side table would not be.
 ///
 /// # Returns
 /// As [`rclc_executor_add_subscription_with_context`]; `RCL_RET_INVALID_ARGUMENT`
@@ -2461,7 +2458,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription(
     }
 }
 
-/// phase-417 stage 6 — register a BYTE-oriented subscription, supplying its
+/// Register a BYTE-oriented subscription, supplying its
 /// callback HERE rather than at `*_init`.
 ///
 /// This is the raw-path sibling of [`rclc_executor_add_subscription_with_context`].
@@ -2471,11 +2468,11 @@ pub unsafe extern "C" fn rclc_executor_add_subscription(
 /// (`rclc_executor_add_subscription`). The name keeps the `nros_` prefix
 /// deliberately: rclc's `add_subscription` delivers a DESERIALIZED message into
 /// caller storage, so the byte path has no upstream counterpart and must not
-/// wear its name (RFC-0089's compile-or-conform rule — a plausible name over an
-/// opposite data contract is the defect the RFC exists to prevent).
+/// wear its name (the compile-or-conform rule — a plausible name over an
+/// opposite data contract is the defect the rule exists to prevent).
 ///
 /// The arena entry owns `callback` and `context` from here on; the
-/// subscription struct keeps neither (phase-487 W1). This replaced the
+/// subscription struct keeps neither. This replaced the
 /// three-argument ~~`nros_executor_add_subscription`~~, which dispatched the
 /// callback an init call had stored in the struct.
 ///
@@ -2527,7 +2524,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw(
     )
 }
 
-/// Phase 189.M3.4 — register a raw subscription whose callback also receives
+/// Register a raw subscription whose callback also receives
 /// the sample's wire **attachment** (the C analog of the Rust
 /// `node.subscription(t).generic(..).message_info()` builder; rclc's
 /// generic-with-info subscription). Direct-arg form (no `rcl_subscription_t`
@@ -2535,10 +2532,10 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw(
 /// `rclc_subscription_raw_callback_t`, so this is its own entry point rather than
 /// a flag on `rclc_executor_add_subscription_raw`.
 ///
-/// **Not removable** (issue 1668): it takes no subscription object and hands
+/// **Not removable**: it takes no subscription object and hands
 /// back nothing, so its entry — slot, arena bytes and subscriber — lives
-/// until `rclc_executor_fini`. Kept for ABI compatibility (RFC-0054 is
-/// additive). Prefer [`rclc_executor_add_subscription_with_info`], which
+/// until `rclc_executor_fini`. Kept for ABI compatibility (the change
+/// was additive). Prefer [`rclc_executor_add_subscription_with_info`], which
 /// registers the same entry into a `rcl_subscription_t` that
 /// `rclc_executor_remove_subscription` takes back out.
 ///
@@ -2632,7 +2629,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
     }
 }
 
-/// Issue 1668 — register a raw subscription whose callback also receives the
+/// Register a raw subscription whose callback also receives the
 /// sample's wire **attachment**, into a `rcl_subscription_t` the caller keeps,
 /// so it can be REMOVED.
 ///
@@ -2869,7 +2866,7 @@ unsafe fn add_timer_inner(
     }
 }
 
-/// Phase 273 (RFC-0047) — register a subscription in a named callback group.
+/// Register a subscription in a named callback group.
 ///
 /// Identical to [`rclc_executor_add_subscription_raw`] but additionally
 /// passes the group name to the executor so the seeded `group_sched_table`
@@ -2877,7 +2874,7 @@ unsafe fn add_timer_inner(
 /// be NULL or an empty string — both behave identically to
 /// `rclc_executor_add_subscription_raw`.
 ///
-/// phase-487 W1 — `callback` and `context` are arguments here, as on the
+/// `callback` and `context` are arguments here, as on the
 /// `_raw` path; the subscription struct no longer stores them.
 ///
 /// # Safety
@@ -2997,7 +2994,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
     }
 }
 
-/// Phase 273 (RFC-0047) — register a timer in a named callback group.
+/// Register a timer in a named callback group.
 ///
 /// Identical to `rclc_executor_add_timer` but additionally passes the
 /// group name so the seeded `group_sched_table` can bind the callback to the
@@ -3044,7 +3041,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer_in_group(
     }
 }
 
-/// phase-417 stage 6 — register a service server, supplying its request
+/// Register a service server, supplying its request
 /// callback HERE rather than at `*_init`.
 ///
 /// `rclc_service_init_default` takes no callback (rclc's arity), so the handler
@@ -3059,7 +3056,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer_in_group(
 /// typed path.
 ///
 /// The arena entry owns `callback` and `context`; the service struct keeps
-/// neither (phase-487 W2). This replaced the two-argument
+/// neither. This replaced the two-argument
 /// ~~`nros_executor_add_service`~~, which dispatched a callback an init call had
 /// stored in the struct.
 ///
@@ -3086,7 +3083,7 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw(
     unsafe { add_service_raw(executor, service, callback, context) }
 }
 
-/// Issue 2081 — [`rclc_executor_add_service_raw`] whose callback also receives
+/// [`rclc_executor_add_service_raw`] whose callback also receives
 /// the request's `rmw_request_id_t`: rclc's
 /// `rclc_executor_add_service_with_request_id`, in this API's CDR-byte form.
 ///
@@ -3105,7 +3102,7 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw(
 /// `request_id` names who sent the request being answered — the client's
 /// writer GUID and the sequence number that client assigned — as the RMW
 /// backend reported it. A backend that reports no id leaves it all zero.
-/// Which backends report it: zenoh, Cyclone DDS and XRCE-DDS (issue 2081).
+/// Which backends report it: zenoh, Cyclone DDS and XRCE-DDS.
 ///
 /// # Returns
 /// As [`rclc_executor_add_service_raw`].
@@ -3128,12 +3125,12 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw_with_request_id(
 }
 
 /// rclc's `rclc_service_callback_t`: the request and response in the
-/// caller's own message storage (phase-515 C3).
+/// caller's own message storage.
 pub type rclc_service_callback_t = Option<
     unsafe extern "C" fn(request: *const core::ffi::c_void, response: *mut core::ffi::c_void),
 >;
 
-/// rclc's `rclc_service_callback_with_request_id_t` (phase-515 C3).
+/// rclc's `rclc_service_callback_with_request_id_t`.
 pub type rclc_service_callback_with_request_id_t = Option<
     unsafe extern "C" fn(
         request: *const core::ffi::c_void,
@@ -3142,7 +3139,7 @@ pub type rclc_service_callback_with_request_id_t = Option<
     ),
 >;
 
-/// rclc's `rclc_service_callback_with_context_t` (phase-515 C3).
+/// rclc's `rclc_service_callback_with_context_t`.
 pub type rclc_service_callback_with_context_t = Option<
     unsafe extern "C" fn(
         request: *const core::ffi::c_void,
@@ -3152,10 +3149,10 @@ pub type rclc_service_callback_with_context_t = Option<
 >;
 
 /// rclc's `rclc_client_callback_t`: the response in the caller's own message
-/// storage (phase-515 C3).
+/// storage.
 pub type rclc_client_callback_t = Option<unsafe extern "C" fn(response: *const core::ffi::c_void)>;
 
-/// rclc's `rclc_client_callback_with_request_id_t` (issue 2136): the response
+/// rclc's `rclc_client_callback_with_request_id_t`: the response
 /// in the caller's own message storage, and the id of the request it answers.
 pub type rclc_client_callback_with_request_id_t = Option<
     unsafe extern "C" fn(
@@ -3274,7 +3271,7 @@ unsafe fn typed_service_capture(
 }
 
 /// rclc's `rclc_executor_add_service(executor, service, request_msg,
-/// response_msg, callback)` — phase-515 C3.
+/// response_msg, callback)`.
 ///
 /// On each request the executor deserialises it into `request_msg` through
 /// the service's descriptor, calls `callback(request_msg, response_msg)`, and
@@ -3318,7 +3315,7 @@ pub unsafe extern "C" fn rclc_executor_add_service(
     }
 }
 
-/// rclc's `rclc_executor_add_service_with_request_id` — phase-515 C3.
+/// rclc's `rclc_executor_add_service_with_request_id`.
 /// [`rclc_executor_add_service`] whose callback also receives the request's
 /// `rmw_request_id_t`, as [`rclc_executor_add_service_raw_with_request_id`]
 /// reports it.
@@ -3347,7 +3344,7 @@ pub unsafe extern "C" fn rclc_executor_add_service_with_request_id(
     }
 }
 
-/// rclc's `rclc_executor_add_service_with_context` — phase-515 C3.
+/// rclc's `rclc_executor_add_service_with_context`.
 /// [`rclc_executor_add_service`] whose callback also receives `context`,
 /// passed through untouched.
 ///
@@ -3422,7 +3419,7 @@ unsafe extern "C" fn typed_client_trampoline(
 }
 
 /// rclc's `rclc_executor_add_client(executor, client, response_msg,
-/// callback)` — phase-515 C3.
+/// callback)`.
 ///
 /// Registers the client (what [`rclc_executor_attach_client`] does) with a
 /// response callback: each reply is deserialised into `response_msg` through
@@ -3515,7 +3512,7 @@ unsafe extern "C" fn typed_client_request_id_trampoline(
 }
 
 /// rclc's `rclc_executor_add_client_with_request_id(executor, client,
-/// response_msg, callback)` — issue 2136.
+/// response_msg, callback)`.
 ///
 /// [`rclc_executor_add_client`] whose callback also receives the id of the
 /// request each reply answers, as rclc's does: `request_id->sequence_number`
@@ -3737,7 +3734,7 @@ unsafe fn add_service_raw(
     }
 }
 
-/// Add a service client to the executor (Phase 82).
+/// Add a service client to the executor.
 ///
 /// Creates the underlying `RmwServiceClient` inside the executor's arena
 /// and stashes the executor pointer + arena entry index into the
@@ -4176,8 +4173,8 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
     }
 }
 
-/// Remove an action server from the executor — issue 1609, the C twin of
-/// issue 1496's resolution 2.
+/// Remove an action server from the executor — the C twin of the C++
+/// removal.
 ///
 /// `rclc_executor_attach_action_server` registers an arena entry whose callback
 /// `context` is `&server->_internal`, and `rcl_action_server_fini` does not
@@ -4259,7 +4256,7 @@ pub unsafe extern "C" fn rclc_executor_remove_action_server(
     forget_removed_handle(executor, handle_id, released)
 }
 
-/// Remove an action client from the executor — issue 1609.
+/// Remove an action client from the executor.
 ///
 /// The client half of [`rclc_executor_remove_action_server`], with the same
 /// three tables and the same reason: the arena entry
@@ -4342,7 +4339,7 @@ fn forget_removed_handle(
     RCL_RET_OK
 }
 
-/// Remove a subscription from the executor — issue 1631, rclc's
+/// Remove a subscription from the executor — rclc's
 /// `rclc_executor_remove_subscription`.
 ///
 /// Every `rclc_executor_add_subscription*` that takes a
@@ -4421,7 +4418,7 @@ pub unsafe extern "C" fn rclc_executor_remove_subscription(
     forget_removed_handle(executor, handle_id, released)
 }
 
-/// Remove a timer from the executor — issue 1631, rclc's
+/// Remove a timer from the executor — rclc's
 /// `rclc_executor_remove_timer`.
 ///
 /// The arena entry `rclc_executor_add_timer` / `rclc_executor_add_timer_in_group`
@@ -4482,7 +4479,7 @@ pub unsafe extern "C" fn rclc_executor_remove_timer(
     forget_removed_handle(executor, handle_id, released)
 }
 
-/// Remove a service server from the executor — issue 1631, rclc's
+/// Remove a service server from the executor — rclc's
 /// `rclc_executor_remove_service`.
 ///
 /// Drops the arena entry `rclc_executor_add_service_raw` registered (the
@@ -4536,10 +4533,10 @@ pub unsafe extern "C" fn rclc_executor_remove_service(
     forget_removed_handle(executor, handle_id, released)
 }
 
-/// Remove a service client from the executor — issue 1631, rclc's
+/// Remove a service client from the executor — rclc's
 /// `rclc_executor_remove_client`.
 ///
-/// Until phase-487 W2 the arena entry `rclc_executor_attach_client` registered
+/// The arena entry `rclc_executor_attach_client` used to register
 /// dispatched replies through a trampoline that READ the `rcl_client_t`, so
 /// after `rcl_client_fini` alone a late reply was a use-after-free of a stack
 /// or freed client; the entry now holds the user's callback itself. This drops the entry (the client leaves the graph, and a
@@ -4999,14 +4996,14 @@ pub unsafe extern "C" fn rclc_executor_spin_one_period(
 }
 
 /// Ask a spinning executor to stop — `rclcpp::Executor::cancel` /
-/// `rcl`'s context shutdown, phase-417 W4.c.
+/// `rcl`'s context shutdown.
 ///
 /// Renamed from ~~`nros_executor_stop`~~, whose deprecated `static inline`
-/// forwarder in `<rclc/executor.h>` was retired by phase-417 stage 6 step B.
+/// forwarder in `<rclc/executor.h>` is retired.
 /// Three of our own languages had three answers to "stop spinning"; `cancel`
 /// is ROS 2's.
 ///
-/// # ADOPT-BOUNDED (RFC-0089)
+/// # ADOPT-BOUNDED
 ///
 /// `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it
 /// returns BEFORE spinning has actually stopped;
@@ -5044,7 +5041,7 @@ pub unsafe extern "C" fn rclc_executor_cancel(executor: *mut rclc_executor_t) ->
 }
 
 /// Is a blocking spin (`rclc_executor_spin` / `_spin_period`) running on this
-/// executor right now? phase-417 W4.c — `rclcpp::Executor::is_spinning`.
+/// executor right now? The C twin of `rclcpp::Executor::is_spinning`.
 ///
 /// The C API has always MODELLED this (`RCLC_EXECUTOR_STATE_SPINNING`) and
 /// never exported a way to ask, so a C caller could stop a spin but not observe
@@ -5088,7 +5085,7 @@ pub unsafe extern "C" fn rclc_executor_is_spinning(executor: *const rclc_executo
 /// Finalize an executor.
 ///
 /// IDEMPOTENT: a zero-initialised executor is not an error and returns
-/// `RCL_RET_OK` (phase-417 stage 3, the same sweep as
+/// `RCL_RET_OK` (the same rule as
 /// `rcl_guard_condition_fini` / `rcl_node_fini`). rclc says so in a comment of
 /// its own — `rclc/src/rclc/executor.c` @ humble:
 /// `} else { // Repeated calls to fini or calling fini on a zero initialized
@@ -5153,8 +5150,8 @@ pub unsafe extern "C" fn rclc_executor_get_handle_count(executor: *const rclc_ex
 
 /// Bytes of the executor's arena currently claimed — its high-water mark.
 ///
-/// Issue 1609 — the arena is a bump allocator with a free list of released
-/// regions (issue 1496): a registration first reuses a released region that
+/// The arena is a bump allocator with a free list of released
+/// regions: a registration first reuses a released region that
 /// fits and only then moves the bump pointer, so this number grows only when
 /// a registration found nothing to reuse. A create / remove loop whose value
 /// stays at the first cycle's is reusing its bytes; one that climbs is
@@ -5205,7 +5202,7 @@ pub unsafe extern "C" fn rclc_executor_get_arena_capacity(
     get_executor(&mut *executor.cast_mut()).arena_capacity()
 }
 
-/// phase-509 P7 (RFC-0108 D8.1) — the level this executor runs, 0 the most
+/// The level this executor runs, 0 the most
 /// urgent: the generated `NROS_ENTRY_LEVEL_OF_<node>` of the nodes it hosts.
 /// An executor its runner never placed is level 0, which is every executor of
 /// a one-level image. `RCL_RET_INVALID_ARGUMENT` for NULL or an executor that
@@ -5232,7 +5229,7 @@ pub unsafe extern "C" fn rclc_executor_get_level(
     RCL_RET_OK
 }
 
-/// phase-509 P7 — place this executor at `level` (0 the most urgent); its
+/// Place this executor at `level` (0 the most urgent); its
 /// spins check in as that level. A runner calls it once per level before the
 /// level spins. `RCL_RET_INVALID_ARGUMENT` for NULL, an executor that is not
 /// initialised, or a level at or past `rclc_levels_max()`.
@@ -5260,13 +5257,13 @@ pub unsafe extern "C" fn rclc_executor_set_level(
     }
 }
 
-/// phase-509 P7 — the most levels an image can have.
+/// The most levels an image can have.
 #[unsafe(no_mangle)]
 pub extern "C" fn rclc_levels_max() -> u8 {
     nros_node::executor::MAX_LEVELS as u8
 }
 
-/// phase-509 P7 (RFC-0108 D8.2) — state how many levels the image runs; an
+/// State how many levels the image runs; an
 /// image that never does has one. `RCL_RET_INVALID_ARGUMENT` for 0 or more
 /// than `rclc_levels_max()`.
 #[unsafe(no_mangle)]
@@ -5278,13 +5275,13 @@ pub extern "C" fn rclc_levels_set_count(n: u8) -> rcl_ret_t {
     }
 }
 
-/// phase-509 P7 — how many levels the image runs.
+/// How many levels the image runs.
 #[unsafe(no_mangle)]
 pub extern "C" fn rclc_levels_count() -> u8 {
     nros_node::executor::level_count()
 }
 
-/// phase-509 P7 — the low 32 bits of the executor clock, in microseconds, at
+/// The low 32 bits of the executor clock, in microseconds, at
 /// `level`'s latest spin; false (and `*us` untouched) while it has not spun.
 /// Compare two with a wrapping difference.
 ///
@@ -5301,14 +5298,14 @@ pub unsafe extern "C" fn rclc_level_last_spin_us(level: u8, us: *mut u32) -> boo
     }
 }
 
-/// phase-509 P7 (RFC-0108 D8.2) — whether every level of the image has spun
+/// Whether every level of the image has spun
 /// since the last `rclc_levels_take_alive()` that returned true.
 #[unsafe(no_mangle)]
 pub extern "C" fn rclc_levels_alive() -> bool {
     nros_node::executor::every_level_alive()
 }
 
-/// phase-509 P7 (RFC-0108 D8.2) — the watchdog feed: true when every level
+/// The watchdog feed: true when every level
 /// has spun since the last true, and the check-ins are then cleared; false,
 /// and nothing cleared, while any level has not.
 #[unsafe(no_mangle)]
@@ -5494,15 +5491,15 @@ pub struct rclc_sched_context_t {
     pub budget_us: u32,
     /// Deadline in microseconds (0 = absent).
     pub deadline_us: u32,
-    /// Phase 110.F — opt-in OS-level priority for per-callback
+    /// Opt-in OS-level priority for per-callback
     /// dispatch. `0` = no per-callback OS priority (default cooperative
     /// path runs every callback). Numeric meaning is platform-defined.
     pub os_pri: u8,
-    /// Phase 110.G — TT-window offset within the executor's major
+    /// TT-window offset within the executor's major
     /// frame, microseconds. `0` (with `tt_window_duration_us = 0`) =
     /// no TT gate.
     pub tt_window_offset_us: u32,
-    /// Phase 110.G — TT-window length in microseconds. `0` disables
+    /// TT-window length in microseconds. `0` disables
     /// the TT gate for this SC.
     pub tt_window_duration_us: u32,
 }
@@ -5515,7 +5512,6 @@ pub type rclc_sched_context_id_t = u8;
 
 /// Identifier of the auto-created default `Fifo`-class SC. Every
 /// callback registered without an explicit binding maps to it.
-/// Phase 110.B.
 #[unsafe(no_mangle)]
 pub extern "C" fn rclc_executor_default_sched_context_id() -> rclc_sched_context_id_t {
     0
@@ -5562,7 +5558,7 @@ fn convert_sched_context(
     }
 }
 
-/// Phase 110.G — enable TT dispatch on this executor by setting the
+/// Enable TT dispatch on this executor by setting the
 /// major-frame length in microseconds. `0` disables the gate.
 ///
 /// # Safety
@@ -5583,7 +5579,7 @@ pub unsafe extern "C" fn rclc_executor_add_time_triggered_dispatcher(
     RCL_RET_OK
 }
 
-/// Register a new scheduling context with the executor. Phase 110.B.
+/// Register a new scheduling context with the executor.
 ///
 /// On success writes the new `SchedContextId` through `out_sc_id` and
 /// returns `RCL_RET_OK`. Returns `RCLC_RET_FULL` when no slot is
@@ -5633,7 +5629,6 @@ pub unsafe extern "C" fn rclc_executor_create_sched_context(
 /// Bind a registered callback to a scheduling context. The next
 /// `spin_once` cycle dispatches that callback through the SC's queue
 /// (FIFO bitmap or EDF heap, in the SC's priority bucket).
-/// Phase 110.B.
 ///
 /// `handle` is the index returned by the corresponding
 /// `nros_executor_add_*` call. `sc_id` must be a value previously
@@ -5703,7 +5698,7 @@ const _: () = assert!(
 
 /// Register a callback to run BEFORE the executor's session is closed.
 ///
-/// Issue 0790. This is the phase with no workaround: the callback runs while
+/// This is the phase with no workaround: the callback runs while
 /// every entity still works, so a node can publish a final state, answer a last
 /// request, park an actuator or release a bus. After teardown it cannot.
 ///
@@ -5751,7 +5746,7 @@ pub unsafe extern "C" fn rclc_executor_add_pre_shutdown_callback(
 
 /// Register a callback to run AFTER the executor's session is closed.
 ///
-/// Issue 0790 — rclcpp's `add_on_shutdown_callback` / `rclcpp::on_shutdown`.
+/// rclcpp's `add_on_shutdown_callback` / `rclcpp::on_shutdown`.
 /// The entities are gone by the time it runs, so anything that needs the wire
 /// belongs in [`rclc_executor_add_pre_shutdown_callback`] instead.
 ///

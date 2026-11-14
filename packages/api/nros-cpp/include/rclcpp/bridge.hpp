@@ -3,7 +3,7 @@
 
 /**
  * @file bridge.hpp
- * @brief C++ multi-RMW bridge surface (Phase 128.F.5).
+ * @brief C++ multi-RMW bridge surface.
  *
  * Wraps the C entry points from `<rclc/bridge.h>` in RAII-friendly
  * classes. Single-backend code does not need this header.
@@ -12,10 +12,10 @@
  * in addition to its usual nros-cpp + per-backend libs.
  */
 
-// Issue 0332 — the multi-RMW bridge surface is hosted-only (it uses
+// The multi-RMW bridge surface is hosted-only (it uses
 // `std::string`/`std::vector` throughout) and must gate on `NROS_CPP_STD`, not
 // `__STDC_HOSTED__`: a hosted compiler run `-nostdinc++` against Zephyr's
-// minimal libcpp has no `<string>`/`<vector>` (issue 0112 class). A no-op
+// minimal libcpp has no `<string>`/`<vector>`. A no-op
 // without NROS_CPP_STD, so freestanding syntax checks pass.
 #ifdef NROS_CPP_STD // hosted-family: bridge-hosted
 
@@ -39,7 +39,7 @@ struct SessionSpec {
     uint32_t domain_id = 0;
     std::string node_name;
     std::string namespace_;
-    /// Issue 2123 -- this session's RMW properties (its domain's RMW file,
+    /// This session's RMW properties (its domain's RMW file,
     /// lowered on the host: the table `nros dev rmw session-properties` writes).
     /// Borrowed, not copied: the rows must outlive the `MultiExecutor`
     /// construction that reads them.

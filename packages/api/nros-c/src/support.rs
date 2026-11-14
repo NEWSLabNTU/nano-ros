@@ -129,10 +129,10 @@ pub(crate) fn report_transport_refusal(
     transport_error_to_ret(err)
 }
 
-/// Issue #227 — pass this as `domain_id` to `rclc_support_init[_named]` to
+/// Pass this as `domain_id` to `rclc_support_init[_named]` to
 /// request an EXPLICIT domain 0. Plain `0` is the UNSET sentinel (defers to
-/// `ROS_DOMAIN_ID` env on hosted, then the baked/default rungs — the #206
-/// model-A ladder). Valid domains cap at 232, so 255 is unambiguous. Hosted
+/// `ROS_DOMAIN_ID` env on hosted, then the baked/default rungs of the
+/// precedence ladder). Valid domains cap at 232, so 255 is unambiguous. Hosted
 /// env still overrides it, like every explicit argument under model A.
 pub const NROS_DOMAIN_ID_EXPLICIT_ZERO: u8 = 255;
 
@@ -148,7 +148,7 @@ pub enum rclc_support_state_t {
     RCLC_SUPPORT_STATE_SHUTDOWN = 2,
 }
 
-/// phase-492 W1.b — rcl's init context, as rclc programs reach it:
+/// rcl's init context, as rclc programs reach it:
 /// `&support.context`. Here it is the handle by which an executor finds the
 /// support that owns the session; it carries nothing else. Upstream's members
 /// (global arguments, instance id) are not modelled, so it is opaque to C.
@@ -183,7 +183,7 @@ pub(crate) unsafe fn support_of_context<'a>(
 /// It manages the middleware session and provides shared resources.
 #[repr(C)]
 pub struct rclc_support_t {
-    /// phase-492 W1.b — rclc's `support.context`, the argument
+    /// rclc's `support.context`, the argument
     /// `rclc_executor_init(&executor, &support.context, n, &allocator)` takes.
     /// Names this support; set by init, cleared by fini.
     pub context: rcl_context_t,
@@ -227,7 +227,7 @@ pub extern "C" fn rclc_support_get_zero_initialized() -> rclc_support_t {
     rclc_support_t::default()
 }
 
-/// Initialize the support context — rclc's signature (phase-492 W1.b).
+/// Initialize the support context — rclc's signature.
 ///
 /// `rclc_support_init(&support, argc, argv, &allocator)`, as an rclc program
 /// writes it. The locator and domain come from the build and, on a hosted
@@ -266,7 +266,7 @@ pub unsafe extern "C" fn rclc_support_init(
 
 /// [`rclc_support_init`] with the image's BAKED connect rungs — the seam
 /// `<rclc/detail/baked_rmw.h>`'s `rclc_support_init` macro forwards to: the RMW
-/// selector (`NROS_ENTRY_RMW`, issue 1531) and, since phase-499 W2, the
+/// selector (`NROS_ENTRY_RMW`) and the
 /// locator and domain (`NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`). Those
 /// are macros defined in the CALLER's translation unit — the cmake road bakes
 /// them there (`-DNROS_ENTRY_LOCATOR`, `NanoRosEntry.cmake`) — so only a header
@@ -354,10 +354,10 @@ pub unsafe extern "C" fn rclc_support_init_named(
     unsafe { rclc_support_init_rmw(support, locator, domain_id, session_name, core::ptr::null()) }
 }
 
-/// Issue 1050 defect (3) — [`rclc_support_init_named`] with an explicit RMW
+/// [`rclc_support_init_named`] with an explicit RMW
 /// selector.
 ///
-/// `rmw` is the BAKED rung of precedence model A (RFC-0045): a hosted
+/// `rmw` is the BAKED rung of precedence model A: a hosted
 /// `$NROS_RMW` still wins, NULL or `""` means "no selector", and a selector
 /// that names no registered backend is an error rather than a fallback.
 ///

@@ -40,7 +40,7 @@ fn reader_at(buf: &[u8], pos: usize) -> Result<CdrReader<'_>, DeserError> {
 /// Write the 4-byte CDR encapsulation header and advance the cursor: XCDR1
 /// `00 01 00 00` on every edition today, because the `XCDR2` const is `false` (the
 /// encoding is chosen per type, never per edition, and the per-type signal is
-/// parked: RFC-0055's correction). XCDR2 DELIMITED_CDR2 `00 09 00 00` is the
+/// parked). XCDR2 DELIMITED_CDR2 `00 09 00 00` is the
 /// branch that const would select. Replaces the hardcoded header the generated C
 /// `_serialize` used to emit. Returns 0 on success, -1 on overrun/null.
 ///
@@ -705,7 +705,7 @@ pub unsafe extern "C" fn rclc_cdr_read_string(
 /// the writer emitted. This is [`CdrReader::align`] behind the C ABI, so it
 /// carries the same edition rule (XCDR2 caps 8-byte primitives at 4) and the
 /// header-only readers in `<rclc/detail/view.h>` agree with the Rust reader byte for
-/// byte instead of re-deriving the arithmetic (issue 1148).
+/// byte instead of re-deriving the arithmetic.
 ///
 /// Returns 0 on success, -1 if `alignment` is 0 or the padding would run past
 /// `end`.

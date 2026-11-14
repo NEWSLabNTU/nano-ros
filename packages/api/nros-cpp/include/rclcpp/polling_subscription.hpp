@@ -17,14 +17,14 @@
  *                             `take_sequence` and `try_borrow`.
  *   `PollingSubscription<M>`— RETAINED. A `PollSubscription<M>` plus a cached
  *                             newest value, so a caller can read it repeatably
- *                             at a chosen point (issue 0278 — the nano-ros
+ *                             at a chosen point (the nano-ros
  *                             analog of ROS 2
  *                             `autoware_utils::InterProcessPollingSubscriber`).
  *
  * Neither dispatches. A subscription with a CALLBACK is `rclcpp::Subscription<M>`
  * in `rclcpp/subscription.hpp`, and the executor arena owns it.
  *
- * WHY THE TAKING API LIVES HERE — phase-456 W2b
+ * WHY THE TAKING API LIVES HERE
  *
  * It used to live on `Subscription<M>`, which served BOTH ownership models
  * behind a ~~`callback_mode_`~~ flag. On the dispatch path the arena owns the
@@ -49,21 +49,21 @@
 #include "rclcpp/node.hpp"
 #include "rclcpp/result.hpp"
 #include "rclcpp/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
-// RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creator below.
+// NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creator below.
 #include "rclcpp/detail/serialization_format.hpp"
 #include "rclcpp/stream.hpp"
 #include "rclcpp/subscription.hpp"
 #include "rclcpp/detail/traits.hpp"
 
-// phase-456 W5 — the nested pointer aliases below are `rclcpp::Owned<T>`, which
+// The nested pointer aliases below are `rclcpp::Owned<T>`, which
 // is ours and needs no `<memory>`, so the capability probe this header used to
 // include is gone with the block it served.
 #include "rclcpp/owned.hpp"
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
-#include "rclcpp/event.hpp" // issue 1972 — MatchedInfo / IncompatibleTypeInfo
+#include "rclcpp/event.hpp" // MatchedInfo / IncompatibleTypeInfo
 
-// phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
+// `Node` is DEFINED in `rclcpp::` (that namespace is
 // the home). The friend declaration below is qualified, and a qualified friend
 // names an existing entity rather than introducing one, so the name has to be
 // declared first — and in `rclcpp::`, because an elaborated `class Node;` in
@@ -76,7 +76,7 @@ namespace rclcpp {
 
 /// Poll-style subscription — caller-owned storage, consuming receive.
 ///
-/// phase-456 W2b: this is the class `Subscription<M>` used to be when it was
+/// This is the class `Subscription<M>` used to be when it was
 /// created through the out-ref `create_subscription(out, topic, qos)`. The name
 /// moved because upstream's `rclcpp::Subscription<M>` is owned by the node and
 /// dispatched by the executor, which is what OUR `Subscription<M>` now is; an
@@ -112,7 +112,7 @@ template <typename M> class PollSubscription {
     ///
     /// The escape hatch for a type with no derived bound, and the way to
     /// deliberately override a bounded type's own number. Mirrors how
-    /// `bind_subscription_sized` relates to `bind_subscription` (issue 0964).
+    /// `bind_subscription_sized` relates to `bind_subscription`.
     ///
     /// @tparam Cap  Stack bytes to receive into. A sample larger than this is
     ///              refused by the backend, so under-sizing DROPS messages.
@@ -128,10 +128,10 @@ template <typename M> class PollSubscription {
         return Result::success();
     }
 
-    /// Issue 2074 — upstream's `rclcpp::Subscription::take(msg, message_info)`:
+    /// upstream's `rclcpp::Subscription::take(msg, message_info)`:
     /// @ref take plus the sample's metadata, filled from the same backend take
     /// (`take_serialized_with_info`) the `(const M&, const MessageInfo&)`
-    /// callback path uses (issue 2036). Plain data, so it is offered on
+    /// callback path uses. Plain data, so it is offered on
     /// freestanding builds too.
     ///
     /// @param msg   Output message struct (filled on success).
@@ -145,7 +145,7 @@ template <typename M> class PollSubscription {
     }
 
     /// @ref take(M&, MessageInfo&) with the receive buffer sized by the
-    /// CALLER. See @ref take_sized (issue 0964).
+    /// CALLER. See @ref take_sized.
     template <size_t Cap> Result take_sized(M& msg, ::rclcpp::MessageInfo& info) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         uint8_t buf[Cap];
@@ -160,7 +160,7 @@ template <typename M> class PollSubscription {
         return Result::success();
     }
 
-    /// Issue 0073 — take that ALSO returns the E2E message-integrity status
+    /// Take that ALSO returns the E2E message-integrity status
     /// (CRC + sequence gap/dup) of the received sample. The safety-e2e analog of
     /// @ref take: the backend recomputes + compares the CRC the publisher
     /// attached and tracks the sequence, writing the verdict to @p status.
@@ -180,7 +180,7 @@ template <typename M> class PollSubscription {
     }
 
     /// @ref take_validated with the receive buffer sized by the CALLER.
-    /// See @ref take_sized (issue 0964).
+    /// See @ref take_sized.
     template <size_t Cap> Result take_validated_sized(M& msg, ::rclcpp::IntegrityStatus& status) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         uint8_t buf[Cap];
@@ -217,8 +217,8 @@ template <typename M> class PollSubscription {
 
     /// Try to receive raw CDR data **plus the sample's wire attachment**
     /// (non-blocking) — the C++ poll-side analog of the Rust
-    /// `node.subscription(t).generic(..).message_info()` builder
-    /// (Phase 189.M3.4b). The attachment carries out-of-band tags such as a
+    /// `node.subscription(t).generic(..).message_info()` builder.
+    /// The attachment carries out-of-band tags such as a
     /// cross-RMW bridge's bridge_origin; `out_att_len` is 0 when the sample
     /// carried none.
     ///
@@ -245,10 +245,10 @@ template <typename M> class PollSubscription {
     }
 
     // ====================================================================
-    // Phase 124.A.7 — zero-copy receive (borrow / release)
+    // Zero-copy receive (borrow / release)
     // ====================================================================
 
-    /// Phase 124.A.7 — read-only view returned by `PollSubscription::borrow`.
+    /// Read-only view returned by `PollSubscription::borrow`.
     /// RAII: `Drop` releases the view back to the subscriber.
     class View {
       public:
@@ -295,7 +295,7 @@ template <typename M> class PollSubscription {
         void* token_;
     };
 
-    /// Phase 124.A.7 — try to borrow the next message in place. Returns
+    /// Try to borrow the next message in place. Returns
     /// `View` with data when a message is ready, empty `View` when not.
     /// On error returns `ResultOf::error`.
     ::rclcpp::ResultOf<View> try_borrow() {
@@ -310,7 +310,7 @@ template <typename M> class PollSubscription {
         return ::rclcpp::ResultOf<View>::ok(View{storage_, buf, len, token});
     }
 
-    /// Phase 124.D.1 — burst-take.
+    /// Burst-take.
     ///
     /// Drain up to `max_msgs` queued samples in a single call. The
     /// i-th delivered sample lives at `buf + i * per_msg_cap` with
@@ -357,13 +357,13 @@ template <typename M> class PollSubscription {
     bool is_valid() const { return initialized_; }
 
     /// How many publishers are on this subscription's topic, RIGHT NOW —
-    /// rclcpp's `Subscription::get_publisher_count`. phase-444.
+    /// rclcpp's `Subscription::get_publisher_count`.
     ///
     /// The subscription half of `Publisher::get_subscription_count`, which
     /// states the weakening (topic-wide, not matched-to-this-entity), why the
     /// executor and the out-parameter are there, and why an error is not `0`.
     ///
-    /// phase-456 W2b split this class in two and this method answers on BOTH
+    /// This class is split in two and this method answers on BOTH
     /// halves, unchanged: it reads `topic_name_`, which each half keeps, and
     /// takes the executor as an argument rather than holding one. A topic-wide
     /// count does not depend on which owner holds the subscriber.
@@ -372,20 +372,20 @@ template <typename M> class PollSubscription {
         return executor.count_publishers(topic_name_, out_count);
     }
 
-    /// The QoS profile this subscription is ACTUALLY running — issue 1437.
+    /// The QoS profile this subscription is ACTUALLY running.
     ///
     /// `rclcpp::Subscription::get_actual_qos`. See
     /// @ref Publisher::get_actual_qos for what "actual" means and why a policy
     /// the backend cannot report is an ABSENCE (`ReliabilityPolicy::Unknown`, ...)
     /// rather than your request echoed back.
     ///
-    /// phase-456 W2b: issue 1437 wrote this to answer on BOTH roads from one
+    /// This was written to answer on BOTH roads from one
     /// class, branching on ~~`callback_mode_`~~ to pass either `storage_` or
     /// `(executor, handle_id)`. This half owns its subscriber, so it passes
     /// `storage_` and the branch is gone. The DISPATCH half cannot answer it
     /// yet — it holds no executor, only `sched_handle_id_` — and inventing a
     /// signature that takes one would diverge from the upstream no-argument
-    /// spelling this method exists to adopt. Recorded in phase-456 rather than
+    /// spelling this method exists to adopt. Recorded as a gap rather than
     /// guessed at here.
     ::rclcpp::QoS get_actual_qos() const {
         nros_cpp_qos_t f{};
@@ -399,7 +399,7 @@ template <typename M> class PollSubscription {
 
     /// Destructor — releases the subscriber this object owns.
     ///
-    /// Unconditional since phase-456 W2b: every `PollSubscription<M>` owns an
+    /// Unconditional: every `PollSubscription<M>` owns an
     /// `RmwSubscriber` in `storage_`. The `!callback_mode_` guard this replaced
     /// existed because one class served two owners; the dispatch entity is
     /// `rclcpp::Subscription<M>` now and has no storage to free.
@@ -411,10 +411,10 @@ template <typename M> class PollSubscription {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // `nros_cpp_subscription_relocate` runtime call (Phase 84.C1);
+    // `nros_cpp_subscription_relocate` runtime call;
     // the `stream_` is rebound to the new storage afterwards.
     //
-    // Safe for every object of this type, which is new in phase-456 W2b: the
+    // Safe for every object of this type, which is new since the split: the
     // old class also held callback-mode entities, and moving one of THOSE left
     // the arena dispatching into a stale `this`. That hazard moved with its
     // subject.
@@ -451,7 +451,7 @@ template <typename M> class PollSubscription {
     PollSubscription() : storage_(), topic_name_{}, initialized_(false), stream_() {}
 
     // ====================================================================
-    // Phase 108 — status events
+    // Status events
     // ====================================================================
     //
     // These take `storage_`, so they were only ever answerable on this half of
@@ -460,7 +460,7 @@ template <typename M> class PollSubscription {
     // entity offers no such setter rather than one that reinterprets zeros.
 
     /// Register a callback for liveliness-changed events — rclcpp's
-    /// `SubscriptionEventCallbacks::liveliness_callback` (issue 1993).
+    /// `SubscriptionEventCallbacks::liveliness_callback`.
     /// `cb(storage, liveliness status, user_context)`, observed as the
     /// subscription is polled. `ErrorCode::Unsupported` on a backend that does
     /// not generate the event (XRCE-DDS, uORB; zenoh on bare metal);
@@ -492,7 +492,7 @@ template <typename M> class PollSubscription {
         return Result(nros_cpp_subscription_set_message_lost(storage_, cb, user_context));
     }
 
-    /// Issue 1972 — rclcpp's `SubscriptionEventCallbacks::matched_callback`:
+    /// rclcpp's `SubscriptionEventCallbacks::matched_callback`:
     /// `cb(storage, MatchedInfo, user_context)` when a publisher starts or
     /// stops matching this subscription. Observed as the subscription is
     /// polled. `ErrorCode::Unsupported` on XRCE-DDS and uORB.
@@ -501,7 +501,7 @@ template <typename M> class PollSubscription {
         return Result(nros_cpp_subscription_set_matched(storage_, cb, user_context));
     }
 
-    /// Issue 1972 — rclcpp's
+    /// rclcpp's
     /// `SubscriptionEventCallbacks::incompatible_type_callback`: a publisher
     /// on this topic NAME with a different type was seen.
     Result on_incompatible_type(IncompatibleTypeCallbackType cb, void* user_context = nullptr) {
@@ -535,13 +535,13 @@ template <typename M> class PollSubscription {
 /// ```
 template <typename M> class PollingSubscription {
   public:
-    /// `PollingSubscription<M>::SharedPtr` — phase-456 W5.
+    /// `PollingSubscription<M>::SharedPtr`.
     ///
     /// The nested-pointer spelling rclcpp uses for every entity type, carried
     /// here so a member declaration reads the same as its
     /// `Subscription<M>::SharedPtr` sibling. There is no upstream
     /// `PollingSubscription`; the analog is `autoware_utils::
-    /// InterProcessPollingSubscriber` (issue 0278).
+    /// InterProcessPollingSubscriber`.
     ///
     /// `rclcpp::Owned<PollingSubscription<M>>`, and the reason is the ownership
     /// rather than a preference: this entity's subscriber lives in the CALLER's
@@ -583,7 +583,7 @@ template <typename M> class PollingSubscription {
     /// `takeNewData` — use when "did it change?" matters).
     const M* take_new_data() { return drain() ? &latest_ : nullptr; }
 
-    // phase-379 W6 — `take(M&)` was REMOVED here, deliberately, and the name is
+    // `take(M&)` was REMOVED here, deliberately, and the name is
     // now reserved for rclcpp's meaning.
     //
     // It drained to the newest sample and returned `true` if a value had EVER
@@ -597,7 +597,7 @@ template <typename M> class PollingSubscription {
     //
     // It was a convenience duplicating `take_data()`, with zero real callers.
     // `take_data()` (retained latest) and `take_new_data()` (only if new) are
-    // the faithful `autoware_utils` mirrors (issue 0278) and are unaffected;
+    // the faithful `autoware_utils` mirrors and are unaffected;
     // use `take_data()` for what this did.
 
     /// Direct read of the cached latest without draining (no transport poll).
@@ -634,11 +634,11 @@ namespace rclcpp {} // namespace rclcpp
 
 namespace rclcpp {
 
-/// phase-456 W2b — the POLL creator, moved here with the type it creates.
+/// The POLL creator, moved here with the type it creates.
 template <typename M>
 Result Node::create_subscription(::rclcpp::PollSubscription<M>& out, const char* topic,
                                  const ::rclcpp::QoS& qos) {
-    // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
+    // One image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
     if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
@@ -646,7 +646,7 @@ Result Node::create_subscription(::rclcpp::PollSubscription<M>& out, const char*
     nros_cpp_ret_t ret = nros_cpp_subscription_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
                                                       ffi_qos, out.storage_);
     if (ret == 0) {
-        // Phase 87.6: topic name lives C++-side now.
+        // Topic name lives C++-side now.
         size_t topic_len = 0;
         while (topic[topic_len] != '\0' && topic_len + 1 < sizeof(out.topic_name_)) {
             out.topic_name_[topic_len] = topic[topic_len];
@@ -658,15 +658,15 @@ Result Node::create_subscription(::rclcpp::PollSubscription<M>& out, const char*
     return Result(ret);
 }
 
-/// Phase 189.M3.1 — named-options overload for the poll creator.
+/// Named-options overload for the poll creator.
 ///
 /// Delegates to the qos-only create. `options` carries the non-QoS axes, and
 /// NEITHER of them reaches a poll subscription:
 ///
 ///  * `sched_context` — an executor `HandleId` is what
 ///    `nros_cpp_bind_handle_to_sched_context` binds, and a poll subscription
-///    registers no arena entry, so there is no slot to bind. Until phase-456
-///    W2b this read as a runtime guard (`out.has_sched_handle()`, which was
+///    registers no arena entry, so there is no slot to bind. This used
+///    to read as a runtime guard (`out.has_sched_handle()`, which was
 ///    `sched_handle_id_ != SIZE_MAX` on a field the poll path never assigned),
 ///    i.e. a branch that could not be taken; splitting the types makes it
 ///    structural — the field does not exist on this type.
@@ -687,18 +687,18 @@ template <typename M>
 Result Node::create_polling_subscription(::rclcpp::PollingSubscription<M>& out, const char* topic,
                                          const ::rclcpp::QoS& qos) {
     // Reuse the existing poll-mode subscription factory to own storage/init/
-    // destroy; the wrapper only adds the retained-latest cache (issue 0278).
+    // destroy; the wrapper only adds the retained-latest cache.
     return create_subscription(out.sub_, topic, qos);
 }
 } // namespace rclcpp
 
 namespace rclcpp {
 
-/// Phase 123.B.4 — value-returning subscription factory. Pairs
+/// Value-returning subscription factory. Pairs
 /// with `create_publisher` so the full pub/sub create dance is
 /// expressible as a chain of `auto`-typed factories.
 ///
-/// phase-456 W2b — returns the POLL type, which is what it always created: it
+/// Returns the POLL type, which is what it always created: it
 /// calls the out-ref `create_subscription(out, topic, qos)`, and a value a
 /// caller holds by move is a caller-owned entity by definition. A dispatch
 /// subscription cannot be handed back this way at all; `rclcpp::Node::

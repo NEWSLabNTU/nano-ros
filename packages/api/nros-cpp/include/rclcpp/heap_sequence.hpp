@@ -4,7 +4,7 @@
 // Memory layout is repr(C) compatible: identical to
 // `struct { T* data; size_t size; size_t capacity; }` (rclc's
 // `rosidl_runtime_c__<T>__Sequence` shape). Used by codegen-generated message
-// structs for `mode = "heap"` sequence fields (RFC-0033).
+// structs for `mode = "heap"` sequence fields.
 //
 // Allocation goes through the C-ABI `nros_platform_malloc` / `nros_platform_free`
 // so the SAME allocator is used on both sides of the Rust↔C++ FFI: the Rust FFI
@@ -29,13 +29,13 @@
 
 namespace rclcpp {
 
-/// Heap-backed growable sequence container (`mode = "heap"`, RFC-0033).
+/// Heap-backed growable sequence container (`mode = "heap"`).
 ///
 /// Layout is `{ T* data; size_t size; size_t capacity; }` — C-ABI compatible
 /// with the runtime and the Rust FFI mirror. Owns its buffer (freed in the
 /// destructor via `nros_platform_free`); non-copyable, movable.
 ///
-/// **Element lifetime (issue #201).** Destruction paths (destructor,
+/// **Element lifetime.** Destruction paths (destructor,
 /// move-assign, `clear()`) run each element's destructor before freeing the
 /// buffer, so elements that OWN heap memory (`rclcpp::HeapString`, a nested
 /// `HeapSequence`, generated message structs containing either) are torn down
@@ -130,7 +130,7 @@ template <typename T> struct HeapSequence {
     /// Append a default-constructed element in place and return it, or
     /// `nullptr` on alloc failure. The way to BUILD sequences of owning
     /// (non-copyable) element types: fill the returned element through its
-    /// own mutators (issue #201 — the two-level heap use case).
+    /// own mutators (the two-level heap use case).
     T* emplace_back() {
         if (size >= capacity) {
             size_t next = capacity == 0 ? 4 : capacity * 2;
@@ -153,7 +153,7 @@ template <typename T> struct HeapSequence {
     T& operator[](size_t i) { return data[i]; }
     const T& operator[](size_t i) const { return data[i]; }
 
-    /// Run every live element's destructor (issue #201). A pseudo-destructor
+    /// Run every live element's destructor. A pseudo-destructor
     /// call is valid for scalar `T` too and compiles to nothing when `T` is
     /// trivially destructible — no `<type_traits>` needed.
     void destroy_elements() {

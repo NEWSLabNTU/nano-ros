@@ -1,10 +1,10 @@
-// nros-cpp: CallbackGroup — Phase 273 (RFC-0047)
+// nros-cpp: CallbackGroup
 // Freestanding C++ — no exceptions, no STL required
 
 /**
  * @file callback_group.hpp
  * @ingroup grp_node
- * @brief `rclcpp::CallbackGroup` — named scheduling group token (RFC-0047).
+ * @brief `rclcpp::CallbackGroup` — named scheduling group token.
  *
  * A `CallbackGroup` is a name-only token produced by
  * `Node::create_callback_group("name")` or
@@ -30,16 +30,16 @@ namespace rclcpp {
 
 struct CallbackGroup;
 
-/// `rclcpp::CallbackGroupType` — upstream's two group kinds (phase-488).
+/// `rclcpp::CallbackGroupType` — upstream's two group kinds.
 ///
 /// Both are accepted and neither changes dispatch: an executor here runs its
 /// callbacks on one task, so every group is mutually exclusive by
 /// construction, and a `Reentrant` group's callbacks still run one at a time.
-/// Parallelism is a sched task (RFC-0047), never a group kind.
+/// Parallelism is a sched task, never a group kind.
 enum class CallbackGroupType { MutuallyExclusive, Reentrant };
 
 /// What `create_callback_group(CallbackGroupType, ...)` returns, and the type
-/// `CallbackGroup::SharedPtr` names: upstream's ANONYMOUS group (phase-488).
+/// `CallbackGroup::SharedPtr` names: upstream's ANONYMOUS group.
 ///
 /// A ported node creates groups to keep a multi-threaded executor's callbacks
 /// apart, and names none of them. It is a token, not a scheduling group: it
@@ -72,7 +72,7 @@ class CallbackGroupToken {
     CallbackGroupType type_ = CallbackGroupType::MutuallyExclusive;
 };
 
-/// Named callback-group token (RFC-0047 / Phase 273).
+/// Named callback-group token.
 ///
 /// Create via `Node::create_callback_group("ctrl")` or
 /// `Node::create_callback_group("ctrl")`.
@@ -84,7 +84,7 @@ class CallbackGroupToken {
 /// references it — use compile-time string literals.
 struct CallbackGroup {
     /// `rclcpp::CallbackGroup::SharedPtr` — upstream's anonymous group, a token
-    /// (see `CallbackGroupToken`). phase-488.
+    /// (see `CallbackGroupToken`).
     using SharedPtr = CallbackGroupToken;
     using WeakPtr = CallbackGroupToken;
 
@@ -100,7 +100,7 @@ struct CallbackGroup {
 
 namespace detail {
 
-/// phase-459 W6 -- the code `set_error` records when a node's callback groups
+/// The code `set_error` records when a node's callback groups
 /// disagree with its registration's `CALLBACK_GROUPS`. Same shape as
 /// `DECLARED_DEPTH_MISMATCH` (-403): the image contradicting its own
 /// declaration, not a backend failure.
@@ -110,7 +110,7 @@ constexpr int32_t DECLARED_CALLBACK_GROUP_MISMATCH = -459;
 /// constructor CREATED.
 ///
 /// Why this exists: `CALLBACK_GROUPS` is what the sched task derivation reads
-/// (phase-459 W1, through `nros-metadata.json`), and `create_callback_group` is
+/// (through `nros-metadata.json`), and `create_callback_group` is
 /// what the executor binds. Two spellings of one fact, so nothing stopped them
 /// from disagreeing — a group created in code that the keyword did not declare
 /// is scheduled on a sched task the derivation never ranked, and a declared group

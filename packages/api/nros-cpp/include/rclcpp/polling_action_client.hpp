@@ -6,7 +6,7 @@
  * @ingroup grp_action
  * @brief `rclcpp::PollingActionClient<A>` — caller-polls action client.
  *
- * Phase 122.3.d.b — typed C++ wrapper over the L1 polling FFI added
+ * Typed C++ wrapper over the L1 polling FFI added
  * in 122.3.d.a. Mirrors `ActionClient<A>` but drops the executor
  * arena / callback model: the caller drives `send_goal_raw` +
  * `take_*` from a spin loop.
@@ -19,12 +19,12 @@
 #include <cstdint>
 #include <string.h>
 
-// phase-417 W4.b — `rclcpp_action::GoalUUID`, the goal-id VALUE type, is declared
+// `rclcpp_action::GoalUUID`, the goal-id VALUE type, is declared
 // beside the shared action enums in action_server.hpp (which is also where
 // polling_action_server.hpp reaches for them).
 #include "rclcpp_action/server.hpp"
 #include "rclcpp/detail/config.hpp"
-#include "rclcpp/detail/entity_name.hpp" // phase-444 — the one entity-name copy
+#include "rclcpp/detail/entity_name.hpp" // The one entity-name copy
 #include "rclcpp/node.hpp"
 #include "rclcpp/detail/nros_cpp_config_generated.h"
 #include "rclcpp/result.hpp"
@@ -32,7 +32,7 @@
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
-// phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
+// `Node` is DEFINED in `rclcpp::` (that namespace is
 // the home). The friend declaration below is qualified, and a qualified friend
 // names an existing entity rather than introducing one, so the name has to be
 // declared first — and in `rclcpp::`, because an elaborated `class Node;` in
@@ -62,7 +62,7 @@ namespace rclcpp {
 /// ```
 template <typename A> class PollingActionClient {
   public:
-    /// phase-417 W4.b — one spelling for all four action classes; see
+    /// One spelling for all four action classes; see
     /// `rclcpp_action::ACTION_NAME_MAX` in `action_server.hpp`. Kept as a member
     /// name so existing `PollingActionServer<A>::ACTION_NAME_MAX` /
     /// `PollingActionClient<A>::ACTION_NAME_MAX` call sites still resolve.
@@ -99,8 +99,7 @@ template <typename A> class PollingActionClient {
             storage_, buf, len, reinterpret_cast<uint8_t(*)[16]>(goal_id_out)));
     }
 
-    /// @ref send_goal writing the generated id into a `GoalUUID` value
-    /// (phase-417 W4.b).
+    /// @ref send_goal writing the generated id into a `GoalUUID` value.
     Result send_goal(const GoalType& goal, ::rclcpp_action::GoalUUID& goal_id_out) {
         return send_goal(goal, goal_id_out.data());
     }
@@ -120,9 +119,9 @@ template <typename A> class PollingActionClient {
         return Result::success();
     }
 
-    /// Issue 2011 -- @ref try_recv_goal_response that also writes the goal the
+    /// @ref try_recv_goal_response that also writes the goal the
     /// reply is ABOUT into `goal_id_out` (the goal of the request whose
-    /// sequence id it names, issue 2009). With several goals in flight the
+    /// sequence id it names). With several goals in flight the
     /// bytes alone cannot say which one a reply answers.
     Result try_recv_goal_response(uint8_t* buf, size_t cap, size_t& out_len,
                                   uint8_t goal_id_out[16]) {
@@ -145,7 +144,7 @@ template <typename A> class PollingActionClient {
             storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id)));
     }
 
-    /// @ref send_get_result_request taking a `GoalUUID` value (phase-417 W4.b).
+    /// @ref send_get_result_request taking a `GoalUUID` value.
     Result send_get_result_request(const ::rclcpp_action::GoalUUID& goal_id) {
         return send_get_result_request(goal_id.data());
     }
@@ -161,8 +160,7 @@ template <typename A> class PollingActionClient {
     /// @ref try_recv_result with the RESULT PAYLOAD capacity chosen by the
     /// caller. `Cap` is the payload, not the buffer: the wire reply carries an
     /// 8-byte prefix (CDR header + status + alignment pad,
-    /// `NROS_CPP_ACTION_RESULT_PAYLOAD_OFFSET`), which this adds (issues 0964,
-    /// 2014).
+    /// `NROS_CPP_ACTION_RESULT_PAYLOAD_OFFSET`), which this adds.
     /// See @ref Subscription::try_recv_sized.
     template <size_t Cap> Result try_recv_result_sized(ResultType& out) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
@@ -171,7 +169,7 @@ template <typename A> class PollingActionClient {
         return decode_result(rc, buf, out);
     }
 
-    /// Issue 2011 -- @ref try_recv_result that also writes the goal the result
+    /// @ref try_recv_result that also writes the goal the result
     /// is FOR into `goal_id_out` (see the goal-response overload).
     Result try_recv_result(ResultType& out, uint8_t goal_id_out[16]) {
         return try_recv_result_sized<::rclcpp::rx_buffer_capacity<ResultType>::value>(out,
@@ -199,7 +197,7 @@ template <typename A> class PollingActionClient {
             storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id)));
     }
 
-    /// @ref send_cancel_request taking a `GoalUUID` value (phase-417 W4.b).
+    /// @ref send_cancel_request taking a `GoalUUID` value.
     Result send_cancel_request(const ::rclcpp_action::GoalUUID& goal_id) {
         return send_cancel_request(goal_id.data());
     }
@@ -217,7 +215,7 @@ template <typename A> class PollingActionClient {
         return Result::success();
     }
 
-    /// Issue 2011 -- @ref try_recv_cancel_response that also writes the goal
+    /// @ref try_recv_cancel_response that also writes the goal
     /// the reply is ABOUT into `goal_id_out`.
     Result try_recv_cancel_response(uint8_t* buf, size_t cap, size_t& out_len,
                                     uint8_t goal_id_out[16]) {
@@ -234,8 +232,7 @@ template <typename A> class PollingActionClient {
             goal_id_out, out_fb);
     }
 
-    /// @ref try_recv_feedback writing the source id into a `GoalUUID` value
-    /// (phase-417 W4.b).
+    /// @ref try_recv_feedback writing the source id into a `GoalUUID` value.
     Result try_recv_feedback(::rclcpp_action::GoalUUID& goal_id_out, FeedbackType& out_fb) {
         return try_recv_feedback_sized<::rclcpp::rx_buffer_capacity<FeedbackType>::value>(
             goal_id_out.data(), out_fb);
@@ -248,11 +245,11 @@ template <typename A> class PollingActionClient {
     }
 
     /// @ref try_recv_feedback with the receive buffer sized by the CALLER.
-    /// See @ref Subscription::try_recv_sized (issue 0964).
+    /// See @ref Subscription::try_recv_sized.
     template <size_t Cap>
     Result try_recv_feedback_sized(uint8_t goal_id_out[16], FeedbackType& out_fb) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        // Issue 2014 — the raw frame is `[CDR header 4][GoalId 16][fields]`,
+        // The raw frame is `[CDR header 4][GoalId 16][fields]`,
         // so the buffer holds `Cap` of FIELDS plus that prefix, and the
         // fields are decoded behind the frame's own header (they used to be
         // decoded from byte 0, reading the goal id as the payload).
@@ -262,7 +259,7 @@ template <typename A> class PollingActionClient {
         return decode_spliced<FeedbackType>(rc, buf, kFeedbackOffset, out_fb);
     }
 
-    /// Phase 122.3.c.6.e — caller-owned wake-state slot. One per
+    /// Caller-owned wake-state slot. One per
     /// (channel) pair; declare next to the client, pass into
     /// `set_*_wake_callback`. Must outlive the client.
     struct WakeState {
@@ -311,7 +308,7 @@ template <typename A> class PollingActionClient {
         return Result::success();
     }
 
-    /// Issue 2014 — the action frame offsets, from the ONE spelling
+    /// The action frame offsets, from the ONE spelling
     /// (`nros_node::action_frame`, mirrored into the C ABI and asserted equal
     /// there). This header used to skip 5 bytes of a get_result reply whose
     /// payload starts at 8.
