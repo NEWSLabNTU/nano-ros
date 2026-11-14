@@ -885,6 +885,17 @@ queue-runner-label:
 merge-group-gates:
     @python3 scripts/check-merge-group-gates.py
 
+# Every `strategy.matrix` expands to the jobs it says, for every input
+# combination: base axes, then exclude, then include, as GitHub does. An
+# exclude key that is not a base axis (an include-only matrix: no job at all,
+# run 43643673734), a matrix that expands to nothing, and an include that
+# re-adds a combination exclude removed are refused. A matrix that reads
+# `vars`/`fromJSON`/`needs` is named NOT VERIFIED. The selftest runs first;
+# #3865's include-only/exclude shape is its negative control.
+[private]
+workflow-matrix-expansion:
+    @python3 scripts/check-workflow-matrix-expansion.py
+
 # phase-535 W8 (RFC-0122 D8/D9) — every `cadence` in board-support.toml names
 # a job that keeps it: `merge` a `merge-runtime.yml` that runs on merge_group
 # (it is dispatch-only since the 2026-11-12 ruling, so no row may be `merge`),
