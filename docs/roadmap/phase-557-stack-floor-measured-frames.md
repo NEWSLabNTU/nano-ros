@@ -524,7 +524,7 @@ the fixed floor and each nucleo image fits its RAM.
 
 ### W7c — The walk reads only the bitcode the link used (issue 2521)
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-14, #3808)
 
 **Why.** Two `nros new` C talkers from one template walked 127,852 B and
 127,948 B, and the stamp records one walk, so a project could fail its own
