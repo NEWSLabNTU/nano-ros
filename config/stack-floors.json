@@ -24,7 +24,7 @@
         "NROS_MAX_QUERYABLES": 4,
         "NROS_MAX_SUBSCRIBERS": 0
       },
-      "static": 71352,
+      "static": 68608,
       "target": "thumbv7em-none-eabi"
     },
     {
@@ -42,7 +42,7 @@
         "NROS_MAX_QUERYABLES": 0,
         "NROS_MAX_SUBSCRIBERS": 0
       },
-      "static": 69776,
+      "static": 67672,
       "target": "thumbv7em-none-eabi"
     },
     {
@@ -60,7 +60,7 @@
         "NROS_MAX_QUERYABLES": 0,
         "NROS_MAX_SUBSCRIBERS": 0
       },
-      "static": 96680,
+      "static": 95420,
       "target": "thumbv7m-none-eabi"
     },
     {
@@ -78,7 +78,7 @@
         "NROS_MAX_QUERYABLES": 0,
         "NROS_MAX_SUBSCRIBERS": 0
       },
-      "static": 104840,
+      "static": 99140,
       "target": "thumbv7em-none-eabi"
     }
   ],
