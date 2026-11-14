@@ -117,7 +117,7 @@ jobs:
           - board: threadx_linux
             image: ghcr.io/newslabntu/nano-ros-ci:humble
           - board: zephyr
-            image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r8
+            image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r9
     env:
       # The shard: every lane consumer below reads this one value.
       NROS_LANE_MODULE: ${{ matrix.board }}

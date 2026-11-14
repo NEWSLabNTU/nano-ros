@@ -144,7 +144,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #
 # `aarch64-zephyr-elf` is added to each `post_install`: the aemv8r FVP
 # reference needs it, and the 1.0.1 row's `_minimal` bundle fetches only the
-# toolchains it is asked for. 0.16.9's bundle already carries every toolchain.
+# toolchains it is asked for.
+#
+# Then every OTHER toolchain is removed (phase-559 W5b): 0.16.9's full bundle
+# carries all of Zephyr's cross toolchains (xtensa, riscv, arc, mips, nios2,
+# sparc, microblaze, ...) and this image builds for the ones above. The keep
+# list is the row's own `post_install` `-t` targets plus aarch64, so a
+# toolchain added to the index row stays without an edit here.
+# `prune-zephyr-sdk.sh` holds the guards (one resolved SDK root, depth-1
+# toolchain dirs, no symlinks) and prints the SDK's size before and after.
 #
 # NOT `ZEPHYR_SDK_INSTALL_DIR`: that names ONE SDK for every line. Each SDK is
 # a CMake package registry candidate, and the toolchain helper picks the one
@@ -153,6 +161,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # its own HOME with `/usr/local/bin/nros-zephyr-sdks-register` (below).
 COPY config/zephyr-ci-tools.toml /opt/nros-ssot/config/zephyr-ci-tools.toml
 COPY scripts/lib/index_tool.py scripts/lib/index_packages.py /opt/nros-ssot/scripts/lib/
+COPY ci/docker/zephyr-ros/prune-zephyr-sdk.sh /opt/nros-ssot/prune-zephyr-sdk.sh
 RUN set -eu; \
     plan="$(python3 /opt/nros-ssot/scripts/lib/index_tool.py sdk-plan \
         --index /opt/nros-ssot/config/zephyr-ci-tools.toml)"; \
@@ -167,6 +176,8 @@ RUN set -eu; \
         rm /tmp/sdk.tar.xz; \
         test "$(tr -d '[:space:]' < "/opt/zephyr-sdks/$subdir/sdk_version")" = "$version"; \
         (cd "/opt/zephyr-sdks/$subdir" && sh -c "$run -t aarch64-zephyr-elf"); \
+        keep="$(printf '%s\n' $run | awk 'p { print; p = 0 } $0 == "-t" { p = 1 }') aarch64-zephyr-elf"; \
+        sh /opt/nros-ssot/prune-zephyr-sdk.sh /opt/zephyr-sdks "$subdir" $keep; \
     done
 # One command registers every baked SDK for the CALLER's $HOME. A job runs it
 # once before building; it is the only step a job needs for the SDKs.

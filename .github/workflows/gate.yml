@@ -2213,7 +2213,7 @@ jobs:
       contents: read
       packages: read
     container:
-      image: ${{ !(vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r8' || '' }}
+      image: ${{ !(vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r9' || '' }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
