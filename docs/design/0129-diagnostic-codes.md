@@ -169,7 +169,10 @@ retired. A row may be added or retired, never removed or renumbered.
 
 Numbers are allocated by a reservation on origin, through a `code-new` recipe
 (phase-552 W1) that mirrors `scripts/reserve-issue-id.sh`. Reading "the next number" is the
-race that collided seven times for issue ids.
+race that collided seven times for issue ids. A number whose reservation
+fails is not allocated: there is no local fallback, and the pre-push guard
+refuses a new number with no reservation. The six founding codes, allocated
+before reservations existed, are the one recorded exception.
 
 ### D4 — Every other view is generated from the crate, and drift-gated
 

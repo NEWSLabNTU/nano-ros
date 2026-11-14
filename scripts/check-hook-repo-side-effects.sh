@@ -755,6 +755,9 @@ self_test || fail=1
 probe_args() {
     case "$1" in
         scripts/reserve-claim.sh) echo "--selftest" ;;
+        # Its normal path IS a write: it claims a number by writing a commit
+        # object and pushing it. The self-test does that in scratch repos.
+        scripts/reserve-diag-code.sh) echo "--self-test" ;;
         scripts/ci/submodule-commits-reachable.sh) echo "--changed HEAD" ;;
         scripts/gen-issue-index.py) echo "--self-test" ;;
         # Its `sync` writes a checkout BESIDE $GITHUB_WORKSPACE; under a probe's
