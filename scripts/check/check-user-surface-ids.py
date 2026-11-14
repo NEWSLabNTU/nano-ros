@@ -68,9 +68,25 @@ Subjects, all checked on every run:
   literal's innermost enclosing call decides, so a table entry, a compared
   key or an assert's condition is data and is not read; Rust `#[cfg(test)]`
   and `#[cfg(all(test, …))]` items are not read. Gaps, stated: text built away from its print
-  (`write!` into a `Display`, a message assembled and logged later),
-  compile-time text (`#error`, `static_assert`, `compile_error!`,
-  `#[deprecated]`), and calls the lists above do not name;
+  (`write!` into a `Display`, a message assembled and logged later) and
+  calls the lists above do not name; compile-time text is the next subject;
+* COMPILE-TIME TEXT (issue 2443): what the compiler shows a user building
+  nano-ros or an app against it, in `packages/`, `zephyr/` and `cmake/`
+  (tracked `.in` templates read as the file they generate) outside vendored,
+  test, bench, example and fixture trees, bindgen's `generated.rs` and Rust
+  `#[cfg(test)]` code. C/C++: the text of an `#error` / `#warning` /
+  `#pragma message` directive, quoted or not, and the strings of a
+  `static_assert` / `_Static_assert`, `_Pragma`, `[[deprecated(…)]]`,
+  `[[nodiscard(…)]]`, a `*_DEPRECATED*(…)` wrapper macro, and an
+  `__attribute__((deprecated|unavailable|error|warning(…)))`. Rust: the
+  strings of `compile_error!` (inside `macro_rules!` and `quote!` too),
+  `#[deprecated]`, `#[must_use = …]`, `#[diagnostic::on_unimplemented]`, the
+  message of an `assert!` in a `const` item or `const { … }` block, and, in a
+  `proc-macro = true` crate, `syn::Error::new` / `new_spanned` / `custom` and
+  `proc-macro-error`'s `abort!` / `emit_error!`. Baseline zero. Gaps, stated:
+  a message built away from the construct (a `String` made earlier and handed
+  to `Error::new`), a proc macro's `panic!`, and a `const fn`'s assert reached
+  only through a const context elsewhere;
 * the output of `nros board list`, `nros board show <board>` for every board
   the list names, and `nros doctor --report`, which in addition may hold no
   tier number (`tier 1`, `tier 2`, `tier 3` — phase-522 W5).
@@ -843,7 +859,10 @@ def code_and_literals(src: str, rust: bool) -> tuple[str, list[tuple[int, int, i
             i = j + len(close)
         else:  # `"` or `b"`
             j = m.end()
-            while j < n and src[j] != '"':
+            # A C string ends at its line (a `\`-newline is an escape and
+            # is stepped over), so an apostrophe or a stray quote in an
+            # unquoted `#error` cannot swallow the file.
+            while j < n and src[j] != '"' and (rust or src[j] != "\n"):
                 j += 2 if src[j] == "\\" else 1
             spans.append((m.end(), j))
             blank(m.end(), j)
@@ -954,6 +973,182 @@ def runtime_hits() -> list[str]:
         if not ID.search(src):
             continue  # most files hold no id at all, so the lexer never runs
         for ln, text in runtime_literals(src, rel.endswith(".rs"), ID):
+            for tok in ids(text):
+                bad.append(f"{rel}:{ln}: {tok!r} in {' '.join(text.split())[:90]!r}")
+    return bad
+
+
+# --- compile-time text ------------------------------------------------------
+
+# Issue 2443, ruling A: what the COMPILER shows a user building nano-ros or an
+# app against it -- an `#error`, a `static_assert` message, a deprecation
+# note, a proc-macro's refusal -- names what, where and how to fix, never an
+# id. The id stays in a `//` comment above the construct.
+# Literals and comments are told apart by `code_and_literals`, the lexer the
+# runtime-log subject above uses.
+CT_DIRS = ["packages", "zephyr", "cmake"]
+CT_C_EXTS = (".h", ".hh", ".hpp", ".hxx", ".c", ".cc", ".cpp", ".cxx", ".inc")
+# Not compiled into a user's build: vendored and test trees, examples,
+# bindgen output, test-only Rust files.
+CT_SKIP = re.compile(
+    r"/(third-party|vendor|vendored|tests?|testing|benches|examples|fixtures)/"
+    r"|/generated\.rs$|/tests\.rs$"
+)
+# C/C++: a diagnostic directive (`#error`, `#warning`, `#pragma message`),
+# read as the whole logical line, quoted or not ...
+CT_C_DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:error|warning|pragma[ \t]+message)\b(?:\\\n|[^\n])*", re.M)
+# ... and a call-shaped construct whose string arguments the compiler prints.
+CT_C_CALLS = re.compile(
+    r"\b(?:static_assert|_Static_assert|_Pragma|nodiscard"
+    r"|(?:__)?(?:deprecated|unavailable)(?:__)?"
+    r"|\w*_DEPRECATED(?:_\w*)?)\s*\("
+)
+# `error(…)` / `warning(…)` only inside an `__attribute__((…))`.
+CT_C_ATTR = re.compile(r"\b__attribute__\s*\(\(")
+CT_C_ATTR_MSG = re.compile(r"\b(?:__)?(?:error|warning)(?:__)?\s*\(")
+# Rust: `compile_error!`, and the attributes whose strings rustc prints.
+CT_RS_MACRO = re.compile(r"\bcompile_error!\s*[(\[{]")
+CT_RS_ATTR = re.compile(
+    r"#!?\[\s*(?:deprecated|must_use|diagnostic::on_unimplemented)\b"
+)
+# A const-evaluated assert: `const _: () = assert!(…);`, `const X: () = {…};`,
+# or a `const { … }` block. Only an assert's MESSAGE is read.
+CT_RS_CONST = re.compile(r"\bconst\s+(?:_|[A-Za-z_]\w*)\s*:\s*\(\s*\)\s*=|\bconst\s*\{")
+CT_RS_ASSERT = re.compile(r"\b(?:assert|const_assert)!\s*\(")
+# A proc-macro crate's refusals (only in a crate with `proc-macro = true`).
+CT_RS_PM = re.compile(
+    r"\b(?:syn::|darling::)?Error::(?:new|new_spanned|custom)\s*\("
+    r"|\b(?:abort|abort_call_site|emit_error|emit_call_site_error|emit_warning"
+    r"|emit_call_site_warning)!\s*[(\[{]"
+)
+CT_OPEN = {"(": ")", "[": "]", "{": "}"}
+
+
+def ct_close(code: str, at: int) -> int:
+    """The offset just past the bracket matching the opener at `at`."""
+    depth = 0
+    for k in range(at, len(code)):
+        ch = code[k]
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+            if depth == 0:
+                return k + 1
+    return len(code)
+
+
+def ct_first_comma(code: str, a: int, b: int) -> int:
+    """The first top-level comma inside the call whose `(` is at `a`."""
+    depth = 0
+    for k in range(a, b):
+        ch = code[k]
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "," and depth == 1:
+            return k
+    return b
+
+
+def compile_time_literals(src: str, rust: bool, proc_macro: bool = False) -> list[tuple[int, str]]:
+    """Every piece of compile-time text in `src` with its line: a string a
+    compiler diagnostic prints, or (C/C++) a diagnostic directive's text."""
+    code, spans = code_and_literals(src, rust)
+    regions: list[tuple[int, int]] = []
+
+    def call(m: re.Match) -> tuple[int, int]:
+        return m.start(), ct_close(code, m.end() - 1)
+
+    out: list[tuple[int, str]] = []
+    if rust:
+        for m in CT_RS_MACRO.finditer(code):
+            regions.append(call(m))
+        for m in CT_RS_ATTR.finditer(code):
+            regions.append((m.start(), ct_close(code, code.index("[", m.start()))))
+        if proc_macro:
+            for m in CT_RS_PM.finditer(code):
+                regions.append(call(m))
+        for m in CT_RS_CONST.finditer(code):
+            if code[m.end() - 1] == "{":
+                lo, hi = m.start(), ct_close(code, m.end() - 1)
+            else:
+                semi = re.compile(r";").search(code, m.end())
+                lo, hi = m.start(), (semi.end() if semi else len(code))
+                # `= { … };` -- the item ends after its block.
+                k = m.end()
+                while k < len(code) and code[k].isspace():
+                    k += 1
+                if k < len(code) and code[k] == "{":
+                    hi = ct_close(code, k)
+            for a in CT_RS_ASSERT.finditer(code, lo, hi):
+                end = ct_close(code, a.end() - 1)
+                regions.append((ct_first_comma(code, a.end() - 1, end), end))
+    else:
+        # Text of a directive: the source with comments blanked but literal
+        # contents kept, so a quoted and an unquoted message read alike.
+        text = list(code)
+        for _, a, b in spans:
+            text[a:b] = src[a:b]
+        text = "".join(text)
+        for m in CT_C_DIRECTIVE.finditer(code):
+            out.append((src.count("\n", 0, m.start()) + 1, text[m.start():m.end()]))
+        for m in CT_C_CALLS.finditer(code):
+            regions.append(call(m))
+        for m in CT_C_ATTR.finditer(code):
+            lo, hi = m.start(), ct_close(code, m.end() - 1)
+            for e in CT_C_ATTR_MSG.finditer(code, lo, hi):
+                regions.append(call(e))
+    for ln, a, b in spans:
+        if any(lo <= a < hi for lo, hi in regions):
+            out.append((ln, src[a:b]))
+    return sorted(out)
+
+
+def ct_lang(rel: str) -> bool | None:
+    """True for Rust, False for C/C++, None for neither (a tracked template
+    `x.h.in` / `ffi_lib_rs.in` reads as the file it generates)."""
+    name = rel[:-3] if rel.endswith(".in") else rel
+    if name.endswith(".rs") or name.endswith("_rs"):
+        return True
+    if name.endswith(CT_C_EXTS):
+        return False
+    return None
+
+
+def compile_time_files() -> list[tuple[str, bool, bool]]:
+    files = subprocess.run(
+        ["git", "ls-files", "--", *CT_DIRS], cwd=ROOT, capture_output=True, text=True,
+        check=True,
+    ).stdout.split()
+    files = [
+        rel for rel in files
+        if ct_lang(rel) is not None and not CT_SKIP.search("/" + rel) and (ROOT / rel).is_file()
+    ]
+    # A Rust file compiled for tests only (`#[cfg(test)] mod x;`) is not read.
+    tests = test_module_files([rel for rel in files if rel.endswith(".rs")])
+    # Proc-macro crates: their `syn::Error`s are a user's compile errors.
+    pm_roots = []
+    for toml in subprocess.run(
+        ["git", "ls-files", "--", *(f"{d}/**/Cargo.toml" for d in CT_DIRS)], cwd=ROOT,
+        capture_output=True, text=True, check=True,
+    ).stdout.split():
+        if re.search(r"^\s*proc-macro\s*=\s*true", (ROOT / toml).read_text(), re.M):
+            pm_roots.append(str(Path(toml).parent) + "/")
+    return [
+        (rel, bool(ct_lang(rel)), any(rel.startswith(r) for r in pm_roots))
+        for rel in files if rel not in tests
+    ]
+
+
+def compile_time_hits() -> list[str]:
+    bad = []
+    for rel, rust, pm in compile_time_files():
+        src = (ROOT / rel).read_text(errors="replace")
+        if not ID.search(src):
+            continue  # most files hold no id at all, so the lexer never runs
+        for ln, text in compile_time_literals(src, rust, pm):
             for tok in ids(text):
                 bad.append(f"{rel}:{ln}: {tok!r} in {' '.join(text.split())[:90]!r}")
     return bad
@@ -1219,6 +1414,41 @@ def self_test() -> None:
     )
     got = [(ln, t) for ln, text in runtime_literals(c, False) for t in ids(text)]
     assert got == [(6, "issue 0803"), (7, "RFC-0074")], f"self-test: runtime c {got}"
+    # Issue 2443 -- compile-time text is read; a comment, an `#if` condition,
+    # a plain string and an assert's condition are not.
+    c = (
+        '// #error "phase-100" in a comment\n'
+        '#if NROS_X < 1 /* issue 1000 */\n'
+        '#error "NROS_X must be >= 1 (issue 1015)"\n'
+        '#  warning can\'t \\\n    see phase-200\n'
+        '#endif\n'
+        'static const char *k = "RFC-0001 data";\n'
+        'static_assert(sizeof(int) == 4,\n              "int (issue #229)");\n'
+        '__attribute__((deprecated("renamed (phase-515 C8)"))) void f(void);\n'
+        '__attribute__((section("RFC-0002"))) int g;\n'
+        'NROS_CPP_DEPRECATED_MSG("old (phase 536)") void h();\n'
+    )
+    got = [(ln, t) for ln, text in compile_time_literals(c, False) for t in ids(text)]
+    assert got == [(3, "issue 1015"), (4, "phase-200"), (9, "issue #229"), (10, "phase-515"),
+                   (12, "phase 536")], f"self-test: compile-time C {got}"
+    rs = (
+        '// compile_error!("issue 1000")\n'
+        'macro_rules! m { () => { compile_error!("bad (issue 1234)"); } }\n'
+        '#[deprecated(since = "0.6.0", note = "renamed (phase-515 R8)")]\n'
+        'pub type A = B;\n'
+        '#[must_use = "use it (RFC-0003)"]\n'
+        'const _: () = assert!(X <= 4, "too big (issue 0810)");\n'
+        'const _: () = { assert!(f("issue 1111"), concat!("a ", "(phase-446)")); };\n'
+        'fn g() { const { assert!(Y, "no (RFC-0088)") }; let s = "data (issue 2222)";'
+        ' let e = Error::new(span, "no (issue 1234)"); }\n'
+        '#[cfg(test)]\nmod t { #[deprecated(note = "phase-999")] fn x() {} }\n'
+    )
+    got = [(ln, t) for ln, text in compile_time_literals(rs, True) for t in ids(text)]
+    assert got == [(2, "issue 1234"), (3, "phase-515"), (5, "RFC-0003"), (6, "issue 0810"),
+                   (7, "phase-446"), (8, "RFC-0088")], f"self-test: compile-time rust {got}"
+    pm = 'fn f() -> syn::Error { syn::Error::new_spanned(x, format!("bad {} (issue 1043)", y)) }\n'
+    got = [t for _, text in compile_time_literals(pm, True, proc_macro=True) for t in ids(text)]
+    assert got == ["issue 1043"], f"self-test: compile-time proc-macro {got}"
     assert subcommands("Usage: x\n\nCommands:\n  new   make\n  help  h\n\nOptions:\n") == ["new"]
     assert subcommands(
         "Quick start:\n  nros new\n\nUsage: nros\n\nBuild:\n  build  b\n  sync   s\n\n"
@@ -1238,7 +1468,7 @@ def main() -> int:
 
     bad = (
         source_hits() + library_hits() + book_hits() + build_script_warning_hits()
-        + colcon_hits() + shell_hits() + runtime_hits()
+        + colcon_hits() + shell_hits() + runtime_hits() + compile_time_hits()
     )
     cli = args.cli
     if cli is None:
@@ -1268,7 +1498,7 @@ def main() -> int:
         )
     print(
         f"{NAME}: OK (cmd/ strings, CLI library, build-script panics, build-script warnings, colcon "
-        f"messages, user-run shell scripts, runtime log and panic text, {BOOK_SCOPE}, "
+        f"messages, user-run shell scripts, runtime log and panic text, compile-time text, {BOOK_SCOPE}, "
         f"{rendered})"
     )
     return 0

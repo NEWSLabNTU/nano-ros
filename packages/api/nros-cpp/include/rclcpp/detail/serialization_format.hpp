@@ -94,10 +94,11 @@ constexpr const char* linked_format_name() {
  * line of the `create_publisher` / `create_subscription` call rather than a
  * line inside this header.
  */
+// RFC-0088 -- one image, one backend, one encoding.
 #define NROS_CPP_ASSERT_MESSAGE_FORMAT(M)                                                          \
     static_assert(::rclcpp::format_of<M>::value == ::rclcpp::linked_format(),                      \
-                  "RFC-0088: this message type is not encoded in the format the linked "           \
-                  "backend speaks: one image, one backend, one encoding. A bridge image "          \
+                  "this message type is not encoded in the format the linked backend "             \
+                  "speaks: one image, one backend, one encoding. A bridge image "                  \
                   "is the only place two formats legitimately meet, and it converts "              \
                   "explicitly.")
 

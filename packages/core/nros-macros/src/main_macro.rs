@@ -196,9 +196,10 @@ impl Parse for MainArgs {
                     // gone with `<node machine=>` (ROS 1 syntax). Fail with
                     // migration guidance rather than the generic unknown-key
                     // error.
+                    // phase-326 / issue 0364 removed `host =`.
                     return Err(syn::Error::new(
                         key.span(),
-                        "`host = ` was removed (phase-326 / issue 0364) — \
+                        "`host = ` was removed — \
                          multi-host partitions at RESOLVE time now. Point \
                          `model = ` at the per-host SystemModel instead \
                          (resolved with `host:=<id>`, e.g. \
@@ -322,10 +323,11 @@ impl Parse for MainArgs {
             }
         }
         if out.launch.is_some() && out.model.is_some() {
+            // phase-330 W7 made `launch` the canonical spelling.
             return Err(syn::Error::new(
                 Span::call_site(),
                 "nros::main!: `launch` and `model` are mutually exclusive — `launch` names \
-                 your input (phase-330 W7, the canonical spelling); `model` names the \
+                 your input (the canonical spelling); `model` names the \
                  resolved artifact directly (expert override, deprecated)",
             ));
         }
@@ -620,13 +622,14 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         if let Some(l) = &leaf {
             tracked.push(l.origin_path().to_path_buf());
         }
+        // RFC-0098 D3 -- the leaf's system.toml names its board.
         let declared = leaf.as_ref().and_then(|l| l.board.clone()).ok_or_else(|| {
             syn::Error::new(
                 Span::call_site(),
                 format!(
                     "nros::main!: `{}` declares no board.\n  Hint: write `{}` with \
                      `[image.<id>] board = \"<board>\"` (e.g. `\"linux\"`, \
-                     `\"freertos\"`, `\"zephyr\"`; RFC-0098 D3) — or, for an entry in \
+                     `\"freertos\"`, `\"zephyr\"`) — or, for an entry in \
                      a workspace, give the bringup an image that builds it \
                      (`entry = \"{entry_pkg}\"`).",
                     manifest_dir.display(),
@@ -1577,12 +1580,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     if framework == Framework::Rtic
         && (param_services_enabled || param_store_enabled || lifecycle_machines > 0)
     {
+        // Issue 1766 -- a declaration the entry would drop in silence.
         return Err(syn::Error::new(
             Span::call_site(),
             format!(
                 "nros::main!: this system declares {} but the {} framework entry does not \
                  register the runtime's parameter or lifecycle services, so the declaration \
-                 would be dropped in silence (issue 1766). Remove it from `[system] features`, \
+                 would be dropped in silence. Remove it from `[system] features`, \
                  or deploy on a board whose entry runs the OwnedSpin or Zephyr shape.",
                 match (
                     param_services_enabled || param_store_enabled,
@@ -2050,6 +2054,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             .as_ref()
             .is_some_and(|t| t.is_single_sched_task())
     {
+        // Issue 0438 (phase-273 W2 / RFC-0047) -- `group_tasks` binds a group.
         return Err(syn::Error::new(
             proc_macro2::Span::call_site(),
             format!(
@@ -2057,9 +2062,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                  bound to any of them, so they resolve to a single default sched task and this \
                  entry would silently emit the SINGLE-sched-task path.\n  \
                  Bind groups with `[[component]] group_tasks = {{ <group> = \"<sched_task>\" }}` \
-                 in `system.toml` (phase-273 W2 / RFC-0047 — `callback_groups` in a node \
+                 in `system.toml` (`callback_groups` in a node \
                  package's Cargo.toml is the retired form and is not read).\n  \
-                 If the sched tasks are genuinely unused, delete them. issue 0438",
+                 If the sched tasks are genuinely unused, delete them.",
                 authored_sched_task_names.join(", ")
             ),
         ));
@@ -2108,12 +2113,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             .iter()
             .any(|f| d.contains(f))
     {
+        // Issue 0265.
         return Err(syn::Error::new(
             proc_macro2::Span::call_site(),
             format!(
                 "target `{d}` does not support multi-sched-task execution (no run_sched_tasks): \
                  collapse the system to a single sched task or pick a sched-task board \
-                 (posix/zephyr/freertos/nuttx/threadx families). issue 0265"
+                 (posix/zephyr/freertos/nuttx/threadx families)."
             ),
         ));
     }
@@ -4359,13 +4365,15 @@ fn zephyr_image_plan_for(
         return Ok(None);
     };
     let path = PathBuf::from(path);
+    // Issue 1537 -- priorities come from the image's own plan.
     let text = std::fs::read_to_string(&path).map_err(|e| {
         syn::Error::new(
             span,
             format!(
                 "nros::main!: $DOTCONFIG names {} and it could not be read ({e}); the \
                  derived Zephyr sched task priorities are allocated out of that image's own \
-                 plan (issue 1537)",
+                 plan. Point $DOTCONFIG at that image's `.config` (a `west build` writes it \
+                 under `build/zephyr/`)",
                 path.display()
             ),
         )

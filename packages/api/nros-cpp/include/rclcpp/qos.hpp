@@ -1058,8 +1058,9 @@ constexpr QoS KeepAll() {
 // sentinel, which a `QoS` request may not carry (see `qos_table`), and the two
 // reference RMWs resolve it differently (issue 0829).
 #if defined(NROS_RMW_ENTITY_H)
+// issue 2054.
 #error                                                                                             \
-    "<rclcpp/qos.hpp> defines upstream's rmw_qos_profile_t, and <nros/rmw_entity.h> defines the RMW ABI's struct under the same name. A node includes rclcpp only; a backend includes the ABI header only (issue 2054)."
+    "<rclcpp/qos.hpp> defines upstream's rmw_qos_profile_t, and <nros/rmw_entity.h> defines the RMW ABI's struct under the same name. A node includes rclcpp only; a backend includes the ABI header only."
 #endif
 
 #include <stddef.h>

@@ -136,9 +136,29 @@ comment above its call and each message kept its remedy.
 Gaps, stated: text built away from its print (a `write!` into a `Display`
 impl: 8 literals, in `nros-orchestration-ir`, `nros-node` and
 `nros-baremetal-common`; and messages
-assembled and logged later); compile-time text (`#error`, `static_assert`,
-`compile_error!`, `#[deprecated]` notes, proc-macro `syn::Error`s); and calls
-the lists do not name.
+assembled and logged later); and calls the lists do not name. Compile-time
+text is the next subject, below.
+
+**Compile-time text is gated at zero (2026-11-14).** `check-user-surface-ids`
+reads what the compiler shows a user building nano-ros or an app against it,
+in `packages/`, `zephyr/` and `cmake/` outside vendored, test, bench, example
+and fixture trees: C/C++ `#error`/`#warning`/`#pragma message` text and the
+strings of `static_assert`, `_Static_assert`, `[[deprecated]]`,
+`__attribute__((deprecated|error|warning))` and the `*_DEPRECATED*` wrapper
+macros; Rust `compile_error!`, `#[deprecated]`, `#[must_use = …]`,
+`#[diagnostic::on_unimplemented]`, the message of an assert in a `const`
+item or block, and a proc-macro crate's `syn::Error` text. It shares the
+runtime subject's lexer. Beyond what the runtime-log fixes had already
+cleared, it found 97 ids in 34 files: the `>= 1` array-size `#error`s, the
+XRCE buffer and fragment refusals, the FreeRTOS static-allocation and
+time-slicing refusals, the renamed-API deprecation notes and seven
+`nros::main!` refusals. Each id moved to a `//` comment above its construct,
+and several messages gained the fix they lacked (the knob to raise, the
+`prj.conf` or defconfig option to set, the name to use instead; the
+executor's arena asserts now name the `nros-node/build.rs` term to raise).
+Stated gaps: a message built away from its construct (a `String` handed to
+`Error::new` later), a proc macro's `panic!`, and a `const fn` assert
+reached only from a const context elsewhere.
 
 **Next, in order (manager, 2026-11-14).** Ruling A covers build-stopping
 refusals, so the runtime subject's stated gaps are in scope too, each as its

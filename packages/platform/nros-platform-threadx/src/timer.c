@@ -41,7 +41,8 @@ typedef struct {
  * whole timer ABI. Below the `#ifndef`, never above: an undefined identifier
  * reads as 0 in `#if`, so a guard above its own default fires always (1167). */
 #if NROS_THREADX_MAX_TIMERS < 1
-#error "NROS_THREADX_MAX_TIMERS must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "NROS_THREADX_MAX_TIMERS must be >= 1: it sizes a C array"
 #endif
 static nros_threadx_timer_t *s_timer_registry[NROS_THREADX_MAX_TIMERS];
 

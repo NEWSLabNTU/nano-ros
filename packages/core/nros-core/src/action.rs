@@ -568,23 +568,26 @@ impl GoalResponse {
 // reach, measured, so a hard delete rather than a deprecated forwarder.
 
 /// The pre-phase-515 name of [`GoalUuid`].
+// phase-515 R8 took rclrs's name.
 #[deprecated(
     since = "0.6.0",
-    note = "renamed to `GoalUuid`, rclrs's name (phase-515 R8)"
+    note = "renamed to `GoalUuid`, rclrs's name; use `GoalUuid`"
 )]
 pub type GoalId = GoalUuid;
 
 /// The pre-phase-515 name of [`GoalStatusCode`].
+// phase-515 R8 took rclrs's name.
 #[deprecated(
     since = "0.6.0",
-    note = "renamed to `GoalStatusCode`, rclrs's name (phase-515 R8)"
+    note = "renamed to `GoalStatusCode`, rclrs's name; use `GoalStatusCode`"
 )]
 pub type GoalStatus = GoalStatusCode;
 
 /// The pre-phase-515 name of [`CancelResponseCode`].
+// phase-515 R8 took rclrs's name.
 #[deprecated(
     since = "0.6.0",
-    note = "renamed to `CancelResponseCode`, rclrs's name (phase-515 R8)"
+    note = "renamed to `CancelResponseCode`, rclrs's name; use `CancelResponseCode`"
 )]
 pub type CancelReturnCode = CancelResponseCode;
 

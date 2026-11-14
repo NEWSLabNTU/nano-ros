@@ -109,8 +109,9 @@ static inline void nros_xrce_free(void* ptr) {
 #define XRCE_BUILTIN_SERVICE_SERVERS 0
 #endif
 #if XRCE_BUILTIN_SERVICE_SERVERS > XRCE_MAX_SERVICE_SERVERS
+// issue 1808.
 #error                                                                                             \
-    "XRCE_BUILTIN_SERVICE_SERVERS is more than XRCE_MAX_SERVICE_SERVERS, the total it is a share of (issue 1808)."
+    "XRCE_BUILTIN_SERVICE_SERVERS is more than XRCE_MAX_SERVICE_SERVERS, the total it is a share of. Lower it, or raise XRCE_MAX_SERVICE_SERVERS."
 #endif
 #define XRCE_USER_SERVICE_SERVERS (XRCE_MAX_SERVICE_SERVERS - XRCE_BUILTIN_SERVICE_SERVERS)
 /* Phase 237 — outstanding deferred replies per service server. A reply may be
@@ -189,8 +190,9 @@ static inline void nros_xrce_free(void* ptr) {
 #endif
 #endif
 #if XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE < XRCE_PARAM_REQUEST_BYTES
+// issues 1722, 1808.
 #error                                                                                             \
-    "NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow. That request would be dropped on arrival. Raise it, or leave it unset to derive (issues 1722, 1808)."
+    "NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow. That request would be dropped on arrival. Raise it, or leave it unset to derive."
 #endif
 #ifndef XRCE_SERVICE_REQUEST_BUFFER_SIZE
 #define XRCE_SERVICE_REQUEST_BUFFER_SIZE XRCE_BUFFER_SIZE
@@ -204,8 +206,9 @@ static inline void nros_xrce_free(void* ptr) {
 #endif
 #endif
 #if XRCE_SERVICE_REQUEST_BUFFER_SIZE < XRCE_PARAM_REQUEST_BYTES
+// issue 1722.
 #error                                                                                             \
-    "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow (NROS_PARAM_SERVICE_INBOX_BYTES, or derived from the contract's params:). That request would be dropped on arrival. Raise it, or leave it unset to derive (issue 1722)."
+    "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow (NROS_PARAM_SERVICE_INBOX_BYTES, or derived from the contract's params:). That request would be dropped on arrival. Raise it, or leave it unset to derive."
 #endif
 /* No split: no builtin slot exists, so this names nothing; it keeps the
  * fragment-window check below one spelling for both shapes. */
@@ -297,20 +300,24 @@ static inline void nros_xrce_free(void* ptr) {
 #define XRCE_INBOUND_FRAGMENTS(bytes)                                                              \
     (((bytes) + 32 + XRCE_INBOUND_FRAGMENT_BYTES - 1) / XRCE_INBOUND_FRAGMENT_BYTES)
 #if XRCE_INBOUND_FRAGMENTS(XRCE_SERVICE_REQUEST_BUFFER_SIZE) > XRCE_STREAM_HISTORY
+// issue 1722.
 #error                                                                                             \
-    "XRCE_SERVICE_REQUEST_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a request that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the request buffer / declared parameters (issue 1722)."
+    "XRCE_SERVICE_REQUEST_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a request that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the request buffer / declared parameters."
 #endif
 #if XRCE_INBOUND_FRAGMENTS(XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE) > XRCE_STREAM_HISTORY
+// issues 1722, 1808.
 #error                                                                                             \
-    "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a parameter request that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the declared parameters (issues 1722, 1808)."
+    "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a parameter request that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the declared parameters."
 #endif
 #if XRCE_INBOUND_FRAGMENTS(XRCE_SUBSCRIBER_BUFFER_SIZE) > XRCE_STREAM_HISTORY
+// issue 1722.
 #error                                                                                             \
-    "XRCE_SUBSCRIBER_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a sample that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the subscriber buffer (issue 1722)."
+    "XRCE_SUBSCRIBER_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a sample that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the subscriber buffer."
 #endif
 #if XRCE_INBOUND_FRAGMENTS(XRCE_SERVICE_REPLY_BUFFER_SIZE) > XRCE_STREAM_HISTORY
+// issue 1722.
 #error                                                                                             \
-    "XRCE_SERVICE_REPLY_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a reply that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the reply buffer (issue 1722)."
+    "XRCE_SERVICE_REPLY_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a reply that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the reply buffer."
 #endif
 #define XRCE_CDR_HEADER_LEN 4
 #define XRCE_DDS_NAME_BUF_SIZE 128
@@ -427,28 +434,36 @@ static inline void nros_xrce_free(void* ptr) {
  *                               so the server can never answer anything.
  */
 #if XRCE_BUFFER_SIZE < 1
-#error "XRCE_BUFFER_SIZE must be >= 1: it is the default of the family buffers (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "XRCE_BUFFER_SIZE must be >= 1: it is the default of the family buffers"
 #endif
 #if XRCE_SUBSCRIBER_BUFFER_SIZE < 1
-#error "XRCE_SUBSCRIBER_BUFFER_SIZE must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "XRCE_SUBSCRIBER_BUFFER_SIZE must be >= 1: it sizes a C array"
 #endif
 #if XRCE_SERVICE_REQUEST_BUFFER_SIZE < 1
-#error "XRCE_SERVICE_REQUEST_BUFFER_SIZE must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "XRCE_SERVICE_REQUEST_BUFFER_SIZE must be >= 1: it sizes a C array"
 #endif
 #if XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE < 1
-#error "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE must be >= 1: it sizes a C array"
 #endif
 #if XRCE_SERVICE_REPLY_BUFFER_SIZE < 1
-#error "XRCE_SERVICE_REPLY_BUFFER_SIZE must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "XRCE_SERVICE_REPLY_BUFFER_SIZE must be >= 1: it sizes a C array"
 #endif
 #if XRCE_SUBSCRIBER_RING_DEPTH < 1
-#error "XRCE_SUBSCRIBER_RING_DEPTH must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "XRCE_SUBSCRIBER_RING_DEPTH must be >= 1: it sizes a C array"
 #endif
 #if XRCE_SERVICE_REQUEST_RING_DEPTH < 1
-#error "XRCE_SERVICE_REQUEST_RING_DEPTH must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "XRCE_SERVICE_REQUEST_RING_DEPTH must be >= 1: it sizes a C array"
 #endif
 #if XRCE_MAX_PENDING_REPLIES < 1
-#error "XRCE_MAX_PENDING_REPLIES must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "XRCE_MAX_PENDING_REPLIES must be >= 1: it sizes a C array"
 #endif
 
 /* Issue 2108 — one client-side DEADLINE tracker (requested on a subscription,

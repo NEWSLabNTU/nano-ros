@@ -134,14 +134,14 @@ const _: () = {
     // RFC-0088
     assert!(
         mirrored.len() == linked.len(),
-        "NROS_SERIALIZATION_FORMAT no longer matches the linked backend"
+        "NROS_SERIALIZATION_FORMAT no longer matches the linked backend: update the mirror"
     );
     let mut i = 0;
     while i < mirrored.len() {
         // RFC-0088
         assert!(
             mirrored[i] == linked[i],
-            "NROS_SERIALIZATION_FORMAT no longer matches the linked backend"
+            "NROS_SERIALIZATION_FORMAT no longer matches the linked backend: update the mirror"
         );
         i += 1;
     }

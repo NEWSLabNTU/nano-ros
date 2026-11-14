@@ -530,7 +530,8 @@ void nros_platform_task_free(void **task) {
  * test, and a kernel without it is refused here at compile time rather than
  * at the first mutex. The in-tree NuttX defconfigs set it. */
 #if defined(__NuttX__) && !defined(CONFIG_PRIORITY_INHERITANCE)
-#  error "nros-platform-posix on NuttX needs CONFIG_PRIORITY_INHERITANCE=y (issue 1907)"
+// issue 1907.
+#  error "nros-platform-posix on NuttX needs CONFIG_PRIORITY_INHERITANCE=y: set it in the board defconfig"
 #endif
 
 /* Initialise `m` as a priority-inheriting mutex of `type`. */

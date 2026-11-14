@@ -23,7 +23,9 @@
  */
 
 #ifndef NROS_VARIANT_SYMBOL
-#error "NROS_VARIANT_SYMBOL must be defined by the build script (issue 0360)"
+// issue 0360.
+#error                                                                                             \
+    "NROS_VARIANT_SYMBOL must be defined by the build script: compile this file through nros-build-helpers, which passes -DNROS_VARIANT_SYMBOL"
 #endif
 
 /* WEAK on purpose: a mixed C+C++ image links TWO nros-c builds (the C half's and

@@ -24,7 +24,8 @@
  * FreeRTOSConfig.h that ignores the input would still slice. */
 #if defined(NROS_FREERTOS_LEVEL_IMAGE) && NROS_FREERTOS_LEVEL_IMAGE && \
     (configUSE_TIME_SLICING != 0)
-#error "nros: NROS_FREERTOS_LEVEL_IMAGE is set but this FreeRTOSConfig.h keeps configUSE_TIME_SLICING (issue 2017)"
+// issue 2017 -- a level image must not time-slice.
+#error "nros: NROS_FREERTOS_LEVEL_IMAGE is set but this FreeRTOSConfig.h keeps configUSE_TIME_SLICING: set configUSE_TIME_SLICING to 0"
 #endif
 
 /* Issue 2017 -- the kernel's time-slicing setting, for the level runners'

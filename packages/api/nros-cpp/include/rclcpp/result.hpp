@@ -165,7 +165,7 @@ static_assert(static_cast<int32_t>(ErrorCode::NotFound) == -4 &&
                   static_cast<int32_t>(ErrorCode::TryAgain) == -14 &&
                   static_cast<int32_t>(ErrorCode::Reentrant) == -15 &&
                   static_cast<int32_t>(ErrorCode::Unsupported) == -16,
-              "ErrorCode numbering must match rcl_ret_t (issue #229)");
+              "ErrorCode numbering must match rcl_ret_t");
 
 /// The result of a fallible operation: `Result` when it produces nothing,
 /// `ResultOf<T>` when it produces a value. This is the whole error channel —

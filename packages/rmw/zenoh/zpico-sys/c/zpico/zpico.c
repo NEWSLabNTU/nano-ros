@@ -178,7 +178,8 @@ static void _threadx_printk(const char* fmt, ...) {
 // sockets exist; this refuses an image that turned it back off.
 #if defined(ZENOH_ZEPHYR) && defined(ZPICO_DRIVE_THREAD) && defined(CONFIG_NET_SOCKETS) &&       \
     !defined(CONFIG_NET_CONTEXT_RCVTIMEO)
-#error "zenoh on Zephyr needs CONFIG_NET_CONTEXT_RCVTIMEO=y: without it the executor's receive never times out and the lease and keep-alive never run (issue 2105)"
+// issue 2105.
+#error "zenoh on Zephyr needs CONFIG_NET_CONTEXT_RCVTIMEO=y: without it the executor's receive never times out and the lease and keep-alive never run. Set it in prj.conf"
 #endif
 
 // Internal zenoh-pico headers. `_zp_send_keep_alive` (RFC-0110 D5) is the one
@@ -315,7 +316,7 @@ typedef struct {
 /* RFC-0110 D2 — zenoh-pico 1.10 has no lease task, so its priority knob is
  * retired, and refused rather than ignored. */
 #ifdef ZPICO_LEASE_TASK_PRIORITY
-#error "ZPICO_LEASE_TASK_PRIORITY is retired: zenoh-pico 1.10 runs the lease on its executor thread (RFC-0110 D2). Set ZPICO_READ_TASK_PRIORITY instead."
+#error "ZPICO_LEASE_TASK_PRIORITY is retired: zenoh-pico 1.10 runs the lease on its executor thread. Set ZPICO_READ_TASK_PRIORITY instead."
 #endif
 #ifndef ZPICO_GRAPH_CACHE_SIZE
 /* Bytes of NUL-separated liveliness keyexprs the graph cache holds.
@@ -500,22 +501,28 @@ typedef struct {
  * is the second line, here rather than there because a floor in one producer
  * does not bind another, and this is where the array actually is. */
 #if ZPICO_MAX_QUERYABLES < 1
-#error "ZPICO_MAX_QUERYABLES must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "ZPICO_MAX_QUERYABLES must be >= 1: it sizes a C array"
 #endif
 #if ZPICO_MAX_LIVELINESS < 1
-#error "ZPICO_MAX_LIVELINESS must be >= 1: it sizes a fixed C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "ZPICO_MAX_LIVELINESS must be >= 1: it sizes a fixed C array"
 #endif
 #if ZPICO_MAX_PENDING_GETS < 1
-#error "ZPICO_MAX_PENDING_GETS must be >= 1: it sizes a fixed C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "ZPICO_MAX_PENDING_GETS must be >= 1: it sizes a fixed C array"
 #endif
 #if ZPICO_MAX_PENDING_REPLIES < 1
-#error "ZPICO_MAX_PENDING_REPLIES must be >= 1: it sizes a fixed C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "ZPICO_MAX_PENDING_REPLIES must be >= 1: it sizes a fixed C array"
 #endif
 #if ZPICO_GET_REPLY_BUF_SIZE < 1
-#error "ZPICO_GET_REPLY_BUF_SIZE must be >= 1: it sizes a fixed C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "ZPICO_GET_REPLY_BUF_SIZE must be >= 1: it sizes a fixed C array"
 #endif
 #if ZPICO_GRAPH_CACHE_SIZE < 1
-#error "ZPICO_GRAPH_CACHE_SIZE must be >= 1: it sizes a fixed C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "ZPICO_GRAPH_CACHE_SIZE must be >= 1: it sizes a fixed C array"
 #endif
 /* A bool, and the preprocessor reads anything else as a number: a stray `2`
  * would compile the cache in while a reader of the define believed otherwise. */
@@ -530,10 +537,12 @@ typedef struct {
  * shape this whole family of gates exists to remove. Make it settable
  * first if a guard is ever wanted. */
 #if ZPICO_MAX_SUBSCRIBERS < 1
-#error "ZPICO_MAX_SUBSCRIBERS must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "ZPICO_MAX_SUBSCRIBERS must be >= 1: it sizes a C array"
 #endif
 #if ZPICO_MAX_PUBLISHERS < 1
-#error "ZPICO_MAX_PUBLISHERS must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "ZPICO_MAX_PUBLISHERS must be >= 1: it sizes a C array"
 #endif
 
 typedef struct {
@@ -675,7 +684,8 @@ typedef void (*zpico_graph_change_fn)(int32_t session_index);
  * translation unit does not. Inside the `#ifndef` is wrong for the
  * mirror-image reason: a `-D` skips the block and the guard with it. */
 #if ZPICO_MAX_SESSIONS < 1
-#error "ZPICO_MAX_SESSIONS must be >= 1: it sizes a fixed C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "ZPICO_MAX_SESSIONS must be >= 1: it sizes a fixed C array"
 #endif
 
 struct zpico_session {

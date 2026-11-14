@@ -201,8 +201,9 @@ void nros_platform_threadx_set_byte_pool(void *pool) {
  * NOT counted: a foreign thread's host-heap allocations are not in
  * `nros_platform_heap_used_bytes`, which reports the byte pool. */
 #if NROS_THREADX_HOSTED_PORT
+// issue 1750 -- the deferred-free list.
 _Static_assert(sizeof(ALIGN_TYPE) >= sizeof(void *),
-               "a deferred pool block must hold the list link (issue 1750)");
+               "a deferred pool block must hold the list link: ALIGN_TYPE must be pointer-sized");
 
 static void *s_foreign_released = NULL;
 

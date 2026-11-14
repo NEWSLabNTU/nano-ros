@@ -349,6 +349,7 @@ pub use executor::SpinPeriodResult;
 // refused HERE, naming the knob, rather than at the first declaration.
 // (`lifecycle-services` keeps its own guard below: its processor is still
 // boxed, which is a separate item.)
+// Issue 1812 -- a heap-free param store needs a carve.
 #[cfg(all(feature = "param-store", not(feature = "alloc"), any(has_rmw, test)))]
 const _: () = assert!(
     nros_params::IMPLIED_STORE_SLOTS > 0,

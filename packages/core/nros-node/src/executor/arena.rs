@@ -1116,25 +1116,25 @@ const _: () = {
     assert!(
         core::mem::size_of::<SubBufferedRawEntry<()>>() <= model::PUBSUB_STRUCT,
         "arena model: PUBSUB_STRUCT is below size_of::<SubBufferedRawEntry>() \
-         for this backend."
+         for this backend: raise PUBSUB_ENTRY_STRUCT in nros-node/build.rs."
     );
     // issue 1190
     assert!(
         core::mem::size_of::<SubBufferedRawCEntry>() <= model::PUBSUB_STRUCT,
         "arena model: PUBSUB_STRUCT is below size_of::<SubBufferedRawCEntry>() \
-         for this backend."
+         for this backend: raise PUBSUB_ENTRY_STRUCT in nros-node/build.rs."
     );
     // issue 1190
     assert!(
         core::mem::size_of::<SubBufferedTypedCEntry>() <= model::PUBSUB_STRUCT,
         "arena model: PUBSUB_STRUCT is below \
-         size_of::<SubBufferedTypedCEntry>() for this backend."
+         size_of::<SubBufferedTypedCEntry>() for this backend: raise PUBSUB_ENTRY_STRUCT in nros-node/build.rs."
     );
     // issue 1190
     assert!(
         core::mem::size_of::<SubBufferedRawInfoCEntry>() <= model::PUBSUB_STRUCT,
         "arena model: PUBSUB_STRUCT is below \
-         size_of::<SubBufferedRawInfoCEntry>() for this backend."
+         size_of::<SubBufferedRawInfoCEntry>() for this backend: raise PUBSUB_ENTRY_STRUCT in nros-node/build.rs."
     );
 
     // A service server has NO trailing region: both buffers are inline and it
@@ -1148,14 +1148,15 @@ const _: () = {
             >,
         >() <= model::SERVICE_ENTRY,
         "arena model: SERVICE_ENTRY is below size_of::<SrvRawEntry>() for this \
-         backend."
+         backend: raise SERVICE_ENTRY_STRUCT in nros-node/build.rs."
     );
 
     // A timer has no buffer at all.
     // issue 1190
     assert!(
         core::mem::size_of::<TimerEntry<()>>() <= model::TIMER_ENTRY,
-        "arena model: TIMER_ENTRY is below size_of::<TimerEntry>()."
+        "arena model: TIMER_ENTRY is below size_of::<TimerEntry>(): raise TIMER_ENTRY in \
+         nros-node/build.rs."
     );
 };
 
@@ -1332,7 +1333,7 @@ const _: () = {
             && size_of::<session::RmwServiceServer>() <= m::RMW_HANDLE_BOUND
             && size_of::<session::RmwServiceClient>() <= m::RMW_HANDLE_BOUND,
         "an RMW handle of the linked backend exceeds RMW_HANDLE_BOUND in \
-         nros-node/build.rs, so every declared action / service term under-prices it"
+         nros-node/build.rs, so every declared action / service term under-prices it: raise it"
     );
     // issue 0810
     assert!(
@@ -1340,7 +1341,7 @@ const _: () = {
             size_of::<ActionServerRawArenaEntry<B, B, B, G>>(),
             m::ACTION_SERVER_ENTRY
         ),
-        "ActionServerRawArenaEntry outgrew ACTION_SERVER_ENTRY (nros-node/build.rs)"
+        "ActionServerRawArenaEntry outgrew ACTION_SERVER_ENTRY: raise its term in nros-node/build.rs"
     );
     // issue 0810
     assert!(
@@ -1348,12 +1349,12 @@ const _: () = {
             size_of::<ActionClientRawArenaEntry<B, B, B>>(),
             m::ACTION_CLIENT_ENTRY
         ),
-        "ActionClientRawArenaEntry outgrew ACTION_CLIENT_ENTRY (nros-node/build.rs)"
+        "ActionClientRawArenaEntry outgrew ACTION_CLIENT_ENTRY: raise its term in nros-node/build.rs"
     );
     // issue 0810
     assert!(
         fits(size_of::<SrvRawEntry<B, B>>(), m::SERVICE_ENTRY),
-        "SrvRawEntry outgrew SERVICE_ENTRY (nros-node/build.rs)"
+        "SrvRawEntry outgrew SERVICE_ENTRY: raise its term in nros-node/build.rs"
     );
     // issue 0810
     assert!(
@@ -1361,7 +1362,7 @@ const _: () = {
             size_of::<ServiceClientRawArenaEntry<B>>(),
             m::SERVICE_CLIENT_ENTRY
         ),
-        "ServiceClientRawArenaEntry outgrew SERVICE_CLIENT_ENTRY (nros-node/build.rs)"
+        "ServiceClientRawArenaEntry outgrew SERVICE_CLIENT_ENTRY: raise its term in nros-node/build.rs"
     );
     // issue 0810
     assert!(
@@ -1369,13 +1370,13 @@ const _: () = {
             size_of::<GuardConditionEntry<(unsafe extern "C" fn(*mut core::ffi::c_void), usize)>>(),
             m::GUARD_CONDITION_ENTRY
         ),
-        "GuardConditionEntry outgrew GUARD_CONDITION_ENTRY (nros-node/build.rs)"
+        "GuardConditionEntry outgrew GUARD_CONDITION_ENTRY: raise its term in nros-node/build.rs"
     );
     // issue 0810
     assert!(
         fits(size_of::<SubBufferedRawCEntry>(), m::PUBSUB_STRUCT)
             && fits(size_of::<SubBufferedTypedCEntry>(), m::PUBSUB_STRUCT),
-        "a C subscription entry outgrew PUBSUB_STRUCT (nros-node/build.rs)"
+        "a C subscription entry outgrew PUBSUB_STRUCT: raise PUBSUB_ENTRY_STRUCT in nros-node/build.rs"
     );
 };
 

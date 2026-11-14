@@ -174,7 +174,8 @@ static_assert(NROS_CPP_RET_NOT_FOUND == -4 && NROS_CPP_RET_ALREADY_EXISTS == -5 
                   NROS_CPP_RET_FULL == -6 && NROS_CPP_RET_NOT_INIT == -7 &&
                   NROS_CPP_RET_TRY_AGAIN == -14 && NROS_CPP_RET_REENTRANT == -15 &&
                   NROS_CPP_RET_UNSUPPORTED == -16,
-              "nros_cpp_ret_t diverged from the shared numbering (issue #229)");
+              "nros_cpp_ret_t diverged from the shared numbering: NROS_CPP_RET_* must "
+              "keep the rcl_ret_t values");
 
 // Phase 84.G8: forward declarations of the heavy entity class
 // templates. Full definitions live in the corresponding `*.hpp`,
@@ -3201,7 +3202,8 @@ namespace rclcpp {
 /// Below the `#ifndef`, never above it: an undefined identifier reads as 0 in
 /// `#if`, so a guard above its own default fires on every build (issue 1167).
 #if NROS_COMPONENT_MAX_TIMERS < 1
-#error "NROS_COMPONENT_MAX_TIMERS must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "NROS_COMPONENT_MAX_TIMERS must be >= 1: it sizes a C array"
 #endif
 
 /// A `Node` plus an inline pool of `MaxTimers` `rclcpp::Timer` slots.

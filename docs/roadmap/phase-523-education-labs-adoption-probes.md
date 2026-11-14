@@ -346,7 +346,7 @@ fails with its file and line (the Rust half did so after batch 10).
 | Rust half a hard rule: `check-user-surface-ids` drops `.config/user-surface-ids-ratchet.json`; any id in a CLI-library string or build-script panic text fails with its file and line | — | rule | 80 | open |
 | runtime logs and panic text of a default image (C lexer, log/panic rule; 101 ids in 33 files fixed) | #3789 | (gated at zero) | — | open |
 | shell-script output (user-run scripts) | #3790 | (gated at zero) | — | merged |
-| compile-time text (`#error`, `static_assert`, `compile_error!`, `#[deprecated]`, proc-macro errors): its own subject, baseline zero | — | — | — | planned |
+| compile-time text (`#error`, `static_assert`, `compile_error!`, `#[deprecated]`, proc-macro errors) | #3792 | (gated at zero) | — | open |
 | text assembled away from its print (`Display` impls, messages logged later): its own subject, baseline zero | — | — | — | planned |
 
 Acceptance: both ratchet baselines reach zero and their subjects become

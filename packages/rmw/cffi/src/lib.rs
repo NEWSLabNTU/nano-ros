@@ -1610,8 +1610,8 @@ const _: () = {
     assert!(
         core::mem::size_of::<generated::nros_transport_ops_t>()
             == core::mem::size_of::<nros_rmw::NrosTransportOps>(),
-        "nros_transport_ops_t and NrosTransportOps must have identical size \
-         (the header is the source; regenerate with scripts/gen-abi-bindings.sh)"
+        "nros_transport_ops_t and NrosTransportOps must have identical size: \
+         the C header is the source of truth; regenerate with scripts/gen-abi-bindings.sh"
     );
     assert!(
         core::mem::align_of::<generated::nros_transport_ops_t>()
