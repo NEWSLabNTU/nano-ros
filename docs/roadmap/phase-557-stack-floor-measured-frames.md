@@ -820,6 +820,12 @@ with the row's `static`.
 - **Self-test** on the fast line, inside `check stack-floor-table`. A row
   edited up, edited down by 3 %, and edited down by 1 % give FAIL, FAIL
   and note.
+- **The twin lane follows.** W6's observed-row verdict
+  (`verdict_observed` in `scripts/stack-floor-twin.py`) also compares the
+  build's walk with the row's `static`, by this rule and the same helper,
+  so the two lanes cannot disagree about one row. The lane is not retired
+  in favour of W8: only a run sees a peak that rises past a walk that did
+  not move, which is how W6 found the C talker's 180 B.
 
 Acceptance:
 
