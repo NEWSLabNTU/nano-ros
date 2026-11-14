@@ -46,15 +46,16 @@ phase-555's design review (W3, platform-board-rtos brief P6). The user ruled
 (2026-11-14) to check RTIC against criterion 5 by reading the code, and to
 file an issue if it fails.
 
+## Ruling (2026-11-14)
+
+The maintainer ruled: demote now, bring it up to criterion 5 later. RFC-0112
+D3 records RTIC as demoted from Tier 1 to a documented recipe. No user-facing
+page claimed RTIC Tier 1 (the user book does not teach RTIC:
+`book/page-map.toml`; `book/src/reference/board-support-levels.md` and
+`support-status.md` have no RTIC row), so none changed.
+
 ## What closes it
 
-One of RFC-0112 D3's own outcomes:
-
-- RTIC's branch generates its task priorities from the sched-task contract,
-  and an RTIC cell asserts a D2 bound (idle wake count, or arrival→dispatch);
-  or
-- RTIC is demoted per D3 ("a branch that fails them is demoted ... or
-  deleted"), with the maintainer's ruling recorded in RFC-0112.
-
-[phase-562](../roadmap/phase-562-image-framework-field.md) reworks how an
-image chooses RTIC (RFC-0111) and is the natural place to schedule either.
+[phase-562](../roadmap/phase-562-image-framework-field.md) W10: the RTIC
+branch generates its task priorities from the sched-task contract, and an RTIC
+CI cell asserts a measured bound. RFC-0112 D3 then re-promotes RTIC to Tier 1.

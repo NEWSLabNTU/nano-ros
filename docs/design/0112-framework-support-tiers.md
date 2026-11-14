@@ -44,6 +44,8 @@ deleted that surface and admitted `px4` to Tier 1 (as of 2026-11-13).
 >   Tier 1 admission (RFC-0113 D1), never with a recipe.
 > - **D3 is live.** Its criterion 5 was checked against RTIC by reading the
 >   code, and RTIC does not meet it (D3 below, [issue 2540](../issues/2540-rtic-fails-tier1-realtime-criterion.md)).
+>   RTIC is demoted from Tier 1 to a documented recipe (ruling 2026-11-14) until
+>   phase-562 W10 brings it up to criterion 5. Tier 1 today is `px4`.
 > - **D5 is live and not done.** `FRAMEWORKS` still lists `zephyr`
 >   (`nros-orchestration-ir/src/lib.rs:164`). It is
 >   [phase-562](../roadmap/phase-562-image-framework-field.md) W8, beside
@@ -211,8 +213,16 @@ kept as a seam that nothing exercises. Today:
     RFC-0113's coverage row cites a hand-run idle measurement, and the
     `mixed_priority` test it names was retired (issue 2417).
 
-  Under this decision RTIC is either brought up to criterion 5 or demoted.
-  Until the maintainer rules, it stays in Tier 1 with the gap on record.
+  **Demoted from Tier 1 (maintainer ruling 2026-11-14: demote now, bring
+  it up to criterion 5 later).** This decision's own rule applies: a branch
+  that fails the criteria is demoted. RTIC is now a documented recipe, and
+  nano-ros does not claim its real-time promise. What a user still gets is what the
+  CI cells assert: an RTIC image boots and delivers messages. The `rtic`
+  framework value and the `nros::main!` branch stay, because the cells
+  exercise them and the re-promotion builds on them; they carry no Tier 1
+  claim until it lands. Re-promotion is
+  [phase-562](../roadmap/phase-562-image-framework-field.md) W10: a
+  generated priority mapping, and a bound its CI cell asserts.
 - **`px4`** meets all five (RFC-0113 D9, phase-521 W8, admitted 2026-11-03),
   as a C++-only framework (`nros::main!` refuses it; the C++ entry codegen
   emits one PX4 work item per sched task):

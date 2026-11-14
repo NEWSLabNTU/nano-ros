@@ -76,7 +76,7 @@ runs next and at what priority, and can state the bounds in D2 for it.
 | Shape (RFC-0112 vocabulary) | Supported | Why |
 |---|---|---|
 | A: nano-ros owns the loop (`owned-spin`, the runners, `spin*`) | yes | sched tasks map onto OS threads with real priorities (RFC-0002, RFC-0108) |
-| C: a framework owns scheduling, and nano-ros generates the mapping (RTIC; PX4 work queues, D9) | yes, while Tier 1 admission holds | the priority mapping is generated and the framework's model is analysable |
+| C: a framework owns scheduling, and nano-ros generates the mapping (PX4 work queues, D9; RTIC was demoted from Tier 1 on 2026-11-14 because its mapping is not generated, RFC-0112 D3) | yes, while Tier 1 admission holds | the priority mapping is generated and the framework's model is analysable |
 | B: a host drives the executor (tokio, Embassy task, Qt, GLib, Arduino `loop()`, a hand-written PX4 work item) | **no** | the host decides when callbacks run |
 
 A request to support a new framework is answered with Shape A, or with a Tier 1
