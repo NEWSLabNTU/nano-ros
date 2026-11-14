@@ -52,13 +52,13 @@ none builds `zenoh`.
 4. Run it. A host image logs the backend it was built for in its first line:
 
    ```bash
-   nros run posix_cyclonedds --expect 'Publishing:' --timeout 120
+   nros run posix_cyclonedds
    ```
 
    ```text
    boot config: … rmw cyclonedds (baked)
    Publishing: 'Hello World: 1'
-   nros run: matched after
+   Publishing: 'Hello World: 2'
    ```
 
 5. To move every image instead, change `[system] rmw` and drop the
@@ -149,7 +149,7 @@ nros setup linux --rmw zenoh
 nros setup linux --rmw cyclonedds
 nros setup linux --rmw xrce
 nros build posix_cyclonedds
-nros run posix_xrce --expect 'Publishing:' --timeout 120
+nros run posix_xrce
 ```
 
 A bare `nros build` builds the `default_images`; with several images and no

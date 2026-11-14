@@ -157,7 +157,7 @@ An STM32F429 with Ethernet, on bare metal, kept in its own repository. No
 nano-ros lane boots this chip, so its verification is yours: the board stays
 out of tree, and you upgrade nano-ros when you choose.
 
-```text
+```tree
 my-stm32f4-board/
   Cargo.toml        # depends on nros and the bare-metal platform
   nros-board.toml   # the descriptor

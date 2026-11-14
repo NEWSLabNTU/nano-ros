@@ -54,7 +54,7 @@ key an image takes.
 A host image reads two settings from the environment when it starts, so the
 same binary can join another domain or another router without a rebuild:
 
-```text
+```txt
 ROS_DOMAIN_ID=0
 NROS_LOCATOR=tcp/127.0.0.1:7447
 ```

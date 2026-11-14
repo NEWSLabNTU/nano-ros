@@ -32,7 +32,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | Feature axes (RMW × platform × ROS edition) | ARCHITECTURE §2 + RFC-0005, RFC-0006 |
 | Platform/RMW impl notes + deep pitfalls | [book-internals/src/platform/implementation-notes.md](book-internals/src/platform/implementation-notes.md) |
 | C/C++ integration shape | AGENTS.md “C/C++ Integration” + RFC-0018/0019 + [docs/reference/c-api-cmake.md](docs/reference/c-api-cmake.md) |
-| User-facing workflow | [book/src/](book/src/) (`just book`) |
+| User-facing workflow | [book/src/](book/src/) (`just book`). **Before writing or revising a page, read [writing-the-book.md](book-internals/src/orientation/writing-the-book.md)**: the charter checklist, word budgets, code-block rules (Terminal/Output/file/diff/tree fences, no sed/heredoc/`--expect` in Tutorial), page templates |
 | Contributor narrative (how the tree is built, tested, generated) | [book-internals/src/](book-internals/src/) — nano-ros Internals, RFC-0123; which book a page belongs in is `book/page-map.toml`, moved with `scripts/book-move.py` |
 | Phase history / current work items | [docs/roadmap/](docs/roadmap/) (active) + `archived/` |
 | What do I type? | `just` with no args — the ~8 verbs, grouped by when you need them (phase-399). The 207 gates live in `just/check.just` behind `mod check`, so the verb is `just check <name>` and the recipe carries no `check-` prefix: `just check fast`, `just check leaf-lockfiles`. The old flat spelling is gone, with no forwarders. `just --list` is still everything |

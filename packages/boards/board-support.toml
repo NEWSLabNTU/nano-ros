@@ -702,10 +702,10 @@ chapter = "tutorial/run-a-talker.md"
 variant = "qemu"
 lang = "rust"
 weekly = false
-row = "nros-board-mps2-an385@QemuBaremetal"
-qemu_board = "mps2-an385-baremetal"
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+qemu_board = "mps2-an385-freertos"
 budget_minutes = 30
-notes = "phase-525 W4 (RFC-0116 D1, D5): the book's first chapter and the installed track's default, replayed by `host-tests.yml`'s book probes (the `checkout-track` / `installed-track` / `image-track` jobs). The mps2-an385 talker over its serial link under `nros run`, then `ros2 topic echo`, timed from the first `nros setup` against the field budget. phase-532 rewrote the chapter to RFC-0121 D4/D5 (a workspace, `nros run <node>`) ahead of phase-531's scaffold and node rung, so it fails until those land."
+notes = "phase-525 W4 (RFC-0116 D1, D5): the book's first chapter and the installed track's default, replayed by `host-tests.yml`'s book probes (the `checkout-track` / `installed-track` / `image-track` jobs). The mps2-an385-freertos talker over QEMU's user network under `nros run`, then `ros2 topic echo`, timed from the first `nros setup` against the field budget. The Tutorial runs Rust, C and C++ on this one board (RFC-0124 D3); this is its Rust tab, and tutorial-c / tutorial-cpp replay the others."
 
 [[probe]]
 track = "tutorial-2"
@@ -714,7 +714,7 @@ variant = "qemu"
 lang = "rust"
 after = ["tutorial/run-a-talker.md"]
 weekly = false
-row = "nros-board-mps2-an385@QemuBaremetal"
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
 notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 2, What you just built: chapter 1's project, then `nros list`, the bringup's system.toml and `nros run --dry-run --why`. Chained: it replays chapter 1 first."
 
 [[probe]]
@@ -724,7 +724,7 @@ variant = "qemu"
 lang = "rust"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md"]
 weekly = false
-row = "nros-board-mps2-an385@QemuBaremetal"
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
 notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 3, Add a second node: a listener package added with `nros new --to`, `nros check --workspace`, then `nros run` until the listener hears the talker in the same image. Chained after chapters 1-2."
 
 [[probe]]
@@ -734,8 +734,8 @@ variant = "qemu"
 lang = "rust"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md"]
 weekly = false
-row = "nros-board-mps2-an385@QemuBaremetal"
-notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 4, Pick and configure the RMW: the project's rmw and locator lines, the image moved from its serial link to the board's network (tcp/10.0.2.2:7447), then nros run (the router on tcp/127.0.0.1:7447) and ros2 topic echo. Chained after chapters 1-3."
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-537 W5 (RFC-0124 D3, D5) — Tutorial 4, Pick and configure the RMW: the bringup's rmw line and the image's locator, the board's own locator written into the image (tcp/10.0.2.2:7447), then nros run (the router on tcp/127.0.0.1:7447) and ros2 topic echo. Chained after chapters 1-3."
 
 [[probe]]
 track = "tutorial-5"
@@ -744,7 +744,7 @@ variant = "qemu"
 lang = "rust"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md"]
 weekly = false
-row = "nros-board-mps2-an385@QemuBaremetal"
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
 notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 5, Your own message: a stock ROS 2 message package (tutorial_msgs/Reading) written into the workspace, both nodes moved onto it, then nros run until the listener hears a reading. Chained after chapters 1-4."
 
 [[probe]]
@@ -754,7 +754,7 @@ variant = "qemu"
 lang = "rust"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md"]
 weekly = false
-row = "nros-board-mps2-an385@QemuBaremetal"
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
 notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 6, Services and actions: the server, client, action-server and action-client templates added to the bringup, one run until the in-image goal's result, then ros2 service call and ros2 action send_goal against the board. Chained after chapters 1-5."
 
 [[probe]]
@@ -764,7 +764,7 @@ variant = "qemu"
 lang = "rust"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md"]
 weekly = false
-row = "nros-board-mps2-an385@QemuBaremetal"
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
 notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 7, Parameters and launch files: the generated launch file copied into launch/, a period_ms parameter the talker reads, a launch argument and a remap to /sensor/reading, then nros run and ros2 topic list. Chained after chapters 1-6."
 
 [[probe]]
@@ -774,8 +774,8 @@ variant = "qemu"
 lang = "rust"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md"]
 weekly = false
-row = "nros-board-mps2-an385@QemuBaremetal"
-notes = "phase-537 W5 (RFC-0124 D3, D6) — Tutorial 8, Tell the build what your system creates: the image measured with arm-none-eabi-size, the contract written beside the launch file ([census] on_missing = warn: no host image), measured again (static RAM falls), run, then one refusal (a parameter renamed in the contract) and the fix. Chained after chapters 1-7."
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-537 W5 (RFC-0124 D3, D6) — Tutorial 8, Tell the build what your system creates: the image measured with arm-none-eabi-size, the contract written beside the launch file ([census] on_missing = warn: no host image), measured again (static RAM falls), run, then one refusal (a parameter renamed in the contract, asserted from the build's output) and the fix. Chained after chapters 1-7."
 
 [[probe]]
 track = "tutorial-9"
@@ -783,10 +783,10 @@ chapter = "tutorial/another-target.md"
 variant = "qemu"
 lang = "rust"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md", "tutorial/tell-the-build.md"]
-also_rows = ["nros-board-mps2-an385-freertos@FreertosMps2"]
+also_rows = ["nros-board-linux@Linux"]
 weekly = false
-row = "nros-board-mps2-an385@QemuBaremetal"
-notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 9, Same project, another target: nros setup mps2-an385-freertos, a second [image.freertos] row in the same bringup, the target names (nros run baremetal --dry-run --why), then nros run freertos to the in-image action result and the bare-metal image again. Chained after chapters 1-8."
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 9, Same project, another target: nros setup linux, a second [image.linux] row in the same bringup, the target names (nros run linux --dry-run --why), then nros run linux to the in-image action result and the FreeRTOS image again. Chained after chapters 1-8."
 
 [[probe]]
 track = "tutorial-10"
@@ -795,8 +795,8 @@ variant = "qemu"
 lang = "rust"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md", "tutorial/tell-the-build.md", "tutorial/another-target.md"]
 weekly = false
-row = "nros-board-mps2-an385@QemuBaremetal"
-notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 10, Talk to ROS 2: tutorial_msgs built for ROS 2 with colcon into build/colcon, the bare-metal image run, then ros2 topic echo, ros2 topic info -v (the QoS the board grants) and ros2 topic pub to the board. Chained after chapters 1-9."
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 10, Talk to ROS 2: tutorial_msgs built for ROS 2 with colcon into build/colcon, the FreeRTOS image run, then ros2 topic echo, ros2 topic info -v (the QoS the board grants) and ros2 topic pub to the board. Chained after chapters 1-9."
 
 [[probe]]
 track = "tutorial-c"
@@ -806,7 +806,7 @@ lang = "c"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md", "tutorial/tell-the-build.md", "tutorial/another-target.md"]
 weekly = true
 row = "nros-board-mps2-an385-freertos@FreertosMps2"
-notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C tab: chapters 1-10 on one C project, chained, on mps2-an385-freertos (bare metal is Rust only; chapter 9's second target is the Linux host; issue 2376). The Rust tab has one track per chapter (first-project, tutorial-2 to tutorial-10); each language tab has one chained track."
+notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C tab: chapters 1-10 on one C project, chained, on mps2-an385-freertos, the board every tab runs on (chapter 9's second target is the Linux host; issue 2376). The Rust tab has one track per chapter (first-project, tutorial-2 to tutorial-10); each language tab has one chained track."
 
 [[probe]]
 track = "tutorial-cpp"
@@ -816,7 +816,7 @@ lang = "cpp"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md", "tutorial/tell-the-build.md", "tutorial/another-target.md"]
 weekly = true
 row = "nros-board-mps2-an385-freertos@FreertosMps2"
-notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C++ tab: chapters 1-10 on one C++ project, chained, on mps2-an385-freertos (bare metal is Rust only; chapter 9's second target is the Linux host; issue 2376)."
+notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C++ tab: chapters 1-10 on one C++ project, chained, on mps2-an385-freertos, the board every tab runs on (chapter 9's second target is the Linux host; issue 2376)."
 
 [[probe]]
 track = "lab-qos"
@@ -825,7 +825,7 @@ variant = "qemu"
 lang = "rust"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md"]
 weekly = true
-row = "nros-board-mps2-an385@QemuBaremetal"
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
 notes = "phase-537 W5 / issue 2269 — Lab: QoS is checked twice, in its rust tab: the build refuses a subscription asking more than its publisher offers, the boot refuses a contract row that widens the subscription's call site, then a transient_local pair hears. Chained after Tutorial 1-3."
 
 [[probe]]

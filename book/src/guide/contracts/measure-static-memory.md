@@ -18,7 +18,7 @@ For that, measure the image you built. Two ways:
   them with the Rust toolchain, so this works offline afterwards. They read an
   image for any target:
 
-  ```text
+  ```console
   bin="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin"
   "$bin/llvm-size" -A build/.../your-image      # RAM = .data + .bss (+ .uninit)
   "$bin/llvm-nm" --size-sort -S -C --radix=d build/.../your-image | tail -20
@@ -29,7 +29,7 @@ For that, measure the image you built. Two ways:
 - **With the memory report**, the attribution is done for you. It ships in
   every release, inside the toolchain:
 
-  ```text
+  ```console
   python3 "$(nros locate nano-ros)/scripts/nros-mem-report.py" build/.../your-image
   ```
 

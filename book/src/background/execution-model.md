@@ -39,7 +39,7 @@ while another runs waits for it to return. Its worst case is its own
 execution time plus the longest other callback that can be running when it
 wakes:
 
-```text
+```txt
 response time  >=  own execution time  +  longest other callback on the thread
 ```
 
@@ -182,7 +182,7 @@ derivation uses, gives shorter periods higher priority, and it is optimal
 among fixed-priority assignments for independent periodic tasks. A task's
 worst-case response time under it is:
 
-```text
+```txt
 R_i = C_i + Σ_j ⌈R_i / T_j⌉ × C_j      (over every higher-priority task j)
 ```
 

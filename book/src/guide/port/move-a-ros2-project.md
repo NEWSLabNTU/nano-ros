@@ -116,15 +116,15 @@ The full account of the differences is in
 The whole move for a two-node project that ran as
 `ros2 launch my_robot system.launch.xml` with Cyclone DDS:
 
-```text
+```tree
 my_robot_ws/
 └── src/
-    ├── talker_pkg/             # unchanged
-    ├── listener_pkg/           # unchanged
+    ├── talker_pkg/                   # unchanged
+    ├── listener_pkg/                 # unchanged
     └── my_robot_bringup/
         ├── package.xml
         ├── system.toml
-        └── launch/system.launch.xml   # moved here, unchanged
+        └── launch/system.launch.xml  # moved here, unchanged
 ```
 
 ```toml

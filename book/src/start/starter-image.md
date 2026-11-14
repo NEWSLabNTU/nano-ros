@@ -35,21 +35,21 @@ docker run --rm -it ghcr.io/newslabntu/nano-ros-starter:latest
 You are now the user `nros` in `/work`, the directory your projects go in.
 Scaffold a talker for the Linux host, then build and run it:
 
-```bash probe=20
+```bash probe=20 probe-run=300
 source /opt/ros/humble/setup.bash
 nros new my_ws --board linux --template talker --lang rust --rmw zenoh
 cd my_ws
-nros run my_node --expect "Publishing: 'Hello World: 1'" --timeout 300
+nros run my_node
 ```
 
 ```text probe-expect=20
 Publishing: 'Hello World: 1'
-nros run: matched after
+Publishing: 'Hello World: 2'
 ```
 
 `nros run` starts ROS's Zenoh router, builds the talker and runs it. None of
-it reaches the network: the crates it needs are already in the image. With
-`--expect` it stops at the first line containing that text.
+it reaches the network: the crates it needs are already in the image. It
+keeps running until you press Ctrl-C.
 
 Cargo runs offline in the image (`CARGO_NET_OFFLINE=true`), so a seat with no
 network builds without being told to. When your project adds a dependency

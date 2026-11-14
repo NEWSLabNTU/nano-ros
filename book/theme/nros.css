@@ -19,3 +19,103 @@ pre > code.language-text {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
+
+/* What a block is, said above it. A command to type (```bash / ```sh) is
+   labelled Terminal and has an accent edge; what a program prints (```text)
+   is labelled Output, sits on a tinted ground with a dashed edge, so a
+   command and the output after it never read as one block. A file the reader
+   writes carries its path instead (scripts/mdbook-file-blocks.py). Plain
+   text that is neither (a formula, a sketch) is fenced ```txt and takes no
+   label. */
+pre:has(> code.language-bash)::before,
+pre:has(> code.language-sh)::before,
+pre:has(> code.language-console)::before,
+pre:has(> code.language-text)::before {
+    display: block;
+    margin-bottom: 0.25em;
+    font-family: var(--sans-font, sans-serif);
+    font-size: 0.75em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--fg) 60%, var(--bg));
+}
+pre:has(> code.language-bash)::before,
+pre:has(> code.language-sh)::before {
+    content: "Terminal";
+}
+pre:has(> code.language-text)::before {
+    content: "Output";
+}
+pre > code.language-bash,
+pre > code.language-sh {
+    border-left: 3px solid var(--links);
+}
+pre > code.language-text {
+    border-style: dashed;
+    background: color-mix(in srgb, var(--fg) 6%, var(--bg));
+}
+
+/* A file block: its path on a strip joined to the block's top edge. */
+.nros-file-caption {
+    margin: 1em 0 0;
+    padding: 0.3em 0.8em;
+    border: 1px solid color-mix(in srgb, var(--fg) 25%, var(--bg));
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    background: color-mix(in srgb, var(--fg) 7%, var(--bg));
+    font-size: 0.85em;
+}
+.nros-file-caption > code {
+    background: none;
+    padding: 0;
+    font-weight: 600;
+}
+.nros-file-caption + pre {
+    margin-top: 0;
+}
+.nros-file-caption + pre > code {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+/* A text file shown as a file is content, not output: no Output label. */
+.nros-file-caption + pre::before {
+    content: none !important;
+}
+.nros-file-caption + pre > code.language-text {
+    border-style: solid;
+    background: inherit;
+}
+
+/* File trees (```tree, highlighted by theme/nros-highlight.js). They never
+   wrap: a wrapped line breaks the tree's columns. The book keeps them within
+   the page width instead. */
+pre > code.language-tree {
+    white-space: pre;
+}
+.hljs-tree-branch {
+    color: color-mix(in srgb, var(--fg) 40%, var(--bg));
+}
+.hljs-tree-dir {
+    color: var(--links);
+    font-weight: 600;
+}
+.hljs-tree-file {
+    color: var(--fg);
+}
+.hljs-tree-comment {
+    color: color-mix(in srgb, var(--fg) 55%, var(--bg));
+    font-style: italic;
+}
+/* A Tutorial chapter's tree marks what the chapter added and changed, so a
+   reader sees where this chapter's work sits in the project so far. */
+.hljs-tree-new,
+.hljs-tree-changed {
+    font-weight: 600;
+    font-style: normal;
+}
+.hljs-tree-new {
+    color: #2e9e4f;
+}
+.hljs-tree-changed {
+    color: #c27c0e;
+}

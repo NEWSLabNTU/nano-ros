@@ -185,7 +185,7 @@ rather than committed.
 
 ## Generated Output Structure
 
-```
+```tree
 my_ws/
 ├── src/
 │   ├── my_node/

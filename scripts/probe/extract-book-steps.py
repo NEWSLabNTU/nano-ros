@@ -15,6 +15,12 @@ line, the `<board>` placeholder). Each substitution must match EXACTLY ONCE
 across the extracted steps — if a book edit breaks the pattern, extraction
 fails loudly instead of silently probing something else.
 
+Several blocks of one chapter may share a `probe=NN`: they are one step, run in
+page order (a command, the file it writes, the command after). A block tagged
+`file=PATH` or `append=PATH` is a file the reader writes, not a command: the
+script writes its body to PATH (scripts/mdbook-file-blocks.py shows PATH above
+it in the book).
+
 A step that never exits (a QEMU boot, a router) is `probe=NN probe-run=SECS`:
 it runs in its own session, and must print — within SECS — every line of the
 chapter's output block tagged `probe-expect=NN`, so the documented output is
@@ -80,6 +86,38 @@ VARIANT_TOKEN_RE = re.compile(r"(?:^|\s)variant=([A-Za-z0-9_,+-]+)(?:\s|$)")
 RUN_TOKEN_RE = re.compile(r"(?:^|\s)probe-run=(\d+)(?:\s|$)")
 KEEP_TOKEN_RE = re.compile(r"(?:^|\s)probe-keep(?:\s|$)")
 EXPECT_TOKEN_RE = re.compile(r"(?:^|\s)probe-expect=(\d+)(?:\s|$)")
+# A step can be a FILE the reader writes, shown as the file itself rather than
+# a `cat > path <<'EOF'` command: ```` ```yaml probe=NN file=manifest/west.yml ````
+# (or `append=PATH` for text added to the end of a file). The block's body is
+# the file's content; the probe writes it there, making the directory first.
+# The book renders the path above the block (scripts/mdbook-file-blocks.py).
+# `edit=PATH` on a ```diff block changes part of an existing file: lines
+# starting with a space are context, `-` lines are replaced by `+` lines. The
+# context and `-` lines must occur in the file exactly once.
+FILE_TOKEN_RE = re.compile(r"(?:^|\s)(file|append|edit)=(\S+)(?:\s|$)")
+
+# The edit applier, run as `python3 -c` with the hunk on stdin. No single
+# quote in it: the script quotes it in single quotes.
+EDIT_APPLIER = """import sys
+p = sys.argv[1]
+h = sys.stdin.read().split(chr(10))
+h = h[:-1] if h and h[-1] == "" else h
+old, new = [], []
+for ln in h:
+    t, b = (ln[:1], ln[1:]) if ln else (" ", "")
+    if t not in " +-":
+        sys.exit("probe edit: %s: a hunk line starts with a space, - or +: %r" % (p, ln))
+    if t in " -":
+        old.append(b)
+    if t in " +":
+        new.append(b)
+s = open(p).read()
+a = chr(10).join(old)
+n = s.count(a)
+if n != 1:
+    sys.exit("probe edit: %s: the lines to change occur %d times, not once" % (p, n))
+open(p, "w").write(s.replace(a, chr(10).join(new)))
+"""
 
 
 def _tokens(info: str, path: Path, lineno: int):
@@ -100,7 +138,31 @@ def _tokens(info: str, path: Path, lineno: int):
         "variants": set(vtok.group(1).split(",")) if vtok else None,
         "run": int(rtok.group(1)) if rtok else None,
         "keep": bool(KEEP_TOKEN_RE.search(info)),
+        "file": FILE_TOKEN_RE.search(info),
     }
+
+
+def file_step(body: list[str], mode: str, path: str, where: str) -> str:
+    """The shell that writes a `file=` / `append=` block's body to its path,
+    or applies an `edit=` block's hunk to it."""
+    tag = "NROS_PROBE_FILE"
+    if any(ln == tag for ln in body):
+        sys.exit(f"{where}: file block contains the heredoc tag {tag}")
+    q = shlex.quote(path)
+    if mode == "edit":
+        tag = "NROS_PROBE_EDIT"
+        if any(ln == tag for ln in body):
+            sys.exit(f"{where}: edit block contains the heredoc tag {tag}")
+        return "\n".join([f"python3 -c '{EDIT_APPLIER}' {q} <<'{tag}'", *body, tag])
+    op = ">>" if mode == "append" else ">"
+    return "\n".join([f"mkdir -p \"$(dirname {q})\"", f"cat {op} {q} <<'{tag}'", *body, tag])
+
+
+def expected_text(line: str) -> str:
+    """What a run must print for one line of an expected-output block. The
+    whole line, or, when it holds `…` (a value that changes per run, such as a
+    message counter: `data: 'Hello World: …'`), the text before the `…`."""
+    return line.split("…", 1)[0].strip()
 
 
 def extract_blocks(path: Path):
@@ -153,13 +215,20 @@ def extract_blocks(path: Path):
         else:
             if line.startswith("```"):
                 if cur["kind"] == "step":
-                    cur["body"] = "\n".join(body)
+                    if cur["file"]:
+                        if cur["run"] is not None:
+                            sys.exit(f"{path}:{cur['lineno']}: a file block cannot be a `probe-run` step")
+                        cur["body"] = file_step(body, cur["file"].group(1), cur["file"].group(2),
+                                                f"{path}:{cur['lineno']}")
+                    else:
+                        cur["body"] = "\n".join(body)
                     steps.append(cur)
                 else:
                     # Every non-blank line is a substring the run must print;
                     # a line that is only `...` / `…` stands for "and so on".
+                    # A `…` inside a line ends what must match (expected_text).
                     cur["lines"] = [
-                        ln.strip() for ln in body
+                        expected_text(ln) for ln in body
                         if ln.strip() and ln.strip() not in ("...", "…")
                     ]
                     if not cur["lines"]:
@@ -290,6 +359,17 @@ def main():
                 continue
             if b["keep"] and b["run"] is None:
                 sys.exit(f"{f}:{lineno}: `probe-keep` needs `probe-run=SECS`")
+            if steps and steps[-1][0] == order and steps[-1][1] == f:
+                # Several blocks of one chapter under one `probe=NN` are one
+                # step, run in page order: a command, the file it needs (a
+                # `file=` block), the command that uses it. Only the last may
+                # be a `probe-run` step.
+                prev = steps[-1]
+                if prev[4] is not None:
+                    sys.exit(f"{f}:{lineno}: step {order} continues after its `probe-run` "
+                             "block; only a step's last block may run")
+                steps[-1] = (order, f, prev[2], prev[3] + "\n" + body, b["run"], b["keep"])
+                continue
             steps.append((order, f, lineno, body, b["run"], b["keep"]))
 
     if args.variant is not None and not variant_seen:
@@ -480,6 +560,42 @@ def self_test() -> None:
         o = (Path(d) / "o.sh").read_text()
         assert o.count("nros_probe_stop_kept") == 1, o
         assert o.index("echo a2") < o.index("nros_probe_stop_kept") < o.index("echo b1"), o
+    # A file block writes its body to its path; `append=` adds to the end.
+    rc, fb = extract("```yaml probe=10 file=manifest/west.yml\nmanifest:\n  self: {}\n```\n"
+                     "```text probe=20 append=a b/prj.conf\nCONFIG_X=y\n```\n")
+    assert rc == 0, fb
+    assert "mkdir -p \"$(dirname manifest/west.yml)\"\ncat > manifest/west.yml <<'NROS_PROBE_FILE'\n" \
+        "manifest:\n  self: {}\nNROS_PROBE_FILE\n" in fb, fb
+    rc, fb = extract("```text probe=20 append=b/prj.conf\nCONFIG_X=y\n```\n")
+    assert rc == 0 and "cat >> b/prj.conf <<'NROS_PROBE_FILE'\nCONFIG_X=y\n" in fb, fb
+    rc, err = extract("```yaml probe=10 probe-run=5 file=x.yml\na: 1\n```\n")
+    assert rc != 0 and "cannot be a `probe-run` step" in err, err
+    # Blocks of one chapter sharing a `probe=NN` are one step, in page order.
+    rc, ms = extract("```bash probe=10\nmkdir -p m\n```\ntext\n```yaml probe=10 file=m/w.yml\na: 1\n```\n"
+                     "```bash probe=10\nwest init -l m\n```\n```bash probe=11\necho next\n```\n")
+    assert rc == 0 and ms.count("=== probe step 10 ") == 1, ms
+    assert ms.index("mkdir -p m") < ms.index("cat > m/w.yml") < ms.index("west init") < ms.index("echo next"), ms
+    rc, err = extract("```bash probe=10 probe-run=5\nqemu\n```\n```text probe-expect=10\nhi\n```\n"
+                      "```bash probe=10\necho after\n```\n")
+    assert rc != 0 and "only a step's last block may run" in err, err
+    # An edit block's hunk is applied: `-` lines replaced by `+` lines.
+    rc, ed = extract("```diff probe=10 edit=b/system.toml\n [image.x]\n-locator = \"serial/UART_0\"\n"
+                     "+locator = \"tcp/10.0.2.2:7447\"\n```\n")
+    assert rc == 0 and "python3 -c" in ed, ed
+    with tempfile.TemporaryDirectory() as d:
+        (Path(d) / "b").mkdir()
+        (Path(d) / "b/system.toml").write_text('[image.x]\nlocator = "serial/UART_0"\nrmw = "zenoh"\n')
+        body = ed.split("set +u\n", 1)[1].rsplit("\nset -u", 1)[0]
+        r = subprocess.run(["bash", "-c", body], cwd=d, capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        got = (Path(d) / "b/system.toml").read_text()
+        assert got == '[image.x]\nlocator = "tcp/10.0.2.2:7447"\nrmw = "zenoh"\n', got
+        r = subprocess.run(["bash", "-c", body], cwd=d, capture_output=True, text=True)
+        assert r.returncode != 0 and "occur 0 times" in r.stderr, r.stderr
+    # `…` in an expected line: the text before it must print.
+    rc, ex = extract("```bash probe=10 probe-run=5\nros2 topic echo /chatter\n```\n"
+                     "```text probe-expect=10\ndata: 'Hello World: …'\n```\n")
+    assert rc == 0 and shlex.quote("data: 'Hello World:") in ex, ex
     print("extract-book-steps: self-test OK")
 
 

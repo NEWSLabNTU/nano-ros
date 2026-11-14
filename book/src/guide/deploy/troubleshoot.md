@@ -178,7 +178,7 @@ arguments.
 
 The usual first pass on a failing image:
 
-```text
+```console
 nros doctor
 nros build <image> --dry-run
 nros run <bringup>:<image> --dry-run --why

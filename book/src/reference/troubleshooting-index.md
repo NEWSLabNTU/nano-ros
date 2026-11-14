@@ -376,7 +376,7 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp # for Cyclone
 
 ### C2. QoS mismatch — echo silent, list sees the topic
 
-```text
+```console
 ros2 topic list           # /chatter shown
 ros2 topic echo /chatter  # … nothing
 ```

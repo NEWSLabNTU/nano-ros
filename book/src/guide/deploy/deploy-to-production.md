@@ -65,7 +65,7 @@ does the last two; on hardware `nros flash --monitor` does.
 
 4. Flash a real board, and watch its console on the same port:
 
-   ```text
+   ```console
    nros flash <bringup>:<image> --monitor --expect 'Publishing:'
    ```
 

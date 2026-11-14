@@ -67,12 +67,12 @@ registry, not written here:
 3. Run it. No router starts, because Cyclone DDS needs none:
 
    ```bash
-   nros run host_node --expect 'Publishing:' --timeout 120
+   nros run host_node
    ```
 
    ```text
    Publishing: 'Hello World: 1'
-   nros run: matched after
+   Publishing: 'Hello World: 2'
    ```
 
 4. See it from ROS 2, in a second terminal:

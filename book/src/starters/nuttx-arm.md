@@ -100,34 +100,22 @@ In the workspace, source ROS 2 and build and run
 the talker. This first run records the ROS 2 prefix in the workspace, so
 later runs of it need no sourced shell:
 
-```bash probe=60 probe-run=1500
+```bash probe=60 probe-run=1500 probe-keep
 source /opt/ros/humble/setup.bash
-nros run nx_node --expect "Publishing: 'Hello World: 1'"
+nros run nx_node
 ```
 
 ```text probe-expect=60
 Publishing: 'Hello World: 1'
-nros run: matched after
+Publishing: 'Hello World: 2'
 ```
 
 `nros run` builds the kernel with your node linked in (the first build
 configures NuttX from the board's defconfig and takes several minutes; later
 builds take seconds), then boots it on QEMU's `virt` machine with virtio-net
-on the user-mode network. The image starts its application itself, so what
-you see is the talker on the NuttX console. With `--expect` it stops QEMU and
-exits 0 at the first console line containing that text, and exits 1 if the
-board stops first. It stops the router it started, too.
-
-Without `--expect` it keeps running until you press Ctrl-C, which stops QEMU:
-
-```bash probe=65 probe-run=120 probe-keep
-nros run nx_node
-```
-
-```text probe-expect=65
-Publishing: 'Hello World: 1'
-Publishing: 'Hello World: 2'
-```
+on the user-mode network. The image starts its application itself, so what you
+see is the talker on the NuttX console. It keeps running until you press
+Ctrl-C.
 
 ## See it in ROS 2
 
@@ -141,11 +129,12 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ```text probe-expect=70
-data: 'Hello World:
+data: 'Hello World: …'
 ```
 
-The talker publishes best-effort, and `ros2 topic echo` defaults to reliable,
-which receives nothing from it. That is why the command asks for best-effort.
+The talker's publisher is reliable, as `ros2 topic info -v /chatter` shows.
+Asking for best-effort receives from a publisher of either kind, so the
+command works whatever QoS a publisher offers.
 
 ## If it doesn't work
 

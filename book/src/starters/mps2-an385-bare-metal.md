@@ -65,11 +65,11 @@ cd bm_ws
 
 That wrote a workspace with two packages:
 
-```text
+```tree
 bm_ws/
 └── src/
-    ├── bm_node/                 # the talker: package.xml, Cargo.toml (a library), src/lib.rs
-    └── bm_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
+    ├── bm_node/          # the talker: a Rust library
+    └── bm_node_bringup/  # what it runs on: board, RMW
 ```
 
 `bm_node` is the talker, a library with no `main()` that names no board. It
@@ -82,34 +82,21 @@ Source ROS 2, then build and run. This first run records the ROS 2 prefix in
 the workspace, so later runs of it need no sourced shell (the router still
 comes from ROS 2):
 
-```bash probe=50 probe-run=1500
+```bash probe=50 probe-run=1500 probe-keep
 source /opt/ros/humble/setup.bash
-nros run bm_node --expect "Publishing: 'Hello World: 1'"
+nros run bm_node
 ```
 
 ```text probe-expect=50
 Publishing: 'Hello World: 1'
-nros run: matched after
+Publishing: 'Hello World: 2'
 ```
 
 `nros run` builds the firmware (the first build compiles nano-ros for the
 Cortex-M3 and takes about five minutes; later builds take seconds), boots it
 in QEMU with the board's serial port connected to a terminal device on your
 host, and starts the router on that device. What it prints is the board's
-console. With `--expect` it stops everything and exits 0 at the first console
-line containing that text, and exits 1 if the board stops first.
-
-Without `--expect` it keeps running until you press Ctrl-C, which stops QEMU
-and the router together. Start it that way in one terminal:
-
-```bash probe=60 probe-run=300 probe-keep
-source /opt/ros/humble/setup.bash
-nros run bm_node
-```
-
-```text probe-expect=60
-Publishing: 'Hello World: 2'
-```
+console. It keeps running until you press Ctrl-C.
 
 ## See it in ROS 2
 
@@ -122,11 +109,12 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ```text probe-expect=70
-data: 'Hello World:
+data: 'Hello World: …'
 ```
 
-The talker publishes best-effort, and `ros2 topic echo` defaults to reliable,
-which receives nothing from it. That is why the command asks for best-effort.
+The talker's publisher is reliable, as `ros2 topic info -v /chatter` shows.
+Asking for best-effort receives from a publisher of either kind, so the
+command works whatever QoS a publisher offers.
 The router `nros run` started also listens where a ROS 2 node on this machine
 looks for one, so nothing else needs to be configured.
 
@@ -152,4 +140,4 @@ looks for one, so nothing else needs to be configured.
   [Bare-metal Cortex-M3](../guide/platforms/bare-metal.md).
 - **The same board with an RTOS:** [mps2-an385 in QEMU (FreeRTOS)](mps2-an385-freertos.md).
 - **The project, grown:** the [Tutorial](../tutorial/run-a-talker.md) starts
-  from this same talker on this same board.
+  from this same talker, on this board with FreeRTOS under it.

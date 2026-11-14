@@ -60,7 +60,9 @@ support, which only a Rust talker builds with:
 
 ```bash probe=34
 mkdir -p my_zephyr_ws/manifest && cd my_zephyr_ws
-cat > manifest/west.yml <<'WEST_YML'
+```
+
+```yaml probe=34 file=manifest/west.yml
 manifest:
   remotes:
     - name: zephyrproject-rtos
@@ -79,7 +81,9 @@ manifest:
       path: modules/lang/rust
   self:
     path: manifest
-WEST_YML
+```
+
+```bash probe=34
 west init -l manifest
 west update --narrow -o=--depth=1
 pip3 install --user -r zephyr/scripts/requirements-base.txt
@@ -162,34 +166,21 @@ Source ROS 2, then build and run. This first run records the ROS 2 prefix in
 the workspace, so later runs of it need no sourced shell (the router still
 comes from ROS 2):
 
-```bash probe=50 probe-run=1500
+```bash probe=50 probe-run=1500 probe-keep
 source /opt/ros/humble/setup.bash
-nros run zs_node --expect "Publishing: 'Hello World: 1'"
+nros run zs_node
 ```
 
 ```text probe-expect=50
 Publishing: 'Hello World: 1'
-nros run: matched after
+Publishing: 'Hello World: 2'
 ```
 
 The image dials a router on this machine's port 7447, so `nros run` starts
 that router, ROS's `rmw_zenohd`, then builds the application through west
 (the first build takes several minutes; later ones take seconds) and runs
-`zephyr.exe`. Don't start a router of your own on the same port. With
-`--expect` it stops everything and exits 0 at the first line containing that
-text, and exits 1 if the application stops first.
-
-Without `--expect` it keeps running until you press Ctrl-C, which stops the
-application and the router together. Start it that way in one terminal:
-
-```bash probe=60 probe-run=120 probe-keep
-source /opt/ros/humble/setup.bash
-nros run zs_node
-```
-
-```text probe-expect=60
-Publishing: 'Hello World: 2'
-```
+`zephyr.exe`. Don't start a router of your own on the same port. It keeps
+running until you press Ctrl-C.
 
 ## See it in ROS 2
 
@@ -202,11 +193,12 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ```text probe-expect=70
-data: 'Hello World:
+data: 'Hello World: …'
 ```
 
-The talker publishes best-effort, and `ros2 topic echo` defaults to reliable,
-which receives nothing from it. That is why the command asks for best-effort.
+The talker's publisher is reliable, as `ros2 topic info -v /chatter` shows.
+Asking for best-effort receives from a publisher of either kind, so the
+command works whatever QoS a publisher offers.
 
 ## If it doesn't work
 

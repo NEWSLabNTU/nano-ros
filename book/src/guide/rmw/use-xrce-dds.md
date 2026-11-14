@@ -46,13 +46,13 @@ open again ([When the Agent restarts](../platforms/bare-metal-own-main-loop.md#w
    that port first:
 
    ```bash
-   nros run posix_xrce --expect 'Publishing:' --timeout 120
+   nros run posix_xrce
    ```
 
    ```text
    nros run: starting the XRCE agent (udp4 -p 2018)
    Publishing: 'Hello World: 1'
-   nros run: matched after
+   Publishing: 'Hello World: 2'
    ```
 
 4. See it from ROS 2. The agent creates ordinary DDS entities, so the
@@ -66,9 +66,6 @@ open again ([When the Agent restarts](../platforms/bare-metal-own-main-loop.md#w
    ```text
    data: 'Hello World: 5'
    ```
-
-   Run `nros run posix_xrce` without `--expect` in the first terminal so the
-   talker keeps going.
 
 5. Run the agent yourself instead, for example on another host or with your
    own options. Start the pinned agent, and tell `nros run` to start nothing:

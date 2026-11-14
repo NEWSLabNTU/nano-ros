@@ -43,8 +43,29 @@
         hljs.registerAliases(["json5"], { languageName: "json" });
     }
 
+    // A file tree (```tree): the branch lines dim, directories (a name
+    // ending in `/`) in the link colour, files plain, `# notes` as comments,
+    // and the `(new)` / `(changed)` marks a Tutorial chapter's tree carries.
+    // The colours are nros.css's `.hljs-tree-*` rules, from the theme's own
+    // variables, so every theme applies.
+    hljs.registerLanguage("tree", function () {
+        return {
+            name: "File tree",
+            contains: [
+                { className: "tree-branch", begin: /[│├└┬─|`]+/ },
+                // What a chapter added or changed, written after the name:
+                // `├── lib.rs  (new)`, `└── system.toml  (changed)`.
+                { className: "tree-new", begin: /\(new\)/ },
+                { className: "tree-changed", begin: /\(changed\)/ },
+                { className: "tree-comment", begin: /#/, end: /$/ },
+                { className: "tree-dir", begin: /[^\s│├└┬─|`#][^\s#]*\// },
+                { className: "tree-file", begin: /[^\s│├└┬─|`#][^\s#]*/ },
+            ],
+        };
+    });
+
     document
-        .querySelectorAll("code.language-cmake, code.language-json5")
+        .querySelectorAll("code.language-cmake, code.language-json5, code.language-tree")
         .forEach(function (block) {
             hljs.highlightBlock(block);
         });

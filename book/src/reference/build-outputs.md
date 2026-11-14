@@ -88,7 +88,7 @@ Every image gets its own cargo settings file,
 `build/<coordinate>/<entry>/nros-cargo.toml`, and `nros build` points cargo at
 it:
 
-```text
+```txt
 cargo build --manifest-path build/posix-zenoh/linux_entry/Cargo.toml \
             --config build/posix-zenoh/linux_entry/nros-cargo.toml
 ```
@@ -102,7 +102,7 @@ profiles. It is generated on every build — read it, never edit it.
 The artifact is the generated entry's binary, inside that entry's own target
 dir:
 
-```text
+```txt
 <ws>/build/<coordinate>/<image>_entry/target/[<triple>/]<profile-dir>/<image>_entry
 ```
 
@@ -139,7 +139,7 @@ on the host and when cross-compiling alike. The generated root is `<ws>/build/<c
 it is configured into `<ws>/build/<coordinate>/cmake/`, and each image's
 executable lands at the top of that directory:
 
-```text
+```txt
 <ws>/build/<coordinate>/cmake/<image>_entry
 ```
 
@@ -177,7 +177,7 @@ from the workspace root with each image's OWN build directory,
 refuse the second). Pass `-- -d <dir>` to choose another. Zephyr writes its image under
 `zephyr/` inside it; for `demo_bringup:zephyr` on zenoh:
 
-```text
+```txt
 <ws>/build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.elf   # always
 <ws>/build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.exe   # native_sim — a host executable
 <ws>/build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.bin   # cross targets — the raw image

@@ -60,7 +60,9 @@ fetch every vendor's HAL), plus Zephyr's Rust support:
 
 ```bash probe=34 track=installed
 mkdir -p zephyr_ws/manifest && cd zephyr_ws
-cat > manifest/west.yml <<'WEST_YML'
+```
+
+```yaml probe=34 track=installed file=manifest/west.yml
 manifest:
   remotes:
     - name: zephyrproject-rtos
@@ -79,7 +81,9 @@ manifest:
       path: modules/lang/rust
   self:
     path: manifest
-WEST_YML
+```
+
+```bash probe=34 track=installed
 west init -l manifest
 west update --narrow -o=--depth=1
 pip3 install --user -r zephyr/scripts/requirements-base.txt
@@ -164,30 +168,19 @@ nros build
 
 Then run the talker:
 
-```bash probe=60 probe-run=1500 track=installed
-nros run zm_node --expect "Publishing: 'Hello World: 1'"
+```bash probe=60 probe-run=1500 probe-keep track=installed
+nros run zm_node
 ```
 
 ```text probe-expect=60
 Publishing: 'Hello World: 1'
-nros run: matched after
+Publishing: 'Hello World: 2'
 ```
 
 `nros run` rebuilds the firmware if a source changed, then boots it in the
-QEMU that the Zephyr SDK ships. What it prints is the board's console: Zephyr's boot banner, then
-the talker. With `--expect` it stops the board and exits 0 at the first
-console line containing that text, and exits 1 if the board stops first.
-
-Without `--expect` it keeps running until you press Ctrl-C:
-
-```bash probe=65 probe-run=180 probe-keep track=installed
-nros run zm_node
-```
-
-```text probe-expect=65
-Publishing: 'Hello World: 1'
-Publishing: 'Hello World: 2'
-```
+QEMU that the Zephyr SDK ships. What it prints is the board's console:
+Zephyr's boot banner, then the talker. It keeps running until you press
+Ctrl-C.
 
 ## See it in ROS 2
 
@@ -200,11 +193,12 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
 ```text probe-expect=70
-data: 'Hello World:
+data: 'Hello World: …'
 ```
 
-The talker publishes best-effort, and `ros2 topic echo` defaults to reliable,
-which receives nothing from it. That is why the command asks for best-effort.
+The talker's publisher is reliable, as `ros2 topic info -v /chatter` shows.
+Asking for best-effort receives from a publisher of either kind, so the
+command works whatever QoS a publisher offers.
 
 ## If it doesn't work
 

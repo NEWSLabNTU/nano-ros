@@ -26,6 +26,11 @@ command = "python3 ../scripts/mdbook-lang-tabs.py"
 # RFC-0124 D2 and Topic levels: a page's `<!-- type: … · level: N -->`
 # declaration renders as a badge under its title ("How-to · Level 2: Building
 # real applications"). Pages with no declaration (the generated ones) get none.
+# A file the reader writes is shown as the file under its path, not as a
+# heredoc: ```yaml file=manifest/west.yml (the probe writes it there).
+[preprocessor.file-blocks]
+command = "python3 ../scripts/mdbook-file-blocks.py"
+
 [preprocessor.level-badge]
 command = "python3 ../scripts/mdbook-level-badge.py"
 
