@@ -11,8 +11,9 @@
 #define NROS_TIER_TASK_MEMORY_FREERTOS_H
 
 #if defined(__GNUC__) || defined(__clang__)
+// phase 536.
 #warning                                                                                           \
-    "<rclc/detail/tier_task_memory_freertos.h> is renamed <rclc/detail/sched_task_memory_freertos.h> (phase 536)"
+    "<rclc/detail/tier_task_memory_freertos.h> is renamed <rclc/detail/sched_task_memory_freertos.h>; include that instead"
 #endif
 
 #include <rclc/detail/sched_task_memory_freertos.h>

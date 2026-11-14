@@ -230,9 +230,10 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 
     /// Renamed to [`publish_serialized`](Self::publish_serialized) (phase-515
     /// C8), the transmit word of the receive side's `take_serialized`.
+    // phase-515 C8 renamed it.
     #[deprecated(
         since = "0.6.0",
-        note = "renamed to `publish_serialized` (phase-515 C8)"
+        note = "renamed to `publish_serialized`; call it instead"
     )]
     pub fn publish_raw(&self, data: &[u8]) -> Result<(), NodeError> {
         self.publish_serialized(data)
@@ -986,9 +987,10 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
 
     /// Renamed to [`publish_serialized`](Self::publish_serialized) (phase-515
     /// C8), the transmit word of the receive side's `take_serialized`.
+    // phase-515 C8 renamed it.
     #[deprecated(
         since = "0.6.0",
-        note = "renamed to `publish_serialized` (phase-515 C8)"
+        note = "renamed to `publish_serialized`; call it instead"
     )]
     pub fn publish_raw(&self, data: &[u8]) -> Result<(), NodeError> {
         self.publish_serialized(data)
@@ -1020,9 +1022,10 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     /// Renamed to
     /// [`publish_serialized_with_attachment`](Self::publish_serialized_with_attachment)
     /// (phase-515 C8).
+    // phase-515 C8 renamed it.
     #[deprecated(
         since = "0.6.0",
-        note = "renamed to `publish_serialized_with_attachment` (phase-515 C8)"
+        note = "renamed to `publish_serialized_with_attachment`; call it instead"
     )]
     pub fn publish_raw_with_attachment(
         &self,

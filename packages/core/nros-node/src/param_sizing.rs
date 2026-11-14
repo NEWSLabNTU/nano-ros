@@ -558,7 +558,7 @@ const _: () = assert!(
         || !crate::config::PARAM_SERVICE_BUFFER_STATED,
     "NROS_PARAM_SERVICE_BUFFER_SIZE is smaller than the largest parameter request the \
      contract's declared parameters can produce. Raise it, or drop the override and let \
-     the build derive it."
+     the build derive it from the contract."
 );
 
 // ---------------------------------------------------------------------------

@@ -45,7 +45,8 @@ extern "C" {
  * block. Below the `#ifndef`, never above it: an undefined identifier reads as
  * 0 in `#if`, so a guard above its own default fires on every build (1167). */
 #if Z_TASK_STACK_SIZE < 1
-#error "Z_TASK_STACK_SIZE must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "Z_TASK_STACK_SIZE must be >= 1: it sizes a C array"
 #endif
 
 #ifndef Z_TASK_PRIORITY

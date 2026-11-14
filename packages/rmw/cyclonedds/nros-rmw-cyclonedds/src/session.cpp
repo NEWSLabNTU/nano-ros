@@ -65,7 +65,8 @@ LOG_MODULE_DECLARE(cyclonedds, LOG_LEVEL_INF);
 // multicast off and one participant; the module's Kconfig defaults the cap to 8
 // for Cyclone images, and this catches a board or prj.conf that lowers it.
 #if defined(CONFIG_NET_SOCKETS_POLL_MAX) && CONFIG_NET_SOCKETS_POLL_MAX < 4
-#error "CONFIG_NET_SOCKETS_POLL_MAX < 4: Cyclone needs 4 select() entries (issue 1674)"
+// issue 1674.
+#error "CONFIG_NET_SOCKETS_POLL_MAX < 4: Cyclone needs 4 select() entries. Set CONFIG_NET_SOCKETS_POLL_MAX=4 or more in prj.conf"
 #endif
 #define NROS_CYC_TRACE(...) LOG_INF(__VA_ARGS__)
 #else

@@ -542,7 +542,8 @@ int nros_zephyr_report_sched_task_vs_transport(const char* sched_task, size_t sc
  * bare `-D`. Below the `#ifndef`, never above: an undefined identifier reads as
  * 0 in `#if`, so a guard above its own default fires on every build (1167). */
 #if NROS_ZEPHYR_MAX_THREADS < 1
-#error "NROS_ZEPHYR_MAX_THREADS must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "NROS_ZEPHYR_MAX_THREADS must be >= 1: it sizes a C array"
 #endif
 
 /* Issue 2365 -- the task stack is its own budget, never main's: the module
@@ -874,7 +875,8 @@ void nros_zephyr_log_2int(const char* tag, int64_t a, int64_t b) {
  * is a SMALLER pool (2 or 3 slots, 16 KiB each), which this floor permits: it
  * forecloses nothing, which is the trap issue 1015's first fix fell into. */
 #if NROS_ZEPHYR_MAX_SCHED_TASKS < 1
-#error "NROS_ZEPHYR_MAX_SCHED_TASKS must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "NROS_ZEPHYR_MAX_SCHED_TASKS must be >= 1: it sizes a C array"
 #endif
 
 #ifndef NROS_ZEPHYR_SCHED_TASK_STACK_SIZE

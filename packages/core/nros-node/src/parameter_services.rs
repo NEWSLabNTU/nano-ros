@@ -71,9 +71,10 @@ pub const MAX_PARAMS_PER_REQUEST: usize = 64;
 
 /// Convert internal ParameterValue to rcl_interfaces ParameterValue
 /// The pre-phase-515 name of [`RmwParameterConversionError`].
+// phase-515 R8 took rclrs's name.
 #[deprecated(
     since = "0.6.0",
-    note = "renamed to `RmwParameterConversionError`, rclrs's name (phase-515 R8)"
+    note = "renamed to `RmwParameterConversionError`, rclrs's name; use `RmwParameterConversionError`"
 )]
 pub type ValueConversionError = RmwParameterConversionError;
 

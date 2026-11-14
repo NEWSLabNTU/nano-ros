@@ -246,7 +246,7 @@ struct NativeSchedTaskSpec {
 #ifndef NROS_NO_DEPRECATED_TIER_NAMES
 /// Phase 536 W2 -- the old name of `NativeSchedTaskSpec`, kept one release.
 using NativeTierSpec
-    NROS_CPP_DEPRECATED_MSG("renamed NativeSchedTaskSpec (phase 536)") = NativeSchedTaskSpec;
+    NROS_CPP_DEPRECATED_MSG("renamed NativeSchedTaskSpec; use that name") = NativeSchedTaskSpec;
 #endif
 
 /// The Linux host board adapter.
@@ -414,7 +414,7 @@ class LinuxBoard {
 #ifndef NROS_NO_DEPRECATED_TIER_NAMES
     /// Phase 536 W2 -- the old name of `run_sched_tasks`, kept one release.
     template <typename... Args>
-    NROS_CPP_DEPRECATED_MSG("renamed run_sched_tasks (phase 536)")
+    NROS_CPP_DEPRECATED_MSG("renamed run_sched_tasks; call that instead")
     static int32_t run_tiers(Args... args) {
         return run_sched_tasks(args...);
     }
@@ -662,7 +662,7 @@ class ZephyrBoard {
 #ifndef NROS_NO_DEPRECATED_TIER_NAMES
     /// Phase 536 W2 -- the old name of `run_sched_tasks`, kept one release.
     template <typename... Args>
-    NROS_CPP_DEPRECATED_MSG("renamed run_sched_tasks (phase 536)")
+    NROS_CPP_DEPRECATED_MSG("renamed run_sched_tasks; call that instead")
     static int32_t run_tiers(Args... args) {
         return run_sched_tasks(args...);
     }
@@ -854,7 +854,7 @@ class NuttxBoard {
 #ifndef NROS_NO_DEPRECATED_TIER_NAMES
     /// Phase 536 W2 -- the old name of `run_sched_tasks`, kept one release.
     template <typename... Args>
-    NROS_CPP_DEPRECATED_MSG("renamed run_sched_tasks (phase 536)")
+    NROS_CPP_DEPRECATED_MSG("renamed run_sched_tasks; call that instead")
     static int32_t run_tiers(Args... args) {
         return run_sched_tasks(args...);
     }
@@ -1123,7 +1123,7 @@ class FreertosBoard {
 #ifndef NROS_NO_DEPRECATED_TIER_NAMES
     /// Phase 536 W2 -- the old name of `run_sched_tasks`, kept one release.
     template <typename... Args>
-    NROS_CPP_DEPRECATED_MSG("renamed run_sched_tasks (phase 536)")
+    NROS_CPP_DEPRECATED_MSG("renamed run_sched_tasks; call that instead")
     static int32_t run_tiers(Args... args) {
         return run_sched_tasks(args...);
     }

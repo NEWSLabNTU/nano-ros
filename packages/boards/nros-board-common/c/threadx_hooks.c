@@ -56,10 +56,12 @@
  * compiled on both the cargo and the CMake path, for both ThreadX boards, so
  * the assert turns that class into a build failure with a name on it.
  */
+// phase-337 W4.a -- the ULONG=4 arch port.
 _Static_assert(sizeof(ULONG) == 4,
                "ThreadX ULONG is not 4 bytes: the arch-port override "
                "(nros-board-threadx-port-riscv64/port/inc) lost include-order "
-               "precedence over the upstream port header. See phase-337 W4.a.");
+               "precedence over the upstream port header: put the override's "
+               "include directory before <THREADX_DIR>/ports/risc-v64/gnu/inc.");
 
 /* ---- Sizing constants ---- */
 
@@ -137,11 +139,12 @@ _Static_assert(sizeof(ULONG) == 4,
  * this knob. The floor is deliberately generous rather than exact: the pool also
  * feeds the NetX packet pool, the IP/ARP/BSD stacks and every sched task's thread
  * stack, so a pool that only just fits the backing is already wrong. */
+// issue 1145 / phase-448 W5 -- the 1 MiB floor.
 _Static_assert(BYTE_POOL_SIZE >= (1 * 1024 * 1024),
                "NROS_EXECUTOR_BACKING_U64S leaves the ThreadX byte pool under "
                "1 MiB. The pool is the WHOLE allocator on this port (NetX "
                "packet pool, IP/ARP/BSD stacks, sched task stacks), not just the "
-               "executor's backing. See issue 1145 / phase-448 W5.");
+               "executor's backing. Lower NROS_EXECUTOR_BACKING_U64S.");
 
 /* ---- Overlay-tunable parameters (weak getters — overlay strong-overrides) ----
  *

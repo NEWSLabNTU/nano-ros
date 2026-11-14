@@ -67,7 +67,8 @@
 #define NROS_PARAM_EVENT_RX_BYTES 4096
 #endif
 #if NROS_PARAM_EVENT_RX_BYTES < 1
-#error "NROS_PARAM_EVENT_RX_BYTES must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "NROS_PARAM_EVENT_RX_BYTES must be >= 1: it sizes a C array"
 #endif
 
 namespace rclcpp {

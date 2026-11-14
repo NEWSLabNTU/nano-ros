@@ -652,7 +652,8 @@ size_t _z_tcp_read_exact(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) 
  * `tcp_write_within.h` applies on the BSD-socket ports, with the same number. */
 #include <zenoh_generic_config.h>
 #ifndef Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE
-#error "zenoh_generic_config.h must define Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE (issue 2389)"
+// issue 2389.
+#error "zenoh_generic_config.h must define Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE"
 #endif
 size_t _z_tcp_write(nros_zp_alias_socket_t sock, const uint8_t *buf, size_t len) {
     size_t sent = 0;

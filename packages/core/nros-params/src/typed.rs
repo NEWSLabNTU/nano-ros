@@ -463,9 +463,10 @@ pub struct Parameters<'a, 's> {
 }
 
 /// The pre-phase-515 name of [`Parameters`].
+// phase-515 R8 took rclrs's name.
 #[deprecated(
     since = "0.6.0",
-    note = "renamed to `Parameters`, rclrs's name (phase-515 R8)"
+    note = "renamed to `Parameters`, rclrs's name; use `Parameters`"
 )]
 pub type UndeclaredParameters<'a, 's> = Parameters<'a, 's>;
 

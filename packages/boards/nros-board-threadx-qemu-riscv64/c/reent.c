@@ -149,7 +149,8 @@ static VOID nros_lock_ensure(_LOCK_T lock)
 #define NROS_LIBC_DYNAMIC_LOCKS 16
 #endif
 #if NROS_LIBC_DYNAMIC_LOCKS < 1
-#error "NROS_LIBC_DYNAMIC_LOCKS must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "NROS_LIBC_DYNAMIC_LOCKS must be >= 1: it sizes a C array"
 #endif
 static struct __lock nros_dynamic_locks[NROS_LIBC_DYNAMIC_LOCKS];
 static UCHAR nros_dynamic_lock_used[NROS_LIBC_DYNAMIC_LOCKS];

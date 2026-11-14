@@ -347,7 +347,7 @@ fails with its file and line (the Rust half did so after batch 10).
 | CMake batch 1: every module under `cmake/` (`NanoRos*.cmake`, `board/`, `find/`, `toolchain/`: the configure refusals for retired names and keywords, domain, edition and deploy disagreements, missing tools, inventories and generated files, the SystemModel, promise and codegen-version refusals, the cross-toolchain change) | #3786 | 0 | 17 | open |
 | runtime logs and panic text of a default image (C lexer, log/panic rule; 101 ids in 33 files fixed) | #3789 | (gated at zero) | — | merged |
 | shell-script output (user-run scripts) | #3790 | (gated at zero) | — | merged |
-| compile-time text (`#error`, `static_assert`, `compile_error!`, `#[deprecated]`, proc-macro errors): its own subject, baseline zero | — | — | — | planned |
+| compile-time text (`#error`, `static_assert`, `compile_error!`, `#[deprecated]`, proc-macro errors) | #3792 | (gated at zero) | — | open |
 | text assembled away from its print (`Display` impls, messages logged later): its own subject, baseline zero | — | — | — | planned |
 
 Acceptance: both ratchet baselines reach zero and their subjects become

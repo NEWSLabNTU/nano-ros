@@ -100,7 +100,7 @@ pub fn assert_message_format<M: nros_core::RosMessage>() {
         assert!(
             <M as nros_core::RosMessage>::SERIALIZATION_FORMAT_ID.as_u8()
                 == crate::session::IMAGE_SERIALIZATION_FORMAT_ID.as_u8(),
-            "message serialization format does not match the linked backend"
+            "message serialization format does not match the linked backend: one image, one backend, one encoding"
         );
     }
 }
@@ -129,7 +129,7 @@ pub fn assert_raw_format<F: nros_serdes::format::SerializationFormat>() {
         assert!(
             <F as nros_serdes::format::SerializationFormat>::ID.as_u8()
                 == crate::session::IMAGE_SERIALIZATION_FORMAT_ID.as_u8(),
-            "raw payload format does not match the linked backend"
+            "raw payload format does not match the linked backend: state the format the backend speaks"
         );
     }
 }

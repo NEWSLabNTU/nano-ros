@@ -285,7 +285,7 @@ template <typename M> class Publisher {
     }
 
     /// Renamed to `publish_serialized` (phase-515 C8); kept one release.
-    NROS_CPP_DEPRECATED_MSG("renamed to publish_serialized (phase-515 C8)")
+    NROS_CPP_DEPRECATED_MSG("renamed to publish_serialized; call that instead")
     Result publish_raw(const uint8_t* data, size_t len) { return publish_serialized(data, len); }
 
     /// Phase 124.E.1 — streamed publish.

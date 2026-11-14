@@ -27,7 +27,8 @@
  */
 #ifndef NROS_NO_DEPRECATED_PUBLISH_RAW_ALIAS
 #if defined(__GNUC__) || defined(__clang__)
-__attribute__((deprecated("renamed to rclc_publish_serialized (phase-515 C8)")))
+// phase-515 C8 renamed it.
+__attribute__((deprecated("renamed to rclc_publish_serialized; call that instead")))
 #endif
 static inline rcl_ret_t
 rclc_publish_raw(const rcl_publisher_t* publisher, const uint8_t* data, size_t len) {

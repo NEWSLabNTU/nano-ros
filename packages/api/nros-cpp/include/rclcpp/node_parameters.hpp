@@ -95,7 +95,8 @@
 // Here it sees whatever value actually reached the translation unit, from
 // either source. `check-c-array-guard-probe` compiles this both ways.
 #if NROS_NODE_PARAM_STRING_BUF < 1
-#error "NROS_NODE_PARAM_STRING_BUF must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "NROS_NODE_PARAM_STRING_BUF must be >= 1: it sizes a C array"
 #endif
 
 namespace rclcpp {

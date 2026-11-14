@@ -1109,8 +1109,8 @@ const _: () = assert!(
      `size_of` taken while building the `nros` facade in the sizes PROBE, and \
      this compares it against `size_of` in the unit that LINKS. They differ only \
      when the probe built under a different feature set than this crate resolves \
-     — once, `std` here forwarded `nros/env`, the probe forwarded only the \
-     shared name `std`, and one fat pointer of difference made the number 16 \
+     — for example `std` forwarding `nros/env` here but only the shared name \
+     `std` in the probe, where one fat pointer of difference made the number 16 \
      bytes short. Check the forwarded set \
      (`nros_sizes_build::resolved_features_for`) before touching any knob. \
      NROS_EXECUTOR_ARENA_SIZE / NROS_EXECUTOR_MAX_CBS move BOTH sides equally \
@@ -10811,14 +10811,14 @@ const _: () = {
     // RFC-0088
     assert!(
         mirrored.len() == linked.len(),
-        "NROS_CPP_SERIALIZATION_FORMAT no longer matches the linked backend"
+        "NROS_CPP_SERIALIZATION_FORMAT no longer matches the linked backend: update the mirror"
     );
     let mut i = 0;
     while i < mirrored.len() {
         // RFC-0088
         assert!(
             mirrored[i] == linked[i],
-            "NROS_CPP_SERIALIZATION_FORMAT no longer matches the linked backend"
+            "NROS_CPP_SERIALIZATION_FORMAT no longer matches the linked backend: update the mirror"
         );
         i += 1;
     }

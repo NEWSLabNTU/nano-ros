@@ -31,8 +31,9 @@
 #include <rclc/detail/main.h>
 
 #if !defined(configSUPPORT_STATIC_ALLOCATION) || (configSUPPORT_STATIC_ALLOCATION != 1)
+// issue 1598.
 #error                                                                                             \
-    "nros: a sched-task FreeRTOS entry owns its sched task stacks (issue 1598), which needs configSUPPORT_STATIC_ALLOCATION 1 in FreeRTOSConfig.h"
+    "nros: a sched-task FreeRTOS entry owns its sched task stacks, which needs configSUPPORT_STATIC_ALLOCATION 1 in FreeRTOSConfig.h"
 #endif
 
 /* Issue 2017 (RFC-0108 D6) -- a level image's kernel must not slice a level
@@ -42,8 +43,8 @@
  * why it keeps slicing with NROS_FREERTOS_ALLOW_TIME_SLICING. */
 #if !defined(configUSE_TIME_SLICING) || (configUSE_TIME_SLICING != 0)
 #if !defined(NROS_FREERTOS_ALLOW_TIME_SLICING)
-#error                                                                                             \
-    "nros: a FreeRTOS level image needs configUSE_TIME_SLICING 0 in FreeRTOSConfig.h (RFC-0108 D6, issue 2017)"
+// RFC-0108 D6, issue 2017.
+#error "nros: a FreeRTOS level image needs configUSE_TIME_SLICING 0 in FreeRTOSConfig.h"
 #endif
 #endif
 

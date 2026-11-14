@@ -98,8 +98,9 @@
 #elif NROS_SERIALIZATION_FORMAT_ID == NROS_SERIALIZATION_FORMAT_ID_UORB
 #define NROS_SERIALIZATION_FORMAT "uorb"
 #else
+// RFC-0088 D2.
 #error                                                                                             \
-    "NROS_SERIALIZATION_FORMAT_ID names a format this header has no name for — add its row here and in `nros_serdes::format::SerializationFormatId` together (RFC-0088 D2)."
+    "NROS_SERIALIZATION_FORMAT_ID names a format this header has no name for — add its row here and in `nros_serdes::format::SerializationFormatId` together."
 #endif
 
 /**

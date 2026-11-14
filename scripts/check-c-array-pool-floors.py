@@ -381,7 +381,7 @@ def check_arrays(found: dict[str, dict]) -> list[str]:
             f"    smallest legal value. Either\n"
             f"      * guard it beside the array —\n"
             f"          #if {macro} < 1\n"
-            f'          #error "{macro} must be >= 1: it sizes a C array (issue 1015)"\n'
+            f'          #error "{macro} must be >= 1: it sizes a C array"\n'
             f"          #endif\n"
             f"        and floor it in every producer that derives it, or\n"
             f"      * add it to ZERO_LEGAL with what MEASURED that zero is a legal\n"

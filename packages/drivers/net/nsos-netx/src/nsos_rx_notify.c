@@ -45,7 +45,8 @@
 #define NSOS_RX_NOTIFY_MAX 8
 #endif
 #if NSOS_RX_NOTIFY_MAX < 1
-#error "NSOS_RX_NOTIFY_MAX must be >= 1: it sizes a C array (issue 1015)"
+// issue 1015 -- a zero here sizes a C array to nothing.
+#error "NSOS_RX_NOTIFY_MAX must be >= 1: it sizes a C array"
 #endif
 
 #ifndef NSOS_RX_NOTIFY_STACK
