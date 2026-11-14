@@ -21,7 +21,7 @@ same PR, every consumer that reads the name. The known readers:
 `gen-support-status`, `gen-board-support`, `next-stable-delta.py`,
 `check-workflow-job-timeouts`, `check-workflow-runner-isolation`,
 `check-workflow-just-provisioning`, and the `workflow_run` workflow-name list
-in `automation.yml` (its `enqueue`, `notify` and `triage` jobs). A PR finds the
+in `automation.yml` (its `notify` and `triage` jobs). A PR finds the
 rest with `git grep -n '<old file or job name>'`.
 
 ## Why
@@ -334,8 +334,10 @@ the user ruled; all five stand:
   workflow names.
 - **Status:** OPEN. `automation.yml` DONE (2026-11-14): arm-auto-merge,
   queue-notify, pr-verdicts, roadmap-audit and nightly-report are its jobs
-  `arm`, `enqueue`, `notify`, `sweep`, `audit` and `triage`, each keeping its
-  job name and trigger. Each job's `if:` names its event (and, for
+  `arm`, `notify`, `sweep`, `audit` and `triage`, each keeping its job name
+  and trigger. (It also carried `enqueue`, removed 2026-11-14: a merge group
+  a `GITHUB_TOKEN` enqueues starts no workflow, so every entry it enqueued
+  stalled until the 90-minute timeout.) Each job's `if:` names its event (and, for
   `workflow_run`, the workflow it reads), the workflow grants no permissions
   and each job states its own, concurrency is per job, and dispatch takes one
   `job` input. Nothing consumes these workflows by `workflow_run`, so no
