@@ -48,8 +48,9 @@ All five are user rulings of 2026-11-12, relayed by the manager session.
   [issue 2443](../issues/archived/2443-runtime-log-and-colcon-messages-cite-ids.md)
   and [issue 2547](../issues/archived/2547-user-surface-text-formatted-away-or-tabled-cites-ids.md)
   are resolved, and `check-user-surface-ids` reads every surface they named at
-  baseline zero (what it cannot yet see is
-  [issue 2551](../issues/2551-user-surface-text-beyond-function-flow-cites-ids.md)).
+  baseline zero, as
+  [issue 2551](../issues/archived/2551-user-surface-text-beyond-function-flow-cites-ids.md)
+  (the shapes those readings could not see) is too.
   Codes are prepended to those messages.
 
 ## Problem
@@ -257,7 +258,7 @@ None of these changes the SSoT rule, the rendered format or the gates.
 
 - Issues: issue 2305 (ids in user-tier messages); issues 2443 and 2547
   (runtime, colcon and assembled messages, resolved); issue 2551 (the shapes
-  the id gate cannot yet read).
+  those readings could not see, resolved).
 - RFCs: RFC-0116 D2; RFC-0117 (command tiers); RFC-0123 D3; RFC-0124
   Principle 5.
 - Prior art: rustc's `error[E0277]` and `rustc --explain E0277`, whose

@@ -160,6 +160,11 @@ fn main() {
         0
     };
 
+    // The emitted rustdoc carries no design ids (issue 2551). MAX_PARAMETERS
+    // is image-wide because of issue 1450; MAX_PARAM_DESCRIPTION_LEN comes
+    // from phase-446 F2, MAX_PARAM_CONSTRAINTS_LEN from phase-417 W4.a,
+    // PARAM_EVENTS_DEPTH from phase-491 W3 and IMPLIED_STORE_SLOTS from
+    // phase-382 W3' (issue 1702 measured the unconditional store).
     let contents = format!(
         "/// Maximum number of parameters the server can store \
          (set via NROS_MAX_PARAMETERS, default 32).\n\
@@ -171,7 +176,7 @@ fn main() {
          /// \"across every node\" for the same reason. The number a contract\n\
          /// derives is therefore a SUM over the image's nodes, and `max` here\n\
          /// names a CAPACITY (the most the store can hold), never a maximum\n\
-         /// taken over nodes. Reading it the other way is issue 1450.\n\
+         /// taken over nodes. Read the other way, a contract undersizes the store.\n\
          pub const MAX_PARAMETERS: usize = {max_parameters};\n\
          \n\
          /// Maximum length for parameter names \
@@ -192,29 +197,29 @@ fn main() {
          \n\
          /// Maximum length for a parameter description, in bytes \
          (set via NROS_MAX_PARAM_DESCRIPTION_LEN, default 256; 0 = no \
-         descriptions). phase-446 F2.\n\
+         descriptions).\n\
          pub const MAX_PARAM_DESCRIPTION_LEN: usize = {max_param_description_len};\n\
          \n\
          /// Maximum length for a parameter's `additional_constraints`, in \
          bytes (set via NROS_MAX_PARAM_CONSTRAINTS_LEN, default 0 = no \
-         constraint text). phase-417 W4.a.\n\
+         constraint text).\n\
          pub const MAX_PARAM_CONSTRAINTS_LEN: usize = {max_param_constraints_len};\n\
          \n\
          /// History depth of each node's `/parameter_events` publisher \
          (set via NROS_PARAM_EVENTS_DEPTH; default 1000 on a hosted target, \
-         1 otherwise). phase-491 W3.\n\
+         1 otherwise).\n\
          pub const PARAM_EVENTS_DEPTH: u32 = {param_events_depth};\n\
          \n\
          /// Slots of the parameter store this build KNOWS the image builds: \
          `MAX_PARAMETERS` when the contract declares a parameter, the bringup \
          declares `param_services`, or the launch seeds a `<param>` \
-         (`NROS_PARAM_STORE`); 0 otherwise. phase-382 W3'.\n\
+         (`NROS_PARAM_STORE`); 0 otherwise.\n\
          ///\n\
          /// A caller that places the store in memory it already owns (the \
          executor's backing) reserves exactly this many slots. ZERO is the \
          answer for every image that merely LINKS the declare path, which is \
-         why it is conditional: issue 1702 measured an unconditional `.bss` \
-         store at 280,832 B in a talker that never builds one.\n\
+         why it is conditional: an unconditional `.bss` store measured \
+         280,832 B in a talker that never builds one.\n\
          pub const IMPLIED_STORE_SLOTS: usize = {implied_store_slots};\n"
     );
 

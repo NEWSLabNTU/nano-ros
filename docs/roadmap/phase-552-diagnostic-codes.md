@@ -272,8 +272,10 @@ The no-ids sweep this phase builds on is done.
 [issue 2547](../issues/archived/2547-user-surface-text-formatted-away-or-tabled-cites-ids.md)
 (text printed through a variable or a table) are resolved;
 `check-user-surface-ids` reads every user surface they named, and CMake's
-default-level output, at baseline zero, with no ratchet left. What it cannot
-yet read is [issue 2551](../issues/2551-user-surface-text-beyond-function-flow-cites-ids.md).
+default-level output, at baseline zero, with no ratchet left, and so is
+[issue 2551](../issues/archived/2551-user-surface-text-beyond-function-flow-cites-ids.md)
+(text that crosses a function, a field, a loop or a stream, and generated
+rustdoc).
 So W5 prepends codes to messages that are already self-contained, and rewrites
 no one else's text. That gate's id pattern does not match `NROS-NNNN`, and its
 self-test asserts it, so prepending a code never trips it.

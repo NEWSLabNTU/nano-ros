@@ -354,14 +354,15 @@ CMake half after CMake batch 2).
 | text assembled away from its print (`Display` impls, `#[error]`, `Err(…)` and error-builder text) | #3794 | (gated at zero) | — | merged |
 | runtime subject widened to every package and example, board print helpers named, examples' build scripts read (37 ids in 21 files fixed, 6 example build-script panics); issue 2443 archived, its stated gaps filed as issue 2547 | #3804 | (gated at zero) | — | merged |
 | text that reaches a print later (issue 2547): a formatted binding or buffer printed, raised or returned later, message tables by name or `// user-surface: table`, C/C++ message and wrapper macros, generated-file headers (126 ids in 40 files found, 180 in 52 fixed; the compile-time subject reads a continued `#error` whole); issue 2547 archived | #3815 | (gated at zero) | — | open |
+| text that crosses a function, a field, a loop or a stream (issue 2551): one level of flow across functions and buffer parameters, message-struct fields, collections and `&str` tables a loop or print reads, C++ stream output, generated rustdoc (68 ids in 5 build scripts found and fixed, 3 near misses); issue 2551 archived | PR pending | (gated at zero) | — | open |
 
 Acceptance: both ratchet baselines reach zero and their subjects become
 baseline-zero rules; runtime logs of a default image are read by a gate at
 zero; issues 2305 and 2443 are archived (2443 is: its stated gaps, text
 printed through a variable, a table or a returned literal, are
 [issue 2547](../issues/archived/2547-user-surface-text-formatted-away-or-tabled-cites-ids.md),
-resolved; what its readings cannot see is
-[issue 2551](../issues/2551-user-surface-text-beyond-function-flow-cites-ids.md)).
+resolved, and what its readings could not see,
+[issue 2551](../issues/archived/2551-user-surface-text-beyond-function-flow-cites-ids.md), is resolved too).
 
 ## Acceptance
 
@@ -434,6 +435,6 @@ toolchains, ESP32 until W3 reopens it, a per-purpose book.
 | [#2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md) | A user-tier message cites an internal issue id: an adoption stop of the same kind as issue 2332 (internal terms in a First Project build). |
 | [#2443](../issues/archived/2443-runtime-log-and-colcon-messages-cite-ids.md) | The same, on the two surfaces 2305 does not reach: runtime logs of a default image and the colcon plugin's errors. |
 | [#2547](../issues/archived/2547-user-surface-text-formatted-away-or-tabled-cites-ids.md) | What 2443 closed with: messages formatted into a variable, kept in a message table or returned for a caller to print. Resolved: read by the gate at zero. |
-| [#2551](../issues/2551-user-surface-text-beyond-function-flow-cites-ids.md) | What 2547 closed with: text that crosses a function, a struct field, an unmarked table, C++ stream output, and the rustdoc build scripts write into `OUT_DIR`. Open, with a gate plan. |
+| [#2551](../issues/archived/2551-user-surface-text-beyond-function-flow-cites-ids.md) | What 2547 closed with: text that crosses a function, a struct field, an unmarked table, C++ stream output, and the rustdoc build scripts write into `OUT_DIR`. Resolved: read by the gate at zero. |
 | [#2468](../issues/archived/2468-bootstrap-builds-no-runner.md) | The book's `just`-free checkout road could not `nros run`: `bootstrap.sh` never built the runner packages. Found by the zenoh probe track, which had no CI lane. |
 | [#2347](../issues/archived/2347-scaffold-next-steps-print-nros-sync.md) | `nros new` prints `nros sync` in a Rust package's next steps: an adoption-probe stop from the checkout-track log of the scheduled probe run. |

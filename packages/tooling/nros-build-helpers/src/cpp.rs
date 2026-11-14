@@ -204,7 +204,7 @@ fn generate_config(
          /// Validated at compile time by `size_of::<CppContext>()` assertion.\n\
          pub const CPP_EXECUTOR_OPAQUE_U64S: usize = {opaque_u64s};\n\
          \n\
-         // Phase 87.11: `CPP_ACTION_SERVER_OPAQUE_U64S` and\n\
+         // `CPP_ACTION_SERVER_OPAQUE_U64S` and\n\
          // `CPP_ACTION_CLIENT_OPAQUE_U64S` removed. C++ ActionServer/\n\
          // ActionClient storage now sized from `nros::sizes::CPP_ACTION_*_SIZE`\n\
          // via the probe; see action.rs for the byte-equivalence asserts.\n\

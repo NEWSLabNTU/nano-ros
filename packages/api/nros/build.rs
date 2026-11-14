@@ -145,10 +145,12 @@ fn main() {
         8,
     );
 
+    // The emitted rustdoc carries no design ids (issue 2551); the component
+    // pool is phase-391 W5's.
     let contents = format!(
         "/// Component pool slots (set via `NROS_RUNTIME_MAX_COMPONENTS`, default 4).\n\
          ///\n\
-         /// phase-391 W5. The bound the static component pool is sized to; a\n\
+         /// The bound the static component pool is sized to; a\n\
          /// `register_node` past it fails rather than growing a `Vec`.\n\
          pub const MAX_COMPONENTS: usize = {max_components};\n\
          \n\
