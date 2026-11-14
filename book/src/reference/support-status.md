@@ -97,11 +97,12 @@ Per-feature coverage across the backends:
 | Edition | Feature / flag | Status | Notes |
 |---|---|---|---|
 | Humble | `ros-humble` (default) | Supported | `TypeHashNotSupported` key expressions, XCDR1. Ubuntu 22.04 only; ships `ros-humble-rmw-zenoh-cpp`. |
-| Iron | `ros-iron` | Supported | RIHS01 type hashes. |
-| Jazzy | `ros-jazzy` | Supported | RIHS01; Ubuntu 24.04; ships `ros-jazzy-rmw-zenoh-cpp`. A default Jazzy peer encodes XCDR1/FINAL, which nano-ros speaks; per-type XCDR2 (`@appendable`) is not enabled. |
+| Jazzy | `ros-jazzy` | Codegen-checked | RIHS01; Ubuntu 24.04; ships `ros-jazzy-rmw-zenoh-cpp`. Generated code is checked against committed golden files; interop with a Jazzy peer is not yet run by any CI job, so it is not claimed. A default Jazzy peer encodes XCDR1/FINAL, which nano-ros speaks; per-type XCDR2 (`@appendable`) is not enabled. |
 
 Pick the edition of the ROS system you interop with — mismatched
 editions discover nothing (different key expressions).
+Iron (end of life) is not claimed. The `ros-iron` flag still
+builds, and nothing tests it.
 
 **Supported means WIRE interop, not API parity.** nano-ros's API is
 compared against **Humble and Jazzy** — Jazzy from pinned upstream

@@ -6,7 +6,7 @@ area: platform-board-rtos
 since: 2026-10
 last-reviewed: 2026-11-14
 implements-tracked-by: [phase-522, phase-550]
-amends: [RFC-0064]
+amends: [RFC-0064, RFC-0051]
 supersedes: []
 superseded-by: null
 ---
