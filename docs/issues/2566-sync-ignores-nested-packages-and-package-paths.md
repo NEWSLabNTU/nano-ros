@@ -1,6 +1,6 @@
 ---
 id: 2566
-title: "`nros sync` finds packages only one level under `src/`: `src/<group>/<pkg>` and `nros.toml` `package_paths` are ignored"
+title: "`nros configure` (reported as `nros sync`) finds packages only one level under `src/`: `src/<group>/<pkg>` and `nros.toml` `package_paths` are ignored"
 status: open
 type: bug
 area: [cli]
@@ -16,7 +16,7 @@ Seen on nano-ros 0.6.0-nros8.
 
 ## What happens
 
-`nros sync` only finds packages exactly one level under `src/`. Packages at
+`nros configure` (reported as `nros sync`) only finds packages exactly one level under `src/`. Packages at
 `src/<group>/<pkg>` are ignored, and so are the paths in `nros.toml`
 `package_paths`.
 

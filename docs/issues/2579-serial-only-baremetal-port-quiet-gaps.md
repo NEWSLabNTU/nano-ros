@@ -75,7 +75,7 @@ region from linker symbols first fixes it. Worth one line next to the
   `Executor::open_in` -> register nodes -> `spin_once`) works; if that is the
   intended path, name it in the docs. (Phase-562's framework field may change
   this.)
-- `nros generate-rust` finds workspace-local interface packages through
+- `nros dev codegen rust` (formerly `nros generate-rust`) finds workspace-local interface packages through
   `NROS_INTERFACE_SEARCH_PATH`, which no porting doc mentions.
 
 The reporter offered a PR against the porting chapter for whichever parts are
