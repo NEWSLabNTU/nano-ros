@@ -34,13 +34,16 @@
 # DEGRADATION
 #
 # If the reservation push fails for any reason OTHER than "already taken" — no
-# network, no push permission, a read-only mirror — this reports that clearly
-# and falls back to the local maximum. That fallback is exactly the old racy
-# behaviour, so it says so rather than pretending the id is safe.
+# network, no push permission, a read-only mirror — this says what failed and
+# exits non-zero with no number. A number nobody claimed on the remote is the
+# read-then-write race these reservations exist to end, so there is no
+# "local maximum + 1" fallback (`scripts/lib/reserve-ref.sh`).
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/lib/reserve-ref.sh
+. "$(dirname "$0")/lib/reserve-ref.sh"
 REF_NS="refs/issue-ids"
 REMOTE="${NROS_ISSUE_REMOTE:-origin}"
 MAX_ATTEMPTS=25
@@ -149,7 +152,7 @@ highest_reserved_id() {
 unique_object() {
     local id="$1" empty_tree
     empty_tree="$(git hash-object -t tree /dev/null)"
-    printf 'reserve issue %04d\n\nhost: %s\npid: %s\nwhen: %s\nslug: %s\n' \
+    printf 'reserve issue %s\n\nhost: %s\npid: %s\nwhen: %s\nslug: %s\n' \
         "$id" "$(hostname 2>/dev/null || echo unknown)" "$$" \
         "$(date +%s%N 2>/dev/null || date +%s)" "${slug:-<unspecified>}" |
         git commit-tree "$empty_tree"
@@ -159,42 +162,10 @@ file_max="$(highest_file_id)"
 reserved_max="$(highest_reserved_id)"
 candidate=$(( (file_max > reserved_max ? file_max : reserved_max) + 1 ))
 
-attempt=0
-while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
-    id="$(printf '%04d' "$candidate")"
-    obj="$(unique_object "$candidate")"
-
-    if err="$(git push "$REMOTE" "$obj:$REF_NS/$id" 2>&1)"; then
-        printf '%s\n' "$id"
-        echo "reserved issue id $id on $REMOTE ($REF_NS/$id)" >&2
-        if [ -n "$slug" ]; then
-            echo "  file it as: docs/issues/$id-$slug.md  (frontmatter \`id: $((10#$id))\`)" >&2
-        fi
-        exit 0
-    fi
-
-    # Taken by another session between our read and our write — exactly the
-    # race this exists for. Step to the next id and retry; do NOT treat it as
-    # an error.
-    if grep -qiE "already exists|non-fast-forward|fetch first|rejected" <<<"$err"; then
-        candidate=$((candidate + 1))
-        attempt=$((attempt + 1))
-        continue
-    fi
-
-    # Anything else is an environment problem, not contention.
-    echo "[WARN] could not reserve an id on '$REMOTE':" >&2
-    printf '%s\n' "$err" | sed 's/^/       /' >&2
-    echo "" >&2
-    echo "       Falling back to the local maximum + 1. This is the ORIGINAL" >&2
-    echo "       RACY behaviour: another session may pick the same id, and the" >&2
-    echo "       collision will only surface once both have pushed." >&2
-    echo "       The pre-push hook still refuses to let a duplicate land." >&2
-    printf '%04d\n' "$((file_max + 1))"
-    exit 0
-done
-
-echo "[FAIL] $MAX_ATTEMPTS consecutive ids were already reserved." >&2
-echo "       That is not contention any more — check \`git ls-remote $REMOTE '$REF_NS/*'\`" >&2
-echo "       for stale reservations left by sessions that never filed." >&2
-exit 1
+id="$(nros_reserve_claim "an issue id" "$REF_NS" "$REMOTE" "$MAX_ATTEMPTS" "$candidate" 4 unique_object)" || exit 1
+printf '%s\n' "$id"
+echo "reserved issue id $id on $REMOTE ($REF_NS/$id)" >&2
+if [ -n "$slug" ]; then
+    echo "  file it as: docs/issues/$id-$slug.md  (frontmatter \`id: $((10#$id))\`)" >&2
+fi
+exit 0

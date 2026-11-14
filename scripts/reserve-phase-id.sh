@@ -40,13 +40,16 @@
 # DEGRADATION
 #
 # If the reservation push fails for any reason OTHER than "already taken" — no
-# network, no push permission, a read-only mirror — this says so and falls back
-# to the local maximum. That fallback IS the old racy behaviour, so it is
-# announced rather than hidden.
+# network, no push permission, a read-only mirror — this says what failed and
+# exits non-zero with no number. A number nobody claimed on the remote is the
+# read-then-write race these reservations exist to end, so there is no
+# "local maximum + 1" fallback (`scripts/lib/reserve-ref.sh`).
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/lib/reserve-ref.sh
+. "$(dirname "$0")/lib/reserve-ref.sh"
 REF_NS="refs/phase-ids"
 REMOTE="${NROS_PHASE_REMOTE:-origin}"
 MAX_ATTEMPTS=25
@@ -93,39 +96,11 @@ file_max="$(highest_file_id)"
 reserved_max="$(highest_reserved_id)"
 candidate=$(( (file_max > reserved_max ? file_max : reserved_max) + 1 ))
 
-attempt=0
-while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
-    obj="$(unique_object "$candidate")"
-
-    if err="$(git push "$REMOTE" "$obj:$REF_NS/$candidate" 2>&1)"; then
-        printf '%s\n' "$candidate"
-        echo "reserved phase $candidate on $REMOTE ($REF_NS/$candidate)" >&2
-        if [ -n "$slug" ]; then
-            echo "  file it as: docs/roadmap/phase-$candidate-$slug.md" >&2
-            echo "  it needs a \`**Status (YYYY-MM-DD). …**\` line (check-roadmap-status)" >&2
-        fi
-        exit 0
-    fi
-
-    # Taken by another session between our read and our write — exactly the race
-    # this exists for. Step on and retry; not an error.
-    if grep -qiE "already exists|non-fast-forward|fetch first|rejected" <<<"$err"; then
-        candidate=$((candidate + 1))
-        attempt=$((attempt + 1))
-        continue
-    fi
-
-    echo "[WARN] could not reserve a phase number on '$REMOTE':" >&2
-    printf '%s\n' "$err" | sed 's/^/       /' >&2
-    echo "" >&2
-    echo "       Falling back to the local maximum + 1. This is the ORIGINAL" >&2
-    echo "       RACY behaviour: another session may pick the same number, and" >&2
-    echo "       the collision only surfaces once both have pushed." >&2
-    printf '%s\n' "$((file_max + 1))"
-    exit 0
-done
-
-echo "[FAIL] $MAX_ATTEMPTS consecutive numbers were already reserved." >&2
-echo "       That is not contention any more — check \`git ls-remote $REMOTE '$REF_NS/*'\`" >&2
-echo "       for stale reservations left by sessions that never filed." >&2
-exit 1
+candidate="$(nros_reserve_claim "a phase number" "$REF_NS" "$REMOTE" "$MAX_ATTEMPTS" "$candidate" 0 unique_object)" || exit 1
+printf '%s\n' "$candidate"
+echo "reserved phase $candidate on $REMOTE ($REF_NS/$candidate)" >&2
+if [ -n "$slug" ]; then
+    echo "  file it as: docs/roadmap/phase-$candidate-$slug.md" >&2
+    echo "  it needs a \`**Status (YYYY-MM-DD). …**\` line (check-roadmap-status)" >&2
+fi
+exit 0
