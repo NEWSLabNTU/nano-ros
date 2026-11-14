@@ -271,10 +271,11 @@ impl NoDefault {
                                      is drained batch-wise by a timer -- a `latest` subscription \
                                      keeps the newest sample and has no backlog to size"
                 .to_string(),
+            // RFC-0049's ladder.
             NoDefault::DepthStated(d) => format!(
-                "the endpoint states `depth: {d}`, which WINS -- RFC-0049's ladder puts a \
-                 stated value above every derived one, and this derivation only fills in \
-                 where nobody stated"
+                "the endpoint states `depth: {d}`, which WINS -- a stated depth ranks \
+                 above every derived one, and this derivation only fills in where nobody \
+                 stated"
             ),
             NoDefault::NoPublishRate => "no publish rate reached this endpoint. State \
                                          `topics.<topic>.rate_hz`, or `min_rate_hz` on the \

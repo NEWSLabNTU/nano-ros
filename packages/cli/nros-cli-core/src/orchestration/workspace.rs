@@ -56,10 +56,11 @@ fn warn_legacy_component_manifest(path: &Path) {
     static WARNED: LazyLock<Mutex<BTreeSet<PathBuf>>> =
         LazyLock::new(|| Mutex::new(BTreeSet::new()));
     if WARNED.lock().unwrap().insert(path.to_path_buf()) {
+        // Phase 172 W.1.
         eprintln!(
             "warning: `{}` is a deprecated standalone component manifest; fold it into the \
-             package's `nros.toml` as a `[component]` table (Phase 172 W.1). The standalone \
-             form still works during the deprecation window.",
+             package's `nros.toml` as a `[component]` table. The standalone form still \
+             works during the deprecation window.",
             path.display()
         );
     }

@@ -523,10 +523,11 @@ fn lower_sched_tasks(
         .iter()
         .find(|t| t.time_slice_us.is_some())
     {
+        // #0266 tracks the C/C++ consumer.
         return Err(format!(
             "sched task '{}': time_slice_us is not yet supported on the C/C++ codegen \
-             path (#0266) — declare it only on a Rust `nros::main!` ThreadX entry, \
-             or file the C consumer",
+             path — declare it only on a Rust `nros::main!` ThreadX entry, or file an \
+             issue asking for time slices on the C/C++ path",
             t.name
         ));
     }
@@ -625,8 +626,8 @@ fn lower_sched_tasks(
             if rows.iter().filter(|r| r.sc == 0).count() > 1 {
                 return Err(format!(
                     "mode table {k}: more than one level states a mode deadline, and the \
-                     levels of a one-executor image (phase-509 P9b) share the executor's \
-                     one scheduling context; state the deadline on one level"
+                     levels of a one-executor image share the executor's one scheduling \
+                     context; state the deadline on one level"
                 ));
             }
         }

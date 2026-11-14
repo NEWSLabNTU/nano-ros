@@ -460,8 +460,8 @@ fn cpp_probe_member(
     if crate::builder::west_app::cmakelists_finds_zephyr(&decl.package_root) {
         return Err(
             "a west application (its CMakeLists.txt calls find_package(Zephyr)), which a host \
-             CMake probe cannot configure; RFC-0120 sizes such a leaf from its census or its \
-             declared entities"
+             CMake probe cannot configure; such a leaf is sized from its census or its \
+             declared entities instead"
                 .into(),
         );
     }

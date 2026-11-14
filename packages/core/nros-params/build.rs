@@ -449,6 +449,7 @@ fn refuse(name: &str, board_key: &str, who: &Need, what: &str) -> ! {
         Some(t) => format!("is declared `{t}` in its contract"),
         None => "is declared with a type that needs it".to_string(),
     };
+    // phase-446 W4.
     panic!(
         "\n\nnros-params: parameter `{param}` on node `{node}` {declares}, so the parameter \
          store needs {name}, and {name} {what}.\n\
@@ -456,7 +457,6 @@ fn refuse(name: &str, board_key: &str, who: &Need, what: &str) -> ! {
          may be is a fact about the BOARD it is built for. State {name} as one of:\n  \
          - the board's `[knobs.params] {board_key} = <n>`\n  \
          - CONFIG_{name}=<n> in the image's Kconfig (Zephyr)\n  \
-         - the {name} environment variable\n\
-         (phase-446 W4)\n"
+         - the {name} environment variable\n"
     );
 }

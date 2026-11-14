@@ -97,10 +97,11 @@ pub fn emit_px4_lowered(
     let mut lowering = plan.clone();
     lowering.board = LOWERING_BOARD.into();
     if lowering.executor_shape() == ExecutorShape::SchedContexts {
+        // RFC-0113 D9.
         return Err(format!(
             "PX4 entry (`{main}`): a node's callback groups span two sched tasks, which runs \
              one executor with a sched context per sched task; a PX4 sched task is a work item with \
-             its own executor, so each node's groups must sit on one sched task (RFC-0113 D9)"
+             its own executor, so each node's groups must sit on one sched task"
         ));
     }
     let all = manifests()?;

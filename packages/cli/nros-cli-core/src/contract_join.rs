@@ -285,6 +285,7 @@ fn attribute(
     }
 
     if remapped.contains(component) {
+        // RFC-0100 D6.
         return refused(
             row,
             format!(
@@ -292,7 +293,7 @@ fn attribute(
                  name this endpoint registers under is not the name its source writes, and the \
                  model does not say which endpoint each remap renamed. Attributing a declared \
                  depth to the wrong endpoint is an UNDER-size, so it is refused rather than \
-                 guessed (RFC-0100 D6)"
+                 guessed"
             ),
             notes,
         );
@@ -337,11 +338,12 @@ fn attribute(
                 describe(&of_kind),
             )
         } else {
+            // RFC-0100 D6.
             format!(
                 "`{}` on `{source}` is declared by {matches} contract endpoint(s) and registered \
                  {registered} time(s) by component `{component}`, so which declaration governs \
                  THIS registration is ambiguous. A depth published against the wrong endpoint is \
-                 an UNDER-size, so the match is refused rather than picked (RFC-0100 D6)",
+                 an UNDER-size, so the match is refused rather than picked",
                 key.1,
             )
         };

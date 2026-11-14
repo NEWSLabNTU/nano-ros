@@ -86,13 +86,14 @@ pub struct Misdeclared {
 
 impl std::fmt::Display for Misdeclared {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // RFC-0094 D3.
         write!(
             f,
             "{}: package.xml declares <build_type>{}</build_type>, so {} builds \
              it — but there is no {} in {}.\n    \
              Either write the build type that matches the files, or add the \
-             file the declared driver needs. RFC-0094 D3: <build_type> selects \
-             the DRIVER, file presence selects PARTICIPATION.",
+             file the declared driver needs: <build_type> selects the DRIVER, \
+             file presence selects PARTICIPATION.",
             self.package,
             self.declared,
             match self.missing_file {
@@ -228,10 +229,13 @@ pub fn check_declarations<'a>(
     for m in &bad {
         out.push_str(&format!("  - {m}\n\n"));
     }
+    // Before RFC-0094 D3 this was a SILENT skip: the package was routed by
+    // whichever build file it happened to have, and the declaration was never
+    // read.
     out.push_str(
-        "  This was a SILENT skip before RFC-0094 D3: the package was routed by \
-         whichever\n  build file it happened to have, and the declaration was \
-         never read.",
+        "  The declared build type is what builds a package; a build file alone \
+         does not\n  route it, so a mismatch is refused rather than built by \
+         whichever file is present.",
     );
     Err(out)
 }

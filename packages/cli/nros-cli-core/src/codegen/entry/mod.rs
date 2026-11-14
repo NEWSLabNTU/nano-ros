@@ -822,12 +822,12 @@ fn derive_entry_sched_tasks(
     }
     // issue 1426 — an authored number may not shadow a derived one silently.
     for s in &derived.shadowed {
+        // RFC-0079.
         eprintln!(
             "codegen entry: authored priority wins - {} [priority]: \
              `[tasks.{}]` authors priority {} for this board, so it wins; the \
              contract's rank would have allocated {}. Remove every platform \
-             sub-table from that sched task to have the priority allocated instead \
-             (RFC-0079).",
+             sub-table from that sched task to have the priority allocated instead.",
             s.node, s.sched_task, s.authored, s.allocated
         );
     }
