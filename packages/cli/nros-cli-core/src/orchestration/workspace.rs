@@ -664,22 +664,22 @@ pub struct ComponentDeclaration {
 impl ComponentDeclaration {
     /// phase-308 W1 — the header the probe TU must `#include`.
     ///
-    /// An explicit `HEADER <hdr>` on the cmake verb wins. With none, the
-    /// in-tree convention is `<pkg>/<Class>.hpp` derived from the declared
-    /// class (`talker_pkg::Talker` → `talker_pkg/Talker.hpp`) — which is what
-    /// every C/C++ example ships. `None` when there is no class to derive
-    /// from: the probe cannot be generated and the caller must say so rather
-    /// than guess a path that will fail to compile.
+    /// An explicit `HEADER <hdr>` on the cmake verb wins. With none, the header
+    /// is derived from the declared class exactly as `nano_ros_node_register`
+    /// derives the one the image's entry includes: every `::` becomes `/` and
+    /// `.hpp` is appended (`talker_pkg::Talker` → `talker_pkg/Talker.hpp`,
+    /// `autoware::foo::Bar` → `autoware/foo/Bar.hpp`). The probe must include
+    /// what the entry includes, or a class the image builds fails only in the
+    /// probe. `None` when the class is not namespace-qualified: there is
+    /// nothing to derive from, and the caller says so rather than guess.
     pub fn probe_header(&self) -> Option<String> {
         if let Some(h) = self.header.as_deref().filter(|h| !h.is_empty()) {
             return Some(h.to_string());
         }
         let class = self.class.as_deref()?;
-        let (ns, leaf) = class.rsplit_once("::")?;
-        // A nested namespace maps to the outermost segment: the include root is
-        // the package dir, not the full path.
-        let pkg = ns.split("::").next().unwrap_or(ns);
-        Some(format!("{pkg}/{leaf}.hpp"))
+        class
+            .contains("::")
+            .then(|| format!("{}.hpp", class.replace("::", "/")))
     }
 
     /// phase-308 W1 — how the probe drives the declaration path.
@@ -2030,12 +2030,17 @@ mod probe_target_tests {
         );
     }
 
-    /// A nested namespace still maps to the package include root.
+    // GitHub #3861 (issue 2569).
+    /// A nested namespace maps to nested directories, as
+    /// `nano_ros_node_register` maps it for the entry (`::` to `/`, then
+    /// `.hpp`). This used to keep only the outermost segment, so an
+    /// Autoware-style `autoware::foo::Bar` probed `autoware/Bar.hpp` while the
+    /// image included `autoware/foo/Bar.hpp`.
     #[test]
-    fn nested_namespaces_use_the_outermost_segment() {
+    fn nested_namespaces_map_to_nested_directories_as_the_entry_does() {
         assert_eq!(
             decl(Some("my_pkg::inner::Node"), None, None).probe_header(),
-            Some("my_pkg/Node.hpp".to_string())
+            Some("my_pkg/inner/Node.hpp".to_string())
         );
     }
 
@@ -2100,6 +2105,31 @@ mod probe_target_tests {
                 .as_deref(),
             Some("rclcpp")
         );
+    }
+
+    // GitHub #3861 (issue 2569).
+    /// The island's call, verbatim: `nano_ros_add_node` with a literal HEADER
+    /// and no SHAPE. The probe takes the stated header and the verb's
+    /// `configure` default, which is what the entry builds; a release from
+    /// before issue 2339 probed it with the handle constructor and failed.
+    #[test]
+    fn a_ported_add_node_call_is_probed_with_its_header_and_the_configure_shape() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("CMakeLists.txt"),
+            "nano_ros_add_node(si_placeholder_cpp\n  \
+               CLASS autoware_si_placeholder_cpp::Placeholder\n  \
+               HEADER autoware/si_placeholder_cpp/placeholder.hpp\n  \
+               SOURCES src/placeholder.cpp)\n",
+        )
+        .unwrap();
+        let found = discover_cmake_node_metadata(dir.path(), "p").unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            found[0].header.as_deref(),
+            Some("autoware/si_placeholder_cpp/placeholder.hpp")
+        );
+        assert_eq!(found[0].shape.as_deref(), Some("configure"));
     }
 
     /// The two defaults above are cmake's, read from the cmake source, so a

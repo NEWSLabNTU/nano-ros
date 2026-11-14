@@ -1,0 +1,1 @@
+The C++ metadata probe derives a component's header the way `nano_ros_node_register` derives the one the entry includes. A nested-namespace class with no `HEADER` (`autoware::foo::Bar`) is now probed with `autoware/foo/Bar.hpp`, not `autoware/Bar.hpp`.

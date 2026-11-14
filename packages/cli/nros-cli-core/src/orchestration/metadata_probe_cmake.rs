@@ -1125,6 +1125,27 @@ mod tests {
         );
     }
 
+    // GitHub #3861 (issue 2569).
+    /// Each shape gets its own construction, the one the entry makes for it: a
+    /// `configure` class is default-constructed and configured, and never
+    /// handed the `NodeHandle` it has no constructor for; an `rclcpp` class is
+    /// constructed with the handle and is not configured.
+    #[test]
+    fn the_probe_constructs_each_shape_as_the_entry_does() {
+        let configure = render_probe_main(&opts()).expect("emit");
+        assert!(configure.contains(".configure("), "{configure}");
+        assert!(
+            !configure.contains("::talker_pkg::Talker(__h)"),
+            "a configure-shape class has no NodeHandle constructor:\n{configure}"
+        );
+        let mut o = opts();
+        o.shape = "rclcpp".into();
+        let rclcpp = render_probe_main(&o).expect("emit");
+        assert!(rclcpp.contains("::rclcpp::NodeHandle __h("), "{rclcpp}");
+        assert!(rclcpp.contains("::talker_pkg::Talker(__h)"), "{rclcpp}");
+        assert!(!rclcpp.contains(".configure("), "{rclcpp}");
+    }
+
     /// The probe TU comes from the entry emitter, so the construction and
     /// `configure` call are the ones a real entry would make.
     #[test]
