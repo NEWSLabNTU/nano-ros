@@ -1052,6 +1052,14 @@ pub fn run(args: Args) -> eyre::Result<()> {
         eprintln!("nros run: warning: {note}");
     }
     let one = &one;
+    // Build BEFORE planning: the plan reads facts only the build writes (the
+    // locator the firmware dials, from the west build's `zephyr/.config`, and
+    // the Zephyr tree the west runner needs). Planning first read a build dir
+    // that a first `nros run` had not made yet, so the image got no link and
+    // no router was started, silently. `--dry-run` builds nothing, as before.
+    if !args.dry_run {
+        crate::cmd::run_exec::build_or_exit("nros run", &Selection::from(&args), &one.qualified);
+    }
     let descriptor = one.descriptor.as_ref().expect("select_target checked it");
     let invocation = Invocation {
         // RFC-0118 D6: `--port`, then `NROS_PORT` — both the invocation rung.
@@ -1157,7 +1165,7 @@ pub fn run(args: Args) -> eyre::Result<()> {
         }
         return Ok(());
     }
-    crate::cmd::run_exec::build_and_execute(&args, &one.qualified, &plan)
+    crate::cmd::run_exec::execute_built(&args, &plan)
 }
 
 /// Which image a target verb acts on: the workspace, the nano-ros checkout
