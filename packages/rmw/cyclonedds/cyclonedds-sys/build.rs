@@ -21,11 +21,12 @@ fn main() {
         .unwrap_or_else(|_| nros_build_paths::repo_root().join("third-party/dds/cyclonedds"));
     println!("cargo:rerun-if-changed={}", src.display());
     if !src.join("CMakeLists.txt").is_file() {
+        // #0390.
         panic!(
             "cyclonedds-sys: source dir {} has no CMakeLists.txt — source not \
              provisioned. Run `nros setup --source cyclonedds-src` (or \
              `git submodule update --init third-party/dds/cyclonedds`, or set \
-             CYCLONEDDS_SOURCE_DIR). — #0390",
+             CYCLONEDDS_SOURCE_DIR).",
             src.display(),
         );
     }

@@ -166,10 +166,8 @@ pub fn source_drift(name: &str, rung: &str, have: &str, pinned: Option<&str>) ->
 /// Render a refusal: every drift, then what the check is.
 #[must_use]
 pub fn report(drifts: &[Drift]) -> String {
-    let mut s = format!(
-        "{} dependency drift(s) from the pin set (RFC-0104 D9):\n",
-        drifts.len()
-    );
+    // RFC-0104 D9.
+    let mut s = format!("{} dependency drift(s) from the pin set:\n", drifts.len());
     for d in drifts {
         s.push_str(&format!("  {d}\n"));
     }

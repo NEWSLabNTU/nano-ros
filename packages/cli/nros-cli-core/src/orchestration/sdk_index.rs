@@ -1821,9 +1821,10 @@ impl SdkIndex {
         }
         let mut keys: Vec<&String> = self.system.keys().collect();
         keys.sort();
+        // RFC-0062, amended 2026-08-29.
         vec![format!(
-            "[system.*] is deprecated and becomes [prereq.*] (RFC-0062, amended \
-             2026-08-29): {} entr(ies) still declared — {}. Each is already read \
+            "[system.*] is deprecated and becomes [prereq.*]: {} entr(ies) still \
+             declared — {}. Each is already read \
              as `provider = \"system\"`, so renaming the table header is the \
              whole migration. Removal at the next minor version. Set \
              NROS_SUPPRESS_DEPRECATION=1 to silence.",

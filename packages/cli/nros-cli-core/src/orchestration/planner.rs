@@ -552,9 +552,10 @@ fn parse_launch_args(args: &[String]) -> Result<HashMap<String, String>> {
 
 fn load_record(record_file: Option<&Path>, provenance: &Path) -> Result<Value> {
     let Some(record_file) = record_file else {
+        // phase-296 R4.
         eyre::bail!(
-            "no record for `{}` — the launch-XML parse path was removed \
-             (phase-296 R4). Resolve a SystemModel (`play_launch resolve …`) \
+            "no record for `{}` — the launch-XML parse path was removed. \
+             Resolve a SystemModel (`play_launch resolve …`) \
              and commit it as <bringup>/config/system_model.yaml (convention \
              discovery plans it), or pass a pre-baked record via --record.",
             provenance.display()

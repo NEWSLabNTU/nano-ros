@@ -1,26 +1,4 @@
 {
   "_comment": "Internal ids (issue/RFC/phase) in the CLI library's string literals and in build-script panic texts, per file -- see scripts/check/check-user-surface-ids.py. A SHRINKING backlog (issue 2443): move each id to a source comment and lower the count.",
-  "counts": {
-    "packages/cli/nros-cli-core/src/builtin_verbs.rs": 2,
-    "packages/cli/nros-cli-core/src/codegen/entry/lower.rs": 2,
-    "packages/cli/nros-cli-core/src/codegen/entry/mod.rs": 1,
-    "packages/cli/nros-cli-core/src/codegen/entry/priority_record.rs": 1,
-    "packages/cli/nros-cli-core/src/codegen/entry/px4.rs": 1,
-    "packages/cli/nros-cli-core/src/contract_join.rs": 2,
-    "packages/cli/nros-cli-core/src/declared_params_header.rs": 1,
-    "packages/cli/nros-cli-core/src/orchestration/board_projection.rs": 1,
-    "packages/cli/nros-cli-core/src/orchestration/drift.rs": 1,
-    "packages/cli/nros-cli-core/src/orchestration/metadata_refresh.rs": 1,
-    "packages/cli/nros-cli-core/src/orchestration/planner.rs": 1,
-    "packages/cli/nros-cli-core/src/orchestration/registry_pins.rs": 1,
-    "packages/cli/nros-cli-core/src/orchestration/release_packages.rs": 1,
-    "packages/cli/nros-cli-core/src/orchestration/sdk_index.rs": 1,
-    "packages/cli/nros-cli-core/src/orchestration/workspace.rs": 1,
-    "packages/cli/nros-cli-core/src/queue_depth.rs": 1,
-    "packages/cli/nros-cli-core/src/routing.rs": 2,
-    "packages/cli/nros-cli-core/src/stale_guard.rs": 3,
-    "packages/core/nros-params/build.rs": 1,
-    "packages/rmw/cyclonedds/cyclonedds-sys/build.rs": 1,
-    "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs": 1
-  }
+  "counts": {}
 }

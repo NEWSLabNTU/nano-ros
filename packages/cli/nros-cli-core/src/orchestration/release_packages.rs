@@ -195,8 +195,9 @@ fn with_bin_stated(text: &str, bin: &str) -> String {
     if !out.ends_with('\n') {
         out.push('\n');
     }
+    // phase-527 W6.
     out.push_str(&format!(
-        "# Stated by the release (phase-527 W6): a prebuilt package ships no\n\
+        "# Stated by the release: a prebuilt package ships no\n\
          # Cargo.toml to derive it from. It is the bin target the source derives.\n\
          bin = \"{bin}\"\n"
     ));

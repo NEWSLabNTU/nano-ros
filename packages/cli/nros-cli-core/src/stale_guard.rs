@@ -160,11 +160,12 @@ fn attribution(built_pin: &str, root: &Path, moved: &[&str]) -> String {
                 // <sha>` is what `git -C packages/cli/third-party/play_launch
                 // log` will confirm. `NROS_PLAY_LAUNCH_SHA` is the same value
                 // `build.rs` baked, so this cannot drift from what was built.
+                // The guard named below is issue 0409's.
                 let now = source_stamp::play_launch_pin(root);
                 lines.push(format!(
                     "the pinned play_launch submodule moved: {} -> {}\n\
                      \x20     (a pin is a CLI build input — `build.rs` bakes it as\n\
-                     \x20      NROS_PLAY_LAUNCH_SHA and the issue-0409 guard compares it.\n\
+                     \x20      NROS_PLAY_LAUNCH_SHA and the stale-CLI guard compares it.\n\
                      \x20      Moving the pin, or `git submodule update --init`, stales the\n\
                      \x20      CLI although no file in your tree changed: expected, and not\n\
                      \x20      a mistake on your part. Rebuild and carry on.)",
@@ -380,14 +381,15 @@ fn refuse_if_foreign_to_workspace(exe: &Path, workspace: &Path) -> Result<(), St
     if exe_real.starts_with(&expected_real) {
         return Ok(());
     }
+    // RFC-0090, phase-431 W1.
     Err(format!(
         "this `nros` does not belong to the checkout it is being run against.\n\
          \x20   running: {}\n\
          \x20   checkout: {}\n\
          A binary from outside this tree emits with ITS OWN codegen, which may\n\
          differ from this checkout's while carrying the same codegen version —\n\
-         the version catches an incompatible emitter, not one that merely moved\n\
-         (RFC-0090, phase-431 W1). Build and use this checkout's own CLI:\n\
+         the version catches an incompatible emitter, not one that merely moved.\n\
+         Build and use this checkout's own CLI:\n\
          \x20   ./scripts/bootstrap.sh      (contributors: just setup-cli)\n\
          \x20   source ./activate.sh\n\
          Override for a deliberate experiment: NROS_SKIP_STALE_CHECK=1",

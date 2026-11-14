@@ -315,12 +315,13 @@ fn main() {
     let mut sources: Vec<PathBuf> = Vec::new();
     let mut vendored_sources: Vec<PathBuf> = Vec::new();
     for row in &manifest.rows {
+        // phase-420 W9 step 4.
         assert!(
             COMPILED_TREES.contains(&row.tree.as_str()),
             "nros-rmw-xrce-cffi: {} has a row in tree `{}`, which COMPILED_TREES does not \
              list. This lane compiles EVERY tree — the archive it produces is the one \
              `nros-rmw-xrce/CMakeLists.txt` links, so a tree missing here is a tree missing \
-             from that link. phase-420 W9 step 4.",
+             from that link.",
             manifest_path.display(),
             row.tree,
         );
