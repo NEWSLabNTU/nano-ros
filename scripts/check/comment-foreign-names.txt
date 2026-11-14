@@ -412,6 +412,7 @@ result_timeout
 rmw_dds_common::msg::ParticipantEntitiesInfo
 rmw_take_response_request
 rmw_take_ser_int
+rosidl_cmake
 rosidl_runtime_c__type_description__FieldType
 rosidl_typesupport_c
 send_request_async
