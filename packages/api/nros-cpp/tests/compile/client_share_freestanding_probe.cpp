@@ -9,7 +9,7 @@
  * works there.
  *
  * `just check cpp` compiles this WITHOUT `NROS_CPP_STD` and requires it to FAIL
- * with `REFUSED by nano-ros` AND `issue 2037` in the text: an include typo also
+ * with `REFUSED by nano-ros` AND `FutureAndRequestId::share()` in the text: an include typo also
  * fails to compile, and the grep is what tells the refusal from that.
  */
 

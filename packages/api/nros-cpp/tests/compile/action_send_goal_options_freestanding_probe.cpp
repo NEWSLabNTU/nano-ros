@@ -7,7 +7,7 @@
  * `std::shared_ptr` / allocator for a goal handle, so it is a `static_assert`
  * naming the goal-id-keyed form. `just check cpp` compiles this WITHOUT
  * `NROS_CPP_STD` and requires it to FAIL with `REFUSED by nano-ros` AND
- * `issue 2015` in the text: an include typo also fails to compile, and the grep
+ * `goal-handle shapes` in the text: an include typo also fails to compile, and the grep
  * is what tells the refusal from that.
  */
 
