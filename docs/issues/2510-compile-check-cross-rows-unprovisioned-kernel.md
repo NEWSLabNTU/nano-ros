@@ -103,6 +103,29 @@ everywhere.
 Verification on a hosted shard waits for the next `merge-runtime.yml` tier1
 dispatch, which also carries issue 2511's image fix.
 
+## The first fix did not reach the hosted shard (2026-11-14)
+
+merge-runtime run 43534848324 (main a21c7625f6, with #3778) still built both
+FreeRTOS rows on the threadx_linux shard, and they failed as before. The
+attribution half worked: the stage ended `compile-check: FAILED — 2 row(s)
+did not build: freertos_firmware orch_sched_tasks_freertos`. The narrowing
+half never ran. `build-test-fixtures` invokes `build-compile-check-fixtures`
+from its OWN body, and `NROS_FIXTURE_COORDS` was exported only by
+`build-test-fixtures-leaves`, a dependency whose environment ends with it. The
+binding test checked the manifest predicate, not whether the stage received
+the coordinates, so it stayed green.
+
+Second fix (fix-2510-compile-check-lane-wiring):
+
+- `nros_fixture_coords_export <lane>` in `scripts/build/fixture-lane.sh` is
+  the one spelling of the export, used by both recipes. It clears the
+  variable for `all`/`linux`.
+- The compile-check stage logs its scope: `compile-check: scoped to the
+  lane's coordinates (<file>); out of lane: <ids>`, or `every row (no lane
+  coordinates set)`.
+- `lane_build_covers_run::build_test_fixtures_exports_the_lane_coordinates_before_compile_checks`
+  pins the wiring. Deleting the export line turns it red (measured).
+
 ## Done when
 
 - A `merge-runtime.yml` `threadx_linux` shard passes

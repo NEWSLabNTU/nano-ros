@@ -195,6 +195,25 @@ nros_codegen_scope_export() {
     fi
 }
 
+# Issue 2510 — export `NROS_FIXTURE_COORDS` for one lane, the variable every
+# fixture builder narrows its rows by. ONE spelling, because the first fix put
+# the narrowing in `compile-check-fixtures.sh` and the variable was exported
+# only by `build-test-fixtures-leaves`, while `build-test-fixtures` calls the
+# compile-check stage from its own body: merge-runtime run 43534848324 still
+# built both FreeRTOS rows on the threadx shard. Clears it for `all`/`linux`,
+# which select by module, so no caller inherits a narrowing it did not ask for.
+nros_fixture_coords_export() {
+    local lane f
+    lane="$(nros_lane_arg "${1:-all}")"
+    unset NROS_FIXTURE_COORDS
+    [ "$lane" != "all" ] || return 0
+    f="$(nros_lane_coords_file "$lane")" || return $?
+    if [ -n "$f" ]; then
+        NROS_FIXTURE_COORDS="$(cd "$(dirname "$f")" && pwd)/$(basename "$f")"
+        export NROS_FIXTURE_COORDS
+    fi
+}
+
 nros_lane_coords_file() {
     local lane="$1"
     nros_lane_validate "$lane" || return 2

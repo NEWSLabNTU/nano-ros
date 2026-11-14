@@ -2112,6 +2112,10 @@ build-test-fixtures lane="all": _require-owned-provisioned-roots _check-fast-unl
     # ONE spelling, because `check::source-gates` needs these too and CI runs it
     # in a job that builds no fixtures (issue 0871). Calling the recipe rather
     # than re-invoking the script keeps the two callers from drifting.
+    #
+    # Issue 2510 — narrowed to the lane's coordinates, like the leaves: a row
+    # stating a `platform` this lane holds no coordinate on is not built.
+    nros_fixture_coords_export "{{lane}}"
     just build-compile-check-fixtures
     # Issue 1685 — the host build-stage proof `test-all` runs that has no
     # manifest row (`staticlib_duplicate_symbols`; `borrowed_e2e` was the second
@@ -2245,9 +2249,8 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots (_requir
         }
         # `linux` is module-level (build every host row); the tier lanes also
         # narrow the ROWS each surviving module builds.
-        coords_file="$(nros_lane_coords_file "$lane")"
-        if [ -n "$coords_file" ]; then
-            export NROS_FIXTURE_COORDS="$(cd "$(dirname "$coords_file")" && pwd)/$(basename "$coords_file")"
+        nros_fixture_coords_export "$lane"
+        if [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
             echo "build-test-fixtures: lane=$lane coords=$(wc -l < "$NROS_FIXTURE_COORDS")"
         fi
         echo "build-test-fixtures: lane=$lane modules=$(echo $lane_modules | tr '\n' ' ')"

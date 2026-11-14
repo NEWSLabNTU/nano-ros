@@ -1304,3 +1304,40 @@ fn every_lane_builds_exactly_the_compile_check_rows_its_run_reads() {
         }
     }
 }
+
+/// Issue 2510 — the compile-check stage RECEIVES the lane's coordinates.
+///
+/// `every_lane_builds_exactly_the_compile_check_rows_its_run_reads` binds the
+/// manifest predicate, and it was green while the hosted threadx shard still
+/// built both FreeRTOS rows (merge-runtime run 43534848324): `build-test-
+/// fixtures` calls `build-compile-check-fixtures` from its own body, and only
+/// `build-test-fixtures-leaves` exported `NROS_FIXTURE_COORDS`. So this pins
+/// the wiring: in `build-test-fixtures`' body, `nros_fixture_coords_export`
+/// runs before the compile-check stage is invoked.
+#[test]
+fn build_test_fixtures_exports_the_lane_coordinates_before_compile_checks() {
+    let justfile = std::fs::read_to_string(nros_tests::project_root().join("justfile"))
+        .expect("read justfile");
+    let start = justfile
+        .lines()
+        .position(|l| l.starts_with("build-test-fixtures lane="))
+        .expect("the `build-test-fixtures` recipe");
+    let body: Vec<&str> = justfile
+        .lines()
+        .skip(start + 1)
+        .take_while(|l| l.is_empty() || l.starts_with(' ') || l.starts_with('\t'))
+        .collect();
+    let call = body
+        .iter()
+        .position(|l| l.trim() == "just build-compile-check-fixtures")
+        .expect("`build-test-fixtures` invokes `just build-compile-check-fixtures`");
+    let export = body
+        .iter()
+        .position(|l| l.trim().starts_with("nros_fixture_coords_export "));
+    assert!(
+        export.is_some_and(|e| e < call),
+        "`build-test-fixtures` runs the compile-check stage without first calling \
+         `nros_fixture_coords_export \"{{{{lane}}}}\"`, so the stage builds every row \
+         whatever the lane (merge-runtime run 43534848324)"
+    );
+}
