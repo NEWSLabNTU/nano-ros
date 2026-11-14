@@ -233,6 +233,74 @@ pub const ALL_ENTITY_KINDS: &[EntityKind] = &[
     EntityKind::GuardCondition,
 ];
 
+/// phase-550 W15 (RFC-0126 Q6, amended 2026-11-14) -- where the metadata probe
+/// ran AND the bringup also declares a component's `entities`, the two are one
+/// fact stated twice, and they must agree: a hand declaration that a probe
+/// contradicts is a second source that has already drifted. One line per
+/// component that disagrees, naming both counts; empty when they agree.
+///
+/// The comparison is per KIND count, the unit every pool is sized in. A
+/// declared component the probe recorded under no name of that spelling (its
+/// `[[component]] name`, else its class) disagrees too: nothing observed it.
+/// A component only the probe recorded is not compared, because declaring is
+/// optional where the probe runs; nor is a row the probe registered without a
+/// statement (`Absent`, `NotLaunched`), which observed nothing.
+pub fn declaration_disagreements(
+    declared: &[(String, Vec<EntityDecl>)],
+    observed: &EntityInventory,
+) -> Vec<String> {
+    use std::collections::BTreeMap;
+    fn counts(rows: &[EntityDecl]) -> BTreeMap<EntityKind, usize> {
+        let mut m = BTreeMap::new();
+        for e in rows {
+            *m.entry(e.kind).or_insert(0) += 1;
+        }
+        m
+    }
+    fn render(m: &BTreeMap<EntityKind, usize>) -> String {
+        if m.is_empty() {
+            return "nothing".to_string();
+        }
+        m.iter()
+            .map(|(k, n)| format!("{} x{n}", k.tag()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+    let rows = observed.components();
+    let mut out = Vec::new();
+    for (name, decls) in declared {
+        let Some(row) = rows
+            .iter()
+            .find(|r| &r.component == name)
+            .or_else(|| rows.iter().find(|r| &r.class == name))
+        else {
+            out.push(format!(
+                "`{name}` declares {}, and the probe recorded no component of that name",
+                render(&counts(decls))
+            ));
+            continue;
+        };
+        // A row the probe registered but made no statement about is not an
+        // observation, so there is nothing for the declaration to disagree with.
+        if matches!(
+            row.declaration,
+            Declaration::Absent | Declaration::NotLaunched
+        ) {
+            continue;
+        }
+        let want = counts(decls);
+        let got = counts(row.declaration.entities());
+        if want != got {
+            out.push(format!(
+                "`{name}` declares {}, and the probe recorded {}",
+                render(&want),
+                render(&got)
+            ));
+        }
+    }
+    out
+}
+
 impl EntityKind {
     /// The canonical spelling, used on every transport and in the declaration.
     pub fn tag(self) -> &'static str {
@@ -13062,5 +13130,86 @@ to = { node = "s1", topic = "/header" }
             StatedBy::Probe,
             "a metadata inventory folding in a probe-stated one stays the probe's"
         );
+    }
+}
+
+#[cfg(test)]
+mod declaration_disagreement_tests {
+    use super::*;
+
+    fn decls(specs: &[&str]) -> Vec<EntityDecl> {
+        specs
+            .iter()
+            .flat_map(|s| EntityDecl::parse(s).unwrap())
+            .collect()
+    }
+
+    fn probed(name: &str, specs: &[&str]) -> EntityInventory {
+        let mut inv = EntityInventory::new("probe");
+        let d = decls(specs);
+        inv.insert(ComponentEntities {
+            pkg: "demo".into(),
+            component: name.into(),
+            class: format!("demo::{name}"),
+            declaration: if d.is_empty() {
+                Declaration::None
+            } else {
+                Declaration::Stated(d)
+            },
+        });
+        inv
+    }
+
+    #[test]
+    fn an_agreeing_declaration_is_accepted() {
+        let inv = probed(
+            "talker",
+            &["publisher:std_msgs/msg/String:/chatter", "timer"],
+        );
+        let d = vec![(
+            "talker".to_string(),
+            decls(&["timer", "publisher:std_msgs/msg/String:/chatter"]),
+        )];
+        assert!(declaration_disagreements(&d, &inv).is_empty());
+    }
+
+    #[test]
+    fn a_disagreeing_declaration_names_both_counts() {
+        let inv = probed(
+            "talker",
+            &["publisher:std_msgs/msg/String:/chatter", "timer"],
+        );
+        let d = vec![("talker".to_string(), decls(&["timer"]))];
+        let got = declaration_disagreements(&d, &inv);
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert!(
+            got[0].contains("declares timer x1")
+                && got[0].contains("recorded publisher x1, timer x1"),
+            "{got:?}"
+        );
+    }
+
+    #[test]
+    fn a_declared_component_the_probe_never_saw_disagrees() {
+        let inv = probed("talker", &["timer"]);
+        let d = vec![("listener".to_string(), decls(&["subscription"]))];
+        let got = declaration_disagreements(&d, &inv);
+        assert!(
+            got[0].contains("`listener`") && got[0].contains("no component"),
+            "{got:?}"
+        );
+    }
+
+    #[test]
+    fn the_class_name_joins_too_and_an_undeclared_probe_row_is_not_compared() {
+        let mut inv = probed("talker", &["timer"]);
+        inv.insert(ComponentEntities {
+            pkg: "demo".into(),
+            component: "extra".into(),
+            class: "demo::Extra".into(),
+            declaration: Declaration::Stated(decls(&["publisher"])),
+        });
+        let d = vec![("demo::talker".to_string(), decls(&["timer"]))];
+        assert!(declaration_disagreements(&d, &inv).is_empty());
     }
 }

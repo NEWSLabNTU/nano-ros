@@ -217,7 +217,7 @@ NROS_CARGO_CONFIG = $(NROS_IMAGE_ROOT)/make/nros-cargo.toml
 # None: a guest, built exactly as before. One: `nros locate
 # nuttx-cargo-config` checks it against this kernel (its image is
 # NROS_IMAGE, else the one image whose board is the kernel's; the board,
-# Kconfig's RMW and edition, and declared entities must agree), writes the
+# Kconfig's RMW and edition must agree), writes the
 # image key beside the settings file, and `nros configure` configures that
 # image in the project. More than one is refused: one NuttX build takes one
 # project.

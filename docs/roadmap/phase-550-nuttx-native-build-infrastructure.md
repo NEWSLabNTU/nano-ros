@@ -687,7 +687,37 @@ Work:
   (refused, naming both values), and guest without a declaration (refused,
   as today). The make road's arm project case builds with its declaration
   removed.
-- **Status:** OPEN.
+- **Status:** DONE (2026-11-14). Measured, the roads that combine a
+  declaration with a probe are fewer than the work list assumed. Only the
+  make road with a named project has both. The leaf, west-leaf and census
+  readers of `[[component]] entities` run where no probe runs, so there the
+  declaration already is the one source.
+  - `check_nuttx_project` (W6a) no longer requires a declaration up front.
+    It runs before `nros configure`, so it cannot know yet what the probe
+    will record.
+  - `make_road_sizing_descriptor` (W6d) now does this:
+    - **Probe recorded the image:** the descriptor is the probe's (`basis =
+      "probe"`). Any `entities` list in the bringup is compared per kind with
+      the probe's rows, through one shared helper,
+      `entity_inventory::declaration_disagreements`. A disagreement is
+      refused, naming the file, the component and both counts. A declared
+      component the probe never recorded also disagrees.
+    - **Probe recorded nothing:** the declaration is the only source, so
+      every `[[component]]` states `entities`, unless `[system] entities =
+      "defaults"`. This is W6a's refusal, moved to where it can be decided.
+  - Tests:
+    - 4 unit tests for the comparison: agree, disagree, never probed, and a
+      class-name join with an undeclared probe row.
+    - 3 tests for the make road: the probed pre-configure check passes, an
+      unprobed undeclared component is refused with no internal id, and a
+      declaration or the defaults are accepted.
+    - A test that `declared_entities` reads only authored lists.
+  - `just nuttx build-make-road`: the arm project case no longer injects a
+    declaration, and the lane refuses one. It builds sized from the probe.
+    The lane then proves the rule end to end on every run. A talker
+    declaring only its timer is refused (``talker` declares timer x1, and
+    the probe recorded publisher x1, timer x1`), and the agreeing
+    declaration builds.
 
 ## Order
 
