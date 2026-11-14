@@ -95,7 +95,9 @@ The CLI already has two `explain` verbs:
 ### D1 — One crate defines every diagnostic
 
 The crate is `nros-diagnostics`, under `packages/tooling/`. It declares each
-diagnostic exactly once, through one declarative macro:
+diagnostic exactly once, through one declarative macro. (Its package name is
+`nros-diagnostic-codes`: `nros-diagnostics` is the on-target contract
+reporter's name in the same workspace. phase-552 W1 records this.)
 
 ```rust
 diagnostics! {
