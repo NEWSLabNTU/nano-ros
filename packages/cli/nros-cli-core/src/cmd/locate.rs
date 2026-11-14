@@ -1439,11 +1439,16 @@ fn check_nuttx_project(
     };
     let all: Vec<&ProjectImage> = images.iter().collect();
     if all.is_empty() {
-        return Err(format!(
-            "the project {} declares no `[image.<id>]`. Add one with \
-             `board = \"{kernel}\"` to its bringup's system.toml.",
-            project.display()
-        ));
+        use crate::diag::{Diag, DiagExt};
+        return Err(Diag::NoImageDeclared
+            .refusal(format_args!(
+                "the project {} declares no `[image.<id>]`",
+                project.display()
+            ))
+            .help(format_args!(
+                "add `[image.<id>] board = \"{kernel}\"` to its bringup's system.toml"
+            ))
+            .to_string());
     }
     let chosen: &ProjectImage = match requested {
         Some(want) => {

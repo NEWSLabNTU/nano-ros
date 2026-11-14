@@ -1327,11 +1327,13 @@ pub fn resolve_image_board<'c>(
     image: &ImageBlock,
 ) -> Result<&'c BoardDescriptor, String> {
     let Some(board) = image.board.as_deref() else {
-        return Err(format!(
-            "`[image.{image_id}]` declares no `board`. An image is a \
-             (launch, args, board) bake; without a board there is nothing to \
-             compile for."
-        ));
+        use crate::diag::{Diag, DiagExt};
+        return Err(Diag::ImageNoBoard
+            .refusal(format_args!(
+                "`[image.{image_id}]` declares no `board`; an image is a (launch, args, \
+                 board) bake, and without a board there is nothing to compile for"
+            ))
+            .to_string());
     };
     let origin = format!("[image.{image_id}] board");
     let d = resolve_board_id(catalog, &origin, board)?;
@@ -1414,12 +1416,15 @@ pub fn resolve_board_id<'c>(
                 .collect();
             known.sort_unstable();
             known.dedup();
-            Err(format!(
-                "`{origin} = \"{board}\"` matches no board. \
-                 Known boards: {}. Out-of-tree boards are added through \
-                 `$NROS_EXTRA_BOARD_PATH`.",
-                known.join(", ")
-            ))
+            use crate::diag::{Diag, DiagExt};
+            Err(Diag::BoardUnknown
+                .refusal(format_args!("`{origin} = \"{board}\"` matches no board"))
+                .help(format_args!(
+                    "check the spelling; the known boards are {}. Out-of-tree boards are \
+                     added through `$NROS_EXTRA_BOARD_PATH`",
+                    known.join(", ")
+                ))
+                .to_string())
         }
     }
 }

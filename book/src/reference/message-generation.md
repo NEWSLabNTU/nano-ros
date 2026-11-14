@@ -313,10 +313,11 @@ still read first.
 
 ## Troubleshooting
 
-**"`AMENT_PREFIX_PATH` is unset, and … has no earlier configure that recorded one"**
+**"error[NROS-0001]: `AMENT_PREFIX_PATH` is unset, and … has no earlier configure that recorded one"**
 - This shell has not sourced ROS 2, and this project has never been
   configured from one that had. Run `source /opt/ros/humble/setup.bash`
   (or your overlay's `install/setup.bash`), then build again.
+  `nros explain NROS-0001` says the same offline.
 
 **"the message package `X` is on neither NROS_INTERFACE_SEARCH_PATH nor AMENT_PREFIX_PATH"**
 - A CMake or `west` configure found `X` only in nano-ros's bundled copies.

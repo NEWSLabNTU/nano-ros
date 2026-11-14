@@ -488,8 +488,14 @@ pub fn resolve_board<'a>(catalog: &'a BoardCatalog, board: &str) -> Option<&'a B
 /// (phase-500 W1 — `native` is `linux`), else the generic refusal. The callers
 /// of [`resolve_board`] that refuse a miss share this text.
 pub fn unresolved_board(board: &str) -> String {
-    nros_entry_lower::retired_board_key_hint(board)
-        .unwrap_or_else(|| format!("board `{board}` is claimed by no board descriptor"))
+    use crate::diag::{Diag, DiagExt};
+    nros_entry_lower::retired_board_key_hint(board).unwrap_or_else(|| {
+        Diag::BoardUnknown
+            .refusal(format_args!(
+                "board `{board}` is claimed by no board descriptor"
+            ))
+            .to_string()
+    })
 }
 
 /// One candidate: the name it was selected by, and the board it resolves to.

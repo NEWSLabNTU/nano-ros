@@ -154,7 +154,9 @@ through `nros-rmw-cyclonedds-sys`.
 ### A7. The board name is a typo
 
 ```text
-…/system.toml: board `mps2-an358` is claimed by no board descriptor under /…/nano-ros
+error[NROS-0002]: `[image.linux] board = "mps2-an358"` matches no board
+  help: check the spelling; the known boards are an536, bare-metal, baremetal, … Out-of-tree boards are added through `$NROS_EXTRA_BOARD_PATH`
+  explain: nros explain NROS-0002
 ```
 
 `[image.<id>] board` is where a bringup names its board, and a typo there is
@@ -167,8 +169,12 @@ descriptor).
 The neighbouring refusals, when the image is missing rather than misspelt:
 
 ```text
-this workspace declares no `[image.*]`. An image is the buildable unit: add `[image.<id>] board = "<board>"` to system.toml.
-…/system.toml: names no board; add `[image.<id>] board = "<board>"`
+error[NROS-0003]: this workspace declares no `[image.*]`, and an image is the buildable unit
+  help: add `[image.<id>] board = "<board>"` to the bringup package's system.toml
+  explain: nros explain NROS-0003
+error[NROS-0004]: …/system.toml: `[image.linux]` names no `board`
+  help: add `board = "<board>"` to the `[image.<id>]` table in system.toml
+  explain: nros explain NROS-0004
 ```
 
 The first means no bringup in the workspace has a `system.toml` with an
@@ -211,7 +217,9 @@ hit it. If a cargo command you drive yourself does, you skipped the
 The message names the command you ran; from `nros build`:
 
 ```text
-Error: configure: `AMENT_PREFIX_PATH` is unset, and `/home/you/sensor_ws` has no earlier configure that recorded one. Source ROS 2 in this shell (`source /opt/ros/<distro>/setup.bash`, or your overlay's `install/setup.bash`) and run `nros build` again; later shells need not source it.
+error[NROS-0001]: `AMENT_PREFIX_PATH` is unset, and `/home/you/sensor_ws` has no earlier configure that recorded one
+  help: source ROS 2 in this shell (`source /opt/ros/<distro>/setup.bash`, or your overlay's `install/setup.bash`) and run `nros build` again; later shells need not source it
+  explain: nros explain NROS-0001
 ```
 
 The project has messages to generate (every talker uses `std_msgs`), and

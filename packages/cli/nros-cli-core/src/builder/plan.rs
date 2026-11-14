@@ -198,8 +198,9 @@ pub fn resolve(
     let all = all_images(bringups);
     if all.is_empty() {
         // RFC-0065 D6.
-        return Err("this workspace declares no `[image.*]`. An image is the \
-                    buildable unit: add `[image.<id>] board = \"<board>\"` to system.toml."
+        use crate::diag::{Diag, DiagExt};
+        return Err(Diag::NoImageDeclared
+            .refusal("this workspace declares no `[image.*]`, and an image is the buildable unit")
             .to_string());
     }
 

@@ -423,7 +423,15 @@ fn configure_project(
                 // which is what `nros sync` exited 0 on; `nros build` of that
                 // image then fails on its own error.
                 None => {
-                    let chain = format!("{e:#}").lines().collect::<Vec<_>>().join(" ");
+                    // A coded refusal keeps its head line (`error[NROS-…]: …`): the
+                    // code is the route to the rest, and `nros build` of the
+                    // image prints the whole refusal.
+                    let text = format!("{e:#}");
+                    let chain = if crate::diag::is_rendered(&text) {
+                        text.lines().next().unwrap_or_default().to_string()
+                    } else {
+                        text.lines().collect::<Vec<_>>().join(" ")
+                    };
                     eprintln!("configure: {}: not configured — {chain}", t.key);
                     out.not_configured.push((t.key.clone(), chain));
                 }
@@ -540,14 +548,19 @@ pub(crate) fn recorded_env_to_restore_with(
         if !ament_set && ws::has_messages_to_generate(project, search) {
             // RFC-0120 D2: no record → refuse. Issue 2279: the remedy is a
             // command to retype, the one the reader ran.
-            eyre::bail!(
-                "configure: `{}` is unset, and `{}` has no earlier configure that recorded one. \
-                 Source ROS 2 in this shell (`source /opt/ros/<distro>/setup.bash`, or your \
-                 overlay's `install/setup.bash`) and run `nros {verb}` again; later shells need \
-                 not source it.",
-                configure_stamp::AMENT_VAR,
-                project.display()
-            );
+            use crate::diag::{Diag, DiagExt};
+            return Err(Diag::AmentPrefixUnset
+                .refusal(format_args!(
+                    "`{}` is unset, and `{}` has no earlier configure that recorded one",
+                    configure_stamp::AMENT_VAR,
+                    project.display()
+                ))
+                .help(format_args!(
+                    "source ROS 2 in this shell (`source /opt/ros/<distro>/setup.bash`, or your \
+                     overlay's `install/setup.bash`) and run `nros {verb}` again; later shells \
+                     need not source it"
+                ))
+                .report());
         }
         return Ok(Vec::new());
     };
