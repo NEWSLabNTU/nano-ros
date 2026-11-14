@@ -721,6 +721,36 @@ pub fn board_family(board: &str) -> Result<BoardFamily, UnknownBoard> {
         .ok_or_else(|| UnknownBoard { key: board.into() })
 }
 
+impl BoardFamily {
+    /// The entry shape this family's platform imposes, if any (RFC-0112 D5,
+    /// phase-562 W8): `zephyr` for Zephyr, which owns `main`, so the entry is
+    /// a `rust_main` staticlib export. This is what `nros::main!` and the Rust
+    /// entry pack pass to `nros_orchestration_ir::image_framework` as the
+    /// board's `entry_shape`, since neither has the descriptor; the CLI reads
+    /// the descriptor's `entry_kind = "zephyr-staticlib"` instead, and
+    /// `nros-cli-core/tests/board_key_table.rs` holds the two to one answer for
+    /// every descriptor name.
+    #[must_use]
+    pub fn entry_shape(self) -> Option<&'static str> {
+        match self {
+            BoardFamily::Zephyr => Some("zephyr"),
+            BoardFamily::Linux
+            | BoardFamily::Nuttx
+            | BoardFamily::Freertos
+            | BoardFamily::Threadx
+            | BoardFamily::Baremetal => None,
+        }
+    }
+}
+
+/// The entry shape the board `key` imposes ([`BoardFamily::entry_shape`]);
+/// `None` for a key outside [`BOARD_KEYS`] (an out-of-tree board states its
+/// own, through its crate's `[package.metadata.nros.board] framework`).
+#[must_use]
+pub fn entry_shape_for_key(key: &str) -> Option<&'static str> {
+    board_family(key).ok().and_then(BoardFamily::entry_shape)
+}
+
 /// The sched task key a board with NO RTOS family resolves to: the empty string,
 /// which names no `[tasks.<name>.<rtos>]` sub-table.
 ///

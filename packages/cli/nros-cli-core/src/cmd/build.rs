@@ -967,6 +967,16 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         let descriptor =
             crate::orchestration::image::resolve_image_board(&catalog, &image_id, &image)
                 .map_err(|e| eyre::eyre!("{e}"))?;
+        // RFC-0111 D3 / RFC-0112 D5 (phase-562 W2/W8) — the image's
+        // `framework` against its board, for EVERY image and before anything
+        // is generated, so `framework = "zephyr"` (or one the board does not
+        // boot) is refused whatever road the image would take.
+        descriptor
+            .image_framework(
+                image.board.as_deref().unwrap_or_default(),
+                image.framework.as_deref(),
+            )
+            .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
         let platform = descriptor.platform.kebab().to_string();
         // phase-463 W7 / RFC-0078 amendment 2026-10-07 — a HOST WCET profile
         // (`host-<arch>-<profile>`, what `$NROS_PROFILE_OUT` measures) is a fact
@@ -5314,6 +5324,12 @@ fn generate_entry(
         platform,
         &descriptor.names,
     );
+    // RFC-0111 D3 (phase-562 W2) — the image's framework, resolved ONCE
+    // against its board. The candidate search above only finds the board; it
+    // no longer picks the framework.
+    let framework = descriptor
+        .image_framework(&board_name, image.framework.as_deref())
+        .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?;
 
     // Where the entry will be written — needed to make its dependency paths
     // relative, and computed before the spec because the spec carries them.
@@ -5459,23 +5475,28 @@ fn generate_entry(
                 plan.resolved_sched_tasks.as_ref(),
                 |f| crate::orchestration::facade::crate_declares_feature(&crate_dir, f),
             ));
-        // Issue 1305 — the entry surface this board key's framework drives
-        // (`board-entry` / `rtic` on the mps2 bare-metal crate), by the same
-        // derivation a single-package leaf's selection package uses.
+        // Issue 1305 — the entry surface the image's resolved framework
+        // drives (`board-entry` / `rtic` on the mps2 bare-metal crate), by the
+        // same derivation a single-package leaf's selection package uses.
         facts
             .board_features
             .extend(crate::builder::entry::entry_surface_features(
-                &candidates,
+                framework,
                 |f| crate::orchestration::facade::crate_declares_feature(&crate_dir, f),
             ));
         facts.board_features.sort();
         facts.board_features.dedup();
     }
-    // phase-535 W6 — the crates the board key's framework names from the
-    // entry's own crate root (`rtic` and the device crate, for RTIC).
+    // phase-535 W6 — the crates the image's framework names from the entry's
+    // own crate root (`rtic` and the device crate, for RTIC).
     facts.crate_root_deps.extend(
-        crate::builder::entry::framework_entry_deps(&candidates, nros_root, &entry_dir_for_deps)
-            .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?,
+        crate::builder::entry::framework_entry_deps(
+            framework,
+            &candidates,
+            nros_root,
+            &entry_dir_for_deps,
+        )
+        .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?,
     );
     // RFC-0071 D13 — the entry states its own features and registration; no
     // selection package is written for it. Derived from `sys` (above).

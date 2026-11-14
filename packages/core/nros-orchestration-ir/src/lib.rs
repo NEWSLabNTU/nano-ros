@@ -161,7 +161,12 @@ pub mod wcet;
 /// PX4 image's entry is GENERATED C++ (one `ScheduledWorkItem` per sched task, on the
 /// work queue [`px4::px4_work_queues`] picks), and `nros::main!` has no shape
 /// for it — see [`CPP_ONLY_FRAMEWORKS`].
-pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "zephyr", "px4"];
+///
+/// RFC-0112 D5 (phase-562 W8): the list holds only values a user may CHOOSE
+/// with `[image.<id>] framework`. `zephyr` left it: it is an entry shape the
+/// board's platform imposes ([`ENTRY_SHAPES`]), and [`image_framework`]
+/// refuses it on an image.
+pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "px4"];
 
 /// Frameworks in [`FRAMEWORKS`] whose entry is generated C++ only, each with
 /// the reason `nros::main!` refuses it. Everything else in [`FRAMEWORKS`] has a
@@ -252,39 +257,152 @@ pub fn is_host_board_key(key: &str) -> bool {
     HOST_BOARD_KEYS.contains(&key)
 }
 
-/// The framework an IN-TREE board key implies, as a canonical name.
+/// The framework a board boots when its descriptor lists none (RFC-0111 D2).
+pub const DEFAULT_FRAMEWORK: &str = "owned-spin";
+
+/// Entry shapes a board's PLATFORM imposes, which no image chooses
+/// (RFC-0112 D5, phase-562 W8).
 ///
-/// Issue 0415 — this table used to live in `nros-macros`, keyed on the deploy
-/// string, with an `_ => OwnedSpin` fall-through. That made it invisible to
-/// `nros ws check` (which reads the board crate's
-/// `[package.metadata.nros.board] framework` instead) and unreachable for any
-/// board that is not in this repo.
+/// A Zephyr board's descriptor says `entry_kind = "zephyr-staticlib"`: Zephyr
+/// owns `main`, so the entry is a `rust_main` staticlib export whatever the
+/// image says. `nros::main!` still dispatches on the shape, but it reads it
+/// from the BOARD ([`BoardBoot::entry_shape`]), never from the image's
+/// `framework`.
+pub const ENTRY_SHAPES: &[&str] = &["zephyr"];
+
+/// Names an image may not write as its `framework` because the board decides
+/// them (RFC-0111 D1): the [`ENTRY_SHAPES`], and `esp32`, the entry shape of a
+/// board that has since retired.
+const BOARD_DECIDED: &[&str] = &["zephyr", "esp32"];
+
+/// What a board says about how its images boot, as [`image_framework`] reads
+/// it.
 ///
-/// It is the IN-TREE FAST PATH only. An out-of-tree board declares its
-/// framework in its own manifest, and the build script that resolves it wins
-/// over this table — see `nros_build::emit_board_framework`.
+/// The CLI builds it from the board descriptor (`frameworks`, and
+/// `entry_kind = "zephyr-staticlib"` for the Zephyr shape). `nros::main!` has
+/// no descriptor and builds it from what it already reads: the board key's
+/// family (`nros_entry_lower`, which `nros-cli-core/tests/board_key_table.rs`
+/// holds to every descriptor's `entry_kind` and `frameworks`) and, for an
+/// out-of-tree board, the crate's `NROS_BOARD_FRAMEWORK`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BoardBoot<'a> {
+    /// The frameworks the board can boot, first = the default (RFC-0111 D2).
+    /// Empty means `[DEFAULT_FRAMEWORK]`, as for a descriptor with no
+    /// `frameworks` key.
+    pub frameworks: &'a [&'a str],
+    /// The entry shape the board's platform imposes, if any
+    /// ([`ENTRY_SHAPES`]). When set, the board decides and the image states
+    /// no `framework`.
+    pub entry_shape: Option<&'a str>,
+}
+
+/// Board WORDS that still carry a framework choice inside the word, each with
+/// the framework list the word stands for.
 ///
-/// `None` means "no in-tree opinion", which callers read as `owned-spin`.
-pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
-    Some(match key {
-        "rtic-mps2-an385" => "rtic",
-        // Issue 1435 — `native_sim/native/64` was a second `BOARD_PATHS` key
-        // for this board and was missing here, so it read `owned-spin` and
-        // emitted a `BoardEntry::run` `ZephyrBoard` does not implement. Issue
-        // 1519 retired that key (it is Zephyr's id, never an image's), so the
-        // board has one name again; `every_key_of_one_board_zst_wants_one_
-        // framework` still holds the rule for any future second name.
-        "zephyr"
-        | "mps2-an385-zephyr"
-        | "qemu-cortex-a53"
-        | "fvp-aemv8r-smp"
-        | "nucleo-f767zi-zephyr"
-        | "rpi-pico-w-zephyr" => "zephyr",
-        // NuttX, FreeRTOS, ThreadX and native ride `owned-spin`: the RTOS (or
-        // the board crate's own entry symbol) calls `main`, and the macro emits
-        // the plain `fn main()` those expect.
-        _ => return None,
-    })
+/// TRANSITIONAL: phase-562 W3 deletes this table. `rtic-mps2-an385` is one of
+/// the mps2-an385 bare-metal descriptor's `names`, and every RTIC image in the
+/// tree spells its framework that way. Until W3 gives that descriptor
+/// `frameworks = ["owned-spin", "rtic"]` and W4 migrates those images to
+/// `board = "mps2-an385-baremetal"` + `framework = "rtic"`, the word reads as a
+/// one-framework board that boots RTIC, so no RTIC image changes behaviour.
+/// It is the last framework fact keyed on a board word; W5 retires the word.
+pub const TRANSITIONAL_FRAMEWORK_KEYS: &[(&str, &[&str])] = &[("rtic-mps2-an385", &["rtic"])];
+
+impl<'a> BoardBoot<'a> {
+    /// The boot facts of the board an image names by `key`, given the list its
+    /// descriptor (or, out of tree, its crate) states and the entry shape its
+    /// platform imposes. A key in [`TRANSITIONAL_FRAMEWORK_KEYS`] replaces the
+    /// list (phase-562 W3 removes that step).
+    #[must_use]
+    pub fn for_key(key: &str, frameworks: &'a [&'a str], entry_shape: Option<&'a str>) -> Self {
+        let frameworks = TRANSITIONAL_FRAMEWORK_KEYS
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map_or(frameworks, |(_, list)| *list);
+        BoardBoot {
+            frameworks,
+            entry_shape,
+        }
+    }
+}
+
+/// The entry framework, or platform entry shape, an image boots. This is the
+/// ONE answer to "which framework" (RFC-0111 D3): the proc-macro, the CLI's
+/// entry-surface features and the Rust entry pack all ask it.
+///
+/// - The board imposes a shape ([`BoardBoot::entry_shape`]): that shape, and a
+///   `framework` the image states is refused, because the board decides.
+/// - Otherwise an absent `declared` gets the board's first framework.
+/// - `zephyr` and `esp32` are refused saying the board decides them (RFC-0111
+///   D1, RFC-0112 D5); a retired name gets its reason
+///   ([`RETIRED_FRAMEWORKS`]); an unknown name lists [`FRAMEWORKS`]; a known
+///   name the board does not boot lists the board's frameworks.
+///
+/// Returns the canonical `'static` spelling.
+pub fn image_framework(
+    declared: Option<&str>,
+    board: &BoardBoot<'_>,
+) -> Result<&'static str, String> {
+    let declared = declared.map(str::trim).filter(|d| !d.is_empty());
+    if let Some(shape) = board.entry_shape {
+        let Some(shape) = ENTRY_SHAPES.iter().copied().find(|s| *s == shape) else {
+            return Err(format!(
+                "the board states entry shape `{shape}`, which this version of nano-ros has \
+                 no entry for. Known entry shapes: {}",
+                ENTRY_SHAPES.join(", ")
+            ));
+        };
+        if let Some(d) = declared {
+            return Err(format!(
+                "`framework = \"{d}\"`: this board's platform decides its entry shape \
+                 (`{shape}`), so an image on it states no `framework`. Remove the line."
+            ));
+        }
+        return Ok(shape);
+    }
+    let mut list: Vec<&'static str> = Vec::new();
+    for f in board.frameworks {
+        let canon = FRAMEWORKS.iter().copied().find(|k| k == f).ok_or_else(|| {
+            format!(
+                "the board lists `{f}` among its frameworks, which is not a framework an \
+                 image can boot. Known frameworks: {}",
+                FRAMEWORKS.join(", ")
+            )
+        })?;
+        list.push(canon);
+    }
+    if list.is_empty() {
+        list.push(DEFAULT_FRAMEWORK);
+    }
+    let Some(d) = declared else {
+        return Ok(list[0]);
+    };
+    if BOARD_DECIDED.contains(&d) {
+        let retired = retired_framework_hint(d)
+            .map(|h| format!(" ({h})"))
+            .unwrap_or_default();
+        return Err(format!(
+            "`framework = \"{d}\"` is not a framework an image chooses: the board decides \
+             it, from its platform{retired}. Remove the line. This board boots: {}",
+            list.join(", ")
+        ));
+    }
+    if let Some(hint) = retired_framework_hint(d) {
+        return Err(format!("`framework = \"{d}\"`: {hint}"));
+    }
+    let Some(canon) = FRAMEWORKS.iter().copied().find(|k| *k == d) else {
+        return Err(format!(
+            "`framework = \"{d}\"` is not a known framework. Known frameworks: {}",
+            FRAMEWORKS.join(", ")
+        ));
+    };
+    if !list.contains(&canon) {
+        return Err(format!(
+            "`framework = \"{d}\"`: this board does not boot it. It boots: {}",
+            list.join(", ")
+        ));
+    }
+    Ok(canon)
 }
 
 /// Every board key the Rust pack resolves, the board ZST it names, and whether
@@ -1317,25 +1435,25 @@ mod tests {
     /// entry shape.
     ///
     /// A board's framework is a property of the BOARD, so a board reached by
-    /// two names cannot want `zephyr` under one and `owned-spin` under the
-    /// other. That is exactly what `native_sim/native/64` did: phase-445 W5
-    /// added it to [`BOARD_PATHS`] as the zephyr board's second name and did
-    /// not add it to [`framework_for_board_key`], so it read `None` —
-    /// `owned-spin` to every caller — and both Rust producers would have
-    /// emitted `<ZephyrBoard as BoardEntry>::run`, a trait `ZephyrBoard` does
-    /// not implement.
+    /// two names cannot want one framework under one name and another under
+    /// the other. That is what `native_sim/native/64` did: phase-445 W5 added
+    /// it to [`BOARD_PATHS`] as the zephyr board's second name and not to the
+    /// key → framework table of the day, so it read `owned-spin` and both Rust
+    /// producers would have emitted `<ZephyrBoard as BoardEntry>::run`.
     ///
-    /// Keyed on the ZST PATH rather than on a list of keys, because a list is
-    /// what `nros-macros`' `in_tree_board_keys_resolve_to_an_emit_shape`
-    /// already is — it names ten of the twenty-one keys, and the one that was
-    /// wrong is not among them.
+    /// Since phase-562 W2 the only framework fact keyed on a board WORD is
+    /// [`TRANSITIONAL_FRAMEWORK_KEYS`]; the Zephyr shape comes from the
+    /// board's family, which `nros-cli-core/tests/board_key_table.rs` holds to
+    /// the descriptors. So this asks the resolver with the key's facts alone
+    /// and checks that no transitional row splits one ZST.
     #[test]
     fn every_key_of_one_board_zst_wants_one_framework() {
         use std::collections::BTreeMap;
         let mut by_zst: BTreeMap<&str, Vec<(&str, &str)>> = BTreeMap::new();
         for key in board_path_keys() {
             let zst = board_path_for(key).expect("a key from the table is in the table");
-            let fw = framework_for_board_key(key).unwrap_or("owned-spin");
+            let fw = image_framework(None, &BoardBoot::for_key(key, &[], None))
+                .expect("a key with no descriptor list resolves");
             by_zst.entry(zst).or_default().push((key, fw));
         }
         // The table is a many-to-one map, so this only means something if some
@@ -1353,13 +1471,121 @@ mod tests {
                     fw, first_fw,
                     "`{zst}` is named by `{first_key}` (framework `{first_fw}`) \
                      and by `{key}` (framework `{fw}`). A framework is a \
-                     property of the BOARD, so add `{key}` to \
-                     `framework_for_board_key`'s arm for `{first_fw}` — a \
-                     missing arm reads as `owned-spin` and emits a \
-                     `BoardEntry::run` the ZST may not implement (issue 1435)."
+                     property of the BOARD (issue 1435)."
                 );
             }
         }
+    }
+
+    /// RFC-0111 D2 — an image that states no `framework` gets the board's
+    /// FIRST listed framework, and a board listing none boots `owned-spin`.
+    #[test]
+    fn an_absent_framework_is_the_boards_first() {
+        let two = BoardBoot {
+            frameworks: &["rtic", "owned-spin"],
+            entry_shape: None,
+        };
+        assert_eq!(image_framework(None, &two), Ok("rtic"));
+        let two = BoardBoot {
+            frameworks: &["owned-spin", "rtic"],
+            entry_shape: None,
+        };
+        assert_eq!(image_framework(None, &two), Ok("owned-spin"));
+        assert_eq!(image_framework(Some("rtic"), &two), Ok("rtic"));
+        let none = BoardBoot {
+            frameworks: &[],
+            entry_shape: None,
+        };
+        assert_eq!(image_framework(None, &none), Ok(DEFAULT_FRAMEWORK));
+    }
+
+    /// RFC-0111 D2 — a known framework the board does not boot is refused,
+    /// and the refusal names what the board does boot.
+    #[test]
+    fn a_framework_outside_the_boards_list_is_refused_naming_the_list() {
+        let board = BoardBoot {
+            frameworks: &["owned-spin"],
+            entry_shape: None,
+        };
+        let err = image_framework(Some("rtic"), &board).unwrap_err();
+        assert!(
+            err.contains("does not boot") && err.contains("It boots: owned-spin"),
+            "{err}"
+        );
+        let err = image_framework(Some("rtc"), &board).unwrap_err();
+        assert!(
+            err.contains("not a known framework") && err.contains("owned-spin, rtic, px4"),
+            "{err}"
+        );
+    }
+
+    /// RFC-0112 D5 / RFC-0111 D1 (phase-562 W8) — `zephyr` is no framework a
+    /// user may write: it is out of [`FRAMEWORKS`], and an image naming it is
+    /// told the board decides it, on a Zephyr board and on any other.
+    #[test]
+    fn zephyr_is_refused_because_the_board_decides_it() {
+        assert!(!is_known_framework("zephyr"));
+        let plain = BoardBoot {
+            frameworks: &[],
+            entry_shape: None,
+        };
+        let err = image_framework(Some("zephyr"), &plain).unwrap_err();
+        assert!(err.contains("the board decides"), "{err}");
+        let err = image_framework(Some("esp32"), &plain).unwrap_err();
+        assert!(err.contains("the board decides"), "{err}");
+        let zephyr = BoardBoot {
+            frameworks: &[],
+            entry_shape: Some("zephyr"),
+        };
+        let err = image_framework(Some("zephyr"), &zephyr).unwrap_err();
+        assert!(err.contains("platform decides its entry shape"), "{err}");
+    }
+
+    /// RFC-0112 D5 — the Zephyr entry shape comes from the BOARD: an image
+    /// that states nothing on a board whose platform imposes the shape gets
+    /// that shape, not the board's first framework.
+    #[test]
+    fn the_zephyr_shape_is_the_boards() {
+        let zephyr = BoardBoot {
+            frameworks: &["owned-spin"],
+            entry_shape: Some("zephyr"),
+        };
+        assert_eq!(image_framework(None, &zephyr), Ok("zephyr"));
+        let unknown = BoardBoot {
+            frameworks: &[],
+            entry_shape: Some("vxworks"),
+        };
+        assert!(image_framework(None, &unknown).is_err());
+    }
+
+    /// phase-562 W2 — until W3, the board word `rtic-mps2-an385` still
+    /// resolves RTIC, whatever list the descriptor it belongs to states; the
+    /// plain word of the same descriptor stays direct-exec.
+    #[test]
+    fn the_transitional_rtic_word_still_resolves_rtic() {
+        let owned: &[&str] = &["owned-spin"];
+        assert_eq!(
+            image_framework(None, &BoardBoot::for_key("rtic-mps2-an385", owned, None)),
+            Ok("rtic")
+        );
+        assert_eq!(
+            image_framework(
+                None,
+                &BoardBoot::for_key("mps2-an385-baremetal", owned, None)
+            ),
+            Ok("owned-spin")
+        );
+    }
+
+    /// A retired framework is refused with its reason, not as a typo.
+    #[test]
+    fn a_retired_framework_is_refused_with_its_reason() {
+        let plain = BoardBoot {
+            frameworks: &[],
+            entry_shape: None,
+        };
+        let err = image_framework(Some("embassy"), &plain).unwrap_err();
+        assert!(err.contains("spin_some"), "{err}");
     }
 
     /// Mirror-drift guard: every field of the shared-schema sched task must survive

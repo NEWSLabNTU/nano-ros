@@ -132,6 +132,18 @@ error, never a fall-through.
 
 ### D3 — One resolver answers "which framework", and every consumer asks it
 
+> **As built (2026-11-15, phase-562 W2).** The signature is
+> `image_framework(declared: Option<&str>, board: &BoardBoot) -> Result<&'static
+> str, String>`, where `BoardBoot { frameworks, entry_shape }` is the board's
+> side. The CLI builds it from the descriptor
+> (`BoardDescriptor::image_framework`); the macro has no descriptor and builds
+> it from the board key's family (the Zephyr shape) and, out of tree, the
+> crate's `NROS_BOARD_FRAMEWORK` (a one-entry list). A test holds the two views
+> to one answer for every descriptor name. The Zephyr rows of D2 did not need a
+> new key: `entry_kind = "zephyr-staticlib"` already states the shape. The
+> dispatch lint is not rewired yet (phase-562 W9), and `rtic-mps2-an385` keeps
+> RTIC through a transitional row until W3.
+
 `nros_orchestration_ir::image_framework(image, descriptor) -> Result<&str,
 Refusal>` replaces `framework_for_board_key`. The four consumers in the table
 above all call it:

@@ -996,6 +996,11 @@ fn write_selection_for(
         &d.names,
     );
     let facts = crate::builder::entry::BoardFacts::from_descriptor_for(d, &candidates);
+    // RFC-0111 D3 (phase-562 W2) — the image's framework, resolved against its
+    // board, picks the entry surface; the candidate order only finds the board.
+    let framework = d
+        .image_framework(&img.board, img.decl.framework.as_deref())
+        .map_err(|e| eyre!("`[image.{}]`: {e}", img.image_id))?;
     let sys = system_toml(img)?;
     let spec = crate::orchestration::facade::LeafSelectionSpec {
         package: &img.package,
@@ -1005,6 +1010,7 @@ fn write_selection_for(
         transport: img.decl.network.transport.as_deref(),
         board: &facts,
         candidates: &candidates,
+        framework,
         nano_ros_root,
     };
     crate::orchestration::facade::write_leaf_selection(&spec, &sys)

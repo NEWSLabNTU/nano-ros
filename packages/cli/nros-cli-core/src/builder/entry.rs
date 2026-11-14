@@ -431,26 +431,26 @@ pub fn deploy_candidates<'a>(
 }
 
 /// The board-crate feature that turns on the ENTRY surface `nros::main!`
-/// drives, for the framework the image's board key selects.
+/// drives, for the image's RESOLVED framework.
 ///
 /// Issue 1305. `nros-board-mps2-an385` gates its `BoardEntry` impl behind
 /// `board-entry` and its RTIC surface behind `rtic` — one crate, two entry
-/// shapes, and which one an image needs is the board KEY's framework
-/// (`nros_orchestration_ir::framework_for_board_key`), not a property of the
-/// crate. The descriptor's `board_features` cannot say it (it is one list for
-/// every name the board answers to), and every leaf said it by hand
+/// shapes. Which one an image needs is the image's framework as
+/// `nros_orchestration_ir::image_framework` resolves it (RFC-0111 D3,
+/// phase-562 W2; [`BoardDescriptor::image_framework`]), not a property of the
+/// crate and not the order `deploy_candidates` searches in: that search only
+/// finds the board. The descriptor's `board_features` cannot say it (it is
+/// one list for every image of the board), and every leaf said it by hand
 /// (`features = ["board-entry"]` / `["rtic"]`), which is what the selection
 /// package now derives instead.
 ///
 /// Only a feature the crate DECLARES is named (`declares`), so the other
 /// boards — whose entry is unconditional — get nothing.
+///
+/// [`BoardDescriptor::image_framework`]: crate::orchestration::board_descriptor::BoardDescriptor::image_framework
 #[must_use]
-pub fn entry_surface_features(candidates: &[&str], declares: impl Fn(&str) -> bool) -> Vec<String> {
-    let framework = candidates
-        .iter()
-        .find(|k| nros_orchestration_ir::board_path_for(k).is_some())
-        .and_then(|k| nros_orchestration_ir::framework_for_board_key(k));
-    let want = if framework == Some("rtic") {
+pub fn entry_surface_features(framework: &str, declares: impl Fn(&str) -> bool) -> Vec<String> {
+    let want = if framework == "rtic" {
         "rtic"
     } else {
         "board-entry"
@@ -462,42 +462,51 @@ pub fn entry_surface_features(candidates: &[&str], declares: impl Fn(&str) -> bo
     }
 }
 
-/// phase-535 W6 — the RTIC device crate of each in-tree RTIC board key, as a
-/// checkout-relative directory. `nros::main!`'s RTIC arm names it as the
-/// `#[rtic::app(device = …)]` path (`rtic_board_spec_for`, same key).
-const RTIC_DEVICE_CRATES: &[(&str, &str)] =
-    &[("rtic-mps2-an385", "packages/boards/mps2-an385-pac")];
+/// phase-535 W6 — the RTIC device crate of each in-tree board that boots
+/// RTIC, keyed by any of the board's names, as a checkout-relative directory.
+/// `nros::main!`'s RTIC arm names it as the `#[rtic::app(device = …)]` path
+/// (`rtic_board_spec_for`).
+///
+/// Keyed on the descriptor's canonical name as well as the transitional
+/// `rtic-mps2-an385` word, so an image that says `board =
+/// "mps2-an385-baremetal"` + `framework = "rtic"` (phase-562 W3/W4) finds it.
+const RTIC_DEVICE_CRATES: &[(&str, &str)] = &[
+    ("mps2-an385-baremetal", "packages/boards/mps2-an385-pac"),
+    ("rtic-mps2-an385", "packages/boards/mps2-an385-pac"),
+];
 
 /// The `rtic` crate line an RTIC entry carries — the pin every hand-written
 /// RTIC leaf named.
 const RTIC_CRATE_LINE: &str = "rtic = { version = \"2.1\", features = [\"thumbv7-backend\"] }";
 
-/// The dependency lines the framework of the image's board key needs on the
-/// ENTRY crate itself, for an entry `builder::entry` generates.
+/// The dependency lines the image's RESOLVED `framework` needs on the ENTRY
+/// crate itself, for an entry `builder::entry` generates.
 ///
 /// The `#[rtic::app]` module `nros::main!` expands names `::rtic` and the
 /// device crate from the crate it expands IN, so the board crate re-exporting
 /// them would not do: each hand-written RTIC leaf listed both by hand. A
-/// generated workspace entry has no hand to list them (phase-535 W6). Same
-/// key lookup as [`entry_surface_features`]; every other framework gets none.
+/// generated workspace entry has no hand to list them (phase-535 W6). The
+/// framework is the one [`entry_surface_features`] is given; `candidates`
+/// (the board's names) only find the device crate. Every other framework
+/// gets none.
 pub fn framework_entry_deps(
+    framework: &str,
     candidates: &[&str],
     nano_ros_root: &Path,
     entry_dir: &Path,
 ) -> Result<Vec<String>, String> {
-    let Some(key) = candidates
-        .iter()
-        .find(|k| nros_orchestration_ir::board_path_for(k).is_some())
-    else {
-        return Ok(Vec::new());
-    };
-    if nros_orchestration_ir::framework_for_board_key(key) != Some("rtic") {
+    if framework != "rtic" {
         return Ok(Vec::new());
     }
     let (_, dir) = RTIC_DEVICE_CRATES
         .iter()
-        .find(|(k, _)| k == key)
-        .ok_or_else(|| format!("board `{key}` is an RTIC board with no device crate"))?;
+        .find(|(k, _)| candidates.contains(k))
+        .ok_or_else(|| {
+            format!(
+                "board `{}` boots RTIC but names no RTIC device crate",
+                candidates.first().copied().unwrap_or_default()
+            )
+        })?;
     let name = Path::new(dir)
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -1234,58 +1243,66 @@ mod tests {
         );
     }
 
-    /// phase-517 W2 — an RTIC leaf whose image id is itself a board key keeps
-    /// its board word's framework: the declared board is searched first.
-    #[test]
-    fn a_declared_board_outranks_an_image_id_that_is_also_a_board_key() {
-        let names: Vec<String> = [
-            "mps2-an385-baremetal",
-            "baremetal",
-            "bare-metal",
-            "rtic-mps2-an385",
-        ]
-        .map(String::from)
-        .to_vec();
-        let candidates = deploy_candidates(
-            "rtic-mps2-an385",
-            "mps2-an385-baremetal",
-            "bare-metal",
-            &names,
-        );
-        assert_eq!(
-            entry_surface_features(&candidates, |_| true),
-            vec!["rtic".to_string()]
-        );
-        let candidates = deploy_candidates(
-            "mps2-an385-baremetal",
-            "rtic-mps2-an385",
-            "bare-metal",
-            &names,
-        );
-        assert_eq!(
-            entry_surface_features(&candidates, |_| true),
-            vec!["board-entry".to_string()]
-        );
+    /// The framework an mps2-an385 bare-metal image resolves, as
+    /// `BoardDescriptor::image_framework` asks it: the descriptor lists no
+    /// `frameworks` (so `owned-spin`), and `board` is the word the image wrote.
+    fn mps2_framework(board: &str, declared: Option<&str>) -> Result<&'static str, String> {
+        nros_orchestration_ir::image_framework(
+            declared,
+            &nros_orchestration_ir::BoardBoot::for_key(board, &["owned-spin"], None),
+        )
     }
 
-    /// phase-535 W6 — an RTIC board key gives the entry `rtic` and its
-    /// device crate; the plain key of the same descriptor gives neither.
+    /// phase-517 W2, then phase-562 W2 — the entry surface follows the
+    /// image's RESOLVED framework, so an image id that is itself a board key
+    /// cannot pick it: only the board word the image wrote does (until W3, the
+    /// transitional `rtic-mps2-an385` word), whatever order the candidates
+    /// are searched in.
     #[test]
-    fn an_rtic_board_key_gives_the_entry_rtic_and_its_device_crate() {
+    fn the_entry_surface_follows_the_resolved_framework_not_the_search_order() {
+        let fw = mps2_framework("rtic-mps2-an385", None).unwrap();
+        assert_eq!(fw, "rtic");
+        assert_eq!(
+            entry_surface_features(fw, |_| true),
+            vec!["rtic".to_string()]
+        );
+        // `[image.rtic-mps2-an385] board = "mps2-an385-baremetal"`: the id is
+        // the RTIC word and is not what was declared.
+        let fw = mps2_framework("mps2-an385-baremetal", None).unwrap();
+        assert_eq!(fw, "owned-spin");
+        assert_eq!(
+            entry_surface_features(fw, |_| true),
+            vec!["board-entry".to_string()]
+        );
+        // A crate that declares neither feature gets none.
+        assert!(entry_surface_features("rtic", |_| false).is_empty());
+    }
+
+    /// phase-535 W6 — an RTIC image gives the entry `rtic` and its device
+    /// crate, found by any of the board's names; a direct-exec image of the
+    /// same board gives neither.
+    #[test]
+    fn an_rtic_image_gives_the_entry_rtic_and_its_device_crate() {
         let root = Path::new("/r");
         let entry = Path::new("/r/ws/build/c/x_entry");
-        let rtic = framework_entry_deps(&["rtic-mps2-an385"], root, entry).unwrap();
-        assert_eq!(rtic.len(), 2, "{rtic:?}");
-        assert!(rtic[0].starts_with("rtic = "), "{rtic:?}");
-        assert_eq!(
-            rtic[1],
-            "mps2-an385-pac = { path = \"../../../../packages/boards/mps2-an385-pac\" }"
-        );
+        for names in [
+            &["rtic-mps2-an385", "mps2-an385-baremetal"][..],
+            &["mps2-an385-baremetal"][..],
+        ] {
+            let rtic = framework_entry_deps("rtic", names, root, entry).unwrap();
+            assert_eq!(rtic.len(), 2, "{rtic:?}");
+            assert!(rtic[0].starts_with("rtic = "), "{rtic:?}");
+            assert_eq!(
+                rtic[1],
+                "mps2-an385-pac = { path = \"../../../../packages/boards/mps2-an385-pac\" }"
+            );
+        }
         assert!(
-            framework_entry_deps(&["mps2-an385-baremetal"], root, entry)
+            framework_entry_deps("owned-spin", &["rtic-mps2-an385"], root, entry)
                 .unwrap()
                 .is_empty()
         );
+        assert!(framework_entry_deps("rtic", &["linux"], root, entry).is_err());
     }
 
     use nros_orchestration_ir::{ResolvedSchedTask, ResolvedSchedTaskTable};
