@@ -1147,6 +1147,67 @@ Re-measure after a day with the queue runner up. Fetch each run's jobs, sum
 `completed_at - started_at` where `runner_name` is set, and group by
 `conclusion`.
 
+### W12 — a docs-only batch skips the heavy queue siblings
+
+- **Status:** OPEN (the after-measure waits on docs-only batches through the
+  queue).
+
+**Problem.** `changes` did not run on `merge_group`: `dorny/paths-filter` has
+no base ref there, so the job was skipped and every sibling's
+`github.event_name != 'pull_request'` arm let it run. A pull request that
+skipped every code sibling as documentation therefore paid the whole queue
+gate. Measured before this item, over the last 200 successful `merge_group`
+gate runs (to 2026-11-14 19:25Z), each classified by the `pr-N` its queue
+branch names (`gate-tier.py --pull-request`):
+
+| batch | n | wall, median (mean) | job-min, median (mean) |
+| --- | --- | --- | --- |
+| docs-only | 41 | 23.2 min (25.7) | 132.3 (137.5) |
+| code | 159 | 23.8 min (25.3) | 137.1 (139.0) |
+
+A docs-only batch cost what a code batch did. Expected after: `check-fast`
+and `check-fast-compile` alone, whose longest successful runs were 18 and
+12 min (2026-11-12), so at most about 18 min wall and 30 job-min.
+
+**Change.**
+- `changes` runs on every event. Only its `paths-filter` step is off on a merge
+  group, and `scaffold-journey` / `colcon-parity` now exclude `merge_group` in
+  their own `if:`, because the skipped dependency used to do that for them.
+- The code verdict on both events comes from `scripts/ci/gate-tier.py`, the
+  classifier `just ci gate` already uses locally. The step's own `case` is
+  gone, so there is one spelling, not three. The pull-request arm reads the
+  REST files list, counted against `changed_files`. The merge-group arm is a
+  tree diff of `merge_group.base_sha`..`head_sha`; `--fetch` brings the base
+  in.
+  The head holds every pull request ahead in the queue, so `docs` means all of
+  them are documentation.
+- A rename counts both names (`--no-renames`, `previous_filename`). Before this,
+  the local tier missed that: `src/x.rs` moved to `x.md` read as documentation.
+- The heavy queue siblings (`cli-tests`, `workspace-all`, `test-unit`,
+  `template-copy-out`, `lane-contracts`) run unless `code == 'false'`, so a
+  failed or uncertain `changes` runs them rather than skipping. `check-fast` and
+  `check-fast-compile` still run on a docs-only batch, because the docs tier
+  owes `check fast`.
+- `CI` excuses a docs-only skip on a merge group only for the heavy set; a fast
+  sibling skipped there fails it.
+
+- `--fetch` never cuts a full clone's history. It passes `--depth=1` only to
+  a clone that is shallow already. On 2026-11-15 a local dry run of the first
+  draft (`git fetch --depth=1 origin <sha>` in the step) shallowed the shared
+  clone and took `origin/main` to 2 commits for every worktree. A persistent
+  self-hosted workspace would keep that graft for every later run (issue
+  1476's shape).
+
+**Gate.** `just check gate-tier` runs `tests/gate-tier-diff-tests.sh`: 14
+cases, with throwaway repositories (a full and a depth-1 clone) for the range
+and a stub `gh` for the pull request. Negative controls: documentation plus
+one `.rs` is `full` on a merge group, and a full clone is still not shallow
+after `--fetch`. Mutation-tested: dropping `--no-renames`, the count check or
+the shallow test turns its case red.
+
+**Acceptance.** A docs-only batch's queue time and job-minutes, after,
+against the numbers above.
+
 ## Self-hosted runner cache observations (2026-10-09..14)
 
 From the runner-sweep logs of the three self-hosted runners:

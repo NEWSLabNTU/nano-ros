@@ -87,10 +87,14 @@ ci-doc-workflow-refs:
 # `just ci gate` picks its tier from the diff (user ruling 2026-11-14): a
 # docs-only diff runs `check fast` alone. The classifier's cases include the
 # negative control (docs plus one `.rs` takes the full gate) and the Markdown a
-# Rust test reads as input. Buildless, under a second.
+# Rust test reads as input. Buildless, under a second. The same classifier
+# decides CI's `changes` verdict on a pull request and on a merge-queue batch
+# (phase-489 W12); `tests/gate-tier-diff-tests.sh` drives those two front ends,
+# a throwaway repository and a stub `gh`, and every doubt must come out `full`.
 [private]
 gate-tier:
     @python3 scripts/ci/gate-tier.py --self-test
+    @bash tests/gate-tier-diff-tests.sh
 
 # issue 1514 — a lane's LABEL must not claim an event its step does not run on.
 #
