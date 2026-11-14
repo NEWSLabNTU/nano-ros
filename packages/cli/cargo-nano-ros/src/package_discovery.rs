@@ -60,8 +60,8 @@ pub fn discover_workspace_packages(
             return Ok(());
         }
 
-        // Check for COLCON_IGNORE (build directories have this)
-        if dir.join("COLCON_IGNORE").exists() {
+        // Any ignore marker (build directories carry COLCON_IGNORE).
+        if nros_pkg_index::is_ignored_dir(dir) {
             return Ok(());
         }
 

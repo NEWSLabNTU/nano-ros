@@ -460,15 +460,7 @@ pub fn cargo_packages_by_walk(root: &Path) -> Vec<PathBuf> {
             {
                 continue;
             }
-            if [
-                "COLCON_IGNORE",
-                "AMENT_IGNORE",
-                "NROS_IGNORE",
-                ".nros-ignore",
-            ]
-            .iter()
-            .any(|m| p.join(m).exists())
-            {
+            if nros_pkg_index::is_ignored_dir(&p) {
                 continue;
             }
             if p.join("Cargo.toml").is_file() {

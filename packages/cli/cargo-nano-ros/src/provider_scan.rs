@@ -93,32 +93,9 @@ pub fn is_pruned_dir(name: &str) -> bool {
             .any(|prefix| name.starts_with(prefix))
 }
 
-/// Marker files that exclude a subtree, honoured as colcon and ament spell them
-/// plus our own. Buying the convention: a user who already knows `COLCON_IGNORE`
-/// should not have to learn a second spelling to get the same effect.
-// issue 0809 — `.nros-ignore` is the spelling that EXISTS. `NROS_IGNORE` was
-// this walk's guess at nano-ros's marker; issue 0621 then established
-// `.nros-ignore` in `nros-pkg-index` and did not sweep here, so the repo root's
-// own `.nros-ignore` — written so a vendored nano-ros stops polluting a
-// consumer's package graph — was honoured by one walk and not the other. Both
-// spellings are accepted rather than one replaced: `NROS_IGNORE` may exist in a
-// consumer tree that predates 0621, and silently dropping support would be the
-// same defect pointed the other way.
-pub const IGNORE_MARKERS: &[&str] = &[
-    "COLCON_IGNORE",
-    "AMENT_IGNORE",
-    "NROS_IGNORE",
-    ".nros-ignore",
-];
-
-/// Does `dir` carry a marker opting its subtree out of discovery?
-///
-/// Shared with the board walk (RFC-0064 R5 D2). Note the caller decides whether
-/// the ROOT itself may opt out: `scan_root` checks this only at `depth > 0`,
-/// because a root the user named explicitly is a root they meant.
-pub fn is_ignored_dir(dir: &Path) -> bool {
-    IGNORE_MARKERS.iter().any(|m| dir.join(m).exists())
-}
+// The marker list has one home, `nros-pkg-index` (the leaf crate every walk can
+// reach). Re-exported so the board walk and the tests keep their paths.
+pub use nros_pkg_index::{IGNORE_MARKERS, is_ignored_dir};
 
 /// A package that announces at least one provision.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -835,7 +812,7 @@ fn walk_packages(
     // addressed to walks from above.
     let mut stack = vec![(root.to_path_buf(), 0usize)];
     while let Some((dir, depth)) = stack.pop() {
-        if depth > 0 && IGNORE_MARKERS.iter().any(|m| dir.join(m).exists()) {
+        if depth > 0 && is_ignored_dir(&dir) {
             continue;
         }
 

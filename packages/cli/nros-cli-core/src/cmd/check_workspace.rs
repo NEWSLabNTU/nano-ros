@@ -92,7 +92,7 @@ pub fn check_workspace(workspace_root: &Path) -> Result<WorkspaceLintReport> {
         .wrap_err_with(|| format!("read {}", workspace_root.display()))?;
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_dir() || !seen.insert(path.clone()) {
+        if !path.is_dir() || nros_pkg_index::is_ignored_dir(&path) || !seen.insert(path.clone()) {
             continue;
         }
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
