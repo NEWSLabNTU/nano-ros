@@ -21,9 +21,17 @@ pub fn lock() -> String {
          # `live` or `retired <successor>`. A row may be added or retired, never removed\n\
          # or renumbered; check-diagnostics holds this file to origin/main's copy.\n\
          #\n\
-         # NROS-0001 to NROS-0006 were allocated in the founding commit. Every later\n\
-         # number is reserved on origin first, with `just code-new <Name>`.\n",
+         # Every number is CLAIMED on origin before it is written here, with\n\
+         # `just code-new <Name>` (a ref `refs/diag-codes/NNNN`); the pre-push hook\n\
+         # refuses a new number with no claim. The one exception is the founding\n\
+         # range below, allocated in the founding commit before claims existed: it\n\
+         # has no claim refs, and the guard exempts exactly this range. It never grows.\n\
+         #\n",
     );
+    out.push_str(&format!(
+        "# founding: NROS-0001..NROS-{:04}\n",
+        crate::FOUNDING_MAX
+    ));
     for e in ALL {
         match e.successor() {
             None => out.push_str(&format!("{} {} live\n", e.code, e.name)),

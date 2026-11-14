@@ -352,6 +352,16 @@ doc-refs:
 issue-ids:
     @scripts/ci/issue-ids-check.sh
 
+# phase-552 W1 (RFC-0129 D3) — the diagnostic-code guard the pre-push hook runs:
+# its self-test (a clash, an unclaimed number, the founding range, a claimed
+# number and an unreachable remote, against scratch repositories; it runs on
+# every path), then check (a) on this tree: codes.lock gives no number main's
+# lock has under another name. Network-free: the claim half (b) needs the
+# remote and runs at push.
+[private]
+diag-codes:
+    @scripts/ci/diag-codes-check.sh --no-remote
+
 # The "Open issues" list in docs/issues/README.md must name EXACTLY the files in
 # docs/issues/. The rule is already written in that file's Conventions #3 —
 # nothing enforced it, and it drifted twice in two consecutive pulls (#0465,

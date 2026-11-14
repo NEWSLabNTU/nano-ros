@@ -4,8 +4,13 @@
 # `live` or `retired <successor>`. A row may be added or retired, never removed
 # or renumbered; check-diagnostics holds this file to origin/main's copy.
 #
-# NROS-0001 to NROS-0006 were allocated in the founding commit. Every later
-# number is reserved on origin first, with `just code-new <Name>`.
+# Every number is CLAIMED on origin before it is written here, with
+# `just code-new <Name>` (a ref `refs/diag-codes/NNNN`); the pre-push hook
+# refuses a new number with no claim. The one exception is the founding
+# range below, allocated in the founding commit before claims existed: it
+# has no claim refs, and the guard exempts exactly this range. It never grows.
+#
+# founding: NROS-0001..NROS-0006
 NROS-0001 AmentPrefixUnset live
 NROS-0002 BoardUnknown live
 NROS-0003 NoImageDeclared live

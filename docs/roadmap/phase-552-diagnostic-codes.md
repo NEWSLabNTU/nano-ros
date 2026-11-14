@@ -74,12 +74,29 @@ Notes:
 - `nros-diagnostics-gen` is a `[[bin]]` behind the `std` feature, so the
   library stays `no_std`. `codes.lock` is committed and a test compares it
   with a fresh rendering.
-- `just code-new <Name>` runs `scripts/reserve-diag-code.sh`
-  (`refs/diag-codes/NNNN`), mirroring the issue-id reservation. It was tested
-  against a scratch bare repository, never against origin.
+- `just code-new <Name>` runs `scripts/reserve-diag-code.sh`, which claims
+  `refs/diag-codes/NNNN` on origin, mirroring the issue-id reservation. A
+  code is claimed on origin or not allocated (manager ruling, from the user
+  rule that codes are never reused): unlike the issue-id script there is no
+  "local maximum + 1" fallback. A push that fails for any reason but
+  contention prints what failed and how to retry, prints no code and exits 1;
+  contention moves to the next number. `--self-test` covers success,
+  contention and an unreachable remote against scratch bare repositories,
+  never origin.
+- The pre-push hook runs `scripts/ci/diag-codes-check.sh <remote>` on branch
+  pushes only (a `refs/diag-codes/*` claim push is never blocked). It refuses
+  a codes.lock that (a) gives a number the local `origin/main` lock has under
+  another name, or (b) adds a number with no claim ref on the remote. No
+  `origin/main` is NOT VERIFIED for (a); an unreachable remote is a warning
+  for (b). `just check diag-codes` runs its self-test and (a) on the fast
+  lane; `check-diagnostics` also refuses a collision against the baseline's
+  lock.
 - **Seed codes.** NROS-0001 to NROS-0006 were allocated in the founding
-  commit, before the reservation existed; `codes.lock` and `src/codes.rs`
-  say so. Every later code is reserved with `just code-new`.
+  commit, before claims existed, and have no claim refs. codes.lock's header
+  records the range as `# founding: NROS-0001..NROS-0006`
+  (`nros_diagnostic_codes::FOUNDING_MAX`); the guard exempts exactly that
+  range, and `check-diagnostics` refuses a change to it. Every later code is
+  claimed with `just code-new`.
 
 | code | name | sites |
 | --- | --- | --- |

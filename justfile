@@ -743,12 +743,14 @@ roadmap-audit *ARGS:
 issue-new slug="":
     @scripts/reserve-issue-id.sh {{slug}}
 
-# RFC-0129 D3 (phase-552 W1) — reserve the next diagnostic code (`NROS-NNNN`)
+# RFC-0129 D3 (phase-552 W1) — claim the next diagnostic code (`NROS-NNNN`)
 # on origin, atomically, before declaring it in nros-diagnostic-codes. A code is
 # never reused or renumbered, so "the next number in codes.lock" is the same
-# race issue ids had; see `scripts/reserve-diag-code.sh`.
+# race issue ids had; see `scripts/reserve-diag-code.sh`. If the claim cannot
+# be pushed (network, permission) no code is printed and it exits 1: a code is
+# claimed on origin or not allocated.
 #
-# Reserve the next free diagnostic code atomically across parallel sessions.
+# Claim the next diagnostic code on origin; no claim, no code.
 [group("docs")]
 code-new name="":
     @scripts/reserve-diag-code.sh {{name}}

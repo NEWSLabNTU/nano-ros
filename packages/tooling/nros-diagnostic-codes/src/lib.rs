@@ -41,6 +41,13 @@ pub mod views;
 
 pub use codes::{ALL, Diag};
 
+/// The founding range, `NROS-0001..=NROS-{FOUNDING_MAX}`: the codes allocated
+/// in the founding commit, before codes were claimed on origin. They have no
+/// `refs/diag-codes/NNNN` claim, and the pre-push guard exempts exactly this
+/// range (it reads it from `codes.lock`'s `# founding:` line). It never grows:
+/// `check-diagnostics` holds it to the baseline's.
+pub const FOUNDING_MAX: u16 = 6;
+
 /// Where a diagnostic can be raised. Every entry names at least one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Surface {
