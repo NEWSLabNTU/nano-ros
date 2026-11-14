@@ -492,8 +492,10 @@ nros_lane_modules() {
     fi
     local mods
     mods="$(cargo run -q -p nros-tests --bin lane-coords -- "$lane" --modules)" || return 1
-    # A shard builds its own module only — and only one the lane selects, or
-    # the shard would build (and stamp) a slice that is not the lane's.
+    # A shard builds its own module — and only one the lane selects, or the
+    # shard would build (and stamp) a slice that is not the lane's — plus the
+    # module of every row that SERVES one of the shard's coordinates (issue
+    # 2548: the threadx shard's run needs the Linux C observer, a `linux` row).
     if [ -n "${NROS_LANE_MODULE:-}" ]; then
         local m found=0
         for m in $mods; do
@@ -504,8 +506,8 @@ nros_lane_modules() {
             echo "              (its modules: $(echo $mods))" >&2
             return 2
         fi
-        echo "$NROS_LANE_MODULE"
-        return 0
+        cargo run -q -p nros-tests --bin lane-coords -- "$lane" --shard-modules "$NROS_LANE_MODULE"
+        return
     fi
     printf '%s\n' "$mods"
 }

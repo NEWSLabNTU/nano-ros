@@ -1201,33 +1201,32 @@ fn every_lane_codegen_scope_covers_its_fixture_build() {
 #[test]
 fn every_lane_builds_exactly_the_compile_check_rows_its_run_reads() {
     let repo = nros_tests::project_root();
-    let manifest = std::fs::read_to_string(repo.join("examples/fixtures.toml"))
-        .expect("read examples/fixtures.toml");
-    let doc: toml::Table = toml::from_str(&manifest).expect("parse examples/fixtures.toml");
-    let rows: Vec<(String, Option<String>)> = doc
-        .get("compile_check_fixture")
-        .and_then(|v| v.as_array())
-        .expect("[[compile_check_fixture]] rows")
-        .iter()
-        .filter(|r| {
-            !r.get("builder")
-                .and_then(|b| b.as_str())
-                .unwrap_or("")
-                .starts_with("west-")
-        })
-        .map(|r| {
-            (
-                r["id"].as_str().expect("id").to_string(),
-                r.get("platform")
-                    .and_then(|p| p.as_str())
-                    .map(str::to_owned),
-            )
-        })
+    // Issue 2548 — every row has a platform now (`compile_check_platform`:
+    // stated, else `zephyr` for a west row, else `linux`), read through the
+    // subcommand the resolver reads. The RUN side below asks the Rust lane
+    // predicate (`platforms_selected`); the BUILD side asks the manifest's
+    // `--coords-from`. Two implementations of one question, compared.
+    let listed = Command::new("python3")
+        .args([
+            "scripts/build/fixtures-manifest.py",
+            "compile-check-platforms",
+        ])
+        .current_dir(&repo)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("run compile-check-platforms");
+    assert!(listed.status.success(), "compile-check-platforms failed");
+    let rows: Vec<(String, Option<String>)> = String::from_utf8_lossy(&listed.stdout)
+        .lines()
+        .filter_map(|l| l.split_once('\t'))
+        .map(|(id, p)| (id.to_string(), Some(p.to_string())))
         .collect();
-    assert!(
-        rows.iter().any(|(_, p)| p.is_some()),
-        "no compile-check row states a platform, so this test compares nothing"
-    );
+    for want in ["freertos", "linux", "zephyr"] {
+        assert!(
+            rows.iter().any(|(_, p)| p.as_deref() == Some(want)),
+            "no compile-check row is built for `{want}`, so this test compares less than it claims"
+        );
+    }
 
     let mut cases: Vec<(String, Option<&str>)> = ["tier1", "tier2", "tier2-nightly", "merge"]
         .iter()
@@ -1340,4 +1339,111 @@ fn build_test_fixtures_exports_the_lane_coordinates_before_compile_checks() {
          `nros_fixture_coords_export \"{{{{lane}}}}\"`, so the stage builds every row \
          whatever the lane (merge-runtime run 43534848324)"
     );
+}
+
+/// Issue 2548 — for every coordinate lane, whole and per merge shard, the
+/// fixture rows the BUILD produces are exactly the rows the RUN requires, in
+/// both directions.
+///
+/// The run requires what `check-fixtures-stale.sh` asks for under
+/// `NROS_FIXTURE_SCOPE=coords`: `list` / `list-workspaces --coords-from`, every
+/// platform. The build produces what each module it schedules lists for its
+/// OWN platforms under the same coordinates, the modules being
+/// `nros_lane_modules`: `lane-coords --modules`, or `--shard-modules` for a
+/// shard. A merge shard used to schedule its own module alone, so the threadx
+/// shard's run required the Linux C observer (`workspace-c-native-robot2`,
+/// which SERVES `threadx-linux,c,zenoh`) and no module built it
+/// (merge-runtime run 43551581652). MEMBERSHIP, never counts.
+#[test]
+fn every_lane_and_shard_builds_exactly_the_fixture_rows_its_run_requires() {
+    let repo = nros_tests::project_root();
+    // The shell side delegates a shard's module set to `--shard-modules`; the
+    // comparison below exercises that answer, so pin the delegation too.
+    let lane_sh_src = std::fs::read_to_string(repo.join("scripts/build/fixture-lane.sh"))
+        .expect("read fixture-lane.sh");
+    assert!(
+        lane_sh_src.contains("--shard-modules \"$NROS_LANE_MODULE\""),
+        "nros_lane_modules no longer asks `lane-coords --shard-modules` for a shard's modules"
+    );
+
+    let fm = |args: &[&str]| -> BTreeSet<String> {
+        let out = Command::new("python3")
+            .arg("scripts/build/fixtures-manifest.py")
+            .args(args)
+            .current_dir(&repo)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("run fixtures-manifest.py");
+        assert!(out.status.success(), "fixtures-manifest.py {args:?} failed");
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|l| l.split('\x1f').next())
+            .filter(|id| !id.is_empty())
+            .map(str::to_owned)
+            .collect()
+    };
+    let lane_coords = |args: &[&str]| -> String {
+        let out = Command::new(lane_coords_bin())
+            .args(args)
+            .current_dir(&repo)
+            .output()
+            .expect("run prebuilt lane-coords");
+        assert!(out.status.success(), "lane-coords {args:?} failed");
+        String::from_utf8(out.stdout).expect("utf-8")
+    };
+
+    let mut cases: Vec<(&str, Option<&str>)> = ["tier1", "tier2", "tier2-nightly", "merge"]
+        .iter()
+        .map(|l| (*l, None))
+        .collect();
+    for lane in ["tier1", "merge"] {
+        for m in ["linux", "threadx_linux", "zephyr"] {
+            cases.push((lane, Some(m)));
+        }
+    }
+    for (lane, module) in cases {
+        let mut cargs = vec![lane];
+        if let Some(m) = module {
+            cargs.extend(["--module", m]);
+        }
+        let coords = lane_coords(&cargs);
+        let path = tmpdir().join(format!("rows-{lane}-{}.txt", module.unwrap_or("all")));
+        std::fs::write(&path, &coords).expect("write coords");
+        let p = path.to_str().expect("utf-8 path");
+
+        let mut required = fm(&["list", "--coords-from", p]);
+        required.extend(fm(&["list-workspaces", "--coords-from", p]));
+
+        let modules = match module {
+            Some(m) => lane_coords(&[lane, "--shard-modules", m]),
+            None => lane_coords(&[lane, "--modules"]),
+        };
+        let mut built = BTreeSet::new();
+        for m in modules.lines().filter(|l| !l.is_empty()) {
+            for platform in nros_tests::matrix::PlatformId::ALL
+                .iter()
+                .filter(|p| p.just_module() == m)
+            {
+                for token in platform.fixture_tokens() {
+                    built.extend(fm(&["list", "--platform", token, "--coords-from", p]));
+                    built.extend(fm(&[
+                        "list-workspaces",
+                        "--platform",
+                        token,
+                        "--coords-from",
+                        p,
+                    ]));
+                }
+            }
+        }
+        let missing: Vec<_> = required.difference(&built).collect();
+        let extra: Vec<_> = built.difference(&required).collect();
+        assert!(
+            missing.is_empty() && extra.is_empty(),
+            "{lane} {module:?}: the run requires rows no scheduled module builds: \
+             {missing:?}; built rows the run never requires: {extra:?} \
+             (modules: {})",
+            modules.split_whitespace().collect::<Vec<_>>().join(" ")
+        );
+    }
 }

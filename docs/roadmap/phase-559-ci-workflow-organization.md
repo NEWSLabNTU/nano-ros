@@ -219,6 +219,16 @@ the user ruled; all five stand:
   of the threadx_linux and zephyr shards to completion, final disk included,
   then their move.
 
+  Fourth measurement, run 43551581652 (2026-11-14, main 28a9b3ebba, the
+  disk balloon on): threadx_linux BUILT (105 G free after reclaim, 43 G left,
+  so it fits; `check fast` reused; first fixture ~10 min in) and its run was
+  refused by preconditions that do not scope a shard as its build does. The
+  zephyr shard was stopped by the balloon at 2 G free: ~90 G available, 44 G
+  of Zephyr builds plus ~35 G of host compile-check work a zephyr shard does
+  not own. Both are issue 2548
+  ([2548](../issues/2548-merge-shard-run-preconditions-unscoped.md)); the
+  zephyr disk answer is re-measured after it.
+
   **User ruling, 2026-11-14 (option B): linux tier 1 stays SELF-HOSTED**
   (`run-matrix.yml`'s `tier1`). Only threadx_linux and zephyr move to hosted
   per-board shards. Measured basis: a hosted runner has ~104 G free after

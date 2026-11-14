@@ -77,7 +77,7 @@ use std::collections::BTreeSet;
 fn usage(got: Option<&str>) -> ! {
     eprintln!(
         "usage: lane-coords <tier1|tier2|tier2-nightly|merge> \
-[--cells | --modules | --platform <token> | --module <name> | \
+[--cells | --modules | --shard-modules <module> | --platform <token> | --module <name> | \
 --build-lane | --unclaimed]\n       lane-coords --scope <just module> [--board <PlatformId>]   (got {got:?})\n\
          \n\
          Prints `platform,lang,rmw` triples — the FIXTURE coordinates a lane\n\
@@ -138,20 +138,28 @@ fn main() {
             // C observer of the RTOS entry cells is a Linux row, and a lane
             // with those cells and no Linux cell would otherwise schedule no
             // module that builds it, then fail resolving it.
-            let selected: BTreeSet<Coord> = coords(lane)
+            mods.extend(serving_modules(&parse_coords(&coords(lane))));
+            for m in mods {
+                println!("{m}");
+            }
+        }
+        // Issue 2548 — the modules ONE SHARD of the lane must build: its own,
+        // plus the module of every row that SERVES one of its coordinates
+        // (issue 2139's rule, applied to the shard's slice). A threadx shard
+        // built only `threadx_linux`, while its run required the Linux C
+        // observer that serves `threadx-linux,c,zenoh`.
+        Some("--shard-modules") => {
+            let Some(want) = args.get(2) else {
+                usage(Some("--shard-modules without a module"))
+            };
+            let tokens = module_tokens(want);
+            let slice: Vec<String> = coords(lane)
                 .iter()
-                .filter_map(|c| {
-                    let p: Vec<&str> = c.split(',').collect();
-                    (p.len() == 3).then(|| (p[0].into(), p[1].into(), p[2].into()))
-                })
+                .filter(|&c| tokens.iter().any(|t| c.split(',').next() == Some(*t)))
+                .cloned()
                 .collect();
-            mods.extend(
-                manifest_rows()
-                    .iter()
-                    .filter(|r| !r.serves.is_empty() && is_in_lane(r, &selected))
-                    .filter_map(|r| PlatformId::from_fixture_token(&r.coord.0))
-                    .map(|p| p.just_module()),
-            );
+            let mut mods: BTreeSet<&str> = BTreeSet::from([want.as_str()]);
+            mods.extend(serving_modules(&parse_coords(&slice)));
             for m in mods {
                 println!("{m}");
             }
@@ -185,6 +193,28 @@ fn main() {
         }
         other => usage(other),
     }
+}
+
+/// `platform,lang,rmw` lines as coordinates.
+fn parse_coords<'a>(lines: impl IntoIterator<Item = &'a String>) -> BTreeSet<Coord> {
+    lines
+        .into_iter()
+        .filter_map(|c| {
+            let p: Vec<&str> = c.split(',').collect();
+            (p.len() == 3).then(|| (p[0].into(), p[1].into(), p[2].into()))
+        })
+        .collect()
+}
+
+/// The `just` modules owning a row that is in `selected` only through a
+/// coordinate it SERVES (issue 2139).
+fn serving_modules(selected: &BTreeSet<Coord>) -> BTreeSet<&'static str> {
+    manifest_rows()
+        .iter()
+        .filter(|r| !r.serves.is_empty() && is_in_lane(r, selected))
+        .filter_map(|r| PlatformId::from_fixture_token(&r.coord.0))
+        .map(|p| p.just_module())
+        .collect()
 }
 
 /// The fixture-platform tokens a `just` module owns, or exit 2 naming the

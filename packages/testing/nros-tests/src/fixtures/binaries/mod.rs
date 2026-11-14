@@ -5479,43 +5479,56 @@ fn require_stamped_launch_resolver(stamp: &Path, id: &str) -> TestResult<()> {
     ))
 }
 
-/// The `platform` a `[[compile_check_fixture]]` row states, if any (issue 2510).
+/// The platform a `[[compile_check_fixture]]` row is built for (issues 2510,
+/// 2548): its stated `platform`, else `zephyr` for a `west-*` row, else
+/// `linux`.
 ///
-/// Read from the row itself, the same field `fixtures-manifest.py
-/// list-compile-checks --coords-from` narrows the BUILD by, so build and run
-/// answer "is this row in the lane?" from one fact.
+/// Read from `fixtures-manifest.py compile-check-platforms`, the same
+/// `compile_check_platform` the BUILD narrows by (`list-compile-checks
+/// --coords-from`) and the staleness probe requires by, so all three answer
+/// "is this row in the lane?" with one computation and the rule has no second
+/// spelling here.
 fn compile_check_row_platform(id: &str) -> Option<String> {
-    static ROWS: std::sync::OnceLock<Vec<toml::Value>> = std::sync::OnceLock::new();
+    static ROWS: std::sync::OnceLock<std::collections::BTreeMap<String, String>> =
+        std::sync::OnceLock::new();
     let rows = ROWS.get_or_init(|| {
-        let path = crate::project_root().join("examples/fixtures.toml");
-        let text =
-            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        let doc: toml::Table =
-            toml::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
-        doc.get("compile_check_fixture")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default()
+        let root = crate::project_root();
+        let out = std::process::Command::new("python3")
+            .arg(root.join("scripts/build/fixtures-manifest.py"))
+            .arg("compile-check-platforms")
+            .current_dir(&root)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("run fixtures-manifest.py compile-check-platforms");
+        assert!(
+            out.status.success(),
+            "fixtures-manifest.py compile-check-platforms failed:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|l| l.split_once('\t'))
+            .map(|(i, p)| (i.to_string(), p.to_string()))
+            .collect()
     });
-    rows.iter()
-        .find(|r| r.get("id").and_then(|v| v.as_str()) == Some(id))?
-        .get("platform")?
-        .as_str()
-        .map(str::to_owned)
+    // `None` for an id with no manifest row: the px4 compile-checks
+    // (`px4_bridge_ffi` and the companions) are built by the script's own px4
+    // lane, not from the table, and their tests state their coordinate
+    // themselves (`require_coord_in_lane`).
+    rows.get(id).cloned()
 }
 
-/// Deselect a compile-check consumer whose row states a platform this run's
-/// lane does not hold (issue 2510). The build omits exactly those rows, so
-/// without this the run would report the absent stamp as a failure. A row
-/// stating no platform is in every lane, as before.
+/// Deselect a compile-check consumer whose row's platform this run's lane does
+/// not hold (issues 2510, 2548). The build omits exactly those rows, so
+/// without this the run would report the absent stamp as a failure.
 fn require_compile_check_row_in_lane(id: &str) {
     let Some(token) = compile_check_row_platform(id) else {
         return;
     };
     let platform = crate::matrix::PlatformId::from_fixture_token(&token).unwrap_or_else(|| {
         panic!(
-            "compile-check row `{id}` states platform `{token}`, which names no test \
-             platform; fix the row in examples/fixtures.toml"
+            "compile-check row `{id}` is built for platform `{token}`, which names no \
+             test platform; fix the row in examples/fixtures.toml"
         )
     });
     crate::fixtures::lane::require_platform_in_lane(&[platform], id);
@@ -5674,7 +5687,12 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     // lane deselects; in lane, an absent or stale fixture fails below. (This
     // was a host probe in `test-all` — no `west`, no Zephyr workspace ⇒ the
     // suites vanished from the run.)
-    crate::fixtures::lane::require_setup_scope_in_lane("zephyr", &format!("west fixture {id}"));
+    //
+    // Issue 2548 — a west fixture is a `[[compile_check_fixture]]` row, so it
+    // takes the row predicate every other compile-check row takes (its
+    // platform is `zephyr`), the one the build and the staleness probe use.
+    // The Zephyr setup SCOPE answered for more platforms than the build does.
+    require_compile_check_row_in_lane(id);
     // Issue 2192 — per Zephyr line, as `nros_west_fixture_dir` writes it; keyed
     // by id alone, a 4.4 run read (and passed on) a 3.7 bake.
     let line = crate::zephyr::zephyr_line();

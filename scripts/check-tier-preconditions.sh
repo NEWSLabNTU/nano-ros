@@ -114,9 +114,24 @@ cli_stale=$failed   # non-zero ⇒ everything that EXECS the CLI below would onl
 #    outside `examples/`, because an example tracks no `.cargo/` file at all
 #    (RFC-0098 D1). What still bites an example is the OTHER shape — a `path =`
 #    dep into a `generated/` tree `nros configure` has not produced.
+#
+#    Issue 2548 — scoped to the run's lane, exactly as the build's
+#    `_require-leaf-includes <lane>` is: the same `nros_codegen_scope_export`,
+#    so the leaves checked are the leaves `_codegen <lane>` generated. Unscoped,
+#    a threadx merge shard's run refused 76 path deps into Linux examples that
+#    phase-535 W10 correctly never generated for that shard. No lane (a bare
+#    `just check tier-preconditions`) still checks every leaf.
+_leaf_scope=(env -u NROS_CODEGEN_COORDS)
+if [ -n "${NROS_FIXTURE_LANE:-}" ]; then
+    # shellcheck source=scripts/build/fixture-lane.sh
+    source scripts/build/fixture-lane.sh
+    if nros_codegen_scope_export "$NROS_FIXTURE_LANE" && [ -n "${NROS_CODEGEN_COORDS:-}" ]; then
+        _leaf_scope=(env "NROS_CODEGEN_COORDS=$NROS_CODEGEN_COORDS")
+    fi
+fi
 probe "a leaf names a sync-written path that does not exist yet" \
     "nros configure   in the named leaf   (bypass: NROS_SKIP_LEAF_INCLUDE_CHECK=1)" \
-    python3 scripts/build/leaf-config-includes.py
+    "${_leaf_scope[@]}" python3 scripts/build/leaf-config-includes.py
 
 # 4. The build stage needs the UNION of vendored sources, not the per-board
 #    slice `nros setup <board>` provisions (#390).
@@ -394,7 +409,10 @@ fi
         echo "  [x] $label"
         echo "      remedy: $remedy"
         if [ -n "$detail" ]; then
-            printf '      %s\n' "$(printf '%s' "$detail" | head -6 | sed 's/^/  /')"
+            # Issue 2548 — the WHOLE detail. Cut to 6 lines, the fixture probe
+            # named one workspace row and none of the 11 compile-check rows it
+            # refused, so the refusal could not be acted on.
+            printf '      %s\n' "$(printf '%s' "$detail" | sed 's/^/  /')"
         fi
     done
     echo

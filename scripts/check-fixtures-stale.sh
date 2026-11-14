@@ -328,9 +328,18 @@ done < <(
     # keep demanding them: those lanes either build west or select by
     # coordinate, and silently dropping a west row there would hide a real
     # staleness — the failure mode this gate exists to prevent.
+    #
+    # Issue 2548 — a COORDINATE scope requires exactly the rows the build made
+    # for it: `--coords-from` applies `compile_check_platform`, the predicate
+    # `build-compile-check-fixtures` narrows by. Without it a threadx merge
+    # shard's run demanded the west rows and the host rows that shard never
+    # builds (merge-runtime run 43551581652).
     if [ "$SCOPE" = "linux" ]; then
         python3 scripts/build/fixtures-manifest.py list-compile-checks 2>/dev/null \
             | awk -F'\x1f' '$2 !~ /^west-/'
+    elif [ "$SCOPE" = "coords" ]; then
+        python3 scripts/build/fixtures-manifest.py list-compile-checks \
+            --coords-from "$NROS_FIXTURE_COORDS" 2>/dev/null
     else
         python3 scripts/build/fixtures-manifest.py list-compile-checks 2>/dev/null
     fi
