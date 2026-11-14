@@ -96,6 +96,15 @@ gate-tier:
     @python3 scripts/ci/gate-tier.py --self-test
     @bash tests/gate-tier-diff-tests.sh
 
+# phase-489 W11 — a push to main skips the fast tier only when a `merge_group`
+# gate run already passed on that exact commit. The cases drive
+# `green-gate-run.sh` against a stub API, with every doubt (no run, a push
+# run, another commit, a failure, an API error, no token) answering "run the
+# full gate"; the unverified commit is the negative control. Buildless.
+[private]
+green-gate-run:
+    @bash tests/green-gate-run-tests.sh
+
 # issue 1514 — a lane's LABEL must not claim an event its step does not run on.
 #
 # `just check build` is `schedule`/`workflow_dispatch` only, and the job it lives
