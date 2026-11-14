@@ -75,6 +75,20 @@ gate:
         echo "ci gate: NOT RUN — provisioning first (issue 1513)." >&2
         exit 1
     fi
+    # User ruling 2026-11-14 — the tier is chosen by the DIFF: one whose every
+    # path is documentation (`scripts/ci/gate-tier.py` says which paths count,
+    # and why a Markdown file Rust source reads does not) owes `check fast`
+    # alone. Anything else, or a diff it cannot see, takes the full lane below.
+    # No knob picks the tier; the script's reason line says what decided it.
+    tier_out="$(python3 scripts/ci/gate-tier.py)" || tier_out="full"
+    if [ "$(head -n 1 <<<"$tier_out")" = "docs" ]; then
+        echo "ci gate: docs-only diff ($(sed -n 2p <<<"$tier_out")): running \`check fast\` alone."
+        docs_rc=0
+        bash scripts/ci/run-lane-steps.sh gate check::fast || docs_rc=$?
+        [ "$docs_rc" -eq 0 ] && echo "CI gate passed (docs-only diff: check fast)."
+        exit "$docs_rc"
+    fi
+    echo "ci gate: full lane ($(sed -n 2p <<<"$tier_out"))."
     # `check::api-parity` left this list once (issue 1500) because it was in
     # the FAST lane too and ran twice. phase-489 W5 moved it and
     # `check::probe-workspace-caps` OUT of the fast lane (both compile; CI runs
