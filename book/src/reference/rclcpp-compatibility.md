@@ -50,7 +50,7 @@ for a ported package. The porting steps are in
 | `descriptor.floating_point_range.resize(1)` | a bounded sequence resizes within its bound | Past the bound it is refused and returns `false`, where rosidl throws. |
 | `rclcpp::spin(node->get_node_base_interface())` | spins the node | |
 | `get_node_base_interface()->get_context()->add_pre_shutdown_callback(f)` | `rclcpp::Context` views the executor's shutdown hooks; `f` runs on `rclcpp::shutdown()` | The hooks share the executor's table (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2). A full table returns an invalid handle. |
-| a package that depends on `rclcpp_lifecycle` | its runtime carries `lifecycle` (with `param_services` on a host), and `ros2 lifecycle get /<node>` finds it | On a board the cmake road gives it `lifecycle` alone. A Zephyr application states it in `system.toml`: `[system] features = ["lifecycle"]`. |
+| a package that depends on `rclcpp_lifecycle` | its runtime carries `lifecycle` (with the stock `param_services` and `rosout`), and `ros2 lifecycle get /<node>` finds it | The same on a board. A Zephyr application states it in `system.toml`: `[system] features = ["lifecycle"]`. |
 | `std::static_pointer_cast<Derived>(shared_from_this())` (Nav2's `nav2_util::LifecycleNode`) | **does not compile** | The handle owns nothing, so there is no `std::shared_ptr` to cast. Drop the override; `rclcpp_lifecycle::LifecycleNode::shared_from_this()` returns its own type. |
 | `pub_->get_subscription_count()` | takes the executor and an out-parameter | See `Publisher::get_subscription_count`. Nav2 calls it only in its tests. |
 | `declare_parameter(name, rclcpp::ParameterValue(...)[, descriptor])`, `get_parameter(name)` as an `rclcpp::Parameter`, `set_parameter(rclcpp::Parameter(...))` | the same store the typed `declare_parameter<T>` uses; the descriptor may be an `rcl_interfaces::msg::ParameterDescriptor` | Hosted builds. A byte or string array can be built but not declared. A wrong-type `as_double()` answers `0.0`, not an exception. |
@@ -60,7 +60,7 @@ for a ported package. The porting steps are in
 | `rclcpp::Client<S>::SharedPtr client_ = create_client<S>(name);` + `client_->async_send_request(req, callback)` with a `void(Client<S>::SharedFuture)` callback | the handle holds the poll client; the callback runs from the executor when the reply arrives, with a `SharedFuture` whose `get()` returns it | Hosted builds with `std::promise`. The client registers one 1 ms timer for its callbacks, cancelled while none is waiting. A removed request's callback never runs. `wait_for_service(1s)` inside a callback waits without spinning, so on a polled backend it runs out its budget. On an RTOS toolchain (no `std::promise`) store the client as `rclcpp::Owned<rclcpp::PollClient<S>>`, keep the `FutureAndRequestId` that `async_send_request(req)` returns, and read it on a later callback with `future.is_ready()` and `get()`. |
 | `diagnostic_updater::Updater updater_{this};` | publishes `/diagnostics` on its own timer, every `period` (`setPeriod`), as upstream's does | `update()` still works and is no longer required. |
 | `DiagnosticTask`, `FrequencyStatus`, `TimeStampStatus`, `Heartbeat`, `HeaderlessTopicDiagnostic`, `TopicDiagnostic` | upstream's classes, levels and messages; `updater.add(task)` | A clock argument is a `const rclcpp::Clock*`, so `node->get_clock()` still passes. The tasks take no lock, so a node that calls `tick()` from its own thread must keep that call from overlapping an update. `DiagnosedPublisher` is absent, because a nano-ros publisher handle can be moved but not copied. Keep the publisher and a `TopicDiagnostic`, and call `tick(stamp)` next to each `publish`. |
-| the six parameter services (`ros2 param get/set/list`) | on for an ament package built on a host: every node serves them, as upstream's does | Comes from the package's `package.xml` naming `ament_cmake`; set `NROS_FEATURES` to declare the capabilities yourself. Values come from `--ros-args --params-file <yaml>` or `-p`. On a board they are off unless declared (`param_services` in `NROS_FEATURES`, or `[system] features` on Zephyr): they cost six queryables and their RAM. |
+| the six parameter services (`ros2 param get/set/list`) and `/rosout` | on by default, on every board: every node serves them, as upstream's does | They cost six queryables per node and their RAM. A memory-tight image opts out: `node_interfaces = "none"` in its `system.toml`, or an empty `NROS_FEATURES` for an ament package (any `NROS_FEATURES` you set is taken as written). Values come from `--ros-args --params-file <yaml>` or `-p`. `/rosout` is VOLATILE, where rcl's is TRANSIENT_LOCAL, and a node does not subscribe to `/parameter_events`. |
 
 ## Measured: the stock rclcpp examples
 
@@ -362,7 +362,8 @@ node.undeclare_parameter("gain");            // deleted_parameters = [gain]
 ```
 
 Each event names the node's fully qualified name in `node`; the events are
-published on the next spin. The image needs the `param_services` capability.
+published on the next spin. The image needs the `param_services` capability,
+which every image has unless it states `node_interfaces = "none"`.
 One publisher per executor serves every node. It is on for every served node
 unless the node was built with
 `rclcpp::NodeOptions().start_parameter_event_publisher(false)`, which opts

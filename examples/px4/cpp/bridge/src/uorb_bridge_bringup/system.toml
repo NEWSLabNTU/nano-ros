@@ -6,6 +6,10 @@ name = "uorb_bridge"
 rmw = "uorb"
 domain_id = 0
 default_launch = "bridge.launch.xml"
+# A PX4 module opts out of the stock node interfaces (the six parameter
+# services and /rosout): PX4 serves its own parameters, and the module's
+# budget is the flight stack's.
+node_interfaces = "none"
 
 [[component]]
 pkg = "uorb_bridge_pkg"

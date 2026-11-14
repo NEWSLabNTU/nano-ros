@@ -153,8 +153,9 @@ need no init step.
 
 ## Publish records on `/rosout`
 
-1. Declare the capability, `[system] features = ["rosout"]` in `system.toml`
-   (or `set(NROS_FEATURES "rosout")` in a bare CMake project).
+1. Nothing to declare: every image carries the `rosout` capability unless
+   its `system.toml` states `node_interfaces = "none"` (a bare CMake project
+   that sets `NROS_FEATURES` itself lists `rosout` in it).
 
 2. Log through the node's logger and spin. The executor creates one
    `/rosout` publisher for each node on the spin after the node is built,
@@ -208,8 +209,9 @@ for (;;) {
 
 Where this differs from ROS 2:
 
-- **It is switched per image.** The `rosout` capability turns it on for every
-  node of the image; each node's publisher counts in the image's pools.
+- **It is switched per image.** It is on for every node of the image unless
+  the image opts out with `node_interfaces = "none"`; each node's publisher
+  counts in the image's pools.
 - **The QoS is volatile.** The executor's publisher is `qos_bounded()`:
   volatile at the queue depth. Upstream's profile (`nros::rosout::qos()`,
   keep-last 1000, transient-local) is expensive on a board; with the bounded
@@ -306,8 +308,9 @@ The logging demos, one node package per language, are in
 
 - **A `debug!` record never appears.** The compile-time ceiling is above it,
   or the logger's level is. Lower `max_level`, then the logger's level.
-- **Nothing reaches `/rosout`.** The `rosout` feature is not declared, the
-  queue is never pumped, or the record came from a child or free logger on
+- **Nothing reaches `/rosout`.** The image states `node_interfaces = "none"`
+  (or a bare CMake project's `NROS_FEATURES` omits `rosout`), the queue is
+  never pumped, or the record came from a child or free logger on
   Humble.
 - **A throttled call does not compile.** `throttle` needs the platform clock;
   a clockless image refuses it.

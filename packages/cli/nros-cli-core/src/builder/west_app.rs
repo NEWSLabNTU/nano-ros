@@ -1812,7 +1812,13 @@ mod tests {
                 .join("\n")
         };
 
-        std::fs::write(bringup.join("system.toml"), base).unwrap();
+        // phase-556 W13 -- an image that opts out of the stock interfaces
+        // and declares nothing gets no line.
+        std::fs::write(
+            bringup.join("system.toml"),
+            format!("{base}node_interfaces = \"none\"\n"),
+        )
+        .unwrap();
         let none = code(&cmake_app(td.path(), &nodes, None));
         assert!(!none.contains("NROS_FEATURES"), "{none}");
 
@@ -1831,7 +1837,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing {needle}:\n{with}"))
         };
         assert!(
-            with.contains("set(NROS_FEATURES \"param_services;lifecycle\")"),
+            with.contains("set(NROS_FEATURES \"param_services;lifecycle;rosout\")"),
             "a cmake LIST, which `IN_LIST` reads: {with}"
         );
         assert!(at("set(NROS_FEATURES") < at("find_package(Zephyr"));
@@ -1840,7 +1846,7 @@ mod tests {
         // `[param_services]` twin is refused since phase-486 W8).
         std::fs::write(
             bringup.join("system.toml"),
-            format!("{base}\n[safety]\nenabled = true\n"),
+            format!("{base}node_interfaces = \"none\"\n\n[safety]\nenabled = true\n"),
         )
         .unwrap();
         let typed = code(&cmake_app(td.path(), &nodes, None));
@@ -1849,8 +1855,8 @@ mod tests {
 
     /// phase-556 W13 -- the node-interface switch reaches the Zephyr road
     /// (`NROS_FEATURES` and the Kconfig capability symbols) for THIS image:
-    /// `stock` adds the parameter services and `/rosout`, `none` on the image
-    /// removes what `[system]` declared, and no switch changes nothing.
+    /// no switch (the default) and `stock` add the parameter services and
+    /// `/rosout`, and `none` removes them, even what `[system]` declared.
     #[test]
     fn the_node_interface_switch_reaches_nros_features_and_kconfig() {
         let td = tempfile::tempdir().unwrap();
@@ -1862,19 +1868,20 @@ mod tests {
             std::fs::write(bringup.join("system.toml"), format!("{base}{extra}")).unwrap();
             render_cmakelists(&cmake_app(td.path(), &nodes, None))
         };
-        let off = write("");
+        let off = write("node_interfaces = \"none\"\n");
         assert!(!off.contains("set(NROS_FEATURES"), "{off}");
         assert!(
             off.contains("set(CONFIG_NROS_CAPABILITY_ROSOUT n "),
             "every axis is written, `n` when undeclared: {off}"
         );
-        let stock = write("node_interfaces = \"stock\"\n");
-        assert!(
-            stock.contains("set(NROS_FEATURES \"param_services;rosout\")"),
-            "{stock}"
-        );
-        assert!(stock.contains("set(CONFIG_NROS_CAPABILITY_PARAM_SERVICES y "));
-        assert!(stock.contains("set(CONFIG_NROS_CAPABILITY_ROSOUT y "));
+        for stock in [write(""), write("node_interfaces = \"stock\"\n")] {
+            assert!(
+                stock.contains("set(NROS_FEATURES \"param_services;rosout\")"),
+                "{stock}"
+            );
+            assert!(stock.contains("set(CONFIG_NROS_CAPABILITY_PARAM_SERVICES y "));
+            assert!(stock.contains("set(CONFIG_NROS_CAPABILITY_ROSOUT y "));
+        }
         let none = write(
             "features = [\"param_services\", \"lifecycle\"]\n\
              [image.zephyr]\nboard = \"x\"\nnode_interfaces = \"none\"\n",

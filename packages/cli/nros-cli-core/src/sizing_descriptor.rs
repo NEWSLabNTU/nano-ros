@@ -5542,8 +5542,10 @@ execution:
   features: [{features}]
 "#
         );
-        nros_orchestration_ir::overlay::LoadedModel::from_legacy_yaml(&yaml)
-            .expect("model fixture parses")
+        let mut m = nros_orchestration_ir::overlay::LoadedModel::from_legacy_yaml(&yaml)
+            .expect("model fixture parses");
+        m.overlay.node_interfaces = crate::entity_inventory::stock_unless_named(features);
+        m
     }
 
     /// The model road's composition, exactly as `write_model_descriptor` does
@@ -5771,8 +5773,16 @@ execution:
         let dir = tempfile::tempdir().unwrap();
         let model = nros_orchestration_ir::overlay::LoadedModel {
             model: store_model("", "").model,
+            // phase-556 W13 -- image `b` opts out of the stock node
+            // interfaces, which would otherwise give it the services too.
             overlay: nros_orchestration_ir::overlay::Overlay {
                 images: [("a".to_string(), vec!["param_services".to_string()])].into(),
+                node_interfaces: Some(nros_orchestration_ir::node_interfaces::NodeInterfaces::None),
+                image_node_interfaces: [(
+                    "a".to_string(),
+                    nros_orchestration_ir::node_interfaces::NodeInterfaces::Stock,
+                )]
+                .into(),
                 ..Default::default()
             },
         };

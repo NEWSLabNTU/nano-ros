@@ -863,8 +863,8 @@ endif # NROS
     fn declared_features_set_the_capability_symbols() {
         let syms = KconfigSymbols::parse(KCONFIG);
         let (_d, l) = leaf(
-            "[system]\nname = \"t\"\nrmw = \"zenoh\"\nfeatures = [\"lifecycle\"]\n\n\
-             [image.zephyr]\nboard = \"zephyr\"\n",
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\nfeatures = [\"lifecycle\"]\n\
+             node_interfaces = \"none\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
             &[],
         );
         let r = render(&l, Some(Language::Cpp), &syms, &BTreeMap::new()).unwrap();
@@ -874,6 +874,19 @@ endif # NROS
             !m.contains_key("CONFIG_NROS_CAPABILITY_PARAM_SERVICES"),
             "an undeclared axis keeps its default: {m:?}"
         );
+    }
+
+    /// phase-556 W13 -- an image stating no feature gets the stock parameter
+    /// services symbol, the default.
+    #[test]
+    fn an_image_stating_no_feature_sets_the_stock_parameter_services_symbol() {
+        let syms = KconfigSymbols::parse(KCONFIG);
+        let (_d, l) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
+            &[],
+        );
+        let r = render(&l, Some(Language::Cpp), &syms, &BTreeMap::new()).unwrap();
+        assert_eq!(rows(&r)["CONFIG_NROS_CAPABILITY_PARAM_SERVICES"], "y");
     }
 
     /// Issue 2354 — a Cyclone image states what `NROS_RMW_CYCLONEDDS` depends
@@ -1223,13 +1236,14 @@ endif # NROS
         assert!(e.contains("fastdds") && e.contains("searched"), "{e}");
     }
 
-    /// The empty case: an image that states nothing renders nothing, and a
-    /// stale fragment is removed; an unchanged fragment keeps its mtime.
+    /// The empty case: an image that states nothing (and opts out of the
+    /// stock node interfaces, which the default would state) renders nothing,
+    /// and a stale fragment is removed; an unchanged fragment keeps its mtime.
     #[test]
     fn an_image_stating_nothing_writes_no_fragment() {
         let syms = KconfigSymbols::parse(KCONFIG);
         let (d, l) = leaf(
-            "[system]\nname = \"t\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
+            "[system]\nname = \"t\"\nnode_interfaces = \"none\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
             &[],
         );
         let r = render(&l, None, &syms, &BTreeMap::new()).unwrap();

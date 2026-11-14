@@ -872,14 +872,19 @@ mod tests {
 
     // ---- phase-556 W13: the node-interface switch on the model road -------
 
-    /// (a) A bringup that states no switch builds exactly what it declares:
-    /// the default is still "as declared" in this step.
+    /// (a) A bringup that states no switch gets the stock set on every
+    /// image (the default), and `none` gives it back.
     #[test]
-    fn a_featureless_bringup_gets_no_node_interface_by_default() {
+    fn a_featureless_bringup_gets_the_stock_node_interfaces_by_default() {
         let ov = o("[system]\nname = \"t\"\n[image.a]\nboard = \"linux\"\n");
         assert!(ov.is_empty());
-        assert!(ov.system_features().is_empty());
-        assert!(ov.features_for_image("a").is_empty());
+        assert_eq!(ov.system_features(), vec!["param_services", "rosout"]);
+        assert_eq!(ov.features_for_image("a"), vec!["param_services", "rosout"]);
+        let off =
+            o("[system]\nname = \"t\"\n[image.a]\nboard = \"linux\"\nnode_interfaces = \"none\"\n");
+        assert!(off.features_for_image("a").is_empty());
+        let back = Overlay::parse(&off.render(), Path::new("nros.toml")).unwrap();
+        assert!(back.features_for_image("a").is_empty());
     }
 
     /// (b) `stock` yields the stock set, at every level it can be stated.
@@ -1086,19 +1091,32 @@ mod tests {
             ov.features_for_image("a"),
             vec!["safety", "rosout", "param_services"]
         );
-        assert_eq!(ov.features_for_image("b"), vec!["safety", "rosout"]);
-        // An image the overlay does not mention builds with the system list.
-        assert_eq!(ov.features_for_image("c"), vec!["safety"]);
+        assert_eq!(
+            ov.features_for_image("b"),
+            vec!["safety", "rosout", "param_services"]
+        );
+        // An image the overlay does not mention builds with the system list,
+        // plus the stock set every image gets by default.
+        assert_eq!(
+            ov.features_for_image("c"),
+            vec!["safety", "param_services", "rosout"]
+        );
         let back = Overlay::parse(&ov.render(), Path::new("nros.toml")).unwrap();
         assert_eq!(back, ov);
     }
 
     #[test]
     fn a_switch_only_one_image_states_stays_off_the_others() {
-        let ov = o("[image.linux]\nfeatures = [\"param_services\"]\n[image.mcu]\nboard = \"x\"\n");
+        let ov = o("[image.linux]\nfeatures = [\"lifecycle\"]\n[image.mcu]\nboard = \"x\"\n");
         assert!(ov.features.is_empty());
-        assert_eq!(ov.features_for_image("linux"), vec!["param_services"]);
-        assert!(ov.features_for_image("mcu").is_empty());
+        assert_eq!(
+            ov.features_for_image("linux"),
+            vec!["lifecycle", "param_services", "rosout"]
+        );
+        assert_eq!(
+            ov.features_for_image("mcu"),
+            vec!["param_services", "rosout"]
+        );
     }
 
     #[test]
@@ -1372,7 +1390,7 @@ mod tests {
             "meta:\n  version: 2\nstructure: {}\nexecution:\n  features:\n  - param_services\n",
         )
         .unwrap();
-        assert_eq!(l.features(None), vec!["param_services"]);
+        assert_eq!(l.features(None), vec!["param_services", "rosout"]);
         assert!(legacy_projected_features("meta:\n  version: 2\nstructure: {}\n").is_empty());
         assert!(legacy_projected_features("not: [a model").is_empty());
     }

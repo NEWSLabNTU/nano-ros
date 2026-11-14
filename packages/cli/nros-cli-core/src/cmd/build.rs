@@ -9906,7 +9906,8 @@ domain_id = 0
         ));
         let mut got = declared_capabilities_for(d.path(), None);
         got.sort_unstable();
-        assert_eq!(got, vec!["lifecycle", "param_services"]);
+        // phase-556 W13 -- plus the stock `rosout` every image gets.
+        assert_eq!(got, vec!["lifecycle", "param_services", "rosout"]);
     }
 
     /// The deprecated typed `[safety]` block still counts — both spellings
@@ -9914,7 +9915,9 @@ domain_id = 0
     /// refused since phase-486 W8, so it cannot reach this predicate.)
     #[test]
     fn typed_block_is_seen() {
-        let d = bringup_with(&format!("{BASE}\n[safety]\nenabled = true\n"));
+        let d = bringup_with(&format!(
+            "{BASE}node_interfaces = \"none\"\n\n[safety]\nenabled = true\n"
+        ));
         assert_eq!(declared_capabilities_for(d.path(), None), vec!["safety"]);
     }
 
@@ -9923,12 +9926,12 @@ domain_id = 0
     /// escalating it would fail builds that are documented to tolerate it.
     #[test]
     fn no_capabilities_is_not_fatal() {
-        let d = bringup_with(BASE);
+        let d = bringup_with(&format!("{BASE}node_interfaces = \"none\"\n"));
         assert!(declared_capabilities_for(d.path(), None).is_empty());
     }
 
-    /// phase-556 W13 -- `node_interfaces`: (a) absent leaves the declared
-    /// list, (b) `stock` adds the parameter services and `/rosout`, (c) `none`
+    /// phase-556 W13 -- `node_interfaces`: (a) absent is the stock set (the
+    /// default), (b) `stock` adds the parameter services and `/rosout`, (c) `none`
     /// removes them, (d) the image's table over `[image_defaults]` over
     /// `[system]`.
     #[test]
@@ -9939,7 +9942,7 @@ domain_id = 0
             got.sort_unstable();
             got
         };
-        assert!(caps("", None).is_empty());
+        assert_eq!(caps("", None), vec!["param_services", "rosout"]);
         assert_eq!(
             caps("node_interfaces = \"stock\"\n", None),
             vec!["param_services", "rosout"]
