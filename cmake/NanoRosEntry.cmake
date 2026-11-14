@@ -1083,6 +1083,16 @@ function(nano_ros_entry)
             "${NROS_PLATFORM}" "${NROS_BOARD}" _nra_locator)
         nros_locator_c_define(_nra_loc_def NROS_ENTRY_LOCATOR "${_nra_locator}")
         target_compile_definitions(${_NRA_NAME} PRIVATE "${_nra_loc_def}")
+        # Issue 2555 — the image's network, as a C string, for a board whose
+        # start reads it at run time (`<nros/board.h>`'s
+        # `nros_board_image_config_t`, filled by the board's per-entry
+        # `main`). Per ENTRY, from the shadow above: the runtime archive is one
+        # per configure and cannot tell two images apart.
+        nros_image_net(_nra_image_net)
+        if(NOT "${_nra_image_net}" STREQUAL "")
+            nros_locator_c_define(_nra_net_def NROS_IMAGE_NET "${_nra_image_net}")
+            target_compile_definitions(${_NRA_NAME} PRIVATE "${_nra_net_def}")
+        endif()
         # phase-287 W6 — bake the domain the same way; portable sources read
         # NROS_ENTRY_DOMAIN_ID.
         #

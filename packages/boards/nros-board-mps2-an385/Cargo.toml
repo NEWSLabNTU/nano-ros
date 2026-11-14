@@ -29,6 +29,9 @@ nros-platform-api = { path = "../../platform/nros-platform-api" }
 # replaces is `nros-log` declaring the extern itself and every binary that
 # logged inheriting the link requirement.
 nros-platform-cffi = { path = "../../platform/nros-platform-cffi" }
+# issue 2555 — the board C ABI's `nros_board_image_config_t`, the image
+# identity the C start (`c_start.rs`) reads at run time. Declarations only.
+nros-board-cffi = { path = "../nros-board-cffi" }
 # Phase 129.D — `zpico-platform-shim` retired. zenoh-pico `z_*`
 # symbols come from `zpico-sys`'s default-on `platform-aliases`
 # alias TU when `rmw-zenoh` (or `serial`) is active.

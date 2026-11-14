@@ -65,6 +65,10 @@ function(nros_board_link_app target)
         "${_NROS_BOARD_MPS2_AN385_DIR}/c/c_main.c"
         "${_NROS_BOARD_COMMON_C_DIR}/nros_rtos_run_components.c"
         "${_NROS_BOARD_COMMON_C_DIR}/cxx_static_abi.c")
+    # `c_main.c` fills the board C ABI's `nros_board_image_config_t`
+    # (`<nros/board.h>`, issue 2555) from the entry's per-image defines.
+    target_include_directories(${target} PRIVATE
+        "${_NROS_BOARD_MPS2_AN385_DIR}/../nros-board-cffi/include")
     # The C-rooted script (it INCLUDEs cortex-m-rt's `link.x`, which INCLUDEs
     # the board's `memory.x` and the PAC's `device.x`) — all found on the
     # directory the runtime staticlib's target adds with `-L`. A script

@@ -55,10 +55,64 @@ this limitation they cannot share a bringup configure, so W6 keeps each role a
 one-package workspace in its own directory (the shape W5 gave the talkers), with
 a copy of the language workspace's component.
 
-## Fix direction
+## The shape (maintainer ruling 2026-11-14)
 
-Take the network at RUN time from the entry instead of baking it into the
-archive: the generated entry passes the image's identity to the board's C start
-(as FreeRTOS's C lane already resolves it per entry), and `Config::from_image`
-becomes a fallback. Then the bare-metal images can join the language
-workspaces' bringups and the copies go.
+The image's identity is read at RUN time from a struct the generated entry
+fills, not compiled into the archive.
+
+- **The ABI is board-generic.** `<nros/board.h>` (the board C ABI, RFC-0054,
+  `packages/boards/nros-board-cffi`) declares `nros_board_image_config_t`:
+  `version` (`NROS_BOARD_IMAGE_CONFIG_VERSION`), `net` (the `NROS_IMAGE_NET`
+  text, RFC-0103 D10f), `locator`, `domain_id`
+  (`NROS_BOARD_IMAGE_DOMAIN_DEFAULT` = -1). `NULL` / -1 means "the board's
+  default". The Rust mirror is the bindgen output in
+  `nros-board-cffi/src/generated.rs`.
+- **Each board's C start keeps its own name** and takes
+  `const nros_board_image_config_t *` as its first argument. mps2-an385 adopts
+  it first: `nros_board_mps2_an385_start(image, app)`.
+- **Who fills it.** The board's `c/c_main.c`, which the build compiles once
+  PER ENTRY target, builds a `static const` struct from three macros the entry
+  target carries: `NROS_IMAGE_NET` and `NROS_ENTRY_LOCATOR` (string literals,
+  `NanoRosEntry.cmake`, from the entry's own scope, the same shadowing issue
+  2336 gave ThreadX's per-image `NROS_APP_CONFIG`) and `NROS_ENTRY_DOMAIN_ID`.
+  An absent macro leaves `NULL` / -1; the entry's empty locator literal also
+  reads as "not stated".
+- **How the board reads it.** `c_start.rs` turns the pointer into
+  `Config::from_image_parts(net, locator, domain)`, which starts from the
+  compile-time `Config::from_image()` and replaces what the struct states. The
+  network goes through the same `image_net::boot_interface` parser. A version
+  the board does not know is refused (`EPROTO`) rather than read.
+- **One carrier on the CMake road.** W6's interim `NROS_IMAGE_NET` cargo env row
+  (in `nros_board_facts_env`) is removed again. The cargo road
+  (`build/<image>/nros-cargo.toml` `[env]` rows, `Config::from_image`) is
+  unchanged.
+
+## Measured (2026-11-15, QEMU 11.0)
+
+- **One configure, two images.** A scratch copy of `examples/workspaces/c`
+  with two bare-metal images added to `service_bringup`
+  (`baremetal_service_{server,client}`, `board-net-10.toml` /
+  `board-net-11.toml`) builds both entries in ONE build dir
+  (`build/bare-metal-zenoh-mps2-an385-baremetal-service_bringup/cmake`, one
+  runtime archive). They boot `10.0.2.10` and `10.0.2.11`, and the client
+  prints `Result of add_two_ints: 5`.
+- **Negative control.** The same `c/service-{server,client}` pair with
+  `c_main.c` passing `NULL` (and W6's cargo env row gone) boots `10.0.2.15`
+  on both sides; the client reports `zenoh open: no session with
+  tcp/10.0.2.2:10310`, the failure this issue describes.
+- `test_qemu_baremetal_capi_e2e`: 6/6 with the struct, on one carrier.
+
+**Status.** The runtime identity lands with this fix. The issue stays open
+for the first follow-up below, which removes the copies its limitation
+forced.
+
+## Follow-ups
+
+- Move the ten bare-metal roles into `examples/workspaces/{c,cpp}`'s bringups
+  as bare-metal images, delete the copies, and resolve
+  `test_qemu_baremetal_capi_e2e` from those rows (RFC-0130 D3).
+- Adopt the struct in the other boards' C starts as each gains one. Today
+  mps2-an385 is the only board whose C start is Rust (the only reader of
+  `NROS_IMAGE_NET` through `option_env!`). The RTOS boards resolve the image
+  network in C per entry already (`nros_board_net_c`, issue 2336) and need it
+  only if a Rust half of their boot comes to read it.
