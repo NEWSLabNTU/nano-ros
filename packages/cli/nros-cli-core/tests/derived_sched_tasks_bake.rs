@@ -426,12 +426,7 @@ fn the_schedule_follows_the_timer_trigger_not_the_publication_promise() {
     // The experiment: move the trigger, touch no promise.
     let raised = Fixture::copy("trigger-rate-raised");
     raised.configure(&["main"]);
-    edit_contract(
-        &raised,
-        "timer: { rate: 10Hz }",
-        "timer: { rate: 60Hz }",
-        2,
-    );
+    edit_contract(&raised, "timer: { rate: 10Hz }", "timer: { rate: 60Hz }", 2);
     let model = resolve_model(&raised.bringup(), false);
     let system = system_toml(&raised.bringup());
     let derived = derive(&raised, &model, &system);
