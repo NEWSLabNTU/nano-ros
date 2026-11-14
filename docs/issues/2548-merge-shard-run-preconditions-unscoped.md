@@ -167,6 +167,21 @@ Fixed together (fix-2548-run-scope-3):
 - `just ci <lane>` runs under the disk balloon too, so the zephyr run step
   stops at 2 G free with its `du` instead of losing the job.
 
+## Fourth round, run 43613088518 (the #3835 branch)
+
+- **threadx_linux:** `just build tier1` failed at its last step:
+  `check-action-client-arena-budget: examined NOTHING`. That gate reads only
+  Rust images, because a C/C++ image whole-archives the FFI and cannot be
+  attributed. The shard holds `threadx-linux,c,zenoh` alone. Run 43582883501
+  passed it by accident: the gate examined a host tool, `target/debug/lane-coords`,
+  which a later main commit put beside a second program and so made
+  unattributable.
+- Fixed (fix-2548-arena-gate-scope): when the build's coordinate file
+  (`NROS_FIXTURE_COORDS`) holds no Rust coordinate, an empty population is
+  DECLARED ("NOTHING TO CHECK, not a pass") rather than a failure. An
+  un-narrowed build, or a lane holding a Rust coordinate, still fails on zero.
+  The self-test covers all three.
+
 ## Done when
 
 A `merge-runtime.yml` tier-1 dispatch runs tests on the threadx_linux shard
