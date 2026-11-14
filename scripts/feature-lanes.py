@@ -229,6 +229,11 @@ def run(runner: str, verbose: bool) -> int:
     for lane in lanes:
         env = dict(os.environ)
         env.update({k: str(v) for k, v in lane.get("env", {}).items()})
+        # One part of the enclosing run: a lane its scope deselects whole is
+        # not that run's zero-ran failure (check-skip-budget.py SUBLANE_ENV).
+        env["NROS_SKIP_BUDGET_SUBLANE"] = (
+            f"feature lane {lane['crate']} {' '.join(lane.get('targets', [])) or '--lib'}"
+        )
         if lane.get("scoped_target_dir"):
             env["CARGO_TARGET_DIR"] = subprocess.run(
                 ["bash", "-c", "source scripts/build/cargo.sh && "

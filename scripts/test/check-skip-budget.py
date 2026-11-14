@@ -152,6 +152,27 @@ def report_reasons(rows, out) -> None:
         print(f"      … and {rest} further distinct reason(s)", file=out)
 
 
+# Issue 2548 — set by `scripts/feature-lanes.py run` on each feature lane it
+# runs. A feature lane is one PART of an enclosing run (`test-all`), and a run
+# narrowed to one merge shard legitimately holds none of a lane's coordinates:
+# the tier-1 `threadx_linux` shard deselected all of `custom_transport_loopback`,
+# a Linux target. The zero-ran floor is the ENCLOSING run's, which still
+# applies to its own sweep.
+SUBLANE_ENV = "NROS_SKIP_BUDGET_SUBLANE"
+
+
+def zero_ran_is_error(executed: int, total: int, actionable: int, sublane: str) -> bool:
+    """The zero-ran floor: nothing executed and something skipped.
+
+    One exemption: a feature lane (`sublane` set) whose every skip is an
+    out-of-lane deselection. An unmet precondition never qualifies, and a
+    standalone run never does either.
+    """
+    if executed or not total:
+        return False
+    return not (sublane and actionable == 0)
+
+
 def self_test() -> int:
     """`reason_of` must survive the shapes the junit actually carries.
 
@@ -186,6 +207,20 @@ def self_test() -> int:
         ),
     ]
     failures = 0
+
+    # issue 2548 — the zero-ran floor, all four corners of the exemption.
+    floor_cases = [
+        ((0, 3, 0, ""), True),        # standalone, all deselected: still an error
+        ((0, 3, 0, "lane x"), False),  # feature lane, all deselected: the run's floor
+        ((0, 3, 1, "lane x"), True),   # feature lane with an unmet skip: an error
+        ((1, 3, 0, ""), False),        # something ran
+        ((0, 0, 0, ""), False),        # nothing skipped: nothing to say here
+    ]
+    for args, want in floor_cases:
+        got = zero_ran_is_error(*args)
+        if got != want:
+            print(f"  self-test FAIL: zero_ran_is_error{args} -> {got}, want {want}")
+            failures += 1
 
     # issue 1129 / phase-450 W1 — FIXTURE_RE, both directions. The matcher read
     # one of the two spellings for months while the rule named the class, so the
@@ -371,7 +406,15 @@ def main(argv: list[str]) -> int:
     # Deterministic ordering: stderr is unbuffered and stdout is not, so without
     # this the error block lands ABOVE the summary it says to read above.
     sys.stdout.flush()
-    if executed == 0 and total > 0:
+    sublane = os.environ.get(SUBLANE_ENV, "")
+    if executed == 0 and total > 0 and not zero_ran_is_error(
+        executed, total, len(actionable), sublane
+    ):
+        print(
+            f"  {sublane}: every test is out of this run's lane, so this feature lane "
+            "runs nothing here; the enclosing run's own sweep must still run one."
+        )
+    if zero_ran_is_error(executed, total, len(actionable), sublane):
         print("", file=sys.stderr)
         print(
             f"ERROR: {total} skip(s) and NOT ONE test actually ran.\n"

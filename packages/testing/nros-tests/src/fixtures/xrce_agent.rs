@@ -677,7 +677,11 @@ pub fn is_xrce_agent_available() -> bool {
 }
 
 /// Fail the test (`unmet!`) if the XRCE Agent is not available.
+///
+/// The Agent serves `xrce` coordinates only, so a lane holding none deselects
+/// the test BEFORE the probe (issue 2548): scope first, then the probe.
 pub fn require_xrce_agent() {
+    crate::fixtures::lane::require_rmw_in_lane("xrce", "the XRCE Agent");
     if !is_xrce_agent_available() {
         crate::unmet!("XRCE Agent not found (run `just xrce setup`)");
     }

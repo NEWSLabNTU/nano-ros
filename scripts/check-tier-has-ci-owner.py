@@ -98,8 +98,11 @@ def owners(workflow_texts, recipe):
 
 
 # Words that run their argument as the command: the owner is what they run.
+# `scripts/ci/disk-balloon.sh run [--opt N]... --` runs what follows `--`
+# under a disk watch (issue 2548), so it is a wrapper like `timeout`.
 WRAPPERS = re.compile(
-    r"^(?:(?:[A-Za-z_]\w*=\S*|env|time|nice|command|timeout\s+(?:-\S+\s+)*\S+)\s+)*")
+    r"^(?:(?:[A-Za-z_]\w*=\S*|env|time|nice|command|timeout\s+(?:-\S+\s+)*\S+"
+    r"|(?:\./)?scripts/ci/disk-balloon\.sh\s+run\s+(?:--[a-z-]+\s+\S+\s+)*--)\s+)*")
 
 
 def workflow_commands_of(root=None):
@@ -143,6 +146,8 @@ def selftest():
                   "ci tier1") == [], "a quoted argument string owned the tier"
     assert owners({"a.yml": ["mkdir -p l && just ci tier1 gates > l/x.log 2>&1"]},
                   "ci tier1") == ["a.yml"], "an and-list statement must count"
+    assert owners({"a.yml": ["scripts/ci/disk-balloon.sh run --balloon-gb 3 -- just ci merge"]},
+                  "ci merge") == ["a.yml"], "a disk-balloon-wrapped invocation owns its tier"
     assert owners({"a.yml": ["NROS_X=1 timeout 600 just ci tier1 run"]},
                   "ci tier1") == ["a.yml"], "env-prefixed / wrapped must count"
     assert owners({"a.yml": ["just ci tier1 | tee l"]}, "ci tier1") == ["a.yml"]

@@ -68,6 +68,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 free_kb() { df -Pk . | awk 'NR==2 {print $4}'; }
 
 rm -f "$summary"
+# One watch log serves every wrapped step of a job; say where each begins.
+printf '%s start free_kb=%s cmd=%s\n' "$(date -u +%H:%M:%S)" "$(free_kb)" "$*" >> "$watch_log"
 if fallocate -l "${balloon_gb}G" "$balloon" 2>/dev/null \
     || dd if=/dev/zero of="$balloon" bs=1M count=$((balloon_gb * 1024)) status=none 2>/dev/null; then
     echo "disk-balloon: reserved ${balloon_gb} GB at $balloon; floor ${min_free_gb} GB free"
