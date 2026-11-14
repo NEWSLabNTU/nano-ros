@@ -467,49 +467,58 @@ fn main() {
 
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let path = std::path::Path::new(&out_dir).join("buffer_config.rs");
+    // The emitted rustdoc is what a user reads for these consts, so it carries
+    // no design ids (issue 2551). Where each came from: SERVICE_BUFFER_SIZE
+    // and the user-service/action INBOX consts phase-461 W1 (the 1024 floor:
+    // phase-454 W6.a); the BUILTIN_INBOX_* pair and DECLARED_APP_QUERYABLES
+    // phase-461 W2b (never a sentinel: issue 1485); CONNECT_TIMEOUT_MS issue
+    // 2207; SUBSCRIBER_RING_DEPTH Phase 124.D.3.c (its declared default:
+    // phase-454 W6.a); the `large` size class Phase 231 (RFC-0038);
+    // MAX_PER_NODE_LIVELINESS Phase 268; PUBLISHER_TX_BUFFER_SIZE issue 0813;
+    // the TRANSIENT_LOCAL consts phase-455 W5 (TL_RETAIN_DEPTH: issue 1709).
     std::fs::write(
         &path,
         format!(
             "/// Subscriber buffer size (set via NROS_SUBSCRIBER_BUFFER_SIZE, default 1024).\n\
              pub const SUBSCRIBER_BUFFER_SIZE: usize = {sub_size};\n\
-             /// phase-461 W1 - the one-release alias of `SERVICE_INBOX_BYTES` (set via\n\
+             /// The one-release alias of `SERVICE_INBOX_BYTES` (set via\n\
              /// NROS_ZENOH_SERVICE_BUFFER_SIZE; default is the largest declared service/action\n\
-             /// bound, floored at 1024 - phase-454 W6.a). `NROS_SERVICE_INBOX_BYTES` wins.\n\
+             /// bound, floored at 1024). `NROS_SERVICE_INBOX_BYTES` wins.\n\
              pub const SERVICE_BUFFER_SIZE: usize = {service_inbox_bytes};\n\
-             /// phase-461 W1 - the user-service family's slot size (set via\n\
+             /// The user-service family's slot size (set via\n\
              /// NROS_SERVICE_INBOX_BYTES; default is what NROS_ZENOH_SERVICE_BUFFER_SIZE resolved).\n\
              pub const SERVICE_INBOX_BYTES: usize = {service_inbox_bytes};\n\
-             /// phase-461 W1 - the user-service family's ring depth (set via\n\
+             /// The user-service family's ring depth (set via\n\
              /// NROS_SERVICE_INBOX_DEPTH, default {SERVICE_INBOX_DEPTH_DEFAULT}).\n\
              pub const SERVICE_INBOX_DEPTH: usize = {service_inbox_depth};\n\
-             /// phase-461 W1 - the action family's slot size (set via NROS_ACTION_INBOX_BYTES;\n\
-             /// default is the user-service family's, until W3 prices them apart).\n\
+             /// The action family's slot size (set via NROS_ACTION_INBOX_BYTES;\n\
+             /// default is the user-service family's).\n\
              pub const ACTION_INBOX_BYTES: usize = {action_inbox_bytes};\n\
-             /// phase-461 W1 - the action family's ring depth (set via NROS_ACTION_INBOX_DEPTH,\n\
+             /// The action family's ring depth (set via NROS_ACTION_INBOX_DEPTH,\n\
              /// default {SERVICE_INBOX_DEPTH_DEFAULT}: the twin of ZPICO_MAX_PENDING_REPLIES).\n\
              pub const ACTION_INBOX_DEPTH: usize = {action_inbox_depth};\n\
-             /// phase-461 W1 - queryables the action family declares per session: three per\n\
+             /// Queryables the action family declares per session: three per\n\
              /// declared action server, 0 when this image declares none (its action\n\
              /// queryables then draw user-service rings, which is the single-table behaviour).\n\
              pub const ACTION_INBOX_QUERYABLES: usize = {action_inbox_queryables};\n\
-             /// phase-461 W2b - the builtin family's slot size: the ROS parameter services\n\
+             /// The builtin family's slot size: the ROS parameter services\n\
              /// and the REP-2002 lifecycle services (set via NROS_PARAM_SERVICE_INBOX_BYTES;\n\
              /// default is the largest request the contract's declared parameters can\n\
              /// produce, else the user-service slot).\n\
              pub const BUILTIN_INBOX_BYTES: usize = {builtin_inbox_bytes};\n\
-             /// phase-461 W2b - the builtin family's ring depth (set via\n\
+             /// The builtin family's ring depth (set via\n\
              /// NROS_PARAM_SERVICE_INBOX_DEPTH, default 1: these clients are sequential).\n\
              pub const BUILTIN_INBOX_DEPTH: usize = {builtin_inbox_depth};\n\
-             /// phase-461 W2b - queryables this image's own DECLARATION attributes to the\n\
+             /// Queryables this image's own DECLARATION attributes to the\n\
              /// application, per session. `None` when nothing declared them, which\n\
              /// leaves the builtin table empty and every queryable on the user-service\n\
-             /// geometry it has today (issue 1485: never a sentinel).\n\
+             /// geometry it has today (never a sentinel).\n\
              pub const DECLARED_APP_QUERYABLES: Option<usize> = {declared_app_queryables};\n\
              /// Default service client RPC timeout in milliseconds\n\
              /// (set via NROS_SERVICE_TIMEOUT_MS, default 30000).\n\
              pub const SERVICE_DEFAULT_TIMEOUT_MS: u32 = {service_timeout_ms};\n\
              /// Client session connect budget in zenoh-pico's units: -1 = until a\n\
-             /// router answers, 0 = one attempt, N = N ms (issue 2207; set via\n\
+             /// router answers, 0 = one attempt, N = N ms (set via\n\
              /// NROS_ZENOH_CONNECT_TIMEOUT_MS / NROS_ZENOH_CONNECT_FOREVER, default 0).\n\
              pub const CONNECT_TIMEOUT_MS: i32 = {connect_timeout_ms};\n\
              /// Maximum key expression string size for topic/service names\n\
@@ -517,35 +526,35 @@ fn main() {
              pub const KEYEXPR_STRING_SIZE: usize = {keyexpr_string_size};\n\
              /// Key expression buffer size (KEYEXPR_STRING_SIZE + 1 for null terminator).\n\
              pub const KEYEXPR_BUFFER_SIZE: usize = {keyexpr_buf_size};\n\
-             /// Phase 124.D.3.c — per-subscriber SPSC ring depth (set via\n\
+             /// Per-subscriber SPSC ring depth (set via\n\
              /// NROS_ZENOH_SUBSCRIBER_RING_DEPTH or the board's `subscriber_ring_depth` rung;\n\
-             /// default is the largest declared subscription depth, else 4 — phase-454 W6.a).\n\
+             /// default is the largest declared subscription depth, else 4).\n\
              pub const SUBSCRIBER_RING_DEPTH: usize = {ring_depth};\n\
-             /// Phase 231 (RFC-0038) — `large` size-class slot size\n\
+             /// The `large` size-class slot size\n\
              /// (set via NROS_ZENOH_SUBSCRIBER_LARGE_SIZE, default 16384).\n\
              pub const SUBSCRIBER_LARGE_SIZE: usize = {large_size};\n\
-             /// Phase 231 — rx_buffer_hint above this routes to the `large` class\n\
+             /// An rx_buffer_hint above this routes to the `large` class\n\
              /// (set via NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD, default 2048).\n\
              pub const SUBSCRIBER_SIZE_THRESHOLD: usize = {size_threshold};\n\
-             /// Phase 231 — max concurrent `large`-class subscribers\n\
+             /// Maximum concurrent `large`-class subscribers\n\
              /// (set via NROS_ZENOH_MAX_LARGE_SUBSCRIBERS, default 2).\n\
              pub const MAX_LARGE_SUBSCRIBERS: usize = {max_large};\n\
-             /// Phase 268 — per-session per-node NN liveliness token cap, tracking\n\
+             /// Per-session per-node NN liveliness token cap, tracking\n\
              /// `nros-node`'s NROS_EXECUTOR_MAX_NODES (default 4): one session hosts\n\
              /// at most that many graph nodes.\n\
              pub const MAX_PER_NODE_LIVELINESS: usize = {max_nodes};\n\
-             /// Issue 0813 — per-publisher TX arena capacity for the zero-copy\n\
+             /// Per-publisher TX arena capacity for the zero-copy\n\
              /// loan path (set via NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE, default 1024).\n\
              pub const PUBLISHER_TX_BUFFER_SIZE: usize = {publisher_tx_size};\n\
-             /// phase-455 W5 — how many TRANSIENT_LOCAL publishers this image can\n\
+             /// How many TRANSIENT_LOCAL publishers this image can\n\
              /// serve at once (set via NROS_ZENOH_MAX_TL_PUBLISHERS; default is the\n\
              /// declared demand, else {TL_PUBLISHERS_DEFAULT}). Each costs one\n\
              /// retention slot here AND one slot in the C shim's queryable table.\n\
              pub const MAX_TL_PUBLISHERS: usize = {max_tl_publishers};\n\
-             /// phase-455 W5 — bytes one retained TRANSIENT_LOCAL sample may hold\n\
+             /// Bytes one retained TRANSIENT_LOCAL sample may hold\n\
              /// (set via NROS_ZENOH_TL_RETAIN_BYTES, default {TL_RETAIN_BYTES_DEFAULT}).\n\
              pub const TL_RETAIN_BYTES: usize = {tl_retain_bytes};\n\
-             /// phase-455 W5 / issue 1709 — how many samples a TRANSIENT_LOCAL\n\
+             /// How many samples a TRANSIENT_LOCAL\n\
              /// publisher retains (set via NROS_ZENOH_TL_RETAIN_DEPTH; default is the\n\
              /// deepest KEEP_LAST a transient-local publisher declares, else\n\
              /// {TL_RETAIN_DEPTH_DEFAULT}). `shim/qos.rs` grants min(asked, this) and\n\

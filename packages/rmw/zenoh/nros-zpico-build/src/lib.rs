@@ -146,6 +146,11 @@ pub fn multicast_transport_flag() -> u8 {
 impl ShimConfig {
     /// Generate `$OUT_DIR/shim_constants.rs` contents with Rust const declarations.
     pub fn rust_consts(&self) -> String {
+        // The emitted rustdoc carries no design ids (issue 2551):
+        // ZPICO_MAX_LIVELINESS's derived default is issue 1713's,
+        // ZPICO_MAX_SESSIONS phase-328 / issue 0348's,
+        // ZPICO_QUERYABLE_TABLE_DECLARED phase-392 W5.e's and
+        // ZPICO_PEER_MODE_SUPPORTED issue 0682's.
         format!(
             "/// Maximum number of concurrent publishers (set via NROS_ZENOH_MAX_PUBLISHERS, default 8).\n\
              pub const ZPICO_MAX_PUBLISHERS: usize = {};\n\
@@ -153,19 +158,19 @@ impl ShimConfig {
              pub const ZPICO_MAX_SUBSCRIBERS: usize = {};\n\
              /// Maximum number of concurrent queryables (set via NROS_ZENOH_MAX_QUERYABLES, default 8).\n\
              pub const ZPICO_MAX_QUERYABLES: usize = {};\n\
-             /// Maximum number of concurrent liveliness tokens (set via NROS_ZENOH_MAX_LIVELINESS; default derived from the declared node and entity facts, 16 when nothing is declared — issue 1713).\n\
+             /// Maximum number of concurrent liveliness tokens (set via NROS_ZENOH_MAX_LIVELINESS; default derived from the declared node and entity facts, 16 when nothing is declared).\n\
              pub const ZPICO_MAX_LIVELINESS: usize = {};\n\
              /// Maximum number of concurrent pending get operations (set via NROS_ZENOH_MAX_PENDING_GETS, default 4).\n\
              pub const ZPICO_MAX_PENDING_GETS: usize = {};\n\
-             /// Size of the session pool (set via NROS_ZENOH_MAX_SESSIONS, default 1). phase-328 / issue 0348.\n\
+             /// Size of the session pool (set via NROS_ZENOH_MAX_SESSIONS, default 1).\n\
              pub const ZPICO_MAX_SESSIONS: usize = {};\n\
-             /// phase-392 W5.e — whether the queryable table was sized from the entry's\n\
+             /// Whether the queryable table was sized from the entry's\n\
              /// DECLARATION rather than from the backend's own budget. Decides which\n\
              /// exhaustion message the shim gives: a budget is raised, a declaration is\n\
              /// corrected.\n\
              pub const ZPICO_QUERYABLE_TABLE_DECLARED: bool = {};\n\
              /// Whether this shim was compiled with the multicast transport + scouting\n\
-             /// that zenoh PEER mode needs (issue 0682). Emitted from the SAME constant\n\
+             /// that zenoh PEER mode needs. Emitted from the SAME constant\n\
              /// that writes the C `#define`, so the two cannot drift.\n\
              pub const ZPICO_PEER_MODE_SUPPORTED: bool = {};\n",
             self.max_publishers,

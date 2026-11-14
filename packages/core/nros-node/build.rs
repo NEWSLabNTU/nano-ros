@@ -1247,16 +1247,30 @@ fn main() {
     );
     let sched_task_sizings_src = sched_task_sizings_literal(&sched_task_sizings);
 
+    // The emitted rustdoc below is what a user reads for these consts, so it
+    // carries no design ids (issue 2551). Where each came from: MAX_SC
+    // Phase 110.B; SCHED_TASK_SIZINGS issue 1970; MAX_MONITORS and
+    // MAX_AGE_MONITORS phase-496 W1; ARENA_ACTION_CLIENTS issue 0900; the
+    // PARAM_SERVICE_BUFFER_* pair and DECLARED_PARAM_SERVICE_SHAPES phase-446
+    // F3; PARAM_SERVICE_INBOX_* phase-461 W2 (never 0: issue 1485);
+    // DECLARED_QOS_ROWS phase-454 W10 (reliability and durability: issue
+    // 1256); DECLARED_PUBLISHER_QOS_ROWS issue 1608; MAX_NODES Phase
+    // 104.C.2; MAX_SHUTDOWN_CBS issue 0790; MAX_VIOLATIONS and
+    // VIOLATION_DRAIN_REPORT phase-474 I1; the MONITOR_ARM_* pair phase-474
+    // I2; TRACE_TAKES and TRACE_TIMER_EVERY phase-474 I3; RUNTIME_REMAPS
+    // issue 1971; MAX_EXTRA_SESSIONS issue 1982; `arena_model` issue 1190,
+    // its PUBSUB_SLOT_BYTES issue 1319, WORST_SLOT_ENTRY and
+    // ACTION_CLIENT_ENTRY issue 0810, FLOOR issue 1971, REQUIRED phase-412 #4.
     let contents = format!(
         "/// Maximum number of executor callback slots \
          (set via NROS_EXECUTOR_MAX_CBS, default 4).\n\
          pub const MAX_CBS: usize = {max_cbs};\n\
          \n\
          /// Maximum number of `SchedContext` slots per executor \
-         (set via NROS_EXECUTOR_MAX_SC, default 8). Phase 110.B.\n\
+         (set via NROS_EXECUTOR_MAX_SC, default 8).\n\
          pub const MAX_SC: usize = {max_sc};\n\
          \n\
-         /// Issue 1970 -- each executor sched task's own sizing, from the sizing \
+         /// Each executor sched task's own sizing, from the sizing \
          descriptor's `[[sched_task]]` rows. Empty when the image is not sched-task, \
          or a sched task did not compose, or a rung states an executor size: every \
          executor is then the image's, carved inline.\n\
@@ -1264,12 +1278,12 @@ fn main() {
          \n\
          /// Contract-monitor RATE/LATENCY rows one executor can watch \
          (set via NROS_EXECUTOR_MAX_MONITORS, derived from the contract's \
-         `monitor_rows`, default 8). phase-496 W1.\n\
+         `monitor_rows`, default 8).\n\
          pub const MAX_MONITORS: usize = {max_monitors};\n\
          \n\
          /// Contract-monitor AGE rows one executor can watch \
          (set via NROS_EXECUTOR_MAX_AGE_MONITORS, derived from the contract's \
-         `age_rows`, default 8). phase-496 W1.\n\
+         `age_rows`, default 8).\n\
          pub const MAX_AGE_MONITORS: usize = {max_age_monitors};\n\
          \n\
          /// Executor arena size in bytes (derived from MAX_CBS, RX_BUF_SIZE \
@@ -1278,7 +1292,7 @@ fn main() {
          \n\
          /// How many callback slots the arena derivation budgeted at \
          ActionClient size (set via NROS_EXECUTOR_ACTION_CLIENTS, default \
-         MAX_CBS). Issue 0900.\n\
+         MAX_CBS).\n\
          pub const ARENA_ACTION_CLIENTS: usize = {action_clients};\n\
          \n\
          /// Default subscription receive buffer size in bytes \
@@ -1286,36 +1300,36 @@ fn main() {
          pub const DEFAULT_RX_BUF_SIZE: usize = {rx_buf_size};\n\
          \n\
          /// Parameter service request/reply buffer size in bytes \
-         (set via NROS_PARAM_SERVICE_BUFFER_SIZE, default 4096). phase-446 \
-         F3: the FALLBACK -- the buffer is `param_service_buffer_bytes()`, \
+         (set via NROS_PARAM_SERVICE_BUFFER_SIZE, default 4096). This is \
+         the FALLBACK -- the buffer is `param_service_buffer_bytes()`, \
          which derives it from the contract when nothing states it.\n\
          pub const PARAM_SERVICE_BUFFER_SIZE: usize = {param_svc_buf};\n\
          \n\
-         /// phase-446 F3 -- whether a rung STATED NROS_PARAM_SERVICE_BUFFER_SIZE \
+         /// Whether a rung STATED NROS_PARAM_SERVICE_BUFFER_SIZE \
          (env, Kconfig, the board). A stated size wins over a derived one.\n\
          pub const PARAM_SERVICE_BUFFER_STATED: bool = {param_svc_stated};\n\
          \n\
-         /// phase-446 F3 -- per node, the contract's declared parameters as \
+         /// Per node, the contract's declared parameters as \
          the parameter services see them: [params, name_bytes, prefixes, \
          prefix_bytes, strings, byte_arrays, bool_arrays, word_arrays, \
          string_arrays] (NROS_DECLARED_PARAM_SERVICE_SHAPE). `None` when the \
          contract does not declare every node's parameters.\n\
          pub const DECLARED_PARAM_SERVICE_SHAPES: Option<&[[usize; 9]]> = {param_svc_shapes};\n\
          \n\
-         /// phase-461 W2 -- the parameter-service INBOX slot size a rung \
+         /// The parameter-service INBOX slot size a rung \
          STATED (NROS_PARAM_SERVICE_INBOX_BYTES), or `None` when nobody stated \
          one. A stated size wins over the size derived from the contract's \
-         declared parameters (issue 1485: never 0, which is refused).\n\
+         declared parameters (never 0, which is refused).\n\
          pub const PARAM_SERVICE_INBOX_BYTES: Option<usize> = {param_inbox_bytes};\n\
          \n\
-         /// phase-461 W2 -- requests one parameter-service queryable holds \
+         /// Requests one parameter-service queryable holds \
          before the newest is dropped (NROS_PARAM_SERVICE_INBOX_DEPTH, \
          default 1). The parameter clients are sequential; 4 is the action \
          path's depth and this family used to pay it.\n\
          pub const PARAM_SERVICE_INBOX_DEPTH: usize = {param_inbox_depth};\n\
          \n\
-         /// phase-454 W10 -- the QoS this image's system DECLARED, per \
-         subscription: its history DEPTH and (issue 1256) its RELIABILITY and \
+         /// The QoS this image's system DECLARED, per \
+         subscription: its history DEPTH and its RELIABILITY and \
          DURABILITY, each `None` where nobody stated it. Read by \
          `declared_qos::check` / `declared_qos::honour` at every subscription \
          registration (NROS_ENTITY_DECLARED_DEPTHS + the sizing descriptor).\n\
@@ -1331,7 +1345,7 @@ fn main() {
          pub const DECLARED_QOS_ROWS: Option<&[crate::declared_qos::DeclaredEndpoint]> = \
          {declared_qos_rows};\n\
          \n\
-         /// issue 1608 -- the same for every PUBLISHER the system declared \
+         /// The same for every PUBLISHER the system declared \
          something about, from the sizing descriptor's publisher rows. Read by \
          `declared_qos::honour_publisher` at every publisher registration.\n\
          pub const DECLARED_PUBLISHER_QOS_ROWS: \
@@ -1339,56 +1353,53 @@ fn main() {
          {declared_publisher_qos_rows};\n\
          \n\
          /// Maximum number of Nodes attached to a single Executor \
-         (set via NROS_EXECUTOR_MAX_NODES, default 4). Phase 104.C.2.\n\
+         (set via NROS_EXECUTOR_MAX_NODES, default 4).\n\
          pub const MAX_NODES: usize = {max_nodes};\n\
          \n\
          /// Shutdown-hook slots PER PHASE -- one table this size for \
          pre-shutdown hooks and a second for on-shutdown hooks \
-         (set via NROS_EXECUTOR_MAX_SHUTDOWN_CBS, default 2). Issue 0790.\n\
+         (set via NROS_EXECUTOR_MAX_SHUTDOWN_CBS, default 2).\n\
          pub const MAX_SHUTDOWN_CBS: usize = {max_shutdown_cbs};\n\
          \n\
          /// Contract-violation ring depth per executor, and the SWD record's \
          slot count (set via NROS_EXECUTOR_MAX_VIOLATIONS, default 8). The ring \
-         keeps the LATEST entries. phase-474 I1.\n\
+         keeps the LATEST entries.\n\
          pub const MAX_VIOLATIONS: usize = {max_violations};\n\
          \n\
-         /// Issue 1971 -- runtime remap-table slots per executor \
+         /// Runtime remap-table slots per executor \
          (`--ros-args -r` and hand-declared rules; the launch's rules are the \
          flash table). Set via NROS_EXECUTOR_RUNTIME_REMAPS; default 16 on a \
          target with process arguments, 0 on bare metal.\n\
          pub const RUNTIME_REMAPS: usize = {runtime_remaps};\n\
          \n\
-         /// Issue 1982 -- extra-session slots per executor, at most its node \
+         /// Extra-session slots per executor, at most its node \
          slots: the image's backend count minus one (0 for a one-RMW image, \
          0 without rmw-cffi), `usize::MAX` (one per node) when no backend \
          count is stated. Set via NROS_EXECUTOR_EXTRA_SESSIONS.\n\
          pub const MAX_EXTRA_SESSIONS: usize = {max_extra_sessions};\n\
          \n\
          /// Whether a new executor starts with the drain-and-report hook on \
-         (set via NROS_VIOLATION_DRAIN_REPORT, default off). phase-474 I1.\n\
+         (set via NROS_VIOLATION_DRAIN_REPORT, default off).\n\
          pub const VIOLATION_DRAIN_REPORT: bool = {violation_drain_report};\n\
          \n\
          /// Whether contract monitors wait for the application's arm call \
          (set via NROS_MONITOR_ARM_ON_CALL, default off = armed at the first \
-         spin). phase-474 I2.\n\
+         spin).\n\
          pub const MONITOR_ARM_ON_CALL: bool = {monitor_arm_on_call};\n\
          \n\
          /// Arm the contract monitors anyway this many ms after the first \
-         spin, 0 = no deadline (set via NROS_MONITOR_ARM_GRACE_MS, default 0). \
-         phase-474 I2.\n\
+         spin, 0 = no deadline (set via NROS_MONITOR_ARM_GRACE_MS, default 0).\n\
          pub const MONITOR_ARM_GRACE_MS: u32 = {monitor_arm_grace_ms};\n\
          \n\
          /// Whether the callback trace emits a TAKE event per sample of every \
-         subscription by default (set via NROS_TRACE_TAKES, default off). \
-         phase-474 I3.\n\
+         subscription by default (set via NROS_TRACE_TAKES, default off).\n\
          pub const TRACE_TAKES: bool = {trace_takes};\n\
          \n\
          /// One timer tick in this many gets its trace start/end pair by \
-         default, 0 = none (set via NROS_TRACE_TIMER_EVERY, default 1). \
-         phase-474 I3.\n\
+         default, 0 = none (set via NROS_TRACE_TIMER_EVERY, default 1).\n\
          pub const TRACE_TIMER_EVERY: u16 = {trace_timer_every};\n\
          \n\
-         /// Issue 1190 -- the arena derivation's MODEL, as the consts it \
+         /// The arena derivation's MODEL, as the consts it \
          summed.\n\
          ///\n\
          /// Emitted rather than retyped: `executor::arena` asserts that each \
@@ -1408,7 +1419,7 @@ fn main() {
              resolved `NROS_PUBSUB_QOS_DEPTH`, which defaults to `QOS_DEPTH` \
              when nothing states one.\n    \
              pub const BUDGETED_QOS_DEPTH: u32 = {budgeted_qos_depth};\n    \
-             /// issue 1319 -- the per-slot receive size the pub/sub term was \
+             /// The per-slot receive size the pub/sub term was \
              priced at.\n    \
              ///\n    \
              /// The image-wide SUBSCRIBED class, unless this image's sizing \
@@ -1431,12 +1442,12 @@ fn main() {
              pub const SERVICE_ENTRY: usize = {service_entry};\n    \
              /// Whole modelled cost of one timer slot.\n    \
              pub const TIMER_ENTRY: usize = {timer_entry};\n    \
-             /// Issue 0810 -- the per-slot BUDGET of an UNDECLARED image \
+             /// The per-slot BUDGET of an UNDECLARED image \
              (`NROS_EXECUTOR_ACTION_CLIENTS` slots are priced at it). Held \
              above every per-kind term by a test.\n    \
              pub const WORST_SLOT_ENTRY: usize = {worst_slot_entry};\n    \
-             /// Whole modelled cost of one DECLARED action client (issue 0810: \
-             its own term, no longer the worst case).\n    \
+             /// Whole modelled cost of one DECLARED action client (its own \
+             term, no longer the worst case).\n    \
              pub const ACTION_CLIENT_ENTRY: usize = {action_client_entry};\n    \
              /// Whole modelled cost of one declared action server.\n    \
              pub const ACTION_SERVER_ENTRY: usize = {action_server_entry};\n    \
@@ -1455,9 +1466,9 @@ fn main() {
              pub const BASE_OVERHEAD: usize = {arena_base_overhead};\n    \
              /// Smallest arena the derivation produces where the demand is \
              unknown (nothing declared); a declared image's arena is its \
-             model, unfloored (issue 1971).\n    \
+             model, unfloored.\n    \
              pub const FLOOR: usize = {arena_floor};\n    \
-             /// phase-412 #4 -- what the entities this image DECLARES are \
+             /// What the entities this image DECLARES are \
              modelled to need, before the floor. `0` when it declared \
              nothing, so the derivation budgeted a worst case and there is no \
              requirement to hold an arena to. Read by `executor::arena_oracle`.\n    \
@@ -1573,10 +1584,11 @@ fn emit_executor_backing(out_dir: &str) {
         // No item at all, and no cfg: `backing::take` is then a `None` stub and
         // the crate carries no reservation. The file still has to EXIST because
         // `include!` is unconditional at the module's top level.
+        // The emitted comment's rule is phase-392 W6's.
         std::fs::write(
             Path::new(out_dir).join("nros_executor_backing.rs"),
             "// NROS_EXECUTOR_BACKING_U64S=0 -- no static reservation; the alloc\n\
-             // convenience constructors leak from the heap (phase-392 W6).\n",
+             // convenience constructors leak from the heap.\n",
         )
         .unwrap();
         return;
@@ -1741,11 +1753,13 @@ fn boot_record_knobs() -> String {
     // Issue 1550 -- the DOMAIN's value is stamped at boot from what the
     // resolver used; only its rung is a build fact.
     let domain_source = knob_source_code("NROS_DOMAIN_ID");
+    // Emitted rustdoc carries no ids (issue 2551): BOOT_RMW_LOCAL_QUERYABLE
+    // is issue 1549's, BOOT_DOMAIN_SOURCE issue 1550's.
     format!(
-        "\n/// Issue 1549 -- `Z_FEATURE_LOCAL_QUERYABLE` for the boot record: bits \
+        "\n/// `Z_FEATURE_LOCAL_QUERYABLE` for the boot record: bits \
          0..7 the value, bits 8..15 the `boot_report::KnobSource`.\n\
          pub const BOOT_RMW_LOCAL_QUERYABLE: u32 = {lq};\n\
-         \n/// Issue 1550 -- the `boot_report::KnobSource` of the baked domain \
+         \n/// The `boot_report::KnobSource` of the baked domain \
          (which Kconfig fragment stated `CONFIG_NROS_DOMAIN_ID`), 0 when no \
          configure recorded one.\n\
          pub const BOOT_DOMAIN_SOURCE: u32 = {domain_source};\n"

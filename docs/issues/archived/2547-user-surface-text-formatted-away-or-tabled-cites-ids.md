@@ -167,4 +167,4 @@ message macros and wrapper macros, and generated-file headers. The sweep in
 the same change took the 126 ids those readings found (and 54 more the
 readings still miss, in the same files) to zero. What the readings cannot
 see is stated as the checker's gaps above, and is tracked as
-[issue 2551](../2551-user-surface-text-beyond-function-flow-cites-ids.md), with a gate plan.
+[issue 2551](2551-user-surface-text-beyond-function-flow-cites-ids.md), with a gate plan (resolved).

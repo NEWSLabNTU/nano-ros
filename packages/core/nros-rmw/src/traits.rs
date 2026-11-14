@@ -1320,7 +1320,9 @@ qos_profiles! {
     // sentinel: F2's fourth instance, sitting inside the fix for F2's third.
     // The one row the instrument does not reach is the one that kept the
     // defect.
-    QOS_PROFILE_CLOCK: "nros: mirrors rclrs::QOS_PROFILE_CLOCK; no rmw constant exists, so the gate cannot bind it — phase-428 W4" = {
+    // The provenance renders as this const's rustdoc, so its id lives here:
+    // phase-428 W4.
+    QOS_PROFILE_CLOCK: "nros: mirrors rclrs::QOS_PROFILE_CLOCK; no rmw constant exists, so the gate cannot bind it" = {
         history: KeepLast,
         depth: 1,
         reliability: BestEffort,
