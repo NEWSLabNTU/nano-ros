@@ -52,6 +52,13 @@ push_remote="${1:-origin}"
 
 [ -x "$check" ] || exit 0
 
+# A ref line whose LOCAL sha is all zeros DELETES the remote ref (issue 2583):
+# `git push --delete <ref>` publishes no commit, so there is no tree, no pin
+# and no issue file to check, and the sha is not a commit any check can read.
+# Every loop below asks this one predicate before treating `<local-sha>` as a
+# commit; an empty field counts as zero.
+nros_prepush_deletes() { case "${1:-}" in *[!0]*) return 1 ;; *) return 0 ;; esac; }
+
 # Guard BRANCH pushes only.
 #
 # git feeds us `<local-ref> <local-sha> <remote-ref> <remote-sha>` per ref. An
@@ -70,8 +77,10 @@ trap 'rm -f "$hook_stdin"' EXIT
 cat > "$hook_stdin"
 
 guard=0
-while read -r _local_ref _local_sha remote_ref _remote_sha; do
+while read -r _local_ref local_sha remote_ref _remote_sha; do
     [ -z "${remote_ref:-}" ] && continue
+    # A branch DELETION publishes nothing, so it arms none of the checks.
+    nros_prepush_deletes "$local_sha" && continue
     case "$remote_ref" in
         refs/heads/*) guard=1 ;;
     esac
@@ -142,7 +151,8 @@ if [ -x "$pins" ]; then
         case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
         # All-zero remote sha = a new branch; nothing on the remote to regress.
         case "$remote_sha" in *[!0]*) ;; *) continue ;; esac
-        [ -n "$local_sha" ] || continue
+        # All-zero LOCAL sha = a deletion; no pin is published.
+        nros_prepush_deletes "$local_sha" && continue
         if ! out="$("$pins" "$remote_sha" "$local_sha" 2>&1)"; then
             printf '%s\n' "$out" >&2
             echo "" >&2
@@ -175,7 +185,8 @@ if [ -x "$reach" ]; then
         remote_sha="${4:-}"
         local_sha="${2:-}"
         case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
-        [ -n "$local_sha" ] || continue
+        # A deletion publishes no pin; there is nothing to reach.
+        nros_prepush_deletes "$local_sha" && continue
         # A NEW branch (all-zero remote sha) has no baseline to diff against,
         # so check every pin rather than skipping — a new branch is exactly
         # where a fresh, unpushed submodule commit tends to arrive.
