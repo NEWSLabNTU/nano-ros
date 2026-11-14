@@ -483,7 +483,7 @@ its peak; `nros new` stamps the bind floor.
 
 ### W7b — The bound walk closes three holes in what it binds
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-14, #3799)
 
 **Why.** Review of W7's `bind` found three ways a site could reach a target
 the walk never charged it with. Each makes the static walk LOWER than the
