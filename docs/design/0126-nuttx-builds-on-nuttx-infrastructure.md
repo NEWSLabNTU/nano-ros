@@ -77,7 +77,7 @@ manager session.
 | 1 | Yes. A make app may NAME a project, for its configuration and its sizing. | D3 |
 | 2 | **A2.** The app declares itself in its own `Make.defs`: `NROS_PROJECTS += $(APPDIR)/external/<app>`, with an optional `NROS_IMAGE := <id>`. No path goes in a defconfig. A guest (no `NROS_PROJECTS`) is unchanged by construction. More than one project is refused, naming them. | D3 |
 | 4 | When a project is named, a Kconfig RMW, edition or API flavor that differs from the image's is refused, not overridden or merged. | D3 |
-| 6 | Yes. A make-app project declares its entities (`entities = [...]` or `"defaults"`). A make census is a separate issue. | D3 |
+| 6 | Yes. A make-app project declares its entities (`entities = [...]` or `"defaults"`). A make census is a separate issue. **Amended 2026-11-14 (user ruling):** a declaration is required only where the build-time probe cannot run, which is the guest make road. Wherever the probe runs, its count is used and no declaration is required; a declaration there must agree with the probe or is refused, so there are never two sources that can drift. | D3 |
 | 7 | The make road counts as HOOKED in RFC-0120 D5's sense when it names a project, and D5's NuttX row and phase-530 R36 are amended to match. | D3 |
 | 8 | No. The guest road gets no Kconfig knob prompts: that would be a second carrier beside Q3's file. | D2 |
 | 10 | **One road for nano-ros packages:** the unified ROS-CMake road (RFC-0130 D7), building against NuttX's exported make tree. The leaf and workspace roads become that one road. The `apps/external` make app is a GUEST road (nano-ros entering a NuttX user's own tree), not a second way to build a nano-ros package. | D4 |
@@ -116,6 +116,14 @@ shell's `context::` recipe, never at parse time; the cargo command carries
 the kernel tree (`NUTTX_DIR=$(TOPDIR)`) and the cross names from
 `$(CROSSDEV)`. Decided: Q1 (a make app may name a project), Q2 (A2, the
 app's own `Make.defs`), Q4, Q6 (declared entities) and Q7.
+
+**Entities have one source per road (Q6 as amended 2026-11-14).** Where the
+build-time metadata probe runs, its count is the image's entity count, and
+no hand declaration is required. Where it cannot run, which is the guest make
+road (nano-ros inside a NuttX user's own tree, with no project named), the
+app declares its entities (`entities = [...]` or `"defaults"`). A
+declaration on a road the probe reaches is not a second source: it must
+agree with the probe, and a disagreement is refused, naming both values.
 
 ### D4 -- Which roads exist
 
@@ -183,6 +191,11 @@ configured.
 None: every question in issue 2236 is ruled (see "Decided").
 
 ## Changelog
+
+- 2026-11-14 -- Q6 amended (user ruling): entities are declared only where
+  the probe cannot run (the guest make road); elsewhere the probe's count is
+  used, and a declaration must agree with it or is refused. Implemented by
+  phase-550 W15.
 
 - 2026-11-12 -- all twenty questions ruled, in two steps: the settled group
   first (with Q10 and Q16 briefly held for RFC-0130), then the rest. D4 is

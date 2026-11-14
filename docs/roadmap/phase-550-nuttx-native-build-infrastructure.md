@@ -656,11 +656,42 @@ Kept here as a pointer only.
 - **Acceptance:** no tracked `[patch.crates-io] libc` row; the SDK index has
   no `nuttx-libc` source; both arches' fixtures pass.
 
+### W15 -- Entities have one source per road (Q6 amended)
+
+User ruling, 2026-11-14 (RFC-0126 Q6 and D3, amended). W6c made every
+`[[component]]` of a named make-app project declare `entities`, unless
+`[system] entities = "defaults"`. The ruling narrows that:
+
+- **Where the probe cannot run** (the guest make road), the app declares its
+  entities, as W6c requires today.
+- **Where the probe runs**, its count is used and no declaration is required.
+- **A declaration on a probed road** must agree with the probe, or the build
+  is refused, naming the file, the declared value and the probed one. Two
+  sources that can drift are never both accepted.
+
+Work:
+
+- Find which roads run the probe for a NuttX image (the workspace and leaf
+  roads, and the make road when a project is named and `nros configure`
+  runs in it), and which cannot (the guest make road).
+- Drop W6c's declare-every-component check from the probed roads, and keep
+  it for the guest road.
+- Add the agree-or-refuse comparison wherever both a declaration and a probe
+  count exist, in one place shared by every road.
+
+- Gate: phase-561 has landed (the manager's ordering, 2026-11-14).
+- **Acceptance:** a unit test for each case: probed with no declaration,
+  probed with an agreeing declaration, probed with a disagreeing one
+  (refused, naming both values), and guest without a declaration (refused,
+  as today). The make road's arm project case builds with its declaration
+  removed.
+- **Status:** OPEN.
+
 ## Order
 
 W0 is done. W1 lands first so the rest have a verdict. Then W5, W7, W6 in
 that order; W3, W4, W8 to W11 in any order; W13 after RFC-0130's D7 lands.
-W14 is a separate phase.
+W14 is a separate phase. W15 follows phase-561.
 
 ## What this phase does not do
 
