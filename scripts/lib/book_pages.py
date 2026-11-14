@@ -68,9 +68,16 @@ GROUPS = {
             ("deploy", "Deploy and debug"),
             ("port", "Port from ROS 2"),
         ],
-        # RFC-0124 Appendix A: Reference keeps its feature matrices together.
+        # RFC-0124 Appendix A: Reference in groups by what a reader looks up.
+        # The feature matrices group by directory; the others are named by
+        # each page's `sidebar_group`, so their pages keep their URLs.
         "reference": [
+            ("config", "Configuration"),
+            ("api", "APIs"),
+            ("build", "Build and run"),
+            ("boards", "Boards and support"),
             ("matrices", "Feature matrices"),
+            ("troubleshooting", "Troubleshooting"),
         ],
     },
     "internals": {},
@@ -108,6 +115,9 @@ class Page:
     generated: str | None = None
     note: str | None = None
     was: tuple[str, ...] = ()  # later user-book paths it left, oldest first
+    # The sidebar group of a page that sits in its part's top directory (a
+    # GROUPS name of that part), when the group is not a directory.
+    sidebar_group: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "was", tuple(self.was or ()))
@@ -121,9 +131,12 @@ class Page:
 
     @property
     def group(self) -> str | None:
-        """The User guide group directory (`guide/<group>/page.md`), if any."""
+        """The page's sidebar group: its `sidebar_group`, else the group
+        directory it sits in (`guide/<group>/page.md`), if any."""
         bits = self.path.split("/")
         names = {g for g, _ in GROUPS.get(self.book, {}).get(bits[0], [])}
+        if self.sidebar_group:
+            return self.sidebar_group if self.sidebar_group in names else None
         return bits[1] if len(bits) > 2 and bits[1] in names else None
 
     @property
@@ -398,6 +411,12 @@ def check(pages: list[Page]) -> list[str]:
             if f in seen_old:
                 errs.append(f"{f}: two rows")
             seen_old.add(f)
+        if p.sidebar_group:
+            part = p.path.split("/")[0]
+            names = {g for g, _ in GROUPS.get(p.book, {}).get(part, [])}
+            if p.sidebar_group not in names:
+                errs.append(f"{p.path}: sidebar_group {p.sidebar_group!r} is not a group "
+                            f"of {part}/ (known: {sorted(names)})")
         if p.was and not p.old:
             errs.append(f"{p.path}: `was` needs an `old` path")
         if p.verb == "merge-into":

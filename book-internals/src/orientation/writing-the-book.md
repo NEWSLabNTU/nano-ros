@@ -195,12 +195,15 @@ keeps one page per code out of the Rust books.
   nano-ros carries, Diagnostic codes.
 - **No page that is one table or one paragraph.** It is a section of the page
   it belongs to (checklist item 15: under 300 words merges into its parent).
-- **Shallow.** At most two levels under a section: a group page, then its
-  pages. A group is a real page that says what each child is for, never an
-  empty `[Group]()` heading.
-- **Short groups.** About a dozen entries per section at most. Past that,
-  group related pages under a landing page; a group of three or more pages
-  gets one.
+- **Shallow.** At most two levels under a section: a group, then its pages.
+  A group is a heading the page map names (`GROUPS` in
+  `scripts/lib/book_pages.py`), from the page's directory or its
+  `sidebar_group` row key, so grouping never moves a page or changes its
+  URL. `SUMMARY.md` is generated (`scripts/book-move.py --summary`); never
+  type a group into it.
+- **Short groups.** About a dozen entries per section or group at most. Past
+  that, group related pages. A group whose pages need orientation gets a
+  landing page saying what each is for.
 - **Titles by type.** Tutorial and how-to titles are verb phrases ("Add a
   board"); reference and explanation titles are noun phrases ("Diagnostic
   codes"). Siblings follow one pattern. No package name, code or internal id

@@ -861,6 +861,7 @@ action = "new phase-537"
 batch = "p537-w11"
 generated = "scripts/gen-contract-format.py"
 note = "Contract format reference (W11, RFC-0124 D6): committed, rendered from ros-launch-manifest's format reference at the tag the CLI pins; the gate re-renders it from cargo's checkout of that commit"
+sidebar_group = "config"
 
 [[page]]
 old = "reference/cli.md"
@@ -870,6 +871,7 @@ action = "keep"
 batch = "w4-reference"
 generated = "scripts/gen-cli-reference.py"
 note = "CLI (W11, D7): committed, generated from the in-tree CLI's --help of every user-tier command. The hand prose it replaced went to the pages that explain each verb: nros px4 msgs to guide/platforms/px4, nros router config to guide/rmw/configure-zenoh, extension-command lookup to extending/overview; the rest was the help's own text or already on a how-to page"
+sidebar_group = "build"
 
 [[page]]
 old = "reference/configuration-surface.md"
@@ -879,6 +881,7 @@ action = "keep"
 batch = "w4-reference"
 generated = "scripts/gen-config-surface.py"
 note = "gitignored; written by `just book` before mdbook"
+sidebar_group = "config"
 
 [[page]]
 book = "user"
@@ -886,6 +889,7 @@ path = "reference/system-toml.md"
 action = "new phase-537"
 batch = "p537-w8"
 note = "system.toml keys: hand-kept, because the CLI's schema (ImageBlock's serde struct) documents its keys for contributors, not users; scripts/check-system-toml-keys.py holds the [image.<id>] table's key set to the struct both ways (W11). W8 moved the key tables of guide/build/configure-an-image and build/roles here; W11 folded reference/nros-bridge-toml in as its nros-bridge.toml section"
+sidebar_group = "config"
 
 [[page]]
 old = "reference/nros-bridge-toml.md"
@@ -901,6 +905,7 @@ book = "user"
 path = "reference/environment-variables.md"
 action = "keep"
 batch = "w4-reference"
+sidebar_group = "config"
 
 [[page]]
 old = "reference/rust-api.md"
@@ -908,6 +913,7 @@ book = "user"
 path = "reference/rust-api.md"
 action = "keep"
 batch = "w4-reference"
+sidebar_group = "api"
 
 [[page]]
 old = "reference/c-api.md"
@@ -915,6 +921,7 @@ book = "user"
 path = "reference/c-api.md"
 action = "keep"
 batch = "w4-reference"
+sidebar_group = "api"
 
 [[page]]
 old = "reference/cpp-api.md"
@@ -923,6 +930,7 @@ path = "reference/cpp-api.md"
 action = "keep"
 batch = "w4-reference"
 note = "C++ API landing page (W11): what the API is, how to read the Doxygen site, links into it. Its lookup tables went to reference/rclcpp-compatibility, its Zephyr section to guide/platforms/zephyr (C++ applications); its Core API walkthrough and error-code table were cut for the Doxygen pages that document the same members"
+sidebar_group = "api"
 
 [[page]]
 book = "user"
@@ -930,6 +938,7 @@ path = "reference/rclcpp-compatibility.md"
 action = "new phase-537"
 batch = "p537-w11"
 note = "rclcpp compatibility (W11): the lookup tables of reference/cpp-api (the rclcpp surface table; the hosted surface and NROS_CPP_STD; the hosted-only shapes; action client futures; parameters and /parameter_events). Its measured ros2/examples table is rendered from the nros-cpp edits.json by scripts/gen-rclcpp-examples-table.py"
+sidebar_group = "api"
 
 [[page]]
 old = "reference/platform-api.md"
@@ -938,6 +947,7 @@ path = "reference/platform-api.md"
 action = "keep"
 batch = "w4-reference"
 note = "Platform API and C ABI (W11): reference/platform-c-abi merged in"
+sidebar_group = "api"
 
 [[page]]
 old = "internals/platform-c-abi.md"
@@ -964,6 +974,7 @@ action = "move"
 batch = "p537-w1-reference"
 was = ["build/message-generation.md"]
 note = "Message generation: W5 took its tutorial part (the Workflow steps) into Tutorial 5; the rest is reference"
+sidebar_group = "build"
 
 [[page]]
 old = "user-guide/build-artifacts.md"
@@ -973,6 +984,7 @@ action = "move"
 batch = "p537-w1-reference"
 was = ["build/build-artifacts.md"]
 note = "Build outputs"
+sidebar_group = "build"
 
 [[page]]
 old = "reference/supported-boards.md"
@@ -981,6 +993,7 @@ path = "reference/supported-boards.md"
 action = "keep"
 batch = "w4-reference"
 generated = "scripts/gen-board-support.py"
+sidebar_group = "boards"
 
 [[page]]
 old = "reference/support-status.md"
@@ -989,6 +1002,7 @@ path = "reference/support-status.md"
 action = "keep"
 batch = "w4-reference"
 generated = "scripts/gen-support-status.py"
+sidebar_group = "boards"
 
 [[page]]
 old = "reference/rmw-feature-matrix.md"
@@ -1022,6 +1036,7 @@ action = "keep"
 batch = "w4-reference"
 generated = "scripts/gen-pool-inventory.py"
 note = "gitignored; written by `just book` before mdbook"
+sidebar_group = "build"
 
 [[page]]
 old = "getting-started/troubleshooting-first-10-min.md"
@@ -1031,6 +1046,7 @@ action = "move"
 batch = "p537-w1-reference"
 was = ["get-started/first-10-minutes.md"]
 note = "Troubleshooting index (W11)"
+sidebar_group = "troubleshooting"
 
 [[page]]
 book = "user"
@@ -1039,6 +1055,7 @@ action = "new phase-552"
 batch = "p552-w3"
 generated = "packages/tooling/nros-diagnostic-codes"
 note = "Diagnostic codes: GENERATED by nros-diagnostics-gen from the nros-diagnostic-codes crate; one page, an index and a section per code"
+sidebar_group = "troubleshooting"
 
 [[page]]
 book = "user"
@@ -1054,6 +1071,7 @@ path = "reference/board-support-levels.md"
 action = "keep"
 batch = "w4-reference"
 generated = "scripts/gen-board-support.py"
+sidebar_group = "boards"
 
 [[page]]
 old = "reference/boards/freertos-posix.md"

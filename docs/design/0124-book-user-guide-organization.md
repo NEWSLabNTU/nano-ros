@@ -591,15 +591,20 @@ no current source.
    The client library              ← concepts/client-library
    Safety                          ← realtime/safety-protocol
    How nano-ros differs from ROS 2 and micro-ROS ← from-ros2/differences, from-ros2/vs-micro-ros
-6. Reference
-   Contract format (generated, D6) · CLI (generated, D7; ← reference/cli) ·
-   system.toml keys (← reference/configuration-surface, build/configuration reference part, reference/nros-bridge-toml) ·
-   Environment variables · Rust / C / C++ APIs (landing pages to rustdoc and Doxygen) ·
-   Platform and RMW APIs (← reference/platform-api, extending/platform-c-abi, reference/rmw-api: under the D9 floor, merged by phase-537 W13) ·
-   Message generation (← build/message-generation, reference part) · Build outputs (← build/build-artifacts) ·
-   Supported boards and support levels (generated; + the board pages) ·
-   Feature matrices (← reference/rmw-feature-matrix, sched-matrix, platform-differences) ·
-   Static pool inventory (generated) · Troubleshooting index (← get-started/first-10-minutes) · Glossary (**new**)
+6. Reference  (loose pages, then groups; a list of like things is one page, a section per item)
+   Glossary (**new**) · Third-party code · Forks nano-ros carries (generated, a section per fork)
+   Configuration: Contract format (generated, D6) · Configuration surface (generated) ·
+     system.toml keys (← reference/configuration-surface, build/configuration reference part, reference/nros-bridge-toml) ·
+     Environment variables
+   APIs: Rust / C / C++ APIs (landing pages to rustdoc and Doxygen) · rclcpp compatibility ·
+     Platform and RMW APIs (← reference/platform-api, extending/platform-c-abi, reference/rmw-api: under the D9 floor, merged by phase-537 W13)
+   Build and run: CLI (generated, D7; ← reference/cli) · Message generation (← build/message-generation, reference part) ·
+     Build outputs (← build/build-artifacts) · Static pool inventory (generated)
+   Boards and support: Supported boards · Support status (generated) ·
+     Board support levels (generated; a section per board, folded from the per-board pages)
+   Feature matrices (← reference/rmw-feature-matrix, sched-matrix, platform-differences)
+   Troubleshooting: Troubleshooting index (← get-started/first-10-minutes) ·
+     Diagnostic codes (generated, RFC-0129; a section per code)
 7. Extending nano-ros
    Add a board (← extending/{custom-board,vendor-overlay,board-crate-import,freertos-board,
      stm32f4-out-of-tree,adding-a-board-to-the-registry,board-integration,board-trait}) ·
@@ -618,6 +623,14 @@ with no stubs, no page over 3,000 words outside Reference, and one page per
 task for every language.
 
 ## Changelog
+
+- 2026-11-15 - Appendix A, Reference (user ruling 2026-11-14): grouped by what
+  a reader looks up (Configuration, APIs, Build and run, Boards and support,
+  Feature matrices, Troubleshooting), since 25 loose entries were too many to
+  scan. A group is named by each page's `sidebar_group` in the page map, so
+  no page moves and no URL changes. Lists of like things (boards, forks,
+  diagnostic codes) are one page each, a section per item; the per-board
+  pages D8 and D12 refer to are now those sections, with redirects.
 
 - 2026-11-14 - phase-555 W3: Scope note added (ruling D1: this RFC owns the
   user book, RFC-0123 the split, Internals and publishing; both stay).
