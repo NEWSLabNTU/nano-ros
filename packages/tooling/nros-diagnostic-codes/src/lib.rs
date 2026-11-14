@@ -1,6 +1,6 @@
 //! The one list of nano-ros diagnostic codes (RFC-0129).
 //!
-//! Every refusal a user can meet is declared once, in [`codes`], through the
+//! Every refusal a user can meet is declared once, in the private `codes` module, through the
 //! [`diagnostics!`] macro. A declaration yields:
 //!
 //! * a variant of [`Diag`], whose discriminant is the code's number, so a
