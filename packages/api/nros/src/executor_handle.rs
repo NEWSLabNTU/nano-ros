@@ -100,10 +100,11 @@ pub(crate) unsafe fn executor_from_handle<'a>(
         Ok(()) => Ok(unsafe { &mut *(handle as *mut nros_node::Executor<'static>) }),
         Err(refusal) => {
             if refusal == HandleRefusal::CppContext {
+                // issue 1535
                 nros_log::log_error!(
                     nros_log::get_logger("nros.executor_handle"),
                     "{}: handed an nros-cpp executor CONTEXT where an Executor was expected; a \
-                     C/C++ caller must pass nros_cpp_executor_inner(handle) (issue 1535)",
+                     C/C++ caller must pass nros_cpp_executor_inner(handle)",
                     seam
                 );
             }

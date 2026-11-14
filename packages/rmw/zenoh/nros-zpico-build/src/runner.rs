@@ -454,18 +454,18 @@ fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
         return;
     }
     if requested < sizing.floor {
+        // issue 0460; phase-392 W5.f, phase-426 W3, phase-455 W5
         panic!(
-            // issue 0460.
             "NROS_ZENOH_MAX_QUERYABLES={requested} is below this image's DERIVED floor of \
-             {} (phase-392 W5.f).\n  \
+             {}.\n  \
              A service server IS a zenoh queryable. This image declares the \
              infrastructure services and application service servers that claim those \
              slots at boot, so a smaller table cannot start — it fails with \
              `ServiceServerCreationFailed` and no explanation.\n  \
-             The ROS parameter services are registered once PER NODE (phase-426 W3), \
+             The ROS parameter services are registered once PER NODE, \
              so a {}-node image carrying them claims {} slots for those alone.\n  \
-             {} of the floor is TRANSIENT_LOCAL PUBLISHERS, not service servers \
-             (phase-455 W5): such a publisher retains its last sample and declares a \
+             {} of the floor is TRANSIENT_LOCAL PUBLISHERS, not service servers: such \
+             a publisher retains its last sample and declares a \
              cache queryable to serve it to a late joiner, and an action server has \
              one for its `/status` whether or not anything declared it. Counting \
              service servers alone comes up short by exactly that.\n  \
@@ -478,11 +478,12 @@ fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
         );
     }
     if requested < sizing.default {
+        // phase-392 W5.f
         println!(
             "cargo:warning=NROS_ZENOH_MAX_QUERYABLES={requested} is under the budgeted {} \
              ({} provably claimed at boot, plus {} of headroom for application service \
              servers the model does not describe). It will boot; an application \
-             declaring more than {} service servers will not (phase-392 W5.f).",
+             declaring more than {} service servers will not.",
             sizing.default,
             sizing.floor,
             sizing.default - sizing.floor,
@@ -664,10 +665,11 @@ fn queryable_default_from(
             // A malformed declaration must not silently become "undeclared":
             // that is the `.max(1)` shape issue 0827 measured, where a value
             // reads as applied and is not.
+            // phase-392 W5
             Err(_) => panic!(
                 "the declared service-server count {v:?} is not a count. It is the \
                  number of service servers the entry declares, from the sizing \
-                 descriptor's `[image] service_server_queryables` (phase-392 W5)."
+                 descriptor's `[image] service_server_queryables`."
             ),
         },
         // phase-392 W5.b1 — the model answered the INFRASTRUCTURE half and not
@@ -1891,10 +1893,11 @@ pub fn run() {
 
     // Check if zenoh-pico submodule is present (not needed with system-zenohpico)
     if !use_system && !zenoh_pico_src.join("include").exists() {
+        // #0390
         panic!(
             "zenoh-pico source not provisioned at {:?}. Run: nros setup --source \
              zenoh-pico (or git submodule update --init \
-             packages/rmw/zenoh/zpico-sys/zenoh-pico). — #0390",
+             packages/rmw/zenoh/zpico-sys/zenoh-pico).",
             zenoh_pico_src
         );
     }
@@ -3544,9 +3547,10 @@ fn build_zenoh_pico_unified(
                 let mbedtls_include = mbedtls_dir.join("include");
                 let mbedtls_library = mbedtls_dir.join("library");
                 if !mbedtls_include.exists() {
+                    // #0390
                     panic!(
                         "mbedTLS source not provisioned at {:?}. Run: nros setup \
-                         --source mbedtls (or git submodule update --init). — #0390",
+                         --source mbedtls (or git submodule update --init).",
                         mbedtls_include
                     );
                 }

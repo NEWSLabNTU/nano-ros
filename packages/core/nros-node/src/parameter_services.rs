@@ -1692,22 +1692,23 @@ impl ParameterServiceServers {
         let fqn = self.fqn.as_str();
         let svc = service.suffix();
         match kind {
+            // issue 1271
             ParamServiceFailure::Malformed => nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "parameter service {}/{}: a request was dropped with no reply -- it did not \
                  deserialize. A name-list request may carry at most {} names and {}-byte \
-                 strings (fixed wire caps). The client times out. Logged once for this service \
-                 (issue 1271).",
+                 strings (fixed wire caps). The client times out. Logged once for this service.",
                 fqn,
                 svc,
                 WIRE_SEQ_CAP,
                 WIRE_STRING_CAP
             ),
+            // issue 1271
             ParamServiceFailure::RequestTooLarge => nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "parameter service {}/{}: a request was dropped with no reply -- it is larger \
                  than the {}-byte request buffer. Raise NROS_PARAM_SERVICE_BUFFER_SIZE.{} The \
-                 client times out. Logged once for this service (issue 1271).",
+                 client times out. Logged once for this service.",
                 fqn,
                 svc,
                 cap,
@@ -1718,13 +1719,14 @@ impl ParameterServiceServers {
             // phase-461 W4 -- with the request's length when the backend kept
             // it (zenoh does), so the line carries both numbers a reader needs:
             // what arrived, and the knob that sizes the inbox it did not fit.
+            // issues 1352, 1722
             ParamServiceFailure::InboxOverflow => match request_len {
                 Some(len) => nros_log::log_error!(
                     nros_log::get_logger("nros"),
                     "param service {}/{}: a {} B request dropped by the TRANSPORT inbox (not \
                      the {} B executor buffer). NROS_PARAM_SERVICE_INBOX_BYTES; zenoh also \
                      NROS_SERVICE_INBOX_BYTES, xrce NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE; \
-                     or declare `params:` (issues 1352, 1722)",
+                     or declare `params:`",
                     fqn,
                     svc,
                     len,
@@ -1735,27 +1737,29 @@ impl ParameterServiceServers {
                     "param service {}/{}: request dropped by the TRANSPORT inbox (not the {} \
                      B executor buffer). NROS_PARAM_SERVICE_INBOX_BYTES; zenoh also \
                      NROS_SERVICE_INBOX_BYTES, xrce NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE; or \
-                     declare `params:` (issues 1352, 1722)",
+                     declare `params:`",
                     fqn,
                     svc,
                     cap
                 ),
             },
+            // issue 1271
             ParamServiceFailure::ReplyTooLarge => nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "parameter service {}/{}: a request was dropped with no reply -- the reply does \
                  not fit the {}-byte reply buffer. Raise NROS_PARAM_SERVICE_BUFFER_SIZE, or ask \
                  for fewer parameters per call.{} The client times out. Logged once for this \
-                 service (issue 1271).",
+                 service.",
                 fqn,
                 svc,
                 cap,
                 param_service_buffer_origin()
             ),
+            // issue 1271
             ParamServiceFailure::Transport => nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "parameter service {}/{}: a request was dropped with no reply -- the transport \
-                 failed ({:?}). Logged once for this service (issue 1271).",
+                 failed ({:?}). Logged once for this service.",
                 fqn,
                 svc,
                 e
@@ -1778,12 +1782,13 @@ impl ParameterServiceServers {
             return;
         }
         self.reported |= bit;
+        // issue 1271
         nros_log::log_warn!(
             nros_log::get_logger("nros"),
             "parameter service {}/list_parameters: the reply was cut to {} names / {} prefixes \
              -- more matched than an rcl_interfaces ListParametersResult holds, and the message \
              has no field to say so. Ask with a narrower prefix or depth. Logged once for this \
-             service (issue 1271).",
+             service.",
             self.fqn.as_str(),
             WIRE_SEQ_CAP,
             WIRE_SEQ_CAP

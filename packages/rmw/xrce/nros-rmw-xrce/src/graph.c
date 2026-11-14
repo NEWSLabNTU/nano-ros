@@ -237,10 +237,11 @@ void xrce_graph_open(xrce_session_state_t* st) {
     }
     xrce_graph* g = &st->graph;
     if (!graph_probe(st)) {
+        // issue 1292
         graph_log(XRCE_LOG_ERROR,
                   "ros_discovery_info is OFF for this session: the GUID probe got no answer "
                   "from the Agent, so this image's endpoint GIDs are unknown. Data still "
-                  "flows; `ros2 node list` will not show this image's nodes (issue 1292).");
+                  "flows; `ros2 node list` will not show this image's nodes.");
         return;
     }
 
@@ -266,10 +267,11 @@ void xrce_graph_open(xrce_session_state_t* st) {
     uint32_t unused_key = 0;
     (void)xrce_graph_claim(st, 1, ok, &unused_key);
     if (!ok) {
+        // issue 1292
         graph_log(XRCE_LOG_ERROR,
                   "ros_discovery_info is OFF for this session: the Agent refused its "
                   "DataWriter. Data still flows; `ros2 node list` will not show this "
-                  "image's nodes (issue 1292).");
+                  "image's nodes.");
         return;
     }
     g->writer_oid = dw_oid;
@@ -312,11 +314,11 @@ void xrce_graph_ensure_counter(xrce_session_state_t* st) {
     }
     if (!graph_probe(st)) {
         st->graph.active = false;
+        // issue 1292
         graph_log(XRCE_LOG_ERROR,
                   "ros_discovery_info stopped updating: an endpoint create failed, so the "
                   "Agent's endpoint numbering had to be re-read, and the GUID probe got no "
-                  "answer. Endpoints created from here on are not attributed to a node "
-                  "(issue 1292).");
+                  "answer. Endpoints created from here on are not attributed to a node.");
     }
 }
 
@@ -595,10 +597,11 @@ void xrce_graph_flush(xrce_session_state_t* st) {
      * sample that can never fit. */
     if (!g->warned_too_large) {
         char msg[256];
+        // issue 1292
         (void)snprintf(msg, sizeof(msg),
                        "ros_discovery_info sample (%lu bytes) did not fit one XRCE stream "
                        "slot; raise NROS_XRCE_TRANSPORT_MTU (or NROS_XRCE_CUSTOM_TRANSPORT_MTU). "
-                       "Nodes created since are not listed by `ros2 node list` (issue 1292).",
+                       "Nodes created since are not listed by `ros2 node list`.",
                        (unsigned long)len);
         graph_log(XRCE_LOG_ERROR, msg);
         g->warned_too_large = true;
@@ -771,10 +774,11 @@ bool xrce_graph_on_topic(xrce_session_state_t* st, uxrObjectId object_id, struct
     }
     nros_xrce_free(buf);
     if (st->graph.peers_overflowed && !st->graph.warned_overflow) {
+        // issue 2106
         graph_log(XRCE_LOG_ERROR,
                   "ros_discovery_info: a participant's node list did not fit "
                   "(XRCE_GRAPH_MAX_PEERS / XRCE_GRAPH_MAX_PEER_NODES); get_node_names answers "
-                  "ERROR rather than a short list (issue 2106).");
+                  "ERROR rather than a short list; raise those caps.");
         st->graph.warned_overflow = true;
     }
     return true;

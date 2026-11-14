@@ -1335,12 +1335,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 );
             }
             for s in &derived.shadowed {
+                // RFC-0079
                 eprintln!(
                     "nros::main!: authored priority wins — {} [priority]: \
                      `[tasks.{}]` authors priority {} for this board, so it wins; the \
                      contract's rank would have allocated {}. Remove every platform \
-                     sub-table from that sched task to have the priority allocated instead \
-                     (RFC-0079).",
+                     sub-table from that sched task to have the priority allocated instead.",
                     s.node, s.sched_task, s.authored, s.allocated
                 );
             }
@@ -4350,10 +4350,11 @@ fn zephyr_image_plan_for(
     }
     *track_env = true;
     let Some(path) = dotconfig.filter(|p| !p.is_empty()) else {
+        // issue 1537
         eprintln!(
             "nros::main!: note - no $DOTCONFIG, so the derived Zephyr sched task priorities \
              keep the Kconfig DEFAULTS projection (pool.app [5, 14]) and are NOT judged \
-             against any image; a west build sets it (issue 1537)"
+             against any image; a west build sets it"
         );
         return Ok(None);
     };

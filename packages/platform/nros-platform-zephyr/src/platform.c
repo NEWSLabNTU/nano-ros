@@ -381,6 +381,7 @@ void* nros_platform_alloc(size_t size) {
         k_spinlock_key_t shape_key = k_spin_lock(&nros_heap_lock);
         const int fragmented = nros_zephyr_heap_free_shape(size, &largest_free, &free_total);
         k_spin_unlock(&nros_heap_lock, shape_key);
+        // issue 1370
         printk("nros: HEAP EXHAUSTED (%s): request %zu bytes, arena %zu bytes, "
                "free %zu bytes, largest free block %zu bytes, caller %p\n"
                "      (addr2line -f -e zephyr.elf %p to name it; %s)\n",
@@ -389,7 +390,7 @@ void* nros_platform_alloc(size_t size) {
                fragmented ? "the bytes are free and no hole the size-class search "
                             "reaches holds the request (the largest may still exceed it: "
                             "TLSF skips the request's own class) -- a larger "
-                            "CONFIG_NROS_ZEPHYR_HEAP_SIZE only postpones this (issue 1370)"
+                            "CONFIG_NROS_ZEPHYR_HEAP_SIZE only postpones this"
                           : "raise CONFIG_NROS_ZEPHYR_HEAP_SIZE / NROS_ZEPHYR_HEAP_SIZE "
                             "only once you know what asked");
         nros_zephyr_heap_exhaustion_is_fatal(size, capacity);

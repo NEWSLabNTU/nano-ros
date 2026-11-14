@@ -55,6 +55,22 @@ Subjects, all checked on every run:
   value when a printer prints it. Gaps, stated: text built by a command other
   than a printer, a heredoc written to a file, a printer inside a quoted
   `$(…)` (read as its outer string), and scripts those run rather than source;
+* the RUNTIME LOG AND PANIC TEXT of a default image (issue 2443), in
+  `packages/{core,api,rmw,platform}` outside vendored, test, bench and example
+  trees, bindgen's `generated.rs` and build scripts: a Rust string literal
+  handed to a log, print or panic macro (`log::`/`defmt::`/bare
+  `trace!`..`error!`, nros_log's `log_*!`/`nros_*_throttle!`, `cpp_diag!`,
+  `println!`/`eprintln!`, `panic!`/`unreachable!`/`todo!`/`unimplemented!`,
+  `.expect(`, the message of an `assert*!`), directly or through `format!`;
+  a C/C++ string literal inside a `printf`/`fprintf`/`snprintf`/`puts`/
+  `printk`/`syslog`/`assert`, a Zephyr `LOG_*`, PX4, zenoh-pico `_Z_*`,
+  rclcpp/rclc or nros log macro, or a backend's own log helper. The
+  literal's innermost enclosing call decides, so a table entry, a compared
+  key or an assert's condition is data and is not read; Rust `#[cfg(test)]`
+  and `#[cfg(all(test, …))]` items are not read. Gaps, stated: text built away from its print
+  (`write!` into a `Display`, a message assembled and logged later),
+  compile-time text (`#error`, `static_assert`, `compile_error!`,
+  `#[deprecated]`), and calls the lists above do not name;
 * the output of `nros board list`, `nros board show <board>` for every board
   the list names, and `nros doctor --report`, which in addition may hold no
   tier number (`tier 1`, `tier 2`, `tier 3` — phase-522 W5).
@@ -728,6 +744,221 @@ def shell_hits() -> list[str]:
     return bad
 
 
+# --- runtime log and panic text ---------------------------------------------
+
+# Issue 2443, ruling A: what a default image prints at run time -- a log line,
+# a panic or assert message -- names what, where and how to fix, never an id.
+RUNTIME_DIRS = ["packages/core", "packages/api", "packages/rmw", "packages/platform"]
+RUNTIME_EXTS = (".rs", ".c", ".h", ".cpp", ".hpp", ".cc")
+# Not runtime text: vendored and test trees, bindgen output, and build scripts
+# (their panics and warnings are read above).
+RUNTIME_SKIP = re.compile(
+    r"/(third-party|vendor|vendored|tests?|testing|benches|examples|build)/"
+    r"|/generated\.rs$|/build(_[^/]*)?\.rs$|/tests\.rs$"
+)
+# The calls whose string arguments are printed, matched against the call's
+# last path segment (`log::warn!`, `defmt::panic!`, `nros_log::log_error!`).
+RUST_LOG_CALLS = re.compile(
+    r"(?:trace|debug|info|warn|error|log|nros_trace|log_(?:debug|info|warn|error|fatal)"
+    r"|nros_(?:trace|debug|info|warn|error)_throttle(?:_at)?|cpp_diag|cpp_info"
+    r"|e?println|e?print|panic|unreachable|todo|unimplemented)!|\.expect"
+)
+# An assert's message is the argument after its condition (after both
+# operands for `_eq`/`_ne`); the condition's own literals are data.
+RUST_ASSERT_CALLS = re.compile(r"(?:debug_)?assert(_eq|_ne)?!")
+RUST_WRAPPERS = re.compile(r"(?:format|format_args|concat)!")
+C_LOG_CALLS = re.compile(
+    r"v?f?printf|snprintf|f?puts|printk|syslog|assert|LOG_(?:ERR|WRN|INF|DBG)"
+    r"|PX4_(?:ERR|WARN|INFO|DEBUG|PANIC)|_Z_(?:ERROR|WARN|INFO|DEBUG)"
+    r"|NROS_(?:LOG_SINK|DEBUG|INFO|WARN|ERROR|FATAL)|RCLCPP_(?:DEBUG|INFO|WARN|ERROR|FATAL)\w*"
+    r"|RCLCPP_TRY_LOG|RCLC_LOG_\w+|RCLC_CHECK_LOG|RCUTILS_LOG_\w+|RCL_SET_ERROR_MSG"
+    r"|ZPICO_HOSTED_PRINTK|xrce_log_error|graph_log|nros_threadx_stderr|nros_freertos_append"
+)
+CALL_NAME = re.compile(r"([A-Za-z_][\w:]*!?|\.\s*[A-Za-z_]\w*)\s*$")
+# The places the lexer stops: a comment, a string (raw and byte forms in
+# Rust), a char literal or lifetime. Everything between is code.
+RUST_TOKENS = re.compile(r'//|/\*|b?r#*"|b?"|\'')
+C_TOKENS = re.compile(r'//|/\*|"|\'')
+RAW_START = re.compile(r'b?r(#*)"')
+# `#[cfg(test)]`, or `#[cfg(all(test, …))]`: compiled for tests only.
+CFG_TEST = re.compile(r"#\[cfg\((?:test|all\(\s*test\b[^\]]*\))\)\]")
+
+
+def code_and_literals(src: str, rust: bool) -> tuple[str, list[tuple[int, int, int]]]:
+    """`src` with comments and literal contents blanked (offsets and newlines
+    kept), and every string literal as (line, start, end) of its contents.
+
+    The C reading: `//` and `/* */` comments, `\\` escapes, char literals (so
+    `'"'` and `'('` are neither a string nor a paren). Adjacent C literals
+    ("a" "b") stay separate spans: each is read on its own, and each sits in
+    the same call, so the concatenation needs no joining to be judged. Rust
+    adds raw and byte strings and tells a lifetime from a char literal, as
+    `rust_strings` does, and drops the literals of a `#[cfg(test)]` or
+    `#[cfg(all(test, …))]` item.
+    Not a parser; a macro body is read like code.
+    """
+    code = list(src)
+    spans: list[tuple[int, int]] = []
+
+    def blank(a: int, b: int) -> None:
+        code[a:b] = [ch if ch == "\n" else " " for ch in src[a:b]]
+
+    tokens = RUST_TOKENS if rust else C_TOKENS
+    i, n = 0, len(src)
+    while True:
+        m = tokens.search(src, i)
+        if not m:
+            break
+        i, tok = m.start(), m.group(0)
+        if tok == "//":
+            j = src.find("\n", i)
+            j = n if j < 0 else j
+            blank(i, j)
+            i = j
+        elif tok == "/*":
+            j = src.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            blank(i, j)
+            i = j
+        elif tok == "'":
+            if src.startswith("\\", i + 1):
+                j = src.find("'", i + 2)
+                j = n if j < 0 else j + 1
+            elif i + 2 < n and src[i + 2] == "'":
+                j = i + 3
+            else:
+                i += 1  # a Rust lifetime
+                continue
+            blank(i, j)
+            i = j
+        elif "r" in tok:
+            if i and (src[i - 1].isalnum() or src[i - 1] == "_"):
+                i += tok.index("r") + 1  # `…r"` ends an identifier: a plain string
+                continue
+            close = '"' + RAW_START.match(tok).group(1)
+            j = src.find(close, m.end())
+            j = n if j < 0 else j
+            spans.append((m.end(), j))
+            blank(m.end(), j)
+            i = j + len(close)
+        else:  # `"` or `b"`
+            j = m.end()
+            while j < n and src[j] != '"':
+                j += 2 if src[j] == "\\" else 1
+            spans.append((m.end(), j))
+            blank(m.end(), j)
+            i = j + 1
+    masked = "".join(code)
+    if rust:
+        # A `#[cfg(test)]` item ends at its `;` or at the `}` matching its
+        # first `{`, whichever comes first (`rust_strings`' rule).
+        dead = []
+        for t in CFG_TEST.finditer(masked):
+            depth = 0
+            for b in re.finditer(r"[{};]", masked[t.end():]):
+                ch = b.group(0)
+                if ch == ";":
+                    if depth == 0:
+                        break
+                    continue
+                depth += 1 if ch == "{" else -1
+                if depth == 0:
+                    dead.append((t.start(), t.end() + b.end()))
+                    break
+        spans = [s for s in spans if not any(lo <= s[0] < hi for lo, hi in dead)]
+    lines = [src.count("\n", 0, spans[0][0]) + 1] if spans else []
+    for k in range(1, len(spans)):
+        lines.append(lines[-1] + src.count("\n", spans[k - 1][0], spans[k][0]))
+    return masked, [(ln, a, b) for ln, (a, b) in zip(lines, spans)]
+
+
+def enclosing_calls(code: str, at: int, levels: int = 2) -> list[tuple[str, int]]:
+    """The calls around offset `at` of blanked `code`, innermost first, as
+    (name, argument index). Walks back to each unmatched `(`; stops at an
+    unmatched `{` or `[`, or a `;` (a block or a table holds data, not a
+    call's text)."""
+    out: list[tuple[str, int]] = []
+    depth = commas = 0
+    k, lo = at - 1, max(0, at - 4000)
+    while k >= lo and len(out) < levels:
+        ch = code[k]
+        if ch in ")]}":
+            depth += 1
+        elif ch in "([{":
+            if depth:
+                depth -= 1
+            elif ch != "(":
+                break
+            else:
+                m = CALL_NAME.search(code, max(0, k - 80), k)
+                out.append((re.sub(r"\s+", "", m.group(1)) if m else "", commas))
+                commas = 0
+        elif ch == "," and not depth:
+            commas += 1
+        elif ch == ";" and not depth:
+            break
+        k -= 1
+    return out
+
+
+def is_printed(calls: list[tuple[str, int]], rust: bool) -> bool:
+    """Whether a literal inside `calls` is text a log, print, panic or assert
+    call prints."""
+    if not calls:
+        return False
+    name, arg = calls[0]
+    if rust and RUST_WRAPPERS.fullmatch(name.rsplit("::", 1)[-1]) and len(calls) > 1:
+        name, arg = calls[1]  # `.expect(&format!(…))`, `assert!(c, concat!(…))`
+    name = name.rsplit("::", 1)[-1]
+    if not rust:
+        return bool(C_LOG_CALLS.fullmatch(name))
+    m = RUST_ASSERT_CALLS.fullmatch(name)
+    if m:
+        return arg >= (2 if m.group(1) else 1)
+    return bool(RUST_LOG_CALLS.fullmatch(name))
+
+
+def runtime_literals(
+    src: str, rust: bool, want: re.Pattern | None = None
+) -> list[tuple[int, str]]:
+    """Every string literal of `src` that a log, print, panic or assert call
+    prints, with its line; with `want`, only the literals it matches (the
+    gate asks for id-bearing ones, which skips the walk back for the rest).
+    Rust literals in test-only items are not read."""
+    code, spans = code_and_literals(src, rust)
+    return [
+        (ln, src[a:b]) for ln, a, b in spans
+        if (want is None or want.search(src, a, b))
+        and is_printed(enclosing_calls(code, a - 1), rust)
+    ]
+
+
+def runtime_files() -> list[str]:
+    files = subprocess.run(
+        ["git", "ls-files", "--", *RUNTIME_DIRS], cwd=ROOT, capture_output=True, text=True,
+        check=True,
+    ).stdout.split()
+    files = [
+        rel for rel in files
+        if rel.endswith(RUNTIME_EXTS) and not RUNTIME_SKIP.search("/" + rel)
+        and (ROOT / rel).is_file()
+    ]
+    tests = test_module_files([rel for rel in files if rel.endswith(".rs")])
+    return [rel for rel in files if rel not in tests]
+
+
+def runtime_hits() -> list[str]:
+    bad = []
+    for rel in runtime_files():
+        src = (ROOT / rel).read_text(errors="replace")
+        if not ID.search(src):
+            continue  # most files hold no id at all, so the lexer never runs
+        for ln, text in runtime_literals(src, rel.endswith(".rs"), ID):
+            for tok in ids(text):
+                bad.append(f"{rel}:{ln}: {tok!r} in {' '.join(text.split())[:90]!r}")
+    return bad
+
+
 # --- the book ---------------------------------------------------------------
 
 
@@ -956,6 +1187,38 @@ def self_test() -> None:
     )
     got = shell_lines(*shell_printed(fish, True, FISH_PRINTERS))
     assert got == [(3, "RFC-0103")], f"self-test: fish {got}"
+    # Issue 2443 -- runtime log and panic text is read; a comment, a data
+    # string, an assert's condition and a test module are not.
+    rs = (
+        '// issue 1000 in a comment\n'
+        'const TABLE: &[&str] = &["RFC-0001 data"];\n'
+        'fn f() {\n'
+        '    log::warn!("dropped (issue 1234)");\n'
+        '    nros_log::log_error!(logger, "{}: full (phase-412)", n);\n'
+        '    let v = x.expect(&format!("no clock (issue 0709) {}", y));\n'
+        '    assert_eq!(a, "issue 1111", "mismatch (RFC-0088)");\n'
+        '    let s = "data (issue 1234)"; let c = \'"\'; let l: &\'a str = "x";\n'
+        '    compile_error!("not a runtime print (issue 2222)");\n'
+        '}\n'
+        '#[cfg(test)]\nmod tests { fn t() { panic!("phase-200"); } }\n'
+        '#[cfg(all(\n    test,\n    feature = "x"\n))]\nmod t2 { fn t() { panic!("phase-201"); } }\n'
+    )
+    got = [(ln, t) for ln, text in runtime_literals(rs, True) for t in ids(text)]
+    assert got == [(4, "issue 1234"), (5, "phase-412"), (6, "issue 0709"), (7, "RFC-0088")], \
+        f"self-test: runtime rust {got}"
+    c = (
+        '/* printf("phase-100") in a comment */\n'
+        'static const char *names[] = { "issue 1000" };\n'
+        'void f(void) {\n'
+        '    char q = \'"\'; // printf("issue 1001")\n'
+        '    fprintf(stderr, "heap low: %d B "\n'
+        '            "(issue 0803)\\n", n);\n'
+        '    LOG_ERR("no slot \\"%s\\" (RFC-0074)", name);\n'
+        '    strcmp(key, "phase-519");\n'
+        '}\n'
+    )
+    got = [(ln, t) for ln, text in runtime_literals(c, False) for t in ids(text)]
+    assert got == [(6, "issue 0803"), (7, "RFC-0074")], f"self-test: runtime c {got}"
     assert subcommands("Usage: x\n\nCommands:\n  new   make\n  help  h\n\nOptions:\n") == ["new"]
     assert subcommands(
         "Quick start:\n  nros new\n\nUsage: nros\n\nBuild:\n  build  b\n  sync   s\n\n"
@@ -975,7 +1238,7 @@ def main() -> int:
 
     bad = (
         source_hits() + library_hits() + book_hits() + build_script_warning_hits()
-        + colcon_hits() + shell_hits()
+        + colcon_hits() + shell_hits() + runtime_hits()
     )
     cli = args.cli
     if cli is None:
@@ -1005,7 +1268,7 @@ def main() -> int:
         )
     print(
         f"{NAME}: OK (cmd/ strings, CLI library, build-script panics, build-script warnings, colcon "
-        f"messages, user-run shell scripts, {BOOK_SCOPE}, "
+        f"messages, user-run shell scripts, runtime log and panic text, {BOOK_SCOPE}, "
         f"{rendered})"
     )
     return 0

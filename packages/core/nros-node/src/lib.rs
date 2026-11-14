@@ -355,7 +355,7 @@ const _: () = assert!(
     "`param-store` without `alloc` needs the parameter store carved from the executor \
      backing, and this build carves none: set NROS_PARAM_STORE=1 (sized by \
      NROS_MAX_PARAMETERS), or declare `params:` in the contract / `param_services` in the \
-     bringup, or add \"alloc\" to this crate's features (issue 1812)"
+     bringup, or add \"alloc\" to this crate's features"
 );
 #[cfg(all(feature = "profile-mode", not(feature = "alloc")))]
 compile_error!("`profile-mode` records into a heap-allocated table: add \"alloc\"");

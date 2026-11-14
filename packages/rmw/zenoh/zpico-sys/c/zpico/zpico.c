@@ -2450,12 +2450,12 @@ static _z_fut_fn_result_t _zpico_exec_stack_fn(void* arg, _z_executor_t* executo
         g_exec_stack.samples < ZPICO_EXEC_STACK_MAX_SAMPLES) {
         return _z_fut_fn_result_wake_up_after(ZPICO_EXEC_STACK_PERIOD_MS);
     }
+    // RFC-0110 D2
     if (size != 0u) {
-        printk("nros: zenoh executor stack peak %lu of %lu bytes (%lu free) (RFC-0110 D2)\n",
-               (unsigned long)used, (unsigned long)size, (unsigned long)(size - used));
+        printk("nros: zenoh executor stack peak %lu of %lu bytes (%lu free)\n", (unsigned long)used,
+               (unsigned long)size, (unsigned long)(size - used));
     } else {
-        printk("nros: zenoh executor stack peak: %lu bytes never touched, size not stated "
-               "(RFC-0110 D2)\n",
+        printk("nros: zenoh executor stack peak: %lu bytes never touched, size not stated\n",
                (unsigned long)used);
     }
     return _z_fut_fn_result_ready();

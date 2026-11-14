@@ -1606,11 +1606,12 @@ pub fn backend_resolution_to_ret(res: &BackendResolution) -> NrosRmwRet {
 // guarded at COMPILE TIME here, so a drift that used to be silent is a build
 // failure.
 const _: () = {
+    // RFC-0054: the header is the single source of truth.
     assert!(
         core::mem::size_of::<generated::nros_transport_ops_t>()
             == core::mem::size_of::<nros_rmw::NrosTransportOps>(),
         "nros_transport_ops_t and NrosTransportOps must have identical size \
-         (RFC-0054: the header is the SSoT; regenerate with scripts/gen-abi-bindings.sh)"
+         (the header is the source; regenerate with scripts/gen-abi-bindings.sh)"
     );
     assert!(
         core::mem::align_of::<generated::nros_transport_ops_t>()
@@ -6004,11 +6005,12 @@ impl nros_rmw::Rmw for CffiRmw {
 pub fn refuse_without_readiness(session: CffiSession) -> Result<CffiSession, TransportError> {
     use nros_rmw::Session as _;
     if matches!(session.readiness_source(), nros_rmw::ReadinessSource::None) {
+        // RFC-0113 D5
         nros_log::log_error!(
             nros_log::get_logger("nros_rmw_cffi"),
             "the session states no readiness form: its backend neither calls a wake \
              callback on an arrival nor reports a handle to park on, so an executor \
-             over it could only block inside its receive. Refused (RFC-0113 D5). \
+             over it could only block inside its receive. Refused. \
              Give the transport a receive notification (for a custom XRCE transport, \
              `nros_rmw_xrce_set_custom_transport_rx_notify`)."
         );

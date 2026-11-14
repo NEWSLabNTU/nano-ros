@@ -98,7 +98,8 @@ void nros_threadx_refuse_foreign(const char *fn, int fatal) {
     nros_threadx_stderr(fatal ? "() called from a host thread ThreadX does not own - aborting"
                               : "() called from a host thread ThreadX does not own - refused"
                                 " (reported once)");
-    nros_threadx_stderr(" (issue 1750)\n");
+    // issue 1750
+    nros_threadx_stderr("; call it from a ThreadX thread\n");
     if (fatal) {
         abort();
     }

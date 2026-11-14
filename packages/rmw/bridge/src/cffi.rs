@@ -278,12 +278,13 @@ pub unsafe extern "C" fn rclc_pubsub_bridge_create(
     let mut src = match eb.executor.create_node_on(src_node, src_rmw) {
         Ok(n) => n,
         Err(nros_node::executor::NodeError::NodeTableFull) => {
+            // phase-412 W2
             nros_log::log_error!(
                 nros_log::get_logger("nros_rmw_bridge"),
                 "rclc_pubsub_bridge_create: node table FULL creating the source \
                  node -- raise NROS_EXECUTOR_MAX_NODES. A bridge creates TWO \
                  nodes and declares neither, so a DERIVED value does not count \
-                 them (phase-412 W2)."
+                 them."
             );
             return NROS_RMW_RET_ERROR;
         }
@@ -298,10 +299,11 @@ pub unsafe extern "C" fn rclc_pubsub_bridge_create(
     let mut dst = match eb.executor.create_node_on(dst_node, dst_rmw) {
         Ok(n) => n,
         Err(nros_node::executor::NodeError::NodeTableFull) => {
+            // phase-412 W2
             nros_log::log_error!(
                 nros_log::get_logger("nros_rmw_bridge"),
                 "rclc_pubsub_bridge_create: node table FULL creating the \
-                 destination node -- raise NROS_EXECUTOR_MAX_NODES (phase-412 W2)."
+                 destination node -- raise NROS_EXECUTOR_MAX_NODES."
             );
             return NROS_RMW_RET_ERROR;
         }

@@ -110,6 +110,36 @@ activate path), so an rc written by an older bootstrap is still recognised.
 Gaps, stated in the checker: text a non-printer builds, a heredoc written to a
 file, and scripts a user-run script executes rather than sources.
 
+## Progress (2026-11-14)
+
+**Runtime logs of a default image are done.** `check-user-surface-ids` reads
+them as the subject "runtime log and panic text", baseline zero, no
+allowlist. The rule: in `packages/{core,api,rmw,platform}` (tracked files;
+vendored, test, bench and example trees, bindgen's `generated.rs` and build
+scripts left out), a string literal counts when its innermost enclosing call
+prints it. In Rust that is a log macro (`log::`/`defmt::`/bare
+`trace!`..`error!`, nros_log's `log_*!` and `nros_*_throttle!`, `cpp_diag!`,
+`cpp_info!`), `println!`/`eprintln!`, `panic!`/`unreachable!`/`todo!`/
+`unimplemented!`, `.expect(`, or the message argument of an `assert*!`,
+directly or through `format!`/`concat!`; `#[cfg(test)]` and
+`#[cfg(all(test, …))]` items are not read. In C and C++ a small lexer
+(comments, escapes, char literals) finds the call around each literal:
+`printf`/`fprintf`/`snprintf`/`puts`/`printk`/`syslog`/`assert`, Zephyr
+`LOG_*`, PX4 `PX4_*`, zenoh-pico `_Z_*`, the rclcpp/rclc/nros log macros and
+the backends' own helpers (`xrce_log_error`, `graph_log`,
+`nros_threadx_stderr`, `nros_freertos_append`). A table entry, a compared key
+or an assert's condition sits in no such call and is not read. The scan
+measured 101 ids in 33 files (most in `nros-node`'s `arena.rs`, 18, then
+`nros-cpp/src/lib.rs` and `spin.rs`, 10 each); each id moved to a `//`
+comment above its call and each message kept its remedy.
+
+Gaps, stated: text built away from its print (a `write!` into a `Display`
+impl: 8 literals, in `nros-orchestration-ir`, `nros-node` and
+`nros-baremetal-common`; and messages
+assembled and logged later); compile-time text (`#error`, `static_assert`,
+`compile_error!`, `#[deprecated]` notes, proc-macro `syn::Error`s); and calls
+the lists do not name.
+
 **Next, in order (manager, 2026-11-14).** Ruling A covers build-stopping
 refusals, so the runtime subject's stated gaps are in scope too, each as its
 own gate subject starting at baseline zero: first compile-time text

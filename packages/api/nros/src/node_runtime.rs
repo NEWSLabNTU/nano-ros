@@ -2259,21 +2259,23 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     ) {
                         let passed = nros_params::declared::type_name(value.param_type());
                         match m.declared {
+                            // phase-446 W6
                             None => nros_log::log_error!(
                                 nros_log::get_logger("nros"),
                                 "node '{}': parameter '{}' is not declared in its contract \
                                  ({}, `params:`). The parameter store is sized from that \
                                  declaration; declare it there with its type, or stop \
-                                 declaring it in the code. (phase-446 W6)",
+                                 declaring it in the code.",
                                 m.node,
                                 name,
                                 m.contract
                             ),
+                            // phase-446 W6
                             Some(declared) => nros_log::log_error!(
                                 nros_log::get_logger("nros"),
                                 "node '{}': parameter '{}' is declared `{}` in its contract \
                                  ({}) but the code declares it as `{}`. Fix the contract or \
-                                 the code so they state one type. (phase-446 W6)",
+                                 the code so they state one type.",
                                 m.node,
                                 name,
                                 nros_params::declared::type_name(declared),

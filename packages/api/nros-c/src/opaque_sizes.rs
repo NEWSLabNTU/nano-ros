@@ -127,6 +127,7 @@ pub const GUARD_HANDLE_OPAQUE_U64S: usize = u64s_for::<nros_node::GuardCondition
 #[cfg(feature = "rmw-cffi")]
 macro_rules! guard_opaque {
     ($stated:expr, $ty:ty, $what:literal) => {
+        // issue 0472
         const _: () = assert!(
             $stated == 0 || size_of::<$ty>() <= $stated * 8,
             concat!(
@@ -134,7 +135,7 @@ macro_rules! guard_opaque {
                 ": the generated header states a SMALLER opaque size than the Rust type needs, ",
                 "so a C caller's `_opaque` buffer would be written past. The header value is ",
                 "probe-derived (nros-build-helpers::c); the type's size is the truth. Rebuild ",
-                "with a clean `build/sizes-probe`, and see issue 0472."
+                "with a clean `build/sizes-probe`."
             )
         );
     };

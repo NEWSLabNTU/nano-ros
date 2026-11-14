@@ -42,11 +42,11 @@ fn resolve_domain_from_c_abi(raw: u8, session_domain: u32) -> Option<u32> {
         // wrong one — it is unroutable, and silent, because a domain is just
         // the first element of the discovery key (issue 0801).
         Some(d) if d > nros_node::DOMAIN_ID_MAX => {
+            // issue 0972
             nros_log::log_error!(
                 nros_log::get_logger("nros-c"),
                 "domain id {} exceeds the ROS maximum of {}; refusing to create \
-                 the entity rather than keying it on an unroutable domain \
-                 (issue 0972)",
+                 the entity rather than keying it on an unroutable domain",
                 d,
                 nros_node::DOMAIN_ID_MAX
             );

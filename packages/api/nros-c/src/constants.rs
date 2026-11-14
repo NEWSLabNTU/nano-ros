@@ -123,22 +123,25 @@ pub const NROS_SERIALIZATION_FORMAT: &str = "cdr";
 // meaning in that combo rather than a different answer.
 #[cfg(feature = "rmw-cffi")]
 const _: () = {
+    // RFC-0088
     assert!(
         NROS_SERIALIZATION_FORMAT_ID == nros_node::session::IMAGE_SERIALIZATION_FORMAT_ID.as_u8(),
-        "RFC-0088: NROS_SERIALIZATION_FORMAT_ID no longer matches the linked \
+        "NROS_SERIALIZATION_FORMAT_ID no longer matches the linked \
          backend — update the mirror (and the C/C++ headers that assert on it)"
     );
     let mirrored = NROS_SERIALIZATION_FORMAT.as_bytes();
     let linked = nros_node::session::IMAGE_SERIALIZATION_FORMAT.as_bytes();
+    // RFC-0088
     assert!(
         mirrored.len() == linked.len(),
-        "RFC-0088: NROS_SERIALIZATION_FORMAT no longer matches the linked backend"
+        "NROS_SERIALIZATION_FORMAT no longer matches the linked backend"
     );
     let mut i = 0;
     while i < mirrored.len() {
+        // RFC-0088
         assert!(
             mirrored[i] == linked[i],
-            "RFC-0088: NROS_SERIALIZATION_FORMAT no longer matches the linked backend"
+            "NROS_SERIALIZATION_FORMAT no longer matches the linked backend"
         );
         i += 1;
     }

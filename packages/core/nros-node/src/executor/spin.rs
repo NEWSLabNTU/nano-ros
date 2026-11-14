@@ -857,11 +857,12 @@ fn create_param_event_pub(
 #[cold]
 #[inline(never)]
 fn report_parameter_events_refused(e: NodeError) {
+    // issue 2023
     nros_log::log_error!(
         nros_log::get_logger("nros"),
         "/parameter_events could not be created ({:?}); the parameter services are up, \
          but no parameter change is published. A publisher slot the image did not size \
-         for is the usual cause (issue 2023).",
+         for is the usual cause.",
         e
     );
 }
@@ -885,9 +886,10 @@ fn report_parameter_store_refused() {
             logger,
             "parameter store refused: this executor's backing carves none and the build has no heap"
         );
+        // issue 1812
         nros_log::log_error!(
             logger,
-            "every parameter declaration on this executor is refused (issue 1812)"
+            "every parameter declaration on this executor is refused"
         );
         nros_log::log_error!(
             logger,
@@ -915,9 +917,10 @@ fn report_parameter_heap_store_refused() {
         slots,
         PARAMETER_STORE_BYTES / if slots == 0 { 1 } else { slots }
     );
+    // issue 1706
     nros_log::log_error!(
         logger,
-        "every parameter declaration on this executor is refused (issue 1706)"
+        "every parameter declaration on this executor is refused"
     );
     // phase-382 W3' -- the remedy that takes the store OUT of the heap comes
     // first: a build that knows the image builds a store carves it from the
@@ -13647,11 +13650,12 @@ impl<'s> Executor<'s> {
         let bounded = !max.is_zero();
         let start_us = self.now_us();
         if bounded && start_us.is_none() {
+            // issue 0709
             nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "spin_some: a max duration was requested but this build has no clock \
                  - install one with `ExecutorConfig::clock_us`, or pass \
-                 `Duration::ZERO` for rclcpp's unbounded default (issue 0709)"
+                 `Duration::ZERO` for rclcpp's unbounded default"
             );
             return Err(NodeError::NotInitialized);
         }
@@ -13819,10 +13823,11 @@ impl<'s> Executor<'s> {
             Some(f) => (f.node_fqn.as_str(), f.service, f.permanent),
             None => ("<unknown node>", "<unknown service>", false),
         };
+        // issues 1271, 1268
         nros_log::log_error!(
             nros_log::get_logger("nros"),
             "parameter services could not be created for node {} at service {}: {:?}. \
-             `ros2 param` cannot reach {} of this image's {} node(s). {} (issues 1271, 1268).",
+             `ros2 param` cannot reach {} of this image's {} node(s). {}",
             node_fqn,
             service,
             e,
@@ -15466,13 +15471,14 @@ impl<'s> Executor<'s> {
             let (ns, node) = nodes
                 .get(key.index())
                 .map_or(("", "?"), |r| (r.namespace.as_str(), r.name.as_str()));
+            // phase-446 F2
             nros_log::log_warn!(
                 nros_log::get_logger("nros"),
                 "parameter `{}` on node {}/{}: its description is longer than \
                  NROS_MAX_PARAM_DESCRIPTION_LEN ({} bytes), so `ros2 param describe` \
                  answers it truncated at a character boundary. Raise \
                  NROS_MAX_PARAM_DESCRIPTION_LEN to keep it whole; 0 stores no \
-                 descriptions. Logged once for this parameter (phase-446 F2).",
+                 descriptions. Logged once for this parameter.",
                 name,
                 ns.trim_end_matches('/'),
                 node,
@@ -15875,13 +15881,13 @@ impl<'s> Executor<'s> {
     fn report_parameter_events_lost(lost: u32) {
         // Issue 2023 — an event that does not fit is REFUSED whole, never
         // truncated into a malformed sample; this line is how anyone hears.
+        // phase-491 W3, issue 2023
         nros_log::log_error!(
             nros_log::get_logger("nros"),
             "{} /parameter_events message(s) were not published: the change log \
              (PARAMETER_EVENT_LOG_LEN) filled between two flushes, an event did not fit the \
              parameter-service reply buffer (NROS_PARAM_SERVICE_BUFFER_SIZE) and was refused \
-             rather than truncated, or the publish failed. The parameters themselves changed \
-             (phase-491 W3, issue 2023).",
+             rather than truncated, or the publish failed. The parameters themselves changed.",
             lost
         );
     }
@@ -16646,10 +16652,11 @@ impl<'s> Executor<'s> {
         // is a promise this build can keep.
         let start_us = self.now_us();
         if opts.timeout.is_some() && start_us.is_none() {
+            // issue 0709
             nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "spin: a timeout was requested but this build has no clock \
-                 — install one with `ExecutorConfig::clock_us` (issue 0709)"
+                 — install one with `ExecutorConfig::clock_us`"
             );
             return Err(NodeError::NotInitialized);
         }
@@ -16765,10 +16772,11 @@ impl<'s> Executor<'s> {
         // this build cannot honour is a configuration error, not a silent
         // busy-loop.
         let Some(start_us) = self.now_us() else {
+            // issue 0709
             nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "spin_period: a period was requested but this build has no clock \
-                 — install one with `ExecutorConfig::clock_us` (issue 0709)"
+                 — install one with `ExecutorConfig::clock_us`"
             );
             return Err(NodeError::NotInitialized);
         };

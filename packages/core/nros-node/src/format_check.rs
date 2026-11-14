@@ -96,10 +96,11 @@
 #[inline(always)]
 pub fn assert_message_format<M: nros_core::RosMessage>() {
     const {
+        // RFC-0088
         assert!(
             <M as nros_core::RosMessage>::SERIALIZATION_FORMAT_ID.as_u8()
                 == crate::session::IMAGE_SERIALIZATION_FORMAT_ID.as_u8(),
-            "message serialization format does not match the linked backend (RFC-0088)"
+            "message serialization format does not match the linked backend"
         );
     }
 }
@@ -124,10 +125,11 @@ pub fn assert_message_format<M: nros_core::RosMessage>() {
 #[inline(always)]
 pub fn assert_raw_format<F: nros_serdes::format::SerializationFormat>() {
     const {
+        // RFC-0088
         assert!(
             <F as nros_serdes::format::SerializationFormat>::ID.as_u8()
                 == crate::session::IMAGE_SERIALIZATION_FORMAT_ID.as_u8(),
-            "raw payload format does not match the linked backend (RFC-0088)"
+            "raw payload format does not match the linked backend"
         );
     }
 }
