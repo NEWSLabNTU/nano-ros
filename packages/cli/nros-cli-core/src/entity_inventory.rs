@@ -1668,12 +1668,15 @@ const ROSOUT_PUBLISHERS: usize = 1;
 /// action client opens, each of which declares a liveliness token.
 const ACTION_CLIENT_SERVICE_CLIENTS: usize = 3;
 
-/// phase-412 -- the liveliness token the zenoh session declares for its OWN
-/// node name at open (`ZenohSession::new`, `node_liveliness`), before any
-/// component's per-node token. It is dropped only when a per-node token with a
-/// DIFFERENT name supersedes it; in the single-node case the component shares
-/// the primary name and the two tokens coexist for the life of the session, so
-/// this is a permanent slot and not a transient one.
+/// phase-412 -- one node token for the session's CONFIGURED name.
+///
+/// Until phase-554 W3 the zenoh session declared it at open
+/// (~~`node_liveliness`~~). RFC-0128 D8 dropped that: a node is announced with
+/// its first entity (`ensure_node_liveliness`). The slot stays, because a
+/// direct-API image (no declared node) announces its entities under that
+/// configured name, and the per-node term below counts components, which such
+/// an image may not have. For an image that declares its nodes this errs high
+/// by one, which is the safe side.
 const PRIMARY_NODE_LIVELINESS_TOKENS: usize = 1;
 
 /// Issue 1270 -- the service servers the RUNTIME creates on an image's behalf.
@@ -2014,7 +2017,8 @@ pub struct DerivedEntityKnobs {
     ///
     /// Read off the zenoh shim (`shim/session.rs`), term by term:
     ///
-    /// * [`PRIMARY_NODE_LIVELINESS_TOKENS`] -- the session's own node token.
+    /// * [`PRIMARY_NODE_LIVELINESS_TOKENS`] -- the configured name's node
+    ///   token, which a direct-API image's entities announce under.
     /// * one per node NAME (`ensure_node_liveliness`, deduplicated by name):
     ///   the larger of [`Self::max_nodes`] and the parameter-service node
     ///   count, plus one when the bringup declares `lifecycle`, whose five

@@ -154,18 +154,6 @@ use crate::config::MAX_PER_NODE_LIVELINESS;
 /// There are no background threads.
 pub struct ZenohSession {
     context: Context,
-    /// Fix #104 — node liveliness token declared at session open so the
-    /// primary node is visible in `ros2 node list`.  A dropped
-    /// `LivelinessToken` is immediately undeclared, so we MUST hold it
-    /// for the entire session lifetime.  `None` when `config.node_name`
-    /// is empty or `should_declare_liveliness()` returns `false`.
-    node_liveliness: Option<LivelinessToken>,
-    /// The node name used for the #104 primary token (from
-    /// `TransportConfig::node_name` at open).  Stored so that
-    /// `drop_primary_node_liveliness_if_superseded` can compare it against
-    /// per-node names from W2 entity creation and decide whether to drop the
-    /// primary (multi-node case) or keep it (single-node case).
-    primary_node_name: heapless::String<64>,
     /// Phase 268 W2 — one NN liveliness token per distinct node name seen
     /// via entity creation, so each launch component appears as its own node
     /// in `ros2 node list`.  Bounded; held for the session lifetime (dropping
@@ -760,20 +748,13 @@ impl ZenohSession {
         // Register the reply waker callback for async service client support
         super::service::register_reply_waker(context.handle());
 
-        // Fix #104 — declare the node liveliness token so the primary node
-        // appears in `ros2 node list`.  Build the session first (token is
-        // None), then immediately declare it while the session is live.
-        let mut primary_node_name: heapless::String<64> = heapless::String::new();
-        let _ = primary_node_name.push_str(config.node_name);
         // SAFETY: the session handle is live; a NULL callback installs nothing
         // and answers whether the link's stack has the hook.
         let link_rx_notify = unsafe {
             zpico_sys::zpico_set_link_rx_notify(context.handle(), None, core::ptr::null_mut())
         } == 0;
-        let mut session = Self {
+        let session = Self {
             context,
-            node_liveliness: None,
-            primary_node_name,
             per_node_liveliness: heapless::Vec::new(),
             wake_cb: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
             wake_ctx: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
@@ -784,18 +765,11 @@ impl ZenohSession {
             graph_discovery_off: false,
         };
 
-        if !config.node_name.is_empty() {
-            // Treat empty namespace as root "/" — that is what the keyexpr
-            // builder expects for a top-level node.
-            let ns = if config.namespace.is_empty() {
-                "/"
-            } else {
-                config.namespace
-            };
-            session.node_liveliness =
-                session.declare_node_liveliness(config.domain_id, ns, config.node_name);
-        }
-
+        // RFC-0128 D8 (phase-554 W3) -- no node is announced at session open.
+        // The session's name is a label, not a node: a node is announced with
+        // its first entity (`ensure_node_liveliness`), as Cyclone already does
+        // (issue 1269). A direct-API image's entities carry the configured
+        // name, so that image still shows its one node once it creates one.
         Ok(session)
     }
 
@@ -1334,30 +1308,6 @@ impl ZenohSession {
                     MAX_PER_NODE_LIVELINESS
                 );
             }
-        }
-        {
-            // Gate: a per-node token with a DIFFERENT name supersedes the
-            // primary `/node` phantom — drop it so multi-node launches show
-            // only their components, not a spurious "node" entry.
-            self.drop_primary_node_liveliness_if_superseded(node_name);
-        }
-    }
-
-    /// Phase 268 W2 — drop the #104 primary node liveliness token when a
-    /// per-node token with a DIFFERENT name has been declared.
-    ///
-    /// **Single-node case**: the one component's name matches the primary name
-    /// (e.g. primary `"talker"` + per-node `"talker"`) → keep primary.
-    ///
-    /// **Multi-node case**: primary generic name (e.g. `"node"`) differs from
-    /// the per-node name (e.g. `"talker"`) → drop primary → `ros2 node list`
-    /// shows only `/talker` + `/listener`, not a spurious `/node`.
-    fn drop_primary_node_liveliness_if_superseded(&mut self, new_name: &str) {
-        if self.node_liveliness.is_some()
-            && !self.primary_node_name.is_empty()
-            && self.primary_node_name.as_str() != new_name
-        {
-            self.node_liveliness = None; // Drop → immediately undeclares the NN token.
         }
     }
 }

@@ -274,6 +274,32 @@ fn registration_node_id(node: crate::node::rclc_node_ref_t) -> Option<nros_node:
         .then(|| nros_node::executor::NodeId::from_raw(node.node_id))
 }
 
+/// RFC-0128 D8 (phase-554 W3, ruled 2026-11-14) -- refuse an entity whose
+/// node was never bound to the executor once the executor holds bound nodes.
+///
+/// An unbound node has no node record, so its entities would be announced
+/// under the image's primary node -- a different node. Mixing the two
+/// writings is refused instead, and the message says how to fix it in plain
+/// words. An executor with NO bound node keeps the old single-node path.
+fn refuse_unbound_beside_bound(
+    node_id: Option<nros_node::executor::NodeId>,
+    bound_nodes: usize,
+    call: &str,
+) -> Result<Option<nros_node::executor::NodeId>, rcl_ret_t> {
+    if node_id.is_none() && bound_nodes > 0 {
+        nros_log::log_error!(
+            nros_log::get_logger("nros-c"),
+            "{}: this entity's node was not bound to the executor, but the executor \
+             already has {} node(s) bound with rclc_executor_node_init. Bind every node \
+             with rclc_executor_node_init before creating its entities.",
+            call,
+            bound_nodes
+        );
+        return Err(RCL_RET_INVALID_ARGUMENT);
+    }
+    Ok(node_id)
+}
+
 /// [`registration_node_id`] for a caller holding a live node (`None` = the
 /// legacy single-node path, a NULL `node`).
 fn registration_node_id_of(
@@ -2175,7 +2201,14 @@ unsafe fn register_subscription_entry(
     // Phase 104.C.8.b — a Node created via `rclc_executor_node_init` routes
     // through `_on(NodeId, ...)` so multi-RMW bridges land on the right
     // session; a legacy Node takes the single-Node entry point (issue 1405).
-    let node_id = registration_node_id(subscription_ref.node);
+    let node_id = match refuse_unbound_beside_bound(
+        registration_node_id(subscription_ref.node),
+        rust_exec.nodes().len(),
+        "rclc_executor_add_subscription",
+    ) {
+        Ok(id) => id,
+        Err(rc) => return rc,
+    };
 
     let handle_id = match register(
         &mut rust_exec,
@@ -2599,7 +2632,14 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
             Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
         let topic_str = __resolved_name.as_str();
-        let node_id = registration_node_id_of(node.as_ref());
+        let node_id = match refuse_unbound_beside_bound(
+            registration_node_id_of(node.as_ref()),
+            rust_exec.nodes().len(),
+            "rclc_executor_add_subscription_raw_with_info",
+        ) {
+            Ok(id) => id,
+            Err(rc) => return rc,
+        };
         let result = rust_exec.add_arena_subscription_c_info_callback::<MESSAGE_BUFFER_SIZE>(
             node_id,
             topic_str,
@@ -2941,7 +2981,14 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
         };
         let topic_str = __resolved_name.as_str();
 
-        let node_id = registration_node_id(subscription_ref.node);
+        let node_id = match refuse_unbound_beside_bound(
+            registration_node_id(subscription_ref.node),
+            rust_exec.nodes().len(),
+            "rclc_executor_add_subscription_in_group",
+        ) {
+            Ok(id) => id,
+            Err(rc) => return rc,
+        };
 
         // Extract the group name from the C string (NULL or empty ⇒ None).
         let group_str = if callback_group.is_null() {
@@ -3636,7 +3683,14 @@ unsafe fn add_service_raw(
         // Phase 104.C.8.b — route multi-Node services through the
         // `_on(NodeId, ...)` variant when the Node was created via
         // `rclc_executor_node_init`.
-        let node_id = registration_node_id(service_ref.node);
+        let node_id = match refuse_unbound_beside_bound(
+            registration_node_id(service_ref.node),
+            rust_exec.nodes().len(),
+            "rclc_executor_add_service",
+        ) {
+            Ok(id) => id,
+            Err(rc) => return rc,
+        };
         // Phase 193.4 — the service's QoS (set via rclc_service_init_with_qos;
         // defaults to services_default via nros_service_init).
         let svc_qos = service_ref.get_qos_settings();
@@ -3814,7 +3868,14 @@ unsafe fn attach_client_with(
         let service_name = __resolved_name.as_str();
 
         // Phase 104.C.8.b — service-client multi-Node dispatch.
-        let node_id = registration_node_id(client_ref.node);
+        let node_id = match refuse_unbound_beside_bound(
+            registration_node_id(client_ref.node),
+            rust_exec.nodes().len(),
+            "rclc_executor_add_client",
+        ) {
+            Ok(id) => id,
+            Err(rc) => return rc,
+        };
         // Phase 193.4b — the client's QoS (set via rclc_client_init_with_qos;
         // defaults to services_default via rclc_client_init_default).
         let client_qos = client_ref.get_qos_settings();
@@ -3981,7 +4042,14 @@ pub unsafe extern "C" fn rclc_executor_attach_action_server(
         // Phase 189.M3.3.b — requested sched-context slot (bind applied at the
         // Ok arm using the action server's goal-service handle).
         let requested_sc = server_ref.options.sched_context;
-        let node_id = registration_node_id(server_ref.node);
+        let node_id = match refuse_unbound_beside_bound(
+            registration_node_id(server_ref.node),
+            rust_exec.nodes().len(),
+            "rclc_executor_attach_action_server",
+        ) {
+            Ok(id) => id,
+            Err(rc) => return rc,
+        };
         let result = rust_exec
             .register_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
                 nros_node::RawActionServerSpec {
@@ -4115,7 +4183,14 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
         // Phase 104.C.8.b — action-client multi-Node dispatch.
         // `spec.node_id` selects the target Node's session (or the
         // executor's own node when `None`).
-        let node_id = registration_node_id(client_ref.node);
+        let node_id = match refuse_unbound_beside_bound(
+            registration_node_id(client_ref.node),
+            rust_exec.nodes().len(),
+            "rclc_executor_attach_action_client",
+        ) {
+            Ok(id) => id,
+            Err(rc) => return rc,
+        };
         // Phase 189.M3.3.b — requested sched-context slot (bind applied at the
         // Ok arm; the client handle's entry_index is its callback slot).
         let requested_sc = client_ref.options.sched_context;

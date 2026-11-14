@@ -19352,3 +19352,81 @@ fn a_cpp_subscription_feeds_its_age_row_from_the_stamp() {
         );
     }
 }
+
+/// RFC-0128 D8 (phase-554 W3) -- an entity created on the EXECUTOR rather
+/// than on a node is announced under the image's primary node, never under
+/// the executor's own label. Only an image with no declared node keeps the
+/// label, as its one node.
+#[test]
+fn an_executor_level_entity_belongs_to_the_primary_node() {
+    use super::action::RawActionServerSpec;
+
+    let hashes = nros_rmw::ActionEndpointHashes {
+        send_goal: "SEND_GOAL",
+        cancel_goal: "CANCEL_GOAL",
+        get_result: "GET_RESULT",
+        feedback: "FEEDBACK",
+        status: "STATUS",
+    };
+    let spec = |name| RawActionServerSpec {
+        node_id: None,
+        action_name: name,
+        type_name: "test_msgs/action/Fibonacci",
+        type_hash: "ACTION",
+        hashes,
+        qos: nros_rmw::QoSProfile::services_default(),
+        goal_callback: accept_and_record_context,
+        cancel_callback: refuse_every_cancel,
+        accepted_callback: None,
+        context: core::ptr::null_mut(),
+    };
+
+    // A direct-API image: no node declared, so the configured name IS its node.
+    let mut direct = executor_with_clock(MockSession::new());
+    direct.set_node_identity("configured", "/");
+    direct
+        .register_action_server_raw(spec("/direct_act"))
+        .expect("register");
+    assert_eq!(
+        direct
+            .session()
+            .created_node("/direct_act/_action/send_goal")
+            .as_deref(),
+        Some("configured")
+    );
+
+    // Two declared nodes: the executor-level entity goes to the FIRST one,
+    // and the executor label is announced nowhere.
+    let mut executor = executor_with_clock(MockSession::new());
+    executor.set_node_identity("nros_app", "/");
+    executor.node_builder("talker").build().expect("node");
+    executor.node_builder("listener").build().expect("node");
+    executor
+        .register_action_server_raw(spec("/act"))
+        .expect("register");
+    let session = executor.session();
+    for endpoint in [
+        "send_goal",
+        "cancel_goal",
+        "get_result",
+        "feedback",
+        "status",
+    ] {
+        let name = alloc::format!("/act/_action/{endpoint}");
+        assert_eq!(
+            session.created_node(&name).as_deref(),
+            Some("talker"),
+            "{name}: {:?}",
+            session.created_on.borrow()
+        );
+    }
+    assert!(
+        !session
+            .created_on
+            .borrow()
+            .iter()
+            .any(|(_, node)| node.as_str() == "nros_app"),
+        "the executor label is not a node: {:?}",
+        session.created_on.borrow()
+    );
+}

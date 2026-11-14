@@ -222,6 +222,51 @@ int main(void) {
         (void)rclc_support_fini(&support);
     }
 
+    /* ---- 3. A legacy node beside a bound one is REFUSED ------------------
+     *
+     * RFC-0128 D8 (ruled 2026-11-14): an entity created without a node is
+     * announced under the image's primary node, so a legacy node's entity on
+     * an executor that already has a bound node would be announced under that
+     * OTHER node. Mixing the two writings is refused instead.
+     */
+    {
+        struct rclc_support_t support = rclc_support_get_zero_initialized();
+        CHECK_RET(
+            rclc_support_init_rmw(&support, "stub://none", 47, "mixed_session", NROS_STUB_RMW_NAME),
+            RCL_RET_OK, "support opened on the stub backend");
+        struct rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
+        CHECK_RET(rclc_executor_init(&executor, &support.context, 16, NULL), RCL_RET_OK,
+                  "executor initialised");
+
+        struct rcl_node_t bound = rcl_get_zero_initialized_node();
+        CHECK_RET(rclc_executor_node_init(&executor, &bound, "bound", NULL), RCL_RET_OK,
+                  "a bound node");
+        struct rcl_node_t legacy = rcl_get_zero_initialized_node();
+        CHECK_RET(rclc_node_init_default(&legacy, "legacy", "", &support), RCL_RET_OK,
+                  "a legacy node initialises");
+
+        struct rcl_subscription_t sub = rcl_get_zero_initialized_subscription();
+        CHECK_RET(rclc_subscription_init_default(&sub, &legacy, &MSG_TYPE, "/mixed"), RCL_RET_OK,
+                  "the legacy node's subscription is created");
+        CHECK_RET(
+            rclc_executor_add_subscription_raw(&executor, &sub, on_message, NULL, ON_NEW_DATA),
+            RCL_RET_INVALID_ARGUMENT,
+            "registering a legacy node's entity beside a bound node is refused");
+
+        /* The bound node's own entity still registers. */
+        struct rcl_subscription_t ok_sub = rcl_get_zero_initialized_subscription();
+        CHECK_RET(rclc_subscription_init_default(&ok_sub, &bound, &MSG_TYPE, "/mixed_ok"),
+                  RCL_RET_OK, "the bound node's subscription is created");
+        CHECK_RET(
+            rclc_executor_add_subscription_raw(&executor, &ok_sub, on_message, NULL, ON_NEW_DATA),
+            RCL_RET_OK, "the bound node's entity registers");
+
+        (void)rcl_node_fini(&legacy);
+        (void)rcl_node_fini(&bound);
+        (void)rclc_executor_fini(&executor);
+        (void)rclc_support_fini(&support);
+    }
+
     if (s_failures != 0) {
         fprintf(stderr, "executor_primary_node_session: %d check(s) FAILED\n", s_failures);
         return 1;

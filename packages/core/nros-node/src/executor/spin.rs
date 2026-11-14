@@ -3160,6 +3160,36 @@ impl<'s> Executor<'s> {
         self.domain_id
     }
 
+    /// RFC-0128 D8 (phase-554 W3) -- the node an entity is announced under,
+    /// as `(name, namespace, session index)`.
+    ///
+    /// `Some(id)` is that node. `None` -- an entity created on the executor
+    /// rather than on a node -- belongs to the image's PRIMARY node, the first
+    /// declared one (`NodeId::PRIMARY`, the rule executor-level parameters
+    /// already follow), so nothing is announced under the executor's own
+    /// label. Only an image that declares no node at all (a direct-API image)
+    /// keeps the executor identity, which is then its one node.
+    ///
+    /// The ONE spelling of this rule: seven registration sites each carried a
+    /// copy that fell back to the executor label instead.
+    pub(crate) fn entity_identity(
+        &self,
+        node_id: Option<super::node_record::NodeId>,
+    ) -> Result<(heapless::String<64>, heapless::String<64>, u8), NodeError> {
+        let id = node_id
+            .or_else(|| (!self.nodes.is_empty()).then_some(super::node_record::NodeId::PRIMARY));
+        match id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                Ok((r.name.clone(), r.namespace.clone(), r.session_idx))
+            }
+            None => Ok((self.node_name.clone(), self.namespace.clone(), 0u8)),
+        }
+    }
+
     pub fn set_node_identity(&mut self, node_name: &str, namespace: &str) {
         self.node_name.clear();
         let _ = self.node_name.push_str(node_name);
@@ -8489,16 +8519,7 @@ impl<'s> Executor<'s> {
         req: &SubscriptionRequest<'_>,
     ) -> Result<SubscriptionOpen, NodeError> {
         let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = match req.node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
+        let (node_name, ns, session_idx) = self.entity_identity(req.node_id)?;
         let mut topic = TopicInfo::new(req.topic_name, req.type_name, req.type_hash)
             .with_domain(self.domain_id)
             .with_namespace(&ns);
@@ -9489,8 +9510,9 @@ impl<'s> Executor<'s> {
         crate::rmw_type_registry::register_type::<Svc::Reply>()?;
 
         let slot = self.next_entry_slot()?;
-        let node_name: heapless::String<64> = self.node_name.clone();
-        let ns: heapless::String<64> = self.namespace.clone();
+        // RFC-0128 D8 -- an executor-level service belongs to the primary
+        // node, on that node's session, never to the executor's label.
+        let (node_name, ns, session_idx) = self.entity_identity(None)?;
         let mut info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
             .with_domain(self.domain_id)
             .with_namespace(&ns);
@@ -9498,7 +9520,8 @@ impl<'s> Executor<'s> {
             info = info.with_node_name(&node_name);
         }
         let handle = self
-            .session
+            .session_at_mut(session_idx)
+            .ok_or(NodeError::BackendMismatch)?
             .create_service(&info, QoSProfile::services_default())
             .map_err(NodeError::Transport)?;
 
@@ -10908,16 +10931,7 @@ impl<'s> Executor<'s> {
         capture_drop: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
     ) -> Result<HandleId, NodeError> {
         let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = match node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
+        let (node_name, ns, session_idx) = self.entity_identity(node_id)?;
         let mut info = ServiceInfo::new(service_name, service_type, service_hash)
             .with_domain(self.domain_id)
             .with_namespace(&ns);
@@ -11128,16 +11142,7 @@ impl<'s> Executor<'s> {
         capture: Option<&[u8]>,
     ) -> Result<HandleId, NodeError> {
         let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = match node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
+        let (node_name, ns, session_idx) = self.entity_identity(node_id)?;
         let mut info = ServiceInfo::new(service_name, service_type, service_hash)
             .with_domain(self.domain_id)
             .with_namespace(&ns);
@@ -11236,16 +11241,7 @@ impl<'s> Executor<'s> {
         F: super::arena::ClientReplyCallback<Svc::Reply> + 'static,
     {
         let slot = self.next_entry_slot()?;
-        let (node_name, ns, session_idx) = match node_id {
-            Some(id) => {
-                let r = self
-                    .nodes
-                    .get(id.index())
-                    .ok_or(NodeError::InvalidSchedContextBinding)?;
-                (r.name.clone(), r.namespace.clone(), r.session_idx)
-            }
-            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
-        };
+        let (node_name, ns, session_idx) = self.entity_identity(node_id)?;
         let mut info = ServiceInfo::new(service_name, service_type, service_hash)
             .with_domain(self.domain_id)
             .with_namespace(&ns);

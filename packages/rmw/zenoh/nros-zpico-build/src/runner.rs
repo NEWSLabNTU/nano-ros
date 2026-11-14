@@ -51,8 +51,10 @@ const LIFECYCLE_SERVICE_PUBLISHERS: usize = 1;
 /// (issue 2023). A liveliness token, no queryable; held like the one above.
 const PARAM_EVENT_PUBLISHERS: usize = 1;
 
-/// The session's own node token, declared once at session open whatever the
-/// image creates (`shim/session.rs`, the primary-node path). Mirrors
+/// The configured name's node token. The session no longer declares it at
+/// open (RFC-0128 D8, phase-554 W3); a direct-API image's entities announce
+/// under that name, so the slot stays, erring high by one for an image that
+/// declares its nodes. Mirrors
 /// `nros_cli_core::entity_inventory::PRIMARY_NODE_LIVELINESS_TOKENS`.
 const PRIMARY_NODE_LIVELINESS_TOKENS: usize = 1;
 
