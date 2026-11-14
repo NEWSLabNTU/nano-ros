@@ -352,8 +352,8 @@ CMake half after CMake batch 2).
 | shell-script output (user-run scripts) | #3790 | (gated at zero) | — | merged |
 | compile-time text (`#error`, `static_assert`, `compile_error!`, `#[deprecated]`, proc-macro errors) | #3792 | (gated at zero) | — | merged |
 | text assembled away from its print (`Display` impls, `#[error]`, `Err(…)` and error-builder text) | #3794 | (gated at zero) | — | merged |
-| runtime subject widened to every package and example, board print helpers named, examples' build scripts read (37 ids in 21 files fixed, 6 example build-script panics); issue 2443 archived, its stated gaps filed as issue 2547 | #3804 | (gated at zero) | — | open |
-| text that reaches a print later (issue 2547): a formatted binding or buffer printed, raised or returned later, message tables by name or `// user-surface: table`, C/C++ message and wrapper macros, generated-file headers (126 ids in 40 files found, 180 in 52 fixed; the compile-time subject reads a continued `#error` whole); issue 2547 archived | — | (gated at zero) | — | open |
+| runtime subject widened to every package and example, board print helpers named, examples' build scripts read (37 ids in 21 files fixed, 6 example build-script panics); issue 2443 archived, its stated gaps filed as issue 2547 | #3804 | (gated at zero) | — | merged |
+| text that reaches a print later (issue 2547): a formatted binding or buffer printed, raised or returned later, message tables by name or `// user-surface: table`, C/C++ message and wrapper macros, generated-file headers (126 ids in 40 files found, 180 in 52 fixed; the compile-time subject reads a continued `#error` whole); issue 2547 archived | #3815 | (gated at zero) | — | open |
 
 Acceptance: both ratchet baselines reach zero and their subjects become
 baseline-zero rules; runtime logs of a default image are read by a gate at
