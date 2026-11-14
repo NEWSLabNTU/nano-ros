@@ -42,32 +42,35 @@ LOCK="${NROS_DIAG_LOCK:-packages/tooling/nros-diagnostic-codes/codes.lock}"
 MAX_ATTEMPTS=25
 
 name="${1:-}"
-if [ -n "$name" ] && ! printf '%s' "$name" | grep -qE '^[A-Z][A-Za-z0-9]*$'; then
+if [ -n "$name" ] && ! [[ "$name" =~ ^[A-Z][A-Za-z0-9]*$ ]]; then
     echo "usage: $0 [Name]   (Name is the UpperCamelCase variant, e.g. PlatformNoFamily)" >&2
     exit 2
 fi
 
 # Highest code in the committed lock, live or retired: a retired code still
-# owns its number.
+# owns its number. Read line by line in bash: no producer process to lose.
 highest_lock_code() {
-    local max=0 n
+    local max=0 n line
     [ -f "$LOCK" ] || { printf '0'; return; }
-    while IFS= read -r n; do
-        n=$((10#$n))
+    while IFS= read -r line; do
+        [[ "$line" =~ ^NROS-([0-9]{4})[[:space:]] ]] || continue
+        n=$((10#${BASH_REMATCH[1]}))
         [ "$n" -gt "$max" ] && max="$n"
-    done < <(grep -oE '^NROS-[0-9]{4}' "$LOCK" | cut -c6-)
+    done <"$LOCK"
     printf '%s' "$max"
 }
 
-# Highest number reserved by any session, committed or not.
+# Highest number reserved by any session, committed or not. An unreachable
+# remote reads as no reservations: the push below then fails and says so.
 highest_reserved_code() {
-    local max=0 n
+    local max=0 n ref refs
+    refs="$(git ls-remote "$REMOTE" "$REF_NS/*" 2>/dev/null || true)"
     while IFS= read -r ref; do
-        n="$(printf '%s' "${ref##*/}" | grep -oE '^[0-9]{4}$' || true)"
-        [ -z "$n" ] && continue
-        n=$((10#$n))
+        ref="${ref##*/}"
+        [[ "$ref" =~ ^[0-9]{4}$ ]] || continue
+        n=$((10#$ref))
         [ "$n" -gt "$max" ] && max="$n"
-    done < <(git ls-remote "$REMOTE" "$REF_NS/*" 2>/dev/null | awk '{print $2}')
+    done <<<"$refs"
     printf '%s' "$max"
 }
 
@@ -86,7 +89,7 @@ hint() {
     echo "  declare it in packages/tooling/nros-diagnostic-codes/src/codes.rs as" >&2
     echo "      $code ${name:-<Name>} { title: \"…\", surfaces: [Cli], remedy: \"…\" }" >&2
     echo "  write its explanation in packages/tooling/nros-diagnostic-codes/explain/NROS-$code.md," >&2
-    echo "  then regenerate the views: cargo run -p nros-diagnostic-codes --features gen --bin nros-diagnostics-gen" >&2
+    echo "  then regenerate the views: cargo run -p nros-diagnostic-codes --features std --bin nros-diagnostics-gen" >&2
 }
 
 lock_max="$(highest_lock_code)"
@@ -110,11 +113,14 @@ while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
     fi
 
     # Taken by another session between our read and our write: step on.
-    if grep -qiE "already exists|non-fast-forward|fetch first|rejected" <<<"$err"; then
+    shopt -s nocasematch
+    if [[ "$err" =~ already\ exists|non-fast-forward|fetch\ first|rejected ]]; then
+        shopt -u nocasematch
         candidate=$((candidate + 1))
         attempt=$((attempt + 1))
         continue
     fi
+    shopt -u nocasematch
 
     echo "[WARN] could not reserve a code on '$REMOTE':" >&2
     printf '%s\n' "$err" | sed 's/^/       /' >&2

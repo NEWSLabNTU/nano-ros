@@ -8,17 +8,21 @@ This gate asks four things:
 1. every generated view is fresh: `codes.lock` and the book reference under
    `book/src/reference/diagnostics/` (`nros-diagnostics-gen --check`, which
    also refuses a book page no live code generates);
-2. `codes.lock` keeps every code and name it had on `origin/main`: a row may
-   be added or retired, never removed, renamed or renumbered (D3);
+2. `codes.lock` keeps every code and name it had at the baseline: a row may
+   be added or retired, never removed, renamed or renumbered (D3). The
+   baseline is `check-submodule-pins`' (`$NROS_SUBMODULE_PIN_BASELINE`, else
+   `scripts/ci/pin-baseline.sh resolve`: locally the merge-base with
+   origin/main), read through the bounded history helper;
 3. no explanation file under `explain/` lacks a live row (the reverse, a row
    with no explanation, does not compile);
 4. every live row names at least one surface (the macro refuses an empty list
    at compile time; the generator reads it again).
 
 Checks 1, 3 and 4 are the generator's `--check`; check 2 is here, because it
-reads git. With no `origin/main` to compare against, check 2 is NOT VERIFIED
-(recorded in the skip ledger), never a quiet pass. A lock absent from
-`origin/main` (the change that adds the crate) has nothing to keep.
+reads git. With no baseline to compare against, check 2 is NOT VERIFIED
+(recorded in the skip ledger; a failure in CI, where the baseline is always
+provided), never a quiet pass. A baseline with no lock (the change that adds
+the crate) has nothing to keep.
 
 Self-test (`--self-test`, and on every run): one planted defect per check, each
 of which must turn the gate red, in a scratch root outside the checkout.
@@ -39,13 +43,13 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 import check_skip  # noqa: E402
+from git_history import HISTORY_TIMEOUT_S, HistoryUnknown, history_git  # noqa: E402
 
 NAME = "check-diagnostics"
 CRATE = "packages/tooling/nros-diagnostic-codes"
 LOCK = f"{CRATE}/codes.lock"
 EXPLAIN = f"{CRATE}/explain"
 BOOK = "book/src/reference/diagnostics"
-BASE = "origin/main"
 
 
 def parse_lock(text: str) -> dict[str, str]:
@@ -72,7 +76,7 @@ def lock_kept(base: str, head: str) -> list[str]:
             out.append(f"{code} {name} was removed from codes.lock; retire it instead "
                        f"(`NNNN Retired({name}) => successor,`)")
         elif new[code] != name:
-            out.append(f"{code} was `{name}` on {BASE} and is `{new[code]}` here; a code "
+            out.append(f"{code} was `{name}` at the baseline and is `{new[code]}` here; a code "
                        "never changes its name or number")
     by_name = {v: k for k, v in new.items()}
     for code, name in sorted(old.items()):
@@ -84,21 +88,47 @@ def lock_kept(base: str, head: str) -> list[str]:
 
 def gen_check(root: pathlib.Path) -> tuple[int, str]:
     r = subprocess.run(
-        ["cargo", "run", "-q", "-p", "nros-diagnostic-codes", "--features", "gen",
+        ["cargo", "run", "-q", "-p", "nros-diagnostic-codes", "--features", "std",
          "--bin", "nros-diagnostics-gen", "--", "--check", "--root", str(root)],
         cwd=ROOT, capture_output=True, text=True,
     )
     return r.returncode, (r.stdout + r.stderr).strip()
 
 
-def base_lock() -> str | None | bool:
-    """origin/main's codes.lock text; None when origin/main has no lock yet;
-    False when there is no origin/main to read."""
-    if subprocess.run(["git", "rev-parse", "--verify", "-q", f"{BASE}^{{commit}}"],
-                      cwd=ROOT, capture_output=True).returncode != 0:
-        return False
-    r = subprocess.run(["git", "show", f"{BASE}:{LOCK}"], cwd=ROOT, capture_output=True, text=True)
-    return r.stdout if r.returncode == 0 else None
+def resolve_baseline() -> str | None:
+    """The baseline commit `check-submodule-pins` uses, by the same channel:
+    `$NROS_SUBMODULE_PIN_BASELINE` (CI: `scripts/ci/pin-baseline.sh provide`),
+    else `pin-baseline.sh resolve` (locally, the merge-base with origin/main)."""
+    env = os.environ.get("NROS_SUBMODULE_PIN_BASELINE", "").strip()
+    if env:
+        return env
+    try:
+        r = subprocess.run(["bash", str(ROOT / "scripts/ci/pin-baseline.sh"), "resolve", "HEAD"],
+                           cwd=ROOT, capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL, timeout=HISTORY_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return None
+    out = r.stdout.strip()
+    return out if r.returncode == 0 and out else None
+
+
+def base_lock(base: str) -> tuple[str | None, str | None]:
+    """(the lock at `base` or None when it has none yet, None), or
+    (None, why it cannot be read here)."""
+    # One path at one commit: two or three trees and a blob, so a LAZY fetch
+    # is allowed and still bounded (the history helper, issue 2442).
+    try:
+        if history_git(ROOT, "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}",
+                       check=False).returncode != 0:
+            return None, (f"the baseline {base} is not in this clone "
+                          "(CI: `scripts/ci/pin-baseline.sh provide` fetches it)")
+        r = history_git(ROOT, "rev-parse", "--verify", "--quiet", f"{base}:{LOCK}",
+                        check=False, fetch=True)
+        if r.returncode != 0:
+            return None, None  # the baseline predates the crate: nothing to keep
+        return history_git(ROOT, "show", f"{base}:{LOCK}", fetch=True).stdout, None
+    except HistoryUnknown as e:
+        return None, f"reading {LOCK} at {base}: {e}"
 
 
 def self_test() -> None:
@@ -154,14 +184,24 @@ def main() -> int:
     rc, out = gen_check(ROOT)
     if rc != 0:
         problems.append(out)
-    base = base_lock()
     head = (ROOT / LOCK).read_text()
-    if base is False:
+    commit = resolve_baseline()
+    if commit is None:
+        base, unverified = None, "no baseline commit resolves (pin-baseline.sh resolve)"
+    else:
+        base, unverified = base_lock(commit)
+    if unverified:
         if problems:
             print(f"{NAME}: FAIL\n" + "\n".join(problems), file=sys.stderr)
             return 1
-        return check_skip.unverified(NAME, f"no {BASE} to compare codes.lock with; "
-                                           "the views are fresh, the lock's history is unchecked")
+        msg = (f"lock history NOT VERIFIED: {unverified}; the views are fresh, and a code "
+               "removed or renumbered against the baseline cannot be seen")
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            # Every CI job that runs a gate lane provides the baseline first.
+            print(f"{NAME}: FAIL: {msg}. In CI the baseline is provided by "
+                  "`bash scripts/ci/pin-baseline.sh provide`.", file=sys.stderr)
+            return 1
+        return check_skip.unverified(NAME, msg)
     if base is not None:
         try:
             problems += lock_kept(base, head)
@@ -173,7 +213,8 @@ def main() -> int:
             print(f"  {p}", file=sys.stderr)
         return 1
     rows = len(parse_lock(head))
-    kept = "no lock on origin/main yet" if base is None else f"keeps {BASE}'s {len(parse_lock(base))}"
+    kept = ("the baseline has no lock yet" if base is None
+            else f"keeps the baseline's {len(parse_lock(base))}")
     print(f"{NAME}: OK ({rows} code(s), views fresh, {kept})")
     return 0
 
