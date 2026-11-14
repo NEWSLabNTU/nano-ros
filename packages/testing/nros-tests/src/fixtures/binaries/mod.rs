@@ -7401,10 +7401,9 @@ pub fn qemu_baremetal_main_e2e_binary() -> TestResult<PathBuf> {
 /// `cpp/action-server`, …), resolved from its `[[workspace_fixture]]` row
 /// ([`migrated_leaf_binary`]).
 ///
-/// Every case is a one-package workspace. The talkers build on the CMake road
-/// (phase-553 W5: an ordinary component, booted by the generated entry); the
-/// other roles still build an OWNED cargo entry (phase-535 W6) until phase-553
-/// W6 moves them too. The row says which, so this resolver does not.
+/// Every case is a one-package workspace whose package is an ordinary
+/// component, booted by the generated entry on the CMake road (phase-553
+/// W5/W6). The row names the build dir, so this resolver does not.
 pub fn qemu_baremetal_capi_binary(case: &str) -> TestResult<PathBuf> {
     let leaf = format!("examples/mps2-an385-baremetal/{case}");
     migrated_leaf_binary(

@@ -57,7 +57,7 @@ static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
         if (rc == RCL_RET_OK) {
             self->in_flight = false;
             self->done = true;
-            printf("Result of add_two_ints: %lld\n", (long long)r.sum);
+            printf("Result of add_two_ints: %ld\n", (long)r.sum);
             return;
         }
         if (++self->waits > 6) {

@@ -40,7 +40,7 @@ static void on_request(const example_interfaces__srv__AddTwoInts_Request* req,
     self->request_count++;
     resp->sum = req->a + req->b;
     /* The ROS 2 tutorial server's two lines (demo_nodes_cpp `add_two_ints_server`). */
-    printf("Incoming request\na: %lld b: %lld\n", (long long)req->a, (long long)req->b);
+    printf("Incoming request\na: %ld b: %ld\n", (long)req->a, (long)req->b);
 }
 
 static rcl_ret_t add_server_configure(rcl_node_t* node, rclc_executor_t* executor,

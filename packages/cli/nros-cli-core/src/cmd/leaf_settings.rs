@@ -381,17 +381,13 @@ pub(crate) fn board_fact_layer(
     board_knob_layer(board, env, path_env)
 }
 
-/// Issue 1512 — the image's connect identity, for a C/C++ app compiled by
-/// `cc` inside a cargo-rooted image. `<rclc/detail/entry_config.h>` lets an
-/// entry bake its locator/domain by defining the macro first; the cmake road
-/// does that with `-DNROS_ENTRY_LOCATOR`, and these rows are the cargo road's
-/// carrier (`nros_cc_flags::entry_config::bake` reads them). A Rust image
-/// takes the same facts through `nros::main!`, so nothing reads these there.
-/// Absent ⇒ no row ⇒ the header's own ladder, unchanged.
-///
-/// ONE spelling for both cargo roads: the single-package leaf, and a
-/// workspace image whose OWNED entry is such a cargo-rooted C/C++ program
-/// (phase-535 W6, the mps2-an385 bare-metal C/C++ examples).
+/// Issue 1512 — the image's connect identity as cargo `[env]` rows. The
+/// mps2-an385 board's `Config::from_image` reads them at compile time, so an
+/// image booted without `nros::main!`'s deploy overlay still dials what its
+/// `system.toml` declares. (Their other reader, a C/C++ app compiled by `cc`
+/// inside a cargo-rooted image, is gone: phase-553 W6 moved the last such
+/// examples onto the CMake road, which bakes `-DNROS_ENTRY_LOCATOR` itself.)
+/// Absent ⇒ no row ⇒ the board default, unchanged.
 pub(crate) fn entry_identity_env(
     network: &nros_orchestration_ir::leaf_system::Network,
     env: &mut BTreeMap<String, String>,
@@ -2209,8 +2205,8 @@ mod board_crate_tests {
 
     /// Issue 1305 — the leaves NOT on the selection package, each with the
     /// reason it is not, every one of them out of scope BY SHAPE. Every other in-tree cargo-road leaf on a supported board —
-    /// the examples, the copy-out templates' Rust packages, the mps2 C/C++ apps
-    /// on a cargo link root, and (phase F) every `packages/testing/` program,
+    /// the examples, the copy-out templates' Rust packages, and (phase F)
+    /// every `packages/testing/` program,
     /// bench and harness-templated fixture entry (issue 1340's witness
     /// included, with `[image.linux] producers = false`) — depends on its
     /// `<pkg>_nros_selection` package and names no board crate (enforced by

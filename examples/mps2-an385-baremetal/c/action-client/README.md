@@ -1,33 +1,41 @@
 # Bare-metal C action client (MPS2-AN385, no RTOS)
 
-Sends one `example_interfaces/Fibonacci` goal (`order = 10`) and logs feedback and result. An ordinary nano-ros **C** application on a Cortex-M3 with **no RTOS at
-all** — the same program as `examples/workspaces/c/src/action_client_pkg/`.
+Sends a `example_interfaces/Fibonacci` goal on `/fibonacci` and prints the feedback and `Result received: [...]`, from an ordinary nano-ros **C** component, on a Cortex-M3 with **no
+RTOS at all**.
 
-Same shape as [`../talker`](../talker/README.md), whose README explains it: the
-link root is Rust (`src/main.rs` boots the board and calls `nros_app_main()`), and
-`build.rs` compiles `src/action_client.c` plus the message bindings into it. Both of those
-files match the talker's but for the `use` line naming the board crate; this
-example differs in `package.xml` and
-`src/action_client.c` only. No libc, and no
-`printf` substitution — records are built by hand and emitted through
-`rclc_log_emit_at`.
+## Layout
 
-This directory is a one-package workspace (RFC-0122 D3): the program is
-`src/baremetal_c_action_client/` (its `Cargo.toml`, `build.rs`, `src/main.rs` and the C
-source), and `src/baremetal_c_action_client_bringup/system.toml` names it as the image's
-OWNED entry (`entry = "baremetal_c_action_client"`, RFC-0071 D19), so `nros build` builds
-that cargo package rather than generating an entry (phase-535 W6).
+A one-package workspace, the same shape as an RTOS board's C example:
 
-## Build
+| Path | What it is |
+| --- | --- |
+| `src/baremetal_c_action_client/` | the component: `CMakeLists.txt` (`nano_ros_add_node(... TYPED)`), `src/FibClient.c`, `package.xml` |
+| `src/baremetal_c_action_client_bringup/` | what it runs on: `system.toml` (board, RMW, locator), `board-net.toml` (the image's network) |
+
+`FibClient.c` has no `main` and names no board. `RCLC_C_COMPONENT` emits the C-ABI factory and configure hooks; the entry the build generates for the bringup's image calls them on the image's executor.
+
+## How it boots with no RTOS
+
+On this board the entry's `main` is the board's C start,
+`nros_board_mps2_an385_start` (`nros-board-mps2-an385`'s `c/c_main.c`). It runs
+the board bring-up written in Rust (CMSDK Timer0 clock, LAN9118 + smoltcp
+network, semihosting console, the `nros_log` sinks), then calls the entry. The
+board crate, `cortex-m-rt` and the PAC come in through the image's Rust
+staticlib, so the link is rooted in CMake like every RTOS board's (phase-553
+W4). The C library is newlib-nano, so `printf` and `snprintf` work.
+
+## Build and run
 
 ```sh
-source ./activate.sh
-cd examples/mps2-an385-baremetal/c/action-client && nros build
+source ./activate.sh          # puts this checkout's `nros` on PATH
+cd examples/mps2-an385-baremetal/c/action-client
+nros build                    # prints the artifact and the QEMU command line
 ```
 
-## Status
+The image dials the router at the `locator` in `system.toml`
+(`tcp/10.0.2.2:10320`: 10.0.2.2 is the host as seen from QEMU's slirp network).
 
-Builds and boots, and reaches a router on the port its `system.toml` locator
-names (issue 1512 — the locator reaches the C TU as `NROS_ENTRY_LOCATOR` and
-the boot config as `Config::from_image()`), and the action round trip runs
-end to end under QEMU in `test_qemu_baremetal_capi_e2e` (issue 1797).
+The fixture lane builds it from its `[[workspace_fixture]]` row
+(`builder = "cmake"`): `scripts/build/workspace-fixtures-build.sh baremetal c`.
+`tests/emulator.rs`'s `test_qemu_baremetal_capi_e2e` pairs it with
+`../action-server` against a router on that port; the client prints the result.

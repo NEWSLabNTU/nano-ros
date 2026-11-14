@@ -44,7 +44,7 @@ static void on_response(const example_interfaces__srv__AddTwoInts_Response* resp
                         void* context) {
     add_callback_client_t* self = (add_callback_client_t*)context;
     self->replies++;
-    printf("Result of add_two_ints: %lld\n", (long long)response->sum);
+    printf("Result of add_two_ints: %ld\n", (long)response->sum);
 }
 
 static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {

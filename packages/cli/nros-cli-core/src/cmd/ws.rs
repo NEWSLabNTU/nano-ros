@@ -8392,8 +8392,8 @@ nros-rmw-zenoh = { path = "../../../packages/rmw/zenoh/nros-rmw-zenoh" }
 
     /// issue 1512 — the two language-surface crates resolve to a patch row.
     ///
-    /// A cargo-rooted C image (the bare-metal `examples/mps2-an385-baremetal/c/*`
-    /// roles, the shape that board took before it had a C start) names `nros-c` the way
+    /// A cargo-rooted C image (the shape the bare-metal mps2-an385 examples had
+    /// until phase-553 gave that board a C start) names `nros-c` the way
     /// every Rust leaf names `nros`. Before this they were absent from the
     /// table, which `nros sync` reports as an unknown runtime crate and cargo
     /// then reports as `no matching package named 'nros-c' found` — two messages

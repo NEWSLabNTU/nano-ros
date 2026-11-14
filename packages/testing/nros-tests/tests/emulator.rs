@@ -416,16 +416,16 @@ fn test_qemu_bsp_pubsub_e2e() {
 /// `(QemuBaremetal, C|Cpp, Zenoh, *)` Runtime cell. The action pairs joined
 /// with issue 1797 (a burst of batches desynchronised the smoltcp read).
 ///
-/// Each image is cargo-rooted, under `examples/mps2-an385-baremetal/<case>`:
-/// the Rust startup owns the link and compiles the C/C++ application in. The
-/// talkers are leaves (the witnesses); every other role is a one-package
-/// workspace whose cargo package is its image's owned entry (phase-535 W6). Both
-/// images dial the locator their `system.toml` declares — `tcp/10.0.2.2:<port>`
-/// with `<port>` = `alloc::port` of THIS cell, so the cases never share a
-/// router — which reaches the C/C++ TU as `NROS_ENTRY_LOCATOR` and the boot
-/// config as `Config::from_image`. Before both existed every C/C++ image
-/// dialled the backend's own default (the guest's loopback) and the cells
-/// were `BuildOnly`.
+/// Each image is a one-package workspace under
+/// `examples/mps2-an385-baremetal/<case>` whose package is an ordinary C/C++
+/// component, booted by the generated entry on the CMake road; the entry's
+/// `main` is the board's C start (phase-553 W4-W6). Both images dial the
+/// locator their `system.toml` declares — `tcp/10.0.2.2:<port>` with `<port>`
+/// = `alloc::port` of THIS cell, so the cases never share a router — which
+/// reaches the entry's C compile as `NROS_ENTRY_LOCATOR` and the boot config
+/// as `Config::from_image`. Before both existed every C/C++ image dialled the
+/// backend's own default (the guest's loopback) and the cells were
+/// `BuildOnly`.
 ///
 /// The first image is the one that must be up first (listener / server); the
 /// marker is what proves the round trip, read from the image that observes it.

@@ -19,7 +19,8 @@ namespace action_server_pkg {
         /* issue 0737 — say why. A silent reject is indistinguishable from
          * a request that never arrived. */
         std::fprintf(stderr,
-                     "[action_server_pkg] goal REJECTED — deserialize failed, %zu byte(s)\n", len);
+                     "[action_server_pkg] goal REJECTED — deserialize failed, %lu byte(s)\n",
+                     static_cast<unsigned long>(len));
         return ::rclcpp_action::GoalResponse::REJECT;
     }
     if (goal.order < 0 || goal.order >= 64) {

@@ -12,8 +12,8 @@ example_interfaces::srv::AddTwoInts::Response
 AddServer::on_request(const example_interfaces::srv::AddTwoInts::Request& req) {
     example_interfaces::srv::AddTwoInts::Response resp;
     resp.sum = req.a + req.b;
-    std::printf("Incoming request\na: %lld b: %lld\n", static_cast<long long>(req.a),
-                static_cast<long long>(req.b));
+    std::printf("Incoming request\na: %ld b: %ld\n", static_cast<long>(req.a),
+                static_cast<long>(req.b));
     return resp;
 }
 

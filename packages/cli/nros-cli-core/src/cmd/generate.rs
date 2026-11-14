@@ -168,7 +168,7 @@ pub fn run(args: Args) -> Result<()> {
             nros_lang::Language::Rust => generate_rust(&args)?,
             nros_lang::Language::C => generate_c(&args)?,
             // issue 1512 — an explicit `cpp` is wired now: a cargo-rooted C++
-            // image (the bare-metal leaves) has no CMake to run
+            // image has no CMake to run
             // `nano_ros_generate_interfaces(LANGUAGE CPP)`. `all` still skips
             // it, as it always has — C and C++ would share one
             // `<out>/<pkg>/msg/` tree, a combined layout nobody has asked for.

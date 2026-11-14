@@ -65,7 +65,6 @@
 
 pub mod app_main;
 pub mod backends;
-pub mod entry_config;
 pub mod header_deps;
 
 /// Diagnostics that must be errors in every nano-ros C compile.

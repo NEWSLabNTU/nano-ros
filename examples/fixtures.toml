@@ -3444,29 +3444,15 @@ target_dir = "target"
 target = "thumbv7m-none-eabi"
 
 # ---------------------------------------------------------------------------
-# baremetal — C and C++ (issue 1512). The tree's first `lang = "c"`/`"cpp"`
-# rows with `builder = "cargo"`: the APPLICATION is C/C++, but on a board with
-# no RTOS the startup, clock and LAN9118/smoltcp bring-up are Rust, so the link
-# root is the leaf's own cargo package (`src/main.rs` boots and calls
-# `app_main()`, `build.rs` compiles the C/C++). The builder is the declared
-# fact; `fixtures-build.sh` and `check-fixtures-stale.sh` select each row's lane
-# by it, so these build and probe exactly like their `rust/` siblings above.
-# They run end to end since issue 1512 baked the entry locator into the C
-# compile.
-#
-# phase-535 W6 (RFC-0122 D3) — every role but the `talker` witnesses is now a
-# one-package workspace in its own directory, whose cargo package is the image's
-# OWNED entry (RFC-0071 D19): `src/<pkg>/` keeps `main.rs` + `build.rs`, and
-# `src/<pkg>_bringup/system.toml` names `entry = "<pkg>"`. `nros build` builds
-# that package on the cargo road (its `package.xml` declares `nros_cargo`), so
-# these `[[workspace_fixture]]` rows keep `builder = "cargo"`: the APPLICATION is
-# C/C++ and the coordinate says so, the link root is cargo. With the talkers
-# below they are the only images of the six `(QemuBaremetal, C|Cpp, Zenoh, *)`
-# Runtime cells (`test_qemu_baremetal_capi_e2e`). Issue 2377.
-#
-# phase-553 W4 gave this board a CMake-rooted road (the board's C start is the
-# image's `main`), so a GENERATED C/C++ entry builds here now. W5 moved the two
-# talkers onto it, as `builder = "cmake"` rows; W6 moves the other roles.
+# baremetal — C and C++. Every role is a one-package workspace whose package is
+# an ordinary C/C++ component (RFC-0122 D10), booted by the entry `nros build`
+# generates for the bringup's image. phase-553 W4 gave this board a C start
+# (`nros_board_mps2_an385_start`), which is the generated entry's `main`, so
+# the image is rooted in CMake like every RTOS board's and the board's Rust
+# bring-up arrives as a Corrosion staticlib (RFC-0130). W5 moved the talkers,
+# W6 the other roles; every row here is `builder = "cmake"`. They are the only
+# images of the six `(QemuBaremetal, C|Cpp, Zenoh, *)` Runtime cells
+# (`test_qemu_baremetal_capi_e2e`), each pair dialling its own `alloc::port`.
 # ---------------------------------------------------------------------------
 
 # phase-553 W5 — the C talker is a one-package workspace whose package is an
@@ -3487,61 +3473,56 @@ build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_c_talker_b
 id = "baremetal-c-zenoh-listener"
 platform = "baremetal"
 lang = "c"
-builder = "cargo"
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/c/listener"
 bringup = "src/baremetal_c_listener_bringup"
 image = "mps2-an385-baremetal"
-target_dir = "target-fixtures"
-target = "thumbv7m-none-eabi"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_c_listener_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-c-zenoh-service-server"
 platform = "baremetal"
 lang = "c"
-builder = "cargo"
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/c/service-server"
 bringup = "src/baremetal_c_service_server_bringup"
 image = "mps2-an385-baremetal"
-target_dir = "target-fixtures"
-target = "thumbv7m-none-eabi"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_c_service_server_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-c-zenoh-service-client"
 platform = "baremetal"
 lang = "c"
-builder = "cargo"
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/c/service-client"
 bringup = "src/baremetal_c_service_client_bringup"
 image = "mps2-an385-baremetal"
-target_dir = "target-fixtures"
-target = "thumbv7m-none-eabi"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_c_service_client_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-c-zenoh-action-server"
 platform = "baremetal"
 lang = "c"
-builder = "cargo"
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/c/action-server"
 bringup = "src/baremetal_c_action_server_bringup"
 image = "mps2-an385-baremetal"
-target_dir = "target-fixtures"
-target = "thumbv7m-none-eabi"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_c_action_server_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-c-zenoh-action-client"
 platform = "baremetal"
 lang = "c"
-builder = "cargo"
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/c/action-client"
 bringup = "src/baremetal_c_action_client_bringup"
 image = "mps2-an385-baremetal"
-target_dir = "target-fixtures"
-target = "thumbv7m-none-eabi"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_c_action_client_bringup/cmake"
 
 # phase-553 W5 — the C++ talker is a one-package workspace whose package is an
 # ordinary component, so it builds on the CMake road: the generated entry is
@@ -3561,61 +3542,56 @@ build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_cpp_talker
 id = "baremetal-cpp-zenoh-listener"
 platform = "baremetal"
 lang = "cpp"
-builder = "cargo"
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/cpp/listener"
 bringup = "src/baremetal_cpp_listener_bringup"
 image = "mps2-an385-baremetal"
-target_dir = "target-fixtures"
-target = "thumbv7m-none-eabi"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_cpp_listener_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-cpp-zenoh-service-server"
 platform = "baremetal"
 lang = "cpp"
-builder = "cargo"
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/cpp/service-server"
 bringup = "src/baremetal_cpp_service_server_bringup"
 image = "mps2-an385-baremetal"
-target_dir = "target-fixtures"
-target = "thumbv7m-none-eabi"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_cpp_service_server_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-cpp-zenoh-service-client"
 platform = "baremetal"
 lang = "cpp"
-builder = "cargo"
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/cpp/service-client"
 bringup = "src/baremetal_cpp_service_client_bringup"
 image = "mps2-an385-baremetal"
-target_dir = "target-fixtures"
-target = "thumbv7m-none-eabi"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_cpp_service_client_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-cpp-zenoh-action-server"
 platform = "baremetal"
 lang = "cpp"
-builder = "cargo"
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/cpp/action-server"
 bringup = "src/baremetal_cpp_action_server_bringup"
 image = "mps2-an385-baremetal"
-target_dir = "target-fixtures"
-target = "thumbv7m-none-eabi"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_cpp_action_server_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-cpp-zenoh-action-client"
 platform = "baremetal"
 lang = "cpp"
-builder = "cargo"
+builder = "cmake"
 rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/cpp/action-client"
 bringup = "src/baremetal_cpp_action_client_bringup"
 image = "mps2-an385-baremetal"
-target_dir = "target-fixtures"
-target = "thumbv7m-none-eabi"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_cpp_action_client_bringup/cmake"
 
 # ===========================================================================
 # freertos (qemu MPS2-AN385) — Rust. The six role Entry pkgs. Codegen runs in

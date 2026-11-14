@@ -1,0 +1,66 @@
+// AddClient — typed, poll-model AddTwoInts service client: the ROS 2 tutorial client, one
+// request (2 + 3) and one line, `Result of add_two_ints: 5`.
+
+#include "baremetal_cpp_service_client/AddClient.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+
+namespace baremetal_cpp_service_client {
+
+void AddClient::on_tick() {
+    if (done_) {
+        return;
+    }
+
+    if (in_flight_) {
+        uint8_t resp[64];
+        size_t rlen = 0;
+        int64_t seq = NROS_CPP_SEQUENCE_ID_UNKNOWN;
+        // Issue 2033 — take the reply WITH the id of the request it answers. A
+        // resent request's predecessor can still answer late; its reply names
+        // the abandoned id and is dropped here instead of printed as this one's.
+        if (nros_cpp_service_client_take_response_seq(client_.bytes, resp, sizeof(resp), &rlen,
+                                                      &seq) == 0 &&
+            rlen > 0 &&
+            (seq == seq_ || seq == NROS_CPP_SEQUENCE_ID_UNKNOWN ||
+             seq_ == NROS_CPP_SEQUENCE_ID_UNKNOWN)) {
+            Svc::Response r;
+            if (Svc::Response::ffi_deserialize(resp, rlen, &r) == 0) {
+                in_flight_ = false;
+                done_ = true;
+                std::printf("Result of add_two_ints: %ld\n", static_cast<long>(r.sum));
+                return;
+            }
+        } else if (++waits_ > 6) {
+            // No reply (request dropped before discovery) — resend.
+            in_flight_ = false;
+        }
+    }
+
+    if (!in_flight_) {
+        Svc::Request req;
+        req.a = kA;
+        req.b = kB;
+        uint8_t buf[64];
+        size_t written = 0;
+        if (Svc::Request::ffi_serialize(&req, buf, sizeof(buf), &written) == 0 &&
+            nros_cpp_service_client_send_request_seq(client_.bytes, buf, written, &seq_) == 0) {
+            in_flight_ = true;
+            waits_ = 0;
+        }
+    }
+}
+
+::rclcpp::Result AddClient::configure(::rclcpp::Node& node) {
+    ::setvbuf(stdout, nullptr, _IONBF, 0);
+    ::rclcpp::Result r =
+        ::rclcpp::create_service_client_raw(node, client_.bytes, "/add_two_ints", Svc::TYPE_NAME);
+    if (!r.ok()) {
+        return r;
+    }
+    return node.create_wall_timer<AddClient, &AddClient::on_tick>(timer_, 500, this);
+}
+
+} // namespace baremetal_cpp_service_client
