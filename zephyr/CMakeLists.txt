@@ -396,6 +396,21 @@ list(APPEND _nros_rust_lane_env ${_nros_cross_cc})
 include("${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosStackFloor.cmake")
 nros_stack_floor_zephyr_cargo_env(_nros_stack_floor_env)
 list(APPEND _nros_rust_lane_env ${_nros_stack_floor_env})
+# Issue 2546 -- and the PINNED Rust toolchain, when nothing chose one for this
+# app. A project `nros new` writes lives outside this checkout, with no
+# `rust-toolchain.toml` above it, so this lane's rustup answered with the
+# host's DEFAULT toolchain: measured, a fresh nucleo talker linked `stable`'s
+# (1.98.1) `compiler_builtins`, not the pinned 1.99.0's, so two users built
+# different code from one template. The C lane has followed this rule since
+# issue 2370 (`nros_cargo_build()`); same predicate, same carrier helper.
+# Unlike the C lane, there is no build-std arm here: that lane builds
+# `core`/`alloc` on the pinned NIGHTLY for every `thumbv*` triple
+# (`nros_rust_target_builds_std`), while zephyr-lang-rust passes no
+# `-Z build-std` and links the prebuilt `rust-std` `nros setup` installs on the
+# pinned STABLE toolchain. So this lane gets that pin for every triple.
+nros_pin_default_rust_toolchain()
+nros_rust_toolchain_env(_nros_rust_lane_toolchain)
+list(APPEND _nros_rust_lane_env ${_nros_rust_lane_toolchain})
 set(NROS_BOARD_FACTS_ENV "${_nros_rust_lane_env}" CACHE INTERNAL
     "issue 1662: the Zephyr Rust lane's cargo env (board facts, a leaf's descriptor, derived knobs -- issue 1796)")
 
