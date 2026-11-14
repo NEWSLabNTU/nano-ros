@@ -1,7 +1,7 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
-**Status (2026-11-13). OPEN: W1, W2, W2b, W3, W4, W5 and W6 are done; W3b
-and W5b are open.** This phase tracks the implementation of
+**Status (2026-11-14). OPEN: W1, W2, W2b, W3, W4, W5, W6 and W7 are done;
+W3b and W5b are open.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
 runs, and every gate reads that producer instead of holding its own number.
@@ -23,7 +23,7 @@ Rulings in force (issue 2400 "Rulings"):
   boards.
 - No message a user can see names an issue, phase or RFC id.
 
-Related: [issue 2402](../issues/2402-rmw-vtable-slot-binding-stack-walk.md)
+Related: [issue 2402](../issues/archived/2402-rmw-vtable-slot-binding-stack-walk.md)
 (the allowance exists because a static walk cannot bind a vtable call to its
 slot), [issue 2414](../issues/2414-stack-floor-bitcode-store-under-sccache.md)
 (the deferred bitcode store),
@@ -433,3 +433,47 @@ so the growth is on an indirect path the walk charges rather than follows
 the margin. The row is re-measured to −4,236 B (floor 13,064 B, still under
 the image's 16 KiB default, so `nros new` writes no `stack.conf`), and the
 lane then reads it exact.
+
+### W7 — Every indirect call is bound, and peaks are observations (issue 2402)
+
+- **Status:** DONE (2026-11-14, #PRNUM)
+
+**Why.** Booted at its 26 KiB static floor, the mps2 bare-metal talker
+overflowed the board's MPU guard. A gdb watchpoint found the peak path: four
+indirect calls deep, at 31,848 B. `fold1` had charged the first of them a flat
+9,520 B and walked nothing behind it.
+
+**What changed** (`scripts/nros-stack-floor.py`, issue 2402's resolution has
+the detail):
+
+- **`--indirect bind`.** Every indirect site becomes call edges: by vtable
+  slot, then by LLVM function type (the Rust codegen IR, via `llvm-dis`), then
+  to every function C can hold. `[indirect.zenoh]` is `bind`.
+- **`[[observed]]` rows replace `[[allowance]]`** under `bind`. A row makes
+  the image measured, adds nothing to the floor, refuses a walk below its
+  peak, and records the `static` that `nros new` stamps from
+  (`recorded_floor`). `--validate-table` refuses an allowance under a `bind`
+  rmw.
+- **The twin lane** (`scripts/stack-floor-twin.py`) checks an observed row: it
+  fails when the run is above the static walk or the floor.
+- **The cmake roads pass `--cfi-elf`.** A frameless function the linked image
+  does not define (dropped at link) is a named 0-byte leaf.
+
+**Measured** (bind static, observed peak, floor = static + 10 %):
+
+| image | static | peak | floor | stack |
+| --- | ---: | ---: | ---: | ---: |
+| mps2 bare-metal Rust talker | 51,240 | 31-32 KiB (MPU guard bisect) | 56,368 | 256 KiB default |
+| nucleo Rust action server | 64,712 | 30,256 | 71,184 | `nros new` stamps 71,184 |
+| nucleo Rust talker | 63,272 | 28,888 | 69,600 | `nros new` stamps 69,600 |
+| nucleo C talker | 123,412 | 11,876 | 135,760 | `nros new` stamps 135,760 |
+
+Each raised nucleo image fits the 384 KB RAM region (at most 81 % used). The C
+talker's 10x comes from untyped C call sites (issue 2516). The 25 KB
+action-client frame is counted in every image, even one that declares no
+action client (issue 2517).
+
+Acceptance: the mps2 walk is at or above its 32 KiB guard peak with no
+allowance row; every nucleo row is an `[[observed]]` row whose static covers
+its peak; `nros new` stamps the bind floor.
+

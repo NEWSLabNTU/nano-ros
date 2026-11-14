@@ -219,6 +219,42 @@ def verdict(row: dict, role: dict, peak: int, size: int, margin: int, floor_form
     return Verdict(ok, lines)
 
 
+def verdict_observed(row: dict, role: dict, peak: int, size: int) -> Verdict:
+    """An `[[observed]]` row (issue 2402): under a walk that binds every
+    indirect call, the static walk is the upper bound, and the run must stay
+    under it. The row's peak is evidence, re-measured here."""
+    key = row["image"]
+    static = int(role["depth"])
+    floor = int(role["floor"])
+    lines = [f"{key} {row['role']}: peak {peak} B, static {static} B (observed row), "
+             f"floor {floor} B"]
+    if not role.get("measured"):
+        return Verdict(False, lines + [
+            "  FAIL: the build did not take this image as measured: the image the lane "
+            "built is not keyed to this row"])
+    if peak >= size:
+        return Verdict(False, lines + [
+            f"  FAIL: the main thread used its whole {size} B stack in the twin; the peak is "
+            "not a measurement. Raise TWIN_STACK."])
+    ok = True
+    if peak > floor:
+        ok = False
+        lines.append(f"  FAIL: the peak is {peak - floor} B ABOVE the floor; this image "
+                     "overflows a stack sized to its floor")
+    if peak > static:
+        ok = False
+        lines.append(f"  FAIL: the run used {peak - static} B MORE than the static walk, which "
+                     "binds every indirect call and is meant to bound it: the walk missed a "
+                     "path (issue 2402)")
+    was = int(row.get("peak", peak))
+    if was != peak:
+        lines.append(f"  note: the peak moved {peak - was:+d} B since the row ({was} -> "
+                     f"{peak} B); update `peak = {peak}` in config/stack-floors.toml")
+    if ok:
+        lines.append("  OK: the static walk covers the run")
+    return Verdict(ok, lines)
+
+
 def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w) -> Verdict:
     key = parse_key(row["image"])
     assert key is not None
@@ -284,6 +320,8 @@ def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w) -> Ve
                                f"({consoles[0]}, {log})"])
     peak = max(u for u, _ in peaks)
     size = peaks[-1][1]
+    if "bytes" not in row:
+        return verdict_observed(row, role, peak, size)
     return verdict(row, role, peak, size, int(report_margin(report, row)), w.floor_formula)
 
 
@@ -355,6 +393,18 @@ def self_test() -> int:
     v = verdict(row, dict(role, depth=16000), 11584, 65536, 10, ff)
     check("a moved walk is noted", any("moved -112 B" in x for x in v.lines))
 
+    # issue 2402 — an observed row: the walk must cover the run.
+    orow = {"image": "talker/rust/zenoh@b", "role": "OPEN", "peak": 30000}
+    orole = {"depth": 50000, "floor": 55000, "measured": True}
+    check("observed: a walk that covers the run is OK",
+          verdict_observed(orow, orole, 30000, 65536).ok)
+    check("observed: a run above the static walk FAILS",
+          not verdict_observed(orow, dict(orole, depth=29000), 30000, 65536).ok)
+    check("observed: an image the build did not take as measured FAILS",
+          not verdict_observed(orow, dict(orole, measured=False), 30000, 65536).ok)
+    check("observed: a full-stack run is no measurement",
+          not verdict_observed(orow, orole, 65536, 65536).ok)
+
     for b in bad:
         print(f"stack-floor-twin self-test: FAIL {b}", file=sys.stderr)
     print(f"stack-floor-twin self-test: {'FAIL' if bad else 'OK'}")
@@ -384,7 +434,7 @@ def main() -> int:
     nros = shutil.which("nros")
     if not nros:
         raise SystemExit("stack-floor-twin: no `nros` on PATH; `source ./activate.sh` first")
-    rows = [r for r in doc.get("allowance", [])
+    rows = [r for r in doc.get("allowance", []) + doc.get("observed", [])
             if not args.only or r["image"] in args.only]
     if args.only and len(rows) != len(set(args.only)):
         raise SystemExit(f"stack-floor-twin: --only names a key with no row: {args.only}")

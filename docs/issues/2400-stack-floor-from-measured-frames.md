@@ -232,6 +232,27 @@ A follow-up worth measuring later: if allowances for one backend and target
 cluster across shapes, a per-target default could replace per-image rows.
 That is a measured decision, not one to take from three images.
 
+### Ruling (B): every indirect call bound; peaks are observations (2026-11-14)
+
+Supersedes ruling (A)'s allowances for an rmw whose walk binds (`[indirect.zenoh]
+mode = "bind"`, issue 2402).
+
+- **The bound walk.** A walk that follows every indirect call is an upper
+  bound, so the floor is that static walk plus the margin, never lower.
+- **No allowance.** A negative allowance would put the floor back at one
+  observed run, the failure the mps2 boot showed (its 26 KiB static floor
+  overflowed the MPU guard; the run needs 31-32 KiB).
+- **Observed rows.** A measured peak is an `[[observed]]` row. It makes the
+  image measured, so a short stack fails rather than warns, and the walk must
+  cover it.
+- **Stacks follow the floor.** The nucleo templates' stamped stacks rise to
+  their bind floors, and all fit the board's 384 KB RAM region:
+  - Rust action server: 71,184 B;
+  - Rust talker: 69,600 B;
+  - C talker: 135,760 B, about 10x its 11.9 KB run (issue 2516).
+
+The detail is in [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W7.
+
 ### Re-measured after issue 2401 (2026-11-10)
 
 #3481 lowered every nucleo static walk and moved no peak (table in issue

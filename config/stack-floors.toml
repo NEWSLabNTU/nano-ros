@@ -37,58 +37,55 @@ recursion_allowance = 0
 mode = "allowance:0"
 
 [indirect.zenoh]
-# The RMW vtable's targets are the zenoh shim's trampolines. Folding over
-# EVERY address-taken function charges the graph query (19,656 B) at every
-# site and over-counts by 57 %. Folding over these under-counts, and the
-# allowance below covers the difference (issue 2402).
-mode = "fold1"
-scope = ["zenoh", "zpico"]
+# Every indirect call is BOUND to the functions it can reach and followed
+# (issue 2402): a vtable slot to the functions at that slot, a Rust call to
+# the functions of its type, a C call to every function C can hold. The static
+# walk is then an upper bound, so a measured peak is an [[observed]] row the
+# walk must cover, never an allowance added to it. The fold it replaces
+# charged the first indirect call a flat 9,520 B and walked nothing behind it:
+# 23,968 B on the mps2 bare-metal talker, whose run overflowed 31 KiB.
+mode = "bind"
 
-# Allowances are per IMAGE SHAPE (ruled (A), 2026-11-10). `image` is the key a
-# build computes (cmake/NanoRosStackFloor.cmake `_nros_stack_floor_image_key`,
-# key (c) ruled 2026-11-12): the image's `[image.<id>] stack_floor_image`,
-# which `nros new` writes as `<template>/<lang>/<rmw>@<board>` so a renamed
-# project keeps its row, else `<bringup>@<board>`. `--validate-table` refuses a
-# template key whose template or board is gone. `[allowance.shape]` is the
-# derived entity counts the measured image was built with; a build whose counts
-# differ is warned that it is not the image that was measured. The static
-# walk's indirect charge is wrong in both directions (3-8 KB low on the Rust
-# images below, 12.6 KB HIGH on the C talker), so one image's measurement says
-# nothing about another's, and an allowance may be negative. An image with no
-# row is unmeasured: reported, never enforced.
+# Measured peaks are [[observed]] rows (issue 2402). `image` is the key a build
+# computes (cmake/NanoRosStackFloor.cmake `_nros_stack_floor_image_key`, key
+# (c) ruled 2026-11-12): the image's `[image.<id>] stack_floor_image`, which
+# `nros new` writes as `<template>/<lang>/<rmw>@<board>` so a renamed project
+# keeps its row, else `<bringup>@<board>`. `--validate-table` refuses a
+# template key whose template or board is gone.
 #
-# Measured 2026-11-10 on the nucleo-f767zi Renode twin (CONFIG_INIT_STACKS +
-# thread analyzer, main-thread peak over 7 rounds), re-measured after issue
-# 2401 (#3481) moved the session-property buffers to the heap. That lowered
-# every static walk (C talker -8,200 B, Rust talker -1,008, action server
-# -784) and moved no peak, so each allowance rose by its walk's drop. A row
-# measured before a frame on its walk changes is stale in the UNSAFE
-# direction: the walk falls, the allowance stays, and the floor drops below
-# the peak (the C talker's old row gave 3,848 B against an 11,696 B peak).
-# `just zephyr stack-floor-twin` re-measures every row here and fails when
-# `bytes != peak - static`; its first run (2026-11-13) found the C talker's
-# peak 180 B above its row and confirmed both Rust rows exact. The Rust images were
-# built with LTO (issue 2407, `cargo rustc --crate-type staticlib`). The C
-# talker's lane builds nros-relwithdebinfo, so it has no LTO. The static walk
-# uses this table's policy.
+# Under `bind` the static walk is the upper bound, so a row adds NOTHING to
+# the floor: floor = ceil8(static x (100 + margin) / 100). A row does two jobs.
+# It makes its image MEASURED, so a stack below the floor fails the build
+# instead of warning. And it is evidence the walk must cover: a static walk
+# below `peak` refuses, as a walker defect. `static` is the bind walk the peak
+# was checked against; `nros new` stamps the template's stack from it.
+# `[observed.shape]` is the derived entity counts the measured image was built
+# with. `just zephyr stack-floor-twin` re-measures each peak on the Renode twin
+# and fails when the run is above the static walk.
+#
+# Peaks measured 2026-11-10 on the nucleo-f767zi Renode twin (CONFIG_INIT_STACKS
+# + thread analyzer, main-thread peak), re-measured 2026-11-13 by the twin
+# lane. Statics walked 2026-11-14 under `bind` on images `nros new` made and
+# `nros build` built. Before `bind` these were [[allowance]] rows of +8,476,
+# +6,676 and -4,236 B over a fold walk of 21,780, 22,212 and 16,112 B. The
+# Rust images are built with LTO (issue 2407); the C talker's lane builds
+# nros-relwithdebinfo, with no LTO.
+#
+# The bind walk is loose where C calls through a pointer: zenoh-pico's sites
+# carry no type, so each reaches every function C can hold (issue 2516). That
+# is most of the C talker's 123 KB against its 11.9 KB run.
 
-[[allowance]]
+[[observed]]
 image = "action-server/rust/zenoh@nucleo-f767zi-zephyr"
 rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
-bytes = 8476
-issue = "2402"
-reason = "calls through the RMW vtable the static walk charges at the deepest scoped target, not at the frame that runs; LTO's inlining merges more of them (2,992 B without LTO, before issue 2401)"
-
-[allowance.measured]
 peak = 30256
-static = 21780
+static = 64712
 method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, LTO build; static from rust_main"
-image = "nros new --board nucleo-f767zi-zephyr --lang rust --rmw zenoh --template action-server"
-issue = "2407"
+issue = "2402"
 
-[allowance.shape]
+[observed.shape]
 NROS_EXECUTOR_MAX_NODES = 1
 NROS_MAX_PUBLISHERS = 2
 NROS_MAX_SUBSCRIBERS = 0
@@ -96,23 +93,17 @@ NROS_MAX_QUERYABLES = 4
 NROS_EXECUTOR_MAX_CBS = 1
 NROS_EXECUTOR_ACTION_CLIENTS = 1
 
-[[allowance]]
+[[observed]]
 image = "talker/rust/zenoh@nucleo-f767zi-zephyr"
 rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
-bytes = 6676
-issue = "2402"
-reason = "calls through the RMW vtable the static walk cannot bind to a slot"
-
-[allowance.measured]
 peak = 28888
-static = 22212
+static = 63272
 method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 6 rounds, LTO build; static from rust_main"
-image = "nros new --board nucleo-f767zi-zephyr --lang rust --rmw zenoh --template talker"
-issue = "2400"
+issue = "2402"
 
-[allowance.shape]
+[observed.shape]
 NROS_EXECUTOR_MAX_NODES = 1
 NROS_MAX_PUBLISHERS = 1
 NROS_MAX_SUBSCRIBERS = 0
@@ -120,23 +111,17 @@ NROS_MAX_QUERYABLES = 0
 NROS_EXECUTOR_MAX_CBS = 1
 NROS_EXECUTOR_ACTION_CLIENTS = 0
 
-[[allowance]]
+[[observed]]
 image = "qemu_bsp_talker_bringup@mps2-an385-baremetal"
 rmw = "zenoh"
 target = "thumbv7m-none-eabi"
 role = "OPEN"
-bytes = 8800
-issue = "2402"
-reason = "calls through the RMW vtable the static walk charges, not follows; the walk from main (23,968 B) is 7.8-8.8 KB under the run"
-
-[allowance.measured]
 peak = 32768
-static = 23968
-method = "QEMU 11.0 mps2-an385, the board's MPU stack guard (issue 2494) bisected over NROS_BAREMETAL_STACK_KB: 31 KiB trips 'nros: stack overflow' right after the network comes up, 32 KiB publishes for 45 s, each 3 runs or more; peak is the passing bound. dev profile (optimized + debuginfo), router reachable; static from main in the same build"
-image = "examples/mps2-an385-baremetal/rust/talker"
-issue = "2400"
+static = 51240
+method = "QEMU 11.0 mps2-an385, the board's MPU stack guard (issue 2494) bisected over NROS_BAREMETAL_STACK_KB: 31 KiB trips 'nros: stack overflow' right after the network comes up, 32 KiB publishes for 45 s, each 3 runs or more; peak is the passing bound. dev profile (optimized + debuginfo), router reachable. A gdb watchpoint over the 31-32 KiB window put the deepest write at 31,848 B, in smoltcp's TCP dispatch under declare_publisher. Before bind this was an [[allowance]] of +8,800 B over a fold walk of 23,968 B; static from main under bind"
+issue = "2402"
 
-[allowance.shape]
+[observed.shape]
 NROS_EXECUTOR_MAX_NODES = 1
 NROS_MAX_PUBLISHERS = 1
 NROS_MAX_SUBSCRIBERS = 0
@@ -144,23 +129,17 @@ NROS_MAX_QUERYABLES = 0
 NROS_EXECUTOR_MAX_CBS = 1
 NROS_EXECUTOR_ACTION_CLIENTS = 0
 
-[[allowance]]
+[[observed]]
 image = "talker/c/zenoh@nucleo-f767zi-zephyr"
 rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
-bytes = -4236
-issue = "2402"
-reason = "NEGATIVE: the static walk charges each of 51 indirect sites on the C path 8,392 B (the deepest zenoh-scoped target) while the targets that run are shallow"
-
-[allowance.measured]
 peak = 11876
-static = 16112
-method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 14 rounds, nros-relwithdebinfo (no LTO); static from main. Re-measured 2026-11-13 by the twin lane (scripts/stack-floor-twin.py): the peak rose 180 B with the walk unchanged, so the growth is on an indirect path the walk charges, not follows"
-image = "nros new --board nucleo-f767zi-zephyr --lang c --rmw zenoh --template talker"
-issue = "2400"
+static = 123412
+method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 14 rounds, nros-relwithdebinfo (no LTO); static from main"
+issue = "2402"
 
-[allowance.shape]
+[observed.shape]
 NROS_EXECUTOR_MAX_NODES = 1
 NROS_MAX_PUBLISHERS = 1
 NROS_MAX_SUBSCRIBERS = 0

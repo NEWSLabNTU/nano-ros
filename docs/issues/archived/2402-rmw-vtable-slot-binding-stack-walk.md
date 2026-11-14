@@ -1,12 +1,13 @@
 ---
 id: 2402
 title: "The stack walk charges every indirect call the deepest address-taken target, because it cannot bind a call through the RMW vtable to the slot it loads"
-status: open
+status: resolved
+resolved_in: "PR #PRNUM (phase-557 W7): --indirect bind follows every indirect call; measured peaks are [[observed]] rows"
 type: tech-debt
 severity: low
 area: [memory, tooling, rmw]
 found: 2026-11-10
-related: [issue-2400, issue-2360, issue-2398, phase-548, phase-557]
+related: [issue-2400, issue-2360, issue-2398, issue-2516, issue-2517, phase-548, phase-557]
 ---
 
 **Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md)**, with
@@ -121,3 +122,73 @@ peak; 2401's Renode `mm_free` fault was STACK_MAIN overflowing in open.
 Each allowance rose by its walk's drop (C talker −12,616 → −4,416). A row
 left stale would have given the C talker a 3,848 B floor against its
 11,696 B peak.
+
+## Resolution (2026-11-14): bind every indirect call, and record peaks as observations
+
+**The cause was wider than the vtable.** A gdb watchpoint caught the real
+peak of `examples/mps2-an385-baremetal/rust/talker`. A 1 KiB window between
+31 and 32 KiB below the stack top was pre-filled, and the first write into it
+stopped the run.
+
+- The deepest write was at 31,848 B, inside smoltcp's TCP dispatch.
+- Its path crossed FOUR indirect calls: a Rust `dyn` call into
+  `ExecutorSink::create_entity`, this issue's RMW vtable, zenoh-pico's link
+  write, and the smoltcp poll below it.
+- `fold1` charged the first of them a flat 9,520 B and walked nothing behind
+  it. That gave 23,968 B, and the image overflowed its MPU guard at 31 KiB.
+
+So binding the RMW vtable alone would not have fixed it.
+
+**`--indirect bind`** turns every indirect site into call edges, so one walk
+follows them all. Targets come from the Rust codegen IR, which `llvm-dis`
+reads from the bitcode the frames were compiled from:
+
+1. **Slot.** The functions at the loaded byte offset in every constant
+   function table (a `dyn` vtable, the C RMW vtable), plus every function of
+   the site's type whose address escapes anywhere else. The second half keeps
+   a runtime-filled table sound.
+2. **Type.** Otherwise, every address-taken function of the site's LLVM
+   function type.
+3. **What C can hold.** A site in C (no IR), or a Rust site no function of its
+   type matches, reaches every function whose address C code takes, plus
+   every Rust function whose address escapes.
+
+Two loader fixes go with it:
+
+- A function whose address CODE loads (`movw`/literal pool) now counts as
+  address-taken.
+- A frameless function the linked image does not define (the link dropped it)
+  is a 0-byte leaf, and is named.
+
+The cmake roads now pass `--cfi-elf` too.
+
+**Measured.** The top of the mps2 path is now the gdb-measured run, frame for
+frame, down to `ZenohPublisher::new`.
+
+| image | fold1 (before) | bind | observed peak |
+| --- | ---: | ---: | ---: |
+| mps2 bare-metal Rust talker | 23,968 | 51,240 | 31-32 KiB |
+| nucleo Rust action server | 21,780 | 64,712 | 30,256 |
+| nucleo Rust talker | 22,212 | 63,272 | 28,888 |
+| nucleo C talker | 16,112 | 123,412 | 11,876 |
+
+**Allowances retire under `bind`.** Ruled 2026-11-14: no negative bytes,
+because a negative allowance puts the floor back at one observed run. The
+floor is the bind static plus the margin, never lower. A measured peak becomes
+an `[[observed]]` row:
+
+- it makes the image MEASURED, so a short stack fails the build;
+- it is evidence: a walk below its peak refuses, as a walker defect;
+- it carries the `static` that `nros new` stamps a template's stack from.
+
+`--validate-table` refuses an `[[allowance]]` under a `bind` rmw. The twin
+lane checks `[[observed]]` rows.
+
+**What it costs.** The C talker reads 10x its run. The excess is C: zenoh-pico
+calls through untyped pointers, and each such site reaches every C callback.
+Tightening is tracked separately:
+
+- [issue 2516](../2516-stack-floor-bind-c-site-types.md): C call-site types
+  from clang IR.
+- [issue 2517](../2517-stack-floor-prune-by-declared-entities.md): pruning
+  entity kinds an image never declares, and the 25 KB action-client frame.

@@ -265,28 +265,38 @@ pub fn template_main_stack(
     (floor > default).then_some(floor)
 }
 
-/// The OPEN floor `config/stack-floors.toml` records for `key`:
-/// `static + allowance` plus `margin_pct` percent, rounded up to a multiple of 8, exactly
-/// `floor_formula` in `scripts/nros-stack-floor.py`.
+/// The OPEN floor `config/stack-floors.toml` records for `key`: the static walk
+/// plus its allowance (an `[[allowance]]` row) or plus nothing (an
+/// `[[observed]]` row, issue 2402: under `bind` the walk is the bound), then
+/// `margin_pct` percent, rounded up to a multiple of 8, exactly `floor_formula`
+/// in `scripts/nros-stack-floor.py`.
 #[must_use]
 pub fn recorded_floor(table: &str, key: &str) -> Option<u64> {
     let doc: toml::Value = toml::from_str(table).ok()?;
     let margin = doc.get("margin_pct")?.as_integer()?;
-    doc.get("allowance")?
-        .as_array()?
-        .iter()
-        .filter(|a| {
-            a.get("image").and_then(|v| v.as_str()) == Some(key)
-                && a.get("role").and_then(|v| v.as_str()) == Some("OPEN")
-        })
-        .filter_map(|a| {
-            let bytes = a.get("bytes")?.as_integer()?;
-            let stat = a.get("measured")?.get("static")?.as_integer()?;
-            let raw = (stat + bytes).max(0) * (100 + margin);
-            let raw = (raw + 99) / 100;
-            u64::try_from((raw + 7) / 8 * 8).ok()
-        })
-        .max()
+    let rows = |name: &str| {
+        doc.get(name)
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|a| {
+                a.get("image").and_then(|v| v.as_str()) == Some(key)
+                    && a.get("role").and_then(|v| v.as_str()) == Some("OPEN")
+            })
+    };
+    let floor = |depth: i64| {
+        let raw = depth.max(0) * (100 + margin);
+        let raw = (raw + 99) / 100;
+        u64::try_from((raw + 7) / 8 * 8).ok()
+    };
+    let allowance = rows("allowance").filter_map(|a| {
+        let bytes = a.get("bytes")?.as_integer()?;
+        let stat = a.get("measured")?.get("static")?.as_integer()?;
+        floor(stat + bytes)
+    });
+    let observed = rows("observed").filter_map(|o| floor(o.get("static")?.as_integer()?));
+    allowance.chain(observed).max()
 }
 
 /// The `CONFIG_MAIN_STACK_SIZE` a Zephyr image gets with no `os_config` of its
@@ -941,18 +951,18 @@ mod tests {
     }
 
     /// Issue 2400 W4: the recorded floor is `floor_formula`'s, on the
-    /// committed rows (the build reproduced each of these; the C talker re-measured by the
-    /// twin lane on 2026-11-13).
+    /// committed rows. Since issue 2402 they are `[[observed]]` rows over the
+    /// bind walk, which the build reproduced for each (2026-11-14).
     #[test]
     fn a_rows_recorded_floor_is_the_check_formula() {
         let t = std::fs::read_to_string(repo_root().join("config/stack-floors.toml")).unwrap();
         let k = |s: &str| format!("{s}@nucleo-f767zi-zephyr");
         assert_eq!(
             recorded_floor(&t, &k("action-server/rust/zenoh")),
-            Some(33288)
+            Some(71184)
         );
-        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(31784));
-        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(13064));
+        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(69600));
+        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(135760));
         assert_eq!(recorded_floor(&t, &k("listener/rust/zenoh")), None);
     }
 
@@ -983,10 +993,14 @@ mod tests {
         let r = repo_root();
         let t = std::fs::read_to_string(r.join("config/stack-floors.toml")).unwrap();
         let doc: toml::Value = toml::from_str(&t).unwrap();
-        let rows = doc["allowance"].as_array().unwrap();
+        let rows: Vec<toml::Value> = ["allowance", "observed"]
+            .iter()
+            .filter_map(|k| doc.get(*k).and_then(|v| v.as_array()).cloned())
+            .flatten()
+            .collect();
         assert!(!rows.is_empty());
         let mut raised = 0;
-        for row in rows {
+        for row in &rows {
             let key = row["image"].as_str().unwrap();
             // A template key is `<template>/<lang>/<rmw>@<board>`; a
             // `<bringup>@<board>` key (an in-tree example) is no template.
@@ -1022,7 +1036,8 @@ mod tests {
                 "zenoh",
                 "nucleo-f767zi-zephyr"
             ),
-            Some(33288)
+            // issue 2402: the bind walk, 64,712 B, plus the 10 % margin
+            Some(71184)
         );
         assert!(raised >= 1);
         // not a Zephyr board: the knob is not CONFIG_MAIN_STACK_SIZE
