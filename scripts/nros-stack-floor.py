@@ -1428,7 +1428,7 @@ def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
     import concurrent.futures
     clang = shutil.which("clang")
     if not clang:
-        return None, "no clang on PATH"
+        return None, set(), "no clang on PATH"
     ver = subprocess.run([clang, "--version"], capture_output=True, text=True).stdout
     resource = subprocess.run([clang, "-print-resource-dir"], capture_output=True,
                               text=True).stdout.strip() or None
@@ -1437,7 +1437,7 @@ def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
         try:
             doc = json.loads(Path(cc).read_text())
         except (OSError, ValueError) as e:
-            return None, f"{cc}: {e}"
+            return None, set(), f"{cc}: {e}"
         for e in doc:
             src = e.get("file", "")
             if not src.endswith(_C_SOURCE):
@@ -1448,7 +1448,7 @@ def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
                 continue
             entries.append((e["directory"], args, src, obj))
     if not entries:
-        return None, "no compile command produced an object the link used"
+        return None, set(), "no compile command produced an object the link used"
     probes: dict[tuple, tuple[list[str], list[str]]] = {}
 
     def search_for(d, args, src):
@@ -3263,6 +3263,34 @@ def self_test() -> int:
 
     for f in fails:
         print(f"FAIL: {f}", file=sys.stderr)
+    # Every refusal of c_ir_texts has the success return's shape (texts,
+    # uncovered, note), so `run()`'s unpack takes the stated fallback (every
+    # C site keeps every function C can hold) instead of a traceback. The
+    # book's installed journey has no clang, which is the first refusal.
+    import tempfile
+    real_which = shutil.which
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            tdp = Path(td)
+            empty = tdp / "compile_commands.json"
+            empty.write_text("[]")
+            cases = (
+                ("no clang", lambda _n: None, [str(empty)], "no clang on PATH"),
+                ("unreadable compile_commands", lambda _n: "/bin/true",
+                 [str(tdp / "missing.json")], "missing.json"),
+                ("no linked object", lambda _n: "/bin/true", [str(empty)],
+                 "no compile command produced an object the link used"),
+            )
+            for label, which, ccs, why in cases:
+                shutil.which = which
+                r = c_ir_texts(ccs, set(), "thumbv7m-none-eabi", tdp, "llvm-dis",
+                               "llvm-readobj")
+                check(f"c_ir_texts refusal keeps its shape ({label})",
+                      isinstance(r, tuple) and len(r) == 3 and r[0] is None
+                      and r[1] == set() and why in r[2])
+    finally:
+        shutil.which = real_which
+
     print(f"nros-stack-floor self-test: {len(ran)} checks, {len(fails)} failed")
     return 1 if fails else 0
 
