@@ -831,16 +831,21 @@ from before W6.
   `[[fixture]]` row is the `[[workspace_fixture]]` row
   `linux-c-zenoh-custom-platform`, same coordinate; it builds, and
   `linux_example_executor_bound_node_e2e` passes against it (3/3).
-- **To do: the mps2-an385 bare-metal C/C++ talkers as components.** Maintainer
-  ruling 2026-11-12, option (a) ("Take your recommendation"): build the
-  generated cargo entry that compiles the bringup's C/C++ COMPONENTS (RFC-0122
-  D10), and only then migrate `examples/mps2-an385-baremetal/{c,cpp}/talker`
-  as components. They do NOT take the manual-entry owned-entry road
+- **Done (2026-11-14, PR #3821): the mps2-an385 bare-metal C/C++ talkers are
+  components.** The maintainer ruling of 2026-11-12, option (a) ("Take your
+  recommendation"), asked for a generated entry that compiles the bringup's
+  C/C++ COMPONENTS (RFC-0122 D10) before the talkers migrate, and not the
+  manual-entry owned-entry road that
   [issue 2377](../issues/archived/2377-workspace-road-no-c-image-on-bare-metal.md)
-  gave the ten non-talker leaves in the meantime. This is 2377's first fix
-  direction: a C/C++ image on a board whose link root is Rust is routed to a
-  generated cargo entry, whose build compiles the bringup's C/C++ component
-  packages the way issue 1512's leaf `build.rs` does.
+  gave the ten non-talker leaves in the meantime. The road taken is RFC-0130's,
+  which superseded the cargo entry this item named: phase-553 W1 to W4 gave
+  the board a C start, so CMake owns the final link and the runtime arrives as
+  a Corrosion staticlib.
+  [Phase-553 W5](phase-553-one-ros-cmake-build.md) migrated
+  `examples/mps2-an385-baremetal/{c,cpp}/talker` as typed components on that
+  road; their rows are `[[workspace_fixture]]` rows
+  `baremetal-{c,cpp}-zenoh-talker` with `builder = "cmake"`. The ten
+  non-talker leaves are phase-553 W6.
 
 ### W7 — Retirement
 
