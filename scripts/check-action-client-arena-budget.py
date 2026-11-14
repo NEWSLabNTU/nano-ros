@@ -596,6 +596,26 @@ def symbols(elf):
     return run.stdout
 
 
+def lane_holds_no_rust(coords_path):
+    """`coords_path` when it is a coordinate file with no `rust` coordinate.
+
+    Empty string otherwise: no file (an un-narrowed build, which must find a
+    Rust image), an unreadable one, or one that holds a Rust coordinate.
+    """
+    if not coords_path or not os.path.isfile(coords_path):
+        return ""
+    try:
+        lines = open(coords_path, encoding="utf-8").read().splitlines()
+    except OSError:
+        return ""
+    coords = [l.strip().split(",") for l in lines if l.strip()]
+    if not coords:
+        return ""
+    if any(len(c) >= 2 and c[1].strip() == "rust" for c in coords):
+        return ""
+    return coords_path
+
+
 def main(argv=None, _self_test=True):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument(
@@ -651,6 +671,20 @@ def main(argv=None, _self_test=True):
             verdicts[verdict].append((elf, arena, detail))
 
     examined = sum(len(v) for v in verdicts.values())
+    no_rust = lane_holds_no_rust(os.environ.get("NROS_FIXTURE_COORDS", ""))
+    if examined == 0 and no_rust:
+        # Issue 2548 — a DECLARED empty population, not a pass. Only a Rust
+        # image is decidable here (a C/C++ image whole-archives the FFI, which
+        # `classify` cannot attribute), and this lane's coordinates name no
+        # Rust coordinate: the tier-1 threadx_linux merge shard is
+        # `threadx-linux,c,zenoh` alone. An earlier run "passed" only because
+        # it happened to examine a host tool in `target/debug`.
+        print(
+            "check-action-client-arena-budget: NOTHING TO CHECK, not a pass — "
+            f"this lane's coordinates ({display(no_rust)}) hold no Rust "
+            "coordinate, and only a Rust image's arena is decidable."
+        )
+        return 0
     if examined == 0:
         # FAILURE, not a skip. This gate runs where a fixture build has just
         # finished, so "no image with an attributable config" means the build
@@ -876,6 +910,7 @@ def self_test(quiet=True):
     #    it sat on the fast line, and that is the defect the move fixes; a
     #    regression here would restore a green over zero images.
     _saved = globals()["derived_roots"]
+    _saved_coords = os.environ.pop("NROS_FIXTURE_COORDS", None)
     globals()["derived_roots"] = lambda: []
     try:
         import io
@@ -885,8 +920,28 @@ def self_test(quiet=True):
             rc_empty = main([], _self_test=False)
     finally:
         globals()["derived_roots"] = _saved
+        if _saved_coords is not None:
+            os.environ["NROS_FIXTURE_COORDS"] = _saved_coords
     if rc_empty != 1:
         fails.append(f"examining nothing must exit 1, got {rc_empty}")
+
+    # 3. Issue 2548 — the one declared empty population: a coordinate lane
+    #    with no Rust coordinate. A lane WITH one, or no lane at all, still
+    #    fails on zero.
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        for body, want in (
+            ("threadx-linux,c,zenoh\n", True),
+            ("threadx-linux,c,zenoh\nlinux,rust,zenoh\n", False),
+            ("", False),
+        ):
+            p = os.path.join(d, "coords.txt")
+            with open(p, "w", encoding="utf8") as fh:
+                fh.write(body)
+            if bool(lane_holds_no_rust(p)) != want:
+                fails.append(f"lane_holds_no_rust({body!r}): expected {want}")
+        if lane_holds_no_rust("") or lane_holds_no_rust(os.path.join(d, "absent")):
+            fails.append("lane_holds_no_rust: no coordinate file must not declare empty")
 
     if fails:
         for f in fails:
