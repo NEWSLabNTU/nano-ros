@@ -1,0 +1,1 @@
+The stack floor walk now follows every indirect call: a vtable slot, a Rust call by its type, a C call to every function C can hold. The walk is an upper bound, so the floor is that walk plus the margin. A measured peak is recorded as an `[[observed]]` row the walk must cover, never as an allowance. `nros new` stamps the larger main stacks this gives the nucleo-f767zi templates.

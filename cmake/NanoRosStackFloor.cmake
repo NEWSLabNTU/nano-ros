@@ -255,9 +255,13 @@ endfunction()
 #
 #   _nros_stack_floor_command(<out> KEY <image key> ROOT <fn> STACK <bytes>
 #       KNOB <text> TARGET <triple> RMW <rmw> MAP <link map> DIR <work dir>
-#       LINK_DIRS <dir>... BITCODE <glob>... [SHAPE <KNOB=count>...])
+#       LINK_DIRS <dir>... BITCODE <glob>... [SHAPE <KNOB=count>...] [ELF <image>])
+#
+# ELF is the linked image, whose `.debug_frame` gives a frame to a function no
+# input states one for (a prebuilt toolchain library: libgcc, compiler_builtins
+# shipped without bitcode). The cargo road passes it too (`--cfi-elf`).
 function(_nros_stack_floor_command _out)
-    cmake_parse_arguments(_C "" "KEY;ROOT;STACK;KNOB;TARGET;RMW;MAP;DIR" "LINK_DIRS;BITCODE;SHAPE" ${ARGN})
+    cmake_parse_arguments(_C "" "KEY;ROOT;STACK;KNOB;TARGET;RMW;MAP;DIR;ELF" "LINK_DIRS;BITCODE;SHAPE" ${ARGN})
     # The rustup llvm-tools ship no llvm-cxxfilt, so name the cross
     # toolchain's own demangler (`arm-none-eabi-g++` -> `arm-none-eabi-c++filt`)
     # when it sits beside the compiler; the walker falls back to the host's.
@@ -274,6 +278,9 @@ function(_nros_stack_floor_command _out)
         --role "OPEN=${_C_ROOT}"
         --check-stack "OPEN=${_C_STACK}" --stack-knob "${_C_KNOB}"
         --link-map "${_C_MAP}")
+    if(_C_ELF)
+        list(APPEND _cmd --cfi-elf "${_C_ELF}")
+    endif()
     foreach(_d IN LISTS _C_LINK_DIRS)
         list(APPEND _cmd --link-dir "${_d}")
     endforeach()
@@ -336,6 +343,7 @@ function(nros_stack_floor_check _exe)
     get_target_property(_bindir ${_exe} BINARY_DIR)
     _nros_stack_floor_command(_cmd KEY "${_key}" ROOT "${_SF_ROOT}" STACK "${_SF_STACK}"
         KNOB "${_SF_KNOB}" TARGET "${_SF_TARGET}" RMW "${_SF_RMW}" MAP "${_map}" DIR "${_dir}"
+        ELF "$<TARGET_FILE:${_exe}>"
         LINK_DIRS "${_bindir}" "${CMAKE_BINARY_DIR}"
         BITCODE "${CMAKE_BINARY_DIR}/cargo/*/${_SF_TARGET}/${_SF_PROFILE}/deps"
                 "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_SF_TARGET}/*/deps")
@@ -464,6 +472,7 @@ function(nros_stack_floor_zephyr_check)
         STACK "${CONFIG_MAIN_STACK_SIZE}" KNOB "CONFIG_MAIN_STACK_SIZE={bytes}"
         TARGET "${_t}" RMW "${_Z_RMW}"
         MAP "${CMAKE_BINARY_DIR}/zephyr/zephyr.map" DIR "${_dir}"
+        ELF "${CMAKE_BINARY_DIR}/zephyr/zephyr.elf"
         LINK_DIRS "${CMAKE_BINARY_DIR}"
         BITCODE "${CMAKE_BINARY_DIR}/rust/target/${_t}/*/deps"
                 "${CMAKE_BINARY_DIR}/nros-rust*/${_t}/*/deps"

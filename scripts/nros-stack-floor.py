@@ -73,6 +73,15 @@ class Graph:
     indirect_sites: dict[str, int] = field(default_factory=dict)
     # functions whose address is taken from a data section
     address_taken: set[str] = field(default_factory=set)
+    # issue 2402 (`--indirect bind`) — a function whose address CODE loads
+    # (a non-call relocation in a text section: `movw`/`movt`, a literal pool).
+    # Kept apart from `address_taken`, which the fold modes and every measured
+    # allowance were computed over.
+    code_taken: set[str] = field(default_factory=set)
+    # issue 2402 — functions whose address an object WITHOUT codegen IR takes
+    # (C, compiled by GCC), in data or in code: what a C call site can hold
+    # besides a pointer Rust handed it.
+    c_taken: set[str] = field(default_factory=set)
     # every symbol that is a FUNCTION in some input (defined or frame-known)
     functions: set[str] = field(default_factory=set)
     # names that share one address in one section (GCC identical-code
@@ -579,12 +588,17 @@ def parse_cfi(text: str, sp_reg: str = "reg13") -> dict[int, int | None]:
     return out
 
 
+# Every function symbol the linked image defines, from `--cfi-elf`.
+LINKED_FUNCTIONS: set[str] = set()
+
+
 def load_cfi_frames(g: Graph, elf: str, readobj: str, objdump: str) -> int:
     """Frames, from the linked image's `.debug_frame`, for the functions no
     input states one for (a prebuilt toolchain library such as newlib, whose
     objects have no `.su`). An input's own frame always wins. Returns how many
     functions got one."""
     starts: dict[int, set[str]] = {}
+    LINKED_FUNCTIONS.clear()
     for doc in readobj_json(readobj, ["--symbols"], [elf]):
         for s in doc.get("Symbols", []):
             sym = s["Symbol"]
@@ -593,6 +607,7 @@ def load_cfi_frames(g: Graph, elf: str, readobj: str, objdump: str) -> int:
                 continue
             name = sym["Name"]["Name"] if isinstance(sym["Name"], dict) else sym["Name"]
             starts.setdefault(sym["Value"] & ~1, set()).add(name)
+            LINKED_FUNCTIONS.add(name)
     r = subprocess.run([objdump, "--dwarf=frames", elf], capture_output=True, text=True,
                        check=True)
     n = 0
@@ -656,8 +671,405 @@ def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | No
             bcs += rlib_bitcode(p, llvm_bin, cache)
         else:
             out.append(i)
-    out += [str(llc_object(bc, llc, cache)) for bc in bcs]
+    ir_objs = [str(llc_object(bc, llc, cache)) for bc in bcs]
+    out += ir_objs
+    EXPANDED_BITCODE[:] = bcs
+    IR_OBJECTS.clear()
+    IR_OBJECTS.update(ir_objs)
     return out
+
+
+# The codegen modules the last `expand_inputs` compiled: the IR the typed
+# indirect pass reads, so it sees exactly the code the frames came from.
+EXPANDED_BITCODE: list[Path] = []
+# The objects llc compiled from that bitcode, by the path `load_object` sees.
+IR_OBJECTS: set[str] = set()
+# Relocations that are a CALL or a branch to their symbol. Any other relocation
+# in code that names a function loads its ADDRESS.
+CALL_RELOCS = frozenset({
+    "R_ARM_CALL", "R_ARM_JUMP24", "R_ARM_PC24", "R_ARM_PLT32", "R_ARM_THM_CALL",
+    "R_ARM_THM_JUMP24", "R_ARM_THM_JUMP19", "R_ARM_THM_JUMP11", "R_ARM_THM_JUMP8",
+    "R_ARM_THM_JUMP6", "R_RISCV_CALL", "R_RISCV_CALL_PLT", "R_RISCV_JAL",
+    "R_RISCV_BRANCH", "R_RISCV_RVC_JUMP", "R_RISCV_RVC_BRANCH", "R_RISCV_RELAX",
+    "R_AARCH64_CALL26", "R_AARCH64_JUMP26", "R_X86_64_PLT32", "R_X86_64_PC32",
+    "R_386_PLT32", "R_386_PC32", "R_XTENSA_SLOT0_OP",
+})
+
+
+# ---------------------------------------------------------------------------
+# Bound indirect calls (issue 2402)
+#
+# A call through a register used to be CHARGED (`--indirect fold`), not
+# followed, and a charge is a guess: the mps2 bare-metal talker's run went
+# through four of them (a Rust `dyn` call, the C RMW vtable, zenoh-pico's link
+# write, and smoltcp below it) and the walk read 8 KB under the run, because
+# the FIRST was charged a flat fold and nothing behind it was walked.
+#
+# `--indirect bind` turns every indirect site into ordinary call EDGES, so one
+# walk follows them, and a cycle through a register is a cycle under the same
+# recursion rule as a direct one. A site's targets come from the Rust codegen
+# IR (the bitcode the frames were compiled from), narrowest first:
+#
+# 1. SLOT. The function pointer is loaded at a constant offset from a pointer
+#    (a `dyn` vtable, the C RMW vtable, any table of functions). Its targets
+#    are the functions at that offset in every constant table of functions,
+#    PLUS every function of the site's type whose address escapes anywhere
+#    else (a store, an argument, a non-constant global). The second half is
+#    what keeps this an upper bound: a table filled at run time is reached by
+#    a `store` of each function, so its functions are never lost.
+# 2. TYPE. Otherwise: every address-taken function of the site's LLVM
+#    function type.
+# 3. ANY. A site in code with no IR (C, compiled by GCC), and a Rust site no
+#    function of its type matches: every address-taken function in the image
+#    (the relocation-derived set, which covers C). Never a flat fold.
+#
+# Types are coarse under opaque pointers (`ptr`), which only widens a set. A
+# pointer cast between unrelated function types would escape (2); Rust needs
+# `transmute` for that.
+# ---------------------------------------------------------------------------
+
+_IR_DEFINE = re.compile(r'^(define|declare)\s+(?:.*?\s)?(\S+?)\s+@("[^"]+"|[\w.$-]+)\((.*)\)')
+_IR_ICALL = re.compile(r'\b(?:tail |musttail |notail )?call\s+(?:[a-z_]+(?:\([^)]*\))?\s+)*?'
+                       r'(\S+?)(?: \([^)]*\))?\s+(%[\w.$-]+)\((.*)\)')
+_IR_REF = re.compile(r'@("[^"]+"|[\w.$-]+)')
+_IR_DIRECT = re.compile(r'\bcall\s+[^@%]*?@("[^"]+"|[\w.$-]+)\(')
+_IR_GLOBAL = re.compile(r'^@("[^"]+"|[\w.$-]+)\s*=\s*(?:[a-z_]+\s+)*?(constant|global)\s+(.*)$')
+_IR_TYPEDEF = re.compile(r'^(%"[^"]+"|%[\w.$-]+)\s*=\s*type\s+(.*)$')
+_IR_GEP_I8 = re.compile(r'^\s*(%[\w.$-]+)\s*=\s*getelementptr\s+(?:inbounds\s+|nuw\s+|nusw\s+)*i8,\s*ptr\s+(%[\w.$-]+),\s*i(?:32|64)\s+(-?\d+)\s*(?:,\s*!.*)?$')
+_IR_GEP_AGG = re.compile(r'^\s*(%[\w.$-]+)\s*=\s*getelementptr\s+(?:inbounds\s+|nuw\s+|nusw\s+)*(.+?),\s*ptr\s+(%[\w.$-]+)((?:,\s*i(?:32|64)\s+-?\d+)+)\s*(?:,\s*!.*)?$')
+_IR_LOAD_PTR = re.compile(r'^\s*(%[\w.$-]+)\s*=\s*load\s+(?:volatile\s+)?ptr,\s*ptr\s+(%[\w.$-]+)')
+_IR_DATALAYOUT = re.compile(r'^target datalayout = "([^"]*)"')
+
+
+def _split_top(s: str) -> list[str]:
+    """Split on commas outside brackets and quotes."""
+    parts, depth, cur, quote = [], 0, "", False
+    for ch in s:
+        if ch == '"':
+            quote = not quote
+        elif not quote:
+            if ch in "([{<":
+                depth += 1
+            elif ch in ")]}>":
+                depth -= 1
+            elif ch == "," and depth == 0:
+                parts.append(cur)
+                cur = ""
+                continue
+        cur += ch
+    if cur.strip():
+        parts.append(cur)
+    return [p.strip() for p in parts]
+
+
+def _take_type(s: str) -> tuple[str, str]:
+    """The leading LLVM type of `s`, and the rest."""
+    s = s.strip()
+    if s[:2] == "<{" or s[0] in "{[<":
+        opener = "<{" if s[:2] == "<{" else s[0]
+        depth = 0
+        for i, ch in enumerate(s):
+            if ch in "([{<":
+                depth += 1
+            elif ch in ")]}>":
+                depth -= 1
+                if depth == 0:
+                    return s[: i + 1], s[i + 1:].strip()
+        raise ValueError(f"unbalanced type in `{s[:60]}`")
+    tok = s.split(None, 1)
+    return tok[0], (tok[1] if len(tok) > 1 else "")
+
+
+def _ir_arg_types(arglist: str) -> str:
+    """`ptr noundef %a, { i32, i8 } %b` -> `ptr,{ i32, i8 }`."""
+    out = []
+    for a in _split_top(arglist):
+        if not a or a == "...":
+            continue
+        out.append(_take_type(a)[0])
+    return ",".join(out)
+
+
+class _Layout:
+    """Sizes and alignments of the IR types a table of functions is made of."""
+
+    def __init__(self, ptr_bytes: int, named: dict[str, str]):
+        self.ptr = ptr_bytes
+        self.named = named
+
+    def size_align(self, t: str) -> tuple[int, int]:
+        t = t.strip()
+        if t == "ptr" or t.startswith("ptr addrspace"):
+            return self.ptr, self.ptr
+        if t in self.named:
+            return self.size_align(self.named[t])
+        if t in ("float",):
+            return 4, 4
+        if t in ("double",):
+            return 8, 8
+        if t.startswith("i") and t[1:].isdigit():
+            n = max(1, (int(t[1:]) + 7) // 8)
+            a = 1
+            while a < n:
+                a *= 2
+            return n, min(a, 8)
+        if t[0] == "[":
+            n, _, elem = t[1:-1].partition(" x ")
+            es, ea = self.size_align(elem)
+            return int(n) * es, ea
+        if t[:2] == "<{":
+            return sum(self.size_align(e)[0] for e in _split_top(t[2:-2])), 1
+        if t[0] == "{":
+            off, al = 0, 1
+            for e in _split_top(t[1:-1]):
+                es, ea = self.size_align(e)
+                off = -(-off // ea) * ea + es
+                al = max(al, ea)
+            return -(-off // al) * al, al
+        raise ValueError(f"no layout for `{t}`")
+
+    def field_offsets(self, t: str) -> list[int]:
+        t = self.named.get(t, t).strip()
+        if t[:2] == "<{":
+            out, off = [], 0
+            for e in _split_top(t[2:-2]):
+                out.append(off)
+                off += self.size_align(e)[0]
+            return out
+        if t[0] == "{":
+            out, off = [], 0
+            for e in _split_top(t[1:-1]):
+                es, ea = self.size_align(e)
+                off = -(-off // ea) * ea
+                out.append(off)
+                off += es
+            return out
+        if t[0] == "[":
+            n, _, elem = t[1:-1].partition(" x ")
+            es = self.size_align(elem)[0]
+            return [i * es for i in range(int(n))]
+        return [0]
+
+    def elem_type(self, t: str, i: int) -> str:
+        t = self.named.get(t, t).strip()
+        if t[:2] == "<{":
+            return _split_top(t[2:-2])[i]
+        if t[0] == "{":
+            return _split_top(t[1:-1])[i]
+        if t[0] == "[":
+            return t[1:-1].partition(" x ")[2]
+        return t
+
+
+def _table_slots(lay: _Layout, t: str, value: str, base: int, out: list[tuple[int, str]]) -> None:
+    """Each `ptr @fn` in a constant initializer, with its byte offset."""
+    value = value.strip()
+    if value.startswith("@"):
+        m = _IR_REF.match(value)
+        if m:
+            out.append((base, m.group(1).strip('"')))
+        return
+    t = lay.named.get(t, t).strip()
+    if value[:2] == "<{":
+        body = value[2:-2]
+    elif value[:1] in "{[" and value[-1:] in "}]":
+        body = value[1:-1]
+    else:
+        return
+    offs = lay.field_offsets(t)
+    for i, el in enumerate(_split_top(body)):
+        if i >= len(offs):
+            break
+        et, ev = _take_type(el)
+        _table_slots(lay, et, ev, base + offs[i], out)
+
+
+def parse_ir_sites(text: str):
+    """From one module's textual IR:
+    - `types`: each defined or declared function's type;
+    - `sites`: each indirect call as (caller, callee type, slot offset or None);
+    - `tables`: (offset, function) for every function in a constant
+      aggregate initializer;
+    - `escaped`: every function referenced anywhere ELSE (not as a direct
+      callee and not inside a constant table)."""
+    types: dict[str, str] = {}
+    sites: list[tuple[str, str, int | None]] = []
+    tables: set[tuple[int, str]] = set()
+    escaped: set[str] = set()
+    named: dict[str, str] = {}
+    ptr_bytes = 8
+    lines = text.splitlines()
+    for line in lines:
+        m = _IR_TYPEDEF.match(line)
+        if m:
+            named[m.group(1)] = m.group(2).strip()
+            continue
+        m = _IR_DATALAYOUT.match(line)
+        if m:
+            for spec in m.group(1).split("-"):
+                if spec.startswith("p:") or spec.startswith("p0:"):
+                    ptr_bytes = int(spec.split(":")[1]) // 8
+    lay = _Layout(ptr_bytes, named)
+    cur = None
+    off: dict[str, int] = {}
+    fptr: dict[str, int] = {}
+    for line in lines:
+        m = _IR_DEFINE.match(line)
+        if m:
+            name = m.group(3).strip('"')
+            types[name] = f"{m.group(2)}({_ir_arg_types(m.group(4))})"
+            cur = name if m.group(1) == "define" else None
+            off, fptr = {}, {}
+            continue
+        if cur is None:
+            g = _IR_GLOBAL.match(line)
+            if g:
+                rest = g.group(3)
+                try:
+                    t, v = _take_type(rest)
+                    v = v.split(", align")[0].split(", section")[0]
+                    slots: list[tuple[int, str]] = []
+                    _table_slots(lay, t, v, 0, slots)
+                    tables |= set(slots)
+                    in_table = {f for _, f in slots}
+                except (ValueError, IndexError):
+                    in_table = set()
+                for r in _IR_REF.findall(rest):
+                    r = r.strip('"')
+                    if r not in in_table:
+                        escaped.add(r)
+            continue
+        if line.startswith("}"):
+            cur = None
+            continue
+        gm = _IR_GEP_I8.match(line)
+        if gm:
+            off[gm.group(1)] = off.get(gm.group(2), 0) + int(gm.group(3))
+        else:
+            gm = _IR_GEP_AGG.match(line)
+            if gm:
+                idx = [int(x.split()[-1]) for x in gm.group(4).split(",") if x.strip()]
+                try:
+                    t = gm.group(2).strip()
+                    o = off.get(gm.group(3), 0) + idx[0] * lay.size_align(t)[0]
+                    for i in idx[1:]:
+                        o += lay.field_offsets(t)[i]
+                        t = lay.elem_type(t, i)
+                    off[gm.group(1)] = o
+                except (ValueError, IndexError):
+                    pass
+        lm = _IR_LOAD_PTR.match(line)
+        if lm:
+            fptr[lm.group(1)] = off.get(lm.group(2), 0)
+        if " asm " not in line:
+            c = _IR_ICALL.search(line)
+            if c:
+                sites.append((cur, f"{c.group(1)}({_ir_arg_types(c.group(3))})",
+                              fptr.get(c.group(2))))
+        refs = _IR_REF.findall(line)
+        if refs:
+            direct = {x.strip('"') for x in _IR_DIRECT.findall(line)}
+            for r in refs:
+                r = r.strip('"')
+                if r not in direct:
+                    escaped.add(r)
+    return types, sites, tables, escaped
+
+
+def bind_indirect_sites(g: Graph, modules) -> dict[str, int]:
+    """Turn every indirect site into call edges (see the block comment above).
+    Returns how many sites each tier bound."""
+    types: dict[str, str] = {}
+    tables: set[tuple[int, str]] = set()
+    escaped: set[str] = set()
+    for t, _, tb, esc in modules:
+        types.update(t)
+        tables |= tb
+        escaped |= esc
+    # A candidate must have a body in the image: the IR also names functions
+    # the link resolves elsewhere (cortex-m-rt's vector table names every
+    # interrupt, each `PROVIDE`d to `DefaultHandler` by link.x).
+    def real(fn: str) -> bool:
+        return fn in types and fn in g.frames
+    by_type: dict[str, set[str]] = {}
+    for fn in escaped | {f for _, f in tables}:
+        if real(fn):
+            by_type.setdefault(types[fn], set()).add(fn)
+    escaped_by_type: dict[str, set[str]] = {}
+    for fn in escaped:
+        if real(fn):
+            escaped_by_type.setdefault(types[fn], set()).add(fn)
+    at_slot: dict[tuple[int, str], set[str]] = {}
+    for o, fn in tables:
+        if real(fn):
+            at_slot.setdefault((o, types[fn]), set()).add(fn)
+    # A bound target must have a frame. The address-taken set also holds
+    # entry points nothing CALLS: an exception vector (`z_arm_hard_fault`,
+    # `z_arm_pendsv`: the vector table takes their address, the core enters
+    # them) and assembly with no frame record. A direct call to such a
+    # function still refuses the walk; only the over-approximate bound edges
+    # skip it, and the summary names what they skipped.
+    frameless: set[str] = set()
+
+    def known(fns):
+        out = set()
+        for fn in fns:
+            if fn in g.frames:
+                out.add(fn)
+            elif fn in g.functions:
+                frameless.add(fn)
+        return out
+    anyset = known(g.address_taken | g.code_taken | {f for _, f in tables})
+    # What a pointer that came from C can hold: a function C code takes the
+    # address of, or a Rust function whose address escapes as a value (a
+    # callback handed over). A Rust function that appears ONLY in a constant
+    # table (a `dyn` vtable, the RMW vtable) is reached through that table,
+    # never through a pointer C made.
+    from_c = known(g.c_taken | {fn for fn in escaped if real(fn)})
+    stats = {"slot": 0, "type": 0, "any": 0, "machine": 0}
+    ir_sites: dict[str, int] = {}
+    for _, sites, _, _ in modules:
+        for caller, t, slot in sites:
+            ir_sites[caller] = ir_sites.get(caller, 0) + 1
+            cands = set()
+            if slot is not None and (slot, t) in at_slot:
+                cands = at_slot[(slot, t)] | escaped_by_type.get(t, set())
+                tier = "slot"
+            elif by_type.get(t):
+                cands = by_type[t]
+                tier = "type"
+            else:
+                cands = from_c
+                tier = "any"
+            g.edges.setdefault(caller, set()).update(cands)
+            stats[tier] += 1
+    # Machine-level sites the IR does not account for: every site in a C
+    # object, and any a Rust function's machine code has beyond its IR's.
+    for fn, n in list(g.indirect_sites.items()):
+        # A function with IR: the IR's sites ARE its calls through a register
+        # (the disassembly's count also matches jump-table and return
+        # branches). A function without IR (C) has only the disassembly.
+        extra = 0 if fn in types else n
+        if extra > 0:
+            # A C function's site holds what C can hold; a Rust function's
+            # site the IR did not show (lowered from something) holds anything.
+            g.edges.setdefault(fn, set()).update(from_c)
+            stats["machine"] += extra
+        del g.indirect_sites[fn]
+    stats["frameless"] = sorted(frameless)
+    return stats
+
+
+def ir_text(bc: Path, dis: str, cache: Path) -> str:
+    import hashlib
+    h = hashlib.sha256(bc.read_bytes()).hexdigest()
+    p = cache / "ir" / f"{h}.ll"
+    if not p.exists():
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".tmp")
+        subprocess.run([dis, "-o", str(tmp), str(bc)], check=True)
+        tmp.replace(p)
+    return p.read_text(errors="replace")
 
 
 def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) -> None:
@@ -675,6 +1087,7 @@ def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) ->
 
     docs = readobj_json(readobj, ["-S", "--symbols", "-r"], paths)
     for doc in docs:
+        from_ir = doc.get("FileSummary", {}).get("File", "") in IR_OBJECTS
         secs = {s["Section"]["Index"]: s["Section"] for s in doc.get("Sections", [])}
         # function symbols per section: (start, end, name)
         by_sec: dict[int, list[tuple[int, int, str]]] = {}
@@ -735,8 +1148,16 @@ def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) ->
                     if caller and caller != tgt or caller == tgt:
                         if caller:
                             g.edges.setdefault(caller, set()).add(tgt)
+                    rtype = rr.get("Type", {})
+                    rtype = rtype.get("Name", "") if isinstance(rtype, dict) else str(rtype)
+                    if rtype not in CALL_RELOCS:
+                        g.code_taken.add(tgt)
+                        if not from_ir:
+                            g.c_taken.add(tgt)
                 else:
                     g.address_taken.add(tgt)
+                    if not from_ir:
+                        g.c_taken.add(tgt)
 
     dis = subprocess.run([objdump, "-d", "--no-show-raw-insn", *paths],
                          check=True, capture_output=True, text=True).stdout
@@ -881,12 +1302,12 @@ def prune_data_refs(g: Graph) -> None:
 def parse_indirect(s: str | None) -> tuple[str, int | None]:
     if s is None:
         return ("refuse", None)
-    if s in ("fold", "fold1"):
+    if s in ("fold", "fold1", "bind"):
         return (s, None)
     m = re.fullmatch(r"allowance:(\d+)", s)
     if m:
         return ("allowance", int(m.group(1)))
-    raise SystemExit(f"--indirect: `{s}` is not `fold`, `fold1` or `allowance:<bytes>`")
+    raise SystemExit(f"--indirect: `{s}` is not `bind`, `fold`, `fold1` or `allowance:<bytes>`")
 
 
 # ---------------------------------------------------------------------------
@@ -1018,6 +1439,16 @@ def find_allowance(doc: dict, image: str | None, target: str, role: str) -> dict
     return hits[0] if hits else None
 
 
+def find_observed(doc: dict, image: str | None, target: str, role: str) -> dict | None:
+    """issue 2402 — an `[[observed]]` row: a measured run-time peak that the
+    static walk must COVER. It adds nothing to the floor."""
+    if not image:
+        return None
+    hits = [a for a in doc.get("observed", [])
+            if (a.get("image"), a.get("target"), a.get("role")) == (image, target, role)]
+    return hits[0] if hits else None
+
+
 def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> list[str]:
     """Offline checks: needs no build output, so it can run on the fast line."""
     problems: list[str] = []
@@ -1075,6 +1506,46 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
                                     f"{SHAPE_KNOBS}, an integer")
         if root is not None and isinstance(a.get("image"), str):
             problems += template_key_problems(where, a["image"], root)
+        mode = (doc.get("indirect", {}).get(a.get("rmw") or "") or {}).get("mode")
+        if mode == "bind":
+            problems.append(f"{where}: [indirect.{a.get('rmw')}] binds every indirect call, so "
+                            "its static walk is the upper bound and an allowance would move the "
+                            "floor off it (issue 2402); record the measured peak as an "
+                            "[[observed]] row instead")
+    seen = set()
+    for i, o in enumerate(doc.get("observed", [])):
+        k = (o.get("image"), o.get("target"), o.get("role"))
+        where = f"[[observed]] #{i + 1} {k}"
+        if None in k or not o.get("rmw"):
+            problems.append(f"{where}: needs `image`, `rmw`, `target` and `role`")
+        if k in seen:
+            problems.append(f"{where}: duplicate")
+        seen.add(k)
+        if k in {(a.get("image"), a.get("target"), a.get("role"))
+                 for a in doc.get("allowance", [])}:
+            problems.append(f"{where}: the same image also has an [[allowance]] row")
+        if o.get("role") not in ROLES:
+            problems.append(f"{where}: role must be one of {ROLES}")
+        if not isinstance(o.get("peak"), int) or o.get("peak", 0) <= 0:
+            problems.append(f"{where}: needs a positive integer `peak`")
+        if not isinstance(o.get("static"), int):
+            problems.append(f"{where}: needs `static`, the walk the peak was checked against "
+                            "(what `nros new` stamps a template's stack from)")
+        elif isinstance(o.get("peak"), int) and o["static"] < o["peak"]:
+            problems.append(f"{where}: static {o['static']} B is below the observed peak "
+                            f"{o['peak']} B: the walk does not cover the run")
+        for f in ("method", "issue"):
+            if not str(o.get(f, "")).strip():
+                problems.append(f"{where}: needs `{f}`")
+        iid = str(o.get("issue", ""))
+        if ISSUE_ID.match(iid) and issue_ids and iid not in issue_ids:
+            problems.append(f"{where}: names issue {iid}, which has no file")
+        shape = o.get("shape")
+        if not isinstance(shape, dict) or not shape:
+            problems.append(f"{where}: no [observed.shape] -- the entity counts it was "
+                            f"measured on ({', '.join(SHAPE_KNOBS)})")
+        if root is not None and isinstance(o.get("image"), str):
+            problems += template_key_problems(where, o["image"], root)
     return problems
 
 
@@ -1329,6 +1800,7 @@ def run(args: argparse.Namespace) -> int:
     readobj = llvm_tool("llvm-readobj", args.llvm_bin)
     objdump = llvm_tool("llvm-objdump", args.llvm_bin)
     g = Graph()
+    externals_unlinked: set[str] = set()
     cache = Path(args.llc_cache or Path.home() / ".cache" / "nros-stack-floor")
     if args.link_map:
         mp = Path(args.link_map)
@@ -1362,19 +1834,47 @@ def run(args: argparse.Namespace) -> int:
         got = load_cfi_frames(g, args.cfi_elf, readobj, objdump)
         print(f"nros-stack-floor: {got} frame(s) read from {args.cfi_elf}'s .debug_frame "
               "(functions no input states one for)", file=sys.stderr)
+        # A function an input defines but the image does not is not IN the
+        # image: the link dropped it (`--gc-sections`, or the board's libgcc
+        # won the symbol over compiler_builtins' copy). Such a function has no
+        # frame anywhere, so it would refuse the walk; it is a leaf of 0 here,
+        # and named. A frameless function the image DOES define still refuses.
+        if LINKED_FUNCTIONS:
+            gone = sorted(fn for fn in g.functions
+                          if fn not in g.frames and fn not in LINKED_FUNCTIONS)
+            if gone:
+                externals_unlinked.update(gone)
+                print(f"nros-stack-floor: {len(gone)} function(s) an input defines are not in "
+                      f"{Path(args.cfi_elf).name} (the link dropped them): walked as 0-byte "
+                      "leaves: " + ", ".join(gone[:6]) + (" ..." if len(gone) > 6 else ""),
+                      file=sys.stderr)
     resolve_cxx_su_frames(g, lambda names: subprocess.run(
         [cxx_demangler(args.cxxfilt, args.llvm_bin)], input="\n".join(names), check=True,
         capture_output=True, text=True).stdout.splitlines())
     alias_gcc_clones(g)
     prune_data_refs(g)
-    externals = set(args.external or [])
+    externals = set(args.external or []) | externals_unlinked
     for sub in getattr(args, "external_match", None) or []:
         # a substring: a leaf whose mangled name carries a per-build hash
         externals |= {fn for fn in g.functions if sub in fn and fn not in g.frames}
     cuts = tuple(args.cut or [])
 
     mode, allowance = parse_indirect(args.indirect)
-    if mode in ("fold", "fold1"):
+    if mode == "bind":
+        # issue 2402 — every indirect site becomes call edges; nothing is charged.
+        dis = llvm_tool("llvm-dis", args.llvm_bin)
+        mods = [parse_ir_sites(ir_text(bc, dis, cache)) for bc in EXPANDED_BITCODE]
+        st = bind_indirect_sites(g, mods)
+        print(f"nros-stack-floor: bind: {st['slot']} indirect site(s) bound by vtable slot, "
+              f"{st['type']} by type, {st['any']} with no typed target and {st['machine']} "
+              "with no IR (C) to every function C can hold", file=sys.stderr)
+        if st["frameless"]:
+            fl = st["frameless"]
+            print(f"nros-stack-floor: bind: {len(fl)} address-taken function(s) with no frame are "
+                  "not bound targets (an exception vector is entered, not called): "
+                  + ", ".join(fl[:8]) + (" ..." if len(fl) > 8 else ""), file=sys.stderr)
+        charge = 0
+    elif mode in ("fold", "fold1"):
         try:
             charge = fold_charge(g, recursion_allowance=args.recursion_allowance,
                                  externals=externals, cuts=cuts,
@@ -1416,7 +1916,23 @@ def run(args: argparse.Namespace) -> int:
             allowance, measured_by = 0, None
             if doc is not None:
                 a = find_allowance(doc, args.image, args.target, role.upper())
-                if a is not None:
+                o = find_observed(doc, args.image, args.target, role.upper())
+                if o is not None and best.depth < int(o["peak"]):
+                    refusals.append(
+                        f"{role.upper()}: the static walk ({best.depth} B) is BELOW the "
+                        f"{o['peak']} B this image was observed to use ({o['method']}). A walk "
+                        "that binds every indirect call is meant to be an upper bound, so it "
+                        "missed a path the run took; this is a walker defect, not a stack to "
+                        "raise (issue 2402)")
+                    continue
+                if o is not None:
+                    measured_by = o
+                    diff = shape_differences(o, parse_shape(args.shape or []))
+                    if diff:
+                        print(f"nros-stack-floor: WARNING: image `{args.image}` is NOT the shape "
+                              f"its {role.upper()} peak was observed on (" + "; ".join(diff)
+                              + "); the observation still checks the walk.", file=sys.stderr)
+                elif a is not None:
                     allowance, measured_by = int(a["bytes"]), a
                     shape = parse_shape(args.shape or [])
                     diff = shape_differences(a, shape)
@@ -1431,6 +1947,14 @@ def run(args: argparse.Namespace) -> int:
                         print(f"nros-stack-floor: note: the build stated no entity counts, so "
                               f"`{args.image}`'s shape was not compared with its row",
                               file=sys.stderr)
+                elif mode == "bind":
+                    print(f"nros-stack-floor: note: image `{args.image}` ({args.target}, "
+                          f"{role.upper()}) has no observed peak. Its {role.upper()} floor is "
+                          f"the static walk ({best.depth} B) + margin, with every indirect call "
+                          "followed to the functions it can reach. It is reported, never "
+                          "enforced; an [[observed]] row in "
+                          f"{Path(args.table).with_suffix('.toml')} enforces it.",
+                          file=sys.stderr)
                 else:
                     print(f"nros-stack-floor: WARNING: image `{args.image}` ({args.target}, "
                           f"{role.upper()}) is UNMEASURED. Its {role.upper()} floor is the static "
@@ -1587,6 +2111,72 @@ def self_test() -> int:
         check("non-converging fold refused", False)
     except WalkRefused:
         pass
+    # issue 2402 — `--indirect bind`: slot offsets from a packed Rust vtable
+    # and a named C struct, a GEP carrying debug metadata, the escape rule, and
+    # what a C site may hold.
+    ir = (
+        'target datalayout = "e-m:e-p:32:32-i64:64-v128:64:128-a:0:32-n32-S64"\n'
+        '%T = type { ptr, ptr }\n'
+        '@vt = internal constant <{ ptr, [8 x i8], ptr }> <{ ptr @drop, '
+        '[8 x i8] c"\\04\\00\\00\\00\\04\\00\\00\\00", ptr @m }>, align 4\n'
+        '@cvt = internal constant %T { ptr @a, ptr @b }, align 4\n'
+        'define void @drop(ptr %0) {\n  ret void\n}\n'
+        'define i32 @m(ptr %0, i32 %1) {\n  ret i32 0\n}\n'
+        'define i32 @a(ptr %0) {\n  ret i32 0\n}\n'
+        'define i32 @b(ptr %0) {\n  ret i32 0\n}\n'
+        'define i32 @esc(ptr %0) {\n  ret i32 0\n}\n'
+        'define void @caller(ptr %vt, ptr %s) {\n'
+        '  %1 = getelementptr inbounds nuw i8, ptr %vt, i32 12, !dbg !5\n'
+        '  %2 = load ptr, ptr %1, align 4, !dbg !5\n'
+        '  %3 = call i32 %2(ptr noundef %s, i32 1), !dbg !5\n'
+        '  %4 = getelementptr inbounds %T, ptr %vt, i32 0, i32 1\n'
+        '  %5 = load ptr, ptr %4, align 4\n'
+        '  %6 = call i32 %5(ptr %s)\n'
+        '  store ptr @esc, ptr %s, align 4\n'
+        '  ret void\n}\n'
+    )
+    types, sites, tables, escaped = parse_ir_sites(ir)
+    check("bind: a packed vtable's slots sit at their byte offsets",
+          {(0, "drop"), (12, "m")} <= tables)
+    check("bind: a named struct table's slots sit at their field offsets",
+          {(0, "a"), (4, "b")} <= tables)
+    check("bind: a GEP with debug metadata still gives the slot",
+          ("caller", "i32(ptr,i32)", 12) in sites and ("caller", "i32(ptr)", 4) in sites)
+    check("bind: a stored function escapes; a table-only one does not",
+          "esc" in escaped and "m" not in escaped and "b" not in escaped)
+    gb = Graph(frames={f: 8 for f in ("drop", "m", "a", "b", "esc", "caller", "cfn", "cb")},
+               functions={"drop", "m", "a", "b", "esc", "caller", "cfn", "cb", "vector"},
+               indirect_sites={"caller": 2, "cfn": 1}, c_taken={"cb", "vector"})
+    st = bind_indirect_sites(gb, [(types, sites, tables, escaped)])
+    check("bind: a slot site reaches its slot and every escaped function of its type",
+          gb.edges.get("caller", set()) == {"m", "b", "esc"})
+    check("bind: a C site reaches what C takes and what Rust lets escape, never a table-only one",
+          gb.edges.get("cfn", set()) == {"cb", "esc"})
+    check("bind: nothing is left to charge", not gb.indirect_sites and st["slot"] == 2
+          and st["machine"] == 1)
+    check("bind: a frameless address-taken function is named, not bound",
+          st["frameless"] == ["vector"] and "vector" not in gb.edges.get("cfn", set()))
+
+    # issue 2402 — under `bind` a measured peak is an [[observed]] row, never an allowance.
+    vt = {"schema": 2, "margin_pct": 10, "indirect": {"zenoh": {"mode": "bind"}},
+          "allowance": [{"image": "a@b", "rmw": "zenoh", "target": "t", "role": "OPEN",
+                         "bytes": 0, "issue": "2402", "reason": "r",
+                         "measured": {"peak": 1, "static": 1, "method": "m", "issue": "2402"},
+                         "shape": {"NROS_MAX_PUBLISHERS": 1}}]}
+    check("bind: an allowance under a bind rmw is refused",
+          any("[[observed]]" in p for p in validate_table(vt, set())))
+    vo = {"schema": 2, "margin_pct": 10, "indirect": {"zenoh": {"mode": "bind"}},
+          "observed": [{"image": "a@b", "rmw": "zenoh", "target": "t", "role": "OPEN",
+                        "peak": 100, "static": 150, "method": "m", "issue": "2402",
+                        "shape": {"NROS_MAX_PUBLISHERS": 1}}]}
+    check("bind: a complete observed row validates", validate_table(vo, set()) == [])
+    vo["observed"][0]["static"] = 90
+    check("bind: an observed row whose static is below its peak is refused",
+          any("does not cover" in p for p in validate_table(vo, set())))
+    check("bind: an observed row is found by image/target/role",
+          find_observed(vo, "a@b", "t", "OPEN") is not None
+          and find_observed(vo, "a@b", "t", "SPIN") is None)
+
     check("fold1 charges one level", fold_charge(g5, recursion_allowance=None,
                                                  externals=set(), one_level=True) == 100)
 
