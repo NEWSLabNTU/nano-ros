@@ -168,7 +168,8 @@ fn the_leaves_issue_1378_measured_get_a_descriptor_that_states_their_queryables(
         // phase-486 -- the facts the retired `NROS_DECLARED_*` carriers sent
         // this road (`nros ws entity-facts --leaf`, deleted with them) are the
         // descriptor's: the node count, one per `[[component]]` (W9), and the
-        // service families its `[system] features` declare -- none here.
+        // service families the image is built with -- no `[system] features`
+        // here, so the stock node interfaces alone (phase-556 W13).
         assert_eq!(
             desc.image.model_nodes().stated(),
             Some(&1),
@@ -176,8 +177,8 @@ fn the_leaves_issue_1378_measured_get_a_descriptor_that_states_their_queryables(
         );
         assert_eq!(
             desc.image.infra_families().stated(),
-            Some(&nros_sizing_descriptor::InfraFamilies::None),
-            "{lang}: no `[system] features`, neither family"
+            Some(&nros_sizing_descriptor::InfraFamilies::ParamRosout),
+            "{lang}: no `[system] features`, the stock parameter family and `/rosout`"
         );
         checked += 1;
     }
@@ -185,15 +186,18 @@ fn the_leaves_issue_1378_measured_get_a_descriptor_that_states_their_queryables(
 }
 
 /// phase-556 W13 -- the node-interface switch reaches the leaf road's
-/// descriptor: the same leaf with `node_interfaces = "stock"` states the
-/// parameter family, `/rosout` and `/clock` in `infra_families`, and `"none"` beside a
-/// declared `param_services` states neither.
+/// descriptor: the same leaf stating nothing (the default) or
+/// `node_interfaces = "stock"` states the parameter family, `/rosout` and
+/// `/clock` in `infra_families`, and `"none"`, alone or beside a declared
+/// `param_services`, states neither.
 #[test]
 fn the_node_interface_switch_reaches_the_leaf_descriptor() {
     let dir = tempfile::tempdir().expect("scratch");
     let mut families = Vec::new();
     for (i, line) in [
+        "",
         "node_interfaces = \"stock\"",
+        "node_interfaces = \"none\"",
         "features = [\"param_services\", \"rosout\"]\nnode_interfaces = \"none\"",
     ]
     .iter()
@@ -231,6 +235,8 @@ fn the_node_interface_switch_reaches_the_leaf_descriptor() {
         families,
         vec![
             nros_sizing_descriptor::InfraFamilies::ParamRosoutClock,
+            nros_sizing_descriptor::InfraFamilies::ParamRosoutClock,
+            nros_sizing_descriptor::InfraFamilies::None,
             nros_sizing_descriptor::InfraFamilies::None,
         ]
     );

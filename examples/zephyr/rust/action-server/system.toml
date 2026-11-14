@@ -31,6 +31,10 @@ rmw = "zenoh"
 os_config = ["prj-zenoh.conf"]
 
 [image.zephyr_xrce]
+# Its XRCE pools below are sized for its own service servers only, so it
+# opts out of the stock node interfaces (the six parameter services and
+# /rosout).
+node_interfaces = "none"
 board = "zephyr"
 rmw = "xrce"
 os_config = ["prj-xrce.conf"]

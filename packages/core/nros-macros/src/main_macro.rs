@@ -1672,8 +1672,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             format!(
                 "nros::main!: this system declares {} but the {} framework entry does not \
                  register the runtime's parameter or lifecycle services, so the declaration \
-                 would be dropped in silence. Remove it from `[system] features`, \
-                 or deploy on a board whose entry runs the OwnedSpin or Zephyr shape.",
+                 would be dropped in silence. Set `node_interfaces = \"none\"` on the \
+                 image (every image gets the parameter services and `/rosout` unless it \
+                 opts out), remove the axis from `[system] features`, or deploy on a \
+                 board whose entry runs the OwnedSpin or Zephyr shape.",
                 match (
                     param_services_enabled || param_store_enabled,
                     lifecycle_machines > 0,
@@ -7675,7 +7677,13 @@ mod leaf_axis_tests {
     /// `param_services` beside it the services win and the store is theirs.
     #[test]
     fn form1_wires_a_declared_params_axis_as_the_store_alone() {
-        let out = expand("", "linux", "features = [\"params\"]").unwrap();
+        // The stock default would add `param_services`; this image opts out.
+        let out = expand(
+            "",
+            "linux",
+            "features = [\"params\"]\nnode_interfaces = \"none\"",
+        )
+        .unwrap();
         assert!(out.contains("apply_param_store"), "no store wired:\n{out}");
         assert!(
             out.contains("PARAM_STORE_ENABLED"),
@@ -7708,19 +7716,37 @@ mod leaf_axis_tests {
         ] {
             assert!(out.contains(flag), "no `{flag}` assert:\n{out}");
         }
-        assert!(!out.contains("apply_param_services"));
+        // phase-556 W13 -- the stock parameter services come with the default.
+        assert!(out.contains("apply_param_services"), "{out}");
     }
 
-    /// Negative control: a leaf declaring nothing emits none of it, so the
-    /// assertions above are about the declaration.
+    /// phase-556 W13 -- a leaf declaring nothing gets the stock node
+    /// interfaces: the six parameter services wired, and both features
+    /// asserted.
     #[test]
-    fn a_leaf_with_no_features_wires_nothing() {
+    fn a_leaf_with_no_features_gets_the_stock_node_interfaces() {
         let out = expand("", "linux", "").unwrap();
+        for present in [
+            "apply_param_services",
+            "PARAM_SERVICES_ENABLED",
+            "ROSOUT_ENABLED",
+        ] {
+            assert!(out.contains(present), "`{present}` not emitted:\n{out}");
+        }
+    }
+
+    /// Negative control: a leaf that opts out with `node_interfaces = "none"`
+    /// and declares nothing emits none of it, so the assertions above are
+    /// about the declaration and the default.
+    #[test]
+    fn a_leaf_that_opts_out_of_the_node_interfaces_wires_nothing() {
+        let out = expand("", "linux", "node_interfaces = \"none\"").unwrap();
         for absent in [
             "apply_param_services",
             "apply_lifecycle",
             "PARAM_SERVICES_ENABLED",
             "LIFECYCLE_SERVICES_ENABLED",
+            "ROSOUT_ENABLED",
         ] {
             assert!(!out.contains(absent), "`{absent}` emitted:\n{out}");
         }
@@ -7868,10 +7894,10 @@ mod launch_axis_tests {
     /// An autostart on a node the model does not mark managed wires nothing.
     #[test]
     fn an_autostart_without_a_managed_node_wires_nothing() {
-        let out = emitted(&model_of(
-            &[("/talker", false, Some(Autostart::Active))],
-            &[],
-        ));
+        let mut m = model_of(&[("/talker", false, Some(Autostart::Active))], &[]);
+        m.overlay.node_interfaces =
+            Some(nros_orchestration_ir::node_interfaces::NodeInterfaces::None);
+        let out = emitted(&m);
         assert!(out.trim().is_empty(), "emitted:\n{out}");
     }
 
@@ -7923,12 +7949,28 @@ mod launch_axis_tests {
         assert!(caps(None).axes.iter().all(|a| a.declared != "safety"));
     }
 
-    /// Negative control: a model declaring nothing emits none of it, so the
-    /// assertions above are about the declaration.
+    /// phase-556 W13 -- a model declaring nothing gets the stock node
+    /// interfaces: `/rosout` asserted here, the parameter services by
+    /// `param_services_call`.
     #[test]
-    fn a_model_with_no_capabilities_emits_nothing() {
-        let out = emitted(&model(None, &[]));
+    fn a_model_with_no_capabilities_gets_the_stock_node_interfaces() {
+        let m = model(None, &[]);
+        let out = emitted(&m);
+        assert!(out.contains("ROSOUT_ENABLED"), "emitted:\n{out}");
+        assert!(model_capabilities(&m).expect("capabilities").param_services);
+    }
+
+    /// Negative control: a model that opts out with `node_interfaces = "none"`
+    /// and declares nothing emits none of it, so the assertions above are
+    /// about the declaration and the default.
+    #[test]
+    fn a_model_that_opts_out_of_the_node_interfaces_emits_nothing() {
+        let mut m = model(None, &[]);
+        m.overlay.node_interfaces =
+            Some(nros_orchestration_ir::node_interfaces::NodeInterfaces::None);
+        let out = emitted(&m);
         assert!(out.trim().is_empty(), "emitted:\n{out}");
+        assert!(!model_capabilities(&m).expect("capabilities").param_services);
     }
 }
 

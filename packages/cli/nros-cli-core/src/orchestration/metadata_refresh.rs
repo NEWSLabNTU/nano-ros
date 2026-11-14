@@ -2466,7 +2466,8 @@ mod tests {
         let base = "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n";
         std::fs::write(&st, base).unwrap();
         let none = capabilities_digest(&st).unwrap();
-        assert_eq!(none, "capabilities:");
+        // phase-556 W13 -- no feature is the stock node interfaces.
+        assert_eq!(none, "capabilities:param_services,rosout");
 
         // The `[census]` policy and waivers live in the same file and are
         // applied TO the census; editing them must not stale it.
@@ -2487,9 +2488,12 @@ mod tests {
         )
         .unwrap();
         let listed = capabilities_digest(&st).unwrap();
-        assert_eq!(listed, "capabilities:param_services,lifecycle");
+        assert_eq!(listed, "capabilities:param_services,lifecycle,rosout");
         std::fs::write(&st, format!("{base}\n[safety]\nenabled = true\n")).unwrap();
-        assert_eq!(capabilities_digest(&st).unwrap(), "capabilities:safety");
+        assert_eq!(
+            capabilities_digest(&st).unwrap(),
+            "capabilities:safety,param_services,rosout"
+        );
 
         // And through the freshness path: recorded under none, read after the
         // edit, it is STALE and the line names both axis sets.
@@ -3338,7 +3342,7 @@ mod tests {
         let key = probe_inputs_key(&pkg, Some(&root)).expect("keyed");
         stamp_provenance(&sidecar, &key).unwrap();
 
-        let model = nros_orchestration_ir::overlay::LoadedModel::bare(
+        let model = crate::entity_inventory::bare_without_stock(
             serde_yaml_ng::from_str(
                 "meta: { version: 1 }\nstructure:\n  nodes:\n    /talker:\n      \
                  { scope: system.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }\n",

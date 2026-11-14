@@ -255,7 +255,8 @@ Acceptance: one test per query, plain or strict expected-failure.
   `service_list_with_types_answers_as_stock_does`,
   `action_list_and_info_answer_as_stock_does`,
   `hidden_action_services_and_topics_answer_as_stock_does`. The stock node's
-  six parameter services are set aside in the first: that is W13.
+  six parameter services were set aside in the first until W13 step 3 made
+  them a nano-ros node's default; they are compared now.
 
 `ros2 service list -t` and `ros2 action list -t` for a node with one service
 server and one action server: the names, the types, and the hidden services
@@ -540,12 +541,48 @@ Progress (2026-11-14, step 2 of 5; no default changed yet):
   switch is per image, not per node); zenoh uses a plain publisher per node
   until W14's shared writer.
 
-Blocker before the default flips (2026-11-18):
-[issue 2704](../issues/archived/2704-zephyr-cyclone-param-services-no-descriptors.md).
-A Zephyr C/C++ image on Cyclone with `param_services` boots without its
-parameter services (`Transport(Unsupported)`): only the top-level cmake road
-generates the runtime's `rcl_interfaces` descriptors. With the stock set on by
-default every such image would hit it, so step 3 waits on 2704.
+Blocker before the default flipped (2026-11-18):
+[issue 2704](../issues/archived/2704-zephyr-cyclone-param-services-no-descriptors.md),
+a Zephyr C/C++ Cyclone image booting without its parameter services because
+only the top-level cmake road generated the runtime's `rcl_interfaces`
+descriptors. It landed first, so step 3 ships behind its fix.
+
+Progress (2026-11-14, step 3 of 5; the default is flipped):
+
+- `DEFAULT_NODE_INTERFACES` is `stock`: every image on every board gets
+  `param_services` and `rosout` unless it states `node_interfaces = "none"`.
+  Every road follows through `effective_features` (overlay, leaf reader,
+  strict `SystemToml`, so the generated entry and the leaf selection
+  package's `nros` features, Zephyr Kconfig, cmake `NROS_FEATURES` and the
+  sizing descriptor). The leaf selection package now reads the image's own
+  switch too. The cmake ament default (`nros_ament_port_default_features`)
+  gives `param_services;rosout` on every platform, `lifecycle` beside it for
+  an `rclcpp_lifecycle` package.
+- Cargo leaves: every in-tree `nros::main!` entry reaches its `nros`
+  features through a generated selection or derived package, which lowers
+  the effective axes, so no hand-written `Cargo.toml` needed the two
+  features; the `nros new` scaffolds take the same road.
+- Opt-outs (`node_interfaces = "none"`): the PX4 bringups; the RTIC images
+  (the RTIC entry registers neither interface and refuses the declaration);
+  every XRCE image whose `[image.<id>.knobs.xrce] max_service_servers` is
+  stated (0 to 3: the session state is one heap allocation sized by those
+  caps, and six more servers do not fit the arena they were sized for), the
+  mps2 bare-metal XRCE serial talker among them. No in-tree Pico W image
+  exists; `nros new --board rpi-pico-w-zephyr` scaffolds one that opts out,
+  and the board budget (`max_queryables = 1`) is unchanged. The zenoh
+  queryable floor refusal and the RTIC refusal now name the switch.
+- No board knob was raised: the Nucleo-F767ZI states no queryable or
+  publisher cap, and its serial talker's six parameter services fit the
+  8-slot Zephyr queryable default, so it keeps the stock interfaces. Its RAM
+  (89.5 % before the flip) is not measured yet: if the image no longer
+  links, the step 5 run decides between a board knob and an opt-out.
+- Tests: the service-list parity case compares the parameter services; new
+  `node_info_compared_with_stock` (publishers and services plain, the
+  `/parameter_events` subscriber held as an expected-failure gap, issue
+  2483); the macro, overlay, leaf and CLI tests gain an off-switch case.
+- Open: W14; the RAM measurement (step 5); the
+  `app_main!` / `zephyr_component_main!` leaves register neither interface
+  although their descriptor now sizes for them.
 
 ### W14 — One `/parameter_events` writer per executor
 

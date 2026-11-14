@@ -2826,12 +2826,19 @@ structure:
         assert!(h.contains("#define NROS_SYSTEM_SAFETY_E2E\n"), "{h}");
         assert!(h.contains("#define NROS_SYSTEM_PARAM_SERVICES\n"), "{h}");
 
-        // Absent → no capability defines (byte-identical to pre-254).
+        // Absent: the stock parameter services (phase-556 W13), and no
+        // other capability define.
         let bare: SystemToml =
             toml::from_str("[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n").unwrap();
         let hb = config_h(&bare);
         assert!(!hb.contains("NROS_SYSTEM_SAFETY_E2E"));
-        assert!(!hb.contains("NROS_SYSTEM_PARAM_SERVICES"));
+        assert!(hb.contains("#define NROS_SYSTEM_PARAM_SERVICES\n"), "{hb}");
+        // Opted out: no capability define at all.
+        let opted_out: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nnode_interfaces=\"none\"\n",
+        )
+        .unwrap();
+        assert!(!config_h(&opted_out).contains("NROS_SYSTEM_PARAM_SERVICES"));
 
         // enabled = false → no define.
         let off: SystemToml = toml::from_str(
@@ -2902,7 +2909,8 @@ structure:
     #[test]
     fn system_config_cmake_emits_features() {
         let on: SystemToml = toml::from_str(
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nfeatures=[\"safety\"]\n",
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nfeatures=[\"safety\"]\n\
+             node_interfaces=\"none\"\n",
         )
         .unwrap();
         assert!(
@@ -2911,22 +2919,26 @@ structure:
             render_system_config_cmake(&on)
         );
         // Typed block lowers identically.
-        let typed: SystemToml =
-            toml::from_str("[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[safety]\n").unwrap();
+        let typed: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nnode_interfaces=\"none\"\n[safety]\n",
+        )
+        .unwrap();
         assert_eq!(
             render_system_config_cmake(&on),
             render_system_config_cmake(&typed)
         );
-        // No axis ⇒ empty list.
-        let bare: SystemToml =
-            toml::from_str("[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n").unwrap();
+        // No axis and opted out: an empty list.
+        let bare: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nnode_interfaces=\"none\"\n",
+        )
+        .unwrap();
         assert!(render_system_config_cmake(&bare).contains("set(NROS_FEATURES \"\""));
     }
 
     /// phase-556 W13 -- the cmake list carries the node-interface switch:
-    /// `stock` lists the parameter services, `/rosout` and `use_sim_time`
-    /// (phase-556 W11), `none` drops them
-    /// from what `features` declared, and a system with neither is unchanged.
+    /// no switch (the default) and `stock` list the parameter services,
+    /// `/rosout` and `use_sim_time` (phase-556 W11), and `none` drops them
+    /// from what `features` declared.
     #[test]
     fn system_config_cmake_applies_the_node_interface_switch() {
         let sys = |extra: &str| -> SystemToml {
@@ -2945,7 +2957,10 @@ structure:
             ))
             .contains("set(NROS_FEATURES \"safety\"")
         );
-        assert!(render_system_config_cmake(&sys("")).contains("set(NROS_FEATURES \"\""));
+        assert!(
+            render_system_config_cmake(&sys(""))
+                .contains("set(NROS_FEATURES \"param_services;rosout;sim_time\"")
+        );
     }
 
     /// Phase 261 W4 — an unknown `[system].features` entry is a hard error (typo
