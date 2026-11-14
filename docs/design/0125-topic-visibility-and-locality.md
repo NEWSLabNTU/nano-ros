@@ -6,6 +6,7 @@ area: workspace-system-model
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-563]
+amends: [0100]
 supersedes: []
 superseded-by: null
 ---

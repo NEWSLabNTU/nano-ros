@@ -6,6 +6,9 @@ area: workspace-system-model
 since: 2026-08
 last-reviewed: 2026-11
 implements-tracked-by: [phase-330, phase-383]
+amends: [0047, 0052]
+supersedes: []
+superseded-by: null
 ---
 
 # RFC-0063 — The SystemModel is a build artifact, not a committed source

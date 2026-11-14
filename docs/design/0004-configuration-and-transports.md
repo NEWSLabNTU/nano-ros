@@ -5,7 +5,7 @@ status: Stable
 area: workspace-system-model
 since: 2026-05
 last-reviewed: 2026-11-13
-implements-tracked-by: [phase-227]
+implements-tracked-by: [phase-227, phase-531]
 supersedes: []
 superseded-by: null
 ---
@@ -40,8 +40,11 @@ superseded-by: null
 > and the overlay `nros configure` writes beside the model (RFC-0060's 2026-10-10
 > amendment). What is retired is the Phase-172 manifest only. §2's
 > single-node case is changed by
-> [RFC-0121](0121-workspace-first-project-layout.md) D2/D3; see the phase-555
-> W2 workspace-system-model brief.
+> [RFC-0121](0121-workspace-first-project-layout.md) D2/D3, which amends
+> this page. Ruled 2026-11-14 (phase-555 W3, C11): §2, §3's ownership table
+> and §5's `DeployOverlay` example are restated ONCE, when phase-531 W7
+> retires the standalone shape, not against a tree in mid-migration. Until
+> then this note and the changelog mark what moved.
 
 > **Revised 2026-06 to the unified Phase 212 model.** The earlier Phase 172.K
 > shape — a single `nros.toml` whose *kind* (workspace root / `[component]` /
@@ -443,6 +446,10 @@ on the next callback.
 
 ## Changelog
 
+- 2026-11-15 (phase-555 W3, ruling C11) — RFC-0121 lists this page in
+  `amends`. The restatement waits for phase-531 W7, which retires the
+  standalone `system.toml`-beside-code shape §2 and §3 describe; the review
+  note above says so. No design change.
 - 2026-11-13 (phase-555 W2 review) — Review note under the canonical-path
   banner: the model is a build artifact (RFC-0063), the resolver is
   `nros-launch-resolve` (RFC-0060), and the two later meanings of `nros.toml`

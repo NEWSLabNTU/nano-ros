@@ -10,7 +10,8 @@
 //! Design references:
 //! * `docs/design/0024-multi-node-workspace-layout.md` §4 ("The orchestration
 //!   package").
-//! * `docs/design/0025-workspace-layout-by-case.md` Case 3 + Case 4.
+//! * `docs/design/0121-workspace-first-project-layout.md` D1/D2 (the bringup
+//!   is the only home of `system.toml`).
 
 use std::{
     fs,

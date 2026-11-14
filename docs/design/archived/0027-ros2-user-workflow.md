@@ -15,7 +15,7 @@ superseded-by: 0121
 > **Superseded by [RFC-0121](../0121-workspace-first-project-layout.md)**
 > (phase-555 W3, ruled 2026-11-14). RFC-0121 now decides the project shape:
 > every project is a colcon workspace, and `system.toml` lives only in a
-> bringup package. RFC-0024 and RFC-0025 own the layout. This document is
+> bringup package. RFC-0024 keeps the rationale under it. This document is
 > kept as history; its notes below rename half its vocabulary, and its
 > CLI-verb note is no longer true (`nros build` and `nros run` are user-tier
 > verbs again: RFC-0116 D7, RFC-0117 D2, RFC-0118 D2). Read RFC-0121 for
@@ -32,7 +32,7 @@ superseded-by: 0121
 > *component package* → **Node pkg**; `nros::component!` → **`nros::node!`**;
 > `ExecutableComponent` → **`ExecutableNode`**; the registration/`ComponentContext`
 > surface → **`NodeContext`** (+ `CallbackCtx` in callbacks). The authoritative
-> **current** multi-node layout is RFC-0024 / RFC-0025; configuration is RFC-0004;
+> **current** multi-node layout is RFC-0121 (RFC-0024 keeps its rationale); configuration is RFC-0004;
 > RMW selection is RFC-0031. This RFC remains the capstone rationale for *why* the
 > workflow has its shape.
 >

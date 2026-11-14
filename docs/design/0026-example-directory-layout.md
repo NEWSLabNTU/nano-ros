@@ -238,6 +238,13 @@ under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`, not `examples
 
 ## Changelog
 
+- 2026-11-15 (phase-555 W3, ruling C11) — Amended by
+  [RFC-0065](0065-colcon-like-workspace-builder.md) too: a copied-out
+  workspace now builds through `nros build` (RFC-0065 lists this page in
+  `amends`; this is the back-pointer). The canonical-shape section is
+  rewritten once, when phase-531 W7 and phase-535 close, not against a tree
+  in mid-migration; until then this changelog and the RFC-0121 and RFC-0122
+  entries below carry what moved.
 - 2026-11-13 (phase-555 W2 review) — Back-pointer to
   [RFC-0121](0121-workspace-first-project-layout.md), which amends this page
   (its "Amendments to other RFCs" table): an example is a copy-out WORKSPACE,

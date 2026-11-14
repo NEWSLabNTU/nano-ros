@@ -14,3 +14,59 @@ ruling = "phase-555 W3, build-toolchain-codegen brief B12: different subjects, s
 [[pair]]
 rfcs = ["0051", "0061"]
 ruling = "phase-555 W3, test-ci brief (pair 0051-0061): complementary, so no amends link; 0051 owns the cell taxonomy, 0061 the cover over it, and each cites the other (docs/roadmap/data/phase-555-w2-test-ci.md)"
+
+[[pair]]
+rfcs = ["0004", "0031"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0004-0031): complementary: RFC-0004 §8 hands RMW selection to RFC-0031, which does not restate the config homes (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0004", "0016"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0004-0016): different subjects: the evidence row was RFC-0016's stale `nros.toml [node.rt]` line, fixed in the platform-board-rtos slice; RFC-0004 §5/§7 own where `[node.rt]` lives (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0017", "0047"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0017-0047): complementary: RFC-0047 re-scopes `sched_context` to an intra-task knob, which is RFC-0017's sporadic server (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0050", "0052"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0050-0052): complementary, not a merge: 0050 is the model contract shared with play_launch, 0052 is nano-ros's consumer half, and 0050 defers to it (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0022", "0052"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0022-0052): complementary: RFC-0052's 'other senses of tier' table keeps RFC-0022's entity-API tiers by name (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0060", "0091"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0060-0091): a citation, not a conflict: RFC-0091 names RFC-0060 as the source of the `## Amendment` convention (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0060", "0111"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0060-0111): a citation, not a conflict: RFC-0111 keeps the entry framework out of the model, per RFC-0060's 2026-10-10 amendment (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0060", "0063"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0060-0063): complementary: RFC-0063 applies RFC-0060's 2026-10-10 overlay amendment and changes nothing in it (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0060", "0074"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0060-0074): complementary: RFC-0074 applies RFC-0060's 2026-10-10 overlay amendment and changes nothing in it (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0060", "0100"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0060-0100): complementary: RFC-0100 applies RFC-0060's 2026-10-10 overlay amendment and changes nothing in it (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0065", "0100"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0065-0100): complementary: RFC-0100's review found RFC-0065 consistent with it (RFC-0100 'Review (2026-11-13)') (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0094", "0103"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0094-0103): complementary: RFC-0094 decides knob values before configure, and RFC-0103 owns where each fact lives; RFC-0103's review found no conflict (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0098", "0103"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0098-0103): complementary: RFC-0098's `[image.<id>] env` rows are as RFC-0103 describes (RFC-0103 'Review (2026-11-13)') (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0103", "0104"]
+ruling = "phase-555 W3, workspace-system-model brief (pair 0103-0104): complementary: RFC-0104's D2 amendment uses RFC-0103 D5's derived `ref` and agrees (RFC-0103 'Review (2026-11-13)') (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
