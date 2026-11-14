@@ -114,7 +114,8 @@ impl<'de> Deserialize<'de> for StorageMode {
         StorageMode::from_token(&token).ok_or_else(|| {
             serde::de::Error::custom(match StorageMode::retired_replacement(&token) {
                 Some(new) => format!(
-                    "storage mode `{token}` was renamed to `{}` (phase-390); \
+                    // phase-390
+                    "storage mode `{token}` was renamed to `{}`; \
                      write mode = \"{}\"",
                     new.as_str(),
                     new.as_str()
@@ -412,8 +413,9 @@ pub enum ConfigError {
     /// [`RETIRED_STORAGE_MODES`], the same table that keeps it out of the
     /// accepted set.
     #[error(
+        // phase-390
         "{file}: `{field}` = \"{token}\": storage mode `{token}` was renamed to \
-         `{replacement}` (phase-390) and is no longer accepted; write \
+         `{replacement}` and is no longer accepted; write \
          mode = \"{replacement}\""
     )]
     RetiredStorageMode {

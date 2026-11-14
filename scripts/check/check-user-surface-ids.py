@@ -67,9 +67,10 @@ Subjects, all checked on every run:
   rclcpp/rclc or nros log macro, or a backend's own log helper. The
   literal's innermost enclosing call decides, so a table entry, a compared
   key or an assert's condition is data and is not read; Rust `#[cfg(test)]`
-  and `#[cfg(all(test, …))]` items are not read. Gaps, stated: text built away from its print
-  (`write!` into a `Display`, a message assembled and logged later) and
-  calls the lists above do not name; compile-time text is the next subject;
+  and `#[cfg(all(test, …))]` items are not read. Gaps, stated: calls the
+  lists above do not name. Compile-time text, and text assembled away from
+  its print (a `Display` impl, an `Err(…)` logged later), are the next two
+  subjects;
 * COMPILE-TIME TEXT (issue 2443): what the compiler shows a user building
   nano-ros or an app against it, in `packages/`, `zephyr/` and `cmake/`
   (tracked `.in` templates read as the file they generate) outside vendored,
@@ -87,6 +88,21 @@ Subjects, all checked on every run:
   a message built away from the construct (a `String` made earlier and handed
   to `Error::new`), a proc macro's `panic!`, and a `const fn`'s assert reached
   only through a const context elsewhere;
+* TEXT ASSEMBLED AWAY FROM ITS PRINT (issue 2443): an error's text, which a
+  caller prints later as a CLI refusal, a build-script panic or a log line.
+  In every Rust crate under `packages/` (the runtime subject's skips; the CLI
+  library is read whole above): every literal in the body of an
+  `impl Display for` or `impl Error for`; the strings of thiserror's
+  `#[error(…)]`; and a literal handed to `Err(…)`, `bail!`/`eyre!`/
+  `anyhow!`/`ensure!`, `.context`/`.with_context`/`.wrap_err`, `.ok_or`/
+  `.ok_or_else`, `.map_err` or the arena oracle's `.text(…)` builder,
+  directly, through `format!`/`format_args!`/`concat!`, or through an error
+  enum's variant. A `Debug` impl is developer-facing and not read. Baseline
+  zero. Gaps, stated: a message formatted into a variable first and handed
+  over later (`let why = format!(…)`), a table of message strings, a literal
+  a function returns for its caller to print, generated-file headers, and C
+  text built into a buffer by anything but `snprintf` (which the runtime
+  subject reads);
 * the output of `nros board list`, `nros board show <board>` for every board
   the list names, and `nros doctor --report`, which in addition may hold no
   tier number (`tier 1`, `tier 2`, `tier 3` — phase-522 W5).
@@ -1154,6 +1170,95 @@ def compile_time_hits() -> list[str]:
     return bad
 
 
+# --- text assembled away from its print -------------------------------------
+
+# Issue 2443, ruling A: an error's text is printed far from where it is
+# written -- a `Display` impl renders it when the caller logs or returns it,
+# an `Err(…)` carries it up to a CLI refusal or a build-script panic. That
+# text names what, where and how to fix, never an id. Read through
+# `code_and_literals`, the lexer of the subjects above.
+# Every crate under `packages/` (same skips as the runtime subject), except
+# the CLI library, whose every literal its hard rule above reads already.
+ASM_DIRS = ["packages"]
+ASM_SKIP_PREFIXES = tuple(d + "/" for d in CLI_LIBRARY)
+# (a) the body of an `impl Display for` / `impl Error for` (`fmt::`,
+# `core::`, `std::` paths included). `Debug` is developer-facing (`{:?}`),
+# so a `Debug` impl is not read.
+ASM_IMPL = re.compile(r"\bimpl\b[^{;]*?\b(?:Display|Error)\s+for\b")
+# (b) thiserror's `#[error("…")]` attribute.
+ASM_ERROR_ATTR = re.compile(r"#\[\s*error\s*\(")
+# (c) a literal handed to an error constructor or a named message builder,
+# directly, through `format!`/`format_args!`/`concat!`, or through an error
+# enum's variant (`Err(PlanError::Target(format!(…)))`). `.text` is the
+# arena oracle's `Refusal` builder in `nros-node`.
+ASM_CALLS = re.compile(
+    r"Err|bail!|eyre!|anyhow!|ensure!|\.context|\.with_context|\.wrap_err(?:_with)?"
+    r"|\.ok_or(?:_else)?|\.map_err|\.text"
+)
+ASM_VARIANT = re.compile(r"[A-Z]\w*")
+
+
+def asm_carried(calls: list[tuple[str, int]]) -> bool:
+    """Whether a literal inside `calls` is text an error constructor or a
+    message builder carries."""
+    names = [c[0].rsplit("::", 1)[-1] for c in calls]
+    while names and RUST_WRAPPERS.fullmatch(names[0]):
+        names = names[1:]
+    if not names:
+        return False
+    if ASM_CALLS.fullmatch(names[0]):
+        return True
+    # A variant wrapping the text: `Err(PlanError::Target(…))`.
+    return (
+        ASM_VARIANT.fullmatch(names[0]) is not None and names[0] not in ("Ok", "Some")
+        and len(names) > 1 and ASM_CALLS.fullmatch(names[1]) is not None
+    )
+
+
+def assembled_literals(src: str) -> list[tuple[int, str]]:
+    """Every Rust string literal of `src` that is text assembled away from its
+    print, with its line. Comments and `#[cfg(test)]` items are not read."""
+    code, spans = code_and_literals(src, True)
+    regions: list[tuple[int, int]] = []
+    for m in ASM_IMPL.finditer(code):
+        b = code.find("{", m.end())
+        if b >= 0:
+            regions.append((b, ct_close(code, b)))
+    for m in ASM_ERROR_ATTR.finditer(code):
+        regions.append((m.start(), ct_close(code, m.end() - 1)))
+    return [
+        (ln, src[a:b]) for ln, a, b in spans
+        if any(lo <= a < hi for lo, hi in regions)
+        or asm_carried(enclosing_calls(code, a - 1, 4))
+    ]
+
+
+def assembled_files() -> list[str]:
+    files = subprocess.run(
+        ["git", "ls-files", "--", *(f"{d}/*.rs" for d in ASM_DIRS)], cwd=ROOT,
+        capture_output=True, text=True, check=True,
+    ).stdout.split()
+    files = [
+        rel for rel in files
+        if not RUNTIME_SKIP.search("/" + rel) and not rel.startswith(ASM_SKIP_PREFIXES)
+        and (ROOT / rel).is_file()
+    ]
+    tests = test_module_files(files)
+    return [rel for rel in files if rel not in tests]
+
+
+def assembled_hits() -> list[str]:
+    bad = []
+    for rel in assembled_files():
+        src = (ROOT / rel).read_text(errors="replace")
+        if not ID.search(src):
+            continue  # most files hold no id at all, so the lexer never runs
+        for ln, text in assembled_literals(src):
+            for tok in ids(text):
+                bad.append(f"{rel}:{ln}: {tok!r} in {' '.join(text.split())[:90]!r}")
+    return bad
+
+
 # --- the book ---------------------------------------------------------------
 
 
@@ -1449,6 +1554,30 @@ def self_test() -> None:
     pm = 'fn f() -> syn::Error { syn::Error::new_spanned(x, format!("bad {} (issue 1043)", y)) }\n'
     got = [t for _, text in compile_time_literals(pm, True, proc_macro=True) for t in ids(text)]
     assert got == ["issue 1043"], f"self-test: compile-time proc-macro {got}"
+    # Issue 2443 -- text assembled away from its print is read: a `Display`
+    # body, `#[error]`, an `Err(…)`, the `.text(…)` builder; a `Debug` body, a
+    # data `format!`, a comment and a test module are not.
+    rs = (
+        '// Err("issue 1000") in a comment\n'
+        'impl fmt::Display for E {\n'
+        '    fn fmt(&self, f: &mut fmt::Formatter<\'_>) -> fmt::Result {\n'
+        '        write!(f, "too big (issue 1234)")\n'
+        '    }\n'
+        '}\n'
+        'impl fmt::Debug for E { fn fmt(&self, f: &mut F) -> R { write!(f, "E (phase-100)") } }\n'
+        '#[derive(thiserror::Error)]\n'
+        'enum G { #[error("renamed (phase-390)")] Old }\n'
+        'fn f() -> Result<(), String> {\n'
+        '    let key = format!("data (RFC-0001) {}", 1);\n'
+        '    let r = R::new().text("nros arena oracle (phase-412): ");\n'
+        '    x.ok_or(format!("no port (RFC-0118 D6) {}", y))?;\n'
+        '    Err(PlanError::Target("one only (RFC-0118 D1)".into()))\n'
+        '}\n'
+        '#[cfg(test)]\nmod tests { fn t() -> Result<(), String> { Err("phase-200".into()) } }\n'
+    )
+    got = [(ln, t) for ln, text in assembled_literals(rs) for t in ids(text)]
+    assert got == [(4, "issue 1234"), (9, "phase-390"), (12, "phase-412"), (13, "RFC-0118"),
+                   (14, "RFC-0118")], f"self-test: assembled {got}"
     assert subcommands("Usage: x\n\nCommands:\n  new   make\n  help  h\n\nOptions:\n") == ["new"]
     assert subcommands(
         "Quick start:\n  nros new\n\nUsage: nros\n\nBuild:\n  build  b\n  sync   s\n\n"
@@ -1468,7 +1597,7 @@ def main() -> int:
 
     bad = (
         source_hits() + library_hits() + book_hits() + build_script_warning_hits()
-        + colcon_hits() + shell_hits() + runtime_hits() + compile_time_hits()
+        + colcon_hits() + shell_hits() + runtime_hits() + compile_time_hits() + assembled_hits()
     )
     cli = args.cli
     if cli is None:
@@ -1498,7 +1627,8 @@ def main() -> int:
         )
     print(
         f"{NAME}: OK (cmd/ strings, CLI library, build-script panics, build-script warnings, colcon "
-        f"messages, user-run shell scripts, runtime log and panic text, compile-time text, {BOOK_SCOPE}, "
+        f"messages, user-run shell scripts, runtime log and panic text, compile-time text, "
+        f"assembled error text, {BOOK_SCOPE}, "
         f"{rendered})"
     )
     return 0

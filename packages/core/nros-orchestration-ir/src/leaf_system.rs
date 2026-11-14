@@ -891,8 +891,9 @@ fn from_system_toml(path: &Path) -> Result<LeafSystem, String> {
     let id: String = match (ids.as_slice(), default_images.as_slice()) {
         ([], _) => {
             return Err(format!(
+                // RFC-0098 D3
                 "{}: a single-package leaf must declare the image it builds — add \
-                 `[image.<id>]` with `board = \"<board>\"` (RFC-0098 D3)",
+                 `[image.<id>]` with `board = \"<board>\"`",
                 path.display()
             ));
         }
@@ -1198,8 +1199,9 @@ fn os_config_list(
 ) -> Result<Vec<String>, String> {
     if block.is_some_and(|b| b.contains_key("conf") && b.contains_key("os_config")) {
         return Err(format!(
+            // RFC-0109 D6
             "{}: `[{table}]` states both `conf` and `os_config`; `conf` is the Zephyr-only \
-             spelling of `os_config` (RFC-0109 D6) — move its entries into `os_config`",
+             spelling of `os_config` — move its entries into `os_config`",
             path.display()
         ));
     }
@@ -1325,7 +1327,8 @@ fn refuse_retired_manifest_keys(dir: &Path) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "{} carries {} — retired (RFC-0098 D3/D5, phase-445 W5): nothing reads it. State the \
+        // RFC-0098 D3/D5, phase-445 W5
+        "{} carries {} — retired: nothing reads it. State the \
          deployment as `[image.<id>] board = \"<board>\"` (+ `rmw`, `domain_id`, `locator`, …) \
          in {} for a single-package example, or in the workspace bringup's `system.toml` image \
          that builds this entry (`entry = \"<pkg>\"`), and delete the table.",

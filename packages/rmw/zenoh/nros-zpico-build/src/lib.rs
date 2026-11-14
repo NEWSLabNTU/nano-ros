@@ -301,14 +301,16 @@ impl RxTaskBudget {
         match frames {
             None => Ok(None),
             Some(0) => Err(
+                // RFC-0074
                 "NROS_ZENOH_RX_TASK_BUDGET_FRAMES = 0 is refused: a budget of zero frames is \
                  not \"unbounded\". Leave the knob unset (or -1) for an unbounded read task, \
-                 or state at least 1 frame (RFC-0074)."
+                 or state at least 1 frame."
                     .to_string(),
             ),
             Some(frames) if rest_us == 0 => Err(format!(
+                // RFC-0074
                 "NROS_ZENOH_RX_TASK_BUDGET_REST_US = 0 with a budget of {frames} frames is \
-                 refused: a budget that never rests bounds nothing (RFC-0074)."
+                 refused: a budget that never rests bounds nothing: state a rest of at least 1 us."
             )),
             Some(frames) => Ok(Some(Self { frames, rest_us })),
         }

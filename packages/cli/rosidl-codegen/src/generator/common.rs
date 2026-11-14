@@ -24,8 +24,9 @@ pub enum GeneratorError {
     InvalidMessage(String),
 
     #[error(
+        // Phase 229 ships 'owned'; 'heap' lands in 229.5, 'borrowed' in 229.6.
         "{package}/{message}.{field}: storage mode '{mode}' is not yet supported \
-         (Phase 229 ships 'owned'; 'heap' lands in 229.5, 'borrowed' in 229.6)"
+         by this generator; give the field another mode in nros-codegen.toml"
     )]
     UnsupportedStorageMode {
         package: String,
@@ -35,8 +36,9 @@ pub enum GeneratorError {
     },
 
     #[error(
+        // issue 0343
         "{package}/{message}.{field}: storage mode '{mode}' is not supported on {entity} \
-         payloads — only messages implement it today (issue 0343). Set this field to \
+         payloads — only messages implement it today. Set this field to \
          'inline' in nros-codegen.toml, or move the payload into a .msg."
     )]
     UnsupportedStorageModeForPayload {

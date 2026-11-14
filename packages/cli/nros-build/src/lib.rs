@@ -207,8 +207,9 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
         nros_cli_core::orchestration::model_location::resolve_model_path(&bringup_dir, &model_rel);
     if !model_path.exists() {
         eyre::bail!(
+            // phase-330: the model is build output
             "nros-build: no SystemModel for `{}` at `{}`.\n\
-             The model is BUILD OUTPUT (phase-330), not a file to commit: run \
+             The model is BUILD OUTPUT, not a file to commit: run \
              `nros configure` in the workspace, or point `NROS_MODEL_DIR` at the \
              build dir that holds it. To resolve one by hand:\n  \
              nros-launch-resolve {} [--system {}/system.toml] -o {}",

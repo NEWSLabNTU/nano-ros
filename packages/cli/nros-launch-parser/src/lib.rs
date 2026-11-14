@@ -451,7 +451,8 @@ fn handle_start(
         }
         other => {
             bail!(
-                "<{other}> is not in the Phase 212.N.11 v1 launch tag set (file: `{}`)",
+                // Phase 212.N.11: the v1 launch tag set
+                "<{other}> is not a launch tag nano-ros reads (file: `{}`)",
                 here.display()
             )
         }

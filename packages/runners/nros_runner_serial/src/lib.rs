@@ -135,8 +135,9 @@ pub struct Settings {
 /// line ending.
 pub fn settings(plan: &RunPlan) -> Result<Settings, String> {
     let port = plan.console.port.clone().ok_or(
+        // RFC-0118 D6
         "the plan carries no console port. nros resolves one from `--port`, `NROS_PORT`, the \
-         bench file (`nros bench scan`) or exactly one attached device (RFC-0118 D6)",
+         bench file (`nros bench scan`) or exactly one attached device",
     )?;
     let baud = plan.console.baud.unwrap_or(DEFAULT_BAUD);
     if speed(baud).is_none() {

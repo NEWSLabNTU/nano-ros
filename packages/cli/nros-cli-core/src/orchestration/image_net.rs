@@ -706,7 +706,7 @@ mod tests {
         assert!(
             run("[image.a.net.eth0]\n", "a", &host, None)
                 .unwrap_err()
-                .contains("D10e")
+                .contains("drop `[image.<id>.net.eth0]`")
         );
     }
 }

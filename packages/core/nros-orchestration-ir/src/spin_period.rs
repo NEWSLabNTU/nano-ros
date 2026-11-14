@@ -65,9 +65,10 @@ impl std::fmt::Display for SpinPeriodNote {
                 derived_us,
             } => write!(
                 f,
+                // RFC-0079
                 "sched task `{sched_task}` authors spin_period {authored_us} us; the derived value is \
                  {derived_us} us (its fastest release). The authored value is kept as an \
-                 override; remove it to have the period derived (RFC-0079)."
+                 override; remove it to have the period derived."
             ),
         }
     }
@@ -86,9 +87,9 @@ impl std::fmt::Display for SpinPeriodTooSlow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
+            // RFC-0079
             "sched task `{}` authors spin_period {} us, slower than its fastest release ({} us, {}). \
-             Remove `spin_period` to have it derived, or state one no slower than {} us \
-             (RFC-0079).",
+             Remove `spin_period` to have it derived, or state one no slower than {} us.",
             self.sched_task,
             self.authored_us,
             self.derived_us,

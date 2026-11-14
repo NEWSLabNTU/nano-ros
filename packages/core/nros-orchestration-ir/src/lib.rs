@@ -904,11 +904,12 @@ pub enum SchedTaskResolveError {
     /// sched task DOES author placement, for other targets, and the author has to say
     /// which of the two they meant.
     #[error(
+        // RFC-0079
         "sched task `{sched_task}` has no `[tasks.{sched_task}.{rtos}]` sub-table for the target RTOS. \
          It does carry a sub-table for another platform, so its priority is AUTHORED \
          and this target was left out - add `[tasks.{sched_task}.{rtos}]`, or remove every \
-         platform sub-table to have the priority allocated from the contract instead \
-         (RFC-0079). (If no member of this sched task carries a rate in the contract, there \
+         platform sub-table to have the priority allocated from the contract instead. \
+         (If no member of this sched task carries a rate in the contract, there \
          is nothing to allocate from either.)"
     )]
     MissingRtosSpec { sched_task: String, rtos: String },
@@ -1185,10 +1186,11 @@ pub fn validate_sched_task_platform_applicability(
         // would be a silent drop. Reject until a per-platform consumer lands.
         if t.time_slice_us.is_some() && target_rtos != "threadx" {
             return Err(format!(
+                // issue #0266
                 "sched task '{}': time_slice_us is ThreadX-only today (per-thread \
                  round-robin), but the selected target is '{target_rtos}' — remove \
                  it from [tasks.{}.{target_rtos}] (other RTOSes' time-slicing is a \
-                 global kernel config, not a per-sched-task knob; issue #0266)",
+                 global kernel config, not a per-sched-task knob)",
                 t.name, t.name
             ));
         }
@@ -1204,8 +1206,9 @@ pub fn validate_sched_task_platform_applicability(
         // silently-dead knob. Reject until a consumer lands (phase-162).
         if t.sched_class.is_some() {
             return Err(format!(
+                // issue 0264
                 "sched task '{}': sched_class is accepted by no runtime yet (nuttx runs \
-                 SCHED_FIFO regardless; issue 0264) — remove it until a consumer \
+                 SCHED_FIFO regardless) — remove it until a consumer \
                  lands",
                 t.name
             ));
@@ -1213,7 +1216,8 @@ pub fn validate_sched_task_platform_applicability(
         match t.class.as_deref() {
             Some("interrupt") => {
                 return Err(format!(
-                    "sched task '{}': class = \"interrupt\" is not supported (RFC-0052 v1)",
+                    // RFC-0052 v1
+                    "sched task '{}': class = \"interrupt\" is not supported; drop `class` or pick another",
                     t.name
                 ));
             }

@@ -732,7 +732,10 @@ mod tests {
             }
             let d = dir("can-rate", &files);
             let e = sys(&d).rmw_file_for(&d, "a").unwrap_err();
-            assert!(e.contains(at) && e.contains("RFC-0109 D10"), "{at}\n-> {e}");
+            assert!(
+                e.contains(at) && e.contains("a fact about the CAN controller"),
+                "{at}\n-> {e}"
+            );
             let _ = std::fs::remove_dir_all(&d);
         }
         let d = dir(

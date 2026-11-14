@@ -85,9 +85,10 @@ impl TryFrom<String> for CommandTemplate {
                 PLACEHOLDERS.contains(&name) || name.strip_prefix("tool:").is_some_and(is_word);
             if !ok {
                 return Err(format!(
+                    // RFC-0118 D5
                     "`command = {s:?}`: unknown placeholder `{{{name}}}` — a template \
                      names only {}, or `{{tool:<name>}}`; `{{{{` and `}}}}` are literal \
-                     braces (RFC-0118 D5)",
+                     braces",
                     PLACEHOLDERS
                         .iter()
                         .map(|p| format!("`{{{p}}}`"))
@@ -202,8 +203,9 @@ impl FromStr for WaitFor {
             "line" => Self::Line(nonempty("text")?),
             other => {
                 return Err(format!(
+                    // RFC-0118 D7
                     "`wait_for = {s:?}`: unknown event kind `{other}` — one of usb, port, \
-                     volume, line (RFC-0118 D7)"
+                     volume, line"
                 ));
             }
         })
@@ -276,8 +278,9 @@ impl TryFrom<RawStep> for PrepareStep {
                     .into(),
             ),
             _ => Err(
+                // RFC-0118 D7
                 "a `prepare` step is one of `say`, `wait_for`, `run`; only `say` and \
-                 `wait_for` may share a step (RFC-0118 D7)"
+                 `wait_for` may share a step"
                     .into(),
             ),
         }
@@ -339,8 +342,9 @@ impl FlashTable {
         match (&self.method, &self.command) {
             (Some(_), Some(_)) => {
                 return Err(format!(
+                    // RFC-0118 D5
                     "{at}: `method` and `command` are alternatives — a command template \
-                     REPLACES the method (RFC-0118 D5)"
+                     REPLACES the method"
                 ));
             }
             (None, None) if board => {

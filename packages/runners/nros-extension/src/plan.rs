@@ -270,8 +270,9 @@ impl FromStr for WaitFor {
             "line" => WaitFor::Line(nonempty("text")?),
             other => {
                 return Err(format!(
+                    // RFC-0118 D7
                     "`wait_for = {s:?}`: unknown event kind `{other}` — one of usb, port, \
-                     volume, line (RFC-0118 D7)"
+                     volume, line"
                 ));
             }
         })
@@ -356,8 +357,9 @@ impl TryFrom<RawStep> for PrepareStep {
                     .into(),
             ),
             _ => Err(
+                // RFC-0118 D7
                 "a `prepare` step is one of `say`, `wait_for`, `run`; only `say` and \
-                 `wait_for` may share a step (RFC-0118 D7)"
+                 `wait_for` may share a step"
                     .into(),
             ),
         }
@@ -527,8 +529,8 @@ impl RunPlan {
                 "names no launcher or flasher; set one of emulator, host or flasher".into(),
             )),
             _ => Err(PlanError::Target(
-                "names more than one of emulator, host and flasher; a target has exactly one \
-                 (RFC-0118 D1)"
+                // RFC-0118 D1
+                "names more than one of emulator, host and flasher; a target has exactly one"
                     .into(),
             )),
         }

@@ -136,9 +136,10 @@ pub fn read(
     for blk in TYPED_BLOCKS {
         if doc.contains_key(*blk) {
             return Err(format!(
+                // phase-261; issue 1766
                 "{}: a leaf declares the `{blk}` axis as `[system] features = [\"{blk}\"]`; \
-                 the typed `[{blk}]` block is the deprecated bringup spelling (phase-261), \
-                 and nothing on the leaf road reads it (issue 1766).",
+                 the typed `[{blk}]` block is the deprecated bringup spelling, \
+                 and nothing on the leaf road reads it.",
                 file.display()
             ));
         }
@@ -157,10 +158,11 @@ pub fn read(
             })?;
             if !lifecycle {
                 return Err(format!(
+                    // issue 1766
                     "{}: `[lifecycle]` is present but `[system] features` does not declare \
                      `lifecycle`. On a leaf the axis is the `features` entry — the sizing \
                      descriptor counts the five lifecycle servers from it — and the table \
-                     only carries `autostart` (issue 1766).",
+                     only carries `autostart`.",
                     file.display()
                 ));
             }

@@ -173,8 +173,9 @@ impl std::fmt::Display for WcetError {
             ),
             Self::CounterNotValid => write!(
                 f,
+                // issue 0403
                 "counter_valid is false — the bench refuses to emit measurements from a dead \
-                 cycle counter, so these numbers were not produced by it (issue 0403)"
+                 cycle counter, so these numbers were not produced by it"
             ),
             Self::MaxBelowMin { boundary, min, max } => write!(
                 f,

@@ -3545,9 +3545,10 @@ impl BoardNet {
             Some("os") => Ok(Some(StackOwner::Os)),
             Some("board") => Ok(Some(StackOwner::Board)),
             Some(other) => Err(format!(
+                // RFC-0109 D2
                 "[board.net] stack = {other:?}: expected \"host\" (the host OS owns the \
                  network), \"os\" (the RTOS's own configuration does) or \"board\" (the \
-                 board package does) (RFC-0109 D2)"
+                 board package does)"
             )),
         }
     }
@@ -3582,7 +3583,8 @@ impl BoardNet {
                 }
             };
             return Err(format!(
-                "os_config names `{f}`, which this board does not take: {refusal} (RFC-0109 D9)"
+                // RFC-0109 D9
+                "os_config names `{f}`, which this board does not take: {refusal}"
             ));
         }
         Ok(())
@@ -3602,8 +3604,9 @@ impl BoardNet {
             .find(|l| !LINK_KINDS.contains(&l.as_str()))
         {
             return Err(format!(
+                // RFC-0109 D3
                 "[board.net] links names {bad:?}, which is not a link kind (expected one of: \
-                 {}) (RFC-0109 D3)",
+                 {})",
                 LINK_KINDS.join(" | ")
             ));
         }
@@ -3617,17 +3620,19 @@ impl BoardNet {
     pub fn check_image_interface(&self, name: &str, addressed: bool) -> Result<(), String> {
         if self.host_stack()? {
             return Err(format!(
+                // RFC-0103 D10e
                 "this board's network is the host operating system's (`[board.net] stack = \
                  \"host\"`): the kernel owns interfaces and addresses, so an image states \
-                 none — drop `[image.<id>.net.{name}]` (RFC-0103 D10e)"
+                 none — drop `[image.<id>.net.{name}]`"
             ));
         }
         if self.interfaces.is_empty() {
             return Err(format!(
+                // RFC-0103 D10c
                 "this board declares no network interfaces (`[board.net] interfaces`), so \
                  nothing on it would take `[image.<id>.net.{name}]` — the address would be \
-                 dropped. A board that brings its own stack states its interfaces \
-                 (RFC-0103 D10c); a board configured another way (Zephyr's Kconfig) is not \
+                 dropped. A board that brings its own stack states its interfaces; \
+                 a board configured another way (Zephyr's Kconfig) is not \
                  addressed through system.toml yet"
             ));
         }
@@ -3650,8 +3655,9 @@ impl BoardNet {
         }
         if addressed && !matches!(kind, "ethernet" | "wifi") {
             return Err(format!(
+                // RFC-0103 D10c
                 "interface `{name}` is `{kind}`, which takes no IP address — its endpoint is \
-                 the image's `locator` (RFC-0103 D10c)"
+                 the image's `locator`"
             ));
         }
         Ok(())
@@ -3664,8 +3670,9 @@ impl BoardNet {
             None => Ok(None),
             Some(QEMU_NETWORK) => Ok(Some(QEMU_NETWORK)),
             Some(other) => Err(format!(
+                // phase-497 (RFC-0103 D10)
                 "[board.net] network = {other:?}: the only built-in network is \"{QEMU_NETWORK}\"; \
-                 project-defined networks are phase-497 (RFC-0103 D10)"
+                 project-defined networks are not supported yet"
             )),
         }
     }
@@ -3716,7 +3723,8 @@ impl BoardNet {
         ];
         if let Some((key, _, home)) = stated.iter().find(|(_, s, _)| *s) {
             return Err(format!(
-                "[board.net] {key} is retired (RFC-0103 D10g, phase-497 W2): a board states its \
+                // RFC-0103 D10g, phase-497 W2
+                "[board.net] {key} is retired: a board states its \
                  interfaces, not one image's identity on one network. It is now {home}"
             ));
         }
@@ -4084,7 +4092,10 @@ mod tests {
             ("host", "prj.conf", "RTOS configuration fragment"),
         ] {
             let e = net(stack).check_os_config(&files(&[f])).unwrap_err();
-            assert!(e.contains(want) && e.contains(f) && e.contains("D9"), "{e}");
+            assert!(
+                e.contains(want) && e.contains(f) && e.contains("does not take"),
+                "{e}"
+            );
         }
         BoardNet::default()
             .check_os_config(&files(&["anything.toml", "x.conf"]))
@@ -4114,7 +4125,7 @@ mod tests {
         );
         let e = with(Some("rtos")).stack_owner().unwrap_err();
         assert!(
-            e.contains("\"os\"") && e.contains("\"board\"") && e.contains("RFC-0109"),
+            e.contains("\"os\"") && e.contains("\"board\"") && e.contains("board package does"),
             "{e}"
         );
         assert!(with(Some("host")).host_stack().unwrap());
@@ -4150,7 +4161,7 @@ mod tests {
         };
         let e = host.check_image_interface("eth0", true).unwrap_err();
         assert!(
-            e.contains("host operating system") && e.contains("D10e"),
+            e.contains("host operating system") && e.contains("drop `[image.<id>.net.eth0]`"),
             "{e}"
         );
 
@@ -4229,7 +4240,10 @@ mod tests {
             )
             .unwrap();
             let e = f.board_net(None).unwrap_err();
-            assert!(e.contains("retired") && e.contains("D10g"), "{key}: {e}");
+            assert!(
+                e.contains("retired") && e.contains("a board states its"),
+                "{key}: {e}"
+            );
         }
     }
 

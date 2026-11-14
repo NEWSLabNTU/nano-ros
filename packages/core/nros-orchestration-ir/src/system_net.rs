@@ -127,8 +127,9 @@ impl ImageRun {
     pub fn validate(&self, id: &str) -> Result<(), String> {
         if self.method.is_some() && self.command.is_some() {
             return Err(format!(
+                // RFC-0118 D5
                 "[image.{id}.run]: `method` and `command` are alternatives — a command template \
-                 REPLACES the method (RFC-0118 D5)"
+                 REPLACES the method"
             ));
         }
         match &self.nic {
@@ -459,8 +460,9 @@ pub fn fold_board_net_files(
         for (name, decl) in read.interfaces {
             if let Some(prev) = owner.get(&name) {
                 return Err(format!(
+                    // RFC-0109 D4
                     "`{at}`: interface `{name}` is stated twice — in {prev} and in {} — so \
-                     the image has two owners for one address (RFC-0109 D4: one board \
+                     the image has two owners for one address (one board \
                      network file owns each interface)",
                     path.display()
                 ));

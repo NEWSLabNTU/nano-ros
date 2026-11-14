@@ -178,8 +178,9 @@ pub fn write(dir: &Path, version: &str) -> Result<PathBuf> {
     let path = dir.join(FILE_NAME);
     if path.exists() {
         bail!(
+            // issues 0359/0378 (one layer up)
             "{} already exists — refusing to overwrite a pin. A pin moves only \
-             when a dev means it (issues 0359/0378, one layer up); edit the \
+             when a dev means it; edit the \
              file to change it.",
             path.display()
         );

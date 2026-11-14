@@ -89,9 +89,10 @@ fn known_refusals(
     for (key, is_present) in present {
         if *is_present && refused.contains_key(*key) {
             return Err(format!(
+                // RFC-0100 D6
                 "[{section}] both states and refuses `{key}` -- a field that carries a \
                  value and a refusal reads as derived to every consumer that checks \
-                 only one of them (RFC-0100 D6)"
+                 only one of them"
             ));
         }
     }

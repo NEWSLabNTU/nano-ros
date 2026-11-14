@@ -365,9 +365,10 @@ impl fmt::Display for QosAgreementError {
             QosAgreementError::Divergent(ds) => {
                 writeln!(
                     f,
+                    // RFC-0100 D8
                     "{} QoS statement(s) disagree between the launch contract and the \
-                     `qos_overrides.*` parameters. They are two statements about one fact \
-                     (RFC-0100 D8): the parameters are baked into the runtime QoS table and the \
+                     `qos_overrides.*` parameters. They are two statements about one fact: \
+                     the parameters are baked into the runtime QoS table and the \
                      contract is what every size consumer reads, so a divergence is an image \
                      whose buffers do not match its delivery semantics.",
                     ds.len()

@@ -37,10 +37,11 @@ impl fmt::Display for Px4TooManySchedTasks {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
+            // RFC-0113 D9
             "a PX4 image maps each tier onto its own work queue, and PX4 has {} ({}); this \
              image declares {} tiers ({}). Merge tiers until there are at most {}: two tiers \
              on one queue would share one thread, so the less urgent one would delay the \
-             more urgent one (RFC-0113 D9)",
+             more urgent one",
             PX4_WORK_QUEUES.len(),
             PX4_WORK_QUEUES.join(", "),
             self.tiers.len(),
@@ -111,7 +112,10 @@ mod tests {
             msg.contains("rate_ctrl, hp_default, nav_and_controllers, lp_default"),
             "{msg}"
         );
-        assert!(msg.contains("RFC-0113 D9"), "{msg}");
+        assert!(
+            msg.contains("Merge tiers until there are at most 4"),
+            "{msg}"
+        );
     }
 
     #[test]

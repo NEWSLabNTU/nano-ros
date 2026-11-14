@@ -146,10 +146,11 @@ fn decide(
         ));
     }
     Err(format!(
+        // phase-548 W3
         "NuttX cross compiler: the pinned {tool} {pin} is not provisioned \
          (expected {}).\n  \
          The build does not fall back to `{tool}` on PATH: that is how a system GCC 10 \
-         compiled the image and rejected its C++ designators (phase-548 W3).\n  \
+         compiled the image and rejected its C++ designators.\n  \
          Fix:  nros setup --tool {tool}\n  \
          Or:   NUTTX_CROSS=/path/to/bin/{tool}   (any GCC >= {GCC_FLOOR_MAJOR})",
         path.display()

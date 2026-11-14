@@ -678,9 +678,10 @@ pub fn load_beside(model_path: &Path) -> Result<Overlay, String> {
                 Ok(Overlay::default())
             } else {
                 Err(format!(
+                    // phase-486
                     "{}: this model carries capability switches ({}) but no `{OVERLAY_FILE}` \
-                     sits beside it. nano-ros reads its switches from that overlay \
-                     (phase-486); re-run `nros configure` to write it.",
+                     sits beside it. nano-ros reads its switches from that overlay; \
+                     re-run `nros configure` to write it.",
                     model_path.display(),
                     legacy.join(", ")
                 ))
