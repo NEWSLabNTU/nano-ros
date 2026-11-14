@@ -4,6 +4,7 @@
 #
 #   job       from                 runs on
 #   arm       arm-auto-merge.yml   pull_request_target
+#   enqueue   arm-auto-merge.yml   workflow_run of `gate`; dispatch job=enqueue
 #   notify    queue-notify.yml     workflow_run of `gate` and `queue`
 #   sweep     pr-verdicts.yml      schedule 09:00 + 21:00; dispatch job=pr-verdicts
 #   audit     roadmap-audit.yml    schedule 07:00 on the 1st; dispatch job=roadmap-audit
@@ -14,7 +15,7 @@
 # keeps them OUT of every other file is H6: privileged plumbing
 # (`pull_request_target`, `workflow_run` with a write token) never shares a file
 # with a job that runs pull-request code. Nothing here checks out a pull
-# request; `arm` checks out nothing at all.
+# request; `arm` and `enqueue` check out nothing at all.
 #
 # What a shared file costs, and how each cost is paid:
 #   - The trigger list is the UNION, so every job states the event it serves in
@@ -34,7 +35,7 @@
 # none can become a context a PR must satisfy (the #0975 deadlock).
 
 # ============================================================================
-# arm (was arm-auto-merge.yml)
+# arm, enqueue (was arm-auto-merge.yml)
 # ============================================================================
 #
 # Arm auto-merge on every pull request that is ready for one.
@@ -145,16 +146,20 @@
 # entry that job enqueued (`github-actions`) sat at AWAITING_CHECKS with zero
 # runs until the 90-minute timeout ejected it, and it also beat GitHub to
 # pull requests users had armed themselves, so it stalled the queue head for
-# about five hours. The job is gone; the `arm` step below also declines to
-# arm a pull request that is already CLEAN, because `gh pr merge --auto` on a
-# clean one enqueues it on the spot, with this token.
+# about five hours.
 #
-# So a pull request this workflow armed still needs a human to enqueue it:
-# `gh pr merge <n> --auto` with your own token, once `CI` is green.
+# WHOSE TOKEN: THE QUEUE APP'S
 #
-# Arming with a user's token instead (a PAT or an App secret) would make
-# GitHub do this itself. That is a new credential, so it is a maintainer's
-# call and is not done here.
+# So `arm` and `enqueue` act with a token the `QUEUE_APP_ID` / `QUEUE_APP_KEY`
+# GitHub App mints per run (Contents, Pull requests and Merge queues: write;
+# installed on this repository only). An App's events are not GITHUB_TOKEN
+# events: GitHub acts on an auto-merge request the App made, and a merge group
+# the App enqueued starts its workflows. `enqueue` stays as the backstop for
+# the moment arming alone misses: `gate` finishing green for a pull request
+# that is armed, CLEAN and not queued, pinned to the commit `gate` judged.
+#
+# A missing secret FAILS the job. Nothing here falls back to GITHUB_TOKEN:
+# that fallback is the five-hour stall above, silently.
 
 # ============================================================================
 # notify (was queue-notify.yml)
@@ -295,8 +300,8 @@ on:
       job:
         description: "Which job to run"
         type: choice
-        default: pr-verdicts
-        options: [pr-verdicts, roadmap-audit, nightly-report]
+        default: enqueue
+        options: [enqueue, pr-verdicts, roadmap-audit, nightly-report]
 
 permissions: {}
 
@@ -304,14 +309,10 @@ jobs:
   arm:
     name: arm auto-merge
     permissions:
-      # Issue 1338 (second fault) -- `enablePullRequestAutoMerge` needs CONTENTS
-      # write as well: with `pull-requests: write` alone GitHub answers
-      # `Resource not accessible by integration`, and it did on every run of the
-      # 40 measured on 2026-10-12 (0 armed). On a branch with a merge queue,
-      # arming is an enqueue, which is a contents operation. Still no checkout:
-      # the job runs `gh` against the API and executes nothing from the PR.
-      contents: write
-      pull-requests: write
+      # The queue App's token does the writing (issue 1338's contents:write +
+      # pull-requests:write are now the App's permissions). GITHUB_TOKEN
+      # writes nothing here, so it is granted nothing.
+      contents: read
     concurrency:
       # One arm per PR; a burst of pushes does not need a queue of identical
       # calls.
@@ -376,10 +377,37 @@ jobs:
           fi
           echo "arm=$arm" >> "$GITHUB_OUTPUT"
 
+      # The queue App's token, never GITHUB_TOKEN: GitHub starts no workflow
+      # for a merge group a GITHUB_TOKEN enqueued, and never acts later on an
+      # auto-merge request a GITHUB_TOKEN made (see "WHOSE TOKEN" above). So a
+      # missing secret FAILS this job. Falling back to GITHUB_TOKEN would put
+      # the queue back in the state that stalled it for five hours.
+      - name: Require the queue App's secrets
+        if: steps.trust.outputs.arm == 'yes'
+        env:
+          APP_ID: ${{ secrets.QUEUE_APP_ID }}
+          APP_KEY: ${{ secrets.QUEUE_APP_KEY }}
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$APP_KEY" ]; then
+            echo "::error::QUEUE_APP_ID / QUEUE_APP_KEY are not set. This job arms and enqueues only with the queue App's token, never GITHUB_TOKEN."
+            exit 1
+          fi
+      - name: Mint the queue App's token
+        if: steps.trust.outputs.arm == 'yes'
+        id: app
+        # v3.3.0, pinned by commit.
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ secrets.QUEUE_APP_ID }}
+          private-key: ${{ secrets.QUEUE_APP_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-merge-queues: write
+
       - name: Enable auto-merge
         if: steps.trust.outputs.arm == 'yes'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           NUMBER: ${{ github.event.pull_request.number }}
         run: |
           # `--rebase` names the method for repositories without a queue; where
@@ -410,16 +438,6 @@ jobs:
           # `rc=0; cmd || rc=$?` is this repo's ONE spelling for a status you
           # mean to INSPECT under `set -e` (issue 1249) — and a pipe destroys
           # it, which is why the redirect replaces the `tee`.
-          # A CLEAN pull request would be ENQUEUED by `--auto` right now, with
-          # this token, and a merge group a `GITHUB_TOKEN` creates starts no
-          # workflow (see "AND THIS TOKEN MUST NOT ENQUEUE" above). Leave it
-          # for its author, whose own `gh pr merge --auto` enqueues it properly.
-          state=UNKNOWN
-          state="$(gh pr view "$NUMBER" --repo "$GITHUB_REPOSITORY" --json mergeStateStatus -q .mergeStateStatus)" || state=UNKNOWN
-          if [ "$state" = CLEAN ]; then
-            echo "::notice::#$NUMBER is already mergeable, so it is not armed here: arming would enqueue it with GITHUB_TOKEN, and that merge group would start no workflow. Run: gh pr merge $NUMBER --auto"
-            exit 0
-          fi
           rc=0
           gh pr merge "$NUMBER" --repo "$GITHUB_REPOSITORY" --auto --rebase \
             > /tmp/arm.log 2>&1 || rc=$?
@@ -430,7 +448,7 @@ jobs:
             # Issue 1338 -- a PERMISSION refusal is not a PR state; it is this
             # workflow being unable to do its job for every PR, which a
             # warning hid for a month. Fail loudly instead.
-            echo "::error::arm-auto-merge lacks the token permission to arm #$NUMBER (issue 1338)"
+            echo "::error::the queue App lacks the permission to arm #$NUMBER (it needs Contents and Pull requests: write; issue 1338)"
             exit 1
           else
             # Never fail the workflow for this. A PR that cannot be armed yet
@@ -439,6 +457,130 @@ jobs:
             # second, confusing signal beside the real `CI` one.
             echo "::warning::could not arm auto-merge on #$NUMBER"
           fi
+
+  enqueue:
+    name: enqueue an armed, clean pull request
+    permissions:
+      # The queue App's token does the writing (issue 1338's contents:write +
+      # pull-requests:write are now the App's permissions). GITHUB_TOKEN
+      # writes nothing here, so it is granted nothing.
+      contents: read
+    concurrency:
+      # A `workflow_run` has no pull request number in its payload; its head
+      # commit stands in. A dispatch sweep never cancels anything else.
+      group: arm-auto-merge-enqueue-${{ github.event.workflow_run.head_sha || github.run_id }}
+      cancel-in-progress: true
+    # Only a green `gate` run for a pull request (a merge_group or push run of
+    # `gate` judges no pull request), or a dispatched sweep.
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' && inputs.job == 'enqueue')
+          || (github.event_name == 'workflow_run'
+              && github.event.workflow_run.name == 'gate'
+              && github.event.workflow_run.event == 'pull_request'
+              && github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    # A query and a mutation per pull request, plus at most a minute of
+    # waiting for GitHub to finish computing the merge state; floor 10.
+    timeout-minutes: 10
+    steps:
+      - name: Require the queue App's secrets
+        env:
+          APP_ID: ${{ secrets.QUEUE_APP_ID }}
+          APP_KEY: ${{ secrets.QUEUE_APP_KEY }}
+        run: |
+          if [ -z "$APP_ID" ] || [ -z "$APP_KEY" ]; then
+            echo "::error::QUEUE_APP_ID / QUEUE_APP_KEY are not set. This job enqueues only with the queue App's token, never GITHUB_TOKEN."
+            exit 1
+          fi
+      - name: Mint the queue App's token
+        id: app
+        # v3.3.0, pinned by commit.
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ secrets.QUEUE_APP_ID }}
+          private-key: ${{ secrets.QUEUE_APP_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-merge-queues: write
+      - name: Enqueue each armed, clean pull request that is not queued
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # Which pull requests to look at: the one(s) whose head `gate` just
+          # judged, or every open one for a dispatched sweep.
+          if [ -n "$HEAD_SHA" ]; then
+            if ! numbers="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" \
+                --jq '.[] | select(.state == "open") | .number')"; then
+              echo "::warning::could not list the pull requests for $HEAD_SHA"
+              exit 0
+            fi
+          else
+            if ! numbers="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open \
+                --limit 200 --json number --jq '.[].number')"; then
+              echo "::error::could not list open pull requests"
+              exit 1
+            fi
+          fi
+          [ -n "$numbers" ] || { echo "no open pull request to look at"; exit 0; }
+
+          owner="${GITHUB_REPOSITORY%/*}"
+          name="${GITHUB_REPOSITORY#*/}"
+          query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){id isDraft headRefOid isInMergeQueue mergeStateStatus autoMergeRequest{enabledAt}}}}'
+          for n in $numbers; do
+            # `mergeStateStatus` is computed lazily and reads UNKNOWN for a
+            # while after a check completes, so ask again a few times.
+            state=""
+            for _ in 1 2 3 4 5 6; do
+              if ! pr="$(gh api graphql -f query="$query" -f o="$owner" -f r="$name" -F n="$n" \
+                  --jq '.data.repository.pullRequest')"; then
+                echo "::warning::#$n: could not read its state"
+                continue 2
+              fi
+              state="$(jq -r '.mergeStateStatus' <<<"$pr")"
+              [ "$state" = UNKNOWN ] || break
+              sleep 10
+            done
+            id="$(jq -r '.id' <<<"$pr")"
+            head="$(jq -r '.headRefOid' <<<"$pr")"
+            armed="$(jq -r '.autoMergeRequest != null' <<<"$pr")"
+            queued="$(jq -r '.isInMergeQueue' <<<"$pr")"
+            draft="$(jq -r '.isDraft' <<<"$pr")"
+            echo "#$n: state=$state armed=$armed queued=$queued draft=$draft head=$head"
+
+            if [ "$armed" != true ] || [ "$queued" = true ] || [ "$draft" = true ]; then
+              echo "  nothing to do"
+              continue
+            fi
+            if [ -n "$HEAD_SHA" ] && [ "$head" != "$HEAD_SHA" ]; then
+              echo "  its head moved past the commit gate judged; that commit's own run decides"
+              continue
+            fi
+            if [ "$state" != CLEAN ]; then
+              echo "  not CLEAN, so not enqueued"
+              continue
+            fi
+
+            rc=0
+            gh api graphql \
+              -f query='mutation($id:ID!,$sha:GitObjectID!){enqueuePullRequest(input:{pullRequestId:$id,expectedHeadOid:$sha}){mergeQueueEntry{position}}}' \
+              -f id="$id" -f sha="$head" > /tmp/enqueue.log 2>&1 || rc=$?
+            sed 's/^/  /' /tmp/enqueue.log
+            if [ "$rc" -eq 0 ]; then
+              echo "  enqueued #$n"
+            elif grep -q 'Resource not accessible by integration' /tmp/enqueue.log; then
+              # As for arming (issue 1338): a permission refusal is this job
+              # unable to do its work for every pull request. Say so loudly.
+              echo "::error::the queue App lacks the permission to enqueue #$n (it needs Merge queues: write)"
+              exit 1
+            else
+              # A race with a push, a conflict, or a human who enqueued it a
+              # moment earlier: a state to report, not a red mark on the PR.
+              echo "::warning::could not enqueue #$n"
+            fi
+          done
+
 
   notify:
     permissions:
