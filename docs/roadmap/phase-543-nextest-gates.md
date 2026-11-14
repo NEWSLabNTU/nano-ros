@@ -1,8 +1,15 @@
 # Phase 543 — Every gate is a nextest test
 
-**Status (2026-11-06). IN PROGRESS — W0 merged (#3207); W1 and W2 in #3209; W3 first pass done.** No RFC yet: the design below
-is this phase's. If W1-W3 settle it, it moves into an RFC and this doc keeps
-the work items.
+**Status (2026-11-15). W0-W6 DONE; open: four homed issues and the RFC.**
+Every work item is merged, and the claims were checked against the tree on
+2026-11-15: `run-gates-parallel.sh`, the `build-serial:` list,
+`.config/gate-lane-exempt.txt` and the authored fast registry are gone; every
+gate is a test of `packages/testing/nros-gates`; `check fast` and `check build`
+run `scripts/build/gate-lane.sh`; `ci gate` runs both tiers and `pre-push`
+runs `check fast`; order independence is `just check gate-order`.
+The phase stays open while the issues it homes are open (2318, 2352, 2380,
+2442; see the table at the end). No RFC yet: W1-W3 settled the design below,
+so it moves into an RFC and this doc keeps the work items.
 
 Decided (maintainer, 2026-11-06):
 
@@ -515,8 +522,15 @@ nextest test, and runs its shard by name.
 ## Open questions
 
 1. Lane names: `push` / `pr` / `gate` (by where a lane runs), or `fast` /
-   `build` (today's)?
-2. W0's two held scripts: delete, or wire into a lane?
+   `build` (today's)? **Answered by what landed:** both, for two different
+   things. `fast` and `build` name a gate's TIER (`[metadata("tier", …)]`);
+   a LANE is a capability claim named for where it runs (`fast`, `build`,
+   `queue`, `dev`, `runner`, `merge`, `pristine` in `.config/gate-lanes.toml`).
+2. W0's two held scripts: delete, or wire into a lane? **Answered:**
+   `check-book-page-map.py` is wired (called by `check-book-audience.py` and
+   `scripts/book-move.py`, as phase-532 W8 planned). `check-profile-against-census.py`
+   stays a tool: it is RFC-0078's consumer check, run with arguments, so it
+   is no gate and belongs on no lane.
 
 ## Acceptance
 

@@ -519,7 +519,7 @@ submodule_git_dir() {
 
 # A narrowing has to reach the LANE's summary, not just this gate's stdout.
 #
-# `run-gates-parallel.sh` discards the output of every gate that exits 0 and
+# The gate harness (nextest) discards the output of every gate that exits 0 and
 # prints only failures, so a `NOT VERIFIED` line on the happy path is invisible
 # in the lane that runs on every push — which would make this fix a silent skip,
 # the exact defect issue 0650 removed from the other six gates. The ledger is
