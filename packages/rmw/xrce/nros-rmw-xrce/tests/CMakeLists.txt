@@ -127,3 +127,18 @@ add_executable(nros_rmw_xrce_ingress_pace ingress_pace.c)
 target_link_libraries(nros_rmw_xrce_ingress_pace PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_ingress_pace COMMAND nros_rmw_xrce_ingress_pace)
+
+# Issue 2577 — a reply the session cannot buffer (a full reliable stream) gives
+# its reply token back, so the service keeps taking requests. No agent: a zeroed
+# session has no output streams, so every `uxr_buffer_reply` fails.
+add_executable(nros_rmw_xrce_reply_token_failed_send reply_token_failed_send.c)
+target_link_libraries(nros_rmw_xrce_reply_token_failed_send PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_reply_token_failed_send COMMAND nros_rmw_xrce_reply_token_failed_send)
+
+# Issue 2578 — a flush returns within its window while inbound bytes keep
+# arriving. No agent: a custom transport in the test trickles bytes every 10 ms.
+add_executable(nros_rmw_xrce_flush_bounded_under_traffic flush_bounded_under_traffic.c)
+target_link_libraries(nros_rmw_xrce_flush_bounded_under_traffic PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_flush_bounded_under_traffic COMMAND nros_rmw_xrce_flush_bounded_under_traffic)

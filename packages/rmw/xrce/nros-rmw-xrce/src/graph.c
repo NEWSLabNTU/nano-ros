@@ -212,7 +212,7 @@ static bool graph_probe(xrce_session_state_t* st) {
         }
         (void)uxr_buffer_request(&st->session, st->output_reliable, rq, g->probe_nonce,
                                  sizeof(g->probe_nonce));
-        (void)uxr_run_session_time(&st->session, XRCE_GRAPH_PROBE_RETRY_MS);
+        xrce_session_pump(st, XRCE_GRAPH_PROBE_RETRY_MS);
     }
     g->probe_replier_id = 0;
 
@@ -589,7 +589,7 @@ void xrce_graph_flush(xrce_session_state_t* st) {
     nros_xrce_free(buf);
     if (req != UXR_INVALID_REQUEST_ID) {
         g->dirty = false;
-        (void)uxr_run_session_time(&st->session, 0);
+        xrce_session_flush(st, 0);
         return;
     }
     /* `uxr_buffer_topic` refuses a sample larger than one reliable-stream slot
@@ -828,7 +828,7 @@ static rmw_ret_t graph_ensure_reader(xrce_session_state_t* st) {
     };
     (void)uxr_buffer_request_data(&st->session, st->output_reliable, dr_oid, st->input_reliable,
                                   &delivery);
-    (void)uxr_run_session_time(&st->session, 0);
+    xrce_session_flush(st, 0);
     return NROS_RMW_RET_OK;
 }
 

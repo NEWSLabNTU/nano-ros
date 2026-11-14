@@ -363,7 +363,7 @@ static inline void nros_xrce_free(void* ptr) {
  * stream in a single ~~`run_session_time(timeout_ms)`~~ window — the
  * callback fires once per Data frame and the listener can't
  * `take_serialized`-drain in between because they all execute inside
- * the same `uxr_run_session_time` call. So the ring must hold an
+ * the same session run. So the ring must hold an
  * entire publish burst — anything beyond depth is silently dropped
  * by the topic callback's ring-full policy. The burst test
  * publishes 100 msgs back-to-back; depth 32 caps the visible burst
@@ -928,6 +928,29 @@ void xrce_session_entity_detach(xrce_session_state_t* st);
 
 void xrce_session_lock(xrce_session_state_t* st);
 void xrce_session_unlock(xrce_session_state_t* st);
+
+/* Issue 2578 — the two ways this backend runs the session, both BOUNDED in
+ * total time. Never call `uxr_run_session_time` directly: in the pinned client
+ * it loops while each window receives anything, so under steady inbound
+ * traffic (a 20 Hz subscription) it never returns and the executor stops
+ * dispatching every callback for as long as the traffic lasts.
+ *
+ * `xrce_session_flush` — push buffered output and wait, at most `timeout_ms`,
+ * for the reliable streams to be confirmed; returns early once they are. For a
+ * site that has just buffered something (a create, a request, a reply, a
+ * sample). `timeout_ms` = 0 pushes and polls once.
+ *
+ * `xrce_session_pump` — service the session for `timeout_ms`: inbound is
+ * delivered to its callbacks the whole time. For a site that WAITS (the
+ * executor's drive, the graph probe). `timeout_ms` = 0 is one non-blocking
+ * pass. */
+static inline void xrce_session_flush(xrce_session_state_t* st, int timeout_ms) {
+    (void)uxr_run_session_until_confirm_delivery(&st->session, timeout_ms);
+}
+
+static inline void xrce_session_pump(xrce_session_state_t* st, int timeout_ms) {
+    (void)uxr_run_session_timeout(&st->session, timeout_ms);
+}
 
 /* Issue 1734 — release a session state that is NOT shared yet (a failed
  * `xrce_session_create`) or that the lifetime rules say is unreachable: drops

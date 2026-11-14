@@ -1,13 +1,17 @@
 ---
 id: 2578
 title: "XRCE: `uxr_run_session_time` never returns under steady inbound traffic, so every callback stalls for as long as the traffic lasts"
-status: open
+status: resolved
 type: bug
 area: [rmw, xrce]
 severity: high
 found: 2026-09-18
-related: [rfc-0005, 2576, 2577, 2579]
+related: [phase-564, rfc-0005, 2576, 2577, 2579]
+resolved: 2026-11-15
+resolved_in: "phase-564 W2"
 ---
+
+**Home: [phase-564](../../roadmap/phase-564-xrce-device-session-robustness.md) W2.**
 
 GitHub: NEWSLabNTU/nano-ros#1075 (reported by wicanr2)
 
@@ -80,3 +84,13 @@ Switch the five call sites to `uxr_run_session_timeout` (the reporter runs
 this as a local patch and offered a PR), and bound `xrce_session_drive_io`'s
 single call too. If `uxr_run_session_time` is meant to be bounded, the bug is
 upstream in the client instead.
+
+## Resolution (2026-11-15)
+
+Every session run in the backend goes through one of two bounded helpers in
+`internal.h`: `xrce_session_flush` (`uxr_run_session_until_confirm_delivery`)
+after buffering, and `xrce_session_pump` (`uxr_run_session_timeout`) where the
+backend waits. 17 call sites, including `xrce_session_drive_io` and the graph
+probe. The suggested `uxr_run_session_timeout` everywhere was not taken for the
+flush sites, because it always waits out its window. `tests/flush_bounded_under_traffic.c`:
+one `send_response` under 3 s of traffic took 3101 ms on main and 101 ms fixed.

@@ -1,13 +1,17 @@
 ---
 id: 2577
 title: "XRCE: a reply that fails on a full reliable stream leaks its reply token, and after 4 the service is dead for the process's life"
-status: open
+status: resolved
 type: bug
 area: [rmw, xrce]
 severity: high
 found: 2026-09-18
-related: [rfc-0005, rfc-0008, 2576, 2578, 2579]
+related: [phase-564, rfc-0005, rfc-0008, 2576, 2578, 2579]
+resolved: 2026-11-15
+resolved_in: "phase-564 W1"
 ---
+
+**Home: [phase-564](../../roadmap/phase-564-xrce-device-session-robustness.md) W1.**
 
 GitHub: NEWSLabNTU/nano-ros#1076 (reported by wicanr2)
 
@@ -71,3 +75,10 @@ if (req == UXR_INVALID_REQUEST_ID) {
 
 The reporter offered this as a PR. Larger alternative: keep the token and have
 the executor retry the send, which would not lose the reply.
+
+## Resolution (2026-11-15)
+
+The failure branch of `xrce_service_send_response_locked` releases the reply
+token, as suggested. `tests/reply_token_failed_send.c` drives eight failed
+sends: main took 4 requests and leaked 4 tokens, the fix takes all 8 and leaks
+none. A full stream still loses that one reply; the service keeps working.

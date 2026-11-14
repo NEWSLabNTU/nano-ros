@@ -237,7 +237,7 @@ static rmw_ret_t xrce_subscription_create_locked(const rmw_node_t* node,
     };
     (void)uxr_buffer_request_data(&st->session, st->output_reliable, dr_oid, st->input_reliable,
                                   &delivery);
-    (void)uxr_run_session_time(&st->session, XRCE_SESSION_FLUSH_TIMEOUT_MS);
+    xrce_session_flush(st, XRCE_SESSION_FLUSH_TIMEOUT_MS);
 
     /* Issue 0847 — this entity now holds a pointer into the session state, so
      * the session may not free itself until this handle is gone. */
@@ -283,7 +283,7 @@ static rmw_ret_t xrce_subscription_destroy_locked(rmw_subscription_t* subscriber
          * not available at any price this path is willing to pay. */
         uint16_t req =
             uxr_buffer_delete_entity(&st->session, st->output_reliable, ss->datareader_oid);
-        (void)uxr_run_session_time(&st->session, 0);
+        xrce_session_flush(st, 0);
         ret = req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
     }
 

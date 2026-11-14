@@ -357,7 +357,7 @@ static rmw_ret_t xrce_service_create_locked(const rmw_node_t* node,
     };
     (void)uxr_buffer_request_data(&st->session, st->output_reliable, replier_oid,
                                   st->input_reliable, &delivery);
-    (void)uxr_run_session_time(&st->session, XRCE_SESSION_FLUSH_TIMEOUT_MS);
+    xrce_session_flush(st, XRCE_SESSION_FLUSH_TIMEOUT_MS);
 
     /* Issue 0847 — this entity now holds a pointer into the session state, so
      * the session may not free itself until this handle is gone. */
@@ -388,7 +388,7 @@ static rmw_ret_t xrce_service_destroy_locked(rmw_service_t* server) {
         /* Phase 376 W5 — see xrce_publisher_destroy: fire-and-forget by design,
          * so a buffering failure is the only verdict this frame can have. */
         uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable, ss->replier_oid);
-        (void)uxr_run_session_time(&st->session, 0);
+        xrce_session_flush(st, 0);
         ret = req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
     }
 
@@ -594,12 +594,19 @@ static rmw_ret_t xrce_service_send_response_locked(const rmw_service_t* server, 
     uint16_t req = uxr_buffer_reply(&st->session, st->output_reliable, ss->replier_oid,
                                     reply_sample_id, (uint8_t*)(uintptr_t)body, body_len);
     if (req == UXR_INVALID_REQUEST_ID) {
+        /* Issue 2577 — the reliable output stream is full, so this reply is
+         * lost. The token belongs to THIS call: the executor sends each reply
+         * once and never retries, so keeping it leaks it, and after
+         * `XRCE_MAX_PENDING_REPLIES` such failures every `take_request`
+         * answers WOULD_BLOCK for the life of the process. Release it, so the
+         * service drops one reply (a client retry recovers) instead of dying. */
+        ss->slot->reply_tokens[seq].in_use = false;
         return NROS_RMW_RET_ERROR;
     }
     /* Release the token whether or not the flush below fully drains — the
      * request has been answered at the XRCE layer. */
     ss->slot->reply_tokens[seq].in_use = false;
-    (void)uxr_run_session_time(&st->session, XRCE_SESSION_FLUSH_TIMEOUT_MS);
+    xrce_session_flush(st, XRCE_SESSION_FLUSH_TIMEOUT_MS);
     return NROS_RMW_RET_OK;
 }
 
@@ -654,7 +661,7 @@ static rmw_ret_t xrce_service_send_request_raw_locked(const rmw_client_t* client
      * leaves the session — matches the publisher / send_response
      * paths' explicit flush. Subsequent `drive_io` calls drive
      * reliable retransmission. */
-    (void)uxr_run_session_time(&st->session, XRCE_SESSION_FLUSH_TIMEOUT_MS);
+    xrce_session_flush(st, XRCE_SESSION_FLUSH_TIMEOUT_MS);
     return NROS_RMW_RET_OK;
 }
 
@@ -886,7 +893,7 @@ static rmw_ret_t xrce_client_create_locked(const rmw_node_t* node,
     };
     (void)uxr_buffer_request_data(&st->session, st->output_reliable, requester_oid,
                                   st->input_reliable, &delivery);
-    (void)uxr_run_session_time(&st->session, XRCE_SESSION_FLUSH_TIMEOUT_MS);
+    xrce_session_flush(st, XRCE_SESSION_FLUSH_TIMEOUT_MS);
 
     /* Issue 0847 — this entity now holds a pointer into the session state, so
      * the session may not free itself until this handle is gone. */
@@ -918,7 +925,7 @@ static rmw_ret_t xrce_client_destroy_locked(rmw_client_t* client) {
          * so a buffering failure is the only verdict this frame can have. */
         uint16_t req =
             uxr_buffer_delete_entity(&st->session, st->output_reliable, cs->requester_oid);
-        (void)uxr_run_session_time(&st->session, 0);
+        xrce_session_flush(st, 0);
         ret = req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
     }
 

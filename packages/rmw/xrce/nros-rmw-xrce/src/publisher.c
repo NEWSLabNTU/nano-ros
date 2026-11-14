@@ -150,7 +150,7 @@ static rmw_ret_t xrce_publisher_destroy_locked(rmw_publisher_t *publisher) {
          * would not BUFFER. That is worth reporting; the agent's own verdict is
          * not available at any price this path is willing to pay. */
         uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable, ps->datawriter_oid);
-        (void)uxr_run_session_time(&st->session, 0);
+        xrce_session_flush(st, 0);
         ret = req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
     }
 
@@ -197,7 +197,7 @@ static rmw_ret_t xrce_publisher_publish_raw_locked(const rmw_publisher_t *publis
     if (req != UXR_INVALID_REQUEST_ID) {
         /* Flush so the bytes reach the agent without waiting for the
          * next drive_io tick. Mirrors the Rust impl. */
-        (void)uxr_run_session_time(&st->session, 0);
+        xrce_session_flush(st, 0);
         xrce_deadline_touch(&ps->deadline, xrce_now_ms()); /* issue 2108 */
         return NROS_RMW_RET_OK;
     }
@@ -326,7 +326,7 @@ static rmw_ret_t xrce_publisher_publish_streamed_locked(
 
     /* From here the slot is COMMITTED: `uxr` has no cancel for a prepared
      * output stream, so whatever is in it goes out on the next
-     * `uxr_run_session_time`. A caller whose `chunk_cb` stops short of the
+     * session run (`xrce_session_flush`). A caller whose `chunk_cb` stops short of the
      * `total` its own `size_cb` promised therefore cannot be un-published —
      * the best available is to zero the remainder so the peer sees
      * deterministic padding rather than uninitialised stream memory, and to
@@ -341,13 +341,13 @@ static rmw_ret_t xrce_publisher_publish_streamed_locked(
             consumed > XRCE_CDR_HEADER_LEN ? consumed - XRCE_CDR_HEADER_LEN : 0;
         memset(ub.iterator + body_written, 0, body_len - body_written);
         ub.iterator += body_len;
-        (void)uxr_run_session_time(&st->session, 0);
+        xrce_session_flush(st, 0);
         return NROS_RMW_RET_ERROR; /* size_cb / chunk_cb disagreed */
     }
 
     ub.iterator += body_len;
 
-    (void)uxr_run_session_time(&st->session, 0);
+    xrce_session_flush(st, 0);
     xrce_deadline_touch(&ps->deadline, xrce_now_ms()); /* issue 2108 */
     return NROS_RMW_RET_OK;
 }
