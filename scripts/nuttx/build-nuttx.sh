@@ -284,8 +284,9 @@ if [ -f "$NUTTX_SNAPSHOT_KEY" ] \
         echo "  NOTE: the shared tree stays configured for ${_have_board}, not ${_want_board}."
         echo "        This path guarantees the snapshot, not \$NUTTX_DIR. Build inputs must"
         echo "        resolve headers via nros_build_paths::nuttx_include_root, which reads"
-        echo "        ${NUTTX_SNAPSHOT}/include (issue 0525; gated by"
-        echo "        check-nuttx-shared-tree-headers)."
+        # issue 0525: the shared tree is last-configured-wins; the snapshot is
+        # per-arch, and check-nuttx-shared-tree-headers gates the readers.
+        echo "        ${NUTTX_SNAPSHOT}/include."
     fi
     nros_nuttx_write_cargo_cpu_config "$NUTTX_SNAPSHOT" || exit 1
     exit 0

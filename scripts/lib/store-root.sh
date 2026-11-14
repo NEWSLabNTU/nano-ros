@@ -13,14 +13,15 @@
 
 # nros_store_retired — print the refusal for any retired variable that is set,
 # return 1 if there was one. Silent and 0 otherwise.
+# The retired names and their refusal are RFC-0103 D6.
 nros_store_retired() {
     local bad=0
     if [ -n "${NROS_STORE+x}" ]; then
-        echo "error: \$NROS_STORE is retired — set NROS_HOME to the same directory (RFC-0103 D6)" >&2
+        echo "error: \$NROS_STORE is retired — set NROS_HOME to the same directory" >&2
         bad=1
     fi
     if [ -n "${NROS_SDK_STORE+x}" ]; then
-        echo "error: \$NROS_SDK_STORE is retired — set NROS_HOME to its PARENT (it named <store>/sdk; RFC-0103 D6)" >&2
+        echo "error: \$NROS_SDK_STORE is retired — set NROS_HOME to its PARENT (it named <store>/sdk)" >&2
         bad=1
     fi
     return "$bad"

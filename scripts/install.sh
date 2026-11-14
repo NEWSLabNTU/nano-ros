@@ -51,6 +51,7 @@ need() {
     command -v "$1" >/dev/null 2>&1 || die "$1 is required and not on PATH."
 }
 
+# The usage text cites no ids; the contributor split is RFC-0090, phase-431 W1/W2.
 usage() {
     cat <<'EOF'
 Install the `nros` CLI.
@@ -71,7 +72,7 @@ Environment:
                         relaxed, because an operator naming a URL has chosen it
 
 Contributors want scripts/bootstrap.sh instead: inside a nano-ros checkout the
-tree's own build is the only correct binary (RFC-0090, phase-431 W1/W2).
+tree's own build is the only correct binary.
 EOF
 }
 

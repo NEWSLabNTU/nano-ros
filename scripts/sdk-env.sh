@@ -102,8 +102,9 @@ _nros_sdk_env_foreign_skipped() {
 # The one line a user sees when activation drops inherited values. $1 is the
 # newline-separated name list. Never word-split: zsh does not split an
 # unquoted `$var`, which is why every list here goes through `tr`.
+# Issue 1840; RFC-0103 D4/D6.
 _nros_sdk_env_foreign_note() {
-    printf 'nano-ros: unset inherited %s— each named another nano-ros checkout, not %s (issue 1840; RFC-0103 D4/D6)' \
+    printf 'nano-ros: unset inherited %s— each named another nano-ros checkout, not %s' \
         "$(printf '%s\n' "$1" | sed '/^$/d' | tr '\n' ' ')" "${_nros_sdk_env_root}"
 }
 

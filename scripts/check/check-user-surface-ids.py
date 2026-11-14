@@ -47,6 +47,15 @@ Subjects, all checked on every run:
   literal (f-string parts included) that is not a docstring. A user's
   `colcon build` prints its refusals; its docstrings and `#` comments keep
   their ids;
+* the OUTPUT OF USER-RUN SHELL SCRIPTS (issue 2443): `USER_RUN_SCRIPTS`
+  (install.sh, bootstrap.sh, `activate.*`, the scripts a user's build runs
+  from the release SDK root), every script the user book tells a reader to
+  run, and what any of them sources. Read: `echo`/`printf` text (fish's too),
+  a print helper (a function whose printer passes its arguments on), a
+  `cat <<EOF` body unless redirected to a file, and a variable's assigned
+  value when a printer prints it. Gaps, stated: text built by a command other
+  than a printer, a heredoc written to a file, a printer inside a quoted
+  `$(…)` (read as its outer string), and scripts those run rather than source;
 * the output of `nros board list`, `nros board show <board>` for every board
   the list names, and `nros doctor --report`, which in addition may hold no
   tier number (`tier 1`, `tier 2`, `tier 3` — phase-522 W5).
@@ -77,6 +86,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 import book_contributor  # noqa: E402
 import book_pages  # noqa: E402
 import check_skip  # noqa: E402
+import comments  # noqa: E402
 from ratchet import fell_instructions, judge  # noqa: E402
 
 NAME = "check-user-surface-ids"
@@ -405,6 +415,352 @@ def colcon_hits() -> list[str]:
     return bad
 
 
+# --- user-run shell scripts -------------------------------------------------
+
+# Issue 2443, ruling A: what a script the USER runs prints names what, where
+# and how to fix, never an id. CI and maintainer tooling (`scripts/check-*`,
+# `scripts/probe/`, `just` recipes) is not this subject. The set is this list,
+# the scripts they source, and the scripts the user book tells a reader to run:
+USER_RUN_SCRIPTS = {
+    # The `curl … | sh` installer the book's install chapter shows; the
+    # release asset also ships it as `share/nros/install.sh`.
+    "scripts/install.sh": "the release installer",
+    # The from-source front door; install.sh's own refusals name it.
+    "scripts/bootstrap.sh": "the from-source installer",
+    # Sourced into the user's shell, every shell once bootstrap wires the rc.
+    "activate.sh": "shell activation",
+    "activate.fish": "shell activation",
+    # Shipped in the release SDK root (`scripts/stage-sdk-root.sh`) and run by
+    # a user's own build: the NuttX board overlays provision the kernel with
+    # the first, `NanoRosCorrosion.cmake` asserts with the second.
+    "scripts/nuttx/build-nuttx.sh": "run by a user's NuttX build",
+    "scripts/check-shared-cargo-dir-used.sh": "run by a user's cmake build",
+}
+# Any other `activate.*` at the root is activation too.
+ACTIVATE_GLOB = "activate.*"
+SH_PRINTERS = {"echo", "printf"}
+FISH_PRINTERS = {"echo", "printf", "set_color"}
+# Words that open a command without being its name.
+SH_LEADS = {"then", "do", "else", "elif", "if", "while", "until", "!", "time", "{", "}",
+            "command", "builtin", "and", "or", "not", "begin", "exec"}
+SH_ASSIGN = re.compile(r"[A-Za-z_]\w*=")
+SH_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1")
+# A redirect that keeps a heredoc on the terminal: `>&2`, `>/dev/stderr`.
+TO_TERMINAL = re.compile(r"^(?:&[12]|/dev/std(?:out|err))$")
+SH_FUNC = re.compile(r"^(\s*)(?:function\s+)?([A-Za-z_][\w-]*)\s*\(\s*\)\s*\{?(.*)$")
+FISH_FUNC = re.compile(r"^(\s*)function\s+([\w-]+)")
+# A helper's printer passes its ARGUMENTS on: `$*`, `$@`, `$1`, `${1…}`, `$argv`.
+ARG_REF = re.compile(r"\$(?:\*|@|\{?[1-9]|argv\b|\{[*@])")
+VAR_REF = re.compile(r"\$\{?([A-Za-z_]\w*)")
+SOURCED = re.compile(r"""^(?:source|\.)\s+["']?([^"'\s;|&]+)""")
+BOOK_SCRIPT = re.compile(r"(?<![\w.-])((?:scripts/[\w./-]+|activate)\.(?:sh|fish))\b")
+INLINE_CODE = re.compile(r"`([^`]+)`")
+
+
+class ShellCommand:
+    # A plain class: other gates load this file by path (`check-book-audience`),
+    # where a dataclass cannot resolve its module.
+    def __init__(self, name: str, pieces: list, heredocs: list) -> None:
+        self.name = name
+        self.pieces = pieces  # (start, end) of its own text, nested commands excluded
+        self.heredocs = heredocs  # (start, end) of the bodies of its `<<` heredocs
+
+    def text(self, src: str) -> str:
+        return "".join(src[a:b] for a, b in self.pieces)
+
+
+def shell_words(text: str) -> list[str]:
+    """`text` split at unquoted whitespace (quotes kept in the words)."""
+    words, cur, i, n, q = [], "", 0, len(text), ""
+    while i < n:
+        c = text[i]
+        if q:
+            if c == "\\" and q == '"':
+                cur += text[i : i + 2]
+                i += 2
+                continue
+            if c == q:
+                q = ""
+        elif c in "'\"":
+            q = c
+        elif c == "\\":
+            cur += text[i : i + 2]
+            i += 2
+            continue
+        elif c.isspace():
+            if cur:
+                words.append(cur)
+            cur = ""
+            i += 1
+            continue
+        cur += c
+        i += 1
+    return words + ([cur] if cur else [])
+
+
+def shell_commands(src: str, fish: bool = False) -> list[ShellCommand]:
+    """The simple commands of a shell (or fish) script, comments already
+    blanked. Commands end at an unquoted newline (not `\\`-continued), `;`,
+    `&`, `|`, `(`, `)` and a backtick; a `$(…)` or `(…)` nests, so the text
+    around it stays its outer command's. Quotes: `'…'` (fish and `$'…'` with
+    escapes), `"…"` with escapes, a `$(…)` inside it skipped as a unit. A
+    heredoc body belongs to the command whose line opened it. Not a parser:
+    `case` patterns read as commands, and a printer inside a quoted `$(…)` is
+    read as part of its outer string."""
+    n = len(src)
+    out: list[ShellCommand] = []
+    stack: list[ShellCommand] = []
+    cur = ShellCommand("", [], [])
+    seg = 0
+    pending: list[tuple[ShellCommand, str, bool]] = []
+
+    def skip_subst(j: int) -> int:  # j just past `$(`; return past its `)`
+        depth = 1
+        while j < n and depth:
+            c = src[j]
+            if c == "\\":
+                j += 2
+                continue
+            if c in "'\"":
+                j = skip_quote(j)
+                continue
+            depth += {"(": 1, ")": -1}.get(c, 0)
+            j += 1
+        return j
+
+    def skip_quote(j: int) -> int:  # j at the opening quote; return past its close
+        q = src[j]
+        esc = q == '"' or fish or (j > 0 and src[j - 1] == "$")
+        k = j + 1
+        while k < n and src[k] != q:
+            if esc and src[k] == "\\":
+                k += 2
+                continue
+            if q == '"' and src.startswith("$(", k):
+                k = skip_subst(k + 2)
+                continue
+            k += 1
+        return min(k + 1, n)
+
+    def finish(end: int) -> None:
+        nonlocal cur
+        cur.pieces.append((seg, end))
+        out.append(cur)
+
+    i = 0
+    while i < n:
+        c = src[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c in "'\"":
+            i = skip_quote(i)
+            continue
+        if c == "`":
+            j = src.find("`", i + 1)
+            i = n if j < 0 else j + 1
+            continue
+        if c == "<" and not fish:
+            m = SH_HEREDOC.match(src, i)
+            if m and not src.startswith("<<<", i):
+                pending.append((cur, m.group(2), src.startswith("<<-", i)))
+                i = m.end()
+                continue
+        if c == "\n":
+            finish(i)
+            i += 1
+            for cmd, term, dash in pending:
+                start = i
+                while i < n:
+                    j = src.find("\n", i)
+                    j = n if j < 0 else j
+                    line = src[i:j]
+                    if (line.lstrip("\t") if dash else line) == term:
+                        cmd.heredocs.append((start, i))
+                        i = j + 1
+                        break
+                    i = j + 1
+                else:
+                    cmd.heredocs.append((start, n))
+            pending.clear()
+            cur, seg = ShellCommand("", [], []), i
+            continue
+        if c == "&" and (src[i - 1 : i] in ("<", ">") or src[i + 1 : i + 2] == ">"):
+            i += 1  # `>&2`, `&>`: a redirect, not a separator
+            continue
+        if c in ";&|":
+            finish(i)
+            cur, seg = ShellCommand("", [], []), i + 1
+        elif c == "(":
+            cur.pieces.append((seg, i + 1))
+            stack.append(cur)
+            cur, seg = ShellCommand("", [], []), i + 1
+        elif c == ")":
+            finish(i)
+            cur = stack.pop() if stack else ShellCommand("", [], [])
+            seg = i
+        i += 1
+    finish(n)
+    for cmd in out:
+        words = shell_words(cmd.text(src))
+        k = 0
+        while k < len(words) and (words[k] in SH_LEADS or SH_ASSIGN.match(words[k])
+                                  or words[k].endswith("()") or words[k] == "function"):
+            k += 1
+        cmd.name = words[k] if k < len(words) else ""
+    return [cmd for cmd in out if cmd.text(src).strip() or cmd.heredocs]
+
+
+def shell_print_helpers(src: str, fish: bool, printers: set[str]) -> set[str]:
+    """Functions of `src` whose body prints their arguments (`die() { echo
+    "x: $*" >&2; exit 1; }`), and those that pass theirs to one."""
+    funcs: dict[str, str] = {}
+    lines = src.splitlines()
+    for k, line in enumerate(lines):
+        m = (FISH_FUNC if fish else SH_FUNC).match(line)
+        if not m:
+            continue
+        indent, name = m.group(1), m.group(2)
+        rest = "" if fish else m.group(3)
+        if rest.rstrip().rstrip(";").endswith("}"):
+            funcs[name] = rest  # a one-line body
+            continue
+        close = "end" if fish else "}"
+        body = []
+        for later in lines[k + 1:]:
+            if later.startswith(indent) and later.strip() in (close, close + ";"):
+                break
+            body.append(later)
+        funcs[name] = "\n".join(body)
+    found: set[str] = set()
+    while True:
+        known = printers | found
+        new = {
+            name for name, body in funcs.items() if name not in found
+            and any(c.name in known and ARG_REF.search(c.text(body))
+                    for c in shell_commands(body, fish))
+        }
+        if not new:
+            return found
+        found |= new
+
+
+def shell_printed(src: str, fish: bool, printers: set[str]) -> tuple[str, list[tuple[int, int]]]:
+    """The spans of `src` a user sees: the text of every printer command
+    (`echo`, `printf`, a print helper, fish's `set_color`), whatever it is
+    redirected to; the body of a `cat <<EOF` heredoc unless it is redirected
+    to a file; and the value of a variable assigned in the script that a
+    printer prints (`snippet="…"` … `printf '%s\\n' "$snippet"`). Returns
+    `src` with its comments blanked, which the spans index."""
+    src = comments.strip_comments(src, "sh")
+    cmds = shell_commands(src, fish)
+    spans: list[tuple[int, int]] = []
+    names: set[str] = set()
+    for c in cmds:
+        if c.name in printers:
+            spans += c.pieces
+            names |= set(VAR_REF.findall(c.text(src)))
+        if c.heredocs and c.name in printers | {"cat"}:
+            targets = re.findall(r"(?<![<\d&])\d?>>?\s*(\S+)", c.text(src))
+            if all(TO_TERMINAL.match(t.strip("\"'")) for t in targets):
+                spans += c.heredocs
+    for c in cmds:
+        words = c.text(src).split(None, 1)
+        if fish and c.name == "set":
+            rest = [w for w in c.text(src).split() if not w.startswith("-")][1:]
+            if rest and rest[0] in names:
+                spans += c.pieces
+        elif words and (m := re.match(r"(?:(?:local|export|readonly|declare)\s+(?:-\w+\s+)*)?"
+                                      r"([A-Za-z_]\w*)=", c.text(src).lstrip())):
+            if m.group(1) in names:
+                spans += c.pieces
+    return src, spans
+
+
+def resolve_sourced(rel: str, word: str) -> str | None:
+    """A `source`/`.` argument as a tracked path, or None (a variable alone,
+    a file outside the tree)."""
+    m = re.match(r"^(?:\$\{?\w+\}?)?(/?[\w./-]+\.(?:sh|fish))$", word)
+    if not m:
+        return None
+    tail = m.group(1)
+    for cand in (tail.lstrip("/"), str(Path(rel).parent / tail.lstrip("/"))):
+        if (ROOT / cand).is_file():
+            return str(Path(cand))
+    return None
+
+
+def book_run_scripts() -> dict[str, str]:
+    """Scripts the user book tells a reader to run: a path in a fenced block,
+    or in an inline code span that is a command (more than the bare path)."""
+    found: dict[str, str] = {}
+    for rel in book_pages.tracked_user_pages():
+        text = HTML_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"), (ROOT / rel).read_text())
+        for ln in book_contributor.walk(text.splitlines()):
+            spans = [ln.text] if ln.in_fence else [
+                s for s in INLINE_CODE.findall(ln.text) if not BOOK_SCRIPT.fullmatch(s.strip())
+            ]
+            for s in spans:
+                for m in BOOK_SCRIPT.finditer(s):
+                    if (ROOT / m.group(1)).is_file():
+                        found.setdefault(m.group(1), f"{rel}:{ln.number}")
+    return found
+
+
+def user_run_scripts() -> dict[str, str]:
+    """{path: why}: the listed scripts, the root's `activate.*`, the book's,
+    and every tracked script any of them sources, transitively."""
+    found = dict(USER_RUN_SCRIPTS)
+    for p in sorted(ROOT.glob(ACTIVATE_GLOB)):
+        found.setdefault(p.name, "shell activation")
+    for rel, where in book_run_scripts().items():
+        found.setdefault(rel, f"the book runs it ({where})")
+    queue = list(found)
+    while queue:
+        rel = queue.pop(0)
+        if not (ROOT / rel).is_file():
+            continue
+        src = comments.strip_comments((ROOT / rel).read_text(), "sh")
+        for c in shell_commands(src, rel.endswith(".fish")):
+            m = SOURCED.match(c.text(src).strip())
+            dep = m and resolve_sourced(rel, m.group(1))
+            if dep and dep not in found:
+                found[dep] = f"sourced by {rel}"
+                queue.append(dep)
+    return found
+
+
+def shell_lines(src: str, spans: list[tuple[int, int]]) -> list[tuple[int, str]]:
+    """Every id in `spans` of `src`, once each, as (line, id)."""
+    seen = {}
+    for a, b in spans:
+        for m in ID.finditer(src, a, b):
+            seen[m.start()] = m.group(0)
+    return [(src.count("\n", 0, k) + 1, tok) for k, tok in sorted(seen.items())]
+
+
+def shell_hits() -> list[str]:
+    scripts = user_run_scripts()
+    helpers: set[str] = set()
+    texts = {}
+    for rel in scripts:
+        if (ROOT / rel).is_file():
+            texts[rel] = (ROOT / rel).read_text()
+            fish = rel.endswith(".fish")
+            helpers |= shell_print_helpers(
+                comments.strip_comments(texts[rel], "sh"), fish,
+                FISH_PRINTERS if fish else SH_PRINTERS,
+            )
+    bad = []
+    for rel, src in sorted(texts.items()):
+        fish = rel.endswith(".fish")
+        printers = (FISH_PRINTERS if fish else SH_PRINTERS) | helpers
+        lines = src.splitlines()
+        for ln, tok in shell_lines(*shell_printed(src, fish, printers)):
+            bad.append(f"{rel}:{ln}: {tok!r} in {lines[ln - 1].strip()[:90]!r}")
+    return bad
+
+
 # --- the book ---------------------------------------------------------------
 
 
@@ -606,6 +962,33 @@ def self_test() -> None:
     )
     got = [(ln, t) for ln, s in python_message_strings(py) for t in ids(s)]
     assert got == [(5, "issue 1234"), (5, "RFC-0098")], f"self-test: colcon {got}"
+    # Issue 2443 -- a user-run script's printed text is read; a comment, an
+    # assignment nothing prints and a heredoc into a file are not.
+    sh = (
+        '#!/usr/bin/env bash # issue 1000\n'
+        '# phase-100 in a comment\n'
+        'die() { echo "x: $*" >&2; exit 1; }\n'
+        'echo "bad (issue 1234)" >&2  # issue 1001 trailing\n'
+        'plan="not printed (RFC-0001)"\n'
+        'note="# kept (Phase 218.C)\nsource x"\n'
+        'printf \'%s\\n\' "$note"\n'
+        'cat >"$out/f" <<EOF\nwritten (issue 2000)\nEOF\n'
+        'cat <<\'EOF\'\nusage (RFC-0090)\nEOF\n'
+        'if [ -z "$x" ]; then die "no x (phase-431 W1)"; fi\n'
+        'echo "a # (issue 1235)"\n'
+    )
+    helpers = shell_print_helpers(comments.strip_comments(sh, "sh"), False, SH_PRINTERS)
+    assert helpers == {"die"}, f"self-test: shell helpers {helpers}"
+    got = shell_lines(*shell_printed(sh, False, SH_PRINTERS | helpers))
+    assert got == [(4, "issue 1234"), (6, "Phase 218"), (13, "RFC-0090"), (15, "phase-431"),
+                   (16, "issue 1235")], f"self-test: shell {got}"
+    fish = (
+        '# issue 1563 in a comment\n'
+        'if set -q X\n    echo "error: retired (RFC-0103 D6)" >&2\nend\n'
+        'set -l unused "data (issue 1111)"\n'
+    )
+    got = shell_lines(*shell_printed(fish, True, FISH_PRINTERS))
+    assert got == [(3, "RFC-0103")], f"self-test: fish {got}"
     assert subcommands("Usage: x\n\nCommands:\n  new   make\n  help  h\n\nOptions:\n") == ["new"]
     assert subcommands(
         "Quick start:\n  nros new\n\nUsage: nros\n\nBuild:\n  build  b\n  sync   s\n\n"
@@ -629,7 +1012,7 @@ def main() -> int:
 
     bad = (
         source_hits() + ratchet_hits() + book_hits() + build_script_warning_hits()
-        + colcon_hits()
+        + colcon_hits() + shell_hits()
     )
     cli = args.cli
     if cli is None:
@@ -645,7 +1028,7 @@ def main() -> int:
             print(f"  {b}", file=sys.stderr)
         print(
             "\nThe reader has no tree to look an id up in. Help says what the verb\n"
-            "does (move the id to a `//` comment above the string); a refusal names\n"
+            "does (move the id to a comment above the string: `//`, or `#` in shell); a refusal names\n"
             "the next command; a chapter states the fact, moves contributor material\n"
             "to the Internals book, or lists an RFC under `## Design background`.\n"
             "If the only remedy is \"read issue N\", state the\n"
@@ -659,7 +1042,7 @@ def main() -> int:
         )
     print(
         f"{NAME}: OK (cmd/ strings, CLI library + build-script panic ratchet, build-script warnings, colcon "
-        f"messages, {BOOK_SCOPE}, "
+        f"messages, user-run shell scripts, {BOOK_SCOPE}, "
         f"{rendered})"
     )
     return 0

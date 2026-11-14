@@ -223,10 +223,12 @@ elif [ -n "$_nros_ros_setup" ]; then
         if [ -n "${ZSH_VERSION:-}" ]; then _nros_shell=zsh
         elif [ -n "${BASH_VERSION:-}" ]; then _nros_shell=bash
         else _nros_shell="sh-compatible"; fi
+        # issue 0639 — ROS 2 sourced but not loaded; the remedy is spelled out.
         echo "activate.sh: sourced $_nros_ros_setup but ROS_DISTRO is still unset —" \
             "the ROS environment did NOT load (shell: $_nros_shell). ROS-dependent" \
             "recipes will fail with missing tools or 'error while loading shared" \
-            "libraries'. See issue 0639." >&2
+            "libraries'. Source ROS 2 yourself first (. /opt/ros/<distro>/setup.sh)," \
+            "then source activate.sh again; it keeps a ROS 2 already sourced." >&2
     fi
     unset _nros_ros_setup _nros_shell
 else
@@ -401,8 +403,9 @@ unset _nros_sdk
 # The one notice: a pinned tool whose pin is not provisioned, NAMED with what
 # is there instead — never picked from (the NanoRosCrossToolchain.cmake shape).
 if [ -n "${_nros_store_stranded:-}" ] && [ -z "${NROS_QUIET_ACTIVATE:-}" ]; then
+    # issue 1563 — the pin is the version; a stale neighbour is never picked.
     {
-        echo "nano-ros: pinned SDK tool(s) not in the store — NOT put on PATH (issue 1563):"
+        echo "nano-ros: pinned SDK tool(s) not in the store — NOT put on PATH:"
         printf '%s' "$_nros_store_stranded"
         echo "  provision the pin: nros setup --tool <tool>   (set NROS_QUIET_ACTIVATE=1 to silence)"
     } >&2

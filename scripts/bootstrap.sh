@@ -29,6 +29,9 @@ DRY_RUN=0
 PROMPT=0
 NO_PROMPT=0
 
+# The usage text below cites no ids; its design record: a released `nros` in a
+# checkout is refused per RFC-0090 / phase-431 W1 and reported by `just doctor`
+# per W2; the curl installer for users is phase-431 W4.
 usage() {
     cat <<'EOF'
 Usage:
@@ -57,14 +60,14 @@ Flags:
 
 This is the CONTRIBUTOR front door, and it builds from source on purpose.
 Inside a checkout the tree's own build is the only correct binary: a released
-`nros` run against a nano-ros checkout is refused (RFC-0090 / phase-431 W1)
-and reported by `just doctor` as a shadow (W2), and it cannot stand in for the
+`nros` run against a nano-ros checkout is refused and reported by
+`just doctor` as a shadow, and it cannot stand in for the
 checkout's binary either, since `nros source-stamp` compares against the
 sources it was built from. It leaves the binary in the checkout's
 packages/cli/target/release/; `just setup-cli` is the internal alias for
 the same build.
 
-USERS who only want the tool need no checkout and no cargo (phase-431 W4):
+USERS who only want the tool need no checkout and no cargo:
 
   curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
 
@@ -238,8 +241,11 @@ ensure_cli_submodules() {
 
 # Build the in-tree CLI (`packages/cli/`) from source. Used by `base`.
 build_in_tree_cli() {
+    # The CLI has lived in-tree at packages/cli/ since the Phase 218 monorepo
+    # merge; a checkout without it is incomplete or predates that merge.
     if [[ ! -f "${REPO_ROOT}/packages/cli/Cargo.toml" ]]; then
-        echo "bootstrap: packages/cli/Cargo.toml not found — Phase 218 monorepo merge?" >&2
+        echo "bootstrap: packages/cli/Cargo.toml not found — this checkout is incomplete or older than the in-tree CLI." >&2
+        echo "bootstrap: update it (git pull) or clone it again: git clone https://github.com/NEWSLabNTU/nano-ros.git" >&2
         return 1
     fi
     ensure_cli_submodules || return 1
@@ -359,20 +365,25 @@ detect_shell_rc() {
     local rc snippet
     local shell_name
     shell_name="$(basename "${SHELL:-bash}")"
+    # The marker line was "# nano-ros workspace (Phase 218.C activation)" until
+    # issue 2443 dropped the id from text written into the user's rc file. No
+    # code matches the marker: an existing install is detected by the
+    # activate path (`grep -qF "$activate_path"` in offer_shell_rc_update and
+    # shell_doctor), so an rc holding the old marker is still recognised.
     case "$shell_name" in
         zsh)
             rc="$HOME/.zshrc"
-            snippet="# nano-ros workspace (Phase 218.C activation)
+            snippet="# nano-ros workspace activation
 source \"${REPO_ROOT}/activate.sh\""
             ;;
         fish)
             rc="$HOME/.config/fish/config.fish"
-            snippet="# nano-ros workspace (Phase 218.C activation)
+            snippet="# nano-ros workspace activation
 source \"${REPO_ROOT}/activate.fish\""
             ;;
         bash|*)
             rc="$HOME/.bashrc"
-            snippet="# nano-ros workspace (Phase 218.C activation)
+            snippet="# nano-ros workspace activation
 source \"${REPO_ROOT}/activate.sh\""
             ;;
     esac
