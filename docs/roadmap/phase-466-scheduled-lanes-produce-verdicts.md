@@ -1,6 +1,6 @@
 # phase-466 -- every scheduled lane produces a verdict again
 
-**Status (2026-11-15). The latest scheduled runs, read again. Three reds
+**Status (2026-11-15). The latest scheduled runs, read again. Four reds
 have new causes, each now named.**
 
 | lane | run | stops at | cause |
@@ -8,10 +8,12 @@ have new causes, each now named.**
 | `run-matrix` tier 2 | 43565474305 | `just build tier2-nightly`, freertos stage | a fixed `<hash>.tmp` name in the shared `stack-floor/llc/ir/` cache raced between callers; fixed on main by `88fbecb4d0` (per-caller `mkstemp`) after the run's commit |
 | `nightly` `QemuBaremetal` | 43559931051 | the six RTIC rows, `failed to download rtic v2.3.0` | [issue 2561](../issues/archived/2561-leaf-cache-warm-misses-env-prefixed-plan.md): the cache warm could not read a plan line with env in front of it; fixed |
 | `nightly` `NuttxArm` / `NuttxRiscv` | 43559931051 | every NuttX C++ row, `no matching package named addr2line` | [issue 2560](../issues/2560-nuttx-cpp-ffi-glue-offline-std-resolve.md) (open): the Corrosion FFI glue resolves std's dependencies offline |
+| `nightly` `FreertosMps2` / `FreertosPosix` / `NuttxArm` / `NuttxRiscv` | 43383470982, 43559931051 | `build-fixtures` exit 78, then `test` stops on it | [issue 2562](../issues/2562-board-slice-narrowing-reads-as-incomplete-lane.md) (open): skipping the sibling board makes the lane INCOMPLETE, so these four jobs are red by construction |
 | `gate`, `host-tests` | 43543979291, 43550254996 | | green |
 
-`nightly`'s FreeRTOS boards and `live-peer` (43555266126, the build step of
-`rows whose board is NOT this runner`) are not read yet.
+`FreertosMps2` also had the 2561 class (`failed to download panic-semihosting`).
+`live-peer` (43555266126, the build step of `rows whose board is NOT this
+runner`) is not read yet.
 
 **Status (2026-11-09). Every scheduled lane read again. Each red now has a
 named cause; none is untracked.**
