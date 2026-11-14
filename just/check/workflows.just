@@ -507,6 +507,14 @@ zephyr-sync-workspace-manifest:
 pre-push-log:
     @bash tests/pre-push-log-tests.sh
 
+# Issue 2583 -- the pre-push hook reads a ref line's <local-sha> as a commit only
+# when the push publishes one: a deletion (all-zero local sha) passes and arms
+# no check, and an update whose pin moves backward is still refused. Runs the
+# real hook in a scratch repo with its four checks stubbed. Buildless, <1 s.
+[private]
+pre-push-refs:
+    @bash tests/pre-push-ref-tests.sh
+
 # Issue 2306 -- "is this submodule provisioned" asks the CHECKOUT, not only its
 # HEAD. `scripts/lib/submodule-provision.sh` classifies a submodule as ok,
 # missing, incomplete (tracked files absent or staged as deleted: an
