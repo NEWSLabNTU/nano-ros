@@ -529,20 +529,22 @@ pub fn zephyr_image_plan(
 ) -> Result<ImagePlan, String> {
     match PriorityPlan::from_zephyr_dotconfig(text, transport_bands) {
         Ok(mut plan) => {
-            plan.source = format!("the image's own .config ({origin}; RFC-0079 section 4.1)");
+            // RFC-0079 section 4.1
+            plan.source = format!("the image's own .config ({origin})");
             Ok(ImagePlan::Resolved(plan))
         }
         Err(PriorityPlanError::Unapplied) => Ok(ImagePlan::Unapplied(format!(
+            // issue 1508
             "{origin}: CONFIG_POSIX_PRIORITY_SCHEDULING and/or CONFIG_PREEMPT_ENABLED \
              is off, so this image applies no transport priority and has no band to \
              allocate below; the derived priorities keep the Kconfig DEFAULTS \
-             projection (pool.app [5, 14]) and are NOT judged against this image \
-             (issue 1508)"
+             projection (pool.app [5, 14]) and are NOT judged against this image"
         ))),
         Err(e @ PriorityPlanError::MissingKey { .. }) => Err(format!(
+            // RFC-0079 section 4.1, issue 1508
             "{origin}: {e}. The derived sched task priorities of a Zephyr image are \
-             allocated out of the pool its own Kconfig resolves (RFC-0079 section \
-             4.1, issue 1508), so this must be the image's `zephyr/.config`"
+             allocated out of the pool its own Kconfig resolves, \
+             so this must be the image's `zephyr/.config`"
         )),
     }
 }

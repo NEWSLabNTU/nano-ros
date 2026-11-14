@@ -380,9 +380,10 @@ impl std::fmt::Display for BudgetExceeded {
         }
         writeln!(
             f,
+            // issue 0961
             ".\n  The total is a PRODUCT: `nros_serdes::size` walks a bounded \
              sequence and a fixed array element by element, so nesting \
-             MULTIPLIES (issue 0961). Cap ONE level of the worst chain and the \
+             MULTIPLIES. Cap ONE level of the worst chain and the \
              whole product divides:"
         )?;
         for c in &self.chains {

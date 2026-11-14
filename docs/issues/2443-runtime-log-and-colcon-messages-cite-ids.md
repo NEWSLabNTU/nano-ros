@@ -166,3 +166,45 @@ own gate subject starting at baseline zero: first compile-time text
 (`#error`, `static_assert`, `compile_error!`, `#[deprecated]` notes and
 proc-macro errors, well over 100 ids), then text assembled away from its print
 (`Display` impls and messages built for a later log call).
+
+## Progress (2026-11-14): text assembled away from its print
+
+**Error text built away from its print is gated at zero.**
+`check-user-surface-ids` adds the subject "assembled error text": in every
+Rust crate under `packages/` (the runtime subject's skips; the CLI library is
+read whole by its ratchet already), (a) every literal in the body of an
+`impl Display for` or `impl Error for`, (b) the strings of thiserror's
+`#[error(…)]`, and (c) a literal handed to `Err(…)`, `bail!`/`eyre!`/
+`anyhow!`/`ensure!`, `.context`/`.with_context`/`.wrap_err`,
+`.ok_or`/`.ok_or_else`, `.map_err` or the arena oracle's `.text(…)` builder,
+directly, through `format!`/`format_args!`/`concat!`, or through an error
+enum's variant. A `Debug` impl is developer-facing (`{:?}`) and is not read.
+The directory choice follows the callers: the orchestration, tooling, board
+build-helper, runner and CLI-side crates (`nros-orchestration-ir`,
+`nros-platform-config`, `nros-board-common`, `rosidl-*`, `nros-launcher`,
+`nros-build`, …) return their refusals as `Err(String)` to a build script that
+panics with them or to the CLI that prints them. The scan measured 61 ids in
+32 files (`platform_config.rs` 10; `target_exec.rs`, `lib.rs` and
+`leaf_system.rs` of `nros-orchestration-ir` 4 each; the 8 `Display` literals
+the runtime subject named, and a ninth in `rosidl-codegen`'s `bounds.rs`; four
+`#[error]` strings, two in `rosidl-codegen` and one each in `rosidl-lower` and
+`nros-orchestration-ir`; the arena oracle's two `.text(…)` pieces). Each id moved to a `//` comment above its literal; a few messages
+gained the remedy the id stood in for (add the platform to a descriptor's
+`names`; give the field another storage mode; drop `class`). Unit tests that
+asserted an id in the text now assert the sentence instead.
+
+With this subject every user-facing text class this issue named is gated:
+runtime logs, the colcon plugin, compile-time text and assembled error text.
+Stated gaps: a message formatted into a variable first and handed over later
+(`let why = format!(…)`: about 30 such literals still carry an id, most in
+`nros-orchestration-ir`'s `levels.rs` and `rtos_realizer.rs` and in
+`nros-launcher`), a table of message strings (`retired_tables.rs`,
+`nros-entry-lower`'s board hints), a literal a function returns for its
+caller to print, generated-file headers, and C text built into a buffer by
+anything but `snprintf`. Measured on the way: the runtime subject reads only
+`packages/{core,api,rmw,platform}`, so the log, print and panic text of
+`packages/boards`, `tooling` and `runners` is unread (27 id lines today,
+most in `nros-board-common` and the Zephyr and FreeRTOS board crates).
+Recommendation: do not archive yet. Widen the runtime subject's directories
+(the shell-script subject has landed, above); then the remaining gaps are the
+stated ones above, and the issue can be archived.

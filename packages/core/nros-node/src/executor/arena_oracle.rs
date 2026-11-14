@@ -141,7 +141,8 @@ impl Refusal {
             buf: [0; Self::CAP],
             len: 0,
         }
-        .text("nros arena oracle (phase-412): ")
+        // phase-412
+        .text("nros arena oracle: ")
         .text(source)
         .text(" = ")
         .num(arena)
@@ -165,7 +166,8 @@ impl Refusal {
                 .text(" not the model). Size it from ExecutorSizing::DEFAULT.arena instead."),
         };
         head.text(" If the model over-prices this image, fix its inputs (declared QoS")
-            .text(" depths, NROS_PUBSUB_QOS_DEPTH; issue 1255) instead of stating less.")
+            // issue 1255
+            .text(" depths, NROS_PUBSUB_QOS_DEPTH) instead of stating less.")
     }
 
     const fn text(mut self, s: &str) -> Self {
@@ -204,7 +206,8 @@ impl Refusal {
             Ok(s) => s,
             // Only reachable if a non-ASCII `source` was cut mid-character at
             // the cap. The numbers are then lost, which is why the cap is large.
-            Err(_) => "nros arena oracle (phase-412): the arena is below the declared model",
+            // phase-412
+            Err(_) => "nros arena oracle: the arena is below the declared model",
         }
     }
 }

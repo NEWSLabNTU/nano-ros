@@ -86,8 +86,9 @@ impl fmt::Display for Refusal {
         match self.verdict {
             Exhaustion::Fragmented => write!(
                 f,
+                // issue 1370
                 "the bytes are free and no hole the size-class search reaches holds the \
-                 request; a larger {} only postpones this (issue 1370)",
+                 request; a larger {} only postpones this",
                 self.knob
             ),
             Exhaustion::TooSmall => write!(f, "raise {} once you know what asked", self.knob),

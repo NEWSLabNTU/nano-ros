@@ -520,8 +520,8 @@ mod tests {
         assert_eq!(got.gateway, [10, 0, 2, 2]);
         assert_eq!(got.mac, ResolvedNet::platform_default().mac);
         for (body, want) in [
-            ("network = \"lab\"\n", "phase-497"),
-            ("ip = \"10.0.2.40\"\n", "D10g"),
+            ("network = \"lab\"\n", "not supported yet"),
+            ("ip = \"10.0.2.40\"\n", "is retired"),
             ("ipp = \"1.2.3.4\"\n", "ipp"),
         ] {
             std::fs::write(

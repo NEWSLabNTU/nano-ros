@@ -283,8 +283,9 @@ pub fn launch_to_model_rel(
             .map(|(a, out)| format!("{out} (args {a:?})"))
             .collect();
         return Err(format!(
+            // phase-330 W4.0
             "no `[[model]]` declaration in `{}` matches launch `{launch}` with args {want:?} — \
-             binding variants must be DECLARED (phase-330 W4.0). Declared for this launch: [{}]",
+             binding variants must be DECLARED. Declared for this launch: [{}]",
             system_toml.display(),
             known.join(", "),
         ));
@@ -720,9 +721,10 @@ pub fn ensure_model(
     if let Some(marker) = refused_marker_for(bringup_dir, model_rel) {
         let why = std::fs::read_to_string(&marker).unwrap_or_default();
         return Err(format!(
+            // phase-460 W1
             "`nros configure` refused the last resolve of `{model_rel}` (marker `{}`):\n  {}\n  \
              Fix the input it names and run `nros configure`; a consumer does not \
-             re-resolve past a refusal (phase-460 W1).",
+             re-resolve past a refusal.",
             marker.display(),
             why.trim().replace('\n', "\n  ")
         ));

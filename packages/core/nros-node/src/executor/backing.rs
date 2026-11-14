@@ -341,9 +341,10 @@ impl core::fmt::Display for SchedTaskBackingShort {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
+            // issue 1571
             "sched task executor backing holds {} slot(s) but {} spawned sched task(s) need one each \
              — the entry's `SchedTaskExecutorBacking` was sized for a different sched task table, \
-             or taken twice (issue 1571)",
+             or taken twice",
             self.slots, self.spawned
         )
     }

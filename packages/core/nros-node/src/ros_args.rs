@@ -165,8 +165,9 @@ impl core::fmt::Display for RosArgsError<'_> {
             ),
             Self::IdentityRemap { rule } => write!(
                 f,
+                // RFC-0046
                 "`{rule}` remaps a node's identity; the launch file is the authority on a node's \
-                 name and namespace (RFC-0046), and an argv rung beneath it is not implemented"
+                 name and namespace, and an argv rung beneath it is not implemented"
             ),
         }
     }

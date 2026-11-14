@@ -106,8 +106,9 @@ pub fn refuse_device_facts(locator: &str) -> Result<(), String> {
         let key = opt.split('=').next().unwrap_or_default().trim();
         if keys.contains(&key) {
             return Err(format!(
+                // RFC-0109 D10
                 "`{locator}` states `{key}`, a fact about the CAN controller rather than \
-                 wiring (RFC-0109 D10). The controller's rates are set where it is brought \
+                 wiring. The controller's rates are set where it is brought \
                  up: `ip link set <dev> type can bitrate …` on Linux, devicetree \
                  `bus-speed` on Zephyr, or the board package's own file. Drop `{key}` from \
                  the locator"
@@ -217,8 +218,9 @@ fn walk(v: &Value, path: &str, out: &mut Vec<Property>) -> Result<(), String> {
             Ok(())
         }
         _ => Err(format!(
+            // RFC-0109 D8
             "`{path}` is not a key zenoh-pico implements, so this image cannot honour it \
-             (RFC-0109 D8: refused, never dropped). zenoh-pico takes: {}",
+             (it is refused, never silently dropped). zenoh-pico takes: {}",
             LEAVES
                 .iter()
                 .map(|(p, _)| *p)
@@ -378,7 +380,9 @@ mod tests {
         ] {
             let e = lower(src).unwrap_err();
             assert!(
-                e.contains(key) && e.contains("RFC-0109 D10") && e.contains("endpoints"),
+                e.contains(key)
+                    && e.contains("a fact about the CAN controller")
+                    && e.contains("endpoints"),
                 "{src}\n-> {e}"
             );
         }

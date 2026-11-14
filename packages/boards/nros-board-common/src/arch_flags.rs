@@ -102,10 +102,11 @@ pub fn cflags_for_target(
     let tree = PlatformsTree::load_search_path(roots).map_err(|e| e.to_string())?;
     if !tree.all_names().iter().any(|n| n == platform) {
         return Err(format!(
+            // phase-468 W1; contributors: `just check platform-name-answered`.
             "no nros-platform.toml answers to platform `{platform}`.\n  searched: {}\n  \
              descriptors there answer to: {}\n  A name is answered by a descriptor's \
-             `names = [..]`, not by a directory of that name — see phase-468 W1 and \
-             `just check platform-name-answered`.",
+             `names = [..]`, not by a directory of that name: add `{platform}` to the \
+             right descriptor's `names`, or correct the spelling.",
             roots
                 .iter()
                 .map(|p| p.display().to_string())

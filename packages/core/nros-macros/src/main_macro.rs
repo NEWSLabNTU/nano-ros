@@ -3834,7 +3834,8 @@ fn link_kind_variant(word: &str) -> Result<proc_macro2::Ident, String> {
         "custom" => "Custom",
         other => {
             return Err(format!(
-                "nros::main!: `{other}` is not a link kind — it is one of {} (RFC-0086 D2); \
+                // RFC-0086 D2
+                "nros::main!: `{other}` is not a link kind — it is one of {}; \
                  the RMW is `rmw = \"…\"`",
                 nros_orchestration_ir::leaf_system::TRANSPORT_KINDS.join(", ")
             ));

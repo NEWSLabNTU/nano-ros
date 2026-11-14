@@ -309,10 +309,11 @@ pub fn qemu_nic(i: &NetIf<'_>, model: &str) -> Result<String, String> {
             "tap,ifname={dev},script=no,downscript=no,model={model},mac={mac}"
         )),
         Attach::None => Err(format!(
+            // RFC-0109 D6
             "interface `{}` sits on network `{}` and the image states no `nic` — it is a \
              physical-only network, and an emulated image cannot join it. Add \
              `[image.<id>.run] nic = \"slirp\"`, `{{ bridge = \"<dev>\" }}` or \
-             `{{ tap = \"<dev>\" }}` (RFC-0109 D6)",
+             `{{ tap = \"<dev>\" }}`",
             i.name, i.network
         )),
     }
@@ -414,7 +415,7 @@ mod tests {
         assert!(
             qemu_nic(&phys, "lan9118")
                 .unwrap_err()
-                .contains("RFC-0109 D6")
+                .contains("physical-only network")
         );
         assert_eq!(slirp_nic("lan9118"), "user,model=lan9118");
     }
