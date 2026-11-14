@@ -192,3 +192,19 @@ Tightening is tracked separately:
   from clang IR.
 - [issue 2517](../2517-stack-floor-prune-by-declared-entities.md): pruning
   entity kinds an image never declares, and the 25 KB action-client frame.
+
+## Addendum: three holes in `bind` (phase-557 W7b)
+
+A review after the resolution found three ways a site reached a target the
+walk did not charge it with, each making the static walk too LOW:
+
+- a Rust site narrowed by function type dropped the C functions, which have
+  no IR type, though a pointer C hands to Rust can name one;
+- a vtable slot copied out of its table (stored, passed, returned) kept the
+  table's binding, so a site calling the copy missed its functions;
+- a vtable nested in a larger constant was recorded only at its outer offset.
+
+All three are fixed, and an unresolved GEP now gives its load no slot. The
+statics rise: mps2 talker 51,240 → 90,200, nucleo action server 64,712 →
+76,624, nucleo Rust talker 63,272 → 72,528, nucleo C talker 123,412 →
+127,948. The `[[observed]]` rows carry the new statics.

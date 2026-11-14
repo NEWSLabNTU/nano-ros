@@ -81,7 +81,7 @@ rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
 peak = 30256
-static = 64712
+static = 76624
 method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, LTO build; static from rust_main"
 issue = "2402"
 
@@ -99,7 +99,7 @@ rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
 peak = 28888
-static = 63272
+static = 72528
 method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 6 rounds, LTO build; static from rust_main"
 issue = "2402"
 
@@ -117,7 +117,7 @@ rmw = "zenoh"
 target = "thumbv7m-none-eabi"
 role = "OPEN"
 peak = 32768
-static = 51240
+static = 90200
 method = "QEMU 11.0 mps2-an385, the board's MPU stack guard (issue 2494) bisected over NROS_BAREMETAL_STACK_KB: 31 KiB trips 'nros: stack overflow' right after the network comes up, 32 KiB publishes for 45 s, each 3 runs or more; peak is the passing bound. dev profile (optimized + debuginfo), router reachable. A gdb watchpoint over the 31-32 KiB window put the deepest write at 31,848 B, in smoltcp's TCP dispatch under declare_publisher. Before bind this was an [[allowance]] of +8,800 B over a fold walk of 23,968 B; static from main under bind"
 issue = "2402"
 
@@ -135,7 +135,7 @@ rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
 peak = 11876
-static = 123412
+static = 127948
 method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 14 rounds, nros-relwithdebinfo (no LTO); static from main"
 issue = "2402"
 
