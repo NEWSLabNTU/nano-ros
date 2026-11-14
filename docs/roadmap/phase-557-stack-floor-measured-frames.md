@@ -563,7 +563,7 @@ walk to the same bytes; every `[[observed]]` static is the new walk's.
 
 ### W7d — C call sites are typed, and the walk is a deterministic heuristic (issues 2516, 2550)
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-14, #3825)
 
 **Why.** A C indirect call went to every function C can hold (issue 2516).
 While measuring the fix, the walk's depth turned out to depend on callee
