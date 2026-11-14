@@ -1091,7 +1091,7 @@ track = "zephyr-mps2"
 chapter = "starters/mps2-an385-zephyr.md"
 variant = ""
 lang = "rust"
-weekly = false
+weekly = true
 row = "nros-board-mps2-an385-zephyr@ZephyrQemuCortexM"
 notes = "phase-537 W4 — the mps2-an385 Zephyr starter: a Rust talker on Zephyr's `mps2/an385` in QEMU, from `nros setup` and a fresh west workspace to `ros2 topic echo`. Until W4 the zephyr-rust track replayed this run as a second image of the native_sim chapter's workspace. Not weekly yet; its `awaits` names the CLI fix it waits on."
 
