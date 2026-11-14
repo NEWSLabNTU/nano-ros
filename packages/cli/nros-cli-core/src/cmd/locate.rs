@@ -1216,6 +1216,23 @@ fn make_road_sizing_descriptor(
         project,
         &loaded,
     );
+    // phase-550 W15 (RFC-0126 Q6, amended 2026-11-14): one source of entities
+    // per component. Where the probe recorded the image, its count is used and
+    // a declaration is optional, but one that is present must agree with it.
+    if let (Some(inv), Some(bringup_dir)) = (&probed, model_bringup_dir(project, bringup)) {
+        let (file, declared) = declared_entities(&bringup_dir)?;
+        let bad = crate::entity_inventory::declaration_disagreements(&declared, inv);
+        if !bad.is_empty() {
+            eyre::bail!(
+                "{}: the `entities` declared for `{key}` disagree with what the metadata \
+                 probe recorded from the code:\n  {}\nThe probe counts what the code \
+                 creates, so a declaration here can only drift from it. Delete the \
+                 `entities` line(s), or make them match.",
+                file.display(),
+                bad.join("\n  ")
+            );
+        }
+    }
     // The probe recorded nothing for the image (a make app with no package
     // the probe can configure): the bringup's `[[component]] entities`
     // declaration is all there is. Said, with every declared entity, because
@@ -1227,6 +1244,10 @@ fn make_road_sizing_descriptor(
         let Some(bringup_dir) = model_bringup_dir(project, bringup) else {
             return Ok(None);
         };
+        // Nothing observed the code, so the declaration is the only source,
+        // and every component must state one (or the bringup must take the
+        // defaults on purpose).
+        refuse_undeclared_components(&bringup_dir, key)?;
         let decl = crate::cmd::sizing_descriptor::leaf_declaration(&bringup_dir, Some(id))?;
         let Some(inv) = decl.inventory else {
             return Ok(None);
@@ -1345,6 +1366,75 @@ fn board_cargo_env_keys(
 }
 
 /// The directory of the project package named `bringup`.
+/// Each component's declared `entities`, keyed by its `name`.
+type DeclaredLists = Vec<(String, Vec<crate::entity_inventory::EntityDecl>)>;
+
+/// phase-550 W15 -- the bringup's `[[component]] entities = [...]` lists, keyed
+/// by the component's `name`, and the file they came from. A component that
+/// declares nothing, or names `"census"` / `"defaults"`, is not listed.
+fn declared_entities(bringup_dir: &std::path::Path) -> Result<(PathBuf, DeclaredLists)> {
+    use crate::orchestration::cargo_metadata_schema::{ComponentEntitiesSpec, SystemToml};
+    let file = bringup_dir.join("system.toml");
+    let text = std::fs::read_to_string(&file)
+        .map_err(|e| eyre::eyre!("reading {}: {e}", file.display()))?;
+    let sys: SystemToml =
+        toml::from_str(&text).map_err(|e| eyre::eyre!("parsing {}: {e}", file.display()))?;
+    let mut out = Vec::new();
+    for c in &sys.components {
+        let Some(ComponentEntitiesSpec::Declared(specs)) = &c.entities else {
+            continue;
+        };
+        let mut decls = Vec::new();
+        for spec in specs {
+            decls.extend(
+                crate::entity_inventory::EntityDecl::parse(spec).map_err(|e| {
+                    eyre::eyre!(
+                        "{}: `{}` entities entry `{spec}`: {e}",
+                        file.display(),
+                        c.name
+                    )
+                })?,
+            );
+        }
+        out.push((c.name.clone(), decls));
+    }
+    Ok((file, out))
+}
+
+/// phase-550 W15 -- where the probe recorded none of an image's components,
+/// each `[[component]]` states `entities`, unless `[system] entities =
+/// "defaults"` takes the board's defaults on purpose. (This was W6a's check,
+/// made before configure for every make-app project; RFC-0126 Q6 as amended
+/// asks it only where nothing observed the code.)
+fn refuse_undeclared_components(bringup_dir: &std::path::Path, key: &str) -> Result<()> {
+    use crate::orchestration::cargo_metadata_schema::{SystemEntities, SystemToml};
+    let file = bringup_dir.join("system.toml");
+    let text = std::fs::read_to_string(&file)
+        .map_err(|e| eyre::eyre!("reading {}: {e}", file.display()))?;
+    let sys: SystemToml =
+        toml::from_str(&text).map_err(|e| eyre::eyre!("parsing {}: {e}", file.display()))?;
+    if matches!(sys.system.entities, Some(SystemEntities::Defaults)) {
+        return Ok(());
+    }
+    let missing: Vec<String> = sys
+        .components
+        .iter()
+        .filter(|c| c.entities.is_none())
+        .map(|c| format!("`{}`", c.name))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    eyre::bail!(
+        "{}: the metadata probe recorded none of `{key}`'s components (no package it \
+         could configure), and the component(s) {} declare no `entities`, so nothing \
+         says what the app creates. Each `[[component]]` states `entities = [...]`, \
+         or `[system] entities = \"defaults\"` takes the board's defaults.",
+        file.display(),
+        missing.join(", ")
+    )
+}
+
 fn model_bringup_dir(project: &std::path::Path, bringup: &str) -> Option<PathBuf> {
     let members = crate::builder::discover::cargo_members_or_walk(project);
     let found = crate::builder::discover::discover(project, &members).ok()?;
@@ -1378,7 +1468,7 @@ struct ProjectImage {
     sys: crate::orchestration::cargo_metadata_schema::SystemToml,
 }
 
-/// phase-550 W6a (issue 2236 Q1, Q2 A2, Q4, Q6) — the project a NuttX make
+/// phase-550 W6a (issue 2236 Q1, Q2 A2, Q4) — the project a NuttX make
 /// app names, checked against the kernel being built, BEFORE `nros configure`
 /// runs. Returns the image's `<bringup>:<id>` key.
 ///
@@ -1578,26 +1668,10 @@ fn check_nuttx_project(
             kconfig.display()
         ));
     }
-    // A make app has no census (issue 2236 Q6), so its components state
-    // their entities.
-    if chosen.sys.system.entities.is_none() {
-        let missing: Vec<String> = chosen
-            .sys
-            .components
-            .iter()
-            .filter(|c| c.entities.is_none())
-            .map(|c| format!("`{}`", c.name))
-            .collect();
-        if !missing.is_empty() {
-            return Err(format!(
-                "{file}: the component(s) {} declare no `entities`. A NuttX app's \
-                 project cannot be observed on the host, so each `[[component]]` states \
-                 `entities = [...]`, or `[system] entities = \"defaults\"` takes the \
-                 defaults.",
-                missing.join(", ")
-            ));
-        }
-    }
+    // Entities are not checked here (RFC-0126 Q6 as amended 2026-11-14):
+    // this runs before `nros configure`, and whether a declaration is needed
+    // depends on what the probe that configure runs records. That is decided
+    // where the descriptor is made (`make_road_sizing_descriptor`).
     Ok(chosen.key.clone())
 }
 
@@ -1825,11 +1899,55 @@ mod nuttx_project_tests {
         assert!(e.contains("/k/.config"), "{e}");
     }
 
+    /// RFC-0126 Q6 as amended: before configure nothing knows yet whether
+    /// the probe will record the image, so an undeclared component passes.
     #[test]
-    fn a_component_without_entities_is_refused_naming_the_field() {
+    fn a_component_without_entities_passes_the_pre_configure_check() {
         let body = format!("{SYS}{COMP}\n[image.arm]\nboard = \"qemu-armv7a-nuttx\"\n");
-        let e = check(&body, None, "zenoh").unwrap_err();
+        assert_eq!(check(&body, None, "zenoh").unwrap(), "demo_bringup:arm");
+    }
+
+    fn bringup(body: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let ws = project(body);
+        let dir = ws.path().join("src/demo_bringup");
+        (ws, dir)
+    }
+
+    /// Where the probe recorded nothing, the declaration is the only source.
+    #[test]
+    fn unprobed_an_undeclared_component_is_refused_naming_it() {
+        let (_ws, dir) = bringup(&format!("{SYS}{COMP}"));
+        let e = super::refuse_undeclared_components(&dir, "demo_bringup:arm")
+            .unwrap_err()
+            .to_string();
         assert!(e.contains("`talker`") && e.contains("entities"), "{e}");
+        let id = regex::Regex::new(r"(?i)\b(issue|phase|rfc)[ -]?\d").unwrap();
+        assert!(!id.is_match(&e), "{e}");
+    }
+
+    #[test]
+    fn unprobed_a_declaration_or_the_defaults_is_accepted() {
+        let (_ws, dir) = bringup(&format!("{SYS}{COMP}{ENT}"));
+        super::refuse_undeclared_components(&dir, "demo_bringup:arm").unwrap();
+        let sys = "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+                   entities = \"defaults\"\n\n";
+        let (_ws2, dir2) = bringup(&format!("{sys}{COMP}"));
+        super::refuse_undeclared_components(&dir2, "demo_bringup:arm").unwrap();
+    }
+
+    /// The probed road's comparison reads only authored lists.
+    #[test]
+    fn declared_entities_reads_lists_and_skips_the_rest() {
+        let body = format!(
+            "{SYS}{COMP}entities = [\"timer\", \"publisher:std_msgs/msg/String:/chatter\"]\n\n\
+             [[component]]\npkg = \"demo\"\nclass = \"demo::L\"\nname = \"listener\"\n"
+        );
+        let (_ws, dir) = bringup(&body);
+        let (file, got) = super::declared_entities(&dir).unwrap();
+        assert!(file.ends_with("system.toml"));
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert_eq!(got[0].0, "talker");
+        assert_eq!(got[0].1.len(), 2);
     }
 
     #[test]

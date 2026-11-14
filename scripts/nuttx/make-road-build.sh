@@ -242,13 +242,13 @@ if [ -z "$bringup_toml" ]; then
     echo "make-road-build [$id]: $proj_src has no bringup system.toml" >&2
     exit 1
 fi
-# A make app's components state their entities (W6a, issue 2236 Q6); these
-# are the talker's own.
-sed -i 's|^name = "talker"$|&\nentities = ["publisher:std_msgs/msg/String:/chatter", "timer"]|' "$bringup_toml"
-nros_grep_q -F 'entities = [' "$bringup_toml" || {
-    echo "make-road-build [$id]: could not declare the talker's entities in $bringup_toml" >&2
+# No `entities` declaration (phase-550 W15, RFC-0126 Q6 as amended): the
+# project's package is one the metadata probe configures, so the probe's count
+# sizes the image, and a hand declaration would only be a second source.
+if nros_grep_q -F 'entities = [' "$bringup_toml"; then
+    echo "make-road-build [$id]: $bringup_toml declares entities; this case proves the probe sizes the image without one" >&2
     exit 1
-}
+fi
 # shellcheck disable=SC2016  # $(APPDIR) is make's variable
 echo 'NROS_PROJECTS += $(APPDIR)/external/nros-make-road-project' \
     >> "$APPDIR/external/nros-make-road-smoke/Make.defs"
@@ -311,4 +311,29 @@ if [ "$(stat -c %y "$archive")" = "$archive_before" ]; then
     echo "make-road-build [$id]: an edited knob row did not rebuild $archive on the next make" >&2
     exit 1
 fi
-echo "make-road-build [$id]: project OK — \`$key\` configured in the make, sized from the probe ($descriptor); a second make was a no-op; a knob edit rebuilt the archive"
+# phase-550 W15 (RFC-0126 Q6 as amended): a declaration on this probed road is
+# a second source, so one that disagrees with the probe is refused naming both
+# counts, and one that agrees builds. The talker creates a publisher and a
+# timer; declaring the timer alone disagrees.
+sed -i 's|^name = "talker"$|&\nentities = ["timer"]|' "$bringup_toml"
+dlog="$work/make-project-disagree.log"
+drc=0
+(
+    cd "$work/nuttx"
+    python3 "$ROOT/scripts/build/make-stall-watchdog.py" \
+        --label "nuttx make road ($id, project, disagreeing declaration)" --diag-dir "$work" -- \
+        make -j"$(nproc)"
+) >"$dlog" 2>&1 || drc=$?
+# A stall is no verdict, never the refusal this case expects.
+if [ "$drc" -eq 75 ]; then
+    echo "make-road-build [$id]: the disagreeing-declaration make stalled (no verdict); see $dlog" >&2
+    exit 75
+fi
+if [ "$drc" -eq 0 ] || ! nros_grep_q -F 'disagree with what the metadata probe recorded' "$dlog" \
+    || ! nros_grep_q -F 'the probe recorded publisher x1, timer x1' "$dlog"; then
+    echo "make-road-build [$id]: a declaration that disagrees with the probe was not refused naming both counts (exit $drc); see $dlog" >&2
+    exit 1
+fi
+sed -i 's|^entities = \["timer"\]$|entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]|' "$bringup_toml"
+run_make "project, agreeing declaration" "$work/make-project-agree.log"
+echo "make-road-build [$id]: project OK — \`$key\` configured in the make, sized from the probe ($descriptor); a second make was a no-op; a knob edit rebuilt the archive; a declaration that disagrees with the probe is refused, one that agrees builds"
