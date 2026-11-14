@@ -4,11 +4,17 @@ title: "Custom-board provisioning — out-of-tree boards self-describe their dep
 status: Superseded
 area: platform-board-rtos
 since: 2026-05
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: []
 supersedes: []
 superseded-by: [0087, 0062]
 ---
+
+> **Archived (2026-11-14, phase-555 W3).** Read
+> [RFC-0087](../0087-package-identity-and-provider-format.md) (a board is a
+> package) and [RFC-0062](../0062-unified-dependency-ssot.md) (one dependency
+> SSoT) instead. This file moved from `docs/design/` to `archived/` unchanged
+> apart from this note and its relative links.
 
 > **SUPERSEDED 2026-09-04 by RFC-0087 + RFC-0062.** This RFC answers "how does a
 > board crate tell `nros setup` what to provision?" — a question RFC-0087
@@ -29,13 +35,13 @@ superseded-by: [0087, 0062]
 > Kept in place rather than deleted: the real-board survey and the simulated
 > walkthrough below are the evidence for what a third-party board actually
 > needs, and RFC-0087 inherits that requirement without restating it. Read this
-> for the problem, not for the mechanism. Tracked by [phase-201](../roadmap/archived/phase-201-custom-board-provisioning.md), archived unstarted.
+> for the problem, not for the mechanism. Tracked by [phase-201](../../roadmap/archived/phase-201-custom-board-provisioning.md), archived unstarted.
 
 # Custom-board provisioning — out-of-tree boards self-describe their deps
 
 **Status.** Design exploration (2026-05-29). Follow-up to Phase 197 (nros setup
 as the single provisioning entrypoint) + the build-side design in
-[`0012-board-bsp-integration-architecture.md`](0012-board-bsp-integration-architecture.md).
+[`0012-board-bsp-integration-architecture.md`](../0012-board-bsp-integration-architecture.md).
 
 **Problem.** Today the SDK index (`nros-sdk-index.toml`) `[board.*]` table is the
 **maintainer-owned** registry: `nros setup <board>` looks a board up there to learn
@@ -247,3 +253,6 @@ Stale references, each checked with `git ls-files` or `git grep` on main:
 - The back-links were missing. Added in this review: RFC-0087 and RFC-0062 now carry `supersedes: [0013]`. The move to `archived/` is phase-555 W3.
 
 Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.
+
+**W3 (2026-11-14).** Moved to `docs/design/archived/` with forward pointers to
+RFC-0087 and RFC-0062, which already carry `supersedes: [0013]`.

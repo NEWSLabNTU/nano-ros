@@ -199,7 +199,7 @@ board's plan.
 
 ## Design background
 
-- [RFC-0003: RTOS integration pattern](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0003-rtos-integration-pattern.md)
+- [RFC-0072: RTOS integration, nano-ros is a guest](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0072-rtos-integration-nano-ros-is-a-guest.md)
 - [RFC-0065: colcon-like workspace builder](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0065-colcon-like-workspace-builder.md)
 - [RFC-0075: zenoh router provenance](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0075-zenoh-router-provenance-and-the-unstable-seam.md)
 - [RFC-0118: target execution model](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0118-target-execution-model.md)

@@ -4,8 +4,8 @@ title: "Frameworks are supported through one host-driven contract; codegen is ad
 status: Draft
 area: platform-board-rtos
 since: 2026-10
-last-reviewed: 2026-11
-implements-tracked-by: [phase-520, phase-521]
+last-reviewed: 2026-11-14
+implements-tracked-by: [phase-520, phase-521, phase-562]  # 562 = D5
 amends: [RFC-0111]
 supersedes: []
 superseded-by: null
@@ -26,6 +26,31 @@ deleted that surface and admitted `px4` to Tier 1 (as of 2026-11-13).
 > (D3) gains a fifth criterion, and Tier 2 is promised the owned runtime
 > through the board-entry traits. The text below is kept as the record of what
 > Tier 0 was.
+
+> **Amended in place (2026-11-14, phase-555 W3, user ruling P6 (a)).** What
+> each decision is now:
+>
+> - **D1, D2 and D4 are a record, not live decisions.** They describe Tier 0,
+>   which phase-520 built and phase-521 W1 deleted. Checked on 2026-11-14:
+>   `spin_async`, `set_ready_notifier`, `ready_fd`, `next_deadline_us` and
+>   `nros::setup!` have no definition under `packages/core` or `packages/api`.
+>   Two pieces outlived the tier and are still public in `nros-node`: the
+>   deferred-dispatch queue (`set_defer_notifier`, `run_deferred`,
+>   `run_deferred_handle` in `nros-node/src/executor/deferred.rs`, issue 2146)
+>   and `wake_handle()` (`nros-node/src/executor/spin.rs`).
+> - **Two tiers remain.** Tier 1 (in-macro framework, D3) and Tier 2
+>   (out-of-tree, promised the owned runtime through the board-entry traits,
+>   RFC-0113 D8). A request for a new framework is answered with Shape A or a
+>   Tier 1 admission (RFC-0113 D1), never with a recipe.
+> - **D3 is live.** Its criterion 5 was checked against RTIC by reading the
+>   code, and RTIC does not meet it (D3 below, [issue 2540](../issues/2540-rtic-fails-tier1-realtime-criterion.md)).
+> - **D5 is live and not done.** `FRAMEWORKS` still lists `zephyr`
+>   (`nros-orchestration-ir/src/lib.rs:164`). It is
+>   [phase-562](../roadmap/phase-562-image-framework-field.md) W8, beside
+>   RFC-0111's steps.
+> - RFC-0114 suggests replacing the tier numbers with its registry words
+>   (`runs`, `cadence`, breadth). This amendment does not: the tiers rank
+>   frameworks, not boards, and the ruling did not ask for a rename.
 
 ## Summary
 
@@ -88,7 +113,7 @@ but each one is a whole entry shape that only its own CI cell can check.
 
 ## Decisions
 
-### D1 — Three tiers, and each has a different promise
+### D1 — Three tiers, and each has a different promise (record: Tier 0 withdrawn)
 
 | Tier | What nano-ros ships | What it promises | What proves it |
 |---|---|---|---|
@@ -99,7 +124,7 @@ but each one is a whole entry shape that only its own CI cell can check.
 A request to support a new framework is answered with Tier 0 first. Tier 1 is
 only for a framework that Tier 0 cannot serve (D3, criterion 3).
 
-### D2 — The Tier 0 contract
+### D2 — The Tier 0 contract (record: deleted by phase-521 W1)
 
 The contract has four parts. Each row records what exists on main today and
 what is missing:
@@ -174,7 +199,20 @@ The criteria are re-checked whenever a framework's board or CI cell goes away.
 A branch that fails them is demoted to a Tier 0 recipe, or deleted. It is not
 kept as a seam that nothing exercises. Today:
 
-- **`rtic`** meets all four. It stays in Tier 1.
+- **`rtic`** meets criteria 1 to 4. **It does not meet criterion 5**
+  (checked 2026-11-14 by reading the code, [issue 2540](../issues/2540-rtic-fails-tier1-realtime-criterion.md)):
+  - no priority mapping is generated. The RTIC branch of `nros::main!` emits
+    fixed priorities: the run task at 1
+    (`packages/core/nros-macros/src/main_macro.rs:2871`), custom tasks at 1
+    (`:2733`), the tick and RX hardware tasks at 2 (`:2676`, `:2688`), and
+    every callback runs inline in the one run task;
+  - no bound is measured on its CI cell. `test_qemu_rtic_{pubsub,service,action}_e2e`
+    (`packages/testing/nros-tests/tests/emulator.rs`) assert delivery only.
+    RFC-0113's coverage row cites a hand-run idle measurement, and the
+    `mixed_priority` test it names was retired (issue 2417).
+
+  Under this decision RTIC is either brought up to criterion 5 or demoted.
+  Until the maintainer rules, it stays in Tier 1 with the gap on record.
 - **`px4`** meets all five (RFC-0113 D9, phase-521 W8, admitted 2026-11-03),
   as a C++-only framework (`nros::main!` refuses it; the C++ entry codegen
   emits one PX4 work item per sched task):
@@ -198,7 +236,7 @@ kept as a seam that nothing exercises. Today:
   `book/src/background/execution-model.md`, which says why Embassy is not a
   supported shape.
 
-### D4 — Recipes, not branches
+### D4 — Recipes, not branches (record: withdrawn with Tier 0)
 
 A Tier 0 integration is a copy-out example leaf (RFC-0026), not an
 `nros::main!` branch. It is about 30–80 lines of user code that open the
@@ -219,6 +257,8 @@ coordinate rather than a new framework coordinate. A recipe that breaks shows
 that the contract broke.
 
 ### D5 — The framework vocabulary separates frameworks from platform entry shapes
+
+Not done; tracked by [phase-562](../roadmap/phase-562-image-framework-field.md) W8.
 
 `FRAMEWORKS` keeps only Tier 1 values that a user may choose. Today those are
 `owned-spin`, `rtic` and `px4` (`px4` is C++-only; `embassy` left with issue
@@ -305,3 +345,8 @@ is fixed here.
 - Stale references: issues 2134, 2143, 2144, 2145, 2146 and 1525 resolve.
   `book/src/background/execution-model.md` exists.
 - `area:` platform-board-rtos is right.
+
+**W3 (2026-11-14).** The user ruled P6 (a): amend in place. Applied as the
+amendment block under the Tier 0 banner: D1, D2 and D4 marked as the record,
+D3 and D5 live, RTIC checked against criterion 5 (fails; issue 2540), D5
+tracked by phase-562 W8. Status stays Draft: D5 is open work.

@@ -41,7 +41,7 @@ never cross-implied:
 - **Platform**: `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx}`. ESP32 is
   `bare-metal` (esp-hal); the esp-idf platform integration was retired in
   phase-468 W2 and its build road in RFC-0065 D3's 2026-09-28 amendment.
-  Remaining ESP-IDF claims in RFC-0003/0014/0072 are issue 1526.
+  Remaining ESP-IDF claims in RFC-0014/0072 (and the now-archived RFC-0003) were issue 1526.
 - **ROS edition**: `ros-{humble,iron,jazzy}` (`jazzy` is the delivered default —
   `just ros_editions ci`; `rolling` planned) — a per-distro **interop profile**
   (type hash, wire encoding/extensibility, interface set), RFC-0056. Unlike
@@ -311,8 +311,29 @@ A board crate composes a transport bridge + driver(s) + platform; platform crate
 networking code. Vendor BSP × board × SDK-variant integration is structured so out-of-tree
 boards self-describe their dependencies.
 
-- Vendor BSP integration shape → RFC-0012.
-- Out-of-tree board provisioning → RFC-0013.
+- Vendor BSP integration shape → RFC-0012, finished by RFC-0064 (Stable): board support is
+  not a nano-ros concept; nano-ros owns the platform ABI, a capability declaration, the build
+  system and one ≤200-line integration shell per host ecosystem. A board is a package found by
+  `provider_scan`, and its descriptor holds primitives only (RFC-0064 Revision 5).
+- RTOS integration: nano-ros is a library the RTOS's own build imports, through that vendor's
+  external-code hook (Zephyr module, NuttX `apps/external/`, PX4 `EXTERNAL_MODULES`, PlatformIO
+  `library.json`, a CMake `add_subdirectory`); codegen runs at the vendor's configure phase, or
+  ahead of the vendor tool where there is no hook → RFC-0072 (Draft), which absorbed RFC-0003
+  (archived).
+- Out-of-tree board provisioning: a board is an ordinary `package.xml` package, its deps are
+  its `<depend>` entries → RFC-0087 / RFC-0062 (they superseded RFC-0013, archived).
+- `nros_platform_*` is the sole system boundary: scalar services (alloc, sleep, clock, random)
+  route through it on every platform, opaque-struct services may stay vendored, and the port
+  owns the heap, with one Rust `#[global_allocator]` per image → RFC-0034 (Stable; the
+  remaining single-bridge item is issue 2534). The ABI's caller asks and never assumes (object
+  sizes, task attributes, specific return codes, a normalised priority band) → RFC-0076
+  (Stable). The clock is one nanosecond symbol plus a resolution query → RFC-0073 (Stable).
+- A board name states the reach of its build (`<where>-<stack>`, never the emulator) →
+  RFC-0093 (Stable). Board support status is three authored primitives per registry row
+  (`runs`, `cadence`, breadth), from which the book's support pages are generated → RFC-0114
+  (Stable).
+- ThreadX runs one executor per sched task over one shared session, stacks from a byte pool,
+  preemption threshold set at creation → RFC-0053 (Stable).
 - `nros setup` as the single toolchain/SDK entrypoint, index-driven from `nros-sdk-index.toml`
   → RFC-0014. (`just <module> setup` recipes are thin callers.)
 - That index is the SSoT for EVERY dependency class, not just toolchains: `[prereq.<key>]` over
@@ -392,6 +413,7 @@ The map of how this meets the three build roads is
 
 ## Open design fronts (today)
 
-`Draft` RFCs are where the design is still moving: RFC-0003 (rtos-integration-pattern),
+`Draft` RFCs are where the design is still moving: RFC-0072 (RTOS integration, which absorbed
+the archived RFC-0003),
 RFC-0024 / RFC-0025 (multi-node workspace), RFC-0030 (nested sequences). Everything else is
 `Stable` — changes are refinements tracked in each RFC's Changelog.

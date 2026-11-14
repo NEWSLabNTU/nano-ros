@@ -1,7 +1,9 @@
 # Phase 555 W2 -- platform-board-rtos: verdicts and decision brief
 
-**Status (2026-11-13). OPEN: both halves are reviewed (118 here; 133 in #3673).
-The brief below waits for the user's ruling.**
+**Status (2026-11-14). RULED AND APPLIED: the user accepted every
+recommendation (A1 (a), P1 (a), P2 (a), P3 (a), P4 (c), P5 (a), P6 (a), P7 (b))
+and phase-555 W3 applied them on 2026-11-14. What W3 did is under "W3 —
+applied", at the end.**
 
 The platform-board-rtos slice of
 [phase-555](../phase-555-design-doc-review.md) W2. Reviewers: 118 (0003, 0012,
@@ -141,3 +143,61 @@ RFC-0103?**
 
 One stale reference outside the RFCs (133): `examples/README.md` lines 16 and
 150 still list `esp32-c3-baremetal` as a platform.
+
+## W3 — applied (2026-11-14)
+
+Rule A1 (a): an RFC becomes Stable only once its open questions and parked
+work are filed as issues and the RFC points at them. Applied to P3, P4 and P7.
+
+- **P1 (a).** RFC-0003's surviving adapter taxonomy (the universal rule,
+  hook-capable vs hookless, the per-vendor hook table, the 200-line shim
+  budget) merged into RFC-0072 §3, and its PX4 multi-component question into
+  RFC-0072 §11. RFC-0003 is `Superseded` by 0072 (`superseded-by: 0072`;
+  0072 carries `supersedes: [0003]`) and moved to
+  `docs/design/archived/0003-rtos-integration-pattern.md` with a forward
+  pointer. Every link to its old path repointed (two book pages, two
+  integration READMEs, a CLI doc comment, RFC-0034, phase-212, issue 1526);
+  phase-542 W9 now records its answer in RFC-0072.
+- **P2 (a).** RFC-0049 amended in place: a banner and inline notes record that
+  the knob registry generates the Zephyr Kconfig knob section (RFC-0103 D2b),
+  reversing only the "no generation" rule. RFC-0103 carries
+  `amends: [rfc-0049]`. The 0014-0049 misattribution fixed: out-of-tree
+  resolution was RFC-0013's, now RFC-0087's.
+- **P3 (a).** RFC-0034's D6 Zephyr row and D7 amended for issue 1324; D3's
+  single bridge and `z_clock` filed as issue 2534; status Stable; ARCHITECTURE
+  §4 updated.
+- **P4 (c).** RFC-0053, 0073, 0076, 0093 and 0114 Stable. 0073's and 0114's
+  open questions filed first (issues 2535, 2536); 0093's open word points at
+  phase-562 W5; 0053's non-goals are out of scope by decision and need no
+  issue. RFC-0072 stays Draft (phase-349 W5/W6 parked).
+- **P5 (a).** phase-562 opened (`docs/roadmap/phase-562-image-framework-field.md`,
+  owner unassigned): W1-W7 are RFC-0111's seven steps, W8 RFC-0112 D5, W9 the
+  RTIC dispatch-lint gap. RFC-0111 and RFC-0112 name it in
+  `implements-tracked-by`; 0111 left the rfc-phase-tracking baseline.
+- **P6 (a).** RFC-0112 amended in place: D1, D2 and D4 marked as the Tier 0
+  record, D3 and D5 live. RTIC checked against criterion 5 by reading the
+  code: it fails (fixed task priorities in `main_macro.rs`, no bound asserted
+  by its CI cell). Filed as issue 2540.
+- **P7 (b).** RFC-0064 split: the Stable RFC keeps the stance, the seam,
+  Revision 5 and the open questions; the exploration (worked example, R3's
+  matrix, target state, defects, sequencing, the dated log, R4) moved to
+  `docs/design/archived/board-support-organization-exploration-log.md`, linked
+  both ways. The companion takes no `NNNN-` prefix because `rfc-inventory.py`
+  and the id gates read `archived/NNNN-*.md` as an RFC with that number.
+  Steps 6 and 8 filed as issues 2537 and 2538, the four open questions as
+  issue 2539. 0064 carries `amends: [RFC-0012]` and its banner names the
+  three RFCs that superseded its tiers and book rows; RFC-0124 now carries
+  `amends: [RFC-0064]` (0114 and 0115 already did). `superseded-in-part-by`
+  was not used: W2 dropped it from RFC-0016 as a non-README field.
+- **Verdict-table amends.** RFC-0012: dead crates and paths marked, the ABI
+  count and the overlay crates noted against RFC-0064 / RFC-0040 D1 /
+  RFC-0072. RFC-0016: the banner now reads RFC-0004 right (the `[scheduling]`
+  section is retired, the `config.toml` file is not), dead cmake rows marked,
+  the app-stack figure points at 128 KiB. RFC-0017: an "As built" section (C
+  ABI timer with oneshot and cancel, `AtomicU32`, the refill thunk, a
+  caller-wired registration). RFC-0013 moved to `archived/` with pointers to
+  RFC-0087 and RFC-0062.
+- **`examples/README.md`.** No change needed: it no longer names
+  `esp32-c3-baremetal` (checked 2026-11-14).
+- `docs/design/README.md` rows and `ARCHITECTURE.md` §2/§4 and "Open design
+  fronts" updated for every status change.

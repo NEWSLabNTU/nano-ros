@@ -1,16 +1,22 @@
 ---
 rfc: 0034
 title: "Platform Layer Split & System-ABI Ownership"
-status: Draft
+status: Stable
 area: platform-board-rtos
 since: 2026-06
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-230]
 supersedes: []
 superseded-by: null
 ---
 
 # RFC-0034 — Platform Layer Split & System-ABI Ownership
+
+> **Stable (2026-11-14, phase-555 W3).** D1 to D8 are built, with two
+> exceptions tracked in [issue 2534](../issues/2534-platform-alias-bridge-not-unified.md):
+> D3's single bridge (two `platform_aliases.c` remain, in `zpico-sys` and
+> `nros-rmw-xrce`) and the `z_clock` funnel. The D6 table's Zephyr row was
+> amended the same day: since issue 1324 nano-ros owns the Zephyr Rust heap.
 
 ## Summary
 
@@ -167,7 +173,7 @@ already claims the slot):
 | bare-metal (MPS2 / STM32F4 / ESP32-bare) | no | **on** → wraps `nros_platform_alloc` | nano-ros |
 | FreeRTOS (nros-board) | no | **on** → wraps `nros_platform_alloc` | nano-ros |
 | ThreadX | no | **on** → wraps `nros_platform_alloc` | nano-ros |
-| Zephyr | yes (zephyr-lang-rust) | **off** | framework |
+| Zephyr | no — zephyr-lang-rust's `CONFIG_RUST_ALLOC` is **refused** at configure (`zephyr/CMakeLists.txt`, issue 1324) | **on** → wraps `nros_platform_alloc` (`nros-platform[platform-zephyr]` turns on `global-allocator`) | nano-ros |
 | esp-hal | yes (esp-alloc) | **off** | framework |
 | native / POSIX | yes (`std`) | **off** | `std` |
 
@@ -198,6 +204,13 @@ part of the platform contract.
 Either way [issue 0006] is resolved: exact where nano-ros owns the
 allocator, native-query elsewhere. The doc records which mode each platform
 is in.
+
+> **Amended (2026-11-14).** Zephyr moved from the second mode to the first
+> with issue 1324: a Zephyr image's Rust `alloc` goes through
+> `nros_platform_alloc`, the rlsf arena sized by
+> `CONFIG_NROS_ZEPHYR_HEAP_SIZE`, so one funnel counts C and Rust there too.
+> Before that, the framework allocator was libc `malloc`, a second heap that
+> neither the boot record nor `mem-report` could see.
 
 ### D8. Enforcement gate
 
@@ -236,9 +249,9 @@ Tracks what [phase-230] has landed against the decisions above.
 |---|---|---|
 | D1 boundary invariant | **enforced** for the nros-owned surface | D8 gate hard (below) |
 | D2 scalar vs opaque classification | **documented** | [platform-c-abi.md] §opaque-struct boundary |
-| D3 one category-gated bridge | **alloc funnel complete across RTOSes** | POSIX/bare-metal/ThreadX/Zephyr via the alias TU; FreeRTOS via 1c (fork guard + memory-only alias). Sleep/clock/random (Wave 2) + the zpico/xrce alias-TU dedup (Wave 3) remain |
+| D3 one category-gated bridge | **alloc funnel complete across RTOSes**; one-bridge dedup and `z_clock` open, [issue 2534](../issues/2534-platform-alias-bridge-not-unified.md) | POSIX/bare-metal/ThreadX/Zephyr via the alias TU; FreeRTOS via 1c (fork guard + memory-only alias). Sleep/clock/random (Wave 2) + the zpico/xrce alias-TU dedup (Wave 3) remain |
 | D4 alloc ownership + init contract | **landed** (FreeRTOS/ThreadX/POSIX/esp) | `nros-platform-*/src/platform.c` |
-| D6 optional Rust global allocator | **landed** | `nros-platform-api` `global-allocator` feature → `nros_platform_alloc`; off where a framework owns the slot (Zephyr/esp-hal/std) |
+| D6 optional Rust global allocator | **landed** | `nros-platform` `global-allocator` feature → `nros_platform_alloc`; on for Zephyr since issue 1324; off where a framework owns the slot (esp-hal/std) |
 | D7 two-mode heap stats | **landed**; closes [issue 0006] | canonical `nros_platform_heap_used_bytes`/`_total_bytes` (ABI) + per-port impls + bare-metal `FreeListHeap` stats |
 | D8 enforcement gate | **HARD** by default | `scripts/check-no-direct-kernel-alloc.sh` (`NROS_ALLOC_GATE_HARD=1` default) |
 
@@ -324,8 +337,10 @@ scope (the lint excludes the vendored submodule).
   — C-ABI-canonical meta-decision; platform = free `extern "C"` symbols,
   link-time resolution; L0/L1/L2 ladder.
 - RFC-0001 [architecture-overview](0001-architecture-overview.md) — layer map.
-- RFC-0003 [rtos-integration-pattern](0003-rtos-integration-pattern.md) —
-  per-RTOS adapter pattern; §9 std/alloc-per-platform policy.
+- RFC-0072 [rtos-integration-nano-ros-is-a-guest](0072-rtos-integration-nano-ros-is-a-guest.md) —
+  per-RTOS adapter pattern (it absorbed RFC-0003, now
+  [archived](archived/0003-rtos-integration-pattern.md); 0003's §9
+  std/alloc-per-platform table is out of date, see ARCHITECTURE §2).
 - [platform-c-abi.md](../../book/src/reference/platform-api.md) — the
   symbol contract + port-authoring guide + drift gate.
 - [issue 0006](../issues/archived/0006-rtos-dual-heap.md) — the dual-heap / unified
@@ -350,3 +365,11 @@ Where newer designs or the code disagree:
 - D3's single bridge is still open: two `platform_aliases.c` exist, in `zpico-sys` and in `nros-rmw-xrce`.
 
 Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.
+
+**W3 (2026-11-14).** The user ruled P3 (a). Applied: the D6 Zephyr row and
+D7 amended for issue 1324; the D6 implementation row now names
+`nros-platform`; D3's open part and `z_clock` filed as issue 2534; status
+Stable, with ARCHITECTURE §4 updated in the same change. The other stale
+references above (`nros-c/include/nros/platform/{freertos,zephyr}.h`,
+`nros-board-orin-spe`) sit in the 2026-06 implementation narrative, which is
+history, and are left as written.

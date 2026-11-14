@@ -1,16 +1,21 @@
 ---
 rfc: 0093
 title: "A board name states the reach of its build"
-status: Draft
+status: Stable
 area: platform-board-rtos
 since: 2026-09
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-437]
 supersedes: []
 superseded-by: null
 ---
 
 # RFC-0093 — A board name states the reach of its build
+
+> **Stable (2026-11-14, phase-555 W3, user ruling P4 (c)).** phase-437
+> shipped it (W1 to W7). The one word §3 leaves open, `rtic-mps2-an385`, is
+> RFC-0111's to retire, and that work is tracked by
+> [phase-562](../roadmap/phase-562-image-framework-field.md) W5.
 
 > **Goal.** A board name is a claim about where its artifact runs, and the
 > claim is true. Name the narrowest thing the build is true for; put the stack
@@ -208,7 +213,8 @@ selects `rv-virt-threadx`, which every in-tree leaf authors. It retired to
 it names a framework, not an emulator, so R3 does not decide it.
 [RFC-0111](0111-image-framework-axis.md) (Draft, 2026-10-27) proposes its
 ruling: the framework becomes an `[image.<id>] framework` field and the word
-retires as a refusal. Not implemented as of 2026-11-13.
+retires as a refusal. Not implemented as of 2026-11-14; tracked by
+[phase-562](../roadmap/phase-562-image-framework-field.md) W5.
 
 **Not about config axes.** `fvp-aemv8r-smp` folds SMP into the name, and the
 NuttX crate carries `arm`, `arm-smp` and `riscv` defconfigs where the first two
@@ -304,3 +310,5 @@ brief item P4.
 - Conflicts: RFC-0111 amends §3 (its frontmatter says so) without
   contradicting a rule. No other newer RFC changes R1 to R6.
 - Status: Draft, though phase-437 shipped it. Brief item P4.
+
+**W3 (2026-11-14).** P4 (c): Stable. §3's open word `rtic-mps2-an385` now points at phase-562 W5. ARCHITECTURE §4 updated.

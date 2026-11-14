@@ -1,16 +1,21 @@
 ---
 rfc: 0053
 title: "ThreadX multi-sched-task execution — byte-pool per-sched-task stacks + native preemption-threshold"
-status: Draft
+status: Stable
 area: platform-board-rtos
 since: 2026-07
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-297]
 supersedes: []
 superseded-by: null
 ---
 
 # RFC-0053 — ThreadX multi-sched-task execution
+
+> **Stable (2026-11-14, phase-555 W3, user ruling P4 (c)).** phase-297
+> shipped all of it, and the body has no `[OPEN]` item or parked wave. The
+> "Non-goals / open questions" list (SMP affinity, measured stack sizing, MPU
+> isolation) is out of scope by decision, not work left over.
 
 ## Summary
 
@@ -198,3 +203,5 @@ The status question is brief item P4.
   referenced, not contradicted.
 - Status: Draft, although phase-297 shipped all of it. Whether an
   implemented Draft becomes Stable is brief item P4.
+
+**W3 (2026-11-14).** P4 (c): Stable. No `[OPEN]`, no parked wave; the non-goals stay non-goals. ARCHITECTURE §4 updated.

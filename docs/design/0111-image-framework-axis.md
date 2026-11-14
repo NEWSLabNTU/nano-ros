@@ -4,8 +4,8 @@ title: "An image's entry framework is its own field, not a word in the board nam
 status: Draft
 area: platform-board-rtos
 since: 2026-10
-last-reviewed: 2026-11
-implements-tracked-by: []
+last-reviewed: 2026-11-14
+implements-tracked-by: [phase-562]
 amends: [RFC-0093]
 supersedes: []
 superseded-by: null
@@ -15,7 +15,10 @@ superseded-by: null
 
 **Status:** Draft (2026-10-27). Written before any code. It decides how an
 image chooses RTIC (or any other entry framework) once the board word
-`rtic-mps2-an385` stops carrying that choice. No phase yet.
+`rtic-mps2-an385` stops carrying that choice. Tracked by
+[phase-562](../roadmap/phase-562-image-framework-field.md) (opened 2026-11-14 by
+the user's phase-555 ruling P5): its W1 to W7 are the seven steps of
+"Migration and work" below, W8 is RFC-0112 D5 and W9 the dispatch-lint gap.
 
 **Narrowed by [RFC-0112](0112-framework-support-tiers.md) (2026-10-29).** The
 `framework` field takes Tier 1 values only (frameworks with `nros::main!`
@@ -196,7 +199,8 @@ board, and the board it picks is now the right one.
 
 ## Migration and work
 
-The work, for a phase to pick up:
+The work, tracked by [phase-562](../roadmap/phase-562-image-framework-field.md)
+W1 to W7 (one item per step):
 
 1. **Schema.** Add `framework` to the image table in both readers:
    `leaf_system` and `nros-cli-core`'s `deny_unknown_fields` `DeployBlock`.
@@ -265,3 +269,7 @@ item P5.
   which D1 records. No contradiction.
 - `area:` platform-board-rtos is right: a board-descriptor and image-field
   decision.
+
+**W3 (2026-11-14).** The user ruled P5 (a): a new phase for the seven steps.
+Opened as phase-562, with RFC-0112 D5 (W8) and the RTIC dispatch-lint gap (W9)
+as items; `implements-tracked-by` names it.

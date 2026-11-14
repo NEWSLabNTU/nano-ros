@@ -218,7 +218,7 @@ covers the API side.
 
 ## Design background
 
-- [RFC-0003](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0003-rtos-integration-pattern.md):
+- [RFC-0072](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0072-rtos-integration-nano-ros-is-a-guest.md):
   your build owns compiling and linking; nano-ros owns the shell and the
   host-time code generation; the bringup never reaches the device.
 - [RFC-0065](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0065-colcon-like-workspace-builder.md):

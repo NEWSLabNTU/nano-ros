@@ -300,11 +300,12 @@ green; one scheduled run of their lane green.
 
 ### W9 — The two open design questions (S)
 
-- **RFC-0003 §7, PX4 multi-component mapping** (one PX4 module per component,
-  or one module hosting N). RFC-0113 D9's generated entry already answers it
-  for sched tasks: one module, one `SchedTaskWorkItem` per sched task, and a
-  node whose groups span two sched tasks is refused. Record that answer in
-  RFC-0003, or rule otherwise.
+- **PX4 multi-component mapping** (one PX4 module per component, or one
+  module hosting N), now RFC-0072 §11 question 6 (it was RFC-0003 §7 until
+  phase-555 W3 merged RFC-0003 into RFC-0072 on 2026-11-14). RFC-0113 D9's
+  generated entry already answers it for sched tasks: one module, one
+  `SchedTaskWorkItem` per sched task, and a node whose groups span two sched
+  tasks is refused. Record that answer in RFC-0072, or rule otherwise.
 - **RFC-0072 §4, per-board selectability.** An external module gets
   `EXTERNAL_MODULES_LOCATION`, all-or-nothing; a `<label>.px4board` opt-in
   needs in-tree code, as PX4 did for zenoh. Rule whether nano-ros pursues an

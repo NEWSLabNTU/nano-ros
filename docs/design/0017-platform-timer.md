@@ -4,7 +4,7 @@ title: "Phase 110.E.b — `PlatformTimer` + `AtomicSporadicState` design"
 status: Stable
 area: platform-board-rtos
 since: 2026-05
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-274]
 supersedes: []
 superseded-by: null
@@ -12,13 +12,38 @@ superseded-by: null
 
 # Phase 110.E.b — `PlatformTimer` + `AtomicSporadicState` design
 
-**Status:** Design locked, impl deferred.
+**Status:** Built (recorded 2026-11-14, phase-555 W3). The design below was
+written before the code, and the code took a different shape in three places;
+"As built" says which.
 **Predecessors:** Phase 110.E v1 commits `91a94cf2` (kernel syscall paths) +
 `50d2e7d3` (polled-clock SporadicState).
 **Goal:** Replace the polled-clock `SporadicState` with an ISR-driven
 refill model that works on every platform, not just `feature = "std"`.
 
 ---
+
+## As built (checked 2026-11-14)
+
+- **The timer is a C ABI, not a Rust trait.** There is no `trait
+  PlatformTimer`. The platform header
+  `packages/platform/nros-platform-api/include/nros/platform_timer.h`
+  declares `nros_platform_timer_create_periodic`,
+  `nros_platform_timer_create_oneshot`, `nros_platform_timer_destroy` and
+  `nros_platform_timer_cancel`, mirrored in `nros-platform-cffi`'s committed
+  bindings. Ports implement it in `nros-platform-{freertos,posix,threadx,zephyr}/src/timer.c`;
+  NuttX compiles the POSIX `timer.c`. So the oneshot and cancel that "Cancel /
+  restart (deferred)" below postponed are in the ABI too.
+- **`AtomicSporadicState`** is at
+  `packages/core/nros-node/src/executor/sched_context.rs:290`, with
+  `last_refill_ms` an `AtomicU32` (portable-atomic, for targets without native
+  64-bit atomics), not the `AtomicU64` sketched below. It also carries
+  overrun counters (`overrun_count`, `last_overrun_us`).
+- **The refill thunk** is `atomic_sporadic_refill_thunk`
+  (`sched_context.rs:423`), and `Executor::register_sporadic_timer` (behind
+  `alloc`) stores a caller-created timer handle. The caller creates the timer
+  with the platform ABI; no in-tree code does so today.
+- **`feature = "std"` no longer exists** on the core crates (phase-359), so
+  the "std only" limit in the Problem section is history.
 
 ## Problem
 
@@ -264,3 +289,7 @@ Stale references, each checked with `git ls-files` or `git grep` on main:
 - `feature = "std"` no longer exists.
 
 Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.
+
+**W3 (2026-11-14).** The verdict-table amend applied: the status line and the
+"As built" section record the C ABI timer, `AtomicU32`, the thunk and the
+caller-wired registration. The design text below is kept as written.

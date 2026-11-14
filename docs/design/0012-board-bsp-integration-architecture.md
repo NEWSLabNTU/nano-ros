@@ -4,13 +4,33 @@ title: "Board / BSP Integration Architecture"
 status: Stable
 area: platform-board-rtos
 since: 2026-05
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-322, phase-337]
 supersedes: []
 superseded-by: null
 ---
 
 # Board / BSP Integration Architecture
+
+> **Amended (2026-11-14, phase-555 W3).** The stance (no board crate per
+> vendor × board × SDK variant; the host ecosystem owns boards) stands, and
+> [RFC-0064](0064-board-support-organization.md) finishes it. Corrections,
+> each checked against the tree on 2026-11-14:
+>
+> - **Dead crates.** `nros-board-orin-spe`, `nros-board-baremetal-cortex-m`,
+>   `nros-board-baremetal-cortex-a`, `nros-platform-esp-idf` and
+>   `nros-rmw-dds` do not exist. The live board crates are listed by
+>   `ls packages/boards/`.
+> - **Dead paths.** `zpico-sys/build/manifest.rs` and `zenoh_platforms.toml`
+>   are gone (RFC-0049 moved the build blocks into each platform package's
+>   `nros-platform.toml`). The PlatformIO manifest is the repo-root
+>   `library.json`, not `integrations/platformio/library.json`.
+> - **The ABI is not "~30 C functions".** RFC-0064 counted 92, and RFC-0076
+>   lets a port say what it does not do.
+> - **Layer 2.5 overlay crates are not the mechanism.** RFC-0072 replaces them
+>   with a board package in the user's own workspace (RFC-0087), and RFC-0040
+>   D1 rules out "crates.io namespace is open": no `nros*` crate is ever
+>   published.
 
 **Date.** 2026-05-18
 **Status.** Design proposal. Drafted in response to "vendor BSPs vary; we
@@ -249,7 +269,9 @@ Ship one per kernel family with stock-source assumption:
 Each generic crate's `build.rs` consumes a TOML manifest analogous to
 Phase 136's `zenoh_platforms.toml` — declarative source + define +
 cflags data; one place to edit when SDK paths change. Reuse the
-manifest parser landed in `packages/rmw/zenoh/zpico-sys/build/manifest.rs`.
+manifest parser landed in `packages/rmw/zenoh/zpico-sys/build/manifest.rs`
+*(both gone: the build blocks moved into each platform package's
+`nros-platform.toml`, RFC-0049)*.
 
 ### Layer 2.5 — vendor overlay crates
 
@@ -265,8 +287,10 @@ Small (~50 LOC) crates that depend on a generic board crate and patch:
 
 Naming convention: `nros-board-<vendor>-<chip-or-board>-<rtos>`.
 Vendors / community can publish their own overlays without nano-ros
-project ownership. Crates.io namespace is open per Phase 111.B.2
-audit.
+project ownership. ~~Crates.io namespace is open per Phase 111.B.2
+audit.~~ *(Superseded: RFC-0040 D1, no `nros*` crate is published to
+crates.io; an out-of-tree board is a package in the user's workspace, RFC-0072
+and RFC-0087.)*
 
 ### Layer 3 — integration shells (one per RTOS package manager)
 
@@ -281,7 +305,8 @@ Phase 139 ships these. Updates needed:
   **RETIRED phase-468 W2.** Never published to the ESP Component Registry.
   (ESP-IDF's own `idf_component_register` stays cited as prior art elsewhere
   in this document and in RFC-0065 D12; that is a fact about a vendor.)
-- **PlatformIO**: `integrations/platformio/library.json` —
+- **PlatformIO**: `integrations/platformio/library.json` *(now the repo-root
+  `library.json`)* —
   `frameworks: ["espidf", "arduino", "zephyr"]` with documented
   `EXTRA_COMPONENT_DIRS` workaround for ESP-IDF, since PIO's
   `lib_deps` doesn't auto-register libraries as IDF components.
@@ -295,7 +320,8 @@ Phase 139 ships these. Updates needed:
 
 ### Layer 1 — platform contract (unchanged)
 
-Already stable (Phase 79 / 134). Frozen ~30 C functions in
+Already stable (Phase 79 / 134). Frozen ~30 C functions (92 by RFC-0064's
+2026-08 count) in
 `<nros/platform_*.h>`. Each `nros-platform-<rtos>` crate implements
 them against that RTOS's APIs.
 
@@ -411,3 +437,8 @@ Where newer designs or the code disagree:
 - The Layer 2.5 overlay crates against RFC-0072. The banner admits this, but only in the FreeRTOS section.
 
 Any text change that alters the design waits for the area's decision brief, `docs/roadmap/data/phase-555-w2-platform-board-rtos.md`.
+
+**W3 (2026-11-14).** The verdict-table amend applied: the banner lists the
+dead crates and paths and the two conflicts (the ABI count against RFC-0064,
+the overlay crates against RFC-0040 D1 and RFC-0072), with inline notes at the
+four sites. RFC-0064 now carries `amends: [RFC-0012]`.
