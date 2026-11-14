@@ -55,7 +55,7 @@ written without that code, and the code cannot exist without its explanation
   `explain` lines.
 - `codes.lock` round-trips: running the generator again changes nothing.
 
-- **Status:** DONE (2026-11-14, branch feat/552-diagnostics-crate, no PR yet)
+- **Status:** DONE (2026-11-14, #3824)
 
 Notes:
 
@@ -120,7 +120,7 @@ Notes:
 - No rendered line carries an issue, phase or RFC id. This is checked with
   `check-user-surface-ids`'s pattern.
 
-- **Status:** DONE (2026-11-14, branch feat/552-diagnostics-crate, no PR yet; build-script conversions are W5)
+- **Status:** DONE (2026-11-14, #3824; build-script conversions are W5)
 
 Notes:
 
@@ -174,7 +174,7 @@ It has a self-test with one planted defect per check.
 - The book pages build under `just book`.
 
 - **Status:** OPEN (the book view and the gate are done, 2026-11-14,
-  branch feat/552-diagnostics-crate, no PR yet; the CMake, C header and colcon views are open)
+  #3824; the CMake, C header and colcon views are open)
 
 Notes:
 
@@ -214,7 +214,7 @@ anything else is a plan path, as today.
 - `nros explain <plan>` output is byte-identical to before W4.
 - The CLI reference is regenerated (`scripts/gen-cli-reference.py`).
 
-- **Status:** DONE (2026-11-14, branch feat/552-diagnostics-crate, no PR yet)
+- **Status:** DONE (2026-11-14, #3824)
 
 A live code prints its title, its
 explanation without the `## Design background` section, and its remedy; a
