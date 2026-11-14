@@ -171,7 +171,7 @@ SUBCOMMANDS = {
 NON_RESOLVING = {"locate-project", "--version", "-V", "help", "--help"}
 
 LOCK_DISCIPLINE = re.compile(
-    r"resolver\.lockfile-path|--lockfile-path|--locked|--frozen|apply_nested_lock_discipline"
+    r"resolver\.lockfile-path|--lockfile-path|--locked|--frozen"
 )
 
 FIX = (
@@ -180,9 +180,7 @@ FIX = (
     "discipline: pass `--locked`/`--frozen` when it\n"
     "resolves the workspace lock as-is, and redirect with\n"
     "`--config resolver.lockfile-path=\"<probe dir>/Cargo.lock\"` (seeded from\n"
-    "the workspace lock) when it injects a `[patch]` that lock cannot record.\n"
-    "`nros_sizes_build::apply_nested_lock_discipline` is the one spelling —\n"
-    "call it rather than adding a second."
+    "the workspace lock) when it injects a `[patch]` that lock cannot record."
 )
 
 

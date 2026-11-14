@@ -404,6 +404,11 @@ fn find_dep_rlib_isolated(
         // probe-only feature (the size markers) is allowed to compile.
         .env(PROBE_BUILD_ENV, "1")
         .arg("build")
+        // Lock discipline (issue 1307's rule). Since phase-561 the probe
+        // injects no `[patch]`, so it resolves exactly the workspace lock the
+        // outer build already resolved: `--locked` holds, and a mismatch is
+        // an error instead of a silent rewrite of a tracked file.
+        .arg("--locked")
         .arg("-p")
         .arg(crate_name)
         .arg("--target")
