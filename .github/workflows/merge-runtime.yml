@@ -239,9 +239,16 @@ jobs:
           # commit, naming that run (`_check-fast-unless-green-gate`).
           NROS_REUSE_GREEN_GATE: "1"
           GITHUB_TOKEN: ${{ github.token }}
+          # Under the disk balloon: a shard that would fill the runner's disk
+          # (the zephyr tier-1 shard did on run 43534848324, and took every
+          # log with it) is stopped at 2 GB free with a 3 GB reserve released,
+          # and leaves a per-directory `du` behind (scripts/ci/disk-balloon.sh).
+          # Its files go in the workspace's gitignored `tmp/`, a path the
+          # container and the upload step agree on.
+          NROS_DISK_BALLOON_DIR: tmp/disk-watch
         run: |
           source ./activate.sh
-          just build "${{ inputs.lane || 'merge' }}"
+          scripts/ci/disk-balloon.sh run -- just build "${{ inputs.lane || 'merge' }}"
           scripts/ci/disk-report.sh "after just build ${{ inputs.lane || 'merge' }}"
 
       - name: just ci ${{ inputs.lane || 'merge' }} (${{ matrix.board }} shard)
@@ -264,6 +271,16 @@ jobs:
           path: |
             target/nextest/*/junit.xml
             target/nextest/*/junit-real.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload the disk watch (${{ matrix.board }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merge-runtime-${{ inputs.lane || 'merge' }}-${{ matrix.board }}-disk
+          path: |
+            tmp/disk-watch/
           if-no-files-found: ignore
           retention-days: 7
 
