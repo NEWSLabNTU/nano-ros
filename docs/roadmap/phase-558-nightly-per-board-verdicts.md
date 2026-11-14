@@ -68,6 +68,12 @@ halves already did:
 **Acceptance:** with a NuttxRiscv slice, `just nuttx build` prints
 `nuttx skip: the arm kernel: no nuttx (arm) coordinate in this run`. Measured.
 
+**Found 2026-11-15: issue 2562 (open).** The skip prints as intended, but it
+goes through `nros_lane_out_of_scope_note`, which ledgers it. So the lane
+flushes as `INCOMPLETE` (exit 78), and every two-board module's jobs are red
+on both nights so far. `test` also stops on its `build-fixtures` dependency,
+before nextest runs. The acceptance measured the print and not the exit code.
+
 ### W3 -- `nightly.yml` runs one job per board
 
 - **Status:** DONE (2026-11-13, branch `ci/nightly-per-board`)
