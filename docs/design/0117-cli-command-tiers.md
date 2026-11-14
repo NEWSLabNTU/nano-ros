@@ -80,6 +80,16 @@ its output format, because cmake, west and `just` parse that output.
 > package is a runner, a command or a board and runs that kind's check. It
 > replaces the unbuilt `board check`. See
 > [Amendment 2026-11-07](#amendment-2026-11-07--one-user-tier-check-for-a-package).
+>
+> **Amended 2026-11-14 (phase-555 W3, user ruling on the design review):** the
+> table records the tree `nros --help` ships, measured from a build of `main`.
+> Two verbs left their groups after this table was written. `explain` is a
+> top-level Inspect verb; the diagnostic-code RFC under review extends it to
+> `nros explain NROS-NNNN`, which a `plan` subcommand could not carry. And
+> `update` is a top-level Toolchain verb (RFC-0104 D7). `nros plan <bringup>` takes no `resolve|check|explain`
+> subcommands, `check` is top-level (amendment 2026-11-07), `pin` takes an
+> optional `[VERSION]`, and `board` gained `show` (a board's support
+> evidence).
 
 | Group | Verbs |
 | --- | --- |
@@ -88,8 +98,8 @@ its output format, because cmake, west and `just` parse that output.
 | Run on a target | `run` · `flash` · `monitor` · `bench` · `debug` (reserved) — RFC-0118 |
 | Workspace | `list` · `graph` |
 | Interfaces | `interface generate\|list\|show` |
-| Inspect | `doctor` · `board list\|info\|new\|check` · `config show\|explain` · `plan resolve\|check\|explain` |
-| Toolchain | `toolchain list\|remove\|gc` (absorbs `store`) · `pin show\|bump\|update` · `locate` |
+| Inspect | `doctor` · `board list\|show\|info\|new` · `config show\|explain` · `plan <bringup>` · `check` · `explain` |
+| Toolchain | `toolchain list\|remove\|gc` (absorbs `store`) · `pin [VERSION]` · `update` · `locate` |
 | Other | `version` · `completions` · `help` |
 | Extensions | verbs contributed by `command` packages — RFC-0119 |
 
@@ -322,3 +332,7 @@ needs no native image, so `nros new` names `nros build`.
   takes `--census [BRINGUP:IMAGE]` and `--migrate`, `nros new` names
   `nros build` for source metadata, and `nros doctor` names `--migrate`
   without moving anything.
+- 2026-11-14 — D2's table records the shipped tree (phase-555 W3, user ruling
+  on review question N4/B25): `explain` and `update` are top-level, `plan`
+  takes a bringup and no subcommands, `check` is top-level, `pin [VERSION]`,
+  and `board list|show|info|new`.
