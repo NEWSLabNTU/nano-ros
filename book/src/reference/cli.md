@@ -75,7 +75,7 @@ Inspect:
   config       Inspect or validate the current project's resolved configuration
   plan         Resolve launch files, manifests, and metadata into nros-plan.json
   check        Check a runner, command or board package, a plan, a system.toml or a workspace
-  explain      Render a generated nros-plan.json in human-readable form
+  explain      Explain a diagnostic code, or render a generated nros-plan.json
 
 Toolchain:
   toolchain    List, remove and garbage-collect installed toolchains and SDK packages
@@ -1440,12 +1440,12 @@ Options:
 ### `nros explain`
 
 ```text
-Render a generated nros-plan.json in human-readable form
+Explain a diagnostic code, or render a generated nros-plan.json
 
-Usage: nros explain [PLAN]
+Usage: nros explain [CODE_OR_PLAN]
 
 Arguments:
-  [PLAN]  Path to nros-plan.json [default: build/nros/nros-plan.json]
+  [CODE_OR_PLAN]  A diagnostic code (`NROS-NNNN`) or a plan path (an nros-plan.json) [default: build/nros/nros-plan.json]
 
 Options:
   -h, --help     Print help
