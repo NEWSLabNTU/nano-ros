@@ -720,8 +720,8 @@ JUST_CALL = re.compile(r"^\s*@?just\s+((?:[a-z0-9_:-]+)(?:\s+[a-z0-9_:-]+)*)\s*$
 STEPS_ARRAY = re.compile(r"^\s*steps=\(\s*([^)]*?)\s*\)\s*$", re.M)
 
 # Lanes whose membership is DERIVED rather than written as `just` edges.
-# `check::fast` is `@bash scripts/build/run-gates-parallel.sh`, which computes
-# its own set (issue 1072 deleted the registry that used to spell it). Walking
+# `check::fast` runs `scripts/build/gate-lane.sh`, whose tier comes from the
+# derivation (issue 1072 deleted the registry that used to spell it). Walking
 # `just` edges from there reaches nothing, so the derivation is asked directly
 # -- the same list the runner itself uses, from the one tool that owns it.
 DERIVED_LANES = {"check::fast": "fast-serial", "check::fast-serial": "fast-serial",

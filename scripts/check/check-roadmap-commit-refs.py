@@ -322,7 +322,7 @@ def main() -> int:
     if unknowable:
         # NOT VERIFIED, not OK — issue 1476. The verdict is narrowed, and the
         # narrowing has to reach the lane's closing line rather than this
-        # gate's stdout, which `run-gates-parallel.sh` discards on exit 0.
+        # gate's stdout, which the gate harness discards on exit 0.
         # Exit 78 is the repo's Python-to-ledger bridge (the
         # `zephyr-workspace-foreign-checkout` recipe shape): stdout is the
         # REASON the recipe records, so everything else goes to stderr.
