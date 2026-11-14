@@ -57,7 +57,6 @@ impl Refusal {
     }
 
     /// As an `eyre::Report`.
-    #[must_use]
     pub fn report(self) -> eyre::Report {
         eyre::Report::new(self)
     }
