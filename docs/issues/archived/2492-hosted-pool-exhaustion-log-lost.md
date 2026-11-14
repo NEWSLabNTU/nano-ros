@@ -1,11 +1,12 @@
 ---
 id: 2492
 title: "A hosted zenoh image's pool-exhaustion diagnostics can be lost: the Rust error never reaches the console, and the C line is block-buffered"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [rmw-zenoh, diagnostics, testing]
 found: 2026-11-13
+resolved: 2026-11-13
 related: [2482, phase-556]
 ---
 
@@ -56,3 +57,14 @@ installed, level filter, or routed somewhere else) was not investigated.
 
 A hosted image killed after a refused liveliness token leaves both
 diagnostics in its captured output, without `stdbuf`.
+
+## Resolution
+
+Fixed by #3696 (`3cb1b781b1`). The hosted C shim's `printk` flushes each
+line, so a signal no longer loses it, and a plain-API `main` gets its log
+sinks from `nros_board_linux::register_linked_rmw`, so `nros-rmw-zenoh`'s
+record leaves `nros_log`'s early ring. Checked by
+`hosted_pool_exhaustion_console::an_exhausted_liveliness_pool_is_on_the_console_before_the_image_is_killed`,
+which reads both lines from the live pipe of the
+`param-two-node-talker-short-liveliness` image before killing it (passed in
+a tier-2 run on 2026-11-14).

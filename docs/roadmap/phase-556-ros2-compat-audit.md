@@ -353,9 +353,9 @@ passes.
 
 ### W15 — A refused graph token leaves no trace in a hosted image's output
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-13, #3696; issue 2492 resolved)
 
-[Issue 2492](../issues/2492-hosted-pool-exhaustion-log-lost.md): the
+[Issue 2492](../issues/archived/2492-hosted-pool-exhaustion-log-lost.md): the
 pool-exhaustion diagnostics that would have explained W10's gap were lost
 (the Rust error never reached the console; the C line was block-buffered and
 lost when the image was killed).
