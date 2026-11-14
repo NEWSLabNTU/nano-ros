@@ -416,10 +416,11 @@ fn test_qemu_bsp_pubsub_e2e() {
 /// `(QemuBaremetal, C|Cpp, Zenoh, *)` Runtime cell. The action pairs joined
 /// with issue 1797 (a burst of batches desynchronised the smoltcp read).
 ///
-/// Each image is a one-package workspace under
-/// `examples/mps2-an385-baremetal/<case>` whose package is an ordinary C/C++
-/// component, booted by the generated entry on the CMake road; the entry's
-/// `main` is the board's C start (phase-553 W4-W6). Both images dial the
+/// Each image is an ordinary C/C++ component on a generated entry, on the
+/// CMake road; the entry's `main` is the board's C start (phase-553 W4-W6).
+/// The talkers are the witnesses under `examples/mps2-an385-baremetal/<lang>/talker`;
+/// the other roles are `baremetal_<role>` images of `examples/workspaces/<lang>`
+/// (issue 2555). Both images dial the
 /// locator their `system.toml` declares — `tcp/10.0.2.2:<port>` with `<port>`
 /// = `alloc::port` of THIS cell, so the cases never share a router — which
 /// reaches the entry's C compile as `NROS_ENTRY_LOCATOR` and the boot config

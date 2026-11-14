@@ -125,9 +125,10 @@ Ownership:
 > `examples/mps2-an385-baremetal/rust/talker-rtic` is not tracked. An image's
 > network identity is now a bringup `system.toml` fact: `[image.<id>]
 > locator` plus `os_config = ["board-net.toml"]` (RFC-0109 D4, RFC-0098), applied
-> through the board's `Config::from_image()`
-> (`packages/boards/nros-board-mps2-an385/src/config.rs:403`; for example
-> `examples/mps2-an385-baremetal/c/action-client/src/baremetal_c_action_client_bringup/system.toml:17-28`).
+> through the board's `Config::from_image()` (compile time) or, for a C-rooted
+> image, `Config::from_image_parts()` at run time (issue 2555); for example
+> the `[image.baremetal_action_client]` row of
+> `examples/workspaces/c/src/action_bringup/system.toml`.
 > `DeployOverlay` still exists in code. The ownership table above and this
 > section are left as written until the phase-555 W2 brief is ruled.
 
