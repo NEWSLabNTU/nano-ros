@@ -522,3 +522,42 @@ Acceptance: the self-test catches a mutation of the untyped rule and of the
 leak rule; every `[[observed]]` static is the fixed walk's; `nros new` stamps
 the fixed floor and each nucleo image fits its RAM.
 
+### W7c — The walk reads only the bitcode the link used (issue 2521)
+
+- **Status:** OPEN
+
+**Why.** Two `nros new` C talkers from one template walked 127,852 B and
+127,948 B, and the stamp records one walk, so a project could fail its own
+build by a few bytes depending only on its path. The walk read every Rust
+module under `--bitcode-dir`: another cargo lane's build of the same crate,
+an rlib beside a staticlib. Which unlinked copy a site reached depended on
+the crate hashes.
+
+**What changed** (`scripts/nros-stack-floor.py`):
+
+- The link map's Rust codegen units (`<unit>.rcgu.o`, member or loose) pick
+  the bitcode: a module whose unit the link did not load is left out, and a
+  unit found twice with the same bytes is walked once. A fat-LTO dir's merged
+  module is always kept.
+- `--sysroot` takes the rlibs the link used, by crate hash, across the
+  installed toolchains, for the crates no `--bitcode-dir` supplies. A fresh
+  Zephyr Rust project links `stable`'s sysroot, not the pin (issue 2546); the
+  walk had read the pinned toolchain's bitcode for it.
+
+**Measured** (three projects per template at three paths walk identical
+bytes; floor = static + 10 %):
+
+| image | W7b static | W7c static | W7c floor | peak |
+| --- | ---: | ---: | ---: | ---: |
+| mps2 bare-metal Rust talker | 90,200 | 90,200 | 99,224 | 31-32 KiB |
+| nucleo Rust action server | 76,624 | 76,000 | 83,600 | 30,256 |
+| nucleo Rust talker | 72,528 | 72,240 | 79,464 | 28,888 |
+| nucleo C talker | 127,948 | 104,180 | 114,600 | 11,876 |
+
+A fourth fresh `nros new` + `nros build` of each nucleo template stamps the
+new floor and holds it as measured; RAM is 84 % (action server), 79 % (Rust
+talker) and 72 % (C talker) of the 384 KB region.
+
+Acceptance: two `nros new` projects from one template at different paths
+walk to the same bytes; every `[[observed]]` static is the new walk's.
+

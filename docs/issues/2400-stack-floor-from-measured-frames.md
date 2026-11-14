@@ -247,14 +247,15 @@ mode = "bind"`, issue 2402).
   cover it.
 - **Stacks follow the floor.** The nucleo templates' stamped stacks rise to
   their bind floors, and all fit the board's 384 KB RAM region:
-  - Rust action server: 84,288 B;
-  - Rust talker: 79,784 B;
-  - C talker: 140,744 B, about 12x its 11.9 KB run (issue 2516).
+  - Rust action server: 83,600 B;
+  - Rust talker: 79,464 B;
+  - C talker: 114,600 B, about 10x its 11.9 KB run (issue 2516).
 
   (W7 shipped 71,184 / 69,600 / 135,760 B; W7b closed three binding holes
-  and raised them.)
+  and raised them; W7c walks only the linked bitcode, which made the walk
+  the same for every project path and lowered them.)
 
-The detail is in [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W7 and W7b.
+The detail is in [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W7, W7b and W7c.
 
 ### Re-measured after issue 2401 (2026-11-10)
 
