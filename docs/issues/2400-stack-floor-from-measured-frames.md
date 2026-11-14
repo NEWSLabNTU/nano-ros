@@ -247,15 +247,19 @@ mode = "bind"`, issue 2402).
   cover it.
 - **Stacks follow the floor.** The nucleo templates' stamped stacks rise to
   their bind floors, and all fit the board's 384 KB RAM region:
-  - Rust action server: 83,600 B;
-  - Rust talker: 79,464 B;
-  - C talker: 114,600 B, about 10x its 11.9 KB run (issue 2516).
+  - Rust action server: 78,488 B;
+  - Rust talker: 76,760 B;
+  - C talker: 115,328 B, about 10x its 11.9 KB run.
 
   (W7 shipped 71,184 / 69,600 / 135,760 B; W7b closed three binding holes
   and raised them; W7c walks only the linked bitcode, which made the walk
-  the same for every project path and lowered them.)
+  the same for every project path and lowered them; W7d types C call sites
+  and reports the deepest of 8 callee orders.)
 
-The detail is in [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W7, W7b and W7c.
+  These are HEURISTIC floors: under call cycles the walk's depth depends on
+  callee order (issue 2550).
+
+The detail is in [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W7, W7b, W7c and W7d.
 
 ### Re-measured after issue 2401 (2026-11-10)
 
@@ -513,5 +517,5 @@ unmeasured floor of 26,368 B. Booted at 26 KiB, it tripped the board's MPU
 guard. The guard bisects the real peak to between 31 and 32 KiB, so the walk is
 about 8 KB short (issue 2402's RMW vtable gap). The example now has a measured
 row (allowance 8,800 B, floor 36,048 B), and a 26 KiB build fails with
-`NROS_BAREMETAL_STACK_KB=36`. Superseded by ruling (B) the next day: the walk now binds every indirect call and reads 90,200 B (51,240 B before phase-557 W7b closed three binding holes), the row is an `[[observed]]` row, and a 26 KiB build fails with `NROS_BAREMETAL_STACK_KB=97`. ThreadX and NuttX remain. The detail is in
+`NROS_BAREMETAL_STACK_KB=36`. Superseded by ruling (B) the next day: the walk now binds every indirect call and reads 96,680 B (51,240 B before phase-557 W7b closed three binding holes, 90,200 B before W7d took the deepest of 8 callee orders), the row is an `[[observed]]` row, and a 26 KiB build fails with `NROS_BAREMETAL_STACK_KB=104`. ThreadX and NuttX remain. The detail is in
 [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W5b.

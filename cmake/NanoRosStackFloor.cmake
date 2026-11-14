@@ -286,6 +286,10 @@ function(_nros_stack_floor_command _out)
         list(APPEND _cmd --link-dir "${_d}")
     endforeach()
     list(APPEND _cmd --su "${CMAKE_BINARY_DIR}")
+    # The image's C as clang IR, for C call-site types (issue 2516). Zephyr
+    # always exports it; a road that does not keeps every C site bound to
+    # every function C can hold (the walker skips a missing file).
+    list(APPEND _cmd --compile-commands "${CMAKE_BINARY_DIR}/compile_commands.json")
     foreach(_b IN LISTS _C_BITCODE)
         list(APPEND _cmd --bitcode-dir "${_b}")
     endforeach()
