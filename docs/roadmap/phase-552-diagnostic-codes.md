@@ -1,7 +1,9 @@
 # Phase 552 — Diagnostic codes, defined once in code
 
-**Status (2026-11-12). READY: every RFC-0129 question is ruled; nothing
-started.** Work for [RFC-0129](../design/0129-diagnostic-codes.md).
+**Status (2026-11-14). IN PROGRESS: W1, W2 and W4 done; W3's book view and
+gate done, its CMake, C header and colcon views open; W5 started (six codes on
+the first-build paths); W6 open.** Work for
+[RFC-0129](../design/0129-diagnostic-codes.md).
 
 The user rulings of 2026-11-12, relayed by the manager session:
 
@@ -55,6 +57,39 @@ written without that code, and the code cannot exist without its explanation
   `explain` lines.
 - `codes.lock` round-trips: running the generator again changes nothing.
 
+**Status (2026-11-14): done.**
+
+- The package is `nros-diagnostic-codes`, not D1's `nros-diagnostics`: that
+  name belongs to the on-target contract reporter
+  (`packages/core/nros-diagnostics`), and cargo refuses two packages of one
+  name in one workspace. It is a root-workspace member, `no_std` with no
+  dependencies; it checks for `thumbv7m-none-eabi` and `thumbv6m-none-eabi`.
+- `diagnostics!` takes `NNNN Name { title, surfaces: [..], remedy }` and
+  `NNNN Retired(Name) => NNNN,`. A live row's explanation is
+  `explain/NROS-NNNN.md` through `include_str!` (a `compile_fail` doctest
+  shows a missing file refusing). A retired row has no `Diag` variant; a
+  test-only table in `src/tests.rs` covers retirement.
+- `Refusal` renders D2's three lines; `.help(..)` replaces the remedy and
+  `.note(..)` adds a line only under verbose output.
+- `nros-diagnostics-gen` is a `[[bin]]` behind the `gen` feature, so the
+  library stays `no_std`. `codes.lock` is committed and a test compares it
+  with a fresh rendering.
+- `just code-new <Name>` runs `scripts/reserve-diag-code.sh`
+  (`refs/diag-codes/NNNN`), mirroring the issue-id reservation. It was tested
+  against a scratch bare repository, never against origin.
+- **Seed codes.** NROS-0001 to NROS-0006 were allocated in the founding
+  commit, before the reservation existed; `codes.lock` and `src/codes.rs`
+  say so. Every later code is reserved with `just code-new`.
+
+| code | name | sites |
+| --- | --- | --- |
+| NROS-0001 | `AmentPrefixUnset` | configure, for `nros configure`, `nros build` and `nros run` |
+| NROS-0002 | `BoardUnknown` | the catalog's `matches no board` (`orchestration/image.rs`), `board_facts::unresolved_board` and its callers |
+| NROS-0003 | `NoImageDeclared` | `builder/plan.rs` (`nros build`), `cmd/locate.rs` |
+| NROS-0004 | `ImageNoBoard` | `leaf_system.rs` (two), `leaf_settings.rs`, `build.rs`, `orchestration/image.rs`, and the workspace reader's refusal from `nros-orchestration-ir` |
+| NROS-0005 | `PlatformNoFamily` | the four refusals of `PlatformKind::resolve_family` |
+| NROS-0006 | `UnknownDiagCode` | `nros explain` given a code nothing has |
+
 ### W2 — The constructors (RFC-0129 D2)
 
 - **Status:** OPEN
@@ -69,6 +104,30 @@ written without that code, and the code cannot exist without its explanation
 - One test per constructor matches the rendered text exactly.
 - No rendered line carries an issue, phase or RFC id. This is checked with
   `check-user-surface-ids`'s pattern.
+
+**Status (2026-11-14): done for the CLI and build scripts.**
+
+- CLI: `nros-cli-core/src/diag.rs`. `DiagExt` on `Diag` gives
+  `.err(format_args!(..))` (an `eyre::Report`) and `.refusal(..)`, with
+  `.help(..)` and `.note(..)`; a `String`-error site takes `.to_string()`.
+  The note prints under `-v` / `NROS_VERBOSE=1` through
+  `build_notes::verbose()`. `main` prints an unwrapped refusal bare, with no
+  `Error: ` in front; a refusal under added context keeps eyre's report. A
+  site that adds context to a refusal it did not build uses
+  `diag::with_context`, so the code stays at the head of the line.
+- Build script: `Diag::X.panic(format_args!(..))` and
+  `Diag::X.refuse(&..).help(&..).panic()`, in the `no_std` crate; with the
+  `std` feature `NROS_VERBOSE=1` turns the note on. No build script is
+  converted yet (W5).
+- Tests: the exact text of each constructor, in the crate and in
+  `diag.rs`, with the gate's id pattern asserting no id. The seed sites' old
+  texts quoted in the troubleshooting index and the message-generation page
+  are replaced by the new ones.
+- The workspace reader's "names no `board`" refusal cited an RFC id in user
+  text, which `check-user-surface-ids` does not read (a shape of issue 2551);
+  the id moved to a source comment. Its other callers still print it as plain
+  text: converting it where it is raised would add a dependency edge to
+  `nros-orchestration-ir`, which ten tracked lockfiles carry.
 
 ### W3 — The generated views and their freshness gate (RFC-0129 D4, D6)
 
@@ -99,6 +158,26 @@ It has a self-test with one planted defect per check.
   test.
 - The book pages build under `just book`.
 
+**Status (2026-11-14): the book view and the gate are done; the CMake, C
+header and colcon views are open.**
+
+- Done: the book reference (`index.md` and one page per live code, on the
+  page map as generated pages and in SUMMARY after the troubleshooting
+  index), and `just check diagnostics` (`scripts/check/check-diagnostics.py`,
+  fast lane, `needs:git-history`). The gate runs the generator's `--check`
+  (fresh views, no orphan page or explanation, every row has a surface) and
+  holds `codes.lock` to origin/main's (NOT VERIFIED without an origin/main).
+  Its self-test plants a stale page, a missing lock, an orphan page, an
+  orphan explanation and a removed, renamed or renumbered lock row. A row
+  with no surface cannot be planted without compiling: the macro refuses it.
+- The pages built with `mdbook build` on a copy of the book (the board-status
+  preprocessor left out); a full `just book` was not run.
+- SUMMARY lists the code pages flat, as the fork pages are. Hundreds of codes
+  will want a Reference group (`book_pages.GROUPS`). A new page's SUMMARY
+  title is authored by hand after `book-move.py --summary`.
+- Open: `cmake/NanoRosDiagnostics.generated.cmake` with `nros_refuse`, the
+  `cmake -P` test, `nros/diagnostics.h`, and the colcon `diagnostics.py`.
+
 ### W4 — `nros explain <CODE>` (RFC-0129 D5)
 
 - **Status:** OPEN
@@ -120,6 +199,15 @@ anything else is a plan path, as today.
 - `nros explain <plan>` output is byte-identical to before W4.
 - The CLI reference is regenerated (`scripts/gen-cli-reference.py`).
 
+**Status (2026-11-14): done.** A live code prints its title, its
+explanation without the `## Design background` section, and its remedy; a
+retired code names its successor (tested on the test-only table); an unknown
+code is refused through NROS-0006 with the three nearest codes. A test pins
+the pre-W4 plan rendering byte for byte, and the stdout of the built CLI on a
+plan matched the pre-W4 binary's. The verb's help reads "A diagnostic code
+(`NROS-NNNN`) or a plan path", and `book/src/reference/cli.md` is
+regenerated from the built CLI.
+
 ### W5 — Convert the user-reachable refusals, surface by surface (RFC-0129 D2, D6)
 
 - **Status:** OPEN
@@ -138,6 +226,10 @@ anything else is a plan path, as today.
    or to the explanation's `## Design background` (ruling Q4).
 4. **Runtime surface.** Before converting it, measure the flash cost of a code
    prefix on one embedded image, and report it.
+
+**Status (2026-11-14): started.** The six seed codes (W1) convert the
+refusals a first build reaches on the probe-track paths. The ratchet
+`check-refusal-constructors` is not written yet.
 
 **Acceptance:**
 
