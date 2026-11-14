@@ -204,7 +204,7 @@ keeps RFC-0123 D2's "a directory is its part":
 | Background | `background/` | nano-ros-specific explanation (D4) | "Why does it work this way?" |
 | Reference | `reference/` | lookup material, generated where possible (D7) | "What exactly is …?" |
 | Extending nano-ros | `extending/` | boards, platforms, transports, custom RMW backends | "How do I add …?" |
-| Releases | `migrating/` | migration and retired names | "What changed?" |
+| Releases | `migrating/` | migration (no retired-names list: the book follows the current release) | "What changed?" |
 
 The User guide groups are:
 - RMW and communication;
@@ -613,7 +613,8 @@ no current source.
    Write a custom RMW backend (← extending/{custom-rmw,rmw-design}) ·
    Runner and command packages (← extending/{runner-packages,command-packages}, extending/overview)
 8. Releases
-   Migrating from older releases (← migrating/{install-local-removal,esp32,retired-config-files}) · Retired names
+   Migrating from older releases (← migrating/{install-local-removal,esp32,retired-config-files})
+   (Retired names removed 2026-11-15: the CLI's refusal names the replacement.)
 To Internals: extending/rmw-vs-upstream, extending/zenoh-pico-symbols, extending/xrce-dds-symbols
 ```
 
@@ -624,6 +625,11 @@ task for every language.
 
 ## Changelog
 
+- 2026-11-15 - Releases (user ruling): the Retired names page is removed. The
+  book describes the current release, which keeps rolling; an old variable,
+  board, knob or command spelling is refused by the CLI with the name to use.
+  When nano-ros publishes LTS releases, the book will be versioned per
+  release and each will get a migration page instead of a running list.
 - 2026-11-15 - Appendix A, Reference (user ruling 2026-11-14): grouped by what
   a reader looks up (Configuration, APIs, Build and run, Boards and support,
   Feature matrices, Troubleshooting), since 25 loose entries were too many to

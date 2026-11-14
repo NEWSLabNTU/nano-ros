@@ -7,8 +7,9 @@
 You have a project written against an older nano-ros release, and something
 it relies on is gone: the installed CMake prefix, a configuration file, or a
 board. Each section below is one such change: what was removed, what replaces
-it, and the edit that moves your project over. For a single renamed variable,
-board or command, look it up in [Retired names](retired-names.md).
+it, and the edit that moves your project over. A single renamed variable,
+board or command needs no page: nano-ros refuses the old name and the
+refusal names what to write instead.
 
 ## Before you start
 
@@ -103,8 +104,7 @@ nano-ros no longer supports the ESP32. Both ways it once ran there are gone:
   needs a network receive interrupt and a one-shot timer behind the platform's
   wake object, and this board had neither, so it could only poll. It was
   retired rather than served by polling. Every name it answered to is refused
-  wherever a board is read, with that reason; [Retired names](retired-names.md#retired-board-names)
-  lists them.
+  wherever a board is read, with that reason.
 - **The ESP-IDF component and the `idf.py` build driver**, retired 2026-09.
   Nothing built the component, and it was never published to the Espressif
   Component Registry. With it gone, `nros build` refuses a C or C++ project
@@ -122,14 +122,11 @@ provides.
 
 - **The configure stops on a `NANO_ROS_*` variable.** The variable is retired,
   or an older release wrote it into the build directory's cache. The error
-  prints the `cmake -U …` line that drops it; [Retired names](retired-names.md)
-  lists every rename.
+  prints the `cmake -U …` line that drops it and the name to write instead.
 - **`find_package(NanoRos)` fails.** That package no longer exists. Follow
   [Move off the install-local prefix](#move-off-the-install-local-prefix).
 
 ## See also
 
-- [Retired names](retired-names.md): every retired variable, board, knob and
-  command spelling, and what to write instead.
 - [Install options, pinning, working offline](../guide/build/install-options.md):
   pinning a project to a release.

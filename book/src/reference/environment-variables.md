@@ -105,7 +105,7 @@ guidance and platform guides for target-specific sizing.
 Each knob here used to be spelled `ZPICO_<X>`. That old spelling is
 **retired**: set in the environment or
 in an `[image.<id>] env` row, it stops the build with an error naming the
-`NROS_ZENOH_*` name to use. The full list is [the retired-names table](../migrating/retired-names.md#retired-knob-spellings).
+`NROS_ZENOH_*` name to use.
 
 | Variable                           | Description                                            | Default          | Crate          |
 |------------------------------------|--------------------------------------------------------|------------------|----------------|

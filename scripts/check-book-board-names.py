@@ -27,8 +27,8 @@ not read — derived from `SUMMARY.md`, the same rule `check-book-links.py` uses
 
 And the retired host-board words (`RETIRED_BOARD_KEYS` in
 `packages/cli/nros-entry-lower/src/lib.rs`, harvested, not copied) appear as a
-board nowhere except `book/src/migrating/retired-names.md`, the one page whose
-job is to say they are retired. "As a board" means: in a board position above,
+board nowhere in the book: the CLI's refusal of one names `linux`, and the
+book describes the current release only. "As a board" means: in a board position above,
 as `nros new --platform <word>`, or as an inline `` `<word>` `` on a line that
 also says "board".
 
@@ -68,7 +68,6 @@ except ModuleNotFoundError:  # 3.10 backport, same spelling as the sibling gates
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 INDEX = ROOT / "nros-sdk-index.toml"
 RETIRED_SRC = ROOT / "packages/cli/nros-entry-lower/src/lib.rs"
-RETIRED_PAGE = "book/src/migrating/retired-names.md"
 
 BEGIN = re.compile(r"<!-- board-names:begin[^>]*-->\n")
 END = "<!-- board-names:end -->"
@@ -169,18 +168,13 @@ def scan_page(rel: str, text: str, allowed: set[str], retired: set[str],
               setup_keys: set[str]) -> list[str]:
     local = {w for row in NAMES_ROW.findall(text) for w in QUOTED.findall(row)}
     ok = allowed | local
-    exempt_retired = rel == RETIRED_PAGE
     errors = []
 
     def judge(n: int, word: str, how: str, accepted: set[str] = ok) -> None:
         if is_placeholder(word):
             return
         if word in retired:
-            if not exempt_retired:
-                errors.append(
-                    f"{rel}:{n}: `{word}` is a RETIRED board word ({how}) — write `linux`; "
-                    f"only {RETIRED_PAGE} may name it"
-                )
+            errors.append(f"{rel}:{n}: `{word}` is a RETIRED board word ({how}) — write `linux`")
             return
         if word not in accepted:
             what = ("not an index [board.*] key — `nros setup` resolves only those"
@@ -203,18 +197,17 @@ def scan_page(rel: str, text: str, allowed: set[str], retired: set[str],
                 if m:
                     judge(n, m.group(1), 'board = "…"')
             for m in PLATFORM_FLAG.finditer(span):
-                if m.group(1) in retired and not exempt_retired:
+                if m.group(1) in retired:
                     judge(n, m.group(1), "nros new --platform")
         # A retired word in a board command's comment (`nros setup <board>  # e.g. `native``).
-        if in_fence and not exempt_retired and re.search(r"\bnros\s+(setup\b|.*--board)", line):
+        if in_fence and re.search(r"\bnros\s+(setup\b|.*--board)", line):
             for span in INLINE.findall(line):
                 if span.strip() in retired:
                     judge(n, span.strip(), "beside a board command")
-    if not exempt_retired:
-        prose = "\n".join("" if fenced else line for _, line, fenced in code_lines_keep(text))
-        for pattern in prose_patterns(retired):
-            for m in pattern.finditer(prose):
-                judge(prose.count("\n", 0, m.start()) + 1, m.group(1), "named as a board in prose")
+    prose = "\n".join("" if fenced else line for _, line, fenced in code_lines_keep(text))
+    for pattern in prose_patterns(retired):
+        for m in pattern.finditer(prose):
+            judge(prose.count("\n", 0, m.start()) + 1, m.group(1), "named as a board in prose")
     return errors
 
 
@@ -302,10 +295,6 @@ def selftest(verbose: bool = False) -> int:
     if parked:
         failed += 1
         print("check-book-board-names: SELFTEST FAILED: a dormant chapter is skipped",
-              file=sys.stderr)
-    if errs("```sh\nnros setup native\n```\n", rel=RETIRED_PAGE):
-        failed += 1
-        print("check-book-board-names: SELFTEST FAILED: retired-names page is exempt",
               file=sys.stderr)
     if failed:
         return 1
