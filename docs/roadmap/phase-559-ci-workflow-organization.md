@@ -263,6 +263,63 @@ the user ruled; all five stand:
   the whole job's log about 4 minutes in. The run step is now under the
   balloon; the next dispatch says where that disk goes.
 
+  Seventh measurement, runs 43613088518 (tier1) and 43613091093 (merge),
+  2026-11-14, both on #3835's branch, the first dispatch of the MERGE lane:
+  - **merge × zephyr does NOT fit.** It started with 95.9 G free, and the disk
+    balloon stopped `just build merge` at 1.1 G free (17:11Z), still in the
+    Zephyr fixture stage. `du` at the stop:
+    - `zephyr-workspace-builds` 49 G
+    - `sizes-probe` 9.8 G
+    - `corrosion-cargo` 9.0 G
+    - the cmake workspace builds ~13 G (`cpp` 5.6 G, `violation-cpp`,
+      `levels-cpp` and `derived-sched-tasks-cpp` 1.9 G each)
+    - `~/.nros` 2.8 G, `target` 2.2 G, `metadata-probe` 1.9 G
+
+    Its coordinates are zephyr c, cpp and rust over zenoh, against tier 1's
+    c/xrce and rust/zenoh, and the C++ one brings the cpp workspaces. The
+    shortfall is at least the rest of the Zephyr stage plus every later stage,
+    so this run cannot size it.
+  - **tier1 × zephyr crossed the floor too**, on the r8 image (the branch
+    predates r9). It started with 95.9 G free, and the balloon stopped it at
+    1.6 G free (18:00Z) in the leaves stage (`build-test-fixtures-leaves`).
+    `du` at the stop: `zephyr-workspace-builds` 44 G, `corrosion-cargo` 24 G,
+    `sizes-probe` 5.8 G, `metadata-probe` 3.0 G, `west-fixtures` 1.4 G. That
+    is the fifth measurement's shape (44 / 23 / 6.3 / 3.0) with less than its
+    4.0 G low point left. r9's 6.9 G is the first lever to measure: the next
+    tier-1 dispatch on main, on r9, says whether the shard fits again.
+  - **merge × threadx_linux FITS and RAN.** It started with 95.9 G free, and
+    its lowest point was 6 G (the balloon's under-10 G warning fired). 3633
+    tests ran: 3069 passed, 2 failed for real, and the rest were deselected
+    out of lane. The feature lanes passed under the sub-lane rule, and the
+    two lane-contract scans
+    passed at 102 s and 107 s under their new ceiling. 2 real failures:
+    - `a_rows_entry_registers_its_nodes_at_runtime` was killed at nextest's
+      default 60 s while it waited (up to the lease's 240 s) on baked port
+      9000, held by a ThreadxLinux `rtos_e2e` cell. The fix is a ceiling above
+      the documented wait (`.config/nextest.toml`).
+    - `test_threadx_linux_c_image_ends_on_one_sigterm::case_2_zenoh`: the
+      image's `rclc_support_init` returned -4 against a live router. It passed
+      on run 43582883501. Unexplained, so not filed from one sighting; it is
+      watched on the next dispatch.
+  - tier1 × threadx_linux: `just build` failed in its last gate,
+    `check-action-client-arena-budget`, which examined nothing on a C-only
+    lane (issue 2548, fourth round).
+
+  **User ruling, 2026-11-14 (option a): the merge lane's zephyr shard runs on
+  the SELF-HOSTED runner.** In `merge-runtime.yml`, a separate job
+  (`merge-runtime-self-hosted`, same job name, run-matrix's tier-1 steps) runs
+  only that shard, and the hosted matrix drops `zephyr` for `lane=merge`
+  only. Everything else stays hosted where it fits: tier-1 zephyr (low point
+  4.0 G), tier-1 threadx_linux, and merge threadx_linux (being measured).
+
+  The image slim (#3837, zephyr-ci r9, published by run 43619885183):
+  `prune-zephyr-sdk.sh` took the 0.16.9 SDK from **9.0 G to 2.1 G**, keeping
+  arm-zephyr-eabi, x86_64-zephyr-elf and aarch64-zephyr-elf. The 1.0.1
+  minimal bundle stayed 2.5 G, since it held only those already. That is
+  6.9 G back from every zephyr-ci job's disk. It is measured inside the
+  image, before layer compression; its effect on a shard's low point shows
+  on the next tier-1 dispatch.
+
   **User ruling, 2026-11-14 (option B): linux tier 1 stays SELF-HOSTED**
   (`run-matrix.yml`'s `tier1`). Only threadx_linux and zephyr move to hosted
   per-board shards. Measured basis: a hosted runner has ~104 G free after
