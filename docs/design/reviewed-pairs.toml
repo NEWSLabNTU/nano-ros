@@ -1,0 +1,12 @@
+# Candidate pairs `scripts/docs/rfc-inventory.py` flags (subject overlap, a
+# shared phase, or a citation), which a review has answered "no supersede or
+# amend link applies": the two RFCs are on different subjects, or complement
+# each other. Each entry names the ruling that answered it. The inventory
+# stops listing the pair, and refuses an entry that names a missing RFC or a
+# pair that IS linked (the link answers it, so the entry is stale).
+#
+# Add a pair here only with a ruling. "It is noise" is not one.
+
+[[pair]]
+rfcs = ["0095", "0099"]
+ruling = "phase-555 W3, build-toolchain-codegen brief B12: different subjects, so no amends link (docs/roadmap/data/phase-555-w3-rulings.md B28)"

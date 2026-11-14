@@ -14,6 +14,13 @@ phase), with no supersede or amend link between them in either direction.
 A candidate is a question for a reviewer, never a verdict: two RFCs on one
 subject can be complementary.
 
+A pair a review has already answered "no link applies" (two subjects, or
+complementary) is recorded in `docs/design/reviewed-pairs.toml`, with the
+ruling that answered it, and is no longer listed. Without that record a pair
+could only stop being a candidate by gaining a link it should not have
+(phase-555 W3's acceptance). An entry is refused if it names an RFC that
+does not exist, or a pair that IS linked, since the link already answers it.
+
 Usage:
     rfc-inventory.py [--out DIR]     # writes inventory.md, pairs.md
     rfc-inventory.py --count         # prints the candidate-pair count only
@@ -28,6 +35,11 @@ import os
 import re
 import sys
 from itertools import combinations
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    import tomli as tomllib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -48,6 +60,32 @@ CHANGE_WORDS = re.compile(
     r"\b(replac\w*|supersed\w*|instead of|retir\w*|amend\w*|contradict\w*|"
     r"no longer|obsolete|reverses?|overturn\w*|was wrong|deprecat\w*)\b", re.I)
 SHARED_PHASE_FLOOR = 0.08
+REVIEWED = os.path.join(ROOT, "docs", "design", "reviewed-pairs.toml")
+
+
+def load_reviewed(docs, path=REVIEWED):
+    """{frozenset(num, num)} from reviewed-pairs.toml, refusing a stale entry."""
+    if not os.path.exists(path):
+        return set()
+    with open(path, "rb") as fh:
+        entries = tomllib.load(fh).get("pair", [])
+    out, errors = set(), []
+    for e in entries:
+        nums = [str(n).zfill(4) for n in e.get("rfcs", [])]
+        where = f"{os.path.relpath(path, ROOT)}: {nums}"
+        if len(nums) != 2 or nums[0] == nums[1]:
+            errors.append(f"{where}: `rfcs` must name two different RFCs")
+        elif not e.get("ruling"):
+            errors.append(f"{where}: no `ruling` says who answered it")
+        elif any(n not in docs for n in nums):
+            errors.append(f"{where}: names an RFC that does not exist")
+        elif linked(docs[nums[0]], docs[nums[1]]):
+            errors.append(f"{where}: the pair is linked, so the link answers it; remove the entry")
+        else:
+            out.add(frozenset(nums))
+    if errors:
+        sys.exit("rfc-inventory: stale reviewed-pairs entries:\n  " + "\n  ".join(errors))
+    return out
 
 
 def field(fm, name):
@@ -126,11 +164,11 @@ def linked(a, b):
             or a["num"] in b["sup"] | b["supby"] | b["amends"])
 
 
-def candidates(docs):
+def candidates(docs, reviewed=frozenset()):
     out = []
     live = [d for d in docs.values() if not d["archived"] and not d["status"].lower().startswith("superseded")]
     for a, b in combinations(sorted(live, key=lambda d: d["num"]), 2):
-        if linked(a, b):
+        if linked(a, b) or frozenset((a["num"], b["num"])) in reviewed:
             continue
         union = a["words"] | b["words"]
         sim = len(a["words"] & b["words"]) / len(union) if union else 0.0
@@ -179,7 +217,8 @@ def main(argv):
     ap.add_argument("--count", action="store_true")
     args = ap.parse_args(argv)
     docs = load()
-    pairs = candidates(docs)
+    reviewed = load_reviewed(docs)
+    pairs = candidates(docs, reviewed)
     rk = ranked(pairs)
     tiers = {t: sum(1 for r in rk if r[0] == t) for t in (1, 2, 3)}
     if args.count:
@@ -234,7 +273,8 @@ def main(argv):
                 if ev:
                     fh.write(f"  - evidence: {ev}\n")
     print(f"rfc-inventory: {len(docs)} RFC(s), {len(pairs)} candidate pair(s): overlap {tiers[1]}, "
-          f"citing a change {tiers[2]}, plain citation {tiers[3]} -> {os.path.relpath(args.out, ROOT)}/")
+          f"citing a change {tiers[2]}, plain citation {tiers[3]} ({len(reviewed)} reviewed pair(s) "
+          f"excluded) -> {os.path.relpath(args.out, ROOT)}/")
     return 0
 
 
