@@ -12,7 +12,8 @@
 diagnostics! {
     /// `nros configure` (and the build and run verbs that configure first)
     /// has messages to generate, `AMENT_PREFIX_PATH` is unset, and no earlier
-    /// configure of the project recorded a prefix.
+    /// configure of the project recorded a prefix. History: RFC-0120 D2;
+    /// issue 2279 (the remedy names the verb the reader ran).
     0001 AmentPrefixUnset {
         title: "ROS 2 is not sourced, and the project has messages to generate",
         surfaces: [Cli],
@@ -22,6 +23,7 @@ diagnostics! {
     }
 
     /// An image's `board` is claimed by no board descriptor's `names`.
+    /// History: issue 0606 (the catalog's one resolution rule).
     0002 BoardUnknown {
         title: "an image names a board that no board descriptor claims",
         surfaces: [Cli],
@@ -44,7 +46,8 @@ diagnostics! {
     }
 
     /// A board names a platform whose `inherits` chain reaches no built-in
-    /// family (or which nothing answers to, or whose chain loops).
+    /// family (or which nothing answers to, or whose chain loops). History:
+    /// issue 2310, user ruling of 2026-11-12 (option 3).
     0005 PlatformNoFamily {
         title: "a board's platform reaches no built-in family",
         surfaces: [Cli],

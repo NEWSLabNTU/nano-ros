@@ -224,6 +224,18 @@ book-no-just:
 user-surface-ids:
     @python3 scripts/check/check-user-surface-ids.py
 
+# phase-552 W3 (RFC-0129 D6) — the diagnostic codes' generated views
+# (`codes.lock`, the book reference under book/src/reference/diagnostics/) are
+# fresh, no explanation file is an orphan, every code names a surface, and
+# `codes.lock` keeps every code and name origin/main has: a code is never
+# removed, renamed or renumbered. NOT VERIFIED (skip ledger) for that last
+# check without an origin/main. Builds the dependency-free crate's generator,
+# a few seconds cold.
+[private]
+[group('needs:git-history')]
+diagnostics:
+    @python3 scripts/check/check-diagnostics.py
+
 # phase-429 W3 (RFC-0090 D1/D5) — `NROS_CODEGEN_VERSION` is an AUTHORED integer,
 # and this tree's authored mirrors drift: `check-rmw-api-parity`'s map read green
 # while 25 symbols disagreed with the vtable. Drift here is quieter and worse —
