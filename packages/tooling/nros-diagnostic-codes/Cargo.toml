@@ -17,13 +17,11 @@ license     = "MIT OR Apache-2.0"
 
 [features]
 default = []
-# Host-only conveniences: `Refusal::panic` reads `NROS_VERBOSE`, and the view
-# renderers (`views`) become public.
+# Host-only: `Refusal::panic` reads `NROS_VERBOSE`, the view renderers
+# (`views`) become public, and the generator binary builds. The binary is a
+# `[[bin]]` of this package rather than a crate of its own: it needs nothing
+# but `std`, and keeping it here keeps the list and its views one package.
 std = []
-# The generator binary, `nros-diagnostics-gen`. A feature, not a separate
-# crate: it needs nothing but `std`, and keeping it here keeps the list and
-# its views one package.
-gen = ["std"]
 
 [lib]
 path = "src/lib.rs"
@@ -31,6 +29,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "nros-diagnostics-gen"
 path = "src/bin/nros-diagnostics-gen.rs"
-required-features = ["gen"]
+required-features = ["std"]
 
 [dependencies]

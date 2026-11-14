@@ -34,8 +34,6 @@ written without that code, and the code cannot exist without its explanation
 
 ### W1 — The `nros-diagnostics` crate (RFC-0129 D1–D3)
 
-- **Status:** OPEN
-
 - `packages/tooling/nros-diagnostics`: `#![no_std]`, with the `diagnostics!`
   macro, the `Diag` enum, `ALL: &[Entry]`, and one `explain/NROS-NNNN.md` per
   code, read by `include_str!`.
@@ -57,7 +55,9 @@ written without that code, and the code cannot exist without its explanation
   `explain` lines.
 - `codes.lock` round-trips: running the generator again changes nothing.
 
-**Status (2026-11-14): done.**
+- **Status:** DONE (2026-11-14, branch feat/552-diagnostics-crate, no PR yet)
+
+Notes:
 
 - The package is `nros-diagnostic-codes`, not D1's `nros-diagnostics`: that
   name belongs to the on-target contract reporter
@@ -71,7 +71,7 @@ written without that code, and the code cannot exist without its explanation
   test-only table in `src/tests.rs` covers retirement.
 - `Refusal` renders D2's three lines; `.help(..)` replaces the remedy and
   `.note(..)` adds a line only under verbose output.
-- `nros-diagnostics-gen` is a `[[bin]]` behind the `gen` feature, so the
+- `nros-diagnostics-gen` is a `[[bin]]` behind the `std` feature, so the
   library stays `no_std`. `codes.lock` is committed and a test compares it
   with a fresh rendering.
 - `just code-new <Name>` runs `scripts/reserve-diag-code.sh`
@@ -92,8 +92,6 @@ written without that code, and the code cannot exist without its explanation
 
 ### W2 — The constructors (RFC-0129 D2)
 
-- **Status:** OPEN
-
 - CLI: `Diag::X.err(..)`, which returns an `eyre::Report`.
 - Build script: `Diag::X.panic(..)`.
 - Each constructor has a `.help(..)` override, and each prints `-v` detail
@@ -105,7 +103,9 @@ written without that code, and the code cannot exist without its explanation
 - No rendered line carries an issue, phase or RFC id. This is checked with
   `check-user-surface-ids`'s pattern.
 
-**Status (2026-11-14): done for the CLI and build scripts.**
+- **Status:** DONE (2026-11-14, branch feat/552-diagnostics-crate, no PR yet; build-script conversions are W5)
+
+Notes:
 
 - CLI: `nros-cli-core/src/diag.rs`. `DiagExt` on `Diag` gives
   `.err(format_args!(..))` (an `eyre::Report`) and `.refusal(..)`, with
@@ -114,7 +114,7 @@ written without that code, and the code cannot exist without its explanation
   `build_notes::verbose()`. `main` prints an unwrapped refusal bare, with no
   `Error: ` in front; a refusal under added context keeps eyre's report. A
   site that adds context to a refusal it did not build uses
-  `diag::with_context`, so the code stays at the head of the line.
+  `diag::prefix_detail`, so the code stays at the head of the line.
 - Build script: `Diag::X.panic(format_args!(..))` and
   `Diag::X.refuse(&..).help(&..).panic()`, in the `no_std` crate; with the
   `std` feature `NROS_VERBOSE=1` turns the note on. No build script is
@@ -124,14 +124,12 @@ written without that code, and the code cannot exist without its explanation
   texts quoted in the troubleshooting index and the message-generation page
   are replaced by the new ones.
 - The workspace reader's "names no `board`" refusal cited an RFC id in user
-  text, which `check-user-surface-ids` does not read (a shape of issue 2551);
-  the id moved to a source comment. Its other callers still print it as plain
+  text, which `check-user-surface-ids` does not read (one of the shapes the
+  Coordination section names); the id moved to a source comment. Its other callers still print it as plain
   text: converting it where it is raised would add a dependency edge to
   `nros-orchestration-ir`, which ten tracked lockfiles carry.
 
 ### W3 — The generated views and their freshness gate (RFC-0129 D4, D6)
-
-- **Status:** OPEN
 
 `nros-diagnostics-gen` writes four views:
 
@@ -158,8 +156,10 @@ It has a self-test with one planted defect per check.
   test.
 - The book pages build under `just book`.
 
-**Status (2026-11-14): the book view and the gate are done; the CMake, C
-header and colcon views are open.**
+- **Status:** OPEN (the book view and the gate are done, 2026-11-14,
+  branch feat/552-diagnostics-crate, no PR yet; the CMake, C header and colcon views are open)
+
+Notes:
 
 - Done: the book reference (`index.md` and one page per live code, on the
   page map as generated pages and in SUMMARY after the troubleshooting
@@ -180,8 +180,6 @@ header and colcon views are open.**
 
 ### W4 — `nros explain <CODE>` (RFC-0129 D5)
 
-- **Status:** OPEN
-
 The argument decides which: a token matching `^NROS-\d{4}$` is a code, and
 anything else is a plan path, as today.
 
@@ -199,7 +197,9 @@ anything else is a plan path, as today.
 - `nros explain <plan>` output is byte-identical to before W4.
 - The CLI reference is regenerated (`scripts/gen-cli-reference.py`).
 
-**Status (2026-11-14): done.** A live code prints its title, its
+- **Status:** DONE (2026-11-14, branch feat/552-diagnostics-crate, no PR yet)
+
+A live code prints its title, its
 explanation without the `## Design background` section, and its remedy; a
 retired code names its successor (tested on the test-only table); an unknown
 code is refused through NROS-0006 with the three nearest codes. A test pins
@@ -209,8 +209,6 @@ plan matched the pre-W4 binary's. The verb's help reads "A diagnostic code
 regenerated from the built CLI.
 
 ### W5 — Convert the user-reachable refusals, surface by surface (RFC-0129 D2, D6)
-
-- **Status:** OPEN
 
 1. **Ratchet.** Land the per-surface ratchet `check-refusal-constructors`,
    with each surface's baseline measured at landing and recorded in the
@@ -227,9 +225,9 @@ regenerated from the built CLI.
 4. **Runtime surface.** Before converting it, measure the flash cost of a code
    prefix on one embedded image, and report it.
 
-**Status (2026-11-14): started.** The six seed codes (W1) convert the
-refusals a first build reaches on the probe-track paths. The ratchet
-`check-refusal-constructors` is not written yet.
+- **Status:** OPEN (started 2026-11-14: the six seed codes of W1 convert the
+  refusals a first build reaches on the probe-track paths; the ratchet
+  `check-refusal-constructors` is not written yet)
 
 **Acceptance:**
 

@@ -1362,7 +1362,7 @@ impl BoardFile {
                 }
                 let authored = authored.to_string();
                 let kind = families.resolve(&authored).map_err(|e| {
-                    custom(crate::diag::with_context(&format!("board {names}: "), &e))
+                    custom(crate::diag::prefix_detail(&format!("board {names}: "), &e))
                 })?;
                 if let Some(stated) = t.get("platform_feature").and_then(|f| f.as_str())
                     && stated != kind.platform_feature()

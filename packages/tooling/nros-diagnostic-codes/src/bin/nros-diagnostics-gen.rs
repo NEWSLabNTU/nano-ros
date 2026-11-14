@@ -1,7 +1,7 @@
 //! `nros-diagnostics-gen` — write (or, with `--check`, verify) every view of
 //! the diagnostic list: `codes.lock` and the book reference pages.
 //!
-//!   cargo run -p nros-diagnostic-codes --features gen --bin nros-diagnostics-gen [-- --check]
+//!   cargo run -p nros-diagnostic-codes --features std --bin nros-diagnostics-gen [-- --check]
 //!
 //! `--root <dir>` names the repository root; the default is the one this
 //! crate sits in. With `--check`, nothing is written: a stale or missing view,
@@ -128,7 +128,7 @@ fn main() -> ExitCode {
     }
     eprintln!(
         "nros-diagnostics-gen --check: regenerate with \
-         `cargo run -p nros-diagnostic-codes --features gen --bin nros-diagnostics-gen`"
+         `cargo run -p nros-diagnostic-codes --features std --bin nros-diagnostics-gen`"
     );
     ExitCode::FAILURE
 }

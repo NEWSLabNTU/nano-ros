@@ -545,6 +545,9 @@ KNOB_CLASS = {
     "NROS_METADATA_PROBE_CACHE": ("infra", "cache path"),
     "NROS_RMW": ("infra", "the selected backend, not a size"),
     "NROS_OFFLINE": ("infra", "policy flag"),
+    # phase-552 W2: a diagnostic's contributor note prints only under it
+    # (nros-diagnostic-codes' build-script constructor reads it).
+    "NROS_VERBOSE": ("infra", "verbose-output flag"),
     "NROS_NO_AUTO_SETUP": ("infra", "policy flag"),
     "NROS_SKIP_STALE_CHECK": ("infra", "policy flag"),
     "NROS_SUPPRESS_DEPRECATION": ("infra", "policy flag"),
