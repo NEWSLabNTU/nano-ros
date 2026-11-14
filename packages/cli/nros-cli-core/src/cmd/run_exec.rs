@@ -237,6 +237,9 @@ pub fn decorate(plan: &mut RunPlan, rmw: Option<&str>, peer: &DeclaredPeer, exec
         }
         None => {}
     }
+    if let Some(note) = missing_link_note(plan, rmw, peer) {
+        eprintln!("nros {}: warning: {note}", verb_word(plan.verb));
+    }
     attach_host_peer(plan, rmw, peer);
     if let Some(p) = &exec.prefix {
         plan.args.insert("prefix".into(), p.clone());
@@ -245,6 +248,32 @@ pub fn decorate(plan: &mut RunPlan, rmw: Option<&str>, peer: &DeclaredPeer, exec
             crate::cmd::run_plan::INVOCATION.into(),
         );
     }
+}
+
+/// What to say when a `run` plan for a board (not a host process) has no
+/// link while its RMW needs a peer on the host. Without a link nothing tells
+/// `nros run` where the firmware dials, so it starts no router; saying so
+/// here keeps that from being a silent connection failure inside the board.
+/// `None` when there is a link, the image is a host process, the verb is not
+/// `run`, or the RMW needs nothing on the host.
+#[must_use]
+pub fn missing_link_note(plan: &RunPlan, rmw: Option<&str>, peer: &DeclaredPeer) -> Option<String> {
+    if plan.link.is_some() || plan.target.host || plan.verb != Verb::Run {
+        return None;
+    }
+    let what = match peer {
+        Ok((HostPeer::ZenohRouter, _)) => "a zenoh router",
+        Ok((HostPeer::XrceAgent, _)) => "an XRCE agent",
+        _ => return None,
+    };
+    let rmw = rmw.unwrap_or("its");
+    Some(format!(
+        "`{}` uses the `{rmw}` RMW, which needs {what} on this machine, but nothing \
+         states the address the board dials, so none is started and the board will \
+         likely fail to connect. State it as `locator = \"tcp/<host>:<port>\"` under the \
+         image in system.toml, or pass `--router <locator>` for one already running.",
+        plan.image
+    ))
 }
 
 // ── What the link needs on the host side ────────────────────────────────
@@ -1478,6 +1507,45 @@ mod tests {
         );
         assert!(RouterMode::parse("router=tcp/x:1").is_err());
         assert!(RouterMode::parse("bogus").is_err());
+    }
+
+    #[test]
+    fn a_board_with_no_link_whose_rmw_needs_a_router_is_said_aloud() {
+        let zenoh: DeclaredPeer = Ok((HostPeer::ZenohRouter, "index".into()));
+        let note = missing_link_note(&plan(false, None), Some("zenoh"), &zenoh)
+            .expect("a board with no link needing a router is said");
+        assert!(
+            note.contains("zenoh router") && note.contains("locator"),
+            "{note}"
+        );
+        let id = regex::Regex::new(r"(?i)\b(issue|phase|rfc)[ -]?\d").unwrap();
+        assert!(!id.is_match(&note), "{note}");
+        let agent: DeclaredPeer = Ok((HostPeer::XrceAgent, "index".into()));
+        assert!(
+            missing_link_note(&plan(false, None), Some("xrce"), &agent)
+                .is_some_and(|n| n.contains("XRCE agent"))
+        );
+    }
+
+    #[test]
+    fn no_note_with_a_link_for_a_host_process_or_an_rmw_needing_nothing() {
+        let zenoh: DeclaredPeer = Ok((HostPeer::ZenohRouter, "index".into()));
+        let linked = plan(
+            false,
+            link(
+                LinkKind::Tcp,
+                "tcp/10.0.2.2:7447",
+                "zenoh",
+                HostPeer::ZenohRouter,
+            ),
+        );
+        assert!(missing_link_note(&linked, Some("zenoh"), &zenoh).is_none());
+        assert!(missing_link_note(&plan(true, None), Some("zenoh"), &zenoh).is_none());
+        let none: DeclaredPeer = Ok((HostPeer::None, "index".into()));
+        assert!(missing_link_note(&plan(false, None), Some("cyclonedds"), &none).is_none());
+        let mut flash = plan(false, None);
+        flash.verb = Verb::Flash;
+        assert!(missing_link_note(&flash, Some("zenoh"), &zenoh).is_none());
     }
 
     #[test]
