@@ -34,6 +34,7 @@ Gate: just check diagnostics
 from __future__ import annotations
 
 import os
+import re
 import pathlib
 import shutil
 import subprocess
@@ -67,10 +68,28 @@ def parse_lock(text: str) -> dict[str, str]:
     return rows
 
 
+def founding(text: str) -> int:
+    """The last number of the lock's `# founding: NROS-0001..NROS-NNNN` line, 0 if none."""
+    for line in text.splitlines():
+        m = re.match(r"^#\s*founding:\s*NROS-0001\.\.NROS-(\d{4})\s*$", line)
+        if m:
+            return int(m.group(1))
+    return 0
+
+
 def lock_kept(base: str, head: str) -> list[str]:
-    """Each base row still present in head with the same number and name."""
+    """Each base row still present in head with the same number and name, and
+    the founding range (the numbers with no claim refs) unchanged.
+
+    A NEW row on this branch whose number the baseline has under another name
+    (two sessions wrote one number) is the same finding as a rename: the
+    baseline's row is no longer there under its name."""
     old, new = parse_lock(base), parse_lock(head)
     out = []
+    if founding(base) and founding(head) != founding(base):
+        out.append(f"the founding range ends at NROS-{founding(head):04} here and at "
+                   f"NROS-{founding(base):04} at the baseline; it never changes (its codes "
+                   "have no claim refs, so widening it would exempt unclaimed numbers)")
     for code, name in sorted(old.items()):
         if code not in new:
             out.append(f"{code} {name} was removed from codes.lock; retire it instead "
@@ -143,6 +162,15 @@ def self_test() -> None:
     assert len(got) == 1 and "never changes" in got[0], f"self-test: a renamed row: {got}"
     got = lock_kept(lock, "NROS-0002 B retired NROS-0001\nNROS-0005 A live\n")
     assert any("moved from NROS-0001 to NROS-0005" in g for g in got), f"self-test: renumbered: {got}"
+    # A branch that writes a NEW row under a number the baseline already gave
+    # someone else (a collision, not an edit of its own row) is refused.
+    main = lock + "NROS-0003 Theirs live\n"
+    got = lock_kept(main, lock + "NROS-0003 Mine live\n")
+    assert len(got) == 1 and "`Theirs`" in got[0] and "`Mine`" in got[0], f"self-test: collision: {got}"
+    # The founding range never changes.
+    got = lock_kept("# founding: NROS-0001..NROS-0002\n" + lock,
+                    "# founding: NROS-0001..NROS-0009\n" + lock)
+    assert len(got) == 1 and "founding range" in got[0], f"self-test: founding widened: {got}"
     try:
         parse_lock("NROS-0001 A\n")
         raise AssertionError("self-test: a malformed row parses")

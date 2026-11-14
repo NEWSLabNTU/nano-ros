@@ -6,8 +6,9 @@
 //! collided issue ids. Rows are in number order. A number is never reused or
 //! renumbered: retire a code with `NNNN Retired(Name) => successor,`.
 //!
-//! NROS-0001 to NROS-0006 were allocated in the founding commit, before the
-//! reservation recipe existed; every later code is reserved.
+//! NROS-0001 to NROS-0006 (the founding range, [`crate::FOUNDING_MAX`]) were
+//! allocated in the founding commit, before claims existed; every later code
+//! is claimed on origin first, and is not allocated if the claim fails.
 
 diagnostics! {
     /// `nros configure` (and the build and run verbs that configure first)

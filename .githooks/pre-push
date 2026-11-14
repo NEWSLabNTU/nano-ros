@@ -47,6 +47,8 @@ nros_clear_inherited_git_env
 
 repo_root="$(git rev-parse --show-toplevel)"
 check="$repo_root/scripts/ci/issue-ids-check.sh"
+# git passes the remote's name as $1; the loops below reuse the positionals.
+push_remote="${1:-origin}"
 
 [ -x "$check" ] || exit 0
 
@@ -98,6 +100,26 @@ if ! out="$("$check" 2>&1)"; then
     echo "  Reserve ids atomically to avoid this entirely:" >&2
     echo "      just issue-new <slug>" >&2
     exit 1
+fi
+
+# A diagnostic code is CLAIMED on the remote or not allocated (RFC-0129 D3).
+# Branch pushes only, like the issue-id guard above: `just code-new` claims a
+# number by pushing `refs/diag-codes/NNNN`, and that push must never be blocked
+# by the collision it exists to resolve. Refuses a codes.lock that renames a
+# number main has, or adds a number with no claim ref; an unreachable remote is
+# reported, not refused.
+diag="$repo_root/scripts/ci/diag-codes-check.sh"
+if [ -x "$diag" ]; then
+    rc=0
+    out="$("$diag" "$push_remote" 2>&1)" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        printf '%s\n' "$out" >&2
+        echo "" >&2
+        echo "pre-push: REFUSING to push — a diagnostic code is unclaimed or reused." >&2
+        echo "  Claim a number with \`just code-new <Name>\` and use the one it prints." >&2
+        exit 1
+    fi
+    [ -z "$out" ] || printf '%s\n' "$out" >&2
 fi
 
 # A submodule pin may only move FORWARD (fast-forward to a descendant).
