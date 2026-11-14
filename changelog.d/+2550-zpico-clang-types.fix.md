@@ -1,0 +1,1 @@
+The stack walk now types every C indirect call in the zenoh shim too: `zpico.c` uses C11 atomics on its `_Atomic bool` fields, which clang accepts, and duplicate `--compile-commands` are compiled once.

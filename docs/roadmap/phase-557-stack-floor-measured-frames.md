@@ -618,3 +618,43 @@ Acceptance: same graph, same bytes, at every project path; the self-test
 pins the case where sorted order under-states (112 vs 121 B); every
 `[[observed]]` static is the new walk's; each nucleo image fits its RAM.
 
+### W7e — zpico.c is typed too, and the SCC step is parked (issue 2550)
+
+- **Status:** DONE (2026-11-15, #3851)
+
+**Why.** W7d left zpico.c's 96 functions untyped, because clang 14 refuses
+GCC's `__atomic_*_n` on an `_Atomic bool`. Untyped functions join every
+site, and zpico.c's handlers (`sample_handler`, `query_handler`, ...) were
+the targets that all 243 bound callers inside the SCC shared.
+
+**What changed:**
+
+- `zpico.c` accesses its `_Atomic bool` fields with C11
+  `atomic_load_explicit` / `atomic_store_explicit`. The semantics are the
+  same (seq-cst), and clang accepts it.
+- The walker dedupes `--compile-commands`. The cmake road passes one, and a
+  second copy compiled every TU twice.
+
+**Measured** (floor = static + 10 %):
+
+| image | W7d static | W7e static | W7e floor | peak |
+| --- | ---: | ---: | ---: | ---: |
+| mps2 bare-metal Rust talker | 96,680 | 95,420 | 104,968 | 31-32 KiB |
+| nucleo Rust action server | 71,352 | 68,608 | 75,472 | 30,256 |
+| nucleo Rust talker | 69,776 | 67,672 | 74,440 | 28,888 |
+| nucleo C talker | 104,840 | 99,140 | 109,056 | 11,876 |
+
+A fresh `nros new` + `nros build` of each nucleo template stamps the new
+floor and holds it as measured; RAM is 82 % (action server), 78 % (Rust
+talker) and 70 % (C talker) of the 384 KB region.
+
+**Parked (ruled 2026-11-14, option (c)).** Typing every C TU does not
+break the SCC: it stays at 962 / 970 / 2,037 functions, against 24 on
+direct edges alone (issue 2550 has the numbers). So the exact search
+waits for field- and parameter-sensitive binding. That is a new item,
+designed in this doc before any code. The 8-order heuristic stays the
+floor.
+
+Acceptance: every linked C TU compiles with clang; every `[[observed]]`
+static is the new walk's; each nucleo image fits its RAM.
+
