@@ -75,11 +75,31 @@ fn an_image_from_a_derived_settle_matches_one_written_by_hand() {
     assert_eq!(rows_d[sink].fqn, "/safety/brake_controller/brake_cmd");
     assert_ne!(haz_d[0].reaction_id, 0);
 
-    assert_eq!(
-        format!("{:?}", ftti_budget::hazard_budgets(&d)),
-        format!("{:?}", ftti_budget::hazard_budgets(&w)),
-        "FTTI budgets"
+    // Since #3758 each level's row charges its safe state's settle, which
+    // `written.yaml` spells to six decimals (4422.666667) and the extension
+    // derives exactly (4422.666...): the same number to a microsecond.
+    let (bd, bw) = (
+        ftti_budget::hazard_budgets(&d).expect("budgets"),
+        ftti_budget::hazard_budgets(&w).expect("budgets"),
     );
+    assert_eq!(bd.len(), bw.len(), "FTTI budgets");
+    for (a, b) in bd.iter().zip(&bw) {
+        assert_eq!(a.levels.len(), b.levels.len(), "FTTI budgets: {a:?} {b:?}");
+        for (la, lb) in a.levels.iter().zip(&b.levels) {
+            assert!((la.settle_ms - lb.settle_ms).abs() < 1e-3, "{la:?} {lb:?}");
+            let (ta, tb) = (la.total_ms.expect("total"), lb.total_ms.expect("total"));
+            assert!((ta - tb).abs() < 1e-3, "{la:?} {lb:?}");
+        }
+        let strip = |h: &ftti_budget::HazardBudget| {
+            let mut h = h.clone();
+            for l in &mut h.levels {
+                l.settle_ms = 0.0;
+                l.total_ms = None;
+            }
+            format!("{h:?}")
+        };
+        assert_eq!(strip(a), strip(b), "FTTI budgets, every other term");
+    }
     assert_eq!(
         executor_sizing::count_callbacks(&d, |_| true),
         executor_sizing::count_callbacks(&w, |_| true),
