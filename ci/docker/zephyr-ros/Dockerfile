@@ -231,7 +231,7 @@ RUN pip3 install --no-cache-dir \
 # their canonical installers (arch/version handled upstream).
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 # `just` from `scripts/ci/install-just.sh` (issue 1760): pinned, checksummed,
-# retried — the one spelling ci-base and `probe.yml` use too.
+# retried — the one spelling ci-base and the book probes in `host-tests.yml` use too.
 COPY scripts/ci/install-just.sh /opt/nros-ssot/scripts/ci/install-just.sh
 RUN bash /opt/nros-ssot/scripts/ci/install-just.sh --to /usr/local/bin
 
