@@ -16,7 +16,7 @@
 #include "rclc/types.h"
 
 /**
- * @brief Deprecated: renamed to rclc_publish_serialized() (phase-515 C8).
+ * @brief Deprecated: renamed to rclc_publish_serialized().
  *
  * Kept one release so existing callers still compile, with a warning that
  * names the replacement. Define `NROS_NO_DEPRECATED_PUBLISH_RAW_ALIAS` to drop
@@ -27,7 +27,7 @@
  */
 #ifndef NROS_NO_DEPRECATED_PUBLISH_RAW_ALIAS
 #if defined(__GNUC__) || defined(__clang__)
-// phase-515 C8 renamed it.
+// Renamed; see the message below.
 __attribute__((deprecated("renamed to rclc_publish_serialized; call that instead")))
 #endif
 static inline rcl_ret_t
@@ -39,13 +39,13 @@ rclc_publish_raw(const rcl_publisher_t* publisher, const uint8_t* data, size_t l
 /**
  * @brief rclc's best-effort preset constructor for a publisher.
  *
- * phase-417 W5.d. rclc ships one named entry point per QoS preset
+ * rclc ships one named entry point per QoS preset
  * (`_default`, `_best_effort`) and nano-ros ships the QoS-taking form
  * `rclc_publisher_init_with_qos()`. Ledger row `c:publisher_init_best_effort`
  * filed that as a `divergence` on the argument that "a named function per
  * preset does not scale past the two rclc chose" — which is a reason not to
  * GROW the family, not a reason to leave the two rclc actually ships unported.
- * RFC-0089's rule points the other way: a ported rclc file writes this line, so
+ * The adoption rule points the other way: a ported rclc file writes this line, so
  * it must compile and mean the same thing.
  *
  * **What rclc means by it, read from rclc's own source** (`rclc/src/rclc/
@@ -53,7 +53,7 @@ rclc_publish_raw(const rcl_publisher_t* publisher, const uint8_t* data, size_t l
  * — best-effort, volatile, KEEP_LAST(5). Not "the default profile with
  * reliability flipped": the DEPTH changes too, from 10 to 5.
  * ::RCLC_QOS_SENSOR_DATA is our mirror of that profile, so this forwards to it
- * by name rather than restating nine fields (issue 0160's hand-mirror class).
+ * by name rather than restating nine fields (the hand-mirror class).
  *
  * A `static inline` rather than an exported symbol, for the same reason
  * rcl_difference_times() is one: no state sits behind it and nothing is
@@ -82,8 +82,8 @@ static inline rcl_ret_t rclc_publisher_init_best_effort(struct rcl_publisher_t* 
 
 #endif /* NROS_PUBLISHER_H */
 
-/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does
- * (phase-492): a ported file that includes only `<rclc/publisher.h>` still finds
+/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does:
+ * a ported file that includes only `<rclc/publisher.h>` still finds
  * `RCLC_CHECK_RET`, `RCLC_LOG_*` and the rcl spellings. Outside the guard, so
  * this header's own declarations are complete before the umbrella reads them. */
 #include "rclc/rclc.h"

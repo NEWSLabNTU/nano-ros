@@ -1,8 +1,8 @@
 //! QoS (Quality of Service) settings for the C API.
 //!
-//! # The two sentinels, and why they are here (issue 1437, phase-444)
+//! # The two sentinels, and why they are here
 //!
-//! Until phase-444 the four enums below carried CONCRETE VALUES ONLY. That
+//! The four enums below used to carry CONCRETE VALUES ONLY. That
 //! was sound while a `rclc_qos_t` could only ever travel one way — a C caller
 //! WRITES a profile and hands it to `nros_*_init_with_qos` — because a
 //! request is always a concrete demand.
@@ -40,7 +40,7 @@
 //!
 //! Reliability and durability AGREE on exactly one enumerator each and
 //! disagree on the other; history agrees on none; liveliness has the two
-//! MANUAL kinds transposed (phase-376 W5/B2 fixed the RMW side and left this
+//! MANUAL kinds transposed (a fix corrected the RMW side and left this
 //! one, correctly — the value crossing the ABI is the RMW one). So a numeric
 //! cast between the two vocabularies is wrong in every enum, and it is wrong
 //! SILENTLY: `MANUAL_BY_TOPIC` becomes `MANUAL_BY_NODE` on the wire, and an
@@ -65,7 +65,7 @@ pub enum rclc_qos_reliability_t {
     /// request. Upstream's `RMW_QOS_POLICY_RELIABILITY_UNKNOWN`.
     RCLC_QOS_RELIABILITY_UNKNOWN = 3,
     /// Resolve at creation against the endpoints already discovered on the
-    /// topic (issue 1973) — upstream's `RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE`.
+    /// topic — upstream's `RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE`.
     /// A request only: a read-back reports the concrete policy chosen.
     RCLC_QOS_RELIABILITY_BEST_AVAILABLE = 4,
 }
@@ -84,7 +84,7 @@ pub enum rclc_qos_durability_t {
     /// The backend could not determine this policy — an ABSENCE, never a
     /// request. Upstream's `RMW_QOS_POLICY_DURABILITY_UNKNOWN`.
     RCLC_QOS_DURABILITY_UNKNOWN = 3,
-    /// Resolve at creation against the discovered graph (issue 1973) —
+    /// Resolve at creation against the discovered graph —
     /// upstream's `RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE`. A request only.
     RCLC_QOS_DURABILITY_BEST_AVAILABLE = 4,
 }
@@ -105,7 +105,7 @@ pub enum rclc_qos_history_t {
     RCLC_QOS_HISTORY_UNKNOWN = 3,
 }
 
-/// QoS liveliness policy. Phase 109 — matches DDS `LIVELINESS`.
+/// QoS liveliness policy. Matches DDS `LIVELINESS`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum rclc_qos_liveliness_t {
@@ -127,12 +127,12 @@ pub enum rclc_qos_liveliness_t {
     /// The backend could not determine this policy — an ABSENCE, never a
     /// request. Upstream's `RMW_QOS_POLICY_LIVELINESS_UNKNOWN`.
     RCLC_QOS_LIVELINESS_UNKNOWN = 4,
-    /// Resolve at creation against the discovered graph (issue 1973) —
+    /// Resolve at creation against the discovered graph —
     /// upstream's `RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE`. A request only.
     RCLC_QOS_LIVELINESS_BEST_AVAILABLE = 5,
 }
 
-/// Full DDS-shaped QoS profile (Phase 109).
+/// Full DDS-shaped QoS profile.
 ///
 /// Matches the field set of upstream `rmw_qos_profile_t`. Backends
 /// advertise per-policy support; entities created with a profile the
@@ -163,7 +163,7 @@ pub struct rclc_qos_t {
     pub liveliness_lease_ms: u32,
     /// If non-zero, topic-name encoding skips the `/rt/` ROS prefix.
     pub avoid_ros_namespace_conventions: u8,
-    /// Phase 282 (#145) — publisher-side "express" hint: if non-zero, this
+    /// Publisher-side "express" hint: if non-zero, this
     /// publisher's samples bypass transport tx batching (sent immediately
     /// even when the batching knob is on). A transport hint, not a DDS
     /// policy; ignored on subscriptions and by backends without batching.
@@ -277,7 +277,7 @@ pub static RCLC_QOS_SERVICES: rclc_qos_t = rclc_qos_t {
     tx_express: 0,
 };
 
-/// The name of ONE QoS policy — phase-417 G7, the C half of
+/// The name of ONE QoS policy — the C half of
 /// `rclcpp::qos_policy_kind_to_cstr`.
 ///
 /// @param policy One `NROS_RMW_QOS_POLICY_*` bit from
@@ -489,7 +489,7 @@ const fn c_depth_saturating(depth: u32) -> c_int {
     }
 }
 
-/// Phase 211.H (issue #52) — one per-topic QoS override, the C-ABI mirror of
+/// One per-topic QoS override, the C-ABI mirror of
 /// Rust's `nros_rmw::QoSOverride`. The deploy plan lowers a
 /// `qos_overrides.<topic>.<role>.<policy>` launch param into a `&'static`
 /// array of these, which the entry installs on the node via

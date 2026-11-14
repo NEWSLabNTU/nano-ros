@@ -1,8 +1,8 @@
 /**
  * @file rcl_compat.h
- * @brief What is LEFT of the rcl compat layer after phase-417 stage 6.
+ * @brief What is LEFT of the rcl compat layer now the C API takes rcl's names.
  *
- * RFC-0089 settled on 2026-09-04 that **the C API takes rcl's spellings**,
+ * It was settled on 2026-09-04 that **the C API takes rcl's spellings**,
  * because the goal is drop-in replacement and a ported file's line is rcl's
  * line. The migration it prescribes is ALIAS first, REPLACE later. Stage 5 was
  * the alias step and this header held twelve `static inline` forwarders;
@@ -10,7 +10,7 @@
  * and were deleted** — see section 3 for the list and for where each one lives
  * now.
  *
- * That is RFC-0089's "dissolves by construction": a shim exists to bridge two
+ * That is "dissolves by construction": a shim exists to bridge two
  * spellings, and when there is one spelling it has nothing to bridge. The
  * deletion is not a judgement call either — an identity `static inline` beside
  * the non-static declaration in `<rclc/detail/nros_generated.h>` is a hard
@@ -20,7 +20,7 @@
  *
  * TWO things, and neither is a spelling:
  *
- * 1. **The `RCL_RET_*` value MAPPING (section 1).** RFC-0089 forbids
+ * 1. **The `RCL_RET_*` value MAPPING (section 1).** The adoption rule forbids
  *    renumbering `rcl_ret_t` to rcl's values — that would silently flip the
  *    meaning of every stored return code across three FFI seams. So
  *    `RCL_RET_TIMEOUT` does not go away; it becomes the NAME of our constant,
@@ -93,7 +93,7 @@ RMW_RET_* and the VALUES differ. Include one."
  * `rcl/rcl/types.h:26-41`.)
  *
  * So this header MAPS the constants onto ours. It does NOT renumber
- * `rcl_ret_t` — RFC-0089 records this as the one place where taking rcl's
+ * `rcl_ret_t` — this is the one place where taking rcl's
  * spelling must not mean taking rcl's values, because a stored return code
  * crosses three FFI seams (C, C++, the Rust bindings) and renumbering would
  * flip the meaning of every one of them silently. A ported
@@ -127,7 +127,7 @@ RMW_RET_* and the VALUES differ. Include one."
  *   signal not to guess.
  */
 
-/* `rcl_ret_t` itself is ours since phase-492 (the generated header defines
+/* `rcl_ret_t` itself is ours (the generated header defines
  * it, an `int`); the width guard is asserted below. */
 /** Upstream `rcl_ret_t` IS `rmw_ret_t`, and ported rcl code mixes the two
  *  freely, so the alias exists here too. Nothing else of rmw is provided —
@@ -145,7 +145,7 @@ typedef rcl_ret_t rmw_ret_t;
 /** An argument to the function was invalid. rcl's value is 11; ours is -3. */
 #define RMW_RET_INVALID_ARGUMENT RCL_RET_INVALID_ARGUMENT
 
-/* Since phase-492 the `RCL_RET_*` codes are the generated header's own
+/* The `RCL_RET_*` codes are the generated header's own
  * constants (our values), so `RCL_RET_ERROR == RMW_RET_ERROR` holds here
  * exactly as it does upstream, with no second definition. */
 
@@ -162,7 +162,7 @@ typedef rcl_ret_t rmw_ret_t;
  *
  *   (b) someone "fixes" the incompatibility by taking rcl's VALUES as well as
  *       its spelling — the second block asserts we did not. This is the
- *       mutation RFC-0089 names as forbidden, and without it the header would
+ *       mutation the adoption rule names as forbidden, and without it the header would
  *       still compile after the change that breaks three FFI seams.
  */
 #if defined(__cplusplus) && __cplusplus >= 201103L
@@ -185,7 +185,7 @@ NROS_RCL_COMPAT_ASSERT(RCL_RET_NOT_INIT == -7,
 NROS_RCL_COMPAT_ASSERT(RCL_RET_UNSUPPORTED == -16,
                        "RCL_RET_UNSUPPORTED moved; rcl_compat.h's mapping is stale");
 
-/* (b) we took rcl's SPELLINGS and not its VALUES. RFC-0089: renumbering
+/* (b) we took rcl's SPELLINGS and not its VALUES: renumbering
  *     rcl_ret_t would silently flip every stored return code across the C,
  *     C++ and Rust FFI seams. OK is the sole code where the two agree. */
 NROS_RCL_COMPAT_ASSERT(RCL_RET_OK == 0, "RCL_RET_OK must be 0 -- the one value ours and rcl share");
@@ -214,13 +214,13 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * The alias is on the NAME and the LIFECYCLE idiom (caller owns the struct by
  * value, zero-initialises it, passes it to `_init`), which is the same in both
  * APIs. The LAYOUT is nano-ros's: a ported file that reaches into `.impl` or
- * any other upstream member fails to compile, which is correct — RFC-0035 puts
+ * any other upstream member fails to compile, which is correct — the RMW seam puts
  * the entity internals behind the API on purpose.
  *
  * C has no portable way to deprecate a typedef (see `rclc/visibility_control.h`), so
  * these carry a comment and no attribute, as the repo's convention requires.
  */
-/* Since phase-492 the entity types carry these names themselves
+/* The entity types carry these names themselves
  * (`rcl_node_t`, `rcl_publisher_t`, ..., `rclc_executor_t`, `rclc_support_t`
  * are the generated header's own structs), so no alias is needed here. */
 
@@ -230,7 +230,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * The handle typedefs above are honest because those types are OPAQUE on both
  * sides -- no member is part of the contract, so aliasing the name claims only
  * the lifecycle idiom, and a ported file reaching into `.impl` fails to
- * compile (RFC-0035 puts entity internals behind the API on purpose).
+ * compile (the RMW seam puts entity internals behind the API on purpose).
  *
  * A rosidl typesupport is the opposite: its MEMBERS are the contract. Upstream
  * carries `typesupport_identifier`, `data` and the `func` dispatcher that
@@ -249,14 +249,14 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * 3. What used to be here: TWELVE forwarders, now IDENTITY and therefore gone
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * phase-417 stage 6 (2026-09-04) renamed the C entry points themselves, so
+ * A rename on 2026-09-04 renamed the C entry points themselves, so
  * every function forwarder this header used to carry now has the SAME name on
  * both sides. An identity `static inline` is not a shim, it is infinite
  * recursion waiting for `-O0`, and the compiler says so first: a
  * `static inline rcl_get_zero_initialized_node` beside the non-static
  * declaration in `<rclc/detail/nros_generated.h>` is
  * `error: static declaration of 'rcl_get_zero_initialized_node' follows
- * non-static declaration`. They are deleted rather than argued away — RFC-0089
+ * non-static declaration`. They are deleted rather than argued away — the adoption rule
  * calls this "dissolving by construction", and it is the property that keeps a
  * compat layer from rotting into permanent debt.
  *
@@ -276,7 +276,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *   rclc_node_init_default                         nros_generated.h (node.rs)  <-- REORDERED
  *
  * `rclc_node_init_default` is the one that moved arguments, and the rename and
- * the reorder landed TOGETHER on purpose. RFC-0089's corrected hazard note:
+ * the reorder landed TOGETHER on purpose. The corrected hazard note:
  *
  *     C   : warning: passing argument 1 of 'f' from incompatible pointer type
  *           ...even under -Wall -Wextra.
@@ -300,8 +300,8 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *   rclc_service_init_default(service, node, type_support, service_name)
  *
  * Ours used to carry `callback` and `context` in two extra positions, and the
- * ledger attributed that to RFC-0041 and to a rule called
- * `executor-owns-no-entity-storage`. RFC-0089 checked both: RFC-0041's
+ * ledger attributed that to the unified callback receive model and to a rule called
+ * `executor-owns-no-entity-storage`. Both were checked: the receive model's
  * normative content is the DISPATCH MODEL and says nothing about a binding
  * site, and `executor-owns-no-entity-storage` has zero occurrences in
  * `docs/design/` — it is a phrase the ledger invented and then cited ten
@@ -310,8 +310,8 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *
  * So the callback moved to where rclc puts it:
  *   - typed path: `rclc_executor_add_subscription_with_context(exec, sub,
- *     msg, cb, ctx, invocation)` — rclc's own, since phase-492 W8 put the
- *     codec in the descriptor;
+ *     msg, cb, ctx, invocation)` — rclc's own, now the
+ *     codec is in the descriptor;
  *   - byte path: `rclc_executor_add_subscription_raw(exec, sub, cb, ctx,
  *     invocation)` and `rclc_executor_add_service_raw(exec, service, cb, ctx)`.
  *     These keep the `nros_` prefix on purpose: rclc's `add_subscription` and
@@ -322,20 +322,21 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *
  * `rclc_publisher_init_default` and friends spell their third parameter
  * `const struct rclc_message_type_t *` (or `rclc_service_type_t`), not
- * `rosidl_message_type_support_t`. Settled 2026-09-04, narrowed 2026-10-12
- * (phase-492 W8): `ROSIDL_GET_MSG_TYPE_SUPPORT(pkg, msg, Name)` is adopted and
+ * `rosidl_message_type_support_t`. Settled 2026-09-04, narrowed 2026-10-12:
+ * `ROSIDL_GET_MSG_TYPE_SUPPORT(pkg, msg, Name)` is adopted and
  * yields our descriptor, so a ported init line compiles unchanged; the STRUCT
  * stays undeclared, because a rosidl typesupport's MEMBERS are its contract —
  * the `typesupport_identifier`, the `data`, and the `func` dispatcher that
  * resolves the implementation at runtime — against our `type_name` /
  * `type_hash` / `serialized_size_max` / `serialize` / `deserialize`. Adopting the name would claim
- * a dispatcher we do not have, and the "compiles and differs" that follows is exactly what RFC-0089
+ * a dispatcher we do not have, and the "compiles and differs" that follows is exactly what
+ * the adoption rule
  * forbids. It costs a ported call site nothing, because the argument comes from OUR codegen either
  * way: `ROSIDL_GET_MSG_TYPE_SUPPORT` does not exist here, so a ported line that tries to produce
  * one fails to compile.
  *
  * ═══════════════════════════════════════════════════════════════════════════
- * 4. ADOPTED by phase-515 C1: `rclc_timer_init_default` and `rcl_timer_init`
+ * 4. ADOPTED: `rclc_timer_init_default` and `rcl_timer_init`
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * The last `_init_default` to converge, and the reason it took longest was the
@@ -343,13 +344,13 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *
  *   rcl_timer_callback_t = void (*)(rcl_timer_t *, int64_t last_call_time)
  *
- * Until phase-515 ours was `void (*)(rcl_timer_t *, void *context)`: two
+ * Ours used to be `void (*)(rcl_timer_t *, void *context)`: two
  * parameters, both leading with the timer, and the SECOND carrying entirely
  * different information. A ported timer callback was a different FUNCTION, so
  * the init took a distinct name (~~`rclc_timer_init_with_context`~~) rather than
  * compile-and-differ under rclc's.
  *
- * phase-515 decision D2 took rclc's contract and removed ours. The context
+ * We took rclc's contract and removed ours. The context
  * was always recoverable: every in-tree caller (34) embedded the timer in the
  * struct its context pointed at, or in a struct beside it, and the executor
  * hands the callback the caller's OWN timer, never a copy. So the state is
@@ -367,10 +368,10 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *     is read, and a C component the generated entry hosts has no support.
  *   - `allocator` must be the default; a caller-supplied one is refused.
  *   - `last_call_time` is the executor's elapsed count at dispatch, the value
- *     `rcl_timer_get_time_since_last_call` reports: microsecond resolution
- *     (issue #505), measured from the previous due point.
+ *     `rcl_timer_get_time_since_last_call` reports: microsecond resolution,
+ *     measured from the previous due point.
  *
- * The clock goes where rcl puts it, SECOND (phase-430 W1 took that position
+ * The clock goes where rcl puts it, SECOND (an earlier change took that position
  * under the name ~~`rclc_timer_init_on_clock`~~ while the contract still
  * differed). Jazzy's call info (`rcl_timer_call_info_t`) reaches a callback
  * registered with `rclc_timer_init_with_info(timer, clock, period, cb,
@@ -379,7 +380,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *
  * ── Also still refused, and why, so the absence is a record ───────────────
  *
- * * ADOPTED by phase-492 W1.b, so no longer in this list: the `rcl_*_fini`
+ * * ADOPTED, so no longer in this list: the `rcl_*_fini`
  *   of publisher / subscription / client / service / action client / action
  *   server take rcl's `(entity, node)` (the node is checked non-NULL; teardown
  *   needs nothing from it); `rcl_node_get_domain_id` writes rcl's `size_t *`;
@@ -394,14 +395,14 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * * `rcl_timer_get_period` — upstream returns the value through an `int64_t *`
  *   out-parameter; ours returns it. Different data flow, not a different word.
  * * `rcl_timer_get_time_until_next_call` — was in the bullet above and is NOT
- *   any more. phase-417 stage 3 gave ours upstream's shape exactly,
+ *   any more. Ours now has upstream's shape exactly,
  *   `rcl_ret_t (const rcl_timer_t *, int64_t *)`: the caller-supplied "now"
  *   is gone, the value moved to a SIGNED out-parameter so overdue is
  *   expressible, and the status return carries the error channel the old
  *   `uint64_t` had spent on `0`. What remains between it and the NAME is the
  *   entry-point rename, which is stage 6's step and not a contract difference.
  *   Two envelopes a ported caller should know, both stated on the function:
- *   the arena's timer accounting is microsecond-based (issue #505), so the
+ *   the arena's timer accounting is microsecond-based, so the
  *   nanosecond value is a microsecond quantity scaled by 1000; and
  *   `RCL_RET_TIMER_INVALID` / `RCL_RET_TIMER_CANCELED` have no counterpart
  *   here (see the constant block), so those and "not registered with an
@@ -412,8 +413,8 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *   `rcl_timer_get_next_call_time` beside it — at which point one family had
  *   two prefixes with a stated reason for only one of them
  *   (`rcl_timer_get_time_since_last_call` kept its old prefix then because its
- *   out-parameter was `uint64_t *` against upstream's `int64_t *`; phase-492
- *   W1.b gave it rcl's type). It is
+ *   out-parameter was `uint64_t *` against upstream's `int64_t *`; it now
+ *   has rcl's type). It is
  *   `rcl_timer_get_time_until_next_call` now, with no forwarder, per stage 6
  *   step B's rule that a stale call should fail on the IDENTIFIER.
  * * `rcl_guard_condition_init`, `rcl_node_get_fully_qualified_name`, the
@@ -429,7 +430,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *   `rclc_client_take_response(client, buf, buf_len, size_t *out_len)`.
  *   Different arity, different argument order, different data. This is
  *   `PollingSubscription::take()`'s class exactly — a plausible name over an
- *   opposite data contract — and it is the reason RFC-0089 exists.
+ *   opposite data contract — and it is the reason the adoption rule exists.
  * * `RCL_RET_BAD_ALLOC`, `RCL_RET_ALREADY_INIT`, `RCL_RET_*_INVALID`,
  *   `RCL_RET_*_TAKE_FAILED`, `RCL_RET_TIMER_CANCELED`, the wait-set codes —
  *   see the note above the constant block.
@@ -439,7 +440,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * 6. The executor's entity registration: one adoption, two refusals
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * CORRECTED 2026-09-18 (phase-417 W5.e). This section used to tell a reader
+ * CORRECTED 2026-09-18. This section used to tell a reader
  * that the typed subscription entry point did not exist and that "the honest
  * move is to name the shape a faithful alias needs and wait for it". It had
  * SHIPPED — on 2026-09-04, in the very commit that wrote the sentence (W5.a and
@@ -461,13 +462,13 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *             const void *msg, void *context);
  *
  * Same two parameters, same order, same meanings. It was our
- * ~~`rclc_typed_subscription_callback_t`~~ plus an alias here; phase-492 W1.b gave
- * the definition rclc's name, and per RFC-0089 rule 1 the twin is deleted, not
+ * ~~`rclc_typed_subscription_callback_t`~~ plus an alias here; the definition
+ * now has rclc's name, and the twin is deleted, not
  * aliased. A nano-ros program names it without a compat header.
  */
 
 /*
- * ── The context-LESS `rclc_executor_add_subscription`: ADOPTED (phase-515 C2) ─
+ * ── The context-LESS `rclc_executor_add_subscription`: ADOPTED ─
  *
  *   rclc: rcl_ret_t rclc_executor_add_subscription(rclc_executor_t *,
  *             rcl_subscription_t *, void *msg,
@@ -477,13 +478,13 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *
  * It was refused on the argument that adapting a `void (*)(const void *)` to
  * the context-carrying dispatch needs a trampoline that REMEMBERS the original
- * pointer, i.e. state in the wrapper (RFC-0019/0020). The pointer does not need
+ * pointer, i.e. state in the wrapper. The pointer does not need
  * the wrapper: the executor's arena entry already owns a `context` slot, and
  * the context-less form registers a fixed trampoline with the user's callback
  * IN that slot. The trampoline only translates the ABI, which is what
- * RFC-0020's checklist asks of one.
+ * the thin-wrapper checklist asks of one.
  *
- * ── `rclc_executor_add_subscription_with_context`: ADOPTED (phase-492 W8) ─
+ * ── `rclc_executor_add_subscription_with_context`: ADOPTED ─
  *
  *   rclc: rcl_ret_t rclc_executor_add_subscription_with_context(
  *             rclc_executor_t *executor, rcl_subscription_t *subscription,
@@ -513,9 +514,9 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *             size_t response_capacity, size_t *response_len, void *context);
  *
  * Two things this paragraph used to get wrong. Ours is NOT "bound at creation"
- * any more — phase-417 stage 6 moved the callback to REGISTRATION, where rclc
+ * any more — the callback moved to REGISTRATION, where rclc
  * puts it, and `rclc_executor_add_service_raw` is that call. And the typed
- * service path is no longer missing: phase-417 W5.e ships it per service, out
+ * service path is no longer missing: it ships per service, out
  * of `packs/c/service.h.jinja` —
  *
  *     void cb(const <Srv>_Request *request, <Srv>_Response *response,
@@ -542,7 +543,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * wire at all, so the two callbacks do not merely differ in payload shape.
  *
  * Deliberately not aliased onto anything today. Two arenas for one concept is
- * the drift RFC-0019 exists to prevent.
+ * the drift the thin-wrapper discipline exists to prevent.
  */
 
 #endif /* collision guard */

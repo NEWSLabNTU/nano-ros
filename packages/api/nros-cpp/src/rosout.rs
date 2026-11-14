@@ -1,4 +1,4 @@
-//! `/rosout` from C++ — issue 1589. The runtime half of `<rclcpp/rosout.hpp>`.
+//! `/rosout` from C++. The runtime half of `<rclcpp/rosout.hpp>`.
 //!
 //! The publisher is an ordinary C++ publisher (`CppPublisher` in caller
 //! storage, created through `nros_cpp_publisher_create`), named by
@@ -8,7 +8,7 @@
 //! each record, so all three languages share one `Log` mapping.
 //!
 //! Every symbol links without the `rosout` capability and answers
-//! `NROS_CPP_RET_UNSUPPORTED` / `false`, the phase-426 W4 rule for a surface
+//! `NROS_CPP_RET_UNSUPPORTED` / `false`, the rule for a surface
 //! an image may not have compiled in.
 
 use core::ffi::c_void;
@@ -70,8 +70,8 @@ pub unsafe extern "C" fn nros_cpp_rosout_publisher_create(
     }
 }
 
-/// Start queueing records for `/rosout`, scoped by the image's ROS release
-/// (RFC-0102 D4). `NROS_CPP_RET_ERROR` if the queueing sink could not be
+/// Start queueing records for `/rosout`, scoped by the image's ROS release.
+/// `NROS_CPP_RET_ERROR` if the queueing sink could not be
 /// registered.
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_cpp_rosout_enable() -> nros_cpp_ret_t {

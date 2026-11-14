@@ -1,4 +1,4 @@
-//! `/rosout` from C — issue 1589.
+//! `/rosout` from C.
 //!
 //! The Rust bridge (`nros_node::rosout`) in three calls, plus the predicate
 //! rcl has. Same shape, same reasons: the application creates the publisher
@@ -20,7 +20,7 @@
 //! here: the predicate answers `false` (upstream's contract for a build with
 //! the bridge off) and the other three answer `RCL_RET_UNSUPPORTED`, so a
 //! ported program compiles and says why at runtime, the way the C++
-//! parameter forwarders do (phase-426 W4).
+//! parameter forwarders do.
 //!
 //! The declarations are hand-authored in `<rclc/log.h>` beside the rest of
 //! the log surface, so cbindgen skips these names (`cbindgen.toml`).
@@ -127,7 +127,7 @@ pub extern "C" fn rclc_rosout_qos_default() -> rclc_qos_t {
 }
 
 /// Start queueing log records for `/rosout`, scoped to what this image's ROS
-/// release publishes (RFC-0102 D4). Call it AFTER
+/// release publishes. Call it AFTER
 /// `rclc_rosout_publisher_init`: a queue with nowhere to drain only counts
 /// drops.
 ///

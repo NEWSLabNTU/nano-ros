@@ -1,15 +1,15 @@
-/* Phase 119.3 stub — DO NOT include from production C code without
+/* Stub — DO NOT include from production C code without
  * the build system supplying the real header.
  *
  * `nros_config_generated.h` is produced per-build by `nros-c/build.rs`
  * and written ONLY to that build script's cargo `$OUT_DIR`, as
  *   <OUT_DIR>/nros-c-generated/rclc/detail/nros_config_generated.h
- * (issue 1824 retired the flat `$CARGO_TARGET_DIR/nros-c-generated/` copy,
- * which was whichever build wrote it last). The real header carries
+ * (the flat `$CARGO_TARGET_DIR/nros-c-generated/` copy,
+ * which was whichever build wrote it last, is retired). The real header carries
  *   #define NROS_CONFIG_VARIANT "<sorted_underscore_joined_features>"
  * plus a reference to a matching symbol in libnros_c.a, so a header/archive
  * mismatch is an undefined reference NAMING the variant it wanted instead of a
- * silent `_opaque` overflow at runtime (issue 0360).
+ * silent `_opaque` overflow at runtime.
  *
  * How a build reaches it:
  *   - CMake `add_subdirectory(nano-ros)`: nros-c's CMakeLists places the
@@ -30,7 +30,7 @@
 #ifndef NROS_CONFIG_GENERATED_H
 #define NROS_CONFIG_GENERATED_H
 
-/* Issue 1569 — the committed snapshot is for BUILDLESS header checks only
+/* The committed snapshot is for BUILDLESS header checks only
  * (`NROS_CONFIG_BUILDLESS`, which no build system defines — gated). It used to
  * be selected by `NROS_PLATFORM_NUTTX` and sized every NuttX image from a
  * hand-kept number; NuttX now gets the per-build header like every platform,

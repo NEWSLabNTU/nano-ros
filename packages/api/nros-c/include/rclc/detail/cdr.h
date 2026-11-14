@@ -34,7 +34,7 @@ extern "C" {
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-// phase-303 W4 (#0267) — XCDR2 DHEADER delimiters. Under XCDR1 (humble) these
+// XCDR2 DHEADER delimiters. Under XCDR1 (humble) these
 // are no-ops returning -1 (mark) / 0. Under XCDR2 (iron/jazzy+) begin reserves a
 // 4-byte DHEADER (returns its offset as the mark); end backpatches it with the
 // member-block size. Generated `_serialize_inline` / `_deserialize_inline` wrap
@@ -384,7 +384,7 @@ int32_t rclc_cdr_read_string(const uint8_t** ptr, const uint8_t* end, const uint
  * whatever address the buffer happens to sit at. This is the Rust reader's
  * `CdrReader::align` behind the C ABI, so it carries the same edition rule
  * (XCDR2 caps 8-byte primitives at 4) and the header-only borrow readers in
- * `<rclc/detail/view.h>` cannot drift from it (issue 1148).
+ * `<rclc/detail/view.h>` cannot drift from it.
  *
  * @param ptr       Pointer to the cursor (advanced on success).
  * @param end       Pointer past the end of the buffer.
@@ -402,8 +402,8 @@ int32_t rclc_cdr_align(const uint8_t** ptr, const uint8_t* end, const uint8_t* o
  * failure if the product does not fit below @p limit.
  *
  * @p count is untrusted — it came off the wire — and on every 32-bit target
- * `(size_t)count * elem_size` wraps for a count as small as `0x40000000`
- * (issue 1149): the wrapped length passes any bounds check, and the view then
+ * `(size_t)count * elem_size` wraps for a count as small as `0x40000000`:
+ * the wrapped length passes any bounds check, and the view then
  * reads far past the buffer while reporting success. Call sites pass
  * `SIZE_MAX` as @p limit; a test may pass a 32-bit limit to exercise the wrap
  * on a 64-bit host, which is the only way the native lane can see it.

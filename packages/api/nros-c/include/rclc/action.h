@@ -18,9 +18,9 @@
 /**
  * @brief rclc's default preset constructor for an action client.
  *
- * phase-417 W5.d. Ledger row `c:action_client_init_default` was `declined` on
+ * Ledger row `c:action_client_init_default` was `declined` on
  * "`rcl_action_client_init` takes no QoS and IS the default form" — which
- * says the CAPABILITY corresponds, not that the name may be missing. RFC-0089
+ * says the CAPABILITY corresponds, not that the name may be missing. The adoption rule
  * is explicit that a correspondence is a reason to take the spelling, so a
  * ported rclc_action file compiles on this line instead of on a diff.
  *
@@ -29,7 +29,7 @@
  * rclc puts the typesupport third and the action name fourth, ours has them
  * the other way round. Both are pointers, so a caller who guessed wrong gets a
  * WARNING and a client initialised with a type descriptor as its name — the
- * silent-reorder hazard RFC-0089 records, which is exactly why phase-417 pairs
+ * silent-reorder hazard the adoption rule records, which is exactly why the C API pairs
  * every reorder with a rename. The forwarder below is where the swap happens,
  * once, and `tests/compile/preset_constructors.c` promotes
  * `-Wincompatible-pointer-types` to an error so a mis-wired swap cannot ship.
@@ -37,7 +37,7 @@
  * This is the CALLBACK-mode client (rclc registers the goal/feedback/result
  * callbacks later, at `rclc_executor_add_action_client`), so it forwards to
  * rcl_action_client_init() and not to rclc_polling_action_client_init(),
- * which builds the separate polled type (phase-487 W4).
+ * which builds the separate polled type.
  *
  * `static inline`: no symbol, no writable data.
  *
@@ -55,7 +55,7 @@ static inline rcl_ret_t rclc_action_client_init_default(struct rcl_action_client
 }
 
 /*
- * NOT provided: `rclc_action_server_init_default`. phase-417 W5.d looked and
+ * NOT provided: `rclc_action_server_init_default`. It was considered and
  * refused, and the reason is a PARAMETER rather than an order:
  *
  *   rclc: rcl_ret_t rclc_action_server_init_default(
@@ -70,7 +70,7 @@ static inline rcl_ret_t rclc_action_client_init_default(struct rcl_action_client
  * (name, type, callbacks)" and defers RMW entity creation to
  * `rclc_executor_attach_action_server()`, so it takes neither a clock nor a
  * support handle. A faithful-looking five-argument forwarder would therefore
- * carry an argument it IGNORES — the inert-parameter defect RFC-0089 exists to
+ * carry an argument it IGNORES — the inert-parameter defect the adoption rule exists to
  * end, and the same refusal `rclc_node_resolve_name` makes for rcl's
  * `allocator` and `is_service`.
  *
@@ -78,8 +78,8 @@ static inline rcl_ret_t rclc_action_client_init_default(struct rcl_action_client
  * `rclc_executor_add_action_server`; ours are bound at init
  * (`rclc_action_server_init_with_callbacks(server, node, action_name, type_info, goal_cb,
  * cancel_cb, accepted_cb, ...)`). Forwarding to the callback-free
- * `rclc_polling_action_server_init` instead would not even compile since
- * phase-487 W4 (it takes a `rclc_polling_action_server_t`), and before that it
+ * `rclc_polling_action_server_init` instead would not even compile now
+ * (it takes a `rclc_polling_action_server_t`), and before that it
  * compiled and then dispatched
  * nothing, which is the "plausible name over an opposite data contract" class.
  *

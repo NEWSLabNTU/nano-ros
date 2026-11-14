@@ -1,15 +1,15 @@
 /**
  * @file view.h
  * @ingroup grp_cdr
- * @brief Zero-copy message-field views — RFC-0033 `view` mode.
+ * @brief Zero-copy message-field views — the `view` field mode.
  *
- * A `mode = "view"` field (Phase 235, issue 0021) is a read-only,
+ * A `mode = "view"` field is a read-only,
  * callback-scoped view that points directly into the live CDR receive buffer
  * instead of copying into a fixed array (`inline`) or malloc'd container
  * (`heap`). The generated `{Msg}_deserialize_view` walks the CDR stream and
  * sets these views' pointers into the buffer — no allocation, no `_fini`.
  *
- * Hard constraints (RFC-0033): the views are valid **only** for the duration of
+ * Hard constraints: the views are valid **only** for the duration of
  * the subscription callback; the buffer is reused immediately after. Copy out
  * anything that must outlive the callback.
  *
@@ -108,7 +108,7 @@ static inline int32_t rclc_cdr_borrow_bytes(const uint8_t** ptr, const uint8_t* 
  * 1148). The count is wire data, so its byte length goes through
  * `rclc_cdr_seq_byte_len`, which refuses a product that would wrap `size_t`;
  * on every 32-bit target a bare `(size_t)cnt * sizeof(T)` wraps to a length
- * that passes the bounds check (issue 1149). `_get` returns the zero value for
+ * that passes the bounds check. `_get` returns the zero value for
  * an index at or past `count` rather than reading outside the view.
  */
 
@@ -123,10 +123,10 @@ static inline int32_t rclc_cdr_borrow_bytes(const uint8_t** ptr, const uint8_t* 
         uint32_t cnt;                                                                              \
         size_t bytelen;                                                                            \
         if (rclc_cdr_read_u32(ptr, end, origin, &cnt) < 0) return -1;                              \
-        /* Element 0 starts on a sizeof(CT) boundary of the STREAM (issue 1148); the   */          \
+        /* Element 0 starts on a sizeof(CT) boundary of the STREAM; the   */                       \
         /* writer pads before an element, so an empty sequence carries no padding.    */           \
         if (cnt > 0 && rclc_cdr_align(ptr, end, origin, sizeof(CT)) < 0) return -1;                \
-        /* cnt is wire data: the product must be checked, not trusted (issue 1149). */             \
+        /* cnt is wire data: the product must be checked, not trusted. */                          \
         if (rclc_cdr_seq_byte_len(cnt, sizeof(CT), SIZE_MAX, &bytelen) < 0) return -1;             \
         if ((size_t)(end - *ptr) < bytelen) return -1;                                             \
         out->bytes = *ptr;                                                                         \

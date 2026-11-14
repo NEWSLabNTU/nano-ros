@@ -16,7 +16,7 @@
 #include <cstddef>
 #include <string.h>
 
-// phase-417 W1.c — `std::string` interop. `<string>` is absent from a minimal
+// `std::string` interop. `<string>` is absent from a minimal
 // freestanding libcpp and present-but-poisoned under `-ffreestanding`, so the
 // interop below exists only where `NROS_CPP_HAS_STD_STRING` does. That macro
 // has one definition site, which carries the measurement for both cases.
@@ -71,10 +71,10 @@ template <size_t N> struct FixedString {
     static constexpr size_t capacity() { return N - 1; }
 
     /// Number of characters, excluding the terminator — the `std::string`
-    /// spelling of `length()`. phase-417 W1.c; ungated, no `<string>` needed.
+    /// spelling of `length()`. Ungated, no `<string>` needed.
     size_t size() const { return length(); }
 
-    /// True when the string holds no characters. phase-417 W1.c; ungated.
+    /// True when the string holds no characters. Ungated.
     bool empty() const { return data[0] == '\0'; }
 
     /// Compare with a C string.
@@ -86,7 +86,7 @@ template <size_t N> struct FixedString {
     bool operator!=(const char* s) const { return !(*this == s); }
 
 #ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
-    // phase-417 W1.c — `std::string` interop.
+    // `std::string` interop.
     //
     // Codegen emits a message's string field as `FixedString<N>` where
     // upstream rosidl emits `std::string`, so the very first line of a ported
@@ -96,8 +96,8 @@ template <size_t N> struct FixedString {
     //
     // did not compile: the only assignment was from `const char*`. These
     // members COPY and call through to the existing `const char*` paths; they
-    // add no data member and no second code path (RFC-0089 §"Who implements an
-    // adopted name" — container/string conversions that copy and delegate are
+    // add no data member and no second code path (the adoption
+    // rule — container/string conversions that copy and delegate are
     // wrapper-side ergonomics), so the `char[N]` layout the FFI relies on is
     // unchanged.
     //

@@ -12,20 +12,20 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <type_traits> // Phase 189.M3.3.e — SFINAE on the callback-style create_service
+#include <type_traits>                             // SFINAE on the callback-style create_service
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
-#include <cstdlib>                                 // getenv — Phase 123.B.3 env-aware init
+#include <cstdlib>                                 // getenv — env-aware init
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
-// <stdio.h> + unqualified `::fprintf` (issue 0942 / phase-472 W5): `<cstdio>` need not put
+// <stdio.h> + unqualified `::fprintf`: `<cstdio>` need not put
 // the C names in `std` on a freestanding libstdc++, and `std::fprintf` then fails.
 #include <stdio.h>
 #endif
 #endif
 
 // `<map>` is `NROS_CPP_STD` ONLY, and the `|| __STDC_HOSTED__` arm above is
-// exactly what it must not have (issue 1431).
+// exactly what it must not have.
 //
-// phase-417 W4.a put it in that block beside `<cstdlib>`/`<cstdio>`, which is
+// It used to sit in that block beside `<cstdlib>`/`<cstdio>`, which is
 // safe for THOSE: Zephyr's minimal libcpp ships `cstdlib` and `cstdio`, so the
 // hosted arm can be satisfied. It ships no `map`. And `__STDC_HOSTED__` is 1 on
 // Zephyr — the compiler is hosted, the include path is not — so the arm fired
@@ -33,7 +33,7 @@
 //
 //     node.hpp:18:10: fatal error: map: No such file or directory
 //
-// That is issue 0112's half of the both-probes rule, which CLAUDE.md records:
+// That is one half of the both-probes rule, which the repo records:
 // `__STDC_HOSTED__` alone is a claim about the COMPILER and the question is
 // about the INCLUDE PATH.
 //
@@ -41,28 +41,28 @@
 // same condition as the only code that needs it. Both consumers —
 // `Node::declare_parameters` below and `lifecycle.hpp`'s twin, which includes
 // no `<map>` of its own and relies on this one — sit inside
-// `NROS_CPP_HAS_STD_STRING` (phase-476 W3), which implies `NROS_CPP_STD`
+// `NROS_CPP_HAS_STD_STRING`, which implies `NROS_CPP_STD`
 // because every capability probe is `#if defined(NROS_CPP_STD)`. So this is the
 // narrowest guard that still covers every use, and it restores the property
 // the block below states as the rule: a hosted STL include lives inside an
 // `NROS_CPP_STD` region, never one an `||` arm can reach from a freestanding
-// board (issue 0332).
+// board.
 #if defined(NROS_CPP_STD) // hosted-family: container-interop
-#include <map>            // phase-417 W4.a — rclcpp::Node::declare_parameters<T>'s argument
+#include <map>            // rclcpp::Node::declare_parameters<T>'s argument
 #endif
 
-// Phase 118.D: ffi.h MUST come before qos.hpp so qos.hpp's
+// ffi.h MUST come before qos.hpp so qos.hpp's
 // `#ifndef NROS_CPP_FFI_H` guard sees the canonical types and skips
 // its local redefinitions.
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
 #include "rclcpp/detail/traits.hpp"
-#include "rclcpp/handle.hpp" // phase-482 W2 — `Node::SharedPtr`
+#include "rclcpp/handle.hpp" // `Node::SharedPtr`
 #include "rclcpp/result.hpp"
-#include "rclcpp/owned.hpp" // phase-456 W5 — the return type of the poll `create_service`
+#include "rclcpp/owned.hpp" // The return type of the poll `create_service`
 #include "rclcpp/detail/hosted_block.hpp"
 #include "rclcpp/detail/nros_cpp_config_generated.h"
-// phase-482 W3 — `rclcpp::init` below reads `NROS_ENTRY_LOCATOR` /
+// `rclcpp::init` below reads `NROS_ENTRY_LOCATOR` /
 // `NROS_ENTRY_DOMAIN_ID`, so the ladder that derives them from Kconfig must be
 // visible in EVERY TU that calls it, not only in one that also includes
 // `<rclcpp/detail/main.hpp>`. A ported `main.cpp` includes `<rclcpp/rclcpp.hpp>` and
@@ -73,11 +73,11 @@
 // same answer a null gave.
 #include "rclc/detail/entry_config.h"
 #include "rclcpp/qos.hpp"
-// Phase 189.M3.1 — rclcpp-style named-options structs
+// rclcpp-style named-options structs
 // (`SubscriptionOptions` / `PublisherOptions`) used by the 4-arg
 // `create_subscription` / `create_publisher` overloads below.
 #include "rclcpp/options.hpp"
-// Phase 84.G8: heavy entity headers (publisher / subscription / service /
+// Heavy entity headers (publisher / subscription / service /
 // client / action_server / action_client) are no longer pulled in here.
 // Each entity header provides the out-of-line definition of its
 // corresponding `Node::create_X<T>()` template and includes `node.hpp`
@@ -87,43 +87,42 @@
 // and pay for only the light entities (timer, guard_condition,
 // executor) below.
 #include "rclcpp/timer.hpp"
-// Issue 0789 — `Node::get_clock()` / `Node::now()`. `clock.hpp` pulls in
+// `Node::get_clock()` / `Node::now()`. `clock.hpp` pulls in
 // `time.hpp` and `duration.hpp`, so a node that stamps a header needs no
 // further include.
 #include "rclcpp/clock.hpp"
-// phase-427 W4 — `ComponentNode` is merged into `Node`, so the two things its
+// `ComponentNode` is merged into `Node`, so the two things its
 // header pulled in for the merged members come here with them:
 //   * `log.hpp`  — `NROS_ERROR`, the OVERRIDABLE sink `report_component_failure`
-//     routes through so a freestanding image can be given a boot diagnostic
-//     (issue 1015).
+//     routes through so a freestanding image can be given a boot diagnostic.
 //   * `declared_qos.hpp` — `rclcpp::declared_depth` + `DECLARED_DEPTH_UNDECLARED`,
-//     read by `Node::check_declared_depth` (phase-403 step 2).
+//     read by `Node::check_declared_depth`.
 // Neither includes a nano-ros header of its own, so neither can close a cycle
 // back onto `node.hpp`. `component.hpp` — which DOES include this file — is why
 // the member-pointer `create_subscription_in` / `create_subscription_in_group`
 // family is DECLARED here and DEFINED there.
 #include "rclcpp/detail/declared_qos.hpp"
-#include "rclcpp/detail/declared_params.hpp" // phase-446 W6 -- each node's DECLARED parameters
-// phase-417 W4.a -- `rclcpp::ParameterType`, `ParameterDescriptor`,
+#include "rclcpp/detail/declared_params.hpp" // Each node's DECLARED parameters
+// `rclcpp::ParameterType`, `ParameterDescriptor`,
 // `ParameterWrite` and the on-set callback types, which the parameter methods
 // below name. Freestanding (`<cstdint>`, `const char*`, the FFI header) and it
 // includes nothing that includes this file. `nros.hpp` included it already;
 // the declarations here are why it moves onto node.hpp's own include list.
 #include "rclcpp/node_parameters.hpp"
-// issue 2056 -- `rclcpp::ParameterValue` / `rclcpp::Parameter`, which the
+// `rclcpp::ParameterValue` / `rclcpp::Parameter`, which the
 // hosted parameter overloads below take and return. It includes
 // `node_parameters.hpp` and the traits header only, so no cycle.
 #include "rclcpp/parameter_value.hpp"
 #include "rclcpp/logging.hpp"
 #include "rclcpp/guard_condition.hpp"
 #include "rclcpp/executor.hpp"
-// phase-417 stage 2b (RFC-0089) — `rclcpp::TopicEndpointInfo` and the visitor
+// `rclcpp::TopicEndpointInfo` and the visitor
 // typedef used by the graph forwarders below.
 #include "rclcpp/graph.hpp"
-// Phase 273 (RFC-0047) — callback-group token (value type, no heap).
+// Callback-group token (value type, no heap).
 #include "rclcpp/callback_group.hpp"
-// phase-427 W1 declared the parameter facade here; phase-426 W4 took away the
-// store it read. The hosted block no longer holds a `ParameterServer` — the
+// The parameter facade is declared here; the store it read
+// is gone. The hosted block no longer holds a `ParameterServer` — the
 // facade forwards to the EXECUTOR's store — so this header needs
 // `parameter.hpp` for nothing of its own. It is kept because what that header
 // still holds (`rclcpp::Seq<T, N>`) is a public surface a consumer reaches
@@ -137,12 +136,12 @@
 // established that live with the predicate, at the one detection site.
 #include "rclcpp/detail/std_detect.hpp"
 
-// Issue 2081 — named by `Node::register_service_`'s request-id overload;
+// Named by `Node::register_service_`'s request-id overload;
 // DEFINED in `rclcpp/service.hpp` (under the guard the RMW ABI and
 // `<rclc/detail/request_id.h>` share).
 struct rmw_request_id_t;
 
-// phase-476 W3 — the hosted-node macro (`NROS_CPP_` + ~~`NODE_HOSTED`~~) IS GONE. It was the
+// The hosted-node macro (`NROS_CPP_` + ~~`NODE_HOSTED`~~) IS GONE. It was the
 // conjunction of all four capability probes, wrapped around every hosted-shape member at once. Each
 // member now names the ONE capability its signature actually uses: the `std::string`-keyed
 // forwarders `NROS_CPP_HAS_STD_STRING`, the `std::shared_ptr` spellings `NROS_CPP_HAS_SHARED_PTR`,
@@ -150,7 +149,7 @@ struct rmw_request_id_t;
 // `<vector>` or `<functional>` any more. The rule it served is unchanged: a
 // probe gates METHODS, never a member.
 
-// ~~`NROS_RCLCPP_MAX_PARAMS`~~ IS GONE (phase-426 W4). It sized an inline
+// ~~`NROS_RCLCPP_MAX_PARAMS`~~ IS GONE. It sized an inline
 // `nros::ParameterServer` on the merged node's hosted block — a SECOND
 // parameter store, node-local, which `ros2 param get` could not see and a
 // sibling node did not share. The member is deleted and the facade forwards to
@@ -162,12 +161,12 @@ struct rmw_request_id_t;
 // on the executor rather than multiplied by the node count. Do not reintroduce
 // a per-facade capacity: a second number is how a second store starts.
 
-// RFC-0071 D9 (phase-506 W4) — no per-backend `nros_rmw_<x>_register()`
+// No per-backend `nros_rmw_<x>_register()`
 // declarations here. Nothing in these headers called them: registration is the
 // generated strong `nros_app_register_backends()`, and a caller that registers
 // by hand includes its backend's own header.
 
-// Issue #229 pin (cross-space, C++-FFI half): ErrorCode must stay
+// Pin (cross-space, C++-FFI half): ErrorCode must stay
 // value-identical to the NROS_CPP_RET_* codes (nros_cpp_ffi.h, included
 // above) that every shim below feeds into Result().
 static_assert(NROS_CPP_RET_NOT_FOUND == -4 && NROS_CPP_RET_ALREADY_EXISTS == -5 &&
@@ -177,17 +176,17 @@ static_assert(NROS_CPP_RET_NOT_FOUND == -4 && NROS_CPP_RET_ALREADY_EXISTS == -5 
               "nros_cpp_ret_t diverged from the shared numbering: NROS_CPP_RET_* must "
               "keep the rcl_ret_t values");
 
-// Phase 84.G8: forward declarations of the heavy entity class
+// Forward declarations of the heavy entity class
 // templates. Full definitions live in the corresponding `*.hpp`,
 // which also provide the out-of-line `Node::create_X<>` template
 // bodies — consumers only pay for the entities they #include.
 //
-// phase-428 (RFC-0089): six of them are DECLARED in the upstream namespace,
+// Six of them are DECLARED in the upstream namespace,
 // because that is where their definition now lives, and this header names them
 // that way. (Each also had an `nros::` migration alias, declared beside its
-// type in that type's own header, until phase-483 W1 deleted them.)
+// type in that type's own header; they are deleted.)
 namespace rclcpp {
-// phase-427 W7 — the node itself, defined further down in this header. Forward
+// The node itself, defined further down in this header. Forward
 // declared up here because the `rclcpp::` free functions BELOW take it by
 // reference and are named by `Node`'s own qualified friend declarations, which
 // require a prior declaration of the function AND of its parameter type.
@@ -196,8 +195,8 @@ template <typename M> class Publisher;
 template <typename M> class Subscription;
 template <typename S> class Service;
 template <typename S> class Client;
-class GenericPublisher;    // phase-515 P4 — `rclcpp/generic.hpp`
-class GenericSubscription; // phase-515 P4
+class GenericPublisher;    // `rclcpp/generic.hpp`
+class GenericSubscription; // `rclcpp/generic.hpp`
 template <typename M> class SubscriptionHandle;
 } // namespace rclcpp
 
@@ -208,15 +207,15 @@ template <typename A> class Client;
 
 namespace rclcpp {
 
-// Phase 122.3.d.b — L1 polling-mode action wrappers.
+// L1 polling-mode action wrappers.
 template <typename A> class PollingActionServer;
 template <typename A> class PollingActionClient;
-// phase-456 W2b — the two poll-side subscribers (`polling_subscription.hpp`).
+// The two poll-side subscribers (`polling_subscription.hpp`).
 template <typename M> class PollSubscription;
 template <typename M> class PollingSubscription;
-// phase-456 W5 — the poll-side service server (`polling_service.hpp`).
+// The poll-side service server (`polling_service.hpp`).
 template <typename S> class PollService;
-// phase-456 W9 — the poll-side (future-style) service client
+// The poll-side (future-style) service client
 // (`polling_client.hpp`), and the dispatch client's handle
 // (`client_handle.hpp`).
 template <typename S> class PollClient;
@@ -225,7 +224,7 @@ template <typename S> class ClientHandle;
 class Node;
 class Context;
 
-/// Issue 2015 — upstream's node-interface slices, as HANDLES ON THE ONE NODE.
+/// upstream's node-interface slices, as HANDLES ON THE ONE NODE.
 ///
 /// rclcpp splits a node into ~10 `node_interfaces::Node*Interface` objects so
 /// `rclcpp_action::create_server` / `create_client` (a separate package) can
@@ -234,7 +233,7 @@ class Context;
 /// whose only use is to be passed to those factories. That keeps the stock
 /// call `rclcpp_action::create_server<A>(this->get_node_base_interface(), ...)`
 /// compiling as written. Of upstream's interface members the handle has only
-/// `get_context()` (phase-488); calling any other is a compile error.
+/// `get_context()`; calling any other is a compile error.
 namespace node_interfaces {
 
 /// One slice's handle; `Tag` only keeps the five spellings distinct types.
@@ -248,9 +247,9 @@ template <int Tag> class NodeInterfaceHandle {
     Node* node() const { return node_; }
     explicit operator bool() const { return node_ != nullptr; }
     /// `->` reaches the handle itself, so `get_node_base_interface()->...`
-    /// spells as upstream's does (phase-488).
+    /// spells as upstream's does.
     const NodeInterfaceHandle* operator->() const { return this; }
-    /// `NodeBaseInterface::get_context()` (phase-488; Nav2's lifecycle node
+    /// `NodeBaseInterface::get_context()` (Nav2's lifecycle node
     /// registers its pre-shutdown hook through it): the context of the
     /// executor the node was created on. Defined in `rclcpp.hpp`.
     inline Context get_context() const;
@@ -266,7 +265,7 @@ using NodeLoggingInterface = NodeInterfaceHandle<3>;
 using NodeWaitablesInterface = NodeInterfaceHandle<4>;
 
 #ifdef NROS_CPP_STD // hosted-family: parameter-interop
-/// Issue 2056 — upstream's `NodeParametersInterface`, as a VIEW of one node.
+/// Upstream's `NodeParametersInterface`, as a VIEW of one node.
 ///
 /// Upstream's is a slice object reached through a `shared_ptr`; helper
 /// libraries take it (Nav2's `nav2_util::declare_or_get_parameter`) and call
@@ -278,7 +277,7 @@ using NodeWaitablesInterface = NodeInterfaceHandle<4>;
 /// p->has_parameter(name)` compiles as written.
 ///
 /// `get_parameter_overrides()` lists the `-p` / `--params-file` overrides
-/// that apply to this node (issue 2057), each typed as a declaration with no
+/// that apply to this node, each typed as a declaration with no
 /// default types its text. Like upstream's it returns a reference to the
 /// node's copy, so two calls return the same map and Nav2's
 /// `get_parameter_overrides().find(n) == get_parameter_overrides().end()`
@@ -309,7 +308,7 @@ class NodeParametersInterface {
     Node* node_;
 };
 
-/// Issue 2056 — the owning handle `add_on_set_parameters_callback(f)` returns.
+/// The owning handle `add_on_set_parameters_callback(f)` returns.
 ///
 /// Destroying it unregisters the callback, as upstream's does when the last
 /// `shared_ptr` goes. `remove_on_set_parameters_callback(handle.get())`
@@ -360,7 +359,7 @@ struct OnSetParametersCallbackHandle {
 } // namespace node_interfaces
 
 /// Executor-bound node handle the generated entry hands to a node constructor
-/// (RFC-0044 §Design.1, merged onto `Node` by phase-427 W4).
+/// (merged onto `Node`).
 ///
 /// Carries the opaque executor handle the node is created against — the same
 /// pointer `rclcpp::global_handle()` / `Node::executor_handle()` expose. The entry
@@ -369,11 +368,11 @@ struct OnSetParametersCallbackHandle {
 /// This was `nros::ComponentNode`'s ctor parameter. `ComponentNode` is gone; the
 /// handle is not, because construction against an EXPLICIT executor is a real
 /// capability and the generated entry is its caller. It is the second of the
-/// type's TWO constructors — RFC-0047's "one component, several named nodes"
+/// type's TWO constructors — "one component, several named nodes"
 /// does not exist (a component owns exactly one node; what the subnode packages
 /// exercise is several named CALLBACK GROUPS), so there is no third.
 ///
-/// Issue 1456 — it also carries the node's LAUNCH-DECLARED IDENTITY, and that
+/// It also carries the node's LAUNCH-DECLARED IDENTITY, and that
 /// is what makes an `rclcpp`-shape component reachable from a launch file at
 /// all. That shape constructs its own node (Comp(h) : Node(h, "talker")), so
 /// the entry has no `create_node` call to pass a name and a namespace to — the
@@ -406,7 +405,7 @@ struct NodeHandle {
     const char* launch_name;
     /// Launch-declared namespace, same contract.
     const char* launch_namespace;
-    /// Issue 1854 -- the node's baked QoS override table (the plan's
+    /// The node's baked QoS override table (the plan's
     /// `qos_overrides.<topic>.<role>.<policy>` parameters, lowered by
     /// `nros_orchestration_ir::qos_override`), or `nullptr` when it has none.
     /// The `configure` and `c` shapes get theirs from the entry's own
@@ -431,7 +430,7 @@ struct NodeHandle {
     constexpr NodeHandle(void* exec, const char* name, const char* ns)
         : executor(exec), launch_name(name), launch_namespace(ns), qos_overrides(nullptr),
           qos_override_count(0) {}
-    /// The same, plus the node's baked QoS override table (issue 1854). The
+    /// The same, plus the node's baked QoS override table. The
     /// generated entry writes this form only for a node whose plan carries
     /// overrides, so an entry without any reads exactly as before.
     constexpr NodeHandle(void* exec, const char* name, const char* ns,
@@ -452,10 +451,10 @@ struct NodeHandle {
     }
 };
 
-/// Issue #227 — pass as `domain_id` to request an EXPLICIT domain 0. Plain
+/// Pass as `domain_id` to request an EXPLICIT domain 0. Plain
 /// `0` is the UNSET sentinel (defers to `ROS_DOMAIN_ID` env on hosted, then
-/// the baked `NROS_ENTRY_DOMAIN_ID` macro, then the default — the #206
-/// model-A ladder), so a literal domain 0 is otherwise unreachable once the
+/// the baked `NROS_ENTRY_DOMAIN_ID` macro, then the default — the precedence
+/// ladder), so a literal domain 0 is otherwise unreachable once the
 /// image bakes a nonzero domain. Valid domains cap at 232, so 255 is
 /// unambiguous. Mirrors `NROS_DOMAIN_ID_EXPLICIT_ZERO` in the C API
 /// (nros_generated.h); hosted env still overrides it under model A.
@@ -463,28 +462,28 @@ struct NodeHandle {
 // linkage per TU — `inline` bought nothing and cost C++14 compatibility, which
 // nano-ros otherwise keeps (see `just check cpp`'s freestanding c++14 syntax
 // gate). PX4 builds every module with -std=gnu++14 -Werror, so an inline
-// variable here made <rclcpp/rclcpp.hpp> uncompilable in a PX4 module (phase-325 W2).
+// variable here made <rclcpp/rclcpp.hpp> uncompilable in a PX4 module.
 constexpr uint8_t kDomainIdExplicitZero = 255;
 
 namespace detail {
 
-/// Boot-failure diagnostic (RFC-0044 Q2, refined in 242.4; moved off
-/// `ComponentNode` onto `Node` by phase-427 W4).
+/// Boot-failure diagnostic (moved off
+/// `ComponentNode` onto `Node`).
 ///
 /// A failed entity/param creation in a node constructor is unrecoverable on
 /// firmware (boot is all-or-nothing) — but the constructor does not abort. It
 /// records the `ok()` latch and the generated entry / single-node carrier checks
 /// it post-construct, then halts boot **naming the failing node** via this
 /// helper. Hosted builds also print to `stderr`; freestanding builds get the
-/// overridable sink, whose default is `nros_log` (issue 1576). NOT `[[noreturn]]` — the caller
+/// overridable sink, whose default is `nros_log`. NOT `[[noreturn]]` — the caller
 /// decides how to halt.
 inline void report_component_failure(const char* node_name, const char* what, int32_t code) {
     // Route through the OVERRIDABLE sink first, so a freestanding image can
-    // see this at all. Issue 1015's bisect ran aground here: on Zephyr both
+    // see this at all. A bisect once ran aground here: on Zephyr both
     // arms below compile to nothing, so a component that failed to register
     // halted SILENTLY -- the board printed only the Zephyr banner, identical
     // to a healthy boot, and "is it broken?" had no answer on the target where
-    // it mattered. Issue 0589 fixed exactly this class for the Rust side; the
+    // it mattered. An earlier fix closed exactly this class for the Rust side; the
     // C++ side still had it.
     NROS_ERROR("node \"%s\": FAILED at %s (code=%d)", (node_name != nullptr) ? node_name : "?",
                (what != nullptr) ? what : "?", static_cast<int>(code));
@@ -495,7 +494,7 @@ inline void report_component_failure(const char* node_name, const char* what, in
 #endif
 }
 
-/// phase-403 step 2 — the code `set_error` records when a subscription's QoS
+/// The code `set_error` records when a subscription's QoS
 /// depth disagrees with the depth its system's contract declared.
 ///
 /// Named after the phase rather than borrowed from `nros_cpp_ret_t`: this is
@@ -530,7 +529,7 @@ inline void report_declared_depth_mismatch(const char* node_name, const char* to
 #endif
 }
 
-/// phase-459 W6 -- the boot-time diagnostic for a callback group the code and
+/// The boot-time diagnostic for a callback group the code and
 /// the registration's `CALLBACK_GROUPS` disagree on. `how` is `"created"` (the
 /// code made a group the keyword did not declare) or `"declared"` (the keyword
 /// declared one the constructor never made). Names both sides: the group, and
@@ -568,7 +567,7 @@ inline void report_callback_group_mismatch(const char* node_name, const char* ho
 #endif
 }
 
-/// issue 1256 -- the code `set_error` records when a subscription's QoS
+/// The code `set_error` records when a subscription's QoS
 /// RELIABILITY or DURABILITY disagrees with what its contract declared. The
 /// same number as @ref DECLARED_DEPTH_MISMATCH: both are the image contradicting
 /// its own contract, and the FFI seam reports either as `-403`. The diagnostic
@@ -617,7 +616,7 @@ inline const char* declared_durability_spelling(int ordinal) {
                : "system_default";
 }
 
-/// phase-446 W6 -- the code `set_error` records when a node declares a
+/// The code `set_error` records when a node declares a
 /// parameter its contract does not declare, or with another type.
 constexpr int32_t DECLARED_PARAM_MISMATCH = -446;
 
@@ -657,13 +656,13 @@ inline void report_declared_param_mismatch(const char* fqn, const char* param, c
 #endif
 }
 
-// phase-476 W3 — ~~`detail::NodeHosted`~~ IS GONE. It was the lazily allocated
+// ~~`detail::NodeHosted`~~ IS GONE. It was the lazily allocated
 // block behind `Node::hosted_`, and by W3 it held one member:
 // `rclcpp::NodeOptions`, a type with no data members (every accessor is a
 // REFUSE-LOUD template, `options.hpp`). Allocating a heap block to store an
 // empty object bought nothing, so `get_node_options()` answers a constant and
-// the block, the member and the `operator new` go. (issue 1975 later gave
-// `NodeOptions` one real field, `clock_type`, kept inline on the node.)
+// the block, the member and the `operator new` go. (Later
+// `NodeOptions` gained one real field, `clock_type`, kept inline on the node.)
 
 } // namespace detail
 
@@ -675,7 +674,7 @@ inline void report_declared_param_mismatch(const char* fqn, const char* param, c
 /// @param locator  Middleware locator (e.g., "tcp/127.0.0.1:7447"), or nullptr for default.
 /// @param domain_id  ROS domain ID (0-232). `0` = unset (env > baked macro >
 ///                   default decide); `rclcpp::kDomainIdExplicitZero` (255) =
-///                   explicitly domain 0 (issue #227).
+///                   explicitly domain 0.
 /// @return Result indicating success or failure.
 inline Result init_in(const char* locator = nullptr, uint8_t domain_id = 0);
 
@@ -700,7 +699,7 @@ inline Result init_in(const char* locator = nullptr, uint8_t domain_id = 0);
 /// @return Result indicating success or failure.
 inline Result init_in(const char* locator, uint8_t domain_id, const char* session_name);
 
-/// Issue 1434 — [`init`] with the primary session's NAMESPACE.
+/// [`init`] with the primary session's NAMESPACE.
 ///
 /// `nros_cpp_init` has always taken a namespace; no `rclcpp::init` overload had
 /// one, so every C++ entry passed `nullptr` and a launch-declared namespace
@@ -708,7 +707,7 @@ inline Result init_in(const char* locator, uint8_t domain_id, const char* sessio
 /// entry's `run_components` call reaches, with
 /// `nros_boot_config_namespace(&NROS_BOOT_CONFIG)`.
 ///
-/// `node_namespace` is the BAKED rung of RFC-0045's precedence model A, exactly
+/// `node_namespace` is the BAKED rung of the boot-config precedence ladder, exactly
 /// like `session_name` beside it: on a hosted target `$NROS_NODE_NAMESPACE`
 /// still wins. `nullptr` means the image declares none — NOT the empty
 /// namespace — and resolves to the root the same way the 3-arg overload does
@@ -721,9 +720,9 @@ inline Result init_in(const char* locator, uint8_t domain_id, const char* sessio
 inline Result init_in(const char* locator, uint8_t domain_id, const char* session_name,
                       const char* node_namespace);
 
-/// Issue 1050 defect (3) — `init` with an explicit RMW backend name.
+/// `init` with an explicit RMW backend name.
 ///
-/// `rmw` is the BAKED rung of RFC-0045's precedence model A: a hosted
+/// `rmw` is the BAKED rung of the boot-config precedence ladder: a hosted
 /// `$NROS_RMW` still wins over it, and `nullptr` (or `""`) means "this image
 /// names no backend", which resolves only when exactly one is registered.
 ///
@@ -756,7 +755,7 @@ inline Result init_with_rmw(const char* rmw, const char* locator = nullptr, uint
 /// Rust's `nros::Context::new` does: `-r`/`--remap` rules are installed as the
 /// FALLBACK beneath the launch rules the generated entry declares; `-p` and
 /// `--params-file` are installed as parameter overrides when the image has a
-/// parameter store (phase-482 W5); and any other ROS argument (`__node`,
+/// parameter store; and any other ROS argument (`__node`,
 /// `--log-level`, an unknown token, or `-p` with no store) makes this return
 /// `ErrorCode::InvalidArgument` BEFORE a session opens, naming the token. `(0, nullptr)` — what
 /// every RTOS board passes — is a no-op.
@@ -770,7 +769,7 @@ inline Result init_in(int argc, char const* const* argv, const char* session_nam
 /// Closes the middleware connection and frees all resources.
 inline Result shutdown_in();
 
-// phase-427 W7 — the remaining `rclcpp::` free functions `Node` befriends. A
+// The remaining `rclcpp::` free functions `Node` befriends. A
 // QUALIFIED friend declaration (`friend Result(::rclcpp::ok)();`) names an
 // existing entity; it cannot introduce one. These four live in `nros.hpp`,
 // which includes this header, so without these declarations the friendship
@@ -789,15 +788,15 @@ inline void* global_handle();
 } // namespace rclcpp
 
 // ============================================================================
-// rclcpp:: — the HOME of the C++ node type (RFC-0089 §"Settled: `rclcpp::` is
-// the HOME, not an alias onto `nros::`"). phase-427 W7 flipped the direction:
+// rclcpp:: — the HOME of the C++ node type (not an alias onto
+// `nros::`). The direction was flipped:
 // the class was DEFINED here and `nros::Node` became the migration alias, the
 // same shape the other nine types already carried (`clock.hpp`, `duration.hpp`,
 // `time.hpp`, `publisher.hpp`, `subscription.hpp`, `client.hpp`, `service.hpp`,
-// `action_client.hpp`, `action_server.hpp`). phase-483 W1 deleted the aliases;
+// `action_client.hpp`, `action_server.hpp`). The aliases are deleted;
 // `rclcpp::` is now the only namespace.
 //
-// `Node` was the TENTH and was held back because PRs #797 and #806 were stacked
+// `Node` was the TENTH and was held back because two pending changes were stacked
 // on this header. Both merged. The measurement that blocked it before — the
 // parity extractor rooting our native surface at `{"nros"}` alone, so a class
 // defined here re-bucketed ~60 members to `theirs-only` — is gone too:
@@ -806,12 +805,12 @@ inline void* global_handle();
 //
 // The ours-only names the body below reaches (`ErrorCode`, `detail::*`,
 // `NodeHandle`, `SchedContext`, the polling entity templates) are spelled
-// `::rclcpp::`-qualified. Until phase-483 W1 that qualifier was `::nros::` and
+// `::rclcpp::`-qualified. That qualifier used to be `::nros::` and
 // told an adopted name from an ours-only one; the namespace no longer carries
 // that distinction.
 // ============================================================================
 namespace rclcpp {
-/// The node — `rclcpp::Node`, ONE TYPE (phase-427). The primary interface for creating ROS
+/// The node — `rclcpp::Node`, ONE TYPE. The primary interface for creating ROS
 /// entities: publishers, subscriptions, services, timers are all created through it, and it holds a
 /// reference to the parent executor session.
 ///
@@ -823,21 +822,21 @@ namespace rclcpp {
 ///
 /// Three shapes collapsed here: the freestanding out-ref node, the hosted
 /// `shared_ptr` node that used to be a separate `rclcpp::Node` in `nros.hpp`,
-/// and (from RFC-0044) the derivable component base, so there is exactly one
+/// and the derivable component base, so there is exactly one
 /// set of entities, one arena registration path and one parameter facade.
 ///
-/// THE CLASS IS DEFINED HERE, in `rclcpp::` — RFC-0089 §"Settled: `rclcpp::` is
-/// the HOME, not an alias onto `nros::`", and the tenth and last type of the
-/// phase-428 flip (`nros::Node` remained an alias until phase-483 W1). It was held back for two
-/// reasons, both now gone: two landed reviews (PRs #797, #806) were stacked on
+/// THE CLASS IS DEFINED HERE, in `rclcpp::` — `rclcpp::` is
+/// the HOME, not an alias onto `nros::`, and this is the tenth and last type of the
+/// flip (`nros::Node` was an alias for a while). It was held back for two
+/// reasons, both now gone: two landed reviews were stacked on
 /// this header, and `scripts/api-parity.py` rooted our NATIVE C++ surface at
 /// `{"nros"}` alone, so a class defined here re-bucketed ~60 members to
 /// `theirs-only` with no ledger row. The tool was the thing that had to change
 /// and did: `OUR_CPP_ROOTS` now names both halves of the vocabulary we ship.
 ///
-/// LAYOUT IS PROBE-INDEPENDENT (phase-427 W1, gate
+/// LAYOUT IS PROBE-INDEPENDENT (gate
 /// `check-cpp-capability-layout`). Every member below is unconditional, and
-/// since phase-476 W3 there is no hosted-only state at all. A capability probe may gate a
+/// there is no hosted-only state at all. A capability probe may gate a
 /// METHOD — and many below are gated — but it may never change `sizeof`. Two
 /// TUs of one image disagreeing about `<memory>` is a SUPPORTED state here
 /// (px4 sets `-DNROS_CPP_STD` on one module; the Zephyr cyclone module adds a
@@ -850,26 +849,26 @@ class Node {
     /// [`init`].
     Node() : handle_(), initialized_(false), executor_handle_(nullptr), clock_(RCL_ROS_TIME) {}
 
-    // ==== phase-427 W2 — construction ======================================
+    // ==== construction ====================================================
     //
-    // Upstream constructs a node from a name and THROWS on failure. RFC-0018
-    // forbids exceptions here, so the constructor is kept [clause 2] and the
+    // Upstream constructs a node from a name and THROWS on failure. The C++ API
+    // has no exceptions, so the constructor is kept [clause 2] and the
     // failure channel changes [clause 1]: the node records the failure and
     // `ok()` reports it.
 
     /// `rclcpp::Node("talker")` — upstream's shape, no allocator, every target.
     ///
-    /// Opens on the GLOBAL executor `rclcpp::init()` created (issue 0465 — one
+    /// Opens on the GLOBAL executor `rclcpp::init()` created (one
     /// session per image). ADOPT-BOUNDED: upstream throws where this leaves
     /// `ok()` false, which is weaker, so it has to be LOUD by other means —
-    /// the generated entry checks `ok()` and halts naming the node (RFC-0044
-    /// Q2), and a hand-written `main` must check it. The book says so; the
+    /// the generated entry checks `ok()` and halts naming the node,
+    /// and a hand-written `main` must check it. The book says so; the
     /// compiler cannot.
     explicit Node(const char* name, const char* ns = nullptr)
         : handle_(), initialized_(false), executor_handle_(nullptr), clock_(RCL_ROS_TIME) {
         (void)this->init(name, ns);
 #if defined(NROS_AMENT_START_PARAMETER_SERVICES)
-        // phase-488 — upstream starts the six parameter services in every node
+        // Upstream starts the six parameter services in every node
         // (`NodeOptions::start_parameter_services` defaults to true). The ament
         // verbs define this when the runtime carries `param_services`, so a
         // ported node gets them with no call of ours; elsewhere the entry or
@@ -892,8 +891,8 @@ class Node {
 
     /// Construct on an EXPLICIT executor handle rather than the global one —
     /// what a generated entry writes, and what `nros::ComponentNode`'s
-    /// `NodeHandle` constructor used to be (RFC-0089 §"What this means for the
-    /// merge": construction is not identity).
+    /// `NodeHandle` constructor used to be (construction is not
+    /// identity).
     Result init_on(void* executor_handle, const char* name, const char* ns = nullptr) {
         if (initialized_) return Result(::rclcpp::ErrorCode::AlreadyExists);
         if (executor_handle == nullptr) return Result(::rclcpp::ErrorCode::NotInitialized);
@@ -903,18 +902,18 @@ class Node {
 
     /// Construct against an EXPLICIT executor-bound handle — what a generated
     /// entry writes, and what `nros::ComponentNode(NodeHandle, name)` was
-    /// before phase-427 W4 merged it here.
+    /// before it merged here.
     ///
     /// This is the SECOND of the type's two constructors. On a null handle or a
     /// creation failure it latches the error rather than aborting: the entry
-    /// checks `ok()` post-construct and halts naming this node (RFC-0044 Q2).
+    /// checks `ok()` post-construct and halts naming this node.
     ///
-    /// **Precedence (issue 1456), per HALF of the identity and stated rather
+    /// **Precedence, per HALF of the identity and stated rather
     /// than emergent:**
     ///
     ///   launch-declared (on the handle)  >  this constructor's argument  >
     ///   the type's own default (`name` is required; `ns` defaults to UNSET,
-    ///   which since issue 1473 means the EXECUTOR's namespace, not the root)
+    ///   which means the EXECUTOR's namespace, not the root)
     ///
     /// So a component whose class hardcodes a DIFFERENT name than the launch
     /// file declares is named by the LAUNCH FILE, which is the only answer that
@@ -940,7 +939,7 @@ class Node {
             this->set_error("node create", r.raw());
             return;
         }
-        // Issue 1854 -- the launch's QoS overrides, installed before the
+        // The launch's QoS overrides, installed before the
         // derived constructor body creates a single entity (a base is fully
         // constructed before the derived body runs), which is the ordering
         // the `configure` shape gets from the entry's own call.
@@ -957,11 +956,11 @@ class Node {
     ///
     /// Replaces upstream's throw. See the constructor for the envelope.
     ///
-    /// phase-427 W4 — this now answers for the LATCH as well as for creation.
+    /// This now answers for the LATCH as well as for creation.
     /// A node whose `create_*` failed after a successful open is not ok, which
     /// is what the generated entry's post-construct check has always meant.
     ///
-    /// Issue #230 — SMP safety. The failure state is tracked as a `has_error_`
+    /// SMP safety. The failure state is tracked as a `has_error_`
     /// flag whose HEALTHY value is the zero-initialized default, so a reader on
     /// a different core than the constructing one (ASI FVP SMP-4) always sees a
     /// correct "ok" even before the constructor's stores propagate — no spurious
@@ -974,7 +973,7 @@ class Node {
     /// …), or `nullptr` when no failure was latched. For the boot diagnostic.
     const char* error_what() const {
         // Acquire-fence on the flag so a standalone call (not preceded by
-        // ok()) still sees the released `error_what_` write (issue #230).
+        // ok()) still sees the released `error_what_` write.
         (void)__atomic_load_n(&has_error_, __ATOMIC_ACQUIRE);
         return error_what_;
     }
@@ -984,14 +983,14 @@ class Node {
         return error_code_;
     }
 
-    // ==== phase-427 W1/W3 — the HOSTED shape ================================
+    // ==== the HOSTED shape ================================================
     //
     // Upstream's own signatures, verbatim, on the same type. Everything below
     // is spelled in `std::shared_ptr` / `std::string` / `std::vector` /
     // `std::function`, so where those are absent the SIGNATURES are absent with
     // them — a gate on METHODS, never on a member.
     //
-    // ONE NAME, TWO SIGNATURES (RFC-0089 §"Entity creation"). The out-ref
+    // ONE NAME, TWO SIGNATURES. The out-ref
     // family above and the `shared_ptr` family below are OVERLOADS, and the
     // compiler separates them without ambiguity because the hosted forms put
     // `M` only in the return type — so a call that passes an out-param deduces
@@ -1001,11 +1000,11 @@ class Node {
     // exist at all, so that same ported line fails to compile naming the
     // out-ref overload — mechanical, which is what clause 2 asks for.
     //
-    // phase-476 W3 — each member below is gated on the ONE capability its
+    // Each member below is gated on the ONE capability its
     // signature uses, not on a conjunction of all four.
 
     /// Upstream's `(name, options)` constructor, freestanding. The one option
-    /// `NodeOptions` carries, `clock_type()` (issue 1975), picks the node's
+    /// `NodeOptions` carries, `clock_type()`, picks the node's
     /// clock; every other option refuses at its call site (`options.hpp`).
     Node(const char* name, const ::rclcpp::NodeOptions& options) : Node(name, nullptr) {
         apply_options_(options);
@@ -1037,7 +1036,7 @@ class Node {
         : Node(name.c_str(), ns.c_str(), options) {}
 #endif // NROS_CPP_HAS_STD_STRING
 
-    /// `rclcpp::Node::SharedPtr` — phase-482 W2, RFC-0096 D5 item 4.
+    /// `rclcpp::Node::SharedPtr`.
     ///
     /// A copyable, non-owning `rclcpp::Handle<Node>` on EVERY target, the model of
     /// the entity handles (phases 456/476). It was `std::shared_ptr<Node>`
@@ -1053,7 +1052,7 @@ class Node {
     using SharedPtr = ::rclcpp::Handle<Node>;
     /// `rclcpp::Node::ConstSharedPtr`.
     using ConstSharedPtr = ::rclcpp::Handle<const Node>;
-    /// `Node::WeakPtr` (phase-488) — the same non-owning handle; `lock()` hands
+    /// `Node::WeakPtr` — the same non-owning handle; `lock()` hands
     /// it back. See `rclcpp::Handle::lock` for what it cannot detect.
     using WeakPtr = ::rclcpp::Handle<Node>;
     /// Const spelling of `WeakPtr`.
@@ -1066,15 +1065,15 @@ class Node {
     /// `std::weak_ptr`, 16 bytes of layout that exist only where `<memory>`
     /// does. So there is no base; the verb is a method, and it returns a
     /// handle that OBSERVES `this`. It does not extend the node's lifetime
-    /// where upstream's shares ownership, and it never throws `bad_weak_ptr`
-    /// (RFC-0018). It used to return an aliasing `std::shared_ptr` with an
+    /// where upstream's shares ownership, and it never throws `bad_weak_ptr`.
+    /// It used to return an aliasing `std::shared_ptr` with an
     /// EMPTY owner, which was the same observe-only contract under a hosted
-    /// type; phase-482 W2 made it freestanding.
+    /// type; it is freestanding now.
     SharedPtr shared_from_this() { return SharedPtr(this); }
     /// Const overload of [`shared_from_this`].
     ConstSharedPtr shared_from_this() const { return ConstSharedPtr(this); }
 
-    /// Issue 2015 — upstream's node-interface getters, for
+    /// upstream's node-interface getters, for
     /// `rclcpp_action::create_server` / `create_client`. Each returns a
     /// non-owning handle naming THIS node (see `rclcpp::node_interfaces`);
     /// nothing else takes one.
@@ -1099,7 +1098,7 @@ class Node {
     }
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
-    /// `rclcpp::Node::make_shared(args...)` — phase-488. ADOPT, hosted.
+    /// `rclcpp::Node::make_shared(args...)` — ADOPT, hosted.
     ///
     /// Upstream's `RCLCPP_SMART_PTR_DEFINITIONS` factory, and exactly
     /// `std::make_shared<rclcpp::Node>(args...)`, which a ported `main` could
@@ -1162,7 +1161,7 @@ class Node {
     typename ::rclcpp::Subscription<M>::SharedPtr create_subscription(const ::std::string& topic,
                                                                       ::size_t depth, Cb cb);
 
-    /// `create_subscription<M>(topic, qos, callback, options)` (phase-488).
+    /// `create_subscription<M>(topic, qos, callback, options)`.
     template <typename M, typename Cb>
     typename ::rclcpp::Subscription<M>::SharedPtr
     create_subscription(const ::std::string& topic, const ::rclcpp::QoS& qos, Cb cb,
@@ -1171,7 +1170,7 @@ class Node {
                                             options);
     }
 
-    /// `create_subscription<M>(topic, depth, callback, options)` (phase-488).
+    /// `create_subscription<M>(topic, depth, callback, options)`.
     template <typename M, typename Cb>
     typename ::rclcpp::Subscription<M>::SharedPtr
     create_subscription(const ::std::string& topic, ::size_t depth, Cb cb,
@@ -1184,7 +1183,7 @@ class Node {
     /// upstream signature — upstream requires a callback — so it claims
     /// nothing. Drain with `service->take_request(...)`.
     ///
-    /// phase-456 W5 — returns `rclcpp::Owned<rclcpp::PollService<S>>`, which is the
+    /// Returns `rclcpp::Owned<rclcpp::PollService<S>>`, which is the
     /// poll server BY VALUE with an `operator->` so the drain spelling above
     /// keeps working. It is deliberately NOT `Service<S>::SharedPtr`: that
     /// alias is a dispatch handle now, and one alias cannot be both a handle
@@ -1202,7 +1201,7 @@ class Node {
     create_service(const ::std::string& name, F callback,
                    const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
-    /// Every handler that is not the reference shape. phase-488: on a hosted
+    /// Every handler that is not the reference shape. On a hosted
     /// build upstream's `shared_ptr` shape (`[header,] request, response`, as a
     /// function pointer or capture-less lambda) is TAKEN here, lent from the
     /// dispatch frame with no heap; anything else — a handler with state — is
@@ -1216,7 +1215,7 @@ class Node {
     typename ::rclcpp::Service<S>::SharedPtr
     create_service(const ::std::string&, F, const ::rclcpp::QoS& = ::rclcpp::QoS::services());
 
-    /// `create_service<S>(name, callback, qos, group)` (phase-488).
+    /// `create_service<S>(name, callback, qos, group)`.
     template <typename S, typename F>
     typename ::rclcpp::Service<S>::SharedPtr create_service(const ::std::string& name, F callback,
                                                             const ::rclcpp::QoS& qos,
@@ -1228,7 +1227,7 @@ class Node {
     /// Future-style service client (`create_client<S>(name, qos)`) — pair with
     /// `spin_until_future_complete`.
     ///
-    /// phase-456 W9 — returns `rclcpp::Owned<rclcpp::PollClient<S>>`, which is the
+    /// Returns `rclcpp::Owned<rclcpp::PollClient<S>>`, which is the
     /// future-style client BY VALUE with an `operator->` so
     /// `client->send_request(...)` keeps working. It is deliberately NOT
     /// `Client<S>::SharedPtr`: that alias is a dispatch handle now, and one alias
@@ -1264,11 +1263,11 @@ class Node {
 
 #endif // NROS_CPP_HAS_STD_STRING
 
-    // -- the ported publisher line, on EVERY target — phase-456 W5 ----------
+    // -- the ported publisher line, on EVERY target ---------------------------
     //
-    // OUTSIDE the hosted gate (phase-476 W3 deleted it), and that is the point
+    // OUTSIDE the hosted gate (now deleted), and that is the point
     // rather than a placement detail. `create_publisher<M>("chatter", 10)` is the single most
-    // copied line in the porting corpus, and until W5 it was gated: the return
+    // copied line in the porting corpus, and it used to be gated: the return
     // type was `std::shared_ptr<Publisher<M>>`, so on a minimal freestanding
     // libcpp the overload did not exist and the line did not compile.
     // `ported_create_publisher_freestanding_probe.cpp` asserted exactly that,
@@ -1277,7 +1276,7 @@ class Node {
     //
     // The return type is `Publisher<M>::SharedPtr` = `rclcpp::Owned<Publisher<M>>`
     // now, which needs no allocator and exists everywhere, so the reason is
-    // gone and the gate goes with it. RFC-0096 D1: ONE API, byte-for-byte the
+    // gone and the gate goes with it. ONE API, byte-for-byte the
     // same shape on every target, reached by removing what made it differ.
     //
     // The `const char*` key is what makes it freestanding — a `std::string`
@@ -1296,8 +1295,8 @@ class Node {
     template <typename M>
     typename ::rclcpp::Publisher<M>::SharedPtr create_publisher(const char* topic, ::size_t depth);
 
-    // phase-476 W1 — the DISPATCH verbs join it, for the same reason. Their
-    // results have been freestanding handles since phase-456 (the arena holds
+    // The DISPATCH verbs join it, for the same reason. Their
+    // results have been freestanding handles for a while (the arena holds
     // the subscription, the server, the client and the callable), so the
     // `std::string` key was the only thing still keeping them hosted. The
     // `std::string` overloads in the hosted block forward here.
@@ -1314,7 +1313,7 @@ class Node {
                                                                       ::size_t depth, Cb cb);
 
     /// `create_subscription<M>(topic, qos, callback, options)` — upstream's
-    /// four-argument shape (phase-488). `options.callback_group` is the
+    /// four-argument shape. `options.callback_group` is the
     /// anonymous group token and selects the node default, as everywhere else.
     /// The other `SubscriptionOptions` fields are read by the caller-placed
     /// overload only; on this one a set `sched_context` is refused rather than
@@ -1330,7 +1329,7 @@ class Node {
     create_subscription(const char* topic, ::size_t depth, Cb cb,
                         const ::rclcpp::SubscriptionOptions& options);
 
-    // -- generic (type-erased) pub/sub — phase-515 P4 -------------------------
+    // -- generic (type-erased) pub/sub ----------------------------------------
     //
     // Bodies in `rclcpp.hpp`, types in `rclcpp/generic.hpp`. rclcpp's name-only
     // spellings are REFUSE-LOUD; the hash-taking ones are the nano-ros form.
@@ -1388,7 +1387,7 @@ class Node {
     create_service(const char* name, F callback,
                    const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
-    /// Every handler that is not the reference shape. phase-488: on a hosted
+    /// Every handler that is not the reference shape. On a hosted
     /// build upstream's `shared_ptr` shape (`[header,] request, response`, as a
     /// function pointer or capture-less lambda) is TAKEN here, lent from the
     /// dispatch frame with no heap; anything else — a handler with state — is
@@ -1403,7 +1402,7 @@ class Node {
     create_service(const char*, F, const ::rclcpp::QoS& = ::rclcpp::QoS::services());
 
     /// `create_service<S>(name, callback, qos, group)` — upstream's trailing
-    /// callback group (phase-488). `group` is upstream's anonymous token, which
+    /// callback group. `group` is upstream's anonymous token, which
     /// reads as null (the node default); the call is otherwise the three-
     /// argument one. A NAMED group (`&create_callback_group("x")`) is refused at
     /// the call: a service cannot be bound to a group's context here, and
@@ -1444,14 +1443,14 @@ class Node {
     // Declared here with the class and DEFINED in `nros.hpp` beside the other
     // out-of-line members, which is where the reasoning lives.
     //
-    // Until phase-426 W4 these read an inline `ParameterServer` member on the
+    // These used to read an inline `ParameterServer` member on the
     // hosted block instead: a second store, node-local, that the six
     // `rcl_interfaces/srv/*` servers could not read - so a parameter declared
     // through this facade was invisible to `ros2 param get` and a sibling node
     // did not share it.
     //
-    // OUTSIDE the hosted gate (phase-476 W3 deleted it), and that is the rest of
-    // W4 rather than a tidy-up. The member leaving was "the last thing that made
+    // OUTSIDE the hosted gate (now deleted), and that is part of the
+    // one-store change rather than a tidy-up. The member leaving was "the last thing that made
     // the hosted gate decide whether a node HAS parameters rather than
     // whether it can spell them" - but the declarations stayed inside the gate,
     // so a freestanding node still had no parameter method, and
@@ -1468,7 +1467,7 @@ class Node {
     /// `rclcpp::Node::declare_parameter<T>(name, default)`.
     template <typename T> T declare_parameter(const char* name, T default_value = T());
     /// `rclcpp::Node::get_parameter<T>(name, out)` — upstream's channel is
-    /// `bool`, so ours is too (RFC-0089's error-channel rule, last row).
+    /// `bool`, so ours is too (the adoption rule's error-channel clause, last row).
     template <typename T> bool get_parameter(const char* name, T& out) const;
     /// Value-returning read; `T()` when the name is undeclared.
     template <typename T> T get_parameter(const char* name) const;
@@ -1479,7 +1478,7 @@ class Node {
     /// `rclcpp::Node::has_parameter(name)`.
     bool has_parameter(const char* name) const;
 
-    // ---- phase-417 W4.a: the rest of rclcpp's parameter surface ------------
+    // ---- the rest of rclcpp's parameter surface ---------------------------
     //
     // All of it forwards to the executor's ONE store through
     // `rclcpp/node_parameters.hpp`. OUTSIDE any capability gate for the same
@@ -1505,7 +1504,7 @@ class Node {
     template <typename T> bool get_parameter_or(const char* name, T& out, T fallback) const;
 
     /// `rclcpp::Node::undeclare_parameter(name)`. Upstream returns `void` and
-    /// throws; ours reports (RFC-0089's error-channel rule — there are no
+    /// throws; ours reports (the adoption rule's error-channel clause — there are no
     /// exceptions here).
     Result undeclare_parameter(const char* name);
 
@@ -1566,7 +1565,7 @@ class Node {
     Result remove_on_set_parameters_callback(OnSetParametersCallbackToken handle);
 
 #ifdef NROS_CPP_STD // hosted-family: parameter-interop
-    // ---- issue 2056: upstream's value-object parameter surface --------------
+    // ---- upstream's value-object parameter surface ---------------------------
     //
     // Each of these dispatches on a `ParameterValue`'s tag to the typed form
     // above, so the store, the declared-parameter contract check and the
@@ -1719,9 +1718,9 @@ class Node {
 
     /// Create a new node.
     ///
-    /// **Issue 1473 — `ns == nullptr` (or `""`) is UNSET, not the root.** The
+    /// **`ns == nullptr` (or `""`) is UNSET, not the root.** The
     /// node INHERITS the executor's namespace, which is how a namespace given
-    /// to `rclcpp::init_in(locator, domain, session, node_namespace)` (issue 1434)
+    /// to `rclcpp::init_in(locator, domain, session, node_namespace)`
     /// reaches anything the image creates afterwards. To place a node at the
     /// ROOT of a namespaced executor, pass `"/"` — one character, and the
     /// spelling every generated C entry already emits. The two are different
@@ -1780,7 +1779,7 @@ class Node {
         return Result(nros_cpp_node_get_fully_qualified_name(&handle_, buf, buf_len, out_len));
     }
 
-    /// RFC-0088 D4 — the serialization format this node's backend speaks
+    /// The serialization format this node's backend speaks
     /// (`"cdr"`, `"uorb"`), as its cross-image identity string.
     ///
     /// Per SESSION, not per image. A node created with an explicit
@@ -1821,7 +1820,7 @@ class Node {
 
     /// `rclcpp::Node::get_logger()` — the logger NAMED FOR THIS NODE.
     ///
-    /// phase-427 W5. The two spellings used to collide on an identical
+    /// The two spellings used to collide on an identical
     /// signature: this one returned the real `nros_log::Logger` handle keyed on
     /// the node's name, while the shim's returned a `rclcpp::Logger` built from
     /// the hardcoded sentinel `"nros.compat"` — same name, same arity,
@@ -1851,13 +1850,13 @@ class Node {
     /// The node's clock — `rclcpp::Node::get_clock()`.
     ///
     /// rclcpp hands back a `rclcpp::Clock::SharedPtr`. There is no allocator
-    /// and no `shared_ptr` here (RFC-0022), so the clock is a member of the
+    /// and no `shared_ptr` here, so the clock is a member of the
     /// node and this returns a pointer to it: `node.get_clock()->now()` and
     /// `node->get_clock()->now()` both keep their rclcpp spelling. The pointer
     /// is valid for as long as the node is.
     ///
     /// The clock is ROS time, as rclcpp's node clock is. See `rclcpp::Clock` for
-    /// what ROS time does and does not yet do here (issue 0789).
+    /// what ROS time does and does not yet do here.
     Clock* get_clock() { return &clock_; }
     /// Const overload of `get_clock()`.
     const Clock* get_clock() const { return &clock_; }
@@ -1874,7 +1873,7 @@ class Node {
     /// Check if the node is initialized and valid.
     bool is_valid() const { return initialized_; }
 
-    /// Phase 235.A — internal: the raw FFI node handle, for code that must
+    /// Internal: the raw FFI node handle, for code that must
     /// call the FFI directly: the type-erased component glue in
     /// `<rclcpp/detail/component.hpp>` (entities arrive as descriptor
     /// *strings* — `type_name` / `type_hash` — with no message type `M` at
@@ -1888,7 +1887,7 @@ class Node {
     /// Returns `nullptr` on an uninitialized node.
     const nros_cpp_node_t* ffi_handle() const { return initialized_ ? &handle_ : nullptr; }
 
-    /// Phase 211.H (issue #52) — install the per-topic QoS override table the
+    /// Install the per-topic QoS override table the
     /// deploy plan lowered from `qos_overrides.<topic>.<role>.<policy>` launch
     /// params. Every publisher/subscription created on this node afterwards
     /// folds the matching `(topic, role)` entries into its QoS before the
@@ -1904,7 +1903,7 @@ class Node {
         }
     }
 
-    /// Phase 240.5 (RFC-0043) — the opaque executor handle this node was opened
+    /// The opaque executor handle this node was opened
     /// against (from `nros_cpp_init`). The component layer needs it for the raw
     /// FFI that is executor- rather than node-scoped (action server register /
     /// complete_goal / publish_feedback) — `Node::create_*` use it internally,
@@ -1916,21 +1915,21 @@ class Node {
     /// services under its fully-qualified name, so `ros2 param` reaches them.
     /// rclcpp starts them from `NodeOptions::start_parameter_services(true)`;
     /// that option is refused here (NodeOptions carries no runtime state), so
-    /// this is the ours-only call a node makes instead (RFC-0089, 2026-10-13:
+    /// this is the ours-only call a node makes instead (since 2026-10-13
     /// a user calls no `nros_cpp_*` FFI). Idempotent per executor.
     Result start_parameter_services() {
         return Result(nros_cpp_register_parameter_services(executor_handle()));
     }
 
-    // ---- Graph queries — phase-417 stage 2b (RFC-0089) --------------------
+    // ---- Graph queries ---------------------------------------
     //
     // rclcpp puts these on the node. `rclcpp::Executor` owns them here because
-    // one session per image makes the executor the graph's receiver
-    // (RFC-0002), so each method below FORWARDS to the executor this node was
+    // one session per image makes the executor the graph's receiver,
+    // so each method below FORWARDS to the executor this node was
     // opened against and nothing else: no state, no loop, no caching, no name
-    // construction. RFC-0019 — the behaviour is Rust's and stays there.
+    // construction. The behaviour is Rust's and stays there.
     //
-    // The envelope every one of them shares (ADOPT-BOUNDED, RFC-0089): they
+    // The envelope every one of them shares (ADOPT-BOUNDED): they
     // report what has been DISCOVERED and never block, so an empty result
     // means "nobody seen yet" and never "nobody exists" — poll rather than
     // calling once and concluding. `ErrorCode::Unsupported`, which is what a
@@ -1946,10 +1945,10 @@ class Node {
     /// the duration of the call; return `false` to stop early.
     ///
     /// rclcpp hands back a `std::vector<std::string>`. There is no allocator
-    /// here (RFC-0022), so the same enumeration streams through a visitor —
+    /// here, so the same enumeration streams through a visitor —
     /// a plain function pointer plus `ctx`, because these headers compile
     /// `-nostdinc++` against Zephyr's minimal libcpp, where `<functional>`
-    /// does not exist (issue 0112).
+    /// does not exist.
     ///
     /// Reports what has been DISCOVERED and never blocks: an empty
     /// enumeration means "nobody seen yet", not "nobody exists", and
@@ -2001,7 +2000,7 @@ class Node {
     }
 
     /// How many service clients are visible on `service_name` — rclcpp's
-    /// (Jazzy) `Node::count_clients()`. Issue 1978. The name is used as given,
+    /// (Jazzy) `Node::count_clients()`. The name is used as given,
     /// like [`count_publishers`], with the same caveats; a backend with no
     /// graph answers `Unsupported`, never 0.
     Result count_clients(const char* service_name, size_t* out_count) const {
@@ -2079,7 +2078,7 @@ class Node {
     ///
     /// rclcpp also takes `no_mangle`; there is no such parameter here, because
     /// accepting one and ignoring it would silently drop configuration —
-    /// exactly what RFC-0089's rule forbids.
+    /// exactly what the adoption rule forbids.
     ///
     /// Same discovery envelope as [`get_node_names`].
     Result get_publishers_info_by_topic(const char* topic_name,
@@ -2140,7 +2139,7 @@ class Node {
     Result create_publisher(::rclcpp::Publisher<M>& out, const char* topic,
                             const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile());
 
-    /// Create a publisher with rclcpp-style named options (Phase 189.M3.1).
+    /// Create a publisher with rclcpp-style named options.
     ///
     /// `options` sits alongside `qos` (rclcpp convention). `PublisherOptions`
     /// is currently a reserved/empty struct, so this overload is observably
@@ -2159,7 +2158,7 @@ class Node {
     /// Create a POLL subscription for a topic — the caller owns the subscriber
     /// and drains it with `take()`; nothing dispatches.
     ///
-    /// phase-456 W2b — the out parameter is `rclcpp::PollSubscription<M>`, not
+    /// The out parameter is `rclcpp::PollSubscription<M>`, not
     /// `Subscription<M>`. Defined in `rclcpp/polling_subscription.hpp`, beside
     /// the type it creates.
     ///
@@ -2171,14 +2170,14 @@ class Node {
     Result create_subscription(::rclcpp::PollSubscription<M>& out, const char* topic,
                                const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile());
 
-    /// Create a subscription with rclcpp-style named options (Phase 189.M3.1).
+    /// Create a subscription with rclcpp-style named options.
     ///
     /// `options` sits alongside `qos` (rclcpp convention) and carries the
     /// non-QoS creation axes. NEITHER reaches a poll subscription:
     /// `sched_context` binds an executor `HandleId` and a poll subscription
     /// registers no arena entry, and `message_info` is reserved (M3.4). See
     /// `SubscriptionOptions`, and the definition in
-    /// `rclcpp/polling_subscription.hpp` for why phase-456 W2b makes the first
+    /// `rclcpp/polling_subscription.hpp` for why the split makes the first
     /// one structural instead of a branch that could never be taken.
     ///
     /// @tparam M  Message type (must define TYPE_NAME and TYPE_HASH).
@@ -2204,8 +2203,8 @@ class Node {
     /// holds `&out` as the dispatch context.
     ///
     /// **ARGUMENT ORDER IS UPSTREAM'S: `(out, topic, qos, callback, options)`**
-    /// — the phase-467 RMW gap-closure design study's Row 12. It was
-    /// `(out, topic, callback, qos = default, options)` until then, for no
+    /// It used to be
+    /// `(out, topic, callback, qos = default, options)`, for no
     /// platform reason: the only force was the C++ rule that a defaulted
     /// parameter cannot precede a non-defaulted one, and upstream answers it
     /// by making `qos` MANDATORY, which is what we do now. The proof it was a
@@ -2213,8 +2212,8 @@ class Node {
     /// `rclcpp::Node` adapter at `nros.hpp` has always used upstream's order,
     /// so both orders coexisted, and `log.hpp`'s own abort advisory told
     /// readers to write `node.create_subscription(sub, topic, qos, cb)`,
-    /// which did not compile. RFC-0036 does not allow recording an ordering
-    /// preference as a divergence, and RFC-0089 clause 2 says not to trade
+    /// which did not compile. The divergence catalog does not allow recording an ordering
+    /// preference as a divergence, and the adoption rule says not to trade
     /// one away.
     ///
     /// COST, stated: the three-argument convenience
@@ -2229,7 +2228,7 @@ class Node {
     /// @param options   Named subscription options (e.g. sched_context).
     ///
     /// CALLER-PLACED: fills `out` and returns `Result`, where upstream returns a
-    /// `Subscription<M>::SharedPtr` and throws on failure (RFC-0018/0019: no
+    /// `Subscription<M>::SharedPtr` and throws on failure (no
     /// exceptions, no heap). On a hosted build the ported spelling
     /// `create_subscription<M>(topic, qos, cb)` returns a `SharedPtr` and aborts,
     /// naming the topic, if the create fails.
@@ -2241,7 +2240,7 @@ class Node {
                                const ::rclcpp::SubscriptionOptions& options = {});
 
     /// Create a **callback-style** subscription that also delivers each sample's
-    /// wire **attachment** (Phase 189.M3.4 — the callback analogue of
+    /// wire **attachment** (the callback analogue of
     /// `Subscription::take_serialized_with_attachment`). Arena-registered like the
     /// callback overload above (so `options.sched_context` is functional), but the
     /// handler is invoked as `callback(const M&, const uint8_t* attachment, size_t
@@ -2249,8 +2248,8 @@ class Node {
     /// Cross-RMW bridges read the bridge_origin tag from the attachment.
     ///
     /// Argument order follows the callback-style `create_subscription` above:
-    /// `qos` before `callback`, and mandatory (Row 12 of the phase-467 RMW
-    /// gap-closure design study).
+    /// `qos` before `callback`, and mandatory (the RMW gap
+    /// study).
     template <typename M, typename F,
               typename = typename std::enable_if<
                   std::is_convertible<F, void (*)(const M&, const uint8_t*, size_t)>::value>::type>
@@ -2259,7 +2258,7 @@ class Node {
                                          const ::rclcpp::SubscriptionOptions& options = {});
 
 #if defined(NROS_SAFETY_E2E)
-    /// Phase 269 W3 — Create a **callback-style** subscription that surfaces the
+    /// Create a **callback-style** subscription that surfaces the
     /// sample's E2E integrity status (CRC + sequence gap/dup) alongside the typed
     /// message — the C++ component-callback analog of Rust's
     /// `create_subscription_…_with_safety` / `CallbackCtx::integrity()`.
@@ -2275,8 +2274,8 @@ class Node {
     /// holds `&out` as the trampoline context.
     ///
     /// Argument order follows the callback-style `create_subscription` above:
-    /// `qos` before `callback`, and mandatory (Row 12 of the phase-467 RMW
-    /// gap-closure design study).
+    /// `qos` before `callback`, and mandatory (the RMW gap
+    /// study).
     template <typename M, typename F,
               typename = typename std::enable_if<std::is_convertible<
                   F, void (*)(const M&, const ::nros_cpp_integrity_status_t&)>::value>::type>
@@ -2287,7 +2286,7 @@ class Node {
 
     /// Create a POLL-style service server.
     ///
-    /// phase-456 W5 — the out parameter is `rclcpp::PollService<S>`, not
+    /// The out parameter is `rclcpp::PollService<S>`, not
     /// `rclcpp::Service<S>`. This overload creates a server the CALLER owns, in
     /// the caller's own storage, drained with `take_request()` /
     /// `send_response()`; the dispatch overload below registers a handler into
@@ -2303,8 +2302,8 @@ class Node {
     Result create_service(::rclcpp::PollService<S>& out, const char* service_name,
                           const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
-    /// Create a **callback-style** service server (rclcpp dispatch model;
-    /// Phase 189.M3.3.e). Unlike the poll-style overload above, this
+    /// Create a **callback-style** service server (rclcpp dispatch
+    /// model). Unlike the poll-style overload above, this
     /// arena-registers the service so it owns a real executor handle and its
     /// request handler runs during `spin_once` — making `options.sched_context`
     /// functional. `callback` must be convertible to
@@ -2313,7 +2312,7 @@ class Node {
     /// guard keeps the poll-style 3-arg overload unambiguous (a `QoS` is not
     /// convertible to the handler type).
     ///
-    /// `out` is MOVABLE after this returns (phase-456 W3): the arena holds the
+    /// `out` is MOVABLE after this returns: the arena holds the
     /// HANDLER as its dispatch context, not `&out`, so nothing of the caller's
     /// is referenced after registration.
     template <typename S, typename F,
@@ -2325,7 +2324,7 @@ class Node {
 
     /// Create a FUTURE-style service client.
     ///
-    /// phase-456 W9 — the out parameter is `rclcpp::PollClient<S>`, not
+    /// The out parameter is `rclcpp::PollClient<S>`, not
     /// `rclcpp::Client<S>`. This overload creates a client the CALLER owns, in
     /// the caller's own storage, drained with `send_request()` / `call()` /
     /// `call_polling()` and probed with `wait_for_service()`; the dispatch
@@ -2342,15 +2341,15 @@ class Node {
     Result create_client(::rclcpp::PollClient<S>& out, const char* service_name,
                          const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
-    /// Create a **callback-style** service client (rclcpp async dispatch;
-    /// Phase 189.M3.3.f). Arena-registered, so it owns a real executor handle and
+    /// Create a **callback-style** service client (rclcpp async
+    /// dispatch). Arena-registered, so it owns a real executor handle and
     /// its response handler runs during `spin_once` — making
     /// `options.sched_context` functional. `callback` must be convertible to
     /// `void(const S::Response&)`; send requests with
     /// `Client<S>::async_send_request`. The SFINAE guard keeps the future-style
     /// 3-arg overload unambiguous.
     ///
-    /// `out` is MOVABLE after this returns (phase-456 W3): the arena holds the
+    /// `out` is MOVABLE after this returns: the arena holds the
     /// HANDLER as its response context, not `&out`. What the move carries is
     /// `{executor, handle_id}`, which is what `async_send_request` needs.
     template <typename S, typename F,
@@ -2385,19 +2384,19 @@ class Node {
     Result create_action_client(::rclcpp_action::Client<A>& out, const char* action_name,
                                 const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
-    /// Phase 122.3.d.b — Create an L1 polling-mode action server.
+    /// Create an L1 polling-mode action server.
     /// Caller drives the lifecycle (no executor callback). See
     /// `polling_action_server.hpp` for usage.
     template <typename A>
     Result create_polling_action_server(::rclcpp::PollingActionServer<A>& out,
                                         const char* action_name);
 
-    /// Phase 122.3.d.b — Create an L1 polling-mode action client.
+    /// Create an L1 polling-mode action client.
     template <typename A>
     Result create_polling_action_client(::rclcpp::PollingActionClient<A>& out,
                                         const char* action_name);
 
-    /// Issue 0278 — Create a latest-value polling subscription (the nano-ros
+    /// Create a latest-value polling subscription (the nano-ros
     /// analog of `autoware_utils::InterProcessPollingSubscriber`): a poll-mode
     /// subscription plus a retained last value, read repeatably via
     /// `PollingSubscription<M>::take_data()` / `take_new_data()`. See
@@ -2407,7 +2406,7 @@ class Node {
                                        const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile());
 
     /// Create a repeating timer on a CLOCK — `rclcpp::create_timer(node, clock,
-    /// period, callback)`, phase-425 W4.
+    /// period, callback)`.
     ///
     /// `create_wall_timer` is the steady one: it advances with the executor's
     /// monotonic spin delta, so no simulator can slow it down. This one advances
@@ -2446,7 +2445,7 @@ class Node {
 
     /// `create_wall_timer(period, callback)` — upstream's shape, FREESTANDING.
     ///
-    /// phase-476 W2. Takes any callable (a capturing lambda, a `std::bind`
+    /// Takes any callable (a capturing lambda, a `std::bind`
     /// result) and returns a two-word [`::rclcpp::TimerHandle`]; the callable is
     /// copied into the executor arena, which destroys it when the timer is
     /// released, so nothing here allocates and nothing needs `<memory>` or
@@ -2456,7 +2455,7 @@ class Node {
     /// ADOPT-BOUNDED as before: the period is truncated to whole milliseconds,
     /// and a missed deadline catches up where rcl drops (see `rclcpp::Timer`).
     ///
-    /// Issue 1974 — Jazzy's `(period, callback, group = nullptr, autostart =
+    /// Jazzy's `(period, callback, group = nullptr, autostart =
     /// true)`. `group` is a `const rclcpp::CallbackGroup*` (our group is a
     /// value token, so a ported `nullptr` binds and `&group` names one);
     /// `autostart = false` creates the timer cancelled until `reset()`. A
@@ -2501,7 +2500,7 @@ class Node {
         return Result(ret);
     }
 
-    // ==== phase-427 W3 — member-function binding, on the upstream name ======
+    // ==== member-function binding, on the upstream name ====================
     //
     // `nros::bind_timer<C, &C::m>(node, out, ms, self)` was a FREE function
     // with an invented name doing what `create_wall_timer` does. Folding it in
@@ -2526,7 +2525,7 @@ class Node {
     }
 
     /// Bind a member `void C::on_tick()` as a timer on an explicit CLOCK —
-    /// phase-430 W6, the member-binding half of `create_timer`.
+    /// the member-binding half of `create_timer`.
     ///
     /// A `RCL_ROS_TIME` clock follows `/clock` and stops when the bag
     /// stops; a `RCL_STEADY_TIME` one does not. `create_wall_timer`
@@ -2538,7 +2537,7 @@ class Node {
     }
 
     /// Bind a member `void C::on_tick()` as a timer IN a callback group
-    /// (RFC-0047) — the member-binding half of `create_timer_in_group`.
+    /// — the member-binding half of `create_timer_in_group`.
     template <class C, void (C::*Method)()>
     Result create_timer_in_group(const ::rclcpp::CallbackGroup& group, Timer& out,
                                  uint64_t period_ms, C* self) {
@@ -2568,7 +2567,7 @@ class Node {
         return Result(ret);
     }
 
-    // -- Phase 273 (RFC-0047) — Callback-group API -------------------------
+    // -- Callback-group API ------------------------------------
 
     /// Create a named callback-group token.
     ///
@@ -2579,7 +2578,7 @@ class Node {
     /// @param name  Group name — must be a string literal or static-lifetime
     ///              string; the pointer is stored directly (no copy).
     ///
-    /// phase-459 W6 -- inside a component's construction, a name its
+    /// Inside a component's construction, a name its
     /// registration's `CALLBACK_GROUPS` did not declare is a named boot failure
     /// (`DECLARED_CALLBACK_GROUP_MISMATCH`): the sched task derivation ranked the
     /// declared list, so an undeclared group would run on a sched task nobody ranked.
@@ -2603,7 +2602,7 @@ class Node {
     }
 
     /// `create_callback_group(rclcpp::CallbackGroupType, automatically_add)` —
-    /// upstream's anonymous group (phase-488). Returns a token that every
+    /// upstream's anonymous group. Returns a token that every
     /// group-taking verb reads as the node default: one executor task already
     /// keeps every callback mutually exclusive, so the kind asks for nothing
     /// that is not already true. `automatically_add_to_executor_with_node` is
@@ -2616,7 +2615,7 @@ class Node {
         return ::rclcpp::CallbackGroup::SharedPtr(type);
     }
 
-    /// Create a repeating timer **in** a callback group (RFC-0047).
+    /// Create a repeating timer **in** a callback group.
     ///
     /// Like `create_wall_timer` but associates the timer with `group` so the
     /// executor binds it to the group's SchedContext via `group_sched_table`.
@@ -2642,7 +2641,7 @@ class Node {
         return Result(ret);
     }
 
-    /// Create a **callback-style** subscription **in** a callback group (RFC-0047).
+    /// Create a **callback-style** subscription **in** a callback group.
     ///
     /// Like the callback-style `create_subscription` but associates the
     /// subscription with `group` so the executor binds it to the group's
@@ -2650,8 +2649,8 @@ class Node {
     /// `subscription.hpp`.
     ///
     /// Argument order follows the callback-style `create_subscription` above:
-    /// `qos` before `callback`, and mandatory (Row 12 of the phase-467 RMW
-    /// gap-closure design study — the siblings move together or the fix is
+    /// `qos` before `callback`, and mandatory (the RMW gap
+    /// study — the siblings move together or the fix is
     /// the "fixed the reported site" failure).
     ///
     /// @tparam M  Message type (must define TYPE_NAME, TYPE_HASH, ffi_deserialize).
@@ -2669,11 +2668,10 @@ class Node {
                                         const ::rclcpp::QoS& qos, F callback,
                                         const ::rclcpp::SubscriptionOptions& options = {});
 
-    /// Create a publisher **in** a callback group (API symmetry; RFC-0047).
+    /// Create a publisher **in** a callback group (API symmetry).
     ///
     /// Publishers have no dispatched callback — the group parameter is accepted
-    /// for API symmetry but has no scheduling effect (documented in RFC-0047 §OQ1
-    /// follow-up).
+    /// for API symmetry but has no scheduling effect.
     ///
     /// @tparam M  Message type.
     /// @param group  Callback group (accepted for symmetry; no scheduling effect).
@@ -2708,7 +2706,7 @@ class Node {
         return Result(ret);
     }
 
-    // ==== phase-427 W4 — the ours-only family, under `_in` names =============
+    // ==== the ours-only family, under `_in` names ==========================
     //
     // These came off `nros::ComponentNode`. Every one of them is spelled with
     // an `_in` SUFFIX rather than upstream's bare verb, and the rename is the
@@ -2730,7 +2728,7 @@ class Node {
     //
     // So a ported file compiles either way and gets a different type, lifetime
     // and failure channel depending on which spelling of the depth it used.
-    // That is exactly the compile-and-differ RFC-0089 forbids, and the merge is
+    // That is exactly the compile-and-differ the adoption rule forbids, and the merge is
     // what would have manufactured it. The fix is a different NAME, not a
     // cleverer signature — the third application of that rule in this campaign,
     // after the reordered C node initialiser and the clock-taking C timer verb.
@@ -2773,13 +2771,13 @@ class Node {
     void create_subscription_in(const char* topic,
                                 const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile());
 
-    /// The same, **in** a callback group (RFC-0047) — the group's SchedContext
+    /// The same, **in** a callback group — the group's SchedContext
     /// is resolved via `group_sched_table`. Also defined in `component.hpp`.
     template <typename M, class C, void (C::*Method)(const M& msg)>
     void create_subscription_in_group(const ::rclcpp::CallbackGroup& group, const char* topic,
                                       const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile());
 
-    /// phase-403 step 2 — the BOOT-TIME half of the declared-depth check.
+    /// The BOOT-TIME half of the declared-depth check.
     ///
     /// The compile-time half (`NROS_SUBSCRIBE`'s `static_assert`) is the
     /// primary path and covers every call site whose topic is a string literal,
@@ -2817,7 +2815,7 @@ class Node {
         return false;
     }
 
-    /// issue 1256 -- the BOOT-TIME check of EVERY declared column: the depth
+    /// The BOOT-TIME check of EVERY declared column: the depth
     /// (`check_declared_depth`), then the reliability and the durability.
     ///
     /// What `create_subscription_in` and `create_subscription_in_group` call. A
@@ -2860,11 +2858,11 @@ class Node {
         return true;
     }
 
-    /// phase-446 W6 -- the boot-time check that this node declares a parameter
+    /// The boot-time check that this node declares a parameter
     /// the way its contract does.
     ///
-    /// The parameter store is sized from the contract's `params:` (phase-446
-    /// W4), so a name the contract does not declare has no slot counted for
+    /// The parameter store is sized from the contract's `params:`,
+    /// so a name the contract does not declare has no slot counted for
     /// it, and a type that differs is a value the contract's reader (and
     /// play_launch's check of the launch file) would reject. Either one is a
     /// named boot failure through `set_error`, in the idiom
@@ -2903,7 +2901,7 @@ class Node {
         return false;
     }
 
-    /// Record the first creation failure (RFC-0044 Q2). Idempotent on the
+    /// Record the first creation failure. Idempotent on the
     /// *first* failure — later failures don't clobber the original diagnostic.
     ///
     /// PUBLIC rather than protected, unlike `ComponentNode::set_error`: the
@@ -2913,7 +2911,7 @@ class Node {
     void set_error(const char* what, int32_t code) {
         // Relaxed read for the first-failure guard: set_error runs during
         // construction, on the constructing thread, never concurrently with a
-        // reader (issue #230).
+        // reader.
         if (!__atomic_load_n(&has_error_, __ATOMIC_RELAXED)) {
             error_what_ = what;
             error_code_ = code;
@@ -2926,7 +2924,7 @@ class Node {
 
     /// Destructor — releases node resources.
     ///
-    /// BYTE-IDENTICAL IN EVERY CONFIGURATION (phase-427 W1). It never names the
+    /// BYTE-IDENTICAL IN EVERY CONFIGURATION. It never names the
     /// hosted type: the block carries its own `destroy` function pointer, so a
     /// freestanding TU and a hosted TU of the same image emit the same inline
     /// destructor. A `#if`-gated `delete` here would be the ODR half of exactly
@@ -2974,7 +2972,7 @@ class Node {
     Node(const Node&) = delete;
     Node& operator=(const Node&) = delete;
 
-    /// phase-488 — the ONE service registration both handler shapes share:
+    /// The ONE service registration both handler shapes share:
     /// the reference shape (`create_service(Service<S>&, name, cb)`) and the
     /// hosted `shared_ptr` shape (`create_service<S>(name, cb)`). They differ
     /// only in the trampoline that adapts the arena's bytes to the handler, so
@@ -2992,7 +2990,7 @@ class Node {
                              const ::rclcpp::ServiceOptions& options, const void* capture = nullptr,
                              size_t capture_len = 0, void (*capture_drop)(void*) = nullptr);
 
-    /// Issue 2081 — `register_service_` for a trampoline that also receives
+    /// `register_service_` for a trampoline that also receives
     /// the request's id (`nros_cpp_service_request_id_callback_t`): the hosted
     /// `shared_ptr` handlers, whose three-argument form hands it on as the
     /// request header.
@@ -3010,7 +3008,7 @@ class Node {
     Result finish_register_service_(::rclcpp::Service<S>& out, const char* service_name,
                                     nros_cpp_ret_t ret, size_t handle);
 
-    /// phase-488 — the hosted non-reference service handler, split by what holds
+    /// The hosted non-reference service handler, split by what holds
     /// it: `tag 0` a handler that converts to a function pointer (the context IS
     /// the pointer), `tag 1` one with state (copied into the arena entry). Two
     /// overloads rather than an `if`, because each body only compiles for its
@@ -3024,14 +3022,14 @@ class Node {
                                     const ::rclcpp::QoS& qos,
                                     ::rclcpp::tr::integral_constant<int, 1>);
 
-    /// issue 1975 -- what the `(name, options)` constructors do with their
+    /// What the `(name, options)` constructors do with their
     /// options: keep them for `get_node_options()` and build the node clock
     /// from `clock_type()`. A type that is not a clock latches the error
     /// (`ok() == false`) where upstream's constructor throws, and leaves the
     /// clock at ROS time rather than reading zero forever.
     void apply_options_(const ::rclcpp::NodeOptions& options) {
         options_ = options;
-        // issue 2035 -- the per-node opt-out C's `notify_changed_over_dds =
+        // The per-node opt-out C's `notify_changed_over_dds =
         // false` reaches. UNSUPPORTED on a build with no parameter services,
         // where no node publishes the topic: nothing to switch off.
         if (!options.start_parameter_event_publisher() && initialized_) {
@@ -3049,42 +3047,42 @@ class Node {
     nros_cpp_node_t handle_;
     bool initialized_;
     void* executor_handle_; // Set by rclcpp::init() via friendship
-    // Issue 0789 — the node's own clock, ROS time as in rclcpp. Constructing
+    // The node's own clock, ROS time as in rclcpp. Constructing
     // it touches no platform service (only a steady clock records an epoch),
     // so a Node in static storage stays as cheap to create as it was.
     Clock clock_;
-    // issue 1975 -- the options the node was constructed with, for
+    // The options the node was constructed with, for
     // `get_node_options()`; `clock_` above is built from `clock_type()`.
     // Unconditional (one enum), so the layout stays probe-independent.
     ::rclcpp::NodeOptions options_;
-    // phase-476 W3 — `void* hosted_` and its lazy `hosted()` accessor are gone
+    // `void* hosted_` and its lazy `hosted()` accessor are gone
     // with ~~`detail::NodeHosted`~~ (see there): the block's last member was an
     // empty `NodeOptions`. `sizeof(Node)` loses that pointer on EVERY target,
     // so the layout stays probe-independent.
 
-    // phase-427 W4 — the error latch, 24 UNCONDITIONAL bytes on every node.
+    // The error latch, 24 UNCONDITIONAL bytes on every node.
     //
     // These did NOT go behind the old `hosted_` block, and the decision was deliberate rather
     // than an oversight the layout rule missed. This is the error channel a
     // `-fno-exceptions` target has INSTEAD of a throwing constructor: the
-    // boot-halt mechanism (`NanoRosEntityInventory.cmake`, RFC-0044 Q2) is
+    // boot-halt mechanism (`NanoRosEntityInventory.cmake`) is
     // exactly what a freestanding image needs, and a latch reachable only on a
     // hosted target would leave the firmware case — the one that cannot throw —
     // with no channel at all. So every node pays 24 bytes, which is the price
     // of one node type whose failure story works on both.
     //
-    // Issue #230 — inverted flag: the HEALTHY value is the zero-init default,
+    // Inverted flag: the HEALTHY value is the zero-init default,
     // so a cross-core reader sees "ok" without waiting for any store. Accessed
     // via __atomic builtins (release in set_error, acquire in ok()/error_*) —
     // NOT `<atomic>`, which the Zephyr `-nostdinc++` minimal libcpp may lack
-    // (issue 0112 class). All three fields are zero-init-safe.
+    // (a known class). All three fields are zero-init-safe.
     bool has_error_ = false;
     const char* error_what_ = nullptr;
     int32_t error_code_ = 0;
 
-    // phase-427 W7 — the class moved to `rclcpp::` while its friends were still
-    // `nros::` free functions, so each friend is QUALIFIED. phase-483 W1 moved
-    // the friends into `rclcpp::` too; the qualified form still names exactly
+    // The class moved to `rclcpp::` while its friends were still
+    // `nros::` free functions, so each friend is QUALIFIED. The friends
+    // are in `rclcpp::` now too; the qualified form still names exactly
     // the declarations at the top of this header.
     //
     // The declarator-id is PARENTHESIZED, and that is not style. A
@@ -3097,7 +3095,7 @@ class Node {
     friend Result(::rclcpp::init_in)(const char* locator, uint8_t domain_id);
     friend Result(::rclcpp::init_in)(const char* locator, uint8_t domain_id,
                                      const char* session_name);
-    // Issue 1434 — the namespaced overload. A friend declaration names ONE
+    // The namespaced overload. A friend declaration names ONE
     // signature, so an overload that reaches `global_storage()` needs its own
     // line; without it the new body compiles everywhere the class is not
     // instantiated and fails only where a TU actually calls it.
@@ -3129,7 +3127,7 @@ class Node {
     };
     static uint8_t* global_storage() { return GlobalStorageHolder<>::storage; }
 
-    /// phase-432 W3.1 — DERIVED, not stored.
+    /// DERIVED, not stored.
     ///
     /// This used to be a `static bool` beside the storage, set by `init` and
     /// cleared by `shutdown`. Two problems, one fix.
@@ -3163,7 +3161,7 @@ alignas(8) uint8_t Node::GlobalStorageHolder<N>::storage[NROS_CPP_EXECUTOR_STORA
 
 namespace rclcpp {
 
-// ==== phase-427 W4 — the timer pool, as a TEMPLATE PARAMETER ================
+// ==== the timer pool, as a TEMPLATE PARAMETER ===============================
 //
 // `ComponentNode` carried `Timer timers_[NROS_COMPONENT_MAX_TIMERS]` — 192
 // unconditional bytes at the default depth of 8. Merging that onto `Node` would
@@ -3194,15 +3192,15 @@ namespace rclcpp {
 #ifndef NROS_COMPONENT_MAX_TIMERS
 #define NROS_COMPONENT_MAX_TIMERS 8
 #endif
-/// Issue 1131 — the pool is a fixed inline C array, and zero is not a smaller
+/// The pool is a fixed inline C array, and zero is not a smaller
 /// one: `Timer timers_[0]` is not ISO C++ (GCC/Clang accept it only as the
 /// zero-length-array extension). A node that owns no timer does not derive this
 /// template at all, which is the real zero.
 ///
 /// Below the `#ifndef`, never above it: an undefined identifier reads as 0 in
-/// `#if`, so a guard above its own default fires on every build (issue 1167).
+/// `#if`, so a guard above its own default fires on every build.
 #if NROS_COMPONENT_MAX_TIMERS < 1
-// issue 1015 -- a zero here sizes a C array to nothing.
+// A zero here sizes a C array to nothing.
 #error "NROS_COMPONENT_MAX_TIMERS must be >= 1: it sizes a C array"
 #endif
 
@@ -3265,7 +3263,7 @@ class NodeWithTimers : public ::rclcpp::Node {
         ++timer_count_;
     }
 
-    /// A **typed member** repeating timer **in** a callback group (RFC-0047),
+    /// A **typed member** repeating timer **in** a callback group,
     /// parked in the pool. Was `ComponentNode::create_timer_in<C, Method>`.
     template <class C, void (C::*Method)()>
     void create_timer_in_group(const CallbackGroup& group, uint64_t period_ms) {
@@ -3317,19 +3315,19 @@ class NodeWithTimers : public ::rclcpp::Node {
 // -- Free function implementations --
 
 inline Result init_in(const char* locator, uint8_t domain_id) {
-    // Issue 0329 — forward RAW to the 3-arg overload, which resolves the whole
+    // Forward RAW to the 3-arg overload, which resolves the whole
     // ladder (baked `NROS_ENTRY_LOCATOR`/`NROS_ENTRY_DOMAIN_ID` rungs, hosted
     // default, then the env overlay in the Rust resolver behind `nros_cpp_init`).
     // This overload previously re-resolved the locator rung itself — a second,
     // partial copy of the same ladder (it never applied `NROS_ENTRY_DOMAIN_ID`),
-    // duplicating what the 3-arg already does. Phase 266: unified default session
+    // duplicating what the 3-arg already does. Unified default session
     // name "node".
     return init_in(locator, domain_id, "node");
 }
 
 inline Result init_in(const char* locator, uint8_t domain_id, const char* session_name) {
-    // Issue 1434 — forward RAW to the 4-arg overload, exactly as the 2-arg
-    // forwards here (issue 0329): one ladder, one body. `nullptr` is "this
+    // Forward RAW to the 4-arg overload, exactly as the 2-arg
+    // forwards here: one ladder, one body. `nullptr` is "this
     // image declares no namespace", which is what every caller of this
     // overload has always meant.
     return init_in(locator, domain_id, session_name, nullptr);
@@ -3349,19 +3347,19 @@ inline Result init_in(const char* locator, uint8_t domain_id, const char* sessio
     // 0. This makes `init_in(argc, argv)` (which delegates here with a
     // null locator) honor the env overlay instead of passing a null locator
     // to the backend → TransportError / degraded session.
-    // Issue 0330 — the hard local default is GONE entirely (it was a zenoh
+    // The hard local default is GONE entirely (it was a zenoh
     // fact in an RMW-blind header); the backend now supplies it.
-    // RFC-0045 / issue #206 — the env overlay (NROS_LOCATOR / ROS_DOMAIN_ID /
+    // The env overlay (NROS_LOCATOR / ROS_DOMAIN_ID /
     // NROS_NODE_NAME) moved into the shared Rust resolver behind
     // nros_cpp_init (precedence model A: hosted env > this baked chain >
     // compiled default; malformed or >232 ROS_DOMAIN_ID is an init ERROR,
     // never a silent domain 0). This header only assembles the baked rung.
 #endif
-    // Phase-287 W6 — compile-time connect defaults, so ONE portable source
+    // Compile-time connect defaults, so ONE portable source
     // works native + embedded. `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`
     // are target compile definitions the embedded board gate bakes
     // (NanoRosEntry.cmake; Kconfig on Zephyr via <rclcpp/detail/main.hpp>); on native
-    // they are undefined. Precedence (model A, RFC-0045/#206): env (hosted,
+    // they are undefined. Precedence: env (hosted,
     // applied in the Rust resolver) > explicit arg > baked macro > default.
 #ifdef NROS_ENTRY_LOCATOR
     if (locator == nullptr) {
@@ -3371,30 +3369,30 @@ inline Result init_in(const char* locator, uint8_t domain_id, const char* sessio
 #ifdef NROS_ENTRY_DOMAIN_ID
     // Only the UNSET sentinel (0) folds the baked macro in; an explicit
     // argument — including kDomainIdExplicitZero (255) for a literal
-    // domain 0 (issue #227) — passes through untouched.
+    // domain 0 — passes through untouched.
     if (domain_id == 0) {
         domain_id = static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID);
     }
 #endif
-    // Issue 0330 — there is deliberately NO hosted "tcp/127.0.0.1:7447"
+    // There is deliberately NO hosted "tcp/127.0.0.1:7447"
     // fallback here. That value is a *zenoh* fact and this header is
     // RMW-blind; a cyclonedds or xrce build must not carry it. A null
-    // locator flows through `nros_cpp_init` (→ `None` → the RFC-0045
+    // locator flows through `nros_cpp_init` (→ `None` → the boot-config
     // resolver's empty bottom rung) to whichever backend is linked, and
     // that backend applies its own default (zenoh:
     // `nros_rmw_zenoh::DEFAULT_LOCATOR`; xrce: its agent default;
     // cyclonedds: ignores the locator). Precedence is otherwise unchanged:
     // hosted env > explicit arg > baked macro > backend default.
 
-    // Phase 128.C.1 / phase-241.D3-rev — RMW-blind init. The selected
-    // backend registers itself before `main` via its `.init_array` ctor
-    // (RFC-0042 §D3.3), and `nros_cpp_init` additionally calls the weak
+    // RMW-blind init. The selected
+    // backend registers itself before `main` via its `.init_array` ctor,
+    // and `nros_cpp_init` additionally calls the weak
     // `nros_app_register_backends()` board-override hook for RTOS targets
     // where `.init_array` ctors do not run. No `#ifdef NROS_RMW_*` chain
     // here, no CMake-driven fan-out — the user's
     // `target_link_libraries(... NanoRos::Rmw::<name>)` is the only
     // selector.
-    // Issue 1050 defect (3) — the RMW selector's BAKED rung. `NROS_ENTRY_RMW`
+    // The RMW selector's BAKED rung. `NROS_ENTRY_RMW`
     // is a target compile definition the entry gate bakes, exactly like
     // `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID` above; undefined means the
     // image names no backend and the registry must contain exactly one.
@@ -3408,7 +3406,7 @@ inline Result init_in(const char* locator, uint8_t domain_id, const char* sessio
 #else
     const char* rmw = nullptr;
 #endif
-    // Issue 1434 — the namespace travels as the BAKED rung, like `rmw` above
+    // The namespace travels as the BAKED rung, like `rmw` above
     // and `session_name` beside it. `nullptr` reaches `nros_cpp_init_rmw`'s
     // own "unset" arm, which is the root; an EMPTY string is normalised here
     // rather than there, because a bake macro that did not resolve expands to
@@ -3418,7 +3416,7 @@ inline Result init_in(const char* locator, uint8_t domain_id, const char* sessio
     if (node_namespace != nullptr && node_namespace[0] == '\0') {
         node_namespace = nullptr;
     }
-    // Issue 1568 — the one refusal every executor-storage path takes: the
+    // The one refusal every executor-storage path takes: the
     // linked library says whether this TU's `NROS_CPP_EXECUTOR_STORAGE_SIZE`
     // (the header it was compiled against — on NuttX the committed snapshot)
     // is enough for the executor it builds. Refused rather than overrun.
@@ -3457,7 +3455,7 @@ inline Result init_with_rmw(const char* rmw, const char* locator, uint8_t domain
     // No `NROS_ENTRY_RMW` fallback here: an explicit argument that resolves to
     // nullptr is the caller saying "no selector", and quietly substituting the
     // bake would make this overload unable to express that.
-    // Issue 1568 — the one refusal every executor-storage path takes: the
+    // The one refusal every executor-storage path takes: the
     // linked library says whether this TU's `NROS_CPP_EXECUTOR_STORAGE_SIZE`
     // (the header it was compiled against — on NuttX the committed snapshot)
     // is enough for the executor it builds. Refused rather than overrun.
@@ -3508,7 +3506,7 @@ inline int32_t apply_ros_args(void* executor, int argc, char const* const* argv)
         }
         scoped = a != nullptr && *a == '\0' && *want == '\0';
     }
-    // Issue 2073 -- an image that baked arguments of its own has them to
+    // An image that baked arguments of its own has them to
     // apply whatever the command line holds (a board's is empty).
     if (!scoped && !nros_cpp_baked_ros_args_present()) {
         return 0;
@@ -3516,7 +3514,7 @@ inline int32_t apply_ros_args(void* executor, int argc, char const* const* argv)
     char why[256] = {0};
     const int32_t rc = nros_cpp_install_argv_remaps(executor, argc, argv, why, sizeof(why));
     if (rc != 0) {
-        // issue 1303 — two records through `nros_log`, each short enough for
+        // Two records through `nros_log`, each short enough for
         // its format buffer: the refused token (bounded here), then the fixed
         // text, whose length `say_refused` checks at compile time. As one
         // `NROS_ERROR` record it was over 870 bytes, which a real sink cannot
@@ -3560,7 +3558,7 @@ inline Result init_in(int argc, char const* const* argv, const char* session_nam
 }
 
 /// Check if the nros session is initialized — and, like `rclcpp::ok()`, not
-/// asked to stop: issue 1732 folds in a guarded SIGTERM / SIGINT, so every
+/// asked to stop: it folds in a guarded SIGTERM / SIGINT, so every
 /// `while (rclcpp::ok())` loop returns and its `rclcpp::shutdown()` closes the
 /// session. The flag is only ever set where a hosted runner installed the
 /// guard (`nros_cpp_termination_guard_install`).
@@ -3575,7 +3573,7 @@ inline bool ok() {
 /// @param out   Receives the initialized node.
 /// @param name  Node name.
 /// @param ns    Node namespace; nullptr or "" = unset (inherit the executor's),
-///              "/" = the root. See `rclcpp::Node::create` (issue 1473).
+///              "/" = the root. See `rclcpp::Node::create`.
 inline Result create_node(::rclcpp::Node& out, const char* name, const char* ns = nullptr) {
     if (!::rclcpp::Node::global_initialized()) {
         return Result(ErrorCode::NotInitialized);
@@ -3584,7 +3582,7 @@ inline Result create_node(::rclcpp::Node& out, const char* name, const char* ns 
     return ::rclcpp::Node::create(out, name, ns);
 }
 
-/// Phase 274.W2 — create a node on an explicit executor handle.
+/// Create a node on an explicit executor handle.
 ///
 /// Used by per-sched-task setup functions (emitted by `nros dev codegen entry --lang
 /// cpp` for multi-sched-task workspaces) where each sched task's setup runs on the
@@ -3595,7 +3593,7 @@ inline Result create_node(::rclcpp::Node& out, const char* name, const char* ns 
 /// @param executor_handle  Explicit executor handle (from a sched task setup param).
 /// @param name             Node name.
 /// @param ns               Node namespace; nullptr or "" = unset (inherit the
-///                         executor's), "/" = the root (issue 1473).
+///                         executor's), "/" = the root.
 inline Result create_node_on(::rclcpp::Node& out, void* executor_handle, const char* name,
                              const char* ns = nullptr) {
     if (executor_handle == nullptr) {
@@ -3605,7 +3603,7 @@ inline Result create_node_on(::rclcpp::Node& out, void* executor_handle, const c
     return ::rclcpp::Node::create(out, name, ns);
 }
 
-/// Phase 123.B.4 — value-returning factory. Wraps `create_node`
+/// Value-returning factory. Wraps `create_node`
 /// in the `ResultOf<Node>` envelope so users can write
 /// `auto n = rclcpp::make_node("foo");` in the rclcpp-style.
 inline ResultOf<::rclcpp::Node> make_node(const char* name, const char* ns = nullptr) {
@@ -3623,7 +3621,7 @@ inline Result Executor::create_node(::rclcpp::Node& out, const char* name, const
     return ::rclcpp::Node::create(out, name, ns);
 }
 
-// -- Phase 104.C.9 — NodeBuilder ----------------------------------------
+// -- NodeBuilder -----------------------------------------------------
 //
 // Mirrors Rust's `Executor::node_builder(name).rmw(...).locator(...).
 // domain_id(...).namespace(...).sched(...).build()` chain. The C++
@@ -3673,7 +3671,7 @@ class NodeBuilder {
     /// nullptr leaves it UNSET, and an unset namespace INHERITS the
     /// executor's — the same vocabulary `rmw()`, `locator()` and
     /// `domain_id()` above already use for this struct's other fields.
-    /// Pass `"/"` to place the Node at the root explicitly (issue 1473).
+    /// Pass `"/"` to place the Node at the root explicitly.
     NodeBuilder& namespace_(const char* ns) {
         copy_bounded(ns, options_.namespace_, &options_.namespace_len, NROS_CPP_NAMESPACE_LEN);
         return *this;
@@ -3724,7 +3722,7 @@ inline NodeBuilder Executor::node_builder(const char* name) {
 }
 
 namespace detail {
-/// phase-459 W6 — the post-constructor half: every declared group must have
+/// The post-constructor half: every declared group must have
 /// been created (node-level placement — one declared, none created — is
 /// allowed; see `first_uncreated_callback_group`). Called by BOTH constructors
 /// of a component: the `NROS_COMPONENT` factory and the generated C++ entry,

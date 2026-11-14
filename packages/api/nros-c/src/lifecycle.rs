@@ -149,7 +149,7 @@ const _: () = {
 ///
 /// `NULL` clears the slot.
 ///
-/// Issue 0792: this alias is declared HERE rather than reusing
+/// This alias is declared HERE rather than reusing
 /// `nros_node::lifecycle::LifecycleCallbackFnCtx` because cbindgen runs with
 /// `parse_deps = false`. A cross-crate `Option<LifecycleCallbackFnCtx>` in an
 /// `extern "C"` signature is unresolvable to it, so it emitted an OPAQUE
@@ -226,7 +226,7 @@ pub extern "C" fn rclc_lifecycle_get_zero_initialized() -> rcl_lifecycle_state_m
 /// executor-scoped family instead — `rclc_executor_register_lifecycle_services`
 /// plus `rclc_executor_lifecycle_*`.
 ///
-/// Issue 0792: this took a `const rcl_node_t *node` until it was noticed that
+/// This took a `const rcl_node_t *node` until it was noticed that
 /// the pointer was only NULL-checked and never stored. The parameter is gone
 /// rather than stored, because storing it would not have helped: the
 /// executor-scoped family does not reach its node through an `rcl_node_t` at

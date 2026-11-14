@@ -1,6 +1,6 @@
 /**
  * @file error_handling.h
- * @brief `<rcl/error_handling.h>` at upstream's include path (phase-492 W2, RFC-0089).
+ * @brief `<rcl/error_handling.h>` at upstream's include path.
  *
  * The C API carries rcl's and rclc's names, so a ported file's includes resolve
  * here too. Every upstream-path header brings in the whole nano-ros C API
@@ -20,7 +20,7 @@
 #include "rclc/detail/rcl_compat.h"
 
 /*
- * phase-515 C5 — rcl's error-state macros over `rcl_set_error_state`. The state
+ * rcl's error-state macros over `rcl_set_error_state`. The state
  * itself (`rcl_get_error_string`, `rcl_get_error_state`, `rcl_error_is_set`,
  * `rcl_reset_error`) is declared in the nano-ros headers this one includes;
  * its envelope -- ONE process-wide record, and 256-byte strings -- is stated

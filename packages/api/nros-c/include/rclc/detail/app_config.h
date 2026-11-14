@@ -2,7 +2,7 @@
  * @file app_config.h
  * @brief Universal `NROS_APP_CONFIG` surface — `<rclc/detail/app_config.h>`.
  *
- * Phase 212.M-F.10.1 — this is the canonical path consumers reach via
+ * This is the canonical path consumers reach via
  * `#include <rclc/detail/app_config.h>`. The shipped fallback header lives at
  * `rclc/detail/zephyr/app_config.h` (named for historical reasons — Phase
  * 112.D moved it there to avoid a shadowing collision with the

@@ -1,7 +1,7 @@
 /**
  * @file component.h
  * @ingroup grp_node
- * @brief Phase 240.4 (RFC-0043) — C stateful-component binding.
+ * @brief C stateful-component binding.
  *
  * The C analog of the C++ `rclcpp/detail/component.hpp`. A C component is a plain
  * `struct` (state) + a `configure` function that creates its entities with the
@@ -39,7 +39,7 @@
  * RCLC_C_COMPONENT(listener_t, listener_configure)  // emits create/configure exports
  * ```
  *
- * phase-492 W4 — the handles are REAL C API objects over the host's own node
+ * The handles are REAL C API objects over the host's own node
  * and executor, not copies: the C++ binding's context embeds an
  * `rclc_executor_t` and runs its executor inside it, and
  * `nros_cpp_node_bind_c` fills an executor-bound `rcl_node_t` for the node the
@@ -55,7 +55,7 @@
 #include <stdint.h>
 
 #include "rclc/types.h" /* rcl_ret_t, rcl_node_t, rclc_executor_t */
-/* phase-454 W10 — `NROS_ASSERT_DECLARED_DEPTH`, for a C component that states a
+/* `NROS_ASSERT_DECLARED_DEPTH`, for a C component that states a
  * QoS depth at a call site. The header is self-guarding and C-only, so a C++ TU
  * that pulls this in (the cross-include syntax check does) sees nothing and
  * keeps `<rclcpp/detail/declared_qos.hpp>`. */
@@ -72,7 +72,7 @@ extern "C" {
 typedef struct nros_cpp_node_t nros_cpp_node_t;
 
 /**
- * phase-492 W4 — fill `node_out` (an `rcl_node_t *`) with the C handle of
+ * Fill `node_out` (an `rcl_node_t *`) with the C handle of
  * `node` and set `*executor_out` to the host's executor as an
  * `rclc_executor_t *`. Defined by the runtime (`nros-cpp`); called only by
  * `RCLC_C_COMPONENT`'s generated `configure`. Returns 0 on success.

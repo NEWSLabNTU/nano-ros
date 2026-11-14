@@ -1,13 +1,13 @@
 // nros-cpp: the serialization format as a compile-time fact (freestanding C++14)
 //
-// RFC-0088 D5. ROS 2 asks `rmw_get_serialization_format()` at run time because
+// ROS 2 asks `rmw_get_serialization_format()` at run time because
 // it resolves its typesupport through `dlopen`; nano-ros does not `dlopen`, so
 // the answer is already known when the image is compiled — one image links one
 // backend, and one backend speaks one encoding.
 //
 // `const char*` throughout, never `std::string` or `std::string_view`: these
 // headers must compile against Zephyr's minimal libcpp behind `NROS_CPP_STD`,
-// where `<string>` does not exist (issue 0112).
+// where `<string>` does not exist.
 
 /**
  * @file serialization_format.hpp
@@ -27,7 +27,7 @@
 // `nros_cpp`'s own mirror, which a `const _` proves equal to
 // `nros_node::session::IMAGE_SERIALIZATION_FORMAT_ID`. Taken from the C++ FFI
 // header rather than from `<rclc/detail/nros_generated.h>` so that a generated message
-// header never pulls a C API header ahead of this one (issue 0160 — the FFI
+// header never pulls a C API header ahead of this one (the FFI
 // struct mirrors make that include order one-way).
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
@@ -35,7 +35,7 @@ namespace rclcpp {
 
 /// The serialization formats this image can name.
 ///
-/// RFC-0088 D2 — the discriminant is **image-local**. It is assigned per build
+/// The discriminant is **image-local**. It is assigned per build
 /// from the formats declared in that image; the low values below are reserved
 /// for the in-tree formats for readability and nothing more. Never persist one,
 /// and never compare one against a value another image produced — the *string*
@@ -43,14 +43,14 @@ namespace rclcpp {
 enum class SerializationFormat : uint8_t {
     /// OMG CDR as ROS 2 puts it on the wire, encapsulation header included.
     Cdr = 1,
-    /// PX4's in-memory struct, verbatim — no encoding step at all (RFC-0011).
+    /// PX4's in-memory struct, verbatim — no encoding step at all.
     Uorb = 2,
 };
 
 /// The serialization format a message type is encoded in.
 ///
 /// **Defaulted to CDR**, deliberately: this is the C++ mirror of
-/// `nros_core::RosMessage::SERIALIZATION_FORMAT_ID`, which RFC-0088 D1 makes a
+/// `nros_core::RosMessage::SERIALIZATION_FORMAT_ID`, which is a
 /// *defaulted* const so that every message answers something and the 142
 /// existing implementors cost nothing. Codegen specializes it per message
 /// anyway, so a generated type STATES its format rather than inheriting it;
@@ -71,7 +71,7 @@ constexpr SerializationFormat linked_format() {
     return static_cast<SerializationFormat>(NROS_CPP_SERIALIZATION_FORMAT_ID);
 }
 
-/// The cross-image identity string of `linked_format()` (RFC-0088 D2).
+/// The cross-image identity string of `linked_format()`.
 ///
 /// `const char*`, so the header stays usable against Zephyr's minimal libcpp.
 /// Derived from the discriminant rather than emitted beside it: cbindgen maps
@@ -94,7 +94,7 @@ constexpr const char* linked_format_name() {
  * line of the `create_publisher` / `create_subscription` call rather than a
  * line inside this header.
  */
-// RFC-0088 -- one image, one backend, one encoding.
+// One image, one backend, one encoding.
 #define NROS_CPP_ASSERT_MESSAGE_FORMAT(M)                                                          \
     static_assert(::rclcpp::format_of<M>::value == ::rclcpp::linked_format(),                      \
                   "this message type is not encoded in the format the linked backend "             \

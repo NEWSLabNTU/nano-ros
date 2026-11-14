@@ -2,7 +2,7 @@
  * @file uuid.h
  * @ingroup grp_action
  * @brief `unique_identifier_msgs__msg__UUID`, the goal id every action
- *        envelope and goal handle carries (phase-515 C4).
+ *        envelope and goal handle carries.
  *
  * rosidl's struct, member for member. The action envelopes a generated
  * action header emits (`<Action>_SendGoal_Request`, `_FeedbackMessage`) and

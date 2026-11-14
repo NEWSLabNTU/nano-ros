@@ -1,8 +1,8 @@
-//! Phase 108 — status-event API for the nros C user-facing surface.
+//! Status-event API for the nros C user-facing surface.
 //!
 //! User-facing typedefs + setter functions for status events. All nine
-//! setters — the five Tier-1 kinds (liveliness, deadline, message-lost,
-//! issue 1993) and the four issue-1972 kinds (matched, incompatible type) —
+//! setters — the five Tier-1 kinds (liveliness, deadline, message-lost)
+//! and the four matched / incompatible-type kinds —
 //! reach the backend through [`status_event_slots`]. Whether an event is
 //! carried is the backend's answer (`supports_event`, which the cffi route
 //! takes from `backend_event_type_is_supported`): Cyclone DDS and zenoh carry
@@ -534,7 +534,7 @@ unsafe fn subscription_set(
     slot_verdict(r)
 }
 
-/// Register a callback for `NROS_EVENT_PUBLICATION_MATCHED` — issue 1972,
+/// Register a callback for `NROS_EVENT_PUBLICATION_MATCHED`,
 /// upstream `RMW_EVENT_PUBLICATION_MATCHED`. Fires when a subscription starts
 /// or stops matching this publisher.
 ///
@@ -613,7 +613,7 @@ pub unsafe extern "C" fn rclc_publisher_set_incompatible_type_callback(
     }
 }
 
-/// Register a callback for `NROS_EVENT_SUBSCRIPTION_MATCHED` — issue 1972,
+/// Register a callback for `NROS_EVENT_SUBSCRIPTION_MATCHED`,
 /// upstream `RMW_EVENT_SUBSCRIPTION_MATCHED`. Fires when a publisher starts
 /// or stops matching this subscription; observed as the executor polls it.
 ///
@@ -652,8 +652,8 @@ pub unsafe extern "C" fn rclc_subscription_set_matched_callback(
     }
 }
 
-/// Register a callback for `NROS_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE` —
-/// issue 1972. Fires when a publisher on this topic NAME with a different
+/// Register a callback for `NROS_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE`.
+/// Fires when a publisher on this topic NAME with a different
 /// type is seen. Same contract as [`rclc_subscription_set_matched_callback`].
 ///
 /// # Safety
@@ -684,7 +684,7 @@ pub unsafe extern "C" fn rclc_subscription_set_incompatible_type_callback(
     }
 }
 
-/// Issue 1972 — the process-wide table that holds a C or C++ status-event
+/// The process-wide table that holds a C or C++ status-event
 /// registration's `(callback, context, entity)` triple.
 ///
 /// **Why a table.** The backend's channel carries ONE opaque pointer, and
@@ -708,7 +708,7 @@ pub unsafe extern "C" fn rclc_subscription_set_incompatible_type_callback(
 /// is refused — `RCLC_RET_FULL` in C, `NROS_CPP_RET_FULL` in C++ — never
 /// dropped; every setter that can return it says so. Each slot is six
 /// pointer-sized words, which is why the table is not sized for the worst case
-/// of every entity in an image (issue 1993).
+/// of every entity in an image.
 #[cfg(feature = "rmw-cffi")]
 pub mod status_event_slots {
     use core::ffi::c_void;
@@ -717,7 +717,7 @@ pub mod status_event_slots {
     use nros_rmw::{EventKind, EventPayload, TransportError};
 
     /// Live registrations, process-wide, across both the C and C++ APIs. Nine
-    /// event kinds carry a slot (issue 1993): up to four per publisher, five
+    /// event kinds carry a slot: up to four per publisher, five
     /// per subscription. See the module doc for why 16.
     pub const MAX_SLOTS: usize = 16;
 

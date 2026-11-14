@@ -3,7 +3,7 @@
   "disposition": "adopt-bounded",
   "envelope": {
     "file": "packages/api/nros-cpp/include/rclcpp/parameter_value.hpp",
-    "text": "value. There are no exceptions here (RFC-0018), so a wrong-type read answers"
+    "text": "value. There are no exceptions here, so a wrong-type read answers"
   },
   "verdict": "divergence",
   "foreign_names": [

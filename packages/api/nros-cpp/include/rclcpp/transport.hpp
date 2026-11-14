@@ -1,4 +1,4 @@
-// nros-cpp: runtime-pluggable custom transport (Phase 115.D)
+// nros-cpp: runtime-pluggable custom transport
 // Freestanding C++ — no STL required
 
 /**
@@ -18,14 +18,14 @@
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
 // `nros_cpp_transport_ret_t` was a transport-layer-local typedef
-// before Phase 118.D consolidated FFI declarations into
+// before the FFI declarations were consolidated into
 // `nros_cpp_ffi.h`. Keep as an alias for source compatibility — new
 // code should use `nros_cpp_ret_t` directly.
 using nros_cpp_transport_ret_t = nros_cpp_ret_t;
 
 namespace rclcpp {
 
-/// Phase 115.D — wraps the four C function pointers into a typed
+/// Wraps the four C function pointers into a typed
 /// builder-style struct that mirrors `rmw_uros_set_custom_transport`'s
 /// rclcpp-friendly shape.
 ///
@@ -56,7 +56,7 @@ struct TransportOps {
     int32_t (*read)(void* user_data, uint8_t* buf, size_t len, uint32_t timeout_ms) = nullptr;
 };
 
-/// Phase 115.D — register a custom transport. Must be called before
+/// Register a custom transport. Must be called before
 /// the first `rclcpp::Executor::open()`. Subsequent calls overwrite
 /// the slot.
 ///
@@ -78,12 +78,12 @@ inline Result set_custom_transport(const TransportOps& ops) {
     return Result(nros_cpp_set_custom_transport(&ffi));
 }
 
-/// Phase 115.D — clear any previously-registered transport.
+/// Clear any previously-registered transport.
 inline Result clear_custom_transport() {
     return Result(nros_cpp_clear_custom_transport());
 }
 
-/// Phase 115.D — `true` if a custom transport is currently registered.
+/// `true` if a custom transport is currently registered.
 inline bool has_custom_transport() {
     return nros_cpp_has_custom_transport() == 1;
 }

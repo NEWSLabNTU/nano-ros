@@ -6,7 +6,7 @@
  * @ingroup grp_clock
  * @brief `rclcpp::Duration` — a signed nanosecond span, mirroring upstream's.
  *
- * Issue 0789. The value surface already existed in C (`rcl_duration_t`,
+ * The value surface already existed in C (`rcl_duration_t`,
  * `rclc_time_add`, `rclc_time_sub`) and in Rust (`Duration`, `TimerDuration`);
  * this is the C++ face over it, so a ported rclcpp node that builds a duration
  * or stamps a header compiles here.
@@ -15,7 +15,7 @@
  * recorded under `docs/reference/api-parity-ledger/timer/`:
  *   * `to_chrono` — `<chrono>` is not available on the freestanding targets.
  *   * `from_rmw_time` / `to_rmw_time` — the RMW seam is not a user-facing type
- *     here (RFC-0054); a user writes nanoseconds or milliseconds.
+ *     here; a user writes nanoseconds or milliseconds.
  */
 
 #ifndef NROS_RCLCPP_DURATION_HPP
@@ -35,7 +35,7 @@ namespace rclcpp {
 
 /// Nanoseconds in one second. Named once here; `time.hpp` reuses it.
 ///
-/// Stays in `rclcpp::` deliberately: RFC-0089's flip is about the nine TYPES,
+/// Stays in `rclcpp::` deliberately: the namespace flip is about the nine TYPES,
 /// and this is an implementation constant of two of them, not a name upstream
 /// declares. `rclcpp::Duration` and `rclcpp::Time` reach it qualified.
 constexpr int64_t NANOSECONDS_PER_SECOND = 1000000000LL;
@@ -43,12 +43,12 @@ constexpr int64_t NANOSECONDS_PER_SECOND = 1000000000LL;
 } // namespace rclcpp
 
 // ============================================================================
-// `rclcpp::Duration` — DEFINED here (RFC-0089: rclcpp:: is the home)
+// `rclcpp::Duration` — DEFINED here (rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::` to `rclcpp::`. RFC-0089 settles
-// that the ROS 2 spelling is the name this project ships; `nros::Duration` was
-// the migration alias until phase-483 W1 deleted it. A ported
+// The definition moved from `nros::` to `rclcpp::`. The ROS 2 spelling
+// is the name this project ships; `nros::Duration` was
+// the migration alias, now deleted. A ported
 // `rclcpp::Duration d = …;` and in-tree code name one type with one contract.
 namespace rclcpp {
 
@@ -100,7 +100,7 @@ class Duration {
     // -- Arithmetic -------------------------------------------------------
     //
     // rclcpp raises `std::overflow_error` on wraparound. `-fno-exceptions`
-    // (RFC-0018) leaves no way to report that from an operator, so these
+    // leaves no way to report that from an operator, so these
     // saturate nothing and wrap like the underlying `int64_t`: at ~292 years
     // of nanoseconds the bound is not one an embedded node reaches.
 

@@ -22,7 +22,7 @@
  * @brief Recover the struct that embeds a member, from a pointer to that member.
  *
  * rcl's timer callback, `void (*)(rcl_timer_t *timer, int64_t last_call_time)`,
- * carries no context pointer (phase-515 D2). A callback reaches its state the
+ * carries no context pointer. A callback reaches its state the
  * standard C way: embed the `rcl_timer_t` in the state struct and step back
  * from the timer to the struct. The executor always hands the callback the
  * caller's own timer, never a copy, so this is exact.
@@ -46,7 +46,7 @@
  *
  * rcl's `rcl_difference_times(const rcl_time_point_t *start,
  * const rcl_time_point_t *finish, rcl_duration_t *delta)` — **Time - Time ->
- * Duration**. Ledger row `c:difference_times` (phase-379 W5, group B) records
+ * Duration**. Ledger row `c:difference_times` records
  * why this was a gap rather than a rename: `rclc_time_sub` is Time - Duration
  * -> Time, a different operation with different operands and a different
  * return type, so there was never a rename to make. C++ ships the operation as
@@ -60,7 +60,7 @@
  * decode is `rclc_time_to_nanoseconds` and the encode is
  * `rclc_duration_from_nanoseconds`, which is the ONE place the
  * `builtin_interfaces` `{sec, nanosec}` split (floor division, non-negative
- * remainder, issue 0799) is implemented. Open-coding the split here is what
+ * remainder) is implemented. Open-coding the split here is what
  * the C++ `Duration::to_msg` used to do, and it got negatives wrong.
  *
  * ### Overflow, and how this differs from rcl
@@ -116,8 +116,8 @@ static inline rcl_ret_t rcl_difference_times(const struct rclc_time_t* start,
 
 #endif /* NROS_TIMER_H */
 
-/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does
- * (phase-492): a ported file that includes only `<rclc/timer.h>` still finds
+/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does:
+ * a ported file that includes only `<rclc/timer.h>` still finds
  * `RCLC_CHECK_RET`, `RCLC_LOG_*` and the rcl spellings. Outside the guard, so
  * this header's own declarations are complete before the umbrella reads them. */
 #include "rclc/rclc.h"

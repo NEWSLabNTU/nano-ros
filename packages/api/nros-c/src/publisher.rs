@@ -14,7 +14,7 @@ use crate::{
     qos::rclc_qos_t,
 };
 
-/// A type-erased CDR serialiser for one message type (phase-492 W8).
+/// A type-erased CDR serialiser for one message type.
 ///
 /// Writes `msg` (a pointer to the generated struct) into `buffer[..capacity]`
 /// with its 4-byte encapsulation header, stores the byte count in `*out_len`,
@@ -30,7 +30,7 @@ pub type rclc_message_serialize_fn_t = Option<
     ) -> i32,
 >;
 
-/// A type-erased CDR deserialiser for one message type (phase-492 W8).
+/// A type-erased CDR deserialiser for one message type.
 ///
 /// Reads `buffer[..len]` into `msg` (a pointer to the generated struct, its
 /// strings and sequences wired to caller memory) and returns 0; a malformed
@@ -44,8 +44,8 @@ pub type rclc_message_deserialize_fn_t =
 ///
 /// The generated `<pkg>__msg__<Name>__nros_type` is a `static const` of this
 /// type in read-only memory. It carries the type's NAME and HASH (what the RMW
-/// needs to create an entity) and, since phase-492 W8 (RFC-0089
-/// "`ROSIDL_GET_*_TYPE_SUPPORT` adopted as a pass-through"), its CODEC, so
+/// needs to create an entity) and (since `ROSIDL_GET_*_TYPE_SUPPORT`
+/// is adopted as a pass-through) its CODEC, so
 /// `rcl_publish` and `rclc_executor_add_subscription_with_context` work on the
 /// generated struct with rclc's arguments. It is NOT rosidl's
 /// `rosidl_message_type_support_t`, which stays undeclared: that struct's
@@ -70,7 +70,7 @@ pub struct rclc_message_type_t {
 }
 
 /// Service type descriptor: what `ROSIDL_GET_SRV_TYPE_SUPPORT(pkg, srv, Name)`
-/// yields (phase-492 W8).
+/// yields.
 ///
 /// Generated as `<pkg>__srv__<Name>__nros_type`. The four codec slots are the
 /// request and response parts' serialisers, with the
@@ -92,8 +92,7 @@ pub struct rclc_service_type_t {
     pub response_deserialize: rclc_message_deserialize_fn_t,
 }
 
-/// upstream rmw's publisher pre-allocation handle, declared INCOMPLETE
-/// (phase-492 W8).
+/// upstream rmw's publisher pre-allocation handle, declared INCOMPLETE.
 ///
 /// `rcl_publish(&pub, &msg, NULL)` compiles because a pointer to an incomplete
 /// type is fine; declaring one (`rmw_publisher_allocation_t a;`) does not,
@@ -123,7 +122,7 @@ pub struct rcl_publisher_t {
     /// Topic name storage
     pub topic_name: [u8; MAX_TOPIC_LEN],
     /// The options it was initialised with (all zero without any), which
-    /// `rcl_publisher_get_options` returns (phase-515 C6). Placed in the
+    /// `rcl_publisher_get_options` returns. Placed in the
     /// alignment padding after `topic_name`.
     pub options: rcl_publisher_options_t,
     /// Topic name length
@@ -138,7 +137,7 @@ pub struct rcl_publisher_t {
     pub type_hash_len: usize,
     /// Pointer to parent node
     pub node: crate::node::rclc_node_ref_t,
-    /// phase-492 W8 — the descriptor this publisher was created with, kept so
+    /// The descriptor this publisher was created with, kept so
     /// `rcl_publish` can serialise through its codec. Descriptors are generated
     /// `static const`s, so the pointer outlives the publisher.
     pub type_support: *const rclc_message_type_t,
@@ -168,7 +167,7 @@ impl Default for rcl_publisher_t {
 // PUBLISHER_OPAQUE_U64S is computed from size_of::<RmwPublisher>() in opaque_sizes.rs —
 // always large enough by construction.
 
-/// Phase 189.M3 — rclc-style named publisher options.
+/// rclc-style named publisher options.
 ///
 /// Sits ALONGSIDE the QoS profile (rclc convention): QoS is passed
 /// separately, this struct carries the non-QoS publisher-creation axes.
@@ -200,7 +199,7 @@ impl rcl_publisher_options_t {
 
 /// rcl's `rcl_publisher_get_options(publisher)`: the options the publisher was
 /// initialised with -- all zero when it was initialised without any -- or
-/// NULL for a NULL or unusable handle (phase-515 C6).
+/// NULL for a NULL or unusable handle.
 ///
 /// ADOPT-BOUNDED: nano-ros's options carry reserved bytes only, not rcl's `qos`,
 /// `allocator` or rmw-specific options, so a ported `->qos` does not compile;
@@ -452,7 +451,7 @@ pub unsafe extern "C" fn rclc_publisher_init_with_qos(
     }
 }
 
-/// Phase 189.M3 — initialize a publisher with custom QoS + named options.
+/// Initialize a publisher with custom QoS + named options.
 ///
 /// rclc-style entry point: QoS is passed separately (`qos`, NULL =
 /// default) and the non-QoS axes ride in `options` (NULL = defaults).
@@ -503,7 +502,7 @@ pub unsafe extern "C" fn rclc_publisher_init_with_options(
 
 /// Publish CDR-serialized data — rcl's `rcl_publish_serialized_message`.
 ///
-/// Renamed from `rclc_publish_raw` (phase-515 C8) so the transmit verb reads
+/// Renamed from `rclc_publish_raw` so the transmit verb reads
 /// as the receive side's `rclc_polling_subscription_take_serialized` does. The
 /// old name survives one release as a deprecated `static inline` forwarder in
 /// `<rclc/publisher.h>`. ADOPT-BOUNDED against rcl: the payload is a
@@ -562,7 +561,7 @@ pub unsafe extern "C" fn rclc_publish_serialized(
 }
 
 /// Publish a message — rcl's `rcl_publish`, serialising through the
-/// descriptor this publisher was created with (phase-492 W8).
+/// descriptor this publisher was created with.
 ///
 /// ```c
 /// std_msgs__msg__String msg;          // wired by __init_in, or by hand
@@ -580,7 +579,7 @@ pub unsafe extern "C" fn rclc_publish_serialized(
 ///   image's message buffer size (`NROS_SUBSCRIPTION_BUFFER_SIZE`, the bound
 ///   the image derives over every type it carries).
 ///
-/// No heap, ever (RFC-0105 D10): nothing here, in the serialiser or in the
+/// No heap, ever: nothing here, in the serialiser or in the
 /// generated struct allocates. A sample larger than the image's message buffer
 /// is refused with `RCL_RET_ERROR`; `rclc_publisher_publish_streamed` is the
 /// entry point for payloads past that bound.
@@ -660,7 +659,7 @@ unsafe fn publish_staged<const N: usize>(
     Some(unsafe { rclc_publish_serialized(publisher, buf.as_ptr(), len) })
 }
 
-/// Phase 124.E.1 — streamed publish.
+/// Streamed publish.
 ///
 /// Two callbacks: `size_cb` reports the total payload length once,
 /// `chunk_cb` fills the slot in chunks. Backends that support
@@ -685,7 +684,7 @@ unsafe fn publish_staged<const N: usize>(
 ///   larger than the fallback's ~4 KiB staging buffer, and a `chunk_cb`
 ///   that reports 0 written before `*out_total_len` bytes have been
 ///   produced. This line used to name a ~~`NROS_RET_`~~-prefixed
-///   `BUFFER_TOO_SMALL` (issue 1126): `rcl_ret_t` has never defined
+///   `BUFFER_TOO_SMALL`: `rcl_ret_t` has never defined
 ///   one — the constant is `NROS_RMW_RET_BUFFER_TOO_SMALL`, on the RMW ABI
 ///   (`rmw_ret_t`), and a C caller writing the documented comparison
 ///   got an undeclared identifier with nothing pointing back here. The
@@ -746,7 +745,7 @@ pub unsafe extern "C" fn rclc_publisher_publish_streamed(
     }
 }
 
-/// Phase 108.B.7 — manually assert this publisher's liveliness.
+/// Manually assert this publisher's liveliness.
 ///
 /// Required for entities created with QoS `liveliness_kind =
 /// RCLC_QOS_LIVELINESS_MANUAL_BY_TOPIC` or `MANUAL_BY_NODE`; there is
@@ -754,8 +753,7 @@ pub unsafe extern "C" fn rclc_publisher_publish_streamed(
 /// `RCL_RET_OK` on every backend.
 ///
 /// **A BACKEND THAT CANNOT ASSERT REMOTELY ANSWERS `RCL_RET_UNSUPPORTED`,
-/// and this doc said the opposite until the phase-467 RMW gap-closure design
-/// study's Row 7.** It read "Backends that don't implement manual assertion
+/// and this doc used to say the opposite.** It read "Backends that don't implement manual assertion
 /// (XRCE-DDS, zenoh-pico, uORB today) treat this as a no-op and return
 /// `RCL_RET_OK`" — an `OK` from a call that put nothing on the wire, which
 /// is the one thing a caller uses this function to find out. cyclonedds does
@@ -815,7 +813,7 @@ pub const NROS_PUBLISHER_GID_SIZE: usize = 24;
 /// This publisher's own global identifier — upstream
 /// `rmw_get_gid_for_publisher`.
 ///
-/// The phase-467 RMW gap-closure design study's Q1. Writes
+/// Writes
 /// `NROS_PUBLISHER_GID_SIZE` (24) bytes into `out_gid` and touches nothing on
 /// failure.
 ///
@@ -826,7 +824,7 @@ pub const NROS_PUBLISHER_GID_SIZE: usize = 24;
 ///   gids naming one entity compare equal. Gids from two different backends
 ///   in one image are never comparable.
 /// * **Comparable with the gid on a received sample** on zenoh and Cyclone,
-///   which derive both from one source (issue 1495).
+///   which derive both from one source.
 /// * **An all-zero gid is never returned as an answer.** A backend with no
 ///   identity for this publisher reports `RCL_RET_UNSUPPORTED`, because
 ///   all-zero is what an unwritten buffer holds and the two must not read
@@ -899,9 +897,9 @@ pub unsafe extern "C" fn rclc_publisher_get_gid(
 // Phase 124.A.6 — zero-copy publisher loan / commit / discard
 // ============================================================================
 
-/// Phase 124.A.6 — loan a writable slot from the publisher's outbound
+/// Loan a writable slot from the publisher's outbound
 /// buffer. Zero-copy on a backend that lends (zenoh: measured, no payload
-/// copy on the stack); refused on one that does not (issue 0814).
+/// copy on the stack); refused on one that does not.
 ///
 /// # AVAILABILITY — read this before calling
 ///
@@ -924,7 +922,7 @@ pub unsafe extern "C" fn rclc_publisher_get_gid(
 /// `rclc_publisher_publish_streamed` and its receive twin
 /// `process_raw_in_place`: no feature, no token, no arena, no size ceiling.
 /// It makes one payload copy on zenoh, as `rcl_publish` does — what it saves
-/// is the full-size staging buffer, not the copy. See issue 0814.
+/// is the full-size staging buffer, not the copy.
 ///
 /// On success, `*out_buf` points at `*out_cap` writable bytes the
 /// caller fills in place. Pass `*out_token` back to
@@ -947,7 +945,7 @@ pub unsafe extern "C" fn rclc_publisher_get_gid(
 /// * `RCLC_RET_TRY_AGAIN` (`-14`) — no slot available *right now*.
 ///   TRANSIENT: retry later, or use a non-loan publish path.
 /// * `RCLC_RET_NOT_ALLOWED` (`-12`) — this publisher cannot loan at
-///   all. PERMANENT (issue 0814): the backend's vtable exposes no loan
+///   all. PERMANENT: the backend's vtable exposes no loan
 ///   slot, which cannot change while the publisher lives. Do NOT retry —
 ///   take a non-loan path: `rcl_publish`, or
 ///   `rclc_publisher_publish_streamed`, which needs no token, no arena and
@@ -1007,11 +1005,11 @@ pub unsafe extern "C" fn rclc_publisher_loan(
     }
 }
 
-/// Phase 124.A.6 — commit a previously-loaned slot. Sends the slot's
+/// Commit a previously-loaned slot. Sends the slot's
 /// `actual_len` bytes via the active backend.
 ///
 /// **Availability:** `lending`-only, and no shipped build enables it —
-/// see `rclc_publisher_loan`. Issue 0814.
+/// see `rclc_publisher_loan`.
 ///
 /// `token` MUST come from a prior `rclc_publisher_loan` on the SAME
 /// publisher; consuming it (commit OR discard) is mandatory.
@@ -1042,10 +1040,10 @@ pub unsafe extern "C" fn rclc_publisher_commit(
     }
 }
 
-/// Phase 124.A.6 — abandon a previously-loaned slot without sending.
+/// Abandon a previously-loaned slot without sending.
 ///
 /// **Availability:** `lending`-only, and no shipped build enables it —
-/// see `rclc_publisher_loan`. Issue 0814.
+/// see `rclc_publisher_loan`.
 ///
 /// `token` MUST come from a prior `rclc_publisher_loan` on the SAME
 /// publisher; consuming it (commit OR discard) is mandatory.
@@ -1076,7 +1074,7 @@ pub unsafe extern "C" fn rclc_publisher_discard(
     }
 }
 
-/// The QoS profile this publisher is ACTUALLY running — issue 1437.
+/// The QoS profile this publisher is ACTUALLY running.
 ///
 /// `rcl_publisher_get_actual_qos`. What the BACKEND GRANTED, which differs
 /// from what `rclc_publisher_init_with_qos` was handed whenever the backend
@@ -1109,8 +1107,8 @@ pub unsafe extern "C" fn rclc_publisher_discard(
 /// handle. That costs a retained `rclc_qos_t` in every `rcl_publisher_t`,
 /// i.e. RAM in every image including those that never ask, and it hands out a
 /// pointer whose lifetime the caller has to reason about with no ownership
-/// types to help. An out-parameter plus a status is this API's own shape
-/// (RFC-0018), and it is the shape that lets the NOT_INIT case be reported
+/// types to help. An out-parameter plus a status is this API's own shape,
+/// and it is the shape that lets the NOT_INIT case be reported
 /// rather than encoded as NULL.
 ///
 /// # Safety
@@ -1143,8 +1141,8 @@ pub unsafe extern "C" fn rclc_publisher_get_actual_qos(
 /// * `RCL_RET_NOT_INIT` if not initialized
 /// * `RCLC_RET_STALE_NODE` if the node this publisher was created on has
 ///   already been finalised — the teardown order was wrong, and nothing is
-///   dropped. Undocumented until issue 1386, which is the opposite defect to
-///   the one it was filed for: three sites DOCUMENTED a verdict they could not
+///   dropped. This used to be undocumented, the opposite defect to
+///   the one first reported: three sites DOCUMENTED a verdict they could not
 ///   produce while this one produced a verdict it did not document.
 ///
 /// # Safety
@@ -1238,7 +1236,7 @@ pub unsafe extern "C" fn rcl_publisher_get_topic_name(
 ///
 /// rcl's `rcl_publisher_get_subscription_count` with an executor parameter, hence the
 /// distinct `rclc_` name
-/// (phase-492 W1.b) — phase-444, ledger row
+/// — ledger row
 /// `c:publisher_get_subscription_count`.
 ///
 /// # A WEAKER QUESTION THAN UPSTREAM'S, stated here rather than discovered
@@ -1258,10 +1256,10 @@ pub unsafe extern "C" fn rcl_publisher_get_topic_name(
 ///
 /// We open ONE transport session per image and the executor owns it, so the
 /// graph is the executor's to read — the same receiver difference as every
-/// `rclc_executor_get_*` graph verb (phase-381 W4). The name was upstream's,
-/// counting on the extra argument to make a porter notice; RFC-0089's
-/// 2026-10-12 rule 2 forbids an upstream name over a different arity, so it is
-/// `rclc_` (phase-492 W1.b) and a ported call fails on the name.
+/// `rclc_executor_get_*` graph verb. The name was upstream's,
+/// counting on the extra argument to make a porter notice; the adoption
+/// rule (2026-10-12) forbids an upstream name over a different arity, so it is
+/// `rclc_` and a ported call fails on the name.
 ///
 /// # Parameters
 /// * `publisher` - Pointer to a publisher

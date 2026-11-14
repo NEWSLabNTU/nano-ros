@@ -1,0 +1,1 @@
+The C and C++ API headers (`<rclc/...>`, `<rclcpp/...>`, and the generated `nros_generated.h` / `nros_cpp_ffi.h`) and the `nros-c` / `nros-cpp` API docs no longer cite internal design ids; where a sentence leaned on one, it now states the fact in plain words.

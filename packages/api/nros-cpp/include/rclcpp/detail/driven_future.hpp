@@ -5,10 +5,10 @@
  * @file driven_future.hpp
  * @ingroup grp_executor
  * @brief `rclcpp::detail::DrivenSharedFuture` — the hosted `std::shared_future`
- *        whose waits drive the dispatch that fulfils it (issues 2027, 2037).
+ *        whose waits drive the dispatch that fulfils it.
  *
- * Issue 2027 wrote it for `rclcpp_action::Client::async_get_result` /
- * `async_cancel_*`; issue 2037 moved it here, out of `rclcpp_action`, because
+ * Written for `rclcpp_action::Client::async_get_result` /
+ * `async_cancel_*`, and moved here, out of `rclcpp_action`, because
  * a service request's `FutureAndRequestId::share()` returns one too.
  */
 
@@ -24,7 +24,7 @@
 namespace rclcpp {
 namespace detail {
 
-/// Issue 2027 — what a `DrivenSharedFuture` drives: one pass of its CLIENT's
+/// What a `DrivenSharedFuture` drives: one pass of its CLIENT's
 /// own dispatch (`ctx`, null once the client is gone or moved away) and the
 /// executor that client was created on. Shared between the client and every
 /// future it handed out, so a future never names a dead client.
@@ -35,12 +35,12 @@ struct PumpCell {
 };
 
 #ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: shared-future-interop
-/// Issue 2027 — the `std::shared_future` upstream's `async_get_result` /
-/// `async_cancel_goal` return, IS-A `std::shared_future<T>`; issue 2037 —
+/// The `std::shared_future` upstream's `async_get_result` /
+/// `async_cancel_goal` return, IS-A `std::shared_future<T>` —
 /// and the `SharedFuture` a service request's `share()` returns.
 ///
 /// A plain `std::shared_future` waits for another thread to fulfil it, and
-/// there is none here (RFC-0021): its value arrives from the client's
+/// there is none here: its value arrives from the client's
 /// dispatch, during a spin. So this one drives that dispatch while it waits:
 /// `is_ready()` (what `rclcpp::spin_until_future_complete` polls) runs one
 /// pass of the client's own dispatch first, and `wait_for` / `get` spin the
@@ -77,7 +77,7 @@ template <typename T> class DrivenSharedFuture : public ::std::shared_future<T> 
         while (true) {
             const uint64_t spent_ns = nros_cpp_time_ns() - start_ns;
             if (spent_ns >= budget_ns) break;
-            // phase-521 W6 — park until the reply, the end of the budget or the
+            // Park until the reply, the end of the budget or the
             // executor's next deadline, never a fixed 10 ms slice.
             const uint64_t left_ms = (budget_ns - spent_ns + 999999ULL) / 1000000ULL;
             const int32_t entry_ms = nros_cpp_entry_spin_budget_ms(exec);

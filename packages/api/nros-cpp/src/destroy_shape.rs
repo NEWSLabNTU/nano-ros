@@ -1,20 +1,20 @@
-//! What every `nros_cpp_*_destroy` FFI ACTUALLY drops — issue 1496.
+//! What every `nros_cpp_*_destroy` FFI ACTUALLY drops.
 //!
 //! Each of those functions is a null guard followed by one
 //! `core::ptr::drop_in_place`, which reads as a release and is one only when the
-//! type it names has something to run. Issue 1496 is what it costs when it does
+//! type it names has something to run. Here is what it costs when it does
 //! not: `nros_cpp_action_server_destroy` drops a struct whose every field is
 //! `Copy` or a raw pointer, so it runs no destructor — while the five RMW
 //! entities, the goal table and the result slab it appears to release live in
 //! an `ActionServerRawArenaEntry` in the executor arena. When this table was
-//! written the arena had no removal path; since `9768795b1d` (issue 1496) both
+//! written the arena had no removal path; since `9768795b1d` both
 //! ACTION entries are released through the executor — the client's inside
 //! `nros_cpp_action_client_destroy` before its `drop_in_place`, the server's in
 //! `nros_cpp_action_server_detach`, which `~Server` calls before
 //! `nros_cpp_action_server_destroy`. So for the action rows `NO_OP` describes
 //! the DROP, not the entity's fate. The guard-condition row is the same shape:
 //! its entry is released by `nros_cpp_guard_condition_release`, which the C++
-//! destructor calls first (issue 1667).
+//! destructor calls first.
 //!
 //! WHY A TABLE, AND WHY THE COMPILER ANSWERS IT
 //!
@@ -31,8 +31,8 @@
 //! nothing here forces a NEW `*_destroy` to appear in this table.
 //! `check-cpp-destroy-shape` reads both sides — every destroy function in this
 //! crate must have a row, every row must name a real function and the type it
-//! drops, and a `NO_OP` row's function must SAY SO in its doc comment, naming
-//! issue 1496. That is resolution 3 of the issue: the class, not the site.
+//! drops, and a `NO_OP` row's function must SAY SO in its doc comment. That
+//! fixes the class, not the site.
 //!
 //! Adding a row is not a way to bless a no-op. It records which one it is; if
 //! the answer is `NO_OP`, the function's documentation has to carry the

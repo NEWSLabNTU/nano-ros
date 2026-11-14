@@ -15,7 +15,7 @@
 namespace rclcpp {
 
 /// Bound on the service name a `Client` / `Service` remembers for
-/// `get_service_name()` — phase-444.
+/// `get_service_name()`.
 ///
 /// ONE spelling for both, matching `rclcpp::PUBLISHER_TOPIC_NAME_MAX`,
 /// `rclcpp::SUBSCRIPTION_TOPIC_NAME_MAX`, `rclcpp_action::ACTION_NAME_MAX` and the C
@@ -28,10 +28,10 @@ namespace detail {
 /// Copy `src` into a fixed `char[N]` entity-name field, NUL-terminated.
 /// Truncation is silent; a null `src` yields the empty string.
 ///
-/// **ONE spelling, phase-444.** Eight entity classes keep the name they were
+/// **ONE spelling.** Eight entity classes keep the name they were
 /// created on in a `char[256]` member — `Publisher`, `Subscription`, the two
 /// action tiers' client and server, and now `Client` and `Service` — and each
-/// had hand-written the same five-line loop. CLAUDE.md's rule after issue #326
+/// had hand-written the same five-line loop. the repo's rule
 /// is to add a shared helper rather than a seventh and eighth copy of an
 /// idiom, so this is that helper and every site calls it.
 ///

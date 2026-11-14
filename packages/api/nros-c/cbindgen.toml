@@ -20,10 +20,10 @@ header = """/**
 
 #include "rclc/visibility_control.h"
 #include "rclc/detail/nros_config_generated.h"
-/* issue 2081 — `rmw_request_id_t`, hand-written under the guard the RMW ABI
+/* `rmw_request_id_t`, hand-written under the guard the RMW ABI
  * and rclcpp share; excluded from export below. */
 #include "rclc/detail/request_id.h"
-/* phase-515 C4b — `unique_identifier_msgs__msg__UUID`, the goal id of an rclc
+/* `unique_identifier_msgs__msg__UUID`, the goal id of an rclc
  * goal handle, declared under the guard the generated message shares;
  * excluded from export below. */
 #include "rclc/detail/uuid.h"

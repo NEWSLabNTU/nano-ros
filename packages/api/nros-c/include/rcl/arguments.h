@@ -1,6 +1,6 @@
 /**
  * @file arguments.h
- * @brief `<rcl/arguments.h>` at upstream's include path (phase-492 W2, RFC-0089).
+ * @brief `<rcl/arguments.h>` at upstream's include path.
  *
  * The C API carries rcl's and rclc's names, so a ported file's includes resolve
  * here too. Every upstream-path header brings in the whole nano-ros C API

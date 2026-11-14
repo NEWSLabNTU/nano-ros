@@ -26,12 +26,12 @@ use nros_node::executor::ffi::ExecutorFfi as _;
 pub type rclc_subscription_raw_callback_t =
     Option<unsafe extern "C" fn(data: *const u8, len: usize, context: *mut c_void)>;
 
-/// phase-492 W4 — callback for a VALIDATED raw subscription
+/// Callback for a VALIDATED raw subscription
 /// (`rclc_executor_add_subscription_raw_validated`): the CDR bytes plus the
 /// sample's E2E integrity status as three scalars — the sequence `gap` since the
 /// previous sample, whether it is a `duplicate`, and `crc_valid` (`1` valid,
 /// `0` invalid, `-1` no CRC carried). Scalars rather than a struct pointer so
-/// the executor hands them over without a wrapper holding state (RFC-0019/0020).
+/// the executor hands them over without a wrapper holding state.
 pub type rclc_subscription_validated_callback_t = Option<
     unsafe extern "C" fn(
         data: *const u8,
@@ -44,7 +44,7 @@ pub type rclc_subscription_validated_callback_t = Option<
 >;
 
 /// Subscription callback that also receives the sample's wire **attachment**
-/// (Phase 189.M3.4 — the C analog of the Rust
+/// (the C analog of the Rust
 /// `node.subscription(t).generic(..).message_info()` builder path). Used by
 /// `rclc_executor_add_subscription_raw_with_info`.
 ///
@@ -81,7 +81,7 @@ pub enum rclc_subscription_state_t {
 
 /// A subscription the executor dispatches (rclc's `rcl_subscription_t`).
 ///
-/// phase-487 W1 (RFC-0096 D9, the C amendment): an entity the executor
+/// An entity the executor
 /// dispatches is owned by the executor. The subscriber, its receive buffer,
 /// the callback and its context all live in the executor arena's entry, and
 /// this struct holds the arena handle `(handle_id, _executor)` plus the
@@ -89,7 +89,7 @@ pub enum rclc_subscription_state_t {
 /// because rclc's order is init first, `rclc_executor_add_*` second: at init
 /// there is no executor to hold it yet.
 ///
-/// Before phase-487 this struct also carried the callback, the context and
+/// This struct used to carry the callback, the context and
 /// the polled form's subscriber storage (`_opaque`). On the dispatched road
 /// none of the three was read after registration, because the arena keeps its
 /// own copies. A subscription the caller drains itself is a
@@ -112,7 +112,7 @@ pub struct rcl_subscription_t {
     pub type_hash_len: usize,
     /// Pointer to parent node
     pub node: crate::node::rclc_node_ref_t,
-    /// phase-492 W8 — the descriptor this subscription was created with, kept
+    /// The descriptor this subscription was created with, kept
     /// so `rclc_executor_add_subscription_with_context` deserialises through
     /// its codec with rclc's arguments. Descriptors are generated
     /// `static const`s, so the pointer outlives the subscription.
@@ -121,14 +121,14 @@ pub struct rcl_subscription_t {
     pub qos: crate::qos::rclc_qos_t,
     /// Handle ID from executor registration (SIZE_MAX = not registered)
     pub handle_id: usize,
-    /// Phase 189.M3 — scheduling-context slot requested via
+    /// Scheduling-context slot requested via
     /// [`rclc_subscription_init_with_options`]. `0` = inherit the
     /// executor / Node default (no explicit bind), matching the
     /// `rcl_node_options_t::sched_context_id` convention. When non-zero,
     /// `rclc_executor_add_subscription_*` binds the freshly-created
     /// handle to this SC after registration.
     pub options: rcl_subscription_options_t,
-    /// issue 1437 — the `rclc_executor_t` holding this subscription's arena
+    /// The `rclc_executor_t` holding this subscription's arena
     /// entry, or NULL before registration. Set beside
     /// [`handle_id`](Self::handle_id) by `rclc_executor_add_subscription_*`:
     /// the pair is the same `(executor_ptr, arena_entry_index)` that
@@ -158,7 +158,7 @@ impl Default for rcl_subscription_t {
     }
 }
 
-/// A subscription the CALLER drains, with no executor (phase-487 W1).
+/// A subscription the CALLER drains, with no executor.
 ///
 /// The C counterpart of C++'s `nros::PollSubscription<M>` and Rust's
 /// `create_polling_subscription`. Nothing dispatches it, so it has no arena
@@ -167,8 +167,8 @@ impl Default for rcl_subscription_t {
 /// event registrations) from `rclc_polling_subscription_init*` until
 /// `rclc_polling_subscription_fini`. Zero-initialised is UNINITIALIZED.
 ///
-/// It was the ~~`NROS_SUBSCRIPTION_STATE_POLLING`~~ state of
-/// `rcl_subscription_t` until phase-487, which made every dispatched
+/// It used to be the ~~`NROS_SUBSCRIPTION_STATE_POLLING`~~ state of
+/// `rcl_subscription_t`, which made every dispatched
 /// subscription carry this storage unused.
 #[repr(C)]
 pub struct rclc_polling_subscription_t {
@@ -177,7 +177,7 @@ pub struct rclc_polling_subscription_t {
     /// The node the subscriber was created on, kept so `fini` can refuse a
     /// teardown after the node's (`RCLC_RET_STALE_NODE`).
     pub node: crate::node::rclc_node_ref_t,
-    /// phase-492 W8 — the descriptor this subscription was created with, kept
+    /// The descriptor this subscription was created with, kept
     /// so [`rclc_polling_subscription_take`] deserialises through its codec.
     pub type_support: *const rclc_message_type_t,
     /// Inline storage for the `RawSubscription`. Internal: treat as opaque.
@@ -224,7 +224,7 @@ pub extern "C" fn rcl_get_zero_initialized_subscription() -> rcl_subscription_t 
     rcl_subscription_t::default()
 }
 
-/// Phase 189.M3 — rclc-style named subscription options.
+/// rclc-style named subscription options.
 ///
 /// Sits ALONGSIDE the QoS profile (rclc convention): QoS is passed
 /// separately, this struct carries the non-QoS subscription-creation
@@ -243,7 +243,7 @@ pub struct rcl_subscription_options_t {
     /// ~~`nros_executor_add_subscription_*`~~ once the handle exists. Has
     /// no effect on the L1 polling path.
     pub sched_context: crate::executor::rclc_sched_context_id_t,
-    /// Reserved — needs a with-info arena path (Phase 189.M3.4), not yet
+    /// Reserved — needs a with-info arena path, not yet
     /// wired. When a future M3.4 lands this will request the
     /// message-info delivery variant (sample identity + reception
     /// timestamp alongside the payload). Setting it to a non-zero value
@@ -268,7 +268,7 @@ impl rcl_subscription_options_t {
 
 /// rcl's `rcl_subscription_get_options(subscription)`: the options the subscription was
 /// initialised with -- all zero when it was initialised without any -- or
-/// NULL for a NULL or unusable handle (phase-515 C6).
+/// NULL for a NULL or unusable handle.
 ///
 /// ADOPT-BOUNDED: nano-ros's options carry the scheduling context and the message-info flag, not rcl's `qos`,
 /// `allocator` or rmw-specific options, so a ported `->qos` does not compile;
@@ -304,11 +304,11 @@ pub extern "C" fn rcl_subscription_get_default_options() -> rcl_subscription_opt
 /// Initialize a subscription with default QoS (RELIABLE, KEEP_LAST(10)).
 ///
 /// rclc's `rclc_subscription_init_default`, in rclc's argument order and at
-/// rclc's ARITY (phase-417 stage 6). The old ~~`nros_subscription_init`~~ carried
-/// two extra arguments — `callback` and `context` — and RFC-0089 records why
+/// rclc's ARITY. The old ~~`nros_subscription_init`~~ carried
+/// two extra arguments — `callback` and `context` — and this is why
 /// they are gone from here:
 ///
-/// * the binding site was never mandated. RFC-0041 is about the DISPATCH
+/// * the binding site was never mandated. The receive model is about the DISPATCH
 ///   MODEL, not about which call first supplies a callback, and
 ///   `executor-owns-no-entity-storage` — cited by name in ten ledger rows as
 ///   the reason — is defined nowhere in `docs/design/`;
@@ -318,18 +318,18 @@ pub extern "C" fn rcl_subscription_get_default_options() -> rcl_subscription_opt
 ///
 /// So the callback is supplied where rclc supplies it, at registration:
 /// `rclc_executor_add_subscription_with_context` for the typed path (rclc's
-/// own, phase-492 W8) and `rclc_executor_add_subscription_raw` for the byte
+/// own) and `rclc_executor_add_subscription_raw` for the byte
 /// path, which has no rclc counterpart and therefore takes an ours-only name.
 ///
 /// The typesupport parameter stays `const rclc_message_type_t *` rather than
 /// taking `rosidl_message_type_support_t`'s name: a rosidl typesupport's
 /// MEMBERS are its contract, including the `func` dispatcher we do not have,
-/// so adopting the name would claim a structure we lack (RFC-0089, settled
+/// so adopting the name would claim a structure we lack (settled
 /// 2026-09-04). It costs a ported call site nothing — the argument comes from
 /// our codegen either way.
 ///
-/// The six-argument ~~`nros_subscription_init`~~ is GONE (phase-417 stage 6 step
-/// B retired it), and since phase-487 no init entry point takes a callback:
+/// The six-argument ~~`nros_subscription_init`~~ is GONE,
+/// and no init entry point takes a callback:
 /// the subscription struct no longer has anywhere to keep one, because the
 /// executor arena owns it.
 ///
@@ -361,8 +361,8 @@ pub unsafe extern "C" fn rclc_subscription_init_default(
 /// Initialize a subscription with custom QoS.
 ///
 /// rclc's `rclc_subscription_init` shape: `(subscription, node, type, topic,
-/// qos)`. phase-487 W1 removed the `callback` and `context` this took
-/// between the topic and the QoS. The struct stored them only for
+/// qos)`. The `callback` and `context` this took
+/// between the topic and the QoS are gone. The struct stored them only for
 /// the (since removed) three-argument ~~`nros_executor_add_subscription`~~ to read back, and the arena kept its own
 /// copies; the callback is now supplied at registration, by
 /// `rclc_executor_add_subscription_raw` / `_typed` / `_with_info`.
@@ -429,7 +429,7 @@ pub unsafe extern "C" fn rclc_subscription_init_with_qos(
     RCL_RET_OK
 }
 
-/// Phase 189.M3 — initialize a subscription with custom QoS + named options.
+/// Initialize a subscription with custom QoS + named options.
 ///
 /// rclc-style entry point: QoS is passed separately (`qos`, NULL =
 /// default) and the non-QoS axes ride in `options` (NULL = defaults).
@@ -438,8 +438,7 @@ pub unsafe extern "C" fn rclc_subscription_init_with_qos(
 /// that ~~`nros_executor_add_subscription_*`~~ binds the resulting
 /// executor handle to that scheduling context once the handle is known
 /// (entity creation is deferred to registration, so the handle does not
-/// exist at init time). `options->message_info` is RESERVED and ignored
-/// (Phase 189.M3.4).
+/// exist at init time). `options->message_info` is RESERVED and ignored.
 ///
 /// # Parameters
 /// * `subscription` - Pointer to a zero-initialized subscription
@@ -507,7 +506,7 @@ pub unsafe extern "C" fn rclc_subscription_init_with_options(
 //   UNINITIALIZED → INITIALIZED (via rclc_polling_subscription_init*)
 //   INITIALIZED   → SHUTDOWN    (via rclc_polling_subscription_fini)
 
-/// Phase 122.3.b — initialize an L1 polling-mode subscription.
+/// Initialize an L1 polling-mode subscription.
 ///
 /// Creates the underlying RMW subscriber immediately and stores it
 /// inline in the subscription's `_opaque` field. The caller drains
@@ -541,7 +540,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_init(
     rclc_polling_subscription_init_with_qos(subscription, node, type_info, topic_name, ptr::null())
 }
 
-/// Phase 122.3.b — initialize an L1 polling-mode subscription with custom QoS.
+/// Initialize an L1 polling-mode subscription with custom QoS.
 ///
 /// See `rclc_polling_subscription_init` for the threading + lifecycle
 /// contract.
@@ -686,7 +685,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_init_with_qos(
     RCL_RET_OK
 }
 
-/// Phase 122.3.c.6.e — register a C wake callback on an L1
+/// Register a C wake callback on an L1
 /// polling-mode subscription. `state` is a caller-owned
 /// `rclc_wake_state_t` (declared next to the subscription) that
 /// must outlive the subscription and not move. Pass `cb = NULL`
@@ -695,7 +694,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_init_with_qos(
 ///
 /// Returns `RCL_RET_UNSUPPORTED` when the backend cannot name the entity
 /// whose data arrived (uORB, a poll-only link) — it has no
-/// per-entity new-data slot, so the callback would never fire (issue 1940).
+/// per-entity new-data slot, so the callback would never fire.
 ///
 /// # Safety
 /// All pointers valid; `state` storage stable for the
@@ -741,7 +740,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_set_wake_callback(
     }
 }
 
-/// Phase 122.3.b — non-blocking poll on an L1 polling-mode
+/// Non-blocking poll on an L1 polling-mode
 /// subscription. Returns the number of bytes received on success
 /// (may be 0 if no data available), or a negative `rcl_ret_t` on
 /// error.
@@ -795,8 +794,8 @@ pub unsafe extern "C" fn rclc_polling_subscription_take_serialized(
     }
 }
 
-/// upstream rmw's subscription pre-allocation handle, declared INCOMPLETE
-/// (phase-492 W8): a pointer to one compiles, so NULL can be passed; declaring
+/// upstream rmw's subscription pre-allocation handle, declared INCOMPLETE:
+/// a pointer to one compiles, so NULL can be passed; declaring
 /// one does not. nano-ros has no pre-allocation to hand out.
 pub struct rmw_subscription_allocation_t {
     _private: [u8; 0],
@@ -804,11 +803,11 @@ pub struct rmw_subscription_allocation_t {
 
 /// Take one sample from a polling subscription and DESERIALISE it into
 /// `ros_message` through the subscription's descriptor — the typed sibling of
-/// [`rclc_polling_subscription_take_serialized`] (phase-492 W8).
+/// [`rclc_polling_subscription_take_serialized`].
 ///
 /// This is the `rcl_take` analog. `rcl_take` itself is not declared: it takes
-/// an `rcl_subscription_t`, which here is executor-owned (phase-487 W1, RFC-0096
-/// D9) and has no subscriber of its own to take from, so the upstream name with
+/// an `rcl_subscription_t`, which here is executor-owned
+/// and has no subscriber of its own to take from, so the upstream name with
 /// this contract would compile and differ. A subscription the caller drains is
 /// an `rclc_polling_subscription_t`, and this is its take.
 ///
@@ -877,7 +876,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_take(
     }
 }
 
-/// Phase 252 / issue 0073 — E2E message-integrity status surfaced to the C/C++
+/// E2E message-integrity status surfaced to the C/C++
 /// receive path ([`rclc_polling_subscription_take_validated`]). The C analog of the
 /// Rust `IntegrityStatus` / `CallbackCtx::integrity()`.
 #[cfg(feature = "safety-e2e")]
@@ -892,7 +891,7 @@ pub struct rclc_integrity_status_t {
     pub crc_valid: i8,
 }
 
-/// Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E
+/// Non-blocking poll that ALSO returns the E2E
 /// integrity status (CRC + sequence gap/dup) of the received sample. The
 /// safety-e2e analog of [`rclc_polling_subscription_take_serialized`]: it requests
 /// validation on the backend (the zenoh shim recomputes + compares the CRC
@@ -965,12 +964,12 @@ pub unsafe extern "C" fn rclc_polling_subscription_take_validated(
 // Phase 124.A.6 — zero-copy subscription borrow / release
 // ============================================================================
 
-/// Phase 124.A.6 — borrow a read-only view of the next available message
+/// Borrow a read-only view of the next available message
 /// in place (zero-copy receive path).
 ///
 /// **Availability:** requires the `lending` AND `alloc` cargo features,
 /// and no shipped build enables `lending` — see `rclc_publisher_loan`
-/// for what that means for this header. Issue 0814.
+/// for what that means for this header.
 ///
 /// Bypasses the subscription's staging buffer. On success, `*out_buf`
 /// points at `*out_len` bytes the caller can read directly. Caller MUST
@@ -982,7 +981,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_take_validated(
 /// active backend's vtable doesn't expose a native borrow slot.
 ///
 /// **Requires `alloc` as well as `lending`.** Unlike the publish half —
-/// which issue 0812 made allocation-free by passing the BACKEND's own
+/// which is allocation-free by passing the BACKEND's own
 /// token through — the receive half still boxes a `RecvView` per borrow
 /// to manufacture a stable FFI token, so it cannot exist in a heap-free
 /// image. That was 0812's own "what this does NOT yet buy" item, and
@@ -990,7 +989,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_take_validated(
 /// `nros-c` FAIL TO COMPILE under `--features lending` without `alloc`
 /// (four `alloc::boxed::Box` uses with no `extern crate alloc` in scope).
 /// A capability that cannot build is worse than one that is absent, so
-/// the `cfg` now states the real requirement (issue 0814).
+/// the `cfg` now states the real requirement.
 ///
 /// # Returns
 /// * `> 0` — message length written into `*out_len`; view is ready.
@@ -1046,10 +1045,10 @@ pub unsafe extern "C" fn rclc_polling_subscription_borrow(
     }
 }
 
-/// Phase 124.A.6 — release a previously borrowed view.
+/// Release a previously borrowed view.
 ///
 /// **Availability:** requires `lending` AND `alloc`, and no shipped build
-/// enables `lending` — see `rclc_publisher_loan`. Issue 0814.
+/// enables `lending` — see `rclc_publisher_loan`.
 ///
 /// `token` MUST come from a prior `rclc_polling_subscription_borrow` on the
 /// SAME subscription; consuming it is mandatory before the
@@ -1083,7 +1082,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_release(
     RCL_RET_OK
 }
 
-/// Phase 124.D.1 — burst-take. Drain up to `max_msgs` queued samples
+/// Burst-take. Drain up to `max_msgs` queued samples
 /// into the contiguous `buf` block in a single call, with the i-th
 /// sample at `buf + i * per_msg_cap` and length `out_lens[i]`.
 ///
@@ -1139,7 +1138,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_take_sequence(
     }
 }
 
-/// The QoS profile this subscription is ACTUALLY running — issue 1437.
+/// The QoS profile this subscription is ACTUALLY running.
 ///
 /// `rcl_subscription_get_actual_qos`. See
 /// [`rclc_publisher_get_actual_qos`](crate::publisher::rclc_publisher_get_actual_qos)
@@ -1242,7 +1241,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_get_actual_qos(
 /// * `RCL_RET_INVALID_ARGUMENT` if `subscription` is NULL
 /// * `RCL_RET_NOT_INIT` if it is not initialised
 /// * `RCLC_RET_STALE_NODE` if its node has already been finalised — the
-///   teardown order was wrong, and nothing is dropped (issue 1386).
+///   teardown order was wrong, and nothing is dropped.
 ///
 /// # Safety
 /// * `subscription` must be a valid pointer
@@ -1287,7 +1286,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_fini(
 /// * `RCL_RET_INVALID_ARGUMENT` if `subscription` is NULL
 /// * `RCL_RET_NOT_INIT` if it is in no finalisable state
 ///   finalised — the teardown order was wrong, and nothing is dropped. Stated
-///   here because of issue 1386: that issue is three sites documenting a
+///   here because three sites documented a
 ///   stale-node verdict they could not produce, and the same sweep found this
 ///   one producing it without saying so.
 ///
@@ -1378,7 +1377,7 @@ pub unsafe extern "C" fn rcl_subscription_get_topic_name(
 ///
 /// rcl's `rcl_subscription_get_publisher_count` with an executor parameter, hence the
 /// distinct `rclc_` name
-/// (phase-492 W1.b) — phase-444, ledger row
+/// — ledger row
 /// `c:subscription_get_publisher_count`. The subscription half of
 /// [`rclc_publisher_get_subscription_count`](crate::publisher::rclc_publisher_get_subscription_count),
 /// which states the weakening (topic-wide, not matched-to-this-entity), why

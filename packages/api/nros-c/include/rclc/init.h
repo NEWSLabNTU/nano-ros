@@ -1,6 +1,6 @@
 /**
  * @file init.h
- * @brief `<rclc/init.h>` at upstream's include path (phase-492 W2, phase-501).
+ * @brief `<rclc/init.h>` at upstream's include path.
  *
  * Every declaration this header names lives in the generated
  * `<rclc/detail/nros_generated.h>`, reached through `<rclc/types.h>`.
@@ -13,8 +13,8 @@
 
 #endif /* RCLC__INIT_H_ */
 
-/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does
- * (phase-492): a ported file that includes only `<rclc/init.h>` still finds
+/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does:
+ * a ported file that includes only `<rclc/init.h>` still finds
  * `RCLC_CHECK_RET`, `RCLC_LOG_*` and the rcl spellings. Outside the guard, so
  * this header's own declarations are complete before the umbrella reads them. */
 #include "rclc/rclc.h"

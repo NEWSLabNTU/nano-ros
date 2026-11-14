@@ -7,7 +7,7 @@
  * executor with rclc_executor_attach_client(), and call services with
  * rclc_client_call() (blocking). The executor arena owns the client; a
  * response callback is set on the ADDED client with
- * rclc_client_set_response_callback() (phase-487 W2).
+ * rclc_client_set_response_callback().
  *
  * The non-blocking paths take the reply: rclc_client_take_response()
  * after rclc_client_send_request_async(), and
@@ -19,7 +19,7 @@
  * `<Srv>_client_send_request()`, `<Srv>_client_take_response()`,
  * `<Srv>_client_call()` and the callback trio
  * `<Srv>_client_handler_t` / `<Srv>_client_handler_init()` /
- * `<Srv>_client_set_response_callback()` (phase-417 W5.e). They are
+ * `<Srv>_client_set_response_callback()`. They are
  * `static inline` forwarders onto the entry points named above — the same
  * transport, the same timeout, one CDR implementation — so nothing here is
  * superseded, and the raw path stays the one to reach for when the payload
@@ -27,7 +27,7 @@
  *
  * The typed send/take helpers take a CALLER-SUPPLIED scratch buffer. That is
  * deliberate: the service pack emits no `_MAX_SERIALIZED_SIZE` constants yet
- * (the message pack does, issue 0896), so a `static inline` with a hidden
+ * (the message pack does), so a `static inline` with a hidden
  * fixed-size array would reintroduce the silent cliff that work removed. An
  * explicit buffer has no cliff, and no allocator on the delivery path.
  */
@@ -39,7 +39,7 @@
  * This per-module header is kept as a thin shim so existing code that
  * does `#include <rclc/client.h>` continues to compile. */
 #include "rclc/types.h"
-/* phase-417 W5.d — `rclc_qos_services_best_effort()`, the profile rclc's
+/* `rclc_qos_services_best_effort()`, the profile rclc's
  * service AND client `_best_effort` presets share. One definition, in the
  * service header both halves of the request/response pair already belong to
  * (`@ingroup grp_service` above). */
@@ -48,7 +48,7 @@
 /**
  * @brief rclc's best-effort preset constructor for a service client.
  *
- * phase-417 W5.d; the client-side sibling of rclc_service_init_best_effort(),
+ * The client-side sibling of rclc_service_init_best_effort(),
  * sharing its profile through rclc_qos_services_best_effort() so the two
  * cannot drift — rclc's `client.c` and `service.c` build the same value the
  * same way, and one place to read it here is what keeps that true.
@@ -71,8 +71,8 @@ static inline rcl_ret_t rclc_client_init_best_effort(struct rcl_client_t* client
 
 #endif /* NROS_CLIENT_H */
 
-/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does
- * (phase-492): a ported file that includes only `<rclc/client.h>` still finds
+/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does:
+ * a ported file that includes only `<rclc/client.h>` still finds
  * `RCLC_CHECK_RET`, `RCLC_LOG_*` and the rcl spellings. Outside the guard, so
  * this header's own declarations are complete before the umbrella reads them. */
 #include "rclc/rclc.h"

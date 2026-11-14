@@ -4,7 +4,7 @@
 /**
  * @file qos.hpp
  * @ingroup grp_qos
- * @brief `rclcpp::QoS` — full DDS-shaped QoS settings (Phase 108.B.7).
+ * @brief `rclcpp::QoS` — full DDS-shaped QoS settings.
  */
 
 #ifndef NROS_RCLCPP_QOS_HPP
@@ -12,22 +12,22 @@
 
 #include <stdint.h>
 
-// Phase 379 W5 — the deadline / lifespan / lease accessors take and return
+// The deadline / lifespan / lease accessors take and return
 // `rclcpp::Duration`, so this header names it. `nros.hpp` includes `qos.hpp`
 // before `duration.hpp`, so the dependency is spelled HERE rather than left to
 // the umbrella's ordering: a header that names a type must be able to be
 // included first.
 #include "rclcpp/duration.hpp"
-// phase-417 G7 — `NROS_PUBLIC`, for the one C entry point this header
+// `NROS_PUBLIC`, for the one C entry point this header
 // declares (`qos_policy_kind_to_cstr`, below). Macros only; the file includes
 // nothing and compiles freestanding, so it costs this header's
 // self-containment nothing.
 #include "rclc/visibility_control.h"
-// phase-417 stage 6 step A — `rclcpp::detail::refuse` and the
+// `rclcpp::detail::refuse` and the
 // `NROS_RCLCPP_REFUSE_*` diagnostics, used by `SystemDefaultsQoS` below.
 // `log.hpp` includes nothing of ours, so this adds no cycle.
 #include "rclcpp/logging.hpp"
-// `<type_traits>` is GATED, and this is issue 0112's class one step further
+// `<type_traits>` is GATED, and this is the same class one step further
 // than step A caught it. Zephyr's minimal libcpp ships exactly THREE headers --
 // `cstddef`, `cstdint`, `new` (`zephyr/lib/cpp/minimal/include/`) -- so an
 // UNGATED include here made `#include <rclcpp/rclcpp.hpp>` fail to compile on every
@@ -40,7 +40,7 @@
 // This header includes NOTHING, deliberately -- see `is_qos_arg` below.
 
 // FFI struct definition — mirrors `nros_cpp_qos_t` in
-// nros_cpp_ffi.h. Phase 118.D: guarded by `NROS_CPP_FFI_H`. If
+// nros_cpp_ffi.h. Guarded by `NROS_CPP_FFI_H`. If
 // `nros_cpp_ffi.h` was included earlier (it sets that guard), the
 // canonical types are already in scope; otherwise emit local
 // definitions so this header stays self-contained for callers that
@@ -48,8 +48,8 @@
 //
 // The FIELD names below are ABI. `deadline_ms` / `lifespan_ms` /
 // `liveliness_lease_ms` are `uint32_t` milliseconds and are mirrored again in
-// `rclc/component.h` (issue 0160, gated by `check-ffi-struct-mirrors`). The
-// `_ms` suffix on a `QoS` METHOD was renamed in phase-379 W5; the suffix on a
+// `rclc/component.h` (gated by `check-ffi-struct-mirrors`). The
+// `_ms` suffix on a `QoS` METHOD was renamed; the suffix on a
 // STRUCT FIELD was not, and must not be — the C ABI carries milliseconds.
 #ifndef NROS_CPP_FFI_H
 extern "C" {
@@ -96,7 +96,7 @@ struct nros_cpp_qos_t {
 }
 #endif // NROS_CPP_FFI_H
 
-// issue 2054 — upstream's rmw profile struct, under its upstream TAG.
+// upstream's rmw profile struct, under its upstream TAG.
 // Declared here, incomplete, so `QoS` below can name it in three member
 // declarations; it is DEFINED at the bottom of this file, after `QoS` is
 // complete, because its conversion to `QoS` needs the whole class. The tag is
@@ -107,33 +107,33 @@ struct rmw_qos_profile_s;
 
 namespace rclcpp {
 
-// -- Policy enums (phase 379 W5) ------------------------------------------
+// -- Policy enums ------------------------------------------
 //
 // At NAMESPACE scope and public, under rclcpp's names, because that is where a
 // ported node looks for them (`rclcpp::ReliabilityPolicy`, `qos.hpp:34-58`).
-// Three of these were PRIVATE members of `QoS` until phase-379 W5, which is why
+// Three of these were PRIVATE members of `QoS` once, which is why
 // the getters had to hand back `int` — a public getter cannot name a private
 // type. Ledger: `cpp:ReliabilityPolicy` and its three siblings.
 //
-// The two rclcpp enumerators we used to decline ARRIVED in phase-444 (issue
-// 1437), and the reason each was declined is the reason it is now needed:
+// The two rclcpp enumerators we used to decline ARRIVED,
+// and the reason each was declined is the reason it is now needed:
 //
 //   * `SystemDefault` — "defer to the middleware". Declined because nothing
-//     DEFERS: the backend is linked at build time (RFC-0036). True of a
+//     DEFERS: the backend is linked at build time. True of a
 //     REQUEST, and a `QoS` is no longer only a request — `get_actual_qos()`
 //     hands one back, and a backend CAN report that a policy was never stated.
 //   * `Unknown` — declined as "a discovery artefact for a policy read off a
 //     remote endpoint, and we do no dynamic discovery". It is not that: it is
 //     what `rmw_*_get_actual_qos` owes for a policy the backend looked at and
 //     cannot determine, on the LOCAL endpoint. `rmw_vtable.h` has always said
-//     so, and until issue 1437 no implementation anywhere wrote one.
+//     so, and until recently no implementation anywhere wrote one.
 //
 // What is still declined is `rclcpp::SystemDefaultsQoS` — the all-sentinel
-// PRESET, whose two RMWs resolve it to depth 1 and depth 42 (issue 0829).
+// PRESET, whose two RMWs resolve it to depth 1 and depth 42.
 // A value a backend may REPORT is not a profile a caller may REQUEST, and the
 // refusal on that class stands (`NROS_RCLCPP_REFUSE_SYSTEM_DEFAULTS_QOS`).
 //
-// The enumerators are upstream's and SCOPED (phase-483 W1): one
+// The enumerators are upstream's and SCOPED: one
 // `SystemDefault` and one `Unknown` per policy, reached as
 // `rclcpp::ReliabilityPolicy::Unknown`. The prefixed spellings
 // (~~`ReliabilityUnknown`~~, ~~`LivelinessNone`~~) existed only because these were
@@ -142,7 +142,7 @@ namespace rclcpp {
 /// Reliability policy. Matches DDS `RELIABILITY_QOS_POLICY` and
 /// `rclcpp::ReliabilityPolicy`.
 ///
-/// `enum class`, as upstream's is (phase-483 W1). These were unscoped while
+/// `enum class`, as upstream's is. These were unscoped while
 /// they lived in `nros::`; in `rclcpp::` an unscoped `KeepLast` enumerator
 /// would collide with upstream's `rclcpp::KeepLast` profile helper.
 enum class ReliabilityPolicy : int {
@@ -154,7 +154,7 @@ enum class ReliabilityPolicy : int {
     /// The backend could not determine this policy. An ABSENCE.
     Unknown = 3,
     /// Resolve at creation against the endpoints already discovered on the
-    /// topic — upstream's `BestAvailable` (Iron+), issue 1973. A REQUEST:
+    /// topic — upstream's `BestAvailable` (Iron+). A REQUEST:
     /// `get_actual_qos()` reports the concrete policy it resolved to.
     BestAvailable = 4,
 };
@@ -167,7 +167,7 @@ enum class DurabilityPolicy : int {
     SystemDefault = 2,
     /// The backend could not determine this policy. An ABSENCE.
     Unknown = 3,
-    /// Resolve at creation against the discovered graph (issue 1973).
+    /// Resolve at creation against the discovered graph.
     BestAvailable = 4,
 };
 
@@ -185,7 +185,7 @@ enum class HistoryPolicy : int {
 ///
 /// `SystemDefault` is discriminant 0, the value rmw gives
 /// `RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT`; this enumerator was spelled
-/// ~~`LivelinessNone`~~ before phase-483. `ManualByNode` is ours-only — rmw
+/// ~~`LivelinessNone`~~ once. `ManualByNode` is ours-only — rmw
 /// deprecated it, so rclcpp's `LivelinessPolicy` does not list it.
 enum class LivelinessPolicy : int {
     SystemDefault = 0,
@@ -195,7 +195,7 @@ enum class LivelinessPolicy : int {
     /// The backend could not determine this policy. An ABSENCE, reportable by
     /// `get_actual_qos()` and never a value to request.
     Unknown = 4,
-    /// Resolve at creation against the discovered graph (issue 1973).
+    /// Resolve at creation against the discovered graph.
     BestAvailable = 5,
 };
 
@@ -220,7 +220,7 @@ namespace detail {
 ///   * a window that would land at or above `UINT32_MAX - 1` ms (~49.7 days)
 ///     → `UINT32_MAX`, saturating to infinity rather than wrapping into a
 ///     short window. The bound starts one below `UINT32_MAX` because that
-///     value is the best-available sentinel (issue 1973), which only
+///     value is the best-available sentinel, which only
 ///     `qos_best_available_duration()` reaches.
 constexpr uint32_t qos_window_ms(const Duration& d) {
     return d.nanoseconds() <= 0 ? 0u
@@ -231,7 +231,7 @@ constexpr uint32_t qos_window_ms(const Duration& d) {
                       : static_cast<uint32_t>((d.nanoseconds() + 999999) / 1000000));
 }
 
-/// The best-available window — issue 1973.
+/// The best-available window.
 ///
 /// Upstream spells it `RMW_QOS_DEADLINE_BEST_AVAILABLE` /
 /// `RMW_QOS_LIVELINESS_LEASE_DURATION_BEST_AVAILABLE`, both
@@ -250,7 +250,7 @@ constexpr Duration qos_window_duration(uint32_t ms) {
                                  : Duration::from_nanoseconds(static_cast<int64_t>(ms) * 1000000);
 }
 
-/// issue 1437 — declared here, defined below `QoS`, and named as a friend of
+/// Declared here, defined below `QoS`, and named as a friend of
 /// it. See the definition for what it is for and why it is the one function
 /// in this header that writes `QoS`'s members.
 constexpr QoS qos_from_ffi(const nros_cpp_qos_t& f);
@@ -262,17 +262,17 @@ constexpr QoS qos_from_ffi(const nros_cpp_qos_t& f);
 /// Mirrors rclcpp::QoS with chainable setters and predefined profiles.
 /// All methods are constexpr — profiles can be computed at compile time.
 ///
-/// Phase 108.B.7 — extended with full DDS QoS surface (deadline,
+/// Extended with full DDS QoS surface (deadline,
 /// lifespan, liveliness kind + lease, avoid_ros_namespace_conventions).
 /// Backends advertise per-policy support; entities created with a
 /// profile the active backend can't honour return `NROS_CPP_RET_NOT_ALLOWED`
 /// (an `IncompatibleQos` refusal; ~~`NROS_CPP_RET_INCOMPATIBLE_QOS`~~ before)
 /// synchronously at create time.
 ///
-/// Phase 379 W5 — the policy enums moved to namespace scope, the getters
+/// The policy enums moved to namespace scope, the getters
 /// return them instead of `int`, and the three time windows take and return
 /// `rclcpp::Duration` instead of carrying an `_ms` suffix. The old spellings were
-/// deleted by phase-482 W6.
+/// deleted.
 class QoS {
   public:
     /// Default QoS: reliable, volatile, keep-last(10), automatic
@@ -286,7 +286,7 @@ class QoS {
     /// rclcpp's depth ctor: `QoS(1)` == default profile with keep-last(1).
     /// IMPLICIT, as upstream's `QoS(size_t history_depth)` is, so a bare depth
     /// converts wherever a profile is expected (`create_publisher<M>(t, 10)`).
-    /// Before phase-483 this was an explicit `int` ctor on `nros::QoS` and a
+    /// This used to be an explicit `int` ctor on `nros::QoS` and a
     /// derived `rclcpp::QoS` added the implicit one; the two are one class now.
     // NOLINTNEXTLINE(google-explicit-constructor)
     constexpr QoS(::size_t depth) : QoS() { depth_ = static_cast<int>(depth); }
@@ -326,8 +326,8 @@ class QoS {
         return *this;
     }
 
-    /// Set reliability to `BEST_AVAILABLE` — `rclcpp::QoS::reliability_best_available`
-    /// (issue 1973). Resolved when the entity is created: a subscription takes
+    /// Set reliability to `BEST_AVAILABLE` — `rclcpp::QoS::reliability_best_available`.
+    /// Resolved when the entity is created: a subscription takes
     /// RELIABLE only if every publisher already discovered offers it, a
     /// publisher always takes RELIABLE. `get_actual_qos()` reports the result.
     constexpr QoS& reliability_best_available() {
@@ -335,8 +335,8 @@ class QoS {
         return *this;
     }
 
-    /// Set durability to `BEST_AVAILABLE` — `rclcpp::QoS::durability_best_available`
-    /// (issue 1973). Same creation-time resolution as
+    /// Set durability to `BEST_AVAILABLE` — `rclcpp::QoS::durability_best_available`.
+    /// Same creation-time resolution as
     /// `reliability_best_available()`, over TRANSIENT_LOCAL / VOLATILE.
     constexpr QoS& durability_best_available() {
         durability_ = DurabilityPolicy::BestAvailable;
@@ -397,7 +397,7 @@ class QoS {
         return *this;
     }
 
-    /// Phase 282 (#145) — mark this publisher "express": its samples bypass
+    /// Mark this publisher "express": its samples bypass
     /// transport tx batching (sent immediately even when the batching knob
     /// is on). A transport hint for control-sched-task / latency-sensitive topics;
     /// ignored on subscriptions and by backends without batching.
@@ -408,13 +408,13 @@ class QoS {
 
     // -- Predefined profiles (match rclcpp named constructors) --
     //
-    // phase-428 W10 — DECLARED here, DEFINED below from `rclcpp::detail::qos_table`,
+    // DECLARED here, DEFINED below from `rclcpp::detail::qos_table`,
     // which is the one place this header spells a profile's fields. Until W10
     // these three carried their own literals AND the `rclcpp::*QoS` classes at
     // the bottom of the file carried a second, independent set: `sensor_data`
     // and `services_default` were each written twice inside ONE header, with
     // nothing asserting they agreed. That is the hand-mirror class
-    // (issues 0088 / 0160 / 0245) at file scope.
+    // at file scope.
 
     /// Default profile: `RELIABLE` + `VOLATILE` + `KEEP_LAST(10)`.
     static constexpr QoS default_profile();
@@ -453,14 +453,14 @@ class QoS {
     constexpr bool tx_express() const { return tx_express_ != 0; }
 
     /// Upstream's `get_rmw_qos_profile()` — this profile as an
-    /// `rmw_qos_profile_t` (issue 2054). Returns by VALUE where upstream hands
+    /// `rmw_qos_profile_t`. Returns by VALUE where upstream hands
     /// back a reference to its stored struct: `QoS` stores the C ABI's fields,
     /// not upstream's, so there is no struct to refer to, and a copy is what
     /// every ported caller (`auto p = qos.get_rmw_qos_profile();`) takes anyway.
     constexpr ::rmw_qos_profile_s get_rmw_qos_profile() const;
 
   private:
-    // issue 1437 — the ONE function allowed to write these directly.
+    // The ONE function allowed to write these directly.
     //
     // `qos_from_ffi` builds the profile a backend GRANTED, and a grant can
     // state `ReliabilityPolicy::Unknown` / `HistoryPolicy::SystemDefault` / ... which NO
@@ -488,7 +488,7 @@ class QoS {
 };
 
 // ============================================================================
-// phase-417 G6 — profile comparison. `rclcpp::operator==(const QoS&, const QoS&)`
+// Profile comparison. `rclcpp::operator==(const QoS&, const QoS&)`
 // ============================================================================
 //
 // FREE functions, as upstream's are, and written from the PUBLIC accessors —
@@ -534,7 +534,7 @@ constexpr bool operator!=(const QoS& left, const QoS& right) {
 }
 
 // ============================================================================
-// phase-417 G7 — naming a QoS policy
+// Naming a QoS policy
 // ============================================================================
 
 /// One QoS policy's name — `rclcpp::qos_policy_kind_to_cstr`.
@@ -565,7 +565,7 @@ constexpr bool operator!=(const QoS& left, const QoS& right) {
 /// The bytes are `rclc_qos_policy_kind_to_cstr`'s, which are
 /// `nros_rmw::QoSPolicyMask::NAMED`'s. This header declares the C entry point
 /// rather than including `<rclc/detail/nros_generated.h>` — `qos.hpp` is deliberately
-/// self-contained (see issue 0112 at the top of this file) — and a signature
+/// self-contained (see the top of this file) — and a signature
 /// drift cannot hide: `nros.hpp` pulls both this header and `rclc/types.h`,
 /// which reaches the generated declarations, so every C++ example is a
 /// translation unit holding both spellings and the compiler compares them.
@@ -585,7 +585,7 @@ inline const char* qos_policy_kind_to_cstr(uint32_t policy) {
 
 namespace detail {
 
-// --- THE C++ QoS profile table (phase-428 W10) -------------------------------
+// --- THE C++ QoS profile table -------------------------------
 //
 // Every named profile the C++ surface offers is spelled HERE and nowhere else.
 // `rclcpp::QoS`'s three named statics and all six concrete `rclcpp::*QoS` classes
@@ -604,12 +604,12 @@ namespace detail {
 // `rmw_entity.h` are `((rmw_qos_profile_t){...})` compound literals, which are
 // C99 and not standard C++, over a struct whose field types differ from
 // `nros_cpp_qos_t`'s; and `qos.hpp` is deliberately self-contained and
-// freestanding (see issue 0112 at the top of this file), so it cannot take a
+// freestanding (see the top of this file), so it cannot take a
 // dependency on a build-generated header either. What the table DOES buy is
 // that the C++ side has ONE row per profile for a cross-language gate to read,
 // instead of nine constructor bodies to parse.
 //
-// phase-454 W1 collected on that. `scripts/check-qos-profile-ssot.py` now
+// That paid off. `scripts/check-qos-profile-ssot.py` now
 // EVALUATES these rows — the ctor supplies the base profile and each chained
 // call applies its one effect — and compares every field against
 // `QoSProfile::QOS_PROFILE_*`. So the table is bound after all; what it is not
@@ -631,11 +631,11 @@ namespace detail {
 //     reference RMW folds that sentinel to" — under a
 //     `nros-qos-mirror-deviation` record whose own reason was that this
 //     surface and `nros-c`'s "move together with the C ABI or not at all".
-//     They moved together (issue 1329): this constructor, `nros-c`'s
-//     `NROS_QOS_*` statics and (until phase-492 W4) `component.h`'s
+//     They moved together: this constructor, `nros-c`'s
+//     `NROS_QOS_*` statics and (once) `component.h`'s
 //     ~~`rclc_c_qos_default()`~~.
 //
-//     The forcing argument is issue 1329's per-backend QoS mask. XRCE honours
+//     The forcing argument is the per-backend QoS mask. XRCE honours
 //     no liveliness, so an AUTOMATIC default would have made
 //     `required_policies()` demand `LIVELINESS_AUTOMATIC` and refuse every C++
 //     default profile on that backend — over a policy upstream leaves unset
@@ -691,7 +691,7 @@ struct qos_table {
 
     /// `rmw_qos_profile_best_available` (Iron+) — KEEP_LAST(10), and every
     /// policy that can be best-available set so: reliability, durability,
-    /// liveliness, deadline, liveliness lease (issue 1973).
+    /// liveliness, deadline, liveliness lease.
     static constexpr QoS best_available() {
         return QoS()
             .reliability_best_available()
@@ -708,8 +708,8 @@ struct qos_table {
 /// Ten call sites across `publisher.hpp` / `subscription.hpp` / `service.hpp` /
 /// `client.hpp` / `action_{server,client}.hpp` / `component.hpp` open-coded
 /// this ten-field copy. A field appended to `nros_cpp_qos_t` then has ten
-/// places to be missed, which is the hand-mirror class issue 0160 records;
-/// phase-379 W5 folded them into this one function while renaming the
+/// places to be missed, which is the hand-mirror class;
+/// a rename folded them into this one function while renaming the
 /// accessors they called.
 /// `constexpr` so a fixed profile's marshalled form is checkable at compile
 /// time (`qos_policy_accessors.cpp` static_asserts the millisecond fields);
@@ -734,7 +734,7 @@ constexpr nros_cpp_qos_t qos_to_ffi(const QoS& qos) {
     return f;
 }
 
-/// The all-absent profile — issue 1437.
+/// The all-absent profile.
 ///
 /// Every policy `UNKNOWN`: "there is nothing here that can tell you". What a
 /// `get_actual_qos()` returns when the handle it was asked of is not live, so
@@ -760,7 +760,7 @@ constexpr QoS qos_all_unknown() {
     return qos_from_ffi(f);
 }
 
-/// The inverse of `qos_to_ffi` — issue 1437.
+/// The inverse of `qos_to_ffi`.
 ///
 /// Used by the `get_actual_qos()` family, which is the only direction that
 /// produces a profile the CALLER did not write. The four `static_cast`s are
@@ -792,7 +792,7 @@ constexpr QoS qos_from_ffi(const nros_cpp_qos_t& f) {
 
 } // namespace detail
 
-// phase-428 W10 — the three named statics declared on `QoS`, defined from the
+// The three named statics declared on `QoS`, defined from the
 // one table. Out of line because the table needs a COMPLETE `QoS` and these are
 // members of it; `constexpr` implies `inline`, so this is still header-only and
 // still usable in the `static_assert`s and default arguments that call it.
@@ -809,14 +809,14 @@ constexpr QoS QoS::services() {
 } // namespace rclcpp
 
 // ============================================================================
-// rclcpp:: — the ROS 2 spelling of the QoS surface (RFC-0089 stage 6, step A)
+// rclcpp:: — the ROS 2 spelling of the QoS surface
 // ============================================================================
 //
 // Moved here from `nros/rclcpp_compat.hpp`, which no longer exists as a
-// separate surface: RFC-0089 §"Naming: replace, with alias as the migration
-// step" makes the ROS 2 spelling a first-class name declared by the API header
-// that owns the concept. Step B, retiring the in-tree `nros::QoS` spelling,
-// landed in phase-483 W1.
+// separate surface: the adoption rule (replace, with an alias as the migration
+// step) makes the ROS 2 spelling a first-class name declared by the API header
+// that owns the concept. The in-tree `nros::QoS` spelling
+// is retired.
 //
 // Everything below is freestanding-safe — `constexpr` classes over `rclcpp::QoS`
 // and one `<type_traits>` predicate — so a `no_std` C++ build gets the ROS 2
@@ -842,7 +842,7 @@ namespace detail {
 ///   TRUE and the header is INCOMPLETE -- `enable_if` and `is_convertible` are
 ///   there, `is_base_of` and `decay` are not. `__has_include` answers "does the
 ///   header exist", which is the wrong question for a header a freestanding
-///   toolchain ships hollowed out. (Issue 0112's class; step A verified against
+///   toolchain ships hollowed out. (The same class; step A verified against
 ///   a SYNTHESISED minimal libcpp that happened to be more complete than the
 ///   real one, so the lane stayed green.)
 /// * Gating the include on `NROS_CPP_STD` instead fixed Zephyr and broke the
@@ -878,7 +878,7 @@ template <typename F> class is_qos_arg {
     // Declared, never defined: both calls live in `sizeof`, which does not
     // evaluate its operand.
     static yes_t& probe(const ::rclcpp::QoS*);
-    // issue 2054 — an `rmw_qos_profile_t` is a profile argument too, as
+    // An `rmw_qos_profile_t` is a profile argument too, as
     // `create_service<S>(name, rmw_qos_profile_services_default)` passes it.
     // Incomplete here, which a pointer probe does not mind.
     static yes_t& probe(const ::rmw_qos_profile_s*);
@@ -891,7 +891,7 @@ template <typename F> class is_qos_arg {
 
 } // namespace detail
 
-// --- Named QoS profiles (RFC-0089 W3.f; bound to one table, phase-428 W10) ---
+// --- Named QoS profiles (bound to one table) ---------------------------
 //
 // Each class below is a NAME for a row of `rclcpp::detail::qos_table`, and states
 // no policy of its own. Before W10 each carried its own literals, so
@@ -939,7 +939,7 @@ class ServicesQoS : public QoS {
 };
 
 /// `rmw_qos_profile_parameters` — KEEP_LAST(**1000**), RELIABLE, VOLATILE.
-/// ADOPT, at the corrected depth. This is one of RFC-0089's two live
+/// ADOPT, at the corrected depth. This is one of the two live
 /// inversions: it returned `QoS(10)`.
 class ParametersQoS : public QoS {
   public:
@@ -949,7 +949,7 @@ class ParametersQoS : public QoS {
 /// `rmw_qos_profile_parameter_events` — KEEP_LAST(1000), RELIABLE, VOLATILE.
 /// ADOPT. A ported node that publishes parameter events names it.
 ///
-/// This is the profile phase-428 F2 found inverted on the RUST side
+/// This is the profile a review found inverted on the RUST side
 /// (`nros-rmw/src/traits.rs`, `KeepAll, 0`). The C++ value was already right;
 /// two surfaces disagreeing about one upstream constant, with the wrong one
 /// carrying a comment claiming it matched, is what W10's single table is for.
@@ -977,8 +977,7 @@ class ClockQoS : public QoS {
     constexpr ClockQoS() : QoS(::rclcpp::detail::qos_table::clock()) {}
 };
 
-/// `rclcpp::BestAvailableQoS` — `rmw_qos_profile_best_available`. ADOPT
-/// (issue 1973).
+/// `rclcpp::BestAvailableQoS` — `rmw_qos_profile_best_available`. ADOPT.
 ///
 /// Its policies resolve when the entity is created, against the endpoints the
 /// backend has already discovered on the topic — upstream's rule, applied once
@@ -995,7 +994,7 @@ class BestAvailableQoS : public QoS {
 /// `rclcpp::SystemDefaultsQoS` — **REFUSE-LOUD**.
 ///
 /// Every field of `rmw_qos_profile_system_default` is a sentinel meaning "let
-/// the RMW decide", and issue 0829 measured the two reference RMWs resolving
+/// the RMW decide", and a measurement found the two reference RMWs resolving
 /// the depth sentinel to different numbers (Cyclone 1, zenoh 42). `rclcpp::QoS`
 /// has no sentinel, deliberately — the backend is linked at build time, so
 /// there is nothing to defer to. Any concrete value here would be a different
@@ -1028,7 +1027,7 @@ constexpr QoS KeepAll() {
 
 } // namespace rclcpp
 
-// phase-488, issue 2054 — upstream's `rmw_qos_profile_t`, its policy enums and
+// upstream's `rmw_qos_profile_t`, its policy enums and
 // its `rmw_qos_profile_*` constants, as ported code spells them:
 //
 //     create_service<S>(name, cb, rmw_qos_profile_services_default, group);
@@ -1043,7 +1042,7 @@ constexpr QoS KeepAll() {
 // `create_service(..., const rmw_qos_profile_t&, ...)` call sites compile
 // unchanged; `QoS::get_rmw_qos_profile()` goes back.
 //
-// On every target, as the rest of this header is: RFC-0096 D1 is one API on
+// On every target, as the rest of this header is: there is one API on
 // every platform, and `rclcpp::QoSInitialization` is a public type. Nothing
 // here needs the STL.
 //
@@ -1056,9 +1055,8 @@ constexpr QoS KeepAll() {
 //
 // `rmw_qos_profile_system_default` is still absent: every field of it is a
 // sentinel, which a `QoS` request may not carry (see `qos_table`), and the two
-// reference RMWs resolve it differently (issue 0829).
+// reference RMWs resolve it differently.
 #if defined(NROS_RMW_ENTITY_H)
-// issue 2054.
 #error                                                                                             \
     "<rclcpp/qos.hpp> defines upstream's rmw_qos_profile_t, and <nros/rmw_entity.h> defines the RMW ABI's struct under the same name. A node includes rclcpp only; a backend includes the ABI header only."
 #endif

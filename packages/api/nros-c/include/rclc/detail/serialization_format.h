@@ -1,7 +1,7 @@
 /**
  * @file serialization_format.h
  * @ingroup grp_types
- * @brief RFC-0088 D5 — the linked backend's serialization format, as a
+ * @brief The linked backend's serialization format, as a
  *        compile-time fact the C API can assert on.
  *
  * ROS 2 asks `rmw_get_serialization_format()` at run time because it resolves
@@ -17,7 +17,7 @@
  * there fails the Rust build with a message naming the drift.
  *
  * `NROS_SERIALIZATION_FORMAT` is its cross-image identity string, derived here
- * from the discriminant. RFC-0088 D2 is the reason for that direction: the
+ * from the discriminant. The reason for that direction: the
  * **string** is the identity that crosses image boundaries, and the **`u8` is
  * image-local** — never persist it, never compare it against a value another
  * image produced.
@@ -73,7 +73,7 @@
                                         NROS_STATIC_ASSERT_TAG_)[(cond) ? 1 : -1]
 #endif
 
-/* RFC-0088 D2 — reserved discriminants for the in-tree formats. Low values for
+/* Reserved discriminants for the in-tree formats. Low values for
    readability, and nothing more: the allocation is per image, so these are the
    values THIS image's `nros_serdes::format::SerializationFormatId` uses, not a
    registry any other image is bound by. */
@@ -86,7 +86,7 @@
 #endif
 
 /**
- * Cross-image identity of `NROS_SERIALIZATION_FORMAT_ID` (RFC-0088 D2).
+ * Cross-image identity of `NROS_SERIALIZATION_FORMAT_ID`.
  *
  * Derived from the discriminant rather than emitted beside it: `cbindgen` maps
  * no Rust `&str` to a C constant, so a second generated macro would be a second
@@ -98,7 +98,6 @@
 #elif NROS_SERIALIZATION_FORMAT_ID == NROS_SERIALIZATION_FORMAT_ID_UORB
 #define NROS_SERIALIZATION_FORMAT "uorb"
 #else
-// RFC-0088 D2.
 #error                                                                                             \
     "NROS_SERIALIZATION_FORMAT_ID names a format this header has no name for — add its row here and in `nros_serdes::format::SerializationFormatId` together."
 #endif
@@ -111,7 +110,7 @@
  * @param type_literal   the type's name, as a string literal, so the
  *                       diagnostic names the message rather than the header
  *
- * One image, one backend, one encoding: RFC-0088.
+ * One image, one backend, one encoding.
  */
 #define NROS_ASSERT_MESSAGE_FORMAT(msg_format_id, type_literal)                                    \
     NROS_STATIC_ASSERT((msg_format_id) == NROS_SERIALIZATION_FORMAT_ID,                            \

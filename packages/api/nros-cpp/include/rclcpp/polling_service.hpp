@@ -17,7 +17,7 @@
  *                           the server and runs the handler during spin. The
  *                           caller invokes nothing on it.
  *
- * WHY THE TAKING API LIVES HERE — phase-456 W5, following W2b
+ * WHY THE TAKING API LIVES HERE
  *
  * It used to live on `rclcpp::Service<S>`, which served BOTH ownership models
  * behind a ~~`callback_mode_`~~ flag. On the dispatch path the arena owns the
@@ -47,14 +47,14 @@
 #include <cstddef>
 
 #include "rclcpp/detail/config.hpp"
-#include "rclcpp/detail/entity_name.hpp" // phase-444 — the one entity-name copy
+#include "rclcpp/detail/entity_name.hpp" // The one entity-name copy
 #include "rclcpp/owned.hpp"
 #include "rclcpp/result.hpp"
 #include "rclcpp/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
-// issue 1437 — the two granted-QoS accessors return a `rclcpp::QoS` BY VALUE from
+// The two granted-QoS accessors return a `rclcpp::QoS` BY VALUE from
 // an inline body, so the complete type must be here, not only by the time
 // `rclcpp/node.hpp` is pulled in below.
 //
@@ -63,7 +63,7 @@
 // reaching it first makes the cbindgen header a REDEFINITION of all four.
 #include "rclcpp/qos.hpp"
 
-// phase-427 W7 — `Node` is DEFINED in `rclcpp::`. The friend declaration below
+// `Node` is DEFINED in `rclcpp::`. The friend declaration below
 // is qualified, and a qualified friend names an existing entity rather than
 // introducing one, so the name has to be declared first — and in `rclcpp::`,
 // because an elaborated `class Node;` in `rclcpp::` would declare a second,
@@ -76,7 +76,7 @@ namespace rclcpp {
 
 /// Poll-style service server — caller-owned storage, consuming receive.
 ///
-/// phase-456 W5: this is the class `rclcpp::Service<S>` used to be when it was
+/// This is the class `rclcpp::Service<S>` used to be when it was
 /// created through the out-ref `create_service(out, name, qos)`.
 ///
 /// Usage:
@@ -111,9 +111,9 @@ template <typename S> class PollService {
 
     /// @ref take_request with the receive buffer sized by the CALLER.
     ///
-    /// This IS a receive buffer — issue 0964's survey listed the service
+    /// This IS a receive buffer — a sizing survey listed the service
     /// request under "transmit", which is true of a CLIENT's request
-    /// (`PollClient<S>`'s and `ClientHandle<S>`'s alike, phase-456 W9) and false
+    /// (`PollClient<S>`'s and `ClientHandle<S>`'s alike) and false
     /// here: the server deserializes out of it, so an under-estimate truncates.
     /// See @ref PollSubscription::take_sized.
     template <size_t Cap> Result try_recv_request_sized(RequestType& req, int64_t& seq_id) {
@@ -149,7 +149,7 @@ template <typename S> class PollService {
     /// Check if the service is initialized and valid.
     bool is_valid() const { return initialized_; }
 
-    /// Read back the service name this server was created on — phase-444.
+    /// Read back the service name this server was created on.
     ///
     /// See @ref rclcpp::Service::get_service_name, which is the same accessor
     /// on the dispatch half and states why each half keeps its own copy of the
@@ -157,7 +157,7 @@ template <typename S> class PollService {
     const char* get_service_name() const { return initialized_ ? service_name_ : ""; }
 
     /// The QoS the backend GRANTED this service's REQUEST endpoint — the
-    /// subscription that receives calls. Issue 1437.
+    /// subscription that receives calls.
     ///
     /// ONE create builds TWO endpoints that negotiate against DIFFERENT peers,
     /// so this and @ref get_response_publisher_actual_qos are two answers and
@@ -166,7 +166,7 @@ template <typename S> class PollService {
     /// back — see @ref Publisher::get_actual_qos.
     ///
     /// This half OWNS its `RmwServiceServer`, so it passes `storage_` and the
-    /// ~~`callback_mode_`~~ branch issue 1437 needed is gone. See
+    /// ~~`callback_mode_`~~ branch is gone. See
     /// @ref rclcpp::Service::get_request_subscription_actual_qos for why the
     /// dispatch half answers too, which is where the service differs from the
     /// subscription W2b split the same way.
@@ -176,13 +176,13 @@ template <typename S> class PollService {
     ::rclcpp::QoS get_request_subscription_actual_qos() const { return actual_qos_half(true); }
 
     /// The QoS the backend GRANTED this service's RESPONSE endpoint — the
-    /// publisher that sends replies. Issue 1437; see
+    /// publisher that sends replies. See
     /// @ref get_request_subscription_actual_qos.
     ::rclcpp::QoS get_response_publisher_actual_qos() const { return actual_qos_half(false); }
 
     /// Destructor — releases the service server.
     ///
-    /// Unconditional since phase-456 W5: every `PollService<S>` owns an
+    /// Unconditional: every `PollService<S>` owns an
     /// `RmwServiceServer` in `storage_`. The `!callback_mode_` guard this
     /// replaced existed because one class served two owners; the dispatch
     /// entity is `rclcpp::Service<S>` now and has no storage to free.
@@ -194,7 +194,7 @@ template <typename S> class PollService {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // `nros_cpp_service_server_relocate` runtime call (Phase 84.C1).
+    // `nros_cpp_service_server_relocate` runtime call.
     PollService(PollService&& other) : initialized_(other.initialized_), service_name_{} {
         ::rclcpp::detail::assign_entity_name(service_name_, other.service_name_);
         if (other.initialized_) {
@@ -229,7 +229,7 @@ template <typename S> class PollService {
     friend class ::rclcpp::Node;
 
     /// The two directions differ only in which out-pointer is read, so one
-    /// body serves both and they cannot end up swapped (issue 1437).
+    /// body serves both and they cannot end up swapped.
     ///
     /// `executor` is always NULL and `handle_id` always 0 here: this half owns
     /// its server, so `storage_` is the road, and the FFI takes exactly one of
@@ -247,7 +247,7 @@ template <typename S> class PollService {
 
     alignas(8) uint8_t storage_[NROS_SERVICE_SERVER_SIZE];
     bool initialized_;
-    /// phase-444 — the service name, kept C++-side for `get_service_name()`.
+    /// The service name, kept C++-side for `get_service_name()`.
     /// See `Client`'s field of the same name.
     char service_name_[::rclcpp::SERVICE_NAME_MAX];
 };
@@ -255,7 +255,7 @@ template <typename S> class PollService {
 } // namespace rclcpp
 
 // Out-of-line definition of the poll-style `Node::create_service<S>()`. Placed
-// after the class for the reason Phase 84.G8 gives for every entity: a consumer
+// after the class for the reason every entity's is: a consumer
 // pays for this template only when it uses a poll service.
 #include "rclcpp/node.hpp"
 
@@ -268,7 +268,7 @@ Result Node::create_service(::rclcpp::PollService<S>& out, const char* service_n
     nros_cpp_ret_t ret = nros_cpp_service_server_create(
         &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
     if (ret == 0) {
-        // phase-444 — remember the name for `get_service_name()`; the runtime
+        // Remember the name for `get_service_name()`; the runtime
         // takes `service_name` and drops it.
         ::rclcpp::detail::assign_entity_name(out.service_name_, service_name);
         out.initialized_ = true;

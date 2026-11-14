@@ -9,7 +9,7 @@
  *
  * The POLL-style server — caller-owned storage, `take_request()` /
  * `send_response()` — is `rclcpp::PollService<S>` in
- * `rclcpp/polling_service.hpp` since phase-456 W5. See there for why the two
+ * `rclcpp/polling_service.hpp`. See there for why the two
  * are separate types.
  */
 
@@ -19,16 +19,16 @@
 #include <cstdint>
 #include <cstddef>
 
-#include "rclcpp/detail/callback_context.hpp" // phase-456 W3 — the handler IS the arena context
+#include "rclcpp/detail/callback_context.hpp" // The handler IS the arena context
 #include "rclcpp/detail/config.hpp"
-#include "rclcpp/detail/entity_name.hpp" // phase-444 — the one entity-name copy
+#include "rclcpp/detail/entity_name.hpp" // The one entity-name copy
 #include "rclcpp/result.hpp"
-#include "rclcpp/service_handle.hpp" // phase-456 W5 — what `Service<S>::SharedPtr` IS
+#include "rclcpp/service_handle.hpp" // What `Service<S>::SharedPtr` IS
 #include "rclcpp/size_bound.hpp"     // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
-// issue 1437 — the two granted-QoS accessors return a `rclcpp::QoS` BY VALUE from
+// The two granted-QoS accessors return a `rclcpp::QoS` BY VALUE from
 // an inline body, so the complete type must be here, not only by the time
 // `rclcpp/node.hpp` is pulled in below.
 //
@@ -37,7 +37,7 @@
 // reaching it first makes the cbindgen header a REDEFINITION of all four.
 #include "rclcpp/qos.hpp"
 
-// Phase 189.M3.3.e — `nros_cpp_service_server_register` is excluded from
+// `nros_cpp_service_server_register` is excluded from
 // cbindgen (its Rust signature uses `RawServiceCallback`, an external-crate
 // type alias cbindgen names without defining). Declare it locally with a plain
 // function-pointer typedef matching the ABI (`bool(req, req_len, resp,
@@ -54,7 +54,7 @@ nros_cpp_ret_t nros_cpp_service_server_register(const nros_cpp_node_t* node,
                                                 void* context, uint8_t sched_context,
                                                 size_t* out_handle_id);
 
-// phase-488 — the capturing twin, excluded from cbindgen for the same reason.
+// The capturing twin, excluded from cbindgen for the same reason.
 nros_cpp_ret_t nros_cpp_service_server_register_capturing(
     const nros_cpp_node_t* node, const char* service_name, const char* type_name,
     const char* type_hash, nros_cpp_qos_t qos, nros_cpp_service_request_callback_t callback,
@@ -63,17 +63,17 @@ nros_cpp_ret_t nros_cpp_service_server_register_capturing(
 } // extern "C"
 
 // `rmw_request_id_t` — upstream's request header. Upstream's three-argument
-// service handler receives it; issue 2081 fills it from the backend's report.
+// service handler receives it, filled from the backend's report.
 #include "rclcpp/detail/rmw_request_id.hpp"
 
 extern "C" {
-/// Issue 2081 — a service trampoline that also receives the request's id.
+/// A service trampoline that also receives the request's id.
 typedef bool (*nros_cpp_service_request_id_callback_t)(const uint8_t* req, size_t req_len,
                                                        rmw_request_id_t* request_id, uint8_t* resp,
                                                        size_t resp_cap, size_t* resp_len,
                                                        void* ctx);
 
-// Issue 2081 — the request-id registration, excluded from cbindgen for the same
+// The request-id registration, excluded from cbindgen for the same
 // reason. A non-NULL `capture` is copied into the arena (as the capturing
 // form); otherwise `context` is handed back.
 nros_cpp_ret_t nros_cpp_service_server_register_with_request_id(
@@ -89,17 +89,17 @@ nros_cpp_ret_t nros_cpp_service_server_register_with_request_id(
 /// has the definition; a qualified friend needs the name to EXIST first, which
 /// an unqualified `friend class Node;` used to supply implicitly.
 ///
-/// phase-427 W7 — declared in `rclcpp::`, which is where the definition lives.
+/// Declared in `rclcpp::`, which is where the definition lives.
 namespace rclcpp {
 class Node;
 }
 
 // ============================================================================
-// `rclcpp::Service<S>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
+// `rclcpp::Service<S>` -- DEFINED here (rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::` to `rclcpp::` (the `nros::`
-// alias went in phase-483 W1). The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
+// The definition moved from `nros::` to `rclcpp::` (the `nros::`
+// alias is gone). The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
 // aliases live on the class itself, so the rclcpp way of indexing types
 // (`rclcpp::Service<S>::SharedPtr`) resolves with no wrapper in between.
 namespace rclcpp {
@@ -112,22 +112,22 @@ namespace rclcpp {
 /// `TYPE_HASH`, `SERIALIZED_SIZE_MAX`, `ffi_serialize()`, and
 /// `ffi_deserialize()`.
 ///
-/// THIS OBJECT IS BOOKKEEPING — phase-456 W5. The server, the request buffer,
-/// the handler and its context are all the arena's; W3 made the arena's
-/// trampoline context the user's HANDLER rather than `&out`, so after
+/// THIS OBJECT IS BOOKKEEPING. The server, the request buffer,
+/// the handler and its context are all the arena's; the arena's
+/// trampoline context is the user's HANDLER rather than `&out`, so after
 /// registration nothing of the caller's is referenced and this object is freely
 /// movable.
 ///
 /// What it does hold is what a REGISTRATION can be asked about and the arena
 /// cannot be asked for by an index alone: `{initialized_, handle_id_,
 /// executor_, service_name_}`. `executor_` and `handle_id_` are the pair that
-/// names the arena entry (issue 1437) — without the executor an index points
+/// names the arena entry — without the executor an index points
 /// into an arena this object cannot reach — and `service_name_` is the
-/// phase-444 C++-side copy, because the runtime takes the name at create and
+/// C++-side copy, because the runtime takes the name at create and
 /// drops it. Neither survives as state the arena refers back to; both are the
 /// caller's own record.
 ///
-/// Measured (phase-456 W3), across `examples/`, `tests/`, `book/` and
+/// Measured, across `examples/`, `tests/`, `book/` and
 /// `packages/`: a dispatch service has **nothing invoked on it**, at any site,
 /// out-ref or `::SharedPtr`. It is a keep-alive — which is why
 /// `Service<S>::SharedPtr` is a two-word `rclcpp::ServiceHandle<S>` with no
@@ -145,7 +145,7 @@ namespace rclcpp {
 /// ```
 template <typename S> class Service {
   public:
-    /// `rclcpp::Service<S>::SharedPtr` — phase-456 W5.
+    /// `rclcpp::Service<S>::SharedPtr`.
     ///
     /// `rclcpp::Service<S>::SharedPtr member_;` is how ported source declares a
     /// service member, so this alias must exist on every target — which
@@ -166,11 +166,11 @@ template <typename S> class Service {
     using RequestType = typename S::Request;
     using ResponseType = typename S::Response;
 
-    /// Phase 189.M3.3.e — typed request-handler signature for the
+    /// Typed request-handler signature for the
     /// *callback-style* service (rclcpp dispatch model). The handler fills
     /// `response` from `request`; the executor sends the reply during spin.
     ///
-    /// phase-456 W3 deleted the ~~`TypedServiceFnWithCtx`~~ sibling. It was
+    /// The ~~`TypedServiceFnWithCtx`~~ sibling is deleted. It was
     /// write-only state: the SFINAE guard on `Node::create_service` admits only
     /// a `void(*)(const Request&, Response&)`, so no overload could ever set it,
     /// and the `else if` branch that read it in the trampoline was unreachable.
@@ -182,14 +182,14 @@ template <typename S> class Service {
     /// Check if the service was registered.
     bool is_valid() const { return initialized_; }
 
-    /// Read back the service name this server was registered on — phase-444.
+    /// Read back the service name this server was registered on.
     ///
     /// rclcpp's `ServiceBase::get_service_name`, and the server half of
     /// `Client::get_service_name`; see that method for why the name lives
     /// C++-side and why the accessor returns `""` rather than NULL on an
     /// unregistered server.
     ///
-    /// phase-456 W5 split this class in two and the method answers on BOTH
+    /// This class is split in two and the method answers on BOTH
     /// halves, unchanged — the same shape `PollSubscription::get_publisher_count`
     /// took under W2b. It reads `service_name_`, which each half keeps its own
     /// copy of, because the copy is made at create from the argument the caller
@@ -199,7 +199,7 @@ template <typename S> class Service {
     const char* get_service_name() const { return initialized_ ? service_name_ : ""; }
 
     /// The QoS the backend GRANTED this service's REQUEST endpoint — the
-    /// subscription that receives calls. Issue 1437.
+    /// subscription that receives calls.
     ///
     /// `rclcpp::Service::get_request_subscription_actual_qos`. ONE
     /// `create_service` builds TWO endpoints that negotiate against DIFFERENT
@@ -211,13 +211,13 @@ template <typename S> class Service {
     /// and friends), never the request echoed back — see
     /// @ref Publisher::get_actual_qos.
     ///
-    /// phase-456 W5 — BOTH HALVES ANSWER, and the service comes out the other
+    /// BOTH HALVES ANSWER, and the service comes out the other
     /// way from the subscription. `PollSubscription::get_actual_qos` had to be
     /// left off the dispatch half, because a dispatch `Subscription<M>` holds
     /// only `sched_handle_id_` and reaching the arena would have meant inventing
     /// a signature that takes an executor (ledgered at
     /// `cpp:Subscription::get_actual_qos`). A dispatch service does NOT have that
-    /// problem: issue 1437 already gave it `executor_` beside `handle_id_`, and
+    /// problem: it already has `executor_` beside `handle_id_`, and
     /// `nros_cpp_service_server_get_actual_qos` serves both roads — `storage_`
     /// for the owner, `(executor, handle_id)` for the arena. So the upstream
     /// no-argument spelling is reachable here with no weakening, and no ledger
@@ -225,7 +225,7 @@ template <typename S> class Service {
     ::rclcpp::QoS get_request_subscription_actual_qos() const { return actual_qos_half(true); }
 
     /// The QoS the backend GRANTED this service's RESPONSE endpoint — the
-    /// publisher that sends replies. Issue 1437; see
+    /// publisher that sends replies. See
     /// @ref get_request_subscription_actual_qos.
     ::rclcpp::QoS get_response_publisher_actual_qos() const { return actual_qos_half(false); }
 
@@ -234,7 +234,7 @@ template <typename S> class Service {
     /// The executor arena owns the server, the request buffer and the handler.
     /// This destructor deliberately does not release them: it clears this
     /// object's own bookkeeping, and the registration lives until its node is
-    /// destroyed or a `ServiceHandle` releases it (`srv_.reset()`, issue 1667). Until phase-456 W5
+    /// destroyed or a `ServiceHandle` releases it (`srv_.reset()`). Before the split
     /// the same destructor also freed a POLL server, behind an `if (initialized_ &&
     /// !callback_mode_)`; that half moved to `rclcpp::PollService<S>`, where the
     /// condition is unconditional.
@@ -243,11 +243,11 @@ template <typename S> class Service {
     // Move semantics (non-copyable). Bookkeeping only — there is no storage to
     // relocate, so `nros_cpp_service_server_relocate` is not called here.
     //
-    // phase-456 W3 — a callback-style service is MOVABLE, and the warning that
+    // A callback-style service is MOVABLE, and the warning that
     // used to stand here is gone with its subject. It said:
     //
     //     A callback-style service must NOT be moved after register — the arena
-    //     holds `this` as the trampoline context (Phase 189.M3.3.e); the move
+    //     holds `this` as the trampoline context; the move
     //     only transfers bookkeeping and leaves that pointer stale, so don't.
     //
     // The arena holds the user's HANDLER as its context now, not `this`, so
@@ -267,7 +267,7 @@ template <typename S> class Service {
             initialized_ = other.initialized_;
             handle_id_ = other.handle_id_;
             ::rclcpp::detail::assign_entity_name(service_name_, other.service_name_);
-            // issue 1437 — moves with the index it pairs with.
+            // Moves with the index it pairs with.
             executor_ = other.executor_;
             other.initialized_ = false;
         }
@@ -287,11 +287,11 @@ template <typename S> class Service {
 
     friend class ::rclcpp::Node;
 
-    /// Phase 189.M3.3.e — raw request trampoline matching `RawServiceCallback`
+    /// Raw request trampoline matching `RawServiceCallback`
     /// (`bool(req, req_len, resp, resp_cap, resp_len, ctx)`). Deserializes the
     /// request, runs the user's typed handler, serializes the response.
     ///
-    /// phase-456 W3 — `ctx` is the USER'S HANDLER, carried by value in the
+    /// `ctx` is the USER'S HANDLER, carried by value in the
     /// arena's own context slot (`rclcpp::detail::fn_to_context`). It used to be
     /// the `Service` object (`this`), which is what made the arena hold the
     /// address of a caller-side object and what the move constructor had to
@@ -311,7 +311,7 @@ template <typename S> class Service {
     }
 
     /// The two directions differ only in which out-pointer is read, so one
-    /// body serves both and they cannot end up swapped (issue 1437).
+    /// body serves both and they cannot end up swapped.
     ///
     /// `storage` is always NULL here: a dispatch service owns no
     /// `RmwServiceServer`, so `(executor_, handle_id_)` is the only road. The
@@ -330,17 +330,17 @@ template <typename S> class Service {
     }
 
     bool initialized_;
-    // Callback-style BOOKKEEPING (Phase 189.M3.3.e). The handler itself is not
-    // here — it lives in the arena (phase-456 W3) — and neither is the server,
+    // Callback-style BOOKKEEPING. The handler itself is not
+    // here — it lives in the arena — and neither is the server,
     // so what remains is the caller's own record of a registration that refers
     // back to nothing of the caller's.
     size_t handle_id_ = static_cast<size_t>(-1);
 
-    /// phase-444 — the service name, kept C++-side for `get_service_name()`.
+    /// The service name, kept C++-side for `get_service_name()`.
     /// See `Client`'s field of the same name.
     char service_name_[::rclcpp::SERVICE_NAME_MAX];
 
-    // issue 1437 — the executor whose arena holds this service, recorded with
+    // The executor whose arena holds this service, recorded with
     // the index that names it there. `handle_id_` alone points into an arena
     // this object could not otherwise reach.
     void* executor_ = nullptr;
@@ -348,22 +348,22 @@ template <typename S> class Service {
 
 } // namespace rclcpp
 
-// Phase 84.G8: out-of-line definition of Node::create_service<S>().
+// Out-of-line definition of Node::create_service<S>().
 #include "rclcpp/node.hpp"
 
 namespace rclcpp {
 
-// Phase 189.M3.3.e — callback-style (arena-registered) service. The arena owns
+// Callback-style (arena-registered) service. The arena owns
 // the server AND the request handler, and dispatches it during spin_once, so
 // the handle is real and `options.sched_context` is functional. `out` receives
-// the handle id and nothing the arena refers back to (phase-456 W3).
+// the handle id and nothing the arena refers back to.
 } // namespace rclcpp
 
 namespace rclcpp {
 template <typename S, typename F, typename>
 Result Node::create_service(Service<S>& out, const char* service_name, F callback,
                             const ::rclcpp::QoS& qos, const ::rclcpp::ServiceOptions& options) {
-    // The user handler becomes the ARENA's context (phase-456 W3). The
+    // The user handler becomes the ARENA's context. The
     // conversion is still the compile error for a non-convertible `F`; what
     // changed is where the resulting pointer is stored — in the registration,
     // not in `out`, so `out` is no longer an object the arena knows by address.
@@ -399,7 +399,7 @@ Result Node::register_service_(Service<S>& out, const char* service_name,
     return this->template finish_register_service_<S>(out, service_name, ret, handle);
 }
 
-// Issue 2081 — the same registration for a trampoline that also receives the
+// The same registration for a trampoline that also receives the
 // request's id (the hosted `shared_ptr` handlers, whose three-argument form
 // hands it to the user as the request header).
 template <typename S>
@@ -427,11 +427,11 @@ Result Node::finish_register_service_(Service<S>& out, const char* service_name,
                                       size_t handle) {
     if (ret == 0) {
         out.handle_id_ = handle;
-        // phase-444 — remember the name for `get_service_name()`; the runtime
+        // Remember the name for `get_service_name()`; the runtime
         // takes `service_name` and drops it.
         ::rclcpp::detail::assign_entity_name(out.service_name_, service_name);
 
-        // issue 1437 — the arena that owns the entity, beside its index.
+        // The arena that owns the entity, beside its index.
         out.executor_ = executor_handle_;
         out.initialized_ = true;
     }
@@ -439,14 +439,14 @@ Result Node::finish_register_service_(Service<S>& out, const char* service_name,
 }
 } // namespace rclcpp
 
-#include "rclcpp/logging.hpp"    // phase-488 — NROS_RCLCPP_SAY_REFUSED for the shared_ptr handler
-#include "rclcpp/inplace_fn.hpp" // phase-488 — a stateful handler's arena capture
+#include "rclcpp/logging.hpp"    // NROS_RCLCPP_SAY_REFUSED for the shared_ptr handler
+#include "rclcpp/inplace_fn.hpp" // a stateful handler's arena capture
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
 namespace rclcpp {
 namespace detail {
 
-/// phase-488 — the shared_ptr service handler, WITHOUT a heap.
+/// The shared_ptr service handler, WITHOUT a heap.
 ///
 /// Upstream's `void(std::shared_ptr<Request>, std::shared_ptr<Response>)` is
 /// what stopped a stock service from porting, and the reason recorded for
@@ -536,7 +536,7 @@ inline bool serve_lent(const uint8_t* req, size_t req_len, const ::rmw_request_i
     typename S::Request request;
     if (S::Request::ffi_deserialize(req, req_len, &request) != 0) return false;
     typename S::Response response;
-    // Issue 2081 — the id the backend reported for this request (all zero
+    // The id the backend reported for this request (all zero
     // when it reported none).
     ::rmw_request_id_t header = {};
     if (id != nullptr) header = *id;
@@ -580,7 +580,7 @@ template <typename S, int Shape> struct shared_ptr_service_trampoline {
     }
 };
 
-/// phase-488 — a service handler with STATE: upstream's
+/// A service handler with STATE: upstream's
 /// `std::bind(&Node::on_request, this, _1, _2)`, or a capturing lambda, in any
 /// of the three shapes (`[header,] shared_ptr request, shared_ptr response`, or
 /// the reference `const Request&, Response&`). Whatever the callable returns is

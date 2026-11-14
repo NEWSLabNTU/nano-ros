@@ -24,13 +24,13 @@ template <typename M> class Subscription;
 
 namespace rclcpp {
 
-/// A registered dispatch subscription — phase-456 W2.
+/// A registered dispatch subscription.
 ///
 /// WHAT IT IS, AND WHY IT IS NOT A POINTER TO A `Subscription<M>`
 ///
 /// A subscription created with a CALLBACK is owned by the Rust executor arena:
-/// the arena holds the `RmwSubscriber`, the rx buffer, the callback and (since
-/// phase-456 W1) the callback's capture. Nothing of the caller's is referenced
+/// the arena holds the `RmwSubscriber`, the rx buffer, the callback and
+/// the callback's capture. Nothing of the caller's is referenced
 /// after registration, so there is no C++ object to point at and none is made.
 ///
 /// `nros.hpp` used to hand back a `std::shared_ptr<Subscription<M>>` aliasing
@@ -49,12 +49,12 @@ namespace rclcpp {
 ///
 /// No `operator->`, because there is nothing to dereference. A ported file that
 /// calls a method on its subscription handle gets a compile error naming the
-/// handle, which is the mechanical edit RFC-0089 asks for — and a better
+/// handle, which is the mechanical edit the adoption rule asks for — and a better
 /// outcome than a call that compiles and returns `NotInitialized` at runtime.
-/// Measured (phase-456 W2): the ported corpus calls NOTHING on it. It is
+/// Measured: the ported corpus calls NOTHING on it. It is
 /// stored and dropped, which is exactly what a keep-alive is for.
 ///
-/// HOW IT ENDS (issue 1667)
+/// HOW IT ENDS
 ///
 /// `sub_.reset()` RELEASES the subscription, as `timer_.reset()` releases a
 /// timer: the callback stops, the subscriber leaves the graph, and the arena
@@ -63,7 +63,7 @@ namespace rclcpp {
 /// handle does NOT — the handle is two copyable words, not an owner.
 ///
 /// What a stale COPY does: every copy names the registration it was issued for,
-/// with that slot's generation (phase-476 W0), so once one copy is reset the
+/// with that slot's generation, so once one copy is reset the
 /// others resolve to nothing. Resetting one is a harmless no-op; none of them
 /// can reach whatever registration takes the slot next. From inside the
 /// subscription's own callback the release takes effect when the callback
@@ -78,7 +78,7 @@ template <typename M> class SubscriptionHandle {
   public:
     /// The message type, for the same reason `std::shared_ptr` exposes one.
     using message_type = M;
-    /// What this handle refers to — phase-456 W2b.
+    /// What this handle refers to.
     ///
     /// W2 could not write this. `Subscription<M>` then carried `take()`,
     /// `take_serialized()`, `take_validated()`, `take_sequence()` and
@@ -110,7 +110,7 @@ template <typename M> class SubscriptionHandle {
     /// is nothing to do with it through this API today.
     constexpr size_t handle_id() const { return handle_id_; }
 
-    /// `sub_.reset()` — release the subscription (issue 1667): the callback
+    /// `sub_.reset()` — release the subscription: the callback
     /// stops, the subscriber leaves the graph, and this handle becomes empty.
     /// Other copies become stale and fail safely. A no-op on an empty handle.
     void reset() {

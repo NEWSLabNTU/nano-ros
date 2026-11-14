@@ -14,7 +14,7 @@
 // specialization of `make_component<NodeClass>`, and the generated `main()`
 // forward-declares the class and declares the same specialization. The linker
 // joins them, and the reference also keeps the component's object in a static
-// library. Phase-488 (porting `autoware_external_cmd_selector`).
+// library. Found porting `autoware_external_cmd_selector`.
 //
 // A missing `RCLCPP_COMPONENTS_REGISTER_NODE(...)` for a class an EXECUTABLE
 // names is a link error on `make_component<...>`.

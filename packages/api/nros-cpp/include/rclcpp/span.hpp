@@ -5,9 +5,9 @@
 // Clang 3.5+, and all embedded toolchains.
 //
 // Written in the freestanding C++14 subset, which is a property of this
-// FILE and not the project's minimum: nano-ros declares C++17 (issue 1118 —
-// `target_compile_features(nros-cpp-headers INTERFACE cxx_std_17)`), because
-// that is what ROS 2 Humble's own `rclcpp` exports (phase-426 W4 retired the
+// FILE and not the project's minimum: nano-ros declares C++17
+// (`target_compile_features(nros-cpp-headers INTERFACE cxx_std_17)`), because
+// that is what ROS 2 Humble's own `rclcpp` exports (a later change retired the
 // construct-specific half of this claim: `component_node.hpp`'s `if constexpr`
 // left with ~~`adopt_launch_seed_`~~). `just check cpp` still parses
 // this header at `-std=c++14 -ffreestanding`, so the subset is enforced and
@@ -87,7 +87,7 @@ struct StringView {
 };
 
 /// Alignment-agnostic view over a little-endian numeric sequence in the CDR
-/// receive buffer (RFC-0033 borrowed mode — the C++ analogue of Rust's
+/// receive buffer (borrowed mode — the C++ analogue of Rust's
 /// `nros_core::LeSliceView` and C's `rclc_le_slice_view_*`).
 ///
 /// `T` is a fixed-width numeric (`uint16_t`, `float`, …). The raw LE bytes are

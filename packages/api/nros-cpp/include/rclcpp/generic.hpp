@@ -2,7 +2,7 @@
  * @file generic.hpp
  * @ingroup grp_pubsub
  * @brief `rclcpp::GenericPublisher` / `GenericSubscription` — type-erased
- *        pub/sub over CDR bytes, keyed by a type name AND hash (phase-515 P4).
+ *        pub/sub over CDR bytes, keyed by a type name AND hash.
  *
  * rclcpp's `create_generic_publisher(topic, type, qos)` names a type and loads
  * its typesupport at runtime. nano-ros links its types at build time, and the

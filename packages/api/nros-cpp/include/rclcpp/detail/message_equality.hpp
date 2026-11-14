@@ -4,7 +4,7 @@
 /**
  * @file message_equality.hpp
  * @brief `rclcpp::detail::msg_field_eq` — what a generated message's
- *        `operator==` compares each field with (phase-488).
+ *        `operator==` compares each field with.
  *
  * rosidl's generated C++ messages have `operator==` / `operator!=`, and ported
  * code compares them (Nav2's velocity smoother:
@@ -49,7 +49,7 @@ inline bool msg_text_eq(const char* a, size_t na, const char* b, size_t nb) {
 /// A float field compares with `==`, as upstream's generated `operator==`
 /// does (NaN unequal to itself). The pragma is for builds that refuse that
 /// spelling: PX4 compiles every module `-Werror -Wfloat-equal`, so without it
-/// any PX4 module whose messages carry a float fails (phase-521 W8 d).
+/// any PX4 module whose messages carry a float fails.
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wfloat-equal"

@@ -34,7 +34,7 @@
 #define NROS_CPP_MONITOR_ROW_STORAGE (sizeof(void *) == 8 ? 128 : 72)
 
 /**
- * phase-462 W3b -- bytes of caller storage ONE hazard row needs (its
+ * Bytes of caller storage ONE hazard row needs (its
  * `HazardCell` plus its `HazardSpec`), the same kind of bound: 112 on a 64-bit
  * host, 80 on a 32-bit target. `nros_cpp_install_hazards` checks the real
  * requirement and refuses a short buffer.
@@ -42,15 +42,15 @@
 #define NROS_CPP_HAZARD_ROW_STORAGE (sizeof(void *) == 8 ? 112 : 80)
 
 /**
- * play_launch phase 96 W4.2 -- bytes of caller storage ONE hazard rung needs
- * (its `RungSpec`): 48 on a 64-bit host, 32 on a 32-bit target (phase-560
- * W8: the level's name). Its `starts_at` members count toward
+ * Bytes of caller storage ONE hazard rung needs
+ * (its `RungSpec`): 48 on a 64-bit host, 32 on a 32-bit target (with
+ * the level's name). Its `starts_at` members count toward
  * NROS_CPP_HAZARD_MEMBER_STORAGE.
  */
 #define NROS_CPP_HAZARD_RUNG_STORAGE (sizeof(void *) == 8 ? 48 : 32)
 
 /**
- * phase-462 W4b -- bytes of caller storage `nros_cpp_install_modes` needs per
+ * Bytes of caller storage `nros_cpp_install_modes` needs per
  * mode table pair, per mode rate/latency row and per mode age row: the
  * `ModeTables`, `MonitorSpec` and `AgeMonitorSpec` it writes. The install
  * checks the real requirement and refuses a short buffer.
@@ -61,7 +61,7 @@
 
 
 /**
- * The request id a backend reports when it cannot assign one — issue 2009.
+ * The request id a backend reports when it cannot assign one.
  * Equal to the RMW ABI's `NROS_RMW_SEQUENCE_ID_UNKNOWN` (`INT64_MIN`), spelled
  * as a literal so cbindgen emits it. A future whose request went out with it
  * is matched only while it is its client's ONE pending request.
@@ -96,7 +96,7 @@
 
 /**
  * Reserved padding bytes in `nros_cpp_node_t` (pad `node_id` to the next u64
- * boundary). Phase 192.5 — names the struct-layout `7`.
+ * boundary). Names the struct-layout `7`.
  */
 #define NROS_CPP_NODE_RESERVED 7
 
@@ -107,12 +107,12 @@
 #define NROS_CPP_DOMAIN_ID_INHERIT UINT32_MAX
 
 /**
- * phase-521 W8 (b) — the budget [`nros_cpp_entry_spin_budget_ms`] answers
+ * The budget [`nros_cpp_entry_spin_budget_ms`] answers
  * when every source of work can end the executor's park, in milliseconds.
  *
  * A PX4 sched task's park slot reads a bound that reaches this budget as "no
- * deadline", and clears its work item's schedule instead of arming it
- * (RFC-0113 D9). Equal to `nros_node::ENTRY_IDLE_BUDGET` by the assertion
+ * deadline", and clears its work item's schedule instead of arming it.
+ * Equal to `nros_node::ENTRY_IDLE_BUDGET` by the assertion
  * below, so the header constant cannot drift from the executor.
  */
 #define NROS_CPP_ENTRY_IDLE_BUDGET_MS 60000
@@ -155,27 +155,27 @@
 #define NROS_CPP_HAZARD_MEMBER_STORAGE 4
 
 /**
- * phase-462 W4c -- bytes of caller storage one deadline row of one mode
+ * Bytes of caller storage one deadline row of one mode
  * needs (`ModeDeadline`).
  */
 #define NROS_CPP_MODE_DEADLINE_STORAGE 8
 
 /**
- * phase-503 — [`nros_cpp_monitor_row_t::mechanism`]: the route deadline is
+ * [`nros_cpp_monitor_row_t::mechanism`]: the route deadline is
  * checked in the executor's spin loop (catches slowness, not a stuck
  * callback).
  */
 #define NROS_CPP_MECHANISM_EXECUTOR 0
 
 /**
- * phase-503 — [`nros_cpp_monitor_row_t::mechanism`]: the port also supervises
+ * [`nros_cpp_monitor_row_t::mechanism`]: the port also supervises
  * the route with its own timer, armed from
  * [`nros_cpp_executor_route_next_due_us`] (catches a stuck callback too).
  */
 #define NROS_CPP_MECHANISM_TIMER 1
 
 /**
- * phase-436 A2 — which deadline source bounded a park, as
+ * Which deadline source bounded a park, as
  * [`nros_cpp_executor_last_park`] reports it. `PLATFORM` also carries the
  * index the platform source was registered at.
  */
@@ -197,19 +197,19 @@
 #define NROS_CPP_WAKE_SOURCE_PLATFORM 3
 
 /**
- * phase-503 — a supervised route's deadline bounded the park.
+ * A supervised route's deadline bounded the park.
  */
 #define NROS_CPP_WAKE_SOURCE_ROUTE_DEADLINE 4
 
 /**
  * Image-local discriminant of the linked backend's serialization format
- * (`nros_serdes::format::SerializationFormatId`). RFC-0088 D2 — image-local:
+ * (`nros_serdes::format::SerializationFormatId`). Image-local:
  * never persist it, never compare it across images.
  */
 #define NROS_CPP_SERIALIZATION_FORMAT_ID 1
 
 /**
- * Issue 2014 — byte of a get_result reply where the result fields start
+ * Byte of a get_result reply where the result fields start
  * (`[encap 4][status i8][pad → 8][fields]`). The C++ `PollingActionClient`
  * decodes the raw reply itself, so it needs the number; this is the C ABI
  * mirror of `nros_node::action_frame::RESULT_PAYLOAD_OFFSET` (a literal,
@@ -218,36 +218,36 @@
 #define NROS_CPP_ACTION_RESULT_PAYLOAD_OFFSET 8
 
 /**
- * Issue 2014 — byte of a feedback message where the feedback fields start
+ * Byte of a feedback message where the feedback fields start
  * (`[encap 4][GoalUuid.uuid 16][fields]`); mirror of
  * `nros_node::action_frame::FEEDBACK_PAYLOAD_OFFSET`.
  */
 #define NROS_CPP_ACTION_FEEDBACK_PAYLOAD_OFFSET 20
 
 /**
- * Issue 2014 — length of the CDR encapsulation header a raw action frame
+ * Length of the CDR encapsulation header a raw action frame
  * starts with; mirror of `nros_node::action_frame::CDR_HEADER_LEN`.
  */
 #define NROS_CPP_ACTION_CDR_HEADER_LEN 4
 
 /**
- * Issue 2027 — the `send_goal` sub-client, for
+ * The `send_goal` sub-client, for
  * [`nros_cpp_action_client_forget`].
  */
 #define NROS_CPP_ACTION_CHANNEL_SEND_GOAL 0
 
 /**
- * Issue 2027 — the `cancel_goal` sub-client.
+ * The `cancel_goal` sub-client.
  */
 #define NROS_CPP_ACTION_CHANNEL_CANCEL 1
 
 /**
- * Issue 2027 — the `get_result` sub-client.
+ * The `get_result` sub-client.
  */
 #define NROS_CPP_ACTION_CHANNEL_GET_RESULT 2
 
 /**
- * `rclcpp::SchedClass` mirror. Phase 110.B.
+ * `rclcpp::SchedClass` mirror.
  */
 enum nros_cpp_sched_class_t
 #if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
@@ -269,7 +269,7 @@ typedef uint8_t nros_cpp_sched_class_t;
 #endif // __cplusplus
 
 /**
- * `rclcpp::Priority` mirror. Phase 110.C.
+ * `rclcpp::Priority` mirror.
  */
 enum nros_cpp_priority_t
 #if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
@@ -289,7 +289,7 @@ typedef uint8_t nros_cpp_priority_t;
 #endif // __cplusplus
 
 /**
- * `rclcpp::DeadlinePolicy` mirror. Phase 110.B.
+ * `rclcpp::DeadlinePolicy` mirror.
  */
 enum nros_cpp_deadline_policy_t
 #if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
@@ -324,7 +324,7 @@ typedef enum nros_cpp_qos_reliability_t {
    */
   nros_cpp_qos_reliability_t_NROS_CPP_QOS_RELIABILITY_UNKNOWN = 3,
   /**
-   * Resolve at creation against the discovered graph (issue 1973) —
+   * Resolve at creation against the discovered graph —
    * `rclcpp::ReliabilityPolicy::BestAvailable`. A request, never a grant.
    */
   nros_cpp_qos_reliability_t_NROS_CPP_QOS_RELIABILITY_BEST_AVAILABLE = 4,
@@ -345,7 +345,7 @@ typedef enum nros_cpp_qos_durability_t {
    */
   nros_cpp_qos_durability_t_NROS_CPP_QOS_DURABILITY_UNKNOWN = 3,
   /**
-   * Resolve at creation against the discovered graph (issue 1973).
+   * Resolve at creation against the discovered graph.
    */
   nros_cpp_qos_durability_t_NROS_CPP_QOS_DURABILITY_BEST_AVAILABLE = 4,
 } nros_cpp_qos_durability_t;
@@ -367,7 +367,7 @@ typedef enum nros_cpp_qos_history_t {
 } nros_cpp_qos_history_t;
 
 /**
- * QoS liveliness policy. Phase 108.B.7 — matches DDS `LIVELINESS`.
+ * QoS liveliness policy. Matches DDS `LIVELINESS`.
  */
 typedef enum nros_cpp_qos_liveliness_t {
   /**
@@ -384,7 +384,7 @@ typedef enum nros_cpp_qos_liveliness_t {
    */
   nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_UNKNOWN = 4,
   /**
-   * Resolve at creation against the discovered graph (issue 1973).
+   * Resolve at creation against the discovered graph.
    */
   nros_cpp_qos_liveliness_t_NROS_CPP_QOS_LIVELINESS_BEST_AVAILABLE = 5,
 } nros_cpp_qos_liveliness_t;
@@ -395,7 +395,7 @@ typedef enum nros_cpp_qos_liveliness_t {
 typedef int nros_cpp_ret_t;
 
 /**
- * Phase 211.H (issue #52) — one per-topic QoS override, the C++-FFI mirror of
+ * One per-topic QoS override, the C++-FFI mirror of
  * Rust's `nros_rmw::QoSOverride` (and nros-c's `rclc_qos_override_t`). The
  * deploy plan lowers a `qos_overrides.<topic>.<role>.<policy>` launch param
  * into a `&'static` array of these, which the entry installs on the node via
@@ -452,13 +452,13 @@ typedef struct nros_cpp_node_t {
    */
   uint8_t namespace_[NROS_CPP_NAMESPACE_LEN];
   /**
-   * Phase 104.C.9.b — opaque NodeId returned by
+   * Opaque NodeId returned by
    * `Executor::node_builder(...).build()`. `0` = primary Node
    * (legacy single-Session creation path); non-zero values route
    * publisher / subscription / service creation through the
    * per-Node session resolved via
    * `Executor::node_session_mut(NodeId)`.
-   * Issue 0312 — the executor `NodeId`, stored BIASED BY ONE: `0` means "no
+   * The executor `NodeId`, stored BIASED BY ONE: `0` means "no
    * node registered", `n` means `NodeId(n - 1)`.
    *
    * The bias exists because `NodeId` is an INDEX and the executor's node
@@ -486,8 +486,8 @@ typedef struct nros_cpp_node_t {
 } nros_cpp_node_t;
 
 /**
- * One baked RMW session property as the generated C/C++ entry emits it
- * (RFC-0109 D8, phase-514 W3): two NUL-terminated strings with static
+ * One baked RMW session property as the generated C/C++ entry emits it:
+ * two NUL-terminated strings with static
  * lifetime (literals in the entry's `.rodata`), lowered at build time from
  * the bringup's own `rmw/<backend>` file.
  */
@@ -503,7 +503,7 @@ typedef struct nros_cpp_session_property_t {
 } nros_cpp_session_property_t;
 
 /**
- * Issue 0436 — C mirror of `nros_node::executor::SessionSpec`, matching
+ * C mirror of `nros_node::executor::SessionSpec`, matching
  * `rclc_session_spec_t` in `<rclc/bridge.h>` field for field so a caller can use
  * either entry point with one struct.
  */
@@ -529,8 +529,8 @@ typedef struct NrosCppSessionSpec {
    */
   const char *namespace_;
   /**
-   * Issue 2123 — this session's RMW properties: its domain's RMW file,
-   * lowered on the host (RFC-0109 D8; `nros dev rmw session-properties` writes
+   * This session's RMW properties: its domain's RMW file,
+   * lowered on the host (`nros dev rmw session-properties` writes
    * the table). NULL with `properties_len == 0` = none. Read during
    * `nros_cpp_init_multi` only; the rows and their strings must outlive
    * that call.
@@ -543,9 +543,9 @@ typedef struct NrosCppSessionSpec {
 } NrosCppSessionSpec;
 
 /**
- * Phase 104.C.9 — extended node-creation options (C++ FFI).
+ * Extended node-creation options (C++ FFI).
  *
- * Mirrors `rcl_node_options_t` in nros-c (Phase 104.C.8) — same field
+ * Mirrors `rcl_node_options_t` in nros-c — same field
  * shape, separate FFI surface so the two language wrappers can evolve
  * independently. Used by `nros_cpp_node_create_ex` and the C++
  * `NodeBuilder` wrapper in `rclcpp/node.hpp`.
@@ -591,7 +591,7 @@ typedef struct nros_cpp_node_options_t {
 } nros_cpp_node_options_t;
 
 /**
- * phase-381 W4 — visit one node on the graph. `enclave` is NULL where the
+ * Visit one node on the graph. `enclave` is NULL where the
  * backend tracks none. Strings are BORROWED for the call. Return `false` to
  * stop.
  */
@@ -601,7 +601,7 @@ typedef bool (*nros_cpp_node_visit_fn)(void *ctx,
                                        const char *enclave);
 
 /**
- * phase-381 W4 — visit one name and the types on it. `types_count` may be 0 on
+ * Visit one name and the types on it. `types_count` may be 0 on
  * a partially discovered graph. Strings are BORROWED. Return `false` to stop.
  */
 typedef bool (*nros_cpp_names_and_types_visit_fn)(void *ctx,
@@ -610,7 +610,7 @@ typedef bool (*nros_cpp_names_and_types_visit_fn)(void *ctx,
                                                   size_t types_count);
 
 /**
- * phase-381 W4 — one discovered endpoint on a topic. Strings BORROWED for the
+ * One discovered endpoint on a topic. Strings BORROWED for the
  * call. No QoS: the GRANTED profile is what would answer "why is nothing
  * arriving", no backend can read one back yet, and reporting the remote's
  * DECLARED profile would be a confident wrong answer.
@@ -624,7 +624,7 @@ typedef struct nros_cpp_endpoint_info_t {
 } nros_cpp_endpoint_info_t;
 
 /**
- * phase-381 W4 — visit one endpoint. Return `false` to stop.
+ * Visit one endpoint. Return `false` to stop.
  */
 typedef bool (*nros_cpp_endpoint_info_visit_fn)(void *ctx,
                                                 const struct nros_cpp_endpoint_info_t *info);
@@ -642,15 +642,15 @@ typedef struct nros_cpp_sched_context_t {
   uint32_t budget_us;
   uint32_t deadline_us;
   /**
-   * Phase 110.F — opt-in OS-level priority for per-callback dispatch.
+   * Opt-in OS-level priority for per-callback dispatch.
    */
   uint8_t os_pri;
   /**
-   * Phase 110.G — TT-window offset within the executor's major frame.
+   * TT-window offset within the executor's major frame.
    */
   uint32_t tt_window_offset_us;
   /**
-   * Phase 110.G — TT-window length in microseconds.
+   * TT-window length in microseconds.
    */
   uint32_t tt_window_duration_us;
 } nros_cpp_sched_context_t;
@@ -693,18 +693,18 @@ typedef struct nros_cpp_monitor_row_t {
    */
   uint32_t route_max_latency_ms;
   /**
-   * phase-503 -- the route's supervised deadline (ms) from the take of the
+   * The route's supervised deadline (ms) from the take of the
    * trigger (`route-deadline-runtime`, which calls the reaction hook). 0 =
    * not supervised. A row baked before this field existed initialises it,
    * and the two below, to 0.
    */
   uint32_t route_deadline_ms;
   /**
-   * phase-503 -- the reaction id handed to the hook (1-based, 0 = none).
+   * The reaction id handed to the hook (1-based, 0 = none).
    */
   uint16_t reaction_id;
   /**
-   * phase-503 -- `NROS_CPP_MECHANISM_EXECUTOR` (0) or
+   * `NROS_CPP_MECHANISM_EXECUTOR` (0) or
    * `NROS_CPP_MECHANISM_TIMER` (1).
    */
   uint8_t mechanism;
@@ -728,7 +728,7 @@ typedef struct nros_cpp_age_row_t {
    */
   uint32_t max_age_ms;
   /**
-   * phase-462 W5b -- the contract's `deadline`, ms (0 = none). The executor
+   * The contract's `deadline`, ms (0 = none). The executor
    * judges it with the silence rule only where the backend cannot.
    */
   uint32_t deadline_ms;
@@ -791,7 +791,7 @@ typedef struct nros_cpp_hazard_monitor_t {
 } nros_cpp_hazard_monitor_t;
 
 /**
- * play_launch phase 96 W4.2 -- one rung of a hazard's ladder: the C spelling
+ * One rung of a hazard's ladder: the C spelling
  * of `RungSpec`. The executor judges the ACTIVE rung's route
  * (`hazard-route-runtime`): the top rung, or the rung whose mode the executor
  * is in when the fault comes or falls to while it holds.
@@ -822,7 +822,7 @@ typedef struct nros_cpp_hazard_rung_t {
   const struct nros_cpp_hazard_member_t *starts_at;
   size_t n_starts_at;
   /**
-   * phase-560 W8 -- the level's name as the model spells it, which
+   * The level's name as the model spells it, which
    * `hazard-level-runtime` reports when the ladder is on this rung;
    * NUL-terminated UTF-8 with static lifetime (a literal in the entry).
    * NULL reads as an empty name, which is also what an entry generated
@@ -859,13 +859,13 @@ typedef struct nros_cpp_hazard_row_t {
    */
   uint16_t sink;
   /**
-   * phase-462 W3c -- the id `nros_app_reaction_hook` receives when the
+   * The id `nros_app_reaction_hook` receives when the
    * hazard is detected (the reacting path's, in the model's one reaction id
    * space); 0 = no safe-state entry to start.
    */
   uint16_t reaction_id;
   /**
-   * play_launch phase 96 W4.2 -- `n_rungs` rungs of the hazard's ladder,
+   * `n_rungs` rungs of the hazard's ladder,
    * top first, static; NULL with 0 when no rung route is monitored, which
    * is also what an entry generated before these fields reads as.
    */
@@ -887,7 +887,7 @@ typedef struct nros_cpp_hazard_table_t {
 } nros_cpp_hazard_table_t;
 
 /**
- * phase-462 W4b -- one rate/latency row of a contract MODE: the numbers that
+ * One rate/latency row of a contract MODE: the numbers that
  * differ from the base row at the same index. Every other field (topic,
  * endpoint, route trigger, reaction, mechanism, cell) is the base row's.
  */
@@ -899,14 +899,14 @@ typedef struct nros_cpp_mode_row_t {
 } nros_cpp_mode_row_t;
 
 /**
- * phase-462 W4b -- one age row of a contract mode: its `max_age_ms`.
+ * One age row of a contract mode: its `max_age_ms`.
  */
 typedef struct nros_cpp_mode_age_row_t {
   uint32_t max_age_ms;
 } nros_cpp_mode_age_row_t;
 
 /**
- * phase-462 W4c -- one sched-context deadline a mode moves, the C spelling of
+ * One sched-context deadline a mode moves, the C spelling of
  * `nros::monitor::ModeDeadline`. `sc` is the context's id on the executor,
  * or -- when the tables pass `sc_ids` -- an index into `sc_ids`.
  */
@@ -916,7 +916,7 @@ typedef struct nros_cpp_mode_deadline_t {
 } nros_cpp_mode_deadline_t;
 
 /**
- * phase-462 W4b -- one contract mode: exactly as many rows (and ages) as the
+ * One contract mode: exactly as many rows (and ages) as the
  * base tables `nros_cpp_install_monitors` installed, in the same order -- or
  * `rows` NULL with `n_rows` 0 (likewise `ages`) to judge by the base table
  * itself, for a mode whose numbers are the base's.
@@ -927,25 +927,25 @@ typedef struct nros_cpp_mode_t {
   const struct nros_cpp_mode_age_row_t *ages;
   size_t n_ages;
   /**
-   * phase-462 W4c -- the sched-context deadlines this mode moves: as many
+   * The sched-context deadlines this mode moves: as many
    * as the tables' `n_base_deadlines`, naming the same contexts in the
    * same order. NULL when none.
    */
   const struct nros_cpp_mode_deadline_t *deadlines;
   size_t n_deadlines;
   /**
-   * phase-462 W4c -- how long entering this mode may take, ms (its
+   * How long entering this mode may take, ms (its
    * reaction path's `max_latency`); 0 = none.
    */
   uint32_t switch_budget_ms;
   /**
-   * phase-462 W4c -- that reaction path's key, static, or NULL.
+   * That reaction path's key, static, or NULL.
    */
   const char *reaction;
 } nros_cpp_mode_t;
 
 /**
- * phase-462 W4b -- the modes `nros_cpp_install_modes` installs: mode id `i`
+ * The modes `nros_cpp_install_modes` installs: mode id `i`
  * is `modes[i - 1]` (0 is the base). `storage` is static, 8-aligned, and at
  * least `(n_modes + 1) * (NROS_CPP_MODE_TABLE_STORAGE + n_base_deadlines *
  * NROS_CPP_MODE_DEADLINE_STORAGE) + n_row_modes * n_rows *
@@ -959,13 +959,13 @@ typedef struct nros_cpp_mode_tables_t {
   void *storage;
   size_t storage_len;
   /**
-   * phase-462 W4c -- the base's deadlines for the contexts the modes move,
+   * The base's deadlines for the contexts the modes move,
    * restored when the base is entered again. NULL when none.
    */
   const struct nros_cpp_mode_deadline_t *base_deadlines;
   size_t n_base_deadlines;
   /**
-   * phase-462 W4c -- when non-NULL, each row's `sc` indexes this array of
+   * When non-NULL, each row's `sc` indexes this array of
    * context ids (the entry's `nros_cpp_create_sched_context_from_policy`
    * results, by sched task); NULL means `sc` IS the id.
    */
@@ -1000,7 +1000,7 @@ typedef struct nros_cpp_violation_t {
    */
   uint32_t declared;
   /**
-   * phase-560 W8 -- the level a `hazard-level-runtime` report names (not
+   * The level a `hazard-level-runtime` report names (not
    * NUL-terminated, like `rule`); empty, with `level_len` 0, for every
    * other rule.
    */
@@ -1014,7 +1014,7 @@ typedef struct nros_cpp_violation_t {
 typedef void (*nros_cpp_violation_cb_t)(void *ctx, const struct nros_cpp_violation_t *v);
 
 /**
- * The violation counters of one executor (phase-474 I1 / I2).
+ * The violation counters of one executor.
  */
 typedef struct nros_cpp_violation_counts_t {
   /**
@@ -1038,8 +1038,8 @@ typedef struct nros_cpp_violation_counts_t {
 } nros_cpp_violation_counts_t;
 
 /**
- * One launch `<remap from= to=/>` rule as the generated C/C++ entry emits it
- * (issue 1971, RFC-0107 step 1): four NUL-terminated strings with static
+ * One launch `<remap from= to=/>` rule as the generated C/C++ entry emits it:
+ * four NUL-terminated strings with static
  * lifetime (literals in the entry's `.rodata`). `node_namespace` NULL or
  * empty is the root namespace.
  */
@@ -1063,7 +1063,7 @@ typedef struct nros_cpp_launch_remap_t {
 } nros_cpp_launch_remap_t;
 
 /**
- * phase-503 — what the reaction hook receives: the C spelling of
+ * What the reaction hook receives: the C spelling of
  * `nros_node::executor::monitor::ReactionEvent`, field for field (the layout
  * is asserted equal below, which is what lets the hook be handed to the
  * executor unchanged).
@@ -1096,7 +1096,7 @@ typedef struct nros_cpp_reaction_event_t {
    */
   uint8_t mechanism;
   /**
-   * play_launch phase 96 W4.2 -- the executor's monotonic µs when the
+   * The executor's monotonic µs when the
    * verdict fired; for `hazard-detected`, the detection tick, where the
    * hazard's rung routes start. 0 when the executor has no clock.
    */
@@ -1104,7 +1104,7 @@ typedef struct nros_cpp_reaction_event_t {
 } nros_cpp_reaction_event_t;
 
 /**
- * phase-503 — the reaction hook: `hook(event, ctx)`, called on the spin
+ * The reaction hook: `hook(event, ctx)`, called on the spin
  * thread inside `nros_cpp_spin_once` when a supervised route passes its
  * deadline (`route-deadline-runtime`; `event->rule_code` is 11), and on a
  * sched context's `fault` deadline action (`rule_code` 4, `reaction_id` 0,
@@ -1114,7 +1114,7 @@ typedef struct nros_cpp_reaction_event_t {
 typedef void (*nros_cpp_reaction_hook_t)(const struct nros_cpp_reaction_event_t *event, void *ctx);
 
 /**
- * phase-503 W7 — an executor's supervised routes, readable from OUTSIDE the
+ * An executor's supervised routes, readable from OUTSIDE the
  * spin thread: what [`nros_cpp_executor_route_watch`] fills and
  * [`nros_cpp_route_watch_next_due_us`] reads. The fields are the runtime's;
  * treat the struct as opaque and copy it by value.
@@ -1142,7 +1142,7 @@ typedef void (*nros_cpp_guard_callback_t)(void *context);
 /**
  * QoS settings (passed by value from C++).
  *
- * Phase 108.B.7 — full DDS-shaped QoS surface. The four core fields
+ * Full DDS-shaped QoS surface. The four core fields
  * (`reliability`, `durability`, `history`, `depth`) plus extended
  * policies (`liveliness_kind`, `deadline_ms`, `lifespan_ms`,
  * `liveliness_lease_ms`, `avoid_ros_namespace_conventions`) match
@@ -1172,7 +1172,7 @@ typedef struct nros_cpp_qos_t {
    */
   uint8_t avoid_ros_namespace_conventions;
   /**
-   * Phase 282 (#145) — publisher-side "express" hint: if non-zero, this
+   * Publisher-side "express" hint: if non-zero, this
    * publisher's samples bypass transport tx batching. A transport hint,
    * not a DDS policy; ignored on subscriptions.
    */
@@ -1230,7 +1230,7 @@ typedef void (*nros_cpp_incompatible_type_cb_t)(void *storage,
                                                 void *user_context);
 
 /**
- * Subscription creation options (phase-402).
+ * Subscription creation options.
  *
  * The three register functions differ in exactly one thing — the callback
  * type — and used to duplicate eight parameters to say it. The duplication had
@@ -1244,7 +1244,7 @@ typedef void (*nros_cpp_incompatible_type_cb_t)(void *storage,
  * luck elsewhere)". A NULL options pointer is all-defaults, which is exactly
  * the previous behaviour and cannot be misread as garbage.
  *
- * Precedent is issue 0808 on `create_session`, whose resolution `rmw_entity.h`
+ * Precedent is `create_session`, whose design `rmw_entity.h`
  * records: take one options struct, because
  * `rmw_{publisher,subscription}_options_t` already solved this for entities.
  */
@@ -1252,7 +1252,7 @@ typedef struct nros_cpp_subscription_options_t {
   /**
    * Receive-buffer size hint in bytes; `0` = use the image default.
    *
-   * Issue 0896: a subscription that states none takes the small size class
+   * A subscription that states none takes the small size class
    * whatever its message type. Codegen's `{Msg}_RX_MAX_SERIALIZED_SIZE` is
    * the number to pass.
    */
@@ -1266,7 +1266,7 @@ typedef struct nros_cpp_subscription_options_t {
    */
   uint8_t _reserved;
   /**
-   * Issue 2215 — the CDR byte offset of the message's `stamp.sec`
+   * The CDR byte offset of the message's `stamp.sec`
    * (encapsulation header included), or `0` when the type carries no
    * stamp. The C++ templates fill it from the message type's
    * `STAMP_OFFSET`; with it the subscription feeds its topic's contracted
@@ -1283,7 +1283,7 @@ typedef struct nros_cpp_subscription_options_t {
 } nros_cpp_subscription_options_t;
 
 /**
- * Issue 2036 — one sample's metadata, upstream's `rmw_message_info_t` field
+ * One sample's metadata, upstream's `rmw_message_info_t` field
  * for field (`rclcpp::MessageInfo::get_rmw_message_info()` is filled from
  * it). A backend that reports none (XRCE, uORB) hands every field zeroed.
  */
@@ -1317,7 +1317,7 @@ typedef struct nros_cpp_message_info_t {
 } nros_cpp_message_info_t;
 
 /**
- * Phase 252 / issue 0073 — E2E message-integrity status for the C++ receive
+ * E2E message-integrity status for the C++ receive
  * path ([`nros_cpp_subscription_take_validated`]). The C++ analog of the
  * Rust `IntegrityStatus` / `rclc_integrity_status_t`.
  */
@@ -1370,7 +1370,7 @@ typedef void (*nros_cpp_subscriber_count_cb_t)(void *storage,
                                                void *user_context);
 
 /**
- * When a timer activation was due and when it ran — issue 1974, the FFI face
+ * When a timer activation was due and when it ran — the FFI face
  * of `rclcpp::TimerInfo`.
  *
  * Nanoseconds on the timer's own clock. A field-for-field copy of the
@@ -1397,7 +1397,7 @@ typedef struct nros_cpp_timer_call_info_t {
 } nros_cpp_timer_call_info_t;
 
 /**
- * Timer callback that receives the activation's call info (issue 1974):
+ * Timer callback that receives the activation's call info:
  * `void callback(const nros_cpp_timer_call_info_t* info, void* context)`.
  * `info` is valid for the duration of the call only.
  */
@@ -1412,7 +1412,7 @@ typedef void (*nros_cpp_timer_callback_t)(void *context);
 /**
  * Create an action server on a node.
  *
- * Phase 87.6: this call only zero-initialises the storage. Names and
+ * This call only zero-initialises the storage. Names and
  * executor registration happen in `nros_cpp_action_server_register`
  * below, same as before — the split exists to avoid a FreeRTOS QEMU
  * deadlock where eagerly declaring the five underlying entities blocks
@@ -1421,7 +1421,7 @@ typedef void (*nros_cpp_timer_callback_t)(void *context);
  * # Safety
  * `storage` must point to an 8-byte-aligned buffer of at least
  * `NROS_CPP_ACTION_SERVER_STORAGE_SIZE` bytes.
- * Issue 1913 — the hash each of an action's five endpoints is keyed on.
+ * The hash each of an action's five endpoints is keyed on.
  *
  * The C++ twin of nros-c's `rclc_action_endpoint_hashes_t` (same layout, and
  * converted through it so the NULL-fallback rule has one spelling). An Iron+
@@ -1454,7 +1454,7 @@ typedef struct nros_cpp_action_hashes_t {
 } nros_cpp_action_hashes_t;
 
 /**
- * One `action_msgs/msg/GoalInfo` of a `CancelGoal` reply — issue 2027.
+ * One `action_msgs/msg/GoalInfo` of a `CancelGoal` reply.
  */
 typedef struct nros_cpp_action_goal_info_t {
   /**
@@ -1476,7 +1476,7 @@ typedef struct nros_cpp_wake_state_t {
 } nros_cpp_wake_state_t;
 
 /**
- * Phase 115.D — C++-side mirror of
+ * C++-side mirror of
  * `nros_rmw::custom_transport::NrosTransportOps`. Same `#[repr(C)]`
  * layout — single ABI, no parallel definitions.
  */
@@ -1513,7 +1513,7 @@ typedef uint8_t (*nros_cpp_lifecycle_callback_t)(void*);
  * points at a buffer that lives only for the duration of the call.
  *
  * A byte, bool, integer or double ARRAY arrives through the matching
- * `*_array` pointer plus `array_len` (issue 2056); the other pointers are
+ * `*_array` pointer plus `array_len`; the other pointers are
  * NULL. The elements are the proposed value the store is validating, borrowed
  * for the call only, exactly like `string_value`. A STRING array still
  * arrives as its `param_type` with every value field zeroed: the store holds
@@ -1658,8 +1658,7 @@ typedef uint32_t nros_cpp_shutdown_callback_handle_t;
 /**
  * Request was rejected — the peer considered it and declined.
  * A goal rejected by an action server, or a QoS/ABI incompatibility.
- * Distinct from `Error`, which means the request never got that far
- * (issue 0868).
+ * Distinct from `Error`, which means the request never got that far.
  */
 #define NROS_CPP_RET_REJECTED -13
 
@@ -1674,7 +1673,7 @@ typedef uint32_t nros_cpp_shutdown_callback_handle_t;
 #define NROS_CPP_RET_REENTRANT -15
 
 /**
- * Phase 108 — operation not implemented by the active backend.
+ * Operation not implemented by the active backend.
  */
 #define NROS_CPP_RET_UNSUPPORTED -16
 
@@ -1684,8 +1683,8 @@ typedef uint32_t nros_cpp_shutdown_callback_handle_t;
 #define NROS_CPP_RET_TRANSPORT_ERROR -100
 
 /**
- * phase-454 W10 — a subscription's QoS depth disagrees with the depth its
- * system's contract DECLARES for that topic. issue 1256 — and the same code
+ * A subscription's QoS depth disagrees with the depth its
+ * system's contract DECLARES for that topic — and the same code
  * when its RELIABILITY or DURABILITY does; the log line names which.
  *
  * The same number `rclcpp::detail::DECLARED_DEPTH_MISMATCH` carries in
@@ -1712,18 +1711,18 @@ extern "C" {
 #endif // __cplusplus
 
 /**
- * Phase 115.A.2 — re-exported ABI version constant. C++ inline
+ * Re-exported ABI version constant. C++ inline
  * wrapper fills this in.
  */
 extern const uint32_t NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1;
 
 /**
- * Issue 1535 — the `Executor` inside an nros-cpp executor handle, for a seam
+ * The `Executor` inside an nros-cpp executor handle, for a seam
  * that takes a BARE `*mut Executor<'static>`: a Rust component's
  * `__nros_component_<pkg>_install(node, executor, self)`.
  *
  * `rclcpp::global_handle()` and every sched task's `executor` are `CppContext`s, and
- * the executor is not at the handle's address: since phase-492 W4 it lives in
+ * the executor is not at the handle's address: it lives in
  * the embedded `rclc_executor_t`'s storage and the context holds a REFERENCE
  * to it (`CppContext::executor`), so this follows that reference. Taking the
  * field's own address instead hands the Rust side a pointer to the reference
@@ -1740,7 +1739,7 @@ extern const uint32_t NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1;
 void *nros_cpp_executor_inner(void *handle);
 
 /**
- * phase-492 W4 — give a C component its C-API handles: `node_out` (an
+ * Give a C component its C-API handles: `node_out` (an
  * `rcl_node_t *`) becomes the node this host created, and `*executor_out` is
  * set to the host's executor as an `rclc_executor_t *` — the one embedded in
  * the context (`CppContext::c`), not a copy. The node's QoS-override table
@@ -1789,9 +1788,9 @@ nros_cpp_ret_t nros_cpp_init(const char *locator,
                              void *storage);
 
 /**
- * Issue 1050 defect (3) — [`nros_cpp_init`] with an explicit RMW selector.
+ * [`nros_cpp_init`] with an explicit RMW selector.
  *
- * `rmw` is the BAKED rung of precedence model A (RFC-0045): a hosted
+ * `rmw` is the BAKED rung of precedence model A: a hosted
  * `$NROS_RMW` still wins, and a NULL selector leaves the choice to the
  * registry, which resolves only when exactly one backend is registered.
  *
@@ -1820,7 +1819,7 @@ nros_cpp_ret_t nros_cpp_init_rmw(const char *rmw,
                                  void *storage);
 
 /**
- * Issue 1970 -- [`nros_cpp_init`] for one SCHED TASK of a per-sched-task-sized image: the
+ * [`nros_cpp_init`] for one SCHED TASK of a per-sched-task-sized image: the
  * executor is carved from `backing` (`backing_bytes`, 8-aligned) at the sizing
  * the image derived for the sched task named `sched_task`, instead of from the context's
  * inline tail (which such an image does not carry). Refused -- before a
@@ -1842,7 +1841,7 @@ nros_cpp_ret_t nros_cpp_init_sched_task(const char *locator,
                                         size_t backing_bytes);
 
 /**
- * phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- [`nros_cpp_init`]
+ * [`nros_cpp_init`]
  * for the ONE executor a level runner opens per core: carved from `backing`
  * (`backing_bytes`, 8-aligned) at the image's levels sizing, every sched task's
  * (level's) members summed (`nros_node::levels_executor_sizing`). Refused
@@ -1861,13 +1860,13 @@ nros_cpp_ret_t nros_cpp_init_levels(const char *locator,
                                     size_t backing_bytes);
 
 /**
- * phase-509 P9b item 4 -- the backing bytes [`nros_cpp_init_levels`]
+ * The backing bytes [`nros_cpp_init_levels`]
  * carves, `0` on an image that sizes no level.
  */
 size_t nros_cpp_levels_backing_size(void);
 
 /**
- * Issue 1970 -- the backing bytes the executor of the sched task named `sched_task`
+ * The backing bytes the executor of the sched task named `sched_task`
  * carves, or `0` when this image sizes no sched task of that name (its executors
  * are then the image's, carved inline).
  *
@@ -1877,7 +1876,7 @@ size_t nros_cpp_levels_backing_size(void);
 size_t nros_cpp_sched_task_backing_size(const char *sched_task);
 
 /**
- * Issue 0436 — multi-RMW init for the C++ surface: opens one session per spec
+ * Multi-RMW init for the C++ surface: opens one session per spec
  * into the CALLER'S storage, producing a real [`CppContext`].
  *
  * # Why this exists next to `rclc_init_multi`
@@ -1911,7 +1910,7 @@ nros_cpp_ret_t nros_cpp_init_multi(const struct NrosCppSessionSpec *specs,
 /**
  * Is this storage a LIVE nros context?
  *
- * phase-432 W3.1 (option A) — the one answer to "is the global session up".
+ * The one answer to "is the global session up".
  *
  * It used to be `Node::GlobalStorageHolder<>::initialized`, a C++ template
  * static emitted by `node.hpp`: `rclcpp::init` set it true, `rclcpp::shutdown` set
@@ -1936,7 +1935,7 @@ nros_cpp_ret_t nros_cpp_init_multi(const struct NrosCppSessionSpec *specs,
 bool nros_cpp_context_is_live(const void *storage);
 
 /**
- * Issue 1568 — the bytes one executor's storage occupies in THIS build:
+ * The bytes one executor's storage occupies in THIS build:
  * `NROS_CPP_EXECUTOR_STORAGE_SIZE` from the per-build header, rounded up to
  * the 8-byte unit the storage is declared in.
  *
@@ -1952,7 +1951,7 @@ bool nros_cpp_context_is_live(const void *storage);
 size_t nros_cpp_executor_storage_size(void);
 
 /**
- * Issue 1568 — THE refusal for caller-supplied executor storage: `bytes`
+ * THE refusal for caller-supplied executor storage: `bytes`
  * must be at least [`nros_cpp_executor_storage_size`] and a multiple of 8
  * (it is also the STRIDE between sched task blocks, so every block after the first
  * must stay aligned), and `storage` 8-byte aligned and non-null.
@@ -1975,11 +1974,11 @@ nros_cpp_ret_t nros_cpp_executor_storage_check(const void *storage, size_t bytes
  * Drops the executor in-place within the caller's storage, and UNSTAMPS the
  * tag so the storage stops reading as a live context.
  *
- * phase-432 W3.1 — this used to blind-cast on the way in and leave the tag
+ * This used to blind-cast on the way in and leave the tag
  * stamped on the way out, and both halves were wrong.
  *
  * **On the way in**: every other entry point that takes a `void*` executor
- * handle goes through `cpp_ctx_checked`, which is issue 0436's fix — two
+ * handle goes through `cpp_ctx_checked`, which is the fix for this — two
  * different structs travel as `void*` here, both beginning with the same
  * `Executor<'static>`, so a mixed-up handle READ correctly and then wrote this
  * struct's later fields over the other's `Vec`. That was memory corruption
@@ -2002,7 +2001,7 @@ nros_cpp_ret_t nros_cpp_executor_storage_check(const void *storage, size_t bytes
 nros_cpp_ret_t nros_cpp_fini(void *storage);
 
 /**
- * Phase 266 (W5b/W6) — named variant of [`nros_board_native_run_components`].
+ * Named variant of [`nros_board_native_run_components`].
  *
  * `session_name` sets the primary session / node name visible via `ros2 node list`
  * (the #98 fix for C entries). NULL or empty → falls back to `"node"` (the
@@ -2023,7 +2022,7 @@ int32_t nros_board_native_run_components_named(const char *session_name,
                                                int32_t (*setup)(void *executor));
 
 /**
- * Issue 1419 -- the census switch, for the HOSTED runner that is not this
+ * The census switch, for the HOSTED runner that is not this
  * file's: `rclcpp::board::LinuxBoard::run_components` in `<rclcpp/detail/main.hpp>`.
  *
  * That runner is header-only C++ (`rclcpp::init` into the C++ global context,
@@ -2032,7 +2031,7 @@ int32_t nros_board_native_run_components_named(const char *session_name,
  * [`nros_board_native_run_components_named_ns`], so `$NROS_CENSUS_OUT` was
  * read by no code on that road: a census run of the in-tree C++ workspace's
  * `linux_entry` booted normally, dialled zenoh, and exited 156 on
- * `ConnectionFailed` -- the producer phase-463 W2 named did not exist for the
+ * `ConnectionFailed` -- the producer an earlier fix named did not exist for the
  * entry shape the C++ workspaces generate. These two calls are that runner's
  * half of the switch, and they reuse the funnel's own three functions rather
  * than spell a second census path.
@@ -2045,7 +2044,7 @@ int32_t nros_board_native_run_components_named(const char *session_name,
 int32_t nros_cpp_census_begin(void);
 
 /**
- * Issue 1419 -- write the census where `$NROS_CENSUS_OUT` names, after
+ * Write the census where `$NROS_CENSUS_OUT` names, after
  * `setup()` and INSTEAD of the spin. The second half of
  * [`nros_cpp_census_begin`]; the caller then shuts down and exits with the
  * returned code (0 when the census was written).
@@ -2060,7 +2059,7 @@ int32_t nros_cpp_census_begin(void);
 int32_t nros_cpp_census_finish(const char *session_name);
 
 /**
- * Issue 1732 — install the hosted termination guard for a C++ runner whose
+ * Install the hosted termination guard for a C++ runner whose
  * loop lives in a header (`rclcpp::board::LinuxBoard::run_components` in
  * `<rclcpp/detail/main.hpp>`). The Rust runners in this file call
  * `nros_platform::termination` directly; this is the same call, under a C
@@ -2073,7 +2072,7 @@ int32_t nros_cpp_census_finish(const char *session_name);
 int32_t nros_cpp_termination_guard_install(void);
 
 /**
- * Issue 1732 — `true` once a guarded SIGTERM / SIGINT has arrived. `nros::ok()`
+ * `true` once a guarded SIGTERM / SIGINT has arrived. `nros::ok()`
  * folds it in, which is `rclcpp::ok()`'s contract: a signal makes the spin
  * loops return, and the runner's `rclcpp::shutdown()` then closes the session.
  * Always `false` where no guard was installed.
@@ -2081,19 +2080,19 @@ int32_t nros_cpp_termination_guard_install(void);
 bool nros_cpp_termination_requested(void);
 
 /**
- * Issue 1434 — [`nros_board_native_run_components_named`] with the primary
+ * [`nros_board_native_run_components_named`] with the primary
  * session's NAMESPACE.
  *
  * `node_namespace` is the launch-declared namespace the generated entry reads
  * out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or
  * empty means the image declares none, which resolves to the root — NOT to the
- * empty namespace. It is the BAKED rung of RFC-0045's precedence model A, and
+ * empty namespace. It is the BAKED rung of the boot-config precedence ladder, and
  * this is the HOSTED runner, so `$NROS_NODE_NAMESPACE` still outranks it
  * (`nros_cpp_init` → `try_resolve_hosted` reads
  * `env.namespace.or(baked.namespace)`).
  *
  * Additive rather than a third parameter on the symbol above, for the reason
- * `nros_cpp_init_rmw` is additive over `nros_cpp_init` (issue 1050): the older
+ * `nros_cpp_init_rmw` is additive over `nros_cpp_init`: the older
  * spelling is what every already-generated entry TU calls.
  *
  * # Safety
@@ -2105,9 +2104,9 @@ int32_t nros_board_native_run_components_named_ns(const char *session_name,
                                                   int32_t (*setup)(void *executor));
 
 /**
- * Issue 1597 — [`nros_board_native_run_components_named_ns`] over
+ * [`nros_board_native_run_components_named_ns`] over
  * CALLER-SUPPLIED executor storage: the host twin of
- * `nros_board_rtos_run_components_in` (issue 1568), and the runner a
+ * `nros_board_rtos_run_components_in`, and the runner a
  * generated native single-executor C entry calls.
  *
  * `executor_storage` is `storage_bytes` bytes, 8-byte aligned — the entry's
@@ -2129,11 +2128,11 @@ int32_t nros_board_native_run_components_named_in(const char *session_name,
                                                   size_t storage_bytes);
 
 /**
- * Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle (unnamed variant).
+ * Typed C Entry lifecycle (unnamed variant).
  *
  * Delegates to [`nros_board_native_run_components_named`] with a NULL session
- * name, which resolves to the unified default `"node"` (phase 266 default
- * change). Kept for ABI back-compatibility with callers that do not pass a
+ * name, which resolves to the unified default `"node"`.
+ * Kept for ABI back-compatibility with callers that do not pass a
  * name; new generated entries call `nros_board_native_run_components_named`
  * directly with the baked boot-config node name.
  *
@@ -2157,13 +2156,13 @@ nros_cpp_ret_t nros_cpp_node_set_qos_overrides(struct nros_cpp_node_t *node,
                                                size_t len);
 
 /**
- * Phase 104.C.9 — zero-initialised `nros_cpp_node_options_t`.
+ * Zero-initialised `nros_cpp_node_options_t`.
  *
  * All length fields default to 0 ("inherit"); `domain_id_override` is
  * `NROS_CPP_DOMAIN_ID_INHERIT`. The C++ `NodeOptions` wrapper consumes
  * this via `Executor::node_builder(name)`.
  *
- * Issue 1473 — "inherit" is the vocabulary of the WHOLE struct, namespace
+ * "inherit" is the vocabulary of the WHOLE struct, namespace
  * included: `rmw_name_len == 0` inherits the executor's backend,
  * `locator_len == 0` its locator, `domain_id_override ==
  * NROS_CPP_DOMAIN_ID_INHERIT` its domain, and `namespace_len == 0` its
@@ -2178,7 +2177,7 @@ struct nros_cpp_node_options_t nros_cpp_node_get_default_options(void);
  * Equivalent to populating an [`nros_cpp_node_options_t`] with the
  * supplied namespace + zero defaults and calling
  * `nros_cpp_node_create_ex`. Kept for source compatibility with
- * pre-Phase-104.C.9 callers.
+ * older callers.
  *
  * # Parameters
  * * `executor_handle` — Opaque executor handle from `nros_cpp_init()`.
@@ -2187,7 +2186,7 @@ struct nros_cpp_node_options_t nros_cpp_node_get_default_options(void);
  *   UNSET**: the node INHERITS the executor's namespace, exactly as
  *   `nros_cpp_node_create_ex` does for `namespace_len == 0`. Pass `"/"` to
  *   place the node at the ROOT explicitly — the two are different requests
- *   and this ABI keeps them apart (issue 1473).
+ *   and this ABI keeps them apart.
  * * `out_node` — Receives the node handle on success.
  *
  * # Safety
@@ -2205,7 +2204,7 @@ nros_cpp_ret_t nros_cpp_node_create(void *executor_handle,
                                     struct nros_cpp_node_t *out_node);
 
 /**
- * Phase 104.C.9 — create a node with extended options.
+ * Create a node with extended options.
  *
  * Thin C++ FFI wrapper over the Rust `Executor::node_builder(name)
  * .rmw(...).locator(...).domain_id(...).namespace(...).sched(...)
@@ -2214,7 +2213,7 @@ nros_cpp_ret_t nros_cpp_node_create(void *executor_handle,
  * route through that backend's session.
  *
  * Currently the per-Node SchedContext field and the multi-Session
- * `extra_sessions` plumbing land via a follow-up (Phase 104.C.9.b)
+ * `extra_sessions` plumbing land via a follow-up
  * once the C++ executor surfaces `Executor::node_builder` directly.
  * The options struct round-trips into `nros_cpp_node_t` storage today
  * so users can write code against the final API surface.
@@ -2228,7 +2227,7 @@ nros_cpp_ret_t nros_cpp_node_create(void *executor_handle,
  *   INHERITS the executor's namespace, the same answer
  *   `nros_cpp_node_create` gives for a NULL or empty `namespace`. Write
  *   `namespace_ = "/"`, `namespace_len = 1` to place the node at the ROOT
- *   explicitly (issue 1473).
+ *   explicitly.
  * * `out_node` — Receives the node handle on success.
  *
  * # Safety
@@ -2268,7 +2267,7 @@ const char *nros_cpp_node_get_name(const struct nros_cpp_node_t *node);
  * Returns a pointer to the null-terminated namespace string stored in the node handle.
  * The pointer is valid as long as the `nros_cpp_node_t` is alive.
  *
- * Issue 1473 — this is the RESOLVED namespace, the one the executor recorded
+ * This is the RESOLVED namespace, the one the executor recorded
  * for this node, never the argument the caller passed. A node created with an
  * unset namespace on an executor opened at `/island` answers `/island`, which
  * is also where its relative topics resolve; one created with an explicit
@@ -2298,7 +2297,7 @@ nros_cpp_ret_t nros_cpp_node_get_fully_qualified_name(const struct nros_cpp_node
                                                       size_t *out_len);
 
 /**
- * RFC-0088 D4 / phase-421 W2 — the serialization format the backend behind
+ * The serialization format the backend behind
  * THIS node speaks, as its cross-image identity string (`"cdr"`, `"uorb"`).
  *
  * Resolved through `Executor::node_session_mut(node_id)`, i.e. the same
@@ -2340,7 +2339,7 @@ const char *nros_cpp_node_get_serialization_format(const struct nros_cpp_node_t 
 const char *nros_cpp_node_get_rmw_implementation_identifier(const struct nros_cpp_node_t *node);
 
 /**
- * Phase 88.12 — return the `nros_log::Logger` keyed on this node's
+ * Return the `nros_log::Logger` keyed on this node's
  * name. Opaque handle on the C++ side; pass to `NROS_LOG_*` macros.
  *
  * # Safety
@@ -2365,7 +2364,7 @@ nros_cpp_ret_t nros_cpp_spin_once(void *handle, int32_t timeout_ms);
 
 /**
  * Drain the ready set without waiting — rclcpp's `spin_some(max_duration)`
- * (phase-488; the C++ half of the `cpp:Executor::spin_some` ledger row, whose
+ * (the C++ half of the `cpp:Executor::spin_some` ledger row, whose
  * Rust half is `nros_node::Executor::spin_some`).
  *
  * A forwarder to that Rust method, so the two languages share one drain: it
@@ -2382,7 +2381,7 @@ nros_cpp_ret_t nros_cpp_spin_once(void *handle, int32_t timeout_ms);
 nros_cpp_ret_t nros_cpp_spin_some(void *handle, uint32_t max_ms);
 
 /**
- * phase-521 W6 (RFC-0113 D2) — the budget an entry loop passes to
+ * The budget an entry loop passes to
  * [`nros_cpp_spin_once`], in milliseconds.
  *
  * `Executor::entry_spin_budget`: up to a minute when every session of the
@@ -2399,10 +2398,10 @@ int32_t nros_cpp_entry_spin_budget_ms(void *handle);
 /**
  * Spin the executor for `duration_ms`, budgeted by WALL-CLOCK time.
  *
- * Issue 0329 — the single budgeted-spin entry point. `rclcpp::spin()` and
+ * The single budgeted-spin entry point. `rclcpp::spin()` and
  * `Executor::spin()` were hand-rolled loops in the C++ headers; one of them
  * (`nros.hpp`) still budgeted by ITERATION count (`elapsed += poll_ms`), the
- * exact defect `Executor::spin` documents as fixed in Phase 118.C — an early
+ * exact defect `Executor::spin` documents as fixed — an early
  * `spin_once` return on a signaled wake collapsed the loop into milliseconds.
  * Consolidating the loop here (identical to `Future::wait`'s wall-clock budget)
  * gives every caller the correct behavior with one implementation.
@@ -2417,12 +2416,12 @@ nros_cpp_ret_t nros_cpp_spin_for(void *handle, uint32_t duration_ms, int32_t pol
 
 /**
  * Spin until `clock` reads at least `deadline_ns` — the loop behind
- * `rclcpp::Clock::sleep_until` / `sleep_for` (phase-515 P5).
+ * `rclcpp::Clock::sleep_until` / `sleep_for`.
  *
- * RFC-0021: a sleep on a single-threaded image must not starve the
+ * A sleep on a single-threaded image must not starve the
  * transport, so this DRIVES the executor for the whole wait, as
  * `nros_cpp_spin_for` does for a wall budget (and for the same reason it lives
- * here, once: a wrapper looping over `spin_once` is RFC-0020 class 2). The
+ * here, once: a wrapper looping over `spin_once` is thin-wrapper violation class 2). The
  * deadline is on `clock` itself, so a ROS-time clock driven by a simulator's
  * `/clock` wakes when SIMULATED time arrives, which no wall budget can say.
  *
@@ -2443,12 +2442,12 @@ nros_cpp_ret_t nros_cpp_spin_until_clock(void *handle,
 /**
  * Spin until cancelled (blocking) — the loop behind `rclcpp::Executor::spin()`.
  *
- * phase-417 W4.c. The C++ header used to run this loop itself, on
+ * The C++ header used to run this loop itself, on
  * `while (initialized_)`, which made `shutdown()` the ONLY way out — and
  * `shutdown()` calls `nros_cpp_fini`, so stopping a spin cost the whole
  * middleware session and a fresh discovery round on the way back. That is also
- * RFC-0020's violation class 2 (a polling loop that spins the executor from
- * inside the wrapper), and issue 0329 already moved the BOUNDED loop here for
+ * the thin-wrapper audit's violation class 2 (a polling loop that spins the executor from
+ * inside the wrapper), and an earlier fix already moved the BOUNDED loop here for
  * the same reason. This is the unbounded sibling.
  *
  * Exits when [`nros_cpp_executor_cancel`] is called from a signal handler or
@@ -2463,9 +2462,9 @@ nros_cpp_ret_t nros_cpp_spin_until_clock(void *handle,
 nros_cpp_ret_t nros_cpp_spin(void *handle, int32_t poll_ms);
 
 /**
- * Ask a spinning executor to stop — `rclcpp::Executor::cancel`, phase-417 W4.c.
+ * Ask a spinning executor to stop — `rclcpp::Executor::cancel`.
  *
- * # ADOPT-BOUNDED (RFC-0089)
+ * # ADOPT-BOUNDED
  *
  * Sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns
  * BEFORE spinning has actually stopped; [`nros_cpp_executor_is_spinning`] is
@@ -2481,8 +2480,8 @@ nros_cpp_ret_t nros_cpp_spin(void *handle, int32_t poll_ms);
 nros_cpp_ret_t nros_cpp_executor_cancel(void *handle);
 
 /**
- * Is a spin loop running on this executor right now? phase-417 W4.c —
- * `rclcpp::Executor::is_spinning`.
+ * Is a spin loop running on this executor right now? The C++ face
+ * of `rclcpp::Executor::is_spinning`.
  *
  * A different question from `ok()`, which answers "is this executor
  * INITIALISED". Between [`nros_cpp_executor_cancel`] and the loop's next poll
@@ -2497,7 +2496,7 @@ nros_cpp_ret_t nros_cpp_executor_cancel(void *handle);
 bool nros_cpp_executor_is_spinning(void *handle);
 
 /**
- * Phase 124.F.3 — session-level connectivity probe.
+ * Session-level connectivity probe.
  *
  * Wire-level round-trip ("is the peer / agent / router reachable?")
  * with `timeout_ms` budget. Returns `NROS_CPP_RET_OK` on reply,
@@ -2511,7 +2510,7 @@ bool nros_cpp_executor_is_spinning(void *handle);
 nros_cpp_ret_t nros_cpp_executor_ping(void *handle, int32_t timeout_ms);
 
 /**
- * phase-381 W4 — every node on the graph, with its namespace.
+ * Every node on the graph, with its namespace.
  *
  * Reports what has been DISCOVERED and never blocks: an empty enumeration
  * means "nobody seen yet", not "nobody exists". `NROS_CPP_RET_UNSUPPORTED`
@@ -2525,7 +2524,7 @@ nros_cpp_ret_t nros_cpp_executor_get_node_names(void *handle,
                                                 void *ctx);
 
 /**
- * phase-381 W4 — every topic on the graph, with the types on it. One call per
+ * Every topic on the graph, with the types on it. One call per
  * distinct TOPIC.
  *
  * # Safety
@@ -2536,7 +2535,7 @@ nros_cpp_ret_t nros_cpp_executor_get_topic_names_and_types(void *handle,
                                                            void *ctx);
 
 /**
- * phase-381 W4 — every service on the graph, with its types.
+ * Every service on the graph, with its types.
  *
  * # Safety
  * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
@@ -2546,7 +2545,7 @@ nros_cpp_ret_t nros_cpp_executor_get_service_names_and_types(void *handle,
                                                              void *ctx);
 
 /**
- * phase-381 W4 — how many publishers are visible on `topic_name`. The count
+ * How many publishers are visible on `topic_name`. The count
  * reflects what has been DISCOVERED and is never a proof of absence.
  *
  * # Safety
@@ -2558,7 +2557,7 @@ nros_cpp_ret_t nros_cpp_executor_count_publishers(void *handle,
                                                   size_t *out_count);
 
 /**
- * phase-381 W4 — how many subscribers are visible on `topic_name`.
+ * How many subscribers are visible on `topic_name`.
  *
  * # Safety
  * `handle` must be a valid `CppContext`; `topic_name` NUL-terminated;
@@ -2569,7 +2568,7 @@ nros_cpp_ret_t nros_cpp_executor_count_subscribers(void *handle,
                                                    size_t *out_count);
 
 /**
- * Issue 1978 — how many service clients are visible on `service_name`
+ * How many service clients are visible on `service_name`
  * (Jazzy `rclcpp::Node::count_clients`). A backend with no graph answers
  * `NROS_CPP_RET_UNSUPPORTED`, never a 0.
  *
@@ -2582,7 +2581,7 @@ nros_cpp_ret_t nros_cpp_executor_count_clients(void *handle,
                                                size_t *out_count);
 
 /**
- * Issue 1978 — how many service servers are visible on `service_name`
+ * How many service servers are visible on `service_name`
  * (Jazzy `rclcpp::Node::count_services`).
  *
  * # Safety
@@ -2594,7 +2593,7 @@ nros_cpp_ret_t nros_cpp_executor_count_services(void *handle,
                                                 size_t *out_count);
 
 /**
- * phase-381 W4 — what one named node PUBLISHES.
+ * What one named node PUBLISHES.
  *
  * # Safety
  * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
@@ -2606,7 +2605,7 @@ nros_cpp_ret_t nros_cpp_executor_get_publisher_names_and_types_by_node(void *han
                                                                        void *ctx);
 
 /**
- * phase-381 W4 — what one named node SUBSCRIBES to.
+ * What one named node SUBSCRIBES to.
  *
  * `subscription`, not `subscriber`: the C++ surface takes rclcpp's vocabulary
  * (`create_subscription`, `Subscription<T>`, `get_subscriptions_info_by_topic`).
@@ -2624,7 +2623,7 @@ nros_cpp_ret_t nros_cpp_executor_get_subscription_names_and_types_by_node(void *
                                                                           void *ctx);
 
 /**
- * phase-381 W4 — what services one named node SERVES.
+ * What services one named node SERVES.
  *
  * # Safety
  * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
@@ -2636,7 +2635,7 @@ nros_cpp_ret_t nros_cpp_executor_get_service_names_and_types_by_node(void *handl
                                                                      void *ctx);
 
 /**
- * phase-381 W4 — what services one named node CALLS.
+ * What services one named node CALLS.
  *
  * # Safety
  * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
@@ -2648,7 +2647,7 @@ nros_cpp_ret_t nros_cpp_executor_get_client_names_and_types_by_node(void *handle
                                                                     void *ctx);
 
 /**
- * phase-381 W4 — the publishers on `topic_name`.
+ * The publishers on `topic_name`.
  *
  * # Safety
  * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
@@ -2659,7 +2658,7 @@ nros_cpp_ret_t nros_cpp_executor_get_publishers_info_by_topic(void *handle,
                                                               void *ctx);
 
 /**
- * phase-381 W4 — the subscriptions on `topic_name`.
+ * The subscriptions on `topic_name`.
  *
  * # Safety
  * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
@@ -2670,12 +2669,12 @@ nros_cpp_ret_t nros_cpp_executor_get_subscriptions_info_by_topic(void *handle,
                                                                  void *ctx);
 
 /**
- * Identifier of the auto-created default `Fifo` SC. Phase 110.B.
+ * Identifier of the auto-created default `Fifo` SC.
  */
 uint8_t nros_cpp_default_sched_context_id(void);
 
 /**
- * Register a new scheduling context. Phase 110.B.
+ * Register a new scheduling context.
  *
  * On success writes the new SC id through `out_sc_id` and returns
  * `NROS_CPP_RET_OK`. Returns `NROS_CPP_RET_INVALID_ARGUMENT` for null
@@ -2690,7 +2689,7 @@ nros_cpp_ret_t nros_cpp_create_sched_context(void *handle,
                                              uint8_t *out_sc_id);
 
 /**
- * RFC-0052 — create a scheduling context from a RAW sched task policy, routing
+ * Create a scheduling context from a RAW sched task policy, routing
  * through the **common backend** [`nros_node::executor::sched_context::SchedContext::from_sched_task_policy`]
  * so the C++ entry codegen never re-derives the class/budget/period/deadline
  * mapping. This is the single-source-of-truth shared with the Rust runtime
@@ -2724,7 +2723,7 @@ nros_cpp_ret_t nros_cpp_create_sched_context_from_policy(void *handle,
                                                          uint8_t *out_sc_id);
 
 /**
- * Bind a registered callback to a scheduling context. Phase 110.B.
+ * Bind a registered callback to a scheduling context.
  *
  * `handle` is the executor context; `callback_handle` is the index
  * returned from a previous `add_*` call; `sc_id` is from
@@ -2738,14 +2737,14 @@ nros_cpp_ret_t nros_cpp_bind_handle_to_sched_context(void *handle,
                                                      uint8_t sc_id);
 
 /**
- * Phase 272 (W2) — seed the `node_name → sched_context` table before the node
+ * Seed the `node_name → sched_context` table before the node
  * is built. Mirrors the W1 `Executor::bind_node_name_sched` via the C++ executor
  * handle; called by the emitted entry setup AFTER creating sched-context slots
- * and BEFORE constructing/configuring components (RFC-0047: seed before build).
+ * and BEFORE constructing/configuring components (seed before build).
  *
  * Covers every component shape (configure-shape C/C++ and rclcpp IS-A-node) since
- * every node funnels through `Executor::node_builder(name).build()` (RFC-0046) and
- * the builder looks up the table there. This dissolves issue #124 at the emit level:
+ * every node funnels through `Executor::node_builder(name).build()` and
+ * the builder looks up the table there. This dissolves the ordering problem at the emit level:
  * rclcpp-shape nodes are seeded here and pick up their sched task in the builder.
  *
  * # Safety
@@ -2760,7 +2759,7 @@ nros_cpp_ret_t nros_cpp_bind_node_name_sched(void *handle,
                                              uint8_t sc_id);
 
 /**
- * phase-509 P2 (RFC-0108 D2) -- seed the contract rank of the node
+ * Seed the contract rank of the node
  * `(name, namespace)` before it is built. 0 is the most urgent; the entry
  * codegen emits the derivation's ranks normalised that way, one call per node,
  * before the node is created. Every callback the node then registers
@@ -2779,11 +2778,11 @@ nros_cpp_ret_t nros_cpp_bind_node_rank(void *handle,
                                        uint8_t rank);
 
 /**
- * Phase 273 (W2) — seed the group → sched-context table for a specific
+ * Seed the group → sched-context table for a specific
  * callback group of a named node. Call BEFORE the node is constructed (before
  * `nros_cpp_node_create`) so that the group's entities pick up the binding at
- * register time. Layering: group table > node-name table > default (RFC-0047
- * Precedence). Mirror of `nros_cpp_bind_node_name_sched` at finer granularity.
+ * register time. Layering: group table > node-name table > default
+ * (precedence). Mirror of `nros_cpp_bind_node_name_sched` at finer granularity.
  *
  * # Safety
  * `handle` must be a context returned by `nros_cpp_init`.
@@ -2805,7 +2804,7 @@ nros_cpp_ret_t nros_cpp_bind_group_sched(void *handle,
  * Boards call this BEFORE the sched task's `setup()`, which is what makes an
  * explicit `nros_cpp_executor_set_min_stack_headroom` inside `setup` win:
  * declared beats derived by ordering, with no precedence logic to keep in
- * step. Same shape as `set_spin_nominal_us` (phase-436).
+ * step. Same shape as `set_spin_nominal_us`.
  *
  * # Safety
  * `handle` must be a live executor handle from this ABI, or NULL.
@@ -2845,7 +2844,7 @@ nros_cpp_ret_t nros_cpp_executor_set_min_stack_headroom(void *handle, size_t byt
  * unwatched is the class of failure this table exists to remove. The refusal
  * logs the knob to raise, `NROS_EXECUTOR_MAX_MONITORS` or
  * `NROS_EXECUTOR_MAX_AGE_MONITORS`; both derive from the contract's row
- * counts when nothing states them (phase-496 W1). A short or misaligned
+ * counts when nothing states them. A short or misaligned
  * storage buffer is refused the same way.
  *
  * # Safety
@@ -2878,7 +2877,7 @@ nros_cpp_ret_t nros_cpp_install_monitors(void *handle,
 nros_cpp_ret_t nros_cpp_install_hazards(void *handle, const struct nros_cpp_hazard_table_t *table);
 
 /**
- * phase-462 W4b -- install the contract's MODE variants of the two monitor
+ * Install the contract's MODE variants of the two monitor
  * tables on this executor, after `nros_cpp_install_monitors`. Each mode's
  * specs are the base specs with the mode's numbers: the same topics,
  * endpoints and cells, so every binding and hazard row index survives a
@@ -2902,7 +2901,7 @@ nros_cpp_ret_t nros_cpp_install_hazards(void *handle, const struct nros_cpp_haza
 nros_cpp_ret_t nros_cpp_install_modes(void *handle, const struct nros_cpp_mode_tables_t *tables);
 
 /**
- * phase-462 W4b -- ask every executor to judge by mode `id`'s tables (0 =
+ * Ask every executor to judge by mode `id`'s tables (0 =
  * the base contract), applied at each executor's next spin. The C spelling
  * of `nros::monitor::request_mode`; the entry names each id as
  * `NROS_MODE_<NAME>`.
@@ -2913,7 +2912,7 @@ void nros_cpp_request_mode(uint16_t id);
  * Drain every pending contract violation from this executor's ring, the C++
  * mirror of `Executor::drain_violations`. The entry glue hands each one to
  * the reporter it links (the same rule vocabulary play_launch enforces on
- * the Linux side, RFC-0050). Call between spins, never from a callback.
+ * the Linux side). Call between spins, never from a callback.
  *
  * # Safety
  * `handle` must be a live executor handle from this ABI, or NULL. `cb` must
@@ -2924,7 +2923,7 @@ nros_cpp_ret_t nros_cpp_executor_drain_violations(void *handle,
                                                   void *ctx);
 
 /**
- * phase-474 I1 -- turn the executor's drain-and-report hook on or off
+ * Turn the executor's drain-and-report hook on or off
  * (`Executor::set_violation_drain_report`): at the end of every spin the ring
  * is drained and each entry logged with its sequence number and the
  * `total` / `dropped` counters. The generated C/C++ entries call this when the
@@ -2937,7 +2936,7 @@ nros_cpp_ret_t nros_cpp_executor_drain_violations(void *handle,
 nros_cpp_ret_t nros_cpp_executor_set_violation_drain_report(void *handle, bool enabled);
 
 /**
- * phase-474 I1 / I2 -- read one executor's violation counters.
+ * Read one executor's violation counters.
  *
  * # Safety
  * `handle` must be a live executor handle from this ABI, or NULL; `out` must
@@ -2947,7 +2946,7 @@ nros_cpp_ret_t nros_cpp_executor_violation_counts(void *handle,
                                                   struct nros_cpp_violation_counts_t *out);
 
 /**
- * phase-474 I2 -- choose when this executor's contract monitors arm,
+ * Choose when this executor's contract monitors arm,
  * overriding the build default (`CONFIG_NROS_MONITOR_ARM_ON_CALL`,
  * `CONFIG_NROS_MONITOR_ARM_GRACE_MS`). `on_call`: wait for
  * `nros_cpp_monitors_arm()`; `grace_ms`: arm anyway that long after the first
@@ -2959,7 +2958,7 @@ nros_cpp_ret_t nros_cpp_executor_violation_counts(void *handle,
 nros_cpp_ret_t nros_cpp_executor_set_monitor_arming(void *handle, bool on_call, uint32_t grace_ms);
 
 /**
- * phase-474 I2 -- the application's start-up is over: arm the contract
+ * The application's start-up is over: arm the contract
  * monitors of every executor in the image that waits for it. Safe from any
  * thread and from a callback (it bumps an atomic; each executor arms at its
  * next spin). The C spelling is `rclc_monitors_arm()`; this is the same call
@@ -2974,7 +2973,7 @@ void nros_cpp_monitors_arm(void);
  * required and a NULL one answers `NROS_CPP_RET_INVALID_ARGUMENT` rather than
  * faulting. A full remap table answers `NROS_CPP_RET_FULL`.
  *
- * Issue 1971 -- this writes the executor's RUNTIME remap table, for
+ * This writes the executor's RUNTIME remap table, for
  * hand-written callers. The generated entry no longer calls it: its launch
  * rules are one flash table (`nros_cpp_set_launch_remaps`). On bare metal the
  * runtime table is 0 slots unless `NROS_EXECUTOR_RUNTIME_REMAPS` states some,
@@ -2994,12 +2993,12 @@ nros_cpp_ret_t nros_cpp_declare_remap(void *handle,
 
 /**
  * Install the image's launch remap table: ONE `static const` table the
- * generated entry emits, read by every executor (issue 1971, RFC-0107
- * step 1). Launch rules stay AUTHORITATIVE over `--ros-args -r` rules.
+ * generated entry emits, read by every executor. Launch rules stay AUTHORITATIVE over
+ * `--ros-args -r` rules.
  *
  * Call it once at boot, BEFORE the board runner sets up any sched task or the
  * entry builds any node: an rclcpp-shape constructor registers its entities
- * immediately (issue 0255). The generated entry does exactly that.
+ * immediately. The generated entry does exactly that.
  *
  * Returns `NROS_CPP_RET_OK`, or `NROS_CPP_RET_INVALID_ARGUMENT` when `table`
  * is NULL with `len > 0`, or a row has a NULL node name, `from` or `to`, or a
@@ -3015,7 +3014,7 @@ nros_cpp_ret_t nros_cpp_set_launch_remaps(const struct nros_cpp_launch_remap_t *
 /**
  * Install the image's baked RMW session properties: ONE `static const`
  * table the generated entry emits, handed to the backend by every default
- * session open that states none of its own (RFC-0109 D8).
+ * session open that states none of its own.
  *
  * Call it once at boot, BEFORE the board runner opens any session. The
  * generated entry does exactly that.
@@ -3033,7 +3032,7 @@ nros_cpp_ret_t nros_cpp_set_session_properties(const struct nros_cpp_session_pro
                                                size_t len);
 
 /**
- * Issue 2073 -- whether this image baked arguments of its own, so
+ * Whether this image baked arguments of its own, so
  * `rclcpp::init` reaches [`nros_cpp_install_argv_remaps`] even when the
  * command line holds no `--ros-args` (a board's is empty).
  */
@@ -3046,7 +3045,7 @@ bool nros_cpp_baked_ros_args_present(void);
  *
  * This is the C++ face of `nros_node::ros_args::apply_ros_args`, the same
  * parse and the same refusals as Rust's `nros::Context::new`. With the
- * `param-store` feature it is `apply_ros_args_with_params` (phase-482 W5):
+ * `param-store` feature it is `apply_ros_args_with_params`:
  * `-p` overrides and `--params-file` files (read with `std::fs`; refused on a
  * target without `std`) are installed as parameter overrides, applied when a
  * node declares the parameter. Without it they are REFUSED by name, as are
@@ -3078,7 +3077,7 @@ nros_cpp_ret_t nros_cpp_install_argv_remaps(void *handle,
                                             size_t why_len);
 
 /**
- * Phase 274.W1 (RFC-0015 Model 1) — get the session handle from an opened executor.
+ * Get the session handle from an opened executor.
  *
  * Returns an opaque pointer to the underlying RMW session. Pass this to
  * [`nros_cpp_executor_open_over_session`] to open additional executors that
@@ -3093,7 +3092,7 @@ nros_cpp_ret_t nros_cpp_install_argv_remaps(void *handle,
 void *nros_cpp_executor_session_handle(void *executor);
 
 /**
- * Phase 274.W1 (RFC-0015 Model 1) — open a new `Borrowed` executor over a shared session.
+ * Open a new `Borrowed` executor over a shared session.
  *
  * Opens an executor that **does not own or close** the session on drop (the
  * `Borrowed` session store). This is the per-sched task primitive: the primary
@@ -3118,7 +3117,7 @@ nros_cpp_ret_t nros_cpp_executor_open_over_session(void *session_handle,
                                                    void *out_storage);
 
 /**
- * Issue 1970 -- [`nros_cpp_executor_open_over_session`] for one SCHED TASK of a
+ * [`nros_cpp_executor_open_over_session`] for one SCHED TASK of a
  * per-sched-task-sized image: the borrowed executor is carved from `backing` at the
  * sizing the image derived for the sched task named `sched_task` (see
  * [`nros_cpp_init_sched_task`] for what is refused).
@@ -3136,7 +3135,7 @@ nros_cpp_ret_t nros_cpp_executor_open_over_session_sched_task(void *session_hand
                                                               size_t backing_bytes);
 
 /**
- * Phase 274.W1 (RFC-0015 Model 1) — gate this executor to a set of named callback groups.
+ * Gate this executor to a set of named callback groups.
  *
  * After this call, only callbacks whose `.callback_group()` is in `groups` will
  * register on this executor. Pass `n == 0` or `groups == NULL` to clear the
@@ -3155,7 +3154,7 @@ nros_cpp_ret_t nros_cpp_executor_set_active_groups(void *executor,
                                                    size_t n);
 
 /**
- * phase-503 — install (or, with `hook == NULL`, remove) the executor's
+ * Install (or, with `hook == NULL`, remove) the executor's
  * reaction hook. A supervised route row (`route_deadline_ms > 0`) whose take
  * is still unanswered at `take + route_deadline_ms` is reported once and the
  * hook is called with the row's `reaction_id`, its index and its `mechanism`.
@@ -3170,7 +3169,7 @@ nros_cpp_ret_t nros_cpp_executor_set_reaction_hook(void *handle,
                                                    void *ctx);
 
 /**
- * phase-509 P7 (RFC-0108 D8.1) — the level this executor runs, 0 the most
+ * The level this executor runs, 0 the most
  * urgent, written to `*out_level`. It equals the generated
  * `NROS_ENTRY_LEVEL_OF_<node>` (`nros_priority_plan.h`) of every node the
  * executor hosts. An executor its runner never placed is level 0, which is
@@ -3184,7 +3183,7 @@ nros_cpp_ret_t nros_cpp_executor_set_reaction_hook(void *handle,
 nros_cpp_ret_t nros_cpp_executor_level(void *handle, uint8_t *out_level);
 
 /**
- * phase-509 P7 — place this executor at `level` (0 the most urgent), so
+ * Place this executor at `level` (0 the most urgent), so
  * [`nros_cpp_executor_level`] answers it and its spins check in as it. A
  * runner calls it once per level before the level spins, with the index
  * [`nros_cpp_sched_task_level`] gives its sched task. `INVALID_ARGUMENT` at or past
@@ -3196,7 +3195,7 @@ nros_cpp_ret_t nros_cpp_executor_level(void *handle, uint8_t *out_level);
 nros_cpp_ret_t nros_cpp_executor_set_level(void *handle, uint8_t level);
 
 /**
- * phase-509 P9b (RFC-0108 "As built in P9b") -- install the executor's
+ * Install the executor's
  * lock: `ctx` is the port's initialised RECURSIVE, priority-inheriting mutex
  * (`nros_platform_mutex_rec_init`), and `lock` / `unlock` take and give it
  * (`nros_platform_mutex_rec_lock` / `_unlock`). From then on every
@@ -3215,7 +3214,7 @@ nros_cpp_ret_t nros_cpp_executor_set_lock(void *handle,
                                           void *ctx);
 
 /**
- * phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- give the lock
+ * Give the lock
  * [`nros_cpp_executor_set_lock`] installed the port's thread identity
  * (`k_current_get`, `pthread_self`), so a pass releases it around each user
  * callback and around its park: the levels' workers then preempt each
@@ -3230,7 +3229,7 @@ nros_cpp_ret_t nros_cpp_executor_set_lock(void *handle,
 nros_cpp_ret_t nros_cpp_executor_set_thread_id(void *handle, size_t (*thread_id)(void));
 
 /**
- * phase-509 P7 — the level of sched task `index` of a runner's `n` sched tasks: its
+ * The level of sched task `index` of a runner's `n` sched tasks: its
  * urgency order among their kernel priorities, 0 the most urgent, equal
  * priorities in array order. The rule `nros dev codegen entry` uses for
  * `NROS_ENTRY_LEVEL_OF_<node>`, so the two agree. The priorities are read
@@ -3251,19 +3250,19 @@ int32_t nros_cpp_sched_task_level(const int64_t *first_priority,
                                   bool smaller_is_urgent);
 
 /**
- * phase-509 P7 (RFC-0108 D8.2) — state how many levels the image runs. A
+ * State how many levels the image runs. A
  * runner calls it once, before its levels spin; an image that never does
  * has one. `INVALID_ARGUMENT` for 0 or more than `NROS_CPP_MAX_LEVELS`.
  */
 nros_cpp_ret_t nros_cpp_set_level_count(uint8_t n);
 
 /**
- * phase-509 P7 — how many levels the image runs.
+ * How many levels the image runs.
  */
 uint8_t nros_cpp_level_count(void);
 
 /**
- * phase-509 P7 — the low 32 bits of the executor clock, in microseconds, at
+ * The low 32 bits of the executor clock, in microseconds, at
  * `level`'s latest spin, written to `*out_us`; NOT_FOUND while it has not
  * spun. Compare two with a wrapping difference.
  *
@@ -3273,13 +3272,13 @@ uint8_t nros_cpp_level_count(void);
 nros_cpp_ret_t nros_cpp_level_last_spin_us(uint8_t level, uint32_t *out_us);
 
 /**
- * phase-509 P7 (RFC-0108 D8.2) — whether every level of the image has
+ * Whether every level of the image has
  * spun since the last [`nros_cpp_levels_take_alive`] that returned true.
  */
 bool nros_cpp_levels_alive(void);
 
 /**
- * phase-509 P7 (RFC-0108 D8.2) — the watchdog feed: true when every level
+ * The watchdog feed: true when every level
  * has spun since the last true, and the check-ins are then cleared; false,
  * and nothing cleared, while any level has not. A level stuck in a callback
  * stops checking in, so the feed stops even while another level spins.
@@ -3287,7 +3286,7 @@ bool nros_cpp_levels_alive(void);
 bool nros_cpp_levels_take_alive(void);
 
 /**
- * phase-509 P9 -- the backing bytes a scheduler of `n_levels` levels takes:
+ * The backing bytes a scheduler of `n_levels` levels takes:
  * its head and one seat per level, rounded up to 8. `0` for 0 levels or more
  * than `NROS_CPP_MAX_LEVELS`. The generated
  * `NROS_CPP_SCHEDULER_BACKING_SIZE_<core>` is
@@ -3299,7 +3298,7 @@ bool nros_cpp_levels_take_alive(void);
 size_t nros_cpp_scheduler_backing_size(uint8_t n_levels);
 
 /**
- * phase-509 P9 (RFC-0108 D3; the amended RFC-0107 step 5) -- open core
+ * Open core
  * `core`'s scheduler in `backing` (`bytes`, 8-aligned, at least
  * [`nros_cpp_scheduler_backing_size`]`(n_levels)`), over the executor
  * `owner` opened (`nros_cpp_init_levels` / `nros_cpp_init`). It states the
@@ -3322,7 +3321,7 @@ void *nros_cpp_scheduler_open(uint8_t core,
                               size_t bytes);
 
 /**
- * phase-509 P9 -- seat the executor that owns the session (the core's one
+ * Seat the executor that owns the session (the core's one
  * executor, which runs on the caller's thread) at `level`, and place it
  * there (`nros_cpp_executor_set_level`). `stack_bytes` is the stack its
  * thread runs on; `name` a static string, or NULL.
@@ -3344,7 +3343,7 @@ nros_cpp_ret_t nros_cpp_level_adopt(void *scheduler,
                                     const char *name);
 
 /**
- * phase-509 P9 (RFC-0108 D3) / P9b item 4 -- open level `level` of
+ * Open level `level` of
  * `scheduler` as a WORKER over the core's one executor (the adopted owner's):
  * its record and waiter are seated in the scheduler's backing, its waiter is
  * linked into the executor's arrival routing, and the callbacks registered
@@ -3366,7 +3365,7 @@ nros_cpp_ret_t nros_cpp_level_open(void *scheduler,
                                    size_t stack_bytes);
 
 /**
- * phase-509 P9b item 4 -- the core's one executor (the owner's handle):
+ * The core's one executor (the owner's handle):
  * what a level's setup registers its nodes on. NULL for a handle that is not
  * a scheduler.
  *
@@ -3376,7 +3375,7 @@ nros_cpp_ret_t nros_cpp_level_open(void *scheduler,
 void *nros_cpp_scheduler_owner(void *scheduler);
 
 /**
- * phase-509 P9b item 4 -- make the callbacks registered from now on level
+ * Make the callbacks registered from now on level
  * `level`'s, on the core's executor: a runner calls it before each level's
  * setup (the level that opens or adopts is made current already).
  *
@@ -3386,7 +3385,7 @@ void *nros_cpp_scheduler_owner(void *scheduler);
 nros_cpp_ret_t nros_cpp_scheduler_set_registering_level(void *scheduler, uint8_t level);
 
 /**
- * Issue 2018 (RFC-0108 As-built) -- give the registering level its own
+ * Give the registering level its own
  * scheduling context, lowered from its sched task's policy by the common backend
  * (`SchedContext::from_sched_task_policy`): what the level's setup registers from
  * now on binds to it rather than to the executor's default, which every
@@ -3419,7 +3418,7 @@ nros_cpp_ret_t nros_cpp_level_set_sched_policy(void *scheduler,
                                                uint8_t *out_sc_id);
 
 /**
- * Issue 2018 -- the kernel now enforces context `sc_id`'s budget on its
+ * The kernel now enforces context `sc_id`'s budget on its
  * level's thread, so the executor stops enforcing it
  * (`Executor::defer_budget_to_kernel`). For a runner that sets the level's
  * policy before its setup and learns the kernel's answer after it.
@@ -3432,7 +3431,7 @@ nros_cpp_ret_t nros_cpp_level_set_sched_policy(void *scheduler,
 nros_cpp_ret_t nros_cpp_sched_context_defer_budget_to_kernel(void *scheduler, uint8_t sc_id);
 
 /**
- * phase-509 P9b item 4 -- one pass of level `level`'s worker over the core's
+ * One pass of level `level`'s worker over the core's
  * executor: it parks (its wake object, the lock released) for at most
  * `timeout_ms` or until its next timer or an arrival in its band, then runs
  * its band's ready callbacks, most urgent first, releasing the lock around
@@ -3447,7 +3446,7 @@ nros_cpp_ret_t nros_cpp_sched_context_defer_budget_to_kernel(void *scheduler, ui
 nros_cpp_ret_t nros_cpp_level_spin_once(void *scheduler, uint8_t level, int32_t timeout_ms);
 
 /**
- * phase-509 P9 -- how many levels `scheduler` holds, 0 for a handle that is
+ * How many levels `scheduler` holds, 0 for a handle that is
  * not one.
  *
  * # Safety
@@ -3456,7 +3455,7 @@ nros_cpp_ret_t nros_cpp_level_spin_once(void *scheduler, uint8_t level, int32_t 
 uint8_t nros_cpp_scheduler_level_count(void *scheduler);
 
 /**
- * phase-509 P9 -- the executor seated at `level`, or NULL.
+ * The executor seated at `level`, or NULL.
  *
  * # Safety
  * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
@@ -3464,7 +3463,7 @@ uint8_t nros_cpp_scheduler_level_count(void *scheduler);
 void *nros_cpp_scheduler_level_executor(void *scheduler, uint8_t level);
 
 /**
- * phase-509 P9 (RFC-0108 D3) -- the stack `level`'s worker thread runs on,
+ * The stack `level`'s worker thread runs on,
  * as its runner seated it: the derived per-level stack for a spawned level,
  * the caller's thread stack for the adopted one. `0` for an unseated level.
  *
@@ -3474,7 +3473,7 @@ void *nros_cpp_scheduler_level_executor(void *scheduler, uint8_t level);
 size_t nros_cpp_scheduler_level_stack_bytes(void *scheduler, uint8_t level);
 
 /**
- * phase-503 — microseconds from now to the earliest deadline of a pending
+ * Microseconds from now to the earliest deadline of a pending
  * supervised route (0 when one is due), written to `*out_us`;
  * `UINT64_MAX` when no supervised route is waiting. A port supervising with
  * its own timer (`NROS_CPP_MECHANISM_TIMER`) re-arms it from this after each
@@ -3487,7 +3486,7 @@ size_t nros_cpp_scheduler_level_stack_bytes(void *scheduler, uint8_t level);
 nros_cpp_ret_t nros_cpp_executor_route_next_due_us(void *handle, uint64_t *out_us);
 
 /**
- * phase-503 W7 — fill `*out` with a watch over this executor's supervised
+ * Fill `*out` with a watch over this executor's supervised
  * routes. Call on the spin thread (or before the first spin) after
  * `nros_cpp_install_monitors`; the watch stays valid as long as the
  * executor's monitor storage, and reading it never touches the executor. With
@@ -3506,7 +3505,7 @@ nros_cpp_ret_t nros_cpp_executor_route_next_due_us(void *handle, uint64_t *out_u
 nros_cpp_ret_t nros_cpp_executor_route_watch(void *handle, struct nros_cpp_route_watch_t *out);
 
 /**
- * phase-503 W7 — microseconds from now to the earliest deadline of a pending
+ * Microseconds from now to the earliest deadline of a pending
  * supervised route, read from the routes' own cells at the moment of the
  * call: 0 when a take is still unanswered at or after its deadline (the
  * executor's verdict: an answer exactly at the deadline is a miss),
@@ -3523,7 +3522,7 @@ nros_cpp_ret_t nros_cpp_route_watch_next_due_us(const struct nros_cpp_route_watc
                                                 uint64_t *out_us);
 
 /**
- * phase-436 W7.a — register a platform deadline source on this executor.
+ * Register a platform deadline source on this executor.
  *
  * The seam existed only as a Rust method, so the board entries that go through
  * this ABI — FreeRTOS, NuttX and the C arm of Zephyr, which is the arm the
@@ -3543,7 +3542,7 @@ nros_cpp_ret_t nros_cpp_executor_register_wake_source(void *handle,
                                                       void *ctx);
 
 /**
- * phase-436 W7.a — the wake object a port's park primitive must wait on.
+ * The wake object a port's park primitive must wait on.
  *
  * Returns NULL when this build has no wake primitive linked.
  *
@@ -3559,12 +3558,12 @@ nros_cpp_ret_t nros_cpp_executor_register_wake_source(void *handle,
 void *nros_cpp_executor_wake_handle(void *handle);
 
 /**
- * phase-436 W7.a — install THE primitive this executor blocks on.
+ * Install THE primitive this executor blocks on.
  *
  * Singular by nature: only one thing can actually wait. `granularity_us` is
  * the finest park the primitive can express, and the port states it because
  * only the port knows — an RTOS tick is a coarser limit than the ABI
- * signature, a timespec primitive a finer one (issue 1242).
+ * signature, a timespec primitive a finer one.
  *
  * `park` returns 0 when woken by an event, 1 when the deadline expired, and a
  * negative value when it cannot park.
@@ -3579,7 +3578,7 @@ nros_cpp_ret_t nros_cpp_executor_set_park_primitive(void *handle,
                                                     uint64_t granularity_us);
 
 /**
- * Issue 2225 (RFC-0113 D9) -- the wake half of a framework's park slot.
+ * The wake half of a framework's park slot.
  *
  * `hook(ctx)` is called after every signal of this executor's wake object (a
  * backend's arrival, an attributed entity wake), from the signalling context.
@@ -3611,7 +3610,7 @@ nros_cpp_ret_t nros_cpp_executor_set_wake_hook(void *handle, void (*hook)(void*)
 nros_cpp_ret_t nros_cpp_executor_set_spin_nominal_us(void *handle, uint64_t us);
 
 /**
- * phase-436 A2b — declare the loop's cadence, in microseconds, for a loop
+ * Declare the loop's cadence, in microseconds, for a loop
  * paced by the `spin_once` wait itself. `0` withdraws it.
  *
  * [`nros_cpp_executor_set_spin_nominal_us`] also says the caller paces the
@@ -3630,7 +3629,7 @@ nros_cpp_ret_t nros_cpp_executor_set_spin_nominal_us(void *handle, uint64_t us);
 nros_cpp_ret_t nros_cpp_executor_set_spin_nominal_wait_paced_us(void *handle, uint64_t us);
 
 /**
- * phase-436 A2c — of the late wakes [`nros_cpp_executor_release_jitter`]
+ * Of the late wakes [`nros_cpp_executor_release_jitter`]
  * counts, how many were late by more than its `granularity_us`.
  *
  * A wake counts as late at one microsecond past its release, so on a loop
@@ -3645,7 +3644,7 @@ nros_cpp_ret_t nros_cpp_executor_set_spin_nominal_wait_paced_us(void *handle, ui
 nros_cpp_ret_t nros_cpp_executor_late_wakes_beyond_granularity(void *handle, uint32_t *late_beyond);
 
 /**
- * phase-436 A2 — read the release-jitter probe from a C or C++ entry.
+ * Read the release-jitter probe from a C or C++ entry.
  *
  * `max_us` is the worst wake past its nominal release since the executor
  * opened; `late_wakes` / `total_wakes` separate one bad wake from a loop that
@@ -3671,7 +3670,7 @@ nros_cpp_ret_t nros_cpp_executor_release_jitter(void *handle,
                                                 uint64_t *granularity_us);
 
 /**
- * phase-436 A2 — how the last park was bounded, from a C or C++ entry.
+ * How the last park was bounded, from a C or C++ entry.
  *
  * `bound_us` is the park the sources agreed on; `achieved_us` is what the
  * platform was actually asked for after rounding up to what its primitive can
@@ -3694,7 +3693,7 @@ nros_cpp_ret_t nros_cpp_executor_last_park(void *handle,
                                            uint8_t *platform_index);
 
 /**
- * phase-436 A3 — reset the release-jitter statistics from a C or C++ entry.
+ * Reset the release-jitter statistics from a C or C++ entry.
  *
  * The executor's maximum, late count and total are since the executor opened,
  * so a single startup outlier pins the maximum for the life of the process.
@@ -3713,17 +3712,17 @@ nros_cpp_ret_t nros_cpp_executor_clear_release_jitter_stats(void *handle);
  * Used by `nros::Future::wait()` (header-side) to budget its spin loop by
  * wall-clock rather than iteration count, so that an early-returning
  * `spin_once` on a signaled condvar doesn't collapse the nominal timeout
- * into microseconds. Phase 89.2.
+ * into microseconds.
  */
 uint64_t nros_cpp_time_ns(void);
 
 /**
- * phase-509 P9b -- report a sched task (level) setup that failed: the generated
+ * Report a sched task (level) setup that failed: the generated
  * entry's setup wrapper calls this with the sched task's name, the node it was
  * building (`NULL` when it failed before its first node: the monitor
  * install) and the code it returns, BEFORE handing the code to the runner,
  * which then fails the boot (a level runner does not park a level whose
- * setup failed; RFC-0108 "As built in P9b"). Logged at error level on the
+ * setup failed). Logged at error level on the
  * `nros_cpp` logger, the channel every other setup refusal uses.
  *
  * # Safety
@@ -3740,7 +3739,7 @@ void nros_cpp_report_setup_failure(const char *sched_task, const char *node, int
  * directly into this buffer.
  *
  * `out_handle_id`, when non-null, receives the entry's handle — what
- * `nros_cpp_guard_condition_release` takes (issue 1667).
+ * `nros_cpp_guard_condition_release` takes.
  *
  * # Safety
  * `executor_handle` and `storage` must be valid pointers; `out_handle_id` must
@@ -3763,7 +3762,7 @@ nros_cpp_ret_t nros_cpp_guard_condition_trigger(void *storage);
 /**
  * Is this guard condition triggered and not yet dispatched?
  *
- * phase-417 W4.e — the RFC-0022 polling reader C has had all along, which C++
+ * The polling reader C has had all along, which C++
  * and Rust did not: the ledger's `c:guard_condition_is_triggered` recorded
  * "a polling C++ or Rust user cannot do what a polling C user can" as a
  * three-language disagreement, and stage 4 is where those close. The executor
@@ -3784,7 +3783,7 @@ bool nros_cpp_guard_condition_is_triggered(const void *storage);
 nros_cpp_ret_t nros_cpp_guard_condition_clear(void *storage);
 
 /**
- * Release a guard condition's arena entry — issue 1667: `spin_once` stops
+ * Release a guard condition's arena entry: `spin_once` stops
  * polling it, its callback is dropped, and the slot and bytes go to the next
  * registration.
  *
@@ -3802,12 +3801,12 @@ nros_cpp_ret_t nros_cpp_guard_condition_clear(void *storage);
 nros_cpp_ret_t nros_cpp_guard_condition_release(void *executor_handle, size_t handle_id);
 
 /**
- * Drop a guard condition's local storage — a no-op drop (issue 1496).
+ * Drop a guard condition's local storage — a no-op drop.
  *
  * `nros_node::GuardCondition` is `{ &'static AtomicBool, Option<fn>, *mut
  * c_void }` — no field has drop glue, so the `drop_in_place` below **runs no
  * destructor**. The arena entry the flag lives in is freed separately, by
- * `nros_cpp_guard_condition_release` (issue 1667), which the C++ destructor
+ * `nros_cpp_guard_condition_release`, which the C++ destructor
  * calls first.
  *
  * # Safety
@@ -3830,10 +3829,10 @@ nros_cpp_ret_t nros_cpp_guard_condition_destroy(void *storage);
 nros_cpp_ret_t nros_cpp_guard_condition_relocate(void *old_storage, void *new_storage);
 
 /**
- * phase-308 — write the recorded sidecar. The probe's last call.
+ * Write the recorded sidecar. The probe's last call.
  *
  * Exported from `nros-cpp` rather than from the backend crate so the probe TU
- * links exactly one Rust staticlib (the `nros-cpp` umbrella, phase-241 D3-rev)
+ * links exactly one Rust staticlib (the `nros-cpp` umbrella)
  * and needs no extra link line.
  *
  * Serialization is `nros::metadata_mode::to_json` — the SAME emitter the Rust
@@ -3883,7 +3882,7 @@ nros_cpp_ret_t nros_cpp_publisher_create(const struct nros_cpp_node_t *node,
 nros_cpp_ret_t nros_cpp_publish_raw(void *storage, const uint8_t *data, size_t len);
 
 /**
- * Phase 124.E.1 — streamed publish.
+ * Streamed publish.
  *
  * Two callbacks: `size_cb` reports total payload length once,
  * `chunk_cb` fills the slot in chunks. Backends that support
@@ -3905,7 +3904,7 @@ nros_cpp_ret_t nros_cpp_publisher_publish_streamed(void *storage,
                                                    void *user_ctx);
 
 /**
- * Phase 124.A.7 — loan a writable slot of `requested_len` bytes from
+ * Loan a writable slot of `requested_len` bytes from
  * the publisher's outbound buffer.
  *
  * # AVAILABILITY — read this before calling
@@ -3928,7 +3927,6 @@ nros_cpp_ret_t nros_cpp_publisher_publish_streamed(void *storage,
  * backend-cannot-lend error, the same in every build. The surface every
  * backend serves is `publish_streamed` and its receive twin
  * `process_raw_in_place`: no feature, no token, no arena, no size ceiling.
- * See issue 0814.
  *
  * On success, `*out_buf` points at `*out_cap` writable bytes the
  * caller fills in place. Pass `*out_token` back to
@@ -3947,10 +3945,10 @@ nros_cpp_ret_t nros_cpp_publisher_loan(void *storage,
                                        void **out_token);
 
 /**
- * Phase 124.A.7 — commit a previously loaned slot.
+ * Commit a previously loaned slot.
  *
  * **Availability:** `lending`-only, and no shipped build enables it —
- * see `nros_cpp_publisher_loan`. Issue 0814.
+ * see `nros_cpp_publisher_loan`.
  *
  * # Safety
  * `storage` must be the publisher the token was loaned from. `token`
@@ -3960,10 +3958,10 @@ nros_cpp_ret_t nros_cpp_publisher_loan(void *storage,
 nros_cpp_ret_t nros_cpp_publisher_commit(void *storage, void *token, size_t actual_len);
 
 /**
- * Phase 124.A.7 — abandon a previously loaned slot.
+ * Abandon a previously loaned slot.
  *
  * **Availability:** `lending`-only, and no shipped build enables it —
- * see `nros_cpp_publisher_loan`. Issue 0814.
+ * see `nros_cpp_publisher_loan`.
  *
  * # Safety
  * `storage` must be the publisher the token was loaned from. `token`
@@ -3999,7 +3997,7 @@ nros_cpp_ret_t nros_cpp_publisher_relocate(void *old_storage, void *new_storage)
 
 /**
  * Register a liveliness-lost callback — rclcpp's
- * `PublisherEventCallbacks::liveliness_callback`, issue 1993. Observed on the
+ * `PublisherEventCallbacks::liveliness_callback`. Observed on the
  * publisher's poll points (publish, `assert_liveliness`).
  *
  * Returns `NROS_CPP_RET_OK`, `NROS_CPP_RET_INVALID_ARGUMENT` (NULL storage or
@@ -4017,7 +4015,7 @@ nros_cpp_ret_t nros_cpp_publisher_set_liveliness_lost(void *storage,
 
 /**
  * Register an offered-deadline-missed callback — rclcpp's
- * `PublisherEventCallbacks::deadline_callback`, issue 1993. `deadline_ms`
+ * `PublisherEventCallbacks::deadline_callback`. `deadline_ms`
  * reaches the backend's registration (zenoh uses it when the QoS states no
  * deadline; Cyclone DDS takes the QoS deadline). Same returns as
  * [`nros_cpp_publisher_set_liveliness_lost`].
@@ -4032,7 +4030,7 @@ nros_cpp_ret_t nros_cpp_publisher_set_offered_deadline_missed(void *storage,
 
 /**
  * Register a matched callback — rclcpp's
- * `PublisherEventCallbacks::matched_callback`, issue 1972. Observed on the
+ * `PublisherEventCallbacks::matched_callback`. Observed on the
  * publisher's poll points (publish, `assert_liveliness`).
  *
  * # Safety
@@ -4044,7 +4042,7 @@ nros_cpp_ret_t nros_cpp_publisher_set_matched(void *storage,
 
 /**
  * Register an incompatible-type callback — rclcpp's
- * `PublisherEventCallbacks::incompatible_type_callback`, issue 1972.
+ * `PublisherEventCallbacks::incompatible_type_callback`.
  *
  * # Safety
  * See [`nros_cpp_publisher_set_matched`].
@@ -4054,15 +4052,15 @@ nros_cpp_ret_t nros_cpp_publisher_set_incompatible_type(void *storage,
                                                         void *user_context);
 
 /**
- * Phase 108.B.7 — manually assert this publisher's liveliness.
+ * Manually assert this publisher's liveliness.
  *
  * Required for entities created with QoS `liveliness_kind =
  * MANUAL_BY_TOPIC` / `MANUAL_BY_NODE`; nothing to assert otherwise, and
  * those answer `OK` on every backend.
  *
  * **`NROS_CPP_RET_UNSUPPORTED` under a manual kind on a backend with no
- * per-topic lease** (zenoh-pico, XRCE-DDS, uORB) — the phase-467 RMW
- * gap-closure design study's Row 7. This doc said "Backends without
+ * per-topic lease** (zenoh-pico, XRCE-DDS, uORB).
+ * This doc used to say "Backends without
  * manual-assertion wiring return `OK` (the trait default)", and the mapping
  * below flattened every error to `NROS_CPP_RET_ERROR`, so neither half of
  * the answer reached a C++ caller. cyclonedds performs the assertion for
@@ -4078,11 +4076,11 @@ nros_cpp_ret_t nros_cpp_publisher_assert_liveliness(void *storage);
  * This publisher's own global identifier — upstream
  * `rmw_get_gid_for_publisher`, `rclcpp::PublisherBase::get_gid`.
  *
- * The phase-467 RMW gap-closure design study's Q1. Writes 24 bytes into
+ * Writes 24 bytes into
  * `out_gid` and touches nothing on any other verdict.
  *
  * Upstream returns `const rmw_gid_t &`, which cannot fail. Ours can and must
- * (RFC-0018: no exceptions, caller-placed storage), so the value leaves
+ * (no exceptions, caller-placed storage), so the value leaves
  * through an out-param and the verdict through the return code.
  *
  * * `NROS_CPP_RET_OK` — 24 bytes written
@@ -4102,7 +4100,7 @@ nros_cpp_ret_t nros_cpp_publisher_get_gid(const void *storage,
                                           size_t gid_capacity);
 
 /**
- * The QoS profile this publisher is ACTUALLY running — issue 1437.
+ * The QoS profile this publisher is ACTUALLY running.
  *
  * `rmw_publisher_get_actual_qos`: what the backend GRANTED, which differs
  * from the request whenever the backend serves something else (zenoh clamps
@@ -4138,8 +4136,8 @@ nros_cpp_ret_t nros_cpp_rosout_publisher_create(const struct nros_cpp_node_t *no
                                                 void *storage);
 
 /**
- * Start queueing records for `/rosout`, scoped by the image's ROS release
- * (RFC-0102 D4). `NROS_CPP_RET_ERROR` if the queueing sink could not be
+ * Start queueing records for `/rosout`, scoped by the image's ROS release.
+ * `NROS_CPP_RET_ERROR` if the queueing sink could not be
  * registered.
  */
 nros_cpp_ret_t nros_cpp_rosout_enable(void);
@@ -4244,7 +4242,7 @@ nros_cpp_ret_t nros_cpp_service_client_call_raw(void *storage,
                                                 uint32_t timeout_ms);
 
 /**
- * Phase 189.M3.3.f — send a request on a callback-style (arena-registered)
+ * Send a request on a callback-style (arena-registered)
  * service client identified by `handle_id` (from
  * `nros_cpp_service_client_register`). The reply is delivered to the client's
  * registered response callback during spin. Mirrors the C arena send path.
@@ -4261,7 +4259,7 @@ nros_cpp_ret_t nros_cpp_service_client_send_on_handle(void *executor_handle,
 /**
  * Send a service request asynchronously (non-blocking).
  *
- * Issue 2009 — the single-request spelling: the id the backend assigned is
+ * The single-request spelling: the id the backend assigned is
  * not reported. `rclcpp::PollClient` sends through
  * [`nros_cpp_service_client_send_request_seq`], which reports it, so every
  * future it hands out is keyed by its own request.
@@ -4299,7 +4297,7 @@ nros_cpp_ret_t nros_cpp_service_client_send_request_seq(void *storage,
  * Returns `NROS_CPP_RET_OK` and fills `resp_data`/`resp_len` on success,
  * `NROS_CPP_RET_TRY_AGAIN` if no reply is available yet.
  *
- * Issue 2009 — the single-request spelling: the reply's id is not reported,
+ * The single-request spelling: the reply's id is not reported,
  * so this cannot tell which request a reply answers. `rclcpp::Future` takes
  * through [`nros_cpp_service_client_take_response_seq`].
  *
@@ -4313,7 +4311,7 @@ nros_cpp_ret_t nros_cpp_service_client_take_response(void *storage,
 
 /**
  * Try to receive a reply (non-blocking) and report the SEQUENCE ID of the
- * request it answers — issue 2009.
+ * request it answers.
  *
  * `NROS_CPP_RET_OK`: `resp_data[..*resp_len]` holds the reply and
  * `*sequence_id` the id [`nros_cpp_service_client_send_request_seq`] returned
@@ -4332,14 +4330,14 @@ nros_cpp_ret_t nros_cpp_service_client_take_response_seq(void *storage,
                                                          int64_t *sequence_id);
 
 /**
- * Phase 124.C.3 — graph-aware "is the matching server up?" probe.
+ * Graph-aware "is the matching server up?" probe.
  *
  * Writes `1` to `*out` if the backend has discovered ≥ 1 matching
  * server, `0` if not yet, or `-1` if the backend cannot answer
  * (e.g. XRCE). Never spins the executor — callers that want a
  * blocking wait should use the higher-level Promise / Future API.
  *
- * **Two roads, one entry point** — phase-456 W9 follow-up (2026-09-28).
+ * **Two roads, one entry point.**
  * `storage` non-NULL is the future-style client that owns its
  * `RmwServiceClient`; otherwise `(executor, handle_id)` names the arena entry,
  * which is what a DISPATCH client holds and therefore what a ported `rclcpp`
@@ -4356,9 +4354,9 @@ nros_cpp_ret_t nros_cpp_service_client_server_available(void *storage,
                                                         int32_t *out);
 
 /**
- * phase-338 W8 — block until a matching service server is discoverable.
+ * Block until a matching service server is discoverable.
  *
- * The C API has had `rclc_client_wait_for_service` since phase-124; C++ never
+ * The C API has had `rclc_client_wait_for_service` for a long time; C++ never
  * bound it, so every C++ client example hand-rolled a retry loop around the
  * first request instead (three attempts, spin in between) to paper over slow
  * discovery. This is the primitive those loops were approximating.
@@ -4367,9 +4365,9 @@ nros_cpp_ret_t nros_cpp_service_client_server_available(void *storage,
  * `service_is_ready`, the same shape as `Client::wait_for_service`
  * (`nros-node/src/executor/handles.rs`) — each check is a synchronous read
  * of the discovery state the backend maintains, nothing is latched, and a
- * backend that cannot answer returns `NROS_CPP_RET_UNSUPPORTED` at once (issue 1686).
+ * backend that cannot answer returns `NROS_CPP_RET_UNSUPPORTED` at once.
  *
- * **Two roads, one entry point** — phase-456 W9 follow-up (2026-09-28), the
+ * **Two roads, one entry point** — the
  * same split `nros_cpp_service_client_server_available` above takes. `storage`
  * non-NULL is the future-style client that owns its `RmwServiceClient`;
  * otherwise `(executor_handle, handle_id)` names the arena entry a dispatch
@@ -4384,7 +4382,7 @@ nros_cpp_ret_t nros_cpp_service_client_server_available(void *storage,
  * * `NROS_CPP_RET_OK` — server visible.
  * * `NROS_CPP_RET_TIMEOUT` — budget elapsed without seeing a token.
  * * `NROS_CPP_RET_UNSUPPORTED` — the backend cannot know (XRCE), returned at
- *   once rather than after the budget (issue 1686); a caller that may send
+ *   once rather than after the budget; a caller that may send
  *   blind proceeds.
  * * `NROS_CPP_RET_INVALID_ARGUMENT` — null executor, or neither road resolves.
  * * `NROS_CPP_RET_TRANSPORT_ERROR` — transport-level failure.
@@ -4399,7 +4397,7 @@ nros_cpp_ret_t nros_cpp_service_client_wait_for_service(void *storage,
                                                         uint32_t timeout_ms);
 
 /**
- * Release a dispatch service server — issue 1667: the handler stops, the
+ * Release a dispatch service server: the handler stops, the
  * server leaves the graph, and the arena entry and its capture are freed for
  * the next registration.
  *
@@ -4414,7 +4412,7 @@ nros_cpp_ret_t nros_cpp_service_client_wait_for_service(void *storage,
 nros_cpp_ret_t nros_cpp_service_server_release(void *executor_handle, size_t handle_id);
 
 /**
- * Release a dispatch service client — issue 1667: the client leaves the
+ * Release a dispatch service client: the client leaves the
  * graph, a reply it was waiting for is abandoned, and the arena entry and its
  * response handler are freed for the next registration.
  *
@@ -4445,7 +4443,7 @@ nros_cpp_ret_t nros_cpp_service_client_destroy(void *storage);
 nros_cpp_ret_t nros_cpp_service_client_relocate(void *old_storage, void *new_storage);
 
 /**
- * The QoS the backend GRANTED a service server's two endpoints — issue 1437.
+ * The QoS the backend GRANTED a service server's two endpoints.
  *
  * `out_request` is `rmw_service_request_subscription_get_actual_qos`,
  * `out_response` is `rmw_service_response_publisher_get_actual_qos`. Either
@@ -4463,7 +4461,7 @@ nros_cpp_ret_t nros_cpp_service_server_get_actual_qos(const void *storage,
                                                       struct nros_cpp_qos_t *out_response);
 
 /**
- * The QoS the backend GRANTED a service client's two endpoints — issue 1437.
+ * The QoS the backend GRANTED a service client's two endpoints.
  *
  * `out_request` is `rmw_client_request_publisher_get_actual_qos`,
  * `out_response` is `rmw_client_response_subscription_get_actual_qos`.
@@ -4504,7 +4502,7 @@ struct nros_cpp_subscription_options_t nros_cpp_subscription_default_options(voi
 
 /**
  * Register a **callback-style** subscription whose callback receives each
- * sample's metadata — issue 2036, the runtime half of the C++
+ * sample's metadata — the runtime half of the C++
  * `(const M&, const rclcpp::MessageInfo&)` subscription callback (hosted).
  *
  * `invoke(data, len, info, context)` runs during `spin_once` with the CDR
@@ -4550,7 +4548,7 @@ nros_cpp_ret_t nros_cpp_subscription_take_serialized(void *storage,
                                                      size_t *out_len);
 
 /**
- * Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E integrity
+ * Non-blocking poll that ALSO returns the E2E integrity
  * status (CRC + sequence gap/dup). The safety-e2e analog of
  * [`nros_cpp_subscription_take_serialized`]; the backend recomputes + compares the
  * CRC attachment and tracks the sequence. Requires `safety-e2e` on both ends
@@ -4568,7 +4566,7 @@ nros_cpp_ret_t nros_cpp_subscription_take_validated(void *storage,
                                                     struct nros_cpp_integrity_status_t *out_status);
 
 /**
- * Phase 189.M3.4b — try to receive raw CDR data **plus the sample's wire
+ * Try to receive raw CDR data **plus the sample's wire
  * attachment** (non-blocking). The C++ poll-side analog of the Rust
  * `node.subscription(t).generic(..).message_info()` builder: writes the
  * payload into `out_data` and the attachment into `out_att`. `*out_att_len`
@@ -4589,11 +4587,11 @@ nros_cpp_ret_t nros_cpp_subscription_take_serialized_with_attachment(void *stora
                                                                      size_t *out_att_len);
 
 /**
- * Issue 2074 — the POLL-side take with metadata: upstream's
+ * The POLL-side take with metadata: upstream's
  * `rclcpp::Subscription::take(msg, message_info)`. Writes the CDR bytes into
  * `out_data` and the sample's metadata into `*out_info`, both from ONE
  * `take_serialized_with_info`, the take the callback-side MessageInfo path
- * (issue 2036) uses. `*out_len` is `0` and `*out_info` is zeroed (with
+ * uses. `*out_len` is `0` and `*out_info` is zeroed (with
  * `has_info = false`) when nothing was waiting.
  *
  * `out_info->has_info` tells "the backend reported metadata for this sample"
@@ -4611,10 +4609,10 @@ nros_cpp_ret_t nros_cpp_subscription_take_with_info(void *storage,
                                                     struct nros_cpp_message_info_t *out_info);
 
 /**
- * Phase 124.A.7 — borrow the next message in place.
+ * Borrow the next message in place.
  *
  * **Availability:** `lending`-only, and no shipped build enables it —
- * see `nros_cpp_publisher_loan`. Issue 0814.
+ * see `nros_cpp_publisher_loan`.
  *
  * On success, `*out_buf` points at `*out_len` bytes (read-only) until
  * the caller calls `nros_cpp_subscription_release(storage, token)`.
@@ -4631,10 +4629,10 @@ int32_t nros_cpp_subscription_borrow(void *storage,
                                      void **out_token);
 
 /**
- * Phase 124.A.7 — release a previously borrowed view.
+ * Release a previously borrowed view.
  *
  * **Availability:** `lending`-only, and no shipped build enables it —
- * see `nros_cpp_publisher_loan`. Issue 0814.
+ * see `nros_cpp_publisher_loan`.
  *
  * # Safety
  * `storage` must be the subscription the token was borrowed from.
@@ -4644,7 +4642,7 @@ int32_t nros_cpp_subscription_borrow(void *storage,
 nros_cpp_ret_t nros_cpp_subscription_release(void *storage, void *token);
 
 /**
- * Phase 124.D.1 — burst-take.
+ * Burst-take.
  *
  * Drain up to `max_msgs` queued samples into the contiguous `buf`
  * block in a single call. The i-th delivered sample lives at
@@ -4670,14 +4668,14 @@ nros_cpp_ret_t nros_cpp_subscription_take_sequence(void *storage,
                                                    size_t *out_count);
 
 /**
- * Release a dispatch subscription — issue 1667: the callback stops, the
+ * Release a dispatch subscription: the callback stops, the
  * subscriber leaves the graph, and the arena entry and its capture are freed
  * for the next registration.
  *
  * What `SubscriptionHandle<M>::reset()` (upstream `sub_.reset()`) calls. Safe
  * on a stale or copied handle and from inside the subscription's own callback;
  * see `release_dispatch_entry`. Not `_release` like its timer and service
- * twins: `nros_cpp_subscription_release` is the loan-release verb (phase-124).
+ * twins: `nros_cpp_subscription_release` is the loan-release verb.
  *
  * # Safety
  * `executor_handle` must be a valid executor handle (one `nros_cpp_fini`
@@ -4707,7 +4705,7 @@ nros_cpp_ret_t nros_cpp_subscription_relocate(void *old_storage, void *new_stora
 
 /**
  * Register a liveliness-changed callback on a poll-style subscription —
- * rclcpp's `SubscriptionEventCallbacks::liveliness_callback`, issue 1993.
+ * rclcpp's `SubscriptionEventCallbacks::liveliness_callback`.
  * Observed as the subscription is polled (`has_data` / take).
  *
  * Returns `NROS_CPP_RET_OK`, `NROS_CPP_RET_INVALID_ARGUMENT` (NULL storage or
@@ -4725,7 +4723,7 @@ nros_cpp_ret_t nros_cpp_subscription_set_liveliness_changed(void *storage,
 
 /**
  * Register a requested-deadline-missed callback — rclcpp's
- * `SubscriptionEventCallbacks::deadline_callback`, issue 1993. `deadline_ms`
+ * `SubscriptionEventCallbacks::deadline_callback`. `deadline_ms`
  * reaches the backend's registration (zenoh uses it when the QoS states no
  * deadline; Cyclone DDS takes the QoS deadline). Same returns as
  * [`nros_cpp_subscription_set_liveliness_changed`].
@@ -4740,7 +4738,7 @@ nros_cpp_ret_t nros_cpp_subscription_set_requested_deadline_missed(void *storage
 
 /**
  * Register a message-lost callback — rclcpp's
- * `SubscriptionEventCallbacks::message_lost_callback`, issue 1993. Same
+ * `SubscriptionEventCallbacks::message_lost_callback`. Same
  * returns as [`nros_cpp_subscription_set_liveliness_changed`].
  *
  * # Safety
@@ -4752,7 +4750,7 @@ nros_cpp_ret_t nros_cpp_subscription_set_message_lost(void *storage,
 
 /**
  * Register a matched callback on a poll-style subscription — rclcpp's
- * `SubscriptionEventCallbacks::matched_callback`, issue 1972. Observed as the
+ * `SubscriptionEventCallbacks::matched_callback`. Observed as the
  * subscription is polled (`has_data` / take).
  *
  * # Safety
@@ -4775,7 +4773,7 @@ nros_cpp_ret_t nros_cpp_subscription_set_incompatible_type(void *storage,
                                                            void *user_context);
 
 /**
- * The QoS profile this subscription is ACTUALLY running — issue 1437.
+ * The QoS profile this subscription is ACTUALLY running.
  *
  * `rmw_subscription_get_actual_qos`. See
  * [`nros_cpp_publisher_get_actual_qos`](crate::publisher::nros_cpp_publisher_get_actual_qos)
@@ -4800,7 +4798,7 @@ nros_cpp_ret_t nros_cpp_subscription_get_actual_qos(const void *storage,
 
 /**
  * [`nros_cpp_timer_create_capturing`] with the call info handed to the
- * callback, a callback group and an `autostart` flag — issue 1974, what the
+ * callback, a callback group and an `autostart` flag — what the
  * value-returning C++ `create_wall_timer(period, cb, group, autostart)` and
  * `rclcpp::create_timer(node, clock, period, cb, group, autostart)` call for
  * EVERY callable: one taking `const rclcpp::TimerInfo&` reads `info`, a
@@ -4850,7 +4848,7 @@ nros_cpp_ret_t nros_cpp_timer_create(void *executor_handle,
                                      size_t *out_handle_id);
 
 /**
- * Create a repeating timer driven by a CLOCK — phase-425 W4, the shape rclcpp
+ * Create a repeating timer driven by a CLOCK — the shape rclcpp
  * spells `create_timer(node, clock, period, cb)`.
  *
  * `nros_cpp_timer_create` is the WALL timer: it advances with the executor's
@@ -4880,7 +4878,7 @@ nros_cpp_ret_t nros_cpp_timer_create_on_clock(void *executor_handle,
                                               size_t *out_handle_id);
 
 /**
- * Create a repeating timer whose CAPTURE the arena holds — phase-476 W2.
+ * Create a repeating timer whose CAPTURE the arena holds.
  *
  * The timer twin of `nros_cpp_subscription_register_capturing`, and what the
  * value-returning C++ `create_wall_timer` / `rclcpp::create_timer` call. The
@@ -4890,7 +4888,7 @@ nros_cpp_ret_t nros_cpp_timer_create_on_clock(void *executor_handle,
  * handle and no heap cell.
  *
  * The timer is registered for `node`, which becomes its owner:
- * `nros_cpp_node_destroy` releases it (phase-476 W0), and the capture with it.
+ * `nros_cpp_node_destroy` releases it, and the capture with it.
  *
  * `capture_drop`, when non-NULL, is called with the capture's arena copy when
  * the timer is released (or the executor finalised): the capture's bytes were
@@ -4938,7 +4936,7 @@ nros_cpp_ret_t nros_cpp_timer_create_oneshot(void *executor_handle,
                                              size_t *out_handle_id);
 
 /**
- * Phase 273 (RFC-0047) — create a repeating timer **in** a named callback group.
+ * Create a repeating timer **in** a named callback group.
  *
  * Identical to `nros_cpp_timer_create` but additionally associates the timer
  * with a callback group. The executor resolves `(node, group_name)` via its
@@ -4979,14 +4977,14 @@ nros_cpp_ret_t nros_cpp_timer_create_in_group(void *executor_handle,
 nros_cpp_ret_t nros_cpp_timer_cancel(void *executor_handle, size_t handle_id);
 
 /**
- * Release a timer — phase-476 W2: the timer stops for good, its arena entry
+ * Release a timer: the timer stops for good, its arena entry
  * and capture are freed, and the slot goes to the next registration. From
  * inside the timer's own callback the release takes effect when the callback
- * returns (issue 1667).
+ * returns.
  *
  * What `TimerHandle::reset()` (upstream `timer_.reset()`) calls. Safe on a
  * stale or copied handle: the handle carries the generation of the slot it was
- * issued for (phase-476 W0), so once released every copy of it answers
+ * issued for, so once released every copy of it answers
  * `NROS_CPP_RET_ERROR` here and nothing reaches the slot's next occupant.
  *
  * # Safety
@@ -5008,8 +5006,8 @@ nros_cpp_ret_t nros_cpp_timer_reset(void *executor_handle, size_t handle_id);
 /**
  * Would this timer fire on the next `spin_once()` pass?
  *
- * phase-417 G6, ledger row `cpp:Timer::is_ready`. `rcl_timer_is_ready` had
- * shipped for C since stage 3 and `rclcpp::Timer` had `cancel`, `reset`,
+ * Ledger row `cpp:Timer::is_ready`. `rcl_timer_is_ready` had
+ * shipped for C and `rclcpp::Timer` had `cancel`, `reset`,
  * `is_canceled` and `is_valid` and not this.
  *
  * Forwards to `Executor::timer_is_ready`, which evaluates
@@ -5032,14 +5030,14 @@ bool nros_cpp_timer_is_ready(void *executor_handle, size_t handle_id);
 /**
  * Nanoseconds until this timer next fires — NEGATIVE when it is overdue.
  *
- * phase-417 G6, ledger row `cpp:Timer::time_until_trigger`. rclcpp's
+ * Ledger row `cpp:Timer::time_until_trigger`. rclcpp's
  * `TimerBase::time_until_trigger()` is the RELATIVE form, so this forwards to
  * `Executor::timer_time_until_next_call_ns` — the same computation
  * `rcl_timer_get_time_until_next_call` reads, in one place, because rcl's own
  * relative and absolute accessors cannot disagree upstream either.
  *
  * Two envelope facts the C++ doc comment repeats: the arena's timer
- * accounting is MICROSECOND-based (issue #505), so a nanosecond answer is a
+ * accounting is MICROSECOND-based, so a nanosecond answer is a
  * microsecond quantity scaled by 1000; and a wall timer answers on the
  * platform steady clock while a `create_timer(clock, …)` timer answers on its
  * own.
@@ -5048,7 +5046,7 @@ bool nros_cpp_timer_is_ready(void *executor_handle, size_t handle_id);
  * executor handle that does not validate, and `NROS_CPP_RET_NOT_FOUND` when
  * the handle is not a registered timer — an unregistered timer is dispatched
  * by nobody, so it has no time until its next call rather than a time of
- * zero, which is the defect issue 1008 was.
+ * zero, which was a real defect.
  *
  * # Safety
  * `executor_handle` must be a valid executor handle and `out_ns` writable.
@@ -5059,7 +5057,7 @@ nros_cpp_ret_t nros_cpp_timer_time_until_next_call_ns(void *executor_handle,
 
 /**
  * The clock that advances this timer, as an `rcl_clock_type_t` discriminant
- * — issue 1975, `rclcpp::TimerBase::get_clock()`.
+ * — `rclcpp::TimerBase::get_clock()`.
  *
  * Read from the executor (`Executor::timer_clock_source`), the field the
  * dispatcher itself reads, so the C++ side keeps no copy that could disagree:
@@ -5156,7 +5154,7 @@ nros_cpp_ret_t nros_cpp_action_server_complete_goal(void *handle,
                                                     size_t result_len);
 
 /**
- * Start EXECUTING an accepted goal — issue 2027, `ServerGoalHandle::execute`.
+ * Start EXECUTING an accepted goal — `ServerGoalHandle::execute`.
  *
  * Upstream's `execute()` moves a goal from ACCEPTED to EXECUTING and
  * publishes the status array; it is how a goal the goal callback answered
@@ -5198,7 +5196,7 @@ nros_cpp_ret_t nros_cpp_action_server_for_each_active_goal(void *handle,
                                                            void *ctx);
 
 /**
- * Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
+ * Is `goal_id` a goal this server still knows about?.
  *
  * The C++ sched task's binding of `rclc_action_server_goal_exists` /
  * `ActionServerRawHandle::goal_exists`. TRUE while the goal is active AND
@@ -5217,7 +5215,7 @@ bool nros_cpp_action_server_goal_exists(const void *handle,
                                         const uint8_t (*goal_id)[16]);
 
 /**
- * RELEASE the arena entry this storage registered — issue 1496.
+ * RELEASE the arena entry this storage registered.
  *
  * (Named `detach` because it first landed as one; since resolution 2 it ends
  * the entry outright. The symbol is kept: it is cbindgen output reached from
@@ -5226,7 +5224,7 @@ bool nros_cpp_action_server_goal_exists(const void *handle,
  *
  * Call this BEFORE [`nros_cpp_action_server_destroy`], from the destructor or
  * move-assignment of whatever owns `storage`. The two are separate calls for
- * the reason issue 0796 gives one line up: `nros_cpp_action_server_destroy`
+ * the reason given one line up: `nros_cpp_action_server_destroy`
  * takes one argument and is declared in three places, so growing it to take
  * the executor would have broken every caller. `CppActionServer` does not keep
  * an executor pointer of its own (the client does — see
@@ -5257,7 +5255,7 @@ bool nros_cpp_action_server_goal_exists(const void *handle,
 nros_cpp_ret_t nros_cpp_action_server_detach(void *storage, void *executor_handle);
 
 /**
- * ABANDON an action server's local storage — issue 1496.
+ * ABANDON an action server's local storage.
  *
  * Named `destroy` and shaped like a release, but `CppActionServer` is a handle
  * plus three callback pointers and a QoS block: every field is `Copy` or a raw
@@ -5269,7 +5267,7 @@ nros_cpp_ret_t nros_cpp_action_server_detach(void *storage, void *executor_handl
  * releases nothing by itself.
  *
  * What a caller MUST do is call [`nros_cpp_action_server_detach`] first —
- * since issue 1496's resolution 2 that RELEASES the arena entry (drops it,
+ * that RELEASES the arena entry (drops it,
  * frees its callback slot, returns its arena bytes for reuse). `~Server()` in
  * `action_server.hpp` does both, in that order.
  *
@@ -5296,11 +5294,11 @@ nros_cpp_ret_t nros_cpp_action_server_relocate(void *old_storage, void *new_stor
 
 /**
  * Re-point the executor's arena entry at a server's NEW storage after
- * [`nros_cpp_action_server_relocate`] — issue 2015.
+ * [`nros_cpp_action_server_relocate`].
  *
  * The arena entry's callback `context` is the storage address
  * `nros_cpp_action_server_register` registered, so it must follow a move, as
- * the client's does (issue 1496, `nros_cpp_action_client_relocate`). Left
+ * the client's does (`nros_cpp_action_client_relocate`). Left
  * alone it named the moved-from storage: a server moved into an
  * `rclcpp::Owned` (what `rclcpp_action::create_server` returns) dispatched its
  * first goal through dead memory and rejected every later one. A separate
@@ -5339,21 +5337,21 @@ nros_cpp_ret_t nros_cpp_action_client_create(const struct nros_cpp_node_t *node,
  *
  * # Safety
  * All pointers must be valid.
- * phase-338 W8 — block until the action server's send-goal queryable is
+ * Block until the action server's send-goal queryable is
  * discoverable.
  *
  * C++ sibling of `rclc_action_client_wait_for_action_server`, which the C API
- * has had since phase-124 while C++ bound neither it nor a readiness probe —
+ * has had for a long time while C++ bound neither it nor a readiness probe —
  * so the C++ action-client examples hand-rolled a 3-attempt retry around
  * `send_goal`. Mirrors `rclcpp_action::Client::wait_for_action_server`.
  *
  * Spins on the `send_goal` service client's readiness, which is the
  * load-bearing entity for the first `send_goal`; the same shape as
  * `ActionClient::wait_for_action_server` in
- * `nros-node/src/executor/handles.rs` (phase-428 W13).
+ * `nros-node/src/executor/handles.rs`.
  *
  * Returns `NROS_CPP_RET_UNSUPPORTED` at once when the backend cannot know
- * whether a server is up (XRCE) — issue 1686; it used to wait out the budget
+ * whether a server is up (XRCE); it used to wait out the budget
  * and report TIMEOUT, which every C++ client read as "no server".
  *
  * # Safety
@@ -5362,7 +5360,7 @@ nros_cpp_ret_t nros_cpp_action_client_create(const struct nros_cpp_node_t *node,
 nros_cpp_ret_t nros_cpp_action_client_wait_for_action_server(void *handle, uint32_t timeout_ms);
 
 /**
- * Non-blocking snapshot of action-server visibility — phase-417 W4.b.
+ * Non-blocking snapshot of action-server visibility.
  *
  * `rclcpp_action::ClientBase::action_server_is_ready`, the non-blocking half
  * of [`nros_cpp_action_client_wait_for_action_server`] and the C++ binding of
@@ -5384,7 +5382,7 @@ bool nros_cpp_action_client_action_server_is_ready(void *handle);
  *
  * # Returns
  *
- * Three outcomes, three codes — they were two before issue 0868, and callers
+ * Three outcomes, three codes — they used to be two, and callers
  * could not tell a server decision from a failed send:
  *
  * * `NROS_CPP_RET_OK` — the server ACCEPTED; `goal_id_out` is filled.
@@ -5469,7 +5467,7 @@ nros_cpp_ret_t nros_cpp_action_client_try_recv_goal_response(void *handle,
 /**
  * Decode the goal-acceptance payload into split out-params.
  *
- * Issue 0329 — the goal-accept wire layout (16-byte goal_id, then one
+ * The goal-accept wire layout (16-byte goal_id, then one
  * `accepted` byte) is produced by
  * `nros_cpp_action_client_try_recv_goal_response` above. It was ALSO decoded by
  * hand in the C++ `action_client.hpp` header (`GoalAccept::ffi_deserialize`) —
@@ -5504,8 +5502,7 @@ nros_cpp_ret_t nros_cpp_action_client_try_recv_result(void *handle,
                                                       size_t *out_len);
 
 /**
- * RELEASE the arena entry, then ABANDON an action client's local storage —
- * issue 1496.
+ * RELEASE the arena entry, then ABANDON an action client's local storage.
  *
  * The `drop_in_place` at the bottom runs no destructor: `CppActionClient` is
  * three callback pointers, a context pointer, an `i32` index and an executor
@@ -5520,7 +5517,7 @@ nros_cpp_ret_t nros_cpp_action_client_try_recv_result(void *handle,
  * reply can dispatch through this storage's address; its callback slot is
  * freed; and its arena bytes go on the executor's free list for the next
  * registration that fits. A create/destroy loop therefore no longer exhausts
- * `NROS_EXECUTOR_MAX_CBS` and then the arena (issue 1496's resolution 2).
+ * `NROS_EXECUTOR_MAX_CBS` and then the arena.
  *
  * # Safety
  * `storage` must be a valid initialized action client storage, or NULL (no-op).
@@ -5569,7 +5566,7 @@ nros_cpp_ret_t nros_cpp_action_client_send_goal_async(void *handle,
 nros_cpp_ret_t nros_cpp_action_client_get_result_async(void *handle, const uint8_t (*goal_id)[16]);
 
 /**
- * Cancel a goal (non-blocking) — issue 0796.
+ * Cancel a goal (non-blocking).
  *
  * Sends the `action_msgs/srv/CancelGoal` request for `goal_id` and returns.
  * The RPC's return code arrives later; drain it with
@@ -5591,7 +5588,7 @@ nros_cpp_ret_t nros_cpp_action_client_cancel_goal(void *handle, const uint8_t (*
  *
  * Writes the `action_msgs/srv/CancelGoal` RETURN CODE (0 = Ok, 1 = Rejected,
  * 2 = UnknownGoal, 3 = GoalTerminated — `rclcpp_action::CancelResponseCode`, not the
- * per-goal `rclcpp_action::CancelResponse`; issue 0796) to `out_return_code`.
+ * per-goal `rclcpp_action::CancelResponse`) to `out_return_code`.
  *
  * Returns `NROS_CPP_RET_OK` when a reply was consumed,
  * `NROS_CPP_RET_TRY_AGAIN` when none has arrived yet.
@@ -5603,7 +5600,7 @@ nros_cpp_ret_t nros_cpp_action_client_try_recv_cancel_response(void *handle,
                                                                int8_t *out_return_code);
 
 /**
- * Forget ONE pending request about `goal_id` on one sub-client — issue 2027.
+ * Forget ONE pending request about `goal_id` on one sub-client.
  *
  * Each sub-client holds at most `MAX_CONCURRENT_GOALS` requests in flight,
  * and a slot used to come back only when its reply arrived. A C++ future
@@ -5626,7 +5623,7 @@ nros_cpp_ret_t nros_cpp_action_client_forget(void *handle,
                                              const uint8_t (*goal_id)[16]);
 
 /**
- * Send a `CancelGoal` request carrying a goal id AND a stamp — issue 2027.
+ * Send a `CancelGoal` request carrying a goal id AND a stamp.
  *
  * `rclcpp_action::Client::async_cancel_all_goals` is the zero id with a zero
  * stamp, `async_cancel_goals_before(stamp)` the zero id with `stamp`. The
@@ -5645,7 +5642,7 @@ nros_cpp_ret_t nros_cpp_action_client_cancel_goals(void *handle,
                                                    int64_t *seq_out);
 
 /**
- * Take one `CancelGoal` reply, attributed to the request it answers — issue 2027.
+ * Take one `CancelGoal` reply, attributed to the request it answers.
  *
  * Writes the goal the REQUEST named (the zero id for a cancel-all /
  * cancel-before) to `goal_id_out`, that request's sequence id to `seq_out`
@@ -5658,7 +5655,7 @@ nros_cpp_ret_t nros_cpp_action_client_cancel_goals(void *handle,
  * Returns `NROS_CPP_RET_OK` when a reply was taken, `NROS_CPP_RET_TRY_AGAIN`
  * when none is pending, and `NROS_CPP_RET_ERROR` for a malformed reply (it
  * is consumed, and `goal_id_out` / `seq_out` still name the request it
- * answered; issue 0223's rule — a truncation is not "no goals").
+ * answered; a truncation is not "no goals").
  *
  * # Safety
  * All non-NULL pointers must be valid; `infos` must hold `infos_cap` entries.
@@ -5672,14 +5669,14 @@ nros_cpp_ret_t nros_cpp_action_client_take_cancel_reply(void *handle,
                                                         int64_t *seq_out);
 
 /**
- * Decode a `CancelGoal` reply frame — issue 2034.
+ * Decode a `CancelGoal` reply frame.
  *
  * The frame a cancel-reply callback receives
  * ([`nros_cpp_action_client_set_cancel_reply_callback`]). Writes the RPC
  * return code to `return_code_out`, the `goals_canceling` count to
  * `count_out` and the first `min(count, infos_cap)` goals to `infos` (may be
  * NULL when `infos_cap` is 0). Returns `NROS_CPP_RET_OK`, or
- * `NROS_CPP_RET_ERROR` for a malformed frame (issue 0223's rule: a
+ * `NROS_CPP_RET_ERROR` for a malformed frame (a
  * truncation is not "no goals").
  *
  * # Safety
@@ -5710,7 +5707,7 @@ nros_cpp_ret_t nros_cpp_action_client_poll(void *handle);
 struct nros_cpp_wake_state_t nros_cpp_wake_state_get_zero_initialized(void);
 
 /**
- * Phase 122.3.c.6.e — wake on subscription rx.
+ * Wake on subscription rx.
  */
 nros_cpp_ret_t nros_cpp_subscription_set_wake_callback(void *storage,
                                                        struct nros_cpp_wake_state_t *state,
@@ -5718,7 +5715,7 @@ nros_cpp_ret_t nros_cpp_subscription_set_wake_callback(void *storage,
                                                        void *ctx);
 
 /**
- * Phase 122.3.c.6.e — wake on service-server rx.
+ * Wake on service-server rx.
  */
 nros_cpp_ret_t nros_cpp_service_server_set_wake_callback(void *storage,
                                                          struct nros_cpp_wake_state_t *state,
@@ -5726,7 +5723,7 @@ nros_cpp_ret_t nros_cpp_service_server_set_wake_callback(void *storage,
                                                          void *ctx);
 
 /**
- * Phase 122.3.c.6.e — wake on service-client reply.
+ * Wake on service-client reply.
  */
 nros_cpp_ret_t nros_cpp_service_client_set_wake_callback(void *storage,
                                                          struct nros_cpp_wake_state_t *state,
@@ -5769,7 +5766,7 @@ nros_cpp_ret_t nros_cpp_action_client_set_feedback_wake_callback(void *storage,
                                                                  void *ctx);
 
 /**
- * Phase 122.3.d — initialize an L1 polling-mode action server.
+ * Initialize an L1 polling-mode action server.
  *
  * Builds the 5 channels via the node's session and writes the
  * `ActionServerCore` into `storage` (must be at least
@@ -5788,7 +5785,7 @@ nros_cpp_ret_t nros_cpp_action_server_init_polling(const struct nros_cpp_node_t 
                                                    void *storage);
 
 /**
- * Phase 122.3.d — L1 polling: try to receive a goal request.
+ * L1 polling: try to receive a goal request.
  *
  * On success copies the goal payload (CDR-framing-stripped) into
  * `buf`, fills `goal_id_out` (16 bytes) + `sequence_number_out`,
@@ -5802,7 +5799,7 @@ int32_t nros_cpp_action_server_try_recv_goal_request_raw(void *storage,
                                                          int64_t *sequence_number_out);
 
 /**
- * Phase 122.3.d — L1 polling: accept a goal received via
+ * L1 polling: accept a goal received via
  * `nros_cpp_action_server_try_recv_goal_request_raw`.
  */
 nros_cpp_ret_t nros_cpp_action_server_accept_goal_raw(void *storage,
@@ -5810,12 +5807,12 @@ nros_cpp_ret_t nros_cpp_action_server_accept_goal_raw(void *storage,
                                                       int64_t sequence_number);
 
 /**
- * Phase 122.3.d — L1 polling: reject a goal.
+ * L1 polling: reject a goal.
  */
 nros_cpp_ret_t nros_cpp_action_server_reject_goal_raw(void *storage, int64_t sequence_number);
 
 /**
- * Phase 122.3.d — L1 polling: publish feedback.
+ * L1 polling: publish feedback.
  */
 nros_cpp_ret_t nros_cpp_action_server_publish_feedback_raw(void *storage,
                                                            const uint8_t (*goal_id)[16],
@@ -5823,7 +5820,7 @@ nros_cpp_ret_t nros_cpp_action_server_publish_feedback_raw(void *storage,
                                                            size_t feedback_len);
 
 /**
- * Phase 122.3.d — L1 polling: mark a goal terminal.
+ * L1 polling: mark a goal terminal.
  * `status_code`: 4 = Succeeded, 5 = Canceled, 6 = Aborted (matches
  * the `nros_core::GoalStatusCode` discriminants).
  */
@@ -5834,7 +5831,7 @@ nros_cpp_ret_t nros_cpp_action_server_complete_goal_raw(void *storage,
                                                         size_t result_len);
 
 /**
- * Phase 122.3.c.6.d / .d — L1 polling: peek a pending
+ * L1 polling: peek a pending
  * cancel-goal request. Writes goal_id + sequence_number +
  * current_status (matches `nros::GoalStatusCode` discriminants).
  * Returns `1` on peek, `0` if none pending, negative on error.
@@ -5845,7 +5842,7 @@ int32_t nros_cpp_action_server_try_recv_cancel_request_raw(void *storage,
                                                            int8_t *current_status_out);
 
 /**
- * Phase 122.3.c.6.d / .d — L1 polling: reply to a cancel-goal
+ * L1 polling: reply to a cancel-goal
  * request. `return_code` matches `nros_core::CancelResponseCode`
  * (0 = Ok, 1 = Rejected, 2 = UnknownGoal, 3 = GoalTerminated) — the
  * `action_msgs/srv/CancelGoal` RPC status, NOT the per-goal
@@ -5861,7 +5858,7 @@ nros_cpp_ret_t nros_cpp_action_server_send_cancel_reply_raw(void *storage,
                                                             size_t accepted_count);
 
 /**
- * Phase 122.3.d — L1 polling: serve a pending get_result query.
+ * L1 polling: serve a pending get_result query.
  * Returns `1` if served, `0` if none pending, negative on error.
  */
 int32_t nros_cpp_action_server_try_handle_get_result_raw(void *storage,
@@ -5869,12 +5866,12 @@ int32_t nros_cpp_action_server_try_handle_get_result_raw(void *storage,
                                                          size_t default_result_len);
 
 /**
- * Phase 122.3.d — L1 polling: drop the inline `ActionServerCore`.
+ * L1 polling: drop the inline `ActionServerCore`.
  */
 nros_cpp_ret_t nros_cpp_action_server_destroy_polling(void *storage);
 
 /**
- * Phase 122.3.d — initialize an L1 polling-mode action client.
+ * Initialize an L1 polling-mode action client.
  *
  * Builds the 3 service clients + feedback subscriber via the
  * session and writes the `ActionClientCore` into `storage`.
@@ -5887,7 +5884,7 @@ nros_cpp_ret_t nros_cpp_action_client_init_polling(const struct nros_cpp_node_t 
                                                    void *storage);
 
 /**
- * Phase 122.3.d — L1 polling: send a goal. Writes 16-byte UUID
+ * L1 polling: send a goal. Writes 16-byte UUID
  * into `goal_id_out`.
  */
 nros_cpp_ret_t nros_cpp_action_client_send_goal_raw(void *storage,
@@ -5896,15 +5893,15 @@ nros_cpp_ret_t nros_cpp_action_client_send_goal_raw(void *storage,
                                                     uint8_t (*goal_id_out)[16]);
 
 /**
- * Phase 122.3.d — L1 polling: try receiving the send_goal RPC reply.
+ * L1 polling: try receiving the send_goal RPC reply.
  */
 int32_t nros_cpp_action_client_try_recv_goal_response_raw(void *storage,
                                                           uint8_t *buf,
                                                           size_t buf_len);
 
 /**
- * Issue 2011 — [`nros_cpp_action_client_try_recv_goal_response_raw`] that also writes the goal the reply is ABOUT (the
- * goal of the request whose sequence id it names, issue 2009) into
+ * [`nros_cpp_action_client_try_recv_goal_response_raw`] that also writes the goal the reply is ABOUT (the
+ * goal of the request whose sequence id it names) into
  * `goal_id_out`. With several goals in flight the bytes alone cannot say
  * which one a reply answers. A reply naming no pending request (an abandoned
  * one's) is dropped, as before. `goal_id_out` is written only when a reply is
@@ -5916,19 +5913,19 @@ int32_t nros_cpp_action_client_try_recv_goal_response_raw_for(void *storage,
                                                               uint8_t (*goal_id_out)[16]);
 
 /**
- * Phase 122.3.d — L1 polling: send a get_result request.
+ * L1 polling: send a get_result request.
  */
 nros_cpp_ret_t nros_cpp_action_client_send_get_result_request_raw(void *storage,
                                                                   const uint8_t (*goal_id)[16]);
 
 /**
- * Phase 122.3.d — L1 polling: try receiving the get_result reply.
+ * L1 polling: try receiving the get_result reply.
  */
 int32_t nros_cpp_action_client_try_recv_result_raw(void *storage, uint8_t *buf, size_t buf_len);
 
 /**
- * Issue 2011 — [`nros_cpp_action_client_try_recv_result_raw`] that also writes the goal the reply is ABOUT (the
- * goal of the request whose sequence id it names, issue 2009) into
+ * [`nros_cpp_action_client_try_recv_result_raw`] that also writes the goal the reply is ABOUT (the
+ * goal of the request whose sequence id it names) into
  * `goal_id_out`. With several goals in flight the bytes alone cannot say
  * which one a reply answers. A reply naming no pending request (an abandoned
  * one's) is dropped, as before. `goal_id_out` is written only when a reply is
@@ -5940,13 +5937,13 @@ int32_t nros_cpp_action_client_try_recv_result_raw_for(void *storage,
                                                        uint8_t (*goal_id_out)[16]);
 
 /**
- * Phase 122.3.d — L1 polling: send a cancel request.
+ * L1 polling: send a cancel request.
  */
 nros_cpp_ret_t nros_cpp_action_client_send_cancel_request_raw(void *storage,
                                                               const uint8_t (*goal_id)[16]);
 
 /**
- * Phase 122.3.d / .c.6.c — L1 polling: try receiving the cancel
+ * L1 polling: try receiving the cancel
  * RPC reply.
  */
 int32_t nros_cpp_action_client_try_recv_cancel_response_raw(void *storage,
@@ -5954,8 +5951,8 @@ int32_t nros_cpp_action_client_try_recv_cancel_response_raw(void *storage,
                                                             size_t buf_len);
 
 /**
- * Issue 2011 — [`nros_cpp_action_client_try_recv_cancel_response_raw`] that also writes the goal the reply is ABOUT (the
- * goal of the request whose sequence id it names, issue 2009) into
+ * [`nros_cpp_action_client_try_recv_cancel_response_raw`] that also writes the goal the reply is ABOUT (the
+ * goal of the request whose sequence id it names) into
  * `goal_id_out`. With several goals in flight the bytes alone cannot say
  * which one a reply answers. A reply naming no pending request (an abandoned
  * one's) is dropped, as before. `goal_id_out` is written only when a reply is
@@ -5967,7 +5964,7 @@ int32_t nros_cpp_action_client_try_recv_cancel_response_raw_for(void *storage,
                                                                 uint8_t (*goal_id_out)[16]);
 
 /**
- * Phase 122.3.d — L1 polling: try receiving feedback. Writes
+ * L1 polling: try receiving feedback. Writes
  * goal_id_out + bytes copied.
  */
 int32_t nros_cpp_action_client_try_recv_feedback_raw(void *storage,
@@ -5976,12 +5973,12 @@ int32_t nros_cpp_action_client_try_recv_feedback_raw(void *storage,
                                                      uint8_t (*goal_id_out)[16]);
 
 /**
- * Phase 122.3.d — L1 polling: drop the inline `ActionClientCore`.
+ * L1 polling: drop the inline `ActionClientCore`.
  */
 nros_cpp_ret_t nros_cpp_action_client_destroy_polling(void *storage);
 
 /**
- * Phase 115.D — register a custom transport vtable. C++-side entry
+ * Register a custom transport vtable. C++-side entry
  * for `nros::set_custom_transport`.
  *
  * # Safety
@@ -5993,12 +5990,12 @@ nros_cpp_ret_t nros_cpp_action_client_destroy_polling(void *storage);
 nros_cpp_ret_t nros_cpp_set_custom_transport(const struct nros_cpp_transport_ops_t *ops);
 
 /**
- * Phase 115.D — clear any previously-registered transport.
+ * Clear any previously-registered transport.
  */
 nros_cpp_ret_t nros_cpp_clear_custom_transport(void);
 
 /**
- * Phase 115.D — return `1` if a transport is registered, `0`
+ * Return `1` if a transport is registered, `0`
  * otherwise. Returned as `nros_cpp_ret_t` for ABI parity with the
  * other entries.
  */
@@ -6015,7 +6012,7 @@ nros_cpp_ret_t nros_cpp_register_lifecycle_services(void *executor);
 /**
  * Register the five REP-2002 lifecycle services under `node`'s own name.
  *
- * phase-488 node 2 — what `rclcpp_lifecycle::LifecycleNode` calls once it is
+ * What `rclcpp_lifecycle::LifecycleNode` calls once it is
  * bound to its node. [`nros_cpp_register_lifecycle_services`] names the
  * services after the EXECUTOR's identity, which for the process executor a
  * hosted node is created on is the default `node`: `ros2 lifecycle get
@@ -6031,7 +6028,7 @@ nros_cpp_ret_t nros_cpp_register_lifecycle_services_for_node(const struct nros_c
  * Trigger a lifecycle transition on the C++ executor's state machine.
  *
  * `transition_id` is a `lifecycle_msgs/msg/Transition` id — the SAME numbering
- * rclcpp uses (issue 1099): Configure=1, Cleanup=2, Activate=3, Deactivate=4,
+ * rclcpp uses: Configure=1, Cleanup=2, Activate=3, Deactivate=4,
  * UnconfiguredShutdown=5, InactiveShutdown=6, ActiveShutdown=7,
  * ErrorRecovery=60. `0` (CREATE) and `8` (DESTROY) are not implemented and
  * return `INVALID_ARGUMENT`.
@@ -6161,7 +6158,7 @@ nros_cpp_ret_t nros_cpp_lifecycle_register_node(void *executor,
 nros_cpp_ret_t nros_cpp_register_parameter_services(void *executor);
 
 /**
- * Issue 2035 — `node` publishes no `/parameter_events`: rclcpp's
+ * `node` publishes no `/parameter_events`: rclcpp's
  * `NodeOptions::start_parameter_event_publisher(false)`, the C++ binding of
  * `Executor::disable_parameter_events_on` (which C's
  * `notify_changed_over_dds = false` also reaches).
@@ -6181,8 +6178,8 @@ nros_cpp_ret_t nros_cpp_node_disable_parameter_events(const struct nros_cpp_node
  * Seed a launch parameter, given as a string, on the node the executor will
  * build NEXT.
  *
- * issue 1272 -- the generated entry calls this for each launch `<param>` of a
- * node BEFORE it constructs that node (issue 0745: an rclcpp-shape
+ * The generated entry calls this for each launch `<param>` of a
+ * node BEFORE it constructs that node (an rclcpp-shape
  * constructor reads its `declare_parameter` initials immediately), so the
  * node has no handle yet. `node` is the index the executor's `node_builder`
  * will give it: its position among the nodes its setup function builds on
@@ -6194,8 +6191,8 @@ nros_cpp_ret_t nros_cpp_node_disable_parameter_events(const struct nros_cpp_node
  *
  * The value's type is still INFERRED from the string (bool, integer, double,
  * then string: `infer_param_value`, the same order `nros::main!` uses).
- * phase-446 carries the declared type from the launch contract instead; the
- * shim's one `infer_param_value` call is the place that changes.
+ * Carrying the declared type from the launch contract instead would change
+ * only the shim's one `infer_param_value` call.
  *
  * # Safety
  * `executor` must be a valid, live `CppContext*`. `name` and `value` must be
@@ -6210,10 +6207,10 @@ nros_cpp_ret_t nros_cpp_declare_param(void *executor,
  * Seed a launch parameter, given as a string, on the node the executor will
  * build NEXT, naming that node rather than counting it.
  *
- * phase-509 P9b -- the call the generated entry makes (C and C++ packs). The
+ * The call the generated entry makes (C and C++ packs). The
  * shim resolves the node itself: the index is the executor's own next node
  * (`nodes().len()` at this call), not a number the build counted. Under
- * RFC-0108's one executor per core, every level's setup registers on the
+ * one executor per core, every level's setup registers on the
  * SAME executor, one after another, so a build-time index restarted per sched task
  * (what [`nros_cpp_declare_param`] is handed) names node 0 in every level:
  * the second level's seed was refused and its setup failed. A build-time
@@ -6223,11 +6220,11 @@ nros_cpp_ret_t nros_cpp_declare_param(void *executor,
  * and a component that builds two nodes.
  *
  * `node_name` labels the seed. Seeds for one node arrive back to back,
- * directly before it is built (issue 0745), so a seed for ANOTHER node that
+ * directly before it is built, so a seed for ANOTHER node that
  * lands on the index the previous one was seeded for means that node was
  * never built: REFUSED with `NROS_CPP_RET_INVALID_ARGUMENT` and a log line
  * naming both nodes, rather than handing the earlier node's values to the
- * later one (issue 1272's failure). The label is not compared with the name
+ * later one. The label is not compared with the name
  * the node is built under: an rclcpp-shape component may build its node
  * under the class's own literal when the launch file names none.
  *
@@ -6268,10 +6265,10 @@ nros_cpp_ret_t nros_cpp_get_param_double(void *executor, const char *name, doubl
 /**
  * Get a boolean parameter by name from the C++ executor's parameter store.
  *
- * Issue 0745 follow-up — the missing bool getter: without it, seeded bool
+ * The missing bool getter: without it, seeded bool
  * launch params were not ctor-adoptable (the C++ facades' launch-seed helpers
  * fell through to the compiled default for `bool`). Those helpers are gone
- * since phase-426 W4 — with one store there is nothing to copy across — but
+ * now — with one store there is nothing to copy across — but
  * this getter stays: it is the executor-scoped read the C API and the
  * generated entry still use.
  *
@@ -6722,7 +6719,7 @@ nros_cpp_ret_t nros_cpp_node_list_params(const struct nros_cpp_node_t *node,
 
 /**
  * Enumerate the `-p` / `--params-file` overrides that apply to this node —
- * rclcpp's `NodeParametersInterface::get_parameter_overrides()` (issue 2057).
+ * rclcpp's `NodeParametersInterface::get_parameter_overrides()`.
  *
  * `callback` runs once per overridden name, synchronously, with the name and
  * the typed value as an on-set hook sees a write: the last override of a
@@ -6731,7 +6728,7 @@ nros_cpp_ret_t nros_cpp_node_list_params(const struct nros_cpp_node_t *node,
  * call only. The callback's return value is ignored. `*out_count` receives
  * the number listed.
  *
- * An image built without `alloc` has no argv overrides to list (issue 1812),
+ * An image built without `alloc` has no argv overrides to list,
  * so it lists none and returns OK.
  *
  * # Safety

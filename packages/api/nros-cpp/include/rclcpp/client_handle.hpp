@@ -15,8 +15,8 @@
 #include <cstdint>
 #include <cstddef>
 
-#include "rclcpp/logging.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
-#include "rclcpp/detail/std_detect.hpp" // issue 2055 — NROS_CPP_HAS_STD_PROMISE
+#include "rclcpp/logging.hpp"           // NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
+#include "rclcpp/detail/std_detect.hpp" // NROS_CPP_HAS_STD_PROMISE
 #include "rclcpp/result.hpp"
 #include "rclcpp/size_bound.hpp" // rclcpp::detail::buffer_bounds<M>::tx — the request scratch bound
 
@@ -28,7 +28,7 @@
 /// satisfied by an incomplete type.
 namespace rclcpp {
 template <typename S> class Client;
-// Issue 2055 — the future-style client a hosted handle may hold, and the
+// The future-style client a hosted handle may hold, and the
 // by-value wrapper `create_client<S>(name)` returns it in.
 template <typename S> class PollClient;
 template <typename T> class Owned;
@@ -36,13 +36,13 @@ template <typename T> class Owned;
 
 namespace rclcpp {
 
-/// A registered dispatch service client — phase-456 W9.
+/// A registered dispatch service client.
 ///
 /// WHY THIS ONE IS NOT `ServiceHandle`'s TWIN, AND THE DIFFERENCE IS THAT IT
 /// HAS VERBS AT ALL
 ///
 /// `SubscriptionHandle<M>` and `ServiceHandle<S>` are two words with no method,
-/// because phase-456 W2 and W3 measured that the ported corpus invokes NOTHING
+/// because a measurement showed that the ported corpus invokes NOTHING
 /// on a dispatch subscription or a dispatch service: each is stored and dropped,
 /// which is what a keep-alive is. W3 ran the same census over clients and got a
 /// DIFFERENT answer — `async_send_request`, at one site, and nothing else. So a
@@ -50,7 +50,7 @@ namespace rclcpp {
 /// arena owns the entity, not the caller). This is the two-word handle with that
 /// verb on it.
 ///
-/// Re-measured on this base (phase-456 W9, the same four trees: `examples/`,
+/// Re-measured on this base (the same four trees: `examples/`,
 /// `tests/`, `book/`, `packages/`): still ONE verb INVOKED, still one site —
 /// `examples/workspaces/cpp/src/service_client_callback_pkg/src/AddCallbackClient.cpp:32`, plus
 /// `tests/compile/bind_service.cpp:139`, which W3 added to pin that a MOVED
@@ -68,7 +68,7 @@ namespace rclcpp {
 ///
 /// A client created with a RESPONSE HANDLER is owned by the Rust executor
 /// arena: `nros_cpp_service_client_register` returns a handle id, the arena
-/// holds the `RmwServiceClient`, and since phase-456 W3 it holds the user's
+/// holds the `RmwServiceClient`, and it holds the user's
 /// handler as its own trampoline context. Nothing of the caller's is referenced
 /// after registration, so there is no C++ object to point at and none is made.
 ///
@@ -103,14 +103,14 @@ namespace rclcpp {
 /// which is the gap W9 ledgered at `cpp:Client::wait_for_service` rather than
 /// papering over with an invented `Executor&` parameter.
 ///
-/// HOW IT ENDS (issue 1667)
+/// HOW IT ENDS
 ///
 /// `cli_.reset()` RELEASES the client, as `timer_.reset()` releases a timer:
 /// the client leaves the graph, a reply it was still waiting for is abandoned,
 /// and the arena entry and the response handler's capture are freed for the
 /// next registration. Destroying the node that created it does the same.
 /// Dropping or overwriting a handle does NOT. A stale copy carries the
-/// generation of the registration it was issued for (phase-476 W0), so after a
+/// generation of the registration it was issued for, so after a
 /// reset it answers `Error` and never reaches the slot's next occupant.
 template <typename S> class ClientHandle {
   public:
@@ -131,7 +131,7 @@ template <typename S> class ClientHandle {
         : executor_(executor), handle_id_(handle_id) {}
 
 #if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
-    /// Issue 2055 — HOLD the future-style client `create_client<S>(name)`
+    /// HOLD the future-style client `create_client<S>(name)`
     /// returns, so the line most rclcpp components write compiles unchanged:
     ///
     /// ```cpp
@@ -177,12 +177,12 @@ template <typename S> class ClientHandle {
     }
     ~ClientHandle() { drop_poll_ref(); }
 
-    /// Issue 2055 — `client_->verb(...)`, the spelling of a handle held as a
+    /// `client_->verb(...)`, the spelling of a handle held as a
     /// `shared_ptr`. The verbs are this handle's own, and each one answers on
     /// whichever client the handle holds.
     const ClientHandle* operator->() const { return this; }
 
-    /// Issue 2055 — `async_send_request(request)` on a held future-style
+    /// `async_send_request(request)` on a held future-style
     /// client: its `FutureAndRequestId`. On a dispatch client the request is
     /// sent and the reply goes to the registered handler, so the future
     /// returned is empty (`valid()` false), as upstream has no such client.
@@ -194,7 +194,7 @@ template <typename S> class ClientHandle {
         return typename ::rclcpp::PollClient<R>::FutureAndRequestId();
     }
 
-    /// Issue 2055 — `async_send_request(request, callback)`: see
+    /// `async_send_request(request, callback)`: see
     /// `PollClient::async_send_request(request, callback)` for when the
     /// callback runs. Only a held future-style client takes a per-request
     /// callback; on a dispatch client (whose one handler was given at
@@ -207,14 +207,14 @@ template <typename S> class ClientHandle {
         return typename ::rclcpp::PollClient<R>::SharedFutureAndRequestId();
     }
 
-    /// Issue 2055 — `remove_pending_request(request_id)` on a held
+    /// `remove_pending_request(request_id)` on a held
     /// future-style client; false on a dispatch client.
     bool remove_pending_request(int64_t request_id) const {
         auto* p = poll();
         return p ? p->remove_pending_request(request_id) : false;
     }
 
-    /// Issue 2055 — `prune_pending_requests()` on a held future-style client;
+    /// `prune_pending_requests()` on a held future-style client;
     /// 0 on a dispatch client.
     size_t prune_pending_requests() const {
         auto* p = poll();
@@ -238,7 +238,7 @@ template <typename S> class ClientHandle {
     /// not serialize, and the transport's code otherwise.
     Result async_send_request(const RequestType& req) const {
 #if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
-        // Issue 2055 — a held future-style client sends with its future; a
+        // A held future-style client sends with its future; a
         // reply to a request sent this way has nowhere to go.
         if (poll()) return Result(::rclcpp::ErrorCode::Unsupported);
 #endif
@@ -288,8 +288,8 @@ template <typename S> class ClientHandle {
             nros_cpp_service_client_wait_for_service(nullptr, executor_, handle_id_, timeout_ms));
     }
 
-    /// **REFUSED** — `wait_for_service()` with no budget. phase-417 stage 3,
-    /// reaching this type 2026-09-28 with the verb itself: the refusal is the
+    /// **REFUSED** — `wait_for_service()` with no budget. The refusal
+    /// reached this type 2026-09-28 with the verb itself: the refusal is the
     /// other half of adopting the name, since a ported argument-free call is
     /// exactly what upstream's tutorials write.
     template <typename T = void> Result wait_for_service() const {
@@ -298,7 +298,7 @@ template <typename S> class ClientHandle {
     }
 
 #ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop
-    /// `wait_for_service(std::chrono::duration)` — phase-488, upstream's argument type.
+    /// `wait_for_service(std::chrono::duration)` — upstream's argument type.
     /// The same wait as the millisecond form, with the budget rounded UP and
     /// clamped to `UINT32_MAX` ms; a NEGATIVE duration (upstream's "forever")
     /// is refused at the call. Still returns `Result`, whose explicit
@@ -319,13 +319,13 @@ template <typename S> class ClientHandle {
     /// also half of what @ref async_send_request sends on.
     constexpr size_t handle_id() const { return handle_id_; }
 
-    /// `cli_.reset()` — release the client (issue 1667): it leaves the graph,
+    /// `cli_.reset()` — release the client: it leaves the graph,
     /// a pending reply is abandoned, and this handle becomes empty. After it,
     /// @ref async_send_request answers `NotInitialized` on this handle and
     /// `Error` on any other copy. A no-op on an empty handle.
     void reset() {
 #if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
-        if (poll_ref()) {             // issue 2055 — the last holder destroys the client
+        if (poll_ref()) {             // the last holder destroys the client
             drop_poll_ref();
             handle_id_ = 0;
             return;
@@ -339,13 +339,13 @@ template <typename S> class ClientHandle {
     }
 
 #if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
-    /// Issue 2055 — the held future-style client, or null.
+    /// The held future-style client, or null.
     const ::rclcpp::PollClient<S>* poll_client() const { return poll(); }
 #endif
 
   private:
 #if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
-    /// Issue 2055 — the poll arm keeps the handle TWO WORDS: `executor_`
+    /// The poll arm keeps the handle TWO WORDS: `executor_`
     /// points at a heap `shared_ptr` to the client and `handle_id_` is
     /// `kPollArm`, an id no arena registration has (an unregistered
     /// `Client<S>` holds the same value, and it never reaches a handle).

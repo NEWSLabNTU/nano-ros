@@ -4,7 +4,7 @@
 /**
  * @file create_client.hpp
  * @ingroup grp_action
- * @brief `rclcpp_action::create_client<A>(...)` — issue 2015.
+ * @brief `rclcpp_action::create_client<A>(...)`.
  *
  * Upstream's free function, at upstream's path. It builds the client the
  * method `Node::create_action_client(out, name)` builds, and returns it as
@@ -13,7 +13,7 @@
  * shapes: the four node interfaces (what the stock examples pass) and a node
  * (`create_client<A>(node, name)`, `node` a `Node*` or `Node::SharedPtr`).
  * A failed create ABORTS naming the action (`detail::require_created`), as
- * every `SharedPtr`-returning factory here does (RFC-0018: no exceptions).
+ * every `SharedPtr`-returning factory here does (there are no exceptions).
  * Upstream's trailing callback-group and `rcl_action_client_options_t`
  * arguments are not taken.
  */

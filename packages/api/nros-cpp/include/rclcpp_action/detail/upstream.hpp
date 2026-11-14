@@ -4,8 +4,7 @@
 /**
  * @file upstream.hpp
  * @ingroup grp_action
- * @brief Fixed-layout carriers for the HOSTED-only `rclcpp_action` drop-ins
- *        (issue 2015).
+ * @brief Fixed-layout carriers for the HOSTED-only `rclcpp_action` drop-ins.
  *
  * Upstream's action API hands goals around as `std::shared_ptr` goal handles
  * and takes its callbacks as `std::function`s. A hosted build (`NROS_CPP_STD`)
@@ -26,8 +25,8 @@
 #include "rclcpp/detail/std_detect.hpp" // NROS_CPP_HAS_SHARED_PTR, <memory>, <functional>
 #include "rclcpp/detail/traits.hpp"
 #include "rclcpp/logging.hpp"              // NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE, detail::refuse
-#include "rclcpp/detail/nros_cpp_ffi.h"    // nros_cpp_spin_once / nros_cpp_time_ns (issue 2027)
-#include "rclcpp/detail/driven_future.hpp" // PumpCell, DrivenSharedFuture (issue 2037)
+#include "rclcpp/detail/nros_cpp_ffi.h"    // nros_cpp_spin_once / nros_cpp_time_ns
+#include "rclcpp/detail/driven_future.hpp" // PumpCell, DrivenSharedFuture
 
 namespace rclcpp_action {
 namespace detail {
@@ -150,8 +149,8 @@ template <typename R, typename... A> class UpstreamCallback<R(A...)> {
     void* fn_;
 };
 
-/// Issue 2027 — the driven `std::shared_future` and the cell it pumps. They
-/// moved to `rclcpp/detail/driven_future.hpp` (issue 2037), because a service
+/// The driven `std::shared_future` and the cell it pumps. They
+/// moved to `rclcpp/detail/driven_future.hpp`, because a service
 /// request's `share()` returns one too; these are the names this header's
 /// users always spelled.
 using PumpCell = ::rclcpp::detail::PumpCell;

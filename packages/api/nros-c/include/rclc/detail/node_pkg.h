@@ -4,7 +4,7 @@
  * @brief Component-mode declarations for metadata and generated runtimes.
  *
  * Component packages do not define `main()`. They export a per-pkg mangled
- * `__nros_component_<pkg>_register` symbol (Phase 212.M.5.a.1) so multiple
+ * `__nros_component_<pkg>_register` symbol so multiple
  * components can link into one binary; the host metadata tool or generated
  * runtime supplies a context whose operations record declarations or
  * instantiate executor nodes. Codegen resolves the symbol name from each
@@ -33,7 +33,7 @@ typedef int rcl_ret_t;
 extern "C" {
 #endif
 
-/* Phase 257 (Stage-3b) — the declarative node-registration seam
+/* The declarative node-registration seam
  * (nros_node_context_t, nros_declared_*, NROS_NODE_REGISTER / NROS_COMPONENT,
  * the NodeEntityDescriptor structs) is retired; the EntryNodeRuntime
  * interpreter that consumed it is gone. Typed C components use

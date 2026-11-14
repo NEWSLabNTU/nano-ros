@@ -1,10 +1,10 @@
-//! Phase 269 (W0) — executor-shim: lifecycle FFI over the CppContext handle.
+//! Executor-shim: lifecycle FFI over the CppContext handle.
 //!
 //! Mirrors `nros-c/src/lifecycle.rs`'s service-backed module but recovers the
 //! executor from `CppContext*` instead of `rclc_executor_t*`. W1/W2 emitters
 //! call these; no emitter wires them yet this wave.
 //!
-//! Issue 0436 — user-supplied executor handles are tag-validated via
+//! User-supplied executor handles are tag-validated via
 //! `cpp_ctx_checked` instead of being blind-cast to `*mut CppContext`.
 
 #[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
@@ -56,7 +56,7 @@ pub unsafe extern "C" fn nros_cpp_register_lifecycle_services(
 
 /// Register the five REP-2002 lifecycle services under `node`'s own name.
 ///
-/// phase-488 node 2 — what `rclcpp_lifecycle::LifecycleNode` calls once it is
+/// What `rclcpp_lifecycle::LifecycleNode` calls once it is
 /// bound to its node. [`nros_cpp_register_lifecycle_services`] names the
 /// services after the EXECUTOR's identity, which for the process executor a
 /// hosted node is created on is the default `node`: `ros2 lifecycle get
@@ -94,7 +94,7 @@ pub unsafe extern "C" fn nros_cpp_register_lifecycle_services_for_node(
 /// Trigger a lifecycle transition on the C++ executor's state machine.
 ///
 /// `transition_id` is a `lifecycle_msgs/msg/Transition` id — the SAME numbering
-/// rclcpp uses (issue 1099): Configure=1, Cleanup=2, Activate=3, Deactivate=4,
+/// rclcpp uses: Configure=1, Cleanup=2, Activate=3, Deactivate=4,
 /// UnconfiguredShutdown=5, InactiveShutdown=6, ActiveShutdown=7,
 /// ErrorRecovery=60. `0` (CREATE) and `8` (DESTROY) are not implemented and
 /// return `INVALID_ARGUMENT`.

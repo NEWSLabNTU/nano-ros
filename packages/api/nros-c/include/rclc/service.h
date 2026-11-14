@@ -12,15 +12,15 @@
  * For manual polling with no executor, use the separate type
  * ::rclc_polling_service_t: create it with rclc_polling_service_init(), take
  * requests with rclc_polling_service_take_request_raw(), and send responses
- * with rclc_polling_service_send_response_raw(). The two types are separate
- * since phase-487: a dispatched server's storage is in the executor arena, a
+ * with rclc_polling_service_send_response_raw(). The two types are separate:
+ * a dispatched server's storage is in the executor arena, a
  * polled one's is in the struct.
  *
  * For a TYPED handler — a deserialised request in, a typed response out,
  * with no hand-written CDR — the generated per-service header emits
  * `<Srv>_service_handler_t`, `<Srv>_service_handler_init()`,
  * `<Srv>_service_init()` and `<Srv>_executor_add_service()`; see
- * `packs/c/service.h.jinja` (phase-417 W5.e). Those are `static inline` glue
+ * `packs/c/service.h.jinja`. Those are `static inline` glue
  * over the same entry points documented here, so the two paths cannot
  * diverge.
  */
@@ -36,7 +36,7 @@
 /**
  * @brief The QoS rclc's service/client `_best_effort` presets actually use.
  *
- * phase-417 W5.d. Read from rclc's own source (`rclc/src/rclc/service.c` and
+ * Read from rclc's own source (`rclc/src/rclc/service.c` and
  * `client.c` @ `10eadcc`): rclc does NOT reach for a named upstream profile
  * here the way the pub/sub presets reach for `rmw_qos_profile_sensor_data`. It
  * COPIES `rmw_qos_profile_services_default` and flips one field —
@@ -46,7 +46,7 @@
  *
  * — so the depth stays 10 rather than dropping to the sensor profile's 5. Two
  * call sites need that value, so it is computed in ONE place rather than
- * written out twice (issue 0160's hand-mirror class, at header scale).
+ * written out twice (the hand-mirror class, at header scale).
  *
  * ::RCLC_QOS_SERVICES is our mirror of `rmw_qos_profile_services_default`, so
  * the copy starts there. The reliable sibling `rclc_service_init_default`
@@ -68,14 +68,14 @@ static inline struct rclc_qos_t rclc_qos_services_best_effort(void) {
 /**
  * @brief rclc's best-effort preset constructor for a service server.
  *
- * phase-417 W5.d; the service-side sibling of
+ * The service-side sibling of
  * rclc_publisher_init_best_effort(), and the same argument. Ledger row
  * `c:service_init_best_effort` filed a `divergence` on "ours takes a QoS
  * value" — true, and not a reason for the name rclc ships to be missing.
  *
  * Takes no callback, at rclc's arity: the handler is supplied at registration,
  * where rclc supplies it — rclc_executor_add_service() (typed, rclc's own
- * signature; phase-515 C3) or rclc_executor_add_service_raw() (CDR bytes).
+ * signature) or rclc_executor_add_service_raw() (CDR bytes).
  * Same split `rclc_service_init_default` already makes.
  *
  * `static inline`: no symbol, no writable data.
@@ -96,8 +96,8 @@ static inline rcl_ret_t rclc_service_init_best_effort(struct rcl_service_t* serv
 
 #endif /* NROS_SERVICE_H */
 
-/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does
- * (phase-492): a ported file that includes only `<rclc/service.h>` still finds
+/* Every upstream-path header carries the whole C API, as `<rclc/rclc.h>` does:
+ * a ported file that includes only `<rclc/service.h>` still finds
  * `RCLC_CHECK_RET`, `RCLC_LOG_*` and the rcl spellings. Outside the guard, so
  * this header's own declarations are complete before the umbrella reads them. */
 #include "rclc/rclc.h"

@@ -15,7 +15,7 @@
 
 #include "rclcpp/result.hpp"
 #include "rclcpp/size_bound.hpp" // rclcpp::rx_buffer_capacity<T> — the receive-buffer size
-// issue 1996 — `refuse<T>`, `say_refused` and the `NROS_RCLCPP_REFUSE_FUTURE_GET*`
+// `refuse<T>`, `say_refused` and the `NROS_RCLCPP_REFUSE_FUTURE_GET*`
 // messages; it also brings `std_detect.hpp`, which defines the capability
 // macros `get()` and `wait_for()` are gated on.
 #include "rclcpp/logging.hpp"
@@ -25,11 +25,11 @@ extern "C" {
 typedef int nros_cpp_ret_t;
 nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 /// Monotonic time in nanoseconds. Used by Future::wait() to budget its
-/// spin loop by wall-clock, not iteration count (Phase 89.2).
+/// spin loop by wall-clock, not iteration count.
 uint64_t nros_cpp_time_ns(void);
 }
 
-// phase-428 (RFC-0089): the entity types that reach into this one's private
+// The entity types that reach into this one's private
 // constructor are DEFINED in the upstream namespace now, so the friend
 // declarations below name them there. A qualified friend cannot introduce a
 // name, hence these declarations.
@@ -43,7 +43,7 @@ template <typename A> class Client;
 
 namespace rclcpp {
 
-// phase-456 W9 — `send_request` and the `Future` it hands back moved off
+// `send_request` and the `Future` it hands back moved off
 // `rclcpp::Client<S>` onto `rclcpp::PollClient<S>`, the half that owns the
 // `RmwServiceClient` this future takes from. The friend list FOLLOWS the method:
 // the poll client is declared here, and `rclcpp::Client<S>` left both this
@@ -53,12 +53,12 @@ template <typename S> class PollClient;
 
 namespace detail {
 
-/// Issue 2009 — the id a backend reports when it cannot assign one: the RMW
+/// The id a backend reports when it cannot assign one: the RMW
 /// ABI's `NROS_RMW_SEQUENCE_ID_UNKNOWN` (`INT64_MIN`). `polling_client.hpp`
 /// asserts it equals the FFI's `NROS_CPP_SEQUENCE_ID_UNKNOWN`.
 constexpr int64_t SEQUENCE_ID_UNKNOWN = (-9223372036854775807LL - 1);
 
-/// Issue 2009 — stale replies one poll drops before reporting "nothing yet";
+/// Stale replies one poll drops before reporting "nothing yet";
 /// the twin of Rust's `nros_rmw::MAX_STALE_DRAIN_PER_POLL`.
 constexpr int MAX_STALE_DRAIN_PER_POLL = 8;
 
@@ -66,7 +66,7 @@ constexpr int MAX_STALE_DRAIN_PER_POLL = 8;
 /// the request it answers (`nros_cpp_service_client_take_response_seq`).
 using TakeSeqFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*, int64_t*);
 
-/// Issue 2011 — what an ACTION future polls: one pass of the action client's
+/// What an ACTION future polls: one pass of the action client's
 /// own dispatch (`nros_cpp_action_client_poll`), which takes any reply off the
 /// wire and hands it to the client's callbacks — and so, keyed by goal id, to
 /// the future waiting on that goal. A reply the executor dispatched during
@@ -74,7 +74,7 @@ using TakeSeqFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*, int64_t*)
 /// took it.
 using PumpFn = nros_cpp_ret_t (*)(void*);
 
-/// Issue 2009 — the part of a `Future` the client's pending list links. Not a
+/// The part of a `Future` the client's pending list links. Not a
 /// template, so futures of different reply capacities on one client share a
 /// list, and a future that takes ANOTHER future's reply can hand it over
 /// without knowing that future's type.
@@ -88,10 +88,10 @@ struct PendingLink {
     /// action client's for an unkeyed future).
     void* storage = nullptr;
     int64_t seq = SEQUENCE_ID_UNKNOWN;
-    /// Issue 2011 — an ACTION future is keyed by its GOAL instead of a
+    /// An ACTION future is keyed by its GOAL instead of a
     /// sequence id: an action client's acceptance and result arrive attributed
-    /// to a goal (the Rust core correlates each sub-client's replies by id,
-    /// issue 2009), so the goal is the key a reply carries up here.
+    /// to a goal (the Rust core correlates each sub-client's replies by id),
+    /// so the goal is the key a reply carries up here.
     bool by_goal = false;
     uint8_t goal_id[16] = {};
     uint8_t* buf = nullptr; ///< the future's own receive buffer
@@ -102,7 +102,7 @@ struct PendingLink {
     bool orphaned = false;
 };
 
-/// Issue 2009 — the requests ONE poll client has in flight, as an intrusive
+/// The requests ONE poll client has in flight, as an intrusive
 /// list of the futures waiting on them, each keyed by its request's sequence
 /// id. A reply is delivered only to the future whose id it carries; a reply
 /// naming no pending future (a removed or destroyed one's) is dropped.
@@ -126,7 +126,7 @@ struct PendingLink {
 struct PendingList {
     PendingLink* head = nullptr;
     uint8_t orphans = 0;
-    /// Issue 2027 — what the OWNER of this list does when a goal-keyed future
+    /// What the OWNER of this list does when a goal-keyed future
     /// is abandoned (cancelled, destroyed, moved over) before its reply: the
     /// action client frees the request's slot in the Rust core unless
     /// something else still waits on that reply. Null for a service client's
@@ -161,10 +161,10 @@ struct PendingList {
                 *pp = l->next;
                 l->next = nullptr;
                 // A goal-keyed (action) future names its reply exactly, so its
-                // removal costs no later reply (issue 2011).
+                // removal costs no later reply.
                 if (abandoned && !l->by_goal && l->seq == SEQUENCE_ID_UNKNOWN && orphans < 255)
                     ++orphans;
-                // Issue 2027 — an abandoned goal-keyed future was the owner of
+                // An abandoned goal-keyed future was the owner of
                 // one request in the Rust core's bounded table; tell the list's
                 // owner, so the slot does not outlive the last owner.
                 if (abandoned && l->by_goal && forget != nullptr) forget(forget_ctx, l->goal_id);
@@ -205,7 +205,7 @@ struct PendingList {
         return nullptr;
     }
 
-    /// Issue 2011 — the pending ACTION future waiting on `goal`, or nullptr
+    /// The pending ACTION future waiting on `goal`, or nullptr
     /// (nobody waits: the reply is dropped, never handed to another goal's
     /// future). Exact match only; does not unlink.
     PendingLink* resolve_goal(const uint8_t goal[16]) {
@@ -251,7 +251,7 @@ struct PendingList {
         return n;
     }
 
-    /// Issue 2037 — forget the pending request whose sequence id is `seq`, as
+    /// Forget the pending request whose sequence id is `seq`, as
     /// `remove_pending_request(request_id)` does upstream: its future becomes
     /// invalid and its reply, if it still comes, is dropped. False when no
     /// request with that id is pending (answered, removed, or another
@@ -301,7 +301,7 @@ struct PendingList {
 
 /// Single-shot deferred result for request/response operations.
 ///
-/// Returned by PollClient<S>::send_request (phase-456 W9; it was
+/// Returned by PollClient<S>::send_request (it was
 /// `Client<S>::send_request` before the split). The future is consumed
 /// when the result is taken -- move-only, single-shot.
 ///
@@ -317,10 +317,10 @@ struct PendingList {
 ///              `T::SERIALIZED_SIZE_MAX` estimate where it does not. The
 ///              `_sized` escape hatches are `Client::send_request_sized` and
 ///              `ActionClient::get_result_future_sized`, which hand back a
-///              `Future<T, N>` (issue 0964). This buffer IS the capacity:
+///              `Future<T, N>`. This buffer IS the capacity:
 ///              under-sizing it truncates the reply.
 ///
-/// A service future is KEYED BY ITS REQUEST'S SEQUENCE ID (issue 2009): any
+/// A service future is KEYED BY ITS REQUEST'S SEQUENCE ID: any
 /// number of futures may be in flight on one `PollClient`, each receives only
 /// the reply to its own request whichever future happens to poll first, and a
 /// reply that arrives after the future was cancelled, removed
@@ -329,7 +329,7 @@ struct PendingList {
 /// cannot assign ids.
 ///
 /// An ACTION future (`rclcpp_action::Client<A>::send_goal_future` /
-/// `get_result_future`) is KEYED BY ITS GOAL the same way (issue 2011): it is
+/// `get_result_future`) is KEYED BY ITS GOAL the same way: it is
 /// on its client's list of acceptances or of results, it receives only its own
 /// goal's, and a reply for a goal nobody waits on — or arriving after the
 /// future was cancelled or destroyed — is dropped. Two action clients keep two
@@ -386,7 +386,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     Result wait(void* executor_handle, uint32_t timeout_ms, T& out, uint32_t poll_ms = 10) {
         if (!live()) return Result(ErrorCode::Error);
         if (poll_ms == 0) poll_ms = 1;
-        // Phase 89.2: budget by wall-clock. Accumulating `step` per iteration
+        // Budget by wall-clock. Accumulating `step` per iteration
         // breaks when the underlying `zpico_spin_once` returns early on a
         // signaled condvar (keep-alives, discovery gossip) — the 500-step
         // default-timeout loop can then collapse into milliseconds and
@@ -411,22 +411,21 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     }
 
     /// Cancel the pending operation (idempotent). A service future leaves its
-    /// client's pending list, so its reply — if it still comes — is dropped
-    /// (issue 2009).
+    /// client's pending list, so its reply — if it still comes — is dropped.
     void cancel() {
         detach(true);
         slot_ = -1;
     }
 
     /// `std::future::valid()` — true until the result is taken or the future
-    /// is cancelled (issue 1996). The negation of @ref is_consumed.
+    /// is cancelled. The negation of @ref is_consumed.
     ///
-    /// Issue 2009 — also false once the client it was sent on was destroyed
+    /// Also false once the client it was sent on was destroyed
     /// (or moved over) while the request was pending.
     bool valid() const { return live(); }
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
-    /// `FutureAndRequestId::get()` — issue 1996. ADOPT-BOUNDED.
+    /// `FutureAndRequestId::get()` — ADOPT-BOUNDED.
     ///
     /// Upstream returns the reply as an owning `std::shared_ptr<Response>`, and
     /// so does this: one heap copy of the reply, deserialized into a
@@ -434,7 +433,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     /// future, as `std::future::get()` does.
     ///
     /// THE BOUND: upstream BLOCKS until the reply arrives; this never waits.
-    /// A wait that does not drive the executor is what RFC-0021 forbids, and
+    /// A wait that does not drive the executor is what the blocking-API rule forbids, and
     /// a future has no executor to drive on its own. So call it where the
     /// stock examples do — after `rclcpp::spin_until_future_complete(node,
     /// fut)` returned `SUCCESS`, or `wait_for(...)` returned `ready`. Called
@@ -455,19 +454,19 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     }
 #else
     /// Freestanding: `get()` is REFUSED at compile time — no `<memory>`, no
-    /// allocator. The message names `try_take` and `wait` (issue 1996).
+    /// allocator. The message names `try_take` and `wait`.
     template <typename U = void> void get() {
         static_assert(::rclcpp::detail::refuse<U>::value, NROS_RCLCPP_REFUSE_FUTURE_GET);
     }
 #endif // NROS_CPP_HAS_SHARED_PTR
 
 #if defined(NROS_CPP_HAS_STD_FUTURE) // hosted-family: future-interop
-    /// `FutureAndRequestId::wait_for(duration)` — issue 1996. ADOPT-BOUNDED.
+    /// `FutureAndRequestId::wait_for(duration)` — ADOPT-BOUNDED.
     ///
     /// Returns `std::future_status::ready` once the reply has arrived and
     /// `std::future_status::timeout` when the budget runs out first. It DRIVES
     /// the executor the client was created on while it waits, in `spin_once`
-    /// slices of at most 10 ms — the wait RFC-0021 allows — so other entities
+    /// slices of at most 10 ms — the wait the blocking-API rule allows — so other entities
     /// keep being served and the reply can land on a single-threaded
     /// transport. Upstream's `wait_for` merely blocks on a promise a second
     /// thread fulfils.
@@ -504,7 +503,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     bool is_consumed() const { return !live(); }
 
     // Move semantics (non-copyable, single-shot). A linked future's list entry
-    // FOLLOWS it to the new address (issue 2009), so a future may be returned
+    // FOLLOWS it to the new address, so a future may be returned
     // by value and stored wherever the caller likes while it is in flight.
     Future(Future&& other) noexcept
         : take_fn_(other.take_fn_), take_seq_fn_(other.take_seq_fn_), pump_fn_(other.pump_fn_),
@@ -544,11 +543,11 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
 
     using TryRecvFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*);
 
-    // `executor` is what `wait_for` drives (issue 1996); nullptr = no
+    // `executor` is what `wait_for` drives; nullptr = no
     // executor known, and `wait_for` then checks once instead of waiting.
     // An UNKEYED future: the take hook carries no request id, so the future
     // trusts whatever reply it takes. Nothing in-tree builds one any more —
-    // the action futures are goal-keyed since issue 2011 — but the shape stays
+    // the action futures are goal-keyed now — but the shape stays
     // for a caller with exactly one request in flight.
     Future(void* storage, TryRecvFn fn, int slot, void* executor = nullptr)
         : take_fn_(fn), take_seq_fn_(nullptr), pump_fn_(nullptr), executor_(executor), slot_(slot) {
@@ -557,7 +556,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
         link_.storage = storage;
     }
 
-    // Issue 2009 — a KEYED future: the request went out as `seq`, and the
+    // A KEYED future: the request went out as `seq`, and the
     // future joins `list`, the pending list of the client it was sent on.
     Future(void* storage, ::rclcpp::detail::TakeSeqFn fn, int64_t seq,
            ::rclcpp::detail::PendingList* list, void* executor)
@@ -570,7 +569,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
         if (list != nullptr) list->link(&link_);
     }
 
-    // Issue 2011 — a GOAL-KEYED action future: it joins `list` (the action
+    // A GOAL-KEYED action future: it joins `list` (the action
     // client's acceptances or results) under `goal`. The client's callbacks
     // deliver into it (`PendingList::resolve_goal` + `deliver`); `pump` is the
     // client's own dispatch, for a reply no `spin_once` has taken yet.
@@ -607,7 +606,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
         return link_.ready;
     }
 
-    /// Issue 2011 — one pass of the action client's dispatch; whatever it
+    /// One pass of the action client's dispatch; whatever it
     /// takes reaches its own goal's future through the client's callbacks.
     bool poll_pumped() {
         if (link_.list == nullptr || link_.storage == nullptr) return link_.ready;
@@ -652,7 +651,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     ::rclcpp::detail::PumpFn pump_fn_;
     void* executor_;
     int slot_;
-    /// Issue 2009 — the entry the client's pending list links, plus the client
+    /// The entry the client's pending list links, plus the client
     /// storage this future takes from.
     ::rclcpp::detail::PendingLink link_;
     uint8_t cached_buf_[Cap];

@@ -8,7 +8,7 @@
  *        owns it and the executor calls your handler.
  *
  * The taking subscriber is `rclcpp::PollSubscription<M>` in
- * `rclcpp/polling_subscription.hpp` (phase-456 W2b).
+ * `rclcpp/polling_subscription.hpp`.
  */
 
 #ifndef NROS_RCLCPP_SUBSCRIPTION_HPP
@@ -20,25 +20,25 @@
 
 #include "rclcpp/detail/traits.hpp"
 #include "rclcpp/detail/config.hpp"
-#include "rclcpp/detail/entity_name.hpp" // phase-444 — the one entity-name copy
-#include "rclcpp/executor.hpp"           // phase-444 — the graph counter these forward to
+#include "rclcpp/detail/entity_name.hpp" // The one entity-name copy
+#include "rclcpp/executor.hpp"           // the graph counter these forward to
 #include "rclcpp/result.hpp"
 #include "rclcpp/subscription_handle.hpp"
 #include "rclcpp/inplace_fn.hpp"
 #include "rclcpp/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
-// RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creators below.
+// NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creators below.
 #include "rclcpp/detail/serialization_format.hpp"
 #include "rclcpp/stream.hpp"
 
-// phase-417 W1.a — `<memory>` for the nested pointer aliases below.
+// `<memory>` for the nested pointer aliases below.
 // `NROS_CPP_HAS_SHARED_PTR` and the other five capability macros have ONE
 // definition site, and the measured reason the predicate needs both probes
-// (issues 0112, 1187, 1240) is stated there.
+// is stated there.
 #include "rclcpp/detail/std_detect.hpp"
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
-// issue 1437 — `get_actual_qos()` returns a `rclcpp::QoS` BY VALUE from an
+// `get_actual_qos()` returns a `rclcpp::QoS` BY VALUE from an
 // inline body, so the complete type must be here, not only by the time
 // `rclcpp/node.hpp` is pulled in below.
 //
@@ -46,9 +46,9 @@
 // `nros_cpp_qos_*_t` enums ITSELF under `#ifndef NROS_CPP_FFI_H`, so
 // reaching it first makes the cbindgen header a REDEFINITION of all four.
 #include "rclcpp/qos.hpp"
-#include "rclcpp/message_info.hpp" // issue 2036 — the two-argument callback shapes
+#include "rclcpp/message_info.hpp" // The two-argument callback shapes
 
-// Phase 189.M3.x — `nros_cpp_subscription_register` is excluded from cbindgen
+// `nros_cpp_subscription_register` is excluded from cbindgen
 // (its Rust signature uses `RawSubscriptionCallback`, an external-crate type
 // alias cbindgen names without defining). Declare it locally with a plain
 // function-pointer typedef matching the ABI (`void(data, len, ctx)`), mirroring
@@ -57,9 +57,9 @@ extern "C" {
 typedef void (*nros_cpp_subscription_message_callback_t)(const uint8_t* data, size_t len,
                                                          void* ctx);
 
-// phase-402: the trailing `sched_context` / `callback_group` arguments moved
+// The trailing `sched_context` / `callback_group` arguments moved
 // into `nros_cpp_subscription_options_t` (defined by the cbindgen output above);
-// a NULL `options` is all-defaults, i.e. the pre-phase-402 behaviour.
+// a NULL `options` is all-defaults, i.e. the original behaviour.
 nros_cpp_ret_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* topic,
                                               const char* type_name, const char* type_hash,
                                               nros_cpp_qos_t qos,
@@ -67,7 +67,7 @@ nros_cpp_ret_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const
                                               void* context, size_t* out_handle_id,
                                               const nros_cpp_subscription_options_t* options);
 
-/// phase-456 W1 — the same registration, with the callback's CAPTURE held by
+/// The same registration, with the callback's CAPTURE held by
 /// the ARENA rather than by the caller.
 ///
 /// The difference is the lifetime, not the dispatch. `..._register` above
@@ -82,7 +82,7 @@ nros_cpp_ret_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const
 /// caller's is referenced after the call returns, so the caller may keep
 /// nothing at all — which is what lets the C++ object become a handle.
 ///
-/// `capture_len` is a LENGTH, not a budget — phase-456 W8. W1 copied the capture
+/// `capture_len` is a LENGTH, not a budget. An earlier version copied the capture
 /// into a fixed `[u8; CALLBACK_CAPTURE_BYTES]` and refused anything longer,
 /// where that constant had to equal `NROS_CPP_CALLBACK_CAPACITY` by
 /// construction — so the refusal was reachable only when the two languages had
@@ -95,7 +95,7 @@ nros_cpp_ret_t nros_cpp_subscription_register_capturing(
     size_t capture_len, void (*capture_drop)(void* capture), size_t* out_handle_id,
     const nros_cpp_subscription_options_t* options);
 
-// Phase 189.M3.4 — callback-style register that also delivers the sample's wire
+// Callback-style register that also delivers the sample's wire
 // attachment (5-arg trampoline). Same cbindgen-exclusion reason as above.
 typedef void (*nros_cpp_subscription_message_info_callback_t)(const uint8_t* data, size_t len,
                                                               const uint8_t* attachment,
@@ -105,7 +105,7 @@ nros_cpp_ret_t nros_cpp_subscription_register_with_info(
     const nros_cpp_node_t* node, const char* topic, const char* type_name, const char* type_hash,
     nros_cpp_qos_t qos, nros_cpp_subscription_message_info_callback_t callback, void* context,
     size_t* out_handle_id, const nros_cpp_subscription_options_t* options);
-// Phase 269 W3 — callback-style subscription that delivers the sample's E2E
+// Callback-style subscription that delivers the sample's E2E
 // integrity status alongside the CDR bytes. Same cbindgen-exclusion reason as
 // above (takes `RawSubscriptionSafetyCallback`, an external nros-node alias
 // gated on the `safety-e2e` feature). The 6-arg trampoline unpacks the three
@@ -127,18 +127,18 @@ nros_cpp_ret_t nros_cpp_subscription_register_validated(
 
 namespace rclcpp {
 
-/// E2E message-integrity status of one received sample (issue 0073): the
+/// E2E message-integrity status of one received sample: the
 /// sequence `gap` since the previous in-order sample, `duplicate`, and
 /// `crc_valid` (`1` ok, `0` mismatch, `-1` no CRC on the wire). The C++
-/// spelling of the FFI struct (RFC-0089, 2026-10-13: ours-only names take
+/// spelling of the FFI struct (since 2026-10-13 ours-only names take
 /// `rclcpp::`), a typedef rather than a mirror so the two can never drift.
 using IntegrityStatus = ::nros_cpp_integrity_status_t;
 
 /// Maximum topic name length stored inside a subscription.
-/// Mirrors `PUBLISHER_TOPIC_NAME_MAX`. Phase 87.6 thin-wrapper refactor:
+/// Mirrors `PUBLISHER_TOPIC_NAME_MAX`. Thin wrapper:
 /// topic name owned C++-side, not inside a runtime handle.
 ///
-/// Stays in `rclcpp::`: RFC-0089's flip moves the nine TYPES, and this is an
+/// Stays in `rclcpp::`: the namespace flip moves the nine TYPES, and this is an
 /// implementation bound of one of them, not a name upstream declares.
 static constexpr size_t SUBSCRIPTION_TOPIC_NAME_MAX = 256;
 
@@ -150,22 +150,22 @@ static constexpr size_t SUBSCRIPTION_TOPIC_NAME_MAX = 256;
 /// has the definition; a qualified friend needs the name to EXIST first, which
 /// an unqualified `friend class Node;` used to supply implicitly.
 ///
-/// phase-427 W7 — declared in `rclcpp::`, which is where the definition lives.
+/// Declared in `rclcpp::`, which is where the definition lives.
 namespace rclcpp {
 class Node;
 }
 
 // ============================================================================
-// `rclcpp::Subscription<M>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
+// `rclcpp::Subscription<M>` -- DEFINED here (rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::` to `rclcpp::` (the `nros::`
-// alias went in phase-483 W1). The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
+// The definition moved from `nros::` to `rclcpp::` (the `nros::`
+// alias is gone). The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
 // aliases live on the class itself, so `rclcpp::Subscription<M>::SharedPtr`
 // resolves with no wrapper type in between.
 namespace rclcpp {
 
-/// Typed DISPATCH subscription for a ROS 2 topic — phase-456 W2b.
+/// Typed DISPATCH subscription for a ROS 2 topic.
 ///
 /// Mirrors upstream's `rclcpp::Subscription<M>`: the entity is owned by the runtime and
 /// the executor calls your handler. The message type `M` must provide
@@ -181,7 +181,7 @@ namespace rclcpp {
 /// TO TAKE INSTEAD OF BEING CALLED, use `rclcpp::PollSubscription<M>`
 /// (`rclcpp/polling_subscription.hpp`), which owns its subscriber and carries
 /// `take`, `take_serialized`, `take_validated`, `take_sequence` and
-/// `try_borrow`. That API lived on THIS class until phase-456 W2b, for both
+/// `try_borrow`. That API lived on THIS class before the split, for both
 /// owners at once: on the dispatch path `storage_` was 656 value-initialized
 /// zero bytes the arena never filled, and `take()` handed them to the runtime
 /// as an `RmwSubscriber` rather than refusing. One class, two owners, and half
@@ -196,7 +196,7 @@ namespace rclcpp {
 /// that can answer it. That trade is ledgered at `cpp:Subscription::take`.
 template <typename M> class Subscription {
   public:
-    /// `rclcpp::Subscription<M>::SharedPtr` — phase-456 W2.
+    /// `rclcpp::Subscription<M>::SharedPtr`.
     ///
     /// `rclcpp::Subscription<M>::SharedPtr member_;` is close to universal in
     /// ported source, so this alias must exist on every target — which
@@ -211,7 +211,7 @@ template <typename M> class Subscription {
     ///
     /// W2 recorded a cost here: the alias and the class had become different
     /// things, because the class still carried a taking API that a handle's
-    /// referent could not perform. **phase-456 W2b repaid it** — the taking API
+    /// referent could not perform. **The split repaid it** — the taking API
     /// is `rclcpp::PollSubscription<M>`'s now, so the handle's `element_type` IS
     /// `Subscription<M>` again and names a type whose every operation belongs
     /// to a registration. The two are still not the same C++ type, and never
@@ -225,15 +225,15 @@ template <typename M> class Subscription {
     /// `rclcpp::Subscription<M>::UniquePtr` — see `SharedPtr`.
     using UniquePtr = ::rclcpp::SubscriptionHandle<M>;
 
-    /// Phase 189.M3.x — typed message-handler signatures for the
+    /// Typed message-handler signatures for the
     /// *callback-style* subscription (rclcpp dispatch model). The executor
     /// invokes the handler during `spin_once()` on each new sample.
     using TypedSubscriptionFn = void (*)(const M& msg);
     using TypedSubscriptionFnWithCtx = void (*)(const M& msg, void* ctx);
-    // Phase 189.M3.4 — callback-with-attachment handler (bridge_origin etc.).
+    // Callback-with-attachment handler (bridge_origin etc.).
     using TypedSubscriptionInfoFn = void (*)(const M& msg, const uint8_t* attachment,
                                              size_t attachment_len);
-    // Phase 269 W3 — callback-with-integrity handler: receives the deserialized
+    // Callback-with-integrity handler: receives the deserialized
     // message plus the sample's E2E CRC/sequence status. Requires
     // `NROS_SAFETY_E2E` (lowered from `[system].features = ["safety"]`).
 #if defined(NROS_SAFETY_E2E)
@@ -248,13 +248,13 @@ template <typename M> class Subscription {
     bool is_valid() const { return initialized_; }
 
     /// How many publishers are on this subscription's topic, RIGHT NOW —
-    /// rclcpp's `Subscription::get_publisher_count`. phase-444.
+    /// rclcpp's `Subscription::get_publisher_count`.
     ///
     /// The subscription half of `Publisher::get_subscription_count`, which
     /// states the weakening (topic-wide, not matched-to-this-entity), why the
     /// executor and the out-parameter are there, and why an error is not `0`.
     ///
-    /// phase-456 W2b split this class in two and this method answers on BOTH
+    /// This class is split in two and this method answers on BOTH
     /// halves, unchanged: it reads `topic_name_`, which each half keeps, and
     /// takes the executor as an argument rather than holding one. A topic-wide
     /// count does not depend on which owner holds the subscriber.
@@ -266,10 +266,10 @@ template <typename M> class Subscription {
     /// Destructor — there is nothing to release.
     ///
     /// The executor arena owns the subscriber, the rx buffer, the callback and
-    /// (phase-456 W1) its capture, and frees them when the executor drops. No
+    /// its capture, and frees them when the executor drops. No
     /// unregister FFI exists, so this cannot remove the registration and does
-    /// not pretend to: it clears this object's own bookkeeping. Until
-    /// phase-456 W2b the same destructor also freed a POLL subscriber, behind
+    /// not pretend to: it clears this object's own bookkeeping. Before
+    /// the split the same destructor also freed a POLL subscriber, behind
     /// an `if (initialized_ && !callback_mode_)`; that half moved to
     /// `rclcpp::PollSubscription<M>`, where the condition is unconditional.
     ~Subscription() { initialized_ = false; }
@@ -320,11 +320,11 @@ template <typename M> class Subscription {
     /// Use one of `Node`'s callback-taking `create_subscription` overloads.
     Subscription() : topic_name_{}, initialized_(false) {}
 
-    /// Phase 189.M3.1 — internal: executor `HandleId` usable with
+    /// Internal: executor `HandleId` usable with
     /// `nros_cpp_bind_handle_to_sched_context`, or `SIZE_MAX` before the
     /// registration has happened.
     ///
-    /// phase-456 W2b — this used to be a question worth asking, because the
+    /// This used to be a question worth asking, because the
     /// class also held POLL subscriptions, which register no arena entry and so
     /// left the field at `SIZE_MAX` forever. Every object of this type is an
     /// arena registration now, so a successfully created one always has a
@@ -336,8 +336,8 @@ template <typename M> class Subscription {
     /// The QoS profile this subscription is ACTUALLY running —
     /// `rclcpp::Subscription::get_actual_qos`, no arguments, as upstream's is.
     ///
-    /// The phase-467 RMW gap-closure design study's Row 13, closing the gap
-    /// phase-456 W2b RECORDED rather than guessed at. The split gave the two
+    /// This closes the gap the split
+    /// RECORDED rather than guessed at. The split gave the two
     /// subscription roads two types; `rclcpp::PollSubscription<M>` owns its
     /// subscriber and kept this, and the DISPATCH half — the one a ported
     /// `rclcpp` node holds, and therefore the one where a missing accessor is
@@ -370,7 +370,7 @@ template <typename M> class Subscription {
 
     friend class ::rclcpp::Node;
 
-    /// Phase 189.M3.x — raw message trampoline matching `RawSubscriptionCallback`
+    /// Raw message trampoline matching `RawSubscriptionCallback`
     /// (`void(data, len, ctx)`). Deserializes the CDR sample into `M` and runs
     /// the user's typed handler. `ctx` is the `Subscription` object (`this`).
     static void message_trampoline(const uint8_t* data, size_t len, void* ctx) {
@@ -385,7 +385,7 @@ template <typename M> class Subscription {
         }
     }
 
-    /// Phase 189.M3.4 — trampoline matching `RawSubscriptionInfoCallback`
+    /// Trampoline matching `RawSubscriptionInfoCallback`
     /// (`void(data, len, attachment, att_len, ctx)`). Deserializes the CDR sample
     /// into `M` and runs the user's `(const M&, attachment, att_len)` handler.
     static void message_info_trampoline(const uint8_t* data, size_t len, const uint8_t* attachment,
@@ -400,7 +400,7 @@ template <typename M> class Subscription {
     }
 
 #if defined(NROS_SAFETY_E2E)
-    /// Phase 269 W3 — trampoline matching `RawSubscriptionSafetyCallback`
+    /// Trampoline matching `RawSubscriptionSafetyCallback`
     /// (`void(data, len, gap, duplicate, crc_valid, ctx)`). Deserializes the CDR
     /// sample into `M`, packs the three integrity scalars into an
     /// `rclcpp::IntegrityStatus`, and runs the user's
@@ -423,7 +423,7 @@ template <typename M> class Subscription {
 
     /// Copy the topic name into this object's own storage.
     ///
-    /// phase-456 W2b — shared by the four arena creators below. Only the POLL
+    /// Shared by the four arena creators below. Only the POLL
     /// creator had ever filled `topic_name_`, so `get_topic_name()` answered
     /// `""` for every callback-style subscription in the tree: the field was
     /// there, the accessor was there, and nothing wrote it.
@@ -436,7 +436,7 @@ template <typename M> class Subscription {
         topic_name_[n] = '\0';
     }
 
-    // phase-456 W2b — `storage_` (NROS_SUBSCRIBER_SIZE bytes) and `stream_` are
+    // `storage_` (NROS_SUBSCRIBER_SIZE bytes) and `stream_` are
     // GONE, with the taking API that was their only reader. On this path the
     // arena owns the subscriber, so those bytes were never filled, and
     // `take()` reinterpreted them (`&mut *(storage as *mut RmwSubscriber)`)
@@ -444,14 +444,14 @@ template <typename M> class Subscription {
     // the two owners inside one class, and there is one owner here now.
     char topic_name_[::rclcpp::SUBSCRIPTION_TOPIC_NAME_MAX];
     bool initialized_;
-    // Phase 189.M3.1 — executor HandleId for sched-context binding, or
+    // Executor HandleId for sched-context binding, or
     // SIZE_MAX (the default) when the registration has not happened yet.
     size_t sched_handle_id_ = static_cast<size_t>(-1);
     // The executor that owns the arena entry `sched_handle_id_` indexes —
-    // the phase-467 RMW gap-closure design study's Row 13.
+    // see `get_actual_qos()`.
     //
     // A `HandleId` is EXECUTOR-SCOPED: an index into one executor's arena, not
-    // a process-wide identity, and RFC-0002 puts one executor on one RTOS
+    // a process-wide identity, and the execution model puts one executor on one RTOS
     // task, so a sched-task image has several. That is why `get_actual_qos()`
     // could not be answered from `sched_handle_id_` alone, and why resolving
     // it "from the sched handle" would have needed a global executor
@@ -464,7 +464,7 @@ template <typename M> class Subscription {
     TypedSubscriptionInfoFn user_fn_info_ = nullptr;
     void* user_ctx_ = nullptr;
 #if defined(NROS_SAFETY_E2E)
-    // Phase 269 W3 — handler for the integrity-carrying callback path; nullptr
+    // Handler for the integrity-carrying callback path; nullptr
     // when not using `create_subscription_with_safety`.
     TypedSubscriptionSafetyFn user_fn_safety_ = nullptr;
 #endif // NROS_SAFETY_E2E
@@ -472,12 +472,12 @@ template <typename M> class Subscription {
 
 } // namespace rclcpp
 
-// Phase 84.G8: out-of-line definition of Node::create_subscription<M>().
+// Out-of-line definition of Node::create_subscription<M>().
 #include "rclcpp/node.hpp"
 
 namespace rclcpp {
 
-// Phase 189.M3.x — callback-style (arena-registered) subscription. The arena
+// Callback-style (arena-registered) subscription. The arena
 // owns the subscriber + dispatches `out`'s message handler during spin_once, so
 // the handle is real and `options.sched_context` is functional. Mirrors the
 // callback-style `create_service` one entity over.
@@ -487,7 +487,7 @@ namespace rclcpp {
 template <typename M, typename F, typename>
 Result Node::create_subscription(Subscription<M>& out, const char* topic, const ::rclcpp::QoS& qos,
                                  F callback, const ::rclcpp::SubscriptionOptions& options) {
-    // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
+    // One image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
     if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
@@ -503,23 +503,23 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
-    // phase-402: `sched_context` is a FIELD now. `callback_group` stays unset,
+    // `sched_context` is a FIELD now. `callback_group` stays unset,
     // i.e. the default group.
     nros_cpp_subscription_options_t ffi_options = nros_cpp_subscription_default_options();
     ffi_options.sched_context = sched;
-    // phase-456 W7 — state the bound. `M` is a template parameter of this
+    // State the bound. `M` is a template parameter of this
     // function, so the number was always available here; leaving it at the
-    // option default put this registration on issue 1319's ~~`c_raw_no_hint`~~ row
+    // option default put this registration on the ~~`c_raw_no_hint`~~ row
     // while the sizing descriptor credited the entry with a supplied hint.
     ffi_options.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
-    ffi_options.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
+    ffi_options.stamp_offset = ::rclcpp::stamp_offset<M>::value;
     nros_cpp_ret_t ret = nros_cpp_subscription_register(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, &Subscription<M>::message_trampoline,
         &out, &handle, &ffi_options);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.executor_ = executor_handle_;
-        // phase-456 W2b — `get_topic_name()` answered "" on every callback-style
+        // `get_topic_name()` answered "" on every callback-style
         // subscription until this line existed.
         out.store_topic_name(topic);
         out.initialized_ = true;
@@ -530,7 +530,7 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
 
 namespace rclcpp {
 
-// Phase 273 (RFC-0047) — callback-style subscription **in** a named callback group.
+// Callback-style subscription **in** a named callback group.
 // Mirrors create_subscription (callback-style) exactly but passes group.get_name()
 // as `callback_group` so the executor binds the slot via group_sched_table.
 } // namespace rclcpp
@@ -541,7 +541,7 @@ Result Node::create_subscription_in_group(const ::rclcpp::CallbackGroup& group,
                                           Subscription<M>& out, const char* topic,
                                           const ::rclcpp::QoS& qos, F callback,
                                           const ::rclcpp::SubscriptionOptions& options) {
-    // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
+    // One image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
     if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
@@ -555,21 +555,21 @@ Result Node::create_subscription_in_group(const ::rclcpp::CallbackGroup& group,
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
-    // phase-402: both the sched slot and the Phase 273 group name are FIELDS now.
+    // Both the sched slot and the callback-group name are FIELDS now.
     nros_cpp_subscription_options_t ffi_options = nros_cpp_subscription_default_options();
     ffi_options.sched_context = sched;
     ffi_options.callback_group = group.get_name();
-    // phase-456 W7 — see the ungrouped form above. A grouped subscription costs
+    // See the ungrouped form above. A grouped subscription costs
     // the arena exactly what an ungrouped one does, so it states the same bound.
     ffi_options.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
-    ffi_options.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
+    ffi_options.stamp_offset = ::rclcpp::stamp_offset<M>::value;
     nros_cpp_ret_t ret = nros_cpp_subscription_register(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, &Subscription<M>::message_trampoline,
         &out, &handle, &ffi_options);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.executor_ = executor_handle_;
-        // phase-456 W2b — `get_topic_name()` answered "" on every callback-style
+        // `get_topic_name()` answered "" on every callback-style
         // subscription until this line existed.
         out.store_topic_name(topic);
         out.initialized_ = true;
@@ -580,7 +580,7 @@ Result Node::create_subscription_in_group(const ::rclcpp::CallbackGroup& group,
 
 namespace rclcpp {
 
-// Phase 189.M3.4 — callback-style subscription that delivers the wire attachment.
+// Callback-style subscription that delivers the wire attachment.
 // Mirrors the callback `create_subscription` one step over, but stores the
 // `(const M&, attachment, att_len)` handler + registers via the with-info arena
 // path so the trampoline receives the attachment.
@@ -591,7 +591,7 @@ template <typename M, typename F, typename>
 Result Node::create_subscription_with_info(Subscription<M>& out, const char* topic,
                                            const ::rclcpp::QoS& qos, F callback,
                                            const ::rclcpp::SubscriptionOptions& options) {
-    // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
+    // One image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
     if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
@@ -606,21 +606,21 @@ Result Node::create_subscription_with_info(Subscription<M>& out, const char* top
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
-    // phase-402: `sched_context` is a FIELD now.
+    // `sched_context` is a FIELD now.
     nros_cpp_subscription_options_t ffi_options = nros_cpp_subscription_default_options();
     ffi_options.sched_context = sched;
-    // phase-456 W7 — the attachment rides beside the sample and does not change
+    // The attachment rides beside the sample and does not change
     // how many bytes the sample itself needs, so this is the same bound the
     // plain callback form states.
     ffi_options.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
-    ffi_options.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
+    ffi_options.stamp_offset = ::rclcpp::stamp_offset<M>::value;
     nros_cpp_ret_t ret = nros_cpp_subscription_register_with_info(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
         &Subscription<M>::message_info_trampoline, &out, &handle, &ffi_options);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.executor_ = executor_handle_;
-        // phase-456 W2b — `get_topic_name()` answered "" on every callback-style
+        // `get_topic_name()` answered "" on every callback-style
         // subscription until this line existed.
         out.store_topic_name(topic);
         out.initialized_ = true;
@@ -632,7 +632,7 @@ Result Node::create_subscription_with_info(Subscription<M>& out, const char* top
 namespace rclcpp {
 
 #if defined(NROS_SAFETY_E2E)
-// Phase 269 W3 — out-of-line definition of Node::create_subscription_with_safety.
+// Out-of-line definition of Node::create_subscription_with_safety.
 // Mirrors `create_subscription_with_info` one overload over, but routes through
 // `nros_cpp_subscription_register_validated` so the arena dispatches the
 // `message_safety_trampoline` on each new sample.
@@ -643,7 +643,7 @@ template <typename M, typename F, typename>
 Result Node::create_subscription_with_safety(Subscription<M>& out, const char* topic,
                                              const ::rclcpp::QoS& qos, F callback,
                                              const ::rclcpp::SubscriptionOptions& options) {
-    // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
+    // One image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
     if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
@@ -659,20 +659,20 @@ Result Node::create_subscription_with_safety(Subscription<M>& out, const char* t
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
-    // phase-402: `sched_context` is a FIELD now.
+    // `sched_context` is a FIELD now.
     nros_cpp_subscription_options_t ffi_options = nros_cpp_subscription_default_options();
     ffi_options.sched_context = sched;
-    // phase-456 W7 — the validated path deserializes the same bytes; the safety
+    // The validated path deserializes the same bytes; the safety
     // status is computed from them, not received alongside them.
     ffi_options.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
-    ffi_options.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
+    ffi_options.stamp_offset = ::rclcpp::stamp_offset<M>::value;
     nros_cpp_ret_t ret = nros_cpp_subscription_register_validated(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
         &Subscription<M>::message_safety_trampoline, &out, &handle, &ffi_options);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.executor_ = executor_handle_;
-        // phase-456 W2b — `get_topic_name()` answered "" on every callback-style
+        // `get_topic_name()` answered "" on every callback-style
         // subscription until this line existed.
         out.store_topic_name(topic);
         out.initialized_ = true;
@@ -686,7 +686,7 @@ namespace rclcpp {
 
 namespace detail {
 
-// ---- issue 1995: which callback shapes a subscription takes ------------------
+// ---- which callback shapes a subscription takes -------------------------------
 //
 // The arena delivers `const M&` from a message decoded in its dispatch frame,
 // and that stays the ONE delivery path. Upstream's other common shapes —
@@ -797,7 +797,7 @@ template <typename M, typename F, int Shape> struct subscription_callback_adapte
 };
 #endif // NROS_CPP_HAS_SHARED_PTR
 
-/// Issue 2036 — `true` iff `F&` can be called with `(A, B)`.
+/// `true` iff `F&` can be called with `(A, B)`.
 template <typename F, typename A, typename B, typename = void>
 struct sub_callable_with2 : ::rclcpp::tr::false_type {};
 template <typename F, typename A, typename B>
@@ -805,7 +805,7 @@ struct sub_callable_with2<F, A, B,
                           decltype((void)sub_declval<F&>()(sub_declval<A>(), sub_declval<B>()))>
     : ::rclcpp::tr::true_type {};
 
-/// Issue 2036 — the upstream two-argument shapes: the message in one of the
+/// The upstream two-argument shapes: the message in one of the
 /// four forms above, then `const rclcpp::MessageInfo&`. The values are the
 /// one-argument shape's, so `subscription_heap_copy<M, Shape>` serves both.
 /// Detected in the same order, for the same reason (a generic lambda is
@@ -854,7 +854,7 @@ template <typename M, typename F>
 struct subscription_info_callback_shape
     : sub_info_shape_ref<M, typename ::rclcpp::tr::decay<F>::type> {};
 
-/// Issue 2036 — the MessageInfo the runtime reported, in upstream's layout.
+/// The MessageInfo the runtime reported, in upstream's layout.
 inline ::rclcpp::MessageInfo message_info_from_ffi(const nros_cpp_message_info_t& c) {
     ::rclcpp::RmwMessageInfo r;
     r.source_timestamp = c.source_timestamp;
@@ -863,12 +863,12 @@ inline ::rclcpp::MessageInfo message_info_from_ffi(const nros_cpp_message_info_t
     r.reception_sequence_number = c.reception_sequence_number;
     for (int i = 0; i < 24; ++i)
         r.publisher_gid.data[i] = c.publisher_gid[i];
-    // Issue 2074 — carry "the backend reported nothing" through.
+    // Carry "the backend reported nothing" through.
     return ::rclcpp::MessageInfo(r, c.has_info);
 }
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
-/// Issue 2036 — a two-argument callback of shape `Shape`, as a callable taking
+/// A two-argument callback of shape `Shape`, as a callable taking
 /// `(const M&, const MessageInfo&)`: the pointer shapes get one heap copy of
 /// the message per call, as their one-argument twins do.
 template <typename M, typename F, int Shape> struct subscription_info_adapter {
@@ -886,7 +886,7 @@ template <typename M, typename F> struct subscription_info_adapter<M, F, SUB_SHA
     }
 };
 
-/// Issue 2036 — register a `(const M&, const MessageInfo&)` callable. HOSTED:
+/// Register a `(const M&, const MessageInfo&)` callable. HOSTED:
 /// the callable lives on the heap and the registration owns it (freed once,
 /// when the subscription is released, by the runtime calling `drop`). The
 /// runtime takes each sample WITH its metadata
@@ -907,13 +907,13 @@ inline Result register_subscription_message_info(::rclcpp::Node& node, const cha
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     nros_cpp_subscription_options_t opts = {};
     opts.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
-    opts.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
+    opts.stamp_offset = ::rclcpp::stamp_offset<M>::value;
     return Result(nros_cpp_subscription_register_message_info(
         h, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, invoke, heap, drop, out_handle_id, &opts));
 }
 #endif // NROS_CPP_HAS_SHARED_PTR
 
-/// phase-456 W2 — register a capturing callback, with the capture in the ARENA.
+/// Register a capturing callback, with the capture in the ARENA.
 ///
 /// The bridge between `rclcpp::InplaceFn` and
 /// `nros_cpp_subscription_register_capturing`: the callable's bytes are handed
@@ -927,7 +927,7 @@ inline Result register_subscription_message_info(::rclcpp::Node& node, const cha
 template <typename M, typename Fn>
 inline Result register_subscription_capturing(::rclcpp::Node& node, const char* topic,
                                               const QoS& qos, const Fn& fn, size_t* out_handle_id) {
-    // phase-456 W8 — the per-entry capture budget this used to assert is GONE.
+    // The per-entry capture budget this used to assert is GONE.
     // It read `sizeof(Fn) <= NROS_CPP_CALLBACK_CAPACITY + 2 * sizeof(void*)` and
     // named ~~`CALLBACK_CAPTURE_BYTES`~~, an arena constant that no longer exists:
     // the runtime allocates exactly `capture_len` bytes now, so there is no
@@ -947,7 +947,7 @@ inline Result register_subscription_capturing(::rclcpp::Node& node, const char* 
         (*self)(msg);
     };
 
-    // phase-476 W2 — the arena's copy is destroyed when the subscription is
+    // The arena's copy is destroyed when the subscription is
     // released. `Fn` is an `rclcpp::InplaceFn` (the one caller passes one), so
     // `clear()` runs the stored callable's own destructor.
     void (*destroy)(void*) = [](void* ctx) { static_cast<Fn*>(ctx)->clear(); };
@@ -955,7 +955,7 @@ inline Result register_subscription_capturing(::rclcpp::Node& node, const char* 
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     nros_cpp_subscription_options_t opts = {};
     opts.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
-    opts.stamp_offset = ::rclcpp::stamp_offset<M>::value; // issue 2215
+    opts.stamp_offset = ::rclcpp::stamp_offset<M>::value;
     return Result(nros_cpp_subscription_register_capturing(
         h, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, invoke,
         reinterpret_cast<const uint8_t*>(&fn), sizeof(Fn), destroy, out_handle_id, &opts));
@@ -969,12 +969,12 @@ inline Result register_subscription_capturing(::rclcpp::Node& node, const char* 
 // WHAT LEFT THIS HEADER
 // ============================================================================
 //
-// phase-456 W2 deleted `rclcpp::detail::SubscriptionCallback<M>` — the heap
-// cell whose only job was to give a capturing lambda a stable address. W1 put
+// `rclcpp::detail::SubscriptionCallback<M>` is deleted — the heap
+// cell whose only job was to give a capturing lambda a stable address. The arena put
 // the capture in the arena entry, so the cell had nothing left to hold, and
 // `nros.hpp`'s returning `create_subscription` stopped allocating one.
 //
-// phase-456 W2b moved the TAKING API — `take`, `take_sized`, `take_serialized`,
+// The split moved the TAKING API — `take`, `take_sized`, `take_serialized`,
 // `take_serialized_with_attachment`, `take_validated`, `take_validated_sized`,
 // `take_sequence`, `try_borrow` + `View`, `stream()` and the three QoS-event setters — to
 // `rclcpp::PollSubscription<M>` in `rclcpp/polling_subscription.hpp`, together with

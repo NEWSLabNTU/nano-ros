@@ -14,7 +14,7 @@
 #include <cstddef>
 
 #include "rclcpp/result.hpp"
-// phase-417 stage 3 — the refusal vocabulary (`NROS_RCLCPP_REFUSE_*`,
+// The refusal vocabulary (`NROS_RCLCPP_REFUSE_*`,
 // `rclcpp::detail::refuse`, `rclcpp::detail::log_handle`) and the routed
 // `NROS_LOG_*` family both live here. `log.hpp` includes nothing of ours but
 // `std_detect.hpp`, so this cannot cycle.
@@ -23,11 +23,11 @@
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
-// phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
+// `Node` is DEFINED in `rclcpp::` (that namespace is
 // the home), so the forward declaration has to be there too.
 namespace rclcpp {
 class Node;
-// phase-515 P1 -- defined in `rclcpp.hpp`; `Executor::spin_until_future_complete`
+// Defined in `rclcpp.hpp`; `Executor::spin_until_future_complete`
 // returns it. Opaque scoped-enum declaration, underlying type `int` as there.
 enum class FutureReturnCode;
 } // namespace rclcpp
@@ -47,7 +47,7 @@ class NodeBuilder;
 using ShutdownCallback = void (*)(void* context);
 
 /// Handle to a registered shutdown callback — rclcpp's
-/// `rclcpp::ShutdownCallbackHandle`. Issue 0790.
+/// `rclcpp::ShutdownCallbackHandle`.
 ///
 /// rclcpp's handle owns a `std::shared_ptr` to the callback. There is no
 /// allocator here and the callbacks live in a fixed-capacity static table, so
@@ -146,7 +146,7 @@ class Executor {
         if (session_name == nullptr) {
             return Result(-3);
         }
-        // Issue 1050 defect (3) — the same baked RMW selector `rclcpp::init()`
+        // The same baked RMW selector `rclcpp::init()`
         // reads. Both spellings of "open the one session" must apply it, or the
         // bake means one thing on one path and nothing on the other — which is
         // how `BACKENDS` came to read as a declaration that decided nothing.
@@ -163,10 +163,10 @@ class Executor {
         return Result(ret);
     }
 
-    /// Issue 1050 defect (3) — [`create`](Executor::create) against a named RMW
+    /// [`create`](Executor::create) against a named RMW
     /// backend.
     ///
-    /// `rmw` is the baked rung of RFC-0045's precedence model A: a hosted
+    /// `rmw` is the baked rung of the boot-config precedence ladder: a hosted
     /// `$NROS_RMW` still wins, and `nullptr` / `""` means "name none", which
     /// resolves only when exactly one backend is registered. See
     /// `rclcpp::init_with_rmw` for why naming one is sometimes the only way to
@@ -190,11 +190,11 @@ class Executor {
     /// @param name  Node name (null-terminated).
     /// @param ns    Node namespace (null-terminated); nullptr or "" = unset
     ///              (inherit THIS executor's namespace), "/" = the root. See
-    ///              `rclcpp::Node::create` (issue 1473).
+    ///              `rclcpp::Node::create`.
     /// @return Result indicating success or failure.
     Result create_node(::rclcpp::Node& out, const char* name, const char* ns = nullptr);
 
-    /// Phase 104.C.9 — chainable Node-creation builder.
+    /// Chainable Node-creation builder.
     ///
     /// Mirrors Rust's `Executor::node_builder(name).rmw(...).locator(...)
     /// .domain_id(...).namespace(...).sched(...).build()`. Use this when
@@ -208,7 +208,7 @@ class Executor {
     /// Processes pending subscriptions, timers, services, and guard conditions.
     /// Call this periodically in your main loop.
     ///
-    /// **The budget is REQUIRED** — phase-417 stage 3. Upstream's
+    /// **The budget is REQUIRED**. Upstream's
     /// `spin_once(std::chrono::nanoseconds timeout = -1)` blocks indefinitely
     /// by default; this one cannot, so there is no default to give that would
     /// not be a budget the caller never chose. It used to be `= 10`, and a
@@ -218,12 +218,12 @@ class Executor {
     /// `timeout_ms` is refused at the call, for the same reason under the same
     /// message.
     ///
-    /// ADOPT-BOUNDED envelope (RFC-0089 W3.d), and it is the part no signature
+    /// ADOPT-BOUNDED envelope, and it is the part no signature
     /// carries: this dispatches EVERY ready arena entry, where upstream's
-    /// `spin_once` executes the next ONE. RFC-0002 §3 computes the ready bitmap
+    /// `spin_once` executes the next ONE. The executor computes the ready bitmap
     /// once per cycle, so "one item" is not a shape this executor has. A
     /// `spin_once(0)` here is one pass of upstream's `spin_some`, which this
-    /// class now also has under its own name (phase-488, [`spin_some`]).
+    /// class now also has under its own name ([`spin_some`]).
     ///
     /// @param timeout_ms  Maximum time to block waiting for I/O. `0` polls;
     ///                    negative is REFUSED (see above).
@@ -231,13 +231,13 @@ class Executor {
     Result spin_once(int32_t timeout_ms) {
         // FIRST, before the `initialized_` check: the defect is in the VALUE,
         // so it is knowable without a session and a caller must not have to
-        // stand one up to be told (RFC-0089 §"Where the refusal fires"). It
+        // stand one up to be told. It
         // used to be `timeout_ms.max(0)` Rust-side, which turned upstream's
         // "block forever" into a 0 ms poll with no diagnostic at all.
         //
         // `NROS_RCLCPP_SAY_REFUSED`, not the legacy `NROS_ERROR`: the legacy
         // sink is a no-op on every freestanding target, and a refusal nobody
-        // can read on the targets nano-ros exists for is issue 1019 again. It
+        // can read on the targets nano-ros exists for is a silent refusal again. It
         // is also not the `"%s"` printf path, whose 256-byte buffer would cut
         // the message off before the alternative.
         if (timeout_ms < 0) {
@@ -248,7 +248,7 @@ class Executor {
         return Result(nros_cpp_spin_once(storage_, timeout_ms));
     }
 
-    /// **REFUSED** — `spin_once()` with no budget. phase-417 stage 3.
+    /// **REFUSED** — `spin_once()` with no budget.
     ///
     /// A member template with a defaulted parameter, not `= delete`: these
     /// headers are parsed as C++14, where a deleted function carries no
@@ -260,7 +260,7 @@ class Executor {
         return Result(ErrorCode::Unsupported);
     }
 
-    /// `spin_some(max_duration = 0)` — phase-488, rclcpp's drain verb. ADOPT.
+    /// `spin_some(max_duration = 0)` — rclcpp's drain verb. ADOPT.
     ///
     /// Executes everything already ready and returns without waiting for new
     /// work. A callback that makes more work ready (a publish to a topic this
@@ -284,7 +284,7 @@ class Executor {
         return Result(nros_cpp_spin_some(storage_, max_ms));
     }
 
-    /// `spin_all(max_duration)` — phase-515 P2. ADOPT-BOUNDED.
+    /// `spin_all(max_duration)` — ADOPT-BOUNDED.
     ///
     /// rclcpp's "keep collecting and executing until nothing is ready or
     /// `max_duration` expires" is exactly what [`spin_some`] already runs
@@ -298,7 +298,7 @@ class Executor {
         return spin_some(max_duration_ms);
     }
 
-    /// `spin_until_future_complete(future, timeout)` — phase-515 P1.
+    /// `spin_until_future_complete(future, timeout)`.
     /// ADOPT-BOUNDED, the free function's envelope on this executor: the
     /// timeout is `int32_t` MILLISECONDS (`-1`, the default, = unbounded), and
     /// the executor is driven in 10 ms `spin_once` slices, so the deadline is
@@ -307,10 +307,10 @@ class Executor {
     template <typename Future>
     FutureReturnCode spin_until_future_complete(Future&& future, int32_t timeout_ms = -1);
 
-    /// `add_node(node, notify)` — phase-515 P2. ADOPT-BOUNDED.
+    /// `add_node(node, notify)` — ADOPT-BOUNDED.
     ///
-    /// A node's entities live in the arena of the executor that CREATED it
-    /// (RFC-0002), so attachment is already done by [`create_node`]. This
+    /// A node's entities live in the arena of the executor that CREATED it,
+    /// so attachment is already done by [`create_node`]. This
     /// CHECKS it: a node created on this executor is a no-op; any other node
     /// (uninitialised, or created on another executor) aborts naming it,
     /// because spinning this executor would never reach its callbacks.
@@ -318,7 +318,7 @@ class Executor {
     /// wake. Takes rclcpp's `Node::SharedPtr` (or any pointer-like to a node).
     template <typename NodePtr> void add_node(const NodePtr& node, bool notify = true);
 
-    /// **REFUSED** — `remove_node`. phase-515 P2. Registration in the arena
+    /// **REFUSED** — `remove_node`. Registration in the arena
     /// is one-way: no slot is reclaimed and no handle invalidated, so a node
     /// cannot leave the executor that created it. Using the name is a compile
     /// error carrying `NROS_RCLCPP_REFUSE_REMOVE_NODE`.
@@ -329,7 +329,7 @@ class Executor {
         static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_REMOVE_NODE);
     }
 
-    /// `spin_node_some(node)` — phase-515 P2. ADOPT-BOUNDED: [`add_node`]'s
+    /// `spin_node_some(node)` — ADOPT-BOUNDED: [`add_node`]'s
     /// check, then [`spin_some`] on this executor. The envelope: it drains
     /// EVERY node on this executor, not only `node`, because the arena is
     /// indexed by handle, not by node — a node is not a unit of dispatch here.
@@ -338,7 +338,7 @@ class Executor {
         return spin_some();
     }
 
-    /// `spin_node_once(node, timeout)` — phase-515 P2. ADOPT-BOUNDED:
+    /// `spin_node_once(node, timeout)` — ADOPT-BOUNDED:
     /// [`add_node`]'s check, then [`spin_once`] on this executor, which
     /// dispatches every ready entry of every node on it. The budget is
     /// required, as for `spin_once`.
@@ -347,7 +347,7 @@ class Executor {
         return spin_once(timeout_ms);
     }
 
-    /// Phase 124.F.3 — session-level connectivity probe.
+    /// Session-level connectivity probe.
     ///
     /// Wire-level round-trip ("is the peer / agent / router
     /// reachable?") with `timeout_ms` budget. Returns
@@ -363,7 +363,7 @@ class Executor {
         return Result(nros_cpp_executor_ping(storage_, timeout_ms));
     }
 
-    /// phase-381 W4 — every node on the graph, with its namespace.
+    /// Every node on the graph, with its namespace.
     ///
     /// `visit(name, ns, enclave)` is called once per node; `enclave` is
     /// `nullptr` where the backend tracks none, which is what lets one call
@@ -371,7 +371,7 @@ class Executor {
     ///
     /// Takes a plain function pointer plus `ctx` rather than a `std::function`:
     /// this header is compiled `-nostdinc++` against Zephyr's minimal libcpp in
-    /// embedded builds, where `<functional>` does not exist (issue 0112). Every
+    /// embedded builds, where `<functional>` does not exist. Every
     /// string is BORROWED for the duration of the call.
     ///
     /// **Reports what has been DISCOVERED and never blocks.** The first call
@@ -385,7 +385,7 @@ class Executor {
         return Result(nros_cpp_executor_get_node_names(storage_, visit, ctx));
     }
 
-    /// phase-381 W4 — every topic on the graph, with the types on it.
+    /// Every topic on the graph, with the types on it.
     ///
     /// `visit(name, types, types_count)` is called once per distinct TOPIC: a
     /// topic carrying two types is one call with two entries, not two calls.
@@ -396,14 +396,14 @@ class Executor {
         return Result(nros_cpp_executor_get_topic_names_and_types(storage_, visit, ctx));
     }
 
-    /// phase-381 W4 — every service on the graph, with its types. As
+    /// Every service on the graph, with its types. As
     /// [`get_topic_names_and_types`], over servers and clients.
     Result get_service_names_and_types(nros_cpp_names_and_types_visit_fn visit, void* ctx) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_get_service_names_and_types(storage_, visit, ctx));
     }
 
-    /// phase-381 W4 — how many publishers are visible on `topic_name`.
+    /// How many publishers are visible on `topic_name`.
     ///
     /// `topic_name` is a ROS name (`"/chatter"`). The count reflects what has
     /// been DISCOVERED, so it can be low right after startup and is never a
@@ -413,14 +413,14 @@ class Executor {
         return Result(nros_cpp_executor_count_publishers(storage_, topic_name, out_count));
     }
 
-    /// phase-381 W4 — how many subscribers are visible on `topic_name`. See
+    /// How many subscribers are visible on `topic_name`. See
     /// [`count_publishers`] for the caveats.
     Result count_subscribers(const char* topic_name, size_t* out_count) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_count_subscribers(storage_, topic_name, out_count));
     }
 
-    /// Issue 1978 — how many service clients are visible on `service_name`
+    /// How many service clients are visible on `service_name`
     /// (Jazzy `rclcpp::Node::count_clients`). See [`count_publishers`] for the
     /// caveats; a backend with no graph answers `Unsupported`, never 0.
     Result count_clients(const char* service_name, size_t* out_count) {
@@ -428,14 +428,14 @@ class Executor {
         return Result(nros_cpp_executor_count_clients(storage_, service_name, out_count));
     }
 
-    /// Issue 1978 — how many service servers are visible on `service_name`
+    /// How many service servers are visible on `service_name`
     /// (Jazzy `rclcpp::Node::count_services`). See [`count_clients`].
     Result count_services(const char* service_name, size_t* out_count) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_count_services(storage_, service_name, out_count));
     }
 
-    /// phase-381 W4 — what one named node PUBLISHES, with the types.
+    /// What one named node PUBLISHES, with the types.
     Result get_publisher_names_and_types_by_node(const char* node_name, const char* node_namespace,
                                                  nros_cpp_names_and_types_visit_fn visit,
                                                  void* ctx) {
@@ -444,7 +444,7 @@ class Executor {
             storage_, node_name, node_namespace, visit, ctx));
     }
 
-    /// phase-381 W4 — what one named node SUBSCRIBES to, with the types.
+    /// What one named node SUBSCRIBES to, with the types.
     ///
     /// `subscription`, not `subscriber`: the C++ surface takes rclcpp's
     /// vocabulary (`create_subscription`, `Subscription<T>`,
@@ -461,7 +461,7 @@ class Executor {
             storage_, node_name, node_namespace, visit, ctx));
     }
 
-    /// phase-381 W4 — what services one named node SERVES, with the types.
+    /// What services one named node SERVES, with the types.
     Result get_service_names_and_types_by_node(const char* node_name, const char* node_namespace,
                                                nros_cpp_names_and_types_visit_fn visit, void* ctx) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
@@ -469,7 +469,7 @@ class Executor {
             storage_, node_name, node_namespace, visit, ctx));
     }
 
-    /// phase-381 W4 — what services one named node CALLS, with the types.
+    /// What services one named node CALLS, with the types.
     Result get_client_names_and_types_by_node(const char* node_name, const char* node_namespace,
                                               nros_cpp_names_and_types_visit_fn visit, void* ctx) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
@@ -477,7 +477,7 @@ class Executor {
             storage_, node_name, node_namespace, visit, ctx));
     }
 
-    /// phase-381 W4 — the publishers on `topic_name`, one visit each.
+    /// The publishers on `topic_name`, one visit each.
     ///
     /// The endpoint carries no QoS: the GRANTED profile is what would answer
     /// "why is nothing arriving", no backend can read one back yet, and
@@ -490,7 +490,7 @@ class Executor {
             nros_cpp_executor_get_publishers_info_by_topic(storage_, topic_name, visit, ctx));
     }
 
-    /// phase-381 W4 — the subscriptions on `topic_name`, one visit each.
+    /// The subscriptions on `topic_name`, one visit each.
     Result get_subscriptions_info_by_topic(const char* topic_name,
                                            nros_cpp_endpoint_info_visit_fn visit, void* ctx) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
@@ -500,7 +500,7 @@ class Executor {
 
     /// Spin until this executor is shut down (blocking) — `rclcpp::Executor::spin`.
     ///
-    /// Issue 0338 — this verb used to mean the OPPOSITE here: `spin` was the
+    /// This verb used to mean the OPPOSITE here: `spin` was the
     /// BOUNDED form and there was no way to say "spin forever" on an executor,
     /// while `spin` blocks until shutdown in rclcpp, in the C API
     /// (~~`nros_executor_spin`~~) and in Rust. A user porting rclcpp code wrote
@@ -512,13 +512,13 @@ class Executor {
     /// Returns the first non-success `spin_once` result, or success after a
     /// clean cancel.
     ///
-    /// phase-417 W4.c — the loop MOVED. It used to be right here, spelled
+    /// The loop MOVED. It used to be right here, spelled
     /// `while (initialized_)`, which made [`shutdown`] the only way out; and
     /// `shutdown()` calls `nros_cpp_fini`, so a C++ node could not stop spinning
     /// without tearing down the middleware and paying a full discovery round to
     /// come back. Two things were wrong with that: the missing verb, and a
-    /// polling loop living in the wrapper (RFC-0020 violation class 2, the same
-    /// defect issue 0329 fixed for the BOUNDED form). Both are gone —
+    /// polling loop living in the wrapper (thin-wrapper violation class 2, the same
+    /// defect already fixed for the BOUNDED form). Both are gone —
     /// `nros_cpp_spin` is the loop, Rust-side, and this is a forwarder.
     ///
     /// A concurrent `shutdown()` is no longer the supported way to end a spin.
@@ -532,9 +532,9 @@ class Executor {
     }
 
     /// Ask a running [`spin`] to stop, WITHOUT tearing down the session —
-    /// `rclcpp::Executor::cancel`. phase-417 W4.c.
+    /// `rclcpp::Executor::cancel`.
     ///
-    /// ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at
+    /// ADOPT-BOUNDED: `cancel` sets a flag the spin loop observes at
     /// the NEXT POLL BOUNDARY, so it returns BEFORE spinning has actually
     /// stopped; [`is_spinning`] is the observable that tells you when it has.
     /// The boundary is one `poll_ms` wide (the `spin()` argument), so the delay
@@ -556,7 +556,7 @@ class Executor {
     }
 
     /// Is a spin loop running on this executor right now? —
-    /// `rclcpp::Executor::is_spinning`. phase-417 W4.c.
+    /// `rclcpp::Executor::is_spinning`.
     ///
     /// A DIFFERENT question from [`ok`], which answers "is this executor
     /// INITIALISED" — an executor that has never spun is `ok()` and not
@@ -586,7 +586,7 @@ class Executor {
     /// @return Result from the last spin_once call.
     Result spin_for(uint32_t duration_ms, int32_t poll_ms = 10) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        // Issue 0329 — the wall-clock budgeted loop (Phase 118.C: iteration-count
+        // The wall-clock budgeted loop (iteration-count
         // budgeting collapses when `spin_once` returns early on a signaled
         // condvar) now lives once, Rust-side, in `nros_cpp_spin_for`; forward to
         // it so this and `rclcpp::spin()` share one implementation.
@@ -605,7 +605,7 @@ class Executor {
     void* handle() { return storage_; }
 
     /// Register a callback to run BEFORE this executor's entities are torn
-    /// down — rclcpp's `Context::add_pre_shutdown_callback`. Issue 0790.
+    /// down — rclcpp's `Context::add_pre_shutdown_callback`.
     ///
     /// This is the load-bearing half and the one with no workaround. The
     /// callback runs while every publisher, subscription, service and client

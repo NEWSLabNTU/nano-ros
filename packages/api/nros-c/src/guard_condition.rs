@@ -112,8 +112,7 @@ pub extern "C" fn rcl_get_zero_initialized_guard_condition() -> rcl_guard_condit
     rcl_guard_condition_t::default()
 }
 
-/// Create a guard condition on `node` — the ONE creation shape (phase-417
-/// W4.e, RFC-0089 stage 4).
+/// Create a guard condition on `node` — the ONE creation shape.
 ///
 /// A guard condition is the cross-thread / ISR wake source: any thread may call
 /// [`rclc_guard_condition_trigger`] and `callback` runs on the executor's next
@@ -245,16 +244,16 @@ pub unsafe extern "C" fn rclc_node_create_guard_condition(
 }
 
 /// Upstream `rcl_node_get_graph_guard_condition` — a guard condition the
-/// BACKEND triggers when the ROS graph changes (phase-467 Row 8).
+/// BACKEND triggers when the ROS graph changes.
 ///
 /// **Upstream's NAME over [`rclc_node_create_guard_condition`]'s SHAPE, and
 /// that envelope is stated rather than silent.** `rcl_node_get_graph_guard_
 /// condition(node)` RETURNS a borrowed pointer to a guard the node already
 /// owns, and the only documented thing to do with it is
 /// `rcl_wait_set_add_guard_condition`. Two constraints rule that out here:
-/// RFC-0018/0019 forbids returning an owned handle across this seam (every
+/// The thin-wrapper discipline forbids returning an owned handle across this seam (every
 /// entity is created into caller storage, status in the return), and we
-/// decline wait sets entirely (RFC-0002 — one executor per RTOS task). So
+/// decline wait sets entirely (one executor per RTOS task). So
 /// this CREATES a guard condition into `out` with `callback` bound at
 /// creation, exactly like its sibling, and differs from it only in who pulls
 /// the trigger: there the application, here the backend's discovery path. A
@@ -264,8 +263,7 @@ pub unsafe extern "C" fn rclc_node_create_guard_condition(
 /// The callback is an EDGE and carries nothing. "What changed" is answered by
 /// re-reading the graph (`rclc_executor_get_node_names`, `rcl_count_publishers`, …);
 /// delivering a diff would mean buffering the graph, which is the cache a
-/// small target cannot afford, and the ABI slot has said so since phase-376
-/// W4.
+/// small target cannot afford, and the ABI slot has always said so.
 ///
 /// # Ordering
 /// As [`rclc_node_create_guard_condition`]: `node` must be bound to an
@@ -276,7 +274,7 @@ pub unsafe extern "C" fn rclc_node_create_guard_condition(
 /// * `RCL_RET_UNSUPPORTED` — this backend has no graph (XRCE, uORB), asked
 ///   BEFORE anything is consumed, so `out` is untouched and no handle slot is
 ///   spent. Never `OK` with a guard nothing fires: that silent difference is
-///   what RFC-0089 Part I refuses.
+///   what the adoption rule refuses.
 /// * `RCL_RET_INVALID_ARGUMENT` — `node` or `out` is NULL.
 /// * `RCL_RET_NOT_INIT` — the node is uninitialised, is not bound to an
 ///   executor, or that executor has been finalised.
@@ -290,7 +288,7 @@ pub unsafe extern "C" fn rclc_node_create_guard_condition(
 /// Note what `out` is NOT: the backend never receives a pointer to it. The
 /// executor keeps its own handle to the same arena flag and retires it from
 /// the backend before freeing it, so a caller that frees or reuses this
-/// struct cannot leave the backend calling into dead storage — issue 1385's
+/// struct cannot leave the backend calling into dead storage — a known
 /// hazard, designed out rather than fixed afterwards.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_node_get_graph_guard_condition(
@@ -413,7 +411,7 @@ pub unsafe extern "C" fn rclc_guard_condition_trigger(
 
 /// rcl's spelling of [`rclc_guard_condition_trigger`], forwarding to it.
 ///
-/// Kept, not retired: rcl HAS this name, and RFC-0089's alias rule makes a name
+/// Kept, not retired: rcl HAS this name, and the adoption rule's alias clause makes a name
 /// upstream has load-bearing rather than a courtesy — a ported rcl node writes
 /// `rcl_trigger_guard_condition(&gc)` and must keep compiling. It is not
 /// deprecated for the same reason.
@@ -429,7 +427,7 @@ pub unsafe extern "C" fn rcl_trigger_guard_condition(
 
 /// Is this guard condition triggered and not yet dispatched?
 ///
-/// The RFC-0022 POLLING tier: a task that owns its own loop and never calls a
+/// The POLLING tier: a task that owns its own loop and never calls a
 /// callback still needs to see the flag another thread or an ISR set. rcl has
 /// no such reader, so this is ours.
 ///
@@ -503,8 +501,8 @@ pub unsafe extern "C" fn rclc_guard_condition_is_valid(
 /// and returns `RCL_RET_OK`. A NULL pointer is still
 /// `RCL_RET_INVALID_ARGUMENT`.
 ///
-/// That is rcl's contract, MEASURED rather than assumed (phase-417 stage 3 —
-/// the ledger row carried an explicit evidence bound because the host it was
+/// That is rcl's contract, MEASURED rather than assumed (the
+/// ledger row carried an explicit evidence bound because the host it was
 /// written on had only the Humble headers, which do not state the guarantee in
 /// words). `rcl/src/rcl/guard_condition.c` @ humble:
 ///

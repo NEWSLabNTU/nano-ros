@@ -1,6 +1,6 @@
 //! Guard condition FFI functions for the C++ API.
 //!
-//! Issue 0436 — user-supplied executor handles are tag-validated via
+//! User-supplied executor handles are tag-validated via
 //! `cpp_ctx_checked` instead of being blind-cast to `*mut CppContext`.
 
 use core::ffi::c_void;
@@ -28,7 +28,7 @@ pub type nros_cpp_guard_callback_t = Option<unsafe extern "C" fn(context: *mut c
 /// directly into this buffer.
 ///
 /// `out_handle_id`, when non-null, receives the entry's handle — what
-/// `nros_cpp_guard_condition_release` takes (issue 1667).
+/// `nros_cpp_guard_condition_release` takes.
 ///
 /// # Safety
 /// `executor_handle` and `storage` must be valid pointers; `out_handle_id` must
@@ -97,7 +97,7 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_trigger(storage: *mut c_void) 
 
 /// Is this guard condition triggered and not yet dispatched?
 ///
-/// phase-417 W4.e — the RFC-0022 polling reader C has had all along, which C++
+/// The polling reader C has had all along, which C++
 /// and Rust did not: the ledger's `c:guard_condition_is_triggered` recorded
 /// "a polling C++ or Rust user cannot do what a polling C user can" as a
 /// three-language disagreement, and stage 4 is where those close. The executor
@@ -129,7 +129,7 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_clear(storage: *mut c_void) ->
     NROS_CPP_RET_OK
 }
 
-/// Release a guard condition's arena entry — issue 1667: `spin_once` stops
+/// Release a guard condition's arena entry: `spin_once` stops
 /// polling it, its callback is dropped, and the slot and bytes go to the next
 /// registration.
 ///
@@ -157,12 +157,12 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_release(
     }
 }
 
-/// Drop a guard condition's local storage — a no-op drop (issue 1496).
+/// Drop a guard condition's local storage — a no-op drop.
 ///
 /// `nros_node::GuardCondition` is `{ &'static AtomicBool, Option<fn>, *mut
 /// c_void }` — no field has drop glue, so the `drop_in_place` below **runs no
 /// destructor**. The arena entry the flag lives in is freed separately, by
-/// `nros_cpp_guard_condition_release` (issue 1667), which the C++ destructor
+/// `nros_cpp_guard_condition_release`, which the C++ destructor
 /// calls first.
 ///
 /// # Safety

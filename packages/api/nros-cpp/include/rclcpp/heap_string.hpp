@@ -4,7 +4,7 @@
 // Memory layout is repr(C) compatible: identical to
 // `struct { char* data; size_t size; size_t capacity; }` (rclc's
 // `rosidl_runtime_c__String` shape). Used by codegen-generated message structs
-// for `mode = "heap"` string fields (RFC-0033) — the bridgeable analog of
+// for `mode = "heap"` string fields — the bridgeable analog of
 // rclcpp's `std::string` (whose layout is not repr(C), so it cannot cross the
 // Rust↔C++ FFI directly).
 //
@@ -27,13 +27,13 @@
 
 #include <nros/platform.h>
 
-// phase-417 W1.c — `std::string` interop, gated exactly as `fixed_string.hpp`
+// `std::string` interop, gated exactly as `fixed_string.hpp`
 // gates it, on `NROS_CPP_HAS_STD_STRING` from the one detection site.
 #include "rclcpp/detail/std_detect.hpp"
 
 namespace rclcpp {
 
-/// Heap-backed string container (`mode = "heap"`, RFC-0033).
+/// Heap-backed string container (`mode = "heap"`).
 ///
 /// Layout `{ char* data; size_t size; size_t capacity; }` — C-ABI compatible
 /// with the runtime and the Rust FFI mirror. Owns its buffer (freed in the
@@ -117,9 +117,9 @@ struct HeapString {
     bool operator!=(const char* s) const { return !(*this == s); }
 
 #ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
-    // phase-417 W1.c — `std::string` interop, the same conversions
+    // `std::string` interop, the same conversions
     // `FixedString<N>` carries, so a ported assignment reads identically
-    // whichever string mode (RFC-0033) codegen picked for the field.
+    // whichever string mode codegen picked for the field.
     //
     // These COPY and call through to `assign()`; no data member is added, so
     // the `{ char* data; size_t size; size_t capacity; }` repr(C) layout this
@@ -127,7 +127,7 @@ struct HeapString {
     //
     // NOTE the divergence from `std::string`, which is why `assign()` stays
     // the verb for anything that must handle failure: `std::string` THROWS on
-    // allocation failure and nano-ros has no exceptions (RFC-0018), so
+    // allocation failure and nano-ros has no exceptions, so
     // `operator=` cannot report one. It leaves the string EMPTY rather than
     // stale, which `empty()` can see.
 

@@ -19,7 +19,7 @@
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
-// phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
+// `Node` is DEFINED in `rclcpp::` (that namespace is
 // the home). The friend declaration below is qualified, and a qualified friend
 // names an existing entity rather than introducing one, so the name has to be
 // declared first — and in `rclcpp::`, because an elaborated `class Node;` in
@@ -62,11 +62,11 @@ class GuardCondition {
 
     /// Is this guard condition triggered and not yet dispatched?
     ///
-    /// The RFC-0022 polling tier: a task that owns its own loop and never
+    /// The polling tier: a task that owns its own loop and never
     /// reaches `spin_once` still needs to see the flag another thread or an ISR
     /// set. rcl and rclcpp have no such reader — a wait set is the only way to
-    /// observe an rclcpp guard condition — so this is ours, and phase-417 W4.e
-    /// gave C++ and Rust the reader C already had.
+    /// observe an rclcpp guard condition — so this is ours, and C++ and Rust
+    /// now have the reader C already had.
     ///
     /// The executor CONSUMES the flag when it dispatches, so this answers "set
     /// and not yet dispatched": poll it or take the callback, not both.
@@ -82,7 +82,7 @@ class GuardCondition {
         return Result(nros_cpp_guard_condition_clear(storage_));
     }
 
-    /// Destructor — releases the guard condition (issue 1667): its executor
+    /// Destructor — releases the guard condition: its executor
     /// entry is freed, so `spin_once` stops polling it and the callback slot
     /// goes back to `NROS_EXECUTOR_MAX_CBS`. Sound because this object is
     /// non-copyable and the only holder of the trigger handle; trigger it from
@@ -95,7 +95,7 @@ class GuardCondition {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // `nros_cpp_guard_condition_relocate` runtime call (Phase 84.C1).
+    // `nros_cpp_guard_condition_relocate` runtime call.
     GuardCondition(GuardCondition&& other)
         : initialized_(other.initialized_), closure_(other.closure_), executor_(other.executor_),
           handle_id_(other.handle_id_) {
@@ -163,7 +163,7 @@ class GuardCondition {
     bool initialized_;
 
     /// Owns the closure block (if any) — `detail::HostedBlockBase*`, erased.
-    /// UNCONDITIONAL: see `Timer::closure_` and issue 1225.
+    /// UNCONDITIONAL: see `Timer::closure_`.
     void* closure_;
 
     /// The executor and the generation-carrying entry handle, for the release.

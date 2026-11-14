@@ -1,6 +1,6 @@
 /**
  * @file string.h
- * @brief rosidl's C string, in rosidl's shape (phase-492 W7, RFC-0089).
+ * @brief rosidl's C string, in rosidl's shape.
  *
  * `rosidl_runtime_c__String` and `rosidl_runtime_c__String__Sequence` are
  * `{data, size, capacity}` over memory the CALLER owns: `data` holds `size`
@@ -18,8 +18,8 @@
  *
  * NOT declared: rosidl's `rosidl_runtime_c__String__init` / `__fini` /
  * `__assign` / `__assignn` and the `__Sequence__init` / `__fini` pair. They
- * allocate in rosidl, and nano-ros never allocates on a message's behalf
- * (RFC-0105 D10). A ported call fails to compile and names the alternative:
+ * allocate in rosidl, and nano-ros never allocates on a message's behalf.
+ * A ported call fails to compile and names the alternative:
  * point `data` at your own buffer, or wire a whole message with the generated
  * `<Msg>__init_in(&msg, &storage)`.
  */

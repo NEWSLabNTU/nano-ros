@@ -24,7 +24,7 @@
  *                          reads of DISCOVERY state and need no caller storage
  *                          once their FFI can be handed an arena index.
  *
- * WHY THE DRAINING API LIVES HERE — phase-456 W9, following W2b and W5
+ * WHY THE DRAINING API LIVES HERE
  *
  * It used to live on `rclcpp::Client<S>`, which served BOTH ownership models
  * behind a ~~`callback_mode_`~~ flag. On the dispatch path the arena owns the client
@@ -42,7 +42,7 @@
  * distinction it draws is worth keeping: two of those verbs read nothing of the
  * caller's. `wait_for_service` and `service_is_ready` ask the backend about
  * DISCOVERY, so once their FFI takes `(executor, handle_id)` beside `storage` —
- * the shape `nros_cpp_service_client_get_actual_qos` has had since issue 1437 —
+ * the shape `nros_cpp_service_client_get_actual_qos` has had for a while —
  * the dispatch half answers them on upstream's own spelling. The four that
  * remain here (`send_request`, `call`, `call_polling`, the `_sized` forms) read
  * an `RmwServiceClient` and a reply buffer the CALLER owns, and no arena index
@@ -70,17 +70,17 @@
 #include <cstddef>
 
 #include "rclcpp/detail/config.hpp"
-#include "rclcpp/detail/entity_name.hpp" // phase-444 — the one entity-name copy
+#include "rclcpp/detail/entity_name.hpp" // The one entity-name copy
 #include "rclcpp/future.hpp"
-#include "rclcpp/detail/driven_future.hpp" // issue 2037 — what share() returns
-#include "rclcpp/logging.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
+#include "rclcpp/detail/driven_future.hpp" // What share() returns
+#include "rclcpp/logging.hpp"              // NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "rclcpp/result.hpp"
 #include "rclcpp/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
-#include "rclcpp/detail/rmw_request_id.hpp" // issue 2148 — take_response's request header
+#include "rclcpp/detail/rmw_request_id.hpp" // take_response's request header
 
-// Issue 2148 — excluded from cbindgen (its Rust signature names
+// Excluded from cbindgen (its Rust signature names
 // `nros_node::RawRequestId`, an external-crate type); declared here against
 // `rmw_request_id_t`, the same 24-byte layout.
 extern "C" {
@@ -91,12 +91,12 @@ nros_cpp_ret_t nros_cpp_service_client_take_response_with_request_id(void* stora
                                                                      rmw_request_id_t* request_id);
 } // extern "C"
 
-// Issue 2009 — the header's spelling of "no id" and the FFI's must agree, or a
+// The header's spelling of "no id" and the FFI's must agree, or a
 // future would treat a backend's "no id" as a real one.
 static_assert(::rclcpp::detail::SEQUENCE_ID_UNKNOWN == NROS_CPP_SEQUENCE_ID_UNKNOWN,
               "rclcpp::detail::SEQUENCE_ID_UNKNOWN drifted from NROS_CPP_SEQUENCE_ID_UNKNOWN");
 
-// issue 1437 — the two granted-QoS accessors return a `rclcpp::QoS` BY VALUE from
+// The two granted-QoS accessors return a `rclcpp::QoS` BY VALUE from
 // an inline body, so the complete type must be here, not only by the time
 // `rclcpp/node.hpp` is pulled in below.
 //
@@ -105,7 +105,7 @@ static_assert(::rclcpp::detail::SEQUENCE_ID_UNKNOWN == NROS_CPP_SEQUENCE_ID_UNKN
 // reaching it first makes the cbindgen header a REDEFINITION of all four.
 #include "rclcpp/qos.hpp"
 
-// phase-427 W7 — `Node` is DEFINED in `rclcpp::`. The friend declaration below
+// `Node` is DEFINED in `rclcpp::`. The friend declaration below
 // is qualified, and a qualified friend names an existing entity rather than
 // introducing one, so the name has to be declared first — and in `rclcpp::`,
 // because an elaborated `class Node;` in `rclcpp::` would declare a second,
@@ -118,7 +118,7 @@ namespace rclcpp {
 
 /// Poll-style service client — caller-owned storage, caller-driven reply.
 ///
-/// phase-456 W9: this is the class `rclcpp::Client<S>` used to be when it was
+/// This is the class `rclcpp::Client<S>` used to be when it was
 /// created through the out-ref `create_client(out, name, qos)`.
 ///
 /// Usage (future — preferred):
@@ -143,19 +143,19 @@ template <typename S> class PollClient {
 
     struct SharedFutureAndRequestId;
 
-    /// `rclcpp::Client<S>::FutureAndRequestId` — issue 2037. ADOPT-BOUNDED.
+    /// `rclcpp::Client<S>::FutureAndRequestId`. ADOPT-BOUNDED.
     ///
     /// What `async_send_request` returns: the request's future as the public
     /// member `future` and its sequence id as `request_id`, the id
     /// `remove_pending_request(request_id)` takes and the id the reply is
-    /// matched on (issue 2009). `get()`, `wait_for()`, `valid()` and the
+    /// matched on. `get()`, `wait_for()`, `valid()` and the
     /// `is_ready()` that `spin_until_future_complete` polls forward to
     /// `future`, as upstream's do; `share()` turns it into a
     /// `SharedFutureAndRequestId` several waiters can hold.
     ///
     /// THE BOUND: `future` is an `rclcpp::Future<Response>`, not a
-    /// `std::future`. Nothing here fulfils a promise from another thread
-    /// (RFC-0021), so its waits DRIVE the executor instead (`wait_for`,
+    /// `std::future`. Nothing here fulfils a promise from another thread,
+    /// so its waits DRIVE the executor instead (`wait_for`,
     /// `rclcpp::Future::get` after the reply); it has the members a ported
     /// caller uses — `get()` returning `std::shared_ptr<Response>`,
     /// `wait_for()`, `valid()` — and `share()` is where a real
@@ -181,14 +181,14 @@ template <typename S> class PollClient {
         ::std::shared_ptr<ResponseType> get() { return future.get(); }
 #endif
 #if defined(NROS_CPP_HAS_STD_FUTURE) // hosted-family: future-interop
-        /// `future.wait_for(timeout)`, which drives the executor (issue 1996).
+        /// `future.wait_for(timeout)`, which drives the executor.
         template <typename Rep, typename Period>
         ::std::future_status wait_for(::std::chrono::duration<Rep, Period> timeout) {
             return future.wait_for(timeout);
         }
 #endif
 #if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
-        /// `share()` — issue 2037. Moves the future into shared state and returns
+        /// `share()`. Moves the future into shared state and returns
         /// a `SharedFutureAndRequestId` whose `future` IS-A
         /// `std::shared_future<std::shared_ptr<Response>>`
         /// (`rclcpp::detail::DrivenSharedFuture`): copy it to as many waiters as
@@ -200,7 +200,7 @@ template <typename S> class PollClient {
             return PollClient::share_request(static_cast<FutureAndRequestId&&>(*this));
         }
 #else
-        /// **REFUSED** without `std::promise` — issue 2037: a freestanding
+        /// **REFUSED** without `std::promise`: a freestanding
         /// build, or a hosted libstdc++ without threads. Keep the one
         /// `FutureAndRequestId` and read it with `future.try_take` / `wait`.
         template <typename T = void> void share() {
@@ -210,12 +210,12 @@ template <typename S> class PollClient {
     };
 
 #if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
-    /// `rclcpp::Client<S>::SharedFuture` — issue 2037: a
+    /// `rclcpp::Client<S>::SharedFuture`: a
     /// `std::shared_future<SharedResponse>` that drives the executor while it
     /// waits (`rclcpp::detail::DrivenSharedFuture`).
     using SharedFuture = ::rclcpp::detail::DrivenSharedFuture<::std::shared_ptr<ResponseType>>;
 
-    /// `rclcpp::Client<S>::SharedFutureAndRequestId` — issue 2037: what
+    /// `rclcpp::Client<S>::SharedFutureAndRequestId`: what
     /// `FutureAndRequestId::share()` returns. Copyable; every copy's `get()`
     /// returns the same response.
     struct SharedFutureAndRequestId {
@@ -238,7 +238,7 @@ template <typename S> class PollClient {
     /// Call `wait()` on the returned future to block until the response
     /// arrives, or poll with `is_ready()` / `try_take()`.
     ///
-    /// Issue 2009 — the future is keyed by the request's sequence id, so any
+    /// The future is keyed by the request's sequence id, so any
     /// number may be in flight on this client and each gets its own reply. See
     /// `rclcpp::detail::PendingList` for the bound.
     ///
@@ -256,7 +256,7 @@ template <typename S> class PollClient {
     ///
     /// The receive buffer of a `Future<T>` is a member, so the capacity is a
     /// class template argument rather than a function one: this returns a
-    /// `Future<ResponseType, RespCap>` (issue 0964). The request buffer is a
+    /// `Future<ResponseType, RespCap>`. The request buffer is a
     /// transmit scratch buffer and is deliberately left on the estimate --
     /// over-sizing there only wastes stack.
     ///
@@ -265,7 +265,7 @@ template <typename S> class PollClient {
     ::rclcpp::Future<ResponseType, RespCap> send_request_sized(const RequestType& req) {
         using Fut = ::rclcpp::Future<ResponseType, RespCap>;
         if (!initialized_) return Fut();
-        // Issue 2009 — a backend that sent the last request WITHOUT an id can
+        // A backend that sent the last request WITHOUT an id can
         // keep only that one in flight: a second reply could not be told apart.
         if (!pending_.can_send()) return Fut();
 
@@ -280,15 +280,15 @@ template <typename S> class PollClient {
             nros_cpp_service_client_send_request_seq(storage_, req_buf, req_len, &seq);
         if (ret != 0) return Fut();
 
-        // Issue 2009 — keyed by `seq` and linked into this client's pending
+        // Keyed by `seq` and linked into this client's pending
         // list: the reply naming `seq` reaches this future and no other.
         return Fut(storage_, &nros_cpp_service_client_take_response_seq, seq, &pending_,
-                   executor_ // what `Future::wait_for` drives (issue 1996)
+                   executor_ // what `Future::wait_for` drives
         );
     }
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
-    /// `rclcpp::Client::async_send_request(SharedRequest)` — issue 1996.
+    /// `rclcpp::Client::async_send_request(SharedRequest)`.
     /// ADOPT-BOUNDED.
     ///
     /// The stock client builds its request with `std::make_shared` and hands
@@ -297,7 +297,7 @@ template <typename S> class PollClient {
     /// `rclcpp::Future`, which `spin_until_future_complete` takes and whose
     /// `get()` returns the reply as a `std::shared_ptr<Response>`.
     ///
-    /// The future is keyed by the request's sequence id (issue 2009), as
+    /// The future is keyed by the request's sequence id, as
     /// upstream's is: several may be in flight on one client and each gets its
     /// own reply. THE BOUND is `send_request`'s: the transport's own
     /// outstanding-request limit, past which the send is refused and the
@@ -307,7 +307,7 @@ template <typename S> class PollClient {
     /// Absent on a freestanding build, where there is no `<memory>`: send the
     /// request by reference with `send_request(req)`.
     ///
-    /// Issue 2037 — returns upstream's `FutureAndRequestId`: the future as
+    /// Returns upstream's `FutureAndRequestId`: the future as
     /// `.future` and the request's sequence id as `.request_id`, with `get()`,
     /// `wait_for()`, `valid()` and `share()` beside them.
     FutureAndRequestId async_send_request(const ::std::shared_ptr<RequestType>& request) {
@@ -319,7 +319,7 @@ template <typename S> class PollClient {
 #endif // NROS_CPP_HAS_SHARED_PTR
 
 #if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
-    /// `rclcpp::Client::async_send_request(request, callback)` — issue 2055.
+    /// `rclcpp::Client::async_send_request(request, callback)`.
     /// ADOPT-BOUNDED.
     ///
     /// Sends `*request` as the one-argument form does and returns the request
@@ -358,7 +358,7 @@ template <typename S> class PollClient {
     }
 #endif
 
-    /// `rclcpp::Client::remove_pending_request(future)` — issue 1996.
+    /// `rclcpp::Client::remove_pending_request(future)`.
     /// ADOPT-BOUNDED.
     ///
     /// Forgets the request `future` is waiting on: the future is cancelled
@@ -367,8 +367,8 @@ template <typename S> class PollClient {
     /// client, false if it was already taken or cancelled, or belongs to
     /// another client — upstream's "was it in the pending map".
     ///
-    /// As upstream does, this erases the request keyed by its sequence number
-    /// (issue 2009): a reply that arrives later is DROPPED, never taken by a
+    /// As upstream does, this erases the request keyed by its sequence number:
+    /// a reply that arrives later is DROPPED, never taken by a
     /// future this client hands out afterwards.
     ///
     /// THE BOUND, for a backend that cannot assign ids only: the late reply
@@ -384,20 +384,20 @@ template <typename S> class PollClient {
         return true;
     }
 
-    /// `remove_pending_request(const FutureAndRequestId&)` — issue 2037: the
+    /// `remove_pending_request(const FutureAndRequestId&)`: the
     /// stock `minimal_client`'s spelling, on what `async_send_request` returns.
     bool remove_pending_request(FutureAndRequestId& future) {
         return remove_pending_request(future.future);
     }
 
-    /// `remove_pending_request(int64_t request_id)` — issue 2037. Forgets the
+    /// `remove_pending_request(int64_t request_id)`. Forgets the
     /// pending request with that sequence id: the future waiting on it becomes
     /// invalid and a reply that arrives later is dropped. False when this
     /// client has no pending request with that id.
     bool remove_pending_request(int64_t request_id) { return pending_.remove_seq(request_id); }
 
 #if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
-    /// `remove_pending_request(const SharedFutureAndRequestId&)` — issue 2037:
+    /// `remove_pending_request(const SharedFutureAndRequestId&)`:
     /// by its request id. Every copy of the shared future then settles to a
     /// null response on its next poll.
     bool remove_pending_request(const SharedFutureAndRequestId& future) {
@@ -405,7 +405,7 @@ template <typename S> class PollClient {
     }
 #endif
 
-    /// `rclcpp::Client::prune_pending_requests()` — issue 2009.
+    /// `rclcpp::Client::prune_pending_requests()`.
     ///
     /// Forgets every request this client has in flight, exactly as
     /// `remove_pending_request` forgets one: each waiting future becomes
@@ -427,7 +427,7 @@ template <typename S> class PollClient {
         return call_sized<::rclcpp::rx_buffer_capacity<ResponseType>::value>(req, resp, timeout_ms);
     }
 
-    /// @ref call with the REPLY buffer sized by the caller (issue 0964).
+    /// @ref call with the REPLY buffer sized by the caller.
     template <size_t RespCap>
     Result call_sized(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 5000) {
         if (!initialized_ || !executor_) return Result(::rclcpp::ErrorCode::NotInitialized);
@@ -435,10 +435,10 @@ template <typename S> class PollClient {
         return fut.wait(executor_, timeout_ms, resp);
     }
 
-    /// Issue 0278 (Half B) — send a request and block up to `timeout_ms` for the
+    /// Send a request and block up to `timeout_ms` for the
     /// reply WITHOUT spinning the executor, so this is safe to call from inside
     /// a subscription/timer callback (where `call()`/`Future::wait` would return
-    /// `Reentrant`, issue 0290). It sends then sleep-polls the reply queue.
+    /// `Reentrant`). It sends then sleep-polls the reply queue.
     ///
     /// CONSTRAINT: usable from a callback only on a MULTI-THREADED backend
     /// (zenoh MT, cyclonedds), where the backend's own read task delivers the
@@ -482,7 +482,7 @@ template <typename S> class PollClient {
         return Result::success();
     }
 
-    /// `rclcpp::Client::take_response(response, request_header)` — issue 2148.
+    /// `rclcpp::Client::take_response(response, request_header)`.
     ///
     /// Takes the next reply off this client WITH its request header, upstream
     /// `rmw_take_response`'s `rmw_request_id_t`:
@@ -504,7 +504,7 @@ template <typename S> class PollClient {
     ///         ErrorCode::Error (the reply did not deserialize) otherwise.
     ///
     /// UPSTREAM PARITY: upstream returns `bool` and throws on a failed take;
-    /// RFC-0018 forbids exceptions, so a failure and "no reply yet" are
+    /// the C++ API has no exceptions, so a failure and "no reply yet" are
     /// distinguished by the `Result` instead — whose explicit `operator bool`
     /// keeps `if (client.take_response(resp, header))` compiling.
     Result take_response(ResponseType& response, rmw_request_id_t& request_header) {
@@ -535,7 +535,7 @@ template <typename S> class PollClient {
     /// Check if the client is initialized and valid.
     bool is_valid() const { return initialized_; }
 
-    /// Read back the service name this client was created on — phase-444.
+    /// Read back the service name this client was created on.
     ///
     /// See @ref rclcpp::Client::get_service_name, which is the same accessor on
     /// the dispatch half and states why each half keeps its own copy of the name
@@ -543,7 +543,7 @@ template <typename S> class PollClient {
     const char* get_service_name() const { return initialized_ ? service_name_ : ""; }
 
     /// The QoS the backend GRANTED this client's REQUEST endpoint — the
-    /// publisher that sends calls. Issue 1437.
+    /// publisher that sends calls.
     ///
     /// ONE create builds TWO endpoints that negotiate against DIFFERENT peers,
     /// so this and @ref get_response_subscription_actual_qos are two answers and
@@ -552,22 +552,22 @@ template <typename S> class PollClient {
     /// back — see @ref Publisher::get_actual_qos.
     ///
     /// This half OWNS its `RmwServiceClient`, so it passes `storage_` and the
-    /// ~~`callback_mode_`~~ branch issue 1437 needed is gone. See
+    /// ~~`callback_mode_`~~ branch is gone. See
     /// @ref rclcpp::Client::get_request_publisher_actual_qos for why the
     /// dispatch half answers too — the client comes out the way the SERVICE did
-    /// and not the way the subscription did, because issue 1437 gave both
-    /// service halves an `executor_` beside the index.
+    /// and not the way the subscription did, because both
+    /// service halves have an `executor_` beside the index.
     ///
     /// UPSTREAM PARITY: upstream has no poll-style service client, so the method
     /// name is borrowed from `rclcpp::Client` on the type that is ours.
     ::rclcpp::QoS get_request_publisher_actual_qos() const { return actual_qos_half(true); }
 
     /// The QoS the backend GRANTED this client's RESPONSE endpoint — the
-    /// subscription that receives replies. Issue 1437; see
+    /// subscription that receives replies. See
     /// @ref get_request_publisher_actual_qos.
     ::rclcpp::QoS get_response_subscription_actual_qos() const { return actual_qos_half(false); }
 
-    /// Phase 124.C.3 — graph-aware "is the matching server up?" probe.
+    /// Graph-aware "is the matching server up?" probe.
     ///
     /// Returns the count from the RMW backend's matched-server view:
     /// * `1`  — at least one matching server is currently visible.
@@ -582,7 +582,7 @@ template <typename S> class PollClient {
     /// but with a tri-state result instead of collapsing
     /// "don't know" and "no" into the same `false`.
     ///
-    /// phase-456 W9 put this on THIS half only, because
+    /// The split put this on THIS half only, because
     /// `nros_cpp_service_client_server_available` read the `RmwServiceClient` in
     /// `storage_` and a dispatch client has none. The 2026-09-28 follow-up gave
     /// that entry point the `(executor, handle_id)` arm, so `rclcpp::Client<S>`
@@ -601,7 +601,7 @@ template <typename S> class PollClient {
         return ::rclcpp::ResultOf<bool>::ok(out != 0);
     }
 
-    /// phase-338 W8 — block until a matching service server is discoverable.
+    /// Block until a matching service server is discoverable.
     ///
     /// Mirrors `rclcpp::ClientBase::wait_for_service`. Prefer this over
     /// hand-rolling a retry loop around the first `call()` / `send_request()`:
@@ -614,11 +614,11 @@ template <typename S> class PollClient {
     /// inside a callback — use the non-blocking `service_is_ready()` there.
     ///
     /// Returns ok when the server is visible, `Timeout` when the budget
-    /// elapses, `Unsupported` at once when the backend cannot know (XRCE —
-    /// issue 1686; a caller that may send blind proceeds).
+    /// elapses, `Unsupported` at once when the backend cannot know (XRCE;
+    /// a caller that may send blind proceeds).
     ///
-    /// **The budget is REQUIRED** — phase-417 stage 3. Upstream's default is
-    /// `-1`, WAIT FOREVER; this call cannot (RFC-0021: it drives the executor
+    /// **The budget is REQUIRED**. Upstream's default is
+    /// `-1`, WAIT FOREVER; this call cannot (the blocking-API rule: it drives the executor
     /// cooperatively, and a wait that never returns starves every other entity
     /// on a single-threaded transport), and `uint32_t` has no value to port -1
     /// to. It used to default to 5000, so a ported argument-free
@@ -628,7 +628,7 @@ template <typename S> class PollClient {
     /// The no-argument form is now a compile error carrying
     /// `NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT`.
     ///
-    /// phase-456 W9 put this on THIS half only; the 2026-09-28 follow-up gave
+    /// The split put this on THIS half only; the 2026-09-28 follow-up gave
     /// the FFI the arena arm, so the dispatch half answers it too — see
     /// @ref service_is_ready. This half passes its own `storage_` and a
     /// `handle_id` the FFI ignores on that road.
@@ -637,7 +637,7 @@ template <typename S> class PollClient {
         return Result(nros_cpp_service_client_wait_for_service(storage_, executor_, 0, timeout_ms));
     }
 
-    /// **REFUSED** — `wait_for_service()` with no budget. phase-417 stage 3.
+    /// **REFUSED** — `wait_for_service()` with no budget.
     ///
     /// A member template rather than `= delete` for the C++14 reason given on
     /// `Executor::spin_once()`: a deleted function carries no message there.
@@ -647,7 +647,7 @@ template <typename S> class PollClient {
     }
 
 #ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop
-    /// `wait_for_service(std::chrono::duration)` — phase-488, upstream's argument type.
+    /// `wait_for_service(std::chrono::duration)` — upstream's argument type.
     /// The same wait as the millisecond form, with the budget rounded UP and
     /// clamped to `UINT32_MAX` ms; a NEGATIVE duration (upstream's "forever")
     /// is refused at the call. Still returns `Result`, whose explicit
@@ -665,16 +665,16 @@ template <typename S> class PollClient {
 
     /// Destructor -- releases the service client.
     ///
-    /// Unconditional since phase-456 W9: every `PollClient<S>` owns an
+    /// Unconditional: every `PollClient<S>` owns an
     /// `RmwServiceClient` in `storage_`. The `!callback_mode_` guard this
     /// replaced existed because one class served two owners; the dispatch entity
     /// is `rclcpp::Client<S>` now and has no storage to free.
     ///
-    /// Issue 2009 — a future still waiting on this client becomes invalid
+    /// A future still waiting on this client becomes invalid
     /// (`valid()` false) rather than pointing at freed storage.
     ~PollClient() {
 #if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
-        drop_callback_pump();         // issue 2055 — its timer stops before the requests go
+        drop_callback_pump();         // its timer stops before the requests go
 #endif
         pending_.orphan_all();
         if (initialized_) {
@@ -684,7 +684,7 @@ template <typename S> class PollClient {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // `nros_cpp_service_client_relocate` runtime call (Phase 84.C1). Issue
+    // `nros_cpp_service_client_relocate` runtime call. Issue
     // 2009 — the futures pending on `other` follow the client to its new
     // address; the ones pending on a client that is moved OVER are orphaned.
     PollClient(PollClient&& other)
@@ -737,7 +737,7 @@ template <typename S> class PollClient {
     friend class ::rclcpp::Node;
 
 #if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
-    /// Issue 2037 — what a `SharedFutureAndRequestId` drives: the request's own
+    /// What a `SharedFutureAndRequestId` drives: the request's own
     /// future, moved off the caller, and the promise every copy waits on. The
     /// pump cell is the first member so a `shared_ptr<PumpCell>` can alias this
     /// object and keep it alive for as long as any copy exists.
@@ -763,7 +763,7 @@ template <typename S> class PollClient {
         }
     };
 
-    /// Issue 2055 — the requests that were given a callback, and the timer
+    /// The requests that were given a callback, and the timer
     /// that runs them. On the heap, so the timer's context survives the
     /// client being moved; the client's destructor releases the timer.
     struct CallbackPump {
@@ -847,7 +847,7 @@ template <typename S> class PollClient {
 #endif
 
     /// The two directions differ only in which out-pointer is read, so one
-    /// body serves both and they cannot end up swapped (issue 1437).
+    /// body serves both and they cannot end up swapped.
     ///
     /// `executor` is always NULL and `handle_id` always 0 here: this half owns
     /// its client, so `storage_` is the road, and the FFI takes exactly one of
@@ -866,15 +866,15 @@ template <typename S> class PollClient {
     alignas(8) uint8_t storage_[NROS_SERVICE_CLIENT_SIZE];
     void* executor_;
     bool initialized_;
-    /// Issue 2009 — the futures this client has requests in flight for, keyed
+    /// The futures this client has requests in flight for, keyed
     /// by sequence id. Two words; the entries are the futures themselves.
     ::rclcpp::detail::PendingList pending_;
-    /// Issue 2055 — the `CallbackPump`, once a request is sent with a
+    /// The `CallbackPump`, once a request is sent with a
     /// callback; null otherwise. A pointer in EVERY configuration, so the
-    /// hosted and freestanding layouts agree (phase-438 W4); only a hosted
+    /// hosted and freestanding layouts agree; only a hosted
     /// build ever sets it.
     void* callback_pump_ = nullptr;
-    /// phase-444 — the service name, kept C++-side for `get_service_name()`.
+    /// The service name, kept C++-side for `get_service_name()`.
     /// See `rclcpp::Client`'s field of the same name.
     char service_name_[::rclcpp::SERVICE_NAME_MAX];
 };
@@ -882,7 +882,7 @@ template <typename S> class PollClient {
 } // namespace rclcpp
 
 // Out-of-line definition of the future-style `Node::create_client<S>()`. Placed
-// after the class for the reason Phase 84.G8 gives for every entity: a consumer
+// after the class for the reason every entity's is: a consumer
 // pays for this template only when it uses a poll client.
 #include "rclcpp/node.hpp"
 
@@ -896,7 +896,7 @@ Result Node::create_client(::rclcpp::PollClient<S>& out, const char* service_nam
         &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
     if (ret == 0) {
         out.executor_ = executor_handle_;
-        // phase-444 — remember the name for `get_service_name()`; the runtime
+        // Remember the name for `get_service_name()`; the runtime
         // takes `service_name` and drops it.
         ::rclcpp::detail::assign_entity_name(out.service_name_, service_name);
         out.initialized_ = true;

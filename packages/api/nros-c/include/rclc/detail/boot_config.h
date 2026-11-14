@@ -1,11 +1,11 @@
 /**
  * @file boot_config.h
  * @ingroup grp_node
- * @brief Phase 266 (RFC-0045) — C mirror of `nros_platform_api::BakedBootConfig`.
+ * @brief C mirror of `nros_platform_api::BakedBootConfig`.
  *
  * Defines `struct nros_baked_boot_config`, the fixed-layout blob emitted into the
  * `.nros_boot_config` linker section by the entry macro / cmake.  A post-link tool
- * can locate and patch it in place (RFC-0045 Option A).  The Rust-side source of
+ * can locate and patch it in place.  The Rust-side source of
  * truth is `nros_platform_api::BakedBootConfig` (`repr(C)`); keep this header
  * BYTE-IDENTICAL to that struct — the static asserts below and a Rust offset test
  * in `nros-platform-api` guard against layout drift.
@@ -33,7 +33,7 @@ extern "C" {
 
 /** Layout version.  The resolver rejects a struct whose version != this.
  *
- * 2 since issue 1050 defect (3) appended `rmw`.  The bump is what the field is
+ * 2 since `rmw` was appended.  The bump is what the field is
  * for: a reader compiled against version 1 rejects a version-2 blob rather than
  * reading 32 bytes of `rmw` as whatever its own layout put after `namespace_`. */
 #define NROS_BOOT_CONFIG_VERSION 2u
@@ -50,7 +50,7 @@ extern "C" {
 /** `set_flags` bit — `namespace_` field is valid. */
 #define NROS_BOOT_SET_NAMESPACE (1u << 3)
 
-/** `set_flags` bit — `rmw` field is valid (issue 1050; layout version 2). */
+/** `set_flags` bit — `rmw` field is valid (layout version 2). */
 #define NROS_BOOT_SET_RMW (1u << 4)
 
 /**
@@ -59,7 +59,7 @@ extern "C" {
  * Mirrors `nros_platform_api::BakedBootConfig` (`#[repr(C)]`).  Fixed size
  * (268 bytes), pointer-free, no padding.  A post-link tool scans for
  * `NROS_BOOT_CONFIG_MAGIC` to locate this struct in a firmware image and can
- * patch the fields in place (RFC-0045).
+ * patch the fields in place.
  *
  * Layout (offsets):
  *   magic      @  0  (4 bytes)
@@ -87,7 +87,7 @@ struct nros_baked_boot_config {
      *
      * 32 bytes because that is the registry's own `BACKEND_NAME_MAX`; a longer
      * name could never resolve, so accepting one here would only move the
-     * failure later.  Appended in layout version 2 (issue 1050 defect (3)). */
+     * failure later.  Appended in layout version 2. */
     char rmw[32];
 };
 
@@ -149,7 +149,7 @@ static inline const char* nros_boot_config_node_name(const struct nros_baked_boo
 /**
  * Return a pointer to the baked node namespace, or NULL.
  *
- * issue 0794 — the blob has always carried four fields and C exposed one
+ * The blob has always carried four fields and C exposed one
  * accessor, so even a correctly-baked namespace could not be read from C.
  * Same contract as nros_boot_config_node_name(): NULL when @p c is NULL, the
  * magic or version does not match, or the `NROS_BOOT_SET_NAMESPACE` bit is
@@ -166,7 +166,7 @@ static inline const char* nros_boot_config_namespace(const struct nros_baked_boo
  * Return a pointer to the baked middleware locator, or NULL.
  *
  * NUL-padded; treat it as at most 96 bytes.  NOTE the entry emitter does not
- * yet SET this field (issue 0794): the accessor is correct and will report
+ * yet SET this field: the accessor is correct and will report
  * NULL until a producer exists, which is the honest answer rather than a
  * zero-length string that reads as "configured empty".
  */
@@ -184,9 +184,9 @@ static inline const char* nros_boot_config_locator(const struct nros_baked_boot_
  * NULL, the magic or version does not match, or `NROS_BOOT_SET_DOMAIN` is
  * clear.  An out-parameter rather than a sentinel return because 0 is a VALID
  * domain — the same reason `NROS_DOMAIN_ID_EXPLICIT_ZERO` exists on the init
- * path (issues 0206/0227).
+ * path.
  *
- * As with the locator, no producer sets this field yet (issue 0794).
+ * As with the locator, no producer sets this field yet.
  */
 static inline bool nros_boot_config_domain_id(const struct nros_baked_boot_config* c,
                                               uint32_t* out) {

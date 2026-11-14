@@ -1,18 +1,18 @@
 // nros-cpp: SchedContext API
 // Freestanding C++14 — no exceptions, no STL required.
 //
-// Phase 110.B / 110.C — register first-class scheduling capabilities
+// Register first-class scheduling capabilities
 // on the executor and bind callbacks to them.
 //
 // The default Fifo SC is auto-created at executor init; every callback
 // registered without an explicit `bind_handle_to_sched_context` call binds to
-// it. Single-thread non-preemption applies — see Phase 110.D for
+// it. Single-thread non-preemption applies — see the executor's
 // preemption semantics.
 
 /**
  * @file sched_context.hpp
  * @ingroup grp_executor
- * @brief Phase 110.B / 110.C — `rclcpp::SchedContext` API.
+ * @brief `rclcpp::SchedContext` API.
  */
 
 #ifndef NROS_RCLCPP_SCHED_CONTEXT_HPP
@@ -65,13 +65,13 @@ struct SchedContext {
     uint32_t period_us = 0;
     uint32_t budget_us = 0;
     uint32_t deadline_us = 0;
-    /// Phase 110.F — opt-in OS-level priority for per-callback dispatch.
+    /// Opt-in OS-level priority for per-callback dispatch.
     /// `0` = no per-callback OS priority (cooperative path).
     uint8_t os_pri = 0;
-    /// Phase 110.G — TT-window offset within the executor's major
+    /// TT-window offset within the executor's major
     /// frame. `0` (with `tt_window_duration_us = 0`) = no TT gate.
     uint32_t tt_window_offset_us = 0;
-    /// Phase 110.G — TT-window length in microseconds. `0` disables the gate.
+    /// TT-window length in microseconds. `0` disables the gate.
     uint32_t tt_window_duration_us = 0;
 };
 
@@ -115,9 +115,9 @@ inline Result bind_handle_to_sched_context(void* executor_handle, size_t callbac
     return Result(nros_cpp_bind_handle_to_sched_context(executor_handle, callback_handle, sc_id));
 }
 
-/// Phase 272 (W2) — seed the node-name → sched-context table before the node is built.
+/// Seed the node-name → sched-context table before the node is built.
 /// Call AFTER creating sched-context slots and BEFORE any `NodeBuilder(exec, name).build()`.
-/// Covers every component shape (including rclcpp IS-A-node), dissolving issue #124.
+/// Covers every component shape (including rclcpp IS-A-node).
 inline Result bind_node_name_sched(void* executor_handle, const char* name,
                                    const char* namespace_str, SchedContextId sc_id) {
     return Result(nros_cpp_bind_node_name_sched(executor_handle, name, namespace_str, sc_id));

@@ -4,7 +4,7 @@
 /**
  * @file message_info.hpp
  * @ingroup grp_pubsub
- * @brief `rclcpp::MessageInfo` (issue 2036): what a
+ * @brief `rclcpp::MessageInfo`: what a
  *        `(const M&, const rclcpp::MessageInfo&)` subscription callback is
  *        handed with each message.
  */
@@ -51,7 +51,7 @@ struct RmwMessageInfo {
     bool from_intra_process = false;
 };
 
-/// `rclcpp::MessageInfo` — issue 2036. The metadata a
+/// `rclcpp::MessageInfo`. The metadata a
 /// `(const M&, const rclcpp::MessageInfo&)` subscription callback receives,
 /// filled from the backend's per-sample report (Rust `nros::MessageInfo`:
 /// both timestamps, both sequence numbers, the publisher GID).
@@ -61,7 +61,7 @@ class MessageInfo {
     MessageInfo() = default;
     /// From a caller-supplied record, which counts as reported.
     explicit MessageInfo(const RmwMessageInfo& info) : info_(info), reported_(true) {}
-    /// Issue 2074 — from the runtime, which says whether the backend reported
+    /// From the runtime, which says whether the backend reported
     /// metadata for this sample at all.
     MessageInfo(const RmwMessageInfo& info, bool reported) : info_(info), reported_(reported) {}
 
@@ -69,7 +69,7 @@ class MessageInfo {
     const RmwMessageInfo& get_rmw_message_info() const { return info_; }
     RmwMessageInfo& get_rmw_message_info() { return info_; }
 
-    /// Issue 2074 — nano-ros extension, with no upstream counterpart: `true`
+    /// nano-ros extension, with no upstream counterpart: `true`
     /// when the backend reported metadata for this sample, `false` when it
     /// reported none (XRCE, uORB). The fields are all zero either way in the
     /// second case, so this is what tells "not reported" apart from a

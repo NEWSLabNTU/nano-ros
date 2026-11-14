@@ -13,7 +13,7 @@
 
 namespace rclcpp {
 
-/// The API's own traits — RFC-0096 D3.
+/// The API's own traits.
 ///
 /// WHY THIS EXISTS RATHER THAN `#include <type_traits>`
 ///
@@ -25,7 +25,7 @@ namespace rclcpp {
 /// cross build, which is the reach-narrower-than-the-rule shape this repo keeps
 /// paying for.
 ///
-/// phase-442 W4 filled both shims in, and that fix is worth having on its own —
+/// Both shims are filled in now, and that fix is worth having on its own —
 /// but it is a fix to OUR shims, and the rule is about targets generally. An
 /// API whose metaprogramming depends on a shim is one board away from the same
 /// failure. So the traits live here, in our namespace, where their shape is a
@@ -38,7 +38,7 @@ namespace tr {
 
 /// `sizeof`'s type, without `<cstddef>`. `__SIZE_TYPE__` is the compiler's own
 /// answer, which is what makes it right on a 32-bit target where a hand-written
-/// `unsigned long` is not (measured, phase-442 W0).
+/// `unsigned long` is not (measured).
 using size_type = __SIZE_TYPE__;
 
 template <typename T, T V> struct integral_constant {
@@ -112,7 +112,7 @@ template <typename T> struct is_function : false_type {};
 template <typename R, typename... A> struct is_function<R(A...)> : true_type {};
 template <typename R, typename... A> struct is_function<R(A..., ...)> : true_type {};
 
-/// `std::is_convertible<From, To>`, from the core language alone — phase-476 W1.
+/// `std::is_convertible<From, To>`, from the core language alone.
 ///
 /// Overload resolution against a `To` parameter answers it: `probe(To)` is
 /// viable exactly when a `From` converts implicitly to `To`. Both calls live

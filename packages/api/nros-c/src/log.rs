@@ -1,8 +1,8 @@
-//! Phase 88.12 — C-API surface for the `nros_log` facade.
+//! C-API surface for the `nros_log` facade.
 //!
 //! Mirrors `<rclc/log.h>`. The `rclc_log_emit` /
 //! `rclc_log_emit_fmt` symbols dispatch through the same per-platform
-//! sink chain the Rust call sites use (Phase 88.5 onwards).
+//! sink chain the Rust call sites use.
 //!
 //! cbindgen is told to skip every item in this module — the
 //! hand-written `<rclc/log.h>` is authoritative for the C ABI
@@ -13,7 +13,7 @@ use core::ffi::{c_char, c_void};
 
 /// C severity mirror of `nros_log::Severity`, on **rcutils's number line**.
 ///
-/// phase-417 stage 3, ledger row `c:log_severity_t`. Two things were wrong at
+/// Ledger row `c:log_severity_t`. Two things were wrong at
 /// once and each is fixed here.
 ///
 /// **The NUMBERS.** rcutils — which `rcl_log_severity_t` mirrors — numbers
@@ -127,7 +127,7 @@ pub unsafe extern "C" fn rclc_log_emit(
     rclc_log_emit_at(logger, severity, message, message_len, core::ptr::null(), 0);
 }
 
-/// phase-417 W4.d — emit WITH the call site.
+/// Emit WITH the call site.
 ///
 /// The record `rclc_log_emit` built was hardcoded: `file: "<nros-c>", line: 0,
 /// timestamp_ns: 0`, while `<rclc/log.h>`'s own header comment promised the
@@ -227,7 +227,7 @@ static DEFAULT_SINKS_INSTALLED: AtomicBool = AtomicBool::new(false);
 
 /// Install the platform's default sink list once, unless something already did.
 ///
-/// Called on the first C/C++ emit (below) AND, since issue 1551, from every
+/// Called on the first C/C++ emit (below) AND from every
 /// C/C++ session-init entry point (`rclc_support_init_rmw`, `nros_cpp_init_rmw`,
 /// `nros_cpp_init_multi`). Before that, a C or C++ image on an RTOS board had
 /// no sink until its OWN code logged something: every RUST-side record the
@@ -253,7 +253,7 @@ pub fn ensure_default_sinks() {
     }
 }
 
-/// Phase 88.16.H — explicit C-side install of the default sink list.
+/// Explicit C-side install of the default sink list.
 ///
 /// Pins `nros_log::init` as a linker root for cross-language consumers
 /// (FreeRTOS / NuttX / ThreadX C and C++ examples). Without this,
@@ -273,7 +273,7 @@ pub unsafe extern "C" fn rclc_log_init() {
     nros_platform_cffi::log::install_log_crate_bridge();
 }
 
-/// Phase 88.16.H — opaque handle to `nros_log::DEFAULT_LOGGER`.
+/// Opaque handle to `nros_log::DEFAULT_LOGGER`.
 ///
 /// Lets C callers emit records without standing up a full `Node`
 /// (useful for boot-time diagnostics, panic hooks, smoke fixtures).
@@ -354,7 +354,7 @@ pub unsafe extern "C" fn rclc_logger_get_name(
 }
 
 /// A logger that is a descendant of `logger` — `rclcpp::Logger::get_child`'s
-/// C half (RFC-0102 D1). Named `<parent>.<suffix>`, except that the
+/// C half. Named `<parent>.<suffix>`, except that the
 /// catch-all's (`rclc_log_default_logger()`) children are top-level names.
 ///
 /// A child with no level of its own filters at its nearest ancestor's, so
@@ -365,7 +365,7 @@ pub unsafe extern "C" fn rclc_logger_get_name(
 /// full name is over `nros_log::MAX_LOGGER_NAME_LEN` bytes, empty, or the
 /// runtime-logger arena is full. NULL rather than a substitute, because the
 /// right substitute is the caller's: `rclcpp::Logger::get_child` emits through
-/// the parent and refuses `set_level` (RFC-0102 D3), and handing back the
+/// the parent and refuses `set_level`, and handing back the
 /// parent here would make a C caller's `rclc_logger_set_level(child, ..)` move
 /// the parent's threshold silently.
 ///
@@ -403,8 +403,8 @@ pub unsafe extern "C" fn rclc_logger_get_child(
 /// before any sink sees them.
 ///
 /// `RCLC_LOG_SEVERITY_UNSET` UNSETS the level instead of setting one — the
-/// logger goes back to filtering on [`rclc_log_get_default_level`]. phase-467,
-/// ledger row `c:log_severity_t`: this used to resolve `UNSET` by band and so
+/// logger goes back to filtering on [`rclc_log_get_default_level`]. Ledger
+/// row `c:log_severity_t`: this used to resolve `UNSET` by band and so
 /// selected `TRACE`, the most verbose level, where upstream restores a default.
 ///
 /// Measured against the implementation Humble ships (rcutils 5.1.9,
@@ -440,7 +440,7 @@ pub unsafe extern "C" fn rclc_logger_set_level(
 }
 
 /// This logger's EFFECTIVE runtime severity threshold — its own level if it
-/// has one, else its nearest ancestor's (RFC-0102 D2), else the process
+/// has one, else its nearest ancestor's, else the process
 /// default.
 ///
 /// `rcutils_logging_get_logger_effective_level`'s answer rather than
@@ -464,8 +464,8 @@ pub unsafe extern "C" fn rclc_logger_get_level(logger: *const c_void) -> rcl_log
 
 /// Move the threshold that every logger WITHOUT a level of its own filters on.
 ///
-/// phase-467. `nros_log::Logger::set_default_level`, which is where the one
-/// process-wide byte lives; RFC-0019 keeps the store on the Rust side.
+/// `nros_log::Logger::set_default_level`, which is where the one
+/// process-wide byte lives; the store stays on the Rust side.
 ///
 /// `RCLC_LOG_SEVERITY_UNSET` restores `RCLC_LOG_SEVERITY_INFO` rather than
 /// resolving by band — `rcutils_logging_set_default_logger_level` documents
@@ -548,7 +548,7 @@ impl rcl_log_severity_t {
 /// Deliberately NOT a `const nros_log_record_t *`: a struct crossing this FFI
 /// would be a hand-mirrored one (cbindgen skips this module), and a mirror that
 /// misses an appended field passes a SHORTER struct than the reader reads —
-/// issue 0160's class, which has bitten three times. With flat arguments an
+/// the hand-mirror class, which has bitten three times. With flat arguments an
 /// appended field changes the function-pointer TYPE, so every sink fails to
 /// compile instead.
 ///
@@ -689,7 +689,7 @@ pub unsafe extern "C" fn rclc_log_add_sink(
 /// The RULE — and the ENCODING of the word — is `nros_log::throttle_decide`,
 /// the same function `nros_log::ThrottleState` and the Rust `nros_*_throttle!`
 /// macros use. Only the storage differs. This shim never interprets the word:
-/// issue 1152 was a second spelling of "last emitted" living here (`0 -> 1`),
+/// a bug was a second spelling of "last emitted" living here (`0 -> 1`),
 /// and the rule then measured `u64::MAX` of elapsed time against it.
 ///
 /// Returns `true` when the record should be emitted. NULL `last_ns` returns

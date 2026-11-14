@@ -11,17 +11,17 @@
 #define NROS_RCLCPP_HANDLE_HPP
 
 #include "rclcpp/detail/traits.hpp"
-#include "rclcpp/detail/std_detect.hpp" // phase-482 W2 — the hosted `shared_ptr` interop below
+#include "rclcpp/detail/std_detect.hpp" // The hosted `shared_ptr` interop below
 
 namespace rclcpp {
 
-/// A copyable, non-owning reference to an entity — RFC-0096 D2.
+/// A copyable, non-owning reference to an entity.
 ///
 /// WHAT IT REPLACES, AND WHY NOTHING IS LOST
 ///
 /// `X::SharedPtr` is the name ported rclcpp code writes, so it has to exist on
 /// every target, and `std::shared_ptr` does not. What it has to DO was
-/// measured rather than assumed (phase-442 W0), over this tree and the porting
+/// measured rather than assumed, over this tree and the porting
 /// corpus:
 ///
 ///   * handles are stored as members and one is passed by value
@@ -34,7 +34,7 @@ namespace rclcpp {
 ///
 /// So shared ownership was already fiction at the one site where it looked
 /// real, and a reference count would be a mechanism with no reader. Building
-/// one would be inventing work; RFC-0096 says so in as many words.
+/// one would be inventing work.
 ///
 /// WHAT THAT COSTS A USER, STATED
 ///
@@ -43,7 +43,7 @@ namespace rclcpp {
 /// it is handed to, so the two behave identically — but a caller who stores a
 /// handle past its entity's lifetime gets a dangling pointer where upstream
 /// would have kept the object alive. That is the same envelope
-/// `shared_from_this()` has documented since phase-427, now the whole type's.
+/// `shared_from_this()` has documented all along, now the whole type's.
 ///
 /// One pointer, trivially copyable, no allocation, no atomics. `sizeof` is
 /// `sizeof(void*)` on every target and follows no capability probe.
@@ -57,15 +57,15 @@ template <typename T> class Handle {
     explicit constexpr Handle(T* p) : p_(p) {}
 
     /// `Handle<U>` converts to `Handle<T>` wherever `U*` converts to `T*`, the
-    /// way `shared_ptr` does: `Handle<T>` to `Handle<const T>`, and since
-    /// phase-482 W2 a derived node's handle to `Handle<rclcpp::Node>`.
+    /// way `shared_ptr` does: `Handle<T>` to `Handle<const T>`, and
+    /// a derived node's handle to `Handle<rclcpp::Node>`.
     /// Constrained rather than open, so an unrelated `Handle<U>` is a compile
     /// error at the call site instead of a surprise at the `static_cast`.
     template <typename U, typename tr::enable_if<tr::is_convertible<U*, T*>::value, int>::type = 0>
     constexpr Handle(const Handle<U>& other) : p_(other.get()) {}
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
-    /// phase-482 W2 — a hosted `std::shared_ptr` the CALLER owns converts to a
+    /// A hosted `std::shared_ptr` the CALLER owns converts to a
     /// handle that observes it. This is how `auto node =
     /// std::make_shared<MyNode>()` reaches a `Node::SharedPtr` parameter.
     template <typename U, typename tr::enable_if<tr::is_convertible<U*, T*>::value, int>::type = 0>
@@ -74,8 +74,8 @@ template <typename T> class Handle {
     /// REFUSED: a TEMPORARY `shared_ptr` would be destroyed at the end of the
     /// statement, leaving the handle dangling. So
     /// `rclcpp::Node::SharedPtr n = std::make_shared<rclcpp::Node>("x");` is
-    /// a compile error here, and the fix is `auto n = std::make_shared<…>(…);`
-    /// (RFC-0096 D5). Passing a temporary straight to `rclcpp::spin(…)` is
+    /// a compile error here, and the fix is `auto n = std::make_shared<…>(…);`.
+    /// Passing a temporary straight to `rclcpp::spin(…)` is
     /// fine: the spin verbs take `const std::shared_ptr<N>&` too.
     template <typename U, typename tr::enable_if<tr::is_convertible<U*, T*>::value, int>::type = 0>
     Handle(::std::shared_ptr<U>&& temporary) = delete;
@@ -96,7 +96,7 @@ template <typename T> class Handle {
     /// leaves the object running rather than pretending otherwise.
     void reset() { p_ = nullptr; }
 
-    /// Upstream `WeakPtr::lock()` (phase-488): the same handle. A handle owns
+    /// Upstream `WeakPtr::lock()`: the same handle. A handle owns
     /// nothing, so a `WeakPtr` (`Node::WeakPtr`) is this type too, and `lock()`
     /// cannot tell a destroyed object from a live one: it answers null only for
     /// a handle that was never set or was `reset()`.

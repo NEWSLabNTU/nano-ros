@@ -4,7 +4,7 @@
 /**
  * @file declared_params.hpp
  * @ingroup grp_parameter
- * @brief phase-446 W6 -- the parameters each node's contract declares, reaching
+ * @brief The parameters each node's contract declares, reaching
  *        the code that declares them.
  *
  * The launch contract states each node's parameters by NAME and TYPE:
@@ -14,7 +14,7 @@
  *         params:
  *           update_rate: { type: integer }
  *
- * and the build sizes the parameter store from that statement (phase-446 W4).
+ * and the build sizes the parameter store from that statement.
  * A store sized from a declaration is only right while the code declares what
  * the contract says, so `Node::declare_parameter` looks each name up
  * here: a name the contract does not declare, or a type that differs, refuses

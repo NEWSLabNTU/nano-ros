@@ -7,7 +7,7 @@
  * @brief `rclcpp::Seq<T, N>` - the fixed-capacity, inline sequence VALUE a
  *        freestanding node declares an array parameter with.
  *
- * ## What this file used to be, and why it is not that any more (phase-426 W4)
+ * ## What this file used to be, and why it is not that any more
  *
  * Until now this header also defined `nros::ParameterServer<Capacity,
  * SeqSlots, SeqPoolBytes>`: a second parameter STORE, inline on the caller,
@@ -17,13 +17,13 @@
  * `nros_params::ParameterServer` the six `rcl_interfaces/srv/...` servers read
  * - and left this one standing, still shipped and still the whole of
  * `examples/linux/cpp/parameters`. Its parameters were invisible to
- * `ros2 param get`, which is the exact defect phase-426 exists to remove.
+ * `ros2 param get`, which is the exact defect the one-store design exists to remove.
  *
  * A caller-owned store with no executor turned out to have no consumer:
  * nothing in the tree constructed one except the example that documented it.
- * RFC-0019/0020 and RFC-0089 §"Parameters" put storage, typing, the
+ * The thin-wrapper discipline and the adoption rule put storage, typing, the
  * read-only and range rules and the node keying in Rust and leave the C++
- * API a call-shape adapter, so the class is ABSENT now - RFC-0089's fourth
+ * API a call-shape adapter, so the class is ABSENT now - the adoption rule's fourth
  * disposition, and the honest one here because rclcpp never had the name, so
  * no ported alias is load-bearing. A node's parameters are
  * `rclcpp::Node::declare_parameter<T>` / `get_parameter<T>` /
@@ -40,12 +40,12 @@
  * the store instead - `node_parameters.hpp` declares and reads it through
  * `nros_cpp_node_{declare,get}_param_{double,integer,bool}_array`, and a
  * sequence parameter is now visible to `ros2 param get` like every scalar.
- * That is strictly more than the deleted class had: the pre-#226 header hid
- * sequences from the C server entirely, and the post-#226 one exposed them
+ * That is strictly more than the deleted class had: the oldest header hid
+ * sequences from the C server entirely, and the next one exposed them
  * only through a `raw()` accessor documented for C helpers that do not
  * exist.
  *
- * ## Capacity model (RFC-0044 Q3) - unchanged
+ * ## Capacity model - unchanged
  *
  * The per-parameter capacity is the compile-time `N` of the `Seq<T, N>` the
  * caller declares. The ELEMENTS are owned by the Rust store now (a

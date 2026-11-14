@@ -4,7 +4,7 @@
 /**
  * @file parameter_value.hpp
  * @ingroup grp_parameter
- * @brief `rclcpp::ParameterValue` and `rclcpp::Parameter` (issue 2056).
+ * @brief `rclcpp::ParameterValue` and `rclcpp::Parameter`.
  *
  * Ported code builds a parameter as a VALUE of any parameter type and reads
  * one back the same way: `declare_parameter(name, rclcpp::ParameterValue(
@@ -14,7 +14,7 @@
  * `std::vector<rclcpp::Parameter>`.
  *
  * These are VALUE objects, not a store. The executor's `nros_params` table
- * stays the one store (phase-426 W4): `Node::declare_parameter(name,
+ * stays the one store: `Node::declare_parameter(name,
  * ParameterValue)` dispatches on the tag to the typed `declare_parameter<T>`,
  * and the on-set callback's `Parameter` is built from the store's proposed
  * write for the duration of the call.
@@ -37,7 +37,7 @@
  * ## Wrong-type reads
  *
  * Upstream throws `ParameterTypeException` from `as_double()` on an integer
- * value. There are no exceptions here (RFC-0018), so a wrong-type read answers
+ * value. There are no exceptions here, so a wrong-type read answers
  * the type's zero value: `0`, `0.0`, `false`, an empty string or vector. That
  * is the same answer `get_parameter<T>(name)` gives an undeclared name. Code
  * that asks `get_type()` first, which is how upstream code is written, sees no
@@ -476,8 +476,7 @@ inline bool ParameterValue::operator==(const ParameterValue& o) const {
         // `std::equal_to`, not `==`: the same comparison (NaN is unequal to
         // itself, as upstream's), spelled where a `-Werror -Wfloat-equal`
         // build does not refuse it. PX4 compiles every module that way, so
-        // `==` here made every PX4 module that includes rclcpp.hpp fail
-        // (phase-521 W8 b).
+        // `==` here made every PX4 module that includes rclcpp.hpp fail.
         return ::std::equal_to<double>()(double_, o.double_);
     case PARAMETER_STRING:
         return as_string() == o.as_string();

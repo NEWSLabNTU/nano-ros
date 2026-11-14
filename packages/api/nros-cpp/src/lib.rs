@@ -17,7 +17,7 @@
 //!
 //! All serialization/deserialization happens on the runtime.
 //!
-//! Issue 0436 — every exported entry point that takes a user-supplied `void*`
+//! Every exported entry point that takes a user-supplied `void*`
 //! executor handle validates it with `cpp_ctx_checked` (tag check) instead of
 //! blind-casting to `*mut CppContext`. Construction (`nros_cpp_init` /
 //! `_open_over_session`) and destruction (`nros_cpp_fini`) sites stamp or tear
@@ -141,7 +141,7 @@ const _BACKEND_ANCHOR: &[unsafe extern "C" fn()] = &[metadata_backend::auto_regi
 #[cfg(all(feature = "rmw-cffi", not(feature = "metadata-mode")))]
 const _BACKEND_ANCHOR: &[unsafe extern "C" fn()] = &[];
 
-/// Phase 241 W11 (Option D) — combined force-link anchor for a downstream staticlib root
+/// Combined force-link anchor for a downstream staticlib root
 /// (the per-entry `<entry>_runtime` crate). When nros-cpp is bundled as a dependency
 /// rlib, its own `#[used]` anchors are DCE'd before the runtime staticlib is emitted; the
 /// runtime root references THIS with its own `#[used]` to re-pull the full ABI surface —
@@ -249,13 +249,12 @@ pub const NROS_CPP_RET_SUBSCRIPTION_FAILED: nros_cpp_ret_t = -11;
 pub const NROS_CPP_RET_NOT_ALLOWED: nros_cpp_ret_t = -12;
 /// Request was rejected — the peer considered it and declined.
 /// A goal rejected by an action server, or a QoS/ABI incompatibility.
-/// Distinct from `Error`, which means the request never got that far
-/// (issue 0868).
+/// Distinct from `Error`, which means the request never got that far.
 pub const NROS_CPP_RET_REJECTED: nros_cpp_ret_t = -13;
 /// Try again — operation not ready yet.
 pub const NROS_CPP_RET_TRY_AGAIN: nros_cpp_ret_t = -14;
 
-/// The request id a backend reports when it cannot assign one — issue 2009.
+/// The request id a backend reports when it cannot assign one.
 /// Equal to the RMW ABI's `NROS_RMW_SEQUENCE_ID_UNKNOWN` (`INT64_MIN`), spelled
 /// as a literal so cbindgen emits it. A future whose request went out with it
 /// is matched only while it is its client's ONE pending request.
@@ -263,12 +262,12 @@ pub const NROS_CPP_SEQUENCE_ID_UNKNOWN: i64 = -9_223_372_036_854_775_807 - 1;
 const _: () = assert!(NROS_CPP_SEQUENCE_ID_UNKNOWN == nros_rmw::SEQUENCE_ID_UNKNOWN);
 /// Reentrant call detected — executor is already spinning.
 pub const NROS_CPP_RET_REENTRANT: nros_cpp_ret_t = -15;
-/// Phase 108 — operation not implemented by the active backend.
+/// Operation not implemented by the active backend.
 pub const NROS_CPP_RET_UNSUPPORTED: nros_cpp_ret_t = -16;
 /// Transport / connection error (C++-space extension; rcl_ret_t stops at -16).
 pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
-/// phase-454 W10 — a subscription's QoS depth disagrees with the depth its
-/// system's contract DECLARES for that topic. issue 1256 — and the same code
+/// A subscription's QoS depth disagrees with the depth its
+/// system's contract DECLARES for that topic — and the same code
 /// when its RELIABILITY or DURABILITY does; the log line names which.
 ///
 /// The same number `rclcpp::detail::DECLARED_DEPTH_MISMATCH` carries in
@@ -356,7 +355,7 @@ pub enum nros_cpp_qos_reliability_t {
     /// The backend could not determine this policy. An absence, never a
     /// request.
     NROS_CPP_QOS_RELIABILITY_UNKNOWN = 3,
-    /// Resolve at creation against the discovered graph (issue 1973) —
+    /// Resolve at creation against the discovered graph —
     /// `rclcpp::ReliabilityPolicy::BestAvailable`. A request, never a grant.
     NROS_CPP_QOS_RELIABILITY_BEST_AVAILABLE = 4,
 }
@@ -371,7 +370,7 @@ pub enum nros_cpp_qos_durability_t {
     NROS_CPP_QOS_DURABILITY_SYSTEM_DEFAULT = 2,
     /// The backend could not determine this policy.
     NROS_CPP_QOS_DURABILITY_UNKNOWN = 3,
-    /// Resolve at creation against the discovered graph (issue 1973).
+    /// Resolve at creation against the discovered graph.
     NROS_CPP_QOS_DURABILITY_BEST_AVAILABLE = 4,
 }
 
@@ -387,7 +386,7 @@ pub enum nros_cpp_qos_history_t {
     NROS_CPP_QOS_HISTORY_UNKNOWN = 3,
 }
 
-/// QoS liveliness policy. Phase 108.B.7 — matches DDS `LIVELINESS`.
+/// QoS liveliness policy. Matches DDS `LIVELINESS`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nros_cpp_qos_liveliness_t {
@@ -400,13 +399,13 @@ pub enum nros_cpp_qos_liveliness_t {
     NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
     /// The backend could not determine this policy.
     NROS_CPP_QOS_LIVELINESS_UNKNOWN = 4,
-    /// Resolve at creation against the discovered graph (issue 1973).
+    /// Resolve at creation against the discovered graph.
     NROS_CPP_QOS_LIVELINESS_BEST_AVAILABLE = 5,
 }
 
 /// QoS settings (passed by value from C++).
 ///
-/// Phase 108.B.7 — full DDS-shaped QoS surface. The four core fields
+/// Full DDS-shaped QoS surface. The four core fields
 /// (`reliability`, `durability`, `history`, `depth`) plus extended
 /// policies (`liveliness_kind`, `deadline_ms`, `lifespan_ms`,
 /// `liveliness_lease_ms`, `avoid_ros_namespace_conventions`) match
@@ -428,7 +427,7 @@ pub struct nros_cpp_qos_t {
     pub liveliness_lease_ms: u32,
     /// If non-zero, topic-name encoding skips the `/rt/` ROS prefix.
     pub avoid_ros_namespace_conventions: u8,
-    /// Phase 282 (#145) — publisher-side "express" hint: if non-zero, this
+    /// Publisher-side "express" hint: if non-zero, this
     /// publisher's samples bypass transport tx batching. A transport hint,
     /// not a DDS policy; ignored on subscriptions.
     pub tx_express: u8,
@@ -855,12 +854,12 @@ pub(crate) const CPP_CONTEXT_TAG: u64 = nros::executor_handle::CPP_CONTEXT_TAG;
 #[cfg(feature = "rmw-cffi")]
 const _: () = assert!(core::mem::offset_of!(CppContext, tag) == 0);
 
-/// Issue 1535 — the `Executor` inside an nros-cpp executor handle, for a seam
+/// The `Executor` inside an nros-cpp executor handle, for a seam
 /// that takes a BARE `*mut Executor<'static>`: a Rust component's
 /// `__nros_component_<pkg>_install(node, executor, self)`.
 ///
 /// `rclcpp::global_handle()` and every sched task's `executor` are `CppContext`s, and
-/// the executor is not at the handle's address: since phase-492 W4 it lives in
+/// the executor is not at the handle's address: it lives in
 /// the embedded `rclc_executor_t`'s storage and the context holds a REFERENCE
 /// to it (`CppContext::executor`), so this follows that reference. Taking the
 /// field's own address instead hands the Rust side a pointer to the reference
@@ -882,7 +881,7 @@ pub unsafe extern "C" fn nros_cpp_executor_inner(handle: *mut c_void) -> *mut c_
     }
 }
 
-/// phase-492 W4 — give a C component its C-API handles: `node_out` (an
+/// Give a C component its C-API handles: `node_out` (an
 /// `rcl_node_t *`) becomes the node this host created, and `*executor_out` is
 /// set to the host's executor as an `rclc_executor_t *` — the one embedded in
 /// the context (`CppContext::c`), not a copy. The node's QoS-override table
@@ -1165,9 +1164,9 @@ pub unsafe extern "C" fn nros_cpp_init(
     }
 }
 
-/// Issue 1050 defect (3) — [`nros_cpp_init`] with an explicit RMW selector.
+/// [`nros_cpp_init`] with an explicit RMW selector.
 ///
-/// `rmw` is the BAKED rung of precedence model A (RFC-0045): a hosted
+/// `rmw` is the BAKED rung of precedence model A: a hosted
 /// `$NROS_RMW` still wins, and a NULL selector leaves the choice to the
 /// registry, which resolves only when exactly one backend is registered.
 ///
@@ -1200,7 +1199,7 @@ pub unsafe extern "C" fn nros_cpp_init_rmw(
     unsafe { init_rmw_over(rmw, locator, domain_id, node_name, namespace, storage, None) }
 }
 
-/// Issue 1970 -- [`nros_cpp_init`] for one SCHED TASK of a per-sched-task-sized image: the
+/// [`nros_cpp_init`] for one SCHED TASK of a per-sched-task-sized image: the
 /// executor is carved from `backing` (`backing_bytes`, 8-aligned) at the sizing
 /// the image derived for the sched task named `sched_task`, instead of from the context's
 /// inline tail (which such an image does not carry). Refused -- before a
@@ -1241,7 +1240,7 @@ pub unsafe extern "C" fn nros_cpp_init_sched_task(
     }
 }
 
-/// phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- [`nros_cpp_init`]
+/// [`nros_cpp_init`]
 /// for the ONE executor a level runner opens per core: carved from `backing`
 /// (`backing_bytes`, 8-aligned) at the image's levels sizing, every sched task's
 /// (level's) members summed (`nros_node::levels_executor_sizing`). Refused
@@ -1301,7 +1300,7 @@ pub unsafe extern "C" fn nros_cpp_init_levels(
     }
 }
 
-/// phase-509 P9b item 4 -- the backing bytes [`nros_cpp_init_levels`]
+/// The backing bytes [`nros_cpp_init_levels`]
 /// carves, `0` on an image that sizes no level.
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
@@ -1309,7 +1308,7 @@ pub extern "C" fn nros_cpp_levels_backing_size() -> usize {
     nros_node::levels_backing_bytes()
 }
 
-/// Issue 1970 -- the backing bytes the executor of the sched task named `sched_task`
+/// The backing bytes the executor of the sched task named `sched_task`
 /// carves, or `0` when this image sizes no sched task of that name (its executors
 /// are then the image's, carved inline).
 ///
@@ -1912,7 +1911,7 @@ pub(crate) fn report_entity_refusal(
     node_error_to_cpp_ret(err)
 }
 
-/// Issue 0436 — multi-RMW init for the C++ surface: opens one session per spec
+/// Multi-RMW init for the C++ surface: opens one session per spec
 /// into the CALLER'S storage, producing a real [`CppContext`].
 ///
 /// # Why this exists next to `rclc_init_multi`
@@ -2077,7 +2076,7 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
     }
 }
 
-/// Issue 0436 — C mirror of `nros_node::executor::SessionSpec`, matching
+/// C mirror of `nros_node::executor::SessionSpec`, matching
 /// `rclc_session_spec_t` in `<rclc/bridge.h>` field for field so a caller can use
 /// either entry point with one struct.
 #[cfg(feature = "rmw-cffi")]
@@ -2093,8 +2092,8 @@ pub struct NrosCppSessionSpec {
     pub node_name: *const c_char,
     /// Session-default namespace. NULL = "/".
     pub namespace_: *const c_char,
-    /// Issue 2123 — this session's RMW properties: its domain's RMW file,
-    /// lowered on the host (RFC-0109 D8; `nros dev rmw session-properties` writes
+    /// This session's RMW properties: its domain's RMW file,
+    /// lowered on the host (`nros dev rmw session-properties` writes
     /// the table). NULL with `properties_len == 0` = none. Read during
     /// `nros_cpp_init_multi` only; the rows and their strings must outlive
     /// that call.
@@ -2105,7 +2104,7 @@ pub struct NrosCppSessionSpec {
 
 /// Is this storage a LIVE nros context?
 ///
-/// phase-432 W3.1 (option A) — the one answer to "is the global session up".
+/// The one answer to "is the global session up".
 ///
 /// It used to be `Node::GlobalStorageHolder<>::initialized`, a C++ template
 /// static emitted by `node.hpp`: `rclcpp::init` set it true, `rclcpp::shutdown` set
@@ -2136,7 +2135,7 @@ pub unsafe extern "C" fn nros_cpp_context_is_live(storage: *const c_void) -> boo
     unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).tag)) == CPP_CONTEXT_TAG }
 }
 
-/// Issue 1568 — the bytes one executor's storage occupies in THIS build:
+/// The bytes one executor's storage occupies in THIS build:
 /// `NROS_CPP_EXECUTOR_STORAGE_SIZE` from the per-build header, rounded up to
 /// the 8-byte unit the storage is declared in.
 ///
@@ -2153,7 +2152,7 @@ pub extern "C" fn nros_cpp_executor_storage_size() -> usize {
     CPP_EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>()
 }
 
-/// Issue 1568 — THE refusal for caller-supplied executor storage: `bytes`
+/// THE refusal for caller-supplied executor storage: `bytes`
 /// must be at least [`nros_cpp_executor_storage_size`] and a multiple of 8
 /// (it is also the STRIDE between sched task blocks, so every block after the first
 /// must stay aligned), and `storage` 8-byte aligned and non-null.
@@ -2195,11 +2194,11 @@ pub extern "C" fn nros_cpp_executor_storage_check(
 /// Drops the executor in-place within the caller's storage, and UNSTAMPS the
 /// tag so the storage stops reading as a live context.
 ///
-/// phase-432 W3.1 — this used to blind-cast on the way in and leave the tag
+/// This used to blind-cast on the way in and leave the tag
 /// stamped on the way out, and both halves were wrong.
 ///
 /// **On the way in**: every other entry point that takes a `void*` executor
-/// handle goes through `cpp_ctx_checked`, which is issue 0436's fix — two
+/// handle goes through `cpp_ctx_checked`, which is the fix for this — two
 /// different structs travel as `void*` here, both beginning with the same
 /// `Executor<'static>`, so a mixed-up handle READ correctly and then wrote this
 /// struct's later fields over the other's `Vec`. That was memory corruption
@@ -2252,7 +2251,7 @@ pub unsafe extern "C" fn nros_cpp_fini(storage: *mut c_void) -> nros_cpp_ret_t {
     NROS_CPP_RET_OK
 }
 
-/// Phase 266 (W5b/W6) — named variant of [`nros_board_native_run_components`].
+/// Named variant of [`nros_board_native_run_components`].
 ///
 /// `session_name` sets the primary session / node name visible via `ros2 node list`
 /// (the #98 fix for C entries). NULL or empty → falls back to `"node"` (the
@@ -2570,7 +2569,7 @@ fn census_write(_session: &core::ffi::CStr, out_path: &str) -> i32 {
     NROS_CPP_RET_UNSUPPORTED
 }
 
-/// Issue 1419 -- the census switch, for the HOSTED runner that is not this
+/// The census switch, for the HOSTED runner that is not this
 /// file's: `rclcpp::board::LinuxBoard::run_components` in `<rclcpp/detail/main.hpp>`.
 ///
 /// That runner is header-only C++ (`rclcpp::init` into the C++ global context,
@@ -2579,7 +2578,7 @@ fn census_write(_session: &core::ffi::CStr, out_path: &str) -> i32 {
 /// [`nros_board_native_run_components_named_ns`], so `$NROS_CENSUS_OUT` was
 /// read by no code on that road: a census run of the in-tree C++ workspace's
 /// `linux_entry` booted normally, dialled zenoh, and exited 156 on
-/// `ConnectionFailed` -- the producer phase-463 W2 named did not exist for the
+/// `ConnectionFailed` -- the producer an earlier fix named did not exist for the
 /// entry shape the C++ workspaces generate. These two calls are that runner's
 /// half of the switch, and they reuse the funnel's own three functions rather
 /// than spell a second census path.
@@ -2598,7 +2597,7 @@ pub extern "C" fn nros_cpp_census_begin() -> i32 {
     1
 }
 
-/// Issue 1419 -- write the census where `$NROS_CENSUS_OUT` names, after
+/// Write the census where `$NROS_CENSUS_OUT` names, after
 /// `setup()` and INSTEAD of the spin. The second half of
 /// [`nros_cpp_census_begin`]; the caller then shuts down and exits with the
 /// returned code (0 when the census was written).
@@ -2629,7 +2628,7 @@ pub unsafe extern "C" fn nros_cpp_census_finish(session_name: *const c_char) -> 
     census_write(name, path)
 }
 
-/// Issue 1732 — install the hosted termination guard for a C++ runner whose
+/// Install the hosted termination guard for a C++ runner whose
 /// loop lives in a header (`rclcpp::board::LinuxBoard::run_components` in
 /// `<rclcpp/detail/main.hpp>`). The Rust runners in this file call
 /// `nros_platform::termination` directly; this is the same call, under a C
@@ -2643,7 +2642,7 @@ pub extern "C" fn nros_cpp_termination_guard_install() -> i32 {
     nros_platform::termination::install_guard() as i32
 }
 
-/// Issue 1732 — `true` once a guarded SIGTERM / SIGINT has arrived. `nros::ok()`
+/// `true` once a guarded SIGTERM / SIGINT has arrived. `nros::ok()`
 /// folds it in, which is `rclcpp::ok()`'s contract: a signal makes the spin
 /// loops return, and the runner's `rclcpp::shutdown()` then closes the session.
 /// Always `false` where no guard was installed.
@@ -2749,19 +2748,19 @@ pub(crate) fn census_finish_application_if_armed() {
     }
 }
 
-/// Issue 1434 — [`nros_board_native_run_components_named`] with the primary
+/// [`nros_board_native_run_components_named`] with the primary
 /// session's NAMESPACE.
 ///
 /// `node_namespace` is the launch-declared namespace the generated entry reads
 /// out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or
 /// empty means the image declares none, which resolves to the root — NOT to the
-/// empty namespace. It is the BAKED rung of RFC-0045's precedence model A, and
+/// empty namespace. It is the BAKED rung of the boot-config precedence ladder, and
 /// this is the HOSTED runner, so `$NROS_NODE_NAMESPACE` still outranks it
 /// (`nros_cpp_init` → `try_resolve_hosted` reads
 /// `env.namespace.or(baked.namespace)`).
 ///
 /// Additive rather than a third parameter on the symbol above, for the reason
-/// `nros_cpp_init_rmw` is additive over `nros_cpp_init` (issue 1050): the older
+/// `nros_cpp_init_rmw` is additive over `nros_cpp_init`: the older
 /// spelling is what every already-generated entry TU calls.
 ///
 /// # Safety
@@ -2791,9 +2790,9 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_ns(
     }
 }
 
-/// Issue 1597 — [`nros_board_native_run_components_named_ns`] over
+/// [`nros_board_native_run_components_named_ns`] over
 /// CALLER-SUPPLIED executor storage: the host twin of
-/// `nros_board_rtos_run_components_in` (issue 1568), and the runner a
+/// `nros_board_rtos_run_components_in`, and the runner a
 /// generated native single-executor C entry calls.
 ///
 /// `executor_storage` is `storage_bytes` bytes, 8-byte aligned — the entry's
@@ -2937,11 +2936,11 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_in(
     ret
 }
 
-/// Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle (unnamed variant).
+/// Typed C Entry lifecycle (unnamed variant).
 ///
 /// Delegates to [`nros_board_native_run_components_named`] with a NULL session
-/// name, which resolves to the unified default `"node"` (phase 266 default
-/// change). Kept for ABI back-compatibility with callers that do not pass a
+/// name, which resolves to the unified default `"node"`.
+/// Kept for ABI back-compatibility with callers that do not pass a
 /// name; new generated entries call `nros_board_native_run_components_named`
 /// directly with the baked boot-config node name.
 ///
@@ -2975,13 +2974,13 @@ pub struct nros_cpp_node_t {
     pub name: [u8; NROS_CPP_NAME_LEN],
     /// Node namespace (null-terminated, max 64 bytes including null).
     pub namespace: [u8; NROS_CPP_NAMESPACE_LEN],
-    /// Phase 104.C.9.b — opaque NodeId returned by
+    /// Opaque NodeId returned by
     /// `Executor::node_builder(...).build()`. `0` = primary Node
     /// (legacy single-Session creation path); non-zero values route
     /// publisher / subscription / service creation through the
     /// per-Node session resolved via
     /// `Executor::node_session_mut(NodeId)`.
-    /// Issue 0312 — the executor `NodeId`, stored BIASED BY ONE: `0` means "no
+    /// The executor `NodeId`, stored BIASED BY ONE: `0` means "no
     /// node registered", `n` means `NodeId(n - 1)`.
     ///
     /// The bias exists because `NodeId` is an INDEX and the executor's node
@@ -3007,7 +3006,7 @@ pub struct nros_cpp_node_t {
     pub qos_overrides_len: usize,
 }
 
-/// Phase 211.H (issue #52) — one per-topic QoS override, the C++-FFI mirror of
+/// One per-topic QoS override, the C++-FFI mirror of
 /// Rust's `nros_rmw::QoSOverride` (and nros-c's `rclc_qos_override_t`). The
 /// deploy plan lowers a `qos_overrides.<topic>.<role>.<policy>` launch param
 /// into a `&'static` array of these, which the entry installs on the node via
@@ -3140,16 +3139,16 @@ pub const NROS_CPP_NAMESPACE_LEN: usize = 64;
 pub const NROS_CPP_NAME_LEN: usize = 64;
 
 /// Reserved padding bytes in `nros_cpp_node_t` (pad `node_id` to the next u64
-/// boundary). Phase 192.5 — names the struct-layout `7`.
+/// boundary). Names the struct-layout `7`.
 pub const NROS_CPP_NODE_RESERVED: usize = 7;
 
 /// Sentinel value for `domain_id_override`. When set, the executor's
 /// existing domain_id is used.
 pub const NROS_CPP_DOMAIN_ID_INHERIT: u32 = u32::MAX;
 
-/// Phase 104.C.9 — extended node-creation options (C++ FFI).
+/// Extended node-creation options (C++ FFI).
 ///
-/// Mirrors `rcl_node_options_t` in nros-c (Phase 104.C.8) — same field
+/// Mirrors `rcl_node_options_t` in nros-c — same field
 /// shape, separate FFI surface so the two language wrappers can evolve
 /// independently. Used by `nros_cpp_node_create_ex` and the C++
 /// `NodeBuilder` wrapper in `rclcpp/node.hpp`.
@@ -3192,13 +3191,13 @@ impl Default for nros_cpp_node_options_t {
     }
 }
 
-/// Phase 104.C.9 — zero-initialised `nros_cpp_node_options_t`.
+/// Zero-initialised `nros_cpp_node_options_t`.
 ///
 /// All length fields default to 0 ("inherit"); `domain_id_override` is
 /// `NROS_CPP_DOMAIN_ID_INHERIT`. The C++ `NodeOptions` wrapper consumes
 /// this via `Executor::node_builder(name)`.
 ///
-/// Issue 1473 — "inherit" is the vocabulary of the WHOLE struct, namespace
+/// "inherit" is the vocabulary of the WHOLE struct, namespace
 /// included: `rmw_name_len == 0` inherits the executor's backend,
 /// `locator_len == 0` its locator, `domain_id_override ==
 /// NROS_CPP_DOMAIN_ID_INHERIT` its domain, and `namespace_len == 0` its
@@ -3268,7 +3267,7 @@ fn handle_namespace(node: &nros_cpp_node_t) -> &str {
 /// Equivalent to populating an [`nros_cpp_node_options_t`] with the
 /// supplied namespace + zero defaults and calling
 /// `nros_cpp_node_create_ex`. Kept for source compatibility with
-/// pre-Phase-104.C.9 callers.
+/// older callers.
 ///
 /// # Parameters
 /// * `executor_handle` — Opaque executor handle from `nros_cpp_init()`.
@@ -3277,7 +3276,7 @@ fn handle_namespace(node: &nros_cpp_node_t) -> &str {
 ///   UNSET**: the node INHERITS the executor's namespace, exactly as
 ///   `nros_cpp_node_create_ex` does for `namespace_len == 0`. Pass `"/"` to
 ///   place the node at the ROOT explicitly — the two are different requests
-///   and this ABI keeps them apart (issue 1473).
+///   and this ABI keeps them apart.
 /// * `out_node` — Receives the node handle on success.
 ///
 /// # Safety
@@ -3473,7 +3472,7 @@ pub(crate) fn node_id_opt(node: &nros_cpp_node_t) -> Option<nros_node::executor:
     decode_node_id(node.node_id).map(nros_node::executor::NodeId::from_raw)
 }
 
-/// Phase 104.C.9 — create a node with extended options.
+/// Create a node with extended options.
 ///
 /// Thin C++ FFI wrapper over the Rust `Executor::node_builder(name)
 /// .rmw(...).locator(...).domain_id(...).namespace(...).sched(...)
@@ -3482,7 +3481,7 @@ pub(crate) fn node_id_opt(node: &nros_cpp_node_t) -> Option<nros_node::executor:
 /// route through that backend's session.
 ///
 /// Currently the per-Node SchedContext field and the multi-Session
-/// `extra_sessions` plumbing land via a follow-up (Phase 104.C.9.b)
+/// `extra_sessions` plumbing land via a follow-up
 /// once the C++ executor surfaces `Executor::node_builder` directly.
 /// The options struct round-trips into `nros_cpp_node_t` storage today
 /// so users can write code against the final API surface.
@@ -3496,7 +3495,7 @@ pub(crate) fn node_id_opt(node: &nros_cpp_node_t) -> Option<nros_node::executor:
 ///   INHERITS the executor's namespace, the same answer
 ///   `nros_cpp_node_create` gives for a NULL or empty `namespace`. Write
 ///   `namespace_ = "/"`, `namespace_len = 1` to place the node at the ROOT
-///   explicitly (issue 1473).
+///   explicitly.
 /// * `out_node` — Receives the node handle on success.
 ///
 /// # Safety
@@ -3666,7 +3665,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_name(node: *const nros_cpp_node_t) ->
 /// Returns a pointer to the null-terminated namespace string stored in the node handle.
 /// The pointer is valid as long as the `nros_cpp_node_t` is alive.
 ///
-/// Issue 1473 — this is the RESOLVED namespace, the one the executor recorded
+/// This is the RESOLVED namespace, the one the executor recorded
 /// for this node, never the argument the caller passed. A node created with an
 /// unset namespace on an executor opened at `/island` answers `/island`, which
 /// is also where its relative topics resolve; one created with an explicit
@@ -3735,7 +3734,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_fully_qualified_name(
     NROS_CPP_RET_OK
 }
 
-/// RFC-0088 D4 / phase-421 W2 — the serialization format the backend behind
+/// The serialization format the backend behind
 /// THIS node speaks, as its cross-image identity string (`"cdr"`, `"uorb"`).
 ///
 /// Resolved through `Executor::node_session_mut(node_id)`, i.e. the same
@@ -3833,7 +3832,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_rmw_implementation_identifier(
     }
 }
 
-/// Phase 88.12 — return the `nros_log::Logger` keyed on this node's
+/// Return the `nros_log::Logger` keyed on this node's
 /// name. Opaque handle on the C++ side; pass to `NROS_LOG_*` macros.
 ///
 /// # Safety
@@ -4078,7 +4077,7 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
 }
 
 /// Drain the ready set without waiting — rclcpp's `spin_some(max_duration)`
-/// (phase-488; the C++ half of the `cpp:Executor::spin_some` ledger row, whose
+/// (the C++ half of the `cpp:Executor::spin_some` ledger row, whose
 /// Rust half is `nros_node::Executor::spin_some`).
 ///
 /// A forwarder to that Rust method, so the two languages share one drain: it
@@ -4113,19 +4112,19 @@ pub unsafe extern "C" fn nros_cpp_spin_some(handle: *mut c_void, max_ms: u32) ->
     }
 }
 
-/// phase-521 W8 (b) — the budget [`nros_cpp_entry_spin_budget_ms`] answers
+/// The budget [`nros_cpp_entry_spin_budget_ms`] answers
 /// when every source of work can end the executor's park, in milliseconds.
 ///
 /// A PX4 sched task's park slot reads a bound that reaches this budget as "no
-/// deadline", and clears its work item's schedule instead of arming it
-/// (RFC-0113 D9). Equal to `nros_node::ENTRY_IDLE_BUDGET` by the assertion
+/// deadline", and clears its work item's schedule instead of arming it.
+/// Equal to `nros_node::ENTRY_IDLE_BUDGET` by the assertion
 /// below, so the header constant cannot drift from the executor.
 pub const NROS_CPP_ENTRY_IDLE_BUDGET_MS: i32 = 60_000;
 
 const _: () =
     assert!(nros_node::ENTRY_IDLE_BUDGET.as_millis() == NROS_CPP_ENTRY_IDLE_BUDGET_MS as u128);
 
-/// phase-521 W6 (RFC-0113 D2) — the budget an entry loop passes to
+/// The budget an entry loop passes to
 /// [`nros_cpp_spin_once`], in milliseconds.
 ///
 /// `Executor::entry_spin_budget`: up to a minute when every session of the
@@ -4162,10 +4161,10 @@ pub unsafe extern "C" fn nros_cpp_entry_spin_budget_ms(handle: *mut c_void) -> i
 
 /// Spin the executor for `duration_ms`, budgeted by WALL-CLOCK time.
 ///
-/// Issue 0329 — the single budgeted-spin entry point. `rclcpp::spin()` and
+/// The single budgeted-spin entry point. `rclcpp::spin()` and
 /// `Executor::spin()` were hand-rolled loops in the C++ headers; one of them
 /// (`nros.hpp`) still budgeted by ITERATION count (`elapsed += poll_ms`), the
-/// exact defect `Executor::spin` documents as fixed in Phase 118.C — an early
+/// exact defect `Executor::spin` documents as fixed — an early
 /// `spin_once` return on a signaled wake collapsed the loop into milliseconds.
 /// Consolidating the loop here (identical to `Future::wait`'s wall-clock budget)
 /// gives every caller the correct behavior with one implementation.
@@ -4212,12 +4211,12 @@ pub unsafe extern "C" fn nros_cpp_spin_for(
 }
 
 /// Spin until `clock` reads at least `deadline_ns` — the loop behind
-/// `rclcpp::Clock::sleep_until` / `sleep_for` (phase-515 P5).
+/// `rclcpp::Clock::sleep_until` / `sleep_for`.
 ///
-/// RFC-0021: a sleep on a single-threaded image must not starve the
+/// A sleep on a single-threaded image must not starve the
 /// transport, so this DRIVES the executor for the whole wait, as
 /// `nros_cpp_spin_for` does for a wall budget (and for the same reason it lives
-/// here, once: a wrapper looping over `spin_once` is RFC-0020 class 2). The
+/// here, once: a wrapper looping over `spin_once` is thin-wrapper violation class 2). The
 /// deadline is on `clock` itself, so a ROS-time clock driven by a simulator's
 /// `/clock` wakes when SIMULATED time arrives, which no wall budget can say.
 ///
@@ -4270,12 +4269,12 @@ pub unsafe extern "C" fn nros_cpp_spin_until_clock(
 
 /// Spin until cancelled (blocking) — the loop behind `rclcpp::Executor::spin()`.
 ///
-/// phase-417 W4.c. The C++ header used to run this loop itself, on
+/// The C++ header used to run this loop itself, on
 /// `while (initialized_)`, which made `shutdown()` the ONLY way out — and
 /// `shutdown()` calls `nros_cpp_fini`, so stopping a spin cost the whole
 /// middleware session and a fresh discovery round on the way back. That is also
-/// RFC-0020's violation class 2 (a polling loop that spins the executor from
-/// inside the wrapper), and issue 0329 already moved the BOUNDED loop here for
+/// the thin-wrapper audit's violation class 2 (a polling loop that spins the executor from
+/// inside the wrapper), and an earlier fix already moved the BOUNDED loop here for
 /// the same reason. This is the unbounded sibling.
 ///
 /// Exits when [`nros_cpp_executor_cancel`] is called from a signal handler or
@@ -4320,9 +4319,9 @@ pub unsafe extern "C" fn nros_cpp_spin(handle: *mut c_void, poll_ms: i32) -> nro
     last
 }
 
-/// Ask a spinning executor to stop — `rclcpp::Executor::cancel`, phase-417 W4.c.
+/// Ask a spinning executor to stop — `rclcpp::Executor::cancel`.
 ///
-/// # ADOPT-BOUNDED (RFC-0089)
+/// # ADOPT-BOUNDED
 ///
 /// Sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns
 /// BEFORE spinning has actually stopped; [`nros_cpp_executor_is_spinning`] is
@@ -4344,8 +4343,8 @@ pub unsafe extern "C" fn nros_cpp_executor_cancel(handle: *mut c_void) -> nros_c
     NROS_CPP_RET_OK
 }
 
-/// Is a spin loop running on this executor right now? phase-417 W4.c —
-/// `rclcpp::Executor::is_spinning`.
+/// Is a spin loop running on this executor right now? The C++ face
+/// of `rclcpp::Executor::is_spinning`.
 ///
 /// A different question from `ok()`, which answers "is this executor
 /// INITIALISED". Between [`nros_cpp_executor_cancel`] and the loop's next poll
@@ -4365,7 +4364,7 @@ pub unsafe extern "C" fn nros_cpp_executor_is_spinning(handle: *mut c_void) -> b
     ctx.executor.is_spinning()
 }
 
-/// Phase 124.F.3 — session-level connectivity probe.
+/// Session-level connectivity probe.
 ///
 /// Wire-level round-trip ("is the peer / agent / router reachable?")
 /// with `timeout_ms` budget. Returns `NROS_CPP_RET_OK` on reply,
@@ -4396,7 +4395,7 @@ pub unsafe extern "C" fn nros_cpp_executor_ping(
     }
 }
 
-/// phase-381 W4 — visit one node on the graph. `enclave` is NULL where the
+/// Visit one node on the graph. `enclave` is NULL where the
 /// backend tracks none. Strings are BORROWED for the call. Return `false` to
 /// stop.
 pub type nros_cpp_node_visit_fn = Option<
@@ -4408,7 +4407,7 @@ pub type nros_cpp_node_visit_fn = Option<
     ) -> bool,
 >;
 
-/// phase-381 W4 — visit one name and the types on it. `types_count` may be 0 on
+/// Visit one name and the types on it. `types_count` may be 0 on
 /// a partially discovered graph. Strings are BORROWED. Return `false` to stop.
 pub type nros_cpp_names_and_types_visit_fn = Option<
     unsafe extern "C" fn(
@@ -4419,7 +4418,7 @@ pub type nros_cpp_names_and_types_visit_fn = Option<
     ) -> bool,
 >;
 
-/// phase-381 W4 — every node on the graph, with its namespace.
+/// Every node on the graph, with its namespace.
 ///
 /// Reports what has been DISCOVERED and never blocks: an empty enumeration
 /// means "nobody seen yet", not "nobody exists". `NROS_CPP_RET_UNSUPPORTED`
@@ -4542,7 +4541,7 @@ unsafe fn cpp_names_and_types(
     }
 }
 
-/// phase-381 W4 — every topic on the graph, with the types on it. One call per
+/// Every topic on the graph, with the types on it. One call per
 /// distinct TOPIC.
 ///
 /// # Safety
@@ -4557,7 +4556,7 @@ pub unsafe extern "C" fn nros_cpp_executor_get_topic_names_and_types(
     unsafe { cpp_names_and_types(handle, visit, ctx, false) }
 }
 
-/// phase-381 W4 — every service on the graph, with its types.
+/// Every service on the graph, with its types.
 ///
 /// # Safety
 /// `handle` must be a valid `CppContext` from `nros_cpp_init()`.
@@ -4621,7 +4620,7 @@ unsafe fn cpp_count_on_topic(
     }
 }
 
-/// phase-381 W4 — how many publishers are visible on `topic_name`. The count
+/// How many publishers are visible on `topic_name`. The count
 /// reflects what has been DISCOVERED and is never a proof of absence.
 ///
 /// # Safety
@@ -4637,7 +4636,7 @@ pub unsafe extern "C" fn nros_cpp_executor_count_publishers(
     unsafe { cpp_count_on_topic(handle, topic_name, out_count, CppGraphCount::Publishers) }
 }
 
-/// phase-381 W4 — how many subscribers are visible on `topic_name`.
+/// How many subscribers are visible on `topic_name`.
 ///
 /// # Safety
 /// `handle` must be a valid `CppContext`; `topic_name` NUL-terminated;
@@ -4652,7 +4651,7 @@ pub unsafe extern "C" fn nros_cpp_executor_count_subscribers(
     unsafe { cpp_count_on_topic(handle, topic_name, out_count, CppGraphCount::Subscribers) }
 }
 
-/// Issue 1978 — how many service clients are visible on `service_name`
+/// How many service clients are visible on `service_name`
 /// (Jazzy `rclcpp::Node::count_clients`). A backend with no graph answers
 /// `NROS_CPP_RET_UNSUPPORTED`, never a 0.
 ///
@@ -4669,7 +4668,7 @@ pub unsafe extern "C" fn nros_cpp_executor_count_clients(
     unsafe { cpp_count_on_topic(handle, service_name, out_count, CppGraphCount::Clients) }
 }
 
-/// Issue 1978 — how many service servers are visible on `service_name`
+/// How many service servers are visible on `service_name`
 /// (Jazzy `rclcpp::Node::count_services`).
 ///
 /// # Safety
@@ -4685,7 +4684,7 @@ pub unsafe extern "C" fn nros_cpp_executor_count_services(
     unsafe { cpp_count_on_topic(handle, service_name, out_count, CppGraphCount::Services) }
 }
 
-/// phase-381 W4 — one discovered endpoint on a topic. Strings BORROWED for the
+/// One discovered endpoint on a topic. Strings BORROWED for the
 /// call. No QoS: the GRANTED profile is what would answer "why is nothing
 /// arriving", no backend can read one back yet, and reporting the remote's
 /// DECLARED profile would be a confident wrong answer.
@@ -4698,7 +4697,7 @@ pub struct nros_cpp_endpoint_info_t {
     pub endpoint_gid: [u8; 24],
 }
 
-/// phase-381 W4 — visit one endpoint. Return `false` to stop.
+/// Visit one endpoint. Return `false` to stop.
 pub type nros_cpp_endpoint_info_visit_fn =
     Option<unsafe extern "C" fn(ctx: *mut c_void, info: *const nros_cpp_endpoint_info_t) -> bool>;
 
@@ -4781,7 +4780,7 @@ unsafe fn cpp_by_node(
     }
 }
 
-/// phase-381 W4 — what one named node PUBLISHES.
+/// What one named node PUBLISHES.
 ///
 /// # Safety
 /// `handle` must be a valid `CppContext` from `nros_cpp_init()`.
@@ -4797,7 +4796,7 @@ pub unsafe extern "C" fn nros_cpp_executor_get_publisher_names_and_types_by_node
     unsafe { cpp_by_node(handle, node_name, node_namespace, visit, ctx, 0) }
 }
 
-/// phase-381 W4 — what one named node SUBSCRIBES to.
+/// What one named node SUBSCRIBES to.
 ///
 /// `subscription`, not `subscriber`: the C++ surface takes rclcpp's vocabulary
 /// (`create_subscription`, `Subscription<T>`, `get_subscriptions_info_by_topic`).
@@ -4819,7 +4818,7 @@ pub unsafe extern "C" fn nros_cpp_executor_get_subscription_names_and_types_by_n
     unsafe { cpp_by_node(handle, node_name, node_namespace, visit, ctx, 1) }
 }
 
-/// phase-381 W4 — what services one named node SERVES.
+/// What services one named node SERVES.
 ///
 /// # Safety
 /// `handle` must be a valid `CppContext` from `nros_cpp_init()`.
@@ -4835,7 +4834,7 @@ pub unsafe extern "C" fn nros_cpp_executor_get_service_names_and_types_by_node(
     unsafe { cpp_by_node(handle, node_name, node_namespace, visit, ctx, 2) }
 }
 
-/// phase-381 W4 — what services one named node CALLS.
+/// What services one named node CALLS.
 ///
 /// # Safety
 /// `handle` must be a valid `CppContext` from `nros_cpp_init()`.
@@ -4912,7 +4911,7 @@ unsafe fn cpp_endpoint_info(
     }
 }
 
-/// phase-381 W4 — the publishers on `topic_name`.
+/// The publishers on `topic_name`.
 ///
 /// # Safety
 /// `handle` must be a valid `CppContext` from `nros_cpp_init()`.
@@ -4927,7 +4926,7 @@ pub unsafe extern "C" fn nros_cpp_executor_get_publishers_info_by_topic(
     unsafe { cpp_endpoint_info(handle, topic_name, visit, ctx, true) }
 }
 
-/// phase-381 W4 — the subscriptions on `topic_name`.
+/// The subscriptions on `topic_name`.
 ///
 /// # Safety
 /// `handle` must be a valid `CppContext` from `nros_cpp_init()`.
@@ -4946,7 +4945,7 @@ pub unsafe extern "C" fn nros_cpp_executor_get_subscriptions_info_by_topic(
 // Phase 110.B / 110.C — SchedContext FFI for the C++ wrapper
 // =============================================================================
 
-/// `rclcpp::SchedClass` mirror. Phase 110.B.
+/// `rclcpp::SchedClass` mirror.
 #[cfg(feature = "rmw-cffi")]
 #[repr(u8)]
 pub enum nros_cpp_sched_class_t {
@@ -4957,7 +4956,7 @@ pub enum nros_cpp_sched_class_t {
     TimeTriggered = 4,
 }
 
-/// `rclcpp::Priority` mirror. Phase 110.C.
+/// `rclcpp::Priority` mirror.
 #[cfg(feature = "rmw-cffi")]
 #[repr(u8)]
 pub enum nros_cpp_priority_t {
@@ -4966,7 +4965,7 @@ pub enum nros_cpp_priority_t {
     BestEffort = 2,
 }
 
-/// `rclcpp::DeadlinePolicy` mirror. Phase 110.B.
+/// `rclcpp::DeadlinePolicy` mirror.
 #[cfg(feature = "rmw-cffi")]
 #[repr(u8)]
 pub enum nros_cpp_deadline_policy_t {
@@ -4987,22 +4986,22 @@ pub struct nros_cpp_sched_context_t {
     pub period_us: u32,
     pub budget_us: u32,
     pub deadline_us: u32,
-    /// Phase 110.F — opt-in OS-level priority for per-callback dispatch.
+    /// Opt-in OS-level priority for per-callback dispatch.
     pub os_pri: u8,
-    /// Phase 110.G — TT-window offset within the executor's major frame.
+    /// TT-window offset within the executor's major frame.
     pub tt_window_offset_us: u32,
-    /// Phase 110.G — TT-window length in microseconds.
+    /// TT-window length in microseconds.
     pub tt_window_duration_us: u32,
 }
 
-/// Identifier of the auto-created default `Fifo` SC. Phase 110.B.
+/// Identifier of the auto-created default `Fifo` SC.
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_cpp_default_sched_context_id() -> u8 {
     0
 }
 
-/// Register a new scheduling context. Phase 110.B.
+/// Register a new scheduling context.
 ///
 /// On success writes the new SC id through `out_sc_id` and returns
 /// `NROS_CPP_RET_OK`. Returns `NROS_CPP_RET_INVALID_ARGUMENT` for null
@@ -5082,7 +5081,7 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context(
     }
 }
 
-/// RFC-0052 — create a scheduling context from a RAW sched task policy, routing
+/// Create a scheduling context from a RAW sched task policy, routing
 /// through the **common backend** [`nros_node::executor::sched_context::SchedContext::from_sched_task_policy`]
 /// so the C++ entry codegen never re-derives the class/budget/period/deadline
 /// mapping. This is the single-source-of-truth shared with the Rust runtime
@@ -5174,7 +5173,7 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context_from_policy(
     }
 }
 
-/// Bind a registered callback to a scheduling context. Phase 110.B.
+/// Bind a registered callback to a scheduling context.
 ///
 /// `handle` is the executor context; `callback_handle` is the index
 /// returned from a previous `add_*` call; `sc_id` is from
@@ -5200,14 +5199,14 @@ pub unsafe extern "C" fn nros_cpp_bind_handle_to_sched_context(
     }
 }
 
-/// Phase 272 (W2) — seed the `node_name → sched_context` table before the node
+/// Seed the `node_name → sched_context` table before the node
 /// is built. Mirrors the W1 `Executor::bind_node_name_sched` via the C++ executor
 /// handle; called by the emitted entry setup AFTER creating sched-context slots
-/// and BEFORE constructing/configuring components (RFC-0047: seed before build).
+/// and BEFORE constructing/configuring components (seed before build).
 ///
 /// Covers every component shape (configure-shape C/C++ and rclcpp IS-A-node) since
-/// every node funnels through `Executor::node_builder(name).build()` (RFC-0046) and
-/// the builder looks up the table there. This dissolves issue #124 at the emit level:
+/// every node funnels through `Executor::node_builder(name).build()` and
+/// the builder looks up the table there. This dissolves the ordering problem at the emit level:
 /// rclcpp-shape nodes are seeded here and pick up their sched task in the builder.
 ///
 /// # Safety
@@ -5253,7 +5252,7 @@ pub unsafe extern "C" fn nros_cpp_bind_node_name_sched(
     }
 }
 
-/// phase-509 P2 (RFC-0108 D2) -- seed the contract rank of the node
+/// Seed the contract rank of the node
 /// `(name, namespace)` before it is built. 0 is the most urgent; the entry
 /// codegen emits the derivation's ranks normalised that way, one call per node,
 /// before the node is created. Every callback the node then registers
@@ -5314,11 +5313,11 @@ fn bind_err_to_ret(e: nros_node::BindError) -> nros_cpp_ret_t {
     }
 }
 
-/// Phase 273 (W2) — seed the group → sched-context table for a specific
+/// Seed the group → sched-context table for a specific
 /// callback group of a named node. Call BEFORE the node is constructed (before
 /// `nros_cpp_node_create`) so that the group's entities pick up the binding at
-/// register time. Layering: group table > node-name table > default (RFC-0047
-/// Precedence). Mirror of `nros_cpp_bind_node_name_sched` at finer granularity.
+/// register time. Layering: group table > node-name table > default
+/// (precedence). Mirror of `nros_cpp_bind_node_name_sched` at finer granularity.
 ///
 /// # Safety
 /// `handle` must be a context returned by `nros_cpp_init`.
@@ -5417,7 +5416,7 @@ pub(crate) fn derive_min_stack_headroom(stack_bytes: usize) -> usize {
 /// Boards call this BEFORE the sched task's `setup()`, which is what makes an
 /// explicit `nros_cpp_executor_set_min_stack_headroom` inside `setup` win:
 /// declared beats derived by ordering, with no precedence logic to keep in
-/// step. Same shape as `set_spin_nominal_us` (phase-436).
+/// step. Same shape as `set_spin_nominal_us`.
 ///
 /// # Safety
 /// `handle` must be a live executor handle from this ABI, or NULL.
@@ -5501,14 +5500,14 @@ pub struct nros_cpp_monitor_row_t {
     /// phase10-B3 -- the route's budget (ms), take of the trigger to this
     /// output (`route-latency-runtime`). 0 = no route contract.
     pub route_max_latency_ms: u32,
-    /// phase-503 -- the route's supervised deadline (ms) from the take of the
+    /// The route's supervised deadline (ms) from the take of the
     /// trigger (`route-deadline-runtime`, which calls the reaction hook). 0 =
     /// not supervised. A row baked before this field existed initialises it,
     /// and the two below, to 0.
     pub route_deadline_ms: u32,
-    /// phase-503 -- the reaction id handed to the hook (1-based, 0 = none).
+    /// The reaction id handed to the hook (1-based, 0 = none).
     pub reaction_id: u16,
-    /// phase-503 -- `NROS_CPP_MECHANISM_EXECUTOR` (0) or
+    /// `NROS_CPP_MECHANISM_EXECUTOR` (0) or
     /// `NROS_CPP_MECHANISM_TIMER` (1).
     pub mechanism: u8,
 }
@@ -5525,7 +5524,7 @@ pub struct nros_cpp_age_row_t {
     pub fqn: *const c_char,
     /// Declared max take-age, ms. 0 = the row carries only a deadline.
     pub max_age_ms: u32,
-    /// phase-462 W5b -- the contract's `deadline`, ms (0 = none). The executor
+    /// The contract's `deadline`, ms (0 = none). The executor
     /// judges it with the silence rule only where the backend cannot.
     pub deadline_ms: u32,
 }
@@ -5539,8 +5538,8 @@ pub struct nros_cpp_age_row_t {
 ///
 /// phase10-B3 -- 64 on a 32-bit target (the row needed 60 there), 128 on a
 /// 64-bit host, where the route's trigger topic made the spec three fat
-/// pointers. phase-503 added the supervised deadline, reaction id and
-/// mechanism (7 B and padding): the row needs 68 on a 32-bit target, so 72
+/// pointers. The supervised deadline, reaction id and
+/// mechanism (7 B and padding) were added since: the row needs 68 on a 32-bit target, so 72
 /// (8-aligned). Not exported by cbindgen (it cannot spell the `if`): the header
 /// states the same expression with `sizeof(void *)`, see `cbindgen.toml`.
 #[cfg(feature = "rmw-cffi")]
@@ -5633,7 +5632,7 @@ fn carve_monitor_storage<C, S>(
 /// unwatched is the class of failure this table exists to remove. The refusal
 /// logs the knob to raise, `NROS_EXECUTOR_MAX_MONITORS` or
 /// `NROS_EXECUTOR_MAX_AGE_MONITORS`; both derive from the contract's row
-/// counts when nothing states them (phase-496 W1). A short or misaligned
+/// counts when nothing states them. A short or misaligned
 /// storage buffer is refused the same way.
 ///
 /// # Safety
@@ -5851,11 +5850,11 @@ pub struct nros_cpp_hazard_row_t {
     /// Rate-table row of the `safe_state` publisher, or
     /// `NROS_CPP_HAZARD_NO_SINK`.
     pub sink: u16,
-    /// phase-462 W3c -- the id `nros_app_reaction_hook` receives when the
+    /// The id `nros_app_reaction_hook` receives when the
     /// hazard is detected (the reacting path's, in the model's one reaction id
     /// space); 0 = no safe-state entry to start.
     pub reaction_id: u16,
-    /// play_launch phase 96 W4.2 -- `n_rungs` rungs of the hazard's ladder,
+    /// `n_rungs` rungs of the hazard's ladder,
     /// top first, static; NULL with 0 when no rung route is monitored, which
     /// is also what an entry generated before these fields reads as.
     pub rungs: *const nros_cpp_hazard_rung_t,
@@ -5866,7 +5865,7 @@ pub struct nros_cpp_hazard_row_t {
 #[cfg(feature = "rmw-cffi")]
 pub const NROS_CPP_HAZARD_NO_MODE: u16 = u16::MAX;
 
-/// play_launch phase 96 W4.2 -- one rung of a hazard's ladder: the C spelling
+/// One rung of a hazard's ladder: the C spelling
 /// of `RungSpec`. The executor judges the ACTIVE rung's route
 /// (`hazard-route-runtime`): the top rung, or the rung whose mode the executor
 /// is in when the fault comes or falls to while it holds.
@@ -5888,7 +5887,7 @@ pub struct nros_cpp_hazard_rung_t {
     /// the rung becomes active.
     pub starts_at: *const nros_cpp_hazard_member_t,
     pub n_starts_at: usize,
-    /// phase-560 W8 -- the level's name as the model spells it, which
+    /// The level's name as the model spells it, which
     /// `hazard-level-runtime` reports when the ladder is on this rung;
     /// NUL-terminated UTF-8 with static lifetime (a literal in the entry).
     /// NULL reads as an empty name, which is also what an entry generated
@@ -5912,7 +5911,7 @@ pub struct nros_cpp_hazard_table_t {
 
 /// Bytes of caller storage ONE hazard row needs (`HazardCell` + `HazardSpec`),
 /// a bound for the reason [`NROS_CPP_MONITOR_ROW_STORAGE`] is one: 112 on a
-/// 64-bit host, 80 on a 32-bit target (play_launch phase 96 W4.2: the rung
+/// 64-bit host, 80 on a 32-bit target (the rung
 /// tracking's five cell words and the rung slice). Stated in the header with
 /// `sizeof(void *)`, see `cbindgen.toml`.
 #[cfg(feature = "rmw-cffi")]
@@ -5921,8 +5920,8 @@ pub const NROS_CPP_HAZARD_ROW_STORAGE: usize = if core::mem::size_of::<usize>() 
 } else {
     80
 };
-/// play_launch phase 96 W4.2 -- bytes of caller storage ONE rung needs
-/// (`RungSpec`): 48 on a 64-bit host, 32 on a 32-bit target (phase-560 W8:
+/// Bytes of caller storage ONE rung needs
+/// (`RungSpec`): 48 on a 64-bit host, 32 on a 32-bit target (with
 /// the level's name). Its `starts_at` members count toward
 /// `NROS_CPP_HAZARD_MEMBER_STORAGE`.
 #[cfg(feature = "rmw-cffi")]
@@ -6179,7 +6178,7 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
     NROS_CPP_RET_OK
 }
 
-/// phase-462 W4b -- one rate/latency row of a contract MODE: the numbers that
+/// One rate/latency row of a contract MODE: the numbers that
 /// differ from the base row at the same index. Every other field (topic,
 /// endpoint, route trigger, reaction, mechanism, cell) is the base row's.
 #[cfg(feature = "rmw-cffi")]
@@ -6192,7 +6191,7 @@ pub struct nros_cpp_mode_row_t {
     pub route_deadline_ms: u32,
 }
 
-/// phase-462 W4b -- one age row of a contract mode: its `max_age_ms`.
+/// One age row of a contract mode: its `max_age_ms`.
 #[cfg(feature = "rmw-cffi")]
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -6200,7 +6199,7 @@ pub struct nros_cpp_mode_age_row_t {
     pub max_age_ms: u32,
 }
 
-/// phase-462 W4b -- one contract mode: exactly as many rows (and ages) as the
+/// One contract mode: exactly as many rows (and ages) as the
 /// base tables `nros_cpp_install_monitors` installed, in the same order -- or
 /// `rows` NULL with `n_rows` 0 (likewise `ages`) to judge by the base table
 /// itself, for a mode whose numbers are the base's.
@@ -6212,19 +6211,19 @@ pub struct nros_cpp_mode_t {
     pub n_rows: usize,
     pub ages: *const nros_cpp_mode_age_row_t,
     pub n_ages: usize,
-    /// phase-462 W4c -- the sched-context deadlines this mode moves: as many
+    /// The sched-context deadlines this mode moves: as many
     /// as the tables' `n_base_deadlines`, naming the same contexts in the
     /// same order. NULL when none.
     pub deadlines: *const nros_cpp_mode_deadline_t,
     pub n_deadlines: usize,
-    /// phase-462 W4c -- how long entering this mode may take, ms (its
+    /// How long entering this mode may take, ms (its
     /// reaction path's `max_latency`); 0 = none.
     pub switch_budget_ms: u32,
-    /// phase-462 W4c -- that reaction path's key, static, or NULL.
+    /// That reaction path's key, static, or NULL.
     pub reaction: *const c_char,
 }
 
-/// phase-462 W4c -- one sched-context deadline a mode moves, the C spelling of
+/// One sched-context deadline a mode moves, the C spelling of
 /// `nros::monitor::ModeDeadline`. `sc` is the context's id on the executor,
 /// or -- when the tables pass `sc_ids` -- an index into `sc_ids`.
 #[cfg(feature = "rmw-cffi")]
@@ -6235,7 +6234,7 @@ pub struct nros_cpp_mode_deadline_t {
     pub deadline_us: u32,
 }
 
-/// phase-462 W4b -- the modes `nros_cpp_install_modes` installs: mode id `i`
+/// The modes `nros_cpp_install_modes` installs: mode id `i`
 /// is `modes[i - 1]` (0 is the base). `storage` is static, 8-aligned, and at
 /// least `(n_modes + 1) * (NROS_CPP_MODE_TABLE_STORAGE + n_base_deadlines *
 /// NROS_CPP_MODE_DEADLINE_STORAGE) + n_row_modes * n_rows *
@@ -6250,11 +6249,11 @@ pub struct nros_cpp_mode_tables_t {
     pub n_modes: usize,
     pub storage: *mut c_void,
     pub storage_len: usize,
-    /// phase-462 W4c -- the base's deadlines for the contexts the modes move,
+    /// The base's deadlines for the contexts the modes move,
     /// restored when the base is entered again. NULL when none.
     pub base_deadlines: *const nros_cpp_mode_deadline_t,
     pub n_base_deadlines: usize,
-    /// phase-462 W4c -- when non-NULL, each row's `sc` indexes this array of
+    /// When non-NULL, each row's `sc` indexes this array of
     /// context ids (the entry's `nros_cpp_create_sched_context_from_policy`
     /// results, by sched task); NULL means `sc` IS the id.
     pub sc_ids: *const u8,
@@ -6262,7 +6261,7 @@ pub struct nros_cpp_mode_tables_t {
 }
 
 /// Bytes of caller storage one mode's tables need (`ModeTables`): 72 on a
-/// 64-bit host, 40 on a 32-bit target (phase-462 W4c added the deadline rows,
+/// 64-bit host, 40 on a 32-bit target (with the deadline rows,
 /// the switch budget and the reaction key). Stated in the header with
 /// `sizeof(void *)`, see `cbindgen.toml`.
 #[cfg(feature = "rmw-cffi")]
@@ -6271,7 +6270,7 @@ pub const NROS_CPP_MODE_TABLE_STORAGE: usize = if core::mem::size_of::<usize>() 
 } else {
     40
 };
-/// phase-462 W4c -- bytes of caller storage one deadline row of one mode
+/// Bytes of caller storage one deadline row of one mode
 /// needs (`ModeDeadline`).
 #[cfg(feature = "rmw-cffi")]
 pub const NROS_CPP_MODE_DEADLINE_STORAGE: usize = 8;
@@ -6283,7 +6282,7 @@ pub const NROS_CPP_MODE_ROW_STORAGE: usize = if core::mem::size_of::<usize>() ==
     48
 };
 /// Bytes of caller storage one mode's age row needs (`AgeMonitorSpec`).
-/// phase-462 W5b -- 32 on a 32-bit target, where the spec's `deadline_ms`
+/// 32 on a 32-bit target, where the spec's `deadline_ms`
 /// made it 28 (two fat pointers, two `u32`, the cell reference).
 #[cfg(feature = "rmw-cffi")]
 pub const NROS_CPP_MODE_AGE_STORAGE: usize = if core::mem::size_of::<usize>() == 8 {
@@ -6313,7 +6312,7 @@ const _: () = {
     assert!(size_of::<nros_cpp_mode_deadline_t>() == size_of::<nros::monitor::ModeDeadline>());
 };
 
-/// phase-462 W4b -- install the contract's MODE variants of the two monitor
+/// Install the contract's MODE variants of the two monitor
 /// tables on this executor, after `nros_cpp_install_monitors`. Each mode's
 /// specs are the base specs with the mode's numbers: the same topics,
 /// endpoints and cells, so every binding and hazard row index survives a
@@ -6542,7 +6541,7 @@ unsafe fn carve_mode_tables(
     Ok(unsafe { core::slice::from_raw_parts(pairs, n + 1) })
 }
 
-/// phase-462 W4b -- ask every executor to judge by mode `id`'s tables (0 =
+/// Ask every executor to judge by mode `id`'s tables (0 =
 /// the base contract), applied at each executor's next spin. The C spelling
 /// of `nros::monitor::request_mode`; the entry names each id as
 /// `NROS_MODE_<NAME>`.
@@ -6571,7 +6570,7 @@ pub struct nros_cpp_violation_t {
     pub measured: u32,
     /// Declared bound, same unit as `measured`.
     pub declared: u32,
-    /// phase-560 W8 -- the level a `hazard-level-runtime` report names (not
+    /// The level a `hazard-level-runtime` report names (not
     /// NUL-terminated, like `rule`); empty, with `level_len` 0, for every
     /// other rule.
     pub level: *const c_char,
@@ -6586,7 +6585,7 @@ pub type nros_cpp_violation_cb_t =
 /// Drain every pending contract violation from this executor's ring, the C++
 /// mirror of `Executor::drain_violations`. The entry glue hands each one to
 /// the reporter it links (the same rule vocabulary play_launch enforces on
-/// the Linux side, RFC-0050). Call between spins, never from a callback.
+/// the Linux side). Call between spins, never from a callback.
 ///
 /// # Safety
 /// `handle` must be a live executor handle from this ABI, or NULL. `cb` must
@@ -6623,7 +6622,7 @@ pub unsafe extern "C" fn nros_cpp_executor_drain_violations(
     NROS_CPP_RET_OK
 }
 
-/// phase-474 I1 -- turn the executor's drain-and-report hook on or off
+/// Turn the executor's drain-and-report hook on or off
 /// (`Executor::set_violation_drain_report`): at the end of every spin the ring
 /// is drained and each entry logged with its sequence number and the
 /// `total` / `dropped` counters. The generated C/C++ entries call this when the
@@ -6645,7 +6644,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_violation_drain_report(
     NROS_CPP_RET_OK
 }
 
-/// The violation counters of one executor (phase-474 I1 / I2).
+/// The violation counters of one executor.
 #[cfg(feature = "rmw-cffi")]
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
@@ -6662,7 +6661,7 @@ pub struct nros_cpp_violation_counts_t {
     pub armed: bool,
 }
 
-/// phase-474 I1 / I2 -- read one executor's violation counters.
+/// Read one executor's violation counters.
 ///
 /// # Safety
 /// `handle` must be a live executor handle from this ABI, or NULL; `out` must
@@ -6688,7 +6687,7 @@ pub unsafe extern "C" fn nros_cpp_executor_violation_counts(
     NROS_CPP_RET_OK
 }
 
-/// phase-474 I2 -- choose when this executor's contract monitors arm,
+/// Choose when this executor's contract monitors arm,
 /// overriding the build default (`CONFIG_NROS_MONITOR_ARM_ON_CALL`,
 /// `CONFIG_NROS_MONITOR_ARM_GRACE_MS`). `on_call`: wait for
 /// `nros_cpp_monitors_arm()`; `grace_ms`: arm anyway that long after the first
@@ -6710,7 +6709,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_monitor_arming(
     NROS_CPP_RET_OK
 }
 
-/// phase-474 I2 -- the application's start-up is over: arm the contract
+/// The application's start-up is over: arm the contract
 /// monitors of every executor in the image that waits for it. Safe from any
 /// thread and from a callback (it bumps an atomic; each executor arms at its
 /// next spin). The C spelling is `rclc_monitors_arm()`; this is the same call
@@ -6727,7 +6726,7 @@ pub extern "C" fn nros_cpp_monitors_arm() {
 /// required and a NULL one answers `NROS_CPP_RET_INVALID_ARGUMENT` rather than
 /// faulting. A full remap table answers `NROS_CPP_RET_FULL`.
 ///
-/// Issue 1971 -- this writes the executor's RUNTIME remap table, for
+/// This writes the executor's RUNTIME remap table, for
 /// hand-written callers. The generated entry no longer calls it: its launch
 /// rules are one flash table (`nros_cpp_set_launch_remaps`). On bare metal the
 /// runtime table is 0 slots unless `NROS_EXECUTOR_RUNTIME_REMAPS` states some,
@@ -6793,8 +6792,8 @@ pub unsafe extern "C" fn nros_cpp_declare_remap(
     }
 }
 
-/// One launch `<remap from= to=/>` rule as the generated C/C++ entry emits it
-/// (issue 1971, RFC-0107 step 1): four NUL-terminated strings with static
+/// One launch `<remap from= to=/>` rule as the generated C/C++ entry emits it:
+/// four NUL-terminated strings with static
 /// lifetime (literals in the entry's `.rodata`). `node_namespace` NULL or
 /// empty is the root namespace.
 #[cfg(feature = "rmw-cffi")]
@@ -6826,12 +6825,12 @@ const _: () = {
 };
 
 /// Install the image's launch remap table: ONE `static const` table the
-/// generated entry emits, read by every executor (issue 1971, RFC-0107
-/// step 1). Launch rules stay AUTHORITATIVE over `--ros-args -r` rules.
+/// generated entry emits, read by every executor. Launch rules stay AUTHORITATIVE over
+/// `--ros-args -r` rules.
 ///
 /// Call it once at boot, BEFORE the board runner sets up any sched task or the
 /// entry builds any node: an rclcpp-shape constructor registers its entities
-/// immediately (issue 0255). The generated entry does exactly that.
+/// immediately. The generated entry does exactly that.
 ///
 /// Returns `NROS_CPP_RET_OK`, or `NROS_CPP_RET_INVALID_ARGUMENT` when `table`
 /// is NULL with `len > 0`, or a row has a NULL node name, `from` or `to`, or a
@@ -6865,8 +6864,8 @@ pub unsafe extern "C" fn nros_cpp_set_launch_remaps(
     }
 }
 
-/// One baked RMW session property as the generated C/C++ entry emits it
-/// (RFC-0109 D8, phase-514 W3): two NUL-terminated strings with static
+/// One baked RMW session property as the generated C/C++ entry emits it:
+/// two NUL-terminated strings with static
 /// lifetime (literals in the entry's `.rodata`), lowered at build time from
 /// the bringup's own `rmw/<backend>` file.
 #[cfg(feature = "rmw-cffi")]
@@ -6895,7 +6894,7 @@ const _: () = {
 
 /// Install the image's baked RMW session properties: ONE `static const`
 /// table the generated entry emits, handed to the backend by every default
-/// session open that states none of its own (RFC-0109 D8).
+/// session open that states none of its own.
 ///
 /// Call it once at boot, BEFORE the board runner opens any session. The
 /// generated entry does exactly that.
@@ -6940,7 +6939,7 @@ mod baked_ros_args {
     include!(concat!(env!("OUT_DIR"), "/baked_ros_args.rs"));
 }
 
-/// Issue 2073 -- whether this image baked arguments of its own, so
+/// Whether this image baked arguments of its own, so
 /// `rclcpp::init` reaches [`nros_cpp_install_argv_remaps`] even when the
 /// command line holds no `--ros-args` (a board's is empty).
 #[cfg(feature = "rmw-cffi")]
@@ -6955,7 +6954,7 @@ pub extern "C" fn nros_cpp_baked_ros_args_present() -> bool {
 ///
 /// This is the C++ face of `nros_node::ros_args::apply_ros_args`, the same
 /// parse and the same refusals as Rust's `nros::Context::new`. With the
-/// `param-store` feature it is `apply_ros_args_with_params` (phase-482 W5):
+/// `param-store` feature it is `apply_ros_args_with_params`:
 /// `-p` overrides and `--params-file` files (read with `std::fs`; refused on a
 /// target without `std`) are installed as parameter overrides, applied when a
 /// node declares the parameter. Without it they are REFUSED by name, as are
@@ -7117,7 +7116,7 @@ impl core::fmt::Write for TruncatingWriter<'_> {
 // Phase 274.W1 — RFC-0015 Model 1 primitives (session ⊥ executor + gating FFI)
 // ============================================================================
 
-/// Phase 274.W1 (RFC-0015 Model 1) — get the session handle from an opened executor.
+/// Get the session handle from an opened executor.
 ///
 /// Returns an opaque pointer to the underlying RMW session. Pass this to
 /// [`nros_cpp_executor_open_over_session`] to open additional executors that
@@ -7137,7 +7136,7 @@ pub unsafe extern "C" fn nros_cpp_executor_session_handle(executor: *mut c_void)
     ctx.executor.session_handle().into_raw()
 }
 
-/// Phase 274.W1 (RFC-0015 Model 1) — open a new `Borrowed` executor over a shared session.
+/// Open a new `Borrowed` executor over a shared session.
 ///
 /// Opens an executor that **does not own or close** the session on drop (the
 /// `Borrowed` session store). This is the per-sched task primitive: the primary
@@ -7166,7 +7165,7 @@ pub unsafe extern "C" fn nros_cpp_executor_open_over_session(
     unsafe { open_over_session(session_handle, node_name, domain_id, out_storage, None) }
 }
 
-/// Issue 1970 -- [`nros_cpp_executor_open_over_session`] for one SCHED TASK of a
+/// [`nros_cpp_executor_open_over_session`] for one SCHED TASK of a
 /// per-sched-task-sized image: the borrowed executor is carved from `backing` at the
 /// sizing the image derived for the sched task named `sched_task` (see
 /// [`nros_cpp_init_sched_task`] for what is refused).
@@ -7265,7 +7264,7 @@ unsafe fn open_over_session(
     NROS_CPP_RET_OK
 }
 
-/// Phase 274.W1 (RFC-0015 Model 1) — gate this executor to a set of named callback groups.
+/// Gate this executor to a set of named callback groups.
 ///
 /// After this call, only callbacks whose `.callback_group()` is in `groups` will
 /// register on this executor. Pass `n == 0` or `groups == NULL` to clear the
@@ -7363,7 +7362,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
 /// Mirrors `nros_platform::SchedTaskSpec` in C-ABI form. `groups` must point to
 /// FLAT `(node name, node namespace, group)` triples — 3 × `n_groups`
 /// null-terminated UTF-8 strings; NULL / 0 means "accept all groups"
-/// (wildcard — degenerate single-sched-task). issue 1172: `n_groups` counts TRIPLES.
+/// (wildcard — degenerate single-sched-task). `n_groups` counts TRIPLES.
 ///
 /// `setup` is called once on the sched task's thread, with the sched task's borrowed
 /// executor handle, AFTER `set_active_groups` — so only the sched task's groups'
@@ -7373,7 +7372,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
 /// without elevated privileges). `stack_bytes` is informational on native
 /// (`std::thread` manages the stack). `spin_period_us` is no longer read by
 /// the sched task runner: each sched task parks in `spin_once` until its next deadline or
-/// arrival (phase-521 W6). The level runner still bounds a level's park by it.
+/// arrival. The level runner still bounds a level's park by it.
 ///
 /// # Safety
 ///
@@ -7395,12 +7394,12 @@ pub struct NativeSchedTaskSpecC {
     pub stack_bytes: usize,
     pub spin_period_us: u64,
     pub setup: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
-    /// RFC-0052 W2 — CPU pin + 1; 0 = unpinned (advisory on native v1:
+    /// CPU pin + 1; 0 = unpinned (advisory on native v1:
     /// recorded for parity, pinning lands with the W3 executor work).
     pub core_plus1: u32,
     /// ThreadX-only (bake-validated); -1 = unset. Never consumed on native.
     pub preempt_threshold: i64,
-    /// phase-296 W5.7 append — RTOS-agnostic scheduling class
+    /// Appended field — RTOS-agnostic scheduling class
     /// (`"best_effort"`|`"real_time"`|`"time_triggered"`); NULL = unset.
     /// ABI append-only. One of six hand mirrors of main.h's canonical
     /// `nros_native_sched_task_spec_t` (the others: main.hpp `NativeSchedTaskSpec` and the
@@ -7419,16 +7418,16 @@ pub struct NativeSchedTaskSpecC {
     pub deadline_policy: *const c_char,
 }
 
-/// phase-503 — [`nros_cpp_monitor_row_t::mechanism`]: the route deadline is
+/// [`nros_cpp_monitor_row_t::mechanism`]: the route deadline is
 /// checked in the executor's spin loop (catches slowness, not a stuck
 /// callback).
 pub const NROS_CPP_MECHANISM_EXECUTOR: u8 = 0;
-/// phase-503 — [`nros_cpp_monitor_row_t::mechanism`]: the port also supervises
+/// [`nros_cpp_monitor_row_t::mechanism`]: the port also supervises
 /// the route with its own timer, armed from
 /// [`nros_cpp_executor_route_next_due_us`] (catches a stuck callback too).
 pub const NROS_CPP_MECHANISM_TIMER: u8 = 1;
 
-/// phase-503 — what the reaction hook receives: the C spelling of
+/// What the reaction hook receives: the C spelling of
 /// `nros_node::executor::monitor::ReactionEvent`, field for field (the layout
 /// is asserted equal below, which is what lets the hook be handed to the
 /// executor unchanged).
@@ -7449,7 +7448,7 @@ pub struct nros_cpp_reaction_event_t {
     pub declared_ms: u32,
     /// The row's `mechanism` (`NROS_CPP_MECHANISM_*`).
     pub mechanism: u8,
-    /// play_launch phase 96 W4.2 -- the executor's monotonic µs when the
+    /// The executor's monotonic µs when the
     /// verdict fired; for `hazard-detected`, the detection tick, where the
     /// hazard's rung routes start. 0 when the executor has no clock.
     pub fired_at_us: u64,
@@ -7470,7 +7469,7 @@ const _: () = {
     assert!(offset_of!(C, fired_at_us) == offset_of!(R, fired_at_us));
 };
 
-/// phase-503 — the reaction hook: `hook(event, ctx)`, called on the spin
+/// The reaction hook: `hook(event, ctx)`, called on the spin
 /// thread inside `nros_cpp_spin_once` when a supervised route passes its
 /// deadline (`route-deadline-runtime`; `event->rule_code` is 11), and on a
 /// sched context's `fault` deadline action (`rule_code` 4, `reaction_id` 0,
@@ -7479,7 +7478,7 @@ const _: () = {
 pub type nros_cpp_reaction_hook_t =
     Option<unsafe extern "C" fn(event: *const nros_cpp_reaction_event_t, ctx: *mut c_void)>;
 
-/// phase-503 — install (or, with `hook == NULL`, remove) the executor's
+/// Install (or, with `hook == NULL`, remove) the executor's
 /// reaction hook. A supervised route row (`route_deadline_ms > 0`) whose take
 /// is still unanswered at `take + route_deadline_ms` is reported once and the
 /// hook is called with the row's `reaction_id`, its index and its `mechanism`.
@@ -7511,7 +7510,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_reaction_hook(
     NROS_CPP_RET_OK
 }
 
-/// phase-509 P7 (RFC-0108 D8.1) — the level this executor runs, 0 the most
+/// The level this executor runs, 0 the most
 /// urgent, written to `*out_level`. It equals the generated
 /// `NROS_ENTRY_LEVEL_OF_<node>` (`nros_priority_plan.h`) of every node the
 /// executor hosts. An executor its runner never placed is level 0, which is
@@ -7537,7 +7536,7 @@ pub unsafe extern "C" fn nros_cpp_executor_level(
     NROS_CPP_RET_OK
 }
 
-/// phase-509 P7 — place this executor at `level` (0 the most urgent), so
+/// Place this executor at `level` (0 the most urgent), so
 /// [`nros_cpp_executor_level`] answers it and its spins check in as it. A
 /// runner calls it once per level before the level spins, with the index
 /// [`nros_cpp_sched_task_level`] gives its sched task. `INVALID_ARGUMENT` at or past
@@ -7561,7 +7560,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_level(
     }
 }
 
-/// phase-509 P9b (RFC-0108 "As built in P9b") -- install the executor's
+/// Install the executor's
 /// lock: `ctx` is the port's initialised RECURSIVE, priority-inheriting mutex
 /// (`nros_platform_mutex_rec_init`), and `lock` / `unlock` take and give it
 /// (`nros_platform_mutex_rec_lock` / `_unlock`). From then on every
@@ -7590,7 +7589,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_lock(
     NROS_CPP_RET_OK
 }
 
-/// phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- give the lock
+/// Give the lock
 /// [`nros_cpp_executor_set_lock`] installed the port's thread identity
 /// (`k_current_get`, `pthread_self`), so a pass releases it around each user
 /// callback and around its park: the levels' workers then preempt each
@@ -7621,11 +7620,11 @@ pub unsafe extern "C" fn nros_cpp_executor_set_thread_id(
     NROS_CPP_RET_OK
 }
 
-/// phase-509 P7 — the most levels an image can have (the check-in word's
+/// The most levels an image can have (the check-in word's
 /// width).
 pub const NROS_CPP_MAX_LEVELS: u8 = nros_node::executor::MAX_LEVELS as u8;
 
-/// phase-509 P7 — the level of sched task `index` of a runner's `n` sched tasks: its
+/// The level of sched task `index` of a runner's `n` sched tasks: its
 /// urgency order among their kernel priorities, 0 the most urgent, equal
 /// priorities in array order. The rule `nros dev codegen entry` uses for
 /// `NROS_ENTRY_LEVEL_OF_<node>`, so the two agree. The priorities are read
@@ -7662,7 +7661,7 @@ pub unsafe extern "C" fn nros_cpp_sched_task_level(
     nros_node::executor::sched_task_level_by(n, index, smaller_is_urgent, at).map_or(-1, i32::from)
 }
 
-/// phase-509 P7 (RFC-0108 D8.2) — state how many levels the image runs. A
+/// State how many levels the image runs. A
 /// runner calls it once, before its levels spin; an image that never does
 /// has one. `INVALID_ARGUMENT` for 0 or more than `NROS_CPP_MAX_LEVELS`.
 #[unsafe(no_mangle)]
@@ -7674,13 +7673,13 @@ pub extern "C" fn nros_cpp_set_level_count(n: u8) -> nros_cpp_ret_t {
     }
 }
 
-/// phase-509 P7 — how many levels the image runs.
+/// How many levels the image runs.
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_cpp_level_count() -> u8 {
     nros_node::executor::level_count()
 }
 
-/// phase-509 P7 — the low 32 bits of the executor clock, in microseconds, at
+/// The low 32 bits of the executor clock, in microseconds, at
 /// `level`'s latest spin, written to `*out_us`; NOT_FOUND while it has not
 /// spun. Compare two with a wrapping difference.
 ///
@@ -7703,14 +7702,14 @@ pub unsafe extern "C" fn nros_cpp_level_last_spin_us(
     }
 }
 
-/// phase-509 P7 (RFC-0108 D8.2) — whether every level of the image has
+/// Whether every level of the image has
 /// spun since the last [`nros_cpp_levels_take_alive`] that returned true.
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_cpp_levels_alive() -> bool {
     nros_node::executor::every_level_alive()
 }
 
-/// phase-509 P7 (RFC-0108 D8.2) — the watchdog feed: true when every level
+/// The watchdog feed: true when every level
 /// has spun since the last true, and the check-ins are then cleared; false,
 /// and nothing cleared, while any level has not. A level stuck in a callback
 /// stops checking in, so the feed stops even while another level spins.
@@ -7776,7 +7775,7 @@ struct SchedulerHead {
     owner: *mut c_void,
 }
 
-/// phase-509 P9 -- the backing bytes a scheduler of `n_levels` levels takes:
+/// The backing bytes a scheduler of `n_levels` levels takes:
 /// its head and one seat per level, rounded up to 8. `0` for 0 levels or more
 /// than `NROS_CPP_MAX_LEVELS`. The generated
 /// `NROS_CPP_SCHEDULER_BACKING_SIZE_<core>` is
@@ -7885,7 +7884,7 @@ unsafe fn scheduler_init(
     Some(backing)
 }
 
-/// phase-509 P9 (RFC-0108 D3; the amended RFC-0107 step 5) -- open core
+/// Open core
 /// `core`'s scheduler in `backing` (`bytes`, 8-aligned, at least
 /// [`nros_cpp_scheduler_backing_size`]`(n_levels)`), over the executor
 /// `owner` opened (`nros_cpp_init_levels` / `nros_cpp_init`). It states the
@@ -7949,7 +7948,7 @@ fn seat_level(
     NROS_CPP_RET_OK
 }
 
-/// phase-509 P9 -- seat the executor that owns the session (the core's one
+/// Seat the executor that owns the session (the core's one
 /// executor, which runs on the caller's thread) at `level`, and place it
 /// there (`nros_cpp_executor_set_level`). `stack_bytes` is the stack its
 /// thread runs on; `name` a static string, or NULL.
@@ -7991,7 +7990,7 @@ pub unsafe extern "C" fn nros_cpp_level_adopt(
     NROS_CPP_RET_OK
 }
 
-/// phase-509 P9 (RFC-0108 D3) / P9b item 4 -- open level `level` of
+/// Open level `level` of
 /// `scheduler` as a WORKER over the core's one executor (the adopted owner's):
 /// its record and waiter are seated in the scheduler's backing, its waiter is
 /// linked into the executor's arrival routing, and the callbacks registered
@@ -8050,7 +8049,7 @@ pub unsafe extern "C" fn nros_cpp_level_open(
     NROS_CPP_RET_OK
 }
 
-/// phase-509 P9b item 4 -- the core's one executor (the owner's handle):
+/// The core's one executor (the owner's handle):
 /// what a level's setup registers its nodes on. NULL for a handle that is not
 /// a scheduler.
 ///
@@ -8062,7 +8061,7 @@ pub unsafe extern "C" fn nros_cpp_scheduler_owner(scheduler: *mut c_void) -> *mu
     unsafe { scheduler_parts(scheduler) }.map_or(core::ptr::null_mut(), |(h, _)| h.owner)
 }
 
-/// phase-509 P9b item 4 -- make the callbacks registered from now on level
+/// Make the callbacks registered from now on level
 /// `level`'s, on the core's executor: a runner calls it before each level's
 /// setup (the level that opens or adopts is made current already).
 ///
@@ -8085,7 +8084,7 @@ pub unsafe extern "C" fn nros_cpp_scheduler_set_registering_level(
     NROS_CPP_RET_OK
 }
 
-/// Issue 2018 (RFC-0108 As-built) -- give the registering level its own
+/// Give the registering level its own
 /// scheduling context, lowered from its sched task's policy by the common backend
 /// (`SchedContext::from_sched_task_policy`): what the level's setup registers from
 /// now on binds to it rather than to the executor's default, which every
@@ -8170,7 +8169,7 @@ pub unsafe extern "C" fn nros_cpp_level_set_sched_policy(
     }
 }
 
-/// Issue 2018 -- the kernel now enforces context `sc_id`'s budget on its
+/// The kernel now enforces context `sc_id`'s budget on its
 /// level's thread, so the executor stops enforcing it
 /// (`Executor::defer_budget_to_kernel`). For a runner that sets the level's
 /// policy before its setup and learns the kernel's answer after it.
@@ -8202,7 +8201,7 @@ pub unsafe extern "C" fn nros_cpp_sched_context_defer_budget_to_kernel(
     }
 }
 
-/// phase-509 P9b item 4 -- one pass of level `level`'s worker over the core's
+/// One pass of level `level`'s worker over the core's
 /// executor: it parks (its wake object, the lock released) for at most
 /// `timeout_ms` or until its next timer or an arrival in its band, then runs
 /// its band's ready callbacks, most urgent first, releasing the lock around
@@ -8250,7 +8249,7 @@ pub unsafe extern "C" fn nros_cpp_level_spin_once(
     NROS_CPP_RET_OK
 }
 
-/// phase-509 P9 -- how many levels `scheduler` holds, 0 for a handle that is
+/// How many levels `scheduler` holds, 0 for a handle that is
 /// not one.
 ///
 /// # Safety
@@ -8261,7 +8260,7 @@ pub unsafe extern "C" fn nros_cpp_scheduler_level_count(scheduler: *mut c_void) 
     unsafe { scheduler_parts(scheduler) }.map_or(0, |(h, _)| h.n_levels)
 }
 
-/// phase-509 P9 -- the executor seated at `level`, or NULL.
+/// The executor seated at `level`, or NULL.
 ///
 /// # Safety
 /// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
@@ -8276,7 +8275,7 @@ pub unsafe extern "C" fn nros_cpp_scheduler_level_executor(
         .unwrap_or(core::ptr::null_mut())
 }
 
-/// phase-509 P9 (RFC-0108 D3) -- the stack `level`'s worker thread runs on,
+/// The stack `level`'s worker thread runs on,
 /// as its runner seated it: the derived per-level stack for a spawned level,
 /// the caller's thread stack for the adopted one. `0` for an unseated level.
 ///
@@ -8293,7 +8292,7 @@ pub unsafe extern "C" fn nros_cpp_scheduler_level_stack_bytes(
         .unwrap_or(0)
 }
 
-/// phase-503 — microseconds from now to the earliest deadline of a pending
+/// Microseconds from now to the earliest deadline of a pending
 /// supervised route (0 when one is due), written to `*out_us`;
 /// `UINT64_MAX` when no supervised route is waiting. A port supervising with
 /// its own timer (`NROS_CPP_MECHANISM_TIMER`) re-arms it from this after each
@@ -8318,7 +8317,7 @@ pub unsafe extern "C" fn nros_cpp_executor_route_next_due_us(
     NROS_CPP_RET_OK
 }
 
-/// phase-503 W7 — an executor's supervised routes, readable from OUTSIDE the
+/// An executor's supervised routes, readable from OUTSIDE the
 /// spin thread: what [`nros_cpp_executor_route_watch`] fills and
 /// [`nros_cpp_route_watch_next_due_us`] reads. The fields are the runtime's;
 /// treat the struct as opaque and copy it by value.
@@ -8333,7 +8332,7 @@ pub struct nros_cpp_route_watch_t {
     pub clock_us: *const c_void,
 }
 
-/// phase-503 W7 — fill `*out` with a watch over this executor's supervised
+/// Fill `*out` with a watch over this executor's supervised
 /// routes. Call on the spin thread (or before the first spin) after
 /// `nros_cpp_install_monitors`; the watch stays valid as long as the
 /// executor's monitor storage, and reading it never touches the executor. With
@@ -8376,7 +8375,7 @@ pub unsafe extern "C" fn nros_cpp_executor_route_watch(
     NROS_CPP_RET_OK
 }
 
-/// phase-503 W7 — microseconds from now to the earliest deadline of a pending
+/// Microseconds from now to the earliest deadline of a pending
 /// supervised route, read from the routes' own cells at the moment of the
 /// call: 0 when a take is still unanswered at or after its deadline (the
 /// executor's verdict: an answer exactly at the deadline is a miss),
@@ -8415,7 +8414,7 @@ pub unsafe extern "C" fn nros_cpp_route_watch_next_due_us(
     NROS_CPP_RET_OK
 }
 
-/// phase-436 W7.a — register a platform deadline source on this executor.
+/// Register a platform deadline source on this executor.
 ///
 /// The seam existed only as a Rust method, so the board entries that go through
 /// this ABI — FreeRTOS, NuttX and the C arm of Zephyr, which is the arm the
@@ -8451,7 +8450,7 @@ pub unsafe extern "C" fn nros_cpp_executor_register_wake_source(
     }
 }
 
-/// phase-436 W7.a — the wake object a port's park primitive must wait on.
+/// The wake object a port's park primitive must wait on.
 ///
 /// Returns NULL when this build has no wake primitive linked.
 ///
@@ -8501,12 +8500,12 @@ pub unsafe extern "C" fn nros_cpp_executor_wake_handle(handle: *mut c_void) -> *
     }
 }
 
-/// phase-436 W7.a — install THE primitive this executor blocks on.
+/// Install THE primitive this executor blocks on.
 ///
 /// Singular by nature: only one thing can actually wait. `granularity_us` is
 /// the finest park the primitive can express, and the port states it because
 /// only the port knows — an RTOS tick is a coarser limit than the ABI
-/// signature, a timespec primitive a finer one (issue 1242).
+/// signature, a timespec primitive a finer one.
 ///
 /// `park` returns 0 when woken by an event, 1 when the deadline expired, and a
 /// negative value when it cannot park.
@@ -8532,7 +8531,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_park_primitive(
     NROS_CPP_RET_OK
 }
 
-/// Issue 2225 (RFC-0113 D9) -- the wake half of a framework's park slot.
+/// The wake half of a framework's park slot.
 ///
 /// `hook(ctx)` is called after every signal of this executor's wake object (a
 /// backend's arrival, an attributed entity wake), from the signalling context.
@@ -8586,7 +8585,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_spin_nominal_us(
     NROS_CPP_RET_OK
 }
 
-/// phase-436 A2b — declare the loop's cadence, in microseconds, for a loop
+/// Declare the loop's cadence, in microseconds, for a loop
 /// paced by the `spin_once` wait itself. `0` withdraws it.
 ///
 /// [`nros_cpp_executor_set_spin_nominal_us`] also says the caller paces the
@@ -8614,7 +8613,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_spin_nominal_wait_paced_us(
     NROS_CPP_RET_OK
 }
 
-/// phase-436 A2c — of the late wakes [`nros_cpp_executor_release_jitter`]
+/// Of the late wakes [`nros_cpp_executor_release_jitter`]
 /// counts, how many were late by more than its `granularity_us`.
 ///
 /// A wake counts as late at one microsecond past its release, so on a loop
@@ -8640,7 +8639,7 @@ pub unsafe extern "C" fn nros_cpp_executor_late_wakes_beyond_granularity(
     NROS_CPP_RET_OK
 }
 
-/// phase-436 A2 — which deadline source bounded a park, as
+/// Which deadline source bounded a park, as
 /// [`nros_cpp_executor_last_park`] reports it. `PLATFORM` also carries the
 /// index the platform source was registered at.
 pub const NROS_CPP_WAKE_SOURCE_CALLER_BUDGET: u8 = 0;
@@ -8650,7 +8649,7 @@ pub const NROS_CPP_WAKE_SOURCE_TIMER: u8 = 1;
 pub const NROS_CPP_WAKE_SOURCE_SESSION: u8 = 2;
 /// A platform-registered deadline source bounded the park.
 pub const NROS_CPP_WAKE_SOURCE_PLATFORM: u8 = 3;
-/// phase-503 — a supervised route's deadline bounded the park.
+/// A supervised route's deadline bounded the park.
 pub const NROS_CPP_WAKE_SOURCE_ROUTE_DEADLINE: u8 = 4;
 
 /// The C encoding of a `WakeSourceId`: `(code, platform_index)`.
@@ -8669,7 +8668,7 @@ fn wake_source_code(src: nros_node::executor::WakeSourceId) -> (u8, u8) {
     }
 }
 
-/// phase-436 A2 — read the release-jitter probe from a C or C++ entry.
+/// Read the release-jitter probe from a C or C++ entry.
 ///
 /// `max_us` is the worst wake past its nominal release since the executor
 /// opened; `late_wakes` / `total_wakes` separate one bad wake from a loop that
@@ -8718,7 +8717,7 @@ pub unsafe extern "C" fn nros_cpp_executor_release_jitter(
     NROS_CPP_RET_OK
 }
 
-/// phase-436 A2 — how the last park was bounded, from a C or C++ entry.
+/// How the last park was bounded, from a C or C++ entry.
 ///
 /// `bound_us` is the park the sources agreed on; `achieved_us` is what the
 /// platform was actually asked for after rounding up to what its primitive can
@@ -8765,7 +8764,7 @@ pub unsafe extern "C" fn nros_cpp_executor_last_park(
     NROS_CPP_RET_OK
 }
 
-/// phase-436 A3 — reset the release-jitter statistics from a C or C++ entry.
+/// Reset the release-jitter statistics from a C or C++ entry.
 ///
 /// The executor's maximum, late count and total are since the executor opened,
 /// so a single startup outlier pins the maximum for the life of the process.
@@ -8787,7 +8786,7 @@ pub unsafe extern "C" fn nros_cpp_executor_clear_release_jitter_stats(
     NROS_CPP_RET_OK
 }
 
-/// Phase 274.W2 (RFC-0015 Model 1) — run a native multi-sched-task entry over one
+/// Run a native multi-sched-task entry over one
 /// shared RMW session.
 ///
 /// Opens ONE session on the calling (boot) thread; spawns `n_sched_tasks - 1`
@@ -8798,7 +8797,7 @@ pub unsafe extern "C" fn nros_cpp_executor_clear_release_jitter_stats(
 ///   3. `setup(executor)` — create + configure nodes (only the sched task's
 ///      groups' callbacks register).
 ///   4. `spin_once` loop, parked until the next deadline or arrival, until the
-///      shutdown flag (phase-521 W6; shutdown cancels each sched task's park).
+///      shutdown flag (shutdown cancels each sched task's park).
 ///
 /// The boot thread runs the first (highest-priority) sched task on the owning
 /// executor; it respects the `$NROS_ENTRY_SPIN_MS` bound for test/CI use.
@@ -8830,15 +8829,15 @@ pub unsafe extern "C" fn nros_board_native_run_sched_tasks(
     }
 }
 
-/// Issue 1442 — [`nros_board_native_run_sched_tasks`] with the primary session's
+/// [`nros_board_native_run_sched_tasks`] with the primary session's
 /// NAMESPACE.
 ///
-/// Issue 1434 threaded the launch-declared namespace to the single-executor
+/// An earlier change threaded the launch-declared namespace to the single-executor
 /// runners and carved the sched-task ones out; this closes that carve-out on the
 /// hosted C-ABI road. `node_namespace` is what the generated entry reads out of
 /// `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or empty means
 /// the image declares none, which resolves to the root — NOT to the empty
-/// namespace. It is the BAKED rung of RFC-0045's precedence model A, and this is
+/// namespace. It is the BAKED rung of the boot-config precedence ladder, and this is
 /// the HOSTED runner, so `$NROS_NODE_NAMESPACE` still outranks it
 /// (`nros_cpp_init` → `try_resolve_hosted` reads
 /// `env.namespace.or(baked.namespace)`).
@@ -8848,7 +8847,7 @@ pub unsafe extern "C" fn nros_board_native_run_sched_tasks(
 /// 1172) and are untouched by this.
 ///
 /// Additive rather than a fourth parameter on the symbol above, for the reason
-/// `nros_cpp_init_rmw` is additive over `nros_cpp_init` (issue 1050): the older
+/// `nros_cpp_init_rmw` is additive over `nros_cpp_init`: the older
 /// spelling is what every already-generated entry TU calls.
 ///
 /// # Safety
@@ -8887,11 +8886,11 @@ pub unsafe extern "C" fn nros_board_native_run_sched_tasks_ns(
     }
 }
 
-/// Issue 1597 — [`nros_board_native_run_sched_tasks_ns`] over CALLER-SUPPLIED
+/// [`nros_board_native_run_sched_tasks_ns`] over CALLER-SUPPLIED
 /// executor storage, and the runner a generated native sched-task entry calls
 /// (`CAbiRunners::takes_executor_storage`).
 ///
-/// The RTOS shape (issues 1551 + 1568), so every executor in the tree is
+/// The RTOS shape, so every executor in the tree is
 /// allocated one way. `executor_storage` holds `n_sched_tasks` blocks of
 /// `storage_stride` bytes; block `i` is sched task `i`'s executor (block 0 the boot
 /// sched task's, on the calling thread). The generated entry passes a file-scope
@@ -9344,7 +9343,7 @@ unsafe extern "C" fn native_sched_task_trampoline(arg: *mut c_void) -> *mut c_vo
     core::ptr::null_mut()
 }
 
-/// phase-509 P10 -- one core executor backing a generated entry hands a
+/// One core executor backing a generated entry hands a
 /// level runner, `nros_sched_task_backing_t`'s layout (`<rclc/detail/main.h>`).
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[repr(C)]
@@ -9510,7 +9509,7 @@ unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
     core::ptr::null_mut()
 }
 
-/// phase-509 P10 (RFC-0108; the amended RFC-0107 step 6) -- the native LEVEL
+/// The native LEVEL
 /// runner a generated hosted entry calls (`LinuxBoard::run_levels`): each
 /// row of `sched_tasks` is one level, placed by its urgency among the rows (POSIX
 /// `SCHED_FIFO`, bigger is more urgent). The core's ONE executor is block 0
@@ -9523,8 +9522,8 @@ unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
 /// the transport and keeps `$NROS_ENTRY_SPIN_MS` and the termination guard.
 ///
 /// Setups run one at a time, the adopted level's first, each spawned level
-/// started only once the one before it has set up (issue #144's order). A
-/// setup that fails FAILS THE BOOT (RFC-0108 "As fixed after item 4"): the
+/// started only once the one before it has set up. A
+/// setup that fails FAILS THE BOOT: the
 /// level and code are logged, every level started so far is stopped and
 /// joined, the session is closed and the code returned, so the process exits
 /// with it. `task_memory` must be NULL (a host thread's stack is the
@@ -9872,7 +9871,7 @@ fn platform_sleep_us(us: u64) {
 /// Used by `nros::Future::wait()` (header-side) to budget its spin loop by
 /// wall-clock rather than iteration count, so that an early-returning
 /// `spin_once` on a signaled condvar doesn't collapse the nominal timeout
-/// into microseconds. Phase 89.2.
+/// into microseconds.
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_cpp_time_ns() -> u64 {
     // RFC-0073 / phase-352: the platform clock IS nanoseconds now, so this
@@ -9905,12 +9904,12 @@ pub extern "C" fn nros_cpp_time_ns() -> u64 {
 // Helpers
 // ============================================================================
 
-/// phase-509 P9b -- report a sched task (level) setup that failed: the generated
+/// Report a sched task (level) setup that failed: the generated
 /// entry's setup wrapper calls this with the sched task's name, the node it was
 /// building (`NULL` when it failed before its first node: the monitor
 /// install) and the code it returns, BEFORE handing the code to the runner,
 /// which then fails the boot (a level runner does not park a level whose
-/// setup failed; RFC-0108 "As built in P9b"). Logged at error level on the
+/// setup failed). Logged at error level on the
 /// `nros_cpp` logger, the channel every other setup refusal uses.
 ///
 /// # Safety
@@ -10806,7 +10805,7 @@ fn entry_spin_ms() -> u64 {
 // refuses a bridge-linked translation unit that references the macro.
 
 /// Image-local discriminant of the linked backend's serialization format
-/// (`nros_serdes::format::SerializationFormatId`). RFC-0088 D2 — image-local:
+/// (`nros_serdes::format::SerializationFormatId`). Image-local:
 /// never persist it, never compare it across images.
 pub const NROS_CPP_SERIALIZATION_FORMAT_ID: u8 = 1;
 

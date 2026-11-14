@@ -1,21 +1,21 @@
 //! The C parameter server — rclc's `rclc_parameter_server_t` API over the
-//! executor's parameter store (RFC-0105, phase-491).
+//! executor's parameter store.
 //!
 //! ONE family. It replaces three: the caller-storage ~~`nros_parameter_server_t`~~
-//! (a second store no `ros2 param` service read — issue 0793), the
+//! (a second store no `ros2 param` service read), the
 //! `nros_executor_*_param*` family (served, but with none of rclc's names), and
 //! C's use of the C++ `nros_cpp_*_param*` shim.
 //!
 //! The server is a HANDLE, not storage: every parameter lives in the executor's
 //! store keyed by the node, which is the store the six `rcl_interfaces`
-//! services read. Nothing here allocates (RFC-0105 D10): text and arrays cross
+//! services read. Nothing here allocates: text and arrays cross
 //! the boundary through caller buffers, and the callback's `Parameter` views
 //! are built on this frame and point into the store for the duration of the
 //! call.
 //!
 //! The declarations are hand-written in `<rclc_parameter/rclc_parameter.h>`,
 //! not emitted by cbindgen, because the whole surface exists only with
-//! `param-services`: a header that declared it unconditionally is issue 0865.
+//! `param-services`: a header that declared it unconditionally was a bug.
 
 #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
 pub use imp::*;
@@ -76,7 +76,7 @@ mod imp {
     /// rclc's `rclc_parameter_options_t`, field for field.
     #[repr(C)]
     pub struct rclc_parameter_options_t {
-        /// Publish `/parameter_events` (phase-491 W3, RFC-0105 D8): when set,
+        /// Publish `/parameter_events`: when set,
         /// `rclc_parameter_server_init_with_option` gives the node one
         /// `/parameter_events` publisher and every accepted change is
         /// published on the executor's next flush.
@@ -513,7 +513,7 @@ mod imp {
 
     /// rclc's `rclc_parameter_server_init_with_option`.
     ///
-    /// RFC-0105 D3: `RCL_RET_NOT_INIT` (rcl's `RCL_RET_NOT_INIT`) when the
+    /// `RCL_RET_NOT_INIT` (rcl's `RCL_RET_NOT_INIT`) when the
     /// node is not bound to an executor — the store is the executor's, so
     /// there is nothing to serve from yet. Bind it with
     /// `rclc_executor_node_init` first. `RCLC_RET_FULL` when `max_params`
@@ -718,7 +718,7 @@ mod imp {
         ($set:ident, $get:ident, $declare:ident, $t:ty, $from:path, $as:ident) => {
             /// rclc's typed local set: type, then the callback with
             /// `(old, new)`, then the write. Read-only and range are not
-            /// checked, as rclc does not check them locally (RFC-0105 D7).
+            /// checked, as rclc does not check them locally.
             #[unsafe(no_mangle)]
             pub unsafe extern "C" fn $set(
                 server: *mut rclc_parameter_server_t,
@@ -1076,7 +1076,7 @@ mod imp {
     }
 
     /// rclc's `rclc_set_parameter_read_only`. Refuses REMOTE writes only; the
-    /// owner's local sets still go through (RFC-0105 D7).
+    /// owner's local sets still go through.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn rclc_set_parameter_read_only(
         server: *mut rclc_parameter_server_t,

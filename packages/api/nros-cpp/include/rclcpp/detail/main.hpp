@@ -1,4 +1,4 @@
-// Phase 219.E / 235.A — `<rclcpp/detail/main.hpp>` Entry-pkg header.
+// `<rclcpp/detail/main.hpp>` Entry-pkg header.
 //
 // The cmake fn `nano_ros_entry(LAUNCH "<bringup>:<file>.launch.xml")`
 // drives the per-Entry-pkg codegen via `nros dev codegen entry --lang cpp`,
@@ -22,16 +22,16 @@
 //      `rclcpp::init() → register_fn(context) → spin → rclcpp::shutdown()`
 //      lifecycle so the generated TU stays one declarative lambda.
 //
-// Two Board adapters ship (Phase 235.B):
+// Two Board adapters ship:
 //   * `rclcpp::board::LinuxBoard` — host/POSIX; runtime domain + locator.
 //   * `rclcpp::board::ZephyrBoard` — embedded Zephyr; compile-time domain
 //     id, network-wait hook, cooperative spin. Selected through the
-//     Phase 215 `nano_ros_use_board(<name>)` import (board.cmake feeds
-//     the default RMW + `west` runner). cf. RFC-0032 §8a.
+//     `nano_ros_use_board(<name>)` import (board.cmake feeds
+//     the default RMW + `west` runner). cf.
 //
 // Both adapters run the SAME real-executor loop (`detail::component_spin_loop`)
 // — only the boot lifecycle differs (init / network-wait / cooperative
-// yield). Until Phase 257 they shared the synthesizing
+// yield). They used to share the synthesizing
 // ~~`detail::EntryNodeRuntime`~~ instead, its op set factored into
 // ~~`detail::entry_register`~~ + ~~`detail::entry_node_context_ops`~~.
 
@@ -39,16 +39,16 @@
 #define NROS_RCLCPP_DETAIL_MAIN_HPP
 
 #include "rclcpp/rclcpp.hpp"
-/* Phase 274.W2 — nros_native_sched_task_spec_t + nros_board_native_run_sched_tasks
+/* nros_native_sched_task_spec_t + nros_board_native_run_sched_tasks
  * (C ABI board runner for multi-sched-task native entries). */
 #include "rclc/detail/main.h"
 
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
-#include <cstdio>  // printf — Phase 238.B listener readiness / received-sample lines
-#include <cstdlib> // getenv — Phase 235.A bounded-spin ($NROS_ENTRY_SPIN_MS)
+#include <cstdio>  // printf — listener readiness / received-sample lines
+#include <cstdlib> // getenv — bounded-spin ($NROS_ENTRY_SPIN_MS)
 #endif
 
-// Phase 235.B — the embedded (Zephyr) Board adapter is cooperatively
+// The embedded (Zephyr) Board adapter is cooperatively
 // scheduled, so the shared Entry spin loop yields each tick (`k_yield()`)
 // to let the network stack + peer threads run. Pull the kernel header
 // only on Zephyr; the native path keeps the loop dependency-free.
@@ -56,7 +56,7 @@
 #include <zephyr/kernel.h>
 #endif
 
-// Phase 235.A — fixed-capacity arena dimensions for the native
+// Fixed-capacity arena dimensions for the native
 // NodeContext runtime. The runtime is `no_std` / heap-free (mirrors the
 // nros-cpp inline-storage discipline), so it pre-sizes its node + entity
 // tables at compile time. Override before including this header if an
@@ -83,7 +83,7 @@ inline uint32_t entry_parse_u32(const char* s) {
     return v;
 }
 
-// Phase 235.B — per-tick cooperative yield in the shared component spin loop.
+// Per-tick cooperative yield in the shared component spin loop.
 // Native relies on `spin_once`'s blocking I/O wait for pacing (no-op here);
 // Zephyr is cooperatively scheduled, so each tick must `k_yield()` to release
 // the CPU to the network stack + peer threads. Shared by every Board's
@@ -98,7 +98,7 @@ inline void entry_tick_yield() {
 } // namespace board
 } // namespace rclcpp
 
-// phase-436 (RFC-0106 D7) — the port's park symbols are OPTIONAL in
+// The port's park symbols are OPTIONAL in
 // `platform.h`: Zephyr, ThreadX, FreeRTOS and POSIX (so Linux and NuttX)
 // define them, bare metal does not. This header is compiled beside any port,
 // so they are WEAK references, resolved when the port defines them. Both sit
@@ -115,18 +115,18 @@ namespace rclcpp {
 namespace board {
 namespace detail {
 
-/// phase-436 (RFC-0106 D8) — install the port's microsecond park on the
+/// Install the port's microsecond park on the
 /// single-executor entry, as every sched task runner installs it on its sched tasks.
 /// Before this the C++ `run_components` parked on the millisecond
 /// `wake_wait_ms` floor and claimed that floor as its jitter granularity,
-/// whatever the port's tick was (issue 1242).
+/// whatever the port's tick was.
 ///
 /// Installs nothing, and keeps the millisecond path, when the port lacks the
 /// symbols, when its granularity is 0 (the trait default a Rust-implemented
 /// port exports with them, whose park answers "cannot park"), or when the
 /// executor has no wake object. The ctx is the executor's OWN wake object: the
-/// backend signals that one, and a park on any other cannot be ended by data
-/// (RFC-0106 D4). The C runner, `nros_rtos_run_components.c`, carries the same
+/// backend signals that one, and a park on any other cannot be ended by data.
+/// The C runner, `nros_rtos_run_components.c`, carries the same
 /// lines for the C entry.
 inline void install_platform_park(void* executor) {
 #if defined(__GNUC__) || defined(__clang__)
@@ -146,7 +146,7 @@ inline void install_platform_park(void* executor) {
 #endif
 }
 
-/// Phase 240.2 (RFC-0043) — the **real-executor** spin loop, shared by every
+/// The **real-executor** spin loop, shared by every
 /// Board's `run_components`. Unlike the retired ~~`EntryNodeRuntime::spin`~~, it runs NO
 /// synthesizing interpreter: the user's components already registered their real
 /// callbacks on the executor during their `configure`, so this just pumps
@@ -162,7 +162,7 @@ inline int32_t component_spin_loop() {
         bound_ms = entry_parse_u32(env);
     }
 #endif
-    // Issue 0329 — the bounded (`NROS_ENTRY_SPIN_MS`) external-observer path is
+    // The bounded (`NROS_ENTRY_SPIN_MS`) external-observer path is
     // exactly the shared wall-clock budgeted spin; reuse `rclcpp::spin()` (which
     // forwards to the single `nros_cpp_spin_for` CFFI) instead of a fourth
     // hand-rolled budget loop.
@@ -176,7 +176,7 @@ inline int32_t component_spin_loop() {
     // Rust-side yield or shutdown primitive to move it behind the CFFI.
     for (;;) {
         if (!::rclcpp::ok()) break;
-        // phase-521 W6 — the executor's entry budget: until the next deadline
+        // The executor's entry budget: until the next deadline
         // when every source of work can end the park, else 10 ms.
         ::rclcpp::Result last =
             ::rclcpp::spin_once(nros_cpp_entry_spin_budget_ms(::rclcpp::global_handle()));
@@ -188,15 +188,15 @@ inline int32_t component_spin_loop() {
 
 } // namespace detail
 
-// Phase 235.B — the weak `nros_board_network_wait()` network-readiness hook
+// The weak `nros_board_network_wait()` network-readiness hook
 // used below is DEFINED in `<rclc/detail/main.h>`, included above. It moved there
-// as the phase-432 W3.1 prerequisite: the three RTOS `run_sched_tasks.c` files call
+// so one header serves both entry languages: the three RTOS `run_sched_tasks.c` files call
 // it `extern` and linked only because the generated entry is a `.cpp` that
 // includes THIS header, so a pure C entry failed at link. One definition, in
 // the C header both entry languages reach. See `<rclc/detail/main.h>` for the
 // override contract.
 
-/// Phase 274.W2 (RFC-0015 Model 1) — per-sched-task spec for
+/// Per-sched-task spec for
 /// `LinuxBoard::run_sched_tasks`. Layout mirrors `nros_native_sched_task_spec_t` in
 /// `<rclcpp/detail/nros_cpp_ffi.h>` (included transitively via `<rclcpp/rclcpp.hpp>`);
 /// the `run_sched_tasks` static method casts between the two.
@@ -206,7 +206,7 @@ inline int32_t component_spin_loop() {
 ///                    `n_groups` null-terminated strings. NULL / 0 means
 ///                    wildcard (accept all groups).
 /// `n_groups`       — number of TRIPLES, so the array holds three times this
-///                    many strings. issue 1172 — the key used to be the group
+///                    many strings. The key used to be the group
 ///                    NAME alone, so two nodes' `ctrl` were one key; flat
 ///                    rather than a struct array so this mirror stays
 ///                    byte-identical to `nros_native_sched_task_spec_t`.
@@ -216,10 +216,10 @@ inline int32_t component_spin_loop() {
 ///                    parks until the next deadline or arrival and ignores it.
 /// `setup`          — called once on the sched task thread (after `set_active_groups`)
 ///                    with the sched task executor handle; returns 0 on success.
-/// `core_plus1` — RFC-0052 W2: CPU pin + 1; 0 = unpinned.
+/// `core_plus1` — CPU pin + 1; 0 = unpinned.
 /// `preempt_threshold` — ThreadX-only (bake-validated); -1 = unset.
 /// `sched_task_class`/`period_us`/`budget_us`/`deadline_us`/`deadline_policy` —
-/// phase-296 W5.7 append: the RTOS-agnostic real-time policy (NULL/0 =
+/// appended fields: the RTOS-agnostic real-time policy (NULL/0 =
 /// unset), consumed kernel-natively where the RTOS offers the feature
 /// (Zephyr EDF); the cooperative executor lowering stays codegen-emitted.
 struct NativeSchedTaskSpec {
@@ -232,7 +232,7 @@ struct NativeSchedTaskSpec {
     int32_t (*setup)(void* executor);
     uint32_t core_plus1;
     int64_t preempt_threshold;
-    /* phase-296 W5.7 — ABI append-only. One of six hand mirrors of main.h's
+    /* ABI append-only. One of six hand mirrors of main.h's
      * canonical `nros_native_sched_task_spec_t` (the others: NativeSchedTaskSpecC and the
      * three board `nros_sched_task_spec_t`), plus two entry templates that initialise
      * it. Gated by `check-ffi-struct-mirrors`; never insert, only append. */
@@ -244,21 +244,21 @@ struct NativeSchedTaskSpec {
 };
 
 #ifndef NROS_NO_DEPRECATED_TIER_NAMES
-/// Phase 536 W2 -- the old name of `NativeSchedTaskSpec`, kept one release.
+/// The old name of `NativeSchedTaskSpec`, kept one release.
 using NativeTierSpec
     NROS_CPP_DEPRECATED_MSG("renamed NativeSchedTaskSpec; use that name") = NativeSchedTaskSpec;
 #endif
 
 /// The Linux host board adapter.
 ///
-/// phase-337 W8 renamed this from `NativeBoard` (RFC-0064 R3): the board layer
+/// Renamed from `NativeBoard`: the board layer
 /// names what we actually claim to support, and only Linux is exercised by
 /// `just ci`. The PLATFORM is still `posix` — `nros_board_native_run_*` below
 /// are C ABI symbols and keep their names, because the C ABI is a compatibility
 /// surface, not a promise about which OS we test.
 class LinuxBoard {
   public:
-    /// Issue 1434 — named-and-namespaced variant: `session_name` sets the
+    /// Named-and-namespaced variant: `session_name` sets the
     /// primary session / node name visible via `ros2 node list` (the #98 fix
     /// for C++ entries) and `node_namespace` sets the namespace it appears
     /// under. Either NULL or empty → the compiled default (`"node"`, and the
@@ -267,29 +267,29 @@ class LinuxBoard {
     /// `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` and
     /// `nros_boot_config_namespace(&NROS_BOOT_CONFIG)`.
     ///
-    /// Both are the BAKED rung of RFC-0045's precedence model A, and this is
+    /// Both are the BAKED rung of the boot-config precedence ladder, and this is
     /// the HOSTED board, so `$NROS_NODE_NAME` and `$NROS_NODE_NAMESPACE` still
     /// outrank them — `nros_cpp_init` resolves through `try_resolve_hosted`,
     /// which reads `env.namespace.or(baked.namespace)`. Passing a baked
-    /// namespace costs the environment nothing; before issue 1434 there was
+    /// namespace costs the environment nothing; before this argument there was
     /// simply nothing for it to outrank.
     template <typename Setup>
     static int32_t run_components(const char* session_name, const char* node_namespace,
                                   Setup&& setup) {
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
-        // Issue 1419 — the census switch (`$NROS_CENSUS_OUT`, phase-463 W2).
+        // The census switch (`$NROS_CENSUS_OUT`).
         // Asked BEFORE init because it decides which backend init opens: the
         // recorder's, so a census run needs no router. This runner is the one
         // every typed single-executor C++ native entry calls, and it used to
         // skip the switch entirely — a census run booted normally instead.
         const bool census = ::nros_cpp_census_begin() != 0;
-        // Issue 1732 — a SIGTERM / SIGINT makes `rclcpp::ok()` false, so the
+        // A SIGTERM / SIGINT makes `rclcpp::ok()` false, so the
         // spin below returns and `rclcpp::shutdown()` closes the session instead
         // of the process dying with it open. Before init: a signal during
         // `setup` is not lost.
         (void)::nros_cpp_termination_guard_install();
-        // Phase 266: env overlay (NROS_LOCATOR / ROS_DOMAIN_ID) applies via
+        // Env overlay (NROS_LOCATOR / ROS_DOMAIN_ID) applies via
         // init — null locator and 0 domain_id both trigger the env fallback.
         rclcpp::Result r = rclcpp::init_in(nullptr, 0, sn, node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
@@ -317,24 +317,24 @@ class LinuxBoard {
         return sc;
     }
 
-    /// Phase 266 (W6) — named variant, no namespace. Delegates to the
-    /// namespaced overload with `nullptr` (issue 1434), which is the root —
+    /// Named variant, no namespace. Delegates to the
+    /// namespaced overload with `nullptr`, which is the root —
     /// what this overload has always resolved to.
     template <typename Setup>
     static int32_t run_components(const char* session_name, Setup&& setup) {
         return run_components(session_name, nullptr, static_cast<Setup&&>(setup));
     }
 
-    /// Phase 240.2 (RFC-0043) — real-executor entry. `setup` (invoked once after
+    /// Real-executor entry. `setup` (invoked once after
     /// init, before the spin loop) constructs + `configure`s the user's
     /// component objects, which bind their real callbacks on the executor.
     /// `setup` returns 0 on success. No synthesis (the retired ~~`EntryNodeRuntime`~~).
-    /// Phase 266: delegates to the named overload with "node" (the unified default).
+    /// Delegates to the named overload with "node" (the unified default).
     template <typename Setup> static int32_t run_components(Setup&& setup) {
         return run_components("node", nullptr, static_cast<Setup&&>(setup));
     }
 
-    /// Phase 274.W2 (RFC-0015 Model 1) — multi-sched-task native entry.
+    /// Multi-sched-task native entry.
     ///
     /// Delegates to the C-ABI seam `nros_board_native_run_sched_tasks` which opens
     /// ONE RMW session on the boot thread, spawns one `std::thread` per
@@ -348,18 +348,18 @@ class LinuxBoard {
     /// (NROS_ENTRY_SPIN_MS elapsed) or the first non-zero setup / spin code.
     static int32_t run_sched_tasks(const char* session_name, const NativeSchedTaskSpec* sched_tasks,
                                    size_t n_sched_tasks) {
-        // Issue 1442 — delegates to the namespaced overload with `nullptr`,
+        // Delegates to the namespaced overload with `nullptr`,
         // which is the root: what this arity has always resolved to.
         return run_sched_tasks(session_name, nullptr, sched_tasks, n_sched_tasks);
     }
 
-    /// Issue 1442 — [`run_sched_tasks`] with the primary session's NAMESPACE.
+    /// [`run_sched_tasks`] with the primary session's NAMESPACE.
     ///
-    /// Issue 1434 gave `run_components` this argument and carved the sched-task
-    /// path out; this closes it. `node_namespace` is what the generated entry
+    /// `run_components` gained this argument first and the sched-task
+    /// path was left out; this closes it. `node_namespace` is what the generated entry
     /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`;
     /// NULL or empty means the image declares none, which resolves to the ROOT.
-    /// It is the BAKED rung of RFC-0045's precedence model A, and this board is
+    /// It is the BAKED rung of the boot-config precedence ladder, and this board is
     /// HOSTED, so `$NROS_NODE_NAMESPACE` still outranks it.
     ///
     /// What it names is the SESSION. Each sched task's own nodes carry their own
@@ -375,8 +375,8 @@ class LinuxBoard {
             reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks), n_sched_tasks);
     }
 
-    /// Issue 1597 — [`run_sched_tasks`] over CALLER-SUPPLIED executor storage, the
-    /// method every RTOS board's `run_sched_tasks` takes (issues 1551 + 1568).
+    /// [`run_sched_tasks`] over CALLER-SUPPLIED executor storage, the
+    /// method every RTOS board's `run_sched_tasks` takes.
     ///
     /// `executor_storage` is `n_sched_tasks` blocks of `storage_stride` bytes; the
     /// generated entry passes a file-scope static sized from the per-build
@@ -393,7 +393,7 @@ class LinuxBoard {
             executor_storage, storage_stride);
     }
 
-    /// phase-509 P10 (RFC-0108) — the levels runner a generated hosted entry
+    /// The levels runner a generated hosted entry
     /// calls: each row of `sched_tasks` is one level, a worker thread over the
     /// core's ONE executor (block 0 of `executor_storage`, carved from
     /// `backings` when the build sizes its levels). `task_memory` is NULL on
@@ -412,7 +412,7 @@ class LinuxBoard {
             scheduler_bytes);
     }
 #ifndef NROS_NO_DEPRECATED_TIER_NAMES
-    /// Phase 536 W2 -- the old name of `run_sched_tasks`, kept one release.
+    /// The old name of `run_sched_tasks`, kept one release.
     template <typename... Args>
     NROS_CPP_DEPRECATED_MSG("renamed run_sched_tasks; call that instead")
     static int32_t run_tiers(Args... args) {
@@ -421,17 +421,17 @@ class LinuxBoard {
 #endif
 };
 
-/// Phase 235.B — embedded (Zephyr) board adapter, the `Board::run()`
-/// sibling to `LinuxBoard` (RFC-0032 §8a).
+/// Embedded (Zephyr) board adapter, the `Board::run()`
+/// sibling to `LinuxBoard`.
 ///
-/// **Board granularity decision (RFC-0032 §8a open item).** ONE
+/// **Board granularity decision.** ONE
 /// metadata-driven `ZephyrBoard`, not per-board types (one for the FVP
 /// AEMv8-R, …). Everything that varies per board — the Zephyr `BOARD` id, the DTS
 /// overlay, the default RMW, the `west` runner — is already supplied by
-/// the Phase 215 `nano_ros_use_board(<name>)` cmake import + Kconfig at
+/// the `nano_ros_use_board(<name>)` cmake import + Kconfig at
 /// *build* time, so the C++ adapter has nothing board-specific left to
 /// specialize at the source level. A per-board C++ type would only
-/// duplicate this lifecycle with no behavioural difference. (RFC-0032
+/// duplicate this lifecycle with no behavioural difference. (The design
 /// already leaned this way: "single + metadata-driven".)
 ///
 /// Lifecycle (mirrors ASI `actuation_module/src/main.cpp`):
@@ -446,7 +446,7 @@ class LinuxBoard {
 ///     auto-brings-up networking);
 ///   * the spin loop yields cooperatively each tick (`entry_tick_yield`
 ///     → `k_yield()`).
-// phase-432 (W3.1 prerequisite) — `NROS_ENTRY_LOCATOR` and
+// `NROS_ENTRY_LOCATOR` and
 // `NROS_ENTRY_DOMAIN_ID` are derived in ONE place, `<rclc/detail/entry_config.h>`,
 // which is a C header so the C entry sees the same ladder. This used to be
 // two: the ladder below, and `<rclc/detail/app_main.h>` defining both as `""` and `0`
@@ -455,14 +455,14 @@ class LinuxBoard {
 // bake a literal by defining either macro BEFORE this header.
 #include "rclc/detail/entry_config.h"
 
-// #166 / phase-286 W1 — runtime locator override (see nros/platform.h). Declared
+// Runtime locator override (see nros/platform.h). Declared
 // here (not via a platform-header include) to keep main.hpp's include surface
 // minimal; the symbol is a C-ABI export of the linked platform impl. Returns a
 // per-test locator on native_sim (from `-testargs --nros-locator`), else NULL.
 extern "C" const char* nros_runtime_locator_override(void);
 
 #ifdef __ZEPHYR__
-// issue 0758 -- acquire the wall-clock epoch (CONFIG_NROS_SNTP_EPOCH) between
+// Acquire the wall-clock epoch (CONFIG_NROS_SNTP_EPOCH) between
 // network-up and the first component. Defined in the Zephyr module's
 // `nros_platform_zephyr_shims.c`, which decides whether the image asked for
 // one; unconditional here for the reason it is unconditional in the sched-task
@@ -476,17 +476,17 @@ class ZephyrBoard {
     /// Derived in `<rclc/detail/entry_config.h>`, included above; override by
     /// defining `NROS_ENTRY_DOMAIN_ID` before this header.
 
-    /// Issue 1434 — 4-arg overload: the primary session's NAMESPACE too.
+    /// 4-arg overload: the primary session's NAMESPACE too.
     ///
     /// `node_namespace` is the launch-declared namespace the generated entry
     /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`.
     /// `nullptr` or empty means the image declares none, which resolves to the
-    /// root — NOT to the empty namespace. It is the BAKED rung of RFC-0045's
-    /// precedence model A, so a hosted `$NROS_NODE_NAMESPACE` still outranks
+    /// root — NOT to the empty namespace. It is the BAKED rung of the boot-config
+    /// precedence ladder, so a hosted `$NROS_NODE_NAMESPACE` still outranks
     /// it; on this board there is no environment, so it is the answer.
     ///
     /// Before this overload existed, every board here called the 3-arg
-    /// `rclcpp::init` and the namespace reached nothing at all (issue 1434): the
+    /// `rclcpp::init` and the namespace reached nothing at all: the
     /// blob carried it, `nros_boot_config_namespace` could read it, and no
     /// call site did.
     ///
@@ -498,7 +498,7 @@ class ZephyrBoard {
                                   const char* node_namespace, Setup&& setup) {
         nros_board_network_wait();
 #ifdef __ZEPHYR__
-        // issue 0758 -- the single-executor entry never made this call, so an
+        // The single-executor entry never made this call, so an
         // image built with CONFIG_NROS_SNTP_EPOCH through the generated C++
         // `run_components` entry booted with no epoch and stamped boot-relative
         // time: only the SCHED-TASK entries acquired one. Same window as there:
@@ -507,7 +507,7 @@ class ZephyrBoard {
 #endif
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
-        // #166 / phase-286 W1 — native_sim test parallelism: a per-test
+        // native_sim test parallelism: a per-test
         // `-testargs --nros-locator=<loc>` overrides the build-time-baked locator
         // so each test dials its own ephemeral router. `nros_runtime_locator_override`
         // is non-NULL only on native_sim (nros-platform-zephyr, which every
@@ -528,7 +528,7 @@ class ZephyrBoard {
         return sc;
     }
 
-    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name,
+    /// 3-arg named overload: explicit locator + session name,
     /// no namespace. Delegates to the 4-arg overload with `nullptr` (issue
     /// 1434), which is the root — what this overload has always resolved to.
     template <typename Setup>
@@ -536,20 +536,20 @@ class ZephyrBoard {
         return run_components(locator, session_name, nullptr, static_cast<Setup&&>(setup));
     }
 
-    /// Phase 240.2 (RFC-0043) — real-executor entry (Zephyr lifecycle), explicit
-    /// connect locator (Phase 244.C2). `setup` constructs + `configure`s nodes.
-    /// Phase 266: delegates to 3-arg overload with "node" default session name.
+    /// Real-executor entry (Zephyr lifecycle), explicit
+    /// connect locator. `setup` constructs + `configure`s nodes.
+    /// Delegates to 3-arg overload with "node" default session name.
     template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
         return run_components(locator, "node", static_cast<Setup&&>(setup));
     }
 
     /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
-    /// Phase 266: delegates to 3-arg overload with "node" default session name.
+    /// Delegates to 3-arg overload with "node" default session name.
     template <typename Setup> static int32_t run_components(Setup&& setup) {
         return run_components(NROS_ENTRY_LOCATOR, "node", static_cast<Setup&&>(setup));
     }
 
-    /// phase-281 W3a (RFC-0015 Model 1) — multi-sched-task Zephyr embedded entry.
+    /// Multi-sched-task Zephyr embedded entry.
     ///
     /// Delegates to `nros_board_zephyr_run_sched_tasks` (defined in nros-board-zephyr,
     /// compiled into the Zephyr `app` library) which opens ONE RMW session on
@@ -566,15 +566,15 @@ class ZephyrBoard {
     /// success (the boot-sched-task spin loop runs forever on embedded firmware).
     static int32_t run_sched_tasks(const char* session_name, const NativeSchedTaskSpec* sched_tasks,
                                    size_t n_sched_tasks) {
-        // Issue 1442 — delegates to the namespaced overload with `nullptr`,
+        // Delegates to the namespaced overload with `nullptr`,
         // which is the root: what this arity has always resolved to.
         return run_sched_tasks(session_name, nullptr, sched_tasks, n_sched_tasks);
     }
 
-    /// Issue 1442 — [`run_sched_tasks`] with the primary session's NAMESPACE.
+    /// [`run_sched_tasks`] with the primary session's NAMESPACE.
     ///
-    /// Issue 1434 gave `run_components` this argument and carved the sched-task
-    /// path out; this closes it. `node_namespace` is what the generated entry
+    /// `run_components` gained this argument first and the sched-task
+    /// path was left out; this closes it. `node_namespace` is what the generated entry
     /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`;
     /// NULL or empty means the image declares none, which resolves to the ROOT.
     /// There is no environment rung on an RTOS, so the bake IS the answer; the
@@ -594,7 +594,7 @@ class ZephyrBoard {
             n_sched_tasks);
     }
 
-    /// Issue 1551 — [`run_sched_tasks`] over CALLER-SUPPLIED executor storage.
+    /// [`run_sched_tasks`] over CALLER-SUPPLIED executor storage.
     ///
     /// `executor_storage` is `n_sched_tasks` blocks of `storage_stride` bytes,
     /// 8-byte aligned; block `i` is sched task `i`'s executor. The generated entry
@@ -611,7 +611,7 @@ class ZephyrBoard {
             n_sched_tasks, executor_storage, storage_stride);
     }
 
-    /// Issue 1232 — [`run_sched_tasks`] over CALLER-SUPPLIED executor storage AND
+    /// [`run_sched_tasks`] over CALLER-SUPPLIED executor storage AND
     /// each sched task's memory (`task_memory[i]` is `sched_tasks[i]`'s thread +
     /// stack, sized from its declared `stack_bytes`; the boot sched task's is
     /// empty). See `nros_board_zephyr_run_sched_tasks_memory_in` in `<rclc/detail/main.h>`.
@@ -625,7 +625,7 @@ class ZephyrBoard {
             n_sched_tasks, executor_storage, storage_stride, task_memory);
     }
 
-    /// Issue 1970 — [`run_sched_tasks`] for a per-sched-task-sized image: `backings[i]` is
+    /// [`run_sched_tasks`] for a per-sched-task-sized image: `backings[i]` is
     /// sched task `i`'s own executor backing (`NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>` bytes),
     /// and the `storage_stride` blocks hold the contexts. See
     /// `nros_board_zephyr_run_sched_tasks_backed_in` in `<rclc/detail/main.h>`.
@@ -640,7 +640,7 @@ class ZephyrBoard {
             n_sched_tasks, executor_storage, storage_stride, backings, task_memory);
     }
 
-    /// phase-509 P9 (RFC-0108) — the levels runner a generated entry calls:
+    /// The levels runner a generated entry calls:
     /// each row of `sched_tasks` is one level, `scheduler_backing` is the entry's
     /// `NROS_CPP_SCHEDULER_BACKING_SIZE_0` static the core's scheduler lives
     /// in, and `backings` is the core executor's levels backing (P9b: one
@@ -660,7 +660,7 @@ class ZephyrBoard {
             scheduler_backing, scheduler_bytes);
     }
 #ifndef NROS_NO_DEPRECATED_TIER_NAMES
-    /// Phase 536 W2 -- the old name of `run_sched_tasks`, kept one release.
+    /// The old name of `run_sched_tasks`, kept one release.
     template <typename... Args>
     NROS_CPP_DEPRECATED_MSG("renamed run_sched_tasks; call that instead")
     static int32_t run_tiers(Args... args) {
@@ -669,7 +669,7 @@ class ZephyrBoard {
 #endif
 };
 
-/// Phase 238 — embedded NuttX board adapter, sibling to `ZephyrBoard`.
+/// Embedded NuttX board adapter, sibling to `ZephyrBoard`.
 ///
 /// NuttX brings up `eth0` (virtio-net) during kernel boot **before** the
 /// app entry runs (see `nros-board-nuttx-qemu::entry_212n` —
@@ -691,7 +691,7 @@ class ZephyrBoard {
 /// compiled as `APP_MAIN_CPP` and linked into the kernel by the cargo
 /// `nros-nuttx-ffi` build (`nuttx_ffi_build.rs`), driven from the carrier
 /// cmake (`nano_ros_node_register` NuttX branch → `nros_platform_link_app`).
-// Phase 238 had a THIRD `#ifndef NROS_ENTRY_LOCATOR` here, defining `""` for
+// There used to be a THIRD `#ifndef NROS_ENTRY_LOCATOR` here, defining `""` for
 // the locator-less `NuttxBoard::run(lambda)` overload, with a comment saying
 // "this default only applies if a hand-written entry uses the 1-arg form".
 // It could never fire: the ladder above this point in the same header has
@@ -702,17 +702,17 @@ class ZephyrBoard {
 
 class NuttxBoard {
   public:
-    /// Issue 1434 — 4-arg overload: the primary session's NAMESPACE too.
+    /// 4-arg overload: the primary session's NAMESPACE too.
     ///
     /// `node_namespace` is the launch-declared namespace the generated entry
     /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`.
     /// `nullptr` or empty means the image declares none, which resolves to the
-    /// root — NOT to the empty namespace. It is the BAKED rung of RFC-0045's
-    /// precedence model A, so a hosted `$NROS_NODE_NAMESPACE` still outranks
+    /// root — NOT to the empty namespace. It is the BAKED rung of the boot-config
+    /// precedence ladder, so a hosted `$NROS_NODE_NAMESPACE` still outranks
     /// it; on this board there is no environment, so it is the answer.
     ///
     /// Before this overload existed, every board here called the 3-arg
-    /// `rclcpp::init` and the namespace reached nothing at all (issue 1434): the
+    /// `rclcpp::init` and the namespace reached nothing at all: the
     /// blob carried it, `nros_boot_config_namespace` could read it, and no
     /// call site did.
     ///
@@ -738,7 +738,7 @@ class NuttxBoard {
         return sc;
     }
 
-    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name,
+    /// 3-arg named overload: explicit locator + session name,
     /// no namespace. Delegates to the 4-arg overload with `nullptr` (issue
     /// 1434), which is the root — what this overload has always resolved to.
     template <typename Setup>
@@ -750,26 +750,26 @@ class NuttxBoard {
     /// connect `locator`. The bootable-ELF carrier
     /// (`nano_ros_node_register` NuttX branch) bakes the locator as a compile
     /// definition on the carrier target, which this macro's `#ifndef` default
-    /// below then yields to (phase-432 W2.6 — the entry TU comes from the
+    /// below then yields to (the entry TU comes from the
     /// shared pack and reads the MACRO; it used to be a `configure_file`
     /// substitution into a per-family template) because — unlike Zephyr's
     /// `CONFIG_NET_CONFIG_AUTO_INIT` peer discovery — the QEMU slirp guest
     /// must dial the host zenoh router explicitly (`tcp/10.0.2.2:<port>`),
     /// mirroring the Rust `*_entry` pkg's `[…entry] locator = …` bake.
     /// `locator == ""` falls back to backend discovery.
-    /// Phase 240.2 (RFC-0043) — real-executor entry (NuttX lifecycle, explicit
-    /// connect locator). Phase 266: delegates to 3-arg overload with "node" default.
+    /// Real-executor entry (NuttX lifecycle, explicit
+    /// connect locator). Delegates to 3-arg overload with "node" default.
     template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
         return run_components(locator, "node", static_cast<Setup&&>(setup));
     }
 
     /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
-    /// Phase 266: delegates to 3-arg overload with "node" default session name.
+    /// Delegates to 3-arg overload with "node" default session name.
     template <typename Setup> static int32_t run_components(Setup&& setup) {
         return run_components(NROS_ENTRY_LOCATOR, "node", static_cast<Setup&&>(setup));
     }
 
-    /// phase-281 W3 (nuttx) (RFC-0015 Model 1) — multi-sched-task NuttX embedded entry.
+    /// Multi-sched-task NuttX embedded entry.
     ///
     /// Delegates to `nros_board_nuttx_run_sched_tasks` (defined in
     /// nros-board-nuttx-qemu, compiled into the NuttX kernel image by the
@@ -787,15 +787,15 @@ class NuttxBoard {
     /// success (the boot-sched-task spin loop runs forever on embedded firmware).
     static int32_t run_sched_tasks(const char* session_name, const NativeSchedTaskSpec* sched_tasks,
                                    size_t n_sched_tasks) {
-        // Issue 1442 — delegates to the namespaced overload with `nullptr`,
+        // Delegates to the namespaced overload with `nullptr`,
         // which is the root: what this arity has always resolved to.
         return run_sched_tasks(session_name, nullptr, sched_tasks, n_sched_tasks);
     }
 
-    /// Issue 1442 — [`run_sched_tasks`] with the primary session's NAMESPACE.
+    /// [`run_sched_tasks`] with the primary session's NAMESPACE.
     ///
-    /// Issue 1434 gave `run_components` this argument and carved the sched-task
-    /// path out; this closes it. `node_namespace` is what the generated entry
+    /// `run_components` gained this argument first and the sched-task
+    /// path was left out; this closes it. `node_namespace` is what the generated entry
     /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`;
     /// NULL or empty means the image declares none, which resolves to the ROOT.
     /// There is no environment rung on an RTOS, so the bake IS the answer; the
@@ -815,8 +815,8 @@ class NuttxBoard {
             n_sched_tasks);
     }
 
-    /// Issue 1568 — [`run_sched_tasks`] over CALLER-SUPPLIED executor storage, the
-    /// method `ZephyrBoard::run_sched_tasks` took first (issue 1551).
+    /// [`run_sched_tasks`] over CALLER-SUPPLIED executor storage, the
+    /// method `ZephyrBoard::run_sched_tasks` took first.
     ///
     /// `executor_storage` is `n_sched_tasks` blocks of `storage_stride` bytes,
     /// 8-byte aligned; block 0 is the boot sched task's executor. The generated entry
@@ -834,7 +834,7 @@ class NuttxBoard {
             n_sched_tasks, executor_storage, storage_stride);
     }
 
-    /// phase-509 P10 (RFC-0108) — the levels runner a generated entry calls:
+    /// The levels runner a generated entry calls:
     /// each row of `sched_tasks` is one level over the core's ONE executor, the
     /// least urgent adopted on the calling thread and every other a SCHED_FIFO
     /// pthread on `task_memory[i]`'s stack. See
@@ -852,7 +852,7 @@ class NuttxBoard {
             scheduler_backing, scheduler_bytes);
     }
 #ifndef NROS_NO_DEPRECATED_TIER_NAMES
-    /// Phase 536 W2 -- the old name of `run_sched_tasks`, kept one release.
+    /// The old name of `run_sched_tasks`, kept one release.
     template <typename... Args>
     NROS_CPP_DEPRECATED_MSG("renamed run_sched_tasks; call that instead")
     static int32_t run_tiers(Args... args) {
@@ -861,8 +861,8 @@ class NuttxBoard {
 #endif
 };
 
-/// Phase 246 — Azure RTOS ThreadX board adapter (C/C++ declarative components
-/// on threadx-linux + bare-metal riscv64), routing the RFC-0043 typed entry to
+/// Azure RTOS ThreadX board adapter (C/C++ declarative components
+/// on threadx-linux + bare-metal riscv64), routing the typed entry to
 /// the real executor.
 ///
 /// Lifecycle-identical to [`NuttxBoard`]: by the time this runs we are
@@ -876,20 +876,20 @@ class NuttxBoard {
 ///
 /// Domain id is `NROS_ENTRY_DOMAIN_ID` (embedded: compile-time, never env —
 /// CLAUDE.md). (The retired synthesizing-interpreter `run(register_fn)` overload
-/// was dropped in phase-246 — RFC-0043 §Retirement.)
+/// is dropped.)
 class ThreadxBoard {
   public:
-    /// Issue 1434 — 4-arg overload: the primary session's NAMESPACE too.
+    /// 4-arg overload: the primary session's NAMESPACE too.
     ///
     /// `node_namespace` is the launch-declared namespace the generated entry
     /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`.
     /// `nullptr` or empty means the image declares none, which resolves to the
-    /// root — NOT to the empty namespace. It is the BAKED rung of RFC-0045's
-    /// precedence model A, so a hosted `$NROS_NODE_NAMESPACE` still outranks
+    /// root — NOT to the empty namespace. It is the BAKED rung of the boot-config
+    /// precedence ladder, so a hosted `$NROS_NODE_NAMESPACE` still outranks
     /// it; on this board there is no environment, so it is the answer.
     ///
     /// Before this overload existed, every board here called the 3-arg
-    /// `rclcpp::init` and the namespace reached nothing at all (issue 1434): the
+    /// `rclcpp::init` and the namespace reached nothing at all: the
     /// blob carried it, `nros_boot_config_namespace` could read it, and no
     /// call site did.
     ///
@@ -915,7 +915,7 @@ class ThreadxBoard {
         return sc;
     }
 
-    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name,
+    /// 3-arg named overload: explicit locator + session name,
     /// no namespace. Delegates to the 4-arg overload with `nullptr` (issue
     /// 1434), which is the root — what this overload has always resolved to.
     template <typename Setup>
@@ -923,20 +923,20 @@ class ThreadxBoard {
         return run_components(locator, session_name, nullptr, static_cast<Setup&&>(setup));
     }
 
-    /// RFC-0043 real-executor entry (ThreadX lifecycle, explicit locator).
-    /// Phase 266: delegates to 3-arg overload with "node" default session name.
+    /// Real-executor entry (ThreadX lifecycle, explicit locator).
+    /// Delegates to 3-arg overload with "node" default session name.
     template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
         return run_components(locator, "node", static_cast<Setup&&>(setup));
     }
 
     /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
-    /// Phase 266: delegates to 3-arg overload with "node" default session name.
+    /// Delegates to 3-arg overload with "node" default session name.
     template <typename Setup> static int32_t run_components(Setup&& setup) {
         return run_components(NROS_ENTRY_LOCATOR, "node", static_cast<Setup&&>(setup));
     }
 };
 
-/// Phase-553 W4 (RFC-0130) — bare-metal board adapter (C/C++ component
+/// Bare-metal board adapter (C/C++ component
 /// packages on a board with no RTOS, e.g. mps2-an385).
 ///
 /// The board crate's Rust startup owns reset; its C-ABI start
@@ -947,7 +947,7 @@ class ThreadxBoard {
 /// nothing in it names a kernel.
 using BaremetalBoard = ThreadxBoard;
 
-/// Phase 240.6 (RFC-0043) — FreeRTOS board adapter (C/C++ declarative
+/// FreeRTOS board adapter (C/C++ declarative
 /// components on the QEMU MPS2-AN385 + lwIP stack), routing the typed entry to
 /// the real executor.
 ///
@@ -967,20 +967,20 @@ using BaremetalBoard = ThreadxBoard;
 /// CLAUDE.md). The connect locator is baked into the generated entry TU by the
 /// carrier (QEMU slirp guest dials the host zenoh router at `tcp/10.0.2.2:<port>`).
 /// TYPED-only: the retired synthesizing-interpreter `run(register_fn)` overload
-/// is not provided (RFC-0043 §Retirement), matching [`ThreadxBoard`].
+/// is not provided, matching [`ThreadxBoard`].
 class FreertosBoard {
   public:
-    /// Issue 1434 — 4-arg overload: the primary session's NAMESPACE too.
+    /// 4-arg overload: the primary session's NAMESPACE too.
     ///
     /// `node_namespace` is the launch-declared namespace the generated entry
     /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`.
     /// `nullptr` or empty means the image declares none, which resolves to the
-    /// root — NOT to the empty namespace. It is the BAKED rung of RFC-0045's
-    /// precedence model A, so a hosted `$NROS_NODE_NAMESPACE` still outranks
+    /// root — NOT to the empty namespace. It is the BAKED rung of the boot-config
+    /// precedence ladder, so a hosted `$NROS_NODE_NAMESPACE` still outranks
     /// it; on this board there is no environment, so it is the answer.
     ///
     /// Before this overload existed, every board here called the 3-arg
-    /// `rclcpp::init` and the namespace reached nothing at all (issue 1434): the
+    /// `rclcpp::init` and the namespace reached nothing at all: the
     /// blob carried it, `nros_boot_config_namespace` could read it, and no
     /// call site did.
     ///
@@ -1006,7 +1006,7 @@ class FreertosBoard {
         return sc;
     }
 
-    /// Phase 266 (W6) — 3-arg named overload: explicit locator + session name,
+    /// 3-arg named overload: explicit locator + session name,
     /// no namespace. Delegates to the 4-arg overload with `nullptr` (issue
     /// 1434), which is the root — what this overload has always resolved to.
     template <typename Setup>
@@ -1014,19 +1014,19 @@ class FreertosBoard {
         return run_components(locator, session_name, nullptr, static_cast<Setup&&>(setup));
     }
 
-    /// RFC-0043 real-executor entry (FreeRTOS lifecycle, explicit locator).
-    /// Phase 266: delegates to 3-arg overload with "node" default session name.
+    /// Real-executor entry (FreeRTOS lifecycle, explicit locator).
+    /// Delegates to 3-arg overload with "node" default session name.
     template <typename Setup> static int32_t run_components(const char* locator, Setup&& setup) {
         return run_components(locator, "node", static_cast<Setup&&>(setup));
     }
 
     /// Locator-less overload — uses the compile-time `NROS_ENTRY_LOCATOR`.
-    /// Phase 266: delegates to 3-arg overload with "node" default session name.
+    /// Delegates to 3-arg overload with "node" default session name.
     template <typename Setup> static int32_t run_components(Setup&& setup) {
         return run_components(NROS_ENTRY_LOCATOR, "node", static_cast<Setup&&>(setup));
     }
 
-    /// Phase 274.W3 (RFC-0015 Model 1) — multi-sched-task FreeRTOS embedded entry.
+    /// Multi-sched-task FreeRTOS embedded entry.
     ///
     /// Delegates to `nros_board_freertos_run_sched_tasks` (defined in nros-board-freertos)
     /// which opens ONE RMW session on the caller's task, spawns one FreeRTOS task
@@ -1041,15 +1041,15 @@ class FreertosBoard {
     /// firmware).
     static int32_t run_sched_tasks(const char* session_name, const NativeSchedTaskSpec* sched_tasks,
                                    size_t n_sched_tasks) {
-        // Issue 1442 — delegates to the namespaced overload with `nullptr`,
+        // Delegates to the namespaced overload with `nullptr`,
         // which is the root: what this arity has always resolved to.
         return run_sched_tasks(session_name, nullptr, sched_tasks, n_sched_tasks);
     }
 
-    /// Issue 1442 — [`run_sched_tasks`] with the primary session's NAMESPACE.
+    /// [`run_sched_tasks`] with the primary session's NAMESPACE.
     ///
-    /// Issue 1434 gave `run_components` this argument and carved the sched-task
-    /// path out; this closes it. `node_namespace` is what the generated entry
+    /// `run_components` gained this argument first and the sched-task
+    /// path was left out; this closes it. `node_namespace` is what the generated entry
     /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`;
     /// NULL or empty means the image declares none, which resolves to the ROOT.
     /// There is no environment rung on an RTOS, so the bake IS the answer; the
@@ -1069,8 +1069,8 @@ class FreertosBoard {
             n_sched_tasks);
     }
 
-    /// Issue 1568 — [`run_sched_tasks`] over CALLER-SUPPLIED executor storage, the
-    /// method `ZephyrBoard::run_sched_tasks` took first (issue 1551).
+    /// [`run_sched_tasks`] over CALLER-SUPPLIED executor storage, the
+    /// method `ZephyrBoard::run_sched_tasks` took first.
     ///
     /// `executor_storage` is `n_sched_tasks` blocks of `storage_stride` bytes,
     /// 8-byte aligned; block 0 is the boot sched task's executor. The generated entry
@@ -1088,7 +1088,7 @@ class FreertosBoard {
             n_sched_tasks, executor_storage, storage_stride);
     }
 
-    /// Issue 1598 — [`run_sched_tasks`] over CALLER-SUPPLIED executor storage AND
+    /// [`run_sched_tasks`] over CALLER-SUPPLIED executor storage AND
     /// each sched task's memory (`task_memory[i]` is `sched_tasks[i]`'s stack + TCB;
     /// the boot sched task's is empty). Every spawned sched task is `xTaskCreateStatic`d
     /// over the entry's statics, so no sched task stack comes out of heap_4. See
@@ -1103,7 +1103,7 @@ class FreertosBoard {
             n_sched_tasks, executor_storage, storage_stride, task_memory);
     }
 
-    /// phase-509 P10 (RFC-0108) — the levels runner a generated entry calls:
+    /// The levels runner a generated entry calls:
     /// each row of `sched_tasks` is one level over the core's ONE executor, the
     /// least urgent adopted on the calling task and every other a worker
     /// task on `task_memory[i]`. See `nros_board_freertos_run_levels_in` in
@@ -1121,7 +1121,7 @@ class FreertosBoard {
             scheduler_backing, scheduler_bytes);
     }
 #ifndef NROS_NO_DEPRECATED_TIER_NAMES
-    /// Phase 536 W2 -- the old name of `run_sched_tasks`, kept one release.
+    /// The old name of `run_sched_tasks`, kept one release.
     template <typename... Args>
     NROS_CPP_DEPRECATED_MSG("renamed run_sched_tasks; call that instead")
     static int32_t run_tiers(Args... args) {
@@ -1130,7 +1130,7 @@ class FreertosBoard {
 #endif
 };
 
-/// phase-337 W8 — back-compat spelling. C++ users write the board type BY HAND
+/// Back-compat spelling. C++ users write the board type BY HAND
 /// in `NROS_MAIN(::rclcpp::board::NativeBoard, …)`, so unlike the Rust-side
 /// rename (which the codegen emitter follows automatically) this one is a
 /// source-breaking change for hand-written entries. The alias keeps them
@@ -1140,11 +1140,11 @@ using NativeBoard = LinuxBoard;
 } // namespace board
 } // namespace rclcpp
 
-// Phase 219.E — `NROS_MAIN(<Board>, "<launch_spec>")` declarative
+// `NROS_MAIN(<Board>, "<launch_spec>")` declarative
 // marker. Expands to a sentinel TU-local symbol so the cmake fn can
 // detect macro presence (via `target_compile_definitions` or the
 // compiled-out-but-still-elf-visible `__nros_entry_macro_present`
-// symbol). The Phase 219.D cmake fn body owns the actual codegen —
+// symbol). The cmake fn body owns the actual codegen —
 // the macro is doc/IDE shape only.
 //
 // Usage:

@@ -1,15 +1,15 @@
 // nros-cpp: ask a message type how big it can get (freestanding C++14)
 //
-// phase-408 W1/W4, issue 0896 — one spelling, `rclcpp::rx_size_bound<M>::value`,
+// One spelling, `rclcpp::rx_size_bound<M>::value`,
 // for "how many bytes must a receive buffer for M hold". Every C++ subscribe
 // path fills `rx_buffer_hint` from it, so the number reaching the executor
 // arena and the zenoh payload class is the type's OWN derived bound and not a
-// figure the caller typed. (That sentence was ASPIRATIONAL until phase-456 W7:
+// figure the caller typed. (That sentence used to be ASPIRATIONAL:
 // five registration sites in these headers reached the arena with a hint of 0
 // while the message type was in scope. It is true now, and
 // `check-cpp-subscription-bound-supplied` keeps it true.)
 //
-// issue 0964 — a SECOND spelling, `rclcpp::rx_buffer_capacity<M>::value`, for the
+// A SECOND spelling, `rclcpp::rx_buffer_capacity<M>::value`, for the
 // ~13 places inside these headers that stack an actual `uint8_t buf[N]` on the
 // stack and receive into it. It answers the same question wherever a derived
 // bound exists, and falls back to the legacy `SERIALIZED_SIZE_MAX` ESTIMATE
@@ -52,7 +52,7 @@ template <class...> struct size_bound_dependent_false {
 template <class...> struct make_void {
     using type = void;
 };
-/// `std::void_t` is C++17. nano-ros DECLARES C++17 since issue 1118, but
+/// `std::void_t` is C++17. nano-ros DECLARES C++17, but
 /// this header is still written in the freestanding C++14 subset that
 /// `just check cpp` parses it at, so it carries its own.
 template <class... Ts> using void_t = typename make_void<Ts...>::type;
@@ -120,13 +120,13 @@ template <class M> struct strict_bounds<M, bound_shape::unbounded> {
 };
 
 /// CAPACITY: the number these headers actually stack a `uint8_t buf[N]` on.
-/// Same answer as `strict_bounds` for a bounded type, and — since issue 0964
+/// Same answer as `strict_bounds` for a bounded type, and — since that
 /// was decided — the same poison for a MARKED type with no bound. It still
 /// differs from `strict_bounds` in one arm: a `legacy` type, which predates the
 /// bound marker entirely and never had a derivation to disagree with, keeps the
 /// estimate so an existing consumer keeps compiling.
 ///
-/// The `unbounded` arm WAS issue 0964's open half. Decided 2026-09-05: it
+/// The `unbounded` arm WAS the open question. Decided 2026-09-05: it
 /// poisons. The reasoning is on the arm itself; in short, a buffer sized from an
 /// invented number cannot accept a message the user legitimately sends, and
 /// that is a fact about the build rather than something a run can recover from.
@@ -143,7 +143,7 @@ template <class M> struct buffer_bounds<M, bound_shape::derived> {
     static constexpr size_t rx = M::RX_MAX_SERIALIZED_SIZE;
 };
 template <class M> struct buffer_bounds<M, bound_shape::unbounded> {
-    // Issue 0964, DECIDED 2026-09-05: this arm poisons.
+    // DECIDED 2026-09-05: this arm poisons.
     //
     // The estimate is not a smaller-than-ideal bound, it is a WRONG one: this
     // type's derivation ran and found no bound at all, so any fixed number
@@ -159,7 +159,7 @@ template <class M> struct buffer_bounds<M, bound_shape::unbounded> {
     // Two ways out, both stating a number somebody chose: bound the type
     // (`string<=64` in the `.msg`, or a `cap` in `nros-codegen.toml`), which
     // fixes every site at once; or call the `_sized` form at the one site that
-    // needs it. `heap` / `view` caps do NOT bound (RFC-0033).
+    // needs it. `heap` / `view` caps do NOT bound.
     static constexpr size_t tx = strict_bounds<M>::tx;
     static constexpr size_t rx = strict_bounds<M>::rx;
 };
@@ -183,9 +183,9 @@ template <class M> struct tx_size_bound {
 };
 
 /// Bytes a RECEIVE buffer for `M` must hold — `max(XCDR1, XCDR2)`, because
-/// `data_representation` is negotiable and a non-default peer can send either
-/// (RFC-0055). Under-sizing this drops samples at the transport with no
-/// diagnostic, which is the failure issue 0896 exists to remove; over-sizing
+/// `data_representation` is negotiable and a non-default peer can send either.
+/// Under-sizing this drops samples at the transport with no
+/// diagnostic, which is the failure the derived bound exists to remove; over-sizing
 /// only wastes bytes.
 template <class M> struct rx_size_bound {
     static constexpr size_t value = detail::strict_bounds<M>::rx;
@@ -194,7 +194,7 @@ template <class M> struct rx_size_bound {
 /// Bytes the in-tree transmit buffers stack for `M`: `tx_size_bound<M>` where
 /// a derived bound exists, the legacy `SERIALIZED_SIZE_MAX` estimate where it
 /// does not. Prefer `tx_size_bound<M>` in new code — this exists so a type
-/// with no bound keeps compiling (issue 0964).
+/// with no bound keeps compiling.
 template <class M> struct tx_buffer_capacity {
     static constexpr size_t value = detail::buffer_bounds<M>::tx;
 };
@@ -214,9 +214,9 @@ template <class M> struct rx_buffer_capacity {
     static constexpr size_t value = detail::buffer_bounds<M>::rx;
 };
 
-/// The bound a genuinely TYPE-ERASED registration passes — phase-456 W7.
+/// The bound a genuinely TYPE-ERASED registration passes.
 ///
-/// A subscription registered with no bound takes issue 1319's `Unbounded`
+/// A subscription registered with no bound takes the `Unbounded`
 /// row (once ~~`c_raw_no_hint`~~), which is priced at the executor's closure
 /// buffer (`RX_BUF`) rather than at the message's own size, and which the
 /// sizing descriptor CANNOT see: it credits every C/C++ entry with a
@@ -236,7 +236,7 @@ template <class M> struct rx_buffer_capacity {
 /// `M` sitting in scope, and they were indistinguishable from this one.
 constexpr size_t rx_bound_unknown = 0;
 
-/// Issue 2215 — the CDR byte offset of `M`'s `stamp.sec` (encapsulation header
+/// The CDR byte offset of `M`'s `stamp.sec` (encapsulation header
 /// included), or 0 when `M` carries no stamp. The C++ message pack states it as
 /// `M::STAMP_OFFSET` exactly when the Rust pack states `RosMessage::STAMP_OFFSET`
 /// (a first field that is a `Header` or a bare `builtin_interfaces/Time`); a type

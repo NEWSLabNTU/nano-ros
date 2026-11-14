@@ -10,12 +10,12 @@
  * Every other nros-cpp header includes this one and TESTS the macros. None of
  * them defines one.
  *
- * Before phase-438 W1 this block was hand-copied FIFTEEN times across eleven
+ * This block used to be hand-copied FIFTEEN times across eleven
  * headers — the "second spelling rather than one shared helper" antipattern
- * CLAUDE.md records for the Zephyr unset-variable guard (#282 -> #326). The
- * predicate below is the survivor of three separate corrections (issues 0112,
- * 1187, 1240), and each one had to be applied fifteen times by hand. Issue
- * 1240's own fix ships a sweep command for the next person precisely because
+ * the repo records for the Zephyr unset-variable guard. The
+ * predicate below is the survivor of three separate corrections,
+ * and each one had to be applied fifteen times by hand. The last
+ * one's own fix ships a sweep command for the next person precisely because
  * there was no single site to change:
  *
  *     grep -rn --include='*.hpp' '__has_include' packages/api/nros-cpp/include/
@@ -27,11 +27,11 @@
  *   1. `nros.hpp` USED four of these macros and DEFINED none, so which of them
  *      held depended on `publisher.hpp` / `options.hpp` / `subscription.hpp`
  *      having been included first. It was the only header in that state, and
- *      the failure mode is issue 0135's: two TUs of one image disagreeing
+ *      the failure mode is the one-definition hazard: two TUs of one image disagreeing
  *      about a capability, hence about a layout.
  *   2. The rationale drifted. Eleven copies carried a comment saying the test
- *      is `__has_include` "rather than `__STDC_HOSTED__`, issue 0112" — and
- *      issue 0112 says no such thing. Its Resolution chose `NROS_CPP_STD` over
+ *      is `__has_include` "rather than `__STDC_HOSTED__`" — and
+ *      the record says no such thing. Its resolution chose `NROS_CPP_STD` over
  *      `__STDC_HOSTED__`; it never chose `__has_include`, which arrived later
  *      in commit `acf213871`. Those comments are gone; this is the one place
  *      the reasoning lives, so it can only drift once.
@@ -43,7 +43,7 @@
  * because the predicate is evaluated per capability: a toolchain that has
  * `<memory>` and not `<sstream>` still gets `NROS_CPP_HAS_SHARED_PTR` and not
  * `NROS_CPP_HAS_STD_SSTREAM`. What changes is only that every TU including any
- * nros-cpp header now agrees about all six, which is the issue-0135 fix above
+ * nros-cpp header now agrees about all six, which is the layout fix above
  * rather than a cost.
  */
 
@@ -57,8 +57,8 @@
 // three positions in every instance. `<chrono>` below is the one that does not,
 // and it is kept separate rather than normalised into these.
 //
-// DISCOVERY IS GONE (phase-438 W2). The predicate is the request and nothing
-// else. Issue 1240 had just corrected discovery at all fourteen sites to the
+// DISCOVERY IS GONE. The predicate is the request and nothing
+// else. A fix had just corrected discovery at all fourteen sites to the
 // two-probe conjunction
 //
 //     defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__
@@ -66,10 +66,10 @@
 //
 // because each probe alone is wrong on a lane the other gets right:
 // `__STDC_HOSTED__` alone misreads Zephyr's `-fno-freestanding -nostdinc++`
-// leaves as having `<memory>` (issue 0112), and `__has_include` alone answers
+// leaves as having `<memory>`, and `__has_include` alone answers
 // "does the FILE exist", which is TRUE under `-ffreestanding` against a full
 // libstdc++ whose `<string>` opens `#error "This header is not available in
-// freestanding mode."` (issue 1240, made unmissable by GCC 16; issue 1187 is
+// freestanding mode."` (made unmissable by GCC 16; another failure was
 // the same shape failing quietly on arm-none-eabi 13.2).
 //
 // That conjunction is a better PROBE. W2's claim is that no probe is the right
@@ -77,7 +77,7 @@
 // consumer asked to be compiled, not what the include path happens to hold.
 // So the conjunction is removed rather than kept as a fallback, and the five
 // consumers that need the porting surface make the request out loud -- the
-// rclcpp compat shim, the phase-417 ported-surface probes, the four refusal
+// rclcpp compat shim, the ported-surface probes, the four refusal
 // probes, the compile-check arm over `fixtures/cpp_compat_snippets/`, and this gate's own
 // hosted arm.
 
@@ -91,7 +91,7 @@
 #define NROS_CPP_HAS_STD_STRING 1
 #endif
 
-// phase-476 W3 — `<vector>` and `<functional>` stay included on the porting
+// `<vector>` and `<functional>` stay included on the porting
 // surface, and their capability macros are GONE. After W2 (timer callables in
 // the arena) and W3 (the hosted-node conjunction split per capability) nothing
 // in this API is spelled in `std::vector` or `std::function` outside an
@@ -108,7 +108,7 @@
 // `log.hpp` pulls it, `qos.hpp` includes `log.hpp`, and every entity header
 // includes `qos.hpp` — so a stream-formatting convenience sits on the
 // transitive include path of every freestanding TU. That is a separate leak
-// from how it is gated (phase-438, "which failures are real", cause (c)).
+// from how it is gated.
 #if defined(NROS_CPP_STD) // hosted-family: capability-definition
 #include <sstream>
 #define NROS_CPP_HAS_STD_SSTREAM 1
@@ -118,7 +118,7 @@
 //
 // `<chrono>` reached the opt-in-only form one phase ahead of the other five,
 // the hard way, and its comment is kept because it is the EVIDENCE for what
-// phase-438 W2 then did to all of them. Three successive corrections, each
+// was then done to all of them. Three successive corrections, each
 // measured against a build's own recorded compile command, each narrowing a
 // probe that was answering the wrong question. Read as history now — the
 // `__STDC_HOSTED__ && __has_include(<chrono>) && __has_include(<ratio>)`
@@ -140,7 +140,7 @@
 // header exist", which is the right question for `<memory>` (present or absent
 // as a unit) and the WRONG one for `<chrono>` (present but hollowed out). Where
 // a freestanding toolchain ships a partial header, only the consumer's own
-// `NROS_CPP_STD` opt-in is a reliable signal. Issue 0112's class, one layer past
+// `NROS_CPP_STD` opt-in is a reliable signal. The same class, one layer past
 // where step A caught it.
 // CORRECTED 2026-09-05. The `NROS_CPP_STD`-only gate above was measured on the
 // Zephyr lane and never on a plain hosted one, and NOTHING THAT SHIPS DEFINES
@@ -149,7 +149,7 @@
 // narrow gate did not merely tighten `<chrono>`; it removed `create_wall_timer`
 // and `Rate` from EVERY shipped configuration, including the hosted one, where
 // `examples/templates/cpp-port-minimal-publisher` calls `create_wall_timer` and
-// is phase-417's own acceptance criterion.
+// is the ported surface's own acceptance criterion.
 //
 // The right predicate needs BOTH halves, because the two lanes fail
 // differently and neither test alone sees both:
@@ -200,7 +200,7 @@
 //
 // `__cpp_lib_chrono` was tried first and is WRONG here: it is a C++17
 // feature-test macro, so it is absent under `-std=c++14` even where the library
-// is complete. `check-cpp` compiles the phase-417 probes at C++14 and caught
+// is complete. `check-cpp` compiles the ported-surface probes at C++14 and caught
 // that immediately -- gating on it removed `create_wall_timer` from the hosted
 // build, which is the same over-tightening the note above records.
 // `_GLIBCXX_CHRONO` also separates the two but is libstdc++'s private spelling;
@@ -210,11 +210,11 @@
 #define NROS_CPP_HAS_STD_CHRONO 1
 #endif
 
-// issue 1996 — `<future>` is for ONE name: `std::future_status`, what upstream's
+// `<future>` is for ONE name: `std::future_status`, what upstream's
 // `FutureAndRequestId::wait_for` returns and what a ported client compares
 // against (`fut.wait_for(1s) == std::future_status::ready`). A service or
 // goal-acceptance reply still lives in `rclcpp::Future`'s own buffer and is
-// driven by the executor (RFC-0021). Issue 2027 added the one place a
+// driven by the executor. The action client added the one place a
 // `std::shared_future` IS built: upstream's `rclcpp_action::Client::
 // async_get_result` / `async_cancel_*` return one, fulfilled by the client's
 // own dispatch (`rclcpp_action::detail::DrivenSharedFuture`, which drives that
@@ -224,7 +224,7 @@
 #define NROS_CPP_HAS_STD_FUTURE 1
 #endif
 
-// issue 2027 — `std::promise` / `std::shared_future` themselves, which
+// `std::promise` / `std::shared_future` themselves, which
 // `rclcpp_action::Client::async_get_result` / `async_cancel_*` return. Not
 // implied by `<future>`: a libstdc++ built without gthreads (arm-none-eabi,
 // the RTOS islands) declares both and defines neither, so `-DNROS_CPP_STD` on

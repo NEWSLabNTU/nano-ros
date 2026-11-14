@@ -1,4 +1,4 @@
-// nros-cpp: `/rosout` — the log bridge rcl gives every node (issue 1589).
+// nros-cpp: `/rosout` — the log bridge rcl gives every node.
 // Freestanding C++ — no STL.
 
 /**
@@ -23,11 +23,11 @@
  * **Why `rclcpp::NodeOptions::enable_rosout(true)` still refuses.** Upstream's
  * flag turns on a publisher the runtime creates for you. A publisher is an
  * ENTITY here — it counts against the image's pools and sizing descriptor — so
- * the runtime never conjures one below the declaration (issue 1341's shape).
+ * the runtime never conjures one below the declaration.
  * This class is the explicit spelling; the Rust bridge (`nros::rosout`) and
  * the C one (`<rclc/rosout.h>`) have the same three steps.
  *
- * **Which records** follow the image's ROS release (RFC-0102 D4): on Humble,
+ * **Which records** follow the image's ROS release: on Humble,
  * and with no release named, node loggers only (`node.get_logger()`); on
  * Iron/Jazzy, node loggers and their `get_child` descendants. Free loggers
  * (`rclcpp::get_logger`) never.

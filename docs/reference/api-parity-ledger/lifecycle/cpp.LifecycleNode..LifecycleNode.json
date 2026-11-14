@@ -3,7 +3,7 @@
   "disposition": "adopt-bounded",
   "envelope": {
     "file": "packages/api/nros-cpp/include/rclcpp_lifecycle/lifecycle_node.hpp",
-    "text": "///  * Construction cannot throw (RFC-0018). A failed construction leaves"
+    "text": "///  * Construction cannot throw. A failed construction leaves"
   },
   "provides": [
     "nros::LifecycleNode::register_services",

@@ -6,7 +6,7 @@
 /**
  * @file declared_qos.h
  * @ingroup grp_qos
- * @brief phase-454 W10 -- the C half of the declared-QoS depth check.
+ * @brief The C half of the declared-QoS depth check.
  *
  * # What this is
  *
@@ -58,13 +58,13 @@
  * answers @ref NROS_DECLARED_DEPTH_UNDECLARED there, every assertion holds
  * trivially, and `rclc_declared_depth()` below still answers at runtime.
  *
- * # Reliability and durability too (issue 1256)
+ * # Reliability and durability too
  *
  * The table also carries each subscription's declared RELIABILITY and
  * DURABILITY. @ref NROS_ASSERT_DECLARED_RELIABILITY and
  * @ref NROS_ASSERT_DECLARED_DURABILITY fail the build on a disagreement, in
  * `rclc_qos_t`'s own enumerator values. A C component takes `rclc_qos_t` like
- * any C caller (phase-492 W4), and every subscription is also held to the
+ * any C caller, and every subscription is also held to the
  * same table at REGISTRATION.
  *
  * # ABSENCE IS NOT ZERO
@@ -116,13 +116,13 @@
 #define NROS_DECLARED_DEPTH_UNDECLARED (-1)
 
 /**
- * issue 1256 -- "No reliability (or durability) was declared for this
+ * "No reliability (or durability) was declared for this
  * endpoint." The same third state as @ref NROS_DECLARED_DEPTH_UNDECLARED, for a
  * POLICY column: nothing asserts against it.
  */
 #define NROS_DECLARED_POLICY_UNDECLARED (-1)
 
-/* issue 1256 -- the policy TOKENS the generated header carries, mapped to C's
+/* The policy TOKENS the generated header carries, mapped to C's
  * own enumerator values: `rclc_qos_reliability_t` / `rclc_qos_durability_t` in
  * `nros_generated.h`, where RELIABLE is 1 and BEST_EFFORT is 0. C++ numbers the
  * same enums the other way round, which is why the header carries tokens and
@@ -131,7 +131,7 @@
  * which sees both, `_Static_assert`s them equal to the enumerators.
  *
  * The compile-time policy macros below take `rclc_qos_t` values, which is what
- * a C component passes too since phase-492 W4 moved components onto the C
+ * a C component passes too, since components are on the C
  * API. At REGISTRATION every subscription, C or C++, is checked again by the
  * same comparison in `nros_node::declared_qos::check`, which both bindings'
  * subscription init calls. */
@@ -160,7 +160,7 @@
     (_NROS_DQ_STREQ((rclc_t), (rclc_q_type)) && _NROS_DQ_STREQ((rclc_tp), (rclc_q_topic)))         \
         ? (rclc_d)                                                                                 \
         :
-/* issue 1256 -- the same search, answering the RELIABILITY / DURABILITY column. */
+/* The same search, answering the RELIABILITY / DURABILITY column. */
 #define _NROS_DQ_FIND_REL_ROW(rclc_t, rclc_tp, rclc_d, rclc_r, rclc_u, rclc_q_type, rclc_q_topic)  \
     (_NROS_DQ_STREQ((rclc_t), (rclc_q_type)) && _NROS_DQ_STREQ((rclc_tp), (rclc_q_topic)))         \
         ? (_NROS_DQ_C_##rclc_r)                                                                    \
@@ -181,14 +181,14 @@
     (NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_FIND_ROW, (rclc_type_lit), (rclc_topic_lit))                \
          NROS_DECLARED_DEPTH_UNDECLARED)
 
-/** issue 1256 -- the declared RELIABILITY for `(type, topic)` as an
+/** The declared RELIABILITY for `(type, topic)` as an
  *  `rclc_qos_reliability_t` value, or @ref NROS_DECLARED_POLICY_UNDECLARED.
  *  An integer constant expression on the same terms as @ref NROS_DECLARED_DEPTH. */
 #define NROS_DECLARED_RELIABILITY(rclc_type_lit, rclc_topic_lit)                                   \
     (NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_FIND_REL_ROW, (rclc_type_lit), (rclc_topic_lit))            \
          NROS_DECLARED_POLICY_UNDECLARED)
 
-/** issue 1256 -- the declared DURABILITY as an `rclc_qos_durability_t` value,
+/** The declared DURABILITY as an `rclc_qos_durability_t` value,
  *  or @ref NROS_DECLARED_POLICY_UNDECLARED. */
 #define NROS_DECLARED_DURABILITY(rclc_type_lit, rclc_topic_lit)                                    \
     (NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_FIND_DUR_ROW, (rclc_type_lit), (rclc_topic_lit))            \
@@ -305,7 +305,7 @@
     (void)sizeof(_NROS_DQ_CAT(rclc_name, __LINE__))
 
 /**
- * issue 1256 -- fail the BUILD when a declared RELIABILITY and the passed one
+ * Fail the BUILD when a declared RELIABILITY and the passed one
  * disagree. `rclc_rel_expr` is an `rclc_qos_reliability_t` constant expression
  * -- spell the enumerator (`RCLC_QOS_RELIABILITY_BEST_EFFORT`): a member of a
  * `const` struct such as `RCLC_QOS_SENSOR_DATA.reliability` is not an integer
@@ -327,7 +327,7 @@
         "declared first, passed second.")
 
 /**
- * issue 1256 -- the same for DURABILITY. `rclc_dur_expr` is an
+ * The same for DURABILITY. `rclc_dur_expr` is an
  * `rclc_qos_durability_t` constant expression.
  */
 #define NROS_ASSERT_DECLARED_DURABILITY(rclc_type_lit, rclc_topic_lit, rclc_dur_expr,              \
@@ -342,7 +342,7 @@
         "passed second.")
 
 /* ------------------------------------------------------------------------- */
-/* Issue 1608 -- the same check for a PUBLISHER.                              */
+/* The same check for a PUBLISHER.                              */
 /* ------------------------------------------------------------------------- */
 
 /* The generated header carries publisher rows in lists of their OWN
@@ -358,17 +358,17 @@
 
 #if NROS_DECLARED_PUB_QOS_COMPILE_TIME
 
-/** Issue 1608 -- the declared depth of the PUBLISHER on `(type, topic)`, or
+/** The declared depth of the PUBLISHER on `(type, topic)`, or
  *  @ref NROS_DECLARED_DEPTH_UNDECLARED. A constant expression on the terms of
  *  @ref NROS_DECLARED_DEPTH. */
 #define NROS_DECLARED_PUB_DEPTH(rclc_type_lit, rclc_topic_lit)                                     \
     (NROS_DECLARED_PUB_QOS_ROWS_Q(_NROS_DQ_FIND_ROW, (rclc_type_lit), (rclc_topic_lit))            \
          NROS_DECLARED_DEPTH_UNDECLARED)
-/** Issue 1608 -- the publisher's declared RELIABILITY (`rclc_qos_reliability_t`). */
+/** The publisher's declared RELIABILITY (`rclc_qos_reliability_t`). */
 #define NROS_DECLARED_PUB_RELIABILITY(rclc_type_lit, rclc_topic_lit)                               \
     (NROS_DECLARED_PUB_QOS_ROWS_Q(_NROS_DQ_FIND_REL_ROW, (rclc_type_lit), (rclc_topic_lit))        \
          NROS_DECLARED_POLICY_UNDECLARED)
-/** Issue 1608 -- the publisher's declared DURABILITY (`rclc_qos_durability_t`). */
+/** The publisher's declared DURABILITY (`rclc_qos_durability_t`). */
 #define NROS_DECLARED_PUB_DURABILITY(rclc_type_lit, rclc_topic_lit)                                \
     (NROS_DECLARED_PUB_QOS_ROWS_Q(_NROS_DQ_FIND_DUR_ROW, (rclc_type_lit), (rclc_topic_lit))        \
          NROS_DECLARED_POLICY_UNDECLARED)
@@ -384,7 +384,7 @@
 #endif /* NROS_DECLARED_PUB_QOS_COMPILE_TIME */
 
 /**
- * Issue 1608 -- fail the BUILD when a PUBLISHER's passed QoS depth disagrees
+ * Fail the BUILD when a PUBLISHER's passed QoS depth disagrees
  * with the depth its contract declares (`contracts.pub_endpoints.<ep>.qos`).
  *
  * The four arguments and the three-declaration expansion of
@@ -425,7 +425,7 @@
     (void)sizeof(_NROS_DQ_CAT(rclc_declared_pub_depth_vs_passed_at_line_, __LINE__))
 
 /**
- * Issue 1608 -- the PUBLISHER's RELIABILITY, on @ref
+ * The PUBLISHER's RELIABILITY, on @ref
  * NROS_ASSERT_DECLARED_RELIABILITY's terms. An incompatible-QoS match never
  * delivers, and a BEST_EFFORT writer is matched by no RELIABLE reader.
  */
@@ -441,7 +441,7 @@
         "declared first, passed second.")
 
 /**
- * Issue 1608 -- the PUBLISHER's DURABILITY. A transient-local publisher is what
+ * The PUBLISHER's DURABILITY. A transient-local publisher is what
  * a zenoh image spends a cache queryable slot on, so this is the column whose
  * disagreement is also a SIZING error: the build counted (or did not count) a
  * slot the code does not (or does) declare.
@@ -496,7 +496,7 @@ static inline int rclc_declared_depth(const char* rclc_type, const char* rclc_to
 }
 
 /**
- * issue 1256 -- the declared RELIABILITY at RUNTIME, as an
+ * The declared RELIABILITY at RUNTIME, as an
  * `rclc_qos_reliability_t` value, or @ref NROS_DECLARED_POLICY_UNDECLARED.
  * The same rows as @ref NROS_DECLARED_RELIABILITY.
  */
@@ -518,7 +518,7 @@ static inline int rclc_declared_reliability(const char* rclc_type, const char* r
 }
 
 /**
- * issue 1256 -- the declared DURABILITY at RUNTIME, as an
+ * The declared DURABILITY at RUNTIME, as an
  * `rclc_qos_durability_t` value, or @ref NROS_DECLARED_POLICY_UNDECLARED.
  */
 static inline int rclc_declared_durability(const char* rclc_type, const char* rclc_topic) {

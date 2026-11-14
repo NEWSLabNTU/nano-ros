@@ -14,7 +14,7 @@
 
 namespace rclcpp {
 
-/// Owns an entity BY VALUE and speaks pointer — phase-442 W8.
+/// Owns an entity BY VALUE and speaks pointer.
 ///
 /// THIS IS THE EXCEPTION, NOT THE RULE. READ THIS FIRST.
 ///
@@ -31,7 +31,7 @@ namespace rclcpp {
 /// poll-style forms of the others. It is one kind and a fallback, not the
 /// shape of the API.
 ///
-/// FOR A PUBLISHER IT IS A DECISION, NOT A FALLBACK — phase-456 W4
+/// FOR A PUBLISHER IT IS A DECISION, NOT A FALLBACK
 ///
 /// The phase asked whether a publisher should get an arena slot anyway, for
 /// uniformity. It should not, and the reason is not that the slot would be
@@ -40,7 +40,7 @@ namespace rclcpp {
 /// When this was written the arena was a bump allocator with no removal path,
 /// and that was the first reason given here: an arena publisher would have
 /// turned `~Publisher()` and `reset()` into no-ops over a live RMW publisher.
-/// `9768795b1d` (issue 1496) retired that reason — the arena can release an
+/// `9768795b1d` retired that reason — the arena can release an
 /// entry now, so the release could be wired. The decision does NOT rest on it.
 /// `~Publisher()` calls `nros_cpp_publisher_destroy` and `reset()` below
 /// destroys NOW, matching upstream rclcpp, where the last reference destroys,
@@ -53,7 +53,7 @@ namespace rclcpp {
 /// mirrors it exactly. An arena slot would make C++ DIVERGE from Rust here,
 /// which is the opposite of what the phase is for.
 ///
-/// Measured (phase-456 W4), for anyone re-opening it: `sizeof(Publisher<M>)` is
+/// Measured, for anyone re-opening it: `sizeof(Publisher<M>)` is
 /// 872 bytes and INDEPENDENT of `M` — 608 handle + 256 topic-name cache + a
 /// `bool` — so no part of it is a type-derived buffer, and moving it to the
 /// arena would relocate those bytes rather than remove them. And the ported
@@ -106,7 +106,7 @@ namespace rclcpp {
 ///     arena holds `this` as the trampoline context; the move only transfers
 ///     bookkeeping and leaves that pointer stale, so don't.
 ///
-/// `service.hpp` carried the same warning until phase-456 W3, which removed its
+/// `service.hpp` carried the same warning until a change removed its
 /// subject rather than its text: a dispatch service's arena context is the
 /// user's HANDLER now, so `Service<S>` and `Client<S>` are movable and the list
 /// of types this limit applies to is one shorter.
@@ -136,7 +136,7 @@ namespace rclcpp {
 /// entity's destructor runs when the holder does, which for the ported pattern
 /// is when the node does — the same observable lifetime upstream gives it.
 ///
-/// AND THERE IS NO `Owned<const T>` — phase-456 W4
+/// AND THERE IS NO `Owned<const T>`
 ///
 /// `X::ConstSharedPtr` is `X::SharedPtr`, the same type, and the `static_assert`
 /// below refuses the other spelling rather than letting it half-work.

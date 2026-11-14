@@ -1,18 +1,18 @@
 // nros-cpp: LifecycleNode API (REP-2002 managed nodes)
 // Freestanding C++ — no exceptions, no RTTI, no STL required.
 //
-// Phase 270 (#103) — an rclcpp-shape managed-node wrapper over the executor's
+// An rclcpp-shape managed-node wrapper over the executor's
 // REP-2002 lifecycle state machine. Inherit `rclcpp_lifecycle::LifecycleNode` and override
 // the `on_*` transition hooks (matching
 // `rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface`); the base binds
 // the REP-2002 services and bridges each transition to your override. The C
 // state machine (`rclc_executor_lifecycle_*`) does all the work — this class is
-// a thin, allocation-free wrapper (RFC-0019).
+// a thin, allocation-free wrapper.
 
 /**
  * @file lifecycle.hpp
  * @ingroup grp_lifecycle
- * @brief Phase 270 — `rclcpp_lifecycle::LifecycleNode` (REP-2002 managed node).
+ * @brief `rclcpp_lifecycle::LifecycleNode` (REP-2002 managed node).
  */
 
 #ifndef NROS_RCLCPP_LIFECYCLE_LIFECYCLE_NODE_HPP
@@ -22,10 +22,10 @@
 #include <cstdint>
 
 #include "rclcpp/result.hpp"
-// phase-417 stage 2b (RFC-0089) — `rclcpp::TopicEndpointInfo` and the visitor
+// `rclcpp::TopicEndpointInfo` and the visitor
 // typedef used by the graph forwarders below.
 #include "rclcpp/graph.hpp"
-// phase-417 W4.f — `rclcpp_lifecycle::LifecycleNode` carries the same clock and
+// `rclcpp_lifecycle::LifecycleNode` carries the same clock and
 // the same parameter surface as `rclcpp::Node`, so this header reaches both.
 #include "rclcpp/clock.hpp"
 #include "rclcpp/node_parameters.hpp"
@@ -33,7 +33,7 @@
 // `node.hpp` for `rclcpp::Node` ITSELF, which the parameter forwarders call and
 // `bind(Node&)` takes. A forward declaration would have been enough to DECLARE
 // them and is not enough to write them: the hosted `std::string` overloads are
-// guarded on `NROS_CPP_HAS_STD_STRING` (phase-476 W3), and `node.hpp`'s includes
+// guarded on `NROS_CPP_HAS_STD_STRING`, and `node.hpp`'s includes
 // are what define it here exactly as they do there. A guard that answered
 // differently in this header than in `node.hpp` would give a lifecycle node a
 // different parameter surface per translation unit.
@@ -47,14 +47,14 @@
 // nros_cpp_lifecycle_callback_t typedef), all cbindgen-generated
 // from nros-cpp/src/lifecycle_shim.rs.
 #include "rclcpp/detail/nros_cpp_ffi.h"
-// phase-417 W4.f — `rclc_lifecycle_transition_{label,start_state,goal_state}`
+// `rclc_lifecycle_transition_{label,start_state,goal_state}`
 // and `rclc_lifecycle_transition_graph`, the in-process view of the REP-2002
 // table. They are PURE functions over `nros_core::lifecycle`, so `Transition`
 // below stores an id and nothing else: the labels and the two states have ONE
 // home, in Rust, and a C++ table of them would be the fourth copy.
 #include "rclc/types.h"
 
-// phase-483 W1: the lifecycle vocabulary lives in `rclcpp_lifecycle::`, where
+// The lifecycle vocabulary lives in `rclcpp_lifecycle::`, where
 // upstream keeps it. It was `nros::` until then, with `rclcpp_lifecycle::`
 // aliasing three of the names.
 namespace rclcpp_lifecycle {
@@ -66,7 +66,7 @@ namespace rclcpp_lifecycle {
 /// The four primary states carry their `lifecycle_msgs/msg/State` ids.
 /// `ErrorProcessing` deliberately does not: upstream spells it
 /// `TRANSITION_STATE_ERRORPROCESSING = 15`, but `5` is UNASSIGNED upstream, so
-/// unlike the transition ids (issue 1099) it can never silently name a
+/// unlike the transition ids it can never silently name a
 /// different state. The wire mapping in `nros-node` sends 15.
 enum class LifecycleState : uint8_t {
     Unknown = 0,
@@ -79,7 +79,7 @@ enum class LifecycleState : uint8_t {
 
 /// REP-2002 transition ids — the values of `lifecycle_msgs/msg/Transition`.
 ///
-/// Issue 1099: these ids used to be nano-ros's own numbering, which collided
+/// These ids used to be nano-ros's own numbering, which collided
 /// with upstream's on four of eight values (ours had `Activate = 2`, upstream
 /// has `CLEANUP = 2`). A ported rclcpp file calling
 /// `trigger_transition(lifecycle_msgs::msg::Transition::TRANSITION_CLEANUP)`
@@ -121,7 +121,7 @@ enum class CallbackReturn : uint8_t {
 /// REP-2002 gives shutdown three ids, one per legal source state, so no fixed
 /// id can shut down a node in an arbitrary state — which is why
 /// `LifecycleNode::shutdown()` sending `5` unconditionally could not shut down
-/// an Inactive or Active node (issue 1099).
+/// an Inactive or Active node.
 ///
 /// The no-legal-shutdown states fall back to `ShutdownUnconfigured` on purpose:
 /// the state machine already refuses it from those states, so the error comes
@@ -137,7 +137,7 @@ constexpr LifecycleTransition shutdown_transition_for(LifecycleState state) {
 /// One row of the REP-2002 transition graph — rclcpp's
 /// `rclcpp_lifecycle::Transition`.
 ///
-/// phase-417 W4.f. Before this, C++ had `enum class LifecycleTransition` (issue
+/// Before this, C++ had `enum class LifecycleTransition` (issue
 /// 1099) and nothing else: the LABEL and the two STATES that upstream's object
 /// carries were served over `~/get_transition_graph` to remote peers and were
 /// unreadable to the node's own code. An enum is not that object, which is why
@@ -147,7 +147,7 @@ constexpr LifecycleTransition shutdown_transition_for(LifecycleState state) {
 /// function over `nros_core::lifecycle`, so the eight labels and sixteen states
 /// have exactly one home — the one `~/get_transition_graph` reads. A `constexpr`
 /// table of them in this header would be a fourth copy of `lifecycle_msgs`, and
-/// the three that already exist are the reason issue 1099 happened.
+/// the three that already exist are the reason the numbering once drifted.
 ///
 /// Two deliberate differences from rclcpp, both from the same constraint:
 ///
@@ -221,8 +221,8 @@ using TransitionVisitFn = bool (*)(void* ctx, const Transition& transition);
 /// The `lifecycle_msgs/msg/State.label` for `state` — `"active"`,
 /// `"unconfigured"`, … — or `nullptr` for `LifecycleState::Unknown`.
 ///
-/// The free form, which [`State::label`] below calls. phase-417 W4.f wrote
-/// this one and stopped here, on the argument that "the only thing upstream's
+/// The free form, which [`State::label`] below calls. This one was written
+/// first and stopped here, on the argument that "the only thing upstream's
 /// `State` adds to the enum is this string, so a whole type to carry it would
 /// be a wrapper over one accessor". G6 disagrees with that argument for the
 /// reason the sibling already demonstrates: [`Transition`] carries `label()`
@@ -236,7 +236,7 @@ inline const char* state_label(LifecycleState state) {
 
 /// One REP-2002 primary state as a value — rclcpp's `rclcpp_lifecycle::State`.
 ///
-/// phase-417 G6, and it is a SURFACING job rather than a feature: every byte
+/// It is a SURFACING job rather than a feature: every byte
 /// it returns already shipped (`rclc_lifecycle_state_label`, W4.f), and what
 /// was missing was the RECEIVER. Upstream's `State` is a value type with
 /// `.id()` and `.label()`; ours was a bare enum plus a free function, so a
@@ -247,14 +247,14 @@ inline const char* state_label(LifecycleState state) {
 /// accessor calls the pure C function over `nros_core::lifecycle`, so the five
 /// labels have one home — the one `~/get_transition_graph` reads — and a
 /// `constexpr` table of them in this header would be a further copy of
-/// `lifecycle_msgs`, which is what issue 1099 was.
+/// `lifecycle_msgs`, which is how the numbering once drifted.
 ///
 /// Two deliberate differences from rclcpp, both the ones the header already
 /// records for `Transition`:
 ///
 ///  * upstream's `State` owns an `rcl_lifecycle_state_t` AND an
 ///    `rcl_allocator_t`, because its label is a heap string it must free.
-///    There is no allocator here (RFC-0022), so there is nothing to own: this
+///    There is no allocator here, so there is nothing to own: this
 ///    is one `uint8_t`.
 ///  * [`label`] returns a BORROWED `const char*` with static lifetime rather
 ///    than a `std::string`. Nothing is allocated and nothing is freed.
@@ -289,7 +289,7 @@ class State {
 /// An entity whose sends follow the node's REP-2002 state — rclcpp's
 /// `rclcpp_lifecycle::node_interfaces::ManagedEntityInterface`.
 ///
-/// phase-417 W4.f. We had lifecycle state and no entity that observed it, so a
+/// We had lifecycle state and no entity that observed it, so a
 /// deactivated node's publishers kept publishing — the half of REP-2002 that is
 /// about what a node SENDS rather than what it IS.
 ///
@@ -314,7 +314,7 @@ class ManagedEntityInterface {
     /// dies, so destroying one before its node leaves no dangling pointer.
     virtual ~ManagedEntityInterface();
 
-    /// phase-482 W4 — MOVABLE, and a move keeps the node's list correct.
+    /// MOVABLE, and a move keeps the node's list correct.
     ///
     /// `rclcpp_lifecycle::LifecycleNode::create_publisher` returns its
     /// publisher in a move-only `rclcpp::Owned<T>` (the freestanding `SharedPtr`),
@@ -362,10 +362,10 @@ class SimpleManagedEntity : public ManagedEntityInterface {
 
 namespace detail {
 
-/// The REP-2002 engine behind `rclcpp_lifecycle::LifecycleNode` (phase-482 W4).
+/// The REP-2002 engine behind `rclcpp_lifecycle::LifecycleNode`.
 ///
 /// It was `nros::LifecycleNode`, a mixin a component bound to its node. That name
-/// was a deprecated forwarder until phase-483 W1 deleted it; the type a user writes is
+/// was a deprecated forwarder, now deleted; the type a user writes is
 /// `rclcpp_lifecycle::LifecycleNode`, which IS a node and owns one of these.
 ///
 /// (Original description:) rclcpp-shape managed node (REP-2002).
@@ -415,8 +415,7 @@ class LifecycleEngine {
     /// `bind(Node&)`, which binds both.
     void bind(void* executor_handle) { exec_ = executor_handle; }
 
-    /// Bind the executor AND the node this managed node's parameters belong to
-    /// — phase-417 W4.f.
+    /// Bind the executor AND the node this managed node's parameters belong to.
     ///
     /// `rclcpp_lifecycle::LifecycleEngine` IS a node upstream and carries the
     /// whole `rclcpp::Node` parameter surface. Ours is a MIXIN over the
@@ -425,7 +424,7 @@ class LifecycleEngine {
     /// `cpp:LifecycleEngine::*parameter*` ledger rows stayed open: there was
     /// nothing for the accessor to reach.
     ///
-    /// Binding rather than OWNING is the answer, and the reason is phase-426's:
+    /// Binding rather than OWNING is the answer, and the reason is the one-store rule's:
     /// a node here is a separate object with its own entity storage and its own
     /// row in the executor's table, so a `LifecycleEngine` that constructed one
     /// would be a second node for one logical node. The parameter methods below
@@ -467,7 +466,7 @@ class LifecycleEngine {
         return CallbackReturn::Failure;
     }
 
-    // ---- Transition callbacks WITHOUT subclassing (phase-417 W4.f) --------
+    // ---- Transition callbacks WITHOUT subclassing --------
     //
     // rclcpp lets a user register a transition callback instead of overriding a
     // virtual, and all three of our languages had that capability except this
@@ -530,7 +529,7 @@ class LifecycleEngine {
     /// Register the five REP-2002 services and bind the `on_*` trampolines. Call
     /// once during setup; afterwards `ros2 lifecycle set|get|list` drives this node.
     ::rclcpp::Result register_services() {
-        // Named after the BOUND node when there is one (phase-488): the
+        // Named after the BOUND node when there is one: the
         // executor's own identity is the default `node` on the process
         // executor a hosted node is created on.
         const nros_cpp_node_t* bound = node_ != nullptr ? node_->ffi_handle() : nullptr;
@@ -580,7 +579,7 @@ class LifecycleEngine {
     }
 
     // Programmatic transitions. Spelled with the enum, never a literal —
-    // issue 1099 is what a literal costs.
+    // a drifted numbering is what a literal costs.
     ::rclcpp::Result configure() { return trigger_transition(LifecycleTransition::Configure); }
     ::rclcpp::Result activate() { return trigger_transition(LifecycleTransition::Activate); }
     ::rclcpp::Result deactivate() { return trigger_transition(LifecycleTransition::Deactivate); }
@@ -593,7 +592,7 @@ class LifecycleEngine {
     /// `5` (`ShutdownUnconfigured`) unconditionally, which meant `shutdown()`
     /// could not shut down an Inactive or Active node — the two states a node
     /// that has done any work is actually in — and returned an
-    /// invalid-transition error instead (issue 1099).
+    /// invalid-transition error instead.
     ///
     /// Resolution matches `nros_node::lifecycle`'s own `shutdown()` and the
     /// generic `"shutdown"` label the `ChangeState` service accepts, so the
@@ -618,19 +617,19 @@ class LifecycleEngine {
     /// helper above. The four helpers are this call with the id filled in.
     ///
     /// `transition_id` is a `lifecycle_msgs/msg/Transition` id — the SAME
-    /// number rclcpp means (issue 1099; it was nano-ros's own numbering before,
+    /// number rclcpp means (it was nano-ros's own numbering before,
     /// which disagreed with upstream on four of eight values and made this
     /// call silently do the wrong transition). `0` (`TRANSITION_CREATE`) and
     /// `8` (`TRANSITION_DESTROY`) are not implemented and return
     /// `InvalidArgument` rather than aliasing onto a transition we do have.
     ///
-    /// Phase 379 W5: this was the `protected` `trigger(uint8_t)`, which a
+    /// This was the `protected` `trigger(uint8_t)`, which a
     /// ported rclcpp node could not call at all.
     ::rclcpp::Result trigger_transition(uint8_t transition_id) {
         return ::rclcpp::Result(nros_cpp_lifecycle_change_state(exec_, transition_id));
     }
 
-    // ---- Clock — phase-417 W4.f ------------------------------------------
+    // ---- Clock ----------------------------------------------------------
 
     /// This node's clock — rclcpp's `LifecycleEngine::get_clock()`.
     ///
@@ -647,7 +646,7 @@ class LifecycleEngine {
     /// Shorthand for `get_clock()->now()` — rclcpp's `LifecycleEngine::now()`.
     ::rclcpp::Time now() const { return clock_.now(); }
 
-    // ---- The transition graph, in process — phase-417 W4.f ---------------
+    // ---- The transition graph, in process ---------------------------------
 
     /// Every transition in this node's REP-2002 state machine — rclcpp's
     /// `LifecycleEngine::get_transition_graph()`. Return `false` from `visit` to
@@ -689,7 +688,7 @@ class LifecycleEngine {
         return ::rclcpp::Result();
     }
 
-    // ---- Managed entities — phase-417 W4.f -------------------------------
+    // ---- Managed entities -------------------------------------------------
 
     /// Have `entity` follow this node's activation — rclcpp's
     /// `LifecycleEngine::add_managed_entity()`.
@@ -722,7 +721,7 @@ class LifecycleEngine {
         return ::rclcpp::Result();
     }
 
-    /// phase-482 W4 — the moved-to entity takes the moved-from one's place in
+    /// The moved-to entity takes the moved-from one's place in
     /// the list. Called by `ManagedEntityInterface`'s move operations only.
     void replace_managed_entity(ManagedEntityInterface* from, ManagedEntityInterface* to) {
         for (ManagedEntityInterface** link = &managed_; *link != nullptr;
@@ -751,7 +750,7 @@ class LifecycleEngine {
         }
     }
 
-    // ---- Parameters — phase-417 W4.f -------------------------------------
+    // ---- Parameters -------------------------------------------------------
     //
     // `rclcpp_lifecycle::LifecycleEngine` repeats `rclcpp::Node`'s parameter
     // surface verbatim, and a lifecycle node's parameters are not
@@ -761,8 +760,8 @@ class LifecycleEngine {
     // the per-node keying and the declared-parameter contract are reached
     // through one implementation.
     //
-    // A table of any kind here would be the second store phase-426 spent six
-    // work items removing, in a smaller spelling. There is no state below this
+    // A table of any kind here would be the second store that took six
+    // work items to remove, in a smaller spelling. There is no state below this
     // line: the only member the parameter surface adds is the `rclcpp::Node*`
     // itself.
     //
@@ -908,14 +907,14 @@ class LifecycleEngine {
     }
 #endif // NROS_CPP_HAS_STD_STRING
 
-    // ---- Graph queries — phase-417 stage 2b (RFC-0089) --------------------
+    // ---- Graph queries ---------------------------------------
     //
     // rclcpp_lifecycle's `LifecycleEngine` carries the same graph surface as
     // `rclcpp::Node`, so a ported managed node reaches these on `this`. Each
     // one FORWARDS to the executor this node is bound to — the graph's
-    // receiver, because there is one session per image (RFC-0002) — and does
+    // receiver, because there is one session per image — and does
     // nothing else: no state, no loop, no caching, no name construction.
-    // RFC-0019 keeps the behaviour in Rust. The bodies are the same one-line
+    // The behaviour stays in Rust. The bodies are the same one-line
     // forwards `rclcpp::Node` carries; see `node.hpp` for the per-call
     // documentation.
     //
@@ -923,7 +922,7 @@ class LifecycleEngine {
     // return `InvalidArgument`, matching the register/transition calls above
     // rather than trapping.
     //
-    // The envelope every one of them shares (ADOPT-BOUNDED, RFC-0089): they
+    // The envelope every one of them shares (ADOPT-BOUNDED): they
     // report what has been DISCOVERED and never block, so an empty result
     // means "nobody seen yet" and never "nobody exists". `ErrorCode::
     // Unsupported`, which is what a backend with no graph at all returns, is a
@@ -965,7 +964,7 @@ class LifecycleEngine {
 
     /// How many service clients are visible on `service_name` — rclcpp's
     /// (Jazzy) `count_clients()`, inherited from `rclcpp::Node` upstream.
-    /// Issue 1978. See [`count_publishers`].
+    /// See [`count_publishers`].
     ::rclcpp::Result count_clients(const char* service_name, size_t* out_count) const {
         return ::rclcpp::Result(nros_cpp_executor_count_clients(exec_, service_name, out_count));
     }
@@ -1071,7 +1070,7 @@ class LifecycleEngine {
   private:
     // Trampolines: `previous` = get_current_state() at callback entry (the SM invokes the
     // callback before committing the new state), then dispatch to the REGISTERED
-    // callback if there is one and to the virtual otherwise (phase-417 W4.f).
+    // callback if there is one and to the virtual otherwise.
     //
     // A successful `activate` / `deactivate` also drives the managed entities,
     // AFTER the user's hook and only when it succeeded — a publisher must not
@@ -1139,7 +1138,7 @@ class LifecycleEngine {
             dispatch(n, n->cb_error_, n->ctx_error_, &LifecycleEngine::on_error));
     }
 
-    // phase-417 W4.f state. Every member here is UNCONDITIONAL — no `#if` on a
+    // State. Every member here is UNCONDITIONAL — no `#if` on a
     // capability probe reaches a field, so `sizeof(LifecycleEngine)` is the same
     // in every translation unit (`check-cpp-capability-layout`).
     //
@@ -1195,7 +1194,7 @@ ManagedEntityInterface::operator=(ManagedEntityInterface&& other) noexcept {
 /// A publisher whose sends are DROPPED while its node is not Active — rclcpp's
 /// `rclcpp_lifecycle::LifecyclePublisher`.
 ///
-/// phase-417 W4.f. Create the inner publisher the ordinary way and hand the
+/// Create the inner publisher the ordinary way and hand the
 /// wrapper to the node:
 ///
 /// ```cpp
@@ -1218,7 +1217,7 @@ template <typename M> class LifecyclePublisher : public SimpleManagedEntity {
   public:
     /// What `rclcpp_lifecycle::LifecycleNode::create_publisher<M>` returns:
     /// move-only, no allocator, every target (as `rclcpp::Publisher<M>::SharedPtr`
-    /// is). The managed-entity link survives the moves (phase-482 W4).
+    /// is). The managed-entity link survives the moves.
     using SharedPtr = ::rclcpp::Owned<LifecyclePublisher>;
 
     LifecyclePublisher() = default;
@@ -1231,8 +1230,7 @@ template <typename M> class LifecyclePublisher : public SimpleManagedEntity {
     const ::rclcpp::Publisher<M>& publisher() const { return pub_; }
 
     /// Publish `msg` if the node is Active; drop it otherwise. Returns what
-    /// `Publisher<M>::publish` returns, so the std surface may drop it there too
-    /// (phase-488).
+    /// `Publisher<M>::publish` returns, so the std surface may drop it there too.
 #if defined(NROS_CPP_STD) // hosted-family: ported-publish
     ::rclcpp::detail::PublishResult publish(const M& msg) {
 #else
@@ -1246,13 +1244,13 @@ template <typename M> class LifecyclePublisher : public SimpleManagedEntity {
 
     /// `get_subscription_count` — `rclcpp::Publisher<M>::get_subscription_count`
     /// on the wrapped publisher, with its executor argument and out-parameter
-    /// (see there for why both). It was missing here (phase-488).
+    /// (see there for why both). It was missing here.
     ::rclcpp::Result get_subscription_count(::rclcpp::Executor& executor, size_t* out_count) const {
         return pub_.get_subscription_count(executor, out_count);
     }
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
-    /// Upstream's `publish(std::unique_ptr<M, D>)` (phase-488; Nav2's
+    /// Upstream's `publish(std::unique_ptr<M, D>)` (Nav2's
     /// ~~`TwistPublisher`~~ writes `pub_->publish(std::move(msg))`). Dropped when
     /// inactive, like the by-reference form; otherwise
     /// `rclcpp::Publisher<M>::publish(std::unique_ptr)`, which refuses null.
@@ -1271,7 +1269,7 @@ template <typename M> class LifecyclePublisher : public SimpleManagedEntity {
 } // namespace rclcpp_lifecycle
 
 // ============================================================================
-// rclcpp_lifecycle:: — the ROS 2 spelling (phase-482 W4, RFC-0089)
+// rclcpp_lifecycle:: — the ROS 2 spelling
 // ============================================================================
 
 namespace rclcpp_lifecycle {
@@ -1340,7 +1338,7 @@ class LifecycleNodeInterface {
 /// later; Humble code that calls `pub->on_activate()` itself still works).
 ///
 /// Differences, each bounded and stated:
-///  * Construction cannot throw (RFC-0018). A failed construction leaves
+///  * Construction cannot throw. A failed construction leaves
 ///    `ok()` false, as `rclcpp::Node`'s does.
 ///  * One managed node per executor: the REP-2002 state machine lives on the
 ///    executor (`rclc_executor_lifecycle_*`).
@@ -1356,7 +1354,7 @@ class LifecycleNode : public ::rclcpp::Node, public node_interfaces::LifecycleNo
     /// Const spelling of `WeakPtr`.
     using ConstWeakPtr = ::rclcpp::Handle<const LifecycleNode>;
 
-    /// `shared_from_this()` as THIS type, as upstream's is (phase-488). It was
+    /// `shared_from_this()` as THIS type, as upstream's is. It was
     /// `rclcpp::Node::shared_from_this()`, inherited, so the handle named a
     /// plain `Node` and the lifecycle methods were unreachable through it.
     /// Non-owning, like `Node`'s (see `rclcpp::Node::shared_from_this`).
