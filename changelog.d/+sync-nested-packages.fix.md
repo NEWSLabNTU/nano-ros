@@ -1,0 +1,1 @@
+`nros configure` and `nros sync` find a workspace's packages at any depth under `src/` (for example `src/<group>/<pkg>`, as Autoware lays them out) and under every `nros.toml` `[workspace] package_paths` entry, as `nros build` does. Two packages with the same name are refused, naming both directories.
