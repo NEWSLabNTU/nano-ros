@@ -933,6 +933,18 @@ if [ -n "${NROS_FIXTURE_IDS+set}" ]; then
 fi
 
 if [ -z "$id_filter" ] && { [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ] || [ -n "$ids_filter" ]; }; then
+    # Issue 2510 — say which rows this stage is building and which the lane
+    # leaves out, so a scope that never arrived is visible in the log instead
+    # of surfacing as a row failing on a platform the lane does not provision.
+    if [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
+        _cc_all="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" list-compile-checks | cut -d$'\x1f' -f1 | sort)"
+        _cc_in="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" list-compile-checks --coords-from "$NROS_FIXTURE_COORDS" | cut -d$'\x1f' -f1 | sort)"
+        _cc_out="$(comm -23 <(printf '%s\n' "$_cc_all") <(printf '%s\n' "$_cc_in") | tr '\n' ' ')"
+        echo "compile-check: scoped to the lane's coordinates ($NROS_FIXTURE_COORDS); out of lane: ${_cc_out:-none}"
+        unset _cc_all _cc_in _cc_out
+    else
+        echo "compile-check: every row (no lane coordinates set)"
+    fi
     _cc_ids=""
     for _cc_builder in $_cc_all_builders; do
         while IFS=$'\x1f' read -r _id _rest; do
