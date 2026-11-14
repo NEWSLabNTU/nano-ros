@@ -10,6 +10,8 @@ related: [1036, 1424, 1425]
 resolved_in: "branch fix/boot-report-names-the-heap"
 ---
 
+GitHub: NEWSLabNTU/nano-ros#41 (filed 2026-08-29: the rlsf funnel left `CONFIG_HEAP_MEM_POOL_SIZE` governing nothing and starved silently. Covered since: the `HEAP EXHAUSTED` print and this issue's decoder name the heap, the knob is `CONFIG_NROS_ZEPHYR_HEAP_SIZE` with issue 1324's refusal, and `d259238265` added the build script whose `rerun-if-env-changed` the report's follow-up asked for)
+
 ## What
 
 The boot record (`packages/core/nros-node/src/boot_report.rs`) has ONE pair
