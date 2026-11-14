@@ -6,10 +6,10 @@ type: bug
 area: [testing, executor, rmw-zenoh]
 severity: medium
 found: 2026-11-07
-related: [2221, 1980, 1997, phase-543]
+related: [2221, 1980, 1997, phase-543, rfc-0106, rfc-0131]
 ---
 
-**Home: [phase-543](../roadmap/phase-543-nextest-gates.md).**
+**Home: standalone** (since 2026-11-15, when [phase-543](../roadmap/archived/phase-543-nextest-gates.md) was archived). It is an executor race, so no gate phase closes it: the wake design is [RFC-0106](../design/0106-executor-park.md), and the order check that found it is [RFC-0131](../design/0131-gates-are-nextest-tests.md) D6.
 
 ## Measured
 

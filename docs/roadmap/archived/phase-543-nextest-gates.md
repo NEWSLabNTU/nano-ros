@@ -1,15 +1,18 @@
 # Phase 543 — Every gate is a nextest test
 
-**Status (2026-11-15). W0-W6 DONE; open: four homed issues and the RFC.**
-Every work item is merged, and the claims were checked against the tree on
-2026-11-15: `run-gates-parallel.sh`, the `build-serial:` list,
+**Status (2026-11-15). COMPLETE; archived.** Every work item (W0-W6) is
+merged, and each DONE claim was checked against the tree on 2026-11-15:
+`run-gates-parallel.sh`, the `build-serial:` list,
 `.config/gate-lane-exempt.txt` and the authored fast registry are gone; every
 gate is a test of `packages/testing/nros-gates`; `check fast` and `check build`
 run `scripts/build/gate-lane.sh`; `ci gate` runs both tiers and `pre-push`
-runs `check fast`; order independence is `just check gate-order`.
-The phase stays open while the issues it homes are open (2318, 2352, 2380,
-2442; see the table at the end). No RFC yet: W1-W3 settled the design below,
-so it moves into an RFC and this doc keeps the work items.
+runs `check fast`; order independence is `just check gate-order`. The design
+is [RFC-0131](../../design/0131-gates-are-nextest-tests.md) (Draft), which
+records what landed. The four issues still open were rehomed: 2318 and 2380
+to [phase-489](../phase-489-ci-build-speedup.md), while 2352 and 2442 stand
+alone with RFC links. The Design section below is the plan as written on
+2026-11-06. Where it differs from what landed (`tier:` groups, `writes:`,
+`disk:`, the event-named lanes), the RFC and the work items are right.
 
 Decided (maintainer, 2026-11-06):
 
@@ -496,11 +499,11 @@ nextest test, and runs its shard by name.
 
 ## Found on the way
 
-- [Issue 2306](../issues/archived/2306-interrupted-submodule-checkout-reads-provisioned.md):
+- [Issue 2306](../../issues/archived/2306-interrupted-submodule-checkout-reads-provisioned.md):
   an interrupted submodule checkout reads as provisioned. The runner's
   preflight (W5) is where its fix belongs. Resolved 2026-11-09: the preflight
   reads the checkout's working tree (`scripts/lib/submodule-provision.sh`).
-- [Issue 2308](../issues/archived/2308-sparse-zephyr-tree-reads-as-west-workspace.md):
+- [Issue 2308](../../issues/archived/2308-sparse-zephyr-tree-reads-as-west-workspace.md):
   CI's sparse Zephyr header tree (`zephyr-tree`) passes the "west workspace
   provisioned" test (`zephyr`), so outside a scoped lane `template-copy-out`
   tries a real Zephyr build. Two capabilities share one path. Resolved
@@ -510,9 +513,9 @@ nextest test, and runs its shard by name.
   38 -> 93 G over five gate runs in one worktree, and filled a 1.8 T disk
   twice in a day. Nothing prunes them. W4's disk declarations and preflight
   need their growth bounded first. Why one run is that large: issue
-  [2318](../issues/2318-cmake-leaf-recompiles-host-tooling.md) (every CMake
+  [2318](../../issues/2318-cmake-leaf-recompiles-host-tooling.md) (every CMake
   leaf recompiles the same host tooling; ~80% of `corrosion-cargo` is host-side).
-- [Issue 2356](../issues/archived/2356-gate-units-overfill-runner-tmpfs.md): W2's
+- [Issue 2356](../../issues/archived/2356-gate-units-overfill-runner-tmpfs.md): W2's
   one-test-per-unit left phase-489's disk bound with one unit to bound, so a
   tier-2 run started 44 `scaffold-builds`/`template-copy-out` units at once and
   filled the runner's 48 GiB /tmp. They now share the `scratch-tree` resource,
@@ -544,13 +547,13 @@ nextest test, and runs its shard by name.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#2274](../issues/archived/2274-tier-wake-fanout-load-sensitive.md) | RESOLVED 2026-11-12: arrivals now wait for the wakes, so the count is the fan-out's. A timing bound that fails under the gate's parallel load and passes solo: the load is what phase-543's nextest resource groups bound. |
-| [#2306](../issues/archived/2306-interrupted-submodule-checkout-reads-provisioned.md) | An interrupted submodule checkout reads as provisioned and the lane fails three gates later: a gate precondition that should refuse up front. |
-| [#2308](../issues/archived/2308-sparse-zephyr-tree-reads-as-west-workspace.md) | A sparse Zephyr source tree reads as a provisioned west workspace: the same gate-precondition class as issue 2306. |
-| [#2352](../issues/2352-entity-wake-race-hangs-beside-build-gates.md) | entity_wake's race test hangs beside the build gates: found by W3's gate-order check. |
-| [#2356](../issues/archived/2356-gate-units-overfill-runner-tmpfs.md) | scaffold-builds and template-copy-out units all start at once and overfill the runner's /tmp. This is the nextest resource-group bound this phase owns (#3301 bounds it; it closes on a tier-2 run). |
-| [#2373](../issues/archived/2373-nros-node-yielding-park-test-flakes-under-load.md) | nros-node's `a_yielding_park_with_a_pending_wake_keeps_the_pass` failed in `node-std-tests` at a host load of about 100 and passes solo: the same load-sensitive class as #2274, which the resource groups (or a private test clock) bound. Resolved 2026-11-10 with a private, frozen clock for it and two sibling park tests. |
-| [#2380](../issues/2380-linux-check-gate-near-its-timeout.md) | The build gate `linux-check` uses 62 to 87 % of the harness's 2400 s timeout and timed out at a load of about 90: a gate budget this phase's harness owns. |
-| [#2382](../issues/archived/2382-build-lane-claims-unprovided-on-hosted-jobs.md) | The `build` lane claims submodules and full history that its hosted jobs (`gate` build shards, host-tests tier 1) never provide, so since W5/W6 those jobs run no gate (found closing phase-466). |
-| [#2413](../issues/2413-hosted-copy-out-cpp-templates-on-distro-gcc10.md) | The FreeRTOS C++ copy-out units ran on the distro arm-none-eabi-gcc 10.3 in the hosted `build` lane, below issue 1936's GCC 11 floor. They now declare `needs:arm-gcc`, derived from the board's index row; the `build` lane claims it and `provision-gate-lane.sh` installs the pinned dist. |
-| [#2442](../issues/2442-gate-history-object-reads-bounded.md) | The lanes' `git-history` is treeless (`--filter=tree:0 --unshallow`), so a gate reading old trees or blobs fetches them one object at a time, unbounded (toolchain-paths-persist ran past the 40-minute cap). One bounded helper in `scripts/lib/git_history.py` and its shell twin, gate `check-history-object-reads`, and `pin-baseline.sh provide` tests the baseline's TREE. |
+| [#2274](../../issues/archived/2274-tier-wake-fanout-load-sensitive.md) | RESOLVED 2026-11-12: arrivals now wait for the wakes, so the count is the fan-out's. A timing bound that fails under the gate's parallel load and passes solo: the load is what phase-543's nextest resource groups bound. |
+| [#2306](../../issues/archived/2306-interrupted-submodule-checkout-reads-provisioned.md) | An interrupted submodule checkout reads as provisioned and the lane fails three gates later: a gate precondition that should refuse up front. |
+| [#2308](../../issues/archived/2308-sparse-zephyr-tree-reads-as-west-workspace.md) | A sparse Zephyr source tree reads as a provisioned west workspace: the same gate-precondition class as issue 2306. |
+| [#2352](../../issues/2352-entity-wake-race-hangs-beside-build-gates.md) | entity_wake's race test hangs beside the build gates: found by W3's gate-order check. |
+| [#2356](../../issues/archived/2356-gate-units-overfill-runner-tmpfs.md) | scaffold-builds and template-copy-out units all start at once and overfill the runner's /tmp. This is the nextest resource-group bound this phase owns (#3301 bounds it; it closes on a tier-2 run). |
+| [#2373](../../issues/archived/2373-nros-node-yielding-park-test-flakes-under-load.md) | nros-node's `a_yielding_park_with_a_pending_wake_keeps_the_pass` failed in `node-std-tests` at a host load of about 100 and passes solo: the same load-sensitive class as #2274, which the resource groups (or a private test clock) bound. Resolved 2026-11-10 with a private, frozen clock for it and two sibling park tests. |
+| [#2380](../../issues/2380-linux-check-gate-near-its-timeout.md) | The build gate `linux-check` uses 62 to 87 % of the harness's 2400 s timeout and timed out at a load of about 90: a gate budget this phase's harness owns. |
+| [#2382](../../issues/archived/2382-build-lane-claims-unprovided-on-hosted-jobs.md) | The `build` lane claims submodules and full history that its hosted jobs (`gate` build shards, host-tests tier 1) never provide, so since W5/W6 those jobs run no gate (found closing phase-466). |
+| [#2413](../../issues/2413-hosted-copy-out-cpp-templates-on-distro-gcc10.md) | The FreeRTOS C++ copy-out units ran on the distro arm-none-eabi-gcc 10.3 in the hosted `build` lane, below issue 1936's GCC 11 floor. They now declare `needs:arm-gcc`, derived from the board's index row; the `build` lane claims it and `provision-gate-lane.sh` installs the pinned dist. |
+| [#2442](../../issues/2442-gate-history-object-reads-bounded.md) | The lanes' `git-history` is treeless (`--filter=tree:0 --unshallow`), so a gate reading old trees or blobs fetches them one object at a time, unbounded (toolchain-paths-persist ran past the 40-minute cap). One bounded helper in `scripts/lib/git_history.py` and its shell twin, gate `check-history-object-reads`, and `pin-baseline.sh provide` tests the baseline's TREE. |

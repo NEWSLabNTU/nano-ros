@@ -13,7 +13,7 @@ resolved_in: "tier-2 run 42971493635 passed `check::default` on newslab-118"
 
 > **Resolved (2026-11-11).** tier-2 run 42971493635 (schedule, 2026-11-11, `main` `7d60c42daf`, runner `nano-ros-runner-newslab-118-server`) passed `check::default` in 18m06s on newslab-118 (`==> ci tier2 [1/5] check::default ... ok after 18m06s`), with no `No space left on device`. That is this issue's acceptance.
 
-**Home:** [phase-543](../../roadmap/phase-543-nextest-gates.md)
+**Home:** [phase-543](../../roadmap/archived/phase-543-nextest-gates.md)
 
 ## Measured
 
