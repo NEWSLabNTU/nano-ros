@@ -116,9 +116,10 @@ CMSDK Timer0 clock, the LAN9118/smoltcp bring-up), so the board exports a C
 start, `nros_board_mps2_an385_start`, that runs that bring-up and then the
 image's entry. The generated entry's `main` calls it, the Rust half arrives as
 a Corrosion staticlib, and CMake owns the final link exactly as on an RTOS
-board (RFC-0130, phase-553 W4). Every `mps2-an385-baremetal/{c,cpp}/*` example
-is therefore a one-package workspace whose package is an ordinary component
-(phase-553 W5/W6), and its `[[workspace_fixture]]` row says
+board (RFC-0130, phase-553 W4). The `mps2-an385-baremetal/{c,cpp}/talker`
+witnesses are one-package workspaces whose package is an ordinary component
+(phase-553 W5), and the other bare-metal C/C++ roles are `baremetal_<role>`
+images of `workspaces/{c,cpp}` (issue 2555); every such row says
 `builder = "cmake"`. No C or C++ example is a cargo package; recount it the same
 mechanical way:
 
@@ -270,8 +271,8 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `linux`                   | rust     | 6+    | 6+   | 6          | –    |
 | `px4`                     | cpp      | –     | –    | –          | – ²  |
 | `px4`                     | rust     | –     | companion+stub | – | –    |
-| `mps2-an385-baremetal`      | c        | 6     | –    | –          | –    |
-| `mps2-an385-baremetal`      | cpp      | 6     | –    | –          | –    |
+| `mps2-an385-baremetal`      | c        | 6 ³   | –    | –          | –    |
+| `mps2-an385-baremetal`      | cpp      | 6 ³   | –    | –          | –    |
 | `mps2-an385-baremetal`      | rust     | 6+rtic+serial | – | –     | –    |
 | `mps2-an385-freertos`       | c        | 6     | –    | –          | –    |
 | `mps2-an385-freertos`       | cpp      | 6     | –    | –          | –    |
@@ -298,6 +299,9 @@ there is nothing to copy out. phase-316 W3.1 moved it out of this tree.
 example fixtures compile, but the action runtime lanes were
 deliberately dropped from the run matrix in 182.5 (pub/sub + service
 remain runtime-tested).
+
+³ `mps2-an385-baremetal` C/C++: the talker is the witness under this tree; the
+other five roles are `baremetal_<role>` images of `workspaces/{c,cpp}` (issue 2555).
 
 `rv-virt-nuttx` currently ships only `c/talker`, built by the separate
 `build-riscv-c` recipe in `just/nuttx.just` (its own riscv toolchain/board

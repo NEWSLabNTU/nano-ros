@@ -35,6 +35,18 @@ launch = "listener.launch.xml"
 locator = "tcp/10.0.2.2:7900"
 os_config = ["board-net-11.toml"]
 
+# Bare-metal MPS2-AN385, no RTOS (phase-553 W6, issue 2555): the board's C
+# start boots the generated entry, and each image's network reaches it at run
+# time, so the images of this bringup share one configure. The locator is
+# `nros_tests::alloc::port_of(QemuBaremetal, C, Pubsub)`, this cell's
+# router port (`test_qemu_baremetal_capi_e2e`); the peer is the bare-metal talker witness (`examples/mps2-an385-baremetal/c/talker`, host 10).
+
+[image.baremetal_listener]
+board = "mps2-an385-baremetal"
+launch = "listener.launch.xml"
+locator = "tcp/10.0.2.2:10300"
+os_config = ["board-net-11.toml"]
+
 # Linux: one image per (role, rmw). The router locator is ephemeral
 # (NROS_LOCATOR at run time), so none is baked here.
 

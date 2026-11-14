@@ -1,12 +1,14 @@
 ---
 id: 2555
 title: "A C-rooted bare-metal configure bakes ONE image's network into its Rust staticlib, so two images of one bringup cannot share a configure"
-status: open
+status: resolved
 type: limitation
 severity: medium
 area: [boards, cmake, examples]
 related: [phase-553, phase-531, rfc-0130, rfc-0103]
 found: 2026-11-14
+resolved: 2026-11-15
+resolved_in: "#3846 (the runtime identity), then this follow-up (the ten roles join the language workspaces)"
 ---
 
 **Found by** phase-553 W6, while moving the ten bare-metal C/C++ roles
@@ -102,15 +104,18 @@ fills, not compiled into the archive.
   tcp/10.0.2.2:10310`, the failure this issue describes.
 - `test_qemu_baremetal_capi_e2e`: 6/6 with the struct, on one carrier.
 
-**Status.** The runtime identity lands with this fix. The issue stays open
-for the first follow-up below, which removes the copies its limitation
-forced.
+**Status: resolved (2026-11-15).** The runtime identity landed in #3846. The
+follow-up then moved the ten roles into the language workspaces: they are
+`baremetal_<role>` images of `examples/workspaces/{c,cpp}`'s pubsub, service
+and action bringups, each bringup's images built in one configure, and the
+per-directory copies are gone. `test_qemu_baremetal_capi_e2e` resolves them
+from those rows.
 
 ## Follow-ups
 
-- Move the ten bare-metal roles into `examples/workspaces/{c,cpp}`'s bringups
-  as bare-metal images, delete the copies, and resolve
-  `test_qemu_baremetal_capi_e2e` from those rows (RFC-0130 D3).
+- ~~Move the ten bare-metal roles into `examples/workspaces/{c,cpp}`'s
+  bringups as bare-metal images, delete the copies, and resolve
+  `test_qemu_baremetal_capi_e2e` from those rows (RFC-0130 D3).~~ Done.
 - Adopt the struct in the other boards' C starts as each gains one. Today
   mps2-an385 is the only board whose C start is Rust (the only reader of
   `NROS_IMAGE_NET` through `option_env!`). The RTOS boards resolve the image

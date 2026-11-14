@@ -3449,8 +3449,11 @@ target = "thumbv7m-none-eabi"
 # generates for the bringup's image. phase-553 W4 gave this board a C start
 # (`nros_board_mps2_an385_start`), which is the generated entry's `main`, so
 # the image is rooted in CMake like every RTOS board's and the board's Rust
-# bring-up arrives as a Corrosion staticlib (RFC-0130). W5 moved the talkers,
-# W6 the other roles; every row here is `builder = "cmake"`. They are the only
+# bring-up arrives as a Corrosion staticlib (RFC-0130). The talkers are the
+# witnesses in their own directories (W5); the other roles are
+# `baremetal_<role>` images of `examples/workspaces/{c,cpp}`'s bringups, which
+# share one configure because the board takes each image's identity at run
+# time (issue 2555). Every row here is `builder = "cmake"`. They are the only
 # images of the six `(QemuBaremetal, C|Cpp, Zenoh, *)` Runtime cells
 # (`test_qemu_baremetal_capi_e2e`), each pair dialling its own `alloc::port`.
 # ---------------------------------------------------------------------------
@@ -3475,10 +3478,10 @@ platform = "baremetal"
 lang = "c"
 builder = "cmake"
 rmw = "zenoh"
-dir = "examples/mps2-an385-baremetal/c/listener"
-bringup = "src/baremetal_c_listener_bringup"
-image = "mps2-an385-baremetal"
-build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_c_listener_bringup/cmake"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "baremetal_listener"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-c-zenoh-service-server"
@@ -3486,10 +3489,10 @@ platform = "baremetal"
 lang = "c"
 builder = "cmake"
 rmw = "zenoh"
-dir = "examples/mps2-an385-baremetal/c/service-server"
-bringup = "src/baremetal_c_service_server_bringup"
-image = "mps2-an385-baremetal"
-build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_c_service_server_bringup/cmake"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "baremetal_service_server"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-c-zenoh-service-client"
@@ -3497,10 +3500,10 @@ platform = "baremetal"
 lang = "c"
 builder = "cmake"
 rmw = "zenoh"
-dir = "examples/mps2-an385-baremetal/c/service-client"
-bringup = "src/baremetal_c_service_client_bringup"
-image = "mps2-an385-baremetal"
-build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_c_service_client_bringup/cmake"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "baremetal_service_client"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-c-zenoh-action-server"
@@ -3508,10 +3511,10 @@ platform = "baremetal"
 lang = "c"
 builder = "cmake"
 rmw = "zenoh"
-dir = "examples/mps2-an385-baremetal/c/action-server"
-bringup = "src/baremetal_c_action_server_bringup"
-image = "mps2-an385-baremetal"
-build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_c_action_server_bringup/cmake"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "baremetal_action_server"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-action_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-c-zenoh-action-client"
@@ -3519,10 +3522,10 @@ platform = "baremetal"
 lang = "c"
 builder = "cmake"
 rmw = "zenoh"
-dir = "examples/mps2-an385-baremetal/c/action-client"
-bringup = "src/baremetal_c_action_client_bringup"
-image = "mps2-an385-baremetal"
-build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_c_action_client_bringup/cmake"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "baremetal_action_client"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-action_bringup/cmake"
 
 # phase-553 W5 — the C++ talker is a one-package workspace whose package is an
 # ordinary component, so it builds on the CMake road: the generated entry is
@@ -3544,10 +3547,10 @@ platform = "baremetal"
 lang = "cpp"
 builder = "cmake"
 rmw = "zenoh"
-dir = "examples/mps2-an385-baremetal/cpp/listener"
-bringup = "src/baremetal_cpp_listener_bringup"
-image = "mps2-an385-baremetal"
-build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_cpp_listener_bringup/cmake"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "baremetal_listener"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-cpp-zenoh-service-server"
@@ -3555,10 +3558,10 @@ platform = "baremetal"
 lang = "cpp"
 builder = "cmake"
 rmw = "zenoh"
-dir = "examples/mps2-an385-baremetal/cpp/service-server"
-bringup = "src/baremetal_cpp_service_server_bringup"
-image = "mps2-an385-baremetal"
-build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_cpp_service_server_bringup/cmake"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "baremetal_service_server"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-cpp-zenoh-service-client"
@@ -3566,10 +3569,10 @@ platform = "baremetal"
 lang = "cpp"
 builder = "cmake"
 rmw = "zenoh"
-dir = "examples/mps2-an385-baremetal/cpp/service-client"
-bringup = "src/baremetal_cpp_service_client_bringup"
-image = "mps2-an385-baremetal"
-build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_cpp_service_client_bringup/cmake"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "baremetal_service_client"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-cpp-zenoh-action-server"
@@ -3577,10 +3580,10 @@ platform = "baremetal"
 lang = "cpp"
 builder = "cmake"
 rmw = "zenoh"
-dir = "examples/mps2-an385-baremetal/cpp/action-server"
-bringup = "src/baremetal_cpp_action_server_bringup"
-image = "mps2-an385-baremetal"
-build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_cpp_action_server_bringup/cmake"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "baremetal_action_server"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-action_bringup/cmake"
 
 [[workspace_fixture]]
 id = "baremetal-cpp-zenoh-action-client"
@@ -3588,10 +3591,10 @@ platform = "baremetal"
 lang = "cpp"
 builder = "cmake"
 rmw = "zenoh"
-dir = "examples/mps2-an385-baremetal/cpp/action-client"
-bringup = "src/baremetal_cpp_action_client_bringup"
-image = "mps2-an385-baremetal"
-build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-baremetal_cpp_action_client_bringup/cmake"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "baremetal_action_client"
+build_subdir = "build/bare-metal-zenoh-mps2-an385-baremetal-action_bringup/cmake"
 
 # ===========================================================================
 # freertos (qemu MPS2-AN385) — Rust. The six role Entry pkgs. Codegen runs in

@@ -7396,22 +7396,32 @@ pub fn qemu_baremetal_main_e2e_binary() -> TestResult<PathBuf> {
     .unwrap_or_else(|| Err(not_migrated(DIR)))
 }
 
-/// Issue 1512 — a C or C++ bare-metal example
-/// (`examples/mps2-an385-baremetal/<case>`, `case` = `c/talker`,
+/// Issue 1512 — a C or C++ bare-metal image for `case` (`c/talker`,
 /// `cpp/action-server`, …), resolved from its `[[workspace_fixture]]` row
 /// ([`migrated_leaf_binary`]).
 ///
-/// Every case is a one-package workspace whose package is an ordinary
-/// component, booted by the generated entry on the CMake road (phase-553
-/// W5/W6). The row names the build dir, so this resolver does not.
+/// The talkers are witnesses, one-package workspaces under
+/// `examples/mps2-an385-baremetal/<lang>/talker` (phase-553 W5). Every other
+/// role is a `baremetal_<role>` image of `examples/workspaces/<lang>`'s
+/// bringup for its workload, beside the RTOS images of the same components:
+/// the board takes each image's identity at run time, so a bringup's images
+/// share one configure (issue 2555).
 pub fn qemu_baremetal_capi_binary(case: &str) -> TestResult<PathBuf> {
-    let leaf = format!("examples/mps2-an385-baremetal/{case}");
-    migrated_leaf_binary(
-        &leaf,
-        Rmw::Zenoh,
-        crate::fixtures::migrated_leaf::LeafVariant::Plain,
-    )
-    .unwrap_or_else(|| Err(not_migrated(&leaf)))
+    use crate::fixtures::migrated_leaf::LeafVariant;
+    let Some((lang, role)) = case.split_once('/') else {
+        return Err(TestError::BuildFailed(format!(
+            "bare-metal C/C++ case `{case}` is not `<lang>/<role>`"
+        )));
+    };
+    if role == "talker" {
+        let leaf = format!("examples/mps2-an385-baremetal/{case}");
+        return migrated_leaf_binary(&leaf, Rmw::Zenoh, LeafVariant::Plain)
+            .unwrap_or_else(|| Err(not_migrated(&leaf)));
+    }
+    let ws = format!("examples/workspaces/{lang}");
+    let image = format!("baremetal_{}", role.replace('-', "_"));
+    migrated_leaf_binary(&ws, Rmw::Zenoh, LeafVariant::Image(&image))
+        .unwrap_or_else(|| Err(not_migrated(&ws)))
 }
 
 // Phase 169.4 — bare-metal DDS fixture builders deleted with the

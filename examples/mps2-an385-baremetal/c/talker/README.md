@@ -44,4 +44,5 @@ The image dials the router at the `locator` in `system.toml`
 The fixture lane builds it from its `[[workspace_fixture]]` row
 (`builder = "cmake"`): `scripts/build/workspace-fixtures-build.sh baremetal c`.
 `tests/emulator.rs`'s `test_qemu_baremetal_capi_e2e` pairs it with
-`../listener` against a router on that port.
+the `baremetal_listener` image of `examples/workspaces/c`'s pubsub bringup
+against a router on that port.

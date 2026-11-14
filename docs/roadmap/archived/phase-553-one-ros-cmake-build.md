@@ -253,8 +253,10 @@ files that bounded a `std_msgs/String` the service/action roles never carry.
   `examples/workspaces/<lang>`'s component of its role: a bare-metal image's
   network is compiled into its configure's one Rust staticlib, so two images of
   one bringup cannot share a configure the way an RTOS bringup's do
-  ([issue 2555](../../issues/2555-baremetal-c-rooted-image-network-baked-per-configure.md)).
-  RFC-0130 D3 records it.
+  ([issue 2555](../../issues/archived/2555-baremetal-c-rooted-image-network-baked-per-configure.md)).
+  RFC-0130 D3 records it. *Follow-up (2026-11-15):* once issue 2555's fix
+  landed, the ten roles moved into `examples/workspaces/{c,cpp}` as
+  `baremetal_<role>` images and the copies were deleted.
 - **The image network now reaches the staticlib.** Every C-rooted image had
   booted the board's default MAC and IP (`02:00:00:00:00:00`, `10.0.2.15`):
   `-DNROS_IMAGE_NET` reached CMake's C lane but not the cargo build where

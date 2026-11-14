@@ -31,4 +31,5 @@ nros build
 
 The image dials `tcp/10.0.2.2:10400`. The fixture lane builds it from its
 `[[workspace_fixture]]` row (`builder = "cmake"`), and
-`test_qemu_baremetal_capi_e2e` pairs it with `../listener`.
+`test_qemu_baremetal_capi_e2e` pairs it with the `baremetal_listener` image of
+`examples/workspaces/cpp`'s pubsub bringup.
