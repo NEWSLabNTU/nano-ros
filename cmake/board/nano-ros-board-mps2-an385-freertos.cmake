@@ -121,10 +121,11 @@ foreach(_src IN LISTS _NROS_FREERTOS_SHARED_C)
     endif()
 endforeach()
 if(NOT EXISTS "${_NROS_FREERTOS_SHARED_CONFIG_DIR}/nros-freertos-cortex-m.ld")
+    # phase-337 W5.e.
     message(FATAL_ERROR
         "nano-ros-board-mps2-an385-freertos: shared section layout not found at "
         "${_NROS_FREERTOS_SHARED_CONFIG_DIR}/nros-freertos-cortex-m.ld — "
-        "mps2_an385.ld INCLUDEs it (phase-337 W5.e).")
+        "mps2_an385.ld INCLUDEs it. Restore it from the nano-ros source tree.")
 endif()
 if(NOT EXISTS "${_NROS_FREERTOS_NET_C}")
     message(FATAL_ERROR

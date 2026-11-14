@@ -36,12 +36,15 @@ fi
 export NROS_CLI="$NROS_BIN"
 export PATH="$(dirname "$NROS_BIN"):$PATH"
 
+# CMake re-wraps a message to its own line width, so a phrase can break
+# across lines: match against the output with whitespace runs collapsed.
+flat() { tr -s '[:space:]' ' ' <<<"$1"; }
 expect() {
-    if [[ "$3" == *"$2"* ]]; then echo "  ok    $1"; else
+    if [[ "$(flat "$3")" == *"$2"* ]]; then echo "  ok    $1"; else
         echo "  FAIL  $1 -- wanted '$2' in:"; sed 's/^/        /' <<<"$3"; fail=1; fi
 }
 refute() {
-    if [[ "$3" != *"$2"* ]]; then echo "  ok    $1"; else
+    if [[ "$(flat "$3")" != *"$2"* ]]; then echo "  ok    $1"; else
         echo "  FAIL  $1 -- did not want '$2' in:"; sed 's/^/        /' <<<"$3"; fail=1; fi
 }
 

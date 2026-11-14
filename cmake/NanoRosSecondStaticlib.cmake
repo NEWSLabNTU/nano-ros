@@ -65,11 +65,13 @@ function(nros_second_staticlib_weaken_command _out)
         set(_tool "${CMAKE_OBJCOPY}")
     endif()
     if(NOT _tool)
+        # issue 2092.
         message(FATAL_ERROR
             "nros: no objcopy to weaken ${_W_ARCHIVE} with (CMAKE_OBJCOPY is "
             "unset). A second Rust staticlib in one image must not define the "
             "runtime's compiler-rt intrinsics strongly, or the link fails with "
-            "`multiple definition of __popcountdi2` and its siblings (issue 2092).")
+            "`multiple definition of __popcountdi2` and its siblings. Set CMAKE_OBJCOPY "
+            "to the toolchain's objcopy.")
     endif()
     # `!<glob>` first: with --wildcard, a symbol matching a `!` pattern is
     # excluded from the option, and `*` then takes every other global.

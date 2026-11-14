@@ -106,10 +106,11 @@ function(_nros_refuse_bundled_interfaces pkg prefix)
         return()
     endif()
     list(GET _roots 0 _shown)
+    # issue 2278.
     message(FATAL_ERROR
         "nano-ros: the message package `${pkg}` is on neither NROS_INTERFACE_SEARCH_PATH "
         "nor AMENT_PREFIX_PATH, and nano-ros does not generate it from its bundled copy "
-        "in place of your ROS install (issue 2278). Source ROS 2 in this shell "
+        "in place of your ROS install. Source ROS 2 in this shell "
         "(`source /opt/ros/<distro>/setup.bash`, or your overlay's `install/setup.bash`) "
         "and configure again. To build against the bundled copy instead, name it on the "
         "search path: NROS_INTERFACE_SEARCH_PATH=${_shown}")

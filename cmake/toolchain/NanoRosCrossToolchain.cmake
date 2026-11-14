@@ -369,6 +369,8 @@ function(nros_cross_toolchain_report)
             # wording is not an interface. A bare `cmake` keeps the refusal.
             file(WRITE "${CMAKE_BINARY_DIR}/.nros-toolchain-changed"
                  "lang=${_lang}\nhave=${_have}\nwant=${_want}\norigin=${_A_ORIGIN}\n")
+            # issue 1117 (a compiler changed in place, unnoticed); phase-548 W6 (`nros build`
+            # reconfigures fresh).
             message(FATAL_ERROR
                 "nano-ros: this build directory is already configured with a DIFFERENT "
                 "${_lang} compiler.\n"
@@ -377,11 +379,11 @@ function(nros_cross_toolchain_report)
                 "\n"
                 "  CMake bakes the compiler into CMakeFiles/<ver>/CMake${_lang}Compiler.cmake on\n"
                 "  the first configure and reloads it afterwards, so it CANNOT be changed in\n"
-                "  place — and it does not complain, which is how issue 1117 happens twice:\n"
+                "  place — and it does not complain, so the change goes unnoticed:\n"
                 "  the provenance line above would describe a compiler nothing here uses.\n"
                 "  Configure into a FRESH build directory (or delete this one) so the\n"
                 "  resolved toolchain is the one that compiles. 'nros build' does this for\n"
-                "  you: it reconfigures this directory fresh and says so (phase-548 W6).\n"
+                "  you: it reconfigures this directory fresh and says so.\n"
                 "  If the build tree's compiler is the one you want, select it explicitly:\n"
                 "      -D${_A_OVERRIDE_VAR}=<prefix of ${_have}>")
         endif()

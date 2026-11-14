@@ -50,12 +50,13 @@ set(NROS_KNOWN_ROS_EDITIONS humble iron jazzy
 function(nros_ros_edition_agree _declared _stated _toml _image)
     if(NOT "${_declared}" STREQUAL "" AND NOT "${_stated}" STREQUAL ""
        AND NOT "${_stated}" STREQUAL "${_declared}")
+        # issue 2087.
         message(FATAL_ERROR
             "nano-ros: ${_toml} states ROS edition `${_declared}` for image `${_image}` "
             "but -DNROS_ROS_EDITION=${_stated} names another. State the edition in the "
             "image this build is (`[image.<id>] ros_edition`, selected with "
             "-DNROS_IMAGE=<id>) and drop the -D (`cmake -U NROS_ROS_EDITION <build-dir>` "
-            "clears a cached one) — issue 2087.")
+            "clears a cached one).")
     endif()
 endfunction()
 
@@ -88,10 +89,11 @@ function(_nros_resolve_ros_edition explicit out_var)
         # Loud, never a fallback: a typo that defaulted to humble would bake the
         # wrong type_hash and only surface as a silent non-delivery on the wire.
         string(REPLACE ";" ", " _known "${NROS_KNOWN_ROS_EDITIONS}")
+        # RFC-0056.
         message(FATAL_ERROR
             "nano-ros: unknown ROS edition '${_e}' (expected: ${_known}). "
             "The edition selects a cargo feature that must match the "
-            "codegen-baked type_hash (RFC-0056).")
+            "codegen-baked type_hash. Name one of the expected editions.")
     endif()
     set(${out_var} "${_e}" PARENT_SCOPE)
 endfunction()

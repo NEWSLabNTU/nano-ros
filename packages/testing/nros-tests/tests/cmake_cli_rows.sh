@@ -120,7 +120,7 @@ cat >"$WORK/t2.cmake" <<EOF
 include("$ROWS")
 nros_cli_rows(r "NROS_LEAF_A=1\n/stray/path.conf" REQUIRE "^NROS_LEAF_[A-Z0-9_]+=" CONTEXT "t2")
 EOF
-run_refused "T2 REQUIRE refuses a stray line" "$WORK/t2.cmake" "issue 2200"
+run_refused "T2 REQUIRE refuses a stray line" "$WORK/t2.cmake" "Refused rather than skipped"
 
 # --- T3..T5: the hook's reader ----------------------------------------------
 reader() {
@@ -154,7 +154,7 @@ run_ok "T3 board prj.conf + leaf os_config: both kept" "$WORK/t3.cmake"
 
 reader "$WORK/t4.cmake" \
     "NROS_LEAF_CONF=$BOARD_CONF\n$LEAF_CONF\nNROS_LEAF_SNIPPET=" ""
-run_refused "T4 a value split across lines is refused" "$WORK/t4.cmake" "issue 2200"
+run_refused "T4 a value split across lines is refused" "$WORK/t4.cmake" "Refused rather than skipped"
 
 reader "$WORK/t5.cmake" \
     "NROS_LEAF_CONF=$BOARD_CONF;$LEAF/no-such.conf" ""

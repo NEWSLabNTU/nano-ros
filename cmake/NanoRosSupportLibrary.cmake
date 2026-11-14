@@ -145,11 +145,12 @@ function(_nano_ros_support_expand_srcs out_var)
             endif()
             file(GLOB _matched CONFIGURE_DEPENDS "${_pattern}")
             if(NOT _matched)
+                # RFC-0065 D12.
                 message(FATAL_ERROR
                     "nano_ros_support_library: SRCS pattern '${_entry}' matched "
                     "no files (looked in '${CMAKE_CURRENT_SOURCE_DIR}').\n"
                     "  * If the vendor tool has not run yet, run it before "
-                    "`nros build` — RFC-0065 D12: a vendor tool's output is "
+                    "`nros build`: a vendor tool's output is "
                     "COMMITTED, never invoked by us.\n"
                     "  * If the pattern is simply wrong, spell the files out; "
                     "SRCS accepts plain paths too.")

@@ -334,9 +334,10 @@ function(nano_ros_entry)
     # remedy sent the reader to a keyword nothing parses (issue 1554, which
     # gated it). Same answer as the sibling in `nano_ros_add_executable`.
     if(_NRA_HOST)
+        # phase-326 / issue 0364.
         message(FATAL_ERROR
-            "nano_ros_entry(${_NRA_NAME}): HOST was removed (phase-326 / "
-            "issue 0364) — multi-host partitions at RESOLVE time now. Name the "
+            "nano_ros_entry(${_NRA_NAME}): HOST was removed — "
+            "multi-host partitions at RESOLVE time now. Name the "
             "INPUT and the binding instead: `BRINGUP <dir> LAUNCH "
             "<multihost.launch.xml> LAUNCH_ARGS host=${_NRA_HOST}`, with a "
             "matching `[[model]]` declaration in the bringup's system.toml.")
@@ -565,18 +566,20 @@ function(nano_ros_entry)
                     if(NOT "${_alt}" STREQUAL "")
                         set(_alt "  ${_alt}\n")
                     endif()
+                    # phase-330 W4.a (the model is a build artifact); issue 1575 (configuring
+                    # without it derived no sched tasks and sized no pools, silently).
                     message(FATAL_ERROR
                         "nano_ros_entry(${_NRA_NAME}): the SystemModel for bringup "
                         "${_NRA_BRINGUP} (launch '${_NRA_LAUNCH}') does not exist:\n"
                         "  ${_NRA_MODEL}\n"
                         "It is a BUILD ARTIFACT that only `nros configure` writes "
-                        "(phase-330 W4.a). Run it in the workspace, then configure "
+                        "— run it in the workspace, then configure "
                         "this build again:\n"
                         "  ${_cfg}\n"
                         "  ${_again}\n"
                         "${_alt}"
                         "Configuring without it used to derive no sched tasks and size no "
-                        "pools, silently (issue 1575). To configure anyway, knowing "
+                        "pools, silently. To configure anyway, knowing "
                         "that, pass -DNROS_ALLOW_UNSYNCED_MODEL=ON.")
                 endif()
             endif()
@@ -1096,12 +1099,12 @@ function(nano_ros_entry)
             set(_nra_domain "${_NRA_DOMAIN_ID}")
             if(DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL ""
                AND NOT NROS_DOMAIN_ID STREQUAL _NRA_DOMAIN_ID)
+                # issue 1946.
                 message(FATAL_ERROR
                     "nano_ros_add_executable(${_NRA_NAME}): the image states domain "
                     "${_NRA_DOMAIN_ID} (system.toml) but -DNROS_DOMAIN_ID=${NROS_DOMAIN_ID} "
                     "names another. Change one so they agree, or drop the -D "
-                    "(`cmake -U NROS_DOMAIN_ID <build-dir>` clears a cached one) — "
-                    "issue 1946.")
+                    "(`cmake -U NROS_DOMAIN_ID <build-dir>` clears a cached one).")
             endif()
         elseif(DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL "")
             set(_nra_domain "${NROS_DOMAIN_ID}")
@@ -1440,7 +1443,7 @@ function(_nros_entry_invoke_codegen)
     # launch-XML bake was removed (phase-296 R4).
     if(_NRX_LAUNCH)
         message(FATAL_ERROR
-            "nano_ros_entry: the LAUNCH keyword was removed (phase-296 R4) — "
+            "nano_ros_entry: the LAUNCH keyword was removed — "
             "resolve a SystemModel (play_launch resolve … -o "
             "<bringup>/config/system_model.yaml) and pass MODEL instead")
     endif()

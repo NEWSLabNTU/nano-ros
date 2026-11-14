@@ -42,9 +42,10 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
 function(nros_image_env_config out_var)
     get_property(_cfg GLOBAL PROPERTY NROS_IMAGE_ENV_CONFIG)
     if(NOT "${_cfg}" STREQUAL "" AND NOT EXISTS "${_cfg}")
+        # issue 1712.
         message(FATAL_ERROR
             "nano-ros: the image env config ${_cfg} was recorded by "
-            "nano_ros_read_leaf_system() but does not exist (issue 1712)")
+            "nano_ros_read_leaf_system() but does not exist. Configure again so `nros` writes it.")
     endif()
     set(${out_var} "${_cfg}" PARENT_SCOPE)
 endfunction()

@@ -48,9 +48,10 @@ function(nros_root_cargo_profiles out)
     endif()
     get_filename_component(_root "${_RP_REPO}/Cargo.toml" ABSOLUTE)
     if(NOT EXISTS "${_root}")
+        # issue 1953.
         message(FATAL_ERROR
             "nros_root_cargo_profiles: no root workspace manifest at ${_root}. "
-            "A generated cargo root copies its profiles from it (issue 1953); "
+            "A generated cargo root copies its profiles from it; "
             "without them a `release` build gets cargo's default "
             "`panic = \"unwind\"`.")
     endif()
@@ -88,10 +89,11 @@ function(nros_root_cargo_profiles out)
         endif()
     endwhile()
     if(NOT _toml MATCHES "\\[profile\\.release\\]")
+        # issue 1953.
         message(FATAL_ERROR
             "nros_root_cargo_profiles: ${_root} defines no [profile.release]; "
             "a generated root built at the `release` profile would fall back "
-            "to cargo's unwinding default (issue 1953).")
+            "to cargo's unwinding default. Restore its [profile.release] table.")
     endif()
     set(${out}
 "

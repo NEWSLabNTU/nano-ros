@@ -95,10 +95,11 @@ function(_nros_knob_inventory out_var)
         return()
     endif()
     if(NOT EXISTS "${_NROS_KNOB_INVENTORY_FILE}")
+        # RFC-0094 D4.
         message(FATAL_ERROR
             "nano-ros: the knob inventory is missing — "
             "${_NROS_KNOB_INVENTORY_FILE} does not exist. Every shared cargo "
-            "directory keys on the knob values (RFC-0094 D4), and an EMPTY "
+            "directory keys on the knob values, and an EMPTY "
             "inventory would key on none of them silently, which is the "
             "collision this exists to prevent. Do not degrade past this.")
     endif()
@@ -116,11 +117,12 @@ function(_nros_knob_inventory out_var)
     list(REMOVE_DUPLICATES _names)
     list(SORT _names)
     if(NOT _names)
+        # RFC-0094 D4.
         message(FATAL_ERROR
             "nano-ros: the knob inventory at ${_NROS_KNOB_INVENTORY_FILE} "
             "yielded NO names. Either the resolver's call spelling changed or "
             "the file did; an empty inventory silently keys every shared cargo "
-            "directory on zero knobs (RFC-0094 D4). Fix the harvest, do not "
+            "directory on zero knobs. Fix the harvest, do not "
             "let it pass empty.")
     endif()
     set(NROS_KNOB_INVENTORY_CACHED "${_names}" CACHE INTERNAL
@@ -188,9 +190,10 @@ endfunction()
 function(nros_shared_cargo_dir out_var)
     set(${out_var} "" PARENT_SCOPE)
     if(DEFINED CACHE{NROS_SHARED_CARGO_ROOT} AND NROS_SHARED_CARGO_ROOT STREQUAL "")
+        # issue 0805.
         message(FATAL_ERROR
             "nano-ros: -DNROS_SHARED_CARGO_ROOT was passed EMPTY. The caller's "
-            "path variable did not expand (issue 0805). Fix the caller; an "
+            "path variable did not expand. Fix the caller; an "
             "empty value would silently fall back to per-leaf cargo dirs.")
     endif()
     if(NOT NROS_SHARED_CARGO_ROOT)

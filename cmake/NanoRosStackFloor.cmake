@@ -46,8 +46,9 @@ function(_nros_stack_floor_enabled _out)
     elseif(_mode STREQUAL "CHECK")
         set(${_out} TRUE PARENT_SCOPE)
     else()
+        # issue 2400 W2b.
         message(FATAL_ERROR "nano-ros: NROS_STACK_FLOOR='${NROS_STACK_FLOOR}' -- expected CHECK "
-            "or OFF. Raising a stack to the floor is opt-in and not built yet (issue 2400 W2b).")
+            "or OFF. Raising a stack to the floor is opt-in and not built yet.")
     endif()
 endfunction()
 

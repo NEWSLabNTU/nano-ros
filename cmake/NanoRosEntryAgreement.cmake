@@ -39,9 +39,10 @@ function(nros_entry_keywords_agree who)
     set(_image "[image.${NROS_EXPORT_IMAGE}]")
     if(_NEA_DEPLOY AND NOT "${_NEA_DEPLOY}" STREQUAL "${NROS_EXPORT_DEPLOY}")
         string(REPLACE ";" " " _given "${_NEA_DEPLOY}")
+        # issue 1894.
         message(FATAL_ERROR
             "${who}: `DEPLOY ${_given}` disagrees with ${_where}, whose "
-            "${_image} deploys to `${NROS_EXPORT_DEPLOY}` (issue 1894).\n"
+            "${_image} deploys to `${NROS_EXPORT_DEPLOY}`.\n"
             "  The system.toml is where an entry's deployment is authored. "
             "Drop DEPLOY from the call, or change the image's board in "
             "${_where} if the CMakeLists is the one that is right.")
@@ -54,9 +55,10 @@ function(nros_entry_keywords_agree who)
         list(REMOVE_ITEM _ok "")
         if(NOT "${_NEA_BOARD}" IN_LIST _ok)
             list(GET _ok 0 _leaf_board)
+            # issue 1894.
             message(FATAL_ERROR
                 "${who}: `BOARD ${_NEA_BOARD}` disagrees with ${_where}, whose "
-                "${_image} names board `${_leaf_board}` (issue 1894).\n"
+                "${_image} names board `${_leaf_board}`.\n"
                 "  The system.toml is where an entry's board is authored. Drop "
                 "BOARD from the call, or change `board` in ${_where} if the "
                 "CMakeLists is the one that is right.")

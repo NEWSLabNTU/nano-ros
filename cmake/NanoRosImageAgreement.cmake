@@ -183,6 +183,7 @@ macro(nros_resolve_image_features)
             endforeach()
             if(_nrif_missing)
                 string(REPLACE ";" ", " _nrif_missing "${_nrif_missing}")
+                # issue 1261.
                 message(FATAL_ERROR
 "nano-ros: NROS_FEATURES omits capability axes the image declares.
     image ${NROS_IMAGE_QUALIFIED} declares: ${NROS_IMAGE_FEATURES}
@@ -191,7 +192,7 @@ macro(nros_resolve_image_features)
 The generated entry calls these capabilities and the library would be built
 without them, which fails at link with an undefined symbol. Drop
 -DNROS_FEATURES (the image's system.toml is the source) or add the missing
-axes to it (issue 1261).
+axes to it.
 Declared in ${NROS_IMAGE_WORKSPACE}.")
             endif()
         endif()
@@ -306,8 +307,9 @@ function(nros_check_generated_app_current)
     # Ruling R53 (review N8): name a command that re-runs cmake on this dir; a
     # bare re-run of the build skips cmake after a failed first configure.
     nros_reconfigure_remedy(_cfg _again)
+    # issue 1707.
     message(FATAL_ERROR
-"nano-ros: the generated west application was rewritten while this configure ran (issue 1707).
+"nano-ros: the generated west application was rewritten while this configure ran.
     ${_app}
 This configure read the PREVIOUS file, so its Kconfig and NROS_FEATURES describe a declaration that no longer holds. Nothing was generated from it.
 Configure this build again, which reads the current file: ${_again}. `nros build <image>` regenerates the application BEFORE configuring and never meets this.

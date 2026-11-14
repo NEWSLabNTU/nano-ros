@@ -200,17 +200,18 @@ function(nros_check_domain_agreement)
     if(NOT _agree)
         # ONE string with no blank lines: cmake indents every line of a
         # FATAL_ERROR, so an empty one renders as stray whitespace.
+        # RFC-0049: Kconfig is what the image bakes. Issue 1550.
         message(FATAL_ERROR
             "${_D_CONTEXT}: this image's ROS domain is stated more than once and "
             "the statements disagree:"
             "\n  CONFIG_NROS_DOMAIN_ID = ${_k}  (what the image bakes; from ${_src_label})"
             "${_sys_line}${_cyclone_line}${_snippet_lines}${_other_lines}"
             "\nThe image runs on ${_k}; a peer on any other domain never sees it, "
-            "and nothing at run time says why. Kconfig is what the image bakes "
-            "(RFC-0049): state `CONFIG_NROS_DOMAIN_ID=${_remedy_n}` once, in the fragment "
+            "and nothing at run time says why. Kconfig is what the image bakes: "
+            "state `CONFIG_NROS_DOMAIN_ID=${_remedy_n}` once, in the fragment "
             "every transport of this image merges (the board `.conf`, or each "
             "transport snippet), and make system.toml's `domain_id` say the same "
-            "(issue 1550).")
+            "before you configure again.")
     endif()
     if("${_D_SYSTEM_DOMAIN}" STREQUAL "")
         set(_sys_word "no system.toml domain_id")

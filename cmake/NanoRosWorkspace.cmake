@@ -90,9 +90,10 @@ nros_refuse_retired_names()
 # ---------------------------------------------------------------------------
 function(_nros_resolve_root explicit start_dir out_var)
     if(DEFINED ENV{NANO_ROS_ROOT})
+        # RFC-0103 D6.
         message(FATAL_ERROR
             "nano-ros: the ENVIRONMENT variable NANO_ROS_ROOT is retired — pass "
-            "-DNROS_REPO_DIR=<path> instead (RFC-0103 D6).")
+            "-DNROS_REPO_DIR=<path> instead.")
     endif()
     if(explicit AND NOT explicit STREQUAL "")
         set(${out_var} "${explicit}" PARENT_SCOPE)
@@ -443,13 +444,14 @@ function(nano_ros_workspace)
                 get_filename_component(_bringup "${CMAKE_MATCH_1}" NAME)
             endif()
             string(REPLACE ";" ", " _declared "${_declared}")
+            # issue 1261.
             message(FATAL_ERROR
                 "nano_ros_workspace: no SYSTEM argument, but the workspace's "
                 "bringup `${_bringup}` declares capabilities (${_declared}).\n"
                 "Without SYSTEM the C/C++ libraries are built without them while "
                 "the generated code calls them, which fails at link with an "
                 "undefined symbol. Pass `SYSTEM ${_bringup}` to "
-                "nano_ros_workspace() (issue 1261).")
+                "nano_ros_workspace().")
         endif()
     endif()
 

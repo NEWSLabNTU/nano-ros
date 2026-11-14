@@ -27,10 +27,11 @@ macro(_nros_bootstrap)
         set(NROS_REPO_DIR "${_NRB_ROOT}")
     endif()
     if(NOT DEFINED NROS_REPO_DIR OR NROS_REPO_DIR STREQUAL "")
+        # RFC-0103 D6.
         message(FATAL_ERROR
             "_nros_bootstrap: no nano-ros root. Build the leaf with `nros build`, "
             "or configure it with -Dnano_ros_ROOT=<nano-ros checkout> so "
-            "find_package(nano_ros) finds it (RFC-0103 D6), or call "
+            "find_package(nano_ros) finds it, or call "
             "_nros_bootstrap(ROOT <path>).")
     endif()
 

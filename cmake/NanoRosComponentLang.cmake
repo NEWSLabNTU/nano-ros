@@ -64,12 +64,13 @@ function(_nros_set_component_lang target lang)
             "_nros_set_component_lang(${target}): no such target.")
     endif()
     if(NOT lang IN_LIST _values)
+        # issue 1523.
         message(FATAL_ERROR
             "_nros_set_component_lang(${target}): language '${lang}' is not a "
             "canonical NROS_COMPONENT_LANG value. Expected one of "
             "${_values} — LOWERCASE, the "
             "`Language::as_str` spelling the readers compare and the metadata "
-            "row carries (issue 1523). A caller whose own vocabulary is "
+            "row carries. A caller whose own vocabulary is "
             "uppercase converts at this boundary, e.g. "
             "`string(TOLOWER \"\${_nrc_lang}\" _nrc_lang_lc)`.")
     endif()

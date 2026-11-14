@@ -9,8 +9,7 @@
 # already carried. The chain closed on
 #
 #     else()
-#         message(FATAL_ERROR "nros_rmw_dispatch: unknown rmw '${rmw}' "
-#             "(known: cyclonedds uorb xrce zenoh)")
+#         message(FATAL_ERROR "nros_rmw_dispatch: unknown rmw '${rmw}' (known: cyclonedds uorb xrce zenoh)")
 #
 # — a closed set, and the reason issue 1214 exists. Both halves, measured
 # against one tree in one minute:
@@ -127,10 +126,11 @@ function(_nros_rmw_cli out_var)
         nros_bootstrap_codegen()
     endif()
     if(NOT _NANO_ROS_CODEGEN_TOOL OR NOT EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
+        # RFC-0094 D5.
         message(FATAL_ERROR
             "nros_rmw_dispatch: no `nros` binary — an RMW backend's build facts "
             "are read from its `nros-rmw.toml` THROUGH the CLI, never parsed "
-            "here (RFC-0094 D5). Run `./scripts/bootstrap.sh` (contributors: "
+            "here. Run `./scripts/bootstrap.sh` (contributors: "
             "`just setup-cli`) and `source ./activate.sh`.")
     endif()
     # RFC-0094 D6 / issue 1018 — the ONE spelling. A configure-time query has no
@@ -226,12 +226,13 @@ function(nros_rmw_dispatch rmw)
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc)
     if(NOT _rc EQUAL 0)
+        # RFC-0071 D5 / RFC-0094 D5.
         message(FATAL_ERROR
             "nros_rmw_dispatch: no provider announces rmw '${rmw}'.\n${_err}\n"
             "A backend announces itself with "
             "`<nano_ros_provides kind=\"rmw\" name=\"${rmw}\"/>` in its "
             "package.xml and declares its build facts in `nros-rmw.toml` "
-            "beside it (RFC-0071 D5 / RFC-0094 D5). Nothing central lists "
+            "beside it. Nothing central lists "
             "backends, so there is nothing here to add it to.")
     endif()
 

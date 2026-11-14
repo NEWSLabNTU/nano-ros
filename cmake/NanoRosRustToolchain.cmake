@@ -28,16 +28,19 @@ function(nros_pinned_nightly out)
     set(_NROS_RUST_TOOLCHAINS_LIST
         "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../config/rust-toolchains.txt")
     if(NOT EXISTS "${_NROS_RUST_TOOLCHAINS_LIST}")
+        # issue 2312.
         message(FATAL_ERROR
             "nano-ros: no ${_NROS_RUST_TOOLCHAINS_LIST} -- the pinned nightly "
-            "channel is read from it (issue 2312). An SDK root ships it; a "
+            "channel is read from it. An SDK root ships it; a "
             "checkout regenerates it with `python3 scripts/gen-rust-toolchains.py`.")
     endif()
     file(STRINGS "${_NROS_RUST_TOOLCHAINS_LIST}" _rows REGEX "^nightly-")
     if(NOT _rows)
+        # issue 2312.
         message(FATAL_ERROR
             "nano-ros: ${_NROS_RUST_TOOLCHAINS_LIST} has no `nightly-*` row "
-            "(issue 2312).")
+            "-- the pinned nightly channel is read from it. A checkout regenerates "
+            "it with `python3 scripts/gen-rust-toolchains.py`.")
     endif()
     list(GET _rows 0 _row)
     string(REGEX MATCH "^[^ \t]+" _channel "${_row}")

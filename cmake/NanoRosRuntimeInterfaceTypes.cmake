@@ -84,12 +84,13 @@ function(nros_runtime_interface_types features)
         set(_deps ${_parts})
         _nros_find_msg_package_root(${_pkg} _root)
         if(_root STREQUAL "NOTFOUND")
+            # issue 2304.
             message(FATAL_ERROR
                 "nano-ros: [system].features `${features}` on rmw '${NROS_RMW}' "
                 "needs the `${_pkg}` interface package: the runtime creates the "
                 "parameter / lifecycle services and their event publishers with "
                 "its types, and this backend creates an entity only for a type "
-                "whose descriptor is generated into the image (issue 2304). Make "
+                "whose descriptor is generated into the image. Make "
                 "${_pkg} discoverable (source ROS 2's setup.bash so "
                 "AMENT_PREFIX_PATH names it), or drop the feature.")
         endif()
@@ -97,9 +98,10 @@ function(nros_runtime_interface_types features)
             "${_root}/msg/*.msg" "${_root}/srv/*.srv" "${_root}/action/*.action")
         list(SORT _files)
         if(NOT _files)
+            # issue 2304.
             message(FATAL_ERROR
                 "nano-ros: ${_pkg} at ${_root} holds no .msg/.srv/.action file "
-                "(issue 2304).")
+                "to generate from. Point AMENT_PREFIX_PATH at a complete install of it.")
         endif()
         cmake_language(CALL ${NROS_RMW_PER_MESSAGE_HOOK}
             TARGET          "${_pkg}"
