@@ -1100,7 +1100,7 @@ track = "zephyr-mps2-c"
 chapter = "starters/mps2-an385-zephyr.md"
 variant = ""
 lang = "c"
-weekly = false
+weekly = true
 row = "nros-board-mps2-an385-zephyr@ZephyrQemuCortexM"
 notes = "phase-548 W8 — the C tab of the same starter."
 
@@ -1109,7 +1109,7 @@ track = "zephyr-mps2-cpp"
 chapter = "starters/mps2-an385-zephyr.md"
 variant = ""
 lang = "cpp"
-weekly = false
+weekly = true
 row = "nros-board-mps2-an385-zephyr@ZephyrQemuCortexM"
 notes = "phase-548 W8 — the C++ tab of the same starter."
 
