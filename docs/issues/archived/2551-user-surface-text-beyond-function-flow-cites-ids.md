@@ -8,7 +8,7 @@ area: [cli, ux, logging, runtime, build]
 related: [issue-2547, issue-2443, issue-2554, phase-523, phase-552]
 found: 2026-11-14
 resolved: 2026-11-14
-resolved_in: "PR pending (the readings and their sweep, one change)"
+resolved_in: "#3831 (the readings and their sweep, one change)"
 ---
 
 **Home: [phase-523](../../roadmap/phase-523-education-labs-adoption-probes.md) W5.**

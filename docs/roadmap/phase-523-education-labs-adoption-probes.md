@@ -354,7 +354,7 @@ CMake half after CMake batch 2).
 | text assembled away from its print (`Display` impls, `#[error]`, `Err(…)` and error-builder text) | #3794 | (gated at zero) | — | merged |
 | runtime subject widened to every package and example, board print helpers named, examples' build scripts read (37 ids in 21 files fixed, 6 example build-script panics); issue 2443 archived, its stated gaps filed as issue 2547 | #3804 | (gated at zero) | — | merged |
 | text that reaches a print later (issue 2547): a formatted binding or buffer printed, raised or returned later, message tables by name or `// user-surface: table`, C/C++ message and wrapper macros, generated-file headers (126 ids in 40 files found, 180 in 52 fixed; the compile-time subject reads a continued `#error` whole); issue 2547 archived | #3815 | (gated at zero) | — | open |
-| text that crosses a function, a field, a loop or a stream (issue 2551): one level of flow across functions and buffer parameters, message-struct fields, collections and `&str` tables a loop or print reads, C++ stream output, generated rustdoc (68 ids in 5 build scripts found and fixed, 3 near misses); issue 2551 archived | PR pending | (gated at zero) | — | open |
+| text that crosses a function, a field, a loop or a stream (issue 2551): one level of flow across functions and buffer parameters, message-struct fields, collections and `&str` tables a loop or print reads, C++ stream output, generated rustdoc (68 ids in 5 build scripts found and fixed, 3 near misses); issue 2551 archived | #3831 | (gated at zero) | — | open |
 
 Acceptance: both ratchet baselines reach zero and their subjects become
 baseline-zero rules; runtime logs of a default image are read by a gate at
