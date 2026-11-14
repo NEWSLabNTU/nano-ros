@@ -650,6 +650,7 @@ build_cmake_fixture() {
     if [ ! -f "$repo_root/$src/CMakeLists.txt" ] && [ -f "$repo_root/$src/.colcon_workspace" ]; then
         cp -r "$repo_root/$src/." "$bld/"
         rm -rf "$bld/build" "$bld/generated"
+        bash "$repo_root/scripts/build/warm-offline-cargo.sh"  # root + std deps for an offline build (issue 2560)
         ( cd "$bld" \
             && NROS_REPO_DIR="$repo_root" "$NROS_CLI_BIN" configure >/dev/null \
             && NROS_REPO_DIR="$repo_root" "$NROS_CLI_BIN" build --workspace . --offline )
