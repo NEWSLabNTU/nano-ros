@@ -3,7 +3,7 @@
 # disk-balloon.sh — run a command so that running OUT of disk is a reported,
 # deliberate failure instead of a dead runner with no logs.
 #
-#   scripts/ci/disk-balloon.sh run [--balloon-gb N] [--min-free-gb M] -- <cmd> [args…]
+#   scripts/ci/disk-balloon.sh run [--balloon-gb N] [--min-free-gb M] [--warn-free-gb W] -- <cmd> [args…]
 #
 # merge-runtime run 43534848324: the zephyr tier-1 shard filled the hosted
 # runner's disk, the runner's own diagnostic write failed with `No space left
@@ -30,7 +30,7 @@
 set -uo pipefail
 
 usage() {
-    echo "usage: disk-balloon.sh run [--balloon-gb N] [--min-free-gb M] -- <cmd> [args...]" >&2
+    echo "usage: disk-balloon.sh run [--balloon-gb N] [--min-free-gb M] [--warn-free-gb W] -- <cmd> [args...]" >&2
     exit 2
 }
 
@@ -38,11 +38,16 @@ usage() {
 shift
 balloon_gb=3
 min_free_gb=2
+# Issue 2548 / phase-559 W5b — below this the step still passes, but says so:
+# the zephyr tier-1 shard fitted with a 4.2 G low point, which one more
+# example can eat, and a shrinking margin should show up before ENOSPC does.
+warn_free_gb=10
 interval="${NROS_DISK_BALLOON_INTERVAL:-60}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --balloon-gb) balloon_gb="${2:?}"; shift 2 ;;
         --min-free-gb) min_free_gb="${2:?}"; shift 2 ;;
+        --warn-free-gb) warn_free_gb="${2:?}"; shift 2 ;;
         --) shift; break ;;
         *) usage ;;
     esac
@@ -96,10 +101,14 @@ trap 'kill -KILL -- "-$cmd_pid" 2>/dev/null; rm -f "$balloon"' EXIT
 trap 'exit 143' TERM INT
 
 exhausted=0
+min_seen_kb=""
 floor_kb=$((min_free_gb * 1024 * 1024))
 while kill -0 "$cmd_pid" 2>/dev/null; do
     kb="$(free_kb)"
     printf '%s free_kb=%s\n' "$(date -u +%H:%M:%S)" "$kb" >> "$watch_log"
+    if [ -n "$kb" ] && { [ -z "$min_seen_kb" ] || [ "$kb" -lt "$min_seen_kb" ]; }; then
+        min_seen_kb="$kb"
+    fi
     if [ -n "$kb" ] && [ "$kb" -lt "$floor_kb" ]; then
         rm -f "$balloon"
         exhausted=1
@@ -123,7 +132,13 @@ done
 rc=0
 wait "$cmd_pid" || rc=$?
 rm -f "$balloon"
-printf '%s end free_kb=%s rc=%s exhausted=%s\n' "$(date -u +%H:%M:%S)" "$(free_kb)" "$rc" "$exhausted" >> "$watch_log"
+printf '%s end free_kb=%s rc=%s exhausted=%s min_free_kb=%s\n' "$(date -u +%H:%M:%S)" "$(free_kb)" "$rc" "$exhausted" "$min_seen_kb" >> "$watch_log"
+# The low point is measured WITH the balloon held, so the margin it reports
+# is the room left beyond the reserve.
+if [ "$exhausted" = 0 ] && [ -n "$min_seen_kb" ] \
+    && [ "$min_seen_kb" -lt $((warn_free_gb * 1024 * 1024)) ]; then
+    echo "::warning::disk-balloon: free space fell to $((min_seen_kb / 1024 / 1024)) GB at its lowest (warning below ${warn_free_gb} GB, stop at ${min_free_gb} GB): this step's disk margin is shrinking. Samples: $watch_log" >&2
+fi
 if [ "$exhausted" = 1 ]; then
     exit 1
 fi

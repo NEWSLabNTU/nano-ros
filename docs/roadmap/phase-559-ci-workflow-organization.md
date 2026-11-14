@@ -229,6 +229,29 @@ the user ruled; all five stand:
   ([2548](../issues/2548-merge-shard-run-preconditions-unscoped.md)); the
   zephyr disk answer is re-measured after it.
 
+  Fifth measurement, run 43568845036 (2026-11-14, main 36f665bedc, with the
+  2548 build/run scope): **both shards' builds FIT.** The zephyr shard had
+  ~95 G free after reclaim. Its build passed with 6.2 G left at the end, and
+  its lowest point was **4.2 G free** with the 3 G balloon held. Where the
+  disk went:
+  - `zephyr-workspace-builds` 44 G
+  - `corrosion-cargo` 23 G (the Linux rows that serve zephyr coordinates, which
+    its run needs)
+  - `sizes-probe` 6.3 G
+  - `metadata-probe` 3.0 G
+  - compile-check fixtures ~0, since host compile-checks are out of its scope
+
+  The threadx_linux shard used ~62 G of 105 G on the previous run. The
+  coordinator kept the zephyr shard hosted (no user question: it fits) and
+  asked for two things against a ~4 G margin that one more example can eat:
+  - the zephyr-ci image slimmed to the toolchains the index uses;
+  - the disk balloon WARNS (an annotation, not a failure) when a shard's
+    lowest free space is under 10 G, so a shrinking margin shows before
+    ENOSPC (`scripts/ci/disk-balloon.sh --warn-free-gb`, default 10).
+
+  The same run found two more unscoped steps (the leaf `include` arm and
+  `rust-rtos-link-check`); they are issue 2548's second round.
+
   **User ruling, 2026-11-14 (option B): linux tier 1 stays SELF-HOSTED**
   (`run-matrix.yml`'s `tier1`). Only threadx_linux and zephyr move to hosted
   per-board shards. Measured basis: a hosted runner has ~104 G free after
