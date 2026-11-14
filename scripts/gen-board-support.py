@@ -21,14 +21,16 @@ in the registry restamps nothing).
         the `ROWS` of `every_probed_chapter_boot_line_is_the_printed_run_command`
         (issue 2169): every probe track whose chapter boots QEMU, and its board
   book/src/reference/board-support-levels.md
-        the support level of every row: status word, cadence, where it runs,
-        breadth
-  book/src/reference/boards/<board>.md
-        one evidence page per board row
+        the support level of every row (status word, where it runs), then one
+        section of evidence per board, `#<board>`: cadence, breadth, build
+        roads, the book pages and probe tracks that run it. Every board link
+        in the book points at its section. (The sections were one page per
+        board under reference/boards/ until they were folded into one page;
+        book/book.toml redirects those URLs.)
   book/src/reference/supported-boards.md  (the generated region only)
         the registry-backed procurement rows
   book/src/SUMMARY.md  (the generated region only)
-        the levels page and one entry per evidence page
+        the levels page
   book/src/starters/<starter>.md  (the generated region only)
         each board starter's status header (phase-537 W4): its row's status
         word, the twin and the board it names, and what the twin needs
@@ -480,6 +482,19 @@ def board_rows(reg: Registry) -> list[dict]:
     return [r for r in reg.rows if not r.get("infra")]
 
 
+def board_anchor(row: dict) -> str:
+    """A board's section id on the Board Support Levels page. It is the stem
+    the board's own page had before the pages were folded into one, so the
+    old URLs redirect to it (book/book.toml)."""
+    return page_name(row)
+
+
+def board_link(row: dict, up: str) -> str:
+    """The link to a board's section, from a page `up` levels below src/
+    (`up` is the `../` prefix back to book/src/)."""
+    return f"{up}reference/board-support-levels.md#{board_anchor(row)}"
+
+
 def render_levels(reg: Registry) -> str:
     out = [f"<!-- {reg.stamp('')[1:].strip()} -->", "",
            "# Board Support Levels", "",
@@ -497,14 +512,17 @@ def render_levels(reg: Registry) -> str:
            "| Not supported | nothing builds or boots it |", "",
            "A **witness** board runs its platform family's test matrix; a board that "
            "**inherits** shares the witness's code path and adds its own smoke "
-           "evidence. Each board links to its evidence page.", "",
-           "| Board | Status | Runs on | Breadth |", "|---|---|---|---|"]
+           "evidence.", "",
+           '<a id="boards"></a>', "",
+           "## Boards", "",
+           "Pick a board for its evidence: what runs it, how often, what its tests "
+           "cover and which pages of this book it runs in.", "",
+           "| Board | Status | Runs on |", "|---|---|---|"]
     for row in board_rows(reg):
-        name = page_name(row)
-        label = f"`{row['crate']}`" + (f" ({row['matrix_platform']})"
-                                       if row.get("matrix_platform") else "")
-        out.append(f"| [{label}](boards/{name}.md) | {reg.status(row)} | "
-                   f"{where_text(row)} | {breadth_text(reg, row)} |")
+        out.append(f"| [{board_title(row, code=True)}](#{board_anchor(row)}) | "
+                   f"{reg.status(row)} | {where_text(row)} |")
+    for row in board_rows(reg):
+        out += ["", *render_board_section(reg, row)]
     infra = [r for r in reg.rows if r.get("infra")]
     out += ["", "## Infrastructure", "",
             "Packages under `packages/boards/` that are not boards: shared traits, "
@@ -513,10 +531,17 @@ def render_levels(reg: Registry) -> str:
     return "\n".join(out)
 
 
-def render_board_page(reg: Registry, row: dict) -> str:
+def board_title(row: dict, code: bool = False) -> str:
     plat = row.get("matrix_platform")
-    title = row["crate"] + (f" ({plat})" if plat else "")
-    out = [f"<!-- {reg.stamp('')[1:].strip()} -->", "", f"# {title}", "",
+    name = f"`{row['crate']}`" if code else row["crate"]
+    return name + (f" ({plat})" if plat else "")
+
+
+def render_board_section(reg: Registry, row: dict) -> list[str]:
+    """One board's evidence, a section of the Board Support Levels page."""
+    plat = row.get("matrix_platform")
+    out = [f'<a id="{board_anchor(row)}"></a>', "",
+           f"### {board_title(row)}", "",
            f"**Status:** {reg.status(row)}", "",
            "| | |", "|---|---|",
            f"| Package | `{row['crate']}`"
@@ -532,16 +557,15 @@ def render_board_page(reg: Registry, row: dict) -> str:
     links = []
     for key, verb in (("book_run", "Run"), ("book_flash", "Flash")):
         if row.get(key):
-            links.append(f"{verb}: {chapter_link(row[key], '../../')}")
+            links.append(f"{verb}: {chapter_link(row[key], '../')}")
     tracks = [f"`{p['track']}`" + (" (weekly)" if p.get("weekly") else "")
               for p in reg.probes if p.get("row") == board_registry.row_name(row)]
     out.append(f"| Book | {'; '.join(links) or '—'} |")
     out.append(f"| Book probe tracks | {', '.join(tracks) or '—'} |")
     if row.get("notes"):
-        out += ["", "## Notes", "", row["notes"]]
-    out += ["", "See [Board Support Levels](../board-support-levels.md) for what each "
-            "status means.", ""]
-    return "\n".join(out)
+        out += ["", row["notes"]]
+    out += ["", "[Back to the board list](#boards)"]
+    return out
 
 
 def render_supported_region(reg: Registry) -> str:
@@ -552,7 +576,7 @@ def render_supported_region(reg: Registry) -> str:
         out.append(f"| `{row['crate']}`"
                    + (f" ({row['matrix_platform']})" if row.get("matrix_platform") else "")
                    + f" | {reg.status(row)} | {where_text(row)} | "
-                   f"[evidence page](boards/{page_name(row)}.md) |")
+                   f"[evidence](board-support-levels.md#{board_anchor(row)}) |")
     out.append(REGION_END)
     return "\n".join(out)
 
@@ -571,12 +595,8 @@ def splice_supported(reg: Registry, current: str) -> str:
 
 
 def render_summary_region(reg: Registry) -> str:
-    out = [SUMMARY_BEGIN, "- [Board Support Levels](./reference/board-support-levels.md)"]
-    for row in board_rows(reg):
-        plat = row.get("matrix_platform")
-        title = row["crate"] + (f" ({plat})" if plat else "")
-        out.append(f"  - [{title}](./reference/boards/{page_name(row)}.md)")
-    out.append(SUMMARY_END)
+    out = [SUMMARY_BEGIN, "- [Board Support Levels](./reference/board-support-levels.md)",
+           SUMMARY_END]
     return "\n".join(out)
 
 
@@ -661,7 +681,7 @@ def missing_starters(reg: Registry) -> list[str]:
 def render_starter_header(reg: Registry, row: dict) -> str:
     status = reg.status(row)
     text = (f"> **Status:** {status}. From the board support registry: "
-            f"[`{row['crate']}`](../reference/boards/{page_name(row)}.md); "
+            f"[`{row['crate']}`]({board_link(row, '../')}); "
             "[Board Support Levels](../reference/board-support-levels.md) explains "
             "the words.")
     emu, hw = row.get("emulator"), row.get("hardware")
@@ -772,7 +792,7 @@ def render_chapter_header(reg: Registry, page: str) -> str:
         if not status.startswith("Verified"):
             raise SystemExit(f"{page}: runs on `{row['crate']}` ({status}); a Tutorial "
                              "chapter runs on Verified rows only (RFC-0124 D3)")
-        parts.append(f"[`{row['crate']}`](../reference/boards/{page_name(row)}.md): "
+        parts.append(f"[`{row['crate']}`]({board_link(row, '../')}): "
                      f"{status}")
     text = ("> **Status:** this chapter runs on " + "; ".join(parts) + ". From the board "
             "support registry; [Board Support Levels](../reference/board-support-levels.md) "
@@ -809,7 +829,7 @@ def platform_rows(reg: Registry) -> dict[str, list[dict]]:
 
 
 def render_platform_header(reg: Registry, rows: list[dict]) -> str:
-    parts = [f"[`{r['crate']}`](../../reference/boards/{page_name(r)}.md)"
+    parts = [f"[`{r['crate']}`]({board_link(r, '../../')})"
              + (f" ({r['matrix_platform']})" if r.get("matrix_platform") and r["crate"] in _SHARED else "")
              + f": {reg.status(r)}" for r in rows]
     text = ("> **Status:** " + "; ".join(parts) + ". From the board support registry; "
@@ -843,7 +863,7 @@ def render_hardware_table(reg: Registry) -> str:
         if row.get("book_flash"):
             chapter, _, anchor = row["book_flash"].partition("#")
             where.append(f"[flash steps](../../{chapter}#{anchor})")
-        out.append(f"| `{hw}` | [`{row['crate']}`](../../reference/boards/{page_name(row)}.md) | "
+        out.append(f"| `{hw}` | [`{row['crate']}`]({board_link(row, '../../')}) | "
                    f"{reg.status(row)} | {('`' + row['emulator'] + '`') if row.get('emulator') else '—'} | "
                    f"{', '.join(where) or 'reference page only'} |")
     out.append(HARDWARE_END)
@@ -904,7 +924,7 @@ def render_status_json(reg: Registry) -> str:
             "book_run": row.get("book_run"),
             "book_flash": row.get("book_flash"),
             "page": None if row.get("infra") else
-                    f"book/src/reference/boards/{page_name(row)}.md",
+                    f"book/src/{board_link(row, '')}",
         })
     doc = {"_generated": reg.stamp("")[1:].strip(), "stale_days": reg.stale_days,
            "rows": rows}
@@ -922,8 +942,6 @@ def outputs(reg: Registry) -> dict[str, str]:
         SUMMARY_MD: splice(SUMMARY_MD, (reg.root / SUMMARY_MD).read_text(),
                            SUMMARY_BEGIN, SUMMARY_END, render_summary_region(reg)),
     }
-    for row in board_rows(reg):
-        out[f"{BOARDS_DIR}/{page_name(row)}.md"] = render_board_page(reg, row)
     # phase-537 W4 — the starters' status headers and the section's list. The
     # sidebar entries are the page map's (scripts/book-move.py --summary), in
     # the map's D12 order.
@@ -962,7 +980,9 @@ def outputs(reg: Registry) -> dict[str, str]:
 
 
 def stale_board_pages(reg: Registry, produced: dict[str, str]) -> list[str]:
-    """Evidence pages on disk that no row produces any more."""
+    """Per-board pages on disk. None is produced any more (the evidence is
+    one section per board of the levels page), so any file there is an
+    orphan: a page written back by hand, or by an older generator."""
     d = reg.root / BOARDS_DIR
     if not d.is_dir():
         return []
@@ -1078,7 +1098,7 @@ def self_test() -> None:
                 {"crate": "s", "hardware": "s32"}]
     plat = Plat("Verified on host (merge)")
     head = render_platform_header(plat, plat.rows[:1])
-    assert head.startswith(PLATFORM_BEGIN) and "[`a`](../../reference/boards/" in head \
+    assert head.startswith(PLATFORM_BEGIN) and "[`a`](../../reference/board-support-levels.md#a)" in head \
         and "Verified on host (merge)" in head, head
     table = render_hardware_table(plat)
     assert "`nucleo`" in table and "`s32`" in table and "| [`a`]" not in table, table

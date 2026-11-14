@@ -19,7 +19,7 @@ one to try.
 A refusal that starts `error[NROS-NNNN]` carries a diagnostic code. Its last
 line, `explain: nros explain NROS-NNNN`, is a command that prints what
 happened and how to fix it, with no network; [Diagnostic
-codes](diagnostics/index.md) lists every code.
+codes](diagnostic-codes.md) lists every code.
 
 ## A. Build failures (cargo / cmake)
 

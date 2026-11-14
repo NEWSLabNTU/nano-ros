@@ -7,7 +7,7 @@ markdown cannot do that: a tracked file that changes on a day nobody edited
 anything would turn `check-board-registry` red for every pull request from day
 121. So the committed pages carry the date the degradation starts, and this
 preprocessor applies the clock when the book is BUILT: it re-renders every
-board page `scripts/gen-board-support.py` produces under `book/src/` with
+page `scripts/gen-board-support.py` produces under `book/src/` with
 today's date, through the same renderer, and replaces that chapter's content in
 the book mdBook hands it. A page whose level has not changed renders identically.
 
@@ -86,9 +86,9 @@ def run(stdin: str, gen, root: Path, on: datetime.date) -> tuple[str, list[str]]
 def self_test() -> None:
     """Negative controls on the real registry: the FVP row (last booted
     2026-09-06, 120 stale days) must render as Boots before its stale date and
-    as Builds after it, and a book with no board page must pass through."""
+    as Builds after it, and a book with no board-support page must pass through."""
     gen = load_generator()
-    page = "reference/boards/fvp.md"
+    page = "reference/board-support-levels.md"
     committed = (ROOT / BOOK_SRC / page).read_text()
 
     def book(shape: str) -> str:
@@ -102,8 +102,11 @@ def self_test() -> None:
         out, changed = run(book(shape), gen, ROOT, datetime.date(2027, 2, 1))
         assert changed == [page], f"{shape}: a stale FVP row was not re-rendered"
         content = json.loads(out)[shape][0]["Chapter"]["content"]
-        assert "Builds (last booted 2026-09-06)" in content, content
-        assert "Boots, manual" not in content, "the stale word survived"
+        # The FVP's section, up to the next board's: other manual rows on
+        # the page are not stale yet and keep their word.
+        fvp = content.split('<a id="fvp"></a>', 1)[1].split('<a id="', 1)[0]
+        assert "Builds (last booted 2026-09-06)" in fvp, fvp
+        assert "Boots, manual" not in fvp, "the stale word survived"
     other = json.dumps([{}, {"items": [{"Chapter": {"name": "y", "content": "z",
                                                     "path": "intro.md"}}]}])
     out, changed = run(other, gen, ROOT, datetime.date(2027, 2, 1))

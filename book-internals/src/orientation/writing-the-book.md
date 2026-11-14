@@ -177,6 +177,41 @@ A page may assume only topics at its own level or below. It lists them on a
 A reference page carries the level of the most advanced topic it describes.
 Anyone may look it up.
 
+## Organizing the sidebar
+
+The sidebar is the book's table of contents, and a reader scans it before
+reading anything. These rules keep it short enough to scan. They follow
+[Diátaxis](https://diataxis.fr/), the
+[Kubernetes page content types](https://kubernetes.io/docs/contribute/style/page-content-types/),
+the [Ubuntu developer docs structure](https://ubuntu.com/developers/docs/STRUCTURE/)
+and Rust's [error codes index](https://doc.rust-lang.org/error_codes/), which
+keeps one page per code out of the Rust books.
+
+- **A list of like things is one page.** Boards, forks, diagnostic codes,
+  retired names: one generated page, an index table at the top, then one
+  section per item with a stable anchor (`#<name>`) and a "Back to the list"
+  link. The sidebar shows the page, and the page's headings show the items.
+  Link to an item by its anchor. Examples: Board Support Levels, Forks
+  nano-ros carries, Diagnostic codes.
+- **No page that is one table or one paragraph.** It is a section of the page
+  it belongs to (checklist item 15: under 300 words merges into its parent).
+- **Shallow.** At most two levels under a section: a group page, then its
+  pages. A group is a real page that says what each child is for, never an
+  empty `[Group]()` heading.
+- **Short groups.** About a dozen entries per section at most. Past that,
+  group related pages under a landing page; a group of three or more pages
+  gets one.
+- **Titles by type.** Tutorial and how-to titles are verb phrases ("Add a
+  board"); reference and explanation titles are noun phrases ("Diagnostic
+  codes"). Siblings follow one pattern. No package name, code or internal id
+  as a sidebar title.
+- **Order by need.** Within a section, the order a reader needs pages: task
+  order, or the most used first. Not alphabetical, not by when a page was
+  written.
+- **Folding pages keeps their URLs.** A page folded into another becomes a
+  `merge-into` row in `book/page-map.toml`, and each released URL gets a
+  redirect in `book/book.toml` to its section's anchor.
+
 ## Languages in tabs
 
 When a step has a Rust, a C and a C++ version, write the versions as one tab

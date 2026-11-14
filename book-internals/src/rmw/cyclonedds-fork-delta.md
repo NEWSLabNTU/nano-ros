@@ -7,7 +7,7 @@ that fork adds, so the delta is a deliberate, reviewable thing rather than an
 accumulation nobody can enumerate.
 
 The commit list itself, regenerated whenever the pin moves, is
-[forks/cyclonedds.md](../../reference/forks/cyclonedds.html); this page keeps the reasons.
+[Forks nano-ros carries](../../reference/forks.html#cyclonedds); this page keeps the reasons.
 
 **The delta is carried on purpose. It is not tech debt awaiting an upstream PR** —
 see "Why upstreaming does not retire it" below, which is the part that is easy to

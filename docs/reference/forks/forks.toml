@@ -4,7 +4,7 @@
 # A FORK row names the upstream repository and the upstream ref the patch line
 # is measured against: a release tag where the pin descends from one, else an
 # upstream branch (the merge base with it is recorded on the page). The page
-# `book/src/reference/forks/<name>.md` is GENERATED from this table and the pinned
+# `book/src/reference/forks.md` (a section per fork) is GENERATED from this table and the pinned
 # commit by `scripts/gen-fork-deltas.py`, which asks GitHub's compare API, so it
 # needs `gh` and the network; nothing else does.
 #

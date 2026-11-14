@@ -29,7 +29,7 @@ the build half.
 > image by hand (the recipe is in the contributor lanes linked below), and no
 > installed probe track replays this chapter. `fvp-aemv8r-smp`'s status
 > and the date of its last boot are on
-> [its evidence page](../../reference/boards/fvp.html); a probe track follows
+> [its support evidence](../../reference/board-support-levels.html#fvp); a probe track follows
 > an automated run, not the other way round. Read the output below as what a
 > maintainer last saw, not as a gate.
 
