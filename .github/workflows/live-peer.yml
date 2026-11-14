@@ -488,7 +488,7 @@ jobs:
     # Longest green run 76.5 min (n=12); twice that, rounded up.
     timeout-minutes: 155
     container:
-      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r8
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r9
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

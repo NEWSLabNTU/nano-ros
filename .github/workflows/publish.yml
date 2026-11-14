@@ -338,8 +338,13 @@ jobs:
       # `/opt/zephyr-sdk/setup.sh -c` (that registered 0.17.4 alone). Consumers
       # are schedule/dispatch-only, so moving them in the same commit has the
       # r3 note's slack.
+      # r9 (phase-559 W5b): each baked SDK keeps only its row's `post_install`
+      # toolchains plus aarch64; the rest of 0.16.9's full bundle is removed
+      # by `ci/docker/zephyr-ros/prune-zephyr-sdk.sh`, whose log line gives the
+      # size before and after. Consumers are schedule/dispatch-only, so moving
+      # them in the same commit has the r3 note's slack.
       IMAGE: ghcr.io/newslabntu/nano-ros-zephyr-ci
-      TAG: humble-sdk0.16.9-r8
+      TAG: humble-sdk0.16.9-r9
     steps:
       - uses: actions/checkout@v4
       # The same CONTENT tag ci-base carries, for the same reason and now for a
@@ -356,6 +361,7 @@ jobs:
                      scripts/ci/install-just.sh config/ci-base-tools.toml \
                      scripts/lib/index_tool.py scripts/lib/index_packages.py \
                      config/zephyr-ci-tools.toml \
+                     ci/docker/zephyr-ros/prune-zephyr-sdk.sh \
                  | sha256sum | cut -c1-12)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "content tag: ${{ env.IMAGE }}:${{ env.TAG }}-$sha"
