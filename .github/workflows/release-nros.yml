@@ -490,7 +490,7 @@ jobs:
             '```' \
             "" \
             "Contributors build from source instead: inside a checkout the tree's own" \
-            "build is the only correct binary (RFC-0090, phase-431 W1/W2)." \
+            "build is the only correct binary." \
             >"$RUNNER_TEMP/notes.md"
           # `--target` pins the release to the commit that was verified above,
           # not to whatever the branch points at when this step runs.

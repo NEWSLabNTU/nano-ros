@@ -96,7 +96,8 @@ shared_cargo_dir_used() {
             echo "  It is a real directory, so cargo built into this leaf's own" >&2
             echo "  tree and nothing was shared. Something created it after" >&2
             echo "  configure, or this build dir predates sharing and the" >&2
-            echo "  configure-time degrade path fired (issue 0805)." >&2
+            # issue 0805: the configure-time degrade path.
+            echo "  configure-time degrade path fired." >&2
         fi
         rc=1
     else
@@ -135,7 +136,8 @@ shared_cargo_dir_used() {
         echo "    built:      $artifact" >&2
         echo "  cargo is not writing where the symlink points. The likely cause" >&2
         echo "  is a Corrosion upgrade that moved the \`--target-dir\` it derives" >&2
-        echo "  privately (issue 0945 item 1) — re-read" >&2
+        # issue 0945 item 1: Corrosion derives its --target-dir privately.
+        echo "  privately — re-read" >&2
         echo "  nros_share_corrosion_cargo_dir() against the installed" >&2
         echo "  Corrosion.cmake and move the redirect to the new path." >&2
         echo "  To build anyway, drop -DNROS_SHARED_CARGO_ROOT (correct, just" >&2
@@ -162,7 +164,8 @@ shared_cargo_dir_used() {
         printf '%s\n' "$sizes" >&2
         echo "  Corrosion copied an artifact that did not come from the shared" >&2
         echo "  directory, so this leaf built into a private tree and the shared" >&2
-        echo "  copy is left over from before (issue 0945 item 1)." >&2
+        # issue 0945 item 1: a private tree leaves the shared copy stale.
+        echo "  copy is left over from before." >&2
         return 1
     fi
 

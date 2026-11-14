@@ -92,3 +92,27 @@ later, so each message stays self-contained, with room for a code prefix.
 **Left: runtime logs of a default image.** The rule for which runtime
 literals are log or panic text, and the C string lexer, are still to do.
 
+**Shell-script output gated at zero (2026-11-14).** `check-user-surface-ids`
+now reads what the scripts a user runs print: `scripts/install.sh`,
+`scripts/bootstrap.sh`, `activate.sh`/`activate.fish`, the two scripts a
+user's build runs from the release SDK root (`scripts/nuttx/build-nuttx.sh`,
+`scripts/check-shared-cargo-dir-used.sh`), every script the user book tells a
+reader to run (computed from the book at check time:
+`scripts/nuttx/stage-external-apps.sh` today), and everything those source.
+It reads `echo`/`printf` text, print helpers such as `die`, `cat <<EOF`
+bodies that reach the terminal, and the value of a variable a printer prints
+(the rc-file snippet bootstrap appends). It found 24 ids in 9 files; each
+moved to a `#` comment, and the line says what to do instead (bootstrap's
+missing-CLI refusal now says to update or re-clone, activate.sh's ROS-not-
+loaded notice says to source ROS 2 first). The rc snippet's marker comment
+lost its id too; no code matches that marker (an install is recognised by the
+activate path), so an rc written by an older bootstrap is still recognised.
+Gaps, stated in the checker: text a non-printer builds, a heredoc written to a
+file, and scripts a user-run script executes rather than sources.
+
+**Next, in order (manager, 2026-11-14).** Ruling A covers build-stopping
+refusals, so the runtime subject's stated gaps are in scope too, each as its
+own gate subject starting at baseline zero: first compile-time text
+(`#error`, `static_assert`, `compile_error!`, `#[deprecated]` notes and
+proc-macro errors, well over 100 ids), then text assembled away from its print
+(`Display` impls and messages built for a later log call).

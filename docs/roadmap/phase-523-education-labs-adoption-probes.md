@@ -341,6 +341,9 @@ each batch lowers its baseline in the same PR.
 | batch 8: `nros-node/build.rs` and the orchestration `plan.rs`, `image_net.rs`, `rmw_config.rs`, `board_descriptor.rs`, `model_ingest.rs`, `release_manifest.rs`, `backend_link.rs` (the sizing refusals, the retired-key remedies, the resolved-network and release-manifest headers, the RMW-file and backend-link refusals) | #3773 | 47 | 80 | open |
 | batch 9: the `cargo-nano-ros` `extension_descriptor.rs`, `rmw_descriptor.rs`, `serdes_descriptor.rs`, `serdes_resolver.rs`, `lib.rs` and the builder `cargo_config.rs`, `cargo_root.rs`, `discover.rs`, `entry.rs`, `handoff.rs`, `materialize.rs`, `paths.rs`, `plan.rs` (the extension, RMW and serdes descriptor refusals, the C++ alias header, the generated cargo config and entry headers, the workspace-root, duplicate-package, execvp and ESP32 refusals) | — | 27 | 80 | open |
 | runtime logs of a default image (C lexer, log/panic rule) | — | — | — | not started |
+| shell-script output (user-run scripts) | — | (gated at zero) | — | open |
+| compile-time text (`#error`, `static_assert`, `compile_error!`, `#[deprecated]`, proc-macro errors): its own subject, baseline zero | — | — | — | planned |
+| text assembled away from its print (`Display` impls, messages logged later): its own subject, baseline zero | — | — | — | planned |
 
 Acceptance: both ratchet baselines reach zero and their subjects become
 baseline-zero rules; runtime logs of a default image are read by a gate at

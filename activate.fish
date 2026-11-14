@@ -70,10 +70,10 @@ end
 # RFC-0103 D6 — one store-root variable, `$NROS_HOME` (mirror of
 # scripts/lib/store-root.sh). A retired one is reported, activation continues.
 if set -q NROS_STORE
-    echo "error: \$NROS_STORE is retired — set NROS_HOME to the same directory (RFC-0103 D6)" >&2
+    echo "error: \$NROS_STORE is retired — set NROS_HOME to the same directory" >&2
 end
 if set -q NROS_SDK_STORE
-    echo "error: \$NROS_SDK_STORE is retired — set NROS_HOME to its PARENT (it named <store>/sdk; RFC-0103 D6)" >&2
+    echo "error: \$NROS_SDK_STORE is retired — set NROS_HOME to its PARENT (it named <store>/sdk)" >&2
 end
 function _nros_sdk_store
     if set -q NROS_HOME
@@ -143,7 +143,8 @@ end
 # The one notice: a pinned tool whose pin is not provisioned, NAMED with what
 # is there — never picked from (mirror of activate.sh).
 if test (count $_nros_store_stranded) -gt 0; and not set -q NROS_QUIET_ACTIVATE
-    echo "nano-ros: pinned SDK tool(s) not in the store — NOT put on PATH (issue 1563):" >&2
+    # issue 1563 — the pin is the version; a stale neighbour is never picked.
+    echo "nano-ros: pinned SDK tool(s) not in the store — NOT put on PATH:" >&2
     printf '%s\n' $_nros_store_stranded >&2
     echo "  provision the pin: nros setup --tool <tool>   (set NROS_QUIET_ACTIVATE=1 to silence)" >&2
 end

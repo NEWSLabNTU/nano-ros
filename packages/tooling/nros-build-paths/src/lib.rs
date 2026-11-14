@@ -1225,8 +1225,9 @@ pub mod store {
             .map(|(k, fix)| format!("  ${k} is retired: {fix}"))
             .collect();
         (!hits.is_empty()).then(|| {
+            // RFC-0103 D6.
             format!(
-                "the nano-ros store root has one variable, NROS_HOME (RFC-0103 D6):\n{}",
+                "the nano-ros store root has one variable, NROS_HOME:\n{}",
                 hits.join("\n")
             )
         })
