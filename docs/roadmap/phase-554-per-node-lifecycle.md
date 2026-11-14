@@ -144,8 +144,9 @@ exactly one machine, on each road, and the managed node's model row says so.
 
 ### W2.b — The code decides which nodes are managed (D2, ruled 2026-11-13)
 
-- **Status:** OPEN. Part 1 (the run-time half) is done. Part 2's probe field
-  is done; its two readers (the model road and the leaf road) are open.
+- **Status:** DONE (2026-11-14, #3775 and this re-scope). Part 1 (the run-time half) and part 2 (the probe field)
+  are done. Part 2's readers moved to where they are consumed (re-scoped
+  2026-11-14, below).
 
 Two rulings, both 2026-11-13. The first: "Go option c for lifecycle node that
 code decides, as in ROS 2". The second, on how the build learns it: "reuse
@@ -186,13 +187,30 @@ inferred from build order.
   registration naming no recorded node is refused, not dropped
   (`only_the_node_whose_code_registered_a_machine_is_stated_managed`).
   Mutation-checked: a join that stops marking the node fails the C++ test.
-- The model road folds it into each node's `lifecycle` fact
-  (`overlay::managed_nodes`).
-- The leaf road (`--from-leaf`, the single-package cargo leaf) reads it from
-  the same sidecar for pool and queryable sizing.
 - Sources are not scanned, and no component declares the fact by hand.
 
-Acceptance (all three roads, on linux/zenoh):
+**Part 2's readers: moved (re-scoped 2026-11-14).** Reading the sizing and
+entry code showed that no reader needs the field yet:
+
+- Sizing already counts a code-managed node per node. The probe records its
+  five services and its `transition_event` publisher as ordinary rows, and
+  the inventory takes every row. What is wrong is the flat family term
+  beside them, which counts once per image: issue 2553. Pricing the family
+  per managed node and dropping the double count is **W5**.
+- The leaf road gains nothing from the field: code can use the lifecycle API
+  only with the `lifecycle-services` feature on, and the leaf's family switch
+  already reads that feature.
+- The C/C++ entries use `managed_nodes` only to register and drive machines.
+  A code-managed node is driven at run time by
+  `Executor::drive_code_managed_autostart`, with no set at build time:
+  **W7**'s first spin pass. The model road is given no workspace root to
+  read sidecars from, and does not need one for this.
+- `nros::main!` sizes callback slots per machine from `managed_nodes`. A
+  Rust code-managed node needs the Rust `LifecycleComponent` and a Rust probe
+  that observes it (the Rust probe opens no executor today): **W10**.
+
+Acceptance (all three roads, on linux/zenoh; the cells run in W9, the Rust
+and C ones after W10 and W11):
 
 - A standalone leaf whose node uses the lifecycle API appears in
   `ros2 lifecycle nodes`.
@@ -266,6 +284,11 @@ Status: OPEN.
   runner, `executor_sizing`, and the inbox rings. On zenoh that is 1 queryable
   per image and 6 tokens per node; on DDS it is the entities per node.
 - The `ZENOH_MAX_QUERYABLES` help text in `knobs.toml` is corrected.
+- From W2.b's readers: price the family per managed node, from the model's
+  managed set, and do not add it again for a node whose rows the probe
+  already carries (it counts those twice today). Issue 2553 is the
+  under-size: launch-marked nodes, which have no probe rows, are priced once
+  per image.
 
 Acceptance:
 
@@ -293,6 +316,10 @@ Status: OPEN.
   image's `[lifecycle] autostart`.
 - Its transitions run on the executor's first spin pass, in launch
   declaration order, never before the spin loop (ruled 2026-11-12).
+- From W2.b's readers: a node whose own code made it managed, with no launch
+  mark, takes the image's `[lifecycle] autostart` on the same pass, through
+  `Executor::drive_code_managed_autostart`. The entry needs no build-time
+  set for it.
 - `reduce_lifecycle_autostart`'s one-value rule (phase-486 W0) is retired.
 
 Acceptance:
@@ -362,6 +389,10 @@ Status: OPEN.
   its publishers and its parameters.
 - The state is readable from the context.
 - A component implementing it is managed (the D2 input).
+- From W2.b's readers: the Rust probe must observe it (the lifecycle
+  registration observer, as C++ does), and `nros::main!`'s per-machine
+  callback slots must count code-managed nodes too, not only
+  `managed_nodes`.
 
 Acceptance: a Rust workspace component's `on_configure` creates its publisher
 and `on_activate` logs. Returning FAILURE keeps the node in its state, and
