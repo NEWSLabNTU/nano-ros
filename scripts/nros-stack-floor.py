@@ -861,13 +861,19 @@ class _Layout:
         return t
 
 
-def _table_slots(lay: _Layout, t: str, value: str, base: int, out: list[tuple[int, str]]) -> None:
-    """Each `ptr @fn` in a constant initializer, with its byte offset."""
+def _table_slots(lay: _Layout, t: str, value: str, base: int, out: list[tuple[int, str]],
+                 starts: tuple[int, ...] = ()) -> None:
+    """Each `ptr @fn` in a constant initializer, with its byte offset from the
+    start of the global AND from the start of every aggregate enclosing it: a
+    table nested in a bigger constant is reached through a pointer to the
+    nested table, and loaded at offsets relative to that (issue 2402)."""
     value = value.strip()
     if value.startswith("@"):
         m = _IR_REF.match(value)
         if m:
-            out.append((base, m.group(1).strip('"')))
+            fn = m.group(1).strip('"')
+            for s0 in {0, *starts}:
+                out.append((base - s0, fn))
         return
     t = lay.named.get(t, t).strip()
     if value[:2] == "<{":
@@ -881,7 +887,7 @@ def _table_slots(lay: _Layout, t: str, value: str, base: int, out: list[tuple[in
         if i >= len(offs):
             break
         et, ev = _take_type(el)
-        _table_slots(lay, et, ev, base + offs[i], out)
+        _table_slots(lay, et, ev, base + offs[i], out, starts + (base,))
 
 
 def parse_ir_sites(text: str):
@@ -891,7 +897,13 @@ def parse_ir_sites(text: str):
     - `tables`: (offset, function) for every function in a constant
       aggregate initializer;
     - `escaped`: every function referenced anywhere ELSE (not as a direct
-      callee and not inside a constant table)."""
+      callee and not inside a constant table);
+    - `leaked`: slot offsets whose content is COPIED somewhere: a pointer
+      loaded at a known offset, or a pointer to a field at a known offset,
+      used as a value (stored, passed, returned, merged by a phi or select)
+      rather than dereferenced or called. A function at a leaked offset in a
+      table can then be called through any pointer of its type, so the
+      binder treats it as escaped (issue 2402)."""
     types: dict[str, str] = {}
     sites: list[tuple[str, str, int | None]] = []
     tables: set[tuple[int, str]] = set()
@@ -913,13 +925,15 @@ def parse_ir_sites(text: str):
     cur = None
     off: dict[str, int] = {}
     fptr: dict[str, int] = {}
+    unknown: set[str] = set()
+    leaked: set[int] = set()
     for line in lines:
         m = _IR_DEFINE.match(line)
         if m:
             name = m.group(3).strip('"')
             types[name] = f"{m.group(2)}({_ir_arg_types(m.group(4))})"
             cur = name if m.group(1) == "define" else None
-            off, fptr = {}, {}
+            off, fptr, unknown = {}, {}, set()
             continue
         if cur is None:
             g = _IR_GLOBAL.match(line)
@@ -942,12 +956,16 @@ def parse_ir_sites(text: str):
         if line.startswith("}"):
             cur = None
             continue
+        # Leaks first, against what is known BEFORE this line defines anything.
+        for name in _value_uses(line, fptr, off):
+            leaked.add(fptr[name] if name in fptr else off[name])
         gm = _IR_GEP_I8.match(line)
-        if gm:
+        if gm and gm.group(2) not in unknown:
             off[gm.group(1)] = off.get(gm.group(2), 0) + int(gm.group(3))
         else:
-            gm = _IR_GEP_AGG.match(line)
-            if gm:
+            gm = _IR_GEP_AGG.match(line) if not gm else None
+            done = False
+            if gm and gm.group(3) not in unknown:
                 idx = [int(x.split()[-1]) for x in gm.group(4).split(",") if x.strip()]
                 try:
                     t = gm.group(2).strip()
@@ -956,10 +974,17 @@ def parse_ir_sites(text: str):
                         o += lay.field_offsets(t)[i]
                         t = lay.elem_type(t, i)
                     off[gm.group(1)] = o
+                    done = True
                 except (ValueError, IndexError):
                     pass
+            # A GEP this reader cannot place (a global base, a variable index,
+            # an unknown type): what it points at has NO known offset, so a
+            # load through it binds by type, never as slot 0.
+            um = _IR_ANY_GEP.match(line)
+            if um and not done and um.group(1) not in off:
+                unknown.add(um.group(1))
         lm = _IR_LOAD_PTR.match(line)
-        if lm:
+        if lm and lm.group(2) not in unknown:
             fptr[lm.group(1)] = off.get(lm.group(2), 0)
         if " asm " not in line:
             c = _IR_ICALL.search(line)
@@ -973,7 +998,35 @@ def parse_ir_sites(text: str):
                 r = r.strip('"')
                 if r not in direct:
                     escaped.add(r)
-    return types, sites, tables, escaped
+    return types, sites, tables, escaped, leaked
+
+
+_IR_ANY_GEP = re.compile(r'^\s*(%[\w.$-]+)\s*=\s*getelementptr\b')
+_IR_NAME = re.compile(r'%[\w.$-]+')
+
+
+def _value_uses(line: str, fptr: dict[str, int], off: dict[str, int]) -> list[str]:
+    """The tracked names (a loaded pointer, a field address) this line uses as
+    a VALUE: copied rather than dereferenced, compared or called."""
+    names = [n for n in _IR_NAME.findall(line) if n in fptr or n in off]
+    if not names:
+        return []
+    body = line.split("=", 1)[1] if re.match(r"^\s*%[\w.$-]+\s*=", line) else line
+    b = body.strip()
+    if b.startswith(("load ", "load volatile", "getelementptr", "icmp ", "fcmp ")):
+        return []
+    if b.startswith(("store ", "store volatile")):
+        m = re.match(r"store\s+(?:volatile\s+)?ptr\s+(%[\w.$-]+)\s*,", b)
+        return [m.group(1)] if m and m.group(1) in names else []
+    c = re.search(r"\bcall\b|\binvoke\b", b)
+    if c:
+        # the argument list: the last top-level `(...)` after the callee
+        m = re.search(r"(?:%[\w.$-]+|@(?:\"[^\"]+\"|[\w.$-]+))\((.*)\)", b)
+        args = m.group(1) if m else ""
+        return [n for n in _IR_NAME.findall(args) if n in names]
+    if b.startswith(("atomicrmw", "cmpxchg")):
+        return []
+    return names
 
 
 def bind_indirect_sites(g: Graph, modules) -> dict[str, int]:
@@ -982,10 +1035,15 @@ def bind_indirect_sites(g: Graph, modules) -> dict[str, int]:
     types: dict[str, str] = {}
     tables: set[tuple[int, str]] = set()
     escaped: set[str] = set()
-    for t, _, tb, esc in modules:
+    leaked: set[int] = set()
+    for t, _, tb, esc, lk in modules:
         types.update(t)
         tables |= tb
         escaped |= esc
+        leaked |= lk
+    # A table function whose slot is copied somewhere can be called through
+    # any pointer of its type: it has escaped (issue 2402).
+    escaped |= {fn for o, fn in tables if o in leaked}
     # A candidate must have a body in the image: the IR also names functions
     # the link resolves elsewhere (cortex-m-rt's vector table names every
     # interrupt, each `PROVIDE`d to `DefaultHandler` by link.x).
@@ -1026,17 +1084,22 @@ def bind_indirect_sites(g: Graph, modules) -> dict[str, int]:
     # table (a `dyn` vtable, the RMW vtable) is reached through that table,
     # never through a pointer C made.
     from_c = known(g.c_taken | {fn for fn in escaped if real(fn)})
+    # An address-taken function with NO type in any IR (C, assembly, a
+    # prebuilt library) can be the target of any site whatever the site's
+    # type: nothing says its type differs (issue 2402). A Rust call through a
+    # pointer to a user's C callback is exactly this.
+    untyped = {fn for fn in anyset if fn not in types}
     stats = {"slot": 0, "type": 0, "any": 0, "machine": 0}
     ir_sites: dict[str, int] = {}
-    for _, sites, _, _ in modules:
+    for _, sites, _, _, _ in modules:
         for caller, t, slot in sites:
             ir_sites[caller] = ir_sites.get(caller, 0) + 1
             cands = set()
             if slot is not None and (slot, t) in at_slot:
-                cands = at_slot[(slot, t)] | escaped_by_type.get(t, set())
+                cands = at_slot[(slot, t)] | escaped_by_type.get(t, set()) | untyped
                 tier = "slot"
             elif by_type.get(t):
-                cands = by_type[t]
+                cands = by_type[t] | untyped
                 tier = "type"
             else:
                 cands = from_c
@@ -2135,7 +2198,7 @@ def self_test() -> int:
         '  store ptr @esc, ptr %s, align 4\n'
         '  ret void\n}\n'
     )
-    types, sites, tables, escaped = parse_ir_sites(ir)
+    types, sites, tables, escaped, leaked = parse_ir_sites(ir)
     check("bind: a packed vtable's slots sit at their byte offsets",
           {(0, "drop"), (12, "m")} <= tables)
     check("bind: a named struct table's slots sit at their field offsets",
@@ -2147,7 +2210,7 @@ def self_test() -> int:
     gb = Graph(frames={f: 8 for f in ("drop", "m", "a", "b", "esc", "caller", "cfn", "cb")},
                functions={"drop", "m", "a", "b", "esc", "caller", "cfn", "cb", "vector"},
                indirect_sites={"caller": 2, "cfn": 1}, c_taken={"cb", "vector"})
-    st = bind_indirect_sites(gb, [(types, sites, tables, escaped)])
+    st = bind_indirect_sites(gb, [(types, sites, tables, escaped, leaked)])
     check("bind: a slot site reaches its slot and every escaped function of its type",
           gb.edges.get("caller", set()) == {"m", "b", "esc"})
     check("bind: a C site reaches what C takes and what Rust lets escape, never a table-only one",
@@ -2156,6 +2219,52 @@ def self_test() -> int:
           and st["machine"] == 1)
     check("bind: a frameless address-taken function is named, not bound",
           st["frameless"] == ["vector"] and "vector" not in gb.edges.get("cfn", set()))
+
+    # issue 2402 (soundness) — an untyped C function reaches a Rust site; a
+    # copied table slot escapes; a dereferenced data pointer does not; a
+    # nested table is also recorded relative to itself; an unparsed GEP gives
+    # no slot.
+    ir2 = (
+        'target datalayout = "e-m:e-p:32:32-i64:64-v128:64:128-a:0:32-n32-S64"\n'
+        '%Ops = type { ptr, ptr }\n'
+        '@outer = internal constant { i32, %Ops } { i32 7, %Ops { ptr @r1, ptr @r2 } }, align 4\n'
+        '@ops = internal constant %Ops { ptr @w1, ptr @w2 }, align 4\n'
+        'define i32 @r1(ptr %0) {\n  ret i32 0\n}\n'
+        'define i32 @r2(ptr %0) {\n  ret i32 0\n}\n'
+        'define i32 @w1(ptr %0) {\n  ret i32 0\n}\n'
+        'define i32 @w2(ptr %0) {\n  ret i32 0\n}\n'
+        'define void @copy(ptr %t, ptr %dst, ptr %data) {\n'
+        '  %1 = getelementptr inbounds i8, ptr %t, i32 4\n'
+        '  %2 = load ptr, ptr %1, align 4\n'
+        '  store ptr %2, ptr %dst, align 4\n'
+        '  %3 = load ptr, ptr %data, align 4\n'
+        '  %4 = load i32, ptr %3, align 4\n'
+        '  ret void\n}\n'
+        'define i32 @slot0(ptr %t) {\n'
+        '  %1 = load ptr, ptr %t, align 4\n'
+        '  %2 = call i32 %1(ptr %t)\n'
+        '  ret i32 %2\n}\n'
+        'define i32 @odd(ptr %t, i32 %n) {\n'
+        '  %1 = getelementptr inbounds ptr, ptr %t, i32 %n\n'
+        '  %2 = load ptr, ptr %1, align 4\n'
+        '  %3 = call i32 %2(ptr %t)\n'
+        '  ret i32 %3\n}\n'
+    )
+    t2, s2, tb2, esc2, lk2 = parse_ir_sites(ir2)
+    check("bind: a nested table's slots are also recorded relative to it",
+          {(4, "r1"), (8, "r2"), (0, "r1"), (4, "r2")} <= tb2)
+    check("bind: a table slot copied by value leaks its offset", 4 in lk2)
+    check("bind: a dereferenced data pointer leaks nothing", 0 not in lk2)
+    check("bind: a GEP the reader cannot place gives no slot",
+          ("odd", "i32(ptr)", None) in s2)
+    gu = Graph(frames={f: 8 for f in ("r1", "r2", "w1", "w2", "copy", "odd", "slot0", "ccb")},
+               functions={"r1", "r2", "w1", "w2", "copy", "odd", "slot0", "ccb"},
+               address_taken={"ccb"}, indirect_sites={"odd": 1, "slot0": 1})
+    bind_indirect_sites(gu, [(t2, s2, tb2, esc2, lk2)])
+    check("bind: an untyped C function joins a typed Rust site",
+          "ccb" in gu.edges.get("odd", set()))
+    check("bind: a slot-0 site reaches the leaked slot-4 functions of its type",
+          {"r1", "w1", "r2", "w2"} <= gu.edges.get("slot0", set()))
 
     # issue 2402 — under `bind` a measured peak is an [[observed]] row, never an allowance.
     vt = {"schema": 2, "margin_pct": 10, "indirect": {"zenoh": {"mode": "bind"}},

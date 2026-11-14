@@ -481,3 +481,44 @@ Acceptance: the mps2 walk is at or above its 32 KiB guard peak with no
 allowance row; every nucleo row is an `[[observed]]` row whose static covers
 its peak; `nros new` stamps the bind floor.
 
+### W7b — The bound walk closes three holes in what it binds
+
+- **Status:** OPEN
+
+**Why.** Review of W7's `bind` found three ways a site could reach a target
+the walk never charged it with. Each makes the static walk LOWER than the
+code can run, so the floor is not an upper bound.
+
+- **(a) Rust calls to untyped C pointers.** A Rust site narrowed by function
+  type dropped every function with no IR type: the C functions. A Rust site
+  that calls a pointer C handed it (a zenoh-pico callback) could reach them.
+  Untyped functions in the candidate set now join every slot-tier and
+  type-tier target list.
+- **(b) Copied table slots.** A vtable slot loaded and then stored, passed or
+  returned as a value leaves the table. The slot's functions now count as
+  escaped, so a site that calls the copy reaches them. A GEP the parser cannot
+  resolve (a variable index, a global base) gives its load no slot.
+- **(c) Nested tables.** A vtable inside a larger constant was recorded only
+  at its offset in the outer aggregate. Slots are now recorded relative to
+  every enclosing aggregate.
+
+**Measured** (bind static, floor = static + 10 %):
+
+| image | W7 static | W7b static | W7b floor | peak |
+| --- | ---: | ---: | ---: | ---: |
+| mps2 bare-metal Rust talker | 51,240 | 90,200 | 99,224 | 31-32 KiB |
+| nucleo Rust action server | 64,712 | 76,624 | 84,288 | 30,256 |
+| nucleo Rust talker | 63,272 | 72,528 | 79,784 | 28,888 |
+| nucleo C talker | 123,412 | 127,948 | 140,744 | 11,876 |
+
+Fresh `nros new` + `nros build` of each nucleo template stamps the floor and
+holds it as measured; RAM is 84 % (action server), 79 % (Rust talker) and
+78 % (C talker) of the 384 KB region. Two C talker projects walked 127,852 B
+and 127,948 B: the walk reads unlinked copies of `nros_c`, and which one a
+site reaches varies with the project path (issue 2521). The row records the
+higher.
+
+Acceptance: the self-test catches a mutation of the untyped rule and of the
+leak rule; every `[[observed]]` static is the fixed walk's; `nros new` stamps
+the fixed floor and each nucleo image fits its RAM.
+
