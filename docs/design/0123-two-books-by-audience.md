@@ -4,7 +4,7 @@ title: "Two books by audience: the nano-ros Book and nano-ros Internals"
 status: Draft
 area: docs-ux-diagnostics
 since: 2026-11
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-532]
 supersedes: []
 superseded-by: null
@@ -20,6 +20,15 @@ registry), RFC-0121 (workspace-first projects), RFC-0116 (purposes and front doo
 (`nros configure`): the book's parts are cut along the CLI's user-tier groups,
 and it states no board fact the registry does not generate (D9). Work:
 [phase-532](../roadmap/phase-532-two-books-by-audience.md).
+
+**Scope (phase-555 ruling D1, 2026-11-14).** This RFC owns the two-book
+split, the Internals book's parts, the books' relation to `docs/`, and
+building and publishing them (D1, D5 to D7). The user book's organization is
+[RFC-0124](0124-book-user-guide-organization.md)'s, which amends D2 and D4
+here and consolidates D3, D8 and D9. The two RFCs stay separate.
+
+**Status.** Draft until D6's last step, deleting `docs/guides/`, is done;
+the flip to Stable rides that commit (phase-555 ruling D2(b)).
 
 ## Summary
 
@@ -137,7 +146,7 @@ Appendix A of this RFC gives the target page list. Phase-531 W0 commits it as
 a machine-readable page map.
 
 **Real-Time and Safety is a new user part.** Adopters building safety islands
-and zonal controllers (RFC-0029, RFC-0079, RFC-0108) need the scheduling
+and zonal controllers ([zonal survey](../research/zonal-vehicle-architecture.md), RFC-0079, RFC-0108) need the scheduling
 model, RT analysis, static memory and the E2E protocol in one place. Today
 these pages are spread across Concepts, User Guide and Internals.
 
@@ -447,3 +456,7 @@ Internals (`book-internals/src/`):
   superseded by RFC-0124 Appendix A, and the open questions record what
   phase-532 did. D6's "`docs/guides/` is deleted once empty" is not done
   yet: 15 files remain, 14 of them the one-release "moved" stubs D6 keeps.
+- 2026-11-14 — phase-555 W3: Scope note (ruling D1: 0123 and 0124 both stay,
+  each with its own subject) and Status note (ruling D2(b): Stable once
+  `docs/guides/` is deleted). The zonal survey this RFC cited as RFC-0029 is
+  now `docs/research/zonal-vehicle-architecture.md`.

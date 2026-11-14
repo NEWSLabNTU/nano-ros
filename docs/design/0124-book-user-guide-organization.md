@@ -4,7 +4,7 @@ title: "The nano-ros Book charter: principles, topic levels and a user-guide org
 status: Draft
 area: docs-ux-diagnostics
 since: 2026-11
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-537]
 supersedes: []
 superseded-by: null
@@ -27,6 +27,12 @@ and [RFC-0123](0123-two-books-by-audience.md) into one checklist: the
 Principles and Topic levels below. Each principle cites the decision that
 stays authoritative for it. Work:
 [phase-537](../roadmap/phase-537-book-user-guide-organization.md).
+
+**Scope (phase-555 ruling D1, 2026-11-14).** This RFC owns the user book
+(`book/`): its principles, sections, page types and starters.
+[RFC-0123](0123-two-books-by-audience.md) keeps the two-book split, the
+Internals book's parts, the books' relation to `docs/`, and building and
+publishing them (its D1, D5 to D7). The two RFCs stay separate.
 
 ## Summary
 
@@ -612,6 +618,8 @@ task for every language.
 
 ## Changelog
 
+- 2026-11-14 - phase-555 W3: Scope note added (ruling D1: this RFC owns the
+  user book, RFC-0123 the split, Internals and publishing; both stay).
 - 2026-11-13 - phase-555 W2 review: D8's PX4 record brought up to date (#3169
   merged on 2026-11-07, so the row and the track are on `main`). Appendix A
   drops the Raspberry Pi Pico W from "Twin and hardware": RFC-0115

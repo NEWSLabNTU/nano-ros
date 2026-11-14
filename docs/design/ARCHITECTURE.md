@@ -344,8 +344,8 @@ active design front:
 - Overall multi-node workspace shape + open questions → RFC-0024 (Draft).
 - Concrete per-case file trees → RFC-0025 (Draft).
 - Canonical standalone-example layout → RFC-0026.
-- User-facing workflow + `nros new` scaffolding → RFC-0027. Nested-sequence message handling
-  spike → RFC-0030 (Draft).
+- Project shape (every project is a workspace; `system.toml` only in a bringup) and `nros new`
+  scaffolding → RFC-0121. Nested-sequence message handling spike → RFC-0030 (Draft).
 
 Configuration is **language-agnostic and scale-uniform**: `system.toml` (universal system
 descriptor, optional for single-node) + per-language manifests (Cargo `[package.metadata.nros.*]`
@@ -385,7 +385,8 @@ The map of how this meets the three build roads is
 ## 7. Domain & safety
 
 - Safety-critical platform integration analysis → RFC-0028.
-- Zonal E/E vehicle architecture and where nano-ros fits → RFC-0029.
+- Zonal E/E vehicle architecture and where nano-ros fits → the survey
+  [zonal-vehicle-architecture.md](../research/zonal-vehicle-architecture.md) (research, not an RFC).
 
 ---
 
