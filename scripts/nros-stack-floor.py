@@ -2441,7 +2441,8 @@ def run(args: argparse.Namespace) -> int:
         rust_asm = {fn for d in rdirect for fn, cs in d.items() if IR_ASM in cs}
         c_mods = None
         c_unc: set[str] = set()
-        ccs = [c for c in (args.compile_commands or []) if Path(c).exists()]
+        ccs = sorted({str(Path(c).resolve()) for c in (args.compile_commands or [])
+                      if Path(c).exists()})
         if ccs and args.link_map and args.target:
             texts, c_unc, note = c_ir_texts(ccs, linked_object_names(
                 Path(args.link_map).read_text(errors="replace")), args.target, cache, dis,
