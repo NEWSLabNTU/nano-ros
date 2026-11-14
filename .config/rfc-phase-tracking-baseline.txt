@@ -1,4 +1,3 @@
 # RFCs not yet tracked by a phase doc (scripts/check-rfc-phase-tracking.py).
 # May only SHRINK. Fix an RFC, then remove its line (or run the
 # script with --update). A new RFC is never added here.
-0125 `implements-tracked-by:` names no phase
