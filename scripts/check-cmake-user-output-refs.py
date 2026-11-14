@@ -20,27 +20,25 @@ examples plus the root `CMakeLists.txt`, that cite an issue (`issue 1234`,
 build-stopping refusal names what, where and how to fix, and its id lives in
 a comment above it or in `nros_message_detail()`.
 
-A RATCHET, keyed per file: the sites that predate this gate are recorded in
-`.config/cmake-user-output-refs.json` and may only shrink. A rise fails; a fall
-must be recorded in the change that made it (`scripts/lib/ratchet.py`).
+Baseline zero, no allowlist: any counted site fails and is named by file and
+line. This started as a per-file counted ratchet and, once issue 2443's sweep
+emptied it, became a hard rule, so a new id fails with its file and line
+rather than waiting on a count nobody watches. `--selftest` runs both
+directions (a clean text passes, planted sites are seen) and runs first on
+every check.
 
 Usage::
 
-    check-cmake-user-output-refs.py [--update] [--list] [--selftest]
+    check-cmake-user-output-refs.py [--list] [--selftest]
 """
 
 import argparse
-import json
 import os
 import re
 import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
-from ratchet import fell_instructions, judge  # noqa: E402  phase-472 W9
-
-BASELINE = os.path.join(ROOT, ".config", "cmake-user-output-refs.json")
 REF = re.compile(r"\b(issues? \d{4}|RFC-\d{4}|phase-\d{3})|#\d{4}\b")
 # Issue 2305 -- `DEPRECATION` prints at the default level too (a warning,
 # unless CMAKE_WARN_DEPRECATED is turned off).
@@ -132,8 +130,6 @@ def selftest(verbose=False):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--update", action="store_true",
-                    help="rewrite the baseline from the tree (only ever downward)")
     ap.add_argument("--list", action="store_true", help="print every counted site")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
@@ -142,57 +138,24 @@ def main():
     selftest()
 
     found = measure()
-    now = {p: len(v) for p, v in found.items()}
+    hits = [f"{p}:{line}: {shown[:120]}" for p in sorted(found) for line, shown in found[p]]
     if args.list:
-        for p in sorted(found):
-            for line, shown in found[p]:
-                print(f"{p}:{line}: {shown[:120]}")
+        for hit in hits:
+            print(hit)
         return 0
-    if args.update:
-        with open(BASELINE, "w", encoding="utf8") as fh:
-            json.dump({
-                "_comment": (
-                    "Default-level cmake output citing an issue, RFC or phase, "
-                    "per file -- see scripts/check-cmake-user-output-refs.py. A "
-                    "SHRINKING backlog: move the reference into "
-                    "nros_message_detail() and lower the count."
-                ),
-                "counts": dict(sorted(now.items())),
-            }, fh, indent=2)
-            fh.write("\n")
-        print(f"check-cmake-user-output-refs: baseline written -- {sum(now.values())} site(s).")
-        return 0
-
-    try:
-        with open(BASELINE, encoding="utf8") as fh:
-            base = json.load(fh)["counts"]
-    except FileNotFoundError:
-        print("check-cmake-user-output-refs: no baseline -- create it with --update.",
-              file=sys.stderr)
-        return 1
-
-    rose, fell = judge(now, base)
-    if rose:
+    if hits:
         print("check-cmake-user-output-refs: a correct build would print maintainer "
               "references to its user:\n", file=sys.stderr)
-        for m in rose:
-            print(f"  {m.key}: {m.was} -> {m.now}", file=sys.stderr)
-            for line, shown in found.get(m.key, []):
-                print(f"      :{line}  {shown[:100]}", file=sys.stderr)
+        for hit in hits:
+            print(f"  {hit}", file=sys.stderr)
         print("\n  Say what happened in the STATUS line and move the reasoning, with its\n"
               "  issue or RFC, into nros_message_detail() (cmake/NanoRosDiagnostics.cmake),\n"
               "  which `nros build -v` shows. An error that stops the build names what,\n"
               "  where and how to fix; its id goes in a comment above the message.",
               file=sys.stderr)
-    if fell:
-        for line in fell_instructions(
-                fell, ".config/cmake-user-output-refs.json",
-                lambda k, n: f'"{k}": {n}' if n else None,
-                "python3 scripts/check-cmake-user-output-refs.py --update"):
-            print(line, file=sys.stderr)
-    if rose or fell:
         return 1
-    print(f"check-cmake-user-output-refs: OK -- {sum(now.values())} recorded site(s), none new.")
+    print("check-cmake-user-output-refs: OK -- no default-level message or COMMENT "
+          "cites an issue, RFC or phase.")
     return 0
 
 

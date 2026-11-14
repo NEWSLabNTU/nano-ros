@@ -1,4 +1,0 @@
-{
-  "_comment": "Default-level cmake output citing an issue, RFC or phase, per file -- see scripts/check-cmake-user-output-refs.py. A SHRINKING backlog: move the reference into nros_message_detail() and lower the count.",
-  "counts": {}
-}

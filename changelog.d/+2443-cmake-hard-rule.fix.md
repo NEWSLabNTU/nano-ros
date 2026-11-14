@@ -1,0 +1,1 @@
+`check-cmake-user-output-refs` is now a hard rule: with every counted site gone, the per-file baseline `.config/cmake-user-output-refs.json` and its `--update` flag are removed, and any issue, RFC or phase id in default-level CMake output (a `message()` or `COMMENT` a user sees) fails the check, naming its file and line.
