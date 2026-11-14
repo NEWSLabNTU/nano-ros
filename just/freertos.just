@@ -120,7 +120,7 @@ _examples-leaves:
     # other-board job) does not build the MPS2-AN385 examples.
     source scripts/build/fixture-lane.sh
     if ! nros_lane_wants_platform freertos; then
-        nros_lane_out_of_scope_note freertos "the MPS2-AN385 examples: no freertos coordinate in this run — skipping"
+        nros_lane_sibling_out_of_scope freertos "the MPS2-AN385 examples: no freertos coordinate in this run — skipping" freertos-posix
         exit 0
     fi
     echo "Building FreeRTOS QEMU MPS2-AN385 examples..."
@@ -218,7 +218,7 @@ build-fixtures-posix:
     # other-board job) does not build the POSIX-simulator fixtures.
     source scripts/build/fixture-lane.sh
     if ! nros_lane_wants_platform freertos-posix; then
-        nros_lane_out_of_scope_note freertos "the POSIX-simulator fixtures: no freertos-posix coordinate in this run — skipping"
+        nros_lane_sibling_out_of_scope freertos "the POSIX-simulator fixtures: no freertos-posix coordinate in this run — skipping" freertos
         exit 0
     fi
     # The kernel source is the one thing this board still needs; lwIP is not.
@@ -296,7 +296,7 @@ build-fixture-extras:
     # other-board job) does not build the MPS2-AN385 C/C++ fixtures.
     source scripts/build/fixture-lane.sh
     if ! nros_lane_wants_platform freertos; then
-        nros_lane_out_of_scope_note freertos "the MPS2-AN385 C/C++ fixtures: no freertos coordinate in this run — skipping"
+        nros_lane_sibling_out_of_scope freertos "the MPS2-AN385 C/C++ fixtures: no freertos coordinate in this run — skipping" freertos-posix
         exit 0
     fi
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
