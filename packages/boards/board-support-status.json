@@ -32,7 +32,7 @@
       ],
       "book_run": "starters/linux-host.md#run-it-on-this-machine",
       "book_flash": null,
-      "page": "book/src/reference/boards/linux.md"
+      "page": "book/src/reference/board-support-levels.md#linux"
     },
     {
       "key": "nros-board-zephyr@ZephyrNativeSim",
@@ -66,7 +66,7 @@
       ],
       "book_run": "starters/zephyr-native-sim.md#run-it-on-this-machine",
       "book_flash": null,
-      "page": "book/src/reference/boards/zephyr-native-sim.md"
+      "page": "book/src/reference/board-support-levels.md#zephyr-native-sim"
     },
     {
       "key": "nros-board-mps3-an536-freertos@-",
@@ -90,7 +90,7 @@
       "board_keys": [],
       "book_run": null,
       "book_flash": null,
-      "page": "book/src/reference/boards/mps3-an536-freertos.md"
+      "page": "book/src/reference/board-support-levels.md#mps3-an536-freertos"
     },
     {
       "key": "nros-board-mps2-an385-freertos@FreertosMps2",
@@ -126,7 +126,7 @@
       "board_keys": [],
       "book_run": "starters/mps2-an385-freertos.md#run-it-in-qemu",
       "book_flash": null,
-      "page": "book/src/reference/boards/mps2-an385-freertos.md"
+      "page": "book/src/reference/board-support-levels.md#mps2-an385-freertos"
     },
     {
       "key": "nros-board-s32z270-freertos@-",
@@ -150,7 +150,7 @@
       "board_keys": [],
       "book_run": null,
       "book_flash": null,
-      "page": "book/src/reference/boards/s32z270-freertos.md"
+      "page": "book/src/reference/board-support-levels.md#s32z270-freertos"
     },
     {
       "key": "nros-board-nuttx-qemu@NuttxArm",
@@ -190,7 +190,7 @@
       ],
       "book_run": "starters/nuttx-arm.md#run-it-in-qemu",
       "book_flash": null,
-      "page": "book/src/reference/boards/nuttx-arm.md"
+      "page": "book/src/reference/board-support-levels.md#nuttx-arm"
     },
     {
       "key": "nros-board-threadx-linux@ThreadxLinux",
@@ -219,7 +219,7 @@
       "board_keys": [],
       "book_run": "starters/threadx-linux.md#run-it-on-this-machine",
       "book_flash": null,
-      "page": "book/src/reference/boards/threadx-linux.md"
+      "page": "book/src/reference/board-support-levels.md#threadx-linux"
     },
     {
       "key": "nros-board-freertos-posix@FreertosPosix",
@@ -251,7 +251,7 @@
       "board_keys": [],
       "book_run": "starters/freertos-posix.md#run-it-on-this-machine",
       "book_flash": null,
-      "page": "book/src/reference/boards/freertos-posix.md"
+      "page": "book/src/reference/board-support-levels.md#freertos-posix"
     },
     {
       "key": "nros-board-threadx-qemu-riscv64@ThreadxRiscv64",
@@ -280,7 +280,7 @@
       "board_keys": [],
       "book_run": "starters/threadx-riscv64.md#run-it-in-qemu",
       "book_flash": null,
-      "page": "book/src/reference/boards/threadx-qemu-riscv64.md"
+      "page": "book/src/reference/board-support-levels.md#threadx-qemu-riscv64"
     },
     {
       "key": "nros-board-mps2-an385@QemuBaremetal",
@@ -319,7 +319,7 @@
       "board_keys": [],
       "book_run": "starters/mps2-an385-bare-metal.md#run-it-in-qemu",
       "book_flash": null,
-      "page": "book/src/reference/boards/mps2-an385.md"
+      "page": "book/src/reference/board-support-levels.md#mps2-an385"
     },
     {
       "key": "nros-board-mps2-an385-zephyr@ZephyrQemuCortexM",
@@ -348,7 +348,7 @@
       "board_keys": [],
       "book_run": "starters/mps2-an385-zephyr.md#run-it-in-qemu",
       "book_flash": null,
-      "page": "book/src/reference/boards/mps2-an385-zephyr.md"
+      "page": "book/src/reference/board-support-levels.md#mps2-an385-zephyr"
     },
     {
       "key": "nros-board-nuttx-qemu@NuttxRiscv",
@@ -387,7 +387,7 @@
       ],
       "book_run": "starters/nuttx-riscv.md#run-it-in-qemu",
       "book_flash": null,
-      "page": "book/src/reference/boards/nuttx-riscv.md"
+      "page": "book/src/reference/board-support-levels.md#nuttx-riscv"
     },
     {
       "key": "nros-board-zephyr@Fvp",
@@ -413,7 +413,7 @@
       ],
       "book_run": null,
       "book_flash": null,
-      "page": "book/src/reference/boards/fvp.md"
+      "page": "book/src/reference/board-support-levels.md#fvp"
     },
     {
       "key": "s32k344-safety-island@-",
@@ -437,7 +437,7 @@
       "board_keys": [],
       "book_run": null,
       "book_flash": null,
-      "page": "book/src/reference/boards/s32k344-safety-island.md"
+      "page": "book/src/reference/board-support-levels.md#s32k344-safety-island"
     },
     {
       "key": "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi",
@@ -471,7 +471,7 @@
       ],
       "book_run": "starters/nucleo-f767zi.md#run-it-in-the-renode-twin",
       "book_flash": "starters/nucleo-f767zi.md#flash-the-board",
-      "page": "book/src/reference/boards/nucleo-f767zi-zephyr.md"
+      "page": "book/src/reference/board-support-levels.md#nucleo-f767zi-zephyr"
     },
     {
       "key": "nros-board-rpi-pico-w-zephyr@-",
@@ -497,7 +497,7 @@
       ],
       "book_run": null,
       "book_flash": null,
-      "page": "book/src/reference/boards/rpi-pico-w-zephyr.md"
+      "page": "book/src/reference/board-support-levels.md#rpi-pico-w-zephyr"
     },
     {
       "key": "px4-sitl@Px4",
@@ -523,7 +523,7 @@
       "board_keys": [],
       "book_run": "guide/platforms/px4.md#run-on-the-sitl-simulator",
       "book_flash": null,
-      "page": "book/src/reference/boards/px4-sitl.md"
+      "page": "book/src/reference/board-support-levels.md#px4-sitl"
     },
     {
       "key": "nros-board-common@-",

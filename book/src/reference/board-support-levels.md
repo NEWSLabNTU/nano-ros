@@ -11,27 +11,365 @@ What nano-ros can show for each board it knows about. Each level is derived from
 | Builds | a lane builds it; nothing boots it |
 | Not supported | nothing builds or boots it |
 
-A **witness** board runs its platform family's test matrix; a board that **inherits** shares the witness's code path and adds its own smoke evidence. Each board links to its evidence page.
+A **witness** board runs its platform family's test matrix; a board that **inherits** shares the witness's code path and adds its own smoke evidence.
 
-| Board | Status | Runs on | Breadth |
-|---|---|---|---|
-| [`nros-board-linux` (Linux)](boards/linux.md) | Verified on host (daily) | host executable | witness — Runtime: Pubsub, ExecutorBoundNode, CustomLink, Service, Action, Port, PortSmoke, PortMonitor, PortWorkspace, Params, Qos, CustomMsg, Safety, Logging, EntryPubsub, Lifecycle, Remap, BeforeBoot, RealtimeSchedTasks, Multihost in Rust, C, C++, Mixed over zenoh, cyclonedds, XRCE-DDS |
-| [`nros-board-zephyr` (ZephyrNativeSim)](boards/zephyr-native-sim.md) | Verified on host (daily) | host executable | witness — Runtime: Pubsub, Service, Action, ConnectBudget, Logging, EntryPubsub, Params, Lifecycle, Qos, Safety, RealtimeSchedTasks, Multihost in Rust, C, C++, Mixed over zenoh, cyclonedds, XRCE-DDS |
-| [`nros-board-mps3-an536-freertos`](boards/mps3-an536-freertos.md) | Builds | `qemu:mps3-an536` (twin) | inherited from FreertosMps2 — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
-| [`nros-board-mps2-an385-freertos` (FreertosMps2)](boards/mps2-an385-freertos.md) | Verified in emulator (daily) | `qemu:mps2-an385` | witness — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
-| [`nros-board-s32z270-freertos`](boards/s32z270-freertos.md) | Builds | `s32z270` (target) | inherited from FreertosMps2 — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
-| [`nros-board-nuttx-qemu` (NuttxArm)](boards/nuttx-arm.md) | Verified in emulator (daily) | `qemu:virt-armv7a` | witness — Runtime: Pubsub, TypedCarrier, Service, Action, Params, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++ over zenoh |
-| [`nros-board-threadx-linux` (ThreadxLinux)](boards/threadx-linux.md) | Verified on host (daily) | host executable | witness — Runtime: Pubsub, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
-| [`nros-board-freertos-posix` (FreertosPosix)](boards/freertos-posix.md) | Verified on host (daily) | host executable | inherited from FreertosMps2 — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds. Board-specific: Runtime: EntryPubsub in C, C++ over cyclonedds, zenoh |
-| [`nros-board-threadx-qemu-riscv64` (ThreadxRiscv64)](boards/threadx-qemu-riscv64.md) | Verified in emulator (daily) | `qemu:rv-virt` | inherited from ThreadxLinux — Runtime: Pubsub, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds. Board-specific: Runtime: Pubsub, Service, Errno, TypedCarrier, Params, Logging, EntryPubsub in Rust, C, C++ over zenoh, cyclonedds; build-only: Action |
-| [`nros-board-mps2-an385` (QemuBaremetal)](boards/mps2-an385.md) | Verified in emulator (daily) | `qemu:mps2-an385` | witness — Runtime: Pubsub, Service, Action, Logging, BoardEntryBoot in Rust, C, C++ over zenoh, XRCE-DDS |
-| [`nros-board-mps2-an385-zephyr` (ZephyrQemuCortexM)](boards/mps2-an385-zephyr.md) | Verified in emulator (daily) | `qemu:mps2-an385` | witness — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
-| [`nros-board-nuttx-qemu` (NuttxRiscv)](boards/nuttx-riscv.md) | Verified in emulator (daily) | `qemu:rv-virt` | inherited from NuttxArm — Runtime: Pubsub, TypedCarrier, Service, Action, Params, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++ over zenoh. Board-specific: Runtime: Pubsub, RealtimeSchedTasks in C, C++, Rust over zenoh; build-only: EntryPubsub |
-| [`nros-board-zephyr` (Fvp)](boards/fvp.md) | Boots, manual (2026-09-06); reads *Builds* from 2027-01-05 | `fvp:FVP_BaseR_AEMv8R` | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: build-only: Pubsub |
-| [`s32k344-safety-island`](boards/s32k344-safety-island.md) | Boots on hardware, manual (2026-10-26); reads *Builds* from 2027-02-24 | `mr-canhubk344` | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
-| [`nros-board-nucleo-f767zi-zephyr` (ZephyrNucleoF767zi)](boards/nucleo-f767zi-zephyr.md) | Boots, manual (2026-11-01); reads *Builds* from 2027-03-02 | `renode:nucleo_f767zi`, `nucleo-f767zi` (target) | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: Runtime: Pubsub in C over zenoh |
-| [`nros-board-rpi-pico-w-zephyr`](boards/rpi-pico-w-zephyr.md) | Not supported | `rpi-pico-w` (target) | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
-| [`px4-sitl` (Px4)](boards/px4-sitl.md) | Boots, manual (2026-11-03); reads *Builds* from 2027-03-04 | host executable | witness — Runtime: Pubsub in C++ over uORB |
+<a id="boards"></a>
+
+## Boards
+
+Pick a board for its evidence: what runs it, how often, what its tests cover and which pages of this book it runs in.
+
+| Board | Status | Runs on |
+|---|---|---|
+| [`nros-board-linux` (Linux)](#linux) | Verified on host (daily) | host executable |
+| [`nros-board-zephyr` (ZephyrNativeSim)](#zephyr-native-sim) | Verified on host (daily) | host executable |
+| [`nros-board-mps3-an536-freertos`](#mps3-an536-freertos) | Builds | `qemu:mps3-an536` (twin) |
+| [`nros-board-mps2-an385-freertos` (FreertosMps2)](#mps2-an385-freertos) | Verified in emulator (daily) | `qemu:mps2-an385` |
+| [`nros-board-s32z270-freertos`](#s32z270-freertos) | Builds | `s32z270` (target) |
+| [`nros-board-nuttx-qemu` (NuttxArm)](#nuttx-arm) | Verified in emulator (daily) | `qemu:virt-armv7a` |
+| [`nros-board-threadx-linux` (ThreadxLinux)](#threadx-linux) | Verified on host (daily) | host executable |
+| [`nros-board-freertos-posix` (FreertosPosix)](#freertos-posix) | Verified on host (daily) | host executable |
+| [`nros-board-threadx-qemu-riscv64` (ThreadxRiscv64)](#threadx-qemu-riscv64) | Verified in emulator (daily) | `qemu:rv-virt` |
+| [`nros-board-mps2-an385` (QemuBaremetal)](#mps2-an385) | Verified in emulator (daily) | `qemu:mps2-an385` |
+| [`nros-board-mps2-an385-zephyr` (ZephyrQemuCortexM)](#mps2-an385-zephyr) | Verified in emulator (daily) | `qemu:mps2-an385` |
+| [`nros-board-nuttx-qemu` (NuttxRiscv)](#nuttx-riscv) | Verified in emulator (daily) | `qemu:rv-virt` |
+| [`nros-board-zephyr` (Fvp)](#fvp) | Boots, manual (2026-09-06); reads *Builds* from 2027-01-05 | `fvp:FVP_BaseR_AEMv8R` |
+| [`s32k344-safety-island`](#s32k344-safety-island) | Boots on hardware, manual (2026-10-26); reads *Builds* from 2027-02-24 | `mr-canhubk344` |
+| [`nros-board-nucleo-f767zi-zephyr` (ZephyrNucleoF767zi)](#nucleo-f767zi-zephyr) | Boots, manual (2026-11-01); reads *Builds* from 2027-03-02 | `renode:nucleo_f767zi`, `nucleo-f767zi` (target) |
+| [`nros-board-rpi-pico-w-zephyr`](#rpi-pico-w-zephyr) | Not supported | `rpi-pico-w` (target) |
+| [`px4-sitl` (Px4)](#px4-sitl) | Boots, manual (2026-11-03); reads *Builds* from 2027-03-04 | host executable |
+
+<a id="linux"></a>
+
+### nros-board-linux (Linux)
+
+**Status:** Verified on host (daily)
+
+| | |
+|---|---|
+| Package | `nros-board-linux` |
+| Test-matrix platform | Linux |
+| Runs on | host executable |
+| Cadence | daily |
+| Breadth | witness — Runtime: Pubsub, ExecutorBoundNode, CustomLink, Service, Action, Port, PortSmoke, PortMonitor, PortWorkspace, Params, Qos, CustomMsg, Safety, Logging, EntryPubsub, Lifecycle, Remap, BeforeBoot, RealtimeSchedTasks, Multihost in Rust, C, C++, Mixed over zenoh, cyclonedds, XRCE-DDS |
+| Book | Run: [linux host](../starters/linux-host.md#run-it-on-this-machine) |
+| Book probe tracks | `linux` (weekly), `linux-rust` (weekly), `linux-c` (weekly), `platform-linux`, `custom-rmw` |
+
+The reference platform: the densest Runtime coverage of any target, all three RMWs. One board crate covers both the Linux host and the POSIX family driver.
+
+[Back to the board list](#boards)
+
+<a id="zephyr-native-sim"></a>
+
+### nros-board-zephyr (ZephyrNativeSim)
+
+**Status:** Verified on host (daily)
+
+| | |
+|---|---|
+| Package | `nros-board-zephyr` |
+| Test-matrix platform | ZephyrNativeSim |
+| Runs on | host executable |
+| Cadence | daily |
+| Breadth | witness — Runtime: Pubsub, Service, Action, ConnectBudget, Logging, EntryPubsub, Params, Lifecycle, Qos, Safety, RealtimeSchedTasks, Multihost in Rust, C, C++, Mixed over zenoh, cyclonedds, XRCE-DDS |
+| Book | Run: [zephyr native sim](../starters/zephyr-native-sim.md#run-it-on-this-machine) |
+| Book probe tracks | `zephyr` (weekly), `zephyr-cpp` (weekly), `zephyr-rust` (weekly), `platform-zephyr-native-sim`, `zephyr-west-app` (weekly), `zephyr-west-app-cpp` (weekly), `zephyr-west-app-rust` (weekly) |
+
+CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardware board is built by anything.
+
+[Back to the board list](#boards)
+
+<a id="mps3-an536-freertos"></a>
+
+### nros-board-mps3-an536-freertos
+
+**Status:** Builds
+
+| | |
+|---|---|
+| Package | `nros-board-mps3-an536-freertos` |
+| Test-matrix platform | — |
+| Runs on | `qemu:mps3-an536` (twin) |
+| Cadence | — |
+| Breadth | inherited from FreertosMps2 — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
+| Book | — |
+| Book probe tracks | — |
+
+[Back to the board list](#boards)
+
+<a id="mps2-an385-freertos"></a>
+
+### nros-board-mps2-an385-freertos (FreertosMps2)
+
+**Status:** Verified in emulator (daily)
+
+| | |
+|---|---|
+| Package | `nros-board-mps2-an385-freertos` |
+| Test-matrix platform | FreertosMps2 |
+| Runs on | `qemu:mps2-an385` |
+| Cadence | daily |
+| Breadth | witness — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
+| Book | Run: [mps2 an385 freertos](../starters/mps2-an385-freertos.md#run-it-in-qemu) |
+| Book probe tracks | `tutorial-c` (weekly), `tutorial-cpp` (weekly), `lab-qos-c` (weekly), `lab-qos-cpp` (weekly), `lab-tiers` (weekly), `lab-tiers-c` (weekly), `lab-tiers-cpp` (weekly), `freertos` (weekly), `freertos-c` (weekly), `freertos-cpp` (weekly), `platform-freertos` |
+
+[Back to the board list](#boards)
+
+<a id="s32z270-freertos"></a>
+
+### nros-board-s32z270-freertos
+
+**Status:** Builds
+
+| | |
+|---|---|
+| Package | `nros-board-s32z270-freertos` |
+| Test-matrix platform | — |
+| Runs on | `s32z270` (target) |
+| Cadence | — |
+| Breadth | inherited from FreertosMps2 — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
+| Book | — |
+| Book probe tracks | — |
+
+S32Z270 RTU Cortex-R52 (ASI phase-4 W5.b consumer). No matrix_platform: no witness exists for this board, and borrowing FreertosMps2's would claim its Runtime cells. Link-completeness is proven by the workspace cmake lane with the CRx_No_GIC default port.
+
+[Back to the board list](#boards)
+
+<a id="nuttx-arm"></a>
+
+### nros-board-nuttx-qemu (NuttxArm)
+
+**Status:** Verified in emulator (daily)
+
+| | |
+|---|---|
+| Package | `nros-board-nuttx-qemu` |
+| Test-matrix platform | NuttxArm |
+| Runs on | `qemu:virt-armv7a` |
+| Cadence | daily |
+| Breadth | witness — Runtime: Pubsub, TypedCarrier, Service, Action, Params, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++ over zenoh |
+| Build roads | workspace (the daily lane); guest-make (`nightly.yml:nuttx-make-road`) |
+| Book | Run: [nuttx arm](../starters/nuttx-arm.md#run-it-in-qemu) |
+| Book probe tracks | `nuttx-arm` (weekly), `nuttx-arm-cpp` (weekly), `nuttx-arm-rust` (weekly), `platform-nuttx` |
+
+[Back to the board list](#boards)
+
+<a id="threadx-linux"></a>
+
+### nros-board-threadx-linux (ThreadxLinux)
+
+**Status:** Verified on host (daily)
+
+| | |
+|---|---|
+| Package | `nros-board-threadx-linux` |
+| Test-matrix platform | ThreadxLinux |
+| Runs on | host executable |
+| Cadence | daily |
+| Breadth | witness — Runtime: Pubsub, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds |
+| Book | Run: [threadx linux](../starters/threadx-linux.md#run-it-on-this-machine) |
+| Book probe tracks | `threadx-linux` (weekly), `threadx-linux-c` (weekly), `threadx-linux-cpp` (weekly), `platform-threadx-linux` |
+
+[Back to the board list](#boards)
+
+<a id="freertos-posix"></a>
+
+### nros-board-freertos-posix (FreertosPosix)
+
+**Status:** Verified on host (daily)
+
+| | |
+|---|---|
+| Package | `nros-board-freertos-posix` |
+| Test-matrix platform | FreertosPosix |
+| Runs on | host executable |
+| Cadence | daily |
+| Breadth | inherited from FreertosMps2 — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds. Board-specific: Runtime: EntryPubsub in C, C++ over cyclonedds, zenoh |
+| Book | Run: [freertos posix](../starters/freertos-posix.md#run-it-on-this-machine) |
+| Book probe tracks | `freertos-posix`, `freertos-posix-rust`, `freertos-posix-cpp`, `freertos-posix-zenoh-rust`, `freertos-posix-zenoh`, `freertos-posix-zenoh-cpp`, `platform-freertos-posix` |
+
+[Back to the board list](#boards)
+
+<a id="threadx-qemu-riscv64"></a>
+
+### nros-board-threadx-qemu-riscv64 (ThreadxRiscv64)
+
+**Status:** Verified in emulator (daily)
+
+| | |
+|---|---|
+| Package | `nros-board-threadx-qemu-riscv64` |
+| Test-matrix platform | ThreadxRiscv64 |
+| Runs on | `qemu:rv-virt` |
+| Cadence | daily |
+| Breadth | inherited from ThreadxLinux — Runtime: Pubsub, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds. Board-specific: Runtime: Pubsub, Service, Errno, TypedCarrier, Params, Logging, EntryPubsub in Rust, C, C++ over zenoh, cyclonedds; build-only: Action |
+| Book | Run: [threadx riscv64](../starters/threadx-riscv64.md#run-it-in-qemu) |
+| Book probe tracks | `threadx-riscv64` (weekly), `threadx-riscv64-c` (weekly), `threadx-riscv64-cpp` (weekly), `platform-threadx-riscv64` |
+
+All three Action rows are BuildOnly by a deliberate wall-clock choice (182.5), not by breakage.
+
+[Back to the board list](#boards)
+
+<a id="mps2-an385"></a>
+
+### nros-board-mps2-an385 (QemuBaremetal)
+
+**Status:** Verified in emulator (daily)
+
+| | |
+|---|---|
+| Package | `nros-board-mps2-an385` |
+| Test-matrix platform | QemuBaremetal |
+| Runs on | `qemu:mps2-an385` |
+| Cadence | daily |
+| Breadth | witness — Runtime: Pubsub, Service, Action, Logging, BoardEntryBoot in Rust, C, C++ over zenoh, XRCE-DDS |
+| Book | Run: [mps2 an385 bare metal](../starters/mps2-an385-bare-metal.md#run-it-in-qemu) |
+| Book probe tracks | `first-project`, `tutorial-2`, `tutorial-3`, `tutorial-4`, `tutorial-5`, `tutorial-6`, `tutorial-7`, `tutorial-8`, `tutorial-9`, `tutorial-10`, `lab-qos` (weekly), `baremetal` (weekly), `offline` (weekly), `platform-baremetal` |
+
+One crate; the book's entry shape is direct execution (the `board-entry` feature).
+
+[Back to the board list](#boards)
+
+<a id="mps2-an385-zephyr"></a>
+
+### nros-board-mps2-an385-zephyr (ZephyrQemuCortexM)
+
+**Status:** Verified in emulator (daily)
+
+| | |
+|---|---|
+| Package | `nros-board-mps2-an385-zephyr` |
+| Test-matrix platform | ZephyrQemuCortexM |
+| Runs on | `qemu:mps2-an385` |
+| Cadence | daily |
+| Breadth | witness — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
+| Book | Run: [mps2 an385 zephyr](../starters/mps2-an385-zephyr.md#run-it-in-qemu) |
+| Book probe tracks | `zephyr-mps2`, `zephyr-mps2-c`, `zephyr-mps2-cpp`, `platform-zephyr-mps2` |
+
+C, C++ and Rust pubsub are Runtime; service and action are BuildOnly until the runner's peer half lands. It carries a live-peer interop cell against a host peer over zenoh. Daily rather than per merge, because the merge lane is host-only and this board needs QEMU.
+
+[Back to the board list](#boards)
+
+<a id="nuttx-riscv"></a>
+
+### nros-board-nuttx-qemu (NuttxRiscv)
+
+**Status:** Verified in emulator (daily)
+
+| | |
+|---|---|
+| Package | `nros-board-nuttx-qemu` |
+| Test-matrix platform | NuttxRiscv |
+| Runs on | `qemu:rv-virt` |
+| Cadence | daily |
+| Breadth | inherited from NuttxArm — Runtime: Pubsub, TypedCarrier, Service, Action, Params, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++ over zenoh. Board-specific: Runtime: Pubsub, RealtimeSchedTasks in C, C++, Rust over zenoh; build-only: EntryPubsub |
+| Build roads | workspace (the daily lane); guest-make (`nightly.yml:nuttx-make-road`) |
+| Book | Run: [nuttx riscv](../starters/nuttx-riscv.md#run-it-in-qemu) |
+| Book probe tracks | `nuttx-riscv` (weekly), `nuttx-riscv-cpp` (weekly), `nuttx-riscv-rust` (weekly) |
+
+HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveOuts and every EntryPubsub row is BuildOnly.
+
+[Back to the board list](#boards)
+
+<a id="fvp"></a>
+
+### nros-board-zephyr (Fvp)
+
+**Status:** Boots, manual (2026-09-06); reads *Builds* from 2027-01-05
+
+| | |
+|---|---|
+| Package | `nros-board-zephyr` |
+| Test-matrix platform | Fvp |
+| Runs on | `fvp:FVP_BaseR_AEMv8R` |
+| Cadence | manual, last run 2026-09-06 |
+| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: build-only: Pubsub |
+| Book | — |
+| Book probe tracks | — |
+
+Runtime is run by a maintainer, hence `cadence = "manual"`. The model is not licence-gated: `nros setup --tool arm-fvp` fetches it from a pinned Arm download. CI does not run it because of cost and x86_64-only hosting. It is the target of the Autoware safety-island reference consumer.
+
+[Back to the board list](#boards)
+
+<a id="s32k344-safety-island"></a>
+
+### s32k344-safety-island
+
+**Status:** Boots on hardware, manual (2026-10-26); reads *Builds* from 2027-02-24
+
+| | |
+|---|---|
+| Package | `s32k344-safety-island` (in `simple-autoware-safety-island`, outside this tree) |
+| Test-matrix platform | — |
+| Runs on | `mr-canhubk344` |
+| Cadence | manual, last run 2026-10-26 |
+| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
+| Book | — |
+| Book probe tracks | — |
+
+NXP S32K344 (Cortex-M7) on the MR-CANHUBK344, Zephyr, behind a 921,600-baud UART zenoh link to an island gateway router. Verified on hardware on 2026-10-26. The board package belongs to the downstream island project.
+
+[Back to the board list](#boards)
+
+<a id="nucleo-f767zi-zephyr"></a>
+
+### nros-board-nucleo-f767zi-zephyr (ZephyrNucleoF767zi)
+
+**Status:** Boots, manual (2026-11-01); reads *Builds* from 2027-03-02
+
+| | |
+|---|---|
+| Package | `nros-board-nucleo-f767zi-zephyr` |
+| Test-matrix platform | ZephyrNucleoF767zi |
+| Runs on | `renode:nucleo_f767zi`, `nucleo-f767zi` (target) |
+| Cadence | manual, last run 2026-11-01 |
+| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: Runtime: Pubsub in C over zenoh |
+| Book | Run: [nucleo f767zi](../starters/nucleo-f767zi.md#run-it-in-the-renode-twin); Flash: [nucleo f767zi](../starters/nucleo-f767zi.md#flash-the-board) |
+| Book probe tracks | `flash-a-real-board`, `flash-a-real-board-bench`, `zephyr-west-app-flash` (weekly), `renode-nucleo` (weekly), `renode-nucleo-rust` (weekly), `renode-nucleo-cpp` (weekly), `nucleo-f767zi-bench` |
+
+ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7. Its Renode twin boots the C talker over serial (USART3, the ST-LINK VCP) and over ethernet. Its RAM budget, `max_large_subscribers = 0`, is the board descriptor's `[knobs.zenoh]`, which every image inherits; the ethernet image adds its own knobs (see the descriptor header).
+
+[Back to the board list](#boards)
+
+<a id="rpi-pico-w-zephyr"></a>
+
+### nros-board-rpi-pico-w-zephyr
+
+**Status:** Not supported
+
+| | |
+|---|---|
+| Package | `nros-board-rpi-pico-w-zephyr` |
+| Test-matrix platform | — |
+| Runs on | `rpi-pico-w` (target) |
+| Cadence | — |
+| Breadth | inherited from ZephyrQemuCortexM — Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action |
+| Book | — |
+| Book probe tracks | — |
+
+Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, serial only: zenoh over UART0, with the console on UART1, so the bench needs a USB-to-UART adapter. It is a real board with no emulator twin, flashed by UF2 with `nros flash`. Nothing has booted it on hardware yet, so nano-ros has no evidence it runs today. The image needs `CONFIG_TICKLESS_KERNEL=n` (in the board's prj.conf) and five RAM knobs, which are the descriptor's `[knobs]` and every image inherits.
+
+[Back to the board list](#boards)
+
+<a id="px4-sitl"></a>
+
+### px4-sitl (Px4)
+
+**Status:** Boots, manual (2026-11-03); reads *Builds* from 2027-03-04
+
+| | |
+|---|---|
+| Package | `px4-sitl` (in `PX4-Autopilot`, outside this tree) |
+| Test-matrix platform | Px4 |
+| Runs on | host executable |
+| Cadence | manual, last run 2026-11-03 |
+| Breadth | witness — Runtime: Pubsub in C++ over uORB |
+| Book | Run: [px4](../guide/platforms/px4.md#run-on-the-sitl-simulator) |
+| Book probe tracks | `px4` (weekly) |
+
+PX4's own SITL board, `px4_sitl_default`, built from PX4-Autopilot with the nano-ros uORB example as an external module. A maintainer ran it on the date shown: a stock PX4 `listener` read a nano-ros publication over uORB, and each work-queue tier ran only for its deadlines and arrivals (arrival to dispatch 14 to 29 µs). The nightly CI job that runs the same tests is not yet passing, so the cadence stays manual. Real PX4 flight controllers build from the same module, but nano-ros has no run on one.
+
+[Back to the board list](#boards)
 
 ## Infrastructure
 

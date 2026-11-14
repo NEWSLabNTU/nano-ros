@@ -6,7 +6,7 @@ list of diagnostic codes (`NROS-NNNN`); every other view is generated from it.
 This gate asks four things:
 
 1. every generated view is fresh: `codes.lock` and the book reference under
-   `book/src/reference/diagnostics/` (`nros-diagnostics-gen --check`, which
+   `book/src/reference/diagnostic-codes.md` (`nros-diagnostics-gen --check`, which
    also refuses a book page no live code generates);
 2. `codes.lock` keeps every code and name it had at the baseline: a row may
    be added or retired, never removed, renamed or renumbered (D3). The
@@ -50,7 +50,9 @@ NAME = "check-diagnostics"
 CRATE = "packages/tooling/nros-diagnostic-codes"
 LOCK = f"{CRATE}/codes.lock"
 EXPLAIN = f"{CRATE}/explain"
-BOOK = "book/src/reference/diagnostics"
+BOOK = "book/src/reference/diagnostic-codes.md"
+# Where the book had one page per code; any file left there is an orphan.
+OLD_BOOK_DIR = "book/src/reference/diagnostics"
 
 
 def parse_lock(text: str) -> dict[str, str]:
@@ -195,9 +197,12 @@ def self_test() -> None:
             rc, out = gen_check(root)
             assert rc != 0, f"self-test: planted `{name}` passed: {out}"
 
-        planted("stale-view", lambda r: (r / BOOK / "NROS-0001.md").write_text("edited by hand\n"))
+        planted("stale-view", lambda r: (r / BOOK).write_text("edited by hand\n"))
         planted("missing-view", lambda r: (r / LOCK).unlink())
-        planted("orphan-page", lambda r: (r / BOOK / "NROS-9999.md").write_text("# stray\n"))
+        def orphan(r: pathlib.Path) -> None:
+            (r / OLD_BOOK_DIR).mkdir(parents=True, exist_ok=True)
+            (r / OLD_BOOK_DIR / "NROS-9999.md").write_text("# stray\n")
+        planted("orphan-page", orphan)
         planted("orphan-explanation", lambda r: (r / EXPLAIN / "NROS-9999.md").write_text("stray\n"))
     # Check 4 cannot be planted without compiling a crate: a live row with
     # `surfaces: []` is refused by `diagnostics!` itself (its `$(..),+`).

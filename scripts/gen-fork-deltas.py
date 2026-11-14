@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""phase-523 W4 — one delta page per fork the tree carries.
+"""phase-523 W4 — what each fork the tree carries adds to its upstream.
 
 Reads `docs/reference/forks/forks.toml` and, for each `[[fork]]`, asks GitHub's
 compare API for the commits the pinned fork commit carries on top of the named
-upstream ref, then writes `book/src/reference/forks/<name>.md` and the index page
-`book/src/reference/forks/index.md`. The pin is the gitlink the superproject
-records (`git ls-files -s <path>`), never a submodule checkout, so the page
-describes exactly what a clone builds.
+upstream ref, then writes one page, `book/src/reference/forks.md`: an index of
+the forks, then one section per fork (`#<name>`), between
+`<!-- fork: <name> -->` and `<!-- /fork: <name> -->`. Regenerating one fork
+replaces its section and keeps the others as they are. The pin is the gitlink
+the superproject records (`git ls-files -s <path>`), never a submodule
+checkout, so the page describes exactly what a clone builds. (The forks had a
+page each under reference/forks/ until they were folded into this one;
+book/book.toml redirects those URLs.)
 
 Needs `gh` (authenticated) and the network; run it after moving a fork pin.
 `just check fork-deltas` is the offline half: it refuses a page whose pin no
 longer matches the gitlink.
 
-  python3 scripts/gen-fork-deltas.py            # write every page
-  python3 scripts/gen-fork-deltas.py zenoh-pico # one fork (and the index)
+  python3 scripts/gen-fork-deltas.py            # every fork's section
+  python3 scripts/gen-fork-deltas.py zenoh-pico # one fork's section (and the index)
 """
 
 from __future__ import annotations
@@ -35,7 +39,7 @@ TABLE = ROOT / "docs/reference/forks/forks.toml"
 # code, so a reviewer reads them without a checkout. The user book carries no
 # internal id (`check-user-surface-ids`), so each commit subject is rendered
 # through `user_subject`; the row still links to the full commit.
-PAGES = ROOT / "book/src/reference/forks"
+PAGE = ROOT / "book/src/reference/forks.md"
 
 # The forbidden tokens, spelled as `check-user-surface-ids` spells them.
 _ID = re.compile(
@@ -99,15 +103,22 @@ def compare(upstream: str, base: str, fork: str, pin: str) -> dict:
     return json.loads(out)
 
 
+def section_marks(name: str) -> tuple[str, str]:
+    return f"<!-- fork: {name} -->", f"<!-- /fork: {name} -->"
+
+
 def render(row: dict, pin: str, fork: str, branch: str, cmp: dict) -> str:
+    """One fork's section of the page, between its markers."""
     commits = cmp.get("commits", [])
     files = cmp.get("files", [])
     adds = sum(f.get("additions", 0) for f in files)
     dels = sum(f.get("deletions", 0) for f in files)
     base_sha = cmp["merge_base_commit"]["sha"]
+    begin, end = section_marks(row["name"])
     lines = [
-        STAMP, "",
-        f"# The {row['name']} fork: what it carries", "",
+        begin, "",
+        f'<a id="{row["name"]}"></a>', "",
+        f"## The {row['name']} fork", "",
         f"nano-ros builds `{row['path']}` from the fork "
         f"[{fork}](https://github.com/{fork}), branch `{branch}`, not from upstream "
         f"[{row['upstream']}](https://github.com/{row['upstream']}).", "",
@@ -122,14 +133,14 @@ def render(row: dict, pin: str, fork: str, branch: str, cmp: dict) -> str:
     ]
     if row.get("notes"):
         lines += [f"Why each patch exists, and what retires it: "
-                  f"[{row['notes']}](../../internals/rmw/{row['notes'].removesuffix('.md')}.html).", ""]
+                  f"[{row['notes']}](../internals/rmw/{row['notes'].removesuffix('.md')}.html).", ""]
     if cmp["behind_by"]:
         lines += [f"The pin is {cmp['behind_by']} upstream commit(s) behind `{row['base']}`'s "
                   "tip; the delta below is against the merge base.", ""]
     # The subjects are quoted from the fork; one can name a `just` recipe the
     # fork itself carries, which `check-book-no-just` reads as an instruction
     # unless the table says it is quoted (the marker does not render).
-    lines += ["## Commits on top of upstream", "",
+    lines += ["### Commits on top of upstream", "",
               "| commit | subject <!-- no-just-ok: quoted commit subjects --> |", "| --- | --- |"]
     for c in commits:
         subject = user_subject(c["commit"]["message"].splitlines()[0]).replace("|", "\\|")
@@ -147,32 +158,48 @@ def render(row: dict, pin: str, fork: str, branch: str, cmp: dict) -> str:
               f"base={row['base']}",
               f"head={fork.replace('/', ':')}:{pin}",
               f"gh api \"repos/{row['upstream']}/compare/$base...$head\" --jq '.ahead_by'",
-              "```", ""]
+              "```", "", "[Back to the list of forks](#forks-nano-ros-carries)", "", end]
     return "\n".join(lines)
 
 
 def render_index(table: dict) -> str:
     lines = [STAMP, "", "# Forks nano-ros carries", "",
-             "Every submodule that tracks a patch branch, and the page that lists its "
-             "patches against a pinned upstream ref. Repositories nano-ros authors "
-             "itself have no upstream and no page.", "",
-             "| fork | upstream | base |", "| --- | --- | --- |"]
+             "Every submodule that tracks a patch branch, and what it adds to a pinned "
+             "upstream ref: one section per fork below. Repositories nano-ros authors "
+             "itself have no upstream and no section.", "",
+             "| Fork | Upstream | Base |", "| --- | --- | --- |"]
     for row in table.get("fork", []):
-        lines.append(f"| [{row['name']}]({row['name']}.md) | `{row['upstream']}` | `{row['base']}` |")
+        lines.append(f"| [{row['name']}](#{row['name']}) | `{row['upstream']}` | `{row['base']}` |")
     owner = table.get("maintainer_account")
     if owner:
         lines += ["", f"The forks whose URL names `{owner}` are on the nano-ros maintainer's "
-                  "own GitHub account. Each one's shipped line is the branch its page "
+                  "own GitHub account. Each one's shipped line is the branch its section "
                   "names, and every patch on it is listed there against the pinned "
                   "upstream ref."]
-    lines += ["", "Authored by nano-ros (no delta page): "
+    lines += ["", "Authored by nano-ros (no section): "
               + ", ".join(f"`{r['path']}`" for r in table.get("ours", [])) + ".", ""]
     return "\n".join(lines)
+
+
+def sections(text: str) -> dict[str, str]:
+    """{fork name: its section, markers included} of the current page."""
+    return {m.group(1): m.group(0) for m in re.finditer(
+        r"<!-- fork: (\S+) -->\n.*?<!-- /fork: \1 -->", text, re.S)}
+
+
+def assemble(table: dict, have: dict[str, str]) -> str:
+    """The page: the index, then each fork's section in the table's order."""
+    parts = [render_index(table).rstrip("\n")]
+    for row in table.get("fork", []):
+        if row["name"] in have:
+            parts.append(have[row["name"]])
+    return "\n\n".join(parts) + "\n"
 
 
 def main() -> int:
     table = tomllib.loads(TABLE.read_text())
     only = set(sys.argv[1:])
+    have = sections(PAGE.read_text()) if PAGE.is_file() else {}
     for row in table.get("fork", []):
         if only and row["name"] not in only:
             continue
@@ -180,10 +207,10 @@ def main() -> int:
         url, branch = submodule_url(row["path"])
         fork = github_repo(url)
         cmp = compare(row["upstream"], row["base"], fork, pin)
-        (PAGES / f"{row['name']}.md").write_text(render(row, pin, fork, branch, cmp))
+        have[row["name"]] = render(row, pin, fork, branch, cmp)
         print(f"{row['name']}: {cmp['ahead_by']} commit(s) on {row['base']}, "
               f"{cmp['behind_by']} behind")
-    (PAGES / "index.md").write_text(render_index(table))
+    PAGE.write_text(assemble(table, have))
     return 0
 
 

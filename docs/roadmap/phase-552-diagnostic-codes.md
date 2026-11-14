@@ -151,7 +151,7 @@ Notes:
 `nros-diagnostics-gen` writes four views:
 
 - the book reference: an index plus one page per code, under
-  `book/src/reference/diagnostics/`;
+  `book/src/reference/diagnostic-codes.md` (folded from one page per code, 2026-11-14);
 - `cmake/NanoRosDiagnostics.generated.cmake`, which provides
   `nros_refuse(<Name> …)` and refuses an unknown name;
 - `nros/diagnostics.h`, with `NROS_DIAG_<NAME>` constants;

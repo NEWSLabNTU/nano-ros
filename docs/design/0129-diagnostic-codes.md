@@ -182,7 +182,7 @@ Each view's gate re-runs the generator with `--check`.
 | view | path | consumer |
 | --- | --- | --- |
 | explain text | compiled into the CLI (the crate is a dependency) | `nros explain` (D5), offline |
-| book reference | `book/src/reference/diagnostics/` (an index, plus one page per code) | readers; RFC-0124's reference section |
+| book reference | `book/src/reference/diagnostic-codes.md` (one page: an index, then a section per code; amended 2026-11-14 from one page per code, by user ruling) | readers; RFC-0124's reference section |
 | CMake | `cmake/NanoRosDiagnostics.generated.cmake` | `nros_refuse(<Name> …)` looks up the code by name, and an unknown name is itself a configure error |
 | C header | `packages/api/nros-c/include/nros/diagnostics.h` | C/C++ runtime log sites (`#define NROS_DIAG_<NAME> "NROS-NNNN"`) |
 | colcon | the colcon plugin's generated `diagnostics.py` | the plugin's refusals |

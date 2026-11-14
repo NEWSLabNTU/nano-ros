@@ -58,7 +58,8 @@ pub struct Row {
     pub board_keys: Vec<String>,
     pub book_run: Option<String>,
     pub book_flash: Option<String>,
-    /// The evidence page, relative to the SDK root.
+    /// The board's evidence, relative to the SDK root: its section of the
+    /// Board Support Levels page (`…/board-support-levels.md#<board>`).
     pub page: Option<String>,
 }
 
@@ -110,17 +111,22 @@ impl Row {
     }
 
     /// Does `name` pick this row? Its key, its crate, the crate without the
-    /// `nros-board-` prefix, or its evidence page's stem.
+    /// `nros-board-` prefix, or the name of its evidence: the section anchor
+    /// (`board-support-levels.md#fvp`), or a page's stem when there is none.
     pub fn answers_to(&self, name: &str) -> bool {
         self.key == name
             || self.krate == name
             || self.krate.strip_prefix("nros-board-") == Some(name)
-            || self
-                .page
-                .as_deref()
-                .and_then(|p| Path::new(p).file_stem())
-                .and_then(|s| s.to_str())
-                == Some(name)
+            || self.page.as_deref().and_then(evidence_name) == Some(name)
+    }
+}
+
+/// The name a board's evidence goes by: the anchor of its section on the
+/// Board Support Levels page, or the stem of a page with no anchor.
+fn evidence_name(page: &str) -> Option<&str> {
+    match page.split_once('#') {
+        Some((_, anchor)) => Some(anchor),
+        None => Path::new(page).file_stem().and_then(|s| s.to_str()),
     }
 }
 
@@ -385,7 +391,7 @@ mod tests {
             board_keys: vec!["fvp-aemv8r-smp".into()],
             book_run: None,
             book_flash: None,
-            page: Some("book/src/reference/boards/fvp.md".into()),
+            page: Some("book/src/reference/board-support-levels.md#fvp".into()),
         }
     }
 

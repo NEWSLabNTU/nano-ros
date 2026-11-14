@@ -9,7 +9,7 @@ with `west build`, run it on `native_sim` against a ROS 2 router, and build the
 same application for a real board. The application keeps its own
 `CMakeLists.txt` and `prj.conf`; nano-ros joins it as one more Zephyr module.
 The steps run on the `native_sim` board; its status is on
-[its support page](../../reference/boards/zephyr-native-sim.md).
+[its support evidence](../../reference/board-support-levels.md#zephyr-native-sim).
 
 ## Before you start
 
