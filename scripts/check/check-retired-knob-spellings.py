@@ -50,7 +50,7 @@ holds TOML, through the inline `env = { .. }` rule, which is file-kind blind.
 
 Exempt: the registry and its generated tables (the error table), its
 generator, this gate, history (phase docs, archived issues, the changelog),
-the book's retired-names page, vendored trees — any LINE that says the
+vendored trees — any LINE that says the
 spelling is "retired" (a refusal test, or prose naming the old name as old),
 and the lines between a `nros-c-macro-names: begin` and `... end` comment: a
 table of C macro NAMES a build script hands the C compiler
@@ -85,7 +85,6 @@ ALLOWED = {
     "cmake/NanoRosKnobRegistry.cmake",
     "scripts/gen-knob-registry.py",
     "scripts/check/check-retired-knob-spellings.py",
-    "book/src/migrating/retired-names.md",
     "book/src/reference/deprecated-names.md",
     "docs/issues/open.md",
 }

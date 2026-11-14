@@ -143,16 +143,6 @@ cli-reference:
 rclcpp-examples-table:
     @python3 scripts/gen-rclcpp-examples-table.py --check
 
-# phase-537 W12 (RFC-0124 Principle 9) — `migrating/retired-names` restates
-# two lists the CLI keeps: the retired and removed board words
-# (`nros-entry-lower`'s RETIRED_BOARD_KEYS / REMOVED_BOARD_KEYS) and the old
-# user-tier command spellings (`user::ALIASES`). Both tables are rendered
-# from that source between markers, so an alias or a retired board the CLI
-# adds cannot be missing from the page. Buildless: it reads the Rust source.
-[private]
-retired-names:
-    @python3 scripts/gen-retired-names.py --check
-
 # phase-537 W11 (RFC-0124 Principle 9) — `reference/system-toml` is hand-kept
 # (the CLI's schema documents its keys for contributors), so its `[image.<id>]`
 # key set is held to the schema instead: every key `ImageBlock` deserializes is
@@ -164,8 +154,7 @@ system-toml-keys:
 # phase-517 W1 — every board the book names is one `nros` accepts: an index
 # `[board.*]` key or a board descriptor's `names` alias, both DERIVED per run.
 # The retired host-board words (`RETIRED_BOARD_KEYS`, harvested from
-# nros-entry-lower) appear as a board only in `reference/retired-names.md`, and
-# a full board list is a generated `board-names` block (`--write` refreshes
+# nros-entry-lower) never appear as a board, and a full board list is a generated `board-names` block (`--write` refreshes
 # it). The book said `nros setup native` for weeks after phase-500 refused it,
 # and listed a `stm32f4` key the index never had. Its self-test (a planted
 # `nros setup native` must fail) runs on every call. Buildless, ~0.2 s.

@@ -68,8 +68,7 @@ from its image's `domain_id` and `locator` keys.
   platform layer under it is POSIX, but the board pins a sched task to a CPU
   with `sched_setaffinity` and `cpu_set_t`, which macOS, Windows and FreeBSD
   lack. No other spelling names this board: an image or a `nros new --board`
-  that uses one is refused with a hint naming `linux`. See
-  [Retired names](../../migrating/retired-names.md#retired-board-names).
+  that uses one is refused with a hint naming `linux`.
 - **The image is a host process.** It uses the host's sockets and network
   stack, and its console is the process's standard output. There is no
   emulator and nothing to flash.

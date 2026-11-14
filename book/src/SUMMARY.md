@@ -144,4 +144,3 @@
 # Releases
 
 - [Migrating from older releases](./migrating/from-older-releases.md)
-- [Retired names](./migrating/retired-names.md)

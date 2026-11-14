@@ -40,6 +40,14 @@ python3 scripts/check-book-audience.py --charter
    in prose. RFC numbers appear only in a closing "Design background".
    **Gated** (rules D and `check-user-surface-ids` refuse).
 
+**The current release only.** The book describes the release it is
+published from, and that release keeps rolling. It keeps no list of retired
+names: the CLI refuses an old variable, board, knob or command spelling and
+names the one to use. A removal that needs more than a rename (an install
+layout, a board family) gets a section in Migrating from older releases.
+When nano-ros publishes LTS releases, the book will be versioned per release,
+with a migration page for each.
+
 ### How it is organized
 
 6. **Sections follow what the reader is doing:** Start here, Get started on
