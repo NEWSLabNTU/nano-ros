@@ -30,18 +30,17 @@ Subjects, all checked on every run:
   ordinary, successful `cargo build` of a user's image prints. A build
   script's PANIC text (a literal handed to `panic!`, `unreachable!`,
   `.expect(`, or an `assert!`'s message, directly or through `format!`) is
-  read too, as a counted RATCHET (below): ruling A of issue 2443 covers a
+  read too, under the same zero rule: ruling A of issue 2443 covers a
   build that stops. A warning whose text is assembled away from its print (a `Vec` of warnings
   printed later) is not seen: a known gap, stated rather than claimed;
 * every string literal of the CLI LIBRARY: `nros-cli-core/src` outside
   `cmd/`, and `cargo-nano-ros/src` (issue 2443). Its refusals stop a user's
   build, and its generated files land in the user's tree. Comments, doc
   comments and test-only code (a `#[cfg(test)]` module, inline or a file of
-  its own) are not read. A RATCHET, not baseline zero: the ids present when
-  the subject was added are counted per file in `RATCHET_BASELINE`, and a count
-  may only fall, recorded in the change that lowers it (`scripts/lib/
-  ratchet.py`). The build-script panic texts above share that baseline file,
-  keyed by their own paths. `--update-ratchet` rewrites it;
+  its own) are not read. Baseline zero, like every other subject: this
+  started as a per-file counted ratchet and, once issue 2443's sweep emptied
+  it, became a hard rule, so a new id fails with its file and line rather
+  than waiting on a count nobody watches;
 * the messages of the colcon plugin (issue 2443),
   `packages/cli/colcon-cargo-ros2/colcon_nano_ros/`: every Python string
   literal (f-string parts included) that is not a docstring. A user's
@@ -65,7 +64,7 @@ NOT VERIFIED through the skip ledger (issue 1043's middle outcome), never a
 quiet pass. The source and book subjects need nothing.
 
 Forbidden tokens: `phase-NNN`, `Phase NNN`, `issue NNNN`, `#NNNN`, `RFC-NNNN`.
-Baseline zero, no allowlist, except the counted CLI-library ratchet above. `--self-test` runs both directions of every rule
+Baseline zero, no allowlist. `--self-test` runs both directions of every rule
 and runs first on every check.
 """
 
@@ -73,7 +72,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import json
 import os
 import re
 import subprocess
@@ -87,7 +85,6 @@ import book_contributor  # noqa: E402
 import book_pages  # noqa: E402
 import check_skip  # noqa: E402
 import comments  # noqa: E402
-from ratchet import fell_instructions, judge  # noqa: E402
 
 NAME = "check-user-surface-ids"
 CMD_DIR = "packages/cli/nros-cli-core/src/cmd"
@@ -212,13 +209,14 @@ def source_hits() -> list[str]:
     return bad
 
 
-# --- the CLI library (a counted ratchet) -----------------------------------
+# --- the CLI library ---------------------------------------------------------
 
 # Issue 2443, user ruling 2026-11-12 (option A): a refusal names what, where
 # and how to fix, never an id. These crates held ids when the subject was
-# added, so it starts as a per-file count that may only fall.
+# added; it ran as a per-file ratchet until the sweep reached zero, and is
+# baseline zero since (no counted baseline file: one that reaches zero and
+# stays a ratchet can regress unwatched).
 CLI_LIBRARY = ["packages/cli/nros-cli-core/src", "packages/cli/cargo-nano-ros/src"]
-RATCHET_BASELINE = ROOT / ".config" / "user-surface-ids-ratchet.json"
 TEST_MOD_DECL = re.compile(r"#\[cfg\(test\)\]\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+(\w+)\s*;")
 
 
@@ -264,47 +262,16 @@ def cli_library_sites() -> dict[str, list[str]]:
     return found
 
 
-def ratchet_sites() -> dict[str, list[str]]:
+def library_sites() -> dict[str, list[str]]:
     found = cli_library_sites()
     for rel, sites in build_script_panic_sites().items():
         found.setdefault(rel, []).extend(sites)
     return found
 
 
-def ratchet_hits() -> list[str]:
-    found = ratchet_sites()
-    now = {k: len(v) for k, v in found.items()}
-    try:
-        base = json.loads(RATCHET_BASELINE.read_text())["counts"]
-    except FileNotFoundError:
-        return [f"{RATCHET_BASELINE.relative_to(ROOT)}: missing; write it with --update-ratchet"]
-    rose, fell = judge(now, base)
-    bad = []
-    for m in rose:
-        bad.append(f"{m.key}: {m.was} -> {m.now} id(s); a new one is among:")
-        bad += [f"    {site}" for site in found.get(m.key, [])]
-    if fell:
-        bad += fell_instructions(
-            fell, str(RATCHET_BASELINE.relative_to(ROOT)),
-            lambda k, n: f'"{k}": {n}' if n else None,
-            "python3 scripts/check/check-user-surface-ids.py --update-ratchet",
-        )
-    return bad
-
-
-def write_ratchet() -> int:
-    now = {k: len(v) for k, v in sorted(ratchet_sites().items())}
-    RATCHET_BASELINE.write_text(json.dumps({
-        "_comment": (
-            "Internal ids (issue/RFC/phase) in the CLI library's string literals and "
-            "in build-script panic texts, per file -- see "
-            "scripts/check/check-user-surface-ids.py. A SHRINKING "
-            "backlog (issue 2443): move each id to a source comment and lower the count."
-        ),
-        "counts": now,
-    }, indent=2) + "\n")
-    print(f"{NAME}: ratchet baseline written -- {sum(now.values())} id(s) in {len(now)} file(s).")
-    return 0
+def library_hits() -> list[str]:
+    """Every id in a CLI-library string or a build-script panic text, by file:line."""
+    return [site for sites in library_sites().values() for site in sites]
 
 
 # --- build-script warnings --------------------------------------------------
@@ -999,19 +966,15 @@ def self_test() -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--self-test", action="store_true")
-    ap.add_argument("--update-ratchet", action="store_true",
-                    help="rewrite the counted ratchet baseline from the tree")
     ap.add_argument("--cli", help="the nros binary to render (default: the in-tree build)")
     args = ap.parse_args()
     self_test()
     if args.self_test:
         print(f"{NAME}: self-test OK")
         return 0
-    if args.update_ratchet:
-        return write_ratchet()
 
     bad = (
-        source_hits() + ratchet_hits() + book_hits() + build_script_warning_hits()
+        source_hits() + library_hits() + book_hits() + build_script_warning_hits()
         + colcon_hits() + shell_hits()
     )
     cli = args.cli
@@ -1041,7 +1004,7 @@ def main() -> int:
             NAME, f"no in-tree nros CLI (`just setup-cli`); {rendered} not read"
         )
     print(
-        f"{NAME}: OK (cmd/ strings, CLI library + build-script panic ratchet, build-script warnings, colcon "
+        f"{NAME}: OK (cmd/ strings, CLI library, build-script panics, build-script warnings, colcon "
         f"messages, user-run shell scripts, {BOOK_SCOPE}, "
         f"{rendered})"
     )
