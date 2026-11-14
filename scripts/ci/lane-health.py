@@ -226,7 +226,7 @@ def selftest(verbose: bool = False) -> int:
         triggers("on: push\n") == {"push"}
         and triggers("on: [push, pull_request]\n") == {"push", "pull_request"})
     lanes = harvest()
-    chk("the harvest finds gate.yml (push + schedule)", "gate.yml" in lanes)
+    chk("the harvest finds gate.yml (push)", "gate.yml" in lanes)
     chk("the harvest leaves out queue.yml (merge_group only)", "queue.yml" not in lanes)
     # No workflow_run-only file is left in the tree (phase-559 W8 folded
     # queue-notify.yml and nightly-report.yml into automation.yml, which also

@@ -7,14 +7,17 @@
 #                   then `just test-ignored` (issue 1507) and
 #                   `just test-doc` (doctests, both workspaces).
 #   - feature-sweep : `just check feature-sweep` — per-feature clippy.
-#   - (no gates job: `just check` runs in gate.yml's schedule, issue 2141)
+#   - check-build : `just check build` (3 shards) + `no-std` + `pristine-checkout`,
+#                   the full compile tier — was gate.yml's scheduled job until
+#                   phase-559 W7 took gate.yml's `schedule` away.
 #   - rt-sched    : `rt_sched_levels_e2e` (phase-162) in a container granted
 #                   `SYS_NICE`, the only lane that claims `rt-sched`.
 #   - census      : the periodic lane census (phase-475 W5), was lane-census.yml.
 #   - checkout-track / installed-track / image-track : the book's setup flow
 #                   executed (issue 1107, phase-551), was probe.yml.
-#   Both joined this file's one daily cron in phase-559 W6: same cadence, same
-#   hosted runner class, and nothing forced a separate file. Their jobs keep
+#   check-build, census and the book tracks joined this file's one daily cron
+#   in phase-559 W6/W7: same cadence, same hosted runner class, and nothing
+#   forced a separate file. Their jobs keep
 #   their names, so a red still names which lane broke.
 #
 # Tier 1's OTHER half — `just build-test-fixtures lane=tier1` + `just ci tier1
@@ -358,6 +361,481 @@ jobs:
           source ./activate.sh
           cargo nextest run -p nros-tests --test rt_sched_levels_e2e \
             --no-fail-fast --success-output immediate
+
+  # ===== the build tier (was gate.yml's `check-build`, cron 02:00; phase-559 W7) =====
+  #
+  # `just check build` (the full compile tier), `just check no-std` and `just
+  # check pristine-checkout`. gate.yml lost its `schedule` trigger in W7, so its
+  # one daily job came here, beside the other daily host lanes, with its steps
+  # unchanged. It gates nothing, and never did: on gate.yml the required `CI`
+  # excused it on every merge-gating event, and `check-lane-contracts` forbids
+  # it on one (it resolves artifacts no PR job builds). A red here is a daily
+  # verdict on `main`, like every job in this file.
+  #
+  # SHARDED (issue 2223). One hosted runner's disk could not hold the lane:
+  # every `build-serial` gate keeps its build tree until the job ends, and on
+  # 2026-11-03 (run 41563531517) the step started with 44 G free and ended
+  # with 292 K. Every scheduled run from 2026-10-29 was red. The job is now
+  # three matrix entries on this ONE job id, and each runs one shard of
+  # `just check build` (`NROS_BUILD_GATE_SHARD`, issue 2141's mechanism:
+  # `scripts/build/gate-shard.py` puts every gate in exactly one shard). Each
+  # shard therefore has its own 146 G disk.
+  # `check-merge-group-gates` rule 5 refuses a shard spec whose matrix does not
+  # list 1..n. `no-std` and `pristine-checkout` are not part of the lane and
+  # run once, on the last shard.
+  check-build:
+    name: check / build tier + no-std [${{ matrix.shard }}/3] (daily + manual)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: host-tests-check-build-${{ matrix.shard }}-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    # Issue 1353 — no DWARF, as gate.yml's workflow-wide `env:` (this job came
+    # from there in phase-559 W7). It is most of what the compile tier writes,
+    # and nothing in the tier reads it.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_PROFILE_NROS_RELWITHDEBINFO_DEBUG: "0"
+    # Longest successful run measured 2026-11-12: 132 min (n=17 over 3 shards, scheduled). Twice that, so a
+    # stalled runner fails fast instead of holding the merge queue for 6 h.
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      # Issue 2382 — the host's preinstalled toolchains, mounted so
+      # `reclaim-disk.sh` can remove them (candidate 3 there). Without them
+      # this job reclaimed only the tool cache and reached the gate runner's
+      # 30 GiB floor with 29 GiB free (scheduled run 42739859713, all three
+      # shards). The same list `host-tests.yml`'s gate shards mount, where the
+      # reclaim measured 32,744 MB freed and 51 GiB free after, in 107-153 s
+      # (scheduled run 42747790725).
+      volumes:
+        - /usr/local/lib/android:/__host-reclaim/android
+        - /usr/share/dotnet:/__host-reclaim/dotnet
+        - /usr/local/.ghcup:/__host-reclaim/ghcup
+        - /opt/ghc:/__host-reclaim/ghc
+        - /usr/share/swift:/__host-reclaim/swift
+        - /usr/local/share/powershell:/__host-reclaim/powershell
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # Setup below is the same as gate.yml `check-fast`'s, whose comments
+      # explain each step (phase-489 W1 split one job into those siblings).
+      - name: Cache sccache directory (compiling events)
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-check-
+
+      # phase-489 W5 — which CPU did this run land on? The same gate set has
+      # measured 6.0 min and 12.2 min of busy CPU on hosted runners, every gate
+      # 1.6-2.0x slower in the slow runs, and the log named no CPU model, so the
+      # hardware explanation stayed a suspicion. Evidence only: no behaviour.
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
+      - name: Configure sccache (compiling events)
+        run: |
+          if ! command -v sccache >/dev/null 2>&1; then
+            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
+            exit 0
+          fi
+          sccache --version
+          export SCCACHE_DIR=/tmp/sccache
+          export SCCACHE_CACHE_SIZE=2G
+          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
+          export SCCACHE_LOG=warn
+          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
+            {
+              echo "SCCACHE_DIR=/tmp/sccache"
+              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
+              echo "SCCACHE_LOG=warn"
+              echo "SCCACHE_CACHE_SIZE=2G"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
+            sed 's/^/  /' /tmp/sccache-start.log || true
+          fi
+
+      # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
+      # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
+      - name: Build the in-tree nros CLI (every event)
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
+
+      - name: Provision clang-format (pinned by [tool.clang-format])
+        run: |
+          source ./activate.sh
+          just setup-clang-format
+
+      - name: Provision Corrosion (pinned by [tool.corrosion])
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
+      - name: Provision compile-tier sources
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: bash scripts/ci/pin-baseline.sh provide
+
+      - name: Init submodules whose pin moved (commits only)
+        run: bash scripts/ci/pin-baseline.sh init-moved
+
+      - name: Fetch submodule history for check-submodule-pins
+        run: bash scripts/ci/pin-baseline.sh deepen
+
+      - name: Build nros-launch-resolve (cli-tests and generate-bindings both shell out to it)
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
+
+      # `check-api-parity` has NO step of its own here, and that is now the
+      # finished answer rather than a deferral — issue 1066, closed.
+      #
+      # (phase-489 W5: it has since left the fast LANE for the
+      # `check-fast-compile` sibling, which runs it by name on every event
+      # `check-fast` runs on. The history below is why it gates at all.)
+      #
+      # IT RUNS. `api-parity` came off `.config/gate-lane-exempt.txt` in
+      # `565f8c74f`, so it is an ordinary fast-lane gate and `just check fast`
+      # (the `check-fast` sibling) runs it on `pull_request`, `merge_group`, `push` and the
+      # nightly alike. Measured in this container, run 34687504281 on
+      # 2026-09-12:
+      #
+      #   check-fast: 319 gate(s) at -P4, busy 1542s over wall 386s
+      #   slowest gate: api-parity, 217543 ms (14.1% of busy)
+      #
+      # That log line is also the image evidence. `api_parity/extract_cxx.py`
+      # shells out to `clang -Xclang -ast-dump=json`, and this comment used to
+      # say the image shipped none — true until `0c73d061b` added it and issue
+      # 1201 fixed the build that had been failing to publish it since
+      # 2026-09-04. A 217 s clang+rustdoc extraction that exits 0 is a stronger
+      # statement about what the image contains than any `which clang` step.
+      #
+      # WHY NOT A DEDICATED STEP ANYWAY. The argument for one was a cleaner
+      # verdict name (phase-421's `node_get_serialization_format` accessors
+      # landed UNLEDGERED and nobody could see which gate would have said so).
+      # It costs a second full extraction: 217 s SERIAL, against a lane whose
+      # whole wall is 386 s because the gate runs inside it at -P4. A step that
+      # adds 56% to the job's wall to rename a failure is the wrong trade;
+      # `just check fast` already prints `[FAIL] api-parity` with the row key.
+      #
+      # WHAT THE PR LANE COULD NOT DO, and now can: the gate's only authored
+      # inputs are `docs/reference/api-parity-ledger/` (one file per row) and
+      # `docs/reference/api-surface/`, both under `docs/`, which the `code`
+      # probe above classified as documentation. So a pull request whose ENTIRE
+      # SUBJECT was the ledger skipped this job and got no parity verdict until
+      # the merge queue. The probe now excepts those two paths — see its
+      # comment. Same shape as the `colcon` filter's `gate.yml` entry: a filter
+      # that excludes the thing under test.
+
+      # phase-396 W1 — the build tier is NOT on the merge group.
+      #
+      # It was (phase-395, `197eef4fa`, "PR cheap, batch thorough"), and the
+      # amortisation argument was right: pay for expensive verification once per
+      # batch instead of once per push. What it missed is that `check-build` was
+      # never RUNNABLE here. It ends with `linux::check`, which hard-requires
+      # generated message bindings, and includes `check-source-gates`, which
+      # asserts prebuilt `.compile-ok` fixtures. This job builds the CLI,
+      # provisions sources, and stops — so neither exists, and the required
+      # check failed for EVERY pull request, not for any one of them:
+      #
+      #   native check: 40 example(s) are missing their generated message bindings
+      #   BuildFailed("Test fixture binary not prebuilt: …/platform_hdr_posix_cpp_heap/.compile-ok")
+      #
+      # A merge queue routes around a change-specific failure by ejecting the
+      # culprit and re-testing the rest. It cannot route around a check that is
+      # red before it sees your change: every entry is the culprit. Six merge
+      # groups, three different authors, one failing job, nothing merged for a
+      # day.
+      #
+      # So the required set is now exactly `ci-l1` — `check-fast` + `test-unit`,
+      # the tier CLAUDE.md tells every agent to run before pushing, and the one
+      # `check-lane-contracts` proves is fixture-free. A required check should be
+      # the thing the contributor was told to run.
+      #
+      # WHAT THIS GIVES UP, plainly: the merge group no longer catches a
+      # compile-tier break in the merged state. `post-submit.yml` catches it on
+      # `main` minutes later — it already runs tier-2 fixtures and `just
+      # ci-matrix` — and that is the standard three-bucket split (required =
+      # cheap and deterministic; heavy = post-merge with a revert path). It is a
+      # real reduction in pre-merge coverage, and still the right trade: a check
+      # that has never once passed provides no coverage at all.
+      #
+      # Restoring it means giving this job the artifacts first (PR #14 adds
+      # `build-compile-check-fixtures`; the bindings half is unowned). Do that
+      # before putting the tier back, not after.
+      # issue 0871 — `check-build` runs `check-source-gates`, whose tests ASSERT
+      # a prebuilt `.compile-ok` stamp that nothing in this job builds. phase-396
+      # W1 took the build tier OFF the merge group precisely because it was not
+      # runnable here, and named this step as one half of what restoring it needs
+      # ("PR #14 adds build-compile-check-fixtures; the bindings half is
+      # unowned"). This is that half: the tier below can now at least get past
+      # `check-source-gates` on the nightly/manual lane.
+      #
+      # Same condition as the step it feeds, deliberately — it exists only to
+      # serve `check-source-gates` and must never run on the cheap PR path.
+      #
+      # `builder=cxx-syntax`, not the whole manifest: the `cargo-check` and
+      # `cmake-configure` rows need `nros-launch-resolve` (and the in-tree CLI)
+      # from `activate.sh`, which this job does not provision — an unfiltered run
+      # FAILS on those and never reaches the rows the gate asserts. Measured: 2 s
+      # filtered vs 428 s for everything.
+      - name: build compile-check fixtures (check-source-gates asserts them)
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just build-compile-check-fixtures cxx-syntax
+
+      # issue 0898 — the OTHER artifact `check-build` asserts and this job never
+      # produced. phase-396 W1 named both halves when it took the build tier off
+      # the merge group: "PR #14 adds build-compile-check-fixtures; the bindings
+      # half is unowned". This is the bindings half.
+      #
+      #   native check: 40 example(s) are missing their generated message bindings
+      #
+      # Example msg crates (`generated/<msg>/`) are build-time AND
+      # ROS-version-dependent, so they are gitignored and never shipped. `just
+      # check` deliberately refuses to sync them — that would couple a static
+      # check to a live ROS environment and rewrite each example's
+      # `[patch.crates-io]` — so it GATES instead and names this remedy. The gate
+      # is right; the job simply never ran the remedy.
+      #
+      # Affordable because this image HAS ROS: measured 23 s on a humble host for
+      # the whole tree, against the ~587 s tier it unblocks.
+      # phase-489 W4 — restore what the verb wrote last time, then run the verb.
+      # The cache ONLY pre-populates: `just generate-bindings` below still runs
+      # and its own content-addressed freshness (the standalone `.sig` stamps,
+      # the probe sidecars' `probe_inputs_key`) regenerates anything stale. Key
+      # and cached paths come from ONE script; `check` refuses a cached path git
+      # tracks. Measured: a tree with fresh sidecars runs the verb in ~10 s,
+      # against 18.7-21.7 min from cold (the C/C++ metadata probes, not codegen).
+      - name: Key the message-bindings cache on the verb's real inputs
+        id: bindings-key
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          scripts/ci/bindings-cache.sh key >> "$GITHUB_OUTPUT"
+
+      - name: Restore the message bindings + probe sidecars (pre-populate only)
+        id: bindings-cache
+        if: ${{ !cancelled() }}
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.bindings-key.outputs.paths }}
+          key: ${{ steps.bindings-key.outputs.key }}
+          restore-keys: ${{ steps.bindings-key.outputs.restore-prefix }}
+
+      - name: generate message bindings (linux::check asserts them)
+        id: generate-bindings
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just generate-bindings
+
+      # Saved right after the verb, not at job end, so the entry holds exactly
+      # what the verb produced. Skipped on an EXACT hit (the entry already says
+      # this); a prefix hit saves, because the verb refreshed part of it.
+      - name: Save the message bindings + probe sidecars
+        if: ${{ steps.generate-bindings.outcome == 'success' && steps.bindings-cache.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.bindings-key.outputs.paths }}
+          key: ${{ steps.bindings-key.outputs.key }}
+
+      # The `source /opt/ros/humble/setup.bash` below is load-bearing, not
+      # boilerplate: `check-rmw-cyclonedds`'s from-msg targets run
+      # msg_to_cyclone_idl.py at BUILD time, which imports rosidl_adapter from
+      # /opt/ros. The configure-time probe only checks the converter script
+      # EXISTS (issue-0196 class: probe narrower than the rule), so an
+      # unsourced env fails at 80% of the build rather than at configure.
+      # Issue 0993 — this lane was put on the pull-request path and TAKEN BACK
+      # OFF, and the measurement is why. It is recorded here because the
+      # obvious next person to try it will make the same estimate.
+      #
+      # The design was sound: `generate-bindings` and the compile-check fixtures
+      # are its prerequisites, they live in THIS job, so widening three `if:`
+      # guards gates the lane while it still resolves only artifacts the job
+      # itself builds. Nothing joins the required set.
+      #
+      # The COST killed it. Measured 190 s wall locally at -P32 — and CI fans
+      # out at **-P4**, where the same lane took ~37 minutes (16:27 -> 17:05 on
+      # run 33654481082), `source-gates` alone 496 s. The `check` job went from
+      # 18 to 42 minutes. A four-core runner is the number that matters, and a
+      # 32-core dev box says nothing useful about it.
+      #
+      # It also surfaced three gates that FAIL in the container — `borrowed-e2e`,
+      # `sched-dim-arms`, `source-gates` — and the nightly had been red on
+      # `borrowed-e2e` since at least 2026-09-01 with nobody noticing, which is
+      # issue 0993's whole thesis arriving on schedule. Filed separately; a lane
+      # cannot start gating pull requests while it is already red.
+
+      # ONE GATE PER STEP — issue 1040, measured 2026-09-05.
+      #
+      # These three shared a single `run:` block, and a `run:` block is `bash
+      # -e`: the first non-zero command ends it. `check build` has been red on
+      # this lane since 2026-09-01 (`workspace-all`, `workspace-features`), so
+      # `check no-std` and `check api-parity` NEVER EXECUTED on any of the five
+      # scheduled runs since they were wired here. The step reported one red for
+      # three gates, and two of them had no verdict at all — issue 0952's
+      # withdrawal class, one level down from the recipe that names it.
+      #
+      # That is worse than not wiring them: `grep -rl api-parity
+      # .github/workflows/` now answers yes while the gate has still never run
+      # in CI. A placement that cannot report is not a placement.
+      #
+      # `!cancelled()` on each is what makes the split work: GitHub skips later
+      # steps after a failure only under the default `success()` condition.
+      # Issue 1353 step 1 — the compile tier dies of `No space left on device`
+      # and leaves an artifact that cannot say what filled the disk (often the
+      # log is truncated mid-compile, because when the disk is gone the log has
+      # nowhere to land either). These two reports bracket the step the issue
+      # names. They never fail the job: a report that can break the lane it
+      # reports on is worse than no report.
+      - name: Disk report (before check build) — issue 1353
+        if: ${{ !cancelled() }}
+        run: scripts/ci/disk-report.sh "before just check build"
+
+      # Issue 1353 step 3, phase-466 W4. Same script and same reasoning as
+      # host-tests.yml, and it runs on the same events as the step it protects:
+      # `check build` is the only thing in this job that has ever exhausted the
+      # disk, and it is `schedule`/`workflow_dispatch` only.
+      #
+      # This lane's numbers are NOT known — the failure destroys its own job
+      # log (run 35808783184: the before-report reported success and its output
+      # was never uploaded), which is what the `::notice::`/step-summary channel
+      # added to `disk-report.sh` is there to fix. So this step is headroom
+      # bought against a measured cause on a sibling lane, not against a
+      # measurement of this one, and the next scheduled run is what prices it.
+      - name: Reclaim disk before the compile tier — issue 1353
+        if: ${{ !cancelled() }}
+        run: scripts/ci/reclaim-disk.sh "before just check build"
+
+      # THE CHANNEL THAT SURVIVES — issue 1353, and the reason this step is
+      # here rather than one upload at the end of the job.
+      #
+      # Measured on scheduled run 35945635228 / job 107462875362 (2026-09-24):
+      # the two steps above both COMPLETED, and neither of the channels
+      # phase-466 W4 gave them carried their numbers off the runner. The job's
+      # annotations hold one entry — the runner's own `IOException`, written by
+      # the service — and its three `::notice::` lines are absent; the run page
+      # renders no job summary for it either. Both are runner-side buffers, so
+      # they die with the runner, which is the only failure mode this lane has.
+      #
+      # An artifact does not: once THIS step finishes, the blob exists
+      # server-side, and `just check build` can take the runner with it without
+      # taking the measurement. That is why the upload is its own step placed
+      # immediately after the reclaim, and why there is a second one after the
+      # compile tier rather than a single `always()` upload at the end —
+      # `always()` only binds while a runner is alive to honour it, which is
+      # exactly what this failure removes.
+      #
+      # The transcript path has one home, `scripts/ci/disk-transcript.sh`,
+      # which publishes it to `$GITHUB_ENV`; naming the variable here rather
+      # than repeating the path is what keeps the upload pointing at the file
+      # the scripts actually write.
+      - name: Upload the disk transcript (before check build) — issue 1353
+        if: ${{ !cancelled() && env.NROS_DISK_TRANSCRIPT != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-transcript-before-check-build-${{ matrix.shard }}
+          path: ${{ env.NROS_DISK_TRANSCRIPT }}
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # Issue 2382: the `build` lane claims submodules and history; without
+      # this step every shard stopped in the lane preflight, no gate run.
+      - name: Provision what the build lane claims (submodules, history, sources)
+        timeout-minutes: 12
+        uses: ./.github/actions/provision-gate-lane
+        with:
+          lane: build
+
+      - name: just check build (daily / manual)
+        if: ${{ !cancelled() }}
+        env:
+          NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/3
+          NROS_GATE_SCOPE: build
+        run: |
+          source ./activate.sh
+          just check build
+
+      # `always()`, not `!cancelled()`: the run that FAILED is the one whose
+      # numbers matter, and the default `success()` would skip exactly it.
+      - name: Disk report (after check build) — issue 1353
+        if: ${{ always() }}
+        run: scripts/ci/disk-report.sh "after just check build"
+
+      # The second upload, and the one that matters most on 2026-09-24's
+      # evidence: on that run `just check build` FAILED (a step verdict, step
+      # 24) and the after-report SUCCEEDED (step 25) — the runner was alive and
+      # writing — and it was `just check no-std`, the step below, that killed
+      # it. So the transcript held both brackets' numbers and nothing could
+      # read them. This carries the same file, now including the after-report,
+      # before the step that has been doing the killing.
+      #
+      # It replaces rather than duplicates the artifact above, by name: a
+      # separate name is deliberate, so a run that dies during the upload still
+      # leaves the earlier artifact intact.
+      - name: Upload the disk transcript (after check build) — issue 1353
+        if: ${{ always() && env.NROS_DISK_TRANSCRIPT != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: disk-transcript-after-check-build-${{ matrix.shard }}
+          path: ${{ env.NROS_DISK_TRANSCRIPT }}
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: just check no-std (daily / manual)
+        if: ${{ !cancelled() && matrix.shard == 3 }}
+        run: |
+          source ./activate.sh
+          just check no-std
+
+      # Issue 1373 — the fast tier must be green in a checkout with NO
+      # submodules (what `git worktree add` produces). Behavioural, because a
+      # census of "which gates read a submodule" measurably misses the gates
+      # that build the path from parts. It builds a submodule-free clone, runs
+      # `check fast` there as a person in a fresh worktree would (no CI
+      # identity), and removes the clone on exit. `just ci gate` runs it locally
+      # on every pre-push; here it is the nightly / manual signal that
+      # `check-default-gates-run-somewhere` requires.
+      - name: just check pristine-checkout (daily / manual)
+        if: ${{ !cancelled() && matrix.shard == 3 }}
+        run: |
+          source ./activate.sh
+          just check pristine-checkout
+      - name: sccache stats (compile tier)
+        if: ${{ always() }}
+        run: |
+          command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
+          if [ -s /tmp/sccache-server.log ]; then
+            echo "--- sccache server log (deduped) ---"
+            { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
+          fi
 
   # ===== lane census (was lane-census.yml, cron 04:40; phase-559 W6) =====
   #
