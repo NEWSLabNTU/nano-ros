@@ -5,7 +5,7 @@ status: Draft
 area: workspace-system-model
 since: 2026-11
 last-reviewed: 2026-11
-implements-tracked-by: []
+implements-tracked-by: [phase-563]
 supersedes: []
 superseded-by: null
 ---
@@ -153,7 +153,10 @@ change that turns a local topic into a wire topic is a reviewable diff.
 - **`scope: image | host`** in the contract. Images and hosts are placement,
   not interface; the same launch tree is placed differently on each target.
 
-## Work items (phase to be opened)
+## Work items ([phase-563](../roadmap/phase-563-topic-visibility-and-locality.md))
+
+Opened 2026-11-14 (phase-555 W3) with W2 first: Tier 1 is opt-in per image
+and needs no rlm grammar. W1, W3 and W4 wait for the rlm release.
 
 - **W0.** DONE (2026-11-10): zenoh-pico's write filter is the mechanism; see D2.
 - **W1.** Consume `visibility`/`closed`/`locality()` once the rlm grammar
@@ -182,7 +185,7 @@ change that turns a local topic into a wire topic is a reviewable diff.
 
 ## Review (2026-11-13, phase-555 W2)
 
-**Verdict: keep** (Draft, no phase yet). Fixed: the dead path
+**Verdict: keep** (Draft, no phase yet; phase-563 opened 2026-11-14). Fixed: the dead path
 `packages/api/nros-cpp/include/nros/options.hpp` is
 `packages/api/nros-cpp/include/rclcpp/options.hpp` (where
 `use_intra_process_comms` is refused).
