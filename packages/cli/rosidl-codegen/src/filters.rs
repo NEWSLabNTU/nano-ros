@@ -10,7 +10,7 @@
 //! `Environment`, so the code said nothing about which language owned which.
 //! "Adding a language = a pack plus a filter set" was a claim with no place to
 //! put the second half. Here it has one: [`FILTER_SETS`], one entry per
-//! [`Language`] plus the neutral set, and [`for_language`] answers the question
+//! [`Language`], and [`for_language`] answers the question
 //! a newcomer actually asks.
 //!
 //! ## What "owns" means here
@@ -26,14 +26,14 @@
 //! own FFI mirror would grow the *Rust* set, which is exactly backwards for the
 //! procedure this module exists to make honest.
 //!
-//! ## The neutral set
+//! ## No neutral set
 //!
-//! `snake_case` is the one filter that belongs to no language. It implements
-//! the ROS naming convention (`PoseStamped` -> `pose_stamped`), and the proof
-//! that it is neutral is by USE, not by assertion: the same
-//! [`crate::utils::to_snake_case`] builds C header names in
-//! `generator/srv.rs`, C++ header names in `generator/cpp.rs`, and Rust
-//! constant names in the `nros` pack. One convention, three languages.
+//! There was one, holding `snake_case` (the ROS CamelCase naming convention).
+//! Its last caller was the `nros` action pack's module-level constants, which
+//! no user could reach; constants are now associated consts named exactly as
+//! the `.msg` file spells them, so no pack derives a name from the type any
+//! more. The convention itself still lives in [`crate::utils`], where the
+//! generators that name files call it.
 //!
 //! ## What holds the set together
 //!
@@ -126,8 +126,8 @@ struct NrosTypeSpell {
 /// against each other (`declared_names_are_the_registered_ones`): an authored
 /// list nobody compares is the drift this repo has been bitten by before.
 pub struct FilterSet {
-    /// The language whose packs call these filters, or `None` for the neutral
-    /// set that every pack may call.
+    /// The language whose packs call these filters. `None` would be a set
+    /// every pack may call; none exists today.
     pub language: Option<Language>,
     /// A short human name for the set, used in diagnostics.
     pub name: &'static str,
@@ -136,17 +136,6 @@ pub struct FilterSet {
     /// Registers `filters` on an environment.
     pub register: fn(&mut Environment<'_>),
 }
-
-/// The one filter that belongs to no language: the ROS CamelCase ->
-/// `snake_case` naming convention, shared by the C, C++ and Rust surfaces.
-const NEUTRAL: FilterSet = FilterSet {
-    language: None,
-    name: "neutral",
-    filters: &["snake_case"],
-    register: |env| {
-        env.add_filter("snake_case", |s: &str| crate::utils::to_snake_case(s));
-    },
-};
 
 /// The C pack's spellings (`packs/c`). RFC-0068 step 2 moved these out of the
 /// pre-baked `CField.c_type` / `.array_suffix`.
@@ -254,24 +243,16 @@ const RUST: FilterSet = FilterSet {
     },
 };
 
-/// Every filter set: the neutral one, then one per [`Language`].
+/// Every filter set, one per [`Language`].
 ///
 /// This is THE registry. A language missing from it fails
 /// `every_language_contributes_a_filter_set`, which is the whole point — the
 /// set has a declared home instead of being ten flat `add_filter` calls.
-pub const FILTER_SETS: &[FilterSet] = &[NEUTRAL, C, CPP, RUST];
+pub const FILTER_SETS: &[FilterSet] = &[C, CPP, RUST];
 
 /// The filter set a language contributes, if it has one.
 pub fn for_language(language: Language) -> Option<&'static FilterSet> {
     FILTER_SETS.iter().find(|s| s.language == Some(language))
-}
-
-/// The neutral set — the filters no language owns and every pack may call.
-pub fn neutral() -> &'static FilterSet {
-    FILTER_SETS
-        .iter()
-        .find(|s| s.language.is_none())
-        .expect("the neutral set is a const in this module")
 }
 
 /// Every filter name the renderer registers, across all sets.
@@ -448,14 +429,11 @@ mod tests {
     /// on it passes vacuously.
     #[test]
     fn the_probe_tells_absent_from_present() {
-        let mut env = Environment::new();
-        (NEUTRAL.register)(&mut env);
-        assert!(resolves(&env, "snake_case"));
-        assert!(!resolves(&env, "no_such_filter_anywhere"));
         // A registered filter that rejects its argument is still registered:
         // `c_type` wants a struct and gets an integer.
         let mut env = Environment::new();
         (C.register)(&mut env);
         assert!(resolves(&env, "c_type"));
+        assert!(!resolves(&env, "no_such_filter_anywhere"));
     }
 }

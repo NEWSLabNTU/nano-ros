@@ -12,10 +12,6 @@ use nros_core::{RosMessage, Serialize, Deserialize};
 use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
 {%- endif %}
 
-{%- for constant in constants %}
-pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
-{%- endfor %}
-
 /// {{ message_name }} message type
 {%- if has_large_array %}
 #[derive(Debug, Clone, PartialEq)]
@@ -27,6 +23,14 @@ pub struct {{ message_name }} {
     pub {{ field.name }}: {{ field | rclc_type }},
 {%- endfor %}
 }
+{%- if constants %}
+
+impl {{ message_name }} {
+{%- for constant in constants %}
+    pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{%- endfor %}
+}
+{%- endif %}
 {%- if has_large_array %}
 
 impl Default for {{ message_name }} {
