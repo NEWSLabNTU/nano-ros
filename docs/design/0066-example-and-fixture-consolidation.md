@@ -1,7 +1,7 @@
 ---
 rfc: 0066
 title: "Example and fixture consolidation: workspaces carry coverage, fixtures carry configuration"
-status: Draft
+status: Stable
 area: test-ci
 since: 2026-08
 last-reviewed: 2026-11-13
@@ -422,15 +422,20 @@ example" no longer finds it under their language.
   granularity `NanoRosFeatureSet.cmake` already claims — and would make R1's
   per-language fold viable after all. RFC-0063 / phase-330 is already reworking
   model generation and is the natural place to consider it. **This RFC does not
-  depend on it**; R2 is correct under the limit as it stands.
+  depend on it**; R2 is correct under the limit as it stands. Still open,
+  filed as [issue 2556](../issues/2556-multi-system-workspace-selection-facades.md)
+  (phase-555 W3).
 - **Does the C/C++ `FORCE` last-write-wins need its own fix?** Observed during
   W2: with three bringups, `managed_bringup`'s empty capability set silently
   erased `param_services` + `lifecycle` for the whole cpp workspace. Worked
   around by declaring the union in every bringup. That is a defect in an area
-  issue 0353 marked resolved (it fixed the single-bringup path only).
-- **Is `mixed` still worth keeping** once the feature demos leave? Its value is
-  the language seam (a C++ entry carrying C components). Under R2 it keeps that
-  and loses nothing, so yes — but it should be re-examined at W5.
+  issue 0353 marked resolved (it fixed the single-bringup path only). Still
+  open (both capability generators write `NROS_FEATURES` with `FORCE`), filed
+  as [issue 2557](../issues/2557-cmake-features-force-last-bringup-wins.md).
+- ~~**Is `mixed` still worth keeping** once the feature demos leave?~~
+  **Answered (phase-331, archived): yes.** Its value is the language seam (a
+  C++ entry carrying C components); phase-331 kept it at zenoh only, and it is
+  one of the four large workspaces.
 - ~~Does folding `custom_msgs` into four workspaces create interface-package name
   collisions?~~ **Answered (W2, 2026-08-02): no — keep it workspace-local.** All
   four copies are byte-identical (`Reading.msg`, sha `e6ba1fbe0d38`) and all

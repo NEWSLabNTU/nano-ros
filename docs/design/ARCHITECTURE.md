@@ -43,7 +43,10 @@ never cross-implied:
   phase-468 W2 and its build road by RFC-0065 D3 (a cross-language esp32 image refuses).
   Remaining ESP-IDF claims in RFC-0014/0072 (and the now-archived RFC-0003) were issue 1526.
 - **ROS edition**: `ros-{humble,iron,jazzy}` (`jazzy` is the delivered default —
-  `just ros_editions ci`; `rolling` planned) — a per-distro **interop profile**
+  `just ros_editions ci`; `rolling` planned). What is CLAIMED (phase-555 C10,
+  2026-11-14): Humble is verified by the host lanes; Jazzy is codegen-checked
+  until a Humble+Jazzy edition lane is green (issue 2558); Iron is not claimed.
+  An edition is a per-distro **interop profile**
   (type hash, wire encoding/extensibility, interface set), RFC-0056. Unlike
   RMW/platform, edition is a *functional* feature ordinary crates may branch on
   (e.g. `nros-rmw-zenoh::keyexpr` selects the type-hash tail). Edition is a

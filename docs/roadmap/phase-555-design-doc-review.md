@@ -174,6 +174,19 @@ brief of RFC-0126 did.
   area's W2 reviewer applies its own items. The five untracked items are
   issue 2522, issue 2523, issue 2524, issue 2525 and issue 2526.
 
+  **test-ci applied (2026-11-14):**
+  - B27: RFC-0061's ladder splits "when" into "run locally when" and "CI runs
+    it", and says no runtime rung gates a merge.
+  - B30: RFC-0061's 2026-11-04 amendment records D9's fallback and the
+    derived tier-1 pool (PR #3665).
+  - C10: Iron is no longer claimed; Jazzy is codegen-checked; the
+    Humble+Jazzy lane is issue 2558.
+  - A1: 0066's two open questions are issue 2556 and issue 2557. 0058, 0061 and
+    0066 are Stable.
+  - Pairs: RFC-0114 `amends` 0051. 0051-0061 is in `reviewed-pairs.toml` as
+    complementary.
+  - `rfc-inventory.py` lists no test-ci pair.
+
 ### W4 -- Keep it organized
 
 - `last-reviewed` is required, and must be a date.

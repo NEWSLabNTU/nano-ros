@@ -1,7 +1,7 @@
 ---
 rfc: 0061
 title: "Fixture freshness by tool OUTPUT, and a tiered test ladder"
-status: Draft
+status: Stable
 area: test-ci
 since: 2026-07
 last-reviewed: 2026-11-13
@@ -217,13 +217,20 @@ ThreadX and FreeRTOS workspace fixtures were stale.
 
 ### The ladder
 
-| tier | name | scope | gate covers | budget | when |
-| --- | --- | --- | --- | --- | --- |
-| 0 | `check-fast` | fmt, drift gates, source gates, no build | nothing (no fixtures) | ~30 s | every save |
-| 1 | `ci` | tier 0 + host build + **codegen golden diff** + a 16-cell native selection | native fixtures only | minutes | every commit, pre-push |
-| 2 | `ci-matrix` | tier 1 + an **11-cell 1-wise cover** (platform, lang, rmw, kind) | that subset's fixtures | **26 %** of a full sweep | diff touches `packages/core`, codegen, `cmake/` |
-| 2n | `ci-matrix-nightly` | the **37-cell pairwise cover** (platform×lang×rmw×kind) | that subset's fixtures | **70 %** of a full sweep | nightly |
-| 3 | `ci-full` | the whole matrix + Miri + interop + QEMU lanes | everything | hours | pre-release, on demand |
+| tier | name | scope | gate covers | budget | run locally when | CI runs it |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | `check-fast` | fmt, drift gates, source gates, no build | nothing (no fixtures) | ~30 s | every save | every pull request and merge-queue entry (`gate.yml`, inside the required `CI` check) |
+| 1 | `ci` | tier 0 + host build + **codegen golden diff** + a 16-cell native selection | native fixtures only | minutes | before a push that needs fixture-backed coverage | daily (`run-matrix.yml` `tier1`, self-hosted, cron `0 6`); hosted per-board shards by dispatch only (`merge-runtime.yml`) |
+| 2 | `ci-matrix` | tier 1 + an **11-cell 1-wise cover** (platform, lang, rmw, kind) | that subset's fixtures | **26 %** of a full sweep | diff touches `packages/core`, codegen, `cmake/` | daily (`run-matrix.yml` `matrix`) |
+| 2n | `ci-matrix-nightly` | the **37-cell pairwise cover** (platform×lang×rmw×kind) | that subset's fixtures | **70 %** of a full sweep | rarely; CI runs it | daily (`run-matrix.yml` `matrix-nightly`) |
+| 3 | `ci-full` | the whole matrix + Miri + interop + QEMU lanes | everything | hours | pre-release, on demand | no job (pre-release, on demand) |
+
+**No runtime rung gates a merge** (phase-555 ruling B27, 2026-11-14). What a
+pull request and a merge-queue entry must pass is `just ci gate`'s subset:
+compile, the source gates and, in the queue, `test-unit`. None of it runs a
+fixture. The runtime rungs (1, 2, 2n) report daily, so a runtime regression is
+caught within a day rather than before its merge. That is RFC-0122 D9's
+fallback, which the maintainer took.
 
 **Tier 2 split in two (amended 2026-07-30, see §Cost is coordinates).** This RFC
 originally put the pairwise cover on `ci-matrix` at "~20 % of a full sweep". That
@@ -237,8 +244,9 @@ Recipe names as of 2026-11-13: tier 0 is `just check fast`; the rungs are
 `just ci tier1` (the `just ci` default), `just ci matrix`, `just ci
 matrix-nightly` and `just ci full`, and the hyphenated `ci-matrix` /
 `ci-matrix-nightly` / `ci-full` spellings above survive as forwarders
-(`justfile:3767-3785`). Which CI job runs each rung, and how often, is not
-this table's "when" column: see the 2026-11-04 amendment below.
+(`justfile:3767-3785`). The table's last two columns are separate facts:
+when a developer runs a rung locally, and which CI job runs it and how often
+(the 2026-11-04 amendment below, as ruled).
 
 Two rules make the ladder honest:
 
@@ -525,6 +533,14 @@ which CI job runs it, and two had none: tier 1's "every change" ran daily,
 and tier 3 had no workflow. Each tier, and each board `cadence` (RFC-0114),
 now names one workflow job. A promise with no affordable job is lowered in the
 registry rather than kept in prose.
+
+As ruled (phase-555 B27/B30, 2026-11-14): D9's fallback was taken. Tier 1's
+witness boards (linux, Zephyr native_sim, threadx-linux) are `cadence =
+"daily"`, and `merge-runtime.yml` is `workflow_dispatch` only, never part of
+the required `CI` check (PR #3665, which records the ruling in RFC-0122 D9).
+The tier-1 host pool is derived from existing board fields (`runs = "host"`,
+`breadth = "witness"`, an automated cadence), not from `cadence = "merge"`.
+The ladder's "CI runs it" column above reads from this.
 
 ## Operational corollaries
 
