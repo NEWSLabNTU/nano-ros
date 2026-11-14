@@ -269,13 +269,8 @@ RCLC_C_COMPONENT(talker_t, talker_configure)
 ```
 
 The C node reads parameters through rclc's parameter server, which needs the
-image's parameter services:
-
-```diff probe=725 track=installed variant=qemu edit=src/sensor_node_bringup/system.toml
- ros_edition = "humble"
- domain_id = 0
-+features = ["param_services"]
-```
+image's parameter services. Every image serves them unless it opts out, so
+there is nothing to declare.
 
 #### C++
 
@@ -313,14 +308,8 @@ void Talker::on_tick() {
 } // namespace sensor_node
 ```
 
-`node.get_parameter` reads from the image's parameter store, which a
-`params` feature adds:
-
-```diff probe=725 track=installed variant=qemu edit=src/sensor_node_bringup/system.toml
- ros_edition = "humble"
- domain_id = 0
-+features = ["params"]
-```
+`node.get_parameter` reads from the image's parameter store, which comes
+with the parameter services every image has unless it opts out.
 
 <!-- /tabs -->
 
@@ -464,19 +453,21 @@ Precedence is ROS 2's: the `/**` block, then the node's own block (keyed
 `sensor_node`, `/ns/sensor_node` or `/**/sensor_node`), then an inline
 `<param name= value=>`. A `from=` naming a missing file is a build error.
 
-What the image does with parameters at run time is a capability you declare
-in `[system] features`:
+What the image does with parameters at run time is decided in `system.toml`.
+Every image gets the parameter services, as a ROS 2 node does, unless it opts
+out with `node_interfaces = "none"`:
 
-| Declared | Parameter store (`get_parameter`, launch values) | `ros2 param` services |
+| `system.toml` states | Parameter store (`get_parameter`, launch values) | `ros2 param` services |
 | --- | --- | --- |
-| nothing | Rust's `ctx.param` reads the baked value | none |
-| `params` | yes | none |
-| `param_services` | yes | six per node: `get`, `set`, `list`, `describe`, and two more |
+| nothing (the default) | yes | six per node: `get`, `set`, `list`, `describe`, and two more |
+| `node_interfaces = "none"` and `features = ["params"]` | yes | none |
+| `node_interfaces = "none"` | Rust's `ctx.param` reads the baked value | none |
 
-`params` suits a small board whose nodes only read their configuration: each
-of the six services costs memory per node. What it gives up is
-`ros2 param get`, `set`, `list`, `describe` and `dump`, and the
-`use_sim_time` switch.
+The store alone suits a small board whose nodes only read their
+configuration: each of the six services costs memory per node. What it gives
+up is `ros2 param get`, `set`, `list`, `describe` and `dump`, and the
+`use_sim_time` switch. `node_interfaces = "none"` also turns off each node's
+`/rosout` publisher.
 
 ## Read once, or read live
 
@@ -487,8 +478,8 @@ file is the place to set it: the value is decided when the image is built,
 and every boot of the image starts with it.
 
 A value the node should follow while it runs is read in the callback
-instead, from the parameter store, on every call. With `param_services`
-declared, `ros2 param set /sensor_node <name> <value>` from a ROS 2 shell
+instead, from the parameter store, on every call. With the parameter
+services on (the default), `ros2 param set /sensor_node <name> <value>` from a ROS 2 shell
 changes that live value on the board. It changes nothing a node read once:
 setting `period_ms` that way would leave the timer at the period it was built
 with. A value set at run time is also volatile. The next boot starts from the
@@ -502,8 +493,10 @@ launch file again, because the board has nowhere to store the change.
 - **The listener stops hearing readings:** only one of the two nodes is
   remapped. Remap both, or neither.
 - **A C build stops with `#error "<rclc_parameter/rclc_parameter.h> needs the
-  param_services capability"`:** the bringup's `[system]` has no
-  `features = ["param_services"]`. Add it, as the C step above does.
+  param_services capability"`:** the bringup opts out with
+  `node_interfaces = "none"`, which removes the parameter services even where
+  `features` declares them. Remove it from the image whose node reads
+  parameters.
 - **The build names a package that does not exist:** a `<node>`'s `pkg`
   names no package in the workspace. `nros check --workspace .` lists every
   such mistake before a build.

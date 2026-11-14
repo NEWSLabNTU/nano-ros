@@ -900,6 +900,8 @@ pub const CASE_CELLS: &[CaseOwner] = &[
        "native-ros2-cli-parity-action-rust-zenoh"),
     co("ros2_cli_parity_interop", "default_qos_of_a_published_topic_reads_as_stock_does",
        "native-ros2-cli-parity-pubsub-rust-zenoh"),
+    co("ros2_cli_parity_interop", "node_info_compared_with_stock",
+       "native-ros2-cli-parity-pubsub-rust-zenoh"),
 
     // ── rosout_interop — issue 1589 gave it two more cells ──────────────
     // One case per language; each resolves its own probe (the Rust cargo

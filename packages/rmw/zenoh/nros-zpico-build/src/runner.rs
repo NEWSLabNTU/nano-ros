@@ -472,7 +472,10 @@ fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
              one for its `/status` whether or not anything declared it. Counting \
              service servers alone comes up short by exactly that.\n  \
              On Zephyr this knob is CONFIG_NROS_MAX_QUERYABLES, whose Kconfig default \
-             is 8; raise it, or stop declaring the services the image does not have.",
+             is 8; raise it, or opt the image out of the stock node interfaces with \
+             `node_interfaces = \"none\"` in its `system.toml` (every image carries the \
+             parameter services and `/rosout` unless it does), or stop declaring the \
+             services the image does not have.",
             sizing.floor,
             sizing.param_nodes,
             PARAM_SERVICE_QUERYABLES * sizing.param_nodes,

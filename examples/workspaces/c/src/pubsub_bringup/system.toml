@@ -117,6 +117,9 @@ os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7500"
 
 [image.zephyr_talker_xrce]
+# Its XRCE pools below hold no service server, so it opts out of the
+# stock node interfaces (the six parameter services and /rosout).
+node_interfaces = "none"
 board = "zephyr"
 launch = "talker.launch.xml"
 rmw = "xrce"
@@ -143,6 +146,9 @@ os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7500"
 
 [image.zephyr_listener_xrce]
+# Its XRCE pools below hold no service server, so it opts out of the
+# stock node interfaces (the six parameter services and /rosout).
+node_interfaces = "none"
 board = "zephyr"
 launch = "listener.launch.xml"
 rmw = "xrce"

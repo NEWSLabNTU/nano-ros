@@ -88,27 +88,29 @@ lists every knob and what it sizes.
 ## The node interfaces an image carries
 
 A ROS 2 node serves six parameter services and publishes `/rosout` without
-being asked. In nano-ros those are capability axes, `param_services` and
+being asked, and so does a nano-ros node: every image gets them unless it
+opts out. In nano-ros those are capability axes, `param_services` and
 `rosout`, and each costs pool slots: six queryables per node and a
 `/parameter_events` publisher for the first, one publisher per node for the
-second (the executor creates each node's `/rosout` writer).
-Today an image gets them only when its `system.toml` declares them in
-`features`. The `node_interfaces` key changes that per image:
+second (the executor creates each node's `/rosout` writer). The `node_interfaces`
+key decides them per image:
 
 ```toml
-[system]
-node_interfaces = "stock"   # add param_services and rosout to every image
-
 [image.pico]
 board = "rpi-pico-w-zephyr"
 node_interfaces = "none"    # this image keeps neither, even if declared above
 ```
 
-`"stock"` adds both axes, `"none"` removes both, and the most specific table
-wins: `[image.<id>]`, then `[image_defaults]`, then `[system]`. The pools,
-the sizing descriptor's `infra_families` and the C/C++ and Zephyr capability
-settings all follow the result, so turning the interfaces off is how a
-memory-tight image gives their slots back.
+`"stock"` (the default) adds both axes to whatever the image declares in
+`features`, and `"none"` removes both. It can be stated in `[system]`,
+`[image_defaults]` or `[image.<id>]`, and the most specific table wins. The
+pools, the sizing descriptor's `infra_families` and the C/C++ and Zephyr
+capability settings all follow the result, so turning the interfaces off is
+how a memory-tight image gives their slots back. A board whose budget holds
+one service server, such as the Pico W, needs it: with the interfaces on, its
+build stops and names the knob it would have to raise. Two differences from
+stock ROS 2 remain: `/rosout` is VOLATILE (rcl's is TRANSIENT_LOCAL), and a
+node does not subscribe to `/parameter_events`.
 
 ## The three service inboxes (zenoh)
 

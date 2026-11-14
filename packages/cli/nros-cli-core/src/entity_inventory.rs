@@ -7112,6 +7112,37 @@ fn image_label(src: &str) -> String {
     }
 }
 
+/// phase-556 W13 -- a test model that opts out of the stock node interfaces,
+/// for a test about the application's own entities: without it every count
+/// would carry the parameter services and the `/rosout` writers the default
+/// adds.
+/// phase-556 W13 -- the switch a test fixture naming `features` states: an
+/// image either carries both stock node interfaces or neither, so a fixture
+/// that names neither opts out (its baseline has no family), and one that
+/// names either keeps the default, which is both.
+#[cfg(test)]
+pub(crate) fn stock_unless_named(
+    features: &str,
+) -> Option<nros_orchestration_ir::node_interfaces::NodeInterfaces> {
+    if nros_orchestration_ir::node_interfaces::STOCK
+        .iter()
+        .any(|s| features.contains(s))
+    {
+        None
+    } else {
+        Some(nros_orchestration_ir::node_interfaces::NodeInterfaces::None)
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn bare_without_stock(
+    m: ros_launch_manifest_model::SystemModel,
+) -> nros_orchestration_ir::overlay::LoadedModel {
+    let mut l = nros_orchestration_ir::overlay::LoadedModel::bare(m);
+    l.overlay.node_interfaces = Some(nros_orchestration_ir::node_interfaces::NodeInterfaces::None);
+    l
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -7259,7 +7290,7 @@ mod tests {
         }
         let inv = EntityInventory::from_model(
             "img",
-            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
+            &crate::entity_inventory::bare_without_stock(m.clone()),
         )
         .expect("wiring described");
         assert_eq!(inv.sched_tasks(), 0, "the bringup authors no sched tasks");
@@ -7279,7 +7310,7 @@ mod tests {
         one_row.contracts.pub_endpoints.remove("/telem_node/telem");
         let inv = EntityInventory::from_model(
             "img",
-            &nros_orchestration_ir::overlay::LoadedModel::bare(one_row.clone()),
+            &crate::entity_inventory::bare_without_stock(one_row.clone()),
         )
         .expect("wiring described");
         assert_eq!(inv.contract_reporters(), 1);
@@ -8577,10 +8608,15 @@ contracts:
         let both = knobs("param_services, lifecycle");
         assert_eq!(
             both.max_liveliness - none.max_liveliness,
-            both.infra_queryables + LIFECYCLE_SERVICE_PUBLISHERS + PARAM_EVENT_PUBLISHERS + 1,
+            both.infra_queryables
+                + LIFECYCLE_SERVICE_PUBLISHERS
+                + PARAM_EVENT_PUBLISHERS
+                + 2 * ROSOUT_PUBLISHERS
+                + 1,
             "one token per runtime server, one for the `~/transition_event`
              publisher (issue 1587), one for `/parameter_events` (issue 2023),
-             plus one node name for lifecycle"
+             one `/rosout` writer per node (the stock set the parameter
+             services come with), plus one node name for lifecycle"
         );
         assert_eq!(
             both.infra_queryables,
@@ -8626,6 +8662,9 @@ contracts:
     /// Issue 2023 — what `param_services` pays for `/parameter_events`: ONE
     /// publisher slot and one liveliness token for the whole executor, however
     /// many nodes carry the family, and NO queryable (the writer is VOLATILE).
+    /// phase-556 W13 -- the parameter services come with `/rosout` (the
+    /// stock set), whose one VOLATILE writer per node is a publisher and a
+    /// token too, and no queryable.
     #[test]
     fn param_services_pays_one_parameter_events_publisher_and_no_queryable() {
         let knobs = |features: &str| {
@@ -8640,8 +8679,8 @@ contracts:
         let params = knobs("param_services");
         assert_eq!(
             params.max_publishers - none.max_publishers,
-            PARAM_EVENT_PUBLISHERS,
-            "one `/parameter_events` writer per executor"
+            PARAM_EVENT_PUBLISHERS + 2 * ROSOUT_PUBLISHERS,
+            "one `/parameter_events` writer per executor, one `/rosout` per node"
         );
         assert!(
             params.param_service_nodes > 1,
@@ -8654,7 +8693,9 @@ contracts:
         );
         assert_eq!(
             params.max_liveliness - none.max_liveliness,
-            PARAM_SERVICE_QUERYABLES * params.param_service_nodes + PARAM_EVENT_PUBLISHERS,
+            PARAM_SERVICE_QUERYABLES * params.param_service_nodes
+                + PARAM_EVENT_PUBLISHERS
+                + 2 * ROSOUT_PUBLISHERS,
         );
     }
 
@@ -8719,21 +8760,34 @@ contracts:
                 .expect("derived")
                 .clone()
         };
+        // An image carries both stock interfaces or neither, so `/rosout`'s
+        // share is what the stock set pays beyond the parameter family's.
         let none = knobs(&infra_model(""));
-        let rosout = knobs(&infra_model("rosout"));
+        let stock = knobs(&infra_model("rosout"));
         // The fixture model has two nodes, so two writers.
         assert_eq!(
-            rosout.max_publishers - none.max_publishers,
-            2 * ROSOUT_PUBLISHERS
+            stock.max_publishers - none.max_publishers,
+            PARAM_EVENT_PUBLISHERS + 2 * ROSOUT_PUBLISHERS
         );
-        assert_eq!(rosout.max_queryables, none.max_queryables);
-        assert_eq!(rosout.tl_publishers, none.tl_publishers);
+        assert_eq!(
+            stock.max_queryables - none.max_queryables,
+            PARAM_SERVICE_QUERYABLES * stock.param_service_nodes,
+            "`/rosout` claims no queryable"
+        );
+        assert_eq!(stock.tl_publishers, none.tl_publishers);
 
-        // (a) no switch: the featureless image is unchanged.
+        // (a) `none`: the featureless image has no family; no switch (the
+        // default) is the stock set.
         let bare = infra_model("");
         assert_eq!(
             InfraServices::from_model(&bare, None).families(),
             nros_sizing_descriptor::InfraFamilies::None
+        );
+        let mut default = infra_model("");
+        default.overlay.node_interfaces = None;
+        assert_eq!(
+            InfraServices::from_model(&default, None).families(),
+            nros_sizing_descriptor::InfraFamilies::ParamRosout
         );
         // (b) `stock`: the parameter family and `/rosout`.
         let mut stock = infra_model("");
@@ -8757,6 +8811,7 @@ contracts:
         );
         // (c) `none` on the image removes what the system declared.
         let mut off = infra_model("param_services");
+        off.overlay.node_interfaces = None;
         off.overlay.image_node_interfaces.insert(
             "mcu".into(),
             nros_orchestration_ir::node_interfaces::NodeInterfaces::None,
@@ -8767,7 +8822,7 @@ contracts:
         );
         assert_eq!(
             InfraServices::from_model(&off, None).families(),
-            nros_sizing_descriptor::InfraFamilies::Param
+            nros_sizing_descriptor::InfraFamilies::ParamRosout
         );
     }
 
@@ -9158,8 +9213,10 @@ execution:
   features: [{features}]
 "#
         );
-        nros_orchestration_ir::overlay::LoadedModel::from_legacy_yaml(&yaml)
-            .expect("model fixture parses")
+        let mut m = nros_orchestration_ir::overlay::LoadedModel::from_legacy_yaml(&yaml)
+            .expect("model fixture parses");
+        m.overlay.node_interfaces = crate::entity_inventory::stock_unless_named(features);
+        m
     }
 
     /// Issue 1270 -- `param_services` in the bringup is six queryables PER
@@ -9803,7 +9860,7 @@ structure:
         );
         let inv = EntityInventory::from_model(
             "test",
-            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
+            &crate::entity_inventory::bare_without_stock(m.clone()),
         )
         .expect("model describes wiring");
         let d = inv.derive();
@@ -10533,7 +10590,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "model",
-            &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
+            &crate::entity_inventory::bare_without_stock(model.clone()),
         )
         .expect("model describes wiring");
         let mut pkgs: Vec<&str> = inv.components().iter().map(|c| c.pkg.as_str()).collect();
@@ -10594,7 +10651,7 @@ contracts:
         );
         let inv = EntityInventory::from_model(
             "model",
-            &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
+            &crate::entity_inventory::bare_without_stock(model.clone()),
         )
         .expect("model describes wiring");
         let pkgs: Vec<&str> = inv.components().iter().map(|c| c.pkg.as_str()).collect();
@@ -12895,7 +12952,7 @@ structure:
     /listener:
       { scope: system.launch.xml, pkg: listener_pkg, exec: listener, node_name: listener }
 "#;
-        nros_orchestration_ir::overlay::LoadedModel::bare(
+        crate::entity_inventory::bare_without_stock(
             serde_yaml_ng::from_str(y).expect("model fixture parses"),
         )
     }
@@ -12954,7 +13011,7 @@ structure:
     /// exactly these two rows while the resolve phase derived.
     #[test]
     fn a_probe_row_covers_the_metadata_row_of_a_renamed_node() {
-        let m = nros_orchestration_ir::overlay::LoadedModel::bare(
+        let m = crate::entity_inventory::bare_without_stock(
             serde_yaml_ng::from_str(
                 r#"
 meta: { version: 1 }

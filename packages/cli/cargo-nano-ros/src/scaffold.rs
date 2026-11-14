@@ -546,6 +546,16 @@ fn scaffold_system_toml(
     } else {
         String::new()
     };
+    // phase-556 W13 -- a board whose RAM budget cannot hold the stock node
+    // interfaces gets an image that opts out of them, as the user ruling for
+    // the Pico W says (its descriptor caps `max_queryables` at 1).
+    let node_interfaces = if BOARDS_WITHOUT_STOCK_NODE_INTERFACES.contains(&board) {
+        "# This board's RAM budget holds one service server, so the image opts\n\
+         # out of the stock node interfaces (six parameter services and /rosout).\n\
+         node_interfaces = \"none\"\n"
+    } else {
+        ""
+    };
     // RFC-0098 D3/D5
     format!(
         "# What this package deploys to — the same schema a workspace\n\
@@ -553,9 +563,16 @@ fn scaffold_system_toml(
          # and re-running `nros configure`.\n\
          \n[system]\nname = \"{name}\"\nrmw = \"{rmw_value}\"\nros_edition = \"{ros_edition}\"\n\
          domain_id = 0\n\
-         {component}\n[image.{platform}]\nboard = \"{board}\"\n"
+         {component}\n[image.{platform}]\nboard = \"{board}\"\n{node_interfaces}"
     )
 }
+
+/// phase-556 W13 -- the boards whose descriptor `[knobs]` cannot hold the
+/// stock node interfaces, so a scaffolded image on one states
+/// `node_interfaces = "none"`. The Pico W's budget is `max_queryables = 1`
+/// (its `nros-board.toml`), and the user ruling keeps that budget and opts
+/// its images out instead.
+const BOARDS_WITHOUT_STOCK_NODE_INTERFACES: &[&str] = &["rpi-pico-w-zephyr"];
 
 #[derive(Debug, Clone)]
 pub struct ComponentScaffoldConfig {
@@ -1647,6 +1664,34 @@ mod tests {
         let c = &doc["component"].as_array().unwrap()[0];
         assert_eq!(c["class"].as_str(), Some("h_app::Talker"));
         assert!(c.get("dispatch").is_none(), "{h}");
+        assert!(
+            doc["image"]["linux"].get("node_interfaces").is_none(),
+            "an image on a board with room keeps the stock interfaces: {h}"
+        );
+    }
+
+    /// phase-556 W13 -- an image scaffolded for the Pico W opts out of the
+    /// stock node interfaces, because its board budget holds one service
+    /// server.
+    #[test]
+    fn a_pico_w_image_opts_out_of_the_stock_node_interfaces() {
+        let p = scaffold_system_toml(
+            "pico_app",
+            Language::C,
+            "zephyr",
+            &platform_spec("zephyr").unwrap(),
+            "zenoh",
+            "humble",
+            Some("rpi-pico-w-zephyr"),
+            Role::Talker,
+            "talker",
+        );
+        let doc: toml::Table = p.parse().expect("parses");
+        assert_eq!(
+            doc["image"]["zephyr"]["node_interfaces"].as_str(),
+            Some("none"),
+            "{p}"
+        );
     }
 
     // Issue 0333 — every platform the CLI advertises must resolve; an unknown

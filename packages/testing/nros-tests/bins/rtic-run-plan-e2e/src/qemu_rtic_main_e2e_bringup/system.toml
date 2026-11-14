@@ -30,6 +30,9 @@ dispatch = "deferred"
 entry = "qemu_rtic_main_e2e"
 board = "mps2-an385-baremetal"
 framework = "rtic"
+# The RTIC entry registers no parameter services and no /rosout writer,
+# so this image opts out of the stock node interfaces.
+node_interfaces = "none"
 locator = "tcp/10.0.2.2:10530"
 
 [image_defaults]

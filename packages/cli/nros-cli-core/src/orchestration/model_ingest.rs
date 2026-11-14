@@ -2040,6 +2040,9 @@ mod cyclonedds_type_capacity_tests {
     };
 
     /// A model with `msgs` distinct message topics + `actions` distinct actions.
+    /// The tests wrap it with `bare_without_stock`: the stock node interfaces
+    /// would add their own `rcl_interfaces` types to every count (phase-556
+    /// W13).
     fn model(msgs: usize, actions: usize) -> SystemModel {
         let mut m = SystemModel::default();
         for i in 0..msgs {
@@ -2069,9 +2072,7 @@ mod cyclonedds_type_capacity_tests {
     fn empty_and_small_models_emit_nothing() {
         assert_eq!(
             resolve_cyclonedds_max_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::bare(
-                    (SystemModel::default()).clone()
-                ),
+                &crate::entity_inventory::bare_without_stock((SystemModel::default()).clone()),
                 None
             )
             .unwrap(),
@@ -2080,7 +2081,7 @@ mod cyclonedds_type_capacity_tests {
         // 10 msgs = 10 types <= default 32 → keep default, no emit.
         assert_eq!(
             resolve_cyclonedds_max_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::bare((model(10, 0)).clone()),
+                &crate::entity_inventory::bare_without_stock((model(10, 0)).clone()),
                 None
             )
             .unwrap(),
@@ -2093,7 +2094,7 @@ mod cyclonedds_type_capacity_tests {
         // 40 distinct msgs = 40 types → next_pow2 = 64.
         assert_eq!(
             resolve_cyclonedds_max_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::bare((model(40, 0)).clone()),
+                &crate::entity_inventory::bare_without_stock((model(40, 0)).clone()),
                 None
             )
             .unwrap(),
@@ -2102,7 +2103,7 @@ mod cyclonedds_type_capacity_tests {
         // 4 actions = 4*8 + 3 = 35 types → 64.
         assert_eq!(
             resolve_cyclonedds_max_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::bare((model(0, 4)).clone()),
+                &crate::entity_inventory::bare_without_stock((model(0, 4)).clone()),
                 None
             )
             .unwrap(),
@@ -2114,7 +2115,7 @@ mod cyclonedds_type_capacity_tests {
     fn user_pin_too_small_fails_loud() {
         // 4 actions = 35 types, pinned to 32 → bail naming the derived 64.
         let err = resolve_cyclonedds_max_types_with(
-            &nros_orchestration_ir::overlay::LoadedModel::bare((model(0, 4)).clone()),
+            &crate::entity_inventory::bare_without_stock((model(0, 4)).clone()),
             Some(32),
         )
         .unwrap_err()
@@ -2128,7 +2129,7 @@ mod cyclonedds_type_capacity_tests {
     fn user_pin_large_enough_is_respected_no_emit() {
         assert_eq!(
             resolve_cyclonedds_max_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::bare((model(0, 4)).clone()),
+                &crate::entity_inventory::bare_without_stock((model(0, 4)).clone()),
                 Some(128)
             )
             .unwrap(),
@@ -2148,7 +2149,7 @@ mod cyclonedds_type_capacity_tests {
     fn an_over_cap_workspace_emits_a_descriptor_table_that_holds_it() {
         let m = model(300, 0);
         let derived = resolve_cyclonedds_max_descriptor_types_with(
-            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
+            &crate::entity_inventory::bare_without_stock(m.clone()),
             None,
         )
         .unwrap()
@@ -2166,7 +2167,7 @@ mod cyclonedds_type_capacity_tests {
     fn a_small_model_emits_no_descriptor_table_knob() {
         assert_eq!(
             resolve_cyclonedds_max_descriptor_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::bare((model(40, 0)).clone()),
+                &crate::entity_inventory::bare_without_stock((model(40, 0)).clone()),
                 None
             )
             .unwrap(),
@@ -2175,9 +2176,7 @@ mod cyclonedds_type_capacity_tests {
         // And a model that registers nothing says nothing.
         assert_eq!(
             resolve_cyclonedds_max_descriptor_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::bare(
-                    (SystemModel::default()).clone()
-                ),
+                &crate::entity_inventory::bare_without_stock((SystemModel::default()).clone()),
                 None
             )
             .unwrap(),
@@ -2193,7 +2192,7 @@ mod cyclonedds_type_capacity_tests {
     #[test]
     fn a_descriptor_table_pin_under_the_count_fails_loud() {
         let err = resolve_cyclonedds_max_descriptor_types_with(
-            &nros_orchestration_ir::overlay::LoadedModel::bare((model(300, 0)).clone()),
+            &crate::entity_inventory::bare_without_stock((model(300, 0)).clone()),
             Some(256),
         )
         .unwrap_err()
@@ -2207,7 +2206,7 @@ mod cyclonedds_type_capacity_tests {
         // Large enough is respected, with no emit.
         assert_eq!(
             resolve_cyclonedds_max_descriptor_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::bare((model(300, 0)).clone()),
+                &crate::entity_inventory::bare_without_stock((model(300, 0)).clone()),
                 Some(512)
             )
             .unwrap(),
@@ -2221,12 +2220,12 @@ mod cyclonedds_type_capacity_tests {
         use nros_orchestration_ir::type_descriptor_sizing as ty;
         let m = model(300, 0);
         let counted = count_cyclonedds_registered_types(
-            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
+            &crate::entity_inventory::bare_without_stock(m.clone()),
         );
         assert_eq!(counted, 300);
         assert_eq!(
             resolve_cyclonedds_max_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
+                &crate::entity_inventory::bare_without_stock(m.clone()),
                 None
             )
             .unwrap(),
@@ -2234,7 +2233,7 @@ mod cyclonedds_type_capacity_tests {
         );
         assert_eq!(
             resolve_cyclonedds_max_descriptor_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
+                &crate::entity_inventory::bare_without_stock(m.clone()),
                 None
             )
             .unwrap(),

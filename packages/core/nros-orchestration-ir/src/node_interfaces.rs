@@ -36,13 +36,13 @@ pub enum NodeInterfaces {
     None,
 }
 
-/// What an image that states no switch gets.
+/// What an image that states no switch gets: the stock set, as on stock ROS 2.
 ///
-/// `None` here means "as declared": no stock interface is added or removed.
-/// phase-556 W13 step 3 flips this to `Some(NodeInterfaces::Stock)`, which
-/// makes every image serve the stock set unless it opts out with
-/// `node_interfaces = "none"`.
-pub const DEFAULT_NODE_INTERFACES: Option<NodeInterfaces> = None;
+/// phase-556 W13 (user ruling 2026-11-13, option (c)): every image on every
+/// board serves the six parameter services and publishes `/rosout` unless it
+/// opts out with `node_interfaces = "none"`. `None` here would mean "as
+/// declared" (the pre-flip policy).
+pub const DEFAULT_NODE_INTERFACES: Option<NodeInterfaces> = Some(NodeInterfaces::Stock);
 
 impl NodeInterfaces {
     /// The spelling in `system.toml` and in the overlay.
@@ -129,13 +129,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_default_is_as_declared_until_the_flip() {
-        assert_eq!(DEFAULT_NODE_INTERFACES, None);
+    fn an_image_stating_no_switch_gets_the_stock_set() {
+        assert_eq!(DEFAULT_NODE_INTERFACES, Some(NodeInterfaces::Stock));
         let none: [&str; 0] = [];
-        assert!(effective_features(&none, None).is_empty());
+        assert_eq!(
+            effective_features(&none, None),
+            vec!["param_services", "rosout"]
+        );
         assert_eq!(
             effective_features(&["lifecycle", "param_services"], None),
-            vec!["lifecycle", "param_services"]
+            vec!["lifecycle", "param_services", "rosout"]
+        );
+    }
+
+    #[test]
+    fn an_image_stating_none_gets_only_what_it_declares_beyond_the_stock_set() {
+        let none: [&str; 0] = [];
+        assert!(effective_features(&none, Some(NodeInterfaces::None)).is_empty());
+        assert_eq!(
+            effective_features(&["lifecycle"], Some(NodeInterfaces::None)),
+            vec!["lifecycle"]
         );
     }
 

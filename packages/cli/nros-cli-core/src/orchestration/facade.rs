@@ -955,7 +955,11 @@ pub struct LeafSelectionSpec<'a> {
 /// workspace's (a single-package leaf is its own workspace).
 pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> Result<Facade> {
     let rmws = crate::orchestration::rmw_index::for_dir(spec.leaf)?;
-    write_leaf_selection_in(&rmws, spec, sys)
+    // phase-556 W13 -- the image's own axes and `node_interfaces` switch, as
+    // the workspace facade reads them (issue 2423), so an image that opts out
+    // of the stock interfaces does not compile their features in.
+    let image_sys = sys.with_image_features(Some(spec.image_id));
+    write_leaf_selection_in(&rmws, spec, &image_sys)
 }
 
 /// [`write_leaf_selection`] with every RMW name resolved through `rmws`.

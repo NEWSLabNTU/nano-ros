@@ -4,7 +4,7 @@ title: "Three layers: spec, resolver, runtime"
 status: Stable
 area: workspace-system-model
 since: 2026-07
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-312, phase-332, phase-486]
 supersedes: []
 superseded-by: null
@@ -12,12 +12,33 @@ superseded-by: null
 
 # RFC-0060 — Three layers: spec, resolver, runtime
 
-**Status:** Stable (2026-07-28; amended 2026-10-10, revised 2026-10-12 — [what the SystemModel may carry](#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go))
+**Status:** Stable (2026-07-28; amended 2026-10-10, revised 2026-10-12 — [what the SystemModel may carry](#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go); amended 2026-11-14: [the stock node interfaces are on by default](#amendment-2026-11-14-the-stock-node-interfaces-are-on-by-default))
 **Supersedes nothing. Amends:** RFC-0059 (launch-toolchain-split) — this is the
 repository-level answer to the same problem RFC-0059 framed at crate level.
 **Motivated by:** issue 0285 (a PATH-resolved `play_launch` broke every
 platform's fixture build), issue 0293 (two parsers for one file), and the
 submodule drift that bit three times during the 0285 work.
+
+## Amendment (2026-11-14): the stock node interfaces are on by default
+
+The 2026-10-10 table below says nano-ros "defaults them off" of the
+parameter services. That default is reversed. User ruling 2026-11-13
+(phase-556 W13, option (c)): every image on every board serves the six
+parameter services and publishes `/rosout`, as an rclcpp node does, unless
+it opts out with `node_interfaces = "none"` in `[system]`,
+`[image_defaults]` or `[image.<id>]` (the most specific table wins). The
+policy is one constant, `nros_orchestration_ir::node_interfaces::
+DEFAULT_NODE_INTERFACES`, and every reader of the declared capability list
+goes through `effective_features`.
+
+What this amendment does not change: the switch is still a nano-ros build
+fact, so it lives in `system.toml` and the overlay `nros.toml`, never in the
+SystemModel (the rule below). Divergences from stock, recorded with the
+ruling: `/rosout` is VOLATILE (rcl's is TRANSIENT_LOCAL), and a node does not
+yet subscribe to `/parameter_events` (issue 2483). Memory-tight images opt
+out: the Pico W's (its board budget holds one service server), PX4's, the
+RTIC entry's (which registers neither), and the XRCE images whose stated
+service-server pools hold only their own servers.
 
 ## Amendment (2026-10-10) — what the SystemModel may carry, and where nano-ros's own facts go
 
@@ -51,7 +72,7 @@ name the owner: "nano-ros `[lifecycle]`", "nano-ros `[param_services]`",
 
 | `system.toml` input | model field | verdict |
 | --- | --- | --- |
-| `[system] features`, `[param_services]` (sugar for `features = ["param_services"]`) | `execution.features` | **fails.** nano-ros capability switches. In ROS every rclcpp node has parameter services unless its CODE opts out (`start_parameter_services`); nano-ros defaults them off. Opting in is nano-ros build policy |
+| `[system] features`, `[param_services]` (sugar for `features = ["param_services"]`) | `execution.features` | **fails.** nano-ros capability switches. In ROS every rclcpp node has parameter services unless its CODE opts out (`start_parameter_services`); nano-ros defaulted them off (on since the 2026-11-14 amendment, with a per-image off switch). Opting out is nano-ros build policy |
 | `[lifecycle] autostart` (system-wide, `none\|configure\|active`) | each lifecycle node's `lifecycle_autostart` (copied by play_launch's resolver, `resolve/src/model.rs`, not by `apply_to_launch`) | **the TABLE fails; the per-node FIELD passes.** Managed nodes are ROS; Jazzy `launch_ros` `LifecycleNode(autostart=True)` drives one node to `active` (verified against the `jazzy` branch). Humble has no `autostart` at all. A system-wide default is nano-ros boot policy |
 | `[deploy.<n>]` `board` / `kind` / `framework` / `profile` / `optimize` / `features` / `[deploy.<n>.nros]` | `execution.deploy.<n>.target = mcu:<board>`, `.extra` | **fails.** These describe a build. rlm's own comment says so ("describes a BUILD"), and nano-ros already moved them out of placement: `[image.*]` (phase-383, RFC-0065 D6) and `[board_config.*]` (RFC-0072 §5). No tracked `system.toml` writes `[deploy.*]` today (0 of 189) |
 | `[host.<n>]` (`nodes`/`launch` scoping, `domain_id`, `locator`) | `execution.deploy.<n>` `domain` / `locator` / `rmw` | **passes** — which machine runs which node, on which bus, is topology. The table's KEY (`extra.host_name`) is read by nothing and leaves with `extra` |

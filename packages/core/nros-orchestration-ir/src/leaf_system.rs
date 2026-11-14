@@ -1593,9 +1593,11 @@ locator = "tcp/10.0.2.2:9800"
             l.declared_entities().unwrap(),
             vec!["publisher:std_msgs/msg/String:/chatter", "timer"]
         );
-        // Issue 1142 — a leaf that names no feature carries none, exactly as a
-        // bringup with an empty `execution.features` does.
-        assert!(l.features.is_empty());
+        // Issue 1142 — a leaf that names no feature declares none, exactly as a
+        // bringup with an empty `execution.features` does; phase-556 W13 -- it
+        // is built with the stock node interfaces, the default.
+        assert!(l.declared_features.is_empty());
+        assert_eq!(l.features, vec!["param_services", "rosout"]);
     }
 
     /// Issue 1142 — `[system] features` is the leaf's channel for the service
@@ -1612,7 +1614,8 @@ locator = "tcp/10.0.2.2:9800"
             ),
         ]);
         let l = read(d.path()).unwrap().expect("declared");
-        assert_eq!(l.features, vec!["param_services", "lifecycle"]);
+        assert_eq!(l.declared_features, vec!["param_services", "lifecycle"]);
+        assert_eq!(l.features, vec!["param_services", "lifecycle", "rosout"]);
 
         let d = leaf(&[
             ("Cargo.toml", CARGO),
@@ -1626,7 +1629,7 @@ locator = "tcp/10.0.2.2:9800"
         assert!(e.contains("ARRAY") && e.contains("system.toml"), "{e}");
     }
 
-    /// phase-556 W13 -- the leaf road's switch: (a) absent is as declared,
+    /// phase-556 W13 -- the leaf road's switch: (a) absent is the stock set,
     /// (b) `stock` adds the stock set, (c) `none` removes it, (d) the image's
     /// table wins over `[image_defaults]` over `[system]`.
     #[test]
@@ -1644,7 +1647,8 @@ locator = "tcp/10.0.2.2:9800"
         let img = "[image.i]\nboard = \"linux\"\n";
         // (a)
         let l = at("", img);
-        assert!(l.features.is_empty() && l.node_interfaces.is_none());
+        assert!(l.node_interfaces.is_none());
+        assert_eq!(l.features, vec!["param_services", "rosout"]);
         // (b)
         let l = at("node_interfaces = \"stock\"", img);
         assert_eq!(l.features, vec!["param_services", "rosout"]);
