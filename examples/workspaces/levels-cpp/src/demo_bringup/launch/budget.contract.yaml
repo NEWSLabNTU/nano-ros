@@ -12,20 +12,20 @@ nodes:
       burn_us: { type: integer }
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 10 } }
+        trigger: { timer: { rate: 10Hz } }
         output: [tick]
     pub:
-      tick: { min_rate_hz: 1 }
+      tick: { min_rate: 1Hz }
 
   load_boot:
     params:
       burn_us: { type: integer }
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 10 } }
+        trigger: { timer: { rate: 10Hz } }
         output: [tick]
     pub:
-      tick: { min_rate_hz: 1 }
+      tick: { min_rate: 1Hz }
 
 topics:
   /levels/load:

@@ -32,34 +32,34 @@ nodes:
   mrm_emergency_stop_operator:
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 30 } }
+        trigger: { timer: { rate: 30Hz } }
         output: [control_cmd]
     pub:
-      control_cmd: { min_rate_hz: 5 }
+      control_cmd: { min_rate: 5Hz }
 
   stop_mode_operator:
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 30 } }
+        trigger: { timer: { rate: 30Hz } }
         output: [control]
     pub:
-      control: { min_rate_hz: 5 }
+      control: { min_rate: 5Hz }
 
   mrm_comfortable_stop_operator:
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 10 } }
+        trigger: { timer: { rate: 10Hz } }
         output: [status]
     pub:
-      status: { min_rate_hz: 8 }
+      status: { min_rate: 8Hz }
 
   mrm_handler:
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 10 } }
+        trigger: { timer: { rate: 10Hz } }
         output: [mrm_state]
     pub:
-      mrm_state: { min_rate_hz: 8 }
+      mrm_state: { min_rate: 8Hz }
 
 # Every topic leaves the image: the consumer is the vehicle or Autoware
 # proper (`external: sub`), as for the island's command outputs. Nothing here

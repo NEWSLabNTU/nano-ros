@@ -556,13 +556,13 @@ nodes:
     params: {}
     paths:
       on_tick:
-        trigger: { timer: { rate_hz: 100 } }
+        trigger: { timer: { rate: 100Hz } }
         output: []
   telemetry_node:
     params: {}
     paths:
       on_tick:
-        trigger: { timer: { rate_hz: 10 } }
+        trigger: { timer: { rate: 10Hz } }
         output: []
 EOF
 ```

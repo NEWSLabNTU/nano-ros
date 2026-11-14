@@ -12,7 +12,7 @@ nodes:
     paths:
       tick:
         output: [chatter]
-        trigger: { timer: { rate_hz: 10 } }
+        trigger: { timer: { rate: 10Hz } }
 
   listener:
     sub:
@@ -24,6 +24,6 @@ nodes:
 topics:
   /chatter:
     type: std_msgs/msg/Int32
-    rate_hz: 10
+    rate: 10Hz
     pub: [talker/chatter]
     sub: [listener/chatter]

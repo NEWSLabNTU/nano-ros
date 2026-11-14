@@ -34,7 +34,7 @@ nodes:
     paths:
       tick:
         output: [chatter]
-        trigger: { timer: { rate_hz: 50 } }
+        trigger: { timer: { rate: 50Hz } }
 
   listener:
     sub:
@@ -45,16 +45,16 @@ nodes:
           history: keep_last
     pub:
       status:
-        min_rate_hz: 10
+        min_rate: 10Hz
     paths:
       drain:
         output: [status]
-        trigger: { timer: { rate_hz: 10 } }
+        trigger: { timer: { rate: 10Hz } }
 
 topics:
   /chatter:
     type: std_msgs/msg/Int32
-    rate_hz: 50
+    rate: 50Hz
     pub: [talker/chatter]
     sub: [listener/chatter]
   /status:
