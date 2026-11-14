@@ -272,7 +272,7 @@ fn the_model_carries_no_switch_and_the_overlay_carries_every_bringups() {
 /// `SystemToml` (the CLI's cmake, Zephyr and facade roads) build every image
 /// with the SAME capability axes, node-interface switch applied. Asked of
 /// every tracked `system.toml`, plus synthetic files that state the switch at
-/// each level, since no tracked file states one yet.
+/// each level.
 #[test]
 fn both_readers_build_every_image_with_the_same_node_interfaces() {
     /// (image id, the overlay's axes, the strict reader's axes).
@@ -344,7 +344,8 @@ fn both_readers_build_every_image_with_the_same_node_interfaces() {
     // The synthetic files mean what they say (a check on the fixture).
     let rows = effective_both(&synthetic[1], Path::new("s")).unwrap();
     let get = |id: &str| rows.iter().find(|r| r.0 == id).unwrap().1.clone();
-    assert_eq!(get("<system>"), vec!["lifecycle", "param_services"]);
+    // `[system]` states no switch, so it gets the stock set (the default).
+    assert_eq!(get("<system>"), vec!["lifecycle", "param_services", "rosout"]);
     assert_eq!(get("a"), vec!["lifecycle"]);
     assert_eq!(
         get("b"),

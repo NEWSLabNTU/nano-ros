@@ -399,11 +399,12 @@ fn off_step_set_is_refused_as_stock_does() {
 
 // ── the service, action and pubsub pairs ────────────────────────────────────
 
-/// Matches stock: `ros2 service list -t` for a node serving one service.
+/// Matches stock: `ros2 service list -t` for a node serving one service,
+/// the six parameter services every node serves by default included.
 ///
-/// The stock node's six parameter services are set aside: a nano-ros node has
-/// none by default, which is a design decision awaiting a ruling (phase-556
-/// W13), not a gap this test measures.
+/// phase-556 W13 (user ruling 2026-11-13): a nano-ros node serves the stock
+/// parameter services unless its image opts out, so they are compared rather
+/// than set aside.
 #[test]
 fn service_list_with_types_answers_as_stock_does() {
     let nano_bin = build_native_service_server().require("rust workspace linux_service_server");
@@ -422,11 +423,84 @@ fn service_list_with_types_answers_as_stock_does() {
     stock.await_node();
     let pair = Pair::new(nano, stock);
 
+    // Ready once the side lists its own service and all six parameter
+    // services, so a half-discovered node is not compared.
     pair.ask_until("service list -t", SETTLE, |a| {
         has_line(a, "/add_two_ints [")
+            && a.output
+                .lines()
+                .filter(|l| is_parameter_service_line(l))
+                .count()
+                >= 6
     })
-    .filtered(|l| !is_parameter_service_line(l))
     .assert_same("the services of a node serving /add_two_ints");
+}
+
+/// `ros2 node info` of a node that declares one publisher, against stock's.
+///
+/// Every half but one matches stock: the publishers (`/chatter`,
+/// `/parameter_events`, `/rosout`) and the six parameter services. The
+/// subscriber half is held in expected-failure form: a stock node subscribes
+/// to `/parameter_events` and a nano-ros node does not (issue 2483).
+#[test]
+fn node_info_compared_with_stock() {
+    let nano_bin = build_native_talker().require("native-rust-talker");
+    require_zenohd();
+    require_ros2();
+    require_stock_package("demo_nodes_cpp");
+
+    let mut nano = GraphSide::new(Implementation::NanoRos, "/talker");
+    nano.spawn_nano_image(nano_bin, "talker");
+    nano.await_node();
+    let mut stock = GraphSide::new(Implementation::Stock, "/talker");
+    stock.spawn_stock("ros2 run demo_nodes_cpp talker", "stock talker");
+    stock.await_node();
+    let pair = Pair::new(nano, stock);
+
+    // Ready once the side lists its last parameter service and `/rosout`.
+    let c = pair.ask_until("node info {node}", SETTLE, |a| {
+        has_line(a, "/get_parameter_types: ") && has_line(a, "/rosout: ")
+    });
+    // `ros2 node info` prints a section head (`  Publishers:`) at two spaces
+    // and its entries at four.
+    let section = |text: &str, head: &str| -> String {
+        let mut out = Vec::new();
+        let mut inside = false;
+        for l in text.lines() {
+            if !l.starts_with("    ") {
+                inside = l.trim() == head;
+                continue;
+            }
+            if inside {
+                out.push(l.trim().to_string());
+            }
+        }
+        out.join("\n")
+    };
+    for head in ["Publishers:", "Service Servers:", "Service Clients:"] {
+        let (nano, stock) = (section(&c.nano_text, head), section(&c.stock_text, head));
+        assert_eq!(
+            nano,
+            stock,
+            "`ros2 node info` `{head}` of a talker differs from stock.\n{}",
+            c.report()
+        );
+    }
+    let (nano_subs, stock_subs) = (
+        section(&c.nano_text, "Subscribers:"),
+        section(&c.stock_text, "Subscribers:"),
+    );
+    assert!(
+        stock_subs.contains("/parameter_events: rcl_interfaces/msg/ParameterEvent"),
+        "a stock node subscribes to /parameter_events.\n{}",
+        c.report()
+    );
+    hold_gap_by(
+        nano_subs != stock_subs && !nano_subs.contains("/parameter_events"),
+        "a node as a /parameter_events subscriber",
+        "node info /talker",
+        &c.report(),
+    );
 }
 
 fn action_pair() -> Pair {

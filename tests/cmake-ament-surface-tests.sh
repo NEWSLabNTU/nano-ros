@@ -23,11 +23,11 @@
 #      module for does not;
 #   6. `find_package(diagnostic_updater)` carries `diagnostic_msgs`, which its
 #      header includes (a template that linked the messages by hand hid this);
-#   7. an ament package on a host that declares no `NROS_FEATURES` gets
-#      `param_services` (upstream runs the parameter services in every node);
-#      a declaration, even an empty one, wins, and a non-ament project gets
-#      nothing; an embedded platform gets `lifecycle` alone, and only for a
-#      package that depends on `rclcpp_lifecycle`;
+#   7. an ament package that declares no `NROS_FEATURES` gets the stock node
+#      interfaces, `param_services` and `rosout`, on every platform (upstream
+#      runs them in every node); one that depends on `rclcpp_lifecycle` gets
+#      `lifecycle` too; a declaration, even an empty one, wins, and a
+#      non-ament project gets nothing;
 #   8. with `param_services` in `NROS_FEATURES`, an ament target (and
 #      `rclcpp::rclcpp`) is compiled with NROS_AMENT_START_PARAMETER_SERVICES,
 #      so its node constructor serves the parameters; without it, it is not.
@@ -238,25 +238,25 @@ CML
     cmake -S "$d" -B "$d/b" 2>&1
 }
 ament_xml='<package><buildtool_depend>ament_cmake_auto</buildtool_depend></package>'
-expect "7. an ament package on posix gets param_services" "default=[param_services]" \
+expect "7. an ament package on posix gets the stock node interfaces" "default=[param_services;rosout]" \
     "$(mk_caps ament "$ament_xml" 'set(NROS_PLATFORM posix)')"
 mk_caps umbrella '<workspace/>' 'set(NROS_PLATFORM posix)' >/dev/null
 mkdir -p "$WORK/caps-umbrella/src/pkg"
 printf '%s\n' "$ament_xml" > "$WORK/caps-umbrella/src/pkg/package.xml"
 rm -rf "$WORK/caps-umbrella/b"
-expect "7. so does an umbrella over a colcon-layout src/" "default=[param_services]" \
+expect "7. so does an umbrella over a colcon-layout src/" "default=[param_services;rosout]" \
     "$(cmake -S "$WORK/caps-umbrella" -B "$WORK/caps-umbrella/b" 2>&1)"
 expect "7. a declared (empty) NROS_FEATURES wins" "default=[]" \
     "$(mk_caps declared "$ament_xml" 'set(NROS_PLATFORM posix)
 set(NROS_FEATURES "")')"
-expect "7. an embedded platform gets nothing" "default=[]" \
+expect "7. so does one on an embedded platform" "default=[param_services;rosout]" \
     "$(mk_caps rtos "$ament_xml" 'set(NROS_PLATFORM freertos)')"
 lc_xml='<package><buildtool_depend>ament_cmake</buildtool_depend><depend>rclcpp_lifecycle</depend></package>'
 expect "7. a package depending on rclcpp_lifecycle also gets lifecycle" \
-    "default=[param_services;lifecycle]" "$(mk_caps lifecycle "$lc_xml" 'set(NROS_PLATFORM posix)')"
-expect "7. an embedded package depending on rclcpp_lifecycle gets lifecycle alone" \
-    "default=[lifecycle]" "$(mk_caps rtoslc "$lc_xml" 'set(NROS_PLATFORM freertos)')"
-expect "7. ...not one that does not" "default=[param_services]" \
+    "default=[param_services;rosout;lifecycle]" "$(mk_caps lifecycle "$lc_xml" 'set(NROS_PLATFORM posix)')"
+expect "7. an embedded package depending on rclcpp_lifecycle gets lifecycle too" \
+    "default=[param_services;rosout;lifecycle]" "$(mk_caps rtoslc "$lc_xml" 'set(NROS_PLATFORM freertos)')"
+expect "7. ...not one that does not" "default=[param_services;rosout]" \
     "$(mk_caps nolc '<package><buildtool_depend>ament_cmake</buildtool_depend><depend>rclcpp</depend></package>' 'set(NROS_PLATFORM posix)')"
 expect "7. a project that is not an ament package gets nothing" "default=[]" \
     "$(mk_caps plain '<package><buildtool_depend>catkin</buildtool_depend></package>' 'set(NROS_PLATFORM posix)')"

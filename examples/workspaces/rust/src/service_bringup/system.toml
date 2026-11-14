@@ -44,6 +44,9 @@ os_config = ["board-net-16.toml"]
 [image.baremetal_service_server_rtic]
 board = "mps2-an385-baremetal"
 framework = "rtic"
+# The RTIC entry registers no parameter services and no /rosout writer,
+# so this image opts out of the stock node interfaces.
+node_interfaces = "none"
 launch = "service_server.launch.xml"
 locator = "tcp/10.0.2.2:10210"
 os_config = ["board-net-15.toml"]
@@ -51,6 +54,9 @@ os_config = ["board-net-15.toml"]
 [image.baremetal_service_client_rtic]
 board = "mps2-an385-baremetal"
 framework = "rtic"
+# The RTIC entry registers no parameter services and no /rosout writer,
+# so this image opts out of the stock node interfaces.
+node_interfaces = "none"
 launch = "service_client.launch.xml"
 locator = "tcp/10.0.2.2:10210"
 os_config = ["board-net-16.toml"]
@@ -113,6 +119,10 @@ os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7410"
 
 [image.zephyr_service_server_xrce]
+# Its XRCE pools below are sized for its own service servers only, so it
+# opts out of the stock node interfaces (the six parameter services and
+# /rosout).
+node_interfaces = "none"
 board = "zephyr"
 launch = "service_server.launch.xml"
 rmw = "xrce"
@@ -132,6 +142,9 @@ os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7410"
 
 [image.zephyr_service_client_xrce]
+# Its XRCE pools below hold no service server, so it opts out of the
+# stock node interfaces (the six parameter services and /rosout).
+node_interfaces = "none"
 board = "zephyr"
 launch = "service_client.launch.xml"
 rmw = "xrce"

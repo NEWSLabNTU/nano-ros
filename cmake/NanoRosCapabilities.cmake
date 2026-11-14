@@ -41,34 +41,30 @@ endfunction()
 #   <out_var> : set to the capability axes a configure that DECLARED none gets,
 #               which is nothing except on the one road below.
 #
-# A stock ROS 2 C++ package built on a host — the ament road: its own
-# `package.xml` (or, for an umbrella over a colcon-layout `src/`, one of
-# `src/*/package.xml`) names `ament_cmake` as a buildtool, and it pulls nano-ros
-# in with `add_subdirectory()` — gets `param_services`. Upstream rclcpp runs the six
-# parameter services in every node, so a ported node is written against them
-# (`ros2 param get` against it timed out until this, on the Autoware
-# `autoware_external_cmd_selector` port), and the package has no `system.toml`
-# to declare them in. A package that depends on `rclcpp_lifecycle` gets
-# `lifecycle` as well, since upstream's managed node serves its lifecycle
-# services the same way. The road is a property of the CONSUMER's source tree,
-# asked here before the runtime is configured, never of the build tree.
-# A declaration still wins: any `NROS_FEATURES` the consumer sets, `-D`s or
-# caches, including the empty one, is taken as written.
-#
-# An embedded board on the same road (phase-518) gets `lifecycle` and nothing
-# else. The parameter services cost six queryables and their RAM, which an
-# embedded image opts into. `lifecycle` is not that kind of choice: a package
-# built against `rclcpp_lifecycle` calls the runtime's lifecycle entry points,
-# and without them the image does not link (Nav2's `nav2_util` on FreeRTOS:
-# `undefined reference to nros_cpp_lifecycle_change_state`).
+# A stock ROS 2 C++ package -- the ament road: its own `package.xml` (or, for
+# an umbrella over a colcon-layout `src/`, one of `src/*/package.xml`) names
+# `ament_cmake` as a buildtool, and it pulls nano-ros in with
+# `add_subdirectory()` -- gets the stock node interfaces, `param_services` and
+# `rosout`, on every platform. Upstream rclcpp runs the six parameter services
+# and the `/rosout` publisher in every node, so a ported node is written
+# against them (`ros2 param get` against it timed out until phase-488, on the
+# Autoware `autoware_external_cmd_selector` port), and the package has no
+# `system.toml` to declare them in. phase-556 W13 (user ruling 2026-11-13)
+# made them the default on every board, as `system.toml`'s
+# `node_interfaces` default is; before it an embedded board got neither. A
+# package that depends on `rclcpp_lifecycle` gets `lifecycle` as well, since
+# upstream's managed node serves its lifecycle services the same way, and
+# without them the image does not link (Nav2's `nav2_util` on FreeRTOS:
+# `undefined reference to nros_cpp_lifecycle_change_state`). The road is a
+# property of the CONSUMER's source tree, asked here before the runtime is
+# configured, never of the build tree. A declaration still wins: any
+# `NROS_FEATURES` the consumer sets, `-D`s or caches, including the empty
+# one, is taken as written, and the empty one is how a memory-tight image
+# opts out.
 function(nros_ament_port_default_features out_var)
     set(${out_var} "" PARENT_SCOPE)
     if(DEFINED NROS_FEATURES OR CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         return()
-    endif()
-    set(_host FALSE)
-    if(NROS_PLATFORM STREQUAL "posix")
-        set(_host TRUE)
     endif()
     # The package itself, or a colcon-layout umbrella over `src/<pkg>/`.
     file(GLOB _pxs "${CMAKE_SOURCE_DIR}/package.xml" "${CMAKE_SOURCE_DIR}/src/*/package.xml")
@@ -91,29 +87,14 @@ function(nros_ament_port_default_features out_var)
     if(_px STREQUAL "")
         return()
     endif()
-    set(_features "")
-    if(_host)
-        list(APPEND _features "param_services")
-    endif()
+    set(_features "param_services;rosout")
     if(NOT _lifecycle STREQUAL "")
         list(APPEND _features "lifecycle")
     endif()
-    if(_features STREQUAL "")
-        return()
-    endif()
-    if(_host)
-        # History: phase-488.
-        message(STATUS
-            "nano-ros: ${_px} is an ament package on a host, so its runtime carries "
-            "`${_features}` as upstream rclcpp's does. Set NROS_FEATURES to declare "
-            "the capabilities yourself.")
-    else()
-        message(STATUS
-            "nano-ros: ${_px} depends on rclcpp_lifecycle, so this ${NROS_PLATFORM} "
-            "image's runtime carries `lifecycle`. The parameter services are not "
-            "on by default on a board: add `param_services` to NROS_FEATURES to "
-            "serve them.")
-    endif()
+    message(STATUS
+        "nano-ros: ${_px} is an ament package, so its ${NROS_PLATFORM} runtime carries "
+        "`${_features}` as upstream rclcpp's does. Set NROS_FEATURES to declare "
+        "the capabilities yourself (an empty NROS_FEATURES carries none).")
     set(${out_var} "${_features}" PARENT_SCOPE)
 endfunction()
 

@@ -75,6 +75,10 @@ locator = "serial/UART_0#baudrate=115200"
 # defaults, so they are not a board fact, and the XRCE pools take no part in
 # the entity derivation (RFC-0098 D7 covers `ZPICO_*` only).
 [image.baremetal_talker_xrce_serial]
+# Its XRCE pools below are sized for its own service servers only, so it
+# opts out of the stock node interfaces (the six parameter services and
+# /rosout).
+node_interfaces = "none"
 board = "mps2-an385-baremetal"
 launch = "talker.launch.xml"
 rmw = "xrce"
@@ -99,6 +103,9 @@ max_service_clients = 1
 [image.baremetal_talker_rtic]
 board = "mps2-an385-baremetal"
 framework = "rtic"
+# The RTIC entry registers no parameter services and no /rosout writer,
+# so this image opts out of the stock node interfaces.
+node_interfaces = "none"
 launch = "talker.launch.xml"
 locator = "tcp/10.0.2.2:10540"
 os_config = ["board-net-15.toml"]
@@ -106,6 +113,9 @@ os_config = ["board-net-15.toml"]
 [image.baremetal_listener_rtic]
 board = "mps2-an385-baremetal"
 framework = "rtic"
+# The RTIC entry registers no parameter services and no /rosout writer,
+# so this image opts out of the stock node interfaces.
+node_interfaces = "none"
 launch = "listener.launch.xml"
 locator = "tcp/10.0.2.2:10540"
 os_config = ["board-net-16.toml"]
@@ -180,6 +190,9 @@ os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7400"
 
 [image.zephyr_talker_xrce]
+# Its XRCE pools below hold no service server, so it opts out of the
+# stock node interfaces (the six parameter services and /rosout).
+node_interfaces = "none"
 board = "zephyr"
 launch = "talker.launch.xml"
 rmw = "xrce"
@@ -198,6 +211,9 @@ os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7400"
 
 [image.zephyr_listener_xrce]
+# Its XRCE pools below hold no service server, so it opts out of the
+# stock node interfaces (the six parameter services and /rosout).
+node_interfaces = "none"
 board = "zephyr"
 launch = "listener.launch.xml"
 rmw = "xrce"

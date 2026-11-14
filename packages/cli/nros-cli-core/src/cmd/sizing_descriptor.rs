@@ -1389,6 +1389,19 @@ mod tests {
         // test for the wrong reason and read exactly like the right one.
         let empty = ros_launch_manifest_model::SystemModel::default();
         std::fs::write(&model, serde_yaml_ng::to_string(&empty).unwrap()).unwrap();
+        // phase-556 W13 -- the image opts out of the stock node interfaces,
+        // which would otherwise be a fact to state.
+        std::fs::write(
+            model
+                .parent()
+                .unwrap()
+                .join(nros_orchestration_ir::overlay::OVERLAY_FILE),
+            format!(
+                "[meta]\nversion = {}\n[system]\nnode_interfaces = \"none\"\n",
+                nros_orchestration_ir::overlay::OVERLAY_VERSION
+            ),
+        )
+        .unwrap();
         let build_dir = dir.path().join("build");
         run(SizingDescriptorArgs {
             from_model: vec![model],
@@ -1575,6 +1588,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let empty = ros_launch_manifest_model::SystemModel::default();
         let m = write_model(dir.path(), "e", &serde_yaml_ng::to_string(&empty).unwrap());
+        let model = &m;
+        // phase-556 W13 -- the image opts out of the stock node interfaces,
+        // which would otherwise be a fact to state.
+        std::fs::write(
+            model
+                .parent()
+                .unwrap()
+                .join(nros_orchestration_ir::overlay::OVERLAY_FILE),
+            format!(
+                "[meta]\nversion = {}\n[system]\nnode_interfaces = \"none\"\n",
+                nros_orchestration_ir::overlay::OVERLAY_VERSION
+            ),
+        )
+        .unwrap();
         let build_dir = dir.path().join("build");
         let stale = nros_sizing_descriptor::runtime_descriptor_path(&build_dir);
         std::fs::create_dir_all(stale.parent().unwrap()).unwrap();
@@ -2116,8 +2143,8 @@ board = "qemu-armv7a-nuttx"
         let dir = tempfile::tempdir().unwrap();
         let system = |entities: &str| {
             format!(
-                "[system]\nname = \"leaf\"\nrmw = \"zenoh\"\n\n[[component]]\nname = \"n\"\n\
-                 {entities}\n[image.i]\nboard = \"qemu-armv7a-nuttx\"\n"
+                "[system]\nname = \"leaf\"\nrmw = \"zenoh\"\nnode_interfaces = \"none\"\n\n\
+                 [[component]]\nname = \"n\"\n{entities}\n[image.i]\nboard = \"qemu-armv7a-nuttx\"\n"
             )
         };
         let leaf = leaf_with(dir.path(), &system(""));

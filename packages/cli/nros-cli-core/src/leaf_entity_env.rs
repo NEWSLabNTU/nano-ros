@@ -1464,7 +1464,7 @@ mod tests {
         for t in ["hi", "lo", "bg"] {
             m.execution.tasks.insert(t.into(), TaskDef::default());
         }
-        let model = nros_orchestration_ir::overlay::LoadedModel::bare(m);
+        let model = crate::entity_inventory::bare_without_stock(m);
 
         // Negative control: no model and no manifest feature, no change.
         let mut bare = probed();
@@ -1641,6 +1641,10 @@ mod tests {
             "meta:\n  version: 1\nstructure:\n  nodes:\n    /talker:\n      scope: root\n\
              \n      pkg: demo\n      exec: talker\nexecution:\n  features: [{features}]\n"
         ))
+        .map(|mut m| {
+            m.overlay.node_interfaces = crate::entity_inventory::stock_unless_named(features);
+            m
+        })
         .expect("test model parses")
     }
 
@@ -1660,7 +1664,11 @@ mod tests {
         assert_eq!(tag(&none, (true, true)), InfraFamilies::ParamLifecycle);
         assert_eq!(tag(&none, (false, false)), InfraFamilies::None);
         let param = leaf_model_with("param_services");
-        assert_eq!(tag(&param, (false, true)), InfraFamilies::ParamLifecycle);
+        // phase-556 W13 -- `param_services` comes with `/rosout`.
+        assert_eq!(
+            tag(&param, (false, true)),
+            InfraFamilies::ParamLifecycleRosout
+        );
         assert_eq!(
             leaf_infra(Some(&param), (false, false))
                 .unwrap()

@@ -2486,7 +2486,13 @@ name = "demo"
                  [image.linux]\nboard = \"linux\"\n"
             )
         };
-        std::fs::write(bringup.join("system.toml"), system("")).unwrap();
+        // phase-556 W13 -- only an image that opts out of the stock node
+        // interfaces can lack the declaration.
+        std::fs::write(
+            bringup.join("system.toml"),
+            system("node_interfaces = \"none\"\n"),
+        )
+        .unwrap();
         let ws = Workspace::discover(ws_root).unwrap();
         let missing = ws.undeclared_service_families().unwrap();
         assert_eq!(missing.len(), 1, "{missing:?}");
@@ -2495,13 +2501,15 @@ name = "demo"
             ("demo", "param_services")
         );
 
-        std::fs::write(
-            bringup.join("system.toml"),
-            system("features = [\"param_services\"]\n"),
-        )
-        .unwrap();
-        let ws = Workspace::discover(ws_root).unwrap();
-        assert_eq!(ws.undeclared_service_families().unwrap(), vec![]);
+        for declared in ["features = [\"param_services\"]\n", ""] {
+            std::fs::write(bringup.join("system.toml"), system(declared)).unwrap();
+            let ws = Workspace::discover(ws_root).unwrap();
+            assert_eq!(
+                ws.undeclared_service_families().unwrap(),
+                vec![],
+                "{declared:?}"
+            );
+        }
     }
 
     /// The same guard over every tracked workspace.
