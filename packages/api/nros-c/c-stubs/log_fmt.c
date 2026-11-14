@@ -64,8 +64,8 @@ void rclc_log_emit_fmt(rclc_logger_t logger,
     if (logger == NULL || fmt == NULL) {
         return;
     }
-    /* 256-byte default matches nros-log's `buffer-size-256` facade
-     * default. Overflow truncates + appends "..." in-place. */
+    /* 256 bytes, the builtin of nros-log's `NROS_LOG_BUFFER_SIZE` knob.
+     * Overflow truncates + appends "..." in-place. */
     char buf[256];
     va_list args;
     va_start(args, fmt);

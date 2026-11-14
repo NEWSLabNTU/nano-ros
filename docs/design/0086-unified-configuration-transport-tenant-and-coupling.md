@@ -248,6 +248,17 @@ single root, but stop being the only way in.
 This is what makes RFC-0049's own porter promise true: *2 crates + 2 tomls,
 edits nothing central.*
 
+**Amended 2026-11-14 (phase-555 W3): a platform with no crate keeps its
+descriptor in `config/`.** Two descriptors have no
+`nros-platform-<name>` crate to move into: `bare-metal` (its shared code is
+`packages/platform/nros-baremetal-common`, a library, not a platform port)
+and `generic`. They stay at `config/bare-metal/` and `config/generic/`, and
+the default search path keeps `config` as its second in-tree root, after
+`packages/platform` (`PlatformConfig::default_search_path` in
+`nros-platform-config`), so a descriptor that has moved beside its crate wins
+over a stale copy. A crate created for either one for another reason takes its
+descriptor with it; nothing else moves them.
+
 ### D4 — close the D8 leak
 
 All seven platform files carry `[build.zenoh]` and `[knobs.zenoh.tx]` —
@@ -291,8 +302,13 @@ side learning the other's name.
   sweep found a FIFTH family the original audit and the issue both missed —
   `rosout-records-<N>`, added by phase-467 after the issue was filed — which is
   the same lesson a third time: a review-enforced rule does not stop the next
-  instance. The old features are deprecated for one release (a disagreement
-  with a stated knob is a build error), and left `default`. The clock is a
+  instance. The old features were deprecated for one release (nros-v0.6.0,
+  2026-10-14) and left `default`. **Since 2026-11-14 (phase-555 W3) they are
+  refused:** selecting any of the 19 names stops the build in
+  `nros-log/build.rs`, naming the knob and the value to state. The names stay
+  declared so that error can be reached at all; a name cargo does not know
+  fails as "unknown feature" and says nothing about the knob, which is
+  RFC-0103's rule for retired names (keep the refusal, never drop the row). The clock is a
   platform FACT (`[capabilities] clock = true`); `platform-clock` survives as
   a feature only because it pulls code in.
 * The rule's boundary, which the same issue clarified: a build script MAY derive
@@ -367,6 +383,7 @@ conflict.
   - D3: five platform descriptors live in their crates
     (`packages/platform/nros-platform-{freertos,nuttx,posix,threadx,zephyr}/nros-platform.toml`);
     `bare-metal` and `generic` are still in `config/`. Brief item W2.
+    Ruled 2026-11-14: they stay, and D3 says so (the amendment under D3).
   - D3's search path: `NROS_PLATFORMS_DIR` is derived from the workspace
     (`cmd/board_facts.rs`, `platforms_dir_entries`).
   - D4: no platform file carries `[build.zenoh]` any more; the one
@@ -374,7 +391,8 @@ conflict.
     is D4's `[knobs.<rmw>.tx]` shape.
   - D5: `nros-log` reads `NROS_LOG_*` through the ladder; its pick-one
     features are kept, marked DEPRECATED (`packages/core/nros-log/Cargo.toml`
-    lines 59-72). Brief item W3.
+    lines 59-72). Brief item W3. Ruled 2026-11-14: removed, with the refusal
+    kept (D5's last bullet).
 - Stale references: phase-400 (`archived/phase-400-unified-configuration.md`),
   issues 1037, 2006 and 2007 are archived. `config/freertos` and
   `config/posix`, cited in D4 as the files edited in the past, no longer exist

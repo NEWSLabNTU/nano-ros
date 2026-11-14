@@ -533,7 +533,7 @@ Rust nros_*! call sites below the ceiling compile to nothing; C and
 C++ records below it are refused at the facade (the same check
 nros_log_is_enabled answers). It is a BOUND, not the runtime level:
 rclc_logger_set_level / set_level still move each logger's threshold
-beneath it. Replaces the deprecated max-level-* cargo features.
+beneath it. Replaces the retired max-level-* cargo features.
 '''
 
 [[knob]]
