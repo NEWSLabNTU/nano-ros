@@ -816,6 +816,14 @@ cmake-leaf-cache:
 leaf-cache-plan-parse:
     @bash tests/leaf-cache-plan-parse-tests.sh
 
+# A two-platform module (freertos, nuttx) skipping the platform the run did
+# not select: with a sibling selected it is the run's scope and the lane
+# flushes clean; with neither selected it is still SKIPPED (78), the negative
+# control (tests/lane-sibling-scope-tests.sh). Buildless.
+[private]
+lane-sibling-scope:
+    @bash tests/lane-sibling-scope-tests.sh
+
 # phase-488 W3 — the ament verbs against a stock ROS 2 package's CMakeLists:
 # `rclcpp_components_register_node(... EXECUTABLE ...)` generates a main that
 # declares the component, `ament_auto_add_library(... SHARED ...)` builds STATIC,

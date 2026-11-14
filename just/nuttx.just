@@ -35,7 +35,7 @@ build:
     source scripts/build/lane-skip.sh
     source scripts/build/fixture-lane.sh
     if ! nros_lane_wants_platform nuttx; then
-        nros_lane_out_of_scope_note nuttx "the arm kernel: no nuttx (arm) coordinate in this run — skipping"
+        nros_lane_sibling_out_of_scope nuttx "the arm kernel: no nuttx (arm) coordinate in this run — skipping" nuttx-riscv
         exit 0
     fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
@@ -110,7 +110,7 @@ build-examples:
     source scripts/build/lane-skip.sh
     source scripts/build/fixture-lane.sh
     if ! nros_lane_wants_platform nuttx; then
-        nros_lane_out_of_scope_note nuttx "the arm examples: no nuttx (arm) coordinate in this run — skipping"
+        nros_lane_sibling_out_of_scope nuttx "the arm examples: no nuttx (arm) coordinate in this run — skipping" nuttx-riscv
         exit 0
     fi
     if [ ! -d "$NUTTX_DIR/include" ]; then
@@ -358,7 +358,7 @@ build-fixtures-arm-smp:
     # is missing here. The run's LANE selected no nuttx coordinate, and naming
     # the platform cannot change that, so this stays a skip in both directions.
     if ! nros_lane_wants_platform nuttx; then
-        nros_lane_out_of_scope_note nuttx "NuttX arm-smp: no nuttx coordinate in this run's lane — skipping"
+        nros_lane_sibling_out_of_scope nuttx "NuttX arm-smp: no nuttx coordinate in this run's lane — skipping" nuttx-riscv
         exit 0
     fi
     if nros_sdk_missing NUTTX_DIR include; then
@@ -386,7 +386,7 @@ build-fixtures-riscv:
     # phase-411 W2 — a lane narrowing, not a missing prerequisite; see
     # `build-fixtures-arm-smp` above and `nros_lane_out_of_scope_note`'s comment.
     if ! nros_lane_wants_platform nuttx-riscv; then
-        nros_lane_out_of_scope_note nuttx "NuttX riscv: no nuttx-riscv coordinate in this run's lane — skipping"
+        nros_lane_sibling_out_of_scope nuttx "NuttX riscv: no nuttx-riscv coordinate in this run's lane — skipping" nuttx
         exit 0
     fi
     # Serial, same stage: they share ONE kernel tree, so they cannot overlap.

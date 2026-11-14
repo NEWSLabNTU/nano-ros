@@ -1,7 +1,7 @@
 ---
 id: 2562
 title: "Every nightly board job whose module has a second board is red by construction: skipping the sibling board makes the lane INCOMPLETE (exit 78), and `test` stops on its `build-fixtures` dependency"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [ci, build, testing, nightly]
@@ -50,13 +50,33 @@ And the verdict is untrue here anyway: the module built every fixture its
 board's slice selected. The only thing skipped is a sibling board, which
 another job builds.
 
-## Directions (not decided)
+## Fix (2026-11-15)
 
-- A. A platform skipped inside a module because the run selects one of the
-  module's OTHER platforms is the run's scope, not a skip: print it, and do
-  not ledger it. SKIPPED (78) is kept for a module the run selects nothing
-  of. This is one helper beside `nros_lane_out_of_scope_note`, used at the
-  seven sibling sites (`just/freertos.just` ×3, `just/nuttx.just` ×4).
-- B. Keep the ledger, and teach the nightly's Build and Test steps, and
-  `test`'s `build-fixtures` dependency, to accept 78. This takes three
-  consumers, and it leaves the untrue "fixtures are NOT built" line in place.
+Direction A, by the manager's ruling. A new helper,
+`nros_lane_sibling_out_of_scope <lane> <reason> <sibling>...` in
+`scripts/build/lane-skip.sh`, asks whether the run selects one of the
+module's other platforms:
+- If it does, the skip is the run's scope. It is printed as
+  `<lane> scope: … (this run builds <sibling>)` and is not ledgered.
+- If it selects none of them, the skip falls through to
+  `nros_lane_out_of_scope_note`, and the flush still exits 78 (SKIPPED).
+
+The seven sibling sites use it: `just/freertos.just` ×3 and `just/nuttx.just`
+×4.
+
+Direction B (teach the three consumers to accept 78) was not taken. It would
+have kept "fixtures are NOT built" on a lane that built every fixture its
+slice selected.
+
+Fast gate `lane-sibling-scope` (`tests/lane-sibling-scope-tests.sh`) has four
+cases:
+- a selected sibling flushes 0;
+- both platforms selected flushes 0;
+- neither selected exits 78, the negative control;
+- the sibling form leaves the ledger empty.
+
+Mutation-tested: make the helper ledger in the sibling case, and two cases
+go red.
+
+Sweep: `git grep -n 'nros_lane_out_of_scope_note' -- just` lists no
+call site left in a two-platform module.

@@ -268,6 +268,42 @@ nros_lane_out_of_scope_note() {
     echo "${lane} skip: ${reason}"
 }
 
+# nros_lane_sibling_out_of_scope <lane> <reason> <sibling-platform>...
+#
+# A module that owns several fixture platforms (`freertos`: `freertos` and
+# `freertos-posix`; `nuttx`: `nuttx` and `nuttx-riscv`) skips the stage of a
+# platform the run did not select. Whether that skip is a lane SKIP depends on
+# the module's OTHER platforms:
+#
+#   - the run selects one of them: the module IS building what its slice
+#     asked for, and the stage it leaves out belongs to a run that is not this
+#     one (the nightly's other board job). That is the run's scope. Printed,
+#     never ledgered, so the flush does not call the lane INCOMPLETE;
+#   - the run selects none of them: the module built nothing it was asked
+#     for, and this is phase-411 W2's narrowing, ledgered as before, so the
+#     flush exits 78 (SKIPPED).
+#
+# Issue 2562: every per-board nightly job of a two-board module went red on
+# the first form, and `<module> test` stopped on its `build-fixtures`
+# dependency before nextest ran. Needs `fixture-lane.sh` sourced.
+nros_lane_sibling_out_of_scope() {
+    local lane="${1:?nros_lane_sibling_out_of_scope: lane}"
+    local reason="${2:?nros_lane_sibling_out_of_scope: reason}"
+    shift 2
+    [ "$#" -gt 0 ] || { echo "nros_lane_sibling_out_of_scope: name the module's other platforms" >&2; return 2; }
+    local sib rc
+    for sib in "$@"; do
+        rc=0
+        nros_lane_wants_platform "$sib" || rc=$?
+        [ "$rc" -eq 2 ] && return 2
+        if [ "$rc" -eq 0 ]; then
+            echo "${lane} scope: ${reason} (this run builds ${sib})"
+            return 0
+        fi
+    done
+    nros_lane_out_of_scope_note "$lane" "$reason"
+}
+
 # nros_lane_skip_flush <lane> <success-line>
 #
 # The ONLY place a lane says it built its fixtures. Prints the success line when
