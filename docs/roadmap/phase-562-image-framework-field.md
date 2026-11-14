@@ -1,6 +1,6 @@
 # Phase 562 — An image's entry framework is its own field
 
-**Status (2026-11-15). OPEN: W1 done. Owner: nros 142.** Opened by
+**Status (2026-11-15). OPEN: W1, W2 and W8 done. Owner: nros 142.** Opened by
 the user's ruling on phase-555's platform-board-rtos brief (P5 (a), 2026-11-14):
 "open a phase for [RFC-0111](../design/0111-image-framework-axis.md)'s seven
 steps, with [RFC-0112](../design/0112-framework-support-tiers.md) D5 as one of
@@ -58,7 +58,38 @@ Nothing reads them yet; W2's resolver is the first consumer. Tests:
   Rewire the macro, `entry_surface_features` and the dispatch lint to ask it.
 - **Acceptance:** `framework_for_board_key` has no definition and no caller;
   every consumer in RFC-0111's table calls `image_framework`.
-- **Status:** OPEN
+- **Status:** DONE (2026-11-15, branch `feat/phase-562-w2-resolver`, with W8)
+
+Landed: `nros_orchestration_ir::image_framework(declared, &BoardBoot)` and
+`BoardBoot { frameworks, entry_shape }`. The CLI builds `BoardBoot` from the
+descriptor (`BoardDescriptor::image_framework`: `bootable_frameworks()`, and
+`entry_kind = "zephyr-staticlib"` as the Zephyr entry shape, so the Zephyr rows
+needed no new descriptor key). `nros::main!` and the Rust entry pack have no
+descriptor and build it from the board key's family
+(`nros_entry_lower::entry_shape_for_key`) plus, out of tree, the crate's
+`NROS_BOARD_FRAMEWORK` as a one-entry list. `board_key_table.rs` holds the
+two views to one answer for every descriptor name, and holds every descriptor
+to the default list the macro assumes. `entry_surface_features` and
+`framework_entry_deps` take the resolved framework, and `nros build` resolves
+it for every image before generating anything. `framework_for_board_key` is
+deleted. The `rtic-mps2-an385` word keeps RTIC through
+`TRANSITIONAL_FRAMEWORK_KEYS`, which W3 deletes. Not done here: the dispatch
+lint still reads the board crate's metadata (W9). Tests:
+`an_absent_framework_is_the_boards_first`,
+`a_framework_outside_the_boards_list_is_refused_naming_the_list`,
+`zephyr_is_refused_because_the_board_decides_it`,
+`the_zephyr_shape_is_the_boards`,
+`the_transitional_rtic_word_still_resolves_rtic`,
+`an_image_naming_zephyr_is_refused_and_the_board_still_decides` (macro),
+`the_entry_surface_follows_the_resolved_framework_not_the_search_order`,
+`the_framework_agrees_with_the_descriptors_entry_kind` (rewritten).
+
+For W3: when the mps2 descriptor gains `frameworks = ["owned-spin", "rtic"]`,
+`board_key_table.rs` goes red until the macro can read the list (it reads none
+for an in-tree board today). Two other key-keyed RTIC facts remain for W3/W4:
+`nros::main!`'s `rtic_board_spec_for` and `BOARD_PATHS`' `RticMps2An385` row
+(D3's `entry_types`). `RTIC_DEVICE_CRATES` is already keyed by the
+descriptor's name as well.
 
 ### W3 — The MPS2-AN385 descriptor
 
@@ -125,7 +156,16 @@ Nothing reads them yet; W2's resolver is the first consumer. Tests:
   descriptors never both answer.
 - **Acceptance:** `FRAMEWORKS` has no `zephyr`; `framework = "zephyr"` is
   refused saying the board decides it; every Zephyr image still builds.
-- **Status:** OPEN
+- **Status:** DONE (2026-11-15, branch `feat/phase-562-w2-resolver`, with W2)
+
+Landed: `FRAMEWORKS = ["owned-spin", "rtic", "px4"]`; `zephyr` is in
+`ENTRY_SHAPES`, which the board imposes. `image_framework` refuses
+`framework = "zephyr"` (and `esp32`) on any image, saying the board decides it,
+and refuses any `framework` on a board whose platform imposes a shape. The
+spelling chosen for the descriptor side is the existing `entry_kind =
+"zephyr-staticlib"`, read by `BoardDescriptor::entry_shape`, rather than a new
+`entry_shape` key that would restate it. An out-of-tree board crate may still
+state `framework = "zephyr"` in its metadata: that is the board deciding.
 
 ### W9 — The dispatch lint covers RTIC images
 

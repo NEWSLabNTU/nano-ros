@@ -419,8 +419,8 @@ fn the_links_std_column_agrees_with_the_descriptors_entry_kind() {
 /// - a ZST named by exactly ONE key (`threadx-linux` today) — nothing to
 ///   compare it against, so any value passes;
 /// - BOTH keys of a shared ZST wrong the SAME way. Had phase-445 W5 RENAMED
-///   the zephyr key instead of adding a second spelling, `framework_for_board_key`
-///   would have answered `None` for the only key there was, every consumer
+///   the zephyr key instead of adding a second spelling, the key → framework table
+///   of the day would have answered `None` for the only key there was, every consumer
 ///   would have read `owned-spin`, and the agreement gate would have been
 ///   green on a table that emits `<ZephyrBoard as BoardEntry>::run` — the
 ///   `E0277` of issue 1435, unremarked.
@@ -458,20 +458,51 @@ fn the_framework_agrees_with_the_descriptors_entry_kind() {
         else {
             continue;
         };
-        // `None` is what every consumer reads as `owned-spin`, so resolve it
-        // the way they do rather than skipping it — a MISSING row is exactly
-        // the defect this test is here for.
-        let framework = nros_orchestration_ir::framework_for_board_key(key).unwrap_or("owned-spin");
+        // phase-562 W2 — the CLI resolves from the descriptor
+        // (`BoardDescriptor::image_framework`); `nros::main!` and the Rust
+        // entry pack have no descriptor and resolve from the key: its family's
+        // entry shape and an empty list (= the default). Both go through
+        // `image_framework`, so the two must give one answer for every key.
+        let from_key = nros_orchestration_ir::image_framework(
+            None,
+            &nros_orchestration_ir::BoardBoot::for_key(
+                key,
+                &[],
+                nros_entry_lower::entry_shape_for_key(key),
+            ),
+        )
+        .unwrap_or_else(|e| panic!("`{key}` ({zst}): the key's facts do not resolve: {e}"));
+        let from_descriptor = d
+            .image_framework(key, None)
+            .unwrap_or_else(|e| panic!("`{key}` ({zst}): the descriptor does not resolve: {e}"));
+        assert_eq!(
+            from_key,
+            from_descriptor,
+            "`{key}` ({zst}): the key's facts resolve `{from_key}` and its descriptor \
+             (entry_kind = {:?}, frameworks = {:?}) resolves `{from_descriptor}`. `nros::main!` \
+             reads the key's facts; if the descriptor now lists a second framework, carry \
+             the list to the macro too (phase-562 W3).",
+            d.entry_kind,
+            d.bootable_frameworks()
+        );
+        // The macro reads NO list for an in-tree board, so a descriptor that
+        // lists more than the default is a list the macro cannot see.
+        assert_eq!(
+            d.bootable_frameworks(),
+            vec![nros_orchestration_ir::DEFAULT_FRAMEWORK],
+            "`{key}`: its descriptor lists frameworks `nros::main!` cannot read; carry \
+             the list to the macro (phase-562 W3) and update this assertion"
+        );
+        let framework = from_descriptor;
         let wants_zephyr = matches!(d.entry_kind, EntryKind::ZephyrStaticlib);
         assert_eq!(
             framework == "zephyr",
             wants_zephyr,
-            "`{key}` ({zst}): `framework_for_board_key` says `{framework}`, but its \
-             descriptor declares entry_kind = {:?}. A `zephyr-staticlib` board wants the \
-             `zephyr` entry shape (a `rust_main` staticlib export) and nothing else wants \
-             it; any other answer makes both Rust emitters render \
-             `<Board as BoardEntry>::run` for a ZST that does not implement it, which is \
-             the `E0277` of issue 1435. Add `{key}` to `framework_for_board_key`.",
+            "`{key}` ({zst}): the resolver says `{framework}`, but its descriptor \
+             declares entry_kind = {:?}. A `zephyr-staticlib` board wants the `zephyr` \
+             entry shape (a `rust_main` staticlib export) and nothing else wants it; any \
+             other answer makes both Rust emitters render `<Board as BoardEntry>::run` \
+             for a ZST that does not implement it, which is the `E0277` of issue 1435.",
             d.entry_kind
         );
         checked += 1;
