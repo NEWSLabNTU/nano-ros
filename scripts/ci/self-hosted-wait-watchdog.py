@@ -85,9 +85,18 @@ def gh_json(*args):
     return json.loads(out) if out.strip() else {}
 
 
+# Every run state in which a job can still be waiting for a runner. A merge
+# group whose run waits on a concurrency group is `pending`, not `queued`, and
+# its L3 job sits `queued` inside it. Reading only `queued` and `in_progress`
+# runs missed exactly that: on 2026-11-14 an L3 job waited 100 min in a
+# `pending` run (43578183111) for a label no online runner carried, and every
+# 15-minute pass said "no self-hosted job is waiting past its budget".
+RUN_STATES = ("queued", "in_progress", "pending", "waiting", "requested")
+
+
 def fetch(repo):
     runs = []
-    for status in ("queued", "in_progress"):
+    for status in RUN_STATES:
         page = gh_json(f"repos/{repo}/actions/runs?status={status}&per_page=100")
         runs += page.get("workflow_runs", [])
     seen, out = set(), []
@@ -126,6 +135,12 @@ def self_test():
         c, r = classify(runs, now, queue_budget=30, budget=360)
         if c != want_cancel or len(r) != want_lines:
             print(f"  self-test FAIL: {runs} -> cancel={c} report={r}")
+            bad += 1
+    # The run states fetched, not only the classifier: a waiting job inside a
+    # `pending` run was invisible until 2026-11-14.
+    for state in ("queued", "in_progress", "pending", "waiting"):
+        if state not in RUN_STATES:
+            print(f"  self-test FAIL: runs in state {state!r} are not fetched")
             bad += 1
     if bad:
         print(f"self-hosted-wait-watchdog self-test: {bad} of {len(cases)} case(s) FAILED")

@@ -51,3 +51,42 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/ci/self-hosted-wait-watchdog.py --queue-budget 30 --budget 360
+
+  # A runner that is not there at all: a stopped loop deregisters its runner,
+  # and when it was the only one carrying a label, no job waits long enough
+  # for `watchdog` above to see it (each queued run is cancelled when its
+  # merge group merges). 2026-11-14: both host-241 loops stopped on three
+  # refused starts, `nros-queue` had no runner from 05:08Z, and L3 ran zero
+  # times for over five hours with every check here green.
+  # `self-hosted-presence-watchdog.py` reports an expected runner that took no
+  # job while jobs it serves ran elsewhere, and a self-hosted label set no
+  # runner took a single job for. One jobs call per self-hosted run in its
+  # 3 h window, so it runs once an hour (the :00 pass) or on dispatch, not
+  # every 15 min.
+  presence:
+    name: self-hosted runner presence
+    runs-on: ubuntu-22.04
+    # About 150 `gh api` calls for a 3 h window, measured 2026-11-14.
+    timeout-minutes: 10
+    steps:
+      - name: Once an hour
+        id: due
+        run: |
+          if [ "${{ github.event_name }}" = workflow_dispatch ] || [ "$(date -u +%M)" -lt 15 ]; then
+            echo "due=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "not this pass: the presence check runs in the first 15 min of each hour"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.due.outputs.due == 'true'
+        with:
+          sparse-checkout: |
+            scripts/ci/self-hosted-presence-watchdog.py
+            .config/self-hosted-runners.json
+            .github/workflows
+          sparse-checkout-cone-mode: false
+      - name: Report missing runners and unserved labels
+        if: steps.due.outputs.due == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/self-hosted-presence-watchdog.py --window 180
