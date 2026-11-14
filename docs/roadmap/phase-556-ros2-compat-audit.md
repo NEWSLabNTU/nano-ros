@@ -388,15 +388,24 @@ Progress (2026-11-14, step 3 of 5; the default is flipped):
   features through a generated selection or derived package, which lowers
   the effective axes, so no hand-written `Cargo.toml` needed the two
   features; the `nros new` scaffolds take the same road.
-- Opt-outs (`node_interfaces = "none"`): the PX4 bringups; the RTIC images
-  (the RTIC entry registers neither interface and refuses the declaration);
-  every XRCE image whose `[image.<id>.knobs.xrce] max_service_servers` is
-  stated (0 to 3: the session state is one heap allocation sized by those
-  caps, and six more servers do not fit the arena they were sized for), the
-  mps2 bare-metal XRCE serial talker among them. No in-tree Pico W image
-  exists; `nros new --board rpi-pico-w-zephyr` scaffolds one that opts out,
-  and the board budget (`max_queryables = 1`) is unchanged. The zenoh
+- Opt-outs (`node_interfaces = "none"`), exactly three (user ruling
+  2026-11-14, "Raise XRCE caps, RTIC out"): Pico W, PX4, RTIC. No in-tree
+  Pico W image exists; `nros new --board rpi-pico-w-zephyr` scaffolds one
+  that opts out, and the board budget (`max_queryables = 1`) is unchanged.
+  PX4: both bringups. RTIC: the seven `rtic-mps2-an385` images, because the
+  RTIC entry registers neither interface and refuses the declaration
+  ([issue 2559](../issues/2559-rtic-entry-no-node-interfaces.md)). The zenoh
   queryable floor refusal and the RTIC refusal now name the switch.
+- XRCE images keep the stock interfaces. The 22 Zephyr west-road images that
+  state `[image.<id>.knobs.xrce] max_service_servers` raise it by six (one
+  node each; the west road carries no infrastructure fact, so the cap cannot
+  derive there). The five that stated `knobs.zephyr heap_size = 98304`
+  state 229376 (the 196608 arena default the parameter-services capability
+  selects, plus the 32 KiB they stated above the plain default); the rest
+  take that capability default. The cargo-road `baremetal_talker_xrce_serial`
+  drops its stated cap and derives it from its descriptor. Estimated session
+  state per added server: about 4.4 KiB at the 1024-byte default buffer
+  (26.7 KiB for six), about 1.3 KiB at the serial image's 256; unmeasured.
 - No board knob was raised: the Nucleo-F767ZI states no queryable or
   publisher cap, and its serial talker's six parameter services fit the
   8-slot Zephyr queryable default, so it keeps the stock interfaces. Its RAM
@@ -406,7 +415,7 @@ Progress (2026-11-14, step 3 of 5; the default is flipped):
   `node_info_compared_with_stock` (publishers and services plain, the
   `/parameter_events` subscriber held as an expected-failure gap, issue
   2483); the macro, overlay, leaf and CLI tests gain an off-switch case.
-- Open: W14; the RAM measurement (step 5); the
+- Open: W14; the RAM measurement (step 5); issue 2559 (RTIC); the
   `app_main!` / `zephyr_component_main!` leaves register neither interface
   although their descriptor now sizes for them.
 

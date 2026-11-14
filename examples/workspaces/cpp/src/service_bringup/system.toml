@@ -141,10 +141,6 @@ os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7610"
 
 [image.zephyr_service_server_xrce]
-# Its XRCE pools below are sized for its own service servers only, so it
-# opts out of the stock node interfaces (the six parameter services and
-# /rosout).
-node_interfaces = "none"
 board = "zephyr"
 launch = "service_server.launch.xml"
 rmw = "xrce"
@@ -154,7 +150,7 @@ domain_id = 36
 
 [image.zephyr_service_server_xrce.knobs.xrce]
 max_subscribers = 0
-max_service_servers = 1
+max_service_servers = 7  # 1 of its own + the six parameter services of its node
 max_service_clients = 0
 
 [image.zephyr_service_server_cyclonedds]
@@ -171,9 +167,6 @@ os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7610"
 
 [image.zephyr_service_client_xrce]
-# Its XRCE pools below hold no service server, so it opts out of the
-# stock node interfaces (the six parameter services and /rosout).
-node_interfaces = "none"
 board = "zephyr"
 launch = "service_client.launch.xml"
 rmw = "xrce"
@@ -183,7 +176,7 @@ domain_id = 36
 
 [image.zephyr_service_client_xrce.knobs.xrce]
 max_subscribers = 0
-max_service_servers = 0
+max_service_servers = 6  # 0 of its own + the six parameter services of its node
 max_service_clients = 1
 
 [image.zephyr_service_client_cyclonedds]

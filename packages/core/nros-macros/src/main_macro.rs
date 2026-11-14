@@ -1626,7 +1626,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     if framework == Framework::Rtic
         && (param_services_enabled || param_store_enabled || lifecycle_machines > 0)
     {
-        // Issue 1766 -- a declaration the entry would drop in silence.
+        // Issue 1766 -- a declaration the entry would drop in silence. The
+        // stock node interfaces every image gets by default land here too,
+        // so RTIC images opt out until issue 2559.
         return Err(syn::Error::new(
             Span::call_site(),
             format!(
