@@ -155,10 +155,11 @@ pub mod host_probe {
         if needs.iter().any(|p| target.starts_with(p)) {
             return false;
         }
+        // issue 0288: the Rust shell lets host tooling build dependents.
         println!(
             "cargo:warning={crate_name}: TARGET={target} is not one of {needs:?}; skipping the \
              cross-compile. The crate still compiles as a Rust shell so host tooling can build \
-             packages that dep it (issue 0288)."
+             packages that dep it."
         );
         true
     }

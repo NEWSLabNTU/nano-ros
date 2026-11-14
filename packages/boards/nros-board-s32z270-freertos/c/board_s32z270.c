@@ -123,9 +123,10 @@ __attribute__((weak)) int nros_board_register_netif(
 {
     (void)mac; (void)ip; (void)netmask; (void)gw;
     extern int printf(const char*, ...);
+    /* phase-372 W3 */
     printf("nros-board-s32z270-freertos: no netif — the NXP NETC glue is "
-           "consumer-provided (strong nros_board_register_netif override); "
-           "see phase-372 W3\n");
+           "consumer-provided: link a strong nros_board_register_netif "
+           "override\n");
     return -1;
 }
 
@@ -138,9 +139,10 @@ __attribute__((weak)) void nros_board_poll_netif(void) {}
  */
 __attribute__((weak)) void nros_board_setup_tick_interrupt(void) {
     extern int printf(const char*, ...);
+    /* phase-372 W2 */
     printf("nros-board-s32z270-freertos: no tick source — implement "
            "nros_board_setup_tick_interrupt() (GPT/generic timer) or use the "
-           "NXP GCC/ARM_CR52_GIC port; see phase-372 W2\n");
+           "NXP GCC/ARM_CR52_GIC port\n");
 }
 
 __attribute__((weak)) void nros_board_clear_tick_interrupt(void) {}

@@ -43,10 +43,11 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     // exactly in the host-tooling case this guards.
     let target = env::var("TARGET").unwrap_or_default();
     if !target.starts_with("riscv64") {
+        // issue 0288: the Rust shell lets host tooling build dependents.
         println!(
             "cargo:warning=nros-board-threadx-qemu-riscv64: TARGET={target} is not riscv64; \
              skipping the ThreadX/NetX cross-compile. The crate still compiles as a Rust \
-             shell so host tooling can build packages that dep it (issue 0288)."
+             shell so host tooling can build packages that dep it."
         );
         return;
     }

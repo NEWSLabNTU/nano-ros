@@ -368,7 +368,7 @@ pub fn sched_task_dispatch_marker(sched_task: impl std::fmt::Display) -> String 
 pub const KERNEL_TIME_SLICING_PREFIX: &str = "nros: kernel time slicing ";
 /// See [`KERNEL_TIME_SLICING_PREFIX`].
 pub const KERNEL_TIME_SLICING_OFF: &str = "nros: kernel time slicing OFF";
-/// See [`KERNEL_TIME_SLICING_PREFIX`]; the runners append "(issue 2017)".
+/// See [`KERNEL_TIME_SLICING_PREFIX`].
 pub const KERNEL_TIME_SLICING_ON: &str = "nros: kernel time slicing ON";
 
 /// The tutorial talker's payload prefix (`"Hello World:"`, the `data` of
@@ -1861,7 +1861,7 @@ mod tests {
 
     #[test]
     fn parse_nuttx_eth0_reads_the_board_report_line() {
-        let boot = "NuttShell (NSH)\r\nnros: eth0 10.0.2.15 (kernel-owned, RFC-0109 D2)\r\n";
+        let boot = "NuttShell (NSH)\r\nnros: eth0 10.0.2.15 (kernel-owned)\r\n";
         assert_eq!(parse_nuttx_eth0(boot), Some([10, 0, 2, 15]));
         assert_eq!(
             parse_nuttx_eth0("nros: eth0 unreadable (SIOCGIFADDR rc=-1)"),

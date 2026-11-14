@@ -138,10 +138,11 @@ pub fn port_dir(crate_name: &str, freertos_dir: &Path, port: &str) -> PathBuf {
     match nros_build_paths::freertos_port::resolve(freertos_dir, port) {
         Ok(r) => {
             if let Some(name) = &r.deprecated_alias_of {
+                // phase-349 W3: the path spelling is retired one release later.
                 println!(
                     "cargo:warning={crate_name}: FREERTOS_PORT `{port}` is the deprecated path \
-                     spelling of upstream's `{name}`; write `{name}` (phase-349 W3 — the path \
-                     spelling is retired one release later)"
+                     spelling of upstream's `{name}`; write `{name}` (the path spelling is \
+                     retired in the next release)"
                 );
             }
             r.dir
@@ -623,9 +624,10 @@ fn resolve_overlay_env(default_port: &str) -> OverlayEnv {
     // issue 1767 item 4 — through the one resolver (`NROS_C_INCLUDE`, re-rooted,
     // else this checkout), the same answer nuttx_ffi_build.rs gets.
     let nros_c_include = nros_build_paths::nros_c_include();
+    // issue 0365: the header moved once before.
     assert!(
         nros_c_include.join("rclc/detail/app_config.h").exists(),
-        "nros-c header not at {} — did nros-c move again? (issue 0365)",
+        "nros-c header not at {} — set NROS_C_INCLUDE to nros-c's include directory",
         nros_c_include.display()
     );
 

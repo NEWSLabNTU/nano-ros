@@ -32,10 +32,11 @@ use std::{
 };
 
 fn env(name: &str) -> String {
+    // issue 1512: nros-c / nros-cpp publish these through their `links` keys.
     std::env::var(name).unwrap_or_else(|_| {
         panic!(
-            "baremetal_cpp_action_server: {name} is not set — nros-c / nros-cpp must carry \
-             their `links` keys (issue 1512)"
+            "baremetal_cpp_action_server: {name} is not set — depend directly on nros-c and \
+             nros-cpp, which publish it through their `links` keys"
         )
     })
 }

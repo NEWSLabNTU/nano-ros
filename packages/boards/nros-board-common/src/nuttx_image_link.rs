@@ -327,6 +327,7 @@ fn assert_vectortab_arch(vectortab: &Path) {
     } else {
         u16::from_le_bytes([bytes[18], bytes[19]])
     };
+    // issue 0456: a riscv recipe without riscv-env.sh links the arm table.
     assert!(
         got == want,
         "nuttx_image_link: vector table {} is ELF machine {:#x}, but this build \
@@ -335,7 +336,7 @@ fn assert_vectortab_arch(vectortab: &Path) {
          reported as a MISSING library (`cannot find -lnros_nuttx_boot`).\n  \
          A riscv recipe must `source scripts/nuttx/riscv-env.sh` — without it \
          the board helpers take their qemu-arm defaults, including \
-         NUTTX_VECTORTAB (issue 0456).",
+         NUTTX_VECTORTAB.",
         vectortab.display(),
         got,
         target_arch,

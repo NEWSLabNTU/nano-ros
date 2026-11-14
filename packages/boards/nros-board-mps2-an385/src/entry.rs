@@ -256,16 +256,18 @@ fn report_first_platform_park(runtime: &mut ExecutorNodeRuntime) {
     match source {
         nros::WakeSourceId::Platform(idx) => {
             REPORTED.store(true, Ordering::Relaxed);
+            // phase-436 B2: the line its exit criterion reads.
             Mps2An385::println(format_args!(
-                "phase-436 B2: park bounded by Platform({idx}) at {bound_us} us"
+                "nros: park bounded by Platform({idx}) at {bound_us} us"
             ));
         }
         other => {
             let n = SPINS.fetch_add(1, Ordering::Relaxed) + 1;
             if n >= REPORT_AFTER_SPINS {
                 REPORTED.store(true, Ordering::Relaxed);
+                // phase-436 B2
                 Mps2An385::println(format_args!(
-                    "phase-436 B2: no Platform park in {n} spins; last was \
+                    "nros: no Platform park in {n} spins; last was \
                      {other:?} at {bound_us} us — the smoltcp source is \
                      registered and further out than the budget"
                 ));

@@ -1,15 +1,17 @@
 ---
 id: 2443
 title: "Runtime logs of a default image and the colcon plugin's errors still cite internal ids, and no gate reads them"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: [cli, ux, logging, runtime]
-related: [issue-2305, phase-523]
+related: [issue-2305, phase-523, issue-2547]
 found: 2026-11-11
+resolved: 2026-11-14
+resolved_in: "PRs #3784, #3786, #3787, #3789, #3790, #3792, #3794 and #3804 (the runtime-subject widening); gaps filed as issue 2547"
 ---
 
-**Home: [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md).**
+**Home: [phase-523](../../roadmap/phase-523-education-labs-adoption-probes.md).**
 The two surfaces no gate reads after issue 2305 took CMake's default-level
 output to a zero baseline and gated build-script warnings.
 
@@ -208,3 +210,40 @@ most in `nros-board-common` and the Zephyr and FreeRTOS board crates).
 Recommendation: do not archive yet. Widen the runtime subject's directories
 (the shell-script subject has landed, above); then the remaining gaps are the
 stated ones above, and the issue can be archived.
+
+## Progress (2026-11-14): every package and example
+
+**The runtime subject reads every package and every example.** It read
+`packages/{core,api,rmw,platform}` only; it now reads all of `packages/`
+and `examples/` (an example is code a user copies out and runs), with the
+same skips (vendored, test, bench and build trees, an example's own `tests/`,
+bindgen output, build scripts) plus the CLI library and `cmd/`, which their
+own subject reads whole. The call lists gained the board print helpers: the
+`Board` trait's `println` (`B::println(format_args!(…))`), `print_line`,
+`hprintln!` and `nros_nuttx_println!` in Rust; `uart_puts`,
+`semihosting_write0`, `nros_board_log`, `nros_board_freertos_console_write`,
+`board_stderr_line` and the other board console helpers in C, and the
+Cyclone DDS backend's `NROS_CYC_TRACE`. The build-script subjects read
+examples' build scripts too. The scan found 37 runtime ids in 21 files, all
+in `packages/boards` and `packages/tooling` (`base_config.rs` 5, the FreeRTOS
+`entry.rs` 4, the Zephyr `entry_sched_tasks.rs` 3), one more in the FreeRTOS
+`entry.rs` passed through a conditional, and 6 build-script panics in the
+mps2-an385 C++ examples; the examples' printed text held none. Each id moved
+to a comment above its call; refusals gained their remedy (regenerate the
+entry with `nros build`, set `NROS_C_INCLUDE`, depend directly on nros-c and
+nros-cpp).
+
+## Resolution
+
+Every text class this issue named is gated at baseline zero by
+`check-user-surface-ids`, with no allowlist: the colcon plugin (#3593), the
+CLI library and build-script panics as a hard rule after the ratchet sweep
+(#3617 to #3780, then #3784), CMake configure messages (#3786, #3787),
+runtime log and panic text (#3789, widened to every package and example by
+#3804), user-run shell scripts (#3790), compile-time text (#3792)
+and text assembled away from its print (#3794). The gaps the checker states
+(text formatted into a variable or kept in a message table and printed
+later, literals a function returns for its caller to print, generated-file
+headers, C text kept in message macros) are measured and tracked by
+[issue 2547](../2547-user-surface-text-formatted-away-or-tabled-cites-ids.md),
+with a gate plan.

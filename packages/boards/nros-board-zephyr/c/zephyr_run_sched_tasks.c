@@ -127,9 +127,10 @@ static void zephyr_report_core_pin(const char* name, uint32_t core_plus1, int rc
     if (rc == 0) {
         printk("nros: core pin sched_task=`%s` cpu=%d\n", name, cpu);
     } else {
+        /* issue 0655 */
         printk("nros: core pin FAILED sched_task=`%s` cpu=%d rc=%d "
                "(-22/EINVAL: the thread was already RUNNING — Zephyr accepts a cpu mask only "
-               "before start, issue 0655; -88/ENOSYS: image lacks CONFIG_SCHED_CPU_MASK) "
+               "before start; -88/ENOSYS: image lacks CONFIG_SCHED_CPU_MASK) "
                "— sched task runs unpinned\n",
                name, cpu, rc);
     }
@@ -155,9 +156,10 @@ static void zephyr_apply_boot_core_pin(const char* name, uint32_t core_plus1) {
     if (rc == 0) {
         printk("nros: core pin sched_task=`%s` cpu=%d\n", (name != NULL) ? name : "?", cpu);
     } else {
+        /* issue 0655 */
         printk("nros: core pin FAILED sched_task=`%s` cpu=%d rc=%d — this is the BOOT sched task, which "
                "Zephyr started before nros ran, and a cpu mask is only settable before a thread "
-               "starts (issue 0655). Declare the `core` on a SPAWNED sched task. -88/ENOSYS instead "
+               "starts. Declare the `core` on a SPAWNED sched task. -88/ENOSYS instead "
                "means the image lacks CONFIG_SCHED_CPU_MASK. Sched task runs unpinned\n",
                (name != NULL) ? name : "?", cpu, rc);
     }

@@ -626,22 +626,23 @@ fn per_build_sizes_includes() -> Vec<PathBuf> {
             "nros_cpp_config_generated.h",
         ),
     ] {
+        // issue 1569: the sizes header comes only through the `links` key.
         let dir = env::var(key).map(PathBuf::from).unwrap_or_else(|_| {
             panic!(
                 "{key} is not set: this crate must depend DIRECTLY on the crate that \
                  publishes it (`nros-c` / `nros-cpp`, whose `links` key carries it). \
-                 Without it there is no per-build sizes header to compile against \
-                 (issue 1569)."
+                 Without it there is no per-build sizes header to compile against."
             )
         });
         let file = dir.join(subdir).join(header);
+        // issue 1569: no committed fallback, by design.
         if !file.is_file() {
             panic!(
                 "the per-build sizes header {} does not exist. Its writer ran (cargo \
                  orders this script after it) but wrote nothing — most likely its size \
                  probe read 0, i.e. a `cargo check` or an RMW-less feature set. A NuttX \
                  image cannot be sized without it; there is deliberately no committed \
-                 fallback (issue 1569).",
+                 fallback.",
                 file.display()
             );
         }

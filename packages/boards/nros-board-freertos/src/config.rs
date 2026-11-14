@@ -259,10 +259,11 @@ impl Config {
                 "node.rt" | "node.rt.freertos",
                 "zenoh_lease_priority" | "zenoh_lease_stack_bytes",
             ) => {
+                // RFC-0110 D2: no lease task since zenoh-pico 1.10.
                 panic!(
                     "nros-board-freertos: `[{section}] {key}` is retired — zenoh-pico 1.10 \
-                     runs the lease on its executor (read) task, so there is no lease task \
-                     (RFC-0110 D2). Remove it; `zenoh_read_priority` / \
+                     runs the lease on its executor (read) task, so there is no lease task. \
+                     Remove it; `zenoh_read_priority` / \
                      `zenoh_read_stack_bytes` configure that task."
                 );
             }

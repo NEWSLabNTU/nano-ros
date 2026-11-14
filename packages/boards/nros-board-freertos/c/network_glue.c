@@ -136,9 +136,10 @@ int nros_freertos_init_network(
          * still prints when it is the one linked. This message is the
          * floor, not a replacement. */
         extern int printf(const char *, ...);
+        /* RFC-0052, issue 0769: the strong override's contract. */
         printf("nros-board-freertos: no Ethernet — nros_board_register_netif "
                "returned %d. A board overlay or consumer must provide a strong "
-               "override (see RFC-0052, issue 0769).\n", rc);
+               "override of nros_board_register_netif.\n", rc);
     }
     return rc;
 }

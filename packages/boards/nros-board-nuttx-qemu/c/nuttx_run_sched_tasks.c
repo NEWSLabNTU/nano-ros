@@ -822,8 +822,9 @@ int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_
     size_t boot_idx = n_sched_tasks - 1u;
     for (size_t i = 1u; i < n_sched_tasks; ++i) {
         if (sched_tasks[i].priority > sched_tasks[i - 1u].priority) {
+            /* issue 0636 */
             printf("nros: sched task table is not sorted highest-priority-first — "
-                   "boot sched task falls back to index 0 (issue 0636)\n");
+                   "boot sched task falls back to index 0\n");
             boot_idx = 0u;
             break;
         }

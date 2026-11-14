@@ -124,7 +124,7 @@ and `-v` detail." RFC-0116 D2 wins. `check-cmake-user-output-refs` now counts
 `FATAL_ERROR` and `SEND_ERROR` too, and `check-user-surface-ids` reads
 build-script panic texts. Both start as counted ratchets: 102 CMake sites and
 17 panic ids, measured 2026-11-12. The sweep that lowers them is
-[issue 2443](2443-runtime-log-and-colcon-messages-cite-ids.md)'s.
+[issue 2443](archived/2443-runtime-log-and-colcon-messages-cite-ids.md)'s.
 
 The surfaces neither gate reads, runtime logs of a default image and the
-colcon plugin's errors, are [issue 2443](2443-runtime-log-and-colcon-messages-cite-ids.md).
+colcon plugin's errors, are [issue 2443](archived/2443-runtime-log-and-colcon-messages-cite-ids.md).

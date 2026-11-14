@@ -23,8 +23,8 @@ Subjects, all checked on every run:
 * the RENDERED help: `nros --help`, `nros help --all`, and `--help` of every
   verb and nested verb, hidden ones included (clap turns `///` doc comments
   into help text, so this is the only reading that sees what renders);
-* the WARNINGS a package's build script prints (issue 2305): a string literal
-  in `build.rs` (or its `build_*.rs` / `build/*.rs` modules) that starts with
+* the WARNINGS a package's or an example's build script prints (issue 2305):
+  a string literal in `build.rs` (or its `build_*.rs` / `build/*.rs` modules) that starts with
   `cargo:warning=` / `cargo::warning=`, or is the text handed to a `warn(…)` /
   `.note(…)` helper (directly or through `format!`). A warning is what an
   ordinary, successful `cargo build` of a user's image prints. A build
@@ -55,22 +55,29 @@ Subjects, all checked on every run:
   value when a printer prints it. Gaps, stated: text built by a command other
   than a printer, a heredoc written to a file, a printer inside a quoted
   `$(…)` (read as its outer string), and scripts those run rather than source;
-* the RUNTIME LOG AND PANIC TEXT of a default image (issue 2443), in
-  `packages/{core,api,rmw,platform}` outside vendored, test, bench and example
-  trees, bindgen's `generated.rs` and build scripts: a Rust string literal
-  handed to a log, print or panic macro (`log::`/`defmt::`/bare
-  `trace!`..`error!`, nros_log's `log_*!`/`nros_*_throttle!`, `cpp_diag!`,
-  `println!`/`eprintln!`, `panic!`/`unreachable!`/`todo!`/`unimplemented!`,
-  `.expect(`, the message of an `assert*!`), directly or through `format!`;
-  a C/C++ string literal inside a `printf`/`fprintf`/`snprintf`/`puts`/
-  `printk`/`syslog`/`assert`, a Zephyr `LOG_*`, PX4, zenoh-pico `_Z_*`,
-  rclcpp/rclc or nros log macro, or a backend's own log helper. The
-  literal's innermost enclosing call decides, so a table entry, a compared
-  key or an assert's condition is data and is not read; Rust `#[cfg(test)]`
-  and `#[cfg(all(test, …))]` items are not read. Gaps, stated: calls the
-  lists above do not name. Compile-time text, and text assembled away from
-  its print (a `Display` impl, an `Err(…)` logged later), are the next two
-  subjects;
+* the RUNTIME LOG AND PANIC TEXT of every package and every example (issue
+  2443): `packages/` and `examples/` (an example is code a user copies out
+  and runs), outside vendored, test (an example's own `tests/` too), bench and
+  build trees, bindgen's `generated.rs`, build scripts (read above) and the
+  CLI library and `cmd/` (read whole above): a Rust string literal handed to
+  a log, print or panic macro (`log::`/`defmt::`/bare `trace!`..`error!`,
+  nros_log's `log_*!`/`nros_*_throttle!`, `cpp_diag!`, `println!`/
+  `eprintln!`, `panic!`/`unreachable!`/`todo!`/`unimplemented!`, `.expect(`,
+  the message of an `assert*!`) or to a board print helper (the `Board`
+  trait's `println` as `B::println(format_args!(…))`, `print_line`,
+  `hprintln!`, `nros_nuttx_println!`), directly or through `format!`/
+  `format_args!`; a C/C++ string literal inside a `printf`/`fprintf`/
+  `snprintf`/`puts`/`printk`/`syslog`/`assert`, a Zephyr `LOG_*`, PX4,
+  zenoh-pico `_Z_*`, rclcpp/rclc or nros log macro, a backend's own log
+  helper, or a board console helper (`uart_puts`, `semihosting_write0`,
+  `nros_board_log`, `nros_board_freertos_console_write`,
+  `board_stderr_line`, …; `C_LOG_CALLS` lists them). The literal's innermost
+  enclosing call decides, so a table entry, a compared key or an assert's
+  condition is data and is not read; Rust `#[cfg(test)]` and
+  `#[cfg(all(test, …))]` items are not read. Gaps, stated: calls the lists
+  above do not name, C++ stream output (`std::cout << "…"`), and text
+  formatted into a variable or kept in a table and printed later (filed as
+  its own issue);
 * COMPILE-TIME TEXT (issue 2443): what the compiler shows a user building
   nano-ros or an app against it, in `packages/`, `zephyr/` and `cmake/`
   (tracked `.in` templates read as the file they generate) outside vendored,
@@ -90,8 +97,9 @@ Subjects, all checked on every run:
   only through a const context elsewhere;
 * TEXT ASSEMBLED AWAY FROM ITS PRINT (issue 2443): an error's text, which a
   caller prints later as a CLI refusal, a build-script panic or a log line.
-  In every Rust crate under `packages/` (the runtime subject's skips; the CLI
-  library is read whole above): every literal in the body of an
+  In every Rust crate under `packages/` (vendored, test, bench, build and
+  example trees skipped; the CLI library is read whole above): every literal
+  in the body of an
   `impl Display for` or `impl Error for`; the strings of thiserror's
   `#[error(…)]`; and a literal handed to `Err(…)`, `bail!`/`eyre!`/
   `anyhow!`/`ensure!`, `.context`/`.with_context`/`.wrap_err`, `.ok_or`/
@@ -324,7 +332,11 @@ def library_hits() -> list[str]:
 
 # --- build-script warnings --------------------------------------------------
 
-BUILD_SCRIPT_GLOBS = ["packages/**/build.rs", "packages/**/build_*.rs", "packages/**/build/*.rs"]
+# An example's build script runs in the user's build of that example, so
+# examples are read too.
+BUILD_SCRIPT_GLOBS = [
+    f"{d}/**/{g}" for d in ("packages", "examples") for g in ("build.rs", "build_*.rs", "build/*.rs")
+]
 SKIP_TREES = re.compile(r"/(third-party|tests?|testing|generated)/")
 WARNING_PREFIX = re.compile(r"^cargo::?warning=")
 # A literal handed to a warning helper: `warn(`, `.note(`, optionally through
@@ -778,22 +790,40 @@ def shell_hits() -> list[str]:
 
 # --- runtime log and panic text ---------------------------------------------
 
-# Issue 2443, ruling A: what a default image prints at run time -- a log line,
-# a panic or assert message -- names what, where and how to fix, never an id.
-RUNTIME_DIRS = ["packages/core", "packages/api", "packages/rmw", "packages/platform"]
+# Issue 2443, ruling A: what an image, a tool or an example prints at run
+# time -- a log line, a panic or assert message -- names what, where and how
+# to fix, never an id. Every package and every example: an example is code a
+# user copies out and runs, so its printed text reaches them as surely as a
+# library's.
+RUNTIME_DIRS = ["packages", "examples"]
 RUNTIME_EXTS = (".rs", ".c", ".h", ".cpp", ".hpp", ".cc")
-# Not runtime text: vendored and test trees, bindgen output, and build scripts
-# (their panics and warnings are read above).
+# Not runtime text: vendored and test trees (an example's own `tests/`
+# included), bindgen output, and build scripts (their panics and warnings are
+# read above).
 RUNTIME_SKIP = re.compile(
+    r"/(third-party|vendor|vendored|tests?|testing|benches|build)/"
+    r"|/generated\.rs$|/build(_[^/]*)?\.rs$|/tests\.rs$"
+)
+# The CLI library and `cmd/` are read whole above (every literal), so the
+# runtime subject leaves them out rather than report a line twice.
+RUNTIME_SKIP_PREFIXES = tuple(d + "/" for d in [*CLI_LIBRARY, CMD_DIR])
+# The library subjects below (assembled text) keep examples out: an example's
+# `Err(…)` is the teaching code's own, printed only through the calls above.
+LIBRARY_SKIP = re.compile(
     r"/(third-party|vendor|vendored|tests?|testing|benches|examples|build)/"
     r"|/generated\.rs$|/build(_[^/]*)?\.rs$|/tests\.rs$"
 )
 # The calls whose string arguments are printed, matched against the call's
 # last path segment (`log::warn!`, `defmt::panic!`, `nros_log::log_error!`).
+# The board print helpers are named too: the `Board` trait's `println`
+# (`B::println(format_args!(…))`, `Mps2An385::println(…)`, `<B as Board>::println`),
+# a board's own `print_line`, cortex-m-semihosting's `hprintln!` and the
+# NuttX board's `nros_nuttx_println!`.
 RUST_LOG_CALLS = re.compile(
     r"(?:trace|debug|info|warn|error|log|nros_trace|log_(?:debug|info|warn|error|fatal)"
     r"|nros_(?:trace|debug|info|warn|error)_throttle(?:_at)?|cpp_diag|cpp_info"
-    r"|e?println|e?print|panic|unreachable|todo|unimplemented)!|\.expect"
+    r"|e?println|e?print|hprintln|nros_nuttx_println|panic|unreachable|todo|unimplemented)!"
+    r"|\.expect|println|print_line"
 )
 # An assert's message is the argument after its condition (after both
 # operands for `_eq`/`_ne`); the condition's own literals are data.
@@ -805,6 +835,11 @@ C_LOG_CALLS = re.compile(
     r"|NROS_(?:LOG_SINK|DEBUG|INFO|WARN|ERROR|FATAL)|RCLCPP_(?:DEBUG|INFO|WARN|ERROR|FATAL)\w*"
     r"|RCLCPP_TRY_LOG|RCLC_LOG_\w+|RCLC_CHECK_LOG|RCUTILS_LOG_\w+|RCL_SET_ERROR_MSG"
     r"|ZPICO_HOSTED_PRINTK|xrce_log_error|graph_log|nros_threadx_stderr|nros_freertos_append"
+    # The board crates' console helpers (`packages/boards/*/c`, and the
+    # examples that copy them) and the Cyclone DDS backend's trace macro.
+    r"|uart_puts|semiho(?:st|sting)_write0|nros_board_log(?:_write_stderr)?"
+    r"|nros_board_freertos_console_write|board_stderr_line|sh_print_size|log_app_returned"
+    r"|heap_peak_report|NROS_CYC_TRACE"
 )
 CALL_NAME = re.compile(r"([A-Za-z_][\w:]*!?|\.\s*[A-Za-z_]\w*)\s*$")
 # The places the lexer stops: a comment, a string (raw and byte forms in
@@ -976,7 +1011,7 @@ def runtime_files() -> list[str]:
     files = [
         rel for rel in files
         if rel.endswith(RUNTIME_EXTS) and not RUNTIME_SKIP.search("/" + rel)
-        and (ROOT / rel).is_file()
+        and not rel.startswith(RUNTIME_SKIP_PREFIXES) and (ROOT / rel).is_file()
     ]
     tests = test_module_files([rel for rel in files if rel.endswith(".rs")])
     return [rel for rel in files if rel not in tests]
@@ -1177,7 +1212,7 @@ def compile_time_hits() -> list[str]:
 # an `Err(…)` carries it up to a CLI refusal or a build-script panic. That
 # text names what, where and how to fix, never an id. Read through
 # `code_and_literals`, the lexer of the subjects above.
-# Every crate under `packages/` (same skips as the runtime subject), except
+# Every crate under `packages/` (`LIBRARY_SKIP`: no example trees), except
 # the CLI library, whose every literal its hard rule above reads already.
 ASM_DIRS = ["packages"]
 ASM_SKIP_PREFIXES = tuple(d + "/" for d in CLI_LIBRARY)
@@ -1240,7 +1275,7 @@ def assembled_files() -> list[str]:
     ).stdout.split()
     files = [
         rel for rel in files
-        if not RUNTIME_SKIP.search("/" + rel) and not rel.startswith(ASM_SKIP_PREFIXES)
+        if not LIBRARY_SKIP.search("/" + rel) and not rel.startswith(ASM_SKIP_PREFIXES)
         and (ROOT / rel).is_file()
     ]
     tests = test_module_files(files)
@@ -1519,6 +1554,40 @@ def self_test() -> None:
     )
     got = [(ln, t) for ln, text in runtime_literals(c, False) for t in ids(text)]
     assert got == [(6, "issue 0803"), (7, "RFC-0074")], f"self-test: runtime c {got}"
+    # The board print helpers: the `Board` trait's `println`, `hprintln!`, a
+    # board's C console helpers; a method named `print` on a value is not one.
+    rs = (
+        'fn f() {\n'
+        '    B::println(format_args!("boot (phase-436 B2) {}", n));\n'
+        '    <B as Board>::println(format_args!("x (issue 0636)"));\n'
+        '    hprintln!("y (RFC-0109)");\n'
+        '    report.print("data (issue 1111)");\n'
+        '}\n'
+    )
+    got = [(ln, t) for ln, text in runtime_literals(rs, True) for t in ids(text)]
+    assert got == [(2, "phase-436"), (3, "issue 0636"), (4, "RFC-0109")], \
+        f"self-test: runtime board rust {got}"
+    c = (
+        'void f(void) {\n'
+        '    uart_puts("no link (issue 0769)\\n");\n'
+        '    nros_board_freertos_console_write("slicing ON (issue 2017)\\n");\n'
+        '    semihosting_write0("x (phase-372)");\n'
+        '}\n'
+    )
+    got = [(ln, t) for ln, text in runtime_literals(c, False) for t in ids(text)]
+    assert got == [(2, "issue 0769"), (3, "issue 2017"), (4, "phase-372")], \
+        f"self-test: runtime board c {got}"
+    # Every package and example is read; vendored trees, an example's own
+    # tests, build trees and the CLI library (read whole above) are not.
+    for rel, read in [
+        ("examples/qemu/rust/talker/src/main.rs", True),
+        ("packages/boards/nros-board-x/c/entry.c", True),
+        ("examples/qemu/rust/talker/tests/smoke.rs", False),
+        ("packages/x/third-party/y.c", False),
+        ("packages/cli/nros-cli-core/src/lib.rs", False),
+    ]:
+        got = not RUNTIME_SKIP.search("/" + rel) and not rel.startswith(RUNTIME_SKIP_PREFIXES)
+        assert got == read, f"self-test: runtime file {rel} read={got}"
     # Issue 2443 -- compile-time text is read; a comment, an `#if` condition,
     # a plain string and an assert's condition are not.
     c = (

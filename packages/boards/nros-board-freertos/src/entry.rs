@@ -973,9 +973,10 @@ where
         .windows(2)
         .any(|w| w[1].priority > w[0].priority)
     {
+        // issue 0636
         B::println(format_args!(
             "nros: sched task table is not sorted highest-priority-first — \
-             boot sched task falls back to index 0 (issue 0636)"
+             boot sched task falls back to index 0"
         ));
         0
     } else {
@@ -1120,7 +1121,8 @@ where
     if !ctx.task_memory.is_empty() && boot_index != ctx.sched_tasks.len() - 1 {
         B::println(format_args!(
             "nros: the entry's sched task memory assumes the LAST sched task boots, but this \
-             table boots index 0 — refused (issue 1598)"
+             table boots index 0 — refused; sort the sched task table highest-priority-first \
+             and regenerate the entry"
         ));
         B::exit_failure();
     }
@@ -1151,7 +1153,7 @@ where
     B::println(format_args!(
         "nros: kernel time slicing {}",
         if unsafe { nros_freertos_kernel_time_slicing() } != 0 {
-            "ON (issue 2017)"
+            "ON"
         } else {
             "OFF"
         }
@@ -1223,7 +1225,7 @@ where
     if !task_memory.is_empty() && task_memory.len() != sched_tasks.len().saturating_sub(1) {
         B::println(format_args!(
             "nros: sched task memory holds {} row(s) but {} sched task(s) are spawned — the entry \
-             was generated for a different sched task table (issue 1598)",
+             was generated for a different sched task table; regenerate it with `nros build`",
             task_memory.len(),
             sched_tasks.len().saturating_sub(1)
         ));
@@ -1324,13 +1326,14 @@ fn report_sched_tasks_above_transport<B: BoardPrint>(
             ));
         }
     }
+    // issues 0506, 0623: the RX-drain starvation this warns of.
     if offenders > 0 {
         B::println(format_args!(
             "  Intended? then nothing to do. Both numbers above are RAW FreeRTOS \
              units, the same ones a `[tasks.<name>.freertos] priority` is written in. \
              If NOT intended: starving the RX drain stalls publishers on lwIP \
              retransmission, which costs far more than the deadline it was meant to \
-             protect (issues 0506, 0623)."
+             protect."
         ));
     }
 }

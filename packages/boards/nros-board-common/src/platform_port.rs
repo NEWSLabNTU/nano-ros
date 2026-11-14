@@ -74,11 +74,12 @@ pub fn defer_to_graph_provider(crate_name: &str, port: &str) -> bool {
     match decide(value.as_deref()) {
         PortDecision::Compile => false,
         PortDecision::Defer { provider } => {
+            // issue 1779: a second C port would define every symbol twice.
             println!(
                 "cargo:warning={crate_name}: this build already links the `{provider}` \
                  nros_platform_* provider (nros-platform-cffi, reached through cargo feature \
                  unification, e.g. `cargo test --workspace`); skipping the {port} C port, which \
-                 would define every nros_platform_* symbol a second time (issue 1779). The crate \
+                 would define every nros_platform_* symbol a second time. The crate \
                  still compiles as a Rust shell; an image of this board must not enable \
                  `nros-platform-cffi/posix-c-port`."
             );
