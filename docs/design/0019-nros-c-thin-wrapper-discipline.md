@@ -4,31 +4,37 @@ title: "nros-c Thin-Wrapper Discipline (Phase 122.3.a)"
 status: Stable
 area: runtime-api
 since: 2026-05
-last-reviewed: 2026-11-13
-implements-tracked-by: [phase-122, phase-270, phase-317]
-supersedes: []
+last-reviewed: 2026-11-14
+implements-tracked-by: [phase-83, phase-122, phase-270, phase-317]
+supersedes: [0020]
 superseded-by: null
 ---
 
 # nros-c Thin-Wrapper Discipline (Phase 122.3.a)
 
-**Status:** Audit complete. Refactor plan TBD as 122.3.b/c/d.
-**Date:** 2026-05-13.
-**Owner:** Phase 122 (Unify C / C++ / Rust API code paths).
+**Status:** Stable. The rule is in force; the opaque-only struct target of
+2026-05-13 was not pursued (ruled 2026-11-14, below).
+**Date:** 2026-05-13; ruled and merged with RFC-0020 2026-11-14 (phase-555 W3).
+**Owner:** Phase 122 (Unify C / C++ / Rust API code paths), then phase-83's
+audit method, now the periodic audit's category C1.
 
-> **Review 2026-11-13.** The principle (the Rust API is the source of truth;
-> C and C++ delegate) is in force: RFC-0089 and RFC-0105 cite it as
-> governing. The target shape below is NOT what shipped.
-> [Phase 122](../roadmap/archived/phase-122-unify-api-paths.md) landed the
-> L1 polling entry points (122.3.c) but left 122.3.b, the subscription
-> refactor, unchecked, and the C structs still mirror fields: for example
-> `rcl_subscription_t` holds `topic_name`, `type_name`, `type_hash`, `qos`
-> and `handle_id` (`packages/api/nros-c/src/subscription.rs:98-123`), and
-> `rcl_publisher_t` the same names (`packages/api/nros-c/src/publisher.rs:120`).
-> The C names moved to rclc's (RFC-0089), so `nros_<entity>_t` below is now
-> `rcl_<entity>_t` and `nros_<entity>_init*` is `rclc_<entity>_init*`.
-> Whether the opaque-only target still stands is a question for the
-> [phase-555 runtime-api brief](../roadmap/data/phase-555-w2-runtime-api-brief.md).
+> **Ruling 2026-11-14 (phase-555 W3).** The principle stands: the Rust API is
+> the source of truth, and C and C++ delegate, with no logic or state machine
+> in the wrapper. RFC-0089 and RFC-0105 cite it as governing. The target this
+> RFC first set, every public C struct holding only `state` and `_opaque`, is
+> dropped: it was never built
+> ([phase 122](../roadmap/archived/phase-122-unify-api-paths.md) left
+> 122.3.b unchecked), later phases added fields to these structs
+> (`type_support` by phase-492 W8, `options` on `rcl_publisher_t` by
+> phase-515), and users reach the structs through rclc's functions, not their
+> fields (RFC-0089). Mirrored registration fields are accepted; see "The
+> rule". The C names moved to rclc's (RFC-0089), so `nros_<entity>_t` in the
+> 2026-05-13 audit below is now `rcl_<entity>_t`.
+>
+> [RFC-0020](archived/0020-thin-wrapper-audit.md), the phase-83 audit and its
+> checklist, is merged here: the checklist is "Compliance checklist" below,
+> and the audit method is category C1 of
+> [codebase-audit-checklist.md](../development/codebase-audit-checklist.md).
 
 > **Build/link contract.** The C ABI nros-c wraps resolves through one canonical
 > `<nros/platform.h>` (`nros-platform-api`); board capabilities + the RMW backend
@@ -40,15 +46,17 @@ superseded-by: null
 ## Why this exists
 
 Phase 122 establishes the rule: **the Rust API is the source of truth.
-C / C++ wrappers are thin shims that delegate.** Today's nros-c
-violates this unevenly — some entities are thin wrappers (publisher,
+C / C++ wrappers are thin shims that delegate.** On 2026-05-13 nros-c
+followed this unevenly — some entities are thin wrappers (publisher,
 executor, support), others duplicate Rust-side bookkeeping in
 C-visible struct fields (subscription, service, action, timer,
 guard).
 
-This doc captures the audit + lays down the per-entity refactor target.
+This doc recorded that audit and first set a per-entity refactor target
+(an opaque-only struct). The target is withdrawn; "The rule" below is what
+stands.
 
-## Audit (current state — 2026-05-13)
+## Audit (2026-05-13, kept as history)
 
 For each entity, three categories:
 
@@ -102,179 +110,88 @@ through the C ABI. Phase 122 introduces L1 (primitive polling),
 which puts the entity inside the C struct. Field-mirror doesn't
 extend to L1 cleanly.
 
-## Target shape (post-122.3.b)
+## The rule
 
-### Universal rules
+1. **The wrapper holds no logic and no state machine.** Goal lifecycle,
+   request and reply tracking, pending tables, counters and anything else
+   the Rust side tracks and changes after registration live in Rust. The C
+   struct never mirrors them.
 
-1. **Every public C struct = `state` + `_opaque: [u64; N]` only.**
-   No bookkeeping fields visible to C. `_opaque` is sized by
-   `nros-sizes-build` to fit the Rust entity (L1) OR the
-   registration-packet Rust value (L2).
-
-2. **All bookkeeping lives in Rust.** Topic name validation, type
-   info copying, QoS settings, callback storage, handle ID — all
-   private to Rust. The C ABI exposes only entry points.
+2. **Mirrored registration fields are accepted.** A C struct may carry the
+   registration packet as fields: name, type name, type hash, QoS, callback,
+   context, the type support and the arena handle id. They are written once,
+   at init or registration, and read by the wrapper; nothing in C changes
+   them afterwards. This is what `rcl_subscription_t` and its siblings hold
+   today (`packages/api/nros-c/src/subscription.rs`). The 2026-05-13 target
+   that every struct hold only `state` + `_opaque` is not pursued: users
+   reach the structs through functions, so a layout change costs a rebuild
+   (see "ABI compatibility"), which is the only risk the target guarded
+   against.
 
 3. **C entry points do boundary conversion + delegate.**
-   - `*const c_char` → `&str` via `CStr::from_ptr` + `to_str`.
+   - `*const c_char` to `&str` via `CStr::from_ptr` + `to_str`.
    - Null-pointer checks at the boundary.
-   - Result mapping (`Result<T, NodeError>` → `nros_ret_t`).
+   - Result mapping (`Result<T, NodeError>` to `rcl_ret_t`).
    - No business logic in C.
 
-4. **No C-side duplicated validation.** `MAX_TOPIC_LEN` check,
-   `validate_state!` macro, etc. — these belong inside the Rust
-   impl, not the C wrapper. The C wrapper trusts Rust to validate.
+4. **No duplicated validation.** What Rust validates (topic names, QoS,
+   bounds) is validated in Rust; the wrapper trusts it. Checking the C
+   struct's own `state` at the boundary (`validate_state!`) is boundary
+   validation, not duplication.
 
-5. **Getters delegate via opaque cast.** `rcl_subscription_get_topic_name`
-   reads the topic name from the Rust value inside `_opaque`, doesn't
-   read a C-side mirror byte array.
+5. **Getters read the registration field or delegate.** A getter may return
+   a mirrored registration field; anything that changes after registration
+   is read from the Rust side.
 
-### Per-layer adaptation
+## Compliance checklist
 
-**L1 (primitive, caller polls):**
-- `_opaque` holds the actual entity — `RawSubscription<RX_BUF>`,
-  `RawService<...>`, `RawActionClient<...>`, etc.
-- Entity created in `nros_<entity>_init` via Rust's `Node::create_*`.
-- Entity destroyed in `nros_<entity>_fini` via `Drop`.
-- Polling ops (`take_serialized`, `take_request`, `send_response`,
-  …) delegate to the in-`_opaque` Rust value.
+Merged from RFC-0020 (phase-83). A `nros-c` or `nros-cpp` change is
+thin-wrapper-compliant if **none** of the following appear in the added
+code. Apply it as a review gate; the periodic re-run is the audit's
+category C1.
 
-**L2 (callback, executor-managed):**
-- `_opaque` holds a registration-packet Rust value — basically
-  the inputs `register_<entity>_*` will consume. After
-  `nros_executor_register_<entity>` runs, the entity itself lives
-  in the executor's arena; the C struct's `_opaque` holds a handle
-  ID pointing at that arena slot.
-- Callback fn pointer goes into the registration-packet Rust value
-  as a `unsafe extern "C" fn(...)` field — no longer a public C
-  struct field. Set via `nros_<entity>_init_handler(..., cb, ctx)`.
+- [ ] No `[u8; N]` arrays or `heapless::Vec` fields in the C/C++ FFI
+      struct that mirror data the arena already owns (`active_goals`,
+      `pending_*`, `completed_results`, etc.). Reserve such fields for the
+      registration packet (rule 2) or inline storage of the RMW handle,
+      never lifecycle state.
+- [ ] No counters that duplicate arena accessors (e.g.
+      `active_goal_count`, `pending_count`). Always forward the getter
+      to an arena call like `handle.active_goal_count(executor)`.
+- [ ] Callbacks are trampolines that translate ABI + call through to the
+      user's callback. No FSM transitions inside trampolines; no slot
+      reservation beyond what the arena requires.
+- [ ] Lifecycle ops (`succeed` / `abort` / `cancel` / `complete` /
+      `publish_feedback`) contain zero C-side state mutation. They
+      extract the goal identity, look up the arena handle, and delegate.
+- [ ] No `static mut BLOCKING_*` flags and no `zpico_get`-style condvar
+      waits. Blocking convenience wrappers take a user-supplied executor
+      and drive it (RFC-0021).
+- [ ] No magic bytes / offsets for CDR framing. Import from `nros::cdr`
+      (or `nros_serdes::...` inside `nros-node` internals).
+- [ ] No key-expression / topic-string construction. Use
+      `TopicInfo` / `ServiceInfo` / `ActionInfo` builders from
+      `nros-rmw`.
+- [ ] No direct calls to `zpico_*` / `uxr_*` / other transport SDKs.
+      Go through `Session` / `Publisher` / `Subscriber` /
+      `ActionServerRawHandle`.
 
-### Why opaque-for-L2 too
+If a change needs to break any of these, its description justifies the
+exception with a link to the governing phase doc. Otherwise the logic moves
+into `nros-node` first.
 
-Even L2 benefits from the opaque shape:
-
-- ABI stability: growing the registration packet (e.g. new QoS
-  fields) doesn't break consumer struct layout — `_opaque` size is
-  probed.
-- Field-mirror today already changes shape across releases
-  (`_internal` field added in Phase 87.5 broke ABI). Opaque
-  prevents this.
-- Consistency: one shape across all entities. Easier for ABI
-  validation, docgen, and example reading.
-
-## Refactor plan (122.3.b/c/d)
-
-### 122.3.b — subscription (template)
-
-Steps:
-1. Define Rust-side `SubscriptionInner<RX_BUF>` enum:
-   - `Polling(RawSubscription<RX_BUF>)` — L1.
-   - `Registration { topic, type_name, type_hash, callback, context, qos, handle_id: Option<HandleId> }` — L2.
-2. Probe size: `SUBSCRIPTION_OPAQUE_U64S = u64s_for::<SubscriptionInner<DEFAULT_RX_BUF>>()`.
-3. New `nros_subscription_t` shape:
-   ```rust
-   #[repr(C)]
-   pub struct nros_subscription_t {
-       pub state: nros_subscription_state_t,
-       pub _opaque: [u64; SUBSCRIPTION_OPAQUE_U64S],
-   }
-   ```
-4. New entry points:
-   - `nros_subscription_init` (L2, with callback) → builds `Registration` variant.
-   - `nros_subscription_init_polling` (L1, no callback) → builds `Polling` variant by calling `Node::create_subscription_raw_sized`.
-   - `nros_subscription_take_serialized` (L1 op) → match on inner; if `Polling`, delegate.
-   - `nros_subscription_fini` → drop in place.
-   - `nros_executor_register_subscription` (L2 op) → match on inner; if `Registration`, call `executor.register_subscription_raw_*` with the stored callback.
-5. Delete the old field-mirror fields from the public ABI.
-6. Update C/C++ examples that reach into those fields (rare —
-   most code goes through entry points).
-7. Smoke test: L1 polling round-trip + L2 callback round-trip.
-
-### 122.3.c — service, service_client, action_server, action_client
-
-Same shape per entity. Each gets:
-- Internal enum: `Polling(<RawForm>)` + `Registration { ..., callback, ... }`.
-- `_opaque` sized to whichever variant is larger.
-- L1 init + L1 op + L2 init_handler + L2 register entry points.
-
-Per-entity ops to ship in L1:
-
-| Entity | L1 op |
-|---|---|
-| service (server) | `take_request` + `send_response` |
-| service_client | `send_request` + `take_response` |
-| action_server | `try_recv_goal` + `accept/reject` + `publish_feedback` + `send_result` |
-| action_client | `send_goal` + `try_recv_feedback` + `try_recv_result` |
-
-(Match the existing Rust manual-poll API on `EmbeddedServiceClient`,
-`ActionServer`, etc.)
-
-### 122.3.d — C++ surface
-
-`nros-cpp` headers wrap the C struct. With the unified opaque
-shape on the C side, the C++ wrappers become:
-
-```cpp
-class Subscription {
-public:
-    // L1 — primitive ctor.
-    Subscription(Node& node, const TopicInfo& topic);
-    // L2 — handler ctor.
-    template<typename F>
-    Subscription(Node& node, const TopicInfo& topic, F&& callback);
-
-    // L1 op (returns std::nullopt when no data).
-    template<typename M>
-    Result<std::optional<M>> take();
-};
-
-class Executor {
-public:
-    Result<HandleId> register_(Subscription& sub);
-    // ... and so on for each entity.
-};
-```
-
-The C++ class holds the C struct by value or via the
-`SubscriptionStorage`-style inline-storage pattern (already used
-for Executor / Node).
-
-## What changes for consumers
-
-- **Rust users:** no change (Rust API is the source of truth).
-- **C users:** stop reading `sub.topic_name` / `sub.callback`
-  fields directly. Use getters (e.g. `rcl_subscription_get_topic_name`).
-  These already exist for most entities; missing ones get added.
-- **C++ users:** mostly transparent — wrappers hide the change.
-  C++ consumers that reach into `.handle.field_x` need to switch
-  to method calls. Rare.
+The phase-83 run found five violations across both crates (a pending-goal
+array and auto-accept trampoline in the C++ action server, goal arrays and
+a goal counter mirrored in the C action server, scattered CDR header bytes,
+and `static mut BLOCKING_ACCEPTED` flags in both action clients); all five
+are resolved. The findings table, with the commits that closed each, is in
+[archived RFC-0020](archived/0020-thin-wrapper-audit.md).
 
 ## ABI compatibility
 
-Refactor IS an ABI break — struct sizes + field offsets change.
-Consumers must recompile. No silent breakage (compiler catches at
-build time). Phase 115's RMW backend rename already established
-"breaking changes welcome" until first stable release.
-
-## Validation
-
-After 122.3.b/c/d land:
-
-1. `cargo check --workspace`: clean.
-2. `just check`: green.
-3. `just test-unit`: 391/391 + N new (L1 polling round-trip tests).
-4. `just linux check`: all C/C++ examples build.
-5. Audit re-run: 11/11 entities marked ✅ opaque-thin.
-
-## Out of scope (deferred)
-
-- **Header-only C API.** Some entities could become header-only via
-  small `#define` shims if the C struct is just `_opaque`. Not a
-  priority — keep cbindgen-emitted decls.
-- **Removing public state field.** `state` could move into `_opaque`
-  too. Keeping it visible is useful for debug visibility and
-  zero-init detection. No change.
-- **C-side `take` typed variants.** Today's C API has only
-  raw-bytes ops. Typed `take` (with CDR decode in the
-  consumer's language) is a future addition — `nros_<entity>_take_serialized`
-  is enough for 122.3.
+A C struct's layout is a build-time fact: growing the registration packet
+changes struct sizes and field offsets, and consumers recompile. There is
+no silent breakage, because a C consumer that reaches a struct through the
+functions does not depend on its layout, and the compiler catches a
+mismatch at build time. Until a first stable release, breaking changes are
+welcome (phase-115's RMW backend rename established this).

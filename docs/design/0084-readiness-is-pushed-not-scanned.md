@@ -1,10 +1,10 @@
 ---
 rfc: 0084
 title: "Readiness is PUSHED by the arrival path, not scanned by the executor — the wake says who, not just that"
-status: Draft
+status: Stable
 area: runtime-api
 since: 2026-08
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-397]
 amends: [rfc-0052]
 supersedes: []
@@ -12,6 +12,13 @@ superseded-by: null
 ---
 
 # RFC-0084 — Readiness is pushed, not scanned
+
+**Status:** Stable (2026-11-14, phase-555 W3). Built by
+[phase-397](../roadmap/archived/phase-397-pushed-readiness-executor.md). The
+open questions are answered or filed (section 9): the 64-callback ceiling is
+[issue 2541](../issues/2541-executor-callback-slots-capped-at-64.md), and the
+backends that do not attribute arrivals (XRCE, uORB, bare metal) are
+[issue 2542](../issues/2542-arrival-attribution-xrce-uorb-baremetal.md).
 
 > **Amendment 2026-10-17.** §4.2's premise does not hold on `main`: the
 > entity-scoped wake functions end in `register_waker`, which no
@@ -308,12 +315,19 @@ already wrong in principle on an image whose whole purpose is bounded latency.
 
 ## 9. Open questions
 
-1. Should the token be a `DescIdx` (dense, `u64`-indexable, executor-minted) or
-   an opaque backend handle the executor maps? Dense is cheaper and bounded by
-   `MAX_CALLBACK_SLOTS`; opaque survives the `BitSet<N>` widening better.
-2. Does anything downstream depend on `has_data` being called every spin as a
-   side effect — polling a backend to make it progress? If a backend needs to
-   be poked to advance, the pushed path must poke it too.
-3. `ready_bits` is `u64`; the widening to `BitSet<N>` needs a lock-free
-   multi-word set-bit, or a per-word atomic array. Worth settling before the
-   token type is fixed, since (1) depends on it.
+Answered or filed on 2026-11-14 (phase-555 W3):
+
+1. ~~Token: a `DescIdx` or an opaque backend handle?~~ **A `DescIdx`.** The
+   2026-10-18 amendment made `user_data` per entity: the executor points it
+   at a record holding its wake context and the entity's `DescIdx`, so no
+   token crosses the ABI.
+2. ~~Does anything depend on `has_data` being called every spin?~~ **It is
+   still called where it is needed.** A slot whose backend attributes
+   arrivals is settled by its bit; every other slot keeps its `has_data`
+   probe, once per pass (section 5's resolution; RFC-0108 P3). A backend
+   that needs poking to progress is a poll-only backend and keeps today's
+   path. Making XRCE and uORB attribute is
+   [issue 2542](../issues/2542-arrival-attribution-xrce-uorb-baremetal.md).
+3. **`ready_bits` is a `u64`, so an executor holds at most 64 callbacks.**
+   Open, filed as
+   [issue 2541](../issues/2541-executor-callback-slots-capped-at-64.md).

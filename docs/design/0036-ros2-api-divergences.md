@@ -4,8 +4,8 @@ title: "Divergences from the ROS 2 standard client APIs (rclrs / rclcpp / rclc)"
 status: Draft
 area: runtime-api
 since: 2026-06
-last-reviewed: 2026-11-13
-implements-tracked-by: [phase-379, phase-381]
+last-reviewed: 2026-11-14
+implements-tracked-by: [phase-379, phase-381, phase-556]
 supersedes: []
 superseded-by: null
 ---
@@ -99,6 +99,39 @@ Each divergence: **what ROS 2 does → what nano-ros does → why → owner**.
 | blocking `client->async_send_request(...).get()` internally drives the loop | non-blocking `Promise<T>`; **every blocking helper takes the executor and drives it** (`promise.wait(&mut executor, timeout)`) | single source of I/O; reentrancy-safe; reliable RTOS timeouts | RFC-0021 |
 | action client `wait_for_result()` blocks | spin-driven `Promise` poll/`wait(&mut executor)` | same; no deadlock on single-threaded transports | RFC-0021 |
 | `rclcpp::Node` shared via `std::shared_ptr<Node>` (`Arc<Node>` in rclrs) | `&mut Executor` + short-lived `NodeCtx<'_>`; **no `Arc<Node>`**; entities owned, outlive the handle | zero allocation; two live node handles = borrow error by construction | RFC-0022 |
+
+### Graph interfaces a node has by default
+
+Stated once, as a systematic rule: a stock rclcpp or rclpy node serves the
+six parameter services, publishes `/rosout` and `/parameter_events`, and
+subscribes to `/parameter_events`. By the user's ruling of 2026-11-13
+([phase-556](../roadmap/phase-556-ros2-compat-audit.md) W13), a nano-ros node
+has the same graph interfaces by default, on every board, with their pools
+sized from the image's derived counts. The divergence is the switch: an image
+that cannot afford them turns them off with `node_interfaces = "none"` in its
+`system.toml` (`[system]`, `[image_defaults]` or `[image.<id>]`, the most
+specific table winning). The switch is per image; the one per-node opt-out
+is `/parameter_events` (rclc's `notify_changed_over_dds = false`,
+`Node::disable_parameter_events` in Rust; RFC-0105 D8).
+
+This is the ruled design. The default itself flips in phase-556 W13 step 3,
+which has not merged as of 2026-11-14: until it does, an image gets these
+interfaces only by asking (`node_interfaces = "stock"`, or the
+`param_services` and `rosout` features), which is the state
+[RFC-0060](0060-launch-toolchain-three-layers.md) (section "What failed the
+test") records as "nano-ros defaults them off". Where the interfaces live in
+the system model, and which layer decides them, stays RFC-0060's.
+
+What still diverges, by name:
+
+| ROS 2 | nano-ros | why | owner |
+|---|---|---|---|
+| `/rosout`: one publisher per node, RELIABLE, TRANSIENT_LOCAL, KEEP_LAST(1000), 10 s lifespan | VOLATILE, KEEP_LAST(queue depth), RELIABLE, 10 s lifespan, one publisher per node (owned by the executor since phase-556 W13); `rclc_rosout_qos_default()` gives upstream's TRANSIENT_LOCAL profile on a target that has budgeted for it | a transient-local writer retains history: on zenoh one retention slot plus one queryable, out of 8 on an embedded build. A tool that subscribes after boot misses the boot records; `ros2 topic echo /rosout` still matches | phase-556 W13 (step 2 moves `/rosout` to one writer per node) |
+| `/parameter_events`: every node is a publisher | one publisher per executor, announced under the first node that enabled events; every event still names its node | one handle is what an RTOS image affords beside the store (RFC-0105 D8) | [issue 2493](../issues/2493-parameter-events-one-writer-per-executor.md), phase-556 W14 (moves to one per node) |
+| every node subscribes to `/parameter_events`, to follow `use_sim_time` | no subscription | a nano-ros node declares no `use_sim_time`, so it has nothing to follow | [issue 2483](../issues/2483-use-sim-time-not-declared.md), phase-556 W11 |
+| `use_sim_time` declared (bool, default false) on every node | not declared; `ros2 param set <node> use_sim_time true` is refused | not yet decided whether it switches ROS time at runtime or is a read-only build-time value | [issue 2483](../issues/2483-use-sim-time-not-declared.md), phase-556 W11 |
+| `GetParameters` / `DescribeParameters` answer an undeclared name with no entry | a filler entry, so `ros2 param get` exits 0; delete and off-step refusals give a different reason | open | [issue 2484](../issues/2484-param-service-undeclared-replies.md), phase-556 W12 |
+| every node has them | the Pico W and PX4 example images declare `node_interfaces = "none"` once the default flips | the two opt-outs the ruling names, where memory or the backend does not afford them | phase-556 W13 step 3 |
 
 ### Reduced / omitted surface
 
