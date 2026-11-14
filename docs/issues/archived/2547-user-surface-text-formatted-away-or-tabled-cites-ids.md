@@ -8,7 +8,7 @@ area: [cli, ux, logging, runtime]
 related: [issue-2443, phase-523]
 found: 2026-11-14
 resolved: 2026-11-14
-resolved_in: "branch fix/2547-text-reaching-print (the subject and its sweep, one change)"
+resolved_in: "#3815 (the subject and its sweep, one change)"
 ---
 
 **Home: [phase-523](../../roadmap/phase-523-education-labs-adoption-probes.md) W5.**
