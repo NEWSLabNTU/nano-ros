@@ -481,7 +481,7 @@ fn a_blocking_call_to_the_clients_own_level_is_refused() {
         .expect_err("a blocking call inside one level deadlocks");
     let msg = format!("{err:#}");
     assert!(
-        msg.contains("RFC-0108 D8.3")
+        msg.contains("wait for a server at a level that cannot")
             && msg.contains("mrm_handler/ask` calls")
             && msg.contains("deadlocks"),
         "{msg}"

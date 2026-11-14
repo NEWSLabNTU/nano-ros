@@ -8,7 +8,7 @@
 # names that now stop a configure, NROS_KNOB_CANONICAL_<legacy> names the row
 # each belongs to.
 
-set(NROS_KNOB_RETIRED_TEMPLATE "{legacy} is a retired spelling of {env} (RFC-0103 D2b; retired in phase-484 W8, after release 0.5.0-nros2 deprecated it) -- set {env} instead")
+set(NROS_KNOB_RETIRED_TEMPLATE "{legacy} is a retired spelling of {env} (retired after release 0.5.0-nros2 deprecated it) -- set {env} instead")
 set(NROS_KNOB_RETIRED_KNOB_TEMPLATE "{spelling} is a retired knob: {reason}")
 
 # The knobs the Zephyr module defines as Kconfig symbols (phase-484 W5b):
@@ -236,8 +236,8 @@ set(NROS_KNOB_IMAGE_NAME_ZEPHYR_HEAP_SIZE heap_size)
 # RETIRED knobs: every spelling below stops a configure, with its row's reason
 # substituted into NROS_KNOB_RETIRED_KNOB_TEMPLATE.
 set(NROS_KNOB_RETIRED_SPELLINGS "NROS_ZENOH_LEASE_PRIORITY;ZPICO_LEASE_TASK_PRIORITY")
-set(NROS_KNOB_RETIRED_REASON_NROS_ZENOH_LEASE_PRIORITY "zenoh-pico 1.10 runs the lease and keep-alive on its executor thread, so there is no lease task to prioritise (RFC-0110 D2) -- remove it, and set NROS_ZENOH_READ_PRIORITY, which now prioritises that thread")
-set(NROS_KNOB_RETIRED_REASON_ZPICO_LEASE_TASK_PRIORITY "zenoh-pico 1.10 runs the lease and keep-alive on its executor thread, so there is no lease task to prioritise (RFC-0110 D2) -- remove it, and set NROS_ZENOH_READ_PRIORITY, which now prioritises that thread")
+set(NROS_KNOB_RETIRED_REASON_NROS_ZENOH_LEASE_PRIORITY "zenoh-pico 1.10 runs the lease and keep-alive on its executor thread, so there is no lease task to prioritise -- remove it, and set NROS_ZENOH_READ_PRIORITY, which now prioritises that thread")
+set(NROS_KNOB_RETIRED_REASON_ZPICO_LEASE_TASK_PRIORITY "zenoh-pico 1.10 runs the lease and keep-alive on its executor thread, so there is no lease task to prioritise -- remove it, and set NROS_ZENOH_READ_PRIORITY, which now prioritises that thread")
 
 set(NROS_KNOB_LEGACY_NROS_SMOLTCP_BUFFER_SIZE "ZPICO_SMOLTCP_BUFFER_SIZE")
 set(NROS_KNOB_CANONICAL_ZPICO_SMOLTCP_BUFFER_SIZE NROS_SMOLTCP_BUFFER_SIZE)

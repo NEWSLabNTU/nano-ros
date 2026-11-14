@@ -84,6 +84,7 @@ pub fn builtin_slot(
     }
     match param_request_max_from(raw) {
         Some(n) => BuiltinSlot::Derived(n),
+        // The measured drop: issue 1352.
         None => BuiltinSlot::Refused(format!(
             "nros-rmw-zenoh: the contract declares this image's parameters (`[params] \
              service_shape` = `{raw}`), and at least one is a string or an array. The size \
@@ -93,7 +94,7 @@ pub fn builtin_slot(
              in.\n\
              Falling back would guess, and the guess was measured wrong: 25 declared \
              parameters, one a string, and a 25-name `set_parameters` was DROPPED by a \
-             {floor}-byte slot with no reply while nros-node had priced it (issue 1352).\n\
+             {floor}-byte slot with no reply while nros-node had priced it.\n\
              State NROS_PARAM_SERVICE_INBOX_BYTES (environment, Kconfig \
              CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES, or the board's executor rung). \
              nros-node checks the statement against the request it prices from the same \

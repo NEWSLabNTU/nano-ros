@@ -910,9 +910,10 @@ fn level_sched_task(
                 degradations.push(Degradation {
                     node: n.name.clone(),
                     dim: "budget",
+                    // RFC-0108 D4.
                     reason: format!(
                         "its sporadic budget of {b}us is not enforced: it shares a \
-                         derived level with other nodes (RFC-0108 D4), and one budget \
+                         derived level with other nodes, and one budget \
                          on the level's thread would throttle them too"
                     ),
                 });

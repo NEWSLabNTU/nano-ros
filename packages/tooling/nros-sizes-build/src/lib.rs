@@ -859,7 +859,8 @@ fn write_key_provenance(dir: &Path, target: &str, features: &[String]) -> std::i
     use std::io::Write;
     std::fs::create_dir_all(dir)?;
     let mut body = String::new();
-    body.push_str("# nros sizes-probe key inputs (phase-353 W4). Diagnostic only.\n");
+    // phase-353 W4.
+    body.push_str("# nros sizes-probe key inputs. Diagnostic only.\n");
     body.push_str("# Written once, when this directory was first created.\n");
     body.push_str(&format!("rustc\t{}\n", rustc_version_slug()));
     body.push_str(&format!("target\t{target}\n"));

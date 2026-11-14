@@ -186,12 +186,13 @@ fn below_floor_message(cross: &CrossGcc, major: u32) -> Option<String> {
         ),
         None => format!("nros setup --tool {}", cross.tool),
     };
+    // The missing `std::this_thread`: issue 1936.
     Some(format!(
         "NuttX: a C++ image cannot build here: {} is GCC {major} (via {}), below the C++ \
          floor of GCC {GCC_FLOOR_MAJOR}.\n  \
          GCC 10 rejects the generated entry's designated initializers \
          (`error: C99 designator 'node_name' outside aggregate initializer`), and its newlib \
-         libstdc++ declares no `std::this_thread` (issue 1936). Refused before the first \
+         libstdc++ declares no `std::this_thread`. Refused before the first \
          compile instead of mid-build.\n  \
          Fix:  {fix}\n  \
          Or:   NUTTX_CROSS=/path/to/bin/{}   (any GCC >= {GCC_FLOOR_MAJOR})",

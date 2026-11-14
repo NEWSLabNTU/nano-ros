@@ -76,8 +76,8 @@ Subjects, all checked on every run:
   condition is data and is not read; Rust `#[cfg(test)]` and
   `#[cfg(all(test, …))]` items are not read. Gaps, stated: calls the lists
   above do not name, C++ stream output (`std::cout << "…"`), and text
-  formatted into a variable or kept in a table and printed later (filed as
-  its own issue);
+  formatted into a variable or kept in a table and printed later (read by
+  the next subject);
 * COMPILE-TIME TEXT (issue 2443): what the compiler shows a user building
   nano-ros or an app against it, in `packages/`, `zephyr/` and `cmake/`
   (tracked `.in` templates read as the file they generate) outside vendored,
@@ -106,11 +106,21 @@ Subjects, all checked on every run:
   `.ok_or_else`, `.map_err` or the arena oracle's `.text(…)` builder,
   directly, through `format!`/`format_args!`/`concat!`, or through an error
   enum's variant. A `Debug` impl is developer-facing and not read. Baseline
-  zero. Gaps, stated: a message formatted into a variable first and handed
-  over later (`let why = format!(…)`), a table of message strings, a literal
-  a function returns for its caller to print, generated-file headers, and C
-  text built into a buffer by anything but `snprintf` (which the runtime
-  subject reads);
+  zero. Gaps, stated: a literal a function returns bare for its caller to
+  print, and C text built into a buffer by anything but `snprintf` (which the
+  runtime subject reads); text formatted into a variable first, message
+  tables and generated-file headers are the next subject's;
+* TEXT THAT REACHES A PRINT LATER (issue 2547): in the runtime subject's
+  files plus the build scripts, a literal no subject above reads that (a)
+  feeds a `let` binding, or a buffer written with `push_str`/`write!`/`+=`,
+  that the same function then prints, logs, panics with, returns as an error
+  or returns; (b) sits in a message table -- a `const`/`static` named
+  `*_MSG`/`*_HINT`/`*_TEXT`/`*_REFUSAL`/`*_TABLE`/`*_TEMPLATE`, an item
+  marked `// user-surface: table`, a C `#define NROS_*REFUSE*`/`*_MSG`/
+  `*_TEXT`; (c) is the comment header of a generated file (`generated`, `do
+  not edit`, `written by`); or (d) is an argument of a C/C++ macro that hands
+  it to a printer or a `static_assert`. Baseline zero. Gaps, stated in its
+  section below;
 * the output of `nros board list`, `nros board show <board>` for every board
   the list names, and `nros doctor --report`, which in addition may hold no
   tier number (`tier 1`, `tier 2`, `tier 3` — phase-522 W5).
@@ -1143,7 +1153,9 @@ def compile_time_literals(src: str, rust: bool, proc_macro: bool = False) -> lis
         for _, a, b in spans:
             text[a:b] = src[a:b]
         text = "".join(text)
-        for m in CT_C_DIRECTIVE.finditer(code):
+        # Matched on `text`: a quoted message's `\`-newline continuation is
+        # blanked in `code`, which would end the directive at its first line.
+        for m in CT_C_DIRECTIVE.finditer(text):
             out.append((src.count("\n", 0, m.start()) + 1, text[m.start():m.end()]))
         for m in CT_C_CALLS.finditer(code):
             regions.append(call(m))
@@ -1292,6 +1304,353 @@ def assembled_hits() -> list[str]:
             for tok in ids(text):
                 bad.append(f"{rel}:{ln}: {tok!r} in {' '.join(text.split())[:90]!r}")
     return bad
+
+
+# --- text that reaches a print later ----------------------------------------
+
+# Issue 2547 (the gaps issue 2443 closed with), ruling A: a message formatted
+# into a variable, kept in a message table, wrapped in a message macro or
+# written as a generated file's header reaches the user through a step the
+# subjects above do not follow. Same files as the runtime subject (every
+# package and example, the same skips) plus the build scripts, read through
+# `code_and_literals`. A literal another subject already reads (a print, a
+# panic, an error constructor, compile-time text) is left to that subject, so
+# no line is reported twice. Four readings:
+#
+# (a) DATAFLOW-LITE, Rust, per function. A literal in the value of `let x = …`
+#     or written into `x` later (`x.push_str(…)`, `x.push(…)`,
+#     `x.insert_str(…)`, `write!(x, …)`/`writeln!(&mut x, …)`, `x += …`,
+#     `x = …`) is read when `x`, after its `let` and in the same function
+#     body, is an argument of a call some subject reads (a print, log or panic,
+#     `Err(…)`, `bail!`, `.context`, a `syn::Error::new`, `compile_error!`, a
+#     build script's `warn(…)`/`.note(…)`), sits in a `return` or the body's
+#     tail expression, or feeds another binding that does (transitively). An
+#     inline capture `{x}` in a literal counts as a use at that literal.
+# (b) MESSAGE TABLES, by convention. A Rust `const`/`static` whose name ends
+#     in `_MSG`, `_HINT`, `_TEXT`, `_REFUSAL`, `_TABLE` or `_TEMPLATE` (a
+#     trailing `S` too), the item after a `// user-surface: table` comment
+#     (Rust or C: the next `const`/`static`/`let` to its `;`, a `fn`/`impl`
+#     to its closing `}`, a `#define` to the end of its logical line), and in
+#     C/C++ a `#define` named `NROS_*REFUSE*`, `*_MSG`, `*_TEXT`, `*_HINT` or
+#     `*_REFUSAL` (its whole logical line) or a C variable of a table name.
+#     Every literal of the item is read, keys included. A table of anything
+#     but messages carries neither a table name nor the marker.
+# (c) GENERATED-FILE HEADERS. The leading comment lines of a literal (`//`,
+#     `/*` with its block, `*`, `#` then a space or `!`, `-- `), read as the
+#     emitted file holds them (`\n` escapes and Rust backslash-newline
+#     continuations resolved), when they say `generated`, `do not edit` or
+#     `written by`; and the leading comment lines of the literals right after
+#     it, until a literal that opens with no comment (the rest of the header
+#     block). The header lands in the user's tree; the file's body below it
+#     is not read.
+# (d) C/C++ MESSAGE MACROS. A `#define NAME(params)` whose body hands a
+#     parameter to a call the runtime or compile-time subject reads (a printf,
+#     a log macro, `static_assert`, …) is a printer: a literal passed in that
+#     parameter's place, in any file read, is read.
+#
+# Baseline zero, like every subject above: the sweep that added it (issue
+# 2547) emptied it in the same change, so it never needed the counted ratchet
+# it was planned to start as. Gaps, stated: flow across functions (a value
+# returned, then printed by the caller, is read only at the `return`, as the
+# callee's text), a literal returned bare (`fn hint() -> &str { "…" }`), a
+# buffer handed in as a parameter (`out: &mut String`) and written there, a
+# struct field (`Refusal { hint: x }`), a `Vec` drained by a `for` loop into a
+# print, a table that neither carries a convention name nor the marker, C text
+# built into a buffer by anything but `snprintf`, C++ stream output
+# (`std::cout << "…"`), and a generated file's body below its header (the
+# doc comments a build script writes above the constants it emits).
+DF_FN = re.compile(r"\bfn\s+\w+[^;{]*\{")
+DF_LET = re.compile(r"\blet\s+(?:mut\s+)?([a-z_]\w*)\s*(?::[^=;]*)?=(?![=>])")
+DF_TABLE_RS = re.compile(
+    r"\b(?:const|static)\s+(?:mut\s+)?[A-Z_][A-Z0-9_]*_(?:MSG|HINT|TEXT|REFUSAL|TABLE|TEMPLATE)S?\s*:"
+)
+DF_TABLE_C = re.compile(
+    r"\b[A-Za-z_]\w*_(?:MSG|HINT|TEXT|REFUSAL|TABLE|TEMPLATE)S?\s*(?:\[[^\]\n]*\]\s*)*="
+)
+DF_DEFINE_MSG = re.compile(
+    r"^[ \t]*#[ \t]*define[ \t]+(?:NROS_\w*REFUSE\w*|\w+_(?:MSG|TEXT|HINT|REFUSAL)S?)\b"
+    r"(?:\\\n|[^\n])*",
+    re.M,
+)
+DF_DEFINE_FN = re.compile(r"^[ \t]*#[ \t]*define[ \t]+(\w+)\(([^)]*)\)((?:\\\n|[^\n])*)", re.M)
+DF_MARKER = re.compile(r"(?://|/\*)\s*user-surface:\s*table\b")
+DF_HEADER_LEAD = re.compile(r"^\s*(?://|/\*|\*(?: |/|$)|#(?: |!|$)|-- )")
+DF_HEADER_SAYS = re.compile(r"generated\b|do not edit|\bwritten by\b", re.I)
+# Sinks the subjects above do not name by call: a proc macro's error and a
+# build script's warning helpers.
+DF_EXTRA_SINKS = re.compile(
+    r"(?:\w+::)*Error::(?:new|new_spanned|custom)|(?:abort|emit_error|compile_error)!"
+    r"|warn|\.note"
+)
+
+
+def df_statement_end(code: str, at: int, end: int) -> int:
+    """The offset of the `;` (or the unmatched closer) ending the statement
+    that runs from `at`, within `end`."""
+    depth = 0
+    for k in range(at, end):
+        ch = code[k]
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            if depth == 0:
+                return k
+            depth -= 1
+        elif ch == ";" and depth == 0:
+            return k
+    return end
+
+
+def df_sink(calls: list[tuple[str, int]], rust: bool) -> bool:
+    """Whether the innermost calls around a use are something a user sees."""
+    if not calls:
+        return False
+    if is_printed(calls, rust) or (rust and asm_carried(calls)):
+        return True
+    names = [c[0] for c in calls]
+    while names and RUST_WRAPPERS.fullmatch(names[0].rsplit("::", 1)[-1]):
+        names = names[1:]
+    return bool(names) and DF_EXTRA_SINKS.fullmatch(names[0]) is not None
+
+
+def df_dataflow(src: str, code: str, spans: list[tuple[int, int, int]]) -> set[int]:
+    """Starts of the literals reading (a) finds in Rust `src` (`code` and
+    `spans` as `code_and_literals` gives them)."""
+    out: set[int] = set()
+    bodies = []
+    for m in DF_FN.finditer(code):
+        b = m.end() - 1
+        bodies.append((b, ct_close(code, b)))
+    for lo, hi in bodies:
+        # Bindings of this body, not of a function nested in it.
+        inner = [(a, b) for a, b in bodies if lo < a and b <= hi]
+
+        def own(p: int, inner=inner) -> bool:
+            return not any(a < p < b for a, b in inner)
+
+        binds: list[tuple[str, int, list[tuple[int, int]]]] = []
+        for m in DF_LET.finditer(code, lo, hi):
+            if own(m.start()):
+                binds.append((m.group(1), m.start(), [(m.end(), df_statement_end(code, m.end(), hi))]))
+        if not binds:
+            continue
+        body = code[:hi]
+        uses: dict[str, list[int]] = {}
+        for name in {b[0] for b in binds}:
+            n = re.escape(name)
+            feeds = []
+            for m in re.compile(rf"(?<![\w.]){n}\s*\.\s*(?:push_str|push|insert_str)\s*\(").finditer(body, lo):
+                feeds.append((m.start(), ct_close(code, m.end() - 1)))
+            for m in re.compile(rf"\bwritel?n?!\s*\(\s*(?:&\s*mut\s+)?{n}\s*,").finditer(body, lo):
+                feeds.append((m.start(), ct_close(code, code.index("(", m.start()))))
+            for m in re.compile(rf"(?<![\w.]){n}\s*(?:\+=|=(?![=>]))").finditer(body, lo):
+                if not re.search(r"\blet\s+(?:mut\s+)?$", code[max(lo, m.start() - 12):m.start()]):
+                    feeds.append((m.end(), df_statement_end(code, m.end(), hi)))
+            for bn, bs, regs in binds:
+                if bn == name:
+                    regs += [f for f in feeds if f[0] > bs and own(f[0])]
+            ps = [m.start() for m in re.compile(rf"(?<![\w.]){n}\b(?!\s*(?:\(|!|:(?!:)))").finditer(body, lo)]
+            cap = re.compile(rf"\{{{n}[:}}]")
+            ps += [a for _, a, b in spans if lo < a < hi and cap.search(src, a, b)]
+            uses[name] = ps
+        # The tail expression (after the body's last top-level `;`) and every
+        # `return` statement.
+        last, depth = lo + 1, 0
+        for k in range(lo + 1, hi - 1):
+            ch = code[k]
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+            elif ch == ";" and depth == 0:
+                last = k + 1
+        returns = [(last, hi - 1)] + [
+            (m.end(), df_statement_end(code, m.end(), hi)) for m in re.compile(r"\breturn\b").finditer(body, lo)
+        ]
+        memo: dict[int, bool] = {}
+
+        def reached(k: int, seen: frozenset, binds=binds, uses=uses, returns=returns, memo=memo) -> bool:
+            if k in memo:
+                return memo[k]
+            name, _, regs = binds[k]
+            ok = False
+            for p in uses[name]:
+                if p <= regs[0][1] or any(a <= p < b for a, b in regs):
+                    continue  # the binding's own value, or a write into it
+                if df_sink(enclosing_calls(code, p, 4), True) or any(a <= p < b for a, b in returns):
+                    ok = True
+                    break
+                if any(
+                    j != k and j not in seen and any(a <= p < b for a, b in r2)
+                    and reached(j, seen | {k})
+                    for j, (_, _, r2) in enumerate(binds)
+                ):
+                    ok = True
+                    break
+            if not seen:
+                memo[k] = ok
+            return ok
+
+        for k, (_, _, regs) in enumerate(binds):
+            if any(r0 <= a < r1 for _, a, _ in spans for r0, r1 in regs) and reached(k, frozenset()):
+                out |= {a for _, a, _ in spans if any(r0 <= a < r1 for r0, r1 in regs)}
+    return out
+
+
+def df_item_end(code: str, at: int) -> int:
+    """The end of the item starting at `at`: its `;` at depth 0, or for a
+    `fn`/`impl`/`mod`/`enum`/`struct` the `}` closing its body; a C/C++
+    `#define` ends with its logical line."""
+    d = re.compile(r"\s*#[ \t]*define\b(?:\\\n|[^\n])*").match(code, at)
+    if d:
+        return d.end()
+    head = re.match(r"(?:\s|#\[[^\]]*\]|pub(?:\([^)]*\))?)*(\w+)", code[at:at + 400])
+    if head and head.group(1) in ("fn", "impl", "mod", "enum", "struct", "trait"):
+        b = code.find("{", at)
+        return ct_close(code, b) if b >= 0 else len(code)
+    return df_statement_end(code, at, len(code))
+
+
+def df_tables(src: str, code: str, rust: bool) -> list[tuple[int, int]]:
+    """Regions reading (b) reads: message tables by name, marked items, and
+    C/C++ message `#define`s."""
+    regions = [(m.end(), df_item_end(code, m.end())) for m in DF_MARKER.finditer(src)]
+    if rust:
+        for m in DF_TABLE_RS.finditer(code):
+            regions.append((m.start(), df_statement_end(code, m.end(), len(code))))
+    else:
+        for m in DF_DEFINE_MSG.finditer(code):
+            regions.append((m.start(), m.end()))
+        for m in DF_TABLE_C.finditer(code):
+            if not code[m.end():m.end() + 1] == "=":
+                regions.append((m.start(), df_statement_end(code, m.end(), len(code))))
+    return regions
+
+
+def df_c_macros(src: str) -> dict[str, set[int]]:
+    """Reading (d): `#define NAME(params)` whose body hands a parameter to a
+    call another subject reads, as {NAME: the argument indexes printed}; an
+    index of -1 stands for every argument from the `...` on."""
+    code, _ = code_and_literals(src, False)
+    out: dict[str, set[int]] = {}
+    for m in DF_DEFINE_FN.finditer(code):
+        name, params, body = m.group(1), [p.strip() for p in m.group(2).split(",")], m.group(3)
+        body_code = body.replace("\\\n", " \n")
+        printed: set[int] = set()
+        for i, p in enumerate(params):
+            ref = "__VA_ARGS__" if p == "..." else p
+            if not re.fullmatch(r"\w+|__VA_ARGS__", ref or "-"):
+                continue
+            for u in re.finditer(rf"\b{re.escape(ref)}\b", body_code):
+                calls = enclosing_calls(body_code, u.start(), 3)
+                ct = any(CT_C_CALLS.match(c[0] + "(") for c in calls)
+                if is_printed(calls, False) or ct:
+                    printed.add(-1 if p == "..." else i)
+                    if p == "...":
+                        printed.add(i)
+        if printed:
+            out[name] = printed
+    return out
+
+
+def df_header_text(text: str) -> str:
+    """The leading comment lines of a literal's text (escapes `\\n` and
+    Rust's `\\`-newline continuations read as the file will hold them)."""
+    text = re.sub(r"\\\n\s*", "", text).replace("\\n", "\n")
+    out, block = [], False
+    for line in text.lstrip("\n").split("\n"):
+        if block or DF_HEADER_LEAD.match(line) or (out and not line.strip()):
+            out.append(line)
+            if "/*" in line and "*/" not in line.split("/*", 1)[1]:
+                block = True
+            elif "*/" in line:
+                block = False
+            continue
+        break
+    return "\n".join(out)
+
+
+def df_headers(src: str, spans: list[tuple[int, int, int]]) -> dict[int, str]:
+    """Reading (c): a generated file's header block, as {literal start: the
+    header text it holds}. A header literal's own leading comment lines must
+    say `generated` or `do not edit`; the comment-led literals right after it
+    continue the block."""
+    out: dict[int, str] = {}
+    inside = False
+    for _, a, b in spans:
+        head = df_header_text(src[a:b])
+        if head and DF_HEADER_SAYS.search(head):
+            inside = True
+        elif not head:
+            inside = False
+        if inside:
+            out[a] = head
+    return out
+
+
+def deferred_literals(
+    src: str, rust: bool, macros: dict[str, set[int]] | None = None, want: re.Pattern | None = None
+) -> list[tuple[int, str]]:
+    """Every literal of `src` the four readings read and no other subject
+    does, with its line; with `want`, only those it matches."""
+    code, spans = code_and_literals(src, rust)
+    cand = [(ln, a, b) for ln, a, b in spans if want is None or want.search(src, a, b)]
+    if not cand:
+        return []
+    claimed = {(ln, t) for ln, t in runtime_literals(src, rust)}
+    claimed |= {(ln, t) for ln, t in compile_time_literals(src, rust, proc_macro=True)}
+    if rust:
+        claimed |= {(ln, t) for ln, t in assembled_literals(src)}
+    headers = df_headers(src, spans)
+    regions = df_tables(src, code, rust)
+    read = df_dataflow(src, code, spans) if rust else set()
+    out = []
+    for ln, a, b in cand:
+        if (ln, src[a:b]) in claimed:
+            continue
+        text = src[a:b]
+        hit = a in read or any(lo <= a < hi for lo, hi in regions)
+        if not hit and a in headers:
+            hit, text = True, headers[a]
+        if not hit and not rust and macros:
+            calls = enclosing_calls(code, a - 1, 1)
+            if calls and calls[0][0] in macros:
+                idx = macros[calls[0][0]]
+                hit = calls[0][1] in idx or (-1 in idx and calls[0][1] >= min(i for i in idx if i >= 0))
+        if hit:
+            out.append((ln, text))
+    return out
+
+
+def deferred_files() -> list[str]:
+    return sorted(set(runtime_files()) | set(build_script_files()))
+
+
+def deferred_sites() -> dict[str, list[str]]:
+    files = deferred_files()
+    macros: dict[str, set[int]] = {}
+    texts = {}
+    for rel in files:
+        texts[rel] = (ROOT / rel).read_text(errors="replace")
+        if not rel.endswith(".rs") and "#" in texts[rel] and "define" in texts[rel]:
+            macros.update(df_c_macros(texts[rel]))
+    # Reading (d)'s printer macros come from every C/C++ file read, so a
+    # wrapper a header defines is known in every file that calls it.
+    found: dict[str, list[str]] = {}
+    for rel in files:
+        src = texts[rel]
+        if not ID.search(src):
+            continue  # most files hold no id at all, so the lexer never runs
+        for ln, text in deferred_literals(src, rel.endswith(".rs"), macros, ID):
+            for tok in ids(text):
+                found.setdefault(rel, []).append(
+                    f"{rel}:{ln}: {tok!r} in {' '.join(text.split())[:90]!r}"
+                )
+    return found
+
+
+def deferred_hits() -> list[str]:
+    return [site for sites in deferred_sites().values() for site in sites]
 
 
 # --- the book ---------------------------------------------------------------
@@ -1647,6 +2006,81 @@ def self_test() -> None:
     got = [(ln, t) for ln, text in assembled_literals(rs) for t in ids(text)]
     assert got == [(4, "issue 1234"), (9, "phase-390"), (12, "phase-412"), (13, "RFC-0118"),
                    (14, "RFC-0118")], f"self-test: assembled {got}"
+    # Issue 2547 (a) -- a binding that reaches a print, an error or the
+    # return is read; one used as data, an unused one and a literal another
+    # subject reads (printed directly) are not.
+    rs = (
+        'fn a() -> Result<(), String> {\n'
+        '    let why = format!("bad (issue 1234) {}", 1);\n'
+        '    let key = format!("data (RFC-0001)");\n'
+        '    map.get(&key);\n'
+        '    let mut out = String::new();\n'
+        '    out.push_str("line (phase-412)\\n");\n'
+        '    let _ = write!(out, "more (issue 0709)");\n'
+        '    println!("{out} direct (issue 1235)");\n'
+        '    Err(why)\n'
+        '}\n'
+        'fn b() -> String {\n'
+        '    let s = String::from("tail (RFC-0088)");\n'
+        '    s\n'
+        '}\n'
+        'fn c() {\n'
+        '    let unused = "nothing (issue 1111)";\n'
+        '    let t = "x (issue 2222)"; let u = format!("{t}!"); log::warn!("{}", u);\n'
+        '}\n'
+        '#[cfg(test)]\nmod tests { fn t() { let m = format!("phase-200"); panic!("{m}"); } }\n'
+    )
+    got = [(ln, t) for ln, text in deferred_literals(rs, True) for t in ids(text)]
+    assert got == [(2, "issue 1234"), (6, "phase-412"), (7, "issue 0709"), (12, "RFC-0088"),
+                   (17, "issue 2222")], f"self-test: deferred dataflow {got}"
+    # (b) -- a table by name or by marker is read, every literal of it; a
+    # table of data, and the item after the marked one, are not.
+    rs = (
+        'const RETIRED_HINT: &str = "use x (issue 1234)";\n'
+        'pub static BOARD_TABLES: &[(&str, &str)] = &[("a", "b (RFC-0002)")];\n'
+        'const NAMES: &[&str] = &["phase-100 data"];\n'
+        '// user-surface: table\n'
+        'const RETIRED_KEYS: &[(&str, &str)] = &[("k", "gone (phase-514)")];\n'
+        'const AFTER: &str = "not read (RFC-0009)";\n'
+    )
+    got = [(ln, t) for ln, text in deferred_literals(rs, True) for t in ids(text)]
+    assert got == [(1, "issue 1234"), (2, "RFC-0002"), (5, "phase-514")], \
+        f"self-test: deferred tables rust {got}"
+    c = (
+        '#define NROS_X_REFUSE_Y "no (RFC-0089)"\n'
+        '#define OTHER "data (issue 1000)"\n'
+        '/* user-surface: table */\n'
+        '#define NROS_ABORT_Z \\\n  "aborts (RFC-0018)"\n'
+        'static const char *ERR_MSG = "bad (issue 0042)";\n'
+        'static const char *KEY = "key (phase-101)";\n'
+    )
+    got = [(ln, t) for ln, text in deferred_literals(c, False) for t in ids(text)]
+    assert got == [(1, "RFC-0089"), (5, "RFC-0018"), (6, "issue 0042")], \
+        f"self-test: deferred tables c {got}"
+    # (c) -- a generated file's comment header is read, through the literals
+    # that continue it; its body and a plain comment literal are not.
+    rs = (
+        'fn h(p: &Path) {\n'
+        '    std::fs::write(p, "// Generated by x (phase-403). Do not edit.\\n");\n'
+        '    std::fs::write(p, "// continues (issue 1111)\\nbody (RFC-0004)\\n");\n'
+        '    std::fs::write(p, "body (RFC-0002)\\n// later (RFC-0003)");\n'
+        '    std::fs::write(p, "// plain comment (issue 2222)");\n'
+        '}\n'
+    )
+    got = [(ln, t) for ln, text in deferred_literals(rs, True) for t in ids(text)]
+    assert got == [(2, "phase-403"), (3, "issue 1111")], f"self-test: deferred headers {got}"
+    # (d) -- a literal handed to a macro that prints it or asserts with it is
+    # read; one handed to any other macro is not.
+    c = (
+        '#define MY_ASSERT(c, m) static_assert(c, m)\n'
+        '#define MY_LOG(...) printf(__VA_ARGS__)\n'
+        'MY_ASSERT(x == 1, "moved (RFC-0089)");\n'
+        'MY_LOG("x (issue 1234) %d", n);\n'
+        'OTHER_CALL("data (phase-100)");\n'
+        'MY_ASSERT(f("key (issue 1000)"), "ok");\n'
+    )
+    got = [(ln, t) for ln, text in deferred_literals(c, False, df_c_macros(c)) for t in ids(text)]
+    assert got == [(3, "RFC-0089"), (4, "issue 1234")], f"self-test: deferred macros {got}"
     assert subcommands("Usage: x\n\nCommands:\n  new   make\n  help  h\n\nOptions:\n") == ["new"]
     assert subcommands(
         "Quick start:\n  nros new\n\nUsage: nros\n\nBuild:\n  build  b\n  sync   s\n\n"
@@ -1667,6 +2101,7 @@ def main() -> int:
     bad = (
         source_hits() + library_hits() + book_hits() + build_script_warning_hits()
         + colcon_hits() + shell_hits() + runtime_hits() + compile_time_hits() + assembled_hits()
+        + deferred_hits()
     )
     cli = args.cli
     if cli is None:
@@ -1697,7 +2132,7 @@ def main() -> int:
     print(
         f"{NAME}: OK (cmd/ strings, CLI library, build-script panics, build-script warnings, colcon "
         f"messages, user-run shell scripts, runtime log and panic text, compile-time text, "
-        f"assembled error text, {BOOK_SCOPE}, "
+        f"assembled error text, text that reaches a print later, {BOOK_SCOPE}, "
         f"{rendered})"
     )
     return 0

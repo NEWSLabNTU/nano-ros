@@ -337,8 +337,9 @@ pub fn emit_from_kconfig(config: &Path, fallback: ResolvedNet) -> ResolvedNet {
 
 fn write_consts(source: &str, net: ResolvedNet, locator: &str) {
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("nros_board_net.rs");
+    // phase-484 W4b, RFC-0109 D2.
     let body = format!(
-        "// Generated from {} (phase-484 W4b, RFC-0109 D2). Do not edit.\n\
+        "// Generated from {}. Do not edit.\n\
          #[allow(dead_code)]\n\
          pub(crate) const BOARD_NET_IP: [u8; 4] = {:?};\n\
          #[allow(dead_code)]\n\

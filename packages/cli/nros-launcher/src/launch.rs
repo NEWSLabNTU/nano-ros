@@ -287,23 +287,25 @@ pub fn explain(plan: &Plan) -> String {
              \x20   pinned by: {}",
             pin_path.display()
         ),
+        // A separate artifact: RFC-0097 D4.
         Plan::NothingInstalled { store } => format!(
             "no nano-ros toolchain is installed.\n\
              \x20   store: {}\n\
              This is the launcher; the toolchain it launches is a separate \
-             artifact (RFC-0097 D4),\n\
+             artifact,\n\
              and this store has none of them yet. Install one:\n\
              \x20   curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh\n\
              Then `nros build` in your project.",
             store.display()
         ),
+        // The ownership guard: phase-431 W1.
         Plan::InCheckout { root } => format!(
             "the current directory is inside a nano-ros CHECKOUT, so the launcher \
              stands aside.\n\
              \x20   checkout: {}\n\
              A checkout builds with its OWN `nros` — a store toolchain run here \
              is refused one\n\
-             frame later by the ownership guard anyway (phase-431 W1), and it \
+             frame later by the ownership guard anyway, and it \
              would emit with\n\
              emitters nobody in that tree can see. Build and use the checkout's \
              own CLI:\n\
@@ -346,11 +348,12 @@ pub fn warning(plan: &Plan) -> Option<String> {
     else {
         return None;
     };
+    // RFC-0097 D11.
     Some(format!(
         "warning: this project has no {FILE_NAME} and ${var} is set, so it ran \
          {version} —\n\
          \x20   whatever this runner happens to have installed, chosen by \
-         nobody (RFC-0097 D11).\n\
+         nobody.\n\
          \x20   An unpinned `nros build` here will REFUSE rather than pin, \
          because a pin is a\n\
          \x20   source edit. Write {FILE_NAME} beside your project and commit \

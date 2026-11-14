@@ -166,11 +166,13 @@ pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "zephyr", "px4"];
 /// Frameworks in [`FRAMEWORKS`] whose entry is generated C++ only, each with
 /// the reason `nros::main!` refuses it. Everything else in [`FRAMEWORKS`] has a
 /// Rust emit shape (`nros-macros` holds that both ways).
+// RFC-0113 D9.
+// user-surface: table
 pub const CPP_ONLY_FRAMEWORKS: &[(&str, &str)] = &[(
     "px4",
     "a PX4 image's entry is generated C++ (one `px4::ScheduledWorkItem` per sched task, \
-     each on its own PX4 work queue), because PX4 owns `main` and every thread \
-     (RFC-0113 D9); `nros::main!` has no PX4 shape",
+     each on its own PX4 work queue), because PX4 owns `main` and every thread; \
+     `nros::main!` has no PX4 shape",
 )];
 
 /// Why `nros::main!` refuses `name`, if it is a C++-only framework.
@@ -194,20 +196,22 @@ pub fn cpp_only_framework_reason(name: &str) -> Option<&'static str> {
 /// QEMU, had no receive interrupt and no one-shot timer behind a wake object,
 /// so an executor on it could not park; the board retired rather than keep the
 /// receive-blocking wait.
+// user-surface: table
 pub const RETIRED_FRAMEWORKS: &[(&str, &str)] = &[
+    // issue 2134.
     (
         "embassy",
-        "`embassy` is no longer an `nros::main!` framework (issue 2134): drive the \
+        "`embassy` is no longer an `nros::main!` framework: drive the \
          executor from your own `#[embassy_executor::main]` task instead — open the \
          `Executor`, create the nodes, and loop `spin_some` with an `embassy_time` \
          yield. See book/src/background/execution-model.md",
     ),
+    // RFC-0113 D5 and its coverage table; issue 1525.
     (
         "esp32",
         "`esp32` is no longer an `nros::main!` framework: its one board \
          (`esp32-c3-baremetal`) is retired because it cannot keep the real-time \
-         wait promise (RFC-0113 D5 — no receive interrupt or one-shot timer behind \
-         a wake object). See RFC-0113's coverage table and issue 1525",
+         wait promise (no receive interrupt or one-shot timer behind a wake object)",
     ),
 ];
 

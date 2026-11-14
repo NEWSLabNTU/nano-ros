@@ -465,11 +465,11 @@ fn bridge_format_error(
     dst_rmw: &str,
     e: &crate::BridgeError,
 ) -> String {
+    // The config key lands with the `serdes` provider family, phase-421 W4.
     format!(
         "{source}: [[bridge]] type = {:?} from {}:{} ({src_rmw}) to {}:{} ({dst_rmw}): {e}. \
          A cross-format bridge must name a converter; build it in source with \
-         PubSubBridge::with_converter (a `converter = \"…\"` config key lands with the \
-         `serdes` provider family, phase-421 W4).",
+         PubSubBridge::with_converter (a `converter = \"…\"` config key is not read yet).",
         b.type_name, b.from.node, b.from.topic, b.to.node, b.to.topic,
     )
 }

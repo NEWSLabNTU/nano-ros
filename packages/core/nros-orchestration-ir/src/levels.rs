@@ -484,9 +484,10 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
         degradations.push(Degradation {
             node: format!("max_levels = {}", input.max_levels),
             dim: "level-budget",
+            // RFC-0108 D4 rule 6.
             reason: format!(
                 "the cap of {} level(s) cannot be met: {} authored sched task(s) are pins \
-                 (RFC-0108 D4 rule 6) and the derived nodes between them need {} \
+                 and the derived nodes between them need {} \
                  level(s) at least, so this core runs {} levels",
                 input.max_levels,
                 input.pinned.len(),
@@ -550,9 +551,10 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
                         degradations.push(Degradation {
                             node: j.callback.clone(),
                             dim: "feasibility",
+                            // RFC-0108 D4 rule 2.
                             reason: format!(
-                                "no banding of this core's ranks keeps every deadline \
-                                 (RFC-0108 D4 rule 2): with a level per rank this \
+                                "no banding of this core's ranks keeps every deadline: \
+                                 with a level per rank this \
                                  callback (C={}us, T={}us) still misses D={}us, so the \
                                  levels stay one per rank",
                                 j.c, j.t, j.d
@@ -598,10 +600,11 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
                 degradations.push(Degradation {
                     node: holder.to_string(),
                     dim: "level-budget",
+                    // RFC-0108 D4 rule 3.
                     reason: format!(
                         "max_levels = {} forces a merge into the band holding this node's \
                          {why}: every remaining pair touches a deadline or a supervised \
-                         route (RFC-0108 D4 rule 3). A started callback of {} now blocks \
+                         route. A started callback of {} now blocks \
                          it for up to that callback's execution time.",
                         input.max_levels,
                         added.join(", ")
@@ -677,11 +680,12 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
                     degradations.push(Degradation {
                         node: names.join(", "),
                         dim: "level",
+                        // RFC-0108 D4 rule 8.
                         reason: format!(
                             "two levels would run at kernel priority {} on a kernel \
                              that time-slices equal priorities, which buys no \
-                             preemption between them and would cut a callback mid-run \
-                             (RFC-0108 D4 rule 8): they are one level",
+                             preemption between them and would cut a callback mid-run: \
+                             they are one level",
                             l.priority
                         ),
                     });
@@ -732,11 +736,12 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
             degradations.push(Degradation {
                 node: m.node.clone(),
                 dim: "level-budget",
+                // RFC-0108 D4 rule 5.
                 reason: format!(
                     "{why}: it would have had rank {} at priority {} and its own level; it \
                      now shares level {} (threshold rank {}, priority {}) with {}, so a \
                      started callback of a less urgent member of the band blocks it and it \
-                     no longer preempts them (RFC-0108 D4 rule 5)",
+                     no longer preempts them",
                     m.rank,
                     m.priority,
                     k,

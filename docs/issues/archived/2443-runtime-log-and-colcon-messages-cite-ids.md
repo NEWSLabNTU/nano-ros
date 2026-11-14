@@ -245,5 +245,5 @@ and text assembled away from its print (#3794). The gaps the checker states
 (text formatted into a variable or kept in a message table and printed
 later, literals a function returns for its caller to print, generated-file
 headers, C text kept in message macros) are measured and tracked by
-[issue 2547](../2547-user-surface-text-formatted-away-or-tabled-cites-ids.md),
+[issue 2547](2547-user-surface-text-formatted-away-or-tabled-cites-ids.md),
 with a gate plan.

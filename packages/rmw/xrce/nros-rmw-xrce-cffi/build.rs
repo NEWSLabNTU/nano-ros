@@ -443,8 +443,9 @@ fn main() {
     let pointer = out_dir.join(VENDOR_BUILD_POINTER);
     fs::write(
         &pointer,
+        // phase-420 W9 step 4.
         format!(
-            "# Written by nros-rmw-xrce-cffi/build.rs — phase-420 W9 step 4.\n\
+            "# Written by nros-rmw-xrce-cffi/build.rs.\n\
              # Read by nros-rmw-xrce/CMakeLists.txt, which LINKS this archive instead of\n\
              # compiling the vendored micro-XRCE-DDS-Client / micro-CDR sources again.\n\
              # Do not hand-edit: it is regenerated on every build of this crate.\n\

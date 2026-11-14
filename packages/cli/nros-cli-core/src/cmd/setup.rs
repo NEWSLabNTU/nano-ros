@@ -5682,7 +5682,10 @@ mod tests {
 
         // A retired board is refused by name, not resolved to nothing.
         let err = resolve_packages(&idx, "esp32-c3-baremetal").unwrap_err();
-        assert!(format!("{err:#}").contains("RFC-0113"), "{err:#}");
+        assert!(
+            format!("{err:#}").contains("real-time wait promise"),
+            "{err:#}"
+        );
         assert_eq!(resolve_packages(&idx, "linux").unwrap(), vec!["zenohd"]);
         // A board whose set mixes a hosted tool with a license-gated one.
         let gated = resolve_packages(&idx, "gated-example").unwrap();

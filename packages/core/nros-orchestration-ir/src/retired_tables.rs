@@ -19,7 +19,9 @@ use std::path::Path;
 pub struct RetiredTable {
     /// The top-level key, as written (`deploy`, `param_services`).
     pub key: &'static str,
-    /// What retired it (`issue 1809, 0.6.0`, `RFC-0109 D6`).
+    /// What retired it, in the user's words: the release (`0.6.0`) or what
+    /// replaced it. The refusal prints it, so a design id goes in a `//`
+    /// comment above the row instead.
     pub by: &'static str,
     /// What to write instead — the whole remedy, in the user's vocabulary.
     pub replacement: &'static str,
@@ -27,16 +29,18 @@ pub struct RetiredTable {
 
 /// Every retired table. A reader refuses any of them.
 pub const RETIRED_SYSTEM_TABLES: &[RetiredTable] = &[
+    // issue 1809; the typed block was sugar for the axis since phase-261.
     RetiredTable {
         key: "param_services",
-        by: "issue 1809, 0.6.0",
+        by: "0.6.0",
         replacement: "declare the axis under `[system]` instead: \
                       `features = [\"param_services\"]` (the typed block was deprecated \
-                      sugar for it since phase-261)",
+                      sugar for it)",
     },
+    // issue 1809.
     RetiredTable {
         key: "deploy",
-        by: "issue 1809, 0.6.0",
+        by: "0.6.0",
         replacement: "`[deploy.<name>]` conflated a build with a machine, and each half has \
                       its own table now: what is BUILT goes in `[image.<id>]` (`board`, \
                       `rmw`, `profile`, `features`, with `[image_defaults]` for \
@@ -45,24 +49,27 @@ pub const RETIRED_SYSTEM_TABLES: &[RetiredTable] = &[
                       `domain_id`, `locator`). A `kind = \"self\"` block with no nodes is \
                       the implicit single host and needs no table at all",
     },
+    // RFC-0109 D6 (board network file: D4), phase-514.
     RetiredTable {
         key: "network",
-        by: "RFC-0109 D6, phase-514",
+        by: "board network files replaced it",
         replacement: "a network is a layer-1 fact, so it lives in the board network file an \
-                      image names in `os_config` (RFC-0109 D4): move `subnet` / `gateway` / \
+                      image names in `os_config`: move `subnet` / `gateway` / \
                       `dhcp` there as `[network.<name>]`, put `router` in the image's \
                       `locator`, and `attach` in `[image.<id>.run] nic`",
     },
+    // phase-536 W3; play_launch's own phase 99 made the task the unit.
     RetiredTable {
         key: "tiers",
-        by: "rlm v0.3.11, phase-536 W3",
-        replacement: "the scheduling unit is a task (play_launch phase 99): write \
+        by: "rlm v0.3.11",
+        replacement: "the scheduling unit is a task in play_launch: write \
                       `[tasks.<name>]` (and `[tasks.<name>.<target>]`), or run \
                       `play_launch migrate <system.toml> --write` to rewrite the file",
     },
+    // RFC-0109 D6, phase-514.
     RetiredTable {
         key: "transport",
-        by: "RFC-0109 D6, phase-514",
+        by: "`[[domain]]` replaced it",
         replacement: "a session is a `[[domain]]` (its `rmw`, `id`, and `config = \
                       \"rmw/<file>\"`, the RMW's own file); an image with one session needs \
                       no table at all — `[system] rmw` / `domain_id` and the image's \
@@ -72,24 +79,28 @@ pub const RETIRED_SYSTEM_TABLES: &[RetiredTable] = &[
 
 /// The refusal of a `[[component]]`'s `group_tiers` (rlm v0.3.11, phase-536
 /// W3), the component-key half of the `tiers` row above.
-pub const RETIRED_GROUP_TIERS: &str = "`[[component]] group_tiers` is retired (rlm v0.3.11, \
-    phase-536 W3): the scheduling unit is a task (play_launch phase 99): write `group_tasks`, \
+// user-surface: table
+pub const RETIRED_GROUP_TIERS: &str = "`[[component]] group_tiers` is retired (rlm v0.3.11): \
+    the scheduling unit is a task in play_launch: write `group_tasks`, \
     or run `play_launch migrate <system.toml> --write` to rewrite the file";
 
 /// One retired key of an `[image.<id>]` / `[image_defaults]` table.
 pub type RetiredImageKey = RetiredTable;
 
 /// Every retired image key. A reader refuses any of them.
+// user-surface: table
 pub const RETIRED_IMAGE_KEYS: &[RetiredImageKey] = &[
+    // RFC-0109 D6, phase-514.
     RetiredTable {
         key: "transport",
-        by: "RFC-0109 D6, phase-514",
+        by: "the locator's scheme replaced it",
         replacement: "an image's link is its locator's scheme (`serial/…`, `tcp/…`, `udp/…`, \
                       `custom://…`), derived, never stated beside it — drop the key",
     },
+    // RFC-0109 D4, phase-514.
     RetiredTable {
         key: "net",
-        by: "RFC-0109 D4, phase-514",
+        by: "board network files replaced it",
         replacement: "an image's address is a board fact: name a board network file in the \
                   image's `os_config = [\"board-net.toml\"]` and move each \
                   `[<table>.net.<if>]` there as `[<if>]` (with `network`, `host` or \
@@ -202,7 +213,7 @@ mod tests {
         }
         let deploy = retired_table_message("deploy").unwrap();
         assert!(deploy.contains("[host.<name>]"), "{deploy}");
-        assert!(deploy.contains("issue 1809"), "{deploy}");
+        assert!(deploy.contains("is retired (0.6.0)"), "{deploy}");
     }
 
     /// RFC-0109 D6 (phase-514 W4) — the network and session tables moved out.
@@ -219,10 +230,7 @@ mod tests {
         ] {
             let doc: toml::Table = toml::from_str(src).unwrap();
             let e = refuse_retired_tables(&doc, p).unwrap_err();
-            assert!(
-                e.contains(&format!("`[{key}]` is retired (RFC-0109")),
-                "{e}"
-            );
+            assert!(e.contains(&format!("`[{key}]` is retired (")), "{e}");
             assert!(e.contains(names), "{e}");
         }
         let doc: toml::Table =

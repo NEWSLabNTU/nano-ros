@@ -1892,7 +1892,11 @@ mod tests {
             e.contains("[image.t.knobs.zenoh] lease_priority` is a retired knob"),
             "{e}"
         );
-        assert!(e.contains("RFC-0110 D2"), "{e}");
+        // The reason in words, no id (issue 2547).
+        assert!(
+            e.contains("no lease task to prioritise") && !e.contains("RFC-"),
+            "{e}"
+        );
         const RETIRED: [&str; 2] = ["NROS_ZENOH_LEASE_PRIORITY", "ZPICO_LEASE_TASK_PRIORITY"];
         for key in RETIRED {
             let e = app_rung(Some("t"), &BTreeMap::new(), &env_rows(&[(key, "16")]))

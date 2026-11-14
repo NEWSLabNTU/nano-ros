@@ -347,16 +347,17 @@ impl NetworkDef {
 
 /// The keys a `[network.<name>]` held in `system.toml` (RFC-0103 D10a) that do
 /// not move into a board network file with it, and where each went.
+// RFC-0109 D6, both rows.
+// user-surface: table
 const MOVED_NETWORK_KEYS: &[(&str, &str)] = &[
     (
         "router",
-        "the locator an image dials is the image's own `locator` (or `[system] locator`) — \
-         RFC-0109 D6",
+        "the locator an image dials is the image's own `locator` (or `[system] locator`)",
     ),
     (
         "attach",
         "how an emulated image joins a network is a runner fact: `[image.<id>.run] nic = \
-         \"slirp\" | { bridge = \"<dev>\" } | { tap = \"<dev>\" }` — RFC-0109 D6",
+         \"slirp\" | { bridge = \"<dev>\" } | { tap = \"<dev>\" }`",
     ),
 ];
 
@@ -429,11 +430,12 @@ pub fn read_board_net_file(path: &std::path::Path) -> Result<BoardNetFile, Strin
         Some(v) => parse_network_table(&v, &file)?,
         None => BTreeMap::new(),
     };
+    // RFC-0109 D4.
     let interfaces = toml::Value::Table(doc).try_into().map_err(|e| {
         format!(
             "{file}: {e} (a board network file is one `[<interface>]` table per interface, \
              with `network`, `host` or `address`, and `mac`, plus a `[network.<name>]` per \
-             network other than `qemu` — RFC-0109 D4)"
+             network other than `qemu`)"
         )
     })?;
     Ok(BoardNetFile {
@@ -520,9 +522,10 @@ pub fn refuse_flat_image_net(table: Option<&toml::Table>, at: &str) -> Result<()
 /// The D10g refusal text for a flat `key` on table `at`.
 #[must_use]
 pub fn flat_key_refusal(at: &str, key: &str) -> String {
+    // RFC-0103 D10g retired the key; RFC-0109 D4 made the address a board fact.
     format!(
-        "`{at}` states `{key}`, which is retired (RFC-0103 D10g): an image's address is a \
-         board fact now (RFC-0109 D4). Name a board network file in the image's \
+        "`{at}` states `{key}`, which is retired: an image's address is a \
+         board fact now. Name a board network file in the image's \
          `os_config = [\"board-net.toml\"]`, holding\n\n    [eth0]\n    network = \"qemu\"          \
          # or a [network.<name>] defined in the same file\n    host = 50                   \
          # or: address = \"10.0.2.50\"\n\nand drop `ip` / `gateway` / `netmask` — the gateway \
@@ -696,7 +699,10 @@ mod tests {
 
         std::fs::write(dir.join("bad.toml"), "[eth0]\nhots = 1\n").unwrap();
         let e = fold_board_net_files(&dir, &["bad.toml".to_string()], "image.t").unwrap_err();
-        assert!(e.contains("RFC-0109 D4"), "a misspelt key is refused: {e}");
+        assert!(
+            e.contains("a board network file is one `[<interface>]` table"),
+            "a misspelt key is refused: {e}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -942,6 +948,9 @@ mod tests {
             .and_then(|i| i.get("a"))
             .and_then(|i| i.as_table());
         let e = refuse_flat_image_net(img, "image.a").unwrap_err();
-        assert!(e.contains("os_config") && e.contains("D10g"), "{e}");
+        assert!(
+            e.contains("os_config") && e.contains("which is retired"),
+            "{e}"
+        );
     }
 }
