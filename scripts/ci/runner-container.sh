@@ -109,8 +109,15 @@ if [ "$DO_BUILD" -eq 0 ] && [ "$DO_RUN" -eq 0 ] && [ "$DO_SWEEP" -eq 0 ]; then D
 
 # The runner's volumes, ONE list for the job container and the sweep container:
 # a sweep that mounted a different set would measure a different disk.
+#
+# `_work` is mounted `nocopy`. Without it Docker copies the image's (empty)
+# `/home/runner/_work` into an EMPTY volume on first mount and hands the bind
+# directory to the image's uid, which is how host 241's `work-queue` changed
+# owner on 2026-11-14 (see runner-store.sh `ensure`). The toolchain volumes
+# below keep the copy: on a fresh host it is what puts the image's cargo and
+# rustup into them.
 VOLUME_ARGS=(
-    -v "$(nros_runner_work_volume "$LABELS"):/home/runner/_work"
+    -v "$(nros_runner_work_volume "$LABELS"):/home/runner/_work:nocopy"
     -v "nros-runner-cargo:/home/runner/.cargo"
     -v "nros-runner-sccache:/home/runner/.cache/sccache"
     -v "nros-runner-nros:/home/runner/.nros"
