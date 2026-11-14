@@ -263,7 +263,10 @@ files that bounded a `std_msgs/String` the service/action roles never carry.
   connected). W5's 6/6 passed only because each pair still had a cargo-built
   side. `nros_board_facts_env` (`cmake/NanoRosBoardFacts.cmake`), the helper
   every Corrosion import calls, now hands the configure's `NROS_IMAGE_NET` to
-  the cargo build; the pairs boot `10.0.2.12`/`10.0.2.13`.
+  the cargo build; the pairs boot `10.0.2.12`/`10.0.2.13`. *Superseded by
+  issue 2555's fix:* the identity now reaches the board at run time through
+  `<nros/board.h>`'s `nros_board_image_config_t`, filled per entry, and that
+  env row is gone.
 - **`%lld` on newlib-nano.** The service components printed
   `Result of add_two_ints: ld`: newlib-nano's `printf` has no `long long`
   conversion. The test still passed on the prefix. The bare-metal copies and

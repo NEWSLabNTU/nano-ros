@@ -62,6 +62,38 @@ extern "C" {
  */
 typedef int32_t (*nros_board_app_fn)(void *user);
 
+/* ---- Image identity ---- */
+
+/** The `version` a caller of this header writes into `nros_board_image_config_t`. */
+#define NROS_BOARD_IMAGE_CONFIG_VERSION 1
+
+/** `nros_board_image_config_t::domain_id` value meaning "the board's default". */
+#define NROS_BOARD_IMAGE_DOMAIN_DEFAULT (-1)
+
+/**
+ * The image's identity on the network, handed to a C-rooted board's start at
+ * RUN time (issue 2555). Each image's generated entry fills one from its own
+ * `system.toml`, so two images built in one configure (one runtime archive)
+ * still boot as two hosts. A board reads what it can use and keeps its own
+ * default for every field left unset.
+ *
+ * - `version`: `NROS_BOARD_IMAGE_CONFIG_VERSION`. A board refuses a version it
+ *   does not know rather than reading fields past the struct's end.
+ * - `net`: the image's resolved network, in the `NROS_IMAGE_NET` text form
+ *   (RFC-0103 D10f; `nros_board_common::image_net`). `NULL`: the board's.
+ * - `locator`: the RMW locator the image dials. `NULL`: the board's.
+ * - `domain_id`: the ROS domain id, or `NROS_BOARD_IMAGE_DOMAIN_DEFAULT`.
+ *
+ * Every string is NUL-terminated and must outlive the image: the generated
+ * entry passes string literals.
+ */
+typedef struct nros_board_image_config_t {
+    uint32_t version;
+    const char *net;
+    const char *locator;
+    int32_t domain_id;
+} nros_board_image_config_t;
+
 /* ---- Entry workflow ---- */
 
 /**

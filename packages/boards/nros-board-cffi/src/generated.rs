@@ -9,6 +9,17 @@
 #[doc = " User application entry. Receives the `user` cookie passed to\n `nros_board_run`. Returns `0` on success, non-zero on error; the\n board maps the result onto `exit_success` / `exit_failure`."]
 pub type nros_board_app_fn =
     ::core::option::Option<unsafe extern "C" fn(user: *mut core::ffi::c_void) -> i32>;
+#[doc = " The image's identity on the network, handed to a C-rooted board's start at\n RUN time (issue 2555). Each image's generated entry fills one from its own\n `system.toml`, so two images built in one configure (one runtime archive)\n still boot as two hosts. A board reads what it can use and keeps its own\n default for every field left unset.\n\n - `version`: `NROS_BOARD_IMAGE_CONFIG_VERSION`. A board refuses a version it\n   does not know rather than reading fields past the struct's end.\n - `net`: the image's resolved network, in the `NROS_IMAGE_NET` text form\n   (RFC-0103 D10f; `nros_board_common::image_net`). `NULL`: the board's.\n - `locator`: the RMW locator the image dials. `NULL`: the board's.\n - `domain_id`: the ROS domain id, or `NROS_BOARD_IMAGE_DOMAIN_DEFAULT`.\n\n Every string is NUL-terminated and must outlive the image: the generated\n entry passes string literals."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_board_image_config_t {
+    pub version: u32,
+    pub net: *const core::ffi::c_char,
+    pub locator: *const core::ffi::c_char,
+    pub domain_id: i32,
+}
+pub const NROS_BOARD_IMAGE_CONFIG_VERSION: i32 = 1;
+pub const NROS_BOARD_IMAGE_DOMAIN_DEFAULT: i32 = -1;
 unsafe extern "C" {
     #[doc = " Board entry driver: run the board's full boot flow with the user\n application, then exit. Family-agnostic — for direct-exec boards\n (bare-metal, esp-hal) the application runs on the boot stack; for\n kernel-spawn families (FreeRTOS, ThreadX) the board allocates an app\n task and starts the scheduler, running the application in task\n context. Both shapes export this same symbol (the Rust side routes\n through `BoardEntry::run`). Never returns."]
     pub fn nros_board_run(

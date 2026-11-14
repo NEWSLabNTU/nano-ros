@@ -169,12 +169,17 @@ function(nros_baremetal_board_crate prefix board repo)
     set(${prefix}_DEP_LINE
         "${_crate} = { path = \"${_abs}\", default-features = false, features = [${_feat_toml}] }"
         PARENT_SCOPE)
+    # The start's module, whose `ImageConfig` names the struct it takes.
+    string(REGEX REPLACE "::[A-Za-z0-9_]+$" "" _start_mod "${_start}")
     set(${prefix}_ANCHOR
 "// The board's C-ABI start, anchored so staticlib DCE keeps it: the board
-// overlay's `main` calls it (phase-553 W4).
+// overlay's `main` calls it (phase-553 W4) with the image's identity
+// (`<nros/board.h>`'s `nros_board_image_config_t`, issue 2555).
 #[used]
-static _KEEP_BOARD_START: unsafe extern \"C\" fn(Option<unsafe extern \"C\" fn() -> i32>) -> ! =
-    ::${_start};
+static _KEEP_BOARD_START: unsafe extern \"C\" fn(
+    *const ::${_start_mod}::ImageConfig,
+    Option<unsafe extern \"C\" fn() -> i32>,
+) -> ! = ::${_start};
 " PARENT_SCOPE)
     string(REPLACE "," ";" _link_list "${_links}")
     set(${prefix}_LINK_PACKAGES "${_link_list}" PARENT_SCOPE)

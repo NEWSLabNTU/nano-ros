@@ -17,8 +17,41 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <nros/board.h>
+
 extern void app_main(void);
-extern void nros_board_mps2_an385_start(int (*app)(void)) __attribute__((noreturn));
+extern void nros_board_mps2_an385_start(const nros_board_image_config_t* image, int (*app)(void))
+    __attribute__((noreturn));
+
+/*
+ * The image's identity (issue 2555). This file is compiled once PER ENTRY,
+ * while the board's Rust runtime is one archive per configure, so this is
+ * where two images of one configure can differ. The generated entry's build
+ * defines the three macros from the image's `system.toml`
+ * (`NanoRosEntry.cmake`); an absent one leaves the board's default.
+ */
+#ifdef NROS_IMAGE_NET
+#define NROS_BOARD_IMAGE_NET_ NROS_IMAGE_NET
+#else
+#define NROS_BOARD_IMAGE_NET_ NULL
+#endif
+#ifdef NROS_ENTRY_LOCATOR
+#define NROS_BOARD_IMAGE_LOCATOR_ NROS_ENTRY_LOCATOR
+#else
+#define NROS_BOARD_IMAGE_LOCATOR_ NULL
+#endif
+#ifdef NROS_ENTRY_DOMAIN_ID
+#define NROS_BOARD_IMAGE_DOMAIN_ NROS_ENTRY_DOMAIN_ID
+#else
+#define NROS_BOARD_IMAGE_DOMAIN_ NROS_BOARD_IMAGE_DOMAIN_DEFAULT
+#endif
+
+static const nros_board_image_config_t nros_board_image = {
+    .version = NROS_BOARD_IMAGE_CONFIG_VERSION,
+    .net = NROS_BOARD_IMAGE_NET_,
+    .locator = NROS_BOARD_IMAGE_LOCATOR_,
+    .domain_id = NROS_BOARD_IMAGE_DOMAIN_,
+};
 /* newlib's semihosting (rdimon) stdio: C `printf` reaches the host console. */
 extern void initialise_monitor_handles(void);
 
@@ -61,5 +94,5 @@ void* _sbrk(ptrdiff_t incr) {
 
 int main(void) {
     initialise_monitor_handles();
-    nros_board_mps2_an385_start(nros_board_run_app);
+    nros_board_mps2_an385_start(&nros_board_image, nros_board_run_app);
 }

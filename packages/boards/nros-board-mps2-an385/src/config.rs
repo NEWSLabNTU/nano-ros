@@ -383,23 +383,21 @@ impl Config {
 use nros_board_common::base_config::parse_u32;
 
 impl Config {
-    /// The board default overlaid with the IMAGE's declared network identity —
-    /// issue 1512, for a C or C++ image.
+    /// The board default overlaid with the IMAGE's declared network identity,
+    /// read at COMPILE time (issue 1512).
     ///
     /// A Rust image gets `[image.<id>] locator/domain_id` and its resolved
     /// network from `nros::main!`'s deploy overlay (`entry.rs::config_with_overlay`).
-    /// A C or C++ image boots through the board's C start
-    /// (`c_start.rs::nros_board_mps2_an385_start`, phase-553 W4), which has no
-    /// such macro, so it would boot `Config::default()` whatever its
-    /// `system.toml` said. The build renders the declared values into the
-    /// image's runtime staticlib build as `NROS_ENTRY_*` env rows, and its
-    /// resolved network as `NROS_IMAGE_NET` (RFC-0103 D10f); this reads them at
-    /// compile time. An absent row keeps the board default — nothing here is
-    /// derived.
+    /// A cargo-rooted image with a hand-written `main` has no such macro, so
+    /// `nros sync` renders the declared values into the image's
+    /// `build/<image>/nros-cargo.toml` as `NROS_ENTRY_*` `[env]` rows, and its
+    /// resolved network as `NROS_IMAGE_NET` (RFC-0103 D10f); this reads them.
+    /// An absent row keeps the board default — nothing here is derived.
     ///
-    /// `NROS_ENTRY_LOCATOR` also reaches the generated entry's C compile as the
-    /// macro `rclc_support_init` dials (`NanoRosEntry.cmake`); the copy here
-    /// keeps the board's own `BoardConfig::locator()` saying the same thing.
+    /// A C-rooted image (the CMake road, phase-553 W4) does not rely on this:
+    /// its runtime archive is one per configure, so the board's C start takes
+    /// the image's identity at run time instead ([`Self::from_image_parts`],
+    /// issue 2555) and this is only the rung under it.
     #[must_use]
     pub fn from_image() -> Self {
         let mut cfg = Self::default();
@@ -409,6 +407,37 @@ impl Config {
         #[cfg(feature = "ethernet")]
         cfg.apply_image_net(option_env!("NROS_IMAGE_NET"));
         if let Some(id) = option_env!("NROS_ENTRY_DOMAIN_ID").and_then(|s| s.parse().ok()) {
+            cfg.domain_id = id;
+        }
+        cfg
+    }
+
+    /// [`Self::from_image`] with the image's identity given at RUN time, from
+    /// the `nros_board_image_config_t` the generated entry passes to the
+    /// board's C start (issue 2555). Each `Some` replaces the compile-time
+    /// rung; `None` keeps it.
+    ///
+    /// The compile-time rungs live in the image's runtime archive, which one
+    /// CMake configure builds once for every image it holds, so they cannot
+    /// tell two images apart. The entry is compiled per image, so what it
+    /// passes can.
+    #[must_use]
+    pub fn from_image_parts(
+        net: Option<&'static str>,
+        locator: Option<&'static str>,
+        domain_id: Option<u32>,
+    ) -> Self {
+        let mut cfg = Self::from_image();
+        if let Some(loc) = locator {
+            cfg.zenoh_locator = loc;
+        }
+        #[cfg(feature = "ethernet")]
+        if net.is_some() {
+            cfg.apply_image_net(net);
+        }
+        #[cfg(not(feature = "ethernet"))]
+        let _ = net; // a serial image has no network to apply
+        if let Some(id) = domain_id {
             cfg.domain_id = id;
         }
         cfg
