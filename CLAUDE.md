@@ -116,7 +116,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     `check-compile-smoke` + `check-cli-tests` + `check-workspace-all` +
     `check-lane-contracts` (phase-489 W9: 4 of 6 queue ejections, parallel, no added wall).
     **`test-unit` is NOT in it** — it runs on `merge_group` (and
-    schedule/dispatch), where it costs a measured ~3.5 min per batch instead of
+    dispatch), where it costs a measured ~3.5 min per batch instead of
     per PR push; so does `check template-copy-out` (merge_group + dispatch,
     issue 1453). **`workspace-all` moved the other way on 2026-09-10**, out of
     the batch lane and onto the PR: it is 28 s against `test-unit`'s 3.5 min, so
@@ -143,7 +143,8 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     for the FAST line (issue 1066), so the required PR context now carries it —
     217.5 s, the lane's slowest gate, not its critical path. Your local tier is STRONGER than the gate, so you catch
     compile-tier breakage before the queue does and the queue stays cheap and
-    always-satisfiable. `check-build` is now `schedule`/`workflow_dispatch` only —
+    always-satisfiable. `check-build` is now `schedule`/`workflow_dispatch` only,
+    in `host-tests.yml` since phase-559 W7 —
     it was on the merge group and could never pass there (it needs generated
     bindings and prebuilt `.compile-ok` that no CI job builds), so the required
     check was red for EVERY pull request for a day. **A gate in an affordability
