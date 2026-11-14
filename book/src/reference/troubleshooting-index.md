@@ -231,6 +231,34 @@ That configure records the prefix in the project. Later builds and runs of
 the same project reuse it, from any shell, an IDE or a CI step. A new
 project records its own, so its first build needs a sourced shell again.
 
+### A11. The stack is below the image's floor
+
+```text
+nros-stack-floor: ERROR: the OPEN stack is 26624 B, below the measured floor 56368 B. Raise it: NROS_BAREMETAL_STACK_KB=56
+```
+
+Every build of an embedded image works out a stack floor for the thread that
+opens nano-ros and runs its executor. It walks the compiled code for the
+deepest call path, counts every indirect call as able to reach every function
+it could reach, and adds a margin. That makes it a heuristic floor: it usually
+sits well above the stack the image really uses, because no run takes every
+path the walk allows, and it is not a proof that a larger stack never
+overflows. An exact search that would tighten it is not done yet.
+
+An image template whose real peak has been observed on a run is measured.
+For a measured image, a stack below the floor fails the build, and the
+message names the setting to raise and the value that clears it:
+`NROS_BAREMETAL_STACK_KB` on bare metal, `NROS_FREERTOS_APP_STACK_KB` on
+FreeRTOS, `CONFIG_MAIN_STACK_SIZE` in a Zephyr image's `os_config`. Raise it
+to that value and build again. `nros new` writes a stack that holds the floor
+into the projects it scaffolds. A FreeRTOS image can instead state
+`stack_floor = "raise"` under `[image.<id>]` in `system.toml`, and the build
+rebuilds it once at the floor ([`system.toml` reference](system-toml.md)).
+
+For an image nobody has measured, the floor is only printed, as a `WARNING`
+that names the same setting. Nothing is refused, and if the image overflows
+that setting is the first thing to try.
+
 ## B. Binary runs but no output
 
 ### B1. Rust: `RMW session open failed — Transport(ConnectionFailed)`

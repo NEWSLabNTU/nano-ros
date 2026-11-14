@@ -1,0 +1,1 @@
+The book explains the build's stack-floor check: what the floor is (a heuristic over-estimate of the opening thread's stack), when a build refuses a stack below it, which setting to raise on each platform, and the FreeRTOS opt-in raise. The RISC-V NuttX starter names its host packages like the Arm one.
