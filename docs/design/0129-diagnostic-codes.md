@@ -43,11 +43,14 @@ All five are user rulings of 2026-11-12, relayed by the manager session.
   Design background." This is the RFC-0116 D2 amendment. It also settles the
   question issue 2305 left open: whether a build-stopping refusal may cite an
   issue id.
-- **Q5 (scope).** The runtime and colcon surfaces are in scope.
-  [Issue 2443](../issues/2443-runtime-log-and-colcon-messages-cite-ids.md) is
-  un-parked, and the AUO book session is sweeping those messages to be
-  self-contained (#3593, ratchet #3617). Codes are prepended to them after
-  that sweep.
+- **Q5 (scope).** The runtime and colcon surfaces are in scope. The sweep
+  that made those messages self-contained is done:
+  [issue 2443](../issues/archived/2443-runtime-log-and-colcon-messages-cite-ids.md)
+  and [issue 2547](../issues/archived/2547-user-surface-text-formatted-away-or-tabled-cites-ids.md)
+  are resolved, and `check-user-surface-ids` reads every surface they named at
+  baseline zero (what it cannot yet see is
+  [issue 2551](../issues/2551-user-surface-text-beyond-function-flow-cites-ids.md)).
+  Codes are prepended to those messages.
 
 ## Problem
 
@@ -217,9 +220,10 @@ The verb's help says "a diagnostic code (`NROS-NNNN`) or a plan path".
     - build scripts on a user build;
     - the colcon plugin;
     - error-level runtime logs of a default image.
-  - **Relation to AUO book's id ratchet (#3617).** It asks a different
-    question: whether a message cites an id. #3617's pattern does not match
-    `NROS-NNNN`, and #3617 carries a self-test for that. The two ratchets are
+  - **Relation to `check-user-surface-ids`.** That gate asks a different
+    question: whether a message cites an id. It is a set of baseline-zero
+    rules (its ratchets were dropped once empty), its id pattern does not
+    match `NROS-NNNN`, and its self-test asserts that. The two gates are
     therefore compatible, and neither subsumes the other.
 - `check-user-surface-ids` keeps its rule.
 
@@ -246,8 +250,9 @@ None of these changes the SSoT rule, the rendered format or the gates.
 
 ## Design background
 
-- Issues: issue 2305 (ids in user-tier messages); issue 2443 (runtime and
-  colcon messages).
+- Issues: issue 2305 (ids in user-tier messages); issues 2443 and 2547
+  (runtime, colcon and assembled messages, resolved); issue 2551 (the shapes
+  the id gate cannot yet read).
 - RFCs: RFC-0116 D2; RFC-0117 (command tiers); RFC-0123 D3; RFC-0124
   Principle 5.
 - Prior art: rustc's `error[E0277]` and `rustc --explain E0277`, whose
