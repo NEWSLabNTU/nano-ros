@@ -1,7 +1,7 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
 **Status (2026-11-14). OPEN: W1, W2, W2b, W3, W4, W5, W6 and W7 are done;
-W3b and W5b are open.** This phase tracks the implementation of
+W3b and W5b are open; W7f is a design awaiting the user's review.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
 runs, and every gate reads that producer instead of holding its own number.
@@ -618,3 +618,81 @@ Acceptance: same graph, same bytes, at every project path; the self-test
 pins the case where sorted order under-states (112 vs 121 B); every
 `[[observed]]` static is the new walk's; each nucleo image fits its RAM.
 
+
+### W7f — Field- and parameter-sensitive binding (issue 2550 step 3)
+
+- **Status:** OPEN (design only; no code until the user reviews this item)
+
+**Why.** Typing every call site does not break the walk's cycle: the bound
+graph's SCC stays at 962 / 970 / 2,037 functions against 24 on direct edges
+alone (issue 2550). A coarse type such as `void(ptr)` matches hundreds of
+functions, so a container's `elem_clear` call reaches every destructor-shaped
+function in the image, and those reach the API, which reaches the containers
+again. The exact, order-independent search (issue 2550 step 3) needs a graph
+whose cycles are real, so the binding must say WHICH functions a site can
+hold, not only which shape.
+
+**Idea.** A function pointer reaches a call site through one of two
+channels. Track both, per site, from the IR the walk already reads (Rust
+bitcode, clang IR of the C):
+
+1. **A struct field.** The site loads its callee from field F of struct type
+   T (`load ptr, gep %T, 0, F`). The site can hold only the functions some
+   code STORES into (T, F): a `store ptr @fn, gep %T, 0, F`, or a constant
+   initializer of a T whose field F is `@fn`. Example: zenoh-pico's
+   `_z_closure_sample_t.call` is stored `sample_handler` and
+   `pending_get_reply_handler` in one place each, so a site calling
+   `closure->call` reaches those, not every `void(ptr,ptr)`.
+2. **A parameter.** The site calls a value that is (at -O0, through its
+   alloca) the function's own parameter P. The site can hold what each
+   direct caller passes at position P: a `@fn` argument directly, or the
+   caller's own parameter (followed transitively), or a field load (rule 1).
+   Example: `_z_svec_clear(v, _z_foo_elem_clear)`.
+
+Each (T, F) and each (function, P) becomes a node in a small points-to
+problem, solved to a fixed point (sets only grow).
+
+**The fallback rule (what keeps it sound).** A channel is TRUSTED only if
+every way a value enters it is one of the forms above. Any other entry makes
+the channel UNTRUSTED, and its sites keep today's binding (coarse type, then
+everything C can hold). An entry is anything that writes the slot or passes
+the argument:
+
+- a store of a value that is not `@fn`, a trusted field load or a trusted
+  parameter (a value loaded from memory of another type, a phi/select of
+  mixed origins, an integer-to-pointer cast, an `inttoptr`);
+- a write through a pointer whose static type is not T at that offset: a
+  `memcpy`/`memmove`/`memset` whose destination is a T or contains a T (a
+  memcpy from another T is allowed: it copies trusted fields), a store
+  through an `i8` GEP, or a store through a pointer cast from another type;
+- the address of field F (or of the whole T) ESCAPING: passed to a function
+  the walk has no IR for, stored somewhere, or returned. Whatever receives it
+  can write the field.
+- for a parameter: an indirect call to the function (its callers are then
+  not all direct), or the function's address escaping at all.
+
+Rust is handled the same way, with one more trusted form: the RMW and `dyn`
+vtables are already bound by slot (W7), so a field that is itself a vtable
+pointer keeps its slot binding.
+
+**What it does not try.** No flow sensitivity (a field holds the union of
+everything ever stored), no heap shape, no context sensitivity beyond the
+direct-caller step. A channel the rules cannot prove stays at today's
+binding, so the result is never looser than now.
+
+**Measure before landing.**
+
+- The reachable SCC with and without the new binding, on the three nucleo
+  templates and the mps2 talker.
+- The share of indirect sites that become trusted.
+- The exact search's node count once the SCC is small, against a budget.
+
+**Acceptance.**
+
+- Every site is either bound through a trusted channel or keeps today's
+  binding.
+- A self-test catches mutations of each untrusting rule (a memcpy into T, an
+  escaping field address, an unknown store).
+- Every observed peak stays covered.
+- The SCC shrinks enough for the exact search to finish under its budget.
+  If it does not, this item reports by how much it fell short.
