@@ -149,14 +149,14 @@ translation unit), so a C record is bounded by the smaller of the two.
 
 Overflow truncates + appends `…`; `log()` never fails.
 
-### Deprecated features (one release)
+### Retired features
 
 `max-level-*`, `buffer-size-<N>`, `early-records-<N>`, `rosout-records-<N>`
 and `dynamic-loggers-<N>` encoded those values as pick-one Cargo features,
-which unify across a build with no precedence (RFC-0086 D5). They still work
-for one release: honoured with a `cargo:warning` when no knob is stated, a
-redundancy warning when they agree with one, a BUILD ERROR when they disagree
-with a stated knob or with each other. They left `default` in the same change.
+which unify across a build with no precedence (RFC-0086 D5). They were
+deprecated for one release and are now refused: selecting one stops the build
+with the knob and value to state instead. The names stay declared only so the
+error can say that.
 
 ### The platform clock
 

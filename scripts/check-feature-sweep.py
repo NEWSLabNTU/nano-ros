@@ -73,11 +73,6 @@ ONE_OF_PREFIXES = (
     "platform-",
     "ros-",
     "panic-",
-    "max-level-",
-    "buffer-size-",
-    "dynamic-loggers-",
-    "early-records-",
-    "rosout-records-",
     "sync-",
 )
 
@@ -139,7 +134,34 @@ CRATES = {
     "nros-serdes": {"base": "", "axes": [""], "expected": {}, "skip": {}},
     "nros-params": {"base": "", "axes": [""], "expected": {}, "skip": {}},
     "nros-rmw": {"base": "", "axes": [""], "expected": {}, "skip": {}},
-    "nros-log": {"base": "", "axes": [""], "expected": {}, "skip": {}},
+    "nros-log": {
+        "base": "",
+        "axes": [""],
+        "expected": {
+            # phase-555 W3 (RFC-0086 D5): the pick-one families are retired, and
+            # build.rs refuses each name with the knob to state instead.
+            ("max-level-trace", ""): "are retired",
+            ("max-level-debug", ""): "are retired",
+            ("max-level-info", ""): "are retired",
+            ("max-level-warn", ""): "are retired",
+            ("max-level-error", ""): "are retired",
+            ("max-level-off", ""): "are retired",
+            ("early-records-0", ""): "are retired",
+            ("early-records-8", ""): "are retired",
+            ("early-records-16", ""): "are retired",
+            ("dynamic-loggers-0", ""): "are retired",
+            ("dynamic-loggers-8", ""): "are retired",
+            ("dynamic-loggers-32", ""): "are retired",
+            ("rosout-records-8", ""): "are retired",
+            ("rosout-records-32", ""): "are retired",
+            ("rosout-records-64", ""): "are retired",
+            ("buffer-size-128", ""): "are retired",
+            ("buffer-size-256", ""): "are retired",
+            ("buffer-size-512", ""): "are retired",
+            ("buffer-size-1024", ""): "are retired",
+        },
+        "skip": {},
+    },
     "nros-c": {
         "base": C_SHIPPED,
         "no_default": True,

@@ -30,25 +30,20 @@
 //! them is right; the board descriptor is a PATH and is watched by content
 //! inside `BuildRungs` (issue 0491).
 //!
-//! # The deprecated cargo features — one release
+//! # The retired cargo features
 //!
 //! Each knob replaced a pick-one feature family (`dynamic-loggers-<N>`,
 //! `max-level-*`, `buffer-size-<N>`, `early-records-<N>`, `rosout-records-<N>`).
-//! They cannot express "the image overrides the board": cargo UNIONS features
-//! with no precedence, and each old `const fn` tested its members in a fixed
-//! order, so two crates picking different members silently got whichever came
-//! first — and three of the families spelled "off" as a feature, which RFC-0086
-//! D5 forbids (issue 1037). The rule while they last, per family:
-//!
-//! * a feature and NO stated knob — honoured, with a `cargo:warning` naming the
-//!   knob to use instead;
-//! * a feature AGREEING with a stated knob (any rung 1–3) — the knob wins and
-//!   the feature is reported as redundant;
-//! * a feature DISAGREEING with a stated knob — the build FAILS, naming both.
-//!   Silently picking either would be the defect the knob exists to remove;
-//! * two features of one family that disagree with each other — the build
-//!   FAILS, for the same reason: there is no answer to "which one did the image
-//!   mean".
+//! They could not express "the image overrides the board": cargo UNIONS
+//! features with no precedence, so two crates picking different members
+//! silently got whichever the old `const fn` tested first, and three of the
+//! families spelled "off" as a feature, which RFC-0086 D5 forbids (issue 1037).
+//! They were deprecated for one release (honoured with a warning) and are
+//! RETIRED since phase-555 W3: the names stay declared in `Cargo.toml` only so
+//! that selecting one reaches this script, which stops the build naming the
+//! knob and the value to state. A name that cargo no longer knew would fail as
+//! "unknown feature" with no word about the knob, and the RFC-0103 rule for
+//! retired names is the same: keep the refusal, never drop the row.
 //!
 //! # The clock is a capability, not a knob (issue 1037)
 //!
@@ -169,7 +164,7 @@ fn main() {
     std::fs::write(Path::new(&out_dir).join("nros_log_config.rs"), contents).unwrap();
 }
 
-/// One knob and the deprecated feature family it replaced (every family here
+/// One knob and the retired feature family it replaced (every family here
 /// came with phase-479 W5).
 struct Family {
     /// The env front-end; the Kconfig symbol is `CONFIG_<knob>`.
@@ -179,7 +174,7 @@ struct Family {
     builtin: usize,
     /// Legal values, inclusive. Out of range is a build error naming the knob.
     range: (usize, usize),
-    /// The deprecated features, by the value each one names.
+    /// The retired features, by the value each one named.
     features: &'static [(usize, &'static str)],
 }
 
@@ -252,7 +247,8 @@ const MAX_LEVEL: Family = Family {
     ],
 };
 
-/// Resolve one family: print its warnings, or stop the build.
+/// Resolve one family: the stated knob or the builtin, after refusing any
+/// retired feature of the family.
 fn family(f: &Family, stated: Option<usize>) -> usize {
     let selected: Vec<(usize, &str)> = f
         .features
@@ -263,15 +259,10 @@ fn family(f: &Family, stated: Option<usize>) -> usize {
             env::var_os(var).is_some()
         })
         .collect();
-    let value = match resolve(f, stated, &selected) {
-        Ok((n, warnings)) => {
-            for w in warnings {
-                println!("cargo:warning={w}");
-            }
-            n
-        }
-        Err(e) => panic!("\n\nnros-log: {e}\n"),
-    };
+    if let Some(e) = refusal(f, &selected) {
+        panic!("\n\nnros-log: {e}\n");
+    }
+    let value = stated.unwrap_or(f.builtin);
     let (lo, hi) = f.range;
     if !(lo..=hi).contains(&value) {
         panic!(
@@ -282,22 +273,13 @@ fn family(f: &Family, stated: Option<usize>) -> usize {
     value
 }
 
-/// The resolution, pure: the stated knob (rungs 1–3) and the selected
-/// deprecated features → the value and the warnings to print, or why the build
-/// must stop.
-fn resolve(
-    f: &Family,
-    stated: Option<usize>,
-    selected: &[(usize, &str)],
-) -> Result<(usize, Vec<String>), String> {
+/// Why the build must stop, when a retired feature of `f` is selected: the
+/// features by name, and the knob and value each one meant.
+fn refusal(f: &Family, selected: &[(usize, &str)]) -> Option<String> {
     let Family { knob, toml_key, .. } = f;
-    let names = || {
-        selected
-            .iter()
-            .map(|(_, feat)| format!("`{feat}`"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
+    if selected.is_empty() {
+        return None;
+    }
     // `max_level` is carried as an index; say it by name.
     let show = |v: usize| {
         if *knob == MAX_LEVEL.knob {
@@ -308,50 +290,16 @@ fn resolve(
             v.to_string()
         }
     };
-    let where_ = format!(
-        "`[image.<id>] env`, the board's `[knobs.log] {toml_key}`, or CONFIG_{knob} \
-         on Zephyr"
-    );
-    if let Some(&(first, _)) = selected.first()
-        && selected.iter().any(|(n, _)| *n != first)
-    {
-        return Err(format!(
-            "the deprecated features {} are ALL selected, and they name different values. \
-             Cargo unions features with no precedence, so there is no answer to which one the \
-             image meant. Drop them and state the value once as {knob}=<v> ({where_}).",
-            names()
-        ));
-    }
-    match (stated, selected.first()) {
-        (Some(v), Some((n, feat))) if v != *n => Err(format!(
-            "the deprecated feature `{feat}` asks for {knob}={}, and {knob} is stated as {} \
-             (environment, `[image.<id>] env`, Kconfig, or the board's `[knobs.log] \
-             {toml_key}`). Refusing to pick one silently -- drop the feature; the knob is the \
-             one mechanism with a precedence.",
-            show(*n),
-            show(v)
-        )),
-        (Some(v), Some(_)) => Ok((
-            v,
-            vec![format!(
-                "{} is deprecated and redundant here: {knob} is stated as {}. Drop the \
-                 feature (it is removed after one release).",
-                names(),
-                show(v)
-            )],
-        )),
-        (Some(v), None) => Ok((v, Vec::new())),
-        (None, Some((n, _))) => Ok((
-            *n,
-            vec![format!(
-                "{} is deprecated: state {knob}={} instead ({where_}). Honoured for one \
-                 release.",
-                names(),
-                show(*n)
-            )],
-        )),
-        (None, None) => Ok((f.builtin, Vec::new())),
-    }
+    let asks = selected
+        .iter()
+        .map(|(n, feat)| format!("`{feat}` (= {knob}={})", show(*n)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!(
+        "the cargo feature(s) {asks} are retired. State the value once as {knob}=<v> \
+         instead: `[image.<id>.knobs.log] {toml_key}`, the board's `[knobs.log] {toml_key}`, \
+         CONFIG_{knob} on Zephyr, or the environment. Then drop the feature."
+    ))
 }
 
 /// Whether `nros_platform_clock_ns` is linked: the platform's `clock` FACT,

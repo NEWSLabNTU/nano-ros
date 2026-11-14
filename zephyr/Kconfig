@@ -1739,7 +1739,7 @@ config NROS_LOG_MAX_LEVEL
       C++ records below it are refused at the facade (the same check
       nros_log_is_enabled answers). It is a BOUND, not the runtime level:
       rclc_logger_set_level / set_level still move each logger's threshold
-      beneath it. Replaces the deprecated max-level-* cargo features.
+      beneath it. Replaces the retired max-level-* cargo features.
 
 
 # prompt: nros-log /rosout queue depth
