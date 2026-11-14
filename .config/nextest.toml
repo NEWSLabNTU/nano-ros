@@ -1254,6 +1254,13 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 # start kills whatever listens on its port. So it joins their serial group.
 filter = "binary(rmw_coordinate_truth) and test(a_rows_entry_registers_its_nodes_at_runtime)"
 test-group = "matrix-consumers-serial"
+# Its group's 180 s x 3. A baked port's holder can be outside this group: on
+# the merge lane's threadx_linux shard (run 43613091093) it waited on port 9000
+# held by a ThreadxLinux `rtos_e2e` cell (those run up to 177 s) and was killed
+# at the default 60 s, while the lease it was waiting on allows
+# `port_lease::NAMED_PORT_WAIT` (240 s). A ceiling below the documented wait
+# turns a correct wait into a red. Not a retry.
+slow-timeout = { period = "180s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 # See [test-groups.domain-probe-host-ports].

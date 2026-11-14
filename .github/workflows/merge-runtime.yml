@@ -113,11 +113,20 @@ jobs:
         # reclaim, ENOSPC at row 75 of 219, run 43438754804), and a shard that
         # runs out of disk measures nothing. Linux is measured on the
         # self-hosted lane (run-matrix.yml), where it lives.
+        #
+        # No hosted `zephyr` shard for the MERGE lane either (user ruling
+        # 2026-11-14, phase-559 W5b option a): run 43613091093 stopped it at
+        # 1.1 G free of 95.9 G, still in the Zephyr fixture stage. It runs on
+        # the self-hosted runner instead (`merge-runtime-self-hosted`, below).
+        # The tier-1 zephyr shard fits (low point 4.0 G) and stays here.
         include:
           - board: threadx_linux
             image: ghcr.io/newslabntu/nano-ros-ci:humble
           - board: zephyr
             image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r9
+        exclude:
+          # The merge lane's zephyr shard is the self-hosted job's.
+          - board: ${{ inputs.lane == 'tier1' && 'none' || 'zephyr' }}
     env:
       # The shard: every lane consumer below reads this one value.
       NROS_LANE_MODULE: ${{ matrix.board }}
@@ -249,6 +258,8 @@ jobs:
           source ./activate.sh
           scripts/ci/disk-balloon.sh run -- just build "${{ inputs.lane || 'merge' }}"
           scripts/ci/disk-report.sh "after just build ${{ inputs.lane || 'merge' }}"
+          # Issue 2318: the duplicated-unit bytes in the per-leaf cargo dirs.
+          python3 scripts/ci/cargo-dir-dupes.py build/corrosion-cargo || true
 
       - name: just ci ${{ inputs.lane || 'merge' }} (${{ matrix.board }} shard)
         env:
@@ -306,3 +317,98 @@ jobs:
             build/zephyr-fixtures/*.log
           if-no-files-found: ignore
           retention-days: 7
+
+  # The merge lane's zephyr shard, on the self-hosted runner (user ruling
+  # 2026-11-14, phase-559 W5b option a). On a hosted runner it needs more than
+  # the ~96 G a reclaimed runner has: run 43613091093 started with 95.9 G free
+  # and the disk balloon stopped `just build merge` at 1.1 G free in the
+  # Zephyr fixture stage (zephyr-workspace-builds 49 G, the cmake workspace
+  # builds ~13 G, sizes-probe 9.8 G, corrosion-cargo 9.0 G). Its coordinates
+  # are zephyr c, cpp and rust over zenoh; the C++ one brings the cpp
+  # workspaces with it. The steps are run-matrix.yml's `tier1` job's: a
+  # persistent fixture tree beside the checkout, the label doctor, the pin
+  # baseline, then this lane's two verbs. The job NAME is the hosted shard's,
+  # so `merge-runtime-p95.py` keeps reading one series per board; note its
+  # samples now come from the self-hosted machine.
+  merge-runtime-self-hosted:
+    name: merge-runtime merge (zephyr)
+    if: ${{ inputs.lane != 'tier1' && vars.NROS_SELF_HOSTED_READY == 'true' }}
+    runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]
+    timeout-minutes: 405
+    concurrency:
+      group: merge-runtime-${{ github.event_name }}-merge-zephyr
+      cancel-in-progress: false
+    env:
+      NROS_LANE_MODULE: zephyr
+      # The self-hosted runner's gate lane (.config/gate-lanes.toml
+      # [lane.runner]), as in run-matrix.yml.
+      NROS_GATE_SCOPE: runner
+      NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ github.workspace }}/../nros-fixture-tree
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Check out the persistent fixture tree at this commit
+        working-directory: ${{ github.workspace }}
+        run: scripts/ci/fixture-tree.sh sync
+      - name: just setup zephyr
+        run: |
+          source ./activate.sh
+          just setup zephyr
+      - name: Verify this runner's labels are true
+        run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
+      - name: The Zephyr workspace belongs to this checkout
+        run: ./scripts/check-zephyr-workspace-checkout.sh
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: bash scripts/ci/pin-baseline.sh provide
+      - name: Init submodules whose pin moved (commits only)
+        run: bash scripts/ci/pin-baseline.sh init-moved
+      - name: Fetch submodule history for check-submodule-pins
+        run: bash scripts/ci/pin-baseline.sh deepen
+      - name: just build merge (zephyr shard)
+        run: |
+          source ./activate.sh
+          just build merge
+          scripts/ci/disk-report.sh "after just build merge"
+      - name: just ci merge (zephyr shard)
+        run: |
+          source ./activate.sh
+          just ci merge
+      - name: Collect this run's junit and logs
+        if: always()
+        run: scripts/ci/fixture-tree.sh reports "${{ runner.temp }}/nros-run-reports"
+      - name: Upload junit and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merge-runtime-merge-zephyr-junit
+          path: ${{ runner.temp }}/nros-run-reports/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Sweep orphans and disk
+        if: always()
+        run: ./scripts/ci/runner-sweep.sh --provision || true
+
+  # phase-405: the self-hosted shard's SKIP must show in the run that skipped
+  # it (`check-interlock-visibility`). A tier-1 dispatch never runs it, so the
+  # report is for the merge lane only.
+  coverage-merge-zephyr:
+    permissions:
+      contents: read
+      actions: read
+    name: "merge (zephyr) — ${{ (needs.merge-runtime-self-hosted.result == 'skipped' && 'DID NOT START') || needs.merge-runtime-self-hosted.result }}"
+    needs: [merge-runtime-self-hosted]
+    if: ${{ always() && inputs.lane != 'tier1' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report whether the interlocked lane ran
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/ci/report-interlock-coverage.sh "merge-runtime merge (zephyr)" "${{ needs.merge-runtime-self-hosted.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}" ""
+
