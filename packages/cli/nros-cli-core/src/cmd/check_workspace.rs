@@ -457,12 +457,16 @@ fn read_board_framework(board_cargo_toml: &Path) -> Framework {
             Framework::OwnedSpin
         }
         // Issue 0415 — a framework this lint has no arm for is NOT silently
-        // owned-spin. `zephyr` and `px4` are known repo-wide (the proc-macro
-        // emits for `zephyr`; a PX4 entry is generated C++) but carry no
-        // dispatch-matrix rule here, so they read
-        // as owned-spin for THIS lint's purposes; anything outside the shared
-        // set is a typo and must be reported rather than absorbed.
-        Some(other) if !nros_orchestration_ir::is_known_framework(other) => {
+        // owned-spin. `px4` is known repo-wide (a PX4 entry is generated C++),
+        // and `zephyr` is an entry SHAPE a board crate may state (RFC-0112 D5:
+        // the board decides it; the proc-macro emits for it), but neither
+        // carries a dispatch-matrix rule here, so they read as owned-spin for
+        // THIS lint's purposes; anything outside both sets is a typo and must
+        // be reported rather than absorbed.
+        Some(other)
+            if !nros_orchestration_ir::is_known_framework(other)
+                && !nros_orchestration_ir::ENTRY_SHAPES.contains(&other) =>
+        {
             eprintln!(
                 "warning: {}: `[package.metadata.nros.board] framework = \"{other}\"` is not a \
                  known framework ({}). `nros::main!` will refuse to expand for this board. \

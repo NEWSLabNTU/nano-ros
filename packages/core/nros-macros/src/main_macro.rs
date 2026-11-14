@@ -704,8 +704,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         p.segments.pop_punct();
         quote! { #p }
     };
+    // RFC-0111 D3 (phase-562 W2) — the image's own `framework`, resolved
+    // against the board through `nros_orchestration_ir::image_framework`.
     let framework = match deploy_for_framework.as_deref() {
-        Some(d) => framework_for(d),
+        Some(d) => framework_for(d, leaf_decl.as_ref().and_then(|l| l.framework.as_deref())),
         None => Framework::OwnedSpin,
     };
     // Issue 1381 — does an entry for this board link `std`? A `#![no_std]`
@@ -5404,39 +5406,47 @@ enum Framework {
 // emit is needed; emitting our own init entry would both collide with
 // the board's and skip the critical `nsh_initialize()` network bringup.
 
-/// Map a canonical framework NAME (the `nros-orchestration-ir` spelling) to the
-/// emit shape. `None` for a name this macro has no branch for — the caller
-/// turns that into a compile error rather than a silent `OwnedSpin`.
+/// Map a canonical framework NAME, or a platform entry shape, to the emit
+/// shape (`nros_orchestration_ir::FRAMEWORKS` / `ENTRY_SHAPES`). `None` for a
+/// name this macro has no branch for — the caller turns that into a compile
+/// error rather than a silent `OwnedSpin`.
 fn framework_from_name(name: &str) -> Option<Framework> {
     Some(match name {
         "owned-spin" => Framework::OwnedSpin,
         "rtic" => Framework::Rtic,
+        // RFC-0112 D5 — an entry SHAPE the board's platform imposes, never a
+        // framework an image names; `image_framework` hands it over only from
+        // the board side.
         "zephyr" => Framework::Zephyr,
         _ => return None,
     })
 }
 
-/// Issue 0415 — resolve the entry shape from the BOARD, not from a table of
-/// in-tree deploy strings.
+/// Issue 0415 / RFC-0111 D3 — resolve the entry shape through the ONE
+/// resolver, `nros_orchestration_ir::image_framework`, from the image's
+/// `framework` (`declared`, read from `system.toml` by `leaf_system`) and the
+/// BOARD's boot facts.
 ///
-/// Order, and the reason for it:
+/// This macro has no board descriptor, so it builds the board's facts from
+/// what it already reads (phase-562 W2):
 ///
-/// 1. `NROS_BOARD_FRAMEWORK`, set by the Entry package's build script (see
-///    `nros_build::emit_board_framework`, which reads the board crate's
-///    `[package.metadata.nros.board] framework`). This is the only route that
-///    reaches an OUT-OF-TREE board, and it wins when present.
-/// 2. `nros_orchestration_ir::framework_for_board_key` — the in-tree fast path,
-///    the same SSoT `nros ws check` and the CLI's Rust emitter consult.
-/// 3. `OwnedSpin`, which is what a board with no framework opinion means.
+/// - The list: `NROS_BOARD_FRAMEWORK`, set by the Entry package's build script
+///   from an OUT-OF-TREE board crate's `[package.metadata.nros.board]
+///   framework` (`nros_build::emit_board_framework`), is a one-entry list
+///   (RFC-0111 D2). An in-tree board states its list in its descriptor; no
+///   in-tree descriptor lists more than the default today, and
+///   `nros-cli-core/tests/board_key_table.rs` holds that, so the first
+///   descriptor to list a second framework must carry the list here too.
+/// - The entry shape: the board key's family (`nros_entry_lower`), held to
+///   each descriptor's `entry_kind`; an out-of-tree board whose crate says
+///   `framework = "zephyr"` states the shape the same way.
+/// - `BoardBoot::for_key` applies the transitional `rtic-mps2-an385` row
+///   (phase-562 W3 removes it).
 ///
-/// An UNKNOWN framework name is an error, never a fall-through. That
-/// fall-through was the whole of issue 0415: an out-of-tree board declaring
-/// `framework = "embassy"` got a plain `fn main()`, which links and then does
-/// nothing the framework was for. A RETIRED name
-/// (`nros_orchestration_ir::RETIRED_FRAMEWORKS`) is an error too, and says
-/// what to do instead.
-fn framework_for(deploy: &str) -> Framework {
-    try_framework_for(deploy).unwrap_or_else(|e| {
+/// An UNKNOWN or RETIRED name is an error, never a fall-through (issue 0415:
+/// a board declaring `framework = "embassy"` once got a plain `fn main()`).
+fn framework_for(deploy: &str, declared: Option<&str>) -> Framework {
+    try_framework_for(deploy, declared).unwrap_or_else(|e| {
         // A proc-macro cannot return a Result here without reshaping every
         // caller; the emitted `compile_error!` is produced by the caller that
         // owns the token stream. Panicking with this message surfaces at the
@@ -5445,46 +5455,57 @@ fn framework_for(deploy: &str) -> Framework {
     })
 }
 
-fn try_framework_for(deploy: &str) -> Result<Framework, String> {
-    if let Ok(name) = std::env::var("NROS_BOARD_FRAMEWORK") {
-        let name = name.trim();
-        if !name.is_empty() {
+fn try_framework_for(deploy: &str, declared: Option<&str>) -> Result<Framework, String> {
+    const FROM_CRATE: &str = "(The value came from NROS_BOARD_FRAMEWORK, emitted by the Entry \
+                              package's build script from the board crate's \
+                              `[package.metadata.nros.board]`.)";
+    let crate_fw = std::env::var("NROS_BOARD_FRAMEWORK")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    let mut entry_shape = nros_entry_lower::entry_shape_for_key(deploy);
+    let one: [&str; 1];
+    let mut frameworks: &[&str] = &[];
+    if let Some(name) = crate_fw.as_deref() {
+        if nros_orchestration_ir::ENTRY_SHAPES.contains(&name) {
+            // The board decides the shape: its crate says so.
+            entry_shape = Some(name);
+        } else {
             if let Some(hint) = nros_orchestration_ir::retired_framework_hint(name) {
                 return Err(format!(
-                    "nros::main!: the board declares `framework = \"{name}\"`. {hint}. (The \
-                     value came from NROS_BOARD_FRAMEWORK, emitted by the Entry package's \
-                     build script from the board crate's `[package.metadata.nros.board]`.)"
+                    "nros::main!: the board declares `framework = \"{name}\"`. {hint}. {FROM_CRATE}"
                 ));
             }
             if let Some(reason) = nros_orchestration_ir::cpp_only_framework_reason(name) {
                 return Err(format!(
                     "nros::main!: the board declares `framework = \"{name}\"`: {reason}. \
-                     (The value came from NROS_BOARD_FRAMEWORK, emitted by the Entry \
-                     package's build script from the board crate's \
-                     `[package.metadata.nros.board]`.)"
+                     {FROM_CRATE}"
                 ));
             }
-            return framework_from_name(name).ok_or_else(|| {
-                format!(
+            if !nros_orchestration_ir::is_known_framework(name) {
+                return Err(format!(
                     "nros::main!: the board declares `framework = \"{name}\"`, which this \
                      version of nano-ros has no entry shape for. Known frameworks: {}. \
-                     (The value came from NROS_BOARD_FRAMEWORK, emitted by the Entry \
-                     package's build script from the board crate's \
-                     `[package.metadata.nros.board]`.)",
+                     {FROM_CRATE}",
                     nros_orchestration_ir::FRAMEWORKS.join(", ")
-                )
-            });
+                ));
+            }
+            one = [name];
+            frameworks = &one;
         }
     }
-    match nros_orchestration_ir::framework_for_board_key(deploy) {
-        Some(name) => framework_from_name(name).ok_or_else(|| {
-            format!(
-                "nros::main!: internal — the in-tree board table maps deploy `{deploy}` to \
-                 framework `{name}`, which this macro has no emit branch for"
-            )
-        }),
-        None => Ok(Framework::OwnedSpin),
+    let board = nros_orchestration_ir::BoardBoot::for_key(deploy, frameworks, entry_shape);
+    let name = nros_orchestration_ir::image_framework(declared, &board)
+        .map_err(|e| format!("nros::main!: board `{deploy}`: {e}"))?;
+    if let Some(reason) = nros_orchestration_ir::cpp_only_framework_reason(name) {
+        return Err(format!("nros::main!: `framework = \"{name}\"`: {reason}"));
     }
+    framework_from_name(name).ok_or_else(|| {
+        format!(
+            "nros::main!: internal — board `{deploy}` resolves framework `{name}`, which this \
+             macro has no emit branch for"
+        )
+    })
 }
 
 /// Sanitise a pkg name into a valid Rust crate ident. Cargo allows
@@ -6248,38 +6269,72 @@ mod framework_ssot_tests {
 
     /// …and the reverse: a name the macro accepts but the vocabulary does not
     /// declare could never be produced by a board, so it would be dead emit.
+    /// `zephyr` is declared as an entry SHAPE (RFC-0112 D5), not a framework.
     #[test]
     fn the_macro_accepts_no_framework_outside_the_vocabulary() {
-        for name in ["owned-spin", "rtic", "zephyr"] {
+        for name in ["owned-spin", "rtic"] {
             assert!(
                 nros_orchestration_ir::is_known_framework(name),
                 "the macro maps `{name}` but the shared vocabulary does not declare it"
             );
         }
+        for shape in nros_orchestration_ir::ENTRY_SHAPES {
+            assert!(
+                framework_from_name(shape).is_some(),
+                "`{shape}` is an entry shape with no emit branch"
+            );
+        }
+        assert!(!nros_orchestration_ir::is_known_framework("zephyr"));
         assert!(framework_from_name("not-a-framework").is_none());
     }
 
-    /// Every in-tree board key must resolve to a framework this macro emits —
-    /// the fast path has to stay usable without the build-script route.
+    /// Every in-tree board key must resolve to a framework this macro emits,
+    /// with no build-script route — and the Zephyr keys to the Zephyr shape,
+    /// the RTIC word to RTIC (phase-562 W2: the board decides, through
+    /// `image_framework`).
     #[test]
     fn in_tree_board_keys_resolve_to_an_emit_shape() {
-        for key in [
-            "linux",
-            "freertos",
-            "threadx-linux",
-            "rv-virt-threadx",
-            "nuttx",
-            "nuttx-riscv",
-            "zephyr",
-            "rtic-mps2-an385",
-            "mps2-an385-baremetal",
-        ] {
-            let fw = nros_orchestration_ir::framework_for_board_key(key).unwrap_or("owned-spin");
+        let _env = super::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        for key in nros_orchestration_ir::board_path_keys() {
+            let fw = try_framework_for(key, None)
+                .unwrap_or_else(|e| panic!("board key `{key}` resolves no emit shape: {e}"));
+            let want = match nros_entry_lower::entry_shape_for_key(key) {
+                Some("zephyr") => Framework::Zephyr,
+                Some(other) => panic!("`{key}`: unexpected shape `{other}`"),
+                None if key == "rtic-mps2-an385" => Framework::Rtic,
+                None => Framework::OwnedSpin,
+            };
             assert!(
-                framework_from_name(fw).is_some(),
-                "board key `{key}` maps to framework `{fw}`, which has no emit branch"
+                std::mem::discriminant(&fw) == std::mem::discriminant(&want),
+                "board key `{key}` resolved the wrong emit shape"
             );
         }
+    }
+
+    /// RFC-0112 D5 (phase-562 W8) — an image that writes `framework =
+    /// "zephyr"` is refused saying the board decides it; on a Zephyr board an
+    /// image that writes nothing still gets the Zephyr shape.
+    #[test]
+    fn an_image_naming_zephyr_is_refused_and_the_board_still_decides() {
+        let _env = super::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let err = try_framework_for("zephyr", Some("zephyr")).unwrap_err();
+        assert!(err.contains("decides"), "{err}");
+        let err = try_framework_for("linux", Some("zephyr")).unwrap_err();
+        assert!(err.contains("the board decides"), "{err}");
+        assert!(matches!(
+            try_framework_for("zephyr", None),
+            Ok(Framework::Zephyr)
+        ));
+        assert!(matches!(
+            try_framework_for("rtic-mps2-an385", None),
+            Ok(Framework::Rtic)
+        ));
+        let err = try_framework_for("mps2-an385-baremetal", Some("rtic")).unwrap_err();
+        assert!(err.contains("It boots: owned-spin"), "{err}");
     }
 
     /// The regression 0415 names: an unknown framework must be an ERROR, not a
@@ -6296,7 +6351,7 @@ mod framework_ssot_tests {
         // SAFETY: every reader of the variable in this crate's tests holds
         // `TEST_ENV_LOCK`; the var is removed below.
         unsafe { std::env::set_var("NROS_BOARD_FRAMEWORK", "embasy") };
-        let err = try_framework_for("linux").unwrap_err();
+        let err = try_framework_for("linux", None).unwrap_err();
         assert!(
             err.contains("embasy"),
             "the error must name the bad value: {err}"
@@ -6306,7 +6361,7 @@ mod framework_ssot_tests {
         // Issue 2134 — a RETIRED name is refused with its reason, not as a
         // typo; the reason is words and an alternative, no id (issue 2547).
         unsafe { std::env::set_var("NROS_BOARD_FRAMEWORK", "embassy") };
-        let err = try_framework_for("linux").unwrap_err();
+        let err = try_framework_for("linux", None).unwrap_err();
         assert!(
             err.contains("no longer an `nros::main!` framework")
                 && err.contains("spin_some")
