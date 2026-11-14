@@ -235,12 +235,14 @@ if(NOT TARGET CycloneDDS::idlc)
         set(NROS_RMW_CYCLONEDDS_IDLC_ENV "${_nros_idlc_env}"
             CACHE INTERNAL "env prefix idlc needs to run (issue 0601)")
         if(_nros_idlc_why)
+            # issue 0601 -- this used to surface far away, mid-build, as
+            # `FAILED: [code=127]` on the first .idl.
             message(FATAL_ERROR
                 "idlc was found but cannot run: ${IDLC_EXECUTABLE}\n"
                 "  ${_nros_idlc_why}\n"
-                "  (issue 0601 — this used to surface far away, mid-build, as "
-                "`FAILED: [code=127]` on the first .idl, which reads as a "
-                "missing tool rather than one that fails to LOAD.)\n"
+                "  Left alone, the build would stop later on the first .idl with "
+                "`FAILED: [code=127]`, which reads as a missing tool rather than "
+                "one that fails to LOAD.\n"
                 "  A ROS-provided idlc needs ROS's library path in THIS build's "
                 "environment, not just in the launching shell. Either source "
                 "ROS's setup into the build, or pass a working "

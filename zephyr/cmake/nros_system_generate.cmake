@@ -149,18 +149,20 @@ function(nros_system_check_domain_agreement _config_h _bringup_dir)
     file(STRINGS "${_config_h}" _lines REGEX "^#define NROS_SYSTEM_DOMAIN_ID ")
     list(LENGTH _lines _n)
     if(NOT _n EQUAL 1)
+        # phase-460 W4.
         message(FATAL_ERROR
             "nros_system_generate: ${_config_h} carries ${_n} "
             "`#define NROS_SYSTEM_DOMAIN_ID` line(s); the bake writes exactly "
             "one, so this header is not what `nros dev codegen system` produced "
-            "and the image's domain cannot be checked against the system's "
-            "(phase-460 W4).")
+            "and the image's domain cannot be checked against the system's.")
     endif()
     list(GET _lines 0 _line)
     if(NOT _line MATCHES "^#define NROS_SYSTEM_DOMAIN_ID ([0-9]+)u?[ \t]*$")
+        # phase-460 W4.
         message(FATAL_ERROR
             "nros_system_generate: cannot read the baked domain from "
-            "`${_line}` in ${_config_h} (phase-460 W4).")
+            "`${_line}` in ${_config_h}; the bake writes a plain decimal number "
+            "there, so this header is not what `nros dev codegen system` produced.")
     endif()
     set(_baked "${CMAKE_MATCH_1}")
 
@@ -192,14 +194,16 @@ function(nros_system_generate bringup_pkg)
     file(MAKE_DIRECTORY "${_out_parent}")
 
     if(_bringup_dir STREQUAL "BRINGUP-NOTFOUND")
+        # RFC-0098 D3 (a leaf states its own deployment); phase-445 W5 retired
+        # the Cargo.toml deploy tables.
         message(FATAL_ERROR
             "nros_system_generate: bringup pkg '${bringup_pkg}' not "
             "found. Looked relative to ${CMAKE_CURRENT_SOURCE_DIR}, "
             "${CMAKE_SOURCE_DIR}, and their parents. The dir must "
             "contain system.toml (a Path A bringup, or a package leaf "
-            "stating its own deployment — RFC-0098 D3). A Cargo.toml "
-            "[package.metadata.nros.deploy.zephyr*] table is retired "
-            "(phase-445 W5): state it as `[image.<id>] board` in a "
+            "stating its own deployment). A Cargo.toml "
+            "[package.metadata.nros.deploy.zephyr*] table is retired: "
+            "state it as `[image.<id>] board` in a "
             "system.toml beside the package.")
     endif()
 

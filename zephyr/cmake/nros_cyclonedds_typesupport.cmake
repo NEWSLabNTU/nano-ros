@@ -54,12 +54,15 @@ function(_nros_zephyr_cyclonedds_typesupport target)
   if(CONFIG_NROS_RMW_CYCLONEDDS AND NOT COMMAND nros_rmw_cyclonedds_generate_from_msg)
     if(NOT NROS_CYCLONE_CMAKE_DIR
        OR NOT EXISTS "${NROS_CYCLONE_CMAKE_DIR}/NrosRmwCycloneddsTypeSupport.cmake")
+      # issue 1673.
       message(FATAL_ERROR
         "nros_generate_interfaces: CONFIG_NROS_RMW_CYCLONEDDS is set but the "
         "Cyclone DDS type-support module was not found "
         "(NROS_CYCLONE_CMAKE_DIR='${NROS_CYCLONE_CMAKE_DIR}'). Without it this "
         "image would get no topic descriptors and fail at runtime in "
-        "find_descriptor() — issue 1673.")
+        "find_descriptor(). The nros Zephyr module points NROS_CYCLONE_CMAKE_DIR "
+        "at packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake in its nano-ros "
+        "checkout: restore that directory, or unset CONFIG_NROS_RMW_CYCLONEDDS.")
     endif()
     set(IDLC_EXECUTABLE "${NROS_CYCLONE_IDLC}"
         CACHE FILEPATH "Host Cyclone DDS idlc for descriptor generation" FORCE)

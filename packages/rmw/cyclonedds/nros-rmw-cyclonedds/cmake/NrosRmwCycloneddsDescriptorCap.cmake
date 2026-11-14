@@ -70,13 +70,14 @@ function(nros_cyclonedds_descriptor_cap _out _count _pin)
                 "NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES='${_pin}' is not a positive count")
         endif()
         if(_pin LESS _count)
+            # issue 0280 (the dropped registration); issue 1663 (the pin).
             message(FATAL_ERROR
                 "NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES is pinned to ${_pin}, but this "
                 "configure generates registrations for ${_count} distinct Cyclone "
                 "descriptor types. Over the cap `descriptors.cpp` DROPS a registration "
                 "from a static constructor that cannot report it, and the type's "
-                "publisher later fails UNSUPPORTED (issue 0280). Raise the pin to at "
-                "least ${_count}, or unset it (issue 1663).")
+                "publisher later fails UNSUPPORTED. Raise the pin to at "
+                "least ${_count}, or unset it so the configure sizes the cap itself.")
         endif()
         set(${_out} "${_pin}" PARENT_SCOPE)
         return()

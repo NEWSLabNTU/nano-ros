@@ -137,7 +137,8 @@ endforeach()
 
 if(_failures)
     list(JOIN _failures "\n  " _lines)
-    message(FATAL_ERROR "rtos-feature-set-excludes-analysis: FAIL (phase-463 W5 I3a)\n  ${_lines}\n"
+    # phase-463 W5 I3a.
+    message(FATAL_ERROR "rtos-feature-set-excludes-analysis: FAIL -- these umbrella feature sets carry the wrong analysis features:\n  ${_lines}\n"
         "Only the NATIVE C and C++ umbrellas may carry `metadata-mode`; see the analysis block in "
         "cmake/NanoRosFeatureSet.cmake.")
 endif()

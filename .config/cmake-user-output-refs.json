@@ -1,16 +1,4 @@
 {
   "_comment": "Default-level cmake output citing an issue, RFC or phase, per file -- see scripts/check-cmake-user-output-refs.py. A SHRINKING backlog: move the reference into nros_message_detail() and lower the count.",
-  "counts": {
-    "integrations/px4/NanoRosArchivePairing.cmake": 3,
-    "integrations/px4/NanoRosPx4Module.cmake": 1,
-    "packages/api/nros-c/cmake/nros-nuttx-depfile.cmake": 1,
-    "packages/api/nros-c/cmake/nros-nuttx.cmake": 1,
-    "packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsDescriptorCap.cmake": 1,
-    "packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake": 1,
-    "scripts/check/rtos-feature-set-excludes-analysis.cmake": 1,
-    "zephyr/cmake/nros_checkout_guard.cmake": 2,
-    "zephyr/cmake/nros_cyclonedds_typesupport.cmake": 1,
-    "zephyr/cmake/nros_system_generate.cmake": 3,
-    "zephyr/cmake/nros_system_image_agreement.cmake": 2
-  }
+  "counts": {}
 }
