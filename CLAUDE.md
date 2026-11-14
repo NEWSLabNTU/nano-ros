@@ -130,7 +130,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     means "it compiles and the source gates hold", NOT "the unit tests pass";
     nothing broken lands, because the queue runs them before the merge, but the
     feedback arrives at the queue and an ejection is how you hear about it
-    (`queue-notify.yml` comments on the PR). Run `just ci gate` locally if you
+    (`automation.yml`'s `notify` job comments on the PR). Run `just ci gate` locally if you
     want that answer sooner — it is the same lane. (`check-cli-tests` was added
     2026-09-02 — it lived only in `check-build`, which no merge-gating event
     runs, so issue 0896's two reds landed and stayed; no fixture/SDK/ROS, ~2 min
