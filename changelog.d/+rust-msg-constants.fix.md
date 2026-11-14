@@ -1,0 +1,1 @@
+Constants declared in a `.msg`, `.srv` or `.action` file are reachable from a Rust node as associated consts of the type, as in rclrs: `IslandMode::MODE_NOMINAL`, `CheckRequest::LIMIT`, `ReachGoal::MAX_TARGET`. Before, they were generated into the message's private module, where no code outside it could name them.

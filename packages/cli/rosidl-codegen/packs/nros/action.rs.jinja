@@ -16,10 +16,6 @@ use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
 // Goal Message
 // ============================================================================
 
-{%- for constant in goal_constants %}
-pub const {{ action_name|snake_case|upper }}_GOAL_{{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
-{%- endfor %}
-
 /// {{ action_name }} goal message
 {%- if has_goal_large_array %}
 #[derive(Debug, Clone, PartialEq)]
@@ -31,6 +27,14 @@ pub struct {{ action_name }}Goal {
     pub {{ field.name }}: {{ field | rclc_type }},
 {%- endfor %}
 }
+{%- if goal_constants %}
+
+impl {{ action_name }}Goal {
+{%- for constant in goal_constants %}
+    pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{%- endfor %}
+}
+{%- endif %}
 {%- if has_goal_large_array %}
 
 impl Default for {{ action_name }}Goal {
@@ -150,10 +154,6 @@ impl ::nros_serdes::Message for {{ action_name }}Goal {
 // Result Message
 // ============================================================================
 
-{%- for constant in result_constants %}
-pub const {{ action_name|snake_case|upper }}_RESULT_{{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
-{%- endfor %}
-
 /// {{ action_name }} result message
 {%- if has_result_large_array %}
 #[derive(Debug, Clone, PartialEq)]
@@ -165,6 +165,14 @@ pub struct {{ action_name }}Result {
     pub {{ field.name }}: {{ field | rclc_type }},
 {%- endfor %}
 }
+{%- if result_constants %}
+
+impl {{ action_name }}Result {
+{%- for constant in result_constants %}
+    pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{%- endfor %}
+}
+{%- endif %}
 {%- if has_result_large_array %}
 
 impl Default for {{ action_name }}Result {
@@ -282,10 +290,6 @@ impl ::nros_serdes::Message for {{ action_name }}Result {
 // Feedback Message
 // ============================================================================
 
-{%- for constant in feedback_constants %}
-pub const {{ action_name|snake_case|upper }}_FEEDBACK_{{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
-{%- endfor %}
-
 /// {{ action_name }} feedback message
 {%- if has_feedback_large_array %}
 #[derive(Debug, Clone, PartialEq)]
@@ -297,6 +301,14 @@ pub struct {{ action_name }}Feedback {
     pub {{ field.name }}: {{ field | rclc_type }},
 {%- endfor %}
 }
+{%- if feedback_constants %}
+
+impl {{ action_name }}Feedback {
+{%- for constant in feedback_constants %}
+    pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{%- endfor %}
+}
+{%- endif %}
 {%- if has_feedback_large_array %}
 
 impl Default for {{ action_name }}Feedback {

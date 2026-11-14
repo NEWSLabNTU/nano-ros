@@ -615,7 +615,7 @@ fixed after that release.
 - [issue 2564](../issues/2564-hand-entry-bringup-image-drops-domain-id.md): a hand-written entry naming `BRINGUP` and `IMAGE` bakes domain 0, not the image's `domain_id`, with no refusal.
 - [issue 2565](../issues/2565-mixed-image-rust-pkg-needs-cmake-shim.md): a mixed image's Rust package needs an undocumented CMake shim, and `nros new` adds neither it nor the contract row.
 - [issue 2566](../issues/archived/2566-sync-ignores-nested-packages-and-package-paths.md) (resolved): `nros sync` ignored `src/<group>/<pkg>` and `package_paths`. The scan now walks `src/` and every `package_paths` entry recursively, as `nros build` does.
-- [issue 2567](../issues/2567-rust-codegen-msg-constants-not-reexported.md): Rust codegen does not re-export `.msg` constants.
+- [issue 2567](../issues/archived/2567-rust-codegen-msg-constants-not-reexported.md) (resolved): Rust codegen did not re-export `.msg` constants. They are associated consts of the type now (`IslandMode::MODE_NOMINAL`).
 - [issue 2568](../issues/2568-rust-ctx-param-misses-launch-values.md): a Rust `ctx.param()` gets the default, not the launch value.
 - [issue 2569](../issues/2569-cpp-metadata-probe-assumes-class-header.md): the C++ metadata probe assumes `<pkg>/<Class>.hpp` and logs a failure even with `HEADER` set.
 - [issue 2582](../issues/2582-cmake-workspace-road-drops-image-knob-rows.md): on the hand-written `nano_ros_workspace()` road, `[image.<id>.knobs.*]` rows are silently ignored (164 parameter slots stated, 32 built).

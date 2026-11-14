@@ -457,3 +457,93 @@ fn heap_mode_emits_alloc_containers() {
     assert!(rs.contains("nros_core::heap::String::from(s)"), "{rs}");
     assert!(!rs.contains("heapless::Vec<u8"));
 }
+
+/// The body of `impl <ty> { … }` in `src`, the block that holds the type's
+/// associated constants.
+fn impl_block<'a>(src: &'a str, ty: &str) -> &'a str {
+    let head = format!("\nimpl {ty} {{\n");
+    let start = src
+        .find(&head)
+        .unwrap_or_else(|| panic!("no `impl {ty}` block in:\n{src}"))
+        + head.len();
+    &src[start..start + src[start..].find("\n}").unwrap()]
+}
+
+/// `.msg` constants are associated consts of the message type, so a node
+/// names them `IslandMode::MODE_NOMINAL` as in rclrs. They used to be emitted
+/// at the top of the message's private module, which no user can reach.
+#[test]
+fn msg_constants_are_associated_consts_of_the_type() {
+    let msg = parse_message(
+        "uint8 MODE_NOMINAL=0\nuint8 MODE_DEGRADED=1\nstring NAME=\"island\"\nuint8 mode\n",
+    )
+    .unwrap();
+    let pkg = generate_nros_message_package(
+        "island_msgs",
+        "IslandMode",
+        &msg,
+        &BTreeSet::new(),
+        "0.0.0",
+        RosEdition::Humble.type_hash(),
+        &CapacityResolver::empty(),
+    )
+    .unwrap();
+    let block = impl_block(&pkg.message_rs, "IslandMode");
+    assert!(block.contains("pub const MODE_NOMINAL: u8 = 0;"), "{block}");
+    assert!(
+        block.contains("pub const MODE_DEGRADED: u8 = 1;"),
+        "{block}"
+    );
+    assert!(
+        block.contains("pub const NAME: &'static str = \"island\";"),
+        "{block}"
+    );
+    assert!(
+        !pkg.message_rs.contains("\npub const MODE_NOMINAL"),
+        "a module-level copy is unreachable and must not be emitted"
+    );
+}
+
+/// The same for a service: each half's constants belong to that half.
+#[test]
+fn srv_constants_belong_to_their_half() {
+    let srv = parse_service("int32 LIMIT=10\nint32 a\n---\nint32 OK=0\nint32 code\n").unwrap();
+    let pkg = generate_nros_service_package(
+        "island_srvs",
+        "Check",
+        &srv,
+        &BTreeSet::new(),
+        "0.0.0",
+        RosEdition::Humble.type_hash(),
+        RosEdition::Humble.type_hash(),
+        RosEdition::Humble.type_hash(),
+        &CapacityResolver::empty(),
+    )
+    .unwrap();
+    assert!(impl_block(&pkg.service_rs, "CheckRequest").contains("pub const LIMIT: i32 = 10;"));
+    assert!(impl_block(&pkg.service_rs, "CheckResponse").contains("pub const OK: i32 = 0;"));
+}
+
+/// And for an action, under the constant's own name rather than the old
+/// `<ACTION>_GOAL_<NAME>` module-level spelling.
+#[test]
+fn action_constants_belong_to_their_part() {
+    let action = rosidl_parser::parse_action(
+        "int32 MAX_TARGET=100\nint32 target\n---\nbool DONE=true\nbool ok\n---\nint32 STEP=5\nint32 progress\n",
+    )
+    .unwrap();
+    let pkg = rosidl_codegen::generate_nros_action_package(
+        "island_actions",
+        "Reach",
+        &action,
+        &BTreeSet::new(),
+        "0.0.0",
+        &rosidl_codegen::rihs::ActionTypeHashes::uniform(RosEdition::Humble.type_hash()),
+        &CapacityResolver::empty(),
+    )
+    .unwrap();
+    assert!(impl_block(&pkg.action_rs, "ReachGoal").contains("pub const MAX_TARGET: i32 = 100;"));
+    assert!(impl_block(&pkg.action_rs, "ReachResult").contains("pub const DONE: bool = true;"));
+    assert!(impl_block(&pkg.action_rs, "ReachFeedback").contains("pub const STEP: i32 = 5;"));
+    assert!(!pkg.action_rs.contains("REACH_GOAL_MAX_TARGET"));
+}

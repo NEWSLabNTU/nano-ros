@@ -12,10 +12,6 @@ use nros_core::{RosMessage, RosService, Serialize, Deserialize};
 use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
 {%- endif %}
 
-{%- for constant in request_constants %}
-pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
-{%- endfor %}
-
 /// {{ service_name }} request message
 {%- if has_request_large_array %}
 #[derive(Debug, Clone, PartialEq)]
@@ -27,6 +23,14 @@ pub struct {{ service_name }}Request {
     pub {{ field.name }}: {{ field | rclc_type }},
 {%- endfor %}
 }
+{%- if request_constants %}
+
+impl {{ service_name }}Request {
+{%- for constant in request_constants %}
+    pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{%- endfor %}
+}
+{%- endif %}
 {%- if has_request_large_array %}
 
 impl Default for {{ service_name }}Request {
@@ -141,10 +145,6 @@ impl ::nros_serdes::Message for {{ service_name }}Request {
     ];
 }
 
-{%- for constant in response_constants %}
-pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
-{%- endfor %}
-
 /// {{ service_name }} response message
 {%- if has_response_large_array %}
 #[derive(Debug, Clone, PartialEq)]
@@ -156,6 +156,14 @@ pub struct {{ service_name }}Response {
     pub {{ field.name }}: {{ field | rclc_type }},
 {%- endfor %}
 }
+{%- if response_constants %}
+
+impl {{ service_name }}Response {
+{%- for constant in response_constants %}
+    pub const {{ constant.name }}: {{ constant.rust_type }} = {{ constant.value }};
+{%- endfor %}
+}
+{%- endif %}
 {%- if has_response_large_array %}
 
 impl Default for {{ service_name }}Response {
