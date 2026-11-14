@@ -1,8 +1,10 @@
 # Phase 550 -- NuttX builds on NuttX's own infrastructure
 
-**Status (2026-11-13). IN PROGRESS: W0 done (every question ruled), W1, W2, W5, W7, W6a
-and W12 done; W3a and W4's code done (W3b and W4's upstream contribution
-open); the rest not started.**
+**Status (2026-11-15). IN PROGRESS: every item is done except W4's upstream
+contribution. W0 to W3, W5 to W13 and W15 are done; W14 moved to phase-561
+(done). W4's code is done; its armv7a branch for nuttx-apps `tools/Rust.mk`
+is prepared and waits for the maintainer to submit it upstream. The phase
+closes when that is offered.**
 The work for
 [RFC-0126](../design/0126-nuttx-builds-on-nuttx-infrastructure.md), all of
 whose decisions are ruled (its "Decided" section). Each item names the question in
