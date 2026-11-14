@@ -127,7 +127,7 @@ fn head_len(text: &str) -> Option<usize> {
 /// code stays at the head of the line. Text that is not a rendered refusal
 /// gets `context` in front of it as before.
 #[must_use]
-pub fn with_context(context: &str, text: &str) -> String {
+pub fn prefix_detail(context: &str, text: &str) -> String {
     match head_len(text) {
         Some(n) => format!("{}{context}{}", &text[..n], &text[n..]),
         None => format!("{context}{text}"),
@@ -258,12 +258,12 @@ mod tests {
     #[test]
     fn context_goes_after_the_code() {
         let text = Diag::PlatformNoFamily.refusal("platform `x` …").to_string();
-        let ctx = with_context("board acme: ", &text);
+        let ctx = prefix_detail("board acme: ", &text);
         assert!(
             ctx.starts_with("error[NROS-0005]: board acme: platform `x` …\n"),
             "{ctx}"
         );
-        assert_eq!(with_context("a: ", "plain"), "a: plain");
+        assert_eq!(prefix_detail("a: ", "plain"), "a: plain");
         assert!(!is_rendered("error[NROS-05]: x"));
     }
 
