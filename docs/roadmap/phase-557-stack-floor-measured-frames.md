@@ -1,7 +1,7 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
 **Status (2026-11-14). OPEN: W1, W2, W2b, W3, W4, W5, W6 and W7 are done;
-W3b, W5b and W7f are open.** This phase tracks the implementation of
+W3b, W5b, W7f and W8 are open.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
 runs, and every gate reads that producer instead of holding its own number.
@@ -772,3 +772,58 @@ exact search finishes under its budget.
 - Every observed peak stays covered.
 - The SCC shrinks enough for the exact search to finish under its budget.
   If it does not, this item reports by how much it fell short.
+
+### W8 — A recorded static that drifts is caught, not found by accident
+
+- **Status:** OPEN
+
+**Why.** The mps2 bare-metal talker's row said 95,420 B while its walk read
+100,660 B. Two board commits on main (phase-553 W6, issue 2555) moved it,
+and nothing noticed. It turned up only because issue 2546 re-measured every
+row by hand. Its build still said "holds": the board's 256 KiB default is far
+above either number, and CHECK refuses only a stack below the floor. A floor
+table nobody re-measures records the tree as it was, not as it is.
+
+The existing lanes cannot see this:
+
+- The twin lane (W6) compares the run's peak with the walk. For an
+  `[[observed]]` row it never compares the fresh walk with the row's
+  `static`.
+- It covers only rows with a Renode twin, so the mps2 row (QEMU) is outside
+  it.
+- No workflow runs it; `just zephyr stack-floor-twin` is manual.
+
+**What.** A walk-only drift check. It runs no twin: it builds each
+`[[observed]]` image and compares `nros/stack-floor/report.json`'s depth
+with the row's `static`.
+
+- **Rows.** Every `[[observed]]` row. A template key gets a fresh
+  `nros new` + `nros build` outside the checkout (the user's road, which is
+  how issue 2546 was found). A bringup key gets `nros build` of the in-tree
+  example that declares it, located through the fixtures manifest, never a
+  hand-written path.
+- **Verdict.** The walk is deterministic (the max over 8 seeded orders, the
+  same bytes at every project path, W7c/W7d), so equality is checkable.
+  - Up by any amount: FAIL. A template's stamped stack is then below its
+    walk, so a fresh project refuses to build (the state 2546 found on both
+    Rust templates).
+  - Down by more than 2 %: FAIL. The floor wastes RAM and no longer
+    describes the tree.
+  - Down by less: a note.
+  - The message names the row, the direction, both numbers and the commands
+    that re-measure it (edit the row, `--sync-json`, `--validate-table`).
+- **Where it runs.** A nightly step on a Zephyr-provisioned runner: the
+  three nucleo images need the Zephyr SDK, and the mps2 image needs only
+  the cargo road. Not the merge lane: four image builds cost minutes, and a day
+  is soon enough to catch a drift. The step is a CI-owned gate, so
+  `check-default-gates-run-somewhere` sees it.
+- **Self-test** on the fast line, inside `check stack-floor-table`. A row
+  edited up, edited down by 3 %, and edited down by 1 % give FAIL, FAIL
+  and note.
+
+Acceptance:
+
+- Run against today's main, the check reads every row exact, or names the
+  row that drifted and the change re-measures it.
+- A row edited by hand in a branch turns the step red, naming that row.
+- The nightly's first run is linked here.
