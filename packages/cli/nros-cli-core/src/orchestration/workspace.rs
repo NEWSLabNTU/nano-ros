@@ -1679,7 +1679,15 @@ fn declaring_system(dir: &Path) -> Result<Option<nros_orchestration_ir::leaf_sys
     else {
         return Ok(None);
     };
-    leaf_system::read_image(dir, &image).map_err(|e| eyre::eyre!(e))
+    leaf_system::read_image(dir, &image).map_err(|e| {
+        if e.contains(leaf_system::NAMES_NO_BOARD) {
+            use crate::diag::{Diag, DiagExt};
+            let detail = e.split("; every image").next().unwrap_or(&e);
+            Diag::ImageNoBoard.err(format_args!("{detail}"))
+        } else {
+            eyre::eyre!(e)
+        }
+    })
 }
 
 /// Build a [`CargoComponentSummary`] for one `[component]` / `[node]`

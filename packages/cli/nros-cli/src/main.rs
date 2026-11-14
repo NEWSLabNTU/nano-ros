@@ -48,6 +48,20 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    // phase-552 W2 (RFC-0129 D2) — a refusal built from its diagnostic code is
+    // already three finished lines (`error[NROS-…]`, `help`, `explain`), so it
+    // prints as it is, without eyre's `Error: ` in front. Anything else, and a
+    // refusal under added context, keeps eyre's report.
+    match run() {
+        Err(e) if nros_cli_core::diag::prints_bare(&e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+        other => other,
+    }
+}
+
+fn run() -> Result<()> {
     // phase-440 W7 / RFC-0095 D8 — the launcher, BEFORE clap.
     //
     // Not an optimisation and not a style choice: D8 requires this binary to

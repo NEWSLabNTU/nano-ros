@@ -540,10 +540,13 @@ pub fn qemu_nic(args: QemuNicArgs) -> Result<()> {
         println!("{}", nros_board_common::image_net::slirp_nic(&args.model));
         return Ok(());
     }
-    let board = leaf
-        .board
-        .clone()
-        .ok_or_else(|| eyre!("{}: names no board", leaf.origin_path().display()))?;
+    let board = leaf.board.clone().ok_or_else(|| {
+        use crate::diag::{Diag, DiagExt};
+        Diag::ImageNoBoard.err(format_args!(
+            "{}: names no board",
+            leaf.origin_path().display()
+        ))
+    })?;
     let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path, &dir);
     let catalog = root
         .as_deref()
@@ -590,12 +593,13 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     if let Some(over) = &args.board {
         leaf.board = Some(over.clone());
     }
+    // RFC-0098 D3.
     let board = leaf.board.clone().ok_or_else(|| {
-        eyre!(
-            // RFC-0098 D3.
-            "{}: names no board; add `[image.<id>] board = \"<board>\"`",
+        use crate::diag::{Diag, DiagExt};
+        Diag::ImageNoBoard.err(format_args!(
+            "{}: names no board",
             leaf.origin_path().display()
-        )
+        ))
     })?;
     // issue 1641 — the one ladder: the leaf's own checkout comes first, so a
     // linked worktree never answers with the PARENT's.
