@@ -3230,11 +3230,12 @@ fn plan_single_package_cmake(
         return Ok(None);
     };
     let Some(board) = decl.board.clone() else {
-        eyre::bail!(
-            // RFC-0098 D3.
-            "{}: names no board; add `[image.<id>] board = \"<board>\"`",
+        // RFC-0098 D3.
+        use crate::diag::{Diag, DiagExt};
+        return Err(Diag::ImageNoBoard.err(format_args!(
+            "{}: names no board",
             decl.origin_path().display()
-        );
+        )));
     };
     let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&nros_root)
         .map_err(|e| eyre::eyre!("board catalog under {}: {e}", nros_root.display()))?;

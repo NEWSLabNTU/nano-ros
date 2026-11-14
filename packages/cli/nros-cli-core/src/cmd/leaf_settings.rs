@@ -267,11 +267,12 @@ fn leaf_image_from_decl(
     decl: LeafSystem,
 ) -> Result<Option<LeafImage>> {
     let Some(board) = decl.board.clone() else {
-        bail!(
-            // RFC-0098 D3.
-            "{}: names no board; add `[image.<id>] board = \"<board>\"`",
+        // RFC-0098 D3.
+        use crate::diag::{Diag, DiagExt};
+        return Err(Diag::ImageNoBoard.err(format_args!(
+            "{}: names no board",
             decl.origin_path().display()
-        );
+        )));
     };
     let catalog = BoardCatalog::load(nano_ros_root)
         .map_err(|e| eyre!("board catalog under {}: {e}", nano_ros_root.display()))?;
@@ -986,7 +987,7 @@ fn write_selection_for(
     let catalog = BoardCatalog::load(nano_ros_root)
         .map_err(|e| eyre!("board catalog under {}: {e}", nano_ros_root.display()))?;
     let Some(d) = crate::cmd::board_facts::resolve_board(&catalog, &img.board) else {
-        bail!("board `{}` is claimed by no board descriptor", img.board);
+        bail!("{}", crate::cmd::board_facts::unresolved_board(&img.board));
     };
     let candidates = crate::builder::entry::deploy_candidates(
         &img.board,

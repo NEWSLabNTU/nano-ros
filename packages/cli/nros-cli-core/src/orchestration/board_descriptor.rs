@@ -150,6 +150,15 @@ impl PlatformKind {
         name: &str,
         inherits_of: &dyn Fn(&str) -> Option<Option<String>>,
     ) -> Result<Self, String> {
+        use crate::diag::{Diag, DiagExt};
+        // Every refusal here is NROS-0005 (a platform that reaches no
+        // built-in family); each names the specific fix as its `help`.
+        let refuse = |detail: String, help: String| {
+            Diag::PlatformNoFamily
+                .refusal(detail)
+                .help(help)
+                .to_string()
+        };
         let families = Self::all_kebabs().join(", ");
         let mut chain: Vec<String> = Vec::new();
         let mut cur = name.to_string();
@@ -159,36 +168,57 @@ impl PlatformKind {
             }
             if chain.contains(&cur) {
                 chain.push(cur);
-                return Err(format!(
-                    "platform `{name}`: its `inherits` chain loops ({})",
-                    chain.join(" -> ")
+                return Err(refuse(
+                    format!(
+                        "platform `{name}`: its `inherits` chain loops ({})",
+                        chain.join(" -> ")
+                    ),
+                    format!(
+                        "end the chain at a built-in family: set `inherits` in one of these \
+                         platforms' nros-platform.toml to one of: {families}"
+                    ),
                 ));
             }
             chain.push(cur.clone());
             match inherits_of(&cur) {
                 None if chain.len() == 1 => {
-                    return Err(format!(
-                        "platform `{name}` is not a built-in platform ({families}), and no \
-                         nros-platform.toml on the platform search path answers to it. \
-                         Scaffold it with `nros new platform {name} --inherits <family>`, \
-                         or name a built-in platform"
+                    return Err(refuse(
+                        format!(
+                            "platform `{name}` is not a built-in platform ({families}), and \
+                             no nros-platform.toml on the platform search path answers to it"
+                        ),
+                        format!(
+                            "scaffold it with `nros new platform {name} --inherits <family>`, \
+                             or name a built-in platform"
+                        ),
                     ));
                 }
                 None => {
-                    return Err(format!(
-                        "platform `{name}`: its `inherits` chain ({}) names `{cur}`, which \
-                         is not a built-in platform ({families}) and which no \
-                         nros-platform.toml answers to",
-                        chain.join(" -> ")
+                    return Err(refuse(
+                        format!(
+                            "platform `{name}`: its `inherits` chain ({}) names `{cur}`, which \
+                             is not a built-in platform ({families}) and which no \
+                             nros-platform.toml answers to",
+                            chain.join(" -> ")
+                        ),
+                        format!(
+                            "correct the `inherits` that names `{cur}`, or scaffold it with \
+                             `nros new platform {cur} --inherits <family>`"
+                        ),
                     ));
                 }
                 Some(None) => {
-                    return Err(format!(
-                        "platform `{name}` is not a built-in platform, and its `inherits` \
-                         chain ({}) reaches none, so nano-ros does not know which family's \
-                         build rules it takes. Add `inherits = \"<family>\"` to the \
-                         nros-platform.toml of `{cur}`, where <family> is one of: {families}",
-                        chain.join(" -> ")
+                    return Err(refuse(
+                        format!(
+                            "platform `{name}` is not a built-in platform, and its `inherits` \
+                             chain ({}) reaches none, so nano-ros does not know which family's \
+                             build rules it takes",
+                            chain.join(" -> ")
+                        ),
+                        format!(
+                            "add `inherits = \"<family>\"` to the nros-platform.toml of \
+                             `{cur}`, where <family> is one of: {families}"
+                        ),
                     ));
                 }
                 Some(Some(parent)) => cur = parent,
@@ -1331,9 +1361,9 @@ impl BoardFile {
                     continue;
                 }
                 let authored = authored.to_string();
-                let kind = families
-                    .resolve(&authored)
-                    .map_err(|e| custom(format!("board {names}: {e}")))?;
+                let kind = families.resolve(&authored).map_err(|e| {
+                    custom(crate::diag::with_context(&format!("board {names}: "), &e))
+                })?;
                 if let Some(stated) = t.get("platform_feature").and_then(|f| f.as_str())
                     && stated != kind.platform_feature()
                 {

@@ -455,6 +455,10 @@ pub fn read(dir: &Path) -> Result<Option<LeafSystem>, String> {
     Ok(None)
 }
 
+/// The words [`read_image`]'s refusal of an image with no `board` contains,
+/// so the CLI can raise it as its diagnostic code.
+pub const NAMES_NO_BOARD: &str = "names no `board`";
+
 /// phase-481 W1 (RFC-0098 D11) — the deployment `dir`'s `system.toml` states
 /// for the NAMED image, whether `dir` is a single-package leaf or a workspace
 /// bringup.
@@ -941,10 +945,12 @@ fn image_system(
     // defines (`ImageBlock::with_base`), applied key by key.
     let pick = |key: &str| str_key(image, key).or_else(|| str_key(defaults, key));
 
-    // RFC-0098 D3.
+    // RFC-0098 D3: every image is built for exactly one board. The CLI
+    // renders this as diagnostic NROS-0004 (`ImageNoBoard`), recognising it
+    // by [`NAMES_NO_BOARD`].
     let board = pick("board").ok_or_else(|| {
         format!(
-            "{}: `[image.{id}]` names no `board` — every image is built for exactly one \
+            "{}: `[image.{id}]` {NAMES_NO_BOARD}; every image is built for exactly one \
              board: add `board = \"<board>\"` (`nros board list` names them)",
             path.display()
         )
