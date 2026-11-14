@@ -12,6 +12,28 @@ superseded-by: null
 
 # RFC-0040 — Distribution model + `nros new` scaffolding dependency convention
 
+> **Amended 2026-11-14 (phase-555 W3).** What still holds and what moved:
+>
+> - **D1 stands**, with one carve-out: `nros-extension`, the runner/command
+>   protocol library of [RFC-0119](0119-cli-extension-packages.md) D5, is the one
+>   `nros*` crate that may be published, because an out-of-tree runner must not
+>   have to git-depend on this repository to speak the protocol. It is a protocol
+>   library, not the runtime. (Not yet published: its manifest says publication
+>   waits on phases 528 and 529.)
+> - **D2's patch rows** are no longer written into a leaf's `.cargo/config.toml`:
+>   `nros configure` renders them into `<leaf>/build/<image>/nros-cargo.toml`, read
+>   with `--config` ([RFC-0098](0098-generated-leaf-build-config.md) D1/D2).
+> - **D3** describes the contributor road (a nano-ros checkout). A user who
+>   installed `nros` gets nano-ros from the store, which is
+>   [RFC-0095](0095-nros-store-is-the-root.md)'s; and `nros configure` no longer
+>   reads an exported `NROS_REPO_DIR` (RFC-0103 D6). `nros new --deps git` was
+>   never built.
+> - **D5's first clause is false**: `nros build` and `nros run` exist
+>   (RFC-0065). The second clause stands.
+>
+> Stays Draft until the store-resolved install RFC-0095 describes exists; then
+> revisit superseding this RFC by RFC-0095.
+
 ## Summary
 
 nano-ros ships as a **source release + prebuilt host toolchains**, never as

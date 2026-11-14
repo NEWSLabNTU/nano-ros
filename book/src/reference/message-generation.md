@@ -375,6 +375,6 @@ feature demo is a node package there, with its own image row.
 ## Design background
 
 - [RFC-0067: environment-invariant message dependency identity](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0067-env-invariant-msg-dep-identity.md)
-- [RFC-0048: CMake ament consumption](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0048-cmake-ament-consumption.md)
+- [RFC-0130: one ROS 2 CMake build](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0130-one-ros-cmake-build.md) (supersedes RFC-0048)
 - [RFC-0122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md): behaviour bringups, single-node witnesses, and cadence-backed CI.
   Feature demos as node packages of the features workspace.

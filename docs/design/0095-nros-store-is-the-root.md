@@ -1,7 +1,7 @@
 ---
 rfc: 0095
 title: "The store is the root: nano-ros as a provisioned artifact"
-status: Draft
+status: Stable
 area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-11
@@ -13,7 +13,7 @@ superseded-by: null
 
 # RFC-0095 — The store is the root: nano-ros as a provisioned artifact
 
-**Status:** Draft (2026-09-09)
+**Status:** Stable (2026-11-14, phase-555 W3: phase-440 landed it; Draft since 2026-09-09)
 
 Amends RFC-0014 (`nros setup` gains a subject: nano-ros itself). Builds on
 RFC-0062 (the unified dependency SSoT) and RFC-0065 D2 (a missing prerequisite
@@ -41,7 +41,9 @@ the way `cargo` builds against a `rust-toolchain.toml` without the user ever
 siting the Rust source tree.
 
 This RFC does not implement that. It removes the assumptions that make it
-unreachable, in an order where each step is worth landing on its own.
+unreachable, in an order where each step is worth landing on its own. The step
+that is still missing (fetching and selecting the pinned version from the store)
+is [issue 2531](../issues/2531-store-resolved-nano-ros-install-not-built.md).
 
 ## D0 — Two audiences, and the difference is ownership
 

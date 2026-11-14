@@ -1,7 +1,7 @@
 ---
 rfc: 0030
 title: "Phase 212.K.7.4.c — sequence-of-nested design proposal"
-status: Draft
+status: Stable
 area: rmw-wire
 since: 2026-06
 last-reviewed: 2026-11
@@ -11,6 +11,12 @@ superseded-by: null
 ---
 
 # Phase 212.K.7.4.c — sequence-of-nested design proposal
+
+> **Archived 2026-11-14 (phase-555 W3): landed, kept as the record.** Path A was
+> built in `705e1b245`: `dynamic_type_builder.cpp` emits the `DDS_OP_SUBTYPE_STU`
+> sequence instruction, and `registry_seq_nested.rs` tests it. Path B's `idl/`
+> directory was never needed. The design lives in the code; this proposal is
+> its history, and phase-212 (archived) is the work that built it.
 
 ## Summary
 

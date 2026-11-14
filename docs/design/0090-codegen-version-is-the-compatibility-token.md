@@ -1,7 +1,7 @@
 ---
 rfc: 0090
 title: "The codegen version is the compatibility token, and generated code carries it"
-status: Draft
+status: Stable
 area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-11
@@ -324,13 +324,17 @@ serialization format.
    are exactly the binaries users have. Raise it when you are willing to say
    "that release can no longer build against this runtime", and say so in the
    release notes.
-2. Where does the C/C++ anchor's `N` come from at *configure* time, for the four
-   configure-time emitters phase-424 registered? The binary can be asked
-   (`nros --codegen-version`), but that is a process launch per configure.
+2. ~~Where does the C/C++ anchor's `N` come from at *configure* time, for the four
+   configure-time emitters phase-424 registered?~~ **Settled by the code
+   (recorded 2026-11-14):** configure reads `codegen_version.rs` directly, never
+   `nros --codegen-version` (`cmake/NanoRosCodegenCore.cmake`), which is also
+   what issue 1360 needed (a stale binary's answer is the wrong one).
 3. (2026-11: the ESP-IDF half is gone, its integration deleted in phase-468 W2
    and its build road by RFC-0065 D3's 2026-09-28 amendment; PlatformIO remains.)
    Does the ESP-IDF / PlatformIO integration path (`integrations/`) get the
-   anchor, given both emit with a soft failure today?
+   anchor, given both emit with a soft failure today? **Moved to
+   [issue 2530](../issues/2530-codegen-anchor-for-platformio-unanswered.md)**
+   (2026-11-14).
 
 ## Changelog
 

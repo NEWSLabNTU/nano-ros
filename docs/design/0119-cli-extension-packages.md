@@ -6,7 +6,7 @@ area: build-toolchain-codegen
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-527, phase-528, phase-529, phase-533]
-amends: [0087, 0097]
+amends: [0040, 0087, 0097]
 supersedes: []
 superseded-by: null
 ---
@@ -261,7 +261,10 @@ An override is allowed, and it is never silent:
    the move, so a vendored package cannot grant itself an override. The one
    exception is a single-package leaf with no `nros.toml`, whose root
    `system.toml` `[overrides]` is read instead, with a note on stderr that
-   the table belongs in `nros.toml` (the fallback is transitional); a
+   the table belongs in `nros.toml` (the fallback is transitional; *retired by
+   [RFC-0121](0121-workspace-first-project-layout.md), recorded 2026-11-14: a
+   project is a workspace and overrides live only in
+   `nros.toml [workspace.overrides]`; the code goes with phase-531*); a
    workspace with a `nros.toml`
    whose root `system.toml` also carries `[overrides]` is refused, and the
    `nros.toml` table is the one to keep.
@@ -365,7 +368,9 @@ from `PATH`, which is the rule issue 0285 set for `nros-launch-resolve`.
   - the exit codes.
 
   It is published to crates.io, so an out-of-tree Rust runner uses the same
-  types. A runner in another language reads and writes the JSON.
+  types. A runner in another language reads and writes the JSON. *(This amends
+  [RFC-0040](0040-distribution-and-scaffolding-deps.md) D1, which publishes no
+  `nros*` crate: the protocol library is the one carve-out, ruled 2026-11-14.)*
 
 ### D6 — The runner contract, protocol 1
 

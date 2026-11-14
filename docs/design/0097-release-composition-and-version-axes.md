@@ -1,7 +1,7 @@
 ---
 rfc: 0097
 title: "Release composition: four version axes, and which artifact carries each"
-status: Draft
+status: Stable
 area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-11
@@ -13,7 +13,7 @@ superseded-by: null
 
 # RFC-0097 — Release composition: four version axes, and which artifact carries each
 
-**Status:** Draft (2026-09-10)
+**Status:** Stable (2026-11-14, phase-555 W3: phases 443 and 541 landed it; Draft since 2026-09-10)
 
 Home phase: [phase-443](../roadmap/archived/phase-443-release-composition.md).
 
@@ -459,6 +459,10 @@ delivers the user-visible benefit without it, and the seam measurement says the
 split would not deliver independence today. Revisit only if that seam stabilises.
 
 ## Open
+
+Moved to [issue 2532](../issues/2532-launcher-release-home-and-seam-undecided.md) when
+this RFC became Stable (2026-11-14). D2/D3's extraction is recorded as declined
+(above); the list as it stood:
 
 * **Where the launcher's release lives.** `nano-ros` releases the toolchain; a
   launcher meant to outlive it may want its own repo, as `nano-ros-sdk` holds

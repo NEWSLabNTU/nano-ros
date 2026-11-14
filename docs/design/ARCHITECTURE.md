@@ -40,7 +40,7 @@ never cross-implied:
 - **RMW**: `rmw-{zenoh,xrce,cyclonedds,uorb}` (uorb is the PX4 C++-only port; dust-dds retired).
 - **Platform**: `platform-{posix,zephyr,bare-metal,freertos,nuttx,threadx}`. ESP32 is
   `bare-metal` (esp-hal); the esp-idf platform integration was retired in
-  phase-468 W2 and its build road in RFC-0065 D3's 2026-09-28 amendment.
+  phase-468 W2 and its build road by RFC-0065 D3 (a cross-language esp32 image refuses).
   Remaining ESP-IDF claims in RFC-0014/0072 (and the now-archived RFC-0003) were issue 1526.
 - **ROS edition**: `ros-{humble,iron,jazzy}` (`jazzy` is the delivered default —
   `just ros_editions ci`; `rolling` planned) — a per-distro **interop profile**
@@ -366,7 +366,8 @@ active design front:
 - Concrete per-case file trees → RFC-0025 (Draft).
 - Canonical standalone-example layout → RFC-0026.
 - Project shape (every project is a workspace; `system.toml` only in a bringup) and `nros new`
-  scaffolding → RFC-0121. Nested-sequence message handling spike → RFC-0030 (Draft).
+  scaffolding → RFC-0121. Nested-sequence message handling → RFC-0030 (archived: landed in
+  phase-212).
 
 Configuration is **language-agnostic and scale-uniform**: `system.toml` (universal system
 descriptor, optional for single-node) + per-language manifests (Cargo `[package.metadata.nros.*]`
@@ -392,7 +393,10 @@ other carrier is generated from it:
   (`$NROS_HOME`) > the checkout. Tooling exports no location, so a linked
   worktree cannot inherit another checkout's trees.
 
-The map of how this meets the three build roads is
+Which road an image takes is RFC-0065 D3: cargo when every package is Rust, CMake when any
+C or C++ package is in the image, on every board including bare metal (RFC-0130: CMake owns
+the link, the Rust runtime arrives as a Corrosion staticlib), and west on Zephyr. The map of
+how this meets the three build roads is
 [canonical-build-path.md](../../book-internals/src/pipeline/canonical-build-path.md).
 
 ## 6. Language API surfaces
@@ -413,7 +417,8 @@ The map of how this meets the three build roads is
 
 ## Open design fronts (today)
 
-`Draft` RFCs are where the design is still moving: RFC-0072 (RTOS integration, which absorbed
-the archived RFC-0003),
-RFC-0024 / RFC-0025 (multi-node workspace), RFC-0030 (nested sequences). Everything else is
-`Stable` — changes are refinements tracked in each RFC's Changelog.
+`Draft` RFCs are where the design is still moving, among them RFC-0072 (RTOS integration,
+which absorbed the archived RFC-0003), RFC-0024 / RFC-0025 (multi-node workspace) and, for
+the build, RFC-0040 (distribution), RFC-0119 (CLI extension packages), RFC-0120
+(`nros configure`) and RFC-0130 (one C/C++ build method). [docs/design/README.md](README.md)
+holds each RFC's status; a `Stable` RFC changes by refinements tracked in its Changelog.

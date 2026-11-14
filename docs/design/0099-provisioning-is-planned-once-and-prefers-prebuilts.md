@@ -1,7 +1,7 @@
 ---
 rfc: 0099
 title: "Provisioning is planned once, prefers prebuilts, and ships what a build needs"
-status: Draft
+status: Stable
 area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-11
@@ -13,7 +13,7 @@ superseded-by: null
 
 # RFC-0099 — Provisioning is planned once, prefers prebuilts, and ships what a build needs
 
-**Status:** Draft (2026-09-11)
+**Status:** Stable (2026-11-14, phase-555 W3: phases 447 and 517 landed it; Draft since 2026-09-11)
 
 Implemented by [phase-447](../roadmap/archived/phase-447-provisioning-revision.md).
 Amends the provisioning model of [RFC-0014](0014-nros-setup-toolchain-management.md)
@@ -119,6 +119,12 @@ an `nros` running inside a checkout be that checkout's own build. A store rung
 placed first would silently redirect every contributor to a store copy of a tree
 they are editing. Last changes no existing behaviour and fills only the case
 that today has none.
+
+This does not contradict [RFC-0095](0095-nros-store-is-the-root.md) D4 ("store
+first, checkout last"): the subjects differ. 0095 D4 resolves a provisioned SDK
+workspace (FreeRTOS, Zephyr, …), where the store copy is the one to use; this
+ladder resolves the nano-ros source root, where a contributor's checkout must
+win (0095 D5's ownership guard).
 
 ## D4 — Prefer a prebuilt, and make that a RULE rather than an intention
 

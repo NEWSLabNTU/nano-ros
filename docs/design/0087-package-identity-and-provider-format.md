@@ -1,7 +1,7 @@
 ---
 rfc: 0087
 title: "Package identity and the provider format"
-status: Draft
+status: Stable
 area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-11
@@ -366,10 +366,12 @@ semantics, over the topological order `provider_scan` already computes.
 
 ## Open questions
 
-- Whether the bare `<nano_ros …/>` triple is eventually deprecated in favour of
-  `<nano_ros_uses>` plus a `deploy=` attribute, or kept indefinitely as sugar.
-  91 files argue for keeping it; symmetry argues the other way. Deferred until
-  the general form has users.
+- ~~Whether the bare `<nano_ros …/>` triple is eventually deprecated in favour of
+  `<nano_ros_uses>` plus a `deploy=` attribute, or kept indefinitely as sugar.~~
+  **Settled by the code (recorded 2026-11-14):** the triple was retired in
+  phase-445 W3b, when board and RMW moved to the bringup's `system.toml`
+  (RFC-0098 D3/D5); a leftover element is a configure FATAL_ERROR
+  (`cmake/NanoRosPackageXml.cmake`).
 *(Resolved 2026-09-10, issue 1220 — whether `platform` descriptors move beside
 their packages. Measuring it found the question backwards: the descriptors had
 already moved in phase-400 W1, for the five platforms that HAVE a package, and
