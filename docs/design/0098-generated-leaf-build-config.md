@@ -431,6 +431,8 @@ one generated file per image, read through `--config`, nothing generated beside
 a package. Where the file sits follows RFC-0103 D7. When it moves, the measured
 grandparent-relative rule above must be re-measured for the new depth, and the
 book pages that name `build/<image>/nros-cargo.toml` move with it.
+*(2026-11-14, phase-555 W3: RFC-0103 D7 was amended to the code. It names
+`nros-cargo.toml` in the image's entry directory, so no move is planned.)*
 
 **D6: the generated dependency is every image-only dependency, and a
 single-package leaf gets it through a selection package.** D6 said "the board
