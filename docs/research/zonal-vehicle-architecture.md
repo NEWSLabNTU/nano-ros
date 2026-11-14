@@ -1,16 +1,9 @@
----
-rfc: 0029
-title: "Zonal Vehicle Architecture and nano-ros"
-status: Stable
-area: platform-board-rtos
-since: 2026-02
-last-reviewed: 2026-11
-implements-tracked-by: []
-supersedes: []
-superseded-by: null
----
-
 # Zonal Vehicle Architecture and nano-ros
+
+> This survey was RFC-0029 in `docs/design/` until 2026-11-14, when the
+> phase-555 design-doc review moved it here (ruling N2). It decided nothing
+> and no phase implemented it; it is kept as research beside its TSN sibling,
+> [tsn-safety-island-assessment.md](tsn-safety-island-assessment.md).
 
 ## Overview
 

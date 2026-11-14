@@ -1,10 +1,10 @@
 ---
 rfc: 0116
-title: "Adoption purposes and front doors: three purposes as acceptance columns, an action-only user surface, serial-first chapters, a single-package front door and one run verb"
+title: "Adoption purposes and front doors: three purposes as acceptance columns, an action-only user surface, serial-first chapters, and one run verb"
 status: Draft
 area: docs-ux-diagnostics
 since: 2026-10
-last-reviewed: 2026-11
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-525, phase-523]
 amends: []
 supersedes: []
@@ -157,132 +157,63 @@ are.
 
 ### D2 — The user surface names an action, never an internal id
 
-> **Consolidated in [RFC-0124](0124-book-user-guide-organization.md) Principle 5 (2026-11).**
+What holds now: every user-facing surface names what happened, where, and the
+next action, and never a phase, issue or RFC id. That covers every page of the
+user book, `nros --help` and every verb's help, `nros doctor` output, what a
+successful build prints, and every user-reachable refusal, build-stopping ones
+included. Ids live in source comments, `-v` detail, and a book page's closing
+`## Design background` section, the only place a user page names an RFC.
 
+Authoritative homes:
 
-> **Amended by [RFC-0123](0123-two-books-by-audience.md) D3 (2026-11):** the
-> gate's book subject is the whole user book (`book/page-map.toml`), not
-> `book/src/getting-started/`, and the contributor-block exemption is
-> retired, because contributor material lives in the Internals book. RFC ids
-> are allowed only in a page's closing `## Design background` section.
-> Landed by phase-532 W3.
-
-> **Reach widened 2026-11-11 ([issue 2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md)):**
-> the user surface includes what a SUCCESSFUL build prints: a CMake message at
-> the default log level (`check-cmake-user-output-refs`, now a zero baseline)
-> and a build script's `cargo:warning` (`check-user-surface-ids`). A CMake
-> `VERBOSE` line and `nros_message_detail()` stay diagnostic detail for
-> whoever runs `nros build -v` (phase-517 W5). Whether a REFUSAL at build
-> time (a CMake `FATAL_ERROR`, a build-script panic) may name an id is open:
-> phase-517 W5 exempts it, this section's "every refusal" does not (issue
-> 2305's open question).
->
-> **Ruled 2026-11-12 (user ruling A, relayed by the manager session):** a
-> user-reachable refusal carries no id, build-stopping ones included; ids go
-> to source comments, `-v`, and a diagnostic code's `## Design background`.
-> The diagnostic-code RFC drafted from that ruling (PR #3629, phase-552)
-> records it as this section's amendment.
-
-> **Sequenced by [RFC-0117](0117-cli-command-tiers.md) (2026-11):** the
-> command tree is restructured first (phase-526), and the help text's ids move
-> into `//` comments there, so this gate's sweep runs once over the final verb
-> names.
-
-Getting-started chapters, `nros --help` and every verb's `--help`, every
-refusal and `nros doctor` output name the next action and never a phase,
-issue or RFC id. Internal ids stay in `internals/`, in `docs/`, in code
-comments and in commit messages, where the reader has the tree.
-
-A refusal therefore reads "run `nros setup <board>`" and not "see issue 1525";
-a verb's help says what it does and not which phase built it. Where the
-history matters to a contributor, the doc-comment above the string carries it.
-
-Gate: `check-user-surface-ids` on the fast line. Its subject is the rendered
-user surface, not the source: it runs `nros --help` and every verb's `--help`,
-walks the refusal strings reachable from `cmd/`, and scans
-`book/src/getting-started/`. Baseline zero after phase-525 W1's sweep; a
-contributor-only block in a chapter is exempt the way `check-book-no-just`
-exempts it (a "**Contributors:**" lead within eight lines).
+- The book's rule: [RFC-0124](0124-book-user-guide-organization.md)
+  Principle 5, with the gate's scope (the whole user book, no contributor
+  exemption) from [RFC-0123](0123-two-books-by-audience.md) D3.
+- Refusals and build output: user ruling A of 2026-11-12, recorded in
+  [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md) W5 and
+  [issue 2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md),
+  enforced by the ratchets `check-user-surface-ids` and
+  `check-cmake-user-output-refs`; runtime logs and the colcon plugin are
+  [issue 2443](../issues/2443-runtime-log-and-colcon-messages-cite-ids.md).
+- Stable diagnostic codes (ruling C): phase-552 and its diagnostic-code RFC,
+  named in phase-523 W5.
 
 ### D5 — Serial first, ethernet second, WiFi stated as deferred
 
-> **Consolidated in [RFC-0124](0124-book-user-guide-organization.md) Principle 12 (2026-11);** board starters (RFC-0124 D12) open over serial.
-
-
-Every board's getting-started path opens over USB serial: the cable the
-vendor's own getting-started uses, the console the board already enumerates,
-and nano-ros's serial transport, which on Zephyr, FreeRTOS, NuttX and ThreadX
-is zenoh-pico's own and needs no extra crate. The router runs on the laptop at
-the other end of the cable. Chapter one of a board is therefore the same
-shape on every board and needs no network configuration.
-
-Ethernet is chapter two, on a board that has it (Nucleo-F767ZI under
-RFC-0115). WiFi is deferred to the Zephyr 4.4 line, where the Pico W's driver
-exists upstream, and every chapter that could have offered it says so in one
-sentence rather than leaving the reader to discover it.
-
-What this decided against: a network-first chapter (today's shape) asks the
-reader to state an address, a gateway and a locator before the first publish,
-and on a WiFi board asks for credentials the lab or the shop floor may not
-hand out.
+What holds now: the first path on a board opens over USB serial, ethernet
+comes second on a board that has it, and WiFi is stated as deferred rather
+than left for the reader to discover. Authoritative home:
+[RFC-0124](0124-book-user-guide-organization.md) Principle 12. The scaffold
+puts a board's first image on its serial port where the board states one
+(`[board.net] host_serial`, [RFC-0121](0121-workspace-first-project-layout.md)
+D4).
 
 ### D6 — A single-package front door before the workspace vocabulary
 
-> **Consolidated in [RFC-0124](0124-book-user-guide-organization.md) Principle 12 (2026-11).**
-
-
-> **Amended by [RFC-0121](0121-workspace-first-project-layout.md) (2026-11-03):**
-> the scaffold writes a workspace holding a node package and a bringup, and the
-> chapter runs `nros run <node>`. The chapter still names no launch file, image
-> or entry, and the reader authors nothing in the bringup. "Grows into a
-> workspace by `nros new --workspace`" becomes "grows by adding a package".
-
-The first chapter scaffolds one package and runs it:
-
-```text
-nros new sensor_node --board <board> --template talker
-cd sensor_node
-nros run
-```
-
-No workspace, bringup, image, launch or entry is named until the chapter that
-needs it (a second node, a second board, a launch argument). The single
-package is a real leaf: a `system.toml` with one image stating the board, a
-node, and the generated build configuration RFC-0098 already renders. It
-grows into a workspace by `nros new --workspace` when the reader wants a
-second node, carrying the node over unchanged.
-
-Field and education adopters pay the whole concept cost otherwise, and pay it
-before they have seen a line of output. Industrial adopters tolerate the
-workspace shape but do not need it to evaluate the runtime.
+What holds now: there is no single-package front door. Every project is a
+workspace ([RFC-0121](0121-workspace-first-project-layout.md) D1), and
+`nros new` writes a node package and its bringup (RFC-0121 D4). What D6 kept
+is the concept budget: the first chapter names no launch file, image or entry,
+the reader authors nothing in the bringup, and the project grows by adding a
+package. Authoritative homes: RFC-0121 D1, D4 and its "Amendments to other
+RFCs" row for 0116 D6, and [RFC-0124](0124-book-user-guide-organization.md)
+Principle 12 for the book.
 
 ### D7 — One verb runs what was built
 
-> **Consolidated in [RFC-0124](0124-book-user-guide-organization.md) Principle 12 (2026-11).**
+What holds now: `nros run` builds the image if stale, then launches a host
+process or an emulator and streams the console; `--expect` exits 0 on a match
+and non-zero on timeout, so the chapter's line, the printed next step and the
+probe's line are one line. On a hardware image `nros run` refuses and names
+`nros flash --monitor`. Authoritative homes:
+[RFC-0118](0118-target-execution-model.md) D2 for the verbs,
+[RFC-0121](0121-workspace-first-project-layout.md) D5 for the target argument
+(`nros run <node>`), and [RFC-0124](0124-book-user-guide-organization.md)
+Principle 12 for the book.
 
-
-> **Amended by [RFC-0118](0118-target-execution-model.md) D2 (2026-11):** `nros run`
-> covers host processes and emulators. On a hardware image it refuses and
-> names `nros flash --monitor`, because flashing and the console have
-> different lifetimes, and a human step must be stated rather than hidden.
-> Everything else below holds: build if stale, `--expect` grading, and one
-> line shared by the chapter, the next step and the probe. phase-528 W4
-> carries phase-525 W3.
-
-`nros run` builds the image if stale, then does whatever "run" means for the
-image's board: launches the emulator (QEMU, Renode, as the registry
-names it), executes the host binary, or flashes the hardware and opens the
-console. It then streams the console, and with `--expect <line>` exits 0 when
-the line appears and non-zero on timeout.
-
-One verb serves three purposes: it is the grading command for a lab, the
-replay command for a technician's node, and the smoke command for an
-industrial image; the probe tracks run it too, so the chapter's line and the
-probe's line are the same line (the rule issue 2169 states for the printed
-run command).
-
-`nros run` adds no road: what it executes is what `nros build` already prints
-as the next step, read from the same registry row.
+History: D2, D5, D6 and D7 were rewritten as pointers on 2026-11-14 (phase-555
+ruling N3). Their earlier bodies, banners and amendments are in the git log of
+this file.
 
 ### D9 — Adoption probes, one per purpose
 
@@ -304,6 +235,8 @@ stops, once after the fixes to count what remains.
 - **Workspace-first, as today.** It is the right shape for a system of nodes,
   and the wrong first page for two of three purposes. Kept, moved to chapter
   three.
+  (Since reversed: RFC-0121 made every project a workspace, so this
+  alternative is now the design; D6 above says what holds.)
 - **WiFi-first.** The board every field adopter wants has WiFi, and the
   driver nano-ros can reach on the pinned Zephyr 3.7 line does not drive it
   (the AIROC driver is SDIO-only there; the Pico W's part is on SPI/PIO and the

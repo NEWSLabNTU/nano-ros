@@ -694,7 +694,7 @@ graph TD
     style PTP fill:#1864ab,color:#fff
 ```
 
-For detailed TSN analysis, see [docs/research/tsn-safety-island-assessment.md](../research/tsn-safety-island-assessment.md) and [docs/design/0029-zonal-vehicle-architecture.md](0029-zonal-vehicle-architecture.md).
+For detailed TSN analysis, see [docs/research/tsn-safety-island-assessment.md](../research/tsn-safety-island-assessment.md) and [docs/research/zonal-vehicle-architecture.md](../research/zonal-vehicle-architecture.md).
 
 ## Summary
 
