@@ -392,6 +392,43 @@ the user ruled; all five stand:
   in an unrelated job must not silence it, and its 15-minute cron would start
   `automation.yml` 96 times a day.
 
+### W9 — An advisory per-merge Zephyr link in the queue's L3
+
+- **Owner:** nros 118.
+- User ruling (2026-11-14, option B): add a few representative Zephyr image
+  links to `queue.yml`'s L3, which is advisory and runs on the `nros-queue`
+  runners that already carry `nros-sdk-zephyr`.
+- **The set, chosen by coverage:** `c/talker` on `native_sim`, `cpp/talker`
+  on `mps2/an385` and `rust/talker` on `native_sim`, all over zenoh on the
+  3.7 line. Together they cover the three languages (the CMake C and C++
+  roads and the zephyr-lang-rust cargo road), the host simulator, and one
+  cross target (Cortex-M3, the mps2 board the QEMU cells use). One link per
+  language and one cross target is the smallest set where a break in any
+  road or in the cross toolchain shows. The 4.4 line and the rest of the
+  example matrix stay in `nightly.yml`.
+- **Measured** (2026-11-14, host 118, 48 cores, 3.7, all six builds green):
+
+  | image | cold | warm |
+  | --- | --- | --- |
+  | `c/talker`, native_sim | 77 s | 14 s |
+  | `cpp/talker`, mps2/an385 | 83 s | 22 s |
+  | `rust/talker`, native_sim | 39 s | 11 s |
+  | all three | ~3.3 min | ~47 s |
+
+  L3 sweeps the example build dirs every run, so the cold column is the
+  expected cost: about 20% on L3's ~17 minutes (run 43553110506: 2 min of
+  setup, which already provisions Zephyr, plus 14 min of `just ci matrix
+  build`).
+- **Acceptance:**
+  - each image is its own L3 step, named `Zephyr link: <example> on <board>
+    (zenoh, 3.7)`, so a red names the image;
+  - each runs on `!cancelled()`, independent of `just ci matrix build`;
+  - `queue.yml` stays out of the required set, so a Zephyr red or a runner
+    outage never blocks a merge;
+  - the first merge-group run after landing links all three, and its L3
+    time is recorded here.
+- **Status:** OPEN (in review).
+
 ## Acceptance (phase)
 
 - 13 workflow files, as in the table. Every split is named in the table by a
@@ -427,9 +464,10 @@ today is narrower than that, for Zephyr in particular:
   RUNTIME (native_sim cells) and reshapes the matrix; it closes issue 2462
   ("Zephyr daily cadence has no runtime job"), not a link gap.
 
-Per-merge Zephyr link coverage, if wanted, is a question for the user (it
-would cost a Zephyr SDK + west workspace on the queue's critical path, which is
-what #3710 just took off it). Not added here.
+Per-merge Zephyr link coverage was put to the user, and ruled on 2026-11-14:
+an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
+(`queue.yml` is not a required check), and its runner already provisions the
+3.7 workspace and SDK, so it costs neither of the things #3710 removed.
 
 ## Issues homed here
 

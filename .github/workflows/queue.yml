@@ -197,6 +197,37 @@ jobs:
         run: |
           source ./activate.sh
           just ci matrix build
+      # phase-559 W9 (user ruling 2026-11-14, option B) — a per-merge Zephyr
+      # BUILD + LINK. Since #3710 moved the Zephyr template copy-out to the
+      # daily schedule, no per-merge lane linked a Zephyr image. These three
+      # cover the three languages, the host simulator and one cross target
+      # (Cortex-M3), on the 3.7 line this runner's `just setup tier2` already
+      # provisions. The 4.4 line and the rest of the example matrix stay
+      # nightly. Each image is its own step, so a red names the image, and
+      # `!cancelled()` runs each one even when `just ci matrix build` failed:
+      # they are independent signals. Measured 2026-11-14 on host 118: 77 s +
+      # 83 s + 39 s cold (what this lane sees, since the sweep deletes the
+      # build dirs), 14 + 22 + 11 s warm.
+      #
+      # ADVISORY like the rest of this job: `queue.yml` is not a required
+      # check, so a Zephyr red or a runner outage never blocks a merge
+      # (runner-watchdog.yml cancels a queue run that waits 30 min for a
+      # runner).
+      - name: "Zephyr link: c/talker on native_sim (zenoh, 3.7)"
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just zephyr build-one c/talker zenoh native_sim/native/64
+      - name: "Zephyr link: cpp/talker on mps2/an385 (zenoh, 3.7)"
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just zephyr build-one cpp/talker zenoh mps2/an385
+      - name: "Zephyr link: rust/talker on native_sim (zenoh, 3.7)"
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just zephyr build-one rust/talker zenoh native_sim/native/64
       - name: Upload logs and size reports
         if: always()
         uses: actions/upload-artifact@v4
