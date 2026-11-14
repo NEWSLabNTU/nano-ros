@@ -1,0 +1,12 @@
+<launch>
+  <!-- phase-560 W8 / #3759: the first mode-form contract fixture. A reduced
+       L4 safety island ladder; `ladder.contract.yaml` states it. -->
+  <node pkg="ladder_demo" exec="hpc" name="hpc"/>
+  <node pkg="ladder_demo" exec="camera" name="camera"/>
+  <node pkg="ladder_demo" exec="radar" name="radar"/>
+  <node pkg="ladder_demo" exec="supervisor" name="supervisor"/>
+  <node pkg="ladder_demo" exec="state_machine" name="state_machine">
+    <param name="t_hold" value="3.0"/>
+  </node>
+  <node pkg="ladder_demo" exec="brake" name="brake"/>
+</launch>

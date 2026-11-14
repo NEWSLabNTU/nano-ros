@@ -1,0 +1,201 @@
+# phase-560 W8 / #3759: the first mode-form contract fixture. A reduced L4
+# safety island ladder: the HPC drives (`autonomous`); losing it, the island
+# holds the lane for a while (`lane_keep_hold`, a dwelling level entered only
+# on the loss of the HPC, with its own deadline), then pulls over
+# (`pull_over`), and the floor is a blind stop (`blind_stop`, the minimal
+# risk condition).
+#
+# Three hazards enter `autonomous`, one per way rlm v0.3.18 picks the levels
+# a hazard runs:
+#   hpc_loss     runs every level;
+#   camera_loss  removes `lanes`, so it skips the two levels that need it;
+#   radar_loss   removes `radar` only, so it skips `lane_keep_hold`, which is
+#                available only once the HPC is lost (`requires_lost`).
+#
+# Every detector is a `max_age` evaluated on the node's own clock
+# (`mechanism: application`), the one detector nano-ros's image and
+# play_launch's checker both count as the subscriber's age limit, so the two
+# realizers' rows have the same terms.
+
+version: 1
+
+functions:
+  hpc_alive: [/hpc/heartbeat]
+  lanes: [/camera/lanes]
+  radar: [/radar/tracks]
+
+modes:
+  autonomous:
+    requires: [hpc_alive, lanes, radar]
+    fallback: [lane_keep_hold, pull_over, blind_stop]
+  lane_keep_hold:
+    requires: [lanes]
+    requires_lost: [hpc_alive]
+    reaction: island.hold
+    min_dwell: { duration: { min: 2s, max: 5s }, param: state_machine.t_hold }
+    within: 100ms
+  pull_over:
+    requires: [lanes]
+    reaction: island.pull_over
+  blind_stop:
+    requires: []
+    reaction: island.blind_stop
+
+hazards:
+  hpc_loss:
+    monitors: [/hpc/heartbeat]
+    on: omission
+    ftti: 60s
+    enters: autonomous
+  camera_loss:
+    monitors: [/camera/lanes]
+    on: omission
+    ftti: 10s
+    enters: autonomous
+  radar_loss:
+    monitors: [/radar/tracks]
+    on: omission
+    ftti: 60s
+    enters: autonomous
+
+nodes:
+  hpc:
+    pub:
+      heartbeat: { min_rate_hz: 100 }
+  camera:
+    pub:
+      lanes: { min_rate_hz: 20 }
+  radar:
+    pub:
+      tracks: { min_rate_hz: 20 }
+  supervisor:
+    paths:
+      declare_hpc_lost:
+        trigger: { input: [heartbeat] }
+        output: [hpc_state]
+        max_latency: 2ms
+      declare_blind:
+        trigger: { input: [lanes] }
+        output: [blind]
+        max_latency: 2ms
+      declare_radar_lost:
+        trigger: { input: [tracks] }
+        output: [radar_state]
+        max_latency: 2ms
+    sub:
+      heartbeat:
+        min_rate_hz: 100
+        max_age: 30ms
+        on_violation: { on: [omission], mechanism: application, reaction: declare_hpc_lost }
+      lanes:
+        min_rate_hz: 20
+        max_age: 150ms
+        on_violation: { on: [omission], mechanism: application, reaction: declare_blind }
+      tracks:
+        min_rate_hz: 20
+        max_age: 150ms
+        on_violation: { on: [omission], mechanism: application, reaction: declare_radar_lost }
+    pub:
+      hpc_state: { aperiodic: true }
+      blind: { aperiodic: true }
+      radar_state: { aperiodic: true }
+  state_machine:
+    params:
+      t_hold: { type: double }
+    paths:
+      hold:
+        trigger: { input: [hpc_state] }
+        output: [hold_ref]
+        max_latency: 5ms
+        safe_state:
+          emits: hold_ref
+          settle: 50ms
+      pull_over:
+        trigger: { input: [hpc_state, radar_state] }
+        output: [pullover_ref]
+        max_latency: 5ms
+        safe_state:
+          emits: pullover_ref
+          settle: 20s
+      # The dwell's owner notices its deadline on its own tick, and takes
+      # the next level from there (`dwell-expiry`).
+      on_timer:
+        trigger: { timer: { rate_hz: 50 } }
+        output: [pullover_ref, escalate]
+        max_latency: 1ms
+        safe_state:
+          emits: pullover_ref
+          settle: 20s
+    sub:
+      hpc_state: {}
+      radar_state: {}
+    pub:
+      hold_ref: { aperiodic: true }
+      pullover_ref: { aperiodic: true }
+      escalate: { min_rate_hz: 50 }
+  brake:
+    paths:
+      stop:
+        trigger: { input: [hpc_state, blind, radar_state, escalate] }
+        output: [stop_cmd]
+        max_latency: 5ms
+        safe_state:
+          emits: stop_cmd
+          settle: 3s
+    sub:
+      hpc_state: {}
+      blind: {}
+      radar_state: {}
+      escalate: {}
+    pub:
+      stop_cmd: { aperiodic: true }
+
+paths:
+  island.hold:
+    trigger: { input: [/hpc/heartbeat] }
+    output: [/island/hold_ref]
+  island.pull_over:
+    trigger: { input: [/hpc/heartbeat] }
+    output: [/island/pullover_ref]
+  island.blind_stop:
+    trigger: { input: [/camera/lanes] }
+    output: [/island/stop_cmd]
+
+topics:
+  /hpc/heartbeat:
+    type: std_msgs/msg/Empty
+    pub: [hpc/heartbeat]
+    sub: [supervisor/heartbeat]
+  /camera/lanes:
+    type: std_msgs/msg/Empty
+    pub: [camera/lanes]
+    sub: [supervisor/lanes]
+  /radar/tracks:
+    type: std_msgs/msg/Empty
+    pub: [radar/tracks]
+    sub: [supervisor/tracks]
+  /island/hpc_state:
+    type: std_msgs/msg/Empty
+    pub: [supervisor/hpc_state]
+    sub: [state_machine/hpc_state, brake/hpc_state]
+  /island/blind:
+    type: std_msgs/msg/Empty
+    pub: [supervisor/blind]
+    sub: [brake/blind]
+  /island/radar_state:
+    type: std_msgs/msg/Empty
+    pub: [supervisor/radar_state]
+    sub: [state_machine/radar_state, brake/radar_state]
+  /island/escalate:
+    type: std_msgs/msg/Empty
+    pub: [state_machine/escalate]
+    sub: [brake/escalate]
+  /island/hold_ref:
+    type: std_msgs/msg/Empty
+    pub: [state_machine/hold_ref]
+  /island/pullover_ref:
+    type: std_msgs/msg/Empty
+    pub: [state_machine/pullover_ref]
+  /island/stop_cmd:
+    type: std_msgs/msg/Empty
+    pub: [brake/stop_cmd]
