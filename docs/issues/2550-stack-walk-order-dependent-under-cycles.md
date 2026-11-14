@@ -91,6 +91,39 @@ it reads 112 B, against a true depth of 121 B.
 3. **Refuse true recursion that survives the shrinking.** It is never folded
    into a number.
 
+## Step 3 measured: types do not break the cycle (2026-11-14)
+
+Shrinking the SCC with call-site types alone does not make an exact search
+fit. Measured on fresh nucleo builds, with every linked C TU typed (zpico.c
+made clang-clean):
+
+- **Direct edges only:** the reachable SCC is 24 functions. These are the
+  true-recursion candidates.
+- **With bound edges:** the SCC is 962 functions (Rust talker), 970 (action
+  server) and 2,037 (C talker).
+- **No single caller closes it.** The bound edges inside the Rust talker's
+  SCC come from 243 callers, 16,544 edges in all. Removing any one caller's
+  edges still leaves an SCC of at least 896.
+- **Neither language closes it.** Dropping every C caller's bound edges
+  leaves 398 functions; dropping every Rust caller's leaves 834.
+
+The cause is coarse callback types, `void(ptr)` and `void(ptr,ptr)`, which
+match hundreds of functions. Zenoh-pico's generic containers
+(`elem_clear` / `elem_copy`) and its closure handlers are the typical sites.
+
+Ruled 2026-11-14, option (c): the deterministic 8-order heuristic is the
+floor for now, and step 3 is parked here. The next steps, in order:
+
+1. Entity-kind pruning (issue 2517). It removes whole branches, but it does
+   not break the SCC on its own.
+2. Field- and parameter-sensitive binding, a phase-557 work item whose
+   design is reviewed before any code:
+   - a site that loads a function pointer from struct type T, field F
+     reaches only the functions stored into (T, F);
+   - a site that calls a parameter reaches what its direct callers pass;
+   - any cast, memcpy or escape of the field keeps today's binding.
+3. The exact search under a budget, once the SCC is small enough.
+
 ## Acceptance
 
 The walk reports the deepest simple path from its root, or it refuses.

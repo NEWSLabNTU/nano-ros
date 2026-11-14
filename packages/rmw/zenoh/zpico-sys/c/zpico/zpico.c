@@ -409,9 +409,11 @@ typedef struct {
      * `get_reply_handler` (callback fired by zenoh-pico's RX path
      * during an executor read step, which sits between two polls of the same
      * struct field). Plain volatile alone was not enough under
-     * `lto = "fat"` + `opt-level = "s"` on cortex-m3. Use the GCC
-     * `__atomic_*` builtins so the access is a real load/store
-     * even after whole-program inlining. */
+     * `lto = "fat"` + `opt-level = "s"` on cortex-m3. Access them with
+     * C11 `atomic_load_explicit` / `atomic_store_explicit` so the access
+     * is a real load/store even after whole-program inlining (and so
+     * clang, which the stack walk compiles this TU with, accepts it:
+     * clang refuses GCC's `__atomic_*_n` on an `_Atomic bool`). */
     _Atomic bool received;
     _Atomic bool done;
     /* Phase 108.C.zenoh.4-followup — counts every reply that arrives.
@@ -4330,7 +4332,7 @@ static void get_reply_handler(z_loaned_reply_t* reply, void* ctx) {
         /* `received` marks "this slot has something to read", which for a
          * collecting query is true from the first stored entry. */
         if (rctx->entry_count > 0) {
-            __atomic_store_n(&rctx->received, true, __ATOMIC_SEQ_CST);
+            atomic_store_explicit(&rctx->received, true, memory_order_seq_cst);
         }
         return;
     }
@@ -4373,7 +4375,7 @@ static void get_reply_handler(z_loaned_reply_t* reply, void* ctx) {
                     z_slice_drop(z_slice_move(&att_slice));
                 }
             }
-            __atomic_store_n(&rctx->received, true, __ATOMIC_SEQ_CST);
+            atomic_store_explicit(&rctx->received, true, memory_order_seq_cst);
             g_diag_reply_received_set++;
         } else {
             g_diag_reply_too_big++;
@@ -4427,7 +4429,7 @@ static void pending_get_dropper(void* arg) {
     struct zpico_session* s = _zpico_unpack_session(arg);
     int slot = _zpico_unpack_slot(arg);
     get_reply_ctx_t* rctx = &s->pending_gets[slot].ctx;
-    __atomic_store_n(&rctx->done, true, __ATOMIC_SEQ_CST);
+    atomic_store_explicit(&rctx->done, true, memory_order_seq_cst);
     _zpico_notify_spin(s);
     if (s->reply_waker) {
         s->reply_waker((int32_t)(s - g_sessions), slot);
@@ -4750,7 +4752,7 @@ int32_t zpico_liveliness_collect_done(zpico_session_t* session, int32_t handle) 
     if (!ps->in_use) {
         return ZPICO_ERR_INVALID;
     }
-    return __atomic_load_n(&ps->ctx.done, __ATOMIC_SEQ_CST) ? 1 : 0;
+    return atomic_load_explicit(&ps->ctx.done, memory_order_seq_cst) ? 1 : 0;
 }
 
 int32_t zpico_liveliness_entry_count(zpico_session_t* session, int32_t handle) {
@@ -5161,13 +5163,13 @@ int32_t zpico_liveliness_get_check(zpico_session_t* session, int32_t handle) {
      * in `pending_get_reply_handler`. */
     g_diag_check_ctx_addr = (uint32_t)(uintptr_t)&ps->ctx;
 
-    if (__atomic_load_n(&ps->ctx.received, __ATOMIC_SEQ_CST)) {
-        if (__atomic_load_n(&ps->ctx.done, __ATOMIC_SEQ_CST)) {
+    if (atomic_load_explicit(&ps->ctx.received, memory_order_seq_cst)) {
+        if (atomic_load_explicit(&ps->ctx.done, memory_order_seq_cst)) {
             ps->in_use = false;
         }
         return 1;
     }
-    if (__atomic_load_n(&ps->ctx.done, __ATOMIC_SEQ_CST)) {
+    if (atomic_load_explicit(&ps->ctx.done, memory_order_seq_cst)) {
         ps->in_use = false;
         return -9; /* ZPICO_ERR_TIMEOUT */
     }
@@ -5202,8 +5204,8 @@ int32_t zpico_get_check_info(zpico_session_t* session, int32_t handle, uint8_t* 
 
     /* Same aliasing-defeat trick as in `pending_get_reply_handler`. */
     g_diag_check_ctx_addr = (uint32_t)(uintptr_t)&ps->ctx;
-    bool received_snap = __atomic_load_n(&ps->ctx.received, __ATOMIC_SEQ_CST);
-    bool done_snap = __atomic_load_n(&ps->ctx.done, __ATOMIC_SEQ_CST);
+    bool received_snap = atomic_load_explicit(&ps->ctx.received, memory_order_seq_cst);
+    bool done_snap = atomic_load_explicit(&ps->ctx.done, memory_order_seq_cst);
     if (received_snap) {
         g_diag_get_check_returns_data++;
         // Reply arrived — copy data
@@ -5263,7 +5265,7 @@ int32_t zpico_get_reply_len(zpico_session_t* session, int32_t handle) {
         return ZPICO_ERR_INVALID;
     }
     pending_get_slot_t* ps = &s->pending_gets[handle];
-    if (!__atomic_load_n(&ps->ctx.received, __ATOMIC_SEQ_CST)) {
+    if (!atomic_load_explicit(&ps->ctx.received, memory_order_seq_cst)) {
         return ZPICO_ERR_INVALID;
     }
     return (int32_t)ps->ctx.len;
