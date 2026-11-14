@@ -1,0 +1,1 @@
+Runtime log lines, panic and assert messages of a default image (executor arena and parameter-service diagnostics, the XRCE and zenoh backends, the POSIX, FreeRTOS, ThreadX and Zephyr platform reports) now say what happened and what to do without citing internal design ids.

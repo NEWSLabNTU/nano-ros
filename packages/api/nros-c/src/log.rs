@@ -385,10 +385,11 @@ pub unsafe extern "C" fn rclc_logger_get_child(
         Err(why) => {
             static REPORTED: AtomicBool = AtomicBool::new(false);
             if !REPORTED.swap(true, Ordering::Relaxed) {
+                // RFC-0102 D3
                 nros_log::log_warn!(
                     &nros_log::DEFAULT_LOGGER,
                     "get_child(\"{}\", \"{suffix}\"): {why}. Records go out under the \
-                     parent; set_level on that child is refused (RFC-0102 D3). Reported \
+                     parent; set_level on that child is refused. Reported \
                      once per process.",
                     parent.name()
                 );

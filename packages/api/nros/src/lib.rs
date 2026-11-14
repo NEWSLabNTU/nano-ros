@@ -593,6 +593,7 @@ macro_rules! rx_buffer_for {
         const {
             match $crate::__rx_bound::<$msg>() {
                 ::core::option::Option::Some(n) => n,
+                // RFC-0033 (cap kinds); Phase 380 (no fallback bound)
                 ::core::option::Option::None => ::core::panic!(
                     "nros: this message type has NO serialized-size bound, so no \
                      receive buffer can be sized from it.\n\
@@ -602,14 +603,14 @@ macro_rules! rx_buffer_for {
                      `sequence<T, N>`, `T[<=N]`; or\n\
                      \x20 - as an INLINE `cap` in `nros-codegen.toml`: under \
                      `[fields]`, `\"pkg/Msg.field\" = 64`. A `heap` or `view` cap \
-                     is a sizing hint that nothing enforces (RFC-0033), so it \
+                     is a sizing hint that nothing enforces, so it \
                      deliberately does NOT bound.\n\
                      WHICH members cost the bound -- all of them, not just the \
                      first -- are named by the codegen diagnostic for this same \
                      type: `unbounded_reason` in the generated C header, or \
                      `nros_serdes::size::visit_unbounded` over its `FIELDS`. The type itself is named by the \
                      `rx_buffer_for!` invocation rustc points at.\n\
-                     Phase 380: `None` means no bound EXISTS, never \"unknown\", and \
+                     `None` means no bound EXISTS, never \"unknown\", and \
                      a buffer sized from a fallback is the failure that rule was \
                      written to prevent. Erroring honours it; defaulting to \
                      `DEFAULT_RX_BUF_SIZE` did not."

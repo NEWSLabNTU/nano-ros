@@ -52,6 +52,7 @@ pub(crate) const EXECUTOR_BACKING_U64S: usize = nros_node::INLINE_BACKING_U64S;
 // Compile-time assertion: inline opaque storage must fit the executor header
 // PLUS its carved backing (the `ExecutorInlineStorage` layout).
 #[cfg(feature = "rmw-cffi")]
+// issue 0665
 const _: () = assert!(
     core::mem::size_of::<nros_node::ExecutorInlineStorage>()
         <= EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),
@@ -59,7 +60,7 @@ const _: () = assert!(
      `size_of` taken while building the `nros` facade in the sizes PROBE, and \
      this compares it against `size_of` in the unit that LINKS. They differ only \
      when the probe built under a different feature set than this crate resolves \
-     — issue 0665: `std` here forwards `nros/env`, the probe forwarded only the \
+     — once, `std` here forwarded `nros/env`, the probe forwarded only the \
      shared name `std`, and one fat pointer of difference made the number 16 \
      bytes short. Check the forwarded set \
      (`nros_sizes_build::resolved_features_for`) before touching any knob. \
@@ -556,9 +557,10 @@ pub(crate) unsafe fn executor_init_on_support(
     // inline backing, so there is nothing here to carve one from. The sched task
     // runner opens every executor such an image has, each over its own backing.
     let Some(inline_sizing) = nros_node::INLINE_SIZING else {
+        // issue 1970
         nros_log::log_error!(
             nros_log::get_logger("nros-c"),
-            "rclc_executor_init: this image sizes its executors per sched task (issue 1970) and \
+            "rclc_executor_init: this image sizes its executors per sched task and \
              carries no inline executor backing; its executors are opened by the sched task \
              runner"
         );

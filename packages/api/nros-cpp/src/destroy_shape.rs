@@ -63,10 +63,11 @@ const EXECUTOR: bool = false;
 macro_rules! destroy_shapes {
     ($($func:ident drops $ty:ty => $shape:ident;)+) => {
         $(
+            // issue 1496
             const _: () = assert!(
                 core::mem::needs_drop::<$ty>() == $shape,
                 concat!(
-                    "issue 1496: `", stringify!($func), "` is classified `",
+                    "`", stringify!($func), "` is classified `",
                     stringify!($shape), "` in destroy_shape.rs, and \
                      `needs_drop::<", stringify!($ty), ">()` now disagrees. \
                      Move the row, and move the FFI function's doc comment with \

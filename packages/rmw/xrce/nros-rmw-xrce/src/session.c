@@ -79,13 +79,15 @@ void xrce_report_capacity_exhausted(const char* kind, const char* name, unsigned
 
 void xrce_report_ingress_unpaced(const char* topic, uint32_t rate_mhz, uint32_t bound,
                                  const char* why) {
+    // RFC-0074, phase-519 W3
     xrce_log_error("subscription '%s' declared ingress rate_hz=%lu.%03lu but the agent is "
-                   "asked for every sample: %s (type bound %lu bytes). RFC-0074, phase-519 W3.",
+                   "asked for every sample: %s (type bound %lu bytes).",
                    (topic != NULL) ? topic : "(unnamed)", (unsigned long)(rate_mhz / 1000u),
                    (unsigned long)(rate_mhz % 1000u), why, (unsigned long)bound);
 }
 
 void xrce_report_session_alloc_failed(size_t bytes) {
+    // RFC-0100
     xrce_log_error("xrce_session_state_t (%lu bytes) did not fit. Its size is decided "
                    "at BUILD time by NROS_XRCE_MAX_SUBSCRIBERS x "
                    "NROS_XRCE_SUBSCRIBER_RING_DEPTH x NROS_XRCE_SUBSCRIBER_BUFFER_SIZE, "
@@ -93,8 +95,7 @@ void xrce_report_session_alloc_failed(size_t bytes) {
                    "of NROS_XRCE_TRANSPORT_MTU x NROS_XRCE_STREAM_HISTORY each; it is ONE "
                    "allocation, so a heap larger than the shortfall does not help. Lower a "
                    "cap or raise the platform heap (CONFIG_NROS_ZEPHYR_HEAP_SIZE on Zephyr). "
-                   "Declaring this image's endpoints lets the build derive most of these "
-                   "(RFC-0100).",
+                   "Declaring this image's endpoints lets the build derive most of these.",
                    (unsigned long)bytes);
 }
 
@@ -1068,7 +1069,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
          * tier-1 sweep could not be told apart afterwards. Name the step and
          * its budget, so the next sighting says which wait ran out. */
         xrce_log_error("XRCE session open: the Agent sent no CREATE_CLIENT status in %d attempt(s) "
-                       "x %d ms (issue 1932)",
+                       "x %d ms; is the Agent running and reachable?",
                        (int)XRCE_SESSION_CREATION_RETRIES,
                        (int)UXR_CONFIG_MIN_SESSION_CONNECTION_INTERVAL);
         /* Both UDP and `custom://` paths now go through
@@ -1103,7 +1104,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         /* Issue 1932 — status 0 (UXR_STATUS_NONE) is a timeout: the Agent
          * answered the session but not the participant within the budget. */
         xrce_log_error("XRCE session open: participant create on domain %u got status %u "
-                       "within %d ms (%s; issue 1932)",
+                       "within %d ms (%s)",
                        (unsigned)domain_id, (unsigned)statuses[0],
                        (int)XRCE_ENTITY_CREATION_TIMEOUT_MS,
                        statuses[0] == UXR_STATUS_NONE ? "no answer" : "refused by the Agent");

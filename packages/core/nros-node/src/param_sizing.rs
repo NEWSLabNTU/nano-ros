@@ -64,7 +64,7 @@ const _: () = assert!(
     nros_params::MAX_PARAM_DESCRIPTION_LEN <= WIRE_STRING_CAP,
     "NROS_MAX_PARAM_DESCRIPTION_LEN is larger than the 256-byte string an \
      rcl_interfaces ParameterDescriptor carries, so the extra bytes could never \
-     reach `ros2 param describe`. State 256 or less (phase-446 F2)."
+     reach `ros2 param describe`. State 256 or less."
 );
 
 // ---------------------------------------------------------------------------
@@ -552,12 +552,13 @@ const DECLARED_WORST_PARAM_REQUEST: usize = match crate::config::DECLARED_PARAM_
 
 /// The same gate for the EXECUTOR-side pair, which until now was only a unit
 /// test (~~`the_derived_size_fits_the_worst_messages`~~).
+// phase-446 F3
 const _: () = assert!(
     inbox_fits(PARAM_SERVICE_BUFFER_SIZE, DECLARED_WORST_PARAM_REQUEST)
         || !crate::config::PARAM_SERVICE_BUFFER_STATED,
     "NROS_PARAM_SERVICE_BUFFER_SIZE is smaller than the largest parameter request the \
      contract's declared parameters can produce. Raise it, or drop the override and let \
-     phase-446 F3 derive it."
+     the build derive it."
 );
 
 // ---------------------------------------------------------------------------

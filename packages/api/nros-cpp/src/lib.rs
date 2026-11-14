@@ -1102,13 +1102,14 @@ pub(crate) unsafe fn release_dispatch_entry(
 // Compile-time assertion: inline storage must fit CppContext (executor + domain
 // + carved backing).
 #[cfg(feature = "rmw-cffi")]
+// issue 0665
 const _: () = assert!(
     core::mem::size_of::<CppContext>() <= CPP_EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),
     "CPP_EXECUTOR_OPAQUE_U64S too small for CppContext — this is a MEASUREMENT, not a budget. The stated size is \
      `size_of` taken while building the `nros` facade in the sizes PROBE, and \
      this compares it against `size_of` in the unit that LINKS. They differ only \
      when the probe built under a different feature set than this crate resolves \
-     — issue 0665: `std` here forwards `nros/env`, the probe forwarded only the \
+     — once, `std` here forwarded `nros/env`, the probe forwarded only the \
      shared name `std`, and one fat pointer of difference made the number 16 \
      bytes short. Check the forwarded set \
      (`nros_sizes_build::resolved_features_for`) before touching any knob. \
@@ -1261,8 +1262,9 @@ pub unsafe extern "C" fn nros_cpp_init_levels(
     backing_bytes: usize,
 ) -> nros_cpp_ret_t {
     let Some(sizing) = nros_node::levels_executor_sizing() else {
+        // phase-509 P9b
         cpp_diag!(
-            "nros: this image sizes no level (phase-509 P9b) -- the entry and the library were \
+            "nros: this image sizes no level -- the entry and the library were \
              built from different sched task tables; rebuild"
         );
         return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -1341,8 +1343,9 @@ unsafe fn sched_task_backing(
         return Err(NROS_CPP_RET_INVALID_ARGUMENT);
     };
     let Some(sizing) = nros_node::sched_task_sizing(name) else {
+        // issue 1970
         cpp_diag!(
-            "nros: sched task `{name}` has no executor sizing in this image (issue 1970) -- the \
+            "nros: sched task `{name}` has no executor sizing in this image -- the \
              entry and the library were built from different sched task tables; rebuild"
         );
         return Err(NROS_CPP_RET_INVALID_ARGUMENT);
@@ -1352,9 +1355,10 @@ unsafe fn sched_task_backing(
         || !(backing as usize).is_multiple_of(core::mem::align_of::<u64>())
         || backing_bytes < need
     {
+        // issue 1970
         cpp_diag!(
             "nros: sched task `{name}`: executor backing refused ({backing_bytes} bytes; the sched task \
-             needs {need}, 8-aligned) (issue 1970)"
+             needs {need}, 8-aligned)"
         );
         return Err(NROS_CPP_RET_INVALID_ARGUMENT);
     }
@@ -2049,8 +2053,9 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
 
     let ctx_ptr = storage as *mut CppContext;
     let Some(inline_sizing) = nros_node::INLINE_SIZING else {
+        // issue 1970
         cpp_diag!(
-            "nros_cpp_init_multi: this image sizes its executors per sched task (issue 1970) and \
+            "nros_cpp_init_multi: this image sizes its executors per sched task and \
              carries no inline executor backing"
         );
         return NROS_CPP_RET_NOT_INIT;
@@ -2489,8 +2494,9 @@ unsafe fn executor_backing_for_open(ctx_ptr: *mut CppContext) -> Option<SchedTas
     }
     // Issue 1970 -- a per-sched-task-sized image carries no inline backing.
     let Some(sizing) = nros_node::INLINE_SIZING else {
+        // issue 1970
         cpp_diag!(
-            "nros: this image sizes its executors per sched task (issue 1970) and carries no \
+            "nros: this image sizes its executors per sched task and carries no \
              inline executor backing; open each sched task's executor over its own \
              (`nros_cpp_init_sched_task` / `nros_cpp_executor_open_over_session_sched_task`)"
         );
@@ -7199,8 +7205,9 @@ unsafe fn open_over_session(
         Some(b) => b,
         None => {
             let Some(sizing) = nros_node::INLINE_SIZING else {
+                // issue 1970
                 cpp_diag!(
-                    "nros: this image sizes its executors per sched task (issue 1970) and carries \
+                    "nros: this image sizes its executors per sched task and carries \
                      no inline executor backing; use \
                      `nros_cpp_executor_open_over_session_sched_task`"
                 );
@@ -10792,23 +10799,26 @@ pub const NROS_CPP_SERIALIZATION_FORMAT: &str = "cdr";
 // exists in no RMW-less combo, so the crate failed to COMPILE there.
 #[cfg(feature = "rmw-cffi")]
 const _: () = {
+    // RFC-0088
     assert!(
         NROS_CPP_SERIALIZATION_FORMAT_ID
             == nros_node::session::IMAGE_SERIALIZATION_FORMAT_ID.as_u8(),
-        "RFC-0088: NROS_CPP_SERIALIZATION_FORMAT_ID no longer matches the linked \
+        "NROS_CPP_SERIALIZATION_FORMAT_ID no longer matches the linked \
          backend — update the mirror (and the C++ headers that assert on it)"
     );
     let mirrored = NROS_CPP_SERIALIZATION_FORMAT.as_bytes();
     let linked = nros_node::session::IMAGE_SERIALIZATION_FORMAT.as_bytes();
+    // RFC-0088
     assert!(
         mirrored.len() == linked.len(),
-        "RFC-0088: NROS_CPP_SERIALIZATION_FORMAT no longer matches the linked backend"
+        "NROS_CPP_SERIALIZATION_FORMAT no longer matches the linked backend"
     );
     let mut i = 0;
     while i < mirrored.len() {
+        // RFC-0088
         assert!(
             mirrored[i] == linked[i],
-            "RFC-0088: NROS_CPP_SERIALIZATION_FORMAT no longer matches the linked backend"
+            "NROS_CPP_SERIALIZATION_FORMAT no longer matches the linked backend"
         );
         i += 1;
     }

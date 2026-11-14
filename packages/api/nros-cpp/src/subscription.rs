@@ -82,10 +82,11 @@ fn note_sample_dropped_too_small(err: &TransportError, buf_len: usize, needed: O
     }
     let total = n.saturating_add(1);
     let needed = nros_rmw::RefusedLen(needed);
+    // issue 1425
     crate::cpp_diag!(
         "C++ take DROPPED ({err:?}): {needed}-byte sample, {buf_len}-byte \
          buffer; ACKed then discarded. Raise NROS_SUBSCRIPTION_BUFFER_SIZE to \
-         SERIALIZED_SIZE_MAX. {total} dropped so far (issue 1425)."
+         SERIALIZED_SIZE_MAX. {total} dropped so far."
     );
 }
 
@@ -1873,9 +1874,9 @@ mod tests {
              must reach: {line}"
         );
         // `nros_log`'s push is all-or-nothing into 256 bytes, so a line that
-        // grew past it loses its tail whole; the issue number is the tail.
+        // grew past it loses its tail whole; the drop count is the tail.
         assert!(
-            line.contains("(issue 1425)."),
+            line.contains("dropped so far."),
             "the line was truncated -- it no longer fits nros_log's buffer: {line}"
         );
         assert!(

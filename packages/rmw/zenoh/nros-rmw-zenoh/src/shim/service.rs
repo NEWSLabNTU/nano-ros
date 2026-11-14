@@ -1287,24 +1287,24 @@ impl ZenohServiceServer {
             .flatten()
         {
             match a {
+                // phase-461 W4
                 DropAnnouncement::RingFull { dropped } => nros_log::log_error!(
                     nros_log::get_logger("nros_rmw_zenoh"),
                     "zenoh service inbox FULL on queryable {}: {} request(s) dropped on arrival \
-                     ({}-slot ring; {}). Their clients time out. Logged once per episode \
-                     (phase-461 W4).",
+                     ({}-slot ring; {}). Their clients time out. Logged once per episode.",
                     handle,
                     dropped,
                     ring.depth(),
                     depth_knob
                 ),
+                // phase-461 W4
                 DropAnnouncement::Overflow {
                     dropped,
                     request_len,
                 } => nros_log::log_error!(
                     nros_log::get_logger("nros_rmw_zenoh"),
                     "zenoh service inbox slot too small on queryable {}: a {} B request \
-                     dropped ({} B slot; {}). {} so far. Logged once per episode (phase-461 \
-                     W4).",
+                     dropped ({} B slot; {}). {} so far. Logged once per episode.",
                     handle,
                     request_len,
                     ring.slot_bytes(),

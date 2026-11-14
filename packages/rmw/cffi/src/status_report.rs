@@ -51,10 +51,11 @@ pub(crate) fn status_ok(rc: NrosRmwRet, site: &StatusSite) -> bool {
     }
     if !site.reported.load(Ordering::Relaxed) {
         site.reported.store(true, Ordering::Relaxed);
+        // issue 2410
         nros_log::log_error!(
             nros_log::get_logger("nros_rmw_cffi"),
             "rmw backend: {} failed (status {}); answering as if idle. \
-             Reported once per site (issue 2410)",
+             Reported once per site",
             site.what,
             rc
         );

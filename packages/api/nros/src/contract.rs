@@ -330,10 +330,11 @@ pub unsafe fn arm_reporter(
             true
         }
         Err(e) => {
+            // issues 1635/1676
             nros_log::log_error!(
                 nros_log::get_logger("nros.contract"),
                 "contract monitors installed, but the {} publisher could not be created \
-                 ({:?}); violations stay in the log only (issues 1635/1676)",
+                 ({:?}); violations stay in the log only",
                 DIAG_TOPIC,
                 e
             );

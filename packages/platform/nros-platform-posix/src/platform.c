@@ -392,11 +392,12 @@ int8_t nros_platform_task_init(void *task, void *attr,
                 memset(&got, 0, sizeof(got));
                 if (pthread_getschedparam(*t, &got_policy, &got) == 0
                     && (got_policy != SCHED_FIFO || got.sched_priority != native)) {
+                    // issue 0803
                     fprintf(stderr,
                             "[warn] nros: task `%s` asked for SCHED_FIFO %d and the kernel "
                             "gave it policy=%d priority=%d. A transport or sched task that lands "
                             "BELOW what it declared inverts the ordering it exists to "
-                            "state (issue 0803).\n",
+                            "state.\n",
                             (a->name != NULL) ? a->name : "?", native, got_policy,
                             got.sched_priority);
                 }

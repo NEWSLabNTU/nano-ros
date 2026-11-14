@@ -200,7 +200,7 @@ pub(crate) struct CallbackMeta {
 // (the host test `callback_meta_len_rides_in_padding` only sees the host).
 const _: () = assert!(
     core::mem::size_of::<Option<CallbackMeta>>() == 6 * core::mem::size_of::<usize>(),
-    "CallbackMeta grew: `arena_len` must ride in the tail padding (issue 1631)"
+    "CallbackMeta grew: `arena_len` must ride in the tail padding"
 );
 
 /// Issue 1631 — the recorded length of one entry's arena region.
@@ -944,10 +944,10 @@ pub(crate) fn report_arena_exhausted(
     // released, the bytes may be there in holes none of which fits. A second
     // line, only then, so the common case keeps its one line and its budget.
     if arena_refusal_is_fragmented(request, released) {
+        // issue 1496
         nros_log::log_error!(
             nros_log::get_logger("nros"),
-            "arena FRAGMENTED: {released} B released, no hole holds {request} B \
-             (issue 1496)"
+            "arena FRAGMENTED: {released} B released, no hole holds {request} B"
         );
     }
 }
@@ -1105,35 +1105,41 @@ const _: () = {
     // handle; a caller's own callback is captured by value on top of it and is
     // the one part no static bound can reach (`PUBSUB_STRUCT` is sized to leave
     // room for the declarative runtime's, which is the largest in this tree).
+    // issue 1190
     assert!(
         core::mem::size_of::<SubBufferedEntry<(), ()>>() <= model::PUBSUB_STRUCT,
         "arena model: PUBSUB_STRUCT is below size_of::<SubBufferedEntry>() for \
-         this backend — the derived arena would under-size every subscription \
-         (issue 1190). Raise PUBSUB_ENTRY_STRUCT in nros-node/build.rs."
+         this backend — the derived arena would under-size every subscription. \
+         Raise PUBSUB_ENTRY_STRUCT in nros-node/build.rs."
     );
+    // issue 1190
     assert!(
         core::mem::size_of::<SubBufferedRawEntry<()>>() <= model::PUBSUB_STRUCT,
         "arena model: PUBSUB_STRUCT is below size_of::<SubBufferedRawEntry>() \
-         for this backend (issue 1190)."
+         for this backend."
     );
+    // issue 1190
     assert!(
         core::mem::size_of::<SubBufferedRawCEntry>() <= model::PUBSUB_STRUCT,
         "arena model: PUBSUB_STRUCT is below size_of::<SubBufferedRawCEntry>() \
-         for this backend (issue 1190)."
+         for this backend."
     );
+    // issue 1190
     assert!(
         core::mem::size_of::<SubBufferedTypedCEntry>() <= model::PUBSUB_STRUCT,
         "arena model: PUBSUB_STRUCT is below \
-         size_of::<SubBufferedTypedCEntry>() for this backend (issue 1190)."
+         size_of::<SubBufferedTypedCEntry>() for this backend."
     );
+    // issue 1190
     assert!(
         core::mem::size_of::<SubBufferedRawInfoCEntry>() <= model::PUBSUB_STRUCT,
         "arena model: PUBSUB_STRUCT is below \
-         size_of::<SubBufferedRawInfoCEntry>() for this backend (issue 1190)."
+         size_of::<SubBufferedRawInfoCEntry>() for this backend."
     );
 
     // A service server has NO trailing region: both buffers are inline and it
     // reaches the arena through `arena_alloc`. So the whole entry is bounded.
+    // issue 1190
     assert!(
         core::mem::size_of::<
             SrvRawEntry<
@@ -1142,13 +1148,14 @@ const _: () = {
             >,
         >() <= model::SERVICE_ENTRY,
         "arena model: SERVICE_ENTRY is below size_of::<SrvRawEntry>() for this \
-         backend (issue 1190)."
+         backend."
     );
 
     // A timer has no buffer at all.
+    // issue 1190
     assert!(
         core::mem::size_of::<TimerEntry<()>>() <= model::TIMER_ENTRY,
-        "arena model: TIMER_ENTRY is below size_of::<TimerEntry>() (issue 1190)."
+        "arena model: TIMER_ENTRY is below size_of::<TimerEntry>()."
     );
 };
 
@@ -1318,50 +1325,57 @@ const _: () = {
     const fn fits(actual: usize, term: usize) -> bool {
         actual + 8 <= term
     }
+    // issue 0810
     assert!(
         size_of::<session::RmwPublisher>() <= m::RMW_HANDLE_BOUND
             && size_of::<session::RmwSubscriber>() <= m::RMW_HANDLE_BOUND
             && size_of::<session::RmwServiceServer>() <= m::RMW_HANDLE_BOUND
             && size_of::<session::RmwServiceClient>() <= m::RMW_HANDLE_BOUND,
-        "issue 0810: an RMW handle of the linked backend exceeds RMW_HANDLE_BOUND in \
+        "an RMW handle of the linked backend exceeds RMW_HANDLE_BOUND in \
          nros-node/build.rs, so every declared action / service term under-prices it"
     );
+    // issue 0810
     assert!(
         fits(
             size_of::<ActionServerRawArenaEntry<B, B, B, G>>(),
             m::ACTION_SERVER_ENTRY
         ),
-        "issue 0810: ActionServerRawArenaEntry outgrew ACTION_SERVER_ENTRY (nros-node/build.rs)"
+        "ActionServerRawArenaEntry outgrew ACTION_SERVER_ENTRY (nros-node/build.rs)"
     );
+    // issue 0810
     assert!(
         fits(
             size_of::<ActionClientRawArenaEntry<B, B, B>>(),
             m::ACTION_CLIENT_ENTRY
         ),
-        "issue 0810: ActionClientRawArenaEntry outgrew ACTION_CLIENT_ENTRY (nros-node/build.rs)"
+        "ActionClientRawArenaEntry outgrew ACTION_CLIENT_ENTRY (nros-node/build.rs)"
     );
+    // issue 0810
     assert!(
         fits(size_of::<SrvRawEntry<B, B>>(), m::SERVICE_ENTRY),
-        "issue 0810: SrvRawEntry outgrew SERVICE_ENTRY (nros-node/build.rs)"
+        "SrvRawEntry outgrew SERVICE_ENTRY (nros-node/build.rs)"
     );
+    // issue 0810
     assert!(
         fits(
             size_of::<ServiceClientRawArenaEntry<B>>(),
             m::SERVICE_CLIENT_ENTRY
         ),
-        "issue 0810: ServiceClientRawArenaEntry outgrew SERVICE_CLIENT_ENTRY (nros-node/build.rs)"
+        "ServiceClientRawArenaEntry outgrew SERVICE_CLIENT_ENTRY (nros-node/build.rs)"
     );
+    // issue 0810
     assert!(
         fits(
             size_of::<GuardConditionEntry<(unsafe extern "C" fn(*mut core::ffi::c_void), usize)>>(),
             m::GUARD_CONDITION_ENTRY
         ),
-        "issue 0810: GuardConditionEntry outgrew GUARD_CONDITION_ENTRY (nros-node/build.rs)"
+        "GuardConditionEntry outgrew GUARD_CONDITION_ENTRY (nros-node/build.rs)"
     );
+    // issue 0810
     assert!(
         fits(size_of::<SubBufferedRawCEntry>(), m::PUBSUB_STRUCT)
             && fits(size_of::<SubBufferedTypedCEntry>(), m::PUBSUB_STRUCT),
-        "issue 0810: a C subscription entry outgrew PUBSUB_STRUCT (nros-node/build.rs)"
+        "a C subscription entry outgrew PUBSUB_STRUCT (nros-node/build.rs)"
     );
 };
 
@@ -1572,11 +1586,12 @@ fn drop_is_reported(n: u32) -> bool {
 #[cold]
 fn log_dropped_take(err: &TransportError, buf_len: usize, recorded: Option<usize>, n: u32) {
     let needed = nros_rmw::RefusedLen::for_error(err, recorded);
+    // issue 0757
     nros_log::log_error!(
         nros_log::get_logger("nros"),
         "subscription take DROPPED ({err:?}): {needed}-byte sample, {buf_len}-byte \
          buffer. Received and ACKed, then discarded — raise the subscription \
-         buffer knob if this is BufferTooSmall. Dropped {} so far (issue 0757)",
+         buffer knob if this is BufferTooSmall. Dropped {} so far",
         n + 1
     );
 }
@@ -2765,13 +2780,14 @@ fn report_typed_deserialize_failure(rc: i32, len: usize) {
     if n != 0 && !n.is_multiple_of(64) {
         return;
     }
+    // phase-417 W5.a
     nros_log::log_error!(
         nros_log::get_logger("nros"),
         "typed subscription DROPPED a {len}-byte sample: deserialize returned \
          {rc}. The callback was NOT invoked and the storage still holds the \
          previous message. Usual cause: the sample does not fit the message \
          struct (a string/sequence longer than its declared bound) or the topic \
-         carries a different type. Dropped {} so far (phase-417 W5.a)",
+         carries a different type. Dropped {} so far",
         n + 1
     );
 }
@@ -5110,8 +5126,8 @@ mod dropped_take_log_tests {
         let line = logged_one(TransportError::BufferTooSmall, 4093, Some(1000));
         assert!(line.contains("1000-byte sample"), "no sample size: {line}");
         assert!(line.contains("4093-byte buffer"), "no buffer size: {line}");
-        // nros_log's buffer is all-or-nothing; the issue number is the tail.
-        assert!(line.contains("(issue 0757)"), "truncated: {line}");
+        // nros_log's buffer is all-or-nothing; the drop count is the tail.
+        assert!(line.contains("Dropped 1 so far"), "truncated: {line}");
     }
 
     #[test]
