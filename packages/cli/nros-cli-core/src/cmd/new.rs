@@ -258,9 +258,9 @@ pub struct Args {
     #[arg(long)]
     pub target: Option<String>,
 
-    /// The board a package's one `[image.<id>]` names (`nros new <name>
-    /// --board <board>`, the single-package front door: the platform is the
-    /// board's), or the board an `--image` is built for. With `--platform`
+    /// The board the new workspace's bringup image runs on (`nros new <name>
+    /// --board <board>`: the platform is the board's), or the board an
+    /// `--image` is built for. With `--platform`
     /// instead, a project defaults to the platform's own board from the board
     /// catalog (`freertos` -> `mps2-an385-freertos`) and refuses, naming the
     /// candidates, when the platform has several (`threadx`).
