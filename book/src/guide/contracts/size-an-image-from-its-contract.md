@@ -46,7 +46,7 @@ Rust, C and C++ images.
    `system.toml` for a bringup with no `launch/`
    ([Contracts for a bringup with no launch file](contracts-for-a-bringup-with-no-launch-file.md)).
    Declare each node's endpoints under `nodes:`, keyed by their local names; a
-   timer is a `paths:` entry whose trigger is `{ timer: { rate_hz: N } }`. Wire
+   timer is a `paths:` entry whose trigger is `{ timer: { rate: NHz } }`. Wire
    each endpoint to its absolute name under `topics:`, `services:` or
    `actions:`, with its type. To size the receive queues too, declare each
    endpoint's depth ([Declare QoS in a contract](declare-qos-in-a-contract.md)).

@@ -19,7 +19,7 @@
 
 version: 1
 
-functions:
+capabilities:
   hpc_alive: [/hpc/heartbeat]
   lanes: [/camera/lanes]
   radar: [/radar/tracks]
@@ -46,28 +46,28 @@ hazards:
     monitors: [/hpc/heartbeat]
     on: omission
     ftti: 60s
-    enters: autonomous
+    leaves: autonomous
   camera_loss:
     monitors: [/camera/lanes]
     on: omission
     ftti: 10s
-    enters: autonomous
+    leaves: autonomous
   radar_loss:
     monitors: [/radar/tracks]
     on: omission
     ftti: 60s
-    enters: autonomous
+    leaves: autonomous
 
 nodes:
   hpc:
     pub:
-      heartbeat: { min_rate_hz: 100 }
+      heartbeat: { min_rate: 100Hz }
   camera:
     pub:
-      lanes: { min_rate_hz: 20 }
+      lanes: { min_rate: 20Hz }
   radar:
     pub:
-      tracks: { min_rate_hz: 20 }
+      tracks: { min_rate: 20Hz }
   supervisor:
     paths:
       declare_hpc_lost:
@@ -84,15 +84,15 @@ nodes:
         max_latency: 2ms
     sub:
       heartbeat:
-        min_rate_hz: 100
+        min_rate: 100Hz
         max_age: 30ms
         on_violation: { on: [omission], mechanism: application, reaction: declare_hpc_lost }
       lanes:
-        min_rate_hz: 20
+        min_rate: 20Hz
         max_age: 150ms
         on_violation: { on: [omission], mechanism: application, reaction: declare_blind }
       tracks:
-        min_rate_hz: 20
+        min_rate: 20Hz
         max_age: 150ms
         on_violation: { on: [omission], mechanism: application, reaction: declare_radar_lost }
     pub:
@@ -120,7 +120,7 @@ nodes:
       # The dwell's owner notices its deadline on its own tick, and takes
       # the next level from there (`dwell-expiry`).
       on_timer:
-        trigger: { timer: { rate_hz: 50 } }
+        trigger: { timer: { rate: 50Hz } }
         output: [pullover_ref, escalate]
         max_latency: 1ms
         safe_state:
@@ -132,7 +132,7 @@ nodes:
     pub:
       hold_ref: { aperiodic: true }
       pullover_ref: { aperiodic: true }
-      escalate: { min_rate_hz: 50 }
+      escalate: { min_rate: 50Hz }
   brake:
     paths:
       stop:
@@ -150,7 +150,7 @@ nodes:
     pub:
       stop_cmd: { aperiodic: true }
 
-paths:
+event_chains:
   island.hold:
     trigger: { input: [/hpc/heartbeat] }
     output: [/island/hold_ref]

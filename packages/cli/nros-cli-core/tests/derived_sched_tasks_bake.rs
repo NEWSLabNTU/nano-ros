@@ -362,7 +362,7 @@ fn periods(derived: &DerivedSchedule) -> BTreeMap<String, Option<u64>> {
 /// it was invisible because every contract stated the two numbers equal.
 ///
 /// Then the issue's own experiment, reversed: editing the TRIGGER must move the
-/// schedule. Issue 1372: "A reader editing `trigger: { timer: { rate_hz: 10 } }`
+/// schedule. Issue 1372: "A reader editing `trigger: { timer: { rate: 10Hz } }`
 /// to `20` and rebuilding gets a byte-identical schedule". Raising the slow
 /// pair's trigger to 60 Hz while leaving every promise untouched must put it
 /// FIRST, at 16.7 ms.
@@ -428,8 +428,8 @@ fn the_schedule_follows_the_timer_trigger_not_the_publication_promise() {
     raised.configure(&["main"]);
     edit_contract(
         &raised,
-        "timer: { rate_hz: 10 }",
-        "timer: { rate_hz: 60 }",
+        "timer: { rate: 10Hz }",
+        "timer: { rate: 60Hz }",
         2,
     );
     let model = resolve_model(&raised.bringup(), false);
@@ -478,8 +478,8 @@ fn a_promise_above_the_timer_rate_is_a_resolver_warning() {
     let over = Fixture::copy("promise-over");
     edit_contract(
         &over,
-        "status: { min_rate_hz: 8 }",
-        "status: { min_rate_hz: 30 }",
+        "status: { min_rate: 8Hz }",
+        "status: { min_rate: 30Hz }",
         1,
     );
     let model = resolve_model(&over.bringup(), false);
@@ -497,7 +497,7 @@ fn a_promise_above_the_timer_rate_is_a_resolver_warning() {
         });
     assert!(
         mismatch.contains("/mrm_comfortable_stop_operator/status")
-            && mismatch.contains("min_rate_hz 30"),
+            && mismatch.contains("min_rate 30 Hz"),
         "{mismatch}"
     );
 }

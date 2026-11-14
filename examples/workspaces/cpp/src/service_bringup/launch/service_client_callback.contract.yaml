@@ -10,7 +10,7 @@ nodes:
     # callback, not a path of its own.
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 2 } }
+        trigger: { timer: { rate: 2Hz } }
         output: []
     cli:
       add_two_ints: {}

@@ -9,7 +9,7 @@ nodes:
     # from that tick, so the timer is a real callback slot.
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 2 } }
+        trigger: { timer: { rate: 2Hz } }
         output: []
 
 actions:

@@ -12,20 +12,20 @@ nodes:
     params: {}
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 1000 } }
+        trigger: { timer: { rate: 1000Hz } }
         output: [tick]
     pub:
-      tick: { min_rate_hz: 500 }
+      tick: { min_rate: 500Hz }
 
   load_flat:
     params:
       burn_us: { type: integer }
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 10 } }
+        trigger: { timer: { rate: 10Hz } }
         output: [tick]
     pub:
-      tick: { min_rate_hz: 1 }
+      tick: { min_rate: 1Hz }
 
 # Every topic leaves the image; nothing here subscribes, so the derivation
 # places nodes by their timers alone.

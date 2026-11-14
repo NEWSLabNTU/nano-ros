@@ -135,7 +135,7 @@ Each row gives the edit. The verdicts:
 | `phantom` | the contract declares and wires it, the code never creates it | remove the row, or waive it |
 | `unwired` | declared under `nodes:` but named by no `topics:`, `services:` or `actions:` entry | wire it or remove it |
 | `depth-mismatch`, `qos-mismatch`, `type-mismatch` | both sides name it and disagree | change one side |
-| `period-mismatch` | a timer's period differs from its path's `rate_hz` | change one side |
+| `period-mismatch` | a timer's period differs from its path's timer `rate` | change one side |
 | `param-missing-in-contract`, `param-phantom`, `param-type-mismatch` | the same, for a node's `params:` | as above |
 
 Only `phantom` and `param-phantom` rows are waivable, one row at a time, in the
@@ -170,7 +170,7 @@ nodes:
   talker:
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 1 } }
+        trigger: { timer: { rate: 1Hz } }
         output: [chatter]
     pub:
       chatter: { qos: { depth: 1 } }
