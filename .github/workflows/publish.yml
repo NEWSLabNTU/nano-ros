@@ -11,7 +11,11 @@
 # check. A path filter is per FILE and trigger (phase-559 H5), so the push
 # `paths:` below is the union of both, and the `changes` job decides which
 # job a push reaches: the book filter for `deploy`, one filter per image.
-# A dispatch names the one thing to publish (`job`).
+# A dispatch names the one thing to publish (`job`), and ONLY that: the path
+# filters decide on a push alone. On a dispatch `dorny/paths-filter` compares
+# against the previous commit, so a dispatch of `job=docs` right after a merge
+# that touched a Dockerfile rebuilt and pushed both images (run 43569744391,
+# 2026-11-14; `images.yml` had the same flaw).
 #
 # The book job needs no container and no toolchain beyond the pinned mdBook
 # and Doxygen; the image jobs need buildx and a GHCR login. Permissions are
@@ -156,7 +160,7 @@ jobs:
     name: build + push ci-base image
     needs: changes
     if: >-
-      ${{ needs.changes.outputs.ci_base == 'true'
+      ${{ (github.event_name == 'push' && needs.changes.outputs.ci_base == 'true')
           || (github.event_name == 'workflow_dispatch'
               && contains(fromJSON('["ci-base","both-images"]'), inputs.job)) }}
     runs-on: ubuntu-latest
@@ -250,7 +254,7 @@ jobs:
     name: build + push zephyr-ci image
     needs: changes
     if: >-
-      ${{ needs.changes.outputs.zephyr == 'true'
+      ${{ (github.event_name == 'push' && needs.changes.outputs.zephyr == 'true')
           || (github.event_name == 'workflow_dispatch'
               && contains(fromJSON('["zephyr","both-images"]'), inputs.job)) }}
     runs-on: ubuntu-latest
@@ -362,7 +366,7 @@ jobs:
   deploy:
     needs: changes
     if: >-
-      ${{ needs.changes.outputs.docs == 'true'
+      ${{ (github.event_name == 'push' && needs.changes.outputs.docs == 'true')
           || (github.event_name == 'workflow_dispatch' && inputs.job == 'docs') }}
     # Pages deploys must not be interrupted mid-flight — don't cancel an
     # in-progress deploy (unlike the check lanes); just serialize.
