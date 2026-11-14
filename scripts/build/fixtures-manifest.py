@@ -1180,19 +1180,40 @@ def row_in_coords(entry, coords):
     return any(c in coords for c in row_serves(entry))
 
 
+def compile_check_platform(entry):
+    """The platform a compile-check row is built for: its lane scope.
+
+    Issues 2510 and 2548. ONE rule, read by the build (`list-compile-checks
+    --coords-from`, `lane-dirs`), by the staleness probe and, through the
+    `compile-check-platforms` subcommand, by the test resolver, so build and
+    run cannot disagree about which rows a lane holds:
+
+      * a stated `platform` (the FreeRTOS cross-builds state `freertos`);
+      * else a `west-*` row is `zephyr`: the Zephyr lane builds it, and only a
+        lane holding a zephyr coordinate schedules that lane;
+      * else `linux`: every other builder compiles on the HOST.
+
+    Before 2548 an unstated row was in EVERY lane, so a threadx or zephyr merge
+    shard built every host compile-check (about 35 G of the zephyr shard's
+    89 G on merge-runtime run 43551581652) and its run then demanded the west
+    rows a threadx shard never builds.
+    """
+    if entry.get("platform"):
+        return entry["platform"]
+    if entry.get("builder", "") in WEST_COMPILE_CHECK_BUILDERS:
+        return "zephyr"
+    return "linux"
+
+
 def compile_check_in_coords(entry, coords):
     """Is this compile-check row in the lane `coords` describes? Issue 2510.
 
-    A compile-check row has no (platform, lang, rmw) coordinate of its own, so
-    by default every lane builds it. A row whose image only one platform can
-    build states that platform (`platform = "freertos"`), and the row is then
-    in a lane exactly when the lane holds ANY coordinate on it: the
-    platform-level question the run side's `require_platform_in_lane` asks.
-    `nros_tests::fixtures::require_compile_check` reads the same field, so the
-    build omits a row exactly when the run skips it.
+    In the lane exactly when the lane holds ANY coordinate on the row's
+    platform (`compile_check_platform`): the platform-level question the run
+    side's `require_platform_in_lane` asks.
     """
-    platform = entry.get("platform")
-    return not platform or any(c[0] == platform for c in coords)
+    platform = compile_check_platform(entry)
+    return any(c[0] == platform for c in coords)
 
 
 def matches_filters(entry, args, *, for_probe=False, all_entries=None, kind="fixture"):
@@ -2087,6 +2108,7 @@ def main():
             "validate-workspaces",
             # phase-319 W2 — the compile-check lane's inventory.
             "list-compile-checks",
+            "compile-check-platforms",
             "validate-compile-checks",
             # Issue 0406 — classify one id across ALL row kinds, so a builder
             # that matched nothing can say WHY instead of exiting 0 silently.
@@ -2562,6 +2584,15 @@ def main():
                     )
                     + "\n"
                 )
+        return
+
+    if a.command == "compile-check-platforms":
+        # Issue 2548 — `<id>\t<platform>` per compile-check row, by
+        # `compile_check_platform`. The test resolver reads this instead of
+        # re-deriving the rule, so there is one computation, as `coords` is
+        # for a fixture row's coordinate.
+        for e in load_compile_check_fixtures(a.manifest):
+            sys.stdout.write(f"{e['id']}\t{compile_check_platform(e)}\n")
         return
 
     if a.command in ("list-compile-checks", "validate-compile-checks"):
