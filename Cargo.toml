@@ -68,6 +68,9 @@ members = [
     # phase-517 W14 — the ONE QEMU ladder + per-board boot lines, shared by the
     # `nros` CLI (its own workspace, reached as a path dep) and nros-tests.
     "packages/tooling/nros-qemu-ladder",
+    # RFC-0129 D1 (phase-552 W1) — the ONE list of diagnostic codes. `no_std`
+    # and dependency-free, so the CLI, build scripts and images share it.
+    "packages/tooling/nros-diagnostic-codes",
     # Phase 221.A.2 — shared build-script helpers for nros-c/nros-cpp.
     "packages/tooling/nros-build-helpers",
     "packages/tooling/nros-cbindgen-headers",

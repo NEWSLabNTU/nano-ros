@@ -743,6 +743,16 @@ roadmap-audit *ARGS:
 issue-new slug="":
     @scripts/reserve-issue-id.sh {{slug}}
 
+# RFC-0129 D3 (phase-552 W1) — reserve the next diagnostic code (`NROS-NNNN`)
+# on origin, atomically, before declaring it in nros-diagnostic-codes. A code is
+# never reused or renumbered, so "the next number in codes.lock" is the same
+# race issue ids had; see `scripts/reserve-diag-code.sh`.
+#
+# Reserve the next free diagnostic code atomically across parallel sessions.
+[group("docs")]
+code-new name="":
+    @scripts/reserve-diag-code.sh {{name}}
+
 # Install the repo's git hooks (pre-push refuses a duplicate issue id, or a
 # submodule pin that moved backward) AND the three git builtins that make
 # submodule pointer moves legible. Idempotent; safe to re-run. Not automatic —

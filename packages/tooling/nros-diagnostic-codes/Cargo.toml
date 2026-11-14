@@ -1,0 +1,36 @@
+[package]
+name        = "nros-diagnostic-codes"
+version.workspace = true
+edition     = "2024"
+publish     = false
+description = "The ONE list of nano-ros diagnostic codes (NROS-NNNN): each refusal's title, remedy and explanation, and the renderer every surface shares."
+license     = "MIT OR Apache-2.0"
+
+# RFC-0129 D1 names this crate `nros-diagnostics`. That package name is taken
+# in this workspace by the on-target contract-violation reporter
+# (packages/core/nros-diagnostics), and cargo refuses two packages of one name
+# in one workspace, so the code list is `nros-diagnostic-codes`.
+#
+# `no_std` and dependency-free on purpose: an embedded image (the runtime
+# surface), a build script and the CLI all depend on the same list, and adding
+# it moves no lockfile beyond its own entry.
+
+[features]
+default = []
+# Host-only conveniences: `Refusal::panic` reads `NROS_VERBOSE`, and the view
+# renderers (`views`) become public.
+std = []
+# The generator binary, `nros-diagnostics-gen`. A feature, not a separate
+# crate: it needs nothing but `std`, and keeping it here keeps the list and
+# its views one package.
+gen = ["std"]
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "nros-diagnostics-gen"
+path = "src/bin/nros-diagnostics-gen.rs"
+required-features = ["gen"]
+
+[dependencies]
