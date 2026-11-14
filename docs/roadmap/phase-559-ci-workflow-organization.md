@@ -438,7 +438,16 @@ the user ruled; all five stand:
     outage never blocks a merge;
   - the first merge-group run after landing links all three, and its L3
     time is recorded here.
-- **Status:** OPEN (in review).
+- **Status:** DONE (2026-11-14, #3818). The first L3 run with the links,
+  43586752627 (merge group for #3823, on `server-241-queue`), linked all
+  three, green: `c/talker` 79 s, `cpp/talker` 68 s, `rust/talker` 43 s,
+  3 min 10 s together, in line with the measurement. L3 took 24 min 50 s in
+  all: setup 4 min 10 s (the first run after the runner came back) and
+  `just ci matrix build` 16 min 17 s. The Rust link needed no image change;
+  clang is in the runner image. Until 10:49Z the links never ran: the
+  `nros-queue` runner was gone from 05:08Z (fixed by
+  runner-store's container-owned dir rule and caught next time by the
+  presence watchdog).
 
 ## Acceptance (phase)
 
