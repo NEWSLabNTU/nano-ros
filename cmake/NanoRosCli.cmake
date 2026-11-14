@@ -130,9 +130,10 @@ function(nros_resolve_cli _out)
         set(${_out} "NOTFOUND" PARENT_SCOPE)
         return()
     endif()
+    # Phase 218: the CLI is built in-tree.
     message(FATAL_ERROR
         "${_RC_CONTEXT}: `nros` CLI not found on PATH or in the provisioned "
-        "store. nano-ros builds it in-tree from packages/cli/ (Phase 218):\n"
+        "store. nano-ros builds it in-tree from packages/cli/:\n"
         "  ./scripts/bootstrap.sh && source ./activate.sh   (contributors: just setup-cli)\n"
         "or set $NROS_CLI to an explicit binary.")
 endfunction()

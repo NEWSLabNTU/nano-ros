@@ -208,10 +208,11 @@ function(nros_system_generate bringup_pkg)
     endif()
 
     if(_nros_cli STREQUAL "NROS_CLI-NOTFOUND")
+        # Phase 218: the CLI is built in-tree.
         message(FATAL_ERROR
             "nros_system_generate: `nros` CLI not on PATH and "
             "NROS_CLI/$NROS_HOME/bin/~/.nros/bin all unset/missing. "
-            "Run `./scripts/bootstrap.sh` + `source ./activate.sh` (contributors: `just setup-cli`; Phase 218).")
+            "Run `./scripts/bootstrap.sh` + `source ./activate.sh` (contributors: `just setup-cli`).")
     endif()
 
     # The backend this image compiles, from the prj-<rmw>.conf overlay. Kconfig
