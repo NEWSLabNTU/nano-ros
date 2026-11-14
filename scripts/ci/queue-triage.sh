@@ -25,6 +25,24 @@
 # The signal is cheap: the same check failing across merge groups for DIFFERENT
 # pull requests is not a property of any one change.
 #
+# BUT A MERGE GROUP CARRIES EVERY ENTRY AHEAD OF IT. Its ref is
+# `gh-readonly-queue/main/pr-<N>-<base>`, and <base> is the head commit of the
+# group in front (or main's tip, for the first). So when #A breaks a check,
+# the groups for #B and #C behind it fail the same check for #A's reason, and
+# counting their PR numbers made one defect look like three authors' (#3805,
+# 2026-11-14: told "almost certainly not your pull request" about its own
+# defect). A failure built on the head of a group that failed the SAME check
+# is therefore DEPENDENT and is not counted; only independent failures are
+# evidence that a check is red for everyone.
+#
+# AND A GREEN RUN SINCE ENDS THE EVIDENCE. The window is the last few dozen
+# runs, which can span a day. A check that failed for one PR yesterday and has
+# passed in every group since is not red for everyone today, so a failure
+# OLDER than the newest successful run (the list is newest first) still makes
+# the verdict MINE but does not count toward INFRA. #3805's verdict counted
+# #3766's failure of the same check from twelve hours and many green groups
+# earlier.
+#
 # Usage:
 #   scripts/ci/queue-triage.sh            # triage the most recent ejections
 #   scripts/ci/queue-triage.sh 6          # ...focused on PR #6
@@ -50,7 +68,7 @@ WORKFLOW_FILTER="${NROS_TRIAGE_WORKFLOW:-}"
 
 # Classify a set of (pr, check, conclusion) rows. Pure text in, verdict out, so
 # the judgement can be tested without a network.
-#   stdin:  <pr>\t<check>\t<conclusion>
+#   stdin:  <pr>\t<check>\t<conclusion>[\t<base sha>\t<head sha>]
 #   stdout: INFRA <check> <n-prs>   |   MINE <check>   |   CLEAN
 classify() {
     awk -F'\t' '
@@ -60,8 +78,21 @@ classify() {
         # below drops them, and `cancelled` is reported separately so a reader
         # can see how much of the batch history carried no signal at all.
         $3 == "cancelled" || $3 == "skipped" || $3 == "running" { skipped++; next }
-        $3 == "failure" { fails[$2] = fails[$2] " " $1; n[$2]++ }
+        $3 == "success" { green = 1; next }
+        $3 == "failure" {
+            nf++; fpr[nf] = $1; fck[nf] = $2; fbase[nf] = $4; fstale[nf] = green
+            if ($5 != "") failedhead[$2 SUBSEP $5] = 1
+        }
         END {
+            # A failure whose group was built on the head of a group that
+            # failed the same check carries that group, and its defect.
+            for (i = 1; i <= nf; i++) {
+                if (fbase[i] != "" && ((fck[i] SUBSEP fbase[i]) in failedhead)) { dependent++; continue }
+                anyfail[fck[i]] = 1
+                # Older than a green run: not evidence the check is red now.
+                if (fstale[i]) continue
+                fails[fck[i]] = fails[fck[i]] " " fpr[i]
+            }
             best = ""; bestn = 0
             for (c in fails) {
                 split(fails[c], a, " ")
@@ -69,7 +100,10 @@ classify() {
                 for (i in a) if (a[i] != "" && !(a[i] in seen)) { seen[a[i]]; distinct++ }
                 if (distinct > bestn) { bestn = distinct; best = c }
             }
-            if (best == "") { printf "CLEAN\t\t0\t%d\n", skipped; exit }
+            if (best == "") {
+                for (c in anyfail) { printf "MINE\t%s\t1\t%d\n", c, skipped; exit }
+                printf "CLEAN\t\t0\t%d\n", skipped; exit
+            }
             # The SAME check failing for two or more DIFFERENT pull requests is
             # not a property of any one change.
             if (bestn >= 2) printf "INFRA\t%s\t%d\t%d\n", best, bestn, skipped
@@ -102,6 +136,18 @@ selftest() {
         '6\tcheck\tcancelled\n7\tcheck\tcancelled\n'
     t "running is not a verdict either" MINE \
         '6\tcheck\tfailure\n7\tcheck\trunning\n'
+    # #3805, 2026-11-14: its defect failed its own group and the two queued
+    # behind it, each built on the head of the one in front.
+    t "a cascade behind ONE failing group is MINE, not three authors" MINE \
+        '3807\tcheck\tfailure\tB\tC\n3787\tcheck\tfailure\tA\tB\n3805\tcheck\tfailure\tM\tA\n'
+    t "failures older than a green run are not INFRA" MINE \
+        '8\tcheck\tsuccess\n6\tcheck\tfailure\n7\tcheck\tfailure\n'
+    t "a green run OLDER than the failures does not excuse them" INFRA \
+        '6\tcheck\tfailure\n7\tcheck\tfailure\n8\tcheck\tsuccess\n'
+    t "two failures on unrelated bases are still INFRA" INFRA \
+        '6\tcheck\tfailure\tM1\tX\n7\tcheck\tfailure\tM2\tY\n'
+    t "a group behind a failure of a DIFFERENT check is independent" INFRA \
+        '7\tcheck\tfailure\tA\tB\n6\tother\tfailure\tM\tA\n8\tcheck\tfailure\tM\tZ\n'
     [ "$fails" -eq 0 ] || { echo "queue-triage selftest: FAILED"; return 1; }
     echo "queue-triage selftest: OK"
 }
@@ -123,10 +169,13 @@ gh auth status >/dev/null 2>&1 || { echo "[FAIL] gh not authenticated" >&2; exit
 
 echo "== recent merge-group runs on $REPO =="
 rows=""
-while IFS=$'\t' read -r rid head name concl; do
+while IFS=$'\t' read -r rid head name concl sha; do
     [ -n "$rid" ] || continue
     # The merge-group ref carries the PR number: gh-readonly-queue/main/pr-6-<sha>
     pr="$(printf '%s' "$head" | sed -n 's#.*/pr-\([0-9][0-9]*\)-.*#\1#p')"
+    # ...and the head of the group it was built on (see "A MERGE GROUP
+    # CARRIES EVERY ENTRY AHEAD OF IT" above).
+    base="$(printf '%s' "$head" | sed -n 's#.*/pr-[0-9][0-9]*-\([0-9a-f]*\)$#\1#p')"
     [ -n "$pr" ] || pr="?"
     printf '  PR #%-4s %-34s %s\n' "$pr" "${name:0:34}" "$concl"
     # Issue 1843: a WORKFLOW is not a check. Every `gate` failure carries the
@@ -142,17 +191,17 @@ while IFS=$'\t' read -r rid head name concl; do
         if [ -n "$failed" ]; then
             while IFS= read -r job; do
                 printf '           %s\n' "${job:0:70}"
-                rows="${rows}${pr}	${job}	${concl}"$'\n'
+                rows="${rows}${pr}	${job}	${concl}	${base}	${sha}"$'\n'
             done <<<"$failed"
             continue
         fi
     fi
-    rows="${rows}${pr}	${name}	${concl}"$'\n'
+    rows="${rows}${pr}	${name}	${concl}	${base}	${sha}"$'\n'
 done < <(
     gh run list --repo "$REPO" --event merge_group --limit "$FETCH" \
         ${WORKFLOW_FILTER:+--workflow "$WORKFLOW_FILTER"} \
-        --json databaseId,headBranch,workflowName,conclusion \
-        --jq '.[] | [(.databaseId|tostring), .headBranch, .workflowName, (if (.conclusion // "") == "" then "running" else .conclusion end)] | @tsv' \
+        --json databaseId,headBranch,workflowName,conclusion,headSha \
+        --jq '.[] | [(.databaseId|tostring), .headBranch, .workflowName, (if (.conclusion // "") == "" then "running" else .conclusion end), .headSha] | @tsv' \
         2>/dev/null
 )
 
