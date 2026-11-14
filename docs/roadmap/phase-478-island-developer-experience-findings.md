@@ -619,4 +619,4 @@ fixed after that release.
 - [issue 2568](../issues/2568-rust-ctx-param-misses-launch-values.md): a Rust `ctx.param()` gets the default, not the launch value.
 - [issue 2569](../issues/2569-cpp-metadata-probe-assumes-class-header.md): the C++ metadata probe assumes `<pkg>/<Class>.hpp` and logs a failure even with `HEADER` set.
 - [issue 2582](../issues/2582-cmake-workspace-road-drops-image-knob-rows.md): on the hand-written `nano_ros_workspace()` road, `[image.<id>.knobs.*]` rows are silently ignored (164 parameter slots stated, 32 built).
-
+- [issue 2584](../issues/archived/2584-configure-ignores-no-marker.md) (GitHub #3871, resolved): `nros configure` resolved a package that carried an ignore marker, so a contract-only bringup kept under `src/` failed the whole workspace. The marker list now has one home, `nros_pkg_index::is_ignored_dir`, and every package walk asks it.

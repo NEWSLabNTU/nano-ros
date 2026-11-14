@@ -5285,6 +5285,12 @@ fn scan_workspace(src_root: &Path, out: &mut Vec<WsPkg>) -> Result<()> {
             continue;
         }
         let dir = entry.path();
+        // A package carrying an ignore marker is out of the workspace for
+        // configure exactly as it is for the provider scan and colcon: its
+        // launch tree is never resolved, its messages never generated.
+        if nros_pkg_index::is_ignored_dir(&dir) {
+            continue;
+        }
         let manifest = dir.join("package.xml");
         if !manifest.is_file() {
             continue;
@@ -10213,5 +10219,35 @@ mod sync_edition_tests {
             resolve_sync_edition(None, d.path(), None).unwrap_err()
         );
         assert!(e.contains("a_bringup") && e.contains("b_bringup"), "{e}");
+    }
+}
+
+#[cfg(test)]
+mod scan_workspace_ignore_tests {
+    use super::scan_workspace;
+
+    /// GitHub #3871 — `nros configure` resolves every package `scan_workspace`
+    /// returns, so a package that opts out with any ignore marker must not be
+    /// returned. A contract-only bringup kept under `src/` for a separate
+    /// `play_launch check` used to fail the whole workspace's configure.
+    #[test]
+    fn a_package_with_an_ignore_marker_is_not_scanned() {
+        for marker in nros_pkg_index::IGNORE_MARKERS {
+            let d = tempfile::tempdir().unwrap();
+            for name in ["kept", "contract_only"] {
+                let p = d.path().join(name);
+                std::fs::create_dir_all(p.join("launch")).unwrap();
+                std::fs::write(
+                    p.join("package.xml"),
+                    format!("<package format=\"3\"><name>{name}</name></package>"),
+                )
+                .unwrap();
+            }
+            std::fs::write(d.path().join("contract_only").join(marker), "").unwrap();
+            let mut scan = Vec::new();
+            scan_workspace(d.path(), &mut scan).unwrap();
+            let names: Vec<&str> = scan.iter().map(|p| p.name.as_str()).collect();
+            assert_eq!(names, ["kept"], "{marker}");
+        }
     }
 }

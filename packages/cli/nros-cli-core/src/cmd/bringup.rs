@@ -272,7 +272,7 @@ pub fn discover_bringups(workspace_root: &Path) -> Result<Vec<DiscoveredBringup>
             Some(n) => n.to_string(),
             None => continue,
         };
-        if members.iter().any(|m| m == &name) {
+        if members.iter().any(|m| m == &name) || nros_pkg_index::is_ignored_dir(&p) {
             continue;
         }
         if p.join("package.xml").is_file() && p.join("system.toml").is_file() {

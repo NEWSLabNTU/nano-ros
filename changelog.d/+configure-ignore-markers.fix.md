@@ -1,0 +1,1 @@
+`nros configure`, `nros sync`, bringup discovery, `nros check` and the package index now honour every ignore marker: `COLCON_IGNORE`, `AMENT_IGNORE`, `NROS_IGNORE` and `.nros-ignore`. A package under `src/` that carries one is no longer resolved, so a contract-only bringup kept beside the real ones stops failing the whole workspace.
