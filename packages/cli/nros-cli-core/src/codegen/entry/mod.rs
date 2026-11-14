@@ -1914,7 +1914,9 @@ contracts: {}
         // A dropped fact is reported in the generated TU, never dropped in
         // silence — the emitted comment is where a reader of the entry looks.
         assert!(
-            out.contains("issue 0794 — NOT baked: rmw"),
+            // The words, not the issue id the comment carries: a generated
+            // file's ids are issue 2551's to strip.
+            out.contains("NOT baked: rmw"),
             "a conflict must be named in the emitted blob:\n{out}"
         );
     }

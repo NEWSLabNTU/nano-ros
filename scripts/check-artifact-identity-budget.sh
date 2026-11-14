@@ -421,7 +421,7 @@ if [ "${1:-}" = "--self-test" ]; then
     _st_rc=0
     _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_ti" NROS_FIXTURE_STAMP="$_st_tmp/no-stamp" \
         _st_gate)" || _st_rc=$?
-    if [ "$_st_rc" -eq 0 ] && nros_grep_q 'issue 1985): live_12' <<<"$_st_out"; then
+    if [ "$_st_rc" -eq 0 ] && nros_grep_q 'no build file of this configure names' <<<"$_st_out" && nros_grep_q 'live_12' <<<"$_st_out"; then
         echo "  ok   (i) a retired cargo root is left out, and the reading names it"
     else
         echo "  FAIL (i) a root no build file names was counted (rc=$_st_rc):" >&2

@@ -56,7 +56,8 @@ else bad "2: expected one repair-makes call, got: $(cat "$calls")"; fi
 : > "$calls"
 rc=0; guard "-j8 --jobserver-auth=fifo:/tmp/x" 2 || rc=$?
 # nros_grep_q exits 2 on a tool error, which `set -e` turns into a failure.
-said=0; nros_grep_q "issue 2421" "$WORK/stderr" || said=$?
+# The report's words, not the issue it cites (ids leave user text: 2547/2551).
+said=0; nros_grep_q "could not check $WORK/build for a cached make" "$WORK/stderr" || said=$?
 if [ "$rc" -eq 0 ] && [ -s "$calls" ] && [ "$said" -eq 0 ]; then
     ok "3: a CLI that cannot answer is reported, and the guard returns 0"
 else bad "3: rc=$rc, calls: $(cat "$calls"), stderr: $(cat "$WORK/stderr")"; fi
