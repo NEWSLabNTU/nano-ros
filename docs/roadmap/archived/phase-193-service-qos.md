@@ -20,7 +20,7 @@ exercising a non-default profile + the RELIABLE-vs-policy-presence caveat
 documented. **Phase 193 complete** except the M3.3-deferred named-options structs.
 Design:
 [RFC-0007](../../design/0007-service-qos.md); gap:
-[RFC-0008](../../design/0008-service-qos-gap.md).
+[RFC-0008](../../design/archived/0008-service-qos-gap.md).
 
 **Priority.** P2 — unblocks Phase 189.M3.3 (C/C++ service/action QoS + options
 parity); no MVP capability depends on it (services already work at the fixed

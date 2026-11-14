@@ -4,7 +4,7 @@ title: "Zero-copy raw publish/subscribe API"
 status: Stable
 area: runtime-api
 since: 2026-04
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-99]
 supersedes: []
 superseded-by: null
@@ -12,7 +12,7 @@ superseded-by: null
 
 # Zero-copy raw publish/subscribe API
 
-**Owners:** core; **Status:** v1 (Phase 99.A–99.G + 99.D' wire-through landed; 99.H minimal; 99.I–99.K open).
+**Owners:** core; **Status:** v1 (Phase 99.A–99.G + 99.D' wire-through landed; 99.H minimal; 99.I done; 99.J, 99.K and Cyclone `dds_loan_sample` not planned, see below).
 
 > **Review 2026-11-13.** [Phase 99](../roadmap/archived/phase-99-zero-copy-raw-api.md)
 > closed v1 complete; 99.J (raw-bytes examples) and 99.K (bench harness and
@@ -26,6 +26,14 @@ superseded-by: null
 > (`packages/rmw/zenoh/nros-rmw-zenoh/src/shim/publisher.rs:1405`) and,
 > through the vtable, for any C backend that fills the slots
 > (`packages/rmw/cffi/src/lib.rs:4180`).
+
+> **Ruling 2026-11-14 (phase-555 W3): the follow-ups are not planned.**
+> 99.J (raw-bytes examples), 99.K (the `cargo bench` harness and the book
+> chapter) and wiring Cyclone DDS's `dds_loan_sample` into the vtable's loan
+> slots are recorded here as not planned, and no phase carries them. They
+> are taken up when a user needs measured zero-copy on a DDS backend; that
+> need opens a phase for them. Until then the perf table below stays an
+> estimate nobody has measured, and phase-99 is this RFC's whole tracking.
 
 ## API discipline (read first)
 
@@ -308,7 +316,7 @@ Consequence: typed pub/sub never sees the lending path. `Publisher<M>::publish(&
 |---|---|---|---|---|
 | zenoh-pico (Phase 99.F) | yes | `z_bytes_from_static_buf` aliased publish (no payload copy; attachment still copied) | `z_bytes_get_contiguous_view` (`unstable-zenoh-api`) | landed |
 | XRCE-DDS (Phase 99.G) | no (now a C backend; its vtable loan slots are `NULL`, `vtable.c:219`) | arena path | `take_serialized` | the Phase 99.G Rust impl went with the Rust backend |
-| Cyclone DDS (replaced dust-dds) | no (C++ backend; vtable loan slots `NULL`, `vtable.cpp:455`) | arena path | `take_serialized` only | `dds_loan_sample` wiring is a follow-up |
+| Cyclone DDS (replaced dust-dds) | no (C++ backend; vtable loan slots `NULL`, `vtable.cpp:455`) | arena path | `take_serialized` only | `dds_loan_sample` wiring not planned (ruling 2026-11-14, above) |
 | uORB (Phase 90) | never | arena-only — `commit` does `orb_publish` (1 memcpy into the uORB topic struct) | `take_serialized` only — uORB callback writes into static slot | arena fallback always |
 | cffi (`nros-rmw-cffi`) | yes (forwards `nros-rmw/lending`) | the vtable's `borrow_loaned_message` when the C backend fills it, else the arena | the vtable's `take_loaned_message` when filled | `packages/rmw/cffi/src/lib.rs:4180` |
 
@@ -317,14 +325,14 @@ Consequence: typed pub/sub never sees the lending path. `Publisher<M>::publish(&
 | Phase | Examples touched |
 |---|---|
 | **99.I (v1 gate)** | `examples/px4/rust/uorb/{talker,listener}` — first real-world consumer; passes the SITL E2E (90.7) unchanged. PX4 already operates on raw bytes, so this is a direct migration. |
-| 99.J (post-v1) | **New** raw-bytes example tree under `examples/linux/rust/<backend>/zero-copy/{talker,listener}` for zenoh / xrce / dds. Not a migration of the existing typed examples — those publish ROS messages (`String`, `Twist`, …) through `Publisher<M>::publish(&M)` and always CDR-serialize, so loan/borrow does not apply to them and they stay unchanged. The new tree publishes byte payloads directly to demonstrate backend lending end-to-end. |
-| 99.K (post-v1) | `cargo bench` harness measuring `publish_raw`/`take_serialized` vs `loan`/`try_borrow` per backend; user-guide chapter `book/src/user-guide/0010-zero-copy-raw-api.md` with a decision matrix. |
+| 99.J (post-v1, not planned) | **New** raw-bytes example tree under `examples/linux/rust/<backend>/zero-copy/{talker,listener}` for zenoh / xrce / dds. Not a migration of the existing typed examples — those publish ROS messages (`String`, `Twist`, …) through `Publisher<M>::publish(&M)` and always CDR-serialize, so loan/borrow does not apply to them and they stay unchanged. The new tree publishes byte payloads directly to demonstrate backend lending end-to-end. |
+| 99.K (post-v1, not planned) | `cargo bench` harness measuring `publish_raw`/`take_serialized` vs `loan`/`try_borrow` per backend; user-guide chapter `book/src/user-guide/0010-zero-copy-raw-api.md` with a decision matrix. |
 
 Existing user code that calls `publish_raw` / `take_serialized` keeps working unchanged. The two APIs coexist. **Typed** flows (`Publisher<M>::publish` / `Subscription<M>::recv`) are entirely separate from the loan/borrow path and are not affected by this phase.
 
 ## Expected perf delta
 
-Estimates per published / received message, relative to `publish_raw` / `take_serialized` baseline. Actual numbers under 99.K bench.
+Estimates per published / received message, relative to `publish_raw` / `take_serialized` baseline. Unmeasured: the 99.K bench that would measure them is not planned.
 
 | Backend | Publish save | Receive save |
 |---|---|---|

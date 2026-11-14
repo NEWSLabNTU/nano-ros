@@ -1,14 +1,22 @@
 ---
 rfc: 0037
 title: "Rust and C user-API surfaces"
-status: Draft
+status: Superseded
 area: runtime-api
 since: 2026-06
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-239]
 supersedes: []
-superseded-by: null
+superseded-by: 0089
 ---
+
+> **Superseded by [RFC-0089](../0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
+> (2026-11-14, phase-555 W3).** The surface record this RFC promised is now
+> generated and gated: `docs/reference/api-surface/` and the per-row
+> `docs/reference/api-parity-ledger/` (`just check api-parity`), with the
+> names and their dispositions owned by RFC-0089. A hand-written catalog
+> drifted, as this one did (below). RFC-0128's amendment of this RFC (the C
+> lifecycle surface is upstream `rclc_lifecycle`'s) moved to RFC-0089.
 
 > **Review 2026-11-13: the surfaces recorded below are out of date.**
 > RFC-0022's builder landed (phase-483): `Executor::create_node` returns
@@ -21,8 +29,9 @@ superseded-by: null
 > `nros_<entity>_t` structs listed below are gone. The recorded ROS 2 side
 > of both surfaces now lives in `docs/reference/api-surface/` and the
 > per-row `docs/reference/api-parity-ledger/`. RFC-0128 amends the C
-> lifecycle surface (upstream `rclc_lifecycle`). Whether this RFC is
-> rewritten or retired is a question for the [phase-555 runtime-api brief](../roadmap/data/phase-555-w2-runtime-api-brief.md).
+> lifecycle surface (upstream `rclc_lifecycle`). The
+> [phase-555 runtime-api brief](../../roadmap/data/phase-555-w2-runtime-api-brief.md)
+> asked whether to rewrite or retire it; the ruling was to retire it.
 
 # RFC-0037 — Rust and C user-API surfaces
 

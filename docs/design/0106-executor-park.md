@@ -1,18 +1,22 @@
 ---
 rfc: 0106
 title: "The executor waits until its next deadline, on one platform primitive"
-status: Draft
+status: Stable
 area: runtime-api
 since: 2026-10
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-436, phase-521]
 ---
 
 # RFC-0106 — The executor waits until its next deadline, on one platform primitive
 
-**Status:** Draft (2026-10-16). The mechanism is implemented and on `main`;
-this RFC records the design that phase-436 built and, until now, held only in
-its phase doc.
+**Status:** Stable (2026-11-14, phase-555 W3). Drafted 2026-10-16 to record
+the design that phase-436 built and, until then, held only in its phase doc;
+D5 amended by RFC-0113. The remaining open items are issues: the backends
+that still fan out wakes are
+[issue 2542](../issues/2542-arrival-attribution-xrce-uorb-baremetal.md), and
+the deadline source never run on hardware is
+[issue 2543](../issues/2543-deadline-source-unmeasured-on-hardware.md).
 
 **Implemented by:** [phase-436](../roadmap/archived/phase-436-poll-wake-revision-deadline-driven-executor.md)
 (W1–W7, Paths A–E) and [phase-502](../roadmap/archived/phase-502-unbounded-condvar-wait-retirement.md)
@@ -236,12 +240,17 @@ budget is a floor on the wait, not a bound on the call.
   arrival (zenoh, Cyclone): the arrival wakes its owner, not the session.
   Measured 2026-10-24 (phase-397 W6, x86_64): an idle member under ~950
   foreign arrivals/s spins once per park instead of once per arrival, 0.003 %
-  of a core instead of 0.22 %. XRCE, uORB and bare metal still fan out.
+  of a core instead of 0.22 %. XRCE, uORB and bare metal still fan out:
+  [issue 2542](../issues/2542-arrival-attribution-xrce-uorb-baremetal.md).
 - **Deadline sources on hardware.** smoltcp's is the only port source. It
   wins a park on QEMU when the budget leaves it room (phase-436 Path B's
-  exit); no hardware run yet.
+  exit); no hardware run yet:
+  [issue 2543](../issues/2543-deadline-source-unmeasured-on-hardware.md).
 
 ## Changelog
+
+- 2026-11-14 -- Stable (phase-555 W3); the two open items filed as issues
+  2542 and 2543.
 
 - 2026-11-02 — D5's receive-blocking wait and its guard slices deleted
   (phase-521 W6); a session with no readiness form is refused at open.

@@ -4,7 +4,7 @@ title: "Service / action QoS gap (the `create_service_*` no-QoS path)"
 status: Superseded
 area: runtime-api
 since: 2026-05
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-189]
 supersedes: []
 superseded-by: 0007
@@ -12,7 +12,7 @@ superseded-by: 0007
 
 # Service / action QoS gap (the `create_service_*` no-QoS path)
 
-> **Superseded by [RFC-0007](0007-service-qos.md) (2026-06).** Phase 189.M3.3
+> **Superseded by [RFC-0007](../0007-service-qos.md) (2026-06).** Phase 189.M3.3
 > (service/action QoS + options parity) landed (COMPLETE 2026-05-29). The gap is
 > resolved: pub/sub-style QoS is threaded where it applies, and the service/result
 > plane QoS is **fixed at the RMW layer by design** (e.g. Cyclone RELIABLE+VOLATILE),
