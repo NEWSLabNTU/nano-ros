@@ -32,11 +32,12 @@ function(nros_system_image_args _out _bringup_pkg _bringup_dir _entry_dir)
     set(_args --for-entry "${_entry_dir}")
     if(DEFINED NROS_IMAGE_SYSTEM_DIR AND NOT NROS_IMAGE_SYSTEM_DIR STREQUAL "")
         if(NOT _rendered_dir STREQUAL _bringup_real)
+            # issue 2189.
             message(FATAL_ERROR
                 "nros_system_generate(${_bringup_pkg}): this configure was told its image "
                 "lives in ${_rendered_dir} (-DNROS_IMAGE_SYSTEM_DIR=${NROS_IMAGE_SYSTEM_DIR}), "
-                "and this call bakes ${_bringup_real}. Name one bringup in both places "
-                "(issue 2189).")
+                "and this call bakes ${_bringup_real}. Name one bringup in both "
+                "places.")
         endif()
         set(_args --target "${_rendered_image}")
     endif()
@@ -71,6 +72,7 @@ function(nros_system_check_image_agreement _stdout _bringup_pkg _bringup_dir)
         string(CONCAT _what "this configure's Kconfig rendered image "
             "`${_rendered_image}` from ${_rendered_dir}")
     endif()
+    # issue 2189.
     message(FATAL_ERROR
         "nros_system_generate(${_bringup_pkg}): the bake resolved image `${_baked_image}` "
         "(${_bringup_real}/system.toml claims this application), but ${_what}. "
@@ -78,5 +80,5 @@ function(nros_system_check_image_agreement _stdout _bringup_pkg _bringup_dir)
         "image this is:\n"
         "  west build ... -- -DNROS_IMAGE_SYSTEM_DIR=${_rel} -DNROS_IMAGE=${_baked_image}\n"
         "or move the [image.${_baked_image}] block into a system.toml beside this "
-        "application (issue 2189).")
+        "application.")
 endfunction()

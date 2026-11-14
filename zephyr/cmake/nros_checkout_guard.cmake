@@ -102,8 +102,9 @@ function(nros_assert_single_checkout module_root app_dir)
         return() # row 2 — the ordinary case
     endif()
 
+    # issue 1379 (the mixed image); issue 1258 (the symlinked manifest project).
     message(FATAL_ERROR
-        "nano-ros: this image would mix TWO nano-ros checkouts (issue 1379).\n"
+        "nano-ros: this image would mix TWO nano-ros checkouts.\n"
         "  application:   ${_app_real}\n"
         "    its checkout: ${_app_checkout}\n"
         "  nros module:   ${_module_real}\n"
@@ -116,7 +117,7 @@ function(nros_assert_single_checkout module_root app_dir)
         "about the tree you are building.\n"
         "\n"
         "This usually means the west workspace's manifest project is still a "
-        "symlink into the checkout that provisioned it (issue 1258). Two fixes, "
+        "symlink into the checkout that provisioned it. Two fixes, "
         "either is enough:\n"
         "  * pass -DZEPHYR_EXTRA_MODULES=<your checkout> to `west build`\n"
         "    (`scripts/lib/zephyr-module.sh cmake-arg` prints exactly that), or\n"
@@ -179,8 +180,9 @@ function(nros_assert_sdk_not_foreign module_root sdk_dir)
     if(NOT "${_alt}" STREQUAL "")
         set(_alt "    (${_alt}, after removing it)\n")
     endif()
+    # phase-478 I2; issue 1254 moved the SDK into the shared store.
     message(FATAL_ERROR
-        "nano-ros: the Zephyr SDK belongs to ANOTHER nano-ros checkout (phase-478 I2).\n"
+        "nano-ros: the Zephyr SDK belongs to ANOTHER nano-ros checkout.\n"
         "  SDK in use:    ${_sdk_real}\n"
         "    its checkout: ${_sdk_checkout}\n"
         "  nros module:   ${_module_real}\n"
@@ -188,7 +190,7 @@ function(nros_assert_sdk_not_foreign module_root sdk_dir)
         "\n"
         "This image would be compiled by whatever toolchain that other tree "
         "installed. The SDK belongs in the shared store, where every checkout "
-        "finds the version its own index pins (issue 1254). Re-register it from "
+        "finds the version its own index pins. Re-register it from "
         "THIS checkout:\n"
         "    just zephyr setup\n"
         "or point the build at the store copy:\n"

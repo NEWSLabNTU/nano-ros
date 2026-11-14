@@ -47,10 +47,13 @@ endif()
 if(NOT EXISTS "${NROS_DEPFILE_IN}")
     # Cargo writes dep-info on every successful build, so an absent one means the
     # rebuild edge is gone. Fail rather than leave a stale `.d` in place: a stale
-    # depfile is worse than none, because ninja BELIEVES it.
+    # depfile is worse than none, because ninja BELIEVES it. issue 0820.
     message(FATAL_ERROR
-        "nros: cargo wrote no dep-info at ${NROS_DEPFILE_IN} — the NuttX seam "
-        "would lose its rebuild edge on the nano-ros Rust world (issue 0820)")
+        "nros: cargo wrote no dep-info at ${NROS_DEPFILE_IN}, so the NuttX build "
+        "would no longer rebuild when the nano-ros Rust sources change. Cargo "
+        "writes that file on every successful build, so a missing one means cargo "
+        "built somewhere else; build again, and if it persists check the cargo "
+        "target directory this build was given.")
 endif()
 
 file(READ "${NROS_DEPFILE_IN}" _nros_depfile_content)

@@ -92,12 +92,13 @@ function(nros_assert_archive_pairs_with_header)
     # `EXISTS` alone either: `EXISTS` is true for a directory, so a header path
     # that has become a directory would pass a bare existence test.
     if(NOT EXISTS "${NAP_HEADER}" OR IS_DIRECTORY "${NAP_HEADER}")
+        # issue 1046.
         message(FATAL_ERROR
             "nros_assert_archive_pairs_with_header: the per-build generated header is missing:\n"
             "    ${NAP_HEADER}\n"
             "Its DIRECTORY existing is not evidence it was written — a generated\n"
             "header outlives the build that produced it, and an empty generated\n"
-            "dir outlives the build that emptied it (issue 1046).\n"
+            "dir outlives the build that emptied it.\n"
             "Build it:\n"
             "    ${NAP_BUILD_HINT}")
     endif()
@@ -118,12 +119,13 @@ function(nros_assert_archive_pairs_with_header)
     endforeach()
 
     if(NOT _nap_symbol)
+        # issue 0360.
         message(FATAL_ERROR
             "nros_assert_archive_pairs_with_header: ${NAP_LABEL} carries no "
             "'${NAP_SYMBOL_PREFIX}*' variant stamp:\n"
             "    ${NAP_HEADER}\n"
             "That stamp is what makes a header/archive mismatch a LINK error "
-            "instead of a silent buffer-size disagreement (issue 0360). A header "
+            "instead of a silent buffer-size disagreement. A header "
             "without one is either the checked-in stub or predates the stamp; "
             "either way the pairing below cannot be checked and the sizes cannot "
             "be trusted.\n"
@@ -142,6 +144,8 @@ function(nros_assert_archive_pairs_with_header)
 
     file(STRINGS "${NAP_ARCHIVE}" _nap_hit REGEX "${_nap_symbol}" LIMIT_COUNT 1)
     if(NOT _nap_hit)
+        # issue 0268 (the silent-overflow class); issues 1046/1050 (each file
+        # outlives the build that wrote it).
         message(FATAL_ERROR
             "nros_assert_archive_pairs_with_header: the generated header and the "
             "archive are from DIFFERENT builds.\n"
@@ -151,9 +155,9 @@ function(nros_assert_archive_pairs_with_header)
             "    defines: (not that symbol)\n"
             "\n"
             "The header carries storage SIZES and the archive was compiled with "
-            "others, so linking them is the issue-0268 silent-overflow class. "
+            "others, so linking them overflows buffers silently at run time. "
             "The two are independent files that each outlive the build that "
-            "wrote them (issues 1046/1050), which is why the mismatch is "
+            "wrote them, which is why the mismatch is "
             "possible at all: nothing rebuilds one when the other moves.\n"
             "\n"
             "Rebuild BOTH from one cargo invocation — they are the same "

@@ -805,6 +805,7 @@ function(nros_px4_add_module)
             _nros_px4_archive_defines_backend(_has "${_nm_out}" "${_nb}")
             if(_has)
                 string(REPLACE ";" " " _declared "${NPX_BACKENDS}")
+                # issue 1050.
                 message(FATAL_ERROR
                     "nros_px4_add_module: ${NPX_MODULE} declares BACKENDS "
                     "'${_declared}', but\n"
@@ -816,8 +817,7 @@ function(nros_px4_add_module)
                     "registers itself from an .init_array ctor BEFORE main, so it "
                     "takes RMW slot 0 ahead of this module's generated "
                     "nros_app_register_backends(), nros::init() opens IT, and the "
-                    "module fails at startup with `nros::init() failed` (issue "
-                    "1050).\n"
+                    "module fails at startup with `nros::init() failed`.\n"
                     "Rebuild the archive for THIS module:\n"
                     "    ${_NROS_PX4_UORB_ARCHIVE_CMD}\n"
                     "or, from the repo root, just:\n"

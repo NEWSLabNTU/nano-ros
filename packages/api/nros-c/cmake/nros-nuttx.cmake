@@ -194,10 +194,12 @@ function(nros_nuttx_build_example)
         endif()
     endforeach()
     if("${NUTTX_DIR}" STREQUAL "" OR NOT IS_DIRECTORY "${NUTTX_DIR}")
+        # issue 1801.
         message(FATAL_ERROR
             "nros_nuttx_build_example(${_NNBE_NAME}): NUTTX_DIR is empty or not a "
             "directory ('${NUTTX_DIR}') — `nros locate` found no NuttX tree and no "
-            "-DNUTTX_DIR was given. Run `just nuttx setup` (issue 1801).")
+            "-DNUTTX_DIR was given. Run `just nuttx setup`, or pass "
+            "-DNUTTX_DIR=<path to a NuttX tree>.")
     endif()
 
     # NanoRos_DIR (set by find_package(NanoRos CONFIG)) points at
