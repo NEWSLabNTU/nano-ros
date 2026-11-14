@@ -35,10 +35,11 @@ What this amendment does not change: the switch is still a nano-ros build
 fact, so it lives in `system.toml` and the overlay `nros.toml`, never in the
 SystemModel (the rule below). Divergences from stock, recorded with the
 ruling: `/rosout` is VOLATILE (rcl's is TRANSIENT_LOCAL), and a node does not
-yet subscribe to `/parameter_events` (issue 2483). Memory-tight images opt
-out: the Pico W's (its board budget holds one service server), PX4's, the
-RTIC entry's (which registers neither), and the XRCE images whose stated
-service-server pools hold only their own servers.
+yet subscribe to `/parameter_events` (issue 2483). The opt-outs are exactly
+three: the Pico W (its board budget holds one service server), PX4, and the
+RTIC entry, which registers neither interface (issue 2559). The XRCE images
+that state their service-server cap raise it by six per node instead (user
+ruling 2026-11-14).
 
 ## Amendment (2026-10-10) — what the SystemModel may carry, and where nano-ros's own facts go
 

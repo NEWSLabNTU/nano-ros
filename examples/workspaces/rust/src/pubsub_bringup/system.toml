@@ -75,13 +75,10 @@ locator = "serial/UART_0#baudrate=115200"
 # issue 1601). The knobs are the APP rung (RFC-0049): phase 207.6 shrank
 # `xrce_session_state_t` from ~390 KB at the defaults to ~12 KB at these, so
 # its calloc fits the board's heap. The other bare-metal images want the
-# defaults, so they are not a board fact, and the XRCE pools take no part in
-# the entity derivation (RFC-0098 D7 covers `ZPICO_*` only).
+# defaults, so they are not a board fact. The service-server cap is the one
+# left to the entity derivation: the image's sizing descriptor states its
+# runtime families, so the XRCE build sizes the six parameter services.
 [image.baremetal_talker_xrce_serial]
-# Its XRCE pools below are sized for its own service servers only, so it
-# opts out of the stock node interfaces (the six parameter services and
-# /rosout).
-node_interfaces = "none"
 board = "mps2-an385-baremetal"
 launch = "talker.launch.xml"
 rmw = "xrce"
@@ -92,7 +89,9 @@ locator = "custom://uart"
 custom_transport_mtu = 512
 buffer_size = 256
 max_subscribers = 1
-max_service_servers = 1
+# No `max_service_servers`: the cargo road derives it from the sizing
+# descriptor (the application's servers plus the six parameter services
+# of its one node).
 max_service_clients = 1
 
 # phase-535 W6 — the same bare-metal board with the RTIC entry framework
@@ -107,7 +106,7 @@ max_service_clients = 1
 board = "mps2-an385-baremetal"
 framework = "rtic"
 # The RTIC entry registers no parameter services and no /rosout writer,
-# so this image opts out of the stock node interfaces.
+# so this image opts out of the stock node interfaces (issue 2559).
 node_interfaces = "none"
 launch = "talker.launch.xml"
 locator = "tcp/10.0.2.2:10540"
@@ -117,7 +116,7 @@ os_config = ["board-net-15.toml"]
 board = "mps2-an385-baremetal"
 framework = "rtic"
 # The RTIC entry registers no parameter services and no /rosout writer,
-# so this image opts out of the stock node interfaces.
+# so this image opts out of the stock node interfaces (issue 2559).
 node_interfaces = "none"
 launch = "listener.launch.xml"
 locator = "tcp/10.0.2.2:10540"
@@ -193,9 +192,6 @@ os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7400"
 
 [image.zephyr_talker_xrce]
-# Its XRCE pools below hold no service server, so it opts out of the
-# stock node interfaces (the six parameter services and /rosout).
-node_interfaces = "none"
 board = "zephyr"
 launch = "talker.launch.xml"
 rmw = "xrce"
@@ -204,7 +200,7 @@ locator = "udp/127.0.0.1:2400"
 domain_id = 31
 
 [image.zephyr_talker_xrce.knobs.xrce]
-max_service_servers = 0
+max_service_servers = 6  # 0 of its own + the six parameter services of its node
 max_service_clients = 0
 
 [image.zephyr_listener]
@@ -214,9 +210,6 @@ os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7400"
 
 [image.zephyr_listener_xrce]
-# Its XRCE pools below hold no service server, so it opts out of the
-# stock node interfaces (the six parameter services and /rosout).
-node_interfaces = "none"
 board = "zephyr"
 launch = "listener.launch.xml"
 rmw = "xrce"
@@ -226,7 +219,7 @@ domain_id = 31
 
 [image.zephyr_listener_xrce.knobs.xrce]
 max_subscribers = 1
-max_service_servers = 0
+max_service_servers = 6  # 0 of its own + the six parameter services of its node
 max_service_clients = 0
 
 # Issue 2313 — the Rust Cyclone DDS images. They came from the

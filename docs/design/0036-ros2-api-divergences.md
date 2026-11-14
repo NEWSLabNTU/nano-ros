@@ -209,6 +209,17 @@ What still diverges, by name:
 
   The remaining static piece is the locator. Saying "no dynamic discovery" for
   the whole area described a system we stopped being.
+- **The stock node interfaces are on by default, with a per-image off
+  switch** (amended 2026-11-14, phase-556 W13, user ruling 2026-11-13). Every
+  node serves the six parameter services and publishes `/rosout` and
+  `/parameter_events`, as an rclcpp node does, unless its image states
+  `node_interfaces = "none"` in `system.toml`. Three differences remain:
+  `/rosout` is VOLATILE where rcl's is TRANSIENT_LOCAL; a node does not
+  subscribe to `/parameter_events` (issue 2483); and in a multi-node image
+  only the first node publishes `/parameter_events` (phase-556 W14). The
+  opt-outs are exactly three: the Pico W (its board budget holds one service
+  server), PX4 (the flight stack serves its own parameters), and the RTIC
+  entry, which registers neither interface (issue 2559).
 - **No parameter callbacks**; parameters are read/write only.
 - **No lifecycle-node graph** — a simplified state model for embedded executors.
 
@@ -293,6 +304,10 @@ meanwhile, where deleting one re-opens every row it covers.
      different placement.
 
 ## Changelog
+
+- 2026-11-14 -- the stock node interfaces (six parameter services, `/rosout`,
+  `/parameter_events`) are on by default with a per-image off switch; the
+  opt-outs are the Pico W, PX4 and the RTIC entry (issue 2559). phase-556 W13.
 
 - 2026-08-25 — the Errors row named its type for the third time and, for the
   first time, one the checker can see: **`nros::NodeError` + `nros::TransportError`**.

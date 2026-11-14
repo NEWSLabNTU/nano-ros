@@ -135,10 +135,6 @@ os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7620"
 
 [image.zephyr_action_server_xrce]
-# Its XRCE pools below are sized for its own service servers only, so it
-# opts out of the stock node interfaces (the six parameter services and
-# /rosout).
-node_interfaces = "none"
 board = "zephyr"
 launch = "action_server.launch.xml"
 rmw = "xrce"
@@ -148,7 +144,7 @@ domain_id = 39
 
 [image.zephyr_action_server_xrce.knobs.xrce]
 max_subscribers = 0
-max_service_servers = 3
+max_service_servers = 9  # 3 of its own + the six parameter services of its node
 max_service_clients = 0
 
 [image.zephyr_action_server_cyclonedds]
@@ -165,9 +161,6 @@ os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7620"
 
 [image.zephyr_action_client_xrce]
-# Its XRCE pools below hold no service server, so it opts out of the
-# stock node interfaces (the six parameter services and /rosout).
-node_interfaces = "none"
 board = "zephyr"
 launch = "action_client.launch.xml"
 rmw = "xrce"
@@ -177,11 +170,15 @@ domain_id = 39
 
 [image.zephyr_action_client_xrce.knobs.xrce]
 max_subscribers = 1
-max_service_servers = 0
+max_service_servers = 6  # 0 of its own + the six parameter services of its node
 max_service_clients = 3
 
 [image.zephyr_action_client_xrce.knobs.zephyr]
-heap_size = 98304
+# Kconfig's arena default with the parameter services on (196608) plus
+# the 32 KiB this image stated above the plain default (65536) before
+# the stock interfaces: the six parameter service slots in the XRCE session
+# state are about 27 KiB, inside the 128 KiB the capability default adds.
+heap_size = 229376
 
 [image.zephyr_action_client_cyclonedds]
 board = "zephyr"
