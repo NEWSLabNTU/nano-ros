@@ -1,0 +1,57 @@
+---
+id: 2560
+title: "NuttX C++ images fail in the nightly: the Corrosion-built Rust FFI glue resolves std's dependencies offline and finds no `addr2line`"
+status: open
+type: bug
+severity: medium
+area: [build, ci, cargo, nuttx, cmake]
+found: 2026-11-15
+related: [2444, 2561, phase-466]
+---
+
+## What
+
+Every NuttX C++ fixture row fails in the nightly's per-board jobs. First
+seen in run 43383470982 (2026-11-13 07:07Z, the first run with per-board
+jobs), and again in 43559931051 (2026-11-14): `NuttxArm` and `NuttxRiscv`,
+rows `workspace-cpp-nuttx-*`, `workspace-cpp-nuttx-realtime` and
+`nuttx-cpp-zenoh-talker`. It happens in the cmake build, at
+`Building Rust FFI glue for <pkg> C++ bindings`:
+
+```
+Locking 5 packages to latest Rust 1.96.0-nightly compatible versions
+error: no matching package named `addr2line` found
+location searched: crates.io index
+required by package `std v0.0.0 (…/nightly-2026-04-11-…/lib/rustlib/src/rust/library/std)`
+    ... which satisfies path dependency `std` (locked to 0.0.0) of package `sysroot v0.0.0 (…)`
+note: offline mode (via `--offline`) can sometimes cause surprising resolution failures
+```
+
+The family-level `nuttx` job of 2026-11-12 07:07Z (run 43172962836, at
+`e403555654`) printed no such error.
+
+## Known
+
+- The glue build is a `-Zbuild-std` cargo run inside cmake. It has no lock of
+  its own, so it resolves, and that resolution takes in std's `sysroot`
+  workspace. Under `--offline` that needs every std dependency in the cached
+  crates.io index. A CARGO_HOME that has never resolved std has none of them.
+- `nros build --offline` sets `CARGO_NET_OFFLINE=true` for the whole process
+  since issue 2444 (`e403555654`), so a cargo that cmake drives is offline
+  too. Before that, this cargo was online.
+- `scripts/build/leaf-cache.sh` warms only cargo-driven images. For a
+  cmake-driven image it fetches nothing, by design ("no cargo root to warm").
+
+## Not known
+
+- Why the 2026-11-12 family job did not fail, given that it already ran at
+  `e403555654`. Two possibilities, neither checked: the per-board split
+  changed what was built first, or which CARGO_HOME state the job starts from.
+
+## Directions
+
+- Warm std's dependencies once per toolchain before an offline build:
+  `cargo fetch --manifest-path "$(rustc +<nightly> --print sysroot)/lib/rustlib/src/rust/library/Cargo.toml"`.
+  This is the one network step, the same kind of step as issue 0967's.
+- Or give the glue build a lock to resolve from, so that it reads std from
+  `library/Cargo.lock` instead of from the index.

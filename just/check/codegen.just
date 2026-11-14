@@ -806,6 +806,16 @@ cmake-leaf-cache:
     fi
     ./tests/cmake-leaf-cache-tests.sh
 
+# The fixture builders' cache warm reads `nros build --dry-run`'s cargo line to
+# learn which generated root to `cargo fetch`. That line is
+# `Handoff::display()`, env first, so a `^cargo build` match found nothing once
+# an image's handoff carried env (the stack-floor flags), the warm returned in
+# silence, and the `--frozen` build failed on an unfetched crate
+# (tests/leaf-cache-plan-parse-tests.sh). Buildless, well under a second.
+[private]
+leaf-cache-plan-parse:
+    @bash tests/leaf-cache-plan-parse-tests.sh
+
 # phase-488 W3 — the ament verbs against a stock ROS 2 package's CMakeLists:
 # `rclcpp_components_register_node(... EXECUTABLE ...)` generates a main that
 # declares the component, `ament_auto_add_library(... SHARED ...)` builds STATIC,
