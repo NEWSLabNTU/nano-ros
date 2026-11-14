@@ -82,3 +82,10 @@ region from linker symbols first fixes it. Worth one line next to the
 
 The reporter offered a PR against the porting chapter for whichever parts are
 wanted.
+
+## Progress (2026-11-15)
+
+Gaps 1 and 2 are fixed and gap 3 is documented; phase-564 W3 has the
+measurements. Still open: the porting page (the library path and
+`NROS_INTERFACE_SEARCH_PATH`), which is with the book owner. This issue
+closes when it lands.

@@ -229,6 +229,12 @@ fn main() {
             // Phase 204.7 — `NROS_LINK_IP=0` sheds the IP link on a
             // serial-only node. Embedded XRCE already excludes IP.
             "posix_ip" => is_posix && ip,
+            // Issue 2579 — the backend's own UDP transport needs no libc, only
+            // the `nros_platform_udp_*` ABI, so it follows the knob alone; a
+            // serial-only image compiles a stand-in that references no
+            // network symbol.
+            "ip" => ip,
+            "no_ip" => !ip,
             // phase-420 W9 — a toggle compiled off on every target. Stated
             // rather than omitted: an omitted `#cmakedefine` is `/* #undef */`
             // under `configure_file` and an UNTOUCHED `#cmakedefine` line

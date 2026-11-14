@@ -1384,6 +1384,17 @@ rmw_ret_t xrce_posix_udp_init(xrce_session_state_t* st, const char* host, const 
  * and the file was deleted rather than revived. */
 rmw_ret_t xrce_nros_udp_init(xrce_session_state_t* st, const char* host, const char* port);
 
+/* Issue 2579 — the session's only other two touches of the UDP stack, kept in
+ * the same TU as the init so a serial-only image (`NROS_LINK_IP=0`) can drop
+ * the whole transport. In that image `transport_nros_udp_none.c` defines all
+ * three instead: the init answers NROS_RMW_RET_UNSUPPORTED and the other two
+ * answer -1 ("no such hook"), and no `nros_platform_udp_*` symbol is
+ * referenced, so a board with no IP stack need not stub nine of them.
+ * `xrce-sources.txt` picks one TU or the other with the `ip` / `no_ip`
+ * condition tokens. */
+int xrce_nros_udp_readiness_handle(xrce_session_state_t* st);
+int xrce_nros_udp_set_rx_notify(xrce_session_state_t* st, void (*cb)(void* ctx), void* ctx);
+
 /* Phase 115.K.2.5.1.5-serial — POSIX serial transport via custom
  * transport. Opens a tty/pty `path`, configures termios (raw mode,
  * 8N1, baud from `XRCE_SERIAL_BAUD` env or 115200), and registers

@@ -1,6 +1,6 @@
 # Phase 564 — XRCE on the device: a session that stays responsive and recoverable
 
-**Status (2026-11-15). IN PROGRESS: W1 and W2 done; W3, W4 open.**
+**Status (2026-11-15). IN PROGRESS: W1 and W2 done; W3 code done, its porting page pending; W4 open.**
 
 The device side of the XRCE backend (`packages/rmw/xrce/nros-rmw-xrce`, the
 Micro-XRCE-DDS client it drives, and what a board needs around it) has no
@@ -84,7 +84,9 @@ acknowledges nothing):
 
 ### W3 — The serial-only bare-metal port's three gaps
 
-- **Status:** OPEN.
+- **Status:** BLOCKED (the porting page, with the book owner). The code for
+  all three gaps is done (2026-11-15); issue 2579 and GitHub #1049 close
+  when the page lands.
 
 1. A custom-transport-only build still compiles `transport_nros_udp.c`, so a
    board with no IP stack must stub nine `nros_platform_udp_*` symbols.
@@ -97,6 +99,32 @@ Acceptance: each is either fixed or documented where a porter reads, with a
 measurement of the failure on main first; the porting page names the library
 path (install transport, `register()`, `Executor::open_in`, register nodes,
 `spin_once`) and `NROS_INTERFACE_SEARCH_PATH`.
+
+1. Fixed. `session.c` reaches the UDP stack only through
+   `transport_nros_udp.c` (init, readiness handle, rx notify), and
+   `xrce-sources.txt` compiles that TU under a new `ip` condition, or a
+   stand-in, `transport_nros_udp_none.c`, under `no_ip`. Both lanes answer
+   the tokens. The stand-in refuses `udp://` with NROS_RMW_RET_UNSUPPORTED
+   and the session logs that the image was built with `NROS_LINK_IP=0`.
+2. Fixed. `open`, `open_sized`, `open_multi` and `open_with_rmw` run through
+   `with_default_backing`: on `Err` the static's latch is re-armed
+   (`backing::give_back`), or the heap block is freed. An `Err` leaves
+   nothing over the backing (each `open*_in` fails before `from_session_in`,
+   or drops the executor it built, whose `Drop` clears `wake_ctx` last).
+3. Documented, on `FreeListHeap::new` and in the internals implementation
+   notes: zero a `NOLOAD` heap before the first allocation.
+
+Measured:
+
+| gap | main | fixed |
+| --- | --- | --- |
+| 1: undefined `nros_platform_udp_*` in the backend archive, thumbv7m-none-eabi, `NROS_LINK_IP=0` | 9 | 0 (IP build: still 9) |
+| 2: `a_failed_open_gives_the_static_back` (3 failed opens, then a take) | fails at attempt 0, the static kept | passes, heap arm included |
+
+The porting page: the library-path sequence, `NROS_INTERFACE_SEARCH_PATH`
+(colcon-style `src/` roots, read before `AMENT_PREFIX_PATH`) and the `no_ip`
+build, with a snippet checked against `thumbv7m-none-eabi`, went to the book
+owner as a brief.
 
 ### W4 — A lost session is visible and can be re-opened
 

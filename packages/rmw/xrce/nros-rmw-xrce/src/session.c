@@ -15,7 +15,6 @@
 #include "internal.h"
 
 #include "nros/platform.h"
-#include "nros/platform_net.h"
 #include "nros/rmw_ret.h"
 
 #include <uxr/client/client.h>
@@ -755,7 +754,7 @@ rmw_ret_t xrce_set_wake_callback(rmw_session_t* session, void (*cb)(void* ctx), 
     if (st->rx_notify_custom) {
         return xrce_custom_transport_set_rx_notify(cb, ctx);
     }
-    if (nros_platform_udp_set_rx_notify(st->udp_bridge.sock, cb, cb != NULL ? ctx : NULL) != 0) {
+    if (xrce_nros_udp_set_rx_notify(st, cb, cb != NULL ? ctx : NULL) != 0) {
         return NROS_RMW_RET_ERROR;
     }
     return NROS_RMW_RET_OK;
@@ -1043,15 +1042,24 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         st->use_custom_transport = true;
         rmw_ret_t udp_ret = xrce_nros_udp_init(st, host, port_str);
         if (udp_ret != NROS_RMW_RET_OK) {
+            if (udp_ret == NROS_RMW_RET_UNSUPPORTED) {
+                /* Issue 2579 — the image was built serial-only, so the UDP
+                 * transport was never compiled (`transport_nros_udp_none.c`
+                 * stands in for it). Say so, rather than failing the way a
+                 * mistyped address would. */
+                xrce_log_error("XRCE session open: locator '%s' is UDP, but this image was built "
+                               "with NROS_LINK_IP=0 and has no UDP transport; use serial:// or "
+                               "custom://",
+                               locator);
+            }
             xrce_session_free(st);
             return udp_ret;
         }
-        st->readiness_handle = nros_platform_udp_readiness_handle(st->udp_bridge.sock);
+        st->readiness_handle = xrce_nros_udp_readiness_handle(st);
         /* A removal is the probe: it installs nothing, and answers whether
          * the stack has the hook at all. */
         st->rx_notify_capable =
-            st->readiness_handle < 0 &&
-            nros_platform_udp_set_rx_notify(st->udp_bridge.sock, NULL, NULL) == 0;
+            st->readiness_handle < 0 && xrce_nros_udp_set_rx_notify(st, NULL, NULL) == 0;
         uxr_init_session(&st->session, &st->custom.comm, hash_session_key(node_name));
     }
 

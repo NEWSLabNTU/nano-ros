@@ -202,6 +202,48 @@ fn default_backing(sizing: super::storage::ExecutorSizing) -> &'static mut [Mayb
     }
 }
 
+/// Issue 2579 — run a fallible open over a default backing, and give the
+/// backing back if the open fails.
+///
+/// A board that boots before its Agent retries `Executor::open` until the
+/// session comes up. With a bare `default_backing` each failed attempt kept
+/// what it claimed: the first one the static reservation (latched for the
+/// life of the process), every later one a fresh `Box::leak` of a default
+/// executor's worth (~87 KB on Cortex-M). That panicked a small heap on the
+/// second retry. Now a failure re-arms the static's latch, or frees the heap
+/// block, so the N-th attempt costs what the first did.
+///
+/// It is sound because an `Err` leaves nothing over the backing. Every
+/// `open*_in` either fails before `from_session_in` builds an executor on it
+/// (backend selection, session open), or drops that executor on the way out
+/// (`open_multi_in`'s extra sessions). `Executor`'s `Drop` tears down every
+/// arena entry, and clears `wake_ctx`, the one pointer it hands the backend,
+/// last. `NodeError` holds no borrow. So once `open` returns `Err`, no
+/// reference into the slice exists, which is what `give_back` requires.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+fn with_default_backing(
+    sizing: super::storage::ExecutorSizing,
+    open: impl FnOnce(&'static mut [MaybeUninit<u64>]) -> Result<Executor<'static>, NodeError>,
+) -> Result<Executor<'static>, NodeError> {
+    let backing: *mut [MaybeUninit<u64>] = default_backing(sizing);
+    // SAFETY: `backing` came from `default_backing` as a unique `&'static mut`;
+    // this is that same borrow, passed on. It is not touched again unless the
+    // open fails (below).
+    let result = open(unsafe { &mut *backing });
+    if result.is_err() {
+        // SAFETY: the open failed, so (see above) no reference into `backing`
+        // survives it. A static handout re-arms the latch; anything else is
+        // the `Box::new_uninit_slice(words)` `default_backing` leaked, and
+        // `backing` is that exact fat pointer, so `Box::from_raw` frees it.
+        unsafe {
+            if !super::backing::give_back(backing) {
+                drop(alloc::boxed::Box::from_raw(backing));
+            }
+        }
+    }
+    result
+}
+
 #[cfg(feature = "rmw-cffi")]
 impl<'s> Executor<'s> {
     /// phase-271 — open a new executor session over caller-supplied `backing`,
@@ -405,8 +447,10 @@ impl Executor<'static> {
         sizing: super::storage::ExecutorSizing,
     ) -> Result<Self, NodeError> {
         // SAFETY: the backing is exactly `sizing.u64_len()` words, `'static`,
-        // uniquely owned by the returned executor.
-        unsafe { Self::open_in(config, default_backing(sizing), sizing) }
+        // uniquely owned by the returned executor; a failed open gives it back.
+        with_default_backing(sizing, |backing| unsafe {
+            Self::open_in(config, backing, sizing)
+        })
     }
 
     /// Phase 128.F.1 — explicit per-backend session declaration for
@@ -428,8 +472,11 @@ impl Executor<'static> {
     #[cfg(feature = "rmw-cffi")]
     pub fn open_multi(specs: &[SessionSpec<'_>]) -> Result<Self, NodeError> {
         let sizing = super::storage::ExecutorSizing::DEFAULT;
-        // SAFETY: the backing is exactly `sizing.u64_len()` words, `'static`.
-        unsafe { Self::open_multi_in(specs, default_backing(sizing), sizing) }
+        // SAFETY: the backing is exactly `sizing.u64_len()` words, `'static`;
+        // a failed open gives it back.
+        with_default_backing(sizing, |backing| unsafe {
+            Self::open_multi_in(specs, backing, sizing)
+        })
     }
 
     /// Phase 104.C.1 — open the Executor against a specific RMW
@@ -451,8 +498,11 @@ impl Executor<'static> {
     #[cfg(feature = "rmw-cffi")]
     pub fn open_with_rmw(rmw_name: &str, config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
         let sizing = super::storage::ExecutorSizing::DEFAULT;
-        // SAFETY: the backing is exactly `sizing.u64_len()` words, `'static`.
-        unsafe { Self::open_with_rmw_in(rmw_name, config, default_backing(sizing), sizing) }
+        // SAFETY: the backing is exactly `sizing.u64_len()` words, `'static`;
+        // a failed open gives it back.
+        with_default_backing(sizing, |backing| unsafe {
+            Self::open_with_rmw_in(rmw_name, config, backing, sizing)
+        })
     }
 }
 

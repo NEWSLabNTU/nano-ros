@@ -395,6 +395,13 @@ endfunction()
 set(_xrce_cond_always   TRUE)
 set(_xrce_cond_posix    TRUE)
 set(_xrce_cond_posix_ip ${_xrce_ip})
+# Issue 2579 — the backend's `transport_nros_udp.c` or its serial-only stand-in.
+set(_xrce_cond_ip       ${_xrce_ip})
+if(_xrce_ip)
+    set(_xrce_cond_no_ip FALSE)
+else()
+    set(_xrce_cond_no_ip TRUE)
+endif()
 # phase-420 W9 — a toggle compiled off on every target. Stated rather than
 # omitted, because an omitted `#cmakedefine` is `/* #undef */` here and an
 # UNTOUCHED `#cmakedefine` line under build.rs's substitution: one silence, two
