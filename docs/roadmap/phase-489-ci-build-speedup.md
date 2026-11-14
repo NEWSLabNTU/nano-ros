@@ -1147,6 +1147,59 @@ Re-measure after a day with the queue runner up. Fetch each run's jobs, sum
 `completed_at - started_at` where `runner_name` is set, and group by
 `conclusion`.
 
+### W11 — a push to main does not re-verify what the queue verified
+
+- **Status:** OPEN (2026-11-14): landed, waiting for the "after" measurement
+
+User-accepted, from the manager, 2026-11-14 (HEADGREEN was dropped in favour
+of this). `main` is rebase-merged, so the commit a push brings is the commit
+the merge queue's gate already ran on.
+
+**Before.** `gate.yml` on `push`, 2026-11-14 05:00-18:00Z: 33 runs, 1,295
+job-min, and **33 of 33** head SHAs had a passing `merge_group` gate run.
+
+| job | job-min | on a verified push |
+| --- | --- | --- |
+| warm the compile-tier cache (main only) | 448 | kept |
+| check / fast | 359 | skipped |
+| check / fast compile gates | 210 | skipped |
+| nros new -> sync -> resolve (`scaffold-journey`) | 169 | skipped |
+| colcon parity | 37 | skipped |
+| warm the SDK-store cache (two kinds) | 67 | kept |
+
+The skippable part is about 775 job-min in 13 h, 60 % of the push lane.
+
+**Change.** `changes` asks `scripts/ci/green-gate-run.sh <sha> --event
+merge_group`. That is the script phase-535 W10 uses for `merge-runtime`, and
+it now filters by event, because a successful earlier PUSH run of the same
+SHA is not a queue verdict.
+- If a queue run passed on this SHA, `check-fast`, `check-fast-compile`,
+  `scaffold-journey` and `colcon-parity` skip. The step summary and the `CI`
+  aggregator say "already verified in the queue (<run>)". The aggregator now
+  has a third justification for a skip beside "docs-only PR" and "no work on
+  this event": a push with a queue verdict.
+- A SHA with no passing queue run runs the full push gate: a break-glass or
+  direct push, an API error, or no token.
+- The cache warms and `post-submit` are untouched.
+
+**Gate.** `green-gate-run` (`tests/green-gate-run-tests.sh`) has 11 cases
+against a stub API:
+- a verified SHA skips;
+- the negative control, an unverified SHA, runs the full gate;
+- each of these also runs the full gate: a push run only, another commit, a
+  failed run, an API failure, an unparseable answer, no token;
+- the query names the event;
+- the queue step asks for `merge_group`;
+- the condition sits on exactly the four jobs.
+
+`check-lane-contracts`, `check-merge-group-gates` and
+`check-default-gates-run-somewhere` pass with the change. None of them
+expects the push run.
+
+**After.** Re-measure over the first 13 h after merge with the same query:
+the job-min of each push run, and whether its SHA was queue-verified. Done
+when it reads near 515 job-min (the warms alone) for the same merge rate.
+
 ### W12 — a docs-only batch skips the heavy queue siblings
 
 - **Status:** OPEN (the after-measure waits on docs-only batches through the

@@ -165,13 +165,18 @@ jobs:
     # outputs are empty, and `scaffold-journey` / `colcon-parity` exclude
     # `merge_group` themselves rather than through a skipped dependency.
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
     # Longest successful run measured 2026-11-12: 0 min (n=25). Twice that, so a
     # stalled runner fails fast instead of holding the merge queue for 6 h.
     timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
     outputs:
+      # phase-489 W11 — on `push`, did a `merge_group` gate run already pass on
+      # this exact commit? See the `queue` step.
+      queue_verified: ${{ steps.queue.outputs.verified }}
+      queue_run: ${{ steps.queue.outputs.run }}
       scaffold: ${{ steps.f.outputs.scaffold }}
       colcon: ${{ steps.f.outputs.colcon }}
       sdk_index: ${{ steps.f.outputs.sdk_index }}
@@ -214,6 +219,31 @@ jobs:
               - 'scripts/sdk/verify-index.py'
               - 'scripts/sdk/check-qemu-configure.sh'
               - 'ci/nano-ros-sdk/scripts/build-qemu.sh'
+
+      # phase-489 W11. `main` is rebase-merged, so the commit a push brings is
+      # the commit the merge queue's gate already ran on. Measured 2026-11-14
+      # 05:00-18:00Z: 33 push runs, 1295 job-min, and all 33 SHAs had a passing
+      # `merge_group` run. The fast tier, its compile gates and the two narrow
+      # lanes answer nothing new there, so they skip and say which run
+      # verified the commit; the main-only cache warms still run. A commit no
+      # queue run verified (a break-glass or direct push) gets the full gate:
+      # `green-gate-run.sh` answers "no" to any doubt.
+      - name: Did the merge queue already verify this commit?
+        id: queue
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          if url="$(bash scripts/ci/green-gate-run.sh "$GITHUB_SHA" --event merge_group)"; then
+            echo "verified=true" >> "$GITHUB_OUTPUT"
+            echo "run=$url" >> "$GITHUB_OUTPUT"
+            echo "already verified in the queue ($url): the fast tier is skipped on this push"
+            echo "Already verified in the queue: $url" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "verified=false" >> "$GITHUB_OUTPUT"
+            echo "no passing merge_group gate run for $GITHUB_SHA: the full push gate runs"
+          fi
 
       # Computed explicitly rather than as a negated paths-filter pattern,
       # because the failure mode is a FALSE GREEN on the required gate and the
@@ -309,7 +339,8 @@ jobs:
     # docs-only batch; the heavier siblings skip on `code == 'false'` (W12).
     needs: changes
     if: >-
-      ${{ always() && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
+      ${{ always() && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
+          && (github.event_name != 'push' || needs.changes.outputs.queue_verified != 'true') }}
     runs-on: ubuntu-22.04
     # Longest successful run measured 2026-11-12: 18 min (n=32). Twice that, so a
     # stalled runner fails fast instead of holding the merge queue for 6 h.
@@ -764,7 +795,8 @@ jobs:
     name: check / fast compile gates (every event)
     needs: changes
     if: >-
-      ${{ always() && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
+      ${{ always() && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true')
+          && (github.event_name != 'push' || needs.changes.outputs.queue_verified != 'true') }}
     runs-on: ubuntu-22.04
     # Longest successful run measured 2026-11-12: 12 min (n=32). Twice that, so a
     # stalled runner fails fast instead of holding the merge queue for 6 h.
@@ -3378,7 +3410,7 @@ jobs:
   scaffold-journey:
     name: nros new -> sync -> resolve
     needs: changes
-    if: ${{ github.event_name != 'merge_group' && (needs.changes.outputs.scaffold == 'true' || github.event_name != 'pull_request') }}
+    if: ${{ github.event_name != 'merge_group' && (needs.changes.outputs.scaffold == 'true' || github.event_name != 'pull_request') && (github.event_name != 'push' || needs.changes.outputs.queue_verified != 'true') }}
     runs-on: ubuntu-22.04
     # Longest successful run measured 2026-11-12: 10 min (n=11). Twice that, so a
     # stalled runner fails fast instead of holding the merge queue for 6 h.
@@ -3469,7 +3501,7 @@ jobs:
   colcon-parity:
     name: colcon build examples/templates/local-msg-package/src/
     needs: changes
-    if: ${{ github.event_name != 'merge_group' && (needs.changes.outputs.colcon == 'true' || github.event_name != 'pull_request') }}
+    if: ${{ github.event_name != 'merge_group' && (needs.changes.outputs.colcon == 'true' || github.event_name != 'pull_request') && (github.event_name != 'push' || needs.changes.outputs.queue_verified != 'true') }}
     runs-on: ubuntu-22.04
     # Longest successful run measured 2026-11-12: 2 min (n=15). Twice that, so a
     # stalled runner fails fast instead of holding the merge queue for 6 h.
@@ -3627,6 +3659,15 @@ jobs:
           # events — means the gate did not run, and that must never read as
           # green, which is the vacuous pass this aggregator exists to prevent.
           # `cancelled` and `failure` fail like any other non-success.
+          # 3. (phase-489 W11) a push whose commit a `merge_group` gate run
+          #    already passed. `changes` RAN and named that run; the fast tier
+          #    skipped because its verdict on this exact commit is already in.
+          queue_verified=0
+          if [ "$event" = "push" ] \
+             && [ "${{ needs.changes.result }}" = "success" ] \
+             && [ "${{ needs.changes.outputs.queue_verified }}" = "true" ]; then
+            queue_verified=1
+          fi
           docs_only=0
           if { [ "$event" = "pull_request" ] || [ "$event" = "merge_group" ]; } \
              && [ "${{ needs.changes.result }}" = "success" ] \
@@ -3644,6 +3685,8 @@ jobs:
                 if [ "$docs_only" = 1 ] \
                    && { [ "$event" = "pull_request" ] || [[ "$docs_tier" != *" $name "* ]]; }; then
                   echo "  skipped  $name (docs-only $event — no code to verify)"
+                elif [ "$queue_verified" = 1 ]; then
+                  echo "  skipped  $name (already verified in the queue: ${{ needs.changes.outputs.queue_run }})"
                 elif [[ "$events" != *" $event "* ]]; then
                   echo "  skipped  $name (has no work on $event)"
                 else
