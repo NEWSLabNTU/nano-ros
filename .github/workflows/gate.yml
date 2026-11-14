@@ -1051,7 +1051,7 @@ jobs:
       #
       # The broken-link lint is deny-level here and NOTHING on a merge-gating
       # path ran rustdoc, so `just book` and every docs deploy were red for
-      # three days with no lane saying so (`docs.yml`'s path filter includes the
+      # three days with no lane saying so (`publish.yml`'s path filter includes the
       # crate that broke, so it was failing rather than skipping). A second
       # break sat behind the first, invisible, because rustdoc stops at the
       # first crate that fails.
@@ -3441,7 +3441,7 @@ jobs:
   #
   # This lane used to be bare `ubuntu-22.04` and spend its first minutes adding
   # the ROS apt repository and installing a ROS desktop stack — ten packages —
-  # plus `just`, on EVERY run. `images.yml` has been building
+  # plus `just`, on EVERY run. `publish.yml` has been building
   # `ghcr.io/newslabntu/nano-ros-ci:humble` and describing it as "ROS 2 Humble +
   # host tools, the base `container:` for the check / … lanes" the whole time;
   # only `nightly.yml` and the `check` job above used it.

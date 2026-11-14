@@ -580,7 +580,7 @@ cd "$repo_root"
     ),
     (
         "NEGATIVE CONTROL — awk answers 'nothing' with exit 0, so `[ -n ]` is live",
-        ".github/workflows/docs.yml",
+        ".github/workflows/publish.yml",
         0,
         """      run: |
         ver="$(awk '/^\\[tool\\.mdbook\\]/{f=1;next} f && /^version/{print;exit}' nros-sdk-index.toml)"

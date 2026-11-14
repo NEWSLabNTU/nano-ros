@@ -83,7 +83,7 @@ ROAD = ".github/actions/setup-nros-cli/action.yml"
 # Arm A. Each entry is (regex, what it would do). Matched against every
 # non-comment LOGICAL line of every workflow (backslash continuations joined),
 # and a match counts only when that logical line also names `nros`: CI legitimately
-# downloads OTHER projects' releases, and `docs.yml` fetching `mdbook-mermaid`
+# downloads OTHER projects' releases, and `publish.yml` fetching `mdbook-mermaid`
 # from a GitHub release URL was this gate's first false positive.
 #
 # `scripts/install.sh` is here because it IS the release path: phase-431 W4 made
@@ -396,7 +396,7 @@ def self_test():
     boot = "        run: ./scripts/bootstrap.sh"
     assert release_sites(boot) == [], release_sites(boot)
 
-    # Another project's release is not ours. `docs.yml` fetching mdbook-mermaid
+    # Another project's release is not ours. `publish.yml` fetching mdbook-mermaid
     # from a `releases/download/` URL was this gate's first false positive.
     other = "\n".join(
         [

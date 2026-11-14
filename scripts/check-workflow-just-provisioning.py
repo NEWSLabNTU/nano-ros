@@ -50,7 +50,7 @@ Three arms, and they do NOT carry the same evidence — the gate reports which
 one answered, for the reason issue 1043 records about FAIL / NOT VERIFIED / OK:
 
   * **container** — CHECKED. The image's Dockerfile is read, and the mapping
-    from image name to Dockerfile is DERIVED from `images.yml` (its `IMAGE:`
+    from image name to Dockerfile is DERIVED from `publish.yml` (its `IMAGE:`
     env against its `docker/build-push-action` `file:`/`context:`), never
     authored here, so a new image cannot drift the map toward OK.
 
@@ -97,7 +97,7 @@ JUST = invoke_re(("just",))
 # `scripts/sdk-env.sh` tells a human to type. A third-party action whose name
 # ends in `setup-just` is the community convention.
 # The `--to` is part of the marker: the script's NAME also appears where it is
-# merely hashed (`images.yml`'s content tag), which installs nothing.
+# merely hashed (`publish.yml`'s content tag), which installs nothing.
 INSTALLERS = ("scripts/ci/install-just.sh --to", "cargo install just")
 INSTALL_ACTION = re.compile(r"setup-just(?:@|$)")
 
@@ -148,7 +148,7 @@ def refused_installer_sites(files=None):
 
 
 def image_dockerfiles():
-    """image name (no tag) -> Dockerfile path, DERIVED from `images.yml`.
+    """image name (no tag) -> Dockerfile path, DERIVED from `publish.yml`.
 
     Authoring this map would make it the thing that goes stale: a new image
     absent from the table reads as "not provided" rather than as "unknown",
@@ -157,7 +157,7 @@ def image_dockerfiles():
     """
     import yaml
 
-    doc = yaml.safe_load((REPO / ".github" / "workflows" / "images.yml").read_text())
+    doc = yaml.safe_load((REPO / ".github" / "workflows" / "publish.yml").read_text())
     out = {}
     for job in (doc.get("jobs") or {}).values():
         image = (job.get("env") or {}).get("IMAGE")
@@ -183,10 +183,10 @@ def image_provides_just(image, dockerfiles):
     name = image.split("@")[0].rsplit(":", 1)[0]
     df = dockerfiles.get(name)
     if df is None:
-        return None, f"{image} is not built by images.yml — cannot verify"
+        return None, f"{image} is not built by publish.yml — cannot verify"
     path = REPO / df
     if not path.is_file():
-        return None, f"{df} (named by images.yml) is missing — cannot verify"
+        return None, f"{df} (named by publish.yml) is missing — cannot verify"
     text = path.read_text()
     if any(marker in text for marker in INSTALLERS):
         return True, df

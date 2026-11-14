@@ -25,7 +25,7 @@
 # Bump: change JUST_VERSION and both digests together — read them off the
 # release (`gh release view <v> -R casey/just --json assets`), never off a
 # local download alone. A ci-base / zephyr image rebuild follows on merge,
-# because this file is in `images.yml`'s path filter and content tag.
+# because this file is in `publish.yml`'s path filter and content tag.
 set -euo pipefail
 
 JUST_VERSION=1.57.0

@@ -50,7 +50,7 @@ What exists today, read from the tree:
   scripts/ci/runner-container.sh — edit that, not this") from
   `nros-sdk-index.toml`. Beside it are two hand-written CI images,
   `ci/docker/ci-base/Dockerfile` and `ci/docker/zephyr-ros/Dockerfile`, each
-  `FROM ros:humble-ros-base`, which `images.yml` publishes as
+  `FROM ros:humble-ros-base`, which `publish.yml` publishes as
   `ghcr.io/newslabntu/nano-ros-ci` and `ghcr.io/newslabntu/nano-ros-zephyr-ci`.
   None of them is meant for a user, and the two hand-written ones are
   siblings that share nothing (`ci-base/Dockerfile`'s own header says so).

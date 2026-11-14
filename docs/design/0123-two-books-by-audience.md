@@ -221,7 +221,7 @@ exempt `reference/retired-names.md` (`check-retired-knob-spellings`,
 
 ### D7 — Build, publish, link
 
-- `just book` builds both books. `docs.yml` deploys the user book at the
+- `just book` builds both books. `publish.yml` deploys the user book at the
   site root and Internals at `/internals/`.
 - A link between the two books is a relative `.html` link between the two
   deploy roots (from `build/x.md`: `../internals/rmw/zenoh-protocol.html`).

@@ -1917,7 +1917,7 @@ check = { cmd = "doxygen" }
 # Doxygen's call/collaboration diagrams are drawn by graphviz's `dot`, so a
 # doxygen without it silently produces a docs build with no diagrams — a
 # DEGRADED result, not an error, which is why it went undeclared while
-# `.github/workflows/docs.yml` installed the two together in one apt line. The
+# `.github/workflows/publish.yml` installed the two together in one apt line. The
 # workflow was the only place that knew they belong together.
 [prereq.graphviz]
 role = "workspace"

@@ -1,4 +1,4 @@
-# phase-466 — the build context is the REPO ROOT (images.yml passes
+# phase-466 — the build context is the REPO ROOT (publish.yml passes
 # `context: .` + `file: ci/docker/zephyr-ros/Dockerfile`) because the Dockerfile
 # COPYs `ci/docker/apt-packages.txt`, the shared apt closure. buildx reads THIS
 # file, `<Dockerfile>.dockerignore`, in preference to a root `.dockerignore`, so

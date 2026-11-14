@@ -155,7 +155,7 @@ def main():
             "  rode in unnoticed.\n"
             "\n"
             "  Edit ci/docker/zephyr-ros/Dockerfile, and bump the `-rN` tag in\n"
-            "  .github/workflows/images.yml with it.",
+            "  .github/workflows/publish.yml with it.",
             file=sys.stderr,
         )
         return 1

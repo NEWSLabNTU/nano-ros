@@ -46,7 +46,7 @@ Four things one file cannot enforce by itself:
      are jammy / Python 3.10, where `tomllib` does not exist. So as long as any
      script uses that chain, the images owe it `python3-tomli`. Issue 1364.
 
-  5. THE PUBLISHED TAG AND ITS CONSUMERS AGREE. `images.yml` declares each
+  5. THE PUBLISHED TAG AND ITS CONSUMERS AGREE. `publish.yml` declares each
      image's `TAG`; four `container:` lines across the workflows spell it out
      by hand. Four hand-copied literals of one fact is the same defect shape one
      level up, and bumping the tag without moving them deadlocks every lane on
@@ -78,7 +78,7 @@ SHARED = os.path.join("ci", "docker", "apt-packages.txt")
 IMAGE_DIR = os.path.join("ci", "docker")
 INDEX = "nros-sdk-index.toml"
 WORKFLOWS = os.path.join(".github", "workflows")
-IMAGES_YML = os.path.join(WORKFLOWS, "images.yml")
+IMAGES_YML = os.path.join(WORKFLOWS, "publish.yml")
 
 # The tool `_setup-common` provisions in EVERY image, whatever the scope. Its
 # OS prereqs are what the shared list must carry; the names come from the index.
@@ -309,7 +309,7 @@ def toml_sites(root):
 
 
 def declared_tags(images_yml_text):
-    """{image ref: tag} as `images.yml` declares them, per job `env:` block."""
+    """{image ref: tag} as `publish.yml` declares them, per job `env:` block."""
     out = {}
     image = None
     for line in images_yml_text.splitlines():
@@ -327,7 +327,7 @@ def declared_tags(images_yml_text):
 def tag_references(root, tags):
     """[(workflow, image, tag)] for every `<image>:<tag>` in the workflows.
 
-    `images.yml`'s own `${{ env.* }}` lines are not references -- they are the
+    `publish.yml`'s own `${{ env.* }}` lines are not references -- they are the
     declaration.
     """
     out = []
@@ -653,7 +653,7 @@ def self_test(quiet=False):
 
     # MUTATION 6 -- the tag is bumped and a consumer is left behind.
     case(
-        "images.yml bumps a TAG without moving its consumer",
+        "publish.yml bumps a TAG without moving its consumer",
         lambda t: _write(t, IMAGES_YML, _FAKE_IMAGES_YML.replace("TAG: t1", "TAG: t9")),
         True,
     )

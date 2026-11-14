@@ -9,7 +9,7 @@ phase-413 W3, from the audit in issue 0996.
 recipe, and `[prereq.doxygen]`'s own `why` field reads "found undeclared by
 check-sysdep-remedies" — so the index-side gap is guarded. The REVERSE was not:
 nothing stopped a workflow apt-installing a package `[prereq.*]` already names,
-and three did. `docs.yml` installed doxygen and graphviz, `nightly.yml` installed
+and three did. `publish.yml` installed doxygen and graphviz, `nightly.yml` installed
 clang and libclang-dev, and all four were in the index with their dnf/pacman/brew
 spellings and a presence probe beside them.
 

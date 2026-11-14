@@ -115,7 +115,7 @@ pages:
 - `book-internals/` with Orientation (start-here, architecture, repo-map).
   The architecture and repo-map pages point to ARCHITECTURE.md and RFC-0001's
   directory map rather than copying them.
-- `just book` and `docs.yml` build Internals after the user book and stage it
+- `just book` and `publish.yml` build Internals after the user book and stage it
   at `internals/` (copied, because mdBook clears its build dir).
 - `just book-internals-serve` previews it on port 3001.
 - `check-book-links` reads both books (W0). The pointers in `CLAUDE.md` and
@@ -128,7 +128,7 @@ staged `internals/index.html` is "Start Here".
 
 - Create `book-internals/` (`book.toml` with the same mermaid preprocessor and
   a pinned mdBook, plus a `SUMMARY.md` with the RFC-0123 D2 parts as stubs).
-- Make `just book` build both books. In `docs.yml`, deploy the user book at
+- Make `just book` build both books. In `publish.yml`, deploy the user book at
   the site root and Internals at `/internals/`.
 - Make `check-book-links` resolve site-relative links to `/internals/…`
   against `book-internals/src`, and the reverse.

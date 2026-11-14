@@ -491,7 +491,7 @@ roadmap-status:
 # rustdoc's broken-link lint is deny-level here, and NOTHING on a merge-gating
 # path ran rustdoc. `3941b569a` deleted `ClientTrait::is_server_ready` while the
 # paragraph beside it still linked to it, so `just book` and every docs deploy
-# went red and stayed red for three days — `docs.yml`'s path filter includes
+# went red and stayed red for three days — `publish.yml`'s path filter includes
 # that crate, so the deploy was failing, not skipping. A SECOND break sat behind
 # it (`nros-rmw-zenoh` naming a `record_alloc_ceilings` that never existed),
 # invisible because rustdoc stops at the first crate that fails.

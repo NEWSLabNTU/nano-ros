@@ -185,7 +185,7 @@ per-workflow minutes low and failures isolated to one platform:
 | `nightly.yml` | the broad matrix, and lanes too expensive to gate a merge |
 | `queue.yml` | `merge_group`, `cancel-in-progress: false`, and a self-hosted job interlocked on a repo variable |
 | `post-submit.yml` | push-to-`main` scope, and why `cancel-in-progress` is right here and wrong in the queue |
-| `docs.yml` | a cheap lane with no toolchain at all |
+| `publish.yml` | a cheap lane with no toolchain at all |
 
 ### Historical workflow names
 

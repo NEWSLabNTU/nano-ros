@@ -44,7 +44,7 @@ activate-shells:
 #
 # Nothing guarded the other direction: a WORKFLOW may
 # not restate a package `[prereq.*]` already declares. Three did — doxygen and
-# graphviz in `docs.yml`, clang and libclang-dev in `nightly.yml` — each with
+# graphviz in `publish.yml`, clang and libclang-dev in `nightly.yml` — each with
 # its dnf/pacman/brew spellings and a presence probe sitting in the index.
 #
 # Buildless and source-only, so it belongs on the fast line.
@@ -120,7 +120,7 @@ ci-image-apt-packages:
 
 # Issues 1201 / 1760 / 1868 — a file a CI Dockerfile COPYs from the tree is an
 # image INPUT, declared in four places: its `.dockerignore` (or the build dies
-# at checksum and the old tag keeps serving), `images.yml`'s push paths and the
+# at checksum and the old tag keeps serving), `publish.yml`'s push paths and the
 # image's `changes` filter (or an edit never rebuilds it), and the content-tag
 # hash (or new content publishes under the old tag). Buildless.
 [private]

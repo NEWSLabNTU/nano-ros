@@ -20,7 +20,7 @@
 # tests` run their cells in this image — no per-cell `setup-ros` / apt / tool
 # installs, and the AMENT/ROS gap that fails `nros generate-rust` is closed.
 #
-# Build/publish via the `ci-base` job in .github/workflows/images.yml →
+# Build/publish via the `ci-base` job in .github/workflows/publish.yml →
 #   ghcr.io/newslabntu/nano-ros-ci:humble  (tag = ROS distro; bump = new tag)
 FROM ros:humble-ros-base
 
@@ -186,7 +186,7 @@ RUN pip3 install --no-cache-dir \
 # `docs/development/ci-image-provisioning.md`. The versions here are the ones
 # running on the reference dev host, so CI and a developer's tree agree.
 #
-# Bump deliberately, and bump the image tag with it (see `images.yml`): the tag
+# Bump deliberately, and bump the image tag with it (see `publish.yml`): the tag
 # encodes what is baked precisely so a bump cannot be silent.
 #
 # `just` comes from `scripts/ci/install-just.sh` (issue 1760), the same script
@@ -218,7 +218,7 @@ ENV PATH=/usr/local/cargo/bin:$PATH
 # `config/rust-toolchains.txt` is DERIVED from the toolchain files
 # (`scripts/gen-rust-toolchains.py`; gate `check-rust-toolchains-list`), so a pin
 # bump that forgets it fails before it merges, and the bump republishes this
-# image on merge (the list is in `images.yml`'s filter and content tag). Line 1
+# image on merge (the list is in `publish.yml`'s filter and content tag). Line 1
 # is the root channel and becomes the default. The same installer runs before
 # every gate fan-out, where on this image it finds nothing missing and makes no
 # request.
