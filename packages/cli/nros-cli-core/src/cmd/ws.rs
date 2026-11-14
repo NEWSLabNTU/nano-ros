@@ -4002,7 +4002,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
             println!("sync: selection → {}", sel.dir.display());
         }
     } else {
-        scan_workspace(&src_root, &mut scan)?;
+        scan_workspace(&ws_root, &src_root, &mut scan)?;
         // Issue 1305 — a workspace PACKAGE can be a single-package leaf too
         // (a `[package]` manifest with its own `system.toml`, as the copy-out
         // templates' Rust packages are), and a migrated one path-depends on its
@@ -5211,19 +5211,11 @@ fn codegen_ament_deps_for(
 
 // --- Scan ----------------------------------------------------------------------
 
+/// Does `dir` hold a package at any depth, as [`scan_workspace`] walks it? A
+/// workspace whose `src/` groups every package one level down
+/// (`src/<group>/<pkg>`) is a colcon workspace too.
 fn has_pkg_subdir(dir: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return false;
-    };
-    for e in entries.flatten() {
-        if let Ok(t) = e.file_type()
-            && t.is_dir()
-            && e.path().join("package.xml").is_file()
-        {
-            return true;
-        }
-    }
-    false
+    provider_scan::scan_workspace_packages(dir).is_ok_and(|(found, _)| !found.is_empty())
 }
 
 fn scan_one_pkg_dir(pkg_dir: &Path, out: &mut Vec<WsPkg>) -> Result<()> {
@@ -5278,41 +5270,83 @@ fn scan_one_pkg_dir_inner(
     Ok(())
 }
 
-fn scan_workspace(src_root: &Path, out: &mut Vec<WsPkg>) -> Result<()> {
-    for entry in std::fs::read_dir(src_root)? {
-        let entry = entry?;
-        if !entry.file_type()?.is_dir() {
-            continue;
+/// Every package of a colcon-layout workspace: under `src/`, at any depth, and
+/// under each `nros.toml` `[workspace] package_paths` entry.
+///
+/// The walk is the provider scan's ([`provider_scan::scan_workspace_packages`]),
+/// colcon's rule: recurse, stop at a `package.xml`, prune build output and any
+/// directory carrying an ignore marker. So `src/<group>/<pkg>`, the layout
+/// Autoware groups its packages in, is found as `nros build` finds it.
+///
+/// The same package NAME in two directories is refused, naming both: the scan
+/// feeds one generated tree and one launch resolution per name, and keeping
+/// whichever was met first would be a silent choice.
+fn scan_workspace(ws_root: &Path, src_root: &Path, out: &mut Vec<WsPkg>) -> Result<()> {
+    let sources = source_roots(ws_root, &[])?;
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for r in &sources.roots {
+        match r.origin {
+            // The workspace's own packages live under `src/` in this layout.
+            provider_scan::RootOrigin::Workspace => roots.push(src_root.to_path_buf()),
+            provider_scan::RootOrigin::PackagePaths if r.exists => roots.push(r.path.clone()),
+            provider_scan::RootOrigin::PackagePaths => eprintln!(
+                "warning: package_paths entry {} in {} is not a directory, so nothing was found \
+                 there",
+                r.path.display(),
+                ws_root.join("nros.toml").display()
+            ),
+            // The nano-ros tree and NROS_PACKAGE_PATH hold providers, not this
+            // workspace's packages.
+            _ => {}
         }
-        let dir = entry.path();
-        // A package carrying an ignore marker is out of the workspace for
-        // configure exactly as it is for the provider scan and colcon: its
-        // launch tree is never resolved, its messages never generated.
-        if nros_pkg_index::is_ignored_dir(&dir) {
-            continue;
+    }
+    let mut by_dir: BTreeSet<PathBuf> = BTreeSet::new();
+    let mut by_name: std::collections::BTreeMap<String, PathBuf> =
+        std::collections::BTreeMap::new();
+    for root in roots {
+        let (found, _) = provider_scan::scan_workspace_packages(&root)
+            .wrap_err_with(|| format!("scanning {}", root.display()))?;
+        for p in found {
+            let key = std::fs::canonicalize(&p.dir).unwrap_or_else(|_| p.dir.clone());
+            if !by_dir.insert(key) {
+                // Overlapping roots (`src` and `src/vendor`) reach it twice.
+                continue;
+            }
+            if let Some(first) = by_name.get(&p.name) {
+                bail!(
+                    "two packages are named `{}`: {} and {}. Rename one, or put an empty \
+                     COLCON_IGNORE in the one this workspace should not build",
+                    p.name,
+                    first.display(),
+                    p.dir.display()
+                );
+            }
+            by_name.insert(p.name.clone(), p.dir.clone());
+            if let Some(pkg) = ws_pkg_at(&p.dir)? {
+                out.push(pkg);
+            }
         }
-        let manifest = dir.join("package.xml");
-        if !manifest.is_file() {
-            continue;
-        }
-        let body = std::fs::read_to_string(&manifest)?;
-        let Some(name) = extract_pkg_name(&body) else {
-            continue;
-        };
-        let is_msg_pkg = crate::interface_package::is_interface_package(&dir, &body);
-        let is_rust_pkg = dir.join("Cargo.toml").is_file();
-        let deps = extract_pkg_deps(&body);
-        out.push(WsPkg {
-            name,
-            dir,
-            manifest,
-            is_msg_pkg,
-            is_rust_pkg,
-            deps,
-            is_patch_consumer: true,
-        });
     }
     Ok(())
+}
+
+/// The [`WsPkg`] for the package at `dir`, or `None` when its `package.xml`
+/// names no package.
+fn ws_pkg_at(dir: &Path) -> Result<Option<WsPkg>> {
+    let manifest = dir.join("package.xml");
+    let body = std::fs::read_to_string(&manifest)?;
+    let Some(name) = extract_pkg_name(&body) else {
+        return Ok(None);
+    };
+    Ok(Some(WsPkg {
+        name,
+        dir: dir.to_path_buf(),
+        is_msg_pkg: crate::interface_package::is_interface_package(dir, &body),
+        is_rust_pkg: dir.join("Cargo.toml").is_file(),
+        deps: extract_pkg_deps(&body),
+        manifest,
+        is_patch_consumer: true,
+    }))
 }
 
 fn extract_pkg_name(body: &str) -> Option<String> {
@@ -7377,7 +7411,7 @@ fn scan_for_query(
     if single_pkg_mode {
         scan_one_pkg_dir(&src_root, &mut scan)?;
     } else {
-        scan_workspace(&src_root, &mut scan)?;
+        scan_workspace(&ws_root, &src_root, &mut scan)?;
     }
     let build_root = if build_dir.is_absolute() {
         build_dir.to_path_buf()
@@ -10223,31 +10257,92 @@ mod sync_edition_tests {
 }
 
 #[cfg(test)]
-mod scan_workspace_ignore_tests {
+mod scan_workspace_tests {
     use super::scan_workspace;
+    use std::path::Path;
 
-    /// GitHub #3871 — `nros configure` resolves every package `scan_workspace`
-    /// returns, so a package that opts out with any ignore marker must not be
-    /// returned. A contract-only bringup kept under `src/` for a separate
+    fn pkg(dir: &Path, name: &str) {
+        std::fs::create_dir_all(dir.join("launch")).unwrap();
+        std::fs::write(
+            dir.join("package.xml"),
+            format!("<package format=\"3\"><name>{name}</name></package>"),
+        )
+        .unwrap();
+    }
+
+    fn names(ws: &Path) -> Vec<String> {
+        let mut scan = Vec::new();
+        scan_workspace(ws, &ws.join("src"), &mut scan).unwrap();
+        let mut n: Vec<String> = scan.into_iter().map(|p| p.name).collect();
+        n.sort();
+        n
+    }
+
+    // GitHub #3871 (issue 2584).
+    /// `nros configure` resolves every package `scan_workspace` returns, so a
+    /// package that opts out with any ignore marker must not be returned. A
+    /// contract-only bringup kept under `src/` for a separate
     /// `play_launch check` used to fail the whole workspace's configure.
     #[test]
     fn a_package_with_an_ignore_marker_is_not_scanned() {
         for marker in nros_pkg_index::IGNORE_MARKERS {
             let d = tempfile::tempdir().unwrap();
-            for name in ["kept", "contract_only"] {
-                let p = d.path().join(name);
-                std::fs::create_dir_all(p.join("launch")).unwrap();
-                std::fs::write(
-                    p.join("package.xml"),
-                    format!("<package format=\"3\"><name>{name}</name></package>"),
-                )
-                .unwrap();
-            }
-            std::fs::write(d.path().join("contract_only").join(marker), "").unwrap();
-            let mut scan = Vec::new();
-            scan_workspace(d.path(), &mut scan).unwrap();
-            let names: Vec<&str> = scan.iter().map(|p| p.name.as_str()).collect();
-            assert_eq!(names, ["kept"], "{marker}");
+            pkg(&d.path().join("src/kept"), "kept");
+            pkg(&d.path().join("src/contract_only"), "contract_only");
+            std::fs::write(d.path().join("src/contract_only").join(marker), "").unwrap();
+            assert_eq!(names(d.path()), ["kept"], "{marker}");
         }
+    }
+
+    // GitHub #3858 (issue 2566).
+    /// Autoware groups its packages one level down, `src/<group>/<pkg>`. They
+    /// are found as colcon and `nros build` find them, and the walk stops at a
+    /// package: nothing inside one is a sibling package.
+    #[test]
+    fn grouped_packages_are_found_and_a_package_is_not_entered() {
+        let d = tempfile::tempdir().unwrap();
+        pkg(&d.path().join("src/flat"), "flat");
+        pkg(&d.path().join("src/control/controller"), "controller");
+        pkg(&d.path().join("src/control/deep/planner"), "planner");
+        pkg(&d.path().join("src/flat/test/fixture"), "fixture");
+        assert_eq!(names(d.path()), ["controller", "flat", "planner"]);
+    }
+
+    /// A `[workspace] package_paths` entry in `nros.toml` is a source root too.
+    #[test]
+    fn package_paths_entries_are_scanned() {
+        let d = tempfile::tempdir().unwrap();
+        pkg(&d.path().join("src/app"), "app");
+        pkg(&d.path().join("vendor/group/lib_pkg"), "lib_pkg");
+        std::fs::write(
+            d.path().join("nros.toml"),
+            "[workspace]\npackage_paths = [\"vendor\"]\n",
+        )
+        .unwrap();
+        assert_eq!(names(d.path()), ["app", "lib_pkg"]);
+    }
+
+    /// The same name in two directories is refused, naming both, rather than
+    /// keeping whichever the walk met first.
+    #[test]
+    fn one_name_in_two_directories_is_refused() {
+        let d = tempfile::tempdir().unwrap();
+        pkg(&d.path().join("src/a/twin"), "twin");
+        pkg(&d.path().join("src/b/twin"), "twin");
+        let mut scan = Vec::new();
+        let e = scan_workspace(d.path(), &d.path().join("src"), &mut scan)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("`twin`") && e.contains("src/a/twin") && e.contains("src/b/twin"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn a_grouped_src_is_a_colcon_layout() {
+        let d = tempfile::tempdir().unwrap();
+        pkg(&d.path().join("src/control/controller"), "controller");
+        assert!(super::has_pkg_subdir(&d.path().join("src")));
     }
 }
