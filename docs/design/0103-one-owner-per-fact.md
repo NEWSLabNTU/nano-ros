@@ -299,10 +299,15 @@ descriptor is the only home, and `force` is what makes it so.
 - **Everything else**: `nros locate <resource>` (approved 2026-10-10), a thin
   wrapper. `--why` prints every rung and which one answered; `--format
   cmake|sh|json` for batch use.
-- **cmake / west**: configure runs `nros locate --format cmake` ONCE, writes
-  `<build>/nros/locations.cmake`, adds the index and each answer's freshness
-  input to `CMAKE_CONFIGURE_DEPENDS`. Locations are normal variables, never
-  `CACHE`, so unsetting an override takes effect on the next configure.
+- **cmake / west**: configure runs `nros locate --all --format cmake` ONCE
+  (`cmake/NanoRosLocate.cmake`), keeps the answers in GLOBAL properties for the
+  rest of that configure, and adds the index to `CMAKE_CONFIGURE_DEPENDS`.
+  Callers read them as normal variables (`nros_locate_var`,
+  `nros_locate_source`), never `CACHE`, so unsetting an override takes effect
+  on the next configure. *(Amended 2026-11-14, phase-555 W3: this said
+  configure writes `<build>/nros/locations.cmake`. No file is written and
+  nothing reads one; the properties give D4 what it asked for, one ask per
+  configure and no cached location.)*
 - **Our tooling never EXPORTS a location into the user's shell.** (Scope
   stated precisely by phase-484 W2c: the defect is a value in an environment
   something ELSE inherits — a sourced shell, every child of it, every linked
@@ -446,14 +451,19 @@ rows a contributor edits, which rung 4 serves from the checkout anyway.
 | artifact | target path |
 | --- | --- |
 | resolve snapshot | `<build>/nros/resolved.toml` (gains `[locations]` + per-value provenance) |
-| cargo config | `<build>/nros/cargo.toml` |
-| cmake locations | `<build>/nros/locations.cmake` |
+| cargo config | `nros-cargo.toml` in the image's entry directory, `<build>/<coord>/<entry>/` (`builder/cargo_config.rs` `FILE_NAME`) |
 | config header | `<build>/nros/include/nros/nros_config_generated.h` (D8) |
 | SystemModel | `<build>/nros/models/<bringup>/` |
 | sizing descriptor | `<build>/nros/sizing/<entry>.toml` |
 
 Each has one path function in Rust; cmake and shell ask `nros locate artifact
 …` rather than mirroring it. Build output is never in the store (RFC-0095).
+
+*Amended 2026-11-14 (phase-555 W3), to the files the code writes.* The cargo
+config is `nros-cargo.toml` beside the entry's `Cargo.toml`, which cargo reads
+with `--config` (RFC-0098 D1), not `<build>/nros/cargo.toml`. The cmake
+locations row is gone: D4's answers live in GLOBAL properties for one
+configure, and no `locations.cmake` is written.
 
 ### D8 — The config header is written by resolve
 
@@ -523,7 +533,7 @@ The full text is in git history at the commit before RFC-0109's.
 | knobs | `[knobs]` (platform, board), `[image.<id>.knobs]` (project) | env / Kconfig / cmake by D6 | `ZPICO_*` as user names, the pairs table, leaf `.cargo [env]` |
 | triple, link | `nros-board.toml` | `cargo.toml`, cmake toolchain | 23 leaf `.cargo/config.toml` |
 | board config dirs | `nros-board.toml`, board-relative | — | `THREADX_CONFIG_DIR` `force`, `sdk-env.just` defaults |
-| sources, tools | index pin + project `[sources]`/`[tools]` | `resolved.toml [locations]`, `locations.cmake` | 81 `{env:}` rows, 21 exports, 4 of 5 root ladders, 3 of 4 store orders, the cmake cache→ENV pattern (11 files), Zephyr's literal Cyclone path, `build/qemu` |
+| sources, tools | index pin + project `[sources]`/`[tools]` | `resolved.toml [locations]`, `NanoRosLocate.cmake`'s per-configure properties | 81 `{env:}` rows, 21 exports, 4 of 5 root ladders, 3 of 4 store orders, the cmake cache→ENV pattern (11 files), Zephyr's literal Cyclone path, `build/qemu` |
 | entities, QoS | package + contract | sizing descriptor | — |
 
 `[image.<id>] env` rows (RFC-0098's APP rung, used by phase-481) stay valid:
@@ -560,8 +570,9 @@ Each wave deletes what it replaces in the same change.
 
 1. **Roots and the resolver.** `NROS_HOME`/`NROS_REPO_DIR`/one marker;
    `nros locate` + `--why` over today's rungs. No source moves yet.
-2. **Stop exporting.** Delete the 21 exports; cmake and west read
-   `locations.cmake`; `just` and scripts call `nros locate`.
+2. **Stop exporting.** Delete the 21 exports; cmake and west ask
+   `nros locate` once per configure (`NanoRosLocate.cmake`); `just` and
+   scripts call `nros locate`.
 3. **Sources into the store.** Index rows gain `env`/`kind`; `nros setup`
    gain `ref`; `nros setup` materialises `sources/` (archive + hardlink,
    read-only) and gc covers it; the local-edit rung; project `[sources]`; the 81 `{env:}`
@@ -722,7 +733,8 @@ things the code writes. Brief item W4. Fixed: frontmatter
     (`builder/cargo_config.rs` `FILE_NAME`).
   - D7 row "cmake locations `<build>/nros/locations.cmake`": no such file is
     written; `NanoRosLocate.cmake` keeps the answers in GLOBAL properties.
-    D4 names the same file.
+    D4 names the same file. Ruled 2026-11-14: D4, D7 and the table amended
+    to the code (both rows).
   - D4: `just/sdk-env.just` keeps per-recipe exports (`NUTTX_DIR`, ...),
     which D4's own W2c note allows.
 - Stale references: issue 1767, phases 481, 484 and 497 are archived.
