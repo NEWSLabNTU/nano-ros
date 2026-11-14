@@ -179,7 +179,7 @@ the user ruled; all five stand:
   Sunday, the duplicate probes) in #3713, W4b (`nightly.yml` on one daily
   cron) in #3726.
   The `board-support.toml` linux note naming `probe.yml` did not move in W4b;
-  it goes with W7 (below).
+  it moved with W7 (below).
 
 ### Per-board platform jobs — tracked in phase-558, not here
 
@@ -436,12 +436,17 @@ the user ruled; all five stand:
 - **Acceptance:** `lane-census.yml` and `probe.yml` are gone, and each of their
   jobs runs in `host-tests.yml` under the same `just` verb. `CI` no longer
   lists `check-build`, which moves off `gate.yml` in W7.
-- **Status:** OPEN — the census and the three book-probe tracks landed
-  (#3724, 2026-11-13): `lane-census.yml` and `probe.yml` are deleted and
-  their four jobs run in `host-tests.yml` unchanged. Remains, all done in W7
-  so `check-build` never runs in two files: `check-build` itself, the
-  `board-support.toml` linux note, and the two `ci/docker/` comments that
-  still name `probe.yml` (an edit there rebuilds the CI images).
+- **Status:** DONE (#3724 2026-11-13, rest with W7 2026-11-15) — the
+  census and the three book-probe tracks landed (#3724, 2026-11-13):
+  `lane-census.yml` and
+  `probe.yml` are deleted and their four jobs run in `host-tests.yml`
+  unchanged. The rest landed with W7 so `check-build` never ran in two files:
+  `check-build` itself is `host-tests.yml`'s (three shards, same steps), and
+  the `board-support.toml` linux note names `host-tests.yml`'s book probes.
+  `ci/docker/zephyr-ros/Dockerfile`'s comment was handled in its own PR.
+  LEFT: `ci/docker/ci-base/Dockerfile`'s comment still names `probe.yml` —
+  an edit there rebuilds the CI base image, so it waits for the next change
+  that rebuilds it anyway.
 
 ### W7 — `gate.yml` drops its schedule; the Zephyr copy-out goes to nightly
 
@@ -458,7 +463,25 @@ the user ruled; all five stand:
 - **Acceptance:** a merge-group run of the PR is green, with `CI` listing no
   job that no longer exists. `check-default-gates-run-somewhere` and
   `check-merge-group-gates` pass and refuse the old placement.
-- **Status:** OPEN
+- **Status:** OPEN — implemented, pending merge-group run. `gate.yml` has no
+  `schedule` (push, pull_request, merge_group, workflow_dispatch remain), and
+  every `if:`/`sibling` event list in it dropped `schedule` with it.
+  `check-build` (three shards, same steps: compile-check fixtures, bindings
+  cache, disk reports and transcripts, `just check build`, `no-std` and
+  `pristine-checkout` on shard 3) is `host-tests.yml`'s, on its 03:00 cron
+  and dispatch, with gate.yml's no-DWARF `CARGO_PROFILE_*_DEBUG` variables as
+  job env. `check-template-copy-out-zephyr` is `nightly.yml`'s
+  `template-copy-out-zephyr` job, on its 05:00 cron and dispatch; it saves
+  `main`'s SDK-store entry itself, so `warm-sdk-store` dropped its
+  `copy-out-zephyr` kind. `CI` no longer needs or inspects either job.
+  `check-merge-group-gates`' `DEFERRED_PARTS` names `nightly.yml` /
+  `template-copy-out-zephyr`; rule 6 accepts the deferred part only from that
+  job on a daily (`M H * * *`) cron and refuses the part anywhere in
+  `gate.yml` (self-test: the old placement, a weekly cron, a renamed job, a
+  step without the part, among 28 cases). `check-default-gates-run-somewhere`
+  gained R4, refusing a `schedule` trigger on the workflow holding `CI`
+  (self-test, and measured red against the pre-W7 `gate.yml`). The
+  merge-group dry run is the remaining acceptance.
 
 ### W8 — `publish.yml`, then `automation.yml`
 
@@ -661,7 +684,7 @@ today is narrower than that, for Zephyr in particular:
   day: `zephyr-example-matrix` runs `just zephyr build-one` (a west build to an
   ELF) for 4 examples (c/talker, cpp/talker, rust/talker, rust/action-server)
   on both lines (3.7, 4.4), `zephyr-dual-line-summary` runs `ci-both`, and
-  `zephyr-copy-out` plus `gate.yml`'s daily `template-copy-out [zephyr]` build
+  `zephyr-copy-out` plus the daily `template-copy-out-zephyr` (gate.yml's until W7) build
   copied-out projects. A Zephyr link regression is caught within a day.
 - **phase-535 W8 item 4 (2 lines × 3 languages with native_sim runtime) does
   not change the link answer.** Daily link coverage already exists. W8.4 adds

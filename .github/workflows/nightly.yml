@@ -1213,6 +1213,208 @@ jobs:
           source ./activate.sh
           just zephyr check-copy-out c/talker zenoh
 
+  # ===== the Zephyr part of `template-copy-out` (was gate.yml's, phase-559 W7) =====
+  #
+  # Issue 2219 — the Zephyr PART of `template-copy-out`. gate.yml's three
+  # `check-template-copy-out` shards run `NROS_TEMPLATE_COPY_OUT_PART=no-zephyr`
+  # on the merge queue, on runners with no west workspace; this job runs the
+  # complement, `zephyr`: every project whose board takes the Zephyr road (the
+  # five `*/zephyr` and `zephyr-byo/app` today, DERIVED by the script's
+  # `cross_road`, never listed). Before this job those five were NOT VERIFIED
+  # on every merge group while the lane read green.
+  #
+  # Its own job, not a fourth matrix entry, because it needs a different image
+  # (`nano-ros-zephyr-ci`, the SDK baked in, as `zephyr-copy-out` below) and a
+  # west workspace the shards do not pay for. The parts are complements by
+  # construction, so together the four runners build every unit exactly once;
+  # `check-merge-group-gates` rule 6 refuses a part with no complement.
+  #
+  # DAILY, NOT PER MERGE GROUP. User ruling 2026-11-13, verbatim: "Do Zephyr
+  # template check daily". This job was the merge queue's critical path:
+  # median 37.3 min (26.8-42.6) over 12 successful merge groups of 2026-11-12/13,
+  # against ~21 min for the next-longest job, and the four copy-out runners
+  # were 95 of ~168 runner-minutes per queue entry. It ran on gate.yml's
+  # `schedule` until phase-559 W7 took that trigger away; it runs here now, on
+  # this file's one daily cron and on dispatch, and the three `no-zephyr`
+  # shards stay on `merge_group`. A Zephyr template that breaks reaches `main`
+  # and is caught by the next day's run. `check-merge-group-gates` records the
+  # ruling as a DEFERRED part: the complement runs in THIS job, on a daily
+  # cron, and never in gate.yml.
+  #
+  # Zephyr 3.7, the gate's default line (`scripts/lib/zephyr-workspace.sh`) and
+  # the line the templates are documented for (`zephyr-byo/west.yml` pins
+  # v3.7.2, LTS). Up to image r7 the baked SDK was 0.17.4, which does NOT
+  # build it for an ARM board: 3.7 pins 0.16.9, a newer SDK fails in Zephyr's
+  # own libc-hooks.c (issue 1811), and `nros build` refuses the mismatch by
+  # name — measured on this job's first dispatch, where the four
+  # `mps2-an385-zephyr` projects failed that way and only native_sim's
+  # `zephyr-byo/app` (host compiler) built. So `just setup zephyr` provisions
+  # the index's pinned SDK (`[tool.zephyr-sdk]`, 0.16.9) into the store. Image
+  # r8 bakes that pin too (issue 2511), so this download is now redundant;
+  # dropping it is a separate change.
+  #
+  # STRICT: the workspace IS provisioned here, so a Zephyr project that
+  # reaches a NOT VERIFIED is a failure of this job, not a skip.
+  template-copy-out-zephyr:
+    # No `needs:` — issue 1029; same gate as zephyr-example-matrix.
+    name: check / template-copy-out [zephyr] (daily + manual)
+    # phase-489 W2 — ROUTED, as gate.yml's `check-template-copy-out`; the hosted
+    # arm is the Zephyr CI image. The self-hosted arm (off unless
+    # NROS_GATE_SELF_HOSTED is set) requests `nros-qemu`, the scheduled lanes'
+    # label: no merge-queue runner carries it (`check-queue-runner-label`).
+    # The event term is always true here (this file triggers on nothing else);
+    # it stays because the routed form `scripts/lib/runner_route.py` reads is
+    # an EVENT-routed one, and runs-on and the image must share it.
+    runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-qemu","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
+    # Longest successful run measured 2026-11-12: 41 min (n=15). Twice that, so a
+    # stalled runner fails fast instead of holding a runner for 6 h.
+    timeout-minutes: 85
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: nightly-template-copy-out-zephyr-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    container:
+      image: ${{ !(vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r9' || '' }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      NROS_ZEPHYR_VERSION: "3.7"
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Start from a clean tree (self-hosted only)
+        if: ${{ runner.environment == 'self-hosted' }}
+        run: scripts/ci/self-hosted-clean-tree.sh
+
+      - name: Report runner hardware
+        run: scripts/ci/report-runner-hardware.sh
+
+      # Same CLI cache as gate.yml's `check-template-copy-out`.
+      # The one CLI build road (`.github/actions/setup-nros-cli`): binary cache
+      # keyed on the whole source stamp, `just setup-cli`, the stamp assertion.
+      - name: Build the in-tree nros CLI (every event)
+        uses: ./.github/actions/setup-nros-cli
+        with:
+          launch-resolve: 'false'
+
+      - name: Disk report (before Zephyr setup) — issue 1353
+        if: ${{ !cancelled() }}
+        run: scripts/ci/disk-report.sh "before Zephyr setup"
+
+      # No `reclaim-disk.sh` here (it cost 36 s): this job measured 60 G free
+      # before the Zephyr setup and 53 G free after the template build, so
+      # there is nothing for it to buy.
+
+      - name: rustup set profile minimal (avoid clippy-preview conflict)
+        run: rustup set profile minimal
+
+      # Issue 2369 — this job's store prefixes (clang-format, Corrosion), keyed
+      # on their `[tool.*]` pins. Its own entry, not the FreeRTOS shards': the
+      # two kinds fetch different tools (scripts/ci/sdk-store-cache.sh).
+      - name: Key the SDK-store cache (hosted)
+        id: store-key
+        if: ${{ runner.environment == 'github-hosted' }}
+        run: |
+          echo "key=$(scripts/ci/sdk-store-cache.sh key copy-out-zephyr)" >> "$GITHUB_OUTPUT"
+          { echo 'paths<<NROS_EOF'; scripts/ci/sdk-store-cache.sh paths copy-out-zephyr; echo NROS_EOF; } >> "$GITHUB_OUTPUT"
+
+      - name: Restore the SDK store (hosted)
+        id: store-cache
+        if: ${{ steps.store-key.outputs.key != '' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.store-key.outputs.paths }}
+          key: ${{ steps.store-key.outputs.key }}
+
+      - name: Provision compile-tier sources
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      # WITH the SDK: the image's is the wrong version for 3.7 (see the job
+      # comment), so the pinned one is installed into the store.
+      #
+      # NOT cached with actions/cache, deliberately (measured, issue 2219). The
+      # 0.16.x SDK is 1.4 GB fetched and 7.8 GB unpacked, the 3.7 west
+      # workspace a further few GB, and the repository's cache budget is 10 GB
+      # with ~9.2 GB already held by the CLI and sccache entries every other
+      # lane restores. A cache this size would evict those (LRU) on every
+      # merge group, slowing the lanes it does not belong to. So nothing here
+      # is restored: west fetches the manifest's pinned revisions and the SDK
+      # is the index's pin, every run, and no stale tree can stand in for
+      # either (the issue 1476 trap does not arise).
+      #
+      # `NROS_ZEPHYR_SKIP_XRCE_AGENT`: the Agent is a RUNTIME peer for XRCE
+      # tests and this job builds images without running any (~30 s).
+      - name: Set up the Zephyr 3.7 west workspace and its pinned SDK
+        env:
+          NROS_ZEPHYR_CREATE_VENV: "1"
+          NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
+        run: |
+          source ./activate.sh
+          just setup zephyr
+          # What a cache of this step would have to hold (issue 2219).
+          du -sh "$(bash scripts/lib/zephyr-workspace.sh --version 3.7 resolve-or-default)" \
+                 "$(bash scripts/lib/zephyr-sdk.sh --version 0.16.9 resolve)" 2>/dev/null || true
+
+      - name: Fetch the pin baseline (to find submodules whose pin moved)
+        run: bash scripts/ci/pin-baseline.sh provide
+
+      - name: Init submodules whose pin moved (commits only)
+        run: bash scripts/ci/pin-baseline.sh init-moved
+
+      - name: Build nros-launch-resolve (nros sync shells out to it)
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
+
+      - name: just check template-copy-out (the Zephyr part, copied out)
+        if: ${{ !cancelled() }}
+        env:
+          NROS_CHECK_SKIP_STRICT: "1"
+        run: |
+          echo "NROS_TEMPLATE_COPY_OUT_TMP=$RUNNER_TEMP/template-copy-out" >> "$GITHUB_ENV"
+          export TMPDIR="$RUNNER_TEMP/template-copy-out"
+          mkdir -p "$TMPDIR"
+          export NROS_TEMPLATE_COPY_OUT_PART=zephyr
+          source ./activate.sh
+          just check template-copy-out
+
+      - name: Disk report (after template-copy-out) — issue 1353
+        if: ${{ always() }}
+        run: scripts/ci/disk-report.sh "after just check template-copy-out (zephyr)"
+
+      - name: Upload the failed templates' build logs
+        if: ${{ failure() && env.NROS_TEMPLATE_COPY_OUT_TMP != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-copy-out-build-logs-zephyr
+          path: ${{ env.NROS_TEMPLATE_COPY_OUT_TMP }}/nros-template-copy-out.*/build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # At the end, not after setup: Corrosion is built by the first template
+      # that needs it, inside `just check template-copy-out`. `always()` so a
+      # failed template still leaves its finished installs for the next run;
+      # an install that died has no `.nros-provenance` and is redone. On
+      # `main` only, for the reason on gate.yml's `copy-out` save (issue 2141).
+      - name: Save the SDK store (hosted, on a miss)
+        if: ${{ always() && github.ref == 'refs/heads/main' && steps.store-key.outputs.key != '' && steps.store-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.store-key.outputs.paths }}
+          key: ${{ steps.store-key.outputs.key }}
+
   # phase-550 W1 — the NuttX make road (the `apps/external` guest road,
   # `integrations/nuttx/`), built daily on both boards.
   #
