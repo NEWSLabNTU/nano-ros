@@ -186,6 +186,18 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
     /// ```rust,ignore
     /// static HEAP: FreeListHeap<{64 * 1024}> = FreeListHeap::new();
     /// ```
+    ///
+    /// # The static must start ZEROED
+    ///
+    /// Every field of the heap, its bookkeeping included, is all-zero bytes
+    /// at construction, and "all zero" is what means "not yet initialised":
+    /// the first allocation sets the heap up only if `initialized` reads
+    /// `false`. That holds in `.bss`, which startup code zeroes. It does NOT
+    /// hold in a `NOLOAD` section (a CCM region placed with
+    /// `#[link_section]`, for example): cortex-m-rt zeroes `.bss` only, so
+    /// such a heap starts with whatever the RAM held at reset. Zero the whole
+    /// static before the first allocation, or keep it in a section startup
+    /// zeroes.
     /// The largest pool rlsf can hold at this `FLLEN`:
     /// `MAX_POOL_SIZE = 1 << (GRANULARITY_LOG2 + FLLEN)` (rlsf `tlsf.rs`).
     pub const MAX_POOL: usize = 1usize << (GRANULARITY_LOG2 + FLLEN as u32);

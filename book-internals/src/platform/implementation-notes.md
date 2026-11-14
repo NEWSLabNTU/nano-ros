@@ -88,11 +88,31 @@ UDP types unconditionally; the staticlib sibling needs panic_handler resolution 
 The `-staticlib` sibling lets Corrosion import a real `staticlib` target without forcing the cffi
 rlib to emit one.
 
-**XRCE-DDS RMW bugs (critical):** `uxr_buffer_request_data` must be flushed with
-`uxr_run_session_time` immediately after the call — unflushed request_data in the reliable output
+**A serial-only image (`NROS_LINK_IP=0`) links no UDP symbol** (issue 2579). The backend's own
+`transport_nros_udp.c` reaches the network only through `nros_platform_udp_*`, and it used to be
+compiled on every target, so a board with no IP stack had to stub nine of those symbols that
+nothing would ever call. `xrce-sources.txt` now picks it under the `ip` condition and
+`transport_nros_udp_none.c` under `no_ip`; the stand-in refuses a `udp://` locator with
+`NROS_RMW_RET_UNSUPPORTED`, and `session.c` logs that the image was built without IP. Measured on
+`thumbv7m-none-eabi`: 9 undefined `nros_platform_udp_*` in the backend archive before, 0 after;
+the default IP build still has all 9.
+
+**A heap in a `NOLOAD` section is not zeroed, and `FreeListHeap` assumes it is** (issue 2579).
+`zpico_alloc::FreeListHeap` keeps its bookkeeping (the `initialized` flag, the TLSF bitmaps, the
+slab bitmap) in the same `static` as the arena, and reads "all zero" as "not yet initialised".
+cortex-m-rt zeroes `.bss` only. A board that moves the heap to CCM or another region with
+`#[link_section]` and a `NOLOAD` output section gets whatever the RAM held at reset, so the first
+allocation can believe the heap is already set up. Either place the section where startup zeroes
+it, or zero the whole static before the first allocation (in the reset path, before `main`).
+
+**XRCE-DDS RMW bugs (critical):** `uxr_buffer_request_data` must be flushed
+(`xrce_session_flush`) immediately after the call — unflushed request_data in the reliable output
 stream causes intermittent timeouts when a later service request is buffered (pre-301 `call_raw`; fixed in all
 three `create_*` methods). Reliable streams need `STREAM_HISTORY >= 2` (we use 4); history=1 fails
-to recycle the single slot. The service client (requester) needs `uxr_buffer_request_data` to
+to recycle the single slot. Never call `uxr_run_session_time` directly: it loops
+while any bytes arrive, so under steady inbound traffic it never returns
+(phase-564 W2). `internal.h`'s `xrce_session_flush` / `xrce_session_pump` are the
+backend's only two ways to run the session, and both are bounded. The service client (requester) needs `uxr_buffer_request_data` to
 receive replies, same as subscribers and repliers.
 
 ## Probe-only opaque sizes

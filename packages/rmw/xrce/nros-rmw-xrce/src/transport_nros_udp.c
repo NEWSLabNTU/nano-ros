@@ -136,3 +136,11 @@ rmw_ret_t xrce_nros_udp_init(xrce_session_state_t *st,
         });
     return NROS_RMW_RET_OK;
 }
+
+int xrce_nros_udp_readiness_handle(xrce_session_state_t *st) {
+    return nros_platform_udp_readiness_handle(st->udp_bridge.sock);
+}
+
+int xrce_nros_udp_set_rx_notify(xrce_session_state_t *st, void (*cb)(void *ctx), void *ctx) {
+    return nros_platform_udp_set_rx_notify(st->udp_bridge.sock, cb, ctx);
+}

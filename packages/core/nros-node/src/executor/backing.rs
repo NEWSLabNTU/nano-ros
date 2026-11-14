@@ -222,6 +222,37 @@ pub(crate) fn take(words: usize) -> Option<&'static mut [MaybeUninit<u64>]> {
     Some(&mut all[..words])
 }
 
+/// Issue 2579 — hand back a backing [`take`] gave out, so the next taker gets it.
+///
+/// Only for an executor open that FAILED: the caller has no executor over the
+/// slice, and the open dropped whatever it had built over it (see
+/// `spin.rs`'s `with_default_backing`). Returns `false` when `backing` is not
+/// the static, i.e. it came from the heap, and the caller frees it instead.
+///
+/// # Safety
+/// `backing` must be the slice [`take`] returned (or a heap block), and no
+/// reference into it may be live: the latch is what made the one `&'static
+/// mut` unique, and re-arming it lets the next `take` create another.
+#[cfg(all(nros_executor_backing_static, feature = "alloc", feature = "rmw-cffi"))]
+pub(crate) unsafe fn give_back(backing: *mut [MaybeUninit<u64>]) -> bool {
+    let base = (&raw mut EXECUTOR_BACKING) as *mut MaybeUninit<u64>;
+    if backing as *mut MaybeUninit<u64> != base {
+        return false;
+    }
+    TAKEN.store(false, Ordering::Release);
+    true
+}
+
+/// The reservation is switched off, so nothing [`take`] gave out can come back.
+#[cfg(all(
+    not(nros_executor_backing_static),
+    feature = "alloc",
+    feature = "rmw-cffi"
+))]
+pub(crate) unsafe fn give_back(_backing: *mut [MaybeUninit<u64>]) -> bool {
+    false
+}
+
 /// The reservation is switched off, so there is nothing to hand out.
 ///
 /// A stub rather than a `cfg` at the call site: `default_backing` reads the same
@@ -659,6 +690,52 @@ mod tests {
             take(1).is_none(),
             "a second taker must fall back to the heap — two `&'static mut` to \
              one static is UB, which is the whole reason for the latch"
+        );
+    }
+
+    /// Issue 2579 — a FAILED `Executor::open` hands the static back, so a
+    /// retry gets it instead of the heap.
+    ///
+    /// A bare-metal board that boots before its XRCE Agent retries
+    /// `Executor::open` in a loop. Each failed open used to keep the
+    /// reservation it had just claimed, so every retry `Box::leak`ed a
+    /// default executor's worth (~87 KB on Cortex-M) from the heap, and on a
+    /// small heap the second retry panicked in the allocator. No backend is
+    /// registered in this binary, so `open` fails at backend selection,
+    /// before it touches the backing: the same "nothing came of it" shape as
+    /// an Agent that is not up yet.
+    ///
+    /// `#[ignore]` for the same virgin-process reason as the test above, and
+    /// run beside it by `just check node-std-tests`.
+    #[cfg(all(nros_executor_backing_static, feature = "rmw-cffi"))]
+    #[test]
+    #[ignore = "needs a virgin process: TAKEN is a process-global latch that \
+                Executor::open consumes — run via `just check node-std-tests`"]
+    fn a_failed_open_gives_the_static_back() {
+        let config = crate::executor::ExecutorConfig::new("serial:///dev/null");
+        for attempt in 0..3 {
+            assert!(
+                crate::executor::Executor::open(&config).is_err(),
+                "attempt {attempt}: no backend is registered, so the open must fail"
+            );
+            assert!(
+                !is_taken(),
+                "attempt {attempt}: a failed open kept the static, so the next \
+                 retry allocates a default executor from the heap"
+            );
+        }
+        let held = take(EXECUTOR_BACKING_DEFAULT_U64S);
+        assert!(
+            held.is_some(),
+            "after the failed opens the reservation is still there to take"
+        );
+        // The heap arm: with the static held, a failed open's backing is a
+        // `Box::new_uninit_slice`, which the give-back must FREE rather than
+        // re-arm a latch it never took. It must leave the static taken.
+        assert!(crate::executor::Executor::open(&config).is_err());
+        assert!(
+            is_taken(),
+            "a failed open over a HEAP backing must not re-arm the static's latch"
         );
     }
 
