@@ -456,7 +456,7 @@ may resolve an artifact only if that JOB builds it.
 | stage | runs | measured | gates? |
 | --- | --- | --- | --- |
 | local, before push | `just ci l1` | ~6 min warm | you |
-| pull request | `check-fast` only (133 source gates) | ~5 min | **required** |
+| pull request | `check-fast`, `compile-smoke`, `cli-tests`, `workspace-all`, `test-lane-contracts` (phase-489 W9) | ~16-22 min, `cli-tests` the critical path | **required** |
 | merge group | + `test-unit`, `template-copy-out` (issue 1453) | ~9 min; template-copy-out is a parallel job, ~8 min (issue 1453) | **required** |
 
 **`just ci l1` is NOT what CI runs, and that is deliberate** (phase-399 W3).

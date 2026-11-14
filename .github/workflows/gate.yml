@@ -293,7 +293,7 @@ jobs:
     #                                        cpp-ffi-tests (MG)
     #   check-workspace-all  PR/MG/nightly   workspace-all
     #   check-test-unit      MG/nightly      test-unit
-    #   check-lane-contracts MG/nightly      test-lane-contracts
+    #   check-lane-contracts PR/MG/nightly   test-lane-contracts
     #   check-build          nightly/manual  compile-check fixtures, generate-bindings, check build, no-std
     #
     # A sibling's job-level `if:` names the events it has work on. `CI` treats a
@@ -1001,8 +1001,8 @@ jobs:
       # DIFFERENT WORK per event:
       #
       #   pull_request  ->  check-fast + compile-smoke + cli-tests
-      #                     + workspace-all
-      #   merge_group   ->  + test-unit, test-lane-contracts       per BATCH
+      #                     + workspace-all + test-lane-contracts
+      #   merge_group   ->  + test-unit                            per BATCH
       #   schedule      ->  + check-build, no-std — the full tier, daily
       #
       # NOTE `check-build` is schedule/dispatch ONLY. It was on the merge group
@@ -2353,10 +2353,19 @@ jobs:
           key: ${{ steps.store-key.outputs.key }}
 
   check-lane-contracts:
-    name: check / test-lane-contracts (merge group + nightly/manual)
+    name: check / test-lane-contracts (every PR + merge group + nightly/manual)
     needs: changes
+    # phase-489 W9 — on the PULL REQUEST too. Of the merge group's six
+    # failures from 2026-11-13 12:00Z to 2026-11-14 17:30Z, four were this job
+    # (#3766, #3805, #3787, #3807), and the last three were one defect ejecting
+    # three consecutive batches within 22 minutes. The cost argument for
+    # keeping it batch-only does not hold: it is ~15 min wall (n=25, mean 14.7)
+    # on a HOSTED runner of a PUBLIC repository, so it costs no runner minutes,
+    # and on the PR it runs in parallel with `cli-tests`, the PR's critical path
+    # (16-22 min over 10 successful PR runs), so it adds no wall time either.
+    # A docs-only PR still skips it (`code == 'true'` below).
     if: >-
-      ${{ always() && contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name)
+      ${{ always() && contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name)
           && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-22.04
     # Longest successful run measured 2026-11-12: 15 min (n=15). Twice that, so a
@@ -3650,7 +3659,7 @@ jobs:
           sibling check-test-unit      "${{ needs.check-test-unit.result }}"      "merge_group schedule workflow_dispatch"
           sibling check-template-copy-out "${{ needs.check-template-copy-out.result }}" "merge_group workflow_dispatch"
           sibling check-template-copy-out-zephyr "${{ needs.check-template-copy-out-zephyr.result }}" "schedule workflow_dispatch"
-          sibling check-lane-contracts "${{ needs.check-lane-contracts.result }}" "merge_group schedule workflow_dispatch"
+          sibling check-lane-contracts "${{ needs.check-lane-contracts.result }}" "pull_request merge_group schedule workflow_dispatch"
           sibling check-build          "${{ needs.check-build.result }}"          "schedule workflow_dispatch"
           sibling warm-cache           "${{ needs.warm-cache.result }}"           "push workflow_dispatch"
 

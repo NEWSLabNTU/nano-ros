@@ -265,6 +265,16 @@ cxx-compat-shim-facilities:
 # knob, and the diagnostic text is checked, because a probe that merely fails
 # passes on a typo. Fast line, not `check cpp`, for issue 1225's reason: that
 # lane is `build-serial` and no merge-gating event reaches it.
+# phase-489 W9 — the buildless half of `check cpp`'s refusal probes: every
+# needle its expected-failure greps look for must be in an
+# NROS_RCLCPP_REFUSE_* refusal STRING, not merely in a header (comments kept
+# the old ids). That lane is ~9 min and on no pull request, so on 2026-11-14 a
+# message edit left three needles stale and `ci gate` red on main ~3 h; this
+# reports the same thing on the PR, in under a second.
+[private]
+refusal-needles:
+    @python3 scripts/check/check-refusal-needles.py
+
 [private]
 cpp-freestanding-mechanisms:
     @python3 scripts/check-cpp-freestanding-mechanisms.py
