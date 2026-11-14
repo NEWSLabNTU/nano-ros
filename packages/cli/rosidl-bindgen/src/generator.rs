@@ -1160,7 +1160,9 @@ fn emit_px4_cpp_headers(
         // ROS-style alias header so a module writes
         // `#include <px4_msgs/msg/vehicle_status.hpp>` rather than the flat
         // prefixed form.
-        let alias = msg_dir.join(format!("{}.hpp", to_snake_case(&msg_name)));
+        let alias = msg_dir.join(rosidl_codegen::generator::naming::ros_alias_header(
+            &msg_name,
+        ));
         if alias.file_name() != Some(std::ffi::OsStr::new(&generated.header_name)) {
             write_if_changed(
                 &alias,

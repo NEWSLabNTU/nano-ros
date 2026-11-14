@@ -81,7 +81,7 @@ pub mod workspace_scaffold;
 
 use eyre::{Result, WrapErr, eyre};
 use rosidl_bindgen::ament::{AmentIndex, Package};
-use rosidl_codegen::{RosEdition, utils::to_snake_case};
+use rosidl_codegen::RosEdition;
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
@@ -2291,7 +2291,9 @@ fn generate_cpp_with(
                 // users write `#include <std_msgs/msg/int32.hpp>`
                 // instead of the prefixed flat form.
                 write_b8_alias_header(
-                    &msg_dir.join(format!("{}.hpp", to_snake_case(file_name))),
+                    &msg_dir.join(rosidl_codegen::generator::naming::ros_alias_header(
+                        file_name,
+                    )),
                     &generated.header_name,
                 )?;
 
@@ -2339,7 +2341,9 @@ fn generate_cpp_with(
 
                 // Phase 123.B.8 — ROS-style alias header.
                 write_b8_alias_header(
-                    &srv_dir.join(format!("{}.hpp", to_snake_case(file_name))),
+                    &srv_dir.join(rosidl_codegen::generator::naming::ros_alias_header(
+                        file_name,
+                    )),
                     &generated.header_name,
                 )?;
 
@@ -2397,7 +2401,9 @@ fn generate_cpp_with(
 
                 // Phase 123.B.8 — ROS-style alias header.
                 write_b8_alias_header(
-                    &action_dir.join(format!("{}.hpp", to_snake_case(file_name))),
+                    &action_dir.join(rosidl_codegen::generator::naming::ros_alias_header(
+                        file_name,
+                    )),
                     &generated.header_name,
                 )?;
 

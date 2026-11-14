@@ -147,9 +147,62 @@ pub fn c_msg_header_path(package_name: &str, type_name: &str) -> String {
     )
 }
 
+/// The file name of the ROS-style C++ alias header for a type, as rosidl gives
+/// it: `float32_stamped.hpp`, `u_int8.hpp`, `tf_message.hpp`. A node ported
+/// from rclcpp writes `#include <pkg/msg/float32_stamped.hpp>`, so the alias
+/// must carry rosidl_generator_cpp's name, which is
+/// `convert_camel_case_to_lower_case_underscore` ([`to_rosidl_snake_case`]).
+///
+/// The one producer of the name, for every kind and every emitter that writes
+/// an alias. The prefixed header the alias forwards to keeps the C++ surface's
+/// own stem ([`artifact_names`]): only the alias is a name users type.
+pub fn ros_alias_header(type_name: &str) -> String {
+    format!("{}.hpp", to_rosidl_snake_case(type_name))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Each row is what rosidl_generator_cpp names the header, taken from
+    /// rosidl's own `convert_camel_case_to_lower_case_underscore` (ROS 2
+    /// Humble, `rosidl_cmake`). The rows are the shapes the C++ surface's
+    /// `to_snake_case` got wrong: a digit before a capital, an acronym, an
+    /// acronym before a word.
+    #[test]
+    fn the_alias_header_takes_rosidls_name() {
+        for (type_name, rosidl) in [
+            ("Float32Stamped", "float32_stamped"),
+            ("Float32MultiArrayStamped", "float32_multi_array_stamped"),
+            ("Float64Stamped", "float64_stamped"),
+            ("UInt8", "u_int8"),
+            ("UInt8MultiArray", "u_int8_multi_array"),
+            ("Float32MultiArray", "float32_multi_array"),
+            ("Vector3Stamped", "vector3_stamped"),
+            ("Pose2D", "pose2_d"),
+            ("PointCloud2", "point_cloud2"),
+            ("A1B2", "a1_b2"),
+            ("TFMessage", "tf_message"),
+            ("MultiDOFJointState", "multi_dof_joint_state"),
+            ("GPSFix", "gps_fix"),
+            ("FFMPEGPacket", "ffmpeg_packet"),
+            ("HDMapBin", "hd_map_bin"),
+            ("GoalID", "goal_id"),
+            ("WString", "w_string"),
+            ("ABC", "abc"),
+            ("LaserScan", "laser_scan"),
+            ("NavSatFix", "nav_sat_fix"),
+            ("Imu", "imu"),
+            ("Int32", "int32"),
+            ("String", "string"),
+        ] {
+            assert_eq!(
+                ros_alias_header(type_name),
+                format!("{rosidl}.hpp"),
+                "{type_name}"
+            );
+        }
+    }
 
     #[test]
     fn the_c_surface_names_a_message_as_rosidl_does() {
