@@ -173,6 +173,12 @@ brief of RFC-0126 did.
   in [data/phase-555-w3-rulings.md](data/phase-555-w3-rulings.md). Each
   area's W2 reviewer applies its own items. The five untracked items are
   issue 2522, issue 2523, issue 2524, issue 2525 and issue 2526.
+  The runtime-api slice was applied 2026-11-14 (the ruling and what
+  changed are recorded under "Ruling" in
+  [data/phase-555-w2-runtime-api-brief.md](data/phase-555-w2-runtime-api-brief.md)):
+  RFC-0008, RFC-0020 and RFC-0037 moved to `archived/`; RFC-0044, 0077, 0084,
+  0105, 0106 and 0108 flipped to Stable with their ARCHITECTURE.md lines; open
+  items filed as issues [2541](../issues/2541-executor-callback-slots-capped-at-64.md), [2542](../issues/2542-arrival-attribution-xrce-uorb-baremetal.md), [2543](../issues/2543-deadline-source-unmeasured-on-hardware.md), [2544](../issues/2544-preemption-level-model-extensions.md), [2545](../issues/2545-callback-core-partitioning.md).
 
   **test-ci applied (2026-11-14):**
   - B27: RFC-0061's ladder splits "when" into "run locally when" and "CI runs

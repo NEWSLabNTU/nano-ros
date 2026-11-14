@@ -326,7 +326,7 @@ size-markers-image:
 # runs it on both merge-gating events and SKIPS it on push, where the source is
 # absent. That skip is recorded, so the lane summary says what did not run.
 #
-# NOT `build-serial:`. That lane is schedule/workflow_dispatch only, and
+# NOT the build tier (`[metadata("tier", "build")]`). That tier is schedule/workflow_dispatch only, and
 # `check-gate-visibility` refuses a gate no pull request reaches -- "a gate no
 # pull request runs is a gate that rots (issue 0981)". Putting a probe of a
 # defect that shipped THIS WEEK somewhere no pull request looks would have been

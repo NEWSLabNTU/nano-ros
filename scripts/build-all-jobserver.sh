@@ -28,6 +28,7 @@ echo "  log-dir=$log_dir"
 
 echo "build-all: prefetching Cargo registries before broad fanout"
 nros_cargo_fetch_root
+bash scripts/build/warm-offline-cargo.sh  # root + std deps for an offline build (issue 2560)
 echo "build-all: generating Rust example bindings before standalone prefetch"
 just generate-bindings
 echo "build-all: prefetching standalone Cargo manifests"

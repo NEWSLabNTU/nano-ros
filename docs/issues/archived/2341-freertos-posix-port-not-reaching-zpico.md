@@ -11,6 +11,8 @@ resolved: 2026-11-07
 resolved_in: "fix-issue-2341 branch: the FreeRTOS POSIX board states its port for cargo"
 ---
 
+GitHub: NEWSLabNTU/nano-ros#3862 (filed 2026-11-14 against 0.6.0-nros8, a C++ and a mixed image; the fix `bbb9b19bc1` is not in that release and is in 0.6.0-nros9)
+
 ## Measured
 
 A release asset built from `main` plus PR #3183 replays the FreeRTOS POSIX

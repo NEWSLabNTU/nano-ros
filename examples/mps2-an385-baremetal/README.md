@@ -38,29 +38,25 @@ Test lanes: `just qemu test`, `test-basic`, `test-zenoh`, `test-all`.
 | Lang | Role | variants |
 | --- | --- | --- |
 | rust | talker / listener | plain |
-| c | talker / listener | plain (issue 1512) |
-| c | service-server / service-client | plain (issue 1512) |
-| c | action-server / action-client | plain (issue 1512) |
+| c | talker | plain (issue 1512) |
 | cpp | talker | plain (issue 1512) |
 
-**The talkers are ordinary C/C++ components; the other C/C++ roles are not
-yet.** The two talkers (`c/talker`, `cpp/talker`) are one-package CMake
+**The C/C++ talkers are the witnesses; the other C/C++ roles live in the
+language workspaces.** `c/talker` and `cpp/talker` are one-package CMake
 workspaces, the same shape as an RTOS board's: the package at `src/<pkg>/` is a
 component with no `main` and no board name, and `src/<pkg>_bringup/system.toml`
 names the board. `nros build` generates the image's entry and links it on the
 CMake road, where the board's C start (`nros_board_mps2_an385_start`, in
 `nros-board-mps2-an385`'s `c/c_main.c`) is `main`: it brings up the clock, the
-LAN9118 and the network, then runs the entry (phase-553 W4/W5). Their
-`[[workspace_fixture]]` rows say `builder = "cmake"`
-(`scripts/build/workspace-fixtures-build.sh baremetal c` / `cpp`).
+LAN9118 and the network, then runs the entry (phase-553 W4/W5).
 
-Every other C/C++ role is still rooted in cargo, the shape this board needed
-before it had a C start: a one-package workspace (RFC-0122 D3, phase-535 W6)
-whose package at `src/<pkg>/` is a cargo crate, with `src/main.rs` booting the
-board and `build.rs` compiling the role's C or C++ into it. The bringup names
-that package as the image's OWNED entry (`entry = "<pkg>"`, RFC-0071 D19), so
-`nros build` builds it on the cargo road; those rows say `builder = "cargo"`.
-phase-553 W6 moves them to the talkers' shape.
+The C and C++ listener, service and action roles are `baremetal_<role>` images
+of `examples/workspaces/{c,cpp}`'s pubsub, service and action bringups, beside
+the RTOS images of the same components. The entry passes each image's network
+identity to the board's C start at run time (`<nros/board.h>`'s
+`nros_board_image_config_t`, issue 2555), so a bringup's images share one
+configure. Every row says `builder = "cmake"`
+(`scripts/build/workspace-fixtures-build.sh baremetal c` / `cpp`).
 
 `test_qemu_baremetal_capi_e2e` in `tests/emulator.rs` runs every C/C++ pair end
 to end under QEMU, each against its own router.

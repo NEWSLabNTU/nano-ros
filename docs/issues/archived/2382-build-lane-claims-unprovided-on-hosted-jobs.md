@@ -11,7 +11,7 @@ related: [phase-543, phase-466, 1758]
 found: 2026-11-09
 ---
 
-**Home: [phase-543](../../roadmap/phase-543-nextest-gates.md)** -- W5 added the
+**Home: [phase-543](../../roadmap/archived/phase-543-nextest-gates.md)** -- W5 added the
 lane claims and their preflight, and W6 put `check build` through the harness.
 
 ## Measured

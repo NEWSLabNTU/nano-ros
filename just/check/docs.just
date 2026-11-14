@@ -553,8 +553,8 @@ roadmap-status:
 # script runs whatever features are on).
 #
 # The narrowing is reported through the SHARED ledger (`nros_check_skip`),
-# not by printing on the happy path: `run-gates-parallel.sh` discards the stdout
-# of every gate that exits 0, so a message there is invisible on the lane that
+# not by printing on the happy path: the gate harness (nextest,
+# `store-success-output = false`) discards the stdout of every gate that exits 0, so a message there is invisible on the lane that
 # runs in bulk (issue 0650's shape).
 #
 # `NROS_RUSTDOC_LINKS_STRICT=1` restores fail-closed, and unlike issue 1043's

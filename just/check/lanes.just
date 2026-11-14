@@ -1,7 +1,7 @@
 # nano-ros gates: lanes
 #
 # The COMPILE and LINK lanes: each builds or resolves something, and
-# these are what `build-serial:` fans out over. Grouped by being a
+# these are most of the build tier (`[metadata("tier", "build")]`). Grouped by being a
 # lane rather than by subject, because that is how they run and how
 # they fail.
 #
@@ -4803,7 +4803,7 @@ workspace-all:
     # rust-std-<target>: could not rename 'downloaded' file"), which ejected
     # three merge-queue batches on 2026-10-13. The same rule `rustup target add`
     # follows further down: serially, first. Every pinned channel, through the
-    # same installer `run-gates-parallel.sh` uses (local check first, so the CI
+    # same installer `gate-lane.sh` uses (local check first, so the CI
     # image, which bakes the list, fetches nothing).
     scripts/lib/install-rust-toolchains.sh || {
         echo "workspace-all: [INFRA] could not complete the pinned Rust toolchains (issue 1868)" >&2
@@ -4868,9 +4868,9 @@ workspace-embedded:
         exit 1
     fi
 
-# Issue 1882 -- the native-example clippy fan-out, as a GATE on `build-serial`.
-# `check::build` runs `just check <gate>` for each name on that list and never
-# the `build-serial:` recipe BODY, so the `@just linux check` that used to end
+# Issue 1882 -- the native-example clippy fan-out, as a build-tier GATE.
+# `check::build` runs `just check <gate>` for each build-tier gate and never
+# the body of the old `build-serial:` list recipe, so the `@just linux check` that used to end
 # that body went unreached from 2026-09-03 (#0993) and nothing linted
 # `examples/` for six weeks. A call in the body is a second spelling that can
 # rot unseen; a name on the list is the only thing the runner reads.

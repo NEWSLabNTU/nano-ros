@@ -118,7 +118,7 @@ nros_nextest_thread_ceiling() {
 
 # This run's share of the machine, as `--test-threads`, or nothing.
 #
-# `run-gates-parallel.sh` fans out to `nproc` gates and each gate starts its own
+# The gate harness fans out to `nproc` gates and each gate starts its own
 # `cargo nextest`, which takes its thread count from `.config/nextest.toml` and
 # knows nothing about its 11 siblings. On a 12-core host that is up to 12 x 25
 # test threads for 12 cores, and a test whose assertion is a wall-clock RATE

@@ -466,6 +466,9 @@ def main():
             "    nros_lane_skip_note <lane>   a STEP's prerequisite is missing\n"
             "    nros_lane_out_of_scope_note <lane>  this run's LANE selected no such\n"
             "                                 coordinate — never a failure\n"
+            "    nros_lane_sibling_out_of_scope <lane> <why> <sibling>...  a\n"
+            "                                 platform this module owns is out of\n"
+            "                                 the run, and a sibling is in it\n"
             "  A recipe that is genuinely not a platform lane goes in\n"
             "  NOT_A_PLATFORM_LANE with its reason, not into a missing line.\n"
         )

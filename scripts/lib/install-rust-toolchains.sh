@@ -10,7 +10,7 @@
 #   * `ci/docker/ci-base/Dockerfile` — bakes every channel into the image, so a
 #     merge-gating job never downloads one (`--set-default` makes line 1, the
 #     root `rust-toolchain.toml`'s channel, the default toolchain).
-#   * the gate fan-outs (`scripts/build/run-gates-parallel.sh`,
+#   * the gate fan-outs (`scripts/build/gate-lane.sh`,
 #     `check::workspace-all`) — run it SERIALLY before forking, so a toolchain
 #     the image does not carry yet (a pin bump that has not republished the
 #     image) is installed once, with a bounded retry, instead of by N rustup

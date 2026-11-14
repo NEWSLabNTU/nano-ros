@@ -152,12 +152,19 @@ host. `nros run` reads that address from the image's build and starts the
 router on your host's port 7447 itself, or reuses a zenoh router already
 listening there.
 
-In the workspace, source ROS 2 and build and run the talker. This first run
-records the ROS 2 prefix in the workspace, so later runs of it need no sourced
-shell:
+In the workspace, source ROS 2 and build the firmware first. The build
+writes the image's network configuration, which `nros run` reads to start the
+router, so build before the first run. It goes through west, and the first
+build takes several minutes; later ones take seconds:
+
+```bash probe=55 track=installed
+source /opt/ros/humble/setup.bash
+nros build
+```
+
+Then run the talker:
 
 ```bash probe=60 probe-run=1500 track=installed
-source /opt/ros/humble/setup.bash
 nros run zm_node --expect "Publishing: 'Hello World: 1'"
 ```
 
@@ -166,9 +173,8 @@ Publishing: 'Hello World: 1'
 nros run: matched after
 ```
 
-`nros run` builds the firmware through west (the first build takes several
-minutes; later ones take seconds) and boots it in the QEMU that the Zephyr
-SDK ships. What it prints is the board's console: Zephyr's boot banner, then
+`nros run` rebuilds the firmware if a source changed, then boots it in the
+QEMU that the Zephyr SDK ships. What it prints is the board's console: Zephyr's boot banner, then
 the talker. With `--expect` it stops the board and exits 0 at the first
 console line containing that text, and exits 1 if the board stops first.
 

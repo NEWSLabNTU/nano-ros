@@ -4,8 +4,10 @@ title: "ROS 2 API adoption, and the compile-or-conform rule"
 status: Stable
 area: runtime-api
 since: 2026-09
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-14
 implements-tracked-by: [phase-417, phase-427, phase-438, phase-476, phase-482, phase-483, phase-492, phase-499, phase-501, phase-504, phase-515]
+supersedes: [0037]
+superseded-by: null
 ---
 
 # RFC-0089 — ROS 2 API adoption, and the compile-or-conform rule
@@ -21,7 +23,16 @@ names ROS 2's.
 **Implements-tracked-by:** phase-417-ros2-api-adoption (archived 2026-10-07);
 the remainder is tracked by
 [phase-482](../roadmap/archived/phase-482-rclcpp-drop-in-residue.md).
-**Governed by:** RFC-0019 / RFC-0020 (thin-wrapper discipline) — the Rust API
+**Supersedes:** [RFC-0037](archived/0037-rust-c-user-api-surface.md) (Rust
+and C user-API surfaces), 2026-11-14 (phase-555 W3). The surface it recorded by
+hand is the generated, gated `docs/reference/api-surface/` and
+`docs/reference/api-parity-ledger/`; the names are this RFC's.
+**Amended by:** [RFC-0128](0128-per-node-lifecycle.md) (D4): the C lifecycle
+surface is upstream `rclc_lifecycle`'s, and the executor-scoped
+`rclc_executor_*lifecycle*` family leaves the surface. (RFC-0128 first stated
+this as an amendment of RFC-0037.)
+**Governed by:** RFC-0019 (thin-wrapper discipline; RFC-0020's audit
+checklist merged into it 2026-11-14) — the Rust API
 is the implementation source of truth; C and C++ delegate. This RFC does not
 relax that, and §"Who implements an adopted name" states what it means for
 adoption.

@@ -54,7 +54,7 @@ mem-report:
 #     NROS_HEAP_HEADROOM_DUMP=report.bin just check heap-headroom
 #
 # An env var and not a recipe parameter: a recipe that takes parameters is
-# excluded from the derived fast lane (`run-gates-parallel.sh`), and the
+# excluded from the derived fast lane (`check-gate-lists.py`), and the
 # negative controls belong on every push.
 [private]
 heap-headroom:

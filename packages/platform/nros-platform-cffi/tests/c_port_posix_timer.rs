@@ -25,7 +25,7 @@ const TIMER_DEADLINE: Duration = Duration::from_secs(2);
 /// **Why no test here sleeps for a fixed window.** `thread::sleep(40ms)` then
 /// `assert!(count >= 4)` does not assert that a periodic timer is periodic; it
 /// asserts how much work this machine did in 40 ms, which is a property of the
-/// machine's load. `run-gates-parallel.sh` fans out to `nproc` gates and each
+/// machine's load. The gate harness fans out to `nproc` gates and each
 /// one starts its own `cargo` and `cargo nextest`, so the surrounding demand is
 /// a multiple of the core count and this process is not guaranteed a core at
 /// all. Measured on a 12-core host with 24 busy loops: `got 2` for the `>= 4`

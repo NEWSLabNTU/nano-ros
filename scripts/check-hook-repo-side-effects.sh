@@ -108,7 +108,7 @@
 # happens only when a host's tools disagree with the committed bytes
 # (`check-abi-bindings` on libclang 23), which no probe of a clone built here
 # would reproduce, so the guard lives where the writes do: the lane runner
-# (`scripts/build/run-gates-parallel.sh`) snapshots every tracked file's
+# (`scripts/build/gate-lane.sh`) snapshots every tracked file's
 # content before and after the fan-out and fails on any change.
 set -uo pipefail
 cd "$(dirname "$0")/.."

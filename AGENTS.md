@@ -456,7 +456,7 @@ may resolve an artifact only if that JOB builds it.
 | stage | runs | measured | gates? |
 | --- | --- | --- | --- |
 | local, before push | `just ci l1` | ~6 min warm | you |
-| pull request | `check-fast` only (133 source gates) | ~5 min | **required** |
+| pull request | `check-fast`, `compile-smoke`, `cli-tests`, `workspace-all`, `test-lane-contracts` (phase-489 W9) | ~16-22 min, `cli-tests` the critical path | **required** |
 | merge group | + `test-unit`, `template-copy-out` (issue 1453) | ~9 min; template-copy-out is a parallel job, ~8 min (issue 1453) | **required** |
 
 **`just ci l1` is NOT what CI runs, and that is deliberate** (phase-399 W3).
@@ -690,6 +690,10 @@ and verified.
 ### Agent Practices
 
 - **Run `just ci l1` before every push** (~6 min, no fixtures); run `just ci` when the change earns fixture-backed coverage. Never `sudo` — tell the user.
+- **The push tier is chosen by the diff** (user ruling 2026-11-14). If every path that differs from the merge base with `origin/main` (committed, staged, unstaged, or untracked and not ignored) is documentation, the push needs `just check fast` alone. `just ci gate` detects that case itself, prints `ci gate: docs-only diff (...)`, and runs only `check::fast`. `scripts/ci/gate-tier.py` decides which paths count:
+  - **Docs:** anything under `book/` or `book-internals/`, and any `*.md` file.
+  - **Excluded:** a file Rust source reads, through `include_str!` or as a repo-path string literal. Unit tests read book pages; cargo-nano-ros's scaffold tests are one example.
+  - **Full gate:** anything else, including non-Markdown files under `docs/`, an empty diff, and a diff the script cannot compute. There is no knob for choosing the tier. Gate: `just check gate-tier`. Its negative control is a docs change plus one `.rs` file, which takes the full gate.
 - **Green CI locally BEFORE pushing** — run `just format` then `just ci`. CI stops at the first failing step; re-run until fully green. A toolchain bump can surface new pre-existing lints (e.g. rust-1.96 `unnecessary_cast` / `drop_non_drop` / `not_unsafe_ptr_arg_deref`) — fix them locally rather than discovering them remotely.
 - **Always nightly for `rustfmt`** — `rustfmt.toml` enables nightly-only options; stable produces different output. Run `cargo +nightly fmt`.
 - **Never merge in git.** Use `git pull --rebase` or `git fetch` + `git rebase`. Never create merge commits unless asked.

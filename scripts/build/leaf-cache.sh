@@ -34,6 +34,37 @@
 #
 # Local runs pay nothing: a warm cache makes this a no-op, which is also why the
 # defect never showed up in a developer sweep — only `--offline` exposes it.
+# nros_plan_cargo_build_args < <dry-run plan>
+#
+# Read `nros build --dry-run`'s stage-5 line for a cargo image and print
+# `manifest <path>` and, when there is one, `config <file>`. The line is
+# `Handoff::display()`: env assignments first (`K=V `, unquoted, so a value
+# may hold spaces), then the program (bare `cargo` or a path to it), then its
+# args. So the line is found by its `cargo build` words wherever they sit, and
+# the args are read from there on. The FIRST `--config` that names a file is
+# the image's settings; a later `--config key=value` (`build.build-dir=…`) is
+# not a file and is skipped.
+nros_plan_cargo_build_args() {
+    awk '
+        !done {
+            for (i = 1; i < NF; i++) {
+                if (($i == "cargo" || $i ~ /\/cargo$/) && $(i + 1) == "build") {
+                    m = ""; c = ""
+                    for (j = i + 2; j < NF; j++) {
+                        if ($j == "--manifest-path" && m == "") m = $(j + 1)
+                        if ($j == "--config" && c == "" && $(j + 1) !~ /=/) c = $(j + 1)
+                    }
+                    if (m != "") {
+                        print "manifest " m
+                        if (c != "") print "config " c
+                        done = 1
+                    }
+                    break
+                }
+            }
+        }'
+}
+
 _NROS_WARMED_LEAVES=""
 _NROS_WARMED_ROOT=""
 _NROS_WARMED_IMAGES=""
@@ -56,11 +87,7 @@ nros_warm_leaf_cache() {
     # fixed half the failure and looked like a fix.
     if [ -z "$_NROS_WARMED_ROOT" ]; then
         _NROS_WARMED_ROOT=1
-        if ( cd "$repo_root" && cargo fetch >/dev/null 2>&1 ); then
-            :
-        else
-            echo "  leaf-fetch: could NOT warm the cargo cache for the repo root." >&2
-        fi
+        bash "$repo_root/scripts/build/warm-offline-cargo.sh"  # root + std deps for an offline build (issue 2560)
     fi
 
     # The LEAF half warms the graph the build will actually resolve: the
@@ -87,13 +114,24 @@ nros_warm_leaf_cache() {
     case " $_NROS_WARMED_IMAGES " in *" $ws|$img "*) return 0 ;; esac
     _NROS_WARMED_IMAGES="$_NROS_WARMED_IMAGES $ws|$img"
 
-    local plan manifest cfg
+    local plan manifest cfg parsed
     if plan="$(cd "$ws" && "$nros_cli" build "$img" --workspace . --offline --dry-run 2>&1)"; then
-        manifest="$(printf '%s\n' "$plan" \
-            | sed -n 's/^cargo build .*--manifest-path \([^ ]*\).*/\1/p' | head -n 1)"
-        [ -n "$manifest" ] || return 0
-        cfg="$(printf '%s\n' "$plan" \
-            | sed -n 's/^cargo build .*--config \([^ ]*\).*/\1/p' | head -n 1)"
+        parsed="$(printf '%s\n' "$plan" | nros_plan_cargo_build_args)"
+        manifest="$(sed -n 's/^manifest //p' <<<"$parsed")"
+        cfg="$(sed -n 's/^config //p' <<<"$parsed")"
+        if [ -z "$manifest" ]; then
+            # A cmake/west-driven image has no cargo root to warm. A CARGO
+            # image whose plan this could not read is the defect, and it used
+            # to return here in silence: the plan's line grew an env prefix
+            # (the stack-floor flags, a RUSTUP_TOOLCHAIN) and `^cargo build`
+            # stopped matching, so nothing was fetched and the --frozen build
+            # failed on `failed to download rtic v2.3.0`.
+            if [[ $plan == *'driver cargo'* ]]; then
+                echo "  leaf-fetch: could NOT find the cargo build line in the plan for $img;" >&2
+                echo "              nothing was fetched for its generated root." >&2
+            fi
+            return 0
+        fi
         if ( cd "$ws" && cargo fetch --manifest-path "$manifest" \
                 ${cfg:+--config "$cfg"} >/dev/null 2>&1 ); then
             return 0

@@ -84,6 +84,14 @@ ci-cli-from-source:
 ci-doc-workflow-refs:
     @python3 scripts/check-ci-doc-workflow-refs.py
 
+# `just ci gate` picks its tier from the diff (user ruling 2026-11-14): a
+# docs-only diff runs `check fast` alone. The classifier's cases include the
+# negative control (docs plus one `.rs` takes the full gate) and the Markdown a
+# Rust test reads as input. Buildless, under a second.
+[private]
+gate-tier:
+    @python3 scripts/ci/gate-tier.py --self-test
+
 # issue 1514 — a lane's LABEL must not claim an event its step does not run on.
 #
 # `just check build` is `schedule`/`workflow_dispatch` only, and the job it lives
@@ -499,6 +507,14 @@ zephyr-sync-workspace-manifest:
 pre-push-log:
     @bash tests/pre-push-log-tests.sh
 
+# Issue 2583 -- the pre-push hook reads a ref line's <local-sha> as a commit only
+# when the push publishes one: a deletion (all-zero local sha) passes and arms
+# no check, and an update whose pin moves backward is still refused. Runs the
+# real hook in a scratch repo with its four checks stubbed. Buildless, <1 s.
+[private]
+pre-push-refs:
+    @bash tests/pre-push-ref-tests.sh
+
 # Issue 2306 -- "is this submodule provisioned" asks the CHECKOUT, not only its
 # HEAD. `scripts/lib/submodule-provision.sh` classifies a submodule as ok,
 # missing, incomplete (tracked files absent or staged as deleted: an
@@ -614,8 +630,8 @@ subtree-guard:
     @bash packages/testing/nros-tests/tests/subtree_guard.sh
 
 # issue 1350 — stopping a LANE stops its gate fan-out, and the stop reads as NO
-# VERDICT, never success. Drives the real run-gates-parallel.sh and
-# run-lane-steps.sh against a stub `just` and asserts on the process table:
+# VERDICT, never success. Drives `nros_guard_lane` (the guard gate-lane.sh runs
+# its lane under) and run-lane-steps.sh against a stub `just` and asserts on the process table:
 # owner TERM, owner KILL, and a TERM to the shell ABOVE the owner (all `just`
 # delivers) leave no survivor; an unknown step is NO VERDICT (rc 2). Its
 # negative control — the guard disabled — must leave orphans. ~15 s.

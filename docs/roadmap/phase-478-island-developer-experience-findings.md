@@ -603,3 +603,20 @@ this phase will fix it.
 ## Issues homed here (2026-11-02)
 
 - [issue 2165](../issues/2165-zephyr-smp-nros-log-stops-after-four-records.md): on the island's Zephyr SMP image (`fvp_baser_aemv8r_smp`), only the four early-ring `nros_log` records reach the console. Every later record is lost with no `report_lost` warning. The same sources log normally on FreeRTOS.
+
+## Issues homed here (2026-11-15)
+
+Filed from the GitHub reports of one session scaffolding the L4 Safety Island
+workspace (0.6.0-nros8, and main `37232ecff1` for the first). A seventh report
+from that session, `FREERTOS_PORT not set` on `freertos-posix`, is
+[issue 2341](../issues/archived/2341-freertos-posix-port-not-reaching-zpico.md),
+fixed after that release.
+
+- [issue 2564](../issues/2564-hand-entry-bringup-image-drops-domain-id.md): a hand-written entry naming `BRINGUP` and `IMAGE` bakes domain 0, not the image's `domain_id`, with no refusal.
+- [issue 2565](../issues/2565-mixed-image-rust-pkg-needs-cmake-shim.md): a mixed image's Rust package needs an undocumented CMake shim, and `nros new` adds neither it nor the contract row.
+- [issue 2566](../issues/2566-sync-ignores-nested-packages-and-package-paths.md): `nros sync` ignores `src/<group>/<pkg>` and `package_paths`.
+- [issue 2567](../issues/2567-rust-codegen-msg-constants-not-reexported.md): Rust codegen does not re-export `.msg` constants.
+- [issue 2568](../issues/2568-rust-ctx-param-misses-launch-values.md): a Rust `ctx.param()` gets the default, not the launch value.
+- [issue 2569](../issues/2569-cpp-metadata-probe-assumes-class-header.md): the C++ metadata probe assumes `<pkg>/<Class>.hpp` and logs a failure even with `HEADER` set.
+- [issue 2582](../issues/2582-cmake-workspace-road-drops-image-knob-rows.md): on the hand-written `nano_ros_workspace()` road, `[image.<id>.knobs.*]` rows are silently ignored (164 parameter slots stated, 32 built).
+

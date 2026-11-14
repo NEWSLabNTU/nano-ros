@@ -450,6 +450,7 @@ while IFS= read -r record; do
         # native arg to west's zone or cmake's by its own spelling
         # (`split_native_args`), so no second `--`. `--offline`, like every
         # fixture lane's `nros build`.
+        bash "$repo_root/scripts/build/warm-offline-cargo.sh"  # root + std deps for an offline build (issue 2560)
         nargs=(build "$nros_image" --workspace "$repo_root/$src" --offline -- -d "$bld")
         [ "$builder" = "west-configure" ] && nargs+=(--cmake-only)
         if [ -n "$extra" ]; then

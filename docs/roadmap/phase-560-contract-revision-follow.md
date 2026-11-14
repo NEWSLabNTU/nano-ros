@@ -150,3 +150,15 @@ meaning, which shipped in #3745. Size M.
   `deprecated-spelling` warnings.
 - Every item lands in a pull request that bumps rlm and the play_launch
   submodule together. Its manifests name the tag the submodule pins.
+
+## Issues homed here (2026-11-15)
+
+The L4 Safety Island's plan items that land on the RTOS realizer, filed from
+their GitHub reports.
+
+- [issue 2570](../issues/archived/2570-ftti-budget-charges-only-last-ladder-level.md): `ftti_budget` charges only the ladder's last level (NR-15). W8 made the image report its level; the build-time half landed in PR #3853 (resolved).
+- [issue 2571](../issues/archived/2571-mode-form-contract-fixture.md): no fixture declares `hazards:` with a `modes:` ladder (NR-19). Resolved by PR #3853.
+- [issue 2572](../issues/2572-timer-silence-watchdog-from-on-violation.md): a timer watchdog for subscriber silence, generated from `on_violation.mechanism: timer` (NR-12). W7; blocked on the rlm addition.
+- [issue 2573](../issues/2573-can-fd-e2e-profile-and-flexcan-helper.md): a CAN FD fixed-length E2E profile and a raw FlexCAN helper (NR-6). W7's end-to-end protection.
+- [issue 2574](../issues/2574-pluginlib-free-mode-plugin-registration.md): pluginlib-free registration for the mode decider and switcher plugins (NR-17). Homed here with its siblings; it is a registration question, not a contract one.
+

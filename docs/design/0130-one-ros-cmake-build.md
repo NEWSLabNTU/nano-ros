@@ -122,8 +122,11 @@ re-implement the user's CMakeLists (or ignore it).
   language workspace's component. A bare-metal image's network is baked into
   its configure's one Rust staticlib, so a bringup's server and client cannot
   share a configure the way an RTOS bringup's do
-  ([issue 2555](../issues/2555-baremetal-c-rooted-image-network-baked-per-configure.md)).
-  Joining the language workspaces waits on that issue.
+  ([issue 2555](../issues/archived/2555-baremetal-c-rooted-image-network-baked-per-configure.md)).
+  *Then (2026-11-15):* issue 2555's fix hands each image's identity to the
+  board at run time, so the roles joined the language workspaces as this
+  decision says: `baremetal_<role>` images of `examples/workspaces/{c,cpp}`,
+  and the copies are gone.
 - The two bare-metal C/C++ talker witnesses: same, no cargo.
 - `nros-cc-flags`' leaf-only modules (`app_main`, `entry_config::bake`,
   `backends`) lose their consumers once no leaf compiles C through cargo.

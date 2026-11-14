@@ -30,7 +30,7 @@
 # not emit, the worktree went dirty, every fixture keyed on those files
 # re-staled, and two OTHER fast gates (`comment-names`,
 # `retired-knob-spellings`) went red reading the rewritten text. A gate reads
-# the tree; it never writes it (`run-gates-parallel.sh` now refuses a lane that
+# the tree; it never writes it (`gate-lane.sh` refuses a lane that
 # changed a tracked file).
 #
 # THE LIBCLANG IS AN INPUT, measured (issue 2186). libclang 14 (the ROS box and
