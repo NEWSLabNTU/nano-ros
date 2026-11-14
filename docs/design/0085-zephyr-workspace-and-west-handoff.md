@@ -268,6 +268,18 @@ steps, a fresh `zephyr.exe`), then:
 
 **Decided 2026-08-29, by running the flow rather than reasoning about it.**
 
+> **Ruled 2026-11-14 (phase-555 W3): this is an ESCAPE, for a hand-written
+> application only.** The default is the application `nros build` generates per
+> image (`build/<coord>/<image>_entry/`, below). A package that declares
+> `DEPLOY zephyr` / `deploy = "zephyr"` is an APPLICATION someone wrote for
+> west, not a node package, so the declaration does not break the rule that a
+> node package names no board ([RFC-0121](0121-workspace-first-project-layout.md) D1,
+> [RFC-0130](0130-one-ros-cmake-build.md) D1). A node package must still not
+> carry it; no gate checks the `DEPLOY` token today
+> (`check-node-package-selection-free` covers a node package's board crates
+> only). The arm is kept for the user who owns a west application; no example
+> uses it.
+
 An image resolves to an application package. The link is the package's own
 declaration of the deploy target it serves, and the two languages put it in
 different files:

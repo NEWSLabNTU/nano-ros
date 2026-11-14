@@ -1,7 +1,7 @@
 ---
 rfc: 0032
 title: "Entry-Codegen Pipeline — main() emission across frameworks + sched tasks"
-status: Draft
+status: Stable
 area: build-toolchain-codegen
 since: 2026-06
 last-reviewed: 2026-11
@@ -12,19 +12,32 @@ superseded-by: null
 
 # Entry-Codegen Pipeline — `main()` emission across frameworks + sched tasks
 
-> **Canonical path (phase-296 R3/R4).** The entry `main()` emission now bakes
-> from the play_launch-resolved **SystemModel** (RFC-0050/0052): the Rust
-> `nros::main!(model = "<bringup>")` arm and the C/C++
-> `nano_ros_add_executable(... MODEL <system_model.yaml>)` keyword read a
-> committed `<bringup>/config/system_model.yaml` instead of parsing launch
-> XML + `system.toml` at build time. The `launch = …` / `LAUNCH` inputs this
-> RFC describes are **transitional** — deprecated in R3
-> (`warning[deprecated]`), removed in R4. The emitters, plan IR, and per-tier
-> `run_sched_tasks` seam are unchanged; only the plan's *source* moves to the model
-> (`plan_from_model` alongside `plan_from_launch`).
+> **Current shape (2026-11-14, phase-555 W3).** This RFC is now the record of
+> the **sched-task contract** (§4-§7), which is live: `run_sched_tasks` on every
+> RTOS board family, `SchedTaskSpec`, and the per-sched-task executor filter.
+> Four other things it described have moved:
+>
+> - **The input.** An entry names its bringup's launch file
+>   (`nros::main!(launch = "bringup[:file]")`, `nano_ros_entry(BRINGUP … LAUNCH …)`),
+>   and the build resolves the SystemModel into `build/` (RFC-0063). The
+>   committed `system_model.yaml` and `model =` that an earlier banner here called
+>   canonical are the reverse of today's rule: `model =` is a deprecated expert
+>   override (`main_macro.rs`).
+> - **The emitters (§2)** are [RFC-0091](0091-one-entry-codegen-producer-many-language-packs.md)'s
+>   one producer with per-language packs.
+> - **The boot scaffold (§3)** takes its board from the bringup's
+>   `[image.<id>] board` ([RFC-0098](0098-generated-leaf-build-config.md)), not
+>   from `nros::main!(board = X)` or an entry's `deploy =`.
+> - **§8a's binding point** is superseded by
+>   [RFC-0043](0043-entry-real-callback-binding.md): the executor callback
+>   registration, not the recording op set.
+>
+> §8's open items are closed (see there); the one the code did not answer, the
+> spin-period bound check, is
+> [issue 2527](../issues/2527-sched-task-spin-period-bound-not-checked.md).
 
-**Status:** Draft (design-of-record for the entry emitter; the multi-sched-task slice
-is tracked by Phase 228).
+**Status:** Stable (2026-11-14): the sched-task contract, landed (phases 212, 228
+and 236, archived).
 
 **Scope boundary.** This RFC is the **how-`main()`-is-emitted** doc. It is the
 companion to:
@@ -364,29 +377,19 @@ gated to zero) against real zenohd.
   `freertos_rs_talker_entry` (`thumbv7m-none-eabi`) compiles, links, and boots
   through the board lifecycle under QEMU.
 
-**Open (implementation):**
+**Open items, closed 2026-11-14 (phase-555 W3).** The list as it stood is kept
+for the record, each with its outcome:
 
-4. **Land the §3.1 boot-scaffold fixes (Phase 212.O.1).** Board panic line on the
-   `nros-board-*-freertos` family; the 6 FreeRTOS Node examples → `["rlib"]`;
-   linker-script `.cargo/config.toml` sync (audit all freertos examples for the
-   `-Tlink.x` drift, ideally regen via `nros configure`). Tracked by phase-212 O.1
-   + issue 0045.
-5. **O.1 runtime residual (separate from the panic design).** After §3.1, the app
-   task stack-overflows at Executor creation because the firmware links **both**
-   rmw backends (`zpico_sys` zenoh + `nros_rmw_cyclonedds` via the Node's `nros`
-   umbrella `rmw-cffi`) despite `deploy.rmw = "zenoh"`. This is RMW-backend
-   selection (RFC-0031) + inline-arena/stack tuning, not entry codegen — un-ignore
-   `freertos_run_plan_runtime` only after it lands.
-
-1. **Proc-macro emit** — wire `nros-macros` to `nros-orchestration-ir`, resolve
-   sched tasks at expansion (keying groups per §7 instance-identity), emit `run_sched_tasks`
-   behind the §5.1 gate with a register-only `run_plan`. Add a multi-sched-task example
-   fixture + the external-observer E2E above.
-2. **FreeRTOS `run_sched_tasks`** — port the native primitive via
-   `nros_freertos_create_task` at the raw FreeRTOS priority; this is where real
-   preemption is validated on QEMU (MT=1 already, §5.0).
-3. **Spin-period bound check** — emit a warning when `spin_period_us` exceeds the
-   tightest timer period in the sched task (RFC-0015 §4.3). Low priority.
+- *Proc-macro emit of `run_sched_tasks`* — landed (`main_macro.rs`).
+- *FreeRTOS `run_sched_tasks`* — landed, with every other RTOS family
+  (`nros-board-freertos/src/entry.rs`, NuttX, ThreadX, Zephyr).
+- *Spin-period bound check* — not built: [issue 2527](../issues/2527-sched-task-spin-period-bound-not-checked.md).
+- *§3.1 boot-scaffold fixes (phase-212 O.1, issue 0045)* — overtaken: the panic
+  provider is the image's RFC-0077 policy (`panic = "platform" | "halt" | "own"`),
+  and a board states its own provider in its descriptor
+  (`own_panic_root_extra`), so no board crate imports one unconditionally.
+- *O.1 runtime residual* — closed: `freertos_run_plan_runtime` runs (its cell is
+  answered by `rtos_e2e`), and backend selection is the image's `rmw`.
 
 ## 8a. Embedded board adapter + NodeContext runtime binding (C++ Entry path)
 

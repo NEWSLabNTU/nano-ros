@@ -1,7 +1,7 @@
 ---
 rfc: 0101
 title: "Vendored source resolution: one owner per graph, and the hand-off is `links`"
-status: Draft
+status: Stable
 area: build-toolchain-codegen
 since: 2026-09
 last-reviewed: 2026-11
@@ -11,6 +11,14 @@ superseded-by: null
 ---
 
 # RFC-0101 — Where a vendored source tree comes from
+
+> **Amended by [RFC-0130](0130-one-ros-cmake-build.md) (2026-11-14).** Wherever this
+> RFC names a bare-metal C example as the `DEP_NROS_C_*` consumer (§1's census, §2.1,
+> the table in §5), that consumer is a C application built on a cargo link root, the
+> shape RFC-0130 D3 retires: on the bare-metal board a C/C++ package is now an
+> ordinary CMake component, and the CMake road reads `nros-c`'s headers from the
+> `nros_c-static` target, not through `links`. The rule itself is unchanged. The
+> example consumer is struck when phase-553 W6 moves the last such role.
 
 ## Summary
 
@@ -409,6 +417,11 @@ BSP developers"*.
   authority over the same fact.
 
 ## 8. Open questions
+
+Questions 1 and 3 moved to
+[issue 2533](../issues/2533-vendored-source-override-announce-and-unread-links-keys.md)
+when this RFC became Stable (2026-11-14); question 2 was answered by issue
+1560's resolution. The list as it stood:
 
 1. **Should an override that lands on a pinned-for-interop tree announce
    itself?** `CYCLONEDDS_SOURCE_DIR` silently replaces a pin that is an interop

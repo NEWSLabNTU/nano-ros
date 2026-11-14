@@ -75,10 +75,13 @@ Three sub-decisions (brainstormed 2026-07-24):
 - `nros-rmw-cffi/src/generated.rs` — committed bindgen output.
   Flags: `--use-core`, `--ctypes-prefix core::ffi`,
   `--default-enum-style moduleconsts` (matches the existing
-  `NROS_RMW_RET_*` const style), allowlist `nros_rmw_.*`, layout tests
-  ON (bindgen's generated `#[test]` layout asserts remain as
-  belt-and-braces). Version-stamped header comment records the exact
-  bindgen version.
+  `NROS_RMW_RET_*` const style), allowlist `nros_rmw_.*`. Version-stamped
+  header comment records the exact bindgen version. *(Layout tests were
+  first ON as belt-and-braces; reversed, recorded 2026-11-14: every surface now
+  generates with `--no-layout-tests`, because bindgen's asserts bake the host's
+  64-bit size and offset literals, which are wrong on the 32-bit targets the
+  same file compiles for (`scripts/gen-abi-bindings.sh`). The three surfaces are
+  RMW, platform and board.)*
 - `nros-rmw-cffi/src/lib.rs` — keeps constants, helper impls and the
   idiomatic compat aliases; no type *definitions* for mirrored items.
 - `nros-platform-cffi` — the hand `unsafe extern "C" { … }` declaration

@@ -6,7 +6,7 @@ area: workspace-system-model
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-531]
-amends: [0071, 0098, 0116, 0026, 0066, 0120, 0100, 0118, 0085]
+amends: [0071, 0098, 0116, 0026, 0066, 0120, 0100, 0118, 0085, 0119]
 supersedes: [0027]
 superseded-by: null
 ---

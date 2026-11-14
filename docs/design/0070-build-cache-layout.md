@@ -1,7 +1,7 @@
 ---
 rfc: 0070
 title: "Build caches: one root, one vocabulary, one derivation"
-status: Draft
+status: Stable
 area: build-toolchain-codegen
 since: 2026-08
 last-reviewed: 2026-11
@@ -10,11 +10,13 @@ implements-tracked-by: [phase-334, phase-340, phase-344, phase-350, phase-383]
 
 # RFC-0070 — Build caches: one root, one vocabulary, one derivation
 
-**Status:** Draft (2026-08-06)
+**Status:** Stable (2026-11-14, phase-555 W3: phases 334, 340, 344, 350 and 383 landed it; Draft since 2026-08-06)
 **Implements:** [phase-334](../roadmap/archived/phase-334-build-cache-layout.md) W2
 **Relates to:** [RFC-0065](0065-colcon-like-workspace-builder.md) — that RFC decides who
 *owns* a user workspace's `build/`; this one decides what every build cache in
 this repository is *called* and *where it lives*.
+[RFC-0075](0075-zenoh-router-provenance-and-the-unstable-seam.md) — the router is
+ROS's `rmw_zenohd`, so no `zenohd` build tree lives under this root.
 **Informed by:** phase-334 W1 (the sharing verdict) and
 [phase-340](../roadmap/archived/phase-340-build-artifact-reuse.md) (the identity
 measurements).
@@ -56,7 +58,7 @@ The tree holds TWO kinds of project and they take different conventions:
 
 | context | convention | why |
 | --- | --- | --- |
-| `examples/**` copy-out leaves | **Cargo/CMake native** — `target/` and `build/` beside the source, per-leaf `.gitignore` | a user copies the leaf out; it must behave like a normal Cargo/CMake project in their repo (CLAUDE.md: "Examples are standalone copy-out projects") |
+| `examples/**` copy-out leaves | **Cargo/CMake native** — `target/` and `build/` beside the source, per-leaf `.gitignore` | a user copies the leaf out; its output must sit where a normal Cargo/CMake project's does. What "builds on its own" promises was ruled once, in [RFC-0065](0065-colcon-like-workspace-builder.md) D3 (2026-11-14): plain `cmake` for a C/C++ package; a Rust package builds through `nros build` or after `nros configure` |
 | the nano-ros workspace (`workspaces/`, fixtures, tooling) | **colcon-style shared `build/`** (+ `dist/`, `log/`) | ROS familiarity is a project goal, and this is where sharing is legitimate |
 
 > **AMENDED 2026-08-25 by [RFC-0065](0065-colcon-like-workspace-builder.md) §D8: `install/` → `dist/`.**
@@ -124,7 +126,7 @@ $NROS_BUILD_ROOT/
   cmake/<kind>/<coordinate>/         kind = example | workspace | fixture
   west/<leaf>-<rmw>/                 zephyr (already rooted via env)
   models/<bringup>/                  phase-330 W3/W7 artifacts
-  tools/…                            zenohd, install prefixes
+  tools/…                            install prefixes (no `zenohd`: the router is ROS's, RFC-0075)
 ```
 
 ### R2 — One vocabulary
@@ -287,6 +289,9 @@ Non-negotiable ordering, because the 236 literals are what makes this risky:
 Do not overlap a family's move with an in-flight rename elsewhere in that tree.
 
 ## Open
+
+Moved to [issue 2529](../issues/2529-build-root-open-layout-questions.md) when this RFC
+became Stable (2026-11-14). The list as it stood:
 
 * ~~Which kinds beyond cargo/cmake/west need a coordinate — `compile-check`,
   `install`, and the `tools/` prefixes are currently ad-hoc but stable.~~

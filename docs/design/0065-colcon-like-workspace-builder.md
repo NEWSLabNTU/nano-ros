@@ -1,7 +1,7 @@
 ---
 rfc: 0065
 title: "A colcon-like builder: `nros build`, and the entry stops being hand-written"
-status: Draft
+status: Stable
 area: build-toolchain-codegen
 since: 2026-08
 last-reviewed: 2026-11
@@ -25,8 +25,9 @@ framework-entry escape, the west driver),
 refuses before emitting), [RFC-0094](0094-resolve-before-configure.md) (D1
 gains stage 3.5, resolve), [RFC-0098](0098-generated-leaf-build-config.md) (D3:
 no cargo workspace root), [RFC-0104](0104-dependency-pinning-and-project-lock.md)
-(D1: stage 5 waits instead of `exec`), and RFC-0130 (D3, for boards whose
-startup is Rust: CMake owns the link when a C/C++ package is in the image).
+(D1: stage 5 waits instead of `exec`), and [RFC-0130](0130-one-ros-cmake-build.md)
+(D3, for boards whose startup is Rust: CMake owns the link when a C/C++ package
+is in the image).
 **Relates to:** [RFC-0063](0063-system-model-is-a-build-artifact.md) — that RFC
 says the resolved model belongs in `build/`; this one decides who *owns*
 `build/`.
@@ -211,179 +212,43 @@ it never fetches and never blocks, failing instead with the exact `nros setup`
 line. License-gated packages are never auto-fetched in any mode — they fail
 naming the package and the manual step.
 
-### D3 — The driver is chosen by the board, not by the language mix
+### D3 — The road is chosen by the board, not by the language mix
 
-| board | driver | stage 4 emits |
-| --- | --- | --- |
-| pure-Rust package set | **cargo** | the generated entry `build/<coord>/<entry>/Cargo.toml` as its own root, plus `build/<coord>/nros-cargo.toml` read through `--config` — **no workspace root** (RFC-0098 D9; the 2026-08-26 correction below is superseded) |
-| any C/C++ package in the set (on every board, bare metal included: [RFC-0130](0130-one-ros-cmake-build.md)) | **cmake** | `CMakeLists.txt` calling `nano_ros_workspace(…)` |
-| zephyr | **west** | nothing — sets env, `exec west build -b <board>` |
-| esp32 with a graph that crosses languages | **none** | nothing — the choice REFUSES, naming issue 1525. See the 2026-09-28 amendment. The esp-hal bare-metal esp32-c3 board is NOT this row: pure Rust on a `board-run` esp32 board is a **cargo** image, decided by the board descriptor's kind and not by the chip family (`plan::driver_for_board`, phase-445 W4 / PR #880 — `nros build esp32` had been exec'ing `idf.py` for an esp-hal image). |
+*Rewritten 2026-11-14 (phase-555 W3) as one current table. The layers it
+replaces (the 2026-08-26 cargo-root correction, its 2026-09-10 supersession by
+RFC-0098 D9, the 2026-09-28 `idf.py` deletion, and the 2026-11 exceptions note)
+are in the changelog: the first three condensed, the `idf.py` amendment in full.*
 
-Mixed is not a fourth case. RFC-0024 §6.3 already settled it: *"cargo can be
-consumed as a cmake target (via Corrosion); cmake cannot be consumed as a cargo
-target. So when the graph crosses languages, cmake wins."* One cmake configure
-per workspace is what preserves the single corrosion cargo tree.
+| image | road | stage 4 emits | stage 5 runs |
+| --- | --- | --- | --- |
+| every package in the image is Rust | **cargo** | the generated entry `build/<coord>/<entry>/Cargo.toml`, its own cargo root (no workspace root anywhere), and `build/<coord>/nros-cargo.toml` | `cargo build --manifest-path <entry>/Cargo.toml --config <coord>/nros-cargo.toml` |
+| any C or C++ package in the image, on any board, bare metal included | **cmake** | `build/<coord>/CMakeLists.txt` calling `nano_ros_workspace(…)`; CMake owns the final link, and the Rust runtime (plus, on a board whose startup is Rust, the board crate) arrives as a Corrosion staticlib ([RFC-0130](0130-one-ros-cmake-build.md) D2) | `cmake` + `ninja` in `build/<coord>/cmake` |
+| a Zephyr board | **west** | the image's application, generated per image at `build/<coord>/<image>_entry/` ([RFC-0085](0085-zephyr-workspace-and-west-handoff.md) D4) | `west build -b <board>` |
+| an esp32 board whose image crosses languages | **none** | nothing: the choice refuses, naming issue 1525 | — |
 
-**Correction, 2026-08-26 (phase-383 W3.a): the CARGO root cannot live under
-`build/`.** An earlier draft of this RFC assumed every generated root is a
-build artefact like any other. Cargo rejects that twice over — a package
-belongs to exactly one workspace, resolved by walking UP from the package, and
-members must sit BELOW the workspace root:
+`plan::driver_for` / `driver_for_board` (`packages/cli/nros-cli-core/src/builder/plan.rs`)
+is the one implementation, and its third outcome is `Err(NoRoad)`.
 
-```text
-error: package `<ws>/src/helper/Cargo.toml` is a member of the wrong workspace
-error: workspace member `…` is not hierarchically below the workspace root
-       `<ws>/build/posix-zenoh`
-```
-
-So the cargo root is `<ws>/Cargo.toml` and the cmake root is
-`build/<coord>/CMakeLists.txt`. The asymmetry is cargo's, not a design choice.
-
-Two consequences. The generated cargo root shares a path with a user's
-hand-written one, so the builder **never overwrites an existing `[workspace]`
-root** — it uses it, and generates only when none exists; D13's migration is
-therefore a deletion, not a cutover. And stage 5 runs **from the workspace
-root** regardless, because cargo finds `.cargo/config.toml` by walking up from
-the CWD, and the leaf `[patch.crates-io]` redirects `nros configure` writes live
-there.
-
-**Superseded, 2026-09-10 (RFC-0098 D1/D9): there is no cargo workspace root at
-all.** The correction above is right about a WORKSPACE — a package finds its
-workspace by walking up, and members must sit below the root — and wrong to
-conclude a root is needed. With no `[workspace]` manifest anywhere, the
-generated entry under `build/<coord>/` is its own cargo root and reaches `src/*`
-as PATH dependencies, which need not sit below anything. Measured: two packages
-in `src/`, an entry in `build/img/entry/`, no root manifest, every setting from
-`--config build/img/nros-cargo.toml` — builds; adding a root `[workspace]`
-`Cargo.toml` to the same tree fails with `error: current package believes it's
-in a workspace when it's not`. So stage 4 emits no `<ws>/Cargo.toml`, stage 5
-runs `cargo build --manifest-path build/<coord>/<entry>/Cargo.toml --config
-build/<coord>/nros-cargo.toml` and the working directory stops mattering, and a
-copy-out example builds the same way after `nros configure` (RFC-0098 D2) rather
-than with no `nros` at all. The workspace is a directory of packages, as in
-colcon.
-
-**The rule that covers every exception:** *stage 4 emits a root only where a root
-would otherwise be hand-written.* A west application keeps its own files
-because those are Kconfig overlays — user intent, not derivable. A copy-out
-example (RFC-0026) keeps its root because it must build with plain cargo/cmake
-and no `nros` at all, and its output stays in the native `target/` / `build/`
-beside the source per RFC-0070 R1's amendment. Neither needs a special case.
-
-> **Note (2026-11 review).** Both exceptions have since moved. West
-> applications are generated per image at `build/<coord>/<image>_entry/`
-> (RFC-0085 D4, measured 2026-10-24), and RFC-0121 D6 retires the plain
-> `cargo build --manifest-path <leaf>` flow as a supported user flow.
-
-**Amendment, 2026-09-28: `idf.py` is not a road, and choosing can FAIL.**
-
-`Driver::IdfPy` is deleted. The esp32 row above used to name it, and it has been
-unreachable-in-practice and unbuildable-in-principle since phase-468 W2 retired
-the ESP-IDF port. Several things are decided at once, so each is separated
-below.
-
-*What it was reachable through.* Not nothing — that is the part worth being
-precise about, because "dead code" would be the wrong reason. `driver_for_board`
-answers `IdfPy` for `platform = "esp32"` whenever the image's graph crosses
-languages, and an out-of-tree user reaches that with the board nano-ros SHIPS:
-`nros-board-esp32-qemu` declares `names = [… "esp32", "esp32dev",
-"esp32-c3-baremetal"]`, so adding one C or C++ node package to an esp32 image is
-the whole recipe. In-tree nothing does it — both esp32 board descriptors are
-`entry_kind = "board-run"` and both esp32 example leaves are pure Rust — but the
-path was open, and a user could walk it.
-
-*Why walking it could not work.* Four independent reasons, each measured on
-`main` at the time of writing:
-
-1. **No project to build.** Stage 5 exec'd `idf.py build` in the BRINGUP package
-   directory. For that to mean anything the bringup would have to BE an ESP-IDF
-   project — `include($ENV{IDF_PATH}/tools/cmake/project.cmake)`, a `main/`
-   component, an sdkconfig — and nothing in this RFC, the book or the board
-   descriptor ever said so. The road had an undocumented precondition on a
-   directory whose contents nano-ros generates.
-2. **Nothing to register.** phase-468 W2 deleted `integrations/nano-ros/`, the
-   IDF component shell (`083d2c10d`). There is no `idf_component.yml`, no
-   `idf_component_register`, no `Kconfig.projbuild` and no `partitions.csv`
-   anywhere in the tree. Even a correctly shaped IDF project had nothing of
-   nano-ros to pull in.
-3. **No carrier.** `book-internals/src/pipeline/canonical-build-path.md` gives each road the
-   mechanism that delivers a resolved knob to the compiler. This road's cell was
-   EMPTY, and `native_handoff` attached no environment: every pool size, QoS
-   policy, entity fact and executor budget would have arrived at its compiled-in
-   default. That is issue 0460's defect promoted from one lane of one road to a
-   whole road.
-4. **No tool.** `nros-sdk-index.toml` has no ESP-IDF entry — `[tool.esp32-qemu]`
-   and `[tool.espflash]` are the bare-metal esp-hal chain — and stage 3 preflight
-   never probes for `idf.py`. So the failure a user actually got was `execvp`, at
-   the end of a pipeline that had reported every earlier stage green.
-
-*Why the board that reaches it is the wrong board anyway.* `platform = "esp32"`
-resolves to bare metal (`config/bare-metal/nros-platform.toml`), and the
-descriptor's own `cargo_config` is `riscv32imc-unknown-none-elf`, `-Tlinkall.x`
-and `build-std` — esp-hal, not ESP-IDF. The only esp32 board a user can name is
-one an IDF project cannot use.
-
-*Why cmake is not the answer either, and why this is a REFUSAL.* `idf.py` is a
-Python wrapper over cmake + ninja, so "can cmake do it" is the wrong question:
-the component system, the sdkconfig generation and the partition/flash-args
-targets all live in IDF's own `project.cmake` and belong to any cmake that
-configures an IDF project, not to `idf.py`. What `idf.py` uniquely adds to a
-BUILD is `set-target` — writing `sdkconfig` and selecting
-`toolchain-<chip>.cmake` — plus the flash/monitor/menuconfig verbs and a
-reconfigure-on-sdkconfig-change wrapper. Reproducing the build half is roughly
-two `-D` flags. **That is not the gap.** The gap is that `Driver::CMake` *emits
-a generated root*, and an ESP-IDF project root is a specific hand-written file;
-letting esp32 fall through to cmake would answer with a road that is equally
-absent, in a tool whose failure message would be about CMake rather than about
-ESP32. So `driver_for` gained a third outcome: an esp32 image whose graph
-crosses languages returns `Err(NoRoad)`, and `nros build` prints what is
-missing, what does work, and issue 1525.
-
-*Why not west or cargo.* West is Zephyr's meta-tool, driven by a west manifest
-and `ZEPHYR_BASE`, and knows nothing of IDF — and Zephyr-on-ESP32 already has a
-road, `platform = "zephyr"`, which is `West` today (unsupported for a separate
-reason, issue 1282). Cargo cannot build C components, and the esp32 arm is by
-construction the cross-language one; the Rust-on-IDF story that *would* be
-cargo-shaped is `esp-idf-sys`/`embuild`, a different stack from the esp-hal
-`no_std` board this tree ships.
-
-*The honest argument for keeping it, and why it loses.* ESP-IDF is Espressif's
-official build system and is very widely known; a driver for a user-owned IDF
-project is a real capability, and the code was six lines. phase-468 W2 kept it
-deliberately three days before this amendment, on a stated reason ("an esp32
-image that crosses languages still hands off to `idf.py`, against a project that
-is now necessarily the user's own"), and it kept the `IDF_TARGET` reader in
-`nros-platform-freertos/CMakeLists.txt` on the same reasoning. **The two are not
-the same kind of thing, and measuring them apart is what decided this.** The
-`IDF_TARGET` reader is a PASSIVE accommodation: guarded on a symbol only IDF
-defines, free to every other build, and correct when reached. `Driver::IdfPy` is
-an ACTIVE routing decision — it is chosen FOR a user and it execs a program —
-and it could not be correct when reached. They are also on different platform
-tokens and can never meet: the FreeRTOS shim a user vendors into an IDF project
-is `platform = "freertos"`, whose driver is `CMake`; only `platform = "esp32"`
-reached `IdfPy`, and that token is bare metal. So W2 kept two halves of a bridge
-that do not touch.
-
-The repository had already made this call once, in `library.json`, about the
-same framework and for the same reason: *"espidf removed on the same precedent
-(no PIO/IDF test lane). Re-add only alongside a real integration."*
-
-*What stays.* Passive accommodations that are correct when reached:
-`nros-platform-freertos`'s `IDF_TARGET` branch, `nros-build-profile`'s
-`Backend::NinjaIdf` (it profiles a ninja log an out-of-tree IDF build produced),
-`check-just-recipe-paths`'s `idf.py → CMakeLists.txt` row (it guards a recipe
-shape, and would be right if one were written) and D12's citation of
-`idf_component_register` as prior art. The rule is *passive accommodation stays,
-active routing goes* — not *delete every mention*.
-
-*What a user who wants ESP-IDF does.* Nothing here forbids an out-of-tree
-integration, and `book/src/migrating/from-older-releases.md` says how the
-shape would look. What nano-ros offers on ESP32 today is the esp-hal bare-metal
-Rust road (`book/src/migrating/from-older-releases.md`). C or C++ on an ESP32 has no
-in-tree path: that is issue 1525, which also states what re-adding one would
-need — an IDF component, a knob carrier for the road, a `[tool.esp-idf]` index
-entry, and a lane that builds it.
+- **Mixed is not a fourth road.** RFC-0024 §6.3: cargo can be consumed as a
+  CMake target (Corrosion), CMake cannot be consumed as a cargo target, so when
+  the graph crosses languages CMake wins. One configure per coordinate keeps the
+  single Corrosion cargo tree.
+- **The esp32 refusal is about the board, not the chip.** Pure Rust on a
+  `board-run` esp32 board (the esp-hal esp32-c3) is a cargo image, decided by the
+  board descriptor's kind. Only a cross-language esp32 image has no road: there
+  is no ESP-IDF component, no knob carrier and no `[tool.esp-idf]` index entry.
+  Issue 1525 states what re-adding one would need.
+- **Stage 4 writes no root a user would otherwise write.** The cargo entry needs
+  no `[workspace]` root (RFC-0098 D9: one would make cargo refuse the entry). A
+  hand-written Zephyr application stays the user's, named by the escape in
+  RFC-0085 D4.
+- **Copy-out projects (ruled 2026-11-14, phase-555 W3).** A C or C++ package is
+  an ordinary ROS 2 CMake package (RFC-0130 D1), so its promise stays: it
+  configures and builds with plain `cmake` against `find_package(nano_ros)`.
+  A Rust package does not keep a "plain `cargo build`" promise: its build
+  configuration is generated (RFC-0098 D1/D2), so it builds through `nros build`
+  or after `nros configure`. Either way its output stays native, beside the
+  source ([RFC-0070](0070-build-cache-layout.md) R1's copy-out row).
 
 ### D4 — Entry × board → image. The entry is generated.
 
@@ -1252,6 +1117,139 @@ nano-ros's. `nros test` and `nros flash`: rejected by RFC-0024 §9 and still
 rejected here, because neither has a derivation to perform.
 
 ## Changelog
+
+- **2026-11-14** — D3 rewritten as one current table (phase-555 W3): the cmake
+  road covers every board, bare metal included (RFC-0130), west applications are
+  generated per image (RFC-0085 D4), and the copy-out ruling is stated once (plain
+  `cmake` for a C/C++ package; no plain-`cargo` promise for Rust). Status Draft →
+  Stable: phase-383 is archived complete and every open question is closed. The
+  layers the rewrite replaced (the first condensed, the `idf.py` amendment in full):
+
+  > **D3 as of 2026-11-13.** *Correction, 2026-08-26 (phase-383 W3.a): the
+  > CARGO root cannot live under `build/`.* Cargo rejects a generated
+  > `[workspace]` root there (a package belongs to one workspace, found by walking
+  > up, and members must sit below the root), so the cargo root was
+  > `<ws>/Cargo.toml`, never overwritten when hand-written, with stage 5 run from
+  > the workspace root. *Superseded, 2026-09-10 (RFC-0098 D1/D9): there is no
+  > cargo workspace root at all.* With no `[workspace]` manifest anywhere, the
+  > entry under `build/<coord>/` is its own root and reaches `src/*` as path
+  > dependencies (measured: adding a root `[workspace]` made cargo fail with
+  > `current package believes it's in a workspace when it's not`). *The rule that
+  > covered every exception:* stage 4 emits a root only where a root would
+  > otherwise be hand-written; a west application kept its own files (Kconfig
+  > overlays), and a copy-out example kept its root because it must build with
+  > plain cargo/cmake and no `nros`. *Note (2026-11 review):* both exceptions had
+  > moved, west applications to per-image generation (RFC-0085 D4) and the plain
+  > `cargo build --manifest-path <leaf>` flow to retirement (RFC-0121 D6).
+
+  > **Amendment, 2026-09-28: `idf.py` is not a road, and choosing can FAIL.**
+  >
+  > `Driver::IdfPy` is deleted. The esp32 row above used to name it, and it has been
+  > unreachable-in-practice and unbuildable-in-principle since phase-468 W2 retired
+  > the ESP-IDF port. Several things are decided at once, so each is separated
+  > below.
+  >
+  > *What it was reachable through.* Not nothing — that is the part worth being
+  > precise about, because "dead code" would be the wrong reason. `driver_for_board`
+  > answers `IdfPy` for `platform = "esp32"` whenever the image's graph crosses
+  > languages, and an out-of-tree user reaches that with the board nano-ros SHIPS:
+  > `nros-board-esp32-qemu` declares `names = [… "esp32", "esp32dev",
+  > "esp32-c3-baremetal"]`, so adding one C or C++ node package to an esp32 image is
+  > the whole recipe. In-tree nothing does it — both esp32 board descriptors are
+  > `entry_kind = "board-run"` and both esp32 example leaves are pure Rust — but the
+  > path was open, and a user could walk it.
+  >
+  > *Why walking it could not work.* Four independent reasons, each measured on
+  > `main` at the time of writing:
+  >
+  > 1. **No project to build.** Stage 5 exec'd `idf.py build` in the BRINGUP package
+  >    directory. For that to mean anything the bringup would have to BE an ESP-IDF
+  >    project — `include($ENV{IDF_PATH}/tools/cmake/project.cmake)`, a `main/`
+  >    component, an sdkconfig — and nothing in this RFC, the book or the board
+  >    descriptor ever said so. The road had an undocumented precondition on a
+  >    directory whose contents nano-ros generates.
+  > 2. **Nothing to register.** phase-468 W2 deleted `integrations/nano-ros/`, the
+  >    IDF component shell (`083d2c10d`). There is no `idf_component.yml`, no
+  >    `idf_component_register`, no `Kconfig.projbuild` and no `partitions.csv`
+  >    anywhere in the tree. Even a correctly shaped IDF project had nothing of
+  >    nano-ros to pull in.
+  > 3. **No carrier.** `book-internals/src/pipeline/canonical-build-path.md` gives each road the
+  >    mechanism that delivers a resolved knob to the compiler. This road's cell was
+  >    EMPTY, and `native_handoff` attached no environment: every pool size, QoS
+  >    policy, entity fact and executor budget would have arrived at its compiled-in
+  >    default. That is issue 0460's defect promoted from one lane of one road to a
+  >    whole road.
+  > 4. **No tool.** `nros-sdk-index.toml` has no ESP-IDF entry — `[tool.esp32-qemu]`
+  >    and `[tool.espflash]` are the bare-metal esp-hal chain — and stage 3 preflight
+  >    never probes for `idf.py`. So the failure a user actually got was `execvp`, at
+  >    the end of a pipeline that had reported every earlier stage green.
+  >
+  > *Why the board that reaches it is the wrong board anyway.* `platform = "esp32"`
+  > resolves to bare metal (`config/bare-metal/nros-platform.toml`), and the
+  > descriptor's own `cargo_config` is `riscv32imc-unknown-none-elf`, `-Tlinkall.x`
+  > and `build-std` — esp-hal, not ESP-IDF. The only esp32 board a user can name is
+  > one an IDF project cannot use.
+  >
+  > *Why cmake is not the answer either, and why this is a REFUSAL.* `idf.py` is a
+  > Python wrapper over cmake + ninja, so "can cmake do it" is the wrong question:
+  > the component system, the sdkconfig generation and the partition/flash-args
+  > targets all live in IDF's own `project.cmake` and belong to any cmake that
+  > configures an IDF project, not to `idf.py`. What `idf.py` uniquely adds to a
+  > BUILD is `set-target` — writing `sdkconfig` and selecting
+  > `toolchain-<chip>.cmake` — plus the flash/monitor/menuconfig verbs and a
+  > reconfigure-on-sdkconfig-change wrapper. Reproducing the build half is roughly
+  > two `-D` flags. **That is not the gap.** The gap is that `Driver::CMake` *emits
+  > a generated root*, and an ESP-IDF project root is a specific hand-written file;
+  > letting esp32 fall through to cmake would answer with a road that is equally
+  > absent, in a tool whose failure message would be about CMake rather than about
+  > ESP32. So `driver_for` gained a third outcome: an esp32 image whose graph
+  > crosses languages returns `Err(NoRoad)`, and `nros build` prints what is
+  > missing, what does work, and issue 1525.
+  >
+  > *Why not west or cargo.* West is Zephyr's meta-tool, driven by a west manifest
+  > and `ZEPHYR_BASE`, and knows nothing of IDF — and Zephyr-on-ESP32 already has a
+  > road, `platform = "zephyr"`, which is `West` today (unsupported for a separate
+  > reason, issue 1282). Cargo cannot build C components, and the esp32 arm is by
+  > construction the cross-language one; the Rust-on-IDF story that *would* be
+  > cargo-shaped is `esp-idf-sys`/`embuild`, a different stack from the esp-hal
+  > `no_std` board this tree ships.
+  >
+  > *The honest argument for keeping it, and why it loses.* ESP-IDF is Espressif's
+  > official build system and is very widely known; a driver for a user-owned IDF
+  > project is a real capability, and the code was six lines. phase-468 W2 kept it
+  > deliberately three days before this amendment, on a stated reason ("an esp32
+  > image that crosses languages still hands off to `idf.py`, against a project that
+  > is now necessarily the user's own"), and it kept the `IDF_TARGET` reader in
+  > `nros-platform-freertos/CMakeLists.txt` on the same reasoning. **The two are not
+  > the same kind of thing, and measuring them apart is what decided this.** The
+  > `IDF_TARGET` reader is a PASSIVE accommodation: guarded on a symbol only IDF
+  > defines, free to every other build, and correct when reached. `Driver::IdfPy` is
+  > an ACTIVE routing decision — it is chosen FOR a user and it execs a program —
+  > and it could not be correct when reached. They are also on different platform
+  > tokens and can never meet: the FreeRTOS shim a user vendors into an IDF project
+  > is `platform = "freertos"`, whose driver is `CMake`; only `platform = "esp32"`
+  > reached `IdfPy`, and that token is bare metal. So W2 kept two halves of a bridge
+  > that do not touch.
+  >
+  > The repository had already made this call once, in `library.json`, about the
+  > same framework and for the same reason: *"espidf removed on the same precedent
+  > (no PIO/IDF test lane). Re-add only alongside a real integration."*
+  >
+  > *What stays.* Passive accommodations that are correct when reached:
+  > `nros-platform-freertos`'s `IDF_TARGET` branch, `nros-build-profile`'s
+  > `Backend::NinjaIdf` (it profiles a ninja log an out-of-tree IDF build produced),
+  > `check-just-recipe-paths`'s `idf.py → CMakeLists.txt` row (it guards a recipe
+  > shape, and would be right if one were written) and D12's citation of
+  > `idf_component_register` as prior art. The rule is *passive accommodation stays,
+  > active routing goes* — not *delete every mention*.
+  >
+  > *What a user who wants ESP-IDF does.* Nothing here forbids an out-of-tree
+  > integration, and `book/src/migrating/from-older-releases.md` says how the
+  > shape would look. What nano-ros offers on ESP32 today is the esp-hal bare-metal
+  > Rust road (`book/src/migrating/from-older-releases.md`). C or C++ on an ESP32 has no
+  > in-tree path: that is issue 1525, which also states what re-adding one would
+  > need — an IDF component, a knob carrier for the road, a `[tool.esp-idf]` index
+  > entry, and a lane that builds it.
 
 - **2026-11-07** — D8 amended (issue 2287): the cmake coordinate names the
   bringup, so each bringup has its own build dir and runtime.

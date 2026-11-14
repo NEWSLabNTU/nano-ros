@@ -257,6 +257,14 @@ root lock that is not a subset. It is a SET comparison after resolution, so
 there is no invocation path to bypass. It replaces the shim's leaf role,
 `check-leaf-lockfiles`, and the client side of the submodule-pin checks.
 
+*Amended 2026-11-14 (phase-555 W3): `check-leaf-lockfiles` is NOT replaced.* It
+still runs (`just/check/cargo.just`) and guards a different invariant: which
+in-repo leaves may TRACK a `Cargo.lock` (CLAUDE.md, "tracked lock ⟺ no message
+deps ∨ committed `generated/`"). The drift check compares a resolved project
+against the pins; it says nothing about which locks are committed. Retiring the
+gate would need a measurement that the drift check covers every in-repo leaf
+first.
+
 `--locked` survives only for the two closed-graph roots (repo root, CLI), moved
 from the PATH shim into the recipes that build them; the shim retires. (The
 pre-push `check-submodule-pins` FORWARD-ONLY rule is about history, not drift,

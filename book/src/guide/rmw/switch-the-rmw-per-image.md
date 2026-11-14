@@ -179,5 +179,5 @@ names the image it runs.
 ## Design background
 
 - [RFC-0031: RMW selection and lowering](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0031-rmw-selection-and-lowering.md)
-- [RFC-0048: CMake / ament consumption](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0048-cmake-ament-consumption.md)
+- [RFC-0130: one ROS 2 CMake build](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0130-one-ros-cmake-build.md) (supersedes RFC-0048)
 - [RFC-0098: generated leaf build config](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0098-generated-leaf-build-config.md)

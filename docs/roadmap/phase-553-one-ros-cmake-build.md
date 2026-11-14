@@ -204,8 +204,14 @@ workspaces whose package is a hand-written cargo crate move to ordinary
 component packages, and `nros-cc-flags`' leaf-only modules lose their last
 consumers (measured before deleting).
 
+Also: strike the passages RFC-0098 (§ "Every single-package shape" and the
+managed-`<depend>` scan) and RFC-0101 (§1's census, §2.1, the §5 table) keep
+about bare-metal C/C++ on a cargo link root. Phase-555 W3 bannered them
+"Amended by RFC-0130"; once the last such role is gone the text goes too.
+
 Acceptance: no tracked `Cargo.toml` + `build.rs` compiles C or C++ for an
-example; `test_qemu_baremetal_capi_e2e` passes against the new rows.
+example; `test_qemu_baremetal_capi_e2e` passes against the new rows; the
+RFC-0098/RFC-0101 passages above are struck.
 
 ### W7 — A bounded, guarded stack on the C-rooted image
 

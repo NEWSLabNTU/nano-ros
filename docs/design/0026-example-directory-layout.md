@@ -85,7 +85,7 @@ the moment it leaves: `check-example-path-deps` is the fast-line gate. Until
 then the 24 workspace packages reached `nros` by five `..`, and RFC-0085 had
 ruled that acceptable; it is amended to match.
 
-> **The C/C++ CMakeLists shape is being reshaped by [RFC-0048](0048-cmake-ament-consumption.md)**
+> **The C/C++ CMakeLists shape is being reshaped by [RFC-0048](archived/0048-cmake-ament-consumption.md) (since superseded by [RFC-0130](0130-one-ros-cmake-build.md))**
 > (phase-287, #171 D5): the `-DNANO_ROS_ROOT` guard (name since retired) becomes source-backed
 > `find_package(nano_ros)`, one ament-convention `CMakeLists.txt` byte-identical
 > across platforms, with board/RMW moved into `package.xml <export>`. The

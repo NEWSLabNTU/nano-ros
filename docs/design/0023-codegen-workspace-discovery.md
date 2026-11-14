@@ -248,6 +248,17 @@ workspace dir.
 
 ## Revision plan (each stage independent)
 
+> **Outcome, recorded 2026-11-14 (phase-555 W3).** Stages A and B landed
+> (`rosidl_generate_interfaces` and `nros_workspace_interfaces` in
+> `cmake/NanoRosGenerateInterfaces.cmake`). The rest landed in another shape:
+> **Stage C** is met by the workspace sync (`nros ws sync`, archived phase-210;
+> today `nros configure` / `nros build`), not a `--workspace` flag on
+> `nros dev codegen`; **Stage D's** `nros-build-codegen` crate was never built,
+> its job taken by `nros-build`'s `generate_run_plan` and by message crates as
+> path dependencies ([RFC-0067](0067-env-invariant-msg-dep-identity.md));
+> **Stage E's** `nros workspace env` is `nros dev ws env`. Generated output is
+> stamped with the codegen version ([RFC-0090](0090-codegen-version-is-the-compatibility-token.md)).
+
 ### Stage A — cmake compat: `rosidl_generate_interfaces` + smart Find-stub
 
 1. Implement `rosidl_generate_interfaces(<target> <files> ...)` in

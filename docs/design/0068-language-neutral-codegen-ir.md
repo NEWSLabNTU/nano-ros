@@ -160,7 +160,9 @@ data-driven boundary safe here, not the serialization format.**
 (no serialize→parse→render round-trip). The serialized form is materialized only when a non-Rust
 generator or an external template pack wants it (`nros dev codegen export` verb), and is versioned
 (a `schema_version` on the manifest) for compatibility. So the common case pays nothing; the
-extension case is opt-in.
+extension case is opt-in. *[2026-11-14: the `export` verb was never built and nothing consumes
+it; `nros dev codegen` has `rust`, `system`, `resolve-deps`, `cyclonedds-descriptors`, `entry`,
+`entry-node`, `entry-pack` and `source-language`. The serde derives stay.]*
 
 ## Escape hatch
 A language needing genuinely imperative emission (unusual move semantics, bespoke storage
@@ -177,11 +179,16 @@ common languages ride the data path; only exotic ones pay Rust.
 1. **Template engine.** `minijinja` (runtime, packs are data — preferred) vs staying with askama
    (compile-time, a pack edit needs a rebuild). The per-language-burden goal argues for runtime;
    confirm perf against `rosidl-codegen/benches/generation_benchmark.rs`.
+   *[Answered (recorded 2026-11-14): minijinja, a runtime engine; `rosidl-codegen`
+   depends on it and renders packs as data.]*
 2. **Multi-target in one run.** Lower N times (cheap; resolve/hash shared) vs a target-conditional
    `LoweredType`. Default: lower per active target (the build already knows it).
    *[Amendment 1: dissolved — there is no target input to lower per.]*
 3. **Pack distribution.** Bundled-only vs `--template-dir` external packs vs both. Both, with
    bundled as the default, is the working assumption.
+   *[Answered (recorded 2026-11-14), Amendment 4: both. Bundled packs are the
+   default, and `set_template_dir` / `NROS_TEMPLATE_DIR` select an external one
+   (`rosidl-codegen/src/render.rs`).]*
 4. **Fingerprint inputs.** `fingerprint.rs` must hash the pack files (a template edit ⇒ stale);
    confirm the toolchain-fingerprint corpus (RFC-0061) extends to pack contents.
 

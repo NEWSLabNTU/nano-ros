@@ -1,16 +1,28 @@
 ---
 rfc: 0048
 title: "Ament-aligned CMake consumption — source-backed find_package, one shape per platform"
-status: Draft
+status: Superseded
 area: build-toolchain-codegen
 since: 2026-07
 last-reviewed: 2026-11
 implements-tracked-by: [phase-287]
 supersedes: []
-superseded-by: null
+superseded-by: [0130]
 ---
 
 # RFC-0048 — Ament-aligned CMake consumption
+
+> **SUPERSEDED 2026-11-14 by [RFC-0130](../0130-one-ros-cmake-build.md).** RFC-0130
+> makes a C/C++ node package an ordinary ROS 2 CMake package on every board, bare
+> metal included, which is this RFC's goal carried to the end. What survived from
+> here is carried by RFC-0130 D1 and the code: source-backed `find_package(nano_ros)`
+> (§1), `find_package(<msg_pkg>)` with codegen from `package.xml` (§2), the
+> `nano_ros_add_*` verbs (§3, `cmake/NanoRosVerbs.cmake`), interface packages (§5)
+> and the CMakePresets from `nros setup` (§6). Two sections were already reversed
+> before the supersession: §4's per-package `<nano_ros deploy board rmw/>` tuple is a
+> configure FATAL_ERROR (`cmake/NanoRosPackageXml.cmake`; board and RMW live in the
+> bringup's `system.toml`, RFC-0098 D3/D5), and §1's "`activate.sh` exports
+> `nano_ros_ROOT`" is gone (RFC-0103 D6). Kept for history; do not follow it.
 
 > **Message-crate patches retired (RFC-0067 / phase-333).** The W9 `nros configure`-managed
 > `[patch.crates-io]` no longer carries generated MESSAGE crates — they are path deps now, and a

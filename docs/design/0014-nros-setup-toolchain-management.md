@@ -14,7 +14,17 @@ superseded-by: null
 
 Status: design study · Date: 2026-05-28 · Tracks Phase 172 **W.5**
 
-> **Extended by [RFC-0048](0048-cmake-ament-consumption.md)** (phase-287): after
+> **Amended by** [RFC-0062](0062-unified-dependency-ssot.md) (one dependency SSoT),
+> [RFC-0090](0090-codegen-version-is-the-compatibility-token.md) (codegen version
+> token), [RFC-0095](0095-nros-store-is-the-root.md) (the store is the root) and
+> [RFC-0099](0099-provisioning-is-planned-once-and-prefers-prebuilts.md)
+> (provisioning planned once). **The router is not provisioned here** ([RFC-0075](0075-zenoh-router-provenance-and-the-unstable-seam.md)):
+> `zenohd` is ROS's `rmw_zenohd` and `nros-sdk-index.toml` marks it removed, so
+> the `zenohd` rows below (the `[tool.zenohd]` example, the `linux` space, the
+> prebuilt-router saving) describe what was, not what `nros setup` does.
+> (Recorded 2026-11-14, phase-555 W3.)
+
+> **Extended by [RFC-0048](archived/0048-cmake-ament-consumption.md)** (phase-287; superseded by [RFC-0130](0130-one-ros-cmake-build.md)): after
 > provisioning a board's toolchain, `nros setup <board>` also emits a CMakePreset
 > fragment (`~/.nros/presets/<board>.json` — `toolchainFile` + `nano_ros_ROOT`)
 > and a new `nros setup presets` verb wires a user project's `CMakePresets.json` to it, so
@@ -172,10 +182,6 @@ install   = "make -j && make install"
 [tool.arm-none-eabi-gcc]          # cross-compiler: runs on host, targets any Cortex-M/R
 version = "13.2"
 dist.linux-x86_64 = { url = "…/releases/download/arm-gcc-13.2/arm-gcc-linux-x86_64.tar.zst", sha256 = "…" }
-
-[tool.zenohd]                     # host router binary
-version = "1.0.0"
-dist.linux-x86_64 = { url = "…", sha256 = "…" }
 
 # --- SOURCE packages — compiled by the toolchain for the user's chosen target ---
 [source.freertos-kernel]  version = "10.6.2"   # vendored tarball, built with the app

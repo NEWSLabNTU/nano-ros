@@ -5,8 +5,8 @@ status: Draft
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-553]
-amends: [0065, 0024]
-supersedes: []
+amends: [0065, 0024, 0098, 0101]
+supersedes: [0048]
 superseded-by: null
 ---
 
@@ -16,6 +16,15 @@ superseded-by: null
 (2026-11-12, "Accept the unified ROS-CMake build"); the RFC stays Draft until
 D6's work items land and dep-chain and the stack floor are measured on the new
 road. The work is [phase-553](../roadmap/phase-553-one-ros-cmake-build.md). Amends RFC-0065 D3 and RFC-0024 §6.3 for boards whose startup is Rust.
+
+**Supersedes [RFC-0048](archived/0048-cmake-ament-consumption.md)** (2026-11-14,
+phase-555 W3): this RFC finishes what 0048 started, an ament-shaped C/C++ package
+with one `CMakeLists.txt` on every platform. 0048's surviving parts
+(`find_package(nano_ros)`, `find_package(<msg_pkg>)`, the `nano_ros_add_*` verbs,
+interface packages, the presets) are D1 here; its per-package deploy tuple was
+already reversed. **Amends [RFC-0098](0098-generated-leaf-build-config.md) and
+[RFC-0101](0101-vendored-source-resolution.md)**: their passages on bare-metal C/C++
+apps built on a cargo link root describe the shape D3 retires.
 
 ## Ruling (2026-11-12)
 

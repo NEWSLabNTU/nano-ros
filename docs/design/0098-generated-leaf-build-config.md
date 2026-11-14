@@ -500,6 +500,12 @@ macro uses the package only when the leaf does not also name the board crate, so
 a generated workspace entry, which names both, is unchanged.
 
 **Every single-package shape, as implemented (2026-10-13, issue 1305 phase E).**
+
+> **Amended by [RFC-0130](0130-one-ros-cmake-build.md) (2026-11-14).** The "mps2
+> bare-metal C/C++ apps on a cargo link root" below are a shape RFC-0130 D3 retires:
+> a C/C++ package on that board is an ordinary CMake component, and CMake owns the
+> link with the board's C start as `main`. The talkers moved in phase-553 W5; the
+> other roles move in W6, and the clause is struck then. Do not copy the shape.
 Two shapes the first sweep left out take the same package, with no second
 mechanism:
 
@@ -661,7 +667,9 @@ scan in `cmd/ws.rs`):
   `node/`), with the path relative from that package. A package whose `src/`
   holds C or C++ translation units is skipped: it is a C/C++ application with
   a Rust link root (the bare-metal C leaves, issue 1512), and its messages
-  reach it as C bindings from the same `<depend>`s.
+  reach it as C bindings from the same `<depend>`s. *(Amended by RFC-0130: that
+  shape retires, phase-553 W5/W6; a C/C++ component is a CMake package the scan
+  never reads as a Rust package.)*
 - A tagged row whose `<depend>` is still declared but did not resolve on this
   host is KEPT, not removed: resolution depends on the host's ament install,
   and removing a row one host cannot see would churn a tracked file. A user

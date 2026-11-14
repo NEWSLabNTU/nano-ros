@@ -1,7 +1,7 @@
 ---
 rfc: 0067
 title: "Env-invariant Rust message-dependency identity"
-status: Draft
+status: Stable
 area: build-toolchain-codegen
 since: 2026-08
 last-reviewed: 2026-11
@@ -17,7 +17,7 @@ Hand-off doc: the implementation is phase-333; this RFC is the WHY.
 
 # RFC-0067 — Env-invariant Rust message-dependency identity
 
-**Status:** Draft (2026-08-02; D4/D5 added 2026-09-22 from the issue-1428 study)
+**Status:** Stable (2026-11-14, phase-555 W3: phases 333, 335 and 465 landed it; Draft since 2026-08-02; D4/D5 added 2026-09-22 from the issue-1428 study)
 **Motivated by:** issue 0378 (leaf message deps resolve against the PUBLIC
 crates.io) + the `--locked` reproducibility tension it exposed; extended by
 issue 1428 (`builtin_interfaces` generated three times, none canonical) and
@@ -334,13 +334,10 @@ Reverted cleanly; no code landed. Implementation is **phase-333**.
   Result: every package in a converted leaf — the whole transitive nros graph
   plus the message crates — resolves `path+file://…` from the repo root, and no
   unused-patch warnings appear.
-- Should EVERY in-tree testing/bench leaf commit its `generated/` tree (so it can
-  build + commit a lock without a ROS host), or only those that need offline
-  reproducibility? Trade-off: committed `generated/` is edition-pinned content in
-  the tree vs. a leaf that only builds after `nros configure`.
-- Interaction with multi-edition (`ros-humble`/`jazzy`): a committed `generated/`
-  is one edition's field set. Cross-edition leaves already pick an edition per
-  build; confirm the path-dep lock does not over-assert edition.
+- The two remaining policy questions (which in-tree leaves commit `generated/`,
+  and whether a committed tree over-asserts the ROS edition) moved to
+  [issue 2528](../issues/2528-msg-dep-generated-tree-commit-policy-open.md) when
+  this RFC became Stable (2026-11-14).
 
 ## Non-goals
 
