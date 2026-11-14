@@ -267,7 +267,8 @@ pub fn template_main_stack(
 
 /// The OPEN floor `config/stack-floors.toml` records for `key`: the static walk
 /// plus its allowance (an `[[allowance]]` row) or plus nothing (an
-/// `[[observed]]` row, issue 2402: under `bind` the walk is the bound), then
+/// `[[observed]]` row, issue 2402: under `bind` the walk is the floor, a
+/// heuristic one that is order-dependent pending an exact search, issue 2550), then
 /// `margin_pct` percent, rounded up to a multiple of 8, exactly `floor_formula`
 /// in `scripts/nros-stack-floor.py`.
 #[must_use]
@@ -959,10 +960,10 @@ mod tests {
         let k = |s: &str| format!("{s}@nucleo-f767zi-zephyr");
         assert_eq!(
             recorded_floor(&t, &k("action-server/rust/zenoh")),
-            Some(83600)
+            Some(78488)
         );
-        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(79464));
-        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(114600));
+        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(76760));
+        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(115328));
         assert_eq!(recorded_floor(&t, &k("listener/rust/zenoh")), None);
     }
 
@@ -1036,8 +1037,8 @@ mod tests {
                 "zenoh",
                 "nucleo-f767zi-zephyr"
             ),
-            // issue 2402: the bind walk, 76,000 B, plus the 10 % margin
-            Some(83600)
+            // issue 2402: the bind walk, 71,352 B, plus the 10 % margin
+            Some(78488)
         );
         assert!(raised >= 1);
         // not a Zephyr board: the knob is not CONFIG_MAIN_STACK_SIZE

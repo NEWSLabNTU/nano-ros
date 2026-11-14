@@ -561,3 +561,60 @@ talker) and 72 % (C talker) of the 384 KB region.
 Acceptance: two `nros new` projects from one template at different paths
 walk to the same bytes; every `[[observed]]` static is the new walk's.
 
+### W7d — C call sites are typed, and the walk is a deterministic heuristic (issues 2516, 2550)
+
+- **Status:** OPEN
+
+**Why.** A C indirect call went to every function C can hold (issue 2516).
+While measuring the fix, the walk's depth turned out to depend on callee
+order: the bound graph has one large cycle, and `worst_path`'s cache
+under-states there (issue 2550). Ruled 2026-11-14: the floors stay; docs say
+"heuristic floor"; the walk is deterministic and takes the deepest of a
+fixed set of orders until an exact search lands.
+
+**What changed** (`scripts/nros-stack-floor.py`, `cmake/NanoRosStackFloor.cmake`):
+
+- **C call-site types.** `--compile-commands` (the cmake road passes the
+  build's `compile_commands.json`): each linked C TU is compiled again by
+  clang to bitcode, using the build's defines, forced includes, target flags
+  and GCC's own ordered include search. Clang's builtin headers replace GCC's.
+  - A C function's machine sites bind to the functions C can hold whose
+    coarse type (per-argument class) matches a site in its own body or in a
+    same-TU function it reaches (what GCC may inline). Typed C functions join
+    a typed Rust site by coarse type.
+  - A TU clang cannot compile leaves every function its GCC object defines
+    bound as before. That is zpico.c, because clang 14 refuses
+    `__atomic_store_n` on `_Atomic(bool)*`.
+- **Two holes closed.**
+  - A function the Rust IR only DECLARES (a C function Rust calls) kept no
+    machine sites.
+  - An inline-asm branch (Zephyr `arch_switch_to_main_thread`'s `blx r3`) was
+    not a site.
+
+  Both now bind as C sites.
+- **Deterministic order, deepest of 8.** Callees are ordered by name with
+  Rust crate hashes removed. The reported depth is the deepest over
+  `WALK_ORDERS` (0 = sorted, 1-7 = seeded hashes).
+
+**Measured** (four `nros new` projects per template at four paths walk
+identical bytes; floor = static + 10 %):
+
+| image | W7c static | W7d static | W7d floor | peak |
+| --- | ---: | ---: | ---: | ---: |
+| mps2 bare-metal Rust talker (no compile commands) | 90,200 | 96,680 | 106,352 | 31-32 KiB |
+| nucleo Rust action server | 76,000 | 71,352 | 78,488 | 30,256 |
+| nucleo Rust talker | 72,240 | 69,776 | 76,760 | 28,888 |
+| nucleo C talker | 104,180 | 104,840 | 115,328 | 11,876 |
+
+Without C types, the same 8-order walk reads 85,208 / 81,960 / 140,252 on
+the three nucleo images, so the C types are what keep these floors in RAM.
+
+A fresh `nros new` + `nros build` of each nucleo template, through the cmake
+road with `--compile-commands`, stamps the new floor and holds it as
+measured; RAM is 82 % (action server), 78 % (Rust talker) and 72 % (C
+talker) of the 384 KB region.
+
+Acceptance: same graph, same bytes, at every project path; the self-test
+pins the case where sorted order under-states (112 vs 121 B); every
+`[[observed]]` static is the new walk's; each nucleo image fits its RAM.
+

@@ -1,7 +1,7 @@
 ---
 id: 2516
 title: "The bound stack walk sends every C indirect call to every function C can hold, because GCC objects carry no call-site types"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: [memory, tooling, rmw]
@@ -58,3 +58,51 @@ Two things need care:
 
 The mps2 talker's walk drops toward its run and stays at or above it. The
 nucleo-f767zi `[[observed]]` rows still hold (the walk covers each peak).
+
+## Resolution (2026-11-14, phase-557 W7d)
+
+`--compile-commands` (the cmake road passes the build's
+`compile_commands.json`). Each C translation unit whose object the link map
+names is compiled again by clang to bitcode, using:
+
+- the build's defines and forced includes;
+- its target flags;
+- GCC's own ordered include search, from `cc <flags> -E -v`, with GCC's
+  builtin header dir swapped for clang's.
+
+The bitcode is typed-pointer: clang 14's opaque mode crashed on 6 Zephyr
+TUs, and the walk's newer `llvm-dis` upgrades typed bitcode. It is cached by
+clang version, command, source and object stamp.
+
+How C sites bind now:
+
+- **Matching.** Types are compared coarsely, by class per argument: pointer,
+  <=32-bit integer, i64, float, double, aggregate.
+- **C sites.** A C function's machine sites go to the functions C can hold
+  whose type matches a site in its own `-O0` body, or in a same-TU function
+  it reaches by direct calls (what GCC may have inlined). With no site in
+  that closure, its branches are not calls.
+- **Rust sites.** A typed C function joins a typed Rust site by coarse type.
+- **Unsupported TUs.** A TU clang cannot compile leaves every function its
+  GCC object defines bound as before. That is zpico.c: clang 14 refuses
+  `__atomic_store_n` on `_Atomic(bool)*`.
+
+Measuring this also closed two holes. Both now bind as C sites:
+
+- a C function that Rust IR only declares kept no machine sites;
+- inline-asm branches were not sites.
+
+Measuring also found issue 2550: the walk is order-dependent under call
+cycles.
+
+Measured, as the deepest of 8 callee orders, with and without C types:
+
+| image | without | with |
+| --- | ---: | ---: |
+| nucleo Rust action server | 85,208 | 71,352 |
+| nucleo Rust talker | 81,960 | 69,776 |
+| nucleo C talker | 140,252 | 104,840 |
+
+The C talker still reads 9x its run: zpico.c is uncovered, and issue 2517
+applies.
+

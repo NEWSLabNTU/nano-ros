@@ -1,0 +1,1 @@
+The stack walk now types C indirect calls from clang IR of the image's own C sources, keeps the sites of C functions Rust only declares and of inline-assembly branches, and reports the deepest of 8 fixed callee orders. Its depth is a heuristic floor: under call cycles it depends on callee order, pending an exact search.

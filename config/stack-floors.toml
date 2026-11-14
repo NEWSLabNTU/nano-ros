@@ -39,9 +39,12 @@ mode = "allowance:0"
 [indirect.zenoh]
 # Every indirect call is BOUND to the functions it can reach and followed
 # (issue 2402): a vtable slot to the functions at that slot, a Rust call to
-# the functions of its type, a C call to every function C can hold. The static
-# walk is then an upper bound, so a measured peak is an [[observed]] row the
-# walk must cover, never an allowance added to it. The fold it replaces
+# the functions of its type, a C call to the functions C can hold whose type
+# its clang IR matches (issue 2516). The static walk is then the floor, so a
+# measured peak is an [[observed]] row the walk must cover, never an
+# allowance added to it. The walk is a HEURISTIC floor, not an upper bound:
+# its depth is order-dependent under call cycles, pending an exact search
+# (issue 2550); it reports the deepest of 8 fixed callee orders. The fold it replaces
 # charged the first indirect call a flat 9,520 B and walked nothing behind it:
 # 23,968 B on the mps2 bare-metal talker, whose run overflowed 31 KiB.
 mode = "bind"
@@ -53,7 +56,8 @@ mode = "bind"
 # keeps its row, else `<bringup>@<board>`. `--validate-table` refuses a
 # template key whose template or board is gone.
 #
-# Under `bind` the static walk is the upper bound, so a row adds NOTHING to
+# Under `bind` the static walk is the floor (a heuristic one, issue 2550), so
+# a row adds NOTHING to
 # the floor: floor = ceil8(static x (100 + margin) / 100). A row does two jobs.
 # It makes its image MEASURED, so a stack below the floor fails the build
 # instead of warning. And it is evidence the walk must cover: a static walk
@@ -81,7 +85,7 @@ rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
 peak = 30256
-static = 76000
+static = 71352
 method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, LTO build; static from rust_main"
 issue = "2402"
 
@@ -99,7 +103,7 @@ rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
 peak = 28888
-static = 72240
+static = 69776
 method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 6 rounds, LTO build; static from rust_main"
 issue = "2402"
 
@@ -117,7 +121,7 @@ rmw = "zenoh"
 target = "thumbv7m-none-eabi"
 role = "OPEN"
 peak = 32768
-static = 90200
+static = 96680
 method = "QEMU 11.0 mps2-an385, the board's MPU stack guard (issue 2494) bisected over NROS_BAREMETAL_STACK_KB: 31 KiB trips 'nros: stack overflow' right after the network comes up, 32 KiB publishes for 45 s, each 3 runs or more; peak is the passing bound. dev profile (optimized + debuginfo), router reachable. A gdb watchpoint over the 31-32 KiB window put the deepest write at 31,848 B, in smoltcp's TCP dispatch under declare_publisher. Before bind this was an [[allowance]] of +8,800 B over a fold walk of 23,968 B; static from main under bind"
 issue = "2402"
 
@@ -135,7 +139,7 @@ rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
 peak = 11876
-static = 104180
+static = 104840
 method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 14 rounds, nros-relwithdebinfo (no LTO); static from main"
 issue = "2402"
 

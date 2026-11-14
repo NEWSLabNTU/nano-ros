@@ -130,15 +130,44 @@ def expand_roots(g: Graph, roots: str) -> list[str]:
     return out
 
 
+# A Rust crate disambiguator (`Cs<base62>_`, v0 mangling) or a legacy symbol
+# hash (`17h<16 hex>E`): they change with the project's path, never the code.
+_CRATE_HASH = re.compile(r"Cs[0-9A-Za-z]{4,}_|17h[0-9a-f]{16}E")
+# The edge orders a walk is taken in; the reported depth is the deepest. See
+# `worst_path` for why the order matters (issue 2550).
+WALK_ORDERS = tuple(range(8))
+
+
+def _order_key(order: int):
+    """The order callees are tried in. Keyed on the name WITHOUT crate hashes,
+    so two projects built from one template at different paths walk in the
+    same order (issue 2521's class), and seeded per `order`."""
+    def key(name: str):
+        norm = _CRATE_HASH.sub("Cs_", name)
+        if order == 0:
+            return (norm, name)
+        return (hashlib.sha256(f"{order}:{norm}".encode()).digest(), norm, name)
+    return key
+
+
 def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
                recursion_allowance: int | None,
                externals: set[str] | None = None,
-               cuts: tuple[str, ...] = ()) -> Path_:
+               cuts: tuple[str, ...] = (), order: int = 0) -> Path_:
     """Deepest path from `root`. `indirect_charge` is the bytes charged at a
     function with indirect sites (None = refuse when one is reached).
     `externals` are callees with no definition in any input that the caller
-    has accepted as leaves of known cost 0 (e.g. libc memset intrinsics)."""
+    has accepted as leaves of known cost 0 (e.g. libc memset intrinsics).
+
+    In a call graph with cycles this is a HEURISTIC, not a bound (issue
+    2547): a function first reached with an ancestor on the stack caches a
+    depth that leaves out every path through that ancestor, and the cache is
+    reused from routes where that ancestor is not on the stack. The answer
+    therefore depends on the order callees are tried in (`order`), and the
+    bound walk's indirect edges close one large cycle. `walk_deepest` takes
+    the deepest over the fixed `WALK_ORDERS`."""
     externals = externals or set()
+    okey = _order_key(order)
     memo: dict[str, Path_] = {}
     on_stack: list[str] = []
     missing: set[str] = set()
@@ -164,7 +193,7 @@ def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
             return p
         on_stack.append(fn)
         best = Path_(0, [], 0)
-        for callee in sorted(g.edges.get(fn, ())):
+        for callee in sorted(g.edges.get(fn, ()), key=okey):
             if callee == fn and callee not in on_stack[:-1]:
                 # direct self-recursion
                 cycles.append([fn, fn])
@@ -205,6 +234,18 @@ def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
     if problems:
         raise WalkRefused(f"root `{root}`:\n  - " + "\n  - ".join(problems))
     return p
+
+
+def walk_deepest(g: Graph, root: str, **kw) -> Path_:
+    """`worst_path` in every one of `WALK_ORDERS`, the deepest answer. Same
+    graph, same bytes: each order is fixed. A refusal in any order refuses."""
+    best: Path_ | None = None
+    for o in WALK_ORDERS:
+        p = worst_path(g, root, order=o, **kw)
+        if best is None or p.depth > best.depth:
+            best = p
+    assert best is not None
+    return best
 
 
 def fold_charge(g: Graph, *, recursion_allowance: int | None,
@@ -1121,9 +1162,17 @@ def _value_uses(line: str, fptr: dict[str, int], off: dict[str, int]) -> list[st
     return names
 
 
-def bind_indirect_sites(g: Graph, modules) -> dict[str, int]:
+def bind_indirect_sites(g: Graph, modules, c_modules=None,
+                        defined: set[str] | None = None,
+                        c_uncovered: set[str] = frozenset(),
+                        asm_bodies: set[str] = frozenset()) -> dict[str, int]:
     """Turn every indirect site into call edges (see the block comment above).
-    Returns how many sites each tier bound."""
+    `c_modules` (issue 2516): the image's C as clang IR, each
+    `(parse_ir_sites(...), ir_direct_calls(...))`; None keeps every C site
+    bound to every function C can hold. Returns how many sites each tier
+    bound. `defined`: the functions the Rust IR DEFINES (has a body for);
+    a function it only declares (a C function called over FFI) keeps its
+    machine sites. Defaults to every typed name."""
     types: dict[str, str] = {}
     tables: set[tuple[int, str]] = set()
     escaped: set[str] = set()
@@ -1180,8 +1229,17 @@ def bind_indirect_sites(g: Graph, modules) -> dict[str, int]:
     # prebuilt library) can be the target of any site whatever the site's
     # type: nothing says its type differs (issue 2402). A Rust call through a
     # pointer to a user's C callback is exactly this.
-    untyped = {fn for fn in anyset if fn not in types}
-    stats = {"slot": 0, "type": 0, "any": 0, "machine": 0}
+    c_sigs, ctypes = c_site_closures(c_modules, c_uncovered) if c_modules else ({}, {})
+
+    def sig(fn: str) -> str | None:
+        if fn in types:
+            return coarse_sig(types[fn])
+        return coarse_sig(ctypes.get(fn))
+    untyped = {fn for fn in anyset if fn not in types and fn not in ctypes}
+    # issue 2516: a C function the clang IR types joins a typed Rust site
+    # whose coarse type it matches, instead of every one.
+    c_typed = {fn for fn in anyset if fn not in types and fn in ctypes}
+    stats = {"slot": 0, "type": 0, "any": 0, "machine": 0, "c_typed": 0, "c_none": 0}
     ir_sites: dict[str, int] = {}
     for _, sites, _, _, _ in modules:
         for caller, t, slot in sites:
@@ -1196,6 +1254,9 @@ def bind_indirect_sites(g: Graph, modules) -> dict[str, int]:
             else:
                 cands = from_c
                 tier = "any"
+            if tier != "any" and c_typed:
+                ct = coarse_sig(t)
+                cands = cands | {fn for fn in c_typed if sig_match(sig(fn), ct)}
             g.edges.setdefault(caller, set()).update(cands)
             stats[tier] += 1
     # Machine-level sites the IR does not account for: every site in a C
@@ -1204,8 +1265,26 @@ def bind_indirect_sites(g: Graph, modules) -> dict[str, int]:
         # A function with IR: the IR's sites ARE its calls through a register
         # (the disassembly's count also matches jump-table and return
         # branches). A function without IR (C) has only the disassembly.
-        extra = 0 if fn in types else n
-        if extra > 0:
+        # Only a body in the IR accounts for a function's sites: a `declare`
+        # (a C function Rust calls over FFI) types it and shows none.
+        # An inline-asm body's branches are not in its IR either.
+        has_body = fn in (types if defined is None else defined) and fn not in asm_bodies
+        extra = 0 if has_body else n
+        base = fn.split(".", 1)[0]  # a GCC clone (`f.isra.0`, `f.part.0`) is f's code
+        if extra > 0 and base in c_sigs:
+            # issue 2516: a C function the clang IR covers. Its machine sites
+            # take the coarse types of every site it or a same-TU callee has;
+            # with none, they are not calls (jump tables, returns).
+            want = c_sigs[base]
+            if want:
+                g.edges.setdefault(fn, set()).update(
+                    from_c if None in want else
+                    {f for f in from_c if sig(f) is None or sig(f) in want})
+                stats["c_typed"] += extra
+            else:
+                stats["c_none"] += extra
+                stats.setdefault("c_none_fns", []).append(fn)
+        elif extra > 0:
             # A C function's site holds what C can hold; a Rust function's
             # site the IR did not show (lowered from something) holds anything.
             g.edges.setdefault(fn, set()).update(from_c)
@@ -1215,15 +1294,345 @@ def bind_indirect_sites(g: Graph, modules) -> dict[str, int]:
     return stats
 
 
+# ---------------------------------------------------------------------------
+# C call-site types (issue 2516)
+# ---------------------------------------------------------------------------
+#
+# GCC objects carry no call-site types, so a C indirect call went to every
+# function C can hold. The image's own C sources, compiled AGAIN by clang to
+# IR at -O0 with the same defines, includes and target flags the build used,
+# say what type each C call site has. Analysis only: the shipped objects stay
+# GCC's. Three rules keep it an upper bound:
+#
+# - Types are compared COARSELY (`coarse_sig`): a pointer, a <=32-bit
+#   integer, i64, float, double or an aggregate per argument. Clang and rustc
+#   lower one C signature to IR identically for these targets, but a coarse
+#   class absorbs the attribute and coercion spellings either may choose.
+# - GCC inlines differently: a GCC function's machine sites take the types of
+#   every site in its own -O0 body AND in every same-TU function it can reach
+#   by direct calls (what it may have inlined). Only when that closure has no
+#   site at all are its machine "sites" not calls (jump tables, returns).
+# - Anything not covered keeps today's binding: a function no compiled TU
+#   defines (assembly, a prebuilt library) and every function, if ANY linked
+#   TU failed to compile (a static of the same name could hide in it).
+
+_C_SOURCE = (".c",)
+_C_KEEP_JOINED = ("-D", "-U", "-std=", "-mcpu", "-mthumb", "-mfloat-abi", "-mfpu", "-mabi",
+                  "-march", "-mlittle-endian", "-mbig-endian", "-fshort-enums",
+                  "-fno-short-enums", "-fshort-wchar", "-fsigned-char", "-funsigned-char")
+_C_KEEP_PAIR = ("-D", "-U", "-imacros", "-include")
+_C_DROP_PAIR = ("-o", "-MF", "-MT", "-MQ", "-I", "-isystem", "-iquote", "-idirafter")
+_LINKED_OBJ = re.compile(r"\(([^()\s]+\.(?:o|obj))\)|^LOAD\s+(\S+\.(?:o|obj))\s*$", re.M)
+
+
+def linked_object_names(map_text: str) -> set[str]:
+    """The base names of every object a link map names (archive members and
+    loose objects): which compile commands produced the image's C."""
+    out: set[str] = set()
+    for mem, loose in _LINKED_OBJ.findall(map_text):
+        out.add(Path(mem or loose).name)
+    return out
+
+
+def _c_command_args(entry: dict) -> list[str]:
+    import shlex
+    return list(entry["arguments"]) if "arguments" in entry else shlex.split(entry["command"])
+
+
+def _c_object(args: list[str]) -> str | None:
+    for i, a in enumerate(args):
+        if a == "-o" and i + 1 < len(args):
+            return args[i + 1]
+        if a.startswith("-o") and len(a) > 2:
+            return a[2:]
+    return None
+
+
+_GCC_BUILTIN_INC = re.compile(r"/lib/gcc/[^/]+/[^/]+/include/?$")
+
+
+def clang_c_command(args: list[str], src: str, search: tuple[list[str], list[str]],
+                    target: str, out: str, resource: str | None = None) -> list[str]:
+    """The clang command that compiles `src` to bitcode the way `args` (a GCC
+    command) compiled it: its defines and forced includes, its target flags,
+    and GCC's own ordered include search (`search`: quote dirs, then the
+    `<...>` list). GCC's compiler-builtin header dir (`stdatomic.h`,
+    `stdarg.h`: written for GCC's builtins) is replaced by clang's own
+    (`resource`), every other dir is kept in order.
+
+    Typed-pointer bitcode, not `-opaque-pointers`: clang 14's opaque mode is
+    experimental and crashed on 6 Zephyr TUs; the newer `llvm-dis` the walk
+    already uses upgrades typed bitcode to opaque IR."""
+    quote, angle = search
+    keep: list[str] = []
+    i = 1
+    while i < len(args):
+        a = args[i]
+        if a in _C_KEEP_PAIR and i + 1 < len(args):
+            keep += [a, args[i + 1]]
+            i += 2
+            continue
+        if a in _C_DROP_PAIR:
+            i += 2
+            continue
+        if a.startswith(_C_KEEP_JOINED) and a not in _C_KEEP_PAIR:
+            keep.append(a)
+        i += 1
+    cmd = ["clang", f"--target={target}", "-c", "-emit-llvm", "-O0", "-Wno-everything",
+           "-ferror-limit=1", "-fno-crash-diagnostics", "-nostdinc"]
+    for q in quote:
+        cmd += ["-iquote", q]
+    for d in angle:
+        if resource and _GCC_BUILTIN_INC.search(d):
+            d = str(Path(resource) / "include")
+        cmd += ["-I", d]
+    return cmd + keep + ["-x", "c", src, "-o", out]
+
+
+def gcc_search_dirs(args: list[str], src: str, cwd: str) -> tuple[list[str], list[str]]:
+    """GCC's include search for this command: `cc <its flags> -E -v` on an
+    empty TU, so `--specs`, `-I` order and the toolchain's own dirs are all
+    as the build had them."""
+    probe: list[str] = []
+    i = 1
+    while i < len(args):
+        a = args[i]
+        if a in ("-o", "-MF", "-MT", "-MQ"):
+            i += 2
+            continue
+        if a == "-c" or a == src or a.startswith(("-M", "-W", "-o")):
+            i += 1
+            continue
+        probe.append(a)
+        i += 1
+    r = subprocess.run([args[0], *probe, "-E", "-v", "-x", "c", os.devnull, "-o", os.devnull],
+                       capture_output=True, text=True, cwd=cwd)
+    v = r.stderr
+    if '#include "..." search starts here:' not in v or "End of search list." not in v:
+        raise RuntimeError(f"{args[0]} -E -v printed no search list")
+    head, _, tail = v.partition('#include "..." search starts here:')
+    quote_part, _, rest = tail.partition("#include <...> search starts here:")
+    angle_part = rest.partition("End of search list.")[0]
+    return quote_part.split(), angle_part.split()
+
+
+def c_ir_texts(compile_commands: list[str], linked: set[str], target: str,
+               cache: Path, dis: str, readobj: str, jobs: int | None = None
+               ) -> tuple[list[str] | None, set[str], str]:
+    """Clang IR for every C translation unit the link used. Returns
+    (texts, uncovered, note). A TU clang cannot compile (clang 14 refuses
+    some GCC-only builtin uses) gives no IR, and every function its GCC
+    object defines is `uncovered`: the binder keeps today's binding for that
+    name, including a same-named static of another TU. texts is None when no
+    C types can be trusted at all, and the note says why."""
+    import concurrent.futures
+    clang = shutil.which("clang")
+    if not clang:
+        return None, "no clang on PATH"
+    ver = subprocess.run([clang, "--version"], capture_output=True, text=True).stdout
+    resource = subprocess.run([clang, "-print-resource-dir"], capture_output=True,
+                              text=True).stdout.strip() or None
+    entries = []
+    for cc in compile_commands:
+        try:
+            doc = json.loads(Path(cc).read_text())
+        except (OSError, ValueError) as e:
+            return None, f"{cc}: {e}"
+        for e in doc:
+            src = e.get("file", "")
+            if not src.endswith(_C_SOURCE):
+                continue
+            args = _c_command_args(e)
+            obj = _c_object(args)
+            if obj is None or Path(obj).name not in linked:
+                continue
+            entries.append((e["directory"], args, src, obj))
+    if not entries:
+        return None, "no compile command produced an object the link used"
+    probes: dict[tuple, tuple[list[str], list[str]]] = {}
+
+    def search_for(d, args, src):
+        key = (args[0], d, tuple(a for a in args[1:] if a != src and not a.startswith(("-D", "-o"))))
+        if key not in probes:
+            probes[key] = gcc_search_dirs(args, src, d)
+        return probes[key]
+
+    def one(item):
+        d, args, src, obj = item
+        sp = Path(src) if Path(src).is_absolute() else Path(d, src)
+        op = Path(obj) if Path(obj).is_absolute() else Path(d, obj)
+        search = search_for(d, args, src)
+        h = hashlib.sha256()
+        h.update(ver.encode())
+        cmd = clang_c_command(args, str(sp), search, target, "-", resource)
+        h.update("\0".join(cmd).encode())
+        h.update(sp.read_bytes())
+        st = op.stat() if op.exists() else None
+        h.update(f"{st.st_size if st else 0}:{st.st_mtime_ns if st else 0}".encode())
+        out = cache / "cir" / f"{h.hexdigest()}.bc"
+        if not out.exists():
+            out.parent.mkdir(parents=True, exist_ok=True)
+            import tempfile
+            fd, tmp = tempfile.mkstemp(dir=out.parent, prefix=f"{out.name}.", suffix=".tmp")
+            os.close(fd)
+            try:
+                cmd[-1] = tmp
+                r = subprocess.run(cmd, cwd=d, capture_output=True, text=True)
+                if r.returncode != 0:
+                    errs = [ln for ln in r.stderr.splitlines() if "error:" in ln] or ["?"]
+                    return None, f"{sp.name}: {errs[0].split('error:', 1)[-1].strip()}", op
+                Path(tmp).replace(out)
+            finally:
+                Path(tmp).unlink(missing_ok=True)
+        return ir_text(out, dis, cache), None, op
+
+    texts: list[str] = []
+    fails: list[tuple[str, Path]] = []
+    # probes first, serially: they are few and shared
+    for d, args, src, _ in entries:
+        try:
+            search_for(d, args, src)
+        except (RuntimeError, OSError) as e:
+            return None, set(), f"{src}: {e}"
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs or os.cpu_count() or 4) as ex:
+        for text, err, op in ex.map(one, entries):
+            if err:
+                fails.append((err, op))
+            else:
+                texts.append(text)
+    uncovered: set[str] = set()
+    for err, op in fails:
+        if not op.exists():
+            return None, set(), f"{err}, and its object {op} is gone"
+        for doc in readobj_json(readobj, ["--symbols"], [str(op)]):
+            for sym in doc.get("Symbols", []):
+                sy = sym["Symbol"]
+                typ = sy["Type"]["Name"] if isinstance(sy["Type"], dict) else sy["Type"]
+                if typ == "Function":
+                    nm = sy["Name"]["Name"] if isinstance(sy["Name"], dict) else sy["Name"]
+                    uncovered.add(nm.split(".", 1)[0])
+    note = f"{len(texts)} of {len(entries)} linked C TU(s)"
+    if fails:
+        note += (f"; {len(fails)} clang cannot compile keep every function C can hold for the "
+                 f"{len(uncovered)} function(s) they define ({'; '.join(e for e, _ in fails[:3])})")
+    return texts, uncovered, note
+
+
+_COARSE = {"ptr": "p", "i1": "i", "i8": "i", "i16": "i", "i32": "i", "i64": "l",
+           "float": "f", "double": "d", "void": "v", "half": "h"}
+
+
+def coarse_sig(t: str | None) -> str | None:
+    """A function type as classes per position, `ret(args)` -> `i(p,i)`.
+    None (matches anything) when the type cannot be read: a variadic site's
+    callee type, an unparsable spelling."""
+    if t is None:
+        return None
+    k = t.find("(")
+    if k < 0 or not t.endswith(")") or "(" in t[:k] or "..." in t:
+        return None
+    ret, args = t[:k].strip(), t[k + 1:-1]
+
+    def cls(x: str) -> str:
+        x = x.strip()
+        if x in _COARSE:
+            return _COARSE[x]
+        if x[:1] in "[{<":
+            return "a"
+        return x
+    parts = [cls(a) for a in _split_top(args) if a.strip()]
+    return f"{cls(ret)}({','.join(parts)})"
+
+
+def sig_match(a: str | None, b: str | None) -> bool:
+    return a is None or b is None or a == b
+
+
+# A callee name no function has: marks a body with inline assembly, whose
+# branches the IR cannot see (`blx r3` in Zephyr's `arch_switch_to_main_thread`).
+IR_ASM = "\0asm"
+
+
+def ir_direct_calls(text: str) -> dict[str, set[str]]:
+    """Each defined function's direct callees, from one module's IR. A body
+    with inline assembly also holds `IR_ASM`."""
+    out: dict[str, set[str]] = {}
+    cur = None
+    for line in text.splitlines():
+        m = _IR_DEFINE.match(line)
+        if m:
+            cur = m.group(3).strip('"') if m.group(1) == "define" else None
+            if cur is not None:
+                out.setdefault(cur, set())
+            continue
+        if cur is None:
+            continue
+        if line.startswith("}"):
+            cur = None
+            continue
+        if " asm " in line:
+            out[cur].add(IR_ASM)
+        for c in _IR_DIRECT.findall(line):
+            out[cur].add(c.strip('"'))
+    return out
+
+
+def c_site_closures(modules: list[tuple], uncovered: set[str] = frozenset()
+                    ) -> tuple[dict[str, set[str | None]], dict[str, str]]:
+    """From the C modules (each `(parse_ir_sites(...), ir_direct_calls(...))`):
+    - each defined function's set of coarse site types, over itself and every
+      same-module function it reaches by direct calls (what GCC may inline);
+    - each function's type, where every C module that names it agrees
+      (a name two TUs give different types is left untyped)."""
+    sigs: dict[str, set[str | None]] = {}
+    ctypes: dict[str, str] = {}
+    conflict: set[str] = set()
+    for (types, sites, _, _, _), direct in modules:
+        for fn, t in types.items():
+            if fn in ctypes and ctypes[fn] != t:
+                conflict.add(fn)
+            ctypes.setdefault(fn, t)
+        own: dict[str, set[str | None]] = {}
+        for caller, t, _ in sites:
+            own.setdefault(caller, set()).add(coarse_sig(t))
+        for fn in direct:
+            seen = {fn}
+            stack = [fn]
+            acc: set[str | None] = set()
+            while stack:
+                f = stack.pop()
+                acc |= own.get(f, set())
+                if IR_ASM in direct.get(f, ()):
+                    acc.add(None)  # an asm branch can go anywhere
+                for c in direct.get(f, ()):
+                    if c in direct and c not in seen:
+                        seen.add(c)
+                        stack.append(c)
+            sigs.setdefault(fn, set()).update(acc)
+    for fn in conflict | set(uncovered):
+        ctypes.pop(fn, None)
+    for fn in uncovered:
+        sigs.pop(fn, None)
+    return sigs, ctypes
+
+
 def ir_text(bc: Path, dis: str, cache: Path) -> str:
     import hashlib
     h = hashlib.sha256(bc.read_bytes()).hexdigest()
     p = cache / "ir" / f"{h}.ll"
     if not p.exists():
+        import tempfile
         p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(".tmp")
-        subprocess.run([dis, "-o", str(tmp), str(bc)], check=True)
-        tmp.replace(p)
+        # a name of this caller's own (issue 2500's rule): C TUs are
+        # disassembled from several threads, and two links share the cache
+        fd, tmp_name = tempfile.mkstemp(dir=p.parent, prefix=f"{p.name}.", suffix=".tmp")
+        os.close(fd)
+        tmp = Path(tmp_name)
+        try:
+            subprocess.run([dis, "-o", str(tmp), str(bc)], check=True)
+            tmp.replace(p)
+        finally:
+            tmp.unlink(missing_ok=True)
     return p.read_text(errors="replace")
 
 
@@ -1664,7 +2073,7 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
         mode = (doc.get("indirect", {}).get(a.get("rmw") or "") or {}).get("mode")
         if mode == "bind":
             problems.append(f"{where}: [indirect.{a.get('rmw')}] binds every indirect call, so "
-                            "its static walk is the upper bound and an allowance would move the "
+                            "its static walk is the floor and an allowance would move the "
                             "floor off it (issue 2402); record the measured peak as an "
                             "[[observed]] row instead")
     seen = set()
@@ -2025,11 +2434,39 @@ def run(args: argparse.Namespace) -> int:
     if mode == "bind":
         # issue 2402 — every indirect site becomes call edges; nothing is charged.
         dis = llvm_tool("llvm-dis", args.llvm_bin)
-        mods = [parse_ir_sites(ir_text(bc, dis, cache)) for bc in EXPANDED_BITCODE]
-        st = bind_indirect_sites(g, mods)
+        rtexts = [ir_text(bc, dis, cache) for bc in EXPANDED_BITCODE]
+        mods = [parse_ir_sites(t) for t in rtexts]
+        rdirect = [ir_direct_calls(t) for t in rtexts]
+        rust_defined = {fn for d in rdirect for fn in d}
+        rust_asm = {fn for d in rdirect for fn, cs in d.items() if IR_ASM in cs}
+        c_mods = None
+        c_unc: set[str] = set()
+        ccs = [c for c in (args.compile_commands or []) if Path(c).exists()]
+        if ccs and args.link_map and args.target:
+            texts, c_unc, note = c_ir_texts(ccs, linked_object_names(
+                Path(args.link_map).read_text(errors="replace")), args.target, cache, dis,
+                readobj)
+            if texts is None:
+                print(f"nros-stack-floor: bind: no C call-site types ({note}); every C site "
+                      "keeps every function C can hold", file=sys.stderr)
+            else:
+                c_mods = [(parse_ir_sites(t), ir_direct_calls(t)) for t in texts]
+                print(f"nros-stack-floor: bind: C call-site types from {note}", file=sys.stderr)
+        declared_c = {fn for fn, n in g.indirect_sites.items() if n
+                      and any(fn in m[0] for m in mods) and fn not in rust_defined}
+        if declared_c:
+            print(f"nros-stack-floor: bind: {len(declared_c)} function(s) the Rust IR only "
+                  "declares keep their machine sites: " + ", ".join(sorted(declared_c)[:6])
+                  + (" ..." if len(declared_c) > 6 else ""), file=sys.stderr)
+        st = bind_indirect_sites(g, mods, c_mods, rust_defined, c_unc, rust_asm)
         print(f"nros-stack-floor: bind: {st['slot']} indirect site(s) bound by vtable slot, "
-              f"{st['type']} by type, {st['any']} with no typed target and {st['machine']} "
-              "with no IR (C) to every function C can hold", file=sys.stderr)
+              f"{st['type']} by type, {st['any']} with no typed target, {st['c_typed']} C "
+              f"site(s) by clang type, {st['c_none']} C branch(es) that call nothing, and "
+              f"{st['machine']} with no IR to every function C can hold", file=sys.stderr)
+        if st.get("c_none_fns"):
+            print("nros-stack-floor: bind: C function(s) whose machine branches the clang IR "
+                  "shows are not calls: " + ", ".join(sorted(st["c_none_fns"])[:8]),
+                  file=sys.stderr)
         if st["frameless"]:
             fl = st["frameless"]
             print(f"nros-stack-floor: bind: {len(fl)} address-taken function(s) with no frame are "
@@ -2066,9 +2503,9 @@ def run(args: argparse.Namespace) -> int:
             role_roots = []
         for root in role_roots:
             try:
-                p = worst_path(g, root, indirect_charge=charge,
-                               recursion_allowance=args.recursion_allowance,
-                               externals=externals, cuts=cuts)
+                p = walk_deepest(g, root, indirect_charge=charge,
+                                 recursion_allowance=args.recursion_allowance,
+                                 externals=externals, cuts=cuts)
             except WalkRefused as e:
                 refusals.append(f"{role}: {e}")
                 continue
@@ -2083,9 +2520,8 @@ def run(args: argparse.Namespace) -> int:
                     refusals.append(
                         f"{role.upper()}: the static walk ({best.depth} B) is BELOW the "
                         f"{o['peak']} B this image was observed to use ({o['method']}). A walk "
-                        "that binds every indirect call is meant to be an upper bound, so it "
-                        "missed a path the run took; this is a walker defect, not a stack to "
-                        "raise (issue 2402)")
+                        "that binds every indirect call must cover every path the code runs, "
+                        "so it missed one; this is a walker defect, not a stack to raise")
                     continue
                 if o is not None:
                     measured_by = o
@@ -2360,6 +2796,64 @@ def self_test() -> int:
                functions={"r1", "r2", "w1", "w2", "copy", "odd", "slot0", "ccb"},
                address_taken={"ccb"}, indirect_sites={"odd": 1, "slot0": 1})
     bind_indirect_sites(gu, [(t2, s2, tb2, esc2, lk2)])
+    # issue 2516: C call-site types from clang IR
+    check("c types: coarse classes absorb attribute and width spellings",
+          coarse_sig("i8(ptr,i16,i64,[1 x i32])") == "i(p,i,l,a)"
+          and coarse_sig("i32 (ptr, ...)(ptr,i32)") is None and sig_match(None, "v(p)"))
+    check("c types: linked objects from members and LOAD lines",
+          linked_object_names("x lib/libz.a(link.c.obj)\nLOAD CMakeFiles/a.dir/b.c.obj\n")
+          == {"link.c.obj", "b.c.obj"})
+    cmod = (
+        "define void @outer(ptr %0) {\n  call void @inner(ptr %0)\n  ret void\n}\n"
+        "define internal void @inner(ptr %0) {\n  %2 = load ptr, ptr %0\n"
+        "  call void %2(ptr %0)\n  ret void\n}\n"
+        "define void @plain(i32 %0) {\n  ret void\n}\n"
+        "define void @withasm() {\n  call void asm sideeffect \"blx r3\", \"\"()\n"
+        "  ret void\n}\n"
+        "define void @cb_p(ptr %0) {\n  ret void\n}\n"
+        "define void @cb_i(i32 %0) {\n  ret void\n}\n")
+    cm = [(parse_ir_sites(cmod), ir_direct_calls(cmod))]
+    sigs, cty = c_site_closures(cm)
+    check("c types: a caller takes the site types of a same-TU callee it may inline",
+          sigs["outer"] == {"v(p)"} and sigs["plain"] == set())
+    check("c types: an inline-asm body's branches can go anywhere",
+          None in sigs["withasm"])
+    sigs_u, cty_u = c_site_closures(cm, {"outer"})
+    check("c types: a function an uncompiled TU defines is uncovered",
+          "outer" not in sigs_u and "outer" not in cty_u)
+    gcb = Graph(frames={f: 8 for f in ("outer", "plain", "withasm", "cb_p", "cb_i", "decl")},
+                edges={}, functions={"outer", "plain", "withasm", "cb_p", "cb_i", "decl"},
+                c_taken={"cb_p", "cb_i"}, address_taken={"cb_p", "cb_i"},
+                indirect_sites={"outer": 1, "plain": 1, "withasm": 1, "decl": 1})
+    rmod = ("declare void @decl(ptr)\n")
+    stc = bind_indirect_sites(gcb, [parse_ir_sites(rmod)], cm, defined=set())
+    check("c types: a C site reaches only what C holds of its coarse type",
+          gcb.edges.get("outer") == {"cb_p"})
+    check("c types: no IR site in the closure means the branch is not a call",
+          "plain" not in gcb.edges and stc["c_none"] == 1)
+    check("c types: an inline-asm branch reaches everything C holds",
+          gcb.edges.get("withasm") == {"cb_p", "cb_i"})
+    check("bind: a function Rust only declares keeps its machine sites",
+          gcb.edges.get("decl") == {"cb_p", "cb_i"})
+    # issue 2550: the walk is order-dependent under cycles; the reported depth
+    # is the deepest over fixed orders, and an order never depends on a hash
+    gc2 = Graph(frames={"R": 1, "M": 100, "N": 10, "Q": 10, "S": 1},
+                edges={"R": {"M", "Q"}, "M": {"N"}, "N": {"M", "S"}, "Q": {"N"}},
+                functions={"R", "M", "N", "Q", "S"})
+    d0 = worst_path(gc2, "R", indirect_charge=None, recursion_allowance=0).depth
+    dd = walk_deepest(gc2, "R", indirect_charge=None, recursion_allowance=0).depth
+    check("walk: a cycle's cache under-states the sorted order; the deepest order finds R-Q-N-M",
+          d0 == 112 and dd == 121)
+    ha = Graph(frames={"r": 1, "_RNvCsAAAAAAA_1x1a": 5, "_RNvCsAAAAAAA_1x1b": 7},
+               edges={"r": {"_RNvCsAAAAAAA_1x1a", "_RNvCsAAAAAAA_1x1b"}},
+               functions={"r", "_RNvCsAAAAAAA_1x1a", "_RNvCsAAAAAAA_1x1b"})
+    hb = Graph(frames={"r": 1, "_RNvCsZZZZZZZ_1x1a": 5, "_RNvCsZZZZZZZ_1x1b": 7},
+               edges={"r": {"_RNvCsZZZZZZZ_1x1a", "_RNvCsZZZZZZZ_1x1b"}},
+               functions={"r", "_RNvCsZZZZZZZ_1x1a", "_RNvCsZZZZZZZ_1x1b"})
+    check("walk: the edge order ignores crate hashes",
+          all([c.split("_1x")[1] for c in sorted(ha.edges["r"], key=_order_key(o))]
+              == [c.split("_1x")[1] for c in sorted(hb.edges["r"], key=_order_key(o))]
+              for o in WALK_ORDERS))
     check("bind: an untyped C function joins a typed Rust site",
           "ccb" in gu.edges.get("odd", set()))
     check("bind: a slot-0 site reaches the leaked slot-4 functions of its type",
@@ -2788,6 +3282,10 @@ def main() -> int:
     ap.add_argument("--cfi-elf", help="the LINKED image: a function no input states a frame "
                     "for (a prebuilt library's, newlib's) takes it from the image's "
                     ".debug_frame, when its CFA stays on SP")
+    ap.add_argument("--compile-commands", action="append",
+                    help="a compile_commands.json for the image's C (issue 2516): under "
+                    "`--indirect bind` each linked C TU is compiled again by clang to IR, for "
+                    "its call-site types. A missing file is skipped")
     ap.add_argument("--link-map", help="a GNU ld `-Wl,-Map` file (its LOAD lines) or an LLD "
                     "`-Map` file (its input sections; C objects only, Rust comes from "
                     "--bitcode-dir): walk the inputs it names (added to any positional inputs)")
