@@ -889,6 +889,15 @@ pub fn run_dir(ws: &Path, image: &str) -> PathBuf {
 /// stdout stays the console. The selection is the one the plan was resolved
 /// from (`--workspace`, `--nano-ros-path` and the image as the user named
 /// them), so the build and the plan agree on which image it is.
+/// [`build_image`], or exit the verb with [`exit::RUNNER_FAILED`] naming why.
+/// Called before a verb PLANS, since a plan reads what the build wrote.
+pub fn build_or_exit(verb: &str, sel: &crate::cmd::run_plan::Selection, image: &str) {
+    if let Err(e) = build_image(sel, image) {
+        eprintln!("{verb}: {e}");
+        exit_with(exit::RUNNER_FAILED);
+    }
+}
+
 pub fn build_image(args: &crate::cmd::run_plan::Selection, image: &str) -> Result<(), String> {
     let me = std::env::current_exe().map_err(|e| format!("locating nros: {e}"))?;
     let mut cmd = Command::new(me);
@@ -943,24 +952,17 @@ fn exit_with(code: u8) -> ! {
     std::process::exit(i32::from(code));
 }
 
-/// `nros run` on a resolved plan: build the image if it is stale, then
-/// [`execute`]. Exits the process with the verb's code.
+/// `nros run` on a resolved plan whose image [`build_or_exit`] already built
+/// (the plan reads what that build wrote): [`execute`] it. Exits the process
+/// with the verb's code.
 ///
 /// # Errors
 ///
 /// Never returns an error; every failure is an exit code (RFC-0118 D2).
-pub fn build_and_execute(
-    args: &crate::cmd::run_plan::Args,
-    image: &str,
-    plan: &RunPlan,
-) -> eyre::Result<()> {
+pub fn execute_built(args: &crate::cmd::run_plan::Args, plan: &RunPlan) -> eyre::Result<()> {
     let ws = workspace_of(args);
     let nano_ros_root =
         crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &ws);
-    if let Err(e) = build_image(&crate::cmd::run_plan::Selection::from(args), image) {
-        eprintln!("nros run: {e}");
-        exit_with(exit::RUNNER_FAILED);
-    }
     exit_with(execute(
         plan,
         &Execution {

@@ -172,13 +172,7 @@ fn unresolved_port_line(plan: &RunPlan, reason: Option<&str>) -> Option<String> 
 
 /// The flash plan, the console plan `--monitor` opens after it, and (dry run
 /// only) why the port did not resolve.
-fn plans(
-    args: &Args,
-) -> (
-    RunPlan,
-    Option<crate::cmd::build::ResolvedBuild>,
-    Option<String>,
-) {
+fn plans(args: &Args) -> (RunPlan, Option<String>) {
     if let Some(file) = &args.plan {
         let mut plan = RunPlan::read(file).unwrap_or_else(|e| unresolved(&e.to_string()));
         if plan.verb != Verb::Flash {
@@ -194,10 +188,15 @@ fn plans(
         if !args.passthrough.is_empty() {
             plan.passthrough = args.passthrough.clone();
         }
-        return (plan, None, None);
+        return (plan, None);
     }
     let one =
         run_plan::select_target(&args.selection(), "flash").unwrap_or_else(|e| unresolved(&e));
+    // Build before planning, as `nros run` does: the plan reads what the
+    // build wrote (the west build's Zephyr tree, its artifacts).
+    if !args.dry_run {
+        run_exec::build_or_exit("nros flash", &args.selection(), &one.qualified);
+    }
     let descriptor = one.descriptor.as_ref().expect("select_target checked it");
     let invocation = Invocation {
         // RFC-0118 D6: `--port`, then `NROS_PORT`, both the invocation rung.
@@ -251,7 +250,7 @@ fn plans(
         .unwrap_or_default();
     let peer = run_exec::declared_host_peer(&ws, one.rmw.as_deref());
     run_exec::attach_host_peer(&mut plan, one.rmw.as_deref(), &peer);
-    (plan, Some(one), port_note)
+    (plan, port_note)
 }
 
 /// The console plan for `--monitor`: the flash plan's board on the same port.
@@ -270,7 +269,7 @@ pub fn monitor_plan(flash: &RunPlan) -> RunPlan {
 ///
 /// Never returns an error; every failure is an exit code (RFC-0118 D2).
 pub fn run(args: Args) -> eyre::Result<()> {
-    let (plan, one, port_note) = plans(&args);
+    let (plan, port_note) = plans(&args);
     let console = args.monitor.then(|| monitor_plan(&plan));
     if args.dry_run {
         print!("{}", run_plan::render_plan_text(&plan, args.why, args.json));
@@ -302,12 +301,6 @@ pub fn run(args: Args) -> eyre::Result<()> {
     let ws = ws.canonicalize().unwrap_or(ws);
     let nano_ros_root =
         crate::orchestration::nano_ros_root::resolve(sel.nano_ros_path.clone(), &ws);
-    if let Some(one) = &one
-        && let Err(e) = run_exec::build_image(&sel, &one.qualified)
-    {
-        eprintln!("nros flash: {e}");
-        exit_with(exit::RUNNER_FAILED);
-    }
     exit_with(flash_and_monitor(
         &plan,
         console.as_ref(),
