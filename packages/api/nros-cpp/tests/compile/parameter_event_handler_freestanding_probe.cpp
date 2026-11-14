@@ -8,7 +8,7 @@
  * `static_assert` naming what works there.
  *
  * `just check cpp` compiles this WITHOUT `NROS_CPP_STD` and requires it to FAIL
- * with `REFUSED by nano-ros` AND `issue 2024` in the text.
+ * with `REFUSED by nano-ros` AND `rclcpp::ParameterEventHandler is REFUSED` in the text.
  */
 
 #include <rclcpp/rclcpp.hpp>
