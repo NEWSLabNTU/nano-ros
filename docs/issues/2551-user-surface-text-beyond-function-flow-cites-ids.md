@@ -5,7 +5,7 @@ status: open
 type: tech-debt
 severity: low
 area: [cli, ux, logging, runtime, build]
-related: [issue-2547, issue-2443, phase-523]
+related: [issue-2547, issue-2443, phase-523, phase-552]
 found: 2026-11-14
 ---
 

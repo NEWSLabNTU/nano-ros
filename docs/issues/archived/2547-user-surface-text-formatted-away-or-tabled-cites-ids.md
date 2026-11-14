@@ -5,7 +5,7 @@ status: resolved
 type: tech-debt
 severity: low
 area: [cli, ux, logging, runtime]
-related: [issue-2443, issue-2551, phase-523]
+related: [issue-2443, issue-2551, phase-523, phase-552]
 found: 2026-11-14
 resolved: 2026-11-14
 resolved_in: "#3815 (the subject and its sweep, one change)"

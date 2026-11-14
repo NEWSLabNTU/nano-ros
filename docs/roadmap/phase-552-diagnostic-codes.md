@@ -32,6 +32,8 @@ written without that code, and the code cannot exist without its explanation
 
 ### W1 — The `nros-diagnostics` crate (RFC-0129 D1–D3)
 
+- **Status:** OPEN
+
 - `packages/tooling/nros-diagnostics`: `#![no_std]`, with the `diagnostics!`
   macro, the `Diag` enum, `ALL: &[Entry]`, and one `explain/NROS-NNNN.md` per
   code, read by `include_str!`.
@@ -55,6 +57,8 @@ written without that code, and the code cannot exist without its explanation
 
 ### W2 — The constructors (RFC-0129 D2)
 
+- **Status:** OPEN
+
 - CLI: `Diag::X.err(..)`, which returns an `eyre::Report`.
 - Build script: `Diag::X.panic(..)`.
 - Each constructor has a `.help(..)` override, and each prints `-v` detail
@@ -67,6 +71,8 @@ written without that code, and the code cannot exist without its explanation
   `check-user-surface-ids`'s pattern.
 
 ### W3 — The generated views and their freshness gate (RFC-0129 D4, D6)
+
+- **Status:** OPEN
 
 `nros-diagnostics-gen` writes four views:
 
@@ -95,6 +101,8 @@ It has a self-test with one planted defect per check.
 
 ### W4 — `nros explain <CODE>` (RFC-0129 D5)
 
+- **Status:** OPEN
+
 The argument decides which: a token matching `^NROS-\d{4}$` is a code, and
 anything else is a plan path, as today.
 
@@ -113,6 +121,8 @@ anything else is a plan path, as today.
 - The CLI reference is regenerated (`scripts/gen-cli-reference.py`).
 
 ### W5 — Convert the user-reachable refusals, surface by surface (RFC-0129 D2, D6)
+
+- **Status:** OPEN
 
 1. **Ratchet.** Land the per-surface ratchet `check-refusal-constructors`,
    with each surface's baseline measured at landing and recorded in the
@@ -133,11 +143,12 @@ anything else is a plan path, as today.
 
 - Every per-surface baseline is zero.
 - `check-user-surface-ids` stays green.
-- AUO book's id ratchet (#3617) stays green.
 - [Issue 2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md)
   is archived as resolved, with ruling Q4 cited.
 
 ### W6 — Close
+
+- **Status:** OPEN
 
 **Acceptance:**
 
@@ -148,21 +159,16 @@ anything else is a plan path, as today.
 
 ## Coordination
 
-The AUO book session owns
-[issue 2443](../issues/2443-runtime-log-and-colcon-messages-cite-ids.md):
-runtime and colcon messages. Its sweep makes those messages self-contained,
-with no id. W5 prepends codes to them later, so neither phase rewrites the
-other's text. Before W5 touches a file on those surfaces, ping that session
-and split the files.
+The no-ids sweep this phase builds on is done.
+[Issue 2443](../issues/archived/2443-runtime-log-and-colcon-messages-cite-ids.md)
+(runtime and colcon messages) and
+[issue 2547](../issues/archived/2547-user-surface-text-formatted-away-or-tabled-cites-ids.md)
+(text printed through a variable or a table) are resolved;
+`check-user-surface-ids` reads every user surface they named, and CMake's
+default-level output, at baseline zero, with no ratchet left. What it cannot
+yet read is [issue 2551](../issues/2551-user-surface-text-beyond-function-flow-cites-ids.md).
+So W5 prepends codes to messages that are already self-contained, and rewrites
+no one else's text. That gate's id pattern does not match `NROS-NNNN`, and its
+self-test asserts it, so prepending a code never trips it.
 
-Sweep state on 2026-11-12, as that session reported it:
-
-| PR | what | state |
-| --- | --- | --- |
-| #3593 | colcon messages | done |
-| #3617 | the ratchet: the CLI library, build-script panics, CMake `FATAL_ERROR` / `SEND_ERROR` | open |
-| #3621 | batch 1: `entity_inventory`, `cmake_root`, `west_app` | open |
-| — | runtime logs | not started |
-
-The id pattern in #3617 does not match `NROS-NNNN`, and #3617 carries a
-self-test that asserts it. So prepending a code never trips it.
+The phase moved from nros 243 to the AUO book session on 2026-11-14.
