@@ -16,6 +16,11 @@ Each branch quotes the **real** stderr you can grep against — not a
 paraphrase. If your error text matches, the fix on the right is the
 one to try.
 
+A refusal that starts `error[NROS-NNNN]` carries a diagnostic code. Its last
+line, `explain: nros explain NROS-NNNN`, is a command that prints what
+happened and how to fix it, with no network; [Diagnostic
+codes](diagnostics/index.md) lists every code.
+
 ## A. Build failures (cargo / cmake)
 
 ### A1. Cargo cannot find `nros`

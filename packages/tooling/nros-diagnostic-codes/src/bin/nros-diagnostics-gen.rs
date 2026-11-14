@@ -79,8 +79,49 @@ fn main() -> ExitCode {
         }
     }
 
+    // Authored inputs no row reads. Refused in both modes: an explanation is
+    // written by hand, so nothing here deletes one.
+    //
+    // * An explanation file with no live row: its row was never written, or
+    //   was retired (a retired code's explanation is removed with it). The
+    //   reverse, a live row with no file, does not compile.
+    // * A live row naming no surface. The macro's `[$(surface),+]` already
+    //   refuses an empty list at compile time; this is the second reading.
+    let mut refused = Vec::new();
+    let live: BTreeSet<String> = nros_diagnostic_codes::ALL
+        .iter()
+        .filter(|e| e.is_live())
+        .map(|e| format!("{}.md", e.code))
+        .collect();
+    let explain_dir = root.join(views::EXPLAIN_DIR);
+    if let Ok(dir) = std::fs::read_dir(&explain_dir) {
+        for ent in dir.flatten() {
+            let name = ent.file_name().to_string_lossy().into_owned();
+            if !live.contains(&name) {
+                refused.push(format!(
+                    "{}/{name}: explains no live code; declare its row in src/codes.rs, or \
+                     delete the file",
+                    views::EXPLAIN_DIR
+                ));
+            }
+        }
+    }
+    for e in nros_diagnostic_codes::ALL
+        .iter()
+        .filter(|e| e.is_live() && e.surfaces.is_empty())
+    {
+        refused.push(format!("{} {}: names no surface", e.code, e.name));
+    }
+    for r in &refused {
+        eprintln!("nros-diagnostics-gen: {r}");
+    }
+
     if stale.is_empty() {
-        return ExitCode::SUCCESS;
+        return if refused.is_empty() {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        };
     }
     for s in &stale {
         eprintln!("nros-diagnostics-gen --check: {s}");
