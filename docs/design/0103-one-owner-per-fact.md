@@ -347,7 +347,7 @@ that to every row rather than adding a second spelling:
   must never be written). Measured on zenoh-pico (D5-M below): no `.git` in
   the tree, so issue 1336's layout trap cannot occur, and every mtime is the
   commit time and never moves, so the fixture treadmill stops for these trees.
-- **A source a cargo `path =` dependency reaches (`nuttx-libc`, `px4-rs`), or
+- **A source a cargo `path =` dependency reaches (`px4-rs`), or
   one a build PATCHES in place (`cyclonedds-src`, by the Zephyr lane), also
   stays a checkout source** (phase-484 W3c): cargo resolves a path dependency
   at manifest parse, before any ladder runs, and a patched tree cannot be a
@@ -549,7 +549,7 @@ does not hold stay valid.
 | `nros-launch-resolve` | tool | toolchain `bin/` (checkout: `packages/cli/target/release/`) | `NROS_LAUNCH_RESOLVE` | `tool nros-launch-resolve` |
 | cross gcc, zephyr-sdk, qemu, corrosion, ninja, make, cyclonedds, xrce-agent | tool | `$NROS_HOME/sdk/<tool>/<ver>/` | per row | `tool <name>` |
 | `rmw_zenohd`, ROS | external | `NROS_RMW_ZENOHD` → `AMENT_PREFIX_PATH` → `/opt/ros/$ROS_DISTRO`; never stored | `NROS_RMW_ZENOHD` | `tool rmw_zenohd` |
-| FreeRTOS, lwIP, ThreadX, NetX, Cyclone src, zenoh-pico, mbedTLS, XRCE, micro-CDR, px4-rs, nuttx-libc | source | `$NROS_HOME/sources/<name>/<pin>/` | per row (`FREERTOS_DIR`, …) | row name |
+| FreeRTOS, lwIP, ThreadX, NetX, Cyclone src, zenoh-pico, mbedTLS, XRCE, micro-CDR, px4-rs | source | `$NROS_HOME/sources/<name>/<pin>/` | per row (`FREERTOS_DIR`, …) | row name |
 | NuttX kernel + apps, PX4-Autopilot | source, built in-tree | checkout submodule (writable); store-eligible only once built out-of-tree | `NUTTX_DIR`, `NUTTX_APPS_DIR`, `PX4_AUTOPILOT_DIR` | row name |
 | Zephyr workspace | source | `$NROS_HOME/workspaces/zephyr/<ver>/` (RFC-0095) | `NROS_ZEPHYR_WORKSPACE` | `zephyr-workspace` |
 | vendor SDK we cannot ship | user source | env or project `[sources]` only | e.g. `NV_SPE_FSP_DIR` | row name |

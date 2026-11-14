@@ -669,17 +669,15 @@ jobs:
       - name: Fetch submodule history for check-submodule-pins
         run: bash scripts/ci/pin-baseline.sh deepen
 
-      # Four more fast-line gates read SOURCES this job never checked out, so
+      # Three more fast-line gates read SOURCES this job never checked out, so
       # they reported NOT VERIFIED on every CI run while a local run verified
       # them: `capability-conditionals` (zenoh-pico's platform.h),
-      # `xrce-vendored-versions` (micro-cdr, micro-xrce-dds-client),
-      # `leaf-lockfiles` (the nuttx FFI crates patch `libc` to
-      # third-party/nuttx/libc) and `cxx-compat-shim-facilities` (Zephyr's
-      # minimal libcpp headers). Depth-1 submodules plus a SPARSE Zephyr at the
-      # pinned west revision -- only `lib/cpp/minimal/include`, the one
-      # directory the gate reads. Measured from a fresh clone: ~8 s for the
-      # submodules, 2.4 s and 6 MiB for the Zephyr slice, and all four gates
-      # then verify.
+      # `xrce-vendored-versions` (micro-cdr, micro-xrce-dds-client) and
+      # `cxx-compat-shim-facilities` (Zephyr's minimal libcpp headers).
+      # Depth-1 submodules plus a SPARSE Zephyr at the pinned west revision --
+      # only `lib/cpp/minimal/include`, the one directory the gate reads.
+      # Measured from a fresh clone: ~8 s for the submodules, 2.4 s and 6 MiB
+      # for the Zephyr slice, and all three gates then verify.
       - name: Provision what the fast lane claims (sources, history, Zephyr headers)
         timeout-minutes: 12
         # One script for every job that runs a gate lane, driven by the lane's
@@ -850,8 +848,7 @@ jobs:
           git submodule update --init --depth 1 \
             packages/rmw/zenoh/zpico-sys/zenoh-pico \
             packages/rmw/xrce/xrce-sys/micro-cdr \
-            packages/rmw/xrce/xrce-sys/micro-xrce-dds-client \
-            third-party/nuttx/libc
+            packages/rmw/xrce/xrce-sys/micro-xrce-dds-client
 
       # The skip ledger is shared with `check-fast`'s reader; this job starts
       # it empty so the closing step below reads only these two gates.

@@ -12,7 +12,6 @@ Every submodule that tracks a patch branch, and the page that lists its patches 
 | [threadx](threadx.md) | `eclipse-threadx/threadx` | `v6.4.5.202504_rel` |
 | [netxduo](netxduo.md) | `eclipse-threadx/netxduo` | `v6.4.5.202504_rel` |
 | [nuttx](nuttx.md) | `apache/nuttx` | `nuttx-12.13.0` |
-| [libc](libc.md) | `rust-lang/libc` | `libc-0.2` |
 | [qemu](qemu.md) | `qemu/qemu` | `v11.0.0` |
 | [ros2-rust-examples](ros2-rust-examples.md) | `ros2-rust/examples` | `main` |
 

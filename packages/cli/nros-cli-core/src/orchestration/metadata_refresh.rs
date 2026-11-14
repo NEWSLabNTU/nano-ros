@@ -2004,9 +2004,9 @@ mod tests {
         assert_eq!(
             unprovisioned_source(
                 "harness failed\n  -> a vendored source it resolves is not provisioned -- \
-                 run: nros setup --source nuttx-libc"
+                 run: nros setup --source px4-rs"
             ),
-            Some("nuttx-libc")
+            Some("px4-rs")
         );
         assert_eq!(unprovisioned_source("error[E0428]: defined twice"), None);
         assert_eq!(unprovisioned_source("nros setup --source "), None);

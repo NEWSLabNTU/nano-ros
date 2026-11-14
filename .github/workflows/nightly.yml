@@ -474,10 +474,8 @@ jobs:
         run: |
           source ./setup.bash
           source /opt/ros/humble/setup.bash
-          # The workspace .cargo/config.toml patches `libc` to the NuttX fork (#18)
-          # at workspace level, so EVERY cell's Entry build needs third-party/
-          # nuttx/libc; px4-rs too (workspace-load). Provision via the SDK index.
-          nros setup --source px4-rs --source nuttx-libc
+          # px4-rs: the workspace cannot load without it. Provision via the SDK index.
+          nros setup --source px4-rs
           # Disk lever: push/PR get the lighter `build-examples` smoke; the heavy
           # `build-all` fixtures matrix (what QEMU e2e consumes) only on schedule /
           # dispatch-with-run_e2e.
@@ -519,9 +517,8 @@ jobs:
           source ./setup.bash
           source /opt/ros/humble/setup.bash
           # `_nextest-platform` runs `cargo metadata` over the nros-tests
-          # workspace → the px4-sitl-tests path dep must exist; nuttx-libc backs
-          # the workspace Entry build. Provision both (same as host-tests).
-          nros setup --source px4-rs --source nuttx-libc
+          # workspace → the px4-sitl-tests path dep must exist (same as host-tests).
+          nros setup --source px4-rs
           # `just test <platform>`, not `just <platform> test`: the scope verb
           # narrows the run to the platform's own coordinates (issue 1758).
           # Unscoped, `realtime_sched_tasks` in the FreeRTOS job booted the NuttX
@@ -664,11 +661,10 @@ jobs:
           nros setup --system --sudo
 
       # The PX4 tree first: its requirements file is what the next step reads.
-      # `nuttx-libc` backs a root-workspace path dep that `nros-tests` loads.
       - name: Provision PX4-Autopilot and px4-rs
         run: |
           source ./activate.sh
-          nros setup --source px4-rs --source px4-autopilot --source nuttx-libc
+          nros setup --source px4-rs --source px4-autopilot
           git -C third-party/px4/PX4-Autopilot submodule update --init \
             --depth 1 --recommend-shallow --recursive
 

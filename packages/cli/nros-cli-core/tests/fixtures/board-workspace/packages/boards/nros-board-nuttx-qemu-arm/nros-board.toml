@@ -28,9 +28,6 @@ rustflags = [
 [env]
 CC_armv7a_nuttx_eabihf = "arm-none-eabi-gcc"
 CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
-
-[patch.crates-io]
-libc = { path = "${workspace}/third-party/nuttx/libc" }
 '''
 # NuttX is BoardRun but ships no entry block — the hosted `fn main` shim drives
 # it (preserves the pre-195.C behaviour byte-for-byte).

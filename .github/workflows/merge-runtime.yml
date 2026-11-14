@@ -196,8 +196,7 @@ jobs:
           fi
 
       # `test-all` runs `cargo metadata` over the nros-tests workspace, whose
-      # px4-sitl-tests path dep must exist; nuttx-libc backs the workspace
-      # Entry build (nightly.yml, same reason).
+      # px4-sitl-tests path dep must exist.
       #
       # issue 2475 defects 1-2. `rosidl`: `[lane.merge]` claims `sources`, so
       # `check fast` inside `just build <lane>` runs `python-entry-provenance`,
@@ -210,7 +209,7 @@ jobs:
       - name: Provision the sources the test workspace loads
         run: |
           source ./activate.sh
-          nros setup --source px4-rs --source nuttx-libc --source rosidl
+          nros setup --source px4-rs --source rosidl
           nros setup --build-sources
 
       # Issue 1353's instruments, reused rather than re-spelled: the same two

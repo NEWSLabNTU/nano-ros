@@ -1432,7 +1432,7 @@ some later noise
     #[test]
     fn missing_source_remedy_names_the_setup_command() {
         // Loads the REAL shipped index, so this also asserts the dest→package
-        // mapping matches the sources #0390 hit (nuttx-libc, xrce).
+        // mapping matches the sources #0390 hit (px4-rs, xrce).
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .find(|p| p.join("nros-sdk-index.toml").is_file())
@@ -1443,12 +1443,12 @@ some later noise
         // path:
         // `check-absolute-paths` scans tracked sources textually and cannot tell
         // a fixture string from a real baked-in build-host path.
-        let nuttx = "error: failed to load source for dependency `libc`\n  \
-                     Caused by: unable to update \
-                     /wsroot/third-party/nuttx/libc";
+        let px4 = "error: failed to load source for dependency `px4`\n  \
+                   Caused by: unable to update \
+                   /wsroot/third-party/px4/px4-rs";
         assert_eq!(
-            missing_source_remedy(nuttx, &idx).as_deref(),
-            Some("run: nros setup --source nuttx-libc")
+            missing_source_remedy(px4, &idx).as_deref(),
+            Some("run: nros setup --source px4-rs")
         );
 
         let xrce = "nros-rmw-xrce-cffi: vendored `micro-xrce-dds-client` source root \

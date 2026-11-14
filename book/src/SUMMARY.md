@@ -127,7 +127,6 @@
 - [The ThreadX fork](./reference/forks/threadx.md)
 - [The NetX Duo fork](./reference/forks/netxduo.md)
 - [The NuttX fork](./reference/forks/nuttx.md)
-- [The libc fork](./reference/forks/libc.md)
 - [The QEMU fork](./reference/forks/qemu.md)
 - [The ros2_rust examples fork](./reference/forks/ros2-rust-examples.md)
 - [Feature matrices]()

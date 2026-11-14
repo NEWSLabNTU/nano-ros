@@ -38,9 +38,8 @@ cargo metadata --format-version 1 --manifest-path <entry-dir>/Cargo.toml \
   | sort -u
 ```
 
-That lists every crate cargo resolved, build-time ones included. One of them
-is a fork: the `libc` crate, patched for NuttX
-([fork delta](forks/libc.md)).
+That lists every crate cargo resolved, build-time ones included. None of
+them is a fork: every crate comes from crates.io or from this repository.
 
 ## Forks
 
