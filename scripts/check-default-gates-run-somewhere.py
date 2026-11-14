@@ -27,6 +27,16 @@ production:
                  job's own `if:`. Once the gate became parallel `check-*`
                  siblings, a sibling `CI` does not wait for blocks nothing.
 
+  R4 NO CRON ON CI (phase-559 W7) The workflow holding the required `CI` has
+                 no `schedule` trigger. A daily gate belongs to a tier file
+                 that owns a cron (host-tests.yml, nightly.yml), where a red is
+                 a verdict on `main`. On `CI`'s workflow a scheduled job is a
+                 sibling `CI` excuses on every merge-gating event, so it looks
+                 like part of the required check while gating nothing — and it
+                 makes every scheduled run of the file a second, slower copy
+                 of the merge gate. `check-build` and the Zephyr part of
+                 `template-copy-out` lived that way until W7.
+
 R2 is not hypothetical and it is why R1 alone is not enough. Measured
 2026-09-05: gate.yml ran `check build`, `check no-std` and `check api-parity`
 from a single `run:` block. `check build` had been red on that lane since
@@ -61,7 +71,7 @@ machinery below and were already covered; the rest are matched as `just <recipe>
 
 WHAT THIS DOES NOT REQUIRE
 
-Merge-gating. `check-build` is deliberately `schedule`/`workflow_dispatch` only:
+Merge-gating. `check-build` is deliberately daily/manual only (host-tests.yml):
 it resolves artifacts no PR job builds, and making it required once turned every
 pull request red for a day (`check-lane-contracts` now forbids that shape). A
 DAILY or PER-COMMIT signal is the bar here, not a blocking one -- so both rules
@@ -525,6 +535,14 @@ def aggregator_errors(text, wf_name, recipes):
                         f"`needs.{m.group(2)}.result` — a verdict read for the wrong job.")
         listed[m.group(1)] = set(m.group(3).split())
     wf_events = set(re.findall(r"^\s{2}(" + "|".join(EVENTS) + r")\s*:", text, re.M))
+    on = doc.get("on", doc.get(True)) or {}
+    if "schedule" in (on if isinstance(on, (dict, list)) else [on]):
+        errs.append(
+            f"{wf_name}: holds the required `{AGGREGATOR_NAME}` and has a `schedule` trigger (R4).\n"
+            f"      A daily job here is a sibling `{AGGREGATOR_NAME}` excuses on every merge-gating\n"
+            f"      event — it reads as part of the required check and gates nothing.\n"
+            f"      Move it to a tier file that owns a cron (host-tests.yml, nightly.yml;\n"
+            f"      phase-559 W7) and drop the trigger.")
     for n in needs:
         if n not in jobs:
             errs.append(f"{wf_name}: `{aid}` needs `{n}`, which is not a job here.")
@@ -720,6 +738,13 @@ def self_test():
     chk("R3 misses an excuse list wider than the job's `if:`", any("excuses a skip" in x for x in e))
     e, _ = aggregator_errors(wf("t, gone", "merge_group"), "probe.yml", ["test-unit"])
     chk("R3 misses a `needs:` naming no job", any("not a job here" in x for x in e))
+    # R4 — phase-559 W7: the pre-W7 gate.yml shape, a cron on CI's workflow.
+    sched = wf("t", "merge_group").replace(
+        "  merge_group:\n", "  merge_group:\n  schedule:\n    - cron: \"0 2 * * *\"\n", 1)
+    e, _ = aggregator_errors(sched, "probe.yml", ["test-unit"])
+    chk("R4 misses a `schedule` trigger on the workflow holding CI", any("(R4)" in x for x in e))
+    e, _ = aggregator_errors(sched.replace("name: CI", "name: not-ci"), "probe.yml", ["test-unit"])
+    chk("R4 fires on a workflow that holds no CI", e == [])
 
     if ok:
         print(
@@ -790,9 +815,10 @@ def main() -> int:
             f"      No event reaches it, so it is invisible between local\n"
             f"      full-tier runs and its reds accumulate until somebody finds\n"
             f"      several at once (issue 1040). It need not gate a merge — a\n"
-            f"      nightly or post-submit signal is the bar. Add it to gate.yml's\n"
-            f"      `schedule`/`workflow_dispatch` steps, or to post-submit.yml if\n"
-            f"      per-commit attribution is worth its cost."
+            f"      nightly or post-submit signal is the bar. Add it to a daily\n"
+            f"      tier file (host-tests.yml, nightly.yml — gate.yml has no\n"
+            f"      `schedule`, R4), or to post-submit.yml if per-commit\n"
+            f"      attribution is worth its cost."
         )
 
     # R1, second scope — a `just ci gate` step no workflow event runs (issue 1226).

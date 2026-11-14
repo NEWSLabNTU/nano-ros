@@ -24,6 +24,14 @@ workflow that documented each `if:` in prose would drift worse than one that
 documents none. This catches the specific lie that cost the sessions: the lane
 advertising compile-tier coverage on an event where only a SMOKE runs.
 
+WHERE: the workflow that holds the `just check build` step, FOUND rather than
+named. It was `gate.yml` until phase-559 W7 moved the build tier to
+`host-tests.yml` (gate.yml lost its `schedule`); a hard-coded path would then
+have reported "could not find the step" forever, or — worse, had the step's
+name survived somewhere else — checked a file the tier no longer runs in. A
+step with no event `if:` runs on every event its workflow triggers on, so the
+events then come from the workflow's `on:`.
+
 Self-test drives both verdicts on the normal path (issue 1167).
 """
 
@@ -34,7 +42,20 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-GATE = REPO / ".github/workflows/gate.yml"
+WORKFLOWS = REPO / ".github/workflows"
+_STEP = re.compile(r"^\s*-\s*name:[^\n]*just check build", re.M)
+
+
+def locate() -> Path | None:
+    """The one workflow whose step is named for `just check build`."""
+    hits = [p for p in sorted(WORKFLOWS.glob("*.yml")) if _STEP.search(p.read_text())]
+    return hits[0] if len(hits) == 1 else None
+
+
+def triggers(text: str) -> set[str]:
+    """Top-level events under the workflow's block `on:`."""
+    m = re.search(r"^on:\s*\n((?:[ \t]+[^\n]*\n|[ \t]*\n)+)", text, re.M)
+    return set(re.findall(r"^  ([a-z_]+):", m.group(1), re.M)) if m else set()
 
 # A phrase claiming the FULL tier on a pull request. Matched case-insensitively
 # against the job name and the header. Deliberately about the tier, not about
@@ -70,16 +91,14 @@ def pr_tier_claims(blob: str) -> list[str]:
 
 def build_step_events(text: str) -> set[str] | None:
     """Events the `just check build` step runs on, measured from its `if:`."""
-    m = re.search(
-        r"^\s*-\s*name:[^\n]*just check build[^\n]*\n\s*if:\s*(?P<cond>[^\n]*)",
-        text,
-        re.M,
-    )
-    if not m:
+    step = _STEP.search(text)
+    if not step:
         return None
-    cond = m.group("cond")
+    m = re.match(r"[^\n]*\n\s*if:\s*(?P<cond>[^\n]*)", text[step.start():].lstrip("\n"))
+    cond = m.group("cond") if m else ""
     if "github.event_name" not in cond:
-        return None
+        # No event condition: the step runs on every event the file triggers on.
+        return triggers(text) or None
     return set(re.findall(r'"([a-z_]+)"', cond))
 
 
@@ -107,7 +126,7 @@ def scan(text: str) -> list[str]:
     events = build_step_events(text)
     if events is None:
         return [
-            "gate.yml: could not find the `just check build` step's event `if:` — "
+            "could not find the `just check build` step or its events — "
             "this gate cannot verify issue 1514's invariant, which is a failure, "
             "not a pass"
         ]
@@ -120,7 +139,7 @@ def scan(text: str) -> list[str]:
         for claim in pr_tier_claims(blob):
             if claim:
                 out.append(
-                    f"gate.yml: {where} claims {claim!r}, but `just check "
+                    f"{where} claims {claim!r}, but `just check "
                     f"build` runs only on {sorted(events)} — never on a pull "
                     f"request (issue 1514).\n"
                     f"    A PR gets `check compile-smoke`, not the tier. Say that, "
@@ -131,7 +150,9 @@ def scan(text: str) -> list[str]:
 
 
 def self_test() -> None:
-    good = GATE.read_text()
+    gate = locate()
+    assert gate is not None, "no single workflow holds a `just check build` step"
+    good = gate.read_text()
     assert not scan(good), "the live workflow fails this gate; fix the finding it reports"
 
     bad_name = good.replace(
@@ -164,6 +185,11 @@ def self_test() -> None:
         good,
         count=1,
     )
+    if widened == good:
+        # The step has no event `if:` (phase-559 W7: host-tests.yml), so the
+        # claim is made TRUE by triggering the workflow on pull_request.
+        widened = re.sub(r"^on:\n", "on:\n  pull_request:\n", good, count=1, flags=re.M)
+    assert widened != good, "the positive control could not be built"
     if widened != good:
         assert not scan(widened.replace(
             check_job_name(good) or "", "check (full on PR/nightly)", 1
@@ -172,15 +198,16 @@ def self_test() -> None:
 
 def main() -> int:
     self_test()
-    findings = scan(GATE.read_text())
+    gate = locate()
+    findings = scan(gate.read_text())
     if findings:
         print("check-lane-coverage-labels: FAIL\n")
         for f in findings:
             print(f"  {f}\n")
         return 1
-    ev = sorted(build_step_events(GATE.read_text()) or [])
+    ev = sorted(build_step_events(gate.read_text()) or [])
     print(
-        "check-lane-coverage-labels: OK (`just check build` runs on "
+        f"check-lane-coverage-labels: OK (`just check build` runs in {gate.name} on "
         f"{ev}; no label claims a pull request)"
     )
     return 0

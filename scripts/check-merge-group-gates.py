@@ -30,10 +30,16 @@ So for each gate in `MERGE_GATING` below this asserts, against `gate.yml`:
      `merge_group`, the complement of every part it names: `zephyr` needs
      `no-zephyr` and the reverse. The parts are complements by construction,
      so a missing side is a whole class of units nobody builds. A part listed
-     in `DEFERRED_PARTS` is the one exception: a recorded decision moved it to
-     another event, so its complement is satisfied by a job that runs it on
-     THAT event, through `CI` with a `sibling` line naming it — and the part
-     must then not ALSO run on `merge_group`, or the record is stale.
+     in `DEFERRED_PARTS` is the one exception: a recorded decision moved it
+     off the merge queue, so its complement is satisfied by the NAMED job in
+     the NAMED workflow running it on a DAILY `schedule` cron — and the part
+     must then not run anywhere in `gate.yml`, or the record is stale.
+
+     Phase-559 W7 changed this rule. It used to be "heard by `CI` on
+     `schedule`", with the part a `CI` sibling on `gate.yml`'s cron; W7 took
+     that cron away, and a job outside `gate.yml` cannot be a `CI` sibling at
+     all, so the deferred part's evidence is now its own job's placement.
+     The old placement (the part in `gate.yml`, on any event) is refused.
 
 AUTHORED, deliberately: the list is a record of decisions, and there is nothing
 to derive a decision from. Each entry names the decision that put it here.
@@ -60,12 +66,14 @@ MERGE_GATING = {
                          "set on merge_group, not on pull_request",
 }
 
-# (gate, part) -> (the event it runs on instead of merge_group, the decision).
-# A part here still runs SOMEWHERE through the required `CI`; it is the
-# merge-queue placement that was decided away, never the coverage.
+# (gate, part) -> (workflow file, job id that runs it daily, the decision).
+# A part here still runs EVERY DAY in that job; it is the merge-queue
+# placement that was decided away, never the coverage. Since phase-559 W7 the
+# job is outside gate.yml (which has no `schedule`), so it is not a `CI`
+# sibling: its verdict is a daily red on `main`, not a blocked merge.
 DEFERRED_PARTS = {
     ("template-copy-out", "zephyr"): (
-        "schedule",
+        "nightly.yml", "template-copy-out-zephyr",
         'user ruling 2026-11-13: "Do Zephyr template check daily" — the zephyr '
         "part was the merge queue's critical path (median 37 min vs ~21)"),
 }
@@ -136,7 +144,58 @@ def _runs_gate(run, gate):
     return re.search(r"(?m)^\s*just\s+check\s+" + re.escape(gate) + r"(?![\w-])", run or "") is not None
 
 
-def check(doc, text):
+_DAILY_CRON = re.compile(r"^\s*\d{1,2}\s+\d{1,2}\s+\*\s+\*\s+\*\s*$")
+
+
+def _on_of(doc):
+    on = doc.get("on", doc.get(True, {})) or {}
+    return on if isinstance(on, dict) else {e: None for e in (on or [])}
+
+
+def deferred_errors(doc, wf_name, jid, gate, part):
+    """Rule 6, deferred side: why `wf_name`'s job `jid` does NOT run `gate`
+    part `part` on a daily schedule ([] when it does)."""
+    if doc is None:
+        return [f"{wf_name} does not exist"]
+    on = _on_of(doc)
+    crons = [str((c or {}).get("cron", "")) for c in (on.get("schedule") or [])
+             if isinstance(c, dict)]
+    if not crons:
+        return [f"{wf_name} has no `schedule` trigger"]
+    if not any(_DAILY_CRON.match(c) for c in crons):
+        return [f"{wf_name}'s cron(s) {crons} are not daily (`M H * * *`)"]
+    job = (doc.get("jobs") or {}).get(jid)
+    if not isinstance(job, dict):
+        return [f"{wf_name} has no job `{jid}`"]
+    wf_events = set(on)
+    job_ev = _events_of(job.get("if"), wf_events)
+    if "schedule" not in job_ev:
+        return [f"{wf_name} job `{jid}`'s `if:` does not admit schedule"]
+    if job.get("continue-on-error"):
+        return [f"{wf_name} job `{jid}` is continue-on-error, so its red reports nothing"]
+    for step in job.get("steps") or []:
+        if not (isinstance(step, dict) and _runs_gate(step.get("run"), gate)
+                and part in _parts_of(step)):
+            continue
+        if "schedule" not in (_events_of(step.get("if"), job_ev) & job_ev):
+            return [f"{wf_name} job `{jid}`, step `{step.get('name', '?')}` does not run on schedule"]
+        if step.get("continue-on-error"):
+            return [f"{wf_name} job `{jid}`, step `{step.get('name', '?')}` is continue-on-error"]
+        return []
+    return [f"{wf_name} job `{jid}` has no step running `just check {gate}` with part `{part}`"]
+
+
+def load_deferred():
+    """{workflow file: parsed doc or None} for every DEFERRED_PARTS workflow."""
+    out = {}
+    for wf, _jid, _why in DEFERRED_PARTS.values():
+        path = ROOT / ".github" / "workflows" / wf
+        out[wf] = yaml.safe_load(path.read_text()) if path.is_file() else None
+    return out
+
+
+def check(doc, text, deferred_docs=None):
+    deferred_docs = deferred_docs or {}
     errs = []
     on = doc.get("on", doc.get(True, {})) or {}
     wf_events = set(on) if isinstance(on, dict) else set(on or [])
@@ -159,7 +218,6 @@ def check(doc, text):
             continue
         heard = False
         parts = set()
-        deferred_heard = set()
         for jid, job, step in hosts:
             job_ev = _events_of(job.get("if"), wf_events)
             step_ev = _events_of(step.get("if"), job_ev) & job_ev
@@ -171,16 +229,10 @@ def check(doc, text):
                 deferred = DEFERRED_PARTS.get((gate, part))
                 if deferred is None:
                     continue
-                ev, dwhy = deferred
-                if "merge_group" in step_ev:
-                    errs.append(f"{where} runs part `{part}` on merge_group, but DEFERRED_PARTS "
-                                f"moved it to {ev} ({dwhy}) — drop the record or the placement")
-                if ev in step_ev and not step.get("continue-on-error") and jid in needs:
-                    m = re.search(r"^\s*sibling\s+" + re.escape(jid)
-                                  + r'\s+"\$\{\{\s*needs\.' + re.escape(jid)
-                                  + r'\.result\s*\}\}"\s+"([^"]*)"', agg_text, re.M)
-                    if m and ev in m.group(1).split():
-                        deferred_heard.add(part)
+                dwf, djid, dwhy = deferred
+                errs.append(f"{where} runs part `{part}` in gate.yml, but DEFERRED_PARTS "
+                            f"placed it in {dwf} job `{djid}`, daily ({dwhy}) — drop the "
+                            f"record or the gate.yml placement")
             if "merge_group" not in step_ev:
                 continue
             if step.get("continue-on-error"):
@@ -210,13 +262,13 @@ def check(doc, text):
             parts.update(_parts_of(step))
         for p in sorted(parts):
             c = _complement(p)
-            if c not in parts and c in deferred_heard:
-                continue
             if c not in parts and (gate, c) in DEFERRED_PARTS:
-                ev, dwhy = DEFERRED_PARTS[(gate, c)]
-                errs.append(f"`{gate}` part `{c}` is deferred to {ev} ({dwhy}), but no job "
-                            f"runs it on {ev} through `CI` with a `sibling` line naming {ev} — "
-                            f"its units are built by nobody")
+                dwf, djid, dwhy = DEFERRED_PARTS[(gate, c)]
+                why_not = deferred_errors(deferred_docs.get(dwf), dwf, djid, gate, c)
+                if why_not:
+                    errs.append(f"`{gate}` part `{c}` is deferred to {dwf} job `{djid}`, daily "
+                                f"({dwhy}), but {'; '.join(why_not)} — its units are built "
+                                f"by nobody")
                 continue
             if c not in parts:
                 errs.append(f"`{gate}` runs part `{p}` on merge_group but no job runs part "
@@ -302,20 +354,48 @@ PARTED = SAMPLE.replace(
 )
 assert PARTED.count("_PART=") == 2 and "check-template-copy-out-zephyr.result" in PARTED
 
-# The 2026-11-13 ruling's shape: the zephyr part on the daily schedule.
+# The OLD (2026-11-13 to phase-559 W7) placement of the ruling: the zephyr
+# part a `CI` sibling on gate.yml's own daily schedule. Refused since W7.
 _Z = PARTED.index("  check-template-copy-out-zephyr:\n")
-DEFERRED = (PARTED[:_Z] + PARTED[_Z:].replace('["merge_group","workflow_dispatch"]',
-                                              '["schedule","workflow_dispatch"]', 2)).replace(
+OLD_DEFERRED = (PARTED[:_Z] + PARTED[_Z:].replace('["merge_group","workflow_dispatch"]',
+                                                  '["schedule","workflow_dispatch"]', 2)).replace(
     'sibling check-template-copy-out-zephyr "${{ needs.check-template-copy-out-zephyr.result }}" "merge_group workflow_dispatch"',
     'sibling check-template-copy-out-zephyr "${{ needs.check-template-copy-out-zephyr.result }}" "schedule workflow_dispatch"',
-).replace("  merge_group:\n", "  merge_group:\n  schedule:\n")
-assert DEFERRED.count('["schedule","workflow_dispatch"]') == 2
+).replace("  merge_group:\n", "  merge_group:\n  schedule:\n    - cron: \"0 2 * * *\"\n")
+assert OLD_DEFERRED.count('["schedule","workflow_dispatch"]') == 2
+
+# The W7 placement: gate.yml runs the no-zephyr part alone on merge_group, and
+# nightly.yml's named job runs the zephyr part on its daily cron.
+DEFERRED = SAMPLE.replace("          just check template-copy-out\n",
+                          "          export NROS_TEMPLATE_COPY_OUT_PART=no-zephyr\n"
+                          "          just check template-copy-out\n")
+assert DEFERRED.count("_PART=") == 1
+NIGHTLY = """\
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * *"
+jobs:
+  template-copy-out-zephyr:
+    runs-on: x
+    steps:
+      - name: gate
+        if: ${{ !cancelled() }}
+        run: |
+          export NROS_TEMPLATE_COPY_OUT_PART=zephyr
+          source ./activate.sh
+          just check template-copy-out
+"""
 
 
 def selftest():
-    def run(text):
+    def run(text, nightly=NIGHTLY):
         doc = yaml.safe_load(text)
-        return check(doc, text) + shard_errors(doc, "sample")
+        others = {"nightly.yml": yaml.safe_load(nightly) if nightly is not None else None}
+        return check(doc, text, others) + shard_errors(doc, "sample")
+
+    # A nightly.yml variant is checked against the W7 gate.yml (`DEFERRED`).
+    N = "nightly:"
 
     cases = [
         ("the decided placement is clean", SAMPLE, False),
@@ -342,26 +422,41 @@ def selftest():
         # Both parts on merge_group was the placement before 2026-11-13; with
         # the zephyr part recorded as deferred, it is a stale record now.
         ("both parts on merge_group against the deferral record", PARTED, True),
-        ("one part dropped",
-         PARTED.replace("export NROS_TEMPLATE_COPY_OUT_PART=zephyr\n", ""), True),
+        ("one part dropped, and no deferred job to supply it",
+         (PARTED.replace("export NROS_TEMPLATE_COPY_OUT_PART=zephyr\n", ""), None), True),
         ("the complement renamed away",
          PARTED.replace("NROS_TEMPLATE_COPY_OUT_PART=no-zephyr", "NROS_TEMPLATE_COPY_OUT_PART=host"), True),
-        ("the zephyr part deferred to schedule, as ruled", DEFERRED, False),
-        ("the deferred part heard on no event",
-         DEFERRED.replace('"schedule workflow_dispatch"\n', '"workflow_dispatch"\n'), True),
-        ("the deferred part dropped from CI's needs",
-         DEFERRED.replace("      - check-template-copy-out-zephyr\n", ""), True),
-        ("the deferred part on merge_group AND schedule",
-         DEFERRED.replace('["schedule","workflow_dispatch"]', '["merge_group","schedule","workflow_dispatch"]'), True),
+        ("the zephyr part in nightly.yml's daily job, as ruled", DEFERRED, False),
+        # phase-559 W7: the old placement is refused, with or without the new job.
+        ("the OLD placement: the part a CI sibling on gate.yml's schedule", OLD_DEFERRED, True),
+        ("the OLD placement, and no nightly.yml job", (OLD_DEFERRED, None), True),
+        ("the deferred part's workflow missing", (DEFERRED, None), True),
+        ("the deferred workflow has no schedule",
+         N + NIGHTLY.replace('  schedule:\n    - cron: "0 5 * * *"\n', ""), True),
+        ("the deferred workflow's cron is weekly",
+         N + NIGHTLY.replace('"0 5 * * *"', '"0 5 * * 1"'), True),
+        ("the deferred job renamed",
+         N + NIGHTLY.replace("  template-copy-out-zephyr:", "  zephyr-other:"), True),
+        ("the deferred job never runs on schedule",
+         N + NIGHTLY.replace("    runs-on: x\n",
+                         "    runs-on: x\n    if: ${{ contains(fromJSON('[\"workflow_dispatch\"]'), github.event_name) }}\n"), True),
+        ("the deferred step lost its part",
+         N + NIGHTLY.replace("          export NROS_TEMPLATE_COPY_OUT_PART=zephyr\n", ""), True),
+        ("the deferred step made continue-on-error",
+         N + NIGHTLY.replace("        run: |\n", "        continue-on-error: true\n        run: |\n"), True),
         ("the no-zephyr part may not be deferred",
-         DEFERRED.replace("_PART=zephyr", "_PART=TMP").replace("_PART=no-zephyr", "_PART=zephyr")
-                 .replace("_PART=TMP", "_PART=no-zephyr"), True),
+         N + NIGHTLY.replace("_PART=zephyr", "_PART=no-zephyr"), True),
         ("a longer gate name is not this gate",
          SAMPLE.replace("just check template-copy-out", "just check template-copy-out-extra"), True),
     ]
     bad = 0
     for desc, text, want_err in cases:
-        got = bool(run(text))
+        if isinstance(text, tuple):
+            got = bool(run(*text))
+        elif text.startswith(N):
+            got = bool(run(DEFERRED, text[len(N):]))
+        else:
+            got = bool(run(text))
         ok = got == want_err
         bad += not ok
         print(f"  {'ok  ' if ok else 'FAIL'} {desc}")
@@ -379,7 +474,7 @@ def main():
     if "--selftest" in sys.argv[1:] or rc:
         return rc
     doc, text = load()
-    errs = check(doc, text)
+    errs = check(doc, text, load_deferred())
     for wf in SHARD_WORKFLOWS:
         errs.extend(shard_errors(yaml.safe_load(wf.read_text()), wf.name))
     if errs:

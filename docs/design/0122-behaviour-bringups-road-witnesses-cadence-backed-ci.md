@@ -307,12 +307,14 @@ has no job behind it.
 **Amended 2026-11-13 — the Zephyr template copy-out is a DAILY promise.**
 User ruling, verbatim: "Do Zephyr template check daily". The copy-out
 templates whose board takes the Zephyr road (the `zephyr` part of
-`just check template-copy-out`, issue 2219) are built once a day on
-`gate.yml`'s `schedule` and on dispatch, no longer on every merge group. The
+`just check template-copy-out`, issue 2219) are built once a day — on
+`nightly.yml`'s cron since phase-559 W7 removed `gate.yml`'s `schedule`, by
+the `template-copy-out-zephyr` job — and on dispatch, no longer on every
+merge group. The
 three `no-zephyr` shards stay on `merge_group`. So "every copy-out template is
 built before it merges" now holds for every road but Zephyr; a Zephyr
 template that breaks reaches `main` and the next daily run reports it, red,
-through `CI`. The same rule as above, applied to a gate rather than a board:
+in `nightly.yml` (through `CI` until W7). The same rule as above, applied to a gate rather than a board:
 the Zephyr part was the queue's critical path (median 37 min against ~21 for
 the next job, 12 merge groups measured), and a promise the queue could not
 afford per entry is lowered to one a daily job keeps.
