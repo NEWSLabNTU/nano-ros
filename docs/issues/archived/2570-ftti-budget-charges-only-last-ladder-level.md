@@ -1,12 +1,14 @@
 ---
 id: 2570
 title: "`ftti_budget` charges only the last level of a mode-form hazard's fallback ladder, while play_launch judges every level"
-status: open
+status: resolved
 type: bug
 area: [cli, contract]
 severity: medium
 found: 2026-11-13
 related: [phase-560]
+resolved: 2026-11-14
+resolved_in: "74ed310d1b feat(ftti_budget): charge every ladder level (#3758, #3759) (#3853)"
 ---
 
 GitHub: NEWSLabNTU/nano-ros#3758
@@ -16,9 +18,7 @@ follows the contract revision on the RTOS side (W1 fixed which level is
 charged; W8 made the image report its level). L4 plan item NR-15 (gaps G18,
 G25). rlm side: NEWSLabNTU/ros-launch-manifest#6.
 
-**In flight:** PR #3853 (branch `feat/3758-ftti-ladder-levels`, "Closes
-#3758"), open and not merged as of 2026-11-15. This issue stays open until
-it lands.
+**Resolved:** PR #3853 merged 2026-11-14 (`74ed310d1b`); GitHub #3758 closed by it.
 
 ## What happens
 

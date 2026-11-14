@@ -1,12 +1,14 @@
 ---
 id: 2571
 title: "No contract or test declares `hazards:` with a `modes:` ladder, so judging rungs on an image has never run against a real ladder"
-status: open
+status: resolved
 type: test-gap
 area: [testing, contract]
 severity: medium
 found: 2026-11-13
 related: [phase-560, 2570]
+resolved: 2026-11-14
+resolved_in: "74ed310d1b feat(ftti_budget): charge every ladder level (#3758, #3759) (#3853)"
 ---
 
 GitHub: NEWSLabNTU/nano-ros#3759
@@ -15,9 +17,7 @@ GitHub: NEWSLabNTU/nano-ros#3759
 plan item NR-19 (gap G25). Depends on issue 2570 (the per-level
 `ftti_budget`).
 
-**In flight:** PR #3853 (branch `feat/3758-ftti-ladder-levels`, "Closes
-#3759"), open and not merged as of 2026-11-15. This issue stays open until
-it lands.
+**Resolved:** PR #3853 merged 2026-11-14 (`74ed310d1b`); GitHub #3759 closed by it.
 
 ## What is missing
 

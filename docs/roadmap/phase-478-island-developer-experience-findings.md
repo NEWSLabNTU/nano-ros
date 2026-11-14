@@ -618,4 +618,5 @@ fixed after that release.
 - [issue 2567](../issues/2567-rust-codegen-msg-constants-not-reexported.md): Rust codegen does not re-export `.msg` constants.
 - [issue 2568](../issues/2568-rust-ctx-param-misses-launch-values.md): a Rust `ctx.param()` gets the default, not the launch value.
 - [issue 2569](../issues/2569-cpp-metadata-probe-assumes-class-header.md): the C++ metadata probe assumes `<pkg>/<Class>.hpp` and logs a failure even with `HEADER` set.
+- [issue 2582](../issues/2582-cmake-workspace-road-drops-image-knob-rows.md): on the hand-written `nano_ros_workspace()` road, `[image.<id>.knobs.*]` rows are silently ignored (164 parameter slots stated, 32 built).
 
