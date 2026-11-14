@@ -6,7 +6,7 @@ the user's ruling on phase-555's platform-board-rtos brief (P5 (a), 2026-11-14):
 steps, with [RFC-0112](../design/0112-framework-support-tiers.md) D5 as one of
 its items and the RTIC dispatch-lint gap as an item." W1 to W7 are RFC-0111's
 "Migration and work" steps, in its order; W8 is RFC-0112 D5; W9 is the lint
-gap.
+gap; W10 re-promotes RTIC to Tier 1.
 
 Each item is one PR, claimed with `just claim phase-562-wN` before it starts.
 
@@ -132,9 +132,23 @@ word does today"). Measured on main on 2026-11-14:
   mutation-checked.
 - **Status:** OPEN
 
+### W10 — RTIC meets Tier 1 criterion 5, and is re-promoted
+
+- **Owner:** unassigned.
+- RTIC was demoted from Tier 1 on 2026-11-14 (RFC-0112 D3, issue 2540): the
+  RTIC branch of `nros::main!` emits fixed priorities (the run task and custom
+  tasks at 1, the tick and RX tasks at 2) with every callback inline in the run
+  task, and its CI cells assert delivery only.
+- **Acceptance:** the RTIC branch generates its task priorities from the
+  sched-task contract (RFC-0113 D2), and an RTIC CI cell asserts a measured
+  bound (idle wake count, or arrival-to-dispatch latency) and fails when the
+  bound is exceeded. When both land, RFC-0112 D3 re-promotes RTIC to Tier 1
+  and issue 2540 is resolved.
+- **Status:** OPEN
+
 ## Related
 
 - [issue 2540](../issues/2540-rtic-fails-tier1-realtime-criterion.md): RTIC
-  does not meet RFC-0112's fifth Tier 1 criterion. Not an item of this phase
-  (the ruling did not put it here), but this phase touches the same branch.
+  does not meet RFC-0112's fifth Tier 1 criterion. The ruling of 2026-11-14
+  demoted it and put its re-promotion here, as W10.
 - RFC-0093 §3: its last framework word retires with W5.
