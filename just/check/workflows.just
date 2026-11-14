@@ -173,7 +173,7 @@ claim-protocol:
 # answer without its input, and says which.
 #
 # `just doctor` examines the developer's store with it, and since issue 1744 it
-# is also on `build-serial`, which `gate.yml` runs nightly over the store that
+# is also on `build-serial`, which `host-tests.yml` runs nightly over the store that
 # job provisions (Corrosion, clang-format). It was held off every lane while
 # both Zephyr SDK dists read red; 1744 ruled that an UPSTREAM dist is held to
 # the programs nano-ros RUNS from it (its `smoke` probes), so it is green.
