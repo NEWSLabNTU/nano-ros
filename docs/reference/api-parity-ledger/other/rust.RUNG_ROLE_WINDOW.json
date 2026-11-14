@@ -5,8 +5,5 @@
   "why": "play_launch phase 96 W4.2 -- `RungSpec::role` of a `min_dwell:` level (rlm `LevelRole::Dwell`, `RungRole::Window` before v0.3.3). See `rust:RungSpec`.",
   "retired_names": [
     "RungRole"
-  ],
-  "foreign_names": [
-    "min_dwell"
   ]
 }

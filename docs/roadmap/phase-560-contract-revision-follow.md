@@ -1,7 +1,8 @@
 # Phase 560 — Follow the contract revision on the RTOS side
 
 **Status (2026-11-13). W1-W5 DONE** (rlm v0.3.15, play_launch v0.32.0,
-#3745); W6 and W7 BLOCKED on releases not yet tagged; W8 DONE. nano-ros's
+#3745); W6 and W7 BLOCKED on releases not yet tagged; W8 DONE (every level
+charged since #3758). nano-ros's
 share of two play_launch phases: phase 103 (defects the contract grammar review found in shipped
 behaviour) and phase 104 (the grammar revision itself). The design of
 record is rlm `docs/design/grammar-revision/` (an overview and one file per
@@ -114,6 +115,27 @@ reads one model per board, unchanged.
 - **Status:** DONE (2026-11-14, rule `hazard-level-runtime`)
 
 The image reports each level its ladder becomes active on, by index and name.
+
+The build-time budget charges every level (#3758, 2026-11-15). `ftti_budget`
+used to charge only the minimal risk condition, so on the L4 island contract
+it named B4 (21 s) where play_launch's binding row is B3 (80 s). It now
+follows rlm v0.3.18's "Which levels a hazard runs, and which rows are
+judged": one row per level in the model's `degradation_levels` (skipped
+levels absent), detection + the dwelling levels waited above (route +
+charged dwell, a range's `max`) + the level's route + its settle, judged
+against `ftti` and the level's own `within` (a dwelling level against
+`within` only), and the binding row is `ros_launch_manifest_derive::levels`,
+the code play_launch calls. The route is the model's `route_ms`, the quantity
+the image's rung monitor judges, so the build-time and run-time halves use
+one number. Fixture (#3759): `packages/cli/nros-cli-core/tests/fixtures/mode_ladder`,
+a reduced L4 ladder with three hazards (every level run, two skipped by
+`requires`, one skipped by `requires_lost`); every row, binding row and the
+`level-within` refusal equal play_launch 0.34.0's
+(`tests/mode_ladder_rows.rs`).
+
+Not charged by the image, as before: a class with no executor-side detector
+(`reported` among them), so a hazard whose only class is `reported` has no
+row here where play_launch, which counts the publisher's own report, has one.
 
 Follows play_launch 102 M5 E7, which play_launch's report records as not run.
 The image reports the fallback level it fell to, so the evaluation can compare
