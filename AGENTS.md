@@ -74,8 +74,9 @@ skips is RED; a gate that needs something a lane does not claim declares it,
 
 Give a gate the build tier only when it CANNOT run without something built
 — **not** as a default, because since phase-396 W1 that tier runs on
-`schedule`/`workflow_dispatch` only and therefore gates nothing a merge passes
-through.
+`schedule`/`workflow_dispatch` only (since phase-559 W7, in `host-tests.yml`'s
+daily `check-build` job, no longer `gate.yml`) and therefore gates nothing a
+merge passes through.
 
 - `just --list`: show every recipe (215 of them; the answer is usually bare `just`).
 - `scripts/bootstrap.sh`: first-time entrypoint; installs/checks `just`, then prints setup choices.
