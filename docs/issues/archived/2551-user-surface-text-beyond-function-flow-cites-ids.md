@@ -5,7 +5,7 @@ status: resolved
 type: tech-debt
 severity: low
 area: [cli, ux, logging, runtime, build]
-related: [issue-2547, issue-2443, phase-523, phase-552]
+related: [issue-2547, issue-2443, issue-2554, phase-523, phase-552]
 found: 2026-11-14
 resolved: 2026-11-14
 resolved_in: "PR pending (the readings and their sweep, one change)"
@@ -157,7 +157,7 @@ from the host's newer Humble, `ament_version` and eight more `rosgraph_msgs`
 types. A byte-for-byte drift check is therefore host-dependent and would fail
 today; regenerating it belongs with the codegen-version question, not with
 this gate. That drift is the one remaining place with ids in user-read text,
-and goes to a follow-up issue.
+and is [issue 2554](../2554-generated-humble-drifts-from-emitter.md).
 
 ## Resolution
 
@@ -171,4 +171,4 @@ gaps are stated in the checker (deeper flow, ambiguous names, assigned
 fields and builders, iterator chains, cross-file tables, C buffers, emitted
 `#[doc]` and plain comments) and hold no id in user text today. The tracked
 `generated/humble` tree's drift from its emitter does hold such text; it is
-filed as a follow-up issue rather than checked here.
+filed as [issue 2554](../2554-generated-humble-drifts-from-emitter.md) rather than checked here.
