@@ -27,8 +27,6 @@
   "scripts/oneshot/collapse-nuttx-rust-case.sh": 2,
   "scripts/oneshot/collapse-threadx-linux-rust-case.sh": 2,
   "scripts/oneshot/collapse-threadx-rv64-rust-case.sh": 2,
-  "scripts/reserve-issue-id.sh": 1,
-  "scripts/reserve-phase-id.sh": 1,
   "scripts/ros/domain-bridge-repro.sh": 2,
   "scripts/test/cmake-fixture-stale.sh": 1,
   "scripts/zephyr/aarch64-rust-patch.sh": 2,

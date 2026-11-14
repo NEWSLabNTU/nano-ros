@@ -42,20 +42,23 @@
 # DEGRADATION
 #
 # If the reservation push fails for any reason OTHER than "already taken" — no
-# network, no push permission, a read-only mirror — this says so and falls back
-# to the local maximum. That fallback IS the old racy behaviour, so it is
-# announced rather than hidden.
+# network, no push permission, a read-only mirror — this says what failed and
+# exits non-zero with no number. A number nobody claimed on the remote is the
+# read-then-write race these reservations exist to end, so there is no
+# "local maximum + 1" fallback (`scripts/lib/reserve-ref.sh`).
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # `grep -q` cannot tell a NON-MATCH from a TOOL ERROR, and the one conditional
 # below decides whether a failed reservation push means "someone else took this
-# number" (retry) or "something is wrong" (warn and degrade). Getting that
-# backwards under load would silently pick the racy fallback. Issue 0726.
+# number" (retry) or "something is wrong" (fail). Getting that
+# backwards under load would fail a reservation contention should have retried. Issue 0726.
 # shellcheck source=lib/grep-q.sh
 . "$(dirname "$0")/lib/grep-q.sh"
 
+# shellcheck source=scripts/lib/reserve-ref.sh
+. "$(dirname "$0")/lib/reserve-ref.sh"
 REF_NS="refs/rfc-ids"
 REMOTE="${NROS_RFC_REMOTE:-origin}"
 MAX_ATTEMPTS=25
@@ -104,42 +107,12 @@ file_max="$(highest_file_id)"
 reserved_max="$(highest_reserved_id)"
 candidate=$(( (file_max > reserved_max ? file_max : reserved_max) + 1 ))
 
-attempt=0
-while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
-    padded="$(printf '%04d' "$candidate")"
-    obj="$(unique_object "$padded")"
-
-    if err="$(git push "$REMOTE" "$obj:$REF_NS/$padded" 2>&1)"; then
-        printf '%s\n' "$padded"
-        echo "reserved RFC $padded on $REMOTE ($REF_NS/$padded)" >&2
-        if [ -n "$slug" ]; then
-            echo "  file it as: docs/design/$padded-$slug.md" >&2
-        fi
-        echo "  it needs a \`# RFC-$padded — <title>\` heading, a \`**Status:**\` line," >&2
-        echo "  and a row in docs/design/README.md (both gated)" >&2
-        exit 0
-    fi
-
-    # Taken by another session between our read and our write — exactly the race
-    # this exists for. Step on and retry; not an error.
-    if nros_grep_q -iE "already exists|non-fast-forward|fetch first|rejected" <<<"$err"; then
-        candidate=$((candidate + 1))
-        attempt=$((attempt + 1))
-        continue
-    fi
-
-    echo "[WARN] could not reserve an RFC number on '$REMOTE':" >&2
-    printf '%s\n' "$err" | sed 's/^/       /' >&2
-    echo "" >&2
-    echo "       Falling back to the local maximum + 1. This is the ORIGINAL" >&2
-    echo "       RACY behaviour: another session may pick the same number, and" >&2
-    echo "       the collision only surfaces once both have pushed — as a sweep" >&2
-    echo "       across every file citing the number, not a one-line fix." >&2
-    printf '%04d\n' "$((file_max + 1))"
-    exit 0
-done
-
-echo "[FAIL] $MAX_ATTEMPTS consecutive numbers were already reserved." >&2
-echo "       That is not contention any more — check \`git ls-remote $REMOTE '$REF_NS/*'\`" >&2
-echo "       for stale reservations left by sessions that never filed." >&2
-exit 1
+padded="$(nros_reserve_claim "an RFC number" "$REF_NS" "$REMOTE" "$MAX_ATTEMPTS" "$candidate" 4 unique_object)" || exit 1
+printf '%s\n' "$padded"
+echo "reserved RFC $padded on $REMOTE ($REF_NS/$padded)" >&2
+if [ -n "$slug" ]; then
+    echo "  file it as: docs/design/$padded-$slug.md" >&2
+fi
+echo "  it needs a \`# RFC-$padded — <title>\` heading, a \`**Status:**\` line," >&2
+echo "  and a row in docs/design/README.md (both gated)" >&2
+exit 0
