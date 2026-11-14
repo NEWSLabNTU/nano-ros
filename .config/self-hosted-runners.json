@@ -1,0 +1,43 @@
+{
+  "_comment": [
+    "The self-hosted runners this repository EXPECTS to be serving jobs.",
+    "Read by scripts/ci/self-hosted-presence-watchdog.py, which runs from",
+    "runner-watchdog.yml. Listing the live runners needs admin, which the",
+    "workflow token does not have; a finished job's runner_name does not. So",
+    "the expected set is declared here, and a runner that takes no job while",
+    "jobs it could take run on another runner is reported.",
+    "",
+    "name   = the GitHub registration (NROS_RUNNER_NAME on its host).",
+    "labels = the nros-* labels it registers with. GitHub adds self-hosted,",
+    "         Linux and X64 itself. Keep this in step with the host's loop",
+    "         command line: a label listed here and not served makes the check",
+    "         expect jobs the runner never sees, and the reverse hides a gap.",
+    "Remove a runner here in the same change that retires its host."
+  ],
+  "runners": [
+    {
+      "name": "nano-ros-runner-newslab-server-241",
+      "labels": [
+        "nros-qemu",
+        "nros-sdk-zephyr",
+        "nros-big"
+      ]
+    },
+    {
+      "name": "nano-ros-runner-newslab-server-241-queue",
+      "labels": [
+        "nros-queue",
+        "nros-sdk-zephyr",
+        "nros-big"
+      ]
+    },
+    {
+      "name": "nano-ros-runner-newslab-118-server",
+      "labels": [
+        "nros-qemu",
+        "nros-sdk-zephyr",
+        "nros-big"
+      ]
+    }
+  ]
+}
