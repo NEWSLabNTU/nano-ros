@@ -73,11 +73,13 @@ function(nros_cli_rows _ncr_prefix _ncr_text)
             continue()
         endif()
         if(DEFINED _NCR_REQUIRE AND NOT _ncr_line MATCHES "${_NCR_REQUIRE}")
+            # issue 2200: a skipped line is how a value split across lines lost a
+            # conf file without a word.
             message(FATAL_ERROR
                 "nano-ros: ${_NCR_CONTEXT}: a line that is not a `${_NCR_REQUIRE}` row:\n"
                 "  ${_ncr_line}\n"
-                "Refused rather than skipped: a skipped line is how a value split "
-                "across lines lost a conf file without a word (issue 2200).")
+                "Refused rather than skipped: skipping a line would silently drop a "
+                "value split across lines. Fix the line in that file.")
         endif()
         set(${_ncr_prefix}_${_ncr_n} "${_ncr_line}" PARENT_SCOPE)
         list(APPEND _ncr_indices ${_ncr_n})

@@ -12,9 +12,10 @@ if(NOT TARGET diagnostic_updater::diagnostic_updater)
         "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
     set(_du_dir "${_nros_repo_root}/packages/api/nros-diagnostic-updater")
     if(NOT EXISTS "${_du_dir}/CMakeLists.txt")
+        # phase-482 W1.
         message(FATAL_ERROR
             "Finddiagnostic_updater: ${_du_dir}/CMakeLists.txt is missing — "
-            "this module and the package it loads moved together (phase-482 W1).")
+            "this module and the package it loads moved together. Restore the package from the nano-ros source tree.")
     endif()
     add_subdirectory("${_du_dir}" nros-diagnostic-updater EXCLUDE_FROM_ALL)
 endif()

@@ -1269,7 +1269,7 @@ ed_run jazzy TRUE -DNROS_ROS_EDITION=humble
 check
 if [ "$ED_RC" -ne 0 ] && nros_grep_q -F '`jazzy`' <<<"$ED_OUT" \
    && nros_grep_q -F 'NROS_ROS_EDITION=humble' <<<"$ED_OUT" \
-   && nros_grep_q -F 'issue 2087' <<<"$ED_OUT"; then
+   && nros_grep_q -F 'names another' <<<"$(tr -s '[:space:]' ' ' <<<"$ED_OUT")"; then
     log_success "a -D naming another edition is refused, naming both"
 else
     fail "a disagreeing -DNROS_ROS_EDITION was not refused by name (rc=$ED_RC):

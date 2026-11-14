@@ -935,9 +935,10 @@ function(nros_sizing_descriptor_record_for_west)
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_path}" "${_cargo_file}"
             RESULT_VARIABLE _copy_rc)
         if(NOT _copy_rc EQUAL 0)
+            # phase-439 W6.
             message(FATAL_ERROR
                 "nano-ros: could not copy the sizing descriptor ${_path} to "
-                "${_cargo_file} (phase-439 W6)")
+                "${_cargo_file}. Check that the build directory is writable.")
         endif()
         set(_named TRUE)
     elseif(EXISTS "${_cargo_file}")

@@ -158,10 +158,11 @@ if(NOT EXISTS "${_NROS_BOARD_CONFIG_DIR}/tx_user.h")
         "${_NROS_BOARD_CONFIG_DIR}/tx_user.h.")
 endif()
 if(NOT EXISTS "${_NROS_PORT_RISCV64_DIR}/inc/tx_port.h")
+    # phase-337 W4.a.
     message(FATAL_ERROR
         "nano-ros-board-rv-virt-threadx: forked tx_port.h not found at "
         "${_NROS_PORT_RISCV64_DIR}/inc/tx_port.h. Without it the build silently "
-        "falls back to upstream's 8-byte-ULONG port header (phase-337 W4.a).")
+        "falls back to upstream's 8-byte-ULONG port header. Restore it from the nano-ros source tree.")
 endif()
 if(NOT EXISTS "${_NROS_BOARD_CONFIG_DIR}/link.lds")
     message(FATAL_ERROR
@@ -533,10 +534,11 @@ function(_nros_rv64_image_locator out_var)
         endif()
     elseif(NOT DEFINED NROS_ENTRY_LOCATOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
         if(NOT COMMAND nano_ros_read_leaf_system)
+            # issue 1557.
             message(FATAL_ERROR
                 "nros_threadx_rv64_rust_app: ${CMAKE_CURRENT_SOURCE_DIR}/system.toml "
                 "exists but `nano_ros_read_leaf_system` is not loaded, so its "
-                "`[image.*] locator` cannot be read (issue 1557). Call this after "
+                "`[image.*] locator` cannot be read. Call this after "
                 "`nros_generate_interfaces()`, which loads it.")
         endif()
         nano_ros_read_leaf_system(DIR "${CMAKE_CURRENT_SOURCE_DIR}")

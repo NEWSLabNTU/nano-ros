@@ -177,7 +177,7 @@ check() {
 
 if check "$digest_a"; then
     bad "C1 a configure that executed digest A against a file stating B was NOT refused"
-elif nros_grep_q 'issue 1707' "$work/check.out"; then
+elif nros_grep_q 'the generated west application was rewritten' "$work/check.out"; then
     pass "C1 a configure that read a since-rewritten application is refused"
 else
     bad "C1 refused, but not by this check: $(head -5 "$work/check.out")"

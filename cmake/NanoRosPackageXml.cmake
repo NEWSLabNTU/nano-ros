@@ -452,13 +452,14 @@ function(nano_ros_read_leaf_system)
         if(NOT "${_NROS_LEAF_DOMAIN_ID}" STREQUAL ""
            AND DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL ""
            AND NOT NROS_DOMAIN_ID STREQUAL _NROS_LEAF_DOMAIN_ID)
+            # issue 1946.
             message(FATAL_ERROR
                 "nano-ros: ${_NRL_DIR}/system.toml states domain "
                 "${_NROS_LEAF_DOMAIN_ID} for image `${_NROS_LEAF_IMAGE}` but "
                 "-DNROS_DOMAIN_ID=${NROS_DOMAIN_ID} names another. State the domain "
                 "in the image this build is (`[image.<id>] domain_id`, selected with "
                 "-DNROS_IMAGE=<id>) and drop the -D (`cmake -U NROS_DOMAIN_ID "
-                "<build-dir>` clears a cached one) — issue 1946.")
+                "<build-dir>` clears a cached one).")
         endif()
         set_property(GLOBAL PROPERTY NROS_TOP_LEAF_DOMAIN_ID "${_NROS_LEAF_DOMAIN_ID}")
         # Issue 2087 — the edition, by the same rule. A standalone leaf's

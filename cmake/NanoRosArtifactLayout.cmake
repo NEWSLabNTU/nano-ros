@@ -30,9 +30,10 @@ function(nros_generated_dir _out _lang)
         message(FATAL_ERROR "nros_generated_dir: language must be `c` or `cpp`, got `${_lang}`")
     endif()
     if(NOT EXISTS "${_NROS_ARTIFACT_RS}")
+        # issue 1852.
         message(FATAL_ERROR
             "nros_generated_dir: ${_NROS_ARTIFACT_RS} is missing — it is the one "
-            "definition of the generated-header directory names (issue 1852).")
+            "definition of the generated-header directory names. Restore it from the nano-ros source tree.")
     endif()
     file(STRINGS "${_NROS_ARTIFACT_RS}" _line
         REGEX "^pub const ${_const}: &str = \"[^\"]+\";")

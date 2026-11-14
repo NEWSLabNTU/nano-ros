@@ -333,6 +333,7 @@ function(_nros_promise_check_one _path)
         return()
     endif()
     if("${_why}" STREQUAL "")
+        # RFC-0120 D5.
         message(FATAL_ERROR
             "nros: ${_label} differs from the answer `nros configure` composed before "
             "this configure, over the same inputs.\n"
@@ -340,7 +341,7 @@ function(_nros_promise_check_one _path)
             "  configure: ${_path}\n"
             "  The two composers of one answer disagree, which is a bug in one of them, "
             "not a lag to converge: every reader of this configure used the seed, and a "
-            "second pass would build with whichever answer came last (RFC-0120 D5). "
+            "second pass would build with whichever answer came last. "
             "`diff` the two files and report it.")
     endif()
     nros_reconfigure_remedy(_cmd _again ALTERNATIVE _alt)
@@ -350,6 +351,7 @@ function(_nros_promise_check_one _path)
     if(NOT "${_alt}" STREQUAL "")
         set(_alt " (${_alt})")
     endif()
+    # RFC-0120 D5.
     message(FATAL_ERROR
         "nros: ${_label} differs from the answer `nros configure` composed before "
         "this configure, because this configure declares something configure could "
@@ -358,7 +360,7 @@ function(_nros_promise_check_one _path)
         "  configure: ${_path}\n"
         "  Declare it where `nros configure` reads it (the package's `package.xml`, "
         "the leaf's `system.toml` / `[[component]] entities`, or the launch contract), "
-        "then run ${_cmd}, then ${_again}${_alt} (RFC-0120 D5). Every reader of this "
+        "then run ${_cmd}, then ${_again}${_alt}. Every reader of this "
         "configure used the seed, so the build is not allowed to proceed on it.")
 endfunction()
 
@@ -396,11 +398,12 @@ function(_nros_promise_check_unseeded _path _label)
             "consumers of this configure read the composed answer (${_path}).")
         string(CONCAT _text ${_text})
         if(_derived)
+            # RFC-0120 D5.
             message(FATAL_ERROR
                 "${_text}\n"
                 "  The composed answer is DERIVED, so the two halves of this image "
                 "disagree. ${_fix}: the fragment now holds this configure's answer, so "
-                "the next configure reads it (RFC-0120 D5).")
+                "the next configure reads it.")
         endif()
         message(WARNING "${_text} ${_fix_before}.")
         nros_message_detail(
@@ -408,6 +411,7 @@ function(_nros_promise_check_unseeded _path _label)
             "run before the composition (RFC-0120 D5).")
         return()
     endif()
+    # RFC-0120 D5.
     message(FATAL_ERROR
         "nros: ${_label} changed after this configure's readers ran, and no "
         "`nros configure` seeded them: they read the answer an earlier configure "
@@ -415,5 +419,5 @@ function(_nros_promise_check_unseeded _path _label)
         "  fragment: ${_path}\n"
         "  ${_fix}. The fragment now holds this "
         "configure's answer, so the next configure reads it; nothing re-runs cmake "
-        "on its own (RFC-0120 D5).")
+        "on its own.")
 endfunction()

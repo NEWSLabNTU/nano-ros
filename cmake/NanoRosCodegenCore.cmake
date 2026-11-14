@@ -417,9 +417,10 @@ function(nros_codegen_version_assert_fresh _tool)
     nros_codegen_accepted_range(_min _max)
     list(GET _bad 0 _first)
     nros_codegen_emitted_version("${_first}" _emitted)
+    # issue 1360.
     message(FATAL_ERROR
         "nros dev codegen: the regenerated tree is STILL at a codegen version this "
-        "runtime refuses (issue 1360).\n"
+        "runtime refuses.\n"
         "  emitted:          ${_emitted}\n"
         "  this tree accepts ${_min}..${_max}\n"
         "  runtime:          ${_NROS_CODEGEN_CORE_TREE}\n"
@@ -788,7 +789,8 @@ endfunction()
 function(nros_codegen_outputs_stale _out)
     cmake_parse_arguments(_S "" "STAMP" "OUTPUTS;INPUTS" ${ARGN})
     if(NOT _S_STAMP)
-        message(FATAL_ERROR "nros_codegen_outputs_stale: STAMP is required (issue 1803)")
+        # issue 1803.
+        message(FATAL_ERROR "nros_codegen_outputs_stale: STAMP <file> is required")
     endif()
     set(_stale FALSE)
     if(NOT EXISTS "${_S_STAMP}")
@@ -1053,11 +1055,11 @@ function(_nros_ffi_cargo_args _out)
     # → branch fires with an empty value, emitting a bare `--target` / `-Z
     # build-std=`. `if(_A_K)` derefs and treats unset/empty as false.
     if(NOT _A_RUST_TARGET)
+        # phase-340 W3.
         message(FATAL_ERROR
             "_nros_ffi_cargo_args: RUST_TARGET is required and must name a "
             "triple. Resolve it with _nros_resolve_rust_target() — a host "
-            "build spells its triple explicitly here, like corrosion does "
-            "(phase-340 W3).")
+            "build spells its triple explicitly here, like corrosion does.")
     endif()
     if(NOT _A_TARGET_IN_CONFIG)
         list(APPEND _args --target ${_A_RUST_TARGET})

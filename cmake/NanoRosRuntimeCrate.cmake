@@ -84,9 +84,10 @@ function(_nros_central_patch_table out)
             OUTPUT_QUIET
             ERROR_VARIABLE _err)
         if(NOT _rc EQUAL 0)
+            # issue 2085.
             message(FATAL_ERROR
                 "nano-ros: `nros dev lock central-patch` failed (${_rc}); the runtime "
-                "umbrella needs its [patch.crates-io] table (issue 2085).\n${_err}")
+                "umbrella needs its [patch.crates-io] table.\n${_err}")
         endif()
     endif()
     if(EXISTS "${_file}")

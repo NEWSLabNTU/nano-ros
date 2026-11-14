@@ -13,7 +13,8 @@
 # WHAT IS ASSERTED
 #
 #   A. THE REFUSAL. A bringup declaring `param_services`, a root with no
-#      SYSTEM: configure FAILS, naming `SYSTEM demo_bringup` and issue 1261.
+#      SYSTEM: configure FAILS, naming `SYSTEM demo_bringup` and the missing
+#      SYSTEM argument.
 #   B. SYSTEM GIVEN. The same workspace with `SYSTEM demo_bringup`: the
 #      refusal does not fire. (The configure may stop later for reasons this
 #      test does not own -- an unsynced workspace has no model -- so B asserts
@@ -113,8 +114,8 @@ if [ "$RC" -eq 0 ]; then
     fail "A: configure succeeded with SYSTEM omitted over a bringup declaring param_services"
 fi
 if ! nros_grep_q 'SYSTEM demo_bringup' "$TEST_TMPDIR/a.log" \
-    || ! nros_grep_q 'issue 1261' "$TEST_TMPDIR/a.log"; then
-    fail "A: the refusal does not name \`SYSTEM demo_bringup\` and issue 1261:"
+    || ! nros_grep_q 'no SYSTEM argument' "$TEST_TMPDIR/a.log"; then
+    fail "A: the refusal does not name \`SYSTEM demo_bringup\` and the declared capabilities:"
     tail -15 "$TEST_TMPDIR/a.log" >&2
 fi
 
@@ -123,7 +124,7 @@ B="$TEST_TMPDIR/b"
 write_ws "$B" 1
 write_root "$B" "    SYSTEM demo_bringup"
 configure "$B" "$TEST_TMPDIR/b.log"
-if nros_grep_q 'issue 1261' "$TEST_TMPDIR/b.log"; then
+if nros_grep_q 'no SYSTEM argument' "$TEST_TMPDIR/b.log"; then
     fail "B: the refusal fired although SYSTEM was given"
     tail -15 "$TEST_TMPDIR/b.log" >&2
 fi
@@ -133,7 +134,7 @@ C="$TEST_TMPDIR/c"
 write_ws "$C" 0
 write_root "$C" ""
 configure "$C" "$TEST_TMPDIR/c.log"
-if [ "$RC" -ne 0 ] || nros_grep_q 'issue 1261' "$TEST_TMPDIR/c.log"; then
+if [ "$RC" -ne 0 ] || nros_grep_q 'no SYSTEM argument' "$TEST_TMPDIR/c.log"; then
     fail "C: a bringup-less workspace did not configure cleanly (rc=$RC)"
     tail -15 "$TEST_TMPDIR/c.log" >&2
 fi
@@ -195,8 +196,8 @@ if [ "$RC" -eq 0 ]; then
     fail "E: NROS_FEATURES omitting the declared \`lifecycle\` was accepted"
 fi
 if ! nros_grep_q 'missing: *lifecycle' "$TEST_TMPDIR/e.log" \
-    || ! nros_grep_q 'issue 1261' "$TEST_TMPDIR/e.log"; then
-    fail "E: the refusal does not name the missing axis and issue 1261:"
+    || ! nros_grep_q 'omits capability axes' "$TEST_TMPDIR/e.log"; then
+    fail "E: the refusal does not name the missing axis and what omits it:"
     tail -15 "$TEST_TMPDIR/e.log" >&2
 fi
 

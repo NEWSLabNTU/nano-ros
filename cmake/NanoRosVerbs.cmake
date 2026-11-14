@@ -246,9 +246,10 @@ function(nano_ros_add_executable name)
     # message pointing at a keyword nothing parses. LAUNCH_ARGS is the live
     # answer, and the one the generator emits.
     if(_NRE_HOST)
+        # phase-326 / issue 0364.
         message(FATAL_ERROR
-            "nano_ros_add_executable(${name}): HOST was removed (phase-326 / "
-            "issue 0364) — multi-host partitions at RESOLVE time now. Name the "
+            "nano_ros_add_executable(${name}): HOST was removed — "
+            "multi-host partitions at RESOLVE time now. Name the "
             "INPUT and the binding instead: `BRINGUP <dir> LAUNCH "
             "<multihost.launch.xml> LAUNCH_ARGS host=${_NRE_HOST}`, with a "
             "matching `[[model]]` declaration in the bringup's system.toml.")
@@ -259,9 +260,10 @@ function(nano_ros_add_executable name)
     # bringup default instead of the model it named. Zero callers passed it,
     # which is why nobody saw it. Fail loudly rather than forward into a void.
     if(_NRE_MODEL)
+        # phase-405 W4.
         message(FATAL_ERROR
-            "nano_ros_add_executable(${name}): MODEL was removed (phase-405 "
-            "W4) — an entry names the INPUT that produces a model, not the "
+            "nano_ros_add_executable(${name}): MODEL was removed — "
+            "an entry names the INPUT that produces a model, not the "
             "resolved artifact. Use `BRINGUP <dir> LAUNCH <file>` (plus "
             "`LAUNCH_ARGS k=v` for a declared variant).")
     endif()

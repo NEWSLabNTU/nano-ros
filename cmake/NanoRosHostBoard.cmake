@@ -29,15 +29,17 @@ set(NROS_HOST_DEPLOY "linux")
 function(nros_refuse_retired_deploy context)
     foreach(_t IN LISTS ARGN)
         if(_t STREQUAL "native")
+            # phase-500.
             message(FATAL_ERROR
                 "${context}: board `native` does not name a board: write "
                 "`linux`. `native` names every general-purpose host, and the "
-                "host board builds on Linux only (phase-500).")
+                "host board builds on Linux only.")
         elseif(_t STREQUAL "posix")
+            # phase-500.
             message(FATAL_ERROR
                 "${context}: board `posix` does not name a board: write "
                 "`linux`. `posix` is the platform (`nros-platform-posix`), not "
-                "a board (phase-500).")
+                "a board.")
         endif()
     endforeach()
 endfunction()

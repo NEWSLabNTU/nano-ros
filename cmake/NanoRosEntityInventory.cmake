@@ -638,12 +638,13 @@ function(nros_derive_entity_inventory_knobs)
             # component claiming NONE beside real entities -- not an absent one, and
             # the CLI's message names the component. That is a configuration error
             # and it is fatal, the same way a malformed message-bound fragment is.
+            # RFC-0098 D8.
             message(FATAL_ERROR
                 "nros: the entity declaration in this image is not readable.\n"
                 "  ${_err}\n"
                 "  Fix the declaration the named component makes: a bringup states it in\n"
                 "  `<bringup>/launch/<stem>.contract.yaml`; a standalone leaf states it in\n"
-                "  its own `system.toml` `[[component]] entities` (RFC-0098 D8).")
+                "  its own `system.toml` `[[component]] entities`.")
         endif()
     endif()
 

@@ -64,8 +64,9 @@ macro(nros_refuse_retired_names)
             "with:\n  cmake${_nros_rn_unset} ${CMAKE_BINARY_DIR}")
     endif()
     if(NOT _nros_rn_hits STREQUAL "")
+        # phase-484 W8, RFC-0103.
         message(FATAL_ERROR
-            "nano-ros: retired cmake name(s) set (phase-484 W8, RFC-0103):"
+            "nano-ros: retired cmake name(s) set:"
             "${_nros_rn_hits}\n"
             "The NANO_ROS_* spellings were deprecated aliases for one release "
             "and are now refused. Rename them in your CMakeLists.txt and build "
@@ -87,8 +88,9 @@ endmacro()
 # `<prefix>` is the function's `cmake_parse_arguments` prefix.
 macro(nros_refuse_retired_root_keyword prefix fn)
     if(DEFINED ${prefix}_NANO_ROS_ROOT OR "NANO_ROS_ROOT" IN_LIST ${prefix}_KEYWORDS_MISSING_VALUES)
+        # phase-484 W8, RFC-0103.
         message(FATAL_ERROR
-            "${fn}: the NANO_ROS_ROOT keyword is retired (phase-484 W8, RFC-0103); "
+            "${fn}: the NANO_ROS_ROOT keyword is retired; "
             "pass NROS_REPO_DIR <path> instead.")
     endif()
 endmacro()

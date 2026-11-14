@@ -253,9 +253,10 @@ function(nros_resolve_board_facts)
         string(LENGTH "${_open}" _open)
         string(LENGTH "${_close}" _close)
         if(_l MATCHES ";" OR NOT _open EQUAL _close)
+            # issue 2200.
             message(FATAL_ERROR
                 "nano-ros: board facts for ${_ws}: `${_l}` holds a `;` or an unbalanced "
-                "bracket, which a cmake list cannot carry as one env entry (issue 2200)")
+                "bracket, which a cmake list cannot carry as one env entry. Split or rewrite that row.")
         endif()
         list(APPEND _lines "${_l}")
     endforeach()

@@ -312,14 +312,14 @@ function(nros_report_corrosion origin version location)
     endif()
     if(version MATCHES "^v?0\\.[0-5]\\." AND NROS_STRICT_CORROSION
             AND NOT NROS_ALLOW_LEGACY_CORROSION)
+        # issues 0493, 0616.
         message(FATAL_ERROR
             "nano-ros: Corrosion ${version} shares ONE cargo target-dir across "
             "workspace roots.\n"
             "  resolved: ${version} via ${origin} — ${location}\n"
             "That topology gives the same crate two `-C metadata` identities in one "
             "`deps/`, so every `#[no_mangle]` export collides at link and "
-            "`nros-platform`'s single `#[global_allocator]` is defined twice "
-            "(issues 0493, 0616).\n"
+            "`nros-platform`'s single `#[global_allocator]` is defined twice.\n"
             "Fix: provision the pinned copy, then clear EVERY tree that cached the "
             "old topology in its CMakeCache —\n"
             "    nros setup --tool corrosion\n"
@@ -691,12 +691,14 @@ macro(nros_resolve_corrosion)
             # put a dependency on the build that no lock recorded. Every tool now
             # comes from the store: refuse, and name the one command that fills
             # it (RFC-0065 D2's refuse-and-name-the-remedy).
+            # RFC-0104 D10 (no configure-time fetch); `nros setup <board>` provisions
+            # Corrosion for every board with a CMake road since issue 1839.
             message(FATAL_ERROR
                 "nano-ros: the pinned Corrosion is not in the SDK store, and a "
-                "configure does not fetch it (RFC-0104 D10).\n"
+                "configure does not fetch it.\n"
                 "  Install it:  nros setup --tool corrosion\n"
                 "  (or `nros setup <board>`, which provisions it with the rest of "
-                "the board's tools for every board with a CMake road — issue 1839).")
+                "the board's tools for every board with a CMake road).")
         endif()
         set(NROS_CORROSION_REPORTED ON)
         unset(_nros_corrosion_candidates)
