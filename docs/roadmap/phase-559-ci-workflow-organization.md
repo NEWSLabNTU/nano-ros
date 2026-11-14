@@ -335,7 +335,17 @@ the user ruled; all five stand:
   workflows merge into `automation.yml` (H6: none of them runs PR code).
 - **Acceptance:** 13 files. Every `workflow_run` consumer names the new
   workflow names.
-- **Status:** OPEN. `automation.yml` DONE (2026-11-14): arm-auto-merge,
+- **Status:** DONE (2026-11-14). 14 files, not 13: `runner-watchdog.yml`
+  stays its own file (below). `publish.yml` holds `docs.yml`'s `deploy` and
+  `images.yml`'s `changes`, `ci-base` and `zephyr`, with their names and
+  triggers. Its push `paths:` is the union of both lists (H5: a path filter
+  is per file), and the `changes` job decides which job a push reaches: a
+  book filter for `deploy`, one filter per image. Dispatch takes one `job`
+  input (docs, ci-base, zephyr, both-images). The readers that parse the
+  image jobs (`check-ci-image-inputs`, `check-ci-image-apt-packages`,
+  `check-workflow-just-provisioning`) read `publish.yml`, and every live
+  mention of the two old names moved. No `workflow_run` consumer named
+  either. `automation.yml` DONE (2026-11-14): arm-auto-merge,
   queue-notify, pr-verdicts, roadmap-audit and nightly-report are its jobs
   `arm`, `notify`, `sweep`, `audit` and `triage`, each keeping its job name
   and trigger. (It also carried `enqueue`, removed 2026-11-14: a merge group
@@ -347,8 +357,7 @@ the user ruled; all five stand:
   consumer needed renaming. `runner-watchdog.yml` stays its own file (S4,
   manager's decision of 2026-11-14): it is the dead-runner alarm, so an error
   in an unrelated job must not silence it, and its 15-minute cron would start
-  `automation.yml` 96 times a day. `publish.yml` (docs + images) follows
-  nros 175's zephyr-ci image fix (r8), which edits `images.yml`.
+  `automation.yml` 96 times a day.
 
 ## Acceptance (phase)
 

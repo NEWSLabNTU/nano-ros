@@ -1,4 +1,4 @@
-# issue 1201 -- the build context is the REPO ROOT (images.yml passes
+# issue 1201 -- the build context is the REPO ROOT (publish.yml passes
 # `context: .` + `file: ci/docker/ci-base/Dockerfile`) because the Dockerfile
 # COPYs two files from the tree. buildx reads THIS file, `<Dockerfile>.dockerignore`,
 # in preference to a root `.dockerignore`, so the context stays the files the

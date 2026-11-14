@@ -11,7 +11,7 @@ omission has its own silent failure:
      found" — and nothing consumes that failure: the floating tag keeps serving
      the previous content (issue 1201, for which the image went eight weeks
      without the `clang` a gate needed).
-  2. `images.yml`'s `on.push.paths` must list it, or an edit to it never
+  2. `publish.yml`'s `on.push.paths` must list it, or an edit to it never
      triggers a rebuild on merge.
   3. The `changes` job's filter for THAT image must list it, or the rebuild is
      triggered and then skipped.
@@ -23,7 +23,7 @@ Issue 1868 added three such files to ci-base at once (and 1760 one to both
 images); this gate is what keeps the next one from needing a reader to
 remember all four.
 
-Images and their Dockerfiles are DERIVED from `images.yml` (a job's `IMAGE:`
+Images and their Dockerfiles are DERIVED from `publish.yml` (a job's `IMAGE:`
 env against its `docker/build-push-action` `file:`), never listed here.
 
 Run:  python3 scripts/check-ci-image-inputs.py
@@ -37,7 +37,7 @@ import sys
 import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-IMAGES_YML = os.path.join(".github", "workflows", "images.yml")
+IMAGES_YML = os.path.join(".github", "workflows", "publish.yml")
 
 
 def copy_sources(dockerfile_text):
@@ -108,7 +108,7 @@ def audit(read):
                 failures.append("%s, but %s.dockerignore does not un-ignore it (`!%s`)"
                                 % (where, dockerfile, src))
             if not _covered(src, push_paths):
-                failures.append("%s, but images.yml `on.push.paths` does not list it — "
+                failures.append("%s, but publish.yml `on.push.paths` does not list it — "
                                 "an edit to it never rebuilds the image" % where)
             if not _covered(src, image_filter):
                 failures.append("%s, but the `changes` filter %r does not list it — "

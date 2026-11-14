@@ -8,7 +8,7 @@
 # version-pinned, fetched per-run via install.sh). See
 # book-internals/src/dev-env/ci-conventions.md + the zephyr image design (Phase 196.3).
 #
-# Build/publish via the `zephyr` job in .github/workflows/images.yml →
+# Build/publish via the `zephyr` job in .github/workflows/publish.yml →
 #   ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk<ver>-r<N>
 # Tag encodes the inputs (ROS distro + SDK version) + a `-rN` content revision;
 # bump `-rN` when the Dockerfile content changes without an SDK/distro bump.
@@ -47,10 +47,10 @@ FROM ros:humble-ros-base
 # disagreement is load-bearing (phase-466).
 #
 # This paragraph used to say the `-rN` revision is deliberately NOT bumped: a
-# new tag does not exist until `images.yml` has run on `main`, so a PR that
+# new tag does not exist until `publish.yml` has run on `main`, so a PR that
 # bumps it and moves the consumers together makes every zephyr job fail at
 # "Initialize containers" between the merge and the image build. True, and it
-# is what happened at `-r3`. But `images.yml`'s own header settled the other
+# is what happened at `-r3`. But `publish.yml`'s own header settled the other
 # way at `-r4`, and that is the rule now: bump, move the consumers in the same
 # commit, and rely on the slack — the workflow triggers on the merge push and
 # the scheduled lanes are daily.
@@ -64,7 +64,7 @@ FROM ros:humble-ros-base
 # has not been published" in as many words; a stale pull says nothing at all.
 #
 # So: a content change here is a THREE-file change — this Dockerfile,
-# `images.yml`'s `TAG`, and every `container:` that names the image.
+# `publish.yml`'s `TAG`, and every `container:` that names the image.
 # `check-ci-image-apt-packages` asserts the third against the second, because
 # four hand-copied tag literals is the same defect shape one level up.
 ENV AMENT_PREFIX_PATH=/opt/ros/humble \
@@ -88,7 +88,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # lists had to agree and nothing made them. `ci/docker/apt-packages.txt` is now
 # that one list, and its header carries the reasoning.
 #
-# This is why `images.yml` builds this image with the REPOSITORY ROOT as its
+# This is why `publish.yml` builds this image with the REPOSITORY ROOT as its
 # context (the way it already builds ci-base since issue 1201) and why
 # `Dockerfile.dockerignore` sits beside this file.
 COPY ci/docker/apt-packages.txt /opt/nros-ssot/ci/docker/apt-packages.txt

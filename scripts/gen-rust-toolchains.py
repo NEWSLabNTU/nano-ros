@@ -168,7 +168,7 @@ def main():
             print("  so a channel missing from it is downloaded at RUN time inside a merge-gating")
             print("  job. Regenerate and commit it:")
             print("    python3 scripts/gen-rust-toolchains.py")
-            print("  (the ci-base image republishes on merge: the file is in images.yml's filter)")
+            print("  (the ci-base image republishes on merge: the file is in publish.yml's filter)")
             return 1
         n = sum(1 for l in text.splitlines() if l and not l.startswith("#"))
         print("check-rust-toolchains-list: OK — %d pinned channel(s)" % n)

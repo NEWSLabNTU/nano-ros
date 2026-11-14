@@ -330,8 +330,8 @@ path:
 
 | Reference | Source | Today |
 | --- | --- | --- |
-| Rust API | rustdoc (`book/rustdoc-driver/`) | built by `docs.yml`; `reference/rust-api.md` is a 160-word stub |
-| C and C++ APIs | Doxygen (`packages/api/nros-{c,cpp}/Doxyfile`) | built by `docs.yml`; hand-written pages beside it |
+| Rust API | rustdoc (`book/rustdoc-driver/`) | built by `publish.yml`; `reference/rust-api.md` is a 160-word stub |
+| C and C++ APIs | Doxygen (`packages/api/nros-{c,cpp}/Doxyfile`) | built by `publish.yml`; hand-written pages beside it |
 | Contract format | ros-launch-manifest field table (D6) | not in the book |
 | CLI | the CLI's own help, which `user-surface-ids` already renders | hand-written `reference/cli.md`, 6.4k words |
 | `system.toml` keys | `gen-config-surface.py` | generated |

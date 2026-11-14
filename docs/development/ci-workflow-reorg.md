@@ -146,4 +146,6 @@ about them, not because anyone should go looking.
 |------------|-------------|
 | `check.yml` | `pr-checks.yml`, job `check` (a thin `just check fast` / `just check` caller) |
 | `ci.yml` | `pr-checks.yml` + `nightly.yml` |
-| `release.yml` | `images.yml` |
+| `release.yml` | `images.yml`, now `publish.yml` |
+| `images.yml` | `publish.yml`, jobs `changes`, `ci-base`, `zephyr` (phase-559 W8) |
+| `docs.yml` | `publish.yml`, job `deploy` (phase-559 W8) |

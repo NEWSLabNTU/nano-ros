@@ -3,7 +3,7 @@
 #
 # ONE spelling, because there are two consumers and they must not drift:
 #
-#   just book                 builds and deploys these pages (`docs.yml`)
+#   just book                 builds and deploys these pages (`publish.yml`)
 #   just check rustdoc-links  proves they still build, on a lane a PR runs
 #
 # The gate exists because nothing on a merge-gating path ran rustdoc, and

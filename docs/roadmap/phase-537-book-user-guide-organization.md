@@ -336,7 +336,7 @@ step.
 - **CLI,** generated from the CLI's help, in the docs job or committed and
   gated like the board pages (D7).
 - **Rust, C and C++ APIs:** landing pages that link to the rustdoc and Doxygen
-  output `docs.yml` already publishes.
+  output `publish.yml` already publishes.
 - **`system.toml` keys** stay generated from `gen-config-surface.py`;
   **boards and support levels** and the **static pool inventory** stay
   generated.
