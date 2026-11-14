@@ -275,6 +275,10 @@ pub struct LeafSystem {
     pub image: Option<String>,
     /// The board the image is built for, as the image names it.
     pub board: Option<String>,
+    /// RFC-0111 D1 (phase-562 W1) -- `[image.<id>] framework` (over
+    /// `[image_defaults]`), as written. `None` when the image names none, so
+    /// the board's first `frameworks` entry applies (RFC-0111 D2).
+    pub framework: Option<String>,
     /// RMW: `[image] rmw` > `[image_defaults] rmw` > `[system] rmw`.
     pub rmw: Option<String>,
     /// ROS edition, the same overlay as [`Self::rmw`] (RFC-0056): `[image]
@@ -955,6 +959,7 @@ fn image_system(
             path.display()
         )
     })?;
+    let framework = pick("framework");
     let rmw = pick("rmw").or_else(|| str_key(system, "rmw"));
     let ros_edition = pick("ros_edition").or_else(|| str_key(system, "ros_edition"));
     let domain_id = match u32_key(image, "domain_id", path)? {
@@ -1129,6 +1134,7 @@ fn image_system(
         origin,
         image: Some(id.to_string()),
         board: Some(board),
+        framework,
         rmw,
         ros_edition,
         network,
@@ -1456,6 +1462,29 @@ locator = "tcp/10.0.2.2:9800"
 
         let empty = leaf(&[("Cargo.toml", CARGO)]);
         assert_eq!(read_image(empty.path(), "x").unwrap(), None);
+    }
+
+    /// RFC-0111 D1 (phase-562 W1) -- `[image.<id>] framework` is read as
+    /// written, over `[image_defaults]`; an image naming none leaves it
+    /// `None` for the board's default to apply.
+    #[test]
+    fn an_image_framework_is_read_over_the_defaults() {
+        let doc = "[system]\nname = \"t\"\n\n\
+                   [image_defaults]\nframework = \"owned-spin\"\n\n\
+                   [image.rtic]\nboard = \"mps2-an385-baremetal\"\nframework = \"rtic\"\n\n\
+                   [image.plain]\nboard = \"mps2-an385-baremetal\"\n";
+        let d = leaf(&[("system.toml", doc)]);
+        let r = read_image(d.path(), "rtic").unwrap().unwrap();
+        assert_eq!(r.framework.as_deref(), Some("rtic"));
+        let p = read_image(d.path(), "plain").unwrap().unwrap();
+        assert_eq!(
+            p.framework.as_deref(),
+            Some("owned-spin"),
+            "from [image_defaults]"
+        );
+        let none = "[system]\nname = \"t\"\n\n[image.x]\nboard = \"linux\"\n";
+        let n = leaf(&[("system.toml", none)]);
+        assert_eq!(read_image(n.path(), "x").unwrap().unwrap().framework, None);
     }
 
     /// phase-481 W3 — `conf` names the image's framework fragments:

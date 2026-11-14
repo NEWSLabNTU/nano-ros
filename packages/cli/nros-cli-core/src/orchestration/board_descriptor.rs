@@ -604,6 +604,17 @@ pub struct BoardDescriptor {
     #[serde(default, rename = "link_kind")]
     pub link_kind_stated: Option<LinkKind>,
     pub entry_kind: EntryKind,
+    /// RFC-0111 D2 (phase-562 W1) -- the entry frameworks this board can boot,
+    /// first = the default an image gets when it names none. Absent reads as
+    /// `["owned-spin"]` ([`Self::bootable_frameworks`]), so a single-framework
+    /// board states nothing. Tier 1 names only (RFC-0112 D5).
+    #[serde(default)]
+    pub frameworks: Vec<String>,
+    /// RFC-0111 D3 -- the board ZST an image needs, per framework, when it is
+    /// not the board's single type: `entry_types = { owned-spin = "Mps2An385",
+    /// rtic = "RticMps2An385" }`. Empty for a board with one entry type.
+    #[serde(default)]
+    pub entry_types: std::collections::BTreeMap<String, String>,
     /// phase-351 W4 — the network stacks this board can actually be built with,
     /// in preference order; the first is the default when a deploy names none.
     ///
@@ -1039,6 +1050,18 @@ impl BoardDescriptor {
             || self.zephyr.as_ref().is_some_and(|z| z.west_board == key)
             || self.nuttx.as_ref().is_some_and(|n| n.board_config == key)
             || self.platformio.as_ref().is_some_and(|p| p.board == key)
+    }
+
+    /// The entry frameworks this board boots, in order, first = the default
+    /// (RFC-0111 D2). A descriptor with no `frameworks` key boots
+    /// `owned-spin` only.
+    #[must_use]
+    pub fn bootable_frameworks(&self) -> Vec<&str> {
+        if self.frameworks.is_empty() {
+            vec!["owned-spin"]
+        } else {
+            self.frameworks.iter().map(String::as_str).collect()
+        }
     }
 
     /// The framework's OWN id for this board, when the descriptor states one:
@@ -2442,6 +2465,41 @@ mod tests {
         assert!(bad.is_empty(), "{}", bad.join("\n"));
     }
 
+    /// RFC-0111 D2 (phase-562 W1) -- a descriptor with no `frameworks` key
+    /// boots `owned-spin` only; a stated list is kept in order (first = the
+    /// default) with its `entry_types`; a mistyped key is refused.
+    #[test]
+    fn frameworks_default_to_owned_spin_and_keep_their_order() {
+        let plain = board_with(&[]);
+        assert!(plain.frameworks.is_empty());
+        assert_eq!(plain.bootable_frameworks(), vec!["owned-spin"]);
+        let two = STM32_TOML.replacen(
+            "[[board]]\n",
+            "[[board]]\nframeworks = [\"owned-spin\", \"rtic\"]\n\
+             entry_types = { owned-spin = \"Plain\", rtic = \"Rtic\" }\n",
+            1,
+        );
+        let d = toml::from_str::<BoardFile>(&two)
+            .expect("parses")
+            .boards
+            .remove(0);
+        assert_eq!(d.bootable_frameworks(), vec!["owned-spin", "rtic"]);
+        assert_eq!(d.entry_types.get("rtic").map(String::as_str), Some("Rtic"));
+        let typo = STM32_TOML.replacen("[[board]]\n", "[[board]]\nframework = \"rtic\"\n", 1);
+        assert!(
+            toml::from_str::<BoardFile>(&typo).is_err(),
+            "deny_unknown_fields"
+        );
+        let cat = BoardCatalog::load(&repo_root_for_tests()).expect("load catalog");
+        for d in cat.descriptors() {
+            assert!(
+                !d.bootable_frameworks().is_empty(),
+                "{} boots no framework",
+                d.source.as_deref().unwrap_or("?")
+            );
+        }
+    }
+
     #[test]
     fn a_board_name_matches_whatever_its_case() {
         let catalog = BoardCatalog::load(&repo_root_for_tests()).expect("load catalog");
@@ -3115,6 +3173,8 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             platform_feature: "platform-threadx".into(),
             local_aliases: vec![],
             link_kind_stated: Some(LinkKind::None),
+            frameworks: Vec::new(),
+            entry_types: Default::default(),
             entry_kind: EntryKind::BoardRun,
             supported_netstacks: Vec::new(),
             chip: None,
@@ -3389,6 +3449,8 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             platform_feature: "platform-posix".into(),
             local_aliases: vec![],
             link_kind_stated: Some(LinkKind::None),
+            frameworks: Vec::new(),
+            entry_types: Default::default(),
             entry_kind: EntryKind::HostedMain,
             supported_netstacks: Vec::new(),
             chip: None,

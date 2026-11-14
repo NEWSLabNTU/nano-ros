@@ -1,6 +1,6 @@
 # Phase 562 — An image's entry framework is its own field
 
-**Status (2026-11-14). OPEN: no item has started. Owner: unassigned.** Opened by
+**Status (2026-11-15). OPEN: W1 done. Owner: nros 142.** Opened by
 the user's ruling on phase-555's platform-board-rtos brief (P5 (a), 2026-11-14):
 "open a phase for [RFC-0111](../design/0111-image-framework-axis.md)'s seven
 steps, with [RFC-0112](../design/0112-framework-support-tiers.md) D5 as one of
@@ -35,13 +35,20 @@ word does today"). Measured on main on 2026-11-14:
 
 ### W1 — Schema
 
-- **Owner:** unassigned.
+- **Owner:** nros 142.
 - Add `framework` to the image table in both readers: `leaf_system` and
   `nros-cli-core`'s `deny_unknown_fields` `DeployBlock`. Add `frameworks` and
   `entry_types` to the board descriptor schema (RFC-0111 D1, D2).
 - **Acceptance:** both readers accept `framework` and refuse an unknown key;
   a descriptor with no `frameworks` key reads as `["owned-spin"]`.
-- **Status:** OPEN
+- **Status:** DONE (2026-11-15, branch `feat/phase-562-w1-schema`)
+
+Landed: `ImageBlock::framework` (with the `[image_defaults]` overlay; the
+brief's `DeployBlock` is `ImageBlock` now), `LeafSystem::framework`, and
+`BoardDescriptor::{frameworks, entry_types}` with `bootable_frameworks()`.
+Nothing reads them yet; W2's resolver is the first consumer. Tests:
+`framework_is_an_image_key`, `an_image_framework_is_read_over_the_defaults`,
+`frameworks_default_to_owned_spin_and_keep_their_order`.
 
 ### W2 — One resolver
 
