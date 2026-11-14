@@ -262,16 +262,15 @@ const RENDERED_FRAMEWORK: &str = "owned-spin";
 ///   implements `RticBoardEntry` — a SEPARATE trait, not a subtrait — so the
 ///   same `E0277`.
 ///
-/// The predicate is the SSoT both producers already consult,
-/// `nros_orchestration_ir::framework_for_board_key`, so a new non-owned-spin
-/// board is refused here the day its framework row is written, with no edit to
-/// this file. `None` means "no in-tree opinion", which every caller reads as
-/// `owned-spin`; the key is known by construction here (`board_path_for`
-/// resolved it one line up), and issue 1435 also closed the one key that was
-/// in `BOARD_PATHS` and not in the framework table.
+/// The predicate is the resolver every producer asks,
+/// `nros_orchestration_ir::image_framework` (RFC-0111 D3, phase-562 W2), fed
+/// the board's facts the way `nros::main!` feeds them: the key's family for
+/// the platform entry shape (`nros_entry_lower::entry_shape_for_key`) and the
+/// transitional RTIC word (`BoardBoot::for_key`). A plan carries no image
+/// `framework`, so this asks for the board's default. The key is known by
+/// construction here (`board_path_for` resolved it one line up).
 fn refuse_non_owned_spin(board: &str) -> Result<(), String> {
-    let framework =
-        nros_orchestration_ir::framework_for_board_key(board).unwrap_or(RENDERED_FRAMEWORK);
+    let framework = board_default_framework(board)?;
     if framework == RENDERED_FRAMEWORK {
         return Ok(());
     }
@@ -281,6 +280,17 @@ fn refuse_non_owned_spin(board: &str) -> Result<(), String> {
          `{framework}` shape. Use the `nros::main!()` proc-macro, which is the \
          canonical Rust entry emitter and has a branch for it."
     ))
+}
+
+/// The framework (or entry shape) board `key` boots when the image states
+/// none, through [`nros_orchestration_ir::image_framework`].
+fn board_default_framework(key: &str) -> Result<&'static str, String> {
+    let board = nros_orchestration_ir::BoardBoot::for_key(
+        key,
+        &[],
+        nros_entry_lower::entry_shape_for_key(key),
+    );
+    nros_orchestration_ir::image_framework(None, &board)
 }
 
 /// Quote a string into a valid Rust string literal (raw form when
@@ -582,8 +592,7 @@ mod tests {
         let mut rendered = 0usize;
         let mut refused: Vec<&str> = Vec::new();
         for key in nros_orchestration_ir::board_path_keys() {
-            let framework =
-                nros_orchestration_ir::framework_for_board_key(key).unwrap_or("owned-spin");
+            let framework = board_default_framework(key).expect("an in-tree key resolves");
             let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
             plan.board = key.into();
             match emit(&plan) {

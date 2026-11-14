@@ -912,6 +912,10 @@ pub struct LeafSelectionSpec<'a> {
     pub board: &'a crate::builder::entry::BoardFacts,
     /// Board-key spellings, most specific first — what the macro resolves.
     pub candidates: &'a [&'a str],
+    /// The image's framework, resolved against its board
+    /// ([`crate::orchestration::board_descriptor::BoardDescriptor::image_framework`],
+    /// RFC-0111 D3).
+    pub framework: &'static str,
     /// The nano-ros checkout the crates are path-depended from.
     pub nano_ros_root: &'a Path,
 }
@@ -998,7 +1002,7 @@ pub fn write_leaf_selection_in(
     )?;
     if let Some(bd) = &board_dir {
         board_features.extend(crate::builder::entry::entry_surface_features(
-            spec.candidates,
+            spec.framework,
             |f| crate_declares_feature(bd, f),
         ));
         crate::builder::entry::image_link_features(

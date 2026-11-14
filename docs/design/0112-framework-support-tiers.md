@@ -46,10 +46,9 @@ deleted that surface and admitted `px4` to Tier 1 (as of 2026-11-13).
 >   code, and RTIC does not meet it (D3 below, [issue 2540](../issues/2540-rtic-fails-tier1-realtime-criterion.md)).
 >   RTIC is demoted from Tier 1 to a documented recipe (ruling 2026-11-14) until
 >   phase-562 W10 brings it up to criterion 5. Tier 1 today is `px4`.
-> - **D5 is live and not done.** `FRAMEWORKS` still lists `zephyr`
->   (`nros-orchestration-ir/src/lib.rs:164`). It is
->   [phase-562](../roadmap/phase-562-image-framework-field.md) W8, beside
->   RFC-0111's steps.
+> - **D5 is done (2026-11-15, [phase-562](../roadmap/phase-562-image-framework-field.md)
+>   W8).** `FRAMEWORKS` is `owned-spin`, `rtic`, `px4`; `zephyr` is in
+>   `ENTRY_SHAPES`, and `image_framework` refuses it on an image.
 > - RFC-0114 suggests replacing the tier numbers with its registry words
 >   (`runs`, `cadence`, breadth). This amendment does not: the tiers rank
 >   frameworks, not boards, and the ruling did not ask for a rename.
@@ -268,7 +267,12 @@ that the contract broke.
 
 ### D5 — The framework vocabulary separates frameworks from platform entry shapes
 
-Not done; tracked by [phase-562](../roadmap/phase-562-image-framework-field.md) W8.
+Done (2026-11-15) by [phase-562](../roadmap/phase-562-image-framework-field.md)
+W8. The board-derived shape is spelled by the existing descriptor key
+`entry_kind = "zephyr-staticlib"`, not a new `entry_shape` key: it already
+says the same thing. `nros::main!` reads it from the board key's family
+(`nros_entry_lower::entry_shape_for_key`), which a test holds to every
+descriptor's `entry_kind`.
 
 `FRAMEWORKS` keeps only Tier 1 values that a user may choose. Today those are
 `owned-spin`, `rtic` and `px4` (`px4` is C++-only; `embassy` left with issue

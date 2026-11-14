@@ -1064,6 +1064,34 @@ impl BoardDescriptor {
         }
     }
 
+    /// The entry shape this board's platform imposes, if any (RFC-0112 D5,
+    /// phase-562 W8). `entry_kind = "zephyr-staticlib"` IS that statement for
+    /// Zephyr: Zephyr owns `main`, so the entry is a `rust_main` staticlib
+    /// export, and no image chooses it.
+    #[must_use]
+    pub fn entry_shape(&self) -> Option<&'static str> {
+        match self.entry_kind {
+            EntryKind::ZephyrStaticlib => Some("zephyr"),
+            EntryKind::HostedMain | EntryKind::BoardRun => None,
+        }
+    }
+
+    /// The framework (or platform entry shape) an image of this board boots,
+    /// through the ONE resolver, `nros_orchestration_ir::image_framework`
+    /// (RFC-0111 D3, phase-562 W2). `key` is the board word the image wrote,
+    /// which matters only for the transitional `rtic-mps2-an385` row
+    /// (`nros_orchestration_ir::TRANSITIONAL_FRAMEWORK_KEYS`, removed by
+    /// phase-562 W3); `declared` is the image's `framework`.
+    pub fn image_framework(
+        &self,
+        key: &str,
+        declared: Option<&str>,
+    ) -> Result<&'static str, String> {
+        let frameworks = self.bootable_frameworks();
+        let board = nros_orchestration_ir::BoardBoot::for_key(key, &frameworks, self.entry_shape());
+        nros_orchestration_ir::image_framework(declared, &board)
+    }
+
     /// The framework's OWN id for this board, when the descriptor states one:
     /// the board-agnostic [`Self::west_board`], else [`BoardZephyr::west_board`].
     ///
