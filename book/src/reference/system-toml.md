@@ -30,6 +30,7 @@ Precedence, highest first: a command-line or build flag, `[image.<id>]`,
 | Key | Meaning |
 | --- | --- |
 | `board` | nano-ros board id, resolved through the board catalog. Never a framework's own board string |
+| `framework` | The entry framework the image boots with (`owned-spin`, `rtic`). Absent: the board's first listed framework |
 | `launch` | Launch file, relative to the bringup. Absent: `[system] default_launch` |
 | `args` | Launch arguments bound at resolve time, such as `{ host = "robot1" }` |
 | `rmw` | Backend for this image. Absent: `[system] rmw` |

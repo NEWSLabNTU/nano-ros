@@ -1638,6 +1638,7 @@ mod tests {
             origin: leaf_system::Origin::SystemToml("/w/talker/system.toml".into()),
             image: Some("linux".into()),
             board: Some("linux".into()),
+            framework: None,
             rmw: None,
             ros_edition: None,
             network: leaf_system::Network {

@@ -99,6 +99,13 @@ pub struct ImageBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub board: Option<String>,
 
+    /// RFC-0111 D1 (phase-562 W1) -- the entry framework this image boots
+    /// with (`owned-spin`, `rtic`). Absent: the board's first
+    /// `frameworks` entry (RFC-0111 D2). A nano-ros BUILD fact: it never
+    /// enters the SystemModel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framework: Option<String>,
+
     /// Launch file this image bakes, relative to the bringup pkg. Absent ⇒ the
     /// system's `default_launch`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -533,6 +540,7 @@ impl ImageBlock {
         }
         ImageBlock {
             board: pick(&self.board, &base.board),
+            framework: pick(&self.framework, &base.framework),
             launch: pick(&self.launch, &base.launch),
             // Maps MERGE (base first, so the specific block overwrites a key it
             // also sets); scalars replace. A base `args` is a default binding
@@ -705,6 +713,24 @@ mod tests {
         let back: ImageBlock = toml::from_str(&toml::to_string(&merged).unwrap()).unwrap();
         assert_eq!(back, merged, "serializes to the nested shape it parses");
         assert!(toml::from_str::<ImageBlock>("[knobs]\nmax_cbs = 1\n").is_err());
+    }
+
+    /// RFC-0111 D1 (phase-562 W1) -- `framework` is an image key: it parses,
+    /// the specific block's value wins over the base's, and a mistyped key is
+    /// still refused (`deny_unknown_fields`).
+    #[test]
+    fn framework_is_an_image_key() {
+        let rtic: ImageBlock =
+            toml::from_str("board = \"mps2-an385-baremetal\"\nframework = \"rtic\"\n").unwrap();
+        assert_eq!(rtic.framework.as_deref(), Some("rtic"));
+        let base: ImageBlock = toml::from_str("framework = \"owned-spin\"\n").unwrap();
+        assert_eq!(rtic.with_base(&base).framework.as_deref(), Some("rtic"));
+        let bare = ImageBlock::default();
+        assert_eq!(
+            bare.with_base(&base).framework.as_deref(),
+            Some("owned-spin")
+        );
+        assert!(toml::from_str::<ImageBlock>("frameworks = \"rtic\"\n").is_err());
     }
 
     /// Issue 1340 — `producers` parses, is unset by default, and a specific
