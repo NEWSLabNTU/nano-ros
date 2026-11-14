@@ -113,7 +113,8 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     **CI runs a SUBSET of it, deliberately, and the subset DIFFERS BY EVENT**
     (phase-395 "PR cheap, batch thorough"; phase-396/399). On `pull_request` the
     required `CI` context is `check-fast` + `check-submodule-commits-reachable` +
-    `check-compile-smoke` + `check-cli-tests` + `check-workspace-all`.
+    `check-compile-smoke` + `check-cli-tests` + `check-workspace-all` +
+    `check-lane-contracts` (phase-489 W9: 4 of 6 queue ejections, parallel, no added wall).
     **`test-unit` is NOT in it** — it runs on `merge_group` (and
     schedule/dispatch), where it costs a measured ~3.5 min per batch instead of
     per PR push; so does `check template-copy-out` (merge_group + dispatch,

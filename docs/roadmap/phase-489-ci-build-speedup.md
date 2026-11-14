@@ -1061,6 +1061,92 @@ daily `schedule` (RFC-0122 D9 amendment, phase-535 W8 status), and the
 critical path falls to `cli-tests` / the `no-zephyr` shards (~21 min).
 Why the part nearly doubled since 2026-11-05 was not investigated here.
 
+### W9 — catch the merge group's late reds on the pull request
+
+- **Status:** DONE (2026-11-14)
+
+User-approved, from the manager, 2026-11-14. The merge group kept failing
+on things a pull request could have caught. Window 2026-11-13 12:00Z to
+2026-11-14 17:30Z, `gate.yml` on `merge_group`: 115 success, 6 failure.
+
+- 4 of the 6 failures were `check / test-lane-contracts` (#3766, #3805,
+  #3787, #3807).
+- The last three of those were ONE defect: `px4_bridge_compile` resolved a
+  compile-check row that was not in the manifest, so
+  `check out-of-lane-deselected` went red. It took down three consecutive
+  batches within 22 minutes, each built on the head of the one before.
+- The other 2 failures were `check / fast`.
+
+Separately, `check::cpp` is on no merge-gating event, which let a 3-hour
+red sit on main: a message edit (issue 2547) left three refusal needles
+naming ids that the texts no longer held.
+
+**The cost argument, measured.** "PR cheap, batch thorough" keeps a job off
+the PR when running it per push costs more than finding the defect per
+batch. For `test-lane-contracts` that is not the case:
+
+| | value | source |
+| --- | --- | --- |
+| job wall on `merge_group` | mean 14.7 min (n=25); its `just test-lane-contracts` step is 622 s, plus 168 s for the CLI build | `gh run view --json jobs` |
+| runner | hosted `ubuntu-22.04`, on a PUBLIC repository | `gh repo view` |
+| PR critical path | `cli-tests` at 16-22 min over 10 successful PR runs | the same |
+| cost of one ejection | the whole batch rebuilds (ALLGREEN, up to 5 entries) | `grouping_strategy` |
+
+Hosted minutes on a public repository are free, and the job runs in
+parallel with a longer one. Moving it onto the PR therefore adds no wall
+time and no money. What it does take is one more concurrent hosted job per
+PR push. `test-unit` stays batch-only: its cost argument (3.5 min per push,
+in the same job as other work) was never this one's.
+
+**Done.**
+- `check-lane-contracts` runs on `pull_request`. A docs-only PR still skips
+  it through `changes`, and the `CI` aggregator lists the event.
+- `check::cpp` as a whole is 522 s, too slow for the PR. Its buildless half
+  is the fast gate `refusal-needles`
+  (`scripts/check/check-refusal-needles.py`). Every needle that the
+  expected-failure greps look for must be in an `NROS_RCLCPP_REFUSE_*`
+  refusal STRING. A header match is not enough, because the old ids
+  survived in comments. Run against the lanes file as it was before
+  the needle fix (#3839), it reports exactly the three stale needles of 2026-11-14.
+  It takes under a second.
+
+### W10 — the queue's L3 cancellations
+
+- **Status:** DONE (2026-11-14): measured, no change
+
+The report: most `queue.yml` merge-group runs are cancelled, which wastes
+self-hosted runner-hours. Over the last 100 runs (2026-11-13 18:44Z to
+2026-11-14 17:37Z): 66 cancelled, 32 success, 2 still running.
+
+| what | n | runner time |
+| --- | --- | --- |
+| cancelled runs with no job created (a pending run superseded inside the constant `queue-l3` group) | 59 | 0 |
+| cancelled L3 jobs | 7 | **0**: `runner_name` is empty on all seven |
+| successful L3 jobs | 32 | 9.90 h, median 16.1 min |
+
+The seven cancelled jobs form one contiguous chain from 04:24Z to 09:10Z.
+In that window no `nros-queue` runner was registered, which is the
+2026-11-14 outage on host 241. Each job's `started_at` is when it was
+queued, not when it ran, and each was cancelled when the next merge
+replaced it as the group's pending run. Their 32-49 min "durations" are
+time spent waiting for a runner that did not exist, not time spent on one.
+Counting them as runner time is how the report arrived at hours of waste.
+
+So neither proposal saves anything:
+- a settle delay would add latency to every L3 verdict;
+- "head of queue only" is already what the constant group with
+  `cancel-in-progress: false` does: one running, at most one pending, and
+  the older pending runs superseded.
+
+The cost was the outage. Its fixes are runner-store's ownership rule
+(#3843) and the presence watchdog, which reports a label set no runner
+serves. `queue.yml`'s "IF THIS LANE EVER BECOMES REQUIRED" note is
+untouched.
+
+Re-measure after a day with the queue runner up. Fetch each run's jobs, sum
+`completed_at - started_at` where `runner_name` is set, and group by
+`conclusion`.
+
 ## Self-hosted runner cache observations (2026-10-09..14)
 
 From the runner-sweep logs of the three self-hosted runners:
