@@ -18,7 +18,7 @@ nodes:
     # own period, not a number invented to satisfy a mapper.
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 1 } }
+        trigger: { timer: { rate: 1Hz } }
         output: [chatter]
     pub:
       # issue 1608 -- the QoS `Talker::configure` publishes with, held to this

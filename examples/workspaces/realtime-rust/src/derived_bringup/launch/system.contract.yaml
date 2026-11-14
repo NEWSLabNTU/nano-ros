@@ -17,27 +17,27 @@ nodes:
   control_node:
     paths:
       on_ctrl:
-        trigger: { timer: { rate_hz: 100 } }
+        trigger: { timer: { rate: 100Hz } }
         output: [ctrl]
     pub:
-      ctrl: { min_rate_hz: 100 }
+      ctrl: { min_rate: 100Hz }
 
   telem_node:
     paths:
       on_telem:
-        trigger: { timer: { rate_hz: 10 } }
+        trigger: { timer: { rate: 10Hz } }
         output: [telem]
     pub:
-      telem: { min_rate_hz: 10 }
+      telem: { min_rate: 10Hz }
 
 topics:
   /ctrl:
     type: std_msgs/msg/Int32
     external: sub
     pub: [control_node/ctrl]
-    rate_hz: 100
+    rate: 100Hz
   /telem:
     type: std_msgs/msg/Int32
     external: sub
     pub: [telem_node/telem]
-    rate_hz: 10
+    rate: 10Hz

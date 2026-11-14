@@ -10,7 +10,7 @@ nodes:
     # SendGoalOptions callbacks (issue 0047) and sends the goal.
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 10 } }
+        trigger: { timer: { rate: 10Hz } }
         output: []
 
 actions:

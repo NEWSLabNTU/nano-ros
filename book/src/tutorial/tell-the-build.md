@@ -82,7 +82,7 @@ nodes:
       period_ms: { type: integer }
     paths:
       on_tick:
-        trigger: { timer: { rate_hz: 2 } }
+        trigger: { timer: { rate: 2Hz } }
         output: [reading]
     pub:
       reading: { qos: { depth: 1, durability: volatile } }
@@ -98,7 +98,7 @@ nodes:
     params: {}
     paths:
       issue_call:
-        trigger: { timer: { rate_hz: 1 } }
+        trigger: { timer: { rate: 1Hz } }
         output: []
     cli:
       add_two_ints: {}

@@ -60,7 +60,7 @@ nodes:
     params: {}
     paths:
       on_tick:
-        trigger: { timer: { rate_hz: 1 } }
+        trigger: { timer: { rate: 1Hz } }
         output: [chatter]
     pub:
       chatter:
@@ -97,7 +97,7 @@ nodes:
     params: {}
     paths:
       on_tick:
-        trigger: { timer: { rate_hz: 1 } }
+        trigger: { timer: { rate: 1Hz } }
         output: [chatter]
     pub:
       chatter:

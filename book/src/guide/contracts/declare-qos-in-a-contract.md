@@ -151,7 +151,7 @@ nodes:
   reliable_talker:
     paths:
       on_tick:
-        trigger: { timer: { rate_hz: 1 } }
+        trigger: { timer: { rate: 1Hz } }
         output: [qos_chatter]
     pub:
       qos_chatter:

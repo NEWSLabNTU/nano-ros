@@ -106,7 +106,7 @@ fn the_resolver_already_computes_the_division_this_wave_derives_from() {
             )
         });
     // Both rates, named, in one upstream diagnostic.
-    assert!(drain.contains("rate_hz (10)"), "{drain}");
+    assert!(drain.contains("rate (10 Hz)"), "{drain}");
     assert!(drain.contains("(50,"), "{drain}");
     assert!(drain.contains("buffer: queue"), "{drain}");
 }

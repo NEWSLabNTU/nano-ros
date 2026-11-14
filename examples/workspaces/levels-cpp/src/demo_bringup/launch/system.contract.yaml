@@ -14,30 +14,30 @@ nodes:
       level_tag: { type: integer }
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 50 } }
+        trigger: { timer: { rate: 50Hz } }
         output: [tick]
     pub:
-      tick: { min_rate_hz: 10 }
+      tick: { min_rate: 10Hz }
 
   middle:
     params:
       level_tag: { type: integer }
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 20 } }
+        trigger: { timer: { rate: 20Hz } }
         output: [tick]
     pub:
-      tick: { min_rate_hz: 5 }
+      tick: { min_rate: 5Hz }
 
   lazy:
     params:
       level_tag: { type: integer }
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 5 } }
+        trigger: { timer: { rate: 5Hz } }
         output: [tick]
     pub:
-      tick: { min_rate_hz: 1 }
+      tick: { min_rate: 1Hz }
 
 # Every topic leaves the image; nothing here subscribes, so the derivation
 # places nodes by their timers alone.
