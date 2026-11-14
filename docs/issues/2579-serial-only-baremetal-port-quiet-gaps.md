@@ -6,8 +6,10 @@ type: limitation
 area: [rmw, xrce, boards, book]
 severity: medium
 found: 2026-09-16
-related: [rfc-0012, rfc-0002, 2576, 2577, 2578]
+related: [phase-564, rfc-0012, rfc-0002, 2576, 2577, 2578]
 ---
+
+**Home: [phase-564](../roadmap/phase-564-xrce-device-session-robustness.md) W3.**
 
 GitHub: NEWSLabNTU/nano-ros#1049 (reported by wicanr2)
 

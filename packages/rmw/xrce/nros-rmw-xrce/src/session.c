@@ -706,7 +706,7 @@ rmw_ret_t xrce_publisher_event_init(const rmw_publisher_t* publisher, rmw_event_
  * readiness is its transport's. Where the transport is an OS descriptor
  * (POSIX/NuttX UDP, POSIX serial, Zephyr zsock UDP) it is WAITABLE: the
  * executor parks on it and drives this session non-blockingly once it is
- * readable, instead of blocking inside `uxr_run_session_time`. Where the UDP
+ * readable, instead of blocking inside a session run. Where the UDP
  * stack takes a receive notification (lwIP, NetX) it is NOTIFY: the stack
  * calls the executor's wake callback on arrival (`xrce_set_wake_callback`).
  * A board's custom transport is NOTIFY when it registered a receive
@@ -1229,9 +1229,9 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
     xrce_graph_flush(st);
     xrce_session_unlock(st);
 
-    /* `uxr_run_session_time` returns as soon as the reliable output streams
-     * are confirmed — so when the session holds a publisher with unconfirmed
-     * WRITE_DATA (or a pending heartbeat) it returns almost immediately
+    /* A session run can return well before its window (once nothing more
+     * arrives), so when the session holds a publisher with unconfirmed
+     * WRITE_DATA (or a pending heartbeat) a pass may return almost immediately
      * (~0 us) instead of listening for `t` ms. XRCE is a *poll-based* backend
      * (no `set_wake_callback`): the executor's `spin_once(t)` paces by relying
      * on this call to block for `t`. When it returns early the spin loop
@@ -1246,7 +1246,7 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
      * `z_sleep_ms` fix for multi-threaded platforms.) */
     if (t == 0) {
         xrce_session_lock(st);
-        (void)uxr_run_session_time(&st->session, 0);
+        xrce_session_pump(st, 0);
         xrce_deadline_check(st, xrce_now_ms()); /* issue 2108 */
         xrce_session_unlock(st);
         return NROS_RMW_RET_OK;
@@ -1261,7 +1261,7 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
      * returns 0 on any platform without an RTC (Zephyr/native_sim, FreeRTOS,
      * ThreadX — see each provider's `platform.c`). With a 0 clock `elapsed_ms`
      * is always 0, `remaining` never reaches 0, and this loop spins forever
-     * inside `uxr_run_session_time` — so `spin_once` never returns to run the
+     * inside the session run — so `spin_once` never returns to run the
      * executor's readiness scan and buffered subscriber samples are never
      * delivered to callbacks. `nros_platform_clock_ns` is monotonic since
      * boot and is the contract for relative deadline deltas (mirrors
@@ -1284,7 +1284,7 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
          * passes. A pass is bounded by `remaining`, and since phase-521 W6 the
          * executor drives with a zero `remaining` after it has parked. */
         xrce_session_lock(st);
-        (void)uxr_run_session_time(&st->session, remaining);
+        xrce_session_pump(st, remaining);
         xrce_session_unlock(st);
         /* If the run returned well before `remaining`, yield ~1 ms so the next
          * pass picks up freshly-arrived inbound without busy-spinning. */

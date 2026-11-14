@@ -6,8 +6,10 @@ type: limitation
 area: [rmw, xrce, api]
 severity: high
 found: 2026-09-18
-related: [rfc-0005, 2577, 2578, 2579]
+related: [phase-564, rfc-0005, 2577, 2578, 2579]
 ---
+
+**Home: [phase-564](../roadmap/phase-564-xrce-device-session-robustness.md) W4.**
 
 GitHub: NEWSLabNTU/nano-ros#1084 (reported by wicanr2)
 
