@@ -83,13 +83,25 @@ pub fn user_explanation(e: &Entry) -> &'static str {
 /// What `nros explain NROS-NNNN` prints for an entry, live or retired.
 #[must_use]
 pub fn explain_text(e: &Entry) -> String {
-    match e.successor() {
-        Some(s) => format!(
+    explain_text_in(e, ALL)
+}
+
+/// [`explain_text`] with a retired code's successor looked up in `table`.
+#[must_use]
+pub fn explain_text_in(e: &Entry, table: &[Entry]) -> String {
+    let successor = e.retired.and_then(|n| table.iter().find(|s| s.number == n));
+    match (e.retired, successor) {
+        (Some(n), None) => format!(
+            "{}: retired.\n\nThis code is no longer raised. Its successor, NROS-{n:04}, is \
+             unknown to this binary.\n",
+            e.code
+        ),
+        (_, Some(s)) => format!(
             "{}: retired.\n\nThis code is no longer raised. It was replaced by {}: {}\n\
              Run `nros explain {}` for its explanation.\n",
             e.code, s.code, s.title, s.code
         ),
-        None => format!(
+        (None, None) => format!(
             "{}: {}\n\n{}\n\nThe refusal's help line: {}\n",
             e.code,
             e.title,

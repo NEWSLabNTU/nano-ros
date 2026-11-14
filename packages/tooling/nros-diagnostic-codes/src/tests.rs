@@ -256,6 +256,15 @@ mod retired_table {
             &[crate::Surface::Cli, crate::Surface::Cmake]
         );
     }
+
+    #[test]
+    fn explain_names_a_retired_codes_successor() {
+        assert_eq!(
+            crate::views::explain_text_in(&ALL[1], ALL),
+            "NROS-0002: retired.\n\nThis code is no longer raised. It was replaced by \
+             NROS-0001: kept\nRun `nros explain NROS-0001` for its explanation.\n"
+        );
+    }
 }
 
 // --- views -------------------------------------------------------------------------

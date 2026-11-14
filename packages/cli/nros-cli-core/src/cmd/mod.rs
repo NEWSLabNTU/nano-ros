@@ -346,7 +346,7 @@ pub enum Cmd {
     /// workspace
     Check(check::Args),
 
-    /// Render a generated nros-plan.json in human-readable form
+    /// Explain a diagnostic code, or render a generated nros-plan.json
     Explain(explain::Args),
 
     /// Inspect or validate the current project's resolved configuration
