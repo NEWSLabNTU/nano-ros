@@ -252,6 +252,17 @@ the user ruled; all five stand:
   The same run found two more unscoped steps (the leaf `include` arm and
   `rust-rtos-link-check`); they are issue 2548's second round.
 
+  Sixth measurement, run 43582883501 (2026-11-14, main 1a54770f56, with
+  2548's second round): **threadx_linux RAN its tests** (3614 run, 3037
+  passed, 558 deselected out of lane). Its disk low point was ~57 G free.
+  19 real failures were tests that probed the host before the lane: the
+  XRCE Agent, one cmake-fixture resolver, and a feature lane with no
+  coordinate in the shard. One lane-contract scan timed out at 60 s under
+  load. All are issue 2548's third round. The zephyr build fit again (low
+  point 4.0 G, 6.4 G left), and then its RUN step, which had no balloon, lost
+  the whole job's log about 4 minutes in. The run step is now under the
+  balloon; the next dispatch says where that disk goes.
+
   **User ruling, 2026-11-14 (option B): linux tier 1 stays SELF-HOSTED**
   (`run-matrix.yml`'s `tier1`). Only threadx_linux and zephyr move to hosted
   per-board shards. Measured basis: a hosted runner has ~104 G free after

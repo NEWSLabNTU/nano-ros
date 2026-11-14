@@ -425,6 +425,15 @@ slow-timeout = { period = "45s", terminate-after = 3 }
 success-output = "final"
 junit.store-success-output = true
 
+# Issue 2548 -- two lane-contract scans that run the fixture manifest's
+# Python once per lane and per merge shard (11 and 13 cases). 7.5 s and 9.1 s
+# solo on a 20-core host; on the 4-vCPU hosted merge shard, under the whole
+# suite, one passed at 58 s and the other was killed at the 60 s ceiling.
+# CPU contention, not a wait, so it gets a third period rather than a retry.
+[[profile.default.overrides]]
+filter = "binary(lane_build_covers_run) and (test(every_lane_codegen_scope_covers_its_fixture_build) or test(every_lane_and_shard_builds_exactly_the_fixture_rows_its_run_requires))"
+slow-timeout = { period = "60s", terminate-after = 3 }
+
 # Issue 1732 -- two endings in sequence, each with its own XRCE Agent, a domain
 # checked quiet with the `ros2` CLI, and a 12 s bounded run. 17-25 s solo; one
 # run on a loaded host (load average ~10) passed the default 60 s ceiling.

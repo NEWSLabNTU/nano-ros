@@ -5664,6 +5664,11 @@ pub fn require_compile_verdict(id: &str) -> TestResult<CompileVerdict> {
 /// selected row's cmake or C++ compiler is absent, and an absent fixture fails
 /// the test in every run (issue 1758).
 pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
+    // Issue 2548 — a cmake fixture is a `[[compile_check_fixture]]` row, so it
+    // takes the row predicate the build and the staleness probe use. Without
+    // it the threadx_linux merge shard, which builds no `linux` row, read every
+    // Linux cmake template as a missing in-lane fixture.
+    require_compile_check_row_in_lane(id);
     let dir = build_dir(crate::kind::CMAKE_FIXTURES, &[id]);
     // issue 1454 — a WORKSPACE template's cmake fixture is built by `nros sync`
     // + `nros build`, so it bakes a resolved SystemModel and is a function of

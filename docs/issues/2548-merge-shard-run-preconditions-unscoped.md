@@ -125,6 +125,48 @@ Fixed together (fix-2548-run-scope-2):
   platform (`nros_lane_wants_platform`, the fixture builders' predicate),
   and names each leaf it leaves out.
 
+## Third round, run 43582883501 (main 1a54770f56, with #3816)
+
+- **threadx_linux:** preconditions PASSED and the tests RAN: 3614 tests, 3037
+  passed, 558 deselected out of lane, 19 real failures. That meets this
+  issue's threadx half. The failures were three more places where a test
+  asked the host before it asked the lane:
+  - 11 XRCE tests (plus 4 in the `xrce-wake-test` feature lane):
+    `XRCE Agent not found`. The shard holds `threadx-linux,c,zenoh` only, and
+    `require_xrce_agent` probed before any lane check.
+  - 9 Linux cmake-template tests: `Test fixture binary MISSING for an in-lane
+    coordinate`. `require_cmake_fixture` was the one compile-check resolver
+    that did not ask `require_compile_check_row_in_lane`, so a row the build
+    correctly omitted read as missing.
+  - The `custom_transport_loopback` feature lane ran nothing (its only test
+    is Linux), and `check-skip-budget`'s zero-ran floor failed it.
+  - `every_lane_codegen_scope_covers_its_fixture_build` hit the 60 s ceiling
+    (9.1 s solo); `every_lane_and_shard_builds_exactly…` passed at 58 s
+    (7.5 s solo). CPU contention on 4 vCPUs under the whole suite.
+- **zephyr:** `just build tier1` PASSED again, lowest point 4.0 G free, 6.4 G
+  left. The run step was not under the balloon. It died about 4 minutes in,
+  right after the `loan_e2e` feature lane, where threadx_linux spent 5
+  minutes compiling the next feature lane's test binaries. The job's logs are
+  gone (`BlobNotFound`), which is what a full disk did on run 43534848324.
+  Not proved: no `du` exists for the run step.
+
+Fixed together (fix-2548-run-scope-3):
+
+- `require_xrce_agent` asks `lane::require_rmw_in_lane("xrce", …)` first: a
+  lane holding no `xrce` coordinate deselects before the probe. A lane holding
+  one, on any platform, still probes.
+- `require_cmake_fixture` asks the row predicate. A source scan,
+  `every_compile_check_resolver_asks_the_row_predicate`, now requires it of
+  every resolver that reads a compile-check build root. Mutation: dropping the
+  call from `require_cmake_fixture` fails it, naming that function.
+- `check-skip-budget.py`: a feature lane (`NROS_SKIP_BUDGET_SUBLANE`, set by
+  `feature-lanes.py run`) whose every skip is a lane deselection reports and
+  passes. The zero-ran floor stays on the enclosing run and on any standalone
+  run, and an unmet skip still fails.
+- The two lane-contract scans get a third 60 s period (no retry).
+- `just ci <lane>` runs under the disk balloon too, so the zephyr run step
+  stops at 2 G free with its `du` instead of losing the job.
+
 ## Done when
 
 A `merge-runtime.yml` tier-1 dispatch runs tests on the threadx_linux shard

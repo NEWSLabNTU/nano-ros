@@ -251,14 +251,19 @@ jobs:
           scripts/ci/disk-report.sh "after just build ${{ inputs.lane || 'merge' }}"
 
       - name: just ci ${{ inputs.lane || 'merge' }} (${{ matrix.board }} shard)
+        env:
+          # Under the disk balloon too: the run compiles the test binaries,
+          # and the zephyr tier-1 shard entered it with 6.4 GB free and lost
+          # every log of the job (run 43582883501).
+          NROS_DISK_BALLOON_DIR: tmp/disk-watch
         run: |
           source ./activate.sh
           # One command per line, not a `case` arm: check-tier-has-ci-owner
           # reads statements, and owns `ci merge` through this one.
           if [ "${{ inputs.lane || 'merge' }}" = tier1 ]; then
-            just ci tier1 run
+            scripts/ci/disk-balloon.sh run -- just ci tier1 run
           else
-            just ci merge
+            scripts/ci/disk-balloon.sh run -- just ci merge
           fi
           df -h / | tail -1
 

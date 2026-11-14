@@ -757,6 +757,38 @@ pub fn require_platform_in_lane(platforms: &[crate::matrix::PlatformId], what: &
     }
 }
 
+/// Deselect a test whose host PEER serves one RMW only (the XRCE Agent serves
+/// `xrce`) when this run's lane selects no coordinate on that RMW (issue 2548).
+///
+/// The probe for such a peer runs before the test resolves any fixture, so a
+/// lane that holds no coordinate on the RMW never reaches the resolver's lane
+/// skip. The tier-1 `threadx_linux` merge shard (`threadx-linux,c,zenoh`)
+/// reported 11 Linux XRCE tests as `XRCE Agent not found`, a provisioning gap
+/// for coordinates the shard never claimed. A lane that DOES select the RMW
+/// still reaches the probe, so a runner that claims it and lacks the peer
+/// still fails.
+///
+/// Unnarrowed run (no `NROS_TEST_COORDS`) ⇒ never skips.
+pub fn require_rmw_in_lane(rmw: &str, what: &str) {
+    let Some(coords) = run_coords() else {
+        return;
+    };
+    if let Some(reason) = skip_reason_for_rmw(rmw, what, coords) {
+        crate::lane_skip!("{reason}");
+    }
+}
+
+/// The decision behind [`require_rmw_in_lane`], minus the environment.
+pub fn skip_reason_for_rmw(rmw: &str, what: &str, coords: &BTreeSet<Coord>) -> Option<String> {
+    (!coords.iter().any(|(_, _, r)| r == rmw)).then(|| {
+        format!(
+            "out of lane: {what} serves the `{rmw}` RMW only, and this run's lane \
+             selects no `{rmw}` coordinate, so it is not run (or probed for) here.\n  \
+             Run the full ladder (`just ci-full`) or unset {RUN_COORDS_ENV} to execute it."
+        )
+    })
+}
+
 /// [`require_platform_in_lane`] for every platform `just setup <scope>`
 /// provisions (`zephyr` owns native_sim, FVP and the Cortex-M QEMU board) — for
 /// a probe that is about the SCOPE rather than one board, like a west workspace.
@@ -1078,6 +1110,27 @@ mod tests {
             skip_reason_for_platforms(&[PlatformId::Linux], "a host test", &host),
             None
         );
+    }
+
+    /// Issue 2548 — the RMW-level lane question, both directions. A lane
+    /// holding no `xrce` coordinate deselects a test that needs the XRCE Agent;
+    /// a lane holding one on ANY platform must not, or a runner that claims
+    /// `xrce` and lacks the Agent would launder the gap into a lane skip.
+    #[test]
+    fn an_rmw_the_lane_does_not_select_is_deselected_and_one_it_does_is_not() {
+        let c = |p: &str, r: &str| (p.to_string(), "c".to_string(), r.to_string());
+        let shard: BTreeSet<Coord> = [c("threadx-linux", "zenoh")].into_iter().collect();
+        let mixed: BTreeSet<Coord> = [c("threadx-linux", "zenoh"), c("zephyr", "xrce")]
+            .into_iter()
+            .collect();
+        let why = skip_reason_for_rmw("xrce", "the XRCE Agent", &shard)
+            .expect("a zenoh-only lane must deselect an XRCE Agent test");
+        assert!(why.starts_with("out of lane:"), "{why}");
+        assert!(
+            !why.contains("not built") && !why.contains("is at coordinate"),
+            "{why}"
+        );
+        assert_eq!(skip_reason_for_rmw("xrce", "the XRCE Agent", &mixed), None);
     }
 
     #[test]

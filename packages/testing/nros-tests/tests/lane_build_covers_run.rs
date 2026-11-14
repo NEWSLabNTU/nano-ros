@@ -1447,3 +1447,85 @@ fn every_lane_and_shard_builds_exactly_the_fixture_rows_its_run_requires() {
         );
     }
 }
+
+/// Issue 2548 — every resolver of a compile-check fixture asks the row
+/// predicate before it reads the fixture.
+///
+/// The build and the staleness probe omit a compile-check row whose platform
+/// the lane does not hold (`compile_check_platform`). A resolver that reads the
+/// row's directory without asking `require_compile_check_row_in_lane` reports
+/// that omission as a missing in-lane fixture: `require_cmake_fixture` did, and
+/// the tier-1 `threadx_linux` merge shard failed 9 Linux cmake-template tests
+/// on it. Source scan: each `pub fn require_*` in the resolver module whose
+/// body names a compile-check build root must call the predicate.
+#[test]
+fn every_compile_check_resolver_asks_the_row_predicate() {
+    let path =
+        nros_tests::project_root().join("packages/testing/nros-tests/src/fixtures/binaries/mod.rs");
+    let src = std::fs::read_to_string(&path).expect("read the resolver module");
+    let offenders = compile_check_resolvers_missing_predicate(&src);
+    assert!(
+        offenders.is_empty(),
+        "{} reads a compile-check fixture without asking \
+         `require_compile_check_row_in_lane` first, so a lane that omits the \
+         row reads its absence as a failure: {offenders:?}",
+        path.display()
+    );
+    // Negative control: the scan sees a resolver that drops the call.
+    let mutated = src.replacen(
+        "    require_compile_check_row_in_lane(id);\n    let dir = build_dir(crate::kind::CMAKE_FIXTURES",
+        "    let dir = build_dir(crate::kind::CMAKE_FIXTURES",
+        1,
+    );
+    assert_ne!(
+        mutated, src,
+        "the mutation must apply to require_cmake_fixture"
+    );
+    assert_eq!(
+        compile_check_resolvers_missing_predicate(&mutated),
+        vec!["require_cmake_fixture".to_string()],
+        "the scan missed a resolver with the predicate removed"
+    );
+}
+
+fn compile_check_resolvers_missing_predicate(src: &str) -> Vec<String> {
+    const ROOTS: [&str; 3] = [
+        "kind::COMPILE_CHECK, &[id",
+        "kind::CMAKE_FIXTURES, &[id",
+        "kind::WEST_FIXTURES, &[",
+    ];
+    let mut out = Vec::new();
+    let mut rest = src;
+    while let Some(at) = rest.find("\npub fn require_") {
+        let after = &rest[at + 1..];
+        let name: String = after["pub fn ".len()..]
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        // The body: from the first `{` to its matching `}`.
+        let open = after.find('{').expect("fn body");
+        let mut depth = 0usize;
+        let mut end = open;
+        for (i, c) in after[open..].char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = open + i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let body = &after[open..end];
+        if ROOTS.iter().any(|r| body.contains(r))
+            && !body.contains("require_compile_check_row_in_lane(")
+        {
+            out.push(name);
+        }
+        rest = &after[end..];
+    }
+    out
+}
