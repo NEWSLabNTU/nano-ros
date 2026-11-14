@@ -1,8 +1,7 @@
 # Phase 558 -- Nightly verdicts per board, not per platform family
 
-**Status (2026-11-13). OPEN: W1 to W5 done on the first PR; W6 (the measured
-hosted-minute delta from the first scheduled run) and W7 (Zephyr's second
-board) open.**
+**Status (2026-11-14). OPEN: W1 to W6 done; W7 (Zephyr's second board)
+open.**
 
 User ruling, 2026-11-13, verbatim: "Have results per board instead of per
 platform family".
@@ -109,7 +108,7 @@ predicate and its open question.
 
 ### W6 -- The hosted-minute delta, measured
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-14, runs 43383470982 and 43559931051)
 
 Estimated from the three runs above: each platform job pays a fixed ~6-10
 min before it builds anything (container init ~80 s, CLI build 190-375 s,
@@ -120,6 +119,55 @@ fixture builds split rather than repeat.
 
 **Acceptance:** the first scheduled 07:00 run after merge, per-job and total
 minutes against run 43172962836's 5-job total, recorded here.
+
+**Measured.** The per-board matrix first ran on the 07:00 cron of 2026-11-13
+(run 43383470982, `509f86c693`, which contains #3715). Phase-559 W4b then
+folded the 07:00 cron into the 05:00 one, so the second sample is run
+43559931051 (2026-11-14 05:06). Minutes are job wall time from the API
+(`completedAt - startedAt`). "Fixed" is every step before `Reclaim disk` /
+`Build (<board>)`: container init, checkout, the CLI build and its cache, the
+system provision, `just setup <module>` and the board scope.
+
+| run | jobs | total min | fixed min | fixed per job |
+| --- | ---: | ---: | ---: | ---: |
+| 42773101191 (per module) | 5 | 320.3 | 39.0 | 7.8 |
+| 42977216883 (per module) | 5 | 454.2 | 36.3 | 7.3 |
+| 43172962836 (per module, the baseline) | 5 | 313.6 | 45.1 | 9.0 |
+| 43383470982 (per board) | 7 | 596.5 | 75.9 | 10.8 |
+| 43559931051 (per board) | 7 | 662.8 | 42.9 | 6.1 |
+
+Per job, per board (total / build step / test step, min):
+
+| board | 43383470982 | 43559931051 |
+| --- | --- | --- |
+| FreertosMps2 | 121.2 / 85.7 / 23.6 | 155.9 / 101.0 / 47.7 |
+| FreertosPosix | 36.8 / 19.7 / 7.9 | 29.9 / 17.6 / 6.3 |
+| NuttxArm | 89.1 / 59.3 / 18.6 | 117.6 / 79.0 / 32.4 |
+| NuttxRiscv | 26.5 / 10.7 / 3.7 | 13.0 / 5.9 / 2.2 |
+| QemuBaremetal | 50.6 / 29.1 / 9.9 | 55.5 / 35.6 / 13.8 |
+| ThreadxLinux | 171.4 / 107.5 / 52.1 | 152.1 / 95.4 / 49.7 |
+| ThreadxRiscv64 | 101.0 / 73.9 / 17.4 | 138.9 / 91.2 / 40.8 |
+
+What this says:
+
+- **The fixed cost is what the estimate said.** The per-module runs averaged
+  40.1 fixed min a night, the per-board runs 59.4: +19 min, against the
+  estimated +16. Per job it stays 6-11 min.
+- **The total doubled, but the totals are not like for like**, so they do not
+  measure the split. Every job of the baseline failed in its build step, and
+  a failing build stops early: 43172962836's `qemu` ended at 18.3 min where a
+  passing `qemu` took 40.9-59.8. In each per-board run, three boards
+  pass their builds and run their whole test step. `ThreadxLinux` is one
+  board in both shapes and took 152-171 min where `threadx_linux` took
+  57-147 min, so more of the night is spent on what each board now reaches,
+  not on duplicated setup.
+- **The split did split the fixture builds.** The two boards of a module do
+  not both build the module's fixtures: `FreertosPosix` builds in 18-20 min
+  and `NuttxRiscv` in 6-11 min, beside 86-101 and 59-79 for their siblings.
+
+A like-for-like total needs two runs where the same boards pass. That is a
+property of the nightly being green, not of this phase, so it is not an item
+here.
 
 ### W7 -- Zephyr's second board
 
