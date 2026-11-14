@@ -1,27 +1,36 @@
 # nros-rmw-uorb
 
-Phase 115.K.4 — C++ port of `nros-rmw-uorb` (the previous Rust
-implementation, slated for retirement once this backend reaches
-parity).
+The PX4 uORB RMW backend, in C++. It implements the `nros_rmw_vtable_t`
+slots over uORB topics and registers through `nros_rmw_uorb_register()`. The
+earlier Rust backend and `nros-px4` are removed.
 
 ## Layout
 
 ```
 packages/rmw/uorb/nros-rmw-uorb/
-├── CMakeLists.txt          standalone CMake project
+├── CMakeLists.txt            standalone CMake project
+├── nros-rmw.toml             backend descriptor (RFC-0071)
 ├── cmake/
-│   └── NrosRmwUorbConfig.cmake.in
+│   ├── NrosRmwUorbSources.cmake   the source list
+│   └── NrosRmwUorbSizing.cmake    per-image pool sizes
 ├── include/
-│   └── nros_rmw_uorb.h     public C entry point: nros_rmw_uorb_register()
+│   ├── nros_rmw_uorb.h            public C entry: nros_rmw_uorb_register()
+│   └── nros_rmw_uorb_registry.h   topic registry API
 ├── src/
-│   ├── internal.hpp        shared decls across .cpp files
-│   ├── vtable.cpp          assembles nros_rmw_vtable_t + register entry
-│   ├── session.cpp         open / close / drive_io  (stubs in K.4.0)
-│   ├── publisher.cpp       create / publish_raw / destroy (stubs in K.4.0)
-│   ├── subscriber.cpp      create / take_serialized / has_data / destroy (stubs in K.4.0)
-│   └── service.cpp         service slots — default UNSUPPORTED (K.4.4 may change)
+│   ├── vtable.cpp            assembles nros_rmw_vtable_t + register entry
+│   ├── session.cpp           open / close / drive_io
+│   ├── publisher.cpp         create / publish_raw / destroy
+│   ├── subscriber.cpp        create / take_serialized / has_data / destroy
+│   ├── service.cpp           every service slot returns UNSUPPORTED
+│   ├── qos.cpp               what a uORB QoS profile can and cannot mean
+│   ├── topic_registry.cpp    (name, type_name) -> orb_metadata * table
+│   ├── px4_callback_glue.cpp PX4 WorkItem wake for subscribers
+│   ├── callback_default.cpp  off-PX4 polling fallback
+│   ├── register_fallback.c   off-PX4 registration fallback
+│   ├── uorb_abi.hpp          mirror of PX4's orb_metadata ABI
+│   └── internal.hpp          shared declarations
 └── tests/
-    └── register_smoke.cpp  K.4.0 smoke test (stubs cffi_register locally)
+    └── register_smoke.cpp    registration smoke test
 ```
 
 ## Build
@@ -35,7 +44,7 @@ cmake --build build/nros-rmw-uorb
 ./build/nros-rmw-uorb/nros_rmw_uorb_register_smoke
 ```
 
-Inside a PX4 module (K.4.1 onward):
+Inside a PX4 module:
 
 ```cmake
 find_package(NrosRmwUorb CONFIG REQUIRED)

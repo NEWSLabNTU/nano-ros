@@ -168,7 +168,11 @@ brief of RFC-0126 did.
   pair either with a link (supersedes, amends) or, when no link applies (two
   subjects, or complementary), with an entry in
   `docs/design/reviewed-pairs.toml` naming the ruling.
-- **Status:** OPEN
+- **Status:** OPEN. Ruled 2026-11-14: the user accepted the rest of the
+  review. The rulings, the consolidated item list and who applies what are
+  in [data/phase-555-w3-rulings.md](data/phase-555-w3-rulings.md). Each
+  area's W2 reviewer applies its own items. The five untracked items are
+  issue 2522, issue 2523, issue 2524, issue 2525 and issue 2526.
 
 ### W4 -- Keep it organized
 
