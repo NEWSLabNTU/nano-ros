@@ -82,9 +82,16 @@ nano-ros's contracts or read by its code. Measured with play_launch v0.32.0's
 `ros-launch-resolve migrate --check` (rlm v0.3.15): 34 of 34 tracked contracts
 and 182 of 182 tracked `system.toml` files scanned, 0 to rewrite.
 
+rlm v0.3.16 and play_launch v0.33.0 (#3765) finished S1: a path's `tolerance`
+is refused, and a subscriber's inline `max_transport` is a
+`deprecated-spelling` warning, refused at the next rlm release. nano-ros
+writes neither key and reads neither model field (`git grep` over tracked
+contracts and non-vendored Rust, 2026-11-14), so that refusal costs a tag
+bump.
+
 ### W6 -- Renames and relocations
 
-- **Status:** BLOCKED (rlm's rename release R, play_launch 104 S3; not tagged)
+- **Status:** BLOCKED (rlm's rename release R, play_launch 104 S3; not tagged as of rlm v0.3.16)
 
 Tag bump, then `migrate` over the contracts. Rates become `Hz` values (44
 values); `entity_census.rs` messages and fix-its spell `trigger.timer.rate_hz`
@@ -95,7 +102,7 @@ Size M.
 
 ### W7 -- Additions
 
-- **Status:** BLOCKED (each play_launch 104 S4 addition; none released)
+- **Status:** BLOCKED (each play_launch 104 S4 addition; none released as of rlm v0.3.16)
 
 Each lands when a contract needs it. A new fault class adds one arm to the
 exhaustive match in `ftti_budget.rs`. End-to-end protection (a counter field,
