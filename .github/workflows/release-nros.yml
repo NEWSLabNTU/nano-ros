@@ -133,6 +133,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # User ruling 2026-11-15: a release's notes are its book page,
+      # book/src/migrating/releases/<version>.md, published as the release
+      # body. FIRST and with no `if: publish`, so a dry run refuses a missing
+      # page too and it surfaces at the rehearsal, not when the tag is cut.
+      # One helper, which the `release-notes` gate self-tests.
+      - name: Refuse a release with no notes page
+        env:
+          VERSION: ${{ inputs.version }}
+        run: python3 scripts/lib/release_notes.py --check "$VERSION"
+
       # The asset is `.tar.zst` and `tar` shells out to the `zstd` binary. The
       # package NAME comes from the index, not from here: it carries the
       # apt/dnf/pacman/brew spellings, and a copy in a workflow is the one that
@@ -466,32 +476,22 @@ jobs:
         if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           tag="nros-${{ inputs.version }}"
           nros="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
-          # The notes go through a FILE, one `printf` argument per line. A
-          # column-0 line inside a YAML `run:` block is parsed as syntax, not as
-          # text, so a heredoc is unusable here and its terminator would have to
-          # sit where YAML expects a key (CLAUDE.md's pitfall index).
-          printf '%s\n' \
-            "The \`nros\` CLI, codegen version $("$nros" --codegen-version)." \
-            "" \
-            "Coming from another release that declares the SAME codegen version?" \
-            "Nothing is re-emitted — take it (RFC-0097 D7). \`nros pin <version>\`" \
-            "reads both manifests out of your store and says so before it moves" \
-            "your \`nros-toolchain.toml\`; \`nros toolchain manifest\` prints what" \
-            "an installed toolchain declares." \
-            "" \
-            "Install:" \
-            "" \
-            '```' \
-            "curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | sh" \
-            '```' \
-            "" \
-            "Contributors build from source instead: inside a checkout the tree's own" \
-            "build is the only correct binary." \
-            >"$RUNNER_TEMP/notes.md"
+          # The body is the release's book page (prose, minus its `# ` title:
+          # the release carries `nros <version>` already; refused above if
+          # absent), then a footer GENERATED from what this run knows: the
+          # codegen version the verified binary reports and the install line.
+          # A fact is never hand-copied into the page.
+          if ! codegen="$("$nros" --codegen-version)"; then
+            echo "::error::the built nros could not report its codegen version" >&2
+            exit 1
+          fi
+          python3 scripts/lib/release_notes.py --body "$VERSION" "$RUNNER_TEMP/notes.md" \
+              --codegen "$codegen" --repo '${{ github.repository }}'
           # `--target` pins the release to the commit that was verified above,
           # not to whatever the branch points at when this step runs.
           gh release create "$tag" \
