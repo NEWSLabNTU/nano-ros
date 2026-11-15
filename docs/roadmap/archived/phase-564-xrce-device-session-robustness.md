@@ -1,6 +1,6 @@
 # Phase 564 — XRCE on the device: a session that stays responsive and recoverable
 
-**Status (2026-11-15). IN PROGRESS: W1–W4 done; the book's re-open recipe is with the book owner, then this phase archives.**
+**Status (2026-11-15). COMPLETE: W1–W4 done and on main; every GitHub issue (#1076, #1075, #1049, #1084) is closed.**
 
 The device side of the XRCE backend (`packages/rmw/xrce/nros-rmw-xrce`, the
 Micro-XRCE-DDS client it drives, and what a board needs around it) has no
@@ -14,10 +14,10 @@ Each item is claimed with `just claim phase-564-wN` before it starts.
 
 | Item | Issue | GitHub |
 | --- | --- | --- |
-| W1 | [2577](../issues/archived/2577-xrce-reply-token-leaked-on-full-stream.md) — a reply that fails on a full stream leaks its token | #1076 |
-| W2 | [2578](../issues/archived/2578-xrce-session-flush-unbounded-under-inbound-traffic.md) — a session flush never returns under steady inbound traffic | #1075 |
-| W3 | [2579](../issues/archived/2579-serial-only-baremetal-port-quiet-gaps.md) — a serial-only bare-metal port meets three quiet gaps | #1049 |
-| W4 | [2576](../issues/archived/2576-xrce-agent-restart-leaves-node-silently-dead.md) — after an Agent restart the node stays silently dead | #1084 |
+| W1 | [2577](../../issues/archived/2577-xrce-reply-token-leaked-on-full-stream.md) — a reply that fails on a full stream leaks its token | #1076 |
+| W2 | [2578](../../issues/archived/2578-xrce-session-flush-unbounded-under-inbound-traffic.md) — a session flush never returns under steady inbound traffic | #1075 |
+| W3 | [2579](../../issues/archived/2579-serial-only-baremetal-port-quiet-gaps.md) — a serial-only bare-metal port meets three quiet gaps | #1049 |
+| W4 | [2576](../../issues/archived/2576-xrce-agent-restart-leaves-node-silently-dead.md) — after an Agent restart the node stays silently dead | #1084 |
 
 ### W1 — A reply the session cannot buffer releases its token
 
@@ -127,8 +127,8 @@ owner as a brief, and landed as `book/src/guide/platforms/bare-metal-own-main-lo
 
 ### W4 — A lost session is visible and can be re-opened
 
-- **Status:** DONE (2026-11-15). The re-open recipe for the book went to the
-  book owner as a brief.
+- **Status:** DONE (2026-11-15). The code is f0ee23c06b; the re-open recipe
+  is in the book (e9a3e1c133), on the bare-metal own-main-loop page.
 
 After an Agent restart the node keeps spinning, publishes fail, no callback
 fires and nothing logs; a new Agent never sees a `CREATE_SESSION`.
