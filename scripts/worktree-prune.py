@@ -47,12 +47,14 @@ Dry run by default.
 
 Every invocation runs the self-test first and refuses to act if it fails.
 """
+import fnmatch
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
@@ -100,27 +102,172 @@ def owner_of(path):
         return ""
 
 
-def unpushed(path):
-    """Commits on HEAD that no remote-tracking ref has."""
+# Each remote gets LS_REMOTE_TIMEOUT_S, and one invocation spends at most
+# LS_REMOTE_BUDGET_S on remotes in total, so an offline or slow host cannot
+# hang `ci gate`'s reminder line. A remote not asked proves nothing, so it can
+# only leave a worktree kept.
+LS_REMOTE_TIMEOUT_S = 10
+LS_REMOTE_BUDGET_S = 45
+_ls_remote_spent = [0.0]
+
+
+def remote_ref_tips(path, urls=()):
+    """Every object a remote of `path` names, ASKED of the remote (`git
+    ls-remote`). Local remote-tracking
+    refs are not evidence of what exists: a single-branch clone tracks one
+    branch, and a submodule pinned at a release TAG is on no branch at all
+    (FreeRTOS-Kernel at V11.2.0 read as "on none of its remotes" in every
+    gated worktree)."""
+    tips = set()
+    # A remote that cannot be asked (offline, a relative `.gitmodules` URL)
+    # contributes nothing, so it can only leave commits counted as unpublished.
+    for r in [*git(["remote"], path, check=False).stdout.split(),
+              *(u for u in urls if not u.startswith(("./", "../")))]:
+        left_s = LS_REMOTE_BUDGET_S - _ls_remote_spent[0]
+        if left_s <= 0:
+            break
+        t0 = time.monotonic()
+        try:
+            p = subprocess.run(["git", "ls-remote", r], cwd=path, capture_output=True,
+                               text=True, timeout=min(LS_REMOTE_TIMEOUT_S, left_s))
+        except subprocess.TimeoutExpired:
+            continue
+        finally:
+            _ls_remote_spent[0] += time.monotonic() - t0
+        if p.returncode == 0:
+            tips.update(l.split("\t", 1)[0] for l in p.stdout.splitlines() if "\t" in l)
+    return tips
+
+
+def unpushed(path, urls=()):
+    """Commits on HEAD that no ref of any remote reaches, tags included.
+
+    Fast path: the local remote-tracking refs. When they leave commits over,
+    ask each remote what it holds and subtract every tip that is a commit
+    here, so a HEAD at a remote TAG, or on a branch this clone never fetched,
+    counts as published. A remote that cannot be asked leaves the commits
+    counted: unproven is unpublished."""
     p = git(["rev-list", "HEAD", "--not", "--remotes"], path, check=False)
     if p.returncode != 0:
         return ["<HEAD unreadable>"]
-    return p.stdout.split()
+    left = p.stdout.split()
+    if not left:
+        return left
+    tips = remote_ref_tips(path, urls)
+    if not tips:
+        return left
+    # One batch lookup: which advertised tips are commits this repo holds.
+    q = subprocess.run(["git", "cat-file", "--batch-check=%(objectname) %(objecttype)"],
+                       cwd=path, input="".join(t + "^{commit}\n" for t in tips),
+                       capture_output=True, text=True)
+    have = [l.split()[0] for l in q.stdout.splitlines() if l.endswith(" commit")]
+    if not have:
+        return left
+    local = git(["for-each-ref", "--format=%(objectname)", "refs/remotes"], path,
+                check=False).stdout.split()
+    p = subprocess.run(["git", "rev-list", "--stdin", "HEAD"], cwd=path,
+                       input="".join("^" + h + "\n" for h in [*have, *local]),
+                       capture_output=True, text=True)
+    return p.stdout.split() if p.returncode == 0 else left
 
 
-def nested_problem(path):
+# Untracked paths that nano-ros's OWN build writes into a nested repository
+# whose `.gitignore` does not cover them, per nested-repo path. `git status`
+# already leaves out what the nested repo ignores (NuttX's kernel `.config`,
+# objects and `System.map`), so only these remain. Each is a known generated
+# path, never a pattern for "anything": an untracked file not listed here may
+# be a user's new source and stays a refusal. Producers:
+#   third-party/nuttx/nuttx  packages/api/nros-c/cmake/nros-nuttx.cmake and
+#                            just/nuttx.just (`.nros-nuttx-build-head*`,
+#                            `.nros-nuttx-build.lock`, the
+#                            `nros-nuttx-export-<config id>/` snapshots)
+NROS_GENERATED_IN_NESTED = {
+    "third-party/nuttx/nuttx": (
+        ".nros-nuttx-build-head", ".nros-nuttx-build-head-*", ".nros-nuttx-build.lock",
+        "nros-nuttx-export-*/",
+    ),
+}
+
+
+def _is_nros_generated(rel, entry):
+    """Is the untracked porcelain `entry` (a path in the nested repo at `rel`)
+    one of nano-ros's known build outputs? Top-level names only: the
+    producers write at the nested repo's root."""
+    for pat in NROS_GENERATED_IN_NESTED.get(rel, ()):
+        is_dir = pat.endswith("/")
+        name = entry.rstrip("/")
+        if "/" in name or is_dir != entry.endswith("/"):
+            continue
+        if fnmatch.fnmatchcase(name, pat.rstrip("/")):
+            return True
+    return False
+
+
+PIN_HISTORY_LIMIT = 500
+
+
+def pins_on_base(super_path, rel, base):
+    """Every commit `base` (origin/main) has recorded as the gitlink at `rel`:
+    its current pin and each earlier one, newest first, up to
+    PIN_HISTORY_LIMIT. Main's pins are published by construction, because CI's
+    `check-submodule-commits-reachable` refuses a pin on no remote. So a
+    nested HEAD equal to one of them is published, whatever the clone's own
+    `origin` says. A shared module store can keep upstream as `origin` while
+    the pin lives on our fork (threadx/kernel at 9a29f1bd3f). This needs no
+    network."""
+    if not rel:
+        return set()
+    p = git(["log", f"--max-count={PIN_HISTORY_LIMIT}", "--format=%H", base, "--", rel],
+            super_path, check=False)
+    pins = set()
+    for c in p.stdout.split():
+        q = git(["rev-parse", "--verify", "-q", f"{c}:{rel}"], super_path, check=False)
+        if q.returncode == 0:
+            pins.add(q.stdout.strip())
+    return pins
+
+
+def nested_problem(path, urls=(), rel="", pins=lambda: ()):
     """Why the nested repository at `path` is not safe to delete, or None."""
     st = git(["status", "--porcelain=v1", "--ignore-submodules=none"], path, check=False)
     if st.returncode != 0:
         return "status unreadable"
-    if st.stdout.strip():
+    left = [l for l in st.stdout.splitlines()
+            if not (l.startswith("?? ") and _is_nros_generated(rel, l[3:]))]
+    if left:
         return "has uncommitted changes"
-    if unpushed(path):
+    # Cheapest proof first: local remote-tracking refs, then main's recorded
+    # pins (offline), and only then the remotes themselves.
+    local = git(["rev-list", "HEAD", "--not", "--remotes"], path, check=False)
+    if local.returncode == 0 and not local.stdout.strip():
+        return None
+    head = git(["rev-parse", "HEAD"], path, check=False).stdout.strip()
+    if head and head in pins():
+        return None  # main recorded this exact commit; its ancestors come with it
+    if unpushed(path, urls):
         return "HEAD is on none of its remotes"
     return None
 
 
-def dirt(path):
+def declared_urls(path):
+    """{submodule path: (url,)} from the worktree's `.gitmodules`. A clone's own
+    `origin` need not be the URL the superproject declares (threadx/kernel's
+    clone points at upstream while its pin is on our fork's branch), so the
+    declared URL is asked as well."""
+    gm = Path(path) / ".gitmodules"
+    if not gm.is_file():
+        return {}
+    p = git(["config", "-f", str(gm), "--get-regexp", r"^submodule\..*\.(path|url)$"],
+            path, check=False)
+    paths, urls = {}, {}
+    for line in p.stdout.splitlines():
+        key, _, val = line.partition(" ")
+        name, _, field = key[len("submodule."):].rpartition(".")
+        (paths if field == "path" else urls)[name] = val
+    return {paths[n]: (urls[n],) for n in paths if n in urls}
+
+
+def dirt(path, base="origin/main"):
     """(problems, nested) for a worktree: what makes it unsafe, and the
     nested repositories that are the only reason a plain remove would refuse."""
     st = git(["status", "--porcelain=v1", "--ignore-submodules=none"], path, check=False)
@@ -131,12 +278,14 @@ def dirt(path):
         for l in git(["ls-files", "-s"], path).stdout.splitlines()
         if l.startswith("160000 ")
     )
+    declared = declared_urls(path)
     problems, nested = [], []
     for line in st.stdout.splitlines():
         code, rel = line[:2], line[3:].rstrip("/")
         full = Path(path) / rel
         if rel in gitlinks or (code == "??" and (full / ".git").exists()):
-            why = nested_problem(full)
+            why = nested_problem(full, declared.get(rel, ()), rel,
+                                 lambda r=rel: pins_on_base(path, r, base))
             if why:
                 problems.append(f"nested repo {rel} {why}")
             else:
@@ -147,7 +296,8 @@ def dirt(path):
     # `git worktree remove` refuse.
     for rel in gitlinks:
         if (Path(path) / rel / ".git").exists() and rel not in nested and not any(rel in p for p in problems):
-            why = nested_problem(Path(path) / rel)
+            why = nested_problem(Path(path) / rel, declared.get(rel, ()), rel,
+                                 lambda r=rel: pins_on_base(path, r, base))
             if why:
                 problems.append(f"nested repo {rel} {why}")
             else:
@@ -228,7 +378,7 @@ def assess(repo, base, me, prs, here):
         if not ok:
             rows.append((path, "keep", why, []))
             continue
-        problems, nested = dirt(path)
+        problems, nested = dirt(path, base)
         if problems:
             rows.append((path, "skip", f"{ok}, but " + "; ".join(problems[:3]), []))
             continue
@@ -433,6 +583,93 @@ def self_test():
             # 15 submodule with a local edit -> skip
             p = wt("subdirty"); G("submodule", "update", "-q", "--init", cwd=p)
             (p / "subm" / "s").write_text("edited"); cases["subdirty"] = "skip:uncommitted changes"
+            # 16 nested repo at a remote TAG that no branch reaches -> remove
+            #    (FreeRTOS-Kernel pinned at V11.2.0: the false positive this
+            #    case exists for). Its clone tracks one branch, so local
+            #    remote-tracking refs cannot see the tag.
+            G("clone", "-q", str(t / "sub.git"), str(t / "tagw"), cwd=t)
+            G("checkout", "-q", "--detach", cwd=t / "tagw"); commit(t / "tagw", "rel")
+            G("tag", "v1", cwd=t / "tagw"); G("push", "-q", "origin", "v1", cwd=t / "tagw")
+            p = wt("nesttag"); G("clone", "-q", "--single-branch", "--no-tags", str(t / "sub.git"), str(p / "vendor"), cwd=t)
+            G("fetch", "-q", "origin", "refs/tags/v1", cwd=p / "vendor")
+            G("checkout", "-q", "--detach", "FETCH_HEAD", cwd=p / "vendor"); cases["nesttag"] = "remove"
+            # 17 nested repo whose own origin is NOT the declared URL, at a branch
+            #    tip of the declared one (threadx/kernel: upstream origin, pin on
+            #    our fork's branch) -> remove
+            G("init", "-q", "--bare", "-b", "main", str(t / "fork.git"), cwd=t)
+            commit(t / "tagw", "forkpatch")  # on the fork only, never upstream
+            G("push", "-q", str(t / "fork.git"), "HEAD:refs/heads/patches", cwd=t / "tagw")
+            G("checkout", "-q", "--detach", "origin/main", cwd=m)
+            G("submodule", "add", "-q", "-b", "patches", str(t / "fork.git"), "forked", cwd=m)
+            G("commit", "-q", "-m", "fork submodule", cwd=m)
+            G("push", "-q", "origin", "HEAD:main", cwd=m); G("fetch", "-q", "origin", cwd=m)
+            p = wt("nestfork")
+            G("clone", "-q", "--no-tags", str(t / "sub.git"), str(p / "forked"), cwd=t)
+            G("fetch", "-q", str(t / "fork.git"), "patches", cwd=p / "forked")
+            G("checkout", "-q", "--detach", "FETCH_HEAD", cwd=p / "forked"); cases["nestfork"] = "remove"
+            # 18 the same tag pin with a local-only commit on top -> skip
+            p = wt("nesttaglocal"); G("clone", "-q", "--no-tags", str(t / "sub.git"), str(p / "vendor"), cwd=t)
+            G("fetch", "-q", "origin", "refs/tags/v1", cwd=p / "vendor")
+            G("checkout", "-q", "--detach", "FETCH_HEAD", cwd=p / "vendor")
+            commit(p / "vendor", "mine"); cases["nesttaglocal"] = "skip:on none of its remotes"
+            # 19 a NuttX-shaped nested repo at the known path, holding its OWN
+            #    ignored kernel outputs and nano-ros's listed build outputs -> remove
+            G("init", "-q", "--bare", "-b", "main", str(t / "nuttx.git"), cwd=t)
+            G("clone", "-q", str(t / "nuttx.git"), str(t / "nuttxw"), cwd=t)
+            (t / "nuttxw" / ".gitignore").write_text(".config\n*.o\n")
+            G("add", ".gitignore", cwd=t / "nuttxw"); G("commit", "-q", "-m", "ignore", cwd=t / "nuttxw")
+            G("push", "-q", "origin", "HEAD:main", cwd=t / "nuttxw")
+            G("checkout", "-q", "--detach", "origin/main", cwd=m)
+            G("submodule", "add", "-q", str(t / "nuttx.git"), "third-party/nuttx/nuttx", cwd=m)
+            G("commit", "-q", "-m", "nuttx submodule", cwd=m)
+            G("push", "-q", "origin", "HEAD:main", cwd=m); G("fetch", "-q", "origin", cwd=m)
+
+            def nuttxlike(name, extra=None):
+                p = wt(name); G("submodule", "update", "-q", "--init", "third-party/nuttx/nuttx", cwd=p)
+                n = p / "third-party" / "nuttx" / "nuttx"
+                (n / ".config").write_text("CONFIG_X=y\n"); (n / "k.o").write_text("o")
+                (n / ".nros-nuttx-build-head").write_text("h"); (n / ".nros-nuttx-build-head-arm").write_text("h")
+                (n / ".nros-nuttx-build.lock").write_text("")
+                (n / "nros-nuttx-export-arm" / "include").mkdir(parents=True)
+                (n / "nros-nuttx-export-arm" / "include" / "x.h").write_text("x")
+                if extra:
+                    (n / extra).write_text("user source")
+                return p
+            nuttxlike("nuttxgen"); cases["nuttxgen"] = "remove"
+            # 20 the same, plus one untracked file nano-ros does not generate -> skip
+            nuttxlike("nuttxuser", extra="my_driver.c"); cases["nuttxuser"] = "skip:uncommitted changes"
+            # 21 the generated names do not excuse a nested repo at ANOTHER path -> skip
+            p = wt("gennotnuttx"); G("clone", "-q", str(t / "sub.git"), str(p / "vendor"), cwd=t)
+            (p / "vendor" / ".nros-nuttx-build.lock").write_text(""); cases["gennotnuttx"] = "skip:uncommitted changes"
+            # 22 a submodule whose clone's origin is STALE, is a repo that never
+            #    held the pin, and is not the declared URL, at exactly the
+            #    gitlink main records -> remove, with no remote asked.
+            #    (A shared module store: upstream threadx as origin, pin on our fork.)
+            G("init", "-q", "--bare", "-b", "main", str(t / "pinfork.git"), cwd=t)
+            G("clone", "-q", str(t / "sub.git"), str(t / "pinw"), cwd=t)
+            commit(t / "pinw", "forkonly"); G("push", "-q", str(t / "pinfork.git"), "HEAD:refs/heads/lp64", cwd=t / "pinw")
+            G("checkout", "-q", "--detach", "origin/main", cwd=m)
+            G("submodule", "add", "-q", "-b", "lp64", str(t / "pinfork.git"), "pinned", cwd=m)
+            G("commit", "-q", "-m", "pinned submodule", cwd=m)
+            # the fork branch moves on, so the pin is no longer any remote tip
+            commit(t / "pinw", "later"); G("push", "-q", str(t / "pinfork.git"), "HEAD:refs/heads/lp64", cwd=t / "pinw")
+            G("push", "-q", "origin", "HEAD:main", cwd=m); G("fetch", "-q", "origin", cwd=m)
+            pin = G("rev-parse", "origin/main:pinned", cwd=m).strip()
+            p = wt("nestpin")
+            G("clone", "-q", "--no-tags", str(t / "sub.git"), str(p / "pinned"), cwd=t)
+            G("fetch", "-q", str(t / "pinfork.git"), pin, cwd=p / "pinned")
+            G("checkout", "-q", "--detach", pin, cwd=p / "pinned")
+            G("config", "-f", str(p / ".gitmodules"), "submodule.pinned.url", "../nowhere.git", cwd=p)
+            G("update-index", "--assume-unchanged", ".gitmodules", cwd=p)
+            cases["nestpin"] = "remove"
+            # 23 the same clone one local commit past the pin -> skip
+            p = wt("nestpinlocal")
+            G("clone", "-q", "--no-tags", str(t / "sub.git"), str(p / "pinned"), cwd=t)
+            G("fetch", "-q", str(t / "pinfork.git"), pin, cwd=p / "pinned")
+            G("checkout", "-q", "--detach", pin, cwd=p / "pinned")
+            G("config", "-f", str(p / ".gitmodules"), "submodule.pinned.url", "../nowhere.git", cwd=p)
+            G("update-index", "--assume-unchanged", ".gitmodules", cwd=p)
+            commit(p / "pinned", "past"); cases["nestpinlocal"] = "skip:on none of its remotes"
             # everything except nomarker/other is ours
             for name in cases:
                 if name not in ("nomarker", "other"):
@@ -452,6 +689,36 @@ def self_test():
                 if r is None or r[1] != v or (frag and frag not in r[2]):
                     fails.append(f"{name}: want {want}, got {r[1:3] if r else None}")
 
+            # negative control: without asking the remote, the tag pin reads
+            # unsafe, so case 16 is what the ls-remote step earns
+            real = remote_ref_tips
+            globals()["remote_ref_tips"] = lambda path, urls=(): set()
+            try:
+                if not unpushed(t / "nesttag" / "vendor"):
+                    fails.append("negative control: a tag pin read as published with no remote asked")
+                if not unpushed(t / "nestfork" / "forked"):
+                    fails.append("negative control: a fork pin read as published with no remote asked")
+            finally:
+                globals()["remote_ref_tips"] = real
+            # a remote that never answers is bounded by the budget, and proves nothing
+            hang = t / "hang.sh"
+            hang.write_text("#!/bin/sh\nsleep 30\n"); hang.chmod(0o755)
+            v = t / "nesttaglocal" / "vendor"
+            G("remote", "add", "slow", "ext::" + str(hang), cwd=v)
+            G("config", "protocol.ext.allow", "always", cwd=v)
+            saved_budget = globals()["LS_REMOTE_BUDGET_S"]
+            globals()["LS_REMOTE_BUDGET_S"] = 2
+            _ls_remote_spent[0] = 0.0
+            t0 = time.monotonic()
+            still = unpushed(v)
+            took = time.monotonic() - t0
+            globals()["LS_REMOTE_BUDGET_S"] = saved_budget
+            _ls_remote_spent[0] = 0.0
+            G("remote", "remove", "slow", cwd=v)
+            if took > 6:
+                fails.append(f"a hanging remote was not bounded ({took:.1f}s)")
+            if not still:
+                fails.append("a hanging remote proved a local commit published")
             # dry run removes nothing
             before = set(os.listdir(t))
             quiet(run, [], cwd=str(m))
@@ -520,7 +787,7 @@ def self_test():
         print(f"worktree-prune self-test FAIL: {f}", file=sys.stderr)
     if fails:
         return 1
-    print("worktree-prune self-test: OK (15 worktree cases, dry run, identity, --mark, --mark-if-absent, current worktree, --apply)")
+    print("worktree-prune self-test: OK (23 worktree cases, the no-remote negative control, a hanging remote, dry run, identity, --mark, --mark-if-absent, current worktree, --apply)")
     return 0
 
 
