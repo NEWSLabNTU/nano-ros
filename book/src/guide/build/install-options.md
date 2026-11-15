@@ -157,7 +157,7 @@ installed (`nros pin <version>` writes the same file):
 
 ```bash probe=40 track=installed variant=pinned
 mkdir pinned_app && cd pinned_app
-printf '[toolchain]\nversion = "0.6.0-nros8"\n' > nros-toolchain.toml
+printf '[toolchain]\nversion = "0.6.0-nros9"\n' > nros-toolchain.toml
 ```
 
 Ask for the pin. The release that answers is the pinned one, fetched on first
@@ -168,7 +168,7 @@ nros pin
 ```
 
 ```text probe-expect=50 variant=pinned
-sdk/nros/0.6.0-nros8/share/nros/manifest.toml
+sdk/nros/0.6.0-nros9/share/nros/manifest.toml
 ```
 
 Only the newest release is supported and fixes are not backported, so move
