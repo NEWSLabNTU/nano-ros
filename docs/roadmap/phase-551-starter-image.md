@@ -1,7 +1,10 @@
 # Phase 551 — The starter image
 
-**Status (2026-11-12). IN PROGRESS: every RFC-0127 question is ruled, so
-every item is unblocked.** Work for
+**Status (2026-11-15). IN PROGRESS: W0, W1, W2, W5, W6 and W7 are done; W4
+is done but for its immutability check; W3 and W8 are open.** The first
+release to publish the image is `0.6.0-nros9` (W4). W3 and W4's
+immutability check each need a dispatch of `starter-image.yml`; W8 waits on
+the arm64 runner. Work for
 [RFC-0127](../design/0127-starter-image.md): option B (D1's structure, D4,
 D5's recipe) ruled 2026-11-11, and every remaining question on 2026-11-12
 ("Take your advice on RFC-0127"), each recommendation taken. W0, W1, W2 and W7
@@ -121,6 +124,13 @@ starts and again before the push; a retag named `latest` or shaped like a
 version is refused. Nothing in it moves `latest`. GHCR creates the package
 private, so an org admin sets it public once after the first push (Q1).
 
+First run (2026-11-15): release `0.6.0-nros9` (tag `nros-0.6.0-nros9` at
+dff3242405) published `ghcr.io/newslabntu/nano-ros-starter:0.6.0-nros9`,
+digest `sha256:56d9244778ab171107b0e2a8d6ce73e19eaa8a1095e839437f3676e9568672d8`,
+and the package was set public by hand. `latest` did not move. Still open:
+the second publish of the same `<ver>` being refused is not yet measured;
+it needs a dispatch.
+
 ### W5 — The `image` probe track gates `latest`
 
 Gate: Q9, ruled 2026-11-12 (100 Mbit/s shared by 30 seats; the size is the
@@ -144,6 +154,15 @@ built from `0.6.0-nros8`: 1.22 GB, about 49 min for a room, the newcomer
 steps green offline; the doctor check is red there, because that release's
 `nros` predates the `container` line.
 
+**Done (2026-11-15)** on the published `0.6.0-nros9`, through
+`scripts/ci/starter-latest.sh --dry-run`, the script the daily run calls:
+pullable with no credentials, 1.66 GB compressed against the 2.00 GB budget,
+about 67 min for a room of 30 seats on 100 Mbit/s, every `probe=` block of the
+page green (`probe=20` with no network), the devcontainer.json digest and the
+`nros doctor` `container` line both name the image, and the run said it would
+move `latest` from unset to `0.6.0-nros9`. The real move belongs to the
+daily `host-tests.yml` run.
+
 ### W6 — Audience recipes
 
 Gate: Q3, ruled 2026-11-12. Documented in the book:
@@ -165,9 +184,11 @@ derived image with the four guarantees. `nros doctor` gains a `container`
 line from `NROS_STARTER_IMAGE`, which the image bakes. The image also bakes
 `CARGO_NET_OFFLINE=true`, so the newcomer steps build with no network and no
 flag (issue 2444's gap does not reach a seat); a project adding a crate runs
-with `-e CARGO_NET_OFFLINE=false`. Probed: the newcomer block (W5's seat)
-and the course recipe; the no-network recipe's `save`/`load` is not run by
-a probe, and the derived-image recipe is W7's.
+with `-e CARGO_NET_OFFLINE=false`. Probed: the newcomer block (W5's seat),
+the course recipe, and the no-network recipe (`probe=50`/`52`, `save` and
+`load`, run on the host by W5's probe); the derived-image recipe is W7's.
+**Done (2026-11-15):** all of them green on the published `0.6.0-nros9` (W5's
+run).
 
 ### W7 — The customer `FROM` recipe
 
@@ -193,6 +214,14 @@ customer reads them.
 Acceptance: a probe builds the recipe against each release; guarantee 2 is
 checked by comparing the image's baked store against `nros setup --dry-run`
 of the same release.
+
+**Done (2026-11-15).** `starter-latest.sh` now builds the recipe `FROM` the
+release it is about to promote, after the image probe and before `latest`
+moves, so the recipe is probed every release and a red recipe holds `latest`
+back. On `0.6.0-nros9`: guarantee 2 present offline for linux,
+mps2-an385-baremetal, mps2-an385-freertos and mps3-an536-freertos;
+guarantee 3 holds; `nav_msgs` installs and the first project builds offline
+on top of it.
 
 ### W8 — arm64
 

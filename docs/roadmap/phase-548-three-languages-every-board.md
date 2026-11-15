@@ -1,6 +1,15 @@
 # Phase 548 — Rust, C and C++ on every board in the user book
 
-**Status (2026-11-07). NOT STARTED.** User ruling (2026-11-07): every board
+**Status (2026-11-15). ACCEPTANCE MET.** Every work item is done. The last
+red cell, the Rust tab of the mps2-an385 Zephyr starter (`zephyr-mps2`),
+went green with #3904: `nros run` planned before it built, so it read no link
+and started no router. That track now replays weekly. Every starter and
+Tutorial track replays weekly with no `awaits` (the bench and hardware tracks
+wait on a board attached to a runner, which is not a cell). The doc is not
+archived yet: five open issues still name it their home (2313, 2360, 2375,
+2400, 2414) and need a new one first.
+
+User ruling (2026-11-07): every board
 in the user book supports all three languages, and the book keeps the Rust,
 C and C++ tabs on every page. A language that does not work on a board yet is
 a gap to close, not a tab to drop. The manager session assigns each work item;
@@ -24,17 +33,17 @@ repository; W8 re-measures every cell.
 | Board (RMW) | Rust | C | C++ |
 |---|---|---|---|
 | linux (cyclonedds) | ok | ok | ok |
-| freertos-posix (zenoh) | ok (W1; probe green 2026-11-10) | ok | 2342 archived; W8 re-measures |
-| freertos-posix (cyclonedds) | **W1** | ok | ok |
+| freertos-posix (zenoh) | ok (W1; probe green 2026-11-10) | ok | ok (weekly track) |
+| freertos-posix (cyclonedds) | ok (W1, weekly track) | ok | ok |
 | mps2-an385 bare metal (zenoh), Tutorial 1 to 10 | ok | Rust only (ruling) | Rust only (ruling) |
 | mps2-an385 FreeRTOS (zenoh) | ok | ok | ok |
-| mps2-an385 Zephyr (zenoh) | ok (W8 replay) | ok | ok (W8 replay) |
-| Zephyr native_sim (zenoh) | red in W8 replay: west configure fails | ok | ok (W8 replay) |
-| NuttX qemu-armv7a (zenoh) | ok | ok | **W3** |
+| mps2-an385 Zephyr (zenoh) | ok (#3904; replay 2026-11-15, weekly) | ok (replay on main 2026-11-15, 37 min) | ok (replay on main 2026-11-15, 31 min) |
+| Zephyr native_sim (zenoh) | ok (W8 replay, weekly track) | ok | ok (weekly track) |
+| NuttX qemu-armv7a (zenoh) | ok | ok | ok (W3, weekly track) |
 | NuttX rv-virt (zenoh) | ok | ok | ok |
 | ThreadX Linux (zenoh) | ok | ok | ok |
 | ThreadX qemu riscv64 (zenoh) | ok | ok (W8 replay) | ok (W8 replay) |
-| nucleo-f767zi Zephyr (zenoh), Renode twin, serial | red in W8 replay: no zephyr-lang-rust in the west manifest | ok | ok |
+| nucleo-f767zi Zephyr (zenoh), Renode twin, serial | ok (W8 replay, weekly track) | ok | ok |
 
 Gaps already owned outside this phase. This phase does not repeat them; W8
 re-measures their cells once they land:
@@ -63,7 +72,10 @@ re-measures their cells once they land:
 
 ## Work items
 
-### W1 — Rust on the FreeRTOS POSIX board
+### W1 — Rust on the FreeRTOS POSIX board — DONE
+
+- **Status:** DONE (2026-11-15). All six freertos-posix tracks (C, C++ and
+  Rust, on Cyclone DDS and on zenoh) replay weekly.
 
 **Code area:** `packages/boards/nros-board-freertos-posix/`, the board-crate
 resolution for a generated entry in `nros-cli-core`
@@ -365,10 +377,12 @@ gate fails ("the refusal wrote no … .nros-toolchain-changed"). The `nros build
 half is unit-tested: the marker clears the configure state and only that, and
 no marker means no action.
 
-### W7 — Measure nucleo-f767zi
+### W7 — Measure nucleo-f767zi — DONE
 
-**Status (2026-11-07): MEASURED.** C ok, C++ ok, Rust red (issues 2358 and
-2359).
+**Status (2026-11-15): DONE.** Measured 2026-11-07: C ok, C++ ok, Rust red
+(issues 2358 and 2359). Both issues are archived, and the Renode twin's
+three tracks (`renode-nucleo`, `-rust`, `-cpp`) replay weekly. The bench
+tracks wait on a board attached to a runner, which is not a cell.
 
 **Code area:** none yet. This item is a measurement.
 
@@ -483,6 +497,16 @@ of that line before it stops the emulator.
   - `tutorial-c`, `tutorial-cpp`, `baremetal-c`, `baremetal-cpp`: bare metal
     is Rust only by ruling; the Tutorial's C and C++ tabs move to FreeRTOS
     in a separate change.
+
+- **Replay (2026-11-15).** The Tutorial's C and C++ tabs now run on
+  mps2-an385 FreeRTOS (`tutorial-c`, `tutorial-cpp`, weekly). The
+  freertos-posix Rust and zenoh tracks flipped to weekly. Last red cell:
+  `zephyr-mps2` (Rust). `nros run` read the image's link before the build
+  wrote `zephyr/.config`, so it planned no router and the board never
+  connected. #3904 (build first, then plan; a board run with no link now
+  says so) makes the track replay green in 36 min, and it is weekly now. The
+  `zephyr-mps2-c` and `-cpp` tracks replay green on main after #3868 (37 and
+  31 min).
 
 ### W9 — The RISC-V toolchain file finds rust-lld on the pinned toolchain — DONE
 
