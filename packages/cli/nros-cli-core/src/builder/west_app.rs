@@ -313,6 +313,12 @@ pub struct CmakeApp {
     /// `nros_cpp_register_parameter_services` linked an nros-cpp built without
     /// it.
     pub features: Vec<String>,
+    /// `nros_register_cargo_node(...)` arguments, one per Rust node package of
+    /// the image that ships no `CMakeLists.txt`: registered from the bringup's
+    /// `[[component]]` row ([`super::cargo_node`]) after the subdirs, with its
+    /// directory relative to the application. Such a package is in
+    /// [`Self::rust_node_dirs`] too, and is never a subdir.
+    pub cargo_nodes: Vec<String>,
     /// Workspace packages of the image's closure that are Zephyr modules (a
     /// `zephyr/module.yml`), relative to the application. Appended to
     /// `ZEPHYR_EXTRA_MODULES` BEFORE `find_package(Zephyr)`, which is where
@@ -565,9 +571,10 @@ impl ZephyrModule {
 /// Is this node package a cargo crate?
 ///
 /// The `NROS_WS_RUST_NODE_DIRS` question, asked of the package rather than of a
-/// registry: a Rust node in a cmake workspace carries BOTH a `Cargo.toml` and a
-/// `CMakeLists.txt` (the latter registering it with `LANGUAGE RUST`), so the
-/// manifest is the discriminator and the build file is not.
+/// registry: a Rust node in a cmake workspace may carry a `CMakeLists.txt`
+/// registering it with `LANGUAGE RUST`, or none (then its registration is
+/// derived, [`super::cargo_node`]), so the manifest is the discriminator and
+/// the build file is not.
 fn is_cargo_node(dir: &Path) -> bool {
     dir.join("Cargo.toml").is_file()
 }
@@ -603,6 +610,18 @@ pub fn resolve_cmake(
     let mut rust_node_dirs = Vec::new();
     let mut zephyr_modules = Vec::new();
     let mut lang = "c";
+    // A Rust node package with no CMakeLists of its own: registered from its
+    // bringup row, the rule the native cmake root uses too.
+    let mut cargo_nodes = Vec::new();
+    let derived = super::cargo_node::derived_registrations(
+        bringup_dir,
+        nodes.iter().map(|(n, d)| (n.as_str(), d.as_path())),
+    )?;
+    for n in &derived {
+        let rel = relative_or_err(entry_dir, &n.dir)?;
+        cargo_nodes.push(n.cmake_args(&format!("${{CMAKE_CURRENT_SOURCE_DIR}}/{rel}")));
+        rust_node_dirs.push(rel);
+    }
     for (name, dir) in nodes {
         let module = ZephyrModule::read(dir)?;
         if let Some(m) = &module {
@@ -641,6 +660,7 @@ pub fn resolve_cmake(
             deploy: platform.to_string(),
             panic: panic.map(str::to_string),
             rust_node_dirs,
+            cargo_nodes,
             zephyr_modules,
             features: crate::cmd::build::declared_capabilities_for(bringup_dir, Some(image_id))
                 .into_iter()
@@ -895,6 +915,15 @@ fn render_cmake_app(
         out.push_str(&format!(
             "add_subdirectory(\"${{CMAKE_CURRENT_SOURCE_DIR}}/{dir}\" {name})\n"
         ));
+    }
+    if !c.cargo_nodes.is_empty() {
+        out.push_str(
+            "\n# The image's Rust node packages that ship no CMakeLists.txt,\n\
+             # registered from the bringup's `[[component]]` rows.\n",
+        );
+        for args in &c.cargo_nodes {
+            out.push_str(&format!("nros_register_cargo_node({args})\n"));
+        }
     }
     out.push_str(
         "\n# BOARD and DEPLOY are the board FAMILY token, which on this road is\n\
@@ -1603,6 +1632,59 @@ mod tests {
             nodes,
         )
         .expect("resolves")
+    }
+
+    /// A Rust node package with no CMakeLists is registered from its bringup
+    /// row and bundled into the runtime, never added as a subdir; one that
+    /// ships its own CMakeLists keeps it.
+    #[test]
+    fn a_cargo_only_node_is_registered_from_its_row() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path();
+        let mut nodes = cmake_workspace(root, &[("c_talker_pkg", false, false)]);
+        let beat = root.join("src/rust_beat_pkg");
+        let own = root.join("src/rust_own_pkg");
+        for (dir, cmake) in [(&beat, false), (&own, true)] {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(dir.join("Cargo.toml"), "[package]\n").unwrap();
+            std::fs::write(dir.join("package.xml"), "<package/>").unwrap();
+            if cmake {
+                std::fs::write(dir.join("CMakeLists.txt"), "").unwrap();
+            }
+        }
+        nodes.push(("rust_beat_pkg".into(), beat));
+        nodes.push(("rust_own_pkg".into(), own));
+        let bringup = root.join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"d\"\n\n\
+             [[component]]\npkg = \"rust_beat_pkg\"\nclass = \"rust_beat_pkg::Beat\"\nname = \"beat\"\n\n\
+             [[component]]\npkg = \"rust_own_pkg\"\nclass = \"rust_own_pkg::Own\"\nname = \"own\"\n",
+        )
+        .unwrap();
+        let app = cmake_app(root, &nodes, None);
+        let c = app.cmake.as_ref().unwrap();
+        assert_eq!(
+            c.cargo_nodes,
+            [
+                "rust_beat_pkg \"${CMAKE_CURRENT_SOURCE_DIR}/../../../src/rust_beat_pkg\" beat \
+              rust_beat_pkg::Beat"
+            ]
+        );
+        assert_eq!(
+            c.rust_node_dirs,
+            ["../../../src/rust_beat_pkg", "../../../src/rust_own_pkg"]
+        );
+        let names: Vec<&str> = c.subdirs.iter().map(|(_, n)| n.as_str()).collect();
+        assert_eq!(names, ["c_talker_pkg", "rust_own_pkg"]);
+        let body = render_cmakelists(&app);
+        let reg = body
+            .find("nros_register_cargo_node(rust_beat_pkg ")
+            .expect("the derived registration is emitted");
+        let entry = body.find("\nnano_ros_add_executable(").unwrap();
+        assert!(reg < entry, "registered before the entry plans: {body}");
+        assert!(!body.contains("rust_own_pkg::Own"), "explicit wins: {body}");
     }
 
     /// `LANG` is the workspace's own answer, and the scan reaches `<pkg>/src/`.

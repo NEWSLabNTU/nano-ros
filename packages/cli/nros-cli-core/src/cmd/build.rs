@@ -1188,7 +1188,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             // application) and, since phase-530 W5, on cmake, whose
             // `nano_ros_workspace()` hook now seeds every reader from it.
             resolve_composes_registered(driver, image_has_non_rust(&image, &bringup_dir), || {
-                crate::builder::cmake_root::root_subdir_names(
+                crate::builder::cmake_root::root_registered_packages(
                     &found,
                     &cmake_root_excluded(
                         &found,
@@ -1197,7 +1197,10 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         &platform,
                         &bringup_dirs,
                     ),
+                    &bringup_dir,
                 )
+                .into_keys()
+                .collect()
             }),
             stale,
         );
@@ -1217,12 +1220,11 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // of its images were asked for.
                 coordinate_unions.get_or_compose(&id, || {
                     let excluded = cmake_excluded();
-                    let registered: std::collections::BTreeMap<String, PathBuf> = found
-                        .packages
-                        .iter()
-                        .filter(|p| crate::builder::cmake_root::is_subdir(p, &excluded))
-                        .map(|p| (p.name.clone(), p.dir.clone()))
-                        .collect();
+                    let registered = crate::builder::cmake_root::root_registered_packages(
+                        &found,
+                        &excluded,
+                        &bringup_dir,
+                    );
                     // The root's language, by the rule stage 4 writes it with.
                     let lang = if found
                         .packages
@@ -2059,7 +2061,21 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 }
                 let owned_identity = crate::builder::cmake_root::OwnedIdentity::agree(&owned)
                     .map_err(|e| eyre::eyre!("{e}"))?;
+                let root_excluded = cmake_root_excluded(
+                    &found,
+                    &framework_entries,
+                    &board,
+                    &platform,
+                    &bringup_dirs,
+                );
+                let cargo_nodes = crate::builder::cmake_root::root_cargo_nodes(
+                    &found,
+                    &root_excluded,
+                    &bringup_dir,
+                )
+                .map_err(|e| eyre::eyre!("{e}"))?;
                 let spec = crate::builder::cmake_root::CmakeRootSpec {
+                    cargo_nodes,
                     entries: cmake_entries,
                     owned_identity,
                     owned_census,
@@ -2080,13 +2096,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     rmw: image.rmw.clone().unwrap_or_else(|| "zenoh".to_string()),
                     toolchain_file: descriptor.cmake.as_ref().map(|c| c.toolchain_file.clone()),
                     nano_ros_root: nano_ros_root.clone().unwrap_or_default(),
-                    excluded: cmake_root_excluded(
-                        &found,
-                        &framework_entries,
-                        &board,
-                        &platform,
-                        &bringup_dirs,
-                    ),
+                    excluded: root_excluded,
                 };
                 crate::builder::cmake_root::write(&found, &manifest_dir, &spec)
                     .map_err(|e| eyre::eyre!("{e}"))?;
@@ -4695,6 +4705,8 @@ fn plan_packages(
                 .map(|p| p.dir.clone())
                 .collect();
             let spec = crate::builder::cmake_root::CmakeRootSpec {
+                // One package, no bringup: nothing to derive from.
+                cargo_nodes: Vec::new(),
                 entries: Vec::new(),
                 image_env: false,
                 owned_identity: None,
@@ -6158,6 +6170,7 @@ pub(crate) fn metadata_probe_build_dir(root: &std::path::Path) -> std::path::Pat
 /// the model alone and records no inputs, so the configure recomposes.
 fn registered_population(
     root: &std::path::Path,
+    bringup_dir: &std::path::Path,
     model_path: &std::path::Path,
     board: Option<String>,
     scope: RegisteredScope,
@@ -6184,8 +6197,12 @@ fn registered_population(
             probe.display()
         ));
     }
-    crate::cmd::entity_inventory::registered_from_probe(&probe, &packages, Some(root))
-        .map_err(|e| format!("{e:#}"))
+    crate::cmd::entity_inventory::registered_from_probe(
+        &probe,
+        &packages,
+        Some((root, Some(bringup_dir))),
+    )
+    .map_err(|e| format!("{e:#}"))
 }
 
 /// Stage 3.5 for ONE image — RFC-0094 D1, phase-439 W2.
@@ -6670,7 +6687,8 @@ fn resolve_image(
         if let Some(scope) = compose_registered
             && EntityInventory::from_model("", &model).is_some()
         {
-            match registered_population(root, &model_path, image.board.clone(), scope) {
+            match registered_population(root, bringup_dir, &model_path, image.board.clone(), scope)
+            {
                 Ok(registered) => {
                     crate::cmd::entity_inventory::check_model(&model)
                         .map_err(|e| format!("{e:#}"))?;
@@ -7433,9 +7451,15 @@ fn resolve_coordinate(
         }
         let names: std::collections::BTreeSet<String> =
             registered_packages.keys().cloned().collect();
-        let registered =
-            crate::cmd::entity_inventory::registered_from_probe(&probe, &names, Some(root))
-                .map_err(|e| format!("{e:#}"))?;
+        // One bringup per shared configure: its members are that bringup's
+        // images.
+        let bringup_dir = members.first().map(|(_, bd, _, _)| bd.as_path());
+        let registered = crate::cmd::entity_inventory::registered_from_probe(
+            &probe,
+            &names,
+            Some((root, bringup_dir)),
+        )
+        .map_err(|e| format!("{e:#}"))?;
         let paths: Vec<PathBuf> = models.iter().map(|(p, _)| p.clone()).collect();
         let inputs = crate::resolve::EntityInputs::union(&registered, &paths, root, rx_cost);
         let inv = match models.as_slice() {

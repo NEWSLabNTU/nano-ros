@@ -476,8 +476,9 @@ function(nano_ros_add_node name)
             message(FATAL_ERROR
                 "nano_ros_add_node(${name}): LANGUAGE '${_NRN_LANGUAGE}' rejected "
                 "— this verb compiles C/C++ SOURCES into a component library, so "
-                "LANGUAGE is C, CPP, or CXX. A Rust component registers through "
-                "nano_ros_node_register(LANGUAGE RUST) against its Cargo.toml.")
+                "LANGUAGE is C, CPP, or CXX. A Rust component is registered from "
+                "its bringup's [[component]] row, or by its own "
+                "nano_ros_node_register(LANGUAGE RUST) call against its Cargo.toml.")
         endif()
     else()
         _nros_infer_lang(_lang ${_srcs})

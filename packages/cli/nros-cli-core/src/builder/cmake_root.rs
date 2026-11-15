@@ -201,6 +201,11 @@ pub struct CmakeRootSpec {
     /// Issue 2433 -- on a CROSS board, the image sized by the census of its
     /// owned entry: nothing else on this road sizes a program with no model.
     pub owned_census: Option<OwnedCensus>,
+    /// The Rust node packages this root registers by derivation, from the
+    /// bringup's `[[component]]` rows (`nano_ros_workspace(CARGO_NODES …)`):
+    /// cargo crates with no `CMakeLists.txt`, so not subdirs
+    /// ([`super::cargo_node::derived_registrations`]).
+    pub cargo_nodes: Vec<super::cargo_node::CargoNodeRegistration>,
 }
 
 /// Issue 2433 -- which image's census sizes the owned entry, and where the
@@ -250,6 +255,47 @@ pub fn root_subdir_names(
         .filter(|p| is_subdir(p, excluded))
         .map(|p| p.name.clone())
         .collect()
+}
+
+/// Every package whose registration the root for the bringup at `bringup_dir`
+/// composes, name to directory: its subdirs ([`root_subdir_names`]) and the Rust
+/// node packages it registers by derivation ([`root_cargo_nodes`]). Stage 3.5
+/// composes the seed over this set, so it must be the configure's own. A row
+/// [`root_cargo_nodes`] refuses contributes nothing here: stage 4 writes the
+/// root and reports the refusal.
+pub fn root_registered_packages(
+    discovered: &Discovered,
+    excluded: &BTreeSet<PathBuf>,
+    bringup_dir: &Path,
+) -> std::collections::BTreeMap<String, PathBuf> {
+    let mut out: std::collections::BTreeMap<String, PathBuf> = discovered
+        .packages
+        .iter()
+        .filter(|p| is_subdir(p, excluded))
+        .map(|p| (p.name.clone(), p.dir.clone()))
+        .collect();
+    for n in root_cargo_nodes(discovered, excluded, bringup_dir).unwrap_or_default() {
+        out.insert(n.package, n.dir);
+    }
+    out
+}
+
+/// The Rust node packages a root for the bringup at `bringup_dir` registers by
+/// derivation ([`CmakeRootSpec::cargo_nodes`]): the bringup's `[[component]]`
+/// rows over the workspace packages the root does not leave out.
+pub fn root_cargo_nodes(
+    discovered: &Discovered,
+    excluded: &BTreeSet<PathBuf>,
+    bringup_dir: &Path,
+) -> Result<Vec<super::cargo_node::CargoNodeRegistration>, String> {
+    super::cargo_node::derived_registrations(
+        bringup_dir,
+        discovered
+            .packages
+            .iter()
+            .filter(|p| !excluded.contains(&p.dir))
+            .map(|p| (p.name.as_str(), p.dir.as_path())),
+    )
 }
 
 /// Render the root `CMakeLists.txt` written to `manifest_dir`.
@@ -580,6 +626,15 @@ pub fn render(
         }
         out.push('\n');
     }
+    // The Rust node packages with no CMakeLists of their own, registered from
+    // the bringup's `[[component]]` rows. Workspace-relative, like SUBDIRS.
+    if !spec.cargo_nodes.is_empty() {
+        out.push_str("    CARGO_NODES\n");
+        for n in &spec.cargo_nodes {
+            let rel = super::paths::relative_or_err(&spec.workspace, &n.dir)?;
+            out.push_str(&format!("        {}\n", n.cmake_args(&rel)));
+        }
+    }
     out.push_str("    ORDER_FROM_DEPENDS\n");
     out.push_str("    SUBDIRS\n");
     for (rel, name) in &subdirs {
@@ -746,6 +801,7 @@ mod tests {
             nano_ros_root: PathBuf::from("/nros"),
             excluded: Default::default(),
             entries: Vec::new(),
+            cargo_nodes: Vec::new(),
         }
     }
 
@@ -1408,8 +1464,8 @@ mod tests {
         );
     }
 
-    /// The cmake-driven Rust node -- the case that makes `mixed` work. It keeps
-    /// its subdirectory; only its cargo membership went away.
+    /// A Rust node that ships its own CMakeLists and declares cmake keeps its
+    /// subdirectory: an explicit registration wins over a derived one.
     #[test]
     fn a_dual_file_package_declaring_cmake_is_still_a_subdir() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1450,5 +1506,47 @@ mod tests {
         assert!(e.contains("misdeclared_pkg"), "must NAME the package: {e}");
         assert!(e.contains("CMakeLists.txt"), "and the missing file: {e}");
         assert!(!e.contains("healthy_pkg"), "and only the offender: {e}");
+    }
+
+    /// A Rust node package with no CMakeLists of its own is registered from its
+    /// bringup row (`CARGO_NODES`), never added as a subdir; one that ships its
+    /// own CMakeLists keeps it and is a subdir with no derived row.
+    #[test]
+    fn a_cargo_only_component_package_is_registered_from_its_row() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        let talker = pkg(root, "c_talker_pkg", true);
+        let derived = declared(root, "rust_beat_pkg", true, false, "nros_cargo");
+        let explicit = declared(root, "rust_own_pkg", true, true, "nros_cmake");
+        for p in [&talker, &derived, &explicit] {
+            std::fs::write(p.dir.join("package.xml"), "<package/>").unwrap();
+        }
+        let bringup = root.join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"demo\"\n\n\
+             [[component]]\npkg = \"rust_beat_pkg\"\nclass = \"rust_beat_pkg::Beat\"\nname = \"beat\"\n\n\
+             [[component]]\npkg = \"rust_own_pkg\"\nclass = \"rust_own_pkg::Own\"\nname = \"own\"\n\n\
+             [[component]]\npkg = \"c_talker_pkg\"\nclass = \"c_talker_pkg::Talker\"\nname = \"talker\"\n",
+        )
+        .unwrap();
+        let d = discovered(vec![talker, derived, explicit]);
+        let mut sp = spec(root);
+        sp.cargo_nodes = root_cargo_nodes(&d, &sp.excluded, &bringup).unwrap();
+        assert_eq!(sp.cargo_nodes.len(), 1, "{:?}", sp.cargo_nodes);
+        let body = render(&d, &root.join("build/posix"), &sp).expect("renders");
+        assert!(
+            body.contains(
+                "    CARGO_NODES\n        rust_beat_pkg \"src/rust_beat_pkg\" beat rust_beat_pkg::Beat\n"
+            ),
+            "{body}"
+        );
+        assert!(!body.contains("# rust_beat_pkg"), "not a subdir: {body}");
+        assert!(
+            body.contains("\"src/rust_own_pkg\"   # rust_own_pkg"),
+            "{body}"
+        );
+        assert!(!body.contains("rust_own_pkg::Own"), "explicit wins: {body}");
     }
 }

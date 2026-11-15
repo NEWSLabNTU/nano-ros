@@ -532,11 +532,13 @@ is fixed in play_launch `191d949f` and lands here with the next pin bump.
 
 ### I13 -- a Rust package in a mixed image needs no registration of its own
 
-**Status: RULED (2026-11-15), option A.** [Issue 2599](../issues/2599-mixed-image-rust-package-needs-cmake-registration.md),
-GitHub #3857. The CMake registration a Rust package needs in a mixed image
-restates its `[[component]]` row. The recommendation is to derive it in the
-generated CMake root (option A), which the user ruled: a package that ships
-its own `CMakeLists.txt` keeps it.
+**Status: DONE (2026-11-15), option A.** [Issue 2599](../issues/archived/2599-mixed-image-rust-package-needs-cmake-registration.md),
+GitHub #3857. The CMake registration a Rust package needed in a mixed image
+restated its `[[component]]` row. It is now derived from the row
+(`builder/cargo_node.rs`, one rule for the native CMake root and the Zephyr
+west app: `nano_ros_workspace(CARGO_NODES ...)` and `nros_register_cargo_node`).
+A package that ships its own `CMakeLists.txt` keeps it, and `nros new` no
+longer writes the shim.
 
 ### I14 -- each model is resolved for the target its images run on
 
@@ -686,7 +688,7 @@ fixed after that release.
 - [issue 2601](../issues/archived/2601-resolve-ignores-image-target-platform-file.md): `nros configure` resolved every model for `posix`, so an image's `<stem>.system.<target>.yaml` was never read (I14, resolved).
 - [issue 2603](../issues/2603-flaky-sdk-index-stamp-input-test.md): `configure_stamp::tests::the_sdk_index_is_a_stamp_input` failed once under a full gate and passes alone.
 - [issue 2598](../issues/2598-launch-param-file-not-a-model-input.md) (GitHub #3923): a resolved model stays stale after `nros configure`, and a launch parameter file is not one of its inputs (I12).
-- [issue 2599](../issues/2599-mixed-image-rust-package-needs-cmake-registration.md) (GitHub #3857): a Rust package in a mixed image needs a CMake registration that restates its `[[component]]` row (I13, ruled option A).
+- [issue 2599](../issues/archived/2599-mixed-image-rust-package-needs-cmake-registration.md) (GitHub #3857, resolved): a Rust package in a mixed image needed a CMake registration that restated its `[[component]]` row. It is now derived from the row (I13).
 - [issue 2564](../issues/archived/2564-hand-entry-bringup-image-drops-domain-id.md) (resolved): a hand-written entry naming `BRINGUP` and `IMAGE` baked domain 0, not the image's `domain_id`. It now asks the image's domain of the one reader, under the agreement rule.
 - [issue 2565](../issues/archived/2565-mixed-image-rust-pkg-needs-cmake-shim.md) (resolved): a mixed image's Rust package needed an undocumented CMake shim. `nros new --to` writes it now, the book states it, and the contract row was issue 2376's fix.
 - [issue 2566](../issues/archived/2566-sync-ignores-nested-packages-and-package-paths.md) (resolved): `nros sync` ignored `src/<group>/<pkg>` and `package_paths`. The scan now walks `src/` and every `package_paths` entry recursively, as `nros build` does.
