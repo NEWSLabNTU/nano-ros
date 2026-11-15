@@ -408,7 +408,10 @@ pub mod __macro {
         install_node_typed_with_node_identity, install_node_typed_with_params,
     };
     #[cfg(feature = "rmw-cffi")]
-    pub use crate::node_runtime::{install_node_typed_in, install_node_typed_with_launch_in};
+    pub use crate::node_runtime::{
+        install_node_typed_in, install_node_typed_with_c_params_in,
+        install_node_typed_with_launch_in,
+    };
     // phase-509 P5 -- a ranked node's rank, seeded before its `register`.
     #[cfg(feature = "rmw-cffi")]
     pub use crate::node_runtime::seed_node_rank;

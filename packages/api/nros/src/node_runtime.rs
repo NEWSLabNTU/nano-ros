@@ -1230,7 +1230,7 @@ impl ExecutorNodeRuntime {
             node_identity: None, // direct API — no launch injection
             remaps: &[],         // direct API — no launch remaps
             qos_overrides: &[],  // direct API — no plan overrides
-            launch_params: &[],  // direct API -- no launch params
+            launch_params: crate::node::LaunchParams::EMPTY, // direct API -- no launch params
         };
         let result = {
             let mut frame = crate::node::ComponentFrame::new(&mut sink);
@@ -1704,7 +1704,7 @@ struct ExecutorSink<'a> {
     /// builds (see [`ExecutorSink::seed_launch_params`]). Empty for the direct
     /// API, which has no launch.
     #[cfg_attr(not(feature = "param-store"), allow(dead_code))]
-    launch_params: &'a [(&'a str, &'a str)],
+    launch_params: crate::node::LaunchParams<'a>,
 }
 
 struct SinkNode {
@@ -1745,7 +1745,7 @@ impl ExecutorSink<'_> {
             return Ok(());
         }
         let params = self.launch_params;
-        for (name, raw) in params {
+        for (name, raw) in params.iter() {
             // phase-446 seam: the value's type is inferred from the launch
             // string; a type declared in the contract replaces this call.
             let value = infer_param_value(raw);
@@ -2809,7 +2809,7 @@ fn register_node_borrowed<
     const TIMS: usize,
 >(
     executor: &mut Executor<'static>,
-    params: &'p [(&'p str, &'p str)],
+    params: crate::node::LaunchParams<'p>,
     node_identity: Option<(&'static str, &'static str)>,
     remaps: &'p [(&'p str, &'p str)],
     qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
@@ -2868,7 +2868,7 @@ where
         let mut context = NodeContext::new(C::NAME, &mut *executor, &mut frame);
         // Phase 264 W4a — seed the baked launch-param initials so `register()` can read
         // them via `NodeContext::param`.
-        context.set_params(params);
+        context.set_launch_params(params);
         C::register(&mut context)?;
     }
     // phase-426 W3 — see the sibling in `register_node`: the cell records the
@@ -3028,7 +3028,7 @@ where
         Box::leak(Box::new(MaybeUninit::uninit()));
     match register_node_borrowed::<C, _, _, _, _, _, _>(
         exec,
-        params,
+        crate::node::LaunchParams::Pairs(params),
         node_identity,
         remaps,
         qos_overrides,
@@ -3071,6 +3071,93 @@ pub unsafe fn install_node_typed_with_launch_in<
     executor: *mut core::ffi::c_void,
     store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>,
     params: &[(&str, &str)],
+    node_identity: Option<(&'static str, &'static str)>,
+    remaps: &[(&str, &str)],
+    qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
+) -> i32
+where
+    C::State: 'static,
+{
+    // SAFETY: forwarded per this fn's contract.
+    unsafe {
+        install_in_with_launch_params(
+            executor,
+            store,
+            crate::node::LaunchParams::Pairs(params),
+            node_identity,
+            remaps,
+            qos_overrides,
+        )
+    }
+}
+
+/// [`install_node_typed_in`] carrying the launch `<param>` initials a C or C++
+/// entry passes as a flat C-string array: `kv` holds `2 * n_pairs` pointers,
+/// `[name0, value0, name1, value1, ...]`. This backs the component's C-ABI
+/// install symbol, so a Rust component installed by a foreign entry sees the
+/// same `ctx.param(name)` values one installed by `nros::main!` does.
+///
+/// The array is read in place and only for the duration of the call; a null
+/// `kv` with `n_pairs == 0` means no params. Returns `-5`, before the class's
+/// storage is taken, when `kv` is null with a non-zero count or any entry is
+/// null or not UTF-8. Every other code is as for
+/// [`install_node_typed_with_launch_in`].
+///
+/// # Safety
+/// As [`install_node_typed_with_launch_in`]; and when `n_pairs > 0`, `kv`
+/// must point to `2 * n_pairs` readable pointers, each null or a
+/// NUL-terminated string, all valid for the call.
+pub unsafe fn install_node_typed_with_c_params_in<
+    C: ExecutableNode + 'static,
+    const N: usize,
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+    const SSRV: usize,
+    const TIMS: usize,
+>(
+    executor: *mut core::ffi::c_void,
+    store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>,
+    kv: *const *const core::ffi::c_char,
+    n_pairs: usize,
+) -> i32
+where
+    C::State: 'static,
+{
+    // issue 2568 -- the C++ entry's Rust arm reaches the component through
+    // this seam, and before it carried no params `ctx.param()` answered the
+    // default for every launch `<param>`.
+    // SAFETY: forwarded per this fn's contract.
+    let Some(params) = (unsafe { crate::node::LaunchParams::from_c_pairs(kv, n_pairs) }) else {
+        nros_log::log_error!(
+            nros_log::get_logger("nros"),
+            "component install refused its launch parameters: the array is null or \
+             holds a null or non-UTF-8 string ({n_pairs} pair(s))"
+        );
+        return -5;
+    };
+    // SAFETY: forwarded per this fn's contract.
+    unsafe { install_in_with_launch_params(executor, store, params, None, &[], &[]) }
+}
+
+/// The one body behind both `_in` installs.
+///
+/// # Safety
+/// As [`install_node_typed_with_launch_in`].
+unsafe fn install_in_with_launch_params<
+    C: ExecutableNode + 'static,
+    const N: usize,
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+    const SSRV: usize,
+    const TIMS: usize,
+>(
+    executor: *mut core::ffi::c_void,
+    store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>,
+    params: crate::node::LaunchParams<'_>,
     node_identity: Option<(&'static str, &'static str)>,
     remaps: &[(&str, &str)],
     qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],

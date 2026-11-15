@@ -1,0 +1,5 @@
+{
+  "key": "rust:install_node_typed_with_c_params_in",
+  "verdict": "extension",
+  "why": "issue 2568 -- the C-ABI twin of `install_node_typed_in`: a C or C++ entry hands the launch params as a flat C-string array, read in place for the install call, so `ctx.param` sees them on that road too."
+}

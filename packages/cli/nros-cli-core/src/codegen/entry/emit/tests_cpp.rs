@@ -2207,7 +2207,7 @@ fn rust_node_install_receives_the_unwrapped_executor() {
         "the global handle must be unwrapped before a Rust install;\n{src}"
     );
     assert!(
-        src.contains("__nros_component_rust_pkg_install(nullptr, __rexec, nullptr);"),
+        src.contains("__nros_component_rust_pkg_install(nullptr, __rexec, nullptr, nullptr, 0);"),
         "the Rust install must receive the unwrapped executor;\n{src}"
     );
     assert!(
@@ -2215,6 +2215,48 @@ fn rust_node_install_receives_the_unwrapped_executor() {
             && !src.contains("_install(nullptr, executor,")
             && !src.contains("_install(nullptr, ::rclcpp::global_handle(),"),
         "a Rust install handed the nros-cpp context itself (issue 1535);\n{src}"
+    );
+}
+
+/// Issue 2568 — a Rust node's launch `<param>` initials ride on its install,
+/// because the component reads them with `ctx.param(name)` inside `register`,
+/// which that call runs. The parameter-store seeds (`nros_cpp_declare_node_param`)
+/// are not what `ctx.param` reads, so before this the Rust node in a C++ entry
+/// saw every default. Asserted on the array AND on the call that passes it:
+/// either half alone is the defect.
+#[test]
+fn rust_node_install_carries_its_launch_params() {
+    let mut plan = fixture_plan_typed(&[(
+        "rust_pkg",
+        "rust_one",
+        "rust_one",
+        "rust_pkg::Rust",
+        "rust_pkg/Rust.hpp",
+    )]);
+    plan.nodes[0].lang = Some(Lang::Rust);
+    plan.nodes[0].params = vec![
+        ("speed".into(), "2.5".into()),
+        ("frame_id".into(), "base \"link\"".into()),
+    ];
+    let src = emit_typed(&plan).expect("rust-node cpp emit ok");
+    assert!(
+        src.contains(
+            "static const char* const __nros_params_0[] = {\n            \"speed\", \"2.5\",\n            \"frame_id\", \"base \\\"link\\\"\",\n        };"
+        ),
+        "the Rust node's launch params must be baked as a flat C-string array;\n{src}"
+    );
+    assert!(
+        src.contains(
+            "__nros_component_rust_pkg_install(nullptr, __rexec, nullptr, __nros_params_0, 2);"
+        ),
+        "the Rust install must receive the node's launch params;\n{src}"
+    );
+    assert!(
+        src.contains(
+            "int32_t __nros_component_rust_pkg_install(const void* node, void* executor, \
+             void* self, const char* const* params, size_t n_params);"
+        ),
+        "the install prototype must declare the params array;\n{src}"
     );
 }
 
@@ -2234,7 +2276,7 @@ fn rust_node_install_on_a_sched_task_receives_the_unwrapped_executor() {
         "a sched task's handle must be unwrapped before a Rust install;\n{src}"
     );
     assert!(
-        src.contains("__nros_component_telem_pkg_install(nullptr, __rexec, nullptr);")
+        src.contains("__nros_component_telem_pkg_install(nullptr, __rexec, nullptr, nullptr, 0);")
             && !src.contains("_install(nullptr, executor,"),
         "the Rust install must receive the unwrapped sched task executor;\n{src}"
     );

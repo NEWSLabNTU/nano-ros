@@ -31,7 +31,7 @@ nros-rmw-cffi = { path = "../cffi", default-features = false, features = ["alloc
 [dev-dependencies]
 # phase-483 W3 — the declarative component surface's tests open an executor on
 # THIS backend, so they live here rather than in `nros`.
-nros = { path = "../../api/nros", default-features = false, features = ["metadata-mode", "log", "alloc", "rmw-cffi", "safety-e2e"] }
+nros = { path = "../../api/nros", default-features = false, features = ["metadata-mode", "log", "alloc", "rmw-cffi", "safety-e2e", "macros"] }
 nros-serdes = { path = "../../core/nros-serdes", default-features = false }
 nros-node = { path = "../../core/nros-node", default-features = false }
 nros-platform-cffi = { path = "../../platform/nros-platform-cffi", features = ["posix-c-port"] }

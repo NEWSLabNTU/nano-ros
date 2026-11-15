@@ -611,6 +611,14 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
         policy: 6,
         value: 3,
     }];
+    // Issue 2568 -- and both directions of a Rust node's launch params:
+    // `rust_one` has none (`nullptr, 0`), `rust_two` has two, baked as the
+    // flat array its install hands to `ctx.param`.
+    let mut rust_params = cpp_rust_node("rust_pkg", "rust_two");
+    rust_params.params = vec![
+        ("speed".into(), "2.5".into()),
+        ("frame_id".into(), "base_link".into()),
+    ];
     out.push((
         "cpp_native_shapes",
         plan(
@@ -621,7 +629,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
                 cpp_c_node("c_pkg", "c_one"),
                 cpp_c_node("c_pkg", "c_two"),
                 cpp_rust_node("rust_pkg", "rust_one"),
-                cpp_rust_node("rust_pkg", "rust_two"),
+                rust_params,
                 cpp_rclcpp_node("rclcpp_pkg", "rcl_one"),
                 rcl_named,
             ],

@@ -1,0 +1,17 @@
+{#-
+  The C-ABI install seam every Rust component exports (`nros::node!`), declared
+  once for both C++ entries (the board entry and the PX4 module entry).
+
+  Issue 2568 -- `params` / `n_params` are the node's launch `<param>` initials,
+  a flat `[name0, value0, name1, value1, ...]` C-string array (`nullptr, 0`
+  when it has none); `node_body.jinja` writes the call. The seam used to carry
+  only `(node, executor, self)`, so a Rust node in a C++ entry read every
+  `ctx.param(name)` as unset. The array is read during the call only.
+
+  What the caller puts in scope: `rust_pkgs`, the Rust components.
+-#}
+extern "C" {
+{%- for c in rust_pkgs %}
+    int32_t __nros_component_{{ c.pkg | pkg_ident }}_install(const void* node, void* executor, void* self, const char* const* params, size_t n_params);
+{%- endfor %}
+}

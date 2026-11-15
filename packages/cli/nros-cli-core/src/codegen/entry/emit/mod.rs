@@ -268,8 +268,9 @@ pub(crate) fn admit_and_lower(
         // Issue 1854 -- every other kind installs the node's QoS override
         // table (the `c` / `configure` arms with `set_qos_overrides`, the
         // `rclcpp` arm on its handle). A `rust` component is installed
-        // through `__nros_component_<pkg>_install(node, executor, self)`,
-        // which carries no table, so rendering it would run the node with the
+        // through `__nros_component_<pkg>_install(node, executor, self, params,
+        // n_params)`, which carries launch params (issue 2568) but no QoS table,
+        // so rendering it would run the node with the
         // code's QoS while the plan states another -- the silent drop issue
         // 0303 made every QoS producer refuse.
         if kind == ComponentKind::Rust && !n.qos_overrides.is_empty() {
