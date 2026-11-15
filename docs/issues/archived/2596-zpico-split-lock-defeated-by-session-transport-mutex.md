@@ -133,3 +133,30 @@ On target (QEMU, `rtos_e2e`), each cell run twice:
 The S32K344 safety island runs this config (`TX_BATCH` +
 `CONFIG_NROS_ZENOH_TX_SPLIT_LOCK=y`). An on-board check is to be batched to
 the board's owner.
+
+## On the S32K344 board (2026-11-15)
+
+The safety island's own config, run on the CANHUBK344 by the board's owner:
+`TX_BATCH` + `CONFIG_NROS_ZENOH_TX_SPLIT_LOCK=y`, serial at 921600 baud, a
+4 KB UART ring, and four 80 s runs each of zenoh-pico 19a47ae7 (this fix)
+and 01f5761a (before it).
+
+| | before (01f5761a) | after (19a47ae7) |
+| --- | --- | --- |
+| stall, reset or fault | none | none |
+| samples lost | 0 | 0 |
+| island topics at their rate | yes | yes |
+| publish p99 | ~53–58 ms | ~53–58 ms |
+| publish p50, uncontended | 148 µs | 162 µs |
+
+The fix is safe on the board, and it buys nothing on this link. A publish
+there does not wait on the detached batch write. It waits about 58 ms on a
+different hold of `_mutex_tx`: the fragment train, plus the inline drain of a
+parked overflow, both on issue 2575's path, and this fix leaves both alone.
+With a 4 KB ring the detached write is mostly a copy into the ring, so there
+was little for split lock to take off the publishers' path anyway. The cost
+is the use count's two lock round trips: +14 µs on an uncontended publish.
+
+That hold is now [issue 2614](../2614-zpico-fragment-train-holds-tx-mutex.md).
+The run logs are on the board owner's host, at
+`/mnt/mx500/aeon/worktrees/k3937-logs`.
