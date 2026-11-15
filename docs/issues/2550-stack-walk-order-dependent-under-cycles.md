@@ -150,6 +150,12 @@ floor for now, and step 3 is parked here. The next steps, in order:
    - any cast, memcpy or escape of the field keeps today's binding.
 3. The exact search under a budget, once the SCC is small enough.
 
+Step 2 was stopped at its first checkpoint on 2026-11-16 (phase-557 W7f):
+under half of the indirect sites bind through a trusted channel (37-43 %
+on the nucleo images, about 0 % on the mps2 bare-metal image, which has no
+C IR). It reopens when nested initializers, a return-value channel and C IR
+for cc-rs builds are in place; phase-557 W7f records the numbers.
+
 ## Acceptance
 
 The walk reports the deepest simple path from its root, or it refuses.
