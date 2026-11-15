@@ -17960,6 +17960,7 @@ mod cancel_tests {
         let saw_spinning = Arc::new(AtomicBool::new(false));
         let saw_spinning_peer = Arc::clone(&saw_spinning);
 
+        let started = Instant::now();
         let peer = thread::spawn(move || {
             // Give the loop time to enter. Bounded, and the assertion below is
             // on what was OBSERVED, so a slow host cannot turn this green by
@@ -17969,7 +17970,6 @@ mod cancel_tests {
             cancel_bit.store(true, Ordering::SeqCst);
         });
 
-        let started = Instant::now();
         exec.spin(crate::executor::types::SpinOptions::default())
             .expect("an untimed spin runs until cancelled");
         let elapsed = started.elapsed();

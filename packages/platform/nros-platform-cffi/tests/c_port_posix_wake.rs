@@ -132,12 +132,12 @@ fn cross_thread_signal_wakes_waiter() {
     // the borrow checker doesn't insist on Send for a `*mut c_void`.
     let raw_addr = buf.as_mut_ptr() as usize;
 
+    let t0 = Instant::now();
     let signaller = thread::spawn(move || {
         thread::sleep(Duration::from_millis(100));
         unsafe { nros_platform_wake_signal(raw_addr as *mut c_void) };
     });
 
-    let t0 = Instant::now();
     let rc = unsafe { nros_platform_wake_wait_ms(raw_addr as *mut c_void, 5_000) };
     let elapsed = t0.elapsed();
 
@@ -303,12 +303,12 @@ fn park_is_broken_by_a_cross_thread_signal() {
     unsafe { nros_platform_wake_init(buf.as_mut_ptr()) };
     let raw_addr = buf.as_mut_ptr() as usize;
 
+    let t0 = Instant::now();
     let signaller = thread::spawn(move || {
         thread::sleep(Duration::from_millis(50));
         unsafe { nros_platform_wake_signal(raw_addr as *mut c_void) };
     });
 
-    let t0 = Instant::now();
     let rc = unsafe { nros_platform_wake_park_until_us(raw_addr as *mut c_void, 5_000_000) };
     let elapsed = t0.elapsed();
     signaller.join().unwrap();
@@ -364,12 +364,12 @@ fn handle_park_is_ended_by_a_readable_handle() {
     let (rx, mut tx) = UnixStream::pair().unwrap();
     let fd = rx.as_raw_fd();
 
+    let t0 = Instant::now();
     let writer = thread::spawn(move || {
         thread::sleep(Duration::from_millis(50));
         tx.write_all(&[7]).unwrap();
         tx
     });
-    let t0 = Instant::now();
     let rc = unsafe { nros_platform_wake_park_handles_us(buf.as_mut_ptr(), &fd, 1, 5_000_000) };
     let elapsed = t0.elapsed();
     let _tx = writer.join().unwrap();
@@ -406,11 +406,11 @@ fn handle_park_is_ended_by_a_cross_thread_signal() {
     let fd = rx.as_raw_fd();
     let raw_addr = buf.as_mut_ptr() as usize;
 
+    let t0 = Instant::now();
     let signaller = thread::spawn(move || {
         thread::sleep(Duration::from_millis(50));
         unsafe { nros_platform_wake_signal(raw_addr as *mut c_void) };
     });
-    let t0 = Instant::now();
     let rc =
         unsafe { nros_platform_wake_park_handles_us(raw_addr as *mut c_void, &fd, 1, 5_000_000) };
     let elapsed = t0.elapsed();

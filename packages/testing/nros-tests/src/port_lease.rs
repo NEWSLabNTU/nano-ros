@@ -567,12 +567,12 @@ mod tests {
         let (port, lock) = (holder.port, holder.lock.clone());
         // Another process's claim, as far as the pid check can tell.
         std::fs::write(&lock, "1").expect("name a foreign holder");
+        let t0 = std::time::Instant::now();
         let released = std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(400));
             let _ = std::fs::remove_file(&lock);
             drop(holder);
         });
-        let t0 = std::time::Instant::now();
         let got = wait_for_port(Transport::Tcp, port, std::time::Duration::from_secs(10))
             .expect("wait")
             .expect("handed over once the holder let go");

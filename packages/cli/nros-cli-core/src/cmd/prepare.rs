@@ -332,11 +332,11 @@ mod tests {
             PrepareStep::WaitFor(format!("port:{}", port.display()).parse().unwrap()),
         ];
         let p = port.clone();
+        let started = Instant::now();
         let maker = thread::spawn(move || {
             thread::sleep(Duration::from_millis(300));
             std::fs::write(p, "").unwrap();
         });
-        let started = Instant::now();
         let mut human = Vec::new();
         execute(
             &steps,

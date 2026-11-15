@@ -164,8 +164,8 @@ int main(void) {
      * waited would sail through the upper bound and report a wake it never
      * performed. */
     pthread_t th;
-    CHECK(pthread_create(&th, NULL, arrival_thread, NULL) == 0, "arrival thread started");
     const uint64_t woken_start = now_ms();
+    CHECK(pthread_create(&th, NULL, arrival_thread, NULL) == 0, "arrival thread started");
     (void)rclc_executor_spin_some(&executor, 400000000ull); /* the same 400 ms budget */
     const uint64_t woken_ms = now_ms() - woken_start;
     CHECK(pthread_join(th, NULL) == 0, "arrival thread joined");
@@ -207,8 +207,8 @@ int main(void) {
           "an arrival that landed between spins is taken by the fast arm, which does not wait");
 
     s_arrival_fired = false;
-    CHECK(pthread_create(&th, NULL, arrival_thread, NULL) == 0, "second arrival thread started");
     const uint64_t second_start = now_ms();
+    CHECK(pthread_create(&th, NULL, arrival_thread, NULL) == 0, "second arrival thread started");
     (void)rclc_executor_spin_some(&executor, 400000000ull);
     const uint64_t second_ms = now_ms() - second_start;
     CHECK(pthread_join(th, NULL) == 0, "second arrival thread joined");
@@ -283,8 +283,8 @@ int main(void) {
               "second of two live executors initialised");
 
     s_arrival_fired = false;
-    CHECK(pthread_create(&th, NULL, arrival_thread, NULL) == 0, "shared arrival thread started");
     const uint64_t first_start = now_ms();
+    CHECK(pthread_create(&th, NULL, arrival_thread, NULL) == 0, "shared arrival thread started");
     (void)rclc_executor_spin_some(&first, 400000000ull);
     const uint64_t first_ms = now_ms() - first_start;
     CHECK(pthread_join(th, NULL) == 0, "shared arrival thread joined");
@@ -303,8 +303,8 @@ int main(void) {
           "clear the slot out from under the executor still running");
 
     s_arrival_fired = false;
-    CHECK(pthread_create(&th, NULL, arrival_thread, NULL) == 0, "survivor arrival thread started");
     const uint64_t other_start = now_ms();
+    CHECK(pthread_create(&th, NULL, arrival_thread, NULL) == 0, "survivor arrival thread started");
     (void)rclc_executor_spin_some(&other, 400000000ull);
     const uint64_t other_ms = now_ms() - other_start;
     CHECK(pthread_join(th, NULL) == 0, "survivor arrival thread joined");
