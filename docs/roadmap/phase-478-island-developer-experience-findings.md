@@ -483,7 +483,7 @@ The second half waits on phase-474 T3; issue 1534 stays open there.
 
 ### I9 -- an image's `profile` reaches the CMake road
 
-**Status: OPEN.** [Issue 2593](../issues/2593-cmake-road-drops-image-profile.md),
+**Status: DONE (2026-11-15).** [Issue 2593](../issues/archived/2593-cmake-road-drops-image-profile.md),
 GitHub #3899. `[image.<id>] profile` is read only on the cargo road, and
 `nros build` configures every non-posix CMake image as Release. The profile is
 read through the CMake road's image facts. It maps to `CMAKE_BUILD_TYPE` and
@@ -664,5 +664,5 @@ fixed after that release.
 - [issue 2586](../issues/archived/2586-cpp-alias-header-digit-capital-name.md) (GitHub #3882, resolved): the ROS-style C++ alias header missed rosidl's name when a digit or an acronym came before a capital (`float32stamped.hpp` for `Float32Stamped`). The alias now takes rosidl's name through one function, `naming::ros_alias_header`.
 - [issue 2589](../issues/2589-census-ctx-param-read-unseen.md): the census does not see a Rust node's `ctx.param()` read, so its contract row reads `param-phantom`. Split from issue 2568.
 - [issue 2590](../issues/2590-cpp-entry-rust-arm-drops-node-identity.md): a Rust component installed by a C++ entry ignores the launch `<node name= namespace=>`. Found fixing issue 2568.
-- [issue 2593](../issues/2593-cmake-road-drops-image-profile.md) (GitHub #3899): `[image.<id>] profile` is silently ignored on the CMake road, where `nros build` always configures Release. Same class as issue 2582.
+- [issue 2593](../issues/archived/2593-cmake-road-drops-image-profile.md) (GitHub #3899, resolved): `[image.<id>] profile` was silently ignored on the CMake road. It now picks the build type and the runtime cargo profile, and is refused where it cannot apply (I9).
 - [issue 2594](../issues/archived/2594-zephyr-generated-app-no-workspace-kconfig.md) (GitHub #3906): a generated Zephyr west app cannot get the workspace's own Kconfig symbols. Ruled option A on 2026-11-15; resolved by I10 and I11.

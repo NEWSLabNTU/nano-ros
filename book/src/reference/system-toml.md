@@ -39,7 +39,7 @@ Precedence, highest first: a command-line or build flag, `[image.<id>]`,
 | `rmw_config` | The middleware's own file for this image, or `{ <domain> = "<file>" }` per `[[domain]]` |
 | `panic` | Panic policy: `platform`, `halt` or `own` |
 | `before_boot` | `"<pkg>::<fn>"` the generated entry calls before the board boots. Rust only |
-| `profile` | cargo or CMake build profile name |
+| `profile` | the build profile: a cargo profile (`dev`, `release`, `nros-relwithdebinfo`, `nros-minsizerel`, or your own) or a CMake build type (`Debug`, `Release`, `RelWithDebInfo`, `MinSizeRel`). A CMake image builds C, C++ and Rust with it and refuses a profile that names no build type; a Zephyr image refuses it, and takes its optimisation from Kconfig instead |
 | `variant` | Framework build variant (Zephyr `prj_<buildtype>.conf`) |
 | `features` | Capability axes for this image, added to `[system]`'s |
 | `node_interfaces` | `"stock"` adds the node interfaces an rclcpp node has by default (the six parameter services and the `/rosout` publisher, i.e. the `param_services` and `rosout` features) to this image; `"none"` removes them, even where `[system]` declared them. Also accepted in `[system]` and `[image_defaults]`; the most specific statement wins. Absent everywhere: the image gets exactly the `features` it declares |
