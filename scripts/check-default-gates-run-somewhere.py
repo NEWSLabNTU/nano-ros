@@ -279,6 +279,12 @@ def _ci_lane_body(lane):
         if line and not line[:1].isspace():
             break
         body.append(line)
+    # A module-qualified PRIVATE delegate (`just ci::_gate-inner`, issue 2602's
+    # host lock wraps the gate's body) is the same recipe split in two, so its
+    # body is this lane's too.
+    for d in sorted(set(re.findall(r"just ci::(_[\w-]+)", "\n".join(body)))):
+        if d != lane:
+            body += _ci_lane_body(d)
     return body
 
 

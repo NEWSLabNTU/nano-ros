@@ -4912,6 +4912,15 @@ linux-check:
     fi
     just linux check
 
+# Issue 2602 -- `just ci gate` holds one `flock` per host. Six cases against a
+# throwaway lock dir, each with a negative control: a second gate waits; kill -9
+# of the holder frees it within ~1 s; an orphaned child holds nothing (without
+# `-o` it would); a hung holder times out red; the waiter's cap is red, names
+# the holder and never runs; a zero wait refuses. Buildless, ~15 s.
+[private]
+gate-host-lock:
+    @bash tests/gate-host-lock-tests.sh
+
 # Issue 2595 -- every tracked example `Cargo.toml` is linted by a
 # `linux-check` unit or named by an exclusion with its reason
 # (`scripts/lib/example_lint_units.py`). A filter that drops a package with no

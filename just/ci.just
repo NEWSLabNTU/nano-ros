@@ -59,8 +59,21 @@ default: tier1
 # from phase-406 W1 to the end of the phase and `nros-rmw-uorb` was never
 # migrated at all, under runs that looked green enough to push on (issue 0952).
 # The lane now names what it withdrew.
+#
+# Issue 2602 — ONE gate per host, held by `flock` (`scripts/ci/gate-host-lock.sh`).
+# Two concurrent gates turned each other red on two hosts the day it was filed.
+# A second gate waits, printing the holder; a hung holder times out red and
+# frees the lock itself; a waiter past its cap is red and never runs unlocked.
+# There is no knob that skips the lock, and nothing to delete by hand: the
+# kernel releases a flock when its holder dies, however it dies.
+# Compile + lint + unit, no fixtures; one per host (issue 2602).
 [group("main")]
 gate:
+    @bash scripts/ci/gate-host-lock.sh just ci::_gate-inner
+
+# The gate's body, run only under the host lock above (issue 2602).
+[private]
+_gate-inner:
     #!/usr/bin/env bash
     set -uo pipefail
     # Issue 1513 — report every unmet provisioning precondition BEFORE the lane,
