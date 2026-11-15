@@ -613,7 +613,7 @@ from that session, `FREERTOS_PORT not set` on `freertos-posix`, is
 fixed after that release.
 
 - [issue 2564](../issues/archived/2564-hand-entry-bringup-image-drops-domain-id.md) (resolved): a hand-written entry naming `BRINGUP` and `IMAGE` baked domain 0, not the image's `domain_id`. It now asks the image's domain of the one reader, under the agreement rule.
-- [issue 2565](../issues/2565-mixed-image-rust-pkg-needs-cmake-shim.md): a mixed image's Rust package needs an undocumented CMake shim, and `nros new` adds neither it nor the contract row.
+- [issue 2565](../issues/archived/2565-mixed-image-rust-pkg-needs-cmake-shim.md) (resolved): a mixed image's Rust package needed an undocumented CMake shim. `nros new --to` writes it now, the book states it, and the contract row was issue 2376's fix.
 - [issue 2566](../issues/archived/2566-sync-ignores-nested-packages-and-package-paths.md) (resolved): `nros sync` ignored `src/<group>/<pkg>` and `package_paths`. The scan now walks `src/` and every `package_paths` entry recursively, as `nros build` does.
 - [issue 2567](../issues/archived/2567-rust-codegen-msg-constants-not-reexported.md) (resolved): Rust codegen did not re-export `.msg` constants. They are associated consts of the type now (`IslandMode::MODE_NOMINAL`).
 - [issue 2568](../issues/2568-rust-ctx-param-misses-launch-values.md): a Rust `ctx.param()` gets the default, not the launch value.
