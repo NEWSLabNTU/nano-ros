@@ -1,7 +1,7 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
-**Status (2026-11-14). OPEN: W1, W2, W2b, W3, W4, W5, W6 and W7 are done;
-W3b, W5b, W7f and W8 are open.** This phase tracks the implementation of
+**Status (2026-11-16). OPEN: W1, W2, W2b, W3, W4, W5, W6 and W7 are done;
+W7f is dropped at its first checkpoint; W3b, W5b and W8 are open.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
 runs, and every gate reads that producer instead of holding its own number.
@@ -665,7 +665,10 @@ static is the new walk's; each nucleo image fits its RAM.
 
 ### W7f — Field- and parameter-sensitive binding (issue 2550 step 3)
 
-- **Status:** OPEN (design approved 2026-11-15; implementation not started)
+- **Status:** DROPPED (2026-11-16): stopped at checkpoint 1, before any solver
+  work, because under half of the indirect sites bind through a trusted
+  channel (see "Checkpoint 1" below). It reopens only when the three
+  conditions listed there hold. The floors stay the accepted heuristic.
 
 **Why.** Typing every call site does not break the walk's cycle: the bound
 graph's SCC stays at 962 / 970 / 2,037 functions against 24 on direct edges
@@ -767,6 +770,61 @@ accepted on 2026-11-14 and in force today, the deepest of 8 fixed orders.
 A shortfall at any step therefore ships nothing worse than now: the binding
 lands only where it is proven, and the floors stay as recorded until an
 exact search finishes under its budget.
+
+**Checkpoint 1 (2026-11-16): the trusted share, measured.** A throwaway
+prototype classified every indirect call site in the IR the walk reads, on
+the four measured images built from main. The prototype was deleted after
+the measurement.
+
+- **IR form.** Rust is rustc's optimized bitcode. There is no choice there:
+  it is already SSA, and fields are byte-offset GEPs on opaque pointers, so
+  only the parameter channel applies to Rust. C is clang `-O0` with
+  `optnone` stripped, then `mem2reg`. That keeps struct-typed GEPs (clang 14
+  emits typed pointers) for the field channel and turns parameters into SSA
+  values for the parameter channel. It does no inlining, so the IR's
+  functions stay one-to-one with GCC's. `-O1` and above would inline and
+  rewrite the GEPs. The parameter forwarding `mem2reg` does is simple enough
+  to do in the walker, so no `opt` dependency is needed.
+- **Share.** A site counts as trusted when its channel is trusted and holds
+  at least one known function. Rust sites at a vtable slot are already bound
+  by W7 (663 of 733, 377 of 411 and 1,007 of 1,107) and are left out:
+
+  | image | C sites | Rust sites not at a vtable slot | combined |
+  | --- | --- | --- | --- |
+  | nucleo C talker | 138 / 332 (41.6 %) | 11 / 70 | 149 / 402 (37 %) |
+  | nucleo Rust talker | 165 / 361 (45.7 %) | 6 / 34 | 171 / 395 (43 %) |
+  | nucleo action server | 165 / 361 (45.7 %) | 6 / 35 | 171 / 396 (43 %) |
+  | mps2 bare-metal talker | no C IR | 0 / 100 | about 0 % |
+
+  Where a site is trusted, its target set is small: a median of 1 function,
+  17 at most.
+- **Where the misses go** (nucleo C talker):
+  - 109 sites have a trusted channel with no store found. Most are the
+    prototype skipping nested constant initializers, which is how Zephyr's
+    device-API tables (`gpio_driver_api`, `fs_file_system_t`, `init_entry`)
+    are filled. A few channels have no direct caller in the IR at all (the
+    output callback of `z_cbvprintf_impl`).
+  - 77 sites are untrusted. 46 of them are two zenoh-pico structs,
+    `_z_delete_context_t` (35) and `subscriber_entry_t` (11), copied whole
+    through ABI-coerced struct returns (a `[2 x i32]` store onto the struct),
+    which the rules count as an opaque write.
+  - The mps2 bare-metal image has no C IR: its zenoh-pico is built by cc-rs,
+    which writes no compile database, so every C site there keeps today's
+    binding whatever this item does.
+- **Why it stopped.** The two extensions below could lift C to an upper bound
+  of about 75 % (about 60 % combined), at roughly 2-3 days before the next
+  checkpoint. The share does not decide the outcome, though: one untrusted
+  coarse-type C site on the cycle (`void(ptr)`) can keep the SCC large, and
+  the SCC is what the exact search needs small. Against an accepted floor that
+  no longer moves with the checkout's path or the project's name, that payoff
+  is too uncertain.
+- **Reopening conditions.** All three:
+  1. the field channel reads nested constant initializers;
+  2. a return-value channel, so a whole-struct copy of a T that a function
+     returns stays trusted through ABI coercion;
+  3. C IR for cc-rs builds, so a bare-metal image's C is typed at all.
+
+  Then re-measure the share and the SCC before any solver work.
 
 **Acceptance.**
 
