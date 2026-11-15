@@ -160,6 +160,11 @@ An unknown key, a wrong type or an out-of-range value stops `nros build`,
 naming the key. An application's own build variable, one the knob registry
 does not hold, goes in `env = { NAME = "value" }` instead.
 
+On Zephyr, an application's own Kconfig symbol is set by a `.conf` fragment
+in the image's `os_config`. The fragment only assigns the symbol. A workspace
+package defines it, as a Zephyr module the image depends on; see
+[A workspace package that is a Zephyr module](../platforms/zephyr.md#a-workspace-package-that-is-a-zephyr-module).
+
 `nros build <id>` applies these rows, and so does a standalone CMake leaf.
 A hand-written workspace root (`nano_ros_workspace(SYSTEM <bringup> …)`)
 builds one image only when it is told which one, so name it at configure time

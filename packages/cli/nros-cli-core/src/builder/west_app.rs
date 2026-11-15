@@ -313,6 +313,12 @@ pub struct CmakeApp {
     /// `nros_cpp_register_parameter_services` linked an nros-cpp built without
     /// it.
     pub features: Vec<String>,
+    /// Workspace packages of the image's closure that are Zephyr modules (a
+    /// `zephyr/module.yml`), relative to the application. Appended to
+    /// `ZEPHYR_EXTRA_MODULES` BEFORE `find_package(Zephyr)`, which is where
+    /// Zephyr reads the module list: Kconfig is parsed inside find_package,
+    /// so a package's own Kconfig symbols can reach the image no other way.
+    pub zephyr_modules: Vec<String>,
 }
 
 /// A cmake `project()` identifier for this image.
@@ -505,6 +511,57 @@ pub fn resolve_in(
     Ok(app)
 }
 
+/// A workspace package's `zephyr/module.yml`, as far as the generated
+/// application needs it: whether the module has CMake of its own, and where.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ZephyrModule {
+    /// `build.cmake` — the module's CMake directory, relative to the package.
+    cmake: Option<String>,
+    /// `build.cmake-ext` — the module's CMake is supplied by someone else.
+    cmake_ext: bool,
+}
+
+impl ZephyrModule {
+    /// `Ok(None)` when `dir` is not a Zephyr module. A `module.yml` that does
+    /// not parse is refused, naming the file: Zephyr would refuse it too, later
+    /// and less legibly.
+    fn read(dir: &Path) -> Result<Option<Self>, String> {
+        let path = dir.join("zephyr").join("module.yml");
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| format!("reading {}: {e}", path.display()))?;
+        let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text)
+            .map_err(|e| format!("parsing {}: {e}", path.display()))?;
+        let build = doc.get("build");
+        let cmake = build
+            .and_then(|b| b.get("cmake"))
+            .and_then(|c| c.as_str())
+            .map(str::to_string);
+        let cmake_ext = build
+            .and_then(|b| b.get("cmake-ext"))
+            .and_then(serde_yaml_ng::Value::as_bool)
+            .unwrap_or(false);
+        Ok(Some(Self { cmake, cmake_ext }))
+    }
+
+    /// Whether Zephyr builds the package's OWN top-level `CMakeLists.txt` as
+    /// this module's CMake (`build.cmake: .`). A module whose CMake is a
+    /// separate directory (`build.cmake: zephyr`) leaves the package's own
+    /// CMakeLists to the application.
+    fn builds_package_cmake(&self, dir: &Path) -> bool {
+        if self.cmake_ext {
+            return false;
+        }
+        let Some(rel) = &self.cmake else {
+            return false;
+        };
+        let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        canon(&dir.join(rel)) == canon(dir)
+    }
+}
+
 /// Is this node package a cargo crate?
 ///
 /// The `NROS_WS_RUST_NODE_DIRS` question, asked of the package rather than of a
@@ -544,8 +601,22 @@ pub fn resolve_cmake(
 ) -> Result<WestApp, String> {
     let mut subdirs = Vec::new();
     let mut rust_node_dirs = Vec::new();
+    let mut zephyr_modules = Vec::new();
     let mut lang = "c";
     for (name, dir) in nodes {
+        let module = ZephyrModule::read(dir)?;
+        if let Some(m) = &module {
+            zephyr_modules.push(relative_or_err(entry_dir, dir)?);
+            if m.builds_package_cmake(dir) {
+                // Zephyr already runs this CMakeLists as the module's own;
+                // adding it again would define every target twice.
+                continue;
+            }
+        }
+        if !dir.join("CMakeLists.txt").is_file() {
+            // A module that brings Kconfig only, with no CMake of its own.
+            continue;
+        }
         subdirs.push((relative_or_err(entry_dir, dir)?, name.clone()));
         if is_cargo_node(dir) {
             rust_node_dirs.push(relative_or_err(entry_dir, dir)?);
@@ -556,6 +627,7 @@ pub fn resolve_cmake(
     }
     subdirs.sort();
     rust_node_dirs.sort();
+    zephyr_modules.sort();
 
     Ok(WestApp {
         project: project_name(workspace, image_id),
@@ -569,6 +641,7 @@ pub fn resolve_cmake(
             deploy: platform.to_string(),
             panic: panic.map(str::to_string),
             rust_node_dirs,
+            zephyr_modules,
             features: crate::cmd::build::declared_capabilities_for(bringup_dir, Some(image_id))
                 .into_iter()
                 .map(str::to_string)
@@ -770,6 +843,23 @@ fn render_cmake_app(
             c.features.join(";")
         ));
     }
+    if !c.zephyr_modules.is_empty() {
+        out.push_str(
+            // History: issue 2594, phase-478 I11.
+            "# Workspace packages of this image that are Zephyr modules. MUST be\n\
+             # appended before `find_package(Zephyr)`: Zephyr reads the module\n\
+             # list and parses each module's Kconfig DURING find_package. The\n\
+             # nano-ros module itself arrives on the `west build` line.\n",
+        );
+        for (i, d) in c.zephyr_modules.iter().enumerate() {
+            out.push_str(&format!(
+                "get_filename_component(_nros_zephyr_module_{i}\n    \
+                 \"${{CMAKE_CURRENT_SOURCE_DIR}}/{d}\" ABSOLUTE)\n\
+                 list(APPEND ZEPHYR_EXTRA_MODULES \"${{_nros_zephyr_module_{i}}}\")\n"
+            ));
+        }
+        out.push('\n');
+    }
     out.push_str(&image_statement_cmake(image));
     out.push_str(&capability_kconfig_cmake(capabilities));
     out.push_str(&format!(
@@ -796,9 +886,10 @@ fn render_cmake_app(
         );
     }
     out.push_str(
-        "# The node packages the launch file names. Their registration carries\n\
-         # no DEPLOY, so they stay component-only; the entry's auto-link sidecar\n\
-         # pulls them into `app`.\n",
+        "# The image's package closure: the node packages the launch file names\n\
+         # and the workspace packages they depend on. A node's registration\n\
+         # carries no DEPLOY, so it stays component-only; the entry's auto-link\n\
+         # sidecar pulls it into `app`.\n",
     );
     for (dir, name) in &c.subdirs {
         out.push_str(&format!(
@@ -1803,5 +1894,115 @@ mod tests {
             !s.contains(td.path().to_str().unwrap()),
             "no absolute path: {s}"
         );
+    }
+
+    /// Issue 2594 (phase-478 I11) -- a package of the image that carries
+    /// `zephyr/module.yml` joins `ZEPHYR_EXTRA_MODULES` before
+    /// `find_package(Zephyr)`, which is where Zephyr parses its Kconfig.
+    #[test]
+    fn a_zephyr_module_package_joins_the_extra_modules_before_find_package() {
+        let td = tempfile::tempdir().unwrap();
+        let nodes = cmake_workspace(
+            td.path(),
+            &[("talker_pkg", false, false), ("support_pkg", false, false)],
+        );
+        let module = td.path().join("src/support_pkg/zephyr");
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(
+            module.join("module.yml"),
+            "name: support_pkg\nbuild:\n  kconfig: zephyr/Kconfig\n",
+        )
+        .unwrap();
+        let app = cmake_app(td.path(), &nodes, None);
+        let c = app.cmake.as_ref().unwrap();
+        assert_eq!(c.zephyr_modules, ["../../../src/support_pkg"]);
+        // Kconfig only: the package's own CMakeLists is still the app's.
+        assert!(c.subdirs.iter().any(|(_, n)| n == "support_pkg"), "{c:?}");
+        let s = render_cmakelists(&app);
+        let at = |needle: &str| s.find(needle).unwrap_or_else(|| panic!("{needle}: {s}"));
+        assert!(
+            at("list(APPEND ZEPHYR_EXTRA_MODULES") < at("find_package(Zephyr REQUIRED"),
+            "{s}"
+        );
+        assert!(s.contains("\"${CMAKE_CURRENT_SOURCE_DIR}/../../../src/support_pkg\" ABSOLUTE"));
+        assert!(
+            !s.contains(td.path().to_str().unwrap()),
+            "no absolute path: {s}"
+        );
+    }
+
+    /// A module whose CMake IS the package's own CMakeLists (`build.cmake: .`)
+    /// is built by Zephyr, so the application must not add it a second time.
+    /// A module with its CMake elsewhere (`build.cmake: zephyr`) leaves the
+    /// package's CMakeLists to the application.
+    #[test]
+    fn a_module_that_builds_the_package_cmake_is_not_added_twice() {
+        let td = tempfile::tempdir().unwrap();
+        let nodes = cmake_workspace(
+            td.path(),
+            &[("own_pkg", false, false), ("split_pkg", false, false)],
+        );
+        for (pkg, cmake) in [("own_pkg", "."), ("split_pkg", "zephyr")] {
+            let module = td.path().join("src").join(pkg).join("zephyr");
+            std::fs::create_dir_all(&module).unwrap();
+            std::fs::write(
+                module.join("module.yml"),
+                format!("build:\n  cmake: {cmake}\n  kconfig: zephyr/Kconfig\n"),
+            )
+            .unwrap();
+        }
+        let app = cmake_app(td.path(), &nodes, None);
+        let c = app.cmake.as_ref().unwrap();
+        assert_eq!(
+            c.zephyr_modules,
+            ["../../../src/own_pkg", "../../../src/split_pkg"]
+        );
+        let names: Vec<&str> = c.subdirs.iter().map(|(_, n)| n.as_str()).collect();
+        assert_eq!(names, ["split_pkg"]);
+    }
+
+    /// A module-only package (Kconfig, no CMakeLists) is a module and no
+    /// subdirectory; a `module.yml` that does not parse is refused by name.
+    #[test]
+    fn a_kconfig_only_module_is_no_subdirectory_and_a_bad_module_yml_is_refused() {
+        let td = tempfile::tempdir().unwrap();
+        let mut nodes = cmake_workspace(td.path(), &[("talker_pkg", false, false)]);
+        let kconf = td.path().join("src/kconfig_pkg");
+        std::fs::create_dir_all(kconf.join("zephyr")).unwrap();
+        std::fs::write(
+            kconf.join("zephyr/module.yml"),
+            "build:\n  kconfig: Kconfig\n",
+        )
+        .unwrap();
+        nodes.push(("kconfig_pkg".to_string(), kconf.clone()));
+        let app = cmake_app(td.path(), &nodes, None);
+        let c = app.cmake.as_ref().unwrap();
+        assert_eq!(c.zephyr_modules, ["../../../src/kconfig_pkg"]);
+        assert!(!c.subdirs.iter().any(|(_, n)| n == "kconfig_pkg"), "{c:?}");
+
+        std::fs::write(kconf.join("zephyr/module.yml"), "build: [unclosed\n").unwrap();
+        let entry = td.path().join("build/zephyr-zenoh/zephyr_entry");
+        let err = resolve_cmake(
+            td.path(),
+            &entry,
+            &td.path().join("src/demo_bringup"),
+            "zephyr",
+            None,
+            &std::collections::BTreeMap::new(),
+            None,
+            "zephyr",
+            &nodes,
+        )
+        .unwrap_err();
+        assert!(err.contains("module.yml"), "{err}");
+    }
+
+    /// No module in the closure, no module lines.
+    #[test]
+    fn an_image_without_modules_emits_no_extra_modules() {
+        let td = tempfile::tempdir().unwrap();
+        let nodes = cmake_workspace(td.path(), &[("talker_pkg", false, false)]);
+        let app = cmake_app(td.path(), &nodes, None);
+        assert!(!render_cmakelists(&app).contains("ZEPHYR_EXTRA_MODULES"));
     }
 }

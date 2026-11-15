@@ -5198,7 +5198,8 @@ fn generate_entry(
     // number (`report_parameter_store_refused`).
     let launch_seeds_params = plan.nodes.iter().any(|n| !n.params.is_empty());
 
-    let nodes = launch_closure(root, &plan);
+    let nodes = launch_closure(root, &plan)
+        .map_err(|e| eyre::eyre!("finding the packages of image `{image_id}`: {e}"))?;
 
     // Where the entry will be written — needed to make its dependency paths
     // relative, and computed before the spec because the spec carries them.
@@ -6041,27 +6042,82 @@ fn deploy_names_target(tokens: &[String], board: &str, platform: &str) -> bool {
         .any(|t| t.is_empty() || t == board || t == platform || family.is_some_and(|f| t == f))
 }
 
-/// The workspace packages a launch plan names, once each, in plan order --
-/// the closure a C/C++ west application `add_subdirectory()`s
-/// (`builder::west_app::resolve_cmake`), and therefore the packages whose
-/// components its configure registers. A launch file may name one package
-/// several times; the build needs it once.
+/// The workspace packages an image is built from: the packages its launch plan
+/// names, once each, plus every workspace package they `<depend>` on,
+/// transitively. This is the closure a C/C++ west application
+/// `add_subdirectory()`s (`builder::west_app::resolve_cmake`), and therefore the
+/// packages whose components its configure registers.
+///
+/// Issue 2594 (phase-478 I10): this was the launch-named packages alone, so a
+/// support library a node depends on never had its CMake run in a generated
+/// app, and a support package that is a Zephyr module never joined
+/// `ZEPHYR_EXTRA_MODULES` (I11). A dependency joins when it is a CMake package
+/// (`routing::cmake_node`, the native cmake root's own predicate, which leaves
+/// interface packages out) or a Zephyr module (`zephyr/module.yml`). Message
+/// and other external names are not workspace packages and are skipped.
+///
+/// Order: the launch-named packages in plan order, then the dependencies in the
+/// workspace's topological order. The west application sorts what it emits.
 fn launch_closure(
     root: &std::path::Path,
     plan: &crate::codegen::entry::Plan,
-) -> Vec<(String, std::path::PathBuf)> {
+) -> Result<Vec<(String, std::path::PathBuf)>, String> {
+    package_closure(root, plan.nodes.iter().map(|n| n.pkg.as_str()))
+}
+
+/// [`launch_closure`] over the launch-named package names `launched`.
+fn package_closure<'a>(
+    root: &std::path::Path,
+    launched: impl IntoIterator<Item = &'a str>,
+) -> Result<Vec<(String, std::path::PathBuf)>, String> {
+    let found = crate::builder::discover::discover(root, &[])?;
+    let by_name: std::collections::BTreeMap<
+        &str,
+        &cargo_nano_ros::provider_scan::WorkspacePackage,
+    > = found
+        .packages
+        .iter()
+        .map(|p| (p.name.as_str(), p))
+        .collect();
     let mut seen = std::collections::BTreeSet::new();
     let mut nodes = Vec::new();
-    for n in &plan.nodes {
-        if !seen.insert(n.pkg.clone()) {
+    for pkg in launched {
+        if !seen.insert(pkg.to_string()) {
             continue;
         }
-        let dir = root.join("src").join(&n.pkg);
+        let dir = by_name
+            .get(pkg)
+            .map(|p| p.dir.clone())
+            .unwrap_or_else(|| root.join("src").join(pkg));
         if dir.is_dir() {
-            nodes.push((n.pkg.clone(), dir));
+            nodes.push((pkg.to_string(), dir));
         }
     }
-    nodes
+    // Every workspace package the launch-named ones reach through `<depend>`.
+    let mut reached: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    let mut stack: Vec<&str> = nodes.iter().map(|(n, _)| n.as_str()).collect();
+    while let Some(name) = stack.pop() {
+        let Some(pkg) = by_name.get(name) else {
+            continue;
+        };
+        for dep in &pkg.depends {
+            if let Some((k, _)) = by_name.get_key_value(dep.as_str())
+                && reached.insert(k)
+            {
+                stack.push(k);
+            }
+        }
+    }
+    for pkg in &found.packages {
+        if !reached.contains(pkg.name.as_str()) || seen.contains(&pkg.name) {
+            continue;
+        }
+        if crate::routing::cmake_node(pkg) || pkg.dir.join("zephyr").join("module.yml").is_file() {
+            seen.insert(pkg.name.clone());
+            nodes.push((pkg.name.clone(), pkg.dir.clone()));
+        }
+    }
+    Ok(nodes)
 }
 
 /// The build dir of `nros sync`'s metadata probe for this workspace, which
@@ -6090,7 +6146,7 @@ fn registered_population(
         RegisteredScope::LaunchClosure => {
             let plan = crate::codegen::entry::plan_from_model(model_path, board)
                 .map_err(|e| format!("cannot plan the launch: {e}"))?;
-            let packages: std::collections::BTreeSet<String> = launch_closure(root, &plan)
+            let packages: std::collections::BTreeSet<String> = launch_closure(root, &plan)?
                 .into_iter()
                 .map(|(p, _)| p)
                 .collect();
@@ -6877,7 +6933,7 @@ fn image_launch_node_dirs(
     })?;
     let plan = crate::codegen::entry::plan_from_model(&model, image.board.clone())
         .map_err(|e| format!("cannot plan the launch: {e}"))?;
-    Ok(launch_closure(root, &plan)
+    Ok(launch_closure(root, &plan)?
         .into_iter()
         .map(|(_, d)| d)
         .collect())
@@ -12575,5 +12631,79 @@ mod workspace_edition_tests {
             workspace_edition_mismatch("b:linux", None, Some(RosEdition::Jazzy)),
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod package_closure_tests {
+    use super::package_closure;
+    use std::path::Path;
+
+    fn pkg(root: &Path, name: &str, depends: &[&str], files: &[(&str, &str)]) {
+        let dir = root.join("src").join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        let deps: String = depends
+            .iter()
+            .map(|d| format!("  <depend>{d}</depend>\n"))
+            .collect();
+        std::fs::write(
+            dir.join("package.xml"),
+            format!(
+                "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>{name}</name>\n  \
+                 <version>0.0.0</version>\n  <description>d</description>\n  \
+                 <maintainer email=\"m@example.com\">m</maintainer>\n  \
+                 <license>Apache-2.0</license>\n{deps}  <export><build_type>ament_cmake</build_type></export>\n</package>\n"
+            ),
+        )
+        .unwrap();
+        for (rel, body) in files {
+            let path = dir.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+    }
+
+    /// Issue 2594 (phase-478 I10/I11) -- an image is built from its launch
+    /// packages AND the workspace packages they depend on, transitively. A CMake
+    /// support package and a Kconfig-only Zephyr module join; an interface
+    /// package, an external name and an unrelated package do not.
+    #[test]
+    fn the_closure_follows_depends_to_cmake_packages_and_zephyr_modules() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path();
+        let cmake = [("CMakeLists.txt", "")];
+        pkg(
+            root,
+            "talker_pkg",
+            &["support_pkg", "std_msgs", "my_msgs"],
+            &cmake,
+        );
+        pkg(root, "support_pkg", &["deep_pkg", "kconfig_pkg"], &cmake);
+        pkg(root, "deep_pkg", &[], &cmake);
+        pkg(
+            root,
+            "kconfig_pkg",
+            &[],
+            &[("zephyr/module.yml", "build:\n  kconfig: Kconfig\n")],
+        );
+        pkg(
+            root,
+            "my_msgs",
+            &[],
+            &[("CMakeLists.txt", ""), ("msg/Foo.msg", "int32 a\n")],
+        );
+        pkg(root, "unrelated_pkg", &[], &cmake);
+
+        let got = package_closure(root, ["talker_pkg", "talker_pkg"]).expect("closure");
+        let mut names: Vec<&str> = got.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names[0], "talker_pkg", "launch packages first: {names:?}");
+        names.sort_unstable();
+        assert_eq!(
+            names,
+            ["deep_pkg", "kconfig_pkg", "support_pkg", "talker_pkg"]
+        );
+        for (n, d) in &got {
+            assert_eq!(d, &root.join("src").join(n));
+        }
     }
 }

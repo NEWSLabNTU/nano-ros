@@ -91,12 +91,13 @@ rest, and [Flash a real board](flash-a-real-board.md) flashes it.
 ## Extend the build the Zephyr way
 
 `nros build` runs a plain `west build`, so every Zephyr extension point is
-untouched. The first row edits the application's `CMakeLists.txt`, so it
+untouched. The second row edits the application's `CMakeLists.txt`, so it
 needs an application you own (`nros materialize <image>`); the rest do not:
 
 | You want | You do |
 | --- | --- |
-| an out-of-tree module | `list(APPEND ZEPHYR_EXTRA_MODULES <dir>)` before `find_package(Zephyr)` |
+| your own Kconfig symbols, defined by a workspace package | a `zephyr/module.yml` in that package; see [below](#a-workspace-package-that-is-a-zephyr-module) |
+| a module from outside the workspace | `list(APPEND ZEPHYR_EXTRA_MODULES <dir>)` before `find_package(Zephyr)` |
 | a driver in that module | `zephyr_library()` and `zephyr_library_sources()`, behind your own Kconfig |
 | its devicetree binding | `dts/bindings/`, with `settings: {dts_root: .}` in the module's `zephyr/module.yml` |
 | an out-of-tree board, SoC or snippet | the matching `board_root`, `soc_root` or `snippet_root` in that `module.yml` |
@@ -116,6 +117,33 @@ There is no image key for arbitrary `-D` defines: something the
 application always needs belongs in its `CMakeLists.txt`. A mistake in your
 module surfaces as Zephyr's own error, unchanged, because the build is a
 plain `west build`.
+
+### A workspace package that is a Zephyr module
+
+An `os_config` fragment assigns Kconfig symbols, but it cannot define one:
+Kconfig refuses `CONFIG_MY_MODE=y` for a symbol nothing declares. The
+package that reads the symbols defines them, as a Zephyr module. Give it a
+`zephyr/module.yml`:
+
+```yaml
+# src/my_support/zephyr/module.yml
+name: my_support
+build:
+  kconfig: zephyr/Kconfig
+```
+
+and the definitions in `src/my_support/zephyr/Kconfig`, in Zephyr's own
+syntax. When a node package of the image `<depend>`s on `my_support`,
+directly or through other workspace packages, `nros build` adds it to
+`ZEPHYR_EXTRA_MODULES` in the application it generates, so its symbols are
+defined and the image's `os_config` fragment can set them.
+
+The generated application also adds every workspace package the image
+depends on, not only the node packages the launch file names, so a support
+library's own `CMakeLists.txt` runs. A module whose `build: cmake:` is the
+package's own directory (`cmake: .`) is built by Zephyr as the module
+instead, and is not added a second time. The same package works unchanged
+in an application you build with `west` yourself.
 
 ## Read the run plan
 

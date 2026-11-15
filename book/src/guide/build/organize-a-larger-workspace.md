@@ -235,6 +235,16 @@ The workspaces under
 [`examples/workspaces/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces)
 (`rust`, `c`, `cpp` and `mixed`) have this shape, Zephyr images included.
 
+## Support packages
+
+A package that holds no node, such as a shared library the nodes link
+against, is part of an image when a node package `<depend>`s on it, directly
+or through other workspace packages. The generated build adds it, so its own
+`CMakeLists.txt` runs. A package no node of the image depends on is left
+out. On Zephyr a support package that defines Kconfig symbols is also a Zephyr
+module; see
+[A workspace package that is a Zephyr module](../platforms/zephyr.md#a-workspace-package-that-is-a-zephyr-module).
+
 ## When the generated entry is not enough
 
 Reach for these in order, smallest first:

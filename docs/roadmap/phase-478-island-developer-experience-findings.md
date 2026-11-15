@@ -7,9 +7,10 @@ and most issues the 2026-10-05 text cited as open are resolved (T1). What is
 left needs the S32K344 and the island tree: the fresh-worktree and island
 `image-facts` re-run (T2), the stated-below-derived build of the island image
 (T3), and on-board confirmation of D4's epoch. I8's second half waits on
-phase-474 T3. I9-I11 (added 2026-11-15, from the island's GitHub reports) are
-open: the CMake road's image `profile`, then a generated Zephyr app's package
-closure and its workspace Zephyr modules (issue 2594, ruled option A).
+phase-474 T3. I9-I11 were added 2026-11-15, from the island's GitHub reports:
+the CMake road's image `profile` (I9), then a generated Zephyr app's package
+closure and its workspace Zephyr modules (I10 and I11, issue 2594, option A,
+done).
 
 Originally (2026-10-05, PROPOSED). Records the
 nano-ros half of the developer-experience gaps the Autoware safety island
@@ -492,17 +493,23 @@ coordinate. A value that maps to neither is refused, naming
 
 ### I10 -- a generated Zephyr app adds the image's whole package closure
 
-**Status: OPEN.** [Issue 2594](../issues/2594-zephyr-generated-app-no-workspace-kconfig.md),
+**Status: DONE (2026-11-15).** [Issue 2594](../issues/archived/2594-zephyr-generated-app-no-workspace-kconfig.md),
 GitHub #3906, ruled option A on 2026-11-15, and this item is its
-prerequisite. `builder/west_app.rs` `add_subdirectory`s only the node packages
-the launch file names. It adds every workspace package in the image's
-dependency closure, computed from the same package graph `nros build`
-discovers, so a support package's own CMake runs in a generated app as it does
-in a hand-written one. Built after I9.
+prerequisite. `builder/west_app.rs` `add_subdirectory`'d only the node
+packages the launch file names. `launch_closure` in `cmd/build.rs` now returns
+those plus every workspace package they `<depend>` on, transitively, from the
+package graph `nros build` discovers: CMake packages (the native cmake root's
+`routing::cmake_node` predicate, so interface packages stay out) and Zephyr
+modules. A support package's own CMake therefore runs in a generated app as it
+does in a hand-written one. The registered population and the message-bound
+seed read the same closure.
 
 ### I11 -- a workspace package that is a Zephyr module brings its Kconfig
 
-**Status: OPEN.** Issue 2594, option A. A package in the image's closure (I10)
+**Status: DONE (2026-11-15).** Issue 2594, option A. `builder/west_app.rs`
+reads each closure package's `zephyr/module.yml` and appends the package to
+`ZEPHYR_EXTRA_MODULES` before `find_package(Zephyr)`; a module whose CMake is
+the package's own is not added twice. The ruling: a package in the image's closure (I10)
 that carries `zephyr/module.yml` with a `kconfig:` entry joins
 `ZEPHYR_EXTRA_MODULES` beside the nano-ros checkout (`builder/zephyr.rs`,
 `module_arg`), so the symbols it defines are defined in the generated app and
@@ -658,4 +665,4 @@ fixed after that release.
 - [issue 2589](../issues/2589-census-ctx-param-read-unseen.md): the census does not see a Rust node's `ctx.param()` read, so its contract row reads `param-phantom`. Split from issue 2568.
 - [issue 2590](../issues/2590-cpp-entry-rust-arm-drops-node-identity.md): a Rust component installed by a C++ entry ignores the launch `<node name= namespace=>`. Found fixing issue 2568.
 - [issue 2593](../issues/2593-cmake-road-drops-image-profile.md) (GitHub #3899): `[image.<id>] profile` is silently ignored on the CMake road, where `nros build` always configures Release. Same class as issue 2582.
-- [issue 2594](../issues/2594-zephyr-generated-app-no-workspace-kconfig.md) (GitHub #3906): a generated Zephyr west app cannot get the workspace's own Kconfig symbols. Ruled option A on 2026-11-15; work items I10 and I11.
+- [issue 2594](../issues/archived/2594-zephyr-generated-app-no-workspace-kconfig.md) (GitHub #3906): a generated Zephyr west app cannot get the workspace's own Kconfig symbols. Ruled option A on 2026-11-15; resolved by I10 and I11.
