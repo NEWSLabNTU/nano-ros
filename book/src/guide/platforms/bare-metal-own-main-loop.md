@@ -131,6 +131,48 @@ Code generation reads it whether a nano-ros build runs it or CMake's
 [Message generation](../../reference/message-generation.md) covers the bundled
 copies and the error a missing package gives.
 
+## When the Agent restarts
+
+An Agent that restarts forgets the node's session. The node notices about a
+second after the Agent is back: it asks whether the Agent still holds the
+session, and on "no" marks it lost and logs one line saying so. From then on
+every publish and spin returns `SessionLost`, and `executor.session_lost()` is
+true; it stays true. To reconnect, drop everything the old session owns and open again over
+the same storage:
+
+```rust
+loop {
+    // The previous executor was dropped, so its borrow of BACKING has ended.
+    let backing: &'static mut [MaybeUninit<u64>] = unsafe { &mut *(&raw mut BACKING) };
+    let Ok(mut executor) = (unsafe { Executor::open_in(&config, backing, ExecutorSizing::DEFAULT) })
+    else {
+        continue; // Agent not up yet: retry
+    };
+    let mut node = executor.create_node("talker").expect("node");
+    let publisher = node.create_publisher::<Int32>("/count").expect("publisher");
+    drop(node);
+    let mut n = 0;
+    while !executor.session_lost() {
+        let _ = publisher.publish(&Int32 { data: n });
+        n += 1;
+        let _ = executor.spin_once(Duration::from_millis(10));
+    }
+    // The Agent restarted: drop the entities first, then the executor.
+    drop(publisher);
+    drop(executor);
+}
+```
+
+Re-opening takes no new memory: the dropped executor hands the buffer back,
+and the next open uses it again. Drop the entity handles before the executor,
+since they belong to the old session.
+
+An Agent that is merely down marks nothing lost. To ask on your own schedule,
+`executor.ping(timeout_ms)` returns `Ok(())`, a `Timeout` (no answer yet,
+which proves nothing), or `SessionLost`. A loop that calls `spin_once` does
+not need it. A publish that the Agent stopped acknowledging returns
+`WouldBlock`.
+
 ## If it doesn't work
 
 - **The link fails on `nros_platform_udp_*`.** The build did not see

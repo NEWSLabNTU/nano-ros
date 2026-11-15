@@ -108,6 +108,26 @@ needs neither workaround.
   is no bridge to configure. Point each image at a router on host loopback,
   `tcp/127.0.0.1:7447`.
 
+## An XRCE node goes silent after its Agent restarts
+
+**Symptom:** a node on XRCE-DDS keeps running, but ROS 2 no longer sees its
+topics after the micro-ROS Agent was restarted. The node logs one line,
+`XRCE session lost: the Agent is reachable but no longer holds this session (it restarted)`.
+
+**Cause:** an Agent that restarts forgets every session it held. About a
+second after it is back, the node asks it whether it still holds the session,
+and on "no" marks the session lost. From then on every publish, spin and ping
+returns `SessionLost` (C: `RCLC_RET_NOT_FOUND`; C++:
+`NROS_CPP_RET_TRANSPORT_ERROR`), and
+`Executor::session_lost()` is true. An Agent that is only down marks nothing:
+the node carries on once the same Agent answers again.
+
+**Fix:** drop the executor and open it again, then create the nodes and
+entities again. The loop is in
+[When the Agent restarts](../platforms/bare-metal-own-main-loop.md#when-the-agent-restarts).
+How soon the node asks is `XRCE_SESSION_PROBE_MS` (override it with `-D`), in the
+[compile-time XRCE table](../../reference/environment-variables.md#compile-time-only-not-environment-variables).
+
 ## Message too large or truncated
 
 **Symptom:** `TransportError::MessageTooLarge`, payloads that arrive
