@@ -96,6 +96,16 @@ gate-tier:
     @python3 scripts/ci/gate-tier.py --self-test
     @bash tests/gate-tier-diff-tests.sh
 
+# A tracked YAML file names no mapping key twice. PyYAML keeps the last
+# duplicate silently, and GitHub refuses a workflow that has one: on
+# 2026-11-15 a rebase left `gate.yml`'s `changes` job with two `permissions:`
+# blocks, so the run failed with zero jobs while every local gate passed. The
+# YAML sibling of `manifests-parse` (issue 0722). Buildless; self-tests a
+# refusal and three legal shapes on the normal path.
+[private]
+yaml-duplicate-keys:
+    @python3 scripts/check/check-yaml-duplicate-keys.py
+
 # phase-489 W11 — a push to main skips the fast tier only when a `merge_group`
 # gate run already passed on that exact commit. The cases drive
 # `green-gate-run.sh` against a stub API, with every doubt (no run, a push
