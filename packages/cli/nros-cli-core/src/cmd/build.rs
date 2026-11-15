@@ -3500,7 +3500,9 @@ pub fn run(args: Args) -> Result<()> {
         // armed for the post-cargo stack walk.
         let nros_root =
             crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &root);
-        crate::cmd::stack_floor::arm(&mut plans, nros_root.as_deref(), &|k| std::env::var_os(k));
+        crate::cmd::stack_floor::arm(&mut plans, nros_root.as_deref(), Some(&root), &|k| {
+            std::env::var_os(k)
+        });
     }
     // Issue 2400 W2b / issue 2461 — the image's stack-floor key and raise
     // opt-in reach every cmake configure, freshly each time.

@@ -285,6 +285,14 @@ function(_nros_stack_floor_command _out)
     foreach(_d IN LISTS _C_LINK_DIRS)
         list(APPEND _cmd --link-dir "${_d}")
     endforeach()
+    # The project's own name (the workspace directory `nros build` names):
+    # masked out of the walk's callee order, so a project's name never moves
+    # its walk (the walk is a heuristic on a cyclic graph, issue 2550, and the
+    # order picks which cycle it cuts).
+    if(DEFINED NROS_WORKSPACE_ROOT AND NOT NROS_WORKSPACE_ROOT STREQUAL "")
+        get_filename_component(_nros_ws_name "${NROS_WORKSPACE_ROOT}" NAME)
+        list(APPEND _cmd --name-token "${_nros_ws_name}")
+    endif()
     list(APPEND _cmd --su "${CMAKE_BINARY_DIR}")
     # The image's C as clang IR, for C call-site types (issue 2516). Zephyr
     # always exports it; a road that does not keeps every C site bound to

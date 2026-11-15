@@ -841,21 +841,44 @@ Acceptance:
 stack-floor-table`. A build that refuses still walked, so its fresh report is
 the answer: a stack below the floor is the refusal this check predicts.
 
-First run against main (2026-11-15) named three drifted rows, all moved since
-issue 2546's re-measure the same morning:
+First run against main (2026-11-15) named three drifted rows. The nucleo C
+talker's walk had ROSEN past its row (99,140 -> 100,956 B), so a fresh `nros
+new` C talker refused to build: the template stamped 109,056 B under a
+111,056 B floor. The cause was not a commit. One C talker build just before
+and one at the zenoh-pico bump a5e0439885 walked 99,188 and 99,196 B, and
+both already refused, so the bump moved the walk 8 B. What moved it was the
+project's NAME: the walk is a heuristic on a cyclic graph (issue 2550), its
+callee order was keyed on symbol names, and the project's name reaches them
+(`__nros_c_component_<name>_node_configure`). One tree, four names: 100,956 B
+for three, 106,884 B for `c_after`.
 
-| row | recorded | walked | verdict |
-| --- | --- | --- | --- |
-| nucleo C talker | 99,140 | 100,956 | ROSE: a fresh `nros new` C talker refused to build (stamp 109,056 B, floor 111,056 B) |
-| mps2 bare-metal talker | 100,660 | 97,064 | FELL 3.6 % |
-| nucleo Rust action server | 68,752 | 68,376 | note (-0.5 %) |
-| nucleo Rust talker | 67,688 | 67,320 | note (-0.5 %) |
+So W8 also masks the project's name out of the order key (`--name-token`,
+the workspace directory's name, on the cmake and cargo roads; self-test: three
+names, one walk, and the mask removed as a control). Every name now walks the
+same. The cut is still arbitrary, so an `[[observed]]` row gains `walk_floor`,
+the largest walk the image was seen to have, and its floor never drops below
+it (ruled 2026-11-15).
 
-The one main commit since then that touches every row's code is the
-zenoh-pico bump of issue 2575; not bisected. All four rows are re-measured to
-the walk, and the template tests follow. Re-run on the re-measured table, all
-four read exact and every fresh template builds; with the mps2 row edited by
-hand to 97,056 B (in a copy of the table) the check fails naming that row.
+Re-measured on the masked walk:
+
+| row | recorded | walk | `walk_floor` | floor |
+| --- | --- | --- | --- | --- |
+| nucleo C talker | 99,140 | 99,196 | 106,884 (`c_after`) | 117,576 |
+| nucleo Rust action server | 68,752 | 68,776 | | 75,656 |
+| nucleo Rust talker | 67,688 | 65,856 | 67,320 (`drift_talker_rust`) | 74,056 |
+| mps2 bare-metal talker | 100,660 | 99,340 | | 109,280 |
+
+With the mps2 row edited by hand to 97,056 B (in a copy of the table) the
+check failed naming that row.
+
+**The merge-lane gap.** No merge lane builds an image the table records, so
+a change that moves a walk (a pin move, a board commit) lands green. The lane
+that would catch one is the merge queue (`merge_group`) running this check's
+mps2 row alone: the cargo road, no Zephyr SDK, 15-77 s measured here. It
+would have caught the mps2 row's own drift (100,660 -> 97,064 B) the day it
+landed. It cannot see a nucleo template's walk; the full check (four rows,
+Zephyr SDK, ~5 min warm, more cold in a fresh container) stays nightly. Not
+built; recorded here.
 
 ## Issues homed here (2026-11-15)
 

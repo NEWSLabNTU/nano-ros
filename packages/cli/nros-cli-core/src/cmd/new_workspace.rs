@@ -296,7 +296,17 @@ pub fn recorded_floor(table: &str, key: &str) -> Option<u64> {
         let stat = a.get("measured")?.get("static")?.as_integer()?;
         floor(stat + bytes)
     });
-    let observed = rows("observed").filter_map(|o| floor(o.get("static")?.as_integer()?));
+    // An observed row's floor is its walk's, never below `walk_floor`: the
+    // largest walk the image was seen to have under another callee order (the
+    // walk is a heuristic on a cyclic graph, so the cycle it cuts can move).
+    let observed = rows("observed").filter_map(|o| {
+        let stat = o.get("static")?.as_integer()?;
+        let held = o
+            .get("walk_floor")
+            .and_then(toml::Value::as_integer)
+            .unwrap_or(stat);
+        floor(stat.max(held))
+    });
     allowance.chain(observed).max()
 }
 
@@ -1082,11 +1092,23 @@ mod tests {
         let k = |s: &str| format!("{s}@nucleo-f767zi-zephyr");
         assert_eq!(
             recorded_floor(&t, &k("action-server/rust/zenoh")),
-            Some(75216)
+            Some(75656)
         );
         assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(74056));
-        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(111056));
+        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(117576));
         assert_eq!(recorded_floor(&t, &k("listener/rust/zenoh")), None);
+    }
+
+    /// An observed row's floor never drops below its `walk_floor`, the
+    /// largest walk the image was seen to have under another callee order.
+    #[test]
+    fn a_rows_walk_floor_holds_the_recorded_floor() {
+        let t = "margin_pct = 10\n[[observed]]\nimage = \"k\"\nrole = \"OPEN\"\n\
+                 static = 1000\nwalk_floor = 2000\n";
+        assert_eq!(recorded_floor(t, "k"), Some(2200));
+        let t = "margin_pct = 10\n[[observed]]\nimage = \"k\"\nrole = \"OPEN\"\n\
+                 static = 1000\n";
+        assert_eq!(recorded_floor(t, "k"), Some(1104));
     }
 
     /// The default is READ from the module's Kconfig, per language.
@@ -1159,8 +1181,8 @@ mod tests {
                 "zenoh",
                 "nucleo-f767zi-zephyr"
             ),
-            // issue 2402: the bind walk, 68,376 B, plus the 10 % margin
-            Some(75216)
+            // issue 2402: the bind walk, 68,776 B, plus the 10 % margin
+            Some(75656)
         );
         assert!(raised >= 1);
         // not a Zephyr board: the knob is not CONFIG_MAIN_STACK_SIZE
