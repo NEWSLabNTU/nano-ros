@@ -44,6 +44,17 @@ and library it builds: the cargo profile on the cargo driver,
    nros build mps2
    ```
 
+3. Check that the image's build can apply the profile. Two cases are
+   refused, each naming the image:
+
+   - A cargo profile of your own on a CMake image (one with C or C++
+     nodes). CMake knows only the four build types below, so drop `profile`
+     from that image and pass the type on the build line:
+     `nros build <image> -- -DCMAKE_BUILD_TYPE=RelWithDebInfo`.
+   - Any profile on a Zephyr image. Zephyr takes its optimisation from
+     Kconfig: remove `profile` and set `CONFIG_SPEED_OPTIMIZATIONS`, `CONFIG_SIZE_OPTIMIZATIONS` or
+     `CONFIG_DEBUG_OPTIMIZATIONS` in a fragment the image's `os_config` names.
+
 The `nros-*` profiles and the CMake build types they come from:
 
 | `CMAKE_BUILD_TYPE` | cargo profile | Meaning |
