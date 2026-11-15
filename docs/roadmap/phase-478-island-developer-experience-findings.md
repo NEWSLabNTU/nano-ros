@@ -567,6 +567,21 @@ GitHub #3952. The CMake root puts the workspace's `src/` on
 configure missed the workspace's message packages. Both generators now emit
 one block (`cmake_root::interface_search_path_cmake`).
 
+### I17 -- a sibling package's param file does not make the model unusable
+
+**Status: DONE (2026-11-15).** [Issue 2615](../issues/archived/2615-model-gate-refuses-sibling-param-file.md).
+I12 made a `<param from>` file a model input. A file in a sibling package can
+only be recorded as an absolute path, and the model check refused every
+absolute path, so the island stopped building. Only an absolute path under the
+bringup is the legacy non-portable shape now; a sibling input is hash-checked.
+
+### I18 -- the knob delivery check refuses a build after link
+
+**Status: OPEN.** [Issue 2618](../issues/2618-knob-delivery-check-false-mismatch-after-link.md).
+`NROS_SUBSCRIBED_TYPE_BOUNDS` reads as a mismatch because the derived and
+resolved lists use different separators, and a `max_publishers` override row
+is flagged. The ELF is still produced.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -701,6 +716,8 @@ from that session, `FREERTOS_PORT not set` on `freertos-posix`, is
 [issue 2341](../issues/archived/2341-freertos-posix-port-not-reaching-zpico.md),
 fixed after that release.
 
+- [issue 2615](../issues/archived/2615-model-gate-refuses-sibling-param-file.md) (resolved): a model whose launch loads a param file from a sibling package was refused as non-portable (I17).
+- [issue 2618](../issues/2618-knob-delivery-check-false-mismatch-after-link.md): the knob delivery check refuses a build after link over a list separator and an override row (I18).
 - [issue 2609](../issues/archived/2609-zephyr-app-workspace-module-lost-to-cache.md) (GitHub #3948, resolved): a generated Zephyr app lost its workspace Zephyr modules to the `-DZEPHYR_EXTRA_MODULES` cache entry (I15).
 - [issue 2610](../issues/archived/2610-zephyr-app-misses-workspace-msg-packages.md) (GitHub #3952, resolved): a generated Zephyr app did not find the workspace's own message packages (I16).
 - [issue 2601](../issues/archived/2601-resolve-ignores-image-target-platform-file.md): `nros configure` resolved every model for `posix`, so an image's `<stem>.system.<target>.yaml` was never read (I14, resolved).

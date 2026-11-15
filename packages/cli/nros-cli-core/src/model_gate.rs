@@ -361,10 +361,11 @@ pub fn open_with(
 ///
 /// Returns `Some(reason)` when the recorded provenance no longer holds:
 ///
-/// * a recorded input with a non-portable absolute path (the machine-specific
-///   legacy models), one that no longer exists, or one whose sha256 changed
-///   (an input the mtime gate does not watch -- a sibling include, the
-///   `--sched` platform file);
+/// * a recorded input with a non-portable absolute path under the bringup (the
+///   machine-specific legacy models; an absolute path OUTSIDE it, a sibling
+///   package's file, is hash-checked instead), one that no longer exists, or
+///   one whose sha256 changed (an input the mtime gate does not watch -- a
+///   sibling include, the `--sched` platform file);
 /// * issue 0427 -- a resolver pin that is not ours: a resolver fix changes the
 ///   OUTPUT for byte-identical inputs. nano-ros stamps `meta.resolver.version`
 ///   with `NROS_PLAY_LAUNCH_SHA` at resolve time (`stamp_resolver_pin`)
@@ -388,6 +389,22 @@ pub fn open_with(
 /// [`PinPolicy::UnpinnedIsUnverifiable`] instead, via [`provenance_stale_with`].
 pub fn provenance_stale(model_path: &Path, bringup_dir: Option<&Path>) -> Option<String> {
     provenance_stale_with(model_path, bringup_dir, PinPolicy::Required)
+}
+
+/// Whether an absolute recorded input lies under the bringup package or its
+/// launch root (the generated mirror, when the launch tree is generated) --
+/// the two bases the resolver relativises against.
+fn is_under_bringup(recorded: &Path, bringup_dir: &Path) -> bool {
+    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let path = canon(recorded);
+    [
+        canon(bringup_dir),
+        canon(&nros_orchestration_ir::model_location::launch_root(
+            bringup_dir,
+        )),
+    ]
+    .iter()
+    .any(|base| path.starts_with(base))
 }
 
 /// What an ABSENT `meta.resolver` means. A pin that DISAGREES with ours is
@@ -425,7 +442,16 @@ pub fn provenance_stale_with(
     if let Some(bringup_dir) = bringup_dir {
         for input in &model.meta.inputs {
             let recorded = Path::new(&input.path);
-            if recorded.is_absolute() {
+            // Issue 2615 -- the resolver records an input relative to the
+            // bringup root when it lies under it, and absolute when it does
+            // not: a `<param from>` file or an include in a SIBLING package
+            // has no other spelling. Only an absolute path UNDER the bringup
+            // is the legacy non-portable model (a current resolver would
+            // have relativised it), so only that one is stale on sight; a
+            // sibling input is hash-checked like any other. Refusing it
+            // refused every model with a sibling param file once those
+            // became inputs, and re-resolving could never help.
+            if recorded.is_absolute() && is_under_bringup(recorded, bringup_dir) {
                 return Some(format!("non-portable absolute input path `{}`", input.path));
             }
             // phase-531 W3 — a generated launch tree's inputs are under its
@@ -738,6 +764,31 @@ mod tests {
                 .unwrap()
                 .contains("absolute")
         );
+    }
+
+    /// Issue 2615 -- a `<param from>` file in a SIBLING package lies outside
+    /// the bringup, so the resolver can only record it absolute. That is not
+    /// the legacy shape: it is checked by hash, current while it matches and
+    /// stale once it changes.
+    #[test]
+    fn absolute_sibling_input_is_checked_by_hash() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path().join("src/bringup");
+        let sibling = tmp.path().join("src/operator/config");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        let param = sibling.join("operator.param.yaml");
+        std::fs::write(&param, b"a: 1\n").unwrap();
+        let model = write_model(
+            &bringup,
+            vec![(param.display().to_string(), sha(b"a: 1\n"))],
+        );
+        assert_eq!(provenance_stale(&model, Some(&bringup)), None);
+        assert!(verify(&model, Some(&bringup)).is_ok());
+
+        std::fs::write(&param, b"a: 2\n").unwrap();
+        let reason = provenance_stale(&model, Some(&bringup)).unwrap();
+        assert!(reason.contains("hash changed"), "{reason}");
     }
 
     #[test]
