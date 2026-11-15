@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         qemu-system-misc \
         file \
         qemu-system-arm \
+        ipxe-qemu \
     && rm -rf /var/lib/apt/lists/*
 
 # The ROS 2 apt repository, BEFORE the python layer so that layer measures the

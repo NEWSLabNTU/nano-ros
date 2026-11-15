@@ -2199,10 +2199,18 @@ check = { cmd = "qemu-system-arm" }
 # emulator, and the boot resolves this one from PATH. Debian/Ubuntu ship it in
 # the same package as `qemu-system-arm`; the machine it boots (`virt`,
 # GICv3, two A53s) is in every packaged QEMU this index supports.
+#
+# issue 2592 — `ipxe-qemu` too. The cell's `-nic user,model=e1000` makes QEMU
+# load the NIC's option ROM (`efi-e1000.rom`) at startup, and on apt that ROM
+# lives in `ipxe-qemu`, which `qemu-system-arm` only RECOMMENDS. Every image
+# installs with `--no-install-recommends`, so the self-hosted runner had the
+# emulator and not the ROM: `failed to find romfile "efi-e1000.rom"`, exit 1
+# after 0.0 s. A workstation `apt install` pulls recommends, which is why the
+# cell passed by hand.
 [prereq.qemu-system-aarch64]
 role = "infra"
 why = "Zephyr qemu_cortex_a53 SMP cells; the [tool.qemu] dist builds no aarch64 target (issue 2113)"
-apt = ["qemu-system-arm"]
+apt = ["qemu-system-arm", "ipxe-qemu"]
 dnf = ["qemu-system-aarch64"]
 pacman = ["qemu-system-aarch64"]
 brew = ["qemu"]
