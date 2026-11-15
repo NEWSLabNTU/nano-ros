@@ -48,12 +48,8 @@ extern "C" {
 {% endif %}
 {% if rust_pkgs %}
 // Rust component install seam (rclcpp::node!).
-extern "C" {
-{%- for c in rust_pkgs %}
-    int32_t __nros_component_{{ c.pkg | pkg_ident }}_install(const void* node, void* executor, void* self);
-{%- endfor %}
-}
-{% endif %}
+{% include "rust_install_decls_cpp.jinja" %}
+{%- endif %}
 // Static per-node storage (outlives the module; no heap).
 {%- for s in nodes %}
 {%- if s.kind != "rust" %}

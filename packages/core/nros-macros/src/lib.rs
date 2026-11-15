@@ -320,7 +320,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
 
         // Phase 257 (W0-B / D6) — the uniform cross-language component-install seam.
         // A typed Entry of ANY language calls
-        // `__nros_component_<pkg>_install(node, executor, self)` to install this Node
+        // `__nros_component_<pkg>_install(node, executor, self, params, n_params)` to install this Node
         // onto the shared `Executor` it hands in (`executor` = the entry's
         // `nros::global_handle()` / a node's `executor_handle()` = `*mut Executor`).
         // For a Rust node `_node`/`_self` are unused — it self-creates its node (its
@@ -350,14 +350,28 @@ fn node_impl(input: TokenStream) -> TokenStream {
             { <#node_ty as ::nros::Component>::ENTITY_BOUNDS.timers },
         > = ::nros::ComponentSlotStorage::new();
 
+        // issue 2568 -- `params` / `n_params` carry the node's launch
+        // `<param>` initials as a flat `[name0, value0, ...]` C-string array
+        // (null + 0 for none), so `ctx.param(name)` sees them on this road
+        // too; before, this seam carried none and a C++ entry's Rust node
+        // read every default.
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         #[unsafe(no_mangle)]
         pub extern "C" fn #component_install_fn_name(
             _node: *const ::core::ffi::c_void,
             executor: *mut ::core::ffi::c_void,
             _self: *mut ::core::ffi::c_void,
+            params: *const *const ::core::ffi::c_char,
+            n_params: usize,
         ) -> i32 {
-            unsafe { ::nros::__macro::install_node_typed_in(executor, &#component_store_name) }
+            unsafe {
+                ::nros::__macro::install_node_typed_with_c_params_in(
+                    executor,
+                    &#component_store_name,
+                    params,
+                    n_params,
+                )
+            }
         }
 
         #[unsafe(no_mangle)]

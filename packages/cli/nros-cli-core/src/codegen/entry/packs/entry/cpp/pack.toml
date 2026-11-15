@@ -30,6 +30,7 @@ templates = [
     { key = "boot_wrapper_cpp.jinja", file = "boot_wrapper.jinja" },
     { key = "service_trailer_cpp.jinja", file = "service_trailer.jinja" },
     { key = "monitor_statics_cpp.jinja", file = "monitor_statics.jinja" },
+    { key = "rust_install_decls_cpp.jinja", file = "rust_install_decls.jinja" },
     # phase-521 W8 (b) -- the PX4 module entry (`px4.rs`), which renders this
     # pack's nodes with this pack's partials.
     { key = "entry_px4.cpp", file = "px4_entry.cpp.jinja" },

@@ -649,7 +649,94 @@ pub struct NodeContext<'a> {
     /// for the metadata-recorder / no-launch paths. A node reads them in
     /// `register()` via [`param`](Self::param) and stashes the typed value on its
     /// `State` (RFC-0004 §10 — baked initials; runtime reconfig is W4b).
-    params: &'a [(&'a str, &'a str)],
+    params: LaunchParams<'a>,
+}
+
+/// The launch `<param>` initials one component install carries, in either of
+/// the two shapes an entry can hand them over.
+///
+/// A Rust entry (`nros::main!`) bakes a `&[(&str, &str)]`. A C or C++ entry
+/// cannot name that type, so it passes a flat `const char*` array through the
+/// component's C-ABI install seam: `[key0, value0, key1, value1, ...]`.
+/// Reading that array in place, rather than copying it into a bounded buffer,
+/// keeps the install free of a heap and of a per-node parameter cap; the array
+/// only has to outlive the install call, because every reader runs inside it.
+// issue 2568 -- the C++ entry's Rust arm used to carry no params at all, so
+// `ctx.param()` answered the default whatever the launch file said.
+#[cfg(feature = "rmw-cffi")]
+#[derive(Clone, Copy)]
+pub(crate) enum LaunchParams<'a> {
+    /// Baked by a Rust entry.
+    Pairs(&'a [(&'a str, &'a str)]),
+    /// A validated flat C-string array (see [`LaunchParams::from_c_pairs`]).
+    Flat(&'a [*const core::ffi::c_char]),
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl<'a> LaunchParams<'a> {
+    /// No launch params.
+    pub(crate) const EMPTY: Self = Self::Pairs(&[]);
+
+    /// Wrap a flat `[key, value, ...]` C-string array of `n_pairs` pairs.
+    ///
+    /// Every pointer is checked non-null and every string valid UTF-8 HERE,
+    /// once, so the readers borrow the bytes without re-checking. `None` when
+    /// a check fails, or when `kv` is null with a non-zero count.
+    ///
+    /// # Safety
+    /// When `n_pairs > 0`, `kv` must point to `2 * n_pairs` readable pointers,
+    /// each null or a NUL-terminated string, all valid for `'a`.
+    pub(crate) unsafe fn from_c_pairs(
+        kv: *const *const core::ffi::c_char,
+        n_pairs: usize,
+    ) -> Option<Self> {
+        if n_pairs == 0 {
+            return Some(Self::EMPTY);
+        }
+        if kv.is_null() {
+            return None;
+        }
+        let len = n_pairs.checked_mul(2)?;
+        // SAFETY: per this fn's contract, `kv` holds `2 * n_pairs` pointers.
+        let flat: &'a [*const core::ffi::c_char] = unsafe { core::slice::from_raw_parts(kv, len) };
+        for &p in flat {
+            if p.is_null() {
+                return None;
+            }
+            // SAFETY: non-null and NUL-terminated per the contract.
+            let bytes = unsafe { core::ffi::CStr::from_ptr(p) }.to_bytes();
+            if core::str::from_utf8(bytes).is_err() {
+                return None;
+            }
+        }
+        Some(Self::Flat(flat))
+    }
+
+    /// Every `(name, value)` pair, in launch order.
+    pub(crate) fn iter(self) -> impl Iterator<Item = (&'a str, &'a str)> {
+        let (pairs, flat): (&'a [(&'a str, &'a str)], &'a [*const core::ffi::c_char]) = match self {
+            Self::Pairs(p) => (p, &[]),
+            Self::Flat(f) => (&[], f),
+        };
+        pairs.iter().copied().chain(flat.chunks_exact(2).map(|kv| {
+            // SAFETY: `from_c_pairs` checked both pointers non-null and both
+            // strings UTF-8, and its contract keeps them alive for `'a`.
+            unsafe { (flat_str(kv[0]), flat_str(kv[1])) }
+        }))
+    }
+
+    /// The value of launch parameter `name`, if the launch set one.
+    pub(crate) fn get(self, name: &str) -> Option<&'a str> {
+        self.iter().find(|(k, _)| *k == name).map(|(_, v)| v)
+    }
+}
+
+/// # Safety
+/// `p` must be a non-null, NUL-terminated, valid UTF-8 string alive for `'a`.
+#[cfg(feature = "rmw-cffi")]
+unsafe fn flat_str<'a>(p: *const core::ffi::c_char) -> &'a str {
+    // SAFETY: per this fn's contract.
+    unsafe { core::str::from_utf8_unchecked(core::ffi::CStr::from_ptr(p).to_bytes()) }
 }
 
 #[cfg(feature = "rmw-cffi")]
@@ -665,13 +752,18 @@ impl<'a> NodeContext<'a> {
         Self {
             component_name,
             executor,
-            params: &[],
+            params: LaunchParams::EMPTY,
         }
     }
 
     /// Phase 264 W4a — seed this node instance's baked launch parameters (called by
     /// `install_node_typed_with_params` before `Component::register`).
     pub fn set_params(&mut self, params: &'a [(&'a str, &'a str)]) {
+        self.params = LaunchParams::Pairs(params);
+    }
+
+    /// Seed the launch parameters in either shape an entry hands them over.
+    pub(crate) fn set_launch_params(&mut self, params: LaunchParams<'a>) {
         self.params = params;
     }
 
@@ -679,10 +771,7 @@ impl<'a> NodeContext<'a> {
     /// `None` if the launch declared no `<param name="…"/>` for this node
     /// instance. Read in `register()` and parse/stash on `State` (RFC-0004 §10).
     pub fn param(&self, name: &str) -> Option<&'a str> {
-        self.params
-            .iter()
-            .find(|(k, _)| *k == name)
-            .map(|(_, v)| *v)
+        self.params.get(name)
     }
 
     /// Source component name.
@@ -3071,6 +3160,39 @@ mod tests {
         assert_eq!(entity.as_str(), "pub_chatter");
         // Empty TestMsg ⇒ just the 4-byte CDR header.
         assert_eq!(*len, 4);
+    }
+
+    // issue 2568 -- the flat `[name, value, ...]` array a C/C++ entry hands a
+    // Rust component's install reads back as the same pairs a Rust entry bakes.
+    #[cfg(feature = "rmw-cffi")]
+    #[test]
+    fn flat_c_launch_params_read_back_by_name() {
+        let kv: [*const core::ffi::c_char; 4] = [
+            c"speed".as_ptr(),
+            c"2.5".as_ptr(),
+            c"frame".as_ptr(),
+            c"map".as_ptr(),
+        ];
+        let p = unsafe { LaunchParams::from_c_pairs(kv.as_ptr(), 2) }.expect("valid array");
+        assert_eq!(p.get("speed"), Some("2.5"));
+        assert_eq!(p.get("frame"), Some("map"));
+        assert_eq!(p.get("absent"), None);
+        assert_eq!(p.iter().count(), 2);
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    #[test]
+    fn flat_c_launch_params_refuse_a_malformed_array() {
+        // No params: null with a zero count is the empty set.
+        let none = unsafe { LaunchParams::from_c_pairs(core::ptr::null(), 0) }.expect("empty");
+        assert_eq!(none.iter().count(), 0);
+        // A null array with a count, a null entry, or non-UTF-8 bytes.
+        assert!(unsafe { LaunchParams::from_c_pairs(core::ptr::null(), 1) }.is_none());
+        let with_null: [*const core::ffi::c_char; 2] = [c"k".as_ptr(), core::ptr::null()];
+        assert!(unsafe { LaunchParams::from_c_pairs(with_null.as_ptr(), 1) }.is_none());
+        let bad = [0xffu8, 0];
+        let not_utf8: [*const core::ffi::c_char; 2] = [c"k".as_ptr(), bad.as_ptr().cast()];
+        assert!(unsafe { LaunchParams::from_c_pairs(not_utf8.as_ptr(), 1) }.is_none());
     }
 
     // W.5.3 — a service-style body writes its reply through the CallbackCtx
