@@ -1,15 +1,17 @@
 ---
 id: 2601
 title: "`nros configure` resolves every model for `posix`, so an image's `<stem>.system.<target>.yaml` is never read"
-status: open
+status: resolved
 type: bug
 area: [cli, orchestration, launch]
 severity: high
 found: 2026-11-15
+resolved: 2026-11-15
+resolved_in: "the change that filed it"
 related: [phase-478]
 ---
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md).**
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md), I14.**
 Reported from the Autoware Safety Island (`safety_island_bringup`), reproduced
 on main.
 
@@ -29,7 +31,7 @@ file. The island's `[image.zephyr|qemu|native_sim]` all set
 `error[supervised-fit]` fires. The island works around it by keeping the
 deprecated contract spelling, which rlm refuses at its next release.
 
-## Fix
+## Resolution (2026-11-15)
 
 `cmd/ws.rs` `resolve_system_models` now passes `--target` for each model: the
 scheduling target of the images that resolve to it (`model_sched_targets`).

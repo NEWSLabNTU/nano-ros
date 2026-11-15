@@ -538,6 +538,17 @@ restates its `[[component]]` row. The recommendation is to derive it in the
 generated CMake root (option A), which the user ruled: a package that ships
 its own `CMakeLists.txt` keeps it.
 
+### I14 -- each model is resolved for the target its images run on
+
+**Status: DONE (2026-11-15).** [Issue 2601](../issues/archived/2601-resolve-ignores-image-target-platform-file.md).
+`nros configure` resolved every model for the resolver's default `posix`, so
+a Zephyr image's `<stem>.system.zephyr.yaml` was never read. rlm v0.3.22 moved
+the supervision terms into that file, so this had a deadline: the island kept
+a deprecated contract spelling that rlm's next release refuses. Each model now
+gets `--target` from the images that resolve to it, by the board-platform rule
+`[tasks.<name>.<rtos>]` uses; two targets sharing one model are named in a
+warning.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -672,6 +683,8 @@ from that session, `FREERTOS_PORT not set` on `freertos-posix`, is
 [issue 2341](../issues/archived/2341-freertos-posix-port-not-reaching-zpico.md),
 fixed after that release.
 
+- [issue 2601](../issues/archived/2601-resolve-ignores-image-target-platform-file.md): `nros configure` resolved every model for `posix`, so an image's `<stem>.system.<target>.yaml` was never read (I14, resolved).
+- [issue 2603](../issues/2603-flaky-sdk-index-stamp-input-test.md): `configure_stamp::tests::the_sdk_index_is_a_stamp_input` failed once under a full gate and passes alone.
 - [issue 2598](../issues/2598-launch-param-file-not-a-model-input.md) (GitHub #3923): a resolved model stays stale after `nros configure`, and a launch parameter file is not one of its inputs (I12).
 - [issue 2599](../issues/2599-mixed-image-rust-package-needs-cmake-registration.md) (GitHub #3857): a Rust package in a mixed image needs a CMake registration that restates its `[[component]]` row (I13, ruled option A).
 - [issue 2564](../issues/archived/2564-hand-entry-bringup-image-drops-domain-id.md) (resolved): a hand-written entry naming `BRINGUP` and `IMAGE` baked domain 0, not the image's `domain_id`. It now asks the image's domain of the one reader, under the agreement rule.
