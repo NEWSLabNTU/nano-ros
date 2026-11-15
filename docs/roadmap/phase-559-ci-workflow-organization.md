@@ -822,6 +822,29 @@ the user ruled; all five stand:
 - **Status:** OPEN — implemented, and the acceptance dispatch reached a
   verdict with the numbers above. It becomes DONE when the PR merges.
 
+### W13 — The hosted Zephyr shard's BUILD-stage disk margin (low priority)
+
+- **Owner:** nros 175. Added at the manager's direction (2026-11-15). **No
+  work until the margin is measured as a problem.**
+- **What is known.** W12's acceptance run (43716062858) gave the run stage
+  37 G, with a low of 10.8 G. The build stage, `just build tier1` on the
+  zephyr shard, is not changed by W12. It still bottoms out at **7.7 G**
+  free and draws the balloon's "fell to 7 GB at its lowest (warning below
+  10 GB, stop at 2 GB)" warning. Run 43684256518 measured the same stage at
+  7 G, so that is two runs and no failure.
+- **Trigger.** Pick this up when a build stage stops on the balloon's 2 G
+  floor, or when its low falls under 5 G on two runs. Those runs are the
+  measurement. Until then the warning in the job log is enough.
+- **Options, when triggered.**
+  - **C:** split build and run into separate jobs.
+  - **D:** reclaim more preinstalled software, priced with a `du` on a dispatch
+    first.
+  - Evict build-only intermediates MID-build. That needs to know which of
+    `zephyr-workspace-builds`' 44 G the later rows reread.
+
+  W12's B does not apply: it changes only the run stage's test binaries.
+- **Status:** OPEN (parked until triggered)
+
 ## Acceptance (phase)
 
 - 13 workflow files, as in the table. Every split is named in the table by a
