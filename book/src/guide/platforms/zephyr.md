@@ -133,17 +133,43 @@ build:
 ```
 
 and the definitions in `src/my_support/zephyr/Kconfig`, in Zephyr's own
-syntax. When a node package of the image `<depend>`s on `my_support`,
+syntax:
+
+```kconfig
+# src/my_support/zephyr/Kconfig
+config MY_MODE
+	bool "Turn on my_support's mode"
+	help
+	  Read by my_support at build time.
+```
+
+The image's fragment then sets it, as for any Zephyr symbol:
+
+```text
+# prj-user-extra.conf, named in the image's os_config
+CONFIG_MY_MODE=y
+```
+
+When a node package of the image `<depend>`s on `my_support`,
 directly or through other workspace packages, `nros build` adds it to
 `ZEPHYR_EXTRA_MODULES` in the application it generates, so its symbols are
 defined and the image's `os_config` fragment can set them.
 
-The generated application also adds every workspace package the image
-depends on, not only the node packages the launch file names, so a support
-library's own `CMakeLists.txt` runs. A module whose `build: cmake:` is the
-package's own directory (`cmake: .`) is built by Zephyr as the module
-instead, and is not added a second time. The same package works unchanged
-in an application you build with `west` yourself.
+Who builds the package's `CMakeLists.txt` depends on the module's
+`build: cmake:` key:
+
+- **No `cmake:` key**, as above: the module only defines Kconfig symbols.
+  The generated application adds the package with `add_subdirectory`, as it
+  adds every workspace package the image depends on, not only the node
+  packages the launch file names.
+- **`cmake: .`**: Zephyr builds the package's own `CMakeLists.txt` as the
+  module, so the application does not add it a second time.
+- **`cmake: <another directory>`**: Zephyr builds that directory as the
+  module, and the application still adds the package's own
+  `CMakeLists.txt`.
+
+The same package works unchanged in an application you build with `west`
+yourself.
 
 ## Read the run plan
 
