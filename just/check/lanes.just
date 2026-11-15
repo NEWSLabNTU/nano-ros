@@ -4916,7 +4916,9 @@ linux-check:
 # throwaway lock dir, each with a negative control: a second gate waits; kill -9
 # of the holder frees it within ~1 s; an orphaned child holds nothing (without
 # `-o` it would); a hung holder times out red; the waiter's cap is red, names
-# the holder and never runs; a zero wait refuses. Buildless, ~15 s.
+# the holder and never runs; a zero wait refuses; the hang detector spares a
+# busy silent gate and kills an idle one; the wall limit scales with nproc.
+# Buildless, ~60 s.
 [private]
 gate-host-lock:
     @bash tests/gate-host-lock-tests.sh

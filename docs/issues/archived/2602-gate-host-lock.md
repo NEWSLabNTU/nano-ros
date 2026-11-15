@@ -76,12 +76,12 @@ above point by point:
 - the repo's deadline spelling (`NROS_DEADLINE`: `timeout`, then KILL after 3 s),
   not `--foreground`, so expiry signals the gate's
   whole process group. It exits red "gate timed out".
-- A waiter's report every `NROS_GATE_LOCK_REPORT_S` (300 s), with `kill -0`.
+- A waiter's report every 300 s, with `kill -0`.
 - A lock dir on a network filesystem is refused.
 
-The durations can be shortened through `NROS_GATE_TIMEOUT_S` and
-`NROS_GATE_LOCK_WAIT_S`, but none of them runs a gate unlocked: a zero wait is
-an immediate refusal, and that is tested.
+The durations can be shortened only through test-only `_NROS_GATE_LOCK_TEST_*`
+variables, and none of them runs a gate unlocked: a zero wait is an immediate
+refusal, and that is tested.
 
 `tests/gate-host-lock-tests.sh` (`just check gate-host-lock`, fast line, about
 15 s) has six cases, each with a negative control:
@@ -106,3 +106,35 @@ One property to know: `$XDG_RUNTIME_DIR` is `/run/user/<uid>`, so the lock is
 one per USER per host. Every agent here runs as the same user, so the lock
 holds across them. A gate run under another uid on the same host takes its
 own lock.
+
+## Follow-up: the wall limit scales, and a hang detector (2026-11-15)
+
+nros wtf measured a normal full gate on a 4-core shared host at about 2.5 h
+(`check::build` alone took 2h05m), which is right at the original limit. User
+ruling, the same day:
+
+- The **wall limit** is 2.5 h × max(1, 16 / nproc): 2.5 h at 16 or more cores,
+  5 h at 8, 10 h at 4. The **waiter cap** is the wall limit + 30 min, so a
+  waiter outlasts any live holder. Both are printed when a gate starts and
+  while a waiter waits.
+- A **hang detector**: a holder that makes no progress for 45 min is killed
+  (its whole process tree) and exits red "gate hung: no progress for 45 min",
+  which frees the lock. Progress means EITHER new gate output (the gate's
+  output goes through a FIFO into `tee`, and the detector watches the copy
+  grow) OR growth in the CPU time of the gate's process tree. That time is
+  utime+stime plus reaped children's cutime+cstime, summed over every
+  descendant, so nextest's per-test process groups count. A long quiet
+  compile therefore lives, and a 0 % CPU deadlock does not. nros 175's
+  nested-cargo deadlock held a host for 3 h this way.
+- None of these is a user knob. The tests shorten them through
+  `_NROS_GATE_LOCK_TEST_*`.
+
+Tests added, with negative controls:
+- a silent gate that burns CPU outlives the hang limit;
+- a silent gate with no CPU is killed red as hung, frees the lock, and its
+  tree is gone;
+- a gate that prints while idle is alive;
+- the wall limit and waiter cap at 4, 8, 16 and 48 faked cores.
+
+Mutation-tested: dropping the CPU half of "progress" kills the busy gate, and
+dropping the kill lets the idle one live.
