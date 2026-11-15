@@ -686,6 +686,49 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         })?;
         (resolved, Some(deploy), leaf)
     };
+    // RFC-0111 D2/D3 (phase-562 W3) — the image's board descriptor (the file
+    // the CLI resolved its board to), for its `frameworks` and `entry_types`.
+    let board_descriptor = match deploy_for_framework.as_deref() {
+        Some(d) => read_board_descriptor(d, &mut tracked)
+            .map_err(|e| syn::Error::new(Span::call_site(), e))?,
+        None => None,
+    };
+    // RFC-0111 D3 (phase-562 W2) — the image's own `framework`, resolved
+    // against the board through `nros_orchestration_ir::image_framework`.
+    let framework = match deploy_for_framework.as_deref() {
+        Some(d) => try_framework_for(
+            d,
+            leaf_decl.as_ref().and_then(|l| l.framework.as_deref()),
+            board_descriptor.as_ref(),
+        )
+        .map_err(|e| syn::Error::new(Span::call_site(), e))?,
+        None => Framework::OwnedSpin,
+    };
+    // RFC-0111 D3 (phase-562 W3) — the board TYPE follows the framework: a
+    // board that boots two frameworks with two types names the type per
+    // framework in its descriptor's `entry_types`. The canonical path, before
+    // any selection-package re-rooting, also keys the RTIC board spec.
+    let board_type: Option<String> =
+        match (deploy_for_framework.as_deref(), framework_name(framework)) {
+            (Some(d), Some(fw)) => nros_orchestration_ir::board_type_for(
+                d,
+                fw,
+                &board_descriptor
+                    .as_ref()
+                    .map(|b| b.entry_types.clone())
+                    .unwrap_or_default(),
+            ),
+            _ => None,
+        };
+    let board_path = match &board_type {
+        Some(ty) => syn::parse_str::<SynPath>(ty).map_err(|e| {
+            syn::Error::new(
+                Span::call_site(),
+                format!("nros::main!: board type `{ty}` (the descriptor's `entry_types`): {e}"),
+            )
+        })?,
+        None => board_path,
+    };
     // Issue 1305 / RFC-0098 D6 — a single-package leaf that names no board
     // crate but depends on its generated `<pkg>_nros_selection` package
     // reaches the board THROUGH that package (which re-exports it). Only when
@@ -703,12 +746,6 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         p.segments.pop();
         p.segments.pop_punct();
         quote! { #p }
-    };
-    // RFC-0111 D3 (phase-562 W2) — the image's own `framework`, resolved
-    // against the board through `nros_orchestration_ir::image_framework`.
-    let framework = match deploy_for_framework.as_deref() {
-        Some(d) => framework_for(d, leaf_decl.as_ref().and_then(|l| l.framework.as_deref())),
-        None => Framework::OwnedSpin,
     };
     // Issue 1381 — does an entry for this board link `std`? A `#![no_std]`
     // entry has no `std` in its crate root on ANY target, so the OwnedSpin
@@ -2658,12 +2695,19 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                      (`[image.<id>] board` in `system.toml`)",
                 )
             })?;
-            let rtic_spec = rtic_board_spec_for(deploy).ok_or_else(|| {
-                syn::Error::new(
-                    Span::call_site(),
-                    format!("nros::main!: missing RTIC board spec for deploy `{deploy}`"),
-                )
-            })?;
+            let rtic_spec = board_type
+                .as_deref()
+                .and_then(rtic_board_spec_for)
+                .ok_or_else(|| {
+                    syn::Error::new(
+                        Span::call_site(),
+                        format!(
+                            "nros::main!: board `{deploy}` boots RTIC, but its RTIC board type \
+                             (`{}`) has no RTIC board spec",
+                            board_type.as_deref().unwrap_or("none")
+                        ),
+                    )
+                })?;
             let rtic_device = rtic_spec.device_path;
             let rtic_dispatchers = rtic_spec.dispatchers;
             // Issue 1305 — through the selection package when the board is.
@@ -2707,7 +2751,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // full body (the `__nros_spin` + `__nros_dispatch` software
             // tasks + per-Node register/spawn wiring) lands in a
             // 216.B.3 follow-up. Today's emit only needs to compile so
-            // the route through `framework_for(deploy)` is observable
+            // the route through `try_framework_for(deploy, ..)` is observable
             // — runtime use surfaces the board crate's `todo!()` in
             // `init_hardware` (intentional).
             //
@@ -5332,9 +5376,13 @@ struct RticBoardSpec {
     rx_irq: Option<Ident>,
 }
 
-fn rtic_board_spec_for(deploy: &str) -> Option<RticBoardSpec> {
-    let (device, dispatchers, consumer, tick_irq, rx_irq) = match deploy {
-        "rtic-mps2-an385" => (
+/// The RTIC facts of an RTIC board TYPE (the canonical path
+/// `nros_orchestration_ir::board_type_for` gives), so every board word that
+/// reaches the type, with `framework = "rtic"` or through the transitional
+/// `rtic-mps2-an385`, gets one spec.
+fn rtic_board_spec_for(board_type: &str) -> Option<RticBoardSpec> {
+    let (device, dispatchers, consumer, tick_irq, rx_irq) = match board_type {
+        "::nros_board_mps2_an385::RticMps2An385" => (
             "mps2_an385_pac",
             &["UARTRX0", "UARTTX0"][..],
             // phase-337 W6.a — folded into `nros-board-mps2-an385`'s `rtic`
@@ -5427,35 +5475,27 @@ fn framework_from_name(name: &str) -> Option<Framework> {
 /// `framework` (`declared`, read from `system.toml` by `leaf_system`) and the
 /// BOARD's boot facts.
 ///
-/// This macro has no board descriptor, so it builds the board's facts from
-/// what it already reads (phase-562 W2):
+/// The board's facts come from (phase-562 W2, W3):
 ///
-/// - The list: `NROS_BOARD_FRAMEWORK`, set by the Entry package's build script
-///   from an OUT-OF-TREE board crate's `[package.metadata.nros.board]
-///   framework` (`nros_build::emit_board_framework`), is a one-entry list
-///   (RFC-0111 D2). An in-tree board states its list in its descriptor; no
-///   in-tree descriptor lists more than the default today, and
-///   `nros-cli-core/tests/board_key_table.rs` holds that, so the first
-///   descriptor to list a second framework must carry the list here too.
+/// - The list: the board DESCRIPTOR's `frameworks` (`descriptor`, read from
+///   the file the cargo road names as `NROS_BOARD_TOML`, which is the file
+///   the CLI resolved the image's board to, so both read one list). Else
+///   `NROS_BOARD_FRAMEWORK`, set by the Entry package's build script from an
+///   OUT-OF-TREE board crate's `[package.metadata.nros.board] framework`
+///   (`nros_build::emit_board_framework`), as a one-entry list (RFC-0111 D2).
+///   Else the default.
 /// - The entry shape: the board key's family (`nros_entry_lower`), held to
 ///   each descriptor's `entry_kind`; an out-of-tree board whose crate says
 ///   `framework = "zephyr"` states the shape the same way.
-/// - `BoardBoot::for_key` applies the transitional `rtic-mps2-an385` row
-///   (phase-562 W3 removes it).
+/// - `BoardBoot::for_key` applies the transitional `rtic-mps2-an385` row.
 ///
 /// An UNKNOWN or RETIRED name is an error, never a fall-through (issue 0415:
 /// a board declaring `framework = "embassy"` once got a plain `fn main()`).
-fn framework_for(deploy: &str, declared: Option<&str>) -> Framework {
-    try_framework_for(deploy, declared).unwrap_or_else(|e| {
-        // A proc-macro cannot return a Result here without reshaping every
-        // caller; the emitted `compile_error!` is produced by the caller that
-        // owns the token stream. Panicking with this message surfaces at the
-        // same place, with the same text.
-        panic!("{e}")
-    })
-}
-
-fn try_framework_for(deploy: &str, declared: Option<&str>) -> Result<Framework, String> {
+fn try_framework_for(
+    deploy: &str,
+    declared: Option<&str>,
+    descriptor: Option<&nros_orchestration_ir::DescriptorBoot>,
+) -> Result<Framework, String> {
     const FROM_CRATE: &str = "(The value came from NROS_BOARD_FRAMEWORK, emitted by the Entry \
                               package's build script from the board crate's \
                               `[package.metadata.nros.board]`.)";
@@ -5465,7 +5505,10 @@ fn try_framework_for(deploy: &str, declared: Option<&str>) -> Result<Framework, 
         .filter(|v| !v.is_empty());
     let mut entry_shape = nros_entry_lower::entry_shape_for_key(deploy);
     let one: [&str; 1];
-    let mut frameworks: &[&str] = &[];
+    let listed: Vec<&str> = descriptor
+        .map(nros_orchestration_ir::DescriptorBoot::framework_list)
+        .unwrap_or_default();
+    let mut frameworks: &[&str] = &listed;
     if let Some(name) = crate_fw.as_deref() {
         if nros_orchestration_ir::ENTRY_SHAPES.contains(&name) {
             // The board decides the shape: its crate says so.
@@ -5490,13 +5533,27 @@ fn try_framework_for(deploy: &str, declared: Option<&str>) -> Result<Framework, 
                     nros_orchestration_ir::FRAMEWORKS.join(", ")
                 ));
             }
-            one = [name];
-            frameworks = &one;
+            // RFC-0111 D2 — a list the descriptor states is the board's
+            // answer; the crate's one name stands in only when it states none.
+            if listed.is_empty() {
+                one = [name];
+                frameworks = &one;
+            }
         }
     }
     let board = nros_orchestration_ir::BoardBoot::for_key(deploy, frameworks, entry_shape);
-    let name = nros_orchestration_ir::image_framework(declared, &board)
-        .map_err(|e| format!("nros::main!: board `{deploy}`: {e}"))?;
+    let name = nros_orchestration_ir::image_framework(declared, &board).map_err(|e| {
+        let unread = if descriptor.is_none() && declared.is_some() {
+            format!(
+                " (No board descriptor reached this expansion: `{}` is unset, so the \
+                 board's `frameworks` list was not read. `nros build` names it.)",
+                nros_orchestration_ir::BOARD_DESCRIPTOR_ENV
+            )
+        } else {
+            String::new()
+        };
+        format!("nros::main!: board `{deploy}`: {e}{unread}")
+    })?;
     if let Some(reason) = nros_orchestration_ir::cpp_only_framework_reason(name) {
         return Err(format!("nros::main!: `framework = \"{name}\"`: {reason}"));
     }
@@ -5506,6 +5563,39 @@ fn try_framework_for(deploy: &str, declared: Option<&str>) -> Result<Framework, 
              macro has no emit branch for"
         )
     })
+}
+
+/// The canonical framework name of an emit shape, which keys the
+/// descriptor's per-framework `entry_types`. The Zephyr shape is no framework.
+fn framework_name(fw: Framework) -> Option<&'static str> {
+    match fw {
+        Framework::OwnedSpin => Some("owned-spin"),
+        Framework::Rtic => Some("rtic"),
+        Framework::Zephyr => None,
+    }
+}
+
+/// RFC-0111 D3 — the image's board descriptor, read from the file the cargo
+/// road names as `NROS_BOARD_TOML`. `None` when unset (a plain `cargo build`
+/// with no generated settings). The file joins `tracked`, so an edit to it
+/// re-expands this macro. A set variable naming a file that will not read or
+/// parse is an error, never a silent default.
+fn read_board_descriptor(
+    deploy: &str,
+    tracked: &mut Vec<PathBuf>,
+) -> Result<Option<nros_orchestration_ir::DescriptorBoot>, String> {
+    let env = nros_orchestration_ir::BOARD_DESCRIPTOR_ENV;
+    let Some(path) = entry_env(env)
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+    else {
+        return Ok(None);
+    };
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("nros::main!: {env} = {}: {e}", path.display()))?;
+    tracked.push(path.clone());
+    nros_orchestration_ir::DescriptorBoot::read(&text, deploy)
+        .map_err(|e| format!("nros::main!: {env} = {}: {e}", path.display()))
 }
 
 /// Sanitise a pkg name into a valid Rust crate ident. Cargo allows
@@ -6298,7 +6388,7 @@ mod framework_ssot_tests {
             .lock()
             .unwrap_or_else(|p| p.into_inner());
         for key in nros_orchestration_ir::board_path_keys() {
-            let fw = try_framework_for(key, None)
+            let fw = try_framework_for(key, None, None)
                 .unwrap_or_else(|e| panic!("board key `{key}` resolves no emit shape: {e}"));
             let want = match nros_entry_lower::entry_shape_for_key(key) {
                 Some("zephyr") => Framework::Zephyr,
@@ -6321,20 +6411,52 @@ mod framework_ssot_tests {
         let _env = super::TEST_ENV_LOCK
             .lock()
             .unwrap_or_else(|p| p.into_inner());
-        let err = try_framework_for("zephyr", Some("zephyr")).unwrap_err();
+        let err = try_framework_for("zephyr", Some("zephyr"), None).unwrap_err();
         assert!(err.contains("decides"), "{err}");
-        let err = try_framework_for("linux", Some("zephyr")).unwrap_err();
+        let err = try_framework_for("linux", Some("zephyr"), None).unwrap_err();
         assert!(err.contains("the board decides"), "{err}");
         assert!(matches!(
-            try_framework_for("zephyr", None),
+            try_framework_for("zephyr", None, None),
             Ok(Framework::Zephyr)
         ));
         assert!(matches!(
-            try_framework_for("rtic-mps2-an385", None),
+            try_framework_for("rtic-mps2-an385", None, None),
             Ok(Framework::Rtic)
         ));
-        let err = try_framework_for("mps2-an385-baremetal", Some("rtic")).unwrap_err();
+        let err = try_framework_for("mps2-an385-baremetal", Some("rtic"), None).unwrap_err();
         assert!(err.contains("It boots: owned-spin"), "{err}");
+        assert!(err.contains("NROS_BOARD_TOML` is unset"), "{err}");
+    }
+
+    /// RFC-0111 D2 (phase-562 W3) — the list comes from the board's
+    /// descriptor: with `frameworks = ["owned-spin", "rtic"]` an absent
+    /// `framework` is direct-exec and `framework = "rtic"` is RTIC; a
+    /// framework outside the list is refused naming it.
+    #[test]
+    fn the_descriptors_framework_list_decides_for_an_in_tree_board() {
+        let _env = super::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let mps2 = nros_orchestration_ir::DescriptorBoot {
+            frameworks: vec!["owned-spin".into(), "rtic".into()],
+            ..Default::default()
+        };
+        let d = Some(&mps2);
+        assert_eq!(
+            try_framework_for("mps2-an385-baremetal", None, d),
+            Ok(Framework::OwnedSpin)
+        );
+        assert_eq!(
+            try_framework_for("mps2-an385-baremetal", Some("rtic"), d),
+            Ok(Framework::Rtic)
+        );
+        let err = try_framework_for("mps2-an385-baremetal", Some("px4"), d).unwrap_err();
+        assert!(err.contains("It boots: owned-spin, rtic"), "{err}");
+        // The transitional word keeps meaning RTIC, whatever the list says.
+        assert_eq!(
+            try_framework_for("rtic-mps2-an385", None, d),
+            Ok(Framework::Rtic)
+        );
     }
 
     /// The regression 0415 names: an unknown framework must be an ERROR, not a
@@ -6351,7 +6473,7 @@ mod framework_ssot_tests {
         // SAFETY: every reader of the variable in this crate's tests holds
         // `TEST_ENV_LOCK`; the var is removed below.
         unsafe { std::env::set_var("NROS_BOARD_FRAMEWORK", "embasy") };
-        let err = try_framework_for("linux", None).unwrap_err();
+        let err = try_framework_for("linux", None, None).unwrap_err();
         assert!(
             err.contains("embasy"),
             "the error must name the bad value: {err}"
@@ -6361,7 +6483,7 @@ mod framework_ssot_tests {
         // Issue 2134 — a RETIRED name is refused with its reason, not as a
         // typo; the reason is words and an alternative, no id (issue 2547).
         unsafe { std::env::set_var("NROS_BOARD_FRAMEWORK", "embassy") };
-        let err = try_framework_for("linux", None).unwrap_err();
+        let err = try_framework_for("linux", None, None).unwrap_err();
         assert!(
             err.contains("no longer an `nros::main!` framework")
                 && err.contains("spin_some")
@@ -6850,6 +6972,39 @@ mod leaf_axis_tests {
         let err = expand("", "my-board", "").unwrap_err();
         assert!(err.contains("unknown board `my-board`"), "{err}");
         assert!(err.contains("[package.metadata.nros.board] type"), "{err}");
+    }
+
+    /// RFC-0111 D2/D3 (phase-562 W3) — one board, two entries, chosen by the
+    /// image's `framework` against the SHIPPED mps2 descriptor (the file
+    /// `nros build` names as `NROS_BOARD_TOML`): no `framework` is the
+    /// direct-exec `Mps2An385` entry, `framework = "rtic"` the `#[rtic::app]`
+    /// over `RticMps2An385` (its descriptor `entry_types` row).
+    #[test]
+    fn one_mps2_board_expands_direct_exec_or_rtic_by_the_image_framework() {
+        let descriptor = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../boards/nros-board-mps2-an385/nros-board.toml");
+        let with_descriptor = |board: &str| {
+            ENTRY_ENV_OVERRIDE.with(|m| {
+                m.borrow_mut().insert(
+                    nros_orchestration_ir::BOARD_DESCRIPTOR_ENV.into(),
+                    descriptor.to_string_lossy().into_owned(),
+                );
+            });
+            expand("", board, "")
+        };
+        let direct = with_descriptor("mps2-an385-baremetal").unwrap();
+        assert!(direct.contains("Mps2An385"), "{direct}");
+        assert!(!direct.contains("RticMps2An385"), "{direct}");
+        assert!(!direct.contains("rtic :: app"), "{direct}");
+
+        let rtic = with_descriptor("mps2-an385-baremetal\"\nframework = \"rtic").unwrap();
+        assert!(rtic.contains("rtic :: app"), "{rtic}");
+        assert!(rtic.contains("RticMps2An385"), "{rtic}");
+
+        // Without the descriptor the board's list is unread, and the refusal
+        // says so rather than only "it boots owned-spin".
+        let err = expand("", "mps2-an385-baremetal\"\nframework = \"rtic", "").unwrap_err();
+        assert!(err.contains("NROS_BOARD_TOML"), "{err}");
     }
 
     /// Issue 2063 — `qemu-mps2-an385` named the emulator; an image that still

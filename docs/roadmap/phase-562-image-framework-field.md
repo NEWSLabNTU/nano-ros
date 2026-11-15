@@ -1,6 +1,6 @@
 # Phase 562 — An image's entry framework is its own field
 
-**Status (2026-11-15). OPEN: W1, W2 and W8 done. Owner: nros 142.** Opened by
+**Status (2026-11-15). OPEN: W1, W2, W3 and W8 done. Owner: nros 142.** Opened by
 the user's ruling on phase-555's platform-board-rtos brief (P5 (a), 2026-11-14):
 "open a phase for [RFC-0111](../design/0111-image-framework-axis.md)'s seven
 steps, with [RFC-0112](../design/0112-framework-support-tiers.md) D5 as one of
@@ -98,7 +98,46 @@ descriptor's name as well.
   `rtic-mps2-an385` from `names`.
 - **Acceptance:** `board = "mps2-an385-baremetal"` with no `framework` builds
   direct-exec, and with `framework = "rtic"` builds the RTIC entry.
-- **Status:** OPEN
+- **Status:** DONE (2026-11-15, branch `feat/phase-562-w3-mps2-descriptor`)
+
+Landed: the descriptor states `frameworks = ["owned-spin", "rtic"]` and
+`entry_types = { owned-spin = "Mps2An385", rtic = "RticMps2An385" }`. One
+source for the list: `nros::main!` now reads the image's board descriptor
+FILE, the `NROS_BOARD_TOML` the cargo road already names for every image
+(the file the CLI resolved the board to), through
+`nros_orchestration_ir::DescriptorBoot::read`, and tracks it for rebuilds.
+The CLI keeps its typed reader; `board_key_table.rs` now holds the two
+readers to one `frameworks`/`entry_types` answer over every shipped
+descriptor, and the macro's and CLI's resolution to one answer for every
+framework each board lists (the old "every list is the default" assertion is
+gone). The board TYPE follows the framework: `board_type_for(key, framework,
+entry_types)` puts the `entry_types` row in the crate the key's one
+`BOARD_PATHS` row names, and `rtic_board_spec_for` is keyed on that type
+(`::nros_board_mps2_an385::RticMps2An385`), not on a board word. Without
+`NROS_BOARD_TOML` (a plain `cargo build`), the macro's refusal of
+`framework = "rtic"` says the list was not read.
+
+`rtic-mps2-an385` stays in `names` (deferred to W5, not dropped here): it is
+the same board, so keeping it as a name keeps ONE name-resolution path
+(catalog, `package.xml` announcements, the board-vocabulary gates), and the
+`TRANSITIONAL_FRAMEWORK_KEYS` row keeps its meaning (RTIC only). Dropping it
+now would need an alias from the word to the board in every name lookup, a
+second path that W5 would delete again; W5 removes the name, the transitional
+row and the word's `BOARD_PATHS` row together, as the refusal lands.
+
+Proof (2026-11-15, a copy of `examples/workspaces/rust` under `tmp/`, with one
+added image `board = "mps2-an385-baremetal"` + `framework = "rtic"`):
+`nros build pubsub_bringup:baremetal_talker` built the direct-exec entry
+(board feature `board-entry`, `__nros_cortex_m_reset` in the ELF, no RTIC
+symbol); the added image built the RTIC entry (board feature `rtic`, the
+`rtic` crate, `__nros_app::__rtic_*` symbols); the transitional
+`baremetal_talker_rtic` still built RTIC. Tests:
+`a_two_framework_descriptor_boots_the_first_by_default_and_the_named_one`,
+`the_board_type_follows_the_framework_through_entry_types`,
+`the_descriptor_reader_matches_by_name_and_refuses_a_mistyped_list`,
+`the_descriptors_framework_list_decides_for_an_in_tree_board`,
+`one_mps2_board_expands_direct_exec_or_rtic_by_the_image_framework` (macro),
+`the_framework_agrees_with_the_descriptors_entry_kind` (rewritten).
 
 ### W4 — Migrate the authored sites
 
@@ -119,6 +158,8 @@ descriptor's name as well.
 ### W5 — Retire the word
 
 - **Owner:** unassigned.
+- Drop `rtic-mps2-an385` from the descriptor's `names` (W3 kept it, see its
+  note), delete `TRANSITIONAL_FRAMEWORK_KEYS` and the word's `BOARD_PATHS` row.
 - A row in `nros_entry_lower::RETIRED_BOARD_KEYS` whose refusal text names
   both replacements, generated from an optional `framework` replacement
   column (RFC-0111 D4); a ledger row, `retired-names.md`, a `.breaking.md`

@@ -13,7 +13,20 @@
 # key, listed FIRST here (`check-provider-announcements`: canonical first) so
 # every reader of `names` sees the word images author; the old word is refused
 # naming it (`nros_entry_lower::RETIRED_BOARD_KEYS`).
+#
+# phase-562 W3 (RFC-0111 D2) -- `rtic-mps2-an385` stays a name until phase-562
+# W5 retires it as a refusal: it still names this board and still means RTIC
+# (`nros_orchestration_ir::TRANSITIONAL_FRAMEWORK_KEYS`), so the images that
+# spell it keep building until W4 moves them to `framework = "rtic"`.
 names = ["mps2-an385-baremetal", "baremetal", "bare-metal", "rtic-mps2-an385"]
+# RFC-0111 D2 -- the entry frameworks this board boots, first = the default:
+# an image with no `framework` is direct-exec (`owned-spin`), and
+# `framework = "rtic"` gets the RTIC entry. One crate holds both, behind its
+# `board-entry` and `rtic` features (`builder::entry::entry_surface_features`).
+frameworks = ["owned-spin", "rtic"]
+# RFC-0111 D3 -- the board crate's type per framework. `nros::main!` reads this
+# file (`NROS_BOARD_TOML`) and names the RTIC type for an RTIC image.
+entry_types = { owned-spin = "Mps2An385", rtic = "RticMps2An385" }
 cmake_module = "mps2-an385-baremetal"
 platform = "bare-metal"
 toolchain = "stable"
