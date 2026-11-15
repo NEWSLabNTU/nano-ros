@@ -2172,7 +2172,14 @@ jobs:
         timeout-minutes: 10
         run: |
           source ./activate.sh
-          just zephyr stack-floor-drift --only qemu_bsp_talker_bringup@mps2-an385-baremetal
+          # The row is measured the way a user builds it, with debuginfo: the
+          # job's CARGO_PROFILE_*_DEBUG=0 (set to save disk) moves the walk
+          # (measured: 103,252 B with debuginfo, 101,368 B without).
+          # The C call-site types come from clang, so say which one.
+          clang --version 2>/dev/null | head -1 || echo "no clang on PATH"
+          env -u CARGO_PROFILE_DEV_DEBUG -u CARGO_PROFILE_TEST_DEBUG \
+              -u CARGO_PROFILE_RELEASE_DEBUG -u CARGO_PROFILE_NROS_RELWITHDEBINFO_DEBUG \
+              just zephyr stack-floor-drift --only qemu_bsp_talker_bringup@mps2-an385-baremetal
 
       # Issue 2043 — a ported ament workspace is sized from its census: the
       # same cost class as the templates above (it builds one, twice: the
