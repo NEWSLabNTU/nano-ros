@@ -113,7 +113,8 @@ Rust; the Rust one is the first since issue 2314's fix). 15.88 GB raw,
 Two things this leaves: the headroom is 2.6 %, so the next thing the Zephyr
 stage adds is likely to cross the budget; and the image warms C and Rust,
 while the page's `probe=` blocks also document a C++ talker, which a seat
-would build online.
+would build online (issue
+[2605](../issues/2605-starter-zephyr-warms-no-cpp-talker.md)).
 
 ### W4 — Release job and tags
 
