@@ -160,6 +160,15 @@ An unknown key, a wrong type or an out-of-range value stops `nros build`,
 naming the key. An application's own build variable, one the knob registry
 does not hold, goes in `env = { NAME = "value" }` instead.
 
+`nros build <id>` applies these rows, and so does a standalone CMake leaf.
+A hand-written workspace root (`nano_ros_workspace(SYSTEM <bringup> …)`)
+builds one image only when it is told which one, so name it at configure time
+with `-DNROS_IMAGE=<id>` (for this image, `-DNROS_IMAGE=linux`). A root that names no image while its bringup states per-image knob or `env`
+rows stops the configure, rather than building with the defaults. The same
+applies to the image's `domain_id`. A hand-written
+`nano_ros_add_executable(… BRINGUP <dir> IMAGE <id>)` takes the domain that
+image states, and stops when a `-DNROS_DOMAIN_ID` names another.
+
 ### Override how a board is flashed and watched
 
 A board's descriptor states its flasher and console. An image overrides any
