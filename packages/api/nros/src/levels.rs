@@ -1,4 +1,4 @@
-//! phase-509 P10 (RFC-0108 "As built in P9b") -- the Rust sched task runners' LEVEL
+//! The Rust sched task runners' LEVEL
 //! core: one executor per core, a worker per level over it.
 //!
 //! The C-ABI runners reach this through `nros-cpp`'s scheduler FFI
@@ -19,10 +19,10 @@
 //!    pass of a level's worker (its band, the lock released around each
 //!    callback, then the ticks of the components its level registered) or
 //!    of the boot level (the executor's own worker: transport, executor-wide
-//!    chores, the boot level's component ticks). Issue 2020: a component
+//!    chores, the boot level's component ticks). A component
 //!    ticks on the level that registered it, never on two.
 //!
-//! 4. `LevelCore::into_runtime` -- issue 2016: once every other level's
+//! 4. `LevelCore::into_runtime`: once every other level's
 //!    thread has stopped and been joined, the boot level takes the runtime
 //!    back (the lock removed), so a hosted runner can close its session and
 //!    return. An RTOS runner never calls it: its levels spin for the image's
@@ -154,7 +154,7 @@ impl LevelCore {
 
     /// One pass of a spawned level's worker: it parks (its waiter, the lock
     /// released) for at most `timeout` or until its band's next timer or an
-    /// arrival, then runs its band's ready callbacks and (issue 2020) the
+    /// arrival, then runs its band's ready callbacks and the
     /// ticks of the components its level registered -- the executor's
     /// enrolled ones inside the band pass, the runtime's own after it, the
     /// lock held. Returns the pass's counts.
@@ -175,7 +175,7 @@ impl LevelCore {
         result
     }
 
-    /// Issue 2016 -- the teardown: take the runtime back from the levels,
+    /// The teardown: take the runtime back from the levels,
     /// the executor's lock removed, for the caller to close its session
     /// (`Executor::close`) and drop it. The level workers stay leaked, as
     /// they were for the image's life, and the level count stays stated.
@@ -193,7 +193,7 @@ impl LevelCore {
         *rt
     }
 
-    /// phase-521 W6 (RFC-0113 D2) -- the budget a level runner passes to
+    /// The budget a level runner passes to
     /// [`Self::spin_level_once`] / [`Self::spin_boot_once`]: the runtime's
     /// [`ExecutorNodeRuntime::entry_spin_budget`]. Each park already ends at
     /// the level's next deadline or on an arrival, so the budget is not a
@@ -208,7 +208,7 @@ impl LevelCore {
         unsafe { self.with_runtime(|rt| rt.entry_spin_budget()) }
     }
 
-    /// phase-521 W6 -- wake every level's worker and the boot level, for a
+    /// Wake every level's worker and the boot level, for a
     /// runner that is stopping them: a level parked on the long budget would
     /// otherwise see its stop flag only at its next deadline. Lock-free.
     pub fn wake_all(&self) {

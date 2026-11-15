@@ -255,7 +255,7 @@ where
     A::register_protocol_types().map_err(|()| NodeDeclError::Runtime)
 }
 
-/// phase-391 W5-endgame step 2c (issue 0857) — a component class's declared
+/// A component class's declared
 /// upper bounds, PER ENTITY KIND, for sizing its cell registries at compile
 /// time.
 ///
@@ -282,7 +282,7 @@ pub struct EntityBounds {
     pub action_clients: usize,
     /// Action servers.
     pub action_servers: usize,
-    /// Issue 2075 — timers the component can START, RESET or CANCEL by id
+    /// Timers the component can START, RESET or CANCEL by id
     /// ([`CallbackCtx::reset_timer`] / [`TickCtx::cancel_timer`]). Sizes a
     /// small id-to-handle table (16 B a row), not the timers themselves: a
     /// timer past this bound still registers and fires, it just cannot be
@@ -306,7 +306,7 @@ impl EntityBounds {
     /// Exact bounds, spelled positionally:
     /// `(publishers, service_servers, service_clients, action_clients, action_servers)`.
     ///
-    /// Controllable timers default to 0 here (issue 2075), so a class that
+    /// Controllable timers default to 0 here, so a class that
     /// states exact bounds pays nothing for the timer table it did not ask
     /// for. Its timers still run; add [`with_timers`](Self::with_timers) to
     /// reset or cancel them by id.
@@ -327,7 +327,7 @@ impl EntityBounds {
         }
     }
 
-    /// Issue 2075 — these bounds with `timers` controllable timers: how many
+    /// These bounds with `timers` controllable timers: how many
     /// declared timers the component can start, reset or cancel by id.
     ///
     /// ```ignore
@@ -634,7 +634,7 @@ impl FrameSink for RecordSink<'_> {
 /// Node declaration context — what a component's
 /// [`register`](Component::register) receives.
 ///
-/// phase-483 W3: it creates REAL nodes. [`create_node`](Self::create_node)
+/// It creates REAL nodes. [`create_node`](Self::create_node)
 /// returns a [`crate::Node`], the same type `Executor::create_node` gives a
 /// standalone program, so a component's node code and a program's node code
 /// are one code. The component-only declarations are the
@@ -770,7 +770,7 @@ impl<'a> NodeContext<'a> {
         }
     }
 
-    /// Phase 264 W4a — seed this node instance's baked launch parameters (called by
+    /// Seed this node instance's baked launch parameters (called by
     /// `install_node_typed_with_params` before `Component::register`).
     pub fn set_params(&mut self, params: &'a [(&'a str, &'a str)]) {
         self.params = LaunchParams::Pairs(params);
@@ -781,9 +781,9 @@ impl<'a> NodeContext<'a> {
         self.params = params;
     }
 
-    /// Phase 264 W4a — the baked initial value of launch parameter `name`, or
+    /// The baked initial value of launch parameter `name`, or
     /// `None` if the launch declared no `<param name="…"/>` for this node
-    /// instance. Read in `register()` and parse/stash on `State` (RFC-0004 §10).
+    /// instance. Read in `register()` and parse/stash on `State`.
     pub fn param(&self, name: &str) -> Option<&'a str> {
         // Issue 2589: the census sees the read, so a contract row for it is
         // not called a phantom.
@@ -829,7 +829,7 @@ impl<'a> NodeContext<'a> {
     /// `options.name`, which is also the component-stable node id the
     /// declarations are keyed on.
     ///
-    /// phase-515 R2 -- takes rclrs's `impl IntoNodeOptions`, so
+    /// Takes rclrs's `impl IntoNodeOptions`, so
     /// `context.create_node("talker")` reads as rclrs does. Unlike the
     /// executor's, a component's options are applied as written.
     pub fn create_node<'o>(
@@ -857,7 +857,7 @@ impl Drop for NodeContext<'_> {
     }
 }
 
-/// phase-483 W3 — the DECLARATIVE entity constructors, on the one node type.
+/// The DECLARATIVE entity constructors, on the one node type.
 ///
 /// A component's `register` creates its node with
 /// [`NodeContext::create_node`] and gets a [`crate::Node`], the same type a
@@ -2029,7 +2029,7 @@ pub trait PublisherResolver {
     }
 }
 
-/// Issue 2075 — what [`CallbackCtx::reset_timer`] / [`CallbackCtx::cancel_timer`]
+/// What [`CallbackCtx::reset_timer`] / [`CallbackCtx::cancel_timer`]
 /// (and their [`TickCtx`] twins) ask of a declared timer.
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2127,7 +2127,7 @@ impl<'a> CallbackCtx<'a> {
         }
     }
 
-    /// Phase 250 (Wave 2) — build a subscription context carrying E2E
+    /// Build a subscription context carrying E2E
     /// [`IntegrityStatus`](crate::IntegrityStatus) (the declarative `.safety()`
     /// path). The body reads both the message ([`message`](Self::message)) and
     /// the status ([`integrity`](Self::integrity)) in one callback, mirroring the
@@ -2241,7 +2241,7 @@ impl<'a> CallbackCtx<'a> {
         }
     }
 
-    /// Phase 264 W4c — thread the executor's volatile parameter store into this context.
+    /// Thread the executor's volatile parameter store into this context.
     /// The dispatch site calls this after construction (the store reaches the callback via
     /// the component cell, not the constructor args). No-op-equivalent when `None`.
     #[cfg(feature = "param-store")]
@@ -2254,10 +2254,10 @@ impl<'a> CallbackCtx<'a> {
         self.param_node = node;
     }
 
-    /// Phase 264 W4c — read this node's parameter `name` as `T`, or `None` if the
+    /// Read this node's parameter `name` as `T`, or `None` if the
     /// parameter is undeclared, the wrong type, or `[param_services]` is not enabled.
     /// Returns the **live** value — the launch-baked initial, or whatever a `ros2 param
-    /// set` last wrote (RFC-0004 §10; values are volatile, lost at the next boot).
+    /// set` last wrote (values are volatile, lost at the next boot).
     #[cfg(feature = "param-store")]
     pub fn parameter<T: crate::ParameterVariant>(&self, name: &str) -> Option<T> {
         self.params
@@ -2285,7 +2285,7 @@ impl<'a> CallbackCtx<'a> {
     /// Set the action cancel-callback's accept/reject decision (W.5.3). `Err` when
     /// the callback is not a cancel decision.
     ///
-    /// Issue 0796 — `CancelResponse` here is the PER-GOAL decision
+    /// `CancelResponse` here is the PER-GOAL decision
     /// (`Reject` / `Accept`), the twin of [`GoalResponse`] and the same two
     /// values C's `rclc_cancel_response_t` and C++'s `nros::CancelResponse`
     /// carry. It used to be the `action_msgs/srv/CancelGoal` RPC return code
@@ -2331,7 +2331,7 @@ impl<'a> CallbackCtx<'a> {
         self.payload
     }
 
-    /// Issue 2038 — the call info of the timer activation being dispatched:
+    /// The call info of the timer activation being dispatched:
     /// when it was due (`expected_call_time`) and when the executor ran it
     /// (`actual_call_time`), in nanoseconds on the timer's clock. `Some` only
     /// in a declared TIMER's callback; `None` for subscriptions, services and
@@ -2341,7 +2341,7 @@ impl<'a> CallbackCtx<'a> {
         self.timer_info.as_ref()
     }
 
-    /// Issue 2038 — attach a timer activation's call info. The runtime's
+    /// Attach a timer activation's call info. The runtime's
     /// timer dispatch calls this after construction, as it does
     /// `set_param_server`.
     #[doc(hidden)]
@@ -2349,7 +2349,7 @@ impl<'a> CallbackCtx<'a> {
         self.timer_info = Some(info);
     }
 
-    /// Issue 2075 — reset the declared timer `timer`: rclcpp's
+    /// Reset the declared timer `timer`: rclcpp's
     /// `TimerBase::reset()`. Starts a timer declared with `autostart = false`
     /// ([`DeclarativeNode::create_timer_for_callback_name_with_autostart`]),
     /// and restarts a running one on a fresh period.
@@ -2369,7 +2369,7 @@ impl<'a> CallbackCtx<'a> {
             .request_timer(timer.as_str(), TimerOp::Reset)
     }
 
-    /// Issue 2075 — cancel the declared timer `timer`: rclcpp's
+    /// Cancel the declared timer `timer`: rclcpp's
     /// `TimerBase::cancel()`. It stops firing until [`reset_timer`](Self::reset_timer).
     /// Applied at the next tick, like `reset_timer`.
     pub fn cancel_timer(&self, timer: EntityId<'_>) -> NodeResult<()> {
@@ -2377,7 +2377,7 @@ impl<'a> CallbackCtx<'a> {
             .request_timer(timer.as_str(), TimerOp::Cancel)
     }
 
-    /// Phase 250 (Wave 2) — E2E message-integrity status (CRC + sequence gap/dup)
+    /// E2E message-integrity status (CRC + sequence gap/dup)
     /// for this dispatch. `Some` only when the firing subscription opted in via
     /// `.safety()`; `None` for timers, services, and non-safety subscriptions.
     /// Read it alongside [`message`](Self::message) — the status describes the
@@ -2493,7 +2493,7 @@ pub trait ActionExecutor {
     );
 }
 
-/// Executor-backed CLIENT operations a [`TickCtx`] drives (Phase 212.M-F.4).
+/// Executor-backed CLIENT operations a [`TickCtx`] drives.
 ///
 /// Service-client `call` + action-client `send_goal` need `&mut Executor`
 /// (the W.5.6 client handles live on the executor), which a mid-spin
@@ -2609,7 +2609,7 @@ impl<'a> TickCtx<'a> {
         }
     }
 
-    /// Phase 264 W4c — thread the executor's volatile parameter store in (the tick
+    /// Thread the executor's volatile parameter store in (the tick
     /// driver holds the executor directly). No-op-equivalent when `None`.
     #[cfg(feature = "param-store")]
     pub fn set_param_server(
@@ -2621,9 +2621,9 @@ impl<'a> TickCtx<'a> {
         self.param_node = node;
     }
 
-    /// Phase 264 W4c — read this node's parameter `name` as `T` during `tick`, or `None`
+    /// Read this node's parameter `name` as `T` during `tick`, or `None`
     /// if undeclared, the wrong type, or `[param_services]` is off. Returns the live
-    /// value (baked initial or last `ros2 param set`; volatile — RFC-0004 §10).
+    /// value (baked initial or last `ros2 param set`; volatile, lost at the next boot).
     #[cfg(feature = "param-store")]
     pub fn parameter<T: crate::ParameterVariant>(&self, name: &str) -> Option<T> {
         self.params
@@ -2636,7 +2636,7 @@ impl<'a> TickCtx<'a> {
             .and_then(T::from_parameter_value)
     }
 
-    /// Issue 2075 — reset the declared timer `timer` from `tick`: rclcpp's
+    /// Reset the declared timer `timer` from `tick`: rclcpp's
     /// `TimerBase::reset()`. See [`CallbackCtx::reset_timer`]; from a tick the
     /// request is applied as soon as `tick` returns.
     pub fn reset_timer(&self, timer: EntityId<'_>) -> NodeResult<()> {
@@ -2644,7 +2644,7 @@ impl<'a> TickCtx<'a> {
             .request_timer(timer.as_str(), TimerOp::Reset)
     }
 
-    /// Issue 2075 — cancel the declared timer `timer` from `tick`: rclcpp's
+    /// Cancel the declared timer `timer` from `tick`: rclcpp's
     /// `TimerBase::cancel()`. See [`CallbackCtx::cancel_timer`].
     pub fn cancel_timer(&self, timer: EntityId<'_>) -> NodeResult<()> {
         self.publishers
@@ -2809,7 +2809,7 @@ impl<'a> TickCtx<'a> {
     /// blocking `wait_for_service` here because a tick must not block the
     /// executor that drives it — check once per tick and return, which is the
     /// rclcpp `while (!wait_for_service(1s)) { "waiting again..." }` idiom
-    /// with the timer as the cadence (phase-428 W13).
+    /// with the timer as the cadence.
     #[doc(hidden)]
     pub fn service_is_ready(&self, service: EntityId<'_>) -> NodeResult<bool> {
         self.clients.service_is_ready(service.as_str())
@@ -2824,7 +2824,7 @@ impl<'a> TickCtx<'a> {
     /// discoverable (tick-only) — `rclcpp_action::Client::action_server_is_ready`.
     /// Gate a goal on `Ok(true)` and treat `Err` ("the backend cannot say") as
     /// "send anyway": a goal sent to a server nobody has declared yet is lost,
-    /// because the send is not retried (issue 1918). Check once per tick, the
+    /// because the send is not retried. Check once per tick, the
     /// way [`Self::service_is_ready`] documents.
     #[doc(hidden)]
     pub fn action_server_is_ready(&self, action: EntityId<'_>) -> NodeResult<bool> {
@@ -3006,7 +3006,7 @@ macro_rules! declarative_component {
 
 /// Run component registration against a metadata recorder, on `executor`.
 ///
-/// phase-483 W3: registration creates real nodes, so it needs an executor even
+/// Registration creates real nodes, so it needs an executor even
 /// on the probe's road — open one on the `metadata` backend
 /// (`ExecutorConfig::new("").rmw("metadata")`). The recorder receives every
 /// declaration exactly as it did when it was the whole runtime.

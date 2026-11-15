@@ -1,4 +1,4 @@
-//! phase-454 W10 — the DECLARED QoS history depth, and what Rust does with it.
+//! The DECLARED QoS history depth, and what Rust does with it.
 //!
 //! # What this is
 //!
@@ -36,10 +36,10 @@
 //!   * the **cmake road** (native C/C++, Zephyr west, NuttX) sets
 //!     `NROS_ENTITY_DECLARED_DEPTHS` (`type|topic=depth`), written by the entity
 //!     inventory from the resolved SystemModel;
-//!   * the **single-package cargo leaf road** — the one phase-454 W12 taught to
+//!   * the **single-package cargo leaf road** — the one later taught to
 //!     read a `system.contract.yaml` — sets no such variable and names a SIZING
-//!     DESCRIPTOR instead, whose `[[endpoint]]` rows carry the same fact
-//!     (RFC-0100 D4). W10 shipped reading only the first, so on exactly the road
+//!     DESCRIPTOR instead, whose `[[endpoint]]` rows carry the same fact.
+//!     The table first shipped reading only the first, so on exactly the road
 //!     that had a contract this table was `None` and nothing could be compared.
 //!
 //! # And two things are done with them, because the surfaces differ
@@ -65,7 +65,7 @@
 //! identical to `origin/main`'s, and the image carries no `declared_qos` symbol
 //! at all.
 //!
-//! # issue 1256 -- RELIABILITY and DURABILITY too
+//! # RELIABILITY and DURABILITY too
 //!
 //! A contract can state three things about a subscription and this module now
 //! reads all three. The two policies are not a sizing fact the way depth is;
@@ -76,7 +76,7 @@
 //! 0460/0491 shape), and [`check`](crate::declared_qos::check) / [`honour`](crate::declared_qos::honour) treat them by the same rules as
 //! the depth, with the order of the two values standing in for "deeper".
 //!
-//! # issue 1608 -- PUBLISHERS too, with the policy direction REVERSED
+//! # PUBLISHERS too, with the policy direction REVERSED
 //!
 //! A contract can state the same three things about a publisher, and
 //! `transient_local` is the one QoS fact that is publisher-side by nature: it is
@@ -120,7 +120,7 @@ pub struct DeclaredEndpoint {
     pub reliability: Option<QoSReliabilityPolicy>,
     /// `Volatile` / `TransientLocal`, on the same rule.
     pub durability: Option<QoSDurabilityPolicy>,
-    /// phase-519 W3b (RFC-0074) -- the declared arrival rate, millihertz
+    /// The declared arrival rate, millihertz
     /// (`rate_hz x 1000`). Subscriptions only. Not checked against anything:
     /// [`with_declared_arrival_rate`] hands it to the backend.
     pub arrival_rate_mhz: Option<u32>,
@@ -130,7 +130,7 @@ pub struct DeclaredEndpoint {
 /// `None` when it declares nothing.
 pub use crate::config::DECLARED_QOS_ROWS;
 
-/// issue 1608 -- every PUBLISHER this image's contract declares something
+/// Every PUBLISHER this image's contract declares something
 /// about, or `None`. Same row shape as [`DECLARED_QOS_ROWS`]; read by
 /// [`honour_publisher`].
 pub use crate::config::DECLARED_PUBLISHER_QOS_ROWS;
@@ -177,12 +177,12 @@ pub fn declared_depth(type_name: &str, topic: &str) -> Option<u32> {
     depth_in(DECLARED_QOS_ROWS?, type_name, topic)
 }
 
-/// issue 1256 -- the declared reliability for `(type_name, topic)`, or `None`.
+/// The declared reliability for `(type_name, topic)`, or `None`.
 pub fn declared_reliability(type_name: &str, topic: &str) -> Option<QoSReliabilityPolicy> {
     row_in(DECLARED_QOS_ROWS?, type_name, topic).and_then(|r| r.reliability)
 }
 
-/// issue 1256 -- the declared durability for `(type_name, topic)`, or `None`.
+/// The declared durability for `(type_name, topic)`, or `None`.
 pub fn declared_durability(type_name: &str, topic: &str) -> Option<QoSDurabilityPolicy> {
     row_in(DECLARED_QOS_ROWS?, type_name, topic).and_then(|r| r.durability)
 }
@@ -193,13 +193,13 @@ fn arrival_rate_in(rows: &[DeclaredEndpoint], type_name: &str, topic: &str) -> O
     row_in(rows, type_name, topic).and_then(|r| r.arrival_rate_mhz)
 }
 
-/// phase-519 W3b -- the declared arrival rate (millihertz) for
+/// The declared arrival rate (millihertz) for
 /// `(type_name, topic)`, or `None` when nobody declared one.
 pub fn declared_arrival_rate_mhz(type_name: &str, topic: &str) -> Option<u32> {
     arrival_rate_in(DECLARED_QOS_ROWS?, type_name, topic)
 }
 
-/// phase-519 W3b (RFC-0074) -- `topic`, carrying this image's declared
+/// `topic`, carrying this image's declared
 /// ingress rate for it, if the contract declared one.
 ///
 /// Every subscription registration that builds its own `TopicInfo` calls
@@ -268,7 +268,7 @@ fn durability_rank(d: QoSDurabilityPolicy) -> Option<u8> {
 }
 
 /// Refuse a subscription whose QoS disagrees with what the contract declared
-/// for its topic -- its depth, and (issue 1256) its reliability and durability.
+/// for its topic -- its depth, and its reliability and durability.
 ///
 /// `Ok(())` when every declared column agrees AND when nothing was declared --
 /// an image that has not opted in is not an image in error. On a disagreement
@@ -354,8 +354,8 @@ fn check_in(
 }
 
 /// The QoS a Rust subscription actually registers with, once the contract has
-/// had its say — phase-454 W13, the Rust half of W10, widened to the two
-/// policies by issue 1256.
+/// had its say — the Rust half of the declared-depth rule, widened to the two
+/// policies reliability and durability.
 ///
 /// # Why Rust TAKES the declared value where C and C++ ASSERT it
 ///
@@ -393,7 +393,7 @@ fn check_in(
 /// the depth: the executor arena, the zenoh receive ring and both payload pools
 /// on a declared image are all sized from the declared depth. The policies are
 /// the same kind of statement: XRCE drops both reliable stream buffers to the
-/// protocol floor when every endpoint declares `best_effort` (RFC-0100 D3), and
+/// protocol floor when every endpoint declares `best_effort`, and
 /// a `transient_local` endpoint is what the build counts a late-joiner slot
 /// for. So for each column, ordered by how much it ASKS FOR (deeper; reliable
 /// over best_effort; transient_local over volatile):
@@ -405,7 +405,7 @@ fn check_in(
 ///   `transient_local` writer.
 /// * `asked < declared` — taking would WIDEN what the code narrowed, and the
 ///   image paid for something nothing wants. Two statements about one fact
-///   disagreeing, with no default that explains either (RFC-0100 D8).
+///   disagreeing, with no default that explains either.
 ///   **REFUSED**, naming both.
 /// * equal, or nothing declared — returned unchanged. An image with no contract
 ///   is byte-identical to every build before this wave.
@@ -665,7 +665,7 @@ fn honour_role_in(
     Ok(granted)
 }
 
-/// issue 1608 -- the PUBLISHER counterpart of [`honour`]: the QoS a publisher
+/// The PUBLISHER counterpart of [`honour`]: the QoS a publisher
 /// registers with once the contract has had its say.
 ///
 /// The rule is `policy_verdict`'s, with the POLICY direction reversed from a
@@ -697,7 +697,7 @@ pub fn honour_publisher(
     honour_role_in(rows, type_name, topic, qos, Role::Publisher)
 }
 
-/// issue 1608 -- the declared row for a PUBLISHER on `(type_name, topic)`, or
+/// The declared row for a PUBLISHER on `(type_name, topic)`, or
 /// `None`. A table of its own because a publisher and a subscription on one
 /// `(type, topic)` are two endpoints with two declarations.
 pub fn declared_publisher(type_name: &str, topic: &str) -> Option<DeclaredEndpoint> {

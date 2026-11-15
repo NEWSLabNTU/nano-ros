@@ -1,4 +1,4 @@
-//! Phase 122.3.c.6.e — C-ABI-compatible `Waker` bridge.
+//! C-ABI-compatible `Waker` bridge.
 //!
 //! Rust's [`core::task::Waker`] is the trait-level event-driven
 //! primitive but it isn't a C-friendly handle (the `RawWaker` data

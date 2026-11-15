@@ -117,7 +117,7 @@ impl<'a> NodeHandle<'a> {
         }
     }
 
-    /// Phase 211.H — install the plan's QoS-override table on this node. Called
+    /// Install the plan's QoS-override table on this node. Called
     /// by the generated entry BEFORE the component constructs its entities, so
     /// `create_publisher`/`create_subscription` fold the matching overrides in.
     /// The table is `&'static` (codegen bakes it as a `static`), so there is no
@@ -128,7 +128,7 @@ impl<'a> NodeHandle<'a> {
         self.qos_overrides = overrides;
     }
 
-    /// RFC-0052 W3b.4 — install the executor's monitor table on this node
+    /// Install the executor's monitor table on this node
     /// (called by the entry glue / fixture alongside `set_qos_overrides`).
     pub fn set_monitors(&mut self, monitors: &'static [crate::executor::monitor::MonitorSpec]) {
         self.monitors = monitors;
@@ -156,7 +156,7 @@ impl<'a> NodeHandle<'a> {
         &self.name
     }
 
-    /// RFC-0088 — the serialization format this node's entities speak.
+    /// The serialization format this node's entities speak.
     ///
     /// The counterpart to ROS 2's `rmw_get_serialization_format()`, asked of
     /// the node rather than the process: an `Executor::open_multi` image holds
@@ -193,7 +193,7 @@ impl<'a> NodeHandle<'a> {
         nros_rmw::Session::implementation_identifier(&*self.session)
     }
 
-    /// Phase 88.12 — return the [`nros_log::Logger`] NAMED FOR THIS NODE.
+    /// Return the [`nros_log::Logger`] NAMED FOR THIS NODE.
     ///
     /// Loggers are interned in nros-log's bounded global table
     /// ([`nros_log::MAX_LOGGERS`] slots). If the caller has
@@ -203,7 +203,7 @@ impl<'a> NodeHandle<'a> {
     /// share per-logger runtime threshold state with any other call
     /// site that resolves the same name.
     ///
-    /// phase-427 W5 — otherwise one is CREATED under the node's name, in
+    /// Otherwise one is CREATED under the node's name, in
     /// nros-log's bounded arena. It used to answer
     /// [`nros_log::DEFAULT_LOGGER`] instead, which kept the API total by
     /// making every node in an image share the name `"nros"`: no record could
@@ -466,7 +466,7 @@ impl<'a> NodeHandle<'a> {
         })
     }
 
-    /// Phase 189.M1 — the customizable publisher **builder** (the `clone` tier;
+    /// The customizable publisher **builder** (the `clone` tier;
     /// see `docs/design/0022-entity-api-tiers.md`). Pick a mode with `.typed::<M>()`
     /// or `.generic(type, hash)`, set knobs (`.qos`), then `.build()`. The
     /// convenient `create_publisher` / `create_publisher_raw` are the `fork`
@@ -633,7 +633,7 @@ impl<'a> NodeHandle<'a> {
         self.create_service_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, QoSProfile::services_default())
     }
 
-    /// Phase 193.2b — service server with an explicit QoS profile (applied to
+    /// Service server with an explicit QoS profile (applied to
     /// both the request + reply endpoints; rclcpp's `create_service(name, qos)`).
     pub fn create_service_with_qos<Svc: RosService>(
         &mut self,
@@ -704,7 +704,7 @@ impl<'a> NodeHandle<'a> {
         self.create_client_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, QoSProfile::services_default())
     }
 
-    /// Phase 193.2b — service client with an explicit QoS profile.
+    /// Service client with an explicit QoS profile.
     pub fn create_client_with_qos<Svc: RosService>(
         &mut self,
         service_name: &str,
@@ -838,7 +838,7 @@ impl<'a> NodeHandle<'a> {
 
     // -- Actions --
 
-    /// Phase 122.3.c.6 — typeless action server. Builds the 5
+    /// Typeless action server. Builds the 5
     /// transport channels (`send_goal` / `cancel_goal` / `get_result`
     /// services + `feedback` / `status` publishers) and returns the
     /// raw `ActionServerCore` directly. Caller owns scheduling —
@@ -984,7 +984,7 @@ impl<'a> NodeHandle<'a> {
         })
     }
 
-    /// Phase 122.3.c.6 — typeless action client. Same shape as
+    /// Typeless action client. Same shape as
     /// `create_action_server_raw` but builds the 3 service clients
     /// + 1 feedback subscriber, returns the raw `ActionClientCore`.
     pub fn create_action_client_raw(
@@ -1449,7 +1449,7 @@ impl<'n, 'a, 't> PublisherBuilder<'n, 'a, 't> {
         self
     }
 
-    /// Phase 282 (#145) — mark this publisher "express": its samples bypass
+    /// Mark this publisher "express": its samples bypass
     /// transport tx batching (sent immediately even when the batching knob is
     /// on). For control-tier / latency-sensitive topics.
     pub fn tx_express(mut self, express: bool) -> Self {
@@ -1498,7 +1498,7 @@ impl<'n, 'a, 't, M: MessageForRmw> TypedPublisherBuilder<'n, 'a, 't, M> {
         self
     }
 
-    /// Phase 282 (#145) — see [`PublisherBuilder::tx_express`].
+    /// See [`PublisherBuilder::tx_express`].
     pub fn tx_express(mut self, express: bool) -> Self {
         self.qos.tx_express = express;
         self
@@ -1525,7 +1525,7 @@ impl<'n, 'a, 't> GenericPublisherBuilder<'n, 'a, 't> {
         self
     }
 
-    /// Phase 282 (#145) — see [`PublisherBuilder::tx_express`].
+    /// See [`PublisherBuilder::tx_express`].
     pub fn tx_express(mut self, express: bool) -> Self {
         self.qos.tx_express = express;
         self
@@ -1554,8 +1554,8 @@ impl<'n, 'a, 't> GenericPublisherBuilder<'n, 'a, 't> {
 /// The group is just a name — the actual `SchedContext` binding is seeded at
 /// boot by `Executor::bind_group_sched` (from `system.toml group_tasks`, phase
 /// 273 W2) and resolved at entity-registration time by
-/// `apply_node_default_sched` (phase 273 W1).  No concurrency type (Mutually-
-/// Exclusive vs Reentrant) is stored here — that is RFC-0047 OQ1 follow-up.
+/// `apply_node_default_sched`.  No concurrency type (Mutually-
+/// Exclusive vs Reentrant) is stored here — that is an open follow-up.
 pub struct CallbackGroup {
     name: heapless::String<32>,
 }
@@ -1567,7 +1567,7 @@ impl CallbackGroup {
     }
 }
 
-/// A ROS 2 node — rclrs's `Node`, and the ONE node type (phase-483 W2).
+/// A ROS 2 node — rclrs's `Node`, and the ONE node type.
 ///
 /// `Executor::create_node(name)` returns it, and so does
 /// `Executor::node_mut(id)`; a component and a standalone program hold the
@@ -1604,7 +1604,7 @@ impl<'e, 's> Node<'e, 's> {
     ///
     /// ADOPT-BOUNDED: returns `Result`, where rclrs's builder cannot fail. The
     /// store is created on first use; `Err(NodeError::NotInitialized)` means the
-    /// platform heap refused it (issue 1706), which has to be reported.
+    /// platform heap refused it, which has to be reported.
     ///
     /// [`ParameterBuilder`]: nros_params::ParameterBuilder
     pub fn declare_parameter<'a, T: nros_params::ParameterVariant>(
@@ -1752,8 +1752,7 @@ impl<'e, 's> Node<'e, 's> {
     // behind `ExecutorFfi`.
 
     /// The `-p` / `--params-file` overrides that apply to this node, one per
-    /// name — rclcpp's `NodeParametersInterface::get_parameter_overrides()`
-    /// (issue 2057).
+    /// name — rclcpp's `NodeParametersInterface::get_parameter_overrides()`.
     #[cfg(feature = "alloc")]
     pub fn argv_param_overrides(
         &self,
@@ -1825,7 +1824,7 @@ impl<'e, 's> Node<'e, 's> {
 
     /// The node's name — rclrs's `Node::name()`.
     ///
-    /// phase-483 W2. Read from the executor's node table, where the name the
+    /// Read from the executor's node table, where the name the
     /// node was created with (or the launch file's override of it) lives.
     #[must_use]
     pub fn name(&self) -> &str {
@@ -1884,7 +1883,7 @@ impl<'e, 's> Node<'e, 's> {
 
     /// The node's clock — rclrs's `Node::get_clock()`, and rclcpp's.
     ///
-    /// phase-417 G6. `cpp:Node::get_clock` has shipped since issue 0789 and
+    /// `cpp:Node::get_clock` had shipped for a long time and
     /// only the Rust node lacked the accessor: a component reached the clock
     /// through the executor, or constructed one, and the ported line
     /// `node.get_clock().now()` had nothing to bind.
@@ -1899,12 +1898,12 @@ impl<'e, 's> Node<'e, 's> {
     ///
     /// ROS TIME, as rclcpp's and rclrs's node clocks are: with a `/clock`
     /// source installed it follows the simulator, and with none it reads the
-    /// same wall clock `Clock::system()` does (issue 1334 put those two on one
+    /// same wall clock `Clock::system()` does (the two share one
     /// expression). A component that specifically wants the monotonic source
     /// asks for `Clock::steady()`.
     ///
     /// By VALUE, where rclcpp hands back a `Clock::SharedPtr`: there is no
-    /// allocator here (RFC-0022) and the type is `Copy`, so a handle would be
+    /// allocator here and the type is `Copy`, so a handle would be
     /// a pointer to one `u8`.
     pub fn get_clock(&self) -> nros_core::clock::Clock {
         nros_core::clock::Clock::ros_time()
@@ -1936,7 +1935,7 @@ impl<'e, 's> Node<'e, 's> {
 
     /// Convenient typed publisher (the `fork` tier — rclcpp/rclrs shape).
     ///
-    /// phase-515 R1 — takes rclrs's `impl IntoPrimitiveOptions`: a bare
+    /// Takes rclrs's `impl IntoPrimitiveOptions`: a bare
     /// topic name (default QoS) or one with QoS steps chained on,
     /// `"chatter".keep_last(10).reliable()`.
     pub fn create_publisher<'o, M: MessageForRmw>(
@@ -1957,7 +1956,7 @@ impl<'e, 's> Node<'e, 's> {
         self.create_generic_publisher_with_qos(topic, type_name, type_hash, QoSProfile::default())
     }
 
-    /// Issue 0306 — the same, with an explicit profile. The declarative
+    /// The same, with an explicit profile. The declarative
     /// component path needs it: a node that declares
     /// `create_publisher_for_topic_with_qos(...)` carries its profile in
     /// `EntityMetadata::qos`, and the runtime used to drop it on the floor by
@@ -1976,7 +1975,7 @@ impl<'e, 's> Node<'e, 's> {
     /// Convenient typed subscription (the `fork` tier — rclcpp/rclrs shape).
     /// Sugar over the builder with default QoS + buffer.
     ///
-    /// phase-515 R1 — `options` is rclrs's `impl IntoPrimitiveOptions`, as on
+    /// `options` is rclrs's `impl IntoPrimitiveOptions`, as on
     /// [`create_publisher`](Self::create_publisher). ADOPT-BOUNDED (subscription):
     /// returns the entity's `HandleId`, not an owned rclrs `Subscription` — the
     /// entity lives in the executor's table, and the id is what cancels it.
@@ -2002,7 +2001,7 @@ impl<'e, 's> Node<'e, 's> {
     }
 
     /// Subscribe `/clock` and install every sample as this image's ROS time —
-    /// phase-425 W3, the thing `rclcpp`'s `use_sim_time` parameter switches on.
+    /// the thing `rclcpp`'s `use_sim_time` parameter switches on.
     ///
     /// After this, `Clock::ros_time().now()` is the simulator's or the bag
     /// player's time, and a timer registered with `TimerClockSource::Ros`
@@ -2051,7 +2050,7 @@ impl<'e, 's> Node<'e, 's> {
     /// (`create_timer_in_group`, `create_subscription_in_group`, `create_publisher_in_group`)
     /// to label entities with this group. The executor binds the entity's
     /// callback to the `SchedContext` seeded via `bind_group_sched` for
-    /// `(node_name, namespace, group_name)` (phase 273 W1/W2).
+    /// `(node_name, namespace, group_name)`.
     ///
     /// ```ignore
     /// let ctrl = node.create_callback_group("ctrl");
@@ -2071,7 +2070,7 @@ impl<'e, 's> Node<'e, 's> {
         CallbackGroup { name: s }
     }
 
-    /// Create a repeating timer **in** a callback group (phase 273, rclcpp shape).
+    /// Create a repeating timer **in** a callback group (rclcpp shape).
     ///
     /// The timer's callback is bound to the `SchedContext` associated with
     /// `group` in the executor's `group_sched_table` for this node. If no
@@ -2090,7 +2089,7 @@ impl<'e, 's> Node<'e, 's> {
             .register_timer_on(Some(self.node_id), period, callback, Some(group.name()))
     }
 
-    /// rclrs's `create_timer_repeating(period, callback)` — phase-515 R4.
+    /// rclrs's `create_timer_repeating(period, callback)`.
     ///
     /// Fires `callback` every `period`, on this node's default `SchedContext`.
     /// rclrs 0.7.0 settled on the same three timer modes ours carries
@@ -2121,7 +2120,7 @@ impl<'e, 's> Node<'e, 's> {
         )
     }
 
-    /// rclrs's `create_timer_oneshot(period, callback)` — phase-515 R4.
+    /// rclrs's `create_timer_oneshot(period, callback)`.
     ///
     /// Fires `callback` once, `period` after creation, then goes inert;
     /// `Executor::reset_timer` re-arms it for one more shot. Same envelope as
@@ -2144,7 +2143,7 @@ impl<'e, 's> Node<'e, 's> {
         )
     }
 
-    /// rclrs's `create_timer_inert(period, callback)` — phase-515 R4.
+    /// rclrs's `create_timer_inert(period, callback)`.
     ///
     /// Creates the timer without starting it (rcl's `autostart = false`): it
     /// never fires until `Executor::reset_timer` starts it, after which it
@@ -2175,7 +2174,7 @@ impl<'e, 's> Node<'e, 's> {
         )
     }
 
-    /// Create a guard condition on this node — phase-417 W4.e, the Rust half of
+    /// Create a guard condition on this node — the Rust half of
     /// the one creation shape.
     ///
     /// A guard condition is the cross-thread / ISR wake source: any thread may
@@ -2189,7 +2188,7 @@ impl<'e, 's> Node<'e, 's> {
     /// Until 2026-09-18 the only Rust spelling was
     /// [`Executor::register_guard_condition`](crate::Executor::register_guard_condition),
     /// while C++ created one on the node and C needed three calls. That was the
-    /// three-owner state RFC-0089 stage 4 exists to remove; the executor form
+    /// three-owner state the adoption rule exists to remove; the executor form
     /// survives as the ours-only primitive this calls.
     ///
     /// The returned [`HandleId`](super::types::HandleId) is the slot, for
@@ -2213,7 +2212,7 @@ impl<'e, 's> Node<'e, 's> {
             .register_guard_condition_on(Some(self.node_id), callback)
     }
 
-    /// Create a repeating timer on a chosen CLOCK — phase-430 W4, the
+    /// Create a repeating timer on a chosen CLOCK — the
     /// node-level spelling of
     /// [`Executor::register_timer_on_clock`](crate::Executor::register_timer_on_clock)
     /// and the Rust counterpart of C++'s `create_timer(clock, period, cb)`.
@@ -2257,8 +2256,8 @@ impl<'e, 's> Node<'e, 's> {
     }
 
     /// [`create_timer_on_clock`](Self::create_timer_on_clock) **in** a callback
-    /// group — the clock axis on [`create_timer_in_group`](Self::create_timer_in_group)
-    /// (phase-430 W4). The two axes are independent: the group decides which
+    /// group — the clock axis on [`create_timer_in_group`](Self::create_timer_in_group).
+    /// The two axes are independent: the group decides which
     /// `SchedContext` the callback runs under, the clock decides what advances
     /// the timer towards its next activation.
     pub fn create_timer_on_clock_in_group<F>(
@@ -2282,7 +2281,7 @@ impl<'e, 's> Node<'e, 's> {
     }
 
     /// Create a repeating timer whose callback receives the activation's
-    /// [`TimerCallInfo`](crate::TimerCallInfo) — issue 1974, the Rust
+    /// [`TimerCallInfo`](crate::TimerCallInfo) — the Rust
     /// counterpart of Jazzy's `rclcpp::TimerInfoCallbackType`.
     ///
     /// `info.expected_call_time` is the deadline the executor was serving and
@@ -2320,7 +2319,7 @@ impl<'e, 's> Node<'e, 's> {
         )
     }
 
-    /// Create a typed subscription **in** a callback group (phase 273, rclcpp shape).
+    /// Create a typed subscription **in** a callback group (rclcpp shape).
     ///
     /// The subscription's callback is bound to the `SchedContext` associated
     /// with `group` in the `group_sched_table` for this node. If no entry was
@@ -2346,7 +2345,7 @@ impl<'e, 's> Node<'e, 's> {
             )
     }
 
-    /// Create a typed publisher **in** a callback group (phase 273, rclcpp shape).
+    /// Create a typed publisher **in** a callback group (rclcpp shape).
     ///
     /// Publishers do not have an executor-dispatched callback, so the group
     /// name has no scheduling effect today (publishers are explicitly driven by
@@ -2362,7 +2361,7 @@ impl<'e, 's> Node<'e, 's> {
         self.create_publisher::<M>(topic)
     }
 
-    /// RFC-0041 / Phase 239.1 — callback-based service client (rclcpp
+    /// Callback-based service client (rclcpp
     /// `async_send_request(req, cb)` analogue). The reply is delivered to
     /// `callback` at `spin_once` (no `Promise` poll). Returns a
     /// [`ServiceClientCallback`] send handle; dual-mode — the `Promise`-based
@@ -2386,7 +2385,7 @@ impl<'e, 's> Node<'e, 's> {
         >(service_name, callback)
     }
 
-    /// Callback-based service client with custom buffer sizes (Phase 239.1).
+    /// Callback-based service client with custom buffer sizes.
     pub fn create_client_with_callback_sized<Svc, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
@@ -2406,7 +2405,7 @@ impl<'e, 's> Node<'e, 's> {
 
     /// [`create_client_with_callback`](Self::create_client_with_callback)
     /// whose closure also receives the reply's
-    /// [`ServiceInfo`](nros_core::ServiceInfo) — issue 2148, the callback twin
+    /// [`ServiceInfo`](nros_core::ServiceInfo) — the callback twin
     /// of [`Promise::take_with_info`](super::handles::Promise::take_with_info)
     /// and the client twin of
     /// [`create_service_with_info`](Self::create_service_with_info).
@@ -2464,7 +2463,7 @@ impl<'e, 's> Node<'e, 's> {
         Ok(ServiceClientCallback::new(hdr))
     }
 
-    /// RFC-0041 / Phase 239.2 — callback-based action client (rclcpp
+    /// Callback-based action client (rclcpp
     /// `SendGoalOptions{goal_response_callback, feedback_callback,
     /// result_callback}` analogue). Goal-response / feedback / result are
     /// delivered to the closures at `spin_once`. Returns an
@@ -2499,7 +2498,7 @@ impl<'e, 's> Node<'e, 's> {
         >(action_name, on_goal_response, on_feedback, on_result)
     }
 
-    /// Callback-based action client with custom buffer sizes (Phase 239.2).
+    /// Callback-based action client with custom buffer sizes.
     #[allow(clippy::type_complexity)]
     pub fn create_action_client_with_callbacks_sized<
         A,
@@ -2565,7 +2564,7 @@ impl<'e, 's> Node<'e, 's> {
         )
     }
 
-    /// Issue 0306 — the same, with an explicit profile (see
+    /// The same, with an explicit profile (see
     /// [`Self::create_generic_publisher_with_qos`] for why).
     pub fn create_generic_subscription_with_qos<F>(
         &mut self,
@@ -2583,12 +2582,12 @@ impl<'e, 's> Node<'e, 's> {
         )
     }
 
-    /// Issue 2208 -- [`Self::create_generic_subscription_with_qos`] for a
+    /// [`Self::create_generic_subscription_with_qos`] for a
     /// caller that knows the message type's bound although it registers
     /// type-erased (the declarative runtime, which recorded it at
     /// declaration). `rx_hint` reaches the backend as `rx_buffer_hint`, which
     /// sizes zenoh-pico's receive class and, with a declared arrival curve, the
-    /// XRCE agent's pace (RFC-0074 "On XRCE"). `None` states nothing.
+    /// XRCE agent's pace (see the ingress budget's XRCE notes). `None` states nothing.
     pub fn create_generic_subscription_with_qos_and_rx_hint<F>(
         &mut self,
         topic: &str,
@@ -2613,7 +2612,7 @@ impl<'e, 's> Node<'e, 's> {
             )
     }
 
-    /// Phase 250 (Wave 2) — generic (type-erased) subscription that surfaces E2E
+    /// Generic (type-erased) subscription that surfaces E2E
     /// [`IntegrityStatus`](nros_rmw::IntegrityStatus) (CRC + sequence gap/dup) to
     /// the callback (`FnMut(&[u8], &IntegrityStatus)`). The declarative-`Node`
     /// analog of the typed `.typed::<M>().safety()` builder: the validator lives
@@ -2635,7 +2634,7 @@ impl<'e, 's> Node<'e, 's> {
         )
     }
 
-    /// Issue 2208 -- [`Self::create_generic_subscription_with_integrity`]
+    /// [`Self::create_generic_subscription_with_integrity`]
     /// with the message type's bound, as
     /// [`Self::create_generic_subscription_with_qos_and_rx_hint`].
     #[cfg(feature = "safety-e2e")]
@@ -2662,14 +2661,14 @@ impl<'e, 's> Node<'e, 's> {
             )
     }
 
-    /// Convenient zero-copy subscription (Phase 229.6, issue 0007 / RFC-0033
+    /// Convenient zero-copy subscription (the
     /// `view` mode).
     ///
     /// `B` is the code-generated VIEWABLE marker (e.g. `ImageViewable`, emitted
     /// alongside the `inline` `Image` for a `.msg` with a `view`-mode field).
     /// The marker is zero-sized and carries NO lifetime, which is the whole
     /// reason it exists: `B::View<'a>` does, and a generic parameter cannot be
-    /// the lifetime-carrying type itself. That is also why phase-390 could not
+    /// the lifetime-carrying type itself. That is also why it could not
     /// simply rename it to `{Msg}View` — the view struct already owns that
     /// name, and the marker points AT it.
     ///
@@ -2701,7 +2700,7 @@ impl<'e, 's> Node<'e, 's> {
 
     /// Service-server builder (the `clone` tier) — `node.service(name)`.
     /// Set `.qos()` (defaults to the services profile = RELIABLE+VOLATILE+
-    /// KEEP_LAST(10)), then `.build::<Svc, _>(callback)` (Phase 193.2).
+    /// KEEP_LAST(10)), then `.build::<Svc, _>(callback)`.
     pub fn service<'t>(&mut self, name: &'t str) -> CtxServiceBuilder<'_, 'e, 't, 's> {
         CtxServiceBuilder {
             ctx: self,
@@ -2713,7 +2712,7 @@ impl<'e, 's> Node<'e, 's> {
     /// Convenient service server (the `fork` tier — rclrs/rclcpp shape), default
     /// services QoS. Mirror of `create_subscription`.
     ///
-    /// phase-515 R1 — `options` is rclrs's `impl IntoPrimitiveOptions`; a bare
+    /// `options` is rclrs's `impl IntoPrimitiveOptions`; a bare
     /// name keeps the services profile. ADOPT-BOUNDED (service): returns the
     /// entity's `HandleId`, not an owned rclrs `Service` — the entity lives in
     /// the executor's table.
@@ -2744,7 +2743,7 @@ impl<'e, 's> Node<'e, 's> {
 
     /// [`create_service`](Self::create_service) whose callback also receives
     /// the request's [`ServiceInfo`](nros_core::ServiceInfo) — rclrs's
-    /// `(request, ServiceInfo)` service callback (issue 1942).
+    /// `(request, ServiceInfo)` service callback.
     ///
     /// The info says who sent the request (client GID + the client's sequence
     /// number) and when. Which fields arrive depends on the backend; one it
@@ -2890,7 +2889,7 @@ impl<'e, 's> Node<'e, 's> {
     }
 
     /// How many service clients are visible on `service_name` — rclcpp's
-    /// (Jazzy) `Node::count_clients`; rclrs has no counterpart. Issue 1978.
+    /// (Jazzy) `Node::count_clients`; rclrs has no counterpart.
     ///
     /// The graph's count, not this node's; see
     /// [`count_publishers`](Self::count_publishers) for that distinction and
@@ -3013,7 +3012,7 @@ impl<'e, 's> Node<'e, 's> {
     // already has those under exactly those names.
     // ------------------------------------------------------------------
 
-    /// [`create_publisher`](Self::create_publisher) with an explicit profile (phase-483 W2).
+    /// [`create_publisher`](Self::create_publisher) with an explicit profile.
     ///
     /// Through [`NodeHandle::create_publisher_with_qos`], so a publisher made
     /// here gets what one made on the handle `Executor::create_node` used to
@@ -3031,7 +3030,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_publisher_raw`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_publisher_raw`] on this node.
     pub fn create_publisher_raw(
         &mut self,
         topic_name: &str,
@@ -3043,7 +3042,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_publisher_raw_with_qos`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_publisher_raw_with_qos`] on this node.
     pub fn create_publisher_raw_with_qos(
         &mut self,
         topic_name: &str,
@@ -3056,7 +3055,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// The POLLED form of [`NodeHandle::create_subscription`] (phase-483 W2): the caller
+    /// The POLLED form of [`NodeHandle::create_subscription`]: the caller
     /// takes from it, where rclrs's `create_subscription` takes a callback.
     pub fn create_polling_subscription<M: MessageForRmw>(
         &mut self,
@@ -3066,7 +3065,7 @@ impl<'e, 's> Node<'e, 's> {
             .with_node_try(self.node_id, |h| h.create_subscription::<M>(topic_name))
     }
 
-    /// The POLLED form of [`NodeHandle::create_subscription_sized`] (phase-483 W2): the caller
+    /// The POLLED form of [`NodeHandle::create_subscription_sized`]: the caller
     /// takes from it, where rclrs's `create_subscription` takes a callback.
     pub fn create_polling_subscription_sized<M: MessageForRmw, const RX_BUF: usize>(
         &mut self,
@@ -3077,7 +3076,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// The POLLED form of [`NodeHandle::create_subscription_with_qos`] (phase-483 W2): the caller
+    /// The POLLED form of [`NodeHandle::create_subscription_with_qos`]: the caller
     /// takes from it, where rclrs's `create_subscription` takes a callback.
     pub fn create_polling_subscription_with_qos<M: MessageForRmw, const RX_BUF: usize>(
         &mut self,
@@ -3089,7 +3088,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// The POLLED form of [`NodeHandle::create_subscription_raw`] (phase-483 W2): the caller
+    /// The POLLED form of [`NodeHandle::create_subscription_raw`]: the caller
     /// takes from it, where rclrs's `create_subscription` takes a callback.
     pub fn create_polling_subscription_raw(
         &mut self,
@@ -3102,7 +3101,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// The POLLED form of [`NodeHandle::create_subscription_raw_sized`] (phase-483 W2): the caller
+    /// The POLLED form of [`NodeHandle::create_subscription_raw_sized`]: the caller
     /// takes from it, where rclrs's `create_subscription` takes a callback.
     pub fn create_polling_subscription_raw_sized<const RX_BUF: usize>(
         &mut self,
@@ -3115,7 +3114,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// The POLLED form of [`NodeHandle::create_service`] (phase-483 W2): the caller
+    /// The POLLED form of [`NodeHandle::create_service`]: the caller
     /// takes from it, where rclrs's `create_service` takes a callback.
     pub fn create_polling_service<Svc: RosService>(
         &mut self,
@@ -3129,7 +3128,7 @@ impl<'e, 's> Node<'e, 's> {
             .with_node_try(self.node_id, |h| h.create_service::<Svc>(service_name))
     }
 
-    /// The POLLED form of [`NodeHandle::create_service_with_qos`] (phase-483 W2): the caller
+    /// The POLLED form of [`NodeHandle::create_service_with_qos`]: the caller
     /// takes from it, where rclrs's `create_service` takes a callback.
     pub fn create_polling_service_with_qos<Svc: RosService>(
         &mut self,
@@ -3145,7 +3144,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// The POLLED form of [`NodeHandle::create_service_sized`] (phase-483 W2): the caller
+    /// The POLLED form of [`NodeHandle::create_service_sized`]: the caller
     /// takes from it, where rclrs's `create_service` takes a callback.
     pub fn create_polling_service_sized<
         Svc: RosService,
@@ -3165,9 +3164,9 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_client`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_client`] on this node.
     ///
-    /// phase-515 R1 — `options` is rclrs's `impl IntoPrimitiveOptions`; a bare
+    /// `options` is rclrs's `impl IntoPrimitiveOptions`; a bare
     /// name keeps the services profile. ADOPT-BOUNDED (client): returns an
     /// `EmbeddedServiceClient`, the executor-table handle, where rclrs returns
     /// a reference-counted `Client`.
@@ -3186,7 +3185,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_client_with_qos`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_client_with_qos`] on this node.
     pub fn create_client_with_qos<Svc: RosService>(
         &mut self,
         service_name: &str,
@@ -3201,7 +3200,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_client_sized`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_client_sized`] on this node.
     pub fn create_client_sized<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
@@ -3216,7 +3215,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// The POLLED form of [`NodeHandle::create_service_raw`] (phase-483 W2): the caller
+    /// The POLLED form of [`NodeHandle::create_service_raw`]: the caller
     /// takes from it, where rclrs's `create_service` takes a callback.
     pub fn create_polling_service_raw(
         &mut self,
@@ -3229,7 +3228,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// The POLLED form of [`NodeHandle::create_service_raw_sized`] (phase-483 W2): the caller
+    /// The POLLED form of [`NodeHandle::create_service_raw_sized`]: the caller
     /// takes from it, where rclrs's `create_service` takes a callback.
     pub fn create_polling_service_raw_sized<const REQ_BUF: usize, const RESP_BUF: usize>(
         &mut self,
@@ -3242,7 +3241,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_client_raw`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_client_raw`] on this node.
     pub fn create_client_raw(
         &mut self,
         service_name: &str,
@@ -3254,7 +3253,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_client_raw_sized`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_client_raw_sized`] on this node.
     pub fn create_client_raw_sized<const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
@@ -3266,7 +3265,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_action_server_raw`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_action_server_raw`] on this node.
     pub fn create_action_server_raw(
         &mut self,
         action_name: &str,
@@ -3286,7 +3285,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_action_server_raw_sized`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_action_server_raw_sized`] on this node.
     pub fn create_action_server_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
@@ -3310,7 +3309,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_action_client_raw`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_action_client_raw`] on this node.
     pub fn create_action_client_raw(
         &mut self,
         action_name: &str,
@@ -3329,7 +3328,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_action_client_raw_sized`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_action_client_raw_sized`] on this node.
     pub fn create_action_client_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
@@ -3350,7 +3349,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_action_server`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_action_server`] on this node.
     pub fn create_action_server<A: RosAction>(
         &mut self,
         action_name: &str,
@@ -3369,7 +3368,7 @@ impl<'e, 's> Node<'e, 's> {
             .with_node_try(self.node_id, |h| h.create_action_server::<A>(action_name))
     }
 
-    /// [`NodeHandle::create_action_server_sized`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_action_server_sized`] on this node.
     pub fn create_action_server_sized<
         A: RosAction,
         const GOAL_BUF: usize,
@@ -3397,7 +3396,7 @@ impl<'e, 's> Node<'e, 's> {
         })
     }
 
-    /// [`NodeHandle::create_action_client`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_action_client`] on this node.
     pub fn create_action_client<A: RosAction>(
         &mut self,
         action_name: &str,
@@ -3416,7 +3415,7 @@ impl<'e, 's> Node<'e, 's> {
             .with_node_try(self.node_id, |h| h.create_action_client::<A>(action_name))
     }
 
-    /// [`NodeHandle::create_action_client_sized`] on this node (phase-483 W2).
+    /// [`NodeHandle::create_action_client_sized`] on this node.
     pub fn create_action_client_sized<
         A: RosAction,
         const GOAL_BUF: usize,
@@ -3458,7 +3457,7 @@ impl<'c, 'e, 't, 's> CtxServiceBuilder<'c, 'e, 't, 's> {
     }
 
     /// Surface the request's [`ServiceInfo`](nros_core::ServiceInfo) to the
-    /// callback — `FnMut(&Request, &ServiceInfo) -> Reply` (issue 1942). The
+    /// callback — `FnMut(&Request, &ServiceInfo) -> Reply`. The
     /// service-side twin of the subscription builder's `.message_info()`.
     pub fn service_info(self) -> CtxServiceInfoBuilder<'c, 'e, 't, 's> {
         CtxServiceInfoBuilder {
@@ -3685,7 +3684,7 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
 
     /// Set the staging-buffer size (const-generic).
     ///
-    /// phase-392 W3c -- **this is the opt-out.** A subscription that does not
+    /// **this is the opt-out.** A subscription that does not
     /// call it is sized from `M`'s own serialized bound; calling it says "give
     /// me exactly `N` bytes per slot" and the derivation is skipped. Naming a
     /// number is the only way to spend more arena than the type needs, which is
@@ -3706,7 +3705,7 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
         }
     }
 
-    /// Phase 403 W2 -- size the receive buffer from `M`'s OWN serialized bound
+    /// Size the receive buffer from `M`'s OWN serialized bound
     /// instead of the configured default.
     ///
     /// ```ignore
@@ -3716,7 +3715,7 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
     ///     .build(on_msg)?;
     /// ```
     ///
-    /// **No longer the only way to get it (phase-392 W3c).** This was opt-in,
+    /// **No longer the only way to get it.** This was opt-in,
     /// and its own doc said making it the default "would move every image's
     /// arena occupancy at once, which is a decision, not a refactor". W3c is
     /// that decision: a plain `.typed::<M>().build()` now derives too, wherever
@@ -3747,7 +3746,7 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
     /// carry a bound -- stated in the `.msg` (`string<=64`) or capped in
     /// `nros-codegen.toml` -- so "this type has no bound" is a defect to report,
     /// not a case to absorb. The alternative, quietly keeping the configured
-    /// default, is precisely the substitution phase 380 forbids: `None` means
+    /// default, is precisely the substitution the sizing rules forbid: `None` means
     /// "no bound EXISTS", never "unknown", and a buffer sized from a fallback is
     /// the failure that rule was written to prevent. The C header already refuses
     /// the same thing the same way -- naming an unbounded type's
@@ -3845,7 +3844,7 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
     }
 }
 
-/// Phase 403 W2 -- a typed subscription whose buffer is sized by `M`'s own
+/// A typed subscription whose buffer is sized by `M`'s own
 /// serialized bound (`.typed::<M>().rx_buffer_from_type()`).
 ///
 /// Terminal by construction: `.message_info()` and `.safety()` are absent

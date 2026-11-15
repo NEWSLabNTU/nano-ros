@@ -329,7 +329,7 @@ pub(crate) struct SrvEntry<Svc: RosService, F, const REQ_BUF: usize, const REPLY
 }
 
 /// What a periodic timer does with periods it missed while its executor
-/// was blocked (issue #505).
+/// was blocked.
 ///
 /// A sched task that loses the CPU for several periods — a long-running
 /// callback, or preemption by a higher-priority band — resumes with
@@ -472,7 +472,7 @@ pub(crate) struct ActionClientRawArenaEntry<
 /// `pending` is still `true` is the user's responsibility to avoid (the
 /// C wrapper checks at the call site).
 ///
-/// Issue 2009 — `sequences` holds the ids that logical call went out under
+/// `sequences` holds the ids that logical call went out under
 /// (one per re-send), and a reply is dispatched only if it names one of them.
 /// Every sender records its id through [`ServiceClientRawArenaEntry::record_send`].
 #[repr(C)]
@@ -484,16 +484,16 @@ pub struct ServiceClientRawArenaEntry<const REPLY_BUF: usize> {
     /// Checked by `try_process` to avoid blind polling.
     pub reply_ready: core::sync::atomic::AtomicBool,
     pub callback: Option<RawResponseCallback>,
-    /// Issue 2136 — when set, dispatched IN PLACE of `callback`, with the id
+    /// When set, dispatched IN PLACE of `callback`, with the id
     /// of the request the reply answers (rclc's
     /// `rclc_executor_add_client_with_request_id`). Same `context`.
     pub request_id_callback: Option<RawResponseRequestIdCallback>,
     pub context: *mut core::ffi::c_void,
-    /// Issue 2009 — the ids of the call in flight; see the type docs.
+    /// The ids of the call in flight; see the type docs.
     pub sequences: ClientSequences,
 }
 
-/// Issue 2009 — the request ids of an executor-owned client's one logical
+/// The request ids of an executor-owned client's one logical
 /// call: every re-send generation of it (see
 /// [`MAX_CLIENT_RESEND_GENERATIONS`](crate::limits::MAX_CLIENT_RESEND_GENERATIONS)).
 pub type ClientSequences =
@@ -602,7 +602,7 @@ impl BufferStrategy {
 
 /// The QoS depth an action client's FEEDBACK stream registers with.
 ///
-/// Issue 1190 — was an `8u16` literal at
+/// Was an `8u16` literal at
 /// `NodeHandle::create_action_client_with_callbacks_sized`'s one call site.
 /// Named because `nros-node/build.rs` restates it to price the action-client
 /// arena slot, and a literal is a restatement nothing can be held to; see
@@ -3727,7 +3727,7 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     }
 }
 
-/// RFC-0041 / Phase 239.1 — F-independent prefix of a typed service-client
+/// F-independent prefix of a typed service-client
 /// callback entry. `#[repr(C)]` guarantees it is the leading member of every
 /// [`ServiceClientCallbackEntry`] regardless of the closure type `F`, so a
 /// `ServiceClientCallback` handle can hold a `*mut` to it and send requests
@@ -3739,7 +3739,7 @@ pub struct ServiceClientSendHeader<const REPLY_BUF: usize> {
     pub pending: bool,
     /// Set by the transport waker when a reply arrives (mirrors the raw entry).
     pub reply_ready: core::sync::atomic::AtomicBool,
-    /// Issue 2009 — the id of the call in flight (mirrors the raw entry).
+    /// The id of the call in flight (mirrors the raw entry).
     pub sequences: ClientSequences,
 }
 

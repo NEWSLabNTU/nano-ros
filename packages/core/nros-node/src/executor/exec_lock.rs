@@ -1,6 +1,6 @@
-//! phase-509 P9b item 1 (RFC-0108 "As built in P9b") -- the executor's lock.
+//! The executor's lock.
 //!
-//! RFC-0108 runs one executor per core with one worker thread per preemption
+//! The preemption-level model runs one executor per core with one worker thread per preemption
 //! level. Every path that touches the executor's state -- a worker's pass, and
 //! every C / C++ FFI entry a callback or another thread calls -- then has to be
 //! serialised, and that is this lock: a port-provided, RECURSIVE,
@@ -29,7 +29,7 @@
 //!
 //! Why priority-inheriting: a less urgent worker holding the lock for a
 //! bookkeeping step must run at the waiter's priority, so a more urgent
-//! level's blocking is bounded by ONE critical section (RFC-0108 B_i).
+//! level's blocking is bounded by ONE critical section (the blocking term `B_i`).
 //!
 //! Interrupt handlers never take it: arrivals go through the scheduler's
 //! lock-free ready word and the wake object, exactly as before.
@@ -85,7 +85,7 @@ impl ExecLock {
     }
 
     /// This lock, with the port's thread identity: a pass that holds it
-    /// releases it around each user callback (phase-509 P9b item 2).
+    /// releases it around each user callback.
     ///
     /// # Safety
     /// `id` answers the calling thread's identity, from any thread, equal on

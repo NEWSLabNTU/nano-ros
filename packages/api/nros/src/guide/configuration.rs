@@ -42,16 +42,16 @@
 //! | `XRCE_SERVICE_REPLY_BUFFER_SIZE` | Service-client reply slot | `XRCE_BUFFER_SIZE` | ditto |
 //! | `XRCE_STREAM_HISTORY` | Reliable stream history depth (>= 2) | 4 | 4 |
 //!
-//! The zenoh service inbox is per FAMILY since phase-461 W1 (issue 1352): a
+//! The zenoh service inbox is per FAMILY: a
 //! user service and an action server queryable each take a slot size and a
 //! ring depth of their own, and the parameter and lifecycle services bring
 //! their own ring, sized by `nros-node` from the contract's declared
 //! parameters. An image that states nothing gets the one table it had.
 //!
-//! The three families were one number until phase-454 W6.b, so a subscriber
+//! The three families used to be one number, so a subscriber
 //! ring entry paid for the largest type a SERVICE carried, 32 x 8 times over.
 //! Two of them are also DERIVED from what the image declares when it declares
-//! it (RFC-0100): the subscriber entry takes the largest wire bound over the
+//! it: the subscriber entry takes the largest wire bound over the
 //! declared subscriptions and `XRCE_STREAM_HISTORY` drops to the protocol
 //! floor of 4 when no endpoint declares `reliability = reliable`. Stating
 //! either here still wins.

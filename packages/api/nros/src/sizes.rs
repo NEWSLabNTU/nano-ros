@@ -11,7 +11,7 @@
 //!   via [`nros_sizes_build::extract_sizes`](../../../nros-sizes-build/index.html)
 //!   to derive opaque-storage macros for the generated C/C++ headers.
 //!
-//! # The markers exist ONLY in the size probe's own build (issue 1765)
+//! # The markers exist ONLY in the size probe's own build
 //!
 //! The statics, and the `__NROS_SIZE_FN_*` fn-pointer markers beside them, are
 //! compiled only under `feature = "ffi-size-markers"`. Exactly one party
@@ -25,7 +25,7 @@
 //! statics, which a staticlib exports and the board linker scripts place in
 //! `.text`. Every C/C++ image paid the SUM of the probed sizes in flash, as
 //! zero bytes (111,252 B of a 587,256 B FreeRTOS C zenoh talker), and once
-//! phase-382 W3' carved the parameter store into `EXECUTOR_SIZE`, a second
+//! the parameter store was carved into `EXECUTOR_SIZE`, a second
 //! 280 KB copy of the store. The `pub const`s are unaffected: they are what
 //! in-crate asserts and `no_std` consumers read, and a const occupies nothing.
 //!
@@ -282,7 +282,7 @@ mod rmw_sizes {
         pub goal_response: CppActionGoalResponseCb,
         pub feedback: CppActionFeedbackCb,
         pub result: CppActionResultCb,
-        /// Issue 2034 — the cancel-reply callback.
+        /// The cancel-reply callback.
         pub cancel_reply: CppActionCancelReplyCb,
         pub context: *mut c_void,
     }

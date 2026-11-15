@@ -1,4 +1,4 @@
-//! Issue 1535 — what a `void* executor` handed across the language seam IS.
+//! What a `void* executor` handed across the language seam IS.
 //!
 //! Two different objects travel as `void*` and are both called "the executor
 //! handle":
@@ -9,7 +9,7 @@
 //!   an nros-cpp `CppContext`, which carries the executor at a NON-zero offset,
 //!   behind the [`CPP_CONTEXT_TAG`](crate::executor_handle::CPP_CONTEXT_TAG) word at offset 0.
 //!
-//! nros-cpp's own entry points tell them apart by that tag (issue 0436). The
+//! nros-cpp's own entry points tell them apart by that tag. The
 //! seams in THIS crate that take a handle — the cross-language component
 //! install `__nros_component_<pkg>_install` and the contract-monitor install —
 //! used to cast whatever arrived straight to `*mut Executor<'static>`, so a
@@ -30,7 +30,7 @@
 
 use core::ffi::c_void;
 
-/// The word nros-cpp stamps at offset 0 of a live `CppContext` (issue 0436).
+/// The word nros-cpp stamps at offset 0 of a live `CppContext`.
 ///
 /// Defined HERE, in the lower crate, because both sides read it: nros-cpp
 /// stamps and checks it, and `executor_from_handle` refuses a handle that

@@ -1,20 +1,20 @@
-//! phase-392 W6 — the executor's storage as a NAMED STATIC (RFC-0002 § 4.4b).
+//! The executor's storage as a NAMED STATIC.
 //!
 //! # What this fixes, and what it does not
 //!
-//! Phase 392 prices an image's static RAM by reading its symbol table
+//! The static-RAM campaign prices an image's static RAM by reading its symbol table
 //! (`just mem-report`). Every later wave of that campaign is defined as a saving
 //! against those numbers, so a consumer the symbol table cannot see is a
 //! consumer the campaign cannot price — and the executor's storage was exactly
 //! that on every Rust image.
 //!
 //! **Not because the arena is inline.** It stopped being an inline
-//! `[MaybeUninit<u8>; ARENA_SIZE]` field in phase-271 (issue 0110), and
+//! `[MaybeUninit<u8>; ARENA_SIZE]` field long ago, and
 //! [`Executor`](super::spin::Executor) has held `arena: &'s mut
 //! [MaybeUninit<u8>]` — a slice carved out of caller-supplied backing — ever
 //! since. Four documents, a build-script comment and a runtime advisory string
-//! went on asserting the inline shape for five phases; phase-403 caught the
-//! claim and phase-392 W6 corrected the sites.
+//! went on asserting the inline shape for a long time, until a later
+//! review caught the claim and the sites were corrected.
 //!
 //! **Where that backing lives is the caller's choice**, and before this module
 //! the tree answered it three different ways:
@@ -49,11 +49,11 @@
 //! `max_callbacks` above `NROS_EXECUTOR_MAX_CBS` — keeps a static instead of
 //! falling back to the heap.
 //!
-//! **The Zephyr `CONFIG_` spelling IS wired** (issue 1171; this paragraph said
-//! the opposite until then). `zephyr/Kconfig` declares
+//! **The Zephyr `CONFIG_` spelling IS wired** (this paragraph said
+//! the opposite until it was). `zephyr/Kconfig` declares
 //! `NROS_EXECUTOR_BACKING_U64S` with the tree's `-1` DERIVE sentinel as its
 //! default, and `nros-node`'s build script reaches it through the same env →
-//! `$DOTCONFIG` reader every other executor knob uses (issue 0460). `-1` does
+//! `$DOTCONFIG` reader every other executor knob uses. `-1` does
 //! not parse as a `usize`, which is exactly how every other `-1 = derive` knob
 //! in this tree falls through to its crate default, so the shipped default is
 //! still the derived size and no Zephyr image moved the day it landed — a
@@ -62,11 +62,11 @@
 //!
 //! # Why an image would STATE the size rather than derive it
 //!
-//! Because the derivation cannot be paired with anything. Issue 1145 lowered
+//! Because the derivation cannot be paired with anything. A fix once lowered
 //! one leaf's `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` by a size copied out of
 //! `nm` output, and that subtrahend is a function of the executor knobs: move
 //! `MAX_CBS`, the arena or the rx buffer and it is silently stale in whichever
-//! direction, with nothing to say so (issue 1171). It was also wrong on the
+//! direction, with nothing to say so. It was also wrong on the
 //! second board the same conf builds for — the derived size is **87,256 B on
 //! `mps2_an385` and 88,328 B on `native_sim/native/64`**, because the carved
 //! tables hold pointers, so one number cannot pair both.
@@ -78,8 +78,8 @@
 //! knob, which is the direction that would otherwise re-create the double
 //! reservation in silence.
 //!
-//! **Zephyr no longer pairs it** (issue 1611). Issue 1324 moved every Zephyr
-//! Rust allocation onto the nros heap, so picolibc's arena holds no Rust bytes
+//! **Zephyr no longer pairs it**. Every Zephyr
+//! Rust allocation moved onto the nros heap, so picolibc's arena holds no Rust bytes
 //! and the six example confs that lowered it now state neither number. The
 //! pairing above survives on ThreadX's rung.
 //!
@@ -102,8 +102,8 @@
 //!
 //! `NROS_EXECUTOR_BACKING_SECTION` (build-time env, read by `nros-node`'s build
 //! script) puts the static in a named section, for the amendment-A case where a
-//! part has tightly-coupled memory the linker script can target — issue 0880
-//! does the same for `nros_thread_stacks` with `DTCM`. Two constraints, both
+//! part has tightly-coupled memory the linker script can target —
+//! `nros_thread_stacks` does the same with `DTCM`. Two constraints, both
 //! load-bearing: **the section must be `NOLOAD`**, because this static is
 //! uninitialised and a loadable section would add its whole size to the image's
 //! flash footprint; and it must be reachable by every bus master that touches
@@ -121,7 +121,7 @@ use super::storage::ExecutorSizing;
 ///
 /// One executor, not a multiple, because an entry opens ONE through this road:
 /// a sched-task boot's SPAWNED sched tasks take their slots from the entry's own
-/// [`SchedTaskExecutorBacking`] instead (issue 1571), each slot this many words.
+/// [`SchedTaskExecutorBacking`] instead, each slot this many words.
 ///
 /// Named by the GENERATED file when nothing overrides the size, so it is unused
 /// under `NROS_EXECUTOR_BACKING_U64S=0` (no static) and under an explicit
@@ -131,7 +131,7 @@ use super::storage::ExecutorSizing;
 #[allow(dead_code)]
 pub const EXECUTOR_BACKING_DEFAULT_U64S: usize = ExecutorSizing::DEFAULT.u64_len();
 
-/// phase-382 W3' -- the words the DEFAULT backing spends on the carved
+/// The words the DEFAULT backing spends on the carved
 /// parameter store: zero unless the build implies a store
 /// (`nros_params::IMPLIED_STORE_SLOTS`). A STATED reservation
 /// (`NROS_EXECUTOR_BACKING_U64S`, a board's `backing_u64s`) covers the
@@ -380,11 +380,11 @@ pub(crate) fn is_taken() -> bool {
 // `configTOTAL_HEAP_SIZE`, the NuttX kernel heap, the ThreadX byte pool) and
 // become linker-visible `.bss`.
 
-/// issue 1571 — one spawned sched task executor's backing: exactly the words an
+/// One spawned sched task executor's backing: exactly the words an
 /// executor opened with [`ExecutorSizing::DEFAULT`] carves.
 pub type SchedTaskExecutorBackingSlot = [MaybeUninit<u64>; EXECUTOR_BACKING_DEFAULT_U64S];
 
-/// issue 1571 — the spawned sched tasks' executor backing, `N` slots in ONE named
+/// The spawned sched tasks' executor backing, `N` slots in ONE named
 /// static that the ENTRY owns.
 ///
 /// `nros::main!` emits one per sched-task entry, with `N` = the sched task count minus the
@@ -393,7 +393,7 @@ pub type SchedTaskExecutorBackingSlot = [MaybeUninit<u64>; EXECUTOR_BACKING_DEFA
 /// short block with [`check_sched_task_executor_backing`] — the Rust twin of the C
 /// library's `nros_cpp_executor_storage_check`.
 ///
-/// Placement is the caller's (RFC-0002 § 4.4b): the static lives in the entry's
+/// Placement is the caller's: the static lives in the entry's
 /// `.bss`, so `mem-report` prices it by name.
 pub struct SchedTaskExecutorBacking<const N: usize> {
     /// The same once-only latch as the boot reservation's, per static: the
@@ -443,7 +443,7 @@ impl<const N: usize> SchedTaskExecutorBacking<N> {
     }
 }
 
-/// issue 1571 — the sched task backing a board was handed does not cover the sched tasks it
+/// The sched task backing a board was handed does not cover the sched tasks it
 /// must spawn. Carries both counts so the refusal names them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SchedTaskBackingShort {
@@ -466,7 +466,7 @@ impl core::fmt::Display for SchedTaskBackingShort {
     }
 }
 
-/// issue 1571 — the ONE refusal every board's `run_sched_tasks` makes before it opens
+/// The ONE refusal every board's `run_sched_tasks` makes before it opens
 /// anything: `n_sched_tasks` sched tasks run, one on the boot executor, so `n_sched_tasks - 1`
 /// must each find a slot. Checked up front rather than at each spawn, so a
 /// short block never leaves a half-spawned sched task chain.
@@ -484,7 +484,7 @@ pub fn check_sched_task_executor_backing(
     Ok(())
 }
 
-/// Issue 1733 — the ONE gate a tier runner holds across each tier's
+/// The ONE gate a tier runner holds across each tier's
 /// open-and-`setup` so no two sched tasks declare entities on the shared session at
 /// once.
 ///
@@ -492,9 +492,9 @@ pub fn check_sched_task_executor_backing(
 /// sched task's `setup` declares its nodes and entities on it. The backend's
 /// entity-creation path is not reentrant across threads: zenoh's
 /// `ZenohSession::create_*` takes `&mut self` and mutates the per-node
-/// liveliness table, and issue 0447 measured the topic-binding scramble that
-/// concurrent declares cause. The RTOS runners serialize by CHAINING the
-/// spawns (issue #144: sched task N+1 starts only after sched task N's setup returned);
+/// liveliness table, and the topic-binding scramble that
+/// concurrent declares cause was measured. The RTOS runners serialize by CHAINING the
+/// spawns (sched task N+1 starts only after sched task N's setup returned);
 /// a runner that spawns every sched task at once holds this instead. Setup runs once
 /// per boot and off the hot path, so a sleeping spin costs nothing that
 /// matters, and the spin loops that follow stay fully concurrent.
@@ -537,7 +537,7 @@ impl SchedTaskSetupGate {
     }
 }
 
-/// Issue 1733 — proof of holding a [`SchedTaskSetupGate`]; dropping it opens the
+/// Proof of holding a [`SchedTaskSetupGate`]; dropping it opens the
 /// gate.
 #[derive(Debug)]
 #[must_use = "the gate is released as soon as the guard drops"]
@@ -559,7 +559,7 @@ impl Drop for SchedTaskSetupGuard<'_> {
 // backing above is in `.bss`, and so now is the task that runs it.
 // ---------------------------------------------------------------------------
 
-/// issue 1598 — the control-block region every [`SchedTaskMemory`] carries,
+/// The control-block region every [`SchedTaskMemory`] carries,
 /// in 8-byte words. An UPPER BOUND over the kernels that take it (a FreeRTOS
 /// `StaticTask_t` on Cortex-M is about a hundred bytes); the port REFUSES a
 /// region smaller than its own control block at spawn, by name, so a kernel
@@ -568,7 +568,7 @@ impl Drop for SchedTaskSetupGuard<'_> {
 /// this one number is a bound and the stack beside it is exact.
 pub const SCHED_TASK_TCB_U64S: usize = 64;
 
-/// issue 1598 — one spawned sched task's RTOS task memory as a board receives it: raw,
+/// One spawned sched task's RTOS task memory as a board receives it: raw,
 /// `Copy`, no lifetime. The ENTRY owns the bytes ([`SchedTaskMemory`]); the
 /// handout is once-only ([`SchedTaskMemorySet::take`]), which is what makes the
 /// raw pointers exclusive.
@@ -601,11 +601,11 @@ impl SchedTaskMemoryRaw {
 unsafe impl Send for SchedTaskMemoryRaw {}
 unsafe impl Sync for SchedTaskMemoryRaw {}
 
-/// issue 1598 — one spawned sched task's stack and control block, as ONE named static
+/// One spawned sched task's stack and control block, as ONE named static
 /// the entry owns. `STACK_U64S` is the sched task's stack in 8-byte words;
 /// `TCB_U64S` the control-block region, [`SCHED_TASK_TCB_U64S`] by default and
 /// `0` for a kernel whose control block the port keeps itself (Zephyr's
-/// `struct k_thread`, issue 1232 — a Rust entry cannot size it).
+/// `struct k_thread` — a Rust entry cannot size it).
 ///
 /// The control block comes first and the struct is 64-byte aligned, so the
 /// stack starts on a boundary every in-tree kernel accepts for a thread stack
@@ -646,7 +646,7 @@ impl<const STACK_U64S: usize, const TCB_U64S: usize> SchedTaskMemory<STACK_U64S,
     }
 }
 
-/// issue 1598 — the spawned sched tasks' task memory, `N` rows in spawn (chain)
+/// The spawned sched tasks' task memory, `N` rows in spawn (chain)
 /// order, behind a once-only latch.
 pub struct SchedTaskMemorySet<const N: usize> {
     taken: portable_atomic::AtomicBool,

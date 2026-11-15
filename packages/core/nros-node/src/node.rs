@@ -71,7 +71,7 @@ pub enum NodeError {
 }
 
 /// Default serialization (tx) / reception (rx) buffer length for a `Node`.
-/// Phase 192.5 — names the inline `1024` (was duplicated at the field decl + the
+/// Names the inline `1024` (was duplicated at the field decl + the
 /// `Node::new` initializer).
 pub const NODE_TX_BUF_LEN: usize = 1024;
 /// Default reception buffer length for a `Node`.
@@ -229,7 +229,7 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
 
     /// Get the fully qualified node name.
     ///
-    /// Phase 192.1 — fallible: namespace (≤64) + `/` + name (≤64) can reach 129
+    /// Fallible: namespace (≤64) + `/` + name (≤64) can reach 129
     /// bytes, one over the `String<128>` capacity, so a maxed name+namespace
     /// would otherwise silently truncate the FQN.
     pub fn fully_qualified_name(&self) -> Result<heapless::String<128>, NodeError> {

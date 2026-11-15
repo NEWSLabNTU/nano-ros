@@ -1,5 +1,5 @@
 //! Wire framing of the action messages an action CLIENT takes off the wire —
-//! the ONE place their payload offsets are spelled (issue 2014).
+//! the ONE place their payload offsets are spelled.
 //!
 //! The producer side (`action_core::write_get_result_header`,
 //! `publish_feedback_raw`) writes these frames with a [`CdrWriter`], so its
@@ -20,7 +20,7 @@
 //!   [GoalInfo { uuid 16, stamp.sec i32, stamp.nanosec u32 } × count]`
 //!
 //! The payload fields arrive WITHOUT an encapsulation header of their own on
-//! every backend (RFC-0069 / issue 0418), and every deserializer reads with
+//! every backend, and every deserializer reads with
 //! `new_with_header`, so a consumer [`splice`]s the frame's own top-level
 //! header in front of them. That is the shape every callback receives.
 //!
@@ -50,7 +50,7 @@ pub const FEEDBACK_PAYLOAD_OFFSET: usize =
 pub const GOAL_REQUEST_PAYLOAD_OFFSET: usize = FEEDBACK_PAYLOAD_OFFSET;
 
 /// Byte holding the `goals_canceling` sequence length of a `CancelGoal`
-/// reply: the `i8` return code, then CDR alignment to 4 (issue 2027).
+/// reply: the `i8` return code, then CDR alignment to 4.
 pub const CANCEL_GOALS_COUNT_OFFSET: usize = (REPLY_STATUS_OFFSET + 1 + 3) & !3;
 
 /// First `GoalInfo` of a `CancelGoal` reply's `goals_canceling`.
@@ -123,7 +123,7 @@ pub fn cancel_return_code(reply: &[u8]) -> Option<i8> {
     reply.get(REPLY_STATUS_OFFSET).map(|b| *b as i8)
 }
 
-/// How many goals a `CancelGoal` reply says are canceling — issue 2027.
+/// How many goals a `CancelGoal` reply says are canceling.
 /// `None` when the frame is too short to hold the count, or the count names
 /// more `GoalInfo`s than the frame carries (a truncation is not "none").
 pub fn cancel_goals_count(reply: &[u8]) -> Option<usize> {

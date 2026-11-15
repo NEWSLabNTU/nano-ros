@@ -3,7 +3,7 @@
 //!
 //! # Why this exists
 //!
-//! phase-412 derived six pool counts and the executor arena for the
+//! The sizing derivation produced six pool counts and the executor arena for the
 //! mr-canhubk344 island, and then could not tell whether the derived image was
 //! correct. The only available signal was the ROS graph's node count, and one
 //! unchanged configuration produced 4, 0, 0, 4, 4 across five runs. Every other
@@ -11,7 +11,7 @@
 //!
 //! * The console is on `lpuart0`, which is not wired on the MR-CANHUBK344.
 //!   `lpuart2` is the zenoh serial transport and cannot carry a second protocol.
-//! * `nros_log` therefore reaches nothing. Both arena diagnostics (issue 0900)
+//! * `nros_log` therefore reaches nothing. Both arena diagnostics
 //!   go through it, so the two messages written specifically to explain an
 //!   arena failure are invisible on the one board that needed them.
 //! * SEGGER RTT was tried and could not discriminate: a working image and a
@@ -24,7 +24,7 @@
 //! still be running, and they need somebody attached at the moment the
 //! interesting thing happens. The failure this campaign is trying to see is the
 //! opposite shape. An under-sized arena halts DURING entity creation, before
-//! the first spin, so issue 0900's advisory never prints -- the failure cannot
+//! the first spin, so the arena advisory never prints -- the failure cannot
 //! report itself through any stream.
 //!
 //! So this is not a stream. It is a fixed-size record in RAM that the image
@@ -55,7 +55,7 @@
 //! `cfg(nros_boot_report)`. With the cfg absent every function here is an empty
 //! `#[inline(always)]` body and the static does not exist, so an image that
 //! does not opt in is byte-identical to one built before this module -- the
-//! same rule issue 0900's arena knob and phase-403's `rx_buffer_from_type()`
+//! same rule the arena knob and `rx_buffer_from_type()`
 //! both keep.
 //!
 //! Enabled, it costs `BootReport::struct_size` bytes of `.bss` -- 132, the
@@ -70,7 +70,7 @@
 //! `read-boot-report.py --addr-only <elf>` prints the address AND the length,
 //! from the ELF's own symbol size.
 //!
-//! # Adding a field (phase-460 W5, for W7 and after)
+//! # Adding a field
 //!
 //! The record is meant to grow, and the order it grows in is the whole
 //! contract: `read-boot-report.py` decodes POSITIONALLY. So a new field is
@@ -99,21 +99,21 @@ pub const MAGIC: u32 = 0x4e52_5352;
 /// Layout version. Bump on any field change; a reader refuses what it does not
 /// know rather than decoding a record it would misread.
 ///
-/// 4 since phase-460 W5 appended `heap_peak_bytes` and `heap_capacity_bytes`;
-/// 5 since phase-460 W7 appended `samples_dropped_too_small`;
-/// 6 since issue 1549 appended `rmw_local_queryable`;
-/// 7 since issue 1550 appended `domain_id`;
-/// 8 since issue 1573 appended `failed_alloc_arena`;
-/// 9 since issue 1036 appended the four `error_log_*` words;
-/// 10 since phase-479 W5 appended `log_dynamic_capacity` and
+/// 4 added `heap_peak_bytes` and `heap_capacity_bytes`;
+/// 5 added `samples_dropped_too_small`;
+/// 6 added `rmw_local_queryable`;
+/// 7 added `domain_id`;
+/// 8 added `failed_alloc_arena`;
+/// 9 added the four `error_log_*` words;
+/// 10 added `log_dynamic_capacity` and
 /// `log_dynamic_in_use`;
-/// 11 since phase-474 I5 appended `heap_peak_at_first_spin`.
+/// 11 added `heap_peak_at_first_spin`.
 pub const VERSION: u32 = 11;
 
 /// Which allocator refused the allocation `BootReport::failed_alloc_size`
 /// names.
 ///
-/// Issue 1573. The executor ARENA and the PLATFORM HEAP share the one
+/// The executor ARENA and the PLATFORM HEAP share the one
 /// `failed_alloc_size` / `failed_alloc_shortfall` pair -- first writer wins,
 /// and the first failure stops the boot -- but the two are sized by different
 /// knobs, and a pair that cannot say which arena it describes names the wrong
@@ -139,7 +139,7 @@ pub enum AllocArena {
 
 /// Which rung of the knob ladder decided a knob the record carries.
 ///
-/// Issue 1549. A knob's VALUE says what the image was built with; this says
+/// A knob's VALUE says what the image was built with; this says
 /// who decided it, which is the half a reader needs before changing it: a
 /// derived value is fixed by editing the declaration it came from, a stated
 /// one by editing the statement. Spelled once, here, and packed into the
@@ -789,8 +789,8 @@ mod enabled {
     /// Record the arena slice an `Executor` actually bound.
     ///
     /// Not the same number as `ARENA_SIZE`, and the difference is a finding
-    /// rather than noise: the arena's placement is the caller's choice
-    /// (issue 0900), so an image can compile one size and hand the executor
+    /// rather than noise: the arena's placement is the caller's choice,
+    /// so an image can compile one size and hand the executor
     /// another. Both are in the record so a dump can say which happened.
     pub fn note_arena_capacity(capacity: usize) {
         NROS_BOOT_REPORT
@@ -853,7 +853,7 @@ mod enabled {
 
     /// Record the PLATFORM HEAP allocation that did not fit.
     ///
-    /// phase-460 W7 / issue 1425. `nros-platform-zephyr`'s `platform.c` calls
+    /// `nros-platform-zephyr`'s `platform.c` calls
     /// this through the C entry below from `nros_platform_alloc`'s exhaustion
     /// path, BEFORE the printk and before the fatal hook, so a board halted by
     /// an exhausted heap names the request that killed it in the same two words
@@ -889,7 +889,7 @@ mod enabled {
 
     /// Record the domain the boot-config resolver settled on, and its rung.
     ///
-    /// Issue 1550. LAST writer wins, like [`note_cpp_init_ret`]: an image may
+    /// LAST writer wins, like [`note_cpp_init_ret`]: an image may
     /// resolve once per component or sched task, and every resolution in one image
     /// reads the same inputs.
     pub fn note_domain(domain_id: u32, source: super::KnobSource) {

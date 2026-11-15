@@ -31,7 +31,7 @@ pub const MAX_TYPE_HASH_LEN: usize = 128;
 /// Maximum number of concurrent goals per action server.
 pub const MAX_CONCURRENT_GOALS: usize = 4;
 
-/// Issue 2009 — request ids one executor-owned (callback / blocking) service
+/// Request ids one executor-owned (callback / blocking) service
 /// client remembers for its ONE logical call in flight.
 ///
 /// A logical call can be on the wire several times: `rclc_client_call` re-sends

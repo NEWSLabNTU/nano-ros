@@ -87,7 +87,7 @@ pub(crate) mod wake_fanout;
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 pub(crate) mod entity_wake;
 #[cfg(any(has_rmw, test))]
-/// phase-436 W7 — installing a port's park primitive, with the wake-object
+/// Installing a port's park primitive, with the wake-object
 /// constraint stated once instead of per board.
 pub mod port_park;
 // phase-359 W10 — the allocate/spawn/join helper moved to
@@ -105,7 +105,7 @@ pub mod sched_context;
 pub mod launch_remap;
 pub mod session_props;
 
-/// phase-509 P9b -- the executor's lock (RFC-0108 "As built in P9b").
+/// The executor's lock.
 pub mod exec_lock;
 // phase-509 P7 (RFC-0108 D8) -- each executor's level and the image's per-level
 // liveness. Plain atomics, no RMW: every build carries it.
@@ -136,7 +136,7 @@ pub mod wake_probe;
 #[cfg(any(has_rmw, test))]
 pub mod action;
 
-/// phase-515 R9 (decision D4) -- the sealed trait the C/C++ shims import for the
+/// The sealed trait the C/C++ shims import for the
 /// executor's FFI entry points. `nros` does not re-export it.
 #[cfg(any(has_rmw, test))]
 pub mod ffi;

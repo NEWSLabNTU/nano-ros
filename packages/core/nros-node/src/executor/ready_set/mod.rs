@@ -1,13 +1,13 @@
-//! Phase 110.A — `ReadySet` trait + default `FifoReadySet` impl.
+//! `ReadySet` trait + default `FifoReadySet` impl.
 //!
 //! `ReadySet` is the queue + selection layer between `spin_once`'s
 //! readiness scan, which fills it, and its dispatch loop, which drains it.
-//! (Phase 110.A also defined ~~`Activator`~~ and ~~`Dispatcher`~~ traits for those two
-//! halves; they were never wired and phase-397 W4 deleted them.)
+//! (Two more traits, ~~`Activator`~~ and ~~`Dispatcher`~~, were once defined for those two
+//! halves; they were never wired and have been deleted.)
 //!
-//! 110.A ships only `FifoReadySet` (registration-order, bit-for-bit
-//! parity with the pre-refactor `spin_once`). Phase 110.B adds
-//! `EdfReadySet`; phase 110.C adds the bucketed variants.
+//! The first version shipped only `FifoReadySet` (registration-order, bit-for-bit
+//! parity with the pre-refactor `spin_once`); later work adds
+//! `EdfReadySet` and the bucketed variants.
 //!
 //! ## Invariants
 //!
@@ -22,7 +22,7 @@
 //! ## Capacity
 //!
 //! The const-generic `N` caps the number of distinct `DescIdx` values
-//! the set can track. Phase 110.A holds N = 64 to match the existing
+//! the set can track. It holds N = 64 to match the existing
 //! `u64` readiness bitmap width; future MAX_HANDLES bumps will widen
 //! the storage accordingly (likely a bit set of N handles).
 
@@ -81,7 +81,7 @@ impl<const N: usize> FifoReadySet<N> {
         self.bits == 0
     }
 
-    /// Bulk-set the presence bitmap. Test-only helper (Phase 192.8): the
+    /// Bulk-set the presence bitmap. Test-only helper: the
     /// runtime path inserts per-bit; only the unit tests set the bitmap in
     /// one shot.
     #[cfg(test)]

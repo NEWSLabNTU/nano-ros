@@ -1,7 +1,7 @@
 // Copyright (c) 2026, NEWSLab NTU.
 // SPDX-License-Identifier: Apache-2.0
 
-//! phase-509 P7 (RFC-0108 D8.1, D8.2) -- which level an executor is, and
+//! Which level an executor is, and
 //! whether every level of the image is alive.
 //!
 //! A supervisor that owns a route per level, or feeds a hardware watchdog,
@@ -12,13 +12,13 @@
 //!   The generated entry names each node's level at build time
 //!   (`NROS_ENTRY_LEVEL_OF_<node>` in `nros_priority_plan.h`) by the same
 //!   rule the runner applies: a level's index is its sched task's urgency order
-//!   among the image's sched tasks (until phase-509 P9 a level is a sched task).
+//!   among the image's sched tasks (for now a level is a sched task).
 //! - **Liveness.** Every spin of an executor checks its level in here, with
 //!   the time ([`level_last_spin_us`]) and a spin count. The watchdog feed is
 //!   [`take_every_level_alive`]: `true` only when every level of the image
 //!   (`0..level_count()`) has checked in since the last `true`, which it
 //!   then clears. A level blocked behind a stuck callback stops checking in,
-//!   so the feed stops even while another level spins on (RFC-0108 D8.2).
+//!   so the feed stops even while another level spins on.
 //!
 //! The registry is per image (a `static`): the levels are separate executors
 //! on separate threads until P9, and the watchdog is per image. Lock-free,
@@ -120,7 +120,7 @@ pub(crate) static LEVELS: LevelRegistry = LevelRegistry::new();
 
 /// The level of sched task `index` of an image whose `n` sched tasks have the kernel
 /// priorities `priority_of(0..n)`: its urgency order, 0 the most urgent,
-/// equal priorities in array order. Until phase-509 P9 a level is a sched task, so
+/// equal priorities in array order. For now a level is a sched task, so
 /// this is how a runner places each sched task's executor
 /// ([`Executor::set_level`](super::Executor::set_level)). `nros codegen
 /// entry` writes `NROS_ENTRY_LEVEL_OF_<node>` by the same rule, over the same

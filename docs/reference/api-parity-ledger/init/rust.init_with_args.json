@@ -3,7 +3,7 @@
   "disposition": "adopt-bounded",
   "envelope": {
     "file": "packages/api/nros/src/init.rs",
-    "text": "///   POSIX row). They ride on the [`Context`] in argv order and are applied"
+    "text": "///   POSIX case). They ride on the [`Context`] in argv order and are applied"
   },
   "verdict": "divergence",
   "retired_names": [

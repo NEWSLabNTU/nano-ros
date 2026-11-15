@@ -139,7 +139,7 @@ impl From<TimerDuration> for nros_core::Duration {
 // cannot name the enum is how a second spelling of it gets invented one layer
 // up, which is the 0135/0160 drift. One enum, one spelling, reachable from
 // both halves; `executor` re-exports it so every existing path still resolves.
-/// Which clock advances a timer (phase-425 W4, RFC-0075-adjacent: this is the
+/// Which clock advances a timer (this is the
 /// distinction rclcpp draws between `create_wall_timer` and `create_timer`).
 ///
 /// The default is [`Steady`](Self::Steady) and it is the only source that costs
@@ -274,7 +274,7 @@ impl TimerClockSource {
     }
 }
 
-/// When a timer activation was DUE and when it actually RAN — issue 1974, the
+/// When a timer activation was DUE and when it actually RAN — the
 /// Jazzy `rcl_timer_call_info_t` / `rclcpp::TimerInfo` pair.
 ///
 /// Both are nanoseconds on the TIMER'S OWN clock (the [`TimerClockSource`] it
@@ -315,10 +315,10 @@ pub struct TimerCallInfo {
     pub clock: TimerClockSource,
     /// Nanoseconds since the previous activation, or since registration or
     /// the last reset for the first one — the argument rcl's
-    /// `rcl_timer_callback_t` receives (phase-515 C1). It is the dispatcher's
+    /// `rcl_timer_callback_t` receives. It is the dispatcher's
     /// `elapsed_us` at the moment the activation became due, so it reads the
     /// same as `Executor::timer_elapsed_us` just before the call, at the same
-    /// microsecond resolution (issue #505). Measured from the previous DUE
+    /// microsecond resolution. Measured from the previous DUE
     /// POINT, which for a timer running on time is the previous call.
     pub since_last_call_ns: i64,
 }

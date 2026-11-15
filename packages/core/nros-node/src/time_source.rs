@@ -1,4 +1,4 @@
-//! The `/clock` time source — phase-425 W3.
+//! The `/clock` time source.
 //!
 //! ROS 2 drives simulated time by publishing `rosgraph_msgs/msg/Clock` on
 //! `/clock`: a simulator does it while it steps, `ros2 bag play --clock` does it
@@ -8,7 +8,7 @@
 //! follows the simulation instead of the wall.
 //!
 //! Without this the type existed and nothing drove it: `ClockType::RosTime` and
-//! its override have been in `nros-core` since issue 0789, but the only way to
+//! its override have been in `nros-core` for a long time, but the only way to
 //! move them was for the program to call the setter itself.
 //!
 //! The entry point is [`Node::install_ros_time_source`](crate::executor::node::Node::install_ros_time_source).
@@ -29,7 +29,7 @@
 /// The topic ROS 2 publishes simulated time on.
 pub const CLOCK_TOPIC: &str = "/clock";
 
-/// The reserved parameter whose value attaches the time source — phase-425 W3b.
+/// The reserved parameter whose value attaches the time source.
 ///
 /// ROS 2 gives every node this parameter and treats it as a switch rather than a
 /// value: nothing reads it, the client library acts on it. We do the same, at
@@ -77,7 +77,7 @@ pub(crate) fn override_nanos(sec: i32, nanosec: u32) -> Option<i64> {
 }
 
 /// How much of the executor's OWN elapsed time may pass, after the `/clock`
-/// source is attached, before the silence is worth a line — phase-430 W1.
+/// source is attached, before the silence is worth a line.
 ///
 /// Five seconds: long enough that a simulator still coming up, or a bag whose
 /// first sample is a second or two out, says nothing; short enough that a

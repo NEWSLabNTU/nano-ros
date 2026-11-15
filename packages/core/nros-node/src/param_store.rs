@@ -1,4 +1,4 @@
-//! The parameter STORE's executor-side state (issue 1897).
+//! The parameter STORE's executor-side state.
 //!
 //! What every image with parameters holds, whether or not it serves them:
 //! the [`ParameterServer`] over the executor's carved slots, argv overrides,

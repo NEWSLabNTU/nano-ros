@@ -1,4 +1,4 @@
-//! Caller-supplied storage for the component pool — phase-391 W5, step 2.
+//! Caller-supplied storage for the component pool.
 //!
 //! Mirrors [`nros_node::ExecutorSizing`] one layer up, and
 //! for the same stated reason: **public + non-generic**, the "C/C++ is a thin
@@ -97,7 +97,7 @@ impl Slot<'_> {
 /// If `backing` is too small, naming both sizes. Fail-loud on EVERY profile,
 /// not `debug_assert!` — embedded release builds strip debug assertions, and a
 /// short backing is silent memory corruption rather than a wrong answer. Same
-/// reasoning as `executor::storage::carve` (issue #131, where a stale config
+/// reasoning as `executor::storage::carve` (where a stale config
 /// mirror surfaced as a `jalr -> 0`).
 pub fn carve(
     backing: &mut [core::mem::MaybeUninit<u64>],

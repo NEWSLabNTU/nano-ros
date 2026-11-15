@@ -1,5 +1,5 @@
 //! A bringup's own RMW session configuration, baked into the image as ONE
-//! const table -- RFC-0109 D8, phase-514 W3.
+//! const table.
 //!
 //! The user writes their middleware's own file (`rmw/zenoh.json5`, the
 //! document `rmw_zenoh` reads from `ZENOH_SESSION_CONFIG_URI`). The build
@@ -151,7 +151,7 @@ pub fn with_session_properties<R>(
     f(&rows)
 }
 
-/// Read a table a caller LENDS for one multi-session open (issue 2123): the
+/// Read a table a caller LENDS for one multi-session open: the
 /// C/C++ spelling of [`crate::SessionSpec::properties`], `rows`/`len` straight
 /// off `NrosCppSessionSpec` or `rclc_session_spec_t`. Writes the rows into the
 /// front of `out` and returns how many; `rows` NULL with `len == 0` is no

@@ -1,4 +1,4 @@
-//! phase-308 — the process-global recorder that non-Rust adapters feed.
+//! The process-global recorder that non-Rust adapters feed.
 //!
 //! The Rust producer needs no global: `record_node_metadata::<C>` owns a
 //! `MetadataRecorder` on the stack and hands it to the component as a
@@ -14,7 +14,7 @@
 //! accounting and the schema emitter are one implementation; only the adapter
 //! that feeds them is per-language. A second recorder would be a second
 //! definition of "what is a callback slot", and the count those sidecars carry
-//! is the whole reason they exist (issue 0257).
+//! is the whole reason they exist.
 //!
 //! [`push_node`]: MetadataRecorder::push_node
 //! [`push_entity`]: MetadataRecorder::push_entity
@@ -104,11 +104,11 @@ pub fn reset() {
 /// Open a node and make it current. Returns false if the recorder is full —
 /// never silently drops, because a dropped node makes every entity after it
 /// vanish from the count. A node already open under this name is made current
-/// again (issue 1419: a sched-task Rust entry creates each node once per sched task).
+/// again (a sched-task Rust entry creates each node once per sched task).
 ///
-/// phase-428 W6 remainder: `#[must_use]` because the doc comment above states
+/// `#[must_use]` because the doc comment above states
 /// the consequence of ignoring the answer and `bool` says nothing at a call
-/// site that drops it. RFC-0089 Part I's fourth row — a difference the compiler
+/// site that drops it. The adoption rule's fourth row — a difference the compiler
 /// does not point at must be made loud by other means.
 #[must_use]
 pub fn begin_node(name: &str, namespace: &str, domain_id: u32) -> bool {
@@ -142,7 +142,7 @@ pub fn begin_node(name: &str, namespace: &str, domain_id: u32) -> bool {
     })
 }
 
-/// Issue 1556 item 1 -- is a node open? An executor-side entity the C API
+/// Is a node open? An executor-side entity the C API
 /// allows before any node (`rclc_timer_init_default` needs only a support context)
 /// asks this before it records, so it can open the executor scope instead of
 /// failing.
@@ -150,12 +150,12 @@ pub fn has_current_node() -> bool {
     state().with(|st| st.current_node.is_some())
 }
 
-/// phase-463 W1 -- everything an adapter can say about one entity.
+/// Everything an adapter can say about one entity.
 ///
 /// A struct rather than a seventh positional argument: the two adapters (the
 /// recording RMW backend and `nros-cpp`'s executor-side hooks) each fill a
 /// different subset, and a call site with five adjacent `Option`s is how the
-/// QoS was dropped for two phases without anyone noticing (issue 1419).
+/// QoS was dropped for two phases without anyone noticing.
 #[derive(Debug, Clone, Copy)]
 pub struct EntityRecord<'a> {
     pub kind: EntityKind,
@@ -197,10 +197,10 @@ impl<'a> EntityRecord<'a> {
 /// neither. Returns false when there is no current node or the recorder is
 /// full.
 ///
-/// phase-428 W6 remainder: see [`begin_node`] — a dropped `false` here is an
+/// See [`begin_node`] — a dropped `false` here is an
 /// entity missing from the emitted metadata with nothing said about it.
 ///
-/// phase-463 W1 -- the positional form, kept for the shape every existing
+/// The positional form, kept for the shape every existing
 /// caller and test spells; it records the DEFAULT QoS. An adapter that has a
 /// QoS to report (every RMW-bound endpoint) goes through [`record`].
 #[must_use]
@@ -251,14 +251,14 @@ pub fn record(rec: EntityRecord<'_>) -> bool {
     })
 }
 
-/// phase-463 W1 -- record a parameter the current node DECLARED, with the
+/// Record a parameter the current node DECLARED, with the
 /// type and default the code passed.
 ///
 /// Fed by `nros-cpp`'s `on_param_declare` hook, which sits on the
 /// `nros_cpp_node_declare_param_*` family: C++ has no way to declare a
 /// parameter that does not cross that ABI, so what lands here is complete by
 /// construction. Before this hook existed `parameters: []` in a C++ sidecar
-/// meant "nobody looked", not "this node declares none" (issue 1419).
+/// meant "nobody looked", not "this node declares none".
 ///
 /// Same refusal contract as [`record_entity`]: `false` when no node is open or
 /// the recorder is full, never a silent drop.
@@ -320,7 +320,7 @@ pub fn record_parameter_read(name: &str) -> bool {
     })
 }
 
-/// phase-457 W3 — start hearing what each subscription REGISTRATION says about
+/// Start hearing what each subscription REGISTRATION says about
 /// its own delivery shape.
 ///
 /// Called once by a probe before the component's declaration path runs.
@@ -332,7 +332,7 @@ pub fn record_parameter_read(name: &str) -> bool {
 /// of the eleven registration entry points, consumed at the one site that reads
 /// `supports_process_in_place`. Nothing outside the executor can derive it: the
 /// sizing descriptor used to infer it from the entry's LANGUAGE, which is wrong
-/// for nine of the eleven and is issue 0196's class. So the probe RUNS the
+/// for nine of the eleven. So the probe RUNS the
 /// registration and the registration says.
 ///
 /// A row that nothing observed keeps `None`, and every consumer refuses on it.

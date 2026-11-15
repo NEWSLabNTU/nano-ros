@@ -1,14 +1,14 @@
-//! Phase 104.C.2 — multi-Node-per-Executor storage.
+//! Multi-Node-per-Executor storage.
 //!
 //! Mirrors the `rclcpp` pattern where a single `Executor` holds N
 //! `Node`s via `add_node(...)`. Each Node carries its own
 //! name/namespace + a reference to the Session that backs it +
-//! a default `SchedContext` (Phase 110) handles inherit unless
+//! a default `SchedContext` handles inherit unless
 //! overridden.
 //!
-//! For Phase 104.C.2 we land the *storage scaffold* + the builder
+//! For now this is the *storage scaffold* + the builder
 //! API. Multi-Session-per-Executor dispatch is a follow-up
-//! (Phase 104.C.3) — today every Node in this list resolves to the
+//! — today every Node in this list resolves to the
 //! Executor's primary session, which means `node_builder.rmw(name)`
 //! only accepts the same backend the Executor was opened against.
 //! Bridge use cases (two RMW backends concurrent in one Executor)
@@ -24,7 +24,7 @@ pub struct NodeId(pub(crate) u8);
 
 impl NodeId {
     /// Reserved id for the implicit "primary" Node that mirrors the
-    /// pre-Phase 104.C.2 single-Node Executor identity.
+    /// original single-Node Executor identity.
     pub const PRIMARY: NodeId = NodeId(0);
 
     /// Numeric index into the Executor's node table.
@@ -32,7 +32,7 @@ impl NodeId {
         self.0 as usize
     }
 
-    /// Phase 104.C.8.b / C.9.b — build a `NodeId` from a raw `u8` for
+    /// Build a `NodeId` from a raw `u8` for
     /// FFI consumers that store the index in their own struct
     /// (`rcl_node_t.node_id`, `nros_cpp_node_t.node_id`). The value
     /// is not validated against the executor's `nodes` table — the
@@ -64,9 +64,9 @@ impl From<NodeId> for nros_params::NodeKey {
 
 /// Per-Node metadata stored inside the Executor.
 ///
-/// Phase 104.C.2 keeps the shape minimal — name, namespace,
+/// The shape is minimal — name, namespace,
 /// default SchedContext, optional rmw-name for diagnostics. Future
-/// items: per-Node session reference (104.C.3), per-Node liveliness
+/// items: per-Node session reference, per-Node liveliness
 /// state, per-Node parameter overrides.
 pub struct NodeRecord {
     pub name: heapless::String<64>,
@@ -81,16 +81,16 @@ pub struct NodeRecord {
     /// Handles may override per-call. `SchedContextId::default()` =
     /// the executor's auto-created Fifo slot (slot 0).
     pub default_sched: SchedContextId,
-    /// Phase 104.C.3 — session-slot index. `0` resolves to the
+    /// Session-slot index. `0` resolves to the
     /// Executor's primary `session` field; `N >= 1` resolves to
     /// `extra_sessions[N-1]`. Each Node may bind to a different
     /// session, enabling multi-RMW bridges in one Executor.
     pub session_idx: u8,
-    /// phase-509 P2 (RFC-0108 D2) -- the node's contract rank, 0 = most
+    /// The node's contract rank, 0 = most
     /// urgent, seeded by `Executor::bind_node_rank` before the node is built.
     /// Every callback the node registers dispatches at it. 0 when unseeded.
     pub rank: u8,
-    /// Issue #52 / phase-296 residue sweep — per-node QoS-override table, in the
+    /// Per-node QoS-override table, in the
     /// SAME primitive `(topic, role, policy, value)` code form the C and C++
     /// ABIs use (`rclc_qos_override_t` / `nros_cpp_qos_override_t`).
     ///
@@ -109,8 +109,8 @@ pub struct NodeRecord {
 pub use nros_rmw::QoSOverrideCode;
 
 /// Fold a node's baked override codes into `qos` for one `(topic, role)`.
-/// Thin alias over [`nros_rmw::QoSProfile::apply_override_codes`] — issue 0303
-/// collapsed four copies of this match into that one.
+/// Thin alias over [`nros_rmw::QoSProfile::apply_override_codes`], which
+/// collapsed four copies of this match into one.
 pub fn apply_qos_override_codes(
     qos: nros_rmw::QoSProfile,
     topic: &str,
@@ -175,11 +175,11 @@ pub struct NodeBuilder<'a, 'cfg, 's> {
 
 impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
     /// Select an RMW backend by name. `name` must match a backend
-    /// registered via `nros_rmw_cffi_register_named` (Phase 104.B.2).
+    /// registered via `nros_rmw_cffi_register_named`.
     ///
-    /// In Phase 104.C.2 (current), the name must match the backend
-    /// the Executor was opened against — bridge mode lands in
-    /// 104.C.3 when per-Node sessions are wired. Passing a name
+    /// For now, the name must match the backend
+    /// the Executor was opened against — bridge mode lands
+    /// when per-Node sessions are wired. Passing a name
     /// that doesn't match the Executor's session returns
     /// `Err(NodeError::BackendMismatch)` from `.build()`.
     pub fn rmw(mut self, name: &'cfg str) -> Self {
@@ -200,7 +200,7 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
         self
     }
 
-    /// Phase 172.K.5 — bind this Node to an explicit session slot (index into
+    /// Bind this Node to an explicit session slot (index into
     /// the sessions opened by [`Executor::open_multi`](crate::executor::Executor::open_multi): `0` = primary,
     /// `N` = `extra_sessions[N-1]`). Bypasses the rmw-based session resolution
     /// — the caller (generated multi-domain wiring) already knows the slot.
@@ -216,7 +216,7 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
     }
 
     /// Default [`SchedContext`](super::sched_context::SchedContext) for
-    /// handles registered via this Node. Phase 110 integration —
+    /// handles registered via this Node.
     /// handles inherit this unless they pass their own SchedContext
     /// at registration time.
     pub fn sched(mut self, sched: SchedContextId) -> Self {

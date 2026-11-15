@@ -1,11 +1,10 @@
-//! Phase 212.L.5 — top-level init API; phase-427 W9 — on every target.
+//! Top-level init API, on every target.
 //!
 //! [`Context`] is WHERE this image is connected — locator, domain, RMW,
-//! session mode, and the source those came from (RFC-0089 "Context and
-//! `init`, settled"). One per process or image; a resolved value, not an
+//! session mode, and the source those came from. One per process or
+//! image; a resolved value, not an
 //! entity on the graph. A `Node` is a named participant with its own
-//! entities, and one image holds several of those on one `Context`
-//! (RFC-0047).
+//! entities, and one image holds several of those on one `Context`.
 //!
 //! ## Where the values come from
 //!
@@ -39,7 +38,7 @@
 //! Two patterns are supported:
 //!
 //! 1. **Node pkg** — register via the [`nros::node!`](crate::node!)
-//!    macro (Phase 172 W.3); the generated runtime owns the spin loop and
+//!    macro; the generated runtime owns the spin loop and
 //!    builds its `Context` through [`Context::default_from_env`].
 //! 2. **Application pkg** — call [`init()`] / [`Context::default_from_env`]
 //!    (or [`init_with_args`] / [`Context::new`] for argv-style entry) and
@@ -52,7 +51,7 @@
 //! then name each node with `Executor::create_node`. The older spelling —
 //! materialise an [`crate::ExecutorConfig`] via [`Context::config`] and pass it
 //! to `Executor::open` — still works and is what a single-node entry wants;
-//! phase-427 W10 added the pair because it cannot express the second node.
+//! the pair was added because it cannot express the second node.
 //!
 //! ## Where launch content comes from
 //!
@@ -63,8 +62,8 @@
 //! parameters. What is left for init to read is the environment
 //! (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, `NROS_SESSION_MODE`,
 //! `RMW_IMPLEMENTATION`) and, through [`init_with_args`] / [`Context::new`],
-//! per-process `--ros-args`. (Issue 1917 retired the runtime-overlay
-//! placeholder and, with issue 1931, the ~~`init_with_launch*`~~ entry points
+//! per-process `--ros-args`. (The runtime-overlay
+//! placeholder was retired, and with it the ~~`init_with_launch*`~~ entry points
 //! named after it.)
 
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -156,7 +155,7 @@ impl core::fmt::Display for InitError {
 // this module out from behind `env`.
 impl core::error::Error for InitError {}
 
-/// Phase 212.L.5 — resolved init context.
+/// Resolved init context.
 ///
 /// Returned by every `init*` entry point and every `Context::*` constructor.
 /// Carries the fields the user needs to construct an [`ExecutorConfig`] and
@@ -182,8 +181,7 @@ pub struct Context {
     pub domain_id: u32,
     /// Middleware locator (`NROS_LOCATOR`; baked
     /// `NROS_LOCATOR` freestanding). Empty means ABSENT: `nros` is
-    /// RMW-agnostic, so the linked backend substitutes its own default
-    /// (issue 0330).
+    /// RMW-agnostic, so the linked backend substitutes its own default.
     pub locator: alloc::string::String,
     /// Session mode (`NROS_SESSION_MODE`, default `Client`).
     pub mode: SessionMode,
@@ -253,7 +251,7 @@ pub enum ContextSource {
     Baked,
 }
 
-/// phase-427 W9 — `rclrs::InitOptions`, with the one option it has.
+/// `rclrs::InitOptions`, with the one option it has.
 ///
 /// Consumed by [`Context::from_env`] and [`Context::new`]; `None` for the
 /// domain keeps whatever the environment (hosted) or the bake (freestanding)
@@ -295,7 +293,7 @@ impl InitOptions {
     /// The domain override, if any.
     ///
     /// `Option<usize>`, which is rclrs's signature and the same reason
-    /// [`with_domain_id`](Self::with_domain_id) takes one. phase-467: this
+    /// [`with_domain_id`](Self::with_domain_id) takes one. This
     /// returned `Option<u32>` — the STORED width — so the two setters spoke
     /// rclrs and the getter spoke the field, and a ported
     /// `let d: Option<usize> = opts.domain_id();` failed on a type nobody
@@ -340,7 +338,7 @@ impl Context {
     /// widening is lossless on every target here — `usize` is at least 32
     /// bits on all of them, down to `thumbv7m-none-eabi`.
     ///
-    /// phase-467 row `rust:Context::domain_id`. The row proposed `-> u32`
+    /// The API-parity ledger row `rust:Context::domain_id` proposed `-> u32`
     /// once and that would have been a second, quieter port break; it then
     /// argued `usize` from consistency with [`InitOptions`], which was only
     /// two thirds true — the setters took `usize`, the getter returned
@@ -361,7 +359,7 @@ impl Context {
     /// let mut executor = nros::Executor::open(&cfg)?;
     /// ```
     ///
-    /// phase-427 W10 — this is the shape where the executor IS the node it was
+    /// This is the shape where the executor IS the node it was
     /// configured with, and it stays: an entry that opens exactly one node
     /// wants exactly this. What it cannot express is the second node, which is
     /// why `Context::create_executor()` + `Executor::create_node(name)` now sit
@@ -393,8 +391,8 @@ impl Context {
     ///
     /// Hosted (feature `env`) this reads the process environment and is
     /// exactly [`init()`]; freestanding it is [`Context::baked`], the build
-    /// environment this image was compiled for. RFC-0089 "Context and `init`,
-    /// settled": the semantics survive with the source moved from run time to
+    /// environment this image was compiled for: the semantics survive with
+    /// the source moved from run time to
     /// build time, which is the bounded half of this adoption.
     pub fn default_from_env() -> Result<Context, InitError> {
         #[cfg(feature = "env")]
@@ -450,11 +448,11 @@ impl Context {
         Ok(context)
     }
 
-    /// phase-427 W9 — the freestanding constructor: the constants baked into
+    /// The freestanding constructor: the constants baked into
     /// this crate at compile time.
     ///
     /// * `NROS_LOCATOR` — the middleware locator. Unset or empty ⇒ empty ⇒
-    ///   the linked backend's own default (issue 0330; for zenoh-pico that is
+    ///   the linked backend's own default (for zenoh-pico that is
     ///   multicast scouting, which native_sim NSOS cannot satisfy — hence the
     ///   bake).
     /// * `NROS_DOMAIN_ID` — the domain. Unset ⇒ 0; non-numeric ⇒
@@ -464,11 +462,11 @@ impl Context {
     /// Both names reach this crate's build the same way they reach the board
     /// crates: on Zephyr, `build.rs` re-exports `CONFIG_NROS_ZENOH_LOCATOR` /
     /// `CONFIG_NROS_DOMAIN_ID` from `$DOTCONFIG` (`nros_zephyr_build::
-    /// bake_nros_config`, the issue-0460 channel); on the other RTOS lanes the
+    /// bake_nros_config`, the `$DOTCONFIG` channel); on the other RTOS lanes the
     /// fixture build exports them into the process environment. This is the
     /// ONE `option_env!` site for the pair — the entry macros used to carry
     /// their own copies (and `nros::main!`'s Zephyr arm had lost the domain
-    /// half, issue 0161's class), which is what "one source of the baked
+    /// half, the drift a second copy invites), which is what "one source of the baked
     /// shape" replaces.
     ///
     /// Mode is `Client` and `rmw` is empty: an image links exactly one
@@ -507,7 +505,7 @@ impl Context {
 
     /// Replace the locator with one handed in at run time, when there is one.
     ///
-    /// #166 / phase-286 W1 — native_sim test parallelism: the harness launches
+    /// `native_sim` test parallelism: the harness launches
     /// an image with `-testargs --nros-locator=<loc>` and a per-test router on
     /// that ephemeral port, and `nros_runtime_locator_override()`
     /// (`nros-platform-zephyr`, argv-backed) hands it back here. `None` or an
@@ -523,7 +521,7 @@ impl Context {
         self
     }
 
-    /// Issue 2051 (RFC-0109 D9) — drop the baked locator when the image has
+    /// Drop the baked locator when the image has
     /// session properties.
     ///
     /// With an RMW file the file is the wiring, and every other road bakes no
@@ -578,12 +576,12 @@ impl Context {
     /// `context.create_basic_executor()` (or `create_executor(runtime)`) and
     /// gets an `Executor` back; ours returns a `Result`, so the port is a `?`.
     /// The runtime argument has no counterpart here and is not accepted — one
-    /// executor per RTOS task is the model (RFC-0002), and there is no runtime
+    /// executor per RTOS task is the model, and there is no runtime
     /// to choose between.
     ///
     /// The node name is NOT taken here. Name nodes with
     /// [`Executor::create_node`], which is where several named nodes on one
-    /// session already live (RFC-0047).
+    /// session already live.
     ///
     /// # Available on `alloc` only
     ///
@@ -738,8 +736,8 @@ fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
 
 /// Pattern 3 — raw init, launch file ignored. The C++-symmetric anchor:
 /// `rclcpp::init()` in the Rust spelling, and EQUAL to
-/// [`Context::default_from_env`] on a hosted build (RFC-0089 "Context and
-/// `init`, settled" — each language follows its own upstream; rclrs spells
+/// [`Context::default_from_env`] on a hosted build (under the ROS 2
+/// adoption rule each language follows its own upstream; rclrs spells
 /// this one on the type, rclcpp as a free function, and both are here).
 ///
 /// Reads env vars (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, `NROS_SESSION_MODE`,
@@ -754,11 +752,11 @@ pub fn init() -> Result<Context, InitError> {
 /// The refusal [`init_with_args`] and [`Context::new`] emit for a ROS
 /// argument nano-ros does not honour. Panics carry this text followed by the
 /// refused argument. `NROS_RCLCPP_REFUSE_INIT_ARGV` is the C++ twin
-/// (`packages/api/nros-cpp/include/rclcpp/logging.hpp`), and since phase-467 Row 11's
-/// C++ half it states the same honoured and refused sets, from the same parser.
+/// (`packages/api/nros-cpp/include/rclcpp/logging.hpp`), and it
+/// states the same honoured and refused sets, from the same parser.
 ///
-/// The rule is RFC-0089's (phase-417 W3.b); the remap fallback is RFC-0046's
-/// (rcl's local-before-global), the parameter application RFC-0015 section 9.
+/// The rule is the ROS 2 adoption rule; the remap fallback follows rcl's
+/// local-before-global order, and the parameter application is the launch tree's.
 #[cfg(feature = "env")]
 // user-surface: table
 pub const REFUSE_INIT_ARGS: &str = "nros::init_with_args / nros::Context::new was given a --ros-args \
@@ -956,13 +954,13 @@ where
 ///   returned [`Context`] and are installed in every executor it creates
 ///   (`Context::create_executor` / `Context::create_executor_in`) as the
 ///   FALLBACK remap tier: a launch-projected rule for the same name wins
-///   (RFC-0046), exactly as rcl checks a node's local arguments before the
+///   (launch is authoritative), exactly as rcl checks a node's local arguments before the
 ///   process's global ones. They reach entities on every road — the handle
 ///   `Executor::create_node` returns, `nros::node!` components, and the C and
 ///   C++ APIs.
 /// * **`-p` / `--param [node:]name:=value` and `--params-file <path>` —
-///   honoured when `nros` has `param-services`** (phase-482 W5, RFC-0015 §9's
-///   POSIX row). They ride on the [`Context`] in argv order and are applied
+///   honoured when `nros` has `param-services`** (the
+///   POSIX case). They ride on the [`Context`] in argv order and are applied
 ///   when a node DECLARES the parameter: the last matching override wins, its
 ///   text typed by the declared default, and a `node:` override reaches only
 ///   the node of that name. The envelope, stated here because it is the API:

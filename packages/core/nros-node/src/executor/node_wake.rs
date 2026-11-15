@@ -1,10 +1,10 @@
-//! Phase 130.3 / 130.5 — `NodeWake`: heap-backed wake primitive
+//! `NodeWake`: heap-backed wake primitive
 //! used by `Executor::spin_once` on builds where the
-//! `nros_platform_wake_*` ABI is wired (Phase 130.1 + 130.5).
+//! `nros_platform_wake_*` ABI is wired.
 //!
 //! Originally added for Zephyr+std because Zephyr's libc
-//! `pthread_cond_timedwait` hangs past its deadline (Phase
-//! 127.C.4). Now also active on FreeRTOS, NuttX, and ThreadX
+//! `pthread_cond_timedwait` hangs past its deadline. Now also
+//! active on FreeRTOS, NuttX, and ThreadX
 //! when those platforms are linked — each owns a kernel-native
 //! binary semaphore (`k_sem` / `xSemaphoreBinary` / `sem_t` /
 //! `tx_semaphore`) that honors its timeout. POSIX-only hosts
@@ -14,10 +14,10 @@
 //! linked a wake primitive (`wake_storage_size() == 0`) or
 //! `wake_init` returns non-zero, the caller falls back to
 //! driving the transport for the full timeout (matches the
-//! Phase 127.C.4 expedient gate behaviour but without skipping
+//! old expedient gate behaviour but without skipping
 //! reliable RTOS stream retransmission).
 //!
-//! Phase 141.A.2 — cfg relaxed from `std` to `alloc` so the same
+//! Cfg relaxed from `std` to `alloc` so the same
 //! `NodeWake` type works for the embedded no_std FreeRTOS wake-cb
 //! path (target for the Cortex-M3 P99 acceptance). The
 //! `Box`/`Vec`/`Arc` types switch to the `alloc` crate; the

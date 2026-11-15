@@ -3,7 +3,7 @@
   "disposition": "adopt-bounded",
   "envelope": {
     "file": "packages/core/nros-node/src/parameter_services.rs",
-    "text": "rclrs's `RmwParameterConversionError` (phase-515 R8): why a wire value was"
+    "text": "rclrs's `RmwParameterConversionError`: why a wire value was"
   },
   "provides": [
     "nros::ValueConversionError"

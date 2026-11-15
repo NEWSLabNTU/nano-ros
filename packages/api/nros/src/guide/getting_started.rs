@@ -47,7 +47,7 @@
 //! ## 3. Generate message bindings
 //!
 //! Build the `nros` tool (one-time, from a nano-ros checkout — in a
-//! checkout the tree's own build is the binary it accepts, RFC-0090;
+//! checkout the tree's own build is the binary it accepts;
 //! to just USE nano-ros, install a release with `scripts/install.sh`):
 //!
 //! ```bash

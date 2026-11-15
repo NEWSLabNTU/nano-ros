@@ -1,12 +1,11 @@
 //! The census hooks — the executor-side entities the recording RMW backend
-//! cannot see, for EVERY language's node API (issue 1419, issue 1556 item 1,
-//! RFC-0100 Amendment 1).
+//! cannot see, for EVERY language's node API.
 //!
 //! Publishers, subscriptions, services and clients reach the RMW session, so
 //! `nros-rmw-metadata` records them with no help from here. **Timers and guard
 //! conditions never touch the RMW** — they register directly on the executor —
 //! so a backend cannot observe them at all, and they are precisely the entities
-//! a SystemModel also cannot see (issue 0257). And the RMW's `create_publisher`
+//! a SystemModel also cannot see. And the RMW's `create_publisher`
 //! carries no node — by that layer the owning node is resolved away — so a
 //! backend alone yields a census whose entities belong to no node.
 //!
@@ -18,7 +17,7 @@
 //!
 //! # Why the hooks live HERE
 //!
-//! They were born in `nros-cpp` (phase-308, phase-463 W1), which made the
+//! They were born in `nros-cpp`, which made the
 //! census a C++-only instrument: a Rust node's `create_node` / timers /
 //! parameters never crossed them, and a C node that opens its own node through
 //! `nros-c` reached the recording backend with no node attribution and its
@@ -35,7 +34,7 @@
 //! (`check-rtos-feature-set-excludes-analysis`). Without it every hook is an
 //! empty `#[inline]` function and compiles to nothing.
 //!
-//! # Layer rule (phase-308)
+//! # Layer rule
 //!
 //! These are ADAPTERS. No JSON, no schema struct, no slot arithmetic — those
 //! live once in [`crate::node_metadata`] and `crate::metadata_mode` (plain
@@ -43,12 +42,12 @@
 //! `check-census-hooks-complete` holds both the rule and every entry point's
 //! call.
 
-/// Issue 1419 -- the census executor's sizing, independent of the contract it
+/// The census executor's sizing, independent of the contract it
 /// checks. ONE spelling for every hosted census funnel (`nros-cpp`'s and
 /// `nros-board-linux`'s).
 ///
 /// A native image's callback table, node table and arena are DERIVED from the
-/// contract (`nros ws entity-inventory`, phase-412), with no headroom on
+/// contract (`nros ws entity-inventory`), with no headroom on
 /// purpose, and the census producer is that same image. So a contract one
 /// entity short sized its own census run one slot short: setup stopped at
 /// `ExecutorFull` before the recorder saw the entity that did not fit. A census
@@ -82,8 +81,8 @@ pub const CENSUS_SIZING: nros_node::ExecutorSizing = {
 ///
 /// Re-opening a node of the same name makes it current again rather than
 /// failing: a sched-task Rust entry runs a component's `register()` once per sched task
-/// executor, and each sched task's run creates the same node (issue 1419).
-/// phase-463 W5 I4 -- `true` iff the hook bodies exist (`metadata-mode`).
+/// executor, and each sched task's run creates the same node.
+/// `true` iff the hook bodies exist (`metadata-mode`).
 ///
 /// An empty `#[inline]` body costs nothing, but its ARGUMENTS still do: a
 /// namespace read back from the executor, a `from_utf8` over the node name.
@@ -106,7 +105,7 @@ use nros_node::executor::profile;
 /// [`recording_run`] keys on it.
 pub const RECORDER_RMW: &str = "metadata";
 
-/// Issue 1693 — is THIS process a census run, i.e. is the recording backend
+/// Is THIS process a census run, i.e. is the recording backend
 /// the RMW it selected?
 ///
 /// A census run constructs components, writes what the recorder saw and exits

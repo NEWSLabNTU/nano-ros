@@ -1,4 +1,4 @@
-//! Monotonic time for portable node code (issue #504).
+//! Monotonic time for portable node code.
 //!
 //! Node packages are platform-agnostic: the same crate compiles into a
 //! POSIX, FreeRTOS, or Zephyr image, so it can reach neither the
@@ -14,14 +14,14 @@
 //! interpret one absolutely.
 //!
 //! Clock source mirrors the executor's timer accounting
-//! (`nros-node/src/executor/spin.rs`), and phase-359 W10 follow-up had to
+//! (`nros-node/src/executor/spin.rs`), and a follow-up had to
 //! RESTORE that — the sentence had gone false:
 //!
 //! - **`rmw-cffi` builds** (a platform port is linked): the platform's
 //!   `nros_platform_clock_ns` export, on either flavour. Same linkage contract
 //!   the executor and the wake primitives already rely on, so this adds no new
-//!   requirement. Resolution is whatever the platform delivers (issue #502:
-//!   sub-tick on FreeRTOS Cortex-M, tick-quantized on ThreadX).
+//!   requirement. Resolution is whatever the platform delivers, e.g.
+//!   sub-tick on FreeRTOS Cortex-M, tick-quantized on ThreadX.
 //! - **`std` without a port**: `std::time::Instant`, anchored at first use.
 //!   The claim that stood here — "real and shipped, the metadata probe compiles
 //!   node code with `std` and no port" — was WRONG. The probe links
@@ -50,7 +50,7 @@ use core::time::Duration;
 /// let dt = nros::time::now() - t0;
 /// ```
 ///
-/// Reads the platform port's `nros_platform_clock_ns` (RFC-0073) — on a hosted
+/// Reads the platform port's `nros_platform_clock_ns` — on a hosted
 /// build too, which is the point: this and the executor must be ONE clock. What
 /// the low digits are worth is per-port; ask
 /// `nros_platform_clock_resolution_ns`.

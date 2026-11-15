@@ -1,4 +1,4 @@
-//! RFC-0088 / phase-421 W1 — the message-format check, as a compile error.
+//! The message-format check, as a compile error.
 //!
 //! ROS 2 names its serialization format with a string and answers
 //! `rmw_get_serialization_format()` at run time, because
@@ -12,7 +12,7 @@
 //! inline `const {}` block. The comparison therefore happens during
 //! monomorphisation of the entity-creation call, and costs nothing at run
 //! time — no branch appears on the publish path, which is the property
-//! RFC-0088 D1 asks for.
+//! the compile-time serialization-format design asks for.
 //!
 //! # What the error looks like
 //!
@@ -23,7 +23,7 @@
 //!
 //! ```text
 //! error[E0080]: evaluation panicked: message serialization format does not
-//!               match the linked backend (RFC-0088)
+//!               match the linked backend
 //!   --> packages/core/nros-node/src/format_check.rs:83:9
 //!    | evaluation of `format_check::assert_message_format::<UorbProbe>::{constant#0}`
 //!    | failed here
@@ -53,7 +53,7 @@
 //! `cfg(rmw_needs_type_descriptors)` — and would therefore have been absent
 //! under uORB, the one backend whose format differs and the reason the check
 //! exists. The const is defaulted rather than required for the reason
-//! phase-380 W4 recorded: tightening the message contract to serve a build
+//! recorded before: tightening the message contract to serve a build
 //! assertion broke `examples/linux/rust/custom-msg`, the documented
 //! hand-written-message pattern. A default costs those implementors nothing.
 //!

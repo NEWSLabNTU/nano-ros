@@ -1,4 +1,4 @@
-//! The executor's FFI surface (phase-515 R9, decision D4).
+//! The executor's FFI surface.
 //!
 //! Methods that exist for `nros-c` and `nros-cpp` -- the C-shaped entry points
 //! (raw pointers, `extern "C"` callbacks, `unsafe` release paths) and the
@@ -27,7 +27,7 @@ use super::{
 };
 use crate::{session, timer::TimerDuration};
 
-/// phase-515 R10 stage 2 -- `ParameterServer`'s operations, for the shims
+/// `ParameterServer`'s operations, for the shims
 /// that reach the store through this crate rather than `nros-params`.
 #[cfg(feature = "param-store")]
 pub use nros_params::ParameterServerOps;

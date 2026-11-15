@@ -1,8 +1,8 @@
 //! What the parameter family's messages cost, and the inbox geometry BOTH
 //! service families are sized from.
 //!
-//! Issue 1468 -- this used to sit inside `crate::parameter_services`, and
-//! phase-461 W2 had the lifecycle family read three of its numbers across the
+//! This used to sit inside `crate::parameter_services`, and
+//! the lifecycle family came to read three of its numbers across the
 //! module boundary. The two modules carry DIFFERENT feature gates
 //! (`param-services` and `lifecycle-services`), so `lifecycle-services`
 //! without `param-services` -- a legal, shipped configuration; it is what
@@ -15,7 +15,7 @@
 //! `nros_params`' resolved capacities and needs neither. Only the first is a
 //! capability a consumer picks; the gate belongs on it alone.
 //!
-//! So the numbers keep meaning exactly what phase-461 W2 said they mean. The
+//! So the numbers keep meaning exactly what they meant when that started. The
 //! lifecycle family's inbox slot IS the parameter family's, because the
 //! lifecycle payloads are strictly smaller and a second knob would be a second
 //! number saying less; the depth is the same 1 for the same reason. What
@@ -452,13 +452,13 @@ const fn node_bound(s: &[usize; 9], c: ParamWireCaps) -> ParamServiceBound {
 // THE PARAMETER FAMILY'S OWN INBOX -- phase-461 W2, issue 1352
 // ---------------------------------------------------------------------------
 
-/// Issue 1352 -- how many bytes ONE slot of the parameter family's inbox ring
+/// How many bytes ONE slot of the parameter family's inbox ring
 /// holds.
 ///
 /// Two buffers stand between a `set_parameters` request and this module, and
 /// until this wave only one of them was sized by anything. The executor-side
 /// pair above is `param_service_buffer_bytes`, derived from the contract's
-/// declared parameters since phase-446 F3. The other is the transport's INBOX:
+/// declared parameters. The other is the transport's INBOX:
 /// the ring the read task lands a request in before any spin sees it. Every
 /// queryable got the same one -- 4 slots of 1,024 B -- and a request larger
 /// than a slot was not refused and not logged but dropped with a flag, which
@@ -487,7 +487,7 @@ pub const fn param_service_inbox_bytes() -> usize {
     derived.next_multiple_of(4)
 }
 
-/// phase-461 W2 -- whether [`param_service_inbox_bytes`] was DERIVED from the
+/// Whether [`param_service_inbox_bytes`] was DERIVED from the
 /// contract rather than stated by a rung.
 ///
 /// The const assert below is a tautology in the derived case and costs

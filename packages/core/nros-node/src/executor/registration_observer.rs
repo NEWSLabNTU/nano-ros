@@ -1,4 +1,4 @@
-//! phase-457 W3 — what a REGISTRATION tells a metadata probe about itself.
+//! What a REGISTRATION tells a metadata probe about itself.
 //!
 //! # The fact, and why nothing else can state it
 //!
@@ -19,9 +19,9 @@
 //! a `.safety()` one, a borrowed view, and four of the five C/C++ entry points
 //! all buffer, while `registration_path` credited every endpoint of an image on
 //! zenoh or XRCE with the in-place row. That over-statement was free while the
-//! row was priced at the type's bound (issue 1319); it is an **UNDER-size** the
+//! row was priced at the type's bound; it is an **UNDER-size** the
 //! moment the row is priced at what it actually claims, which is nothing
-//! (issue 1340, ~9 KiB a subscription).
+//! (~9 KiB a subscription).
 //!
 //! So the fact has to come per ENDPOINT. The three candidate sources, and why
 //! this is the one:
@@ -30,14 +30,14 @@
 //!   image KEEPS, and which of eleven overloads its code calls is a property of
 //!   the code, not of a declaration;
 //! * a **second opinion** derived in the CLI — "what would a Rust entry do" —
-//!   is what is already there and already wrong, and is issue 0196's class;
+//!   is what is already there and already wrong;
 //! * the **probe** runs the code. A metadata-mode build registers its
 //!   subscriptions for real against a recording backend, so the one site that
 //!   knows the answer can simply say it.
 //!
 //! # One site, because there is only one
 //!
-//! phase-456 W8 collapsed twelve hand-rolled registration prologues into
+//! Twelve hand-rolled registration prologues were collapsed into
 //! `Executor::open_subscription`, which is *"the only place in this
 //! crate that `Subscription::supports_process_in_place` is read"*. That is also
 //! the only place where the call site's own answer and the topic it registers
@@ -79,7 +79,7 @@ pub struct ObservedRegistration<'a> {
     /// is an implementation detail of this crate, and the FACT is what crosses).
     /// NOT conjoined with the backend's answer — see the module docs.
     pub in_place_capable: bool,
-    /// Issue 1648 -- did this registration claim the CLOSURE buffer (`RX_BUF`)
+    /// Did this registration claim the CLOSURE buffer (`RX_BUF`)
     /// for its receive slot, rather than a bound it stated?
     ///
     /// The buffered half of the registration path, observed the way
@@ -89,7 +89,7 @@ pub struct ObservedRegistration<'a> {
     /// or a type-erased registration, a C/C++ site that stated no hint) or
     /// `typed_bound` (a size the call site derived from its type). The
     /// sizing descriptor used to infer this from the entry's LANGUAGE, which
-    /// issue 1319's table shows is a proxy: a C/C++ site with no hint takes
+    /// a survey of registration sites shows is a proxy: a C/C++ site with no hint takes
     /// `RX_BUF` exactly like the Rust generic one.
     pub claims_closure_buffer: bool,
 }
@@ -131,7 +131,7 @@ pub(crate) fn observe(reg: ObservedRegistration<'_>) {
     }
 }
 
-/// RFC-0128 D2 (phase-554 W2.b) -- a node whose own code registered a
+/// A node whose own code registered a
 /// lifecycle state machine.
 ///
 /// "The code decides which nodes are managed, as in ROS 2" (ruled

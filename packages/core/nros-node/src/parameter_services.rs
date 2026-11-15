@@ -70,7 +70,7 @@ pub const MAX_PARAMS_PER_REQUEST: usize = 64;
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Convert internal ParameterValue to rcl_interfaces ParameterValue
-/// The pre-phase-515 name of [`RmwParameterConversionError`].
+/// The old name of [`RmwParameterConversionError`].
 // phase-515 R8 took rclrs's name.
 #[deprecated(
     since = "0.6.0",
@@ -79,16 +79,16 @@ pub const MAX_PARAMS_PER_REQUEST: usize = 64;
 pub type ValueConversionError = RmwParameterConversionError;
 
 /// Why a parameter value could not be converted between the wire form and the
-/// node's internal form (issue 0323).
+/// node's internal form.
 ///
 /// Both directions used to discard every `push`/`push_str` result, so an
 /// over-capacity value was silently TRUNCATED and then reported as success: a
 /// ROS 2 client believed it had set a long string or a 40-element array while
 /// the node held a prefix. An unrecognised `type_` became `NotSet`. Same class
-/// as issues 0223/0224 — a swallowed capacity error turning malformed input
+/// as other swallowed-error bugs — a swallowed capacity error turning malformed input
 /// into a plausible business value.
 ///
-/// rclrs's `RmwParameterConversionError` (phase-515 R8): why a wire value was
+/// rclrs's `RmwParameterConversionError`: why a wire value was
 /// rejected. It was `RmwParameterConversionError`, which survives one release as a
 /// deprecated alias. Re-exported as `nros::RmwParameterConversionError`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,7 +104,7 @@ impl RmwParameterConversionError {
     /// Human-readable reason for a `SetParametersResult`.
     ///
     /// `const` so the service-buffer bound can price the longest one
-    /// (phase-446 F3, `LONGEST_SET_REASON`).
+    /// (`LONGEST_SET_REASON`).
     pub const fn reason(&self) -> &'static str {
         match self {
             Self::CapacityExceeded => crate::param_sizing::CAPACITY_EXCEEDED_REASON,
@@ -313,7 +313,7 @@ pub fn to_rcl_descriptor(desc: &InternalDescriptor) -> ParameterDescriptor {
 
 /// Convert a parameter-store verdict to rcl_interfaces SetParametersResult
 /// Build the `SetParametersResult` for a value that could not be converted
-/// (issue 0323) — `successful = false` with a reason naming the cause.
+/// — `successful = false` with a reason naming the cause.
 pub fn conversion_failure_result(err: RmwParameterConversionError) -> SetParametersResult {
     let mut reason_str = heapless::String::new();
     let _ = reason_str.push_str(err.reason());
@@ -1039,7 +1039,7 @@ pub(crate) fn stream_get_parameter_types(
 ///
 /// Returns `Box<Response>` because the response type contains large heapless arrays
 /// (~1MB+ for Vec<ParameterValue, 64>) that would overflow the stack.
-/// Test oracle only (phase-382 W1'); the live path is the streaming handler above.
+/// Test oracle only; the live path is the streaming handler above.
 #[cfg(test)]
 pub fn handle_get_parameters(
     server: &ParameterServer,
@@ -1074,7 +1074,7 @@ pub fn handle_get_parameters(
 /// Handle SetParameters service request
 ///
 /// Returns `Box<Response>` because request/response types contain large heapless arrays.
-/// Test oracle only (phase-382 W1'); the live path is the streaming handler above.
+/// Test oracle only; the live path is the streaming handler above.
 #[cfg(test)]
 pub fn handle_set_parameters(
     server: &mut ParameterServer,
@@ -1105,7 +1105,7 @@ pub fn handle_set_parameters(
 /// Handle SetParametersAtomically service request
 ///
 /// Returns `Box<Response>` because request/response types contain large heapless arrays.
-/// Test oracle only (phase-382 W1'); the live path is the streaming handler above.
+/// Test oracle only; the live path is the streaming handler above.
 #[cfg(test)]
 pub fn handle_set_parameters_atomically(
     server: &mut ParameterServer,
@@ -1147,7 +1147,7 @@ pub fn handle_set_parameters_atomically(
 /// Handle ListParameters service request
 ///
 /// Returns `Box<Response>` because response type contains large heapless arrays (~32KB).
-/// Test oracle only (phase-382 W1'); the live path is the streaming handler above.
+/// Test oracle only; the live path is the streaming handler above.
 #[cfg(test)]
 pub fn handle_list_parameters(
     server: &ParameterServer,
@@ -1213,7 +1213,7 @@ pub fn handle_list_parameters(
 /// Handle DescribeParameters service request
 ///
 /// Returns `Box<Response>` because response type contains large heapless arrays (~50KB).
-/// Test oracle only (phase-382 W1'); the live path is the streaming handler above.
+/// Test oracle only; the live path is the streaming handler above.
 #[cfg(test)]
 pub fn handle_describe_parameters(
     server: &ParameterServer,
@@ -1247,7 +1247,7 @@ pub fn handle_describe_parameters(
 /// Handle GetParameterTypes service request
 ///
 /// Returns `Box<Response>` for API consistency with other handlers.
-/// Test oracle only (phase-382 W1'); the live path is the streaming handler above.
+/// Test oracle only; the live path is the streaming handler above.
 #[cfg(test)]
 pub fn handle_get_parameter_types(
     server: &ParameterServer,
@@ -1279,7 +1279,7 @@ pub use crate::config::PARAM_SERVICE_BUFFER_SIZE;
 
 /// How many zenoh queryables the ROS parameter services claim on a node.
 ///
-/// Issue 0827 — a service server IS a queryable, so this number is a term in
+/// A service server IS a queryable, so this number is a term in
 /// every service-buffer pool the RMW sizes. It had SIX spellings and no
 /// definition: the count of `create_param_srv::<_>` statements in
 /// `executor/spin.rs`, two doc comments, `nros-zpico-build`'s default-picking
@@ -1288,7 +1288,7 @@ pub use crate::config::PARAM_SERVICE_BUFFER_SIZE;
 ///
 /// Kept BESIDE the code that creates them, not in the RMW: only the runtime
 /// knows it creates these on the node's behalf. Deriving the number from the
-/// user's entity set is issue 0460's defect — codegen sees the application's
+/// user's entity set is a known defect — codegen sees the application's
 /// services and never these.
 ///
 /// Gated with the same `param-services` feature that compiles the servers, so
@@ -1296,7 +1296,7 @@ pub use crate::config::PARAM_SERVICE_BUFFER_SIZE;
 /// `check-infra-queryable-counts` holds it to the number of creation sites.
 pub const PARAM_SERVICE_QUERYABLES: usize = 6;
 
-/// Issue 2023 — publishers the parameter family claims: ONE
+/// Publishers the parameter family claims: ONE
 /// `/parameter_events` writer per EXECUTOR (not per node — every event names
 /// its node in its own `node` field). VOLATILE (`parameter_events_default`),
 /// so it costs a publisher slot and a liveliness token and NO queryable.
@@ -1351,7 +1351,7 @@ pub const PARAM_INBOX_COUNT: usize =
 /// The parameter family's rings: `PARAM_INBOX_DEPTH` slots of
 /// [`PARAM_INBOX_SLOT_BYTES`] bytes per queryable.
 ///
-/// `static`, not heap, for the reason phase-391 keeps every payload buffer
+/// `static`, not heap, for the reason every payload buffer is kept
 /// static: the Zephyr heap gate prices `arena + 24576 <= NROS_ZEPHYR_HEAP_SIZE`
 /// and a new term in it is a new way for an image to stop linking.
 pub static PARAM_INBOX: [nros_rmw::CallerInboxStorage<PARAM_INBOX_SLOT_BYTES, PARAM_INBOX_DEPTH>;
@@ -1527,7 +1527,7 @@ const FAILURE_KINDS: u32 = 6;
 /// - `get_parameters` / `set_parameters` / `set_parameters_atomically`
 /// - `list_parameters` / `describe_parameters` / `get_parameter_types`
 ///
-/// Issue 1270 -- the set holds six backend handles and NO buffer. The
+/// The set holds six backend handles and NO buffer. The
 /// executor answers every set through one [`ParamServiceBuffers`] pair, where
 /// each server used to carry its own (6 x 8 KiB per node at the default).
 pub struct ParameterServiceServers {

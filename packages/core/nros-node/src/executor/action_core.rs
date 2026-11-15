@@ -50,7 +50,7 @@ pub(crate) fn action_service_base_type<'a>(
 /// The typed path derives these from `A::SendGoalRequest::TYPE_NAME` via
 /// `action_service_base_type`. The raw path (`register_action_server_raw*`)
 /// has only the BARE action type, so it must construct them — and until
-/// phase-338 W3 it did not, advertising `…Fibonacci_` on send_goal / get_result
+/// a fix it did not, advertising `…Fibonacci_` on send_goal / get_result
 /// / feedback where ROS 2 expects `…Fibonacci_SendGoal_`,
 /// `…Fibonacci_GetResult_` and `…Fibonacci_FeedbackMessage_`. The type name is
 /// baked into the keyexpr, so a client's query never matched the server's
@@ -126,7 +126,7 @@ pub struct RawActiveGoal {
     pub goal_id: GoalUuid,
     /// Current status.
     pub status: GoalStatusCode,
-    /// Issue 2029 — when the server ACCEPTED the goal, on the ROS clock
+    /// When the server ACCEPTED the goal, on the ROS clock
     /// (`Clock::ros_time()`: `/clock` when a source drives it, the port's wall
     /// clock otherwise — rcl_action stamps with the server's clock the same
     /// way). A `CancelGoal` request with a stamp cancels the goals accepted at
@@ -136,11 +136,11 @@ pub struct RawActiveGoal {
     pub stamp: Time,
 }
 
-/// A `get_result` request held until its goal terminates (Phase 237).
+/// A `get_result` request held until its goal terminates.
 ///
 /// `sequence_number` is the service-backend reply-correlation token; the backend
 /// must be able to `send_response(sequence_number, …)` after the handler returned
-/// (Cyclone native; XRCE/Zenoh via the Phase 237 seq-keyed reply tables).
+/// (Cyclone native; XRCE/Zenoh via seq-keyed reply tables).
 #[derive(Clone, Copy)]
 pub struct PendingGetResult {
     /// Goal whose terminal result the requester is waiting for.
@@ -172,13 +172,13 @@ pub struct CompletedResultEntry {
     /// [`ActionServerCore::complete_goal_raw`](crate::executor::ffi::ActionServerCoreFfi::complete_goal_raw) or the immediate reply in
     /// [`ActionServerCore::try_handle_get_result_raw`](crate::executor::ffi::ActionServerCoreFfi::try_handle_get_result_raw).
     ///
-    /// Issue 0796: this is the reclamation priority. A delivered result has
+    /// This is the reclamation priority. A delivered result has
     /// served its purpose (rcl would let its `result_timeout` retire it), so it
     /// is evicted before any result nobody has fetched yet.
     pub delivered: bool,
 }
 
-/// Phase 122.3.c.6.d — information about a peeked cancel-goal
+/// Information about a peeked cancel-goal
 /// request. Returned by
 /// [`ActionServerCore::try_recv_cancel_request`](crate::executor::ffi::ActionServerCoreFfi::try_recv_cancel_request).
 pub struct PendingCancelRequest {
@@ -1500,7 +1500,7 @@ pub struct ActionClientCore<
     pub(crate) pending_get_result: ActionRequests,
 }
 
-/// Issue 2009 — one action sub-client's requests in flight: at most
+/// One action sub-client's requests in flight: at most
 /// [`MAX_CONCURRENT_GOALS`](crate::limits::MAX_CONCURRENT_GOALS) — the number of
 /// goals a server holds at once — each keyed by its sequence id and carrying
 /// its goal. A send past that is refused with

@@ -47,12 +47,12 @@
 //! | 18          | start    | `handle`                                       |
 //! | 19          | end      | `handle`                                       |
 //!
-//! | 21          | violation          | `seq << 8 \| rule code` (phase-474 I1) |
+//! | 21          | violation          | `seq << 8 \| rule code` |
 //! | 22          | violation fqn      | FNV-1a 32 of the endpoint ref           |
 //! | 23          | violation measured | `measured`                              |
 //! | 24          | violation declared | `declared`                              |
 //!
-//! | 25          | take               | `handle << 24 \| take seq` (phase-474 I3) |
+//! | 25          | take               | `handle << 24 \| take seq` |
 //! | 26          | take stamp sec     | the sample's `stamp.sec`                |
 //! | 27          | take stamp nanosec | the sample's `stamp.nanosec`            |
 //!
@@ -65,7 +65,7 @@
 //! prints. Events 22-24 bind to the 21 they FOLLOW; a decoder that sees a
 //! 22-24 without its 21 drops it rather than guessing.
 //!
-//! phase-474 I3 -- a TAKE (25) is one sample taken for a subscription, emitted
+//! A TAKE (25) is one sample taken for a subscription, emitted
 //! before its callback's start (18), so the hop from the publisher's stamp to
 //! the take is on the trace clock. Opt-in: per subscription with
 //! [`set_take_trace`], image-wide with `NROS_TRACE_TAKES`
@@ -75,7 +75,7 @@
 //! typed Rust paths), or [`set_take_trace`] named its offset (the C and C++
 //! paths, which carry no type). A decoder binds 26/27 to the 25 they FOLLOW.
 //!
-//! phase-474 I3 -- a TIMER's start/end pair can be sampled: every tick (the
+//! A TIMER's start/end pair can be sampled: every tick (the
 //! default), one in N, or none, per timer ([`set_timer_trace_every`]) or
 //! image-wide (`NROS_TRACE_TIMER_EVERY`, `CONFIG_NROS_TRACE_TIMER_EVERY`). A
 //! 30 Hz tick whose jitter is the measurement is traced in full while the rest
@@ -142,12 +142,12 @@ pub use super::monitor::{
     MARKER_VIOLATION, MARKER_VIOLATION_DECLARED, MARKER_VIOLATION_FQN, MARKER_VIOLATION_MEASURED,
 };
 
-/// phase-474 I3 -- one sample taken for a subscription:
+/// One sample taken for a subscription:
 /// `handle << 24 | take seq` (seq image-wide, low 24 bits).
 pub const MARKER_TAKE: u32 = 25;
-/// phase-474 I3 -- the taken sample's `stamp.sec`, after a [`MARKER_TAKE`].
+/// The taken sample's `stamp.sec`, after a [`MARKER_TAKE`].
 pub const MARKER_TAKE_STAMP_SEC: u32 = 26;
-/// phase-474 I3 -- the taken sample's `stamp.nanosec`, after a
+/// The taken sample's `stamp.nanosec`, after a
 /// [`MARKER_TAKE_STAMP_SEC`].
 pub const MARKER_TAKE_STAMP_NSEC: u32 = 27;
 
@@ -386,7 +386,7 @@ static TIMER_TICKS: [AtomicU16; SLOTS] = [const { AtomicU16::new(0) }; SLOTS];
 /// Image-wide take sequence.
 static TAKE_SEQ: AtomicU32 = AtomicU32::new(0);
 
-/// phase-474 I3 -- trace the takes of the subscription in `handle` (its slot
+/// Trace the takes of the subscription in `handle` (its slot
 /// index, the `handle` its register event carries), or stop.
 ///
 /// `stamp_offset`: where the sample's source `stamp` (`sec: i32`,
@@ -404,7 +404,7 @@ pub fn set_take_trace(handle: u8, on: bool, stamp_offset: Option<u16>) {
     TAKE_CFG[handle as usize].store(v, Ordering::Relaxed);
 }
 
-/// phase-474 I3 -- trace one tick in `every` of the timer in `handle` (1 =
+/// Trace one tick in `every` of the timer in `handle` (1 =
 /// every tick, 0 = none). Overrides the image default
 /// (`NROS_TRACE_TIMER_EVERY`) for this slot. The first tick after the call is
 /// traced.

@@ -1,4 +1,4 @@
-//! Phase 110.B — `SchedContext` API + supporting types.
+//! `SchedContext` API + supporting types.
 //!
 //! A `SchedContext` is a first-class scheduling capability. Multiple
 //! callbacks share one SC; one OS priority slot per Executor regardless
@@ -15,7 +15,7 @@ use core::num::NonZeroU32;
 
 /// Optional time field with a sentinel `0` for "absent".
 ///
-/// Phase 110.B keeps a stable `#[repr(transparent)]` u32 layout so
+/// It keeps a stable `#[repr(transparent)]` u32 layout so
 /// cbindgen emits plain `uint32_t` for C consumers — `Option<NonZeroU32>`
 /// loses its niche optimization the moment a `#[repr(C)]` struct
 /// embeds it. Rust callers see the ergonomic
@@ -56,10 +56,10 @@ impl OptUs {
 /// Scheduling class — picks the runtime queue + selection policy for
 /// the contained callbacks.
 ///
-/// Phase 110.A only exercises `Fifo`; `Edf` lands with the
-/// `EdfReadySet` plumb-up in 110.B.b; `Sporadic` is post-v1 (110.E);
+/// Originally only `Fifo` was exercised; `Edf` came with the
+/// `EdfReadySet` plumb-up, and `Sporadic` was planned for after v1;
 /// time-triggered windows are not a class but a per-`SchedContext` gate
-/// (`tt_window_offset_us` / `tt_window_duration_us`, 110.G).
+/// (`tt_window_offset_us` / `tt_window_duration_us`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SchedClass {
     #[default]
@@ -69,9 +69,9 @@ pub enum SchedClass {
     BestEffort,
 }
 
-/// Criticality bucket for [`SchedContext`]. Phase 110.C uses this to
+/// Criticality bucket for [`SchedContext`]. The ready set uses this to
 /// pick which `RankedFifoSet` / `BucketedEdfSet` slot a callback
-/// dispatches through; later phases (110.D) map it to OS priority.
+/// dispatches through; later work maps it to OS priority.
 ///
 /// Default `Normal` keeps existing single-bucket workloads unchanged
 /// — every default-Fifo SC sits in `Normal`, so dispatch order is
@@ -103,7 +103,7 @@ impl Priority {
         self as usize
     }
 
-    /// phase-509 P2 (RFC-0108 D2) -- the dispatch level of a callback whose
+    /// The dispatch level of a callback whose
     /// sched context is in this bucket and whose node holds contract `rank`
     /// (0 = most urgent). Smaller levels dispatch first; equal levels keep
     /// registration order.
@@ -143,11 +143,11 @@ impl Priority {
     }
 }
 
-/// phase-509 P2 -- the number of dispatch levels one executor orders by: one
+/// The number of dispatch levels one executor orders by: one
 /// per bit of the ready set's 32-bit presence word.
 pub const DISPATCH_LEVELS: usize = 32;
 
-/// phase-509 P2 -- the largest contract rank a `Normal` callback keeps. Levels
+/// The largest contract rank a `Normal` callback keeps. Levels
 /// 0 and 31 are the reserved `Critical` and `BestEffort` ranks, so the
 /// contract's ranks are levels 1..=30; a rank past this one shares the last.
 pub const MAX_CONTRACT_RANK: u8 = (DISPATCH_LEVELS - 3) as u8;
@@ -168,7 +168,7 @@ pub enum DeadlinePolicy {
     Inherited,
 }
 
-/// RFC-0052 / phase-296 W3b.5 — what the executor DOES when a dispatched
+/// What the executor DOES when a dispatched
 /// callback runs past its bound SC's `deadline_us`. Distinct from
 /// [`DeadlinePolicy`] (which says where the deadline COMES from); this is
 /// the miss REACTION, lowered from the sched task table's `deadline_policy`
@@ -194,7 +194,7 @@ impl DeadlineAction {
     /// Unknown strings map to `Ignore` — the bake already validated the
     /// vocabulary; runtime tolerance here avoids a boot-time panic path.
     ///
-    /// phase-462 W2 -- that string is no longer authored per sched task and nothing
+    /// That string is no longer authored per sched task and nothing
     /// else. The launch contract's `on_violation` is now its SOURCE
     /// (`nros-orchestration-ir::violation_agreement`, applied in
     /// `plan_from_model`), and a sched task table that states a different word is a
@@ -238,7 +238,7 @@ pub struct SchedContextId(pub u8);
 /// shared by every callback that should run under the same budget /
 /// period / deadline / class.
 ///
-/// Phase 110.B.a defines the shape; 110.B.b's builder methods on
+/// This defines the shape; the builder methods on
 /// Executor consume it.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SchedContext {
@@ -248,20 +248,20 @@ pub struct SchedContext {
     pub budget_us: OptUs,
     pub deadline_us: OptUs,
     pub deadline_policy: DeadlinePolicy,
-    /// Phase 110.F — the OS-level priority this context's callbacks are meant
+    /// The OS-level priority this context's callbacks are meant
     /// to run at: generated entries record their sched task's kernel priority here
     /// (`nros_cpp_create_sched_context_from_policy`). `0` (default) means none.
     ///
     /// Recorded, not acted on by the executor. The opt-in per-callback worker
-    /// pool that ran an `os_pri > 0` callback on an elevated thread is retired
-    /// (phase-509 P11): preemption is a level's, which runs at its band's
-    /// kernel priority (RFC-0108). The field stays, because the C and C++
+    /// pool that ran an `os_pri > 0` callback on an elevated thread is retired:
+    /// preemption is a level's, which runs at its band's
+    /// kernel priority. The field stays, because the C and C++
     /// sched-context configs carry it.
     ///
     /// Numeric meaning is platform-defined (POSIX 1..99 for SCHED_FIFO;
     /// FreeRTOS 0..configMAX_PRIORITIES-1; Zephyr direction-flipped).
     pub os_pri: u8,
-    /// Phase 110.G — time-triggered window offset within the
+    /// Time-triggered window offset within the
     /// executor's major frame. `None` (sentinel `0`) = always
     /// eligible (no TT gate); `Some(off)` + `tt_window_duration_us`
     /// gates dispatch to the half-open interval
@@ -274,12 +274,12 @@ pub struct SchedContext {
     /// W3b.5 — reaction on a deadline miss (see [`DeadlineAction`]).
     pub deadline_action: DeadlineAction,
     pub tt_window_offset_us: OptUs,
-    /// Phase 110.G — time-triggered window length. See
+    /// Time-triggered window length. See
     /// `tt_window_offset_us`.
     pub tt_window_duration_us: OptUs,
 }
 
-/// Phase 110.E.b — atomic sporadic-server state for ISR-driven
+/// Atomic sporadic-server state for ISR-driven
 /// refill. ISR / timer-thread context calls refill_thunk to top up
 /// the budget; spin_once reads atomically without any `&mut` access.
 ///
@@ -296,7 +296,7 @@ pub struct AtomicSporadicState {
     pub last_refill_ms: portable_atomic::AtomicU32,
     pub budget_capacity_us: u32,
     pub period_us: u32,
-    /// Phase 110.E.b — cumulative count of dispatched callbacks
+    /// Cumulative count of dispatched callbacks
     /// whose measured wall-clock runtime exceeded the SC's
     /// `budget_us`. Bumped by the per-callback runtime closure
     /// inside `Executor::spin_once` (std-only — the no_std fallback
@@ -430,7 +430,7 @@ pub extern "C" fn atomic_sporadic_refill_thunk(user_data: *mut core::ffi::c_void
         .store(state.budget_capacity_us, portable_atomic::Ordering::Release);
 }
 
-/// Phase 110.E — user-space sporadic-server runtime state.
+/// User-space sporadic-server runtime state.
 ///
 /// Tracks remaining `budget_us` for the current period and the wall-
 /// clock instant of the last refill. The executor consults this state
@@ -449,12 +449,12 @@ pub struct SporadicState {
     pub budget_capacity_us: u32,
     pub period_us: u32,
     pub last_refill_ms: u64,
-    /// issue 0736 — consecutive spins in which this SC was skipped for want of
+    /// Consecutive spins in which this SC was skipped for want of
     /// budget. A skip is invisible by construction: `spin_once` `continue`s
     /// past the entry, so a starved sched task looks exactly like an idle one. This
     /// counter is what lets it say so. Reset on any dispatch.
     pub consecutive_budget_skips: u32,
-    /// issue 0736 — skips and dispatches over a rolling window.
+    /// Skips and dispatches over a rolling window.
     ///
     /// The consecutive counter above catches TOTAL starvation quickly and
     /// misses the commoner shape entirely: a budget that merely THROTTLES.
@@ -468,7 +468,7 @@ pub struct SporadicState {
     /// Worst execution time observed on this SC, in microseconds, recorded
     /// on EVERY dispatch.
     ///
-    /// This is the polled path, and issue 0736 established it is the one
+    /// This is the polled path, and measurement established it is the one
     /// that matters: `has_budget` prefers the atomic state only when a
     /// refill timer was registered, which no board or entry does. So a
     /// number recorded only on the atomic side would be a number no shipped
@@ -501,7 +501,7 @@ impl SporadicState {
     /// Replenish the budget at period boundaries. Returns `true` if the SC has
     /// budget remaining afterwards.
     ///
-    /// issue 0736 — this used to be `tick(now_ms, delta_us)`, which refilled
+    /// This used to be `tick(now_ms, delta_us)`, which refilled
     /// AND then charged the whole inter-spin `delta_us` as consumption. A
     /// budget bounds the CPU the SC's callbacks consume; the wall-clock gap
     /// between two spins is not that, and on any target where the gap exceeds
@@ -530,7 +530,7 @@ impl SporadicState {
     /// because the atomic one is only present when a caller has registered a
     /// refill timer via `Executor::register_sporadic_timer` — which, outside
     /// this crate's own tests, nothing does. Every shipped image runs THIS
-    /// path, so it is the one that has to be right (issue 0736).
+    /// path, so it is the one that has to be right.
     pub fn consume(&mut self, us: u32) {
         self.budget_remaining_us = self.budget_remaining_us.saturating_sub(us);
         self.consecutive_budget_skips = 0;
@@ -604,7 +604,7 @@ impl SchedContext {
         }
     }
 
-    /// RFC-0052 — the **common backend** that lowers an RTOS-agnostic sched task
+    /// The **common backend** that lowers an RTOS-agnostic sched task
     /// policy (`[tasks.<t>]` class / budget / period / deadline) to a
     /// [`SchedContext`]. ONE implementation shared by every language: the Rust
     /// runtime (`ExecutorNodeRuntime::apply_sched_task_sched_policy`)

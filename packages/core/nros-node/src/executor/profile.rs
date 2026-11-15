@@ -1,5 +1,5 @@
-//! phase-463 W7 — the PROFILING half of the host census (RFC-0078 amendment
-//! 2026-10-07, issue 0403's `nros.wcet.measurements/1`).
+//! The PROFILING half of the host census (the per-profile WCET
+//! rule, and the bench's `nros.wcet.measurements/1` artifact).
 //!
 //! The census (W1-W5) answers "what does the code create". This answers "what
 //! does it cost, ON THE HOST", and — the part that transfers to the RTOS image —
@@ -7,11 +7,11 @@
 //!
 //! # What a host number is, and is not
 //!
-//! A WCET belongs to a context, not to code (RFC-0078 D1). A host x86-64 shares
+//! A WCET belongs to a context, not to code. A host x86-64 shares
 //! no cycle count with a Cortex-M7, so every number written here is a
 //! HIGH-WATER MARK in NANOSECONDS of the host's monotonic clock, under a
 //! NAMED host profile (`host-<arch>-<profile>`, `clock_hz = 0`). It is never
-//! a bound (RFC-0078 D1b): the file carries no `bound_cycles`, and the
+//! a bound: the file carries no `bound_cycles`, and the
 //! `[wcet.select]` of a non-native image that names a host profile is refused
 //! by `nros build`.
 //!
@@ -40,7 +40,7 @@
 //! # What this module does NOT do, and who does
 //!
 //! It names no thread and touches no file: the core is `core + alloc`
-//! (phase-359; `check-std-census` holds `nros-node` at zero `std::` paths).
+//! (`check-std-census` holds `nros-node` at zero `std::` paths).
 //! The hosted EDGE that reads `$NROS_PROFILE_OUT` (`nros-cpp`'s init, the Linux
 //! funnel) supplies both through [`install`]: a `thread_key` that tells
 //! concurrently-dispatching sched task threads apart, and a `sink` that writes the
@@ -49,7 +49,7 @@
 //! Host only: no RTOS umbrella resolves `profile-mode`
 //! (`check-rtos-feature-set-excludes-analysis`), and every call site is
 //! `#[cfg(feature = "profile-mode")]`, so an RTOS image carries none of it —
-//! measured byte-identical (phase-463 W5 I3c).
+//! measured byte-identical.
 
 use alloc::{
     collections::{BTreeMap, BTreeSet},
@@ -62,7 +62,7 @@ use nros_rmw::sync::Mutex;
 
 use super::arena::{EntryKind, TraceName};
 
-/// The artifact schema — issue 0403's, so one reader serves the bench and this.
+/// The artifact schema — the bench's, so one reader serves the bench and this.
 pub const SCHEMA: &str = "nros.wcet.measurements/1";
 
 /// The CPU a host profile names (`host-<arch>-<profile>`).
@@ -168,7 +168,7 @@ pub fn install(thread_key: fn() -> usize, sink: fn(&str)) {
 }
 
 /// Start profiling. `launch` and `inputs` are the run's `coverage`
-/// (RFC-0078 D1b: a maximum is only as good as what was exercised, so the
+/// (a maximum is only as good as what was exercised, so the
 /// file says what that was).
 pub fn enable(launch: &str, inputs: &str) {
     let now = now_ns();

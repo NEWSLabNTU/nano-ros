@@ -1,4 +1,4 @@
-//! phase-412 #4 — the arena's HOST ORACLE, held to at compile time.
+//! The arena's HOST ORACLE, held to at compile time.
 //!
 //! `nros-node/build.rs` is the one place that knows what this image's declared
 //! entities cost: it sums the per-kind model over `NROS_ENTITY_COUNT_*` (and the
@@ -8,7 +8,7 @@
 //! `NROS_EXECUTOR_ARENA_SIZE` below it built, linked, flashed and then died at
 //! the first registration that did not fit, with `NodeError::BufferTooSmall` —
 //! on a board whose only diagnostic channel may be a RAM record read back with
-//! a debugger (issue 1036).
+//! a debugger.
 //!
 //! Here the two numbers meet in one compilation, so the refusal is a build
 //! error that names the knob, both numbers and the shortfall.
@@ -34,7 +34,7 @@
 //! image-wide model is not even the right bound. What they get is the
 //! registration-time refusal every arm already has: `arena_alloc` and
 //! `arena_alloc_with_trailing` report the entity, the shortfall and the knob
-//! (`report_arena_exhausted`, issues 0900 / 1036) and write the shortfall to
+//! (`report_arena_exhausted`) and write the shortfall to
 //! the boot record.
 //!
 //! # What the model is, and what it is not
@@ -42,7 +42,7 @@
 //! [`REQUIRED`](arena_model::REQUIRED) is the per-kind sum, whose terms
 //! `executor::arena` asserts to be upper bounds on the entry types they stand
 //! for. So an arena at or above it fits what was declared. It is NOT a lower
-//! bound on what an image needs: the terms over-price (issue 1255 prices every
+//! bound on what an image needs: the terms over-price (they price every
 //! subscription at one image-wide type bound), so an arena stated below the
 //! model may still fit. The refusal is deliberate anyway — a number below the
 //! model is a claim the build cannot check, and the tree's answer to an
@@ -92,7 +92,7 @@ pub const fn shortfall(arena: usize) -> usize {
 ///
 /// `source` names where `arena` came from — the knob for the default sizing,
 /// the caller's own constant otherwise — because a refusal that does not say
-/// which number to move is the half-diagnostic issue 1036 was about.
+/// which number to move is only half a diagnostic.
 ///
 /// Call it from a `const _: () = ...;` item; that is what makes it a build
 /// error. Called at run time it is an ordinary panic with the same text.

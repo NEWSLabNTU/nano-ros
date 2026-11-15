@@ -1,6 +1,6 @@
-//! RFC-0052 / phase-296 W3b.4/.5 — on-target contract monitors.
+//! On-target contract monitors.
 //!
-//! The baked shape mirrors Phase 211.H's `qos_overrides`: codegen emits a
+//! The baked shape mirrors the per-node `qos_overrides` table: codegen emits a
 //! `&'static [MonitorSpec]` table (plus one `static PubMonitorCell` per
 //! contracted publisher) from the SystemModel's contract layer; the entry
 //! installs it on the executor before entity creation. An uncontracted
@@ -20,15 +20,15 @@
 //!   whose counter advanced during that dispatch (an upper bound on
 //!   take → publish, measured on the executor's monotonic clock). The span
 //!   is callback entry to exit, for every dispatch kind: a timer callback
-//!   is timed whether it fires in the drains or in the trigger-miss sweep
-//!   (phase-474 I6), and a service call it makes is inside the span. The
+//!   is timed whether it fires in the drains or in the trigger-miss sweep,
+//!   and a service call it makes is inside the span. The
 //!   timer's release jitter (a late start) is not part of it; that is
 //!   `release-jitter-runtime`.
 //! - `deadline-miss-runtime` — a dispatched callback ran past its bound
 //!   SchedContext's `deadline_us`; what ELSE happens is the sched task's
 //!   [`DeadlineAction`](super::sched_context::DeadlineAction).
 //!
-//! phase10-B3 adds the route rule beside it:
+//! The route rule sits beside it:
 //! - `route-latency-runtime` -- a node path whose trigger is an INPUT is
 //!   budgeted from the TAKE of that input to its output, and on a node that
 //!   reads its input on a timer tick that span includes the wait for the next
@@ -40,7 +40,7 @@
 //!   take-to-dispatch-end against the path's `max_latency_ms`
 //!   (`route_take`, `route_judge`). Record only: the rule has no action.
 //!
-//! phase-462 W2 adds one more on the same drain, and it is the other half of
+//! One more rule runs on the same drain, and it is the other half of
 //! what the contract's `on_violation` lowers to:
 //! - `silence-runtime` -- a contracted subscription that took NOTHING for a
 //!   whole `max_age_ms` window (`check_silence`). A violation is either "the
@@ -86,24 +86,24 @@ pub struct PubMonitorCell {
     /// `0` = never observed, matching the other cells: the type has no
     /// `STAMP_OFFSET`, or no epoch source is installed.
     pub last_publish_stamp_age_us: AtomicU32,
-    /// phase10-B3 -- the route rule's state for this output
+    /// The route rule's state for this output
     /// ([`MonitorSpec::route_trigger`]): the trigger subscription's executor
     /// slot + 1 in the low 16 bits (0 = no subscription bound, set when the
     /// subscription registers), [`ROUTE_VIOLATED`] and [`ROUTE_PENDING`] above.
     pub route: AtomicU32,
-    /// phase10-B3 -- when the earliest take not yet answered by a publish of
+    /// When the earliest take not yet answered by a publish of
     /// this output happened, executor clock in microseconds (wrapping). Valid
     /// while [`ROUTE_PENDING`] is set in `route`.
     pub route_take_us: AtomicU32,
 }
 
-/// phase10-B3 -- `PubMonitorCell::route`: a take of the trigger input is
+/// `PubMonitorCell::route`: a take of the trigger input is
 /// waiting for this output.
 pub const ROUTE_PENDING: u32 = 1 << 31;
-/// phase10-B3 -- `PubMonitorCell::route`: the last judged route was over its
+/// `PubMonitorCell::route`: the last judged route was over its
 /// budget (report once until one is within it, as the latency rule does).
 pub const ROUTE_VIOLATED: u32 = 1 << 30;
-/// phase10-B3 -- `PubMonitorCell::route`: the bound slot + 1.
+/// `PubMonitorCell::route`: the bound slot + 1.
 pub const ROUTE_SLOT_MASK: u32 = 0xffff;
 
 impl PubMonitorCell {
@@ -125,17 +125,17 @@ impl PubMonitorCell {
 pub struct SubMonitorCell {
     /// Max observed take-age (ms) in the current check window.
     pub max_age_ms: AtomicU32,
-    /// phase-462 W2 -- observations recorded since the last check, drained
+    /// Observations recorded since the last check, drained
     /// (swap 0) by `check_age`. The age itself cannot answer "did anything
     /// arrive": a window with no take and a window whose only take was
     /// perfectly fresh both leave `max_age_ms` at 0.
     pub takes: AtomicU32,
-    /// phase-462 W5b -- the executor slot + 1 whose readiness is this
+    /// The executor slot + 1 whose readiness is this
     /// endpoint's arrival evidence, set when the contract's `deadline` is
     /// judged here rather than by the backend ([`admit_contract_deadline`]).
     /// 0 = not armed: the backend judges the deadline, or none is declared.
     pub deadline_slot: AtomicU32,
-    /// phase-462 W5b -- spins on which the armed slot had data, drained by
+    /// Spins on which the armed slot had data, drained by
     /// `check_age`. Counted for ANY message type, stamped or not, because a
     /// deadline is a promise about arrival and says nothing about stamps.
     pub arrivals: AtomicU32,
@@ -155,7 +155,7 @@ impl SubMonitorCell {
     /// peeked `header.stamp` as µs since the UNIX epoch, `epoch_now_us`
     /// the receive-side wall clock. A stamp from the future clamps to 0.
     ///
-    /// phase-462 W2 -- also the silence rule's only evidence that this
+    /// Also the silence rule's only evidence that this
     /// endpoint is being fed. It counts what the AGE rule can see, which is
     /// stamped takes on a type that carries a stamp: a contracted endpoint
     /// whose messages carry no readable stamp records nothing here and is
@@ -168,7 +168,7 @@ impl SubMonitorCell {
         self.takes.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Issue 2215 -- a stamped take on an image with NO epoch source: the
+    /// A stamped take on an image with NO epoch source: the
     /// stamp was read (the type carries one and it is a real time), so the
     /// take is the silence rule's evidence exactly as [`Self::observe`]'s is,
     /// but its age cannot be computed against a clock that is not on the
@@ -229,27 +229,27 @@ pub struct MonitorSpec {
     /// endpoint (`contracts.node_paths[..].max_latency_ms`). 0 = no
     /// latency contract.
     pub max_latency_ms: u32,
-    /// phase10-B3 -- the topic of the INPUT that triggers a node path whose
+    /// The topic of the INPUT that triggers a node path whose
     /// output is this endpoint (`contracts.node_paths[..].input`, resolved to
     /// its wiring topic EXACTLY as the node passes it to
     /// `create_subscription`), or `""` for none. A subscription on this topic
     /// registered on the same executor is the route's trigger.
     pub route_trigger: &'static str,
-    /// phase10-B3 -- that path's budget (ms), from the take of the trigger to
+    /// That path's budget (ms), from the take of the trigger to
     /// this output (`route-latency-runtime`). 0 = no route contract.
     pub route_max_latency_ms: u32,
-    /// phase-503 -- the route's SUPERVISED deadline (ms) from the take of the
+    /// The route's SUPERVISED deadline (ms) from the take of the
     /// trigger: a take still unanswered at `take + route_deadline_ms` is
     /// reported (`route-deadline-runtime`) and the executor's reaction hook is
     /// called, without waiting for an output that may never come. 0 = the
     /// route is not supervised (only the completion verdict above judges it).
     /// Needs `route_trigger`; ignored without it.
     pub route_deadline_ms: u32,
-    /// phase-503 -- the reaction the hook is asked to start when the deadline
+    /// The reaction the hook is asked to start when the deadline
     /// passes: an id codegen assigns to the contract's `reaction` path
     /// (1-based; [`REACTION_NONE`] = none named). Opaque to the executor.
     pub reaction_id: u16,
-    /// phase-503 -- which mechanism the contract chose to supervise this
+    /// Which mechanism the contract chose to supervise this
     /// route: [`MECHANISM_EXECUTOR`] (this check, in the spin loop) or
     /// [`MECHANISM_TIMER`] (an independent timer the port arms from
     /// `Executor::route_next_due_us`). The executor checks the deadline either
@@ -259,16 +259,16 @@ pub struct MonitorSpec {
     pub cell: &'static PubMonitorCell,
 }
 
-/// phase-503 -- [`MonitorSpec::reaction_id`]: no reaction named.
+/// [`MonitorSpec::reaction_id`]: no reaction named.
 pub const REACTION_NONE: u16 = 0;
-/// phase-503 -- [`MonitorSpec::mechanism`]: checked in the executor's spin
+/// [`MonitorSpec::mechanism`]: checked in the executor's spin
 /// loop. Catches a slow route, not a callback that never returns.
 pub const MECHANISM_EXECUTOR: u8 = 0;
-/// phase-503 -- [`MonitorSpec::mechanism`]: an independent timer outside the
+/// [`MonitorSpec::mechanism`]: an independent timer outside the
 /// executor (the port's), which also catches a stuck callback.
 pub const MECHANISM_TIMER: u8 = 1;
 
-/// phase-503 -- what the reaction hook receives when a supervised route
+/// What the reaction hook receives when a supervised route
 /// passes its deadline. `repr(C)`: the C ABI hands the same struct through.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -287,14 +287,14 @@ pub struct ReactionEvent {
     pub declared_ms: u32,
     /// [`MonitorSpec::mechanism`] of the row.
     pub mechanism: u8,
-    /// play_launch phase 96 W4.2 -- the executor's monotonic µs when the
+    /// The executor's monotonic µs when the
     /// verdict fired (for `hazard-detected`, the detection tick: where the
     /// hazard's rung routes start, so a hook can time its own reaction from
     /// the same instant). 0 when the executor has no clock.
     pub fired_at_us: u64,
 }
 
-/// phase-503 -- the reaction hook: called on the spin thread, inside
+/// The reaction hook: called on the spin thread, inside
 /// `spin_once`, once per missed route deadline. It must not block; it starts
 /// the fallback (or hands it to another thread) and returns. `ctx` is what
 /// was registered with the hook.
@@ -312,7 +312,7 @@ pub struct AgeMonitorSpec {
     pub fqn: &'static str,
     /// Declared max take-age (ms). 0 = no age contract.
     pub max_age_ms: u32,
-    /// phase-462 W5b -- the contract's `deadline` for this endpoint, in the
+    /// The contract's `deadline` for this endpoint, in the
     /// wire's milliseconds. 0 = none declared. Judged HERE only when the
     /// subscription's backend cannot judge it (see
     /// [`admit_contract_deadline`]); otherwise the backend's own deadline
@@ -322,12 +322,12 @@ pub struct AgeMonitorSpec {
     pub cell: &'static SubMonitorCell,
 }
 
-/// phase-462 W5b -- what a subscription's creation does about its contract
+/// What a subscription's creation does about its contract
 /// `deadline`, decided from the backend's OWN answer
 /// (`Session::supported_qos_policies`) at the moment it is created.
 ///
 /// The served set is a run-time fact -- a C backend answers through the
-/// vtable (issue 1329) -- so it is asked here rather than restated in a build
+/// vtable -- so it is asked here rather than restated in a build
 /// table that could disagree with it. Three outcomes:
 ///
 /// * the backend honours `DEADLINE` and the profile carries the deadline: the
@@ -427,7 +427,7 @@ pub const RATE_CHECK_INTERVAL_US: u64 = 5_000_000;
 
 /// Max RATE/LATENCY-monitored endpoints per executor (inline table, no_std).
 ///
-/// phase-496 W1 (issue 1471) -- generated, not a literal: the
+/// Generated, not a literal: the
 /// `NROS_EXECUTOR_MAX_MONITORS` knob, whose derived rung is the image's own
 /// `monitor_rows` count (the sizing descriptor's `[image] monitor_rows`), 8 when nothing
 /// states or derives it. A table longer than this is REFUSED at install
@@ -440,9 +440,9 @@ pub const MAX_MONITORS: usize = crate::config::MAX_MONITORS;
 /// image with rate contracts and no age contracts pays for one table only.
 pub const MAX_AGE_MONITORS: usize = crate::config::MAX_AGE_MONITORS;
 
-/// A monitor table longer than the executor can watch -- phase-496 W1.
+/// A monitor table longer than the executor can watch.
 ///
-/// Its `Display` NAMES THE KNOB to raise (RFC-0065 D2, refuse and name the
+/// Its `Display` NAMES THE KNOB to raise (refuse and name the
 /// remedy), so every installer that refuses reports the same words.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MonitorTableFull {
@@ -465,7 +465,7 @@ impl core::fmt::Display for MonitorTableFull {
     }
 }
 
-/// phase-462 W4 -- a mode's variant table is not the base table's length,
+/// A mode's variant table is not the base table's length,
 /// refused by [`super::Executor::set_mode_tables`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModeTablesMismatch {
@@ -475,7 +475,7 @@ pub struct ModeTablesMismatch {
     pub monitors: (usize, usize),
     /// `(the mode's, the base's)` age row count.
     pub ages: (usize, usize),
-    /// phase-462 W4c -- a deadline row naming a SchedContext this executor
+    /// A deadline row naming a SchedContext this executor
     /// does not have.
     pub missing_sc: Option<u8>,
 }
@@ -532,7 +532,7 @@ pub fn check_capacity_against(
 /// Violation ring depth, per executor, and the slot count of the image-wide
 /// SWD record ([`ViolationRecord`]).
 ///
-/// phase-474 I1 -- `NROS_EXECUTOR_MAX_VIOLATIONS` (Zephyr:
+/// `NROS_EXECUTOR_MAX_VIOLATIONS` (Zephyr:
 /// `CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS`), default 8. The ring keeps the
 /// LATEST this-many verdicts, so the depth bounds how much recent history a
 /// reader sees and never whether a late violation is kept at all.
@@ -544,10 +544,10 @@ pub struct Violation {
     /// `"rate-hierarchy-runtime"` | `"max-age-runtime"` |
     /// `"max-latency-runtime"` | `"deadline-miss-runtime"` |
     /// `"stack-headroom-runtime"` | `"alive-supervision-runtime"` |
-    /// `"silence-runtime"` (phase-462 W2) | `"route-latency-runtime"`
-    /// (phase10-B3) | `"route-deadline-runtime"` (phase-503) |
-    /// `"hazard-route-runtime"` (play_launch phase 96 W4.2) |
-    /// `"hazard-level-runtime"` (phase-560 W8).
+    /// `"silence-runtime"` | `"route-latency-runtime"` |
+    /// `"route-deadline-runtime"` |
+    /// `"hazard-route-runtime"` |
+    /// `"hazard-level-runtime"`.
     pub rule: &'static str,
     /// Violating endpoint ref (from the spec's `fqn`; the SC name for
     /// deadline misses).
@@ -558,7 +558,7 @@ pub struct Violation {
     pub measured: u32,
     /// Declared bound, same unit as `measured`.
     pub declared: u32,
-    /// phase-560 W8 -- the NAME of the fallback level a
+    /// The NAME of the fallback level a
     /// `hazard-level-runtime` report is about, as the model spells it (the
     /// mode key / `degradation_levels[].level`); `""` for every other rule.
     ///
@@ -575,7 +575,7 @@ pub struct Violation {
     pub level: &'static str,
 }
 
-/// phase-474 I1 -- every rule id the executor reports, in WIRE ORDER: a rule's
+/// Every rule id the executor reports, in WIRE ORDER: a rule's
 /// numeric code is its index here plus one, and 0 means "not a rule this table
 /// knows".
 ///
@@ -644,18 +644,18 @@ pub const fn fqn_hash(fqn: &str) -> u32 {
     h
 }
 
-/// phase-474 I1 -- trace marker: a stored violation, `seq << 8 | rule code`.
+/// Trace marker: a stored violation, `seq << 8 | rule code`.
 /// The id block continues `callback_trace`'s 16-20; ids 1-7 are the
 /// application's and are never used here.
 pub const MARKER_VIOLATION: u32 = 21;
-/// phase-474 I1 -- trace marker: the endpoint ref's [`fqn_hash`].
+/// Trace marker: the endpoint ref's [`fqn_hash`].
 pub const MARKER_VIOLATION_FQN: u32 = 22;
-/// phase-474 I1 -- trace marker: `measured`.
+/// Trace marker: `measured`.
 pub const MARKER_VIOLATION_MEASURED: u32 = 23;
-/// phase-474 I1 -- trace marker: `declared`.
+/// Trace marker: `declared`.
 pub const MARKER_VIOLATION_DECLARED: u32 = 24;
 
-/// phase-474 I1 -- the four `(marker_id, arg)` events one stored violation
+/// The four `(marker_id, arg)` events one stored violation
 /// becomes in a trace (`callback_trace` emits them, in this order, when the
 /// `trace-callbacks` feature is on and a sink is installed). `seq` is the
 /// executor's sequence number; its low 24 bits ride in the first event.
@@ -723,7 +723,7 @@ impl Default for ViolationSlot {
     }
 }
 
-/// phase-474 I1 -- the image-wide violation record a debugger reads by NAME,
+/// The image-wide violation record a debugger reads by NAME,
 /// for a board whose console reaches nobody.
 ///
 /// The executor's ring is carved out of executor storage (no symbol, and a
@@ -745,8 +745,8 @@ impl Default for ViolationSlot {
 /// | 4 | `total` | violations stored since boot (the last `seq`) |
 /// | 5 | `head` | slot the NEXT violation takes (`total % capacity`) |
 /// | 6 | `dropped` | entries overwritten (`total - capacity`, saturating) |
-/// | 7 | `suppressed_before_arm` | verdicts before the monitors armed, all executors (phase-474 I2) |
-/// | 8 | `armed` | executors whose monitors armed (counted as each arms; at its first spin by default) (phase-474 I2) |
+/// | 7 | `suppressed_before_arm` | verdicts before the monitors armed, all executors |
+/// | 8 | `armed` | executors whose monitors armed (counted as each arms; at its first spin by default) |
 /// | 9 | `reserved` | 0 |
 /// | 10.. | `slots` | `capacity` x [`ViolationSlot`] |
 ///
@@ -850,7 +850,7 @@ impl<const N: usize> Default for ViolationRecord<N> {
     }
 }
 
-/// phase-474 I1 -- THE record, by name: `nm zephyr.elf | grep
+/// THE record, by name: `nm zephyr.elf | grep
 /// NROS_VIOLATION_RECORD`. See [`ViolationRecord`] for the layout.
 #[cfg(nros_boot_report)]
 #[unsafe(no_mangle)]
@@ -862,7 +862,7 @@ pub static NROS_VIOLATION_RECORD: ViolationRecord<MAX_VIOLATIONS> = ViolationRec
 /// with, so a request made before an executor existed does not arm it.
 static ARM_REQUESTS: AtomicU32 = AtomicU32::new(0);
 
-/// phase-474 I2 -- the application says its start-up is over: arm the
+/// The application says its start-up is over: arm the
 /// contract monitors of every executor in the image that waits for this
 /// (`NROS_MONITOR_ARM_ON_CALL`, or [`Executor::set_monitor_arming`]).
 ///
@@ -876,7 +876,7 @@ pub fn request_monitor_arming() {
     ARM_REQUESTS.fetch_add(1, Ordering::AcqRel);
 }
 
-/// phase-462 W4 -- one contract MODE's variant of an executor's two monitor
+/// One contract MODE's variant of an executor's two monitor
 /// tables: the base tables' rows in the base's order, sharing the base's
 /// cells, with the mode's numbers.
 ///
@@ -891,19 +891,19 @@ pub struct ModeTables {
     pub monitors: &'static [MonitorSpec],
     /// The age table in this mode.
     pub ages: &'static [AgeMonitorSpec],
-    /// phase-462 W4c -- the SchedContext deadlines this mode moves. Every
+    /// The SchedContext deadlines this mode moves. Every
     /// mode's table, the base's included, lists the SAME contexts, so entering
     /// any mode leaves every moved deadline at that mode's value.
     pub deadlines: &'static [ModeDeadline],
-    /// phase-462 W4c -- how long ENTERING this mode may take, ms: its reaction
+    /// How long ENTERING this mode may take, ms: its reaction
     /// path's `max_latency`. 0 = the contract states none.
     pub switch_budget_ms: u32,
-    /// phase-462 W4c -- that reaction path's key, the `mode-switch-runtime`
+    /// That reaction path's key, the `mode-switch-runtime`
     /// report's endpoint ref ("" when there is none).
     pub reaction: &'static str,
 }
 
-/// phase-462 W4c -- one SchedContext's deadline in one mode.
+/// One SchedContext's deadline in one mode.
 ///
 /// The deadline is the one sched task fact a switch can apply: the executor reads
 /// `SchedContext::deadline_us` each time it judges a dispatch. A priority is a
@@ -942,7 +942,7 @@ pub(crate) fn check_mode_switch(t: &ModeTables, waited_ms: Option<u32>) -> Optio
 /// event: an executor opened after the request enters it at its first spin.
 static MODE_REQUEST: AtomicU32 = AtomicU32::new(0);
 
-/// phase-462 W4 -- ask every executor to judge by mode `id`'s tables.
+/// Ask every executor to judge by mode `id`'s tables.
 ///
 /// `id` is the baked mode id (`0` = the base contract, `1..` the contract's
 /// modes in key order; the entry names each as a constant). Like
@@ -966,7 +966,7 @@ pub(crate) fn arm_requests() -> u32 {
     ARM_REQUESTS.load(Ordering::Acquire)
 }
 
-/// phase-474 I2 -- when an executor's contract monitors start judging.
+/// When an executor's contract monitors start judging.
 ///
 /// A verdict reached before arming is COUNTED
 /// ([`Executor::violations_suppressed_before_arm`], and the SWD record's
@@ -1005,7 +1005,7 @@ impl MonitorArming {
     }
 }
 
-/// Issue 1635 -- where an executor hands its violations when the image asked
+/// Where an executor hands its violations when the image asked
 /// it to (`Executor::set_violation_sink`).
 ///
 /// A function and an opaque context rather than a closure, because the
@@ -1014,7 +1014,7 @@ impl MonitorArming {
 /// `nros-diagnostics`). Called from inside the executor's spin (never from
 /// inside a user callback) -- so the sink may publish.
 ///
-/// phase-474 I7 -- called OFF the judged dispatch, not at detection: a stored
+/// Called OFF the judged dispatch, not at detection: a stored
 /// verdict is queued ([`REPORT_QUEUE`] deep) and the queue is handed over at
 /// the end of a spin whose next timer is further away than the last report
 /// cost (or once a verdict has waited [`REPORT_DEFER_MAX_US`]). The sink gets
@@ -1035,14 +1035,14 @@ impl MonitorArming {
 /// executor is dropped.
 pub type ViolationSink = unsafe fn(ctx: *mut core::ffi::c_void, pending: &[Violation]) -> usize;
 
-/// phase-474 I7 -- how many stored verdicts wait for the sink. A verdict
+/// How many stored verdicts wait for the sink. A verdict
 /// stored while the queue is full evicts the oldest pending one, which is
 /// counted (`ReportQueue::overflowed`); both stay in the ring and the SWD
 /// record. Four is the `DiagnosticArray` status capacity of the generated
 /// type, so one coalesced report never needs more.
 pub const REPORT_QUEUE: usize = 4;
 
-/// phase-474 I7 -- the longest a pending verdict waits for a slot with slack
+/// The longest a pending verdict waits for a slot with slack
 /// before it is reported anyway, in microseconds. Bounds the deferral on an
 /// executor whose timers never leave a gap as long as the report costs.
 pub const REPORT_DEFER_MAX_US: u64 = 1_000_000;
@@ -1499,7 +1499,7 @@ fn route_supervised(spec: &MonitorSpec) -> bool {
     spec.route_deadline_ms > 0 && spec.route_max_latency_ms > 0
 }
 
-/// phase-503 -- time from now to the earliest deadline of a pending supervised
+/// Time from now to the earliest deadline of a pending supervised
 /// route, in microseconds (0 when one is already due), or `None` when no
 /// supervised route is waiting. This is the executor's wake source for the
 /// rule, and what a port's independent timer (`MECHANISM_TIMER`) arms on.
@@ -1537,7 +1537,7 @@ fn route_next_due(table: &[MonitorSpec], now_us: impl Fn() -> u64) -> Option<u64
     best
 }
 
-/// phase-503 W7 -- an executor's supervised routes, read from OUTSIDE it: from
+/// An executor's supervised routes, read from OUTSIDE it: from
 /// a port's timer expiry, a reaction thread or an interrupt, while the spin
 /// thread is anywhere, including inside a dispatch.
 ///
@@ -1829,7 +1829,7 @@ pub const NO_SINK: u16 = u16::MAX;
 
 /// One hazard's observer state. Baked as a `static` beside the spec, the way
 /// [`PubMonitorCell`] is, so the observer adds a slice to the `Executor`
-/// value and nothing per hazard (issue 0961).
+/// value and nothing per hazard.
 #[derive(Debug, Default)]
 pub struct HazardCell {
     /// 0 clear, 1 detected, 2 detected and reacted.
@@ -1891,7 +1891,7 @@ pub const RUNG_ROLE_WINDOW: u8 = 1;
 /// The ladder's last rung.
 pub const RUNG_ROLE_FLOOR: u8 = 2;
 
-/// play_launch phase 96 W4.2 (phase 85 D4) -- one rung of a hazard's ladder
+/// One rung of a hazard's ladder
 /// (`contracts.hazards.<h>.rungs[]`, top first), lowered by the bake.
 #[derive(Debug, Clone, Copy)]
 pub struct RungSpec {
@@ -1909,7 +1909,7 @@ pub struct RungSpec {
     pub route_ms: u32,
     /// [`RUNG_ROLE_RUNG`], [`RUNG_ROLE_WINDOW`] or [`RUNG_ROLE_FLOOR`].
     pub role: u8,
-    /// phase-560 W8 -- the level's name as the model spells it (the mode key,
+    /// The level's name as the model spells it (the mode key,
     /// `degradation_levels[].level`): what `hazard-level-runtime` reports in
     /// [`Violation::level`] when the ladder is on this rung.
     pub level: &'static str,
@@ -1935,11 +1935,11 @@ pub struct HazardSpec {
     pub monitors: &'static [HazardMonitorSpec],
     /// Rate-table row of the `safe_state.emits` publisher, or [`NO_SINK`].
     pub sink: u16,
-    /// phase-462 W3c -- the id the reaction hook receives when this hazard is
+    /// The id the reaction hook receives when this hazard is
     /// DETECTED (the reacting path's, in the model's one reaction id space
     /// shared with supervised routes); 0 = no safe-state entry to start.
     pub reaction_id: u16,
-    /// play_launch phase 96 W4.2 (phase 85 D4) -- the hazard's ladder, top
+    /// The hazard's ladder, top
     /// rung first. Empty: no rung route is monitored.
     pub rungs: &'static [RungSpec],
     /// The observer's state.
@@ -2771,7 +2771,7 @@ mod hazard_tests {
                 check_hazard(&self.spec, self.rows, &mon, age, mode, now, |v| out.push(v));
                 out
             }
-            /// phase-560 W8 -- the `hazard-level-runtime` reports of one tick,
+            /// The `hazard-level-runtime` reports of one tick,
             /// as `(level, index, ladder length)`.
             pub fn levels(
                 &self,

@@ -1,4 +1,4 @@
-//! Phase 141.B.2 — wake-latency probe.
+//! Wake-latency probe.
 //!
 //! Two probe points on the executor's wake path:
 //!
@@ -20,7 +20,7 @@
 //! 141.B.1); other platforms can wire their own monotonic
 //! cycle / nanosecond reader. Probe is allocation-free —
 //! suitable for ISR call sites once `nros_rmw_runtime_wake_cb`'s
-//! ISR-safe variant is wired (Phase 124.B.7).
+//! ISR-safe variant is wired.
 //!
 //! Gated behind `feature = "wake-latency-probe"` so production
 //! builds carry zero overhead and the call sites become
@@ -143,7 +143,7 @@ pub fn on_dispatch() {
 
 /// Drain the ring into a caller-supplied buffer + return the
 /// number of samples and the monotonic write counter (so the
-/// caller can detect ring wraps). Phase 141.C host harness
+/// caller can detect ring wraps). The host harness
 /// drives this over UART.
 ///
 /// Returns `(written, total_writes_since_boot)`. `written =
@@ -175,7 +175,7 @@ pub fn reset() {
 
 /// Number of log-distributed buckets in the wake-latency histogram.
 ///
-/// Phase 141.C.1 spec: 1 µs → 100 ms covered. With base-2 buckets
+/// Spec: 1 µs → 100 ms covered. With base-2 buckets
 /// that's `log2(100_000_000 ns / 1_000 ns) = log2(100_000) ≈ 17`
 /// — we round up to 24 (covers 1 µs to ~16 ms in pow-2 steps,
 /// plus a "≥ 16 ms" overflow bucket at index 23). 24 × 4 bytes =

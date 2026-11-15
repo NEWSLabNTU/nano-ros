@@ -32,7 +32,7 @@ use super::{
     },
 };
 
-/// phase-392 W5.b2 — how many zenoh queryables ONE action server costs.
+/// How many zenoh queryables ONE action server costs.
 ///
 /// An action is three services on the wire (`send_goal`, `cancel_goal`,
 /// `get_result`; the feedback and status channels are topics, not queryables),
@@ -40,7 +40,7 @@ use super::{
 /// the backend's queryable table. A consumer sizing that table from a model
 /// must multiply, and this is the multiplier.
 ///
-/// Defined here rather than in the consumer for the reason issue 0827 measured:
+/// Defined here rather than in the consumer for the reason measured before:
 /// a count restated where it cannot be derived drifts from the code that
 /// decides it. `check-infra-queryable-counts` ties this to the distinct
 /// `create_service` calls below, so adding a fourth action channel fails the
@@ -71,7 +71,7 @@ pub const ACTION_CLIENT_SUBSCRIPTIONS: usize = 1;
 /// Service CLIENTS an action CLIENT creates, per action: `send_goal`,
 /// `cancel_goal` and `get_result` (the `create_client` calls below).
 ///
-/// phase-412 -- the liveliness pool needs it. Every service client the session
+/// The liveliness pool needs it. Every service client the session
 /// opens declares one liveliness token (`create_client` in the zenoh shim), so
 /// an `action_client` spec is one declared entity and THREE tokens; a pool
 /// sized from the raw count is short for every image with an action client.
@@ -99,10 +99,10 @@ pub struct RawActionServerSpec<'a> {
     /// The ACTION's own hash; feeds `ActionInfo` only. The endpoints are keyed
     /// on [`hashes`](Self::hashes).
     pub type_hash: &'a str,
-    /// Issue 1913 — the hash each of the five endpoints is keyed on.
+    /// The hash each of the five endpoints is keyed on.
     pub hashes: ActionEndpointHashes<'a>,
     /// QoS for the action's three underlying service servers (send_goal
-    /// / cancel_goal / get_result; Phase 193.4b). The feedback + status
+    /// / cancel_goal / get_result). The feedback + status
     /// publishers keep their own profiles. Use
     /// [`QoSProfile::services_default`] for the rclc-compatible default.
     pub qos: QoSProfile,
@@ -128,12 +128,12 @@ pub struct RawActionClientSpec<'a> {
     /// The ACTION's own hash; feeds `ActionInfo` only. The endpoints are keyed
     /// on [`hashes`](Self::hashes).
     pub type_hash: &'a str,
-    /// Issue 1913 — the hash each endpoint a client uses is keyed on.
+    /// The hash each endpoint a client uses is keyed on.
     pub hashes: ActionEndpointHashes<'a>,
     pub goal_response_callback: Option<RawGoalResponseCallback>,
     pub feedback_callback: Option<RawFeedbackCallback>,
     pub result_callback: Option<RawResultCallback>,
-    /// Issue 2030 — `Some` makes the executor take this client's cancel
+    /// `Some` makes the executor take this client's cancel
     /// replies and deliver them here. `None` leaves them for the caller's own
     /// reader. See [`RawCancelResponseCallback`].
     pub cancel_response_callback: Option<RawCancelResponseCallback>,
@@ -528,12 +528,12 @@ impl<A: RosAction> ActionServerHandle<A> {
     /// the executor, or when the serialized result exceeds the server's
     /// `RESULT_BUF` and so cannot be retained for a later `get_result` (issue
     /// 0796 — this used to return `()` and swallow both).
-    /// Terminate `goal_id` as SUCCEEDED — phase-379 W5.
+    /// Terminate `goal_id` as SUCCEEDED.
     ///
     /// The three terminal verbs (`succeed` / `abort` / `canceled`) name the
     /// ACTION SPEC's terminal states, which is also what rclcpp_action's
     /// `ServerGoalHandle` spells them: `succeed(result)`, `abort(result)`,
-    /// `canceled(result)` — and, since phase-417 W4.b, what C
+    /// `canceled(result)` — and, since the rename, what C
     /// (`rclc_action_canceled`) and C++ (`ActionServer<A>::canceled`) spell
     /// them too. They take the goal ID rather than hanging off a
     /// handle because a goal here lives in a fixed-capacity arena and is named
@@ -573,13 +573,13 @@ impl<A: RosAction> ActionServerHandle<A> {
 
     /// Terminate `goal_id` as CANCELED. See [`Self::succeed`].
     ///
-    /// phase-417 W4.b — this was `cancel`, and the argument for that spelling
-    /// lived on the `cancel` alias phase-482 W6 retired. It loses to the
+    /// This was `cancel`, and the argument for that spelling
+    /// lived on the `cancel` alias that has since been retired. It loses to the
     /// drop-in claim: C spells it
     /// `rclc_action_canceled`, rclcpp_action spells it
     /// `ServerGoalHandle::canceled`, and Rust was the only one of the three
     /// disagreeing — over a naming preference with no platform reason behind
-    /// it (RFC-0089: a rename is cheap, a surface our own languages disagree
+    /// it (the adoption rule: a rename is cheap, a surface our own languages disagree
     /// about is not).
     pub fn canceled(
         &self,
@@ -647,7 +647,7 @@ impl<A: RosAction> ActionServerHandle<A> {
         }
     }
 
-    /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
+    /// Is `goal_id` a goal this server still knows about?
     ///
     /// rcl's `rcl_action_server_goal_exists`, and the Rust half of the ledger
     /// row `c:action_server_goal_exists`. TRUE while the goal is active AND
@@ -672,12 +672,12 @@ impl<A: RosAction> ActionServerHandle<A> {
     }
 
     /// Eagerly reclaim every completed result whose `get_result` reply has
-    /// already been sent — phase-417 W4.b, ledger row `c:action_expire_goals`.
+    /// already been sent — ledger row `c:action_expire_goals`.
     ///
     /// Returns the number of entries reclaimed. rcl's `rcl_action_expire_goals`
     /// is the same capability under a CLOCK: it reclaims goals whose
     /// `result_timeout` has elapsed and reports which. Ours has no clock — the
-    /// `no_std` core takes no time source (RFC-0036) — so the trigger is the
+    /// `no_std` core takes no time source — so the trigger is the
     /// caller, and reclamation is otherwise on demand inside `complete_goal`.
     /// Calling this is OPTIONAL; a server that never does still runs forever.
     pub fn expire_goals(&self, executor: &mut Executor) -> usize {
@@ -736,9 +736,9 @@ impl<'s> Executor<'s> {
     ///
     /// `spec.node_id` selects the target: `None` registers on the
     /// executor's own node, `Some(id)` routes the server's 5 underlying
-    /// handles through the named Node's session (Phase 104.C.3.3.a).
+    /// handles through the named Node's session.
     /// `spec.qos` applies to the action's three underlying service
-    /// servers (send_goal / cancel_goal / get_result; Phase 193.4b); the
+    /// servers (send_goal / cancel_goal / get_result); the
     /// feedback + status publishers keep their own profiles.
     #[doc(hidden)]
     pub fn register_action_server_raw_sized<
@@ -1352,7 +1352,7 @@ impl Clone for ActionServerRawHandle {
 impl Copy for ActionServerRawHandle {}
 
 /// Sentinel value indicating an `ActionServerRawHandle` is not bound to an
-/// arena entry yet. Used by Phase 87.5 to replace `Option<...>` with a
+/// arena entry yet. Used to replace `Option<...>` with a
 /// `#[repr(C)]`-compatible inline field.
 ///
 /// Function pointers are populated with `unreachable_*` stubs that panic
@@ -1640,7 +1640,7 @@ impl<'s> Executor<'s> {
     ///
     /// `spec.node_id` selects the target: `None` registers on the
     /// executor's own node, `Some(id)` routes the client's 4 underlying
-    /// handles through the named Node's session (Phase 104.C.3.3.a).
+    /// handles through the named Node's session.
     #[doc(hidden)]
     pub fn register_action_client_raw_sized<
         const GOAL_BUF: usize,

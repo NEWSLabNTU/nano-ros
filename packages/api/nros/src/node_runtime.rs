@@ -1,4 +1,4 @@
-//! Phase 212.M.5.a.2 — the executor-backed component runtime for nano-ros.
+//! The executor-backed component runtime for nano-ros.
 //!
 //! [`MetadataRecorder`] (the planner sink) records what a [`Component`] /
 //! [`ExecutableNode`] declares. This module is the
@@ -23,21 +23,21 @@
 //! ```
 //!
 //! Owned-spin / board consumer: the macro-emitted `<pkg>::register(runtime)`
-//! wrapper (Phase 258, Track 2) installs each Node onto the runtime's executor
+//! wrapper installs each Node onto the runtime's executor
 //! through the uniform `install_node_typed` seam — the same seam the C/C++
 //! typed entries use. The codegen `run_plan(runtime)` body + `nros::main!`
 //! owned-spin loop drive one `register(runtime)?` per launch-XML `<node>`,
-//! then `runtime.spin()`. (The retired Phase 212.M.5.a four-fn-ptr BSP-baker
+//! then `runtime.spin()`. (The retired four-fn-ptr BSP-baker
 //! ABI — ~~`register_dispatch_slot`~~ / ~~`nros_run_components`~~ — is gone.)
 //!
-//! ## Coverage today (Phase 212.M.5.a.2)
+//! ## Coverage today
 //!
 //! Publishers, subscriptions, and repeating timers wire end-to-end:
 //! the live executor delivers callbacks; the bound
 //! [`ExecutableNode::on_callback`] body runs with a
 //! [`CallbackCtx`] backed by the per-component publisher resolver.
 //! Service servers / clients and action servers / clients wire
-//! end-to-end too (Phase 212.M-F.23): `create_entity` registers them on
+//! end-to-end too: `create_entity` registers them on
 //! the executor with C-ABI trampolines that route inbound requests /
 //! goals into the component's `on_callback`, and the tick-time client /
 //! action surface ([`TickCtx`]) is backed by `RuntimeClientDispatch` /
@@ -209,7 +209,7 @@ impl<C: ExecutableNode> ComponentSlot for TypedSlot<C> {
 // only remaining `ComponentSlot` impl is `TypedSlot<C>` above (used by
 // `register_node` / `register_node_borrowed` / `install_node_typed`).
 
-/// phase-391 W5.3b — per-class slot storage the `nros::node!` macro emits.
+/// Per-class slot storage the `nros::node!` macro emits.
 ///
 /// One `static` of this type per macro expansion, so `C` is CONCRETE at the
 /// emission site and the storage is sized `size_of::<TypedSlot<C>>()` exactly —
@@ -961,7 +961,7 @@ impl ExecutorNodeRuntime {
     ///
     /// Size `backing` with [`crate::runtime_storage::RuntimeSizing::u64_len`]; a short one panics,
     /// naming both sizes (fail-loud on every profile — a short backing is
-    /// silent corruption, the `executor::storage::carve` / issue #131 lesson).
+    /// silent corruption, the `executor::storage::carve` lesson).
     ///
     /// # Safety
     /// `backing` must be uniquely owned by this runtime for its whole life:
@@ -997,7 +997,7 @@ impl ExecutorNodeRuntime {
         }
     }
 
-    /// phase-521 W6 (RFC-0113 D2) — the budget this runtime's entry loop
+    /// The budget this runtime's entry loop
     /// passes to [`spin_once`](Self::spin_once):
     /// [`Executor::entry_spin_budget`], or the 10 ms cadence while a component
     /// registered here has a working `tick` (it runs once per spin).
@@ -1014,7 +1014,7 @@ impl ExecutorNodeRuntime {
         &self.executor
     }
 
-    /// phase-509 P10 -- the executor's address, through a raw runtime
+    /// The executor's address, through a raw runtime
     /// pointer and without a reference: what a level runner takes the
     /// executor's lock through before it touches the runtime
     /// ([`crate::levels::LevelCore`]).
@@ -1026,11 +1026,11 @@ impl ExecutorNodeRuntime {
         unsafe { core::ptr::addr_of_mut!((*this).executor) }
     }
 
-    /// phase-509 P10 -- [`spin_once`](Self::spin_once) on a runtime other
+    /// [`spin_once`](Self::spin_once) on a runtime other
     /// level workers share: the executor's lock is taken first, the pass
     /// releases it around each user callback
     /// ([`Executor::spin_once_shared`]), and the components' ticks run under
-    /// it. Issue 2020 -- on a level image, only the boot level's components
+    /// it. On a level image, only the boot level's components
     /// (and any registered before a level was set): each other level's pass
     /// ticks its own ([`crate::levels::LevelCore::spin_level_once`]).
     ///
@@ -1061,7 +1061,7 @@ impl ExecutorNodeRuntime {
         &mut self.executor
     }
 
-    /// RFC-0052 / phase-296 W5.4 — lower a sched task's RTOS-agnostic scheduling
+    /// Lower a sched task's RTOS-agnostic scheduling
     /// policy onto this executor's DEFAULT scheduling context. One `Executor`
     /// per sched task means "the sched task's policy" == "this executor's default SC";
     /// per-group/per-handle bindings still take precedence.
@@ -1106,7 +1106,7 @@ impl ExecutorNodeRuntime {
         self.executor_mut().set_default_sched_context(sc);
     }
 
-    /// Issue 2018 (RFC-0108 As-built) -- lower a LEVEL's policy onto its own
+    /// Lower a LEVEL's policy onto its own
     /// scheduling context, the level-runner twin of
     /// [`apply_sched_task_sched_policy`](Self::apply_sched_task_sched_policy). Call it on
     /// the registering level (after the runner opened or adopted it), before
@@ -1281,7 +1281,7 @@ impl ExecutorNodeRuntime {
     }
 
     /// [`Self::spin_once`], returning the executor's own per-iteration counts
-    /// instead of discarding them — issue 0572.
+    /// instead of discarding them.
     ///
     /// `spin_once` throws away a `SpinOnceResult` that already carries exactly
     /// what a stalled sched task needs to be diagnosed: how many timers fired, how
@@ -1297,7 +1297,7 @@ impl ExecutorNodeRuntime {
         Ok(result)
     }
 
-    /// Phase 216.B.3 / C.3 follow-up — route a signaled callback to
+    /// Route a signaled callback to
     /// every registered component slot.
     ///
     /// The RTIC (`nros-board-rtic-stm32f4`) and Embassy
@@ -1335,13 +1335,13 @@ impl ExecutorNodeRuntime {
     ///
     /// # Both populations
     ///
-    /// Issue 1865 — a component reaches this runtime one of two ways, and the
-    /// two are disjoint (see the `observed_callback_counts` fold, issue #140):
+    /// A component reaches this runtime one of two ways, and the
+    /// two are disjoint (see the `observed_callback_counts` fold):
     /// [`register_node`](Self::register_node) pushes it to `components`, while
     /// the install seam every `nros::node!` `register(runtime)` goes through
     /// (`install_node_typed*` → `register_node_borrowed`) ENROLLS it in the
     /// executor and never pushes. This scanned `components` alone, so since
-    /// the RTIC entry moved onto `register(runtime)` (phase-289) every signaled
+    /// the RTIC entry moved onto `register(runtime)` every signaled
     /// callback the RTIC/Embassy dispatch task forwarded reached no component.
     pub fn dispatch_callback(&mut self, cb_id: &str, ctx: &mut CallbackCtx<'_>) {
         for cell in &self.components {
@@ -1362,7 +1362,7 @@ impl ExecutorNodeRuntime {
 
     /// Spin until the executor's halt flag is raised.
     ///
-    /// phase-359 W10 — this used to be `#[cfg(feature = "std")]` and described
+    /// This used to be `#[cfg(feature = "std")]` and described
     /// itself as hosted-only, but the body is `Duration` + `spin_once` +
     /// `is_halted`, none of which need an OS. The gate was describing a
     /// CONVENTION (a BSP usually wants its own loop so it can interleave
@@ -1386,7 +1386,7 @@ impl ExecutorNodeRuntime {
 
     /// Halt a running [`spin`](Self::spin). Idempotent.
     ///
-    /// phase-417 W4.c — forwards to `Executor::cancel()`, the rclcpp spelling.
+    /// Forwards to `Executor::cancel()`, the rclcpp spelling.
     /// `Executor::halt` is now a deprecated forwarder onto it, so naming the old
     /// spelling here would be this crate warning at itself.
     #[cfg(feature = "alloc")]
@@ -2923,17 +2923,17 @@ fn install_handle_refusal_code(refusal: crate::executor_handle::HandleRefusal) -
     }
 }
 
-/// Phase 257 (W0-B) — C-ABI typed component install. Recovers the shared `Executor`
+/// C-ABI typed component install. Recovers the shared `Executor`
 /// from the handle a typed entry passes — a bare `*mut Executor<'static>`. A C/C++
 /// entry's `rclcpp::global_handle()` is NOT one: it is an nros-cpp context, and
-/// the entry unwraps it with `nros_cpp_executor_inner` first (issue 1535). Registers
+/// the entry unwraps it with `nros_cpp_executor_inner` first. Registers
 /// `C` on it via `register_node_borrowed` (private helper). The component's `ComponentCell`
 /// is PLACED in caller/leaked storage (W5-endgame step 2b) and dropped in place by the
 /// executor on `Executor::drop`. Returns `0` on success, `-1` on a null handle or a
 /// registration error, `-4` on an nros-cpp context that was not unwrapped.
 ///
 /// This backs the `__nros_component_<pkg>_install(node, executor, self)` symbol
-/// `nros::node!()` emits — the uniform cross-language install seam (phase-257 D6).
+/// `nros::node!()` emits — the uniform cross-language install seam.
 ///
 /// # Safety
 /// `executor` must be the live `*mut Executor<'static>` handle a typed entry passes (its
@@ -2951,7 +2951,7 @@ where
 
 /// W4a — same as [`install_node_typed`] but seeds the node's [`NodeContext`] with the
 /// launch-baked `<param>` initial values, so a `register`/`init`-time `ctx.param(name)`
-/// observes the compile-time launch value (RFC-0004 §10). `params` must outlive the call.
+/// observes the compile-time launch value. `params` must outlive the call.
 ///
 /// # Safety
 /// `executor` must be the live `*mut Executor<'static>` handle a typed entry passes, valid for the call.
@@ -2967,9 +2967,9 @@ where
     unsafe { install_node_typed_with_node_identity::<C>(executor, params, None) }
 }
 
-/// Phase 268 W1 — same as [`install_node_typed_with_params`] but also injects the
+/// Same as [`install_node_typed_with_params`] but also injects the
 /// launch `<node name= namespace=>` identity so `ExecutorSink::create_node` uses it
-/// instead of the `NodeOptions` default (RFC-0046). `None` → backward-compatible
+/// instead of the `NodeOptions` default. `None` → backward-compatible
 /// (NodeOptions stands). `nros::node!()` calls this variant to carry the identity from
 /// `RuntimeCtx::node_identity` set by `nros::main!` per component. `params` and
 /// `node_identity` strings must outlive the call (both are `'static` in the macro emit).
@@ -2989,7 +2989,7 @@ where
     unsafe { install_node_typed_with_launch::<C>(executor, params, node_identity, &[], &[]) }
 }
 
-/// Phase 305 W3 (issue 0255) — same as [`install_node_typed_with_node_identity`]
+/// Same as [`install_node_typed_with_node_identity`]
 /// but also carries the launch `<remap from= to=/>` rules `nros::main!` baked for
 /// this component (`RuntimeCtx::remaps`). `ExecutorSink::create_entity` applies
 /// them (plus `~`/relative expansion) before any entity name reaches the wire.
@@ -3044,7 +3044,7 @@ where
     }
 }
 
-/// phase-391 W5.3b — [`install_node_typed_with_launch`] over the CALLER's
+/// [`install_node_typed_with_launch`] over the CALLER's
 /// per-class slot storage: the heap-free FFI install path. The `nros::node!`
 /// macro emits one `static ComponentSlotStorage<C>` per expansion and calls
 /// this twin; the C ABI trampoline above it keeps its `(ptr, ptr, ptr) -> i32`
@@ -3053,7 +3053,7 @@ where
 /// Returns `-3` when the class's instance cap is exhausted — raise
 /// `NROS_RUNTIME_MAX_CLASS_INSTANCES`. (Distinct from `-2`, the executor
 /// callback-table Full.) Returns `-4` for an nros-cpp context handle that the
-/// C/C++ caller did not unwrap with `nros_cpp_executor_inner` (issue 1535).
+/// C/C++ caller did not unwrap with `nros_cpp_executor_inner`.
 ///
 /// # Safety
 /// `executor` must be null, an nros-cpp context (refused), or the live
@@ -3191,7 +3191,7 @@ where
     }
 }
 
-/// phase-391 W5.3b — [`install_node_typed`] over caller storage; see
+/// [`install_node_typed`] over caller storage; see
 /// [`install_node_typed_with_launch_in`].
 ///
 /// # Safety
@@ -3398,7 +3398,7 @@ fn capability_transport_reason(t: &nros_rmw::TransportError) -> &'static str {
 // `nros-rmw-zenoh`). The compile-only smoke here verifies the public
 // types are reachable through the umbrella surface.
 
-/// phase-509 P5 (RFC-0108 D2) -- seed the contract rank of the node the
+/// Seed the contract rank of the node the
 /// NEXT `register` call creates, `(name, namespace)`, on the executor the
 /// runtime holds: 0 is the most urgent, as the derivation normalises it
 /// (`nros_orchestration_ir::levels::node_ranks`). `nros::main!` emits it before
