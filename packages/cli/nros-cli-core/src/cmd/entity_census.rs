@@ -2822,10 +2822,15 @@ fn summarise(recorded: &serde_json::Value) -> String {
             })
             .unwrap_or(0)
     };
+    // Issue 2589: a READ row (`"read": true`) is not a declared parameter.
     let parameters = recorded
         .get("parameters")
         .and_then(|p| p.as_array())
-        .map(|a| a.len())
+        .map(|a| {
+            a.iter()
+                .filter(|r| r.get("read").and_then(|v| v.as_bool()) != Some(true))
+                .count()
+        })
         .unwrap_or(0);
     format!(
         "{} node(s), {} sub / {} pub / {} service server / {} service client / {} timer \

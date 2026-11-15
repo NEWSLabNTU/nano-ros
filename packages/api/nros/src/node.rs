@@ -650,6 +650,16 @@ pub struct NodeContext<'a> {
     /// `register()` via [`param`](Self::param) and stashes the typed value on its
     /// `State` (RFC-0004 §10 — baked initials; runtime reconfig is W4b).
     params: LaunchParams<'a>,
+    // Issue 2589.
+    /// Launch parameters read before this context created its
+    /// node. `register()` usually reads them first, when the census has no
+    /// node to attribute them to, so they are held here and recorded against
+    /// the node once it exists.
+    #[cfg(feature = "metadata-mode")]
+    pending_reads: core::cell::RefCell<alloc::vec::Vec<alloc::string::String>>,
+    /// Whether this context has created its node yet.
+    #[cfg(feature = "metadata-mode")]
+    node_created: core::cell::Cell<bool>,
 }
 
 /// The launch `<param>` initials one component install carries, in either of
@@ -753,6 +763,10 @@ impl<'a> NodeContext<'a> {
             component_name,
             executor,
             params: LaunchParams::EMPTY,
+            #[cfg(feature = "metadata-mode")]
+            pending_reads: core::cell::RefCell::new(alloc::vec::Vec::new()),
+            #[cfg(feature = "metadata-mode")]
+            node_created: core::cell::Cell::new(false),
         }
     }
 
@@ -771,6 +785,14 @@ impl<'a> NodeContext<'a> {
     /// `None` if the launch declared no `<param name="…"/>` for this node
     /// instance. Read in `register()` and parse/stash on `State` (RFC-0004 §10).
     pub fn param(&self, name: &str) -> Option<&'a str> {
+        // Issue 2589: the census sees the read, so a contract row for it is
+        // not called a phantom.
+        #[cfg(feature = "metadata-mode")]
+        if self.node_created.get() {
+            crate::census_hooks::on_param_read(name);
+        } else {
+            self.pending_reads.borrow_mut().push(name.into());
+        }
         self.params.get(name)
     }
 
@@ -792,6 +814,12 @@ impl<'a> NodeContext<'a> {
         let frame = frame_mut(self.executor)?;
         let exec_id = frame.sink.create_node(self.executor, id, options)?;
         frame.push(exec_id, id.as_str())?;
+        #[cfg(feature = "metadata-mode")]
+        if !self.node_created.replace(true) {
+            for name in self.pending_reads.take() {
+                crate::census_hooks::on_param_read(&name);
+            }
+        }
         Ok(self.executor.node_mut(exec_id))
     }
 

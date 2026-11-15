@@ -1127,3 +1127,64 @@ fn a_component_and_a_program_share_one_node_type() {
         });
     assert_eq!(seen, "component");
 }
+
+/// Issue 2589 -- `ctx.param()` is recorded as a read, and a read made in
+/// `register()` BEFORE the node exists lands on the node the context creates
+/// next, not on whichever node the census had open.
+///
+/// The runtime here opens the node in the census the way `ExecutorSink`
+/// does (`census_hooks::on_node_create`), which is the only step the
+/// deferral depends on.
+#[test]
+fn a_launch_parameter_read_before_create_node_lands_on_that_node() {
+    struct CensusRuntime;
+    impl NodeRuntime for CensusRuntime {
+        fn create_node(&mut self, _id: NodeId<'_>, options: NodeOptions<'_>) -> NodeResult<()> {
+            nros::census_hooks::on_node_create(options.name, "/", 0);
+            Ok(())
+        }
+        fn create_entity(&mut self, _m: EntityMetadata) -> NodeResult<()> {
+            Ok(())
+        }
+        fn record_callback_effect(
+            &mut self,
+            _id: CallbackId<'_>,
+            _kind: nros::node_metadata::CallbackEffectKind,
+            _entity: EntityId<'_>,
+        ) -> NodeResult<()> {
+            Ok(())
+        }
+    }
+
+    // A node the census already has open, as an earlier component leaves it.
+    nros::census_hooks::on_node_create("earlier_node_2589", "/", 0);
+    let mut runtime = CensusRuntime;
+    let mut exec = metadata_executor();
+    nros::__macro::__record_with_context("reader", &mut runtime, &mut exec, |ctx| {
+        assert_eq!(
+            ctx.param("early_2589"),
+            None,
+            "no launch values in a census"
+        );
+        ctx.create_node(NodeOptions::new("reader_node_2589"))
+            .unwrap();
+        let _ = ctx.param("late_2589");
+    });
+
+    let json =
+        nros::metadata_mode::to_json(&nros::node_metadata::SourceMetadataExport::new("p", "c"))
+            .expect("serialize");
+    for name in ["early_2589", "late_2589"] {
+        let at = json
+            .find(&format!("\"name\":\"{name}\""))
+            .unwrap_or_else(|| panic!("`{name}` is recorded: {json}"));
+        let row_start = json[..at].rfind('{').unwrap();
+        let row_end = at + json[at..].find('}').unwrap();
+        let row = &json[row_start..row_end];
+        assert!(
+            row.contains("reader_node_2589"),
+            "`{name}` is on the reader's node: {row}"
+        );
+        assert!(row.contains("\"read\":true"), "`{name}` is a read: {row}");
+    }
+}

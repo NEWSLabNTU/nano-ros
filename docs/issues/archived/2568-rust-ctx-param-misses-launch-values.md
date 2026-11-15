@@ -99,5 +99,5 @@ including `nros::main!`. A contract that lists such a parameter under
 change that. Closing it needs a recorded read: a census hook in
 `NodeContext::param`, and a census rule that a read claims the contract row
 without a type to compare (the read carries a string, not a declared type).
-It is tracked as [issue 2589](../2589-census-ctx-param-read-unseen.md). Until then the waiver stays, or the component declares the parameter
+It is tracked as [issue 2589](2589-census-ctx-param-read-unseen.md). Until then the waiver stays, or the component declares the parameter
 (`declare_parameter_for_name_with_default`), which the census does see.

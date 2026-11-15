@@ -343,6 +343,13 @@ pub struct SourceParameter {
     pub parameter_type: Option<SourceParameterType>,
     pub default: ParameterValue,
     pub read_only: bool,
+    // Issue 2589.
+    /// The code READ this launch parameter by name
+    /// (`NodeContext::param`) rather than declaring it. A read has no type and
+    /// no default; the census lets it claim a contract row, and nothing sizes a
+    /// store from it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub read: bool,
     pub source: SourceLocation,
 }
 
@@ -380,6 +387,16 @@ mod tests {
         )
         .expect("v2 parameter row");
         assert_eq!(param.parameter_type, Some(SourceParameterType::Double));
+        assert!(!param.read);
+
+        // Issue 2589 -- a READ row, exactly as the recorder writes it.
+        let read: SourceParameter = serde_json::from_str(
+            r#"{"node":"n","declaration_slot":0,"name":"period_ms","type":"not_set",
+                "default":[],"read_only":false,"read":true,
+                "source":{"artifact":"","line":null,"column":null}}"#,
+        )
+        .expect("a parameter read row");
+        assert!(read.read);
 
         let client: SourceClient = serde_json::from_str(
             r#"{"id":"c","unresolved_name":{"value":"/add","kind":"absolute"},

@@ -501,6 +501,11 @@ pub struct EntityMetadata {
     pub parameter_type: Option<ParameterType>,
     pub parameter_default: Option<ParameterDefault>,
     pub parameter_read_only: bool,
+    // Issue 2589.
+    /// A parameter row the code READ (`NodeContext::param`, a
+    /// launch value looked up by name) rather than declared. It has no type
+    /// and no default, and is emitted as `"read": true`.
+    pub parameter_read: bool,
     /// Phase 250 (Wave 2b) — a subscription that opted into E2E message-integrity
     /// validation (`.safety()`): the runtime registers it via
     /// `create_generic_subscription_with_integrity` and surfaces
@@ -1295,6 +1300,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
             write_parameter_default(out, entity.parameter_default.as_ref())?;
             out.write_char(',')?;
             write!(out, "\"read_only\":{},", entity.parameter_read_only)?;
+            if entity.parameter_read {
+                write!(out, "\"read\":true,")?;
+            }
             write_source_location(out, &entity.source)?;
             write!(out, "}}")?;
         }
@@ -1469,6 +1477,7 @@ pub fn entity_metadata(spec: EntityMetadataSpec<'_>) -> Result<EntityMetadata, N
         parameter_type: None,
         parameter_default: None,
         parameter_read_only: false,
+        parameter_read: false,
         safety: false,
         // phase-457 W3 -- "nobody observed this". Set later, and only for a
         // subscription, by `metadata_mode::record_subscription_registration`.
