@@ -121,13 +121,27 @@ exit 0
                 pass
         return n
 
-    def wait_fanned_out(self, want=4, timeout=30):
-        deadline = time.monotonic() + timeout
+    # Startup is a CONDITION, never a window: the fan-out is up when `want` of
+    # its gate `sleep`s exist, and it can never come up once the launcher has
+    # exited. The cap only bounds a launcher that neither fans out nor exits;
+    # it is generous because the fast line runs this beside every other gate,
+    # and under a load of ~50 the old 30 s window failed all four probes and
+    # the control at once (2026-11-15, nros 175's host).
+    START_CAP_S = 180
+
+    def wait_fanned_out(self, proc, want=4):
+        """'' once the fan-out is up, else why it is not."""
+        deadline = time.monotonic() + self.START_CAP_S
         while time.monotonic() < deadline:
             if self.sleepers() >= want:
-                return True
+                return ""
+            rc = proc.poll()
+            if rc is not None:
+                return (f"the launcher exited (rc {rc}) before {want} gates started; "
+                        f"stderr: {self.stderr()[-300:]!r}")
             time.sleep(0.2)
-        return False
+        return (f"{self.sleepers()} of {want} gates started in {self.START_CAP_S} s, "
+                f"and the launcher is still running")
 
     def survivors(self, settle=12):
         """Pids still alive after `settle` s, and again 3 s later (respawns)."""
@@ -170,7 +184,8 @@ def owner_term(base):
     r = Run(base)
     try:
         p = spawn(r, ["bash", r.gates, r.list])
-        if not check(r.wait_fanned_out(), "owner-term: the fan-out never started"):
+        why = r.wait_fanned_out(p)
+        if not check(not why, f"owner-term: the fan-out never started: {why}"):
             return
         p.send_signal(signal.SIGTERM)
         rc = wait_rc(p)
@@ -191,7 +206,8 @@ def parent_term(base, disabled=False):
         # The `; :` keeps bash from exec'ing the script, so the parent is a
         # real shell standing above the owner — the recipe shell `just` kills.
         p = spawn(r, ["bash", "-c", f'bash "{r.gates}" "{r.list}"; :'], env)
-        if not check(r.wait_fanned_out(), "parent-term: the fan-out never started"):
+        why = r.wait_fanned_out(p)
+        if not check(not why, f"parent-term: the fan-out never started: {why}"):
             return None
         p.send_signal(signal.SIGTERM)
         wait_rc(p, 5)
@@ -212,7 +228,8 @@ def owner_kill(base):
     r = Run(base)
     try:
         p = spawn(r, ["bash", r.gates, r.list])
-        if not check(r.wait_fanned_out(), "owner-kill: the fan-out never started"):
+        why = r.wait_fanned_out(p)
+        if not check(not why, f"owner-kill: the fan-out never started: {why}"):
             return
         p.send_signal(signal.SIGKILL)
         wait_rc(p, 5)
@@ -234,7 +251,8 @@ def lane_term(base):
     r = Run(base)
     try:
         p = spawn(r, ["bash", LANE, "selftest", "fanout", "quick"])
-        if not check(r.wait_fanned_out(), "lane-term: the fan-out never started"):
+        why = r.wait_fanned_out(p)
+        if not check(not why, f"lane-term: the fan-out never started: {why}"):
             return
         p.send_signal(signal.SIGTERM)
         rc = wait_rc(p)
