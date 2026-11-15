@@ -21,7 +21,7 @@ use crate::{
 pub(crate) fn transport_error_to_ret(err: nros_rmw::TransportError) -> rcl_ret_t {
     use nros_rmw::TransportError as E;
     match err {
-        E::ConnectionFailed | E::Disconnected => RCLC_RET_NOT_FOUND,
+        E::ConnectionFailed | E::Disconnected | E::SessionLost => RCLC_RET_NOT_FOUND,
         E::Timeout => RCL_RET_TIMEOUT,
         E::WouldBlock | E::NoData => RCLC_RET_TRY_AGAIN,
         E::InvalidConfig | E::InvalidArgument | E::TopicNameInvalid | E::NodeNameNonExistent => {

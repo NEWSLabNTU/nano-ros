@@ -1,6 +1,6 @@
 # Phase 564 — XRCE on the device: a session that stays responsive and recoverable
 
-**Status (2026-11-15). IN PROGRESS: W1 and W2 done; W3 code done, its porting page pending; W4 open.**
+**Status (2026-11-15). IN PROGRESS: W1–W4 done; the book's re-open recipe is with the book owner, then this phase archives.**
 
 The device side of the XRCE backend (`packages/rmw/xrce/nros-rmw-xrce`, the
 Micro-XRCE-DDS client it drives, and what a board needs around it) has no
@@ -16,8 +16,8 @@ Each item is claimed with `just claim phase-564-wN` before it starts.
 | --- | --- | --- |
 | W1 | [2577](../issues/archived/2577-xrce-reply-token-leaked-on-full-stream.md) — a reply that fails on a full stream leaks its token | #1076 |
 | W2 | [2578](../issues/archived/2578-xrce-session-flush-unbounded-under-inbound-traffic.md) — a session flush never returns under steady inbound traffic | #1075 |
-| W3 | [2579](../issues/2579-serial-only-baremetal-port-quiet-gaps.md) — a serial-only bare-metal port meets three quiet gaps | #1049 |
-| W4 | [2576](../issues/2576-xrce-agent-restart-leaves-node-silently-dead.md) — after an Agent restart the node stays silently dead | #1084 |
+| W3 | [2579](../issues/archived/2579-serial-only-baremetal-port-quiet-gaps.md) — a serial-only bare-metal port meets three quiet gaps | #1049 |
+| W4 | [2576](../issues/archived/2576-xrce-agent-restart-leaves-node-silently-dead.md) — after an Agent restart the node stays silently dead | #1084 |
 
 ### W1 — A reply the session cannot buffer releases its token
 
@@ -84,9 +84,8 @@ acknowledges nothing):
 
 ### W3 — The serial-only bare-metal port's three gaps
 
-- **Status:** BLOCKED (the porting page, with the book owner). The code for
-  all three gaps is done (2026-11-15); issue 2579 and GitHub #1049 close
-  when the page lands.
+- **Status:** DONE (2026-11-15). The code is 03eb529eff; the porting page,
+  the book's "A bare-metal app that owns its main loop", is c90242ce57.
 
 1. A custom-transport-only build still compiles `transport_nros_udp.c`, so a
    board with no IP stack must stub nine `nros_platform_udp_*` symbols.
@@ -124,12 +123,12 @@ Measured:
 The porting page: the library-path sequence, `NROS_INTERFACE_SEARCH_PATH`
 (colcon-style `src/` roots, read before `AMENT_PREFIX_PATH`) and the `no_ip`
 build, with a snippet checked against `thumbv7m-none-eabi`, went to the book
-owner as a brief.
+owner as a brief, and landed as `book/src/guide/platforms/bare-metal-own-main-loop.md`.
 
 ### W4 — A lost session is visible and can be re-opened
 
-- **Status:** OPEN. Needs a design ruling before code: the shape of the
-  liveness signal.
+- **Status:** DONE (2026-11-15). The re-open recipe for the book went to the
+  book owner as a brief.
 
 After an Agent restart the node keeps spinning, publishes fail, no callback
 fires and nothing logs; a new Agent never sees a `CREATE_SESSION`.
@@ -137,3 +136,52 @@ fires and nothing logs; a new Agent never sees a `CREATE_SESSION`.
 Acceptance: measured on main first (kill the Agent mid-run, start a new one,
 watch the inbound counter); then a session-loss signal a board or node can act
 on, and a re-open path, proven by the same rig recovering without a reboot.
+
+Measured on main with a host rig (UDP through a submessage-logging proxy;
+Agent A killed at 6 s, Agent B started at 9 s): `spin_once` stayed OK, Agent B
+saw no CREATE_CLIENT, and Agent B answered every session ping "available, no
+session", which the client decodes and `uxr_ping_agent_session` reports as a
+timeout. Detail in the issue.
+
+Rulings (user, 2026-11-15), recorded in full in the issue:
+
+1. The signal, all three parts: a third ping answer, SESSION_LOST; a probe of
+   a quiet link from `drive_io` itself, latching only on the Agent's own "no
+   session"; and WOULD_BLOCK, not MESSAGE_TOO_LARGE, for a full window.
+2. Re-open by the application (drop the executor, open again), including
+   `open()` giving its default backing back on drop. Transparent in-backend
+   recovery is deferred.
+3. `XRCE_SESSION_PROBE_MS` defaults to 1000 ms; 0 turns the probe off.
+
+Done:
+
+- `NROS_RMW_RET_SESSION_LOST` / `TransportError::SessionLost`, mapped through
+  `nros-rmw-cffi`, `nros-c` (NOT_FOUND, beside the connection failures) and
+  `nros-cpp` (TRANSPORT_ERROR; report class 33).
+- The backend: a receive tap stamps `last_rx_ms`; `xrce_liveness_tick` after
+  every run in `drive_io` latches the loss and probes a silent link; `drive_io`,
+  `publish` and `ping_session` then answer SESSION_LOST, and the destroy skips
+  the DELETE_CLIENT. `xrce_output_refusal` names a refused write.
+- `Executor::session_lost()`, kept apart from the I/O failure tally.
+- `OwnedBacking`, the executor's last field: an `alloc` open's default backing
+  goes back on drop.
+
+| tree | Agent B sees CREATE_CLIENT | WRITE_DATA to B |
+| --- | --- | --- |
+| main | never | 0 |
+| fixed, backend rig | 1.1 s after B started | 113 in 10 s |
+| fixed, `Executor::open` rig | about 1 s after B started | 159 in 11 s |
+
+Tests: `tests/session_lost.c` (no Agent) and
+`executor::backing::tests::the_static_comes_back_after_a_failed_open_or_a_drop`.
+
+Two shapes the user accepted (2026-11-15) in place of the proposal's wording:
+
+- `XRCE_SESSION_PROBE_MS` is a compile-time `#define` in `internal.h`
+  (override with `-D`), like the backend's other XRCE timeouts, not an env or
+  Kconfig knob. Follow-up, if an image needs to tune it: a knob-registry row
+  and the two lanes' rungs.
+- `spin_once` returns a `SpinOnceResult`, not a `Result`, and already folded
+  drive errors into a failure tally, so the signal is the latched
+  `Executor::session_lost()` (with `session_io_healthy()` going false), not an
+  `Err` from `spin_once`.

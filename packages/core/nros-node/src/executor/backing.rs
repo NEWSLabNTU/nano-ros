@@ -253,6 +253,63 @@ pub(crate) unsafe fn give_back(_backing: *mut [MaybeUninit<u64>]) -> bool {
     false
 }
 
+/// Issue 2576 — the default backing an `alloc` open (`Executor::open` and its
+/// siblings) took, handed back when the executor is DROPPED.
+///
+/// A board that loses its XRCE session drops the executor and opens a new one.
+/// Without this, the dropped executor kept the static reservation latched (and
+/// a heap backing leaked), so the re-open fell to a fresh ~87 KB heap block:
+/// the panic issue 2579 removed from a failed open, back on the re-open path.
+///
+/// It is the executor's LAST field, so it drops after every other field, and
+/// `Executor`'s own `Drop` has already torn down every arena entry by then:
+/// nothing references the slice when it is given back. Entity handles do not
+/// borrow the arena (they own backend handles), and `SessionHandle` is valid
+/// only while its executor lives, so none outlives the executor into memory
+/// the next open reuses.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+pub(crate) struct OwnedBacking(Option<core::ptr::NonNull<[MaybeUninit<u64>]>>);
+
+// SAFETY: the pointer is a unique owner of its block (the static's latch, or a
+// leaked `Box`), moved with the executor and touched only by `drop`.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+unsafe impl Send for OwnedBacking {}
+// SAFETY: `&OwnedBacking` exposes nothing.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+unsafe impl Sync for OwnedBacking {}
+
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+impl OwnedBacking {
+    /// A backing the caller supplied (`open_in` and friends): theirs to reuse.
+    pub(crate) const NONE: Self = Self(None);
+
+    /// # Safety
+    /// `backing` must come from `default_backing`, and be the one the executor
+    /// this is stored in was opened over.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) unsafe fn owned(backing: *mut [MaybeUninit<u64>]) -> Self {
+        Self(core::ptr::NonNull::new(backing))
+    }
+}
+
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+impl Drop for OwnedBacking {
+    fn drop(&mut self) {
+        if let Some(backing) = self.0.take() {
+            let backing = backing.as_ptr();
+            // SAFETY: see the type's doc — nothing references the slice any
+            // more. A static handout re-arms the latch; otherwise it is the
+            // `Box::new_uninit_slice` `default_backing` leaked, and this is
+            // that exact fat pointer.
+            unsafe {
+                if !give_back(backing) {
+                    drop(alloc::boxed::Box::from_raw(backing));
+                }
+            }
+        }
+    }
+}
+
 /// The reservation is switched off, so there is nothing to hand out.
 ///
 /// A stub rather than a `cfg` at the call site: `default_backing` reads the same
@@ -711,7 +768,7 @@ mod tests {
     #[test]
     #[ignore = "needs a virgin process: TAKEN is a process-global latch that \
                 Executor::open consumes — run via `just check node-std-tests`"]
-    fn a_failed_open_gives_the_static_back() {
+    fn the_static_comes_back_after_a_failed_open_or_a_drop() {
         let config = crate::executor::ExecutorConfig::new("serial:///dev/null");
         for attempt in 0..3 {
             assert!(
@@ -728,6 +785,28 @@ mod tests {
         assert!(
             held.is_some(),
             "after the failed opens the reservation is still there to take"
+        );
+        // Issue 2576 — the drop path: an executor `open` built over the static
+        // owns it through `OwnedBacking`, and dropping that hands it back, so
+        // a re-open after a lost session gets the static again rather than a
+        // fresh heap block.
+        let owned = unsafe { OwnedBacking::owned(held.unwrap() as *mut _) };
+        assert!(is_taken());
+        drop(owned);
+        assert!(
+            !is_taken(),
+            "dropping the executor's owned backing must re-arm the static, or a \
+             re-open after a lost session allocates a default executor from the heap"
+        );
+        // A heap backing is freed, and leaves the latch alone.
+        let heap: *mut [MaybeUninit<u64>] =
+            alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(4));
+        drop(unsafe { OwnedBacking::owned(heap) });
+        assert!(!is_taken());
+        let held = take(EXECUTOR_BACKING_DEFAULT_U64S);
+        assert!(
+            held.is_some(),
+            "the re-armed reservation can be taken again"
         );
         // The heap arm: with the static held, a failed open's backing is a
         // `Box::new_uninit_slice`, which the give-back must FREE rather than

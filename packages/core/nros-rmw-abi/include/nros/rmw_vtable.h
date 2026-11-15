@@ -827,6 +827,10 @@ typedef struct nros_rmw_vtable_t {
      *  Returns:
      *    * `NROS_RMW_RET_OK` — peer responded within budget.
      *    * `NROS_RMW_RET_TIMEOUT` — no reply before `timeout_ms`.
+     *    * `NROS_RMW_RET_SESSION_LOST` — the peer replied and holds no such
+     *      session (an XRCE Agent that restarted). Latched: the
+     *      session stays lost, and the caller destroys it and creates a new
+     *      one.
      *    * `NROS_RMW_RET_UNSUPPORTED` — backend can't probe (DDS
      *      with no participant introspection).
      *    * any other named constant — backend error. (This read
@@ -837,7 +841,9 @@ typedef struct nros_rmw_vtable_t {
      *  - **Zenoh**: one keep-alive frame (`zpico_send_keep_alive`);
      *    zenoh-pico has no round-trip ping, so OK means only that the
      *    local link accepted the frame.
-     *  - **XRCE**: `uxr_ping_agent_session`.
+     *  - **XRCE**: `uxr_ping_agent_session`. Its "no session" answer is
+     *    SESSION_LOST, which `drive_io` also returns once a probe of a quiet
+     *    link (every `XRCE_SESSION_PROBE_MS`) has heard it.
      *  - **DDS**: built-in participant ping if available, else
      *    `NROS_RMW_RET_UNSUPPORTED`.
      *

@@ -185,6 +185,15 @@ typedef int32_t rmw_ret_t;
  *  to / from `TransportError::InvalidConfig`. */
 #define NROS_RMW_RET_INVALID_CONFIG          (NROS_RMW_RET_EXTENSION_BASE + 12)
 
+/** The peer is reachable and has FORGOTTEN this session: an XRCE
+ *  Agent that restarted answers a ping with "available, no session". Distinct
+ *  from `NROS_RMW_RET_TIMEOUT` (no answer at all, the peer may be down or the
+ *  link quiet) and from `NROS_RMW_RET_CONNECTION_FAILED` (a session never got
+ *  established). It does not clear itself: every later call on the session
+ *  returns it, and the remedy is to destroy the session and create a new one.
+ *  Maps to / from `TransportError::SessionLost`. */
+#define NROS_RMW_RET_SESSION_LOST (NROS_RMW_RET_EXTENSION_BASE + 13)
+
 /** Upstream `RMW_RET_INCORRECT_RMW_IMPLEMENTATION`. Defined for value parity
  *  even though a nano-ros image cannot raise it: upstream's rmw returns it when
  *  a handle's `implementation_identifier` does not match the loaded

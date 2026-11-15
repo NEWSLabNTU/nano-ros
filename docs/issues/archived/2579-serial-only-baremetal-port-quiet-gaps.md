@@ -1,15 +1,17 @@
 ---
 id: 2579
 title: "A serial-only bare-metal XRCE port meets three gaps that fail quietly: UDP symbols it never uses, a one-shot executor backing, and a NOLOAD heap"
-status: open
+status: resolved
 type: limitation
 area: [rmw, xrce, boards, book]
 severity: medium
 found: 2026-09-16
 related: [phase-564, rfc-0012, rfc-0002, 2576, 2577, 2578]
+resolved: 2026-11-15
+resolved_in: "phase-564 W3"
 ---
 
-**Home: [phase-564](../roadmap/phase-564-xrce-device-session-robustness.md) W3.**
+**Home: [phase-564](../../roadmap/phase-564-xrce-device-session-robustness.md) W3.**
 
 GitHub: NEWSLabNTU/nano-ros#1049 (reported by wicanr2)
 
@@ -89,3 +91,11 @@ Gaps 1 and 2 are fixed and gap 3 is documented; phase-564 W3 has the
 measurements. Still open: the porting page (the library path and
 `NROS_INTERFACE_SEARCH_PATH`), which is with the book owner. This issue
 closes when it lands.
+
+## Resolution (2026-11-15)
+
+All three gaps are fixed or documented on main: the code in 03eb529eff (the
+`ip`/`no_ip` UDP split, the failed-open give-back, the NOLOAD note), and the
+porting page in c90242ce57, the book's "A bare-metal app that owns its main
+loop" how-to under Platforms. It names the library path, the `NROS_LINK_IP=0`
+build, `NROS_INTERFACE_SEARCH_PATH` and the NOLOAD heap zeroing.

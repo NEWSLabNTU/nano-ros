@@ -220,6 +220,10 @@ fn default_backing(sizing: super::storage::ExecutorSizing) -> &'static mut [Mayb
 /// arena entry, and clears `wake_ctx`, the one pointer it hands the backend,
 /// last. `NodeError` holds no borrow. So once `open` returns `Err`, no
 /// reference into the slice exists, which is what `give_back` requires.
+///
+/// Issue 2576 — on success the executor takes the backing into its
+/// `owned_backing`, so dropping it gives the backing back the same way, and a
+/// board that re-opens after a lost session reuses it.
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 fn with_default_backing(
     sizing: super::storage::ExecutorSizing,
@@ -229,7 +233,13 @@ fn with_default_backing(
     // SAFETY: `backing` came from `default_backing` as a unique `&'static mut`;
     // this is that same borrow, passed on. It is not touched again unless the
     // open fails (below).
-    let result = open(unsafe { &mut *backing });
+    let mut result = open(unsafe { &mut *backing });
+    if let Ok(exec) = result.as_mut() {
+        // Issue 2576 — the executor owns it now, and hands it back on drop.
+        // SAFETY: `backing` came from `default_backing`, and `exec` is the
+        // executor opened over it.
+        exec.owned_backing = unsafe { super::backing::OwnedBacking::owned(backing) };
+    }
     if result.is_err() {
         // SAFETY: the open failed, so (see above) no reference into `backing`
         // survives it. A static handout re-arms the latch; anything else is
@@ -2338,6 +2348,12 @@ pub struct Executor<'s> {
     /// node. A counter cannot regress behaviour and still makes the condition
     /// observable via [`Executor::session_io_failures`].
     pub(crate) consecutive_io_failures: u32,
+    /// Issue 2576 — the primary session's backend said the peer no longer
+    /// holds it (`TransportError::SessionLost`: an XRCE Agent that restarted).
+    /// Unlike a failure the counter above tallies, this is a verdict, and it
+    /// does not clear: the session will never do I/O again. See
+    /// [`Executor::session_lost`].
+    pub(crate) session_lost: bool,
     /// RFC-0052 W3b.2 — wall-clock (epoch µs) source for age monitors.
     pub(crate) epoch_us_fn: Option<fn() -> u64>,
     /// phase-483 W3 — the component registration frame the `nros` facade
@@ -2497,6 +2513,12 @@ pub struct Executor<'s> {
     /// [`Self::pre_shutdown_hooks`] for why this is an array.
     pub(crate) on_shutdown_hooks:
         [Option<super::types::ShutdownHook>; crate::config::MAX_SHUTDOWN_CBS],
+    /// Issue 2576 — the default backing an `alloc` open took, given back when
+    /// the executor drops so a re-open reuses it. MUST stay the LAST field:
+    /// fields drop in declaration order, and it may only drop once nothing
+    /// else can reach the arena. See [`super::backing::OwnedBacking`].
+    #[cfg(all(any(has_rmw, test), feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) owned_backing: super::backing::OwnedBacking,
 }
 
 impl<'s> Executor<'s> {
@@ -2660,6 +2682,7 @@ impl<'s> Executor<'s> {
             last_spin_end_us: default_clock_us_fn().map(|clock| clock()),
             clock_us_fn: default_clock_us_fn(),
             consecutive_io_failures: 0,
+            session_lost: false,
             // RFC-0052 W3b.5 — a build with a wall clock gets one by default so
             // age monitors activate without extra wiring; a build with neither a
             // platform port nor a host gets `None`, and its board installs
@@ -2711,6 +2734,8 @@ impl<'s> Executor<'s> {
             // teardown, and nothing else.
             pre_shutdown_hooks: [None; crate::config::MAX_SHUTDOWN_CBS],
             on_shutdown_hooks: [None; crate::config::MAX_SHUTDOWN_CBS],
+            #[cfg(all(any(has_rmw, test), feature = "alloc", feature = "rmw-cffi"))]
+            owned_backing: super::backing::OwnedBacking::NONE,
         }
     }
 
@@ -4831,8 +4856,8 @@ impl<'s> Executor<'s> {
     /// backend's receive into are gone with that backend: a session that
     /// states no readiness form is refused at open (D5), so nothing waits
     /// inside a transport's `recv` for a trigger that cannot end it.
-    fn drive_primary(&mut self, timeout_ms: i32) -> Result<(), ()> {
-        self.session.drive_io(timeout_ms).map_err(|_| ())
+    fn drive_primary(&mut self, timeout_ms: i32) -> Result<(), TransportError> {
+        self.session.drive_io(timeout_ms)
     }
 
     pub(crate) fn round_park_up_us(&self, requested_us: u64) -> u64 {
@@ -6994,13 +7019,17 @@ impl<'s> Executor<'s> {
     ///
     /// Returns `Ok(())` on reply within `timeout_ms`,
     /// `Err(NodeError::Transport(Timeout))` on no reply,
+    /// `Err(NodeError::Transport(SessionLost))` when the peer replied and no
+    /// longer holds this session (an XRCE Agent that restarted),
     /// `Err(NodeError::Transport(Unsupported))` when the active
     /// backend can't probe.
     ///
-    /// Mirrors micro-ROS's `rmw_uros_ping_agent`. Useful for
-    /// reconnect-on-link-loss patterns: bare-metal code can call
-    /// `ping(100)` periodically and tear down / re-open the session
-    /// on timeout.
+    /// Mirrors micro-ROS's `rmw_uros_ping_agent`. A timeout is not a verdict:
+    /// the peer may be down and come back to the same session. `SessionLost`
+    /// is, and stays: drop the executor and open a new one. On XRCE,
+    /// [`spin_once`](Self::spin_once) reports the same error by itself once a
+    /// quiet link's probe has heard it, so a loop that spins
+    /// needs no ping of its own.
     pub fn ping(&mut self, timeout_ms: i32) -> Result<(), NodeError> {
         use nros_rmw::Session;
         self.session
@@ -11948,6 +11977,27 @@ impl<'s> Executor<'s> {
         self.consecutive_io_failures == 0
     }
 
+    /// Whether the primary session is LOST: the peer is reachable and no
+    /// longer holds it, so it will never do I/O again.
+    ///
+    /// On XRCE this is an Agent that restarted: it answers the session's
+    /// liveness probe with "no session". The backend sends that probe by
+    /// itself after `XRCE_SESSION_PROBE_MS` of silence (1000 ms by default),
+    /// so a loop that only calls [`spin_once`](Self::spin_once) sees this turn
+    /// `true` about a second after the new Agent is up, even on a link with no
+    /// traffic. An Agent that is merely DOWN leaves it `false`: if the same
+    /// Agent comes back, the session carries on.
+    ///
+    /// It does not clear. The remedy is to drop this executor and open a new
+    /// one, then create the nodes and entities again. Over caller-supplied
+    /// backing, [`open_in`](Self::open_in) with the same backing works once
+    /// the old executor is dropped; the `alloc` [`open`](Self::open) family
+    /// gives its default backing back on drop, so re-opening through it costs
+    /// no new allocation either.
+    pub fn session_lost(&self) -> bool {
+        self.session_lost
+    }
+
     /// Drive I/O once, then dispatch EVERY callback that is ready — the tick
     /// primitive the rest of the family is built from.
     ///
@@ -13540,7 +13590,14 @@ impl<'s> Executor<'s> {
         // rather than an early return.
         match s.drive_primary(primary_drive_timeout_ms) {
             Ok(()) => s.consecutive_io_failures = 0,
-            Err(_) => s.consecutive_io_failures = s.consecutive_io_failures.saturating_add(1),
+            Err(e) => {
+                // Issue 2576 — the one failure that is a verdict, kept apart
+                // from the tally so a caller can tell it from a transient.
+                if e == TransportError::SessionLost {
+                    s.session_lost = true;
+                }
+                s.consecutive_io_failures = s.consecutive_io_failures.saturating_add(1)
+            }
         }
         for extra in s.extra_sessions.iter_mut() {
             // Best-effort BY DESIGN: extra sessions are bridge / multi-domain

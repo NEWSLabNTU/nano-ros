@@ -141,6 +141,7 @@ pub fn ret_from_error(err: &TransportError) -> NrosRmwRet {
         TransportError::LoanNotSupported => NROS_RMW_RET_LOAN_NOT_SUPPORTED,
         TransportError::NoData => NROS_RMW_RET_NO_DATA,
         TransportError::IncompatibleAbi => NROS_RMW_RET_INCOMPATIBLE_ABI,
+        TransportError::SessionLost => NROS_RMW_RET_SESSION_LOST,
         // Phase 155.B.3 — distinguish wire-level connection failure
         // from generic backend error so the FreeRTOS / RV64 C+C++
         // `init -> -X` logs identify the actual class. zenoh-pico's
@@ -204,6 +205,7 @@ pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
         // `transport_error_to_ret` in nros-c surfaces it as
         // `RCLC_RET_NOT_FOUND` (-4) to the user.
         NROS_RMW_RET_CONNECTION_FAILED => TransportError::ConnectionFailed,
+        NROS_RMW_RET_SESSION_LOST => TransportError::SessionLost,
         _ => TransportError::Backend("unknown rmw_ret_t"),
     }
 }
