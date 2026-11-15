@@ -267,8 +267,40 @@ pub(crate) unsafe fn give_back(_backing: *mut [MaybeUninit<u64>]) -> bool {
 /// borrow the arena (they own backend handles), and `SessionHandle` is valid
 /// only while its executor lives, so none outlives the executor into memory
 /// the next open reuses.
+///
+/// It carries its RELEASE as a function pointer rather than naming
+/// [`give_back`] in `Drop`. Every image that can drop an `Executor` links
+/// `Drop`, including a C or C++ image that only ever opens over its own storage
+/// (`open_in`); a `Drop` that named `give_back` named `EXECUTOR_BACKING`, so
+/// those images linked the ~360 KB static beside their own executor storage and
+/// overflowed RAM (mps2-an385 FreeRTOS by 89,672 B). The pointer is taken only
+/// in [`OwnedBacking::owned`], which only `default_backing` reaches, so an
+/// `open_in`-only image keeps the static out of its link, as it did before.
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-pub(crate) struct OwnedBacking(Option<core::ptr::NonNull<[MaybeUninit<u64>]>>);
+pub(crate) struct OwnedBacking(Option<(core::ptr::NonNull<[MaybeUninit<u64>]>, ReleaseBacking)>);
+
+/// How an [`OwnedBacking`] gives its block back.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+type ReleaseBacking = unsafe fn(*mut [MaybeUninit<u64>]);
+
+/// The release `default_backing` arms, and the one a failed default open
+/// runs (`spin.rs`'s `with_default_backing`): re-arm the static's latch, or free the
+/// heap block.
+///
+/// # Safety
+/// As [`OwnedBacking`]'s doc: `backing` is the block `default_backing` handed
+/// out, and nothing references it any more.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+pub(crate) unsafe fn release_default_backing(backing: *mut [MaybeUninit<u64>]) {
+    // SAFETY: the caller's contract. A static handout re-arms the latch;
+    // otherwise it is the `Box::new_uninit_slice` `default_backing` leaked,
+    // and this is that exact fat pointer.
+    unsafe {
+        if !give_back(backing) {
+            drop(alloc::boxed::Box::from_raw(backing));
+        }
+    }
+}
 
 // SAFETY: the pointer is a unique owner of its block (the static's latch, or a
 // leaked `Box`), moved with the executor and touched only by `drop`.
@@ -288,24 +320,20 @@ impl OwnedBacking {
     /// this is stored in was opened over.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) unsafe fn owned(backing: *mut [MaybeUninit<u64>]) -> Self {
-        Self(core::ptr::NonNull::new(backing))
+        Self(
+            core::ptr::NonNull::new(backing)
+                .map(|b| (b, release_default_backing as ReleaseBacking)),
+        )
     }
 }
 
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 impl Drop for OwnedBacking {
     fn drop(&mut self) {
-        if let Some(backing) = self.0.take() {
-            let backing = backing.as_ptr();
+        if let Some((backing, release)) = self.0.take() {
             // SAFETY: see the type's doc — nothing references the slice any
-            // more. A static handout re-arms the latch; otherwise it is the
-            // `Box::new_uninit_slice` `default_backing` leaked, and this is
-            // that exact fat pointer.
-            unsafe {
-                if !give_back(backing) {
-                    drop(alloc::boxed::Box::from_raw(backing));
-                }
-            }
+            // more, and `release` is the one `owned` armed for it.
+            unsafe { release(backing.as_ptr()) }
         }
     }
 }
