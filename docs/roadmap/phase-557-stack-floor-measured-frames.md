@@ -877,8 +877,58 @@ that would catch one is the merge queue (`merge_group`) running this check's
 mps2 row alone: the cargo road, no Zephyr SDK, 15-77 s measured here. It
 would have caught the mps2 row's own drift (100,660 -> 97,064 B) the day it
 landed. It cannot see a nucleo template's walk; the full check (four rows,
-Zephyr SDK, ~5 min warm, more cold in a fresh container) stays nightly. Not
-built; recorded here.
+Zephyr SDK, ~5 min warm, more cold in a fresh container) stays nightly. Built
+in the follow-up below.
+
+**Follow-up (2026-11-15): the checkout path, and the merge queue.** Building
+the merge-queue step found the walk still moved with the checkout's PATH: one
+commit walked the mps2 talker 99,340 B in one worktree and 96,368 B in another.
+A Rust v0 symbol's back-reference (`B<base62>_`) is a byte offset into the
+symbol, so it shifts when a crate hash before its target changes length, and
+the order key still carried it after the hash strip (`...KB1H_` in one tree,
+`...KB1I_` in the other). The order key now reads each v0 name with every
+back-reference inlined and every crate disambiguator and the instantiating
+crate dropped (`_canon_v0`). A name it cannot parse falls back to the hash
+strip. It reads all 2,615 v0 symbols of both images. Names that are still equal
+after that (copies of one generic, numbered `.276` and `.278` by LLVM in one
+checkout and the other way round in the next) are ordered by their frame and
+their callees' canonical names, never by the raw name.
+
+At one commit in two worktrees, three rows then walk identically. The
+fourth does not, and the walker is not the cause: the nucleo action server's
+`install_in_with_launch_params<FibonacciServer>` compiles to a 7,728 B frame in
+one checkout and 7,736 B in the other. So the drift rule was amended (ruled
+2026-11-15): a rise FAILS only above max(`static`, `walk_floor`), which is
+what the stack is sized from. A rise within `walk_floor` is a note naming both
+numbers. A row whose walk differed between checkouts records the larger walk as
+`walk_floor`, with reason "codegen differs by checkout path". The fall rule
+(more than 2 % fails) is unchanged, and no floor drops.
+
+Re-measured on the inlined order key:
+
+| row | recorded | walk | `walk_floor` | floor |
+| --- | --- | --- | --- | --- |
+| nucleo C talker | 99,196 | 99,464 | 106,884 (`c_after`) | 117,576 |
+| nucleo Rust action server | 68,776 | 69,264 | 69,272 (checkout path) | 76,200 |
+| nucleo Rust talker | 65,856 | 66,568 | 67,320 (`drift_talker_rust`) | 74,056 |
+| mps2 bare-metal talker | 99,340 | 103,252 | | 113,584 |
+
+The mps2 floor fits the board's default 256 KiB stack.
+
+The merge queue (`merge_group`, gate.yml `check-template-copy-out`, shard 2)
+now runs `just zephyr stack-floor-drift --only
+qemu_bsp_talker_bringup@mps2-an385-baremetal` in its own `run:` block, with a
+10-minute timeout. That job already provisions the CLI, the resolver,
+zenoh-pico and the board's pinned arm-none-eabi-gcc, so the step resolves only
+what its job builds (`check-lane-contracts` and
+`check-default-gates-run-somewhere` both pass). The four-row check stays
+nightly. The job sets `CARGO_PROFILE_*_DEBUG=0` to save disk, and debuginfo
+moves the walk (103,252 B with it, 101,368 B without, measured here), so the
+step builds the row as a user does, with those unset. Measured on the hosted
+runner (`workflow_dispatch` run 43709402120, ubuntu-22.04, the CI image, Ubuntu
+clang 14.0.0): the step took 138 s and walked 103,252 B, the number the two
+local worktrees walked. The run before it, still at debuginfo 0, walked
+100,684 B and failed on the fall rule.
 
 ## Issues homed here (2026-11-15)
 
