@@ -2347,7 +2347,7 @@ def check_stacks(results: dict, stacks: dict[str, int], knob: str,
         m = _KNOB_SET.match(text)
         if r["floor"] <= stack:
             lines.append(f"nros-stack-floor: {role} stack {stack} B holds the floor "
-                         f"{r['floor']} B ({'measured' if r['measured'] else 'unmeasured'})")
+                         f"{r['floor']} B ({'measured' if r['measured'] else (r.get('unmeasured_reason') or 'unmeasured')})")
         elif r["measured"] and raise_ and m:
             raises.append({"role": role, "stack": stack, "floor": r["floor"], "knob": text,
                            "name": m[1], "value": int(m[2])})
@@ -2359,6 +2359,12 @@ def check_stacks(results: dict, stacks: dict[str, int], knob: str,
             lines.append(f"nros-stack-floor: ERROR: the {role} stack is {stack} B, below the "
                          f"measured floor {r['floor']} B. Raise it: "
                          f"{knob_text(knob, r['floor'])}")
+        elif r.get("unmeasured_reason"):
+            lines.append(f"nros-stack-floor: WARNING: the {role} stack is {stack} B, below this "
+                         f"host's floor {r['floor']} B, which is not enforced. "
+                         f"{r['unmeasured_reason'][0].upper()}{r['unmeasured_reason'][1:]}. "
+                         f"If the image overflows, {knob_text(knob, r['floor'])} is the first "
+                         "thing to try")
         else:
             lines.append(f"nros-stack-floor: WARNING: the {role} stack is {stack} B, below the "
                          f"UNMEASURED floor {r['floor']} B. Not enforced (no [[allowance]] row); "
@@ -2590,6 +2596,12 @@ def run(args: argparse.Namespace) -> int:
     cuts = tuple(args.cut or [])
 
     mode, allowance = parse_indirect(args.indirect)
+    # Why the walk cannot be held to a measurement on this host, when it cannot:
+    # a C image's call sites are typed from clang's IR, and without it every C
+    # site keeps every function C can hold, a looser bound than the one its
+    # row was measured with (~45 KB above it on the nucleo C talker). Such a
+    # walk is reported and warns; it never refuses a build (as ruled).
+    unmeasured_reason: str | None = None
     if mode == "bind":
         # issue 2402 — every indirect site becomes call edges; nothing is charged.
         dis = bitcode_tool("llvm-dis", EXPANDED_BITCODE, args.llvm_bin)
@@ -2609,6 +2621,9 @@ def run(args: argparse.Namespace) -> int:
             if texts is None:
                 print(f"nros-stack-floor: bind: no C call-site types ({note}); every C site "
                       "keeps every function C can hold", file=sys.stderr)
+                unmeasured_reason = (
+                    "unmeasured: install clang to check this image's stack" if "clang" in note
+                    else f"unmeasured: this image's C call sites could not be typed ({note})")
             else:
                 c_mods = [(parse_ir_sites(t), ir_direct_calls(t)) for t in texts]
                 print(f"nros-stack-floor: bind: C call-site types from {note}", file=sys.stderr)
@@ -2739,7 +2754,8 @@ def run(args: argparse.Namespace) -> int:
                 "floor": floor_formula(best.depth, allowance, args.margin),
                 "depth": best.depth, "allowance": allowance,
                 "allowance_issue": measured_by.get("issue") if measured_by else None,
-                "measured": measured_by is not None,
+                "measured": measured_by is not None and unmeasured_reason is None,
+                "unmeasured_reason": unmeasured_reason if measured_by is not None else None,
                 "root": best_root,
                 "margin_pct": args.margin, "indirect_charged": best.indirect,
                 "indirect_mode": mode, "indirect_charge": charge,
@@ -3102,6 +3118,15 @@ def self_test() -> int:
                           "name": "S_KB", "value": 40}])
     rc, lines, raises = check_stacks(res, {"OPEN": 32768}, "K", raise_=True)
     check("raise: a knob with no NAME=<number> form still fails", rc == 1 and not raises)
+    # A clang-less host: the C sites are bound conservatively, so the walk is
+    # held to nothing and the build warns, never refuses (renode-nucleo probe:
+    # floor 154,528 B against a 109,056 B stack).
+    ncl = {"OPEN": {"floor": 154528, "measured": False,
+                    "unmeasured_reason": "unmeasured: install clang to check this image's stack"}}
+    rc, lines, raises = check_stacks(ncl, {"OPEN": 109056}, "CONFIG_MAIN_STACK_SIZE={bytes}",
+                                     raise_=True)
+    check("no clang: an image below this host's floor warns, rc 0, no raise",
+          rc == 0 and not raises and any("install clang" in x for x in lines))
     res = {"OPEN": {"floor": 40000, "measured": False}}
     rc, lines, raises = check_stacks(res, {"OPEN": 32768}, "S_KB={kb}", raise_=True)
     check("check: an unmeasured floor above the stack only warns, even opted in",

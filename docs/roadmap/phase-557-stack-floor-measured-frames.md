@@ -585,6 +585,11 @@ fixed set of orders until an exact search lands.
   - A TU clang cannot compile leaves every function its GCC object defines
     bound as before. That is zpico.c, because clang 14 refuses
     `__atomic_store_n` on `_Atomic(bool)*`.
+  - A host with no clang at all has no C IR, so every C site keeps every
+    function C can hold and the walk comes out about 45 KB high. Ruled
+    2026-11-15 (follow-up): such an image is UNMEASURED, never refused. The
+    build warns "unmeasured: install clang to check this image's stack" and
+    passes, and the book's apt lines and the starter image install clang.
 - **Two holes closed.**
   - A function the Rust IR only DECLARES (a C function Rust calls) kept no
     machine sites.
