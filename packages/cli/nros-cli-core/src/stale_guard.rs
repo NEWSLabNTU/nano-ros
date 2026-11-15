@@ -378,7 +378,7 @@ fn refuse_if_foreign_to_workspace(exe: &Path, workspace: &Path) -> Result<(), St
     let expected_real = expected_dir
         .canonicalize()
         .unwrap_or_else(|_| expected_dir.clone());
-    if exe_real.starts_with(&expected_real) {
+    if is_under_dir(&exe_real, &expected_real) {
         return Ok(());
     }
     // RFC-0090, phase-431 W1.
@@ -396,6 +396,40 @@ fn refuse_if_foreign_to_workspace(exe: &Path, workspace: &Path) -> Result<(), St
         exe_real.display(),
         ws_root.display(),
     ))
+}
+
+/// Whether `path` lies inside `dir`, decided by FILE IDENTITY and not by path
+/// text.
+///
+/// `canonicalize` resolves symlinks but not bind mounts: two mount points of
+/// one filesystem are both real paths. Inside a distrobox the same checkout is
+/// reachable as `/mnt/wd/...` and as `/run/host/mnt/wd/...`, so a textual
+/// `starts_with` called the checkout's own binary foreign. The text test stays
+/// as the fast path; the fallback walks `path`'s ancestors and asks whether
+/// any of them is the same `(st_dev, st_ino)` as `dir`.
+fn is_under_dir(path: &Path, dir: &Path) -> bool {
+    if path.starts_with(dir) {
+        return true;
+    }
+    let Some(want) = file_identity(dir) else {
+        return false;
+    };
+    path.ancestors()
+        .skip(1)
+        .any(|a| file_identity(a) == Some(want))
+}
+
+#[cfg(unix)]
+fn file_identity(p: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let m = std::fs::metadata(p).ok()?;
+    Some((m.dev(), m.ino()))
+}
+
+// No portable identity off unix: keep the text answer alone there.
+#[cfg(not(unix))]
+fn file_identity(_p: &Path) -> Option<(u64, u64)> {
+    None
 }
 
 /// `<root>` when `exe` is `<root>/packages/cli/target/**/nros`, else `None`.
@@ -839,6 +873,35 @@ mod foreign_binary_tests {
         fs::create_dir_all(root.join("packages/core/nros-core")).unwrap();
         fs::write(root.join("packages/core/nros-core/Cargo.toml"), "").unwrap();
         assert!(refuse_if_foreign_to_workspace(&stray(tmp.path()), &root).is_ok());
+    }
+
+    /// Ownership is decided by file identity (issue 2515). A path spelled
+    /// through a different but identical directory still counts as inside,
+    /// and a sibling checkout's target still does not. The alias here is a
+    /// symlinked parent left uncanonicalized, which takes the identity path
+    /// the way a bind mount does; a real bind mount needs privileges, so the
+    /// distrobox run covers that case.
+    #[cfg(unix)]
+    #[test]
+    fn ownership_is_by_file_identity_not_path_text() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("checkout");
+        fake_checkout(&root);
+        let target = root.join("packages/cli/target");
+        let alias = tmp.path().join("alias");
+        std::os::unix::fs::symlink(&root, &alias).unwrap();
+        // host-tool-path-ok: synthetic checkout under test — the layout is the fixture.
+        let via_alias = alias.join("packages/cli/target/release/nros");
+        fs::write(&via_alias, "").unwrap();
+        assert!(!via_alias.starts_with(&target), "the spellings must differ");
+        assert!(is_under_dir(&via_alias, &target));
+
+        let sibling = tmp.path().join("other");
+        fake_checkout(&sibling);
+        // host-tool-path-ok: synthetic checkout under test — the layout is the fixture.
+        let foreign = sibling.join("packages/cli/target/release/nros");
+        fs::write(&foreign, "").unwrap();
+        assert!(!is_under_dir(&foreign, &target));
     }
 
     /// A subdirectory of the checkout is still the checkout — the walk-up is

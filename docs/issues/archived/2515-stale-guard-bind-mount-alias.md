@@ -1,12 +1,13 @@
 ---
 id: 2515
 title: "The CLI's checkout-ownership guard compares path TEXT, so a bind-mount alias of the same checkout reads as a foreign binary"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [cli, testing, dev-env]
 related: [1280, 1248]
 found: 2026-11-14
+resolved: 2026-11-15
 ---
 
 **Found by** `just ci gate` in the ros2 distrobox on 2026-11-14. Its
@@ -88,3 +89,24 @@ spelling feeds issue 1280's re-rooting rule, which also works on path text.
   mount, so the alias case itself is covered by the box run below.
 - `just ci gate` in the ros2 distrobox: `test-lane-contracts` has no
   `orchestration_*` failures.
+
+## Fix
+
+`refuse_if_foreign_to_workspace` now asks `is_under_dir`, which keeps the
+text `starts_with` as a fast path and otherwise walks the exe's ancestors
+for one with the same `(st_dev, st_ino)` as `<checkout>/packages/cli/target`.
+Off unix there is no portable identity, so the text answer stands alone.
+
+Sweep: `checkout_root_of` matches directory NAMES, not a canonical prefix,
+so it has no alias problem. The one other `canonicalize` + `starts_with`
+in `packages/cli` is a test assertion in `release_underlay.rs` over a
+tempdir, which no bind mount reaches.
+
+Unit test `ownership_is_by_file_identity_not_path_text` spells the
+checkout through a symlinked parent that is left uncanonicalized, which
+takes the identity path the way a bind mount does, and checks that a
+sibling checkout is still refused. The bind-mount case itself is the
+distrobox `just ci gate` run.
+
+The open question (which recipe hands cargo the `/run/host` spelling) is
+not answered here; the guard no longer depends on it.
