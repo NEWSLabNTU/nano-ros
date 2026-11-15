@@ -357,7 +357,7 @@ exclude = [
     # (packages/reference/README.md), so nothing surfaced it until now.
     "packages/reference/stm32f4-porting/polling",
     "packages/reference/stm32f4-porting/rtic",
-    # phase-337 W6.a — `nros-board-rtic-mps2-an385` was folded into
+    # phase-337 W6.a — the separate RTIC board crate for the MPS2-AN385 was folded into
     # `nros-board-mps2-an385` behind its `rtic` feature (listed above).
     # phase-337 W7.a — the three STM32F4 board crates
     # (`nros-board-{stm32f4,rtic-stm32f4,embassy-stm32f4}`) and their examples

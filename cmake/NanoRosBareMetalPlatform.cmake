@@ -20,9 +20,9 @@
 # <board>.cmake`, which is what `cmake/platform/nano-ros-baremetal.cmake`
 # dispatches on and what its FATAL_ERROR tells a caller to set. That is NOT the
 # board-descriptor `names` vocabulary: `packages/boards/nros-board-mps2-an385/
-# nros-board.toml` lists `mps2-an385-baremetal`, `baremetal`, `bare-metal` and
-# `rtic-mps2-an385` (the first since issue 2063), but those are the image
-# vocabulary, not the overlay stem this dispatches on. One namespace per file;
+# nros-board.toml` lists `mps2-an385-baremetal`, `baremetal` and `bare-metal`
+# (the first since issue 2063; RTIC is an image's `framework`, not a name), but
+# those are the image vocabulary, not the overlay stem this dispatches on. One namespace per file;
 # this one is CMake's.
 #
 # ## Why an authored map, and what holds it honest

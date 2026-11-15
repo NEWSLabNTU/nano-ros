@@ -2,11 +2,10 @@
 
 [[board]]
 # phase-341 W3 — the deploy vocabulary had two SSoTs: 18 leaves deploy to
-# `qemu-mps2-an385` / `rtic-mps2-an385`, which `nros_orchestration_ir::
-# board_path_for` maps but no descriptor named, so `nros configure` could not
-# project their board block. Both are THIS board: the separate
-# `nros-board-rtic-mps2-an385` crate was folded into it (see its Cargo.toml),
-# so RTIC is a feature of this board, not another one.
+# two words which `nros_orchestration_ir::board_path_for` mapped but no
+# descriptor named, so `nros configure` could not project their board block.
+# Both are THIS board: the separate RTIC board crate was folded into it (see
+# its Cargo.toml), so RTIC is a feature of this board, not another one.
 #
 # issue 2063 — `qemu-mps2-an385` is no longer a name: it named the emulator
 # (RFC-0093 R3). The board's canonical name is its `cmake_module` and index
@@ -16,8 +15,8 @@
 #
 # phase-562 W3 (RFC-0111 D2) -- `rtic-mps2-an385` stays a name until phase-562
 # W5 retires it as a refusal: it still names this board and still means RTIC
-# (`nros_orchestration_ir::TRANSITIONAL_FRAMEWORK_KEYS`), so the images that
-# spell it keep building until W4 moves them to `framework = "rtic"`.
+# (`nros_orchestration_ir::TRANSITIONAL_FRAMEWORK_KEYS`). No in-tree image
+# spells it since phase-562 W4 (they say `framework = "rtic"`).
 names = ["mps2-an385-baremetal", "baremetal", "bare-metal", "rtic-mps2-an385"]
 # RFC-0111 D2 -- the entry frameworks this board boots, first = the default:
 # an image with no `framework` is direct-exec (`owned-spin`), and

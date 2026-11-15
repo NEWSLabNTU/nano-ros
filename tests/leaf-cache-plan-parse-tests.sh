@@ -25,7 +25,7 @@ check "bare cargo build" \
 config build/x/nros-cargo.toml"
 
 check "env prefix with a space in a value, and a key=value --config after the file" \
-    'nros build: pubsub_bringup:t -> board rtic-mps2-an385 (platform bare-metal), driver cargo
+    'nros build: pubsub_bringup:t -> board mps2-an385-baremetal (platform bare-metal), driver cargo
 CARGO_TARGET_THUMBV7M_NONE_EABI_RUSTFLAGS=-Csave-temps -Clink-arg=-Map=/w/image.map CFLAGS_thumbv7m_none_eabi=-fstack-usage -fcallgraph-info=su RUSTC_WRAPPER= cargo build --manifest-path build/bare-metal-zenoh/t_entry/Cargo.toml --config build/bare-metal-zenoh/t_entry/nros-cargo.toml --frozen --config build.build-dir="/w/build" --profile nros-relwithdebinfo' \
     "manifest build/bare-metal-zenoh/t_entry/Cargo.toml
 config build/bare-metal-zenoh/t_entry/nros-cargo.toml"

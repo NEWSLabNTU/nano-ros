@@ -181,7 +181,7 @@ pub struct LoweredEntry {
     // entry pack renders from them directly; the Rust producers read none of
     // them, and the parity corpus states none (hence `serde(default)`).
     /// The board's family, when the key names one (a Rust-only board key —
-    /// `esp32-qemu`, `rtic-mps2-an385` — has none, and only the Rust pack
+    /// `esp32-qemu` — has none, and only the Rust pack
     /// renders for it).
     #[serde(default)]
     pub family: Option<crate::BoardFamily>,

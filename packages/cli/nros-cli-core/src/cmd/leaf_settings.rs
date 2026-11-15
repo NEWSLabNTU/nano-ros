@@ -352,7 +352,7 @@ pub fn build_command(img: &LeafImage) -> (PathBuf, Vec<String>) {
 /// `image` keys the resolution to ONE `[image.<id>]` (the workspace road names
 /// the image it builds). Resolving by board alone answers for every image on
 /// the board, and two board words of one descriptor (`mps2-an385-baremetal`
-/// and `rtic-mps2-an385`) state different `NROS_BOARD` values, so a bringup
+/// and its alias `baremetal`) state different `NROS_BOARD` values, so a bringup
 /// holding both was refused (phase-535 W6). `None` keeps the board lookup, for
 /// the single-package road, whose leaf builds one image.
 pub(crate) fn board_fact_layer(
@@ -3112,14 +3112,14 @@ pub(crate) mod board_rung_tests {
             td.path().join("system.toml"),
             "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
              [image.plain]\nboard = \"mps2-an385-baremetal\"\n\n\
-             [image.rtic]\nboard = \"rtic-mps2-an385\"\n",
+             [image.rtic]\nboard = \"baremetal\"\nframework = \"rtic\"\n",
         )
         .unwrap();
         let (mut env, mut path_env) = (BTreeMap::new(), BTreeMap::new());
         let by_board = board_fact_layer(
             td.path(),
             &repo(),
-            "rtic-mps2-an385",
+            "baremetal",
             None,
             &mut env,
             &mut path_env,
@@ -3128,10 +3128,7 @@ pub(crate) mod board_rung_tests {
             by_board.is_err(),
             "both images match the board, and they disagree"
         );
-        for (image, want) in [
-            ("plain", "mps2-an385-baremetal"),
-            ("rtic", "rtic-mps2-an385"),
-        ] {
+        for (image, want) in [("plain", "mps2-an385-baremetal"), ("rtic", "baremetal")] {
             let (mut env, mut path_env) = (BTreeMap::new(), BTreeMap::new());
             board_fact_layer(
                 td.path(),

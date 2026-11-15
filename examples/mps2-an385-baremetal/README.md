@@ -66,8 +66,8 @@ talker) are images of `examples/workspaces/rust/src/pubsub_bringup`:
 `baremetal_{talker,listener}_serial` and `baremetal_talker_xrce_serial`
 (phase-535 W6).
 
-RTIC is the same board with another entry framework (board word
-`rtic-mps2-an385`). Its talker/listener, service and action pairs are the
+RTIC is the same board with another entry framework (`board =
+"mps2-an385-baremetal"` plus `framework = "rtic"`). Its talker/listener, service and action pairs are the
 `baremetal_<role>_rtic` images of the Rust workspace's pubsub, service and
 action bringups (phase-535 W6); `tests/emulator.rs` runs them.
 

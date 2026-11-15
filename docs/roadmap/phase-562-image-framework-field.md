@@ -1,6 +1,6 @@
 # Phase 562 — An image's entry framework is its own field
 
-**Status (2026-11-15). OPEN: W1, W2, W3 and W8 done. Owner: nros 142.** Opened by
+**Status (2026-11-15). OPEN: W1, W2, W3, W4 and W8 done. Owner: nros 142.** Opened by
 the user's ruling on phase-555's platform-board-rtos brief (P5 (a), 2026-11-14):
 "open a phase for [RFC-0111](../design/0111-image-framework-axis.md)'s seven
 steps, with [RFC-0112](../design/0112-framework-support-tiers.md) D5 as one of
@@ -153,7 +153,45 @@ symbol); the added image built the RTIC entry (board feature `rtic`, the
   `NanoRosBareMetalPlatform.cmake` comment.
 - **Acceptance:** `git grep -l rtic-mps2-an385 -- ':!docs/**/archived'`
   lists only the retired-name ledger and the refusal row of W5.
-- **Status:** OPEN
+- **Status:** DONE (2026-11-15, branch `feat/phase-562-w4-migrate`)
+
+Landed: the six `baremetal_<role>_rtic` images of the Rust workspace's
+pubsub, service and action bringups and the `rtic-run-plan-e2e` image say
+`board = "mps2-an385-baremetal"` + `framework = "rtic"`. Image ids, fixture
+rows, `target_dir`s and test locators are unchanged, so no artifact path
+moved (`matrix_fixture_coverage` green). The RTIC Internals chapter shows the
+new spelling (`nros new` has no framework flag, so the chapter adds the line
+by hand). Comments, docs and test inputs that used the word as an example of
+"the RTIC board" now say `framework = "rtic"` or "the RTIC row"; mentions of
+the folded crate `nros-board-rtic-mps2-an385` say "the separate RTIC board
+crate". `RTIC_DEVICE_CRATES` lost its word row (every name list of the board
+carries `mps2-an385-baremetal`). Tests that used the word only to reach RTIC
+now state the framework: the entry-surface test, the macro's `before_boot`
+and `param_services` refusals (through the descriptor, as the cargo road
+does), the per-image board-fact test (`baremetal` + `framework = "rtic"`).
+
+What still names the word is W5's to delete or keep, by file:
+`nros-board-mps2-an385/nros-board.toml` (`names` and its note) and
+`package.xml` (the announcement `check-provider-announcements` holds equal to
+`names`); `nros-orchestration-ir` (`TRANSITIONAL_FRAMEWORK_KEYS`, the
+`BOARD_PATHS` row, and the tests pinning both); `nros-entry-lower`'s
+`BOARD_KEYS` row (every descriptor name is an entry key of its family);
+`nros-macros` (the transitional pins in `in_tree_board_keys_resolve_to_an_emit_shape`,
+`an_image_naming_zephyr_…`, `the_descriptors_framework_list_…`, and the
+`BoardBoot::for_key` doc line); `nros-cli-core` (`image_framework`'s doc,
+the alias test in `board_descriptor.rs`, the substring-victim row in
+`sched_task_resolver.rs`, and `emit_rust.rs`'s pinned refused set, which
+iterates `BOARD_PATHS`). Under `docs/` and `changelog.d/`: RFC-0111, RFC-0093,
+the RFC index, RFC-0004's old deploy-schema example, the retired-names ledger,
+phase-535's history, this doc and three changelog fragments.
+
+Proof (2026-11-15): `nros build pubsub_bringup:baremetal_talker_rtic` in a
+copy of `examples/workspaces/rust` under `tmp/` built with board feature
+`rtic`, the `rtic` crate, and `__nros_app::__rtic_*` symbols in the ELF;
+`nros build qemu_rtic_main_e2e_bringup:mps2-an385-baremetal` in
+`rtic-run-plan-e2e` linked with `__rtic` symbols. (Its metadata probe's
+"unrecognized instruction mnemonic" is not new: the old word prints the same
+line.)
 
 ### W5 — Retire the word
 

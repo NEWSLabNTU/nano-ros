@@ -27,14 +27,15 @@ instead of closures, why no `AsyncNode` trait yet — see the user book's
 [The execution model](../../background/execution-model.html#deferred-dispatch),
 and [Dispatch ABI history](dispatch-abi-history.md).
 
-## The board key chooses RTIC
+## The image's `framework` chooses RTIC
 
 An RTIC program is a workspace like any other: a node package and the bringup
 that runs it. The scaffold writes both:
 
 ```bash
 nros setup mps2-an385-baremetal --rmw zenoh   # the same board; RTIC needs nothing extra
-nros new rtic_ws --board rtic-mps2-an385 --template talker
+nros new rtic_ws --board mps2-an385-baremetal --template talker
+# then add `framework = "rtic"` to the bringup's image (below)
 cd rtic_ws
 nros run rtic_node
 ```
@@ -43,7 +44,7 @@ nros run rtic_node
 rtic_ws/
 └── src/
     ├── rtic_node/            # the node: package.xml, Cargo.toml, src/lib.rs
-    └── rtic_node_bringup/    # package.xml, system.toml, system.contract.yaml: the board, so RTIC
+    └── rtic_node_bringup/    # package.xml, system.toml, system.contract.yaml: board + framework
 ```
 
 `nros run` builds the image, boots it in QEMU and starts the router, as in
@@ -63,25 +64,28 @@ class = "rtic_node::Talker"
 name = "rtic_node"
 
 [image.baremetal]
-board = "rtic-mps2-an385"
+board = "mps2-an385-baremetal"
+framework = "rtic"
 ```
 
-The framework is a property of the **board key**, never something you spell
-in a manifest, and there is no image key that picks it. One board crate serves
-the MPS2-AN385 under two keys:
+The entry framework is the image's own `framework` field, chosen from the
+list the board's descriptor states (`frameworks = ["owned-spin", "rtic"]` for
+the MPS2-AN385). With no `framework`, the image gets the board's first entry:
 
-| `[image.<id>] board =` | Entry the build generates |
+| `[image.<id>]` | Entry the build generates |
 |---|---|
-| `"mps2-an385-baremetal"` | the plain entry: an owned spin loop in `fn main` |
-| `"rtic-mps2-an385"` | the RTIC entry: a `#[rtic::app]` module |
+| `board = "mps2-an385-baremetal"` | the plain entry: an owned spin loop in `fn main` |
+| `board = "mps2-an385-baremetal"` + `framework = "rtic"` | the RTIC entry: a `#[rtic::app]` module |
 
-`zephyr` resolves to Zephyr, `esp32-qemu` and `esp32-c3-baremetal` to the
-ESP32 shape, and every other board — Linux, FreeRTOS, NuttX, ThreadX, non-RTIC
-bare-metal — to the default owned-spin `fn main`. An out-of-tree board crate
-declares its own framework in `[package.metadata.nros.board]`. So moving a
-program between RTIC and a plain spin loop is a board change, not a code
-change: change `board` and nothing else, not the node source and not a build
-command.
+A framework the board does not list is refused, naming the list.
+
+A Zephyr board's entry shape is the board's, not a framework an image picks,
+so `framework = "zephyr"` is refused; every other board — Linux, FreeRTOS,
+NuttX, ThreadX — lists only the default owned-spin `fn main`. An out-of-tree
+board crate declares its own framework in `[package.metadata.nros.board]`. So
+moving a program between RTIC and a plain spin loop is one image line, not a
+code change: add or drop `framework = "rtic"` and nothing else, not the node
+source and not a build command.
 
 ## Where the pieces live
 

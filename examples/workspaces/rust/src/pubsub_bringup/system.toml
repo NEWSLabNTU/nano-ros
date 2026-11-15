@@ -92,7 +92,7 @@ max_service_servers = 1
 max_service_clients = 1
 
 # phase-535 W6 — the same bare-metal board with the RTIC entry framework
-# (board word `rtic-mps2-an385`: `nros::main!` emits a `#[rtic::app]` whose
+# (`framework = "rtic"`: `nros::main!` emits a `#[rtic::app]` whose
 # run task registers the launch's node). They came from the
 # `examples/mps2-an385-baremetal/rust/{talker,listener}-rtic` leaves and the
 # `-rtic-mixed` pair (issue 2417: its `ffi-sync` reached no code). `locator`
@@ -100,13 +100,15 @@ max_service_clients = 1
 # the plain pair's above.
 
 [image.baremetal_talker_rtic]
-board = "rtic-mps2-an385"
+board = "mps2-an385-baremetal"
+framework = "rtic"
 launch = "talker.launch.xml"
 locator = "tcp/10.0.2.2:10540"
 os_config = ["board-net-15.toml"]
 
 [image.baremetal_listener_rtic]
-board = "rtic-mps2-an385"
+board = "mps2-an385-baremetal"
+framework = "rtic"
 launch = "listener.launch.xml"
 locator = "tcp/10.0.2.2:10540"
 os_config = ["board-net-16.toml"]
