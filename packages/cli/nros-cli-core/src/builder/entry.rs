@@ -393,9 +393,9 @@ pub fn schedule_board_features(
 /// The image id is a label that may happen to be a board token too. Taking it
 /// first resolved `[image.freertos] board = "mps2-an385-freertos"` to the
 /// generic `freertos` board (issue 0798), and on the leaf road, which kept
-/// that order, `[image.mps2-an385-baremetal] board = "rtic-mps2-an385"` took
-/// `board-entry` instead of `rtic` once `mps2-an385-baremetal` became a
-/// `BOARD_PATHS` key (phase-517 W2).
+/// that order, an `[image.mps2-an385-baremetal]` that named the old RTIC board
+/// word took `board-entry` instead of `rtic` once `mps2-an385-baremetal` became
+/// a `BOARD_PATHS` key (phase-517 W2).
 ///
 /// **Only the resolved board's OWN `names` count** (phase-548 W1). The image
 /// id and the platform are kept in that order when the descriptor answers to
@@ -467,13 +467,11 @@ pub fn entry_surface_features(framework: &str, declares: impl Fn(&str) -> bool) 
 /// `nros::main!`'s RTIC arm names it as the `#[rtic::app(device = …)]` path
 /// (`rtic_board_spec_for`).
 ///
-/// Keyed on the descriptor's canonical name as well as the transitional
-/// `rtic-mps2-an385` word, so an image that says `board =
-/// "mps2-an385-baremetal"` + `framework = "rtic"` (phase-562 W3/W4) finds it.
-const RTIC_DEVICE_CRATES: &[(&str, &str)] = &[
-    ("mps2-an385-baremetal", "packages/boards/mps2-an385-pac"),
-    ("rtic-mps2-an385", "packages/boards/mps2-an385-pac"),
-];
+/// Keyed on the descriptor's canonical name, which every name list of the
+/// board carries, so an image that says `board = "mps2-an385-baremetal"` +
+/// `framework = "rtic"` finds it whichever alias it wrote.
+const RTIC_DEVICE_CRATES: &[(&str, &str)] =
+    &[("mps2-an385-baremetal", "packages/boards/mps2-an385-pac")];
 
 /// The `rtic` crate line an RTIC entry carries — the pin every hand-written
 /// RTIC leaf named.
@@ -1244,30 +1242,30 @@ mod tests {
     }
 
     /// The framework an mps2-an385 bare-metal image resolves, as
-    /// `BoardDescriptor::image_framework` asks it: the descriptor lists no
-    /// `frameworks` (so `owned-spin`), and `board` is the word the image wrote.
+    /// `BoardDescriptor::image_framework` asks it: the descriptor lists
+    /// `frameworks = ["owned-spin", "rtic"]`, `board` is the word the image
+    /// wrote and `declared` its `framework`.
     fn mps2_framework(board: &str, declared: Option<&str>) -> Result<&'static str, String> {
         nros_orchestration_ir::image_framework(
             declared,
-            &nros_orchestration_ir::BoardBoot::for_key(board, &["owned-spin"], None),
+            &nros_orchestration_ir::BoardBoot::for_key(board, &["owned-spin", "rtic"], None),
         )
     }
 
-    /// phase-517 W2, then phase-562 W2 — the entry surface follows the
+    /// phase-517 W2, then phase-562 W2/W4 — the entry surface follows the
     /// image's RESOLVED framework, so an image id that is itself a board key
-    /// cannot pick it: only the board word the image wrote does (until W3, the
-    /// transitional `rtic-mps2-an385` word), whatever order the candidates
-    /// are searched in.
+    /// cannot pick it: only the image's own `framework` does, whatever order
+    /// the candidates are searched in.
     #[test]
     fn the_entry_surface_follows_the_resolved_framework_not_the_search_order() {
-        let fw = mps2_framework("rtic-mps2-an385", None).unwrap();
+        let fw = mps2_framework("mps2-an385-baremetal", Some("rtic")).unwrap();
         assert_eq!(fw, "rtic");
         assert_eq!(
             entry_surface_features(fw, |_| true),
             vec!["rtic".to_string()]
         );
-        // `[image.rtic-mps2-an385] board = "mps2-an385-baremetal"`: the id is
-        // the RTIC word and is not what was declared.
+        // `[image.rtic] board = "mps2-an385-baremetal"` with no `framework`:
+        // the id says RTIC and is not what was declared.
         let fw = mps2_framework("mps2-an385-baremetal", None).unwrap();
         assert_eq!(fw, "owned-spin");
         assert_eq!(
@@ -1286,7 +1284,7 @@ mod tests {
         let root = Path::new("/r");
         let entry = Path::new("/r/ws/build/c/x_entry");
         for names in [
-            &["rtic-mps2-an385", "mps2-an385-baremetal"][..],
+            &["mps2-an385-baremetal", "baremetal", "bare-metal"][..],
             &["mps2-an385-baremetal"][..],
         ] {
             let rtic = framework_entry_deps("rtic", names, root, entry).unwrap();
@@ -1298,7 +1296,7 @@ mod tests {
             );
         }
         assert!(
-            framework_entry_deps("owned-spin", &["rtic-mps2-an385"], root, entry)
+            framework_entry_deps("owned-spin", &["mps2-an385-baremetal"], root, entry)
                 .unwrap()
                 .is_empty()
         );

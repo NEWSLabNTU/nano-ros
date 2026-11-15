@@ -126,7 +126,7 @@ def catalog_boards(root):
 
     The board CATALOG — what `nros configure` and the proc-macro resolve a leaf's
     board against. The sixth namespace, added with the Rust leaves: their
-    spellings (`baremetal`, `rtic-mps2-an385`, `freertos`, `nuttx`) live
+    spellings (`baremetal`, `mps2-an385-baremetal`, `freertos`, `nuttx`) live
     here and nowhere else.
     """
     out = set()

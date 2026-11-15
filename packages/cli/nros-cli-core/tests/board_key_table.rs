@@ -55,7 +55,7 @@ fn every_table_key_maps_to_its_family_through_every_consumer() {
 /// descriptor's second NAME then), and is back since issue 1519: it is
 /// Zephyr's id for the board, `[board.zephyr] west_board`, which no image may
 /// author — `nros build` refuses it naming `zephyr` — so no consumer may
-/// accept it as a key either. `rtic-mps2-an385` and `mps2-an385` were here
+/// accept it as a key either. The RTIC board word and `mps2-an385` were here
 /// until phase-553 W4 gave bare metal a family; they are rows now.
 #[test]
 fn an_unknown_key_errors_at_every_consumer() {
@@ -706,8 +706,8 @@ fn a_zephyr_boards_west_b_comes_from_its_descriptor() {
 /// with a hint, not merely absent; `posix` is the platform.
 ///
 /// Scoped to the HOST board because the six-way SET equality is a host fact:
-/// `BOARD_PATHS` splits one descriptor by entry shape (`rtic-mps2-an385` vs
-/// bare `mps2-an385`), so a board-type equality cannot hold for every board.
+/// `BOARD_PATHS` splits one descriptor by entry shape (the RTIC row vs bare
+/// `mps2-an385`), so a board-type equality cannot hold for every board.
 /// The every-board half of the rule, compared by FAMILY, is
 /// [`every_descriptor_name_is_an_entry_key_of_its_family`] and
 /// [`every_entry_key_resolves_in_the_board_catalog`] (issue 1902).
@@ -893,8 +893,8 @@ fn every_descriptor_name_is_an_entry_key_of_its_family() {
 /// Three such keys were deleted rather than listed: `armfvp` (Zephyr's FVP
 /// RUNNER name, not a board: the board is `fvp-aemv8r-smp`),
 /// `freertos-qemu-mps2-an385` (the retired `-bsp` crate's spelling of
-/// `mps2-an385-freertos`) and `qemu-rtic-mps2-an385` (an alias of
-/// `rtic-mps2-an385`). No in-tree leaf, fixture or test selected any of them.
+/// `mps2-an385-freertos`) and the `qemu-` prefixed alias of the RTIC board
+/// word. No in-tree leaf, fixture or test selected any of them.
 /// `mps2-an385` stays: it is the directory alias of `nros-board-mps2-an385`,
 /// so it resolves, and `nros new --platform baremetal` scaffolds it.
 ///

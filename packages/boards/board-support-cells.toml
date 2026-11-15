@@ -844,8 +844,8 @@ with = '&[Config::Serial]'
 
 [[cell]]
 comment = '''
-// phase-535 W6 — the RTIC entry framework on the same board (board word
-// `rtic-mps2-an385`): the `baremetal_<role>_rtic` images of the Rust
+// phase-535 W6 — the RTIC entry framework on the same board (`framework =
+// "rtic"`): the `baremetal_<role>_rtic` images of the Rust
 // workspace's bringups. `tests/emulator.rs` runs all three workloads.
 '''
 at = ["QemuBaremetal", "Rust", "Zenoh", "Pubsub", "Example"]

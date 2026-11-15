@@ -167,7 +167,7 @@ impl Config {
     /// a fact the firmware cannot observe. What remains distinct here is the
     /// RTIC examples' own guest address (`.10`) and router port (`7450`).
     ///
-    /// phase-337 W6 folded `nros-board-rtic-mps2-an385` into this crate; this
+    /// A separate RTIC board crate was folded into this one; this
     /// preset is that crate's ~~`qemu_config()`~~, which was a second `Default`-
     /// shaped function in a sibling crate — the divergence was invisible until
     /// a node failed to reach the router at runtime. Naming it is the fix: the

@@ -722,8 +722,8 @@ pub enum Config {
     /// (zenoh) or `custom://uart` (XRCE) locator, from which the build derives
     /// `NROS_LINK_IP=0`. Same messages, different link (phase-535 W6).
     Serial,
-    /// The RTIC entry framework on a bare-metal board (board word
-    /// `rtic-mps2-an385`): `nros::main!` emits a `#[rtic::app]` that runs the
+    /// The RTIC entry framework on a bare-metal board (the image's
+    /// `framework = "rtic"`): `nros::main!` emits a `#[rtic::app]` that runs the
     /// launch's nodes on one RTIC task. Same nodes, different entry
     /// (phase-535 W6).
     Rtic,

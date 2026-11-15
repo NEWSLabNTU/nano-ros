@@ -4,7 +4,7 @@
 //! `packages/boards/`, at least nine carrying an identical
 //! `{mac, ip, netmask, gateway, locator, domain_id}` core, and the
 //! `DeployOverlay` → `Config` merge written out at least four separate times.
-//! Each copy drifted on its own: `nros-board-rtic-mps2-an385` and
+//! Each copy drifted on its own: the separate RTIC MPS2-AN385 board crate and
 //! `nros-board-mps2-an385` disagreed on the default IP (`10.0.2.10` vs
 //! `192.0.3.10`), which is invisible until a node fails to reach the router at
 //! runtime. (phase-337 W6.a folded those two crates into one and turned the

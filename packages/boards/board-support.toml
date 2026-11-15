@@ -296,7 +296,7 @@ breadth = "witness"
 maintainers = []
 # Maintainer evidence (moved out of `notes`, which renders on the user
 # book's board page — phase-532 W3, RFC-0123 D3):
-#   Was: phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic`
+#   Was: phase-337 W6.a folded the separate RTIC board crate in as the `rtic`
 #   feature — one crate, two entry shapes (direct-exec + RTIC), one witness row.
 #   The RTIC shape has no evidence row of its own (no probe track, no book
 #   run), so the user-facing note names only the direct-exec entry (RFC-0114

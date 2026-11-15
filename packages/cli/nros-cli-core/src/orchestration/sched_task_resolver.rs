@@ -429,7 +429,6 @@ mod tests {
                 ("nuttx", "nuttx"),
                 ("rv-virt-nuttx", "nuttx"),
                 ("nuttx-riscv", "nuttx"),
-                ("rtic-mps2-an385", ""),
                 ("mps2-an385-baremetal", ""),
             ] {
                 let s = sys(&format!("[image.fw]\nboard=\"{id}\"\n"));

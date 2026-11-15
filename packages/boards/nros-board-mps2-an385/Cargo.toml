@@ -96,7 +96,7 @@ nros = { path = "../../api/nros", default-features = false, features = ["alloc",
 nros-log = { path = "../../core/nros-log", default-features = false, features = ["log-compat"] }
 
 # phase-337 W6.a — SPSC queue behind the `rtic` feature's deferred-callback
-# dispatch surface (was a dep of the folded `nros-board-rtic-mps2-an385`).
+# dispatch surface (was a dep of the folded RTIC board crate).
 heapless = { version = "0.8", optional = true }
 
 # Embedded dependencies
@@ -138,8 +138,8 @@ board-entry = ["dep:nros"]
 # where CMake owns the final link): the platform crate exports none of its
 # libc stubs. RFC-0130, phase-553 W1.
 c-libc = ["nros-platform-mps2-an385/c-libc"]
-# phase-337 W6.a — the RTIC entry surface (`src/rtic.rs`), formerly the separate
-# `nros-board-rtic-mps2-an385` crate. Independent of `board-entry`: the two are
+# phase-337 W6.a — the RTIC entry surface (`src/rtic.rs`), formerly a separate
+# RTIC board crate; an image selects it with `framework = "rtic"`. Independent of `board-entry`: the two are
 # different entry shapes on one board (RTIC owns its own reset vector + deferred
 # dispatch; `board-entry` is the direct-exec inline spin), so an Entry pkg picks
 # exactly one. Pulls the same dep set the folded crate had.

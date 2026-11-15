@@ -2438,7 +2438,7 @@ target_dir = "target-fixtures"
 # RTIC pattern is the caller owning the loop — a zero-arena executor driven by
 # `spin_once(0)`, publishing outside it — which a generated entry, whose board
 # owns the loop, cannot express on the host. (On mps2-an385 the RTIC pattern
-# is a BOARD, `rtic-mps2-an385`, so those leaves become images.)
+# is an image's `framework = "rtic"`, so those leaves become images.)
 [[workspace_fixture]]
 id = "linux-rust-zenoh-talker-rtic"
 platform = "linux"
@@ -3293,8 +3293,8 @@ target_dir = "target-fixtures/baremetal-talker-xrce-serial"
 target = "thumbv7m-none-eabi"
 
 # phase-535 W6 — the RTIC entry framework on the same board, as images of
-# the Rust workspace's pubsub/service/action bringups (board word
-# `rtic-mps2-an385`). They replace the eight `*-rtic` and `*-rtic-mixed`
+# the Rust workspace's pubsub/service/action bringups (`framework =
+# "rtic"`). They replace the eight `*-rtic` and `*-rtic-mixed`
 # leaves; the mixed pair's only difference, `nros/ffi-sync`, reached no code
 # (issue 2417). Each is a configured cell (`Config::Rtic`) of
 # `tests/emulator.rs`'s rtic cases, resolved through `fixtures::workspace_image`.

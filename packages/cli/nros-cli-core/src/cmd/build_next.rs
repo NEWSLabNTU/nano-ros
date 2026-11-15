@@ -1104,7 +1104,7 @@ mod tests {
             ("b:linux", "linux"),
             ("b:freertos", "mps2-an385-freertos"),
             ("b:bare", "baremetal"),
-            ("b:rtic", "rtic-mps2-an385"),
+            ("b:rtic", "mps2-an385-baremetal"),
             ("b:zephyr", "zephyr"),
         ]
         .into_iter()

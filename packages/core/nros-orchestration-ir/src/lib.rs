@@ -303,15 +303,14 @@ pub struct BoardBoot<'a> {
 /// the framework list the word stands for.
 ///
 /// TRANSITIONAL: deleted when the word retires. `rtic-mps2-an385` is still one
-/// of the mps2-an385 bare-metal descriptor's `names`, and the tree's RTIC
-/// images spell their framework that way. The descriptor lists
+/// of the mps2-an385 bare-metal descriptor's `names`. The descriptor lists
 /// `frameworks = ["owned-spin", "rtic"]`, so the canonical spelling is
-/// `board = "mps2-an385-baremetal"` + `framework = "rtic"`; until those images
-/// move to it, the old word reads as a one-framework board that boots RTIC, so
-/// no RTIC image changes behaviour. It is the last framework fact keyed on a
-/// board word.
+/// `board = "mps2-an385-baremetal"` + `framework = "rtic"`, which every
+/// in-tree RTIC image now uses; an image that still writes the old word reads
+/// it as a one-framework board that boots RTIC, so it does not change
+/// behaviour. It is the last framework fact keyed on a board word.
 //
-// phase-562: W4 migrates the images, W5 deletes this table, the word's row in
+// phase-562: W4 migrated the images, W5 deletes this table, the word's row in
 // `BOARD_PATHS` and its descriptor name, and adds the refusal (RFC-0111 D4).
 pub const TRANSITIONAL_FRAMEWORK_KEYS: &[(&str, &[&str])] = &[("rtic-mps2-an385", &["rtic"])];
 
@@ -548,12 +547,12 @@ pub fn image_framework(
 ///   deploy key stays distinct because the two entry shapes are distinct — this
 ///   one routes through the RTIC framework emit.
 /// - Bare metal — Phase 244.D1: pure (no-RTOS) MPS2-AN385 direct-exec board.
-///   Board ZST impls `nros_platform::BoardEntry`. Distinct from
-///   `rtic-mps2-an385`, which routes through the RTIC framework emit.
+///   Board ZST impls `nros_platform::BoardEntry`. Distinct from the RTIC
+///   row, which routes through the RTIC framework emit.
 ///
 /// phase-337 W7.a — the three STM32F4 keys (`stm32f4`, `rtic-stm32f4`,
-/// `embassy-stm32f4`) left with their board crates. Unlike W6.a's
-/// `rtic-mps2-an385`, no key survives: the ZSTs are gone, not moved, so an
+/// `embassy-stm32f4`) left with their board crates. Unlike W6.a's RTIC
+/// key, no key survives: the ZSTs are gone, not moved, so an
 /// entry naming one must fail to resolve rather than silently pick another
 /// board. Out-of-tree replacements supply their own `board_crate` — see
 /// `book/src/extending/add-a-board.md`.
@@ -652,8 +651,8 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
         "::nros_board_zephyr::ZephyrBoard",
         false,
     ),
-    // `qemu-rtic-mps2-an385` was a second key for this ZST until issue 1902:
-    // no descriptor names it, so no image could select it.
+    // A `qemu-` prefixed second key for this ZST existed until issue 1902:
+    // no descriptor named it, so no image could select it.
     (
         "rtic-mps2-an385",
         "::nros_board_mps2_an385::RticMps2An385",
@@ -1663,7 +1662,7 @@ mod tests {
         assert!(image_framework(None, &unknown).is_err());
     }
 
-    // phase-562 W2; W3 removes the transitional word.
+    // phase-562 W2; W5 removes the transitional word.
     /// Until the transitional table goes, the board word `rtic-mps2-an385` still
     /// resolves RTIC, whatever list the descriptor it belongs to states; the
     /// plain word of the same descriptor stays direct-exec.

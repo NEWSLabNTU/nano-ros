@@ -772,7 +772,7 @@ pub const NO_RTOS_SCHED_TASK_KEY: &str = "";
 ///
 /// Read from [`BOARD_KEYS`]. A key the table does not know gets
 /// [`NO_RTOS_SCHED_TASK_KEY`], never a guess from how the key is spelled. That covers
-/// an out-of-tree board. A bare-metal key (`rtic-mps2-an385`, bare
+/// an out-of-tree board. A bare-metal key (`mps2-an385-baremetal`, bare
 /// `mps2-an385`) has a family since phase-553 W4, and that family's key is
 /// this same empty string. The old substring match read `my-freertos-board`
 /// as FreeRTOS and `s32z270` as the host.
@@ -821,7 +821,7 @@ mod tests {
             "zephyr-custom",
             "nuttx-fork",
             "threadx-port",
-            "rtic-mps2-an385",
+            "mps2-an385-baremetal",
             "mps2-an385",
             "stm32f4",
         ] {

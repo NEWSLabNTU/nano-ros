@@ -1167,7 +1167,7 @@ mod tests {
         write_entry_pkg(
             &root,
             "talker-rtic-entry",
-            "rtic-mps2-an385",
+            "mps2-an385-baremetal",
             &[
                 ("board_rtic_stub", "../board-rtic-stub"),
                 ("talker_node", "../talker-node"),
@@ -1225,7 +1225,7 @@ mod tests {
         write_entry_pkg(
             &root,
             "listener-rtic-entry",
-            "rtic-mps2-an385",
+            "mps2-an385-baremetal",
             &[
                 ("board_rtic_stub", "../board-rtic-stub"),
                 ("listener_node", "../listener-node"),
@@ -1316,7 +1316,7 @@ mod tests {
         write_entry_pkg(
             &root,
             "default-rtic-entry",
-            "rtic-mps2-an385",
+            "mps2-an385-baremetal",
             &[
                 ("board_rtic_stub", "../board-rtic-stub"),
                 ("default_node", "../default-node"),

@@ -46,8 +46,8 @@ mod node;
 // phase-553 W7 (issue 2494) — the main stack's MPU guard, armed at boot by
 // `init_hardware`, and the HardFault handler that reports an overflow.
 pub mod stack_guard;
-// phase-337 W6.a — the RTIC entry surface, formerly the separate
-// `nros-board-rtic-mps2-an385` crate. Behind a feature so the direct-exec
+// phase-337 W6.a — the RTIC entry surface, formerly a separate RTIC board
+// crate. Behind a feature so the direct-exec
 // consumers don't pull heapless / the PAC / the `nros` umbrella.
 #[cfg(feature = "rtic")]
 pub mod rtic;
@@ -104,7 +104,7 @@ pub use nros_platform::BoardConfig;
 pub use nros_platform_mps2_an385::timing::{CycleCounter, MonotonicClock};
 
 // phase-337 W6.a — the folded RTIC surface at the crate root, so
-// `board_path_for("rtic-mps2-an385")` and the proc-macro's
+// the descriptor's `entry_types` `rtic` row and the proc-macro's
 // `take_dispatch_consumer` path stay one segment deep (they were
 // ~~`::nros_board_rtic_mps2_an385::{RticMps2An385, take_dispatch_consumer}`~~).
 #[cfg(feature = "rtic")]

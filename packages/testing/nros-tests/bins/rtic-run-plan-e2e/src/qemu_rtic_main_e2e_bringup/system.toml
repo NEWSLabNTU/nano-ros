@@ -28,7 +28,8 @@ dispatch = "deferred"
 # listened on.
 [image.mps2-an385-baremetal]
 entry = "qemu_rtic_main_e2e"
-board = "rtic-mps2-an385"
+board = "mps2-an385-baremetal"
+framework = "rtic"
 locator = "tcp/10.0.2.2:10530"
 
 [image_defaults]

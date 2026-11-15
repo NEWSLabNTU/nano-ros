@@ -244,7 +244,7 @@ def descriptor_owner(board, found, index_keys):
     Issue 2063: by NAME EQUALITY alone (an overlay among its `names`), a
     descriptor whose overlay is spelled only by its `cmake_module` / index key
     — `nros-board-mps2-an385`: names `baremetal`, `bare-metal`,
-    `qemu-mps2-an385`, `rtic-mps2-an385`; overlay `mps2-an385-baremetal` — was
+    `qemu-mps2-an385`; overlay `mps2-an385-baremetal` — was
     out of scope, so `qemu-mps2-an385` was never asked. Attribution now goes
     through the index key it provisions through first, and name equality
     remains the fallback for a descriptor that reaches no index key.

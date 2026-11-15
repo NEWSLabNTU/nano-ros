@@ -1,6 +1,6 @@
 //! RTIC board-entry surface for QEMU MPS2-AN385 — the `rtic` feature.
 //!
-//! phase-337 W6.a folded `nros-board-rtic-mps2-an385` in here. That crate was
+//! This surface was once a separate RTIC board crate. That crate was
 //! never independent: it depended on this one and called its `init_hardware` /
 //! `exit_success` / `exit_failure` / `enable_wfi_idle`, so all it added was the
 //! framework-owned entry surface — the deferred-callback SPSC queue, the
@@ -10,8 +10,8 @@
 //!
 //! The [`RticMps2An385`] ZST stays a distinct type from [`crate::Mps2An385`]:
 //! they are two entry shapes on one board (RTIC owns its own reset vector and
-//! dispatch; direct-exec spins inline), and `board_path_for("rtic-mps2-an385")`
-//! names this one.
+//! dispatch; direct-exec spins inline), and the board descriptor's
+//! `entry_types` names this one for an image with `framework = "rtic"`.
 
 use core::{
     fmt::Arguments,

@@ -577,7 +577,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `deploy` is `Some(...)` only when the macro had to read the
     // Entry pkg's `[package.metadata.nros.entry] deploy = "..."` key
     // (form 1). Since phase-484 W8c retired `board = X` this is every
-    // entry; RTIC still requires the `deploy = "rtic-mps2-an385"` opt-in.
+    // entry; RTIC is the image's own `framework = "rtic"`.
     //
     // phase-445 W3 (RFC-0098 D3/D5) — the board, RMW and network identity come
     // from the ONE leaf reader, `nros_orchestration_ir::leaf_system`: the leaf's
@@ -4591,7 +4591,7 @@ mod image_plan_tests {
 ///   lookup the CLI's `plan_from_model` uses for the same Rust keys, so the two
 ///   Rust producers now agree.
 ///
-///   A Rust key with NO RTOS family (`rtic-mps2-an385`, `mps2-an385-baremetal`, `mps2-an385`) gets `NO_RTOS_SCHED_TASK_KEY`, which selects no sub-table. The
+///   A Rust key with NO RTOS family (`mps2-an385-baremetal`, `mps2-an385`) gets `NO_RTOS_SCHED_TASK_KEY`, which selects no sub-table. The
 ///   substring match gave those keys the host's sub-table. An authored sched task on
 ///   such a board is now refused by `resolve_sched_tasks`, and no in-tree leaf
 ///   authors one.
@@ -4625,12 +4625,11 @@ mod target_rtos_tests {
         }
     }
 
-    /// The no-RTOS keys the substring match answered `posix` for (six until
-    /// issue 1902 removed `qemu-rtic-mps2-an385`). None of them is a host, and
-    /// none has an RTOS.
+    /// The no-RTOS keys the substring match answered `posix` for. None of
+    /// them is a host, and none has an RTOS.
     #[test]
     fn no_rtos_rust_keys_select_no_sub_table() {
-        for key in ["rtic-mps2-an385", "mps2-an385-baremetal", "mps2-an385"] {
+        for key in ["mps2-an385-baremetal", "mps2-an385"] {
             assert_eq!(
                 derive_target_rtos(Some(key)),
                 nros_entry_lower::NO_RTOS_SCHED_TASK_KEY,
@@ -5378,8 +5377,8 @@ struct RticBoardSpec {
 
 /// The RTIC facts of an RTIC board TYPE (the canonical path
 /// `nros_orchestration_ir::board_type_for` gives), so every board word that
-/// reaches the type, with `framework = "rtic"` or through the transitional
-/// `rtic-mps2-an385`, gets one spec.
+/// reaches the type with `framework = "rtic"` (or the transitional RTIC board
+/// word) gets one spec.
 fn rtic_board_spec_for(board_type: &str) -> Option<RticBoardSpec> {
     let (device, dispatchers, consumer, tick_irq, rx_irq) = match board_type {
         "::nros_board_mps2_an385::RticMps2An385" => (
@@ -6981,30 +6980,40 @@ mod leaf_axis_tests {
     /// over `RticMps2An385` (its descriptor `entry_types` row).
     #[test]
     fn one_mps2_board_expands_direct_exec_or_rtic_by_the_image_framework() {
-        let descriptor = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../boards/nros-board-mps2-an385/nros-board.toml");
-        let with_descriptor = |board: &str| {
-            ENTRY_ENV_OVERRIDE.with(|m| {
-                m.borrow_mut().insert(
-                    nros_orchestration_ir::BOARD_DESCRIPTOR_ENV.into(),
-                    descriptor.to_string_lossy().into_owned(),
-                );
-            });
-            expand("", board, "")
-        };
+        let with_descriptor = |board: &str| expand_with_mps2_descriptor("", board, "");
         let direct = with_descriptor("mps2-an385-baremetal").unwrap();
         assert!(direct.contains("Mps2An385"), "{direct}");
         assert!(!direct.contains("RticMps2An385"), "{direct}");
         assert!(!direct.contains("rtic :: app"), "{direct}");
 
-        let rtic = with_descriptor("mps2-an385-baremetal\"\nframework = \"rtic").unwrap();
+        let rtic = with_descriptor(MPS2_RTIC).unwrap();
         assert!(rtic.contains("rtic :: app"), "{rtic}");
         assert!(rtic.contains("RticMps2An385"), "{rtic}");
 
         // Without the descriptor the board's list is unread, and the refusal
         // says so rather than only "it boots owned-spin".
-        let err = expand("", "mps2-an385-baremetal\"\nframework = \"rtic", "").unwrap_err();
+        let err = expand("", MPS2_RTIC, "").unwrap_err();
         assert!(err.contains("NROS_BOARD_TOML"), "{err}");
+    }
+
+    /// The `[image.a] board = "<this>"` line [`expand`] writes, spelled so
+    /// the image also states `framework = "rtic"`: the MPS2-AN385 bare-metal
+    /// board with the RTIC entry.
+    const MPS2_RTIC: &str = "mps2-an385-baremetal\"\nframework = \"rtic";
+
+    /// [`expand`] with the MPS2-AN385 board descriptor named, as the cargo
+    /// road names it for every image, so the board's `frameworks` list is
+    /// read.
+    fn expand_with_mps2_descriptor(args: &str, board: &str, extra: &str) -> Result<String, String> {
+        let descriptor = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../boards/nros-board-mps2-an385/nros-board.toml");
+        ENTRY_ENV_OVERRIDE.with(|m| {
+            m.borrow_mut().insert(
+                nros_orchestration_ir::BOARD_DESCRIPTOR_ENV.into(),
+                descriptor.to_string_lossy().into_owned(),
+            );
+        });
+        expand(args, board, extra)
     }
 
     /// Issue 2063 — `qemu-mps2-an385` named the emulator; an image that still
@@ -7115,7 +7124,8 @@ mod leaf_axis_tests {
     /// naming the framework, rather than silently dropped.
     #[test]
     fn before_boot_is_refused_on_a_framework_that_owns_init() {
-        let err = expand("before_boot = my_pkg::open_can", "rtic-mps2-an385", "").unwrap_err();
+        let err = expand_with_mps2_descriptor("before_boot = my_pkg::open_can", MPS2_RTIC, "")
+            .unwrap_err();
         assert!(err.contains("before_boot") && err.contains("RTIC"), "{err}");
     }
 
@@ -7210,7 +7220,8 @@ mod leaf_axis_tests {
             "{e}"
         );
         // RTIC registers no runtime services: refused, not dropped.
-        let e = expand("", "rtic-mps2-an385", "features = [\"param_services\"]").unwrap_err();
+        let e = expand_with_mps2_descriptor("", MPS2_RTIC, "features = [\"param_services\"]")
+            .unwrap_err();
         assert!(e.contains("RTIC") && e.contains("param_services"), "{e}");
     }
 
