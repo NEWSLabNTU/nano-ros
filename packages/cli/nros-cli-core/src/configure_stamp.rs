@@ -1610,10 +1610,15 @@ mod tests {
         let mut text = std::fs::read_to_string(input).unwrap();
         text.push_str(edit);
         std::fs::write(input, text).unwrap();
-        assert!(matches!(
-            is_current_with(p, "img", &real_env(), None).unwrap(),
-            Currency::Stale(why) if why.contains("outside the project") && why.contains("changed")
-        ));
+        // Issue 2603 -- say what came back: this failed once in a full gate.
+        let got = is_current_with(p, "img", &real_env(), None).unwrap();
+        assert!(
+            matches!(
+                &got,
+                Currency::Stale(why) if why.contains("outside the project") && why.contains("changed")
+            ),
+            "{got:?}"
+        );
         std::fs::remove_file(input).unwrap();
         assert!(matches!(
             is_current_with(p, "img", &real_env(), None).unwrap(),
