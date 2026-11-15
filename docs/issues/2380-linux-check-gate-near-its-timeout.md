@@ -97,3 +97,19 @@ under one jobserver pool. Each unit also runs the `target/` assertion after
 its leaf (1 s).
 
 Acceptance still needs a full `just ci gate` at a load average of about 90.
+
+## The gate shrank to one leaf (2026-11-15)
+
+`NROS_GATE_LIST_UNITS=1 bash scripts/build/lint-examples.sh` now lists ONE
+unit (`mps2-an385-baremetal-rust-listener`, 117 s in a loaded `ci gate`),
+where it listed 32 at this fix (`e1eda595e4`). The rest are gone for two
+reasons:
+- 12 mps2-an385 bare-metal C/C++ leaves became CMake-road components with
+  no `Cargo.toml` (phase-553 W5);
+- 19 Rust examples moved into one-node workspaces, and the leaf list drops
+  those without linting them anywhere else.
+
+The second is a coverage defect, filed as
+[issue 2595](2595-witness-workspaces-lose-example-lint.md). This issue's
+acceptance waits on 2595: a loaded full `ci gate` measures a budget only
+when the lane lints what it is meant to.

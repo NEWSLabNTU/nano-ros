@@ -1021,6 +1021,12 @@ cover these files).
 - The standalone road's code is deleted (W1's table, all rows resolved).
 - Tier 1 and tier 2 are green on the migrated tree.
 
+## Issues homed here (2026-11-15)
+
+| issue | why it belongs here |
+| --- | --- |
+| [#2595](../issues/2595-witness-workspaces-lose-example-lint.md) | W6's witness move took each migrated example out of `linux-check`'s leaf list, and no lane lints a witness package instead: the gate went from 32 leaves to 1. |
+
 ## Not in scope
 
 - Projects that own their build and have no `system.toml` (guest Zephyr
