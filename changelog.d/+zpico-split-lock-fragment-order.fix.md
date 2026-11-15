@@ -1,0 +1,1 @@
+With the zenoh split-lock TX path on (`CONFIG_NROS_ZENOH_TX_SPLIT_LOCK` with `TX_BATCH`), a message too large for one batch no longer reaches the wire ahead of the batch it overflowed. Its fragments went out first, and a reliable receiver saw sequence numbers out of order; the parked batch now ships first, and every fragment write holds the link lock.
