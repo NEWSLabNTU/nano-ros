@@ -124,6 +124,7 @@ Each release has a page that says what it changes for a project: the edits
 a project may need, then the fixes. The same page is the release's notes on
 GitHub. Newest first:
 
+- [0.6.0-nros11](releases/0.6.0-nros11.md)
 - [0.6.0-nros10](releases/0.6.0-nros10.md)
 
 ## If it doesn't work

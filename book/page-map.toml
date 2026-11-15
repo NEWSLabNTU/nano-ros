@@ -1393,6 +1393,13 @@ note = "Migrating from older releases (W12): one how-to, a section per change; e
 
 [[page]]
 book = "user"
+path = "migrating/releases/0.6.0-nros11.md"
+action = "new release-notes"
+batch = "release-notes"
+note = "Release notes for 0.6.0-nros11, the first release whose GitHub body release-nros.yml takes from this page"
+
+[[page]]
+book = "user"
 path = "migrating/releases/0.6.0-nros10.md"
 action = "new release-notes"
 batch = "release-notes"
