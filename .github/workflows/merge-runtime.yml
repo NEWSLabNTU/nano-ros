@@ -407,20 +407,30 @@ jobs:
         run: ./scripts/ci/runner-sweep.sh --provision || true
 
   # phase-405: the self-hosted shard's SKIP must show in the run that skipped
-  # it (`check-interlock-visibility`). A tier-1 dispatch never runs it, so the
-  # report is for the merge lane only.
+  # it (`check-interlock-visibility`). A tier-1 dispatch never runs that shard,
+  # so the report is for the merge lane only.
+  #
+  # The job itself still runs on tier1 and says so in its NAME. GitHub never
+  # evaluates the name of a job that its own `if:` skips, so a tier-1 run used
+  # to show the raw `${{ ... }}` expression as the job name. A job that runs
+  # always gets its name rendered; a job that skips never does.
   coverage-merge-zephyr:
     permissions:
       contents: read
       actions: read
-    name: "merge (zephyr) — ${{ (needs.merge-runtime-self-hosted.result == 'skipped' && 'DID NOT START') || needs.merge-runtime-self-hosted.result }}"
+    name: "merge (zephyr) — ${{ (inputs.lane == 'tier1' && 'not in the tier1 lane') || (needs.merge-runtime-self-hosted.result == 'skipped' && 'DID NOT START') || needs.merge-runtime-self-hosted.result }}"
     needs: [merge-runtime-self-hosted]
-    if: ${{ always() && inputs.lane != 'tier1' }}
+    if: always()
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
+      - name: The tier1 lane runs zephyr on the hosted shard
+        if: inputs.lane == 'tier1'
+        run: echo "lane=tier1 runs zephyr in the hosted merge-runtime matrix; the self-hosted shard is the merge lane's."
       - uses: actions/checkout@v4
+        if: inputs.lane != 'tier1'
       - name: Report whether the interlocked lane ran
+        if: inputs.lane != 'tier1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./scripts/ci/report-interlock-coverage.sh "merge-runtime merge (zephyr)" "${{ needs.merge-runtime-self-hosted.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}" ""
