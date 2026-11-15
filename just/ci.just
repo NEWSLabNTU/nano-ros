@@ -121,6 +121,10 @@ _gate-inner:
     # `NROS_KEEP_CACHES=1` reports instead.
     python3 scripts/build/trim-caches.py --apply \
         || echo "ci gate: cache trim FAILED (see above); the gate's verdict is unaffected" >&2
+    # Issue 2611 — finished worktrees fill the host. One line, only when a
+    # worktree of yours that `just worktree-prune --apply` would remove is over
+    # 10 GB. Advisory: it cannot change the verdict.
+    python3 scripts/worktree-prune.py --reminder 2>/dev/null || true
     if [ "$gate_rc" -eq 0 ]; then
         echo "CI gate passed (compile + unit; no fixtures were built or needed)."
         exit 0

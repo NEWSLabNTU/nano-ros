@@ -272,3 +272,14 @@ ci-base-tools:
 [private]
 pinned-tool-one-lookup:
     @python3 scripts/check/check-pinned-tool-one-lookup.py
+
+# Issue 2611 — `just worktree-prune` removes only worktrees that are the
+# caller's, merged, clean and pushed. Its refusals run on scratch repositories:
+# another owner's, no marker, a tracked edit, an untracked file, unmerged and
+# post-merge commits, a merged PR with an unpushed commit, a nested repo that is
+# dirty or unpushed, a dirty submodule, a locked worktree, no caller identity,
+# the main checkout and the worktree you are in; then that `just setup-worktree`
+# still marks and `just ci gate` still reminds. Buildless, ~0.5 s.
+[private]
+worktree-prune:
+    @python3 scripts/worktree-prune.py --gate
