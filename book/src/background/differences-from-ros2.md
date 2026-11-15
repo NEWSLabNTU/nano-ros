@@ -128,7 +128,9 @@ what happens when a process goes away.
   entities on its behalf. The agent does discovery and bridges data to the
   DDS data space, so ROS 2 nodes on any DDS RMW reach the device through it.
   The client allocates when a session or entity is created, never per
-  message. If the agent stops, the device loses all connectivity.
+  message. While the agent is down, the device has no connectivity, and an
+  agent that restarts makes the device open its session again
+  ([When the Agent restarts](../guide/platforms/bare-metal-own-main-loop.md#when-the-agent-restarts)).
 - **Cyclone DDS.** The image links Eclipse Cyclone DDS, the implementation
   ROS 2 itself uses through `rmw_cyclonedds_cpp`. The device is a full DDS
   participant: SPDP and SEDP discovery over UDP multicast (or a static

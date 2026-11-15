@@ -89,8 +89,9 @@ How to choose:
   micro-ROS or DDS deployment that already runs an agent. It is
   not heap-free: each allocation goes through `nros_platform_alloc`, once
   per session or entity, never per message. The device does no
-  discovery of its own; if the agent stops, the device loses all
-  connectivity.
+  discovery of its own; while the agent is down, the device has no
+  connectivity, and an agent that restarts makes the device open its session
+  again.
 
 On this board the choice is made for you: the board support registry
 verifies the MPS2-AN385 images with zenoh, which is why chapter 1
