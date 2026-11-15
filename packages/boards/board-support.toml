@@ -1118,7 +1118,7 @@ track = "freertos-posix"
 chapter = "starters/freertos-posix.md"
 variant = ""
 lang = "c"
-weekly = false
+weekly = true
 row = "nros-board-freertos-posix@FreertosPosix"
 notes = "phase-537 W4 — the FreeRTOS POSIX starter: a C talker on the FreeRTOS POSIX port as a host process over Cyclone DDS (no router), then `ros2 topic echo` over rmw_cyclonedds_cpp. The board's first track (its row's evidence is the daily lane's two cyclonedds fixtures). The starter scaffolds `--rmw cyclonedds` first; its zenoh section has its own tracks. Not weekly yet."
 
@@ -1127,7 +1127,7 @@ track = "freertos-posix-rust"
 chapter = "starters/freertos-posix.md"
 variant = ""
 lang = "rust"
-weekly = false
+weekly = true
 row = "nros-board-freertos-posix@FreertosPosix"
 notes = "phase-548 W8 — the Rust tab of the same starter."
 
@@ -1136,7 +1136,7 @@ track = "freertos-posix-cpp"
 chapter = "starters/freertos-posix.md"
 variant = ""
 lang = "cpp"
-weekly = false
+weekly = true
 row = "nros-board-freertos-posix@FreertosPosix"
 notes = "phase-548 W8 — the C++ tab of the same starter."
 
@@ -1145,7 +1145,7 @@ track = "freertos-posix-zenoh-rust"
 chapter = "starters/freertos-posix.md"
 variant = "zenoh"
 lang = "rust"
-weekly = false
+weekly = true
 row = "nros-board-freertos-posix@FreertosPosix"
 notes = "phase-548 W8 — the starter's zenoh section in its Rust tab, after the Cyclone DDS steps; zenoh on this board landed with #3284."
 
@@ -1154,7 +1154,7 @@ track = "freertos-posix-zenoh"
 chapter = "starters/freertos-posix.md"
 variant = "zenoh"
 lang = "c"
-weekly = false
+weekly = true
 row = "nros-board-freertos-posix@FreertosPosix"
 notes = "phase-548 W8 — the starter's zenoh section in its C tab, after the Cyclone DDS steps; zenoh on this board landed with #3284."
 
@@ -1163,7 +1163,7 @@ track = "freertos-posix-zenoh-cpp"
 chapter = "starters/freertos-posix.md"
 variant = "zenoh"
 lang = "cpp"
-weekly = false
+weekly = true
 row = "nros-board-freertos-posix@FreertosPosix"
 notes = "phase-548 W8 — the starter's zenoh section in its C++ tab, after the Cyclone DDS steps; zenoh on this board landed with #3284."
 
@@ -1363,7 +1363,6 @@ notes = "phase-517 W4 — not a platform: installation-details.md's \"Provision 
 track = "pinned"
 chapter = "guide/build/install-options.md"
 variant = "pinned"
-awaits = ["phase-530 W1 in a release to pin: the pinned release predates nros configure, and the book no longer shows its separate sync step"]
 weekly = true
 notes = "phase-517 W11/W16 — installation-details.md's \"Pinning a version\": a project pinned to a release other than the installed one, so the installed `nros` must hand off to the pinned one, fetching it first."
 
@@ -1371,7 +1370,6 @@ notes = "phase-517 W11/W16 — installation-details.md's \"Pinning a version\": 
 track = "pinned-newer"
 chapter = "guide/build/install-options.md"
 variant = "pinned"
-awaits = ["phase-530 W1 in a release to pin: the pinned release predates nros configure, and the book no longer shows its separate sync step"]
 weekly = true
 notes = "Issue 2168 — the same project with the PUBLISHED release `[tool.nros]` pins installed instead of this branch's asset, so a NEWER front must hand off to the project's older pin."
 
