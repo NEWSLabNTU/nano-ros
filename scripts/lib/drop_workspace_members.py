@@ -7,7 +7,9 @@ inside a WITNESS workspace: `examples/<plat>/<lang>/<name>/` carrying a
 (phase-531 W6, RFC-0121 D8; the same shape `workspace_image::
 is_witness_workspace` recognises). Its node package is not a leaf: it has no
 `system.toml` of its own, and syncing it as one writes leaf residue into the
-tree and rewrites its managed rows. The witness's fixture rows build it.
+tree and rewrites its managed rows. The witness's fixture rows build it, and
+the example lint lints it through the workspace (`lint-example-witness.sh`,
+issue 2595: building is not linting, and for a while nothing did).
 
 `examples/workspaces/` and `examples/templates/` keep the treatment each
 walker already gives them; only the witness shape is new.

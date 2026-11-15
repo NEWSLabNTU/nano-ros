@@ -4893,6 +4893,12 @@ workspace-embedded:
 # load ~90: 32 cargo roots each compile the nros stack, and issue 0616 forbids
 # them sharing a target dir, so the work is real and only its budget was
 # wrong. `cpu:8` weights each unit as a parallel build beside the other gates.
+#
+# Issue 2595 -- a one-node witness workspace's node packages are units too
+# (`lint-example-witness.sh`, through the workspace's own configure). They had
+# left the leaf list with no lane to take them, and the lane went from 32
+# leaves to 1 while it passed. `example-lint-units` (fast line) fails when any
+# tracked example package is in no unit and no named exclusion.
 [private]
 [group('units')]
 [group('cpu:8')]
@@ -4904,6 +4910,16 @@ linux-check:
         exec bash scripts/build/lint-examples.sh
     fi
     just linux check
+
+# Issue 2595 -- every tracked example `Cargo.toml` is linted by a
+# `linux-check` unit or named by an exclusion with its reason
+# (`scripts/lib/example_lint_units.py`). A filter that drops a package with no
+# unit to take it fails here, on every PR, not after it has hidden one. The
+# self-test's negative control is that shape. Buildless.
+[private]
+example-lint-units:
+    @python3 scripts/lib/example_lint_units.py list >/dev/null
+    @echo "example-lint-units: OK (every tracked example package is in a lint unit or a named exclusion)"
 
 # Check workspace with various feature combinations
 [private]
