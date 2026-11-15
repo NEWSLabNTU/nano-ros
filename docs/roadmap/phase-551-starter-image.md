@@ -1,10 +1,9 @@
 # Phase 551 — The starter image
 
-**Status (2026-11-15). IN PROGRESS: W0, W1, W2, W5, W6 and W7 are done; W4
-is done but for its immutability check; W3 and W8 are open.** The first
-release to publish the image is `0.6.0-nros9` (W4). W3 and W4's
-immutability check each need a dispatch of `starter-image.yml`; W8 waits on
-the arm64 runner. Work for
+**Status (2026-11-15). IN PROGRESS: W0–W7 are done; W8 is open, waiting on
+the arm64 runner.** The first release to publish the image is `0.6.0-nros9`
+(W4); `0.6.0-nros10` published `starter` and, on dispatch, `starter-zephyr`
+(W3), and a second publish of `0.6.0-nros10` was refused (W4). Work for
 [RFC-0127](../design/0127-starter-image.md): option B (D1's structure, D4,
 D5's recipe) ruled 2026-11-11, and every remaining question on 2026-11-12
 ("Take your advice on RFC-0127"), each recommendation taken. W0, W1, W2 and W7
@@ -104,6 +103,18 @@ talker per language, then rebuilds it with `--network=none`. Measured on
 `Hello World: 1`. The Rust talker needs the next release (issue 2314's fix,
 #2314, is not in `nros8`).
 
+**Done (2026-11-15)** on the published `0.6.0-nros10`, dispatch run
+43687747571 (`target=starter-zephyr`): built, and the native_sim talker built
+with `--network=none` and `NROS_OFFLINE=1` for both default languages (C and
+Rust; the Rust one is the first since issue 2314's fix). 15.88 GB raw,
+**4.87 GB compressed** (gzip -6) against the 5.00 GB budget, pushed as
+`ghcr.io/newslabntu/nano-ros-starter:0.6.0-nros10-zephyr`, digest
+`sha256:6fc6faa7f2c3d1b15f8ed631bec7db137bde30114f70fdc1ca73b333baab31c5`.
+Two things this leaves: the headroom is 2.6 %, so the next thing the Zephyr
+stage adds is likely to cross the budget; and the image warms C and Rust,
+while the page's `probe=` blocks also document a C++ talker, which a seat
+would build online.
+
 ### W4 — Release job and tags
 
 Gate: Q1, Q5, ruled 2026-11-12 (`ghcr.io/newslabntu/nano-ros-starter`,
@@ -127,9 +138,14 @@ private, so an org admin sets it public once after the first push (Q1).
 First run (2026-11-15): release `0.6.0-nros9` (tag `nros-0.6.0-nros9` at
 dff3242405) published `ghcr.io/newslabntu/nano-ros-starter:0.6.0-nros9`,
 digest `sha256:56d9244778ab171107b0e2a8d6ce73e19eaa8a1095e839437f3676e9568672d8`,
-and the package was set public by hand. `latest` did not move. Still open:
-the second publish of the same `<ver>` being refused is not yet measured;
-it needs a dispatch.
+and the package was set public by hand. `latest` did not move.
+
+**Done (2026-11-15).** `0.6.0-nros10` published `starter` through the
+release flow (digest `sha256:e0315bf8dd8e63c919cc554a419fb8cdccd082dd67f43dde13e5eaec091b402d`).
+A second publish of it, dispatch run 43687664815 (`target=starter`,
+`version=0.6.0-nros10`), stopped at "Refuse an existing version tag"
+(`... already exists, and version tags are immutable`); the build and the
+push were skipped, and the tag's digest is unchanged.
 
 ### W5 — The `image` probe track gates `latest`
 
