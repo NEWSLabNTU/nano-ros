@@ -1,6 +1,6 @@
 ---
 id: 2338
-title: "cffi_subscription_waker_fires_on_each_arrival failed once at ~10 s in a merge-queue test-unit run"
+title: "cffi_smoke sessions sometimes fail to open against their own router in merge-queue test-unit (seen as the waker test, ~10 s)"
 status: open
 type: bug
 area: [rmw, zenoh, testing, ci]
@@ -62,3 +62,35 @@ issue's late or missed wakes.
 
 This issue's closing rule stands: close as not reproduced if nothing recurs by
 2026-11-21, two weeks after it was found.
+
+## Second sighting, 2026-11-15: the session never opened
+
+Merge-queue `gate` run 43701411501 (2026-11-15 10:01 UTC), job 132773193591,
+step `check / test-unit (merge group + nightly/manual)`, ejected #3955 (a test
+of the Renode runner and two docs, nothing under `packages/rmw`):
+
+    FAIL [  10.189s] (2524/2525) nros-rmw-zenoh::cffi_smoke cffi_subscription_waker_fires_on_each_arrival
+    Summary [  12.470s] 2525 tests run: 2524 passed, 1 failed, 7 skipped
+
+This time the log carries the panic, and it answers the question above: no
+wake was missed or late. The test never reached a subscription.
+
+    panicked at packages/rmw/zenoh/nros-rmw-zenoh/tests/cffi_smoke.rs:95:19
+    zenohd: accepting on tcp/127.0.0.1:37655 100 ms after spawn
+    [nros_log ERROR] nros: zenoh open: no session with tcp/127.0.0.1:37655 in one attempt (connect_timeout_ms=0) (refused, unreachable, or no answer to the handshake)
+    [nros_log ERROR] nros: zpico Session -> ConnectionFailed (the two are indistinguishable downstream)
+
+Line 95 is `open_client`'s `Err` arm: `CffiSession::open` returned
+`ConnectionFailed` against the test's own router, which had reported accepting
+100 ms after spawn. That is the same shape as `cffi_pubsub_round_trip` in
+43130480680 (above): one open attempt, ending at zenoh-pico's ~10 s handshake
+bound. So both sightings, and the sibling, are a client open against a
+listening local router that gets no handshake answer within 10 s under a loaded
+runner. They are not this test's waker. In the same run,
+`declares_keep_running_across_a_reconnect` and its router churn finished in
+the seconds just before.
+
+What would close it changes accordingly: the open path, not the waker. Either
+measure why one handshake against a router already accepting goes unanswered
+for 10 s on the runner, or give these smoke tests' open a retry within a stated
+budget, the way the reconnect tests already ride out an outage.
