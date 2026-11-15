@@ -1,0 +1,1 @@
+`nros configure` now re-resolves a SystemModel that a build would refuse as stale. It used to report `up to date` while the build said "run `nros configure`", so only deleting `build/` got out (issue 2598).
