@@ -1,10 +1,10 @@
 ---
 rfc: 0078
 title: "An execution-time BOUND is declared per measurement profile — and a measured maximum is not one"
-status: Draft
+status: Stable
 area: workspace-system-model
 since: 2026-08
-last-reviewed: 2026-11
+last-reviewed: 2026-11-15
 implements-tracked-by: [issue-0404, issue-0259, issue-0403, phase-463]
 amends: []
 supersedes: []
@@ -333,6 +333,7 @@ and would halve every derived `exec_ms`. Detecting it needs the runtime to
 report its own clock — which is exactly what 0403's bench could not do, and is
 the same gap that leaves `convertible_to_time: false` in the artifact. Any
 future work that gives the platform a clock-rate query closes both at once.
+Filed as [issue 2616](../issues/2616-wcet-clock-rate-unverified.md).
 
 ## Amendment 2026-10-07 — the HOST profile (phase-463 W7)
 
@@ -410,3 +411,8 @@ retired, so `[wcet.select]` is keyed by image id.
   messages. Reported to the manager, not edited here.
 - Conflicts: none. RFC-0079 consumes this RFC (budget from WCET) and agrees.
 - Status: Draft, though every tracked item is archived. Brief item W1.
+- **Stable (2026-11-15, ruling A1(a)).** The one open question, a check of a
+  profile's `clock_hz` against the running clock, is
+  [issue 2616](../issues/2616-wcet-clock-rate-unverified.md). Automatic
+  staleness (Decision 4) and composing primitives are out of scope by
+  decision, not open.

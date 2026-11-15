@@ -216,6 +216,11 @@ brief of RFC-0126 did.
     say a workspace-root `nros.toml` holds workspace-wide facts only, as
     RFC-0121 D2 has it.
 
+  **A1 for RFC-0078, 0079 and 0100 (2026-11-15):**
+  - RFC-0078 is Stable. Its open question, checking a profile's `clock_hz`
+    against the running clock, is
+    [issue 2616](../issues/2616-wcet-clock-rate-unverified.md).
+
 ### W4 -- Keep it organized
 
 - `last-reviewed` is required, and must be a date.
