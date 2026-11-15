@@ -434,34 +434,129 @@ LLC_FLAGS = ("-O3", "-filetype=obj", "-stack-size-section", "-relocation-model=s
              "-function-sections", "-data-sections")
 LOAD_CHUNK = 16  # paths per llvm-readobj / llvm-objdump process: 16 kept the nucleo image at 384 MB peak, 256 took 977 MB
 _THIN_STAGE = re.compile(r"\.thin-lto-[a-z-]+\.bc$")
+# rustc shortens a temp file name that would be too long into
+# `<16 hex digits>-<tail of the name>`, and the cut depends on the SUFFIX: one
+# unit's `.rcgu.bc` can keep its full name while its `.rcgu.lto.input.bc` is
+# `d5f20b411ab9c6d7-ware_safety_island_msgs-<...>.rcgu.lto.input.bc` (measured,
+# rustc 1.99.0, crate `nano_ros_cpp_ffi_autoware_safety_island_msgs`). So a
+# file's codegen unit is never derived from another file's name by swapping
+# the suffix; a shortened stem is matched to a full one by its kept tail.
+_SHORTENED = re.compile(r"^[0-9a-f]{16}-")
 
 
-def pick_codegen_bitcode(paths: list[Path]) -> list[Path]:
+def resolve_unit(stem: str, full: set[str] | list[str]) -> str:
+    """The full codegen-unit stem (`<...>.rcgu`) a possibly shortened `stem`
+    names: itself when not shortened, else the one stem in `full` ending in
+    its kept tail. Unresolved (none, or several) returns `stem` unchanged."""
+    if not _SHORTENED.match(stem):
+        return stem
+    tail = stem[17:]
+    hits = {f for f in full if f.endswith(tail) and not _SHORTENED.match(f)}
+    return hits.pop() if len(hits) == 1 else stem
+
+
+def _stage_stem(name: str) -> str | None:
+    """`<...>.rcgu` for a codegen unit's file of any save-temps stage."""
+    i = name.find(".rcgu.")
+    return name[: i + len(".rcgu")] if i >= 0 else None
+
+
+def pick_codegen_bitcode(paths: list[Path], known: set[str] | None = None) -> list[Path]:
     """From a `-C save-temps` deps dir, the module each codegen unit was
     compiled from: `<cgu>.thin-lto-after-pm.bc` when crate-local ThinLTO ran,
-    else `<cgu>.rcgu.bc`. Never `no-opt`, never another ThinLTO stage."""
+    else `<cgu>.rcgu.bc`. Never `no-opt`, never another ThinLTO stage.
+    `known` adds full unit stems from elsewhere (the dir's `.rcgu.o` names)
+    for matching shortened file names to their unit."""
+    full = {st for p in paths if (st := _stage_stem(p.name)) and not _SHORTENED.match(st)}
+    full |= known or set()
+    unit = lambda p: resolve_unit(_stage_stem(p.name) or p.name, full)  # noqa: E731
     # Fat LTO: every crate was merged into the final crate's module, whose
     # post-LTO, post-opt module is `<cgu>.rcgu.bc` beside `<cgu>.rcgu.lto.input.bc`.
     # That module IS the image's Rust code; the per-crate modules beside it
     # never reached codegen and would add frames and edges the image lacks.
     fat = [p for p in paths if p.name.endswith(".rcgu.lto.input.bc")]
     if fat:
-        return sorted(p.with_name(p.name[: -len(".lto.input.bc")] + ".bc") for p in fat)
+        modules = [p for p in paths if p.name.endswith(".rcgu.bc")]
+        out = []
+        for p in sorted(fat):
+            hit = [m for m in modules if unit(m) == unit(p)]
+            if len(hit) != 1:
+                raise ToolMissing(
+                    f"nros-stack-floor: fat LTO input {p.name} has "
+                    f"{'no' if not hit else 'more than one'} post-LTO module (`*.rcgu.bc`) "
+                    f"for its codegen unit in {p.parent}: the Rust frames cannot be walked")
+            out.append(hit[0])
+        return sorted(out)
     by_cgu: dict[str, Path] = {}
     for p in sorted(paths):
         n = p.name
         if n.endswith(".no-opt.bc"):
             continue
         if n.endswith(".thin-lto-after-pm.bc"):
-            by_cgu[n[: -len(".thin-lto-after-pm.bc")]] = p
+            by_cgu[unit(p)] = p
         elif _THIN_STAGE.search(n):
             continue
         elif n.endswith(".rcgu.bc"):
-            by_cgu.setdefault(n[: -len(".bc")], p)
+            by_cgu.setdefault(unit(p), p)
     return [by_cgu[k] for k in sorted(by_cgu)]
 
 
 _LLC_VERSION: dict[str, bytes] = {}
+_BC_TOOLS: dict[str, str] = {}  # by tool name, resolved from the bitcode producer
+# A module's producer, as rustc writes it: `<LLVM version>-rust-<release>-stable`.
+_PRODUCER = re.compile(rb"(\d+)\.\d+\.\d+-rust-(\d+\.\d+\.\d+)-stable")
+
+
+def bitcode_producer(bc: Path) -> tuple[int, str] | None:
+    """(LLVM major, rustc release) of the toolchain that wrote `bc`, or None."""
+    try:
+        m = _PRODUCER.search(bc.read_bytes())
+    except OSError:
+        return None
+    return (int(m.group(1)), m.group(2).decode()) if m else None
+
+
+def _llvm_major(tool: str) -> int | None:
+    try:
+        out = subprocess.run([tool, "--version"], capture_output=True, text=True).stdout
+    except OSError:
+        return None
+    m = re.search(r"LLVM version (\d+)", out)
+    return int(m.group(1)) if m else None
+
+
+def bitcode_tool(name: str, bcs: list[Path], llvm_bin: str | None) -> str:
+    """The LLVM tool (`llc`, `llvm-dis`) that can read this Rust bitcode:
+    --llvm-bin's, else the llvm-tools of the toolchain the bitcode names as its
+    producer, else the one rustup resolves for this checkout. A project with its own `rust-toolchain.toml`
+    builds with ITS pin, which this checkout's lookup cannot see: llc 22
+    (rustup default 1.98.1) on 1.99.0 bitcode fails "Not an int attribute"
+    (GitHub #3922). A tool of another LLVM major is refused, never run."""
+    if llvm_bin:
+        return llvm_tool(name, llvm_bin)
+    if name in _BC_TOOLS:
+        return _BC_TOOLS[name]
+    prod = next((p for bc in bcs if (p := bitcode_producer(bc))), None)
+    if prod is not None:
+        release = prod[1]
+        try:
+            sysroot = subprocess.run(["rustc", f"+{release}", "--print", "sysroot"], check=True,
+                                     cwd=CHECKOUT, capture_output=True, text=True).stdout.strip()
+            for p in sorted(Path(sysroot, "lib", "rustlib").glob(f"*/bin/{name}")):
+                _BC_TOOLS[name] = str(p)
+                return str(p)
+            raise ToolMissing(f"nros-stack-floor: the bitcode was written by rustc {release}, "
+                              f"whose toolchain has no `{name}`: run `rustup component add "
+                              f"llvm-tools --toolchain {release}`, or pass --llvm-bin")
+        except (OSError, subprocess.CalledProcessError):
+            pass
+    tool = llvm_tool(name, None)
+    if prod is not None and _llvm_major(tool) not in (None, prod[0]):
+        raise ToolMissing(f"nros-stack-floor: the bitcode was written by rustc {prod[1]} "
+                          f"(LLVM {prod[0]}), and the only `{name}` found ({tool}) is LLVM "
+                          f"{_llvm_major(tool)}: install toolchain {prod[1]} with llvm-tools, "
+                          "or pass --llvm-bin")
+    return tool
 
 
 def llc_object(bc: Path, llc: str, cache: Path) -> Path:
@@ -762,6 +857,7 @@ def select_linked_bitcode(bcs: list[Path], units: set[str] | None) -> tuple[list
         if k is None:
             kept.append(bc)
             continue
+        k = resolve_unit(k, units)
         if k not in units:
             left += 1
             continue
@@ -780,7 +876,6 @@ def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | No
     `--bitcode-dir` become llc objects (cached by bitcode + flags + llc).
     With `units` (the link map's codegen units), only the bitcode the link
     used is compiled."""
-    llc = llvm_tool("llc", llvm_bin)
     out: list[str] = []
     bcs: list[Path] = []
     # Fat LTO merges a dir's crates into one module the map does not name
@@ -788,8 +883,9 @@ def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | No
     fat_bcs: list[Path] = []
     for d in bitcode_dirs:
         names = list(Path(d).glob("*.bc"))  # flat dir, not a walk
+        objs = {p.name[: -len(".o")] for p in Path(d).glob("*.rcgu.o")}  # flat dir, not a walk
         fat = any(p.name.endswith(".rcgu.lto.input.bc") for p in names)
-        (fat_bcs if fat else bcs).extend(pick_codegen_bitcode(names))
+        (fat_bcs if fat else bcs).extend(pick_codegen_bitcode(names, objs))
     for i in inputs:
         p = Path(i)
         if p.suffix == ".bc":
@@ -800,6 +896,7 @@ def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | No
             out.append(i)
     bcs, left = select_linked_bitcode(bcs, units)
     bcs = fat_bcs + bcs
+    llc = bitcode_tool("llc", bcs, llvm_bin)
     if left:
         print(f"nros-stack-floor: {left} Rust codegen unit(s) under --bitcode-dir are not in "
               "the link (another build of the crate, or a duplicate): not walked",
@@ -2433,7 +2530,7 @@ def run(args: argparse.Namespace) -> int:
     mode, allowance = parse_indirect(args.indirect)
     if mode == "bind":
         # issue 2402 — every indirect site becomes call edges; nothing is charged.
-        dis = llvm_tool("llvm-dis", args.llvm_bin)
+        dis = bitcode_tool("llvm-dis", EXPANDED_BITCODE, args.llvm_bin)
         rtexts = [ir_text(bc, dis, cache) for bc in EXPANDED_BITCODE]
         mods = [parse_ir_sites(t) for t in rtexts]
         rdirect = [ir_direct_calls(t) for t in rtexts]
@@ -3151,6 +3248,65 @@ def self_test() -> int:
         "dep.x.cgu.0.rcgu.bc", "app.y.cgu.0.rcgu.bc", "app.y.cgu.0.rcgu.no-opt.bc",
         "app.y.cgu.0.rcgu.lto.input.bc", "app.y.cgu.0.rcgu.lto.after-restriction.bc")])]
     check("fat LTO: only the merged post-LTO module", picked == ["app.y.cgu.0.rcgu.bc"])
+
+    # A fat-LTO cross image whose crate name is long: rustc shortens each
+    # save-temps name by its own suffix, so the LTO input and the post-LTO
+    # module of one unit do not share a stem (names measured, rustc 1.99.0).
+    u = ("nano_ros_cpp_ffi_autoware_safety_island_msgs-91644665e4f4f57e."
+         "nano_ros_cpp_ffi_autoware_safety_island_msgs.952cf390d6bd9a43-cgu.0.rcgu")
+    lto_names = [
+        "d5f20b411ab9c6d7-ware_safety_island_msgs-" + u.split("-", 1)[1] + ".lto.input.bc",
+        "3e73e3047e77bef2-island_msgs-" + u.split("-", 1)[1] + ".lto.after-restriction.bc",
+        "3f39b76f2231556c-utoware_safety_island_msgs-" + u.split("-", 1)[1] + ".no-opt.bc",
+        u + ".bc", "dep-b01fc43c64dd6af0.dep.f014826ef5934369-cgu.0.rcgu.bc",
+        "dep-b01fc43c64dd6af0.dep.f014826ef5934369-cgu.0.rcgu.no-opt.bc"]
+    try:
+        picked = [p.name for p in pick_codegen_bitcode([Path(n) for n in lto_names])]
+    except ToolMissing:
+        picked = None
+    check("fat LTO, shortened names: the unit's post-LTO module", picked == [u + ".bc"])
+    try:
+        pick_codegen_bitcode([Path(n) for n in lto_names if n != u + ".bc"])
+        check("fat LTO, no post-LTO module: a ToolMissing, never a FileNotFoundError", False)
+    except ToolMissing:
+        check("fat LTO, no post-LTO module: a ToolMissing, never a FileNotFoundError", True)
+    picked = [p.name for p in pick_codegen_bitcode([Path(n) for n in (
+        u + ".bc", "0123456789abcdef-" + u[-40:] + ".thin-lto-after-pm.bc")])]
+    check("ThinLTO, shortened after-pm: one module for the unit",
+          picked == ["0123456789abcdef-" + u[-40:] + ".thin-lto-after-pm.bc"])
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        sb = Path(td, "0123456789abcdef-" + u[-40:] + ".thin-lto-after-pm.bc")
+        sb.write_bytes(b"M")
+        kept, left = select_linked_bitcode([sb], {u})
+        check("link selection: a shortened module of a linked unit is kept",
+              kept == [sb] and left == 0)
+
+    # The tool that reads Rust bitcode is the producer toolchain's, and one of
+    # another LLVM major is refused, never run on it.
+    with tempfile.TemporaryDirectory() as td:
+        bc = Path(td, u + ".bc")
+        bc.write_bytes(b"BC\xc0\xde junk 23.1.1-rust-0.0.1-stable junk")
+        check("bitcode producer: LLVM major and rustc release",
+              bitcode_producer(bc) == (23, "0.0.1"))
+        fake = Path(td, "llc")
+        g_ = globals()
+        saved_tool = g_["llvm_tool"]
+        try:
+            g_["llvm_tool"] = lambda name, llvm_bin: str(fake)
+            for ver, ok in ((22, False), (23, True)):
+                fake.write_text(f"#!/bin/sh\necho 'LLVM version {ver}.1.0'\n")
+                fake.chmod(0o755)
+                _BC_TOOLS.clear()
+                try:
+                    got = bitcode_tool("llc", [bc], None) == str(fake)
+                except ToolMissing:
+                    got = False
+                check(f"bitcode tool: an LLVM {ver} llc on LLVM 23 bitcode is "
+                      f"{'used' if ok else 'refused'}", got == ok)
+        finally:
+            g_["llvm_tool"] = saved_tool
+            _BC_TOOLS.clear()
 
     # The rustup llvm-tools ship no llvm-cxxfilt: c++filt stands in, and with
     # neither the demangler is a ToolMissing, never a bare exit.
