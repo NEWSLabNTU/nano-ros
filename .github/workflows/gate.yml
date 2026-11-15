@@ -2156,6 +2156,24 @@ jobs:
           source ./activate.sh
           just check template-copy-out
 
+      # phase-557 W8 follow-up — the merge queue re-walks ONE recorded
+      # stack-floor row, the mps2 bare-metal talker, so a change that moves
+      # its walk is caught the day it lands instead of at the next nightly.
+      # Only that row: it is the cargo road with no Zephyr SDK, and this job
+      # already provisions everything it builds with (the CLI, the resolver,
+      # zenoh-pico, the board's pinned arm-none-eabi-gcc). The three nucleo
+      # rows need the Zephyr SDK and stay on the nightly `stack-floor-drift`
+      # job, which re-walks all four. Shard 2 only: it is the shortest shard
+      # (about 18 min against 21-25 for the others, measured over two merge
+      # groups on 2026-11-15). Its own `run:` block, so a red copy-out cannot
+      # hide its verdict.
+      - name: just zephyr stack-floor-drift (mps2 row only)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() && matrix.shard == 2 }}
+        timeout-minutes: 10
+        run: |
+          source ./activate.sh
+          just zephyr stack-floor-drift --only qemu_bsp_talker_bringup@mps2-an385-baremetal
+
       # Issue 2043 — a ported ament workspace is sized from its census: the
       # same cost class as the templates above (it builds one, twice: the
       # census host build and the image), so it rides the same job, on the

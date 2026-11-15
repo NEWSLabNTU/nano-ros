@@ -153,16 +153,225 @@ def _mask_names(name: str) -> str:
     return name
 
 
-def _order_key(order: int):
+class _V0:
+    """Just enough of Rust's v0 mangling to rewrite a symbol with every
+    back-reference inlined and every crate disambiguator dropped. A
+    back-reference (`B<base62>_`) is a BYTE OFFSET into the symbol, so it
+    moves whenever a crate hash before its target changes length: one function
+    read `...KB1H_` in one checkout and `...KB1I_` in another, which was
+    enough to reorder the walk and move the mps2 talker's depth by 2,972 B.
+    Raises ValueError on anything it does not parse."""
+    BASIC = set("abcdefhijlmnopstuvxyz")
+
+    def __init__(self, s: str):
+        self.s, self.i, self.depth = s, 0, 0
+
+    def peek(self) -> str:
+        return self.s[self.i] if self.i < len(self.s) else ""
+
+    def eat(self, c: str) -> bool:
+        if self.peek() == c:
+            self.i += 1
+            return True
+        return False
+
+    def b62(self) -> int:
+        if self.eat("_"):
+            return 0
+        n = 0
+        while (c := self.peek()) and c != "_":
+            if not c.isalnum():
+                raise ValueError(c)
+            n = n * 62 + (int(c) if c.isdigit() else
+                          ord(c) - 87 if c.islower() else ord(c) - 29)
+            self.i += 1
+        if not self.eat("_"):
+            raise ValueError("base62")
+        return n + 1
+
+    def backref(self, prod) -> str:
+        at = self.b62()
+        if at >= self.i or self.depth > 64:
+            raise ValueError("backref")
+        here, self.i = self.i, at
+        self.depth += 1
+        try:
+            return prod()
+        finally:
+            self.depth -= 1
+            self.i = here
+
+    def ident(self, keep_dis: bool = True) -> str:
+        dis = ""
+        if self.eat("s"):
+            n = self.b62()
+            dis = f"s{n}_" if keep_dis else ""
+        return dis + self.raw_ident()
+
+    def raw_ident(self) -> str:
+        u = "u" if self.eat("u") else ""
+        j = self.i
+        if self.eat("0"):
+            pass  # a decimal number with a leading 0 is exactly 0
+        else:
+            while self.peek().isdigit():
+                self.i += 1
+        if j == self.i:
+            raise ValueError("ident")
+        n = int(self.s[j:self.i])
+        self.eat("_")
+        if self.i + n > len(self.s):
+            raise ValueError("ident length")
+        out = self.s[self.i:self.i + n]
+        self.i += n
+        # `.` before each identifier keeps the name mask's boundary rule true
+        # on the rewritten text (`C12c_after_node` would hide the name).
+        return f".{u}{n}{out}"
+
+    def path(self) -> str:
+        c = self.peek()
+        self.i += 1
+        if c == "C":
+            return "C" + self.ident(keep_dis=False)
+        if c == "M":
+            return "M" + self.impl_path() + self.type()
+        if c == "X":
+            return "X" + self.impl_path() + self.type() + self.path()
+        if c == "Y":
+            return "Y" + self.type() + self.path()
+        if c == "N":
+            ns = self.peek()
+            self.i += 1
+            return "N" + ns + self.path() + self.ident()
+        if c == "I":
+            out = "I" + self.path()
+            while not self.eat("E"):
+                out += self.generic_arg()
+            return out + "E"
+        if c == "B":
+            return self.backref(self.path)
+        raise ValueError(f"path {c!r}")
+
+    def impl_path(self) -> str:
+        dis = f"s{self.b62()}_" if self.eat("s") else ""
+        return dis + self.path()
+
+    def generic_arg(self) -> str:
+        if self.eat("L"):
+            return f"L{self.b62()}_"
+        if self.eat("K"):
+            return "K" + self.const()
+        return self.type()
+
+    def const(self) -> str:
+        if self.eat("p"):
+            return "p"
+        if self.eat("B"):
+            return self.backref(self.const)
+        t = self.type()
+        n = "n" if self.eat("n") else ""
+        j = self.i
+        while self.peek() in "0123456789abcdef" and self.peek():
+            self.i += 1
+        if not self.eat("_"):
+            raise ValueError("const")
+        return t + n + self.s[j:self.i]
+
+    def binder(self) -> str:
+        return f"G{self.b62()}_" if self.eat("G") else ""
+
+    def type(self) -> str:
+        c = self.peek()
+        if c in self.BASIC:
+            self.i += 1
+            return c
+        if c in "CMXYNI":
+            return self.path()
+        self.i += 1
+        if c == "B":
+            return self.backref(self.type)
+        if c == "A":
+            return "A" + self.type() + self.const()
+        if c in "SPO":
+            return c + self.type()
+        if c in "RQ":
+            lt = f"L{self.b62()}_" if self.eat("L") else ""
+            return c + lt + self.type()
+        if c == "T":
+            out = "T"
+            while not self.eat("E"):
+                out += self.type()
+            return out + "E"
+        if c == "F":
+            out = "F" + self.binder() + ("U" if self.eat("U") else "")
+            if self.eat("K"):
+                out += "K" + ("C" if self.eat("C") else self.raw_ident())
+            while not self.eat("E"):
+                out += self.type()
+            return out + "E" + self.type()
+        if c == "D":
+            out = "D" + self.binder()
+            while not self.eat("E"):
+                out += self.path()
+                while self.eat("p"):
+                    out += "p" + self.raw_ident() + self.type()
+            if not self.eat("L"):
+                raise ValueError("dyn lifetime")
+            return out + f"EL{self.b62()}_"
+        raise ValueError(f"type {c!r}")
+
+
+def _canon_v0(name: str) -> str | None:
+    """`name` with back-references inlined and crate hashes dropped, when it
+    is a v0 symbol this parser reads to the end; else None."""
+    if not name.startswith("_R"):
+        return None
+    v = _V0(name[2:])
+    try:
+        while v.peek().isdigit():  # an encoding version
+            v.i += 1
+        out = v.path()
+        if v.i < len(v.s) and v.peek() in "CMXYNIB":
+            # The instantiating crate is dropped: which crate's copy of a
+            # shared generic survives the link depends on the crate hashes.
+            v.path()
+        return "_R" + out
+    except (ValueError, IndexError, RecursionError):
+        return None
+
+
+def _order_key(order: int, g: "Graph | None" = None):
     """The order callees are tried in. Keyed on the name WITHOUT crate hashes
     and without the project's own name, so two projects built from one
     template at different paths (issue 2521's class) or under different names
-    walk in the same order, and seeded per `order`."""
+    walk in the same order, and seeded per `order`.
+
+    Names that agree once canonical (two copies of one generic, `drop_glue<T>`
+    as `.276` in one checkout and `.278` in another) are told apart by what
+    they ARE, their frame and their callees' canonical names, never by the raw
+    name: LLVM's local suffixes are numbered differently in two checkouts, and
+    a raw tie-break moved the nucleo action server's walk by 8 B. Only copies
+    alike in all of that fall to the raw name, and their order cannot change
+    the walk."""
+    canon: dict[str, str] = {}
+
+    def norm_of(name: str) -> str:
+        n = canon.get(name)
+        if n is None:
+            n = canon[name] = _mask_names(_canon_v0(name) or _CRATE_HASH.sub("Cs_", name))
+        return n
+
+    def shape(name: str) -> tuple:
+        if g is None:
+            return ()
+        return (g.frames.get(name, -1),
+                tuple(sorted(norm_of(c) for c in g.edges.get(name, ()))))
+
     def key(name: str):
-        norm = _mask_names(_CRATE_HASH.sub("Cs_", name))
+        norm = norm_of(name)
         if order == 0:
-            return (norm, name)
-        return (hashlib.sha256(f"{order}:{norm}".encode()).digest(), norm, name)
+            return (norm, shape(name), name)
+        return (hashlib.sha256(f"{order}:{norm}".encode()).digest(), norm, shape(name), name)
     return key
 
 
@@ -183,7 +392,7 @@ def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
     bound walk's indirect edges close one large cycle. `walk_deepest` takes
     the deepest over the fixed `WALK_ORDERS`."""
     externals = externals or set()
-    okey = _order_key(order)
+    okey = _order_key(order, g)
     memo: dict[str, Path_] = {}
     on_stack: list[str] = []
     missing: set[str] = set()
@@ -3433,8 +3642,48 @@ def self_test() -> int:
               == "__nros_c_component_<P>_node_configure"
               and _mask_names("xc_after_y") == "xc_after_y"
               and _mask_names("c_afterwards") == "c_afterwards")
+        check("project name: masked in a rewritten v0 name too",
+              _mask_names(_canon_v0("_RNvCs_12c_after_node3run") or "")
+              == "_RNvC.<P>_node.3run")
     finally:
         NAME_TOKENS[:] = saved_tokens
+
+    # A checkout's path never moves the walk. A v0 back-reference is a byte
+    # offset into the symbol, so it moves when a crate hash before its target
+    # changes length: the mps2 talker's `register_node_borrowed` from two
+    # worktrees of one commit, which walked 99,340 and 96,368 B.
+    pair = ("_RINvNtCsl4dmM6lKs9K_4nros12node_runtime22register_node_borrowedNtCs5hreD4wjrN_"
+            "15qemu_bsp_talker6TalkerKj1_Kj0_KB1H_KB1H_KB1H_KB1H_EB11_",
+            "_RINvNtCsfFtu4cLSiR0_4nros12node_runtime22register_node_borrowedNtCs4GEpushUMqS_"
+            "15qemu_bsp_talker6TalkerKj1_Kj0_KB1I_KB1I_KB1I_KB1I_EB11_")
+    check("checkout path: back-references inlined, so two checkouts key alike",
+          _canon_v0(pair[0]) is not None and _canon_v0(pair[0]) == _canon_v0(pair[1]))
+    check("checkout path: the hash strip alone keys them apart (control)",
+          _CRATE_HASH.sub("Cs_", pair[0]) != _CRATE_HASH.sub("Cs_", pair[1]))
+    check("checkout path: a back-reference is inlined as what it points at",
+          _canon_v0(pair[0]) == "_RINvNtC.4nros.12node_runtime.22register_node_borrowedNtC"
+          ".15qemu_bsp_talker.6TalkerKj1_Kj0_Kj0_Kj0_Kj0_Kj0_E")
+    check("checkout path: a 0-length identifier is one digit (closures)",
+          _canon_v0("_RNCNvCs8ioAChcKxDz_4core1fs1_00B5_") is not None)
+    # Two copies of one generic, numbered `.276`/`.278` in one checkout and the
+    # other way round in the next: the callee order follows their frames.
+    def copies(swap: bool) -> Graph:
+        g_ = Graph()
+        n = ("_RNvCsAbCd1234_3foo3bar.276", "_RNvCsZyXw98765_3foo3bar.278")
+        small, big = (n[1], n[0]) if swap else n
+        g_.frames.update({"r": 8, small: 16, big: 32})
+        g_.functions.update(g_.frames)
+        g_.edges["r"] = {small, big}
+        return g_
+    def frames_in_order(g_: Graph, with_shape: bool) -> list:
+        k = _order_key(0, g_ if with_shape else None)
+        return [g_.frames[c] for c in sorted(g_.edges["r"], key=k)]
+    check("checkout path: copies alike once canonical are ordered by what they are",
+          frames_in_order(copies(False), True) == frames_in_order(copies(True), True))
+    check("checkout path: ordered by raw name they swap (control)",
+          frames_in_order(copies(False), False) != frames_in_order(copies(True), False))
+    check("checkout path: a name the parser cannot read falls back, never guesses",
+          _canon_v0("_RZ") is None and _canon_v0("_ZN3foo3barE") is None)
 
     # phase-557 W8: a recorded static that drifts. Up by any amount and down
     # by more than 2 % fail; a smaller fall is a note; equal is OK.
