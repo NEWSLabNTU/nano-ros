@@ -28,7 +28,10 @@ building and publishing them (D1, D5 to D7). The user book's organization is
 here and consolidates D3, D8 and D9. The two RFCs stay separate.
 
 **Status.** Draft until D6's last step, deleting `docs/guides/`, is done;
-the flip to Stable rides that commit (phase-555 ruling D2(b)).
+the flip to Stable rides that commit (phase-555 ruling D2(b)). It also cannot go
+Stable before [RFC-0121](0121-workspace-first-project-layout.md): the book's first
+chapter and D9 are written in 0121's workspace-first shape (phase-555 W3 pair
+ruling 0121-0123).
 
 ## Summary
 

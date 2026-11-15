@@ -107,7 +107,7 @@ section drew (a hand-written workspace-root `Cargo.toml` /
 `check-workspace-root-build-files` refuses one under
 `examples/{workspaces,templates}`.
 
-**No workspace-root `nros.toml`.** Retired. System definition lives in `<bringup>/system.toml`. Rationale: matches ROS muscle memory (every nav2/Autoware tutorial points users at `nav2_bringup/launch/`, not a root TOML). Decouples workspace's build graph from the system graph.
+**No system definition in a workspace-root `nros.toml`.** The system lives in `<bringup>/system.toml`. A root `nros.toml` holds only facts about the whole workspace, such as the package search path and provider overrides (RFC-0121 D2). Rationale: matches ROS muscle memory (every nav2/Autoware tutorial points users at `nav2_bringup/launch/`, not a root TOML). Decouples workspace's build graph from the system graph.
 
 **No duplication.** Root pointer + per-system definition is two different concerns. The temptation to mirror per-system fields at root (e.g. `[workspace.metadata.nros.system.demo]`) is rejected — re-creates colcon's monorepo-of-systems pattern + breaks per-system `<exec_depend>` hygiene.
 

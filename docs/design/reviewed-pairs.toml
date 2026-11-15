@@ -70,3 +70,19 @@ ruling = "phase-555 W3, workspace-system-model brief (pair 0098-0103): complemen
 [[pair]]
 rfcs = ["0103", "0104"]
 ruling = "phase-555 W3, workspace-system-model brief (pair 0103-0104): complementary: RFC-0104's D2 amendment uses RFC-0103 D5's derived `ref` and agrees (RFC-0103 'Review (2026-11-13)') (docs/roadmap/data/phase-555-w2-workspace-system-model.md)"
+
+[[pair]]
+rfcs = ["0065", "0121"]
+ruling = "phase-555 W3, user ruling 2026-11-15 (pair 0065-0121): complementary: RFC-0121 D6 extends RFC-0065 D4's generated entry to every image and keeps D5's `nros materialize`; RFC-0121 amends RFC-0065, retiring its single-package-leaf exemption"
+
+[[pair]]
+rfcs = ["0087", "0121"]
+ruling = "phase-555 W3, user ruling 2026-11-15 (pair 0087-0121): complementary: RFC-0121 D2 places RFC-0087 D6's `[workspace] package_paths` in the workspace-root `nros.toml` and uses D3's board provider tag unchanged"
+
+[[pair]]
+rfcs = ["0098", "0100"]
+ruling = "phase-555 W3, user ruling 2026-11-15 (pair 0098-0100): complementary: RFC-0098 owns the generated build config, RFC-0100 owns the facts and the sizing descriptor that config names to cargo; RFC-0100 amends RFC-0098 (row E)"
+
+[[pair]]
+rfcs = ["0121", "0123"]
+ruling = "phase-555 W3, user ruling 2026-11-15 (pair 0121-0123): complementary: RFC-0123 decides no layout and RFC-0121 no book; RFC-0123's first chapter and D9 follow RFC-0121, so RFC-0123 cannot go Stable before RFC-0121"

@@ -3,6 +3,7 @@ rfc: 0100
 title: "One sizing model: the contract states facts, every backend derives its own buffers"
 status: Draft
 area: workspace-system-model
+amends: [0098]
 since: 2026-09
 last-reviewed: 2026-11
 implements-tracked-by: [phase-454, phase-457, phase-486, phase-531]
