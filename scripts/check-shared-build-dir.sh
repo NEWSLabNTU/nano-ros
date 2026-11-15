@@ -208,7 +208,19 @@ rc=0
 nested_build 20 "$work/nested-raw.out" NROS_NESTED_RAW=1 || rc=$?
 [ "$rc" -eq 124 ] || { cat "$work/nested-raw.out" >&2; \
     fail "nested: the negative control (a raw \$CARGO under the shared build-dir) exited $rc instead of deadlocking into the 20 s timeout -- this scenario can no longer tell the fix from its absence"; }
-nested_build 120 "$work/nested-again.out" \
-    || { cat "$work/nested-again.out" >&2; fail "nested: after the control's timeout the build-dir lock was not free again"; }
+# The rebuild gets the first build's budget, not a shorter one: the control
+# killed cargo mid-build, so this run recompiles what was interrupted, and on a
+# loaded host that took over the 120 s it once had (2026-11-15, beside a
+# concurrent `ci gate`). A lock that stayed held still ends here, as a 900 s
+# timeout, and the two outcomes are reported apart.
+rc=0
+nested_build 900 "$work/nested-again.out" || rc=$?
+if [ "$rc" -eq 124 ]; then
+    cat "$work/nested-again.out" >&2
+    fail "nested: after the control's timeout the rebuild did not finish in 900 s -- the build-dir lock was not freed when the control's process group was killed"
+elif [ "$rc" -ne 0 ]; then
+    cat "$work/nested-again.out" >&2
+    fail "nested: after the control's timeout the rebuild FAILED (exit $rc), see its output above"
+fi
 
 echo "check-shared-build-dir: OK -- a same-named root collision and a two-spelling crate are both refused; the generated shape passes, each archive holds its own code, and the shared dep is one unit; a build script's nested cargo finishes through nested_cargo() and deadlocks without it (the control)"
