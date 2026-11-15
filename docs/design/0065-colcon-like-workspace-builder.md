@@ -14,7 +14,9 @@ superseded-by: null
 # RFC-0065 — A colcon-like builder: `nros build`, and the entry stops being hand-written
 
 **Amends:** [RFC-0026](0026-example-directory-layout.md) (a copied-out
-*workspace* now requires `nros build`; single-package leaves are unchanged),
+*workspace* now requires `nros build`; single-package leaves are unchanged — since
+retired by [RFC-0121](0121-workspace-first-project-layout.md) D6, under which every
+image builds through the generated entry, a single-package project included),
 [RFC-0024](0024-multi-node-workspace-layout.md) §2.4 + §9 (the
 `nros build` rejection — see *Reconciliation* below), RFC-0048 (ament/CMake
 integration + presets), RFC-0026 (examples are standalone copy-out projects),

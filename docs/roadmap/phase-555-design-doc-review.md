@@ -208,8 +208,13 @@ brief of RFC-0126 did.
     each naming its W2 verdict.
   - ARCHITECTURE.md names RFC-0121 for the layout and RFC-0024 (Stable) for
     its rationale.
-  - Left for a verdict (no W2 verdict recorded): 0065-0121, 0087-0121,
-    0098-0100 and 0121-0123.
+  - The four pairs with no W2 verdict (0065-0121, 0087-0121, 0098-0100,
+    0121-0123) were ruled complementary by the user on 2026-11-15 and are in
+    `reviewed-pairs.toml`. RFC-0121 `amends` 0065 (0065's scope line says
+    so), RFC-0100 `amends` 0098 (0098's row E points at the descriptor), and
+    RFC-0123 cannot go Stable before RFC-0121. RFC-0024 §5 and issue 2587 now
+    say a workspace-root `nros.toml` holds workspace-wide facts only, as
+    RFC-0121 D2 has it.
 
 ### W4 -- Keep it organized
 

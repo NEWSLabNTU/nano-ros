@@ -39,8 +39,9 @@ is still open, so the RFC can be Stable without carrying it.
   expands. This adds path-resolution rules, and every consumer of
   `system.toml` would have to read the expanded form.
 - (c) A workspace-level defaults table that each bringup inherits and
-  overrides. RFC-0024 §9 rejects a workspace-root `nros.toml`, so this would
-  need a home RFC-0121 allows.
+  overrides. A workspace-root `nros.toml` holds only workspace-wide facts
+  (RFC-0024 §5, RFC-0121 D2) and never a system definition, so shared system
+  defaults there would need RFC-0121 D2 amended, or another home.
 
 ## Done when
 
