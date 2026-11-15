@@ -8,7 +8,7 @@ area: [ci, book, zephyr, probe]
 related: [2278, 2344, 2185, 2358, phase-548]
 found: 2026-11-09
 ---
-**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)** (the west-application chapter is how a Zephyr user reaches every board in that phase).
+**Home: [phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md)** (the west-application chapter is how a Zephyr user reaches every board in that phase).
 
 ## What fails
 

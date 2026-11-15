@@ -11,7 +11,7 @@ resolved_in: "board_rust_channel pins a project with no rustup override to the i
 related: [phase-548, issue-1914]
 ---
 
-**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)**, the
+**Home: [phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md)**, the
 sibling of W9. W9 (#3321) fixed the CMake road's `rust-lld`/`llvm-ar` lookup and
 made `nros setup` install a "rustup default" need on the pin as well. This
 issue covers the two roads W9 did not reach.

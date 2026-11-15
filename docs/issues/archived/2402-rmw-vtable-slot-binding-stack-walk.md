@@ -10,7 +10,7 @@ found: 2026-11-10
 related: [issue-2400, issue-2360, issue-2398, issue-2516, issue-2517, phase-548, phase-557]
 ---
 
-**Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md)**, with
+**Home: [phase-548](../roadmap/archived/phase-548-three-languages-every-board.md)**, with
 issue 2400, whose per-backend indirect allowances this issue would retire.
 
 ## What

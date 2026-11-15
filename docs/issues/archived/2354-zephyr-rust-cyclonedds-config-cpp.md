@@ -10,7 +10,7 @@ found: 2026-11-07
 resolved: 2026-11-09
 ---
 
-**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)**
+**Home: [phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md)**
 (seen while doing W2; NOT MEASURED).
 
 ## What

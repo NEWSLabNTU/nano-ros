@@ -5,11 +5,13 @@ status: open
 type: tech-debt
 severity: medium
 area: [zephyr, rust, executor]
-related: [2359, phase-548]
+related: [2359, phase-548, phase-557]
 found: 2026-11-07
 ---
 
-**Home:** [phase-548](../roadmap/phase-548-three-languages-every-board.md)
+**Home:** [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md), which derives
+stack floors from measured frames. Rehomed 2026-11-15 from
+[phase-548](../roadmap/archived/phase-548-three-languages-every-board.md) (archived).
 
 Found while fixing issue 2359.
 

@@ -10,7 +10,7 @@ resolved: 2026-11-09
 resolved_in: "the run plan's BOARD rung reads the locator a west build baked, `CONFIG_NROS_ZENOH_LOCATOR` (or the XRCE agent pair) from `<build_dir>/zephyr/.config`, where the descriptor rule answers nothing"
 ---
 
-**Home:** [phase-548](../../roadmap/phase-548-three-languages-every-board.md)
+**Home:** [phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md)
 
 ## What
 

@@ -9,7 +9,10 @@ found: 2026-11-07
 related: [phase-535, 0155, 0163, 1288, phase-548, phase-531]
 ---
 
-**Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md).**
+**Home: [phase-535](../roadmap/phase-535-example-reorg-and-cadence-ci.md)**, whose W5
+and W6 keep the Cyclone leaves for it. Rehomed 2026-11-15 from
+[phase-548](../roadmap/archived/phase-548-three-languages-every-board.md) (archived).
+**Parked, awaiting user ruling.**
 
 ## What happens
 

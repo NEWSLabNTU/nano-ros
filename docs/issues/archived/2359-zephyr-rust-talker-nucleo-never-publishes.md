@@ -11,7 +11,7 @@ resolved: 2026-11-07
 resolved_in: "zephyr/CMakeLists.txt refuses a Rust image whose CONFIG_MAIN_STACK_SIZE is below NROS_RUST_MAIN_STACK_FLOOR (32768); the nucleo-f767zi, rpi-pico-w and fvp-aemv8r-smp confs move to 32768"
 ---
 
-**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)**
+**Home: [phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md)**
 (found by W7; it is the Rust cell's remaining red on `nucleo-f767zi-zephyr`).
 
 ## What

@@ -5,12 +5,13 @@ status: open
 type: test-gap
 severity: low
 area: [cli, runners, testing]
-related: [phase-548, phase-544]
+related: [phase-548, phase-544, phase-524]
 found: 2026-11-09
 ---
 
-**Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md) W7**,
-with the Nucleo twin it needs. Split out of issue 2307 when
+**Home: [phase-524](../roadmap/phase-524-emulator-twins.md)**, which owns the Nucleo
+Renode twin and its launcher. Rehomed 2026-11-15 from
+[phase-548](../roadmap/archived/phase-548-three-languages-every-board.md) W7 (archived). Split out of issue 2307 when
 [phase-544](../roadmap/archived/phase-544-harness-run-plan-followups.md) was
 archived.
 

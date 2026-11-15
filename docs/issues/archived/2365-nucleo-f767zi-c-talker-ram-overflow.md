@@ -13,7 +13,7 @@ resolved_in: "tier-2 run 42971493635 built the nucleo-f767zi C talker and reache
 
 > **Resolved (2026-11-11).** tier-2 run 42971493635 (schedule, 2026-11-11, `main` `7d60c42daf`, runner `nano-ros-runner-newslab-118-server`) built the tier-2 coordinates including `zephyr-nucleo-f767zi,c,zenoh` (the Zephyr fixture stage passed, `build tier2` green) and went on to run the cells: the first scheduled tier-2 run past the build since at least 2026-11-06. That is this issue's acceptance. The run's one real failure is an unrelated NuttX C service cell.
 
-**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)**, where issue
+**Home: [phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md)**, where issue
 2359's main-stack raise came from.
 
 ## Measured

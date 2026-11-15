@@ -10,7 +10,7 @@ related: [2335, phase-535, phase-548]
 resolved: 2026-11-07
 resolved_in: "p548-w4-riscv-cpp branch: the riscv64 port's interrupt lockout is a volatile asm with a memory clobber"
 ---
-**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md).**
+**Home: [phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md).**
 
 
 ## What happens

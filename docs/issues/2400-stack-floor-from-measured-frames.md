@@ -9,9 +9,10 @@ found: 2026-11-10
 related: [issue-2360, issue-2365, issue-2398, issue-2359, issue-0961, issue-1146, phase-548, phase-557]
 ---
 
-**Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md)**, beside
-issue 2360, whose measurements are this issue's main input. **The work items
-and their status: [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md).**
+**Home: [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md)**, which holds
+the work items and their status, beside issue 2360, whose measurements are this
+issue's main input. Rehomed 2026-11-15 from
+[phase-548](../roadmap/archived/phase-548-three-languages-every-board.md) (archived).
 
 ## What
 
