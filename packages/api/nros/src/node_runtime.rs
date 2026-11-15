@@ -3343,6 +3343,7 @@ fn capability_transport_reason(t: &nros_rmw::TransportError) -> &'static str {
         T::SubscriberCreationFailed => "Transport::SubscriberCreationFailed",
         T::ConnectionFailed => "Transport::ConnectionFailed (no session to the router)",
         T::Disconnected => "Transport::Disconnected",
+        T::SessionLost => "Transport::SessionLost (the Agent restarted; re-open the executor)",
         T::TopicNameInvalid => "Transport::TopicNameInvalid",
         T::NodeNameNonExistent => "Transport::NodeNameNonExistent",
         // phase-417 G7 — the variant carries the refused `QoSPolicyMask` bit

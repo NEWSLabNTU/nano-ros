@@ -1092,6 +1092,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
                                           sizeof(st->output_reliable_buf), XRCE_STREAM_HISTORY);
     st->input_reliable = uxr_create_input_reliable_stream(
         &st->session, st->input_reliable_buf, sizeof(st->input_reliable_buf), XRCE_STREAM_HISTORY);
+    xrce_liveness_tap(st, xrce_now_ms()); /* issue 2576 */
 
     /* Create the DDS participant. ID 1 is reserved for it. */
     st->participant_oid = uxr_object_id(1, UXR_PARTICIPANT_ID);
@@ -1150,6 +1151,88 @@ bool xrce_session_is_closed(const xrce_session_state_t* st) {
     return st == NULL ? true : st->session_closed;
 }
 
+/* Issue 2576 — every inbound message passes through here, so `last_rx_ms`
+ * says when the Agent last spoke. `instance` is `&st->custom`: all three
+ * transports (custom://, serial://, udp://) sit on the one uxrCustomTransport. */
+static bool xrce_liveness_recv(void* instance, uint8_t** buf, size_t* len, int timeout) {
+    xrce_session_state_t* st =
+        (xrce_session_state_t*)((uint8_t*)instance - offsetof(xrce_session_state_t, custom));
+    bool got = st->transport_recv(instance, buf, len, timeout);
+    if (got) {
+        st->last_rx_ms = xrce_now_ms();
+    }
+    return got;
+}
+
+void xrce_liveness_tap(xrce_session_state_t* st, uint64_t now_ms) {
+    st->transport_recv = st->custom.comm.recv_msg;
+    st->custom.comm.recv_msg = xrce_liveness_recv;
+    st->last_rx_ms = now_ms;
+    st->last_probe_ms = now_ms;
+    st->session.on_pong_flag = NO_PONG_STATUS;
+}
+
+static void xrce_liveness_latch(xrce_session_state_t* st) {
+    if (st->session_lost) {
+        return;
+    }
+    st->session_lost = true;
+    xrce_log_error("XRCE session lost: the Agent is reachable but no longer holds this session "
+                   "(it restarted). Every call on this session now returns SESSION_LOST; drop "
+                   "the executor and open it again to reconnect.");
+}
+
+bool xrce_liveness_tick(xrce_session_state_t* st, uint64_t now_ms) {
+    if (st->session_lost) {
+        return true;
+    }
+    /* The answer to an earlier GET_INFO, delivered by the run that just
+     * returned. "In session" is consumed so a later "no session" is fresh. */
+    if (st->session.on_pong_flag == PONG_NO_SESSION_STATUS) {
+        xrce_liveness_latch(st);
+        return true;
+    }
+    if (st->session.on_pong_flag == PONG_IN_SESSION_STATUS) {
+        st->session.on_pong_flag = NO_PONG_STATUS;
+    }
+    if (XRCE_SESSION_PROBE_MS == 0) {
+        return false;
+    }
+    if (now_ms - st->last_rx_ms < (uint64_t)XRCE_SESSION_PROBE_MS ||
+        now_ms - st->last_probe_ms < (uint64_t)XRCE_SESSION_PROBE_MS) {
+        return false;
+    }
+    st->last_probe_ms = now_ms;
+    /* A zero-wait ping: it sends the GET_INFO and listens once without
+     * blocking. The INFO usually lands in the next run and sets the flag
+     * read above. No answer at all is not a verdict: the Agent may simply be
+     * down, and the session can still resume if it comes back. */
+    (void)uxr_ping_agent_session(&st->session, 0, 1);
+    if (st->session.on_pong_flag == PONG_NO_SESSION_STATUS) {
+        xrce_liveness_latch(st);
+        return true;
+    }
+    return false;
+}
+
+rmw_ret_t xrce_output_refusal(const xrce_session_state_t* st) {
+    if (st->session_lost) {
+        return NROS_RMW_RET_SESSION_LOST;
+    }
+    /* The stream is full when the next sequence number is past the window the
+     * last acknowledgement opened: the same test the client applies before it
+     * refuses a write. Anything else that refuses is a sample bigger than one
+     * slot (there is no fragmented path yet). */
+    const uxrOutputReliableStream* s =
+        &st->session.streams.output_reliable[st->output_reliable.index];
+    uxrSeqNum next = uxr_seq_num_add(s->last_written, 1);
+    uxrSeqNum window_end = uxr_seq_num_add(s->last_acknown, s->base.history);
+    if (uxr_seq_num_cmp(next, window_end) > 0) {
+        return NROS_RMW_RET_WOULD_BLOCK;
+    }
+    return NROS_RMW_RET_MESSAGE_TOO_LARGE;
+}
+
 void xrce_session_entity_detach(xrce_session_state_t* st) {
     if (st == NULL) {
         return;
@@ -1177,7 +1260,11 @@ rmw_ret_t xrce_session_destroy(rmw_session_t* session) {
         return NROS_RMW_RET_ERROR;
     }
     xrce_session_lock(st);
-    (void)uxr_delete_session(&st->session);
+    /* Issue 2576 — an Agent that forgot the session has nothing to delete,
+     * and waiting for its status would only spend the delete's whole budget. */
+    if (!st->session_lost) {
+        (void)uxr_delete_session(&st->session);
+    }
     /* All three transport paths (custom://, serial://, udp://) now
      * sit on top of uxrCustomTransport — the K.2.5.1.2.a fix routed
      * UDP through the same surface to match xrce-sys's legacy
@@ -1252,12 +1339,17 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
      * returns early, so the call consumes ~t ms wall-clock the way the caller
      * expects, without busy-spinning. (Mirrors the zpico_spin_once
      * `z_sleep_ms` fix for multi-threaded platforms.) */
+    /* Issue 2576 — once the Agent has said it no longer holds the session,
+     * every drive says so: the caller re-opens. The drive still runs, so a
+     * caller that ignores the code is still paced by `t`. */
+    bool lost;
     if (t == 0) {
         xrce_session_lock(st);
         xrce_session_pump(st, 0);
+        lost = xrce_liveness_tick(st, xrce_now_ms());
         xrce_deadline_check(st, xrce_now_ms()); /* issue 2108 */
         xrce_session_unlock(st);
-        return NROS_RMW_RET_OK;
+        return lost ? NROS_RMW_RET_SESSION_LOST : NROS_RMW_RET_OK;
     }
     /* Issue 0029 — use the platform clock/sleep, NOT POSIX
      * `clock_gettime(CLOCK_MONOTONIC)` / `nanosleep`. This path compiles for
@@ -1293,6 +1385,7 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
          * executor drives with a zero `remaining` after it has parked. */
         xrce_session_lock(st);
         xrce_session_pump(st, remaining);
+        (void)xrce_liveness_tick(st, xrce_now_ms());
         xrce_session_unlock(st);
         /* If the run returned well before `remaining`, yield ~1 ms so the next
          * pass picks up freshly-arrived inbound without busy-spinning. */
@@ -1306,8 +1399,9 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
      * subscription's period in `xrce_topic_callback`). */
     xrce_session_lock(st);
     xrce_deadline_check(st, xrce_now_ms());
+    lost = st->session_lost;
     xrce_session_unlock(st);
-    return NROS_RMW_RET_OK;
+    return lost ? NROS_RMW_RET_SESSION_LOST : NROS_RMW_RET_OK;
 }
 
 /* Phase 124.F.2 — session-level connectivity probe.
@@ -1326,7 +1420,21 @@ rmw_ret_t xrce_session_ping(rmw_session_t* session, int32_t timeout_ms) {
     }
     int t = timeout_ms < 0 ? 0 : (int)timeout_ms;
     xrce_session_lock(st);
-    bool ok = uxr_ping_agent_session(&st->session, t, 1);
+    rmw_ret_t ret = NROS_RMW_RET_SESSION_LOST;
+    if (!st->session_lost) {
+        bool ok = uxr_ping_agent_session(&st->session, t, 1);
+        /* Issue 2576 — the client reports "the Agent answered, it holds no
+         * session" and "no answer" alike as false; only the flag tells them
+         * apart, and only the first is a verdict on the session. */
+        if (ok) {
+            st->session.on_pong_flag = NO_PONG_STATUS;
+            ret = NROS_RMW_RET_OK;
+        } else if (st->session.on_pong_flag == PONG_NO_SESSION_STATUS) {
+            xrce_liveness_latch(st);
+        } else {
+            ret = NROS_RMW_RET_TIMEOUT;
+        }
+    }
     xrce_session_unlock(st);
-    return ok ? NROS_RMW_RET_OK : NROS_RMW_RET_TIMEOUT;
+    return ret;
 }

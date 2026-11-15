@@ -329,6 +329,13 @@ static inline void nros_xrce_free(void* ptr) {
 #define XRCE_ENTITY_CREATION_TIMEOUT_MS 1000
 #define XRCE_SESSION_FLUSH_TIMEOUT_MS 100
 #define XRCE_SESSION_CREATION_RETRIES 3
+/* Issue 2576 — how long the link may stay silent before `drive_io` asks the
+ * Agent whether it still holds this session (one GET_INFO; see
+ * `xrce_liveness_tick`). 0 turns the probe off; an explicit `ping_session`
+ * still answers. */
+#ifndef XRCE_SESSION_PROBE_MS
+#define XRCE_SESSION_PROBE_MS 1000
+#endif
 
 /* Default agent UDP port, matches Micro-XRCE-DDS-Agent's default. */
 #define XRCE_DEFAULT_AGENT_PORT 2018
@@ -807,6 +814,19 @@ struct xrce_session_state {
      * `xrce_publisher_state::deadline_next`. Publishers have no slot table, so
      * `drive_io` needs this list to find them. */
     struct xrce_publisher_state* deadline_publishers;
+
+    /* Issue 2576 — session liveness. An Agent that restarts forgets every
+     * session, and the client library goes on buffering into a reliable stream
+     * nobody acknowledges. Only the Agent can say the session is gone: it
+     * answers a GET_INFO with "available, no session". `session_lost` latches
+     * that answer; from then on `drive_io`, `publish` and `ping_session` return
+     * NROS_RMW_RET_SESSION_LOST and the caller re-opens. `last_rx_ms` is
+     * stamped by `transport_recv`'s tap on every inbound message, so a busy
+     * link is never probed. */
+    bool session_lost;
+    uint64_t last_rx_ms;
+    uint64_t last_probe_ms;
+    recv_msg_func transport_recv;
 };
 
 typedef struct xrce_session_state xrce_session_state_t;
@@ -892,6 +912,23 @@ void xrce_session_entity_attach(xrce_session_state_t* st);
  * entity and a DELETE_ENTITY has nowhere to go. Call BEFORE detaching -- detach
  * may free `st`. */
 bool xrce_session_is_closed(const xrce_session_state_t* st);
+
+/* Issue 2576 — session liveness.
+ *
+ * `xrce_liveness_tap` interposes on the session's receive so every inbound
+ * message stamps `last_rx_ms`. Called once the session is open.
+ *
+ * `xrce_liveness_tick` runs after each session run: it latches
+ * `session_lost` when the Agent has answered "no session", and sends one
+ * GET_INFO when nothing has arrived for XRCE_SESSION_PROBE_MS. It never waits
+ * for the answer; a later run delivers it. Returns true once lost.
+ *
+ * `xrce_output_refusal` names why the reliable output stream refused a write:
+ * SESSION_LOST once latched, WOULD_BLOCK while the stream's window is full of
+ * unacknowledged messages, else MESSAGE_TOO_LARGE. */
+void xrce_liveness_tap(xrce_session_state_t* st, uint64_t now_ms);
+bool xrce_liveness_tick(xrce_session_state_t* st, uint64_t now_ms);
+rmw_ret_t xrce_output_refusal(const xrce_session_state_t* st);
 
 /* Mark the session closed and free its state IF no entity still points at it.
  * Split out of `xrce_session_destroy` so the lifetime decision is testable

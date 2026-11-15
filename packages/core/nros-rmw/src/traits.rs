@@ -387,6 +387,13 @@ pub enum TransportError {
     /// doesn't know. Maps to `NROS_RMW_RET_INCOMPATIBLE_ABI` at
     /// the C boundary.
     IncompatibleAbi,
+    /// The peer is reachable and no longer holds this session: an XRCE
+    /// Agent that restarted answers a ping with "available, no session".
+    /// It does not clear itself; every later call on the session returns
+    /// it, and the remedy is to drop the executor and open a new one.
+    /// Distinct from [`Self::Timeout`] (no answer at all). Maps to
+    /// `NROS_RMW_RET_SESSION_LOST` at the C boundary.
+    SessionLost,
     /// Backend-specific error with a `'static` diagnostic string.
     ///
     /// Useful for zenoh-pico / XRCE-DDS return codes that map to a
@@ -444,6 +451,7 @@ impl core::fmt::Display for TransportError {
             Self::LoanNotSupported => "message loans unavailable on this entity",
             Self::NoData => "no data available",
             Self::IncompatibleAbi => "incompatible ABI version",
+            Self::SessionLost => "the session was lost: the peer no longer holds it; re-open",
             Self::Backend(msg) => return write!(f, "backend error: {msg}"),
             #[cfg(feature = "alloc")]
             Self::BackendDynamic(msg) => return write!(f, "backend error: {msg}"),

@@ -4194,13 +4194,14 @@ node-std-tests:
         cargo test -p nros-node --lib \
         --features alloc,log,sim-time,param-services --quiet -- --ignored --exact \
         executor::backing::tests::the_static_is_handed_out_once_and_only_once
-    # Issue 2579 — a failed `Executor::open` gives the static back. Its own
+    # Issues 2579/2576 — a failed `Executor::open`, and a dropped one, give the
+    # static back. Its own
     # process for the same latch reason, and `rmw-cffi` because `open` exists
     # only there (no backend is registered, so every open fails).
     ran_tests "the failed-open backing give-back test" \
         cargo test -p nros-node --lib \
         --features alloc,log,sim-time,param-services,rmw-cffi --quiet -- --ignored --exact \
-        executor::backing::tests::a_failed_open_gives_the_static_back
+        executor::backing::tests::the_static_comes_back_after_a_failed_open_or_a_drop
     # Issue 1284 — a STATED executor backing must MEET the executor's default.
     # `check-executor-backing-arena-pairing` (fast line) holds `arena + 8 *
     # words == base`, i.e. that the numbers SUM; whether `words` is ENOUGH was

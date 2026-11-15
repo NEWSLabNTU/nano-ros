@@ -142,3 +142,10 @@ add_executable(nros_rmw_xrce_flush_bounded_under_traffic flush_bounded_under_tra
 target_link_libraries(nros_rmw_xrce_flush_bounded_under_traffic PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_flush_bounded_under_traffic COMMAND nros_rmw_xrce_flush_bounded_under_traffic)
+
+# Issue 2576 — a lost session is reported (ping, drive, refused write), and a
+# quiet or busy link that still holds its session is not. No agent: a fake one
+# answers GET_INFO with a real Agent's INFO bytes, in and out of session.
+add_executable(nros_rmw_xrce_session_lost session_lost.c)
+target_link_libraries(nros_rmw_xrce_session_lost PRIVATE nros_rmw_xrce)
+add_test(NAME nros_rmw_xrce_session_lost COMMAND nros_rmw_xrce_session_lost)

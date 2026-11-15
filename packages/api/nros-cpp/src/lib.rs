@@ -1647,6 +1647,7 @@ pub(crate) fn transport_error_to_cpp_ret(err: nros_rmw::TransportError) -> nros_
     match err {
         // Genuinely transport.
         T::ConnectionFailed | T::Disconnected | T::PublishFailed => NROS_CPP_RET_TRANSPORT_ERROR,
+        T::SessionLost => NROS_CPP_RET_TRANSPORT_ERROR,
         T::KeepaliveFailed | T::PollFailed | T::JoinFailed => NROS_CPP_RET_TRANSPORT_ERROR,
         T::IncompatibleAbi | T::Backend(_) => NROS_CPP_RET_TRANSPORT_ERROR,
         // The VARIANT is gated on `nros-rmw/alloc`, and this crate's `alloc`
@@ -1787,6 +1788,8 @@ fn transport_error_class(err: &nros_rmw::TransportError) -> u32 {
         T::NoData => 29,
         T::IncompatibleAbi => 30,
         T::Backend(_) => 31,
+        // issue 2576. APPENDED; 32 stays `BackendDynamic`'s.
+        T::SessionLost => 33,
         // Gated, and covered without `alloc` by the wildcard below, for the
         // reason `transport_error_to_cpp_ret` gives (issue 2115).
         #[cfg(feature = "alloc")]

@@ -176,6 +176,9 @@ static rmw_ret_t xrce_publisher_publish_raw_locked(const rmw_publisher_t *publis
     }
     xrce_publisher_state *ps = (xrce_publisher_state *)publisher->backend_data;
     xrce_session_state_t *st = ps->session_state;
+    if (st->session_lost) {
+        return NROS_RMW_RET_SESSION_LOST; /* issue 2576 */
+    }
 
     /* XRCE-DDS interop: strip the 4-byte CDR encapsulation header the executor
      * prepends. The XRCE DATA payload carries the bare serialized sample; the
@@ -202,11 +205,15 @@ static rmw_ret_t xrce_publisher_publish_raw_locked(const rmw_publisher_t *publis
         return NROS_RMW_RET_OK;
     }
 
-    /* TODO 115.K.2.x: fragmented fallback via
+    /* Issue 2576 — a refusal is either a full window (the Agent has stopped
+     * acknowledging: WOULD_BLOCK, or SESSION_LOST once it said why) or a sample
+     * bigger than one slot.
+     *
+     * TODO 115.K.2.x: fragmented fallback via
      * `uxr_prepare_output_stream_fragmented` for messages larger than
      * a single stream slot. The Rust impl has it; skipped here until
      * a smoke test demonstrates the need. */
-    return NROS_RMW_RET_MESSAGE_TOO_LARGE;
+    return xrce_output_refusal(st);
 }
 
 /* Phase 124.E.3 — streamed publish.
@@ -277,6 +284,9 @@ static rmw_ret_t xrce_publisher_publish_streamed_locked(
     }
     xrce_publisher_state *ps = (xrce_publisher_state *)publisher->backend_data;
     xrce_session_state_t *st = ps->session_state;
+    if (st->session_lost) {
+        return NROS_RMW_RET_SESSION_LOST; /* issue 2576 */
+    }
 
     size_t total = 0;
     size_cb(&total, user_ctx);
@@ -316,9 +326,10 @@ static rmw_ret_t xrce_publisher_publish_streamed_locked(
         &st->session, st->output_reliable, ps->datawriter_oid,
         &ub, (uint32_t)body_len);
     if (req == UXR_INVALID_REQUEST_ID) {
-        /* `body_len` exceeds a single stream slot. No fragmented path
-         * in the K.2 backend yet — same gap as `publish_raw`. */
-        return NROS_RMW_RET_MESSAGE_TOO_LARGE;
+        /* A full window or a `body_len` past one stream slot (no fragmented
+         * path in the K.2 backend yet — same gap as `publish_raw`); issue
+         * 2576 tells them apart. */
+        return xrce_output_refusal(st);
     }
     if ((size_t)(ub.final - ub.iterator) < body_len) {
         return NROS_RMW_RET_MESSAGE_TOO_LARGE;
