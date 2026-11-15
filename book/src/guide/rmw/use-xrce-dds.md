@@ -11,8 +11,10 @@ The XRCE-DDS backend is the Micro-XRCE-DDS client, the one micro-ROS uses.
 The client does no discovery of its own: it asks a **Micro-XRCE-DDS Agent**
 on a host to create DDS entities for it, and the agent carries the data
 between the client and the DDS network. ROS 2 nodes on any DDS-based RMW see
-those entities. The agent is required: an image whose agent stops loses all
-connectivity until it comes back.
+those entities. The agent is required: while the node cannot reach its
+agent it has no connectivity, and it carries on once the same agent answers
+again. An agent that restarts forgets the node's session, and the node has to
+open again ([When the Agent restarts](../platforms/bare-metal-own-main-loop.md#when-the-agent-restarts)).
 
 ## Before you start
 
@@ -157,6 +159,9 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
   at the locator's address, or `stream_history` is below 4.
 - **`ros2 topic echo` shows nothing.** Both sides must use the same
   `domain_id`; the agent joins the domain the client asks for.
+- **`XRCE session lost: … (it restarted)`.** The agent restarted and forgot
+  the node's session. Open the executor again and create the entities again,
+  as in [When the Agent restarts](../platforms/bare-metal-own-main-loop.md#when-the-agent-restarts).
 
 ## See also
 
