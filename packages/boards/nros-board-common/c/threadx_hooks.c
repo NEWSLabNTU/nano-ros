@@ -296,6 +296,53 @@ static void log_app_returned(const char *what, int exit_code)
     nros_board_log(line);
 }
 
+/* ---- The runtime's log records reach the console on a C/C++ app too ----
+ *
+ * The platform's log slot is a function pointer the BOARD fills
+ * (`nros_platform_register_log_writer`), and a record raised while it is
+ * empty is dropped. Each ThreadX board's Rust side fills it before its Rust
+ * entry runs; nothing filled it before a C or C++ `app_main`. So in every
+ * C/C++ ThreadX image the runtime's own diagnostics were silent: a session
+ * open that failed printed only "app_main returned, exit code 156", never the
+ * `zenoh open: no session with <locator>` line that says why, which is all a
+ * CI log had to go on when a threadx-linux C listener died at boot.
+ *
+ * The writer prints through the board's `nros_board_log`, the same console
+ * every `[app_thread]` line here uses, in the Rust writer's line shape
+ * (`[LEVEL] name: msg`). One call per record: a board's `nros_board_log` may
+ * end every call with a line break (rv-virt-threadx does). Declared here
+ * rather than by including `<nros/platform.h>`, because this file is also
+ * built on the Rust lane; the prototype is that header's. */
+void nros_platform_register_log_writer(void (*writer)(uint8_t, const uint8_t *, uintptr_t,
+                                                      const uint8_t *, uintptr_t),
+                                       void (*flusher)(void));
+
+static void c_app_log_writer(uint8_t severity, const uint8_t *name, uintptr_t name_len,
+                             const uint8_t *msg, uintptr_t msg_len)
+{
+    static const char *const labels[] = {
+        "[TRACE] ", "[DEBUG] ", "[INFO] ", "[WARN] ", "[ERROR] ", "[FATAL] ",
+    };
+    const char *label = severity < 6u ? labels[severity] : "[?] ";
+    char line[512];
+    size_t n = 0;
+    /* Room is kept for the line break and the terminator. */
+    const size_t cap = sizeof(line) - 2u;
+    for (const char *p = label; *p && n < cap; p++) line[n++] = *p;
+    if (name != NULL) {
+        for (uintptr_t i = 0; i < name_len && n < cap; i++) line[n++] = (char)name[i];
+        if (name_len != 0u) {
+            for (const char *p = ": "; *p && n < cap; p++) line[n++] = *p;
+        }
+    }
+    if (msg != NULL) {
+        for (uintptr_t i = 0; i < msg_len && n < cap; i++) line[n++] = (char)msg[i];
+    }
+    line[n++] = '\n';
+    line[n] = '\0';
+    nros_board_log(line);
+}
+
 /* ---- App thread entry: invokes Rust callback or C/C++ app_main ---- */
 static void app_thread_entry(ULONG input)
 {
@@ -308,6 +355,8 @@ static void app_thread_entry(ULONG input)
         nros_board_app_returned(0);
         return;
     }
+    /* A C/C++ app: no Rust side ran to fill the log slot (see above). */
+    nros_platform_register_log_writer(c_app_log_writer, NULL);
     if (c_app_main) {
         nros_board_log("[app_thread] Calling c_app_main (FFI)...\n");
         c_app_main();
