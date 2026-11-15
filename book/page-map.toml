@@ -572,6 +572,13 @@ note = "A Zephyr app you build with west (W9): a how-to on the template, trimmed
 
 [[page]]
 book = "user"
+path = "guide/platforms/bare-metal-own-main-loop.md"
+action = "new bare-metal-library-path"
+batch = "bare-metal-library-path"
+note = "A bare-metal app that owns its main loop: the library path without nros::main!() for a serial-only XRCE board (issue 2579, GitHub #1049)"
+
+[[page]]
+book = "user"
 path = "guide/platforms/flash-a-real-board.md"
 action = "new phase-537"
 batch = "p537-w9"

@@ -76,6 +76,7 @@
   - [Twin and hardware]()
     - [Nucleo-F767ZI](./guide/platforms/nucleo-f767zi.md)
   - [A Zephyr app you build with west](./guide/platforms/zephyr-west-app.md)
+  - [A bare-metal app that owns its main loop](./guide/platforms/bare-metal-own-main-loop.md)
   - [Flash a real board](./guide/platforms/flash-a-real-board.md)
   - [PX4 Autopilot](./guide/platforms/px4.md)
 - [Real-time]()
