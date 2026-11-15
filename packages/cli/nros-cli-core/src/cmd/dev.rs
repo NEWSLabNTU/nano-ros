@@ -78,6 +78,20 @@ pub enum Noun {
     // Issue 2421. Born under `nros dev`: no old spelling.
     #[command(subcommand)]
     Jobserver(Jobserver),
+    /// Check a probe build dir that shares one cargo build-dir per key: no
+    /// crate built twice under two path spellings, and every uplifted image
+    /// archive carrying its own root's code.
+    // phase-559 W10. Born under `nros dev`: no old spelling. The probe runs
+    // the same check after every build; this is its negative-control entry.
+    #[command(name = "shared-build-dir-check")]
+    SharedBuildDirCheck(SharedBuildDirCheckArgs),
+}
+
+/// `nros dev shared-build-dir-check`.
+#[derive(Debug, ClapArgs)]
+pub struct SharedBuildDirCheckArgs {
+    /// The probe's CMake build dir (holds `nros-image-roots/` and `cargo/`).
+    pub build_dir: std::path::PathBuf,
 }
 
 #[derive(Debug, Subcommand)]
@@ -265,7 +279,8 @@ pub fn lower(args: Args) -> Cmd {
         | Noun::Command(_)
         | Noun::MigrateBringup(_)
         | Noun::Bindings(_)
-        | Noun::Jobserver(_)) => Cmd::Dev(Args { noun }),
+        | Noun::Jobserver(_)
+        | Noun::SharedBuildDirCheck(_)) => Cmd::Dev(Args { noun }),
     }
 }
 
@@ -277,6 +292,7 @@ pub const BORN_IN_DEV: &[&str] = &[
     "dev migrate-bringup",
     "dev bindings",
     "dev jobserver repair-makes",
+    "dev shared-build-dir-check",
     "dev image entity-facts",
 ];
 
@@ -296,6 +312,14 @@ pub fn run_unlowered(args: Args) -> eyre::Result<()> {
         Noun::MigrateBringup(a) => cmd::migrate_bringup::run(a),
         Noun::Bindings(a) => cmd::configure::bindings_only(a.sync).map(|_| ()),
         Noun::Jobserver(Jobserver::RepairMakes(a)) => repair_makes(&a),
+        Noun::SharedBuildDirCheck(a) => {
+            crate::orchestration::shared_build_dir::check(&a.build_dir)?;
+            println!(
+                "nros dev shared-build-dir-check: {} is safe to share",
+                a.build_dir.display()
+            );
+            Ok(())
+        }
         other => unreachable!("`nros dev` lowers {other:?}"),
     }
 }

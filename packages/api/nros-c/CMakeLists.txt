@@ -230,6 +230,8 @@ endif()
 # The preset's definition, so the crate resolves `--profile nros-…` without a
 # `[profile.*]` block of its own. No-op for a user-owned profile.
 nros_cargo_profile_env(nros_c-static)
+# phase-559 W10 — the probe shares one cargo build-dir per key (opt-in).
+nros_image_share_build_dir(nros_c-static ROOT_ID "${_nros_c_img_ROOT_ID}")
 # issue 0657 — the riscv64 float ABI, per target (see the helper's comment).
 nros_riscv64_rustflags_env(nros_c-static)
 # phase-372 W1 — the cortex-r52 FPU cflags, same class one arch over.

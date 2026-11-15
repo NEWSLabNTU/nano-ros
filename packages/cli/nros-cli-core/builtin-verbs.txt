@@ -62,6 +62,7 @@ dev profile
 dev rmw
 dev runner
 dev sdk
+dev shared-build-dir-check
 dev ws
 reserved bench
 reserved debug
