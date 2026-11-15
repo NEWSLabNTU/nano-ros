@@ -1261,6 +1261,100 @@ the shallow test turns its case red.
 **Acceptance.** A docs-only batch's queue time and job-minutes, after,
 against the numbers above.
 
+### W13 — one token pool per build run
+
+- **Status:** OPEN (APPROVED 2026-11-15 by the user, relayed by the nros 241
+  manager, with one addition: PROVISION the tools first; not started)
+
+**The user's addition.** make 4.4 and ninja 1.13.2 are provisioned wherever a
+pool can run: every agent host, and the CI images (ci-base and zephyr-ros,
+generated from the index). Already pinned: `[tool.make]` 4.4.1 (source) and
+`[tool.ninja]` 1.13.2 (dist). The pool turns on only after the provisioning is
+proven to land on ci-base AND on one agent host. "Pool off" stays only as the
+fallback for a bare host, printed with its reason. The order is therefore:
+1. **Provision.** ci-base and zephyr-ros bake both tools at the index pins.
+   make has no prebuilt, so the image builds it from `[tool.make.source]`.
+   `nros_pinned_make` / `nros_pinned_ninja` also accept a baked copy whose
+   `--version` meets the pin, not only the store path. The `dev` lane's
+   provisioning (phase-565) installs both on an agent host.
+2. **Prove it** on ci-base (an image job's log) and on one agent host
+   (`nros_pinned_make` answers).
+3. **Pool** per the proposal below.
+
+**Measured.** Two hosts, one cause: a parallel unit's job count is fixed when
+the unit starts and is shared with nothing that runs beside it.
+
+| where | what | number |
+| --- | --- | --- |
+| newslab-118, 48 cores, a solo `just ci gate` | runnable processes (`procs_running`, 30 s samples, n=44) | p50 51, p90 163, max **629**. All four peaks (494–629) were in step 7 `check::build`; blocked (D) about 0; CPU p50 93 %, p90 100 % |
+| nros 175's host, 20 cores, a solo `just ci gate` (`vmstat -t 5`, n=585, the whole `check::build`) | runnable `r` / blocked `b` / CPU | `r` p50 **50**, p90 88, max 173 (2.5× and 4.4× the cores); `b` p50 1 but p90 145, max 299 (bursty I/O); `sy` p50 32 %, about 9k processes under one worktree at one point |
+| a 4-core host, `build-test-fixtures` tier 1 (wtf) | stage wall | `zephyr` solo 1,653 s; then `threadx_linux` (590 s) and `linux` together, each at `inner=1`; `linux` then ran ALONE on 1 of 4 cores for ~3.8 h |
+| nightly 43679672304, FreertosMps2 | cargo's own warning | 191 × `failed to connect to jobserver … cannot open file descriptor 3 … Bad file descriptor`: a descriptor-form `--jobserver-auth=3,4` does not survive the processes between its owner and cargo |
+
+On 118, nextest runs several build gates at once (each weighted `cpu:N` to
+nextest's scheduler), and each gate's cargo, make and ninja spawn at their own
+full width. `NROS_GATE_CPU_SHARE` sizes a gate's OWN nextest, not its
+children. On the 4-core host, the static split never returns a finished
+sibling's cores.
+
+**Proposal.**
+
+1. **Who owns the pool.** The outermost driver of a build run creates ONE GNU
+   make 4.4 FIFO jobserver with `N = nproc` tokens (or the run's stated
+   budget). There are two owners:
+   - `scripts/build/gate-lane.sh`, for `just check fast|build` and so
+     `just ci gate`;
+   - the `build-test-fixtures` driver, which replaces its static `inner=`
+     split, so every stage draws from one pool and a finished stage's tokens
+     go to the next.
+   It is exported as `MAKEFLAGS=--jobserver-auth=fifo:<path>` (plus
+   `CARGO_MAKEFLAGS`). Only the FIFO form is used, because a path survives
+   nextest, `bash -c`, `env` and `setsid`, and an fd pair does not (the 191
+   warnings above). The existing `scripts/build/jobserver-pool.sh` already
+   creates such a pool for one fan-out; this makes it the run's, not the
+   stage's. Inside a pool, an inner `nros_pool_run` joins the outer pool
+   rather than nesting, as `NROS_INHERIT_JOBSERVER=1` already does.
+2. **How each road joins.**
+   - cargo is a jobserver client: rustc units, and through the `cc` crate,
+     build-script compiles.
+   - make 4.4 is a client.
+   - ninja is a client from 1.13 (pinned 1.13.2, `[tool.ninja]`), so cmake
+     and west builds join through it.
+   - `west build` runs ninja, so it joins too.
+   - nextest is not a client. Each build gate is one test that holds no token
+     itself; its children draw them.
+3. **A child that ignores the pool** (a direct `cc -j`, a vendored make below
+   4.4, a QEMU, a Python pool) is not bounded by it. That is accepted and
+   made visible, not hidden:
+   - the lane's after-step reports the run's peak R against `N`, from the
+     same sampler as above;
+   - a gate whose unit peaks above its declared weight is named, so it can
+     be given a resource group or taught the pool.
+   There is no enforcement layer (cgroups, `taskset`): that is runner
+   configuration, out of this repo's reach.
+4. **Fallback.** If no make 4.4 is available, today's behaviour stays, and the
+   lane prints that the pool is off and why. That is already the rule in
+   `jobserver-pool.sh`.
+
+**Risks.**
+- A unit that holds tokens while it waits on another unit can deadlock the
+  pool. The pool's units are independent builds, and nothing waits across
+  units today; the test-tier units do not take tokens.
+- A SIGKILLed client loses its tokens for the rest of the run, so the pool
+  shrinks. It is per run and recreated on the next one.
+- cargo grants each unit one implicit token, so a cargo-heavy tier can still
+  reach about `N + units`. That is bounded, unlike today.
+
+**Acceptance (measured before and after, the same commands).**
+- newslab-118, solo `just ci gate`: `check::build`'s runnable p90 is at most
+  1.5 × cores (today 163 on 48), and its wall is no worse than +10 %.
+- The 4-core host's tier-1 `build-test-fixtures`: its wall falls, and no stage
+  runs alone below the pool's width while tokens are free (the joblog shows
+  it).
+- A 20-core host (nros 175's) repeats the first: `r` p90 at most 1.5 × cores
+  (today 88 on 20).
+- `check fast`, `ci gate` and a tier-1 fixture build stay green on all three.
+
 ## Self-hosted runner cache observations (2026-10-09..14)
 
 From the runner-sweep logs of the three self-hosted runners:
