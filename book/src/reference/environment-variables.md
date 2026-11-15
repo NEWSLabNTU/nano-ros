@@ -247,6 +247,7 @@ env or Kconfig knob. Changing them means editing that header.
 | `XRCE_MAX_PENDING_REPLIES`        | In-flight service replies               | `4`     |
 | `XRCE_SERVICE_REQUEST_RING_DEPTH` | Queued service requests per server      | `4`     |
 | `XRCE_DEFAULT_AGENT_PORT`         | Default agent port                      | `2018`  |
+| `XRCE_SESSION_PROBE_MS`           | Silence before the backend asks the Agent whether it still holds the session; `0` turns the check off | `1000`  |
 
 ### CMake cache variables
 
