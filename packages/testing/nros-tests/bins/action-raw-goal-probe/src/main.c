@@ -50,6 +50,7 @@
 
 #include <rclc/action.h>
 #include <rclc/check.h>
+#include <rclc/executor.h>
 #include <rclc/init.h>
 #include <rclc/node.h>
 /* Reads the baked connect ladder itself (test bin, not a user example). */
@@ -74,6 +75,7 @@
 
 static struct {
     rclc_support_t support;
+    rclc_executor_t executor;
     rcl_node_t node;
     rclc_polling_action_client_t action_client;
 } app;
@@ -120,7 +122,10 @@ int main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
-    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "raw_goal_probe", "/", &app.support), 1);
+    // Executor first, then the node bound to it. The polling client below is
+    // never attached to the executor; the node still has to be bound.
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 1, NULL), 1);
+    RCLC_CHECK_RET(rclc_executor_node_init(&app.executor, &app.node, "raw_goal_probe", NULL), 1);
     // The RAW arms live on the polling (L1) core — `polling_client_core()`
     // returns NULL for an executor-mode client, so this must be init_polling.
     RCLC_CHECK_RET(rclc_polling_action_client_init(
@@ -245,6 +250,7 @@ int main(int argc, char** argv) {
 
     rclc_polling_action_client_fini(&app.action_client);
     rcl_node_fini(&app.node);
+    rclc_executor_fini(&app.executor);
     rclc_support_fini(&app.support);
     return 0;
 }

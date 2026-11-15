@@ -89,7 +89,10 @@ int main(int argc, char** argv) {
     // Initialize support context
     rcl_allocator_t allocator = rcl_get_default_allocator();
     RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
-    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "@NODE@", "/", &app.support), 1);
+    // Executor first, then the node bound to it.
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
+    g_executor = &app.executor;
+    RCLC_CHECK_RET(rclc_executor_node_init(&app.executor, &app.node, "@NODE@", NULL), 1);
 
     RCLC_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
                                                ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
@@ -106,8 +109,6 @@ int main(int argc, char** argv) {
 
     RCLC_CHECK_RET(rclc_timer_init_default(&app.timer, &app.support, 1000000000ULL, timer_callback),
                    1);
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
-    g_executor = &app.executor;
     RCLC_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.timer), 1);
 
     // Set up signal handler
@@ -121,10 +122,10 @@ int main(int argc, char** argv) {
     }
 
     // Cleanup
-    rclc_executor_fini(&app.executor);
     rcl_timer_fini(&app.timer);
     rcl_publisher_fini(&app.publisher, &app.node);
     rcl_node_fini(&app.node);
+    rclc_executor_fini(&app.executor);
     rclc_support_fini(&app.support);
 
     return 0;

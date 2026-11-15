@@ -14,6 +14,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <rclc/executor.h>
 #include <rclc/init.h>
 #include <rclc/node.h>
 #include <rclc/subscription.h>
@@ -22,6 +23,7 @@
 
 static struct {
     rclc_support_t support;
+    rclc_executor_t executor;
     rcl_node_t node;
     rclc_polling_subscription_t subscription;
 } app;
@@ -37,7 +39,10 @@ int main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
     rcl_allocator_t allocator = rcl_get_default_allocator();
     RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
-    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "c_safety_listener", "/", &app.support), 1);
+    // Executor first, then the node bound to it. The polled subscription
+    // below is never added to the executor; the node still has to be bound.
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 1, NULL), 1);
+    RCLC_CHECK_RET(rclc_executor_node_init(&app.executor, &app.node, "c_safety_listener", NULL), 1);
 
     // Polling-mode subscription — the validated receive path is poll-only.
     RCLC_CHECK_RET(rclc_polling_subscription_init(&app.subscription, &app.node,
@@ -73,6 +78,7 @@ int main(int argc, char** argv) {
 
     rclc_polling_subscription_fini(&app.subscription);
     rcl_node_fini(&app.node);
+    rclc_executor_fini(&app.executor);
     rclc_support_fini(&app.support);
     return 0;
 }

@@ -259,7 +259,10 @@ int main(int argc, char** argv) {
      * file out was the defect this phase removes. `examples/linux/c/
      * parameters` is where a C image's parameters are shown. */
     RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, "custom/loopback", 0), 1);
-    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "loopback_demo", "/", &app.support), 1);
+    /* Executor first, then the node bound to it; the node inherits the
+     * support context's `custom/` locator. */
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
+    RCLC_CHECK_RET(rclc_executor_node_init(&app.executor, &app.node, "loopback_demo", NULL), 1);
 
     RCLC_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
                                                ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
@@ -273,7 +276,6 @@ int main(int argc, char** argv) {
     RCLC_CHECK_RET(rclc_timer_init_default(&app.timer, &app.support,
                                            500ULL * 1000 * 1000 /* 500ms */, timer_callback),
                    1);
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     RCLC_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.timer), 1);
     g_executor = &app.executor;
 

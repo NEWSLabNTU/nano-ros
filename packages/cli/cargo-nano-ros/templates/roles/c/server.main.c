@@ -87,7 +87,10 @@ int main(int argc, char** argv) {
     rcl_allocator_t allocator = rcl_get_default_allocator();
     RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
     printf("Support initialized\n");
-    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "@NODE@", "/", &app.support), 1);
+    // Executor first, then the node bound to it.
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
+    g_executor = &app.executor;
+    RCLC_CHECK_RET(rclc_executor_node_init(&app.executor, &app.node, "@NODE@", NULL), 1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
     // Install the typed handler and create the service. The generated
@@ -102,8 +105,6 @@ int main(int argc, char** argv) {
         1);
     printf("Service created: %s\n", rcl_service_get_service_name(&app.service));
 
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
-    g_executor = &app.executor;
     RCLC_CHECK_RET(example_interfaces__srv__AddTwoInts__executor_add_service(
                        &app.executor, &app.service, &app.handler),
                    1);
@@ -130,9 +131,9 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Requests refused: %u (last error %d)\n", app.handler.error_count,
                 (int)app.handler.last_error);
     }
-    rclc_executor_fini(&app.executor);
     rcl_service_fini(&app.service, &app.node);
     rcl_node_fini(&app.node);
+    rclc_executor_fini(&app.executor);
     rclc_support_fini(&app.support);
 
     printf("Goodbye!\n");

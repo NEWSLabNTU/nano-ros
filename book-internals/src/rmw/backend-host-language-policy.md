@@ -244,7 +244,7 @@ Use the named entry points:
 - Rust: `Executor::open_with_rmw("zenoh", &cfg)` for the
   primary session; `node_builder("name").rmw("cyclonedds").build()`
   for additional Nodes.
-- C: `rclc_node_init_ex` with `rcl_node_options_t.rmw_name`
+- C: `rclc_executor_node_init` with `rcl_node_options_t.rmw_name`
   set.
 - C++: `rclcpp::Executor::open_with_rmw(...)` and
   `rclcpp::NodeBuilder::rmw(...)` mirror the Rust API (Phase

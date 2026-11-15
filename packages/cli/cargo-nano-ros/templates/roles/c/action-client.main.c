@@ -110,8 +110,9 @@ int main(int argc, char** argv) {
     rcl_allocator_t allocator = rcl_get_default_allocator();
     RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
     printf("Support initialized\n");
-    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "@NODE@", "/", &app.support),
-                   1);
+    // Executor first, then the node bound to it.
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
+    RCLC_CHECK_RET(rclc_executor_node_init(&app.executor, &app.node, "@NODE@", NULL), 1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
     RCLC_CHECK_RET(rcl_action_client_init(
@@ -126,7 +127,6 @@ int main(int argc, char** argv) {
     RCLC_SOFTCHECK(
         rclc_action_client_set_result_callback(&app.action_client, result_callback, NULL));
 
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     RCLC_CHECK_RET(rclc_executor_attach_action_client(&app.executor, &app.action_client), 1);
     rcl_ret_t ret = RCL_RET_OK;
 
@@ -218,9 +218,9 @@ int main(int argc, char** argv) {
 cleanup:
     // Cleanup
     printf("\nShutting down...\n");
-    rclc_executor_fini(&app.executor);
     rcl_action_client_fini(&app.action_client, &app.node);
     rcl_node_fini(&app.node);
+    rclc_executor_fini(&app.executor);
     rclc_support_fini(&app.support);
 
     printf("Goodbye!\n");

@@ -13,6 +13,7 @@
  *     ./build/c_logging
  */
 
+#include <rclc/executor.h>
 #include <rclc/init.h>
 #include <rclc/node.h>
 
@@ -34,9 +35,20 @@ int main(void) {
         return 1;
     }
 
+    // Executor first, then the node bound to it (static: keeps the executor
+    // off the stack, as the other C examples do).
+    static rclc_executor_t executor;
+    executor = rclc_executor_get_zero_initialized_executor();
+    if (rclc_executor_init(&executor, &support.context, 1, NULL) != 0) {
+        fprintf(stderr, "rclc_executor_init failed\n");
+        rclc_support_fini(&support);
+        return 1;
+    }
+
     rcl_node_t node = rcl_get_zero_initialized_node();
-    if (rclc_node_init_default(&node, "demo", "/", &support) != 0) {
-        fprintf(stderr, "rclc_node_init_default failed\n");
+    if (rclc_executor_node_init(&executor, &node, "demo", NULL) != 0) {
+        fprintf(stderr, "rclc_executor_node_init failed\n");
+        rclc_executor_fini(&executor);
         rclc_support_fini(&support);
         return 1;
     }
@@ -45,6 +57,7 @@ int main(void) {
     if (logger == NULL) {
         fprintf(stderr, "rclc_node_get_logger returned NULL\n");
         rcl_node_fini(&node);
+        rclc_executor_fini(&executor);
         rclc_support_fini(&support);
         return 1;
     }
@@ -60,6 +73,7 @@ int main(void) {
     RCLC_LOG_FATAL(logger, "round 1: fatal=%d", 1);
 
     rcl_node_fini(&node);
+    rclc_executor_fini(&executor);
     rclc_support_fini(&support);
     return 0;
 }

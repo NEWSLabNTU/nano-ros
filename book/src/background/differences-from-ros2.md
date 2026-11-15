@@ -236,8 +236,10 @@ is the better choice.
 
 Moving from micro-ROS is mostly a rename, and in C often not even that: the
 C API keeps rclc's spellings, so `rclc_publisher_init_default`,
-`rclc_node_init_default` (in rclc's argument order) and `rclc_executor_t` are
-nano-ros's names too. An existing XRCE agent serves nano-ros's XRCE-DDS
+`rclc_executor_init` and `rclc_executor_t` are nano-ros's names too. The one
+change is node creation: a node is bound to its executor with
+`rclc_executor_node_init`, so the executor is initialised first and the node
+is bound before its entities are created. An existing XRCE agent serves nano-ros's XRCE-DDS
 backend unchanged. A custom transport is a platform-level transport rather
 than `rmw_uros_set_custom_transport`
 ([Add a transport](../extending/add-a-transport.md)).

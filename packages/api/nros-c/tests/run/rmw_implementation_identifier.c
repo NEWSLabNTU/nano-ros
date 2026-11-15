@@ -72,15 +72,19 @@ int main(void) {
     CHECK(rclc_support_init_rmw(&other, "stub://none", 52, "rmw_ident_other", "stub_other") ==
               RCL_RET_OK,
           "support opened on the second backend");
+    rclc_executor_t other_executor = rclc_executor_get_zero_initialized_executor();
+    CHECK(rclc_executor_init(&other_executor, &other.context, 1, NULL) == RCL_RET_OK,
+          "executor on the second backend initialised");
     rcl_node_t other_node = rcl_get_zero_initialized_node();
-    CHECK(rclc_node_init_default(&other_node, "on_other", "", &other) == RCL_RET_OK,
-          "node on the second backend");
+    CHECK(rclc_executor_node_init(&other_executor, &other_node, "on_other", &opts) == RCL_RET_OK,
+          "node bound on the second backend");
     CHECK(name_is(rclc_node_get_rmw_implementation_identifier(&other_node), "stub_other"),
           "a node on another backend's session answers that backend's name");
     CHECK(name_is(rclc_node_get_rmw_implementation_identifier(&node), NROS_STUB_RMW_NAME),
           "...and the first node's answer did not change");
 
     (void)rcl_node_fini(&other_node);
+    (void)rclc_executor_fini(&other_executor);
     (void)rclc_support_fini(&other);
     (void)rcl_node_fini(&node);
     (void)rclc_executor_fini(&executor);

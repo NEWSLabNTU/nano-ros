@@ -274,27 +274,38 @@ fn registration_node_id(node: crate::node::rclc_node_ref_t) -> Option<nros_node:
         .then(|| nros_node::executor::NodeId::from_raw(node.node_id))
 }
 
-/// RFC-0128 D8 (phase-554 W3, ruled 2026-11-14) -- refuse an entity whose
-/// node was never bound to the executor once the executor holds bound nodes.
+/// RFC-0128 D8 (phase-554 W3 + W3.b, ruled 2026-11-14) -- refuse an entity
+/// whose node was never bound to the executor.
 ///
-/// An unbound node has no node record, so its entities would be announced
-/// under the image's primary node -- a different node. Mixing the two
-/// writings is refused instead, and the message says how to fix it in plain
-/// words. An executor with NO bound node keeps the old single-node path.
-fn refuse_unbound_beside_bound(
+/// An unbound node (`rclc_node_init_default` with no `rclc_executor_node_init`)
+/// has no node record, so its entities would be announced under some other
+/// node -- the image's primary node, or the executor's own label. The user
+/// ruled that writing retired: every entity's node is bound, and the refusal
+/// says how in plain words. `bound_nodes` only shapes the message.
+fn refuse_unbound(
     node_id: Option<nros_node::executor::NodeId>,
     bound_nodes: usize,
     call: &str,
 ) -> Result<Option<nros_node::executor::NodeId>, rcl_ret_t> {
-    if node_id.is_none() && bound_nodes > 0 {
-        nros_log::log_error!(
-            nros_log::get_logger("nros-c"),
-            "{}: this entity's node was not bound to the executor, but the executor \
-             already has {} node(s) bound with rclc_executor_node_init. Bind every node \
-             with rclc_executor_node_init before creating its entities.",
-            call,
-            bound_nodes
-        );
+    if node_id.is_none() {
+        if bound_nodes > 0 {
+            nros_log::log_error!(
+                nros_log::get_logger("nros-c"),
+                "{}: this entity's node was not bound to the executor, but the executor \
+                 already has {} node(s) bound with rclc_executor_node_init. Bind every node \
+                 with rclc_executor_node_init before creating its entities.",
+                call,
+                bound_nodes
+            );
+        } else {
+            nros_log::log_error!(
+                nros_log::get_logger("nros-c"),
+                "{}: this entity's node was not bound to the executor. Create the node \
+                 with rclc_executor_node_init(&executor, &node, name, options) instead of \
+                 rclc_node_init_default, then create its entities.",
+                call
+            );
+        }
         return Err(RCL_RET_INVALID_ARGUMENT);
     }
     Ok(node_id)
@@ -2200,7 +2211,7 @@ unsafe fn register_subscription_entry(
     // Phase 104.C.8.b — a Node created via `rclc_executor_node_init` routes
     // through `_on(NodeId, ...)` so multi-RMW bridges land on the right
     // session; a legacy Node takes the single-Node entry point (issue 1405).
-    let node_id = match refuse_unbound_beside_bound(
+    let node_id = match refuse_unbound(
         registration_node_id(subscription_ref.node),
         rust_exec.nodes().len(),
         "rclc_executor_add_subscription",
@@ -2629,7 +2640,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
             Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
         let topic_str = __resolved_name.as_str();
-        let node_id = match refuse_unbound_beside_bound(
+        let node_id = match refuse_unbound(
             registration_node_id_of(node.as_ref()),
             rust_exec.nodes().len(),
             "rclc_executor_add_subscription_raw_with_info",
@@ -2978,7 +2989,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
         };
         let topic_str = __resolved_name.as_str();
 
-        let node_id = match refuse_unbound_beside_bound(
+        let node_id = match refuse_unbound(
             registration_node_id(subscription_ref.node),
             rust_exec.nodes().len(),
             "rclc_executor_add_subscription_in_group",
@@ -3680,7 +3691,7 @@ unsafe fn add_service_raw(
         // Phase 104.C.8.b — route multi-Node services through the
         // `_on(NodeId, ...)` variant when the Node was created via
         // `rclc_executor_node_init`.
-        let node_id = match refuse_unbound_beside_bound(
+        let node_id = match refuse_unbound(
             registration_node_id(service_ref.node),
             rust_exec.nodes().len(),
             "rclc_executor_add_service",
@@ -3865,7 +3876,7 @@ unsafe fn attach_client_with(
         let service_name = __resolved_name.as_str();
 
         // Phase 104.C.8.b — service-client multi-Node dispatch.
-        let node_id = match refuse_unbound_beside_bound(
+        let node_id = match refuse_unbound(
             registration_node_id(client_ref.node),
             rust_exec.nodes().len(),
             "rclc_executor_add_client",
@@ -4039,7 +4050,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_server(
         // Phase 189.M3.3.b — requested sched-context slot (bind applied at the
         // Ok arm using the action server's goal-service handle).
         let requested_sc = server_ref.options.sched_context;
-        let node_id = match refuse_unbound_beside_bound(
+        let node_id = match refuse_unbound(
             registration_node_id(server_ref.node),
             rust_exec.nodes().len(),
             "rclc_executor_attach_action_server",
@@ -4180,7 +4191,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
         // Phase 104.C.8.b — action-client multi-Node dispatch.
         // `spec.node_id` selects the target Node's session (or the
         // executor's own node when `None`).
-        let node_id = match refuse_unbound_beside_bound(
+        let node_id = match refuse_unbound(
             registration_node_id(client_ref.node),
             rust_exec.nodes().len(),
             "rclc_executor_attach_action_client",

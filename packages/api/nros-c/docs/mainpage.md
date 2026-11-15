@@ -14,9 +14,12 @@ rcl_allocator_t allocator = rcl_get_default_allocator();
 rclc_support_t support = rclc_support_get_zero_initialized();
 rclc_support_init(&support, 0, NULL, &allocator);
 
-/* Create a node. */
+/* Create the executor, then a node bound to it. The node must be bound
+ * before its entities are created. */
+rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
+rclc_executor_init(&executor, &support.context, 1, NULL);
 rcl_node_t node = rcl_get_zero_initialized_node();
-rclc_node_init_default(&node, "my_node", "", &support);
+rclc_executor_node_init(&executor, &node, "my_node", NULL);
 
 /* Create a publisher and publish. */
 rcl_publisher_t pub = rcl_get_zero_initialized_publisher();
@@ -28,6 +31,7 @@ rcl_publish(&pub, &msg, NULL);
 /* Tear down in reverse order. */
 rcl_publisher_fini(&pub, &node);
 rcl_node_fini(&node);
+rclc_executor_fini(&executor);
 rclc_support_fini(&support);
 ```
 

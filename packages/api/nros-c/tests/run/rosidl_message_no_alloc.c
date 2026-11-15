@@ -208,6 +208,7 @@ static void codec_allocates_nothing(void) {
 /* 3. rcl_publish -------------------------------------------------------------- */
 
 static rclc_support_t s_support;
+static rclc_executor_t s_executor;
 static rcl_node_t s_node;
 static rcl_publisher_t s_publisher;
 static rcl_publisher_t s_named_publisher;
@@ -217,8 +218,11 @@ static void rcl_publish_serialises_through_the_descriptor(void) {
     rcl_ret_t rc = rclc_support_init_rmw(&s_support, "stub://none", 46, "rosidl_message_no_alloc",
                                          NROS_STUB_RMW_NAME);
     CHECK(rc == RCL_RET_OK, "rclc_support_init_rmw: %d", rc);
-    rc = rclc_node_init_default(&s_node, "talker", "", &s_support);
-    CHECK(rc == RCL_RET_OK, "rclc_node_init_default: %d", rc);
+    /* Executor first, then the node bound to it. */
+    rc = rclc_executor_init(&s_executor, &s_support.context, 1, NULL);
+    CHECK(rc == RCL_RET_OK, "rclc_executor_init: %d", rc);
+    rc = rclc_executor_node_init(&s_executor, &s_node, "talker", NULL);
+    CHECK(rc == RCL_RET_OK, "rclc_executor_node_init: %d", rc);
     rc = rclc_publisher_init_default(&s_publisher, &s_node,
                                      ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "chatter");
     CHECK(rc == RCL_RET_OK, "rclc_publisher_init_default: %d", rc);
@@ -276,6 +280,7 @@ static void rcl_publish_serialises_through_the_descriptor(void) {
     (void)rcl_publisher_fini(&s_named_publisher, &s_node);
     (void)rcl_publisher_fini(&s_publisher, &s_node);
     (void)rcl_node_fini(&s_node);
+    (void)rclc_executor_fini(&s_executor);
     (void)rclc_support_fini(&s_support);
 }
 
