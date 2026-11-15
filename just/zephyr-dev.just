@@ -683,3 +683,16 @@ zenohd model="":
 [group("debug")]
 stack-floor-twin *ARGS:
     python3 scripts/stack-floor-twin.py {{ARGS}}
+
+# phase-557 W8 -- the stack-floor drift check. Every [[observed]] row in
+# config/stack-floors.toml: build the row's image as a user would (a fresh
+# `nros new` under build/stack-floor-drift for a template key, `nros build
+# <bringup>:<image>` of the in-tree example for a bringup key) and hold the
+# walk to the row's `static`: up by any amount or down by more than 2 % fails,
+# naming the row and the re-measure commands. Runs nightly
+# (`stack-floor-drift` in nightly.yml). Needs the Zephyr SDK for the nucleo
+# rows; source ./activate.sh first. ARGS: --only <key>, --out <dir>.
+# Re-walk every observed stack-floor row; fails when a recorded static drifted.
+[group("debug")]
+stack-floor-drift *ARGS:
+    python3 scripts/stack-floor-drift.py {{ARGS}}

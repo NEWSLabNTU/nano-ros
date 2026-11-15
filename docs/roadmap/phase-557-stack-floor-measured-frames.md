@@ -834,6 +834,29 @@ Acceptance:
 - A row edited by hand in a branch turns the step red, naming that row.
 - The nightly's first run is linked here.
 
+**Landed (2026-11-15), nightly run pending.** `scripts/stack-floor-drift.py`
+(`just zephyr stack-floor-drift`), the `stack-floor-drift` job in
+`nightly.yml`, `static_drift` in the walker (the twin lane's
+`verdict_observed` uses it too), and both self-tests inside `check
+stack-floor-table`. A build that refuses still walked, so its fresh report is
+the answer: a stack below the floor is the refusal this check predicts.
+
+First run against main (2026-11-15) named three drifted rows, all moved since
+issue 2546's re-measure the same morning:
+
+| row | recorded | walked | verdict |
+| --- | --- | --- | --- |
+| nucleo C talker | 99,140 | 100,956 | ROSE: a fresh `nros new` C talker refused to build (stamp 109,056 B, floor 111,056 B) |
+| mps2 bare-metal talker | 100,660 | 97,064 | FELL 3.6 % |
+| nucleo Rust action server | 68,752 | 68,376 | note (-0.5 %) |
+| nucleo Rust talker | 67,688 | 67,320 | note (-0.5 %) |
+
+The one main commit since then that touches every row's code is the
+zenoh-pico bump of issue 2575; not bisected. All four rows are re-measured to
+the walk, and the template tests follow. Re-run on the re-measured table, all
+four read exact and every fresh template builds; with the mps2 row edited by
+hand to 97,056 B (in a copy of the table) the check fails naming that row.
+
 ## Issues homed here (2026-11-15)
 
 Rehomed from [phase-548](archived/phase-548-three-languages-every-board.md) when it closed.

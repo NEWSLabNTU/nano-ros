@@ -502,6 +502,7 @@ zephyr-rust-main-stack:
 [group("checks")]
 stack-floor-table:
     @python3 scripts/nros-stack-floor.py --validate-table config/stack-floors.toml
+    @python3 scripts/stack-floor-drift.py --self-test
 
 # A script a USER build runs (every `.py` a tracked CMake file names, and the
 # repo modules it imports) needs only Python 3.10's standard library: that is

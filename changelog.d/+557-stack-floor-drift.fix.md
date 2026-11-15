@@ -1,0 +1,1 @@
+A new Zephyr C talker made with `nros new` for nucleo-f767zi builds again. The recorded stack walk for that template had drifted below what the build measures, so the stamped main stack was under the floor and the build refused. The recorded walks of all four measured images are re-measured, and a nightly check now re-walks each one and fails when a recorded number has drifted.

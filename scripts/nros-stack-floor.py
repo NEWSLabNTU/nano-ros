@@ -2110,6 +2110,42 @@ def find_observed(doc: dict, image: str | None, target: str, role: str) -> dict 
     return hits[0] if hits else None
 
 
+# A recorded `static` that drifts (phase-557 W8). The walk is deterministic
+# (the max over seeded orders, the same bytes at every project path), so a
+# fresh walk of an `[[observed]]` row's image must equal the row's `static`.
+# Up by any amount: a template's stamped stack (derived from `static`) is
+# below its walk, so a fresh project refuses to build. Down by more than
+# DRIFT_DOWN_PCT: the floor wastes RAM and no longer describes the tree.
+DRIFT_DOWN_PCT = 2
+
+
+def static_drift(row: dict, walk: int) -> tuple[str, list[str]]:
+    """Compare a fresh walk with an `[[observed]]` row's recorded `static`.
+    Returns ("ok" | "note" | "fail", lines). One rule for every lane that
+    re-walks a row (the nightly drift check and the twin lane)."""
+    key = f"{row['image']} {row['role']}"
+    rec = int(row["static"])
+    if walk == rec:
+        return "ok", [f"  OK: {key}: the walk is {walk} B, as recorded"]
+    delta = walk - rec
+    pct = 100.0 * delta / rec
+    how = [f"    re-measure: set `static = {walk}` in this row of config/stack-floors.toml, then",
+           "    python3 scripts/nros-stack-floor.py --sync-json config/stack-floors.toml",
+           "    python3 scripts/nros-stack-floor.py --validate-table config/stack-floors.toml",
+           "    and update every number derived from the row (a template's stamped stack and "
+           "its tests)"]
+    if delta > 0:
+        return "fail", [f"  FAIL: {key}: the walk ROSE {delta:+d} B ({pct:+.1f} %): recorded "
+                        f"{rec} B, walked {walk} B. A stack sized from the row is below the "
+                        "walk"] + how
+    if -pct > DRIFT_DOWN_PCT:
+        return "fail", [f"  FAIL: {key}: the walk FELL {delta:+d} B ({pct:+.1f} %, more than "
+                        f"{DRIFT_DOWN_PCT} %): recorded {rec} B, walked {walk} B. The floor "
+                        "wastes RAM and no longer describes the tree"] + how
+    return "note", [f"  note: {key}: the walk fell {delta:+d} B ({pct:+.1f} %, within "
+                    f"{DRIFT_DOWN_PCT} %): recorded {rec} B, walked {walk} B"]
+
+
 def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> list[str]:
     """Offline checks: needs no build output, so it can run on the fast line."""
     problems: list[str] = []
@@ -3307,6 +3343,18 @@ def self_test() -> int:
         finally:
             g_["llvm_tool"] = saved_tool
             _BC_TOOLS.clear()
+
+    # phase-557 W8: a recorded static that drifts. Up by any amount and down
+    # by more than 2 % fail; a smaller fall is a note; equal is OK.
+    drow = {"image": "t/rust/zenoh@b", "role": "OPEN", "static": 100000}
+    for walk, want in ((100000, "ok"), (100008, "fail"), (97000, "fail"), (99000, "note"),
+                       (98000, "note"), (97999, "fail")):
+        kind, _ = static_drift(drow, walk)
+        check(f"static drift: walk {walk} B against 100000 B is {want}", kind == want)
+    _, dl = static_drift(drow, 100008)
+    check("static drift: a failure names the row and the re-measure commands",
+          "t/rust/zenoh@b OPEN" in dl[0] and any("--sync-json" in x for x in dl)
+          and any("--validate-table" in x for x in dl))
 
     # The rustup llvm-tools ship no llvm-cxxfilt: c++filt stands in, and with
     # neither the demangler is a ToolMissing, never a bare exit.

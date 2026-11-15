@@ -1075,17 +1075,17 @@ mod tests {
 
     /// Issue 2400 W4: the recorded floor is `floor_formula`'s, on the
     /// committed rows. Since issue 2402 they are `[[observed]]` rows over the
-    /// bind walk, which the build reproduced for each (2026-11-14).
+    /// bind walk, which the drift check re-walked for each (2026-11-15).
     #[test]
     fn a_rows_recorded_floor_is_the_check_formula() {
         let t = std::fs::read_to_string(repo_root().join("config/stack-floors.toml")).unwrap();
         let k = |s: &str| format!("{s}@nucleo-f767zi-zephyr");
         assert_eq!(
             recorded_floor(&t, &k("action-server/rust/zenoh")),
-            Some(75632)
+            Some(75216)
         );
-        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(74464));
-        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(109056));
+        assert_eq!(recorded_floor(&t, &k("talker/rust/zenoh")), Some(74056));
+        assert_eq!(recorded_floor(&t, &k("talker/c/zenoh")), Some(111056));
         assert_eq!(recorded_floor(&t, &k("listener/rust/zenoh")), None);
     }
 
@@ -1159,8 +1159,8 @@ mod tests {
                 "zenoh",
                 "nucleo-f767zi-zephyr"
             ),
-            // issue 2402: the bind walk, 68,752 B, plus the 10 % margin
-            Some(75632)
+            // issue 2402: the bind walk, 68,376 B, plus the 10 % margin
+            Some(75216)
         );
         assert!(raised >= 1);
         // not a Zephyr board: the knob is not CONFIG_MAIN_STACK_SIZE
