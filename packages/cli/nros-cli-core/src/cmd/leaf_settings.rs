@@ -1641,6 +1641,7 @@ mod tests {
             image: Some("linux".into()),
             board: Some("linux".into()),
             framework: None,
+            profile: None,
             rmw: None,
             ros_edition: None,
             network: leaf_system::Network {
