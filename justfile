@@ -894,6 +894,11 @@ setup-worktree:
         echo "  [INSTALL] cargo-nextest at the pin -> $(dirname "$(dirname "$nx")")"
         python3 scripts/lib/index_tool.py install cargo-nextest --prefix "$(dirname "$(dirname "$nx")")"
     fi
+    # Issue 2611 - record whoever provisions this worktree as its owner, so
+    # just worktree-prune can remove it once its work is on main. Only when no
+    # owner is recorded: an owned worktree is never re-attributed, the main
+    # checkout is never marked, and it never fails this recipe.
+    python3 scripts/worktree-prune.py --mark-if-absent . || true
     echo ""
     if [ "$broken" -gt 0 ]; then
         echo "setup-worktree: $broken submodule(s) are BROKEN (listed above); repair them, then re-run." >&2
@@ -4112,6 +4117,24 @@ acceptance: setup-cli
 # =============================================================================
 
 # Kill orphaned test processes from previous runs
+# Issue 2611 — list, and with `--apply` remove, YOUR linked worktrees whose work
+# is already on main (every commit in `origin/main` by patch-id, or the PR
+# merged with everything pushed). A worktree that ran `just ci gate` holds
+# 50-300 GB, and on 2026-11-15 finished ones filled /home. Dry run by default.
+# Only worktrees marked yours are candidates: `just setup-worktree` marks an
+# unmarked worktree for whoever runs it, and `--mark <path>` does it by hand.
+# Any other is listed and skipped, as is one with an unsaved change, a commit
+# on no remote, or a nested repo that is not clean and pushed. Never `git submodule deinit` (issue 2505).
+#
+#   just worktree-prune                  what would go, with sizes
+#   just worktree-prune --apply          remove it
+#   just worktree-prune --mark <path>    record you as that worktree's owner
+#
+# Remove your merged worktrees (dry run; --apply removes, --mark claims one)
+[group("maintenance")]
+worktree-prune *flags:
+    @python3 scripts/worktree-prune.py {{flags}}
+
 [group("maintenance")]
 test-kill-orphans:
     #!/usr/bin/env bash
