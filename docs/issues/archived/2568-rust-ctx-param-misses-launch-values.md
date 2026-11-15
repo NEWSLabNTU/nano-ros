@@ -8,7 +8,7 @@ severity: medium
 found: 2026-11-14
 resolved: 2026-11-15
 resolved_in: "the change that closed it (the install seam, the macro, the C++ pack and the runtime-crate anchor, one change)"
-related: [phase-478]
+related: [phase-478, issue-2589, issue-2590]
 ---
 
 GitHub: NEWSLabNTU/nano-ros#3860
@@ -88,7 +88,7 @@ Tests:
   `install_node_typed_with_c_params_in` turns it red with every value `None`.
 - `flat_c_launch_params_*` (`nros` unit tests) cover the array parser.
 
-### The census half is a different cause, and is still open
+### The census half is a different cause, and moved to issue 2589
 
 `param-phantom` is not the same defect. The census records parameter
 DECLARATIONS (`census_hooks::on_param_declare`, reached from
@@ -99,5 +99,5 @@ including `nros::main!`. A contract that lists such a parameter under
 change that. Closing it needs a recorded read: a census hook in
 `NodeContext::param`, and a census rule that a read claims the contract row
 without a type to compare (the read carries a string, not a declared type).
-Until then the waiver stays, or the component declares the parameter
+It is tracked as [issue 2589](../2589-census-ctx-param-read-unseen.md). Until then the waiver stays, or the component declares the parameter
 (`declare_parameter_for_name_with_default`), which the census does see.
