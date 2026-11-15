@@ -1,6 +1,6 @@
 ---
 id: 2594
-title: "A generated Zephyr west app cannot get the workspace's own Kconfig symbols (design question, awaiting a ruling)"
+title: "A generated Zephyr west app cannot get the workspace's own Kconfig symbols"
 status: open
 type: design-question
 area: [cli, zephyr]
@@ -88,3 +88,18 @@ modules.
 
 `nros materialize controller_bringup:<image>` per image, then add the Kconfig
 and the support package by hand. Or keep the hand-written app.
+
+## Ruling (2026-11-15)
+
+User ruling, relayed by the phase-478 manager: **option A**. No B.
+
+- A workspace package that reads the symbols ships `zephyr/module.yml` with a
+  `kconfig:` entry (and `cmake:` if it builds Zephyr code). It joins
+  `ZEPHYR_EXTRA_MODULES` whenever the image's package closure includes it.
+- C's closure computation is the prerequisite. The generated app adds the
+  image's whole package closure, not only the node packages the launch file
+  names.
+- Built after [issue 2593](2593-cmake-road-drops-image-profile.md).
+
+Work items: phase-478 I10 (closure) and I11 (modules). The book pages that
+change are listed under I11.
