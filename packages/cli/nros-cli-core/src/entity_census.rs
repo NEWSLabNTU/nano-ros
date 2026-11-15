@@ -611,13 +611,16 @@ fn fold_action_constituents(endpoints: Vec<Observed>) -> Vec<Observed> {
     out
 }
 
-/// Every parameter the code declared, as `(node, name, type)`.
+/// Every parameter the code declared, as `(node, name, type)`. A row the code
+/// only READ (`"read": true`) is not a declaration and is left to
+/// [`read_census_param_reads`].
 fn read_census_params(census: &Value) -> Vec<(String, String, String)> {
     let doc = recorder_doc(census);
     let Some(rows) = doc.get("parameters").and_then(Value::as_array) else {
         return Vec::new();
     };
     rows.iter()
+        .filter(|row| !is_read_row(row))
         .filter_map(|row| {
             Some((
                 row.get("node")
@@ -629,6 +632,33 @@ fn read_census_params(census: &Value) -> Vec<(String, String, String)> {
                     .and_then(Value::as_str)
                     .unwrap_or("not_set")
                     .to_string(),
+            ))
+        })
+        .collect()
+}
+
+fn is_read_row(row: &Value) -> bool {
+    row.get("read").and_then(Value::as_bool) == Some(true)
+}
+
+// Issue 2589.
+/// Every launch parameter the code READ by name (`NodeContext::param`), as
+/// `(node, name)`. A read has no type, so it claims a contract
+/// row without a type comparison.
+fn read_census_param_reads(census: &Value) -> Vec<(String, String)> {
+    let doc = recorder_doc(census);
+    let Some(rows) = doc.get("parameters").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    rows.iter()
+        .filter(|row| is_read_row(row))
+        .filter_map(|row| {
+            Some((
+                row.get("node")
+                    .and_then(Value::as_str)?
+                    .trim_start_matches('/')
+                    .to_string(),
+                row.get("name").and_then(Value::as_str)?.to_string(),
             ))
         })
         .collect()
@@ -1281,6 +1311,38 @@ fn check_params(
                 waiver: None,
             });
         }
+    }
+
+    // Issue 2589 -- a parameter the code reads by name and never declares.
+    // A read carries no type, so it claims the row and nothing more: no type
+    // comparison, and a read of a name the contract does not declare is left
+    // alone (a launch value for it is already refused at resolve time).
+    for (node, name) in read_census_param_reads(census) {
+        let key = (node.clone(), name.clone());
+        if claimed.contains(&key) {
+            continue;
+        }
+        let Some(declared) = contract
+            .nodes
+            .get(&node)
+            .and_then(|d| d.params.as_ref())
+            .and_then(|p| p.get(&name))
+        else {
+            continue;
+        };
+        rows.push(Row {
+            node: node.clone(),
+            kind: Kind::Param,
+            name: name.clone(),
+            verdict: Verdict::Confirmed,
+            detail: format!(
+                "read by name as `nodes.{node}.params.{name}` ({}); a read states no type",
+                param_type_word(declared.ty)
+            ),
+            remedy: String::new(),
+            waiver: None,
+        });
+        claimed.insert(key);
     }
 
     for (node, decl) in &contract.nodes {
@@ -2150,6 +2212,54 @@ services:
         assert_eq!(rows.len(), 1, "{}", report.render());
         assert_eq!(rows[0].key(), "mrm_handler:param:never_declared");
         assert!(rows[0].verdict.waivable());
+    }
+
+    /// Issue 2589 -- a parameter the code only reads by name (`ctx.param`)
+    /// claims its contract row, whatever type the contract states, and a read
+    /// of a name the contract does not declare raises nothing.
+    #[test]
+    fn a_parameter_the_code_reads_by_name_is_not_a_phantom() {
+        let mut census = island_census();
+        let params = census["census"]["parameters"]
+            .as_array_mut()
+            .expect("the parameter array");
+        for name in ["read_only_by_name", "not_in_the_contract"] {
+            params.push(json!({ "node": "mrm_handler", "name": name,
+                                "type": "not_set", "read": true }));
+        }
+        let yaml = ISLAND_CONTRACT.replace(
+            "      use_pull_over: { type: bool }\n",
+            "      use_pull_over: { type: bool }\n      read_only_by_name: { type: integer }\n",
+        );
+        let contract = manifest(&yaml);
+        let report = run(&census, &contract, &no_waivers());
+
+        assert_eq!(
+            report.of(Verdict::ParamPhantom).count(),
+            0,
+            "{}",
+            report.render()
+        );
+        assert_eq!(
+            report.of(Verdict::ParamMissingInContract).count(),
+            0,
+            "{}",
+            report.render()
+        );
+        assert_eq!(
+            report.of(Verdict::ParamTypeMismatch).count(),
+            0,
+            "{}",
+            report.render()
+        );
+        assert!(
+            report
+                .of(Verdict::Confirmed)
+                .any(|r| r.key() == "mrm_handler:param:read_only_by_name"),
+            "{}",
+            report.render()
+        );
+        assert_eq!(report.errors(), 0, "{}", report.render());
     }
 
     #[test]

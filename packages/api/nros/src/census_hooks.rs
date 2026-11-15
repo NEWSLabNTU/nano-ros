@@ -229,6 +229,23 @@ pub fn on_param_declare(_name: &str, _value: &crate::ParameterValue) {
     }
 }
 
+/// A node READ launch parameter `name` (`NodeContext::param`). Attributed to
+/// the current node; `NodeContext` holds a read made before its node exists
+/// and calls this once the node is created.
+#[inline]
+pub fn on_param_read(_name: &str) {
+    #[cfg(feature = "metadata-mode")]
+    {
+        ensure_scope();
+        if !crate::metadata_mode::record_parameter_read(_name) {
+            panic!(
+                "nros metadata-mode: recorder rejected the read of parameter `{_name}` -- a \
+                 census built from this sidecar would call its contract row a phantom"
+            );
+        }
+    }
+}
+
 /// The node an executor-side entity is attributed to when the code created it
 /// before ANY node — legal in C (`rclc_timer_init_default` takes only a support
 /// context, and `nros-c`'s own `timer_clock_source.c` run test does exactly

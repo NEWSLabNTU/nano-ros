@@ -291,6 +291,35 @@ pub fn record_parameter(name: &str, value: &crate::ParameterValue) -> bool {
     })
 }
 
+// Issue 2589.
+/// The current node READ launch parameter `name`
+/// (`NodeContext::param`). A read has no type or default; the row says only
+/// that the code looks the name up, which is what claims a contract's
+/// `params:` row. `false` when no node is current.
+pub fn record_parameter_read(name: &str) -> bool {
+    state().with(|st| {
+        let Some(node_id) = st.current_node.clone() else {
+            return false;
+        };
+        st.seq += 1;
+        let id = alloc::format!("{}#{}", name, st.seq);
+        let spec = EntityMetadataSpec {
+            id: EntityId::new(&id),
+            node_id: NodeId::new(&node_id),
+            kind: EntityKind::Parameter,
+            source_name: name,
+            type_name: "",
+            type_hash: "",
+            qos: crate::QoSProfile::default(),
+        };
+        let Ok(mut entity) = entity_metadata(spec) else {
+            return false;
+        };
+        entity.parameter_read = true;
+        st.recorder.push_entity(entity).is_ok()
+    })
+}
+
 /// phase-457 W3 — start hearing what each subscription REGISTRATION says about
 /// its own delivery shape.
 ///
@@ -466,6 +495,27 @@ mod tests {
         assert!(
             ctrl.contains("\"period_ms\":10,") && ctrl.contains("\"period_ms\":20,"),
             "both sched tasks' timers on the one node: {ctrl}"
+        );
+        reset();
+    }
+
+    /// Issue 2589 -- a read is a parameter row of its own, attributed to the
+    /// current node and marked `"read": true`, so the census can tell it from
+    /// a declaration.
+    #[test]
+    fn a_parameter_read_is_recorded_as_a_read() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset();
+        assert!(
+            !record_parameter_read("period_ms"),
+            "no current node, nothing to attribute the read to"
+        );
+        assert!(begin_node("talker", "/", 0));
+        assert!(record_parameter_read("period_ms"));
+        let json = to_json(&SourceMetadataExport::new("p", "c")).expect("serialize");
+        assert!(
+            json.contains("\"name\":\"period_ms\"") && json.contains("\"read\":true"),
+            "{json}"
         );
         reset();
     }
