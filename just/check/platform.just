@@ -213,6 +213,7 @@ board-vocabulary:
 [group("checks")]
 zephyr-module-allowlist:
     @python3 scripts/check-zephyr-module-allowlist.py
+    @python3 scripts/zephyr/check-workspace-modules.py --self-test >/dev/null || python3 scripts/zephyr/check-workspace-modules.py --self-test
 
 # issue 1254 -- the legacy in-checkout Zephyr SDK path is ASKED of
 # `scripts/lib/zephyr-sdk.sh`, never constructed. A fifth hand-built copy

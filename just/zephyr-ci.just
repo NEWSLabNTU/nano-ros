@@ -487,6 +487,21 @@ build-fixtures:
     if [ -s "$probe_records" ]; then
         normal_records=1
     fi
+    # issue 2607 -- every module this checkout's manifest lists, as WEST
+    # reports them for the workspace, asked before the first configure. A
+    # workspace provisioned before a module joined the manifest fails the board
+    # that needs it as a devicetree "No such file", naming nothing. REFUSES
+    # only when a board these records build needs the module (the index's
+    # `needed_by`); otherwise it warns and the lane stays green, because every
+    # board it already built still builds. Field 4 of a record is its board.
+    # Exit 78 = nothing to check.
+    _boards="$(cut -f4 "$probe_records" | sort -u | paste -sd, -)"
+    _mods_rc=0
+    python3 scripts/zephyr/check-workspace-modules.py "$workspace" --quiet \
+        --boards "$_boards" || _mods_rc=$?
+    if [ "$_mods_rc" -ne 0 ] && [ "$_mods_rc" -ne 78 ]; then
+        exit 1
+    fi
 
     failures=()
     # issue 1583 — the driver's status is INSPECTED, not fatal here: the
