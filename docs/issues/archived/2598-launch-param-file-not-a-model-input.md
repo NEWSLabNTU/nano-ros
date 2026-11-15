@@ -1,17 +1,19 @@
 ---
 id: 2598
 title: "A resolved model stays stale after `nros configure`, and a launch parameter file is not one of its inputs"
-status: open
+status: resolved
 type: bug
 area: [cli, orchestration, launch]
 severity: high
 found: 2026-11-15
+resolved: 2026-11-15
+resolved_in: "44707b07dc and dd571ca75f"
 related: [phase-478]
 ---
 
 GitHub: NEWSLabNTU/nano-ros#3923
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md), I12.**
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md), I12.**
 Reported by the Autoware Safety Island on 0.6.0-nros10, reproduced on main
 (play_launch pin `cac40d8b`).
 
@@ -62,14 +64,20 @@ model and a `[[model]]` variant behave the same.
   config/maximum_safety/param_talker.param.yaml`.
 - **play_launch:** `build_checked_model` adds every parameter file the parser
   recorded (`param_sources` entries of kind `file` with a `path`) to the
-  provenance inputs. Committed as play_launch `191d949f`; it reaches nano-ros
-  with the next pin bump.
+  provenance inputs. play_launch `191d949f`, pinned by nano-ros in
+  dd571ca75f.
 
 Tests: `workspace_model_staleness_tests` (nano-ros) and
 `model::tests::a_param_file_is_a_model_input` (play_launch). Each fails with
 its fix removed.
 
+## Resolution (2026-11-15)
+
+Both halves are on main: 44707b07dc (#3935, configure asks the model gate)
+and dd571ca75f (#3951, the play_launch pin that records parameter files).
+GitHub #3923 is closed.
+
 ## Workaround
 
-Until both halves ship: `rm -rf build/nros/models` and run `nros configure`
-after editing a parameter file.
+Before both halves shipped: `rm -rf build/nros/models` and run
+`nros configure` after editing a parameter file.
