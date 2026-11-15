@@ -224,6 +224,8 @@ brief of RFC-0126 did.
     foreign-band enumerators), 2619 (per-port profile overrides), 2620
     (headroom policy) and 2621 (no image declares a WCET, so the budget path
     never runs).
+  - RFC-0100 is Stable. It has no open question; its one open piece of work,
+    the leaf producer's retirement, is RFC-0121's and phase-531 tracks it.
 
 ### W4 -- Keep it organized
 
