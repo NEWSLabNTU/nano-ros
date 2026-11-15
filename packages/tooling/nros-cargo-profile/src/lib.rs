@@ -274,6 +274,28 @@ pub const BUILD_TYPE_MAP: &[(&str, &str)] = &[
     ("release", "release"),
 ];
 
+/// [`BUILD_TYPE_MAP`]'s build types as CMake spells them, in the same order.
+const BUILD_TYPE_SPELLING: &[&str] = &["Debug", "RelWithDebInfo", "MinSizeRel", "Release"];
+
+/// The `CMAKE_BUILD_TYPE` an image's `profile` names, or `None`.
+///
+/// The value is read in either vocabulary the book offers for `profile`: a
+/// cargo profile from [`BUILD_TYPE_MAP`] (`release`, `nros-relwithdebinfo`, …)
+/// or a CMake build type (`RelWithDebInfo`, case-insensitive, as CMake reads
+/// it). So one image row means the same build on the cargo road and the CMake
+/// road. A cargo profile the table does not map (a user's own) has no C/C++
+/// meaning, so it is `None` and the CMake road refuses it.
+#[must_use]
+pub fn cmake_build_type(profile: &str) -> Option<&'static str> {
+    let raw = profile.trim();
+    let key = raw.to_ascii_lowercase();
+    BUILD_TYPE_MAP
+        .iter()
+        .zip(BUILD_TYPE_SPELLING)
+        .find(|((t, p), _)| *t == key || *p == raw)
+        .map(|(_, spelled)| *spelled)
+}
+
 /// Error from [`resolve`]: a `CMAKE_BUILD_TYPE` with no mapping.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnknownBuildType {
@@ -498,12 +520,41 @@ mod tests {
     #[test]
     fn every_build_type_maps_to_a_profile() {
         assert_eq!(resolve(Some("Debug")).unwrap(), "dev");
+        for (spelled, (key, _)) in BUILD_TYPE_SPELLING.iter().zip(BUILD_TYPE_MAP) {
+            assert_eq!(
+                spelled.to_ascii_lowercase(),
+                *key,
+                "spellings follow the map"
+            );
+        }
         assert_eq!(
             resolve(Some("RelWithDebInfo")).unwrap(),
             "nros-relwithdebinfo"
         );
         assert_eq!(resolve(Some("MinSizeRel")).unwrap(), "nros-minsizerel");
         assert_eq!(resolve(Some("Release")).unwrap(), "release");
+    }
+
+    // GitHub #3899 (issue 2593).
+    /// An image `profile` names one CMake build type in either vocabulary, and
+    /// a cargo profile the table does not map names none.
+    #[test]
+    fn an_image_profile_names_one_cmake_build_type() {
+        for (v, want) in [
+            ("release", Some("Release")),
+            ("Release", Some("Release")),
+            ("dev", Some("Debug")),
+            ("Debug", Some("Debug")),
+            ("nros-relwithdebinfo", Some("RelWithDebInfo")),
+            ("RelWithDebInfo", Some("RelWithDebInfo")),
+            ("relwithdebinfo", Some("RelWithDebInfo")),
+            ("nros-minsizerel", Some("MinSizeRel")),
+            ("MinSizeRel", Some("MinSizeRel")),
+            ("my-profile", None),
+            ("", None),
+        ] {
+            assert_eq!(cmake_build_type(v), want, "{v}");
+        }
     }
 
     #[test]

@@ -99,7 +99,7 @@ User ruling, relayed by the phase-478 manager: **option A**. No B.
 - C's closure computation is the prerequisite. The generated app adds the
   image's whole package closure, not only the node packages the launch file
   names.
-- Built after [issue 2593](2593-cmake-road-drops-image-profile.md).
+- Built after [issue 2593](archived/2593-cmake-road-drops-image-profile.md).
 
 Work items: phase-478 I10 (closure) and I11 (modules). The book pages that
 change are listed under I11.

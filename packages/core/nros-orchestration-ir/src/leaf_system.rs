@@ -279,6 +279,10 @@ pub struct LeafSystem {
     /// `[image_defaults]`), as written. `None` when the image names none, so
     /// the board's first `frameworks` entry applies (RFC-0111 D2).
     pub framework: Option<String>,
+    // GitHub #3899 (issue 2593).
+    /// `[image.<id>] profile` (over `[image_defaults]`), as written: a cargo
+    /// profile or a CMake build type. `None` when the image names none.
+    pub profile: Option<String>,
     /// RMW: `[image] rmw` > `[image_defaults] rmw` > `[system] rmw`.
     pub rmw: Option<String>,
     /// ROS edition, the same overlay as [`Self::rmw`] (RFC-0056): `[image]
@@ -960,6 +964,7 @@ fn image_system(
         )
     })?;
     let framework = pick("framework");
+    let profile = pick("profile");
     let rmw = pick("rmw").or_else(|| str_key(system, "rmw"));
     let ros_edition = pick("ros_edition").or_else(|| str_key(system, "ros_edition"));
     let domain_id = match u32_key(image, "domain_id", path)? {
@@ -1135,6 +1140,7 @@ fn image_system(
         image: Some(id.to_string()),
         board: Some(board),
         framework,
+        profile,
         rmw,
         ros_edition,
         network,

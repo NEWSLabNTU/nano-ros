@@ -2189,7 +2189,11 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 if let Some(nr) = &nano_ros_root {
                     a.push(crate::builder::nano_ros_root_arg(nr));
                 }
-                a.extend(board_build_type_arg(&platform));
+                a.extend(image_build_type_args(
+                    &platform,
+                    &image_id,
+                    image.profile.as_deref(),
+                )?);
                 a.extend(args.cmake_args.iter().cloned());
                 a.extend(args.native_args.iter().cloned());
                 // phase-439 W7 / phase-530 W3 -- the record's digest, so the
@@ -2239,6 +2243,18 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 )
             }
             Driver::West => {
+                // GitHub #3899 (issue 2593) -- a west build takes its
+                // optimisation from Zephyr's Kconfig, and this road passes no
+                // build type, so a stated `profile` would be dropped without a
+                // word. Refused, naming where Zephyr states it.
+                if let Some(p) = image.profile.as_deref() {
+                    eyre::bail!(
+                        "image `{image_id}` states profile `{p}`, which a Zephyr build does not \
+                         read: Zephyr takes its optimisation from Kconfig. Remove `profile` and \
+                         state CONFIG_SPEED_OPTIMIZATIONS, CONFIG_SIZE_OPTIMIZATIONS or \
+                         CONFIG_DEBUG_OPTIMIZATIONS in a fragment the image's `os_config` names."
+                    );
+                }
                 // RFC-0109 D8 (phase-514 W3a) — a C/C++ west application bakes
                 // the bringup's lowered RMW file through `nano_ros_entry()`. A
                 // Rust one gets it through the resolve directory (issue 2051):
@@ -3311,7 +3327,11 @@ fn plan_single_package_cmake(
     ));
     a.extend(board_rx_configure_args(descriptor));
     a.push(crate::builder::nano_ros_root_arg(&nros_root));
-    a.extend(board_build_type_arg(&platform));
+    a.extend(image_build_type_args(
+        &platform,
+        &image_id,
+        decl.profile.as_deref(),
+    )?);
     a.extend(args.cmake_args.iter().cloned());
     a.extend(args.native_args.iter().cloned());
     Ok(Some(vec![ResolvedBuild {
@@ -6187,6 +6207,43 @@ fn board_build_type_arg(platform: &str) -> Option<String> {
     (platform != "posix").then(|| "-DCMAKE_BUILD_TYPE=Release".to_string())
 }
 
+// GitHub #3899 (issue 2593).
+/// The build-type arguments of an image's CMake configure.
+///
+/// An image that states `profile` gets the build type it names
+/// (`nros_cargo_profile::cmake_build_type`, which reads a cargo profile or a
+/// CMake build type), and the runtime crates' cargo profile with it, so
+/// C/C++ and Rust are built as one profile. This used to be dropped without a
+/// word, so every non-host CMake image built Release whatever it stated. A
+/// profile with no C/C++ meaning (a user's own cargo profile) is refused,
+/// naming the CMake spelling. An image that states none keeps the board
+/// default ([`board_build_type_arg`]). Pushed before the caller's
+/// `native_args`, so a `-DCMAKE_BUILD_TYPE` after `--` still wins.
+fn image_build_type_args(
+    platform: &str,
+    image_id: &str,
+    profile: Option<&str>,
+) -> eyre::Result<Vec<String>> {
+    let Some(profile) = profile.map(str::trim).filter(|p| !p.is_empty()) else {
+        return Ok(board_build_type_arg(platform).into_iter().collect());
+    };
+    let Some(build_type) = nros_cargo_profile::cmake_build_type(profile) else {
+        eyre::bail!(
+            "image `{image_id}` states profile `{profile}`, which a CMake build cannot apply: \
+             it is neither a CMake build type (Debug, Release, RelWithDebInfo, MinSizeRel) nor \
+             a cargo profile one of them maps to (dev, release, nros-relwithdebinfo, \
+             nros-minsizerel). State one of those, or pass the build type yourself: \
+             `nros build {image_id} -- -DCMAKE_BUILD_TYPE=<type>`."
+        );
+    };
+    let cargo = nros_cargo_profile::resolve(Some(build_type))
+        .map_err(|e| eyre::eyre!("image `{image_id}`: {e}"))?;
+    Ok(vec![
+        format!("-DCMAKE_BUILD_TYPE={build_type}"),
+        format!("-DNROS_CARGO_PROFILE={cargo}"),
+    ])
+}
+
 /// Issue 1653 — the BOARD heap as a configure argument, for the two drivers
 /// whose configure line `nros build` writes (cmake, and west's cmake zone).
 ///
@@ -7682,6 +7739,12 @@ fn image_config_digest(
     // A retired `[image] env` key is refused where the rows are WRITTEN (the
     // cmake road's image-env file); the coordinate only needs a stable name.
     let mut rows = crate::cmd::leaf_settings::image_block_layers(None, image).ok()?;
+    // GitHub #3899 (issue 2593) -- the profile picks the build type every
+    // library in this configure compiles with, so two profiles of one image
+    // must not share a configure.
+    if let Some(p) = image.profile.as_deref() {
+        rows.insert("profile".to_string(), p.to_string());
+    }
     if let Some(cfg) = rmw_user_config_file(bringup_dir, image.rmw.as_deref())
         && let Ok(body) = std::fs::read_to_string(&cfg)
     {
@@ -11609,6 +11672,68 @@ mod board_heap_tests {
             );
         }
         assert_eq!(board_build_type_arg("posix"), None);
+    }
+
+    // GitHub #3899 (issue 2593).
+    /// An image's `profile` picks the CMake build type and the runtime crates'
+    /// cargo profile together, in either vocabulary. With none, the board
+    /// default stands.
+    #[test]
+    fn an_image_profile_reaches_the_cmake_configure() {
+        assert_eq!(
+            image_build_type_args("freertos", "an536", Some("nros-relwithdebinfo")).unwrap(),
+            [
+                "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+                "-DNROS_CARGO_PROFILE=nros-relwithdebinfo"
+            ]
+        );
+        assert_eq!(
+            image_build_type_args("posix", "linux", Some("Debug")).unwrap(),
+            ["-DCMAKE_BUILD_TYPE=Debug", "-DNROS_CARGO_PROFILE=dev"]
+        );
+        assert_eq!(
+            image_build_type_args("freertos", "an536", None).unwrap(),
+            ["-DCMAKE_BUILD_TYPE=Release"]
+        );
+        assert!(
+            image_build_type_args("posix", "linux", None)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    /// A profile with no C/C++ meaning is refused, naming the CMake spelling,
+    /// rather than dropped.
+    #[test]
+    fn a_profile_a_cmake_build_cannot_apply_is_refused() {
+        let e = image_build_type_args("freertos", "an536", Some("my-fast"))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("`my-fast`") && e.contains("-DCMAKE_BUILD_TYPE=<type>"),
+            "{e}"
+        );
+    }
+
+    /// Two profiles of one image do not share a configure: the profile is
+    /// part of the configuration key, and an image that states none keeps
+    /// its coordinate.
+    #[test]
+    fn the_profile_is_part_of_the_configuration_key() {
+        let none = Path::new("/nonexistent");
+        let mut a = crate::orchestration::image::ImageBlock {
+            board: Some("native".to_string()),
+            rmw: Some("zenoh".to_string()),
+            ..Default::default()
+        };
+        let plain = cmake_configuration_key("native", &a, none);
+        a.profile = Some("release".to_string());
+        let release = cmake_configuration_key("native", &a, none);
+        a.profile = Some("dev".to_string());
+        let dev = cmake_configuration_key("native", &a, none);
+        assert_eq!(plain, "native-zenoh");
+        assert!(release.starts_with("native-zenoh-cfg"), "{release}");
+        assert_ne!(release, dev);
     }
 }
 
