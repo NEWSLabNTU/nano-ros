@@ -724,3 +724,12 @@ package-directories:
 [private]
 book-pinned-example:
     @python3 scripts/lib/pinned_example.py --check
+
+# A release's notes are its book page, book/src/migrating/releases/<version>.md,
+# published by release-nros.yml as the GitHub release body (user ruling
+# 2026-11-15). A missing or empty page is refused, and the workflow reaches
+# that refusal on every run, dry runs included, ahead of the build. This gate
+# runs the refusal's negative controls and checks that wiring. Buildless, ~0.1 s.
+[private]
+release-notes:
+    @python3 scripts/lib/release_notes.py --gate
