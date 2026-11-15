@@ -1392,6 +1392,13 @@ was = ["migrating/install-local-removal.md"]
 note = "Migrating from older releases (W12): one how-to, a section per change; esp32 and retired-config-files merged in"
 
 [[page]]
+book = "user"
+path = "migrating/releases/0.6.0-nros10.md"
+action = "new release-notes"
+batch = "release-notes"
+note = "Release notes for 0.6.0-nros10. release-nros.yml publishes migrating/releases/<version>.md as the GitHub release body and refuses a release without one"
+
+[[page]]
 old = "getting-started/esp32.md"
 book = "user"
 path = "migrating/from-older-releases.md"

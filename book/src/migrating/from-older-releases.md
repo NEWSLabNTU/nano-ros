@@ -118,6 +118,14 @@ build, and a build that something runs. [Add a board](../extending/add-a-board.m
 and [Add a platform](../extending/add-a-platform.md) describe what a port
 provides.
 
+## What changed in each release
+
+Each release has a page that says what it changes for a project: the edits
+a project may need, then the fixes. The same page is the release's notes on
+GitHub. Newest first:
+
+- [0.6.0-nros10](releases/0.6.0-nros10.md)
+
 ## If it doesn't work
 
 - **The configure stops on a `NANO_ROS_*` variable.** The variable is retired,
