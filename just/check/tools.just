@@ -283,3 +283,13 @@ pinned-tool-one-lookup:
 [private]
 worktree-prune:
     @python3 scripts/worktree-prune.py --gate
+
+# Issue 2612 — the release's report of merged changes with no changelog entry
+# (`scripts/changelog-audit.py`, run by `release-nros.yml`). It never fails a
+# release; this gate fails when its selector's cases do: the last-tag choice, a
+# fragment or `Changelog: none` trailer covering a PR, the excluded paths
+# (packages/testing/, the notes pages, the book's navigation) and grouping a
+# PR's commits. Buildless, scratch repository, ~0.3 s.
+[private]
+changelog-audit:
+    @python3 scripts/changelog-audit.py --gate
