@@ -1,0 +1,1 @@
+`nros configure` now resolves each model for the target its images run on, so a `<stem>.system.zephyr.yaml` (or another target's platform file) beside the launch file is read. It used to resolve every model for `posix` (issue 2601).

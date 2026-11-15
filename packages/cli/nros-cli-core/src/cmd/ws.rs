@@ -2752,6 +2752,69 @@ fn carry_leaf_contract(leaf: &Path, dir: &Path) -> Result<()> {
 /// deployment (RFC-0098 D3).
 pub const LEAF_CONTRACT: &str = "system.contract.yaml";
 
+/// The scheduling target(s) of the images one resolved model serves.
+#[derive(Debug, PartialEq, Eq)]
+enum Targets {
+    /// No image names this model, or none has a target (a board with no RTOS).
+    None,
+    One(String),
+    /// Target -> the image ids on it.
+    Several(std::collections::BTreeMap<String, Vec<String>>),
+}
+
+// Issue 2601.
+/// The scheduling targets of the images in `bringup_dir`'s `system.toml` whose
+/// (launch, args) resolve to the model named `model_name`, by the rule a
+/// `[tasks.<name>.<rtos>]` key uses: the board's platform, through `catalog`
+/// when one is loaded and the entry board keys otherwise.
+fn model_sched_targets(
+    bringup_dir: &Path,
+    model_name: &str,
+    catalog: Option<&crate::orchestration::board_descriptor::BoardCatalog>,
+) -> Targets {
+    use nros_orchestration_ir::model_location::launch_to_model_rel;
+    let Ok(text) = std::fs::read_to_string(bringup_dir.join("system.toml")) else {
+        return Targets::None;
+    };
+    let Ok(sys) = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&text)
+    else {
+        return Targets::None;
+    };
+    let mut by_target: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    for (id, img) in crate::cmd::build::effective_images(&sys) {
+        let img = match &sys.image_defaults {
+            Some(base) => img.with_base(base),
+            None => img,
+        };
+        let args: Vec<(String, String)> = img
+            .args
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        let Ok(rel) = launch_to_model_rel(bringup_dir, img.launch.as_deref(), &args) else {
+            continue;
+        };
+        if Path::new(&rel).file_name().and_then(|n| n.to_str()) != Some(model_name) {
+            continue;
+        }
+        let Some(board) = img.board.as_deref() else {
+            continue;
+        };
+        let key = catalog
+            .and_then(|c| crate::orchestration::image::resolve_board_id(c, "", board).ok())
+            .map(|d| d.platform.sched_task_rtos_key())
+            .unwrap_or_else(|| nros_entry_lower::sched_task_rtos_key_for(board));
+        if !key.is_empty() {
+            by_target.entry(key.to_string()).or_default().push(id);
+        }
+    }
+    match by_target.len() {
+        0 => Targets::None,
+        1 => Targets::One(by_target.into_keys().next().unwrap_or_default()),
+        _ => Targets::Several(by_target),
+    }
+}
+
 fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>) -> Result<()> {
     // Issue 0285 — resolve the helper by ABSOLUTE PATH, never through PATH.
     //
@@ -2785,6 +2848,14 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
     // nothing. `blocked` collects everything that DID need the helper so one
     // error names them all rather than the user fixing them one run at a time.
     let play_launch = launch_resolver_path();
+    // Issue 2601 -- the board catalog, to give each model the scheduling target
+    // of the images it serves. Loaded once; `None` (no nano-ros root found)
+    // falls back to the entry board keys.
+    let catalog = scan.first().and_then(|first| {
+        let root = crate::orchestration::nano_ros_root::resolve(None, &first.dir)?;
+        let dirs: Vec<PathBuf> = scan.iter().map(|p| p.dir.clone()).collect();
+        crate::orchestration::board_descriptor::BoardCatalog::load_with_packages(&root, &dirs).ok()
+    });
     // issue 0409 — verify the resolver BEFORE trusting its output. A binary
     // compiled from a different play_launch checkout does not fail; it produces
     // a model that is missing DATA (one predating rlm v0.1.1 drops every
@@ -3177,6 +3248,28 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                     (pkg.dir.clone(), system_toml.clone())
                 };
             cmd.arg("--bringup-root").arg(&input_root);
+            // Issue 2601 -- resolve for the target the model's images run on,
+            // so its `<stem>.system.<target>.yaml` platform file is read. The
+            // resolver's default is `posix`, which a Zephyr image is not.
+            let model_name = model.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            match model_sched_targets(&pkg.dir, model_name, catalog.as_ref()) {
+                Targets::One(target) => {
+                    cmd.arg("--target").arg(target);
+                }
+                Targets::None => {}
+                Targets::Several(by_target) => eprintln!(
+                    "sync: warning: `{}` {} serves images on different targets ({}); it is \
+                     resolved for the default target, so no image's platform file is read. \
+                     Give each target its own `[[model]]` variant.",
+                    pkg.name,
+                    model_name,
+                    by_target
+                        .iter()
+                        .map(|(t, ids)| format!("{t}: {}", ids.join(", ")))
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                ),
+            }
             if resolve_system.is_file() {
                 cmd.arg("--system").arg(&resolve_system);
             }
@@ -10344,5 +10437,76 @@ mod scan_workspace_tests {
         let d = tempfile::tempdir().unwrap();
         pkg(&d.path().join("src/control/controller"), "controller");
         assert!(super::has_pkg_subdir(&d.path().join("src")));
+    }
+}
+
+#[cfg(test)]
+mod model_sched_target_tests {
+    use super::{Targets, model_sched_targets};
+
+    fn bringup(system_toml: &str) -> tempfile::TempDir {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(td.path().join("launch")).unwrap();
+        std::fs::write(td.path().join("launch/system.launch.xml"), "<launch/>\n").unwrap();
+        std::fs::write(td.path().join("system.toml"), system_toml).unwrap();
+        td
+    }
+
+    /// Issue 2601 -- the model every Zephyr image resolves from is resolved
+    /// for `zephyr`, so its `<stem>.system.zephyr.yaml` platform file is read.
+    /// It used to take the resolver's default, `posix`, for every image.
+    #[test]
+    fn a_model_takes_the_target_of_the_images_it_serves() {
+        let b = bringup(
+            "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+             default_launch = \"system.launch.xml\"\n\n\
+             [image.zephyr]\nboard = \"zephyr\"\n\n\
+             [image.qemu]\nboard = \"mps2-an385-zephyr\"\n",
+        );
+        assert_eq!(
+            model_sched_targets(b.path(), "system_model.yaml", None),
+            Targets::One("zephyr".into())
+        );
+    }
+
+    /// `[image_defaults] board` reaches every image, and a `[[model]]`
+    /// variant takes the target of the image that binds it, not the default
+    /// model's.
+    #[test]
+    fn a_variant_and_a_default_board_are_followed() {
+        let b = bringup(
+            "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+             default_launch = \"system.launch.xml\"\n\n\
+             [[model]]\nlaunch = \"system.launch.xml\"\nout = \"safe_model.yaml\"\n\
+             args = { branch = \"safe\" }\n\n\
+             [image_defaults]\nboard = \"zephyr\"\n\n\
+             [image.zephyr_default]\n\n\
+             [image.host_safe]\nboard = \"linux\"\nargs = { branch = \"safe\" }\n",
+        );
+        assert_eq!(
+            model_sched_targets(b.path(), "system_model.yaml", None),
+            Targets::One("zephyr".into())
+        );
+        assert_eq!(
+            model_sched_targets(b.path(), "safe_model.yaml", None),
+            Targets::One("posix".into())
+        );
+    }
+
+    /// Images on two targets sharing one model are named, not resolved for
+    /// either.
+    #[test]
+    fn images_on_two_targets_sharing_a_model_are_reported() {
+        let b = bringup(
+            "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+             default_launch = \"system.launch.xml\"\n\n\
+             [image.linux]\nboard = \"linux\"\n\n\
+             [image.zephyr]\nboard = \"zephyr\"\n",
+        );
+        let Targets::Several(by) = model_sched_targets(b.path(), "system_model.yaml", None) else {
+            panic!("two targets");
+        };
+        assert_eq!(by["posix"], ["linux"]);
+        assert_eq!(by["zephyr"], ["zephyr"]);
     }
 }
