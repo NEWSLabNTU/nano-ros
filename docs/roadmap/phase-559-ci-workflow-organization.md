@@ -786,7 +786,41 @@ the user ruled; all five stand:
   If that margin is under 10 G, add B and measure again. A frees about
   3–4× the shortfall and changes nothing the run reads, by the code.
   Unlike W10 it changes no build.
-- **Status:** OPEN
+- **Implementation.** `scripts/ci/evict-build-stage-only.sh` runs from two
+  zephyr-only steps in `merge-runtime.yml`:
+  - `evict`, between `just build` and `just ci … run`. It runs `git
+    check-ignore` on each dir, then `du` (allocated blocks), then `rm -rf`. It
+    leaves a read-only sentinel FILE of the same name, so anything in the run
+    that reads or creates under the path gets `ENOTDIR` and fails at the
+    point of use, through a workspace's `cargo` symlink too.
+  - `verify`, after the run, under `if: always()`. It fails if a sentinel
+    was replaced or removed.
+
+  `selftest` is the negative control. A read through a symlink into the
+  evicted path must fail, a write under it must fail, and a replaced sentinel
+  must fail `verify`. It runs before every `evict`.
+- **Acceptance, measured (run 43716062858, head 1d968501f6, 2026-11-15).**
+  The zephyr shard reached a VERDICT.
+  - Freed, by `du`: `build/corrosion-cargo/metadata-probe` **24 G** and
+    `build/metadata-probe` **3.0 G**, 27 G in total. That replaces the
+    derived "about 20 G + 3.0 G". Free space went 9.8 G → 37 G.
+  - Lowest free space during the run stage: **10.8 G**, at the end of
+    `test-all`. The balloon was never exhausted (`exhausted=0`). The build
+    stage, which W12 does not change, still bottoms out at **7.7 G** and draws
+    the balloon's under-10 G warning.
+  - `verify` passed: the run stage touched neither evicted path.
+  - **B is not added.** The run-stage margin is 10.8 G, at the ruling's 10 G
+    line, not under it. B would only shrink the run stage's test binaries,
+    so it cannot raise the build stage's 7.7 G either. The build-stage margin
+    is a separate question, and W12 does not answer it.
+  - The verdict was red on ONE real failure, unrelated to the eviction:
+    `weak_symbol_audit::owned_weak_symbols_are_audited` hit nextest's 60 s
+    timeout. It is a scan of tracked sources, 31 s on the threadx shard of the
+    same run and 9 s locally, filed as issue 2613. The run's other red, the
+    `threadx_linux` shard's `test_rtos_pubsub_e2e` C cell (`app_main` exits
+    156), is on main and is not the zephyr shard's.
+- **Status:** OPEN — implemented, and the acceptance dispatch reached a
+  verdict with the numbers above. It becomes DONE when the PR merges.
 
 ## Acceptance (phase)
 
