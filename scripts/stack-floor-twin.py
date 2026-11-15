@@ -219,10 +219,13 @@ def verdict(row: dict, role: dict, peak: int, size: int, margin: int, floor_form
     return Verdict(ok, lines)
 
 
-def verdict_observed(row: dict, role: dict, peak: int, size: int) -> Verdict:
+def verdict_observed(row: dict, role: dict, peak: int, size: int, drift) -> Verdict:
     """An `[[observed]]` row (issue 2402): under a walk that binds every
     indirect call, the static walk is the upper bound, and the run must stay
-    under it. The row's peak is evidence, re-measured here."""
+    under it. The row's peak is evidence, re-measured here. The build's walk
+    is also held to the row's recorded `static` by `drift` (the walker's
+    `static_drift`, phase-557 W8), so this lane and the nightly drift check
+    cannot disagree about one row."""
     key = row["image"]
     static = int(role["depth"])
     floor = int(role["floor"])
@@ -246,6 +249,11 @@ def verdict_observed(row: dict, role: dict, peak: int, size: int) -> Verdict:
         lines.append(f"  FAIL: the run used {peak - static} B MORE than the static walk, which "
                      "binds every indirect call and is meant to bound it: the walk missed a "
                      "path (issue 2402)")
+    if "static" in row:
+        kind, dlines = drift(row, static)
+        lines += dlines
+        if kind == "fail":
+            ok = False
     was = int(row.get("peak", peak))
     if was != peak:
         lines.append(f"  note: the peak moved {peak - was:+d} B since the row ({was} -> "
@@ -321,7 +329,7 @@ def run_row(nros: str, row: dict, out: Path, seconds: int, rounds: int, w) -> Ve
     peak = max(u for u, _ in peaks)
     size = peaks[-1][1]
     if "bytes" not in row:
-        return verdict_observed(row, role, peak, size)
+        return verdict_observed(row, role, peak, size, w.static_drift)
     return verdict(row, role, peak, size, int(report_margin(report, row)), w.floor_formula)
 
 
@@ -394,16 +402,28 @@ def self_test() -> int:
     check("a moved walk is noted", any("moved -112 B" in x for x in v.lines))
 
     # issue 2402 — an observed row: the walk must cover the run.
-    orow = {"image": "talker/rust/zenoh@b", "role": "OPEN", "peak": 30000}
+    orow = {"image": "talker/rust/zenoh@b", "role": "OPEN", "peak": 30000, "static": 50000}
     orole = {"depth": 50000, "floor": 55000, "measured": True}
+    sd = w.static_drift
     check("observed: a walk that covers the run is OK",
-          verdict_observed(orow, orole, 30000, 65536).ok)
+          verdict_observed(orow, orole, 30000, 65536, sd).ok)
     check("observed: a run above the static walk FAILS",
-          not verdict_observed(orow, dict(orole, depth=29000), 30000, 65536).ok)
+          not verdict_observed(dict(orow, static=29000), dict(orole, depth=29000), 30000,
+                               65536, sd).ok)
     check("observed: an image the build did not take as measured FAILS",
-          not verdict_observed(orow, dict(orole, measured=False), 30000, 65536).ok)
+          not verdict_observed(orow, dict(orole, measured=False), 30000, 65536, sd).ok)
     check("observed: a full-stack run is no measurement",
-          not verdict_observed(orow, orole, 65536, 65536).ok)
+          not verdict_observed(orow, orole, 65536, 65536, sd).ok)
+    # phase-557 W8: the build's walk is held to the row's `static` too.
+    v = verdict_observed(orow, dict(orole, depth=50008), 30000, 65536, sd)
+    check("observed: a walk that ROSE past the row's static FAILS",
+          not v.ok and any("ROSE" in x for x in v.lines))
+    v = verdict_observed(orow, dict(orole, depth=48000), 30000, 65536, sd)
+    check("observed: a walk that fell 4 % below the row's static FAILS",
+          not v.ok and any("FELL" in x for x in v.lines))
+    v = verdict_observed(orow, dict(orole, depth=49500), 30000, 65536, sd)
+    check("observed: a walk 1 % below the row's static is a note",
+          v.ok and any("note:" in x for x in v.lines))
 
     for b in bad:
         print(f"stack-floor-twin self-test: FAIL {b}", file=sys.stderr)

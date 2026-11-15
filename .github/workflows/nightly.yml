@@ -1120,6 +1120,91 @@ jobs:
           source ./activate.sh
           just zephyr test-c-port
 
+  # phase-557 W8 — a recorded stack-floor `static` that drifts is caught here,
+  # not found by accident. Re-walks every `[[observed]]` row's image (a fresh
+  # `nros new` for a template key, the in-tree bringup for a bringup key) and
+  # holds the walk to the row: up by any amount or down by more than 2 %
+  # fails, naming the row and the re-measure commands. Nightly, not on the
+  # merge lane: four image builds cost minutes, and a day is soon enough.
+  stack-floor-drift:
+    # No `needs:` — issue 1029; same gate as zephyr-example-matrix.
+    name: stack-floor drift (observed rows)
+    runs-on: ubuntu-latest
+    # Four image builds, cold: ~10 min each for the nucleo rows.
+    timeout-minutes: 75
+    concurrency:
+      group: nightly-stack-floor-drift-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    container:
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.16.9-r9
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # RESTORE/SAVE split around the CLI build, as in zephyr-dual-line-summary.
+      - name: Restore CLI build cache (Phase 218)
+        id: cli-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
+        uses: ./.github/actions/setup-nros-cli
+
+      - name: Save CLI build cache (Phase 218)
+        if: steps.cli-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+
+      - name: Register the baked Zephyr SDK for this HOME
+        run: nros-zephyr-sdks-register
+
+      - name: Reclaim disk before Zephyr setup (#0078 headroom)
+        run: |
+          echo "before:"; df -h / | tail -1
+          apt-get clean 2>/dev/null || true
+          rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale 2>/dev/null || true
+          rm -rf "$HOME/.cache/pip" 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
+      - name: rustup set profile minimal (avoid clippy-preview conflict)
+        run: rustup set profile minimal
+
+      - name: Set up Zephyr 3.7 workspace
+        run: |
+          source ./activate.sh
+          NROS_ZEPHYR_VERSION=3.7 just setup zephyr --skip-sdk
+
+      # zephyr-sys' build.rs runs bindgen over Zephyr headers (the Rust rows).
+      # RESOLVE FIRST and capture the status (issue 1466).
+      - name: Install clang + libclang for bindgen
+        run: |
+          if ! pkgs="$(python3 scripts/sdk/prereq-packages.py --manager apt clang libclang-dev)"; then
+            echo "::error::prereq-packages.py could not resolve clang/libclang-dev from nros-sdk-index.toml"
+            exit 1
+          fi
+          apt-get update -q
+          # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
+          apt-get install -y --no-install-recommends $pkgs
+
+      - name: Re-walk every observed stack-floor row
+        env:
+          NROS_ZEPHYR_VERSION: "3.7"
+        run: |
+          source ./activate.sh
+          just zephyr stack-floor-drift
+
   zephyr-copy-out:
     # No `needs:` — issue 1029; same gate as zephyr-example-matrix.
     name: zephyr copy-out check (4.4)
