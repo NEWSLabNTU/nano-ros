@@ -521,14 +521,14 @@ Zephyr module).
 
 ### I12 -- configure and the model gate agree on a stale model
 
-**Status: IN PROGRESS.** [Issue 2598](../issues/2598-launch-param-file-not-a-model-input.md),
+**Status: DONE (2026-11-15).** [Issue 2598](../issues/archived/2598-launch-param-file-not-a-model-input.md),
 GitHub #3923. `nros configure` decided a model was current by its own stamp,
 while every consumer asked the model gate, so a model the gate refused as
 stale was never re-resolved and only `rm -rf build` cleared it. The configure
 check now asks the gate (`workspace_model_missing` -> `model_gate::verify`).
 The second half is play_launch's: the resolver does not record a `<param
-from>` file as a model input, so a parameter-file edit is silent to both. It
-is fixed in play_launch `191d949f` and lands here with the next pin bump.
+from>` file as a model input, so a parameter-file edit was silent to both.
+It is fixed in play_launch `191d949f`, pinned here in dd571ca75f.
 
 ### I13 -- a Rust package in a mixed image needs no registration of its own
 
@@ -687,7 +687,7 @@ fixed after that release.
 
 - [issue 2601](../issues/archived/2601-resolve-ignores-image-target-platform-file.md): `nros configure` resolved every model for `posix`, so an image's `<stem>.system.<target>.yaml` was never read (I14, resolved).
 - [issue 2603](../issues/2603-flaky-sdk-index-stamp-input-test.md): `configure_stamp::tests::the_sdk_index_is_a_stamp_input` failed once under a full gate and passes alone.
-- [issue 2598](../issues/2598-launch-param-file-not-a-model-input.md) (GitHub #3923): a resolved model stays stale after `nros configure`, and a launch parameter file is not one of its inputs (I12).
+- [issue 2598](../issues/archived/2598-launch-param-file-not-a-model-input.md) (GitHub #3923, resolved): a resolved model stayed stale after `nros configure`, and a launch parameter file was not one of its inputs (I12).
 - [issue 2599](../issues/archived/2599-mixed-image-rust-package-needs-cmake-registration.md) (GitHub #3857, resolved): a Rust package in a mixed image needed a CMake registration that restated its `[[component]]` row. It is now derived from the row (I13).
 - [issue 2564](../issues/archived/2564-hand-entry-bringup-image-drops-domain-id.md) (resolved): a hand-written entry naming `BRINGUP` and `IMAGE` baked domain 0, not the image's `domain_id`. It now asks the image's domain of the one reader, under the agreement rule.
 - [issue 2565](../issues/archived/2565-mixed-image-rust-pkg-needs-cmake-shim.md) (resolved): a mixed image's Rust package needed an undocumented CMake shim. `nros new --to` writes it now, the book states it, and the contract row was issue 2376's fix.
