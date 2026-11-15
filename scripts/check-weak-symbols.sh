@@ -129,15 +129,35 @@ scan() {
         return 1
     fi
 
-    local -A actual=()
-    local f n
+    # Issue 2613 — pre-filter in ONE pass before the per-file comment strip.
+    # Every WEAK_ERE alternative contains the literal word `weak`, and
+    # stripping comments only removes text, so a file whose raw bytes never
+    # say `weak` cannot match after the strip. `-i` keeps the candidate set a
+    # superset of anything the patterns can see. The strip costs two process
+    # spawns a file; spending them on all ~1000 owned sources is what took
+    # this gate past nextest's 60 s on a loaded shard. Unreadable files still
+    # fail the scan (grep exits 2), as the per-file `cpp`/`cat` did.
+    local -a owned_list=()
+    local f n candidates
     while IFS= read -r f; do
+        [ -n "$f" ] && owned_list+=("$f")
+    done < <(owned_sources)
+    candidates=""
+    [ "${#owned_list[@]}" -eq 0 ] || candidates=$(cd "$root" && printf '%s\0' "${owned_list[@]}" \
+        | xargs -0 -r sh -c 'grep -il -- weak "$@"; r=$?; [ "$r" -le 1 ] || exit 255' _) || {
+        echo "weak-source: FAIL — could not read the owned sources (grep error)" >&2
+        return 1
+    }
+
+    local -A actual=()
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
         n=$(count_weak "$root/$f") || {
             echo "weak-source: FAIL — could not scan $f (grep/cpp error)" >&2
             return 1
         }
         [ "${n:-0}" -gt 0 ] && actual["$f"]="$n"
-    done < <(owned_sources)
+    done <<<"$candidates"
 
     local fails=0
     # Unexpected (new unaudited site) + drifted counts.
@@ -215,6 +235,19 @@ selftest() {
         run_case "spelling '$spelling' in an unlisted file" fail ""
     done
     rm "$d/packages/b/sp.cpp"
+
+    # Issue 2613 — the one-pass `weak` pre-filter must not change a verdict.
+    # Each spelling above and the `.weak` case below already prove it keeps
+    # every form WEAK_ERE matches (a dropped file would read as PASS). This
+    # one proves an uppercase macro USE is still not counted, exactly as
+    # before the filter: the patterns are case-sensitive and the strip does
+    # not expand macros, so the attribute is counted at its #define.
+    printf 'NROS_WEAK void g(void);\nWEAK int h;\n' > "$d/packages/b/upper.c"
+    run_case "an uppercase WEAK macro use alone is not a weak decl" pass ""
+    printf '#define NROS_WEAK __attribute__((weak))\nNROS_WEAK void g(void);\n' \
+        > "$d/packages/b/upper.c"
+    run_case "... while its #define in an unlisted file is" fail ""
+    rm "$d/packages/b/upper.c"
 
     printf '    .weak _start\n' > "$d/packages/b/start.S"
     run_case ".weak directive in an unlisted .S" fail ""
