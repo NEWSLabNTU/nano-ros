@@ -272,6 +272,24 @@ For an image nobody has measured, the floor is only printed, as a `WARNING`
 that names the same setting. Nothing is refused, and if the image overflows
 that setting is the first thing to try.
 
+### A12. The stack check finds no `llc` for the toolchain
+
+```text
+nros-stack-floor: the bitcode was written by rustc 1.99.0, whose toolchain has no `llc`: run `rustup component add llvm-tools --toolchain 1.99.0`, or pass --llvm-bin
+```
+
+The stack check ([A11](#a11-the-stack-is-below-the-images-floor)) reads the
+compiled Rust code with the LLVM tools of the toolchain that built it. A
+project with its own `rust-toolchain.toml` builds with that pinned toolchain,
+and rustup installs it without those tools. Run the command the message
+names, `rustup component add llvm-tools --toolchain 1.99.0` with the version
+it names, then `nros build` again.
+
+The same fix holds when the message says the only `llc` it found is of
+another LLVM version: the check never reads the code with a tool of the
+wrong version. For a measured image the missing tool fails the build; for an
+unmeasured one it is a `WARNING` and the build goes on.
+
 ## B. Binary runs but no output
 
 ### B1. Rust: `RMW session open failed — Transport(ConnectionFailed)`
