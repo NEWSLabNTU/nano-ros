@@ -77,6 +77,7 @@ pub mod ros2_compat;
 pub mod ros_env;
 pub mod run;
 pub mod sdk_tree;
+pub mod tcp_listener;
 pub mod treewalk;
 pub mod zephyr;
 
@@ -679,6 +680,13 @@ pub enum TestError {
 
     #[error("Output parsing error: {0}")]
     OutputParse(String),
+
+    /// Issue 2457 — the daemon's port is held by ANOTHER program
+    /// (`crate::tcp_listener::Holder::Other`). A distinct variant so a
+    /// starter that leased the port can take a fresh lease; a starter given
+    /// a fixed port reports it.
+    #[error("Port taken by another program: {0}")]
+    PortTaken(String),
 
     /// phase-362 W3 — the ROS router is not on this host.
     ///
