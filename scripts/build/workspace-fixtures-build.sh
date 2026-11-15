@@ -383,24 +383,32 @@ build_workspace() {
         if [ "$road" = "cargo" ]; then
             local profile_args=("${cargo_profile_args[@]}")
             local row_profile_dir="$profile_dir"
-            # The NuttX standalone flat image miscompiles at any `lto = "off"`
-            # profile (it boots to `main` but the runtime never functions — no
-            # transport, zero output). Build the NuttX workspace Entry at the
-            # carve-out profile until that is root-caused. phase-285 W5 —
-            # nuttx-riscv rides the same dodge. The profile NAME comes from the
-            # table (`nros_cargo_profile::NUTTX_RUST_PROFILE`) because the
-            # test-side resolvers read the same constant; when the two were
-            # separate literals they drifted (#156).
-            if [ "$platform" = "nuttx" ] || [ "$platform" = "nuttx-riscv" ]; then
-                local nuttx_profile
-                nuttx_profile="$(nros_cargo_nuttx_profile)"
+            # A platform with a profile CARVE-OUT is built at it, whoever calls
+            # this builder: NuttX (its flat image miscompiles at any
+            # `lto = "off"` profile, phase-285 W5, riscv too) and FreeRTOS QEMU
+            # (an M3 under emulation misses zenoh-pico's handshake window at a
+            # light optimisation). ONE mapping, `nros_cargo_platform_profile`,
+            # which reads the table the test-side resolvers read
+            # (`nros_cargo_profile::platform_profile`), so the build and the
+            # lookup cannot disagree (#156).
+            #
+            # This was a NuttX-only branch. FreeRTOS reached its carve-out only
+            # through the caller's `NROS_CARGO_PROFILE`, which the old leaf
+            # fixture recipe set. When the Rust examples became workspace rows
+            # (phase-535 W3, phase-531 W6), `build-workspace-fixtures` called
+            # this without it, so the FreeRTOS Rust entries were built at the
+            # ambient profile while every test looked under `nros-minsizerel`:
+            # nightly 43679672304's FreertosMps2 Rust cells were all MISSING.
+            local plat_profile
+            plat_profile="$(nros_cargo_platform_profile "$platform")"
+            if [ "$plat_profile" != "$(nros_cargo_profile_name)" ]; then
                 # `nros_cargo_profile_args_for`, NOT the raw `_nros_profile_query`:
                 # the table stores the flags as one string, so mapfiling the raw
                 # query yields a single argv element `--profile nros-minsizerel`
                 # and cargo rejects it. Every other path here goes through an
                 # accessor that splits.
-                mapfile -t profile_args < <(nros_cargo_profile_args_for "$nuttx_profile")
-                row_profile_dir="$(_nros_profile_query dir "$nuttx_profile")"
+                mapfile -t profile_args < <(nros_cargo_profile_args_for "$plat_profile")
+                row_profile_dir="$(_nros_profile_query dir "$plat_profile")"
             fi
             local extra_args=()
             if [ -n "$cargo_extra" ]; then
