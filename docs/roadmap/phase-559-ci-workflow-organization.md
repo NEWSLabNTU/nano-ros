@@ -635,9 +635,15 @@ the user ruled; all five stand:
 
 ### W12 — The hosted Zephyr shard's disk, without sharing a build-dir
 
-- **Owner:** nros 175. **A design item: no code lands before the user picks
-  an option.** It follows W10's ruling (2026-11-15) that build-dir sharing
-  goes nowhere yet.
+- **Owner:** nros 175. It follows W10's ruling (2026-11-15) that build-dir
+  sharing goes nowhere yet.
+- **Ruling, 2026-11-15: option A.** Between the build and run stages, evict
+  `build/corrosion-cargo/metadata-probe/` and `build/metadata-probe/`, and keep
+  `sizes-probe`. Guard it: if the run stage ever reads one of those dirs, the
+  eviction must fail loudly. Acceptance: a lane=tier1 dispatch on the branch
+  reaches a VERDICT and records the freed bytes (a real `du`, replacing the
+  derived 20 G) and the lowest free space. If that margin is under 10 G, add B
+  (no debuginfo for that shard's test binaries) in the same PR and say so.
 - **What the shard runs out of, measured.** Run 43684256518,
   `merge-runtime tier1 (zephyr)`, 146 G disk:
   - `reclaim-disk.sh` freed 32.3 G of preinstalled toolchains before the
@@ -685,7 +691,7 @@ the user ruled; all five stand:
   If that margin is under 10 G, add B and measure again. A frees about
   3–4× the shortfall and changes nothing the run reads, by the code.
   Unlike W10 it changes no build.
-- **Status:** BLOCKED (the user's choice of option)
+- **Status:** OPEN
 
 ## Acceptance (phase)
 
