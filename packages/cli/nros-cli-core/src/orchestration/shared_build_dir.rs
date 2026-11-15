@@ -24,8 +24,10 @@
 //! Both run after every probe build. A build dir that does not share (no
 //! `nros-image-roots/` record) has nothing to check.
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
+};
 
 use eyre::{Result, WrapErr, bail};
 
@@ -61,8 +63,7 @@ pub fn check(build_dir: &Path) -> Result<()> {
 /// more than one path, as one line each.
 pub fn census(build_dir: &Path) -> Result<Vec<String>> {
     // (fingerprint dir, package, unit file, the fingerprint minus path/local) -> paths
-    let mut groups: BTreeMap<(PathBuf, String, String, String), BTreeSet<String>> =
-        BTreeMap::new();
+    let mut groups: BTreeMap<(PathBuf, String, String, String), BTreeSet<String>> = BTreeMap::new();
     for fp_root in fingerprint_dirs(build_dir) {
         let Ok(units) = std::fs::read_dir(&fp_root) else {
             continue;
@@ -72,7 +73,7 @@ pub fn census(build_dir: &Path) -> Result<Vec<String>> {
             let Some(dir_name) = unit_dir.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            let Some((pkg, _hash)) = dir_name.rsplit_once('-') else {
+            let Some((pkg, hash)) = dir_name.rsplit_once('-') else {
                 continue;
             };
             let Ok(files) = std::fs::read_dir(&unit_dir) else {
@@ -93,8 +94,13 @@ pub fn census(build_dir: &Path) -> Result<Vec<String>> {
                     .map(|v| v.to_string())
                     .unwrap_or_default();
                 obj.remove("local");
-                let rest = serde_json::Value::Object(obj).to_string();
                 let file = p.file_name().unwrap().to_string_lossy().into_owned();
+                // The fingerprint JSON carries no VERSION, so two versions of
+                // one registry crate (thiserror-impl 1.x and 2.x, measured in
+                // the first in-place probe run) differ only in `path` too. The
+                // source identity separates them; see `source_identity`.
+                let identity = source_identity(&fp_root, &file, hash);
+                let rest = format!("{identity}|{}", serde_json::Value::Object(obj));
                 groups
                     .entry((fp_root.clone(), pkg.to_owned(), file, rest))
                     .or_default()
@@ -115,6 +121,55 @@ pub fn census(build_dir: &Path) -> Result<Vec<String>> {
             )
         })
         .collect())
+}
+
+/// Where a unit's source came from, as far as it decides "one crate or two".
+///
+/// Read from `deps/<target>-<hash>.d`, whose paths are absolute. A crate from
+/// a registry or a git checkout is identified by its versioned package dir
+/// (`registry:thiserror-impl-1.0.69`), so two versions are two crates. Any
+/// other crate is `local`: 0616's shape is ONE local crate reached by a
+/// relative and an absolute spelling, and both spellings must land in the
+/// same group to be caught. A unit with no `.d` (a build script's run, a
+/// missing file) is `local` too, which errs toward refusing.
+fn source_identity(fp_root: &Path, fingerprint_file: &str, hash: &str) -> String {
+    const LOCAL: &str = "local";
+    // `lib-<target>.json` → `<target>`; other unit kinds have no `.d` here.
+    let Some(target) = fingerprint_file
+        .strip_suffix(".json")
+        .and_then(|f| f.split_once('-'))
+        .map(|(_, t)| t)
+    else {
+        return LOCAL.into();
+    };
+    let Some(profile_dir) = fp_root.parent() else {
+        return LOCAL.into();
+    };
+    let d = profile_dir.join("deps").join(format!("{target}-{hash}.d"));
+    let Ok(text) = std::fs::read_to_string(&d) else {
+        return LOCAL.into();
+    };
+    let Some(first) = text
+        .lines()
+        .next()
+        .and_then(|l| l.split_once(": "))
+        .and_then(|(_, srcs)| srcs.split_whitespace().next())
+    else {
+        return LOCAL.into();
+    };
+    for (marker, kind, parts) in [
+        ("/registry/src/", "registry", 2),
+        ("/git/checkouts/", "git", 3),
+    ] {
+        if let Some((_, after)) = first.split_once(marker) {
+            // registry: <index>/<name>-<ver>/…   git: <repo>/<rev>/…
+            let id: Vec<&str> = after.split('/').take(parts).collect();
+            if id.len() == parts {
+                return format!("{kind}:{}", id[1..].join("/"));
+            }
+        }
+    }
+    LOCAL.into()
 }
 
 /// `.fingerprint` dirs under a build-dir: `<profile>/.fingerprint` (host) and
@@ -153,8 +208,8 @@ pub fn markers(roots_dir: &Path) -> Result<Vec<String>> {
             .and_then(|s| s.to_str())
             .unwrap_or_default()
             .to_owned();
-        let archive = std::fs::read_to_string(&rec)
-            .wrap_err_with(|| format!("reading {}", rec.display()))?;
+        let archive =
+            std::fs::read_to_string(&rec).wrap_err_with(|| format!("reading {}", rec.display()))?;
         let archive = PathBuf::from(archive.trim());
         let Ok(bytes) = std::fs::read(&archive) else {
             continue;
@@ -238,17 +293,77 @@ mod tests {
         // are separate units; a dep built with two feature sets is two units
         // that differ in more than their path. Neither is the 0616 shape.
         let t = tempfile::tempdir().unwrap();
-        fingerprint(t.path(), "nros-cpp-image-aaaa", "lib-nros_cpp.json", 99, "[]");
-        fingerprint(t.path(), "nros-cpp-image-bbbb", "lib-nros_cpp.json", 99, "[]");
+        fingerprint(
+            t.path(),
+            "nros-cpp-image-aaaa",
+            "lib-nros_cpp.json",
+            99,
+            "[]",
+        );
+        fingerprint(
+            t.path(),
+            "nros-cpp-image-bbbb",
+            "lib-nros_cpp.json",
+            99,
+            "[]",
+        );
         fingerprint(t.path(), "dep-1111", "lib-dep.json", 5, "[\"a\"]");
         fingerprint(t.path(), "dep-2222", "lib-dep.json", 5, "[\"b\"]");
         assert_eq!(census(t.path()).unwrap(), Vec::<String>::new());
     }
 
+    #[test]
+    fn census_accepts_two_versions_of_one_registry_crate() {
+        // Measured on the first in-place probe run: thiserror-impl 1.0.69 and
+        // 2.0.x share every fingerprint field but `path`, because the JSON
+        // carries no version. Their `.d` files name versioned registry dirs.
+        let t = tempfile::tempdir().unwrap();
+        fingerprint(
+            t.path(),
+            "thiserror-impl-1111",
+            "lib-thiserror_impl.json",
+            7,
+            "[]",
+        );
+        fingerprint(
+            t.path(),
+            "thiserror-impl-2222",
+            "lib-thiserror_impl.json",
+            8,
+            "[]",
+        );
+        let deps = t.path().join("release/deps");
+        std::fs::create_dir_all(&deps).unwrap();
+        for (h, v) in [("1111", "1.0.69"), ("2222", "2.0.18")] {
+            std::fs::write(
+                deps.join(format!("thiserror_impl-{h}.d")),
+                format!(
+                    "{}/thiserror_impl-{h}.d: /h/.cargo/registry/src/index.crates.io-x/thiserror-impl-{v}/src/lib.rs\n",
+                    deps.display()
+                ),
+            )
+            .unwrap();
+        }
+        assert_eq!(census(t.path()).unwrap(), Vec::<String>::new());
+        // …and ONE version reached twice is still refused.
+        std::fs::write(
+            deps.join("thiserror_impl-2222.d"),
+            format!(
+                "{}/thiserror_impl-2222.d: /h/.cargo/registry/src/index.crates.io-x/thiserror-impl-1.0.69/src/lib.rs\n",
+                deps.display()
+            ),
+        )
+        .unwrap();
+        assert_eq!(census(t.path()).unwrap().len(), 1);
+    }
+
     fn record(roots: &Path, id: &str, archive: &Path) {
         std::fs::create_dir_all(roots).unwrap();
-        std::fs::write(roots.join(format!("{id}.txt")), format!("{}\n", archive.display()))
-            .unwrap();
+        std::fs::write(
+            roots.join(format!("{id}.txt")),
+            format!("{}\n", archive.display()),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -287,7 +402,10 @@ mod tests {
         )
         .unwrap();
         record(&t.path().join("roots"), "aaaaaaaaaaaaaaaa", &a);
-        assert_eq!(markers(&t.path().join("roots")).unwrap(), Vec::<String>::new());
+        assert_eq!(
+            markers(&t.path().join("roots")).unwrap(),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
