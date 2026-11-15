@@ -320,6 +320,37 @@ the user ruled; all five stand:
   image, before layer compression; its effect on a shard's low point shows
   on the next tier-1 dispatch.
 
+  Eighth measurement, runs 43650684858 (tier1) and 43650687503 (merge),
+  2026-11-15, on #3889's branch (the fixed matrix), plus 43643676703 (merge,
+  the #3865 tree). All three shards that should have run did run, so the
+  matrix fix holds. No shard has a p95 sample yet
+  (`merge-runtime-p95.py --event workflow_dispatch`: threadx_linux 0 ok,
+  zephyr 0 ok).
+  - **tier1 × threadx_linux FITS and PASSED.** Its lowest point was 19.9 G
+    free. The sigterm test's zenoh case passed in 12.7 s. Its cyclonedds case
+    was out of lane.
+  - **tier1 × zephyr does NOT fit on r9 either.** The disk balloon stopped
+    `just build tier1` at 1.67 G free, in `build-test-fixtures-leaves`. `du`
+    at the stop: `zephyr-workspace-builds` 44 G, `corrosion-cargo` 30 G,
+    `sizes-probe` 5.8 G, `metadata-probe` 3.0 G. r9's 6.9 G did not buy the
+    margin back: `corrosion-cargo` grew 23 → 30 G over the fifth measurement.
+  - **merge × threadx_linux crossed the floor.** The balloon stopped
+    `just ci merge` at 1.78 G free, in `test-all`, so there is NO VERDICT.
+    The seventh measurement had a 6 G low point on this shard. `du` at the
+    stop: `corrosion-cargo` 30 G, `target` 18 G,
+    `examples/workspaces/cpp/build` 8.7 G, `sizes-probe` 7.6 G.
+  - **merge × zephyr (self-hosted) RAN**, twice. Each run ran 3638 tests with
+    1 real failure, the same one both times: `sched_dims_applied`'s
+    `CorePinPlacement/zephyr/c`, which fails with `qemu-system-aarch64: failed
+    to find romfile "efi-e1000.rom"`. The runner image lacked `ipxe-qemu`
+    (an image fix, in flight).
+  - `cargo-dir-dupes` on `build/corrosion-cargo`, at the end of the two
+    hosted shards that ran out of disk: 80 cargo dirs. 601 / 456 units are
+    stored in more than one dir, and the extra copies come to 35.5 / 36.6 G
+    by apparent size. Nearly all of it is the metadata probe's
+    `nros-cpp-image_*` dirs, and mostly their HOST half. This is W10's
+    subject.
+
   **User ruling, 2026-11-14 (option B): linux tier 1 stays SELF-HOSTED**
   (`run-matrix.yml`'s `tier1`). Only threadx_linux and zephyr move to hosted
   per-board shards. Measured basis: a hosted runner has ~104 G free after
@@ -505,6 +536,86 @@ the user ruled; all five stand:
   `nros-queue` runner was gone from 05:08Z (fixed by
   runner-store's container-owned dir rule and caught next time by the
   presence watchdog).
+
+### W10 — Lever 2: the metadata probe shares one host half per key
+
+- **Owner:** nros 175. **This is a design item. No code lands before the
+  user's OK.**
+- **Why.** Both hosted shards that ran out of disk in W5b's eighth
+  measurement held `build/corrosion-cargo` at 30 G (`du`), and the disk
+  balloon stopped them 0.2–0.3 G under its 2 G floor. Across that tree,
+  `scripts/ci/cargo-dir-dupes.py` finds 456–601 units stored in more than one
+  cargo dir: 35.5–36.6 G of extra copies against a 40.1–40.4 G total, both by
+  apparent size, so about 90 % of it. Almost all of it is the metadata probe's
+  per-workspace `metadata-probe/<key>/nros-cpp-image_<hash>/` dirs
+  (0.6 G each, 0.5 G of it host half). The largest repeats are `zpico-sys`'s
+  build-script dirs (0.8 G over 38–39 extra copies, two hashes) and
+  `libnros_macros-*.so` (0.7–0.8 G over 36–38). So the margin both shards
+  lacked is a small fraction of what this one directory duplicates. Whether
+  sharing makes the shards FIT is a separate question, answered by the
+  acceptance below and not assumed here.
+- **The units are already one unit.** A cargo unit's file name carries its
+  metadata hash (features, deps, profile and the path spelling it was reached
+  by). The same `libnros_macros-<hash>.so` sits in 36+ dirs, so those dirs
+  agree on every input, the spelling included. Lever 1 of
+  [issue 2318](../issues/2318-cmake-leaf-recompiles-host-tooling.md) (the
+  probe builds without debuginfo, 2026-11-11) made each copy smaller. It did
+  not change how many copies there are. That issue measured the count as
+  bounded by workspaces, not by keys.
+- **Proposal.** Each probe key gets one shared cargo `build.build-dir`
+  (intermediates: `deps/`, `build/`, `.fingerprint/`). Each workspace keeps
+  its own `target-dir` (uplifted artifacts). Cargo uplifts every root
+  `nros-{c,cpp}-image` staticlib by crate name, so a shared `target-dir` would
+  let concurrent probes overwrite each other's archive. A per-workspace
+  `target-dir` keeps that out of reach. `build.build-dir` works on the pinned
+  toolchain without `-Z` (2318, checked on a scratch crate). The fixture images
+  are out of scope; they keep one directory per leaf.
+- **What it must not reopen: [issue 0616](../issues/archived/0616-ws-mixed-duplicate-nros-platform-global-allocator.md).**
+  A cargo dir serves one workspace root because two roots sharing one can
+  hold two units of one crate that differ only in path spelling, and a
+  transitive `-L dependency=` lookup then binds either. `nros-platform`'s
+  `#[global_allocator]` made that a duplicate-symbol link failure, which was
+  intermittent while the cause was permanent. A shared build-dir puts every
+  workspace of a key in one `deps/`, which is exactly that state, **unless**
+  every non-root crate is reached by the same spelling in every workspace.
+  That is why 2318 parked lever 2 on "a duplicate-symbol link test under
+  parallel leaves".
+- **What proves it safe.** Each item is a measurement or a gate. None is an
+  argument.
+  1. *One unit per crate per key, as a precondition and not a hope.* Before
+     a probe joins a shared build-dir, `cargo metadata` over its workspace
+     must show the image crate as the ONLY member. Every other package must
+     then be an external path dep, spelled absolutely and therefore the same
+     in every workspace. After the build, the shared `deps/` must hold at most
+     one `lib<crate>-<hash>` per (crate, kind, target) beyond what any single
+     per-workspace dir holds today. A probe that fails the precondition keeps
+     its own dir and says why. It is never silently shared.
+  2. *The 0616 link test, with its negative control.* Probe every C and C++
+     workspace of one key IN PARALLEL into the shared build-dir, `mixed`
+     included (the entry that caught 0616 both times), N times. Assert that
+     each linked probe binary defines `__rust_alloc` and every `#[no_mangle]`
+     export once (`nm`), and that each workspace's sidecars are byte-identical
+     to a solo build into its own dir. The negative control is 0616's shape
+     rebuilt: two roots that reach `nros-platform` by different spellings,
+     sharing one dir. The test must go red on it, or it proves nothing.
+  3. *No uplift collision.* Each workspace's uplifted `nros-{c,cpp}-image`
+     archive hashes the same after the parallel run as after a solo build.
+  4. *Cost of the lock.* Measure whether cargo's build-dir lock serialises
+     the parallel probes, as wall time against today's per-dir run. A
+     serialised probe may cost more time than it saves disk, and the numbers
+     go to the user either way.
+  5. *Count real bytes.* `cargo-dir-dupes.py` counts apparent `st_size`
+     without merging hard links. Its 40 G total against `du`'s 30 G on the
+     same tree shows it overstates. Before and after are read in allocated
+     blocks with one count per inode, so the saving is real disk.
+- **Acceptance.** Items 1–3 green, plus the existing link gates green. On
+  the tier1 × zephyr hosted shard, `build/corrosion-cargo` falls by the
+  probe's duplicate bytes (`du` before and after, same commit). That shard and
+  merge × threadx_linux reach a verdict above the disk balloon's floor, or
+  the remaining shortfall is measured and named.
+- **Status:** BLOCKED (the user's OK; a design item, proposed 2026-11-15)
+  No code lands before that ruling. Issue 2318
+  stays homed in phase-489; this item is its lever 2, scoped to the probe.
 
 ## Acceptance (phase)
 

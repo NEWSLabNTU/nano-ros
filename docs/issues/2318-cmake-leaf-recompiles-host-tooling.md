@@ -5,7 +5,7 @@ status: open
 type: tech-debt
 severity: medium
 area: [build, ci, cmake]
-related: [0616, 1353, 2191, phase-489, phase-543]
+related: [0616, 1353, 2191, phase-489, phase-543, phase-559]
 found: 2026-11-07
 ---
 
