@@ -378,6 +378,15 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     # Mostly rust leaves; a C/C++ leaf lands here when its link root is cargo
     # (issue 1512's bare-metal leaves, which compile their C/C++ in `build.rs`).
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
+    # A platform with a profile CARVE-OUT is built at it whoever calls this
+    # (`nros_cargo_platform_profile`, the table the test-side resolvers read).
+    # It was the CALLER's job (`NROS_CARGO_PROFILE=…`), and a caller that forgot
+    # built at the ambient profile while every test looked under the carve-out:
+    # the shape `workspace-fixtures-build.sh` shipped for FreeRTOS's Rust rows.
+    _plat_profile="$(nros_cargo_platform_profile "$platform")"
+    if [ "$_plat_profile" != "$(nros_cargo_profile_name)" ]; then
+        cargo_profile_args="$(_nros_profile_query args "$_plat_profile")"
+    fi
     export cargo_profile_args
     # Codegen here (centralized) rather than per-recipe: examples that path-dep
     # generated message crates (std_msgs/builtin_interfaces/example_interfaces via
