@@ -11,7 +11,7 @@ resolved: 2026-11-15
 resolved_in: "phase-564 W3"
 ---
 
-**Home: [phase-564](../../roadmap/phase-564-xrce-device-session-robustness.md) W3.**
+**Home: [phase-564](../../roadmap/archived/phase-564-xrce-device-session-robustness.md) W3.**
 
 GitHub: NEWSLabNTU/nano-ros#1049 (reported by wicanr2)
 
