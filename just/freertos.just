@@ -435,7 +435,15 @@ test verbose="": build-fixtures
     # whose fixture this job did not build reports itself as skipped in the
     # test's own summary, and a FreeRTOS row that boots and does not tick fails
     # the job.
-    just _nextest-platform 'rtos_e2e realtime_sched_tasks_e2e' '{{verbose}}' '' 'test(Freertos) | binary(=realtime_sched_tasks_e2e)'
+    #
+    # phase-466 — and `freertos_posix`, the POSIX-simulator board's own cells. The
+    # nightly runs ONE job per board (phase-558) through this recipe, scoped to
+    # that board's coordinates. `rtos_e2e`'s `Platform::Freertos` cells are the
+    # mps2-an385 board's, so without this target the `FreertosPosix` job deselected
+    # every test it reached as out of lane and was red with "NOT ONE test actually
+    # ran" (nightly 43679672304, 2026-11-15). Each board's job now selects its
+    # board's cells, and the scope deselects the sibling's.
+    just _nextest-platform 'rtos_e2e realtime_sched_tasks_e2e freertos_posix' '{{verbose}}' '' 'test(Freertos) | binary(=realtime_sched_tasks_e2e) | binary(=freertos_posix)'
 
 # Run all FreeRTOS tests including networked E2E
 [group("full-matrix")]

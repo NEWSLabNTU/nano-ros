@@ -941,3 +941,90 @@ fn every_test_binary_is_a_consumer_an_interop_test_or_classified() {
         problems.join("\n  ")
     );
 }
+
+// ============================================================================
+// phase-466 — every board's nightly job selects a test of its own board.
+//
+// The nightly runs ONE job per board (phase-558) through its module's `test`
+// verb, scoped to that board's coordinates. A verb whose targets name no cell
+// of a board leaves that board's job with nothing in lane: nightly 43679672304
+// (2026-11-15) ran `FreertosPosix` and `NuttxRiscv` with 0 of 11 and 0 of 10
+// selected and reported it only as a red "NOT ONE test actually ran", the night
+// after the gap opened. This reads the same two facts statically: the targets
+// the module's `test` recipe hands `_nextest-platform`, and, per board the
+// module owns, whether one of those targets names the board, either as
+// `PlatformId::<Board>` or as one of its fixture tokens (`"<token>"`, the
+// coordinate prefix a lane check matches). A target names its board, or no test
+// in it can be in that board's lane.
+// ============================================================================
+
+/// The test targets a recipe body hands `_nextest-platform` (its first
+/// argument, a space-separated list, quoted or bare).
+fn nextest_platform_targets(body: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in body.lines() {
+        let line = line.split('#').next().unwrap_or("");
+        let Some(rest) = line.split("_nextest-platform").nth(1) else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        let arg = if let Some(q) = rest.strip_prefix('\'') {
+            q.split('\'').next().unwrap_or("")
+        } else {
+            rest.split_whitespace().next().unwrap_or("")
+        };
+        out.extend(arg.split_whitespace().map(str::to_string));
+    }
+    out
+}
+
+#[test]
+fn every_board_job_selects_a_test_of_its_board() {
+    let root = nros_tests::project_root();
+    let mut problems = Vec::new();
+    let mut checked = 0;
+    for &p in PlatformId::ALL {
+        if !nros_tests::matrix::platform_is_built(p) {
+            continue;
+        }
+        let m = p.just_module();
+        let file = root.join("just").join(format!("{m}.just"));
+        if !file.is_file() {
+            continue;
+        }
+        let recipes = parse_just_module(&module_text_with_imports(&file));
+        let Some((_, body)) = recipes.get("test") else {
+            continue;
+        };
+        let targets = nextest_platform_targets(body);
+        if targets.is_empty() {
+            // A module whose `test` verb reaches its cells another way (the
+            // `linux` lane's `test-all`, Zephyr's west lane) is not this rule's.
+            continue;
+        }
+        let mut needles = vec![format!("PlatformId::{p:?}")];
+        needles.extend(p.fixture_tokens().iter().map(|t| format!("\"{t}\"")));
+        let named = targets.iter().any(|t| {
+            let src = root
+                .join("packages/testing/nros-tests/tests")
+                .join(format!("{t}.rs"));
+            std::fs::read_to_string(&src)
+                .map(|s| needles.iter().any(|n| s.contains(n.as_str())))
+                .unwrap_or(false)
+        });
+        checked += 1;
+        if !named {
+            problems.push(format!(
+                "{p:?}: `just {m} test` runs [{}], and none names the board ({}); its \
+                 nightly job would select no test in lane",
+                targets.join(", "),
+                needles.join(" | ")
+            ));
+        }
+    }
+    assert!(
+        checked > 0,
+        "no board's module has a `_nextest-platform` test verb: the parse is broken"
+    );
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
