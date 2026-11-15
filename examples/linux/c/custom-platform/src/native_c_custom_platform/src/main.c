@@ -83,7 +83,7 @@ static struct {
 // Serialization buffer (statically allocated)
 static uint8_t g_serialize_buffer[64];
 
-// Phase 88.16.B — set after `rclc_node_init_default`; used by post-init
+// Phase 88.16.B — set after `rclc_executor_node_init`; used by post-init
 // diagnostics + the timer callback. NULL before init = `NROS_LOG_*`
 // silently drops. Moved here from after `main` (Phase 212.M native/c
 // sweep) so the C compiler sees the declaration before the callback's
