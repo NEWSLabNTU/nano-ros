@@ -622,7 +622,9 @@ RUN cd /opt/zephyr && bash -e /opt/nros-zephyr/zephyr-ws.sh \
 # itself rather than inheriting whatever `starter` sets for a seat.
 # A Rust app needs a release newer than 0.6.0-nros8 (issue 2314's fix); on
 # that release build with --build-arg NROS_STARTER_ZEPHYR_PROJECTS=zephyr:c.
-ARG NROS_STARTER_ZEPHYR_PROJECTS="zephyr:c zephyr:rust"
+# C++ is the third language the page documents; warming it costs ~0.01 GB raw
+# and nothing visible compressed (issue 2605: 4.87 of 5.00 GB on 0.6.0-nros10).
+ARG NROS_STARTER_ZEPHYR_PROJECTS="zephyr:c zephyr:rust zephyr:cpp"
 RUN export NROS_BUILD_ROOT=/tmp/nros-build CARGO_NET_OFFLINE=false; for p in ${NROS_STARTER_ZEPHYR_PROJECTS}; do \
         b="${p%%:*}"; l="${p#*:}"; \
         cd /tmp && rm -rf zs_ws \

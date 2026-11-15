@@ -114,7 +114,9 @@ Two things this leaves: the headroom is 2.6 %, so the next thing the Zephyr
 stage adds is likely to cross the budget; and the image warms C and Rust,
 while the page's `probe=` blocks also document a C++ talker, which a seat
 would build online (issue
-[2605](../issues/2605-starter-zephyr-warms-no-cpp-talker.md)).
+[2605](../issues/archived/2605-starter-zephyr-warms-no-cpp-talker.md)).
+Measured with C++ warmed too: 15.89 GB raw, 4.87 GB compressed, so it fits,
+and it is in the default project list from the next release.
 
 ### W4 — Release job and tags
 
