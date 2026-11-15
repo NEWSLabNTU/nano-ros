@@ -6288,8 +6288,8 @@ fn image_build_type_args(
             "image `{image_id}` states profile `{profile}`, which a CMake build cannot apply: \
              it is neither a CMake build type (Debug, Release, RelWithDebInfo, MinSizeRel) nor \
              a cargo profile one of them maps to (dev, release, nros-relwithdebinfo, \
-             nros-minsizerel). State one of those, or pass the build type yourself: \
-             `nros build {image_id} -- -DCMAKE_BUILD_TYPE=<type>`."
+             nros-minsizerel). State one of those, or drop `profile` from this image and \
+             pass the build type yourself: `nros build {image_id} -- -DCMAKE_BUILD_TYPE=<type>`."
         );
     };
     let cargo = nros_cargo_profile::resolve(Some(build_type))
@@ -11779,7 +11779,9 @@ mod board_heap_tests {
             .unwrap_err()
             .to_string();
         assert!(
-            e.contains("`my-fast`") && e.contains("-DCMAKE_BUILD_TYPE=<type>"),
+            e.contains("`my-fast`")
+                && e.contains("drop `profile`")
+                && e.contains("-DCMAKE_BUILD_TYPE=<type>"),
             "{e}"
         );
     }
