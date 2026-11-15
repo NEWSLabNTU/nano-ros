@@ -1,0 +1,1 @@
+The zenoh split-lock TX path (`CONFIG_NROS_ZENOH_TX_SPLIT_LOCK` with `TX_BATCH`) frees publishers again: a publish no longer waits for a slow batch write already on the wire. A transport teardown still waits for every send in progress before it frees anything.
