@@ -325,6 +325,9 @@ pub struct CmakeApp {
     /// Zephyr reads the module list: Kconfig is parsed inside find_package,
     /// so a package's own Kconfig symbols can reach the image no other way.
     pub zephyr_modules: Vec<String>,
+    /// The workspace's `src/`, relative to the application: where the
+    /// configure finds the workspace's own interface packages.
+    pub interface_src: String,
 }
 
 /// A cmake `project()` identifier for this image.
@@ -662,6 +665,7 @@ pub fn resolve_cmake(
             rust_node_dirs,
             cargo_nodes,
             zephyr_modules,
+            interface_src: relative_or_err(entry_dir, &workspace.join("src"))?,
             features: crate::cmd::build::declared_capabilities_for(bringup_dir, Some(image_id))
                 .into_iter()
                 .map(str::to_string)
@@ -865,21 +869,35 @@ fn render_cmake_app(
     }
     if !c.zephyr_modules.is_empty() {
         out.push_str(
-            // History: issue 2594, phase-478 I11.
+            // History: issue 2594, phase-478 I11; issue 2609 (GitHub #3948).
             "# Workspace packages of this image that are Zephyr modules. MUST be\n\
-             # appended before `find_package(Zephyr)`: Zephyr reads the module\n\
-             # list and parses each module's Kconfig DURING find_package. The\n\
-             # nano-ros module itself arrives on the `west build` line.\n",
+             # added before `find_package(Zephyr)`: Zephyr reads the module list\n\
+             # and parses each module's Kconfig DURING find_package. The nano-ros\n\
+             # module arrives on the `west build` line as a CACHE entry, and\n\
+             # Zephyr reads the cache before a normal variable, so these are\n\
+             # added to that cache entry rather than to a variable it would\n\
+             # never read.\n\
+             set(_nros_zephyr_modules ${ZEPHYR_EXTRA_MODULES})\n",
         );
         for (i, d) in c.zephyr_modules.iter().enumerate() {
             out.push_str(&format!(
                 "get_filename_component(_nros_zephyr_module_{i}\n    \
                  \"${{CMAKE_CURRENT_SOURCE_DIR}}/{d}\" ABSOLUTE)\n\
-                 list(APPEND ZEPHYR_EXTRA_MODULES \"${{_nros_zephyr_module_{i}}}\")\n"
+                 list(APPEND _nros_zephyr_modules \"${{_nros_zephyr_module_{i}}}\")\n"
             ));
         }
-        out.push('\n');
+        out.push_str(
+            "list(REMOVE_DUPLICATES _nros_zephyr_modules)\n\
+             set(ZEPHYR_EXTRA_MODULES \"${_nros_zephyr_modules}\" CACHE STRING\n    \
+             \"Zephyr modules: nano-ros and this image's workspace modules\" FORCE)\n\n",
+        );
     }
+    // Issue 2610 (GitHub #3952): the workspace's own interface packages, by
+    // the CMake root's rule. They are not subdirectories, so without this a
+    // node's message dependency on one is unseen by the configure.
+    out.push_str(&super::cmake_root::interface_search_path_cmake(
+        &c.interface_src,
+    ));
     out.push_str(&image_statement_cmake(image));
     out.push_str(&capability_kconfig_cmake(capabilities));
     out.push_str(&format!(
@@ -2002,10 +2020,20 @@ mod tests {
         assert!(c.subdirs.iter().any(|(_, n)| n == "support_pkg"), "{c:?}");
         let s = render_cmakelists(&app);
         let at = |needle: &str| s.find(needle).unwrap_or_else(|| panic!("{needle}: {s}"));
+        // Issue 2609 -- added to the CACHE entry `nros build` passes with
+        // `-DZEPHYR_EXTRA_MODULES=<nano-ros>`, keeping what it held: Zephyr
+        // reads the cache before a normal variable, so a `list(APPEND)` on
+        // the variable alone was never read.
         assert!(
-            at("list(APPEND ZEPHYR_EXTRA_MODULES") < at("find_package(Zephyr REQUIRED"),
+            at("set(_nros_zephyr_modules ${ZEPHYR_EXTRA_MODULES})")
+                < at("list(APPEND _nros_zephyr_modules")
+                && at("list(APPEND _nros_zephyr_modules")
+                    < at("set(ZEPHYR_EXTRA_MODULES \"${_nros_zephyr_modules}\" CACHE STRING")
+                && at("CACHE STRING") < at("find_package(Zephyr REQUIRED"),
             "{s}"
         );
+        assert!(s.contains("FORCE)"), "{s}");
+        assert!(!s.contains("list(APPEND ZEPHYR_EXTRA_MODULES"), "{s}");
         assert!(s.contains("\"${CMAKE_CURRENT_SOURCE_DIR}/../../../src/support_pkg\" ABSOLUTE"));
         assert!(
             !s.contains(td.path().to_str().unwrap()),
@@ -2086,5 +2114,33 @@ mod tests {
         let nodes = cmake_workspace(td.path(), &[("talker_pkg", false, false)]);
         let app = cmake_app(td.path(), &nodes, None);
         assert!(!render_cmakelists(&app).contains("ZEPHYR_EXTRA_MODULES"));
+    }
+
+    /// Issue 2610 -- the generated app puts the workspace's `src/` on
+    /// `NROS_INTERFACE_SEARCH_PATH` before `find_package(Zephyr)`, as the
+    /// CMake root does, so a workspace message package a node depends on is
+    /// found with no environment. Relative, so the file is portable.
+    #[test]
+    fn the_workspace_interface_packages_are_on_the_search_path() {
+        let td = tempfile::tempdir().unwrap();
+        let nodes = cmake_workspace(td.path(), &[("talker_pkg", false, false)]);
+        let app = cmake_app(td.path(), &nodes, None);
+        assert_eq!(app.cmake.as_ref().unwrap().interface_src, "../../../src");
+        let s = render_cmakelists(&app);
+        let at = |needle: &str| s.find(needle).unwrap_or_else(|| panic!("{needle}: {s}"));
+        assert!(
+            at("get_filename_component(_nros_ws_src \"../../../src\" ABSOLUTE)")
+                < at("set(NROS_INTERFACE_SEARCH_PATH")
+                && at("set(NROS_INTERFACE_SEARCH_PATH") < at("find_package(Zephyr REQUIRED"),
+            "{s}"
+        );
+        assert!(
+            s.contains("$ENV{NROS_INTERFACE_SEARCH_PATH}"),
+            "an exported entry is kept: {s}"
+        );
+        assert!(
+            !s.contains(td.path().to_str().unwrap()),
+            "no absolute path: {s}"
+        );
     }
 }
