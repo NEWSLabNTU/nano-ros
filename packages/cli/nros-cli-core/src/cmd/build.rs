@@ -8746,7 +8746,20 @@ pub(crate) fn workspace_model_missing(
     ) {
         candidates.push(md.join(bringup).join(name));
     }
-    if candidates.iter().any(|c| c.is_file()) {
+    if let Some(model) = candidates.iter().find(|c| c.is_file()) {
+        // Issue 2598 -- a model that exists can still be stale. The stamp's
+        // own digest walks a fixed set of file names, so an input only the
+        // MODEL records (a `<param from=...>` file under `config/`) changes
+        // without moving it, and configure answered "up to date" while every
+        // consumer refused the model as stale: only deleting `build/` got
+        // out. Ask the consumers' own predicate, so the two cannot disagree.
+        if let Err(crate::model_gate::Refusal::Stale { reason, .. }) =
+            crate::model_gate::verify(model, Some(&dir))
+        {
+            return Ok(Some(format!(
+                "the resolved model `{rel}` of `{key}` is stale: {reason}"
+            )));
+        }
         return Ok(None);
     }
     Ok(Some(format!(
@@ -12705,5 +12718,99 @@ mod package_closure_tests {
         for (n, d) in &got {
             assert_eq!(d, &root.join("src").join(n));
         }
+    }
+}
+
+#[cfg(test)]
+mod workspace_model_staleness_tests {
+    use super::workspace_model_missing;
+    use sha2::Digest as _;
+    use std::path::Path;
+
+    fn sha(path: &Path) -> String {
+        format!("{:x}", sha2::Sha256::digest(std::fs::read(path).unwrap()))
+    }
+
+    /// A workspace with one bringup, one image and a resolved model recording
+    /// `config/talker.param.yaml` with `param_sha`. Returns the model dir.
+    fn workspace(root: &Path, param_sha: Option<&str>) -> std::path::PathBuf {
+        let b = root.join("src/demo_bringup");
+        std::fs::create_dir_all(b.join("launch")).unwrap();
+        std::fs::create_dir_all(b.join("config")).unwrap();
+        std::fs::write(
+            b.join("package.xml"),
+            "<?xml version=\"1.0\"?>\n<package format=\"3\"><name>demo_bringup</name>\
+             <version>0.0.0</version><description>d</description>\
+             <maintainer email=\"m@example.com\">m</maintainer><license>Apache-2.0</license>\
+             <export><build_type>ament_cmake</build_type></export></package>\n",
+        )
+        .unwrap();
+        std::fs::write(
+            b.join("system.toml"),
+            "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\ndefault_launch = \"system.launch.xml\"\n\n\
+             [image.linux]\nboard = \"linux\"\n",
+        )
+        .unwrap();
+        std::fs::write(b.join("launch/system.launch.xml"), "<launch/>\n").unwrap();
+        std::fs::write(
+            b.join("config/talker.param.yaml"),
+            "/**:\n  ros__parameters:\n    period_ms: 200\n",
+        )
+        .unwrap();
+        let mut inputs = vec![
+            (
+                "launch/system.launch.xml".to_string(),
+                sha(&b.join("launch/system.launch.xml")),
+            ),
+            ("system.toml".to_string(), sha(&b.join("system.toml"))),
+        ];
+        inputs.push((
+            "config/talker.param.yaml".to_string(),
+            param_sha.map_or_else(|| sha(&b.join("config/talker.param.yaml")), str::to_string),
+        ));
+        let mut m = ros_launch_manifest_model::SystemModel::default();
+        m.meta.version = ros_launch_manifest_model::SCHEMA_VERSION;
+        m.meta.inputs = inputs
+            .into_iter()
+            .map(|(path, sha256)| ros_launch_manifest_model::InputHash { path, sha256 })
+            .collect();
+        m.meta.resolver = Some(ros_launch_manifest_model::ResolverInfo {
+            tool: "nros-launch-resolve".into(),
+            version: env!("NROS_PLAY_LAUNCH_SHA").into(),
+        });
+        let models = root.join("build/nros/models");
+        std::fs::create_dir_all(models.join("demo_bringup")).unwrap();
+        std::fs::write(
+            models.join("demo_bringup/system_model.yaml"),
+            serde_yaml_ng::to_string(&m).unwrap(),
+        )
+        .unwrap();
+        models
+    }
+
+    /// Issue 2598 -- configure's currency check asks the model gate, so a
+    /// model whose recorded parameter file changed is re-resolved instead of
+    /// reported up to date while every consumer refuses it as stale.
+    #[test]
+    fn a_model_whose_param_file_changed_is_not_current() {
+        let td = tempfile::tempdir().unwrap();
+        let models = workspace(td.path(), Some("0000"));
+        let why = workspace_model_missing(td.path(), "demo_bringup:linux", Some(&models))
+            .unwrap()
+            .expect("a stale model is not current");
+        assert!(
+            why.contains("is stale") && why.contains("config/talker.param.yaml"),
+            "{why}"
+        );
+    }
+
+    #[test]
+    fn a_model_whose_inputs_are_unchanged_is_current() {
+        let td = tempfile::tempdir().unwrap();
+        let models = workspace(td.path(), None);
+        assert_eq!(
+            workspace_model_missing(td.path(), "demo_bringup:linux", Some(&models)).unwrap(),
+            None
+        );
     }
 }

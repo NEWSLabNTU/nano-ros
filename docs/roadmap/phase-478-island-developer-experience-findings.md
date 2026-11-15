@@ -519,6 +519,25 @@ an `os_config` fragment can assign them. The book pages that change:
 and `guide/build/organize-a-larger-workspace.md` (a support package as a
 Zephyr module).
 
+### I12 -- configure and the model gate agree on a stale model
+
+**Status: IN PROGRESS.** [Issue 2598](../issues/2598-launch-param-file-not-a-model-input.md),
+GitHub #3923. `nros configure` decided a model was current by its own stamp,
+while every consumer asked the model gate, so a model the gate refused as
+stale was never re-resolved and only `rm -rf build` cleared it. The configure
+check now asks the gate (`workspace_model_missing` -> `model_gate::verify`).
+The second half is play_launch's: the resolver does not record a `<param
+from>` file as a model input, so a parameter-file edit is silent to both. It
+is fixed in play_launch `191d949f` and lands here with the next pin bump.
+
+### I13 -- a Rust package in a mixed image needs no registration of its own
+
+**Status: RULED (2026-11-15), option A.** [Issue 2599](../issues/2599-mixed-image-rust-package-needs-cmake-registration.md),
+GitHub #3857. The CMake registration a Rust package needs in a mixed image
+restates its `[[component]]` row. The recommendation is to derive it in the
+generated CMake root (option A), which the user ruled: a package that ships
+its own `CMakeLists.txt` keeps it.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -653,6 +672,8 @@ from that session, `FREERTOS_PORT not set` on `freertos-posix`, is
 [issue 2341](../issues/archived/2341-freertos-posix-port-not-reaching-zpico.md),
 fixed after that release.
 
+- [issue 2598](../issues/2598-launch-param-file-not-a-model-input.md) (GitHub #3923): a resolved model stays stale after `nros configure`, and a launch parameter file is not one of its inputs (I12).
+- [issue 2599](../issues/2599-mixed-image-rust-package-needs-cmake-registration.md) (GitHub #3857): a Rust package in a mixed image needs a CMake registration that restates its `[[component]]` row (I13, ruled option A).
 - [issue 2564](../issues/archived/2564-hand-entry-bringup-image-drops-domain-id.md) (resolved): a hand-written entry naming `BRINGUP` and `IMAGE` baked domain 0, not the image's `domain_id`. It now asks the image's domain of the one reader, under the agreement rule.
 - [issue 2565](../issues/archived/2565-mixed-image-rust-pkg-needs-cmake-shim.md) (resolved): a mixed image's Rust package needed an undocumented CMake shim. `nros new --to` writes it now, the book states it, and the contract row was issue 2376's fix.
 - [issue 2566](../issues/archived/2566-sync-ignores-nested-packages-and-package-paths.md) (resolved): `nros sync` ignored `src/<group>/<pkg>` and `package_paths`. The scan now walks `src/` and every `package_paths` entry recursively, as `nros build` does.
