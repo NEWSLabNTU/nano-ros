@@ -232,15 +232,14 @@ run_with_make() {
     jobs="$(nros_cargo_frontend_jobs)"
     local -a make_jobs_args=("-j$jobs")
     make_bin="make"
-    if [ -x "$(nros dev sdk path make)/bin/make" ] && \
-       grep -q "4.4" <<<"$("$(nros dev sdk path make)/bin/make" --version | head -1)"; then
-        make_bin="$(nros dev sdk path make)/bin/make"
+    # shellcheck source=scripts/build/jobserver-pool.sh
+    source scripts/build/jobserver-pool.sh
+    if _pinned_make="$(nros_pinned_make)"; then
+        make_bin="$_pinned_make"
         # issue 2119 — the rows find their make by NAME: a cargo row whose
         # build script configures cmake "Unix Makefiles" (`cyclonedds-sys`)
         # caches PATH's `gmake` and joins THIS make's fifo jobserver, which the
         # system make 4.3 cannot parse. Pool and children share one make.
-        # shellcheck source=scripts/build/jobserver-pool.sh
-        source scripts/build/jobserver-pool.sh
         export PATH="$(nros_pinned_tool_path_prefix "$make_bin"):$PATH"
         # phase-535 W3 — a stage running beside another under one outer pool
         # joins it rather than opening a second scheduler; an explicit `-j`

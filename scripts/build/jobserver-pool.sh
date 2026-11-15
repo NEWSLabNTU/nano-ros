@@ -52,30 +52,31 @@ _nros_pool_cli() {
 #     a second pool would double-count them.
 #   * pinned make 4.4 is required for `--jobserver-style=fifo`; the system make
 #     may be 4.3, whose pipe-based jobserver child tools cannot join.
-# The pinned make's absolute path, or empty. CONSTRUCTED via `nros dev sdk path`
-# (issue 0625) rather than searched, and deliberately NOT taken from PATH: a
-# system make 4.3 first on PATH would answer, and its pipe-FD jobserver is the
-# thing that does not work. `$repo_root` is unused now that the binary lives in
-# the store rather than `third-party/make/`.
-nros_pinned_make() {
-    local cli dir
-    cli="$(_nros_pool_cli)" || return 1
-    dir="$("$cli" dev sdk path make 2>/dev/null)" || return 1
-    [ -n "$dir" ] && [ -x "$dir/bin/make" ] || return 1
-    printf '%s\n' "$dir/bin/make"
+# The pinned make's / ninja's absolute path, or empty. CONSTRUCTED via `nros
+# dev sdk path` (issue 0625) rather than searched: a system make 4.3 first on
+# PATH would answer, and its pipe-FD jobserver is the thing that does not work.
+#
+# phase-489 W13 adds ONE other answer: a copy the CI images bake under
+# `/usr/local` (`index_tool.py install-source make`, `install ninja`), which is
+# in no store. `index_tool.py resolve` accepts a PATH copy only when it passes
+# the index row's own smoke probe (`GNU Make 4.4.1`, `1.13.2`), so a system make
+# 4.3 or ninja 1.10 still never answers. It is also the answer when no CLI is
+# built yet, which is every image job before `setup-cli`.
+_nros_pinned_tool() { # <tool> <program>
+    local cli dir found
+    if cli="$(_nros_pool_cli)" && dir="$("$cli" dev sdk path "$1" 2>/dev/null)" \
+        && [ -n "$dir" ] && [ -x "$dir/bin/$2" ]; then
+        printf '%s\n' "$dir/bin/$2"
+        return 0
+    fi
+    found="$(python3 "$_NROS_POOL_LIB_DIR/../lib/index_tool.py" resolve "$1" "$2" 2>/dev/null)" \
+        || return 1
+    [ -x "$found" ] || return 1
+    printf '%s\n' "$found"
 }
-
-# The pinned ninja's absolute path, or empty — `nros_pinned_make`'s sibling, for
-# the same reason: constructed from the index pin, never searched on PATH. ninja
-# >=1.13 is the half that JOINS make 4.4's fifo jobserver; the index pins 1.13.x,
-# so existence is the check here and the version floor is the pin's.
-nros_pinned_ninja() {
-    local cli dir
-    cli="$(_nros_pool_cli)" || return 1
-    dir="$("$cli" dev sdk path ninja 2>/dev/null)" || return 1
-    [ -n "$dir" ] && [ -x "$dir/bin/ninja" ] || return 1
-    printf '%s\n' "$dir/bin/ninja"
-}
+nros_pinned_make() { _nros_pinned_tool make make; }
+# ninja >=1.13 is the half that JOINS make 4.4's fifo jobserver.
+nros_pinned_ninja() { _nros_pinned_tool ninja ninja; }
 
 # The PATH prefix a pool's CHILDREN need — issue 2119 (1638's class, one
 # driver further). A pool runs the pinned make by ABSOLUTE path, but its

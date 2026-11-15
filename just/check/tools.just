@@ -260,5 +260,15 @@ tier-preconditions:
 # the index too.
 [private]
 ci-base-tools:
-    @python3 scripts/lib/index_tool.py check-extract config/ci-base-tools.toml cargo-nextest
+    @python3 scripts/lib/index_tool.py check-extract config/ci-base-tools.toml cargo-nextest ninja make
     @python3 scripts/lib/index_tool.py check-extract config/zephyr-ci-tools.toml zephyr-sdk zephyr-sdk-1-0-1
+
+# phase-489 W13 — the pinned make and ninja have ONE lookup:
+# `nros_pinned_make` / `nros_pinned_ninja` (the store, else a copy passing the
+# index row's smoke probe, which is how the CI images bake them) or
+# `nros_sdk_tool_path_prefix` for a PATH prefix. 20 sites spelled the store
+# path by hand, so a baked make was invisible to the fixture drivers.
+# Buildless; self-tests a refusal on the normal path.
+[private]
+pinned-tool-one-lookup:
+    @python3 scripts/check/check-pinned-tool-one-lookup.py

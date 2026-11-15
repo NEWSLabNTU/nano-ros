@@ -764,10 +764,11 @@ for line in "${unit_lines[@]}"; do
     if [ "$((u + 1))" -gt "$unit_count" ]; then unit_count=$((u + 1)); fi
 done
 
-pinned_make="$(nros dev sdk path make)/bin/make"
+# shellcheck source=scripts/build/jobserver-pool.sh
+source "$(dirname "${BASH_SOURCE[0]}")/jobserver-pool.sh"
+pinned_make="$(nros_pinned_make)" || pinned_make=""
 use_pool=0
-if [ "${NROS_JOBSERVER:-}" != "1" ] && [ "$unit_count" -gt 1 ] && \
-   [ -x "$pinned_make" ] && grep -q "4.4" <<<"$("$pinned_make" --version | head -1)"; then
+if [ "${NROS_JOBSERVER:-}" != "1" ] && [ "$unit_count" -gt 1 ] && [ -n "$pinned_make" ]; then
     use_pool=1
 fi
 
@@ -791,12 +792,7 @@ fi
 # `third-party/make`, which the re-rooting rule now drops from a worktree's
 # PATH. `fixture-make-driver.sh` and `build-all-jobserver.sh` already prepend
 # the pinned tools; this is the third driver of the same pool, and it did not.
-pinned_tool_path="$(dirname "$pinned_make")"
-pinned_ninja_dir="$(nros dev sdk path ninja)/bin"
-if [ -x "$pinned_ninja_dir/ninja" ]; then
-    pinned_tool_path="$pinned_tool_path:$pinned_ninja_dir"
-fi
-export PATH="$pinned_tool_path:$PATH"
+export PATH="$(nros_pinned_tool_path_prefix "$pinned_make"):$PATH"
 
 # Parallel fan-out — one make target per BUILD UNIT (rows within a unit stay
 # serial inside their worker), scheduled by pinned make 4.4's fifo jobserver

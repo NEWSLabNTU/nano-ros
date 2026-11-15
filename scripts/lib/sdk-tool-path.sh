@@ -11,17 +11,26 @@
 #
 # nros_sdk_tool_path_prefix <tool>...
 #   Prints the `:`-joined `<store>/<tool>/<pin>/bin` dirs that EXIST, in the
-#   order given (empty when none do). For each that does not, says so on
+#   order given (empty when none do); a tool absent from the store gives the
+#   dir of a copy that passes its index smoke probe instead, if there is one. For each that does not, says so on
 #   stderr — naming the provisioning command and the tool PATH will use
 #   instead — so a lane's log records which binary it actually ran.
 #
 # Sourced by `bash` recipes; needs `nros` on PATH.
 nros_sdk_tool_path_prefix() {
-    local out="" tool dir fallback
+    local out="" tool dir fallback baked
     for tool in "$@"; do
         dir="$(nros dev sdk path "$tool" 2>/dev/null)/bin"
         if [ -d "$dir" ]; then
             out="${out:+$out:}$dir"
+            continue
+        fi
+        # phase-489 W13 — a copy outside the store that passes the index row's
+        # smoke probe IS the pin (a CI image bakes make and ninja under
+        # `/usr/local`), so it goes first and is not reported missing.
+        if baked="$(python3 "$(dirname "${BASH_SOURCE[0]}")/index_tool.py" resolve "$tool" "$tool" 2>/dev/null)" \
+            && [ -x "$baked" ]; then
+            out="${out:+$out:}$(dirname "$baked")"
             continue
         fi
         fallback="$(command -v "$tool" 2>/dev/null || true)"

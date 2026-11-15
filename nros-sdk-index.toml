@@ -783,6 +783,12 @@ install = "install -D -m 0755 genromfs {prefix}/bin/genromfs"
 [tool.ninja]
 version = "1.13.2"
 upstream = "v1.13.2" # = the ninja-build/ninja release tag
+# phase-489 W13: the ci-base and zephyr-ros images bake this dist under
+# `/usr/local`, outside any store. `index_tool.py resolve` (and so
+# `nros_pinned_ninja`) accepts such a copy only when it passes this probe.
+smoke = [
+    { run = "bin/ninja --version", expect = "1.13.2" },
+]
 # PREBUILT FIRST — upstream publishes these, so we take them rather than
 # rebuilding what they already built. The `[tool.ninja.source]` recipe below is
 # the FALLBACK for a host they ship no asset for; `dist_for(host)` is consulted
@@ -838,6 +844,12 @@ install = "cmake --build build -j$(nproc) && install -D -m 0755 build/ninja {pre
 [tool.make]
 version = "4.4.1"
 upstream = "4.4.1"
+# phase-489 W13: the images build `[tool.make.source]` into `/usr/local`
+# (`index_tool.py install-source`); `nros_pinned_make` accepts that copy
+# only when it passes this probe.
+smoke = [
+    { run = "bin/make --version", expect = "GNU Make 4.4.1" },
+]
 system = ["curl"]
 [tool.make.source]
 url = "https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz"

@@ -198,9 +198,9 @@ doctor:
     # Store tool now; path CONSTRUCTED from the index pin (issue 0625), so this
     # cannot drift from what `nros setup --tool ninja` installed. The version is
     # the index's — there is no second pin here to disagree with it.
-    ninja_bin="$(nros dev sdk path ninja 2>/dev/null)/bin/ninja"
-    if [ -x "$ninja_bin" ]; then
-        echo "  [OK] ninja $("$ninja_bin" --version) (SDK store; jobserver-capable)"
+    source scripts/build/jobserver-pool.sh
+    if ninja_bin="$(nros_pinned_ninja)"; then
+        echo "  [OK] ninja $("$ninja_bin" --version) ($ninja_bin; jobserver-capable)"
     else
         echo "  [MISSING] ninja (run: nros setup --tool ninja)"
         fail=1
@@ -274,9 +274,8 @@ doctor:
     fi
 
     # --- pinned make (>=4.4 for the fifo jobserver, Phase 176) ---
-    make_bin="$(nros dev sdk path make 2>/dev/null)/bin/make"
-    if [ -x "$make_bin" ]; then
-        echo "  [OK] make $("$make_bin" --version | head -1 | awk '{print $NF}') (SDK store; fifo jobserver)"
+    if make_bin="$(nros_pinned_make)"; then
+        echo "  [OK] make $("$make_bin" --version | head -1 | awk '{print $NF}') ($make_bin; fifo jobserver)"
     else
         echo "  [MISSING] make (run: nros setup --tool make)"
         fail=1
