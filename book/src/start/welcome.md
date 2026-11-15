@@ -145,7 +145,7 @@ cover today:
 | Board | Runs | RMW | Rust | C | C++ |
 |---|---|---|---|---|---|
 | [Nucleo-F767ZI](../starters/nucleo-f767zi.md) | Boots, manual | Zenoh | yes | yes | yes |
-| [mps2-an385 in QEMU (bare-metal)](../starters/mps2-an385-bare-metal.md) | Verified in emulator | Zenoh | yes | — | — |
+| [mps2-an385 in QEMU (bare-metal)](../starters/mps2-an385-bare-metal.md) | Verified in emulator | Zenoh | yes | yes | yes |
 | [mps2-an385 in QEMU (FreeRTOS)](../starters/mps2-an385-freertos.md) | Verified in emulator | Zenoh | yes | yes | yes |
 | [mps2-an385 in QEMU (Zephyr)](../starters/mps2-an385-zephyr.md) | Verified in emulator | Zenoh | yes | yes | yes |
 | [NuttX in QEMU (Arm)](../starters/nuttx-arm.md) | Verified in emulator | Zenoh | yes | yes | yes |
@@ -156,7 +156,7 @@ cover today:
 | [ThreadX Linux simulator](../starters/threadx-linux.md) | Verified on host | Zenoh | yes | yes | yes |
 | [FreeRTOS POSIX](../starters/freertos-posix.md) | Verified on host | Cyclone DDS, Zenoh | yes | yes | yes |
 
-*yes*: the starter's tab for that language is replayed in CI from a clean install and passes. *not yet*: the tab is in the book and its replay waits on a fix. *—*: the starter has no tab for that language; bare metal is Rust only.
+*yes*: the starter's tab for that language is replayed in CI from a clean install and passes. *not yet*: the tab is in the book and its replay waits on a fix. *—*: the starter has no tab for that language.
 
 <!-- END GENERATED language matrix -->
 

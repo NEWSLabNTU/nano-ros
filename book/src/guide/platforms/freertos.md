@@ -8,13 +8,13 @@
 > **Status:** [`nros-board-mps2-an385-freertos`](../../reference/board-support-levels.md#mps2-an385-freertos): Verified in emulator (daily). From the board support registry; [Board Support Levels](../../reference/board-support-levels.md) explains the words.
 <!-- END GENERATED platform status -->
 
-The [starter](../../starters/mps2-an385-freertos.md) scaffolded a Rust or C
+The [starter](../../starters/mps2-an385-freertos.md) scaffolded a Rust, C or C++
 talker for `board = "mps2-an385-freertos"`, FreeRTOS with the lwIP network
 stack on QEMU's Cortex-M3, and heard it from ROS 2. This page covers what
 comes after it: the image's network configuration, what is particular to the
 board, waiting for a late router, the run plan, and the native build. The same
 kernel runs as a Linux process on the [FreeRTOS POSIX](freertos-posix.md)
-board, for C and C++ nodes.
+board, for Rust, C and C++ nodes.
 
 ## Configure the platform
 

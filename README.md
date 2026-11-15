@@ -56,7 +56,7 @@ Each row is a starter in the book, with the languages its tabs cover today:
 | Board | Runs | RMW | Rust | C | C++ |
 |---|---|---|---|---|---|
 | [Nucleo-F767ZI](book/src/starters/nucleo-f767zi.md) | Boots, manual | Zenoh | yes | yes | yes |
-| [mps2-an385 in QEMU (bare-metal)](book/src/starters/mps2-an385-bare-metal.md) | Verified in emulator | Zenoh | yes | — | — |
+| [mps2-an385 in QEMU (bare-metal)](book/src/starters/mps2-an385-bare-metal.md) | Verified in emulator | Zenoh | yes | yes | yes |
 | [mps2-an385 in QEMU (FreeRTOS)](book/src/starters/mps2-an385-freertos.md) | Verified in emulator | Zenoh | yes | yes | yes |
 | [mps2-an385 in QEMU (Zephyr)](book/src/starters/mps2-an385-zephyr.md) | Verified in emulator | Zenoh | yes | yes | yes |
 | [NuttX in QEMU (Arm)](book/src/starters/nuttx-arm.md) | Verified in emulator | Zenoh | yes | yes | yes |
@@ -67,7 +67,7 @@ Each row is a starter in the book, with the languages its tabs cover today:
 | [ThreadX Linux simulator](book/src/starters/threadx-linux.md) | Verified on host | Zenoh | yes | yes | yes |
 | [FreeRTOS POSIX](book/src/starters/freertos-posix.md) | Verified on host | Cyclone DDS, Zenoh | yes | yes | yes |
 
-*yes*: the starter's tab for that language is replayed in CI from a clean install and passes. *not yet*: the tab is in the book and its replay waits on a fix. *—*: the starter has no tab for that language; bare metal is Rust only.
+*yes*: the starter's tab for that language is replayed in CI from a clean install and passes. *not yet*: the tab is in the book and its replay waits on a fix. *—*: the starter has no tab for that language.
 
 <!-- END GENERATED language matrix -->
 

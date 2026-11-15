@@ -742,8 +742,8 @@ def render_language_matrix(reg: Registry, link_prefix: str) -> str:
                    + " | ".join(cells) + " |")
     out += ["", "*yes*: the starter's tab for that language is replayed in CI from a "
             "clean install and passes. *not yet*: the tab is in the book and its replay "
-            "waits on a fix. *—*: the starter has no tab for that language; bare metal "
-            "is Rust only.", "", MATRIX_END]
+            "waits on a fix. *—*: the starter has no tab for that language.", "",
+            MATRIX_END]
     return "\n".join(out)
 
 

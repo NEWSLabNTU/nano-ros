@@ -8,19 +8,13 @@
 > **Status:** Verified in emulator (daily). From the board support registry: [`nros-board-mps2-an385`](../reference/board-support-levels.md#mps2-an385); [Board Support Levels](../reference/board-support-levels.md) explains the words.
 <!-- END GENERATED starter status -->
 
-This starter puts a Rust talker on an Arm Cortex-M3 board with no operating
+This starter puts a talker on an Arm Cortex-M3 board with no operating
 system at all, emulated by QEMU, and shows its messages arriving in ROS 2. The
 board is Arm's MPS2-AN385, which QEMU models closely. No one buys one: it is
 the board this book teaches nano-ros on, because it costs nothing and behaves
 like a real microcontroller. The talker runs as one loop with no scheduler
-under it, which is what "bare-metal" means.
-
-This starter is written in Rust. A C or C++ talker runs on this board too: it
-is an ordinary ROS 2 CMake package, the same one you would build for an RTOS
-board, and `nros new <name> --lang c --platform baremetal` (or `--lang cpp`)
-scaffolds it. The [MPS2-AN385 FreeRTOS starter](mps2-an385-freertos.md) walks
-through a C and C++ talker step by step, on the same emulated board with a
-small RTOS under it.
+under it, which is what "bare-metal" means. You write the talker in Rust, C
+or C++; pick a tab and every tab on the page follows.
 
 ## What you need
 
@@ -42,8 +36,9 @@ Zephyr 4.4 line, so no starter opens over WiFi yet.
 nros setup mps2-an385-baremetal --rmw zenoh
 ```
 
-That fetches the Arm cross-compiler, the QEMU that emulates the board, and the
-Rust `thumbv7m-none-eabi` target into a shared store under `~/.nros`. Nothing
+That fetches the Arm cross-compiler, the QEMU that emulates the board, and,
+for a Rust talker, the `thumbv7m-none-eabi` target into a shared store under
+`~/.nros`. Nothing
 is installed system-wide. It installs no router: the router is ROS's
 `rmw_zenohd`.
 
@@ -58,17 +53,37 @@ ROS 2; with none sourced, it writes Humble. On Jazzy, source
 source /opt/ros/humble/setup.bash
 ```
 
+<!-- tabs -->
+
+### Rust
+
 ```bash probe=40
 nros new bm_ws --board mps2-an385-baremetal --template talker --lang rust --rmw zenoh
 cd bm_ws
 ```
+
+### C
+
+```bash probe=40
+nros new bm_ws --board mps2-an385-baremetal --template talker --lang c --rmw zenoh
+cd bm_ws
+```
+
+### C++
+
+```bash probe=40
+nros new bm_ws --board mps2-an385-baremetal --template talker --lang cpp --rmw zenoh
+cd bm_ws
+```
+
+<!-- /tabs -->
 
 That wrote a workspace with two packages:
 
 ```tree
 bm_ws/
 └── src/
-    ├── bm_node/          # the talker: a Rust library
+    ├── bm_node/          # the talker: manifest, build file, source
     └── bm_node_bringup/  # what it runs on: board, RMW
 ```
 

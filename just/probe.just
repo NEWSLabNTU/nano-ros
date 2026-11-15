@@ -155,6 +155,14 @@ freertos: (platform "freertos")
 [group("main")]
 freertos-c: (platform "freertos-c")
 
+# book/src/starters/mps2-an385-bare-metal.md — the C tab, on the same board.
+[group("main")]
+baremetal-c: (platform "baremetal-c")
+
+# book/src/starters/mps2-an385-bare-metal.md — the C++ tab, on the same board.
+[group("main")]
+baremetal-cpp: (platform "baremetal-cpp")
+
 # book/src/starters/threadx-linux.md — the Rust tab, on the Linux simulator.
 [group("main")]
 threadx-linux: (platform "threadx-linux")
