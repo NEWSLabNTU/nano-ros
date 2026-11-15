@@ -27,7 +27,15 @@ import re
 import subprocess
 import sys
 
-OFFLINE_BUILD = re.compile(r"\bbuild\b.*--offline")
+# `nros build ... --offline`, in each spelling a driver uses: the bare `nros`,
+# the CLI through a variable (`"$NROS_CLI_BIN" build`, `"$nros_bin" build`), or
+# an argv array started at the verb (`nargs=(build ...`). A CARGO offline build
+# is not the subject: the rule is about the graphs `nros build` resolves, and a
+# self-test's `cargo build --offline` of its own scratch crate resolves only
+# that crate (check-shared-build-dir.sh). Reaching wider than the rule was
+# issue 0196's shape the other way.
+OFFLINE_BUILD = re.compile(
+    r"""(\bnros["']?|\$\{?\w*(?:nros|NROS|cli|CLI)\w*\}?["']?|\()\s*build\b.*--offline""")
 WARM_CALL = re.compile(r"(^|[^_\w])nros_warm_leaf_cache\b(?!\s*\(\))")
 
 
@@ -51,6 +59,11 @@ def self_test():
         ("the warm named only in a comment", "# nros_warm_leaf_cache\nnros build x --offline\n", True),
         ("the warm DEFINED, not called", "nros_warm_leaf_cache() {\n:\n}\nnros build x --offline\n", True),
         ("no offline build", "nros build img\n", False),
+        ("the CLI through a variable", "\"$NROS_CLI_BIN\" build --workspace . --offline\n", True),
+        ("an argv array at the verb", "nargs=(build \"$img\" --workspace . --offline -- -d x)\n", True),
+        ("a self-test's offline CARGO build of its scratch crate",
+         "cargo build -q --release --offline --target-dir \"$tdir\"\n", False),
+        ("cargo through a variable", "\"$cargo\" build --offline\n", False),
     ]
     bad = 0
     for desc, text, want in cases:
