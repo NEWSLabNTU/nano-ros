@@ -1,10 +1,10 @@
 ---
 rfc: 0079
 title: "Scheduling priority is ALLOCATED from a declared address plan — the user states a timing contract, never a kernel number"
-status: Draft
+status: Stable
 area: workspace-system-model
 since: 2026-08
-last-reviewed: 2026-11
+last-reviewed: 2026-11-15
 implements-tracked-by: [phase-459, issue-0506, issue-0623, issue-0736]
 amends: [rfc-0016, rfc-0052]
 supersedes: []
@@ -475,7 +475,7 @@ per-platform tables in the user's file — which pushed the realizer's job onto
 the user. **Action:** amend RFC-0052's realization section to name RFC-0079 as
 the realizer's priority-assignment rule; no text of it is retired.
 
-**RFC-0078 (Draft) — WCET per profile.** Unchanged and load-bearing: it is the
+**RFC-0078 (Stable) — WCET per profile.** Unchanged and load-bearing: it is the
 source `budget` derives from. This RFC adds the consumer.
 
 **`ros-launch-manifest-sched`.** The shared agnostic core (ranking, feasibility,
@@ -754,6 +754,7 @@ play_launch schedules processes from outside. Same target, different problem
   `tcpip_thread` and NuttX's work queues are real foreign occupants whose
   positions those plans can only ASSERT. Each needs its own enumerator —
   procfs does not exist there — and until one lands those bands are claims.
+  Filed as [issue 2617](../issues/2617-rtos-foreign-band-unenumerated.md).
 
   Worth noting the probe also reads correctly on an unprivileged host, where
   every thread is `SCHED_OTHER` and therefore in no band by construction. That
@@ -761,14 +762,19 @@ play_launch schedules processes from outside. Same target, different problem
   seen from the kernel's side.
 * **Do profiles need a per-port override?** A `responsive` sched task may want
   different realization on a 2-priority kernel than on a 255-priority one.
+  Filed as [issue 2619](../issues/2619-priority-profile-per-port-override.md).
 * **Headroom policy.** Spread allocations evenly across the pool, or pack them
   tight leaving room at the top? Even spread survives an inserted sched task; packing
-  leaves room for static leases above.
+  leaves room for static leases above. Filed as
+  [issue 2620](../issues/2620-priority-headroom-policy.md); the realizer
+  packs at the urgent end today (`PriorityPlan::nth_app_priority`).
 * **Bootstrapping.** With no WCET declared anywhere today (RFC-0078: nothing
   outside rlm's tests sets `exec_ms`), every sched task derives no budget on day one
   and runs fixed-priority. That is better than unmeasured literals and makes
   the missing evidence visible — but it means the sporadic-server path goes
   dormant until WCET declarations land, and that is a real behavioural change.
+  Still true on 2026-11-15: no in-tree image declares one. Filed as
+  [issue 2621](../issues/2621-no-image-declares-wcet.md).
 
 ## Review (2026-11-13, phase-555 W2)
 
@@ -803,3 +809,10 @@ blocked and POSIX n/a.
 - Status: Draft, though phase-459 is archived and every port has a plan. The
   open questions (RTOS foreign-band enumerators, headroom policy) do not block
   a status change. Brief item W1.
+- **Stable (2026-11-15, ruling A1(a)).** The four open questions are filed:
+  RTOS foreign-band enumerators
+  ([issue 2617](../issues/2617-rtos-foreign-band-unenumerated.md)), per-port
+  profile overrides ([issue 2619](../issues/2619-priority-profile-per-port-override.md)),
+  headroom policy ([issue 2620](../issues/2620-priority-headroom-policy.md))
+  and bootstrapping, no image declaring a WCET
+  ([issue 2621](../issues/2621-no-image-declares-wcet.md)).
