@@ -84,7 +84,8 @@ naming the module and `just zephyr setup`. One no board in the build needs is
 a WARNING, and the build goes on, so a workspace without `hal_stm32` still
 builds every native_sim and mps2 leaf. `just zephyr doctor` runs the check
 with no board set and reports `[MISSING]` for any absent module. The
-script's `--self-test` runs in `check-zephyr-module-allowlist`.
+script runs its own self-test on every invocation, before it reads the
+workspace.
 
 Measured on the store workspace this was found in (no `hal_stm32`, no
 `hal_rpi_pico`): the Nucleo-F767ZI serial talker leaf now stops before

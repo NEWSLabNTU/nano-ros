@@ -267,7 +267,7 @@ def check(ws: Path, quiet: bool, boards=None) -> int:
     return 1 if refused else 0
 
 
-def self_test() -> int:
+def self_test(quiet: bool = False) -> int:
     gate = _allowlist_gate()
     index = (
         '[zephyr_module.cmsis]\nlines = ["3.7", "4.4"]\n'
@@ -282,7 +282,7 @@ def self_test() -> int:
         if got != want:
             print(f"  FAIL: {what}: got {got!r}, want {want!r}")
             failures += 1
-        else:
+        elif not quiet:
             print(f"  ok    {what}")
 
     expect(
@@ -355,15 +355,20 @@ def self_test() -> int:
         True,
     )
     if failures:
-        print(f"{failures} check(s) failed")
+        print(f"check-workspace-modules: {failures} self-test check(s) failed")
         return 1
-    print("all checks passed")
+    if not quiet:
+        print("all checks passed")
     return 0
 
 
 def main(argv: list) -> int:
     if argv[1:2] == ["--self-test"]:
         return self_test()
+    # Always, not only behind the flag: a negative control nobody runs decays
+    # into a comment, and this check's whole job is to refuse.
+    if self_test(quiet=True):
+        return 1
     args = [a for a in argv[1:] if a != "--quiet"]
     boards = None
     if "--boards" in args:
