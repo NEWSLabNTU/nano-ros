@@ -220,6 +220,10 @@ brief of RFC-0126 did.
   - RFC-0078 is Stable. Its open question, checking a profile's `clock_hz`
     against the running clock, is
     [issue 2616](../issues/2616-wcet-clock-rate-unverified.md).
+  - RFC-0079 is Stable. Its four open questions are issues 2617 (RTOS
+    foreign-band enumerators), 2619 (per-port profile overrides), 2620
+    (headroom policy) and 2621 (no image declares a WCET, so the budget path
+    never runs).
 
 ### W4 -- Keep it organized
 
