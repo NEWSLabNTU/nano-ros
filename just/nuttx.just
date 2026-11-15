@@ -496,7 +496,7 @@ build-riscv-rust:
 build-all: build build-examples build-fixtures
     @echo "NuttX build-all completed."
 
-# Run NuttX QEMU integration tests (arm; the riscv e2e lives in rtos_e2e).
+# Run NuttX QEMU integration tests: arm (`rtos_e2e`), riscv (`c_riscv_nuttx_e2e`), and both boards' realtime rows.
 [group("main")]
 test verbose="": build-fixtures-arm
     #!/usr/bin/env bash
@@ -506,7 +506,16 @@ test verbose="": build-fixtures-arm
         echo "ERROR: NuttX not found at $NUTTX_DIR. Run: just nuttx setup"
         exit 1
     fi
-    just _nextest-platform rtos_e2e '{{verbose}}' '' 'test(Nuttx)'
+    # phase-466 — the riscv board's cells and the realtime rows too. The nightly
+    # runs ONE job per board (phase-558) through this recipe, scoped to that
+    # board's coordinates. `rtos_e2e`'s `Platform::Nuttx` cells are the arm
+    # board's, so the `NuttxRiscv` job deselected every test it reached and was red
+    # with "NOT ONE test actually ran" (nightly 43679672304, 2026-11-15).
+    # `c_riscv_nuttx_e2e` is the riscv board's own cell, and
+    # `realtime_sched_tasks_e2e` holds both boards' realtime rows
+    # (`workspace-*-nuttx{,-riscv}-realtime`, phase-466 W5), which no NuttX job
+    # selected before. The scope deselects the sibling board's rows.
+    just _nextest-platform 'rtos_e2e realtime_sched_tasks_e2e c_riscv_nuttx_e2e' '{{verbose}}' '' 'test(Nuttx) | binary(=realtime_sched_tasks_e2e) | binary(=c_riscv_nuttx_e2e)'
 
 # Run all NuttX tests including networked E2E
 [group("full-matrix")]
