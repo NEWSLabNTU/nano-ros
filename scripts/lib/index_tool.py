@@ -10,6 +10,10 @@ those use and nothing else:
     index_tool.py install <tool> --prefix <dir> [--index <toml>]
                                             download this host's dist, check its
                                             sha256, run its `install` recipe
+    index_tool.py install-source <tool> --prefix <dir> [--index <toml>]
+                                            build the row's `[tool.<tool>.source]`
+                                            tarball (url + sha256, configure,
+                                            install); IMAGE BUILDS ONLY
     index_tool.py extract <tool>...         print those rows as TOML, verbatim
     index_tool.py check-extract <file> <tool>...
                                             fail if <file> is not that output
@@ -42,6 +46,13 @@ no smoke probe for the program never resolves from PATH.
 `install` takes only the PREBUILT dist for this host. A tool with no dist for
 it is an error naming the host, never a source build: this runs in image
 builds and lane preflights, where minutes of compiling would be a surprise.
+
+`install-source` is the one exception, and it is a separate verb so no caller
+reaches it by accident: GNU make ships no prebuilt at all, so the images
+(phase-489 W13) build `[tool.make.source]` once, at image-build time. It takes
+a `url` tarball with a `sha256` only (no `git` source: a tag is not a
+checksum), unpacks it, and runs `configure` then `install` in its one
+top-level directory.
 """
 
 from __future__ import annotations
@@ -137,6 +148,37 @@ def install(name: str, prefix: Path, tool: dict | None = None) -> None:
         subprocess.run(["bash", "-euo", "pipefail", "-c", cmd], check=True)
 
 
+def install_source(name: str, prefix: Path, tool: dict | None = None) -> None:
+    import tarfile
+    tool = tool or load_tool(name)
+    src = tool.get("source") or {}
+    if not (src.get("url") and src.get("sha256") and src.get("install")):
+        raise SystemExit(
+            f"index_tool: [tool.{name}.source] needs url, sha256 and install to build from source"
+        )
+    prefix.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f"index-tool-src-{name}-") as tmp:
+        archive = Path(tmp) / Path(src["url"]).name
+        with urllib.request.urlopen(src["url"], timeout=300) as resp, open(archive, "wb") as out:
+            while chunk := resp.read(1 << 20):
+                out.write(chunk)
+        got = hashlib.sha256(archive.read_bytes()).hexdigest()
+        if got != src["sha256"]:
+            raise SystemExit(
+                f"index_tool: {src['url']}: sha256 {got} != pinned {src['sha256']}"
+            )
+        work = Path(tmp) / "src"
+        with tarfile.open(archive) as tar:
+            tar.extractall(work, filter="data")
+        tops = [d for d in work.iterdir() if d.is_dir()]
+        if len(tops) != 1:
+            raise SystemExit(f"index_tool: {src['url']} unpacks to {len(tops)} top-level dirs, not 1")
+        for step in ("configure", "install"):
+            if src.get(step):
+                cmd = src[step].replace("{prefix}", str(prefix))
+                subprocess.run(["bash", "-euo", "pipefail", "-c", cmd], cwd=tops[0], check=True)
+
+
 def extract(names: list[str]) -> str:
     """The `[tool.<name>]` sections of the index, verbatim, in index order."""
     text = (ROOT / "nros-sdk-index.toml").read_text()
@@ -176,6 +218,12 @@ def self_test() -> None:
         assert "no prebuilt dist" in str(e), e
     else:
         raise AssertionError("a tool with no dist for this host installed")
+    try:
+        install_source("t", Path("/nonexistent"), {"version": "1", "source": {"git": "x"}})
+    except SystemExit as e:
+        assert "needs url, sha256 and install" in str(e), e
+    else:
+        raise AssertionError("a git source (no checksum) was built")
     # sdk-plan: one line per row, `{version}` expanded; a row it cannot bake
     # (no post_install) is refused rather than skipped.
     host = index_packages.host_key()
@@ -257,6 +305,10 @@ def main(argv: list[str]) -> int:
     if len(argv) in (4, 6) and argv[0] == "install" and argv[2] == "--prefix":
         index = Path(argv[5]) if len(argv) == 6 and argv[4] == "--index" else None
         install(argv[1], Path(argv[3]), load_tool(argv[1], index))
+        return 0
+    if len(argv) in (4, 6) and argv[0] == "install-source" and argv[2] == "--prefix":
+        index = Path(argv[5]) if len(argv) == 6 and argv[4] == "--index" else None
+        install_source(argv[1], Path(argv[3]), load_tool(argv[1], index))
         return 0
     if len(argv) == 2 and argv[0] == "version":
         # issue 2389 — a caller that needs a tool's VERSION (a store path, a log

@@ -240,12 +240,12 @@ rm -f "$leaf_file"
 make_bin="make"
 make_args=()
 jobs="${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}"
-if [ -x "$(nros dev sdk path make)/bin/make" ] && \
-   grep -q "4.4" <<<"$("$(nros dev sdk path make)/bin/make" --version | head -1)" && \
-   [ -x "$(nros dev sdk path ninja)/bin/ninja" ]; then
-    make_bin="$(nros dev sdk path make)/bin/make"
+# shellcheck source=scripts/build/jobserver-pool.sh
+source "$(dirname "${BASH_SOURCE[0]}")/jobserver-pool.sh"
+if _pinned_make="$(nros_pinned_make)" && nros_pinned_ninja >/dev/null; then
+    make_bin="$_pinned_make"
     make_args=(-j"$jobs" --jobserver-style=fifo)
-    export PATH="$(nros dev sdk path make)/bin:$(nros dev sdk path ninja)/bin:$PATH"
+    export PATH="$(nros_pinned_tool_path_prefix "$make_bin"):$PATH"
     echo "fixture-make-driver: using pinned fifo make"
 else
     make_args=(-j"$jobs")

@@ -334,10 +334,8 @@ build-c-port:
         echo "$WORKSPACE/env.sh missing — run: just zephyr setup" >&2
         exit 2
     fi
-    make_bin="$(nros dev sdk path make 2>/dev/null)/bin/make"
-    if [ ! -x "$make_bin" ]; then
-        make_bin="$(command -v make)"
-    fi
+    source scripts/build/jobserver-pool.sh
+    make_bin="$(nros_pinned_make)" || make_bin="$(command -v make)"
     # issue 1638 — existing store dirs only; a missing pin is reported.
     source scripts/lib/sdk-tool-path.sh
     sdk_tool_prefix="$(nros_sdk_tool_path_prefix make ninja)"

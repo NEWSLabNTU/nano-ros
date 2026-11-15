@@ -343,20 +343,17 @@ fi
 #    the index.
 #
 #    WARN, not fail: a serial walk is correct, only slow.
-_pre_make=""
-# Issue 1880 — the ONE CLI ladder (`nros_cli_bin`, cargo.sh sourced above).
-if _pre_cli="$(nros_cli_bin 2>/dev/null)"; then
-    _pre_make="$("$_pre_cli" dev sdk path make 2>/dev/null)/bin/make"
-fi
-if [ -z "$_pre_make" ] || [ ! -x "$_pre_make" ] ||
-    ! grep -q "4\.4" <<<"$("$_pre_make" --version 2>/dev/null | head -1)"; then
+# The ONE lookup (`nros_pinned_make`: the store via the CLI ladder of issue
+# 1880, else a copy passing the index smoke probe, phase-489 W13).
+# shellcheck source=scripts/build/jobserver-pool.sh
+source "$(dirname "${BASH_SOURCE[0]}")/build/jobserver-pool.sh"
+if ! nros_pinned_make >/dev/null; then
     echo "check-tier-preconditions: WARNING — pinned GNU make 4.4 absent;" >&2
     echo "  every jobserver fan-out degrades to a SERIAL walk (the system make" >&2
     echo "  is 4.3 on Ubuntu LTS, and its pipe-FD jobserver cannot be joined by" >&2
     echo "  cargo or by cmake's sub-make)." >&2
     echo "  Remedy: nros setup --tool make" >&2
 fi
-unset _pre_make
 
 # 8b. clang-format, and this one DOES fail (phase-466).
 #

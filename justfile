@@ -451,8 +451,10 @@ build-all:
     # through a plain variable.
     #
     # The pinned make and ninja live in the STORE (RFC-0095 D3), resolved through
-    # `nros dev sdk path` — constructed from the index pin, never searched on PATH
-    # (issue 0625) — which is exactly how `build-all-jobserver.sh`, the script this
+    # `nros dev sdk path` — constructed from the index pin, never a bare PATH
+    # search (issue 0625; a CI image's baked copy counts only when it passes the
+    # index row's smoke probe, phase-489 W13) — which is exactly how
+    # `build-all-jobserver.sh`, the script this
     # gates, resolves them. This block read `third-party/make/make` and
     # `third-party/ninja/ninja` until 2026-09-10, after both had moved: the gate
     # and the script looked in different places, so on every host that had

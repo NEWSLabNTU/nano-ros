@@ -258,6 +258,21 @@ RUN python3 /opt/nros-ssot/scripts/lib/index_tool.py install cargo-nextest --pre
         --index /opt/nros-ssot/config/ci-base-tools.toml \
     && cargo-nextest nextest --version
 
+# phase-489 W13 — pinned ninja 1.13.2 and GNU make 4.4.1 at the INDEX's pins,
+# from the same generated rows. These are the two halves of one FIFO jobserver
+# token pool (make 4.4 serves it, ninja 1.13 joins it); the apt make 4.3 and
+# ninja 1.10 can do neither. ninja is the row's prebuilt; make ships no
+# prebuilt, so it is built here once from `[tool.make.source]` (tarball +
+# sha256; ~12 s). Under `/usr/local`, ahead of the apt copies on PATH, and
+# `nros_pinned_make` / `nros_pinned_ninja` accept them by the rows' smoke
+# probes. The smoke runs below are this layer's proof that they landed.
+RUN python3 /opt/nros-ssot/scripts/lib/index_tool.py install ninja --prefix /usr/local \
+        --index /opt/nros-ssot/config/ci-base-tools.toml \
+    && python3 /opt/nros-ssot/scripts/lib/index_tool.py install-source make --prefix /usr/local \
+        --index /opt/nros-ssot/config/ci-base-tools.toml \
+    && make --version | head -1 | grep -F 'GNU Make 4.4.1' \
+    && ninja --version | grep -Fx 1.13.2
+
 # git-as-root in CI containers: avoid "dubious ownership" on the checkout +
 # the source submodules `nros setup` provisions.
 RUN git config --system --add safe.directory '*'

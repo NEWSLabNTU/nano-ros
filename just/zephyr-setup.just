@@ -368,10 +368,8 @@ build-fvp-ws-entry:
     source scripts/build/cargo.sh
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
-    make_bin="$(nros dev sdk path make 2>/dev/null)/bin/make"
-    if [ ! -x "$make_bin" ]; then
-        make_bin="$(command -v make)"
-    fi
+    source "$nros_root/scripts/build/jobserver-pool.sh"
+    make_bin="$(nros_pinned_make)" || make_bin="$(command -v make)"
     # The SDK prefixes are resolved BEFORE `cd "$workspace"`: `nros dev sdk path`
     # locates `nros-sdk-index.toml` relative to the CWD, and a Zephyr
     # workspace has none. Resolving after the cd printed two `failed to read
@@ -390,10 +388,10 @@ build-fvp-ws-entry:
     if _fvp_bin="$(bash "$nros_root/scripts/zephyr/resolve-fvp-bin.sh" 2>/dev/null)"; then
         export ARMFVP_BIN_PATH="$_fvp_bin"
     fi
-    _sdk_make="$(nros dev sdk path make)"
-    _sdk_ninja="$(nros dev sdk path ninja)"
+    source "$nros_root/scripts/lib/sdk-tool-path.sh"
+    _sdk_tools="$(nros_sdk_tool_path_prefix make ninja)"
     cd "$workspace"
-    export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
+    export PATH="${_sdk_tools:+$_sdk_tools:}$PATH"
     # issue 0698 — name the toolchain variant: Zephyr 3.7 expands it UNQUOTED,
     # and CMake 4 refuses the configure when it is unset (phase-511 found these
     # four FVP recipes were the callers that rule never reached).
@@ -491,10 +489,10 @@ run-fvp-ws-entry:
     if _fvp_bin="$(bash "$nros_root/scripts/zephyr/resolve-fvp-bin.sh" 2>/dev/null)"; then
         export ARMFVP_BIN_PATH="$_fvp_bin"
     fi
-    _sdk_make="$(nros dev sdk path make)"
-    _sdk_ninja="$(nros dev sdk path ninja)"
+    source "$nros_root/scripts/lib/sdk-tool-path.sh"
+    _sdk_tools="$(nros_sdk_tool_path_prefix make ninja)"
     cd "$workspace"
-    export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
+    export PATH="${_sdk_tools:+$_sdk_tools:}$PATH"
     # issue 1254 — the resolver, not a fifth spelling of the path.
     # issue 0698 — name the toolchain variant: Zephyr 3.7 expands it UNQUOTED,
     # and CMake 4 refuses the configure when it is unset (phase-511 found these
@@ -606,10 +604,8 @@ build-fvp-board-import:
     source scripts/build/cargo.sh
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
-    make_bin="$(nros dev sdk path make 2>/dev/null)/bin/make"
-    if [ ! -x "$make_bin" ]; then
-        make_bin="$(command -v make)"
-    fi
+    source "$nros_root/scripts/build/jobserver-pool.sh"
+    make_bin="$(nros_pinned_make)" || make_bin="$(command -v make)"
     src="$nros_root/packages/testing/nros-tests/fixtures/board_import_fvp"
     # The SDK prefixes are resolved BEFORE `cd "$workspace"`: `nros dev sdk path`
     # locates `nros-sdk-index.toml` relative to the CWD, and a Zephyr
@@ -629,10 +625,10 @@ build-fvp-board-import:
     if _fvp_bin="$(bash "$nros_root/scripts/zephyr/resolve-fvp-bin.sh" 2>/dev/null)"; then
         export ARMFVP_BIN_PATH="$_fvp_bin"
     fi
-    _sdk_make="$(nros dev sdk path make)"
-    _sdk_ninja="$(nros dev sdk path ninja)"
+    source "$nros_root/scripts/lib/sdk-tool-path.sh"
+    _sdk_tools="$(nros_sdk_tool_path_prefix make ninja)"
     cd "$workspace"
-    export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
+    export PATH="${_sdk_tools:+$_sdk_tools:}$PATH"
     # issue 0698 — name the toolchain variant: Zephyr 3.7 expands it UNQUOTED,
     # and CMake 4 refuses the configure when it is unset (phase-511 found these
     # four FVP recipes were the callers that rule never reached).
@@ -717,10 +713,10 @@ run-fvp-board-import:
     if _fvp_bin="$(bash "$nros_root/scripts/zephyr/resolve-fvp-bin.sh" 2>/dev/null)"; then
         export ARMFVP_BIN_PATH="$_fvp_bin"
     fi
-    _sdk_make="$(nros dev sdk path make)"
-    _sdk_ninja="$(nros dev sdk path ninja)"
+    source "$nros_root/scripts/lib/sdk-tool-path.sh"
+    _sdk_tools="$(nros_sdk_tool_path_prefix make ninja)"
     cd "$workspace"
-    export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
+    export PATH="${_sdk_tools:+$_sdk_tools:}$PATH"
     # issue 1254 — the resolver, not a fifth spelling of the path.
     # issue 0698 — name the toolchain variant: Zephyr 3.7 expands it UNQUOTED,
     # and CMake 4 refuses the configure when it is unset (phase-511 found these
