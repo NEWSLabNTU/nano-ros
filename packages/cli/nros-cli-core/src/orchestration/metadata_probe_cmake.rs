@@ -556,7 +556,8 @@ fn build_all(build_dir: &Path, targets: &[String], nano_ros: &Path) -> Result<()
     for t in targets {
         cmd.arg(t);
     }
-    run_step(&mut cmd, "build", "all probes")
+    run_step(&mut cmd, "build", "all probes")?;
+    super::shared_build_dir::check(build_dir)
 }
 
 fn build_and_run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> Result<()> {
@@ -571,6 +572,7 @@ fn build_and_run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> R
         "build",
         &format!("{}::{}", c.package, c.component),
     )?;
+    super::shared_build_dir::check(build_dir)?;
     run_one(build_dir, c, target)
 }
 
@@ -738,6 +740,13 @@ fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path, rmw: &
     {
         cmd.arg(format!("-DNROS_SHARED_CARGO_ROOT={}", shared.display()));
     }
+    // phase-559 W10 — one cargo build-dir per key for the generated image
+    // roots is built, gated and measured (safe; −68 % probe disk; +40 % probe
+    // wall time), and the user ruled on 2026-11-15 that it goes nowhere yet. So
+    // the probe passes OFF explicitly: a cached ON from a hand configure cannot
+    // survive. The post-build check stays, and is a no-op without the roots'
+    // records. Turning it on is a one-line change here, plus the ruling.
+    cmd.arg("-DNROS_SHARED_CARGO_BUILD_DIR=OFF");
     pin_probe_env(&mut cmd, nano_ros);
     // The documented caller pre-set of the codegen tool (NanoRosBootstrapCodegen
     // rung 1): THIS process is the CLI whose stamp the key carries.

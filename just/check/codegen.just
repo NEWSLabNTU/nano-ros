@@ -367,6 +367,17 @@ census-hooks-complete:
 entity-census:
     @bash scripts/check-entity-census.sh
 
+# phase-559 W10 -- the metadata probe shares one cargo build-dir per key, and
+# checks every build (`nros dev shared-build-dir-check`). This is that check's
+# negative control on REAL cargo: a same-named-root collision (measured: the
+# second build uplifted the first root's archive, no error) and issue 0616's
+# two-spelling crate must both be REFUSED, and the shape NanoRosImageCrate.cmake
+# emits must pass with each archive holding its own code. FAST: a few
+# dependency-free rustc runs, ~4 s idle (11 s measured under two gates' load).
+[group('needs:cli')]
+shared-build-dir:
+    @bash scripts/check-shared-build-dir.sh
+
 # Issue 2043 (phase-518 W3) -- a ported ament workspace is sized from its own
 # program: `bins/ament-census-port` states `entities = "census"` and no size,
 # and this fails if a pool the census answers is left at its default. It
