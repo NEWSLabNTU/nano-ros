@@ -612,12 +612,12 @@ from that session, `FREERTOS_PORT not set` on `freertos-posix`, is
 [issue 2341](../issues/archived/2341-freertos-posix-port-not-reaching-zpico.md),
 fixed after that release.
 
-- [issue 2564](../issues/2564-hand-entry-bringup-image-drops-domain-id.md): a hand-written entry naming `BRINGUP` and `IMAGE` bakes domain 0, not the image's `domain_id`, with no refusal.
+- [issue 2564](../issues/archived/2564-hand-entry-bringup-image-drops-domain-id.md) (resolved): a hand-written entry naming `BRINGUP` and `IMAGE` baked domain 0, not the image's `domain_id`. It now asks the image's domain of the one reader, under the agreement rule.
 - [issue 2565](../issues/2565-mixed-image-rust-pkg-needs-cmake-shim.md): a mixed image's Rust package needs an undocumented CMake shim, and `nros new` adds neither it nor the contract row.
 - [issue 2566](../issues/archived/2566-sync-ignores-nested-packages-and-package-paths.md) (resolved): `nros sync` ignored `src/<group>/<pkg>` and `package_paths`. The scan now walks `src/` and every `package_paths` entry recursively, as `nros build` does.
 - [issue 2567](../issues/archived/2567-rust-codegen-msg-constants-not-reexported.md) (resolved): Rust codegen did not re-export `.msg` constants. They are associated consts of the type now (`IslandMode::MODE_NOMINAL`).
 - [issue 2568](../issues/2568-rust-ctx-param-misses-launch-values.md): a Rust `ctx.param()` gets the default, not the launch value.
 - [issue 2569](../issues/archived/2569-cpp-metadata-probe-assumes-class-header.md) (resolved): the C++ metadata probe built a `configure`-shape class with the `NodeHandle` constructor (fixed on main by issue 2339 after 0.6.0-nros8), and derived a nested namespace's header differently from the entry.
-- [issue 2582](../issues/2582-cmake-workspace-road-drops-image-knob-rows.md): on the hand-written `nano_ros_workspace()` road, `[image.<id>.knobs.*]` rows are silently ignored (164 parameter slots stated, 32 built).
+- [issue 2582](../issues/archived/2582-cmake-workspace-road-drops-image-knob-rows.md) (resolved): on the hand-written `nano_ros_workspace()` road, `[image.<id>.knobs.*]` rows were silently ignored. The root now claims the image it names, so the rows reach the cargo carrier, and it refuses when it names none.
 - [issue 2584](../issues/archived/2584-configure-ignores-no-marker.md) (GitHub #3871, resolved): `nros configure` resolved a package that carried an ignore marker, so a contract-only bringup kept under `src/` failed the whole workspace. The marker list now has one home, `nros_pkg_index::is_ignored_dir`, and every package walk asks it.
 - [issue 2586](../issues/archived/2586-cpp-alias-header-digit-capital-name.md) (GitHub #3882, resolved): the ROS-style C++ alias header missed rosidl's name when a digit or an acronym came before a capital (`float32stamped.hpp` for `Float32Stamped`). The alias now takes rosidl's name through one function, `naming::ros_alias_header`.

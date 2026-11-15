@@ -273,6 +273,45 @@ function(nano_ros_read_package_export)
 endfunction()
 
 # ---------------------------------------------------------------------------
+# nros_image_domain_id(<out_var> DIR <system-dir> IMAGE <id> [CONTEXT <text>])
+#
+# The domain image <id> of <system-dir>/system.toml states
+# (`[image.<id>] domain_id`, its defaults, then `[system] domain_id`), or "".
+# Asked of the one reader (`nros dev image leaf-system`), with no other effect,
+# for a hand-written entry that names its BRINGUP and IMAGE: the image's
+# domain is known there, and baking 0 instead put the image on a bus nobody
+# wrote down. Re-configures when the file changes.
+# ---------------------------------------------------------------------------
+function(nros_image_domain_id out_var)
+    cmake_parse_arguments(_D "" "DIR;IMAGE;CONTEXT" "" ${ARGN})
+    set(${out_var} "" PARENT_SCOPE)
+    if("${_D_IMAGE}" STREQUAL "" OR NOT EXISTS "${_D_DIR}/system.toml")
+        return()
+    endif()
+    if("${_D_CONTEXT}" STREQUAL "")
+        set(_D_CONTEXT "the domain of image `${_D_IMAGE}` (${_D_DIR}/system.toml)")
+    endif()
+    nros_resolve_cli(_nros CONTEXT "${_D_CONTEXT}")
+    execute_process(
+        COMMAND "${_nros}" dev image leaf-system "${_D_DIR}" --nano-ros-path "${NROS_REPO_DIR}"
+                --image "${_D_IMAGE}"
+        OUTPUT_VARIABLE _out
+        ERROR_VARIABLE _err
+        RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR "nano-ros: ${_D_CONTEXT}: ${_err}")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_D_DIR}/system.toml")
+    nros_cli_rows(_row "${_out}" REQUIRE "^NROS_LEAF_[A-Z0-9_]+=" CONTEXT "${_D_CONTEXT}")
+    foreach(_i IN LISTS _row_INDICES)
+        if("${_row_${_i}}" MATCHES "^NROS_LEAF_DOMAIN_ID=(.*)$")
+            set(${out_var} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+        endif()
+    endforeach()
+endfunction()
+
+# ---------------------------------------------------------------------------
 # nano_ros_read_leaf_system([DIR <dir>])
 #
 # phase-445 W3 (RFC-0098 D3/D5) — a single-package C/C++ leaf states its board,
@@ -307,11 +346,23 @@ endfunction()
 #   as a cargo config, for the top-level leaf of a non-Zephyr configure (issue
 #   1712, NanoRosImageEnv.cmake), or "". On Zephyr the module's
 #   `module_ext_root` hook sets it instead (phase-481 W1).
+#
+# `IMAGE <id> CLAIM` reads one image of a system.toml that is NOT the top-level
+# project, as the image this configure builds: a hand-written
+# `nano_ros_workspace(SYSTEM <bringup>)` root that names its image. The read
+# then speaks for the configure exactly as a top-level leaf's does (image env,
+# domain, edition, network). Without CLAIM, a member's read stays a member's.
 # ---------------------------------------------------------------------------
 function(nano_ros_read_leaf_system)
-    cmake_parse_arguments(_NRL "" "DIR" "" ${ARGN})
+    cmake_parse_arguments(_NRL "CLAIM" "DIR;IMAGE" "" ${ARGN})
     if(NOT _NRL_DIR)
         set(_NRL_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
+    # Does this read speak for the configure? The top-level project's own
+    # system.toml does; so does one the caller CLAIMs for its named image.
+    set(_nrl_is_top FALSE)
+    if(_NRL_DIR STREQUAL CMAKE_SOURCE_DIR OR (_NRL_CLAIM AND NOT "${_NRL_IMAGE}" STREQUAL ""))
+        set(_nrl_is_top TRUE)
     endif()
     set(NROS_LEAF_SYSTEM FALSE PARENT_SCOPE)
     set(NROS_LEAF_DOMAIN_ID "" PARENT_SCOPE)
@@ -320,7 +371,7 @@ function(nano_ros_read_leaf_system)
     # inherit an image env nobody stated this time.
     # On Zephyr the module's `module_ext_root` hook owns the property (phase-481
     # W1): it ran inside find_package(Zephyr), before this.
-    if(_NRL_DIR STREQUAL CMAKE_SOURCE_DIR AND NOT DEFINED ZEPHYR_BASE)
+    if(_nrl_is_top AND NOT DEFINED ZEPHYR_BASE)
         set_property(GLOBAL PROPERTY NROS_IMAGE_ENV_CONFIG "")
     endif()
     if(NOT EXISTS "${_NRL_DIR}/system.toml")
@@ -363,7 +414,12 @@ function(nano_ros_read_leaf_system)
         set(_nrl_image_env_arg "")
         set(_nrl_top "${APPLICATION_SOURCE_DIR}")
     endif()
-    if(DEFINED NROS_IMAGE AND NOT NROS_IMAGE STREQUAL ""
+    if(_NRL_DIR STREQUAL _nrl_top)
+        set(_nrl_is_top TRUE)
+    endif()
+    if(NOT "${_NRL_IMAGE}" STREQUAL "")
+        set(_nrl_image_arg --image "${_NRL_IMAGE}")
+    elseif(DEFINED NROS_IMAGE AND NOT NROS_IMAGE STREQUAL ""
        AND _NRL_DIR STREQUAL _nrl_top)
         set(_nrl_image_arg --image "${NROS_IMAGE}")
     endif()
@@ -404,7 +460,7 @@ function(nano_ros_read_leaf_system)
         endif()
     endforeach()
     if(NOT "${_NROS_LEAF_IMAGE_ENV}" STREQUAL "")
-        if(NOT _NRL_DIR STREQUAL CMAKE_SOURCE_DIR)
+        if(NOT _nrl_is_top)
             # A package inside a larger configure (a workspace member): the
             # cargo builds this configure drives serve every image it holds,
             # so one member's image cannot claim them.
@@ -429,7 +485,7 @@ function(nano_ros_read_leaf_system)
     # for `nros_board_net_c` (NanoRosBoardNet.cmake). A GLOBAL property because
     # this function also runs from nano-ros's own subdirectory scope (the
     # add_subdirectory road), which the leaf's scope cannot see.
-    if(_NRL_DIR STREQUAL CMAKE_SOURCE_DIR)
+    if(_nrl_is_top)
         set_property(GLOBAL PROPERTY NROS_LEAF_IMAGE_NET "${_NROS_LEAF_IMAGE_NET}")
     endif()
 
@@ -448,7 +504,7 @@ function(nano_ros_read_leaf_system)
     # bakes (NanoRosEntry.cmake, a board's Rust app) read where no
     # `NROS_DOMAIN_ID` is in scope. Not on Zephyr, whose carrier is Kconfig's
     # `CONFIG_NROS_DOMAIN_ID` with its own agreement check (issue 1550).
-    if(_NRL_DIR STREQUAL _nrl_top AND NOT DEFINED ZEPHYR_BASE)
+    if(_nrl_is_top AND NOT DEFINED ZEPHYR_BASE)
         if(NOT "${_NROS_LEAF_DOMAIN_ID}" STREQUAL ""
            AND DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL ""
            AND NOT NROS_DOMAIN_ID STREQUAL _NROS_LEAF_DOMAIN_ID)

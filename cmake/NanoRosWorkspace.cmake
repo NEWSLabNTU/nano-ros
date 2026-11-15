@@ -307,6 +307,34 @@ function(nano_ros_workspace)
             ROAD "nano_ros_workspace()")
     endif()
 
+    # GitHub #3866 (issue 2582). A hand-written root that names its image
+    # (`-DNROS_IMAGE=<id>`) builds that image, so the image's own rows
+    # (`[image.<id>.knobs.*]`, `[image.<id>] env`, its `transport`) reach every
+    # cargo command this configure spawns, as they do for a standalone leaf and
+    # for the root `nros build` generates. Read through the one reader, BEFORE
+    # the import below, because the import is where the carrier attaches. A
+    # generated root (`NROS_CONFIGURED_IMAGE`) already set the carrier, so it is
+    # not read twice. A hand-written root that names no image is refused when
+    # its bringup states such rows, rather than building with the defaults.
+    if(_NRW_SYSTEM AND NOT DEFINED NROS_CONFIGURED_IMAGE
+       AND EXISTS "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}/system.toml")
+        nros_configure_hook_image(_nrw_image)
+        if(NOT "${_nrw_image}" STREQUAL "")
+            nano_ros_read_leaf_system(DIR "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}"
+                IMAGE "${_nrw_image}" CLAIM)
+        else()
+            file(STRINGS "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}/system.toml"
+                _nrw_image_rows REGEX "^[ \t]*\\[image\\.[^]]+\\.(knobs|env)[].]")
+            if(_nrw_image_rows)
+                message(FATAL_ERROR
+                    "nano_ros_workspace: src/${_NRW_SYSTEM}/system.toml states per-image "
+                    "knob or env rows, but this configure names no image, so they would "
+                    "not reach the build. Configure with -DNROS_IMAGE=<id> to build one "
+                    "image, or build it with `nros build <id>`.")
+            endif()
+        endif()
+    endif()
+
     # Defaults: backend = zenoh, platform = posix, ROS edition = humble.
     if(NOT _NRW_BACKEND)
         set(_NRW_BACKEND zenoh)

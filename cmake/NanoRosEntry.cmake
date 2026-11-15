@@ -1116,6 +1116,29 @@ function(nano_ros_entry)
                     "names another. Change one so they agree, or drop the -D "
                     "(`cmake -U NROS_DOMAIN_ID <build-dir>` clears a cached one).")
             endif()
+        endif()
+        # GitHub #3856 (issue 2564). A hand-written entry that names its
+        # BRINGUP and IMAGE has stated which image it is, so that image's domain
+        # is the one `nros build` would write as DOMAIN_ID. Asked of the same
+        # reader, and held to the same agreement rule as DOMAIN_ID.
+        if("${_nra_domain}" STREQUAL "" AND _NRA_BRINGUP AND NOT "${_NRA_IMAGE}" STREQUAL "")
+            get_filename_component(_nra_bringup_abs "${_NRA_BRINGUP}" ABSOLUTE
+                BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+            nros_image_domain_id(_nra_domain DIR "${_nra_bringup_abs}" IMAGE "${_NRA_IMAGE}"
+                CONTEXT "nano_ros_add_executable(${_NRA_NAME}): the domain of image `${_NRA_IMAGE}`")
+            if(NOT "${_nra_domain}" STREQUAL ""
+               AND DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL ""
+               AND NOT NROS_DOMAIN_ID STREQUAL _nra_domain)
+                message(FATAL_ERROR
+                    "nano_ros_add_executable(${_NRA_NAME}): image `${_NRA_IMAGE}` states domain "
+                    "${_nra_domain} (${_nra_bringup_abs}/system.toml) but "
+                    "-DNROS_DOMAIN_ID=${NROS_DOMAIN_ID} names another. Change one so they "
+                    "agree, or drop the -D (`cmake -U NROS_DOMAIN_ID <build-dir>` clears a "
+                    "cached one).")
+            endif()
+        endif()
+        if(NOT "${_nra_domain}" STREQUAL "")
+            # Settled above.
         elseif(DEFINED NROS_DOMAIN_ID AND NOT NROS_DOMAIN_ID STREQUAL "")
             set(_nra_domain "${NROS_DOMAIN_ID}")
         else()

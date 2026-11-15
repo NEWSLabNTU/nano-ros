@@ -596,6 +596,23 @@ configure-hook:
     fi
     ./tests/cmake-configure-hook-tests.sh
 
+# issues 2564 / 2582 -- a hand-written configure that names its image gets that
+# image's facts through the one reader: `nano_ros_workspace()` claims the named
+# image (its knob and env rows reach the cargo carrier, its domain is the
+# configure's), and `nano_ros_add_executable(BRINGUP … IMAGE …)` asks the
+# image's domain. A stand-in CLI, so seconds; same skip ledger.
+[group('needs:cmake')]
+hand-written-image-facts:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip hand-written-image-facts "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-hand-written-image-facts-tests.sh
+
 # issue 2336 -- a ThreadX image's `NROS_APP_CONFIG` carries its own network. The
 # images of one shared configure each state one, and the configure's single
 # config TU gave every executable the last image's address. The writer is

@@ -1,17 +1,19 @@
 ---
 id: 2564
 title: "A hand-written entry naming BRINGUP and IMAGE bakes domain 0 instead of the image's `domain_id`, with no refusal"
-status: open
+status: resolved
 type: bug
 area: [cmake, cli]
 severity: medium
 found: 2026-11-14
+resolved: 2026-11-15
+resolved_in: "the change that resolved it (one change for issues 2564 and 2582)"
 related: [phase-478, 1946, 2433]
 ---
 
 GitHub: NEWSLabNTU/nano-ros#3856
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)**,
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)**,
 which holds what the island's port meets while building its image. Found on
 the Autoware Safety Island port (`actuation_module/src/freertos_an536_entry`),
 on main `37232ecff1`.
@@ -70,3 +72,36 @@ refuses" clause asks.
 
 Pass `-DNROS_DOMAIN_ID=2` from the build script, or move the image to a
 generated entry (`nros build an536`).
+
+## Resolution
+
+The two issues are one gap: a hand-written CMake configure that NAMES its image
+got none of that image's facts, because the one reader that delivers them
+(`nano_ros_read_leaf_system`, over `nros dev image leaf-system`) spoke for the
+configure only when the configure's top-level directory was a standalone leaf.
+Issue 2564 is the domain half and issue 2582 the knob-row half; one change
+fixed both.
+
+- `nano_ros_read_leaf_system(DIR <d> IMAGE <id> CLAIM)` reads one image of a
+  system.toml that is not the top-level project as the image this configure
+  builds: its image env reaches the cargo carrier (`NROS_IMAGE_ENV_CONFIG`),
+  and its domain, edition and network are the configure's, under the same
+  agreement rules as a standalone leaf.
+- `nano_ros_workspace(SYSTEM <bringup>)` claims the image the configure names
+  (`-DNROS_IMAGE=<id>`) before its import, which is where the carrier
+  attaches. A generated root (`NROS_CONFIGURED_IMAGE`) already sets the
+  carrier and is left alone. A root that names no image while its bringup
+  states per-image knob or env rows stops the configure, naming
+  `-DNROS_IMAGE` and `nros build`.
+- `nano_ros_add_executable(… BRINGUP <dir> IMAGE <id>)` with no `DOMAIN_ID`
+  asks the reader for that image's domain (`nros_image_domain_id`), and holds
+  it to the issue-1946 agreement rule against a `-DNROS_DOMAIN_ID`.
+
+Test: `tests/cmake-hand-written-image-facts-tests.sh`
+(`just check hand-written-image-facts`), with a stand-in CLI. It asserts the
+domain query, a claimed read and an unclaimed one, the refusal of a
+disagreeing -D, and the reach. Mutation-checked: removing CLAIM's effect turns
+the claimed-read and refusal cases red.
+
+The book's "Per-image build knobs" now says which roads apply the rows, and
+how a hand-written root names its image.
