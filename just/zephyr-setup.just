@@ -260,6 +260,22 @@ doctor:
         echo "  [MISSING] Zephyr workspace at $WORKSPACE (run: just zephyr setup)"
         fail=1
     fi
+    # Issue 2607 -- every module this checkout's manifest lists, as WEST reports
+    # them for the workspace. A workspace provisioned before a module joined the
+    # manifest builds every other board and fails the one that needs it as a
+    # devicetree "No such file", naming nothing. Exit 78 = nothing to check
+    # (no workspace / no west), already reported above.
+    if [ -d "$WORKSPACE/zephyr" ]; then
+        mods_rc=0
+        mods_report="$(python3 scripts/zephyr/check-workspace-modules.py "$WORKSPACE" 2>&1)" || mods_rc=$?
+        if [ "$mods_rc" -eq 0 ]; then
+            echo "  [OK] $mods_report"
+        elif [ "$mods_rc" -ne 78 ]; then
+            echo "  [MISSING] Zephyr workspace modules:"
+            printf '%s\n' "$mods_report" | sed 's/^/            /'
+            fail=1
+        fi
+    fi
     # The SDK is a per-LINE requirement and a mismatch is otherwise invisible
     # until the first build fails inside FindZephyr-sdk.cmake with an error
     # naming neither the version nor the setup step that chose it.
