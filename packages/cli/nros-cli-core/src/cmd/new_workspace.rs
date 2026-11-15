@@ -714,8 +714,130 @@ pub fn scaffold_into_workspace(
         add_component(dir, node)?;
         add_exec_depend(dir, node.name)?;
         add_to_contract(dir, node)?;
+        for shimmed in add_mixed_rust_shims(ws, dir)? {
+            println!(
+                "  {} now registers with CMake (a CMakeLists.txt calling \
+                 nano_ros_node_register(LANGUAGE RUST), build_type nros_cmake): the \
+                 bringup mixes languages, so its image builds through CMake",
+                shimmed.display()
+            );
+        }
     }
     Ok(bringup)
+}
+
+// GitHub #3857 (issue 2565).
+/// A bringup whose components mix a C/C++ package with a Rust one builds its
+/// image through CMake, and there a Rust node reaches the image only by
+/// registering with CMake like every other node: a `CMakeLists.txt` calling
+/// `nano_ros_node_register(LANGUAGE RUST)`, and `build_type nros_cmake`. Without
+/// it the build stops on a component missing from `nros-metadata.json`. This
+/// writes that registration into each Rust package of `bringup` that lacks one,
+/// from the package's `[[component]]` row, and returns the packages it changed.
+/// A bringup that does not mix, or a package already registered, is untouched.
+fn add_mixed_rust_shims(ws: &Path, bringup: &Path) -> Result<Vec<PathBuf>> {
+    let path = bringup.join("system.toml");
+    let text =
+        std::fs::read_to_string(&path).wrap_err_with(|| format!("reading {}", path.display()))?;
+    let doc: toml::Table = text
+        .parse()
+        .wrap_err_with(|| format!("parsing {}", path.display()))?;
+    let rows: Vec<(String, String, String)> = doc
+        .get("component")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|r| {
+            Some((
+                r.get("pkg")?.as_str()?.to_string(),
+                r.get("class")?.as_str()?.to_string(),
+                r.get("name")?.as_str()?.to_string(),
+            ))
+        })
+        .collect();
+    let dir_of = |pkg: &str| ws.join("src").join(pkg);
+    let registers_with_cmake = |dir: &Path| dir.join("CMakeLists.txt").is_file();
+    let is_rust = |dir: &Path| dir.join("Cargo.toml").is_file();
+    let mixes = rows.iter().any(|(p, _, _)| {
+        let d = dir_of(p);
+        registers_with_cmake(&d) && !is_rust(&d)
+    });
+    if !mixes {
+        return Ok(Vec::new());
+    }
+    let mut changed = Vec::new();
+    for (pkg, class, name) in &rows {
+        let dir = dir_of(pkg);
+        if !is_rust(&dir) || registers_with_cmake(&dir) {
+            continue;
+        }
+        std::fs::write(
+            dir.join("CMakeLists.txt"),
+            rust_cmake_shim(pkg, class, name),
+        )
+        .wrap_err_with(|| format!("writing {}", dir.join("CMakeLists.txt").display()))?;
+        set_cmake_build_type(&dir.join("package.xml"))?;
+        changed.push(dir);
+    }
+    Ok(changed)
+}
+
+/// The CMake registration of a Rust node package in a mixed image, the shape
+/// the mixed example workspace's Rust package carries.
+fn rust_cmake_shim(pkg: &str, class: &str, name: &str) -> String {
+    format!(
+        "cmake_minimum_required(VERSION 3.22)\n\
+         project({pkg} VERSION 0.1.0 LANGUAGES C CXX)\n\
+         \n\
+         # This package is a Rust node; it registers with CMake because an image of\n\
+         # its bringup also runs C or C++ nodes, and such an image builds through\n\
+         # CMake. The Rust code still builds with cargo, through Corrosion.\n\
+         if(NOT COMMAND nano_ros_workspace_pkg_guard)\n\
+         \x20   if(NOT NROS_REPO_DIR)\n\
+         \x20       message(FATAL_ERROR\n\
+         \x20           \"nano-ros: set -DNROS_REPO_DIR=<path-to-nano-ros> for \"\n\
+         \x20           \"standalone builds, or build via the workspace root.\")\n\
+         \x20   endif()\n\
+         \x20   include(\"${{NROS_REPO_DIR}}/cmake/NanoRosWorkspace.cmake\")\n\
+         endif()\n\
+         nano_ros_workspace_pkg_guard()\n\
+         \n\
+         nano_ros_node_register(\n\
+         \x20   NAME     {name}\n\
+         \x20   CLASS    {class}\n\
+         \x20   LANGUAGE RUST\n\
+         \x20   SOURCES  Cargo.toml)\n"
+    )
+}
+
+/// `<build_type>nros_cmake</build_type>` in a package manifest: replaces an
+/// `nros_cargo` one, or joins `<export>` when the package states none.
+fn set_cmake_build_type(manifest: &Path) -> Result<()> {
+    let text = std::fs::read_to_string(manifest)
+        .wrap_err_with(|| format!("reading {}", manifest.display()))?;
+    const WANT: &str = "<build_type>nros_cmake</build_type>";
+    let edited = if text.contains(WANT) {
+        return Ok(());
+    } else if text.contains("<build_type>nros_cargo</build_type>") {
+        text.replace("<build_type>nros_cargo</build_type>", WANT)
+    } else if text.contains("<build_type>") {
+        bail!(
+            "{}: its <build_type> is neither nros_cargo nor nros_cmake. A Rust node in an \
+             image that also runs C or C++ nodes needs {WANT}; set it by hand",
+            manifest.display()
+        );
+    } else if let Some(at) = text.find("</export>") {
+        format!("{}  {WANT}\n  {}", &text[..at], &text[at..])
+    } else if let Some(at) = text.find("</package>") {
+        format!(
+            "{}  <export>\n    {WANT}\n  </export>\n{}",
+            &text[..at],
+            &text[at..]
+        )
+    } else {
+        bail!("{}: no </package> to add {WANT} under", manifest.display());
+    };
+    std::fs::write(manifest, edited).wrap_err_with(|| format!("writing {}", manifest.display()))
 }
 
 /// The `board` of every `[image.<id>]` in a bringup's `system.toml`.
@@ -1385,5 +1507,67 @@ mod c_family_into_workspace_tests {
         .unwrap_err();
         assert!(e.to_string().contains("mps2-an385-freertos"));
         assert!(!ws.path().join("src/listener").exists());
+    }
+
+    // GitHub #3857 (issue 2565).
+    fn mixed_ws(with_c: bool) -> tempfile::TempDir {
+        let d = tempfile::tempdir().unwrap();
+        let src = d.path().join("src");
+        let b = src.join("demo_bringup");
+        std::fs::create_dir_all(&b).unwrap();
+        let mut sys = String::from("[system]\nname = \"demo\"\n");
+        sys.push_str(
+            "\n[[component]]\npkg = \"rust_hb\"\nclass = \"rust_hb::Heartbeat\"\nname = \"heartbeat\"\n",
+        );
+        let r = src.join("rust_hb");
+        std::fs::create_dir_all(&r).unwrap();
+        std::fs::write(r.join("Cargo.toml"), "[package]\nname = \"rust_hb\"\n").unwrap();
+        std::fs::write(
+            r.join("package.xml"),
+            "<package format=\"3\">\n  <name>rust_hb</name>\n  <export>\n    <build_type>nros_cargo</build_type>\n  </export>\n</package>\n",
+        )
+        .unwrap();
+        if with_c {
+            sys.push_str(
+                "\n[[component]]\npkg = \"c_talk\"\nclass = \"c_talk::Talker\"\nname = \"talker\"\n",
+            );
+            let c = src.join("c_talk");
+            std::fs::create_dir_all(&c).unwrap();
+            std::fs::write(c.join("CMakeLists.txt"), "project(c_talk C)\n").unwrap();
+        }
+        std::fs::write(b.join("system.toml"), sys).unwrap();
+        d
+    }
+
+    /// A bringup that mixes a C package with a Rust one gets the Rust package's
+    /// CMake registration written from its `[[component]]` row, and its build
+    /// type switched to `nros_cmake`: without both, the mixed image's build
+    /// stops on a component missing from `nros-metadata.json`.
+    #[test]
+    fn a_mixed_bringup_gives_its_rust_package_the_cmake_registration() {
+        let d = mixed_ws(true);
+        let b = d.path().join("src/demo_bringup");
+        let changed = add_mixed_rust_shims(d.path(), &b).unwrap();
+        let r = d.path().join("src/rust_hb");
+        assert_eq!(changed, vec![r.clone()]);
+        let cm = std::fs::read_to_string(r.join("CMakeLists.txt")).unwrap();
+        assert!(cm.contains("NAME     heartbeat"), "{cm}");
+        assert!(cm.contains("CLASS    rust_hb::Heartbeat"), "{cm}");
+        assert!(cm.contains("LANGUAGE RUST"), "{cm}");
+        assert!(cm.contains("SOURCES  Cargo.toml"), "{cm}");
+        let xml = std::fs::read_to_string(r.join("package.xml")).unwrap();
+        assert!(xml.contains("<build_type>nros_cmake</build_type>"), "{xml}");
+        assert!(!xml.contains("nros_cargo"), "{xml}");
+        // Idempotent: a registered package is left alone.
+        assert!(add_mixed_rust_shims(d.path(), &b).unwrap().is_empty());
+    }
+
+    /// A Rust-only bringup builds through cargo and needs no CMake file.
+    #[test]
+    fn a_rust_only_bringup_is_left_alone() {
+        let d = mixed_ws(false);
+        let b = d.path().join("src/demo_bringup");
+        assert!(add_mixed_rust_shims(d.path(), &b).unwrap().is_empty());
+        assert!(!d.path().join("src/rust_hb/CMakeLists.txt").exists());
     }
 }
