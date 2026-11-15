@@ -84,9 +84,13 @@ distribution.
 ```sh probe=10 distro=debian
 sudo apt-get update
 sudo apt-get install -y git curl ca-certificates build-essential \
-    cmake pkg-config python3 python3-dev zstd \
+    cmake clang pkg-config python3 python3-dev zstd \
     python3-catkin-pkg python3-empy python3-lark python3-yaml
 ```
+
+`clang` lets each build check a C image's stack against the size it was
+measured to need. Without it the build still succeeds, and says the check
+could not run.
 
 **Fedora:**
 

@@ -32,7 +32,7 @@ You write the talker in Rust, C or C++; pick a tab and every tab on the page fol
 
 ```bash probe=30 track=installed
 sudo apt-get install -y --no-install-recommends git cmake ninja-build gperf \
-    device-tree-compiler python3-pip python3-venv xz-utils file wget
+    device-tree-compiler python3-pip python3-venv xz-utils file wget clang
 pip3 install --user west
 export PATH="$HOME/.local/bin:$PATH"
 ```

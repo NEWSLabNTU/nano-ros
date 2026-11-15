@@ -30,7 +30,7 @@ lists. On Debian or Ubuntu:
 
 ```bash probe=30 track=installed variant=west-app,west-app-cpp,west-app-rust,west-app-flash
 sudo apt-get install -y --no-install-recommends git cmake ninja-build gperf \
-    device-tree-compiler python3-pip python3-venv xz-utils file wget
+    device-tree-compiler python3-pip python3-venv xz-utils file wget clang
 pip3 install --user west
 export PATH="$HOME/.local/bin:$PATH"
 ```

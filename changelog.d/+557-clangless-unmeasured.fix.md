@@ -1,0 +1,1 @@
+A C image built on a host without clang no longer fails its stack check against a depth that host cannot measure. Without clang the check cannot type the image's C calls, so it measured about 45 KB too deep. The build now passes with a warning: "unmeasured: install clang to check this image's stack". The install page and the Zephyr and Nucleo walkthroughs now install clang.
