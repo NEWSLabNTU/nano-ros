@@ -274,6 +274,16 @@ jobs:
           # Issue 2318: the duplicated-unit bytes in the per-leaf cargo dirs.
           python3 scripts/ci/cargo-dir-dupes.py build/corrosion-cargo || true
 
+      # phase-559 W12 (the user's ruling: option A). The zephyr shard's build
+      # fits and its run stage did not (run 43684256518: 5–8 G short). The
+      # metadata probe's outputs are build-stage-only, so they leave here.
+      # Each becomes a read-only sentinel FILE, so a run stage that reads one
+      # fails at once (ENOTDIR) instead of rebuilding it, and the verify step
+      # below fails if a sentinel was touched.
+      - name: Evict the build stage's probe outputs (${{ matrix.board }} shard)
+        if: matrix.board == 'zephyr'
+        run: scripts/ci/evict-build-stage-only.sh evict
+
       - name: just ci ${{ inputs.lane || 'merge' }} (${{ matrix.board }} shard)
         env:
           # Under the disk balloon too: the run compiles the test binaries,
@@ -290,6 +300,10 @@ jobs:
             scripts/ci/disk-balloon.sh run -- just ci merge
           fi
           df -h / | tail -1
+
+      - name: Verify the run stage left the evicted dirs alone (${{ matrix.board }} shard)
+        if: always() && matrix.board == 'zephyr'
+        run: scripts/ci/evict-build-stage-only.sh verify
 
       - name: Upload nextest JUnit (${{ matrix.board }})
         if: always()
