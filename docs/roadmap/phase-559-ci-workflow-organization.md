@@ -562,8 +562,8 @@ the user ruled; all five stand:
 
 ### W10 — Lever 2: the metadata probe shares one host half per key
 
-- **Owner:** nros 175. **This is a design item. No code lands before the
-  user's OK.**
+- **Owner:** nros 175. The user approved this item on 2026-11-15, with the
+  safety tests to land first.
 - **Why.** Both hosted shards that ran out of disk in W5b's eighth
   measurement held `build/corrosion-cargo` at 30 G (`du`), and the disk
   balloon stopped them 0.2–0.3 G under its 2 G floor. Across that tree,
@@ -605,14 +605,27 @@ the user ruled; all five stand:
   parallel leaves".
 - **What proves it safe.** Each item is a measurement or a gate. None is an
   argument.
-  1. *One unit per crate per key, as a precondition and not a hope.* Before
-     a probe joins a shared build-dir, `cargo metadata` over its workspace
-     must show the image crate as the ONLY member. Every other package must
-     then be an external path dep, spelled absolutely and therefore the same
-     in every workspace. After the build, the shared `deps/` must hold at most
-     one `lib<crate>-<hash>` per (crate, kind, target) beyond what any single
-     per-workspace dir holds today. A probe that fails the precondition keeps
-     its own dir and says why. It is never silently shared.
+  1. *One unit per crate per key, as a precondition and not a hope.* Only
+     a root that `nros_image_crate` generated joins the shared build-dir
+     (`nros_image_share_build_dir`). Its manifest has the image crate as its
+     only member, and every other package is an external path dep, spelled
+     absolutely and therefore the same in every workspace. The API crate
+     imported from the repo root does not join, and neither does anything
+     else: it keeps its own dir and the configure says why.
+     **The roots need an identity too, and the proposal missed it.** Measured
+     on cargo 1.99: two roots with one name and version share ONE unit hash,
+     because cargo spells a member relative to its own root. The second
+     build found the unit fresh and uplifted the FIRST root's archive, with
+     no error. Every generated root is named the same, so each one now
+     carries a version suffix `0.0.0+r<id>` and an embedded marker string,
+     both from a hash of its own build dir. The suffix separates the root
+     units while dependencies stay shared.
+     After every probe build, `nros dev shared-build-dir-check` refuses two
+     things. The first is a fingerprint group, identical in every field
+     except the path, that holds two paths (0616's shape). The second is an
+     uplifted archive that does not carry exactly its own marker. Neither the
+     uplifted `.d` nor the fingerprint dep-info can see the collision: both
+     spell the source as the relative `src/lib.rs`.
   2. *The 0616 link test, with its negative control.* Probe every C and C++
      workspace of one key IN PARALLEL into the shared build-dir, `mixed`
      included (the entry that caught 0616 both times), N times. Assert that
@@ -627,18 +640,36 @@ the user ruled; all five stand:
      the parallel probes, as wall time against today's per-dir run. A
      serialised probe may cost more time than it saves disk, and the numbers
      go to the user either way.
-  5. *Count real bytes.* `cargo-dir-dupes.py` counts apparent `st_size`
+  5. *A shared build-dir is a LOCK, so nothing inside a build may inherit it.*
+     Cargo holds an exclusive lock on its build-dir for `build`, `check` and
+     `rustc`, and holds it while it waits on a build script. nros-c's size
+     probe runs a nested `cargo build` from its build script. With
+     `CARGO_BUILD_BUILD_DIR` inherited, that nested build blocked on the lock
+     its parent held: the first in-place smoke run hung 3 h, with no error.
+     Measured on cargo 1.99: `metadata`, `locate-project` and a running
+     `cargo test` do not hold the lock, so the class is code that runs
+     inside a build. Every cargo that code runs now comes from
+     `nros_sizes_build::nested_cargo()`, which removes the variable.
+     `check-nested-cargo-build-dir` refuses any other spelling in every
+     `build.rs` and build-dependency crate, a scope it derives from the
+     manifests. `just check shared-build-dir` runs a real nested build under
+     a shared build-dir with a timeout, and keeps the deadlock as its
+     negative control.
+  6. *Count real bytes.* `cargo-dir-dupes.py` counts apparent `st_size`
      without merging hard links. Its 40 G total against `du`'s 30 G on the
      same tree shows it overstates. Before and after are read in allocated
      blocks with one count per inode, so the saving is real disk.
-- **Acceptance.** Items 1–3 green, plus the existing link gates green. On
+- **Acceptance.** Items 1–3 and 5 green, plus the existing link gates green. On
   the tier1 × zephyr hosted shard, `build/corrosion-cargo` falls by the
   probe's duplicate bytes (`du` before and after, same commit). That shard and
   merge × threadx_linux reach a verdict above the disk balloon's floor, or
   the remaining shortfall is measured and named.
-- **Status:** BLOCKED (the user's OK; a design item, proposed 2026-11-15)
-  No code lands before that ruling. Issue 2318
-  stays homed in phase-489; this item is its lever 2, scoped to the probe.
+- **Status:** OPEN. Approved 2026-11-15. Landed first: the root
+  identity and its marker check, the census, and the nested-cargo lock fix
+  with its gate and real-cargo control. Still open: the parallel `nm` link
+  test (2), the archive-hash check (3), the lock's wall-time cost (4), the
+  real-byte count (6), and the hosted-shard acceptance. Issue 2318 stays homed
+  in phase-489; this item is its lever 2, scoped to the probe.
 
 ### W11 — A failed metadata probe is a failure, not "no producer"
 
