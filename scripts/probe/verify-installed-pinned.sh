@@ -12,12 +12,13 @@
 
 echo '=== probe verify: a project pinned to an older release builds with it ==='
 pin_file="$HOME/pinned_app/nros-toolchain.toml"
+: "${PROBE_PINNED_VERSION:?run-bootstrap-probe.sh sets it (scripts/lib/pinned_example.py)}"
 rc=0
-nros_grep_q '^version = "0.6.0-nros4"$' "$pin_file" || rc=$?
+nros_grep_q "^version = \"${PROBE_PINNED_VERSION}\"\$" "$pin_file" || rc=$?
 case "$rc" in
     0) ;;
     1)
-        echo "PROBE FAIL: $pin_file no longer pins 0.6.0-nros4:" >&2
+        echo "PROBE FAIL: $pin_file no longer pins ${PROBE_PINNED_VERSION}:" >&2
         cat "$pin_file" >&2
         exit 1
         ;;
@@ -28,9 +29,9 @@ case "$rc" in
 esac
 answered="$(nros dev sdk manifest 2>&1 | head -1)"
 case "$answered" in
-    *sdk/nros/0.6.0-nros4/share/nros/manifest.toml) ;;
+    *sdk/nros/${PROBE_PINNED_VERSION}/share/nros/manifest.toml) ;;
     *)
-        echo "PROBE FAIL: inside the pinned workspace the toolchain that answers is not 0.6.0-nros4: $answered" >&2
+        echo "PROBE FAIL: inside the pinned workspace the toolchain that answers is not ${PROBE_PINNED_VERSION}: $answered" >&2
         exit 1
         ;;
 esac
@@ -57,4 +58,4 @@ if [ -n "$marker_hits" ]; then
     exit 1
 fi
 
-echo "PROBE PASS: installed $(basename "$(dirname "$(dirname "$installed")")") -> project pinned to 0.6.0-nros4 -> fetched -> nros new + setup + build under the pin, with no checkout on the host"
+echo "PROBE PASS: installed $(basename "$(dirname "$(dirname "$installed")")") -> project pinned to ${PROBE_PINNED_VERSION} -> fetched -> nros new + setup + build under the pin, with no checkout on the host"

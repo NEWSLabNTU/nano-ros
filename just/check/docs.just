@@ -713,3 +713,14 @@ prose-issue-refs:
 [group("ci")]
 package-directories:
     @python3 scripts/check-package-directories.py
+
+# The book's "pin an older release" example (install-options.md) pins the
+# release just before the index's `[tool.nros] version`, derived in ONE place,
+# scripts/lib/pinned_example.py, which the pinned probe tracks read too. A
+# literal pin rotted: it named 0.6.0-nros4 long after the page's sync-less
+# steps needed `nros configure` (first shipped in nros7), and the `pinned`
+# tracks sat behind an awaits. An index bump now moves the page's two literals
+# with it, or this fails naming the version. Buildless, ~0.05 s.
+[private]
+book-pinned-example:
+    @python3 scripts/lib/pinned_example.py --check
