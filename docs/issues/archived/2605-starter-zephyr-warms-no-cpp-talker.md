@@ -1,15 +1,17 @@
 ---
 id: 2605
 title: "starter-zephyr warms the native_sim talker in C and Rust but not C++, which the starter page documents, so a C++ seat builds online"
-status: open
+status: resolved
 type: limitation
 severity: medium
 area: [release, zephyr]
 related: [phase-551]
 found: 2026-11-15
+resolved: 2026-11-15
+resolved_in: "the change that adds zephyr:cpp to the default projects"
 ---
 
-**Home: [phase-551](../roadmap/phase-551-starter-image.md)** W3.
+**Home: [phase-551](../../roadmap/phase-551-starter-image.md)** W3.
 
 # The Zephyr starter image does not warm the C++ talker
 
@@ -51,8 +53,9 @@ C++ adds about 0.01 GB raw and nothing visible at the compressed scale: the
 C++ talker reuses the Zephyr SDK, the module sources and the cargo registry the
 other two already warmed. It fits the budget.
 
-## Next
+## Resolution
 
-Add `zephyr:cpp` to `NROS_STARTER_ZEPHYR_PROJECTS` in
-`scripts/ci/lib/image-context.sh`; the next release's `starter-zephyr` then
-warms all three languages the page documents.
+`zephyr:cpp` joined `NROS_STARTER_ZEPHYR_PROJECTS`'s default in
+`scripts/ci/lib/image-context.sh`, so `starter-zephyr` warms, and rebuilds
+offline, all three languages the page documents. It takes effect on the next
+release's image; `0.6.0-nros10-zephyr` is immutable and stays C and Rust.
