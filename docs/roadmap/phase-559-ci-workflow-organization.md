@@ -617,6 +617,22 @@ the user ruled; all five stand:
   No code lands before that ruling. Issue 2318
   stays homed in phase-489; this item is its lever 2, scoped to the probe.
 
+### W11 — A failed metadata probe is a failure, not "no producer"
+
+- **Owner:** nros 175. Found by W10's smoke test, and fixed separately from
+  W10.
+- **What.** [Issue 2608](../issues/2608-metadata-probe-failure-reads-as-no-producer.md):
+  `nros configure` and `nros dev bindings` report a probe whose BUILD failed as
+  "no producer for <node>", print `sync: done` and exit 0. On
+  `examples/workspaces/c`, every probe failed twice that way. The two facts
+  get reported apart, and a failed probe exits non-zero naming the node and
+  its first error line. The genuine no-producer fallback stays as it is.
+- **Acceptance.** A probe build broken on purpose (an unprovisioned source)
+  exits non-zero and names the node and the error. A workspace with a real
+  no-producer component still syncs with exit 0. Every caller of
+  `refresh_stale_sidecars` is checked before the exit code changes.
+- **Status:** OPEN
+
 ## Acceptance (phase)
 
 - 13 workflow files, as in the table. Every split is named in the table by a
