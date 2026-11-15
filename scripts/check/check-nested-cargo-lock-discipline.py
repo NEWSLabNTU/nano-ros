@@ -115,9 +115,20 @@ COMMAND_NEW_ENV = re.compile(
 )
 
 
+# phase-559 W10 — `nros_sizes_build::nested_cargo()`, the one constructor of a
+# build-context cargo (it reads `$CARGO`, so it bypasses the shim exactly like
+# the spellings above). A CALL to it is a site; its DEFINITION only constructs
+# a `Command` and runs no subcommand, so it is the one function skipped below.
+# `check-nested-cargo-build-dir` is the gate that requires it.
+HELPER_CALL = re.compile(r"\bnested_cargo\(\s*\)")
+HELPER_DEF = re.compile(r"\bfn\s+nested_cargo\b")
+
+
 def names_cargo(text: str) -> bool:
     """Does any `Command::new(…)` in `text` name a cargo binary?"""
     if COMMAND_NEW_MACRO.search(text) or COMMAND_NEW_ENV.search(text):
+        return True
+    if HELPER_CALL.search(text):
         return True
     return any("cargo" in ident.lower() for ident in COMMAND_NEW.findall(text))
 
@@ -258,12 +269,18 @@ def offenders(paths: list[Path]) -> tuple[list[tuple[str, int, str, str]], int]:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        if "Command::new(" not in text:
+        if "Command::new(" not in text and "nested_cargo(" not in text:
             continue
         for lineno, sig, body in functions(text):
+            if HELPER_DEF.search(sig):
+                continue
             if not names_cargo(body):
                 continue
-            bypasses = bool(BYPASS_SOURCE.search(body)) or bool(CARGO_PARAM.search(sig))
+            bypasses = (
+                bool(BYPASS_SOURCE.search(body))
+                or bool(CARGO_PARAM.search(sig))
+                or bool(HELPER_CALL.search(body))
+            )
             if not bypasses:
                 continue
             sites += 1
@@ -424,6 +441,23 @@ fn rustle(rlib: &Path) -> Result<(), ()> {
 '''
 
 
+SELF_TEST_HELPER = '''
+pub fn nested_cargo() -> Command {
+    let mut cmd = Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+    cmd.env_remove("CARGO_BUILD_BUILD_DIR");
+    cmd
+}
+
+fn bad_probe() {
+    nested_cargo().arg("build").arg("-p").arg("x").status();
+}
+
+fn good_probe() {
+    nested_cargo().arg("build").arg("--locked").status();
+}
+'''
+
+
 def self_test() -> None:
     """A detector that can never fail is not a detector (issue 1040's shape)."""
     import tempfile
@@ -472,6 +506,20 @@ def self_test() -> None:
                     "check-nested-cargo-lock-discipline: SELF-TEST FAILED — "
                     f"--list invented a row for {name}"
                 )
+
+        # phase-559 W10 — a call to the shared constructor is a site (it reads
+        # `$CARGO`), and its definition is not: the file below has one bad
+        # caller, one disciplined caller, and the definition.
+        helper_file = Path(tmp) / "helper.rs"
+        helper_file.write_text(SELF_TEST_HELPER, encoding="utf-8")
+        found, seen = offenders([helper_file])
+        names = [sig for _, _, sig, _ in found]
+        if seen != 2 or len(found) != 1 or "fn bad_probe" not in names[0]:
+            raise SystemExit(
+                "check-nested-cargo-lock-discipline: SELF-TEST FAILED — a "
+                "`nested_cargo()` caller is not read as a cargo site, or the "
+                f"helper's own definition is (sites={seen}, found={names})"
+            )
 
         mask_file = Path(tmp) / "masking.rs"
         mask_file.write_text(SELF_TEST_MASKING, encoding="utf-8")
