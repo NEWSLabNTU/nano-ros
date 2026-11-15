@@ -250,6 +250,128 @@ built_artifacts() {
           done
 }
 
+# A C or C++ image opens its executor over its OWN storage, so it must not
+# also link the Rust default executor backing, a named `.bss` static sized
+# for a default executor. A regression made every C and C++ image link both:
+# the book's FreeRTOS C tutorial overflowed RAM by 89,672 bytes and C++ images
+# on S32Z270 by up to 928,388. A unit test cannot see a link-time fact, and
+# these copy-out builds are the C++ cross images the merge queue already
+# links, so the check costs one `nm` per artifact.
+#
+# Reads `nm` text on stdin. Prints the leaked symbol lines and returns 1 when
+# the image holds its own storage AND the static. Returns 0 when it holds its
+# own storage and not the static. Returns 2 when it holds neither storage
+# symbol (a Rust image, or a host tool), which is outside the rule: a Rust
+# image's default open is what the static is for. Returns 3 when `grep`
+# itself failed, which the caller reports instead of reading it as a verdict.
+#
+# The static is matched by its MANGLED path (`7backing16EXECUTOR_BACKING`,
+# in both the v0 and the legacy scheme), never by the bare word. A Zephyr
+# image also carries `CONFIG_NROS_EXECUTOR_BACKING_U64S`, an absolute Kconfig
+# symbol, and a bare match would fail every one of them.
+executor_backing_leak() {
+    local syms
+    syms="$(cat)"
+    local has=0
+    nros_grep_q '__nros_executor_storage\|GlobalStorageHolder.*7storageE' <<<"$syms" || has=$?
+    case "$has" in
+        0) ;;
+        1) return 2 ;;
+        *) return 3 ;;
+    esac
+    local leaked
+    leaked="$(grep -e '7backing16EXECUTOR_BACKING' <<<"$syms" || true)"
+    if [ -n "$leaked" ]; then
+        printf '%s\n' "$leaked"
+        return 1
+    fi
+    return 0
+}
+
+# The ELF header's `e_machine` (two bytes at offset 18), as hex.
+elf_machine() {
+    od -An -tx1 -j18 -N2 "$1" 2>/dev/null | tr -d ' \n'
+}
+
+# Every CROSS artifact of one unit, through `executor_backing_leak`. Prints
+# what it checked; returns 1 if any C/C++ image leaks the static.
+#
+# Cross only: the rule is about a target's RAM. A unit's host-built helpers
+# (the entity census's `build/census-host/` binary) are not deployed, and the
+# census host build does link the static, so a rule over them would fail
+# every C++ unit for nothing. "Cross" is an `e_machine` that differs from the
+# host's own (read off this shell's binary), so no architecture is named here.
+#
+# A host `nm` reads the cross ELFs too (GNU binutils' generic ELF reader).
+# Without `nm` the check is recorded as unverified rather than passed.
+check_executor_backing() {
+    local label="$1" arts="$2" f out rc bad=0 clean=0 host_machine
+    if ! command -v nm >/dev/null 2>&1; then
+        nros_check_unverified "$gate" "$label: no \`nm\` on PATH, so the executor-backing check could not read its images" || true
+        return 0
+    fi
+    host_machine="$(elf_machine "$(command -v bash)")"
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        [ "$(elf_machine "$f")" != "$host_machine" ] || continue
+        # The symbol table is captured first, so a failing `nm` is its own
+        # verdict and can never pass through a pipeline as a leak or a pass.
+        local syms
+        if ! syms="$(nm "$f" 2>&1)"; then
+            bad=1
+            echo "  $label: FAIL — \`nm\` could not read $f, so its executor backing is unchecked:" >&2
+            printf '%s\n' "$syms" | sed 's/^/        /' >&2
+            continue
+        fi
+        rc=0
+        out="$(executor_backing_leak <<<"$syms")" || rc=$?
+        case "$rc" in
+            0) clean=$((clean + 1)) ;;
+            1)
+                bad=1
+                echo "  $label: FAIL — $f opens its executor over its own storage and" >&2
+                echo "      ALSO links the Rust default executor backing:" >&2
+                printf '%s\n' "$out" | sed 's/^/        /' >&2
+                echo "      Something an open_in-only image reaches names the default" >&2
+                echo "      backing, most likely an \`Executor\` Drop path." >&2
+                ;;
+            3)
+                bad=1
+                echo "  $label: FAIL — grep failed reading $f's symbols, so its executor backing is unchecked" >&2
+                ;;
+        esac
+    done <<< "$arts"
+    [ "$clean" -eq 0 ] || echo "  $label: executor backing — $clean C/C++ cross image(s) link only their own storage"
+    return "$bad"
+}
+
+# Positive + negative control for `executor_backing_leak`, on symbol lines
+# copied from real images: the C and C++ mps2-an385-freertos talkers, the
+# nros-node static as rustc mangles it, and a Zephyr image's Kconfig symbol.
+executor_backing_self_test() {
+    local bad=0 rc
+    local c_storage='20001590 b __nros_executor_storage'
+    local cpp_storage='20001590 V _ZN6rclcpp4Node19GlobalStorageHolderILi0EE7storageE'
+    local static='20002000 b _RNvNtNtCs7HKF7r5WETc_9nros_node8executor7backing16EXECUTOR_BACKING.llvm.17170519844929639434'
+    local kconfig='ffffffff A CONFIG_NROS_EXECUTOR_BACKING_U64S'
+    expect_leak() {
+        rc=0
+        executor_backing_leak <<<"$2" >/dev/null || rc=$?
+        if [ "$rc" -ne "$3" ]; then
+            echo "self-test FAILED: executor_backing_leak on $1 returned $rc, want $3." >&2
+            bad=1
+        fi
+    }
+    expect_leak "a C image with only its own storage" "$c_storage" 0
+    expect_leak "a C++ image with only its own storage" "$cpp_storage" 0
+    expect_leak "a C image that also links the static" "$c_storage"$'\n'"$static" 1
+    expect_leak "a C++ image that also links the static" "$cpp_storage"$'\n'"$static" 1
+    expect_leak "a Zephyr C image (Kconfig symbol, no static)" "$c_storage"$'\n'"$kconfig" 0
+    expect_leak "a Rust image (the static, no C/C++ storage)" "$static" 2
+    [ "$bad" -eq 0 ] && echo "self-test OK: the executor-backing check fails a C/C++ image that links the static, passes one that does not, and ignores Zephyr's Kconfig symbol and Rust images."
+    return "$bad"
+}
+
 # shellcheck source=scripts/build/cargo.sh
 . "$repo_root/scripts/build/cargo.sh"
 # The one resolver (issue 1850): $NROS_CLI, this checkout's build, PATH, store.
@@ -739,6 +861,10 @@ run_one() {
         nros_gate_scratch_failed "$work"
         return 1
     fi
+    if ! check_executor_backing "$label" "$arts"; then
+        nros_gate_scratch_failed "$work"
+        return 1
+    fi
     echo "  $label: OK — $n artifact(s), e.g. ${arts%%$'\n'*}" | sed "s|$pdir/||"
     rm -rf "$work"
     return 0
@@ -897,6 +1023,10 @@ run_scaffold() {
     n="$(printf '%s' "$arts" | grep -c . )"
     if [ "$n" -eq 0 ]; then
         echo "  $label: FAIL — build exited 0 but produced no executable (full log: $log)" >&2
+        nros_gate_scratch_failed "$work"
+        return 1
+    fi
+    if ! check_executor_backing "$label" "$arts"; then
         nros_gate_scratch_failed "$work"
         return 1
     fi
@@ -1176,6 +1306,7 @@ nros_gate_scratch_init "$gate" "$mode part=$part shard=$shard $*"
 if [ "$mode" = "self-test" ]; then
     rc=0
     classifier_self_test || rc=1
+    executor_backing_self_test || rc=1
     projects_self_test || rc=1
     preflight_self_test || rc=1
     scaffold_shape_self_test || rc=1
