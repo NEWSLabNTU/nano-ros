@@ -14,13 +14,16 @@
 //! start time, so a reused pid is not mistaken for a survivor, and a survivor
 //! is killed before the test reports it.
 //!
-//! The last case is the harness's own stop, `nros_tests::run::stop`, which
-//! kills the groups under the verb before the verb; it must leave nothing
-//! either.
+//! The harness's own stop, `nros_tests::run::stop`, kills the groups under the
+//! verb before the verb; it must leave nothing either.
+//!
+//! The Renode road (issue 2375): `nros_runner_renode` starts Renode as a
+//! process chain, so the Nucleo-F767ZI twin gets the SIGKILL case and a Ctrl-C
+//! case (SIGTERM to the verb), which must return only once the chain is gone.
 //!
 //! Compiles nothing: the images are fixture rows (`linux/rust/talker`, the
-//! mps2-an385 bare-metal Rust talker witness). A missing fixture is an unmet
-//! precondition.
+//! mps2-an385 bare-metal Rust talker witness, the Nucleo's C serial talker).
+//! A missing fixture is an unmet precondition.
 
 #![cfg(target_os = "linux")]
 
@@ -32,7 +35,8 @@ use std::{
 
 use nros_tests::{
     fixtures::{
-        RequireFixture, ZenohRouter, build_native_talker, build_qemu_bsp_talker, zenohd_unique,
+        RequireFixture, ZenohRouter, build_native_talker, build_qemu_bsp_talker,
+        build_zephyr_nucleo_c_serial_talker, zenohd_unique,
     },
     lane_scope,
     matrix::PlatformId,
@@ -232,4 +236,102 @@ fn harness_stop_leaves_no_qemu_guest() {
     let tree = running_tree(&mut verb, "QEMU", |p| comm(p).starts_with("qemu-system"));
     run::stop(&mut verb);
     assert_no_survivor(&tree, "`nros_tests::run::stop`");
+}
+
+/// The Nucleo-F767ZI's board package: its descriptor names the Renode twin.
+const NUCLEO_BOARD: &str = "nros-board-nucleo-f767zi-zephyr";
+
+/// The Renode emulator, by its executable: the portable build's `renode`
+/// (comm is truncated to 15 bytes, so the exe path is the reliable key).
+fn is_renode(pid: u32) -> bool {
+    std::fs::read_link(format!("/proc/{pid}/exe")).is_ok_and(|exe| {
+        exe.file_name().is_some_and(|n| {
+            n.to_string_lossy()
+                .to_ascii_lowercase()
+                .starts_with("renode")
+        })
+    }) || comm(pid).to_ascii_lowercase().starts_with("renode")
+}
+
+/// The recorded tree as `pid:comm` words, for the log: which processes the
+/// case found running, so a pass shows what it was a pass about.
+fn describe(tree: &[Proc]) -> String {
+    tree.iter()
+        .map(|p| format!("{}:{}", p.pid, comm(p.pid)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn nucleo_twin_plan() -> run::HostRun {
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[PlatformId::ZephyrNucleoF767zi],
+        "killed-run-verb on the Nucleo Renode twin",
+    );
+    let elf = build_zephyr_nucleo_c_serial_talker()
+        .require("zephyr/c/talker for nucleo_f767zi (image nucleo_serial)");
+    run::renode_image(&elf, NUCLEO_BOARD).expect("writing the plan")
+}
+
+/// Issue 2375 -- the Renode road: a SIGKILL to the verb alone takes the
+/// runner, Renode and anything Renode started with it.
+#[test]
+fn sigkilled_verb_leaves_no_renode_twin() {
+    let mut plan = nucleo_twin_plan();
+    let mut verb = spawn_verb(&mut plan);
+    let tree = running_tree(&mut verb, "Renode", is_renode);
+    eprintln!("recorded under the verb: {}", describe(&tree));
+    sigkill_verb_only(&mut verb);
+    assert_no_survivor(&tree, "a SIGKILLed `nros run` on the Renode twin");
+}
+
+/// Issue 2375 -- a Ctrl-C (SIGTERM to the verb) on the Renode twin returns
+/// only once the chain is gone, and the chain stops on the runner's own
+/// teardown, without the verb's SIGKILL fallback.
+#[test]
+fn sigtermed_verb_returns_after_the_renode_twin_is_gone() {
+    let mut plan = nucleo_twin_plan();
+    let log = tempfile::NamedTempFile::new().expect("a stderr log");
+    let mut cmd = plan.take_command();
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(log.reopen().expect("reopening the stderr log"));
+    nros_tests::process::set_orphan_group_suicide(&mut cmd);
+    let mut verb = cmd.spawn().expect("spawning `nros run`");
+    let tree = running_tree(&mut verb, "Renode", is_renode);
+    eprintln!("recorded under the verb: {}", describe(&tree));
+    // SAFETY: SIGTERM to the verb this test started.
+    unsafe { libc::kill(verb.id() as libc::pid_t, libc::SIGTERM) };
+    let started = Instant::now();
+    let status = loop {
+        if let Some(s) = verb.try_wait().expect("waiting on `nros run`") {
+            break s;
+        }
+        if started.elapsed() > TEARDOWN {
+            let _ = verb.kill();
+            let _ = verb.wait();
+            assert_no_survivor(&tree, "a SIGTERMed `nros run` on the Renode twin");
+            panic!("`nros run` did not return within {TEARDOWN:?} of SIGTERM");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let took = started.elapsed();
+    // The verb has returned: the chain must already be gone, with no grace.
+    let left: Vec<(u32, String)> = tree
+        .iter()
+        .filter(|&&p| alive(p))
+        .map(|p| (p.pid, comm(p.pid)))
+        .collect();
+    let stderr = std::fs::read_to_string(log.path()).unwrap_or_default();
+    eprintln!("`nros run` returned {status} {took:?} after SIGTERM");
+    if !left.is_empty() {
+        assert_no_survivor(&tree, "a SIGTERMed `nros run` on the Renode twin");
+    }
+    assert!(
+        left.is_empty(),
+        "`nros run` returned while the Renode chain was still running: {left:?}"
+    );
+    assert!(
+        !stderr.contains("killed it (SIGKILL)"),
+        "the Renode chain did not stop on its own teardown; the verb SIGKILLed it:\n{stderr}"
+    );
 }
