@@ -21,7 +21,7 @@ publishes a tag of the same version, and that tag never changes.
 
 - **Docker,** or another engine that runs Docker images, on a Linux x86_64
   host. The image is built for amd64 only.
-- **About 1.3 GB to download** and 4.5 GB of disk once unpacked.
+- **About 1.7 GB to download** and 4.5 GB of disk once unpacked.
 
 ## Try it
 
@@ -102,8 +102,8 @@ above. If the two disagree, the seat pulled something else; pull the digest
 again.
 
 **Pull before the session, not in it.** A lab link is the limit: on a
-100 Mbit/s link shared by 30 seats, every seat pulling the 1.3 GB image at
-once takes about 50 minutes. Pull the pinned digest on each seat the day
+100 Mbit/s link shared by 30 seats, every seat pulling the 1.7 GB image at
+once takes about 70 minutes. Pull the pinned digest on each seat the day
 before, or load it from a mirror on the lab network.
 
 ## Use it with no network
