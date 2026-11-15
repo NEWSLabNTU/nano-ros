@@ -1,15 +1,17 @@
 ---
 id: 2613
 title: "`weak_symbol_audit::owned_weak_symbols_are_audited` hits nextest's 60 s timeout on the hosted tier1 zephyr shard"
-status: open
+status: resolved
 type: bug
 area: [ci, testing]
 severity: medium
 found: 2026-11-15
+resolved: 2026-11-16
+resolved_in: "fix(#2613): the weak-symbol audit strips comments only from files that say \"weak\""
 related: [phase-559, 0050, 1543]
 ---
 
-**Owner:** unassigned. Found by phase-559 W12's acceptance dispatch, and not
+**Owner:** nros 139. Found by phase-559 W12's acceptance dispatch, and not
 caused by it.
 
 ## What happens
@@ -55,3 +57,14 @@ shard's parallel QEMU/native_sim tests), and then either make the scan
 cheaper, for example with one `git grep` over the tree instead of a loop of
 greps, or give the test a deliberate `test-group`/timeout override that names
 why. Do not raise the default timeout.
+
+## Resolution (2026-11-16)
+
+The cost was the per-file comment strip (`cpp -fpreprocessed` plus `grep`, two
+process spawns for each of the 971 owned sources), not the enumeration, which
+already came from `git ls-files`. One `grep -il weak` pass now picks the
+candidates, because every pattern the audit matches contains the literal word
+`weak` and stripping comments only removes text. Only those candidates are
+stripped and counted. Measured on server139 at load ~9: 4.0–5.0 s before,
+0.62 s after. Against an empty allowlist, the old and new scripts report the
+same 23 files with the same counts. The nextest timeout is unchanged.
