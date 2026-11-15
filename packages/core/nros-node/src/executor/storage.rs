@@ -1,5 +1,5 @@
-//! phase-271 / phase-409 — per-entry [`Executor`](super::spin::Executor)
-//! storage (issues 0110, 0563, 0936).
+//! Per-entry [`Executor`](super::spin::Executor)
+//! storage.
 //!
 //! The executor's sized tables (callback table + arena + scheduling-context
 //! tables + the node/session/dispatch tables) used to be inline fields sized by
@@ -371,7 +371,7 @@ struct FieldOffsets {
 }
 
 /// The placement arithmetic and its data types live in `nros-executor-layout`
-/// (issue 1197) so a HOST build script can evaluate them for a target it is not
+/// so a HOST build script can evaluate them for a target it is not
 /// compiling. Re-exported here because this is where every consumer already
 /// looks, and because `NATIVE` — the only part that names the types — has to
 /// live in the crate that owns them.
@@ -405,7 +405,7 @@ pub const NATIVE_UNITS: RegionUnits = RegionUnits {
     param_home: unit_of::<ParamHome>(),
 };
 
-/// issue 1197 — publish the backing's TOTAL size as a symbol whose storage size
+/// Publish the backing's TOTAL size as a symbol whose storage size
 /// IS the number, so a build script can recover it from the rlib without running
 /// anything. `nros-sizes-build::extract_sizes` reads exactly this shape, the way
 /// `nros-c` recovers `EXECUTOR_OPAQUE_U64S`.
@@ -518,7 +518,7 @@ const fn compute_offsets_with(sizing: ExecutorSizing, units: &RegionUnits) -> Fi
 
 /// Byte [`Layout`] of the backing, evaluated against a SUPPLIED unit table.
 ///
-/// issue 1197 — the public half of the split. `executor_storage_layout` is this
+/// The public half of the split. `executor_storage_layout` is this
 /// with `NATIVE_UNITS`; an external consumer that has recovered the
 /// units for another target (a build script probing an rlib, the way `nros-c`
 /// recovers `EXECUTOR_OPAQUE_U64S`) gets the same arithmetic rather than a
@@ -567,28 +567,28 @@ pub struct ExecutorSizing {
     pub sc: usize,
     /// Bump-allocator arena size in bytes.
     pub arena: usize,
-    /// phase-409 — Node slots. One worst-case extra session, extra-session id,
+    /// Node slots. One worst-case extra session, extra-session id,
     /// node-sched binding, component slot and callback-group filter entry per
     /// Node, so ONE count covers all six tables (that is the
     /// upper bound each of them already assumed under `MAX_NODES`).
     pub nodes: usize,
-    /// phase-382 W3' — parameter-store slots carved from the backing.
+    /// Parameter-store slots carved from the backing.
     ///
     /// The default is [`nros_params::IMPLIED_STORE_SLOTS`]: the store's full
     /// `MAX_PARAMETERS` when the build KNOWS the image builds one (the
     /// contract declares a parameter, the bringup declares `param_services`,
     /// or the launch seeds a `<param>`), and ZERO otherwise. Zero is not a
     /// degraded mode: an executor that carved no store and is asked for one
-    /// allocates it from the heap exactly as before, with issue 1706's named
+    /// allocates it from the heap exactly as before, with a named
     /// refusal if the heap cannot hold it.
     ///
-    /// Conditional rather than fixed, and that is a decision measured in
-    /// phase-382's W3' notes: a fixed `MAX_PARAMETERS` region adds the whole
+    /// Conditional rather than fixed, and that is a measured decision:
+    /// a fixed `MAX_PARAMETERS` region adds the whole
     /// store (280,832 B on armv7m at the default 32 slots) to every image's
     /// backing — Rust `EXECUTOR_BACKING`, every C/C++ `rclc_executor_t`, every
-    /// sched task slot — which is issue 1702's rejected `.bss` static, everywhere.
+    /// sched task slot — which is the rejected `.bss` static, everywhere.
     pub params: usize,
-    /// Issue 1971 -- RUNTIME remap-table slots: `--ros-args -r` rules and
+    /// RUNTIME remap-table slots: `--ros-args -r` rules and
     /// rules a hand-written caller declares with `declare_remap`. The launch
     /// file's rules are not here (one flash table, `super::launch_remap`).
     /// The default is [`crate::config::RUNTIME_REMAPS`]
@@ -617,7 +617,7 @@ impl ExecutorSizing {
         executor_storage_u64_len(*self)
     }
 
-    /// phase-412 #4 — refuse, at COMPILE time, a sizing whose arena is below
+    /// Refuse, at COMPILE time, a sizing whose arena is below
     /// what this image's declared entities are modelled to need.
     ///
     /// For a caller that supplies its own `const` sizing for the image's ONE
@@ -653,7 +653,7 @@ impl ExecutorSizing {
 /// its `_opaque` array, and reinterprets `_opaque` as `*mut ExecutorInlineStorage`
 /// (the executor stays at offset 0, so existing offset-0 accessors are unchanged).
 ///
-/// phase-409 — moving the last nine tables into the backing moves bytes from
+/// Moving the last nine tables into the backing moves bytes from
 /// `exec` to `backing` and leaves this total roughly where it was; what changes
 /// is the STACK, because the header is what `open_in` builds and returns by
 /// value.
@@ -663,13 +663,13 @@ pub struct ExecutorInlineStorage {
     pub exec: MaybeUninit<super::spin::Executor<'static>>,
     /// The carved backing the executor's slices borrow (the buffer's tail).
     ///
-    /// Issue 1970 -- [`INLINE_BACKING_U64S`] words: the image's whole
+    /// [`INLINE_BACKING_U64S`] words: the image's whole
     /// executor, or none at all on a sched-task image, whose sched tasks each carve a
     /// backing of their own size ([`sched_task_sizing`]).
     pub backing: [MaybeUninit<u64>; INLINE_BACKING_U64S],
 }
 
-/// Issue 1970 -- the sizing an inline backing is carved at: the image's
+/// The sizing an inline backing is carved at: the image's
 /// ([`ExecutorSizing::DEFAULT`]), or `None` on an image whose executors are
 /// sized per sched task ([`crate::config::SCHED_TASK_SIZINGS`] is non-empty). There the
 /// inline backing is EMPTY -- one whole-image backing per sched task context is the
@@ -682,13 +682,13 @@ pub const INLINE_SIZING: Option<ExecutorSizing> = if crate::config::SCHED_TASK_S
     None
 };
 
-/// Issue 1970 -- the inline backing's length in `u64` words.
+/// The inline backing's length in `u64` words.
 pub const INLINE_BACKING_U64S: usize = match INLINE_SIZING {
     Some(s) => s.u64_len(),
     None => 0,
 };
 
-/// Issue 1970 -- the [`ExecutorSizing`] one sched task's executor is carved at: its
+/// The [`ExecutorSizing`] one sched task's executor is carved at: its
 /// own callback slots, node slots, arena and declared parameters, and the
 /// image's scheduling-context count. A sched task that declares parameters on an
 /// image that carves no store carves none either (the store is built from
@@ -711,7 +711,7 @@ pub const fn sched_task_executor_sizing(t: &crate::config::SchedTaskSizing) -> E
     }
 }
 
-/// Issue 1970 -- the sizing of the sched task named `name`, `None` when the image
+/// The sizing of the sched task named `name`, `None` when the image
 /// sizes no sched task of that name.
 pub fn sched_task_sizing(name: &str) -> Option<ExecutorSizing> {
     crate::config::SCHED_TASK_SIZINGS
@@ -720,7 +720,7 @@ pub fn sched_task_sizing(name: &str) -> Option<ExecutorSizing> {
         .map(sched_task_executor_sizing)
 }
 
-/// Issue 1970 -- the backing bytes the `index`-th sched task's executor carves, `0`
+/// The backing bytes the `index`-th sched task's executor carves, `0`
 /// past the last sched task. What `nros::sizes::SCHED_TASK_BACKING_SIZE_<i>` publishes to
 /// the C/C++ header.
 pub const fn sched_task_backing_bytes(index: usize) -> usize {
@@ -732,7 +732,7 @@ pub const fn sched_task_backing_bytes(index: usize) -> usize {
     }
 }
 
-/// phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- the sizing of the
+/// The sizing of the
 /// ONE executor a level runner opens per core: every level's callbacks, nodes,
 /// arena and declared parameters, summed over the image's sched tasks (each row of
 /// the sched task table is one level). `None` when the image sizes no sched task.
@@ -785,7 +785,7 @@ pub(crate) const fn levels_arena_bytes(sched_task_arena_sum: usize, levels: usiz
     sched_task_arena_sum.saturating_sub(extra)
 }
 
-/// phase-509 P9b item 4 -- the backing bytes [`levels_executor_sizing`]
+/// The backing bytes [`levels_executor_sizing`]
 /// carves, `0` on an image that sizes no sched task. What
 /// `nros::sizes::LEVELS_BACKING_SIZE` publishes to the C/C++ header.
 pub const fn levels_backing_bytes() -> usize {

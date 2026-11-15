@@ -20,8 +20,8 @@
 //!   — `foo:=bar bar:=baz` sends `foo` to `bar`, never `baz`.
 //! * A `-r` followed by anything but a valid rule fails the parse.
 //! * `-p` / `--param` is followed by ONE token, `[node:]name:=value`, and
-//!   `--params-file` by a path. Both are parameter OVERRIDES (phase-482 W5,
-//!   RFC-0015 §9.4's POSIX row): reported through [`parse_ros_args_events`],
+//!   `--params-file` by a path. Both are parameter OVERRIDES (the
+//!   POSIX case): reported through [`parse_ros_args_events`],
 //!   installed with `Executor::install_argv_params`, and applied when a node
 //!   declares the parameter. The file is the caller's to read — this module
 //!   has no file system — and [`parse_params_yaml`] reads its text.
@@ -34,8 +34,8 @@
 //! `chatter`). rclcpp is no more lenient: `rclcpp::init` throws
 //! `UnknownROSArgsError` for any ROS argument rcl left unparsed.
 //!
-//! * `__node` / `__name` / `__ns` remaps — node IDENTITY. RFC-0046 makes the
-//!   launch the authority on a node's name and namespace, with the code's
+//! * `__node` / `__name` / `__ns` remaps — node IDENTITY. The launch is
+//!   the authority on a node's name and namespace, with the code's
 //!   default beneath it; an argv identity rung has not been ruled on.
 //! * `rostopic://` / `rosservice://` rules — kind-qualified remaps, which rcl
 //!   itself marks unfinished (`TODO(sloretz) add documentation about
@@ -47,7 +47,7 @@
 //!
 //! The parse borrows from the arguments it is given and reports each rule
 //! through a callback, so a board that reads its arguments from flash or a
-//! settings store (RFC-0015 §9.4's other rows) can drive it without an
+//! settings store (the other platform cases) can drive it without an
 //! allocator.
 
 /// The `-r`/`--remap` rule one argument carried: `[node:]from:=to`, borrowed
@@ -261,7 +261,7 @@ where
 }
 
 /// Parse `args` like [`parse_ros_args`], reporting remaps AND parameter
-/// overrides (`-p`, `--params-file`) in argv order — phase-482 W5.
+/// overrides (`-p`, `--params-file`) in argv order.
 pub fn parse_ros_args_events<'a, I, F>(args: I, on_arg: F) -> Result<(), RosArgsError<'a>>
 where
     I: IntoIterator<Item = &'a str>,
@@ -651,7 +651,7 @@ impl core::fmt::Display for ApplyParamsError<'_> {
 }
 
 #[cfg(all(any(has_rmw, test), feature = "param-store", feature = "alloc"))]
-/// [`apply_ros_args`], plus the parameter half — phase-482 W5.
+/// [`apply_ros_args`], plus the parameter half.
 ///
 /// `-r` rules are installed as [`apply_ros_args`] installs them. `-p` overrides
 /// and every `--params-file` (read through `read_file`, which is the caller's:

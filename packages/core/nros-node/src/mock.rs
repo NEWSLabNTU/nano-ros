@@ -28,7 +28,7 @@ type MockTake = Result<([u8; 256], usize), TransportError>;
 /// the accessor.
 const MOCK_NAME_MAX: usize = 64;
 
-/// Issue 1972 — the status-event registrations a mock entity accepted, so a
+/// The status-event registrations a mock entity accepted, so a
 /// test can fire one through the same `(kind, payload, ctx)` channel a backend
 /// uses and observe what the node API hands the application.
 #[derive(Default)]
@@ -78,7 +78,7 @@ impl MockEventRegs {
 /// handle retains it (`CffiPublisher::topic_name` writes the caller's string
 /// into the handle at create and never re-resolves it).
 ///
-/// ONE spelling for all four mock entities — phase-444. The accessor on the
+/// ONE spelling for all four mock entities. The accessor on the
 /// node-side handle (`EmbeddedPublisher::topic_name` and its five siblings)
 /// forwards to the CONCRETE backend handle, so the mock has to answer it too
 /// or `nros-node`'s own unit build does not compile.
@@ -126,12 +126,12 @@ pub struct MockSubscriber {
     /// exactly one registration path, and the unit suite had no way to reach
     /// the other arm at all.
     in_place: Cell<bool>,
-    /// Issue 1643 — what `count_matched_publishers` answers. `None` (the
+    /// What `count_matched_publishers` answers. `None` (the
     /// default) is the trait default, `Unsupported`, which is what every
     /// backend without the slot reports; a test sets `Some(n)` to stand for
     /// one that fills it (Cyclone).
     pub matched: Cell<Option<usize>>,
-    /// Issue 1972 — registered status-event callbacks.
+    /// Registered status-event callbacks.
     pub events: MockEventRegs,
 }
 
@@ -140,7 +140,7 @@ impl MockSubscriber {
         Self::new_named("")
     }
 
-    /// phase-444 — a subscriber that remembers its topic, so
+    /// A subscriber that remembers its topic, so
     /// `Subscription::topic_name` has something to hand back.
     pub fn new_named(topic_name: &str) -> Self {
         Self {
@@ -157,7 +157,7 @@ impl MockSubscriber {
         self.topic_name.as_str()
     }
 
-    /// Make this mock advertise in-place dispatch — phase-456 W8. See
+    /// Make this mock advertise in-place dispatch. See
     /// [`Self::in_place`].
     pub fn set_in_place(&self, yes: bool) {
         self.in_place.set(yes);
@@ -169,7 +169,7 @@ impl MockSubscriber {
     }
 
     /// Enqueue one canned FAILURE (FIFO), so a test can drive the drain loop's
-    /// error arm — issue 0757. `has_data` still reports true for it: that is
+    /// error arm. `has_data` still reports true for it: that is
     /// exactly the state the bug lived in, a subscription the executor believes
     /// is ready whose take then fails.
     pub fn load_error(&self, err: TransportError) {
@@ -245,9 +245,9 @@ impl Subscription for MockSubscriber {
 
 /// Mock service server (needed for Session).
 /// Mock service server that can be loaded with a canned CDR request, so unit
-/// tests can drive a service callback through `spin_once` (Phase 189.M3.3.d).
+/// tests can drive a service callback through `spin_once`.
 ///
-/// Phase 237 — `take_request` hands out a distinct, monotonically increasing
+/// `take_request` hands out a distinct, monotonically increasing
 /// `sequence_number` per request (the reply-correlation token), and `send_response`
 /// records `(seq, data)` so tests can assert deferred replies route to the right
 /// requester — the concurrent-safety the seq-keyed backends guarantee.
@@ -276,7 +276,7 @@ impl MockServiceServer {
         Self::new_named("")
     }
 
-    /// phase-444 — a server that remembers its service name, so
+    /// A server that remembers its service name, so
     /// `EmbeddedServiceServer::service_name` has something to hand back.
     pub fn new_named(service_name: &str) -> Self {
         Self {
@@ -290,7 +290,7 @@ impl MockServiceServer {
         }
     }
 
-    /// Issue 1352 — make the next `take_request` fail with `err`, once.
+    /// Make the next `take_request` fail with `err`, once.
     pub fn load_error(&self, err: TransportError) {
         *self.pending_error.borrow_mut() = Some(err);
     }
@@ -305,7 +305,7 @@ impl MockServiceServer {
         self.pending_info.set(nros_core::ServiceInfo::NOT_REPORTED);
     }
 
-    /// Issue 1942 — [`load`](Self::load) a request that carries `info`, the
+    /// [`load`](Self::load) a request that carries `info`, the
     /// way a backend that reports per-request metadata delivers one.
     pub fn load_with_info(&self, data: [u8; 256], len: usize, info: nros_core::ServiceInfo) {
         self.pending.set(Some((data, len)));
@@ -369,7 +369,7 @@ pub type MockPublished = ([u8; MOCK_PUBLISH_RECORD], usize);
 
 /// Publisher that sends nowhere but REMEMBERS what it was handed.
 ///
-/// It recorded nothing until issue 1361, so every status-array assertion in the
+/// It recorded nothing at first, so every status-array assertion in the
 /// suite was necessarily about the core's internal tables rather than about the
 /// bytes a subscriber receives — which is exactly where 1361 lived: the tables
 /// were right and the published array was empty. A publisher double that drops
@@ -383,10 +383,10 @@ pub struct MockPublisher {
     count: Cell<usize>,
     /// phase-444 — the topic this publisher was created on.
     topic_name: MockName,
-    /// Issue 1643 — what `count_matched_subscriptions` answers. See
+    /// What `count_matched_subscriptions` answers. See
     /// [`MockSubscriber::matched`].
     pub matched: Cell<Option<usize>>,
-    /// Issue 1972 — registered status-event callbacks.
+    /// Registered status-event callbacks.
     pub events: MockEventRegs,
 }
 
@@ -395,7 +395,7 @@ impl MockPublisher {
         Self::new_named("")
     }
 
-    /// phase-444 — a publisher that remembers its topic, so
+    /// A publisher that remembers its topic, so
     /// `EmbeddedPublisher::topic_name` has something to hand back.
     pub fn new_named(topic_name: &str) -> Self {
         Self {
@@ -492,17 +492,17 @@ impl Publisher for MockPublisher {
 pub struct MockServiceClient {
     /// Pre-loaded reply data to return on next `take_response_raw` call.
     pub pending_reply: Cell<Option<([u8; 256], usize)>>,
-    /// Issue 0778 — the id handed to the next `send_request_raw`.
+    /// The id handed to the next `send_request_raw`.
     pub next_seq: Cell<i64>,
     /// The id of the most recent send; what a reply is reported against.
     pub last_sent_seq: Cell<Option<i64>>,
-    /// Issue 2009 — the id the pre-loaded reply reports instead, set by
+    /// The id the pre-loaded reply reports instead, set by
     /// [`load_reply_for`](Self::load_reply_for).
     pub pending_reply_seq: Cell<Option<i64>>,
-    /// Issue 2136 — the info the pre-loaded reply reports, set by
+    /// The info the pre-loaded reply reports, set by
     /// [`load_reply_info`](Self::load_reply_info); taken with the reply.
     pub pending_reply_info: Cell<nros_core::ServiceInfo>,
-    /// Issue 2136 — the info of the reply the last take returned.
+    /// The info of the reply the last take returned.
     pub last_reply_info: Cell<nros_core::ServiceInfo>,
     /// phase-444 — the service this client was created on.
     service_name: MockName,
@@ -513,7 +513,7 @@ impl MockServiceClient {
         Self::new_named("")
     }
 
-    /// phase-444 — a client that remembers its service name, so
+    /// A client that remembers its service name, so
     /// `EmbeddedServiceClient::service_name` has something to hand back.
     pub fn new_named(service_name: &str) -> Self {
         Self {
@@ -527,7 +527,7 @@ impl MockServiceClient {
         }
     }
 
-    /// Issue 2136 — the info the next taken reply reports.
+    /// The info the next taken reply reports.
     pub fn load_reply_info(&self, info: nros_core::ServiceInfo) {
         self.pending_reply_info.set(info);
     }
@@ -543,7 +543,7 @@ impl MockServiceClient {
         self.pending_reply_seq.set(None);
     }
 
-    /// Issue 2009 — load a reply that answers the request sent as `seq`,
+    /// Load a reply that answers the request sent as `seq`,
     /// whatever was sent since.
     pub fn load_reply_for(&self, seq: i64, data: [u8; 256], len: usize) {
         self.pending_reply.set(Some((data, len)));
@@ -687,7 +687,7 @@ impl MockSession {
             .map(|(_, h, _)| h.clone())
     }
 
-    /// phase-515 R1 — the QoS the entity named `name` was REQUESTED with
+    /// The QoS the entity named `name` was REQUESTED with
     /// (what the executor handed the backend), if one was created.
     pub fn created_qos(&self, name: &str) -> Option<QoSProfile> {
         self.created
@@ -710,7 +710,7 @@ impl MockSession {
         }
     }
 
-    /// phase-456 W8 — a session whose subscribers advertise in-place dispatch,
+    /// A session whose subscribers advertise in-place dispatch,
     /// which is what a zenoh or XRCE image has. See the field doc.
     pub fn with_in_place_dispatch() -> Self {
         Self {
@@ -719,7 +719,7 @@ impl MockSession {
         }
     }
 
-    /// Issue 1268 — a session whose `create_service` always fails with `error`,
+    /// A session whose `create_service` always fails with `error`,
     /// counting each attempt into `attempts`.
     pub fn with_failing_service_create(
         error: TransportError,
@@ -751,7 +751,7 @@ impl MockSession {
         }
     }
 
-    /// phase-444 — a session that answers the graph slots with [`CANNED`]
+    /// A session that answers the graph slots with [`CANNED`]
     /// instead of `Unsupported`.
     ///
     /// Every slot answers DISTINGUISHABLY, because the bug a forwarder
@@ -794,10 +794,10 @@ pub mod canned {
     pub const PUBLISHERS: usize = 3;
     /// `count_subscribers`.
     pub const SUBSCRIBERS: usize = 7;
-    /// `count_clients` (issue 1978). Distinct from every other count so a
+    /// `count_clients`. Distinct from every other count so a
     /// forwarder wired to the wrong counter fails.
     pub const CLIENTS: usize = 11;
-    /// `count_services` (issue 1978).
+    /// `count_services`.
     pub const SERVICES: usize = 13;
 
     /// The marker `get_names_and_types_by_node` emits for each entity kind.

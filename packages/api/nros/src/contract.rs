@@ -1,13 +1,13 @@
 //! Contract monitors on target, and the `/diagnostics` reporter they publish
-//! through — issues 1635 and 1676, ONE implementation for every language.
+//! through — ONE implementation for every language.
 //!
-//! RFC-0052 / phase-296 W3b: a contracted image bakes monitor tables
+//! A contracted image bakes monitor tables
 //! (`min_rate_hz` / `max_latency_ms` per publisher, `max_age_ms` per
 //! subscriber), the executor checks them every spin and logs each violation at
-//! detection (issue 0514's floor). Issue 1635 made a C or C++ image also
+//! detection (the floor every image keeps). A C or C++ image can also
 //! PUBLISH each one as a `DiagnosticArray` on `/diagnostics`, through a
 //! reporter `nros-cpp` armed when the tables were installed. The Rust entry
-//! (`nros::main!`) installed no table at all (issue 1676), so it neither
+//! (`nros::main!`) installed no table at all, so it neither
 //! monitored nor reported.
 //!
 //! This module is that reporter, moved up to the umbrella so the three
@@ -19,8 +19,8 @@
 //! (`DiagnosticReporter::report_violation`, streamed by
 //! `write_violation_reports` so the report never sits on the spin thread's
 //! stack as a value), so a violation reads the same from every road. The
-//! executor hands the reporter its queued verdicts off the judged dispatch
-//! (phase-474 I7), and one report carries as many as fit one message.
+//! executor hands the reporter its queued verdicts off the judged dispatch,
+//! and one report carries as many as fit one message.
 
 use core::{cell::UnsafeCell, ffi::c_void};
 
@@ -178,7 +178,7 @@ impl Default for ContractReporter {
 }
 
 /// Install a contracted Rust image's monitor tables on one executor, and arm
-/// its `/diagnostics` reporter — issue 1676.
+/// its `/diagnostics` reporter.
 ///
 /// The Rust spelling of `nros_cpp_install_monitors`. Call BEFORE any node is
 /// created on the executor: a publisher attaches its counter cell by exact
@@ -241,7 +241,7 @@ pub unsafe fn install_contract_monitors(
     Ok(())
 }
 
-/// phase-462 W3b -- install a contracted Rust image's hazard table on one
+/// Install a contracted Rust image's hazard table on one
 /// executor, after [`install_contract_monitors`] (each hazard's guards index
 /// the two tables that call installs). `nros::main!` emits this only for an
 /// executor whose tables observe a hazard; the observer then reports
@@ -264,7 +264,7 @@ pub unsafe fn install_contract_hazards(
     }
 }
 
-/// phase-462 W4 -- install a contracted Rust image's MODE variants of the two
+/// Install a contracted Rust image's MODE variants of the two
 /// monitor tables on one executor, after [`install_contract_monitors`] (entry
 /// 0 of `modes` is that call's base tables). `nros::main!` emits this only
 /// for a model that declares modes; `nros::monitor::request_mode` then
@@ -293,7 +293,7 @@ pub unsafe fn install_contract_modes(
 /// Arm one executor's `/diagnostics` reporter in `slot`, and point the
 /// executor's violation sink at it — THE arming step, shared by
 /// [`install_contract_monitors`] (Rust) and `nros-cpp`'s
-/// `nros_cpp_install_monitors` (C and C++), issue 1693.
+/// `nros_cpp_install_monitors` (C and C++).
 ///
 /// * Idempotent: a slot already holding a reporter keeps it.
 /// * A CENSUS run arms nothing ([`crate::census_hooks::recording_run`]): it
@@ -301,7 +301,7 @@ pub unsafe fn install_contract_modes(
 ///   node open yet to attribute it to — it refused the publisher, and the
 ///   C/C++ road turned that refusal into a failed setup that recorded nothing.
 /// * A publisher that cannot be created is REPORTED, never fatal: the tables
-///   stay installed and every violation still reaches the log (issue 0514's
+///   stay installed and every violation still reaches the log (the
 ///   floor). Both roads say so in the one message below; before this the C/C++
 ///   road logged "violations stay in the log only" and then failed the setup.
 ///

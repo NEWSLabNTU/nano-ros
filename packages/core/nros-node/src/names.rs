@@ -1,4 +1,4 @@
-//! ROS 2 name expansion + launch remap resolution (issue 0255 / phase-306 W3).
+//! ROS 2 name expansion + launch remap resolution.
 //!
 //! The ONE resolution seam both entry-codegen twins funnel through: the Rust
 //! `ExecutorSink` (nros `node_runtime`) and the C-ABI registration paths
@@ -184,7 +184,7 @@ where
 /// # The rule this encodes
 ///
 /// **Launch is authoritative; anything else is a fallback for a name the launch
-/// projected no rule for.** That is RFC-0046's precedence for node identity
+/// projected no rule for.** That is the launch-authoritative precedence for node identity
 /// (launch overrides the code-provided default) applied to the remap half of
 /// the same question, and it is rcl's own arrangement: `rcl_remap_topic_name`
 /// checks the node's LOCAL arguments (how a launch file or component container

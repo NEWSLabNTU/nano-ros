@@ -43,7 +43,7 @@
 //!   callback closures inline.
 //!
 //! A subscription's arena receive buffer is sized from the MESSAGE TYPE's own
-//! serialized bound (phase-392 W3c), not from that knob, wherever the bound is
+//! serialized bound, not from that knob, wherever the bound is
 //! reachable. `.rx_buffer::<N>()` is the opt-out: it says "give me exactly `N`
 //! bytes per slot" and skips the derivation, which is what a peer that pads or
 //! a `.msg` bound looser than the traffic needs (e.g.
@@ -51,12 +51,12 @@
 //!
 //! ## Transport Backends
 //!
-//! Phase 248 C5c — `nros` is RMW- and platform-AGNOSTIC. It carries only the
+//! `nros` is RMW- and platform-AGNOSTIC. It carries only the
 //! `rmw-cffi` vtable; the concrete backend (zenoh / xrce / cyclonedds) enters
 //! the link graph via the board crate (embedded), the board-less app's own
 //! `nros-rmw-*` dep (native), or the `nros-c`/`nros-cpp` staticlib root (D3),
 //! and self-registers — before `main` on a hosted target (an `.init_array`
-//! ctor, phase-249 P4b.1; the ~~`RMW_INIT_ENTRIES`~~ walker at `Executor::open`
+//! ctor; the ~~`RMW_INIT_ENTRIES`~~ walker at `Executor::open`
 //! before that), or through the board's explicit `<backend>::register()`.
 //! The concrete session type is resolved automatically; advanced users can
 //! access it via `nros::internals::RmwSession`.
@@ -67,15 +67,15 @@
 //! vtable, `lending`, `bridge`/`config`, `param-services`,
 //! `lifecycle-services`, `safety-e2e`, `stream`, and the ROS
 //! edition (`ros-humble`/`ros-iron`). There are NO `platform-*` or concrete
-//! `rmw-*` selector features (Phase 248 C7). Platform + RMW are selected by the
+//! `rmw-*` selector features. Platform + RMW are selected by the
 //! board / staticlib root via dependencies, not `nros` features. The
 //! `zephyr_component_main!` entry macro is gated only on `rmw-cffi` (it's
 //! framework entry codegen, like `nros::main!`), not a platform feature.
 //!
-//! **ROS edition** (select one; RFC-0056 — the per-distro interop profile):
+//! **ROS edition** (select one; the per-distro interop profile):
 //! - `ros-humble` - ROS 2 Humble (default; `TypeHashNotSupported`, XCDR1)
 //! - `ros-iron` - ROS 2 Iron (RIHS01 type hash)
-//! - `ros-jazzy` - ROS 2 Jazzy (RIHS01; XCDR2/appendable is phase-303)
+//! - `ros-jazzy` - ROS 2 Jazzy (RIHS01; XCDR2/appendable interop is parked)
 //!
 //! **Other**:
 //! - `std` (default) - Enable standard library support
@@ -167,17 +167,17 @@ pub mod dispatch_tag;
 pub mod guide;
 #[cfg(feature = "metadata-mode")]
 pub mod metadata_mode;
-/// phase-463 W7 — the host profile (`nros_node::executor::profile`), for the
+/// The host profile (`nros_node::executor::profile`), for the
 /// hosted edges that read `$NROS_PROFILE_OUT` (`nros-cpp`, `nros-board-linux`).
 #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
 pub use nros_node::executor::profile;
-/// phase-509 P10 (RFC-0108) -- the Rust sched task runners' level core: one
+/// The Rust sched task runners' level core: one
 /// executor per core, a worker per level.
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 pub mod levels;
 pub mod node;
 pub mod node_metadata;
-/// Phase 212.M.5.a.2 — executor-backed component runtime.
+/// Executor-backed component runtime.
 ///
 /// Binds [`Node`] / [`ExecutableNode`] to a live
 /// [`Executor`] so a Node pkg can actually run (versus
@@ -185,7 +185,7 @@ pub mod node_metadata;
 /// is the planner-side metadata sink).
 ///
 /// Gated on `rmw-cffi`; the underlying [`Executor`] is only present
-/// when an RMW backend is linked. W5-endgame (issue 0843): the MACRO install
+/// when an RMW backend is linked. The MACRO install
 /// path (per-class static storage, placed cells, slabbed ctxs) is alloc-free,
 /// so the module no longer demands `alloc` — only the dynamic
 /// `ExecutorNodeRuntime` half does, item-gated inside.
@@ -193,12 +193,12 @@ pub mod node_metadata;
 pub mod node_runtime;
 pub mod runtime_storage;
 
-/// Issue 1535 — what a `void*` executor handle crossing the language seam is,
+/// What a `void*` executor handle crossing the language seam is,
 /// and the one check every seam in this crate makes before treating it as an
 /// `Executor` (a C/C++ entry's handle is an nros-cpp context, not one).
 pub mod executor_handle;
 
-/// Phase 212.L.5 — top-level init API; phase-427 W9 — on every target.
+/// Top-level init API, on every target.
 ///
 /// Re-exported flat at the crate root: `nros::Context` (`alloc`),
 /// `nros::ContextSource`, `nros::InitError`, `nros::InitOptions` (every
@@ -208,20 +208,20 @@ pub mod executor_handle;
 /// bake (`Context::baked()`).
 pub mod init;
 
-/// issue 0687 — the hosted edge of configuration: every env var nano-ros
+/// The hosted edge of configuration: every env var nano-ros
 /// honours is read here, and the core takes values.
 ///
-/// phase-359 W10 stage B — read through the C library's `getenv`, so it needs
+/// Read through the C library's `getenv`, so it needs
 /// a C library and not `std`: `target_os = "linux"` is "a C library is linked"
 /// on this tree. It exists on every Linux build, `env` or not, because the
 /// C / C++ entries of a `#![no_std]` image inside a host process
-/// (threadx-linux, freertos-posix — issue 1763) resolve their boot config
+/// (threadx-linux, freertos-posix) resolve their boot config
 /// through it. The `env` FEATURE is the user-facing half: `from_env`, `init*`,
 /// `Context::new`.
 #[cfg(target_os = "linux")]
 pub mod env;
 
-/// phase-484 W8c — the retired env aliases the hosted reader refuses.
+/// The retired env aliases the hosted reader refuses.
 pub mod retired_env;
 pub use retired_env::RETIRED_ENV_VARS;
 
@@ -244,9 +244,9 @@ pub use init::{init, init_with_args};
 /// to `nros-c` / `nros-cpp` at build time.
 pub mod sizes;
 
-/// Monotonic time for portable node code (issue #504).
+/// Monotonic time for portable node code.
 ///
-/// phase-359 W10 — `rmw-cffi`, not `any(std, rmw-cffi)`: the clock is the
+/// `rmw-cffi`, not `any(std, rmw-cffi)`: the clock is the
 /// platform port's, and a build with no port has none to offer.
 #[cfg(feature = "rmw-cffi")]
 pub mod time;
@@ -364,7 +364,7 @@ pub use node::{CallbackEffects, Component, DeclarativeNode, ExecutableNode, Node
 // not `std`.
 #[cfg(feature = "alloc")]
 pub use node_metadata::SourceMetadataExport;
-/// phase-381 follow-up — the node-FQN join, at the crate root because that is
+/// The node-FQN join, at the crate root because that is
 /// where a user looks after `Executor::get_node_names` hands them the two
 /// halves. `nros_node::names` also has `expand_name` / `resolve_name`, which
 /// stay behind `node_metadata` — they are the entity-name seam, not this.
@@ -391,7 +391,7 @@ pub use node_runtime::{ExecutorError, RegisteredNode};
 /// What `nros::node!`, `nros::main!`, the generated entry points and the board
 /// entry glue expand into — never what a node author writes.
 ///
-/// RFC-0071 D12 (phase-506 W1, issue 1789). These sat at the top of `nros::`
+/// These sat at the top of `nros::`
 /// beside the user API, public only because generated code resolves them
 /// through `::nros::`. Gathering them here keeps every path reachable for
 /// generated code and takes them off the surface a porting user browses.
@@ -951,7 +951,7 @@ pub use nros_node::timer::TimerClockSource;
 // `TimerClockSource` is: the declarative surface compiles in metadata mode.
 pub use nros_node::timer::TimerCallInfo;
 
-/// phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout` log
+/// Ledger row `c:logging_rosout_enabled` — the `/rosout` log
 /// bridge. A module re-export rather than a flat one: the names a caller
 /// needs (`enable`, `pump`, `qos`, `qos_bounded`, `TOPIC`) are generic words
 /// that only read correctly under the `rosout::` prefix.
@@ -978,7 +978,7 @@ pub use nros_rmw::{
 // configuration even though it is defined beside the seam.
 pub use nros_rmw::SessionMode;
 
-/// Phase 108.B — standard ROS-2-equivalent QoS profiles. Match
+/// Standard ROS-2-equivalent QoS profiles. Match
 /// upstream `rmw_qos_profile_default` etc. field-by-field. Backends
 /// validate against these synchronously at create time; no silent
 /// downgrade.
@@ -1013,7 +1013,7 @@ pub const QOS_PROFILE_ACTION_STATUS_DEFAULT: QoSProfile =
 
 /// The five presets under their older, shorter names.
 ///
-/// **Every one of these is an ALIAS.** phase-428 W10 — this module used to
+/// **Every one of these is an ALIAS.** This module used to
 /// RESTATE four of the five as struct literals: `DEFAULT` spelled all ten fields
 /// out, `SENSOR_DATA` and `PARAMETERS` were `..DEFAULT` updates of it, and
 /// `SERVICES_DEFAULT` was `= DEFAULT` — a second, independent transcription of
@@ -1062,7 +1062,7 @@ pub mod qos {
     /// policy is the SYSTEM_DEFAULT sentinel and the depth is the depth
     /// sentinel, resolved by whichever backend is linked.
     ///
-    /// issue 0829 — this said `= DEFAULT` (depth 10) while
+    /// This said `= DEFAULT` (depth 10) while
     /// `QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT` said depth 1, so one name
     /// shipped two queue depths depending on which spelling a caller reached.
     /// It was the first of these to become an alias, and since W10 it is no
@@ -1112,14 +1112,14 @@ pub mod internals {
     #[cfg(feature = "rmw-cffi")]
     pub type RmwServiceClient = nros_rmw_cffi::CffiClient;
 
-    /// Phase 124.A — zero-copy publisher slot type. Lives in the
+    /// Zero-copy publisher slot type. Lives in the
     /// `internals` module so `nros-c` can construct + transmute the
     /// lifetime when boxing the slot for the C-side `_loan` /
     /// `_commit` / `_discard` token plumbing.
     #[cfg(all(feature = "rmw-cffi", feature = "lending"))]
     pub type RmwSlot<'a> = nros_rmw_cffi::CffiSlot<'a>;
 
-    /// Phase 124.A — zero-copy subscriber view type.
+    /// Zero-copy subscriber view type.
     #[cfg(all(feature = "rmw-cffi", feature = "lending"))]
     pub type RmwView<'a> = nros_rmw_cffi::CffiView<'a>;
 
@@ -1128,13 +1128,13 @@ pub mod internals {
     /// Wraps the backend-specific session constructor behind a common signature.
     /// Used by the C API (`nros-c`); Rust users should prefer `Executor::open()`.
     ///
-    /// Phase 156 — takes an explicit primary backend by name, mirroring what
+    /// Takes an explicit primary backend by name, mirroring what
     /// `Executor::open` does for Rust callers. Without it, C bridges built with
     /// two linked backends (e.g. xrce + dds) get whichever ctor fires first —
     /// non-deterministic across link orderings, and often the wrong backend for
     /// the bridge's intended primary.
     ///
-    /// Issue 1050 defect (3) — `rmw` is the RESOLVED selector, not a second
+    /// `rmw` is the RESOLVED selector, not a second
     /// reading of the environment. This function used to consult
     /// `rmw_selector()` itself, which made it the tree's second answer to "which
     /// backend?" and blind to every rung but the environment: a C image with a
@@ -1236,7 +1236,7 @@ pub use nros_node::{
 // type a user could name and never receive. RFC-0036's Errors row now describes
 // what these two are.
 // ---------------------------------------------------------------------------
-/// phase-436 W7 — installing a port's park primitive, with the wake-object
+/// Installing a port's park primitive, with the wake-object
 /// constraint stated once. Board entries reach it through this facade because
 /// that is the dependency they already carry.
 ///
@@ -1250,7 +1250,7 @@ pub use nros_node::{
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::executor::port_park;
 
-/// phase-436 B2 — the other half of the seam, for the boards that now use it.
+/// The other half of the seam, for the boards that now use it.
 ///
 /// `port_park` above is what a port hands the executor to WAIT with;
 /// these are what it hands the executor to be told WHEN. A board registering
@@ -1260,7 +1260,7 @@ pub use nros_node::executor::port_park;
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::executor::{MAX_WAKE_SOURCES, NextDeadlineFn, WakeSourceId};
 
-/// issue 1571 — the spawned sched tasks' executor backing. `nros::main!` emits one
+/// The spawned sched tasks' executor backing. `nros::main!` emits one
 /// `SchedTaskExecutorBacking` static per sched-task entry and hands its slots to the
 /// board's `run_sched_tasks`, which refuses a short block through
 /// `check_sched_task_executor_backing` and opens each spawned sched task with
@@ -1272,7 +1272,7 @@ pub use nros_node::executor::{
     SchedTaskExecutorBackingSlot, SchedTaskSetupGate, SchedTaskSetupGuard,
     check_sched_task_executor_backing,
 };
-/// issue 1598 — each spawned sched task's TASK memory (stack + control block):
+/// Each spawned sched task's TASK memory (stack + control block):
 /// `nros::main!` emits one `SchedTaskMemory` static per spawned sched task, sized from
 /// its `stack_bytes`, and hands the `SchedTaskMemorySet` rows to a board whose
 /// sched task runner creates the task over them (FreeRTOS `xTaskCreateStatic`).
@@ -1281,7 +1281,7 @@ pub use nros_node::executor::{
     SCHED_TASK_TCB_U64S, SchedTaskMemory, SchedTaskMemoryRaw, SchedTaskMemorySet,
 };
 
-/// phase-509 P7 (RFC-0108 D8) -- which level an executor is, and whether every
+/// Which level an executor is, and whether every
 /// level of the image is alive: what a supervisor that owns a route per level
 /// or feeds a watchdog reads, and what a board's sched task runner states (the level
 /// count, and each sched task's level by [`sched_task_level_by`]). Plain atomics in
@@ -1339,21 +1339,21 @@ pub use nros_node::config::arena_size_for;
 
 /// The configured default receive-buffer size (`NROS_SUBSCRIPTION_BUFFER_SIZE`).
 ///
-/// NOT a fallback for a missing bound any more (phase-403 W0): [`rx_buffer_for!`]
+/// NOT a fallback for a missing bound any more: [`rx_buffer_for!`]
 /// used to expand to this for an unbounded type and now refuses to compile
 /// instead. It stays public, and stays the default, for the paths that have no
 /// `M` to ask rather than a bound they declined to use -- `create_subscription_raw`
-/// and the RFC-0043 type-name-string subscriptions, the service / action / TX
+/// and the type-name-string subscriptions, the service / action / TX
 /// buffer defaults, the `pubsub_entry` term of the arena derivation in
 /// `nros-node/build.rs`, and its weld to the C API's `MESSAGE_BUFFER_SIZE`.
-/// Whether the arena derivation should stop leaning on it is a phase-403 W5
+/// Whether the arena derivation should stop leaning on it is a separate
 /// question.
 ///
 /// Re-exported here (rather than reached through `nros_node`) because a macro
 /// expands at the CALLER, where `nros_node` may not be a dependency at all.
 pub use nros_node::config::DEFAULT_RX_BUF_SIZE;
 
-/// Phase 392 W3b — the bound behind [`rx_buffer_for!`]. Not part of the stable
+/// The bound behind [`rx_buffer_for!`]. Not part of the stable
 /// surface; call the macro.
 ///
 /// Public only because a `macro_rules!` body is expanded in the caller's crate
@@ -1382,17 +1382,17 @@ pub use nros_platform::DispatchStrategy;
 /// reference `RuntimeCtx` / `RuntimeError` / the `Node*Fn`
 /// fn-pointer aliases without forcing every consumer Node pkg's
 /// `Cargo.toml` to carry an explicit `nros-platform` dep on top of
-/// `nros`. Phase 212.M-F.13 path (b).
+/// `nros`.
 ///
 /// Not part of the public API — paths under this module may change at
 /// any time. End users should depend on `nros` alone and invoke
 /// `nros::node!()`; the macro routes through here automatically.
 #[doc(hidden)]
 pub mod __macro_support {
-    /// RFC-0109 D8 — the baked `rmw/zenoh.json5` session-property table.
+    /// The baked `rmw/zenoh.json5` session-property table.
     pub use ::nros_node::{SessionProperty, set_session_properties};
 
-    /// Issue 2051 — the table `nros build` rendered for a Zephyr Rust west
+    /// The table `nros build` rendered for a Zephyr Rust west
     /// application (`NROS_SESSION_PROPERTIES_RS`), for the entry macro that
     /// cannot read the text at expansion ([`crate::zephyr_component_main!`]).
     /// Empty when the build names none.
@@ -1401,7 +1401,7 @@ pub mod __macro_support {
     }
     pub use ::nros_platform;
 
-    /// phase-314 — whether THIS `nros` build carries the parameter services.
+    /// Whether THIS `nros` build carries the parameter services.
     ///
     /// The `nros::main!` expansion const-asserts it when the system declares
     /// `[param_services]`. A cfg in the entry crate cannot see this: the
@@ -1413,14 +1413,14 @@ pub mod __macro_support {
     /// returns nothing.
     pub const PARAM_SERVICES_ENABLED: bool = cfg!(feature = "param-services");
 
-    /// phase-461 W6 — whether THIS `nros` build carries the parameter STORE
+    /// Whether THIS `nros` build carries the parameter STORE
     /// (`param-store`, which `param-services` implies). A system declaring the
     /// `params` axis const-asserts it, for the reason above: without the
     /// feature `apply_param_store` is a no-op and every `declare_parameter`
     /// is refused at boot instead of at compile time.
     pub const PARAM_STORE_ENABLED: bool = cfg!(feature = "param-store");
 
-    /// Issue 1766 — the same answer for the other capability axes a leaf
+    /// The same answer for the other capability axes a leaf
     /// can declare in `[system] features`. A Form-1 `nros::main!()`
     /// const-asserts the flag of every declared axis
     /// (`nros_orchestration_ir::leaf_capabilities::LeafAxis::compiled_flag`),
@@ -1432,7 +1432,7 @@ pub mod __macro_support {
     /// See [`LIFECYCLE_SERVICES_ENABLED`].
     pub const ROSOUT_ENABLED: bool = cfg!(feature = "rosout");
 
-    /// Issue 0257 — the build-time executor callback-table size
+    /// The build-time executor callback-table size
     /// (`NROS_EXECUTOR_MAX_CBS`, default 4). Re-exported so the `nros::main!`
     /// expansion can `const`-assert the model's entity count against the
     /// capacity that ACTUALLY compiles in, instead of letting the image boot
@@ -1508,7 +1508,7 @@ pub use nros_bridge::run_from_config;
 // list stopped at ten names, so a user of the facade could build a range
 // through the builder's scalar arguments and never NAME the type it produced.
 // An unexported type is a capability a user cannot write down.
-/// Deprecated (phase-515): the store answers `Result<(), ParameterError>`.
+/// Deprecated: the store answers `Result<(), ParameterError>`.
 #[allow(deprecated)]
 pub use nros_params::SetParameterResult;
 #[allow(deprecated)]
@@ -1542,7 +1542,7 @@ pub use nros_node::parameter_services::ValueConversionError;
 /// ```
 /// use nros::prelude::*;
 /// ```
-/// phase-379 W5 — the RTOS machinery, named explicitly.
+/// The RTOS machinery, named explicitly.
 ///
 /// The second tier of the two-tier surface. `nros::prelude` is the API a ported
 /// ROS 2 node uses; everything here exists because the target is an RTOS, has no

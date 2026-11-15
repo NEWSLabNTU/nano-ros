@@ -1,6 +1,6 @@
-//! Per-type descriptor registration — generic seam (Phase 248 C2).
+//! Per-type descriptor registration — generic seam.
 //!
-//! (issue #225 — formerly ~~`cyclonedds_register`~~: the seam was already
+//! (formerly ~~`cyclonedds_register`~~: the seam was already
 //! backend-agnostic in behavior; the module/cfg names now match. Cyclone DDS
 //! is simply the first descriptor-needing tenant, named only in prose.)
 //!
@@ -146,7 +146,7 @@ pub fn register_type<M: MessageForRmw>() -> Result<(), crate::NodeError> {
     Ok(())
 }
 
-/// Phase 392 W3a — the receive-buffer hint to hand the backend for `M`.
+/// The receive-buffer hint to hand the backend for `M`.
 ///
 /// The hint describes THE MESSAGE, not the buffer the executor happens to have.
 /// Until now the registration passed `RX_BUF` — the arena slot size — so a
@@ -155,10 +155,10 @@ pub fn register_type<M: MessageForRmw>() -> Result<(), crate::NodeError> {
 ///
 /// Returns the type's own bound when there is one, and `default` (the arena
 /// size) otherwise. `None` from `max_serialized_bound` means "no bound EXISTS",
-/// which phase 380 is explicit must not be turned into a guess — for an
+/// which the sizing rules are explicit must not be turned into a guess — for an
 /// unbounded type there is nothing better to say than what we say today.
 ///
-/// One arm on every backend since issue 1179: the bound is read from
+/// One arm on every backend: the bound is read from
 /// `RosMessage::MAX_SERIALIZED_BOUND`, which codegen emits for every generated
 /// type. Until then it came from `nros_serdes::schema::Message`, which
 /// `MessageForRmw` carries only on Cyclone, so zenoh and XRCE (the backends with
@@ -166,7 +166,7 @@ pub fn register_type<M: MessageForRmw>() -> Result<(), crate::NodeError> {
 ///
 /// This does NOT by itself let a large type through — `create_subscription`
 /// still gates on the arena knob, and sizing the arena per type needs a
-/// const-generic argument only codegen can supply (phase-392 W3b). What it does
+/// const-generic argument only codegen can supply. What it does
 /// is make the number the backend routes on describe the message.
 pub const fn subscription_rx_hint<M: MessageForRmw>(default: usize) -> usize {
     match <M as RosMessage>::MAX_SERIALIZED_BOUND {
@@ -175,7 +175,7 @@ pub const fn subscription_rx_hint<M: MessageForRmw>(default: usize) -> usize {
     }
 }
 
-/// Phase 403 W2 -- the number of BYTES a buffered subscription's arena slot
+/// The number of BYTES a buffered subscription's arena slot
 /// needs for `M`, given the caller's own ceiling `rx_buf`, or `None` when `M`
 /// has NO BOUND.
 ///
@@ -199,7 +199,7 @@ pub const fn subscription_rx_hint<M: MessageForRmw>(default: usize) -> usize {
 /// Every message type is REQUIRED to carry a bound -- stated in the `.msg`
 /// (`string<=64`) or as a `cap` in `nros-codegen.toml` -- so a type without one
 /// is an error to be reported, not a case to be absorbed. Returning `rx_buf`
-/// here would be exactly the substitution phase 380 forbids: `None` from
+/// here would be exactly the substitution the sizing rules forbid: `None` from
 /// `max_serialized_bound` means "no bound EXISTS", never "unknown", and a buffer
 /// sized from a fallback is the failure that rule was written to prevent.
 /// Propagating the `None` makes the fallback impossible to write by accident and
@@ -212,7 +212,7 @@ pub const fn subscription_rx_hint<M: MessageForRmw>(default: usize) -> usize {
 /// split: the caller that opts in supplies the schema bound itself. That is
 /// deliberate -- the bound is a property of the TYPE, not of the backend, and
 /// the non-descriptor arm of `MessageForRmw` deliberately does not require a
-/// schema (a hand-written message type must keep working, phase-380 W4). Under
+/// schema (a hand-written message type must keep working). Under
 /// that arm the two neighbours can only answer "no opinion"; this one is simply
 /// not reachable without a schema, which is the honest shape.
 pub const fn subscription_rx_bytes<M: nros_serdes::schema::Message>(
@@ -266,14 +266,14 @@ const fn transport_framed(bound: usize) -> usize {
     bound.next_multiple_of(4)
 }
 
-/// Phase 380 W4 — can a default-sized receive buffer hold every message of `M`?
+/// Can a default-sized receive buffer hold every message of `M`?
 ///
 /// `true` when it can, and when `M` states no bound: an unbounded type, or a
 /// hand-written one that does not override `RosMessage::MAX_SERIALIZED_BOUND`
 /// (nothing to prove, so the honest answer for a build assertion is "no
 /// objection").
 ///
-/// Issue 1179 -- one arm on every backend. It used to answer `true`
+/// One arm on every backend. It used to answer `true`
 /// unconditionally wherever `MessageForRmw` carries no schema (zenoh, XRCE),
 /// because the bound was unreachable there. The bound now rides on
 /// `RosMessage`, so the assertion that a sample cannot be received-and-dropped
@@ -287,7 +287,7 @@ pub const fn subscription_buffer_ok<M: MessageForRmw>() -> bool {
     }
 }
 
-/// phase-392 W3c — the receive-buffer size a subscription to `M` gets WITHOUT
+/// The receive-buffer size a subscription to `M` gets WITHOUT
 /// asking, or `None` when there is nothing to derive from.
 ///
 /// This is the inversion the wave is: before it, a subscription that named no
@@ -301,7 +301,7 @@ pub const fn subscription_buffer_ok<M: MessageForRmw>() -> bool {
 /// # `None` is never a fallback, it is "no answer exists"
 ///
 /// Two DIFFERENT facts both produce `None`, and neither may be turned into a
-/// number here (phase 380):
+/// number here:
 ///
 /// * **`M` has no bound.** An unbounded member means no bound EXISTS, and
 ///   inventing one is the substitution that rule forbids. The opt-in spelling
@@ -312,17 +312,17 @@ pub const fn subscription_buffer_ok<M: MessageForRmw>() -> bool {
 ///   exactly what it was charged before this wave, so no image moves.
 /// * **`M` states no bound.** A hand-written message type that does not
 ///   override `RosMessage::MAX_SERIALIZED_BOUND` keeps the `None` default and
-///   so keeps the caller's `RX_BUF`, as above. Every generated type states it
-///   (issue 1179), so on zenoh and XRCE too a subscription that names no
+///   so keeps the caller's `RX_BUF`, as above. Every generated type states it,
+///   so on zenoh and XRCE too a subscription that names no
 ///   number is sized from its type. Until then this arm was `None` for every
 ///   type on any backend without `type-descriptors`, because `MessageForRmw`
-///   carries a schema only on Cyclone (phase-380 W4 kept it that way so a
+///   carries a schema only on Cyclone (kept that way so a
 ///   hand-written type keeps working).
 pub const fn default_subscription_rx_bytes<M: MessageForRmw>(rx_buf: usize) -> Option<usize> {
     rx_bytes_for_bound(<M as RosMessage>::MAX_SERIALIZED_BOUND, rx_buf)
 }
 
-/// Issue 1860 -- the arena slot a TYPED subscription of `M` gets: the size the
+/// The arena slot a TYPED subscription of `M` gets: the size the
 /// caller NAMED (`.rx_buffer::<N>()`) verbatim, else the type's own bound
 /// ([`default_subscription_rx_bytes`]), else `rx_buf` where `M` states none.
 ///

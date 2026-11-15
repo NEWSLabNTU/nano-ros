@@ -1,5 +1,4 @@
-//! Node construction options — rclrs's `NodeOptions` / `IntoNodeOptions`
-//! (phase-515 R2).
+//! Node construction options — rclrs's `NodeOptions` / `IntoNodeOptions`.
 //!
 //! Lives here rather than in `nros` so the executor's own
 //! [`create_node`](crate::Executor::create_node) can take it; `nros`
@@ -9,8 +8,8 @@
 ///
 /// ADOPT-BOUNDED against rclrs's `NodeOptions` / `IntoNodeOptions` builder: three
 /// public fields (`name`, `namespace`, `domain_id`) and nothing else. There are no
-/// node ARGUMENTS and no rosout toggle — both are fixed at build time here
-/// (RFC-0045), so an rclrs builder call for either is a compile error.
+/// node ARGUMENTS and no rosout toggle — both are fixed at build time here,
+/// so an rclrs builder call for either is a compile error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NodeOptions<'a> {
     /// Source node name. Launch planning may remap/namespace later.
@@ -52,8 +51,8 @@ impl<'a> NodeOptions<'a> {
 ///
 /// ADOPT-BOUNDED: rclrs's other builder steps (`arguments`,
 /// `use_global_arguments`, `enable_rosout`, `start_parameter_services`,
-/// `clock_type`, `clock_qos`) configure what is fixed at build time here
-/// (RFC-0045), so they are absent and a call to one is a compile error.
+/// `clock_type`, `clock_qos`) configure what is fixed at build time here,
+/// so they are absent and a call to one is a compile error.
 pub trait IntoNodeOptions<'a>: Sized {
     /// Convert to the full options value.
     fn into_node_options(self) -> NodeOptions<'a>;

@@ -1,5 +1,5 @@
-//! Launch remap rules as ONE const table in flash -- issue 1971, RFC-0107
-//! step 1.
+//! Launch remap rules as ONE const table in flash -- the first step
+//! toward one executor core per image.
 //!
 //! The launch file's `<remap from= to=/>` rules describe the IMAGE, not one
 //! executor. Before this every executor carved a RAM table of 16 rules

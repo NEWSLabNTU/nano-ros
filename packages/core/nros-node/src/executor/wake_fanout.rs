@@ -1,4 +1,4 @@
-//! phase-436 -- one backend wake slot, several executors.
+//! One backend wake slot, several executors.
 //!
 //! A backend session has ONE wake-callback slot (`Session::set_wake_callback`).
 //! Before this module, the executor that installed into it was the only one an

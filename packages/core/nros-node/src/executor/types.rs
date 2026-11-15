@@ -91,7 +91,7 @@ pub struct SpinPeriodPollingResult {
 /// Contains the work performed, whether processing exceeded the period
 /// (overrun), and the actual measured processing time.
 ///
-/// phase-359 W10 — was "(`std` only)". The measurement is the executor's own
+/// Was "(`std` only)". The measurement is the executor's own
 /// clock now, so a no_std image gets the same result type its hosted sibling
 /// does; `elapsed` is zero on a build with no clock at all.
 #[cfg(feature = "alloc")]
@@ -109,7 +109,7 @@ pub struct SpinPeriodResult {
 // SpinOptions
 // ============================================================================
 
-/// phase-521 W6 (RFC-0113 D2) — the longest park an entry asks for when
+/// The longest park an entry asks for when
 /// every source of work can end it early: 60 s.
 ///
 /// Not unbounded, because every port and backend must express it: FreeRTOS's
@@ -119,14 +119,14 @@ pub struct SpinPeriodResult {
 /// [`Executor::entry_spin_budget`](super::Executor::entry_spin_budget).
 pub const ENTRY_IDLE_BUDGET: core::time::Duration = core::time::Duration::from_secs(60);
 
-/// phase-521 W6 — the budget an entry keeps while some source of work cannot
+/// The budget an entry keeps while some source of work cannot
 /// end its wait: 10 ms, the cadence every entry had before. See
 /// [`Executor::entry_spin_budget`](super::Executor::entry_spin_budget).
 pub const ENTRY_POLL_BUDGET: core::time::Duration = core::time::Duration::from_millis(10);
 
 /// Default per-iteration budget handed to `spin_once` by the spin loops.
 ///
-/// phase-427 — the value ~~`spin_blocking`~~ carried as a private ~~`POLL_INTERVAL`~~
+/// The value ~~`spin_blocking`~~ carried as a private ~~`POLL_INTERVAL`~~
 /// const before [`SpinOptions::poll_interval`] made it a field. It is named
 /// here because two verbs (`Executor::spin`, `Executor::spin_forever`) now
 /// share it, and a second literal is how the two would drift apart.
@@ -140,8 +140,8 @@ pub const DEFAULT_SPIN_POLL_INTERVAL: core::time::Duration = core::time::Duratio
 /// honour [`poll_interval`](Self::poll_interval) and
 /// [`stop_on_first_error`](Self::stop_on_first_error) — it never returns).
 ///
-/// **This type is where the RTOS divergence lives.** phase-427 moved
-/// `Executor::spin` onto rclrs's name and shape so a ported rclrs file needs no
+/// **This type is where the RTOS divergence lives.** `Executor::spin` moved
+/// onto rclrs's name and shape so a ported rclrs file needs no
 /// rename on that line; the two things ours must say and rclrs's has no field
 /// for — how long one iteration may wait on the transport, and whether a failed
 /// callback ends the loop — are fields HERE rather than extra verbs. The three
@@ -151,7 +151,7 @@ pub const DEFAULT_SPIN_POLL_INTERVAL: core::time::Duration = core::time::Duratio
 pub struct SpinOptions {
     /// Stop after this duration.
     ///
-    /// phase-379 W5 — a `Duration`, not a `u64` of milliseconds. The `_ms`
+    /// A `Duration`, not a `u64` of milliseconds. The `_ms`
     /// suffix was inconsistent with the two methods that consume these options
     /// (`Executor::spin_once` and `Executor::spin` already take
     /// `core::time::Duration`) as well as with rclrs's `SpinOptions::timeout`.
@@ -169,7 +169,7 @@ pub struct SpinOptions {
     /// granularity at which every OTHER exit condition here is observed: a
     /// `cancel()` from another task, a `timeout` expiring, `max_callbacks`
     /// being reached. rclrs has no counterpart because its executor waits on a
-    /// wait-set with no such quantum; ours is a poll loop by RFC-0002, and the
+    /// wait-set with no such quantum; ours is a poll loop (one executor per RTOS task), and the
     /// quantum is a real number a caller has to be able to set.
     ///
     /// Defaults to [`DEFAULT_SPIN_POLL_INTERVAL`] (10 ms).
@@ -259,17 +259,17 @@ impl SpinOptions {
 // the RFC-0045 ladder therefore resolves to the empty string, which every
 // backend reads as "absent — apply your own default".
 
-/// RFC-0045 / issue #206 — maximum valid ROS 2 domain ID. The ROS 2 / DDS
+/// Maximum valid ROS 2 domain ID. The ROS 2 / DDS
 /// convention (RTPS port arithmetic) caps usable domains at 232; values
 /// above it are a configuration error in EVERY language front-end (never a
 /// silent clamp or silent 0). Mirrored into the generated C header — keep
-/// the mirror in sync (the #160 drift class).
+/// the mirror in sync (a drifted copy is a real bug class).
 pub const DOMAIN_ID_MAX: u32 = 232;
 
-/// Issue #227 — C/C++-ABI escape for an EXPLICIT domain 0.
+/// C/C++-ABI escape for an EXPLICIT domain 0.
 ///
 /// The C/C++ init surface carries `domain_id` as a `u8` where `0` is the
-/// UNSET sentinel (the #206 model-A / ROS-convention decision: unset defers
+/// UNSET sentinel (the boot-config precedence / ROS-convention decision: unset defers
 /// to env > baked macro > default). That makes a literal domain 0
 /// unreachable once an image bakes a nonzero `NROS_ENTRY_DOMAIN_ID`. Since
 /// valid domains cap at [`DOMAIN_ID_MAX`] (232), the value 255 is free:
@@ -293,14 +293,14 @@ pub fn baked_domain_from_c_abi(raw: u8) -> Option<u32> {
     }
 }
 
-/// RFC-0045 / issue #206 — boot-config resolution error. Malformed or
+/// Boot-config resolution error. Malformed or
 /// out-of-range identity input (env or baked) is an ERROR, never a silent
 /// fallback: a typo'd `ROS_DOMAIN_ID` must not invisibly move a node to
-/// domain 0 (the pre-#206 C++ behavior) or be silently ignored (the
-/// pre-#206 behavior of this resolver).
+/// domain 0 (the older C++ behavior) or be silently ignored (the
+/// older behavior of this resolver).
 /// Why a filter or sched binding could not be recorded.
 ///
-/// issue 1172 — these three calls used to DROP whatever did not fit and return
+/// These three calls used to DROP whatever did not fit and return
 /// nothing, so a tier ran on a filter quietly narrower than the one it was
 /// given, or a node sat on the wrong sched context, with nothing to read that
 /// said why. The tables are fixed-capacity, so both failures are real and the
@@ -394,13 +394,13 @@ pub struct ExecutorConfig<'a> {
     pub namespace: &'a str,
     /// Monotonic microsecond clock for the executor's timer accounting.
     ///
-    /// phase-359 W10 — was `no_std`-only, because the std build read an
+    /// Was `no_std`-only, because the std build read an
     /// `Instant` instead and had nothing to override. There is one clock now,
     /// so the override applies to every flavour: a hosted caller that wants
     /// simulated or externally-driven time can supply it here rather than
     /// being told that is an embedded-only capability.
     pub clock_us: Option<fn() -> u64>,
-    /// RFC-0052 / phase-296 W3b.2 — wall-clock µs since the UNIX epoch,
+    /// Wall-clock µs since the UNIX epoch,
     /// for `now - header.stamp` age monitors. Distinct from the monotonic
     /// `clock_us`: `header.stamp` is ROS (wall) time. `None` = no epoch
     /// source on this target — a baked `max_age_ms` contract with no
@@ -413,7 +413,7 @@ pub struct ExecutorConfig<'a> {
     /// [`Executor::open`](crate::Executor::open) then takes the unique
     /// registered backend, and reports `Ambiguous` when there is more than one.
     ///
-    /// issue 0687 — this used to be read from `$NROS_RMW` INSIDE
+    /// This used to be read from `$NROS_RMW` INSIDE
     /// `Executor::open`, which is why the core crate needed a process
     /// environment at all. A backend selection is a decision the hosted edge
     /// makes and hands down, exactly like the locator beside it;
@@ -440,7 +440,7 @@ impl<'a> ExecutorConfig<'a> {
         }
     }
 
-    /// Phase 104.C.3.3.b — `Default`-style constructor with an
+    /// `Default`-style constructor with an
     /// empty locator. Most users want `ExecutorConfig::from_env()`
     /// to pick up `NROS_LOCATOR` / `ROS_DOMAIN_ID`; this is the
     /// rclcpp-`NodeOptions{}` shape for callers that set every
@@ -467,12 +467,12 @@ impl<'a> ExecutorConfig<'a> {
     ///
     /// # Deprecated — a node is named at [`Executor::create_node`], not here
     ///
-    /// phase-427 W10 (RFC-0089 "Context and `init`, settled"). This setter is
+    /// This setter is
     /// the last place where the executor IS the node it was configured with,
     /// and that is the shape "one node type" removes: a `Context` says WHERE
     /// the image is connected, the executor owns the SESSION, and each
     /// [`Node`](crate::executor::NodeHandle) has a NAME. One executor already
-    /// holds several named nodes (RFC-0047), so a name on the session config
+    /// holds several named nodes, so a name on the session config
     /// can only ever describe the first of them.
     ///
     /// Replacement:
@@ -487,7 +487,7 @@ impl<'a> ExecutorConfig<'a> {
     /// deprecated: it still names the transport session for diagnostics, and
     /// `Executor::open` still reads it. Only the builder spelling — which is
     /// how a caller ASKS for the old model — is on the way out. Scheduled for
-    /// removal one release after phase-427.
+    /// removal one release later.
     ///
     /// ## The attribute is ARMED BY A FEATURE — `deprecate-node-name-setter`
     ///
@@ -535,7 +535,7 @@ impl<'a> ExecutorConfig<'a> {
         self
     }
 
-    /// RFC-0052 W3b.2 — set the wall-clock (epoch µs) source.
+    /// Set the wall-clock (epoch µs) source.
     pub const fn epoch_us(mut self, epoch: fn() -> u64) -> Self {
         self.epoch_us = Some(epoch);
         self
@@ -547,7 +547,7 @@ impl<'a> ExecutorConfig<'a> {
         self
     }
 
-    /// issue 0687 — select the RMW backend by its canonical registry name.
+    /// Select the RMW backend by its canonical registry name.
     pub const fn rmw(mut self, rmw: &'a str) -> Self {
         self.rmw = Some(rmw);
         self
@@ -588,7 +588,7 @@ pub struct BootConfig<'a> {
     /// RMW backend selector.  Maps to [`ExecutorConfig::rmw`], the name
     /// `nros_rmw_cffi::resolve_backend` looks up.
     ///
-    /// Issue 1050 defect (3) — this rung did not exist. Every other field of
+    /// This rung did not exist. Every other field of
     /// [`ExecutorConfig`] resolved `env > baked > compiled default`; `rmw`
     /// resolved from the environment ALONE, so `$NROS_RMW` was the only way in
     /// the tree to name a backend. An image that knows perfectly well which
@@ -604,7 +604,7 @@ pub struct BootConfig<'a> {
 
 /// The environment rung of precedence model A, as VALUES.
 ///
-/// issue 0687 — `try_resolve` used to take ~~`hosted_env: bool`~~ and read the
+/// `try_resolve` used to take ~~`hosted_env: bool`~~ and read the
 /// process environment itself, which is why this crate needed `std`. A rung is
 /// a set of values, not a place they come from: the hosted edge
 /// (`nros::env::resolve_hosted`) reads `$NROS_LOCATOR`, `$ROS_DOMAIN_ID`,
@@ -630,9 +630,9 @@ pub struct EnvRung<'a> {
     pub node_name: Option<&'a str>,
     /// `$NROS_NODE_NAMESPACE`.
     ///
-    /// Issue 0794 — this rung did not exist, so the namespace had TWO levels
+    /// This rung did not exist, so the namespace had TWO levels
     /// (explicit, baked) where every other field of this struct had three, and
-    /// RFC-0045 said nothing about the asymmetry. It was not a decision that a
+    /// the boot-config resolution design said nothing about the asymmetry. It was not a decision that a
     /// namespace is un-overridable identity: `node_name` is identity too and
     /// has always had its rung, and ROS 2 itself honours `$ROS_NAMESPACE`. It
     /// was the same unwired-producer shape as the baked rung one level down.
@@ -650,7 +650,7 @@ pub struct EnvRung<'a> {
 }
 
 impl<'a> ExecutorConfig<'a> {
-    /// Resolve boot config under precedence model A (RFC-0045), with no
+    /// Resolve boot config under precedence model A, with no
     /// environment rung: `baked > compiled default`.
     ///
     /// Panics on invalid identity input — fail-loud (repo rule): a bad domain
@@ -671,12 +671,12 @@ impl<'a> ExecutorConfig<'a> {
         }
     }
 
-    /// RFC-0045 / issue #206 — fallible [`resolve`](Self::resolve).
+    /// Fallible [`resolve`](Self::resolve).
     pub fn try_resolve(baked: BootConfig<'a>) -> Result<ExecutorConfig<'a>, BootConfigError> {
         Self::try_resolve_with(baked, None)
     }
 
-    /// RFC-0045 / issue #206 — fallible resolve with an environment rung.
+    /// Fallible resolve with an environment rung.
     /// Returns [`BootConfigError`] instead of panicking on out-of-range
     /// identity input, so the C / C++ FFI shims can surface a return code.
     /// Validation is uniform across languages: any resolved domain id >
@@ -993,7 +993,7 @@ pub(crate) struct ActiveJob {
 /// Used with [`Trigger::One`] and [`HandleSet`] for type-safe trigger
 /// configuration.
 ///
-/// phase-476 W0 (issue 1667) — a handle names a SLOT and the GENERATION of
+/// A handle names a SLOT and the GENERATION of
 /// that slot it was issued for. A released slot goes to the very next
 /// registration, so a bare index let a stale copy reach whatever took the slot,
 /// possibly an entity of another kind. Every executor lookup compares the
@@ -1028,7 +1028,7 @@ impl HandleId {
     /// A handle for `slot` that carries NO generation, for an entity whose
     /// holder is UNIQUE — an action server or client, whose owning object is
     /// destroyed when the entry is released, so no copy can outlive it (the
-    /// soundness issue 1667 found for action releases). It resolves to whatever
+    /// soundness gap found for action releases). It resolves to whatever
     /// is live in the slot.
     ///
     /// Never use it for a handle that can be copied: a copy that outlives a
@@ -1362,7 +1362,7 @@ impl core::fmt::Debug for Trigger {
 pub type RawSubscriptionCallback =
     unsafe extern "C" fn(data: *const u8, len: usize, context: *mut core::ffi::c_void);
 
-/// phase-417 W5.a — the deserialiser half of the TYPED C subscription path.
+/// The deserialiser half of the TYPED C subscription path.
 ///
 /// Writes the CDR bytes at `buffer[..buffer_size]` into `msg`, which is storage
 /// the CALLER owns and whose type only the caller knows. Returns `0` on success
@@ -1381,7 +1381,7 @@ pub type RawSubscriptionCallback =
 pub type RawMessageDeserializeFn =
     unsafe extern "C" fn(buffer: *const u8, buffer_size: usize, msg: *mut core::ffi::c_void) -> i32;
 
-/// phase-417 W5.a — a subscription callback that receives the DESERIALISED
+/// A subscription callback that receives the DESERIALISED
 /// message rather than its CDR bytes.
 ///
 /// `msg` is the caller-owned storage handed to the registration, populated by
@@ -1401,7 +1401,7 @@ pub type TypedSubscriptionCallback =
     unsafe extern "C" fn(msg: *const core::ffi::c_void, context: *mut core::ffi::c_void);
 
 /// Raw subscription callback that also receives the incoming sample's
-/// wire-level attachment (Phase 189.M3.4 — the C analog of the Rust
+/// wire-level attachment (the C analog of the Rust
 /// `FnMut(&[u8], &RawMessageInfo)` builder path). `attachment` is valid
 /// for `attachment_len` bytes during the call; `attachment_len == 0`
 /// means the sample carried no attachment. Cross-RMW bridges read the
@@ -1418,7 +1418,7 @@ pub type RawSubscriptionInfoCallback = unsafe extern "C" fn(
     context: *mut core::ffi::c_void,
 );
 
-/// Phase 269 W3 — raw subscription callback that ALSO surfaces the sample's E2E
+/// Raw subscription callback that ALSO surfaces the sample's E2E
 /// integrity status (CRC + sequence gap/dup) — the C/C++ component-callback
 /// projection of Rust's `FnMut(&[u8], &IntegrityStatus)` (used by
 /// `register_subscription_buffered_raw_safety_on`).
@@ -1461,7 +1461,7 @@ pub type RawServiceCallback = unsafe extern "C" fn(
     context: *mut core::ffi::c_void,
 ) -> bool;
 
-/// Issue 2081 — upstream `rmw_request_id_t`, as a C or C++ request-id service
+/// Upstream `rmw_request_id_t`, as a C or C++ request-id service
 /// callback receives it (`RawServiceRequestIdCallback`).
 ///
 /// Field for field the ABI's `rmw_request_id_t` (`nros/rmw_entity.h`), which
@@ -1497,7 +1497,7 @@ impl RawRequestId {
 
 const _: () = assert!(core::mem::size_of::<RawRequestId>() == 24);
 
-/// Issue 2081 — [`RawServiceCallback`] that also receives the request's
+/// [`RawServiceCallback`] that also receives the request's
 /// [`RawRequestId`] — rclc's `rclc_service_callback_with_request_id_t`
 /// argument order (request, request id, response), in CDR bytes.
 ///
@@ -1525,12 +1525,12 @@ pub type RawServiceRequestIdCallback = unsafe extern "C" fn(
 pub type RawResponseCallback =
     unsafe extern "C" fn(data: *const u8, len: usize, context: *mut core::ffi::c_void);
 
-/// Issue 2136 — [`RawResponseCallback`] that also receives the id of the
+/// [`RawResponseCallback`] that also receives the id of the
 /// request the reply answers, as rclc's
 /// `rclc_client_callback_with_request_id_t` does.
 ///
 /// `request_id.sequence_number` is the id the request went out under (what
-/// the reply was matched on, issue 2009), always; `writer_guid` is this
+/// the reply was matched on), always; `writer_guid` is this
 /// client's request-writer GUID where the backend reports it
 /// (`take_response_with_info`), all zero where it does not.
 ///
@@ -1544,7 +1544,7 @@ pub type RawResponseRequestIdCallback = unsafe extern "C" fn(
 );
 
 impl RawRequestId {
-    /// Issue 2136 — the id a reply's callback receives: `seq`, the id the
+    /// The id a reply's callback receives: `seq`, the id the
     /// reply was matched on, with the writer GUID from `info` when the backend
     /// reported one.
     pub fn for_response(info: &nros_core::ServiceInfo, seq: i64) -> Self {
@@ -1588,7 +1588,7 @@ pub type RawAcceptedCallback =
 ///
 /// Returns the PER-GOAL decision `nros_core::CancelResponse` (0=Reject,
 /// 1=Accept) — the same two values C's `rclc_cancel_response_t` and C++'s
-/// `nros::CancelResponse` use. Issue 0796: this used to return the
+/// `nros::CancelResponse` use. This used to return the
 /// `action_msgs/srv/CancelGoal` RPC return code (now `CancelResponseCode`), so a
 /// callback answering one goal spoke in whole-request status codes and the
 /// server wrote its answer straight into the reply's `return_code` field.
@@ -1627,7 +1627,7 @@ pub type RawResultCallback = unsafe extern "C" fn(
     context: *mut core::ffi::c_void,
 );
 
-/// Raw action client cancel-response callback — issue 2030.
+/// Raw action client cancel-response callback.
 ///
 /// Called when the server answers a `cancel_goal` request this client sent.
 /// `goal_id` is the goal the REQUEST named (all zeros for a cancel-all or
@@ -1638,7 +1638,7 @@ pub type RawResultCallback = unsafe extern "C" fn(
 /// cancel request holds one of the sub-client's `MAX_CONCURRENT_GOALS` request
 /// slots until its reply is taken, so a client that never takes them refuses
 /// its fifth cancel. Every in-tree surface registers one: C hands the reply to
-/// its user callback, C++ (issue 2034) to the `async_cancel_*` future or
+/// its user callback, C++ to the `async_cancel_*` future or
 /// callback waiting on the request, keeping an unclaimed reply for its
 /// `try_recv_cancel_response`.
 ///
@@ -1647,7 +1647,7 @@ pub type RawResultCallback = unsafe extern "C" fn(
 /// only thing that tells two pending cancels about one goal apart — and
 /// `reply` / `reply_len` the whole `CancelGoal_Response` CDR frame (its
 /// `goals_canceling` list included), for a reader that needs more than the
-/// count (issue 2034). `return_code` is `Rejected` and `goals_canceling` 0 for
+/// count. `return_code` is `Rejected` and `goals_canceling` 0 for
 /// a malformed frame.
 ///
 /// # Safety
@@ -1796,11 +1796,11 @@ impl GuardCondition {
 
     /// Is this guard condition triggered and not yet dispatched?
     ///
-    /// The RFC-0022 POLLING tier: a task that owns its own loop and never
+    /// The POLLING entity-API tier: a task that owns its own loop and never
     /// reaches a callback still needs to see the flag another thread or an ISR
     /// set. rcl has no such reader — a wait set is the only way to observe an
-    /// rcl guard condition — so this is ours, and phase-417 W4.e gave Rust and
-    /// C++ the reader C already had.
+    /// rcl guard condition — so this is ours, and Rust and
+    /// C++ got the reader C already had.
     ///
     /// **Bounded claim:** the executor CONSUMES the flag when it dispatches
     /// (`guard_try_process` swaps it false and then calls the callback), so
@@ -1914,7 +1914,7 @@ impl<'a> BootConfig<'a> {
         }
     }
 
-    /// Issue 1434 — the rung an EMBEDDED board hands the resolver: this bake's
+    /// The rung an EMBEDDED board hands the resolver: this bake's
     /// IDENTITY over the board's own connect facts.
     ///
     /// Six boards (`nros-board-freertos` ×2, `nros-board-threadx` ×2,
@@ -1922,7 +1922,7 @@ impl<'a> BootConfig<'a> {
     /// literal out by hand, character for character, and every one of them
     /// wrote `namespace: None` — so a launch-declared namespace reached the
     /// blob, `from_baked` read it correctly, and then the board dropped it on
-    /// the floor. It is ONE function now, for the reason issue 0196 gives: six
+    /// the floor. It is ONE function now, for the reason six
     /// copies are six places for the next field to be forgotten, and the
     /// forgetting is silent (a `None` is a legal value, not a compile error).
     ///
@@ -1938,7 +1938,7 @@ impl<'a> BootConfig<'a> {
     ///   deployment statement for where to dial and on which domain. Changing
     ///   that is a separate decision from this one and is deliberately NOT made
     ///   here.
-    /// * **`rmw`** — the bake (issue 1050 defect (3)), unchanged.
+    /// * **`rmw`** — the bake, unchanged.
     ///
     /// The NEGATIVE direction is the half that matters: a blob with
     /// `BOOT_SET_NAMESPACE` clear arrives as `namespace: None` from
@@ -1966,7 +1966,7 @@ impl<'a> BootConfig<'a> {
 // BootConfig / resolve unit tests (std only)
 // ============================================================================
 
-/// RFC-0052 W3b.3 — split epoch-µs into the `builtin_interfaces/Time`
+/// Split epoch-µs into the `builtin_interfaces/Time`
 /// field pair `(sec, nanosec)` for `header.stamp` population. Types-free
 /// (each workspace has its own generated `Time`); assign the tuple to the
 /// struct's fields.
@@ -1976,7 +1976,7 @@ pub const fn epoch_us_to_stamp(us: u64) -> (i32, u32) {
 
 /// Capacity of a backend selector name, matching `Executor::primary_rmw_name`.
 ///
-/// issue 0687 — the READER moved to `nros::rmw_selector` (it needs a process
+/// The READER moved to `nros::rmw_selector` (it needs a process
 /// environment, which this crate no longer has), but the CAP belongs here: it
 /// is the executor's own identity storage, and a selector longer than this
 /// cannot name a registry slot.
@@ -1985,7 +1985,7 @@ pub const RMW_SELECTOR_CAP: usize = 32;
 /// The default wall clock, or `None` when this build has neither a platform port
 /// nor a host to ask.
 ///
-/// phase-359 W10 — the symmetric twin of `default_clock_us_fn`. The predicate
+/// The symmetric twin of `default_clock_us_fn`. The predicate
 /// "does this build have a wall clock" used to be spelled at the `Executor`
 /// struct literal, in two arms, duplicating the cfgs that already decide
 /// whether `default_epoch_us` exists at all. One place answers it now.
@@ -2005,9 +2005,9 @@ pub fn default_epoch_us_fn() -> Option<fn() -> u64> {
     }
 }
 
-/// RFC-0052 W3b.2 — the default wall-clock source: µs since the UNIX epoch.
+/// The default wall-clock source: µs since the UNIX epoch.
 ///
-/// phase-359 W10 — this was ~~`std_epoch_us`~~, `std`-gated, `SystemTime`. It is
+/// This was ~~`std_epoch_us`~~, `std`-gated, `SystemTime`. It is
 /// the same story the monotonic clock had one commit ago: `rmw-cffi` means a
 /// platform port is linked, every port exports the wall clock, so a hosted
 /// build reads the same source an embedded one does. `SystemTime` survives
@@ -2647,7 +2647,7 @@ pub type ShutdownCallbackFn = unsafe extern "C" fn(context: *mut core::ffi::c_vo
 
 /// Which of the two ordered shutdown phases a hook belongs to.
 ///
-/// The ordering IS the feature (issue 0790): a node that must release a bus or
+/// The ordering IS the feature: a node that must release a bus or
 /// park an actuator has to do it while its entities still work, so it can
 /// publish a final state or answer a last request. After teardown it cannot.
 #[repr(u8)]
@@ -2952,7 +2952,7 @@ mod verification {
     }
 }
 
-/// Issue 2146 (RFC-0112 D2, Defer) -- the notifier
+/// The notifier
 /// `Executor::set_defer_notifier` installs: called with the host's context and
 /// the [`HandleId`] of a deferred callback that has just been queued.
 ///

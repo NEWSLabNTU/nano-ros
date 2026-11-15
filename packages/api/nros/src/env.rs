@@ -1,6 +1,6 @@
 //! The hosted edge of configuration: the process environment.
 //!
-//! issue 0687 / phase-359 W10. Every env var nano-ros honours is read HERE and
+//! Every env var nano-ros honours is read HERE and
 //! nowhere else. The core (`nros-node`) takes values — `ExecutorConfig::
 //! resolve_with` accepts an [`EnvRung`](nros_node::EnvRung) of already-resolved fields — so it
 //! needs no `std`, no `env` capability, and no stub on the five ports that have
@@ -12,11 +12,11 @@
 //! have put `return 0` in five ports and permanent surface in the header, for a
 //! facility that exists on one platform family.
 //!
-//! **One reader, through the C library** (phase-359 W10 stage B). The
+//! **One reader, through the C library**. The
 //! environment is read with `getenv`, not `std::env`. A process environment is
 //! a property of the PROCESS, not of the Rust standard library: threadx-linux
 //! and freertos-posix are `#![no_std]` images that are still Linux processes
-//! with a C library, and issue 1763 measured what happens when they stop
+//! with a C library, and a measurement showed what happens when they stop
 //! honouring `$ROS_DOMAIN_ID` (parallel cells shared a domain and heard each
 //! other). There used to be two readers — this one on `std::env` and
 //! ~~`host_env`~~ on `getenv` — with the same variables and rules; they are one
@@ -27,7 +27,7 @@
 //! Strings are borrowed from the process environment, which outlives the boot,
 //! so the resolved config's `&'static str` fields point straight into it. No
 //! cache is needed (the old `std::env` reader kept a `OnceLock` only to turn an
-//! owned `String` into a `&'static str`, and its staleness was issue 0607).
+//! owned `String` into a `&'static str`, and its staleness was a bug).
 //! Nothing in nano-ros calls `setenv` after boot.
 //!
 //! What lives here:
@@ -35,15 +35,15 @@
 //! * [`ExecutorConfigEnvExt::from_env`] — the constructor that used to be an
 //!   inherent method on `ExecutorConfig`. Bring the trait into scope (the
 //!   prelude has it) and the call site spelling is unchanged. `env` feature.
-//! * [`resolve_hosted`](crate::env::resolve_hosted) / [`try_resolve_hosted`](crate::env::try_resolve_hosted) — RFC-0045 precedence model A
+//! * [`resolve_hosted`](crate::env::resolve_hosted) / [`try_resolve_hosted`](crate::env::try_resolve_hosted) — the boot-config precedence ladder
 //!   with the environment rung on top. The C / C++ entries call these on every
 //!   Linux build, `env` or not.
-//! * [`rmw_selector`] — the one `$NROS_RMW` reader (issue 0687's first half).
+//! * [`rmw_selector`] — the one `$NROS_RMW` reader.
 //! * [`var`](crate::env::var) / [`read_file`](crate::env::read_file) — the two C-library reads the hosted `init*`
 //!   entries need (`$RMW_IMPLEMENTATION`, `--params-file`).
 //! * [`write_file`](crate::env::write_file), [`rename`](crate::env::rename), [`set_var`](crate::env::set_var), [`exe_name`](crate::env::exe_name), [`thread_key`](crate::env::thread_key),
-//!   [`exit`](crate::env::exit) — the rest of the hosted PROCESS edge, for the C / C++ surfaces
-//!   (phase-359 W10 stage C). `nros-c` and `nros-cpp` write their census,
+//!   [`exit`](crate::env::exit) — the rest of the hosted PROCESS edge, for the C / C++ surfaces.
+//!   `nros-c` and `nros-cpp` write their census,
 //!   metadata and profile files through these instead of `std::fs` /
 //!   `std::process`, so the image root never links libstd: a census is a
 //!   property of a process with a C library, not of the Rust standard library.
@@ -262,7 +262,7 @@ pub fn exit(code: i32) -> ! {
 /// **The** answer to "which RMW backend did the user select" — one reader, one
 /// semantic, for every consumer.
 ///
-/// phase-359 W10 / issue 0687. This variable had FOUR readers with THREE
+/// This variable had FOUR readers with THREE
 /// semantics: `Executor::open` read it as raw OS bytes, `nros`'s
 /// `open_session` as a UTF-8 string filtered for empty, `nros-c`'s entry as a
 /// string passed through EVEN WHEN EMPTY, and `nros::init` as a string with an
@@ -380,7 +380,7 @@ fn report(env: &EnvRung<'_>, baked: &BootConfig<'_>, cfg: &ExecutorConfig<'_>) {
     );
 }
 
-/// RFC-0045 precedence model A with the environment on top:
+/// The boot-config precedence ladder with the environment on top:
 /// `env (var set) > baked > compiled default`.
 ///
 /// Fails loud on invalid identity input (repo rule: a bad domain id at boot is
@@ -396,7 +396,7 @@ pub fn resolve_hosted<'a>(baked: BootConfig<'a>) -> ExecutorConfig<'a> {
 /// Fallible [`resolve_hosted`] — returns [`BootConfigError`] instead of
 /// panicking, so the C / C++ FFI shims can surface a return code.
 ///
-/// - `ROS_DOMAIN_ID` set but non-numeric → `DomainIdParse` (the pre-#206 C++
+/// - `ROS_DOMAIN_ID` set but non-numeric → `DomainIdParse` (the older C++
 ///   header silently collapsed this to domain 0; the resolver silently ignored
 ///   it — both were wrong).
 /// - any resolved domain id > `DOMAIN_ID_MAX` → `DomainIdRange`, INCLUDING a
@@ -414,7 +414,7 @@ pub fn try_resolve_hosted<'a>(
 
 /// `ExecutorConfig::from_env()`, as an extension trait.
 ///
-/// issue 0687 — this was an inherent method on `ExecutorConfig`, which is
+/// This was an inherent method on `ExecutorConfig`, which is
 /// defined in `nros-node`; an inherent method cannot be moved to another crate
 /// and keep its spelling, and the spelling is what ~26 call sites (most of them
 /// user-facing native examples) are written against. A trait keeps

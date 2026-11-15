@@ -1,4 +1,4 @@
-//! Phase 216.A.4 — tag types Node authors hold on `Self::State` to
+//! Tag types Node authors hold on `Self::State` to
 //! match against incoming [`Callback`] in
 //! [`ExecutableNode::on_callback`](crate::ExecutableNode::on_callback).
 //!

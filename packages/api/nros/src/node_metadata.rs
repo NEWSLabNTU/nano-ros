@@ -22,7 +22,7 @@ use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 
 /// The source-metadata sidecar schema version this module emits.
 ///
-/// phase-463 W1 -- `1 -> 2`. Version 2 is ADDITIVE over version 1 and every
+/// `1 -> 2`. Version 2 is ADDITIVE over version 1 and every
 /// reader in the tree defaults the new fields, so a v1 sidecar still parses:
 ///
 /// * every endpoint kind carries `qos` (v1: publishers and subscribers only);
@@ -34,7 +34,7 @@ use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 ///   counting one slot each while a census can tell the two apart;
 /// * a `parameters[]` row carries `type`.
 ///
-/// phase-457 W3 -- `2 -> 3`, additive again, and every reader defaults the new
+/// `2 -> 3`, additive again, and every reader defaults the new
 /// field:
 ///
 /// * a `subscribers[]` row may carry `in_place` -- whether THAT registration's
@@ -44,7 +44,7 @@ use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 ///   behind, and a consumer that read it as `false` would state a registration
 ///   path nobody observed.
 ///
-/// Version 4 (issue 1648) is additive again:
+/// Version 4 is additive again:
 ///
 /// * a `subscribers[]` row may carry `buffered` -- `"typed_bound"` or
 ///   `"unbounded"`, the BUFFERED row that registration claimed
@@ -52,7 +52,7 @@ use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 ///   the call site stated or the closure buffer (`RX_BUF`). Written beside
 ///   `in_place` by the same observation, and absent exactly when it is.
 ///
-/// Version 5 (phase-554 W2.b, RFC-0128 D2) is additive again:
+/// Version 5 is additive again:
 ///
 /// * a `nodes[]` row may carry `"lifecycle": true` -- the node's OWN code
 ///   registered a lifecycle state machine while the probe ran it
@@ -60,16 +60,16 @@ use alloc::{format, string::String as StdString, vec::Vec as StdVec};
 ///   funnel, never declared. Absent means no registration was observed, and
 ///   the node is plain, which is the run-time rule too.
 ///
-/// Serialised in exactly one place (this module), as phase-308's layer rule
+/// Serialised in exactly one place (this module), as the census layer rule
 /// requires: the adapters that feed the recorder contain no JSON.
 pub const SOURCE_METADATA_SCHEMA_VERSION: u32 = 5;
 
-/// Issue 1648 -- the BUFFERED registration row a subscription claimed, as the
+/// The BUFFERED registration row a subscription claimed, as the
 /// registration funnel observed it.
 ///
 /// The two buffered rows of the sizing descriptor's `registration_path`
 /// (the third, `in_place`, is [`EntityMetadata::in_place_capable`]'s).
-/// Observed, never inferred from the entry's language: issue 1319's table has
+/// Observed, never inferred from the entry's language: there is
 /// a C/C++ registration with no type hint that takes the closure buffer exactly
 /// like a Rust generic one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -227,7 +227,7 @@ impl ParameterDefault {
         }
     }
 
-    /// phase-463 W1 -- the default a C/C++ node passed to
+    /// The default a C/C++ node passed to
     /// `declare_parameter`, as the recorder stores it.
     ///
     /// The ONE conversion from a runtime [`ParameterValue`] to the recorded
@@ -296,7 +296,7 @@ impl SourceNameKind {
     }
 }
 
-/// Phase 305 W3 (issue 0255) — the ONE name-resolution seam: ROS 2 source-name
+/// The ONE name-resolution seam: ROS 2 source-name
 /// expansion (`~`/relative → FQN, ns=`/` collapse) + launch remap substitution
 /// (exact-FQN match, first rule wins; no wildcards). Implemented in
 /// `nros_node::names` so both the Rust `ExecutorSink` and the C-ABI
@@ -367,7 +367,7 @@ pub enum EntityKind {
     Parameter,
 }
 
-/// phase-463 W1 -- which executor-side entry a recorded slot row came through.
+/// Which executor-side entry a recorded slot row came through.
 ///
 /// `nros_cpp_timer_create` / `_on_clock` / `_oneshot` / `_in_group` are four
 /// entry points with four semantics (a oneshot fires once; a clock timer follows
@@ -431,7 +431,7 @@ pub struct NodeMetadata {
     pub name: MetadataString,
     pub namespace: MetadataString,
     pub domain_id: u32,
-    /// RFC-0128 D2 (phase-554 W2.b) -- did this node's OWN code register a
+    /// Did this node's OWN code register a
     /// lifecycle state machine while the probe ran it?
     ///
     /// Set only by [`MetadataRecorder::observe_lifecycle_registration`], i.e.
@@ -453,7 +453,7 @@ pub struct EntityMetadata {
     pub source_name_kind: SourceNameKind,
     pub type_name: &'static str,
     pub type_hash: &'static str,
-    /// Issue 1913 — the hash each endpoint of an ACTION entity is keyed on
+    /// The hash each endpoint of an ACTION entity is keyed on
     /// (`None` for every other kind). Set by the typed declarations in
     /// `node.rs`, which know `A`; the runtime replays it into the raw spec.
     /// Not emitted in the metadata JSON.
@@ -470,13 +470,13 @@ pub struct EntityMetadata {
     pub action_accepted_callback_id: Option<MetadataString>,
     pub action_accepted_source: SourceLocationMetadata,
     pub period_ms: Option<u64>,
-    /// Issue #505 — the timer period at the executor's own resolution.
+    /// The timer period at the executor's own resolution.
     /// `period_ms` is kept (and still emitted) for consumers of the
     /// metadata JSON, but it truncates: a declared 33.333 ms timer used
     /// to reach the runtime as 33 ms, a 1% permanent rate error, and a
     /// sub-millisecond period reached it as zero.
     pub period_us: Option<u64>,
-    /// Which clock advances this timer (phase-430 W4). `Steady` — the default
+    /// Which clock advances this timer. `Steady` — the default
     /// and every timer declared before W4 — is the WALL case: the runtime
     /// registers it exactly as it always did. `Ros` makes the timer follow
     /// `/clock`, so a `nros::main!` component can own a simulated-time timer
@@ -487,7 +487,7 @@ pub struct EntityMetadata {
     /// component's `declare()`, so the sidecar schema does not have to move for
     /// the capability to work.
     pub timer_clock: TimerClockSource,
-    /// Issue 2038 — whether the declared timer starts ARMED (`true`, the
+    /// Whether the declared timer starts ARMED (`true`, the
     /// default and every timer declared before 2038) or is registered
     /// cancelled (`false`, rcl's `rcl_timer_init2(..., autostart = false)`),
     /// firing only once something resets it. Read by the runtime with
@@ -495,7 +495,7 @@ pub struct EntityMetadata {
     ///
     /// Meaningless for every other entity kind.
     pub timer_autostart: bool,
-    /// phase-463 W1 -- the ABI entry the timer came through (see [`TimerKind`]).
+    /// The ABI entry the timer came through (see [`TimerKind`]).
     /// Emitted as `kind` on the timer row; `Wall` for every other entity kind.
     pub timer_kind: TimerKind,
     pub parameter_type: Option<ParameterType>,
@@ -506,7 +506,7 @@ pub struct EntityMetadata {
     /// launch value looked up by name) rather than declared. It has no type
     /// and no default, and is emitted as `"read": true`.
     pub parameter_read: bool,
-    /// Phase 250 (Wave 2b) — a subscription that opted into E2E message-integrity
+    /// A subscription that opted into E2E message-integrity
     /// validation (`.safety()`): the runtime registers it via
     /// `create_generic_subscription_with_integrity` and surfaces
     /// [`IntegrityStatus`](crate::IntegrityStatus) through `CallbackCtx::integrity()`.
@@ -514,11 +514,11 @@ pub struct EntityMetadata {
     /// `safety-e2e`, so when the capability is off the flag is simply ignored
     /// (the subscription registers as a basic one). `false` for every other entity.
     pub safety: bool,
-    /// phase-457 W3 — can THIS subscription's registration dispatch out of the
+    /// Can THIS subscription's registration dispatch out of the
     /// backend's own receive slot?
     ///
-    /// The CALL SITE's half of a subscription's `registration_path` (RFC-0100
-    /// D1, issues 1319 / 1340), reported by
+    /// The CALL SITE's half of a subscription's `registration_path`,
+    /// reported by
     /// `nros_node::executor::registration_observer` from
     /// `Executor::open_subscription` — the one site in the tree that reads it.
     /// **Not** conjoined with the backend's own answer: a probe links the
@@ -532,11 +532,11 @@ pub struct EntityMetadata {
     /// against a recording `NodeContext` and opens no executor — and of every
     /// non-subscription row, which claims no receive slot at all.
     pub in_place_capable: Option<bool>,
-    /// Issue 1648 -- the BUFFERED row the registration claimed. Set by the
+    /// The BUFFERED row the registration claimed. Set by the
     /// same observation as [`Self::in_place_capable`], so the two are present
     /// together or not at all; `None` is "nobody observed this".
     pub buffered_row: Option<BufferedRow>,
-    /// Issue 2208 -- the subscription's message-type bound
+    /// The subscription's message-type bound
     /// (`RosMessage::MAX_SERIALIZED_BOUND`), recorded where the type is
     /// known so the type-erased registration can still hand the backend its
     /// `rx_buffer_hint`. The typed executor path passes the same number
@@ -547,7 +547,7 @@ pub struct EntityMetadata {
 }
 
 impl EntityMetadata {
-    /// phase-457 W5 (issue 1522) — which registration entry point this
+    /// Which registration entry point this
     /// DECLARED subscription will reach.
     ///
     /// **THE classifier**, in the sense
@@ -557,7 +557,7 @@ impl EntityMetadata {
     /// answer, and the metadata recorder states
     /// [`in_place_capable`](Self::in_place_capable) from the same answer. Two
     /// readers of one function is not a second opinion; two functions would
-    /// be, which is the drift phase-457 W3 removed from the CLI.
+    /// be, which is the drift removed from the CLI.
     ///
     /// The `safety-e2e` mask lives HERE and nowhere else. With the capability
     /// off the runtime ignores [`safety`](Self::safety) and registers the
@@ -598,7 +598,7 @@ pub struct SourceMetadataExport<'a> {
     pub exported_symbol: Option<&'a str>,
     pub package_manifest: &'a str,
     pub source_artifacts: &'a [&'a str],
-    /// phase-308 — the source language the sidecar describes (`"rust"`,
+    /// The source language the sidecar describes (`"rust"`,
     /// `"c"`, `"cpp"`). It was a hardcoded `"rust"` literal in the serializer
     /// while Rust was the only producer; the C/C++ producer reaches this SAME
     /// serializer, so the value has to come from the caller. The consumption
@@ -653,7 +653,7 @@ impl<'a> SourceMetadataExport<'a> {
     }
 }
 
-/// phase-308 — `pub` for metadata-mode adapters (see
+/// `pub` for metadata-mode adapters (see
 /// [`MetadataRecorder::push_node`]); the capacity error is theirs to surface.
 pub fn metadata_string(value: &str) -> Result<MetadataString, NodeMetadataError> {
     copy_str(value)
@@ -814,7 +814,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         &self.callback_effects
     }
 
-    /// phase-457 W3 — attach an OBSERVED registration fact to the subscription
+    /// Attach an OBSERVED registration fact to the subscription
     /// row that registered it.
     ///
     /// A subscription is recorded when the backend creates it and observed when
@@ -833,7 +833,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
     /// so a second observation lands on the next unset row rather than
     /// re-stating the first — the difference matters exactly when two rows
     /// disagree, which is the case this whole field exists for.
-    /// RFC-0128 D2 (phase-554 W2.b) -- the join for a lifecycle registration:
+    /// The join for a lifecycle registration:
     /// mark the recorded node the executor named as code-managed.
     ///
     /// Matched on the final name and on the namespace without its leading and
@@ -919,7 +919,7 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
 
     /// Record a node.
     ///
-    /// phase-308 — `pub` because the recorder is the ONE recorder: the Rust
+    /// `pub` because the recorder is the ONE recorder: the Rust
     /// adapter (a `NodeContext` sink) and the C/C++ adapter (a recording RMW
     /// backend + the timer/guard hooks in `nros-cpp`) both feed it, so there is
     /// one definition of what a slot is and one schema emitter. Only the
@@ -1422,7 +1422,7 @@ pub(crate) fn entity_callback_ids(entity: &EntityMetadata) -> [Option<&MetadataS
 /// arguments — three of them adjacent `&str` (`source_name` /
 /// `type_name` / `type_hash`) that are trivially transposable at a
 /// call site — into one named-field struct.
-/// phase-308 — `pub` alongside [`MetadataRecorder::push_entity`]: metadata-mode
+/// `pub` alongside [`MetadataRecorder::push_entity`]: metadata-mode
 /// adapters for other languages build entities through this ONE constructor so
 /// the defaults (and therefore the recorded shape) cannot diverge per language.
 pub struct EntityMetadataSpec<'a> {

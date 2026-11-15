@@ -1,12 +1,12 @@
-//! phase-397 W2 (RFC-0084) — an arrival names its ENTITY and its OWNING
+//! An arrival names its ENTITY and its OWNING
 //! executor.
 //!
 //! The session-scoped wake (`set_wake_callback`) carries only the executor's
 //! context, so an arrival is binary: "something happened on this session". Two
 //! things are lost at that ABI. The executor cannot tell which entry is ready,
 //! so it scans them all. And when several executors share one session (the
-//! wake fan-out, RFC-0106 D6), every arrival wakes every one of them, at a
-//! measured 7-9 us of CPU per spurious wake (phase-436 step 5).
+//! wake fan-out), every arrival wakes every one of them, at a
+//! measured 7-9 us of CPU per spurious wake.
 //!
 //! Each subscription, service and client entry is registered with a [`Waker`]
 //! from [`waker`], through the handle's `register_waker` (W1 carries it across

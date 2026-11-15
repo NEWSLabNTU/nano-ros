@@ -1,4 +1,4 @@
-//! phase-444 — what `Executor::wait_for_publishers` / `wait_for_subscribers`
+//! What `Executor::wait_for_publishers` / `wait_for_subscribers`
 //! decide, as opposed to what they inherit.
 //!
 //! The LOOP these two run is `WaitBudget`'s, shared with `Client::
@@ -10,17 +10,17 @@
 //!  1. `Unsupported` is propagated IMMEDIATELY rather than waited out. This
 //!     used to be the one place the pair differed from `wait_for_service`,
 //!     which treated a backend that cannot answer as "keep waiting" and
-//!     reported a timeout (issue 1087), on the argument that for a service
+//!     reported a timeout, on the argument that for a service
 //!     probe not-yet-answerable is transient. It was not: XRCE answers
 //!     `Unsupported` on every probe forever, and every C / C++ XRCE client
-//!     read the resulting TIMEOUT as "no server" (issue 1686). The server
+//!     read the resulting TIMEOUT as "no server". The server
 //!     waits now take the same decision as this pair — see
 //!     `ServerVisibility` and the `server_wait_*` tests at the end of this
 //!     file — and the one TRANSIENT "cannot say" (a zenoh graph cache that
 //!     dropped tokens) is spelled `WouldBlock`, which keeps waiting.
 //!     Waiting out the budget would report "none appeared" for a backend
 //!     that cannot see the graph at all, collapsing "cannot tell you" into
-//!     "not there". RFC-0036 exists to keep those apart.
+//!     "not there". The ROS 2 divergence rules exist to keep those apart.
 //!  2. `count == 0` is satisfied without asking the backend at all, because
 //!     "at least zero" is true of every graph and needs no discovery — so it
 //!     must hold even where the backend cannot answer.

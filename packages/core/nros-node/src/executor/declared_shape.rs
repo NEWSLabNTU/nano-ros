@@ -1,4 +1,4 @@
-//! phase-457 W5 (issue 1522) — which registration entry point a DECLARED
+//! Which registration entry point a DECLARED
 //! subscription reaches, as ONE value.
 //!
 //! # The hole this fills
@@ -13,7 +13,7 @@
 //! The **Rust producer observes nothing**. `nros::__macro::record_node_metadata::<C>`
 //! runs a component's `register()` against a recording `NodeContext` and opens
 //! no executor at all, so no registration happens in the probe and every Rust
-//! endpoint's row refuses. That is issue 1522.
+//! endpoint's row refuses. That was the bug this module fixes.
 //!
 //! # Why a classifier is allowed here, when W3 deleted one
 //!
@@ -42,7 +42,7 @@
 //!    together when it changes — which is what makes this cheaper than
 //!    teaching the probe to register.
 //!
-//!    **Moving together is necessary, not sufficient.** Issue 1340 flipped
+//!    **Moving together is necessary, not sufficient.** A fix flipped
 //!    `BufferedRaw` to `true`, and this doc used to call that "a one-line
 //!    change here". It was not, and the one-line version is UNSAFE: the probe
 //!    would state `in_place`, the build would price the row at no receive
@@ -101,7 +101,7 @@ impl DeclaredSubscriptionShape {
     /// The two shapes differ, and the reason each has its answer is worth a
     /// sentence:
     ///
-    /// * **`BufferedRaw` — `true`** (issue 1340). Its callback is
+    /// * **`BufferedRaw` — `true`**. Its callback is
     ///   `FnMut(&[u8])`, borrowed bytes and nothing else, which is exactly what
     ///   `process_raw_in_place` hands over. It was `false` while its arena entry
     ///   was believed shared with `add_arena_subscription_callback`; that caller
@@ -124,7 +124,7 @@ impl DeclaredSubscriptionShape {
     /// when it does NOT dispatch in place, rather than a bound the call site
     /// stated?
     ///
-    /// Issue 2348. Both entry points are type-erased and write
+    /// Both entry points are type-erased and write
     /// `slot_bytes: RX_BUF` into their `SubscriptionRequest`, which is what
     /// `registration_observer` reports as `claims_closure_buffer`. The Rust
     /// probe declares without registering, so it states this from the shape —

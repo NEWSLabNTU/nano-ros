@@ -167,7 +167,7 @@ impl<M> Drop for EmbeddedPublisher<M> {
 impl<M: RosMessage> EmbeddedPublisher<M> {
     /// Publish a message using the default buffer size.
     ///
-    /// phase-515 R5 — takes the message borrowed (`publish(&msg)`) or owned
+    /// Takes the message borrowed (`publish(&msg)`) or owned
     /// (`publish(msg)`), as rclrs's `publish(impl MessageCow)` does. Both
     /// serialise immediately into the stack buffer, so owning buys no deferred
     /// path; it only lets an rclrs call site that hands its message over
@@ -228,8 +228,8 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
     }
 
-    /// Renamed to [`publish_serialized`](Self::publish_serialized) (phase-515
-    /// C8), the transmit word of the receive side's `take_serialized`.
+    /// Renamed to [`publish_serialized`](Self::publish_serialized),
+    /// the transmit word of the receive side's `take_serialized`.
     // phase-515 C8 renamed it.
     #[deprecated(
         since = "0.6.0",
@@ -239,7 +239,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
         self.publish_serialized(data)
     }
 
-    /// Phase 124.E.1 — streamed publish. Use a closure-driven writer
+    /// Streamed publish. Use a closure-driven writer
     /// to serialise straight into the backend's outbound buffer
     /// without a per-publisher staging copy. Saves on RAM-constrained
     /// nodes that publish multi-KB payloads.
@@ -304,13 +304,13 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
         .map_err(NodeError::Transport)
     }
 
-    /// Phase 108.B — manually assert this publisher's liveliness.
+    /// Manually assert this publisher's liveliness.
     /// Required for publishers configured with
     /// [`QoSLivelinessPolicy::ManualByTopic`](nros_rmw::QoSLivelinessPolicy::ManualByTopic) /
     /// [`QoSLivelinessPolicy::ManualByNode`](nros_rmw::QoSLivelinessPolicy::ManualByNode). No-op for AUTOMATIC /
     /// NONE kinds. Returns `Err(Unsupported)` if the backend doesn't
-    /// implement manual liveliness — which, since the phase-467 RMW
-    /// gap-closure design study's Row 7, includes **zenoh under a manual
+    /// implement manual liveliness — which, after the RMW
+    /// gap-closure design study, includes **zenoh under a manual
     /// kind**: its liveliness is a session keepalive, and a `Ok(())` from a
     /// call that put nothing on the wire was the wrong answer. Cyclone
     /// performs the assertion for real.
@@ -324,7 +324,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     /// This publisher's own global identifier — upstream
     /// `rmw_get_gid_for_publisher` / `rclcpp::PublisherBase::get_gid`.
     ///
-    /// The phase-467 RMW gap-closure design study's Q1. 24 bytes,
+    /// From the RMW gap-closure design study. 24 bytes,
     /// [`nros_rmw::PUBLISHER_GID_SIZE`], the width upstream's
     /// `RMW_GID_STORAGE_SIZE` uses.
     ///
@@ -333,13 +333,13 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     /// * **How many of the 24 bytes mean anything is a BACKEND property.**
     ///   zenoh fills 16 and zero-extends the rest; Cyclone fills a 16-byte
     ///   DDS writer GUID the same way, and XRCE the 16-byte DDS GUID its
-    ///   graph derives for the Agent-side writer (issue 2110). The padding has one spelling
+    ///   graph derives for the Agent-side writer. The padding has one spelling
     ///   ([`nros_rmw::pad_publisher_gid`]) so two gids naming one entity
     ///   compare equal.
     /// * **Comparable with a gid from a TAKE** on zenoh and Cyclone. A
     ///   received sample's
     ///   [`MessageInfo::publisher_gid`](nros_core::MessageInfo::publisher_gid)
-    ///   is produced from the same source as this (issue 1495): zenoh's
+    ///   is produced from the same source as this: zenoh's
     ///   XXH3-128 of the publisher's liveliness keyexpr, Cyclone's writer
     ///   GUID — the same gid `ros2 topic info --verbose` prints.
     /// * **`Err(Unsupported)` is a real answer, and it is not zero.** A
@@ -414,7 +414,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
         )
     }
 
-    /// Register a callback for `PublicationMatched` — issue 1972, upstream
+    /// Register a callback for `PublicationMatched` — upstream
     /// `RMW_EVENT_PUBLICATION_MATCHED` / rclcpp's
     /// `PublisherEventCallbacks::matched_callback`. Fires when a subscription
     /// starts or stops matching this publisher; `current_count` is how many
@@ -444,7 +444,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
         )
     }
 
-    /// Register a callback for `PublisherIncompatibleType` — issue 1972,
+    /// Register a callback for `PublisherIncompatibleType` —
     /// upstream `RMW_EVENT_PUBLISHER_INCOMPATIBLE_TYPE` / rclcpp's
     /// `PublisherEventCallbacks::incompatible_type_callback`. Fires when a
     /// subscription on this topic NAME with a different type is seen.
@@ -469,7 +469,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 
     /// The topic this publisher was created on — rclrs's
     /// `PublisherState::topic_name`, C's `rcl_publisher_get_topic_name`,
-    /// C++'s `Publisher::get_topic_name`. phase-444.
+    /// C++'s `Publisher::get_topic_name`.
     ///
     /// **`&self`, which is upstream's own signature.** The ledger row this
     /// closes (`rust:Publisher::topic_name`) argued the accessor had to take
@@ -498,7 +498,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 
     /// How many subscriptions this publisher reaches, RIGHT NOW —
     /// rclcpp's `Publisher::get_subscription_count`, rcl's
-    /// `rclc_publisher_get_subscription_count`. phase-444, issue 1643.
+    /// `rclc_publisher_get_subscription_count`.
     ///
     /// **Upstream's question where the backend can answer it, a weaker one
     /// where it cannot — and the difference belongs here rather than in a
@@ -520,8 +520,8 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     /// **Takes the executor**, which upstream does not, and that is forced: we
     /// open ONE transport session per image and the [`Executor`] owns it, so
     /// the graph is the executor's to read — the same receiver difference as
-    /// every other graph verb (phase-381 W4). The compiler demands the
-    /// argument, which is RFC-0089's mechanical-edit test.
+    /// every other graph verb. The compiler demands the
+    /// argument, which is the adoption rule's mechanical-edit test.
     ///
     /// Reports what has been DISCOVERED and never blocks, so a small answer
     /// right after startup is "not seen yet", never "not there"; and
@@ -839,7 +839,7 @@ use portable_atomic::{AtomicBool, Ordering};
 ///   per-publisher arena) hands user a `&mut [u8]` slice. User writes in
 ///   place. [`PublishLoan::commit`] triggers the wire write. With
 ///   `rmw-lending` it is zero-copy where the backend lends — zenoh, the only
-///   one that fills the loan slots (no payload copy, measured in issue 0814)
+///   one that fills the loan slots (no payload copy, measured)
 ///   — and REFUSED where it does not (Cyclone, XRCE, uORB):
 ///   `LoanError::Backend(Unsupported)`, permanent, the same in every build.
 ///   The arena path is one copy, the same as `publish_serialized`.
@@ -925,7 +925,7 @@ impl<const TX_BUF: usize> TxArena<TX_BUF> {
 }
 
 impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
-    /// RFC-0088 — the serialization format this publisher expects its raw
+    /// The serialization format this publisher expects its raw
     /// bytes to already be in. Counterpart to [`RawSubscription::format`].
     pub const fn format(&self) -> nros_serdes::format::SerializationFormatId {
         crate::session::IMAGE_SERIALIZATION_FORMAT_ID
@@ -963,7 +963,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         crate::executor::profile::on_publish(self.handle.topic_name());
     }
 
-    /// Phase 108.A — `true` if the active backend can fire the named
+    /// `true` if the active backend can fire the named
     /// event for this raw publisher.
     #[cfg(feature = "alloc")]
     pub fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
@@ -985,8 +985,8 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
     }
 
-    /// Renamed to [`publish_serialized`](Self::publish_serialized) (phase-515
-    /// C8), the transmit word of the receive side's `take_serialized`.
+    /// Renamed to [`publish_serialized`](Self::publish_serialized),
+    /// the transmit word of the receive side's `take_serialized`.
     // phase-515 C8 renamed it.
     #[deprecated(
         since = "0.6.0",
@@ -996,7 +996,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         self.publish_serialized(data)
     }
 
-    /// Phase 128.F.4 — raw publish with a wire-level attachment block.
+    /// Raw publish with a wire-level attachment block.
     ///
     /// `attachment` rides alongside the payload on backends that
     /// natively support it (zenoh-pico, Cyclone DDS). Backends without
@@ -1020,8 +1020,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     }
 
     /// Renamed to
-    /// [`publish_serialized_with_attachment`](Self::publish_serialized_with_attachment)
-    /// (phase-515 C8).
+    /// [`publish_serialized_with_attachment`](Self::publish_serialized_with_attachment).
     // phase-515 C8 renamed it.
     #[deprecated(
         since = "0.6.0",
@@ -1035,7 +1034,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         self.publish_serialized_with_attachment(data, attachment)
     }
 
-    /// Phase 108.B — manually assert this publisher's liveliness.
+    /// Manually assert this publisher's liveliness.
     /// Required for `QoSLivelinessPolicy::ManualByTopic` /
     /// `ManualByNode`. No-op for AUTOMATIC / NONE. See
     /// [`EmbeddedPublisher::assert_liveliness`] for what `Err(Unsupported)`
@@ -1066,7 +1065,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     /// active backend's `SlotLending::try_lend_slot` — zero-copy on zenoh
     /// (`z_bytes_from_static_buf`), the only backend that lends; on
     /// Cyclone, XRCE and uORB it returns `LoanError::Backend(Unsupported)`,
-    /// a permanent answer (issue 0814): use `publish_raw` there.
+    /// a permanent answer: use `publish_raw` there.
     /// Without `rmw-lending`, the arena fallback is used: caller fills a
     /// per-publisher inline slot, [`commit`](PublishLoan::commit) calls
     /// the backend's `publish_raw` (single memcpy into the backend's
@@ -1133,7 +1132,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
 
     /// The topic this publisher was created on — see
     /// [`EmbeddedPublisher::topic_name`] for the contract and for why the
-    /// accessor is here rather than on the RMW trait. phase-444.
+    /// accessor is here rather than on the RMW trait.
     pub fn topic_name(&self) -> &str {
         self.handle.topic_name()
     }
@@ -1171,7 +1170,7 @@ impl From<TransportError> for LoanError {
 /// - **Backend lending (`rmw-lending`)**: slot owned by the backend —
 ///   zenoh-pico's static buffer aliased via `z_bytes_from_static_buf`, the
 ///   only backend that lends. True zero-copy publish there; the other
-///   backends refuse the loan (issue 0814).
+///   backends refuse the loan.
 #[must_use = "PublishLoan must be committed or discarded; dropping silently rolls back"]
 #[cfg(not(feature = "rmw-lending"))]
 pub struct PublishLoan<'a, const TX_BUF: usize> {
@@ -1323,7 +1322,7 @@ impl<M, const RX_BUF: usize> Drop for Subscription<M, RX_BUF> {
 
 impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     /// Try to receive a typed message (non-blocking).
-    /// Take one message if the middleware has one — phase-379 W3.
+    /// Take one message if the middleware has one.
     ///
     /// Named `take` after rcl (`rcl_take`) and rclcpp (`Subscription::take`),
     /// which spell the non-blocking receive that way — as does our own C
@@ -1438,7 +1437,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
         )
     }
 
-    /// Register a callback for `SubscriptionMatched` — issue 1972, upstream
+    /// Register a callback for `SubscriptionMatched` — upstream
     /// `RMW_EVENT_SUBSCRIPTION_MATCHED` / rclcpp's
     /// `SubscriptionEventCallbacks::matched_callback`. Fires when a publisher
     /// starts or stops matching this subscription; `current_count` is how
@@ -1463,7 +1462,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
         )
     }
 
-    /// Register a callback for `SubscriptionIncompatibleType` — issue 1972,
+    /// Register a callback for `SubscriptionIncompatibleType` —
     /// upstream `RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE` / rclcpp's
     /// `SubscriptionEventCallbacks::incompatible_type_callback`. Fires when a
     /// publisher on this topic NAME with a different type is seen.
@@ -1567,14 +1566,14 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     /// The topic this subscription was created on — rclrs's
     /// `SubscriptionState::topic_name`. See
     /// [`EmbeddedPublisher::topic_name`] for the contract and for why the
-    /// accessor is here rather than on the RMW trait. phase-444.
+    /// accessor is here rather than on the RMW trait.
     pub fn topic_name(&self) -> &str {
         self.handle.topic_name()
     }
 
     /// How many publishers are on this subscription's topic, RIGHT NOW —
     /// rclcpp's `Subscription::get_publisher_count`, rcl's
-    /// `rclc_subscription_get_publisher_count`. phase-444.
+    /// `rclc_subscription_get_publisher_count`.
     ///
     /// The subscription half of
     /// [`EmbeddedPublisher::get_subscription_count`], which states the
@@ -1619,7 +1618,7 @@ impl<const RX_BUF: usize> Drop for RawSubscription<RX_BUF> {
 }
 
 impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
-    /// RFC-0088 — the serialization format of the bytes this subscription
+    /// The serialization format of the bytes this subscription
     /// yields, as an image-local discriminant.
     ///
     /// A single-backend image knows this at compile time; the accessor exists
@@ -1656,7 +1655,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
             .map_err(NodeError::Transport)
     }
 
-    /// Phase 128.F.4 — raw receive that also surfaces the incoming
+    /// Raw receive that also surfaces the incoming
     /// sample's wire-level attachment block.
     ///
     /// Returns `Ok(Some((payload_len, attachment_len)))`. The payload
@@ -1677,7 +1676,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
             .map_err(NodeError::Transport)
     }
 
-    /// Phase 252 / issue 0073 — raw receive that also returns the E2E
+    /// Raw receive that also returns the E2E
     /// [`IntegrityStatus`](nros_rmw::IntegrityStatus) (CRC + sequence gap/dup) for
     /// the C/C++ `rclc_polling_subscription_take_validated` path. The validator lives
     /// in the backend handle (`take_validated`), so no typed message is needed;
@@ -1693,7 +1692,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
             .map_err(NodeError::Transport)
     }
 
-    /// Phase 124.D.1 — burst-take. Drain up to `max_msgs` queued
+    /// Burst-take. Drain up to `max_msgs` queued
     /// samples into the caller-supplied contiguous block in one
     /// call, with the i-th sample at
     /// `buf[i * per_msg_cap .. i * per_msg_cap + out_lens[i]]`.
@@ -1717,16 +1716,16 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
             .map_err(NodeError::Transport)
     }
 
-    /// Phase 122.3.c.6.e — register a `Waker` that fires when a new
+    /// Register a `Waker` that fires when a new
     /// message arrives. Mirror of the existing service-server /
     /// service-client wake plumbing. Returns `false` on a backend that
-    /// cannot wake (issue 1940) — the caller falls back to polling.
+    /// cannot wake — the caller falls back to polling.
     pub fn register_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::Subscription as _;
         self.handle.register_waker(waker)
     }
 
-    /// Phase 108.A — `true` if the active backend can fire the named
+    /// `true` if the active backend can fire the named
     /// event for this raw subscription.
     #[cfg(feature = "alloc")]
     pub fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
@@ -1734,7 +1733,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         self.handle.supports_event(kind)
     }
 
-    /// Phase 108.A — register a callback for `LivelinessChanged`.
+    /// Register a callback for `LivelinessChanged`.
     #[cfg(feature = "alloc")]
     pub fn on_liveliness_changed<F>(&mut self, cb: F) -> Result<(), NodeError>
     where
@@ -1743,7 +1742,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         register_sub_event_liveliness::<F>(&mut self.handle, &mut self.event_regs, cb)
     }
 
-    /// Phase 108.A — register a callback for `RequestedDeadlineMissed`.
+    /// Register a callback for `RequestedDeadlineMissed`.
     #[cfg(feature = "alloc")]
     pub fn on_requested_deadline_missed<F>(
         &mut self,
@@ -1767,7 +1766,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         )
     }
 
-    /// Phase 108.A — register a callback for `MessageLost`.
+    /// Register a callback for `MessageLost`.
     #[cfg(feature = "alloc")]
     pub fn on_message_lost<F>(&mut self, cb: F) -> Result<(), NodeError>
     where
@@ -1787,7 +1786,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         )
     }
 
-    /// Register a callback for `SubscriptionMatched` — issue 1972, upstream
+    /// Register a callback for `SubscriptionMatched` — upstream
     /// `RMW_EVENT_SUBSCRIPTION_MATCHED` / rclcpp's
     /// `SubscriptionEventCallbacks::matched_callback`. Fires when a publisher
     /// starts or stops matching this subscription; `current_count` is how
@@ -1812,7 +1811,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         )
     }
 
-    /// Register a callback for `SubscriptionIncompatibleType` — issue 1972,
+    /// Register a callback for `SubscriptionIncompatibleType` —
     /// upstream `RMW_EVENT_SUBSCRIPTION_INCOMPATIBLE_TYPE` / rclcpp's
     /// `SubscriptionEventCallbacks::incompatible_type_callback`. Fires when a
     /// publisher on this topic NAME with a different type is seen.
@@ -1932,7 +1931,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     }
 
     /// The topic this subscription was created on — see
-    /// [`EmbeddedPublisher::topic_name`]. phase-444.
+    /// [`EmbeddedPublisher::topic_name`].
     pub fn topic_name(&self) -> &str {
         self.handle.topic_name()
     }
@@ -1961,10 +1960,10 @@ pub struct RawServiceServer<
 }
 
 impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP_BUF> {
-    /// Phase 122.3.c.6.e — register a `Waker` that fires when a new
+    /// Register a `Waker` that fires when a new
     /// request arrives. Mirror of the existing subscriber /
     /// service-client wake plumbing. Returns `false` on a backend that
-    /// cannot wake (issue 1940) — the caller falls back to polling.
+    /// cannot wake — the caller falls back to polling.
     pub fn register_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ServiceTrait;
         self.handle.register_waker(waker)
@@ -2023,7 +2022,7 @@ impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP
     }
 
     /// The service this server was created on — see
-    /// [`EmbeddedPublisher::topic_name`]. phase-444.
+    /// [`EmbeddedPublisher::topic_name`].
     pub fn service_name(&self) -> &str {
         self.handle.service_name()
     }
@@ -2068,9 +2067,9 @@ pub struct RawServiceClient<
 }
 
 impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REPLY_BUF> {
-    /// Phase 122.3.c.6.e — register a `Waker` that fires when the
+    /// Register a `Waker` that fires when the
     /// reply to a previously-sent request lands. Returns `false` on a
-    /// backend that cannot wake (issue 1940).
+    /// backend that cannot wake.
     pub fn register_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ClientTrait;
         self.handle.register_waker(waker)
@@ -2103,7 +2102,7 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
     /// Send a raw CDR request. Non-blocking; the reply arrives via
     /// [`take_response_raw`](Self::take_response_raw).
     ///
-    /// Returns the SEQUENCE ID the backend assigned (issue 2009), which the
+    /// Returns the SEQUENCE ID the backend assigned, which the
     /// reply carries back. This handle keeps no table: a caller with more than
     /// one request outstanding matches the id itself — the shape of upstream's
     /// `rcl_send_request(client, req, &sequence_number)`. It is
@@ -2114,7 +2113,7 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
             .map_err(|_| NodeError::ServiceRequestFailed)
     }
 
-    /// Phase 124.G.3 — graph-aware "is the matching server up?"
+    /// Graph-aware "is the matching server up?"
     /// probe. Mirrors [`EmbeddedServiceClient::service_is_ready`](crate::executor::EmbeddedServiceClient::service_is_ready) for the raw API.
     pub fn service_is_ready(&self) -> Result<bool, NodeError> {
         use nros_rmw::ClientTrait;
@@ -2125,7 +2124,7 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
     /// `Ok(Some((len, sequence_id)))` on success; bytes live in
     /// [`reply_buffer`](Self::reply_buffer) until the next call, and
     /// `sequence_id` is the one [`send_request_raw`](Self::send_request_raw)
-    /// returned for the request this answers (issue 2009) — upstream's
+    /// returned for the request this answers — upstream's
     /// `rcl_take_response` request header.
     pub fn take_response_raw(&mut self) -> Result<Option<(usize, i64)>, NodeError> {
         self.handle
@@ -2140,7 +2139,7 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
     }
 
     /// The service this client was created on — see
-    /// [`EmbeddedPublisher::topic_name`]. phase-444.
+    /// [`EmbeddedPublisher::topic_name`].
     pub fn service_name(&self) -> &str {
         self.handle.service_name()
     }
@@ -2265,7 +2264,7 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// off the wire and writes the reply's fields straight back, so neither is
     /// ever materialised as a value.
     ///
-    /// phase-382 W1'. This is what `handle_request_boxed` should have been: that
+    /// This is what `handle_request_boxed` should have been: that
     /// one boxes the reply and leaves the REQUEST as a stack local, which is how
     /// `ros2 param set` came to put 1.19 MB on the calling task's stack. Streaming
     /// removes both, and needs no allocator — see
@@ -2293,7 +2292,7 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// `ServiceState::service_name`, C's `rcl_service_get_service_name`,
     /// C++'s `Service::get_service_name`. See
     /// [`EmbeddedPublisher::topic_name`] for the contract and for why the
-    /// accessor is here rather than on the RMW trait. phase-444.
+    /// accessor is here rather than on the RMW trait.
     ///
     /// Bounded against rclrs: the name is a `&str` BORROWED from this handle where
     /// rclrs returns an owned `String` (no allocator), and the receiver is this live
@@ -2450,10 +2449,10 @@ pub struct EmbeddedServiceClient<
     pub(crate) _phantom: PhantomData<Svc>,
 }
 
-/// Issue 1686 — what a server-readiness probe answered, read the way a WAIT
+/// What a server-readiness probe answered, read the way a WAIT
 /// loop must read it.
 ///
-/// `ClientTrait::service_is_ready` has three answers (issue 1008), and every
+/// `ClientTrait::service_is_ready` has three answers, and every
 /// wait loop in the tree — Rust's `wait_for_service` /
 /// `wait_for_action_server` and the four C / C++ bindings — classifies the
 /// probe through [`Self::of`], so the six loops cannot come to disagree.
@@ -2461,7 +2460,7 @@ pub struct EmbeddedServiceClient<
 /// The third answer is the one the loops used to drop. A backend that has no
 /// discovery (XRCE: the Agent owns the DDS participant, `vtable.c` keeps the
 /// slot NULL) answers `Err(Unsupported)` on EVERY probe, so waiting can never
-/// change it. Issue 1087 folded it into "keep waiting", which spent the whole
+/// change it. An older version folded it into "keep waiting", which spent the whole
 /// budget and then reported TIMEOUT — and every C / C++ client example treats
 /// TIMEOUT as "no server" and exits. So the C and C++ XRCE action and service
 /// clients could not complete a single round-trip against a server that was
@@ -2591,13 +2590,13 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
         })
     }
 
-    /// Explicitly clear the in-flight flag (Phase 84.D3).
+    /// Explicitly clear the in-flight flag.
     ///
     /// Call this if a previous [`Promise`] was dropped without completing
     /// and you want to abandon the pending reply. The next
     /// [`call`](Self::call) proceeds, and the abandoned call's reply — if it
     /// still arrives — is DROPPED: the next promise accepts only the reply
-    /// naming its own request's id (issue 2009). It used to be delivered to
+    /// naming its own request's id. It used to be delivered to
     /// the next call.
     pub fn reset_in_flight(&mut self) {
         self.in_flight = false;
@@ -2616,14 +2615,14 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// is spun cooperatively between checks so other subscribers / timers
     /// continue to make progress, and the check itself is a synchronous read
     /// of the discovery state the backend maintains (on zenoh, the
-    /// matched-server set fed by liveliness PUT/DELETE — phase-428 W13). No
+    /// matched-server set fed by liveliness PUT/DELETE). No
     /// query is issued at call time, which is also how upstream answers.
     ///
-    /// issue 1087 — a backend that cannot answer (`Err`, e.g. XRCE) is
+    /// A backend that cannot answer (`Err`, e.g. XRCE) is
     /// "cannot say", NOT "yes". It used to be yes, so this returned
     /// immediately on cyclone, XRCE and uORB without probing anything.
     ///
-    /// issue 1686 — and "cannot say" is not "no" either: such a backend
+    /// And "cannot say" is not "no" either: such a backend
     /// returns `Err(NodeError::Transport(TransportError::Unsupported))` at
     /// once, rather than waiting out a budget no answer can arrive in and
     /// reporting `Ok(false)`. See [`ServerVisibility`]. A caller that may send
@@ -2663,15 +2662,15 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     // — issue 1008. The `Result` form below is the same query with rcl's two
     // channels kept, and it is now the only one.
 
-    /// Phase 124.C.3 — graph-aware server-availability probe.
+    /// Graph-aware server-availability probe.
     ///
     /// Returns `Ok(true)` / `Ok(false)` when the backend can answer
     /// (zenoh queryable interest, DDS built-in topic reader), or
     /// `Err(NodeError::Transport(Unsupported))` when it can't (XRCE
     /// agent without participant enumeration). Distinct from
     /// rclcpp collapses this to a bare `bool` and throws on error;
-    /// RFC-0018 forbids exceptions, so the `Result` carries what the
-    /// exception would have (phase-379 W6).
+    /// The C++ API design forbids exceptions, so the `Result` carries what the
+    /// exception would have.
     ///
     /// Used to gate the first request so a startup-ordering race
     /// (client opens before server's discovery announcement lands)
@@ -2685,7 +2684,7 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// `ClientState::service_name`, C's `rcl_client_get_service_name`,
     /// C++'s `Client::get_service_name`. See
     /// [`EmbeddedPublisher::topic_name`] for the contract and for why the
-    /// accessor is here rather than on the RMW trait. phase-444.
+    /// accessor is here rather than on the RMW trait.
     ///
     /// Bounded against rclrs: the name is a `&str` BORROWED from this handle where
     /// rclrs returns an owned `String` (no allocator), and the receiver is this live
@@ -2724,7 +2723,7 @@ impl<T> Promise<'_, T> {
     ///
     /// Returns `Ok(Some(reply))` if the reply has arrived,
     /// `Ok(None)` if still pending.
-    /// Take one message if the middleware has one — phase-379 W3.
+    /// Take one message if the middleware has one.
     ///
     /// Named `take` after rcl (`rcl_take`) and rclcpp (`Subscription::take`),
     /// which spell the non-blocking receive that way — as does our own C
@@ -2739,8 +2738,7 @@ impl<T> Promise<'_, T> {
         Ok(self.take_with_info()?.map(|(reply, _info)| reply))
     }
 
-    /// [`take`](Self::take), plus the reply's [`ServiceInfo`](nros_core::ServiceInfo)
-    /// — issue 2136.
+    /// [`take`](Self::take), plus the reply's [`ServiceInfo`](nros_core::ServiceInfo).
     ///
     /// rclrs's `client.call::<_, (Response, ServiceInfo)>(..)`, and upstream
     /// `rmw_take_response`'s `rmw_service_info_t`: `request_id` is the
@@ -2797,7 +2795,7 @@ impl<T> Promise<'_, T> {
     }
 
     /// [`wait`](Self::wait), plus the reply's
-    /// [`ServiceInfo`](nros_core::ServiceInfo) — issue 2136. See
+    /// [`ServiceInfo`](nros_core::ServiceInfo). See
     /// [`take_with_info`](Self::take_with_info).
     pub fn wait_with_info(
         &mut self,
@@ -2865,7 +2863,7 @@ pub struct CompletedGoal<A: RosAction> {
 /// The name is rclrs's and the contract is bounded: rclrs's `ActionServer<A>`
 /// is an `Arc<ActionServerState<A>>` with async goal handling, while this one
 /// is fixed-size, sized by const generics, and driven from the executor
-/// (RFC-0021), so no goal lives on a heap and nothing needs an async runtime.
+/// (the blocking-API rules), so no goal lives on a heap and nothing needs an async runtime.
 pub struct ActionServer<
     A: RosAction,
     const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
@@ -2973,7 +2971,7 @@ impl<
     /// `NodeError::Serialization` if `result` does not serialize, or
     /// `NodeError::BufferTooSmall` if the serialized result exceeds
     /// `RESULT_BUF` and so cannot be retained for a later `get_result`.
-    /// Issue 0796: this returned `()`, so both failures were invisible — and
+    /// This returned `()`, so both failures were invisible — and
     /// the second one used to strand every client waiting on the result.
     pub fn complete_goal(
         &mut self,
@@ -3030,7 +3028,7 @@ impl<
 
     /// Try to handle a cancel_goal request. `cancel_handler` is asked once
     /// per goal the request selects — a cancel-all or cancel-before request
-    /// selects several (issue 2029; see
+    /// selects several (see
     /// [`ActionServerCore::try_handle_cancel`](crate::executor::ffi::ActionServerCoreFfi::try_handle_cancel)).
     pub fn try_handle_cancel(
         &mut self,
@@ -3071,7 +3069,7 @@ impl<
     ///   * `on_goal` fires when a new goal arrives.
     ///   * `on_cancel` fires once per goal a cancel request selects — one
     ///     for a request naming a goal, one per cancelable goal for a
-    ///     cancel-all / cancel-before request (issue 2029).
+    ///     cancel-all / cancel-before request.
     ///
     /// Get-result requests are drained unconditionally (no callback
     /// needed — the result is pulled from the goal's stored state).
@@ -3125,7 +3123,7 @@ impl<
         self.core.active_goal_count()
     }
 
-    /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
+    /// Is `goal_id` a goal this server still knows about?
     ///
     /// See
     /// [`ActionServerCore::goal_exists`](crate::executor::ffi::ActionServerCoreFfi::goal_exists)
@@ -3134,7 +3132,7 @@ impl<
         self.core.goal_exists(goal_id)
     }
 
-    /// Eagerly reclaim every completed result already delivered — phase-417 W4.b.
+    /// Eagerly reclaim every completed result already delivered.
     ///
     /// rcl's `rcl_action_expire_goals`, C's `rclc_action_expire_goals` and
     /// `ActionServerHandle::expire_goals` are the same call; ONE vocabulary
@@ -3162,7 +3160,7 @@ impl<
 /// The name is rclrs's and the contract is bounded: rclrs's `ActionClient<A>`
 /// is an `Arc<ActionClientState<A>>` whose requests are async futures, while
 /// this one's verbs return a `Promise` the caller drives with the executor
-/// (RFC-0021), because there is no async runtime to await a future on.
+/// (the blocking-API rules), because there is no async runtime to await a future on.
 pub struct ActionClient<
     A: RosAction,
     const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
@@ -3236,7 +3234,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     /// Cancel a goal (non-blocking). Returns a [`Promise`] for the
     /// `action_msgs/srv/CancelGoal` return code.
     ///
-    /// Issue 0796 — the promise resolves to a
+    /// The promise resolves to a
     /// [`nros_core::CancelResponseCode`], the RPC-level outcome. The per-goal
     /// accept/reject decision a SERVER's cancel callback returns is the
     /// separate [`nros_core::CancelResponse`]; both were spelled
@@ -3280,9 +3278,9 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         })
     }
 
-    /// Explicitly clear the "send_goal reply in flight" flag (Phase 84.D3).
+    /// Explicitly clear the "send_goal reply in flight" flag.
     ///
-    /// Issue 2009 — the abandoned request's reply, if it still comes, is
+    /// The abandoned request's reply, if it still comes, is
     /// dropped rather than delivered to the next `send_goal`.
     pub fn reset_send_goal_in_flight(&mut self) {
         self.core.in_flight_send_goal = false;
@@ -3304,7 +3302,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     ///
     /// A backend that cannot answer returns
     /// `Err(NodeError::Transport(TransportError::Unsupported))` at once
-    /// (issue 1686) — see [`ServerVisibility`].
+    /// — see [`ServerVisibility`].
     pub fn wait_for_action_server(
         &mut self,
         executor: &mut super::Executor,
@@ -3320,18 +3318,18 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         matches!(self.core.send_goal_client.service_is_ready(), Ok(true))
     }
 
-    /// Explicitly clear the "cancel reply in flight" flag (Phase 84.D3).
+    /// Explicitly clear the "cancel reply in flight" flag.
     ///
-    /// Issue 2009 — the abandoned request's reply, if it still comes, is
+    /// The abandoned request's reply, if it still comes, is
     /// dropped rather than delivered to the next `cancel_goal`.
     pub fn reset_cancel_in_flight(&mut self) {
         self.core.in_flight_cancel = false;
         self.core.pending_cancel.clear();
     }
 
-    /// Explicitly clear the "get_result reply in flight" flag (Phase 84.D3).
+    /// Explicitly clear the "get_result reply in flight" flag.
     ///
-    /// Issue 2009 — the abandoned request's reply, if it still comes, is
+    /// The abandoned request's reply, if it still comes, is
     /// dropped rather than delivered as the next goal's result.
     pub fn reset_get_result_in_flight(&mut self) {
         self.core.in_flight_get_result = false;
@@ -3373,7 +3371,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
 ///
 /// Read it with [`wait_next()`](FeedbackStream::wait_next), which drives
 /// the executor; the async `recv()` and the `stream` feature's `Stream`
-/// impl are retired (RFC-0113 D7).
+/// impl are retired.
 pub struct FeedbackStream<
     'a,
     A: RosAction,

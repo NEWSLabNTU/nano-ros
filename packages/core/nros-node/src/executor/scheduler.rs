@@ -1,17 +1,17 @@
 // Copyright (c) 2026, NEWSLab NTU.
 // SPDX-License-Identifier: Apache-2.0
 
-//! phase-509 P6 (RFC-0108 D3, D7; amended RFC-0107 step 4) -- the scheduler /
+//! The scheduler /
 //! worker split.
 //!
-//! RFC-0107's per-sched-task dispatcher was one value that both ORDERED ready work
-//! and was the unit of PREEMPTION. RFC-0108 splits it in two:
+//! The original per-sched-task dispatcher was one value that both ORDERED ready work
+//! and was the unit of PREEMPTION. The preemption-level model splits it in two:
 //!
 //! - a per-core [`Scheduler`]: the ordered ready set over the core's callback
 //!   slots, each slot's dispatch level, and the band table that says which
 //!   worker owns which levels;
 //! - a per-level [`Worker`]: one contiguous [`Band`] of dispatch levels, its
-//!   park (RFC-0106: the deadline sources, the primitive that blocks, and
+//!   park (the deadline sources, the primitive that blocks, and
 //!   what the last park did) and its stack record (the headroom rule's
 //!   bound and state). A worker is the thread that runs its band.
 //!
@@ -21,7 +21,7 @@
 //! ones it always had. The worker's fields are the park and stack fields the
 //! executor used to hold inline, moved and not changed.
 //!
-//! **Preemption between bands is the kernel's** (RFC-0108 D6). Each worker
+//! **Preemption between bands is the kernel's**. Each worker
 //! runs at its band's kernel priority and picks only its own band, most
 //! urgent level first, registration order within a level. On one core a less
 //! urgent worker runs only while every more urgent one is parked, so an
@@ -29,8 +29,8 @@
 //! one, and the members of one band never preempt each other: an arrival in
 //! the band of the running worker waits for its current callback to return.
 //!
-//! **Waking (D7).** An arrival the transport attributes to its slot
-//! (RFC-0084) wakes only the worker of that slot's band
+//! **Waking.** An arrival the transport attributes to its slot
+//! wakes only the worker of that slot's band
 //! ([`Scheduler::arrive`]). An unattributed arrival can only say "something
 //! on this session", so it wakes the most urgent parked worker, which
 //! re-picks ([`Scheduler::arrive_unattributed`]).
@@ -41,7 +41,7 @@
 //! ([`Scheduler::add_worker`], [`Scheduler::bind_slot`]) takes `&mut self`
 //! and runs before any worker starts.
 //!
-//! Crate-private until the level runners (phase-509 P9) open a scheduler and
+//! Crate-private until the level runners open a scheduler and
 //! its levels through the FFI; until then the executor uses only its one
 //! [`Worker`], and the [`Scheduler`] is driven by its own tests.
 
@@ -77,7 +77,7 @@ const UNBOUND: u8 = u8::MAX;
 /// the most urgent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Band {
-    /// The most urgent level in the band: its threshold (RFC-0108 D3).
+    /// The most urgent level in the band: its threshold.
     pub most_urgent: u8,
     /// The least urgent level in the band: its floor.
     pub least_urgent: u8,
@@ -213,12 +213,12 @@ impl Worker {
     }
 }
 
-/// phase-509 P9b item 3 -- how a band worker waits on its own wake object:
+/// How a band worker waits on its own wake object:
 /// at most `us` microseconds, returning early when the object is signalled
 /// (`WorkerWakeFn`). The answer is ignored: either way the worker re-scans.
 pub type BandWaitFn = unsafe extern "C" fn(ctx: *mut c_void, us: u64) -> i32;
 
-/// phase-509 P9b item 3 (RFC-0108 D7, "As built in P9b") -- a band worker's
+/// A band worker's
 /// wake object and the slots it answers for. The transport's arrival path
 /// reads it without the executor's lock, so it is `'static` and its fields
 /// are atomics or fixed at construction; it is linked into the executor's
@@ -278,7 +278,7 @@ impl BandWaiter {
     }
 }
 
-/// phase-509 P9b item 2 (RFC-0108 "As built in P9b") -- a worker of one band
+/// A worker of one band
 /// over an executor it shares with other workers: the record its own thread
 /// owns and hands to [`Executor::spin_band_once`](super::Executor::spin_band_once).
 ///
@@ -320,7 +320,7 @@ impl BandWorker {
         }
     }
 
-    /// The same worker, parking on `waiter` (phase-509 P9b item 3). Attach
+    /// The same worker, parking on `waiter`. Attach
     /// it to the executor ([`Executor::attach_band_worker`](super::Executor::attach_band_worker))
     /// so its band's arrivals signal it.
     pub const fn with_waiter(self, waiter: &'static BandWaiter) -> Self {
@@ -335,7 +335,7 @@ impl BandWorker {
         self.band
     }
 
-    /// Issue 2020 -- the image level this worker checks in as, 0 the most
+    /// The image level this worker checks in as, 0 the most
     /// urgent: whose components' ticks its passes run.
     pub const fn level(&self) -> u8 {
         self.level
@@ -405,8 +405,8 @@ impl Scheduler {
 
     /// Add the next worker, less urgent than every one added before it. Its
     /// band must start right after the previous band's floor (the first at
-    /// level 0): the bands partition the levels and are contiguous (RFC-0108
-    /// D3). `wake` signals its wake object; `None` for a worker nothing has
+    /// level 0): the bands partition the levels and are contiguous.
+    /// `wake` signals its wake object; `None` for a worker nothing has
     /// to wake (a test, or a worker that polls).
     pub fn add_worker(
         &mut self,
@@ -483,7 +483,7 @@ impl Scheduler {
         }
     }
 
-    /// RFC-0108 D7: an arrival attributed to `slot` queues it and wakes only
+    /// An arrival attributed to `slot` queues it and wakes only
     /// the worker of its band. Returns that worker; `None` when the slot is
     /// bound to no level a band holds, which is then woken as an
     /// unattributed arrival would be.
@@ -502,7 +502,7 @@ impl Scheduler {
         }
     }
 
-    /// RFC-0108 D7: an arrival nothing attributes wakes the most urgent
+    /// An arrival nothing attributes wakes the most urgent
     /// parked worker, which re-picks. `None` when no worker is parked: a
     /// running worker re-picks after its current callback anyway.
     pub fn arrive_unattributed(&self) -> Option<WorkerId> {
@@ -566,7 +566,7 @@ impl Scheduler {
     }
 
     /// Run `worker`'s band until it has nothing queued: pick, dispatch, pick
-    /// again from the ready set as it is now (RFC-0108 D2). Returns how many
+    /// again from the ready set as it is now. Returns how many
     /// callbacks ran.
     pub fn run(&self, worker: WorkerId, mut dispatch: impl FnMut(usize)) -> usize {
         let mut ran = 0;

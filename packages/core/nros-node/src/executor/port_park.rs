@@ -1,7 +1,7 @@
 // Copyright (c) 2026, NEWSLab NTU.
 // SPDX-License-Identifier: Apache-2.0
 
-//! phase-436 W7 — installing a port's park primitive, in one place.
+//! Installing a port's park primitive, in one place.
 //!
 //! Every Rust board entry that wires the seam needs the same three steps and
 //! the same non-obvious constraint, so they live here rather than being spelt
@@ -20,7 +20,7 @@
 use super::spin::{Executor, ParkUntilFn};
 
 /// Install `park` on `executor`, waiting on the executor's own wake object.
-/// The park is its worker's (phase-509 P6, RFC-0108 D7): the one-level
+/// The park is its worker's: the one-level
 /// executor has one worker, and a worker of a scheduler with several levels
 /// parks on its own wake object, which only its band's arrivals signal.
 ///
@@ -31,7 +31,7 @@ use super::spin::{Executor, ParkUntilFn};
 /// `granularity_us` is the finest park the primitive can express. The PORT
 /// states it, because only the port knows: an RTOS tick is a coarser limit
 /// than the ABI signature (ThreadX ticks at 100 Hz) and a timespec primitive a
-/// finer one (issue 1242).
+/// finer one.
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 pub fn install_port_park(
     executor: &mut Executor<'_>,

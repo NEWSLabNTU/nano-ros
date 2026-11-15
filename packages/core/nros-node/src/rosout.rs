@@ -37,7 +37,7 @@
 //! omission. A publisher is an ENTITY: it reaches
 //! `EntityInventory::derive`'s counts, the zenoh session's pools and the
 //! sizing descriptor. An entity the runtime conjures below the declaration is
-//! exactly the shape of issue 1341 — the action server's `/status` publisher,
+//! exactly the shape of a known bug — the action server's `/status` publisher,
 //! which appears in no `[[endpoint]]` row and fills the queryable table at
 //! boot anyway. Declaring it like any other publisher keeps one derivation.
 //!
@@ -49,7 +49,7 @@
 //! 1. `nros_log`'s dispatcher holds its dispatch guard across every
 //!    `sink.log()` call, so a sink that logs cannot recurse: its record is
 //!    held and delivered after the current one, a bounded number of passes per
-//!    dispatch (issue 2000).
+//!    dispatch.
 //! 2. The SINK does not publish. It copies into a `.bss` slot and returns, so
 //!    no logging call ever enters the RMW stack. This is what keeps issue
 //!    0589's shape — a Zephyr native_sim image dying by stack exhaustion with
@@ -72,7 +72,7 @@ use crate::executor::{EmbeddedPublisher, NodeError};
 
 pub use nros_log::rosout::{RosoutScope, dropped, enabled, scope, suppressed};
 
-/// The [`RosoutScope`] this image's ROS release implies (RFC-0102 D4).
+/// The [`RosoutScope`] this image's ROS release implies.
 ///
 /// `ros-iron` / `ros-jazzy`: node loggers and their `get_child` descendants,
 /// as `rcl_logging_rosout_add_sublogger` makes it upstream. `ros-humble`, and
@@ -96,7 +96,7 @@ pub fn enable() -> bool {
 /// The topic. Absolute and un-namespaced, as upstream's is.
 pub const TOPIC: &str = "/rosout";
 
-/// phase-556 W13 -- the publishers the `rosout` capability claims in an
+/// The publishers the `rosout` capability claims in an
 /// image's sizing: one `/rosout` writer per image. The host CLI's entity
 /// inventory and the shared sizing library mirror it (neither can read this
 /// crate), and `check-infra-queryable-counts` holds every mirror to this one.
@@ -155,7 +155,7 @@ pub const TX_BUF: usize = 4          // CDR encapsulation header
 /// (`MAX_TL_PUBLISHERS`) **and** one cache queryable out of
 /// `ZPICO_MAX_QUERYABLES`, which defaults to 8 on an embedded build while
 /// `[param_services]` (6) and `[lifecycle]` (5) already claim eleven between
-/// them (issues 0460 / 1378). And KEEP_LAST(1000) over a type whose by-value
+/// them. And KEEP_LAST(1000) over a type whose by-value
 /// size is ~1 KB is a megabyte of retained history.
 ///
 /// So this profile is CORRECT and it is not the default here. Use it on a
@@ -226,7 +226,7 @@ pub fn pump(publisher: &EmbeddedPublisher<Log>) -> Result<usize, (usize, NodeErr
 /// failure, reported exactly as [`pump`] reports one.
 ///
 /// One encoder for every language: the C and C++ bridges call this rather than
-/// growing their own `Log` mapping (issue 1589), so `fill`'s field rules —
+/// growing their own `Log` mapping, so `fill`'s field rules —
 /// clipping, the empty `function`, the monotonic stamp — hold on all three.
 pub fn pump_raw(
     mut send: impl FnMut(&[u8]) -> Result<(), ()>,

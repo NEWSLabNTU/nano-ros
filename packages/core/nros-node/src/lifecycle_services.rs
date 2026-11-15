@@ -62,7 +62,7 @@ pub mod state_id {
 
 /// Publicly invocable transition IDs from `lifecycle_msgs/Transition`.
 ///
-/// Issue 1099 — since `nros_core::lifecycle::LifecycleTransition` carries these
+/// Since `nros_core::lifecycle::LifecycleTransition` carries these
 /// same numbers as its discriminants, this module is no longer a TRANSLATION
 /// table: `transition_wire` and `from_msg_transition_id` are identity, and
 /// `transition_ids_match_enum_discriminants` below pins that. Keep the
@@ -587,7 +587,7 @@ pub use crate::config::PARAM_SERVICE_BUFFER_SIZE as LIFECYCLE_SERVICE_BUFFER_SIZ
 
 /// How many zenoh queryables the REP-2002 lifecycle services claim on a node.
 ///
-/// Issue 0827 — FIVE, not six. `change_state`, `get_state`,
+/// FIVE, not six. `change_state`, `get_state`,
 /// `get_available_states`, `get_available_transitions`, `get_transition_graph`.
 /// Both places that stated a number for these stated six, which is where the
 /// widely-quoted "twelve slots before the application declares anything" came
@@ -605,7 +605,7 @@ pub const TRANSITION_EVENT_SUFFIX: &str = "transition_event";
 
 /// How many PUBLISHERS the REP-2002 lifecycle family claims on an executor.
 ///
-/// Issue 1587 — ONE, the `~/transition_event` publisher. REP-2002's
+/// ONE, the `~/transition_event` publisher. REP-2002's
 /// communication interface is the five services PLUS this topic; shipping the
 /// services alone meant a supervising node could not watch a managed node's
 /// transitions and had to poll `~/get_state`.
@@ -614,11 +614,11 @@ pub const TRANSITION_EVENT_SUFFIX: &str = "transition_event";
 ///
 /// A transient-local publisher is also a zenoh QUERYABLE — it retains its last
 /// sample and declares a cache queryable so a late joiner's history query can
-/// reach it (issue 1378). `ZPICO_MAX_QUERYABLES` defaults to 8 on an embedded
+/// reach it. `ZPICO_MAX_QUERYABLES` defaults to 8 on an embedded
 /// build while `[param_services]` (6) and `[lifecycle]` (5) already claim
-/// eleven between them (issue 0460), so a sixth lifecycle slot would be the
+/// eleven between them, so a sixth lifecycle slot would be the
 /// difference between an image that boots and one that dies in
-/// `ServiceServerCreationFailed`. phase-467's study priced this row as the most
+/// `ServiceServerCreationFailed`. The RMW gap-closure study priced this row as the most
 /// expensive of its thirteen on exactly that assumption, and told whoever took
 /// it to decide the QoS first.
 ///
@@ -685,7 +685,7 @@ pub use crate::param_sizing::{
 /// see `crate::parameter_services::PARAM_INBOX_COUNT`, which states what
 /// that is waiting on. (A name, not an intra-doc link: that module is behind
 /// `param-services` and this one is not, so a link would dangle in exactly the
-/// configuration issue 1468 was about.)
+/// configuration that bug was about.)
 pub const LIFECYCLE_INBOX_COUNT: usize =
     if <crate::session::ConcreteSession as nros_rmw::Session>::SUPPORTS_CALLER_INBOX {
         LIFECYCLE_SERVICE_QUERYABLES * crate::param_sizing::MAX_SERVICE_SETS

@@ -85,24 +85,24 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-/// issue 2014 -- the wire framing of action messages: one spelling of every payload offset.
+/// The wire framing of action messages: one spelling of every payload offset.
 pub mod action_frame;
-/// phase-412 -- the boot self-report, for boards with no reachable log sink.
+/// The boot self-report, for boards with no reachable log sink.
 pub mod boot_report;
 pub mod c_waker;
 pub mod config;
-/// phase-454 W10 — the DECLARED QoS history depth, and the registration check
+/// The DECLARED QoS history depth, and the registration check
 /// over it. Rust's half of what C++ does with `NROS_SUBSCRIBE`'s
 /// `static_assert` and C with `NROS_ASSERT_DECLARED_DEPTH`.
 pub mod declared_qos;
-/// RFC-0088 / phase-421 W1 — the compile-time message-format check.
+/// The compile-time message-format check.
 ///
 /// Gated exactly like [`session`], whose `IMAGE_SERIALIZATION_FORMAT_ID` it
 /// compares against: with no RMW seam compiled in there is no backend, so
 /// there is no format for a message to disagree with.
 #[cfg(any(has_rmw, test))]
 pub mod format_check;
-/// Phase 212.K.7.6.b — runtime cyclonedds type-descriptor registry hook.
+/// Runtime cyclonedds type-descriptor registry hook.
 pub mod rmw_type_registry;
 
 pub mod executor;
@@ -117,7 +117,7 @@ pub mod ros_args;
 #[cfg(any(has_rmw, test))]
 pub mod session;
 mod subscriber;
-/// phase-425 W3 — the `/clock` time source. Feature-gated: an image that will
+/// The `/clock` time source. Feature-gated: an image that will
 /// never see a simulator should not carry the subscription or the message crate.
 /// Also gated on `has_rmw`, like `session` and the entity API it uses: without a
 /// backend there is no subscription to install, so the module would be a
@@ -195,7 +195,7 @@ pub(crate) fn tx_writer(buf: &mut [u8]) -> Result<nros_core::CdrWriter<'_>, nros
 // list for the reason the list exists: `nros-c` and `nros-cpp` depend on
 // `nros-node` and not on `nros-params`, so a type they cannot name here is a
 // capability their surface cannot expose, whatever the store does.
-/// Deprecated (phase-515): the store answers `Result<(), ParameterError>`.
+/// Deprecated: the store answers `Result<(), ParameterError>`.
 #[cfg(feature = "param-store")]
 #[allow(deprecated)]
 pub use nros_params::SetParameterResult;
@@ -214,7 +214,7 @@ pub use nros_params::{
 #[cfg(all(feature = "lifecycle-services", any(has_rmw, test)))]
 pub mod lifecycle_services;
 
-/// phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout`
+/// Ledger row `c:logging_rosout_enabled` — the `/rosout`
 /// publisher half. `has_rmw` for the same reason `lifecycle_services` has it:
 /// the module names `EmbeddedPublisher`, which does not exist without a
 /// backend.
@@ -265,9 +265,9 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator};
 // Re-export publisher/subscriber options (topic + QoS; backend-agnostic).
 pub use node::{PublisherOptions, SubscriptionOptions};
 
-/// phase-515 R2 -- rclrs's node options and `IntoNodeOptions`.
+/// rclrs's node options and `IntoNodeOptions`.
 pub use node_options::{IntoNodeOptions, NodeOptions};
-/// phase-515 R1 -- rclrs's per-entity options and `IntoPrimitiveOptions`.
+/// rclrs's per-entity options and `IntoPrimitiveOptions`.
 pub use primitive_options::{IntoPrimitiveOptions, PrimitiveOptions};
 
 // Re-export session mode (used by ExecutorConfig)

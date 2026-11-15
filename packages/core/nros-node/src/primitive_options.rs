@@ -1,5 +1,5 @@
 //! Per-entity creation options — rclrs's `PrimitiveOptions` /
-//! `IntoPrimitiveOptions` (phase-515 R1).
+//! `IntoPrimitiveOptions`.
 //!
 //! `node.create_publisher::<M>("chatter".keep_last(10).reliable())` reads as it
 //! does in rclrs: a bare name, or a name with QoS steps chained onto it. Each

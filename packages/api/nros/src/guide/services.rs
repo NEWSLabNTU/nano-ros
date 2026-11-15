@@ -29,5 +29,5 @@
 //!
 //! A promise is also a `Future`, but nano-ros drives no foreign async runtime:
 //! an async task that waited on one with no spin running elsewhere would wait
-//! forever. RFC-0113 retired `spin_async` because a host's scheduler, not
+//! forever. `spin_async` was retired because a host's scheduler, not
 //! nano-ros, would decide when its callbacks run.

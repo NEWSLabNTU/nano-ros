@@ -250,13 +250,13 @@ fn with_default_backing(
 
 #[cfg(feature = "rmw-cffi")]
 impl<'s> Executor<'s> {
-    /// phase-271 — open a new executor session over caller-supplied `backing`,
+    /// Open a new executor session over caller-supplied `backing`,
     /// sized by `sizing` (per-entry sizing). The core, non-generic sized entry
     /// point: the `alloc` [`open`](Self::open) convenience leaks a default
     /// backing and delegates here, and the `nros::main!` macro emits a backing
     /// sized to the entry's own entity count.
     ///
-    /// Phase 115.M.4 — auto-registers the cffi vtable for whichever
+    /// Auto-registers the cffi vtable for whichever
     /// backend the build was configured for, mirroring the C++ side's
     /// `#ifdef NROS_RMW_<NAME>` fan-out in `<rclcpp/node.hpp>`. The
     /// runtime's atomic vtable slot is idempotent: a re-call of any
@@ -440,7 +440,7 @@ impl Executor<'static> {
         Self::open_sized(config, super::storage::ExecutorSizing::DEFAULT)
     }
 
-    /// phase-271 — like [`open`](Self::open) but sized to a caller-supplied
+    /// Like [`open`](Self::open) but sized to a caller-supplied
     /// `sizing` (its own declared topology) instead of the build-time default.
     /// The `alloc` entry point the `nros::main!` macro's native board path uses
     /// to size a fat entry (>default `MAX_CBS` callbacks) without a
@@ -457,7 +457,7 @@ impl Executor<'static> {
         })
     }
 
-    /// Phase 128.F.1 — explicit per-backend session declaration for
+    /// Explicit per-backend session declaration for
     /// bridge mode. `specs[0]` becomes the primary session; `specs[1..]`
     /// open as extras keyed by RMW name. After construction, every
     /// `create_node_on(name, rmw)` call dispatches to whichever
@@ -483,7 +483,7 @@ impl Executor<'static> {
         })
     }
 
-    /// Phase 104.C.1 — open the Executor against a specific RMW
+    /// Open the Executor against a specific RMW
     /// backend by name. Selects from the named registry (Phase
     /// 104.B.2). `rmw_name` must match one of the names a backend
     /// registered under (`"zenoh"`, `"cyclonedds"`, `"xrce"`, …).
@@ -494,8 +494,8 @@ impl Executor<'static> {
     /// pick the first-registered slot.
     ///
     /// Single-Executor multi-Node multi-RMW (the long-term Design X
-    /// from `docs/roadmap/phase-104-multi-backend-bridges.md`) is
-    /// follow-up work — Phase 104.C.2 + C.3.
+    /// (the long-term multi-backend bridge design) is
+    /// follow-up work.
     ///
     /// Default-sized `alloc` convenience over
     /// [`open_with_rmw_in`](Self::open_with_rmw_in) (leaks a default backing).
@@ -638,7 +638,7 @@ impl<'s> Executor<'s> {
     }
 }
 
-/// Phase 128.F.1 — per-backend session declaration for
+/// Per-backend session declaration for
 /// [`Executor::open_multi`]. Each spec names an RMW backend (must
 /// match one a backend registered under via
 /// `nros_rmw_cffi_register_named`, which its self-registration calls) and
@@ -652,7 +652,7 @@ pub struct SessionSpec<'cfg> {
     pub node_name: &'cfg str,
     pub namespace: &'cfg str,
     /// The session's backend-specific properties (`RmwConfig::properties`):
-    /// what its domain's RMW file lowers to (RFC-0109 D6, phase-514 W3b).
+    /// what its domain's RMW file lowers to.
     /// Empty: none — the image's baked table is the DEFAULT session's and is
     /// never given to a spec.
     pub properties: &'cfg [(&'cfg str, &'cfg str)],
@@ -755,7 +755,7 @@ impl core::ops::DerefMut for SessionStore {
     }
 }
 
-/// Phase 228.E — an opaque, `Send` handle to an [`Executor`]'s RMW session.
+/// An opaque, `Send` handle to an [`Executor`]'s RMW session.
 ///
 /// In the per-sched-task model the boot executor opens the one session and hands each
 /// spawned sched task a handle (not a borrow) so the task opens its own
@@ -776,7 +776,7 @@ unsafe impl Send for SessionHandle {}
 
 #[cfg(any(has_rmw, test))]
 impl SessionHandle {
-    /// Phase 274.W1 — convert to an opaque `*mut c_void` for C/C++ FFI.
+    /// Convert to an opaque `*mut c_void` for C/C++ FFI.
     ///
     /// The returned pointer encodes the session address and is valid as long as
     /// the owning executor lives. Reconstruct via [`Self::from_raw`].
@@ -784,7 +784,7 @@ impl SessionHandle {
         self.0 as *mut core::ffi::c_void
     }
 
-    /// Phase 274.W1 — reconstruct a `SessionHandle` from an opaque pointer
+    /// Reconstruct a `SessionHandle` from an opaque pointer
     /// returned by [`Self::into_raw`].
     ///
     /// # Safety
@@ -812,7 +812,7 @@ pub(crate) fn group_filter_accepts(
 
 /// Bytes the parameter store asks the platform heap for, in ONE allocation.
 ///
-/// Issue 1706 -- the size of THIS build's store, which folds every knob that
+/// The size of THIS build's store, which folds every knob that
 /// shapes it (`MAX_PARAMETERS`, which a contract's `params:` derives, and the
 /// board's string/array capacities). No formula and no measured constant: the
 /// compiler's own answer, so the number reported below cannot drift from the
@@ -1371,7 +1371,7 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_graph_change_cb(
     guard.trigger();
 }
 
-/// Phase 124.B.7.c — Linux signalfd worker.
+/// Linux signalfd worker.
 ///
 /// Owns a Linux `eventfd` plus a worker task that `read()`s the
 /// fd and forwards it as a wake. The eventfd
@@ -1392,7 +1392,7 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_graph_change_cb(
 ///   3. Worker thread reads the fd, signals wake_cv. spin_once
 ///      blocked in cv.wait_timeout_while sees flag=true and exits.
 ///
-/// phase-359 W10 — the worker is a PLATFORM TASK, not a `std::thread`, and it
+/// The worker is a PLATFORM TASK, not a `std::thread`, and it
 /// forwards through the same [`NodeWake`](super::node_wake::NodeWake) the
 /// runtime wake callback uses rather than a `std::sync::Condvar`. The eventfd
 /// itself is still Linux — that is what makes the write async-signal-safe — so
@@ -1561,10 +1561,10 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb_from_isr(ctx: *mut core
     unsafe { nros_rmw_runtime_wake_cb(ctx) };
 }
 
-/// Phase 258 (Track 2, 2a) — executor-owned component tick slot.
+/// Executor-owned component tick slot.
 ///
-/// The layering-clean half of the W0-B `install` seam's tick fix
-/// (phase-257 D2). A `nros`-layer `install`/`register_node_borrowed`
+/// The layering-clean half of the `install` seam's tick fix.
+/// A `nros`-layer `install`/`register_node_borrowed`
 /// builds an `Arc<ComponentCell>` (the typed/poll-driven component
 /// state) and enrolls it here via [`Executor::enroll_component`]; the
 /// executor then drives `tick` on every enrolled slot at the tail of
@@ -1598,12 +1598,12 @@ pub struct ComponentSlot {
     /// `nros`-side drop trampoline: reconstitutes + drops the leaked
     /// `Arc<ComponentCell>` at `state`. Run once on `Executor::drop`.
     pub drop: unsafe extern "C" fn(state: *mut core::ffi::c_void),
-    /// Issue 2020 -- the level that registered the component
+    /// The level that registered the component
     /// (`Executor::set_registering_level` at enrol time), whose pass runs its
     /// `tick`; `NO_OWNING_LEVEL` on an executor whose levels do not own
     /// their slots, where the executor's own worker ticks every component.
     pub level: u8,
-    /// phase-521 W6 — whether the component's `tick` does any work. A tick
+    /// Whether the component's `tick` does any work. A tick
     /// runs once per spin and is how a component polls a service reply or
     /// completes an action goal, so an executor holding one keeps the spin
     /// cadence ([`Executor::entry_spin_budget`]). `false` only for a
@@ -1625,7 +1625,7 @@ unsafe impl Sync for ComponentSlot {}
 /// correctly. `EdfReadySet`'s presence bitmap independently asserts `N <= 64`.
 pub(crate) const MAX_CALLBACK_SLOTS: usize = 64;
 
-/// phase-509 P3 (RFC-0108 D2, its deferred re-probe question) -- whether a
+/// Whether a
 /// slot whose backend cannot attribute an arrival (XRCE, uORB) is probed after
 /// every callback ([`Executor::set_reprobe_each_callback`]) or once per pass.
 ///
@@ -1663,10 +1663,10 @@ pub(crate) struct FreedRegion {
     pub(crate) len: usize,
 }
 
-/// Phase 305 W3 (issue 0255) — the slots of one executor's RAM remap table
+/// The slots of one executor's RAM remap table
 /// (across all its nodes).
 ///
-/// Issue 1971 (RFC-0107 step 1) -- the launch file's rules no longer live
+/// The launch file's rules no longer live
 /// here: they are one `const` table in flash every executor reads
 /// ([`super::launch_remap`]). This table holds the RUNTIME rules: `--ros-args
 /// -r` rules (`crate::ros_args::install_argv_remaps`) and rules a hand-written
@@ -2787,10 +2787,10 @@ impl Executor<'static> {
     /// [`from_session`](Self::from_session) with an [`ExecutorConfig`], so a
     /// caller that brings its own session can also bring its own clock.
     ///
-    /// issue 0709 / issue 0687 — `from_session` takes no config, and that is
+    /// `from_session` takes no config, and that is
     /// the path the no-port population uses: it accepts any `Session`, so a
     /// consumer with a non-cffi backend reaches the executor through it and had
-    /// NO way to install `clock_us`. phase-359 W10 argued the `std`-without-a-
+    /// NO way to install `clock_us`. An earlier change argued the `std`-without-a-
     /// port clock fallbacks could go because "a caller with a clock installs it
     /// through `ExecutorConfig::clock_us`" — true for `open`, false here, which
     /// is half of why that deletion was reverted.
@@ -2798,8 +2798,7 @@ impl Executor<'static> {
     /// Only the timing sources are read from `config`; identity (locator,
     /// domain, names) belongs to the session the caller already opened. As in
     /// [`open_in`](Self::open_in), a `None` field does NOT clobber the
-    /// platform default — it means "not specified" (the bug issue 0671
-    /// records).
+    /// platform default — it means "not specified" (an earlier bug).
     #[cfg(feature = "alloc")]
     pub fn from_session_with(
         session: session::ConcreteSession,
@@ -2882,7 +2881,7 @@ pub(crate) fn spin_quantization_span(
     Some((early_us, early_us.saturating_add(spin_us)))
 }
 
-/// phase-436 — which deadline source bounded the last park.
+/// Which deadline source bounded the last park.
 ///
 /// Attribution is what turns "why did we wake" from a guess into a number.
 /// Recording it costs one byte per spin and is the difference between a
@@ -2938,7 +2937,7 @@ pub type NextDeadlineFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> u
 /// not wait but handed the wait to its framework's scheduler, and a negative
 /// value when this build cannot park at all.
 ///
-/// phase-521 W8 (c) (RFC-0113 D9, ruling 2026-11-03) -- the YIELDED answer is
+/// The YIELDED answer is
 /// how a tier that a framework schedules waits: a PX4 tier's slot arms its
 /// work item's `ScheduleDelayed(deadline_us)` (or `ScheduleClear()` when the
 /// bound is the caller's budget alone) and returns at once, and `spin_once`
@@ -2954,7 +2953,7 @@ pub type NextDeadlineFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> u
 /// deadline is exactly what the compare is armed to.
 pub type ParkUntilFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void, deadline_us: u64) -> i8;
 
-/// Issue 2225 (RFC-0113 D9) -- the wake half of a framework's park slot:
+/// The wake half of a framework's park slot:
 /// called after every signal of the executor's wake object, from the
 /// signalling context. A framework whose tier is a scheduled item rather than
 /// a parked thread (a PX4 work item) re-schedules the sched task here. Must be
@@ -2978,7 +2977,7 @@ pub(crate) struct WakeSourceSlot {
 }
 
 impl<'s> Executor<'s> {
-    /// Phase 228.B (RFC-0015) — construct a sched task's executor that **shares**
+    /// Construct a sched task's executor that **shares**
     /// a session opened once by the orchestration `main()`.
     ///
     /// In the per-sched-task execution model `main()` opens one RMW session, then
@@ -3126,7 +3125,7 @@ impl<'s> Executor<'s> {
         unsafe { Self::open_with_session_slot(handle.0, slot) }
     }
 
-    /// Phase 228.C — set this sched task executor's active callback-group filter. The
+    /// Set this sched task executor's active callback-group filter. The
     /// generated per-sched task calls this before registering nodes; afterwards
     /// only callbacks whose `.callback_group()` is in `groups` register here.
     /// An empty slice (or never calling it) leaves the wildcard — register all
@@ -3182,7 +3181,7 @@ impl<'s> Executor<'s> {
             .then(|| self.active_groups.as_slice())
     }
 
-    /// Phase 228.C — whether a callback in `group` should register in this
+    /// Whether a callback in `group` should register in this
     /// executor under the current filter. The wildcard accepts everything.
     pub fn group_active(&self, node_name: &str, node_namespace: &str, group: &str) -> bool {
         group_filter_accepts(
@@ -3215,7 +3214,7 @@ impl<'s> Executor<'s> {
     }
 
     /// `TopicInfo`/`ServiceInfo` so the zenoh backend can declare liveliness.
-    /// Issue 0656 — set the ROS domain for entities this executor declares.
+    /// Set the ROS domain for entities this executor declares.
     ///
     /// For bindings that build an executor from an existing session
     /// (`from_session_ptr_in`), where no `ExecutorConfig` is available and the
@@ -3285,7 +3284,7 @@ impl<'s> Executor<'s> {
     /// through [`crate::names::resolve_name_layered`] — so an argv rule
     /// installed BEFORE a launch rule still loses to it.
     ///
-    /// Issue 1971 -- a GENERATED entry no longer calls this: its launch rules
+    /// A GENERATED entry no longer calls this: its launch rules
     /// are the flash table ([`super::launch_remap::set_launch_remaps`]). This
     /// writes the RUNTIME table, for hand-written callers; on bare metal that
     /// table is 0 slots by default and the call is refused by name
@@ -3348,7 +3347,7 @@ impl<'s> Executor<'s> {
         self.remap_view().resolve(source, node_name, ns)
     }
 
-    /// Issue 1971 -- give this executor its own launch remap table instead of
+    /// Give this executor its own launch remap table instead of
     /// the image's ([`super::launch_remap::set_launch_remaps`]). A borrow of
     /// `.rodata`; nothing is copied.
     pub fn set_launch_remaps(&mut self, table: &'static [super::launch_remap::LaunchRemap]) {
@@ -3385,7 +3384,7 @@ impl<'s> Executor<'s> {
     ///
     /// Call BEFORE `node_builder(name).build()`. An existing entry for the
     /// same `(name, namespace)` key is overwritten (last-write wins). Overflow
-    /// past `MAX_NODES` is an `Err`, never a dropped binding — issue 1172. An
+    /// past `MAX_NODES` is an `Err`, never a dropped binding. An
     /// empty `namespace` is normalised
     /// to `"/"` to match what `NodeBuilder::build` computes for a root-NS node.
     pub fn bind_node_name_sched(
@@ -3405,7 +3404,7 @@ impl<'s> Executor<'s> {
         self.push_node_entry(name, norm_ns, sc, 0)
     }
 
-    /// phase-509 P2 (RFC-0108 D2) -- seed the contract rank of the node
+    /// Seed the contract rank of the node
     /// `(name, namespace)` before it is built: 0 is the most urgent, as codegen
     /// normalises the derivation's ranks. Every callback the node registers
     /// then dispatches at that rank inside its sched context's bucket
@@ -3491,7 +3490,7 @@ impl<'s> Executor<'s> {
     ///
     /// Call BEFORE entity creation. An existing entry for the same
     /// `(name, namespace, group)` key is overwritten (last-write wins). Overflow
-    /// past `MAX_CBS` is an `Err`, never a dropped binding — issue 1172. An
+    /// past `MAX_CBS` is an `Err`, never a dropped binding. An
     /// empty `namespace` is normalised to
     /// `"/"` to match `NodeBuilder::build`. Mirror of `bind_node_name_sched`.
     pub fn bind_group_sched(
@@ -3560,7 +3559,7 @@ impl<'s> Executor<'s> {
 
     /// Register a new scheduling context. Returns a [`SchedContextId`](crate::executor::sched_context::SchedContextId)
     /// callers pass to [`Self::bind_handle_to_sched_context`] to attach
-    /// callbacks. Phase 110.B.
+    /// callbacks.
     pub fn create_sched_context(
         &mut self,
         sc: super::sched_context::SchedContext,
@@ -3586,7 +3585,7 @@ impl<'s> Executor<'s> {
         Err(NodeError::NoSchedContextSlot)
     }
 
-    /// RFC-0052 W3b.2 — wall-clock µs since the UNIX epoch, when this
+    /// Wall-clock µs since the UNIX epoch, when this
     /// target has an epoch source (config `epoch_us`, defaulted from
     /// `SystemTime` on hosted configs). `None` = no wall clock; age
     /// monitors must not have been baked (the emitter refuses).
@@ -3594,12 +3593,12 @@ impl<'s> Executor<'s> {
         self.epoch_us_fn.map(|f| f())
     }
 
-    /// RFC-0052 W3b.4 — install the baked contract-monitor table. Call
+    /// Install the baked contract-monitor table. Call
     /// BEFORE entity creation so `create_publisher` can attach each
     /// contracted endpoint's counter cell. Mirrors `set_qos_overrides`:
     /// `&'static`, codegen-baked, empty by default.
     ///
-    /// phase-496 W1 -- the executor watches at most
+    /// The executor watches at most
     /// [`MAX_MONITORS`](super::monitor::MAX_MONITORS) rows
     /// (`NROS_EXECUTOR_MAX_MONITORS`). A generated entry cannot reach this with
     /// more: its table carries a compile-time assertion that names the knob,
@@ -3616,7 +3615,7 @@ impl<'s> Executor<'s> {
         self.monitor_table = table;
     }
 
-    /// phase-496 W1 -- install BOTH baked monitor tables, or neither.
+    /// Install BOTH baked monitor tables, or neither.
     ///
     /// The refusing installer: a table longer than this executor watches
     /// (`MAX_MONITORS` / `MAX_AGE_MONITORS`) is `Err`, and its `Display` names
@@ -3659,7 +3658,7 @@ impl<'s> Executor<'s> {
     /// `ExecutorConfig::epoch_us`; without one the take path records
     /// nothing and age monitors stay silent).
     ///
-    /// phase-496 W1 -- at most
+    /// At most
     /// [`MAX_AGE_MONITORS`](super::monitor::MAX_AGE_MONITORS) rows
     /// (`NROS_EXECUTOR_MAX_AGE_MONITORS`), on the same terms as
     /// [`Self::set_monitor_table`].
@@ -3678,7 +3677,7 @@ impl<'s> Executor<'s> {
         self.age_table
     }
 
-    /// phase-462 W3b — install the baked hazard table. Each row's guards name
+    /// Install the baked hazard table. Each row's guards name
     /// rows of the tables [`Self::set_monitor_table`] and
     /// [`Self::set_age_table`] install, so install those first; a guard whose
     /// row is absent never faults. The observer runs after the monitor rows on
@@ -3688,7 +3687,7 @@ impl<'s> Executor<'s> {
         self.hazard_table = table;
     }
 
-    /// phase-462 W4 -- install the contract's mode variants of the two monitor
+    /// Install the contract's mode variants of the two monitor
     /// tables; entry `i` is mode `i`, and entry 0 must be the base tables
     /// already installed. A switch is asked for with
     /// [`super::monitor::request_mode`] and applied at the next spin.
@@ -3813,7 +3812,7 @@ impl<'s> Executor<'s> {
             .map(|a| (a.cell, self.epoch_us_fn))
     }
 
-    /// Issue 2215 — bind a C/C++ callback subscription to its topic's
+    /// Bind a C/C++ callback subscription to its topic's
     /// contracted age row, so its stamped takes feed the silence rule (and,
     /// with an epoch source, the age rule) as the Rust typed paths' do.
     /// `stamp_offset` is the CDR byte offset of the type's `stamp.sec`
@@ -4024,7 +4023,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-474 I11 -- grid releases skipped since the last
+    /// Grid releases skipped since the last
     /// `clear_release_jitter_stats`, because the loop came back after they
     /// were due. Zero for a declared-cadence or zero-timeout caller.
     pub fn skipped_releases(&self) -> u32 {
@@ -4040,7 +4039,7 @@ impl<'s> Executor<'s> {
     /// thousand in ten thousand means the period cannot be met at all.
     ///
     /// Zero on a build with no clock -- `spin_period` refuses to run at all
-    /// there (issue 0709), so there is nothing to have measured.
+    /// there, so there is nothing to have measured.
     pub fn release_jitter(&self) -> (u64, u32, u32) {
         (
             self.max_release_jitter_us,
@@ -4049,7 +4048,7 @@ impl<'s> Executor<'s> {
         )
     }
 
-    /// phase-436 A2c -- of the `late` wakes `release_jitter` counts, those
+    /// Of the `late` wakes `release_jitter` counts, those
     /// late by more than [`Self::release_jitter_granularity_us`].
     ///
     /// A wake is late at one microsecond past its release. A loop paced by a
@@ -4078,7 +4077,7 @@ impl<'s> Executor<'s> {
         self.fault_fn = Some(f);
     }
 
-    /// phase-503 — install the REACTION hook: `f(event, ctx)` is called on the
+    /// Install the REACTION hook: `f(event, ctx)` is called on the
     /// spin thread when a supervised route passes its deadline
     /// (`route-deadline-runtime`), with the row's reaction id, row index and
     /// mechanism. It also stands in for [`Self::set_fault_handler`] on a
@@ -4095,7 +4094,7 @@ impl<'s> Executor<'s> {
         self.reaction_hook = hook;
     }
 
-    /// phase-509 P9b (RFC-0108 "As built in P9b") -- install the lock every
+    /// Install the lock every
     /// FFI entry and every worker pass takes on this executor (`None` removes
     /// it). Call it while no second thread can reach the executor: a runner
     /// installs it before it spawns a level.
@@ -4205,7 +4204,7 @@ impl<'s> Executor<'s> {
         mask
     }
 
-    /// phase-509 P9b item 4 -- the callbacks registered from now on belong
+    /// The callbacks registered from now on belong
     /// to level `level`: its worker runs them, and no other does. The first
     /// call switches the executor to levels that own their slots by
     /// registration (a level runner sets each level up in turn); until then,
@@ -4218,7 +4217,7 @@ impl<'s> Executor<'s> {
         self.worker.registering_sched = 0;
     }
 
-    /// Issue 2018 (RFC-0108 As-built) -- give the registering level its own
+    /// Give the registering level its own
     /// scheduling context: the one its sched task's policy lowers to
     /// ([`SchedContext::from_sched_task_policy`](super::sched_context::SchedContext::from_sched_task_policy)).
     /// Callbacks registered from now on, until the registering level
@@ -4241,7 +4240,7 @@ impl<'s> Executor<'s> {
         Ok(id)
     }
 
-    /// Issue 2018 -- the kernel enforces `sc`'s budget on the level's thread
+    /// The kernel enforces `sc`'s budget on the level's thread
     /// (NuttX `SCHED_SPORADIC`, Linux `SCHED_DEADLINE`), so the executor
     /// stops enforcing it: the context keeps its class, budget, period and
     /// deadline, and its callbacks are no longer skipped for want of budget.
@@ -4257,7 +4256,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// Issue 2018 -- whether `sc`'s budget is enforced by this executor
+    /// Whether `sc`'s budget is enforced by this executor
     /// (a cooperative `Sporadic` context the kernel was not handed).
     pub fn enforces_budget(&self, sc: super::sched_context::SchedContextId) -> bool {
         self.sporadic_states
@@ -4265,14 +4264,14 @@ impl<'s> Executor<'s> {
             .is_some_and(|s| s.is_some())
     }
 
-    /// Issue 2020 -- the level that owns what is registered now, `None` until
+    /// The level that owns what is registered now, `None` until
     /// a level runner first calls [`Self::set_registering_level`].
     pub fn registering_level(&self) -> Option<u8> {
         (self.worker.registering_level != super::scheduler::NO_OWNING_LEVEL)
             .then_some(self.worker.registering_level)
     }
 
-    /// Issue 2020 -- whether a pass ticks a component (or anything else
+    /// Whether a pass ticks a component (or anything else
     /// registered) owned by `owner`, the level recorded at registration
     /// (`None`: no level owned it).
     ///
@@ -4290,7 +4289,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-509 P9b item 2 -- the band the executor's own worker runs:
+    /// The band the executor's own worker runs:
     /// every level by default. With band workers over the same executor
     /// ([`Self::spin_band_once`]), the bands must partition the levels, so
     /// each callback has one worker.
@@ -4298,7 +4297,7 @@ impl<'s> Executor<'s> {
         self.worker.band = band;
     }
 
-    /// phase-509 P9b item 2 -- one pass of the executor's own worker, through
+    /// One pass of the executor's own worker, through
     /// a raw pointer: `spin_once`, except that with a lock that has a thread
     /// identity installed ([`super::exec_lock::ExecLock::with_thread_id`]) the
     /// lock is released around each user callback, so other threads (band
@@ -4318,17 +4317,17 @@ impl<'s> Executor<'s> {
         unsafe { Self::pass(this, PassMode::Shared, timeout, &mut discarded) }
     }
 
-    /// phase-509 P9b item 2 -- one pass of a band worker over an executor it
+    /// One pass of a band worker over an executor it
     /// shares: the readiness of `worker`'s band, then its callbacks, most
     /// urgent level first, the lock released around each one as in
     /// [`Self::spin_once_shared`]. A band pass does not park, drive the
     /// transport or run the executor-wide chores (parameter and lifecycle
     /// services, the monitors' rules): the executor's own worker does.
-    /// Issue 2020 -- it does tick the components its level registered
+    /// It does tick the components its level registered
     /// ([`Self::pass_ticks_owner`]), and the executor's own worker then does
     /// not.
     ///
-    /// phase-509 P9b item 3 -- a worker with a waiter
+    /// A worker with a waiter
     /// ([`super::scheduler::BandWorker::with_waiter`]) first parks, the lock
     /// released, for at most `timeout`: until its band's next timer is due or
     /// an arrival in its band signals it. Without one, `timeout` is unused
@@ -4346,8 +4345,8 @@ impl<'s> Executor<'s> {
         unsafe { Self::pass(this, PassMode::Band(worker), timeout, &mut discarded) }
     }
 
-    /// phase-509 P9b item 3 -- link `worker`'s waiter into this executor's
-    /// arrival routing (RFC-0108 D7): an arrival attributed to a slot of its
+    /// Link `worker`'s waiter into this executor's
+    /// arrival routing: an arrival attributed to a slot of its
     /// band then wakes it alone, an unattributed one wakes it with the rest.
     /// A worker with no waiter polls; this is then a no-op, as on a build
     /// with no arrival path. Attach each waiter to one executor, once.
@@ -4441,7 +4440,7 @@ impl<'s> Executor<'s> {
         false
     }
 
-    /// phase-503 — microseconds from now to the earliest deadline of a pending
+    /// Microseconds from now to the earliest deadline of a pending
     /// supervised route (0 when one is due), or `None` when none is waiting or
     /// the executor has no clock. A port that supervises with its own timer
     /// (`MECHANISM_TIMER`) re-arms it from this after each spin.
@@ -4463,7 +4462,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-503 W7 -- a [`RouteWatch`](super::monitor::RouteWatch) over this
+    /// A [`RouteWatch`](super::monitor::RouteWatch) over this
     /// executor's supervised routes, which a port's timer or reaction thread
     /// reads from outside the spin thread: at its expiry it sees a route the
     /// running spin has already answered, without waiting for the spin to
@@ -4521,7 +4520,7 @@ impl<'s> Executor<'s> {
         self.next_wake_bound_attributed_us(budget_us, None).0
     }
 
-    /// phase-436 W6 — contribute a deadline source.
+    /// Contribute a deadline source.
     ///
     /// The core never names an RTOS: a port registers `k_poll`, `epoll`, a
     /// queue set or a device ISR here, and the executor only ever asks "when
@@ -4598,7 +4597,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-509 P7 (RFC-0108 D8.1) -- the level this executor runs, 0 the
+    /// The level this executor runs, 0 the
     /// most urgent. An executor's runner sets it ([`Self::set_level`]); one it
     /// never set is level 0, which is every executor of a one-level image.
     /// It matches the generated `NROS_ENTRY_LEVEL_OF_<node>` of the nodes the
@@ -4607,7 +4606,7 @@ impl<'s> Executor<'s> {
         self.worker.level
     }
 
-    /// phase-509 P7 -- set the level this executor runs; its spins check in
+    /// Set the level this executor runs; its spins check in
     /// as that level. `false`, and nothing changed, at or past
     /// [`MAX_LEVELS`](super::MAX_LEVELS).
     pub fn set_level(&mut self, level: u8) -> bool {
@@ -4686,12 +4685,12 @@ impl<'s> Executor<'s> {
         best
     }
 
-    /// phase-436 — the bound the last park used, and which source won it.
+    /// The bound the last park used, and which source won it.
     pub fn last_park(&self) -> (u64, WakeSourceId) {
         (self.worker.last_park_bound_us, self.worker.last_park_source)
     }
 
-    /// phase-436 W2 — the park the platform was actually asked for, after
+    /// The park the platform was actually asked for, after
     /// rounding the request up to an expressible value.
     ///
     /// Differs from `last_park().0` exactly when the request did not land on
@@ -4701,7 +4700,7 @@ impl<'s> Executor<'s> {
         self.worker.last_park_achieved_us
     }
 
-    /// phase-436 W3 (issue 1194) — the granularity the release-jitter
+    /// The granularity the release-jitter
     /// measurement was actually made at, in microseconds.
     ///
     /// The jitter statistic is reported in microseconds, but the mechanism
@@ -4788,7 +4787,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-521 W6 (RFC-0113 D2) — the budget an entry's spin loop passes to
+    /// The budget an entry's spin loop passes to
     /// [`spin_once`](Self::spin_once).
     ///
     /// An entry loop is `loop { spin_once(budget) }`, and each park already
@@ -4806,7 +4805,7 @@ impl<'s> Executor<'s> {
     /// its data posting it (a wake fan-out with no free member, more waitable
     /// sessions than one park multiplexes, a port with no wake object), so the
     /// short budget bounds how long its data waits. A session with no
-    /// readiness form never gets here: it is refused at open (RFC-0113 D5).
+    /// readiness form never gets here: it is refused at open.
     /// An enrolled component whose `tick` does work (it polls a service reply
     /// or completes action goals once per spin) also keeps the slice, so its
     /// tick rate does not change under it.
@@ -5015,7 +5014,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// Issue #514 — whether the executor logs each violation as it is
+    /// Whether the executor logs each violation as it is
     /// detected (the default).
     ///
     /// Turn this off in an application that reports violations its own
@@ -5025,7 +5024,7 @@ impl<'s> Executor<'s> {
         self.violations.report = enabled;
     }
 
-    /// phase-474 I1 -- the drain-and-report hook: at the end of every spin,
+    /// The drain-and-report hook: at the end of every spin,
     /// drain the ring and log each entry with its sequence number and the
     /// `total` / `dropped` counters (`contract violation #N: <rule> <fqn>
     /// measured=.. declared=.. (total=.. dropped=..)`).
@@ -5040,25 +5039,25 @@ impl<'s> Executor<'s> {
         self.violations.drain_report = enabled;
     }
 
-    /// Issue #514 / phase-474 I1 -- violations evicted from the full ring
+    /// Violations evicted from the full ring
     /// before any drain took them.
     ///
     /// The ring keeps the LATEST `MAX_VIOLATIONS`, so non-zero means the
-    /// OLDEST verdicts were lost, never the newest. (Before phase-474 a full
+    /// OLDEST verdicts were lost, never the newest. (Before, a full
     /// ring refused the push, which kept the first verdicts since boot and
     /// lost every later one.)
     pub fn violations_dropped(&self) -> u32 {
         self.violations.counts.dropped
     }
 
-    /// phase-474 I1 -- contract violations this executor stored since boot
+    /// Contract violations this executor stored since boot
     /// (wrapping). The newest entry in the ring is number `violations_total()`;
     /// `total - dropped - pending` is how many drains have taken.
     pub fn violations_total(&self) -> u32 {
         self.violations.counts.total
     }
 
-    /// RFC-0052 W3b.4 -- drain pending contract violations, OLDEST first.
+    /// Drain pending contract violations, OLDEST first.
     /// Draining clears the ring. Call between spins, never from a callback.
     pub fn drain_violations(&mut self, mut f: impl FnMut(&super::monitor::Violation)) {
         self.violations.drain(|_, v| f(v));
@@ -5071,7 +5070,7 @@ impl<'s> Executor<'s> {
         self.violations.drain(f);
     }
 
-    /// phase-474 I2 -- choose when this executor's contract monitors arm,
+    /// Choose when this executor's contract monitors arm,
     /// overriding the build default (`NROS_MONITOR_ARM_ON_CALL`,
     /// `NROS_MONITOR_ARM_GRACE_MS`). Call before the first spin (an
     /// `arm_monitors` made before it is undone by this); after the first spin
@@ -5092,7 +5091,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-474 I2 -- the application says its start-up is over: this
+    /// The application says its start-up is over: this
     /// executor's monitors start judging now. Idempotent.
     ///
     /// Judgement restarts at arming: every rate/age/silence window reopens,
@@ -5105,12 +5104,12 @@ impl<'s> Executor<'s> {
         self.arm_now("the application armed them");
     }
 
-    /// phase-474 I2 -- whether this executor's monitors are armed.
+    /// Whether this executor's monitors are armed.
     pub fn monitors_armed(&self) -> bool {
         self.violations.counts.armed
     }
 
-    /// phase-474 I2 -- verdicts reached before the monitors armed: counted,
+    /// Verdicts reached before the monitors armed: counted,
     /// never stored, logged, sunk or traced.
     pub fn violations_suppressed_before_arm(&self) -> u32 {
         self.violations.counts.suppressed_before_arm
@@ -5219,10 +5218,10 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// Issue 1635 -- hand every stored violation to `sink`, beside the log line
-    /// (issue 0514's floor) and the ring push.
+    /// Hand every stored violation to `sink`, beside the log line
+    /// (the floor every image keeps) and the ring push.
     ///
-    /// phase-474 I7 -- not at detection any more: the verdict is queued and
+    /// Not at detection any more: the verdict is queued and
     /// leaves from `Executor::flush_violation_reports` at the end of a spin with
     /// slack, so the report never costs the dispatch it judges.
     ///
@@ -5319,7 +5318,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-474 I7 -- what handing verdicts to the violation sink has cost
+    /// What handing verdicts to the violation sink has cost
     /// this executor: `(last_us, max_us, pending, overflowed)`. `overflowed`
     /// counts verdicts evicted from the report queue by newer ones before a
     /// slot came (they are still in the ring and the SWD record).
@@ -5448,7 +5447,7 @@ impl<'s> Executor<'s> {
         });
     }
 
-    /// Issue #505 — report activations dropped by
+    /// Report activations dropped by
     /// [`TimerOverrunPolicy::Skip`](super::arena::TimerOverrunPolicy)
     /// since the last check.
     ///
@@ -5483,14 +5482,14 @@ impl<'s> Executor<'s> {
         self.spin_nominal_wait_paced = false;
     }
 
-    /// phase-436 A2b -- declare the loop's cadence, in microseconds, for a
+    /// Declare the loop's cadence, in microseconds, for a
     /// loop paced by the `spin_once` wait itself. `0` withdraws it.
     ///
     /// [`Self::set_spin_nominal_us`] couples two facts: the period to judge
     /// against, and that the caller paces the loop with its own sleep. A loop
     /// like `for (;;) spin_once(period_ms)` has the first without the second.
     /// Declaring through the coupled setter would report its jitter at 1 us
-    /// when the park it waits on is tick-granular (issue 1194's failure); not
+    /// when the park it waits on is tick-granular (a failure seen in practice); not
     /// declaring at all makes the timeout the period, which is wrong whenever
     /// the timeout is not the period (a cadence that is not whole
     /// milliseconds, or one raised to a floor).
@@ -5530,7 +5529,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-436 E3 — whether `stack-headroom-runtime` is armed on a port that
+    /// Whether `stack-headroom-runtime` is armed on a port that
     /// cannot measure, and so will never report a violation.
     ///
     /// `true` means the rule's silence is not evidence of headroom. Zephyr
@@ -5664,7 +5663,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// RFC-0052 / phase-296 W3a — replace the DEFAULT scheduling context
+    /// Replace the DEFAULT scheduling context
     /// (slot 0, the SC every unbound callback dispatches through).
     ///
     /// The run_sched_tasks model runs one Executor per sched task, so a sched-task-wide
@@ -5690,7 +5689,7 @@ impl<'s> Executor<'s> {
 
     /// Bind a registered callback to a scheduling context. The next
     /// `spin_once` cycle dispatches the callback through that SC's
-    /// queue (FIFO bitmap or EDF heap). Phase 110.B.
+    /// queue (FIFO bitmap or EDF heap).
     pub fn bind_handle_to_sched_context(
         &mut self,
         handle: HandleId,
@@ -5711,7 +5710,7 @@ impl<'s> Executor<'s> {
         Ok(())
     }
 
-    /// Phase 110.G — enable time-triggered dispatch by setting the
+    /// Enable time-triggered dispatch by setting the
     /// executor's major-frame length. Once set, every `spin_once`
     /// cycle gates dispatch through each entry's bound SC's
     /// `tt_window_offset_us` / `tt_window_duration_us` fields:
@@ -5726,7 +5725,7 @@ impl<'s> Executor<'s> {
         self.major_frame_us = major_frame_us;
     }
 
-    /// Phase 110.G — apply a declarative cyclic schedule.
+    /// Apply a declarative cyclic schedule.
     ///
     /// One-shot helper that wraps the underlying primitives:
     /// validates the schedule (major_frame > 0, no overlapping
@@ -5777,7 +5776,7 @@ impl<'s> Executor<'s> {
         Ok(ids)
     }
 
-    /// Phase 110.E.b — register an ISR-driven refill timer for an
+    /// Register an ISR-driven refill timer for an
     /// already-created Sporadic SC. The caller invokes their
     /// platform's `PlatformTimer::create_periodic` with the returned
     /// `Arc<AtomicSporadicState>` as `user_data` and the
@@ -5814,7 +5813,7 @@ impl<'s> Executor<'s> {
         Ok(state)
     }
 
-    /// Inspect a registered scheduling context. Phase 110.B.
+    /// Inspect a registered scheduling context.
     pub fn sched_context(
         &self,
         sc_id: super::sched_context::SchedContextId,
@@ -5822,7 +5821,7 @@ impl<'s> Executor<'s> {
         self.sched_contexts.get(sc_id.0 as usize)?.as_ref()
     }
 
-    /// Phase 104.C.2 — start a rclcpp-style Node builder for this
+    /// Start a rclcpp-style Node builder for this
     /// Executor. The returned [`NodeBuilder`](super::node_record::NodeBuilder)
     /// is chainable:
     ///
@@ -5834,7 +5833,7 @@ impl<'s> Executor<'s> {
     ///     .build()?;
     /// ```
     ///
-    /// In Phase 104.C.2 the Node table is storage-only — all
+    /// For now the Node table is storage-only — all
     /// registered Nodes share the Executor's primary session. Per-
     /// Node session binding (the bridge feature) lands in Phase
     /// 104.C.3 when the session cache is wired.
@@ -5854,7 +5853,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// Return the Node table — Phase 104.C.2 read accessor.
+    /// Return the Node table (read accessor).
     pub fn nodes(&self) -> &[super::node_record::NodeRecord] {
         &self.nodes
     }
@@ -5865,18 +5864,18 @@ impl<'s> Executor<'s> {
         self.nodes.get(id.index())
     }
 
-    /// Phase 189.M1 — an executor-borrowing node handle for the entity builders
+    /// An executor-borrowing node handle for the entity builders
     /// (`exec.node_mut(id).subscription(t)...` / `.create_subscription(...)`).
     /// A short-lived `&mut Executor` borrow — use one at a time; entity handles
     /// are owned and outlive it (see `Node`).
-    /// phase-483 W3 — the component registration frame, for the `nros`
+    /// The component registration frame, for the `nros`
     /// facade's declarative constructors. Not a user API.
     #[doc(hidden)]
     pub fn __component_frame(&self) -> Option<core::ptr::NonNull<()>> {
         self.component_frame
     }
 
-    /// phase-483 W3 — install or clear the component registration frame.
+    /// Install or clear the component registration frame.
     /// The caller guarantees the pointee outlives the installation.
     #[doc(hidden)]
     pub fn __set_component_frame(&mut self, frame: Option<core::ptr::NonNull<()>>) {
@@ -5954,7 +5953,7 @@ impl<'s> Executor<'s> {
         self.session_at_mut(session_idx)
     }
 
-    /// Phase 189.M1 — create a typed publisher bound to a node's session.
+    /// Create a typed publisher bound to a node's session.
     /// Backs `node.publisher(t).typed::<M>().build()` on the
     /// executor-borrowing [`Node`](super::node::Node); the returned
     /// handle is owned and outlives the `Node`.
@@ -5993,7 +5992,7 @@ impl<'s> Executor<'s> {
         })
     }
 
-    /// Phase 189.M1 — create a generic (type-erased) publisher bound to a
+    /// Create a generic (type-erased) publisher bound to a
     /// node's session. Backs `node.publisher(t).generic(ty, hash).build()`;
     /// the bridge re-publishes through this handle on the dest session.
     pub fn create_publisher_raw_on(
@@ -6369,7 +6368,7 @@ impl<'s> Executor<'s> {
         self.graph_change_target = None;
     }
 
-    /// Phase 124.B.2 — opaque context pointer the runtime wake
+    /// Opaque context pointer the runtime wake
     /// callback receives. Encodes `(flag, mu, cv)` as a borrowed
     /// `&WakeCtx` reference; the callback decodes via
     /// `*const WakeCtx`.
@@ -6377,7 +6376,7 @@ impl<'s> Executor<'s> {
     /// Lifetime: tied to the Executor instance. WakeCtx storage
     /// lives inside Executor (lazy-allocated on first install), so
     /// the pointer stays valid as long as the Executor is.
-    /// Phase 124.B.7.c — POSIX signal-handler-safe wake fd.
+    /// POSIX signal-handler-safe wake fd.
     ///
     /// Returns a Linux `eventfd` that callers (typically POSIX
     /// signal handlers) can `write(fd, &1u64, 8)` to from any
@@ -6393,7 +6392,7 @@ impl<'s> Executor<'s> {
     /// Returns the raw fd. The Executor retains ownership; do not
     /// `close()` it from the caller.
     #[cfg(all(feature = "signal-fd-wake", feature = "rmw-cffi", target_os = "linux"))]
-    /// phase-359 W10 — was `std::io::Result`. Same values, an error type that
+    /// Was `std::io::Result`. Same values, an error type that
     /// does not require `std`.
     pub fn signal_fd(&mut self) -> Result<core::ffi::c_int, NodeError> {
         let ctx_ptr = self.wake_ctx_ptr() as *const WakeCtx;
@@ -6478,7 +6477,7 @@ impl<'s> Executor<'s> {
         self.sched_context_bindings[slot] = sc;
     }
 
-    /// Phase 104.C.3.2 — scoped Node-handle access. The closure
+    /// Scoped Node-handle access. The closure
     /// receives a [`NodeHandle`](crate::executor::NodeHandle) bound to the
     /// requested [`NodeId`](crate::executor::NodeId)'s
     /// session + identity. Use the standard `Node::create_publisher`,
@@ -6504,7 +6503,7 @@ impl<'s> Executor<'s> {
     /// The closure can return any type; double-`?` unwraps the
     /// outer `Result<R, NodeError>` from `with_node` and the inner
     /// result returned by the closure.
-    /// Phase 104.C.3.3.d — flat-Result variant of
+    /// Flat-Result variant of
     /// [`with_node`](Self::with_node). When the closure already
     /// returns `Result<R, NodeError>`, this avoids the double-`?`:
     ///
@@ -6577,11 +6576,11 @@ impl<'s> Executor<'s> {
     /// Create a node on this executor.
     ///
     /// Registers the node in the executor's table, deduplicating on
-    /// `(name, namespace)` — phase-376 W5/B1.
+    /// `(name, namespace)`.
     ///
     /// # This is `rclrs::Executor::create_node`
     ///
-    /// phase-427 W10 (RFC-0089 "Context and `init`, settled"). Same name, same
+    /// Same name, same
     /// place in the sequence — `Context` → executor → node — so a ported rclrs
     /// `main` lands here unchanged:
     ///
@@ -6601,14 +6600,14 @@ impl<'s> Executor<'s> {
     /// The name comes from HERE, not from
     /// [`ExecutorConfig::node_name`](crate::ExecutorConfig::node_name), whose
     /// builder spelling is deprecated for exactly this reason: one executor
-    /// holds several named nodes (RFC-0047), so a name on the session config
+    /// holds several named nodes, so a name on the session config
     /// can only ever describe the first of them.
     ///
     /// Until 2026-08-24 this path registered NOTHING. It built a `NodeHandle`
     /// and returned it, so `node_id_by_name` could not find a node the caller
     /// had just created, and two calls with one name handed out two handles the
     /// executor had never heard of. `create_node_on_with_domain` had the dedup
-    /// (phase-267 added it there when N bridge endpoints overflowed the table);
+    /// (added there when N bridge endpoints overflowed the table);
     /// the plain path never got it.
     ///
     /// That is a prerequisite for the `create_node` vtable slot, whose contract
@@ -6625,7 +6624,7 @@ impl<'s> Executor<'s> {
     /// carry a sched context, a QoS override, or a graph identity. Repeated
     /// calls with the SAME name are free.
     ///
-    /// phase-515 R2 -- takes rclrs's `impl IntoNodeOptions`: a bare name
+    /// Takes rclrs's `impl IntoNodeOptions`: a bare name
     /// (`create_node("talker")`) or a [`NodeOptions`](crate::NodeOptions)
     /// (`create_node("talker".namespace("/robot"))`). Here the options'
     /// DEFAULTS mean "the executor's": namespace `/` places the node in the
@@ -6670,7 +6669,7 @@ impl<'s> Executor<'s> {
         Ok(super::node::Node::new(self, id))
     }
 
-    /// Phase 128.F.2 — bridge-mode node factory. Registers a Node
+    /// Bridge-mode node factory. Registers a Node
     /// bound to the named RMW backend by opening (or reusing) an
     /// extra session via `node_builder().rmw(rmw).build()`, then
     /// returns a [`NodeHandle`](crate::executor::NodeHandle) borrowing that
@@ -6696,7 +6695,7 @@ impl<'s> Executor<'s> {
     /// an extra RMW session's participant domain follows the **node builder's**
     /// `domain_id` (`resolve_session_slot` → `domain_id.unwrap_or(0)`), NOT the
     /// `SessionSpec`'s — so without this an egress on a non-zero domain silently
-    /// opens on domain 0 and never matches its receiver (phase-267 issue 0109).
+    /// opens on domain 0 and never matches its receiver.
     /// `None` domain preserves the legacy domain-0 default. `locator` pins the
     /// extra session's address — REQUIRED for an agent-based backend (xrce: the
     /// Micro-XRCE-DDS Agent addr) whose session can't be opened locator-less;
@@ -6742,7 +6741,7 @@ impl<'s> Executor<'s> {
 
     /// Close the underlying session, running the shutdown hooks around it.
     ///
-    /// Issue 0790. The order is the feature:
+    /// The order is the feature:
     ///
     /// 1. every registered PRE-shutdown hook, while the session is still open
     ///    and every entity still works — this is where a node publishes a final
@@ -6941,13 +6940,13 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// Phase 258 (Track 2, 2a) — enroll a component into the executor-owned
+    /// Enroll a component into the executor-owned
     /// tick registry. Called by `nros`'s `install`/`register_node_borrowed`
     /// after it builds the `Arc<ComponentCell>`: `state` is the leaked
     /// `Arc<ComponentCell>` (the slot takes ownership), `tick`/`drop` are the
     /// `nros`-side trampolines (see `ComponentSlot`). The slot's `tick`
     /// runs at the tail of every [`spin_once`](Self::spin_once); its `drop`
-    /// runs once on `Executor::drop`. Issue 2020 -- on an executor whose
+    /// runs once on `Executor::drop`. On an executor whose
     /// levels own their slots, the component belongs to the registering
     /// level, and only that level's pass ticks it.
     ///
@@ -6973,7 +6972,7 @@ impl<'s> Executor<'s> {
         unsafe { self.enroll_component_ticking(state, tick, drop, true) }
     }
 
-    /// phase-521 W6 — [`enroll_component`](Self::enroll_component), stating
+    /// [`enroll_component`](Self::enroll_component), stating
     /// whether the component's `tick` does any work. `ticks == false` lets
     /// the entry park past the spin cadence (see
     /// [`entry_spin_budget`](Self::entry_spin_budget)).
@@ -7001,19 +7000,19 @@ impl<'s> Executor<'s> {
             .map_err(|_| ())
     }
 
-    /// phase-521 W6 — whether an enrolled component polls from its `tick`.
+    /// Whether an enrolled component polls from its `tick`.
     pub fn has_ticking_component(&self) -> bool {
         self.component_slots.iter().any(|s| s.ticks)
     }
 
-    /// Phase 258 (Track 2, 2a) — current enrolled component-slot count.
+    /// Current enrolled component-slot count.
     /// Diagnostic / test surface.
     #[doc(hidden)]
     pub fn component_slot_count(&self) -> usize {
         self.component_slots.len()
     }
 
-    /// issue #140 — the enrolled components' opaque `state` pointers, in enroll
+    /// The enrolled components' opaque `state` pointers, in enroll
     /// order. Each is the *leaked* `Arc<ComponentCell>` `enroll_component` was
     /// handed (see `ComponentSlot::state`); the `nros` layer re-borrows them
     /// to fold per-component dispatch counters into
@@ -7036,7 +7035,7 @@ impl<'s> Executor<'s> {
         &mut self.session
     }
 
-    /// Phase 124.F.3 — session-level connectivity probe. Wire-level
+    /// Session-level connectivity probe. Wire-level
     /// round-trip "is the peer / agent / router still reachable?"
     /// — cheaper than the service-availability probe (no discovery
     /// state required).
@@ -7061,7 +7060,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// phase-381 W4 — every node on the graph, with its namespace.
+    /// Every node on the graph, with its namespace.
     ///
     /// `visit(name, namespace, enclave)` is called once per node and returns
     /// `false` to stop early. A VISITOR rather than a returned collection
@@ -7092,7 +7091,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// phase-381 W4 — every topic on the graph, with the types on it.
+    /// Every topic on the graph, with the types on it.
     ///
     /// `visit(topic_name, types)` is called once per distinct TOPIC — a topic
     /// carrying two types is one call with two entries, not two calls. `types`
@@ -7110,7 +7109,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// phase-381 W4 — every service on the graph, with its types.
+    /// Every service on the graph, with its types.
     /// As [`Self::get_topic_names_and_types`], over servers and clients.
     pub fn get_service_names_and_types(
         &mut self,
@@ -7122,7 +7121,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// phase-381 W4 — how many publishers are visible on `topic_name`.
+    /// How many publishers are visible on `topic_name`.
     ///
     /// `topic_name` is a ROS name (`"/chatter"`). A count reflects what has
     /// been DISCOVERED, so it can be low right after startup and is never a
@@ -7134,7 +7133,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// phase-381 W4 — how many subscribers are visible on `topic_name`.
+    /// How many subscribers are visible on `topic_name`.
     /// See [`Self::count_publishers`] for the caveats.
     pub fn count_subscribers(&mut self, topic_name: &str) -> Result<usize, NodeError> {
         use nros_rmw::Session;
@@ -7143,7 +7142,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// Issue 1978 — how many service CLIENTS are visible on `service_name`,
+    /// How many service CLIENTS are visible on `service_name`,
     /// upstream (Jazzy) `rcl_count_clients`. `service_name` is a ROS name
     /// (`"/add_two_ints"`); same discovery caveats as
     /// [`Self::count_publishers`], and a backend with no graph answers
@@ -7155,7 +7154,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// Issue 1978 — how many service SERVERS are visible on `service_name`,
+    /// How many service SERVERS are visible on `service_name`,
     /// upstream (Jazzy) `rcl_count_services`. See [`Self::count_clients`].
     pub fn count_services(&mut self, service_name: &str) -> Result<usize, NodeError> {
         use nros_rmw::Session;
@@ -7164,7 +7163,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// phase-381 W4 — what one named node PUBLISHES, with the types.
+    /// What one named node PUBLISHES, with the types.
     ///
     /// `visit(topic_name, types)` per distinct topic. A node the graph has not
     /// discovered yields no visits, which is not an error — see
@@ -7186,14 +7185,14 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// phase-381 W4 — what one named node SUBSCRIBES to, with the types.
+    /// What one named node SUBSCRIBES to, with the types.
     ///
     /// **`subscription`, not `subscriber`** — this is rclrs's spelling
     /// (`get_subscription_names_and_types_by_node`), and the Rust surface takes
     /// its vocabulary from rclrs so a user porting Rust ROS 2 code types what
     /// they already know. The C surface says `subscriber` because rcl does, and
     /// the vtable slot says `subscriber` because upstream rmw does. Three
-    /// layers, three upstreams, one word each — not drift. Issue 0788 owns the
+    /// layers, three upstreams, one word each — not drift. A separate sweep owns the
     /// wider verb sweep.
     pub fn get_subscription_names_and_types_by_node(
         &mut self,
@@ -7212,7 +7211,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// phase-381 W4 — what services one named node SERVES, with the types.
+    /// What services one named node SERVES, with the types.
     pub fn get_service_names_and_types_by_node(
         &mut self,
         node_name: &str,
@@ -7225,7 +7224,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// phase-381 W4 — what services one named node CALLS, with the types.
+    /// What services one named node CALLS, with the types.
     pub fn get_client_names_and_types_by_node(
         &mut self,
         node_name: &str,
@@ -7238,7 +7237,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// phase-381 W4 — the publishers on `topic_name`, one visit each.
+    /// The publishers on `topic_name`, one visit each.
     ///
     /// Each `GraphEndpointInfo` BORROWS its strings for the duration of the
     /// visit; copy anything kept.
@@ -7258,7 +7257,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// phase-381 W4 — the subscriptions on `topic_name`, one visit each.
+    /// The subscriptions on `topic_name`, one visit each.
     /// See [`Self::get_publishers_info_by_topic`].
     pub fn get_subscriptions_info_by_topic(
         &mut self,
@@ -7271,7 +7270,7 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
-    /// phase-444 — block until at least `count` publishers are visible on
+    /// Block until at least `count` publishers are visible on
     /// `topic_name`, or `timeout` elapses. Upstream's `rcl_wait_for_publishers`.
     ///
     /// Returns `Ok(true)` when the graph showed at least `count` inside the
@@ -7284,7 +7283,7 @@ impl<'s> Executor<'s> {
     /// weaken the family's contract — it composes it.** The query underneath
     /// ([`count_publishers`](Self::count_publishers)) still reports only what
     /// has been DISCOVERED and still never blocks; what waits is this loop,
-    /// and it waits by POLLING that query. RFC-0021 is the rule that governs
+    /// and it waits by POLLING that query. The blocking-API rules govern
     /// it, and that rule does not forbid blocking: it requires a blocking
     /// helper to take an executor and drive it, which is what makes the
     /// timeout reliable on a single-threaded transport and what makes the
@@ -7293,12 +7292,12 @@ impl<'s> Executor<'s> {
     /// **`Unsupported` is propagated IMMEDIATELY, not waited out** — and this
     /// is the one place it deliberately differs from `wait_for_service`, which
     /// treats a backend that cannot answer as "keep waiting" and reports
-    /// `Ok(false)` at the deadline (issue 1087). That is right for a service
+    /// `Ok(false)` at the deadline. That is right for a service
     /// probe, where not-yet-answerable is a transient. It is wrong here: a
     /// backend with no graph (XRCE) can never answer, so spending the budget
     /// to return `Ok(false)` would report "no publishers appeared" for a
     /// backend that cannot see publishers at all — collapsing "cannot tell
-    /// you" into "not there", which is exactly the distinction RFC-0036 exists
+    /// you" into "not there", which is exactly the distinction the ROS 2 divergence rules exist
     /// to keep and which every other method in this family promises to keep.
     ///
     /// `count == 0` is satisfied immediately and without asking the backend —
@@ -7313,7 +7312,7 @@ impl<'s> Executor<'s> {
         self.wait_for_endpoints(true, topic_name, count, timeout)
     }
 
-    /// phase-444 — block until at least `count` subscribers are visible on
+    /// Block until at least `count` subscribers are visible on
     /// `topic_name`. Upstream's `rcl_wait_for_subscribers`. See
     /// [`wait_for_publishers`](Self::wait_for_publishers) for the contract,
     /// and for why `Unsupported` returns rather than waits.
@@ -7580,7 +7579,7 @@ impl<'s> Executor<'s> {
     /// EXACT, not a worst case: the arena is a bump allocator and every
     /// `arena_alloc` charges `size_of::<T>()`, so nothing is reserved per slot.
     /// `ARENA_SIZE` itself is derived the other way — every slot budgeted at
-    /// the ActionClient worst case — which is issue 0900, and this accessor is
+    /// the ActionClient worst case — a known over-provision, and this accessor is
     /// how an image can find out what it actually needs.
     pub fn arena_used(&self) -> usize {
         self.arena_used
@@ -7590,8 +7589,8 @@ impl<'s> Executor<'s> {
     ///
     /// The arena is a borrowed slice; where its storage lives is the caller's
     /// choice, not a property of this type. Three answers are real — a `.bss`
-    /// static (the C/C++ entries, and the `alloc` constructors since phase-392
-    /// W6), the heap (those constructors' fallback), and a stack-declared
+    /// static (the C/C++ entries, and the `alloc` constructors since the
+    /// named-static backing), the heap (those constructors' fallback), and a stack-declared
     /// `rclc_executor_t`. See `super::backing` and `report_arena_headroom`.
     pub fn arena_capacity(&self) -> usize {
         self.arena.len()
@@ -7883,7 +7882,7 @@ impl<'s> Executor<'s> {
         self.arena_link(prev, start);
     }
 
-    /// Issue 1496 — bytes released back to the arena and not yet reused.
+    /// Bytes released back to the arena and not yet reused.
     /// Bytes handed back to the bump pointer are not counted: `arena_used`
     /// already went down by them.
     pub fn arena_released(&self) -> usize {
@@ -7897,7 +7896,7 @@ impl<'s> Executor<'s> {
         total
     }
 
-    /// Issue 1667 — how many separate holes the free list holds. For tests and
+    /// How many separate holes the free list holds. For tests and
     /// diagnostics.
     pub fn arena_holes(&self) -> usize {
         let mut count = 0;
@@ -8420,7 +8419,7 @@ impl<'s> Executor<'s> {
         self.arm_entity_wake(slot, |w| register(unsafe { &*entry }, w));
     }
 
-    /// phase-397 W2 — the ready word, taken: every slot an attributed arrival
+    /// The ready word, taken: every slot an attributed arrival
     /// marked since the last take. `spin_once` consumes it (W3), so a caller
     /// that also spins sees only what arrived since the last spin. Tests only.
     #[doc(hidden)]
@@ -8432,7 +8431,7 @@ impl<'s> Executor<'s> {
         0
     }
 
-    /// phase-397 W2 — the slots whose backend accepted an entity waker.
+    /// The slots whose backend accepted an entity waker.
     #[doc(hidden)]
     pub fn entity_attributed_slots(&self) -> u64 {
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -8441,7 +8440,7 @@ impl<'s> Executor<'s> {
         0
     }
 
-    /// phase-397 W3 — how many `has_data` calls the readiness scan has made
+    /// How many `has_data` calls the readiness scan has made
     /// (wrapping). An attributed slot's readiness comes from its arrival bit,
     /// so a spin over attributed entries alone adds nothing here. Tests only;
     /// `0` in a build with no entity wake, where it is not counted.
@@ -8453,11 +8452,11 @@ impl<'s> Executor<'s> {
         0
     }
 
-    /// phase-509 P3 (RFC-0108 D2) -- probe the slots whose backend cannot
+    /// Probe the slots whose backend cannot
     /// attribute an arrival (XRCE, uORB) after every callback, so one made
     /// ready by a callback runs in the same pass, in rank order, instead of
     /// at the next pass's scan. Pushed readiness joins mid-pass either way.
-    /// The default is `REPROBE_EACH_CALLBACK_DEFAULT` (in `executor/spin.rs`); the phase-509 P3
+    /// The default is `REPROBE_EACH_CALLBACK_DEFAULT` (in `executor/spin.rs`); the
     /// host measurement that chose it is recorded beside that constant.
     pub fn set_reprobe_each_callback(&mut self, on: bool) {
         self.reprobe_each_callback = on;
@@ -8470,7 +8469,7 @@ impl<'s> Executor<'s> {
         HandleId::new(slot, generation)
     }
 
-    /// phase-476 W0 (issue 1667) — the slot `id` names, if and only if `id` was
+    /// The slot `id` names, if and only if `id` was
     /// issued for the entry that occupies it NOW. A handle whose entry was
     /// released, or whose slot has since been taken by another registration of
     /// any kind, answers `None`, never the next occupant.
@@ -9112,7 +9111,7 @@ impl<'s> Executor<'s> {
 
     /// Register a raw (type-erased) buffered subscription whose callback
     /// also receives a [`RawMessageInfo`](nros_core::RawMessageInfo)
-    /// carrying the sample's wire **attachment** (Phase 189.M1).
+    /// carrying the sample's wire **attachment**.
     ///
     /// Backs the `node.subscription(t).generic(..).message_info().build(cb)`
     /// builder — the cross-RMW bridge reads the bridge_origin tag from
@@ -9192,7 +9191,7 @@ impl<'s> Executor<'s> {
         Ok(self.handle_for(slot))
     }
 
-    /// Phase 250 (Wave 2) — register a generic (type-erased) raw subscription
+    /// Register a generic (type-erased) raw subscription
     /// that surfaces E2E [`IntegrityStatus`](nros_rmw::IntegrityStatus) (CRC +
     /// sequence gap/dup) alongside the raw CDR bytes
     /// (`FnMut(&[u8], &IntegrityStatus)`). The type-erased analog of
@@ -9637,7 +9636,7 @@ impl<'s> Executor<'s> {
         Ok(self.handle_for(slot))
     }
 
-    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// Node-aware variant of
     /// [`register_service_sized`](Self::register_service_sized).
     pub fn register_service_sized_on<Svc, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
@@ -9661,7 +9660,7 @@ impl<'s> Executor<'s> {
         )
     }
 
-    /// Issue 1942 — [`register_service_sized_on`](Self::register_service_sized_on)
+    /// [`register_service_sized_on`](Self::register_service_sized_on)
     /// for a callback that also receives the request's
     /// [`ServiceInfo`](nros_core::ServiceInfo) — rclrs's `(request, ServiceInfo)`
     /// service callback. A field the backend cannot report arrives as `None`.
@@ -9783,7 +9782,7 @@ impl<'s> Executor<'s> {
         Ok(self.handle_for(slot))
     }
 
-    /// Phase 104.C.3.3.a — Node-aware variant of
+    /// Node-aware variant of
     /// [`register_service`](Self::register_service).
     pub fn register_service_on<Svc, F>(
         &mut self,
@@ -9959,7 +9958,7 @@ impl<'s> Executor<'s> {
     }
 
     /// Register a repeating timer driven by a CLOCK rather than by the spin
-    /// delta — phase-425 W4, the shape rclcpp spells
+    /// delta — the shape rclcpp spells
     /// `create_timer(node, clock, period, cb)`.
     ///
     /// [`register_timer`](Self::register_timer) is the wall timer: it consumes
@@ -9974,7 +9973,7 @@ impl<'s> Executor<'s> {
     /// `rclcpp::Clock` has: a node written for simulation still runs standalone.
     ///
     /// The node-level spellings of this are `Node::create_timer_on_clock`
-    /// and the declarative `DeclaredNode::create_timer_on_clock` (phase-430 W4);
+    /// and the declarative `DeclaredNode::create_timer_on_clock`;
     /// all of them reach `register_timer_entry`, which is the only place a
     /// timer entry is built.
     pub fn register_timer_on_clock<F>(
@@ -10111,7 +10110,7 @@ impl<'s> Executor<'s> {
     }
 
     /// Register a repeating timer whose callback receives the dispatcher's
-    /// [`TimerCallInfo`] — issue 1974, the Rust counterpart of Jazzy's
+    /// [`TimerCallInfo`] — the Rust counterpart of Jazzy's
     /// `rclcpp::TimerInfoCallbackType` / `rcl_timer_call_info_t`.
     ///
     /// `source` picks the clock both the period and the two call times are
@@ -10144,7 +10143,7 @@ impl<'s> Executor<'s> {
     /// [`register_timer_with_info`](Self::register_timer_with_info) bound to a
     /// node and an optional callback group — the executor primitive behind
     /// `Node::create_timer_with_info` and the C `rcl_timer_init2` / `rclc_timer_init_default2` /
-    /// `rclc_timer_init_with_info` timers (issue 1974). `node_id`/`group` feed
+    /// `rclc_timer_init_with_info` timers. `node_id`/`group` feed
     /// the sched binding exactly as [`register_timer_on`](Self::register_timer_on).
     pub fn register_timer_with_info_on<F>(
         &mut self,
@@ -10171,11 +10170,11 @@ impl<'s> Executor<'s> {
         )
     }
 
-    /// Phase 273 (RFC-0047) — register a repeating timer callback bound to a
+    /// Register a repeating timer callback bound to a
     /// specific node and optional callback group. The group name is threaded to
     /// `apply_node_default_sched` so the seeded `group_sched_table` assigns
     /// the timer's callback to the group's `SchedContext`. When `group` is
-    /// `None` the node's `default_sched` applies (phase-272 behavior).
+    /// `None` the node's `default_sched` applies.
     ///
     /// This is the executor-level primitive called by the Rust `_in_group` API
     /// (`Node::create_timer_in_group`) and the C/C++ group-aware timer FFI.
@@ -10561,7 +10560,7 @@ impl<'s> Executor<'s> {
         Ok(self.handle_for(slot))
     }
 
-    /// Issue 2036 — register a raw subscription whose closure receives each
+    /// Register a raw subscription whose closure receives each
     /// sample's [`MessageInfo`](nros_core::MessageInfo) (`None` from a backend
     /// that reports none): the raw twin of the typed `with_info` path, for a
     /// caller that deserializes itself. Backs the C++
@@ -10946,7 +10945,7 @@ impl<'s> Executor<'s> {
         )
     }
 
-    /// Issue 2081 — a raw service whose callback also receives the request's
+    /// A raw service whose callback also receives the request's
     /// id (client writer GUID + client sequence number), rclc's
     /// `rclc_service_callback_with_request_id_t` shape in CDR bytes. The id is
     /// the one the backend reported for the request being dispatched
@@ -11392,7 +11391,7 @@ impl<'s> Executor<'s> {
     /// [`GuardCondition`] for triggering from other threads.
     ///
     /// **This is the ours-only PRIMITIVE, not the verb a user reaches for.**
-    /// phase-417 W4.e settled that the NODE owns a guard condition in all three
+    /// It was settled that the NODE owns a guard condition in all three
     /// languages, so the spelling an application writes is
     /// [`Node::create_guard_condition`](crate::executor::Node::create_guard_condition)
     /// — which is this function with a node bound, so the guard inherits that
@@ -11410,14 +11409,13 @@ impl<'s> Executor<'s> {
         self.register_guard_condition_on(None, callback)
     }
 
-    /// The node-bound form of [`register_guard_condition`](Self::register_guard_condition)
-    /// — phase-417 W4.e.
+    /// The node-bound form of [`register_guard_condition`](Self::register_guard_condition).
     ///
     /// `node_id == None` is the legacy nodeless path and behaves exactly as
     /// `register_guard_condition` always did. With a node, the registered slot
     /// takes that node's default `SchedContext`, which is what "the node owns
     /// it" has to mean for a callback that shares one executor with every other
-    /// sched task in the image (RFC-0047).
+    /// sched task in the image.
     pub fn register_guard_condition_on<F>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
@@ -11469,15 +11467,15 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-467 Row 8 — a guard condition the BACKEND triggers when the ROS
+    /// A guard condition the BACKEND triggers when the ROS
     /// graph changes. Upstream's `rcl_node_get_graph_guard_condition`, under
     /// this project's guard-condition shape.
     ///
     /// **The verb is upstream's, the shape is ours, and the difference is
     /// stated rather than silent.** `rcl_node_get_graph_guard_condition`
     /// RETURNS a borrowed handle to a guard the node owns, which the caller
-    /// then adds to a wait set. RFC-0018/0019 forbids returning an owned
-    /// handle across the C seam, we decline wait sets (RFC-0002: one executor
+    /// then adds to a wait set. The C API's thin-wrapper discipline forbids returning an owned
+    /// handle across the C seam, we decline wait sets (one executor
     /// per RTOS task), and a guard condition here is created into CALLER
     /// storage with its callback bound at creation. So this CREATES one —
     /// exactly as [`register_guard_condition_on`] does — and differs from it
@@ -11573,7 +11571,7 @@ impl<'s> Executor<'s> {
     /// Cancel a timer. A cancelled timer will not fire but still accumulates
     /// elapsed time. The timer can be restarted with [`reset_timer()`](Self::reset_timer).
     ///
-    /// phase-509 P9b item 2 -- while the timer's callback runs in another
+    /// While the timer's callback runs in another
     /// thread's window, the cancel is recorded and applied when it returns.
     pub fn cancel_timer(&mut self, id: HandleId) -> Result<(), NodeError> {
         if self.defer_timer_op(id, super::types::SlotTag::CANCEL_PENDING)? {
@@ -11598,7 +11596,7 @@ impl<'s> Executor<'s> {
     /// Reset a timer. Clears the cancelled state and resets the elapsed time
     /// to zero, so the timer starts a fresh period.
     ///
-    /// phase-509 P9b item 2 -- deferred like [`Self::cancel_timer`].
+    /// Deferred like [`Self::cancel_timer`].
     pub fn reset_timer(&mut self, id: HandleId) -> Result<(), NodeError> {
         if self.defer_timer_op(id, super::types::SlotTag::RESET_PENDING)? {
             return Ok(());
@@ -11672,7 +11670,7 @@ impl<'s> Executor<'s> {
 
     /// Check if a timer is cancelled.
     ///
-    /// phase-509 P9b item 2 -- a cancel or reset still pending behind the
+    /// A cancel or reset still pending behind the
     /// timer's running callback is the answer, as if it had applied.
     pub fn timer_is_canceled(&self, id: HandleId) -> bool {
         if let Some(slot) = self.resolve_handle(id)
@@ -11738,7 +11736,7 @@ impl<'s> Executor<'s> {
     /// Which clock advances this timer, or `None` if the handle is not a valid
     /// timer.
     ///
-    /// issue 1975 — the state `rclcpp::TimerBase::get_clock()` reports. The
+    /// The state `rclcpp::TimerBase::get_clock()` reports. The
     /// header field is the one `arena::timer_try_process` reads, so the answer
     /// is the dispatcher's own rather than a copy a wrapper kept beside it: a
     /// wall timer answers [`TimerClockSource::Steady`], a clock timer the
@@ -11795,7 +11793,7 @@ impl<'s> Executor<'s> {
         Some(old_period_us)
     }
 
-    /// Set a timer's overrun policy (issue #505). Timers default to
+    /// Set a timer's overrun policy. Timers default to
     /// [`TimerOverrunPolicy::Skip`]; switch to
     /// [`TimerOverrunPolicy::CatchUp`] for timers whose every activation
     /// is a unit of work that must not be lost.
@@ -11820,7 +11818,7 @@ impl<'s> Executor<'s> {
     }
 
     /// Periods this timer missed and dropped under
-    /// [`TimerOverrunPolicy::Skip`] (issue #505), or `None` if the handle
+    /// [`TimerOverrunPolicy::Skip`], or `None` if the handle
     /// is not a valid timer.
     ///
     /// Monotonic and saturating. A growing count is the on-target signal
@@ -11892,7 +11890,7 @@ impl<'s> Executor<'s> {
     /// Nanoseconds until this timer next fires — NEGATIVE when it is overdue.
     /// `None` if the handle is not a valid timer.
     ///
-    /// phase-417 G6. THE computation, and it has to be: rcl's own pair are
+    /// THE computation, and it has to be: rcl's own pair are
     /// `next_call_time` and `next_call_time - now`, so upstream cannot have
     /// them disagree either. Before this it lived in `nros-c`
     /// (~~`remaining_period_ns`~~ + `time_until_next_call_ns_of`), and the C++
@@ -11902,7 +11900,7 @@ impl<'s> Executor<'s> {
     /// spelling" rule names. `nros-c` forwards here now; so does `nros-cpp`.
     ///
     /// **The unit is nanoseconds and the RESOLUTION is microseconds.** The
-    /// arena's timer accounting is microsecond-based (issue #505), so this is a
+    /// arena's timer accounting is microsecond-based, so this is a
     /// microsecond quantity scaled by 1000. The unit is rcl's; the resolution
     /// is ours.
     ///
@@ -11991,21 +11989,21 @@ impl<'s> Executor<'s> {
     /// Drive I/O once, then dispatch EVERY callback that is ready — the tick
     /// primitive the rest of the family is built from.
     ///
-    /// OURS-ONLY (RFC-0089): rclcpp's `spin_once` executes the NEXT ready item
+    /// OURS-ONLY: rclcpp's `spin_once` executes the NEXT ready item
     /// and has no timeout; rclpy's is `spin_once(node, timeout_sec)`. Ours is a
     /// blocking wait with a budget, which an RTOS task that must not spin-poll
     /// needs and which neither upstream has a verb for. What it DOES when work
     /// is ready is rclcpp's `spin_some` — the whole ready set, one pass
-    /// (RFC-0002 §3) — so [`spin_some`](Self::spin_some) is the drain verb and
+    /// — so [`spin_some`](Self::spin_some) is the drain verb and
     /// this is the waiting one.
     ///
-    /// `timeout` is the upper bound on the I/O wait. Since phase-436 W2 it is
-    /// carried in MICROSECONDS all the way to the park (issue 1193 — an
+    /// `timeout` is the upper bound on the I/O wait. It is
+    /// carried in MICROSECONDS all the way to the park (an
     /// `as_millis()` here truncated `from_micros(500)` to `0`, and a zero
     /// timeout selects the non-blocking path, so a sub-millisecond `spin()`
     /// was a 100 % CPU loop with no warning); the conversion to whatever the
     /// platform primitive accepts happens once, at the park, and rounds UP.
-    /// `Duration` has no negative sentinel, which is what the pre-phase-84
+    /// `Duration` has no negative sentinel, which is what the old
     /// `timeout_ms: i32` signature used to silently mean "freeze the timers
     /// and poll I/O forever".
     pub fn spin_once(&mut self, timeout: core::time::Duration) -> SpinOnceResult {
@@ -13650,14 +13648,14 @@ impl<'s> Executor<'s> {
 
     /// Drive I/O and dispatch callbacks forever — the body of an RTOS task.
     ///
-    /// EXTENSION (RFC-0089). Not a rename of upstream's `spin`: the `!` is the
+    /// EXTENSION. Not a rename of upstream's `spin`: the `!` is the
     /// point. A bare-metal entry has no shutdown source to return TO, and
     /// declaring that lets the compiler drop the epilogue and lets the caller
     /// write it as the last expression of a `-> !` task body with no
     /// `unreachable!()`. [`spin`](Self::spin) is the verb that can end, and it
     /// is upstream's.
     ///
-    /// phase-427 — was `spin(Duration) -> !`, which squatted on rclrs's name
+    /// Was `spin(Duration) -> !`, which squatted on rclrs's name
     /// with a different contract (a ported `executor.spin(SpinOptions)` line
     /// had to be renamed by hand, the one edit on the tutorial's happy path
     /// that no real difference forced). ~~`spin_default()`~~ went with it: it named
@@ -13670,7 +13668,7 @@ impl<'s> Executor<'s> {
     /// conditions and this verb does not end. Passing one is a caller error and
     /// says so at `LOG_ERR` on entry rather than being quietly dropped — a
     /// discarded ending condition is precisely the "compiles and differs" case
-    /// RFC-0089 exists to make loud, and a `-> !` signature has no other
+    /// the ROS 2 adoption rule exists to make loud, and a `-> !` signature has no other
     /// channel. `stop_on_first_error` likewise cannot RETURN the error; it
     /// logs it and keeps spinning, because a task body has nowhere to put it.
     ///
@@ -13707,7 +13705,7 @@ impl<'s> Executor<'s> {
     /// Execute the work that is ready NOW and return — rclcpp's
     /// `Executor::spin_some(max_duration)`.
     ///
-    /// ADOPT-BOUNDED (RFC-0089). Upstream's drain verb: collect what is ready,
+    /// ADOPT-BOUNDED. Upstream's drain verb: collect what is ready,
     /// execute it, come back. It never waits for new work — that is
     /// [`spin_once`](Self::spin_once), which takes a budget and blocks on the
     /// transport until it expires.
@@ -13715,7 +13713,7 @@ impl<'s> Executor<'s> {
     /// **Envelope, two ways it is weaker than rclcpp's:**
     ///
     /// * rclcpp collects the ready set ONCE and executes it. One
-    ///   `spin_once(0)` here is already that whole set (RFC-0002 §3), so this
+    ///   `spin_once(0)` here is already that whole set, so this
     ///   would be a single call — except a callback may enqueue work for
     ///   another entity, which rclcpp's `spin_all` re-collects and its
     ///   `spin_some` leaves for the next call. Ours re-drains until a pass does
@@ -13729,7 +13727,7 @@ impl<'s> Executor<'s> {
     /// `max` of [`Duration::ZERO`](core::time::Duration::ZERO) means no limit —
     /// rclcpp's own default — and is the spelling a build with no clock must
     /// use. A non-zero `max` on a clockless build is an ERROR rather than an
-    /// unbounded drain (issue 0709, the same rule as `spin`'s `timeout`).
+    /// unbounded drain (the same rule as `spin`'s `timeout`).
     ///
     /// The `Result` is about that PRECONDITION and nothing else. A failed
     /// callback is counted in each pass's `SpinOnceResult` and does not end the
@@ -13827,7 +13825,7 @@ impl<'s> Executor<'s> {
     /// Parameter services are stored outside the arena and don't consume
     /// callback slots.
     ///
-    /// Issue 2023 — every node served this way also PUBLISHES
+    /// Every node served this way also PUBLISHES
     /// `/parameter_events` (`rcl_interfaces/msg/ParameterEvent`), rclcpp's and
     /// rclrs's default: a start-up event, then one event per declare, set and
     /// undeclare. One VOLATILE publisher per executor
@@ -14312,7 +14310,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-426 W3 — the node FQNs this executor publishes parameter services
+    /// The node FQNs this executor publishes parameter services
     /// under, in registration order.
     ///
     /// The acceptance question for W3 ("does a two-node image expose both
@@ -14390,7 +14388,7 @@ impl<'s> Executor<'s> {
     /// [`register_lifecycle_services`](Self::register_lifecycle_services),
     /// named after `node` rather than the executor's own identity.
     ///
-    /// phase-488 node 2 (Nav2): a hosted C++ `rclcpp_lifecycle::LifecycleNode`
+    /// A hosted C++ `rclcpp_lifecycle::LifecycleNode` (as Nav2 uses)
     /// is a node CREATED on the process executor, whose own identity is the
     /// default `node`. Registering through the executor served
     /// `/node/change_state` beside a phantom `/node`, and `ros2 lifecycle get
@@ -14664,7 +14662,7 @@ impl<'s> Executor<'s> {
     }
 
     /// `node`'s own lifecycle state machine, if it registered one
-    /// (RFC-0128 D1).
+    /// (per-node lifecycle).
     pub fn lifecycle_state_machine_on_mut(
         &mut self,
         node: super::node_record::NodeId,
@@ -14674,7 +14672,7 @@ impl<'s> Executor<'s> {
     }
 
     /// `node`'s own lifecycle state machine, if it registered one
-    /// (RFC-0128 D1).
+    /// (per-node lifecycle).
     pub fn lifecycle_state_machine_on(
         &self,
         node: super::node_record::NodeId,
@@ -14688,7 +14686,7 @@ impl<'s> Executor<'s> {
         self.lifecycle_entry(None).map(|lc| &lc.state.state_machine)
     }
 
-    /// Register a safe lifecycle node (issue 0335 / phase-317).
+    /// Register a safe lifecycle node.
     ///
     /// Binds the five REP-2002 lifecycle services and wires each transition to
     /// the [`LifecycleCallbacks`](crate::lifecycle::LifecycleCallbacks) trait
@@ -14720,7 +14718,7 @@ impl<'s> Executor<'s> {
     }
 
     /// [`register_lifecycle_node`](Self::register_lifecycle_node) for one
-    /// node of several (RFC-0128 D1): the machine is `node`'s own, served
+    /// node of several: the machine is `node`'s own, served
     /// under its name, and independent of every other node's.
     pub fn register_lifecycle_node_on<T: crate::lifecycle::LifecycleCallbacks>(
         &mut self,
@@ -14744,14 +14742,14 @@ impl<'s> Executor<'s> {
     }
 
     /// The nodes that hold a lifecycle state machine, in registration order.
-    /// `None` is the machine on the executor's own identity (RFC-0128 D1).
+    /// `None` is the machine on the executor's own identity.
     pub fn lifecycle_machine_nodes(
         &self,
     ) -> impl Iterator<Item = Option<super::node_record::NodeId>> + '_ {
         self.lifecycle.iter().map(|e| e.node)
     }
 
-    /// RFC-0128 D2 (phase-554 W2) — the node a generated entry names as
+    /// The node a generated entry names as
     /// managed, found by its final name and namespace.
     ///
     /// The namespace is compared without its leading and trailing `/`, so the
@@ -14772,7 +14770,7 @@ impl<'s> Executor<'s> {
             .map(|(index, _)| super::node_record::NodeId::from_raw(index as u8))
     }
 
-    /// RFC-0128 D2 (phase-554 W2) — make `node` a managed node: give it a
+    /// Make `node` a managed node: give it a
     /// machine, served under its own name, unless it already has one.
     ///
     /// "Already has one" is the component-declared case: a C++ component
@@ -14795,7 +14793,7 @@ impl<'s> Executor<'s> {
         self.register_lifecycle_services_named(Some(node), &ns, &nn)
     }
 
-    /// RFC-0128 D6 — drive `node`'s machine toward its boot `autostart`
+    /// Drive `node`'s machine toward its boot `autostart`
     /// (0 none, 1 configure, 2 active).
     ///
     /// Each step runs only from the state it starts from (`configure` from
@@ -14827,7 +14825,7 @@ impl<'s> Executor<'s> {
         Ok(())
     }
 
-    /// RFC-0128 D2 (ruled 2026-11-13: "the code decides, as in ROS 2") —
+    /// Per-node lifecycle ("the code decides, as in ROS 2") —
     /// drive every node whose own code registered a lifecycle machine to
     /// `autostart`, in node-table order, and return how many were driven.
     ///
@@ -14886,7 +14884,7 @@ impl<'s> Executor<'s> {
 
 #[cfg(feature = "param-store")]
 impl<'s> Executor<'s> {
-    /// phase-461 W6 — build the parameter STORE and register no service.
+    /// Build the parameter STORE and register no service.
     ///
     /// What an image declaring the `params` axis (and not `param_services`)
     /// calls ahead of its nodes: launch seeds and `declare_parameter` land in
@@ -15128,7 +15126,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// Install `-p` / `--params-file` parameter overrides — phase-482 W5.
+    /// Install `-p` / `--params-file` parameter overrides.
     ///
     /// They are applied when a parameter is DECLARED: the declaration's value
     /// is replaced by the override's, typed by it (~~`apply_argv_param_override`~~).
@@ -15138,7 +15136,7 @@ impl<'s> Executor<'s> {
     ///
     /// That makes argv WIN over a launch-baked parameter, the opposite of the
     /// remap tiers, deliberately: overriding a baked value at run time without
-    /// a rebuild is what RFC-0015 §9 asks for ("a runtime override has
+    /// a rebuild is what the launch-tree orchestration asks for ("a runtime override has
     /// identical effect to a `set_parameter` request after boot"), and upstream
     /// agrees — a launch file's parameters reach the node as command-line
     /// arguments themselves, where the later one wins.
@@ -15147,7 +15145,7 @@ impl<'s> Executor<'s> {
     /// declaration wins, as rcl's do. A `node:` override matches the node of
     /// that NAME; one without matches every node.
     ///
-    /// Fails only when the parameter store could not be allocated (issue 1706),
+    /// Fails only when the parameter store could not be allocated,
     /// in which case nothing is installed.
     #[cfg(feature = "alloc")]
     pub fn install_argv_params<'p, I>(&mut self, params: I) -> Result<usize, NodeError>
@@ -15335,13 +15333,13 @@ impl<'s> Executor<'s> {
 
     /// Declare a parameter with a value on the executor's PRIMARY node.
     ///
-    /// phase-426 W1 — the store is keyed by node, and this is the spelling for
+    /// The store is keyed by node, and this is the spelling for
     /// the executor's implicit primary node (`NodeId::PRIMARY`), which is the
     /// identity `register_parameter_services` publishes and the one every
     /// single-node entry means. Name a different node with
     /// [`declare_parameter_on`](Self::declare_parameter_on).
     ///
-    /// phase-428 W6 — `#[must_use]`, for the reason `[[nodiscard]]` went on
+    /// `#[must_use]`, for the reason `[[nodiscard]]` went on
     /// C++'s `Result`: the `else { false }` arm is silently discarded at a
     /// call site that drops the value, and `Node::logger` two files over
     /// already carries the attribute — so this was inconsistency, not house
@@ -15588,7 +15586,7 @@ impl<'s> Executor<'s> {
     /// Declare a parameter with a value and descriptor on the PRIMARY node.
     /// Returns `true` if successful.
     ///
-    /// phase-428 W6 remainder — the sibling of [`Self::declare_parameter`],
+    /// The sibling of [`Self::declare_parameter`],
     /// with the identical `else { false }` arm and no attribute. W6 marked the
     /// one method its audit named; this is the site three lines below it, which
     /// is the shape CLAUDE.md's "fix the CLASS, not the reported site" rule
@@ -15700,11 +15698,11 @@ impl<'s> Executor<'s> {
             .is_ok()
     }
 
-    /// THE writer — phase-426 W2.
+    /// THE writer.
     ///
     /// Set an ALREADY-DECLARED parameter on the executor's primary node, with
     /// the same rules a remote `ros2 param set` gets: read-only, type, range
-    /// (min/max/step), and issue 1151's refusal of a name the node never
+    /// (min/max/step), and the refusal of a name the node never
     /// declared unless that node opted in through
     /// [`allow_undeclared_parameters_on`](Self::allow_undeclared_parameters_on).
     ///
@@ -15712,7 +15710,7 @@ impl<'s> Executor<'s> {
     /// which is what makes the C and C++ facades, the by-value oracle, the
     /// streaming service path and the atomic pre-check agree — a facade that
     /// wrote the slot directly would be a second answer to "may this set
-    /// happen", which is the class RFC-0019/0020 forbids. An in-image caller
+    /// happen", which is the class the C API's thin-wrapper discipline forbids. An in-image caller
     /// that genuinely wants declare-on-write names
     /// `params_mut()`/`set_or_declare` and has opted in by naming it.
     ///
@@ -15892,7 +15890,7 @@ impl<'s> Executor<'s> {
     }
 
     #[cfg(feature = "param-services")]
-    /// phase-491 W3 — publish every pending parameter change, one
+    /// Publish every pending parameter change, one
     /// `ParameterEvent` each, oldest first. Runs after each spin's parameter
     /// services and after every C or C++ parameter call; nothing allocates.
     pub fn flush_parameter_events(&mut self) {
@@ -16546,7 +16544,7 @@ impl<'s> Executor<'s> {
 impl<'s> Executor<'s> {
     /// Request the executor to stop spinning — `rclcpp::Executor::cancel`.
     ///
-    /// # ADOPT-BOUNDED (RFC-0089)
+    /// # ADOPT-BOUNDED
     ///
     /// `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY,
     /// so it returns BEFORE spinning has actually stopped;
@@ -16564,7 +16562,7 @@ impl<'s> Executor<'s> {
     ///
     /// Safe to call from another thread or a signal handler.
     ///
-    /// Also raises the Phase 104.C.6 wake flag so a `spin_once` already blocked
+    /// Also raises the wake flag so a `spin_once` already blocked
     /// inside a backend's `drive_io` falls through to the cancel check on its
     /// next loop iteration instead of waiting out its full `timeout_ms` first.
     pub fn cancel(&self) {
@@ -16587,7 +16585,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-521 W6 (RFC-0113 D2) — wake every worker parked over this
+    /// Wake every worker parked over this
     /// executor: its own and every level's band worker, as an arrival nothing
     /// attributes does. A level parks until its band's next deadline or an
     /// arrival, not for a fixed period, so a runner that stops its levels must
@@ -16699,7 +16697,7 @@ impl<'s> Executor<'s> {
     /// Blocking spin loop with configurable exit conditions — rclrs's
     /// `Executor::spin(SpinOptions)`.
     ///
-    /// ADOPT-BOUNDED (RFC-0089). Same name, same argument, same meaning: run
+    /// ADOPT-BOUNDED. Same name, same argument, same meaning: run
     /// until an exit condition in `opts` says stop. Two bounds, both visible in
     /// the signature:
     ///
@@ -16713,9 +16711,9 @@ impl<'s> Executor<'s> {
     ///   which every exit condition is observed — a `cancel()` from another
     ///   task, the `timeout` expiring, `max_callbacks` being reached. Requesting
     ///   a `timeout` on a build with no clock is an ERROR, not a silent
-    ///   never-ending loop (issue 0709).
+    ///   never-ending loop.
     ///
-    /// phase-427 — this method was ~~`spin_blocking`~~. `spin` was taken by the
+    /// This method was ~~`spin_blocking`~~. `spin` was taken by the
     /// `-> !` task body, which is now [`spin_forever`](Self::spin_forever).
     ///
     /// Runs until one of:
@@ -16928,7 +16926,7 @@ impl<'s> Executor<'s> {
 
 #[cfg(feature = "alloc")]
 impl<'s> Executor<'s> {
-    /// Phase 110.D.b — move this Executor onto a fresh OS thread,
+    /// Move this Executor onto a fresh OS thread,
     /// apply a per-thread scheduling policy via the caller-supplied
     /// `apply_policy` function, and run the spin loop until
     /// `ThreadHandle::halt` fires.
@@ -17011,7 +17009,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// Phase 104.C.6 — wake the executor from another thread / ISR /
+    /// Wake the executor from another thread / ISR /
     /// signal handler.
     ///
     /// Sets the shared `wake_flag`. The next `spin_once` swap-clears the
@@ -17043,7 +17041,7 @@ impl<'s> Executor<'s> {
         self.halt_flag.clone()
     }
 
-    /// Phase 104.C.6 — clone of the shared wake flag for cross-thread
+    /// Clone of the shared wake flag for cross-thread
     /// use (signal handlers, foreign threads, future per-backend vtable
     /// wake hooks).
     ///
@@ -17063,7 +17061,7 @@ impl<'s> Executor<'s> {
     }
 }
 
-/// Phase 110.E.b — opaque per-platform timer handle. Stores the
+/// Opaque per-platform timer handle. Stores the
 /// raw platform handle (a boxed POSIX `timer_t`, FreeRTOS `TimerHandle_t`,
 /// etc.) plus a destroy thunk so the
 /// Executor can clean up without being generic over the platform.
@@ -17175,7 +17173,7 @@ impl ThreadHandle {
     /// Wait for the spawned task to exit. After `join`, calling it again is a
     /// no-op.
     ///
-    /// phase-359 W10 — was `std::thread::Result<()>`, which carried a panic
+    /// Was `std::thread::Result<()>`, which carried a panic
     /// payload this can no longer produce: a platform task has no unwinding
     /// join. Same two outcomes, an error type that does not require `std` —
     /// the trade `signal_fd` already made in this campaign. `NotInitialized`
@@ -17829,7 +17827,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-430 W1 — how many times this executor has reported that
+    /// How many times this executor has reported that
     /// `use_sim_time` is on with no `/clock` sample.
     ///
     /// The count rather than a bool, and an accessor rather than a log grep: a
@@ -17923,7 +17921,7 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// phase-425 W3b — the installed `/clock` subscription, if any.
+    /// The installed `/clock` subscription, if any.
     ///
     /// The HANDLE rather than a bool, because "did we subscribe twice" is the
     /// question a reconciliation loop has to be able to answer: a second
@@ -17934,7 +17932,7 @@ impl<'s> Executor<'s> {
         self.sim_time_source
     }
 
-    /// phase-425 W3b — whether a `/clock` subscription is currently installed.
+    /// Whether a `/clock` subscription is currently installed.
     #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
     pub fn ros_time_source_installed(&self) -> bool {
         self.sim_time_source.is_some()

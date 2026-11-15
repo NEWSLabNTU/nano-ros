@@ -12,7 +12,7 @@ pub(crate) type ConcreteSession = nros_rmw_cffi::CffiSession;
 #[cfg(all(test, not(feature = "rmw-cffi")))]
 pub(crate) type ConcreteSession = crate::mock::MockSession;
 
-/// RFC-0088 — the serialization format the backend this image links speaks,
+/// The serialization format the backend this image links speaks,
 /// as its cross-image identity string.
 ///
 /// This is a compile-time constant precisely because the backend is selected at

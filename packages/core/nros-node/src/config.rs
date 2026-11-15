@@ -5,7 +5,7 @@
 
 include!(concat!(env!("OUT_DIR"), "/nros_node_config.rs"));
 
-/// Issue 1970 -- one executor sched task's own sizing, as `build.rs` derived it from
+/// One executor sched task's own sizing, as `build.rs` derived it from
 /// the sizing descriptor's `[[sched_task]]` row: the callback slots, node slots and
 /// arena its members need, and the parameters they declare (`None`: the sched task
 /// stated no count, so it carves the image's store). Read through
@@ -21,7 +21,7 @@ pub struct SchedTaskSizing {
     pub params: Option<usize>,
 }
 
-/// phase-271 — default arena bytes for a per-entry executor holding `cbs`
+/// Default arena bytes for a per-entry executor holding `cbs`
 /// callback slots. Scales the build-time [`ARENA_SIZE`] (which is sized for the
 /// default [`MAX_CBS`]) linearly by `cbs`, so a per-entry [`ExecutorSizing`] with
 /// a caller-chosen `cbs` gets the same per-slot arena budget the global default
@@ -31,14 +31,14 @@ pub struct SchedTaskSizing {
 /// build would have been (the arena is a worst-case upper bound; over-provision
 /// is safe, under-provision fails entity creation).
 ///
-/// # The ratio is for an UNDECLARED image only (issue 1290)
+/// # The ratio is for an UNDECLARED image only
 ///
 /// The scaling above reads `ARENA_SIZE` as a budget for `MAX_CBS` slots, so
 /// `ARENA_SIZE / MAX_CBS` is one slot's worth and `cbs` of them is `cbs` slots'
 /// worth. That is exactly what `ARENA_SIZE` is while nothing declared: the
 /// derivation budgets `max_cbs` worst-case entries plus a base overhead.
 ///
-/// It stopped being that in phase-403 step 3 for an image that DECLARES its
+/// It stopped being that once the build learned to size an image that DECLARES its
 /// entities. There `nros-node/build.rs` sums the model per KIND — subscriptions
 /// at their own depth and type, timers at 64 bytes, services, action clients —
 /// and `MAX_CBS` is a separate knob that takes no part. Dividing by it then
@@ -49,14 +49,14 @@ pub struct SchedTaskSizing {
 /// 7,212. Half.
 ///
 /// So when the image declares, this asks the model: `ARENA_SIZE` IS the model
-/// (unfloored since issue 1971, and `executor::arena_oracle` refuses at
+/// (unfloored, and `executor::arena_oracle` refuses at
 /// compile time to let a stated knob sit below it), and every per-entry executor gets all of it.
 ///
 /// **That over-provisions a SCHED-TASK boot**, where one sched task holds a subset of the
 /// image and now carries the whole model. Deliberate, and the direction is the
 /// safe one: the alternative needs the ENTRY's own per-kind counts where the
-/// macro emits the sizing, and those do not reach it today (issue 1290 records
-/// the choice). An entry that wants less states its own
+/// macro emits the sizing, and those do not reach it today (a recorded
+/// choice). An entry that wants less states its own
 /// [`ExecutorSizing`] and holds it to what it registers with
 /// [`ExecutorSizing::assert_covers_model`], which is a compile-time check the
 /// ratio never had.
