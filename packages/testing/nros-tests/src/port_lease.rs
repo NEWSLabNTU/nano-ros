@@ -43,9 +43,10 @@
 //!
 //! A lock file per port under the build root, held with an exclusive `flock`
 //! for the lifetime of the [`PortLease`] and removed on drop. It does not stop
-//! an unrelated program from taking the port — nothing can — but every
-//! colliding party here is one of our own fixtures, and that is the population
-//! it makes exclusive.
+//! an unrelated program from taking the port — nothing can — so it makes our
+//! own fixtures exclusive, and a fixture's readiness wait must still ask WHO
+//! listens (`crate::tcp_listener::holder`). On a host shared with another
+//! tenant a stranger did take one (issue 2457).
 //!
 //! The reservation is the LOCK, not the file. nextest SIGKILLs test processes,
 //! so `Drop` is not guaranteed to run; the kernel drops a dead process's

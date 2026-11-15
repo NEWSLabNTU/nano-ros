@@ -304,15 +304,34 @@ fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestRe
     let timeout = Duration::from_secs(10);
     let addr = format!("127.0.0.1:{port}");
 
+    // Issue 2457 -- a connect that succeeds is a LISTENER, not necessarily this
+    // router's: the lease keeps our fixtures apart, never another program, and
+    // a 0 ms accept on newslab-118 was a stranger's socket. Ready means the
+    // router's own process tree holds the listening socket.
+    let mut stranger = false;
     while start.elapsed() < timeout {
         if TcpStream::connect(&addr).is_ok() {
-            // Issue 2457 -- printed so a failure after this point can be
-            // placed against the router's start, not guessed from a total.
-            eprintln!(
-                "zenohd: accepting on {locator} {} ms after spawn",
-                start.elapsed().as_millis()
-            );
-            return Ok(());
+            match crate::tcp_listener::holder(handle.id(), port) {
+                crate::tcp_listener::Holder::Other => {
+                    if !stranger {
+                        eprintln!(
+                            "zenohd: {locator} accepts {} ms after spawn, but the listener is \
+                             not this router's: another program holds port {port}",
+                            start.elapsed().as_millis()
+                        );
+                    }
+                    stranger = true;
+                }
+                _ => {
+                    // Printed so a failure after this point can be placed
+                    // against the router's start, not guessed from a total.
+                    eprintln!(
+                        "zenohd: accepting on {locator} {} ms after spawn",
+                        start.elapsed().as_millis()
+                    );
+                    return Ok(());
+                }
+            }
         }
 
         if let Some(status) = handle.try_wait()? {
@@ -329,6 +348,12 @@ fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestRe
             let hint = router_exit_hint(stderr)
                 .map(|h| format!("\n  {h}"))
                 .unwrap_or_default();
+            if stranger {
+                return Err(TestError::PortTaken(format!(
+                    "zenohd exited before listening on {locator} with {status}: another \
+                     program holds port {port}{detail}"
+                )));
+            }
             return Err(TestError::ProcessFailed(format!(
                 "zenohd exited before listening on {locator} with {status}{detail}{hint}"
             )));
@@ -338,7 +363,43 @@ fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestRe
     }
 
     graceful_kill_process_group(handle);
+    if stranger {
+        return Err(TestError::PortTaken(format!(
+            "zenohd never listened on {locator} in {timeout:?}: another program holds port {port}"
+        )));
+    }
     Err(TestError::Timeout)
+}
+
+/// Issue 2457 -- start a router on a LEASED port, and take a fresh lease when
+/// another program turns out to hold the one leased. The lease makes a port
+/// exclusive among our fixtures only, so a stranger's listener is not this
+/// test's failure and the port was never ours. Bounded, and each new lease is
+/// said on stderr.
+fn on_fresh_lease(
+    mut start: impl FnMut(u16) -> TestResult<ZenohRouter>,
+) -> TestResult<ZenohRouter> {
+    const LEASES: usize = 3;
+    let mut last = None;
+    for _ in 0..LEASES {
+        let lease = lease_ephemeral_port()
+            .map_err(|e| TestError::ProcessFailed(format!("Failed to lease port: {}", e)))?;
+        match start(lease.port()) {
+            Ok(mut router) => {
+                router._lease = Some(lease);
+                return Ok(router);
+            }
+            Err(TestError::PortTaken(why)) => {
+                eprintln!("zenohd: {why}; taking a fresh port lease (issue 2457)");
+                last = Some(why);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err(TestError::PortTaken(format!(
+        "{LEASES} leased ports in a row were held by other programs; last: {}",
+        last.unwrap_or_default()
+    )))
 }
 
 /// Managed zenohd router process
@@ -445,12 +506,7 @@ impl ZenohRouter {
     /// `downsampling` rule a declared ingress lowers to
     /// (`nros_orchestration_ir::router_rule::RouterRule::config_override`).
     pub fn start_unique_with_overrides(extra: &[String], log_filter: &str) -> TestResult<Self> {
-        let lease = lease_ephemeral_port()
-            .map_err(|e| TestError::ProcessFailed(format!("Failed to lease port: {}", e)))?;
-        let mut router =
-            Self::start_on_with("127.0.0.1", lease.port(), Some(log_filter), extra, &[])?;
-        router._lease = Some(lease);
-        Ok(router)
+        on_fresh_lease(|port| Self::start_on_with("127.0.0.1", port, Some(log_filter), extra, &[]))
     }
 
     /// phase-524 W4c -- a loopback router on `port` that ALSO listens on the
@@ -663,20 +719,12 @@ impl ZenohRouter {
         cert_path: &std::path::Path,
         key_path: &std::path::Path,
     ) -> TestResult<Self> {
-        let lease = lease_ephemeral_port()
-            .map_err(|e| TestError::ProcessFailed(format!("Failed to lease port: {}", e)))?;
-        let mut router = Self::start_tls(lease.port(), cert_path, key_path)?;
-        router._lease = Some(lease);
-        Ok(router)
+        on_fresh_lease(|port| Self::start_tls(port, cert_path, key_path))
     }
 
     /// Start a router on an OS-assigned ephemeral port (parallel-safe)
     pub fn start_unique() -> TestResult<Self> {
-        let lease = lease_ephemeral_port()
-            .map_err(|e| TestError::ProcessFailed(format!("Failed to lease port: {}", e)))?;
-        let mut router = Self::start(lease.port())?;
-        router._lease = Some(lease);
-        Ok(router)
+        on_fresh_lease(Self::start)
     }
 
     /// Get the locator string for connecting to this router
@@ -787,6 +835,40 @@ pub fn or_unmet(res: TestResult<ZenohRouter>) -> ZenohRouter {
 
 #[cfg(test)]
 mod tests {
+
+    /// Issue 2457 -- a port that accepts while the "router" holds no listener
+    /// is a stranger's, and the wait says so instead of returning ready. The
+    /// stand-in router is a `sleep` that never listens; the stranger is a
+    /// listener this test process holds.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_listener_the_router_does_not_hold_is_port_taken_not_ready() {
+        let stranger = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = stranger.local_addr().unwrap().port();
+        let mut fake = std::process::Command::new("sleep")
+            .arg("1")
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let got = wait_for_router_ready(&mut fake, &format!("tcp/127.0.0.1:{port}"), port);
+        let _ = fake.kill();
+        let _ = fake.wait();
+        assert!(matches!(got, Err(TestError::PortTaken(_))), "got {got:?}");
+
+        // Negative control: the same stand-in with nothing listening is the
+        // old verdict, a router that exited before it listened.
+        drop(stranger);
+        let mut fake = std::process::Command::new("sleep")
+            .arg("1")
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let got = wait_for_router_ready(&mut fake, &format!("tcp/127.0.0.1:{port}"), port);
+        assert!(
+            matches!(got, Err(TestError::ProcessFailed(_))),
+            "got {got:?}"
+        );
+    }
     use super::*;
 
     /// Issue 1853 — the one-line rcutils exit gets a diagnosis; other exits

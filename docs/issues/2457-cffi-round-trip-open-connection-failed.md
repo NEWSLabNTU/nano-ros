@@ -110,3 +110,56 @@ dropped before. Under nextest (one process per test, as CI runs it),
 Item 2 stands: either a second sighting names the phase, or the test stays
 green through two weeks of merge-queue traffic (to 2026-11-26) and this
 closes as not reproduced, with issue 2338.
+
+## Second sighting names the phase: a stranger held the port (2026-11-15)
+
+`just ci gate` on newslab-118 (main at 6ed248b898), step `test-unit`:
+
+    nros-rmw-zenoh::zenoh_integration a_service_server_receives_through_the_ring_the_caller_supplied
+    zenohd: accepting on tcp/127.0.0.1:34831 0 ms after spawn
+    [nros_log ERROR] nros: zenoh open: no session with tcp/127.0.0.1:34831 in one attempt (connect_timeout_ms=0) (refused, unreachable, or no answer to the handshake)
+    could not open a client session on tcp/127.0.0.1:34831: ConnectionFailed
+
+The 0 ms is the evidence. A real `rmw_zenohd` on the same host took 15 to
+20 ms from spawn to its first accept (6 starts, the probe's own Python start
+included). So the first readiness connect reached a listener that was
+already there before the router could exec, and the session opened onto it.
+
+Whose: the host was shared with another tenant's ROS 2 / CARLA simulation at
+the time, and every foreign loopback listener seen (six of them) was on an
+odd ephemeral port, which is what `bind(0)` hands out on this kernel (2000 of
+2000 odd; `connect()` source ports 2000 of 2000 even, so a TCP self-connect
+is not the explanation). The port lease (`port_lease.rs`) makes a port
+exclusive among OUR fixtures only. Its own doc says so ("it does not stop an
+unrelated program from taking the port"), and then assumes "every colliding
+party here is one of our own fixtures", which a shared host breaks.
+
+This also fits the first sighting: a stranger that accepts TCP and never
+answers zenoh's handshake gives exactly a 10 s `ConnectionFailed`.
+
+### Fix: ready means the router's own process tree holds the listener
+
+- `nros_tests::tcp_listener::holder(pid, port)` reads the LISTEN rows of
+  `/proc/net/tcp{,6}` for the port's socket inode and asks whether `pid` or a
+  descendant holds it (`fd -> socket:[inode]`): `Ours`, `Other`, or `Unknown`
+  (no listener, or no `/proc`). Unit-tested both ways, with a negative
+  control: the same listener seen from a child that does not hold it is
+  `Other`.
+- `ZenohRouter`'s readiness wait accepts only `Ours` (or `Unknown`, the old
+  answer, where the host cannot say). A port that accepts with `Other` is
+  printed once, and the wait ends `TestError::PortTaken` when the router
+  exits or the wait times out.
+- Every LEASED starter (`start_unique`, `start_unique_with_overrides`,
+  `start_tls_unique`) goes through `on_fresh_lease`: a `PortTaken` takes a
+  fresh lease, at most 3 in all, each said on stderr. This is not a retry of
+  a failed test: the port was never ours, so a new one is the design. A
+  starter handed a FIXED port reports `PortTaken` with the holder named.
+
+Sweep, for every fixture readiness wait that is a bare TCP connect:
+
+    git grep -n 'TcpStream::connect' -- packages/testing
+
+The router fixture is the one with a sighting and a lease to refresh. The
+generic `wait_for_port` / `wait_for_port_on` in `nros-tests/src/lib.rs` take
+no pid and are used for QEMU's fixed forwarded ports in `emulator.rs`; they
+stay as they are, and this records them as the same shape.
