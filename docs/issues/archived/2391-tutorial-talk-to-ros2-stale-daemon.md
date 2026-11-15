@@ -9,7 +9,7 @@ related: [phase-548]
 found: 2026-11-10
 ---
 
-**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)**, W8,
+**Home: [phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md)**, W8,
 which replays every starter and Tutorial track with its `awaits` lifted.
 
 ## Measured

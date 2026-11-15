@@ -1,6 +1,6 @@
 # Phase 544 — The harness on `nros run --plan`: what phase-528 left
 
-**Status (2026-11-09). DONE: W1, W2 and W3 landed (issues 2172, 2273 and 2307 resolved), and so did W3's follow-up, the verb waiting for a runner's process chain. The Renode leg of W3 is unmeasured and is carried as [issue 2375](../../issues/2375-renode-chain-lifetime-unmeasured.md), homed in [phase-548](../phase-548-three-languages-every-board.md) W7 with the Nucleo twin. Successor to [phase-528](phase-528-run-on-host-and-emulator.md), which put the test harness on `nros run --plan` (W5) and was archived with three follow-ups open. Each work item here homed one of them.** Implements
+**Status (2026-11-09). DONE: W1, W2 and W3 landed (issues 2172, 2273 and 2307 resolved), and so did W3's follow-up, the verb waiting for a runner's process chain. The Renode leg of W3 is unmeasured and is carried as [issue 2375](../../issues/2375-renode-chain-lifetime-unmeasured.md), homed in [phase-548](phase-548-three-languages-every-board.md) W7 with the Nucleo twin. Successor to [phase-528](phase-528-run-on-host-and-emulator.md), which put the test harness on `nros run --plan` (W5) and was archived with three follow-ups open. Each work item here homed one of them.** Implements
 [RFC-0118](../../design/0118-target-execution-model.md) for the harness's
 remaining QEMU and process-lifetime gaps.
 
@@ -131,5 +131,5 @@ Real boards (phase-529, phase-533) and the Renode and Wokwi twins
 
 | issue | why it belongs here |
 | --- | --- |
-| [#2375](../../issues/2375-renode-chain-lifetime-unmeasured.md) | OPEN, rehomed to [phase-548](../phase-548-three-languages-every-board.md) W7 when this phase was archived. W3's Renode leg, unmeasured. |
+| [#2375](../../issues/2375-renode-chain-lifetime-unmeasured.md) | OPEN, rehomed to [phase-548](phase-548-three-languages-every-board.md) W7 when this phase was archived. W3's Renode leg, unmeasured. |
 | [#2350](../../issues/archived/2350-run-dry-run-refuses-stale-model.md) | RESOLVED 2026-11-07. `nros run --dry-run` says it would configure, then refuses the stale SystemModel: a run-plan follow-up. |

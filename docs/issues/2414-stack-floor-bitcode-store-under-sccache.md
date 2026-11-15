@@ -9,8 +9,9 @@ found: 2026-11-10
 related: [issue-2400, phase-548, phase-557]
 ---
 
-**Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md)**, with
-issue 2400. **Deferred by ruling:** build this only if someone measures real
+**Home: [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md)**, with
+issue 2400. Rehomed 2026-11-15 from
+[phase-548](../roadmap/archived/phase-548-three-languages-every-board.md) (archived). **Deferred by ruling:** build this only if someone measures real
 pain from the bypass.
 
 ## What

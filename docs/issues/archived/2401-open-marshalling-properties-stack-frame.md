@@ -11,7 +11,7 @@ resolved: 2026-11-10
 resolved_in: "phase-548: on an alloc build the property strings go to one heap block sized by the data; the frame is 8,472 B -> 240 B on Cortex-M7 (O3)"
 ---
 
-**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)**,
+**Home: [phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md)**,
 beside issue 2360 (registration stack frames).
 
 ## What

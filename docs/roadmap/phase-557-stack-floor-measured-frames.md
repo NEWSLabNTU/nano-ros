@@ -833,3 +833,13 @@ Acceptance:
   row that drifted and the change re-measures it.
 - A row edited by hand in a branch turns the step red, naming that row.
 - The nightly's first run is linked here.
+
+## Issues homed here (2026-11-15)
+
+Rehomed from [phase-548](archived/phase-548-three-languages-every-board.md) when it closed.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#2400](../issues/2400-stack-floor-from-measured-frames.md) | The design and rulings this phase implements. |
+| [#2360](../issues/2360-zephyr-rust-registration-stack-frames.md) | A Rust Zephyr entry's registration frames outgrow 32 KiB of main stack for an action server (measured 63,776 B): the floor this phase derives, and the input of issue 2400. |
+| [#2414](../issues/2414-stack-floor-bitcode-store-under-sccache.md) | DEFERRED by ruling. Measuring floors every build bypasses sccache for the measured crates; a bitcode store keyed by crate output would remove the cost. |

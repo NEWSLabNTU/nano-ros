@@ -11,7 +11,7 @@ resolved: 2026-11-09
 resolved_in: "the run plan carries the build's ZEPHYR_BASE (from its CMake cache) as args.zephyr_base, which the west and FVP runners put in west's environment; the router half is issue 2301's fix"
 ---
 
-**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)**
+**Home: [phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md)**
 (found by W2; every language on mps2-an385 Zephyr meets it).
 
 ## What

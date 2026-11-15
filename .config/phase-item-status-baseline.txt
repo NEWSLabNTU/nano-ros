@@ -180,7 +180,7 @@ phase-544-harness-run-plan-followups.md 3
 phase-545-rmw-provider-scan-build-road.md 2
 phase-546-zenoh-freertos-host-sockets.md 6
 phase-547-px4-pixhawk-emulator-spike.md 8
-phase-548-three-languages-every-board.md 4
+phase-548-three-languages-every-board.md 3
 phase-549-px4-rust-c-uorb.md 5
 phase-550-nuttx-native-build-infrastructure.md 6
 phase-551-starter-image.md 9

@@ -11,7 +11,7 @@ resolved_in: "every road asks cargo for the staticlib only: Corrosion CRATE_TYPE
 related: [issue-2400, issue-0815, phase-548]
 ---
 
-**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)**. Found
+**Home: [phase-548](../../roadmap/archived/phase-548-three-languages-every-board.md)**. Found
 while measuring the nucleo-f767zi image for issue 2400.
 
 ## What
