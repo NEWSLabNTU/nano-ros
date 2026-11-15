@@ -1,17 +1,17 @@
 ---
 rfc: 0100
 title: "One sizing model: the contract states facts, every backend derives its own buffers"
-status: Draft
+status: Stable
 area: workspace-system-model
 amends: [0098]
 since: 2026-09
-last-reviewed: 2026-11
+last-reviewed: 2026-11-15
 implements-tracked-by: [phase-454, phase-457, phase-486, phase-531]
 ---
 
 # RFC-0100 — One sizing model: the contract states facts, every backend derives its own buffers
 
-**Status:** Draft (2026-09-11; last reviewed 2026-10-12 — the
+**Status:** Stable (2026-11-15, ruling A1(a); Draft from 2026-09-11; last reviewed 2026-10-12 — the
 [2026-10-10 ruling](#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from)
 restates the file rule over the nano-ros overlay, in effect since phase-486 W4;
 see also
@@ -1529,3 +1529,8 @@ reference is marked as of writing (the read is now near line 916).
 - Status: Draft, though its home phase and amendments are landed; the leaf
   retirement is the only open work and it belongs to RFC-0121. Brief item
   W1.
+- **Stable (2026-11-15, ruling A1(a)).** No open question remains in this
+  RFC. The one open piece of work, retiring the leaf producer
+  (`--from-leaf`, `write_for_leaf`), is RFC-0121's amendment and is tracked by
+  [phase-531](../roadmap/phase-531-workspace-first-project-layout.md), so
+  nothing new is filed.
