@@ -515,3 +515,29 @@ jobs:
     uses: ./.github/workflows/starter-image.yml
     with:
       version: ${{ inputs.version }}
+
+  # Issue 2612, user ruling 2026-11-15 (option (c)): the pre-cut audit of
+  # merged changes that touch a shipped path with no changelog.d fragment and
+  # no `Changelog: none` trailer, printed for whoever reviews the release's
+  # notes page. REPORT ONLY, on every run, dry runs included: the script exits
+  # 0 whatever it finds, and this job cannot fail the release
+  # (`continue-on-error`, and nothing `needs` it). Full history, because the
+  # range starts at the last `nros-*` tag; its own job so the build job's
+  # shallow checkout is untouched. It becomes a pull request check (option
+  # (a)) once it has been quiet across releases.
+  changelog-audit:
+    name: changes with no changelog entry (report)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Report changes since the last release with no changelog entry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/changelog-audit.py --summary "$GITHUB_STEP_SUMMARY"

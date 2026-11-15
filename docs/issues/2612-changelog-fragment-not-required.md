@@ -9,8 +9,8 @@ found: 2026-11-15
 related: [0885]
 ---
 
-**Owner:** unassigned (the shape is a policy call for the maintainer). **Home:**
-no active phase owns release tooling. The release phases (phase-431, phase-443)
+**Ruled 2026-11-15 (user): option (c) now, (a) later.** (c) is done (below);
+the issue stays open for (a). **Home:** no active phase owns release tooling. The release phases (phase-431, phase-443)
 are archived. The nearest active doc is phase-535, whose item 5 (`release-gate`,
 release preconditions on `release-nros.yml`) is related; phase-535 is parked.
 
@@ -76,7 +76,44 @@ costs a line in a report, not a contributor's time. A miss is caught at release
 time, as #3883 was, rather than at merge time. It also suits a parked release
 phase, because nothing in the merge queue depends on it.
 
-## Recommendation (for the ruling, not decided here)
+## Recommendation (made before the ruling)
 
 The measured results favour (c) now, and (a) with the exclusions later if the
 report keeps finding misses. (b) is not worth building.
+
+## Ruling (2026-11-15)
+
+The user chose (c) now and (a) later: a report-only script for the release's
+pre-cut audit, wired into the release dry run, which becomes a pull request
+check once it has stayed quiet across releases.
+
+## Done: (c)
+
+`scripts/changelog-audit.py` lists every pull request merged since the last
+`nros-*` tag (the nearest one reachable by history) that touches a shipped
+path and carries no `changelog.d/` fragment in any of its commits and no
+`Changelog: none` trailer.
+
+- **Shipped:** `packages/`, `cmake/`, `book/`, except `packages/testing/`, the
+  release-notes pages (`book/src/migrating/releases/`, not
+  `book/src/release-notes/` as written above) and the book's navigation files
+  (`SUMMARY.md`, `page-map.toml`, the releases index). Without the last
+  exclusion every notes-page PR flagged itself for adding its own entry to the
+  table of contents (#3944, #3964).
+- **Grouped by PR** through GitHub's commit-to-PR association, so a fragment
+  added in a PR's later commit covers its earlier ones. With no `gh`, one row
+  per commit.
+- **Never fails.** `release-nros.yml` runs it on every dispatch, dry runs
+  included, in its own `changelog-audit` job: full history, `continue-on-error`,
+  nothing `needs` it, and the table goes to the job summary.
+- **Gate:** `just check changelog-audit` (fast line) runs the selector's cases on
+  a scratch repository; each guard was mutation-checked.
+
+Since `nros-0.6.0-nros10` it reports 9 of 58 PRs, a superset of the 6 measured
+above: #3883 (fragment added later, #3978), the four book-page PRs, #3951,
+#3946, and #3910 and #3912, which predate the 50-PR sample. The nros11 notes
+reviewer judged none of the eight beyond #3883 to need a notes line: book pages
+publish from `main` rather than with a release, and #3910's and #3946's
+`packages/boards/` edits are probe cadence metadata. That is the open question
+for (a): whether book-only PRs count as shipped.
+
