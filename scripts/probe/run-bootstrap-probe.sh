@@ -409,10 +409,17 @@ if [[ "$VERIFIER" = verify-installed-pinned.sh ]]; then
     # The front `install.sh` leaves is the NEWEST installed version: the
     # project's pin when the installed asset sorts below it (this branch's
     # `0.0.0-probe`), the installed release when it is newer (issue 2168).
-    probe_front=0.6.0-nros4
+    # The project's pin is the release before the index's (one helper, which
+    # also gates the book's literal: scripts/lib/pinned_example.py).
+    if ! probe_pinned="$(python3 "$SCRIPT_DIR/../lib/pinned_example.py")"; then
+        echo "run-bootstrap-probe: cannot derive the pinned example's release" >&2
+        exit 1
+    fi
+    probe_front="$probe_pinned"
     if [[ "$PROBE_PLATFORM" = pinned-newer ]]; then
         probe_front="$(nros_published_release_version)"
     fi
+    printf 'PROBE_PINNED_VERSION=%s\n' "$probe_pinned" >>"$workdir/probe.sh"
     printf 'PROBE_EXPECT_FRONT=%s\n' "$probe_front" >>"$workdir/probe.sh"
 fi
 if [[ "$VERIFIER" = verify-installed-twin.sh ]]; then
