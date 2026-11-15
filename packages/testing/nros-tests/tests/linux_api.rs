@@ -1763,6 +1763,59 @@ fn test_threadx_linux_c_image_exit_status_is_the_apps() {
     );
 }
 
+/// A threadx-linux C image whose session cannot open says WHY on its console.
+///
+/// The runtime's records reach the console only through a log writer the board
+/// registers, and on ThreadX only the Rust entry path registered one. So every
+/// C and C++ image dropped them: a listener whose session open failed in the
+/// merge-runtime tier1 lane printed `app_main returned, exit code 156` and
+/// nothing else, which named neither the locator nor the failure. This is the
+/// same generated-entry image that lane ran (the pubsub pair's listener),
+/// pointed at a port nothing listens on.
+///
+/// The exit status is the control: an image that never reached the open (and
+/// so had nothing to say) would not end with the transport error's code.
+#[cfg(target_os = "linux")]
+#[test]
+fn test_threadx_linux_c_image_names_why_its_session_did_not_open() {
+    require_cmake();
+    let bin = nros_tests::fixtures::threadx_linux::pair_image_rmw(
+        nros_tests::matrix::Lang::C,
+        nros_tests::fixtures::workspace_image::PairRole::Listener,
+        Rmw::Zenoh,
+    )
+    .require("resolve threadx-linux c listener");
+    // Bound and released, so the port is free now (see the exit-status test
+    // above for what a stranger taking it in the gap would look like).
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|l| l.local_addr())
+        .expect("reserve a loopback port")
+        .port();
+    let locator = format!("tcp/127.0.0.1:{port}");
+    let out = nros_tests::process::deadline_command(20, &bin)
+        .env("NROS_LOCATOR", &locator)
+        .output()
+        .expect("run the threadx-linux c listener");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // `NROS_CPP_RET_TRANSPORT_ERROR` (-100), as the process status's low byte.
+    assert_eq!(
+        out.status.code(),
+        Some(156),
+        "the image must fail its session open (transport error, exit 156) against \
+         {locator}, where nothing listens; 124 means the deadline ended it.\n{text}"
+    );
+    let why = format!("zenoh open: no session with {locator}");
+    assert!(
+        text.contains(&why),
+        "the image failed its session open and did not say why: no `{why}` line on its \
+         console, so the runtime's log records are still dropped on a C image.\n{text}"
+    );
+}
+
 /// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
 /// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
 /// added, retiered or reassigned without this list moving is a red here.
