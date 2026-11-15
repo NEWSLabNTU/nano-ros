@@ -551,6 +551,22 @@ gets `--target` from the images that resolve to it, by the board-platform rule
 `[tasks.<name>.<rtos>]` uses; two targets sharing one model are named in a
 warning.
 
+### I15 -- a generated Zephyr app keeps its workspace modules
+
+**Status: DONE (2026-11-15).** [Issue 2609](../issues/archived/2609-zephyr-app-workspace-module-lost-to-cache.md),
+GitHub #3948. I11's modules were appended to a normal variable, and Zephyr
+reads the `-DZEPHYR_EXTRA_MODULES` cache entry `nros build` passes before it,
+so a workspace module never reached Kconfig. The app now adds its modules to
+that cache entry.
+
+### I16 -- a generated Zephyr app finds the workspace's message packages
+
+**Status: DONE (2026-11-15).** [Issue 2610](../issues/archived/2610-zephyr-app-misses-workspace-msg-packages.md),
+GitHub #3952. The CMake root puts the workspace's `src/` on
+`NROS_INTERFACE_SEARCH_PATH`; the generated Zephyr app did not, so its
+configure missed the workspace's message packages. Both generators now emit
+one block (`cmake_root::interface_search_path_cmake`).
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -685,6 +701,8 @@ from that session, `FREERTOS_PORT not set` on `freertos-posix`, is
 [issue 2341](../issues/archived/2341-freertos-posix-port-not-reaching-zpico.md),
 fixed after that release.
 
+- [issue 2609](../issues/archived/2609-zephyr-app-workspace-module-lost-to-cache.md) (GitHub #3948, resolved): a generated Zephyr app lost its workspace Zephyr modules to the `-DZEPHYR_EXTRA_MODULES` cache entry (I15).
+- [issue 2610](../issues/archived/2610-zephyr-app-misses-workspace-msg-packages.md) (GitHub #3952, resolved): a generated Zephyr app did not find the workspace's own message packages (I16).
 - [issue 2601](../issues/archived/2601-resolve-ignores-image-target-platform-file.md): `nros configure` resolved every model for `posix`, so an image's `<stem>.system.<target>.yaml` was never read (I14, resolved).
 - [issue 2603](../issues/2603-flaky-sdk-index-stamp-input-test.md): `configure_stamp::tests::the_sdk_index_is_a_stamp_input` failed once under a full gate and passes alone.
 - [issue 2598](../issues/archived/2598-launch-param-file-not-a-model-input.md) (GitHub #3923, resolved): a resolved model stayed stale after `nros configure`, and a launch parameter file was not one of its inputs (I12).

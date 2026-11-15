@@ -513,19 +513,7 @@ pub fn render(
     // their entry and its precedence — earlier roots win the shadowing order.
     // History: Issue 1111.
     let src_rel = super::paths::relative_or_err(manifest_dir, &spec.workspace.join("src"))?;
-    out.push_str(&format!(
-        "# The workspace's own interface packages. Prepended, so an\n\
-         # entry the caller already exported keeps its precedence.\n\
-         get_filename_component(_nros_ws_src \"{src_rel}\" ABSOLUTE)\n\
-         if(EXISTS \"${{_nros_ws_src}}\")\n\
-         \x20   if(DEFINED ENV{{NROS_INTERFACE_SEARCH_PATH}})\n\
-         \x20       set(NROS_INTERFACE_SEARCH_PATH\n\
-         \x20           \"${{_nros_ws_src}};$ENV{{NROS_INTERFACE_SEARCH_PATH}}\")\n\
-         \x20   else()\n\
-         \x20       set(NROS_INTERFACE_SEARCH_PATH \"${{_nros_ws_src}}\")\n\
-         \x20   endif()\n\
-         endif()\n\n"
-    ));
+    out.push_str(&interface_search_path_cmake(&src_rel));
 
     if spec.image_env {
         // Before find_package: the Corrosion imports inside it attach the
@@ -689,6 +677,27 @@ pub fn render(
     }
 
     Ok(out)
+}
+
+/// The lines that put the workspace's own interface packages (`src_rel`,
+/// relative to the generated `CMakeLists.txt`) on `NROS_INTERFACE_SEARCH_PATH`.
+/// Prepended, so an entry the caller already exported keeps its precedence.
+/// ONE rendering for every generated application: the CMake root and the
+/// generated Zephyr west app.
+pub(crate) fn interface_search_path_cmake(src_rel: &str) -> String {
+    format!(
+        "# The workspace's own interface packages. Prepended, so an\n\
+         # entry the caller already exported keeps its precedence.\n\
+         get_filename_component(_nros_ws_src \"{src_rel}\" ABSOLUTE)\n\
+         if(EXISTS \"${{_nros_ws_src}}\")\n\
+         \x20   if(DEFINED ENV{{NROS_INTERFACE_SEARCH_PATH}})\n\
+         \x20       set(NROS_INTERFACE_SEARCH_PATH\n\
+         \x20           \"${{_nros_ws_src}};$ENV{{NROS_INTERFACE_SEARCH_PATH}}\")\n\
+         \x20   else()\n\
+         \x20       set(NROS_INTERFACE_SEARCH_PATH \"${{_nros_ws_src}}\")\n\
+         \x20   endif()\n\
+         endif()\n\n"
+    )
 }
 
 /// A cmake `project()` name: letters, digits and underscores only.
