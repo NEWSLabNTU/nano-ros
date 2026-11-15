@@ -562,8 +562,8 @@ the user ruled; all five stand:
 
 ### W10 — Lever 2: the metadata probe shares one host half per key
 
-- **Owner:** nros 175. The user approved this item on 2026-11-15, with the
-  safety tests to land first.
+- **Owner:** nros 175. The user approved building it on 2026-11-15, safety
+  tests first, and after the measurements ruled that it does not turn on (below).
 - **Why.** Both hosted shards that ran out of disk in W5b's eighth
   measurement held `build/corrosion-cargo` at 30 G (`du`), and the disk
   balloon stopped them 0.2–0.3 G under its 2 G floor. Across that tree,
@@ -689,13 +689,28 @@ the user ruled; all five stand:
     cargo (`just check shared-build-dir`, `spellings`). It is not a real
     duplicate-symbol link of `nros-platform`, so the refusal happens before
     any link.
-- **Status:** OPEN. Approved 2026-11-15. Landed: the root identity and its
-  marker check, the census (it tells registry versions apart, after
-  `thiserror-impl` 1.x/2.x tripped it on the first real run), and the
-  nested-cargo lock fix with its gate and real-cargo control. Items 1–3, 4
-  and 6 are measured above. Still open: the hosted-shard acceptance, and the
-  user's call on the +40 % probe wall time against the disk saved. Issue 2318
-  stays homed in phase-489; this item is its lever 2, scoped to the probe.
+- **Ruling, 2026-11-15:** after these measurements, the user ruled that
+  build-dir sharing goes NOWHERE yet, not even on the hosted shards. The
+  hosted Zephyr shard's disk is to be solved another way (W12). What stands on
+  its own lands, with sharing OFF:
+  - The nested-cargo lock fix (`nros_sizes_build::nested_cargo()`) and its
+    gate `check-nested-cargo-build-dir`. Any future shared build-dir needs it,
+    and so does any build that sets `CARGO_BUILD_BUILD_DIR` itself.
+  - The census, with the source-identity fix, plus the marker check and
+    `nros dev shared-build-dir-check`.
+  - `just check shared-build-dir`'s real-cargo scenarios, including the
+    nested-cargo deadlock control.
+  - `nros_image_share_build_dir` and the root identity, both inert unless
+    `NROS_SHARED_CARGO_BUILD_DIR` is ON. The probe passes OFF explicitly and
+    no lane turns it on. Off, the generated image crate is byte-for-byte what
+    it was, with no version suffix and no marker bytes in any image.
+  Picking the option up later is a one-line change in
+  `metadata_probe_cmake.rs` plus a new ruling. The measurements above are
+  the case for and against it.
+- **Status:** DROPPED (the user's ruling, 2026-11-15; safety work lands, sharing OFF)
+  The sharing itself goes nowhere yet, and the hosted shard's disk moves to
+  W12. Issue 2318 stays homed in phase-489; this was its lever 2, scoped to
+  the probe.
 
 ### W11 — A failed metadata probe is a failure, not "no producer"
 
