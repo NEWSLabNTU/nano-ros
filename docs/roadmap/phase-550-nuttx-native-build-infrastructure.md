@@ -22,6 +22,11 @@ Homes:
 - [issue 2236](../issues/2236-nuttx-make-app-as-project.md), the design
   questions: W0, W6, W7, and the gates below.
 
+Related, not homed here: [issue 2622](../issues/2622-nuttx-build-writes-into-vendored-tree.md),
+nano-ros's build markers, lock and export snapshots, written into the vendored
+NuttX tree. It is open, has no work item, and is routed to this phase's
+owner.
+
 Builds on [phase-530](phase-530-nros-configure-single-pass.md) (W5, Ruling
 R36: the make road is a guest road today).
 
