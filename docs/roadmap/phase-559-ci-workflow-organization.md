@@ -664,12 +664,38 @@ the user ruled; all five stand:
   probe's duplicate bytes (`du` before and after, same commit). That shard and
   merge × threadx_linux reach a verdict above the disk balloon's floor, or
   the remaining shortfall is measured and named.
-- **Status:** OPEN. Approved 2026-11-15. Landed first: the root
-  identity and its marker check, the census, and the nested-cargo lock fix
-  with its gate and real-cargo control. Still open: the parallel `nm` link
-  test (2), the archive-hash check (3), the lock's wall-time cost (4), the
-  real-byte count (6), and the hosted-shard acceptance. Issue 2318 stays homed
-  in phase-489; this item is its lever 2, scoped to the probe.
+- **Measured 2026-11-15** (20-core host, about 40 load from other users).
+  `examples/workspaces/{c,cpp,mixed}` were probed CONCURRENTLY, each run from a
+  fresh `NROS_BUILD_ROOT`. Baseline: today's tree (the per-workspace build
+  dir), alternating with W10, 4 rounds each, plus a solo W10 run per workspace.
+  - Items 1–3: every run probed all 23 components (`no producer` = 0).
+    Each of the 22 probe binaries per tree defines `__rust_alloc` and
+    `nros-platform`'s `GlobalAlloc::alloc` exactly once, with no duplicate
+    `T`/`D` symbol. All 46 sidecars equal the baseline's except
+    `provenance.inputs_digest`, which hashes the CLI and sources, so it
+    differs between two trees by construction. All 6 uplifted image archives
+    hash the same after each parallel round as after a solo build. The
+    in-probe check said "safe to share" every time.
+  - Item 4, the lock costs wall time. Parallel probe of the three workspaces:
+    baseline 119 / 86 / 72 / 80 s, W10 121 / 125 / 102 / 114 s. Warm rounds
+    (2–4) average 79 s against 113 s, about +40 %. Run serially, the three
+    solo W10 runs sum to 223 s, so the probes still overlap. They wait on the
+    build-dir lock only where they share units.
+  - Item 6, real bytes: `du` in allocated blocks, hard links counted once.
+    The probe's `corrosion-cargo` falls from 2301 to 730 MiB (−68 %), and the
+    whole build root from 3666 to 2095 MiB, for these three workspaces. Two
+    keys serve them.
+  - Item 2's negative control is the census refusing 0616's shape on real
+    cargo (`just check shared-build-dir`, `spellings`). It is not a real
+    duplicate-symbol link of `nros-platform`, so the refusal happens before
+    any link.
+- **Status:** OPEN. Approved 2026-11-15. Landed: the root identity and its
+  marker check, the census (it tells registry versions apart, after
+  `thiserror-impl` 1.x/2.x tripped it on the first real run), and the
+  nested-cargo lock fix with its gate and real-cargo control. Items 1–3, 4
+  and 6 are measured above. Still open: the hosted-shard acceptance, and the
+  user's call on the +40 % probe wall time against the disk saved. Issue 2318
+  stays homed in phase-489; this item is its lever 2, scoped to the probe.
 
 ### W11 — A failed metadata probe is a failure, not "no producer"
 
