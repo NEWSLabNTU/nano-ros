@@ -42,8 +42,12 @@ jobs:
     # toolchains, and a job that cannot start is not a signal.
     if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
     runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]
-    # Longest green run 113.9 min (n=4); twice that, rounded up.
-    timeout-minutes: 230
+    # Longest run whose cells all passed: 229.5 min (run 43684674172,
+    # 2026-11-15: `just build tier2` 128 min from a cold tree, `just ci matrix`
+    # 88 min, both green), which the old 230 then cut off while it collected
+    # the junit, so the lane reported no verdict. Twice that, rounded up.
+    # Self-hosted, so above 360 is legal.
+    timeout-minutes: 460
     env:
       # phase-543 — the self-hosted runner's gate lane (.config/gate-lanes.toml
       # [lane.runner]): `just build <lane>` and `just ci matrix` reach `check
