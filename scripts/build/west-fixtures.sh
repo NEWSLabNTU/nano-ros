@@ -451,6 +451,11 @@ while IFS= read -r record; do
         # (`split_native_args`), so no second `--`. `--offline`, like every
         # fixture lane's `nros build`.
         bash "$repo_root/scripts/build/warm-offline-cargo.sh"  # root + std deps for an offline build (issue 2560)
+        # The image's own graphs (a Rust image's west app among them), through
+        # the ONE warm entry every offline driver calls.
+        env "${tc_env[@]}" NROS_CLI_BIN="$_wf_cli" bash -c \
+            'source "$1/scripts/build/leaf-cache.sh"; repo_root="$1" nros_warm_leaf_cache "$2" "$3"' \
+            _ "$repo_root" "$repo_root/$src" "$nros_image"
         nargs=(build "$nros_image" --workspace "$repo_root/$src" --offline -- -d "$bld")
         [ "$builder" = "west-configure" ] && nargs+=(--cmake-only)
         if [ -n "$extra" ]; then

@@ -740,3 +740,14 @@ unignored-build-writes:
 # gate runs the real leaf emitter from a checkout path named `448-xrce`.
 fixture-filter-fields:
     @bash scripts/check-fixture-filter-fields.sh
+
+# A driver that runs `nros build --offline` warms first, through the one
+# entry every road shares (`nros_warm_leaf_cache`, scripts/build/leaf-cache.sh).
+# Since issue 2444 an offline build reaches zephyr-lang-rust's own cargo inside
+# west, so a driver that warmed only the repo root's graph failed offline on
+# the first crate only the west app needed (live-peer, 2026-11-15:
+# `annotate-snippets … --offline was specified`). File-level, buildless;
+# self-tests a refusal on the normal path.
+[group("check")]
+offline-build-warmed:
+    @python3 scripts/check/check-offline-build-warmed.py

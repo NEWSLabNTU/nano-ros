@@ -653,6 +653,10 @@ build_cmake_fixture() {
         bash "$repo_root/scripts/build/warm-offline-cargo.sh"  # root + std deps for an offline build (issue 2560)
         ( cd "$bld" \
             && NROS_REPO_DIR="$repo_root" "$NROS_CLI_BIN" configure >/dev/null \
+            && { source "$repo_root/scripts/build/leaf-cache.sh"
+                 # The default images' own graphs, every road (west Rust apps
+                 # included), through the ONE warm entry; it warms the root too.
+                 NROS_REPO_DIR="$repo_root" nros_warm_leaf_cache "$bld"; } \
             && NROS_REPO_DIR="$repo_root" "$NROS_CLI_BIN" build --workspace . --offline )
         # issue 1454 — this branch ran `nros configure`, so this fixture is baked
         # from a resolved SystemModel and is a function of the parser that
