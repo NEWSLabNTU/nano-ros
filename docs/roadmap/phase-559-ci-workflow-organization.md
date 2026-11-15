@@ -656,6 +656,60 @@ the user ruled; all five stand:
   `refresh_stale_sidecars` is checked before the exit code changes.
 - **Status:** OPEN
 
+### W12 — The hosted Zephyr shard's disk, without sharing a build-dir
+
+- **Owner:** nros 175. **A design item: no code lands before the user picks
+  an option.** It follows W10's ruling (2026-11-15) that build-dir sharing
+  goes nowhere yet.
+- **What the shard runs out of, measured.** Run 43684256518,
+  `merge-runtime tier1 (zephyr)`, 146 G disk:
+  - `reclaim-disk.sh` freed 32.3 G of preinstalled toolchains before the
+    build: android 12 G, dotnet 6.3 G, `/__t` 5.4 G, ghcup 3.7 G, swift
+    3.5 G, powershell 1.4 G.
+  - `just build tier1` then FIT. It left 9.4 G free, 7 G at its lowest.
+  - `just ci tier1 run` compiled the test binaries next, under the
+    debuginfo profile `nros-relwithdebinfo`. `target/` grew 2.2 → 4.2 G
+    and `target-zpico-multisession` reached 2.4 G. The balloon holds 3 G in
+    reserve, and free space crossed its 2 G floor during `test-all`. The
+    first three tests had passed; the shard has no verdict.
+  - The run wrote about 7.5 G, so the shard is short by roughly **5–8 G**,
+    not by the 30 G W10 aimed at.
+  - `build/` at that moment (the run's `nros-disk-exhausted.txt` artifact):
+
+    | Directory | Size (du) |
+    |---|---|
+    | `zephyr-workspace-builds` | 44 G |
+    | `corrosion-cargo` | 24 G |
+    | `sizes-probe` | 6.4 G |
+    | `metadata-probe` | 3.0 G |
+    | `west-fixtures` | 1.4 G |
+
+    `cargo-dir-dupes.py` reads `corrosion-cargo` as 32.4 G apparent. 28.2 G
+    of that is extra copies in the probe's `nros-probe` profile, and the
+    25 largest cargo dirs are all `metadata-probe/…`.
+- **Options.** Each has its bytes and what it costs.
+
+  | # | Option | Frees | Cost or risk |
+  |---|---|---|---|
+  | A | Evict the metadata probe's outputs between `just build` and `just ci tier1 run`: `build/corrosion-cargo/metadata-probe/` and `build/metadata-probe/` | about 20 G + 3.0 G (the first is derived: 28.2 of 32.4 G apparent is probe copies, scaled by du/apparent = 24/32.4; measured exactly on the dispatch) | The run must not read them. It doesn't by the code: the staleness walk (`find_build_script_outputs`) reads `corrosion-cargo/<platform>/` for CROSS leaves only, and the sidecars live in `src/*/metadata/`. Confirmed only by the acceptance dispatch. `sizes-probe` (6.4 G) is NOT evicted, because the run's own cargo builds may re-enter it |
+  | B | Build the run stage's test binaries without debuginfo on this shard | at most the 4.4 G those dirs hold (`target/` +2.0 G, `target-zpico-multisession` 2.4 G); the real saving is unmeasured | Worse backtraces on that shard only. On its own it may not cover 5–8 G |
+  | C | Split the shard into a build job and a run job | the run job starts on an empty disk | It needs the built images moved between jobs (their size is unmeasured; `zephyr-workspace-builds` is 44 G with intermediates), plus a second job's queue and setup time. The most work |
+  | D | Reclaim more preinstalled software | unmeasured: 32.3 G is already gone, and what is left needs a `du` on a dispatch | Each item is a bet on the runner image |
+  | E | Move tier1 zephyr to the self-hosted runner | no hosted ceiling | It uses the self-hosted runner's capacity, and the tier1 lane runs on hosted runners by design (W5b) |
+
+- **Recommendation: A**, measured before it lands. One step after `just
+  build` removes the two directories, after `git check-ignore` proves each
+  path is ignored and with `du` before and after. Acceptance is a lane=tier1
+  dispatch of `merge-runtime.yml` on the branch:
+  - the zephyr shard reaches a VERDICT
+  - the balloon's lowest free space is reported
+  - the freed bytes are recorded
+
+  If that margin is under 10 G, add B and measure again. A frees about
+  3–4× the shortfall and changes nothing the run reads, by the code.
+  Unlike W10 it changes no build.
+- **Status:** BLOCKED (the user's choice of option)
+
 ## Acceptance (phase)
 
 - 13 workflow files, as in the table. Every split is named in the table by a
