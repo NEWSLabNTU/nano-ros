@@ -1025,7 +1025,7 @@ cover these files).
 
 | issue | why it belongs here |
 | --- | --- |
-| [#2595](../issues/2595-witness-workspaces-lose-example-lint.md) | W6's witness move took each migrated example out of `linux-check`'s leaf list, and no lane lints a witness package instead: the gate went from 32 leaves to 1. |
+| [#2595](../issues/archived/2595-witness-workspaces-lose-example-lint.md) | RESOLVED 2026-11-15: each witness is a `linux-check` unit, and `example-lint-units` fails on a package no unit lints. W6's witness move took each migrated example out of `linux-check`'s leaf list, and no lane lints a witness package instead: the gate went from 32 leaves to 1. |
 
 ## Not in scope
 

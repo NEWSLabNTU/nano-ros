@@ -110,6 +110,6 @@ reasons:
   those without linting them anywhere else.
 
 The second is a coverage defect, filed as
-[issue 2595](2595-witness-workspaces-lose-example-lint.md). This issue's
-acceptance waits on 2595: a loaded full `ci gate` measures a budget only
-when the lane lints what it is meant to.
+[issue 2595](archived/2595-witness-workspaces-lose-example-lint.md), now resolved: the lane lists 20
+units (1 leaf, 19 witnesses). This issue's acceptance is unchanged: a loaded
+full `ci gate` with every unit inside its budget.

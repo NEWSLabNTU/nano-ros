@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
 # The native-example lint lane (`just linux check`, gate `check::linux-check`):
-# `cargo fmt --check` + `cargo clippy` over every standalone example leaf a host
-# can lint, each rendered by `nros configure` first (issue 1892). The per-leaf
-# work lives in `lint-example-leaf.sh` (issue 1882); this script owns WHICH
-# leaves and HOW they are fanned out, so the `just` lane and the gate share one
-# spelling of both.
+# `cargo fmt --check` + `cargo clippy` over every example Rust package a host
+# can lint, each rendered by `nros configure` first (issue 1892). A standalone
+# leaf is linted by `lint-example-leaf.sh` (issue 1882), a one-node witness
+# workspace's node packages by `lint-example-witness.sh` (issue 2595). This
+# script owns HOW the units are fanned out, so the `just` lane and the gate
+# share one spelling; WHICH units, and their coverage proof, are
+# `scripts/lib/example_lint_units.py`.
 #
 # Modes:
 #
-#   (none)                     every leaf, under one jobserver pool (or serial
+#   (none)                     every unit, under one jobserver pool (or serial
 #                              under an outer jobserver), then the leaf
 #                              `target/` assertion.
-#   NROS_GATE_LIST_UNITS=1     print one unit per leaf and exit (the nextest
-#                              gate harness, phase-543 W2).
-#   NROS_GATE_UNIT=<unit>      lint that one leaf, then the assertion.
+#   NROS_GATE_LIST_UNITS=1     print one unit per leaf or witness and exit (the
+#                              nextest gate harness, phase-543 W2).
+#   NROS_GATE_UNIT=<unit>      lint that one unit, then the assertion.
 #
-# Why units (issue 2380): the 32 leaves are 32 cargo roots, and a target dir
+# Why units (issue 2380): every leaf and every witness package is its own cargo
+# root (32 leaves when this was measured), and a target dir
 # serves exactly ONE root (issue 0616), so each leaf compiles the nros stack on
 # its own and none of that can be shared. Measured cold on a 32-core x86 host:
 # 82 s for the whole lane idle, 831 s inside a loaded `ci gate`; 1,493-2,400 s
@@ -27,38 +30,30 @@ set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo"
 
-# Exclude example trees that can't be host-clippy'd standalone (validated
-# via the fixture-manifest / orchestration path instead, as
-# multi-package-workspace already is):
-#   - ws-sync templates: workspace msg pkgs (`extra_msgs`/`local_msgs`) only
-#     resolve via the `[patch.crates-io]` block `nros configure` writes; cargo
-#     can't find them on crates.io here.
-#   - `examples/workspaces/*`: a multi-target workspace whose entry packages
-#     are cross-compiled (esp32/threadx/nuttx/freertos/zephyr) — e.g.
-#     `esp32_entry` configures `portable-atomic` single-core, which fails to
-#     compile for the host x86_64 target.
-# Tracked-file enumeration via the git index (no filesystem traversal;
-# untracked build/target trees can never slow this down or leak in).
-leaves() {
-    git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/zephyr/|/multi-package-workspace/|/templates/local-msg-package/|/templates/multi-node-workspace/|/templates/workspace-shadowing/|/workspaces/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/px4/' \
-        | python3 scripts/lib/drop_workspace_members.py \
-        | sort | while read -r toml; do dirname "$toml"; done
-}
-
-# A leaf's unit name: its path under examples/ with `/` as `-`, the same
-# spelling as its lint target dir (`lint-example-leaf.sh`).
-unit_of() { local d="${1#examples/}"; printf '%s\n' "${d//\//-}"; }
-
-mapfile -t all < <(leaves)
-wait $! || { echo "lint-examples: listing the example leaves failed (issue 2424)" >&2; exit 1; }
-if [ "${#all[@]}" -eq 0 ]; then
-    echo "lint-examples: no example leaf found; the enumeration is broken, which is not a pass" >&2
+# WHICH packages, and the proof that every tracked example package is linted
+# by a unit or named by an exclusion with its reason, live in
+# `scripts/lib/example_lint_units.py` (issue 2595: a witness workspace's
+# packages left this list and no lane took them, 32 leaves to 1). Its listing
+# FAILS when a package falls through, so the gate's own unit listing does too.
+units_file="$(mktemp "${TMPDIR:-/tmp}/nros_lint_units.XXXXXX")"
+trap 'rm -f "$units_file"' EXIT
+if ! python3 scripts/lib/example_lint_units.py list >"$units_file"; then
+    echo "lint-examples: listing the example lint units failed" >&2
     exit 1
 fi
+kinds=(); names=(); dirs=()
+while IFS=$'\t' read -r k u d; do kinds+=("$k"); names+=("$u"); dirs+=("$d"); done <"$units_file"
+
+# One unit's command line, for both the gate's single unit and the pool.
+unit_cmd() {
+    case "$1" in
+        leaf) printf 'bash scripts/build/lint-example-leaf.sh %s\n' "$2" ;;
+        witness) printf 'bash scripts/build/lint-example-witness.sh %s\n' "$2" ;;
+    esac
+}
 
 if [ "${NROS_GATE_LIST_UNITS:-}" = 1 ]; then
-    for d in "${all[@]}"; do unit_of "$d"; done
+    printf '%s\n' "${names[@]}"
     exit 0
 fi
 
@@ -81,9 +76,9 @@ export NIGHTLY
 assert_no_leaf_target() { python3 scripts/check-example-leaf-target-dirs.py; }
 
 if [ -n "${NROS_GATE_UNIT:-}" ]; then
-    for d in "${all[@]}"; do
-        if [ "$(unit_of "$d")" = "$NROS_GATE_UNIT" ]; then
-            bash scripts/build/lint-example-leaf.sh "$d"
+    for i in "${!names[@]}"; do
+        if [ "${names[$i]}" = "$NROS_GATE_UNIT" ]; then
+            bash -c "$(unit_cmd "${kinds[$i]}" "${dirs[$i]}")"
             assert_no_leaf_target
             exit 0
         fi
@@ -106,14 +101,13 @@ fi
 # a pool is unavailable (no pinned make 4.4) — same commands, same order.
 if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then
     echo "Checking examples (serial; outer jobserver owns the tokens)..."
-    for d in "${all[@]}"; do bash scripts/build/lint-example-leaf.sh "$d"; done
+    for i in "${!names[@]}"; do bash -c "$(unit_cmd "${kinds[$i]}" "${dirs[$i]}")"; done
 else
     echo "Checking examples (jobserver fan-out)..."
     source scripts/build/jobserver-pool.sh
     # ONE self-contained line per leaf: a make recipe is one command per line.
-    for d in "${all[@]}"; do
-        printf 'bash scripts/build/lint-example-leaf.sh %s\n' "$d"
-    done | nros_pool_run check-examples
+    for i in "${!names[@]}"; do unit_cmd "${kinds[$i]}" "${dirs[$i]}"; done \
+        | nros_pool_run check-examples
 fi
 assert_no_leaf_target
 echo "All examples check passed!"
