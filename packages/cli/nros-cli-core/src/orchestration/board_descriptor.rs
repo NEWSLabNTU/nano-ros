@@ -1078,10 +1078,10 @@ impl BoardDescriptor {
 
     /// The framework (or platform entry shape) an image of this board boots,
     /// through the ONE resolver, `nros_orchestration_ir::image_framework`
-    /// (RFC-0111 D3, phase-562 W2). `key` is the board word the image wrote,
-    /// which matters only for the transitional `rtic-mps2-an385` row
-    /// (`nros_orchestration_ir::TRANSITIONAL_FRAMEWORK_KEYS`, removed by
-    /// phase-562 W3); `declared` is the image's `framework`.
+    /// (RFC-0111 D3). `key` is the board word the image wrote, which matters
+    /// only for the transitional `rtic-mps2-an385` row
+    /// (`nros_orchestration_ir::TRANSITIONAL_FRAMEWORK_KEYS`, removed when
+    /// the word retires); `declared` is the image's `framework`.
     pub fn image_framework(
         &self,
         key: &str,

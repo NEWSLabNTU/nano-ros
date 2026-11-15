@@ -302,13 +302,17 @@ pub struct BoardBoot<'a> {
 /// Board WORDS that still carry a framework choice inside the word, each with
 /// the framework list the word stands for.
 ///
-/// TRANSITIONAL: the next step of the framework move deletes this table. `rtic-mps2-an385` is one of
-/// the mps2-an385 bare-metal descriptor's `names`, and every RTIC image in the
-/// tree spells its framework that way. Until W3 gives that descriptor
-/// `frameworks = ["owned-spin", "rtic"]` and W4 migrates those images to
-/// `board = "mps2-an385-baremetal"` + `framework = "rtic"`, the word reads as a
-/// one-framework board that boots RTIC, so no RTIC image changes behaviour.
-/// It is the last framework fact keyed on a board word; W5 retires the word.
+/// TRANSITIONAL: deleted when the word retires. `rtic-mps2-an385` is still one
+/// of the mps2-an385 bare-metal descriptor's `names`, and the tree's RTIC
+/// images spell their framework that way. The descriptor lists
+/// `frameworks = ["owned-spin", "rtic"]`, so the canonical spelling is
+/// `board = "mps2-an385-baremetal"` + `framework = "rtic"`; until those images
+/// move to it, the old word reads as a one-framework board that boots RTIC, so
+/// no RTIC image changes behaviour. It is the last framework fact keyed on a
+/// board word.
+//
+// phase-562: W4 migrates the images, W5 deletes this table, the word's row in
+// `BOARD_PATHS` and its descriptor name, and adds the refusal (RFC-0111 D4).
 pub const TRANSITIONAL_FRAMEWORK_KEYS: &[(&str, &[&str])] = &[("rtic-mps2-an385", &["rtic"])];
 
 impl<'a> BoardBoot<'a> {
@@ -325,6 +329,101 @@ impl<'a> BoardBoot<'a> {
         BoardBoot {
             frameworks,
             entry_shape,
+        }
+    }
+}
+
+// RFC-0111 D2/D3 (phase-562 W3).
+/// The boot facts a board DESCRIPTOR file states (`frameworks`,
+/// `entry_types`), read from the file itself.
+///
+/// The CLI reads the same two keys through its typed descriptor. This reader
+/// is for a consumer that has the descriptor FILE and not the CLI, which is
+/// `nros::main!`: the cargo road hands every image its board descriptor as
+/// [`BOARD_DESCRIPTOR_ENV`]. `nros-cli-core/tests/board_key_table.rs` holds the
+/// two readers to one answer over every shipped descriptor, so the descriptor
+/// stays the one place the list is written.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DescriptorBoot {
+    /// `frameworks`, in order (first = the default). Empty when the key is
+    /// absent, which [`image_framework`] reads as `[DEFAULT_FRAMEWORK]`.
+    pub frameworks: Vec<String>,
+    /// `entry_types`: framework -> the board crate's type for it.
+    pub entry_types: BTreeMap<String, String>,
+}
+
+/// The environment variable naming an image's board descriptor file on the
+/// cargo road (a `relative = true` `[env]` row the CLI writes).
+pub const BOARD_DESCRIPTOR_ENV: &str = "NROS_BOARD_TOML";
+
+impl DescriptorBoot {
+    /// Read the `[[board]]` entry of a descriptor file that answers to `key`.
+    ///
+    /// The entry is matched by `names`; a file with exactly one `[[board]]`
+    /// answers for any key (the CLI already chose this file for the image).
+    /// `Ok(None)` when no entry matches. A key of the wrong type is an error,
+    /// never a silent default.
+    pub fn read(text: &str, key: &str) -> Result<Option<Self>, String> {
+        const NOT_LIST: &str = "`frameworks` is not a list of strings";
+        const NOT_TABLE: &str = "`entry_types` is not a table of strings";
+        let doc: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
+        let boards: Vec<&toml::Table> = doc
+            .get("board")
+            .and_then(toml::Value::as_array)
+            .map(|a| a.iter().filter_map(toml::Value::as_table).collect())
+            .unwrap_or_default();
+        let answers = |b: &toml::Table| {
+            b.get("names")
+                .and_then(toml::Value::as_array)
+                .is_some_and(|ns| ns.iter().any(|n| n.as_str() == Some(key)))
+        };
+        let board = match boards.iter().copied().find(|b| answers(b)) {
+            Some(b) => b,
+            None if boards.len() == 1 => boards[0],
+            None => return Ok(None),
+        };
+        let mut out = DescriptorBoot::default();
+        if let Some(v) = board.get("frameworks") {
+            for f in v.as_array().ok_or(NOT_LIST)? {
+                out.frameworks.push(f.as_str().ok_or(NOT_LIST)?.to_string());
+            }
+        }
+        if let Some(v) = board.get("entry_types") {
+            for (fw, ty) in v.as_table().ok_or(NOT_TABLE)? {
+                out.entry_types
+                    .insert(fw.clone(), ty.as_str().ok_or(NOT_TABLE)?.to_string());
+            }
+        }
+        Ok(Some(out))
+    }
+
+    /// `frameworks` as the borrowed list [`BoardBoot::for_key`] takes.
+    #[must_use]
+    pub fn framework_list(&self) -> Vec<&str> {
+        self.frameworks.iter().map(String::as_str).collect()
+    }
+}
+
+/// The board type an image of board `key` names for `framework`: the
+/// descriptor's `entry_types` row for that framework, in the crate
+/// [`board_path_for`] names, else [`board_path_for`]'s own type. `None` for a
+/// key the table does not know.
+///
+/// A board keeps one [`BOARD_PATHS`] row. A board that boots two frameworks
+/// with two types states the type per framework in its descriptor
+/// (`entry_types = { owned-spin = "Mps2An385", rtic = "RticMps2An385" }`).
+#[must_use]
+pub fn board_type_for(
+    key: &str,
+    framework: &str,
+    entry_types: &BTreeMap<String, String>,
+) -> Option<String> {
+    let path = board_path_for(key)?;
+    match entry_types.get(framework) {
+        None => Some(path.to_string()),
+        Some(ty) => {
+            let (krate, _) = path.rsplit_once("::")?;
+            Some(format!("{krate}::{}", ty.trim()))
         }
     }
 }
@@ -1582,6 +1681,91 @@ mod tests {
             ),
             Ok("owned-spin")
         );
+    }
+
+    const TWO_FRAMEWORK_DESCRIPTOR: &str = "[[board]]\n\
+        names = [\"mps2-an385-baremetal\", \"rtic-mps2-an385\"]\n\
+        frameworks = [\"owned-spin\", \"rtic\"]\n\
+        entry_types = { owned-spin = \"Mps2An385\", rtic = \"RticMps2An385\" }\n";
+
+    /// A board that lists two frameworks boots the first with no `framework`
+    /// and the second when the image names it, read from the descriptor file.
+    #[test]
+    fn a_two_framework_descriptor_boots_the_first_by_default_and_the_named_one() {
+        let boot = DescriptorBoot::read(TWO_FRAMEWORK_DESCRIPTOR, "mps2-an385-baremetal")
+            .unwrap()
+            .expect("the board answers to its name");
+        assert_eq!(boot.frameworks, ["owned-spin", "rtic"]);
+        let list = boot.framework_list();
+        let board = BoardBoot::for_key("mps2-an385-baremetal", &list, None);
+        assert_eq!(image_framework(None, &board), Ok("owned-spin"));
+        assert_eq!(image_framework(Some("rtic"), &board), Ok("rtic"));
+        assert_eq!(
+            image_framework(Some("owned-spin"), &board),
+            Ok("owned-spin")
+        );
+        let err = image_framework(Some("px4"), &board).unwrap_err();
+        assert!(err.contains("owned-spin, rtic"), "{err}");
+        // The transitional word still means RTIC only.
+        let board = BoardBoot::for_key("rtic-mps2-an385", &list, None);
+        assert_eq!(image_framework(None, &board), Ok("rtic"));
+    }
+
+    /// The type follows the framework through `entry_types`, in the crate the
+    /// board's one `BOARD_PATHS` row names; a board with no row keeps its own.
+    #[test]
+    fn the_board_type_follows_the_framework_through_entry_types() {
+        let boot = DescriptorBoot::read(TWO_FRAMEWORK_DESCRIPTOR, "mps2-an385-baremetal")
+            .unwrap()
+            .unwrap();
+        let ty = |key, fw| board_type_for(key, fw, &boot.entry_types);
+        assert_eq!(
+            ty("mps2-an385-baremetal", "owned-spin").as_deref(),
+            Some("::nros_board_mps2_an385::Mps2An385")
+        );
+        assert_eq!(
+            ty("mps2-an385-baremetal", "rtic").as_deref(),
+            Some("::nros_board_mps2_an385::RticMps2An385")
+        );
+        assert_eq!(
+            ty("rtic-mps2-an385", "rtic").as_deref(),
+            Some("::nros_board_mps2_an385::RticMps2An385")
+        );
+        assert_eq!(
+            board_type_for("linux", "owned-spin", &BTreeMap::new()).as_deref(),
+            Some("::nros_board_linux::LinuxBoard")
+        );
+        assert_eq!(
+            board_type_for("zigos", "owned-spin", &BTreeMap::new()),
+            None
+        );
+    }
+
+    /// A descriptor with no `frameworks` reads as an empty list (the default);
+    /// a file of several boards answers only for a name it lists; a mistyped
+    /// value is an error, never a silent default.
+    #[test]
+    fn the_descriptor_reader_matches_by_name_and_refuses_a_mistyped_list() {
+        let one = DescriptorBoot::read("[[board]]\nnames = [\"x\"]\n", "other")
+            .unwrap()
+            .expect("a one-board file answers for its image");
+        assert!(one.frameworks.is_empty() && one.entry_types.is_empty());
+        let two = "[[board]]\nnames = [\"a\"]\nframeworks = [\"rtic\"]\n\
+                   [[board]]\nnames = [\"b\"]\n";
+        assert_eq!(
+            DescriptorBoot::read(two, "a").unwrap().unwrap().frameworks,
+            ["rtic"]
+        );
+        assert!(
+            DescriptorBoot::read(two, "b")
+                .unwrap()
+                .unwrap()
+                .frameworks
+                .is_empty()
+        );
+        assert_eq!(DescriptorBoot::read(two, "c").unwrap(), None);
+        assert!(DescriptorBoot::read("[[board]]\nframeworks = \"rtic\"\n", "x").is_err());
+        assert!(DescriptorBoot::read("[[board]]\nentry_types = [\"rtic\"]\n", "x").is_err());
     }
 
     /// A retired framework is refused with its reason, not as a typo.
