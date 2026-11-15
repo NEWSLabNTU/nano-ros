@@ -14,6 +14,13 @@ pkg = "cpp_listener_pkg"
 class = "cpp_listener_pkg::Listener"
 name = "listener"
 
+# A Rust node package with no CMakeLists.txt: an image here builds through
+# CMake (it runs C and C++ nodes too), and registers it from this row.
+[[component]]
+pkg = "rust_heartbeat_pkg"
+class = "rust_heartbeat_pkg::Heartbeat"
+name = "heartbeat"
+
 # phase-263 A1 (services, MIXED) — cross-language AddTwoInts: a C server + a C++ client (#203; catalog
 # only; run as the two native_service_{server,client}_entry processes — issue 0096).
 [[component]]

@@ -4,7 +4,9 @@
 #
 #   * `nano_ros_node_register(NAME <name> CLASS <UserClass>
 #       [LANGUAGE C|CPP|RUST] SOURCES <files...> DEPLOY <target1> [<target2> ...]
-#       [PANIC platform|halt|own])`
+#       [PANIC platform|halt|own] [PACKAGE <pkg> PACKAGE_DIR <dir>])`
+#       — PACKAGE / PACKAGE_DIR (LANGUAGE RUST only) register a Rust package
+#         from another directory; `nros_register_cargo_node` is their caller.
 #       — PANIC is the ending of the image a typed-entry CARRIER creates
 #         (NuttX / ThreadX / FreeRTOS / native), same vocabulary and default
 #         (`platform`) as `nano_ros_entry(PANIC …)` (issue 1742).
@@ -588,7 +590,7 @@ function(_nros_node_register_carrier_image _target _pkg_sym _panic)
 endfunction()
 
 function(nano_ros_node_register)
-    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE;EXISTING_TARGET;PANIC" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
+    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE;EXISTING_TARGET;PANIC;PACKAGE;PACKAGE_DIR" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
     _nros_entities_retired("nano_ros_node_register(${_NRC_NAME})" ${ARGN})
     # issue 1795 — the RTOS carrier arms below dispatch on the FAMILY. The
     # recipes pass `threadx_riscv64` / `nuttx_armv7a` / `freertos_armcm3`, and
@@ -711,6 +713,26 @@ function(nano_ros_node_register)
             "expected C, CPP, or RUST")
     endif()
     string(TOLOWER "${_nrc_lang}" _nrc_lang_lc)
+    # PACKAGE / PACKAGE_DIR — a Rust node registered by DERIVATION, from a
+    # directory that is not this one (`nros_register_cargo_node`, below). The
+    # package is then not `PROJECT_NAME` and its `Cargo.toml` is not beside the
+    # calling list file. Rust only: a C/C++ component compiles sources and
+    # include dirs relative to its own directory.
+    set(_nrc_pkg_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+    if(_NRC_PACKAGE OR _NRC_PACKAGE_DIR)
+        if(NOT _nrc_lang STREQUAL "RUST")
+            message(FATAL_ERROR
+                "nano_ros_node_register(${_NRC_NAME}): PACKAGE / PACKAGE_DIR "
+                "register a Rust node from another directory and need LANGUAGE RUST")
+        endif()
+        if(_NRC_PACKAGE)
+            # Function scope: shadows the caller's project for this call only.
+            set(PROJECT_NAME "${_NRC_PACKAGE}")
+        endif()
+        if(_NRC_PACKAGE_DIR)
+            get_filename_component(_nrc_pkg_dir "${_NRC_PACKAGE_DIR}" ABSOLUTE)
+        endif()
+    endif()
     # RFC-0057 D2 — the Phase 212.L.4 class-prefix rule is RETIRED: the pkg
     # is written explicitly into the metadata row below (`"pkg":
     # "${PROJECT_NAME}"`), so CLASS may carry any qualified C++ name
@@ -850,10 +872,10 @@ function(nano_ros_node_register)
             # <pkg>_<exec>_component)`, Phase 219.J) resolves to a harmless no-op — the
             # node's `__nros_component_<pkg>_register` symbol arrives via the runtime
             # umbrella, which the entry already links through `NanoRos::NanoRosCpp`.
-            if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.toml")
+            if(NOT EXISTS "${_nrc_pkg_dir}/Cargo.toml")
                 message(FATAL_ERROR
                     "nano_ros_node_register(LANGUAGE RUST): expected Cargo.toml "
-                    "in ${CMAKE_CURRENT_SOURCE_DIR}")
+                    "in ${_nrc_pkg_dir}")
             endif()
             add_library(${_lib} INTERFACE)
         else()
@@ -1427,7 +1449,7 @@ function(nano_ros_node_register)
 "${_sep}\n    {\"name\": \"${_NRC_NAME}\", \"pkg\": \"${PROJECT_NAME}\", \"class\": \"${_NRC_CLASS}\", \
 \"class_header\": \"${_nrc_header}\", \"shape\": \"${_nrc_shape}\", \
 \"sources\": [${_sources_json}], \"deploy\": [${_deploy_json}], \
-\"pkg_dir\": \"${CMAKE_CURRENT_SOURCE_DIR}\", \"lang\": \"${_nrc_lang_lc}\", \
+\"pkg_dir\": \"${_nrc_pkg_dir}\", \"lang\": \"${_nrc_lang_lc}\", \
 \"callback_groups\": [${_cbgs_json}]}")
     set_property(GLOBAL APPEND_STRING PROPERTY NROS_COMPONENTS_JSON "${_entry}")
     _nros_metadata_emit()
@@ -1458,6 +1480,32 @@ function(nano_ros_node_register)
     # the target; the TABLE is rendered after `nano_ros_entry()` has resolved
     # the model that states the depths. See `_nros_declared_qos_arm`.
     _nros_declared_qos_arm("${_NRC_NAME}" "${_lib}" "${_nrc_lang}")
+endfunction()
+
+# =============================================================================
+# nros_register_cargo_node(<pkg> <dir> <name> <class>)
+# =============================================================================
+#
+# Register the Rust node package at <dir> (a cargo crate with no
+# CMakeLists.txt of its own) as component <name> of class <class>. The CLI
+# derives these four words from the bringup's `[[component]]` row and writes
+# this call (the generated Zephyr application) or a `CARGO_NODES` tuple of
+# `nano_ros_workspace()` (the generated workspace root), so a Rust package
+# builds unchanged in a pure-Rust image and in a mixed one. A package that
+# ships its own CMakeLists.txt registers itself and is never derived. A
+# relative <dir> resolves against the caller's source directory.
+function(nros_register_cargo_node _pkg _dir _name _class)
+    if(NOT IS_ABSOLUTE "${_dir}")
+        set(_dir "${CMAKE_CURRENT_SOURCE_DIR}/${_dir}")
+    endif()
+    get_filename_component(_dir "${_dir}" ABSOLUTE)
+    nano_ros_node_register(
+        NAME        ${_name}
+        CLASS       ${_class}
+        LANGUAGE    RUST
+        PACKAGE     ${_pkg}
+        PACKAGE_DIR "${_dir}"
+        SOURCES     "${_dir}/Cargo.toml")
 endfunction()
 
 # =============================================================================

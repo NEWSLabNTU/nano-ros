@@ -21,6 +21,7 @@
 //! beside it ([`cargo_config`]). A workspace has no root build file.
 
 pub mod cargo_config;
+pub mod cargo_node;
 pub mod cargo_root;
 pub mod cmake_configure;
 pub mod cmake_root;

@@ -11,12 +11,11 @@
 //!
 //! `examples/workspaces/mixed/src/rust_heartbeat_pkg` is the one routing change
 //! with an observable consequence (RFC-0094 D3, found by phase-439 W0). It is a
-//! Rust node registered with the workspace's CMake build
-//! (`nano_ros_node_register … LANGUAGE RUST SOURCES Cargo.toml`), it declares
-//! `nros_cmake`, and it carries its OWN `[workspace]` table. Under the pre-W3
-//! rule a generated cargo root listed it as a member, and cargo refused that
-//! root outright (`multiple workspace roots found in the same workspace`,
-//! measured 2026-09-08).
+//! Rust node in a workspace whose images build through CMake. It used to carry
+//! a CMakeLists.txt registering it (`nano_ros_node_register … LANGUAGE RUST
+//! SOURCES Cargo.toml`) and declare `nros_cmake`; since issue 2599 it carries
+//! neither: it is a plain cargo package, and the CMake roads register it from
+//! the bringup's `[[component]]` row (`builder::cargo_node`).
 //!
 //! Since RFC-0098 D9 there is no cargo workspace root to list it in — each image
 //! is its own cargo root — so these tests ask the rule directly
@@ -39,25 +38,19 @@ fn workspace(name: &str) -> PathBuf {
     repo().join("examples/workspaces").join(name)
 }
 
-/// The headline: the cmake-driven Rust node is not a cargo package here.
+/// The headline: the mixed workspace's Rust node is a cargo package with no
+/// CMake file, and the CMake roads register it from its bringup row.
 #[test]
-fn the_mixed_workspaces_cmake_driven_rust_node_is_not_a_cargo_member() {
+fn the_mixed_workspaces_rust_node_is_registered_from_its_bringup_row() {
     let ws = workspace("mixed");
     let pkg = ws.join("src/rust_heartbeat_pkg");
-    // Preconditions, asserted rather than assumed — if the package stops being
-    // dual-file or stops declaring cmake, this test is about nothing and must
-    // say so rather than passing.
+    // Preconditions, asserted rather than assumed — if the package gains a
+    // CMakeLists again, this test is about nothing and must say so.
     assert!(
-        pkg.join("Cargo.toml").is_file() && pkg.join("CMakeLists.txt").is_file(),
-        "the package under test must still carry BOTH build files: {}",
+        pkg.join("Cargo.toml").is_file() && !pkg.join("CMakeLists.txt").exists(),
+        "the package under test must be a cargo crate with no CMakeLists.txt: {}",
         pkg.display()
     );
-    let xml = std::fs::read_to_string(pkg.join("package.xml")).expect("package.xml");
-    assert!(
-        xml.contains("<build_type>nros_cmake</build_type>"),
-        "the package under test must still declare a cmake build type"
-    );
-
     let found = discover::discover(&ws, &[]).expect("discovery must succeed");
     let p = found
         .packages
@@ -65,8 +58,31 @@ fn the_mixed_workspaces_cmake_driven_rust_node_is_not_a_cargo_member() {
         .find(|p| p.name == "rust_heartbeat_pkg")
         .expect("discovered");
     let r = nros_cli_core::routing::route(p);
-    assert!(!r.cargo_member, "cmake drives this package: {r:?}");
-    assert!(r.cmake_subdir, "and cmake builds it: {r:?}");
+    assert!(
+        !r.cmake_subdir,
+        "no CMakeLists, so never a cmake subdir: {r:?}"
+    );
+    let derived = nros_cli_core::builder::cargo_node::derived_registrations(
+        &ws.join("src/demo_bringup"),
+        found
+            .packages
+            .iter()
+            .map(|p| (p.name.as_str(), p.dir.as_path())),
+    )
+    .expect("the bringup rows parse");
+    let names: Vec<(&str, &str, &str)> = derived
+        .iter()
+        .map(|n| (n.package.as_str(), n.name.as_str(), n.class.as_str()))
+        .collect();
+    assert_eq!(
+        names,
+        [(
+            "rust_heartbeat_pkg",
+            "heartbeat",
+            "rust_heartbeat_pkg::Heartbeat"
+        )],
+        "the C and C++ packages register themselves; only the Rust one is derived"
+    );
 }
 
 /// The negative control the headline needs: a Rust node that declares a CARGO

@@ -288,10 +288,15 @@ pub fn inventory_from_metadata_file(path: &std::path::Path) -> Result<EntityInve
 /// fewer than its configure and the promise check refused the build. The rows
 /// come from the same `nano_ros_node_register` calls, parsed the way workspace
 /// discovery parses them, and a row the probe already has is not added twice.
+///
+/// With the bringup's directory beside the workspace, it also adds the
+/// registrations the configure DERIVES: a Rust node package with no
+/// `CMakeLists.txt` is registered from its `[[component]]` row
+/// (`builder::cargo_node`), by the same rule the generated roots use.
 pub(crate) fn registered_from_probe(
     path: &std::path::Path,
     packages: &std::collections::BTreeSet<String>,
-    workspace: Option<&std::path::Path>,
+    workspace: Option<(&std::path::Path, Option<&std::path::Path>)>,
 ) -> Result<EntityInventory> {
     let raw = std::fs::read_to_string(path)
         .wrap_err_with(|| format!("read metadata `{}`", path.display()))?;
@@ -299,9 +304,13 @@ pub(crate) fn registered_from_probe(
         .wrap_err_with(|| format!("parse metadata `{}`", path.display()))?;
     doc.components
         .retain(|c| packages.contains(&c.pkg_or_class_prefix()));
-    if let Some(root) = workspace {
-        doc.components
-            .extend(rust_registrations(root, packages, &doc.components)?);
+    if let Some((root, bringup)) = workspace {
+        doc.components.extend(rust_registrations(
+            root,
+            bringup,
+            packages,
+            &doc.components,
+        )?);
     }
     inventory_from_metadata(&path.display().to_string(), &doc)
 }
@@ -311,17 +320,38 @@ pub(crate) fn registered_from_probe(
 /// `have`.
 fn rust_registrations(
     root: &std::path::Path,
+    bringup: Option<&std::path::Path>,
     packages: &std::collections::BTreeSet<String>,
     have: &[ComponentMeta],
 ) -> Result<Vec<ComponentMeta>> {
     use crate::orchestration::source_metadata::ComponentLanguage;
     let ws = crate::orchestration::workspace::Workspace::discover(root)
         .wrap_err_with(|| format!("discover the workspace at `{}`", root.display()))?;
-    let seen: std::collections::BTreeSet<(String, String)> = have
+    let mut seen: std::collections::BTreeSet<(String, String)> = have
         .iter()
         .map(|c| (c.pkg_or_class_prefix(), c.name.clone()))
         .collect();
     let mut out = Vec::new();
+    if let Some(bringup) = bringup {
+        let derived = crate::builder::cargo_node::derived_registrations(
+            bringup,
+            ws.packages
+                .iter()
+                .filter(|p| packages.contains(&p.name))
+                .map(|p| (p.name.as_str(), p.root.as_path())),
+        )
+        .map_err(|e| eyre::eyre!("{e}"))?;
+        for n in derived {
+            if seen.insert((n.package.clone(), n.name.clone())) {
+                out.push(ComponentMeta {
+                    name: n.name,
+                    pkg: Some(n.package),
+                    class: n.class,
+                    entities: None,
+                });
+            }
+        }
+    }
     for pkg in ws.packages.iter().filter(|p| packages.contains(&p.name)) {
         for s in &pkg.cmake_component_metadata {
             if s.language != ComponentLanguage::Rust
@@ -1037,7 +1067,7 @@ mod tests {
         };
         let without = registered_from_probe(&probe, &scope, None).unwrap();
         assert_eq!(keys(&without), ["c_pkg::n_c_pkg::c_pkg::Talker"]);
-        let with = registered_from_probe(&probe, &scope, Some(ws)).unwrap();
+        let with = registered_from_probe(&probe, &scope, Some((ws, None))).unwrap();
         assert_eq!(
             keys(&with),
             [
@@ -1047,12 +1077,56 @@ mod tests {
             "the C row once, plus the Rust registration the probe cannot serve"
         );
         let narrow: std::collections::BTreeSet<String> = ["c_pkg".to_string()].into();
-        let only_c = registered_from_probe(&probe, &narrow, Some(ws)).unwrap();
+        let only_c = registered_from_probe(&probe, &narrow, Some((ws, None))).unwrap();
         assert_eq!(
             keys(&only_c),
             ["c_pkg::n_c_pkg::c_pkg::Talker"],
             "out of scope stays out"
         );
+    }
+
+    /// A Rust node package with no CMakeLists is registered by the configure
+    /// from its bringup row, so the seed's population carries that row too --
+    /// and only with the bringup in hand.
+    #[test]
+    fn a_derived_rust_registration_joins_the_probe_rows() {
+        let td = tempfile::tempdir().unwrap();
+        let ws = td.path();
+        let dir = ws.join("src").join("rust_pkg");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("package.xml"),
+            "<package format=\"3\"><name>rust_pkg</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"a@b\">a</maintainer>\
+             <license>MIT</license><export><build_type>nros_cargo</build_type></export></package>\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"rust_pkg\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let bringup = ws.join("src").join("demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"d\"\n\n[[component]]\npkg = \"rust_pkg\"\n\
+             class = \"rust_pkg::Beat\"\nname = \"beat\"\n",
+        )
+        .unwrap();
+        let probe = ws.join("nros-metadata.json");
+        std::fs::write(&probe, r#"{"components": []}"#).unwrap();
+        let scope: std::collections::BTreeSet<String> = ["rust_pkg".to_string()].into();
+        let names = |inv: &EntityInventory| -> Vec<String> {
+            inv.components()
+                .iter()
+                .map(|c| format!("{}::{}::{}", c.pkg, c.component, c.class))
+                .collect()
+        };
+        let with = registered_from_probe(&probe, &scope, Some((ws, Some(&bringup)))).unwrap();
+        assert_eq!(names(&with), ["rust_pkg::beat::rust_pkg::Beat"]);
+        let without = registered_from_probe(&probe, &scope, Some((ws, None))).unwrap();
+        assert!(names(&without).is_empty());
     }
 
     fn parse(raw: &str) -> EntityInventory {

@@ -1,17 +1,19 @@
 ---
 id: 2599
 title: "A Rust package in a mixed image needs a hand-written CMake registration that restates its [[component]] row"
-status: open
+status: resolved
 type: design-question
 area: [cli, cmake, build]
 severity: medium
 found: 2026-11-15
+resolved: 2026-11-15
+resolved_in: "the change that derives the registration (branch fix/derive-rust-registration)"
 related: [phase-478]
 ---
 
 GitHub: NEWSLabNTU/nano-ros#3857
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md), I13.**
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md), I13.**
 Re-reported by the Autoware Safety Island on 0.6.0-nros10.
 
 ## What happens
@@ -75,3 +77,42 @@ CMake root derives `nano_ros_node_register(... LANGUAGE RUST ...)` for a
 cargo-only component package, and a package that ships its own
 `CMakeLists.txt` keeps it. `nros new` and the "Mix languages" page stop
 writing and documenting the shim for the derived case.
+
+## Resolution
+
+Ruling A: the registration is derived. `builder/cargo_node.rs` holds the one
+rule: a `[[component]]` row whose package is a cargo crate with a
+`package.xml` and no `CMakeLists.txt` is registered from the row (`pkg`,
+`class`, `name`; source = its `Cargo.toml`). A package that ships its own
+`CMakeLists.txt` keeps it and is derived nothing.
+
+All the readers call it:
+
+- the native cmake root (`builder/cmake_root.rs`) writes the rows as
+  `nano_ros_workspace(CARGO_NODES <pkg> <dir> <name> <class> …)`, which
+  registers them before the SUBDIRS and the runtime umbrella;
+- the generated Zephyr application (`builder/west_app.rs`) writes
+  `nros_register_cargo_node(…)` after its subdirs and adds the package to
+  `NROS_WS_RUST_NODE_DIRS`;
+- stage 3.5's registered population (`cmake_root::root_registered_packages`,
+  `entity_inventory::registered_from_probe`) counts the derived rows, so the
+  seed matches the configure.
+
+The metadata probe needed no change: a cargo-only Rust package is declared by
+its `[package.metadata.nros.node]` table and produced by the cargo harness.
+
+On the cmake side, `nano_ros_node_register` gained `PACKAGE` / `PACKAGE_DIR`
+(Rust only) and `cmake/NanoRosNodeRegister.cmake` gained
+`nros_register_cargo_node(<pkg> <dir> <name> <class>)`, the one caller of
+them. `nros new … --to <bringup>` no longer writes the shim, the
+`no matching component` refusal names the row instead, and the "Mix
+languages" book page drops the step.
+
+`examples/workspaces/mixed`'s `rust_heartbeat_pkg` lost its shim (now
+`nros_cargo`, with a `[[component]]` row in `demo_bringup`), so the existing
+`workspace-mixed-*` fixture rows build the no-shim shape. Measured locally on
+a copy of the workspace: `nros build linux` builds all seven linux images, the
+root carries the `CARGO_NODES` row, `nros-metadata.json` has the heartbeat
+row, and `linux_entry` links `__nros_component_rust_heartbeat_pkg_install`.
+The same copy with the old shim restored still builds, with the package as a
+subdir and no `CARGO_NODES` (explicit wins).

@@ -224,7 +224,7 @@ function(nano_ros_workspace)
     cmake_parse_arguments(_NRW
         "ORDER_FROM_DEPENDS;NO_PLAN"
         "SYSTEM;BACKEND;PLATFORM;EDITION;NROS_REPO_DIR;NANO_ROS_ROOT;WORKSPACE_ROOT"
-        "SUBDIRS;IMAGES"
+        "SUBDIRS;IMAGES;CARGO_NODES"
         ${ARGN})
 
     # phase-484 W8 — `NROS_REPO_DIR` is the keyword; the retired `NANO_ROS_ROOT`
@@ -559,6 +559,28 @@ function(nano_ros_workspace)
     # below it, so this never came up. Derive the binary dir from the package
     # NAME rather than the path, so `../../src/talker_pkg` does not become a
     # binary tree with `..` components in it.
+    # CARGO_NODES — `<pkg> <dir> <name> <class>` per Rust node package that
+    # ships no CMakeLists.txt, derived by the CLI from the bringup's
+    # `[[component]]` rows. Registered BEFORE the SUBDIRS, so a package added
+    # below that plans a typed entry already sees their metadata rows, and
+    # before the runtime umbrella below, which bundles every registered Rust
+    # node. <dir> is relative to the workspace, like SUBDIRS.
+    list(LENGTH _NRW_CARGO_NODES _nrw_cn_len)
+    math(EXPR _nrw_cn_rem "${_nrw_cn_len} % 4")
+    if(NOT _nrw_cn_rem EQUAL 0)
+        message(FATAL_ERROR
+            "nano_ros_workspace(CARGO_NODES): expected <pkg> <dir> <name> <class> "
+            "tuples, got ${_nrw_cn_len} word(s): ${_NRW_CARGO_NODES}")
+    endif()
+    while(_NRW_CARGO_NODES)
+        list(POP_FRONT _NRW_CARGO_NODES _nrw_cn_pkg _nrw_cn_dir _nrw_cn_name _nrw_cn_class)
+        if(NOT IS_ABSOLUTE "${_nrw_cn_dir}")
+            set(_nrw_cn_dir "${_NRW_WORKSPACE_ROOT}/${_nrw_cn_dir}")
+        endif()
+        nros_register_cargo_node("${_nrw_cn_pkg}" "${_nrw_cn_dir}"
+                                 "${_nrw_cn_name}" "${_nrw_cn_class}")
+    endwhile()
+
     foreach(_sub IN LISTS _NRW_SUBDIRS)
         if(IS_ABSOLUTE "${_sub}")
             set(_nrw_src "${_sub}")

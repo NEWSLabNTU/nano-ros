@@ -137,16 +137,14 @@ pub fn enrich_plan(plan: &mut Plan, index: &ComponentIndex) -> Result<()> {
             bail!(
                 "typed entry: launch node pkg `{}` exec `{}` has no matching component in \
                  nros-metadata.json — is it declared with nano_ros_node_register(NAME {} CLASS {}::… )? \
-                 A Rust node in an image that also runs C or C++ nodes registers the same way: \
-                 a CMakeLists.txt calling nano_ros_node_register(NAME {} CLASS {}::… LANGUAGE RUST \
-                 SOURCES Cargo.toml), and <build_type>nros_cmake</build_type> in its package.xml \
-                 (`nros new --to <bringup>` writes both).",
+                 A Rust node package with no CMakeLists.txt is registered from its bringup's \
+                 [[component]] row: add one with pkg = \"{}\", name = \"{}\" and its class.",
                 n.pkg,
                 n.exec,
                 n.exec,
                 n.pkg,
-                n.exec,
-                n.pkg
+                n.pkg,
+                n.exec
             );
         };
         n.class_name = Some(facts.class.clone());

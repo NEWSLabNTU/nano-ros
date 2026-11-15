@@ -89,22 +89,22 @@ does not change with the language, and neither does `system.toml`.
        TYPED)
    ```
 
-   A Rust node package in the same image registers with CMake too, because
-   an image that runs C or C++ nodes builds through CMake. Its Rust code still
-   builds with cargo, but its package carries a `CMakeLists.txt` that names the
-   component, and `<build_type>nros_cmake</build_type>` in its `package.xml`:
+   A Rust node package in the same image needs no CMake file. An image that
+   runs C or C++ nodes builds through CMake, and the build registers each Rust
+   package from its `[[component]]` row: the row names the package, the class
+   and the instance, and the package's `Cargo.toml` is the source. So the same
+   Rust package builds unchanged in a Rust-only image and in a mixed one:
 
-   ```cmake
-   nano_ros_node_register(
-       NAME     heartbeat
-       CLASS    rust_heartbeat_pkg::Heartbeat
-       LANGUAGE RUST
-       SOURCES  Cargo.toml)
+   ```toml
+   [[component]]
+   pkg = "rust_heartbeat_pkg"
+   class = "rust_heartbeat_pkg::Heartbeat"
+   name = "heartbeat"
    ```
 
-   `nros new … --to <bringup>` writes both for every Rust package of a
-   bringup that mixes languages, including one that was already there. Without
-   them the build stops with `has no matching component in nros-metadata.json`.
+   A Rust package that ships its own `CMakeLists.txt` keeps it: its own
+   `nano_ros_node_register(… LANGUAGE RUST SOURCES Cargo.toml)` call wins, and
+   the build derives nothing for it.
 
 3. Name the packages in the launch file, if the bringup has one. Without
    `launch/`, the build generates the launch file from the `[[component]]`
