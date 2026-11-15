@@ -277,8 +277,8 @@ int main(void) {
      * through `set_wake_callback`, which is what 1385 was about and what
      * `executor_backend_wake.c` covers. */
     s_trigger_delay_ms = 50;
-    CHECK(pthread_create(&th, NULL, trigger_thread, NULL) == 0, "parked-wake thread started");
     const uint64_t parked_start = now_ms();
+    CHECK(pthread_create(&th, NULL, trigger_thread, NULL) == 0, "parked-wake thread started");
     (void)rclc_executor_spin_some(&executor, 400000000ull);
     const uint64_t parked_ms = now_ms() - parked_start;
     CHECK(pthread_join(th, NULL) == 0, "parked-wake thread joined");
@@ -322,8 +322,8 @@ int main(void) {
               "a 10 ms wait per invocation, so the gap is most of the period");
     const unsigned fires_before_period = s_ctx.fires;
     s_period_exec = &executor;
-    CHECK(pthread_create(&th, NULL, period_thread, NULL) == 0, "period thread started");
     const uint64_t period_start = now_ms();
+    CHECK(pthread_create(&th, NULL, period_thread, NULL) == 0, "period thread started");
     CHECK_RET(rclc_executor_spin_period(&executor, 1000000000ull), RCL_RET_OK,
               "the period spin returned OK on cancel");
     const uint64_t period_end = now_ms();

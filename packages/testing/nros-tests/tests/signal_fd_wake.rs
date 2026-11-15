@@ -78,6 +78,7 @@ fn eventfd_write_unblocks_spin_once(zenohd_unique: ZenohRouter) {
     let fd = executor.signal_fd().expect("signal_fd() failed");
     assert!(fd >= 0, "signal_fd must return non-negative fd");
 
+    let start = Instant::now();
     let trigger_thread = std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(TRIGGER_DELAY_MS));
         let one: u64 = 1;
@@ -87,7 +88,6 @@ fn eventfd_write_unblocks_spin_once(zenohd_unique: ZenohRouter) {
         assert!(n == 8, "eventfd write must be 8 bytes; got {n}");
     });
 
-    let start = Instant::now();
     executor.spin_once(Duration::from_millis(1000));
     let elapsed = start.elapsed();
 
@@ -133,12 +133,12 @@ fn sigusr1_handler_wakes_spin_once(zenohd_unique: ZenohRouter) {
     }
 
     let pid = unsafe { libc::getpid() };
+    let start = Instant::now();
     let killer = std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(TRIGGER_DELAY_MS));
         unsafe { libc::kill(pid, libc::SIGUSR1) };
     });
 
-    let start = Instant::now();
     executor.spin_once(Duration::from_millis(1000));
     let elapsed = start.elapsed();
 

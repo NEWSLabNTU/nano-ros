@@ -314,6 +314,10 @@ fn spin_across_an_arrival(
     executor.spin_once(Duration::ZERO);
     MAX_DRIVE_MS.store(-1, Ordering::SeqCst);
 
+    // Read the clock BEFORE the writer exists (issue 2588). Its sleep starts
+    // when the thread does, so a `start` taken after the spawn is up to the
+    // spawn's cost late, and `elapsed >= WRITE_AFTER` failed by 83 µs.
+    let start = Instant::now();
     let writer = std::thread::spawn(move || {
         std::thread::sleep(WRITE_AFTER);
         tx.write_all(&[1]).expect("write");
@@ -322,7 +326,6 @@ fn spin_across_an_arrival(
         }
         tx
     });
-    let start = Instant::now();
     executor.spin_once(BUDGET);
     let elapsed = start.elapsed();
     let _tx = writer.join().expect("writer");
@@ -461,13 +464,13 @@ fn cancel_from_another_thread_ends_a_long_park() {
     // outlives the canceller (joined below, before the drop).
     unsafe impl Send for SendPtr {}
     let ptr = SendPtr(&executor as *const _);
+    let start = Instant::now();
     let canceller = std::thread::spawn(move || {
         let ptr = ptr;
         std::thread::sleep(Duration::from_millis(100));
         // SAFETY: see `SendPtr`.
         unsafe { &*ptr.0 }.cancel();
     });
-    let start = Instant::now();
     executor.spin_once(Duration::from_secs(5));
     let elapsed = start.elapsed();
     canceller.join().expect("canceller");

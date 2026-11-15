@@ -56,6 +56,7 @@ fn pre_signal_then_wait_returns_immediately() {
 #[test]
 fn cross_thread_signal_wakes_waiter() {
     let w = Arc::new(Wake::<CffiPlatform>::new().unwrap());
+    let t0 = Instant::now();
     let signaller_handle = {
         let w = Arc::clone(&w);
         thread::spawn(move || {
@@ -64,7 +65,6 @@ fn cross_thread_signal_wakes_waiter() {
         })
     };
 
-    let t0 = Instant::now();
     let r = w.wait_ms(5_000);
     let elapsed = t0.elapsed();
     signaller_handle.join().unwrap();
