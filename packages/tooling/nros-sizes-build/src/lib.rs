@@ -291,7 +291,6 @@ fn find_dep_rlib_isolated(
     symbol_prefix: &str,
     probe_features: &[&str],
 ) -> Result<PathBuf, Error> {
-    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let target = env::var("TARGET").map_err(|_| Error::MalformedMetadata("TARGET"))?;
     // phase-336 — the probe must compile at the SAME profile as the outer
     // build. `PROFILE` only ever says `debug` or `release` (cargo reports the
@@ -398,7 +397,7 @@ fn find_dep_rlib_isolated(
         println!("cargo:warning=nros-sizes-build: could not record probe key inputs: {e}");
     }
 
-    let mut cmd = Command::new(&cargo);
+    let mut cmd = nested_cargo();
     cmd.env("CARGO_TARGET_DIR", &probe_target_dir)
         // issue 1765 — marks this build as the probe, the one place a
         // probe-only feature (the size markers) is allowed to compile.
@@ -501,16 +500,7 @@ fn find_dep_rlib_isolated(
     // for the outer build. DO NOT drop these two without restoring an
     // equivalent jobserver strip (see the issue-0022 box in
     // scripts/build/fixture-make-driver.sh).
-    for var in [
-        "RUSTFLAGS",
-        "CARGO_BUILD_RUSTFLAGS",
-        "CARGO_ENCODED_RUSTFLAGS",
-        "CARGO_BUILD_TARGET",
-        "CARGO_BUILD_TARGET_DIR",
-        "MAKEFLAGS",
-        "CARGO_MAKEFLAGS",
-        "MAKELEVEL",
-    ] {
+    for var in NESTED_CARGO_ENV_STRIP {
         cmd.env_remove(var);
     }
 
@@ -635,6 +625,48 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
+/// What the nested probe `cargo build` must not inherit from the build that
+/// runs this build script, beyond [`NESTED_CARGO_LOCK_ENV`]. See the comments
+/// at the call site.
+const NESTED_CARGO_ENV_STRIP: [&str; 8] = [
+    "RUSTFLAGS",
+    "CARGO_BUILD_RUSTFLAGS",
+    "CARGO_ENCODED_RUSTFLAGS",
+    "CARGO_BUILD_TARGET",
+    "CARGO_BUILD_TARGET_DIR",
+    "MAKEFLAGS",
+    "CARGO_MAKEFLAGS",
+    "MAKELEVEL",
+];
+
+/// What NO cargo run from inside a build may inherit, because each names a
+/// LOCK the outer build is holding.
+///
+/// `CARGO_BUILD_BUILD_DIR` (phase-559 W10): cargo takes an exclusive lock on
+/// its build-dir for `build`/`check`/`rustc` and holds it for the whole build.
+/// That includes the time it spends waiting on this build script. A nested
+/// `cargo build` that inherits the variable blocks on that lock ("Blocking
+/// waiting for file lock on build directory"), and neither side ever moves.
+/// Measured: a metadata probe sharing one build-dir hung 3 h, with the nested
+/// `cargo build -p nros` blocked in the kernel's file-lock wait. On cargo 1.99 `metadata`
+/// and `locate-project` do not take the lock, and they get the same treatment
+/// anyway so that no call site has to know which subcommands do.
+pub const NESTED_CARGO_LOCK_ENV: [&str; 1] = ["CARGO_BUILD_BUILD_DIR"];
+
+/// The ONE way to run cargo from a build script: the cargo that is running
+/// this build (`$CARGO`, else `cargo` on PATH), with every variable in
+/// [`NESTED_CARGO_LOCK_ENV`] removed. Gate:
+/// `check-nested-cargo-build-dir` (`scripts/check/`) refuses a build-context
+/// cargo spawn made any other way, and `just check shared-build-dir` runs a
+/// real nested build under a shared build-dir with a timeout.
+pub fn nested_cargo() -> Command {
+    let mut cmd = Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+    for var in NESTED_CARGO_LOCK_ENV {
+        cmd.env_remove(var);
+    }
+    cmd
+}
+
 /// The `Cargo.lock` the nested `cargo build -p <crate>` would resolve.
 ///
 /// `cargo locate-project --workspace` answers it exactly, which a path-prefix
@@ -642,8 +674,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// (issue 0616), and an out-of-tree consumer's workspace is somewhere else
 /// entirely. `locate-project` takes no `--locked` and writes nothing.
 fn workspace_lockfile() -> Result<PathBuf, Error> {
-    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let out = Command::new(&cargo)
+    let out = nested_cargo()
         .arg("locate-project")
         .arg("--workspace")
         .arg("--message-format=plain")
@@ -752,11 +783,10 @@ impl WorkspaceLockGuard {
 fn resolved_features_for(crate_name: &str) -> Result<Vec<String>, Error> {
     use std::collections::HashSet;
 
-    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let manifest_dir = env::var("CARGO_MANIFEST_DIR")
         .map_err(|_| Error::MalformedMetadata("CARGO_MANIFEST_DIR"))?;
 
-    let output = Command::new(&cargo)
+    let output = nested_cargo()
         .arg("metadata")
         .arg("--format-version=1")
         .arg("--no-deps")
@@ -1716,10 +1746,9 @@ pub fn cargo_target_dir() -> Result<PathBuf, Error> {
         return Ok(dir);
     }
 
-    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let manifest_dir = env::var("CARGO_MANIFEST_DIR")
         .map_err(|_| Error::MalformedMetadata("CARGO_MANIFEST_DIR"))?;
-    let output = Command::new(&cargo)
+    let output = nested_cargo()
         .arg("metadata")
         .arg("--format-version=1")
         .arg("--no-deps")

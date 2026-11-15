@@ -253,6 +253,17 @@ cargo-locked:
 nested-cargo-lock-discipline:
     @python3 scripts/check/check-nested-cargo-lock-discipline.py
 
+# phase-559 W10 — a cargo run from INSIDE a build (every `build.rs`, and every
+# in-repo crate reachable as a build-dependency, DERIVED from the manifests)
+# goes through `nros_sizes_build::nested_cargo()`. That helper drops
+# CARGO_BUILD_BUILD_DIR, a lock the outer build holds while it waits on the
+# build script. A nested `cargo build` that inherits it deadlocks with no error;
+# the metadata probe hung 3 h on exactly that. Buildless. The real-cargo half
+# is `shared-build-dir`'s `nested` scenario.
+[private]
+nested-cargo-build-dir:
+    @python3 scripts/check/check-nested-cargo-build-dir.py
+
 # A cargo profile defined in BOTH `Cargo.toml` and `.cargo/config.toml` must
 # agree. Both are load-bearing — the manifest one applies to the root
 # workspace, the config one to the ~48 leaf crates outside it — so editing one
