@@ -4,7 +4,7 @@ title: "Every gate is a nextest test, and a lane is a capability claim"
 status: Draft
 since: 2026-11
 last-reviewed: 2026-11
-implements-tracked-by: [phase-543]
+implements-tracked-by: [phase-543, phase-565]
 supersedes: []
 superseded-by: null
 ---
@@ -195,7 +195,11 @@ It costs two runs, so it is on no lane.
    provides less. `just setup-worktree` still reads its own list,
    `.config/worktree-provisioning.txt`, so the `dev` lane's claims and a
    worktree's provisioning can disagree.
+   [phase-565](../roadmap/phase-565-lane-claims-one-provisioning-list.md)
+   makes the claims that one list and closes this question (its W6).
 
 ## Changelog
 
 - 2026-11-15: Draft, recording phase-543 W0-W6 as landed.
+- 2026-11-15: open question 1 and the D3/D5 gaps measured on main are
+  tracked by phase-565.
