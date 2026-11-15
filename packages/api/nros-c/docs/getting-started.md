@@ -133,8 +133,14 @@ int main(void) {
     rclc_support_t support = rclc_support_get_zero_initialized();
     if (rclc_support_init_with_locator(&support, locator, 0) != RCL_RET_OK) return 1;
 
+    /* Executor first, then the node bound to it: the node's entities land in
+     * that executor, so it has to exist before them. */
+    rclc_executor_t exec = rclc_executor_get_zero_initialized_executor();
+    if (rclc_executor_init(&exec, &support.context, 4, NULL) != RCL_RET_OK) return 1;
+    g_exec = &exec;
+
     rcl_node_t node = rcl_get_zero_initialized_node();
-    if (rclc_node_init_default(&node, "c_talker", "/", &support) != RCL_RET_OK) return 1;
+    if (rclc_executor_node_init(&exec, &node, "c_talker", NULL) != RCL_RET_OK) return 1;
 
     g_pub = rcl_get_zero_initialized_publisher();
     if (rclc_publisher_init_default(&g_pub, &node,
@@ -144,19 +150,16 @@ int main(void) {
     rcl_timer_t timer = rcl_get_zero_initialized_timer();
     rclc_timer_init_default(&timer, &support, 1000000000ULL, timer_cb);
 
-    rclc_executor_t exec = rclc_executor_get_zero_initialized_executor();
-    rclc_executor_init(&exec, &support.context, 4, NULL);
     rclc_executor_add_timer(&exec, &timer);
-    g_exec = &exec;
 
     signal(SIGINT, on_signal);
     printf("Publishing on /chatter (Ctrl+C to stop)...\n");
     rclc_executor_spin_period(&exec, 100000000ULL);
 
-    rclc_executor_fini(&exec);
     rcl_timer_fini(&timer);
     rcl_publisher_fini(&g_pub, &node);
     rcl_node_fini(&node);
+    rclc_executor_fini(&exec);
     rclc_support_fini(&support);
     return 0;
 }

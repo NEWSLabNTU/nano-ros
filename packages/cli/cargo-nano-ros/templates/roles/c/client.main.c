@@ -64,7 +64,9 @@ int main(int argc, char** argv) {
     rcl_allocator_t allocator = rcl_get_default_allocator();
     RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
     printf("Support initialized\n");
-    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "@NODE@", "/", &app.support), 1);
+    // Executor first, then the node bound to it.
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
+    RCLC_CHECK_RET(rclc_executor_node_init(&app.executor, &app.node, "@NODE@", NULL), 1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
     RCLC_CHECK_RET(
@@ -72,7 +74,6 @@ int main(int argc, char** argv) {
     printf("Client created for service: %s\n", rcl_client_get_service_name(&app.client));
 
     // Clients must be registered with an executor before use.
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     RCLC_CHECK_RET(rclc_executor_attach_client(&app.executor, &app.client), 1);
 
     int exit_code = 0;
@@ -110,9 +111,9 @@ int main(int argc, char** argv) {
 
     // Cleanup
     printf("\nShutting down...\n");
-    rclc_executor_fini(&app.executor);
     rcl_client_fini(&app.client, &app.node);
     rcl_node_fini(&app.node);
+    rclc_executor_fini(&app.executor);
     rclc_support_fini(&app.support);
 
     printf("Goodbye!\n");

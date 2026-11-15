@@ -104,8 +104,10 @@ int main(int argc, char** argv) {
 
     rcl_allocator_t allocator = rcl_get_default_allocator();
     RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
-    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "matched_events_probe", "/", &app.support),
-                   1);
+    // Executor first, then the node bound to it.
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 2, NULL), 1);
+    RCLC_CHECK_RET(
+        rclc_executor_node_init(&app.executor, &app.node, "matched_events_probe", NULL), 1);
     RCLC_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
                                                ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
                                                "/i2039_out"),
@@ -114,7 +116,6 @@ int main(int argc, char** argv) {
                        &app.subscription, &app.node,
                        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "/i2039_in"),
                    1);
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 2, NULL), 1);
     std_msgs__msg__String__init_in(&app.in_msg, &app.in_storage);
     std_msgs__msg__String__init_in(&app.out_msg, &app.out_storage);
     RCLC_CHECK_RET(rclc_executor_add_subscription_with_context(
@@ -151,10 +152,10 @@ int main(int argc, char** argv) {
     }
 
     printf(PROBE "DONE\n");
-    rclc_executor_fini(&app.executor);
     rcl_subscription_fini(&app.subscription, &app.node);
     rcl_publisher_fini(&app.publisher, &app.node);
     rcl_node_fini(&app.node);
+    rclc_executor_fini(&app.executor);
     rclc_support_fini(&app.support);
     return 0;
 }

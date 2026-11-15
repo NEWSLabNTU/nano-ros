@@ -70,14 +70,18 @@ int main(void) {
     /* locator: build, then NROS_LOCATOR */
     rclc_support_init(&support, 0, NULL, &allocator);
 
+    /* the executor first, then the node bound to it */
+    rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
+    rclc_executor_init(&executor, &support.context, 1, NULL);
     rcl_node_t node = rcl_get_zero_initialized_node();
-    rclc_node_init_default(&node, "my_node", "/", &support);
+    rclc_executor_node_init(&executor, &node, "my_node", NULL);
 
     rclc_logger_t logger = rclc_node_get_logger(&node);
     RCLC_LOG_INFO(logger, "started; domain=%u", 42);
     RCLC_LOG_WARN(logger, "queue depth %u exceeds soft limit", 5);
 
     rcl_node_fini(&node);
+    rclc_executor_fini(&executor);
     rclc_support_fini(&support);
     return 0;
 }

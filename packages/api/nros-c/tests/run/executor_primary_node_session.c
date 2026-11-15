@@ -199,7 +199,13 @@ int main(void) {
         (void)rclc_support_fini(&support);
     }
 
-    /* ---- 2. A legacy node keeps the executor's own identity ------------- */
+    /* ---- 2. A legacy node alone is REFUSED --------------------------------
+     *
+     * RFC-0128 D8 (ruled 2026-11-14): the unbound writing retired. An entity
+     * of a node that never met rclc_executor_node_init is refused even when
+     * the executor holds no bound node, because it would be announced under
+     * a node nobody declared.
+     */
     {
         struct rclc_support_t support = rclc_support_get_zero_initialized();
         CHECK_RET(rclc_support_init_rmw(&support, "stub://none", 46, "legacy_session",
@@ -216,7 +222,17 @@ int main(void) {
         CHECK(legacy.executor == NULL, "a legacy node reaches no executor");
         CHECK(legacy.node_id == 0, "a legacy node carries slot 0 too -- why `!= 0` existed");
 
-        register_all(&executor, &legacy, primary_session, "legacy node");
+        (void)primary_session;
+
+        struct rcl_subscription_t sub = rcl_get_zero_initialized_subscription();
+        CHECK_RET(rclc_subscription_init_default(&sub, &legacy, &MSG_TYPE, "/legacy_alone"),
+                  RCL_RET_OK, "the legacy node's subscription initialises");
+        CHECK_RET(
+            rclc_executor_add_subscription_raw(&executor, &sub, on_message, NULL, ON_NEW_DATA),
+            RCL_RET_INVALID_ARGUMENT,
+            "an unbound node's subscription is refused with no bound node beside it");
+        (void)rcl_subscription_fini(&sub, &legacy);
+        (void)rcl_node_fini(&legacy);
 
         (void)rclc_executor_fini(&executor);
         (void)rclc_support_fini(&support);

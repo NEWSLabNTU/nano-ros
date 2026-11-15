@@ -22,8 +22,8 @@ user application needs.
 
 - [`rclc/rclc.h`](../api/c/rclc_8h.html) — convenience umbrella include
 - [`rclc/init.h`](../api/c/init_8h.html) — `rclc_support_init`, `rclc_support_fini`
-- [`rclc/node.h`](../api/c/node_8h.html) — `rclc_node_init_default`, `rcl_node_fini`
-- [`rclc/executor.h`](../api/c/executor_8h.html) — spin loop, executor lifecycle
+- [`rclc/node.h`](../api/c/node_8h.html) — `rcl_node_get_default_options`, `rcl_node_fini`
+- [`rclc/executor.h`](../api/c/executor_8h.html) — spin loop, executor lifecycle, `rclc_executor_node_init` (a node bound to the executor)
 - [`rclc/publisher.h`](../api/c/publisher_8h.html) / [`subscription.h`](../api/c/subscription_8h.html) — pub/sub
 - [`rclc/service.h`](../api/c/service_8h.html) / [`client.h`](../api/c/client_8h.html) — services
 - [`rclc/action.h`](../api/c/action_8h.html) — actions

@@ -47,7 +47,10 @@ int talker_listener(void);
 int talker_listener(void) {
     rcl_ret_t rc = rclc_support_init_with_locator(&support, "tcp/127.0.0.1:7447", 0);
     if (rc != RCL_RET_OK) return 1;
-    rc = rclc_node_init_default(&node, "micro_ros_node", "", &support);
+    /* Executor first, then the node bound to it. */
+    rc = rclc_executor_init(&executor, &support.context, 1, NULL);
+    if (rc != RCL_RET_OK) return 1;
+    rc = rclc_executor_node_init(&executor, &node, "micro_ros_node", NULL);
     if (rc != RCL_RET_OK) return 1;
 
     rc = rclc_publisher_init_default(&publisher, &node,
@@ -65,8 +68,6 @@ int talker_listener(void) {
     incoming.data.size = 0;
     incoming.data.capacity = sizeof(incoming_buffer);
 
-    rc = rclc_executor_init(&executor, &support.context, 1, NULL);
-    if (rc != RCL_RET_OK) return 1;
     rc = rclc_executor_add_subscription_with_context(&executor, &subscriber, &incoming,
                                                      &subscription_callback, NULL, ON_NEW_DATA);
     if (rc != RCL_RET_OK) return 1;

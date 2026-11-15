@@ -167,8 +167,9 @@ int main(int argc, char** argv) {
     rcl_allocator_t allocator = rcl_get_default_allocator();
     RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
     printf("Support initialized\n");
-    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "@NODE@", "/", &app.support),
-                   1);
+    // Executor first, then the node bound to it.
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 8, NULL), 1);
+    RCLC_CHECK_RET(rclc_executor_node_init(&app.executor, &app.node, "@NODE@", NULL), 1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
     RCLC_CHECK_RET(rclc_action_server_init_default(
@@ -178,7 +179,6 @@ int main(int argc, char** argv) {
                    1);
     printf("Action server created: /fibonacci\n");
 
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 8, NULL), 1);
     RCLC_CHECK_RET(rclc_executor_add_action_server(&app.executor, &app.action_server, GOAL_HANDLES,
                                                    app.goal_requests, sizeof(app.goal_requests[0]),
                                                    goal_callback, cancel_callback, &app.ctx),
@@ -206,9 +206,9 @@ int main(int argc, char** argv) {
     // Cleanup
     printf("\nShutting down...\n");
     printf("Total goals handled: %d\n", app.ctx.goal_count);
-    rclc_executor_fini(&app.executor);
     rclc_action_server_fini(&app.action_server, &app.node);
     rcl_node_fini(&app.node);
+    rclc_executor_fini(&app.executor);
     rclc_support_fini(&app.support);
 
     printf("Goodbye!\n");

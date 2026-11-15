@@ -259,14 +259,16 @@ Acceptance:
 
 ### W3.b — Retire the unbound rclc node path (D8, ruled 2026-11-14)
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-15, the W3.b PR). Every in-tree caller is bound,
+  and the executor refuses an unbound node's entity outright.
 
 The user ruled that the legacy writing (`rclc_node_init_default` with no
 `rclc_executor_node_init`) retires. W3 slice A already refuses mixing the
 two on one executor. This item migrates every in-tree caller to binding,
 then refuses the unbound path outright.
 
-- Migrate the C examples (linux, mps2-an385-baremetal, threadx-linux), the
+- Migrate the C examples (linux, threadx-linux; the mps2-an385-baremetal
+  roles became components in phase-553 W6, which binds them), the
   `cargo-nano-ros` C role templates, the nros-tests C probe bins, the nros-c
   compile and run tests, and the nros-c docs (`getting-started.md`,
   `mainpage.md`).

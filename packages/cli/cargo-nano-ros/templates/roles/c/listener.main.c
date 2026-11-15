@@ -87,7 +87,10 @@ int main(int argc, char** argv) {
     rcl_allocator_t allocator = rcl_get_default_allocator();
     RCLC_CHECK_RET(rclc_support_init(&app.support, argc, argv, &allocator), 1);
     printf("Support initialized\n");
-    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "@NODE@", "/", &app.support), 1);
+    // Executor first, then the node bound to it.
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
+    g_executor = &app.executor;
+    RCLC_CHECK_RET(rclc_executor_node_init(&app.executor, &app.node, "@NODE@", NULL), 1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
     // Create application context
@@ -102,8 +105,6 @@ int main(int argc, char** argv) {
     printf("Subscriber created for topic: %s\n",
            rcl_subscription_get_topic_name(&app.subscription));
 
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
-    g_executor = &app.executor;
     std_msgs__msg__String__init_in(&app.msg, &app.msg_storage);
     RCLC_CHECK_RET(rclc_executor_add_subscription_with_context(&app.executor, &app.subscription,
                                                                &app.msg, subscription_callback,
@@ -126,9 +127,9 @@ int main(int argc, char** argv) {
     // Cleanup
     printf("\nShutting down...\n");
     printf("Total messages received: %d\n", app.listener_ctx.message_count);
-    rclc_executor_fini(&app.executor);
     rcl_subscription_fini(&app.subscription, &app.node);
     rcl_node_fini(&app.node);
+    rclc_executor_fini(&app.executor);
     rclc_support_fini(&app.support);
 
     printf("Goodbye!\n");
