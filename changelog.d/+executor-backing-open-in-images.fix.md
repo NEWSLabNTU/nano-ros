@@ -1,0 +1,1 @@
+A C or C++ image that opens its executor over its own storage no longer also links the Rust default executor backing. That reservation had made such images overflow RAM on small targets (an mps2-an385 FreeRTOS C image by 89,672 bytes).

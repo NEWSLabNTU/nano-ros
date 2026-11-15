@@ -1244,6 +1244,7 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         ),
     ),
     ("executor_arena_advisory", NonCell::FeatureLane),
+    ("executor_backing_link", NonCell::CompileCheck),
     (
         "executor_sizing_e2e",
         NonCell::Secondary(

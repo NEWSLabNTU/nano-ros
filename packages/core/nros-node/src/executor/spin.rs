@@ -242,14 +242,8 @@ fn with_default_backing(
     }
     if result.is_err() {
         // SAFETY: the open failed, so (see above) no reference into `backing`
-        // survives it. A static handout re-arms the latch; anything else is
-        // the `Box::new_uninit_slice(words)` `default_backing` leaked, and
-        // `backing` is that exact fat pointer, so `Box::from_raw` frees it.
-        unsafe {
-            if !super::backing::give_back(backing) {
-                drop(alloc::boxed::Box::from_raw(backing));
-            }
-        }
+        // survives it, and it is the block `default_backing` handed out.
+        unsafe { super::backing::release_default_backing(backing) }
     }
     result
 }
