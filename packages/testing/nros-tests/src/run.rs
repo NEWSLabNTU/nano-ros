@@ -395,9 +395,106 @@ pub fn qemu_image(elf: &Path, boot: &QemuBoot) -> TestResult<HostRun> {
     })
 }
 
+/// The runner package and name for a Renode twin (RFC-0119 D8).
+pub const RENODE_RUNNER_PACKAGE: &str = "nros_runner_renode";
+/// The runner name the plan states for a Renode twin.
+pub const RENODE_RUNNER: &str = "renode";
+
+/// A board's Renode twin as its descriptor states it: `[board.run] emulator`
+/// (`renode:<machine>`) and `[board.run.renode]`'s `link` and `console`
+/// UARTs. Read from `packages/boards/<package>/nros-board.toml`, the file
+/// `nros run` reads, so the harness restates no board fact.
+fn renode_twin_facts(board_package: &str) -> TestResult<(String, serde_json::Value)> {
+    let path = crate::project_root()
+        .join("packages/boards")
+        .join(board_package)
+        .join("nros-board.toml");
+    let text = std::fs::read_to_string(&path)?;
+    let doc: toml::Table = toml::from_str(&text)
+        .map_err(|e| TestError::ProcessFailed(format!("{}: {e}", path.display())))?;
+    // `[[board]]`: the package's one board entry.
+    let run = doc
+        .get("board")
+        .and_then(|b| b.as_array())
+        .and_then(|b| b.first())
+        .and_then(|b| b.get("run"))
+        .ok_or_else(|| TestError::ProcessFailed(format!("{}: no [board.run]", path.display())))?;
+    let emulator = run
+        .get("emulator")
+        .and_then(|e| e.as_str())
+        .filter(|e| e.starts_with("renode:"))
+        .ok_or_else(|| {
+            TestError::ProcessFailed(format!(
+                "{}: [board.run] emulator is not a `renode:<machine>`",
+                path.display()
+            ))
+        })?
+        .to_string();
+    let mut args = serde_json::Map::new();
+    if let Some(r) = run.get("renode").and_then(|r| r.as_table()) {
+        for key in ["link", "console"] {
+            if let Some(v) = r.get(key).and_then(|v| v.as_str()) {
+                args.insert(key.into(), v.into());
+            }
+        }
+    }
+    Ok((emulator, serde_json::Value::Object(args)))
+}
+
+/// Boot a Zephyr `elf` in `board_package`'s Renode twin through `nros run
+/// --plan`, the `renode` runner (issue 2375), with the image's serial link on
+/// a pty the runner reports (`--router none`: nothing is started on the other
+/// end, and the twin runs regardless).
+///
+/// Renode is the harness's one ladder ([`crate::renode::require_renode`],
+/// `nros locate tool renode`), written into the plan's `tools`.
+///
+/// # Errors
+///
+/// The descriptor names no Renode twin, the `nros` CLI is not built, or the
+/// plan directory cannot be written.
+pub fn renode_image(elf: &Path, board_package: &str) -> TestResult<HostRun> {
+    let (emulator, args) = renode_twin_facts(board_package)?;
+    let nros = nros_cli()?;
+    let renode = crate::renode::require_renode();
+    let elf = std::path::absolute(elf).unwrap_or_else(|_| elf.to_path_buf());
+    let image = elf
+        .file_name()
+        .map_or_else(|| "image".to_string(), |n| n.to_string_lossy().into_owned());
+    let plan = serde_json::json!({
+        "protocol": 1,
+        "image": image,
+        "artifacts": { "elf": elf },
+        "verb": "run",
+        "runner": { "package": RENODE_RUNNER_PACKAGE, "name": RENODE_RUNNER },
+        "target": { "emulator": emulator },
+        "console": { "kind": "serial" },
+        "link": { "kind": "serial", "locator": "serial/renode-twin-pty", "rmw": "zenoh" },
+        "args": args,
+        "tools": { "renode": renode },
+        "provenance": { "runner": "nros-tests" },
+    });
+    let (dir, command) = verb_command(nros, &plan)?;
+    Ok(HostRun {
+        command,
+        image_line: format!("{} ({emulator}, {})", renode.display(), elf.display()),
+        dir,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Nucleo's twin facts come from its descriptor, the file `nros run`
+    /// reads (issue 2375).
+    #[test]
+    fn the_nucleo_twin_facts_come_from_its_descriptor() {
+        let (emulator, args) = renode_twin_facts("nros-board-nucleo-f767zi-zephyr").unwrap();
+        assert_eq!(emulator, "renode:nucleo_f767zi");
+        assert_eq!(args["link"], "usart3");
+        assert_eq!(args["console"], "usart6");
+    }
 
     #[test]
     fn a_qemu_plan_names_the_qemu_runner_and_its_tool() {
