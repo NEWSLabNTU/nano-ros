@@ -14,9 +14,13 @@
 #      2459, GHCR creates one private on its first push);
 #   3. `just probe image <ref> pull=1`: a timed pull, the size budget, the
 #      book's newcomer steps offline, the course recipe. Red stops here;
-#   4. point `latest` at that version unless it already does.
+#   4. `just probe starter-recipe <ref>` (phase-551 W7, RFC-0127 D5 guarantee
+#      4): the documented customer recipe, built FROM that release, with its
+#      guarantees checked offline. Red stops here too, so every release a
+#      customer can derive from has had its recipe built;
+#   5. point `latest` at that version unless it already does.
 #
-# `--dry-run` does 1 to 3 and prints what 4 would do.
+# `--dry-run` does 1 to 4 and prints what 5 would do.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE="${NROS_STARTER_IMAGE_REPO:-ghcr.io/newslabntu/nano-ros-starter}"
@@ -70,6 +74,8 @@ fi
 echo "starter-latest: $ref is pullable with no credentials"
 echo "starter-latest: probing $ref"
 "$REPO_ROOT/scripts/probe/verify-starter-image.sh" "$ref" --pull
+echo "starter-latest: building the customer recipe FROM $ref"
+"$REPO_ROOT/scripts/probe/verify-starter-recipe.sh" --starter "$ref"
 
 want="$(docker buildx imagetools inspect --format '{{json .Manifest.Digest}}' "$ref" | tr -d '"')"
 have="$(docker buildx imagetools inspect --format '{{json .Manifest.Digest}}' "$IMAGE:latest" 2>/dev/null | tr -d '"' || true)"
