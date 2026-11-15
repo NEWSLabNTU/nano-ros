@@ -138,12 +138,28 @@ _CRATE_HASH = re.compile(r"Cs[0-9A-Za-z]{4,}_|17h[0-9a-f]{16}E")
 WALK_ORDERS = tuple(range(8))
 
 
+# The project's own name, as `--name-token` states it (the workspace's
+# directory name). It reaches symbols through the packages `nros new` derives
+# from it (`__nros_c_component_<name>_node_configure`, a `<len><name>_node`
+# Rust crate), so two projects from one template differ in those names only.
+NAME_TOKENS: list[str] = []
+
+
+def _mask_names(name: str) -> str:
+    """`name` with each NAME_TOKENS occurrence (and a v0 length prefix before
+    it) replaced by `<P>`, at identifier boundaries only."""
+    for tok in NAME_TOKENS:
+        name = re.sub(r"(?<![A-Za-z0-9])\d*" + re.escape(tok) + r"(?![A-Za-z0-9])", "<P>", name)
+    return name
+
+
 def _order_key(order: int):
-    """The order callees are tried in. Keyed on the name WITHOUT crate hashes,
-    so two projects built from one template at different paths walk in the
-    same order (issue 2521's class), and seeded per `order`."""
+    """The order callees are tried in. Keyed on the name WITHOUT crate hashes
+    and without the project's own name, so two projects built from one
+    template at different paths (issue 2521's class) or under different names
+    walk in the same order, and seeded per `order`."""
     def key(name: str):
-        norm = _CRATE_HASH.sub("Cs_", name)
+        norm = _mask_names(_CRATE_HASH.sub("Cs_", name))
         if order == 0:
             return (norm, name)
         return (hashlib.sha256(f"{order}:{norm}".encode()).digest(), norm, name)
@@ -160,7 +176,7 @@ def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
     has accepted as leaves of known cost 0 (e.g. libc memset intrinsics).
 
     In a call graph with cycles this is a HEURISTIC, not a bound (issue
-    2547): a function first reached with an ancestor on the stack caches a
+    2550): a function first reached with an ancestor on the stack caches a
     depth that leaves out every path through that ancestor, and the cache is
     reused from routes where that ancestor is not on the stack. The answer
     therefore depends on the order callees are tried in (`order`), and the
@@ -2234,6 +2250,16 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
         for f in ("method", "issue"):
             if not str(o.get(f, "")).strip():
                 problems.append(f"{where}: needs `{f}`")
+        if "walk_floor" in o:
+            wf = o["walk_floor"]
+            if not isinstance(wf, int) or not isinstance(o.get("static"), int) \
+                    or wf <= o["static"]:
+                problems.append(f"{where}: `walk_floor` must be an integer above `static` (the "
+                                "largest walk this image was seen to have; a smaller one "
+                                "holds nothing)")
+            if not str(o.get("walk_floor_reason", "")).strip():
+                problems.append(f"{where}: `walk_floor` needs `walk_floor_reason`, the build "
+                                "that walked it")
         iid = str(o.get("issue", ""))
         if ISSUE_ID.match(iid) and issue_ids and iid not in issue_ids:
             problems.append(f"{where}: names issue {iid}, which has no file")
@@ -2659,6 +2685,18 @@ def run(args: argparse.Namespace) -> int:
                     continue
                 if o is not None:
                     measured_by = o
+                    # The walk is a heuristic on a cyclic graph (issue 2550): the
+                    # cycle it cuts is arbitrary, and a walk that fell because the
+                    # cut moved is not a frame that shrank. `walk_floor` is the
+                    # largest walk this image was seen to have; the floor never
+                    # drops below it.
+                    wf = o.get("walk_floor")
+                    if isinstance(wf, int) and best.depth < wf:
+                        allowance = wf - best.depth
+                        print(f"nros-stack-floor: note: {role.upper()}: the walk is "
+                              f"{best.depth} B; the floor holds at the {wf} B walk this "
+                              f"image was seen to have ({o.get('walk_floor_reason')})",
+                              file=sys.stderr)
                     diff = shape_differences(o, parse_shape(args.shape or []))
                     if diff:
                         print(f"nros-stack-floor: WARNING: image `{args.image}` is NOT the shape "
@@ -3012,6 +3050,15 @@ def self_test() -> int:
     check("bind: an observed row is found by image/target/role",
           find_observed(vo, "a@b", "t", "OPEN") is not None
           and find_observed(vo, "a@b", "t", "SPIN") is None)
+    vo["observed"][0]["static"] = 150
+    vo["observed"][0]["walk_floor"] = 160
+    check("walk_floor without a reason is refused",
+          any("walk_floor_reason" in p for p in validate_table(vo, set())))
+    vo["observed"][0]["walk_floor_reason"] = "walked 160 B as project `x`"
+    check("walk_floor above static, with a reason, validates", validate_table(vo, set()) == [])
+    vo["observed"][0]["walk_floor"] = 150
+    check("walk_floor not above static is refused",
+          any("must be an integer above" in p for p in validate_table(vo, set())))
 
     check("fold1 charges one level", fold_charge(g5, recursion_allowance=None,
                                                  externals=set(), one_level=True) == 100)
@@ -3344,6 +3391,51 @@ def self_test() -> int:
             g_["llvm_tool"] = saved_tool
             _BC_TOOLS.clear()
 
+    # A project's name never moves its walk. The walk is a heuristic on a
+    # cyclic graph (issue 2550) and the callee order picks which cycle it
+    # cuts; the order is keyed on names, so the project's own name is masked
+    # out of it as crate hashes are. This graph (found by search) walks
+    # 2,456 / 2,464 / 2,456 B under three names with the mask off.
+    def named_graph(n: str) -> Graph:
+        p = lambda i: f"__nros_c_component_{n}_node_f{i}"  # noqa: E731
+        lab = {"P2": p(2), "P5": p(5)}
+        fr = {"fn0": 1024, "fn1": 64, "P2": 64, "fn3": 1024, "fn4": 8, "P5": 256,
+              "fn6": 16, "fn7": 8}
+        ed = {"fn0": ["P2", "fn4", "fn7"], "fn1": ["P2", "fn3", "fn6"],
+              "P2": ["P5", "fn1", "fn4", "fn7"], "fn3": ["P5", "fn1"], "fn4": ["P2"],
+              "P5": ["fn1", "fn3", "fn4", "fn6", "fn7"], "fn6": ["P2", "P5", "fn4"],
+              "fn7": ["P2", "P5"]}
+        g_ = Graph()
+        for k, v in fr.items():
+            g_.frames[lab.get(k, k)] = v
+            g_.functions.add(lab.get(k, k))
+        for k, v in ed.items():
+            g_.edges[lab.get(k, k)] = {lab.get(c, c) for c in v}
+        return g_
+    pnames = ("c_after", "sf_talker_c", "a_much_longer_project_name_c")
+    saved_tokens = list(NAME_TOKENS)
+    try:
+        walks = []
+        for n in pnames:
+            NAME_TOKENS[:] = [n]
+            walks.append(walk_deepest(named_graph(n), "fn0", indirect_charge=0,
+                                      recursion_allowance=0).depth)
+        check("project name: the same walk under three names", len(set(walks)) == 1)
+        NAME_TOKENS[:] = []
+        raw = [walk_deepest(named_graph(n), "fn0", indirect_charge=0,
+                            recursion_allowance=0).depth for n in pnames]
+        check("project name: without the mask the names walk differently (control)",
+              len(set(raw)) > 1)
+        NAME_TOKENS[:] = ["c_after"]
+        check("project name: masked at identifier boundaries, with a v0 length prefix",
+              _mask_names("_RNvCs_12c_after_node3run") == "_RNvCs_<P>_node3run"
+              and _mask_names("__nros_c_component_c_after_node_configure")
+              == "__nros_c_component_<P>_node_configure"
+              and _mask_names("xc_after_y") == "xc_after_y"
+              and _mask_names("c_afterwards") == "c_afterwards")
+    finally:
+        NAME_TOKENS[:] = saved_tokens
+
     # phase-557 W8: a recorded static that drifts. Up by any amount and down
     # by more than 2 % fail; a smaller fall is a note; equal is OK.
     drow = {"image": "t/rust/zenoh@b", "role": "OPEN", "static": 100000}
@@ -3591,8 +3683,12 @@ def main() -> int:
                     help="offline: every reason, allowance issue and floor formula holds")
     ap.add_argument("--sync-json", metavar="TABLE",
                     help="write TABLE's .json twin, the file builds read")
+    ap.add_argument("--name-token", action="append", default=[],
+                    help="the project's own name (repeat): masked out of the walk's callee "
+                         "order, so a project's name never moves its walk")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
+    NAME_TOKENS[:] = [t for t in args.name_token if t]
     if args.self_test:
         return self_test()
     if args.sync_json:

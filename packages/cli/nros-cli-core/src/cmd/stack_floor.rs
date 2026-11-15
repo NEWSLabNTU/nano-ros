@@ -75,6 +75,9 @@ pub struct CargoStackFloor {
     /// the walk records a measured shortfall instead of failing on it, and
     /// [`crate::cmd::stack_floor_raise::after_build`] rebuilds at the floor.
     pub raise: bool,
+    /// The project's own name (the workspace directory's): the walker masks
+    /// it out of its callee order, so a project's name never moves its walk.
+    pub name_token: Option<String>,
 }
 
 impl CargoStackFloor {
@@ -153,6 +156,7 @@ fn merge_env(hand: &mut Handoff, key: &str, extra: &str, inherited: Option<OsStr
 pub fn arm(
     plans: &mut [ResolvedBuild],
     nros_root: Option<&Path>,
+    workspace_root: Option<&Path>,
     env: &dyn Fn(&str) -> Option<OsString>,
 ) {
     if disabled(
@@ -163,13 +167,14 @@ pub fn arm(
         return;
     }
     for p in plans.iter_mut() {
-        p.stack_floor = plan_one(p, nros_root, env);
+        p.stack_floor = plan_one(p, nros_root, workspace_root, env);
     }
 }
 
 fn plan_one(
     p: &mut ResolvedBuild,
     nros_root: Option<&Path>,
+    workspace_root: Option<&Path>,
     env: &dyn Fn(&str) -> Option<OsString>,
 ) -> Option<StackFloorStep> {
     if p.driver != Driver::Cargo {
@@ -223,6 +228,9 @@ fn plan_one(
         table,
         dir,
         raise: p.stack_floor_raise,
+        name_token: workspace_root
+            .and_then(Path::file_name)
+            .map(|n| n.to_string_lossy().into_owned()),
     };
     // Target-scoped, so build scripts and proc-macros keep their flags, and
     // JOINED with a config file's `[target.<triple>] rustflags` rather than
@@ -293,6 +301,10 @@ pub fn walker_args(c: &CargoStackFloor, cargo_json: &Path) -> Vec<OsString> {
     a.push("--intermediates-from-build".into());
     if c.raise {
         a.push("--raise".into());
+    }
+    if let Some(n) = &c.name_token {
+        a.push("--name-token".into());
+        a.push(n.into());
     }
     a
 }
@@ -370,6 +382,7 @@ mod tests {
             script: "/r/scripts/nros-stack-floor.py".into(),
             table: "/r/config/stack-floors.json".into(),
             raise: false,
+            name_token: None,
         };
         let a: Vec<String> = walker_args(&c, Path::new("/t/m.json"))
             .into_iter()
@@ -424,7 +437,7 @@ mod tests {
             run_tables: Default::default(),
             package_depends: None,
         };
-        arm(std::slice::from_mut(&mut p), Some(&root), &|_| None);
+        arm(std::slice::from_mut(&mut p), Some(&root), None, &|_| None);
         let _ = std::fs::remove_dir_all(&root);
         let Some(StackFloorStep::Check(c)) = &p.stack_floor else {
             panic!("{:?}", p.stack_floor);
@@ -482,7 +495,7 @@ mod tests {
             package_depends: None,
         };
         let mut v = vec![image("bare-metal"), image("threadx")];
-        arm(&mut v, Some(&root), &|_| None);
+        arm(&mut v, Some(&root), None, &|_| None);
         let _ = std::fs::remove_dir_all(&root);
         assert!(
             matches!(v[0].stack_floor, Some(StackFloorStep::Check(_))),

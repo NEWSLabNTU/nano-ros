@@ -78,6 +78,32 @@ bring back issue 2521's nondeterministic refusal.
 A self-test pins the four-node case where the sorted order under-states:
 it reads 112 B, against a true depth of 121 B.
 
+## Measured: the project's name moved the cut (2026-11-15)
+
+The order was keyed on names without crate hashes, but WITH the project's own
+name, which reaches symbols through the packages `nros new` derives from it
+(`__nros_c_component_<name>_node_configure`). So the cut, and the depth,
+depended on what a user called the project. The nucleo C talker template, one
+tree, four names:
+
+| project name | walk |
+| --- | --- |
+| `sf_talker_c`, `drift_talker_c`, `a_much_longer_project_name_c` | 100,956 B |
+| `c_after` | 106,884 B (+5.9 %) |
+
+`codegen-units=1` gave the same numbers, so the compiler is not involved:
+the Rust symbol hashes are identical across names, and the two deepest paths
+split at the C component function. One name, `c_after`, read 99,196 B on the
+tree of a5e0439885, so the gap moves with the tree as well.
+
+Phase-557 W8 masks the project's name out of the order key (`--name-token`,
+the workspace directory's name, on the cmake and cargo roads), so every name
+walks the same. That makes the walk name-independent; it does not make it a
+bound. The cut it now picks is still arbitrary, and an `[[observed]]` row's
+`walk_floor` keeps the floor at the largest walk seen (ruled 2026-11-15: a
+floor never drops because the walk order changed). A cut choice moving the
+walk by ~6 % is the size of the error the fix below removes.
+
 ## Fix
 
 1. **An order-independent search under a node budget.** Reuse a cached depth
