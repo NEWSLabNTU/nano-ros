@@ -386,11 +386,8 @@ function(nros_nuttx_build_example)
     if(NROS_SAFETY_E2E)
         list(APPEND _nnbe_caps safety)
     endif()
-    set(_nnbe_rmw "${NROS_RMW}")
-    if(_nnbe_rmw STREQUAL "")
-        set(_nnbe_rmw zenoh)  # the FFI crates link nros-rmw-zenoh
-    endif()
-    nros_capability_features(_nnbe_cap_feats RMW "${_nnbe_rmw}" CAPABILITIES "${_nnbe_caps}")
+    # RMW is only named in the `safety` refusal; NROS_RMW_CAPABILITIES decides.
+    nros_capability_features(_nnbe_cap_feats RMW "${NROS_RMW}" CAPABILITIES "${_nnbe_caps}")
     set(_nnbe_features "")
     foreach(_nnbe_f IN LISTS _nnbe_cap_feats)
         list(APPEND _nnbe_features "nros-c/${_nnbe_f}" "nros-cpp/${_nnbe_f}")
