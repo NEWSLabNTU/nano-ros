@@ -228,3 +228,38 @@ rebuilding. Shipping it here would claim a necessity it does not have. It stays
 worth doing — it is what would let a board state a per-image-correct number
 rather than the unnarrowed maximum — and wants its own issue and its own
 acceptance — filed as issue 1390.
+
+## 2026-11-17: the board rung is a floor now, and what that costs
+
+This issue's rule, that one board number must cover the largest default any
+unit compiles, assumed the unnarrowed umbrella was that largest. When the
+stock node interfaces went on by default (phase-556 W13), it stopped being
+true. A unit's default grows with its features and with its image's declared
+entities. Measured on `examples/workspaces/c` `threadx_talker`: the `nros-c`
+size-probe unit (param-services + rosout, the image's sizing descriptor)
+needs 11,408 table words, against the rung of 11,084, and three
+threadx-linux fixtures stopped compiling. Restating the rung would last until
+the next image with one more entity, and issue 1197 rules out deriving the
+pool's subtrahend from the unit (the size is the target compiler's layout).
+
+So `nros-node/build.rs` now reads the two rungs apart:
+
+- an env or Kconfig statement is an image's, and the const assertion still
+  holds it to its own unit's default;
+- the board rung (`[knobs.executor] backing_u64s`) sizes the static at
+  `max(rung + parameter store, unit default)`, while the ThreadX pool still
+  gives back exactly `8 x rung`.
+
+**The cost: a unit above the rung holds the excess twice**, once in
+`EXECUTOR_BACKING` and once in the byte pool. It is wasted memory, never a
+shortfall. For the threadx-linux C talker's size-probe unit that is
+(11,408 - 11,084) x 8 = **2,592 B**. The Rust `threadx_talker` measured
+within the rung (`byte_pool_storage` = 4 MiB - 88,672 B,
+`EXECUTOR_BACKING` = 183,984 B, which includes the 8-slot parameter store).
+On the two in-tree ThreadX boards (4 MiB pools) the waste is noise. A
+RAM-tight ThreadX board that states the rung should raise it to its heaviest
+image's unit default to get the pairing exact again, or state 0 through the
+env front-end and take the backing from the pool.
+
+`executor_backing_claims` still holds the rung at or above the UNNARROWED
+default, so the plain image stays exactly paired.
