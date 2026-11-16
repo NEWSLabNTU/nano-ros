@@ -179,6 +179,8 @@ const FULL_STORE_REPLY_BYTES: usize = max_usize(
 /// the generated message's 64, or every parameter the store can hold when that
 /// is more. Those three handlers stream (each name is borrowed and answered in
 /// turn), so the message's capacity is not theirs; the store's is.
+// Read only by the service handlers, which `param-services` compiles.
+#[cfg_attr(not(feature = "param-services"), allow(dead_code))]
 pub(crate) const NAME_LIST_CAP: usize = max_usize(WIRE_SEQ_CAP, nros_params::MAX_PARAMETERS);
 
 // ---------------------------------------------------------------------------
