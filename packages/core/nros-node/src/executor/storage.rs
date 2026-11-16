@@ -1483,6 +1483,10 @@ mod tests {
                 + 2 * size_of::<bool>()
                 + size_of::<crate::time_source::SilenceWatch>();
         }
+        // The open waiting on the primary node (the `/diagnostics` reporter
+        // armed before any node): one hook, its context word and argument.
+        // Scales with nothing.
+        ceiling += size_of::<Option<(super::super::spin::PrimaryNodeHook, usize, u32)>>();
         // `lifecycle-services`' runtime state is a HEAP table (RFC-0128 D1:
         // one machine per managed node); this value holds its `Vec` header,
         // which scales with nothing.
