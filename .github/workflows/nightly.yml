@@ -1154,9 +1154,9 @@ jobs:
   # merge lane: four image builds cost minutes, and a day is soon enough.
   stack-floor-drift:
     # No `needs:` — issue 1029; same gate as zephyr-example-matrix.
-    name: stack-floor drift (observed rows)
+    name: stack-floor drift (observed + drift rows)
     runs-on: ubuntu-latest
-    # Four image builds, cold: ~10 min each for the nucleo rows.
+    # Five image builds, cold: ~10 min each for the nucleo rows.
     timeout-minutes: 75
     concurrency:
       group: nightly-stack-floor-drift-${{ github.ref }}-${{ github.event_name }}
@@ -1224,7 +1224,17 @@ jobs:
           # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
           apt-get install -y --no-install-recommends $pkgs
 
-      - name: Re-walk every observed stack-floor row
+      # The mps2 rows build with the FreeRTOS kernel, lwIP, zenoh-pico and the
+      # board's pinned arm-none-eabi-gcc, none of which this Zephyr image
+      # carries (the queue's copy-out job provisions the same set). Two
+      # commands: `nros setup --tool X --source Y` provisions no sources.
+      - name: Provision the mps2 rows' toolchain + sources
+        run: |
+          source ./activate.sh
+          nros setup --tool arm-none-eabi-gcc
+          nros setup --source freertos-kernel --source lwip --source zenoh-pico
+
+      - name: Re-walk every observed and drift stack-floor row
         env:
           NROS_ZEPHYR_VERSION: "3.7"
         run: |

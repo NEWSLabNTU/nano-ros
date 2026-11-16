@@ -1,6 +1,6 @@
 # Phase 567 — a release ships only what the slow lanes have seen
 
-**Status (2026-11-16). OPEN: W4 and W6 are done; W1–W3 and W5 are open.** Approved by the user on
+**Status (2026-11-17). OPEN: W4, W5 (W5a–W5c) and W6 are done; W1–W3 are open.** Approved by the user on
 2026-11-16 ("Take your advice on regression prevention. Have a phase doc to
 track the change"), after a review of the CI workflows on main against that
 day's regressions. Implements no RFC; it closes gaps between the lanes that
@@ -159,13 +159,25 @@ fix fails the merge queue on this workspace.
 
 ### W5 — cheap merge-queue additions
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-17)
 
 - **W5a.** A C stack-walk row for the FreeRTOS C template that
   `check-template-copy-out` already builds, run with `--only` in the existing
   queue drift step. Needs the FreeRTOS cmake road to export compile commands
   first (the stack-floor fix's item (a), in flight). Acceptance: reverting the C template's stack re-measure
   fails the merge queue; warm and cold walk times recorded.
+  **DONE (2026-11-16).** The cmake road now writes `compile_commands.json`
+  when the floor is checked, which moved the template's walk from 147,060 B
+  to 130,424 B. That is still twice the 64 KiB stack the tutorial ships. So
+  the row is a `[[drift]]` row (ruled 2026-11-16): the queue's drift step
+  holds the walk to its band, and no build or `nros new` stamp reads the row,
+  so the tutorial keeps its stack. The 169 call sites still untyped are
+  issue 2653. Measured: the walk itself takes 18.4 s and 19.5 s warm and 24.3 s
+  cold (llc cache removed). The queue step's fresh `nros new` + `nros build`
+  takes 280 s on a first build and 112 s warm, and reads the walk
+  exactly (130,424 B). With the fix turned off
+  (`CMAKE_EXPORT_COMPILE_COMMANDS=OFF`), the walk goes back to 147,060 B and the
+  step fails: "the walk ROSE +16636 B".
 - **W5b.** The tier-2 build-and-link job in `queue.yml` stays advisory, but its
   failures reach the PR author the way a merge-queue ejection does
   (`queue-notify.yml`), so a link break is heard about at merge rather than at
