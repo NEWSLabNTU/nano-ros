@@ -23,16 +23,25 @@ smaller than its declarations:
 
 - a `declare_parameter<T>(name)` with NO default reads `T()`: the island's
   controller divides by `ctrl_period = 0` and sizes a deque from the NaN;
-- past the store's capacity every further declaration silently returns its
-  compiled default (GitHub #4018).
+- past the store's capacity every further declaration silently returned its
+  compiled default (GitHub #4018; since issue 2634 it stops the run, so the
+  component goes unprobed instead).
 
 So the node cannot be probed, and the island duplicates every declaration's
 default in C++ to keep the probe alive.
 
-## Direction
+## Store size (resolved 2026-11-16)
 
-Undecided: the probe area has an owner, who is asked before anything
-changes. The proposal on the table: the probe seeds the launch values of
-the component's instance from the launch RECORD (not the SystemModel, which
-reads the probe's sidecar), and its host store is sized so that no
-declaration can find it full.
+The probe's build now states `NROS_MAX_PARAMETERS=1024`
+(`params.max_parameters`) beside `NROS_EXECUTOR_MAX_CBS=64`
+(`pin_probe_env`), for the reason issue 1969 pinned the executor's: the probe
+is what produces the declaration count, so nothing can derive the size for it.
+Both knobs are part of `probe_inputs_key`, so a sidecar from a probe built
+under other sizes reads stale and is probed again. The probe's cargo directory
+was already keyed on them (`nros_knob_key_fields`).
+
+## Launch values (open)
+
+A design is in review as its own draft change: the probe seeds the component's launch values from the launch
+RECORD, a component whose instances disagree is refused with a plain message,
+and the sidecar records `probe.seeds`.
