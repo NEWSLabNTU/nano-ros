@@ -1,6 +1,6 @@
 # Phase 565 — a lane's claims are the one provisioning list
 
-**Status (2026-11-16). OPEN: W1, W2 and W4 are done; W3, W5 and W6 are open.** Implements
+**Status (2026-11-16). OPEN: W1, W2, W4 and W5 are done; W3 and W6 are open.** Implements
 [RFC-0131](../design/0131-gates-are-nextest-tests.md), and closes its one open
 question. Assigned to nros 118 by the nros 241 manager on 2026-11-15, which
 relayed the user's approval of RFC-0131 and asked for phase docs that implement
@@ -149,7 +149,15 @@ Acceptance:
 
 ### W5 — no capability that nothing needs
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-16)
+
+Done: `nuttx` is deleted, from `[capabilities]`, its `[provision.claim]` entry,
+the lane preflight's probe, and `check-gate-needs`' UNCLAIMED_OK. No gate
+declared `needs:nuttx`, and the NuttX fixture lanes provision NuttX through
+their own builds. `check-gate-needs` now REFUSES a capability that no lane
+claims and no gate needs (an empty ratchet: no exemption list), with a self-test
+case on each side of the line. It prints no "no gate needs it" line. `fsp`
+stays a note: `ivc-fsp` needs it, and D3 names it as the runs-nowhere case.
 
 `nuttx` is claimed by no lane and needed by no gate, so it is vocabulary with
 no subject. Delete it, or give it the gate that needs it. `fsp` stays: D3

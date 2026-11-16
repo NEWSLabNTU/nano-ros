@@ -25,7 +25,6 @@ git-history = "commit history deeper than a shallow clone"
 zephyr-tree = "Zephyr's lib/cpp/minimal/include under zephyr-workspace/ (CI's sparse clone)"
 zephyr = "a resolvable west workspace"
 west = "a Python interpreter that imports west (scripts/build/zephyr-python.sh)"
-nuttx = "the NuttX sources (NUTTX_DIR)"
 fsp = "the NVIDIA Orin SPE FSP tree (NV_SPE_FSP_DIR)"
 build-tree = "artifacts a fixture or image build produced"
 arm-gcc = "the pinned arm-none-eabi-gcc dist ([tool.arm-none-eabi-gcc], nros setup --tool arm-none-eabi-gcc)"
@@ -133,7 +132,6 @@ cc = { remedy = "install a C/C++ compiler" }
 arm-gcc-any = { remedy = "any arm-none-eabi-g++ on PATH works: the distro package (gcc-arm-none-eabi, as in the CI image) or nros setup --tool arm-none-eabi-gcc then re-source activate.sh; or set NROS_ARM_NONE_EABI_PREFIX" }
 zephyr = { remedy = "just zephyr setup" }
 west = { remedy = "just zephyr setup" }
-nuttx = { remedy = "nros setup --source nuttx" }
 fsp = { remedy = "provision NV_SPE_FSP_DIR (not on any runner)" }
 build-tree = { remedy = "just build-test-fixtures" }
 

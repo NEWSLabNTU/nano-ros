@@ -37,7 +37,6 @@ BASELINE = REPO / ".config" / "gate-needs-baseline.txt"
 # Capabilities no lane claims, each with why. The gates needing one run nowhere.
 UNCLAIMED_OK = {
     "fsp": "the NVIDIA Orin SPE FSP tree is provisioned on no runner (phase-418 418.4)",
-    "nuttx": "no gate lane provisions NUTTX_DIR; the NuttX fixture lanes run their own builds",
     # phase-565 W4 deleted `[lane.queue]`, the one lane that claimed these and
     # that no job ever ran. Their gates run BY NAME after a fixture build in
     # run-matrix.yml's tier-2 job, not through a lane's scope.
@@ -94,8 +93,17 @@ def check(groups: dict[str, set[str]], bodies: dict[str, str], cfg: dict,
     for c in sorted(caps - claimed):
         if c in UNCLAIMED_OK:
             users = sorted(n for n, g in groups.items() if f"needs:{c}" in g)
+            if not users:
+                # phase-565 W5 — claimed by no lane AND needed by no gate is a
+                # word with no subject: it provisions nothing and gates
+                # nothing, and UNCLAIMED_OK's reason then excuses an absence.
+                # No exemption list: the baseline is empty by construction.
+                problems.append(f"  capability `{c}` is claimed by no lane and needed by no gate: "
+                                "delete it from [capabilities] (and its [provision.claim] entry), "
+                                "or give it the gate that needs it")
+                continue
             notes.append(f"  NO LANE CLAIMS `{c}` ({UNCLAIMED_OK[c]}): runs nowhere: "
-                         + (", ".join(users) or "no gate needs it"))
+                         + ", ".join(users))
         else:
             problems.append(f"  no lane claims `{c}`: a gate needing it would run nowhere. "
                             "Claim it in a lane, or accept it in UNCLAIMED_OK with a reason")
@@ -126,6 +134,17 @@ def self_test() -> None:
     assert "skipper: calls" in text, text
     assert "old:" not in text, text
     assert "no lane claims `z`" in text, text
+    # phase-565 W5 — an excused-unclaimed capability that no gate needs either
+    # is refused; one a gate needs stays a note ("runs nowhere: <gate>").
+    UNCLAIMED_OK["_selftest_orphan"] = "x"
+    UNCLAIMED_OK["_selftest_used"] = "x"
+    try:
+        p, n = check({"g": {"needs:_selftest_used"}}, {},
+                     {"capabilities": {"_selftest_orphan": "", "_selftest_used": ""}, "lane": {}}, set())
+    finally:
+        del UNCLAIMED_OK["_selftest_orphan"], UNCLAIMED_OK["_selftest_used"]
+    assert any("`_selftest_orphan` is claimed by no lane and needed by no gate" in x for x in p), p
+    assert not any("_selftest_used" in x for x in p) and any("_selftest_used" in x for x in n), (p, n)
     p, _ = check({"old": {"needs:a"}}, {}, {"capabilities": {"a": ""}, "lane": {"l": {"claims": ["a"]}}}, {"old"})
     assert any("delete it from" in x for x in p), p
     # Both resource spellings pass; a bad one of each is refused.
