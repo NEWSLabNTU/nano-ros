@@ -8,7 +8,7 @@ severity: high
 found: 2026-11-16
 resolved: 2026-11-16
 resolved_in: "fix(#2634): a declaration the parameter store has no slot for stops the boot"
-related: [phase-478, phase-446]
+related: [issue-2638, phase-478, phase-446]
 ---
 
 **Home:** phase-478 I19 (found by the autoware safety island, GitHub #4018).
@@ -32,14 +32,14 @@ on numbers its launch file does not state. The island's controller declares 149
 parameters and hand-counts `max_parameters = 164` with the comment "Too few is
 SILENT"; a miscount gives a vehicle controller its default gains.
 
-The read-back after an ALREADY_EXISTS has the same shape: a launch seed whose
-inferred type differs from the declared one (`kp: 1` for a double) reads back as
-nothing, and the default is returned in silence. That half is NOT fixed here.
-`<param from>` seeding currently flattens a YAML list into one comma-joined
-string, so a refusal on type would stop every image with an array parameter.
-It lands after the flattening is fixed, as its own change (branch
-`hold/param-type-mismatch-full` carries it: a boot refusal naming the declared
-type, the stored value and what to write, plus a `.breaking` fragment).
+The read-back after an ALREADY_EXISTS had the same shape: a launch seed whose
+inferred type differs from the declared one (`kp: 1` for a double) read back as
+nothing, and the default was returned in silence. That half landed in a second
+change, after issue 2638 made a launch list seed as an array: until then a
+YAML list arrived as one comma-joined string, and refusing on type would have
+stopped every image with an array parameter. The test seeds both through the
+launch path: `kp` from `"1"` (refused, naming `write 1.0`) and `gains` from
+`[40.0, 50.0, 60.0]` (accepted as `std::vector<double>`).
 
 ## Sweep
 
@@ -49,7 +49,7 @@ packages/api packages/core/nros-node/src` and every rclc declare entry point:
 | Site | Before | After |
 | --- | --- | --- |
 | `rclcpp.hpp` `Node::declare_parameter<T>(name, default)` | default on any refusal | `detail::refuse_param_declare`: `set_error(PARAM_STORE_FULL_WHAT, NROS_CPP_RET_FULL)` or `PARAM_DECLARE_REFUSED_WHAT` with the FFI code; `Unsupported` (no store built) still answers the default |
-| same, read-back after ALREADY_EXISTS | default when the stored type differs | unchanged here; the type refusal follows once list seeding is fixed (see above) |
+| same, read-back after ALREADY_EXISTS | default when the stored type differs | `set_error(PARAM_VALUE_TYPE_MISMATCH_WHAT, PARAM_VALUE_TYPE_MISMATCH = -447)` plus a line naming the node, the parameter, the declared type, the stored value and what to write (`write 1.0 in the YAML`); a `.breaking` changelog fragment says so (second change, after issue 2638) |
 | `rclcpp.hpp` descriptor, `ParameterValue`, message-descriptor overloads; `rclcpp_lifecycle` bound forwards; `NodeParametersInterface` | forward to the above | inherit the fix |
 | `node.hpp` `declare_parameters(prefix, map)` | returned the `Result` only | returns it and latches `set_error` |
 | `params_shim.rs` `declare_on_node` (every `nros_cpp_node_declare_param_*`) | `FULL` for any refusal, no log | `report_parameter_refused`; `FULL` only for a full store, `ERROR` otherwise |

@@ -1855,7 +1855,8 @@ create_timer(NodeT&& node, ::rclcpp::Clock* clock, ::std::chrono::duration<Rep, 
 /// failure is printed (naming the node, the parameter and, for a full store,
 /// its capacity and the knob that sizes it) and recorded through `set_error`,
 /// which the entry's post-construct `ok()` check halts on. The code default is
-/// returned only so the constructor can finish. An image built with no parameter
+/// returned only so the constructor can finish. The same holds when the name
+/// already holds a value of another type. An image built with no parameter
 /// store at all (`Unsupported`) still answers the code default: no launch
 /// value can reach a node there.
 
@@ -1871,6 +1872,49 @@ inline void refuse_param_declare(Node& node, int32_t code) {
                    code);
 }
 
+/// The line printed before `PARAM_VALUE_TYPE_MISMATCH_WHAT`: the node, the
+/// parameter, the type the code declares, the value the launch/YAML gave it
+/// and what to write instead. The value is read back by trying each scalar
+/// type, because the store answers a typed get and nothing else.
+template <typename T>
+inline void report_param_value_type_mismatch(const ::nros_cpp_node_t* h, const char* node,
+                                             const char* param) {
+    const char* n = (node != nullptr) ? node : "?";
+    const char* p = (param != nullptr) ? param : "?";
+    const int declared = node_param_type<T>::value;
+    const char* want = ::rclcpp::declared_param_type_name(declared);
+    int64_t i = 0;
+    double d = 0.0;
+    bool b = false;
+    char str[64];
+    if (node_param_get(h, param, i).ok()) {
+        if (declared == ::rclcpp::param_type::DOUBLE) {
+            NROS_ERROR("node \"%s\": parameter \"%s\" is declared double but the launch value is "
+                       "the integer %lld; write %lld.0 in the YAML.",
+                       n, p, static_cast<long long>(i), static_cast<long long>(i));
+        } else {
+            NROS_ERROR("node \"%s\": parameter \"%s\" is declared %s but the launch value is the "
+                       "integer %lld; write a %s value in the YAML.",
+                       n, p, want, static_cast<long long>(i), want);
+        }
+    } else if (node_param_get(h, param, d).ok()) {
+        NROS_ERROR("node \"%s\": parameter \"%s\" is declared %s but the launch value is the "
+                   "double %g; write a %s value in the YAML.",
+                   n, p, want, d, want);
+    } else if (node_param_get(h, param, b).ok()) {
+        NROS_ERROR("node \"%s\": parameter \"%s\" is declared %s but the launch value is the "
+                   "bool %s; write a %s value in the YAML.",
+                   n, p, want, b ? "true" : "false", want);
+    } else if (node_param_get(h, param, str, sizeof(str)).ok()) {
+        NROS_ERROR("node \"%s\": parameter \"%s\" is declared %s but the launch value is the "
+                   "string \"%s\"; write a %s value in the YAML.",
+                   n, p, want, str, want);
+    } else {
+        NROS_ERROR("node \"%s\": parameter \"%s\" is declared %s but the launch value has "
+                   "another type; write a %s value in the YAML.",
+                   n, p, want, want);
+    }
+}
 } // namespace detail
 
 template <typename T> inline T Node::declare_parameter(const char* name, T default_value) {
@@ -1888,6 +1932,11 @@ template <typename T> inline T Node::declare_parameter(const char* name, T defau
     }
     T out = T();
     if (!::rclcpp::detail::node_param_get(h, name, out).ok()) {
+        if (r.raw() == RCLC_RET_ALREADY_EXISTS) {
+            ::rclcpp::detail::report_param_value_type_mismatch<T>(h, this->get_name(), name);
+            this->set_error(::rclcpp::detail::PARAM_VALUE_TYPE_MISMATCH_WHAT,
+                            ::rclcpp::detail::PARAM_VALUE_TYPE_MISMATCH);
+        }
         return default_value;
     }
     return out;
