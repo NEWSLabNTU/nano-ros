@@ -1992,6 +1992,20 @@ unsafe impl Send for ArenaRef<'_> {}
 // SAFETY: as above.
 unsafe impl Sync for ArenaRef<'_> {}
 
+/// RFC-0128 D8 (phase-554 W3 slice B) -- the open of an executor-level entity
+/// that belongs to the image's primary node, run by
+/// [`Executor::open_on_primary_node`]: with `ctx` and `arg` as installed, and
+/// the executor, whose primary node now exists (or, in a zero-node image, at
+/// the first spin -- see [`Executor::open_pending_on_configured_name`]).
+///
+/// # Safety
+/// The installer guarantees `ctx` is valid for the call.
+pub type PrimaryNodeHook = unsafe fn(
+    ctx: *mut core::ffi::c_void,
+    arg: u32,
+    executor: &mut Executor<'_>,
+) -> Result<(), NodeError>;
+
 pub struct Executor<'s> {
     /// Issue 0656 — the ROS domain this executor's entities belong to.
     ///
@@ -2615,6 +2629,12 @@ pub struct Executor<'s> {
     /// and the ring (CARVED, phase-409) with its total and dropped counters.
     /// See [`super::monitor::ViolationChannel`].
     pub(crate) violations: super::monitor::ViolationChannel<'s>,
+    /// RFC-0128 D8 (phase-554 W3 slice B) -- an executor-level entity whose
+    /// open waits for the PRIMARY node: `(hook, ctx, arg)`, installed by
+    /// [`Self::open_on_primary_node`] and taken by the node table the moment
+    /// `NodeId::PRIMARY` is registered. The `/diagnostics` reporter is armed
+    /// before any node exists, and its publisher belongs to the primary node.
+    pub(crate) primary_node_hook: Option<(PrimaryNodeHook, usize, u32)>,
     /// Issue 0790 — hooks that run BEFORE the session is closed, while every
     /// entity still works. The load-bearing half: a device releasing a bus or
     /// parking an actuator has to publish its final state / answer its last
@@ -2847,6 +2867,7 @@ impl<'s> Executor<'s> {
             total_wakes: 0,
             late_wakes_beyond_granule: 0,
             violations: super::monitor::ViolationChannel::new(monitor_violations),
+            primary_node_hook: None,
             alive_slots,
             slot_tags,
             // Issue 0790 — both phase tables start empty. An image that
@@ -3384,6 +3405,98 @@ impl<'s> Executor<'s> {
         }
     }
 
+    /// RFC-0128 D8 (phase-554 W3 slice B) -- run `hook` once this image's
+    /// primary node exists: now, if a node is already registered, otherwise
+    /// the moment `NodeId::PRIMARY` is (`NodeBuilder::build`). The hook opens
+    /// an executor-level entity, so it lands on that node through
+    /// [`Self::entity_identity`] rather than on the executor's own label.
+    ///
+    /// A failure is the REGISTRATION's failure: returned here when the node
+    /// exists, or from the `build()` that registers the primary node, which
+    /// then leaves no node behind. Never logged and dropped.
+    ///
+    /// # Safety
+    /// `ctx` must stay valid until the hook has run or this executor is
+    /// dropped.
+    pub unsafe fn open_on_primary_node(
+        &mut self,
+        hook: PrimaryNodeHook,
+        ctx: *mut core::ffi::c_void,
+        arg: u32,
+    ) -> Result<(), NodeError> {
+        if self.nodes.is_empty() {
+            self.primary_node_hook = Some((hook, ctx as usize, arg));
+            return Ok(());
+        }
+        // SAFETY: forwarded from this fn's contract.
+        unsafe { hook(ctx, arg, self) }
+    }
+
+    /// Whether an executor-level open still waits for the primary node.
+    pub fn primary_node_open_pending(&self) -> bool {
+        self.primary_node_hook.is_some()
+    }
+
+    /// The node table's half of [`Self::open_on_primary_node`]: called right
+    /// after `NodeId::PRIMARY` is pushed.
+    pub(crate) fn run_primary_node_hook(&mut self) -> Result<(), NodeError> {
+        let Some((hook, ctx, arg)) = self.primary_node_hook.take() else {
+            return Ok(());
+        };
+        // SAFETY: `open_on_primary_node`'s contract -- `ctx` is valid until
+        // the hook has run.
+        unsafe { hook(ctx as *mut core::ffi::c_void, arg, self) }
+    }
+
+    /// TEMPORARY -- phase-554 W3 slice C deletes this. A zero-node image (a
+    /// direct-API image that registers no node) never reaches
+    /// `run_primary_node_hook`, and it published its `/diagnostics` under the
+    /// executor's configured name before slice B. Losing that silently would
+    /// be a regression, so at the first spin, if an open still waits and no
+    /// node was ever registered, it runs here, under that name
+    /// (`entity_identity(None)` with no nodes). Slice C makes the configured
+    /// name the image's one node, after which the hook always fires at
+    /// registration and this path goes.
+    ///
+    /// A failure is returned from the spin, never logged.
+    pub(crate) fn open_pending_on_configured_name(&mut self) -> Result<(), NodeError> {
+        if !self.nodes.is_empty() {
+            return Ok(());
+        }
+        self.run_primary_node_hook()
+    }
+
+    /// RFC-0128 D8 -- open a raw publisher for an executor-level entity, on
+    /// the node [`Self::entity_identity`] gives `None`: the primary node, or
+    /// the configured name in an image with no node. The `/diagnostics`
+    /// reporter's publisher, which used to be a session publisher with no node
+    /// at all.
+    ///
+    /// `domain_id` is the caller's: a Rust entry passes the executor's own,
+    /// and the C++ context keeps its domain beside the executor.
+    pub fn create_executor_publisher(
+        &mut self,
+        topic: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QoSProfile,
+        domain_id: u32,
+    ) -> Result<<session::ConcreteSession as nros_rmw::Session>::PublisherHandle, NodeError> {
+        let (node_name, ns, session_idx) = self.entity_identity(None)?;
+        let mut info = TopicInfo::new(topic, type_name, type_hash)
+            .with_domain(domain_id)
+            .with_namespace(&ns);
+        if !node_name.is_empty() {
+            info = info.with_node_name(&node_name);
+        }
+        let session = self
+            .session_at_mut(session_idx)
+            .ok_or(NodeError::BackendMismatch)?;
+        session
+            .create_publisher(&info, qos)
+            .map_err(NodeError::Transport)
+    }
+
     pub fn set_node_identity(&mut self, node_name: &str, namespace: &str) {
         self.node_name.clear();
         let _ = self.node_name.push_str(node_name);
@@ -3491,9 +3604,26 @@ impl<'s> Executor<'s> {
         }
     }
 
+    /// RFC-0128 D8 (phase-554 W3 slice B) -- [`Self::resolve_entity_name_for`]
+    /// against the node the entity is REGISTERED on, as
+    /// [`Self::entity_identity`] gives it: `Some(id)` is that node, `None` the
+    /// primary node (or, in an image with no node, the configured name). The
+    /// one rule both remap resolution and announcement follow, so a name is
+    /// never resolved against one node and announced under another.
+    #[allow(clippy::result_unit_err)]
+    pub fn resolve_entity_name_on(
+        &self,
+        node_id: Option<super::node_record::NodeId>,
+        source: &str,
+    ) -> Result<crate::names::ResolvedName, ()> {
+        let (node_name, ns, _) = self.entity_identity(node_id).map_err(|_| ())?;
+        self.resolve_entity_name_for(node_name.as_str(), ns.as_str(), source)
+    }
+
     /// [`Self::resolve_entity_name_for`] against the executor's CURRENT node
-    /// identity (`set_node_identity`) — the nros-c registration sites set that
-    /// identity per node immediately before registering each entity.
+    /// identity (`set_node_identity`). The registration sites use
+    /// [`Self::resolve_entity_name_on`], which names the entity's node rather
+    /// than whichever identity was set last.
     #[allow(clippy::result_unit_err)]
     pub fn resolve_entity_name(&self, source: &str) -> Result<crate::names::ResolvedName, ()> {
         self.resolve_entity_name_for(self.node_name.as_str(), self.namespace.as_str(), source)
@@ -12624,6 +12754,26 @@ impl<'s> Executor<'s> {
         // dispatch order is bit-identical to 110.B.b for those.
         const NB: usize = super::sched_context::Priority::COUNT;
         let mut result = SpinOnceResult::new();
+        // TEMPORARY (phase-554 W3 slice C deletes it) -- a zero-node image's
+        // waiting executor-level open (`open_pending_on_configured_name`).
+        // `spin` and `spin_some` ran it already and returned its error; a bare
+        // `spin_once` reaches it here and counts it, loudly.
+        if s.primary_node_hook.is_some() && s.nodes.is_empty() {
+            if let Err(e) = s.open_pending_on_configured_name() {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros"),
+                    "spin: an executor-level publisher waiting for this image's node \
+                     (the /diagnostics reporter) could not be opened: {:?}",
+                    e
+                );
+                result.setup_errors += 1;
+                if first_error.is_none()
+                    && let NodeError::Transport(t) = e
+                {
+                    *first_error = Some(t);
+                }
+            }
+        }
         // phase-509 P2 (RFC-0108 D2) -- the FIFO half is ordered by dispatch
         // level: a bucket's reserved level, or `1 + rank` inside `Normal`, the
         // rank being the one the entry's node was seeded with. Equal levels
@@ -13931,6 +14081,9 @@ impl<'s> Executor<'s> {
             return Err(NodeError::NotInitialized);
         }
         let max_us = max.as_micros().min(u64::MAX as u128) as u64;
+
+        // TEMPORARY (phase-554 W3 slice C deletes it) -- as in `spin`.
+        self.open_pending_on_configured_name()?;
 
         // No `enter_spin_loop` here, deliberately: `is_spinning` answers "a
         // blocking loop is running that a peer's `cancel()` has to reach", and
@@ -17245,6 +17398,10 @@ impl<'s> Executor<'s> {
         // was unchecked, and the unit conversion is `Duration`'s job.
         let timeout_us = opts.timeout.map(|d| d.as_micros() as u64);
         let mut total_callbacks = 0usize;
+
+        // TEMPORARY (phase-554 W3 slice C deletes it) -- a zero-node image's
+        // waiting executor-level open, returned rather than counted.
+        self.open_pending_on_configured_name()?;
 
         // phase-417 W4.c — clears the cancel flag AND raises `is_spinning`. The
         // clear is the pre-existing behaviour (a cancel requested before this

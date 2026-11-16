@@ -1623,7 +1623,8 @@ mod tests {
             bare.max_publishers + 1,
             "~/transition_event"
         );
-        assert_eq!(lc.max_nodes, bare.max_nodes + 1, "the executor's own node");
+        // RFC-0128 D8 -- the machine lives on the component's node.
+        assert_eq!(lc.max_nodes, bare.max_nodes, "no node slot of its own");
     }
 
     // ---- phase-445 W1: the families on the cargo-leaf road ----------------

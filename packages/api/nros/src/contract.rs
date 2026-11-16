@@ -27,10 +27,10 @@ use core::{cell::UnsafeCell, ffi::c_void};
 use nros_core::RosMessage;
 use nros_diagnostics::DiagnosticArray;
 use nros_node::executor::{
-    Executor,
+    Executor, NodeError,
     monitor::{AgeMonitorSpec, MonitorSpec, Violation},
 };
-use nros_rmw::{Publisher as _, Session as _, TopicInfo, TransportError};
+use nros_rmw::Publisher as _;
 
 use crate::internals::RmwPublisher;
 
@@ -58,19 +58,22 @@ pub struct DiagSink {
 }
 
 impl DiagSink {
-    /// Create a `/diagnostics` publisher on `executor`'s session, in
-    /// `domain_id` (the executor's own for a Rust entry; the C++ context keeps
-    /// its domain beside the executor).
-    pub fn create(executor: &mut Executor<'_>, domain_id: u32) -> Result<Self, TransportError> {
-        let info = TopicInfo::new(
+    /// Create the `/diagnostics` publisher on `executor`'s PRIMARY node, in
+    /// `domain_id` (the executor's own for a Rust entry; the C++ context
+    /// keeps its domain beside the executor).
+    ///
+    /// RFC-0128 D8 (phase-554 W3 slice B): an executor-level entity, so it is
+    /// announced under the primary node (`Executor::create_executor_publisher`),
+    /// as a stock ROS 2 node publishes its own diagnostics. It used to be a
+    /// session publisher with no node, filed under the session's own name.
+    pub fn create(executor: &mut Executor<'_>, domain_id: u32) -> Result<Self, NodeError> {
+        let publisher = executor.create_executor_publisher(
             DIAG_TOPIC,
             <DiagnosticArray as RosMessage>::TYPE_NAME,
             <DiagnosticArray as RosMessage>::TYPE_HASH,
-        )
-        .with_domain(domain_id);
-        let publisher = executor
-            .session_mut()
-            .create_publisher(&info, nros_rmw::QoSProfile::default())?;
+            nros_rmw::QoSProfile::default(),
+            domain_id,
+        )?;
         Ok(Self {
             publisher,
             published: 0,
@@ -193,11 +196,10 @@ impl Default for ContractReporter {
 /// no reporter — an uncontracted image carries none of this. A reporter is
 /// armed once per `reporter`; a second install keeps the first.
 ///
-/// If the `/diagnostics` publisher cannot be created the tables stay
-/// installed and violations reach the log only — reported, not fatal, which
-/// is what `nros_cpp_install_monitors` does too (both through
-/// [`arm_reporter`]; a census run arms none). Returns `Err` only for a
-/// refused table.
+/// The `/diagnostics` publisher opens on the primary node when that node is
+/// registered, and a failure to open it fails that registration (both roads,
+/// through [`arm_reporter`]; a census run arms none). Returns `Err` only for
+/// a refused table.
 ///
 /// # Safety
 /// `executor` must be the live `*mut Executor<'static>` handle a
@@ -300,12 +302,19 @@ pub unsafe fn install_contract_modes(
 ///   never spins, so the reporter could never publish, and the recorder has no
 ///   node open yet to attribute it to — it refused the publisher, and the
 ///   C/C++ road turned that refusal into a failed setup that recorded nothing.
-/// * A publisher that cannot be created is REPORTED, never fatal: the tables
-///   stay installed and every violation still reaches the log (the
-///   floor). Both roads say so in the one message below; before this the C/C++
-///   road logged "violations stay in the log only" and then failed the setup.
+/// * The publisher opens on the image's PRIMARY node (RFC-0128 D8). Armed
+///   before any node exists -- the usual case, since the tables must precede
+///   every entity -- it opens when the primary node is registered, and a
+///   failure then fails that registration (the node's `build()` returns it).
+///   An image that registers no node opens it at its first spin instead, and
+///   `spin` returns the failure (a temporary path; see
+///   `Executor::open_pending_on_configured_name`).
+/// * Armed after a node exists, it opens now, and a publisher that cannot be
+///   created is REPORTED here, not fatal: the tables stay installed and every
+///   violation still reaches the log (the floor).
 ///
-/// Returns whether a reporter is armed after the call.
+/// Returns whether a reporter is armed (or waiting for the primary node)
+/// after the call.
 ///
 /// # Safety
 /// `slot` must not move, and must outlive every spin of `executor`, until the
@@ -316,19 +325,23 @@ pub unsafe fn arm_reporter(
     domain_id: u32,
     slot: &mut Option<DiagSink>,
 ) -> bool {
-    if slot.is_some() {
+    if slot.is_some() || executor.primary_node_open_pending() {
         return true;
     }
     if crate::census_hooks::recording_run() {
         return false;
     }
-    match DiagSink::create(executor, domain_id) {
-        Ok(sink) => {
-            let sink = slot.insert(sink);
-            // SAFETY: forwarded from this fn's contract.
-            unsafe { sink.hook(executor) };
-            true
-        }
+    // RFC-0128 D8 (phase-554 W3 slice B) -- the publisher belongs to the
+    // primary node, and the reporter is armed BEFORE any node exists (the
+    // tables must precede every entity). So the open is handed to the
+    // executor, which runs it the moment the primary node is registered: a
+    // failure then fails that node's registration, loudly. When a node is
+    // already registered it runs now, and a failure is reported here.
+    let ctx = slot as *mut Option<DiagSink> as *mut c_void;
+    // SAFETY: `slot` outlives the executor's spins (this fn's contract), so
+    // it is valid when the hook runs.
+    match unsafe { executor.open_on_primary_node(open_reporter, ctx, domain_id) } {
+        Ok(()) => true,
         Err(e) => {
             // issues 1635/1676
             nros_log::log_error!(
@@ -341,4 +354,26 @@ pub unsafe fn arm_reporter(
             false
         }
     }
+}
+
+/// The executor-run half of [`arm_reporter`]: open the publisher on the
+/// primary node, fill `slot`, and point the violation sink at it.
+///
+/// # Safety
+/// `ctx` is the `*mut Option<DiagSink>` [`arm_reporter`] installed, under its
+/// contract.
+unsafe fn open_reporter(
+    ctx: *mut c_void,
+    domain_id: u32,
+    executor: &mut Executor<'_>,
+) -> Result<(), NodeError> {
+    let slot = unsafe { &mut *(ctx as *mut Option<DiagSink>) };
+    if slot.is_some() {
+        return Ok(());
+    }
+    let sink = slot.insert(DiagSink::create(executor, domain_id)?);
+    // SAFETY: `slot` does not move and outlives the executor's spins
+    // (`arm_reporter`'s contract).
+    unsafe { sink.hook(executor) };
+    Ok(())
 }
