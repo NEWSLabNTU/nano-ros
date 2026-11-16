@@ -38,6 +38,7 @@ fn main() {
     // (`_nros_resolve_derivable_knob`), and only the NEEDS facts by these names.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_STRING_VALUE_LEN");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_ARRAY_LEN");
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_STRING_ARRAY_LEN");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_BYTE_ARRAY_LEN");
 
     // phase-460 W2 (issue 1421) -- and the inventory's VERDICT, when a road
@@ -83,6 +84,19 @@ fn main() {
         rungs.max_array_len,
         declared("NROS_DECLARED_MAX_ARRAY_LEN"),
         need(params.map(|p| p.needs_max_array_len())),
+        32,
+    );
+    // Issue 2647 -- a `string_array`'s element count is its OWN bound. The
+    // variant is `Vec<String<S>, SA>`, the product of two bounds, and every
+    // slot is as large as the largest variant; sharing `MAX_ARRAY_LEN` made a
+    // `string` plus a `double_array` (each need sizing one bound) cost 32 x
+    // 256 B in every slot when nothing declared a string array at all.
+    let max_string_array_len = capacity(
+        "NROS_MAX_STRING_ARRAY_LEN",
+        "max_string_array_len",
+        rungs.max_string_array_len,
+        declared("NROS_DECLARED_MAX_STRING_ARRAY_LEN"),
+        need(params.map(|p| p.needs_max_string_array_len())),
         32,
     );
     let max_byte_array_len = capacity(
@@ -191,6 +205,11 @@ fn main() {
          (set via NROS_MAX_ARRAY_LEN, default 32).\n\
          pub const MAX_ARRAY_LEN: usize = {max_array_len};\n\
          \n\
+         /// Maximum elements in a string-array parameter \
+         (set via NROS_MAX_STRING_ARRAY_LEN, default 32); each element is \
+         bounded by `MAX_STRING_VALUE_LEN`.\n\
+         pub const MAX_STRING_ARRAY_LEN: usize = {max_string_array_len};\n\
+         \n\
          /// Maximum length for byte array parameters \
          (set via NROS_MAX_BYTE_ARRAY_LEN, default 256).\n\
          pub const MAX_BYTE_ARRAY_LEN: usize = {max_byte_array_len};\n\
@@ -239,7 +258,7 @@ fn main() {
     } else {
         format!(
             "{implied_store_slots}x{max_param_name_len}.{max_string_value_len}.{max_array_len}.\
-             {max_byte_array_len}.{max_param_description_len}.{max_param_constraints_len}"
+             {max_string_array_len}.{max_byte_array_len}.{max_param_description_len}.{max_param_constraints_len}"
         )
     };
     println!("cargo:store_shape={store_shape}");

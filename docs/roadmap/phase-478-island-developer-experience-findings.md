@@ -659,6 +659,17 @@ its `nros` on PATH. Every recipe that builds a pyo3 crate now pins
 and `just check pyo3-path-stable` holds a prepended PATH entry to a Fresh
 pyo3-ffi.
 
+### I26 -- a string array's element count is its own bound
+
+**Status: IN PROGRESS (2026-11-16).** [Issue 2647](../issues/2647-param-slot-sized-by-string-array.md).
+A store slot is as large as its largest value, the string array, and that was
+the product of the string length and the ARRAY length. So an image with a
+`string` and a `double_array`, and no string array, paid 32 x 256 B in every
+slot: 285,696 B at 32 slots against 23,552 B without the product. The string
+array now has its own element bound, `MAX_STRING_ARRAY_LEN`, derived to 0
+unless a `string_array` is declared. Follow-ups: issues 2649 (a shared string
+arena) and 2650 (the per-slot description).
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -777,6 +788,10 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       `just check codegen-tool-cache` (issue 2652).
 - [x] I25: a PATH change leaves pyo3-ffi Fresh in every recipe that builds a
       pyo3 crate; `check pyo3-path-stable` with an unpinned control (issue 2660).
+- [ ] I26: a `string_array`'s element count is `MAX_STRING_ARRAY_LEN`, derived
+      from a `string_array` declaration; `ParameterValue` is no larger than its
+      largest variant with that bound (unit test), and `just mem-report` before and
+      after on a string + `double_array` image is recorded in issue 2647.
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -812,6 +827,9 @@ Filed from the Autoware Safety Island's phase-15 P3 on nano-ros 5b9e8844a4.
 
 - [issue 2652](../issues/archived/2652-codegen-tool-cache-outlives-invoker.md) (GitHub #4067, resolved): a build dir kept the cached `nros` codegen tool after a different `nros build` ran into it (I24). Found on nano-ros 09219edc75.
 - [issue 2662](../issues/archived/2662-parity-params-bulk-on-alpha.md) (GitHub #4091, resolved): two ros2_cli parity params cases failed once issue 2639's 70 bulk parameters were on `/alpha`, the node they compare with stock (I22).
+- [issue 2647](../issues/2647-param-slot-sized-by-string-array.md): every parameter slot was sized for a 32 x 256 B string array when the image declared a string and any array, with no string array (I26).
+- [issue 2649](../issues/2649-param-string-array-shared-arena.md): once a string array is declared, every slot still pays its product; a shared string arena (follow-up to I26).
+- [issue 2650](../issues/2650-param-descriptor-description-per-slot.md): every slot carries a 256 B description, about 15 KB at 32 slots (follow-up to I26).
 - [issue 2639](../issues/archived/2639-list-parameters-silently-caps-at-64.md) (resolved): `ros2 param list` and `ros2 param dump` showed 64 of the controller's 149 parameters and said nothing (I22).
 - [issue 2638](../issues/archived/2638-launch-list-param-flattened-to-string.md) (resolved): a list parameter from a `<param from>` file reached the node as one comma-joined string (I20).
 - [issue 2640](../issues/2640-metadata-probe-no-launch-values.md): the C/C++ metadata probe constructs a node with no launch values and a default-size store, so a node declaring parameters without defaults cannot be probed.

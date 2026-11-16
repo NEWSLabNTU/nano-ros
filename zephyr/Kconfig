@@ -1768,8 +1768,9 @@ config NROS_MAX_ARRAY_LEN
     int
     default -1
     help
-      Elements a `bool_array`, `integer_array`, `double_array` or
-      `string_array` parameter can hold (nros-params build.rs).
+      Elements a `bool_array`, `integer_array` or `double_array` parameter
+      can hold (nros-params build.rs). A `string_array` has its own element
+      bound, MAX_STRING_ARRAY_LEN.
 
       -1 DERIVES 0 when the contract's `params:` declare none of those
       types. When one is declared, state a number here; the build refuses,
@@ -1857,6 +1858,24 @@ config NROS_MAX_PARAM_NAME_LEN
       -1 DERIVES it from the contract's `params:` -- the longest declared
       name, and never shorter than `use_sim_time`. Without a declaration
       the crate default of 64 stands.
+
+
+# prompt: String-array parameter capacity in elements (-1 = derive)
+config NROS_MAX_STRING_ARRAY_LEN
+    int
+    default -1
+    help
+      Elements a `string_array` parameter can hold (nros-params build.rs);
+      each element is bounded by MAX_STRING_VALUE_LEN. A string array is
+      the largest value a slot can hold (elements x string length), and
+      every slot is as large as the largest value, so this bound is kept
+      apart from MAX_ARRAY_LEN: an image with a `string` and a
+      `double_array` but no `string_array` pays for neither product.
+
+      -1 DERIVES 0 when the contract's `params:` declare no `string_array`.
+      When one is declared, state a number here; the build refuses, naming
+      the parameter and this knob, if nothing does. Without a declaration
+      the crate default of 32 stands.
 
 
 # prompt: String parameter capacity in bytes (-1 = derive)

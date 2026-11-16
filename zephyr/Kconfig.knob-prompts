@@ -76,6 +76,9 @@ config NROS_MAX_PARAM_DESCRIPTION_LEN
 config NROS_MAX_PARAM_NAME_LEN
     int "Longest parameter name in bytes (-1 = derive)"
 
+config NROS_MAX_STRING_ARRAY_LEN
+    int "String-array parameter capacity in elements (-1 = derive)"
+
 config NROS_MAX_STRING_VALUE_LEN
     int "String parameter capacity in bytes (-1 = derive)"
 

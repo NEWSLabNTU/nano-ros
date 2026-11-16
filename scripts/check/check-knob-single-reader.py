@@ -116,6 +116,7 @@ OWNERS: dict[str, str] = {
     "NROS_MAX_PARAM_NAME_LEN": "packages/core/nros-params/build.rs",
     "NROS_MAX_STRING_VALUE_LEN": "packages/core/nros-params/build.rs",
     "NROS_MAX_ARRAY_LEN": "packages/core/nros-params/build.rs",
+    "NROS_MAX_STRING_ARRAY_LEN": "packages/core/nros-params/build.rs",
     "NROS_MAX_BYTE_ARRAY_LEN": "packages/core/nros-params/build.rs",
     "NROS_MAX_PARAM_DESCRIPTION_LEN": "packages/core/nros-params/build.rs",
     # phase-417 W4.a -- the descriptor's OTHER free text. Its own capacity,
@@ -681,6 +682,7 @@ KEPT = {
     # ---- the parameter store (was 1408, then 1407; the road is D12's) ----
     "NROS_DECLARED_MAX_STRING_VALUE_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
     "NROS_DECLARED_MAX_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
+    "NROS_DECLARED_MAX_STRING_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
     "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),
     # ---- QoS depth ---------------------------------------------------------
     # `NROS_DECLARED_MAX_QOS_DEPTH` is RETIRED above (issue 1655). Its sibling

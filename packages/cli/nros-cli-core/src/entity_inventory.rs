@@ -3059,28 +3059,34 @@ pub struct ParamStoreSizing {
     pub max_param_name_len: usize,
     /// `NROS_MAX_STRING_VALUE_LEN` -- `string` and `string_array`.
     pub string_value_len: ParamCapacity,
-    /// `NROS_MAX_ARRAY_LEN` -- every array type except `byte_array`.
+    /// `NROS_MAX_ARRAY_LEN` -- `bool_array`, `integer_array`, `double_array`.
     pub array_len: ParamCapacity,
+    /// `NROS_MAX_STRING_ARRAY_LEN` -- `string_array`'s element count, its own
+    /// bound (issue 2647) so a `string` beside a `double_array` does not size
+    /// every slot for their product.
+    pub string_array_len: ParamCapacity,
     /// `NROS_MAX_BYTE_ARRAY_LEN` -- `byte_array`.
     pub byte_array_len: ParamCapacity,
 }
 
-/// The three capacity knobs, the name each goes by, and which types use it.
+/// The four capacity knobs, the name each goes by, and which types use it.
 /// ONE table, read by the derivation and by every renderer, so a knob cannot
 /// be derived under one name and delivered under another.
-pub const PARAM_CAPACITY_KNOBS: [&str; 3] = [
+pub const PARAM_CAPACITY_KNOBS: [&str; 4] = [
     "MAX_STRING_VALUE_LEN",
     "MAX_ARRAY_LEN",
+    "MAX_STRING_ARRAY_LEN",
     "MAX_BYTE_ARRAY_LEN",
 ];
 
 impl ParamStoreSizing {
     /// `(knob suffix, capacity)` in [`PARAM_CAPACITY_KNOBS`] order.
-    pub fn capacities(&self) -> [(&'static str, &ParamCapacity); 3] {
+    pub fn capacities(&self) -> [(&'static str, &ParamCapacity); 4] {
         [
             (PARAM_CAPACITY_KNOBS[0], &self.string_value_len),
             (PARAM_CAPACITY_KNOBS[1], &self.array_len),
-            (PARAM_CAPACITY_KNOBS[2], &self.byte_array_len),
+            (PARAM_CAPACITY_KNOBS[2], &self.string_array_len),
+            (PARAM_CAPACITY_KNOBS[3], &self.byte_array_len),
         ]
     }
 }
@@ -3333,12 +3339,8 @@ impl ParamDeclarations {
             max_parameters,
             max_param_name_len,
             string_value_len: first(|t| matches!(t, T::String | T::StringArray)),
-            array_len: first(|t| {
-                matches!(
-                    t,
-                    T::BoolArray | T::IntegerArray | T::DoubleArray | T::StringArray
-                )
-            }),
+            array_len: first(|t| matches!(t, T::BoolArray | T::IntegerArray | T::DoubleArray)),
+            string_array_len: first(|t| matches!(t, T::StringArray)),
             byte_array_len: first(|t| matches!(t, T::ByteArray)),
         })
     }
@@ -9531,6 +9533,7 @@ mod from_model_tests {
             "set(NROS_DERIVED_MAX_PARAM_NAME_LEN 35)\n",
             "set(NROS_DERIVED_MAX_STRING_VALUE_LEN 0)\n",
             "set(NROS_DERIVED_MAX_ARRAY_LEN 0)\n",
+            "set(NROS_DERIVED_MAX_STRING_ARRAY_LEN 0)\n",
             "set(NROS_DERIVED_MAX_BYTE_ARRAY_LEN 0)\n",
         ] {
             assert!(c.contains(line), "missing {line:?} in:\n{c}");
@@ -9569,7 +9572,8 @@ mod from_model_tests {
     }
 
     /// Each capacity answers to its own types: `string_array` needs a string
-    /// length AND an array length, `byte_array` only the byte-array length.
+    /// length AND its own element count (not `MAX_ARRAY_LEN`, issue 2647),
+    /// `byte_array` only the byte-array length.
     #[test]
     fn each_array_type_asks_for_the_capacities_it_uses() {
         let a: &[(&str, &str)] = &[("names", "string_array")];
@@ -9577,7 +9581,8 @@ mod from_model_tests {
         let m = param_model(&["/a", "/b"], &[("/a", a), ("/b", b)]);
         let z = ParamDeclarations::from_model(&m).sizing().unwrap();
         assert!(matches!(z.string_value_len, ParamCapacity::NeededBy(ref p) if p.name == "names"));
-        assert!(matches!(z.array_len, ParamCapacity::NeededBy(ref p) if p.name == "names"));
+        assert_eq!(z.array_len, ParamCapacity::Unused);
+        assert!(matches!(z.string_array_len, ParamCapacity::NeededBy(ref p) if p.name == "names"));
         assert!(matches!(z.byte_array_len, ParamCapacity::NeededBy(ref p) if p.name == "blob"));
 
         let i: &[(&str, &str)] = &[("gains", "double_array")];
@@ -9585,6 +9590,7 @@ mod from_model_tests {
         let z = ParamDeclarations::from_model(&m).sizing().unwrap();
         assert_eq!(z.string_value_len, ParamCapacity::Unused);
         assert!(matches!(z.array_len, ParamCapacity::NeededBy(_)));
+        assert_eq!(z.string_array_len, ParamCapacity::Unused);
         assert_eq!(z.byte_array_len, ParamCapacity::Unused);
     }
 

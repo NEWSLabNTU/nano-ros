@@ -159,7 +159,12 @@ pub enum ParameterValue {
     /// Double array value
     DoubleArray(Vec<f64, MAX_ARRAY_LEN>),
     /// String array value (array of fixed-size strings)
-    StringArray(Vec<String<MAX_STRING_VALUE_LEN>, MAX_ARRAY_LEN>),
+    ///
+    /// Its element count is its OWN bound, [`MAX_STRING_ARRAY_LEN`], not
+    /// [`MAX_ARRAY_LEN`] (issue 2647): this variant is the product of two
+    /// bounds and sizes every slot, so it is paid only by an image that
+    /// declares a string array.
+    StringArray(Vec<String<MAX_STRING_VALUE_LEN>, MAX_STRING_ARRAY_LEN>),
 }
 
 impl ParameterValue {
@@ -1467,6 +1472,43 @@ mod issue_0323_tests {
         );
     }
 
+    /// Issue 2647 -- a value is as large as its largest variant, and the
+    /// string array is the product of two bounds. Its element count is
+    /// `MAX_STRING_ARRAY_LEN`, never `MAX_ARRAY_LEN`, so an image with a
+    /// `string` and a `double_array` but no `string_array` (which derives
+    /// `MAX_STRING_ARRAY_LEN = 0`) does not pay their product in every slot.
+    #[test]
+    fn a_value_is_sized_by_the_string_array_bound_not_the_array_bound() {
+        use core::mem::size_of;
+        let string_array = size_of::<Vec<String<MAX_STRING_VALUE_LEN>, MAX_STRING_ARRAY_LEN>>();
+        let largest_other = [
+            size_of::<String<MAX_STRING_VALUE_LEN>>(),
+            size_of::<Vec<bool, MAX_ARRAY_LEN>>(),
+            size_of::<Vec<i64, MAX_ARRAY_LEN>>(),
+            size_of::<Vec<f64, MAX_ARRAY_LEN>>(),
+            size_of::<Vec<u8, MAX_BYTE_ARRAY_LEN>>(),
+        ]
+        .into_iter()
+        .max()
+        .unwrap();
+        // The enum adds at most a tag and its alignment to its largest variant.
+        let bound = string_array.max(largest_other) + 16;
+        assert!(
+            size_of::<ParameterValue>() <= bound,
+            "ParameterValue is {} B, more than its largest variant ({} B) plus a tag",
+            size_of::<ParameterValue>(),
+            string_array.max(largest_other)
+        );
+        // And the string-array variant uses ITS bound: no element count but
+        // `MAX_STRING_ARRAY_LEN` fits, whatever `MAX_ARRAY_LEN` is.
+        let strings: alloc::vec::Vec<alloc::string::String> =
+            (0..MAX_STRING_ARRAY_LEN).map(|_| "w".into()).collect();
+        assert!(strings.clone().try_to_parameter_value().is_ok());
+        let mut over = strings;
+        over.push("w".into());
+        assert!(over.try_to_parameter_value().is_err());
+    }
+
     /// The array case: `unwrap_or_default()` yielded an EMPTY array.
     #[test]
     fn oversize_integer_array_is_rejected_not_silently_empty() {
@@ -1483,8 +1525,9 @@ mod issue_0323_tests {
     /// `Vec<String>` silently SKIPPED elements that did not fit.
     #[test]
     fn oversize_string_array_element_is_rejected_not_skipped() {
-        let big: alloc::vec::Vec<alloc::string::String> =
-            (0..(MAX_ARRAY_LEN + 1)).map(|i| i.to_string()).collect();
+        let big: alloc::vec::Vec<alloc::string::String> = (0..(MAX_STRING_ARRAY_LEN + 1))
+            .map(|i| i.to_string())
+            .collect();
         assert!(big.try_to_parameter_value().is_err());
     }
 
