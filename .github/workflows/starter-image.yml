@@ -10,7 +10,8 @@
 #
 # Three things a run can do, and only these:
 #
-#   build `starter`         on every release (workflow_call), tag `<ver>`;
+#   build `starter`         on every release (workflow_call), tag `<ver>`, and
+#                           on dispatch for a release whose image failed;
 #   build `starter-zephyr`  on dispatch only (RFC-0127 Q4), tag `<ver>-zephyr`;
 #   retag                   on dispatch: point a semester or LTS tag
 #                           (`2027-spring`) at an existing `<ver>`, the
@@ -65,6 +66,11 @@ on:
         required: false
         default: ""
         type: string
+      scripts_from_main:
+        description: "build a released version's image with main's context writer (the tag's book, index and sources); for a release whose own writer cannot write its context (issue 2635)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -93,6 +99,26 @@ jobs:
         with:
           # The release's tree, not main's: its index and its install.sh.
           ref: nros-${{ inputs.version }}
+
+      # Issue 2635, user ruling 2026-11-16: a release's tag is immutable, so a
+      # tag whose own context writer cannot write its context (0.6.0-nros11:
+      # the step reader refused the book's split step 34) is built with
+      # main's writer over the tag's tree. ONLY the writer comes from main;
+      # the book it reads, the index, install.sh and every copied input stay
+      # the tag's, so the image is still that release's. Both revisions go in
+      # the labels below.
+      - name: Take the context writer from main
+        id: scripts
+        if: ${{ inputs.scripts_from_main == true }}
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin main
+          writer=(scripts/ci/starter-image.sh scripts/ci/image-context.sh
+                  scripts/ci/lib/image-context.sh scripts/probe/extract-book-steps.py
+                  scripts/lib/book_tabs.py)
+          git checkout FETCH_HEAD -- "${writer[@]}"
+          echo "context writer from main $(git rev-parse FETCH_HEAD): ${writer[*]}"
+          echo "rev=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Name the tag
         id: tag
@@ -150,7 +176,8 @@ jobs:
               -- --build-arg 'NROS_VERSION=${{ inputs.version }}' \
                  --label 'org.opencontainers.image.source=https://github.com/${{ github.repository }}' \
                  --label 'org.opencontainers.image.version=${{ inputs.version }}' \
-                 --label "org.opencontainers.image.revision=$(git rev-parse HEAD)"
+                 --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
+                 ${{ steps.scripts.outputs.rev && format('--label io.nano-ros.context-writer-revision={0}', steps.scripts.outputs.rev) || '' }}
 
       - name: Push
         run: |

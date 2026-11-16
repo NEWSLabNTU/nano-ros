@@ -242,6 +242,32 @@ def extract_blocks(path: Path):
     return steps, expects
 
 
+def order_body(steps, order, where):
+    """One `probe=NN` step's shell, for a caller that reads a page's setup
+    steps itself rather than through `main` (the starter image's context
+    writer, `scripts/ci/lib/image-context.sh`).
+
+    The same rule `main` applies: every block of the page under one order is
+    ONE step, joined in page order, so a command, the `file=` block it writes
+    and the command that uses it stay one step however the page splits them
+    (#3989 split the native_sim starter's west workspace step into three and
+    the image's own one-block reader refused the release's image). A block
+    inside a language tab is refused, since a reader that picks no language
+    cannot choose between tabs, and so is a step with no block at all."""
+    found = [s for s in steps if s.get("kind", "step") == "step" and s["order"] == order]
+    if not found:
+        sys.exit(f"{where}: no probe={order} block")
+    tabbed = [s for s in found if s.get("lang")]
+    if tabbed:
+        sys.exit(f"{where}:{tabbed[0]['lineno']}: probe={order} is inside a language tab; "
+                 "a setup step every language shares must be untabbed")
+    runs = [s for s in found[:-1] if s.get("run") is not None]
+    if runs:
+        sys.exit(f"{where}:{runs[0]['lineno']}: step {order} continues after its `probe-run` "
+                 "block; only a step's last block may run")
+    return "\n".join(s["body"] for s in found)
+
+
 def main():
     if sys.argv[1:] == ["--self-test"]:
         self_test()
@@ -596,6 +622,31 @@ def self_test() -> None:
     rc, ex = extract("```bash probe=10 probe-run=5\nros2 topic echo /chatter\n```\n"
                      "```text probe-expect=10\ndata: 'Hello World: …'\n```\n")
     assert rc == 0 and shlex.quote("data: 'Hello World:") in ex, ex
+    # order_body: a reader of setup steps gets the same one-step join.
+    with tempfile.TemporaryDirectory() as d:
+        pg = Path(d) / "p.md"
+        pg.write_text("```bash probe=34\nmkdir -p m && cd m\n```\ntext\n"
+                      "```yaml probe=34 file=manifest/west.yml\nmanifest: {}\n```\n"
+                      "```bash probe=34\nwest init -l manifest\n```\n```bash probe=36\nnext\n```\n")
+        st, _ = extract_blocks(pg)
+        b34 = order_body(st, 34, str(pg))
+        assert b34.index("mkdir -p m") < b34.index("cat > manifest/west.yml") < b34.index("west init"), b34
+        assert "next" not in b34 and order_body(st, 36, str(pg)) == "next", b34
+        for text, msg in (
+            ("```bash probe=10\na\n```\n", "no probe=34 block"),
+            ("<!-- tabs -->\n\n#### Rust\n\n```bash probe=34\na\n```\n\n#### C\n\n"
+             "```bash probe=34\nb\n```\n\n<!-- /tabs -->\n", "inside a language tab"),
+            ("```bash probe=34 probe-run=5\na\n```\n```bash probe=34\nb\n```\n",
+             "only a step's last block may run"),
+        ):
+            pg.write_text(text)
+            st, _ = extract_blocks(pg)
+            try:
+                order_body(st, 34, str(pg))
+            except SystemExit as e:
+                assert msg in str(e), (msg, e)
+            else:
+                raise AssertionError(f"order_body accepted a page it must refuse ({msg})")
     print("extract-book-steps: self-test OK")
 
 

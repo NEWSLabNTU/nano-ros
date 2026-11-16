@@ -649,10 +649,13 @@ DOCKEREOF
 }
 
 # The book's Zephyr steps, as the scripts the `starter-zephyr` stage runs:
-# the `probe=` blocks of the native_sim starter, each rewritten only where an
-# image is not a reader's machine. Every rewrite must match EXACTLY ONCE, so a
-# book edit that moves one fails the context write instead of building
-# something the page no longer says.
+# the `probe=` steps of the native_sim starter, each rewritten only where an
+# image is not a reader's machine. A step is every block of its order, joined
+# in page order (`order_body` in scripts/probe/extract-book-steps.py, the
+# probe's own rule). Every rewrite must match EXACTLY ONCE, so a book edit that
+# moves one fails the context write instead of building something the page no
+# longer says; `just check starter-image-context` writes it on every PR, and
+# the release dry run writes it before anything is published (issue 2635).
 _nros_starter_zephyr_steps() {
     local ctx="$1"
     python3 - "$REPO_ROOT" "$ctx" <<'PYEOF'
@@ -665,14 +668,11 @@ ebs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ebs)
 page = root / "book/src/starters/zephyr-native-sim.md"
 steps, _ = ebs.extract_blocks(page)
-by_order = {}
-for st in steps:
-    by_order.setdefault(st["order"], []).append(st)
 def block(order):
-    found = by_order.get(order, [])
-    if len(found) != 1:
-        sys.exit(f"{page}: expected one untabbed probe={order} block, found {len(found)}")
-    return found[0]["body"]
+    # One step = every block of that order, in page order; the probe's own
+    # rule, from the probe's own helper (#3989 split step 34 into three blocks,
+    # and a one-block reader here refused the 0.6.0-nros11 image).
+    return ebs.order_body(steps, order, str(page))
 def subst(body, order, pairs):
     for old, new in pairs:
         n = body.count(old)

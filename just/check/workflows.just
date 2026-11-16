@@ -469,6 +469,18 @@ process-deadline:
 runner-context-golden:
     @bash scripts/check/check-runner-context-golden.sh
 
+# Issue 2635 — the STARTER image's context is written from the book, so a book
+# edit can break it, and nothing wrote it before a release: #3989 split the
+# Zephyr starter's step 34 into three blocks, the one-block reader refused it,
+# and the 0.6.0-nros11 images failed after the release had published. This
+# writes the context for the current tree (no engine, no network, ~1 s) and
+# asserts each Zephyr step script exists, is non-empty, and that the
+# Dockerfile names both targets, after the step reader's own negative controls
+# (`order_body`'s refusals, `extract-book-steps.py`'s self-test).
+[private]
+starter-image-context:
+    @python3 scripts/check/check-starter-image-context.py
+
 [private]
 runner-doctor-sdk-resolution:
     @bash scripts/ci/runner-doctor.sh --self-test
