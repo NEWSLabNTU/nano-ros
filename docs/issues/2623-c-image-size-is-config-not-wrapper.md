@@ -6,7 +6,7 @@ type: performance
 severity: medium
 area: [build, memory, api, freertos]
 found: 2026-11-16
-related: [0425, 1146, 1197, 1624, 1657]
+related: [0425, 1146, 1197, 1624, 1657, 2624]
 ---
 
 **Owner:** unassigned (the fix options below are a design discussion with the
@@ -163,3 +163,38 @@ Rust image is the largest:
 Options 1 and 2 together take a C talker from 631,440 B flash and 3.34 MB RAM
 to about 424 KB and 0.91 MB, below the Rust image on flash and level with it
 on RAM.
+
+## Progress
+
+**Option 2 landed (2026-11-16, maintainer-approved).** `nano-ros-freertos.cmake`
+selects `NROS_FREERTOS_HEAP_DEFAULT_ZENOH` for a zenoh image, and
+`FreeRTOSConfig.h` sizes it as `NROS_FREERTOS_ZENOH_HEAP_KB` = 512. That is the
+cargo road's `default_heap_bytes` at the C/C++ carrier's 64 KiB app stack, not
+at the Rust road's 128 KiB, so it is 512 KiB rather than the 704 KiB estimated
+above: −2,621,440 B of RAM per image (3,145,728 → 524,288).
+`freertos_config::tests::the_header_states_the_derived_zenoh_default` holds the
+literal to the derivation and to 1.4x the tutorial's measured 251,496 B.
+Measured on QEMU mps2-an385 against `rmw_zenohd`: the `--lang c` talker
+template boots with `ucHeap` at 524,288 B, prints
+`heap peak 91888 of 524288 bytes`, and publishes 80 messages in 84 s.
+Two deeper in-tree images on the same default: `examples/workspaces/c`'s
+`demo_bringup:freertos` (talker + listener in one image) peaks at 95,744 B and
+delivers to itself, and `examples/workspaces/realtime-cpp`'s
+`demo_bringup:freertos` (three sched tasks, the deepest C++ FreeRTOS image)
+peaks at 100,728 B with every task ticking. The tutorial's chapter 1-7 C
+project (six nodes: talker, listener, service server and client, action server
+and client), replayed from the book's `probe=` blocks with
+`scripts/probe/extract-book-steps.py --track installed --variant qemu --lang c`
+and booted the same way, prints `heap peak 251552 of 524288 bytes (272736
+free)`: 2.08x, 52 % free. In that run the listener heard every reading, the
+client got its sum and the action client got its full Fibonacci result.
+
+Swept for the same pattern on the other platforms' cmake roads: none. ThreadX
+sizes its byte pool with one literal (`BYTE_POOL_BASE_SIZE`, 4 MiB) on BOTH
+roads. That is not a road split, but it is the same "fixed literal, not
+derived" shape, so it is filed as [issue 2624](2624-threadx-byte-pool-base-is-a-literal.md)
+and not changed here. Zephyr and NuttX take their
+heaps from Kconfig on every road, and freertos-posix uses heap_3 over the host
+`malloc`.
+
+Options 1 and 3 are still open.

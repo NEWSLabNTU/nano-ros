@@ -451,6 +451,39 @@ mod tests {
         }
     }
 
+    /// Issue 2623 -- the cmake road's zenoh default is this module's own
+    /// zenoh derivation at the C/C++ carrier's app stack, and it still holds
+    /// the largest C/C++ zenoh heap peak measured: the tutorial's six-node
+    /// project, 251,496 bytes, with the zenoh term's margin.
+    #[test]
+    fn the_header_states_the_derived_zenoh_default() {
+        let header = include_str!("../../nros-board-freertos/config/FreeRTOSConfig.h");
+        let kb: usize = header
+            .lines()
+            .find_map(|l| {
+                l.trim()
+                    .strip_prefix("#define NROS_FREERTOS_ZENOH_HEAP_KB")
+                    .map(|rest| rest.trim().parse().expect("a decimal KiB literal"))
+            })
+            .expect("FreeRTOSConfig.h defines NROS_FREERTOS_ZENOH_HEAP_KB");
+        let derived = default_heap_bytes(C_CARRIER_APP_STACK_BYTES);
+        assert_eq!(
+            kb * 1024,
+            derived,
+            "FreeRTOSConfig.h's cmake-road zenoh heap default is not the derivation"
+        );
+        const TUTORIAL_PEAK: usize = 251_496;
+        assert!(
+            derived * 10 >= TUTORIAL_PEAK * 14,
+            "{derived} bytes leave the tutorial's measured peak under 1.4x"
+        );
+        let cmake = include_str!("../../../../cmake/platform/nano-ros-freertos.cmake");
+        assert!(
+            cmake.contains("NROS_FREERTOS_HEAP_DEFAULT_ZENOH=1"),
+            "nano-ros-freertos.cmake no longer selects the zenoh default"
+        );
+    }
+
     #[test]
     fn the_header_states_the_derived_dds_default() {
         let header = include_str!("../../nros-board-freertos/config/FreeRTOSConfig.h");

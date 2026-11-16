@@ -243,9 +243,11 @@ endif()
 # board build.rs, so `FreeRTOSConfig.h`'s default is the whole answer whatever
 # the RMW. A Cyclone / XRCE image takes the MEASURED DDS derivation
 # (`NROS_FREERTOS_DDS_HEAP_KB`, held to `default_dds_heap_bytes` by a unit test
-# in nros-board-common); a zenoh image keeps the header's fallback, which is the
-# one this road has run on (issue 1657 records why it was not re-derived here).
-# A selector rather than a number, so the number has one home: the header.
+# in nros-board-common); a zenoh image takes `NROS_FREERTOS_ZENOH_HEAP_KB`, the
+# cargo road's `default_heap_bytes` at the carrier's app stack, held to it the
+# same way (issue 2623: the 3 MiB fallback it replaced was 2.5 MiB of RAM no
+# image used). A selector rather than a number, so the number has one home:
+# the header.
 # On `freertos_config`, because every TU that reads `configTOTAL_HEAP_SIZE`
 # must agree on it (issue 1197). An explicit `NROS_FREERTOS_HEAP_KB` still wins over both.
 # ---------------------------------------------------------------------------
@@ -257,6 +259,8 @@ string(TOLOWER "${NROS_RMW}" _nros_freertos_rmw)
 # to say it.
 if(TARGET freertos_config AND _nros_freertos_rmw MATCHES "^(cyclonedds|xrce)$")
     nros_freertos_config_define(NROS_FREERTOS_HEAP_DEFAULT_DDS=1)
+elseif(TARGET freertos_config AND _nros_freertos_rmw STREQUAL "zenoh")
+    nros_freertos_config_define(NROS_FREERTOS_HEAP_DEFAULT_ZENOH=1)
 endif()
 
 # ---------------------------------------------------------------------------
