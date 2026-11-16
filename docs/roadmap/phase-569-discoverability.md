@@ -2,7 +2,9 @@
 
 **Status (2026-11-17). PROPOSED: W1–W10 are open, and nothing is built.**
 Implements [RFC-0133](../design/0133-discoverability.md), a draft written for
-the user's review. The request came from the user through the manager on
+the user's review. The user answered its five open questions on 2026-11-17
+(RFC-0133 "Decisions"); work starts when the user approves the RFC as a
+whole. The request came from the user through the manager on
 2026-11-17: a discoverability campaign in the style of `ros2 pkg list` and
 `ros2 interface list`, plus dynamic shell completion. Owner: the docs/UX
 session, until the user approves the RFC and the manager assigns the items.
@@ -78,13 +80,17 @@ them).
 `build/nros/sizing/<entry>.toml`, the pools, heap, stack and features the
 build derived, with the reason for each: the knob or the plan fact it came
 from. The sizing descriptor gains a `because` field per derived value,
-written where the value is derived. A value without one prints
+written where the value is derived. Reasons land in this order: first the
+pthread condition-variable and mutex pools, the executor backing, the
+parameter store slots, the Zephyr heap, and the stack setting against the
+floor the stack check measured; then the entity pools. A value without one
+prints
 "(no reason recorded)", and a test counts those so the number only goes
 down. With no descriptor, or one older than the image's inputs, the command
 names `nros configure` and runs nothing.
 
-Acceptance: a configured Linux-host image shows its executor pools with a
-reason each; an unconfigured one names `nros configure` and exits non-zero
+Acceptance: a configured image shows each of the first-wave values above
+with a reason; an unconfigured one names `nros configure` and exits non-zero
 without building.
 
 ### W4 — dynamic completion and its registration
@@ -96,18 +102,26 @@ Enable clap_complete's `unstable-dynamic`, pinned to an exact version.
 toolchain-pin redispatch. `ArgValueCandidates` on every name argument
 (boards, RMWs, platforms, packages, images, knobs, interface types,
 templates, codes, toolchains) and `SubcommandCandidates` for extension
-verbs, each calling only cheap sources and the provider cache (RFC-0133 D7).
+verbs, each calling only compiled-in tables, file reads and the completion
+cache `build/nros/complete.json`, which `nros build` and `nros configure`
+rewrite from the scans they already run (RFC-0133 D7).
 
 `nros completions [<shell>]` prints the registration line for the shell, and
 `--static` keeps today's generated script. The dead `run()` stub goes.
-`install.sh` and the end of `nros setup` print the line for the user's shell.
+`install.sh` prints the line for the user's shell. `nros setup` prints it
+once, after its first successful run, and records that in `$NROS_HOME` so
+it never repeats.
 `activate.sh` and `activate.fish` source the glue for interactive shells.
 Install gains a "Turn on completion" step.
 
 Acceptance:
 - bash, zsh and fish each complete `nros board show <Tab>` with board keys,
   in a test that runs the real glue;
-- every completer stays under the budget on a cold cache;
+- every completer stays under 100 ms per Tab on a cold page cache, the
+  redispatch exec included;
+- with no completion cache, workspace names are simply not offered, and no
+  completer runs a scan;
+- a second `nros setup` prints no tip;
 - a completer run under `strace -f` executes no cargo, cmake or network
   call, and writes no file.
 
@@ -120,7 +134,9 @@ line) and the unknown-name refusal with the nearest names. `board`,
 `interface`, `toolchain` and `nros list` adopt it and gain `--json`.
 `board list` lists board keys, with the crate as a column. A contract test
 pins each `--json` schema, and `check-user-surface-ids` renders every new
-verb. The Book base URL is one constant (RFC-0133 open question 1).
+verb. The Book base URL, `https://newslabntu.github.io/nano-ros-book/`, is
+defined once in the CLI workspace manifest and compiled in, and a gate checks
+`book/book.toml`'s `site-url` against it.
 
 Acceptance: every discovery verb accepts `--json`; the contract test fails on
 a renamed key; `check-user-surface-ids` covers the new verbs.
@@ -133,8 +149,9 @@ a renamed key; `check-user-surface-ids` covers the new verbs.
   RMWs; `nros new --platform` reads the same list.
 - `nros template list` / `show` read `scaffold::Role::ALL`: roles, languages
   and features.
-- `nros code list` / `show` read the diagnostic code table; `nros explain`
-  keeps working for codes and plans.
+- `nros code list` / `show` read the diagnostic code table. `nros explain
+  <code>` stays as an alias, because diagnostics tell users to run it, and
+  `nros explain plan` is unchanged.
 - `nros runner list` / `show` list runners and extension commands from
   `extension::discover`.
 
@@ -197,4 +214,4 @@ step on the installed track.
 
 ## Open questions
 
-The RFC's open questions 1–5 carry over. They do not block W1 or W2.
+None: the user answered all five on 2026-11-17 (RFC-0133 "Decisions").

@@ -14,7 +14,9 @@ superseded-by: null
 **Status:** Draft (2026-11-17). Requested by the user through the manager on
 2026-11-17 ("a discoverability campaign … the way `ros2 pkg list` and
 `ros2 interface list` work"), with dynamic shell completion added by the user.
-Written for the user's review; nothing is built. The work breakdown is
+Written for the user's review; nothing is built. The user answered the five
+open questions on 2026-11-17 (recorded under "Decisions"); the RFC stays Draft
+until the user approves it as a whole. The work breakdown is
 [phase-569](../roadmap/phase-569-discoverability.md).
 
 ## Summary
@@ -163,7 +165,11 @@ Consequences, each a work item:
   from. The sizing descriptor records values today, not reasons, so the
   descriptor gains a `because` field per derived value, written by the code
   that derives it (phase-569 W3). Until a value has one, it prints
-  "(no reason recorded)", which a test counts down.
+  "(no reason recorded)", which a test counts down. The first values to
+  carry a reason are the ones that went wrong in the week of 2026-11-16: the
+  pthread condition-variable and mutex pools, the executor backing, the
+  parameter store slots, the Zephyr heap, and the stack setting against the
+  floor the stack check measured. The entity pools follow.
 - **Plan-dependent nouns never build.** `node`, `topic` and `--derived` read
   what `nros configure` wrote. If it is missing or older than the workspace's
   inputs, they say so and name `nros configure`; they do not run it.
@@ -188,7 +194,7 @@ old-spellings table so `check-cli-old-spellings` and the book see one name):
 | `nros config explain --platform P` | `nros knob list --platform P` | alias kept |
 | `nros setup --list` | `nros toolchain list --available` | alias kept |
 | `nros list` | `nros package list` | `nros list` stays the short spelling, as `ros2 pkg list` has no shorter one |
-| `nros explain <code>` | `nros code show <code>` | `nros explain` stays the spelling for codes and plans |
+| `nros explain <code>` | `nros code show <code>` | `nros explain <code>` stays as an alias, because diagnostics already tell users to run it; `nros explain plan` is unchanged |
 | `nros board list` | unchanged spelling, now one row per board **key** | the crate becomes a column |
 
 Nothing is removed in this RFC. Removing an alias is a later decision, with
@@ -209,9 +215,17 @@ not from a table in the CLI:
   table;
 - templates, runners: the page that introduces them, in their source data.
 
-The base URL is one constant, next to the version, so an installed `nros`
-links the book of its own release. A gate checks that every `book` value
-names a page in `book/page-map.toml`.
+The links point at the book CI already deploys: `publish.yml` copies the
+built book to `NEWSLabNTU.github.io`, under `nano-ros-book/`, so the base URL
+is `https://newslabntu.github.io/nano-ros-book/`. It is defined **once**, in
+the CLI workspace's manifest, and compiled in through a build script, so
+moving the site changes one line. `book/book.toml`'s `site-url` is checked
+against the same value. A gate checks that every `book` value names a page in
+`book/page-map.toml`.
+
+That site is built from main, not per release, so an older installed `nros`
+links the current book. A page that moves keeps a redirect
+(`[output.html.redirect]`), so old links still land.
 
 ### D5 — No ids in user-facing output
 
@@ -255,13 +269,19 @@ extension verbs.
 
 **Fast, and never builds.** A completion runs on every <kbd>Tab</kbd>:
 
-- candidate functions read only what D2 marks as a file read or compiled in,
-  plus the provider cache `build/nros/providers.json`; when the cache is
-  missing or stale they offer what the compiled-in and SDK-root sources have
-  and stop. They never run a provider scan that writes, never run cargo,
-  CMake or `nros configure`, never touch the network, and never write a file;
-- a test runs each completer against the repo workspace and fails above a
-  budget (proposed: 100 ms on a cold cache, including the redispatch exec);
+- the budget is **100 ms per <kbd>Tab</kbd>**, including the redispatch
+  exec of the pinned binary;
+- candidate functions read only what D2 marks as a file read or compiled in.
+  Names that could take longer — packages and images in a big workspace,
+  interface types, workspace providers — come from a small completion cache,
+  `build/nros/complete.json`, that `nros build` and `nros configure` rewrite
+  as a side effect of the scans they already do. When the cache is missing,
+  those names are not offered; the compiled-in and SDK-root names still are;
+- a candidate function never runs a scan that writes, never runs cargo,
+  CMake, `nros build` or `nros configure`, never touches the network, and
+  never writes a file;
+- a test runs each completer against the repo workspace on a cold page cache
+  and fails above the budget;
 - an error in a candidate function yields no candidates, never a message on
   the terminal.
 
@@ -282,9 +302,11 @@ so a new `nros` brings matching glue:
   packagers who install a completion file. The dead `run()` stub is deleted.
 - **Installed `nros`:** `scripts/install.sh` prints the completion line for
   the user's shell beside the PATH line it already prints. It does not edit
-  rc files. `nros setup` prints the same line once, at the end, when
-  completion is not yet active (it checks `COMPLETE` is not wired in the
-  current shell's rc file — open question 2).
+  rc files.
+- **`nros setup`** prints one line after its **first** successful run: the
+  command for the user's shell (from `$SHELL`), then records that it did, in
+  `$NROS_HOME`, so the tip never repeats. It does not try to detect whether
+  completion is already active.
 - **Contributors:** `activate.sh` sources the glue when the shell is
   interactive bash or zsh and the in-tree `nros` exists; `activate.fish`
   does the same for fish.
@@ -316,24 +338,31 @@ CI, not a user's shell.
   editing a user's shell start-up without asking is the kind of change a
   user should make. Printed instead.
 
+## Decisions
+
+The user's answers of 2026-11-17, relayed by the manager:
+
+1. **Book URL.** The github.io site CI already deploys
+   (`newslabntu.github.io/nano-ros-book/`), with the base URL defined once in
+   the build so it can move (D4).
+2. **Completion tip.** One line after the first successful `nros setup`, with
+   the command for the user's shell, then recorded so it never repeats (D7).
+3. **Codes.** `nros code list|show` in the shared grammar; `nros explain
+   <code>` stays as an alias, because diagnostics already tell users to run
+   it (D3).
+4. **Completion budget.** 100 ms per Tab. Names that would take longer come
+   from a small cache that `nros build` and `nros configure` refresh, never
+   from a build (D7).
+5. **Reasons first** (the manager's call, which the user may revise): the
+   pthread condition-variable and mutex pools, the executor backing, the
+   parameter store slots, the Zephyr heap, and the stack setting against the
+   measured floor; then the entity pools (D2).
+
 ## Open questions
 
-1. **The book's base URL.** `book.toml` has no published `site-url`, so D4
-   has nothing to link yet. Where is the book published, and is it per
-   release?
-2. **Telling users once.** `nros setup` knows whether completion is active
-   only by reading rc files or by asking the shell; both are guesses. Is a
-   one-time line at the end of `nros setup` (silenced by a marker in
-   `$NROS_HOME`) acceptable?
-3. **`explain` versus `code`.** D3 keeps `nros explain <code>` and adds
-   `nros code list|show`. Is one spelling better, `nros explain --list`
-   with no `code` noun, at the cost of one exception to D1?
-4. **The completion budget.** 100 ms is a proposal; it includes the
-   redispatch exec of the pinned binary. Measure on a cold cache before
-   fixing it.
-5. **`because` coverage.** Which derived values must carry a reason before
-   `--derived` ships: all, or the pools and stack first?
+None. The RFC waits for the user's approval as a whole.
 
 ## Changelog
 
 - 2026-11 — created (Draft), for the user's review.
+- 2026-11 — the user's five answers folded in (Decisions); still Draft.
