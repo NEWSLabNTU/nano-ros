@@ -188,9 +188,8 @@ namespace detail {
 /// "the name exists, calling it fails".
 ///
 /// ONE definition, reached by every refusal in the C++ API: `qos.hpp`'s
-/// `SystemDefaultsQoS`, `options.hpp`'s `NodeOptions` accessors, the
-/// `throttle_is_refused` below, and the shared_ptr service/client callback
-/// overloads on `rclcpp::Node` in `nros.hpp`.
+/// `SystemDefaultsQoS`, `options.hpp`'s `NodeOptions` accessors, and the
+/// shared_ptr service/client callback overloads on `rclcpp::Node` in `nros.hpp`.
 template <typename T> struct refuse {
     static const bool value = false;
 };
@@ -263,14 +262,16 @@ template <typename T> struct refuse {
     "profile. Name the policy you want: rclcpp::QoS(10) for the ROS default, "                     \
     "rclcpp::SensorDataQoS(), rclcpp::ServicesQoS(), or rclcpp::QoS().best_effort().keep_last(1)."
 
-// Throttling is refused loudly rather than ignored.
-#define NROS_RCLCPP_REFUSE_THROTTLE                                                                \
-    "RCLCPP_*_THROTTLE is REFUSED by nano-ros. Upstream "                                          \
-    "measures the window on the `clock` argument you pass; nano-ros's throttle measures it on "    \
-    "nros_log's own clock, so forwarding this macro would drop `clock` and compile and differ -- " \
-    "the defect this family had when it expanded to the plain RCLCPP_* macro. For a throttle "     \
-    "on nros_log's clock, write RCLC_LOG_INFO_THROTTLE(logger, interval_ms, ...) and its "         \
-    "siblings (<rclc/log.h>) directly; otherwise rate-limit at the call site."
+// The one clock `RCLCPP_*_THROTTLE` cannot measure a window on: an INVALID
+// one (built with `RCL_CLOCK_UNINITIALIZED`), whose `now()` reads zero forever.
+// Upstream logs an error and then lets every record through. This does not:
+// on an embedded target a throttled site is usually a hot loop, and letting
+// it through floods the console and the transport. The site is measured on
+// the platform's monotonic clock instead, and says so once.
+// Kept under `RUNTIME_REFUSAL_MAX`.
+#define NROS_RCLCPP_REFUSE_THROTTLE_CLOCK_RUNTIME                                                  \
+    "RCLCPP_*_THROTTLE: the clock is invalid, so this site is throttled on the platform's "        \
+    "monotonic clock. Pass a valid clock, e.g. *get_clock()."
 
 // ONE concept: "spin until work arrives, with no
 // budget". It backs BOTH halves of `Executor::spin_once`'s loudness, because
@@ -783,13 +784,14 @@ const size_t RUNTIME_REFUSAL_MAX = 160;
 /// ERROR rather than FATAL: the call REFUSES and returns, so the process is
 /// still alive and still able to do the right thing.
 template <size_t N>
-inline void say_refused(const char (&message)[N], const char* file, uint32_t line) {
+inline void say_refused(const char (&message)[N], const char* file, uint32_t line,
+                        rcl_log_severity_t severity = RCLC_LOG_SEVERITY_ERROR) {
     static_assert(N - 1 <= RUNTIME_REFUSAL_MAX,
                   "a RUNTIME refusal must fit nros_log's format buffer. Longer than that it is "
                   "not truncated, it is DROPPED, and the reader sees a lone ellipsis. Keep the "
                   "long text on the static_assert, which the compiler prints in full, and give "
                   "the runtime site a short form that still names the alternative.");
-    rclc_log_emit_at(log_handle(nullptr), RCLC_LOG_SEVERITY_ERROR, message, N - 1, file, line);
+    rclc_log_emit_at(log_handle(nullptr), severity, message, N - 1, file, line);
 }
 
 #if defined(NROS_CPP_HAS_STD_CHRONO) // hosted-family: chrono-interop
@@ -810,13 +812,55 @@ inline int64_t chrono_wait_budget_ms(::std::chrono::duration<Rep, Period> timeou
 }
 #endif // NROS_CPP_HAS_STD_CHRONO
 
-/// **REFUSED** — the target of every `RCLCPP_*_THROTTLE` macro. Variadic so
-/// the macro can forward `logger`, `clock`, the period and the whole format
-/// pack, which means the arguments are still parsed and type-checked; only the
-/// `static_assert` stops the build, with the migration attached.
-template <typename Logger, typename Clock, typename Period, typename... Rest>
-void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
-    static_assert(refuse<Logger>::value, NROS_RCLCPP_REFUSE_THROTTLE);
+/// Claim a per-call-site flag: true for exactly the first caller to see it
+/// clear.
+///
+/// An atomic load and store, not a read-modify-write: `__atomic_exchange` on a
+/// `bool` is a libatomic call on a core without a byte-wide RMW, and the
+/// load/store pair is what `Node`'s error flag uses on every target. Two
+/// threads racing the very FIRST entry may both claim it; upstream's
+/// `RCUTILS_LOG_ONCE` uses a plain `int` and has the same window.
+inline bool claim_once(bool* flag) {
+    if (__atomic_load_n(flag, __ATOMIC_ACQUIRE)) {
+        return false;
+    }
+    __atomic_store_n(flag, true, __ATOMIC_RELEASE);
+    return true;
+}
+
+/// A `RCLCPP_*_THROTTLE` window in whole milliseconds. Upstream multiplies its
+/// `duration` into nanoseconds, so a negative or zero window throttles nothing;
+/// so does this.
+template <typename Period> inline uint64_t throttle_period_ms(Period period_ms) {
+    return period_ms > 0 ? static_cast<uint64_t>(period_ms) : static_cast<uint64_t>(0);
+}
+
+/// Whether a `RCLCPP_*_THROTTLE` site may emit now, measured on the `clock`
+/// ARGUMENT — `clock.now()`, which is what upstream reads. A steady clock, a
+/// system clock and a ROS-time clock (on system time, or driven by `/clock`)
+/// are each honoured on their own reading; the rule and the per-site word are
+/// `RCLC_LOG_*_THROTTLE`'s (`rclc_log_throttle_admit_at`), so the first record
+/// at a site always emits and then at most one per `period_ms`.
+///
+/// A template so it reads any clock-shaped value — `rclcpp::Clock` or the
+/// `*timer->get_clock()` handle — without this header including `clock.hpp`.
+///
+/// An invalid clock cannot be read. Rather than let every record through, as
+/// upstream does when its time read fails, the site is measured on the
+/// platform's monotonic clock (`rclc_log_throttle_admit`), so a hot loop stays
+/// throttled; it says `NROS_RCLCPP_REFUSE_THROTTLE_CLOCK_RUNTIME` once, at WARN.
+template <typename ClockT>
+inline bool throttle_admit(const ClockT& clock, uint64_t* last_ns, bool* refused,
+                           uint64_t period_ms, const char* file, uint32_t line) {
+    if (!clock.is_valid()) {
+        if (claim_once(refused)) {
+            say_refused(NROS_RCLCPP_REFUSE_THROTTLE_CLOCK_RUNTIME, file, line,
+                        RCLC_LOG_SEVERITY_WARN);
+        }
+        return rclc_log_throttle_admit(last_ns, period_ms);
+    }
+    return rclc_log_throttle_admit_at(last_ns, period_ms,
+                                      static_cast<uint64_t>(clock.now().nanoseconds()));
 }
 
 } // namespace detail
@@ -867,7 +911,8 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 // `<sstream>` is GATED rather than unconditional, so the `_STREAM` family is
 // declared only where the standard library that backs it exists.
 //
-// `_THROTTLE` is REFUSE-LOUD. See `NROS_RCLCPP_REFUSE_THROTTLE`.
+// `_THROTTLE` measures its window on the `clock` argument, as upstream does —
+// see `rclcpp::detail::throttle_admit`.
 
 // NROS_INFO is a do-while(0) block; the comma-operator wrapper around it was
 // invalid C++. Use a do-while wrapper so RCLCPP_INFO is a single statement.
@@ -896,18 +941,90 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
         RCLC_LOG_FATAL(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
     } while (0)
 
-// REFUSED. The arguments are still forwarded so they are parsed and
-// type-checked — a refusal should not also hide a typo in the format pack.
+// The conditional families — `_ONCE`, `_SKIPFIRST`, `_THROTTLE`,
+// `_SKIPFIRST_THROTTLE` — upstream's set, at every level. Each declares its
+// per-site state as a function-local `static` (no heap, no table, no lock),
+// so the state is per CALL SITE as upstream's is. The logger's level is tested
+// FIRST, as rcutils does: a record the level filters consumes no `_ONCE` and
+// no throttle window.
+#define NROS_RCLCPP_LOG_ONCE_(severity, logger, ...)                                               \
+    do {                                                                                           \
+        static bool nros_rclcpp_once_ = false;                                                     \
+        const rclc_logger_t nros_rclcpp_handle_ = ::rclcpp::detail::log_handle(logger);            \
+        if (rclc_logger_is_enabled(nros_rclcpp_handle_, (severity)) &&                             \
+            ::rclcpp::detail::claim_once(&nros_rclcpp_once_)) {                                    \
+            rclc_log_emit_fmt_at(nros_rclcpp_handle_, (severity), __FILE__, (uint32_t)__LINE__,    \
+                                 __VA_ARGS__);                                                     \
+        }                                                                                          \
+    } while (0)
+#define NROS_RCLCPP_LOG_SKIPFIRST_(severity, logger, ...)                                          \
+    do {                                                                                           \
+        static bool nros_rclcpp_seen_ = false;                                                     \
+        const rclc_logger_t nros_rclcpp_handle_ = ::rclcpp::detail::log_handle(logger);            \
+        if (rclc_logger_is_enabled(nros_rclcpp_handle_, (severity)) &&                             \
+            !::rclcpp::detail::claim_once(&nros_rclcpp_seen_)) {                                   \
+            rclc_log_emit_fmt_at(nros_rclcpp_handle_, (severity), __FILE__, (uint32_t)__LINE__,    \
+                                 __VA_ARGS__);                                                     \
+        }                                                                                          \
+    } while (0)
+// `skipfirst` is a literal 0 or 1. With it, the first record the throttle
+// admits arms the window and is dropped, which is upstream's
+// `_SKIPFIRST_THROTTLE` order (throttle, then skip-first).
+#define NROS_RCLCPP_LOG_THROTTLE_(severity, skipfirst, logger, clock, period_ms, ...)              \
+    do {                                                                                           \
+        static uint64_t nros_rclcpp_throttle_last_ = 0;                                            \
+        static bool nros_rclcpp_throttle_refused_ = false;                                         \
+        static bool nros_rclcpp_throttle_seen_ = false;                                            \
+        const rclc_logger_t nros_rclcpp_handle_ = ::rclcpp::detail::log_handle(logger);            \
+        if (rclc_logger_is_enabled(nros_rclcpp_handle_, (severity)) &&                             \
+            ::rclcpp::detail::throttle_admit(                                                      \
+                (clock), &nros_rclcpp_throttle_last_, &nros_rclcpp_throttle_refused_,              \
+                ::rclcpp::detail::throttle_period_ms(period_ms), __FILE__, (uint32_t)__LINE__) &&  \
+            (!(skipfirst) || !::rclcpp::detail::claim_once(&nros_rclcpp_throttle_seen_))) {        \
+            rclc_log_emit_fmt_at(nros_rclcpp_handle_, (severity), __FILE__, (uint32_t)__LINE__,    \
+                                 __VA_ARGS__);                                                     \
+        }                                                                                          \
+    } while (0)
+#define RCLCPP_DEBUG_ONCE(logger, ...)                                                             \
+    NROS_RCLCPP_LOG_ONCE_(RCLC_LOG_SEVERITY_DEBUG, logger, __VA_ARGS__)
+#define RCLCPP_DEBUG_SKIPFIRST(logger, ...)                                                        \
+    NROS_RCLCPP_LOG_SKIPFIRST_(RCLC_LOG_SEVERITY_DEBUG, logger, __VA_ARGS__)
 #define RCLCPP_DEBUG_THROTTLE(logger, clock, period_ms, ...)                                       \
-    ::rclcpp::detail::throttle_is_refused((logger), (clock), (period_ms), __VA_ARGS__)
+    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_DEBUG, 0, logger, clock, period_ms, __VA_ARGS__)
+#define RCLCPP_DEBUG_SKIPFIRST_THROTTLE(logger, clock, period_ms, ...)                             \
+    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_DEBUG, 1, logger, clock, period_ms, __VA_ARGS__)
+#define RCLCPP_INFO_ONCE(logger, ...)                                                              \
+    NROS_RCLCPP_LOG_ONCE_(RCLC_LOG_SEVERITY_INFO, logger, __VA_ARGS__)
+#define RCLCPP_INFO_SKIPFIRST(logger, ...)                                                         \
+    NROS_RCLCPP_LOG_SKIPFIRST_(RCLC_LOG_SEVERITY_INFO, logger, __VA_ARGS__)
 #define RCLCPP_INFO_THROTTLE(logger, clock, period_ms, ...)                                        \
-    ::rclcpp::detail::throttle_is_refused((logger), (clock), (period_ms), __VA_ARGS__)
+    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_INFO, 0, logger, clock, period_ms, __VA_ARGS__)
+#define RCLCPP_INFO_SKIPFIRST_THROTTLE(logger, clock, period_ms, ...)                              \
+    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_INFO, 1, logger, clock, period_ms, __VA_ARGS__)
+#define RCLCPP_WARN_ONCE(logger, ...)                                                              \
+    NROS_RCLCPP_LOG_ONCE_(RCLC_LOG_SEVERITY_WARN, logger, __VA_ARGS__)
+#define RCLCPP_WARN_SKIPFIRST(logger, ...)                                                         \
+    NROS_RCLCPP_LOG_SKIPFIRST_(RCLC_LOG_SEVERITY_WARN, logger, __VA_ARGS__)
 #define RCLCPP_WARN_THROTTLE(logger, clock, period_ms, ...)                                        \
-    ::rclcpp::detail::throttle_is_refused((logger), (clock), (period_ms), __VA_ARGS__)
+    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_WARN, 0, logger, clock, period_ms, __VA_ARGS__)
+#define RCLCPP_WARN_SKIPFIRST_THROTTLE(logger, clock, period_ms, ...)                              \
+    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_WARN, 1, logger, clock, period_ms, __VA_ARGS__)
+#define RCLCPP_ERROR_ONCE(logger, ...)                                                             \
+    NROS_RCLCPP_LOG_ONCE_(RCLC_LOG_SEVERITY_ERROR, logger, __VA_ARGS__)
+#define RCLCPP_ERROR_SKIPFIRST(logger, ...)                                                        \
+    NROS_RCLCPP_LOG_SKIPFIRST_(RCLC_LOG_SEVERITY_ERROR, logger, __VA_ARGS__)
 #define RCLCPP_ERROR_THROTTLE(logger, clock, period_ms, ...)                                       \
-    ::rclcpp::detail::throttle_is_refused((logger), (clock), (period_ms), __VA_ARGS__)
+    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_ERROR, 0, logger, clock, period_ms, __VA_ARGS__)
+#define RCLCPP_ERROR_SKIPFIRST_THROTTLE(logger, clock, period_ms, ...)                             \
+    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_ERROR, 1, logger, clock, period_ms, __VA_ARGS__)
+#define RCLCPP_FATAL_ONCE(logger, ...)                                                             \
+    NROS_RCLCPP_LOG_ONCE_(RCLC_LOG_SEVERITY_FATAL, logger, __VA_ARGS__)
+#define RCLCPP_FATAL_SKIPFIRST(logger, ...)                                                        \
+    NROS_RCLCPP_LOG_SKIPFIRST_(RCLC_LOG_SEVERITY_FATAL, logger, __VA_ARGS__)
 #define RCLCPP_FATAL_THROTTLE(logger, clock, period_ms, ...)                                       \
-    ::rclcpp::detail::throttle_is_refused((logger), (clock), (period_ms), __VA_ARGS__)
+    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_FATAL, 0, logger, clock, period_ms, __VA_ARGS__)
+#define RCLCPP_FATAL_SKIPFIRST_THROTTLE(logger, clock, period_ms, ...)                             \
+    NROS_RCLCPP_LOG_THROTTLE_(RCLC_LOG_SEVERITY_FATAL, 1, logger, clock, period_ms, __VA_ARGS__)
 #endif // RCLCPP_INFO
 
 /// Emit a refusal message, with the call site.
