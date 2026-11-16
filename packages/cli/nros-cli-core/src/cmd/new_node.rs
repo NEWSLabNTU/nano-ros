@@ -326,8 +326,7 @@ mod tests {
     use super::*;
 
     fn ws(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("nros-new-node-{tag}"));
-        std::fs::remove_dir_all(&d).ok();
+        let d = crate::test_support::scratch_dir(&format!("new-node-{tag}"));
         std::fs::create_dir_all(d.join("src/demo_bringup")).unwrap();
         std::fs::write(
             d.join("src/demo_bringup/system.toml"),

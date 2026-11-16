@@ -183,8 +183,10 @@ mod tests {
 
     #[test]
     fn resolves_a_path_dependency() {
-        let tmp = std::env::temp_dir().join("nros_bf_path");
-        let _ = std::fs::remove_dir_all(&tmp);
+        // A directory of its own: a fixed name under the shared temp dir let two
+        // concurrent runs delete each other's tree mid-test.
+        let scratch = tempfile::tempdir().expect("scratch dir");
+        let tmp = scratch.path();
         let entry = tmp.join("entry");
         write(
             &entry.join("Cargo.toml"),
@@ -198,7 +200,6 @@ mod tests {
             read_board_framework(&dir.join("Cargo.toml")).as_deref(),
             Some("rtic")
         );
-        std::fs::remove_dir_all(&tmp).ok();
     }
 
     /// The majority in-repo shape: a bare version plus a `[patch.crates-io]`
@@ -206,8 +207,10 @@ mod tests {
     /// these and hand the macro nothing.
     #[test]
     fn resolves_a_patched_version_dependency() {
-        let tmp = std::env::temp_dir().join("nros_bf_patch");
-        let _ = std::fs::remove_dir_all(&tmp);
+        // A directory of its own: a fixed name under the shared temp dir let two
+        // concurrent runs delete each other's tree mid-test.
+        let scratch = tempfile::tempdir().expect("scratch dir");
+        let tmp = scratch.path();
         let entry = tmp.join("entry");
         write(
             &entry.join("Cargo.toml"),
@@ -224,7 +227,6 @@ mod tests {
             read_board_framework(&dir.join("Cargo.toml")).as_deref(),
             Some("rtic")
         );
-        std::fs::remove_dir_all(&tmp).ok();
     }
 
     /// Issue 1265 -- a TARGET-scoped board is still a direct dependency. A
@@ -232,8 +234,10 @@ mod tests {
     /// its node lib host-builds for the metadata probe.
     #[test]
     fn resolves_a_target_scoped_board() {
-        let tmp = std::env::temp_dir().join("nros_bf_target");
-        let _ = std::fs::remove_dir_all(&tmp);
+        // A directory of its own: a fixed name under the shared temp dir let two
+        // concurrent runs delete each other's tree mid-test.
+        let scratch = tempfile::tempdir().expect("scratch dir");
+        let tmp = scratch.path();
         let entry = tmp.join("entry");
         write(
             &entry.join("Cargo.toml"),
@@ -249,15 +253,16 @@ mod tests {
             read_board_framework(&dir.join("Cargo.toml")).as_deref(),
             Some("rtic")
         );
-        std::fs::remove_dir_all(&tmp).ok();
     }
 
     /// A board with no framework key means `owned-spin`; the helper must emit
     /// nothing rather than guess, so the macro keeps its own default.
     #[test]
     fn a_board_without_a_framework_key_yields_none() {
-        let tmp = std::env::temp_dir().join("nros_bf_none");
-        let _ = std::fs::remove_dir_all(&tmp);
+        // A directory of its own: a fixed name under the shared temp dir let two
+        // concurrent runs delete each other's tree mid-test.
+        let scratch = tempfile::tempdir().expect("scratch dir");
+        let tmp = scratch.path();
         let entry = tmp.join("entry");
         write(
             &entry.join("Cargo.toml"),
@@ -267,15 +272,16 @@ mod tests {
         board(&tmp.join("board"), None);
         let (_, dir) = resolve_board_crate(&entry).unwrap();
         assert_eq!(read_board_framework(&dir.join("Cargo.toml")), None);
-        std::fs::remove_dir_all(&tmp).ok();
     }
 
     /// A transitive board is NOT resolved — the constraint the spike measured,
     /// locked in so it stays a documented limit rather than a surprise.
     #[test]
     fn a_non_direct_board_dependency_is_not_resolved() {
-        let tmp = std::env::temp_dir().join("nros_bf_indirect");
-        let _ = std::fs::remove_dir_all(&tmp);
+        // A directory of its own: a fixed name under the shared temp dir let two
+        // concurrent runs delete each other's tree mid-test.
+        let scratch = tempfile::tempdir().expect("scratch dir");
+        let tmp = scratch.path();
         let entry = tmp.join("entry");
         write(
             &entry.join("Cargo.toml"),
@@ -283,6 +289,5 @@ mod tests {
              some-lib = { path = \"../lib\" }\n",
         );
         assert!(resolve_board_crate(&entry).is_none());
-        std::fs::remove_dir_all(&tmp).ok();
     }
 }
