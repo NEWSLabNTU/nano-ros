@@ -143,10 +143,8 @@ rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
 peak = 11876
-static = 99464
-walk_floor = 106884
-walk_floor_reason = "walked 106,884 B as project `c_after` before the walk's callee order masked the project's name (issue 2550), 2026-11-15"
-method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 14 rounds, nros-relwithdebinfo (no LTO); static from main; static re-walked 2026-11-15 by the drift check, callee order masking the project name (phase-557 W8); static re-walked 2026-11-15 with the walk's callee order read from inlined v0 back-references, which no longer move with the checkout path (phase-557 W8 follow-up)"
+static = 107652
+method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 14 rounds, nros-relwithdebinfo (no LTO); static from main; static re-walked 2026-11-15 by the drift check, callee order masking the project name (phase-557 W8); static re-walked 2026-11-15 with the walk's callee order read from inlined v0 back-references, which no longer move with the checkout path (phase-557 W8 follow-up); static re-walked 2026-11-16 by the drift check after issue 2623's anchors stopped keeping the whole C API in the image: the link keeps fewer functions and the walk cuts its cycles elsewhere (+8,188 B, a different over-approximated chain through bound indirect calls, not a deeper runtime call)"
 issue = "2402"
 
 [observed.shape]

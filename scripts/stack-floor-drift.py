@@ -99,6 +99,18 @@ def _built(rc: int, report: Path | None, why: str, what: str, log: Path
     return None, f"{why} ({log})"
 
 
+def log_tail(log: Path, n: int = 60) -> list[str]:
+    """The last `n` lines of a build log, for a row that could not be walked.
+    The job runs in a container whose files nobody can read afterwards, so a
+    failure that names only the log's path cannot be triaged from the job's
+    output."""
+    try:
+        lines = log.read_text(errors="replace").splitlines()
+    except OSError as e:
+        return [f"(no log at {log}: {e.strerror})"]
+    return lines[-n:]
+
+
 def _reports(build_dir: Path) -> list[Path]:
     # A report sits at `<build>/.../nros/stack-floor/report.json` (cmake and
     # west roads) or `.../target/nros-stack-floor/report.json` (cargo road).
@@ -115,7 +127,8 @@ def _env() -> dict:
     return env
 
 
-def build_template(nros: str, row: dict, out: Path, twin) -> tuple[Path | None, str]:
+def build_template(nros: str, row: dict, out: Path, twin
+                   ) -> tuple[Path | None, str, Path | None]:
     template, lang, rmw, board = twin.parse_key(row["image"])
     name = f"drift_{template}_{lang}".replace("-", "_")
     proj = out / name
@@ -130,20 +143,20 @@ def build_template(nros: str, row: dict, out: Path, twin) -> tuple[Path | None, 
                              "--rmw", rmw, "--template", template], cwd=out, stdout=lf,
                             stderr=subprocess.STDOUT, env=_env()).returncode
         if rc:
-            return None, f"`nros new` exited {rc} ({log})"
+            return None, f"`nros new` exited {rc} ({log})", log
         start = time.time()
         rc = subprocess.run([nros, "build"], cwd=proj, stdout=lf, stderr=subprocess.STDOUT,
                             env=_env()).returncode
     report, why = pick_report(_reports(proj / "build"), row["image"], start)
-    return _built(rc, report, f"{why} under {proj / 'build'}", "`nros build`", log)
+    return *_built(rc, report, f"{why} under {proj / 'build'}", "`nros build`", log), log
 
 
 def build_bringup(nros: str, row: dict, out: Path, fixtures: list[dict]
-                  ) -> tuple[Path | None, str]:
+                  ) -> tuple[Path | None, str, Path | None]:
     hits = bringup_rows(row["image"], fixtures)
     if len(hits) != 1:
         return None, (f"{len(hits)} [[workspace_fixture]] rows in examples/fixtures.toml "
-                      f"declare this bringup and image, not 1")
+                      f"declare this bringup and image, not 1"), None
     fx = hits[0]
     ws = ROOT / fx["dir"]
     target = f"{Path(fx['bringup']).name}:{fx['image']}"
@@ -154,7 +167,8 @@ def build_bringup(nros: str, row: dict, out: Path, fixtures: list[dict]
         rc = subprocess.run([nros, "build", target], cwd=ws, stdout=lf,
                             stderr=subprocess.STDOUT, env=_env()).returncode
     report, why = pick_report(_reports(ws / "build"), row["image"], start)
-    return _built(rc, report, f"{why} under {ws / 'build'}", f"`nros build {target}`", log)
+    return *_built(rc, report, f"{why} under {ws / 'build'}", f"`nros build {target}`",
+                   log), log
 
 
 def verdict(row: dict, report: Path, drift) -> tuple[str, list[str]]:
@@ -211,6 +225,12 @@ def self_test() -> int:
               _built(1, r2, "", "`nros build`", d / "l")[0] == r2)
         check("a build that failed before any walk is no answer",
               _built(1, None, "none", "`nros build`", d / "l")[0] is None)
+        lg = d / "build.log"
+        lg.write_text("".join(f"line {i}\n" for i in range(100)))
+        check("a failed build prints its log's last lines",
+              log_tail(lg) == [f"line {i}" for i in range(40, 100)])
+        check("a missing log says so rather than raising",
+              log_tail(d / "absent.log")[0].startswith("(no log at "))
         row = {"image": "k1", "role": "OPEN", "static": 1000}
         check("verdict: exact is ok", verdict(row, r1, w.static_drift)[0] == "ok")
         check("verdict: a walk above the row fails",
@@ -254,12 +274,15 @@ def main() -> int:
         print(f"== {row['image']} {row['role']} (recorded static {row['static']} B)", flush=True)
         start = time.time()
         if twin.parse_key(row["image"]):
-            report, why = build_template(nros, row, Path(args.out), twin)
+            report, why, log = build_template(nros, row, Path(args.out), twin)
         else:
-            report, why = build_bringup(nros, row, Path(args.out), fixtures)
+            report, why, log = build_bringup(nros, row, Path(args.out), fixtures)
         if report is None:
             failed += 1
             print(f"  FAIL: {row['image']}: the image could not be walked: {why}", flush=True)
+            if log is not None:
+                print(f"  -- last lines of {log} --", flush=True)
+                print("\n".join(f"  | {line}" for line in log_tail(log)), flush=True)
             continue
         kind, lines = verdict(row, report, w.static_drift)
         if why:

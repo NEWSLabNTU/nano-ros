@@ -1,0 +1,1 @@
+A new C project made with `nros new` for the nucleo-f767zi Zephyr board builds again. Since the C API stopped being linked whole into every image, the build's stack check measured a larger worst case for the C talker template and refused the stack the template sets. The template now sets 118,424 bytes for its main stack, up from 117,576.
