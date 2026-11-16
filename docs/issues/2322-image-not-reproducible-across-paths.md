@@ -45,3 +45,15 @@ Measured in `ros:jazzy` on `0.6.0-nros8`, with the same scaffold built at
   container path, records the digest through `nros doctor --report`, and says
   First Project builds the debug profile (Deploy to production › the
   readiness checklist).
+
+## Status (2026-11-17): needs a design decision
+
+The path-remap attempt 69c5bcf04c was reverted the same day (e56647ee05;
+the `_ws` link broke in-tree builds, issue 2385). Only the book's
+contract statement remains: the same pin, lock and ROS 2 packages give the
+same bytes at the same absolute path. A real fix needs either a cargo root
+that contains every local crate, or a stable `trim-paths` (unstable on the
+pinned 1.99).
+
+**Suggested owner: the phase-523 / build owner, after a maintainer
+decision** between those two.

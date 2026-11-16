@@ -42,3 +42,14 @@ Either of:
 - phase-535 W8.4: the Zephyr nightly goes to 2 lines x 3 languages with a
   runtime step (`just test zephyr`), and the baseline entry is deleted;
 - RFC-0122 D9: lower the row's cadence to what a job keeps.
+
+## Status (2026-11-17): still true
+
+`nightly.yml`'s Zephyr jobs only build: `build-one`, `ci-both`,
+`check-copy-out`, `test-c-port` and `stack-floor-drift`. None runs `just
+test zephyr`. `.config/cadence-job-baseline.toml` still carries the
+`ZephyrQemuCortexM` row as unserved. Closing it is either a runtime job for
+the `daily` cadence, or lowering the board's cadence under RFC-0122 D9.
+
+**Suggested owner: the phase-535 W8.4 owner, or a user decision** to lower
+the cadence.

@@ -113,3 +113,13 @@ The second is a coverage defect, filed as
 [issue 2595](archived/2595-witness-workspaces-lose-example-lint.md), now resolved: the lane lists 20
 units (1 leaf, 19 witnesses). This issue's acceptance is unchanged: a loaded
 full `ci gate` with every unit inside its budget.
+
+## Status (2026-11-17): only the acceptance run is missing
+
+Fixed in structure by e1eda595e4: `linux-check` is one nextest unit per
+leaf. As of 2026-11-15 it lists 20 units (1 leaf plus 19 witnesses, after
+issue 2595), and the leaf took 117 s. What is missing is the acceptance: a
+full `just ci gate` at load around 90 with every unit inside its budget.
+It probably closes on that log.
+
+**Suggested owner: whoever next runs a loaded local `ci gate`** (phase-489).

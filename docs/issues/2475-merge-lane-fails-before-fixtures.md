@@ -99,3 +99,15 @@ red in the fixture build): the linux shard runs out of disk (phase-559 W5b);
 threadx_linux fails on [issue 2510](2510-compile-check-cross-rows-unprovisioned-kernel.md);
 zephyr fails on [issue 2511](2511-zephyr-ci-image-lacks-pinned-sdk.md). The
 `merge` lane reaches the same fixture build, so expect the same three.
+
+## Status (2026-11-17): needs one merge-lane dispatch
+
+Defects 1-3 are fixed (121a6a99c6), and defect 4 is handled by phase-535
+W10 (be313b291d). merge-runtime 43773321880 (2026-11-15, lane `tier1`): the
+`threadx_linux` and `zephyr` shards succeed, and `merge-runtime merge
+(zephyr)` was skipped. The done-when is not met: no `lane=merge` dispatch
+has reached `just ci merge` on both shards, and `merge-runtime-p95.py` has
+no samples. Issues 2510 and 2511 are still open beside it.
+
+**Suggested owner: the phase-559 W5b / phase-535 W8.2 owner**, with one
+`lane=merge` dispatch.

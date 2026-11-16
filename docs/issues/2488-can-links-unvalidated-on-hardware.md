@@ -51,3 +51,12 @@ Decide whether CAN hardware validation is in scope:
   between the board and a Linux host with a USB-CAN adapter.
 - **If no:** record "vcan-validated only" in RFC-0080 and RFC-0083's status
   lines (brief item B13).
+
+## Status (2026-11-17): needs a scope decision
+
+Still true: no phase homes it, and the RFC-0080 / RFC-0083 status lines
+carry no "vcan-validated only" stamp (grep is empty). In scope means homing
+it in phase-512 with a board and an acceptance. Out of scope means stamping
+both RFCs, so the claim matches what was measured.
+
+**Suggested owner: a user / maintainer decision.**

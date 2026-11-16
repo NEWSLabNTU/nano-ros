@@ -192,3 +192,16 @@ What a resumption should start from, unmeasured:
   per-workspace target-dir would keep the uplift per workspace and share
   `deps/`. Open questions: whether the build-dir lock serialises the
   workspaces' probes, and the 0616 link test under parallel leaves.
+
+## Status (2026-11-17): lever 2 parked, waiting on a decision
+
+Lever 1 landed for the metadata probe only (571dbd1fc6, the `nros-probe`
+profile). Lever 2, a shared host half, was parked by the manager session
+(29a1351fa5). Fixture leaves still build at `nros-relwithdebinfo`, each in
+its own cargo directory. Resuming it needs a 0616-style duplicate-symbol
+measurement (the `#[global_allocator]` hazard under a shared build-dir) and
+a build-time measurement on a runner. Cargo's `build.build-dir` remains the
+candidate mechanism.
+
+**Suggested owner: the phase-489 owner, or a maintainer decision** on
+whether to resume lever 2.

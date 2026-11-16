@@ -172,3 +172,22 @@ What keeps this open is that the cell has not run since the 10-27 ENOENT:
 The acceptance is unchanged: `CorePinPlacement/zephyr/c` passes in a pairwise
 nightly. The one difference from the passing run on 11-06 is still the
 emulator version: 6.2.0 on the runner against 9.0.2 on newslab-server133.
+
+## Status (2026-11-17): waits on a runner image rebuild
+
+The emulator half is proven: the runner image has `qemu-system-aarch64`.
+The cell now gets further and fails on a missing NIC option ROM. In the
+pairwise nightly of 2026-11-15 (run 43684674172, job 132799686154,
+newslab-server-241), `CorePinPlacement/zephyr/c` failed with
+`qemu-system-aarch64: failed to find romfile "efi-e1000.rom"`, while the
+other 16 cells passed. That is issue 2592's. Its index fix 479fa95ae2
+("the runner image installs qemu's NIC option ROMs", `ipxe-qemu`) landed on
+2026-11-15, but the image on newslab-118 was built on 2026-11-09 and still
+lacks the file (checked 2026-11-17: no `/usr/share/qemu/efi-e1000.rom`,
+`ipxe-qemu` not installed).
+
+Next step: rebuild and redeploy the runner image (`runner-container.sh
+--build`, then `--run`). The acceptance, the cell passing in a pairwise
+nightly, follows from the next run after that.
+
+**Suggested owner: the runner operator** (image rebuild).
