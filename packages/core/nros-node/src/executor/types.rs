@@ -22,7 +22,8 @@ pub struct SpinOnceResult {
     pub subscription_errors: usize,
     /// Number of service processing errors (e.g., BufferTooSmall)
     pub service_errors: usize,
-    /// RFC-0128 D8 (phase-554 W3 slice B) -- an executor-level entity that
+    // RFC-0128 D8 (phase-554 W3 slice B).
+    /// An executor-level entity that
     /// waited for a node and could not be opened when the pass ran it (the
     /// `/diagnostics` reporter of an image with no node; see
     /// `Executor::open_pending_on_configured_name`). `spin` and `spin_some`

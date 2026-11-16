@@ -1992,7 +1992,8 @@ unsafe impl Send for ArenaRef<'_> {}
 // SAFETY: as above.
 unsafe impl Sync for ArenaRef<'_> {}
 
-/// RFC-0128 D8 (phase-554 W3 slice B) -- the open of an executor-level entity
+// RFC-0128 D8 (phase-554 W3 slice B).
+/// The open of an executor-level entity
 /// that belongs to the image's primary node, run by
 /// [`Executor::open_on_primary_node`]: with `ctx` and `arg` as installed, and
 /// the executor, whose primary node now exists (or, in a zero-node image, at
@@ -3405,7 +3406,8 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// RFC-0128 D8 (phase-554 W3 slice B) -- run `hook` once this image's
+    // RFC-0128 D8 (phase-554 W3 slice B).
+    /// Run `hook` once this image's
     /// primary node exists: now, if a node is already registered, otherwise
     /// the moment `NodeId::PRIMARY` is (`NodeBuilder::build`). The hook opens
     /// an executor-level entity, so it lands on that node through
@@ -3466,7 +3468,8 @@ impl<'s> Executor<'s> {
         self.run_primary_node_hook()
     }
 
-    /// RFC-0128 D8 -- open a raw publisher for an executor-level entity, on
+    // RFC-0128 D8.
+    /// Open a raw publisher for an executor-level entity, on
     /// the node [`Self::entity_identity`] gives `None`: the primary node, or
     /// the configured name in an image with no node. The `/diagnostics`
     /// reporter's publisher, which used to be a session publisher with no node
@@ -3604,7 +3607,8 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// RFC-0128 D8 (phase-554 W3 slice B) -- [`Self::resolve_entity_name_for`]
+    // RFC-0128 D8 (phase-554 W3 slice B).
+    /// [`Self::resolve_entity_name_for`]
     /// against the node the entity is REGISTERED on, as
     /// [`Self::entity_identity`] gives it: `Some(id)` is that node, `None` the
     /// primary node (or, in an image with no node, the configured name). The
