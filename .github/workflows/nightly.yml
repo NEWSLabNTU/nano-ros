@@ -1379,7 +1379,8 @@ jobs:
     runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-qemu","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
     # Longest successful run measured 2026-11-12: 41 min (n=15). Twice that, so a
     # stalled runner fails fast instead of holding a runner for 6 h.
-    timeout-minutes: 85
+    # phase-567 W4: +15 for the island-shaped Zephyr image (a native_sim build).
+    timeout-minutes: 100
     permissions:
       contents: read
       packages: read
@@ -1500,6 +1501,18 @@ jobs:
           export NROS_TEMPLATE_COPY_OUT_PART=zephyr
           source ./activate.sh
           just check template-copy-out
+
+      # phase-567 W4 -- the island-shaped workspace's Zephyr image, on the west
+      # workspace this job already set up. It builds `island_bringup:zephyr`,
+      # runs check-knob-delivery over the live build dir, and fails when the
+      # snapshot the merge queue checks (tests/fixtures/knob-delivery/
+      # island-shaped-zephyr) differs from it. The merge queue's coverage of
+      # issue 2618 is that snapshot; this step is the live coverage, daily.
+      - name: just check island-shaped-zephyr (live Zephyr build, snapshot drift)
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check island-shaped-zephyr
 
       - name: Disk report (after template-copy-out) — issue 1353
         if: ${{ always() }}

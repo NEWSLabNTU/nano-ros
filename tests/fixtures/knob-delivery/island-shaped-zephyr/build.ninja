@@ -1,0 +1,11 @@
+# phase-567 W4 -- snapshot of build.ninja from a configured Zephyr build dir
+# of examples/workspaces/island-shaped, image island_bringup:zephyr,
+# cut to the lines scripts/check-knob-delivery.py reads. GENERATED:
+# do not edit. Regenerate with:
+#   just check island-shaped-zephyr-regen   # needs a Zephyr 3.7 west workspace (just setup zephyr)
+-DZPICO_GRAPH_DISCOVERY=1
+-DZPICO_MAX_LIVELINESS=9
+-DZPICO_MAX_PUBLISHERS=6
+-DZPICO_MAX_QUERYABLES=3
+-DZPICO_MAX_SUBSCRIBERS=6
+-DZ_FEATURE_LOCAL_QUERYABLE=0

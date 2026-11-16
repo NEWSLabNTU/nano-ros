@@ -1,0 +1,51 @@
+# Node interface contract for system.launch.xml. The image's pools are derived
+# from it (3 publishers, 3 subscriptions), and the census taken from the
+# native image is checked against it, as the island's are.
+#
+# `nodes:` keys are LOCAL endpoint names.
+
+version: 1
+
+nodes:
+  controller:
+    paths:
+      # The control timer, 30 ms in Controller.c.
+      on_control:
+        trigger: { timer: { rate: 33.333Hz } }
+        output: [cmd, diag]
+    sub:
+      # Feedback from the monitor, read as state by the next control tick.
+      alive:  { state: true, qos: { history: keep_last, depth: 1 } }
+      status: { qos: { history: keep_last, depth: 1 } }
+    pub:
+      cmd: {}
+      diag: {}
+
+  monitor:
+    paths:
+      # 100 ms in rust_monitor_pkg.
+      on_tick:
+        trigger: { timer: { rate: 10Hz } }
+        output: [alive]
+    sub:
+      cmd: { qos: { history: keep_last, depth: 1 } }
+    pub:
+      alive: {}
+
+topics:
+  /control/cmd:
+    type: std_msgs/msg/Int32
+    pub: [controller/cmd]
+    sub: [monitor/cmd]
+  /control/diag:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [controller/diag]
+  /monitor/alive:
+    type: std_msgs/msg/Int32
+    pub: [monitor/alive]
+    sub: [controller/alive]
+  /status:
+    type: std_msgs/msg/String
+    external: pub
+    sub: [controller/status]

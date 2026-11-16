@@ -21,3 +21,9 @@ examples/px4/rust/companion  # built by `just px4 build-fixtures`, not a manifes
 # bring-your-own-west-manifest SHAPE; check-zephyr-module-allowlist lints its
 # west.yml, which is all a tree with no image of its own can be asked.
 examples/templates/zephyr-byo  # documents a shape (bring your own west manifest), not a build target
+
+# phase-567 W4: built by its own recipe, `just check island-shaped-workspace`,
+# at the end of `check-workspace-all` (a census and a board build, from a
+# clean tree), and its Zephyr image by `just check island-shaped-zephyr`
+# (nightly). A manifest row would build it a second time.
+examples/workspaces/island-shaped  # built by `just check island-shaped-workspace`, not a manifest row

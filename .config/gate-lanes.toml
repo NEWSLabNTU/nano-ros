@@ -182,12 +182,12 @@ reads = "cli-tests; and the launch resolver is built from it"
 [[provision.submodule]]
 path = "third-party/freertos/kernel"
 tiers = ["build"]
-reads = "workspace-all, test-targets (nros-board-freertos build script; store-first)"
+reads = "workspace-all, test-targets (nros-board-freertos build script; store-first), island-shaped-workspace (its mps2-an385-freertos board image)"
 
 [[provision.submodule]]
 path = "third-party/freertos/lwip"
 tiers = ["build"]
-reads = "workspace-all, test-targets (nros-board-freertos build script; store-first)"
+reads = "workspace-all, test-targets (nros-board-freertos build script; store-first), island-shaped-workspace (its mps2-an385-freertos board image)"
 
 [[provision.submodule]]
 path = "third-party/threadx/kernel"

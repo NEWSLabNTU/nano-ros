@@ -1510,7 +1510,10 @@ jobs:
     runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
     # Longest successful run measured 2026-11-12: 16 min (n=28). Twice that, so a
     # stalled runner fails fast instead of holding the merge queue for 6 h.
-    timeout-minutes: 35
+    # phase-567 W4 adds the island-shaped workspace after the clippy halves (a
+    # census image and a FreeRTOS board image, both cold): +20 until measured
+    # runs re-size it.
+    timeout-minutes: 55
     permissions:
       contents: read
       packages: read
@@ -1702,7 +1705,18 @@ jobs:
       # now; read this step's duration off the run, not off the 28 s. For
       # scale only: `check-test-targets` alone (workspace + per crate + CLI)
       # took 113 s locally on a WARM target dir — a cold runner pays more.
-      - name: just check workspace-all (host + embedded clippy)
+      # phase-567 W4 -- `just check workspace-all` ends with the island-shaped
+      # workspace, whose board image is a FreeRTOS cross build
+      # (mps2-an385-freertos): the toolchain and sources the
+      # `check-template-copy-out` shards provision.
+      - name: Provision the island-shaped workspace's FreeRTOS toolchain + sources
+        if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          source ./activate.sh
+          nros setup --tool arm-none-eabi-gcc
+          nros setup --source freertos-kernel --source lwip
+
+      - name: just check workspace-all (host + embedded clippy, island-shaped workspace)
         if: ${{ contains(fromJSON('["pull_request","merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source ./activate.sh

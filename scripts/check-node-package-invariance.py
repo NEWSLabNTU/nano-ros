@@ -299,7 +299,10 @@ def untracked_refs(files, roots):
                 for v in [*(img.get("conf") or []), *(img.get("os_config") or [])]:
                     if v.endswith(".toml"):
                         continue  # a board network file, beside system.toml
+                    # A path relative to the bringup (`zephyr/prj-x.conf`, the
+                    # safety island's spelling, phase-567 W4) names one file.
                     ok = any(os.path.basename(t) == v for t in under) or \
+                        _norm(base, v) in tracked or \
                         any(t.startswith(app + "/") and os.path.basename(t) == v
                             for t in tracked)
                     if not ok:

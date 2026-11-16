@@ -1,6 +1,6 @@
 # Phase 567 — a release ships only what the slow lanes have seen
 
-**Status (2026-11-16). OPEN: W6 is done; W1–W5 are open.** Approved by the user on
+**Status (2026-11-16). OPEN: W4 and W6 are done; W1–W3 and W5 are open.** Approved by the user on
 2026-11-16 ("Take your advice on regression prevention. Have a phase doc to
 track the change"), after a review of the CI workflows on main against that
 day's regressions. Implements no RFC; it closes gaps between the lanes that
@@ -75,7 +75,30 @@ publish's only by the push, tag and release steps.
 
 ### W4 — a consumer-shaped workspace in the tree
 
-- **Status:** OPEN
+- **Status:** DONE (#4063). `examples/workspaces/island-shaped`, checked by
+  `just check island-shaped-workspace` at the end of `check-workspace-all`.
+  Building it found issue 2644 (a C + Rust image with no C++ source was
+  refused at configure), fixed in the same PR.
+- **How each layout is covered.** The `<param from>` files (issue 2615) and
+  the C + Rust image are covered in the merge queue by a live configure,
+  census and FreeRTOS board build. The raised-cap fix (issue 2618) lives only
+  in `scripts/check-knob-delivery.py`, which reads a configured ZEPHYR build
+  dir, and the merge queue has no west workspace (user ruling 2026-11-13). So
+  the merge queue's coverage of it is a committed snapshot of the workspace's
+  Zephyr build dir (`tests/fixtures/knob-delivery/island-shaped-zephyr`), and
+  the live coverage is daily: nightly.yml's `template-copy-out-zephyr` job
+  runs `just check island-shaped-zephyr`, which builds the Zephyr image,
+  checks its live build dir, and fails when the snapshot differs from it. The
+  FreeRTOS board build carries raised pools too, but no delivery check reads
+  the CMake road, so issue 2618 is Zephyr-only: queue on the snapshot, daily
+  on Zephyr.
+- **Release dry run: not covered here.** `release-nros.yml` does not run
+  `check-workspace-all` (its only reused workflow is `starter-image.yml`), so
+  this leg rides on W3, whose dry run rehearses the publish.
+- **Acceptance, measured locally** (the PR body has the output): reverting
+  a002a58779's `model_gate.rs` hunk turns `just check island-shaped-workspace`
+  red; reverting 2cde3951f2's `scripts/check-knob-delivery.py` turns it red;
+  with both restored it is green.
 
 One in-repo workspace shaped like the safety island: a `<param from>` file in a
 sibling package (absolute and `$(dirname)`-relative), mixed C and Rust

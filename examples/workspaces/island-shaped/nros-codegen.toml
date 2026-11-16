@@ -1,0 +1,7 @@
+# RFC-0033 capacity for the stock `std_msgs/String` the controller subscribes
+# to, at workspace scope (the type states no bound of its own, issue 0964).
+# Two subscribed types with different bounds put a two-entry per-type table in
+# the message-bound fragment, the list shape issue 2618's first false mismatch
+# came from.
+[fields]
+"std_msgs/String.data" = 96

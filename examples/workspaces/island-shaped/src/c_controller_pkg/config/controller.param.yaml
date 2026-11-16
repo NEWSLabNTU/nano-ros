@@ -1,0 +1,8 @@
+# Loaded by island_bringup's launch/system.launch.xml with an ABSOLUTE
+# spelling: <param from="$(find-pkg-share c_controller_pkg)/config/...">.
+# A file in a sibling package lies outside the bringup root, so the resolver
+# records it as an absolute model input (issue 2615).
+/**:
+  ros__parameters:
+    ctrl_period: 0.03
+    max_steer_rad: 0.6

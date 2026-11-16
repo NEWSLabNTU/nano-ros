@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>c_controller_pkg</name>
+  <version>0.1.0</version>
+  <description>C Node pkg of the island-shaped workspace: the controller, and the param files the bringup loads.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>
