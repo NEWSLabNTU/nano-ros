@@ -19,7 +19,10 @@
 //!
 //! Run with: `cargo nextest run -p nros-tests --test zephyr_nucleo_ram_budget`
 
-use nros_tests::{fixtures::build_zephyr_nucleo_c_serial_talker, matrix::PlatformId};
+use nros_tests::{
+    fixtures::{RequireFixture, build_zephyr_nucleo_c_serial_talker},
+    matrix::PlatformId,
+};
 use std::{path::Path, process::Command};
 
 /// The share of the image's linked `RAM` region it may take. The rest is
@@ -64,8 +67,7 @@ fn zephyr_nucleo_serial_talker_fits_its_ram_budget() {
         &[PlatformId::ZephyrNucleoF767zi],
         "the Nucleo-F767ZI RAM budget",
     );
-    let elf = build_zephyr_nucleo_c_serial_talker()
-        .unwrap_or_else(|e| panic!("the Nucleo serial talker image: {e}"));
+    let elf = build_zephyr_nucleo_c_serial_talker().require("the Nucleo serial talker image");
     let root = nros_tests::project_root();
     let out = Command::new("python3")
         .arg(root.join("scripts/nros-mem-report.py"))
