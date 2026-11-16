@@ -911,7 +911,7 @@ same commit the date lands.
 
 | issue | work item | why it belongs here |
 | --- | --- | --- |
-| [#2659](../issues/2659-qemu-ladder-falls-past-pin.md) | — | Homed 2026-11-16. The test harness's QEMU ladder falls to `$PATH` when the pinned QEMU is missing, so a test can pass on an emulator CI does not run: an old QEMU halted a locked-up guest and read green on host 118 while the pinned one failed it. |
+| [#2659](../issues/archived/2659-qemu-ladder-falls-past-pin.md) | — | **Resolved** 2026-11-17: a missing pinned QEMU for a target the store builds is unmet in the harness and refused by the shell ladder, and `tier-preconditions` reports it. Homed 2026-11-16. The test harness's QEMU ladder falls to `$PATH` when the pinned QEMU is missing, so a test can pass on an emulator CI does not run: an old QEMU halted a locked-up guest and read green on host 118 while the pinned one failed it. |
 | [#2164](../issues/2164-zephyr-serial-join-main-priority-and-rx-ring-default.md) | W4c | Re-homed 2026-11-05 from phase-474 T3 (archived). A Zephyr board joining a live domain over serial needs a measured RX-ring default, and that needs a serial-join lane; the Nucleo-F767ZI's serial twin is one. |
 | [#2194](../issues/archived/2194-zephyr-board-knob-rung.md) | W3 | **Resolved** 2026-11-02. The Nucleo-F767ZI and Pico W descriptors now state their RAM knobs in `[knobs]`, and the Zephyr leaf road carries the board rung. Listed here because W3 is where it was found. |
 | [#2202](../issues/2202-zenoh-defaults-sized-for-big-ram.md) | W3 | An undeclared zenoh C image falls back to pool and heap defaults sized for host-scale RAM (~400 KB on a 520 KiB part). Every small board this phase adds meets them, and 2194's board rung (resolved) is where a board overrides them. |

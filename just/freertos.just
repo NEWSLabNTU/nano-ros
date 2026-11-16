@@ -3,7 +3,10 @@ set working-directory := '..'
 # Phase 143 — patched qemu-system-arm built by `just qemu setup-qemu`.
 # issue 1851 — the binary the QEMU ladder picks (scripts/lib/qemu-bin.sh):
 # QEMU_SYSTEM_ARM, build/qemu, the pinned store copy, then PATH.
-QEMU_BIN := `bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm || true'`
+# Silent: this is evaluated whenever the justfile LOADS, so the ladder's
+# missing-pin reason (issue 2659) would print before every `just` command.
+# A recipe that runs it still gets the bare name and the shell's own error.
+QEMU_BIN := `bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm 2>/dev/null || true'`
 
 default:
     @just --list --justfile {{source_file()}}

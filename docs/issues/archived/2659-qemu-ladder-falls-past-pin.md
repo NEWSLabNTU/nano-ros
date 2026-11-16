@@ -1,15 +1,16 @@
 ---
 id: 2659
 title: "The test harness's QEMU ladder falls back to `$PATH` past a missing pinned QEMU, so a test can pass on an emulator CI does not run"
-status: open
+status: resolved
 type: bug
 area: [testing, qemu, sdk]
 severity: medium
 found: 2026-11-16
+resolved: 2026-11-17
 related: [phase-524]
 ---
 
-**Home: [phase-524](../roadmap/phase-524-emulator-twins.md)** (the emulator
+**Home: [phase-524](../../roadmap/phase-524-emulator-twins.md)** (the emulator
 side of the harness).
 
 ## What happened
@@ -72,3 +73,31 @@ store builds (where `$PATH` is the wrong emulator) from one it does not
 - `tier-preconditions` lists it.
 - A store-unbuilt target still resolves to `$PATH`.
 - Unit tests cover the three `QemuBin` arms with the index's target list.
+
+## Resolution (2026-11-17)
+
+Both twins now refuse a missing pin for a target the store builds, and the
+precondition check reports it.
+
+- **The harness** (`nros_tests::qemu`). It reads `store_targets` from the
+  index (`nros_build_paths::sdk_tool_source_configure` plus
+  `nros_qemu_ladder::targets_of_configure`). `QemuBin::Missing` is
+  `unmet!`, naming the pin and `nros setup --tool qemu`, symmetric with
+  `RefusedPrefix`. `QemuBin::Host` keeps `$PATH`. The policy is one
+  function, `binary_for`, unit-tested on all three arms. Two unit tests
+  that only RENDER a QEMU line now name a QEMU through rung 1
+  (`pin_test_qemu`), so they no longer depend on the host's store. The
+  library's 323 tests pass with an empty store and with a populated one.
+- **The shell twin** (`nros_qemu_bin`). The same refusal: it returns 1
+  with the reason on stderr, through `_nros_qemu_store_builds`, which reads
+  the new `nros_sdk_tool_source_configure`. Three `just` modules resolve
+  `QEMU_BIN` at justfile LOAD, and they stay silent so the reason does not
+  print before every command. `nros_qemu_report`'s `[MISSING]` line now
+  says a `$PATH` QEMU is not the pinned one.
+- **`tier-preconditions`** reports a missing pinned `qemu-system-arm` /
+  `qemu-system-riscv64` for the lanes that boot guests (`tier2`,
+  `tier2-nightly`, `all`), with `nros setup --tool qemu` as the remedy.
+
+The "warn when a consumer falls past the pin" part is the refusal itself:
+no consumer falls past the pin for a target the store builds. The CLI
+already had no `$PATH` rung.

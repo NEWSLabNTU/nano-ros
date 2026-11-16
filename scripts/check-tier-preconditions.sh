@@ -97,6 +97,25 @@ probe "the project-local QEMU (build/qemu) is not the version the index pins" \
     "just linux setup   (re-provisions build/qemu at the pin; or: just qemu setup-qemu, or remove build/qemu to use the store copy)" \
     bash -c '. scripts/lib/qemu-bin.sh && nros_qemu_prefix_check'
 
+# Issue 2659 — the PINNED QEMU itself, for a lane that boots QEMU guests. The
+# ladder refuses a missing pin (the harness `unmet!`s, `nros_qemu_bin` returns
+# 1) rather than falling to a `$PATH` QEMU, because a distro QEMU is a
+# different emulator: on 2026-11-16 a 6.2 halted a guest the pinned
+# 11.0.0-nros8 ends with `qemu: fatal: Lockup`, so a broken boot read green on
+# one host and red in CI. This says so before the run, once, instead of as one
+# red per QEMU test. Lanes named, as for PX4 below: tier 1 and the linux lane
+# boot no guest.
+case "${NROS_FIXTURE_LANE:-all}" in
+    tier2 | tier2-nightly | all)
+        probe "the pinned qemu-system-arm is not in the nros setup store (this lane boots QEMU guests)" \
+            "nros setup --tool qemu   (prebuilt, no sudo)" \
+            bash -c '. scripts/lib/qemu-bin.sh && nros_qemu_bin qemu-system-arm >/dev/null'
+        probe "the pinned qemu-system-riscv64 is not in the nros setup store (this lane boots QEMU guests)" \
+            "nros setup --tool qemu   (prebuilt, no sudo)" \
+            bash -c '. scripts/lib/qemu-bin.sh && nros_qemu_bin qemu-system-riscv64 >/dev/null'
+        ;;
+esac
+
 # 2. The CLI's source stamp. Before fixtures because everything downstream keys on it, and
 #    because ANY tree refresh — pull, rebase, stash, rsync — re-arms it. That
 #    re-arming is what makes the contract once-per-refresh rather than

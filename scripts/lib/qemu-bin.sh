@@ -66,6 +66,27 @@ nros_qemu_prefix_check() {
     _nros_qemu_prefix_current "$prefix" qemu "$bin"
 }
 
+# _nros_qemu_store_builds <tool> <arch>
+#
+# Issue 2659 — whether the store's `<tool>` is built for `<arch>`, from
+# `[tool.<tool>.source] configure`'s `--target-list`. With no such line every
+# target is taken as the store's (refuse rather than guess), as the Rust twin
+# (`nros_qemu_ladder::targets_of_configure`) does.
+_nros_qemu_store_builds() {
+    local tool="$1" arch="$2" configure list w t
+    configure="$(nros_sdk_tool_source_configure "$tool" 2>/dev/null)" || return 0
+    list=""
+    for w in $configure; do
+        case "$w" in --target-list=*) list="${w#--target-list=}" ;; esac
+    done
+    [ -n "$list" ] || return 0
+    local IFS=,
+    for t in $list; do
+        [ "${t%-softmmu}" = "$arch" ] && return 0
+    done
+    return 1
+}
+
 # nros_qemu_bin <exe> [<tool>] [noprefix]
 #
 # Prints the binary to run for `<exe>` (`qemu-system-arm`, …). `<tool>` is the
@@ -103,6 +124,17 @@ nros_qemu_bin() {
             printf '%s\n' "$cand"
             return 0
         fi
+        # Issue 2659 — the store builds this target and does not hold the
+        # pinned copy, so a `$PATH` QEMU is a DIFFERENT emulator, not a
+        # fallback: a distro 6.2 halted a guest the pinned one ends with
+        # `qemu: fatal: Lockup`, so a broken boot read green. Refuse, as the
+        # harness does. A target the store does not build keeps `$PATH`.
+        if _nros_qemu_store_builds "$tool" "$arch"; then
+            echo "nros_qemu_bin: the pinned $exe ($tool $ver) is not in the store;" \
+                 "a $exe on \$PATH is not it. Run: nros setup --tool $tool" >&2
+            printf '%s\n' "$exe"
+            return 1
+        fi
     fi
     if cand="$(command -v "$exe" 2>/dev/null)"; then
         printf '%s\n' "$cand"
@@ -123,8 +155,10 @@ nros_qemu_bin() {
 nros_qemu_report() {
     local exe="${1:?nros_qemu_report: binary name}" min="${2:--}" tool="${3:-qemu}"
     local bin ver major minor fmaj fmin
-    if ! bin="$(nros_qemu_bin "$exe" "$tool" "${4:-}")"; then
-        echo "  [MISSING] $exe (run: nros setup --tool $tool — prebuilt, no sudo)"
+    # The report's own [MISSING] line names the remedy; the ladder's stderr
+    # reason (issue 2659) would only repeat it.
+    if ! bin="$(nros_qemu_bin "$exe" "$tool" "${4:-}" 2>/dev/null)"; then
+        echo "  [MISSING] $exe (run: nros setup --tool $tool — prebuilt, no sudo; a \$PATH QEMU is not the pinned one)"
         return 1
     fi
     ver="$("$bin" --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+).*/\1/')"

@@ -52,3 +52,28 @@ nros_sdk_pinned_version() {
     [ -n "$ver" ] || return 1
     printf '%s' "$ver"
 }
+
+# nros_sdk_tool_source_configure <tool> [index]
+#
+# Issue 2659 — `[tool.<tool>.source] configure`, the line the store's copy is
+# built with (a QEMU's `--target-list`). Fails when there is no such line.
+# Twin: `nros_build_paths::sdk_tool_source_configure`.
+nros_sdk_tool_source_configure() {
+    local tool="${1:?nros_sdk_tool_source_configure: tool name}"
+    local index="${2:-$_NROS_SDK_PIN_LIB_DIR/../../nros-sdk-index.toml}"
+    [ -r "$index" ] || return 1
+    local line
+    line="$(awk -v hdr="[tool.$tool.source]" '
+        $0 == hdr { inside = 1; next }
+        /^\[/     { inside = 0 }
+        inside && /^configure[ \t]*=/ {
+            v = $0
+            sub(/^configure[ \t]*=[ \t]*"/, "", v)
+            sub(/"[^"]*$/, "", v)
+            print v
+            exit
+        }
+    ' "$index")"
+    [ -n "$line" ] || return 1
+    printf '%s' "$line"
+}

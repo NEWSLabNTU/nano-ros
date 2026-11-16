@@ -524,6 +524,9 @@ mod tests {
         if crate::nros_cli_bin_path().is_none() {
             crate::unmet!("nros CLI not built");
         }
+        // Issue 2659 — a rendering test: name the QEMU so a host without the
+        // pinned one is not refused for a line this test never runs.
+        crate::qemu::pin_test_qemu("arm");
         let boot = QemuBoot::table("arm", "lm3s6965evb").then(["-smp", "cpus=1"]);
         let run = qemu_image(Path::new("/b/app"), &boot).unwrap();
         let want = nros_qemu_ladder::plan_line(&boot.args)

@@ -9,7 +9,9 @@ QEMU_PREFIX := absolute_path("build/qemu")
 QEMU_LOCAL := QEMU_PREFIX / "bin/qemu-system-arm"
 # issue 1851 — the binary the QEMU ladder picks (scripts/lib/qemu-bin.sh):
 # QEMU_SYSTEM_ARM, the prefix above, the pinned store copy, then PATH.
-QEMU_BIN := `bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm || true'`
+# Silent at justfile load (issue 2659's missing-pin reason would print before
+# every `just` command); a recipe that runs it gets the shell's own error.
+QEMU_BIN := `bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm 2>/dev/null || true'`
 
 # Cargo target profile subdir (e.g. `nros-relwithdebinfo`, `release`, `debug`) —
 # the fixture ELFs land under target/<triple>/<PROFILE_DIR>/. Must track the
