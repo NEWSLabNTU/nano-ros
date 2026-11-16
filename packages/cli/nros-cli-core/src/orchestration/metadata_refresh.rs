@@ -1339,6 +1339,17 @@ fn first_error_line(why: &str) -> String {
             // `failed for `workspace` (exit 1):` header and every later sync
             // printed an empty "last error".
             || lower.starts_with("cmake error")
+            // A LINK failure: the linker's own lines say what is wrong and
+            // contain no "error", while `collect2: error: ld returned 1 exit
+            // status` (which does) only says that it failed. It comes after
+            // them, so these keep the marker on the cause: the
+            // qemu-armv7a-nuttx typed-carrier probe recorded nothing but the
+            // collect2 line, an empty failure record for an undefined
+            // `__nros_c_component_<pkg>_create`.
+            || lower.contains("undefined reference to")
+            || lower.contains("multiple definition of")
+            || lower.contains("cannot find -l")
+            || lower.contains("undefined symbol:")
     })
     .or_else(|| {
         why.lines()
@@ -1347,7 +1358,33 @@ fn first_error_line(why: &str) -> String {
             .map(str::to_string)
     })
     .unwrap_or_default();
-    elide_keeping_cause(&pick, CAP)
+    elide_keeping_cause(&with_cmake_message(why, pick), CAP)
+}
+
+/// A CMake error is a HEADER (`CMake Error at <file>:<line> (message):`) whose
+/// text is on the indented lines below it, so keeping the header alone records
+/// where it failed and not why. The record of a probe refused for a
+/// `project()` that did not match its `package.xml` read only
+/// `CMake Error at …/NanoRosPackageXml.cmake:96 (message):`. Append those
+/// lines, joined, up to the first blank or unindented one.
+fn with_cmake_message(why: &str, pick: String) -> String {
+    if !pick.to_ascii_lowercase().starts_with("cmake error") {
+        return pick;
+    }
+    let lines: Vec<&str> = why.lines().collect();
+    let Some(at) = lines.iter().position(|l| l.trim() == pick) else {
+        return pick;
+    };
+    let body: Vec<&str> = lines[at + 1..]
+        .iter()
+        .take_while(|l| !l.trim().is_empty() && l.starts_with(char::is_whitespace))
+        .map(|l| l.trim())
+        .collect();
+    if body.is_empty() {
+        pick
+    } else {
+        format!("{pick} {}", body.join(" "))
+    }
 }
 
 /// Issue 2097 -- the source a probe failure says to provision, `None` when it
@@ -2272,6 +2309,41 @@ mod tests {
             "metadata probe run failed for `p::c` (exit 101):"
         );
         assert_eq!(first_error_line(""), "");
+        // A link failure keeps the linker's cause, not collect2's summary.
+        let link = "metadata probe build failed for `p::c` (exit 2):\n\
+            [ 90%] Linking CXX executable probe_p__c\n\
+            /usr/bin/ld: CMakeFiles/probe_p__c.dir/probe_p__c.cpp.o: in function `__nros_entry_setup()':\n\
+            probe_p__c.cpp:(.text+0x6f): undefined reference to `__nros_c_component_p_create'\n\
+            collect2: error: ld returned 1 exit status\n";
+        let got = first_error_line(link);
+        assert!(
+            got.contains("undefined reference to `__nros_c_component_p_create'"),
+            "{got}"
+        );
+        // A CMake error keeps its message, not only its `at <file>:<line>` header.
+        let cm = "metadata probe configure failed for `ws` (exit 1):\n\
+            CMake Error at /x/cmake/NanoRosPackageXml.cmake:96 (message):\n  \
+            nano-ros: project(c_typed_carrier) in /x/CMakeLists.txt\n  \
+            does not match the package name `p` in /x/package.xml.\n\
+            \n\
+            -- Configuring incomplete, errors occurred!\n";
+        let got = first_error_line(cm);
+        assert!(got.contains("does not match the package name `p`"), "{got}");
+        assert!(!got.contains("Configuring incomplete"), "{got}");
+        // At real path lengths the 300-character cap still keeps the mismatch.
+        let real = "CMake Error at /mnt/renegade/aeon/nros-wt-orph/cmake/NanoRosPackageXml.cmake:96 (message):\n  \
+            nano-ros: project(c_typed_carrier) in\n  \
+            /mnt/renegade/aeon/nros-wt-orph/examples/rv-virt-threadx/c/typed-carrier/src/riscv64_threadx_c_typed_carrier/CMakeLists.txt\n  \
+            does not match the package name `riscv64_threadx_c_typed_carrier` in\n  \
+            /mnt/renegade/aeon/nros-wt-orph/examples/rv-virt-threadx/c/typed-carrier/src/riscv64_threadx_c_typed_carrier/package.xml.\n";
+        let got = first_error_line(real);
+        assert!(got.contains("project(c_typed_carrier)"), "{got}");
+        assert!(got.contains("riscv64_threadx_c_typed_carrier"), "{got}");
+        // lld's spelling of the same.
+        assert!(
+            first_error_line("ld.lld: error: undefined symbol: foo\n")
+                .contains("undefined symbol: foo")
+        );
         let long = format!("error: {}", "x".repeat(400));
         let got = first_error_line(&long);
         assert!(
