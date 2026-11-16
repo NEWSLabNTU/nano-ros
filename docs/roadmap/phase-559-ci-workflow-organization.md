@@ -892,3 +892,7 @@ an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
   W7 moves the job, and the slowdown goes with it.
 - [issue 2499](../issues/archived/2499-verus-lane-toolchain-vstd-mismatch.md) — the
   Verus lane, resolved by #3723: its job is `verify-verus` in `weekly.yml`.
+- [issue 2625](../issues/2625-gates-exceed-their-cpu-weight.md) — weight-1
+  check::build gates that run up to 22 processes (the token pool's over-weight
+  report). Parked: fix one only when it measures as a problem, the way
+  `cli-tests` was fixed (`cpu:4`, 2026-11-16).
