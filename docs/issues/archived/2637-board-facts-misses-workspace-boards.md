@@ -53,6 +53,19 @@ bringup naming it. `nros build`'s catalog finds it, the checkout's alone does
 not, `catalog_for_dir` finds it from the bringup and from the root, and
 `resolve` answers `NROS_BOARD=my-ws-board`, with no `$NROS_EXTRA_BOARD_PATH`.
 
+## Measured
+
+A scratch C++ workspace with a copy of ASI's `s32z270_zephyr_board` package
+in `src/` (renamed `asi-s32z-ws`, so no in-tree board shares its name) and
+`[image.s32z] board = "asi-s32z-ws"`, `NROS_EXTRA_BOARD_PATH` unset:
+
+- before (main): `nros dev image board-facts $PWD/src/demo_bringup --deploy
+  s32z` fails, `no board descriptor claims `asi-s32z-ws``;
+- after: it answers `NROS_BOARD=asi-s32z-ws` with the package's
+  `nros-board.toml`, and `nros build s32z` (Zephyr 3.7.0, SDK 0.16.8, the
+  ASI package's `-DBOARD_REVISION=D`) configures through it and links
+  `zephyr.elf`, RAM 3,929,092 B of 7 MiB.
+
 ## Consumer cleanup
 
 ASI drops the `NROS_EXTRA_BOARD_PATH` export in `build.sh:427-432` (it is also
