@@ -3502,6 +3502,63 @@ pub(crate) fn node_id_opt(node: &nros_cpp_node_t) -> Option<nros_node::executor:
     decode_node_id(node.node_id).map(nros_node::executor::NodeId::from_raw)
 }
 
+/// The C++ half of the rule the C API keeps (`refuse_unbound`): every entity
+/// belongs to a node that was CREATED (`nros_cpp_node_create*`, or an
+/// `rclcpp::Node`). A zero-initialised handle has no node record, so its
+/// entity would be announced under some other node -- the image's primary
+/// node, or the executor's configured name made into one. Refused instead,
+/// naming the fix; `call` is the entry point, for the message.
+pub(crate) fn require_created_node(node: &nros_cpp_node_t, call: &str) -> bool {
+    if decode_node_id(node.node_id).is_some() {
+        return true;
+    }
+    refuse_uncreated_node(call);
+    false
+}
+
+/// The message [`require_created_node`] logs; the action server, which
+/// carries its node's id on its own storage, reports through it too.
+pub(crate) fn refuse_uncreated_node(call: &str) {
+    nros_log::log_error!(
+        nros_log::get_logger("nros-cpp"),
+        "{}: this entity's node was never created. Create the node first \
+         (construct an rclcpp::Node, or call nros_cpp_node_create), then create its \
+         entities on it.",
+        call
+    );
+}
+
+#[cfg(test)]
+mod require_created_node_tests {
+    use super::*;
+
+    fn handle() -> nros_cpp_node_t {
+        nros_cpp_node_t {
+            executor: core::ptr::null_mut(),
+            name: [0u8; NROS_CPP_NAME_LEN],
+            namespace: [0u8; NROS_CPP_NAMESPACE_LEN],
+            node_id: 0,
+            _reserved: [0u8; NROS_CPP_NODE_RESERVED],
+            qos_overrides: core::ptr::null(),
+            qos_overrides_len: 0,
+        }
+    }
+
+    #[test]
+    fn a_handle_no_node_was_created_on_is_refused() {
+        assert!(!require_created_node(&handle(), "test"));
+    }
+
+    #[test]
+    fn the_first_created_node_is_accepted() {
+        // NodeId(0) is the primary node; the biased field must not read it as
+        // "no node" (issue 0312's shape).
+        let mut node = handle();
+        node.node_id = encode_node_id(0);
+        assert!(require_created_node(&node, "test"));
+    }
+}
+
 /// Create a node with extended options.
 ///
 /// Thin C++ FFI wrapper over the Rust `Executor::node_builder(name)
