@@ -1070,7 +1070,9 @@ contracts:
         assert_eq!(ages[0].max_age_ms, 1_000);
         assert_eq!(
             v.not_lowered,
-            ["paths.e2e.max_latency: a scope path's budget is held at resolve time, not on target"]
+            [
+                "event_chains.e2e.max_latency: a scope path's budget is held at resolve time, not on target"
+            ]
         );
         // The base is untouched.
         let base = contract_monitors::monitor_rows(&m).unwrap();

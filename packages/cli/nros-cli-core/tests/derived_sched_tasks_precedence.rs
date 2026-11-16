@@ -598,10 +598,30 @@ fn a_schema_4_model_and_its_schema_5_twin_emit_the_same_entry() {
         new_text.contains("\n  tasks:\n") && !new_text.contains("\n  tiers:\n"),
         "rlm v0.3.11 writes the schema-5 key:\n{new_text}"
     );
-    assert!(new_text.contains("version: 5"), "{new_text}");
+    // The current schema is READ, not restated: rlm v0.3.27 writes schema 6,
+    // and a literal here goes stale at every bump. What this test is about is
+    // the schema-4 `tiers:` key, so any schema from 5 on is the "new" twin.
+    let version_line = new_text
+        .lines()
+        .find(|l| l.trim_start().starts_with("version: "))
+        .expect("the model states its schema version")
+        .to_string();
+    let schema: u32 = version_line
+        .trim()
+        .trim_start_matches("version: ")
+        .parse()
+        .expect("a numeric schema version");
+    assert!(
+        schema >= 5,
+        "rlm v0.3.11+ writes schema 5 or later:\n{new_text}"
+    );
     let old_text = new_text
         .replacen("\n  tasks:\n", "\n  tiers:\n", 1)
-        .replacen("version: 5", "version: 4", 1);
+        .replacen(
+            &version_line,
+            &version_line.replace(&format!("version: {schema}"), "version: 4"),
+            1,
+        );
 
     let artifacts = |text: &str, name: &str| {
         let path = new_path.with_file_name(name);

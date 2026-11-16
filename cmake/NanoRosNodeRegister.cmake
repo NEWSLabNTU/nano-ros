@@ -535,7 +535,7 @@ function(_nros_entities_retired _call)
         "      <bringup>/launch/<stem>.contract.yaml   (beside <stem>.launch.xml)\n"
         "\n"
         "  nodes: names each node's `pub` / `sub` / `srv` / `cli` endpoints and its\n"
-        "  `paths:` (a path whose trigger is `{ timer: { rate_hz: N } }` IS a timer);\n"
+        "  `paths:` (a path whose trigger is `{ timer: { rate: NHz } }` IS a timer);\n"
         "  topics: / services: / actions: wire those endpoints to absolute names.\n"
         "  The resolver folds it into the SystemModel and `nano_ros_entry` passes\n"
         "  that model to `nros dev image entity-inventory`, so the pools size themselves.\n"
