@@ -149,7 +149,7 @@ methods. The C ABI is generated from it by cbindgen, the way the rest of
   (CLAUDE.md naming: `linux`, not `posix`), so it compiles only where
   `linux/can.h` exists.
 - **`board`** is the hook for a vendor stack nano-ros cannot ship (the NXP RTD
-  FlexCAN driver on `s32z270-freertos`, issue 2632). The board package supplies
+  FlexCAN driver on `s32z270-freertos`, GitHub #4015). The board package supplies
   the five symbols; the weak defaults return "not supported", so an image whose
   board supplies none fails at `open`, naming the board.
 - **`mock`** records sent frames and replays queued receive frames, with a
