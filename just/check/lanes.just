@@ -1250,22 +1250,38 @@ launch-resolve-fresh:
 # `--ignored` wherever a ROS 2 install is found — the same rule as
 # `parity_helpers::ros_share_root` ($ROS_DISTRO, else exactly one /opt/ros/<d>/share).
 # Where none is, the ledger says so (`nros_check_unverified`, phase-472 F2).
+#
+# phase-559 — `cpu:4` and `--test-threads=4` are ONE number, stated twice
+# because a just attribute cannot read a variable; change both together. The
+# gate harness gave this recipe one slot of its `--test-threads` (nproc), and
+# libtest then ran nproc tests at once: `configure_verb`'s 22 tests each run a
+# real `nros configure` with nested probe cargo builds, so the gate peaked at 18
+# runnable against its weight of 1. On a loaded host the lane reached ~100
+# runnable, and this gate hit the harness's 2400 s kill (3 gates on host 139 and
+# one on 243, 2026-11-15). Measured on an idle 20-core host, the test run is
+# 530 s at nproc threads, 523 s at 4 and 596 s at 2, about 1.5 CPUs on average:
+# its tests mostly wait on the shared probe build dirs, so 4 is the knee. The
+# weight now reserves what the run uses, and the cap keeps the run inside it.
+# The compile half draws from the lane's token pool, independent of both
+# (phase-489 W13).
 [private]
 [metadata("tier", "build")]
 [group('needs:ros2')]
 [group('needs:colcon')]
 [group('needs:submodules')]
+[group('cpu:4')]
 cli-tests:
     #!/usr/bin/env bash
     set -e
-    cargo test --manifest-path packages/cli/Cargo.toml --workspace --quiet
+    threads=4  # = the cpu:4 weight above
+    cargo test --manifest-path packages/cli/Cargo.toml --workspace --quiet -- --test-threads="$threads"
     # phase-527 W3 — the runner packages workspace (RFC-0119 D5) is a SEPARATE
     # cargo root, so the CLI run above compiles `nros-extension` as a path dep
     # but runs none of its tests. It is a host-tool root the CLI depends on,
     # which is why it rides this lane rather than one of its own; it is small
     # (one crate, serde only) and lints here too, since no clippy lane reaches
     # a root outside the main workspace.
-    cargo test --manifest-path packages/runners/Cargo.toml --workspace --quiet
+    cargo test --manifest-path packages/runners/Cargo.toml --workspace --quiet -- --test-threads="$threads"
     cargo clippy --manifest-path packages/runners/Cargo.toml --workspace --all-targets --quiet -- -D warnings
     ros_share=""
     if [ -n "${ROS_DISTRO:-}" ] && [ -d "/opt/ros/$ROS_DISTRO/share" ]; then
@@ -1277,7 +1293,7 @@ cli-tests:
     if [ -n "$ros_share" ]; then
         echo "cli-tests: ROS 2 at $ros_share — running the ROS-dependent parity tests (--ignored)"
         cargo test --manifest-path packages/cli/Cargo.toml -p rosidl-codegen \
-            --test parity_test --test comparison_test --quiet -- --ignored
+            --test parity_test --test comparison_test --quiet -- --ignored --test-threads="$threads"
     else
         source scripts/build/check-skip.sh
         nros_check_unverified cli-tests "no ROS 2 install: the rosidl-codegen parity tests stayed IGNORED (issue 1552)" || exit 1
@@ -1290,7 +1306,7 @@ cli-tests:
     if command -v colcon >/dev/null 2>&1 && [ -f "$rre" ]; then
         echo "cli-tests: colcon found -- running the colcon flag parity tests (--ignored)"
         cargo test --manifest-path packages/cli/Cargo.toml -p nros-cli \
-            --test colcon_flag_parity --quiet -- --ignored
+            --test colcon_flag_parity --quiet -- --ignored --test-threads="$threads"
     else
         source scripts/build/check-skip.sh
         nros_check_unverified cli-tests "no colcon on PATH, or ros2_rust_examples not checked out: the colcon flag parity tests stayed IGNORED (phase-526 W3)" || exit 1
