@@ -29,6 +29,7 @@ user application needs.
 - [`rclc/action.h`](../api/c/action_8h.html) — actions
 - [`rclc_parameter/rclc_parameter.h`](../api/c/rclc__parameter_8h.html) — parameter services
 - [`rclc_lifecycle/rclc_lifecycle.h`](../api/c/rclc__lifecycle_8h.html) — REP-2002 lifecycle states
+- `rclc_set_trace_sink` / `rclc_trace_marker(id, arg)` — the callback trace sink, and an application event (ids 1-15) through it; see [Trace callbacks](../guide/realtime/trace-callbacks.md)
 
 > **Two-layer API.** Every entity exposes two parallel C entry-point
 > sets: `rclc_*_init_default` (Layer 1, caller polls) and

@@ -2967,6 +2967,17 @@ nros_cpp_ret_t nros_cpp_executor_set_monitor_arming(void *handle, bool on_call, 
 void nros_cpp_monitors_arm(void);
 
 /**
+ * Emit one application trace event `(id, arg)` through the installed trace
+ * sink, on the path the executor's own callback events take. `id` must be in
+ * 1..=15, the application's block; ids from 16 up are the executor's and
+ * answer `NROS_CPP_RET_INVALID_ARGUMENT` with an error log, emitting nothing.
+ * No sink installed, or a build without callback tracing: `NROS_CPP_RET_OK`
+ * and nothing emitted. The C spelling is `rclc_trace_marker()`; this is the
+ * same call on the C++ ABI, wrapped by `rclcpp::trace_marker()`.
+ */
+nros_cpp_ret_t nros_cpp_trace_marker(uint32_t id, uint32_t arg);
+
+/**
  * Declare one `from -> to` remap for a node, from the C++ side of the ABI.
  *
  * `node_namespace` may be NULL, which means `/`; every other pointer is

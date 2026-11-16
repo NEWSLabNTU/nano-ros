@@ -58,6 +58,7 @@ public surface a user application needs.
 - [`rclcpp::PollingActionServer<A>`](../api/cpp/classrclcpp_1_1PollingActionServer.html) / [`PollingActionClient<A>`](../api/cpp/classrclcpp_1_1PollingActionClient.html) — L1 polling model. Caller drives `take_*` / `accept_goal` / `complete_goal` from a spin loop.
 - [`rclcpp::Future<T>`](../api/cpp/classrclcpp_1_1Future.html) — async result handle
 - [`rclcpp::Executor`](../api/cpp/classrclcpp_1_1Executor.html), [`Timer`](../api/cpp/classrclcpp_1_1Timer.html), [`GuardCondition`](../api/cpp/classrclcpp_1_1GuardCondition.html)
+- `rclcpp::trace_marker(id, arg)` — an application event (ids 1-15) through the installed trace sink, ordered with the executor's callback events; see [Trace callbacks](../guide/realtime/trace-callbacks.md)
 - Parameters are methods ON the node — `declare_parameter<T>` / `get_parameter<T>` / `set_parameter<T>` / `has_parameter`, upstream's names, forwarding to the one store the `rcl_interfaces` services read. `rclcpp::Seq<T, N>` is the array VALUE a freestanding node declares with (`std::vector<T>` under `NROS_CPP_STD`). There is no standalone `rclcpp::ParameterServer`: a second store would be invisible to `ros2 param get`. See [How nano-ros differs from ROS 2](../background/differences-from-ros2.md#parameters-one-store-a-smaller-surface) for what is intentionally smaller than `rclcpp`, and [Parameters and `/parameter_events`](rclcpp-compatibility.md#parameters-and-parameter_events).
 
 > **Two-layer API.** The `rclcpp::ActionServer<A>` / `ActionClient<A>`

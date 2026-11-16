@@ -1,0 +1,5 @@
+{
+  "key": "rust:emit_app_marker",
+  "verdict": "extension",
+  "why": "issue 2641 -- `nros::trace_marker::emit_app_marker(id, arg)`, the Rust spelling of `c:trace_marker`. rclrs has no trace marker."
+}

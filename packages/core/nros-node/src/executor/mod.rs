@@ -51,6 +51,9 @@ pub use backing::{
 // paired stubs rather than naming it directly.
 #[cfg(all(any(has_rmw, test), feature = "trace-callbacks"))]
 pub mod callback_trace;
+// issue 2641 -- the application's trace markers. UNGATED: the id range check
+// runs in every build, and only the emission needs `callback_trace`.
+pub mod trace_marker;
 // phase-463 W7 — the host profile (`profile-mode`, host-only: it needs `std`
 // and no RTOS umbrella resolves it).
 #[cfg(all(any(has_rmw, test), feature = "profile-mode"))]

@@ -681,6 +681,16 @@ does not ship patched general-purpose C++ libraries: a user brings and
 patches their own, which a nano-ros package already supports. The book has
 no page saying how, which the issue records as an open documentation gap.
 
+### I29 -- an application trace marker through the installed sink
+
+**Status: DONE (2026-11-16).** [Issue 2641](../issues/archived/2641-app-trace-marker.md),
+GitHub #4009. `rclc_trace_marker(id, arg)`, `rclcpp::trace_marker` and
+`nros::trace_marker::emit_app_marker` emit an application event through the
+installed callback trace sink, on the executor events' path. Application ids
+are 1..=15, the block the executor's 16-27 were placed above; any other id is
+refused. Zephyr's default sink carries it to CTF; FreeRTOS, POSIX, NuttX and
+ThreadX need a sink the application installs.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -800,6 +810,10 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
 - [x] I25: a PATH change leaves pyo3-ffi Fresh in every recipe that builds a
       pyo3 crate; `check pyo3-path-stable` with an unpinned control (issue 2660).
 - [ ] I26: the island pins one nano-ros commit in `nros-toolchain.toml`, with no vendored CLI build and no `NROS_SKIP_STALE_CHECK` (issue 2645).
+- [x] I29: `rclc_trace_marker` / `rclcpp::trace_marker` /
+      `nros::trace_marker::emit_app_marker` reach the installed sink with id
+      and arg, and refuse every id outside 1..=15 (issue 2641; `just check c`,
+      `just check cpp`, `nros-node` tests).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -850,6 +864,7 @@ from that session, `FREERTOS_PORT not set` on `freertos-posix`, is
 fixed after that release.
 
 - [issue 2636](../issues/archived/2636-rclcpp-throttle-once.md) (GitHub #4010, resolved): `RCLCPP_*_THROTTLE` was refused and `RCLCPP_*_ONCE` / `_SKIPFIRST` were missing. The throttle now measures on its `clock` argument (I21).
+- [issue 2641](../issues/archived/2641-app-trace-marker.md) (GitHub #4009, resolved): no public call emitted an application event through the installed trace sink; `rclc_trace_marker` / `rclcpp::trace_marker` do now, ids 1..=15 (I29).
 - [issue 2615](../issues/archived/2615-model-gate-refuses-sibling-param-file.md) (resolved): a model whose launch loads a param file from a sibling package was refused as non-portable (I17).
 - [issue 2618](../issues/archived/2618-knob-delivery-check-false-mismatch-after-link.md): the knob delivery check refuses a build after link over a list separator and an override row (I18).
 - [issue 2634](../issues/archived/2634-param-store-full-declare-silently-uses-default.md) (GitHub #4018, resolved): `declare_parameter` past a full parameter store returned the code default in silence. It now stops the boot and names the knob (I19).

@@ -151,6 +151,17 @@ struct rclc_goal_uuid_t;
 #define RCUTILS_ERROR_MESSAGE_MAX_LENGTH ((((RCUTILS_ERROR_STATE_MESSAGE_MAX_LENGTH + RCUTILS_ERROR_STATE_FILE_MAX_LENGTH) + RCUTILS_ERROR_STATE_LINE_NUMBER_STR_MAX_LENGTH) + RCUTILS_ERROR_FORMATTING_CHARACTERS) + 1)
 
 /**
+ * First application trace marker id (see [`rclc_trace_marker`]).
+ */
+#define RCLC_TRACE_APP_MARKER_FIRST 1
+
+/**
+ * Last application trace marker id. Ids from 16 up are the executor's own
+ * callback events and are refused by [`rclc_trace_marker`].
+ */
+#define RCLC_TRACE_APP_MARKER_LAST 15
+
+/**
  * Byte of a get_result reply where the result fields start
  * (`[encap 4][status i8][pad → 8][fields]`), for a C caller decoding what
  * `rclc_polling_action_client_try_recv_result_raw` returns. C ABI mirror of
@@ -4324,7 +4335,8 @@ NROS_PUBLIC const char *rclc_qos_policy_kind_to_cstr(uint32_t policy);
  * and, with the later blocks, 20 (handle-tagged name chunk), 21-24 (a stored
  * contract violation) and 25-27 (a take and its source stamp,
  * see [`rclc_trace_set_take`]); the full table is in
- * `nros_node::executor::callback_trace`.
+ * `nros_node::executor::callback_trace`. Ids 1-15 are the application's own
+ * events, emitted with [`rclc_trace_marker`].
  *
  * Call it once at startup, BEFORE anything is registered on the executor: a
  * sink installed later misses the registration events, and the decoder then
@@ -4397,6 +4409,35 @@ NROS_PUBLIC void rclc_trace_set_take(uint8_t handle, bool on, int32_t stamp_offs
  * No-op unless the crate was built with `trace-callbacks`.
  */
 NROS_PUBLIC void rclc_trace_set_timer_every(uint8_t handle, uint16_t every);
+
+/**
+ * Emit one application event `(id, arg)` through the installed trace sink:
+ * the sink [`rclc_set_trace_sink`] installed, or the platform default (on
+ * Zephyr, `sys_trace_app_marker`, so the event lands in the CTF stream). It
+ * takes the same path as the executor's own callback events, so it shares
+ * their clock and their ordering.
+ *
+ * Marker ids are shared with the executor, so the application owns a block:
+ *
+ * | ids       | owner                                                       |
+ * |-----------|-------------------------------------------------------------|
+ * | 0         | reserved, never emitted                                     |
+ * | 1 ..= 15  | the application (`RCLC_TRACE_APP_MARKER_FIRST` ..= `_LAST`) |
+ * | 16 and up | the executor's callback events (16-27 today)                |
+ *
+ * `arg` is the application's own and is passed through unchanged.
+ *
+ * Returns `RCL_RET_OK` when the event was handed to the sink, and also when
+ * there was nothing to hand it to: no sink installed, or a build without
+ * callback tracing. With no sink installed the call costs one range compare,
+ * one atomic load and one branch. An id outside the application block returns
+ * `RCL_RET_INVALID_ARGUMENT`, logs an error, sets the error state
+ * `rcl_get_error_string` reads, and emits nothing; it is never clamped onto
+ * another id.
+ *
+ * Safe from any thread and from inside a callback.
+ */
+NROS_PUBLIC rcl_ret_t rclc_trace_marker(uint32_t id, uint32_t arg);
 
 /**
  * Register a custom transport vtable.

@@ -17199,6 +17199,40 @@ fn a_default_trace_sink_keeps_the_applications_sink() {
     set_trace_sink(None);
 }
 
+/// issue 2641 -- an application marker reaches the installed sink with its id
+/// and arg; an executor id is refused and emits nothing; with no sink an
+/// in-range call is a quiet `Ok`.
+#[cfg(feature = "trace-callbacks")]
+#[test]
+fn an_application_marker_reaches_the_installed_sink() {
+    use super::{
+        callback_trace::set_trace_sink,
+        trace_marker::{AppMarkerIdOutOfRange, emit_app_marker},
+    };
+    use core::cell::RefCell;
+    std::thread_local! {
+        static EVENTS: RefCell<alloc::vec::Vec<(u32, u32)>> =
+            const { RefCell::new(alloc::vec::Vec::new()) };
+    }
+    unsafe extern "C" fn sink(id: u32, arg: u32) {
+        EVENTS.with(|e| e.borrow_mut().push((id, arg)));
+    }
+    let _g = trace_sink_lock();
+
+    set_trace_sink(None);
+    assert_eq!(emit_app_marker(3, 7), Ok(()), "no sink: a quiet Ok");
+
+    set_trace_sink(Some(sink));
+    assert_eq!(emit_app_marker(1, 0xdead_beef), Ok(()));
+    assert_eq!(emit_app_marker(15, 42), Ok(()));
+    assert_eq!(emit_app_marker(18, 1), Err(AppMarkerIdOutOfRange(18)));
+    assert_eq!(emit_app_marker(0, 1), Err(AppMarkerIdOutOfRange(0)));
+    set_trace_sink(None);
+
+    let seen = EVENTS.with(|e| e.borrow().clone());
+    assert_eq!(seen, [(1, 0xdead_beef), (15, 42)]);
+}
+
 private_test_clock!(hazard_reaction_clock);
 
 /// phase-462 W3c -- a hazard whose reacting path states a `safe_state` asks

@@ -100,7 +100,10 @@
 //! Marker ids 1..7 belong to the application's hand-placed phase markers and
 //! must never be reused: captured traces carry them, and renumbering
 //! silently reinterprets every trace taken before it. The block starts at 16
-//! rather than 8 so those keep room to grow contiguously.
+//! rather than 8 so those keep room to grow contiguously. Ids 1..=15 are the
+//! application's block, emitted through this same sink by
+//! `trace_marker::emit_app_marker` (C `rclc_trace_marker`, C++
+//! `rclcpp::trace_marker`), which refuses every other id.
 //!
 //! Gated behind `feature = "trace-callbacks"` so production builds carry zero
 //! overhead and the call sites become `#[cfg]`-elided no-ops. NOT built on
@@ -150,6 +153,9 @@ pub const MARKER_TAKE_STAMP_SEC: u32 = 26;
 /// The taken sample's `stamp.nanosec`, after a
 /// [`MARKER_TAKE_STAMP_SEC`].
 pub const MARKER_TAKE_STAMP_NSEC: u32 = 27;
+
+// issue 2641 -- the application's block sits below every id above.
+const _: () = assert!(super::trace_marker::APP_MARKER_LAST < MARKER_REGISTER);
 
 /// Names longer than this are truncated. Matches the decoder's CB_NAME_MAX;
 /// both sides must agree or the tail of a long name is read as a chunk of
@@ -380,6 +386,15 @@ pub(crate) fn start(handle: u8) {
 pub(crate) fn end(handle: u8) {
     if let Some(sink) = sink() {
         emit(sink, MARKER_END, handle as u32);
+    }
+}
+
+/// One application marker, already range-checked by
+/// `trace_marker::emit_app_marker`: one sink load, one branch, one call.
+#[inline]
+pub(crate) fn app_marker(id: u32, arg: u32) {
+    if let Some(sink) = sink() {
+        emit(sink, id, arg);
     }
 }
 
