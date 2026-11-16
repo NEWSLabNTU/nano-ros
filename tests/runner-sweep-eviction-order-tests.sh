@@ -423,8 +423,9 @@ else
     fail "no-tree sweep wrong (swept: $(cat "$w4/swept" 2>/dev/null)):
 $out9"
 fi
-# Same disk, same confinement as the job container: compare the --run line.
-run_line="$(_sweep_w4 --run --check | grep 'would run: .* run ' || true)"
+# Same disk, same confinement as the job container: compare the line that
+# creates it (`create`, so the token's env file can go before it starts).
+run_line="$(_sweep_w4 --run --check | grep 'would run: .* create ' || true)"
 sweep_line="$(grep -- '--entrypoint bash' "$w4/engine.log" | head -1)"
 _mounts() { grep -o 'nros-runner-[a-z]*:[^ ]*' <<<"$1" | sort | tr '\n' ' '; }
 if [ -n "$run_line" ] && [ -n "$(_mounts "$sweep_line")" ] \

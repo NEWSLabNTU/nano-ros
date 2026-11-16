@@ -266,7 +266,7 @@ if [ "$CHECK" -eq 1 ]; then
     echo ""
     echo "  A real run would then:"
     echo "    gh api -X POST repos/$gh_repo/actions/runners/registration-token --jq .token"
-    echo "    $runner_dir/config.sh --url https://github.com/$gh_repo --token <token> \\"
+    echo "    ACTIONS_RUNNER_INPUT_TOKEN=<token> $runner_dir/config.sh --url https://github.com/$gh_repo \\"
     echo "        --name $runner_name --work $runner_work \\"
     echo "        --labels \"$full_labels\" --ephemeral --unattended --replace"
     if [ "$NO_SERVICE" -eq 0 ]; then
@@ -297,9 +297,12 @@ echo "runner-register: configuring..."
     # --replace:    re-registering the same NAME replaces the old entry instead
     #               of failing, which is what makes re-running this idempotent.
     # --ephemeral:  one job, then de-register. Not optional on a public repo.
-    ./config.sh \
+    # The token goes through the environment, never `--token`: an argument
+    # is readable with `ps` by every user on the host. The runner reads each
+    # config argument from `ACTIONS_RUNNER_INPUT_<NAME>` when the flag is
+    # absent. Gate: `check-runner-token-argv`.
+    ACTIONS_RUNNER_INPUT_TOKEN="$token" ./config.sh \
         --url "https://github.com/$gh_repo" \
-        --token "$token" \
         --name "$runner_name" \
         --work "$runner_work" \
         --labels "$full_labels" \
