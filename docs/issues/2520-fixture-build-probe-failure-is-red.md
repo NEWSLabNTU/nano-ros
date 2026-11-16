@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [sizing, tooling, testing, build]
-related: [issue-2519, issue-1593, issue-2097, issue-1758]
+related: [issue-2519, issue-1593, issue-2097, issue-1758, phase-559]
 found: 2026-11-14
 ---
 
@@ -75,3 +75,16 @@ per-component arm refuses too, and its marker still keeps the reason.
 
 This is the manager's call (2026-11-14). The maintainer has not ruled on
 it. Implementation follows phase-550 W3b.
+
+## Partly done (2026-11-16, phase-559 W11)
+
+Steps 1 and 2 landed with [issue 2608](archived/2608-metadata-probe-failure-reads-as-no-producer.md),
+widened by the manager: `NROS_PROBE_FAILURE=warn|refuse` (a CLI environment
+setting, not a knob-registry row: the registry holds build knobs with Kconfig
+and TOML spellings, and this is neither), `refuse` in the three fixture
+builders, every `just` lane and the release dry run. Per-component failures
+refuse too, per the ruling above.
+
+Open: step 3 (the other "configured defaults kept" paths ask the same
+strictness, with a no-inventory statement per manifest row) and step 4's
+gate (a fixture builder run against a probe project that cannot configure).
