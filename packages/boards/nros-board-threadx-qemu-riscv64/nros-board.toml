@@ -141,5 +141,14 @@ toolchain_file = "cmake/toolchain/riscv64-threadx.cmake"
 # level a `hazard-level-runtime` report names (`Violation::level`, a `&str`),
 # which grows the violation ring by 8 words (`executor_backing_claims`
 # measured 11,084 on the 64-bit host).
+#
+# A FLOOR since the stock node interfaces went on by default (2026-11-17): a
+# unit's default now grows with its features and its image's entities, and the
+# threadx-linux C talker's `nros-c` unit needs 11,408 words, so no one board
+# number covers every image. `nros-node` sizes the static at the larger of this
+# rung and the unit's own default; the pool still gives back exactly this
+# rung, so a unit above it holds the excess twice (wasted, never short).
+# `executor_backing_claims` still holds the rung at or above the unnarrowed
+# default, which keeps the plain image exact.
 [knobs.executor]
 backing_u64s = 11084
