@@ -213,6 +213,7 @@ function(_nros_node_register_compose_inventory)
     nros_entity_inventory_knobs_file(_knobs_path)
     nros_promise_snapshot("${_knobs_path}" _knobs_before)
     nros_derive_entity_inventory_knobs(CLI "${_nros_bin}")
+    nros_entity_inventory_recompose_bounds("${_knobs_path}")  # issue 2504
     nros_promise_check("${_knobs_path}" "${_knobs_before}"
         LABEL "this image's entity inventory (standalone)")
 endfunction()

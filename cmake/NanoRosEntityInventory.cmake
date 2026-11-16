@@ -468,6 +468,32 @@ macro(_nros_entity_publish _name _value)
 endmacro()
 
 # nros_derive_entity_inventory_knobs(...)  -- see the header comment.
+# nros_entity_inventory_recompose_bounds(<inventory>)
+#
+# Issue 2504 -- re-derive the image's message-bound sizes over the entity
+# inventory this configure just wrote, when this configure's codegen composed
+# them over the same file earlier (it records that; see NanoRosCodegenCore).
+#
+# The bounds derivation runs at codegen time and the entity composers
+# (`nano_ros_entry()`, the deferred `nano_ros_node_register()` composer) run
+# later, so on a fresh build dir the bounds were composed over a placeholder.
+# The promise checks then fail the configure once for the inventory and, on the
+# next pass, once more for the bounds the new inventory moves: three passes
+# where the remedy text promises two. Re-deriving here, BEFORE the caller's
+# promise check, leaves both files holding this configure's final answer, so
+# the next configure reads both and converges.
+#
+# A no-op when codegen composed no bounds, or composed them over another file.
+function(nros_entity_inventory_recompose_bounds _inventory)
+    get_property(_out GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_OUTPUT)
+    get_property(_over GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_OVER)
+    if("${_out}" STREQUAL "" OR NOT "${_over}" STREQUAL "${_inventory}"
+       OR NOT COMMAND nros_derive_message_bound_knobs)
+        return()
+    endif()
+    nros_derive_message_bound_knobs(OUTPUT_FILE "${_out}" ENTITY_INVENTORY "${_inventory}")
+endfunction()
+
 function(nros_derive_entity_inventory_knobs)
     cmake_parse_arguments(_E "QUIET" "CLI;METADATA;MODEL;WORKSPACE;OUTPUT_FILE" "" ${ARGN})
 

@@ -1641,6 +1641,7 @@ function(_nros_entry_invoke_codegen)
     if("${_nrx_leaf_sized}" STREQUAL "")
         nros_derive_entity_inventory_knobs(CLI "${_nros_bin}" MODEL "${_NRX_MODEL}"
             WORKSPACE "${_nrx_colcon_ws}")
+        nros_entity_inventory_recompose_bounds("${_entity_knobs_path}")  # issue 2504
     else()
         message(STATUS "nano_ros_entry(${_NRX_NAME}): entity inventory from the leaf's "
             "${_nrx_leaf_sized}, written before every reader; composing nothing")
