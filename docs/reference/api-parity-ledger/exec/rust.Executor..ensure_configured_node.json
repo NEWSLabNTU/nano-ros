@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::ensure_configured_node",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "registers the executor's configured name (`ExecutorConfig::node_name`) as a real node when the image has none, and returns the primary node. RFC-0128 D8: an executor-level entity created before any node materialises that node, so the first node to exist is the primary and nothing is announced under an identity with no node record. rclcpp has no equivalent because every rclcpp entity is created on a node the user built; a direct-API nano-ros image may create entities on the executor itself."
+}
