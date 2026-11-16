@@ -23,9 +23,28 @@ void ParamTalker::on_tick() {
     }
 }
 
+// Issue 2638 -- the list parameters `config/cpp_params.param.yaml` loads
+// through `<param from>` must arrive as arrays of their element type. They
+// used to arrive as one comma-joined string, which no array read accepts.
+static bool list_params_arrived_as_arrays(const ::rclcpp::Node& node) {
+    ::rclcpp::Seq<double, 8> gains;
+    ::rclcpp::Seq<int64_t, 8> ids;
+    ::rclcpp::Seq<bool, 8> flags;
+    bool ok = node.get_parameter("gains", gains) && gains.size() == 3 && gains[0] == 40.0 &&
+              gains[1] == 50.0 && gains[2] == 60.0;
+    ok = ok && node.get_parameter("ids", ids) && ids.size() == 3 && ids[0] == 1 && ids[2] == 3;
+    ok = ok && node.get_parameter("flags", flags) && flags.size() == 2 && flags[0] && !flags[1];
+    // A string array has no C++ read; its TYPE is what was wrong.
+    ok = ok && node.get_parameter_type("names") == ::rclcpp::PARAMETER_STRING_ARRAY;
+    // `[]` has no value in ROS, so nothing was seeded.
+    ok = ok && node.get_parameter_type("unset_list") == ::rclcpp::PARAMETER_NOT_SET;
+    return ok;
+}
+
 ::rclcpp::Result ParamTalker::configure(::rclcpp::Node& node) {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     node_ = &node;
+    std::printf("list params: %s\n", list_params_arrived_as_arrays(node) ? "arrays" : "WRONG");
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;
     return node.create_wall_timer<ParamTalker, &ParamTalker::on_tick>(timer_, 500, this);

@@ -597,6 +597,14 @@ node, the parameter, the capacity and the knob in every spelling. The size is
 already derived from the contract's `params:` when every node declares them;
 deriving it from the census is not done.
 
+### I20 -- a list parameter from a param file arrives as an array
+
+**Status: DONE (2026-11-16).** [Issue 2638](../issues/archived/2638-launch-list-param-flattened-to-string.md).
+The bake wrote a list as `a,b,c` and the image read it as one string, so the
+island's MPC rate-limit lists reached the controller as strings. A list is now
+baked as YAML flow text and seeded as an array of its element type; a list
+ROS refuses is refused, and `[]` seeds nothing.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -701,6 +709,8 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
 - [x] I19: a declaration past a full parameter store stops the boot in C++
       (`set_error`), returns `RCLC_RET_FULL` in C and `Err` in Rust, and the
       logged line names the knob; a test per language (issue 2634).
+- [x] I20: a list parameter from a `<param from>` file seeds as an array of
+      its element type; the features `cpp_params` e2e reads each back (issue 2638).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -725,6 +735,13 @@ this phase will fix it.
 ## Issues homed here (2026-11-02)
 
 - [issue 2165](../issues/2165-zephyr-smp-nros-log-stops-after-four-records.md): on the island's Zephyr SMP image (`fvp_baser_aemv8r_smp`), only the four early-ring `nros_log` records reach the console. Every later record is lost with no `report_lost` warning. The same sources log normally on FreeRTOS.
+
+## Issues homed here (2026-11-16)
+
+Filed from the Autoware Safety Island's phase-15 P3 on nano-ros 5b9e8844a4.
+
+- [issue 2638](../issues/archived/2638-launch-list-param-flattened-to-string.md) (resolved): a list parameter from a `<param from>` file reached the node as one comma-joined string (I20).
+- [issue 2640](../issues/2640-metadata-probe-no-launch-values.md): the C/C++ metadata probe constructs a node with no launch values and a default-size store, so a node declaring parameters without defaults cannot be probed.
 
 ## Issues homed here (2026-11-15)
 

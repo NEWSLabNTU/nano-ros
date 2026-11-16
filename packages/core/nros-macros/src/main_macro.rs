@@ -1128,13 +1128,19 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // Params (resolved values ride the model — the embedded target has
             // no record.json to read them from).
             // #276 — `params_files` YAML projects under the inline values.
-            // `to_bake_string` is the shared rendering (issue-0269-adjacent:
+            // `launch_param_text` (over rlm's `to_bake_string`) is the shared rendering (issue-0269-adjacent:
             // `1.0f64.to_string()` is "1", which the runtime's
-            // infer_param_value re-types as INTEGER).
+            // launch-text reader re-types as INTEGER).
             let resolved: Vec<(String, String)> = inst
                 .resolved_params(fqn)
                 .iter()
-                .map(|(k, v)| (k.clone(), v.to_bake_string()))
+                // Issue 2638 -- a list as `[a, b]`, which the seed reads as an array.
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        nros_orchestration_ir::launch_param_text::launch_param_text(v),
+                    )
+                })
                 .collect();
             // Issue #52 — `qos_overrides.*` are NOT declared parameters: they
             // decompose into the node's QoS-override table. Until this, the

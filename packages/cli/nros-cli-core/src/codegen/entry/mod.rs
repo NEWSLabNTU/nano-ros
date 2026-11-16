@@ -555,7 +555,13 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
         let resolved: Vec<(String, String)> = inst
             .resolved_params(fqn)
             .iter()
-            .map(|(k, v)| (k.clone(), v.to_bake_string()))
+            // Issue 2638 -- the device reader's convention: a list as `[a, b]`.
+            .map(|(k, v)| {
+                (
+                    k.clone(),
+                    nros_orchestration_ir::launch_param_text::launch_param_text(v),
+                )
+            })
             .collect();
         let qos_overrides =
             qos_overrides_from_params(&resolved).wrap_err_with(|| format!("node `{fqn}`"))?;

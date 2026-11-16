@@ -6,5 +6,7 @@
 <launch>
   <node pkg="cpp_param_talker_pkg" exec="cpp_param_talker" name="param_talker">
     <param name="publish_period_ms" value="250"/>
+    <!-- Issue 2638: list parameters from a file arrive as arrays. -->
+    <param from="$(dirname)/../config/cpp_params.param.yaml"/>
   </node>
 </launch>

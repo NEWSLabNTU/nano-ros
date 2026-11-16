@@ -1748,7 +1748,22 @@ impl ExecutorSink<'_> {
         for (name, raw) in params.iter() {
             // phase-446 seam: the value's type is inferred from the launch
             // string; a type declared in the contract replaces this call.
-            let value = infer_param_value(raw);
+            // Issue 2638 -- `[a, b]` is an array; `[]` seeds nothing (ROS
+            // gives an empty sequence no value) and a list ROS refuses is
+            // refused here, never seeded as a string.
+            let mut value = nros_params::ParameterValue::NotSet;
+            match value.assign_launch_text(raw) {
+                Ok(()) => {}
+                Err(nros_params::LaunchTextError::EmptyList) => continue,
+                Err(e) => {
+                    nros_log::log_error!(
+                        nros_log::get_logger("nros"),
+                        "launch parameter '{name}' = `{raw}` has no value the store can hold \
+                         ({e:?}): refusing it"
+                    );
+                    return Err(NodeDeclError::Runtime);
+                }
+            }
             if !executor.declare_parameter_on(node, name, value)
                 && executor.get_parameter_on(node, name).is_none()
             {
@@ -2344,29 +2359,6 @@ fn param_default_to_value(
             | ParameterDefault::StringArray,
         ) => ParameterValue::NotSet,
     }
-}
-
-/// Phase 264 W4b — infer a [`nros_params::ParameterValue`] from a raw launch
-/// `<param value=…/>` string. ROS 2 launch `<param>` values are untyped strings; the
-/// macro path has no per-param type attribute, so infer: `true`/`false` → `Bool`, an
-/// `i64` literal → `Integer`, an `f64` literal → `Double`, otherwise `String`. This
-/// mirrors the type a `ros2 param set` of the same literal would land on, so the baked
-/// initial and a CLI override agree on type.
-#[cfg(feature = "param-store")]
-fn infer_param_value(raw: &str) -> nros_params::ParameterValue {
-    use nros_params::ParameterValue;
-    match raw {
-        "true" => return ParameterValue::from_bool(true),
-        "false" => return ParameterValue::from_bool(false),
-        _ => {}
-    }
-    if let Ok(i) = raw.parse::<i64>() {
-        return ParameterValue::from_integer(i);
-    }
-    if let Ok(f) = raw.parse::<f64>() {
-        return ParameterValue::from_double(f);
-    }
-    ParameterValue::from_string(raw).unwrap_or(ParameterValue::NotSet)
 }
 
 fn dispatch_into_cell(cell: &dyn CellView, cb_id: &str, payload: &[u8]) {

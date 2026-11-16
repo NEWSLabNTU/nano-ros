@@ -1828,7 +1828,13 @@ pub fn plan_record_from_model(model: &SystemModel) -> serde_json::Value {
         let params: Vec<serde_json::Value> = inst
             .resolved_params(fqn)
             .iter()
-            .map(|(k, v)| serde_json::json!([k, v.to_bake_string()]))
+            // Issue 2638 -- the device reader's convention: a list as `[a, b]`.
+            .map(|(k, v)| {
+                serde_json::json!([
+                    k,
+                    nros_orchestration_ir::launch_param_text::launch_param_text(v)
+                ])
+            })
             .collect();
         let remaps: Vec<serde_json::Value> = inst
             .remaps
