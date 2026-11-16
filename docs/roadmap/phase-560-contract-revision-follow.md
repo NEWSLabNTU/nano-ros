@@ -115,7 +115,7 @@ blocked on a release: it is designed in RFC-0132 and built after that RFC's
 review, in this order: the ABI header and `PlatformCan` trait with the `mock`
 backend; the `zephyr` backend (the K344's FlexCAN, issue 2573's helper); the
 `socketcan` backend; `[board.can]` and the image row; the `board` hook for
-`s32z270-freertos` (issue 2632).
+`s32z270-freertos` (its NXP RTD variant, GitHub #4015).
 
 ### W8 -- E7, the same answer as play_launch
 
