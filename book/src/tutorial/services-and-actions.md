@@ -77,8 +77,8 @@ Both templates use `example_interfaces/srv/AddTwoInts`, a standard ROS 2
 interface package: two `int64` fields in the request, `a` and `b`, and one in the reply,
 `sum`. Each package's `package.xml` depends on `example_interfaces`, and the
 next build generates it from your ROS 2 install like any message package.
-`ros-base` does not include it, so if you skipped it in
-[Install](../start/install.md), add it now:
+Both installs on [Install](../start/install.md) include it. On any other
+ROS 2 install, add it now:
 `sudo apt install ros-$ROS_DISTRO-example-interfaces`. A service type is a pair
 of messages, so a `.srv` file in a package of your own, beside chapter 5's
 `.msg`, works the same way. As in chapter 3, `--to` also gives each node a
@@ -330,9 +330,8 @@ paces itself, one term every few spins, so a cancel has time to arrive.
 ## Call them from ROS 2
 
 The service and the action are on the ROS 2 graph like any other. The `ros2` command needs the `example_interfaces` package on the host to call
-the board. A ROS 2 desktop install has it; a `ros-base` install does not.
-With `nros run` still going, install it in a second terminal if it is
-missing:
+the board. Both installs on Install include it. With `nros run` still
+going, this line in a second terminal makes sure:
 
 ```bash probe=645 track=installed variant=qemu
 sudo apt-get install -y ros-humble-example-interfaces
