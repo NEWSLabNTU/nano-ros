@@ -70,6 +70,43 @@ function(nros_read_package_xml_body path out_var)
 endfunction()
 
 # ---------------------------------------------------------------------------
+# nros_package_symbol(<out_var>) — the C symbol of the package being
+# configured: `PROJECT_NAME` with every character outside `[A-Za-z0-9_]` made
+# `_`. It names the component's generated entry points
+# (`__nros_c_component_<sym>_create` and the rest).
+#
+# REFUSES a `project()` that differs from the sibling `package.xml`'s
+# `<name>`. That is ament's own convention, and two readers depend on it: this
+# build names the symbols from `PROJECT_NAME`, while the metadata probe and
+# the entry codegen name the package from `package.xml`. When the two
+# differed (dd4fa2c103 renamed two typed-carrier packages and left their
+# `project(c_typed_carrier)`), the images still built, but the probe could
+# not link, `undefined reference to `__nros_c_component_<package>_create'`,
+# and once a failed probe became fatal it stopped every linux fixture build.
+# One name, refused at configure, rather than a second derivation that reads
+# `package.xml` here too. Gate: `check-project-name-matches-package`.
+# ---------------------------------------------------------------------------
+function(nros_package_symbol out_var)
+    set(_px "${CMAKE_CURRENT_SOURCE_DIR}/package.xml")
+    if(EXISTS "${_px}")
+        nros_read_package_xml_body("${_px}" _body)
+        if(_body MATCHES "<name>[ \t\r\n]*([^< \t\r\n]+)[ \t\r\n]*</name>")
+            set(_pkg "${CMAKE_MATCH_1}")
+            if(NOT _pkg STREQUAL PROJECT_NAME)
+                message(FATAL_ERROR
+                    "nano-ros: project(${PROJECT_NAME}) in ${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt "
+                    "does not match the package name `${_pkg}` in ${_px}. They must be the same "
+                    "name (ament's convention): the build names this package's symbols from "
+                    "project(), and the metadata probe and entry codegen name it from package.xml. "
+                    "Rename one to match, e.g. project(${_pkg} ...).")
+            endif()
+        endif()
+    endif()
+    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _sym "${PROJECT_NAME}")
+    set(${out_var} "${_sym}" PARENT_SCOPE)
+endfunction()
+
+# ---------------------------------------------------------------------------
 # RFC-0087 D2 / phase-420 W2 — the `<build_type>` vocabulary.
 #
 # A nano-ros-owned package declares `nros_cargo` / `nros_cmake` rather than

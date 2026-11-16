@@ -67,6 +67,7 @@
 
 # issue 0326 — `_nros_is_zephyr()` lives here.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPackageXml.cmake")  # nros_package_symbol
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")  # phase-500 W1
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosArtifactLayout.cmake")  # issue 1852
 
@@ -855,7 +856,7 @@ function(nano_ros_node_register)
     if(NOT TARGET ${_lib})
         # Phase 212.M.5.a.1 — package symbol used by C/C++ macros and
         # mirrored by Rust `nros::node!()`.
-        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+        nros_package_symbol(_pkg_sym)
 
         if(_nrc_lang STREQUAL "RUST")
             # Phase 241 W11 (Option D) — a Rust Node pkg is NO LONGER imported as its own
@@ -1056,7 +1057,7 @@ function(nano_ros_node_register)
        AND _nrc_family STREQUAL "nuttx"
        AND COMMAND nros_platform_link_app
        AND NOT TARGET ${PROJECT_NAME})
-        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+        nros_package_symbol(_pkg_sym)
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         # Baked connect locator. QEMU slirp routes the guest to the host
         # zenoh router at `10.0.2.2:<port>`. Override per-build with
@@ -1147,7 +1148,7 @@ function(nano_ros_node_register)
                 "declarative-register / NULL-context baker entry is retired on "
                 "ThreadX.")
         endif()
-        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+        nros_package_symbol(_pkg_sym)
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         # Baked connect locator. QEMU slirp routes the guest to the host zenoh
         # router at `10.0.2.2:<port>`. Override with `-DNROS_ENTRY_LOCATOR=…` (issue 1795; `-DNROS_THREADX_LOCATOR` is the old fallback name);
@@ -1223,7 +1224,7 @@ function(nano_ros_node_register)
                 "declarative-register / NULL-context baker entry is retired on "
                 "FreeRTOS.")
         endif()
-        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+        nros_package_symbol(_pkg_sym)
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         # Baked connect locator. QEMU slirp routes the guest to the host zenoh
         # router at `10.0.2.2:<port>`. Override with `-DNROS_ENTRY_LOCATOR=…` (issue 1795; `-DNROS_FREERTOS_LOCATOR` is the old fallback name);
@@ -1311,7 +1312,7 @@ function(nano_ros_node_register)
        AND _NRC_TYPED
        AND COMMAND nros_platform_link_app
        AND NOT TARGET ${PROJECT_NAME})
-        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+        nros_package_symbol(_pkg_sym)
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
@@ -1374,7 +1375,7 @@ function(nano_ros_node_register)
         # `__nros_c_component_<pkg>_{create,configure}` seam and is what the
         # C source was compiled with (`-DNROS_PKG_NAME=`); a C++ node carries
         # it harmlessly, and setting it in one place beats a fifth spelling.
-        string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+        nros_package_symbol(_pkg_sym)
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         if(_nrc_lang STREQUAL "CPP")
             set(NROS_ENTRY_CLASS "${_NRC_CLASS}")

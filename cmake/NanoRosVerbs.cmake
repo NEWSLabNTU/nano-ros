@@ -548,7 +548,7 @@ function(nano_ros_auto_add_library name)
     _nros_generate_declared_interfaces(${_lang})
 
     add_library(${name} STATIC ${_srcs})
-    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
+    nros_package_symbol(_pkg_sym)
     # issue 1523 — lowercase `c`, the canonical `Language::as_str` spelling
     # `_nros_infer_lang()` answers in. `STREQUAL` is case-sensitive and this read
     # `"C"`, so the branch never fired and the comment above `_nros_infer_lang`
