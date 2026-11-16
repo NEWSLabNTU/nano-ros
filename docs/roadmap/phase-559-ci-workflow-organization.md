@@ -463,7 +463,7 @@ the user ruled; all five stand:
 - **Acceptance:** a merge-group run of the PR is green, with `CI` listing no
   job that no longer exists. `check-default-gates-run-somewhere` and
   `check-merge-group-gates` pass and refuse the old placement.
-- **Status:** OPEN — implemented, pending merge-group run. `gate.yml` has no
+- **Status:** DONE (#3946, 2026-11-15). `gate.yml` has no
   `schedule` (push, pull_request, merge_group, workflow_dispatch remain), and
   every `if:`/`sibling` event list in it dropped `schedule` with it.
   `check-build` (three shards, same steps: compile-check fixtures, bindings
@@ -481,7 +481,13 @@ the user ruled; all five stand:
   step without the part, among 28 cases). `check-default-gates-run-somewhere`
   gained R4, refusing a `schedule` trigger on the workflow holding `CI`
   (self-test, and measured red against the pre-W7 `gate.yml`). The
-  merge-group dry run is the remaining acceptance.
+  merge-group run is green: `gate` run 43699058961
+  (`gh-readonly-queue/main/pr-3946-781c5b10de`), every `check /` job and `CI`
+  success, and `CI` lists no job that left `gate.yml`. The moved jobs ran on
+  their own crons the next day: `host-tests.yml` run 43796857800 (2026-11-16,
+  `build tier + no-std` 1/3-3/3 success) and `nightly.yml` run 43808375964
+  (2026-11-16, `template-copy-out [zephyr]` success; that run's two reds,
+  `stack-floor drift` and `FreertosMps2`, are other jobs).
 
 ### W8 — `publish.yml`, then `automation.yml`
 
