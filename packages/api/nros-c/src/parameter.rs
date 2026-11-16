@@ -367,7 +367,7 @@ mod imp {
     struct ParamView {
         msg: rcl_interfaces__msg__Parameter,
         text: [u8; STR_BUF],
-        strings: [rosidl_runtime_c__String; nros_node::MAX_ARRAY_LEN],
+        strings: [rosidl_runtime_c__String; nros_node::MAX_STRING_ARRAY_LEN],
     }
 
     const NULL_STR: rosidl_runtime_c__String = rosidl_runtime_c__String {
@@ -460,7 +460,7 @@ mod imp {
                 value: empty_value(),
             },
             text: [0; STR_BUF],
-            strings: [NULL_STR; nros_node::MAX_ARRAY_LEN],
+            strings: [NULL_STR; nros_node::MAX_STRING_ARRAY_LEN],
         }
     }
 

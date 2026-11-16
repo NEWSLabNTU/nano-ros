@@ -411,6 +411,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
         ("max_param_name_len", 64),
         ("max_string_value_len", 256),
         ("max_array_len", 32),
+        ("max_string_array_len", 32),
         ("max_byte_array_len", 256),
         ("max_param_description_len", 256),
         // phase-417 W4.a -- the descriptor's `additional_constraints`. DEFAULT

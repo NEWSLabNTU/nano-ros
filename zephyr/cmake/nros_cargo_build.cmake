@@ -1768,6 +1768,9 @@ function(nros_resolve_knobs)
     _nros_resolve_derivable_knob(NROS_MAX_ARRAY_LEN
         "${CONFIG_NROS_MAX_ARRAY_LEN}" NROS_DERIVED_MAX_ARRAY_LEN
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    _nros_resolve_derivable_knob(NROS_MAX_STRING_ARRAY_LEN
+        "${CONFIG_NROS_MAX_STRING_ARRAY_LEN}" NROS_DERIVED_MAX_STRING_ARRAY_LEN
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     _nros_resolve_derivable_knob(NROS_MAX_BYTE_ARRAY_LEN
         "${CONFIG_NROS_MAX_BYTE_ARRAY_LEN}" NROS_DERIVED_MAX_BYTE_ARRAY_LEN
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")

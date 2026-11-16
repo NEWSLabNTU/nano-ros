@@ -385,6 +385,7 @@ KNOB_CLASS = {
     # state, so the build script can refuse naming it.
     "NROS_DECLARED_MAX_STRING_VALUE_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
     "NROS_DECLARED_MAX_ARRAY_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
+    "NROS_DECLARED_MAX_STRING_ARRAY_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
     "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
     # Issue 1649 retired the three PARAM_NEEDS rows, the service shape and the
     # two service-inbox slot sizes the resolver used to pass down: the sizing
