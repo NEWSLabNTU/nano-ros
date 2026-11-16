@@ -24,9 +24,9 @@ pub struct SpinOnceResult {
     pub service_errors: usize,
     // RFC-0128 D8 (phase-554 W3 slice B).
     /// An executor-level entity that
-    /// waited for a node and could not be opened when the pass ran it (the
-    /// `/diagnostics` reporter of an image with no node; see
-    /// `Executor::open_pending_on_configured_name`). `spin` and `spin_some`
+    /// waited for a node and could not be opened when the pass ran it (an
+    /// image with no node whose configured-name node failed to register; see
+    /// `Executor::ensure_configured_node`). `spin` and `spin_some`
     /// return that error; a bare `spin_once` counts it here.
     pub setup_errors: usize,
 }
@@ -373,6 +373,11 @@ impl core::fmt::Display for BootConfigError {
 // ExecutorConfig
 // ============================================================================
 
+/// The node name an executor carries when nobody names it: an image with no
+/// node of its own is announced under it. `ExecutorConfig::default()` and an
+/// executor built from a bare session both start from this.
+pub const DEFAULT_NODE_NAME: &str = "node";
+
 /// Configuration for opening an embedded executor session.
 ///
 /// Provides a backend-agnostic builder for configuring the middleware
@@ -440,7 +445,7 @@ impl<'a> ExecutorConfig<'a> {
             locator,
             mode: SessionMode::Client,
             domain_id: 0,
-            node_name: "node",
+            node_name: DEFAULT_NODE_NAME,
             namespace: "",
             clock_us: None,
             epoch_us: None,

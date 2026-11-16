@@ -305,9 +305,10 @@ pub unsafe fn install_contract_modes(
 ///   before any node exists -- the usual case, since the tables must precede
 ///   every entity -- it opens when the primary node is registered, and a
 ///   failure then fails that registration (the node's `build()` returns it).
-///   An image that registers no node opens it at its first spin instead, and
-///   `spin` returns the failure (a temporary path; see
-///   `Executor::open_pending_on_configured_name`).
+///   An image that registers no node of its own gets its configured-name node
+///   at its first executor-level entity or its first spin, and the reporter
+///   opens on it there (`Executor::ensure_configured_node`); `spin` returns
+///   the failure.
 /// * Armed after a node exists, it opens now, and a publisher that cannot be
 ///   created is REPORTED here, not fatal: the tables stay installed and every
 ///   violation still reaches the log (the floor).

@@ -19545,8 +19545,8 @@ fn a_reporter_that_cannot_open_fails_the_primary_nodes_registration() {
 
 #[test]
 fn a_zero_node_image_opens_its_reporter_under_the_configured_name_at_first_spin() {
-    // TEMPORARY path (phase-554 W3 slice C deletes it): no node is ever
-    // registered, so the configured name is the image's one node.
+    // No node is ever registered, so the first spin registers the configured
+    // name as the image's one node and the reporter opens on it.
     let mut executor = executor_with_clock(MockSession::new());
     executor.set_node_identity("configured", "/");
     unsafe { executor.open_on_primary_node(open_diag_on_primary, core::ptr::null_mut(), 0) }
@@ -19559,6 +19559,94 @@ fn a_zero_node_image_opens_its_reporter_under_the_configured_name_at_first_spin(
     );
     let _ = executor.spin_once(core::time::Duration::ZERO);
     assert_eq!(diag_opens(&executor), 1, "it opens once");
+}
+
+/// An executor-level publisher, as a direct-API image creates one.
+fn executor_level_publisher(executor: &mut Executor<'_>, topic: &str) -> Result<(), NodeError> {
+    executor
+        .create_executor_publisher(topic, "std_msgs/msg/String", "H", QoSProfile::default(), 0)
+        .map(|_| ())
+}
+
+#[test]
+fn an_executor_level_entity_before_any_node_makes_the_configured_name_the_primary() {
+    let mut executor = executor_with_clock(MockSession::new());
+    executor.set_node_identity("configured", "/");
+    executor_level_publisher(&mut executor, "/early").expect("publisher");
+    // The configured name is a real node record now, and it is the primary.
+    assert_eq!(executor.nodes.len(), 1);
+    assert_eq!(
+        executor.node(NodeId::PRIMARY).map(|r| r.name.as_str()),
+        Some("configured")
+    );
+    assert_eq!(
+        executor.session().created_node("/early").as_deref(),
+        Some("configured")
+    );
+    // A node built afterwards is the next index, and executor-level entities
+    // stay on the primary.
+    let talker = executor.node_builder("talker").build().expect("node");
+    assert_eq!(talker.index(), 1);
+    executor_level_publisher(&mut executor, "/late").expect("publisher");
+    assert_eq!(
+        executor.session().created_node("/late").as_deref(),
+        Some("configured")
+    );
+    assert_eq!(executor.nodes.len(), 2, "no further node appears");
+}
+
+#[test]
+fn a_node_built_first_keeps_the_configured_name_off_the_node_table() {
+    let mut executor = executor_with_clock(MockSession::new());
+    executor.set_node_identity("configured", "/");
+    executor.node_builder("talker").build().expect("node");
+    executor_level_publisher(&mut executor, "/chatter").expect("publisher");
+    let _ = executor.spin_once(core::time::Duration::ZERO);
+    assert_eq!(
+        executor.session().created_node("/chatter").as_deref(),
+        Some("talker")
+    );
+    assert_eq!(executor.nodes.len(), 1);
+    assert!(
+        !executor
+            .nodes
+            .iter()
+            .any(|r| r.name.as_str() == "configured"),
+        "the configured name never becomes a node"
+    );
+}
+
+#[test]
+fn a_spin_with_nothing_executor_level_waiting_registers_no_node() {
+    let mut executor = executor_with_clock(MockSession::new());
+    executor.set_node_identity("configured", "/");
+    let r = executor.spin_once(core::time::Duration::ZERO);
+    assert_eq!(r.setup_errors, 0);
+    assert!(executor.nodes.is_empty(), "nothing to announce, so no node");
+}
+
+#[test]
+fn an_executor_with_no_name_refuses_to_become_a_node() {
+    let mut executor = executor_with_clock(MockSession::new());
+    executor.set_node_identity("", "/");
+    assert!(
+        executor_level_publisher(&mut executor, "/chatter").is_err(),
+        "an empty configured name is never registered as a node"
+    );
+    assert!(executor.nodes.is_empty());
+    // A declared node makes the configured name irrelevant.
+    executor.node_builder("talker").build().expect("node");
+    executor_level_publisher(&mut executor, "/chatter").expect("on talker");
+}
+
+#[test]
+fn naming_an_entity_before_any_node_registers_nothing() {
+    // Remap resolution only names an entity; it must not register the node
+    // that the entity's creation would.
+    let mut executor = executor_with_clock(MockSession::new());
+    executor.set_node_identity("configured", "/");
+    let _ = executor.resolve_entity_name_on(None, "chatter");
+    assert!(executor.nodes.is_empty());
 }
 
 #[test]
