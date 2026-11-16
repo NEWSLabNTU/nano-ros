@@ -518,8 +518,15 @@ WORKDIR /work
 # The released `nros`, through the script a user runs (`install.sh`), so the
 # store this image bakes is the one that release's `nros setup` resolves
 # (RFC-0127 D5 guarantee 2).
+# NROS_INSTALL_URL is install.sh's own knob (an exact asset, its .sha256
+# beside it and still required). The release job sets it to the asset its
+# build job just produced, so a dry run builds the image before anything is
+# published and a publish builds it from the same bytes (phase-567 W3).
+# Empty: the published `NROS_VERSION`.
+ARG NROS_INSTALL_URL=
 COPY --chown=nros:nros install.sh /opt/nros-install/install.sh
-RUN NROS_INSTALL_VERSION="${NROS_VERSION}" sh /opt/nros-install/install.sh \
+RUN NROS_INSTALL_VERSION="${NROS_VERSION}" NROS_INSTALL_URL="${NROS_INSTALL_URL}" \
+        sh /opt/nros-install/install.sh \
     && nros --version
 
 # Rust stays in rustup's own homes (maintainer ruling, 2026-11-06); the
