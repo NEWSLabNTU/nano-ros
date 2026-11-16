@@ -1,6 +1,6 @@
 # Phase 567 — a release ships only what the slow lanes have seen
 
-**Status (2026-11-16). OPEN: W1–W6 are open.** Approved by the user on
+**Status (2026-11-16). OPEN: W6 is done; W1–W5 are open.** Approved by the user on
 2026-11-16 ("Take your advice on regression prevention. Have a phase doc to
 track the change"), after a review of the CI workflows on main against that
 day's regressions. Implements no RFC; it closes gaps between the lanes that
@@ -115,7 +115,7 @@ it into the queue is a separate user decision.
 
 ### W6 — a nightly red names its suspects
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-16)
 
 On a red nightly, tier 1 or tier 2, `just nightly-triage` (and its
 `matrix-triage` sibling) lists the commits merged since that lane's last green
@@ -125,6 +125,22 @@ the team reads it. Today this is done by hand.
 Acceptance: a red run's triage output lists exactly the commits between the
 last green run and the red one; a run with no prior green says so rather than
 listing all history.
+
+Done: `scripts/ci/lane_suspects.py`, printed by `nightly-triage.py` and
+`lane-stage.py --history` (`just matrix-triage`) for their newest completed run
+when it failed.
+- The lane is a JOB, because the nightly as a whole had not been green in 30
+  runs. Each failed job finds its own last green run on `main`; a run that did
+  not schedule the job is not green for it. Jobs sharing one green share a
+  block.
+- Commits come from the compare API, since a CI checkout is shallow. Each
+  carries its PR and its `Claude-Session:` trailer.
+- No prior green is stated and lists nothing; a green and red on the same
+  commit name no suspect. Both are self-test cases run on every invocation.
+
+Measured: run-matrix `tier 2 (1-wise matrix)` last green 2026-11-05, 1225
+commits back. FreertosMps2 had been red on every nightly since at least
+2026-11-13.
 
 ## Not in this phase
 

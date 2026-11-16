@@ -463,7 +463,7 @@ def job_label(job_name, run_id):
 def history(workflow, want, lane_job=None):
     runs = gh_json(["run", "list", "--repo", REPO, "--workflow", workflow,
                     "--limit", str(want), "--json",
-                    "databaseId,createdAt,event,status,conclusion"])
+                    "databaseId,createdAt,event,status,conclusion,headBranch"])
     if runs is None:
         print(f"no runs readable for {workflow} (is `gh` authenticated?)")
         return 0
@@ -489,11 +489,28 @@ def history(workflow, want, lane_job=None):
         if run.get("status") != "completed" and not res.failing_step:
             res = res._replace(kind="running", label=LABELS["running"])
         kinds[res.kind] += 1
+        # phase-567 W6 — a dispatch on a feature branch is that branch's state,
+        # not main's: label it, so a sort of this list cannot read it as main.
+        branch = run.get("headBranch") or "?"
+        where = "" if branch == "main" else f"  [branch {branch}, not main]"
         print(f"  {run['databaseId']}  {run['createdAt'][:16].replace('T', ' ')}"
               f"  {run.get('event', '?'):<18} {(run.get('conclusion') or run.get('status') or '?'):<9}"
-              f" {res.label}")
+              f" {res.label}{where}")
         if res.failing_step:
             print(f"{'':>58}   at: {res.failing_step}")
+
+    # phase-567 W6 — a red latest run names its suspects: the commits merged
+    # since each red lane job's last green run (scripts/ci/lane_suspects.py).
+    # The newest COMPLETED run ON MAIN: a red dispatch on a feature branch is
+    # that branch's regression, and naming main's commits as its suspects
+    # would route it to the wrong authors (it did, 2026-11-16).
+    done = next((r for r in runs if r.get("conclusion") and r.get("headBranch") == "main"), None)
+    if done and done.get("conclusion") == "failure":
+        print()
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import lane_suspects
+        print("\n".join(lane_suspects.suspects(workflow, done["databaseId"],
+                                                [lane_job] if lane_job else None)))
 
     verdicts = kinds["verdict-pass"] + kinds["verdict-fail"]
     total = sum(kinds.values())
