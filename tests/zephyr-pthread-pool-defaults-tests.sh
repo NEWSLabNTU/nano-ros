@@ -25,7 +25,7 @@
 #      module's own zenoh defaults
 #   H  REACH, by road: a standalone leaf whose resolve projected no counts (a
 #      plain `west build`, or a leaf with no contract sidecar) takes them from
-#      `nros ws west-leaf-sizing` before Kconfig -- the same verb the cargo
+#      `nros dev image west-leaf-sizing` before Kconfig -- the same verb the cargo
 #      build sizes it from -- so the pools are derived on every road, not
 #      only under `nros build` (a fake CLI stands in for the verb)
 #   I  the hook asks for that fallback before it renders the pools, and the
