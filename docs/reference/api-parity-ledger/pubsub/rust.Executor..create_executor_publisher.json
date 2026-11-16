@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::create_executor_publisher",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "opens a raw publisher for an EXECUTOR-LEVEL entity -- one the image's runtime creates rather than a component, today the contract `/diagnostics` reporter. rclcpp has no such entity: there, diagnostics come from a node the user owns. Here the runtime owns it, and RFC-0128 D8 files it under the image's primary node (`entity_identity(None)`), so `ros2 node info` shows it beside that node's own entities and no phantom node is announced for it."
+}
