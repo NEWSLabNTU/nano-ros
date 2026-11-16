@@ -248,6 +248,17 @@ jobs:
       # `pinned` cannot be rehearsed before publishing (the asset under test
       # sorts above the pin, so the front it expects is not the one it gets);
       # it stays a post-publish check. Once per release, on the `starter` leg.
+      # This runner has no `just`; the replay below is its only invocation.
+      - name: Install just (if absent)
+        if: ${{ inputs.asset_artifact != '' && inputs.asset_artifact != null && (inputs.target || 'starter') == 'starter' }}
+        run: |
+          set -euo pipefail
+          if ! command -v just >/dev/null 2>&1; then
+            # issue 1760 — the pinned, checksummed release asset, retried on
+            # every error class; never a piped installer script.
+            bash scripts/ci/install-just.sh --to "$HOME/.local/bin"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
       - name: Replay pinned-newer against the release asset
         if: ${{ inputs.asset_artifact != '' && inputs.asset_artifact != null && (inputs.target || 'starter') == 'starter' }}
         env:
@@ -256,10 +267,6 @@ jobs:
           PROBE_CANDIDATE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          if ! command -v just >/dev/null 2>&1; then
-            bash scripts/ci/install-just.sh --to "$HOME/.local/bin"
-            export PATH="$HOME/.local/bin:$PATH"
-          fi
           source ./activate.sh
           just probe pinned-newer
 
