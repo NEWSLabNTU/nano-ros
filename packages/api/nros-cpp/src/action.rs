@@ -371,10 +371,13 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
     // Issue 1913 — each endpoint on its own hash (NULL falls back to `hash_str`).
     let hashes = unsafe { nros_cpp_action_hashes_t::resolve(hashes, hash_str) };
 
-    // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
-    // No node handle crosses this seam (only the executor), so the executor's
-    // CURRENT identity scopes the lookup.
-    let resolved_act = match ctx.executor.resolve_entity_name(act_str) {
+    // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps,
+    // against the node the server registers on (RFC-0128 D8): its own when it
+    // was created on one, else the primary node -- the same rule
+    // `register_action_server_raw` announces it under.
+    let entity_node =
+        (server.node_id != 0).then(|| nros_node::executor::NodeId::from_raw(server.node_id - 1));
+    let resolved_act = match ctx.executor.resolve_entity_name_on(entity_node, act_str) {
         Ok(r) => r,
         Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
     };

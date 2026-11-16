@@ -2202,7 +2202,9 @@ unsafe fn register_subscription_entry(
     set_executor_node_identity(&mut rust_exec, subscription_ref.node);
     // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
     // against the identity just set (executor-side remap table).
-    let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
+    let __resolved_name = match rust_exec
+        .resolve_entity_name_on(registration_node_id(subscription_ref.node), topic_str)
+    {
         Ok(r) => r,
         Err(()) => return RCL_RET_INVALID_ARGUMENT,
     };
@@ -2635,7 +2637,9 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
         set_executor_node_identity_from_node(&mut rust_exec, node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
-        let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
+        let __resolved_name = match rust_exec
+            .resolve_entity_name_on(registration_node_id_of(node.as_ref()), topic_str)
+        {
             Ok(r) => r,
             Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
@@ -2983,7 +2987,9 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
         set_executor_node_identity(&mut rust_exec, subscription_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
-        let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
+        let __resolved_name = match rust_exec
+            .resolve_entity_name_on(registration_node_id(subscription_ref.node), topic_str)
+        {
             Ok(r) => r,
             Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
@@ -3682,7 +3688,9 @@ unsafe fn add_service_raw(
         set_executor_node_identity(&mut rust_exec, service_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
-        let __resolved_name = match rust_exec.resolve_entity_name(service_name) {
+        let __resolved_name = match rust_exec
+            .resolve_entity_name_on(registration_node_id(service_ref.node), service_name)
+        {
             Ok(r) => r,
             Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
@@ -3869,7 +3877,9 @@ unsafe fn attach_client_with(
         set_executor_node_identity(&mut rust_exec, client_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
-        let __resolved_name = match rust_exec.resolve_entity_name(service_name) {
+        let __resolved_name = match rust_exec
+            .resolve_entity_name_on(registration_node_id(client_ref.node), service_name)
+        {
             Ok(r) => r,
             Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
@@ -4030,7 +4040,9 @@ pub unsafe extern "C" fn rclc_executor_attach_action_server(
         set_executor_node_identity(&mut rust_exec, server_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
-        let __resolved_name = match rust_exec.resolve_entity_name(action_name) {
+        let __resolved_name = match rust_exec
+            .resolve_entity_name_on(registration_node_id(server_ref.node), action_name)
+        {
             Ok(r) => r,
             Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
@@ -4182,7 +4194,9 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
         set_executor_node_identity(&mut rust_exec, client_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
-        let __resolved_name = match rust_exec.resolve_entity_name(action_name) {
+        let __resolved_name = match rust_exec
+            .resolve_entity_name_on(registration_node_id(client_ref.node), action_name)
+        {
             Ok(r) => r,
             Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
