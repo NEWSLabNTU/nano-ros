@@ -14596,6 +14596,122 @@ fn a_store_carved_from_the_backing_never_asks_the_heap() {
     }
 }
 
+/// A declaration past the store's capacity is REPORTED, naming the knob that
+/// sizes the store, and the caller is told the store was full.
+///
+/// The store here is two carved slots (plus the seeded `use_sim_time` under
+/// `sim-time`), so the third declaration has nowhere to go. Before this the
+/// refusal was a bare `false`, and the C++ facade turned it into the code
+/// default with no line at all, so a launch value was lost in silence.
+// GitHub #4018.
+#[cfg(feature = "param-store")]
+#[test]
+fn a_full_store_reports_the_refusal_and_names_its_knob() {
+    use nros_params::ParameterValue;
+    use std::{string::String, sync::Mutex, vec::Vec};
+
+    static SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    struct Capture;
+    impl nros_log::LogSink for Capture {
+        fn log(&self, record: &nros_log::Record<'_>) {
+            // Other tests log into the same sinks; keep only this one's lines
+            // and the two knob lines that follow a full-store report.
+            let m = record.message;
+            if m.contains("store_full_probe_4018")
+                || m == nros_params::STORE_SIZE_KNOB
+                || m == nros_params::STORE_SIZE_DERIVED
+            {
+                SEEN.lock().unwrap().push(String::from(m));
+            }
+        }
+    }
+    static CAPTURE: Capture = Capture;
+    assert!(
+        nros_log::add_sink(&CAPTURE),
+        "the capture sink is installed"
+    );
+
+    let seeded = usize::from(cfg!(feature = "sim-time"));
+    let slots = 2 + seeded;
+    let sizing = super::storage::ExecutorSizing {
+        params: slots,
+        ..super::storage::ExecutorSizing::DEFAULT
+    };
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] =
+        alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len()));
+    // SAFETY: `backing` is exactly `sizing.u64_len()` words, `'static`, and is
+    // handed to this executor alone.
+    let mut executor: Executor =
+        unsafe { Executor::from_session_in(MockSession::new(), backing, sizing) };
+    executor.clock_us_fn = Some(test_clock_us);
+    let node = super::node_record::NodeId::PRIMARY;
+    for name in ["a", "b"] {
+        assert!(executor.declare_parameter_on(node, name, ParameterValue::Integer(1)));
+    }
+    let name = "store_full_probe_4018";
+    assert!(
+        !executor.declare_parameter_on(node, name, ParameterValue::Integer(7)),
+        "a store of {slots} slots ({seeded} seeded) holds no third parameter"
+    );
+    assert!(
+        executor.report_parameter_refused(node, name),
+        "the refusal is reported as a FULL store"
+    );
+    let seen = SEEN.lock().unwrap().clone();
+    let first = seen
+        .iter()
+        .find(|m| m.contains("parameter store is full"))
+        .unwrap_or_else(|| panic!("no FULL line was logged; saw {seen:?}"));
+    assert!(
+        first.contains(&std::format!("({slots} slots")),
+        "the line states the capacity: {first}"
+    );
+    let line = seen.join(" ");
+    for needle in [
+        "store_full_probe_4018",
+        "max_parameters",
+        "[knobs.params]",
+        "NROS_MAX_PARAMETERS",
+        "CONFIG_NROS_MAX_PARAMETERS",
+        "params:",
+    ] {
+        assert!(line.contains(needle), "the line names `{needle}`: {line}");
+    }
+    // A refusal that is not a full store is reported as such, and the caller
+    // is not told FULL.
+    let long = "n".repeat(nros_params::MAX_PARAM_NAME_LEN + 1);
+    assert!(!executor.undeclare_parameter_on(node, "nothing_here"));
+    assert!(executor.undeclare_parameter_on(node, "a"));
+    assert!(!executor.declare_parameter_on(node, &long, ParameterValue::Integer(1)));
+    assert!(
+        !executor.report_parameter_refused(node, &long),
+        "a name too long is a refusal, not a full store"
+    );
+}
+
+/// The typed builder's `Err` says what to do about a full store.
+// GitHub #4018.
+#[cfg(feature = "param-store")]
+#[test]
+fn a_full_store_error_names_its_knob() {
+    // Each knob line is one log record, so it must fit the smallest buffer
+    // (128 bytes) with the logger's prefix to spare.
+    for line in [
+        nros_params::STORE_SIZE_KNOB,
+        nros_params::STORE_SIZE_DERIVED,
+    ] {
+        assert!(line.len() <= 120, "{} bytes: {line}", line.len());
+    }
+    let text = std::format!("{}", nros_params::DeclarationError::StorageFull);
+    for needle in [
+        "max_parameters",
+        "NROS_MAX_PARAMETERS",
+        "CONFIG_NROS_MAX_PARAMETERS",
+    ] {
+        assert!(text.contains(needle), "`{needle}` in: {text}");
+    }
+}
+
 /// Issue 1856 -- the services' half of the carved home follows the build, and
 /// the store does not.
 ///

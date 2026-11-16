@@ -293,15 +293,36 @@ mod imp {
             return if t == value.param_type() {
                 RCL_RET_OK
             } else {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros-c"),
+                    "parameter \"{}\" already holds a value of another type than the code \
+                     declares; the declaration is refused",
+                    n
+                );
                 RCL_RET_ERROR
             };
         }
-        if exec.list_parameters_on(id, "").count() >= (*server).max_params {
+        let quota = (*server).max_params;
+        if exec.list_parameters_on(id, "").count() >= quota {
+            // rclc's own answer for a server at its `max_params`, kept; the
+            // line is ours (GitHub #4018).
+            nros_log::log_error!(
+                nros_log::get_logger("nros-c"),
+                "parameter \"{}\" was not declared: this node's parameter server holds its \
+                 `max_params` = {} already (rclc_parameter_options_t). A launch or YAML value \
+                 for it is not applied.",
+                n,
+                quota
+            );
             return RCL_RET_ERROR;
         }
         if exec.declare_parameter_on(id, n, value) {
             exec.flush_parameter_events();
             RCL_RET_OK
+        } else if exec.report_parameter_refused(id, n) {
+            // GitHub #4018 -- the image-wide store is full; the line above
+            // names the node, the parameter, the capacity and the knob.
+            RCLC_RET_FULL
         } else {
             RCL_RET_ERROR
         }

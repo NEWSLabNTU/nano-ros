@@ -12,6 +12,14 @@
  *
  *  - Nothing here allocates. The store is the executor's, sized at build time
  *    (`NROS_MAX_PARAMETERS`); `max_params` is a per-node quota inside it.
+ *    A declaration (`rclc_add_parameter`, `rclc_parameter_declare_*`) the
+ *    image-wide store has no slot for returns `RCLC_RET_FULL` and logs a line
+ *    naming the node, the parameter, the capacity and the knob that sizes it
+ *    (`max_parameters` under `[knobs.params]`, `NROS_MAX_PARAMETERS`,
+ *    `CONFIG_NROS_MAX_PARAMETERS`). One past the node's `max_params`, or a name
+ *    already holding another type, returns `RCL_RET_ERROR` as rclc's does, and
+ *    is logged too. Check the return: the parameter was not declared, so a
+ *    launch value for it is not applied.
  *  - The node must be bound to an executor (`rclc_executor_node_init`) before
  *    `rclc_parameter_server_init_*`; otherwise `RCL_RET_NOT_INIT`.
  *  - Local typed sets fire the callback and skip read-only and range checks,

@@ -105,6 +105,35 @@ pub enum DeclarationError {
     NoValueAvailable,
 }
 
+/// What each refusal means, for a caller that prints the `Err` it got back. A
+/// full store names the knob that sizes it ([`crate::STORE_SIZE_REMEDY`]).
+// GitHub #4018 -- `StorageFull` was the one refusal whose fix is a build
+// knob, and a bare `{:?}` named nothing.
+impl core::fmt::Display for DeclarationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            DeclarationError::AlreadyDeclared => f.write_str("the parameter is already declared"),
+            DeclarationError::InvalidRange => f.write_str("the parameter's range is ill-formed"),
+            DeclarationError::InitialValueOutOfRange => {
+                f.write_str("the parameter's default is outside its range")
+            }
+            DeclarationError::StorageFull => write!(
+                f,
+                "the parameter store is full, so the parameter was not declared and a launch \
+                 or YAML value for it is not applied. {}",
+                crate::STORE_SIZE_REMEDY
+            ),
+            DeclarationError::NameTooLong => f.write_str(
+                "the parameter's name is longer than NROS_MAX_PARAM_NAME_LEN \
+                 (`max_param_name_len` under `[knobs.params]`)",
+            ),
+            DeclarationError::NoValueAvailable => {
+                f.write_str("a read-only parameter was declared with no default")
+            }
+        }
+    }
+}
+
 /// phase-515 R8 -- the typed builder's terminals return [`DeclarationError`]
 /// now, as rclrs's do. This keeps `?` into a [`ParameterError`]-returning
 /// caller compiling, and maps each case to the `ParameterError` such a caller

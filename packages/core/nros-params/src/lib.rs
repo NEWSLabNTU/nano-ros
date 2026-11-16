@@ -54,6 +54,19 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+macro_rules! store_size_knob {
+    () => {
+        "Raise `max_parameters` under [knobs.params] in system.toml, NROS_MAX_PARAMETERS or \
+         CONFIG_NROS_MAX_PARAMETERS."
+    };
+}
+macro_rules! store_size_derived {
+    () => {
+        "Or state none: the build derives it when every node declares its parameters under \
+         `params:` in its contract."
+    };
+}
+
 pub(crate) mod config;
 // phase-359 W10 / issue 0080 — `persist` is GONE. It held the parameter
 // PERSISTENCE seam (`ParamStore`, ~~`NullParamStore`~~, ~~`ParamStoreError`~~,
@@ -91,3 +104,22 @@ pub use types::{
     MAX_STRING_VALUE_LEN, NodeFlags, NodeKey, PARAM_EVENTS_DEPTH, Parameter, ParameterDescriptor,
     ParameterRange, ParameterType, ParameterValue, ParameterVariant, fit_description,
 };
+
+/// The knob that sizes the parameter store, in every spelling a user writes.
+///
+/// One of the two lines a refused declaration's report adds, each short enough
+/// for one log record (128 bytes is the smallest `NROS_LOG_BUFFER_SIZE`), so a
+/// small board does not cut the knob's name off.
+// GitHub #4018. One text, so the Rust, C and C++ reports name the knob one way.
+pub const STORE_SIZE_KNOB: &str = store_size_knob!();
+
+/// When the store's size is derived instead of stated. The second line of the
+/// report; see [`STORE_SIZE_KNOB`].
+// The derivation is `ParamDeclarations::sizing` in the CLI's entity
+// inventory (every declared name plus one `use_sim_time` per node), carried to
+// `build.rs` by the sizing descriptor.
+pub const STORE_SIZE_DERIVED: &str = store_size_derived!();
+
+/// [`STORE_SIZE_KNOB`] and [`STORE_SIZE_DERIVED`] as one text, for a report
+/// with no record limit (an error's `Display`).
+pub const STORE_SIZE_REMEDY: &str = concat!(store_size_knob!(), " ", store_size_derived!());

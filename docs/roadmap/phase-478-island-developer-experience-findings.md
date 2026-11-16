@@ -585,6 +585,18 @@ to configure, which already reports it against the derivation. The island's
 resolved lists use different separators, and a `max_publishers` override row
 is flagged. The ELF is still produced.
 
+### I19 -- a declaration past the parameter store's capacity stops the boot
+
+**Status: DONE (2026-11-16).** [Issue 2634](../issues/archived/2634-param-store-full-declare-silently-uses-default.md),
+GitHub #4018. `rclcpp::Node::declare_parameter<T>` returned the code default
+when the store was full, so a launch value was lost in silence and the
+island's controller (149 parameters) depended on a hand-counted
+`max_parameters`. A full store now latches `set_error` (`NROS_CPP_RET_FULL`) in
+C++, returns `RCLC_RET_FULL` in C and `Err` in Rust, and the runtime logs the
+node, the parameter, the capacity and the knob in every spelling. The size is
+already derived from the contract's `params:` when every node declares them;
+deriving it from the census is not done.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -686,6 +698,9 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       (`--version` stays one line; I7).
 - [ ] I8: the serial-link guide and Kconfig help name the main-priority and
       RX-ring lines (done) until 474 T3 makes them defaults (waits on T3).
+- [x] I19: a declaration past a full parameter store stops the boot in C++
+      (`set_error`), returns `RCLC_RET_FULL` in C and `Err` in Rust, and the
+      logged line names the knob; a test per language (issue 2634).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -721,6 +736,7 @@ fixed after that release.
 
 - [issue 2615](../issues/archived/2615-model-gate-refuses-sibling-param-file.md) (resolved): a model whose launch loads a param file from a sibling package was refused as non-portable (I17).
 - [issue 2618](../issues/archived/2618-knob-delivery-check-false-mismatch-after-link.md): the knob delivery check refuses a build after link over a list separator and an override row (I18).
+- [issue 2634](../issues/archived/2634-param-store-full-declare-silently-uses-default.md) (GitHub #4018, resolved): `declare_parameter` past a full parameter store returned the code default in silence. It now stops the boot and names the knob (I19).
 - [issue 2609](../issues/archived/2609-zephyr-app-workspace-module-lost-to-cache.md) (GitHub #3948, resolved): a generated Zephyr app lost its workspace Zephyr modules to the `-DZEPHYR_EXTRA_MODULES` cache entry (I15).
 - [issue 2610](../issues/archived/2610-zephyr-app-misses-workspace-msg-packages.md) (GitHub #3952, resolved): a generated Zephyr app did not find the workspace's own message packages (I16).
 - [issue 2601](../issues/archived/2601-resolve-ignores-image-target-platform-file.md): `nros configure` resolved every model for `posix`, so an image's `<stem>.system.<target>.yaml` was never read (I14, resolved).

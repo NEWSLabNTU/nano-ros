@@ -2596,6 +2596,25 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$pe_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/parameter_value_runtime
+    # GitHub #4018 -- a declaration past the store's capacity latches the
+    # node's error (NROS_CPP_RET_FULL) and logs the node, the parameter, the
+    # capacity and the knob, where it used to return the code default in
+    # silence. Same `param-services` archive, filled to its default size.
+    _psf=packages/api/nros-cpp/tests/compile/param_store_full_runtime.cpp
+    test -f "$_psf" || { echo "ERROR: $_psf is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - declare_parameter past a full store refuses the boot, naming its knob (runtime, #4018)"
+    c++ -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
+        -I"$(nros_locate_artifact cpp-include --placed-dir "$pe_dir/placed")" \
+        -I"$(nros_locate_artifact c-include --placed-dir "$pe_dir/placed")" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/param_store_full_runtime "$_psf" \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$pe_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/param_store_full_runtime
     # phase-488 -- a generated message has rosidl's `operator==`: the committed
     # C++ golden of the corpus's every-field-shape message, compiled -Werror and
     # run. Negative control, measured: the FixedString overload of

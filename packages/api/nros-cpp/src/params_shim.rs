@@ -149,13 +149,11 @@ pub unsafe extern "C" fn nros_cpp_declare_param(
     }
     // phase-446 seam: a declared type replaces this inference.
     let pv = infer_param_value(val_str);
-    if ctx
-        .executor
-        .declare_parameter_on(nros_node::executor::NodeId::from_raw(node), name_str, pv)
-    {
+    let id = nros_node::executor::NodeId::from_raw(node);
+    if ctx.executor.declare_parameter_on(id, name_str, pv) {
         NROS_CPP_RET_OK
     } else {
-        NROS_CPP_RET_ERROR
+        seed_refused(&ctx, id, name_str)
     }
 }
 
@@ -231,11 +229,28 @@ pub unsafe extern "C" fn nros_cpp_declare_node_param(
     }
     // phase-446 seam: a declared type replaces this inference.
     let pv = infer_param_value(val_str);
-    if ctx
-        .executor
-        .declare_parameter_on(nros_node::executor::NodeId::from_raw(next), name_str, pv)
-    {
+    let id = nros_node::executor::NodeId::from_raw(next);
+    if ctx.executor.declare_parameter_on(id, name_str, pv) {
         NROS_CPP_RET_OK
+    } else {
+        seed_refused(&ctx, id, name_str)
+    }
+}
+
+/// A launch seed the store refused: `NROS_CPP_RET_ERROR` as before for a name
+/// already there, and otherwise the refusal REPORTED, answering
+/// `NROS_CPP_RET_FULL` when the store had no free slot. The generated entry
+/// returns the code, so the boot stops; the report is what says why.
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
+fn seed_refused(
+    ctx: &crate::CppContext,
+    id: nros_node::executor::NodeId,
+    name: &str,
+) -> nros_cpp_ret_t {
+    if ctx.executor.get_parameter_on(id, name).is_some() {
+        NROS_CPP_RET_ERROR
+    } else if ctx.executor.report_parameter_refused(id, name) {
+        NROS_CPP_RET_FULL
     } else {
         NROS_CPP_RET_ERROR
     }
@@ -528,8 +543,12 @@ fn declare_on_node(
         NROS_CPP_RET_OK
     } else if ctx.executor.get_parameter_on(id, name).is_some() {
         NROS_CPP_RET_ALREADY_EXISTS
-    } else {
+    } else if ctx.executor.report_parameter_refused(id, name) {
+        // GitHub #4018 -- reported here, in the one seam every C++ declare
+        // reaches, so the facade's `set_error` has a line naming the knob.
         NROS_CPP_RET_FULL
+    } else {
+        NROS_CPP_RET_ERROR
     }
 }
 

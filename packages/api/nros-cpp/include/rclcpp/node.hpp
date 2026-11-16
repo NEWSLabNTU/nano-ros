@@ -224,6 +224,13 @@ template <typename S> class ClientHandle;
 class Node;
 class Context;
 
+namespace detail {
+/// A declaration the parameter store refused (`code` is the FFI's answer):
+/// boot-fatal through `set_error`, named by `code`. Defined in `rclcpp.hpp`,
+/// after `Node` is complete.
+inline void refuse_param_declare(Node& node, int32_t code);
+} // namespace detail
+
 /// upstream's node-interface slices, as HANDLES ON THE ONE NODE.
 ///
 /// rclcpp splits a node into ~10 `node_interfaces::Node*Interface` objects so
@@ -655,6 +662,17 @@ inline void report_declared_param_mismatch(const char* fqn, const char* param, c
     }
 #endif
 }
+
+/// The `set_error` text for a declaration the parameter store refused because
+/// it is FULL. One literal, because `set_error` records the pointer.
+// This used to be a silent `return default_value`.
+constexpr const char* PARAM_STORE_FULL_WHAT =
+    "declare_parameter: parameter store full; raise `max_parameters` under [knobs.params] "
+    "(NROS_MAX_PARAMETERS / CONFIG_NROS_MAX_PARAMETERS)";
+
+/// The `set_error` text for any other refusal of a declaration.
+constexpr const char* PARAM_DECLARE_REFUSED_WHAT =
+    "declare_parameter: the parameter store refused it, so its launch/YAML value is not applied";
 
 // ~~`detail::NodeHosted`~~ IS GONE. It was the lazily allocated
 // block behind `Node::hosted_`, and by W3 it held one member:
@@ -1709,6 +1727,9 @@ class Node {
             const ::nros_cpp_node_t* h = this->ffi_handle();
             Result r = ::rclcpp::detail::node_param_declare(h, full.c_str(), it->second);
             if (!r.ok() && r.raw() != RCLC_RET_ALREADY_EXISTS) {
+                // Returned AND latched, so a caller that drops
+                // the `Result` still does not boot on the code defaults.
+                ::rclcpp::detail::refuse_param_declare(*this, r.raw());
                 return r;
             }
         }
