@@ -825,8 +825,11 @@ the user ruled; all five stand:
     same run and 9 s locally, filed as issue 2613. The run's other red, the
     `threadx_linux` shard's `test_rtos_pubsub_e2e` C cell (`app_main` exits
     156), is on main and is not the zephyr shard's.
-- **Status:** OPEN — implemented, and the acceptance dispatch reached a
-  verdict with the numbers above. It becomes DONE when the PR merges.
+- **Status:** DONE (#3997, 2026-11-15). The acceptance dispatch's verdict
+  is above: 27 G freed by `du`, a 10.8 G run-stage low, `verify` passed, and
+  B not added. Nothing it found is left without a home: the
+  `weak_symbol_audit` timeout is issue 2613, and the build stage's 7.7 G low
+  is W13 (parked until measured as a problem).
 
 ### W13 — The hosted Zephyr shard's BUILD-stage disk margin (low priority)
 
