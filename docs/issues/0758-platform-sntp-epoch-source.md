@@ -281,3 +281,21 @@ straddle a 2^32 us boundary, which made a torn read wrong by 71 minutes.
 Not measured on the board yet (phase-478 acceptance, last row). It is low by
 the one-way latency, and an image that receives no sample gets no epoch.
 FreeRTOS and ThreadX still answer 0 (issue 0772).
+
+## Consumer evidence (ASI, 2026-11-16, GitHub #4005)
+
+From the autoware-safety-island `nano-ros` branch ([ASI](https://github.com/NEWSLabNTU/autoware-safety-island/blob/nano-ros/actuation_module/src/asi_common)), which drops each
+workaround when this closes:
+
+* **Re-acquisition is a requirement, from a running consumer.** ASI runs its
+  own periodic re-sync thread below every app tier,
+  `asi_common/src/common/clock/clock_resync.cpp`
+  (`CONFIG_ASI_SNTP_RESYNC_INTERVAL_S`, default 10 s), because the platform's
+  SNTP path is one-shot.
+* **The failure policy is a gap too.** On SNTP failure ASI's strong
+  `nros_board_network_wait()` retries 10 times and then calls `std::exit(1)`
+  (`src/zephyr/board_network_hook.cpp:39-62`), since every control command
+  carries this clock. A knob for the epoch failure policy (retry count; fatal,
+  or continue unstamped) would let ASI delete that hook.
+* ASI stamps from `std::chrono::system_clock` and measures input ages on the
+  same clock; it will move ages to a steady clock on its own side.
