@@ -1263,9 +1263,11 @@ against the numbers above.
 
 ### W13 — one token pool per build run
 
-- **Status:** OPEN. APPROVED 2026-11-15 by the user, relayed by the nros 241
-  manager, with one addition: PROVISION the tools first. Steps 1 and 2 are
-  done; step 3, the pool, is measured below and not yet accepted.
+- **Status:** DONE (2026-11-16, #3960 provision, #4004 pool). APPROVED
+  2026-11-15 by the user, relayed by the nros 241 manager, with one addition:
+  PROVISION the tools first. All three steps are done and the acceptance is met
+  on 48, 20 and 4 (emulated) cores; the measurements are below. A real 4-core
+  host has not repeated the emulated run yet.
 
 **The user's addition.** make 4.4 and ninja 1.13.2 are provisioned wherever a
 pool can run: every agent host, and the CI images (ci-base and zephyr-ros,
@@ -1382,7 +1384,7 @@ call the helpers; gate `pinned-tool-one-lookup`.
 ci-base and the zephyr-ci image log. On newslab-118 `nros_pinned_make` answers
 from the store.
 
-**Step 3, pool: implemented and measured on 48, 20 and 4 (emulated) cores.** `nros_pool_own`
+**Step 3, pool: DONE (#4004), measured on 48, 20 and 4 (emulated) cores.** `nros_pool_own`
 (`scripts/build/jobserver-pool.sh`) is the one owner. `gate-lane.sh` runs every
 lane under it, and the `build-test-fixtures` driver is pooled by default
 wherever a pinned make 4.4 exists. The lane reports its load after every run
