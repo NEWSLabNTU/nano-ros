@@ -19,6 +19,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "nros_freertos_task_create.h" /* issue 2632 */
+
 /*
  * Start the FreeRTOS scheduler.  Does not return.
  */
@@ -44,7 +46,7 @@ int nros_freertos_create_task(
      * stack depths > 65535 words (>256 KB), leaving tasks with a 0-word
      * stack and a wild SP. Drop the cast — xTaskCreate accepts the full
      * uint32_t we already declared in this wrapper. */
-    BaseType_t ret = xTaskCreate(entry, name, stack_words, arg,
+    BaseType_t ret = NROS_FREERTOS_TASK_CREATE(entry, name, stack_words, arg,
                                  (UBaseType_t)priority, NULL);
     return (ret == pdPASS) ? 0 : -1;
 }
@@ -68,7 +70,7 @@ int nros_freertos_create_task_static(void (*entry)(void*), const char* name, voi
         stack_bytes < (uint32_t)(configMINIMAL_STACK_SIZE * sizeof(StackType_t))) {
         return -1;
     }
-    TaskHandle_t h = xTaskCreateStatic(entry, name, stack_bytes / (uint32_t)sizeof(StackType_t),
+    TaskHandle_t h = NROS_FREERTOS_TASK_CREATE_STATIC(entry, name, stack_bytes / (uint32_t)sizeof(StackType_t),
                                        arg, (UBaseType_t)priority, (StackType_t*)stack,
                                        (StaticTask_t*)tcb);
     return (h != NULL) ? 0 : -1;

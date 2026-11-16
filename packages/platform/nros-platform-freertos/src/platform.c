@@ -52,6 +52,16 @@ extern int _heap_end;
 
 #include <FreeRTOS.h>
 #include <task.h>
+
+/* Issue 2632 -- a port whose FP context is per task (NXP's GCC/ARM_CR52_GIC)
+ * needs its `xTaskCreateFpu`; the board says so in FreeRTOSConfig.h. The same
+ * switch as nros-board-freertos/c/nros_freertos_task_create.h, which this
+ * package cannot include. */
+#if defined(nrosconfigTASK_CREATE_FPU) && (nrosconfigTASK_CREATE_FPU == 1)
+#define NROS_FREERTOS_TASK_CREATE xTaskCreateFpu
+#else
+#define NROS_FREERTOS_TASK_CREATE xTaskCreate
+#endif
 #include <semphr.h>
 
 #include <stddef.h>
@@ -631,7 +641,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
     uint32_t stack_depth = (uint32_t) (stack_bytes / sizeof(StackType_t));
 
     TaskHandle_t handle = NULL;
-    BaseType_t rc = xTaskCreate(
+    BaseType_t rc = NROS_FREERTOS_TASK_CREATE(
         freertos_task_trampoline,
         name,
         stack_depth,
