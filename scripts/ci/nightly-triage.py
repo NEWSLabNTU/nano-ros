@@ -227,7 +227,7 @@ def main():
     selftest()
 
     runs = gh_json(["run", "list", "--repo", REPO, "--workflow", args.workflow,
-                    "--limit", str(args.runs), "--json", "databaseId,createdAt,conclusion"])
+                    "--limit", str(args.runs), "--json", "databaseId,createdAt,conclusion,headBranch"])
     if not runs:
         print("no nightly runs found (or `gh` unavailable) — nothing to triage")
         return 0
@@ -265,6 +265,16 @@ def main():
                     print(f"\n  {kinds['no-verdict']} cells stopped at {len(by_step)} distinct step(s).\n"
                           "  That is one infrastructure fault, not N broken cells — and while\n"
                           "  it stands, none of these cells can report a regression.")
+
+    # phase-567 W6 — the latest run's red jobs name their suspects: the commits
+    # merged since each one's last green run (scripts/ci/lane_suspects.py).
+    # The newest COMPLETED run on main; a branch dispatch is not main's state.
+    done = next((r for r in runs if r.get("conclusion") and r.get("headBranch") == "main"), None)
+    if done and done.get("conclusion") == "failure":
+        print()
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import lane_suspects
+        print("\n".join(lane_suspects.suspects(args.workflow, done["databaseId"])))
 
     print()
     standing = standing_reds(per_job_history)
