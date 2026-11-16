@@ -233,7 +233,10 @@ fn zenoh_pthread_pools_have_module_defaults() {
         .last()
         .and_then(|tail| tail.split("\nendif # NROS_RMW_ZENOH").next())
         .expect("zephyr/Kconfig has an `if NROS_RMW_ZENOH` block");
-    for (sym, min) in [("MAX_PTHREAD_MUTEX_COUNT", 8), ("MAX_PTHREAD_COND_COUNT", 6)] {
+    for (sym, min) in [
+        ("MAX_PTHREAD_MUTEX_COUNT", 8),
+        ("MAX_PTHREAD_COND_COUNT", 6),
+    ] {
         let head = format!("configdefault {sym}\n    default ");
         let v: i64 = zenoh
             .split(&head)
@@ -241,6 +244,9 @@ fn zenoh_pthread_pools_have_module_defaults() {
             .and_then(|rest| rest.lines().next())
             .and_then(|n| n.trim().parse().ok())
             .unwrap_or_else(|| panic!("the zenoh block states no `configdefault {sym}`"));
-        assert!(v >= min, "zephyr/Kconfig: configdefault {sym} is {v}, below {min}");
+        assert!(
+            v >= min,
+            "zephyr/Kconfig: configdefault {sym} is {v}, below {min}"
+        );
     }
 }
