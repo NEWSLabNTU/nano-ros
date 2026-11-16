@@ -663,6 +663,11 @@ inline void report_declared_param_mismatch(const char* fqn, const char* param, c
 #endif
 }
 
+/// The code `set_error` records when a parameter the code declares was
+/// already declared, by a launch or YAML value, with ANOTHER type, so the value
+/// in effect cannot be read back as the type the code asked for.
+constexpr int32_t PARAM_VALUE_TYPE_MISMATCH = -447;
+
 /// The `set_error` text for a declaration the parameter store refused because
 /// it is FULL. One literal, because `set_error` records the pointer.
 // This used to be a silent `return default_value`.
@@ -673,6 +678,11 @@ constexpr const char* PARAM_STORE_FULL_WHAT =
 /// The `set_error` text for any other refusal of a declaration.
 constexpr const char* PARAM_DECLARE_REFUSED_WHAT =
     "declare_parameter: the parameter store refused it, so its launch/YAML value is not applied";
+
+/// The `set_error` text for a declaration whose value in effect has another type.
+constexpr const char* PARAM_VALUE_TYPE_MISMATCH_WHAT =
+    "declare_parameter: its launch/YAML value has another type than the code declares (the "
+    "line above says what to write)";
 
 // ~~`detail::NodeHosted`~~ IS GONE. It was the lazily allocated
 // block behind `Node::hosted_`, and by W3 it held one member:
