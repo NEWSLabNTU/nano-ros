@@ -1253,65 +1253,143 @@ mod tests {
         }
     }
 
-    /// phase-381 W3 — the grouping `names_and_types` performs, as a property.
-    ///
-    /// `ZenohSession::names_and_types` needs a live session to drain a query, so
-    /// what is tested here is the part that can be wrong WITHOUT one: given the
-    /// entities a graph yields, does grouping produce one entry per distinct
-    /// NAME carrying that name's DISTINCT types? That is the dedup, and it is
-    /// where a two-publisher topic becomes two entries or a two-type topic
-    /// loses one.
-    ///
-    /// This mirrors the session helper's algorithm rather than calling it, and
-    /// says so: the alternative is no coverage until an interop lane exists,
-    /// and the shapes it pins — duplicate topic, duplicate type, two types on
-    /// one topic — are exactly the ones reading does not catch.
+    type Name = heapless::String<64>;
+    type Reported = heapless::Vec<(Name, heapless::Vec<Name, 8>), 128>;
+
+    fn name(s: &str) -> Name {
+        Name::try_from(s).expect("test name fits")
+    }
+
+    /// Run the session's grouping over a fixed list of `(mangled topic, type)`
+    /// pairs and collect what it reports, demangled names included.
+    fn group(entities: &[(&str, Option<&str>)]) -> Reported {
+        let mut passes = 0usize;
+        let mut out = Reported::new();
+        let r: Result<(), ()> = session::group_names_and_types(
+            |f| {
+                passes += 1;
+                for (t, ty) in entities {
+                    if !f(t, *ty) {
+                        break;
+                    }
+                }
+                Ok(())
+            },
+            &mut |n, types| {
+                let types = types.iter().map(|t| name(t)).collect();
+                out.push((name(n), types)).expect("test reports fit");
+                true
+            },
+        );
+        assert!(r.is_ok());
+        // Two passes a name, plus the one that finds no next name.
+        assert_eq!(passes, 2 * out.len() + 1, "passes for {out:?}");
+        out
+    }
+
+    /// phase-381 W3 — one entry per distinct NAME, carrying that name's
+    /// distinct types: a two-publisher topic is one entry, and a two-type
+    /// topic keeps both types. Calls the session's own grouping.
     #[test]
     fn grouping_reports_each_name_once_with_its_distinct_types() {
-        // A graph with two publishers and one subscriber on /chatter, plus a
-        // second topic, as (topic, type) pairs.
-        let entities = [
-            ("%chatter", "std_msgs::msg::dds_::String_"),
-            ("%chatter", "std_msgs::msg::dds_::String_"), // second publisher, same type
-            ("%chatter", "std_msgs::msg::dds_::Int32_"),  // a second type on one topic
-            ("%tf", "tf2_msgs::msg::dds_::TFMessage_"),
-        ];
+        let s = "std_msgs::msg::dds_::String_";
+        let i = "std_msgs::msg::dds_::Int32_";
+        let tf = "tf2_msgs::msg::dds_::TFMessage_";
+        let out = group(&[
+            ("%tf", Some(tf)),
+            ("%chatter", Some(s)),
+            ("%chatter", Some(s)), // second publisher, same type
+            ("%chatter", Some(i)), // a second type on one topic
+            ("%chatter", None),
+        ]);
+        assert_eq!(out.len(), 2, "one entry per DISTINCT name: {out:?}");
+        assert_eq!(out[0].0, "/chatter", "ascending by name");
+        assert_eq!(
+            out[0].1.as_slice(),
+            [name(s), name(i)],
+            "distinct, first-seen order"
+        );
+        assert_eq!(out[1].0, "/tf");
+        assert_eq!(out[1].1.as_slice(), [name(tf)]);
+    }
 
-        let mut seen: heapless::Vec<&str, 8> = heapless::Vec::new();
-        let mut reported: heapless::Vec<(&str, heapless::Vec<&str, 8>), 8> = heapless::Vec::new();
-        while let Some((name, _)) = entities.iter().find(|(n, _)| !seen.contains(n)) {
-            let _ = seen.push(name);
-            let mut types: heapless::Vec<&str, 8> = heapless::Vec::new();
-            for (n, t) in entities.iter() {
-                if n == name && !types.contains(t) {
-                    let _ = types.push(t);
-                }
-            }
-            let _ = reported.push((name, types));
+    /// Issue 2360 — the grouping keeps no table of names already seen, so it
+    /// has no name cap: a graph with more distinct names than the 64 the old
+    /// table held reports every one, once, in ascending order.
+    #[test]
+    fn grouping_reports_every_name_past_the_old_table_size() {
+        let mut names: heapless::Vec<Name, 100> = heapless::Vec::new();
+        for k in (0..100).rev() {
+            let mut n = Name::new();
+            write!(n, "%t{k:03}").unwrap();
+            names.push(n).unwrap();
         }
+        let mut entities: heapless::Vec<(&str, Option<&str>), 200> = heapless::Vec::new();
+        for n in &names {
+            entities.push((n.as_str(), Some("T_"))).unwrap();
+            entities.push((n.as_str(), Some("T_"))).unwrap();
+        }
+        let out = group(&entities);
+        assert_eq!(out.len(), 100);
+        for (k, (n, types)) in out.iter().enumerate() {
+            let mut want = Name::new();
+            write!(want, "/t{k:03}").unwrap();
+            assert_eq!(n, &want);
+            assert_eq!(types.as_slice(), [name("T_")]);
+        }
+    }
 
-        assert_eq!(
-            reported.len(),
-            2,
-            "one entry per DISTINCT name, not per entity"
-        );
-        let chatter = reported
-            .iter()
-            .find(|(n, _)| *n == "%chatter")
-            .expect("/chatter");
-        assert_eq!(
-            chatter.1.len(),
-            2,
-            "two types on one topic report both, once each — the duplicate publisher must not add a third"
-        );
-        let tf = reported.iter().find(|(n, _)| *n == "%tf").expect("/tf");
-        assert_eq!(tf.1.len(), 1);
+    /// A name past `GRAPH_NAME_MAX` is skipped, never truncated (a truncated
+    /// name is a different, plausible topic), and a ninth type is dropped
+    /// while the name is still reported with the eight that fit.
+    #[test]
+    fn grouping_skips_an_overlong_name_and_reports_a_short_type_list() {
+        let mut long: heapless::String<320> = heapless::String::new();
+        long.push('%').unwrap();
+        for _ in 0..300 {
+            long.push('x').unwrap();
+        }
+        let types = [
+            "T0_", "T1_", "T2_", "T3_", "T4_", "T5_", "T6_", "T7_", "T8_",
+        ];
+        let mut entities: heapless::Vec<(&str, Option<&str>), 10> = heapless::Vec::new();
+        for t in types {
+            entities.push(("%many", Some(t))).unwrap();
+        }
+        entities.push((long.as_str(), Some("T_"))).unwrap();
+        let out = group(&entities);
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert_eq!(out[0].0, "/many");
+        assert_eq!(out[0].1.len(), 8);
+    }
 
-        // And the name is demangled on the way out.
-        assert_eq!(
-            Ros2Liveliness::demangle_topic_name::<64>("%chatter").as_str(),
-            "/chatter"
+    /// The visitor's `false` stops the enumeration after that name.
+    #[test]
+    fn grouping_stops_when_the_visitor_says_so() {
+        let mut seen: heapless::Vec<Name, 4> = heapless::Vec::new();
+        let r: Result<(), ()> = session::group_names_and_types(
+            |f| {
+                for t in ["%c", "%a", "%b"] {
+                    if !f(t, Some("T_")) {
+                        break;
+                    }
+                }
+                Ok(())
+            },
+            &mut |n, _| {
+                seen.push(name(n)).unwrap();
+                false
+            },
         );
+        assert!(r.is_ok());
+        assert_eq!(seen.as_slice(), [name("/a")]);
+    }
+
+    /// An error from the walk reaches the caller unchanged.
+    #[test]
+    fn grouping_returns_the_walks_error() {
+        let r = session::group_names_and_types(|_| Err::<(), _>("no session"), &mut |_, _| true);
+        assert_eq!(r, Err("no session"));
     }
 
     /// phase-381 W3 — the entity wildcard must match every entity KIND and id.

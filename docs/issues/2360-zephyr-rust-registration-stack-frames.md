@@ -149,3 +149,38 @@ stays at 32 KiB, now with 1.4 to 4.7 KiB of headroom.
 
 Left: an image that queries the graph (`ZenohSession::names_and_types_filtered`,
 a 19,620 B frame) is still not measured on this board.
+
+## The graph-query and parameter frames (2026-11-16)
+
+Frames read from `sub sp` totals in the disassembly of the Rust talker's
+`mps2_zenoh` image (`examples/zephyr/rust/talker`, `mps2-an385-zephyr`,
+thumbv7m, Zephyr 3.7). "Before" is the same image built from `origin/main`'s
+sources, on the same target.
+
+| frame | before | after |
+| --- | ---: | ---: |
+| `ZenohSession::names_and_types_filtered` | 19,916 B | 3,524 B |
+| `create_entity`'s `Parameter` arm (`out_of_line::<…{closure#9}>`) | 24,984 B | 8,328 B, plus 528 B in `param_default_into` |
+
+- **Graph query.** The grouping kept a table of every name already reported:
+  64 `heapless::String<256>`, about 16.6 KiB on the stack. It now reports names
+  in ascending byte order, and each step finds the smallest name above the
+  last one reported, so the only owned names are the last one, the next
+  candidate and one name's types. The dedup stays exact, and the 64-name cap
+  goes with the table. Ascending order is what `rmw_zenoh_cpp` and
+  `rmw_cyclonedds_cpp` return, since both build the answer in a `std::map`.
+  The grouping is now a pure function (`shim::session::group_names_and_types`),
+  and its tests call it. Before this change, the test copied the algorithm.
+- **Parameter declaration.** This was not in the tables above: the talker
+  declares no parameter, but the arm links into every Rust image. A
+  `ParameterValue` is about 8 KiB at the default capacities. The conversion
+  from the declared default returned one by value, so every match arm and the
+  string arm's `unwrap_or` fallback kept a full-size copy in the arm's frame.
+  It now writes into one value the caller owns (`param_default_into`). A first
+  attempt, which only shared one value between the census hook and the store,
+  measured no change (24,984 B), so the copies were the conversion's.
+
+Not measured here: the runtime peak of a Rust image that queries the graph or
+declares a parameter. These numbers are static frame sizes. A graph query runs
+from the executor's spin, not from registration, so how much of its frame
+lands on main depends on where the image calls it.

@@ -416,6 +416,76 @@ fn which_label(which: GraphQuery) -> &'static str {
 ///
 /// The namespace arrives MANGLED on both sides — the caller's was mangled once
 /// before the sweep — so this is a string compare and not a demangle per token.
+/// phase-381 W3 — group a graph's entities by NAME, reporting each name once
+/// with its distinct types.
+///
+/// `for_each` walks the (already filtered) entities as `(mangled topic,
+/// type)` pairs and stops early when its callback returns `false`; it may be
+/// called many times. The wire is one token per entity, so the same topic
+/// arrives once per publisher, and there is no allocator here to build a map.
+///
+/// Names are reported in ascending byte order. Each outer step finds the
+/// smallest name above the last one reported (one pass), then collects that
+/// name's types (a second pass). That makes the dedup exact with no table of
+/// names already seen: the only owned storage is the last name, the next
+/// candidate and one name's types. Issue 2360: the table this replaced held
+/// 64 names of 256 bytes, and made this the largest frame a Rust Zephyr image
+/// put on main's stack (19,620 B on thumbv7em). Ascending order is also what
+/// `rmw_zenoh_cpp` and `rmw_cyclonedds_cpp` return, since both build the
+/// answer in a `std::map`.
+///
+/// A name longer than [`GRAPH_NAME_MAX`] is skipped, never truncated (a
+/// truncated name is a different, plausible topic). A name whose type list
+/// overflows [`GRAPH_TYPES_MAX`] is reported with the types that fit rather
+/// than dropped: the contract says `types_count` may be short on a partial
+/// graph, and a topic reported with one of its two types is still true.
+pub(super) fn group_names_and_types<E>(
+    mut for_each: impl FnMut(&mut dyn FnMut(&str, Option<&str>) -> bool) -> Result<(), E>,
+    visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+) -> Result<(), E> {
+    let mut last: Option<heapless::String<GRAPH_NAME_MAX>> = None;
+    loop {
+        // Pass 1 — the smallest name above the last one reported.
+        let mut next: Option<heapless::String<GRAPH_NAME_MAX>> = None;
+        for_each(&mut |topic, _| {
+            if last.as_ref().is_some_and(|l| topic <= l.as_str())
+                || next.as_ref().is_some_and(|n| topic >= n.as_str())
+            {
+                return true;
+            }
+            if let Ok(name) = heapless::String::try_from(topic) {
+                next = Some(name);
+            }
+            true
+        })?;
+        let Some(name) = next else { break };
+
+        // Pass 2 — that name's types. Pointers into the parse buffers are not
+        // valid past `for_each`, so the strings are COPIED here; this is the
+        // one place that costs storage, and it is bounded.
+        let mut types: heapless::Vec<heapless::String<GRAPH_NAME_MAX>, GRAPH_TYPES_MAX> =
+            heapless::Vec::new();
+        for_each(&mut |topic, ty| {
+            if topic == name.as_str()
+                && let Some(t) = ty
+                && let Ok(ty) = heapless::String::try_from(t)
+                && !types.contains(&ty)
+            {
+                let _ = types.push(ty);
+            }
+            true
+        })?;
+
+        let demangled = Ros2Liveliness::demangle_topic_name::<GRAPH_NAME_MAX>(name.as_str());
+        let refs: heapless::Vec<&str, GRAPH_TYPES_MAX> = types.iter().map(|t| t.as_str()).collect();
+        if !visit(demangled.as_str(), refs.as_slice()) {
+            break;
+        }
+        last = Some(name);
+    }
+    Ok(())
+}
+
 fn entity_on_node(e: &Ros2LivelinessEntity<'_>, node: Option<(&str, &str)>) -> bool {
     match node {
         None => true,
@@ -439,10 +509,6 @@ const GRAPH_KEYEXPR_MAX: usize = 512;
 
 /// Longest topic / service / type name a graph query reports.
 const GRAPH_NAME_MAX: usize = 256;
-
-/// Most distinct names one enumeration reports. A graph with more reports the
-/// first this many — bounded by construction, and stated rather than silent.
-const GRAPH_NAMES_MAX: usize = 64;
 
 /// Most types reported for ONE name. Overflow reports the types that fit
 /// rather than dropping the name: the contract allows a short `types_count` on
@@ -1175,75 +1241,31 @@ impl ZenohSession {
     /// `node` is `(name, MANGLED namespace)`. The whole-graph forms pass `None`
     /// and the `*_by_node` forms pass `Some`, so the dedup exists once: four
     /// per-node slots plus two whole-graph ones would otherwise be six copies
-    /// of one two-pass algorithm.
+    /// of one two-pass algorithm. The grouping itself is
+    /// [`group_names_and_types`]; this method supplies the filtered entities.
     fn names_and_types_filtered(
         &mut self,
         kinds: &[EntityKind],
         node: Option<(&str, &str)>,
         visit: &mut dyn FnMut(&str, &[&str]) -> bool,
     ) -> Result<(), TransportError> {
-        // Names already reported, so the outer pass makes progress. Bounded by
-        // construction; a graph with more distinct names than this reports the
-        // first `GRAPH_NAMES_MAX` of them.
-        let mut seen: heapless::Vec<heapless::String<GRAPH_NAME_MAX>, GRAPH_NAMES_MAX> =
-            heapless::Vec::new();
-
-        loop {
-            // Pass 1 — the next name we have not reported yet.
-            let mut next: Option<heapless::String<GRAPH_NAME_MAX>> = None;
-            self.for_each_entity(GraphQuery::Entities, &mut |e| {
-                if !kinds.contains(&e.kind) || !entity_on_node(e, node) {
-                    return true;
-                }
-                let Some(topic) = e.topic else { return true };
-                let Ok(name) = heapless::String::try_from(topic) else {
-                    return true;
-                };
-                if seen.contains(&name) {
-                    return true;
-                }
-                next = Some(name);
-                false // stop: one new name per outer iteration
-            })?;
-
-            let Some(name) = next else { break };
-            if seen.push(name.clone()).is_err() {
-                // Name table full — stop rather than loop forever on a name we
-                // cannot record as seen.
-                break;
-            }
-
-            // Pass 2 — that name's types. Pointers into the parse buffers are
-            // not valid past `for_each_entity`, so the strings are COPIED here;
-            // this is the one place that costs storage, and it is bounded.
-            let mut types: heapless::Vec<heapless::String<GRAPH_NAME_MAX>, GRAPH_TYPES_MAX> =
-                heapless::Vec::new();
-            self.for_each_entity(GraphQuery::Entities, &mut |e| {
-                if !kinds.contains(&e.kind)
-                    || e.topic != Some(name.as_str())
-                    || !entity_on_node(e, node)
-                {
-                    return true;
-                }
-                if let Some(t) = e.type_name
-                    && let Ok(ty) = heapless::String::try_from(t)
-                    && !types.contains(&ty)
-                {
-                    let _ = types.push(ty);
-                }
-                true
-            })?;
-
-            let demangled = Ros2Liveliness::demangle_topic_name::<GRAPH_NAME_MAX>(name.as_str());
-            let refs: heapless::Vec<&str, GRAPH_TYPES_MAX> =
-                types.iter().map(|t| t.as_str()).collect();
-            if !visit(demangled.as_str(), refs.as_slice()) {
-                break;
-            }
-        }
+        let r = group_names_and_types(
+            |f| {
+                self.for_each_entity(GraphQuery::Entities, &mut |e| {
+                    if !kinds.contains(&e.kind) || !entity_on_node(e, node) {
+                        return true;
+                    }
+                    match e.topic {
+                        Some(topic) => f(topic, e.type_name),
+                        None => true,
+                    }
+                })
+            },
+            visit,
+        );
         // One refresh for the WHOLE grouping, after every pass it needed.
         self.refresh_query(GraphQuery::Entities);
-        Ok(())
+        r
     }
 
     fn ensure_node_liveliness(&mut self, domain_id: u32, namespace: &str, node_name: &str) {
