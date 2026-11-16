@@ -17,7 +17,7 @@ pub struct ShimConfig {
     pub max_publishers: usize,
     pub max_subscribers: usize,
     pub max_queryables: usize,
-    /// phase-392 W5.e — whether [`ShimConfig::max_queryables`] was sized from a
+    /// Whether [`ShimConfig::max_queryables`] was sized from a
     /// DECLARATION (the image's sizing descriptor) or
     /// from the backend's own budget.
     ///
@@ -26,18 +26,18 @@ pub struct ShimConfig {
     /// means "raise the knob". Sized from a declaration, it means the image
     /// created a service server its model does not declare — and saying "raise
     /// the knob" there sends the reader to fix the symptom. Being authoritative
-    /// costs this, and phase-392 W5.b2 says it is paid in the same wave.
+    /// costs this, and it is paid in the same change.
     pub queryable_table_declared: bool,
     pub max_liveliness: usize,
     /// Bytes of NUL-separated liveliness keyexprs the per-session graph cache
     /// holds (`ZPICO_GRAPH_CACHE_SIZE`, default 65536).
     ///
-    /// phase-412 — it reached the C compile on the ZEPHYR CMAKE lane only
+    /// It reached the C compile on the ZEPHYR CMAKE lane only
     /// (`nros_rmw_zenoh.cmake` passes `CONFIG_NROS_GRAPH_CACHE_SIZE` straight
     /// through), so every build that compiles `zpico.c` through cargo — every
     /// FreeRTOS, ThreadX, NuttX, posix and bare-metal image, and the Zephyr
     /// RUST lane — took the 65,536-byte default with no way to state another.
-    /// Issue 0460's shape: a knob that reaches one lane and not the other.
+    /// The same shape as before: a knob that reaches one lane and not the other.
     ///
     /// It is `.bss` and it is per SESSION, so the cost is this times
     /// `ZPICO_MAX_SESSIONS`. An embedded image with a small graph should turn
@@ -55,46 +55,46 @@ pub struct ShimConfig {
     /// cannot take.
     pub graph_discovery: bool,
     pub max_pending_gets: usize,
-    /// phase-328 (issue 0348) — size of the C shim's session pool
+    /// Size of the C shim's session pool
     /// (`ZPICO_MAX_SESSIONS`, default 1). A single-session target keeps the
     /// default so its static footprint is one session's tables plus one
     /// in-use flag; a multi-domain build raises it.
     pub max_sessions: usize,
     pub get_reply_buf_size: usize,
     pub get_poll_interval_ms: usize,
-    /// phase-279 (#145) — opt-in tx batching (`ZPICO_TX_BATCH=1`): puts queue in
+    /// Opt-in tx batching (`ZPICO_TX_BATCH=1`): puts queue in
     /// the transport write buffer and ship as ONE socket send per
     /// `zpico_spin_once` flush. Default OFF (adds up to one spin period of tx
     /// latency; gets/replies/express publishers bypass). Biggest win on Zephyr,
     /// where zsock's per-fd lock caps tx at ~1 send per socket-recv window.
     pub tx_batch: bool,
-    /// phase-282 (#145) — flush cadence, ms (`ZPICO_TX_BATCH_FLUSH_MS`,
+    /// Flush cadence, ms (`ZPICO_TX_BATCH_FLUSH_MS`,
     /// default 50): period of the dedicated tx-flush thread and rate limit of
     /// the spin-driven fallback flush. Bounds the extra publish latency the
     /// batch adds. Only meaningful with `tx_batch`.
     pub tx_batch_flush_ms: usize,
-    /// issue 0626 / 0460 — priority of zenoh-pico's read task
+    /// Priority of zenoh-pico's read task
     /// (`ZPICO_READ_TASK_PRIORITY`, default 16, from
     /// `CONFIG_NROS_ZENOH_READ_PRIORITY`).
     ///
     /// Here rather than only in `nros_rmw_zenoh.cmake` because that file is the
     /// C lane, and a Zephyr RUST image inherits none of cmake's
-    /// `set(ENV{...})` exports — issue 0460's class, where the two lanes
+    /// `set(ENV{...})` exports — the class where the two lanes
     /// disagreed on `MAX_QUERYABLES` and the ABI split silently. The value is
     /// NORMALISED 0–31 and mapped down onto the platform's own range, not a
     /// raw RTOS priority; CLAUDE.md records the collision that follows from
-    /// confusing the two units (issue 0623).
+    /// confusing the two units.
     ///
     /// The read task is zenoh-pico 1.10's executor thread: it also runs the
     /// lease and keep-alive, so there is no lease-task priority beside it
-    /// (RFC-0110 D2; `ZPICO_LEASE_TASK_PRIORITY` is an `#error` in the shim).
+    /// (zenoh-pico 1.10's executor model; `ZPICO_LEASE_TASK_PRIORITY` is an `#error` in the shim).
     pub read_task_priority: usize,
 }
 
 /// Whether the generated zenoh-pico config compiles in the multicast transport
 /// and scouting that zenoh's PEER mode is built on.
 ///
-/// Issue 0682 — this is `false`, and that is a size decision, not an oversight:
+/// This is `false`, and that is a size decision, not an oversight:
 /// multicast transport, scouting and multicast declarations are three more code
 /// paths in a library whose whole point here is fitting on an MCU, and every
 /// nano-ros deployment reaches its peers through a router or an agent. It is
@@ -120,7 +120,7 @@ pub const MULTICAST_TRANSPORT: bool = false;
 /// This is the build-input half. It is NOT yet enough to run that e2e test:
 /// `nano2nano` spawns PREBUILT fixture binaries, which `build-test-fixtures`
 /// produces without this flag, so exercising peer mode end to end needs a
-/// fixture VARIANT rather than an env on the test crate. Issue 0711.
+/// fixture VARIANT rather than an env on the test crate.
 pub const MULTICAST_TRANSPORT_ENV: &str = "ZPICO_MULTICAST_TRANSPORT";
 
 /// Whether THIS build compiles in multicast transport + scouting.
@@ -129,7 +129,7 @@ pub const MULTICAST_TRANSPORT_ENV: &str = "ZPICO_MULTICAST_TRANSPORT";
 /// Every emitter goes through here — the three C `#define`s and the Rust
 /// `ZPICO_PEER_MODE_SUPPORTED` const — so the C library and the Rust session
 /// layer cannot disagree about what was compiled. That property is the whole
-/// point of issue 0682 and it survives becoming configurable only because
+/// point of that single read and it survives becoming configurable only because
 /// there is still exactly ONE reader of the value.
 pub fn multicast_transport_enabled() -> bool {
     match std::env::var(MULTICAST_TRANSPORT_ENV) {
@@ -279,15 +279,15 @@ pub struct ZenohBufferConfig {
     pub frag_max_size: usize,
     pub batch_unicast_size: usize,
     pub batch_multicast_size: usize,
-    /// RFC-0074 / phase-462 W6a — the read task's frame budget, `None` when
+    /// The read task's frame budget, `None` when
     /// nothing stated one (the task stays unbounded, byte-identical to before).
     pub rx_task_budget: Option<RxTaskBudget>,
 }
 
-/// A stated budget on zenoh-pico's unicast read task (RFC-0074 enforcement
+/// A stated budget on zenoh-pico's unicast read task (the ingress budget's enforcement
 /// point 2): at most `frames` frames back to back, then a `rest_us` rest. On
 /// zenoh-pico 1.10 the rest is a `wake_up_after`, which the fork rounds up to
-/// whole milliseconds with a 2 ms floor (RFC-0110 D6).
+/// whole milliseconds with a 2 ms floor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RxTaskBudget {
     pub frames: usize,
@@ -300,7 +300,7 @@ impl RxTaskBudget {
     /// `frames` is `None` when no rung STATED it — its builtin states nothing,
     /// so the read task stays unbounded and `rest_us` is not read. A stated 0
     /// is refused: zero frames is not "unlimited", and reading it as either
-    /// would be a silent guess (RFC-0074). zenoh-pico's own `#error` refuses
+    /// would be a silent guess. zenoh-pico's own `#error` refuses
     /// it too; this says which knob to change.
     pub fn from_knobs(frames: Option<usize>, rest_us: usize) -> Result<Option<Self>, String> {
         match frames {
@@ -782,7 +782,7 @@ pub fn apply_arch(arch: &manifest::ArchEntry, build: &mut cc::Build, out_dir: &P
 /// The first `[arch.*]` profile, in the platform's declared `arch_profiles`
 /// order, that admits `target`.
 ///
-/// Issue 1966 — every zenoh-pico C compile of one image must use the SAME
+/// Every zenoh-pico C compile of one image must use the SAME
 /// profile, because their objects share an archive (float ABI, march/mabi)
 /// and the size probe measures the types the library is built with. The
 /// library, both alias TUs and the size probe each walked the list
@@ -815,7 +815,7 @@ pub fn platform_arch<'a>(
 
 /// Returns `true` when the `[arch.*]` predicates allow the current target triple.
 ///
-/// phase-338 W4 — the predicate now has ONE spelling, in `nros_board_common`
+/// The predicate now has ONE spelling, in `nros_board_common`
 /// beside [`manifest::ArchEntry`] itself. This is kept as the name every zpico
 /// caller already uses; it must never regrow a body (CLAUDE.md: add one shared
 /// helper, never a second spelling — the class that produced the sizes-header
@@ -842,7 +842,7 @@ pub struct ZenohSourceRecord {
     pub path: String,
 }
 
-/// Parse `packages/rmw/zenoh/zpico-sys/zenoh-sources.txt` — phase-420 W9.
+/// Parse `packages/rmw/zenoh/zpico-sys/zenoh-sources.txt`.
 ///
 /// Returns `(group → condition token, records in file order)`.
 ///
@@ -902,17 +902,17 @@ pub fn parse_zenoh_sources(
 
 /// Add the zenoh-pico source set this platform compiles to a `cc::Build`.
 ///
-/// phase-420 W9 — THIS FUNCTION OWNS NO SOURCE LIST. The nine directory globs
+/// THIS FUNCTION OWNS NO SOURCE LIST. The nine directory globs
 /// that used to live here are read from `zpico-sys/zenoh-sources.txt`, and
 /// `zephyr/cmake/nros_rmw_zenoh.cmake` reads the same file. There were two
 /// copies of that selection, one per language lane, and nothing checked that
-/// they agreed — the class issue 1068 fixed for micro-XRCE next door. Gate:
+/// they agreed — the class already fixed for micro-XRCE next door. Gate:
 /// `just check zenoh-source-manifest`.
 ///
 /// `platform` is the resolved `nros-platform.toml` platform name; it answers
 /// the manifest's condition tokens. (A link feature used to answer one too,
 /// `zephyr_isotp`; zenoh-pico 1.9 moved that binding under `src/link/`, where
-/// the file gates itself — phase-508.)
+/// the file gates itself.)
 pub fn add_zenoh_pico_core_sources(
     build: &mut cc::Build,
     zenoh_pico_src: &Path,
@@ -1021,7 +1021,7 @@ pub fn add_zenoh_pico_core_sources(
 /// Recursively collect all .c files from a directory and add them to a
 /// `cc::Build`; returns how many were added.
 ///
-/// phase-420 W9 — reached only through [`add_zenoh_pico_core_sources`]'s `dir`
+/// Reached only through [`add_zenoh_pico_core_sources`]'s `dir`
 /// records now. It expands a rule the manifest states; it does not decide one.
 pub fn add_c_sources_recursive(build: &mut cc::Build, dir: &Path) -> usize {
     if !dir.exists() {
@@ -1048,7 +1048,7 @@ pub fn add_c_sources_recursive(build: &mut cc::Build, dir: &Path) -> usize {
 /// RISC-V bare-metal GCC binary names tried, in preference order, wherever
 /// zpico compiles C for a riscv target. `riscv-none-elf-gcc` is the xPack
 /// multilib toolchain `nros setup` provisions (rv32imc/ilp32 capable); its
-/// omission (issue 0399) meant a host provisioned exactly as documented fell
+/// omission meant a host provisioned exactly as documented fell
 /// through to cc-rs's guessed `riscv32-unknown-elf-gcc` and failed to build.
 /// One list so the detect / sysroot / picolibc-specs probes can never diverge.
 pub const RISCV_GCC_CANDIDATES: &[&str] = &[

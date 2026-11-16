@@ -1,4 +1,4 @@
-//! Phase 123.A.1.x.4.a — thin staticlib wrapper around
+//! Thin staticlib wrapper around
 //! `nros-rmw-zenoh`.
 //!
 //! The wrapper exists solely to flip the crate-type from `rlib` to

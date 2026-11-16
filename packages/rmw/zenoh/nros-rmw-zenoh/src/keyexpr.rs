@@ -266,7 +266,7 @@ impl QosKeyExpr for QoSProfile {
     }
 }
 
-/// Decode a liveliness token's QoS chunk — issue 1973.
+/// Decode a liveliness token's QoS chunk.
 ///
 /// The inverse of [`QosKeyExpr::to_qos_string`], in `rmw_zenoh_cpp`'s grammar
 /// (`keyexpr_to_qos`): six `:`-separated fields

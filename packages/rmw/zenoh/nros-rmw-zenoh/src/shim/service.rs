@@ -91,10 +91,10 @@ impl Default for InboxEntry {
 /// Backing storage for one queryable's request ring: `DEPTH` entries of
 /// `SLOT_BYTES` bytes each, plus the per-entry bookkeeping.
 ///
-/// phase-461 W1 -- the ring is a HEADER ([`InboxRing`]) over storage the owner
+/// The ring is a HEADER ([`InboxRing`]) over storage the owner
 /// supplies, so a family that knows its own bound brings its own. The zenoh
 /// shim's three tables below (`USER_SERVICE_INBOX`, `ACTION_INBOX` and
-/// phase-461 W2b's `BUILTIN_INBOX`) are instances of this type, and so is what
+/// the builtin `BUILTIN_INBOX`) are instances of this type, and so is what
 /// a caller registers through [`InboxSpec::Caller`].
 ///
 /// `Sync` because the ring over it is SPSC: the zenoh read task writes a slot
@@ -230,7 +230,7 @@ impl InboxRing {
     }
 }
 
-/// Which inbox a service server receives through (phase-461 W1).
+/// Which inbox a service server receives through.
 #[derive(Clone, Copy)]
 pub enum InboxSpec {
     /// The shim's user-service table, `NROS_SERVICE_INBOX_BYTES` x
@@ -349,7 +349,7 @@ pub(super) struct InboxDrops {
     last_overflow_len: AtomicUsize,
 }
 
-/// What a queryable's inbox dropped since it was bound (phase-461 W4).
+/// What a queryable's inbox dropped since it was bound.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct InboxDropStats {
     /// Requests dropped on arrival because the ring was full.
@@ -1054,13 +1054,13 @@ pub(crate) fn request_info_from_attachment(attachment: &[u8]) -> nros_rmw::Servi
 impl ZenohServiceServer {
     /// Create a new service server for the given service.
     ///
-    /// phase-461 W1 -- the inbox family is read off the name: the three
+    /// The inbox family is read off the name: the three
     /// queryables of an action server are `<action>/_action/{send_goal,
     /// cancel_goal,get_result}` (`nros_rmw::ActionInfo`); everything else is a
     /// user service. A caller that brings its OWN storage registers through
     /// [`Self::new_with_inbox`] instead.
     ///
-    /// phase-461 W2b -- and the BUILTIN families the same way: the six ROS
+    /// And the BUILTIN families the same way: the six ROS
     /// parameter services and the five REP-2002 lifecycle services are
     /// well-known endpoints under a node's FQN, so the shim can select their
     /// table from the name exactly as it selects the action one, with no ABI
@@ -1266,7 +1266,7 @@ impl ZenohServiceServer {
         })
     }
 
-    /// phase-461 W4 -- what this server's inbox has dropped since it was
+    /// What this server's inbox has dropped since it was
     /// declared: requests that met a full ring, and requests larger than a
     /// slot. Each is also logged once per transition into it.
     pub fn inbox_drop_stats(&self) -> InboxDropStats {
@@ -1324,13 +1324,13 @@ impl ZenohServiceServer {
         self.granted_qos = qos;
     }
 
-    /// issue 1332 / phase-455 W2.b — this server's zenoh queryable handle, the
+    /// This server's zenoh queryable handle, the
     /// argument `Context::reply_slot_stats` / `reply_slot_declines` take.
     ///
     /// The reply-slot table is per-queryable, so reading it needs the handle of
     /// the server that owns it. The process-global
     /// [`crate::reply_slot_refusals_total`] exists for a caller several layers
-    /// above the `Context` (phase-455 W2's probe binary); a caller holding the
+    /// above the `Context` (a probe binary); a caller holding the
     /// server itself should name it, so a count cannot be credited to the wrong
     /// queryable — the runtime declares its own before an entry's do.
     pub fn queryable_handle(&self) -> i32 {

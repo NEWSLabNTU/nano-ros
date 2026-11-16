@@ -40,17 +40,17 @@
 //! two. The Rust half reaches it through the platform's `PlatformAlloc` impl,
 //! and `nros-platform` installs the single `#[global_allocator]` in the tree.
 //!
-//! phase-361 W8.c / issue 0594 — [`FreeListHeap`] no longer implements
+//! [`FreeListHeap`] no longer implements
 //! [`core::alloc::GlobalAlloc`] itself. Doing so made this crate a second
 //! allocator provider whose users bypassed `nros_platform_alloc`, the sole
-//! allocation funnel of RFC-0034 D6. The C side still allocates from the arena
+//! allocation funnel of the platform layer split. The C side still allocates from the arena
 //! directly (the `z_malloc` shim above); the Rust side arrives via
 //! `PlatformAlloc for <YourPlatform>`, which reaches the same static.
 //!
 //! Every allocation is aligned to [`ALIGN`] = `2 * size_of::<usize>()`: 8 on a
 //! 32-bit target, 16 on a 64-bit one. That is what a C `malloc` owes on the
 //! 64-bit targets the arena serves (`alignof(max_align_t)` is 16 on AArch64
-//! and x86_64), and issue 2003 is what happened when it was a flat 8: Cyclone's
+//! and x86_64), and a real crash is what happened when it was a flat 8: Cyclone's
 //! lock-free LIFO, a `{pointer, aba}` pair updated by a 128-bit CAS, landed in
 //! an 8-aligned slab slot on the FVP image and AArch64 `caspal` faulted. It is
 //! also rlsf's own payload alignment (`GRANULARITY / 2`), so the TLSF path pays
@@ -82,8 +82,8 @@ const GRANULARITY_LOG2: u32 = (core::mem::size_of::<usize>() * 4).trailing_zeros
 /// costs 2 bytes to remove. `u32` covers every `FLLEN` up to 32.
 type FlBitmap = u32;
 
-/// The alignment of every block this heap returns — see the crate doc and
-/// issue 2003. Equal to rlsf's payload alignment (`GRANULARITY / 2`), so asking
+/// The alignment of every block this heap returns — see the crate doc.
+/// Equal to rlsf's payload alignment (`GRANULARITY / 2`), so asking
 /// rlsf for it never adds padding.
 pub const ALIGN: usize = rlsf::GRANULARITY / 2;
 const _: () = assert!(ALIGN == 2 * core::mem::size_of::<usize>());
@@ -282,7 +282,7 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
         addr >= base + HEADER_SIZE && addr < base + N
     }
 
-    /// #190 — count of `free`/`realloc` calls that handed us a pointer
+    /// Count of `free`/`realloc` calls that handed us a pointer
     /// OUTSIDE this heap's arena (a cross-allocator free). Diagnostic.
     pub fn foreign_free_count(&self) -> usize {
         self.foreign_frees.load(Ordering::Relaxed)
@@ -567,7 +567,7 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
         (N + SLAB_REGION_SIZE).saturating_sub(self.used_bytes.load(Ordering::Relaxed))
     }
 
-    /// Issue 1370 — the shape of the main arena's free memory, by WALKING
+    /// The shape of the main arena's free memory, by WALKING
     /// rlsf's block list, not by subtraction.
     ///
     /// `free_bytes` (with the `stats` feature) answers "how many bytes are free" and
@@ -610,7 +610,7 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
         shape
     }
 
-    /// Issue 1370 — WHICH exhaustion a refused request of `size` bytes is.
+    /// WHICH exhaustion a refused request of `size` bytes is.
     ///
     /// The `HEAP EXHAUSTED` line used to print the request and the capacity,
     /// which cannot tell "the arena is too small" from "the arena has the bytes
@@ -621,11 +621,11 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
         Exhaustion::classify(size, self.free_shape())
     }
 
-    /// Issue 1370 — the smallest and largest request the general (TLSF) path
+    /// The smallest and largest request the general (TLSF) path
     /// has SERVED since boot, `(0, 0)` before the first one.
     ///
     /// The ratio of the two is the input Robson's bound takes; it is what turns
-    /// phase-391's "narrow spread" from an adjective into a number. Slab-served
+    /// the "narrow spread" claim from an adjective into a number. Slab-served
     /// requests (≤ 64 B) are not counted here — they never reach the TLSF pools
     /// whose fragmentation is the question.
     #[cfg(feature = "stats")]
@@ -636,7 +636,7 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
     }
 }
 
-/// Issue 1370 — the shape of an arena's free memory. See
+/// The shape of an arena's free memory. See
 /// [`FreeListHeap::free_shape`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FreeShape {
@@ -644,7 +644,7 @@ pub struct FreeShape {
     /// arena could serve": rlsf's O(1) search only looks in size classes every
     /// block of which is large enough, so a request is served from this block
     /// only when it is at least [`Exhaustion::reachable_payload`] of the
-    /// request (issue 1370 — measured: a 65,535-byte request refused with a
+    /// request (measured: a 65,535-byte request refused with a
     /// 65,712-byte hole free).
     pub largest_free: usize,
     /// Sum of every free block's payload.
@@ -653,7 +653,7 @@ pub struct FreeShape {
     pub free_blocks: usize,
 }
 
-/// Issue 1370 — the two exhaustions a refused allocation can be.
+/// The two exhaustions a refused allocation can be.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exhaustion {
     /// The free bytes, all together, are fewer than the request: the arena is
@@ -675,7 +675,7 @@ impl Exhaustion {
     /// than the request can sit in the arena unused while the request is
     /// refused. Comparing against `size` called exactly that case TOO SMALL —
     /// the remedy for a full arena — on an arena with twice the request free
-    /// (issue 1370, found by replaying a native talker's recorded traffic:
+    /// (found by replaying a native talker's recorded traffic:
     /// 65,535 B refused, 128,704 B free in 2 holes, the larger 65,712 B).
     pub const fn classify(size: usize, shape: FreeShape) -> Self {
         if shape.free_total >= size && shape.largest_free < Self::reachable_payload(size) {

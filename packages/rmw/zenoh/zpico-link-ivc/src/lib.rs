@@ -1,4 +1,4 @@
-//! Phase 129.D — zenoh-pico IVC link-layer forwarders.
+//! zenoh-pico IVC link-layer forwarders.
 //!
 //! Carved out of `zpico-platform-shim` so the parent crate can be
 //! deleted. The forwarders dispatch directly into `nvidia-ivc`'s

@@ -1,4 +1,4 @@
-//! `nros router` — the zenoh router tools (RFC-0119 D8, phase-527 W5).
+//! `nros router` — the zenoh router tools.
 //!
 //! A command package: `nros router <sub> …` executes this binary with the
 //! arguments after `router` unchanged. `nros ws router-config …`, the

@@ -35,7 +35,7 @@ pub extern "C" fn zpico_serial_set_nonblocking() {
     SERIAL_BLOCKING_MODE.store(false, Ordering::Relaxed);
 }
 
-/// phase-521 W5 (RFC-0113 D5) — the board's idle primitive for a serial link.
+/// The board's idle primitive for a serial link.
 ///
 /// Called with the longest wait, in microseconds, that the caller can afford.
 /// It returns at that bound or as soon as a byte can be read, whichever comes

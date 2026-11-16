@@ -1,4 +1,4 @@
-//! Issue 1972 — matched and incompatible-type events, derived from the graph
+//! Matched and incompatible-type events, derived from the graph
 //! cache.
 //!
 //! `rmw_zenoh_cpp` raises `RMW_EVENT_{PUBLICATION,SUBSCRIPTION}_MATCHED` from

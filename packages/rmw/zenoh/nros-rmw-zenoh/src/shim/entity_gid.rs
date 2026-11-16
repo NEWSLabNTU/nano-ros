@@ -1,4 +1,4 @@
-//! The zenoh entity GID — issue 1495.
+//! The zenoh entity GID.
 //!
 //! # What the 16 bytes are, and why
 //!
