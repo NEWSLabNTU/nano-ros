@@ -526,7 +526,7 @@ maintainer:
   promiscuous mode.
 - **Image.** `[image.<id>.run] nic = { tap = "<dev>" }` now also works under
   an FVP: it lowers to the model's host-bridge TAP mode. `{ bridge = … }` is
-  refused there. `[image.<id>.run] params` holds the parameters an image
+  refused there. `[image.<id>.run.fvp] params` holds the parameters an image
   chooses (a UART capture file). Only an `fvp:` board reads them, and any
   other board refuses them.
 - **One carrier.** `nros build`'s west road passes all of them, in that

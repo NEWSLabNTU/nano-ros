@@ -6446,6 +6446,12 @@ fn board_heap_configure_arg(
     format!("-DNROS_BOARD_HEAP_BUDGET_BYTES={value}")
 }
 
+// Issue 2629.
+/// The cmake cache variable that carries an FVP image's model parameters, spelled
+/// once so the table of `-D` names `nros build` owns can name it rather than
+/// find a literal.
+pub(crate) const ARMFVP_EXTRA_FLAGS: &str = "ARMFVP_EXTRA_FLAGS";
+
 /// Issue 2629 — an FVP image's model parameters as the configure argument
 /// Zephyr's `armfvp.cmake` reads: `-DARMFVP_EXTRA_FLAGS=-C;<p>;…`, a CMake
 /// list it APPENDS to the `run_armfvp` command it writes into `build.ninja`.
@@ -6466,7 +6472,7 @@ fn fvp_extra_flags_configure_arg(
     let flags = run
         .fvp_extra_flags(&image.run, image_id)
         .map_err(|e| eyre::eyre!("{e}"))?;
-    Ok(flags.map(|f| format!("-DARMFVP_EXTRA_FLAGS={}", f.join(";"))))
+    Ok(flags.map(|f| format!("-D{ARMFVP_EXTRA_FLAGS}={}", f.join(";"))))
 }
 
 /// phase-462 W6c (RFC-0074) — the board's `[board.rx]` per-frame receive cost

@@ -707,7 +707,7 @@ fn an_fvp_image_hands_its_model_parameters_to_the_configure() {
         &format!(
             "{text}\n[image.fvp]\nboard = \"fvp-aemv8r-smp\"\n\
              [image.fvp.run]\nnic = {{ tap = \"tap0\" }}\n\
-             params = [\"bp.pl011_uart1.out_file=trace.log\"]\n"
+             [image.fvp.run.fvp]\nparams = [\"bp.pl011_uart1.out_file=trace.log\"]\n"
         ),
     );
 
@@ -729,7 +729,7 @@ fn an_fvp_image_hands_its_model_parameters_to_the_configure() {
     assert!(!line.contains("ARMFVP_EXTRA_FLAGS"), "{line}");
     write(
         &sys,
-        &format!("{text}\n[image.zephyr.run]\nparams = [\"a=1\"]\n"),
+        &format!("{text}\n[image.zephyr.run.fvp]\nparams = [\"a=1\"]\n"),
     );
     let e = plan_builds(&args(tmp.path(), &["zephyr"])).expect_err("refused");
     assert!(
