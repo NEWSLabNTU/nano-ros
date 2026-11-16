@@ -1400,6 +1400,18 @@ jobs:
           source ./activate.sh
           just check cli-tests
 
+      # A second `cargo build` of the CLI rebuilds nothing. This job restores
+      # the whole `packages/cli/target`, so the first build is warm; the
+      # second must be a no-op (a watched directory over build output is what
+      # broke it: `cargo-nano-ros/build.rs`, 2026-11-16).
+      - name: just check cli-noop-build
+        if: >-
+          ${{ contains(fromJSON('["pull_request","merge_group"]'), github.event_name)
+              && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check cli-noop-build
+
       # issue 1059 — `node-std-tests` on BOTH merge-gating events, for the same
       # reason `cli-tests` is above it, and with the same evidence behind it.
       #

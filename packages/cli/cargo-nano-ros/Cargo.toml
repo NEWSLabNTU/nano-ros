@@ -52,3 +52,8 @@ nros-pkg-index = { path = "../nros-pkg-index" }
 
 [dev-dependencies]
 tempfile = "3.8"
+
+[build-dependencies]
+# The shared git spawner (issue 1659) for the index watch in build.rs. Zero
+# dependencies and host-only.
+nros-build-paths = { path = "../../tooling/nros-build-paths" }
