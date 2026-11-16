@@ -642,7 +642,11 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
     ("qemu-cortex-a53", "::nros_board_zephyr::ZephyrBoard", false),
     ("fvp-aemv8r-smp", "::nros_board_zephyr::ZephyrBoard", false),
     // Issue 2631 -- the S32Z270 RTU0 R52 on Zephyr.
-    ("s32z270-rtu0-zephyr", "::nros_board_zephyr::ZephyrBoard", false),
+    (
+        "s32z270-rtu0-zephyr",
+        "::nros_board_zephyr::ZephyrBoard",
+        false,
+    ),
     // phase-524 W3 — the Nucleo-F767ZI, the Renode-twinned book board.
     (
         "nucleo-f767zi-zephyr",
