@@ -113,7 +113,7 @@ nros_submodule_state_remedy() {
     local state="$1" p="$2"
     case "$state" in
         missing) echo "git submodule update --init $p" ;;
-        not-submodule) echo "fix .config/worktree-provisioning.txt (renamed?)" ;;
+        not-submodule) echo "fix its [[provision.submodule]] row in .config/gate-lanes.toml (renamed?)" ;;
         incomplete:*)
             echo "git submodule update --init --force $p   (an interrupted checkout; first check git -C $p status holds nothing you need)"
             ;;
