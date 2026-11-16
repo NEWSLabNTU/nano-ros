@@ -497,6 +497,19 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
         // asks again.
         #[cfg(feature = "rosout")]
         let _ = crate::rosout::enable();
+        // RFC-0128 D8 (phase-554 W3 slice B) -- the primary node now exists,
+        // so an executor-level entity waiting for it (the `/diagnostics`
+        // reporter) opens on it here, before any spin. Its failure is this
+        // registration's: the node is taken back out so no half-registered
+        // primary is left behind.
+        if idx == NodeId::PRIMARY.index() {
+            if let Err(e) = self.executor.run_primary_node_hook() {
+                // The primary is the only record (`idx == 0`), so this is
+                // exactly that one.
+                self.executor.nodes.clear();
+                return Err(e);
+            }
+        }
         Ok(NodeId(idx as u8))
     }
 }

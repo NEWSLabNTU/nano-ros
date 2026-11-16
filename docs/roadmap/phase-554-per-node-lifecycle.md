@@ -227,7 +227,7 @@ registers per node, so its cell can land with part 2.
 
 ### W3 — The image announces only its declared nodes (D8)
 
-Status: OPEN. Slice A is in review; slices B and C are open.
+Status: OPEN. Slices A and B are done; slice C is open.
 
 Each row of RFC-0128's D8 table, as ruled:
 
@@ -239,9 +239,24 @@ Each row of RFC-0128's D8 table, as ruled:
     fell back to the executor label, and the typed executor-level service
     follows it. A direct-API image (no declared node) keeps its configured
     name. The cffi fallback is then reached only by such an image.
-  - the contract `/diagnostics` reporter. Slice B.
-  - remap resolution. Slice B.
-- **Dropped:** the node-table spare slot. Slice B.
+  - the contract `/diagnostics` reporter. **Slice B.** Armed before any
+    node (the monitor tables must precede every entity), it opens on the
+    primary node the moment that node registers
+    (`Executor::open_on_primary_node`), and a failure fails that
+    registration. A zero-node image opens it under its configured name at
+    the first spin, a temporary path slice C deletes.
+  - remap resolution. **Slice B.** `Executor::resolve_entity_name_on`
+    resolves against the node the entity registers on, the same
+    `entity_identity` rule it is announced under (nros-c's seven sites and
+    the nros-cpp action server).
+  - the executor-level lifecycle registration
+    (`register_lifecycle_services()`, hand-written images only; a generated
+    entry registers per node). Open:
+    [issue 2626](../issues/2626-executor-level-lifecycle-on-primary-node.md),
+    kept out of slice B because it changes a machine key.
+- **Dropped:** the node-table spare slot. **Slice B.** The sizing no longer
+  adds a slot for the reporter or the lifecycle family; an image with no
+  component still holds one for its configured name.
 - **rclc** (amended 2026-11-14, user ruling): a node record comes from
   binding (`rclc_executor_node_init`). **Slice A:** an executor with a bound
   node refuses an unbound node's entity at all seven registration sites,
