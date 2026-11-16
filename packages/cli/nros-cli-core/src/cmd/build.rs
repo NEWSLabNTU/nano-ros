@@ -978,6 +978,11 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
             )
             .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
         let platform = descriptor.platform.kebab().to_string();
+        // Issue 2629 — refused on every road, not only the west one that
+        // passes them: an image's FVP model parameters on a board that is no
+        // FVP would otherwise be silently dropped.
+        fvp_extra_flags_configure_arg(descriptor, &image, &image_id)
+            .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
         // phase-463 W7 / RFC-0078 amendment 2026-10-07 — a HOST WCET profile
         // (`host-<arch>-<profile>`, what `$NROS_PROFILE_OUT` measures) is a fact
         // about the build host, never about a target's CPU. Only the native
@@ -2616,6 +2621,11 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 ));
                 resolved_opt.extend(board_rx_configure_args(descriptor));
                 resolved_opt.extend(board_snippets_configure_arg(descriptor));
+                // Issue 2629 -- the FVP model's parameters, on the configure
+                // line both run roads read back from `build.ninja`.
+                resolved_opt.extend(fvp_extra_flags_configure_arg(
+                    descriptor, &image, &image_id,
+                )?);
                 // phase-530 W2 -- an application that holds its own
                 // `system.toml` (a leaf) may declare several images, and the
                 // module hook selects one with `-DNROS_IMAGE`, as the cmake
@@ -6434,6 +6444,29 @@ fn board_heap_configure_arg(
         .map(|h| h.to_string())
         .unwrap_or_default();
     format!("-DNROS_BOARD_HEAP_BUDGET_BYTES={value}")
+}
+
+/// Issue 2629 — an FVP image's model parameters as the configure argument
+/// Zephyr's `armfvp.cmake` reads: `-DARMFVP_EXTRA_FLAGS=-C;<p>;…`, a CMake
+/// list it APPENDS to the `run_armfvp` command it writes into `build.ninja`.
+/// `west build -t run` and `nros run` (whose fvp runner runs that same
+/// target) therefore boot one model with one set of flags, and no
+/// environment is read at run time. `None` when the board's emulator is not
+/// an FVP.
+///
+/// ALWAYS emitted on an FVP board, empty when nothing is stated, for the
+/// reason [`board_heap_configure_arg`] gives: a `-D` is a cache entry, so
+/// omitting it would keep a parameter an earlier configure cached.
+fn fvp_extra_flags_configure_arg(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    image: &crate::orchestration::image::ImageBlock,
+    image_id: &str,
+) -> Result<Option<String>> {
+    let run = descriptor.run.clone().unwrap_or_default();
+    let flags = run
+        .fvp_extra_flags(&image.run, image_id)
+        .map_err(|e| eyre::eyre!("{e}"))?;
+    Ok(flags.map(|f| format!("-DARMFVP_EXTRA_FLAGS={}", f.join(";"))))
 }
 
 /// phase-462 W6c (RFC-0074) — the board's `[board.rx]` per-frame receive cost

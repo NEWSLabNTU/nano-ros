@@ -61,15 +61,24 @@ fn model_dir(plan: &RunPlan, model: &str) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+/// What the runner hands west: the `west build -d <dir> -t run_armfvp`
+/// argument vector and the model's directory for `ARMFVP_BIN_PATH`.
+///
+/// Nothing here names a model PARAMETER, and that is the design (issue 2629):
+/// the board's and the image's `-C` parameters are in the `run_armfvp`
+/// command Zephyr's `armfvp.cmake` wrote at configure time, which is what
+/// `west build -t run` runs too. A flag added here would make `nros run`
+/// boot a different model from the one `west build -t run` boots.
+fn prepare(plan: &RunPlan) -> Result<(Vec<String>, Option<PathBuf>), String> {
+    no_passthrough(plan)?;
+    let m = model(plan)?;
+    let dir = build_dir(plan)?;
+    let target = target_for(ZEPHYR_EMULATOR, run_targets(&dir).as_deref())?;
+    Ok((run_argv(&dir, &target), model_dir(plan, m)))
+}
+
 fn run(plan: &RunPlan) -> RunnerExit {
-    let prepared = (|| {
-        no_passthrough(plan)?;
-        let m = model(plan)?;
-        let dir = build_dir(plan)?;
-        let target = target_for(ZEPHYR_EMULATOR, run_targets(&dir).as_deref())?;
-        Ok::<_, String>((run_argv(&dir, &target), model_dir(plan, m)))
-    })();
-    match prepared {
+    match prepare(plan) {
         Ok((argv, fvp_dir)) => {
             let mut cmd = west_command(plan);
             cmd.args(argv);
@@ -112,5 +121,46 @@ mod tests {
         );
         plan.target.emulator = Some("qemu:virt".into());
         assert!(model(&plan).is_err());
+    }
+
+    /// Issue 2629 — `nros run` boots the model `west build -t run` boots: the
+    /// runner runs Zephyr's own `run_armfvp` target and passes no model
+    /// parameter of its own, so the configure's `ARMFVP_EXTRA_FLAGS` are the
+    /// only ones either road gives the model.
+    #[test]
+    fn the_runner_adds_no_model_flag_of_its_own() {
+        let dir = std::env::temp_dir().join(format!("nros-runner-fvp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("build.ninja"),
+            "build run_armfvp: CUSTOM_COMMAND
+  COMMAND = FVP_BaseR_AEMv8R -C bp.x=1
+",
+        )
+        .unwrap();
+        let plan = RunPlan::from_json(&format!(
+            r#"{{"image":"i","verb":"run","runner":{{"package":"nros_runner_fvp","name":"fvp"}},
+            "target":{{"emulator":"fvp:FVP_BaseR_AEMv8R"}},"console":{{"kind":"stdio"}},
+            "build_dir":{:?}}}"#,
+            dir.display().to_string()
+        ))
+        .unwrap();
+        let (argv, model_dir) = prepare(&plan).unwrap();
+        assert_eq!(
+            argv,
+            [
+                "build".to_string(),
+                "-d".to_string(),
+                dir.display().to_string(),
+                "-t".to_string(),
+                "run_armfvp".to_string(),
+            ]
+        );
+        assert!(
+            !argv.iter().any(|a| a == "-C" || a.contains("ARMFVP")),
+            "{argv:?}"
+        );
+        assert_eq!(model_dir, None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
