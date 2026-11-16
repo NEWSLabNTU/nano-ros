@@ -516,6 +516,15 @@ runner-sweep-eviction-order:
 runner-host-label:
     @bash tests/runner-host-label-tests.sh
 
+# issue 2661 — the sweep stops evicting on the area's MEASURED remainder (one
+# `du` over the members left), never on a sum of per-unit sizes: `du` counts a
+# hard-linked inode once per call, and west and zephyr build trees are
+# hard-linked, so a summed "freed" passed the total early and the sweep quit
+# over budget without a warning. A real (deleting) sweep in a tmpdir sandbox.
+[private]
+runner-sweep-hardlink:
+    @bash tests/runner-sweep-hardlink-tests.sh
+
 # issue 2210 — the runner's `src` checkout is a cache nobody edits, so a tracked
 # file a build rewrote there must not stop `runner-bootstrap.sh` refreshing it:
 # a lock rewritten inside the `play_launch` submodule left runner 118 offline.

@@ -280,6 +280,7 @@ rosdep-snapshot
 rtos-target-os
 runner-doctor-sdk-resolution
 runner-sweep-eviction-order
+runner-sweep-hardlink
 rust-stdio-on-zephyr
 rust-targets-covered
 sched-dim-arms

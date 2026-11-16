@@ -448,6 +448,26 @@ _du_bytes() {
     return 0
 }
 
+# Bytes held by the UNION of the given paths, each inode counted once (issue
+# 2661). One `du` invocation counts a hard-linked file once however many of
+# its arguments reach it. A sum of per-path `_du_bytes` counts it once per
+# path, and west workspaces and zephyr build trees are hard-linked
+# (`cp -al`), so a summed "freed" overshot the real reclaim and the sweep
+# stopped evicting while the area was still over budget. `END` rather than
+# `tail -1`: no early pipe close (issue 1353's SIGPIPE noise).
+_du_total() {
+    local p have=()
+    for p in "$@"; do [ -e "$p" ] && have+=("$p"); done
+    [ "${#have[@]}" -gt 0 ] || { printf '0'; return 0; }
+    local n
+    n="$(du -scx --block-size=1 -- "${have[@]}" 2>/dev/null | awk 'END {print $1}' || true)"
+    case "${n:-}" in
+        ''|*[!0-9]*) printf '0' ;;
+        *)           printf '%s' "$n" ;;
+    esac
+    return 0
+}
+
 state_dir="${NROS_SWEEP_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/nros-runner-sweep}"
 hwm_file="$state_dir/high-water.tsv"
 
@@ -559,12 +579,22 @@ _evict() {
     units=("$@")
     attributed_paths+=(${dirs[@]+"${dirs[@]}"} ${units[@]+"${units[@]}"})
 
-    local total=0 d sz
-    for d in ${dirs[@]+"${dirs[@]}"} ${units[@]+"${units[@]}"}; do
-        [ -d "$d" ] || continue
-        sz="$(_du_bytes "$d")"
-        total=$((total + sz))
+    # Every unit and every pinned child, so the area is ONE measured set and its
+    # remainder can be re-read the same way after each eviction (issue 2661).
+    local members=() d sz child
+    for d in ${units[@]+"${units[@]}"}; do
+        [ -d "$d" ] && members+=("$d")
     done
+    for d in ${dirs[@]+"${dirs[@]}"}; do
+        [ -d "$d" ] || continue
+        # Dot-named children too: never eviction units (the listing below globs
+        # `*`), but they hold bytes the area's budget is about.
+        for child in "$d"/* "$d"/.[!.]* "$d"/..?*; do
+            [ -e "$child" ] && members+=("$child")
+        done
+    done
+    local total
+    total="$(_du_total ${members[@]+"${members[@]}"})"
     if [ "$total" -eq 0 ]; then
         _say "  $area: nothing on disk"
         return 0
@@ -589,7 +619,7 @@ _evict() {
     # rather than `find`: one level, no walk, and nothing here is a file git
     # tracks (issue 0844's rule is about tracked files; these are build output
     # and unpacked SDKs, which the index has never seen).
-    local listing="" child
+    local listing=""
     for child in ${units[@]+"${units[@]}"}; do
         [ -d "$child" ] || continue
         listing="${listing}$(_newest_mtime "$child")"$'\t'"$child"$'\n'
@@ -612,10 +642,16 @@ _evict() {
     # into every job log that evicted (issue 1353, runs of 10-17 and 10-21).
     local sorted
     sorted="$(printf '%s' "$listing" | sort -n)"
-    local mtime path freed=0
+    # The stop test reads the MEASURED remainder, never a running sum of
+    # per-unit sizes (issue 2661): after each eviction, one `du` over the
+    # members not yet evicted. For a real sweep that is the area re-read, as
+    # the evicted units are gone. For --check it is what WOULD remain, since a
+    # file still linked from a kept member is not freed by evicting another.
+    local -A gone=()
+    local mtime path remaining="$total" m
     while IFS=$'\t' read -r mtime path; do
         [ -n "${path:-}" ] || continue
-        [ "$((total - freed))" -le "$budget" ] && break
+        [ "$remaining" -le "$budget" ] && break
         sz="$(_du_bytes "$path")"
         if [ "$CHECK" -eq 1 ]; then
             _would "rm -rf $path  ($(_human "$sz"), mtime $(date -d "@$mtime" -u +%Y-%m-%d 2>/dev/null || echo "$mtime"))"
@@ -623,19 +659,27 @@ _evict() {
             _did "rm -rf $path  ($(_human "$sz"))"
             rm -rf "$path"
         fi
-        freed=$((freed + sz))
+        gone["$path"]=1
+        local kept=()
+        for m in "${members[@]}"; do
+            [ -n "${gone[$m]:-}" ] || kept+=("$m")
+        done
+        remaining="$(_du_total ${kept[@]+"${kept[@]}"})"
     done <<< "$sorted"
 
+    local freed=$((total - remaining))
+    [ "$freed" -ge 0 ] || freed=0
     if [ "$CHECK" -eq 1 ]; then
-        _say "  $area: $(_human "$freed") would be freed"
+        _say "  $area: $(_human "$freed") would be freed, $(_human "$remaining") would remain"
     else
-        _say "  $area: $(_human "$freed") freed"
+        _say "  $area: $(_human "$freed") freed, $(_human "$remaining") remains"
     fi
-    if [ "$((total - freed))" -gt "$budget" ]; then
-        _warn "runner-sweep: $area is still over budget after evicting everything evictable."
+    if [ "$remaining" -gt "$budget" ]; then
+        _warn "runner-sweep: $area is still over budget after eviction: $(_human "$remaining") measured against $(_human "$budget")."
         _warn "  Either the budget is too small for this runner's labels, or something"
-        _warn "  outside the eviction units is holding the space. Raise the budget"
-        _warn "  deliberately rather than letting the disk decide."
+        _warn "  outside the eviction units is holding the space (a file hard-linked"
+        _warn "  from a pinned entry is not freed by evicting another). Raise the"
+        _warn "  budget deliberately rather than letting the disk decide."
     fi
 }
 
