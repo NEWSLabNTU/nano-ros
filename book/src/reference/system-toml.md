@@ -123,13 +123,21 @@ render, such as `CONFIG_NET_DHCPV4_INITIAL_DELAY_MAX`, stays the fragment's.
 
 | Table | Key | Meaning |
 | --- | --- | --- |
-| `.run` | `nic` | `"slirp"` (default on `qemu`), `{ bridge = "<dev>" }` or `{ tap = "<dev>" }`, for the first interface under QEMU |
+| `.run` | `nic` | `"slirp"` (default on `qemu`), `{ bridge = "<dev>" }` or `{ tap = "<dev>" }`, for the first interface under QEMU or an Arm FVP. An FVP has no bridge mode, so it takes `"slirp"` or `{ tap = "<dev>" }` |
+| `.run` | `params` | Arm FVP model parameters this image chooses, each as after `-C`: `["bp.pl011_uart1.out_file=trace.log"]`. Read only on a board whose emulator is an FVP, and refused on any other |
 | `.flash` | `command` | Replaces the board's flash method; `{hex}` and other placeholders are checked |
 | `.flash` | `prepare` | Human steps before flashing: `{ say = "…", wait_for = "<event>" }` |
 | `.console` | `baud`, … | Overrides a key of the board's `[board.console]` |
 
 An image on a network other than `qemu` with no `nic` is physical only, and
 launching it under QEMU is refused.
+
+On an Arm FVP board, the board's own model parameters (`[board.run.fvp]
+params` in its descriptor) come first, then the image's `nic`, then its
+`params`. The model keeps the last value a parameter is given, so an image
+overrides a board parameter by naming it again. They are bound when the image
+is configured, so `west build -t run` and `nros run` boot the same model. The
+cost is that changing one, such as the TAP name, re-configures the image.
 
 ## The middleware's own file
 
