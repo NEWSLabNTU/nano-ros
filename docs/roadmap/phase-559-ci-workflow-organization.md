@@ -1013,3 +1013,7 @@ an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
   probe budget under another gate's load, because its `sync` case swept the
   caller's shared zephyr and sccache roots (about 250,000 files). Its sweeps
   now run inside the test's sandbox.
+- [issue 2661](../issues/2661-runner-sweep-hardlink-overcount.md) — the
+  runner sweep counts a hard-linked file once per eviction unit, so it stops
+  evicting before the area is under budget, and no warning fires. Exposed by
+  the eviction-order selftest's host-root leak (2026-11-17).
