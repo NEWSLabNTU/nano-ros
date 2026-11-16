@@ -128,6 +128,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
     if node_ref.executor.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
+    if !crate::require_created_node(node_ref, "nros_cpp_subscription_create") {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
 
     let topic_str = match unsafe { cstr_to_str(topic) } {
         Some(s) => s,
@@ -364,6 +367,9 @@ unsafe fn subscription_register_impl(
 
     let node_ref = unsafe { &*node };
     if node_ref.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    if !crate::require_created_node(node_ref, "nros_cpp_subscription_register") {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
@@ -612,6 +618,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
     if node_ref.executor.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
+    if !crate::require_created_node(node_ref, "nros_cpp_subscription_register_with_info") {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
 
     let topic_str = match unsafe { cstr_to_str(topic) } {
         Some(s) => s,
@@ -786,6 +795,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_message_info(
     if node_ref.executor.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
+    if !crate::require_created_node(node_ref, "nros_cpp_subscription_register_message_info") {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
     let Some(topic_str) = (unsafe { cstr_to_str(topic) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
@@ -894,6 +906,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_validated(
 
     let node_ref = unsafe { &*node };
     if node_ref.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    if !crate::require_created_node(node_ref, "nros_cpp_subscription_register_validated") {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
