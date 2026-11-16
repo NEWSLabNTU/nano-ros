@@ -1393,6 +1393,13 @@ note = "Migrating from older releases (W12): one how-to, a section per change; e
 
 [[page]]
 book = "user"
+path = "migrating/releases/0.6.0-nros12.md"
+action = "new release-notes"
+batch = "release-notes"
+note = "Release notes for 0.6.0-nros12"
+
+[[page]]
+book = "user"
 path = "migrating/releases/0.6.0-nros11.md"
 action = "new release-notes"
 batch = "release-notes"

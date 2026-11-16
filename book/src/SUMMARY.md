@@ -146,5 +146,6 @@
 # Releases
 
 - [Migrating from older releases](./migrating/from-older-releases.md)
+- [0.6.0-nros12](./migrating/releases/0.6.0-nros12.md)
 - [0.6.0-nros11](./migrating/releases/0.6.0-nros11.md)
 - [0.6.0-nros10](./migrating/releases/0.6.0-nros10.md)
