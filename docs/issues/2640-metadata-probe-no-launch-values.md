@@ -6,7 +6,7 @@ type: bug
 area: [cli, params, cmake]
 severity: medium
 found: 2026-11-16
-related: [phase-478]
+related: [phase-478, phase-566]
 ---
 
 **Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md).**
@@ -42,6 +42,7 @@ was already keyed on them (`nros_knob_key_fields`).
 
 ## Launch values (open)
 
-A design is in review as its own draft change: the probe seeds the component's launch values from the launch
+The design is [phase-566](../roadmap/phase-566-probe-launch-seeds.md) (draft,
+for review): the probe seeds the component's launch values from the launch
 RECORD, a component whose instances disagree is refused with a plain message,
 and the sidecar records `probe.seeds`.
