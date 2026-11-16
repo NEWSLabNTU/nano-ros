@@ -68,8 +68,22 @@ WORKFLOW_FILTER="${NROS_TRIAGE_WORKFLOW:-}"
 
 # Classify a set of (pr, check, conclusion) rows. Pure text in, verdict out, so
 # the judgement can be tested without a network.
-#   stdin:  <pr>\t<check>\t<conclusion>[\t<base sha>\t<head sha>]
-#   stdout: INFRA <check> <n-prs>   |   MINE <check>   |   CLEAN
+#   stdin:  <pr>\t<check>\t<conclusion>[\t<base sha>\t<head sha>[\t<step kind>]]
+#           (rows newest first; <step kind> is `setup` when the failed step is
+#           provisioning or runner-side, else `build`, see step_kind below)
+#   stdout: MAIN <check> <n-prs> <skipped> <first-red pr> <first-red head> <last-green head>
+#         | INFRA <check> <n-prs> <skipped> | MINE <check> <n> <skipped> | CLEAN
+#
+# THE SAME FAILURE ACROSS GROUPS IS MAIN, NOT INFRA (2026-11-16). Every merge
+# group is `main + its entries`, so two INDEPENDENT groups failing one check at
+# a BUILD or TEST step share the one thing they have in common: main. That is
+# main broken since the first of them (a non-required check, like `queue`'s
+# L3, lets the defect merge, and every later group inherits it). It was called
+# INFRA, which said "not your pull request, fix the check", the opposite of the
+# truth: the check was right and a merged commit was wrong. INFRA is now only
+# the repeated failure that stopped at a SETUP or RUNNER step, where no commit
+# was ever compiled. A single failure stays MINE: one sample cannot tell a
+# defect from a flake, and the remedy for both starts with reproducing it.
 classify() {
     awk -F'\t' '
         # A merge group runs ALLGREEN over up to five entries, so when one
@@ -78,9 +92,12 @@ classify() {
         # below drops them, and `cancelled` is reported separately so a reader
         # can see how much of the batch history carried no signal at all.
         $3 == "cancelled" || $3 == "skipped" || $3 == "running" { skipped++; next }
-        $3 == "success" { green = 1; next }
+        $3 == "success" {
+            green = 1; ns++; shead[ns] = $5; sord[ns] = NR; next
+        }
         $3 == "failure" {
-            nf++; fpr[nf] = $1; fck[nf] = $2; fbase[nf] = $4; fstale[nf] = green
+            nf++; fpr[nf] = $1; fck[nf] = $2; fbase[nf] = $4; fhead[nf] = $5
+            fkind[nf] = ($6 == "setup") ? "setup" : "build"; fstale[nf] = green; ford[nf] = NR
             if ($5 != "") failedhead[$2 SUBSEP $5] = 1
         }
         END {
@@ -92,6 +109,10 @@ classify() {
                 # Older than a green run: not evidence the check is red now.
                 if (fstale[i]) continue
                 fails[fck[i]] = fails[fck[i]] " " fpr[i]
+                if (fkind[i] == "build") built[fck[i]] = 1
+                # Rows are newest first, so the LAST independent failure seen is
+                # the first red in time.
+                first[fck[i]] = i
             }
             best = ""; bestn = 0
             for (c in fails) {
@@ -104,11 +125,24 @@ classify() {
                 for (c in anyfail) { printf "MINE\t%s\t1\t%d\n", c, skipped; exit }
                 printf "CLEAN\t\t0\t%d\n", skipped; exit
             }
-            # The SAME check failing for two or more DIFFERENT pull requests is
-            # not a property of any one change.
-            if (bestn >= 2) printf "INFRA\t%s\t%d\t%d\n", best, bestn, skipped
-            else            printf "MINE\t%s\t%d\t%d\n", best, bestn, skipped
+            if (bestn < 2) { printf "MINE\t%s\t%d\t%d\n", best, bestn, skipped; exit }
+            if (!(best in built)) { printf "INFRA\t%s\t%d\t%d\n", best, bestn, skipped; exit }
+            # MAIN: name the first red, and the newest green OLDER than it
+            # (its head is the last main state that passed).
+            fi = first[best]; lg = ""
+            for (k = 1; k <= ns; k++) if (sord[k] > ford[fi]) { lg = shead[k]; break }
+            printf "MAIN\t%s\t%d\t%d\t%s\t%s\t%s\n", best, bestn, skipped, fpr[fi], fhead[fi], lg
         }'
+}
+
+# A failed step that ran before any commit was compiled: provisioning, the
+# runner, a cache or a checkout. Everything else is the build or a test.
+step_kind() {
+    case "$1" in
+        "Set up job" | *[Cc]heckout* | *[Pp]rovision* | *"just setup"* | *[Ss]weep* | \
+            *"runner"* | *[Cc]ache* | *"Install"* | *"install"* | *"Verify this runner"*) echo setup ;;
+        *) echo build ;;
+    esac
 }
 
 # Run on EVERY invocation, not only behind the flag (`check-gate-selftests`):
@@ -125,12 +159,16 @@ selftest() {
     }
     t "no failures reads CLEAN" CLEAN '6\tcheck\tsuccess\n7\tcheck\tsuccess\n'
     t "one PR failing one check is MINE" MINE '6\tcheck\tfailure\n7\tcheck\tsuccess\n'
-    t "the SAME check failing for TWO PRs is INFRA" INFRA '6\tcheck\tfailure\n7\tcheck\tfailure\n'
+    t "the SAME check failing for TWO PRs at a build step is MAIN" MAIN '6\tcheck\tfailure\n7\tcheck\tfailure\n'
+    t "the SAME check failing for TWO PRs at a SETUP step is INFRA" INFRA \
+        '6\tcheck\tfailure\tM1\tX\tsetup\n7\tcheck\tfailure\tM2\tY\tsetup\n'
+    t "one build-side failure among setup ones makes it MAIN" MAIN \
+        '6\tcheck\tfailure\tM1\tX\tsetup\n7\tcheck\tfailure\tM2\tY\tbuild\n'
     t "one PR failing twice is still MINE (not two authors)" MINE '6\tcheck\tfailure\n6\tcheck\tfailure\n'
     # The case that was missing, and the one that gave the wrong answer on
     # 2026-09-12: a batch cancels every entry behind the failure, so a check
     # broken for EVERYONE arrives as one `failure` beside N `cancelled`.
-    t "cancelled entries are not passes" INFRA \
+    t "cancelled entries are not passes" MAIN \
         '6\tcheck\tfailure\n7\tcheck\tcancelled\n8\tcheck\tfailure\n'
     t "a batch of pure cancellations reads CLEAN, not MINE" CLEAN \
         '6\tcheck\tcancelled\n7\tcheck\tcancelled\n'
@@ -142,12 +180,26 @@ selftest() {
         '3807\tcheck\tfailure\tB\tC\n3787\tcheck\tfailure\tA\tB\n3805\tcheck\tfailure\tM\tA\n'
     t "failures older than a green run are not INFRA" MINE \
         '8\tcheck\tsuccess\n6\tcheck\tfailure\n7\tcheck\tfailure\n'
-    t "a green run OLDER than the failures does not excuse them" INFRA \
+    t "a green run OLDER than the failures does not excuse them" MAIN \
         '6\tcheck\tfailure\n7\tcheck\tfailure\n8\tcheck\tsuccess\n'
-    t "two failures on unrelated bases are still INFRA" INFRA \
+    t "two failures on unrelated bases are still MAIN" MAIN \
         '6\tcheck\tfailure\tM1\tX\n7\tcheck\tfailure\tM2\tY\n'
-    t "a group behind a failure of a DIFFERENT check is independent" INFRA \
+    t "a group behind a failure of a DIFFERENT check is independent" MAIN \
         '7\tcheck\tfailure\tA\tB\n6\tother\tfailure\tM\tA\n8\tcheck\tfailure\tM\tZ\n'
+    # MAIN names the FIRST red (the oldest independent failure) and the newest
+    # green older than it: rows are newest first.
+    got="$(printf '%b' '9\tcheck\tfailure\tB\tH9\n8\tcheck\tsuccess\tA\tH8\n7\tcheck\tfailure\tA\tH7\n6\tcheck\tsuccess\tZ\tH6\n' | classify)"
+    # 9 is newer than the green 8, so only 9 counts; one PR, so MINE.
+    [ "$(cut -f1 <<<"$got")" = MINE ] || { echo "  FAIL  a failure older than a green is not counted: $got"; fails=$((fails + 1)); }
+    got="$(printf '%b' '9\tcheck\tfailure\tB\tH9\n7\tcheck\tfailure\tA\tH7\n6\tcheck\tsuccess\tZ\tH6\n' | classify)"
+    if [ "$(cut -f5,6,7 <<<"$got")" = "$(printf '7\tH7\tH6')" ]; then
+        echo "  ok    MAIN names the first red run and the last green before it"
+    else
+        echo "  FAIL  MAIN first red / last green: $got"; fails=$((fails + 1))
+    fi
+    [ "$(step_kind 'just ci matrix build')" = build ] && [ "$(step_kind 'just setup tier2')" = setup ] \
+        && [ "$(step_kind 'Set up job')" = setup ] \
+        || { echo "  FAIL  step_kind"; fails=$((fails + 1)); }
     [ "$fails" -eq 0 ] || { echo "queue-triage selftest: FAILED"; return 1; }
     echo "queue-triage selftest: OK"
 }
@@ -184,14 +236,19 @@ while IFS=$'\t' read -r rid head name concl sha; do
     # failed JOBS, and the aggregator (`CI`, which fails whenever anything does)
     # is dropped when a more specific job failed beside it.
     if [ "$concl" = "failure" ]; then
+        # Each failed job with the name of its first failed step, which says
+        # whether the failure is the build's (MAIN or MINE) or the runner's
+        # (INFRA): see classify.
         failed="$(gh api "repos/$REPO/actions/runs/$rid/jobs?per_page=100" \
-            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | .name]
-                  | (if length > 1 then map(select(. != "CI")) else . end) | .[]' \
+            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out")
+                   | [.name, ([.steps[]? | select(.conclusion == "failure") | .name][0] // "")]]
+                  | (if length > 1 then map(select(.[0] != "CI")) else . end) | .[] | @tsv' \
             2>/dev/null)" || failed=""
         if [ -n "$failed" ]; then
-            while IFS= read -r job; do
-                printf '           %s\n' "${job:0:70}"
-                rows="${rows}${pr}	${job}	${concl}	${base}	${sha}"$'\n'
+            while IFS=$'\t' read -r job step; do
+                kind="$(step_kind "$step")"
+                printf '           %s  [%s: %s]\n' "${job:0:60}" "$kind" "${step:0:40}"
+                rows="${rows}${pr}	${job}	${concl}	${base}	${sha}	${kind}"$'\n'
             done <<<"$failed"
             continue
         fi
@@ -215,19 +272,48 @@ verdict="$(printf '%s' "$rows" | classify)"
 kind="$(printf '%s' "$verdict" | cut -f1)"
 check="$(printf '%s' "$verdict" | cut -f2)"
 count="$(printf '%s' "$verdict" | cut -f3)"
+first_pr="$(printf '%s' "$verdict" | cut -f5)"
+first_head="$(printf '%s' "$verdict" | cut -f6)"
+last_green="$(printf '%s' "$verdict" | cut -f7)"
 
 case "$kind" in
 CLEAN)
     echo "== no merge-group failures in the last $LOOKBACK run(s) =="
     ;;
+MAIN)
+    cat <<EOF
+== MAIN IS BROKEN ==
+
+  '$check' failed in the merge group for $count DIFFERENT pull requests, at a
+  build or test step, each group built independently on main. What they share
+  is main: it has been broken since the group for #$first_pr (head ${first_head:0:10}).
+
+  This is not your pull request, and it is not the check either: a commit that
+  already merged is wrong. Rebasing will not fix it. The commit is one of the
+  suspects below (every commit since the last green group): bisect them, then
+  fix or revert the one that breaks it.
+EOF
+    if [ -n "$last_green" ] && [ -n "$first_head" ]; then
+        echo
+        python3 scripts/ci/lane_suspects.py --range "$last_green" "$first_head" \
+            --label "'$check' in the merge queue" 2>/dev/null \
+            || echo "  (suspects unavailable: the compare API did not answer)"
+    else
+        echo
+        echo "  No green group older than the first red is in the window, so no commit"
+        echo "  range is named (listing all history would name every commit)."
+    fi
+    ;;
 INFRA)
     cat <<EOF
 == NOT YOUR PULL REQUEST ==
 
-  '$check' failed in the merge group for $count DIFFERENT pull requests.
+  '$check' failed in the merge group for $count DIFFERENT pull requests, each
+  time at a SETUP or RUNNER step (provisioning, checkout, cache, the runner),
+  before any commit was compiled.
 
-  The same check failing across unrelated changes is not a property of any one
-  of them. Rebasing will not fix it, and re-queuing burns a batch slot against a
+  A check that fails before it sees anyone's change is not a property of any of
+  them. Rebasing will not fix it, and re-queuing burns a batch slot against a
   check that cannot go green for anyone.
 
   DO NOT re-queue. Say so where the other agents will see it (the issue, or the

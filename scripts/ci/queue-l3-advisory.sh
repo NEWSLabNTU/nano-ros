@@ -27,7 +27,7 @@ set -uo pipefail
 REPO="${NROS_QUEUE_REPO:-NEWSLabNTU/nano-ros}"
 
 # The comment, from the run and its failed steps. Pure text, so testable.
-#   body <run-id> <run-url> <pr> <batch prs (space-separated)> <failed steps (lines)> [INFRA]
+#   body <run-id> <run-url> <pr> <batch prs> <failed steps (lines)> [INFRA|MAIN] [triage block]
 body() {
     local run="$1" url="$2" pr="$3" batch="$4" steps="$5" infra="${6:-}" others="" p
     for p in $batch; do [ "$p" = "$pr" ] || others="$others #$p"; done
@@ -41,7 +41,10 @@ body() {
         printf '\n'
     fi
     if [ "$infra" = INFRA ]; then
-        printf '> [!NOTE]\n> L3 has failed the same way for other, unrelated merge groups (`just queue-triage`), so this is most likely **not** caused by this pull request.\n\n'
+        printf '> [!NOTE]\n> L3 has failed at a SETUP or RUNNER step for other, unrelated merge groups (`just queue-triage`), so this is most likely **not** caused by this pull request.\n\n'
+    elif [ "$infra" = MAIN ]; then
+        printf '> [!IMPORTANT]\n> **Main is broken.** L3 has failed the same way, at a build step, for other merge groups built independently on main, so a commit that already merged is the cause, most likely not this pull request.\n\n'
+        [ -n "${7:-}" ] && printf '```\n%s\n```\n\n' "$7"
     fi
     if [ -n "$others" ]; then
         printf 'The same build also contained:%s. Any of them may be the cause.\n\n' "$others"
@@ -63,6 +66,9 @@ selftest() {
     case "$out" in *"most likely **not**"*) echo "FAIL: infra note without an INFRA verdict"; bad=1 ;; esac
     out="$(body 42 https://r 7 "7 5" "x" INFRA)"
     case "$out" in *"most likely **not**"*) ;; *) echo "FAIL: an INFRA verdict is not stated"; bad=1 ;; esac
+    out="$(body 42 https://r 7 "7 5" "x" MAIN "== MAIN IS BROKEN ==")"
+    case "$out" in *"Main is broken"*"== MAIN IS BROKEN =="*) ;; *) echo "FAIL: a MAIN verdict is not stated with its triage"; bad=1 ;; esac
+    case "$out" in *"SETUP or RUNNER"*) echo "FAIL: MAIN carries the INFRA note"; bad=1 ;; esac
     out="$(body 42 https://r 7 "7" "")"
     case "$out" in *"No other pull request"*) ;; *) echo "FAIL: a batch of one is not stated"; bad=1 ;; esac
     [ "$bad" = 0 ] && echo "queue-l3-advisory selftest: OK"
@@ -96,14 +102,19 @@ steps="$(gh run view "$run" --repo "$REPO" --json jobs \
     --jq '.jobs[] | select(.conclusion == "failure") | .steps[] | select(.conclusion == "failure") | .name' \
     2>/dev/null)" || steps=""
 # phase-396 W4's question, scoped to `queue`: is this L3 red for everyone?
-verdict=""
+verdict="" mainblock=""
 if triage="$(NROS_TRIAGE_WORKFLOW=queue bash "$here/queue-triage.sh" 2>/dev/null)"; then
-    case "$triage" in *"NOT YOUR PULL REQUEST"*) verdict=INFRA ;; esac
+    case "$triage" in
+        *"MAIN IS BROKEN"*)
+            verdict=MAIN
+            mainblock="$(printf '%s\n' "$triage" | sed -n '/^== MAIN IS BROKEN ==/,$p')" ;;
+        *"NOT YOUR PULL REQUEST"*) verdict=INFRA ;;
+    esac
 fi
 echo "L3 advisory for run $run: batch [$batch], failed steps: ${steps//$'\n'/; }, triage: ${verdict:-specific}"
 
 for pr in $batch; do
-    text="$(body "$run" "$url" "$pr" "$batch" "$steps" "$verdict")"
+    text="$(body "$run" "$url" "$pr" "$batch" "$steps" "$verdict" "$mainblock")"
     if [ "${NROS_QUEUE_DRY_RUN:-}" = 1 ]; then
         printf '=== #%s ===\n%s\n' "$pr" "$text"
         continue
