@@ -1,4 +1,4 @@
-//! phase-486 W1 (RFC-0060 amendment 2026-10-10) — the nano-ros OVERLAY.
+//! The nano-ros OVERLAY.
 //!
 //! The SystemModel carries what every realizer reads with the same meaning:
 //! topology, the platform-agnostic contract, scheduling. A nano-ros BUILD fact
@@ -19,8 +19,8 @@
 //! moved. Its successor is `system_toml_readers_agree.rs`'s
 //! `the_model_carries_no_switch_and_the_overlay_carries_every_bringups`.
 //!
-//! No overlay content ⇒ no file, and a stale one is deleted (RFC-0100's
-//! 2026-10-10 rule, and the PR #1830 lesson: a reader acts on whatever file
+//! No overlay content ⇒ no file, and a stale one is deleted (the sizing model's
+//! 2026-10-10 rule, and an earlier lesson: a reader acts on whatever file
 //! sits at the path).
 
 use std::{
@@ -43,35 +43,35 @@ pub struct Overlay {
     /// `[lifecycle] autostart`: `none`, `configure` or `active`. An
     /// unrecognised value is dropped, as rlm's `lifecycle_autostart()` drops it.
     pub lifecycle_autostart: Option<String>,
-    /// phase-486 W2 — per-image switches ADDED over [`Self::features`]:
+    /// Per-image switches ADDED over [`Self::features`]:
     /// `[image_defaults] features` then `[image.<id>] features`, the same
     /// base-then-specific concatenation the retired ~~`ImageBlock::merged_over`~~
     /// applied.
     /// Only images that add something appear.
     pub images: BTreeMap<String, Vec<String>>,
-    /// Issue 2019 -- `[[component]] stack_bytes`: the stack each component's
+    /// `[[component]] stack_bytes`: the stack each component's
     /// callbacks need, keyed by the component's `name` (its node's bare
     /// name). A level's derived stack is its largest member's plus the
     /// worker frame (`NROS_LEVEL_STACK_BYTES(member)`). Only components that
     /// state one appear.
     pub component_stacks: BTreeMap<String, u32>,
-    /// Issue 2076 (version 2) -- `[[bridge]]`: what the RUNTIME creates for a
+    /// Version 2 -- `[[bridge]]`: what the RUNTIME creates for a
     /// cross-RMW gateway on the bringup's behalf. No component constructor
     /// creates these entities, so no probe sidecar and no contract row describes
     /// them; the entity inventory sizes them from here. Declaration order.
     pub bridges: Vec<OverlayBridge>,
-    /// phase-556 W13 (version 3) -- `[system] node_interfaces`, the switch
+    /// Version 3 -- `[system] node_interfaces`, the switch
     /// every image falls back to. Read only through
     /// [`crate::node_interfaces::effective_features`] ([`Self::system_features`],
     /// [`Self::features_for_image`]).
     pub node_interfaces: Option<crate::node_interfaces::NodeInterfaces>,
-    /// phase-556 W13 -- the switch each `[image.<id>]` resolves to from its
+    /// The switch each `[image.<id>]` resolves to from its
     /// own table over `[image_defaults]`. Only images where one of the two
     /// states it appear; the rest fall back to [`Self::node_interfaces`].
     pub image_node_interfaces: BTreeMap<String, crate::node_interfaces::NodeInterfaces>,
 }
 
-/// Issue 2076 -- one `[[bridge]]`, reduced to what sizes the image: its name,
+/// One `[[bridge]]`, reduced to what sizes the image: its name,
 /// the topics it forwards (empty = every declared pub/sub topic, the planner's
 /// rule), and whether it relays both ways. The session endpoints are not kept:
 /// the inventory charges each bridge two nodes, the upper bound of the sessions
@@ -101,7 +101,7 @@ impl Overlay {
 
     /// The switches image `id` builds with: the system list plus whatever the
     /// image adds, first spelling kept, through the node-interface switch that
-    /// applies to it (phase-556 W13).
+    /// applies to it.
     pub fn features_for_image(&self, id: &str) -> Vec<String> {
         let mut declared = self.features.clone();
         for f in self.images.get(id).into_iter().flatten() {
@@ -118,7 +118,7 @@ impl Overlay {
     }
 
     /// The switches the bringup builds with when no image is named: the
-    /// system list through `[system] node_interfaces` (phase-556 W13).
+    /// system list through `[system] node_interfaces`.
     pub fn system_features(&self) -> Vec<String> {
         crate::node_interfaces::effective_features(&self.features, self.node_interfaces)
     }
@@ -568,7 +568,7 @@ pub fn write_beside(model_path: &Path, system_toml: &Path) -> Result<Option<Path
     Ok(Some(path))
 }
 
-/// phase-486 W3 — a resolved model and the overlay beside it, read together.
+/// A resolved model and the overlay beside it, read together.
 ///
 /// Every nano-ros reader of a build switch or of the lifecycle default reads
 /// [`Self::overlay`], never `model.execution.features` (gated by
@@ -599,7 +599,7 @@ impl LoadedModel {
     /// Model YAML in the shape an rlm before `v0.1.55` wrote, paired with the
     /// overlay `nros sync` would have written for it: the switches projected
     /// into `execution: features:` move into the overlay. rlm deleted the
-    /// typed field (phase-486 W8), so they are read from the text by
+    /// typed field, so they are read from the text by
     /// [`legacy_projected_features`].
     ///
     /// For TESTS whose fixtures are model YAML written in the old shape. No
@@ -633,7 +633,7 @@ impl LoadedModel {
     }
 
     /// The image's capability switches: the overlay's system list plus what
-    /// `image` adds (phase-486 W2). `None` = the system list alone.
+    /// `image` adds. `None` = the system list alone.
     pub fn features(&self, image: Option<&str>) -> Vec<String> {
         match image {
             Some(id) => self.overlay.features_for_image(id),
@@ -659,13 +659,13 @@ impl LoadedModel {
 ///
 /// Absent file ⇒ an empty overlay: the bringup states no nano-ros facts. The
 /// one exception is a model that still CARRIES build switches — written by an
-/// `nros` from before phase-486 W1, or by an rlm that still projected them —
+/// `nros` from before the overlay existed, or by an rlm that still projected them —
 /// with no overlay beside it. Reading "no switches" there would silently
 /// build the image without them, so it is refused, naming the fix.
 ///
 /// The question is asked of the model FILE, not of a parsed
 /// `SystemModel`: rlm deleted the typed `execution.features` field at
-/// phase-486 W8, so a typed model can no longer say whether an old writer
+/// that point, so a typed model can no longer say whether an old writer
 /// put switches there. [`legacy_projected_features`] reads the raw key.
 pub fn load_beside(model_path: &Path) -> Result<Overlay, String> {
     let path = overlay_path_for_model(model_path);
@@ -716,7 +716,7 @@ pub fn legacy_projected_features(model_yaml: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// phase-486 W3 — does the image this model was resolved for run `fqn`?
+/// Does the image this model was resolved for run `fqn`?
 ///
 /// `execution.deploy` is a placement map: a node in it is placed, and a node
 /// absent from a NON-EMPTY map was placed elsewhere (`[host.*]` with
@@ -737,7 +737,7 @@ pub fn split_fqn(fqn: &str) -> (String, String) {
     (ns.to_string(), name.to_string())
 }
 
-/// RFC-0128 D2 (phase-554 W2) — one managed node of an image.
+/// One managed node of an image.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManagedNode {
     /// The model's node key.
@@ -746,7 +746,7 @@ pub struct ManagedNode {
     pub namespace: String,
     /// The node's final name.
     pub name: String,
-    /// Its boot transition (RFC-0128 D6): the node's own
+    /// Its boot transition: the node's own
     /// `lifecycle_autostart`, else the overlay's `[lifecycle] autostart`,
     /// else `None`.
     pub autostart: Option<ros_launch_manifest_model::Autostart>,
@@ -782,7 +782,7 @@ fn overlay_autostart(overlay: &Overlay) -> Option<ros_launch_manifest_model::Aut
     }
 }
 
-/// RFC-0128 D2 + D6 (phase-554 W2) — the managed nodes this image runs, in
+/// The managed nodes this image runs, in
 /// launch declaration order.
 ///
 /// A node is managed when the resolved model marks it (`lifecycle: true`,
@@ -813,10 +813,10 @@ pub fn managed_nodes(
         .collect()
 }
 
-/// phase-486 W0 Correction 2 — ONE lifecycle boot transition per image.
+/// ONE lifecycle boot transition per image.
 ///
-/// RFC-0128 D6 retires this rule: each managed node now takes its own value
-/// ([`managed_nodes`]). It stays until phase-554 W7 retires it formally, for
+/// Per-node lifecycle retires this rule: each managed node now takes its own value
+/// ([`managed_nodes`]). It stays until it is retired formally, for
 /// readers that still size or describe the image by one value.
 ///
 /// The runtime has one executor-wide autostart, while the model states it per

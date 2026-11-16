@@ -1,4 +1,4 @@
-//! Issue 1895 — the launch slice of a bringup's `system.toml`, parsed ONE way:
+//! The launch slice of a bringup's `system.toml`, parsed ONE way:
 //! `[system] default_launch` and the `[[model]]` declarations.
 //!
 //! Three readers used to parse it, two of them as raw `toml` values: this
@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 /// none.
 pub const DEFAULT_LAUNCH_FILE: &str = "system.launch.xml";
 
-/// phase-330 W4.0 — one `[[model]]` declaration: which launch file, with which
+/// One `[[model]]` declaration: which launch file, with which
 /// argument bindings, produces which model file.
 ///
 /// ```toml

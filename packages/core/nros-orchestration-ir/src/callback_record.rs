@@ -1,4 +1,4 @@
-//! phase-509 P4 (RFC-0108 D1) -- the callback record: one per callback, derived
+//! The callback record: one per callback, derived
 //! from the contract.
 //!
 //! Every callback the model can see is one dispatchable slot, and each gets a
@@ -11,7 +11,7 @@
 //! | served | Q per P; D | `budget` + `budget_period` on the input |
 //! | unanalysable | none | an event input with none of these |
 //!
-//! C (execution time) is the RFC-0078 profile's bound at the path boundary
+//! C (execution time) is the measurement profile's bound at the path boundary
 //! (`"<node>/<path>"`), when the caller has a profile; absent otherwise, and
 //! never invented ([`crate::wcet`]).
 //!
@@ -35,7 +35,7 @@
 //! A subscriber's `min_rate_hz` is a FLOOR (what it needs), not a bound on
 //! its arrivals, so it releases nothing here.
 //!
-//! # The rule (RFC-0108 decision 4)
+//! # The rule
 //!
 //! An unanalysable callback is REFUSED on a safety image, an image whose
 //! contract supervises a deadline (a node path carrying `supervise:`,
@@ -52,7 +52,7 @@ use serde::Serialize;
 
 use crate::{rtos_realizer::Degradation, wcet::WcetProfile};
 
-/// How a callback is released (RFC-0108 D1).
+/// How a callback is released.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReleaseKind {
@@ -125,7 +125,7 @@ pub enum ReleaseSource {
     None,
 }
 
-/// One callback's record (RFC-0108 D1). Times in microseconds.
+/// One callback's record. Times in microseconds.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct CallbackRecord {
     /// `"<node FQN>/<path>"` for a timer, the endpoint ref
@@ -144,7 +144,7 @@ pub struct CallbackRecord {
     pub deadline_us: Option<u64>,
     /// Whether D was stated rather than implicit.
     pub deadline_stated: bool,
-    /// C: the summed RFC-0078 bounds of the paths the callback runs, when
+    /// C: the summed declared bounds of the paths the callback runs, when
     /// every one of them declares one.
     pub exec_us: Option<u64>,
     /// Q (served only).
@@ -435,7 +435,7 @@ fn fix_for(t: &CallbackRecord) -> String {
     }
 }
 
-/// One `unanalysable` degradation per unanalysable callback (RFC-0108 D1):
+/// One `unanalysable` degradation per unanalysable callback:
 /// what an image WITHOUT `supervise:` reports.
 pub fn unanalysable_degradations(records: &[CallbackRecord]) -> Vec<Degradation> {
     records
@@ -490,7 +490,7 @@ fn render_refusal(supervised: &BTreeSet<String>, unanalysable: &[CallbackRecord]
     s
 }
 
-/// RFC-0108 decision 4: refuse an unanalysable callback on a safety image.
+/// Refuse an unanalysable callback on a safety image.
 ///
 /// `Ok` with the records on every image that supervises nothing, or whose
 /// callbacks are all analysable. The report for the first case is

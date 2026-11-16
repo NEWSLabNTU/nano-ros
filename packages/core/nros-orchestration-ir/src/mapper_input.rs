@@ -1,8 +1,8 @@
-//! phase-495 W2 - `SystemModel -> MapperInput` is ONE call into
+//! `SystemModel -> MapperInput` is ONE call into
 //! `ros_launch_manifest_derive`, the derivation play_launch calls too
-//! (rlm design issue #52, play_launch phase 78).
+//! (an rlm design decision shared with play_launch).
 //!
-//! phase-296 W5.1 wrote a second derivation here, over the same model. It
+//! An earlier version wrote a second derivation here, over the same model. It
 //! read a timer's rate off the first output's rate PROMISE, the label
 //! rather than the effective criticality, and a concurrency rule that
 //! disagreed with play_launch's on `exclusive: [[a, b], [c]]`; it passed
@@ -16,7 +16,7 @@
 //! What stays this side's: the `[wcet]` profile. `DeriveFacts` is the one
 //! input the model does not carry because it differs per platform -
 //! play_launch fills `node_exec_ms` from a platform file's `budget_us`,
-//! nano-ros fills `path_exec_ms` from an RFC-0078 profile, keyed at rlm's
+//! nano-ros fills `path_exec_ms` from a WCET measurement profile, keyed at rlm's
 //! own boundary identity (`"<node fqn>/<path>"`, the key
 //! `boundaries_without_wcet` reports). Nothing else is added here, and no
 //! WCET is ever invented.
@@ -60,13 +60,13 @@ pub fn mapper_input_from_model(model: &SystemModel) -> MapperInput {
     mapper_input_from_model_with_wcet(model, None)
 }
 
-/// As [`mapper_input_from_model`], with a selected RFC-0078 measurement profile
+/// As [`mapper_input_from_model`], with a selected WCET measurement profile
 /// supplying `exec_ms` for the boundaries it declares.
 ///
 /// Separate entry point rather than a changed signature so that ABSENT remains
 /// the default at the API level too: a caller that knows nothing about WCETs
 /// gets exactly what it got before, which is `None` everywhere. Which profile
-/// is selected is deliberately not decided here - RFC-0078 leaves that to
+/// is selected is deliberately not decided here - the WCET design leaves that to
 /// `system.toml` / SystemModel, and this function takes the answer.
 pub fn mapper_input_from_model_with_wcet(
     model: &SystemModel,

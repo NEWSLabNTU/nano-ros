@@ -1,4 +1,4 @@
-//! phase-462 W3a -- a hazard's fault-tolerant time interval (FTTI) is checked
+//! A hazard's fault-tolerant time interval (FTTI) is checked
 //! against what the IMAGE will run, at build time.
 //!
 //! rlm checks `ftti` against the contract's own declared latencies. This is
@@ -585,7 +585,7 @@ pub struct ResolvedReaction<'m> {
 /// cannot follow different reactions.
 ///
 /// A mode is read as rlm v0.3.15 states it (`hazards.<h>.enters`, play_launch
-/// phase 103 D4): "The mode this hazard takes away. The reaction is that
+/// design): "The mode this hazard takes away. The reaction is that
 /// mode's `fallback:` sequence: each level in order, by its own `reaction:`,
 /// each checked in its own right (`degradation-level-time`) and the minimal
 /// risk condition (the last level) against `ftti`. The named mode's own

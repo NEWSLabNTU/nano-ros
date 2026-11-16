@@ -1,4 +1,4 @@
-//! phase-521 W8 (a) (RFC-0113 D9) — the PX4 work queues a tier maps onto.
+//! The PX4 work queues a tier maps onto.
 //!
 //! PX4 owns `main` and every thread, so a PX4 image's sched tasks do not get threads
 //! of their own: each sched task is one `px4::ScheduledWorkItem` on one of PX4's

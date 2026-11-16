@@ -1,4 +1,4 @@
-//! Shared per-sched-task orchestration IR — schema + resolver (RFC-0015).
+//! Shared per-sched-task orchestration IR — schema + resolver.
 //!
 //! This leaf crate holds the small set of `system.toml` types that
 //! describe scheduling sched tasks + the [`resolve_sched_tasks`] algorithm that
@@ -35,7 +35,7 @@ use thiserror::Error;
 // AND the `nros::main!` proc-macro) can DERIVE a schedule from the contract
 // layer, not just resolve authored sched tasks. No behavior change vs the old
 // `nros_cli_core::orchestration::{mapper_input, rtos_realizer}` location.
-/// phase-509 P8 (RFC-0108 D8.3) — refuse a blocking call to a level that
+/// Refuse a blocking call to a level that
 /// cannot preempt the client.
 pub mod blocking_calls;
 pub mod type_descriptor_sizing;
@@ -50,14 +50,14 @@ pub mod derive;
 // proc-macro entry bake and the CLI's codegen-system so the two agree on the
 // count, the derivation and the over-capacity diagnostic.
 pub mod executor_sizing;
-/// phase-462 W3a -- a hazard's FTTI checked against what the image runs.
+/// A hazard's FTTI checked against what the image runs.
 pub mod ftti_budget;
 // phase-445 W3 (RFC-0098 D3/D5/D8) — the ONE reader of what a single-package
 // leaf deploys to (`<leaf>/system.toml`, with the retiring manifest keys as a
 // deletable fallback), shared by the proc-macro and the CLI.
 // Issue 1766 — which capability axes its `[system] features` declares, and
 // what each lowers to on a Form-1 entry.
-/// RFC-0071 D13 — the entry package's name and an owned entry's adapter
+/// The entry package's name and an owned entry's adapter
 /// crate name, shared by the CLI and `nros::main!`.
 pub mod entry_names;
 // issue 2432 - the derived schedule's callback-group INPUT and the line each
@@ -65,7 +65,7 @@ pub mod entry_names;
 pub mod entry_groups;
 pub mod leaf_capabilities;
 pub mod leaf_system;
-/// phase-509 P5 (RFC-0108 D3/D4) -- preemption levels derived from the ranks,
+/// Preemption levels derived from the ranks,
 /// the callback records and the image's cap; the response-time analysis.
 pub mod levels;
 pub mod mapper_input;
@@ -117,7 +117,7 @@ pub mod px4;
 pub mod rtos_realizer;
 pub mod sidecar_slots;
 // RFC-0079's table - a sched task's spin period, derived from its members' releases.
-/// phase-509 P4 (RFC-0108 D1) — the callback record per callback, and the
+/// The callback record per callback, and the
 /// refusal of an unanalysable input on a safety image.
 pub mod callback_record;
 pub mod spin_period;
@@ -126,7 +126,7 @@ pub mod spin_period;
 // same reason that one is: both producers of a baked sched task table must ask, and
 // the proc-macro road cannot dep `nros-cli-core`.
 pub mod violation_agreement;
-/// RFC-0078 — declared WCETs, keyed per named measurement profile.
+/// Declared WCETs, keyed per named measurement profile.
 pub mod wcet;
 
 // =============================================================================
@@ -148,16 +148,16 @@ pub mod wcet;
 /// `"mps2-an385-freertos"` for `"freertos"`) are normalised here so callers
 /// need no extra translation.
 ///
-/// Keys match the board words an `[image.<id>] board` names (RFC-0014 §3).
+/// Keys match the board words an `[image.<id>] board` names.
 /// The canonical framework names an `nros` board may declare.
 ///
-/// Issue 0415 — the SSoT for "which entry shape does this board want". Kept as
+/// The SSoT for "which entry shape does this board want". Kept as
 /// strings rather than an enum because the two consumers model it differently:
 /// `nros-macros` maps to an emit shape (it also has a `Zephyr`
 /// variant), `nros ws check` maps to a lint matrix. What must NOT differ is
 /// the accepted SET and its spelling, which is why parsing lives here.
 ///
-/// `px4` (phase-521 W8, RFC-0113 D9): PX4 owns `main` and every thread, so a
+/// `px4`: PX4 owns `main` and every thread, so a
 /// PX4 image's entry is GENERATED C++ (one `ScheduledWorkItem` per sched task, on the
 /// work queue [`px4::px4_work_queues`] picks), and `nros::main!` has no shape
 /// for it — see [`CPP_ONLY_FRAMEWORKS`].
@@ -193,11 +193,11 @@ pub fn cpp_only_framework_reason(name: &str) -> Option<&'static str> {
 /// before reporting a name as unknown, so a retired name gets its reason rather
 /// than a bare "not a known framework".
 ///
-/// `embassy` — issue 2134 / RFC-0112 D3: the `nros::main!` branch had no board
-/// and no CI cell since phase-337 W7.a removed `embassy-stm32f4`, and what it
-/// emitted relied on board methods no trait declared (issue 2155).
+/// `embassy`: the `nros::main!` branch had no board
+/// and no CI cell since `embassy-stm32f4` was removed, and what it
+/// emitted relied on board methods no trait declared.
 ///
-/// `esp32` — RFC-0113 D5 (phase-521 W6): its one board, the ESP32-C3 under
+/// `esp32`: its one board, the ESP32-C3 under
 /// QEMU, had no receive interrupt and no one-shot timer behind a wake object,
 /// so an executor on it could not park; the board retired rather than keep the
 /// receive-blocking wait.
@@ -231,7 +231,7 @@ pub fn retired_framework_hint(name: &str) -> Option<&'static str> {
 /// Is `name` a framework this repo understands?
 ///
 /// Callers use this to reject an unknown `[package.metadata.nros.board]
-/// framework = "…"` LOUDLY. Before issue 0415's fix an unrecognised value fell
+/// framework = "…"` LOUDLY. Before the fix an unrecognised value fell
 /// through to `OwnedSpin`, which is not a diagnostic — it is a silently wrong
 /// entry shape that links and then does not do what the framework was for.
 pub fn is_known_framework(name: &str) -> bool {
@@ -241,7 +241,7 @@ pub fn is_known_framework(name: &str) -> bool {
 /// Every key that selects the HOST board — its descriptor's `names`
 /// (`packages/boards/linux/nros-board.toml`), and nothing else.
 ///
-/// phase-500 W1 (issue 1109). The host board is Linux-only, so its one name is
+/// The host board is Linux-only, so its one name is
 /// `linux`; `native` (every general-purpose host) was dropped and is refused
 /// with a hint (`nros_entry_lower::retired_board_key_hint`), and `posix` is the
 /// PLATFORM, no board's name. Every "is this the host?" question asks
@@ -508,14 +508,14 @@ pub fn image_framework(
 /// Every board key the Rust pack resolves, the board ZST it names, and whether
 /// an entry built for it links `std`.
 ///
-/// Issue 1285 — a TABLE rather than a `match`, so the key set is data: the
+/// A TABLE rather than a `match`, so the key set is data: the
 /// proc-macro's "Known boards" message is derived from it rather than
 /// hand-written beside it, and `nros-cli-core/tests/board_key_table.rs` checks
 /// every key here against `nros_entry_lower::BOARD_KEYS` (the key → family
 /// table) so the two cannot disagree about which RTOS a key names. The ZST
 /// PATH stays here: it is Rust-pack spelling, not a neutral fact.
 ///
-/// Issue 1381 — the third column is `links_std`, a COLUMN and not a second
+/// The third column is `links_std`, a COLUMN and not a second
 /// table so that a new key cannot be added without answering the question.
 /// It restates, for the two Rust producers, what the board descriptor already
 /// says as `entry_kind`: `hosted-main` ⟺ the entry crate is an ordinary hosted
@@ -524,33 +524,33 @@ pub fn image_framework(
 /// row therefore means "an emitter may not name a `std::` path in this entry",
 /// which is a stronger statement than any `target_os` predicate can make:
 /// `no_std` is orthogonal to the target OS, so a bare `cargo build` of such a leaf
-/// for the HOST still has no `std` in its crate root. That is issue 1381 —
+/// for the HOST still has no `std` in its crate root. That was a real bug:
 /// `nros::main!` emitted the hosted spin helpers into a bare-metal leaf and the
 /// leaf could not be compiled by hand at all.
 /// `nros-cli-core/tests/board_key_table.rs` checks the column against the
 /// descriptors' `entry_kind`, so the two cannot drift.
 ///
 /// Rows, grouped:
-/// - FreeRTOS — MPS2-AN385 Cortex-M3, and the POSIX port (`freertos-posix`,
-///   phase-548 W1). The board ZST impls `BoardEntry`.
-/// - NuttX — phase-337 W3: ONE crate, two witnesses. Both keys resolve to the
+/// - FreeRTOS — MPS2-AN385 Cortex-M3, and the POSIX port (`freertos-posix`).
+///   The board ZST impls `BoardEntry`.
+/// - NuttX: ONE crate, two witnesses. Both keys resolve to the
 ///   SAME ZST: the board marker only selects trait impls, and those never
 ///   differed between arm virt and rv-virt (the arch delta is defconfig +
 ///   toolchain DATA). The keys stay distinct because they select the
 ///   `[[board]]` descriptor — and therefore the target triple — not the type.
-/// - Zephyr — Phase 225.P: Zephyr owns `main`; the board ZST implements no
+/// - Zephyr: Zephyr owns `main`; the board ZST implements no
 ///   `BoardEntry`, and its network wait is an inherent method (the
-///   ~~`NetworkWait`~~ trait went in phase-206 W4). The proc-macro routes through
+///   ~~`NetworkWait`~~ trait was removed). The proc-macro routes through
 ///   `Framework::Zephyr` and emits a `rust_main` staticlib export.
-/// - RTIC — phase-337 W6.a: the RTIC entry surface moved INTO
+/// - RTIC: the RTIC entry surface moved INTO
 ///   `nros-board-mps2-an385` (its `rtic` feature); the ZST kept its name. The
 ///   deploy key stays distinct because the two entry shapes are distinct — this
 ///   one routes through the RTIC framework emit.
-/// - Bare metal — Phase 244.D1: pure (no-RTOS) MPS2-AN385 direct-exec board.
+/// - Bare metal: pure (no-RTOS) MPS2-AN385 direct-exec board.
 ///   Board ZST impls `nros_platform::BoardEntry`. Distinct from the RTIC
 ///   row, which routes through the RTIC framework emit.
 ///
-/// phase-337 W7.a — the three STM32F4 keys (`stm32f4`, `rtic-stm32f4`,
+/// The three STM32F4 keys (`stm32f4`, `rtic-stm32f4`,
 /// `embassy-stm32f4`) left with their board crates. Unlike W6.a's RTIC
 /// key, no key survives: the ZSTs are gone, not moved, so an
 /// entry naming one must fail to resolve rather than silently pick another
@@ -684,7 +684,7 @@ pub fn board_path_for(key: &str) -> Option<&'static str> {
 /// Does an entry built for board `key` link `std`? `None` for a key this table
 /// does not know.
 ///
-/// Issue 1381. A caller that EMITS entry code asks this before writing any
+/// A caller that EMITS entry code asks this before writing any
 /// `std::` path: `false` means the entry crate is `#![no_std]` (the board
 /// descriptor's `entry_kind` is `board-run` or `zephyr-staticlib`), so `std`
 /// is not in its crate root on ANY target. No `target_os` guard saves it: a
@@ -777,7 +777,7 @@ where
     }
 }
 
-/// `[tasks.<name>]` — a symbolic priority sched task (RFC-0015 §4.2). Carries the
+/// `[tasks.<name>]` — a symbolic priority sched task. Carries the
 /// RTOS-agnostic `spin_period` plus a per-RTOS sub-table
 /// (`[tasks.<name>.<rtos>]`) giving the concrete priority/stack for each target.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -835,7 +835,7 @@ pub struct SchedTaskDef {
     /// CPU core to pin the sched task to (SMP); `None` ⇒ unpinned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub core: Option<u32>,
-    /// `above = "transport"` (RFC-0079 section 6, issue 1967): the sched task is
+    /// `above = "transport"`: the sched task is
     /// allocated above the port's reserved transport band. rlm's
     /// `ReservedBand`, a closed set, so a misspelt band is a parse error here
     /// as it is in rlm's reader. A system fact, so it lives on the head, never
@@ -865,7 +865,7 @@ pub struct SchedTaskRtosSpec {
     /// ThreadX preemption threshold (ignored on other RTOSes).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preempt_threshold: Option<i64>,
-    /// Round-robin time slice in µs (#0266): time-slicing among same-priority
+    /// Round-robin time slice in µs: time-slicing among same-priority
     /// sched tasks. ThreadX-only today (bake-validated); `None` = FIFO-until-block.
     #[serde(
         default,
@@ -928,10 +928,10 @@ pub struct SchedTaskRtosSpec {
     pub period_us: Option<u64>,
 }
 
-/// One callback group and the sched task it runs on (Phase 228.A, RFC-0015 §4.1).
+/// One callback group and the sched task it runs on.
 ///
 /// Authored as `[[component]] group_tasks = { <id> = "<sched_task>" }` in
-/// `system.toml` (RFC-0047) or, at the default sched task, by the cmake
+/// `system.toml` or, at the default sched task, by the cmake
 /// `CALLBACK_GROUPS` keyword. Its original spelling — a node manifest's
 /// `callback_groups = [{ id, tier }]` — is retired and refused at parse.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -975,7 +975,7 @@ pub struct NodeOverride {
 #[serde(deny_unknown_fields)]
 pub struct CallbackGroupOverride {
     pub id: String,
-    /// Authored as `task` (rlm's word, phase 536); `tier` is read as well.
+    /// Authored as `task` (rlm's word); `tier` is read as well.
     #[serde(rename = "task", alias = "tier")]
     pub sched_task: String,
 }
@@ -988,7 +988,7 @@ pub struct CallbackGroupOverride {
 /// declared at all). It needs no `[tasks.default]` table.
 pub const DEFAULT_SCHED_TASK: &str = "default";
 
-/// issue 1426 — install an ALLOCATED `[tasks.<name>.<rtos>]` on a sched task whose
+/// Install an ALLOCATED `[tasks.<name>.<rtos>]` on a sched task whose
 /// head the AUTHOR wrote.
 ///
 /// One spelling for all three roads that patch a sched task table
@@ -1015,7 +1015,7 @@ pub fn install_placement(def: &mut SchedTaskDef, target_rtos: &str, spec: SchedT
     }
 }
 
-/// issue 1426 — the derivation's input shape from a bare list of group ids, in
+/// The derivation's input shape from a bare list of group ids, in
 /// ONE spelling.
 ///
 /// A source that states WHICH groups a node has and nothing about where they
@@ -1050,7 +1050,7 @@ pub struct ResolvedSchedTask {
     pub stack_bytes: Option<u32>,
     pub spin_period_us: Option<u64>,
     pub preempt_threshold: Option<i64>,
-    /// Round-robin time slice in µs (#0266); ThreadX-only (bake-validated).
+    /// Round-robin time slice in µs; ThreadX-only (bake-validated).
     pub time_slice_us: Option<u64>,
     pub sched_class: Option<String>,
     // Phase 256 W4 — the RTOS-agnostic real-time policy (from `SchedTaskDef`), carried
@@ -1075,7 +1075,7 @@ pub struct ResolvedSchedTaskTable {
     /// `run_sched_tasks` runs first — is the semantically-HIGHEST sched task only on
     /// bigger-number-wins RTOSes (posix/FreeRTOS/NuttX). On
     /// lower-number-wins RTOSes (Zephyr, ThreadX) `sched_tasks[0]` is the
-    /// LOWEST-priority sched task (issue 0251 — deliberate, comments must not
+    /// LOWEST-priority sched task (deliberate, comments must not
     /// claim otherwise).
     pub sched_tasks: Vec<ResolvedSchedTask>,
 }
@@ -1088,7 +1088,7 @@ impl ResolvedSchedTaskTable {
     }
 
     /// True when at least one node has callback groups on MORE THAN ONE sched task
-    /// (the RFC-0047 sub-node capability: `group_tasks = { ctrl = "high",
+    /// (the callback-group sched-context capability: `group_tasks = { ctrl = "high",
     /// telem = "low" }`). Such a node cannot be expressed by the run_sched_tasks
     /// shape (per-sched-task executors construct whole nodes), so entry codegen must
     /// keep the single-executor sched-context path (`bind_group_sched`) for
@@ -1298,7 +1298,7 @@ fn default_sched_task(members: Vec<(String, String)>) -> ResolvedSchedTask {
 // platform-applicability validation (RFC-0052 / phase-296 W2)
 // =============================================================================
 
-/// Issue 2019 -- which level runner a worker frame is for. A spawned level
+/// Which level runner a worker frame is for. A spawned level
 /// runs its own setup (`open_level`, the members' registration) on its own
 /// stack before its first pass, and that setup, not any later pass, is the
 /// stack's peak; the C-ABI runner (every C and C++ entry) and the Rust board
@@ -1311,7 +1311,7 @@ pub enum LevelRunner {
     Rust,
 }
 
-/// Issue 2019 -- the worker frame a LEVEL's stack carries above its largest
+/// The worker frame a LEVEL's stack carries above its largest
 /// member's: the level's own setup and loop, the executor pass and the
 /// transport drive under it. `None` on a host (`posix`), whose threads'
 /// stacks are the process's to map.
@@ -1344,7 +1344,7 @@ pub fn level_worker_frame_bytes(rtos: &str, runner: LevelRunner) -> Option<u32> 
     }
 }
 
-/// Issue 2019 -- derive the stack of every sched task (level) that authors none
+/// Derive the stack of every sched task (level) that authors none
 /// from its members: the largest `member_stacks` entry among the sched task's
 /// members (`system.toml [[component]] stack_bytes`, keyed by component name)
 /// plus the Rust runner's [`level_worker_frame_bytes`]. A sched task none of whose members states a
@@ -1382,7 +1382,7 @@ pub fn derive_level_stacks(
 /// never a silent ignore (the domain-0 lesson). Shared by the CLI codegen
 /// path and the `nros::main!` proc-macro so both bakes agree.
 ///
-/// Rules (RFC-0052 rejection table):
+/// Rules (the RTOS mapper's rejection table):
 /// - `preempt_threshold` in the selected sub-table → ThreadX only.
 /// - `sched_class` in the selected sub-table → POSIX-family targets only
 ///   (`posix`/`native`/`nuttx`).

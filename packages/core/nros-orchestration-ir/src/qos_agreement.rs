@@ -1,4 +1,4 @@
-//! phase-454 W7 (RFC-0100 D8) — the launch contract and `qos_overrides.*` are
+//! The launch contract and `qos_overrides.*` are
 //! two statements about ONE fact, so any divergence is a build error naming
 //! both sites.
 //!
@@ -12,7 +12,7 @@
 //!
 //! Until this module the two never met. `qos_overrides./t.subscription.depth =
 //! 64` was baked into the runtime and **the arena never heard about it** —
-//! issue 1190's `BufferTooSmall` with a config-shaped cause and no diagnostic.
+//! a `BufferTooSmall` with a config-shaped cause and no diagnostic.
 //! A node whose parameter said `reliability = reliable` and whose contract said
 //! nothing was sized as if best-effort.
 //!
@@ -31,9 +31,9 @@
 //!
 //! # Scope: all eight modelled policies
 //!
-//! phase-454 W7 compared the four [`crate::qos_override::MODELLED_POLICIES`]
+//! The first check compared the four [`crate::qos_override::MODELLED_POLICIES`]
 //! marks as capacity — `reliability`, `durability`, `history`, `depth` — the
-//! ones the contract SIZES from. phase-462 W5 adds the four that bound a
+//! ones the contract SIZES from. A second adds the four that bound a
 //! queue's liveness instead: `deadline`, `lifespan`, `liveliness` and
 //! `liveliness_lease_duration` (the contract's `lease_duration`). They size
 //! nothing, but the contract states them and the resolve-time checks reason
@@ -48,7 +48,7 @@
 //!
 //! When the model describes NO topic wiring. Then no contract was authored (5
 //! of the tree's 114 resolvable models describe wiring, and they are exactly the
-//! 5 with a contract sidecar — issue 0973), so there is ONE producer and
+//! 5 with a contract sidecar), so there is ONE producer and
 //! nothing to disagree with. That abstention is the same one
 //! `EntityInventory::from_model` makes by returning `None`, and it is why this
 //! wave changes no sizing number in the tree: neither in-tree image that states
@@ -195,7 +195,7 @@ pub struct Disagreement {
     pub role: &'static str,
     /// The policy in dispute.
     pub policy: &'static str,
-    /// phase-462 W5 -- the same policy's key in a contract `qos:` block
+    /// The same policy's key in a contract `qos:` block
     /// (`lease_duration` for `liveliness_lease_duration`).
     pub contract_key: &'static str,
     /// The override's value as a contract would spell it (`100ms` for

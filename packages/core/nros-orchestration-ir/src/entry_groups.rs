@@ -1,11 +1,11 @@
-//! issue 2432 — the derived schedule's INPUT, built in one place for every road.
+//! The derived schedule's INPUT, built in one place for every road.
 //!
 //! Three roads derive a rate-monotonic schedule from one model through one core
 //! ([`crate::derive`]): `codegen entry` (C/C++), `codegen-system` (the Zephyr
 //! bake) and the `nros::main!` proc-macro (Rust). The core is shared; what each
 //! road fed it was not. Each built the per-node callback-group map — the
 //! derivation's third argument — by hand, and the three spellings disagreed on
-//! where a group comes from. Issue 2432 measured the cost: one workspace and one
+//! where a group comes from. A measurement showed the cost: one workspace and one
 //! contract derived two sched tasks in C and C++ and none in Rust, silently.
 //!
 //! This module holds the two halves every road needs:
@@ -25,7 +25,7 @@
 //! supplies the DECLARED groups from where its language states them (the cmake
 //! keyword, or the Rust sidecar via [`groups_of_component`]).
 //! `codegen-system`'s `sched_task_resolver::collect_callback_groups` had its own
-//! merge until issue 2454: an authored `group_tasks` there HID every declared
+//! merge until then: an authored `group_tasks` there HID every declared
 //! group it did not name, where the entry kept such a group on the default
 //! sched task, so a node binding one of its two groups derived a different
 //! schedule on the two C roads. It calls [`node_callback_groups`] now.
@@ -98,7 +98,7 @@ pub fn node_callback_groups(
 /// `declared(pkg, exec)` is the group ids the node's CODE states. On the Rust
 /// road that is the source-metadata sidecar `nros sync` writes
 /// ([`groups_of_component`]) - the Rust spelling of what the cmake
-/// `CALLBACK_GROUPS` keyword carries to `codegen entry`. Issue 2432: the macro
+/// `CALLBACK_GROUPS` keyword carries to `codegen entry`. The macro used to
 /// read the model's bindings alone, so a Rust node whose code names its groups
 /// and whose `system.toml` binds none reached the derivation groupless, and the
 /// image ran on one task where its C and C++ twins derived a schedule.

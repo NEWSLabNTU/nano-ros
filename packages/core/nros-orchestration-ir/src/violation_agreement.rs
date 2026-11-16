@@ -1,6 +1,6 @@
-//! phase-462 W2 -- the contract's `on_violation` and the sched task table's
+//! The contract's `on_violation` and the sched task table's
 //! `deadline_policy` are two statements about ONE fact, so a divergence is a
-//! build error naming both sites (phase-454 W7's shape, in
+//! build error naming both sites (the shape of
 //! [`crate::qos_agreement`]).
 //!
 //! # What the contract actually carries
@@ -344,7 +344,7 @@ pub fn sched_task_actions(
 /// This is the whole lowering. `plan_from_model` applies the result to the
 /// `SchedTaskDef`s it builds, so the baked entry's `run_sched_tasks` / SchedContext rows
 /// carry the contract's word and the executor reacts to it -- rather than the
-/// word staying in a YAML file, which is the state phase-462 exists to end.
+/// word staying in a YAML file, which is the state this work exists to end.
 pub fn contract_deadline_policies(
     model: &SystemModel,
 ) -> Result<BTreeMap<String, String>, ViolationAgreementError> {

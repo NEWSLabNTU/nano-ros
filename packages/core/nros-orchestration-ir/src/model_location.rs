@@ -1,4 +1,4 @@
-//! phase-330 W3.b (RFC-0063) — where a consumer looks for the SystemModel.
+//! Where a consumer looks for the SystemModel.
 //!
 //! The model is becoming a BUILD ARTIFACT. Until W4 deletes the committed
 //! copies, both locations exist, so every consumer needs the same search order
@@ -14,7 +14,7 @@
 //!
 //! # The order, and why
 //!
-//! 1. `$NROS_MODEL_DIR` — a SHARED build root. RFC-0065's builder sets this
+//! 1. `$NROS_MODEL_DIR` — a SHARED build root. The `nros build` builder sets this
 //!    when several entry crates use one bringup and should share a single
 //!    regeneration. Highest priority because it is an explicit instruction.
 //! 2. `$OUT_DIR/nros/` — the per-crate cargo build output. This is the W3.a
@@ -98,7 +98,7 @@ pub fn model_search_paths(bringup_dir: &Path, model_rel: &str) -> Vec<PathBuf> {
     out
 }
 
-/// phase-531 W3 (RFC-0121 D3) — the root `nros sync` generates a launchless
+/// The root `nros sync` generates a launchless
 /// bringup's launch tree under: `<ws>/build/nros/launch/<bringup>/`, beside
 /// the models' own build root (`<ws>` is `bringup_dir/../..`, the
 /// conventional `<ws>/src/<bringup>` layout [`model_search_paths`] already
@@ -126,11 +126,11 @@ pub fn generated_launch_root(bringup_dir: &Path) -> Option<PathBuf> {
     Some(ws_root.join("build").join("nros").join("launch").join(name))
 }
 
-/// phase-531 W3 — where the generated launch file of `bringup_dir` lives:
+/// Where the generated launch file of `bringup_dir` lives:
 /// `<generated_launch_root>/launch/` for a bringup. A single-package leaf (a
-/// `system.toml` beside code, retiring in phase-531 W7) is its own workspace
+/// `system.toml` beside code, being retired) is its own workspace
 /// root, so its file is under `<leaf>/build/nros/launch/<leaf>/`, where its
-/// sync has always written it (phase-445 W3).
+/// sync has always written it.
 #[must_use]
 pub fn generated_launch_dir(bringup_dir: &Path) -> Option<PathBuf> {
     if crate::leaf_system::is_package_dir(bringup_dir) {
@@ -146,7 +146,7 @@ pub fn generated_launch_dir(bringup_dir: &Path) -> Option<PathBuf> {
     generated_launch_root(bringup_dir).map(|r| r.join("launch"))
 }
 
-/// phase-531 W3 (RFC-0121 D3) — the directory a bringup's launch files are
+/// The directory a bringup's launch files are
 /// read from: its authored `launch/` when it has one, else the generated one
 /// ([`generated_launch_dir`]). The ONE answer every reader of "the bringup's
 /// launch file" asks, so an authored and a generated launch file are seen
@@ -202,7 +202,7 @@ pub fn launch_is_generated(bringup_dir: &Path) -> bool {
 /// candidate — the legacy committed location — purely so the error names a
 /// stable path.
 ///
-/// phase-336 W7: that is a naming convenience, NOT advice. Since W4 the model
+/// That is a naming convenience, NOT advice. The model
 /// is a build artifact and `check-no-tracked-models` rejects a committed one,
 /// so a caller reporting "not found" must tell the user to GENERATE it
 /// (`nros sync`), never to create the path this returns. The three CLI messages
@@ -220,7 +220,7 @@ pub fn resolve_model_path(bringup_dir: &Path, model_rel: &str) -> PathBuf {
         .unwrap_or_else(|| bringup_dir.join(model_rel))
 }
 
-/// phase-330 W7 — map the INPUT coordinates of a system to the model's
+/// Map the INPUT coordinates of a system to the model's
 /// bringup-relative path.
 ///
 /// The user-facing input is `(bringup, launch file, launch args)`; the model
@@ -229,7 +229,7 @@ pub fn resolve_model_path(bringup_dir: &Path, model_rel: &str) -> PathBuf {
 /// the CLI) `nano_ros_entry(LAUNCH …)` — the same one-home rule as
 /// [`model_search_paths`] above.
 ///
-/// Rules (phase-330 W4.0 derive-plus-declare):
+/// Rules (derive-plus-declare):
 /// 1. `args` non-empty → a `[[model]]` declaration in `system.toml` matching
 ///    `(launch, args)` MUST exist (declarations are the SSoT for which
 ///    bindings exist); its `out` names the model.
@@ -305,7 +305,7 @@ pub fn launch_to_model_rel(
 
 /// The bringup's default launch file (`[system] default_launch`, or the
 /// conventional `system.launch.xml`). An unparsable `system.toml` is an error
-/// naming it (issue 1895), never the conventional name.
+/// naming it, never the conventional name.
 pub fn default_launch(bringup_dir: &Path) -> Result<String, String> {
     crate::system_launch::SystemLaunch::read(&bringup_dir.join("system.toml"))
         .map(|c| c.default_launch().to_string())
@@ -325,7 +325,7 @@ pub type LaunchInputs = (String, Vec<(String, String)>);
 ///
 /// `Ok(None)` means the path does not correspond to any launch this bringup
 /// has, which is a user error worth reporting with the model name in it. `Err`
-/// is a `system.toml` that does not parse (issue 1895).
+/// is a `system.toml` that does not parse.
 pub fn model_rel_to_inputs(
     bringup_dir: &Path,
     model_rel: &str,
@@ -366,7 +366,7 @@ pub const LAUNCH_RESOLVER: &str = "nros-launch-resolve";
 
 /// The `nros-launch-resolve` helper, by ABSOLUTE path.
 ///
-/// Never `$PATH` (issue 0285): a stale `~/.nros/bin` copy silently shadows the
+/// Never `$PATH`: a stale `~/.nros/bin` copy silently shadows the
 /// in-tree one and resolves with an older schema. The order is explicit
 /// override, then this checkout, then the installed store.
 ///
@@ -378,14 +378,14 @@ pub fn launch_resolver_bin() -> Option<PathBuf> {
 }
 
 /// [`launch_resolver_bin`], with "this checkout" anchored to the checkout that
-/// owns `near` — issue 1641.
+/// owns `near`.
 ///
 /// `$NROS_REPO_DIR` used to be read here (first as given, then through the
-/// issue-1280 re-root rule). A linked worktree inherits it from the shell that
+/// worktree re-root rule). A linked worktree inherits it from the shell that
 /// spawned it, pointing at the PARENT, so a model self-resolved while compiling
 /// inside a worktree was produced by the parent checkout's resolver — and a
 /// resolver from a different layer-2 checkout writes a model that is MISSING
-/// DATA rather than failing (issue 0409). RFC-0103 D6 (amended 2026-10-12)
+/// DATA rather than failing. The one-owner-per-fact rule (amended 2026-10-12)
 /// removed the variable: "this checkout" is the one that owns `near`, by the
 /// marker walk — else, with no `near` or one in no checkout, the SDK root this
 /// crate itself was compiled from (the D6-M rule: every nros crate is compiled
@@ -401,7 +401,7 @@ pub fn launch_resolver_bin_near(near: Option<&Path>) -> Option<PathBuf> {
 }
 
 /// [`launch_resolver_bin_near`] for a caller that IS an installed binary —
-/// the `nros` CLI (issue 1850). `exe` adds the installed-layout rung (the
+/// the `nros` CLI. `exe` adds the installed-layout rung (the
 /// helper shipped beside it) and anchors "this checkout" when `near` is
 /// `None`. `nros sync` and `nros locate tool nros-launch-resolve` both ask
 /// this, so the CLI, the shell (which reads `nros locate`) and a build script
@@ -478,14 +478,14 @@ pub fn launch_resolver_in_checkout(root: &Path) -> PathBuf {
 ///
 ///   1. `explicit` (`$NROS_LAUNCH_RESOLVE`);
 ///   2. this checkout's build — the checkout owning `near`, else
-///      `own_checkout` (issue 1641: a worktree never borrows its parent's);
+///      `own_checkout` (a worktree never borrows its parent's);
 ///   3. beside the running binary — the installed layout;
 ///   4. `<store>/bin/`.
 ///
-/// Never `$PATH` (issue 0285). The rung `scripts/build/launch-resolver-
+/// Never `$PATH`. The rung `scripts/build/launch-resolver-
 /// identity.sh` used to add, `$CARGO_TARGET_DIR/release`, is deliberately NOT
 /// one: an ambient target dir is a property of a shell, not of a checkout, so
-/// it names whichever tree that shell last built (issue 0616's class), and the
+/// it names whichever tree that shell last built), and the
 /// CLI that actually spawns the resolver never read it — an identity computed
 /// from it described a binary nobody ran.
 pub fn launch_resolver_from(l: &LaunchResolverLadder<'_>) -> Option<PathBuf> {
@@ -497,8 +497,7 @@ pub fn launch_resolver_from(l: &LaunchResolverLadder<'_>) -> Option<PathBuf> {
 /// Every rung of [`launch_resolver_from`], in order, with the path it would
 /// answer (`None`: the rung has no input here — the variable is unset, there
 /// is no checkout). [`launch_resolver_from`] is the first that is a file, so a
-/// refusal built from this list names exactly the places the lookup tried
-/// (issue 2205).
+/// refusal built from this list names exactly the places the lookup tried.
 pub fn launch_resolver_rungs(l: &LaunchResolverLadder<'_>) -> Vec<(&'static str, Option<PathBuf>)> {
     let here = l
         .near
@@ -524,7 +523,7 @@ pub fn launch_resolver_rungs(l: &LaunchResolverLadder<'_>) -> Vec<(&'static str,
     ]
 }
 
-/// Issue 2205 — why the resolver was not found, and how each road provides it:
+/// Why the resolver was not found, and how each road provides it:
 /// the ONE text `nros sync` and `nros locate tool nros-launch-resolve` print.
 ///
 /// `nros sync` used to say it "is not next to the `nros` binary", which is one
@@ -609,7 +608,7 @@ fn model_write_dirs(bringup_dir: &Path) -> Vec<PathBuf> {
 /// from the inputs a moment ago, or reused while newer than every one -- and
 /// carries the resolver's own version rather than the pin `nros sync` stamps,
 /// so a provenance check written for sync's models does not apply to it. The
-/// refusal marker still does (phase-460 W1 follow-up).
+/// refusal marker still does.
 pub fn is_self_resolved(bringup_dir: &Path, model: &Path) -> bool {
     let Some(parent) = model.parent() else {
         return false;
@@ -657,8 +656,8 @@ fn build_scoped_dir(bringup_dir: &Path) -> String {
 }
 
 /// Extension of the marker `nros sync` writes beside a model whose resolve it
-/// REFUSED: `system_model.yaml` is refused by `system_model.refused` (phase-460
-/// W1). Spelled here, below every consumer, so the `nros::main!` proc-macro --
+/// REFUSED: `system_model.yaml` is refused by `system_model.refused`.
+/// Spelled here, below every consumer, so the `nros::main!` proc-macro --
 /// which cannot depend on the CLI's `model_gate` -- reads the same marker.
 pub const REFUSED_MARKER_EXT: &str = "refused";
 
@@ -683,15 +682,15 @@ pub fn refused_marker_for(bringup_dir: &Path, model_rel: &str) -> Option<PathBuf
 /// Locate the model for `(bringup, model_rel)`, RESOLVING it from the bringup's
 /// inputs when no build has produced one.
 ///
-/// phase-460 W1 follow-up -- REFUSES when `nros sync` last refused this
+/// REFUSES when `nros sync` last refused this
 /// model (a [`refused_marker_for`] marker exists). A refused resolve leaves no
 /// model behind, so without this the branch below re-resolved one from the
 /// inputs and a consumer built from a model its producer had just rejected
 /// (the refusing check may be one only `nros sync` runs). The marker stays
 /// until the next successful `nros sync` removes it.
 ///
-/// phase-330 made the SystemModel a build artifact; this closes the gap that
-/// left (issue 0414). A consumer that only ever LOOKED for the artifact fails
+/// The SystemModel became a build artifact; this closes the gap that
+/// left. A consumer that only ever LOOKED for the artifact fails
 /// with "SystemModel not found" whenever it runs without a build system that
 /// ran the resolver first — which is what a plain `cargo build` of an entry
 /// crate is. The inputs are always present; the artifact is derived from them,

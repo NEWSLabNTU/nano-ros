@@ -1,7 +1,7 @@
-//! Issue 1676 — the contract-monitor rows a resolved `SystemModel` bakes, in
+//! The contract-monitor rows a resolved `SystemModel` bakes, in
 //! ONE place both producers read.
 //!
-//! RFC-0052 / phase-296 W3b — a contracted publisher (`min_rate_hz`, a node
+//! A contracted publisher (`min_rate_hz`, a node
 //! path's `max_latency_ms`) and a contracted subscriber (`max_age_ms`) each
 //! become one row of the executor's monitor tables. The CLI's C and C++ entry
 //! emitters bake these rows; the `nros::main!` proc-macro bakes the same rows
@@ -18,8 +18,8 @@ use ros_launch_manifest_model::SystemModel;
 #[error("{0}")]
 pub struct ContractRowError(pub String);
 
-/// R1-N1 — one contracted-publisher monitor row extracted from the model
-/// (RFC-0052 W3b.4 consumer side).
+/// One contracted-publisher monitor row extracted from the model
+/// (the consumer side of the baked monitor table).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct MonitorRow {
     /// Topic FQN (the wiring name the publisher creates).
@@ -42,34 +42,34 @@ pub struct MonitorRow {
     /// the trigger to this output (`route-latency-runtime`). 0 = none.
     #[serde(skip_serializing_if = "is_zero", default)]
     pub route_max_latency_ms: u32,
-    /// phase-503 -- the route's SUPERVISED deadline (ms) from the take of the
+    /// The route's SUPERVISED deadline (ms) from the take of the
     /// trigger (`route-deadline-runtime`: the executor reports a take still
     /// unanswered at `take + route_deadline_ms` and calls its reaction hook).
     /// 0 = not supervised, the default: a model that states no supervision
     /// bakes exactly the row it baked before.
     #[serde(skip_serializing_if = "is_zero", default)]
     pub route_deadline_ms: u32,
-    /// phase-503 -- the reaction the deadline starts: the contract's path
+    /// The reaction the deadline starts: the contract's path
     /// ref, or empty for none.
     #[serde(skip_serializing_if = "String::is_empty", default)]
     pub reaction: String,
-    /// phase-503 -- the id the reaction hook receives for [`Self::reaction`]:
+    /// The id the reaction hook receives for [`Self::reaction`]:
     /// 1-based over the model's distinct reaction refs in sorted order
     /// ([`reaction_ids`]); 0 = none.
     #[serde(skip_serializing_if = "is_zero_u16", default)]
     pub reaction_id: u16,
-    /// phase-503 -- [`MECHANISM_EXECUTOR`] or [`MECHANISM_TIMER`].
+    /// [`MECHANISM_EXECUTOR`] or [`MECHANISM_TIMER`].
     #[serde(skip_serializing_if = "is_zero_u8", default)]
     pub mechanism: u8,
 }
 
-/// phase-503 -- [`MonitorRow::mechanism`]: checked in the executor's spin loop.
+/// [`MonitorRow::mechanism`]: checked in the executor's spin loop.
 pub const MECHANISM_EXECUTOR: u8 = 0;
-/// phase-503 -- [`MonitorRow::mechanism`]: an independent timer outside the
+/// [`MonitorRow::mechanism`]: an independent timer outside the
 /// executor.
 pub const MECHANISM_TIMER: u8 = 1;
 
-/// phase-503 -- the mechanism a contract names (`executor` | `timer`), as the
+/// The mechanism a contract names (`executor` | `timer`), as the
 /// row's code. Anything else is refused by the caller.
 #[must_use]
 pub fn mechanism_code(name: &str) -> Option<u8> {
@@ -80,7 +80,7 @@ pub fn mechanism_code(name: &str) -> Option<u8> {
     }
 }
 
-/// phase-503 -- the route supervision one output carries: its deadline (ms),
+/// The route supervision one output carries: its deadline (ms),
 /// the reaction path ref, and the mechanism code.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteSupervision {
@@ -89,7 +89,7 @@ pub struct RouteSupervision {
     pub mechanism: u8,
 }
 
-/// phase-503 -- the reaction table: every distinct reaction ref the rows name,
+/// The reaction table: every distinct reaction ref the rows name,
 /// sorted, with the id the hook receives for it (1-based). The generated
 /// entries print it beside the rows, so a hook can map an id back to the
 /// path the contract named.
@@ -108,7 +108,7 @@ pub fn reaction_ids(rows: &[MonitorRow]) -> Vec<(u16, String)> {
         .collect()
 }
 
-/// phase-462 W3c -- the reaction table for a whole MODEL: every route's
+/// The reaction table for a whole MODEL: every route's
 /// supervised `reaction` and every hazard reaction path that states a
 /// `safe_state`, sorted, numbered as [`reaction_ids`] numbers them.
 ///
@@ -142,7 +142,7 @@ pub fn model_reaction_ids(model: &SystemModel) -> Vec<(u16, String)> {
         .collect()
 }
 
-/// phase-503 -- number every row's reaction by [`reaction_ids`].
+/// Number every row's reaction by [`reaction_ids`].
 pub fn assign_reaction_ids(rows: &mut [MonitorRow]) {
     let ids = reaction_ids(rows);
     for r in rows.iter_mut() {
@@ -184,13 +184,13 @@ fn route_supervision_of(
     }))
 }
 
-/// phase-503 -- attach supervision to the rows by output endpoint ref. A row
+/// Attach supervision to the rows by output endpoint ref. A row
 /// whose route is not stated in `sup` is left unsupervised; a supervision for
 /// an output with no route row is refused, since nothing would watch it.
 /// Reaction ids are (re)assigned over the whole table.
 ///
 /// [`monitor_rows`] feeds it from the model's `supervise:` on each
-/// input-triggered node path (phase-503 W5).
+/// input-triggered node path.
 pub fn apply_route_supervision(
     rows: &mut [MonitorRow],
     sup: &std::collections::BTreeMap<String, RouteSupervision>,
@@ -235,7 +235,7 @@ pub struct AgeRow {
     /// Declared max take-age, ms. 0 = the row exists for its `deadline_ms`
     /// alone.
     pub max_age_ms: u32,
-    /// phase-462 W5b -- the contract's `deadline` for this endpoint (its own
+    /// The contract's `deadline` for this endpoint (its own
     /// `qos:` block, else the topic's), in the wire's milliseconds. 0 = none.
     /// The executor judges it only where the subscription's backend cannot.
     pub deadline_ms: u32,
@@ -382,7 +382,7 @@ pub fn monitor_rows(model: &SystemModel) -> Result<Vec<MonitorRow>, ContractRowE
 /// with `max_age_ms`, joined to the topic whose wiring lists it as a
 /// subscriber. Orphans fail loud (same rule as the publisher join).
 ///
-/// phase-462 W5b -- and every one whose contract states a `deadline`, so a
+/// And every one whose contract states a `deadline`, so a
 /// backend that cannot judge it hands it to the silence rule rather than
 /// refusing it at boot.
 pub fn age_rows(model: &SystemModel) -> Result<Vec<AgeRow>, ContractRowError> {
@@ -511,7 +511,7 @@ fn hazard_sinks(model: &SystemModel) -> std::collections::BTreeMap<String, u32> 
     out
 }
 
-/// phase-462 W3b -- one guard member, as a row of THIS table set.
+/// One guard member, as a row of THIS table set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum MonitorMemberRow {
     /// Index into the age rows.
@@ -520,7 +520,7 @@ pub enum MonitorMemberRow {
     Rate(usize),
 }
 
-/// phase-462 W3b -- one guard of a [`HazardRow`].
+/// One guard of a [`HazardRow`].
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct HazardMonitorRow {
     /// Faults only when every member has.
@@ -529,7 +529,7 @@ pub struct HazardMonitorRow {
     pub members: Vec<MonitorMemberRow>,
 }
 
-/// phase-462 W3b -- one contracted hazard, lowered onto one executor's
+/// One contracted hazard, lowered onto one executor's
 /// monitor tables (the observer reads those rows' verdicts).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct HazardRow {
@@ -543,11 +543,11 @@ pub struct HazardRow {
     pub monitors: Vec<HazardMonitorRow>,
     /// Rate-row index of the `safe_state` publisher, when this table set has it.
     pub sink: Option<usize>,
-    /// phase-462 W3c -- the id the reaction hook receives on `hazard-detected`
+    /// The id the reaction hook receives on `hazard-detected`
     /// ([`model_reaction_ids`]), or 0 when the reacting path states no
     /// `safe_state`: then there is no safe-state entry to start.
     pub reaction_id: u16,
-    /// play_launch phase 96 W4.2 (phase 85 D4) -- the hazard's ladder, top
+    /// The hazard's ladder, top
     /// rung first ([`hazard_rungs`]). Empty: no rung route is monitored.
     pub rungs: Vec<HazardRungRow>,
     /// rlm v0.3.13 -- the safety requirement the hazard traces to
@@ -573,12 +573,12 @@ pub fn requirement_text(h: &ros_launch_manifest_model::HazardContract) -> String
     }
 }
 
-/// play_launch phase 96 W4.2 -- one rung of a hazard's ladder, lowered onto an
+/// One rung of a hazard's ladder, lowered onto an
 /// executor's tables.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct HazardRungRow {
     /// The rung's name (`contracts.hazards.<h>.degradation_levels[].level`,
-    /// `rungs[].rung` before rlm v0.3.3): for comments, and (phase-560 W8) the
+    /// `rungs[].rung` before rlm v0.3.3): for comments, and the
     /// level `hazard-level-runtime` names when the ladder is on this rung.
     pub name: String,
     /// The baked mode id of the mode the rung is ([`crate::mode_variants::mode_ids`]);
@@ -603,7 +603,7 @@ fn endpoint_node(fqn: &str) -> &str {
     fqn.rsplit_once('/').map_or("", |(n, _)| n)
 }
 
-/// play_launch phase 96 W4.2 -- the hazard's ladder as rows of this table set:
+/// The hazard's ladder as rows of this table set:
 /// every rung the model lists (top first; a rung the fault removes is not
 /// listed), each with the mode it is, the row that observes its output, its
 /// route and the guard members that are its `starts_at` node's detectors.
@@ -708,7 +708,7 @@ fn topic_detectors_in_model(model: &SystemModel, topic: &str) -> Vec<String> {
     subs.chain(pubs).cloned().collect()
 }
 
-/// phase-462 W3b -- the hazards this table set observes, as rows indexing it.
+/// The hazards this table set observes, as rows indexing it.
 ///
 /// `rows` / `ages` are the tables ONE executor installs (already sliced to the
 /// nodes it runs). A hazard is lowered here only when every guard topic the
@@ -719,7 +719,7 @@ fn topic_detectors_in_model(model: &SystemModel, topic: &str) -> Vec<String> {
 /// `all_of` guard that leaves the guard unable to fault, so it is dropped.
 /// A hazard left with no guard is not lowered.
 ///
-/// issue 2214 -- the rows a guard can name are omission evidence: an age row's
+/// The rows a guard can name are omission evidence: an age row's
 /// silence lease and a rate row's short window both say "nothing arrived",
 /// never "what arrived says the fault". A hazard whose `on:` names no class
 /// they detect (`reported` alone, a value fault such as a `when:` predicate,
@@ -905,7 +905,7 @@ fn render_hazards_rs(hazards: &[HazardRow], paths: RenderPaths) -> String {
     out
 }
 
-/// R1-N1 — render the baked Rust monitor-table include
+/// Render the baked Rust monitor-table include
 /// (`nros-system/system_monitors.rs`): one `PubMonitorCell` static per
 /// contracted publisher + the `MONITORS` spec table + an installer the
 /// generated entry calls before entity creation. Empty rows → an empty
@@ -914,12 +914,12 @@ pub fn render_monitor_rs(rows: &[MonitorRow], ages: &[AgeRow]) -> String {
     render_monitor_rs_at(rows, ages, RenderPaths::NROS_NODE)
 }
 
-/// [`render_monitor_rs`] with the type paths stated — issue 1676.
+/// [`render_monitor_rs`] with the type paths stated.
 pub fn render_monitor_rs_at(rows: &[MonitorRow], ages: &[AgeRow], paths: RenderPaths) -> String {
     render_monitor_rs_full(rows, ages, &[], paths)
 }
 
-/// [`render_monitor_rs_at`] plus phase-462 W3b's hazard table: the installer
+/// [`render_monitor_rs_at`] plus the hazard table: the installer
 /// also calls `set_hazard_table(NROS_HAZARDS)`, after the two monitor tables
 /// whose rows the hazards index.
 pub fn render_monitor_rs_full(

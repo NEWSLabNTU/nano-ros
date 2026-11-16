@@ -1,14 +1,14 @@
-//! phase-516 W1a (RFC-0074 enforcement point 1, "As lowered") — the router
+//! The router
 //! `downsampling` rule a bringup's declared arrival curve lowers to.
 //!
 //! A subscriber's `arrival_curve: { rate_hz, burst }` is enforced in two places. The
-//! device half (phase-462) budgets the read task; this is the router half,
+//! device half budgets the read task; this is the router half,
 //! which is the only place the device's CPU can be saved, because it drops
 //! the excess before the device decodes anything. The rule runs in ROS's
 //! `rmw_zenohd`, not on the device, so it is an ARTIFACT deployed with the
 //! router's configuration: `<model-stem>.router.json5`, beside the model.
 //!
-//! What zenoh's interceptor can carry decides the lowering (RFC-0074 "As
+//! What zenoh's interceptor can carry decides the lowering (the ingress budget's "As
 //! lowered"):
 //!
 //! - **burst 1.** The interceptor enforces a minimum interval per rule and per
@@ -24,7 +24,7 @@
 //!   `link_protocols: ["serial"]`; otherwise it applies to every peer of the
 //!   router, and the file says so.
 //!
-//! No declaration ⇒ no file, and a stale one is deleted (RFC-0100's
+//! No declaration ⇒ no file, and a stale one is deleted (the sizing model's
 //! 2026-10-10 rule: a reader acts on whatever file sits at the path).
 
 use std::{
@@ -140,7 +140,7 @@ impl Deployment {
     /// `routed` answers, for an image's stated RMW (`None` when it states
     /// none and `[system]` states none either), whether that image's traffic
     /// crosses the router this rule configures. The caller supplies it: a
-    /// core crate names no backend (RFC-0071 D2).
+    /// core crate names no backend.
     pub fn from_bringup(
         dir: &Path,
         routed: &dyn Fn(Option<&str>) -> bool,

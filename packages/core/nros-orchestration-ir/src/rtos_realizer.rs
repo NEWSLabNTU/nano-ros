@@ -1,5 +1,5 @@
-//! phase-296 W5.2 — the RTOS realizer over the agnostic `RankedPlan`
-//! (RFC-0052 §"nano-ros execution modeling" / play_launch phase-45 §45.10).
+//! The RTOS realizer over the agnostic `RankedPlan`
+//! (the SystemModel-to-RTOS mapping's execution model, shared with play_launch).
 //!
 //! The shared core ([`ros_launch_manifest_sched::chain_aware_rank`]) produced a
 //! **priorityless** ordered/segmented ranking. This realizer turns it into a
@@ -37,11 +37,11 @@ pub struct SchedCaps {
     pub reservation: bool,
     /// Native preemption-threshold (ThreadX). A board fact the book's
     /// scheduling matrix reports (`scripts/gen-sched-matrix.py`); the
-    /// threshold itself is RFC-0108's per level, never a realizer dim.
+    /// threshold itself is the preemption-level model's per level, never a realizer dim.
     pub preempt_threshold: bool,
     /// SMP core affinity.
     pub affinity: bool,
-    /// Issue 0259 — how many cores this image runs on, when the deployment says.
+    /// How many cores this image runs on, when the deployment says.
     ///
     /// `None` is the default and means UNKNOWN, not one. Nothing in the board
     /// descriptors records a core count, and a bake cannot infer one: assuming
@@ -49,10 +49,10 @@ pub struct SchedCaps {
     /// many would excuse a taskset that cannot fit. Both are fabricated
     /// hardware, which is the same failure as a fabricated WCET.
     ///
-    /// Nothing sets it: issue 0951 deleted the `[deploy.<board>] cores` knob,
+    /// Nothing sets it: the `[deploy.<board>] cores` knob was deleted,
     /// which no authoring path could write, so `sched_caps_for` answers `None`
     /// for every platform. Until an authored input exists, the utilisation
-    /// check stays silent and `placement` is not derived (issue 0259).
+    /// check stays silent and `placement` is not derived.
     pub n_cores: Option<u16>,
     /// Number of distinct priority levels.
     pub n_priorities: u16,
@@ -93,13 +93,13 @@ pub struct RealizedNode {
     pub deadline_us: Option<u64>,
     pub budget_us: Option<u64>,
     pub core: Option<u32>,
-    /// Issue 0259 — the derived BLOCKING term `B_i`, µs: the longest a callback
+    /// The derived BLOCKING term `B_i`, µs: the longest a callback
     /// on this node can be made to wait for a mutually-exclusive sibling.
     ///
     /// Derived, never authored. `None` means "not derivable" — fewer than two
     /// callbacks carry a WCET — and specifically NOT "no blocking". A
-    /// feasibility check that reads `None` as zero is the optimism issue 0259
-    /// is about; one that reads it as unknown is correct.
+    /// feasibility check that reads `None` as zero is the optimism of an absent number counted as zero;
+    /// one that reads it as unknown is correct.
     pub blocking_us: Option<u64>,
     pub deadline_real: DimRealization,
     pub budget_real: DimRealization,
@@ -124,14 +124,14 @@ pub struct RtosPlan {
 }
 
 /// The board seam (W5.3): the per-platform [`SchedCaps`] the realizer targets.
-/// Grounded in the platform scheduler survey (RFC-0052 §"Scheduling model
+/// Grounded in the platform scheduler survey (the RTOS mapper's "Scheduling model
 /// evolution"). `target` is a SCHED TASK KEY: `posix` (or `native`), `freertos`,
 /// `zephyr`, `threadx` or `nuttx`. That is `BoardFamily::sched_task_rtos_key`'s
 /// output, and it is matched EXACTLY. Anything else, including `""` (a board
 /// with no RTOS family), gets the bare-metal caps. Kept consistent with W2's
 /// applicability table (e.g. preemption-threshold is ThreadX-only).
 ///
-/// Issue 1285 follow-up: this used to be a SUBSTRING match that also accepted
+/// This used to be a SUBSTRING match that also accepted
 /// board keys (`mps2-an385-freertos`, `threadx-linux`). Every in-tree caller
 /// already passes a sched task key, so the substring bought nothing, and it would
 /// have read an out-of-tree `my-freertos-board` as FreeRTOS. Board keys are
@@ -349,7 +349,7 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
 }
 
 /// Each node's release period in microseconds, as the realizer reads it
-/// (RFC-0079's table: a sched task's spin period is derived from its members'
+/// (the allocation rule's table: a sched task's spin period is derived from its members'
 /// releases). The SAME fold [`realize_rtos`] stamps `RealizedNode::period_us`
 /// from, so the spin period and the realized period cannot disagree. Nodes
 /// that are purely event-driven have no entry.
@@ -449,7 +449,7 @@ fn rank_to_priority(rank: usize, plan: &PriorityPlan) -> Allocation {
 
 /// Realize the agnostic ranking into an RTOS plan for a board.
 ///
-/// phase-459 W4 - `plan` is the board's priority address plan (RFC-0079):
+/// `plan` is the board's priority address plan:
 /// where the application's priorities live, and what they must stay below.
 /// [`crate::priority_plan::PriorityPlan::for_target`] answers it from a sched task
 /// key; an image resolves its own with `from_zephyr_dotconfig`.

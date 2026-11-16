@@ -1,4 +1,4 @@
-//! phase-556 W13 -- which node interfaces an image gets.
+//! Which node interfaces an image gets.
 //!
 //! An upstream rclcpp node serves the six parameter services and publishes
 //! `/rosout` without its author asking. nano-ros builds those as capability
@@ -39,7 +39,7 @@ pub enum NodeInterfaces {
 /// What an image that states no switch gets.
 ///
 /// `None` here means "as declared": no stock interface is added or removed.
-/// phase-556 W13 step 3 flips this to `Some(NodeInterfaces::Stock)`, which
+/// A planned step flips this to `Some(NodeInterfaces::Stock)`, which
 /// makes every image serve the stock set unless it opts out with
 /// `node_interfaces = "none"`.
 pub const DEFAULT_NODE_INTERFACES: Option<NodeInterfaces> = None;

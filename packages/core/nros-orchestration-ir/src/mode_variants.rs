@@ -1,4 +1,4 @@
-//! phase-462 W4 -- a contract MODE lowered onto the image's tables.
+//! A contract MODE lowered onto the image's tables.
 //!
 //! A mode (`contracts.modes.<m>`) is a set of overrides over the SAME
 //! entities: a tighter latency, a lower rate, a shorter age. The executor's
@@ -412,7 +412,7 @@ pub fn all_variants(model: &SystemModel) -> Result<Vec<LoweredMode>, ModeError> 
 /// already sliced to this executor exactly as the base was. Empty when there
 /// are no modes.
 ///
-/// phase-462 W4c -- `extras` carries what a table holds beyond its rows: each
+/// `extras` carries what a table holds beyond its rows: each
 /// mode's SchedContext deadlines (the base's first) and each mode's switch
 /// budget. [`ModeExtras::default`] bakes neither.
 #[must_use]
@@ -493,7 +493,7 @@ pub fn render_mode_tables_rs(
     out
 }
 
-/// phase-462 W4c -- every DERIVED sched task's deadline in one model, µs (0 = the
+/// Every DERIVED sched task's deadline in one model, µs (0 = the
 /// sched task states none), keyed by sched task name.
 ///
 /// Only a derived sched task's deadline is the contract's: an authored
@@ -535,7 +535,7 @@ pub fn derived_sched_task_deadlines(
         .collect()
 }
 
-/// phase-462 W4c -- one derived sched task's timing, as a mode compares it.
+/// One derived sched task's timing, as a mode compares it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SchedTaskTiming {
     /// µs; 0 = none.
@@ -548,7 +548,7 @@ pub struct SchedTaskTiming {
     pub priority: Option<i64>,
 }
 
-/// phase-462 W4c -- each mode's derived sched task deadlines, and the sched tasks whose
+/// Each mode's derived sched task deadlines, and the sched tasks whose
 /// deadline differs in ANY mode.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModeSchedTaskDeadlines {
@@ -563,7 +563,7 @@ pub struct ModeSchedTaskDeadlines {
     pub not_lowered: Vec<String>,
 }
 
-/// phase-462 W4c -- the per-mode deadlines of every derived sched task, refusing a
+/// The per-mode deadlines of every derived sched task, refusing a
 /// mode whose derived sched task SET differs from the base's.
 ///
 /// The deadline is the one sched task fact a switch can apply: the executor reads
@@ -654,7 +654,7 @@ pub fn mode_sched_task_deadlines(
     })
 }
 
-/// phase-462 W4c -- the latency a mode's switch is allowed: its reaction
+/// The latency a mode's switch is allowed: its reaction
 /// path's `max_latency`, in ms, rounded up. `None` when the mode names no
 /// reaction or the path states no latency.
 #[must_use]
@@ -673,7 +673,7 @@ pub fn mode_switch_budget_ms(model: &SystemModel, mode: &str) -> Option<(String,
     ))
 }
 
-/// phase-462 W4c -- refuse a mode whose switch cannot meet its budget.
+/// Refuse a mode whose switch cannot meet its budget.
 ///
 /// An executor enters a requested mode at its NEXT spin, so the switch's
 /// on-target latency is bounded by the longest spin period among the
@@ -716,7 +716,7 @@ pub fn check_switch_latency(
     Ok(notes)
 }
 
-/// phase-462 W4c -- what one executor's mode tables carry beyond the rows.
+/// What one executor's mode tables carry beyond the rows.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModeExtras {
     /// `(sched context id, deadline_us)` rows: index 0 the base, `k` mode `k`,
@@ -728,7 +728,7 @@ pub struct ModeExtras {
     pub switch: Vec<(u32, String)>,
 }
 
-/// phase-462 W4c -- each mode's switch budget and reaction path, in
+/// Each mode's switch budget and reaction path, in
 /// [`mode_names`] order; `(0, "")` for a mode that states none.
 #[must_use]
 pub fn mode_switch_rows(model: &SystemModel) -> Vec<(u32, String)> {
@@ -738,7 +738,7 @@ pub fn mode_switch_rows(model: &SystemModel) -> Vec<(u32, String)> {
         .collect()
 }
 
-/// phase-462 W4c -- [`ModeSchedTaskDeadlines`] as one executor's deadline rows:
+/// [`ModeSchedTaskDeadlines`] as one executor's deadline rows:
 /// `sc_of(sched_task)` names the context a sched task runs under on this executor, or
 /// `None` when the sched task is not this executor's (its rows are skipped).
 #[must_use]

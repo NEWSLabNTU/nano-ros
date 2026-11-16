@@ -1,12 +1,12 @@
-//! phase-459 W4 (issue 1427, RFC-0079) - the board's priority ADDRESS PLAN,
+//! The board's priority ADDRESS PLAN,
 //! as the realizer's input.
 //!
-//! RFC-0079's rule is that a priority is ALLOCATED out of a board's address
+//! The rule is that a priority is ALLOCATED out of a board's address
 //! plan, never authored per sched task. Until this wave the realizer did not read a
 //! plan at all: `rank_to_priority` mapped dense rank 0 onto the most urgent
 //! number the kernel has (Zephyr 0), which sits ABOVE the transport threads
-//! that feed the application - the inversion RFC-0079 exists to prevent, and
-//! issue 1427 measured it on the Autoware Safety Island.
+//! that feed the application - the inversion this rule exists to prevent,
+//! measured on the Autoware Safety Island.
 //!
 //! A plan states four things, and this module is the only place they are
 //! spelled in Rust:
@@ -31,7 +31,7 @@
 //! [`PriorityPlan::from_zephyr_dotconfig`] runs it against one image's
 //! `.config`.
 //!
-//! # What this crate is NOT allowed to know (RFC-0071 D2)
+//! # What this crate is NOT allowed to know
 //!
 //! It is a CORE crate, so it names no backend: it receives the transport's
 //! normalised bands as NUMBERS. Which Kconfig symbols carry them is a
@@ -99,7 +99,7 @@ impl Band {
     }
 }
 
-/// One board's priority address plan (RFC-0079).
+/// One board's priority address plan.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PriorityPlan {
     pub direction: Direction,
@@ -114,7 +114,7 @@ pub struct PriorityPlan {
     /// Where this plan came from, for a diagnostic: a descriptor path, an
     /// image's `.config`, or the defaults projection.
     pub source: String,
-    /// phase-509 P5 (RFC-0108 D4 rule 4) - the image's level cap,
+    /// The image's level cap,
     /// `CONFIG_NROS_EXECUTOR_MAX_LEVELS`, when the plan was read from its
     /// `.config`. `None` takes the platform's default
     /// ([`crate::levels::default_max_levels`]).
@@ -149,7 +149,7 @@ const ZEPHYR_DEFAULT_NUM_COOP: i64 = 16;
 /// The normalised band nano-ros's Zephyr platform creates a TRANSPORT task at
 /// when the image states nothing.
 ///
-/// RFC-0071 D2 - a core crate receives capabilities and numbers, never backend
+/// A core crate receives capabilities and numbers, never backend
 /// names. This is a number about the PLATFORM: `nros-platform-zephyr` applies
 /// it through `nros_zephyr_native_priority`, whichever transport the image
 /// links. Which Kconfig symbols carry it per image is the BOARD descriptor's
@@ -162,7 +162,7 @@ const ZEPHYR_DEFAULT_NUM_COOP: i64 = 16;
 /// `check-sched-task-priority-plan-image.py --selftest` asserts this constant equals
 /// the unconditional default `zephyr/Kconfig` gives the transport-priority
 /// symbols the descriptor names. A second copy of a number is only safe while
-/// something compares it, which is this section's own lesson (RFC-0079 4.1).
+/// something compares it, which is this section's own lesson.
 pub const ZEPHYR_TRANSPORT_BAND_DEFAULT: i64 = 200;
 
 /// The normalised band -> POSIX priority half of the chain, mirroring
@@ -184,7 +184,7 @@ fn posix_rr_to_kthread(posix: i64, num_preempt: i64) -> i64 {
     num_preempt - posix - 1
 }
 
-/// The DERIVED Zephyr plan (RFC-0079 section 4.1), from the four Kconfig
+/// The DERIVED Zephyr plan, from the four Kconfig
 /// values that decide it.
 ///
 /// Sched tasks are RAW `k_thread` priorities, so the transport band has to end in
@@ -194,7 +194,7 @@ fn posix_rr_to_kthread(posix: i64, num_preempt: i64) -> i64 {
 /// it.
 /// `transport_bands` are the NORMALISED priorities (0..255, bigger is more
 /// urgent) the image creates its transport tasks at - numbers this module is
-/// handed, never symbols it looks up (RFC-0071 D2). An empty list means the
+/// handed, never symbols it looks up. An empty list means the
 /// image reserves nothing, and the application then owns the whole preemptive
 /// range.
 pub fn zephyr_plan(
@@ -253,9 +253,9 @@ impl PriorityPlan {
     /// The plan for a sched task KEY, with no image in hand.
     ///
     /// `target` is the output of `BoardFamily::sched_task_rtos_key` and is matched
-    /// EXACTLY, the same rule `sched_caps_for` follows (issue 1285). An
+    /// EXACTLY, the same rule `sched_caps_for` follows. An
     /// unrecognised key - including `""`, a board with no RTOS family - gets
-    /// the whole range and no reserved band, which is the pre-RFC-0079
+    /// the whole range and no reserved band, which is the older
     /// behaviour and is what a target with no descriptor has ever promised.
     ///
     /// For Zephyr this is the DEFAULTS projection, not one image's answer:
@@ -336,7 +336,7 @@ impl PriorityPlan {
         }
     }
 
-    /// The pre-RFC-0079 plan: the whole of a board's priority range, nothing
+    /// The older plan: the whole of a board's priority range, nothing
     /// reserved. Used where only [`crate::rtos_realizer::SchedCaps`] is known
     /// (a synthetic board in a test), never on a bake road.
     pub fn whole_range(n_priorities: u16, low_number_is_high: bool) -> Self {
@@ -360,11 +360,11 @@ impl PriorityPlan {
     ///
     /// The `.config` is the only honest input for the KERNEL half: both ends
     /// of the chain are per-image Kconfig, so a literal band would be true for
-    /// exactly one build and quietly wrong for the next - the failure RFC-0079
+    /// exactly one build and quietly wrong for the next - the failure the allocation rule
     /// exists to eliminate one level up.
     ///
     /// The TRANSPORT half arrives as numbers, not as symbols to look up
-    /// (RFC-0071 D2). Which Kconfig symbols carry an image's transport
+    /// (a core crate names no backend). Which Kconfig symbols carry an image's transport
     /// priorities depends on what that image links, and that is the backend's
     /// statement (`nros-rmw.toml`) read through the board descriptor's
     /// `[board.priority_plan] inputs` - both outside this crate. An empty
@@ -429,7 +429,7 @@ impl PriorityPlan {
     /// width is clamped (loudly: the realizer records a `Degradation`).
     ///
     /// `None` when the pool is EMPTY, and that is the whole point of the
-    /// `Option` (issue 1427). It used to return `self.app.hi` unconditionally,
+    /// `Option`. It used to return `self.app.hi` unconditionally,
     /// and on an empty pool `hi < lo`, so `hi` is not a pool address at all -
     /// it is the last priority the band BELOW the pool owns. On the pre-0852
     /// Zephyr image that band is the transport's (`transport = [0, 14]`,
@@ -459,7 +459,7 @@ impl PriorityPlan {
     /// a thread there is never preempted, which no derived placement may
     /// impose.
     ///
-    /// RFC-0079 section 6 - the band a sched task enters when it names
+    /// The band a sched task enters when it names
     /// the crossing (`derive::lift_above_transport`), and the one the
     /// supervisor of a supervised deadline takes.
     pub fn slots_above_transport(&self) -> Vec<i64> {
@@ -502,7 +502,7 @@ impl PriorityPlan {
 }
 
 /// What ONE Zephyr image's `.config` says about the plan its derived sched tasks
-/// allocate out of (issues 1508, 1537).
+/// allocate out of.
 #[derive(Debug)]
 pub enum ImagePlan {
     /// The image's own plan: allocate out of it.
@@ -517,12 +517,12 @@ pub enum ImagePlan {
 }
 
 /// Resolve the plan of the Zephyr image whose `.config` text this is, given
-/// the transport bands that image states (read by the caller - RFC-0071 D2:
+/// the transport bands that image states (read by the caller - a core crate names no backend:
 /// `nros_entry_lower::zephyr_image::transport_bands` names the symbols).
 ///
 /// The ONE classification both derivations that hold a `.config` share: the
-/// CMake roads' `nros codegen entry` / `codegen-system` (issue 1508) and the
-/// `nros::main!` proc-macro (issue 1537). `origin` names the file in every
+/// CMake roads' `nros codegen entry` / `codegen-system` and the
+/// `nros::main!` proc-macro. `origin` names the file in every
 /// message. `Err` is a file that is not a Zephyr `.config` at all.
 pub fn zephyr_image_plan(
     text: &str,
@@ -554,7 +554,7 @@ pub fn zephyr_image_plan(
 impl PriorityPlan {
     /// One line naming the plan a derivation allocated out of - the reserved
     /// transport band and `pool.app` - so a build log says which image's
-    /// numbers a table came from (issues 1508, 1537).
+    /// numbers a table came from.
     pub fn describe_allocation(&self) -> String {
         format!(
             "transport {}, pool.app [{}, {}]",

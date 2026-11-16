@@ -1,7 +1,7 @@
-//! RFC-0078 — a declared execution-time bound, keyed on a named measurement
+//! A declared execution-time bound, keyed on a named measurement
 //! profile.
 //!
-//! This is the DECLARATION half. Issue 0403 defines the measurement artifact
+//! This is the DECLARATION half. The bench defines the measurement artifact
 //! (`nros.wcet.measurements/1`); the two are different objects and keeping them
 //! apart is the spine of the design. A measurement is evidence produced by a
 //! bench on one part; a declaration is a claim a project makes about a context,
@@ -17,8 +17,8 @@
 //! optimistic by an unknown amount.
 //!
 //! An earlier version of this module converted max_cycles straight into
-//! `exec_ms` and called the result a WCET. That is issue 0259's failure wearing
-//! better clothes: 0259 is about an ABSENT number counted as zero, and this
+//! `exec_ms` and called the result a WCET. That is the absent-number failure wearing
+//! better clothes: that one is about an ABSENT number counted as zero, and this
 //! would have been an UNDER-estimate counted as measured. Both make a chain
 //! look more feasible than the evidence supports, and the second is worse for
 //! being hard to see.
@@ -92,7 +92,7 @@ pub struct BoundaryWcet {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WcetProfile {
     pub cpu: String,
-    /// `Option` because issue 0403's artifact cannot read the part's clock and
+    /// `Option` because the bench artifact cannot read the part's clock and
     /// says so (`convertible_to_time: false`). A profile without it is still
     /// valid and still auditable — it simply yields no `exec_ms`, which is a
     /// different thing from yielding zero.
@@ -100,7 +100,7 @@ pub struct WcetProfile {
     pub clock_hz: Option<u64>,
     pub profile: String,
     /// The commit the measurement was taken at. Recorded so a reviewer CAN ask
-    /// whether it still describes this callback; RFC-0078 deliberately does not
+    /// whether it still describes this callback; the WCET design deliberately does not
     /// claim to decide that automatically, because nothing in a file can know.
     pub measured_at_commit: String,
     /// Carried even though 0403's bench refuses to emit measurements from a
@@ -272,7 +272,7 @@ impl WcetProfile {
     ///
     /// Mirrors the artifact's own `convertible_to_time` field. A consumer that
     /// needs `ms` must check this rather than assume a rate — inventing one is
-    /// the manufactured-WCET failure issue 0404 exists to prevent.
+    /// the manufactured-WCET failure this flag exists to prevent.
     #[must_use]
     pub fn is_convertible_to_time(&self) -> bool {
         matches!(self.clock_hz, Some(hz) if hz > 0)

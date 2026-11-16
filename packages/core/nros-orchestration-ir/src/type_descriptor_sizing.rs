@@ -1,10 +1,9 @@
-//! Issue 0284 — model-derived type-descriptor registry sizing.
+//! Model-derived type-descriptor registry sizing.
 //!
-//! Named for the CAPABILITY, not the backend (RFC-0071 D11, phase-506 W2, issue
-//! 1298): it sizes the registry a backend with `needs-type-descriptors` keeps,
+//! Named for the CAPABILITY, not the backend: it sizes the registry a backend with `needs-type-descriptors` keeps,
 //! which today is CycloneDDS alone. The knob it feeds,
 //! `NROS_CYCLONEDDS_MAX_TYPES`, stays backend-named: a knob only one backend has
-//! is that backend's knob-registry row (RFC-0071 D10).
+//! is that backend's knob-registry row.
 //!
 //! The CycloneDDS backend memoises one DDS type descriptor per DISTINCT ROS type
 //! name in a bounded `heapless::FnvIndexMap` of `NROS_CYCLONEDDS_MAX_TYPES`
@@ -16,8 +15,7 @@
 //! The SystemModel names every topic / service / action an entry wires, with its
 //! type, so a bake can count the DISTINCT types the image will register and
 //! (a) size the knob and (b) refuse an image whose capacity is known-too-small —
-//! exactly the shape of the [`crate::executor_sizing`] callback-table work
-//! (issue 0257).
+//! exactly the shape of the [`crate::executor_sizing`] callback-table work.
 //!
 //! # Why the model is COMPLETE here (unlike callback sizing)
 //!
@@ -77,7 +75,7 @@ const TYPES_PER_ACTION: usize = 8;
 /// action (`CancelGoal_{Request,Response}`, `GoalStatusArray`).
 const ACTION_MSGS_SHARED: usize = 3;
 
-/// Issue 1268 — distinct DDS type names the SIX parameter services register.
+/// Distinct DDS type names the SIX parameter services register.
 ///
 /// They are the executor's own, not the model's: `param_services` puts a set of
 /// six on every node, and each service registers `_Request` + `_Response`, so
@@ -91,18 +89,18 @@ const ACTION_MSGS_SHARED: usize = 3;
 /// `create_service` calls went straight to the backend, which refused each — so
 /// they cost no registry slots and the omission could not be observed.
 ///
-/// Issue 2304 — plus ONE message: `rcl_interfaces::msg::dds_::ParameterEvent_`,
-/// the executor's `/parameter_events` publisher (issue 2023), which registers
+/// Plus ONE message: `rcl_interfaces::msg::dds_::ParameterEvent_`,
+/// the executor's `/parameter_events` publisher, which registers
 /// its type like any other publisher. 2023 added the registration and not the
 /// count, so a table sized to the model's types plus twelve was one short.
 pub const PARAM_SERVICE_TYPES: usize = 6 * TYPES_PER_SRV + TYPES_PER_MSG;
 
-/// Issue 1293 — distinct DDS type names the lifecycle family registers.
+/// Distinct DDS type names the lifecycle family registers.
 ///
 /// Five services over FOUR service types (`get_available_transitions` and
 /// `get_transition_graph` share `GetAvailableTransitions`), so `4 *
 /// TYPES_PER_SRV` = 8, plus the `~/transition_event` publisher's
-/// `TransitionEvent` (issue 1587): 9. Once per executor, like the servers.
+/// `TransitionEvent`: 9. Once per executor, like the servers.
 ///
 /// Uncounted before 1293 because they registered nothing: three of the request
 /// types are EMPTY and had no descriptor, so `create_lc_srv` never asked. Now
@@ -198,7 +196,7 @@ pub fn derive_max_types(counted: usize) -> usize {
 }
 
 /// The `descriptors.cpp` static table's DEMAND for the same registered-type
-/// count — phase-454 W6.c, RFC-0100 D5.
+/// count.
 ///
 /// # Why ONE count answers TWO tables
 ///
@@ -219,7 +217,7 @@ pub fn derive_max_types(counted: usize) -> usize {
 /// requires it, and floors at [`DEFAULT_MAX_TYPES`] so a small entry stays
 /// byte-identical. Neither applies to `Entry g_entries[N]`, a plain C array with
 /// no capacity constraint of its own — so this publishes the **demand,
-/// unfloored** (RFC-0100 D7, issues 1015 + 1033). Zero is a legitimate demand;
+/// unfloored**. Zero is a legitimate demand;
 /// whether zero is a legal SIZE is decided at the pool, where `descriptors.cpp`
 /// keeps its own `#if ... < 1` guard.
 ///

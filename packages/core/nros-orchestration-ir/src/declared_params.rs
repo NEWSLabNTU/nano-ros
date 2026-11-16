@@ -1,4 +1,4 @@
-//! phase-446 W6 -- the parameters each node's contract DECLARES, in the one
+//! The parameters each node's contract DECLARES, in the one
 //! shape both code generators render from.
 //!
 //! A C++ image gets them as a generated header
@@ -50,7 +50,7 @@ pub fn ros_type_code(t: ParamType) -> u8 {
 /// contract it was loaded from (`manifest`) when it had one -- the file a user
 /// edits. Only the file name is kept: an absolute host path would be baked
 /// into firmware. Without a manifest, the sidecar beside the launch file is
-/// named by the convention RFC-0060 fixes (`<stem>.contract.yaml`).
+/// named by the spec/resolver/runtime convention (`<stem>.contract.yaml`).
 pub fn contract_label(model: &SystemModel, fqn: &str) -> String {
     let scope = model.structure.nodes.get(fqn).map(|n| n.scope.as_str());
     let info = scope.and_then(|s| model.structure.scopes.get(s));
