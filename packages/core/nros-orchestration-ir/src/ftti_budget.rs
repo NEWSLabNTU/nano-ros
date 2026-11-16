@@ -26,7 +26,7 @@
 //!   wrote them (skipped levels absent), each with its charged `route_ms`.
 //! - a level's mode: `min_dwell` (its charged dwell, a range's `max`) and
 //!   `within_ms` (its own deadline, rlm v0.3.18).
-//! - the reaction path is a `contracts.scope_paths` entry, or a
+//! - the reaction path is a `contracts.event_chains` entry, or a
 //!   `contracts.node_paths` one.
 //!
 //! # Every level, every deadline (rlm v0.3.18)
@@ -621,7 +621,7 @@ pub fn reaction_path<'m>(
     };
     let found = model
         .contracts
-        .scope_paths
+        .event_chains
         .get_key_value(key)
         .or_else(|| model.contracts.node_paths.get_key_value(key));
     let Some((k, p)) = found else {
@@ -649,11 +649,11 @@ pub fn reaction_path<'m>(
     }))
 }
 
-/// A path key's contract: a `scope_paths` entry, else a `node_paths` one.
+/// A path key's contract: an `event_chains` entry, else a `node_paths` one.
 fn path_of<'m>(model: &'m SystemModel, key: &str) -> Option<(&'m str, &'m PathContract)> {
     model
         .contracts
-        .scope_paths
+        .event_chains
         .get_key_value(key)
         .or_else(|| model.contracts.node_paths.get_key_value(key))
         .map(|(k, p)| (k.as_str(), p))

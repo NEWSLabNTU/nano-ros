@@ -185,7 +185,7 @@ pub fn mode_names(model: &SystemModel) -> Vec<String> {
 fn table_name(t: &OverrideTable) -> &'static str {
     match t {
         OverrideTable::NodePaths => "node_paths",
-        OverrideTable::ScopePaths => "scope_paths",
+        OverrideTable::EventChains => "event_chains",
         OverrideTable::PubEndpoints => "pub_endpoints",
         OverrideTable::SubEndpoints => "sub_endpoints",
         OverrideTable::Topics => "topics",
@@ -284,8 +284,8 @@ pub fn apply_mode(model: &SystemModel, mode: &str) -> Result<ModeVariant, ModeEr
                     other => skip(&format!("`{other}` has no on-target monitor")),
                 }
             }
-            OverrideTable::ScopePaths => {
-                if !c.scope_paths.contains_key(key) {
+            OverrideTable::EventChains => {
+                if !c.event_chains.contains_key(key) {
                     return Err(missing());
                 }
                 skip("a scope path's budget is held at resolve time, not on target");
@@ -663,7 +663,7 @@ pub fn mode_switch_budget_ms(model: &SystemModel, mode: &str) -> Option<(String,
     let reaction = m.reaction.as_ref()?;
     let ms = model
         .contracts
-        .scope_paths
+        .event_chains
         .get(reaction)
         .or_else(|| model.contracts.node_paths.get(reaction))?
         .max_latency_ms?;
@@ -1050,9 +1050,9 @@ contracts:
                 "max_age"
             ),
             ov(
-                "paths.e2e.max_latency",
+                "event_chains.e2e.max_latency",
                 "200ms",
-                "scope_paths",
+                "event_chains",
                 "/bringup.launch.xml/e2e",
                 "max_latency"
             ),

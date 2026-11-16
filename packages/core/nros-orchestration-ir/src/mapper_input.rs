@@ -365,7 +365,7 @@ mod tests {
         let input = mapper_input_from_model(&model);
 
         assert_eq!(input.nodes.len(), 2);
-        // No `contracts.scope_paths` in this fixture, so there is no budget to
+        // No `contracts.event_chains` in this fixture, so there is no budget to
         // derive a chain for; the shared function resolves one per scope path.
         assert!(input.chains.is_empty(), "no scope path, no chain");
 

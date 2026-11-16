@@ -462,7 +462,7 @@ pub(crate) fn reaction_safe_state<'m>(
     if let Some(ss) = &r.path.safe_state {
         return Some(ss);
     }
-    if !model.contracts.scope_paths.contains_key(r.key) {
+    if !model.contracts.event_chains.contains_key(r.key) {
         return None;
     }
     model
