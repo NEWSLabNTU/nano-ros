@@ -14,8 +14,16 @@
 #   * clear the GITHUB_* step files, so no gate writes this job's outputs;
 #   * complete the pinned Rust toolchains, as [INFRA] (issue 1868);
 #   * the lane's claims are present (`gate-lane-preflight.py`), all named at once;
-#   * one CPU budget: each gate's own nextest gets `NROS_GATE_CPU_SHARE` threads.
+#   * one CPU budget: each gate's own nextest gets `NROS_GATE_CPU_SHARE` threads;
+#   * ONE token pool for the whole lane (phase-489 W13, `nros_pool_own`):
+#     `NROS_GATE_TOKENS` (default nproc) make 4.4 FIFO jobserver tokens, which
+#     every cargo, make and ninja below every gate draws from. Without a
+#     pinned make 4.4 the lane says the pool is OFF and runs as before.
 # after
+#   * the load report: host runnable p50/p90/max against the pool, and each
+#     gate whose processes peaked above its declared weight, by name
+#     (`scripts/build/run-load-sampler.py`); a child outside the pool is
+#     visible there, not hidden;
 #   * no TRACKED file changed while the gates ran (issue 2186), on every lane;
 #   * no UNTRACKED, unignored file appeared. A gate's output belongs under an
 #     ignored root (`build/`, `target/`, `tmp/`); phase-543 W4 found 1.1 G of
@@ -87,8 +95,17 @@ _snapshot | sort >"$out_dir/before"
 
 # shellcheck source=scripts/build/subtree-guard.sh
 . scripts/build/subtree-guard.sh
+# shellcheck source=scripts/build/jobserver-pool.sh
+. scripts/build/jobserver-pool.sh
+tokens="${NROS_GATE_TOKENS:-$(nproc 2>/dev/null || echo 4)}"
+python3 scripts/build/run-load-sampler.py sample "$out_dir/load" &
+sampler=$!
 rc=0
-nros_guard_lane "gates-$lane" just check nextest-gates "$@" || rc=$?
+nros_guard_lane "gates-$lane" nros_pool_own "gate lane \`$lane\`" "$tokens" \
+    just check nextest-gates "$@" || rc=$?
+kill "$sampler" 2>/dev/null
+wait "$sampler" 2>/dev/null
+python3 scripts/build/run-load-sampler.py report "$out_dir/load" "$tokens" || true
 
 _snapshot | sort >"$out_dir/after"
 changed="$(diff "$out_dir/before" "$out_dir/after" | sed -n 's/^[<>] //p' \

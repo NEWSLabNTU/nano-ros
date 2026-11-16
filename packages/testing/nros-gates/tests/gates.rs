@@ -116,7 +116,11 @@ fn run(root: &Path, name: &str, target: &str, unit: Option<&str>) -> ExitCode {
         // nested subject in a scratch checkout keeps its own
         // (`scripts/build/check-skip.sh`, `_nros_check_skip_nested`).
         .env("NROS_GATE_SKIP_ROOT", root)
-        .env("NROS_CHECK_SKIP_STRICT", "1");
+        .env("NROS_CHECK_SKIP_STRICT", "1")
+        // phase-489 W13: every process below this gate carries its test name,
+        // so the lane's load sampler (`scripts/build/run-load-sampler.py`) can
+        // name a gate that runs more processes than its weight.
+        .env("NROS_GATE_TEST", name);
     match unit {
         Some(u) => cmd.env("NROS_GATE_UNIT", u),
         None => cmd.env_remove("NROS_GATE_UNIT"),
