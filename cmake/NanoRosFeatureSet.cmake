@@ -333,91 +333,11 @@ function(nros_feature_set out_var)
     endif()
 
     # ---- capabilities ------------------------------------------------------
-    # Image-level, not platform-level. They used to be a `PLATFORM STREQUAL
-    # posix` test on the direct paths only, so a MIXED workspace (which takes
-    # the umbrella) silently lost them — phase-314 W1 established that as a gap
-    # rather than intent.
-    #
-    # `param_services` / `lifecycle` still imply hosted: both are alloc-gated,
-    # so an embedded image opts in explicitly rather than getting them by
-    # default.
-    foreach(_cap IN LISTS _FS_CAPABILITIES)
-        if(_cap STREQUAL "")
-        elseif(_cap STREQUAL "param_services")
-            list(APPEND _feats param-services)
-        elseif(_cap STREQUAL "params")
-            # phase-461 W6 — the parameter STORE without the six services
-            # (issue 1897: none of their code either). Every crate has the
-            # feature. nros-c's rclc parameter API is a server, so a C image
-            # that calls it declares `param_services`.
-            list(APPEND _feats param-store)
-        elseif(_cap STREQUAL "lifecycle")
-            list(APPEND _feats lifecycle-services)
-        elseif(_cap STREQUAL "rosout")
-            # issue 1589 — the `/rosout` bridge; umbrella feature, no backend half.
-            list(APPEND _feats rosout)
-        elseif(_cap STREQUAL "sim_time")
-            # phase-556 W11 — the `/clock` time source behind `use_sim_time`;
-            # umbrella feature, no backend half.
-            list(APPEND _feats sim-time)
-        elseif(_cap STREQUAL "safety")
-            # phase-439 W4 — DECLARED, not named. This read
-            # `if(_FS_RMW STREQUAL "zenoh")` and warned "only the zenoh RMW
-            # carries the CRC path", while `nros-cpp/CMakeLists.txt` had already
-            # moved to `"safety" IN_LIST NROS_RMW_CAPABILITIES` (phase-347 W4).
-            # Two sites, one rule, one of them fixed: a third-party backend
-            # declaring `safety = "<its feature>"` was honoured on one path and
-            # refused with a WRONG explanation on the other — issue 1219's
-            # 0196-shaped half.
-            #
-            # `safety-e2e` stays spelled here because it is the UMBRELLA's
-            # feature (nros-c / nros-cpp), which forwards to whatever the
-            # backend calls its own implementation — the right-hand side of
-            # `[rmw.capabilities]`, which core never learns. What moved is the
-            # CONDITION: which backends offer the capability.
-            #
-            # Issue 2487 — REFUSED, not ignored. This warned and built on, so
-            # an image that asked for E2E integrity on a backend with no CRC
-            # carrier got none, and the backend's default take reported every
-            # sample unchecked. The message carries no tracker id.
-            if("safety" IN_LIST NROS_RMW_CAPABILITIES)
-                list(APPEND _feats safety-e2e)
-            else()
-                message(FATAL_ERROR
-                    "nros_feature_set: capability 'safety' is declared, but the "
-                    "'${_FS_RMW}' RMW does not carry it, so the image would be built "
-                    "without end-to-end integrity checks. Select an RMW whose "
-                    "nros-rmw.toml [rmw.capabilities] declares 'safety', or drop "
-                    "'safety' from the features.")
-            endif()
-        elseif(_cap STREQUAL "link-tls")
-            # Issue 2423 — Rust-only, refused BY NAME (as
-            # `nros_lower_system_features` does): no C/C++ crate has a TLS link,
-            # so building on would ship an image without the link it declared.
-            message(FATAL_ERROR
-                "nros_feature_set: capability 'link-tls' is Rust-only: the C/C++ "
-                "road has no zenoh TLS link. Build this image from a Rust entry, "
-                "or drop 'link-tls' from its features.")
-        else()
-            message(FATAL_ERROR
-                "nros_feature_set: unknown capability '${_cap}' "
-                "(known: param_services, params, lifecycle, safety, rosout, sim_time)")
-        endif()
-    endforeach()
-
-    # issue 1529 — the parameter STORE comes with every image; only the six
-    # SERVICES are a capability. The C++ node facades and the entry's launch
-    # seeds (`nros_cpp_declare_param`, emitted for every launch `<param>`) are
-    # in every C++ image, so without the store a `features = []` bringup whose
-    # launch file seeds a parameter failed to LINK on this road (measured:
-    # `undefined reference to 'nros_cpp_declare_param'`). The Zephyr road has
-    # made the same choice since 1529 (`_nros_cpp_param_suffix` in
-    # `zephyr/CMakeLists.txt`). Added for BOTH crates whatever `CRATE` is, so
-    # nros-c's and nros-cpp's sets keep naming one nros-c unit (issue 1100).
-    # Every tier above already carries `alloc`, which the store needs.
-    if(NOT "param-services" IN_LIST _feats)
-        list(APPEND _feats param-store)
-    endif()
+    # One mapping, `nros_capability_features` below, shared with the NuttX FFI
+    # lane (`nros_nuttx_build_example`), which builds nros-c / nros-cpp
+    # through its own cargo command rather than through this function.
+    nros_capability_features(_cap_feats RMW "${_FS_RMW}" CAPABILITIES "${_FS_CAPABILITIES}")
+    list(APPEND _feats ${_cap_feats})
 
     # ---- consumer extension point -----------------------------------------
     # Applied ONCE, by construction. This is the hook whose per-path duplication
@@ -582,4 +502,104 @@ function(nros_panic_policy_feature out_var policy context)
             "ending; halt — park the core; own — this image supplies its own "
             "#[panic_handler]).")
     endif()
+endfunction()
+
+# nros_capability_features(<out> RMW <rmw> CAPABILITIES <caps>)
+#
+# The cargo features an image's declared capability axes turn on in nros-c and
+# nros-cpp (the two crates share the vocabulary), plus the parameter store that
+# every image carries (issue 1529). One mapping for every road that builds
+# those crates: `nros_feature_set` (Corrosion) and the NuttX FFI crate's cargo
+# command (`nros_nuttx_build_example`), which had none and so built every
+# NuttX image without the capabilities it declared.
+function(nros_capability_features out_var)
+    cmake_parse_arguments(_CF "" "RMW" "CAPABILITIES" ${ARGN})
+    set(_feats "")
+    # Image-level, not platform-level. They used to be a `PLATFORM STREQUAL
+    # posix` test on the direct paths only, so a MIXED workspace (which takes
+    # the umbrella) silently lost them — phase-314 W1 established that as a gap
+    # rather than intent.
+    #
+    # `param_services` / `lifecycle` still imply hosted: both are alloc-gated,
+    # so an embedded image opts in explicitly rather than getting them by
+    # default.
+    foreach(_cap IN LISTS _CF_CAPABILITIES)
+        if(_cap STREQUAL "")
+        elseif(_cap STREQUAL "param_services")
+            list(APPEND _feats param-services)
+        elseif(_cap STREQUAL "params")
+            # phase-461 W6 — the parameter STORE without the six services
+            # (issue 1897: none of their code either). Every crate has the
+            # feature. nros-c's rclc parameter API is a server, so a C image
+            # that calls it declares `param_services`.
+            list(APPEND _feats param-store)
+        elseif(_cap STREQUAL "lifecycle")
+            list(APPEND _feats lifecycle-services)
+        elseif(_cap STREQUAL "rosout")
+            # issue 1589 — the `/rosout` bridge; umbrella feature, no backend half.
+            list(APPEND _feats rosout)
+        elseif(_cap STREQUAL "sim_time")
+            # phase-556 W11 — the `/clock` time source behind `use_sim_time`;
+            # umbrella feature, no backend half.
+            list(APPEND _feats sim-time)
+        elseif(_cap STREQUAL "safety")
+            # phase-439 W4 — DECLARED, not named. This read
+            # `if(_FS_RMW STREQUAL "zenoh")` and warned "only the zenoh RMW
+            # carries the CRC path", while `nros-cpp/CMakeLists.txt` had already
+            # moved to `"safety" IN_LIST NROS_RMW_CAPABILITIES` (phase-347 W4).
+            # Two sites, one rule, one of them fixed: a third-party backend
+            # declaring `safety = "<its feature>"` was honoured on one path and
+            # refused with a WRONG explanation on the other — issue 1219's
+            # 0196-shaped half.
+            #
+            # `safety-e2e` stays spelled here because it is the UMBRELLA's
+            # feature (nros-c / nros-cpp), which forwards to whatever the
+            # backend calls its own implementation — the right-hand side of
+            # `[rmw.capabilities]`, which core never learns. What moved is the
+            # CONDITION: which backends offer the capability.
+            #
+            # Issue 2487 — REFUSED, not ignored. This warned and built on, so
+            # an image that asked for E2E integrity on a backend with no CRC
+            # carrier got none, and the backend's default take reported every
+            # sample unchecked. The message carries no tracker id.
+            if("safety" IN_LIST NROS_RMW_CAPABILITIES)
+                list(APPEND _feats safety-e2e)
+            else()
+                message(FATAL_ERROR
+                    "nros_feature_set: capability 'safety' is declared, but the "
+                    "'${_CF_RMW}' RMW does not carry it, so the image would be built "
+                    "without end-to-end integrity checks. Select an RMW whose "
+                    "nros-rmw.toml [rmw.capabilities] declares 'safety', or drop "
+                    "'safety' from the features.")
+            endif()
+        elseif(_cap STREQUAL "link-tls")
+            # Issue 2423 — Rust-only, refused BY NAME (as
+            # `nros_lower_system_features` does): no C/C++ crate has a TLS link,
+            # so building on would ship an image without the link it declared.
+            message(FATAL_ERROR
+                "nros_feature_set: capability 'link-tls' is Rust-only: the C/C++ "
+                "road has no zenoh TLS link. Build this image from a Rust entry, "
+                "or drop 'link-tls' from its features.")
+        else()
+            message(FATAL_ERROR
+                "nros_feature_set: unknown capability '${_cap}' "
+                "(known: param_services, params, lifecycle, safety, rosout, sim_time)")
+        endif()
+    endforeach()
+
+    # issue 1529 — the parameter STORE comes with every image; only the six
+    # SERVICES are a capability. The C++ node facades and the entry's launch
+    # seeds (`nros_cpp_declare_param`, emitted for every launch `<param>`) are
+    # in every C++ image, so without the store a `features = []` bringup whose
+    # launch file seeds a parameter failed to LINK on this road (measured:
+    # `undefined reference to 'nros_cpp_declare_param'`). The Zephyr road has
+    # made the same choice since 1529 (`_nros_cpp_param_suffix` in
+    # `zephyr/CMakeLists.txt`). Added for BOTH crates whatever `CRATE` is, so
+    # nros-c's and nros-cpp's sets keep naming one nros-c unit (issue 1100).
+    # Every tier above already carries `alloc`, which the store needs.
+    if(NOT "param-services" IN_LIST _feats)
+        list(APPEND _feats param-store)
+    endif()
+    list(REMOVE_DUPLICATES _feats)
+    set(${out_var} "${_feats}" PARENT_SCOPE)
 endfunction()
