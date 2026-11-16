@@ -1016,3 +1016,14 @@ workflow-build-one-paths:
 [private]
 bundled-interfaces-provisioned:
     @python3 scripts/check/check-bundled-interfaces-provisioned.py
+
+# phase-567 W3 — a release dry run rehearses everything but the publish: the
+# only places release-nros.yml may read `inputs.publish` are the `Publish the
+# release` step (tag + release) and the `push:` it hands starter-image.yml,
+# and the only place starter-image.yml may read `inputs.push` is its `Push`
+# step. A job gated on publish (the pre-W3 starter-image shape), a step gated
+# elsewhere, or a `run:` branching on it is refused; five negative controls
+# run first. ~0.1 s.
+[private]
+release-rehearsal:
+    @python3 scripts/check/check-release-rehearsal.py

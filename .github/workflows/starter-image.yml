@@ -44,8 +44,31 @@ on:
   workflow_call:
     inputs:
       version:
-        description: "released store version, e.g. 0.6.0-nros9 (its `nros-<ver>` tag must exist)"
+        description: "store version, e.g. 0.6.0-nros9"
         required: true
+        type: string
+      target:
+        description: "starter or starter-zephyr"
+        required: false
+        default: starter
+        type: string
+      # phase-567 W3: release-nros.yml calls this on a dry run as well as on
+      # a publish, from the commit being released (no tag yet on a dry run)
+      # with the asset its build job produced, and pushes only on a publish.
+      push:
+        description: "push the image (off = build and verify only)"
+        required: false
+        default: true
+        type: boolean
+      ref:
+        description: "the commit to build (default: the `nros-<version>` tag)"
+        required: false
+        default: ""
+        type: string
+      asset_artifact:
+        description: "install `nros` from this workflow artifact (the release job's asset) instead of the published release"
+        required: false
+        default: ""
         type: string
   workflow_dispatch:
     inputs:
@@ -71,12 +94,17 @@ on:
         required: false
         default: false
         type: boolean
+      push:
+        description: "push the image (off = build and verify only)"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: starter-image-${{ inputs.version }}
+  group: starter-image-${{ inputs.version }}-${{ inputs.target || 'starter' }}
   cancel-in-progress: false
 
 env:
@@ -97,8 +125,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # The release's tree, not main's: its index and its install.sh.
-          ref: nros-${{ inputs.version }}
+          # The release's tree, not main's: its index and its install.sh. On a
+          # release-nros.yml run, the commit being released (the tag does not
+          # exist on a dry run, and on a publish it names that commit).
+          ref: ${{ inputs.ref || format('nros-{0}', inputs.version) }}
 
       # Issue 2635, user ruling 2026-11-16: a release's tag is immutable, so a
       # tag whose own context writer cannot write its context (0.6.0-nros11:
@@ -133,6 +163,31 @@ jobs:
           echo "target=$target" >> "$GITHUB_OUTPUT"
           echo "ref=$IMAGE:$tag" >> "$GITHUB_OUTPUT"
           echo "image: $IMAGE:$tag ($target)"
+
+      # phase-567 W3: the asset the release's build job produced, served on
+      # the loopback for install.sh's NROS_INSTALL_URL (its .sha256 beside it,
+      # still required). The build uses the host network to reach it. The
+      # same bytes on a dry run and a publish, so the image a dry run verified
+      # is the image a publish pushes.
+      - name: Fetch the release asset
+        if: ${{ inputs.asset_artifact != '' && inputs.asset_artifact != null }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.asset_artifact }}
+          path: ${{ runner.temp }}/asset
+      - name: Serve the release asset
+        id: asset
+        if: ${{ inputs.asset_artifact != '' && inputs.asset_artifact != null }}
+        run: |
+          set -euo pipefail
+          ls -l "$RUNNER_TEMP/asset"
+          (cd "$RUNNER_TEMP/asset" && nohup python3 -m http.server 8422 --bind 127.0.0.1 >/dev/null 2>&1 &)
+          for _ in $(seq 1 30); do
+            curl -fsS -o /dev/null "http://127.0.0.1:8422/nros-linux-x86_64.tar.zst" && break
+            sleep 1
+          done
+          curl -fsS -o /dev/null "http://127.0.0.1:8422/nros-linux-x86_64.tar.zst.sha256"
+          echo "args=--network host --build-arg NROS_INSTALL_URL=http://127.0.0.1:8422/nros-linux-x86_64.tar.zst" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -177,9 +232,39 @@ jobs:
                  --label 'org.opencontainers.image.source=https://github.com/${{ github.repository }}' \
                  --label 'org.opencontainers.image.version=${{ inputs.version }}' \
                  --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
-                 ${{ steps.scripts.outputs.rev && format('--label io.nano-ros.context-writer-revision={0}', steps.scripts.outputs.rev) || '' }}
+                 ${{ steps.scripts.outputs.rev && format('--label io.nano-ros.context-writer-revision={0}', steps.scripts.outputs.rev) || '' }} \
+                 ${{ steps.asset.outputs.args }}
+
+      # phase-567 W3: the `image` probe track against the image THIS job
+      # built, before any push: the size budget, every `probe=` block of the
+      # starter page (the seat's steps with --network none) and the course
+      # recipe. On a dry run and a publish alike.
+      - name: Verify the built image (no pull)
+        run: bash scripts/probe/verify-starter-image.sh '${{ steps.tag.outputs.ref }}'
+
+      # phase-567 W3: the pinned-newer replay with the asset this release is
+      # made of standing in for the published release: that asset installed,
+      # then a project pinned to the previous release built under its pin.
+      # `pinned` cannot be rehearsed before publishing (the asset under test
+      # sorts above the pin, so the front it expects is not the one it gets);
+      # it stays a post-publish check. Once per release, on the `starter` leg.
+      - name: Replay pinned-newer against the release asset
+        if: ${{ inputs.asset_artifact != '' && inputs.asset_artifact != null && (inputs.target || 'starter') == 'starter' }}
+        env:
+          PROBE_BRANCH: ${{ github.ref_name }}
+          PROBE_CANDIDATE_ASSET: ${{ runner.temp }}/asset
+          PROBE_CANDIDATE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! command -v just >/dev/null 2>&1; then
+            bash scripts/ci/install-just.sh --to "$HOME/.local/bin"
+            export PATH="$HOME/.local/bin:$PATH"
+          fi
+          source ./activate.sh
+          just probe pinned-newer
 
       - name: Push
+        if: ${{ inputs.push != false }}
         run: |
           set -euo pipefail
           ref='${{ steps.tag.outputs.ref }}'

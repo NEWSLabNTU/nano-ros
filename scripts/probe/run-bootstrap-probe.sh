@@ -37,6 +37,10 @@
 #                    artifact from a `release nros` workflow run
 #                    (`gh run download <id> -n nros-linux-x86_64 -D <dir>`),
 #                    which is the asset a runner actually produced
+#   PROBE_CANDIDATE_ASSET=<dir> + PROBE_CANDIDATE_VERSION=<ver>  pinned-newer
+#                    only: the release rehearsal (phase-567 W3) — the asset a
+#                    release dry run built stands in for the published
+#                    release, and the front must be <ver>
 #   PROBE_RELEASE_CACHE  installed track: 1 (default) keeps the asset builder's
 #                    rustup, cargo registry and two target dirs in named docker
 #                    volumes `nros-probe-release-*`; 0 builds cold, as a
@@ -416,7 +420,9 @@ if [[ "$VERIFIER" = verify-installed-pinned.sh ]]; then
         exit 1
     fi
     probe_front="$probe_pinned"
-    if [[ "$PROBE_PLATFORM" = pinned-newer ]]; then
+    if [[ "$PROBE_PLATFORM" = pinned-newer && -n "${PROBE_CANDIDATE_ASSET:-}" ]]; then
+        probe_front="${PROBE_CANDIDATE_VERSION:?PROBE_CANDIDATE_ASSET needs PROBE_CANDIDATE_VERSION}"
+    elif [[ "$PROBE_PLATFORM" = pinned-newer ]]; then
         probe_front="$(nros_published_release_version)"
     fi
     printf 'PROBE_PINNED_VERSION=%s\n' "$probe_pinned" >>"$workdir/probe.sh"
@@ -523,7 +529,20 @@ git_dir="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir
 
 if [[ "$PROBE_TRACK" = "installed" ]]; then
     mkdir -p "$workdir/release"
-    if [[ "$PROBE_PLATFORM" = pinned-newer ]]; then
+    if [[ "$PROBE_PLATFORM" = pinned-newer && -n "${PROBE_CANDIDATE_ASSET:-}" ]]; then
+        # phase-567 W3 — the release rehearsal: the asset release-nros.yml's
+        # build job just produced, BEFORE it is published, standing in for
+        # "the published release". Its own knob, never `PROBE_ASSET`, which
+        # the lanes hand every job and which this track ignores on purpose.
+        for f in "$PROBE_CANDIDATE_ASSET/$ASSET_NAME" "$PROBE_CANDIDATE_ASSET/$ASSET_NAME.sha256"; do
+            if [[ ! -s "$f" ]]; then
+                echo "probe: PROBE_CANDIDATE_ASSET=$PROBE_CANDIDATE_ASSET has no $(basename "$f")" >&2
+                exit 1
+            fi
+        done
+        cp "$PROBE_CANDIDATE_ASSET/$ASSET_NAME" "$PROBE_CANDIDATE_ASSET/$ASSET_NAME.sha256" "$workdir/release/"
+        echo "probe: installed track — using the candidate release ${PROBE_CANDIDATE_VERSION:-?} in $PROBE_CANDIDATE_ASSET"
+    elif [[ "$PROBE_PLATFORM" = pinned-newer ]]; then
         # Issue 2168 — the published release, never this branch's asset (a
         # `PROBE_ASSET` the lane hands every job is ignored here on purpose).
         published="$(nros_published_release_version)"

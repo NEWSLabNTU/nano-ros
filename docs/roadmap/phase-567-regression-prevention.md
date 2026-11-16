@@ -75,13 +75,39 @@ self-test covers both; AGENTS.md's release section states the rule.
 
 - **Status:** OPEN
 
-The dry run builds the starter images without pushing them, and runs the
-starter replays against the images it built. Only the registry push, the tag
-and the GitHub release are left for publish.
+`release-nros.yml` builds both starter images (`starter`, `starter-zephyr`)
+on every run, dry runs included, from the commit being released and with
+`nros` installed from the asset its build job just produced (install.sh's
+`NROS_INSTALL_URL`, the `.sha256` still required). So a dry run and a
+publish build the same image from the same bytes, before anything is
+published. Against what it built, each run then:
 
-Acceptance: the nros11 failure (a book block the image reader could not join)
-reproduced on a dry run fails there; a dry run's job list differs from a
-publish's only by the push, tag and release steps.
+- runs `verify-starter-image.sh` on each image, no pull: the size budget,
+  every `probe=` block of the starter page (the seat's steps with
+  `--network none`) and the course recipe;
+- replays `pinned-newer` with the just-built asset standing in for the
+  published release (`PROBE_CANDIDATE_ASSET` / `PROBE_CANDIDATE_VERSION`, its
+  own knob, never the lanes' `PROBE_ASSET`): that asset installed, then a
+  project pinned to the previous release built under its pin;
+- runs `just check island-shaped-workspace`, W4's release leg, once W4 lands.
+
+`pinned` is not rehearsed: it expects the front to be the project's pin,
+and the asset under test sorts above the pin, so before publishing it would
+test a different thing. It stays a post-publish check.
+
+Only the registry push (`starter-image.yml`'s `Push`), the tag and the
+GitHub release (`Publish the release`) are left for publish.
+`just check release-rehearsal` holds that: every read of `inputs.publish`
+or `inputs.push` must be one of those, and a job gated on publish (the
+pre-W3 shape, which let 0.6.0-nros11's image fail only after it published),
+a step gated elsewhere, or a `run:` that branches on it is refused, with
+five negative controls run first.
+
+Acceptance: the nros11 failure (a book block the image reader could not
+join) reproduced on a dry run fails there; each built image passes
+`verify-starter-image.sh` and the candidate `pinned-newer` replay passes,
+before any push; `just check release-rehearsal` refuses the pre-W3
+workflow and passes the built one; W4's check runs in the dry run.
 
 ### W4 — a consumer-shaped workspace in the tree
 

@@ -558,16 +558,31 @@ jobs:
   # RFC-0127 D6, phase-551 W4: the starter image, on every published release
   # (Q5), built from the tag the step above just created. It pushes only the
   # immutable `<ver>`; `latest` is the `image` probe track's to move (D7).
+  # phase-567 W3: the dry run rehearses everything but the push. Both images
+  # are built on EVERY run from the commit being released, with the asset the
+  # build job just produced, then verified (the `image` probe track) and the
+  # pinned-newer replay run against that asset; only a publish pushes. So a
+  # book block the image reader cannot join (0.6.0-nros11) fails the dry run.
+  # The dry-run and publish job lists differ only by the Push step and the
+  # build job's "Publish the release" (tag + release): `just check
+  # release-rehearsal` holds that.
   starter-image:
-    name: starter image
+    name: starter image (${{ matrix.target }})
     needs: build
-    if: ${{ inputs.publish }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [starter, starter-zephyr]
     permissions:
       contents: read
       packages: write
     uses: ./.github/workflows/starter-image.yml
     with:
       version: ${{ inputs.version }}
+      target: ${{ matrix.target }}
+      push: ${{ inputs.publish }}
+      ref: ${{ github.sha }}
+      asset_artifact: nros-linux-x86_64
 
   # Issue 2612, user ruling 2026-11-15 (option (c)): the pre-cut audit of
   # merged changes that touch a shipped path with no changelog.d fragment and
