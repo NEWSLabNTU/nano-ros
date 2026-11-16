@@ -96,6 +96,6 @@ has a hosted linux shard):
 
 Still blocked after defect 4 (tier1 after-run 43438754804, all three shards
 red in the fixture build): the linux shard runs out of disk (phase-559 W5b);
-threadx_linux fails on [issue 2510](2510-compile-check-cross-rows-unprovisioned-kernel.md);
-zephyr fails on [issue 2511](2511-zephyr-ci-image-lacks-pinned-sdk.md). The
+threadx_linux fails on [issue 2510](archived/2510-compile-check-cross-rows-unprovisioned-kernel.md);
+zephyr fails on [issue 2511](archived/2511-zephyr-ci-image-lacks-pinned-sdk.md). The
 `merge` lane reaches the same fixture build, so expect the same three.

@@ -1,4 +1,6 @@
-# merge-runtime — a MEASUREMENT TOOL, workflow_dispatch only (phase-535 W8).
+# merge-runtime — per-board hosted shards: a MEASUREMENT TOOL on dispatch
+# (phase-535 W8), and tier 1's daily home for threadx_linux and zephyr when
+# nightly.yml calls it (phase-559 W5b, below).
 #
 # User ruling, 2026-11-12: "W8 = option 1. linux/zephyr/threadx-linux go to
 # cadence=daily. #3594 carries only the cadence gate, the header fixes and the
@@ -38,6 +40,15 @@
 # report after each step and each step's time are the measurement; phase-559
 # W5b records them, and tier 1 moves to hosted shards only if they fit.
 #
+# THEY FIT (phase-559 W5b, run 43773321880, 2026-11-15): both shards passed
+# to completion, lowest free space 30.7 G (threadx_linux) and 11.0 G (zephyr,
+# with W12's eviction). So tier 1's threadx_linux and zephyr slices moved
+# here: nightly.yml's `tier1-hosted` job CALLS this workflow with
+# `lane: tier1` on its schedule (`workflow_call`), and run-matrix.yml's
+# self-hosted `tier1` keeps only the linux slice (user ruling 2026-11-14,
+# option B). A call is the one other way in; the `merge` lane is still
+# dispatch-only, and nothing here may join `CI` or the required set.
+#
 # WHERE THE TIME GOES
 #
 # `just ci merge` prints each step's wall clock (`run-lane-steps.sh`).
@@ -47,7 +58,8 @@
 name: merge-runtime
 
 on:
-  # Dispatch only: see the header. No merge_group, no push, no schedule.
+  # Dispatch, or a call from nightly.yml (tier 1 on its schedule): see the
+  # header. No merge_group, no push, no schedule of its own.
   workflow_dispatch:
     inputs:
       lane:
@@ -55,6 +67,12 @@ on:
         type: choice
         options: [merge, tier1]
         default: merge
+  workflow_call:
+    inputs:
+      lane:
+        description: "Coordinate lane each board shard builds and runs (merge or tier1)"
+        type: string
+        required: true
 
 permissions:
   contents: read

@@ -42,7 +42,7 @@ phase-535 W8.6); the `L*` names are the original plan's.
 | **host boards' per-merge runtime (measurement)** | `workflow_dispatch` only | hosted, one shard per board | `merge-runtime.yml` (phase-535 W8): re-measures what a per-merge runtime lane would cost. The boards are `daily` since the 2026-11-12 ruling (RFC-0122 D9); never in `CI` |
 | **L3 cross-build** | `merge_group` | self-hosted | `queue.yml` `l3`, advisory, gated on `NROS_SELF_HOSTED_READY` |
 | **post-submit** | `push` to main | hosted | `post-submit.yml` `dep-chain` |
-| **tier 1 / tier 2 runtime** | `schedule` (daily) | self-hosted | `run-matrix.yml` `tier1`, `matrix` |
+| **tier 1 / tier 2 runtime** | `schedule` (daily) | self-hosted; tier 1's threadx_linux and zephyr slices hosted | `run-matrix.yml` `tier1` (linux slice), `matrix`; `nightly.yml` `tier1-hosted` → `merge-runtime.yml` (phase-559 W5b) |
 | **per-platform + Zephyr nightly** | `schedule` (daily) | hosted | `nightly.yml` `platform` (build + `just test <platform>`), the Zephyr jobs (build only, issue 2462), and the self-hosted `matrix-nightly` pairwise cover |
 | **host unit + feature sweep** | `schedule` (daily) | hosted | `host-tests.yml` |
 | **L5 interop** | `schedule` (daily) | hosted | `live-peer.yml` (ROS 2 peers in the CI image) |

@@ -1,15 +1,17 @@
 ---
 id: 2511
 title: "The zephyr-ci image bakes Zephyr SDK 0.17.4 while the 3.7 workspace pins 0.16.9, and `merge-runtime.yml` sets up Zephyr with `--skip-sdk`, so the `west_board_import` fixture refuses and the zephyr shard's fixture build fails"
-status: open
+status: resolved
 type: bug
 area: [ci, zephyr]
 severity: medium
 found: 2026-11-14
+resolved: 2026-11-16
+resolved_in: \"phase-559 W5b's ninth measurement\"
 related: [2475, 1811, phase-535, phase-559]
 ---
 
-**Home: [phase-559](../roadmap/phase-559-ci-workflow-organization.md) W5b.**
+**Home: [phase-559](../../roadmap/phase-559-ci-workflow-organization.md) W5b.**
 Found by issue 2475's after-run. A missing runner dependency is fixed in the
 IMAGE.
 
@@ -98,3 +100,12 @@ now redundant; dropping it is a separate change.
 The zephyr shard of a `merge-runtime.yml` tier1 dispatch builds
 `west_board_import` with the image as shipped, and the refusal names its board
 and carries no issue id.
+
+## Resolved (2026-11-16)
+
+Verified by `merge-runtime.yml` run 43773321880 (`lane=tier1`, main
+3a0daf8adb), the zephyr-ci image as shipped (r9). The zephyr shard's fixture
+log reads `ok .../build/west-fixtures/3.7/west_board_import (build.ninja)`,
+and the shard passed. The refusal's text (no issue id, the board named) is
+in the tree: `nros_zephyr_board_label` and the CLI's copy in
+`builder/zephyr.rs`. Recorded in phase-559 W5b's ninth measurement.

@@ -21,8 +21,17 @@ The binding (D8), and what "serves" means here — all static, no fixtures:
   daily   `nightly.yml` on `schedule`: the `platform` job, whose matrix is
           the `runnable="…"` list and whose run step is `just test <platform>`.
           OR, for a host witness row (`runs = "host"`, `breadth = "witness"`:
-          tier 1's pool), `run-matrix.yml`'s scheduled `tier1` job running
-          `just ci tier1`. A row neither reaches has no daily RUN job.
+          tier 1's pool), the ONE tier-1 job that runs the row's module
+          (phase-559 W5b):
+            - `run-matrix.yml`'s scheduled self-hosted `tier1` job running
+              `just ci tier1`, when its `NROS_LANE_MODULE` is unset (the
+              whole tier) or names the module; or
+            - `nightly.yml`'s scheduled `tier1-hosted` job, which calls
+              `merge-runtime.yml` with `lane: tier1`; that workflow takes
+              `workflow_call`, its `merge-runtime` job runs `just ci tier1`,
+              and its matrix has a `board` shard for the module.
+          A module both jobs run is refused (a tier-1 cell runs in one
+          place). A row neither reaches has no daily RUN job.
   weekly  `weekly.yml` on `schedule`, job `chapter`, and every track
           the row's `probe` names is a weekly track (scripts/probe/
           probe-tracks.json).
@@ -78,6 +87,7 @@ CADENCES = ("merge", "daily", "weekly", "manual")
 MERGE_WF, MERGE_JOB = "merge-runtime.yml", "merge-runtime"
 DAILY_WF, DAILY_JOB = "nightly.yml", "platform"
 TIER1_WF, TIER1_JOB = "run-matrix.yml", "tier1"
+HOSTED_TIER1_JOB = "tier1-hosted"
 WEEKLY_WF, WEEKLY_JOB = "weekly.yml", "chapter"
 
 
@@ -160,20 +170,69 @@ def is_host_witness(row):
     return row.get("runs") == "host" and row.get("breadth") == "witness"
 
 
-def tier1_serves(wf_text):
-    """'' when run-matrix.yml's scheduled `tier1` job runs `just ci tier1`,
-    else why not."""
+def tier1_self_hosted(wf_text):
+    """(modules, why): the modules run-matrix.yml's scheduled `tier1` runs --
+    None for the whole tier (no `NROS_LANE_MODULE`), else the one it names --
+    and '' or why it runs none."""
     if wf_text is None:
-        return f"no {TIER1_WF}"
+        return set(), f"no {TIER1_WF}"
     doc = yaml.safe_load(wf_text) or {}
     if "schedule" not in _on(doc):
-        return f"{TIER1_WF} has no schedule"
+        return set(), f"{TIER1_WF} has no schedule"
     job = _job(doc, TIER1_JOB)
     if job is None:
-        return f"{TIER1_WF} has no job `{TIER1_JOB}`"
+        return set(), f"{TIER1_WF} has no job `{TIER1_JOB}`"
     if "just ci tier1" not in _run_text(job):
-        return f"job `{TIER1_JOB}` does not run `just ci tier1`"
-    return ""
+        return set(), f"job `{TIER1_JOB}` does not run `just ci tier1`"
+    module = (job.get("env") or {}).get("NROS_LANE_MODULE")
+    return (None if module is None else {str(module)}), ""
+
+
+def tier1_hosted(daily_text, merge_text):
+    """(modules, why): the board shards nightly.yml's `tier1-hosted` call runs
+    over tier 1, and '' or why it runs none."""
+    if daily_text is None:
+        return set(), f"no {DAILY_WF}"
+    doc = yaml.safe_load(daily_text) or {}
+    job = _job(doc, HOSTED_TIER1_JOB)
+    if job is None:
+        return set(), f"{DAILY_WF} has no job `{HOSTED_TIER1_JOB}`"
+    if "schedule" not in _on(doc):
+        return set(), f"{DAILY_WF} has no schedule"
+    if not str(job.get("uses", "")).endswith(f"/{MERGE_WF}"):
+        return set(), f"job `{HOSTED_TIER1_JOB}` does not call {MERGE_WF}"
+    if str((job.get("with") or {}).get("lane")) != "tier1":
+        return set(), f"job `{HOSTED_TIER1_JOB}` does not pass `lane: tier1`"
+    if merge_text is None:
+        return set(), f"no {MERGE_WF}"
+    mdoc = yaml.safe_load(merge_text) or {}
+    if "workflow_call" not in _on(mdoc):
+        return set(), f"{MERGE_WF} cannot be called (no `workflow_call`)"
+    mjob = _job(mdoc, MERGE_JOB)
+    if mjob is None:
+        return set(), f"{MERGE_WF} has no job `{MERGE_JOB}`"
+    if "just ci tier1" not in _run_text(mjob):
+        return set(), f"job `{MERGE_JOB}` does not run `just ci tier1`"
+    matrix = ((mjob.get("strategy") or {}).get("matrix") or {})
+    return {str(b) for b in (matrix.get("board") or [])}, ""
+
+
+def tier1_serves(module, tier1_text, daily_text, merge_text):
+    """'' when exactly one tier-1 job runs `module` daily, else why not."""
+    self_mods, self_why = tier1_self_hosted(tier1_text)
+    hosted_mods, hosted_why = tier1_hosted(daily_text, merge_text)
+    on_self = not self_why and (self_mods is None or module in self_mods)
+    on_hosted = not hosted_why and module in hosted_mods
+    if on_self and on_hosted:
+        return (f"tier 1 runs module {module!r} twice: `{TIER1_JOB}` in {TIER1_WF} "
+                f"and `{HOSTED_TIER1_JOB}` in {DAILY_WF}; narrow `{TIER1_JOB}` with "
+                "`NROS_LANE_MODULE`")
+    if on_self or on_hosted:
+        return ""
+    why = [self_why or f"`{TIER1_JOB}` runs only {sorted(self_mods)}"]
+    why.append(hosted_why or f"`{HOSTED_TIER1_JOB}` has no `{module}` shard "
+               f"(shards: {sorted(hosted_mods)})")
+    return "; ".join(why)
 
 
 def daily_job_per_board(doc, job):
@@ -200,7 +259,7 @@ def daily_job_per_board(doc, job):
     return why
 
 
-def daily_unserved(rows, wf_text, tier1_text):
+def daily_unserved(rows, wf_text, tier1_text, merge_text=None):
     unserved = {}
     daily = [r for r in rows if r.get("cadence") == "daily"]
     why = []
@@ -217,9 +276,9 @@ def daily_unserved(rows, wf_text, tier1_text):
         else:
             why += daily_job_per_board(doc, job)
         runnable = nightly_runnable(wf_text)
-    tier1_why = tier1_serves(tier1_text)
     for r in daily:
         tok = row_module(r)
+        tier1_why = tier1_serves(tok, tier1_text, wf_text, merge_text)
         if is_host_witness(r) and not tier1_why:
             continue
         # phase-558 — the job is the ROW's board, so a row with no board names
@@ -316,7 +375,7 @@ def evaluate(rows, workflows, baseline, weekly_tracks, all_workflows=None):
     merge_errs, unserved = merge_errors(rows, workflows.get(MERGE_WF))
     errs += merge_errs
     unserved.update(daily_unserved(rows, workflows.get(DAILY_WF),
-                                   workflows.get(TIER1_WF)))
+                                   workflows.get(TIER1_WF), workflows.get(MERGE_WF)))
     unserved.update(weekly_unserved(rows, workflows.get(WEEKLY_WF), weekly_tracks))
     errs += road_errors(rows, all_workflows if all_workflows is not None else workflows)
     cadence_of = {row_key(r): r.get("cadence") for r in rows}
@@ -469,6 +528,45 @@ jobs:
          rows=daily_only + [witness_daily],
          wfs={**wfs, MERGE_WF: wf_dispatch,
               TIER1_WF: wf_tier1.replace("just ci tier1 run", "echo")})
+    # phase-559 W5b — tier 1's hosted per-board shards.
+    wf_daily_hosted = wf_daily + """  tier1-hosted:
+    uses: ./.github/workflows/merge-runtime.yml
+    with:
+      lane: tier1
+"""
+    wf_merge_call = """
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      lane:
+        type: string
+jobs:
+  merge-runtime:
+    strategy:
+      matrix:
+        board: [threadx_linux, zephyr]
+    steps:
+      - run: just ci tier1 run
+"""
+    wf_tier1_linux = wf_tier1.replace("  tier1:\n", "  tier1:\n    env:\n      NROS_LANE_MODULE: linux\n")
+    hosted = {**wfs, MERGE_WF: wf_merge_call, DAILY_WF: wf_daily_hosted, TIER1_WF: wf_tier1_linux}
+    case("a host witness row is served by its hosted tier-1 shard", False,
+         rows=daily_only + [witness_daily], wfs=hosted)
+    case("…and refused when the shard list drops its module", True,
+         rows=daily_only + [witness_daily],
+         wfs={**hosted, MERGE_WF: wf_merge_call.replace("[threadx_linux, zephyr]", "[zephyr]")})
+    case("…and refused when the workflow cannot be called", True,
+         rows=daily_only + [witness_daily],
+         wfs={**hosted, MERGE_WF: wf_merge_call.replace("  workflow_call:\n", "  push:\n")})
+    case("…and refused when the call passes another lane", True,
+         rows=daily_only + [witness_daily],
+         wfs={**hosted, DAILY_WF: wf_daily_hosted.replace("lane: tier1", "lane: merge")})
+    case("a module both tier-1 jobs run is refused", True,
+         rows=daily_only + [witness_daily], wfs={**hosted, TIER1_WF: wf_tier1})
+    case("a narrowed self-hosted tier 1 does not serve another module", True,
+         rows=daily_only + [witness_daily], wfs={**wfs, MERGE_WF: wf_dispatch,
+                                                 TIER1_WF: wf_tier1_linux})
     case("a non-witness daily row is not served by tier 1", True,
          rows=daily_only + [{"matrix_platform": "ZephyrQemuCortexM", "cadence": "daily",
                              "nightly_token": "zephyr", "runs": "emulator",

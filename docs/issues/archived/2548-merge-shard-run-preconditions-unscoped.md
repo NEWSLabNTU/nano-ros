@@ -1,15 +1,17 @@
 ---
 id: 2548
 title: "A merge shard's run refuses what its build correctly did not make, and its build makes host work it does not own: build and run scope a shard by different predicates"
-status: open
+status: resolved
 type: bug
 area: [ci, build, testing]
 severity: medium
 found: 2026-11-14
+resolved: 2026-11-16
+resolved_in: \"phase-559 W5b's ninth measurement\"
 related: [2510, 2475, 0828, phase-559]
 ---
 
-**Home: [phase-559](../roadmap/phase-559-ci-workflow-organization.md) W5b**
+**Home: [phase-559](../../roadmap/phase-559-ci-workflow-organization.md) W5b**
 (the per-board hosted tier-1 shards).
 
 ## Measured
@@ -188,3 +190,17 @@ A `merge-runtime.yml` tier-1 dispatch runs tests on the threadx_linux shard
 (preconditions pass). On the zephyr shard it reports the disk the build uses
 with host compile-checks out of scope: within budget, or the measured
 shortfall goes to the user (phase-559 W5b).
+
+## Resolved (2026-11-16)
+
+Verified by `merge-runtime.yml` run 43773321880 (`lane=tier1`, main
+3a0daf8adb, with phase-559 W12's eviction):
+
+- `threadx_linux`: preconditions passed and the tests ran, 3086 ran and 580
+  deselected out of lane, 0 skipped for an unmet precondition, 0 real
+  failures.
+- `zephyr`: `just build tier1` passed with host compile-checks out of scope.
+  Its lowest free space was 11.0 G of 103.2 G, within budget, and its run
+  passed (3106 ran, 0 real failures).
+
+Recorded in phase-559 W5b's ninth measurement.

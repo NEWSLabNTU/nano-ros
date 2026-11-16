@@ -601,6 +601,24 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # ===== Tier 1, hosted per-board shards (phase-559 W5b) ===============
+  # Tier 1's threadx_linux and zephyr slices, daily, each on its own hosted
+  # runner: merge-runtime.yml's shards with `lane: tier1` (`just build tier1`
+  # then `just ci tier1 run`, narrowed by NROS_LANE_MODULE). Measured to fit
+  # before they moved (run 43773321880: lowest free 30.7 G / 11.0 G, both
+  # passed). The linux slice stays on the self-hosted runner, run-matrix.yml's
+  # `tier1` (user ruling 2026-11-14, option B). No `timeout-minutes` here:
+  # GitHub refuses one on a job that calls a workflow; each shard states its own.
+  tier1-hosted:
+    name: tier 1 hosted
+    permissions:
+      contents: read
+      packages: read
+      actions: read
+    uses: ./.github/workflows/merge-runtime.yml
+    with:
+      lane: tier1
+
   # ===== PX4 SITL (phase-521 W8 (e), RFC-0113 D9) ======================
   # PX4 is a Tier 1 framework, and Tier 1 admission needs a DELIVERING CI
   # cell (RFC-0112 D3). Its uORB cell is `Runtime` in `matrix::CELLS` (phase-542

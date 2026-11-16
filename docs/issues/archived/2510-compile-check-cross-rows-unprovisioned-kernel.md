@@ -1,15 +1,17 @@
 ---
 id: 2510
 title: "Every lane runs the FreeRTOS cross-build compile-check rows, but `build_sources` leaves out `freertos-kernel` as cross-only, so a shard that provisions no FreeRTOS fails `build-compile-check-fixtures`, and the aggregate does not name the row"
-status: open
+status: resolved
 type: bug
 area: [ci, build, testing]
 severity: medium
 found: 2026-11-14
+resolved: 2026-11-16
+resolved_in: \"phase-559 W5b's ninth measurement\"
 related: [2475, 1651, phase-535, phase-559]
 ---
 
-**Home: [phase-559](../roadmap/phase-559-ci-workflow-organization.md) W5b**
+**Home: [phase-559](../../roadmap/phase-559-ci-workflow-organization.md) W5b**
 (the `merge-runtime.yml` re-measure). Found by issue 2475's after-run.
 
 ## Measured
@@ -132,3 +134,13 @@ Second fix (fix-2510-compile-check-lane-wiring):
   `build-compile-check-fixtures`, without `freertos-kernel` provisioned by
   hand.
 - A failing compile-check unit is named in the stage's own failure line.
+
+## Resolved (2026-11-16)
+
+Verified by `merge-runtime.yml` run 43773321880 (`lane=tier1`, main
+3a0daf8adb). The `threadx_linux` shard logged `compile-check: scoped to the
+lane's coordinates (...lane-coords-tier1-threadx_linux.txt)`, listed
+`freertos_firmware` and `orch_sched_tasks_freertos` out of lane, and passed
+`just build tier1` with no `freertos-kernel` provisioned by hand. Both
+"done when" points hold: the attribution line was already measured on run
+43534848324. Recorded in phase-559 W5b's ninth measurement.
