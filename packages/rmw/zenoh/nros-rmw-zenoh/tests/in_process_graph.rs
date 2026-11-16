@@ -182,7 +182,70 @@ fn node_topic_writers_share_one_data_key_and_each_is_a_publisher() {
         session.declare_node_topic_writer(&anonymous, &qos),
         Err(nros_rmw::TransportError::InvalidArgument)
     ));
+    // `create_publisher` shares only the runtime's stock writers: gamma is a
+    // user topic, so it has a zenoh publisher of its own.
+    assert_ne!(
+        gamma.zenoh_handle(),
+        beta.zenoh_handle(),
+        "a user publisher never shares implicitly"
+    );
     drop(beta);
     drop(gamma);
+    session.close().expect("close the session");
+}
+
+/// Issue 2493 -- through the ordinary publisher path, two nodes'
+/// `/parameter_events` writers share one zenoh publisher, while two user
+/// publishers on one key do NOT: each keeps its own, as before the change, so
+/// their events, deadlines and lending stay what they were.
+#[test]
+fn only_the_stock_writers_share_a_zenoh_publisher() {
+    use nros_rmw::{Session as _, TopicInfo};
+    let router = router();
+    let locator = router.locator();
+    let config = TransportConfig {
+        locator: Some(locator.as_str()),
+        mode: SessionMode::Client,
+        properties: &[("multicast_scouting", "false")],
+        node_name: "stock_writer_sharing",
+        namespace: "",
+        domain_id: 0,
+    };
+    let mut session = ZenohTransport::open(&config).expect("open zenoh session");
+    let qos = QoSProfile::parameter_events_default();
+    let on = |name, node| {
+        TopicInfo::new(
+            name,
+            "rcl_interfaces::msg::dds_::ParameterEvent_",
+            "TypeHashNotSupported",
+        )
+        .with_node_name(node)
+    };
+
+    let alpha = session
+        .create_publisher(&on("/parameter_events", "alpha"), qos)
+        .expect("alpha's /parameter_events writer");
+    let beta = session
+        .create_publisher(&on("/parameter_events", "beta"), qos)
+        .expect("beta's /parameter_events writer");
+    assert_eq!(
+        alpha.zenoh_handle(),
+        beta.zenoh_handle(),
+        "the stock writers of two nodes share one zenoh publisher"
+    );
+
+    const USER: &str = "/nros_user_topic_two_publishers";
+    let first = session
+        .create_publisher(&on(USER, "alpha"), qos)
+        .expect("first user publisher");
+    let second = session
+        .create_publisher(&on(USER, "beta"), qos)
+        .expect("second user publisher");
+    assert_ne!(
+        first.zenoh_handle(),
+        second.zenoh_handle(),
+        "two user publishers on one key keep a zenoh publisher each"
+    );
+    drop((alpha, beta, first, second));
     session.close().expect("close the session");
 }
