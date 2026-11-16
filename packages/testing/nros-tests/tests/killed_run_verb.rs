@@ -89,26 +89,66 @@ fn comm(pid: u32) -> String {
         .unwrap_or_default()
 }
 
-/// Spawn the verb `run` built, its output discarded (the test reads `/proc`,
-/// not the console).
-fn spawn_verb(run: &mut run::HostRun) -> Child {
-    let mut cmd = run.take_command();
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    // A test binary that dies mid-case still stops its verb (and, through it,
-    // everything below).
-    nros_tests::process::set_orphan_group_suicide(&mut cmd);
-    cmd.spawn().expect("spawning `nros run`")
+/// A spawned `nros run`, and the file its stderr goes to.
+///
+/// The test reads `/proc`, not the console, so stdout is discarded. Stderr is
+/// KEPT: when the verb exits before its image appears, what it printed is the
+/// only account of why. Main's tier 2 of 2026-11-16 failed both QEMU cases as
+/// "`nros run` exited (exit status: 1) before QEMU was running under it", with
+/// no cause anywhere, because stderr went to `/dev/null`. A file, not a pipe:
+/// nothing drains a pipe while the verb runs, and a full pipe would stall it.
+struct Verb {
+    child: Child,
+    stderr: tempfile::NamedTempFile,
+}
+
+impl Verb {
+    fn spawn(mut cmd: Command) -> Self {
+        let stderr = tempfile::NamedTempFile::new().expect("a stderr log for `nros run`");
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(stderr.reopen().expect("reopening the stderr log"));
+        // A test binary that dies mid-case still stops its verb (and, through
+        // it, everything below).
+        nros_tests::process::set_orphan_group_suicide(&mut cmd);
+        let child = cmd.spawn().expect("spawning `nros run`");
+        Self { child, stderr }
+    }
+
+    /// What the verb wrote to stderr so far.
+    fn stderr_text(&self) -> String {
+        std::fs::read_to_string(self.stderr.path()).unwrap_or_else(|e| format!("<unreadable: {e}>"))
+    }
+}
+
+impl std::ops::Deref for Verb {
+    type Target = Child;
+    fn deref(&self) -> &Child {
+        &self.child
+    }
+}
+
+impl std::ops::DerefMut for Verb {
+    fn deref_mut(&mut self) -> &mut Child {
+        &mut self.child
+    }
+}
+
+/// Spawn the verb `run` built.
+fn spawn_verb(run: &mut run::HostRun) -> Verb {
+    Verb::spawn(run.take_command())
 }
 
 /// Wait until a descendant of `verb` satisfies `is_image`, then return every
 /// descendant (runner, image, any guard) as it stands.
-fn running_tree(verb: &mut Child, what: &str, is_image: impl Fn(u32) -> bool) -> Vec<Proc> {
+fn running_tree(verb: &mut Verb, what: &str, is_image: impl Fn(u32) -> bool) -> Vec<Proc> {
     let deadline = Instant::now() + STARTUP;
     loop {
         if let Ok(Some(status)) = verb.try_wait() {
-            panic!("`nros run` exited ({status}) before {what} was running under it");
+            panic!(
+                "`nros run` exited ({status}) before {what} was running under it; its stderr:\n{}",
+                verb.stderr_text()
+            );
         }
         let tree = run::descendants(verb.id());
         if tree.iter().any(|&p| is_image(p)) {
@@ -290,13 +330,7 @@ fn sigkilled_verb_leaves_no_renode_twin() {
 #[test]
 fn sigtermed_verb_returns_after_the_renode_twin_is_gone() {
     let mut plan = nucleo_twin_plan();
-    let log = tempfile::NamedTempFile::new().expect("a stderr log");
-    let mut cmd = plan.take_command();
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(log.reopen().expect("reopening the stderr log"));
-    nros_tests::process::set_orphan_group_suicide(&mut cmd);
-    let mut verb = cmd.spawn().expect("spawning `nros run`");
+    let mut verb = spawn_verb(&mut plan);
     let tree = running_tree(&mut verb, "Renode", is_renode);
     eprintln!("recorded under the verb: {}", describe(&tree));
     // SAFETY: SIGTERM to the verb this test started.
@@ -321,7 +355,7 @@ fn sigtermed_verb_returns_after_the_renode_twin_is_gone() {
         .filter(|&&p| alive(p))
         .map(|p| (p.pid, comm(p.pid)))
         .collect();
-    let stderr = std::fs::read_to_string(log.path()).unwrap_or_default();
+    let stderr = verb.stderr_text();
     eprintln!("`nros run` returned {status} {took:?} after SIGTERM");
     if !left.is_empty() {
         assert_no_survivor(&tree, "a SIGTERMed `nros run` on the Renode twin");
