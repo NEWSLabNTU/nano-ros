@@ -116,6 +116,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosRosEdition.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosConfigureHook.cmake")
 # Issue 2395 -- `nros_message_detail`, for the reason a configure is skipped.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosDiagnostics.cmake")
+# The zenoh POSIX pools' derived Kconfig defaults (`nros_zpico_pthread_pool_kconfig`).
+include("${CMAKE_CURRENT_LIST_DIR}/nros_zpico_pthread_pools.cmake")
 
 # The module root, captured at FILE scope (inside a function
 # `CMAKE_CURRENT_LIST_DIR` names the caller's file).
@@ -258,6 +260,9 @@ function(nros_image_kconfig_hook)
         endif()
         configure_file("${_NROS_IMAGE_KCONFIG_ROOT}/zephyr/Kconfig.knob-prompts" "${_kgen}"
             COPYONLY)
+        # A guest resolves nothing, so no derived pools: drop an earlier file.
+        get_filename_component(_kpools "${_kgen}" DIRECTORY)
+        nros_zpico_pthread_pool_kconfig("" "${_kpools}/Kconfig.pthread-pools")
         _nros_image_kconfig_stamp("${_NROS_IMAGE_KCONFIG_ROOT}/zephyr/Kconfig" "${_kgen}" "${_bin}")
         # Issue 2157 -- a hand-written entry is a guest here, and its board's
         # snippets arrive as `-DNROS_BOARD_SNIPPETS` from `nros build`.
@@ -395,6 +400,12 @@ function(nros_image_kconfig_hook)
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR "nano-ros: ${_dir}/system.toml [image.${_image}]: ${_err}")
     endif()
+    # The zenoh POSIX pools, from the counts configure resolved above, beside
+    # the knob file (`zephyr/Kconfig` sources both before its own defaults).
+    # Before the stamp, which digests it too.
+    nros_resolved_entity_fragment(_resolved_frag)
+    get_filename_component(_kpools "${_kgen}" DIRECTORY)
+    nros_zpico_pthread_pool_kconfig("${_resolved_frag}" "${_kpools}/Kconfig.pthread-pools" "${_kgen}")
     _nros_image_kconfig_stamp("${_NROS_IMAGE_KCONFIG_ROOT}/zephyr/Kconfig" "${_kgen}" "${_bin}")
     get_filename_component(_rendered_dir "${_dir}" REALPATH)
     set_property(GLOBAL PROPERTY NROS_IMAGE_RENDERED_DIR "${_rendered_dir}")
@@ -580,6 +591,11 @@ function(_nros_image_kconfig_stamp _kconfig _kgen _bin)
         file(SHA256 "${_kgen}" _d2)
         string(APPEND _text
             "# nano-ros Kconfig.from-system-toml digest (RFC-0120 D6): ${_d2}\n")
+    endif()
+    get_filename_component(_kpools "${_kgen}" DIRECTORY)
+    if(EXISTS "${_kpools}/Kconfig.pthread-pools")
+        file(SHA256 "${_kpools}/Kconfig.pthread-pools" _d3)
+        string(APPEND _text "# nano-ros Kconfig.pthread-pools digest: ${_d3}\n")
     endif()
     set(_old "")
     if(EXISTS "${_stamp}")

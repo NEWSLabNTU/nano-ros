@@ -1385,6 +1385,11 @@ config NROS_CODEGEN_TOOL
 #     which gives each knob back its prompt, so prj.conf, menuconfig and
 #     -DCONFIG_* work as before.
 osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.from-system-toml"
+# The zenoh POSIX mutex/cond pools' DEFAULTS, derived by the module hook from
+# the subscriber and queryable counts `nros configure` resolved
+# (zephyr/cmake/nros_zpico_pthread_pools.cmake). Absent for a guest, or an
+# image with no resolve, which keep the module defaults below.
+osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.pthread-pools"
 
 # prompt: Callback slots to budget at ActionClient size (-1 = derive)
 config NROS_EXECUTOR_ACTION_CLIENTS
@@ -3138,8 +3143,12 @@ configdefault NET_BUF_TX_COUNT
 configdefault NET_TCP_WORKQ_STACK_SIZE
     default 4096
 
+# zenoh-pico's POSIX pools. An image `nros configure` resolved gets a default
+# derived from its subscribers and queryables first (Kconfig.pthread-pools,
+# sourced above), never below these; these answer for a guest. 64 mutexes is
+# the value every zenoh leaf conf used to hand-set (phase-432 W3.1).
 configdefault MAX_PTHREAD_MUTEX_COUNT
-    default 32
+    default 64
 
 configdefault MAX_PTHREAD_COND_COUNT
     default 16

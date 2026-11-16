@@ -26,8 +26,6 @@ use std::{collections::HashMap, path::PathBuf};
 enum Req {
     /// `CONFIG_<sym>=y`.
     Yes(&'static str),
-    /// `CONFIG_<sym>` set to an integer `>= min`.
-    Min(&'static str, i64),
     /// `CONFIG_<sym>` set to an integer `> 0`.
     Positive(&'static str),
 }
@@ -43,25 +41,23 @@ struct Backend {
 const REQUIREMENTS: &[Backend] = &[
     Backend {
         rmw: "zenoh",
-        // zenoh-pico on the Zephyr POSIX port: pthread mutex/cond per transport
-        // (TX/RX/peer) + a write filter per publisher. The default
-        // CONFIG_MAX_PTHREAD_MUTEX_COUNT=5 exhausts the pool → `_z_*` returns -80
-        // (`_Z_ERR_SYSTEM_GENERIC`) at session open. Needs ~8+; examples use 32/16.
+        // zenoh-pico on the Zephyr POSIX port also needs pthread mutex/cond
+        // pools (Zephyr's default 5 mutexes fails with -80 at session open),
+        // but no overlay states them any more: the nano-ros module derives
+        // both pools' defaults from the image's entities
+        // (`zephyr/cmake/nros_zpico_pthread_pools.cmake`), and
+        // `zenoh_pthread_pools_have_module_defaults` below holds the module's
+        // own defaults to the minimum this table used to ask of every overlay.
         // phase-391 W3 — HEAP_MEM_POOL_SIZE is deliberately NOT required any
         // more: zenoh-pico's z_malloc funnels into the rlsf arena in
         // nros-platform's zephyr_heap (NROS_ZEPHYR_HEAP_SIZE), not k_malloc,
         // and the converted confs set the kernel pool to 0 so it shrinks to
         // Zephyr's own ADD_SIZE floor. Requiring pool > 0 here would force
         // every image to carry BOTH heaps — the exact state W3 removed.
-        reqs: &[
-            Req::Yes("POSIX_API"),
-            Req::Min("MAX_PTHREAD_MUTEX_COUNT", 8),
-            Req::Min("MAX_PTHREAD_COND_COUNT", 6),
-        ],
-        why: "zenoh-pico needs POSIX threads with >=8 pthread mutexes / >=6 \
-               condvars (the default 5 mutexes fails with -80 at \
-               Executor::open); its heap is the phase-391 rlsf arena, not \
-               k_malloc, so the kernel pool may be 0",
+        reqs: &[Req::Yes("POSIX_API")],
+        why: "zenoh-pico needs POSIX threads (its pthread pools are the \
+               module's, derived per image); its heap is the phase-391 rlsf \
+               arena, not k_malloc, so the kernel pool may be 0",
     },
     Backend {
         rmw: "cyclonedds",
@@ -198,13 +194,11 @@ fn zephyr_prjconf_meets_backend_requirements() {
             let ok = match req {
                 Req::Yes(sym) => cfg.get(*sym).map(|v| v == "y").unwrap_or(false),
                 Req::Positive(sym) => cfg.get(*sym).and_then(|v| as_int(v)).unwrap_or(0) > 0,
-                Req::Min(sym, min) => cfg.get(*sym).and_then(|v| as_int(v)).unwrap_or(-1) >= *min,
             };
             if !ok {
                 let (sym, want, got) = match req {
                     Req::Yes(s) => (*s, "=y".to_string(), cfg.get(*s).cloned()),
                     Req::Positive(s) => (*s, "> 0".to_string(), cfg.get(*s).cloned()),
-                    Req::Min(s, m) => (*s, format!(">= {m}"), cfg.get(*s).cloned()),
                 };
                 failures.push(format!(
                     "  {rel} (rmw={rmw}): CONFIG_{sym} must be {want}, got {got:?}\n      → {}",
@@ -222,4 +216,31 @@ fn zephyr_prjconf_meets_backend_requirements() {
          #38 capability gate — catches e.g. the zenoh-pico -80 mutex-count footgun):\n{}",
         failures.join("\n")
     );
+}
+
+/// The zenoh pthread pools are the MODULE's now: an image with a resolve gets a
+/// default derived from its entities, never below the `configdefault` in
+/// `zephyr/Kconfig`'s zenoh block, and a guest gets that default. So the floor
+/// this file used to require of every `prj-zenoh.conf` (>= 8 mutexes, >= 6
+/// condvars; Zephyr's own 5 mutexes fails with -80 at session open) is
+/// required of those defaults instead.
+#[test]
+fn zenoh_pthread_pools_have_module_defaults() {
+    let kconfig = std::fs::read_to_string(nros_tests::project_root().join("zephyr/Kconfig"))
+        .expect("read zephyr/Kconfig");
+    let zenoh = kconfig
+        .split("\nif NROS_RMW_ZENOH\n")
+        .last()
+        .and_then(|tail| tail.split("\nendif # NROS_RMW_ZENOH").next())
+        .expect("zephyr/Kconfig has an `if NROS_RMW_ZENOH` block");
+    for (sym, min) in [("MAX_PTHREAD_MUTEX_COUNT", 8), ("MAX_PTHREAD_COND_COUNT", 6)] {
+        let head = format!("configdefault {sym}\n    default ");
+        let v: i64 = zenoh
+            .split(&head)
+            .nth(1)
+            .and_then(|rest| rest.lines().next())
+            .and_then(|n| n.trim().parse().ok())
+            .unwrap_or_else(|| panic!("the zenoh block states no `configdefault {sym}`"));
+        assert!(v >= min, "zephyr/Kconfig: configdefault {sym} is {v}, below {min}");
+    }
 }

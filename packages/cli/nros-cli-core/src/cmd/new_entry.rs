@@ -594,13 +594,10 @@ CONFIG_NROS_RMW_ZENOH=y
 # "tcp/10.0.2.2:7447"), and an image states one as `locator` in system.toml.
 # A line here merged AFTER the board's file and overrode it.
 
-# zenoh-pico takes ~22 pthread mutexes plus one per subscriber, from a static
-# pool (Zephyr's default of 5 fails with -80 at session open). The
-# build derives a floor and refuses below it (`_nros_mutex_floor` in
-# `zephyr/cmake/nros_cargo_build.cmake`); 64 is the value every in-tree zenoh
-# leaf uses. 16 was below the floor for one subscriber.
-CONFIG_MAX_PTHREAD_MUTEX_COUNT=64
-CONFIG_MAX_PTHREAD_COND_COUNT=16
+# zenoh-pico's pthread mutex and condition-variable pools are not set here:
+# the nano-ros module derives both from the image's subscribers and
+# queryables (`zephyr/cmake/nros_zpico_pthread_pools.cmake`), and a line here
+# would pin them below the next entity.
 "#
         .to_string(),
         // phase-405 W1 — this emitted `CONFIG_NROS_XRCE_AGENT_LOCATOR`, which

@@ -36,6 +36,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosResolved.cmake")
 # so they record what the configure's readers consumed, which the late
 # producers are then held to. FILE scope, same reason as the two above.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosPromise.cmake")
+# The zenoh POSIX pool floors, shared with the pre-Kconfig hook that derives the
+# pools' defaults from them (`nros_zpico_pthread_floors`).
+include("${CMAKE_CURRENT_LIST_DIR}/nros_zpico_pthread_pools.cmake")
 # phase-484 W5a/W8 (RFC-0103 D2b) -- `_nros_knob_env`, rung 1 under a knob's
 # canonical spelling, refusing a retired one. FILE scope, same reason as its
 # neighbours.
@@ -849,22 +852,28 @@ function(nros_resolve_knobs)
     # reaches the application as an opaque -100 "transport error" naming
     # nothing, on a board whose console is not wired.
     #
-    # DELIBERATELY NOT DERIVED. The remaining consumers are zenoh-pico's own
-    # (session mutexes, liveliness subscribers, fifo/ring channels, the
+    # The FIXED share is not derived. The remaining consumers are zenoh-pico's
+    # own (session mutexes, liveliness subscribers, fifo/ring channels, the
     # scheduler, cancellation tokens), so a derivation would encode that crate's
     # internal structure into this build and break silently whenever upstream
     # adds a sync group. A floor with a measured constant is honest about being
-    # a bound rather than a model.
+    # a bound rather than a model. What IS derived is the pool's Kconfig
+    # DEFAULT: the module hook states this same floor before Kconfig runs
+    # (`nros_zpico_pthread_pools.cmake`), so an image that hand-sets no count
+    # gets one that grows with its entities, and this refuses an explicit conf
+    # line below it.
     #
     # MEASURED on mr-canhubk344, 2026-09-04: 10 subscribers boot at 32, 11 fail
     # at 32 and boot at 64. One mutex per subscriber, so the fixed overhead is
     # 22. The +4 is headroom for a subscriber added without re-measuring.
     if(CONFIG_NROS_RMW_ZENOH AND DEFINED NROS_RESOLVED_NROS_RMW_SUBSCRIBER_SLOTS
        AND NOT "${NROS_RESOLVED_NROS_RMW_SUBSCRIBER_SLOTS}" STREQUAL "")
-        set(_nros_zpico_mutex_overhead 22)
+        set(_nros_zpico_mutex_overhead ${NROS_ZPICO_MUTEX_FIXED_SUBS})
         math(EXPR _nros_mutex_floor
-             "${NROS_RESOLVED_NROS_RMW_SUBSCRIBER_SLOTS} + ${_nros_zpico_mutex_overhead} + 4")
-        # phase-432 W3.1 — why the zenoh leaves say 64 and not 32.
+             "${NROS_RESOLVED_NROS_RMW_SUBSCRIBER_SLOTS} + ${_nros_zpico_mutex_overhead} + ${NROS_ZPICO_PTHREAD_HEADROOM}")
+        # phase-432 W3.1 — why the zenoh leaves SAID 64 and not 32 (history:
+        # since the pools' defaults are derived, an image with a resolve
+        # hand-sets neither count).
         #
         # 32 was ONE constant hand-copied into 31 `prj-zenoh.conf` leaves,
         # against a floor this file COMPUTES. It caps an image at 6 subscriber
@@ -894,7 +903,9 @@ function(nros_resolve_knobs)
                 "fails, and by the time that crosses the C ABI it is an opaque "
                 "-100 transport error that names nothing.\n"
                 "\n"
-                "Set CONFIG_MAX_PTHREAD_MUTEX_COUNT=${_nros_mutex_floor} or higher.")
+                "Set CONFIG_MAX_PTHREAD_MUTEX_COUNT=${_nros_mutex_floor} or higher, or delete "
+                "the line: for an image nros configure resolved, the module derives the "
+                "pool's default from its entities.")
         endif()
     endif()
 
@@ -1131,12 +1142,13 @@ function(nros_resolve_knobs)
         if(DEFINED NROS_DERIVED_MAX_QUERYABLES AND
            NOT "${NROS_DERIVED_MAX_QUERYABLES}" STREQUAL "" AND
            "${_nros_zpico_qrys}" STREQUAL "${NROS_DERIVED_MAX_QUERYABLES}")
-            set(_nros_zpico_cond_overhead 4)   # max(island 2, native_sim 4)
-            set(_nros_zpico_mutex_overhead_q 24)
-            math(EXPR _nros_cond_floor
-                 "${_nros_zpico_subs} + ${_nros_zpico_qrys} + ${_nros_zpico_cond_overhead} + 4")
-            math(EXPR _nros_mutex_floor_q
-                 "${_nros_zpico_subs} + ${_nros_zpico_qrys} + ${_nros_zpico_mutex_overhead_q} + 4")
+            # The formula is `nros_zpico_pthread_floors`, which the module hook
+            # also turns into the pools' Kconfig defaults; this refuses an
+            # explicit conf value below it.
+            set(_nros_zpico_cond_overhead ${NROS_ZPICO_COND_FIXED})
+            set(_nros_zpico_mutex_overhead_q ${NROS_ZPICO_MUTEX_FIXED})
+            nros_zpico_pthread_floors(${_nros_zpico_subs} ${_nros_zpico_qrys} ""
+                _nros_cond_floor _nros_mutex_floor_q)
             foreach(_nros_pool COND MUTEX)
                 if(_nros_pool STREQUAL "COND")
                     set(_nros_have "${CONFIG_MAX_PTHREAD_COND_COUNT}")
@@ -1163,7 +1175,9 @@ function(nros_resolve_knobs)
                         "the declaration fails, and by the time that crosses the C ABI it "
                         "is an opaque -100 transport error that names nothing.\n"
                         "\n"
-                        "Set CONFIG_MAX_PTHREAD_${_nros_pool}_COUNT=${_nros_need} or higher.")
+                        "Set CONFIG_MAX_PTHREAD_${_nros_pool}_COUNT=${_nros_need} or higher, "
+                        "or delete the line: for an image nros configure resolved, the module "
+                        "derives the pool's default from its entities.")
                 endif()
             endforeach()
         endif()

@@ -1385,10 +1385,9 @@ CONFIG_NROS=y
 # The typed carrier entry is C++17, for a C component too.
 CONFIG_STD_CPP17=y
 
-# zenoh-pico needs POSIX threads.
+# zenoh-pico needs POSIX threads. Its pthread mutex/cond pools are the
+# nano-ros module's, derived from the image's entities.
 CONFIG_POSIX_API=y
-CONFIG_MAX_PTHREAD_MUTEX_COUNT=64
-CONFIG_MAX_PTHREAD_COND_COUNT=16
 CONFIG_POSIX_THREAD_THREADS_MAX=16
 # CONFIG_MAIN_STACK_SIZE: the nano-ros module decides it per image
 # CONFIG_HEAP_MEM_POOL_SIZE: the nano-ros module states a small kernel heap;
