@@ -246,6 +246,17 @@ pub(super) struct DataKey {
     express: bool,
 }
 
+/// Issue 2493 -- the topics on which `create_publisher` shares one zenoh
+/// publisher between the ROS publishers of several nodes: the writers the
+/// runtime creates for every node itself. Absolute names, as `TopicInfo`
+/// carries them.
+pub(super) const STOCK_SHARED_TOPICS: [&str; 2] = ["/parameter_events", "/rosout"];
+
+/// Whether a publisher on `name` may share a zenoh publisher implicitly.
+pub(super) fn shares_stock_writer(name: &str) -> bool {
+    STOCK_SHARED_TOPICS.contains(&name)
+}
+
 impl DataKey {
     fn of(topic: &TopicInfo, qos: &QoSProfile) -> Self {
         use crate::keyexpr::TopicKeyExpr as _;
@@ -1520,12 +1531,20 @@ impl Session for ZenohSession {
         // the resolve comes first: the token must carry what this backend does,
         // not what it was asked to do.
         let qos = super::qos::admit(super::qos::EntityKind::Publisher, topic.name, &qos)?;
-        // Issue 2493 -- a VOLATILE publisher on a data key this session
-        // already publishes on shares that zenoh publisher: one data key, a
-        // liveliness token and gid per ROS publisher. That is how every node
-        // of an image is a `/parameter_events` (and `/rosout`) publisher
-        // without a zenoh publisher slot each.
-        let shared = self.share_data_publisher(topic, &qos);
+        // Issue 2493 -- a VOLATILE publisher on one of the runtime's stock
+        // topics, on a data key this session already publishes on, shares
+        // that zenoh publisher: one data key, a liveliness token and gid per
+        // ROS publisher. That is how every node of an image is a
+        // `/parameter_events` (and `/rosout`) publisher without a zenoh
+        // publisher slot each. Any other publisher keeps a zenoh publisher of
+        // its own, exactly as before: sharing is not something a user
+        // publisher asked for, and `declare_node_topic_writer` is the explicit
+        // way to opt in.
+        let shared = if shares_stock_writer(topic.name) {
+            self.share_data_publisher(topic, &qos)
+        } else {
+            None
+        };
         let mut publisher = ZenohPublisher::new_on(&self.context, topic, None, &qos, shared)?;
         self.note_data_publisher(publisher.zenoh_handle(), topic, &qos);
         // Phase 268 W2 — ensure a per-node NN token for this publisher's node.

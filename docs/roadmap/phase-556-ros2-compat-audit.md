@@ -397,7 +397,9 @@ Done:
   (`create_param_event_pub`, still the one creation site); each node's events
   go out on its own writer, and opting out drops it. `PARAM_EVENT_PUBLISHERS`
   is per node in the entity inventory and the zenoh liveliness default.
-- zenoh: a VOLATILE publisher on a data key the session already publishes on,
+- zenoh: a VOLATILE publisher on one of the runtime's stock topics
+  (`/parameter_events`, `/rosout`; any other publisher keeps its own zenoh
+  publisher), on a data key the session already publishes on,
   with the same reliability and express choice, shares that zenoh publisher
   (one data key, a liveliness token, gid and sequence number per ROS
   publisher; undeclared when its last holder drops). No C ABI or vtable
