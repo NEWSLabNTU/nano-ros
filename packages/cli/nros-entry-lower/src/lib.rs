@@ -561,6 +561,8 @@ pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
     ("freertos-posix", BoardFamily::Freertos),
     ("s32z270-freertos", BoardFamily::Freertos),
     ("s32z270", BoardFamily::Freertos),
+    // Issue 2632 -- the NXP RTD variant of the same board.
+    ("s32z270-freertos-rtd", BoardFamily::Freertos),
     ("mps3-an536-freertos", BoardFamily::Freertos),
     ("an536", BoardFamily::Freertos),
     ("threadx", BoardFamily::Threadx),
