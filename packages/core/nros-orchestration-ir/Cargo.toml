@@ -69,5 +69,9 @@ ros-launch-manifest-derive = { git = "https://github.com/NEWSLabNTU/ros-launch-m
 # default features, so no backend comes with it.
 nros-rmw = { workspace = true, default-features = false }
 
+[dev-dependencies]
+# Issue 2638 -- the baked-text round trip is tested against the device reader.
+nros-params = { workspace = true }
+
 [lints]
 workspace = true

@@ -6190,9 +6190,9 @@ nros_cpp_ret_t nros_cpp_node_disable_parameter_events(const struct nros_cpp_node
  * call carried no node and every seed landed on the executor's primary node.
  *
  * The value's type is still INFERRED from the string (bool, integer, double,
- * then string: `infer_param_value`, the same order `nros::main!` uses).
- * Carrying the declared type from the launch contract instead would change
- * only the shim's one `infer_param_value` call.
+ * then string, and `[a, b]` as an array: `seed_launch_text`, the same reading
+ * `nros::main!` uses). Carrying the declared type from the launch contract
+ * instead would change only that one call.
  *
  * # Safety
  * `executor` must be a valid, live `CppContext*`. `name` and `value` must be

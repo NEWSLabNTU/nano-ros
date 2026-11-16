@@ -63,6 +63,8 @@ pub mod entry_names;
 // issue 2432 - the derived schedule's callback-group INPUT and the line each
 // road prints about it, in one spelling for C/C++, codegen-system and nros::main!.
 pub mod entry_groups;
+// Issue 2638 -- the baked text of a launch parameter value.
+pub mod launch_param_text;
 pub mod leaf_capabilities;
 pub mod leaf_system;
 /// Preemption levels derived from the ranks,

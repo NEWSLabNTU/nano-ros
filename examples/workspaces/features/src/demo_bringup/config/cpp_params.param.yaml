@@ -1,0 +1,12 @@
+# Issue 2638 -- list parameters loaded through `<param from>`, the way an
+# Autoware `config/*.param.yaml` carries them. Each one must reach the node as
+# an ARRAY of its element type; they used to arrive as one comma-joined
+# string. `ParamTalker::configure` reads them back and prints the verdict.
+/**:
+  ros__parameters:
+    gains: [40.0, 50.0, 60.0]
+    ids: [1, 2, 3]
+    flags: [true, false]
+    names: [left, '5', 'a, b']
+    # ROS gives an empty sequence no value, so this seeds nothing.
+    unset_list: []

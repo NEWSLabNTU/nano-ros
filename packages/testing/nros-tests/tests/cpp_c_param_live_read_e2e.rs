@@ -112,6 +112,19 @@ fn cpp_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     entry.kill();
     listener.kill();
 
+    // Issue 2638 -- the list parameters `cpp_params.launch.xml` loads through
+    // `<param from>` reached the node as ARRAYS (double, integer, bool and
+    // string), and `[]` seeded nothing. They used to arrive as one
+    // comma-joined string. `configure` prints the verdict before it publishes.
+    let entry_out = entry
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+    assert!(
+        entry_out.contains("list params: arrays"),
+        "the launch file's list parameters did not arrive as arrays of their element \
+         type. Entry output:\n{entry_out}"
+    );
+
     let n = nros_tests::count_pattern(&out, nros_tests::output::int32_listener_line(250).as_str());
     assert!(n >= 3, "expected ≥3 live-read publishes of 250, got {n}");
 }

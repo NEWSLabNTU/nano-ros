@@ -107,9 +107,9 @@ pub unsafe extern "C" fn nros_cpp_node_disable_parameter_events(
 /// call carried no node and every seed landed on the executor's primary node.
 ///
 /// The value's type is still INFERRED from the string (bool, integer, double,
-/// then string: `infer_param_value`, the same order `nros::main!` uses).
-/// Carrying the declared type from the launch contract instead would change
-/// only the shim's one `infer_param_value` call.
+/// then string, and `[a, b]` as an array: `seed_launch_text`, the same reading
+/// `nros::main!` uses). Carrying the declared type from the launch contract
+/// instead would change only that one call.
 ///
 /// # Safety
 /// `executor` must be a valid, live `CppContext*`. `name` and `value` must be
@@ -147,14 +147,12 @@ pub unsafe extern "C" fn nros_cpp_declare_param(
         );
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    // phase-446 seam: a declared type replaces this inference.
-    let pv = infer_param_value(val_str);
-    let id = nros_node::executor::NodeId::from_raw(node);
-    if ctx.executor.declare_parameter_on(id, name_str, pv) {
-        NROS_CPP_RET_OK
-    } else {
-        seed_refused(&ctx, id, name_str)
-    }
+    seed_launch_text(
+        &mut ctx,
+        nros_node::executor::NodeId::from_raw(node),
+        name_str,
+        val_str,
+    )
 }
 
 /// Seed a launch parameter, given as a string, on the node the executor will
@@ -227,13 +225,71 @@ pub unsafe extern "C" fn nros_cpp_declare_node_param(
     if !ctx.seed_next.set(node_str, next) {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
+    seed_launch_text(
+        &mut ctx,
+        nros_node::executor::NodeId::from_raw(next),
+        name_str,
+        val_str,
+    )
+}
+
+/// Type one launch parameter's baked text and seed it on `node` -- issue 2638.
+///
+/// The text is read by `ParameterValue::assign_launch_text`, the reader of the
+/// convention the build writes (`nros_orchestration_ir::launch_param_text`):
+/// scalars infer as before (bool, integer, double, then string), a quoted text
+/// is a string, and `[a, b]` is an ARRAY typed by its elements. A list used to
+/// arrive as one comma-joined string.
+///
+/// `[]` seeds NOTHING and answers OK: ROS gives an empty sequence no value
+/// (rcl allocates one on its first element), so the declaration's own default
+/// stands, as it would under `ros2 launch`. A list ROS refuses (mixed element
+/// types) or one that does not fit the store is REFUSED with
+/// `NROS_CPP_RET_INVALID_ARGUMENT` / `NROS_CPP_RET_FULL` and a log line naming
+/// the parameter -- never seeded as a string.
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
+fn seed_launch_text(
+    ctx: &mut crate::CppContext,
+    node: nros_node::executor::NodeId,
+    name: &str,
+    text: &str,
+) -> nros_cpp_ret_t {
+    use nros::LaunchTextError as E;
     // phase-446 seam: a declared type replaces this inference.
-    let pv = infer_param_value(val_str);
-    let id = nros_node::executor::NodeId::from_raw(next);
-    if ctx.executor.declare_parameter_on(id, name_str, pv) {
+    let mut pv = ParameterValue::NotSet;
+    if let Err(e) = pv.assign_launch_text(text) {
+        let logger = nros_log::get_logger("nros_cpp");
+        return match e {
+            E::EmptyList => {
+                nros_log::log_info!(
+                    logger,
+                    "launch parameter '{name}' is an empty list, which ROS gives no value: \
+                     the declared default stands"
+                );
+                NROS_CPP_RET_OK
+            }
+            E::DoesNotFit => {
+                nros_log::log_error!(
+                    logger,
+                    "launch parameter '{name}' = `{text}` does not fit the parameter store \
+                     (string or array capacity): refusing it"
+                );
+                NROS_CPP_RET_FULL
+            }
+            E::MixedList | E::Malformed => {
+                nros_log::log_error!(
+                    logger,
+                    "launch parameter '{name}' = `{text}` is not a list of one element type \
+                     ({e:?}; ROS refuses it too): refusing it"
+                );
+                NROS_CPP_RET_INVALID_ARGUMENT
+            }
+        };
+    }
+    if ctx.executor.declare_parameter_on_ref(node, name, &pv) {
         NROS_CPP_RET_OK
     } else {
-        seed_refused(&ctx, id, name_str)
+        seed_refused(ctx, node, name)
     }
 }
 
@@ -1475,26 +1531,6 @@ unsafe fn copy_array_out<T: Copy>(
     NROS_CPP_RET_OK
 }
 
-/// Infer a `ParameterValue` from a raw launch-param string, mirroring the
-/// Rust `nros::main!` W4b inference in `nros/src/node_runtime.rs::infer_param_value`.
-///
-/// Precedence: bool ("true"/"false") → integer → float → string (truncated if too long).
-#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
-fn infer_param_value(raw: &str) -> ParameterValue {
-    match raw {
-        "true" | "True" | "TRUE" => return ParameterValue::from_bool(true),
-        "false" | "False" | "FALSE" => return ParameterValue::from_bool(false),
-        _ => {}
-    }
-    if let Ok(i) = raw.parse::<i64>() {
-        return ParameterValue::from_integer(i);
-    }
-    if let Ok(f) = raw.parse::<f64>() {
-        return ParameterValue::from_double(f);
-    }
-    ParameterValue::from_string(raw).unwrap_or(ParameterValue::NotSet)
-}
-
 // ============================================================================
 // phase-417 W4.a — descriptors, undeclare, listing and the on-set hook
 // ============================================================================
@@ -2454,30 +2490,33 @@ mod tests {
         assert_eq!(ret, NROS_CPP_RET_INVALID_ARGUMENT);
     }
 
+    /// Issue 2638 -- the seed reads the build's baked text: scalars infer
+    /// as they always did, and a flow list is an ARRAY of its element type
+    /// (it used to arrive as one comma-joined string).
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     #[test]
-    fn infer_param_value_bool() {
-        assert_value_eq!(infer_param_value("true"), ParameterValue::from_bool(true));
-        assert_value_eq!(infer_param_value("false"), ParameterValue::from_bool(false));
-        assert_value_eq!(infer_param_value("True"), ParameterValue::from_bool(true));
-        assert_value_eq!(infer_param_value("FALSE"), ParameterValue::from_bool(false));
-    }
-
-    #[test]
-    fn infer_param_value_integer() {
-        assert_value_eq!(infer_param_value("42"), ParameterValue::from_integer(42));
-        assert_value_eq!(infer_param_value("-7"), ParameterValue::from_integer(-7));
-    }
-
-    #[test]
-    fn infer_param_value_double() {
-        assert_value_eq!(infer_param_value("2.5"), ParameterValue::from_double(2.5));
-    }
-
-    #[test]
-    fn infer_param_value_string() {
+    fn a_seed_text_types_scalars_and_lists() {
+        fn read(text: &str) -> ParameterValue {
+            let mut v = ParameterValue::NotSet;
+            v.assign_launch_text(text).unwrap();
+            v
+        }
+        assert_value_eq!(read("true"), ParameterValue::from_bool(true));
+        assert_value_eq!(read("FALSE"), ParameterValue::from_bool(false));
+        assert_value_eq!(read("-7"), ParameterValue::from_integer(-7));
+        assert_value_eq!(read("2.5"), ParameterValue::from_double(2.5));
+        assert_value_eq!(read("hello"), ParameterValue::from_string("hello").unwrap());
         assert_value_eq!(
-            infer_param_value("hello"),
-            ParameterValue::from_string("hello").unwrap()
+            read("[40.0, 50.0, 60.0]"),
+            ParameterValue::from_double_array(&[40.0, 50.0, 60.0]).unwrap()
+        );
+        assert_value_eq!(
+            read("[1, 2]"),
+            ParameterValue::from_integer_array(&[1, 2]).unwrap()
+        );
+        assert_value_eq!(
+            read("[true, false]"),
+            ParameterValue::from_bool_array(&[true, false]).unwrap()
         );
     }
 
