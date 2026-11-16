@@ -34,32 +34,42 @@ past the merge queue:
 
 ## Work items
 
-### W1 — a release cuts only from a commit the slow lanes passed
+### W1 — a release cuts only from commits the slow lanes passed
 
 - **Status:** OPEN
 
-`release-nros.yml`'s first step refuses unless the nightly, tier 1 and tier 2
-are green on the commit being released, or on an ancestor with only
-documentation changes since. "Documentation only" is `scripts/ci/gate-tier.py`'s
-docs predicate, the same one the changelog audit uses, never a second spelling.
-The refusal names the run it read and the lane that is missing or red.
+`release-nros.yml`'s first job, `lanes`, refuses unless the nightly, tier 1
+and tier 2 are green, in scheduled runs on `main`, on each commit W2 names:
+the cut and each cherry-pick's SOURCE commit on main. A commit also passes
+when a green run's head is an ancestor of it with only documentation changed
+since. The release head itself is not measured (user ruling 2026-11-16): the
+lanes run on main and never on a release branch, so a cherry-picked fix is
+measured where it landed. "Documentation only" is `scripts/ci/gate-tier.py`'s
+`tier()`, the same one the changelog audit uses, never a second spelling.
+The refusal names the lane, the run it read and why that run did not count.
+(`scripts/release/release-lanes-green.py`, `just check release-lanes-green`.)
 
 Acceptance: a dry run on a commit with no green nightly is refused with that
 message; a dry run on a commit one docs-only commit past a green nightly
 passes; a self-test covers both, and a red tier 2 is refused even when the
 nightly is green.
 
-### W2 — the release branch is frozen after its first cut
+### W2 — a published version's release branch is frozen
 
 - **Status:** OPEN
 
-After `release/<ver>` is cut, fixes are cherry-picked onto it; it is never
-re-cut from main. The release workflow refuses a branch whose history is not
-its first cut plus cherry-picks (each with a `(cherry picked from commit …)`
-trailer whose source is on main).
+User ruling 2026-11-16: `release/<ver>` may be re-cut from main under the
+same version name while that version is unpublished, which is while no
+`nros-<ver>` tag exists. Once the tag exists, the name is burned: the branch
+is frozen at the tagged commit. Either way, every commit on top of the cut
+must be a `git cherry-pick -x` of a commit on main, whose `(cherry picked
+from commit …)` line is what the workflow reads. The refusal names the tag
+and each commit that is not a cherry-pick.
+(`scripts/release/release-branch-frozen.py`, `just check release-branch-frozen`.)
 
-Acceptance: a re-cut branch is refused with a message naming the commits that
-are not cherry-picks; AGENTS.md's release section states the rule.
+Acceptance: a re-cut of a published version is refused with a message naming
+the commits that are not cherry-picks; an unpublished re-cut is allowed; a
+self-test covers both; AGENTS.md's release section states the rule.
 
 ### W3 — the dry run is a rehearsal of everything except the push
 

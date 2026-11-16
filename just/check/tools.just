@@ -292,3 +292,25 @@ worktree-prune:
 [private]
 changelog-audit:
     @python3 scripts/changelog-audit.py --gate
+
+# phase-567 W1 — a release cuts only from a commit the nightly, tier 1 and
+# tier 2 passed, or a docs-only descendant of one (gate-tier.py's predicate).
+# `release-nros.yml`'s first job runs it against the lanes' scheduled runs;
+# this gate runs its cases on a scratch repository: the commit itself, a
+# docs-only descendant, a red nightly, a side branch, a red tier 2 under a
+# green nightly, code changed since, a book page Rust reads, an older green
+# under a newer red, no runs. Buildless, ~0.3 s.
+[private]
+release-lanes-green:
+    @python3 scripts/release/release-lanes-green.py --self-test
+
+# phase-567 W2 — a release branch may be re-cut while `nros-<ver>` does not
+# exist; once it does the branch is frozen at the tag, and anything on top of
+# a cut is a `git cherry-pick -x` of a main commit. `release-nros.yml`'s
+# `lanes` job runs it; this gate runs its cases on a scratch repository:
+# unpublished cut, pick and re-cut (allowed), a plain commit, an off-main
+# pick, a published pick, a published re-cut (naming the tag and both main
+# commits) and rewind (refused), and the commits W1 measures. ~0.3 s.
+[private]
+release-branch-frozen:
+    @python3 scripts/release/release-branch-frozen.py --self-test
