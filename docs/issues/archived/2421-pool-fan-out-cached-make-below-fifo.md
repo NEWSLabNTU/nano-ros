@@ -1,15 +1,16 @@
 ---
 id: 2421
 title: "The `just` fan-out pool is always a FIFO, so a unit whose build dir cached make 4.3 would stop on `invalid --jobserver-auth`"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [build, testing]
 found: 2026-11-10
+resolved: 2026-11-17
 related: [issue-2241, issue-2119, issue-2058]
 ---
 
-Split out of [issue 2241](archived/2241-live-peer-fifo-jobserver-without-pinned-make.md),
+Split out of [issue 2241](2241-live-peer-fifo-jobserver-without-pinned-make.md),
 whose fix covers `nros build` only. No sighting yet; this is the same class,
 found by reading the code.
 
@@ -87,3 +88,11 @@ Tested:
 Sweep: `git grep -n 'nros_cmake_guard_retired_names\|cmake -S' -- scripts/build`.
 Every persistent build dir a pool unit configures or builds is reached. The
 census pre-pass and `nros build`'s own pool are covered by issue 2241.
+
+## Resolution (2026-11-17)
+
+Fixed by 5b0a8ef422 (a pool unit repairs a cached make older than 4.4
+before building, through `nros dev jobserver repair-makes`) and e827e34d6f,
+with gate `cmake-guard-stale-make`. The acceptance (a make 4.3 build dir
+builds under the FIFO pool) was measured locally, as the issue states. There
+was never a CI sighting.

@@ -1,12 +1,13 @@
 ---
 id: 2413
 title: "Scheduled `host-tests` build shard runs the FreeRTOS C++ template copy-outs on the distro arm-none-eabi-gcc 10.3, which issue 1936's floor refuses"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [ci, gates, toolchain, templates]
 related: [1936, 1117, 1453, 2382, 2369, phase-543]
 found: 2026-11-10
+resolved: 2026-11-17
 ---
 
 ## Measured
@@ -104,3 +105,10 @@ phase-543's lane-contract shape:
   so every capability is claimed there, and they provision the compiler
   themselves.
 
+## Resolution (2026-11-17)
+
+Fixed by e818a48316: the FreeRTOS copy-out units need the `arm-gcc`
+capability, which the build lane provisions. Measured: the scheduled
+host-tests run 43796857800 (2026-11-16) passes all four rows
+(`ament-workspace-port`, `rclcpp-compat-smoke`, `topic-state-monitor-port`,
+`cpp-port-minimal-publisher` on `mps2-an385-freertos`).

@@ -1,11 +1,12 @@
 ---
 id: 2497
 title: "Moving an SDK pin stops the self-hosted runner's loop, and nothing turns that into a red"
-status: open
+status: resolved
 type: bug
 area: ci, runner, zephyr
 related: [issue-2389, issue-1279]
 found: 2026-11-12
+resolved: 2026-11-17
 ---
 
 ## What happened
@@ -87,3 +88,12 @@ There were two independent gaps.
 - The host-118 runner is restored by hand: the SDK is provisioned into its
   store with `nros setup --tool zephyr-sdk` inside the runner image, and the
   doctor must pass before the loop is restarted.
+
+## Resolution (2026-11-17)
+
+Fixed by fa32dd9384 (setup fetches a moved SDK pin, and the loop heals
+once on exit 78), 5ca2d9fd00 (the token is checked) and f998c3f522 (the
+merge queue has its own runner label and a bounded wait).
+`runner-watchdog.yml` runs green (five runs on 2026-11-16), and runner 118
+took tier-1 jobs from 2026-11-14 to 2026-11-16. What remains is a separate
+idea: a runner whose jobs other runners absorb loses capacity invisibly.

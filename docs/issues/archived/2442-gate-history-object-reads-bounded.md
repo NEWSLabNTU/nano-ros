@@ -1,15 +1,16 @@
 ---
 id: 2442
 title: "A gate that reads old trees or blobs in CI's treeless history fetches them one object at a time, unbounded"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [ci, gates, git]
 found: 2026-11-11
+resolved: 2026-11-17
 related: [phase-543, rfc-0131, issue-1476, issue-1043, issue-0650]
 ---
 
-**Home: standalone** (since 2026-11-15, when [phase-543](../roadmap/archived/phase-543-nextest-gates.md) was archived). The design it falls under is [RFC-0131](../design/0131-gates-are-nextest-tests.md) D3: lanes as capability claims, and how a lane's `git-history` claim is provisioned.
+**Home: standalone** (since 2026-11-15, when [phase-543](../../roadmap/archived/phase-543-nextest-gates.md) was archived). The design it falls under is [RFC-0131](../../design/0131-gates-are-nextest-tests.md) D3: lanes as capability claims, and how a lane's `git-history` claim is provisioned.
 
 ## Measured
 
@@ -86,3 +87,10 @@ sites below. Each of the others was read by hand.
 - Gate `check-history-object-reads` (fast tier): refuses a raw read of old
   trees or blobs outside the helper, with an EXEMPT table of written reasons.
 - The sites above moved onto the helper. The provide hole is closed.
+
+## Resolution (2026-11-17)
+
+Fixed by 84ac674c07 (old-tree reads in gates go through one bounded
+helper) and f0bf4c644c (the helper's timeout self-test cannot race git).
+Gate `scripts/check/check-history-object-reads.py` holds every swept site to
+the helper. The issue states no further acceptance.

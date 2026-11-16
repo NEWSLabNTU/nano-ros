@@ -1,15 +1,16 @@
 ---
 id: 2193
 title: "Tier-2 nightly's zephyr fixture leg fails, and the job log shows only the tier-priority check that runs after it"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [ci, zephyr, fixtures]
 related: [2180, 2179, phase-466]
 found: 2026-11-01
+resolved: 2026-11-17
 ---
 
-**Home:** [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)
+**Home:** [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)
 — the tier-2 nightly's Zephyr fixture leg fails without naming the image, so the lane's verdict cannot be attributed.
 
 ## Symptom
@@ -115,3 +116,12 @@ Sweep: the nightly's check covered 64 leaf locks and reported this one drift
 only, so no other range the retirement pruned is still needed by a leaf in that
 lane. The acceptance is unchanged: a tier-2 nightly that reaches
 `ci matrix-nightly`.
+
+## Resolution (2026-11-17)
+
+The acceptance is met: the pairwise nightly got past `just build
+tier2-nightly` and reached `just ci matrix-nightly` (run 43684674172, job
+132799686154, 2026-11-15). It failed there on real cells, which is a
+verdict, not this issue's unsurfaced fixture stop. Fixed by e6a428d19a (a
+failed fixture stage names its leaf and the leaf's error) and a6a7ff3bb2
+(the `paste` pin).

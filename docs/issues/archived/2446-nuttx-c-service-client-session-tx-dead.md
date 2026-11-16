@@ -1,15 +1,16 @@
 ---
 id: 2446
 title: "NuttX C service client's session dies at its first declare under tier 2 (zenoh-pico -100/-103), so the cell gets no response"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [nuttx, rmw-zenoh, testing, ci]
 related: [0870, 1034, 2221, phase-466]
 found: 2026-11-11
+resolved: 2026-11-17
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**: the
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**: the
 one real failure of the first scheduled tier-2 run to reach its cells since at least
 2026-11-06.
 
@@ -46,7 +47,7 @@ pair in 71.0 s, so two NuttX QEMU guests against one router is not broken in gen
 
 ## Same signature as issue 0870
 
-[Issue 0870](archived/0870-nuttx-cpp-action-client-transport-tx-failed.md) (NuttX C++
+[Issue 0870](0870-nuttx-cpp-action-client-transport-tx-failed.md) (NuttX C++
 action client, `-100` at declare, then `Generic -> ConnectionFailed`) was closed on
 2026-09-04 green, **with the cause unattributed**. Its "what would settle it" item 1
 was "run the cell inside a full `just ci matrix` rather than solo", because the
@@ -74,3 +75,12 @@ The next red prints both sides, which attributes the drop to the client, the ser
 or the router. A fix then follows from that. Per the no-retries ruling (issue 2221),
 the cell is not re-rolled. Acceptance: the cell passes in tier-2 runs on main, and the
 cause is named.
+
+## Resolution (2026-11-17)
+
+The cause was issue 2509's: two NuttX QEMU instances drew one zenoh session
+ZID, so the router refused the second session. That is the -100/-103 seen
+at the first declare. Fixed by 6e69797684. Since then `test_rtos_service_e2e`
+NuttX C passes in tier 2 on 2026-11-14 (4.8 s), in the 11-15 pairwise
+nightly (4.4 s) and in tier 2 on 2026-11-16 (4.3 s), as do the pubsub and
+action pairs.

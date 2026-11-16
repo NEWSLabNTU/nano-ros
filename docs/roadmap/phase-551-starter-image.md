@@ -267,4 +267,4 @@ the budget Q9 sets; a customer image built `FROM` it is probed every release.
 That includes "pulls": GHCR creates the package private on its first push,
 so the first release needs an org admin to set it public, and `latest` does
 not move to an image an anonymous pull is refused
-([issue 2459](../issues/2459-ghcr-starter-package-private-after-first-push.md)).
+([issue 2459](../issues/archived/2459-ghcr-starter-package-private-after-first-push.md)).

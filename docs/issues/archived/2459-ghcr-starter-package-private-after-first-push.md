@@ -1,15 +1,16 @@
 ---
 id: 2459
 title: "The first push of the starter image leaves its GHCR package private, so no student can pull it until an org admin flips it"
-status: open
+status: resolved
 type: limitation
 severity: medium
 area: [release, install, ci]
 related: [phase-551]
 found: 2026-11-12
+resolved: 2026-11-17
 ---
 
-**Home: [phase-551](../roadmap/phase-551-starter-image.md)** (RFC-0127 Q1:
+**Home: [phase-551](../../roadmap/phase-551-starter-image.md)** (RFC-0127 Q1:
 the image is public).
 
 ## What
@@ -43,3 +44,12 @@ image no student can pull.
 
 Stays open until the first release has pushed the image and an admin has
 set it public; the `image-track` run that moves `latest` is the evidence.
+
+## Resolution (2026-11-17)
+
+Fixed by 80c4b6a5bb (`latest` never moves to a starter no student can
+pull). Measured 2026-11-17: an anonymous `GET
+ghcr.io/v2/newslabntu/nano-ros-starter/manifests/latest` returns 200, so the
+package is public. The host-tests image probe for the starter passed on
+2026-11-16. The release-nros run 43806377053 (2026-11-16) failed at `build +
+push starter 0.6.0-nros11`, which is a separate fault, not this one.

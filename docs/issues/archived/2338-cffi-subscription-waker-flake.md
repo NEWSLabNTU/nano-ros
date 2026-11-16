@@ -1,15 +1,16 @@
 ---
 id: 2338
 title: "cffi_subscription_waker_fires_on_each_arrival failed once at ~10 s in a merge-queue test-unit run"
-status: open
+status: resolved
 type: bug
 area: [rmw, zenoh, testing, ci]
 severity: low
 found: 2026-11-07
+resolved: 2026-11-17
 related: [1940, 1976, 2457]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — a
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — a
 merge-gating lane that ejects on a test whose failure the PRs in the batch could
 not have caused is a verdict without signal.
 
@@ -62,3 +63,13 @@ issue's late or missed wakes.
 
 This issue's closing rule stands: close as not reproduced if nothing recurs by
 2026-11-21, two weeks after it was found.
+
+## Resolution (2026-11-17)
+
+Closed as a duplicate of issue 2457. The second sighting (merge-queue gate
+43701411501, job 132773193591, 2026-11-15 09:53Z) panicked at
+`cffi_smoke.rs:95` with `ConnectionFailed after 10069 ms`. That is a
+session-open failure against the test's own router, not a missed or late
+wake, so it has 2457's signature. It predates 2457's fix 2d594b3445
+(2026-11-15 14:58Z), and no failure of either test has been seen in a
+merge-group `test-unit` since.
