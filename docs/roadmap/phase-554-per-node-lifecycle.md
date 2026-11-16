@@ -227,7 +227,8 @@ registers per node, so its cell can land with part 2.
 
 ### W3 — The image announces only its declared nodes (D8)
 
-Status: OPEN. Slices A and B are done; slice C is open.
+Status: OPEN. Slices A, B and C are done; the executor-level lifecycle
+registration (issue 2626) is open.
 
 Each row of RFC-0128's D8 table, as ruled:
 
@@ -243,8 +244,8 @@ Each row of RFC-0128's D8 table, as ruled:
     node (the monitor tables must precede every entity), it opens on the
     primary node the moment that node registers
     (`Executor::open_on_primary_node`), and a failure fails that
-    registration. A zero-node image opens it under its configured name at
-    the first spin, a temporary path slice C deletes.
+    registration. In an image with no node of its own it opens on the
+    configured-name node (slice C).
   - remap resolution. **Slice B.** `Executor::resolve_entity_name_on`
     resolves against the node the entity registers on, the same
     `entity_identity` rule it is announced under (nros-c's seven sites and
@@ -263,7 +264,23 @@ Each row of RFC-0128's D8 table, as ruled:
   naming the fix. The unbound path itself is retired in W3.b. An empty name
   is refused (issue 2429).
 - **Zero-node direct-API images:** keep their configured name as their one
-  node, and are refused at open with no name. Slice C.
+  node, and are refused at open with no name. **Slice C** (ruled
+  2026-11-16):
+  - The configured name becomes a real node record lazily
+    (`Executor::ensure_configured_node`), through `node_builder`. This
+    happens at the first executor-level entity, or at the first spin if
+    something executor-level waits for a node: the reporter, parameter
+    services or a sim-time source. An image with nothing to announce
+    registers no node.
+  - The first node to exist is the primary. An executor-level entity
+    created before any node makes the configured-name node `NodeId::PRIMARY`,
+    and a node built later is index 1. A node built first keeps the
+    configured name off the node table. Both orders are tested.
+  - `Executor::open` and `open_with_rmw` refuse an empty `node_name`, and so
+    does creating that node, which covers `open_multi` and a bare session.
+    The default stays `"node"`, which an executor built from a bare session
+    now carries too.
+  - Slice B's first-spin side path is gone.
 
 Acceptance:
 

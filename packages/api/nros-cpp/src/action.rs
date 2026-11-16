@@ -384,7 +384,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
 
     // Phase 104.C.9.b — `spec.node_id` routes registration through the
     // named multi-RMW Node's session (so the underlying
-    // queryables/publishers land there); `None` uses the default Node.
+    // queryables/publishers land there); `None` uses the image's primary node.
     // Phase 193.4b — `spec.qos` applies the create-time QoS to the three
     // underlying service servers (rclcpp `create_action_server(name, qos)`).
     let qos = server.qos.to_qos_settings();
@@ -1319,7 +1319,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
     // Register with executor — creates the ONLY ActionClientCore in the arena.
     // Trampolines read from CppActionClient.callbacks (set later via set_callbacks).
     // Phase 104.C.9.b — `spec.node_id` routes multi-Node action clients
-    // through the named Node's session; `None` uses the default Node.
+    // through the named Node's session; `None` uses the image's primary node.
     let node_id = crate::node_id_opt(node_ref);
     let handle = match ctx
         .executor

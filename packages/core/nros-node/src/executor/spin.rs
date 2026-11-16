@@ -277,6 +277,13 @@ impl<'s> Executor<'s> {
     ) -> Result<Self, NodeError> {
         use nros_rmw::Rmw;
 
+        // An image with no node of its own is announced under this name
+        // (`ensure_configured_node`), so an empty one is refused before any
+        // session opens.
+        if config.node_name.is_empty() {
+            return Err(refuse_unnamed_executor());
+        }
+
         // Phase 128.A.3 / 249 P4b.1 — manifest-driven backend selection.
         //
         // Every linked backend self-registered via its `.init_array`
@@ -582,6 +589,9 @@ impl<'s> Executor<'s> {
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
     ) -> Result<Self, NodeError> {
+        if config.node_name.is_empty() {
+            return Err(refuse_unnamed_executor());
+        }
         if !nros_rmw_cffi::backend_registered() {
             return Err(NodeError::Transport(TransportError::ConnectionFailed));
         }
@@ -1992,12 +2002,26 @@ unsafe impl Send for ArenaRef<'_> {}
 // SAFETY: as above.
 unsafe impl Sync for ArenaRef<'_> {}
 
+/// The refusal for an executor with an empty configured name: an image with
+/// no node of its own is announced under that name, and an empty one cannot
+/// be announced.
+fn refuse_unnamed_executor() -> NodeError {
+    nros_log::log_error!(
+        nros_log::get_logger("nros"),
+        "executor: the node name is empty -- an image with no node of its own is \
+         announced under it; set one with `ExecutorConfig::node_name`, or build a \
+         node before creating an entity on the executor"
+    );
+    NodeError::Transport(TransportError::InvalidConfig)
+}
+
 // RFC-0128 D8 (phase-554 W3 slice B).
 /// The open of an executor-level entity
 /// that belongs to the image's primary node, run by
 /// [`Executor::open_on_primary_node`]: with `ctx` and `arg` as installed, and
-/// the executor, whose primary node now exists (or, in a zero-node image, at
-/// the first spin -- see [`Executor::open_pending_on_configured_name`]).
+/// the executor, whose primary node now exists (in an image with no node of
+/// its own, the configured-name node -- see
+/// [`Executor::ensure_configured_node`]).
 ///
 /// # Safety
 /// The installer guarantees `ctx` is valid for the call.
@@ -2730,7 +2754,13 @@ impl<'s> Executor<'s> {
             major_frame_us: 0,
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
-            node_name: heapless::String::new(),
+            // The same default `ExecutorConfig` carries, so an executor built
+            // from a bare session is announced under a name too.
+            node_name: {
+                let mut n = heapless::String::new();
+                let _ = n.push_str(super::types::DEFAULT_NODE_NAME);
+                n
+            },
             active_groups,
             active_groups_filtering: false,
             nodes,
@@ -3383,12 +3413,27 @@ impl<'s> Executor<'s> {
     /// rather than on a node -- belongs to the image's PRIMARY node, the first
     /// declared one (`NodeId::PRIMARY`, the rule executor-level parameters
     /// already follow), so nothing is announced under the executor's own
-    /// label. Only an image that declares no node at all (a direct-API image)
-    /// keeps the executor identity, which is then its one node.
+    /// label. An image that has no node yet gets one: the executor's
+    /// configured name is registered as a real node record
+    /// ([`Self::ensure_configured_node`]), which is then the primary node.
     ///
     /// The ONE spelling of this rule: seven registration sites each carried a
     /// copy that fell back to the executor label instead.
     pub(crate) fn entity_identity(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+    ) -> Result<(heapless::String<64>, heapless::String<64>, u8), NodeError> {
+        if node_id.is_none() {
+            self.ensure_configured_node()?;
+        }
+        self.entity_identity_peek(node_id)
+    }
+
+    /// [`Self::entity_identity`] without registering anything: for a caller
+    /// that only NAMES an entity (remap resolution). With no node yet it
+    /// answers the configured name, which is the node the entity's creation
+    /// would register.
+    pub(crate) fn entity_identity_peek(
         &self,
         node_id: Option<super::node_record::NodeId>,
     ) -> Result<(heapless::String<64>, heapless::String<64>, u8), NodeError> {
@@ -3450,22 +3495,54 @@ impl<'s> Executor<'s> {
         unsafe { hook(ctx as *mut core::ffi::c_void, arg, self) }
     }
 
-    /// TEMPORARY -- phase-554 W3 slice C deletes this. A zero-node image (a
-    /// direct-API image that registers no node) never reaches
-    /// `run_primary_node_hook`, and it published its `/diagnostics` under the
-    /// executor's configured name before slice B. Losing that silently would
-    /// be a regression, so at the first spin, if an open still waits and no
-    /// node was ever registered, it runs here, under that name
-    /// (`entity_identity(None)` with no nodes). Slice C makes the configured
-    /// name the image's one node, after which the hook always fires at
-    /// registration and this path goes.
+    /// Make sure this image has a node: with none registered, register the
+    /// executor's configured name ([`ExecutorConfig::node_name`]) as a real
+    /// node record and return it. With one already registered, a no-op.
     ///
-    /// A failure is returned from the spin, never logged.
-    pub(crate) fn open_pending_on_configured_name(&mut self) -> Result<(), NodeError> {
+    /// **The first node to exist is the primary node.** An executor-level
+    /// entity (one created on the executor, not on a node: the
+    /// `/diagnostics` reporter, executor-level parameter services, a
+    /// publisher from [`Self::create_executor_publisher`]) created BEFORE any
+    /// node materialises the configured-name node, which becomes
+    /// `NodeId::PRIMARY`; a node built afterwards is the next index. A node
+    /// built first is the primary, and the configured name never appears as
+    /// a node. Registering goes through [`Self::node_builder`], so an open
+    /// waiting on the primary node ([`Self::open_on_primary_node`]) runs
+    /// here, and its failure is this call's.
+    ///
+    /// [`ExecutorConfig::node_name`]: crate::executor::types::ExecutorConfig::node_name
+    pub fn ensure_configured_node(&mut self) -> Result<super::node_record::NodeId, NodeError> {
+        if !self.nodes.is_empty() {
+            return Ok(super::node_record::NodeId::PRIMARY);
+        }
+        if self.node_name.is_empty() {
+            return Err(refuse_unnamed_executor());
+        }
+        let name = self.node_name.clone();
+        self.node_builder(name.as_str()).build()
+    }
+
+    /// The spin's half of [`Self::ensure_configured_node`]: an image that
+    /// still has no node at its first spin, but has something executor-level
+    /// waiting for one (an open on the primary node, parameter services, a
+    /// sim-time source), gets its configured-name node now. Nothing waiting
+    /// means nothing is announced, so no node is registered.
+    pub(crate) fn ensure_configured_node_for_spin(&mut self) -> Result<(), NodeError> {
         if !self.nodes.is_empty() {
             return Ok(());
         }
-        self.run_primary_node_hook()
+        #[cfg(feature = "param-store")]
+        let params_wanted = self.params.as_deref().is_some_and(|p| p.requested);
+        #[cfg(not(feature = "param-store"))]
+        let params_wanted = false;
+        #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+        let sim_time_wanted = self.sim_time_requested;
+        #[cfg(not(all(feature = "sim-time", any(has_rmw, test))))]
+        let sim_time_wanted = false;
+        if self.primary_node_hook.is_some() || params_wanted || sim_time_wanted {
+            self.ensure_configured_node()?;
+        }
+        Ok(())
     }
 
     // RFC-0128 D8.
@@ -3620,7 +3697,7 @@ impl<'s> Executor<'s> {
         node_id: Option<super::node_record::NodeId>,
         source: &str,
     ) -> Result<crate::names::ResolvedName, ()> {
-        let (node_name, ns, _) = self.entity_identity(node_id).map_err(|_| ())?;
+        let (node_name, ns, _) = self.entity_identity_peek(node_id).map_err(|_| ())?;
         self.resolve_entity_name_for(node_name.as_str(), ns.as_str(), source)
     }
 
@@ -12758,16 +12835,16 @@ impl<'s> Executor<'s> {
         // dispatch order is bit-identical to 110.B.b for those.
         const NB: usize = super::sched_context::Priority::COUNT;
         let mut result = SpinOnceResult::new();
-        // TEMPORARY (phase-554 W3 slice C deletes it) -- a zero-node image's
-        // waiting executor-level open (`open_pending_on_configured_name`).
-        // `spin` and `spin_some` ran it already and returned its error; a bare
+        // A node-less image's executor-level entities wait for its
+        // configured-name node (`ensure_configured_node_for_spin`). `spin` and
+        // `spin_some` registered it already and returned its error; a bare
         // `spin_once` reaches it here and counts it, loudly.
-        if s.primary_node_hook.is_some() && s.nodes.is_empty() {
-            if let Err(e) = s.open_pending_on_configured_name() {
+        if s.nodes.is_empty() {
+            if let Err(e) = s.ensure_configured_node_for_spin() {
                 nros_log::log_error!(
                     nros_log::get_logger("nros"),
-                    "spin: an executor-level publisher waiting for this image's node \
-                     (the /diagnostics reporter) could not be opened: {:?}",
+                    "spin: this image's node (its configured name) could not be \
+                     registered for the executor-level entities waiting on it: {:?}",
                     e
                 );
                 result.setup_errors += 1;
@@ -14087,7 +14164,7 @@ impl<'s> Executor<'s> {
         let max_us = max.as_micros().min(u64::MAX as u128) as u64;
 
         // TEMPORARY (phase-554 W3 slice C deletes it) -- as in `spin`.
-        self.open_pending_on_configured_name()?;
+        self.ensure_configured_node_for_spin()?;
 
         // No `enter_spin_loop` here, deliberately: `is_spinning` answers "a
         // blocking loop is running that a peer's `cancel()` has to reach", and
@@ -17405,7 +17482,7 @@ impl<'s> Executor<'s> {
 
         // TEMPORARY (phase-554 W3 slice C deletes it) -- a zero-node image's
         // waiting executor-level open, returned rather than counted.
-        self.open_pending_on_configured_name()?;
+        self.ensure_configured_node_for_spin()?;
 
         // phase-417 W4.c — clears the cancel flag AND raises `is_spinning`. The
         // clear is the pre-existing behaviour (a cancel requested before this
