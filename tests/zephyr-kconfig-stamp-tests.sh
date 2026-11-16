@@ -32,7 +32,8 @@
 # (the `just` recipe's ledger is where a skip belongs).
 #
 # Usage: ./tests/zephyr-kconfig-stamp-tests.sh
-#   ZEPHYR_WS (default: $HOME/.nros/workspaces/zephyr/3.7, the line issue 1699
+#   ./tests/zephyr-kconfig-stamp-tests.sh --print-workspace   (the workspace it uses)
+#   ZEPHYR_WS (default: the 3.7 workspace `scripts/lib/zephyr-workspace.sh` resolves, the line issue 1699
 #   was measured on; 4.x checksums Kconfig sources itself, and the control
 #   reads which), BOARD (default native_sim/native/64).
 
@@ -48,8 +49,17 @@ source "$PROJECT_ROOT/scripts/lib/grep-q.sh"
 source "$PROJECT_ROOT/scripts/lib/deadline.sh"
 
 HOOK="$PROJECT_ROOT/zephyr/cmake/nros_image_kconfig.cmake"
-ZEPHYR_WS="${ZEPHYR_WS:-$HOME/.nros/workspaces/zephyr/3.7}"
+# The shared resolver (phase-440 W1's one spelling), so this asks for the
+# workspace where `just setup zephyr` installs it, which is where nightly.yml's
+# Zephyr job has provisioned it by the time it runs this.
+ZEPHYR_WS="${ZEPHYR_WS:-$("$PROJECT_ROOT/scripts/lib/zephyr-workspace.sh" --version 3.7 resolve-or-default)}"
 BOARD="${BOARD:-native_sim/native/64}"
+# `--print-workspace`: the workspace this would use, for the `just` recipe's
+# ledger skip, which must ask the same question this test does.
+if [ "${1:-}" = "--print-workspace" ]; then
+    printf '%s\n' "$ZEPHYR_WS"
+    exit 0
+fi
 
 FAILURES=0
 CHECKS=0
@@ -77,6 +87,14 @@ for _v in "$ZEPHYR_WS/.venv312/bin" "$ZEPHYR_WS/.venv/bin" \
 done
 PY="$(command -v python3)"
 export ZEPHYR_BASE="$ZEPHYR_WS/zephyr"
+# The toolchain variant every Zephyr recipe exports (scripts/build/
+# zephyr-toolchain.sh): Zephyr 3.7's FindZephyr-sdk.cmake cannot even parse
+# with it unset. `host` for native_sim, so no SDK is needed. This test ran
+# nowhere until phase-565 W4, and its first real run stopped here.
+# shellcheck source=scripts/build/zephyr-toolchain.sh
+source "$PROJECT_ROOT/scripts/build/zephyr-toolchain.sh"
+ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant "$BOARD")"
+export ZEPHYR_TOOLCHAIN_VARIANT
 
 init_test_tmpdir "nros-kconfig-stamp"
 trap 'cleanup_test_tmpdir' EXIT

@@ -130,6 +130,112 @@ EVENTS = ("pull_request", "merge_group", "push", "schedule", "workflow_dispatch"
 # ---------------------------------------------------------------------------
 NO_PLACEMENT_NEEDED: "dict[str, str]" = {}
 
+# ---------------------------------------------------------------------------
+# R4 — a gate in NO lane (`[metadata("tier", "exempt", ...)]`) still runs
+# somewhere. The exempt tier decides lane MEMBERSHIP, so R1 never asked about
+# these, and phase-565 W4 found `zephyr-kconfig-stamp` declared "in no lane and
+# no caller found" for six weeks while every placement gate was green.
+#
+# An exempt gate passes R4 when a workflow event reaches it (`just check
+# <name>`, like any placement), or when it is here, which takes one of:
+#
+#   ("lane", why)                 it is a lane VERB (`just check fast`), whose
+#                                 members R1 already covers;
+#   ("caller", why, file, text)   another recipe runs it, and `text` is in
+#                                 `file` (CHECKED: a caller that is deleted
+#                                 fails here instead of leaving a stale excuse);
+#   ("by-hand", why)              a developer lane on purpose (network, a tool
+#                                 CI does not install).
+# ---------------------------------------------------------------------------
+EXEMPT_NO_PLACEMENT: "dict[str, tuple]" = {
+    "build": ("lane", "lane verb: the build tier through the gate harness"),
+    "default": ("lane", "lane verb: what a bare `just check` runs"),
+    "fast": ("lane", "lane verb: the fast tier through the gate harness"),
+    "fast-parallel": ("lane", "lane verb: the fast tier, parallel spelling"),
+    "fast-serial": ("lane", "lane verb: the fast tier, serial spelling"),
+    "workspace": ("lane", "aggregate: depends on `workspace-fmt` and names where its jobs went"),
+    "action-client-arena-budget": ("caller", "reads built images; `build-test-fixtures` runs it",
+                                   "justfile", "just check action-client-arena-budget"),
+    "archive-lang-items": ("caller", "needs a built CMake link line; `build-test-fixtures` runs it",
+                           "justfile", "bash scripts/check-archive-lang-items.sh"),
+    "nextest-test-filters": ("caller", "needs the test binaries; `test-all` runs it first",
+                             "justfile", "just check nextest-test-filters"),
+    "nuttx-libc-graph": ("caller", "needs NuttX workspace entries; `just nuttx build-fixtures` runs it",
+                         "just/nuttx.just", "just check nuttx-libc-graph"),
+    "cli-clippy": ("caller", "part of a lane gate's body",
+                   "just/check/lanes.just", "just check cli-clippy"),
+    "board-runner-resolves": ("caller", "its test is in `cli-tests`' `--workspace` run",
+                              "just/check/lanes.just",
+                              "cargo test --manifest-path packages/cli/Cargo.toml --workspace"),
+    "tier-preconditions": ("caller", "a precondition reporter at the head of `just ci`",
+                           "just/ci.just", "steps=(check::tier-preconditions)"),
+    "deny": ("by-hand", "developer lane (RFC-0104 D8): needs cargo-deny and the network"),
+}
+
+# The exempt gates that run NOWHERE today, measured when R4 landed. A RATCHET:
+# it may only shrink. A new exempt gate that no workflow reaches fails, and an
+# entry here that a workflow now reaches (or whose recipe is gone) must leave.
+EXEMPT_ORPHAN_BASELINE: "frozenset[str]" = frozenset({
+    "sdk-index",
+    "stack-floor",
+    "submodule-drift",
+    "workspace-embedded",
+    "zenoh",
+    "zenoh-archive",
+    "zephyr-kconfig-symbols",
+})
+
+
+def exempt_gates():
+    """`{name: reason}` for every gate in no lane, from the one derivation."""
+    out = subprocess.run(
+        [sys.executable, str(GATE_LISTS), "--list", "exempt"],
+        capture_output=True, text=True, cwd=str(ROOT),
+    )
+    if out.returncode != 0:
+        raise SystemExit(
+            "check-default-gates-run-somewhere: `check-gate-lists.py --list exempt` "
+            f"failed:\n{out.stderr.strip()}")
+    rows = {}
+    for line in out.stdout.splitlines():
+        if line.strip():
+            name, _, why = line.partition("\t")
+            rows[name.strip()] = why.strip()
+    return rows
+
+
+def exempt_errors(exempt, place, table, baseline, read=None):
+    """R4 over `exempt` ({name: reason}); `read(path) -> text` for callers."""
+    read = read or (lambda f: (ROOT / f).read_text() if (ROOT / f).exists() else "")
+    errs = []
+    for name in sorted(exempt):
+        placed = bool(place.get(name))
+        entry = table.get(name)
+        if entry and entry[0] == "caller":
+            _kind, _why, f, text = entry
+            if text not in read(f):
+                errs.append(f"`just check {name}` is excused as run by a caller, but "
+                            f"`{text}` is no longer in {f}: the caller went, so the gate "
+                            "runs nowhere. Place it in a workflow or name its new caller.")
+            continue
+        if entry:
+            continue
+        if name in baseline:
+            if placed:
+                errs.append(f"`just check {name}` is now reached by a workflow: remove it "
+                            "from EXEMPT_ORPHAN_BASELINE (the ratchet only shrinks).")
+            continue
+        if not placed:
+            errs.append(
+                f"`just check {name}` is in NO lane (tier exempt: {exempt[name] or 'no reason'})\n"
+                "      and no workflow runs it, so its reds are never reported. Run it in\n"
+                "      a workflow job whose host provides what it needs, or excuse it in\n"
+                "      EXEMPT_NO_PLACEMENT (a lane verb, a checked caller, or by-hand).")
+    for name in sorted((set(table) | baseline) - set(exempt)):
+        errs.append(f"`{name}` is excused in R4's tables but is no exempt gate: remove it.")
+    return errs
+
+
 # Gates allowed to sit behind another gate in one `run:` block. Same reasoning
 # as above, and the same emptiness: after the 2026-09-05 split every placement
 # in the tree is first in its own block, and a shared block has no upside worth
@@ -758,6 +864,31 @@ def self_test():
             f"({len(fast)} fast + {len(build)} build gate(s), "
             f"{len(blocks)} workflow `run:` block(s))"
         )
+    # R4 (phase-565 W4): an exempt gate no workflow runs fails; each excuse
+    # holds only while it is true; the orphan baseline only shrinks.
+    ex = {"lonely": "in no lane", "called": "x", "verb": "x", "old": "x"}
+    tbl = {"called": ("caller", "x", "f", "just check called"), "verb": ("lane", "x")}
+    reads = lambda _f: "    just check called\n"
+    chk("R4: a covered table reports a violation",
+        exempt_errors({k: v for k, v in ex.items() if k != "lonely"}, {}, tbl, frozenset({"old"}),
+                      reads) == [])
+    chk("R4 negative control: an exempt gate no workflow runs passed",
+        any("`just check lonely` is in NO lane" in e
+            for e in exempt_errors(ex, {}, tbl, frozenset({"old"}), reads)))
+    chk("R4: a workflow placement does not clear an exempt gate",
+        not any("lonely" in e for e in
+                exempt_errors(ex, {"lonely": [("w", frozenset(), None)]}, tbl,
+                              frozenset({"old"}), reads)))
+    chk("R4 negative control: a deleted caller still excuses the gate",
+        any("no longer in f" in e
+            for e in exempt_errors(ex, {"lonely": [1]}, tbl, frozenset({"old"}), lambda _f: "")))
+    chk("R4 negative control: a placed baseline orphan did not have to leave",
+        any("remove it from EXEMPT_ORPHAN_BASELINE" in e
+            for e in exempt_errors(ex, {"lonely": [1], "old": [1]}, tbl, frozenset({"old"}), reads)))
+    chk("R4 negative control: an excuse for a gate that is gone passed",
+        any("no exempt gate" in e
+            for e in exempt_errors(ex, {"lonely": [1]}, {**tbl, "gone": ("lane", "x")},
+                                   frozenset({"old"}), reads)))
     return ok
 
 
@@ -869,6 +1000,10 @@ def main() -> int:
             f"      Give it its own step with the same `if:` — `!cancelled()` is\n"
             f"      what lets a later step run after an earlier failure."
         )
+
+    # R4 — a gate in no lane still runs somewhere (phase-565 W4).
+    exempt = exempt_gates()
+    errs += exempt_errors(exempt, place, EXEMPT_NO_PLACEMENT, EXEMPT_ORPHAN_BASELINE)
 
     # R1/R2, third scope — the platform C-port smokes (issue 1720).
     smokes = port_smoke_recipes()

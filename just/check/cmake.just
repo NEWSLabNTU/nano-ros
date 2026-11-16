@@ -677,11 +677,13 @@ census-step:
 # app, with a control that reproduces the defect without the stamp. Needs a
 # Zephyr workspace: absent is a ledger skip here, never a pass.
 [group('needs:zephyr')]
-[metadata("tier", "exempt", "runs real Zephyr configures (~minutes) and needs a provisioned Zephyr 3.7 workspace; in no lane and no caller found yet -- issue 1071's class (phase-530 W4)")]
+[metadata("tier", "exempt", "runs real Zephyr configures (~minutes) and needs a provisioned Zephyr 3.7 workspace; nightly.yml's dual-line Zephyr job runs it (phase-565 W4)")]
 zephyr-kconfig-stamp:
     #!/usr/bin/env bash
     set -euo pipefail
-    _ws="${ZEPHYR_WS:-$HOME/.nros/workspaces/zephyr/3.7}"
+    # The test's own answer (the shared resolver), so the skip below asks
+    # about the same workspace the test would use.
+    _ws="$(./tests/zephyr-kconfig-stamp-tests.sh --print-workspace)"
     if [ ! -d "$_ws/zephyr" ] || ! command -v ninja >/dev/null 2>&1; then
         # shellcheck source=scripts/build/check-skip.sh
         source scripts/build/check-skip.sh
