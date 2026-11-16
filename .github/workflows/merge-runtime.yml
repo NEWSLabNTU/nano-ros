@@ -147,6 +147,9 @@ jobs:
       # refused (scripts/build/gate-scope.sh). `.config/gate-lanes.toml`
       # [lane.merge] says what this shard's machine claims.
       NROS_GATE_SCOPE: merge
+      # phase-565 W4: this lane is not provisioned by the provision-gate-lane
+      # action; this says what provides its claims instead.
+      NROS_GATE_PROVISIONED_BY: "the job's `just setup ${{ matrix.board }}` and its provisioning steps (the lane claims only what they and the image provide)"
       # Only the zenoh rows are in this lane; skip the XRCE Agent superbuild.
       NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
     steps:
@@ -370,6 +373,9 @@ jobs:
       # The self-hosted runner's gate lane (.config/gate-lanes.toml
       # [lane.runner]), as in run-matrix.yml.
       NROS_GATE_SCOPE: runner
+      # phase-565 W4: this lane is not provisioned by the provision-gate-lane
+      # action; this says what provides its claims instead.
+      NROS_GATE_PROVISIONED_BY: "the job's `just setup zephyr` (the lane claims only what it and the runner image provide)"
       NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
     defaults:
       run:

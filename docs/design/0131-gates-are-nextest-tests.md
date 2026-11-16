@@ -86,7 +86,19 @@ interfaces for the same jobs: filters, timeouts, junit, sharding and kills.
 
 `.config/gate-lanes.toml` holds `[capabilities]`, each with a description, and
 `[lane.<name>]` tables of `{tiers, claims}`. A lane is named for where it
-runs: `fast`, `build`, `queue`, `dev`, `runner`, `merge`, `pristine`.
+runs: `fast`, `build`, `dev`, `runner`, `merge`, `pristine`.
+
+- Every lane runs somewhere (phase-565 W4, gate `gate-lane-jobs`): it is the
+  `NROS_GATE_SCOPE` of a workflow job, or names the `local` place it runs
+  (`dev`, a worktree; `pristine`, a step of `just ci gate`). A job that runs a
+  lane provisions from its claims through the `provision-gate-lane` action, or
+  says in `NROS_GATE_PROVISIONED_BY` what provides them (the self-hosted and
+  merge-runtime jobs: their own `just setup <board>`).
+- A `queue` lane was declared and is deleted (2026-11-16): no job ever set
+  `NROS_GATE_SCOPE: queue`. The merge queue's L3 job runs the `runner` lane,
+  BEFORE its fixture build, so the `build-tree` its claims named was never
+  there. Moving L3 onto those claims would be a new merge-gating lane, which is
+  a lane decision of its own, not a provisioning fix.
 
 - `NROS_GATE_LANE` is read at LIST time. A test whose tier or `needs:` falls
   outside the lane is listed as IGNORED, with its reason, so nextest reports it

@@ -64,12 +64,6 @@ tiers = ["fast", "build"]
 # build` for the FreeRTOS C++ copy-out units, which refuse the distro 10.3.
 claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "arm-gcc", "arm-gcc-any"]
 
-[lane.queue]
-# The self-hosted runner (nros-sdk-zephyr): the image's set plus a Zephyr
-# workspace and the fixture build's artifacts.
-tiers = ["fast", "build"]
-claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree", "zephyr", "west", "build-tree"]
-
 [lane.dev]
 # A developer worktree after `just setup-worktree` with ROS 2 sourced: what
 # `just check lane dev` runs before a push. No Zephyr and no fixture build, so
@@ -79,6 +73,9 @@ claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodu
 # (`just check px4-uorb-nuttx-compile`) where one is installed.
 tiers = ["fast", "build"]
 claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history"]
+# phase-565 W4: no CI job runs this lane; a contributor's worktree does
+# (`just check lane dev`, and the pre-push hook's `check fast`).
+local = "a developer worktree: `just check lane dev` and the pre-push `check fast`; provisioned by `just setup-worktree`"
 
 [lane.runner]
 # The self-hosted runner image (nros-qemu, nros-sdk-zephyr, nros-big), at the
@@ -104,6 +101,7 @@ claims = ["cli", "cmake", "cc", "ros2", "sources"]
 # (issues 0650, 1373).
 tiers = ["fast"]
 claims = ["cmake", "cc", "git-history"]
+local = "`just check pristine-checkout`, a step of `just ci gate`, in a clone it makes itself"
 
 # How each capability is PROVIDED (phase-565 W2; RFC-0131 D3). Every capability
 # has a `remedy`, the fix a refusal names. One that nano-ros can install itself
