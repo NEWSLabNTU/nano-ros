@@ -1,0 +1,48 @@
+// A system header to the compiler: `#include_next` is a GCC extension, and a
+// ported package built `-Wpedantic -Werror` (Autoware's default) refused
+// every TU that reached a shim without it (phase-518 W4).
+#pragma GCC system_header
+// <cmath> for Zephyr targets: the toolchain's real header, plus the
+// long-double functions newlib leaves undeclared where long double is wider
+// than double (issue 2630).
+//
+// newlib declares its `*l` math functions only under `_LDBL_EQ_DBL` (long
+// double == double, e.g. 32-bit Arm). On aarch64 long double is IEEE binary128,
+// so the SDK's newlib declares only `sqrtl` and `hypotl`, and code that calls
+// `fabsl` (Eigen's `numext::absdiff<long double>`, reached by Autoware's
+// vendored controller code) stops with "'fabsl' was not declared". picolibc
+// implements the binary128 functions itself and is left alone.
+//
+// Only the functions that are EXACT as sign-bit operations are supplied:
+// `fabsl` and `copysignl`. GCC expands both builtins inline for binary128, so
+// they need no library symbol. A transcendental (`expl`, `cosl`, ...) has no
+// such exact form; a shim through `double` would silently drop precision, so
+// those stay undeclared and fail at compile time.
+//
+// No fallback body: where no real <cmath> is reachable (Zephyr's minimal
+// libcpp), there was never a <cmath>, and this header must not invent one.
+#if defined(__has_include_next) && __has_include_next(<cmath>)
+#  include_next <cmath>
+#else
+#  error "<cmath>: this target's C++ library has none (Zephyr minimal libcpp); select a full libstdc++ (CONFIG_GLIBCXX_LIBCPP)"
+#endif
+
+#ifndef NROS_ZEPHYR_CXX_COMPAT_CMATH
+#define NROS_ZEPHYR_CXX_COMPAT_CMATH
+
+#if defined(__NEWLIB__) && !defined(__PICOLIBC__) && !defined(__CYGWIN__) \
+    && defined(__LDBL_MANT_DIG__) && defined(__DBL_MANT_DIG__) \
+    && (__LDBL_MANT_DIG__ != __DBL_MANT_DIG__)
+// `#ifndef`: a consumer that still carries its own `-Dfabsl(x)=...` keeps
+// building while it drops that define.
+#  ifndef fabsl
+inline long double fabsl(long double x) noexcept { return __builtin_fabsl(x); }
+#  endif
+#  ifndef copysignl
+inline long double copysignl(long double x, long double y) noexcept {
+    return __builtin_copysignl(x, y);
+}
+#  endif
+#endif
+
+#endif // NROS_ZEPHYR_CXX_COMPAT_CMATH
