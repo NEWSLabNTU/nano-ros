@@ -1,0 +1,5 @@
+{
+  "key": "c:log_throttle_admit_at",
+  "verdict": "extension",
+  "why": "`rclc_log_throttle_admit` on a clock reading the CALLER supplies (GitHub #4010). Same rule (`nros_log::throttle_decide`), same per-site `uint64_t` storage, only the time source differs. It exists so the C++ `RCLCPP_*_THROTTLE` macros can measure the window on their `clock` argument, as upstream does, instead of on nros_log's own clock -- the gap that kept that family refused. No upstream counterpart: rcutils' throttle is a macro over a time-point callback, not a function."
+}

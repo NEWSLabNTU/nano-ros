@@ -704,11 +704,35 @@ pub unsafe extern "C" fn rclc_log_throttle_admit(last_ns: *mut u64, interval_ms:
         return true;
     }
     warn_once_if_no_clock();
-    let now = nros_log::__timestamp_ns();
-    let word = last_ns.read();
-    match nros_log::throttle_decide(word, now, nros_log::interval_ms_to_ns(interval_ms)) {
+    admit_word(&mut *last_ns, interval_ms, nros_log::__timestamp_ns())
+}
+
+/// [`rclc_log_throttle_admit`] on a clock reading the CALLER supplies.
+///
+/// The C++ `RCLCPP_*_THROTTLE` macros call this with the `clock` argument's own
+/// reading, which is what upstream measures the window on. Same rule, same
+/// word encoding, same storage contract — only the time source differs, so no
+/// clock warning: the caller's clock is not `nros_log`'s.
+///
+/// # Safety
+/// As [`rclc_log_throttle_admit`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_log_throttle_admit_at(
+    last_ns: *mut u64,
+    interval_ms: u64,
+    now_ns: u64,
+) -> bool {
+    if last_ns.is_null() {
+        return true;
+    }
+    admit_word(&mut *last_ns, interval_ms, now_ns)
+}
+
+/// The one place either entry point reads and writes the caller's word.
+fn admit_word(last_ns: &mut u64, interval_ms: u64, now_ns: u64) -> bool {
+    match nros_log::throttle_decide(*last_ns, now_ns, nros_log::interval_ms_to_ns(interval_ms)) {
         Some(next) => {
-            last_ns.write(next);
+            *last_ns = next;
             true
         }
         None => false,
@@ -792,6 +816,9 @@ static _ANCHOR_GET_LOGGER: unsafe extern "C" fn(*const c_char) -> *const c_void 
     rclc_log_get_logger;
 #[used]
 static _ANCHOR_THROTTLE: unsafe extern "C" fn(*mut u64, u64) -> bool = rclc_log_throttle_admit;
+#[used]
+static _ANCHOR_THROTTLE_AT: unsafe extern "C" fn(*mut u64, u64, u64) -> bool =
+    rclc_log_throttle_admit_at;
 
 // ============================================================================
 // phase-417 stage 3 — ledger row `c:log_severity_t`.

@@ -1725,6 +1725,29 @@ cpp: cpp-fmt
             "$nros_cpp_lib" -lpthread -ldl -lm
         "$gen/nros-cpp-tests"/log_stream_runtime
     done
+    # GitHub #4010 -- `RCLCPP_*_THROTTLE` on the clock ARGUMENT (a simulated
+    # clock the test drives, a real steady clock, a ROS clock on system time),
+    # `_ONCE`, `_SKIPFIRST`, `_SKIPFIRST_THROTTLE` at every level, and the loud
+    # refusal of an invalid clock. Built with and without `NROS_CPP_STD`: the
+    # per-site state is function-local statics, so it must hold freestanding.
+    test -f packages/api/nros-cpp/tests/compile/log_conditional_runtime.cpp || { \
+        echo "ERROR: log_conditional_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - RCLCPP_*_THROTTLE / _ONCE / _SKIPFIRST per call site, on the clock argument (runtime)"
+    for _std_arm in "-DNROS_CPP_STD=1" ""; do
+        # shellcheck disable=SC2086
+        c++ -std=c++14 $_std_arm -Wall -Wextra -Werror -fno-exceptions -fno-rtti \
+            -I"$cppgen" \
+            -I"$cgen" \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            -o "$gen/nros-cpp-tests"/log_conditional_runtime \
+            packages/api/nros-cpp/tests/compile/log_conditional_runtime.cpp \
+            "$nros_cpp_lib" -lpthread -ldl -lm
+        "$gen/nros-cpp-tests"/log_conditional_runtime
+    done
     # phase-417 W4.c/W4.d — the two behaviours a C++ `static_assert` cannot
     # reach. Both link `libnros_cpp.a` AND the shared C stub RMW backend
     # (`nros-c/tests/run/stub_rmw_backend.c`), because both need a real
@@ -3626,7 +3649,7 @@ cpp: cpp-fmt
     # dispatch client and its handle. Three TUs, not one, for the reason
     # phase-417 stated when it split the service and action halves: an
     # expected-failure compile proves only that a file does not build.
-    for probe in node_options system_defaults_qos log_throttle service_callback \
+    for probe in node_options system_defaults_qos service_callback \
                  unbounded_spin unbounded_wait unbounded_wait_dispatch \
                  unbounded_wait_handle unbounded_action_wait multi_threaded_executor \
                  subscription_callback remove_node generic_by_name; do \

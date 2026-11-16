@@ -461,6 +461,18 @@ bool rclc_log_timestamp_available(void);
  */
 bool rclc_log_throttle_admit(uint64_t* last_ns, uint64_t interval_ms);
 
+/**
+ * `rclc_log_throttle_admit` on a clock reading the caller supplies.
+ *
+ * The same rule and the same `last_ns` storage contract; only the time source
+ * differs. For a call site whose window must be measured on a clock other than
+ * `nros_log`'s — the C++ `RCLCPP_*_THROTTLE` macros pass their `clock`
+ * argument's reading here, as upstream measures the window on that clock.
+ *
+ * @param now_ns  The current reading of the caller's clock, in nanoseconds.
+ */
+bool rclc_log_throttle_admit_at(uint64_t* last_ns, uint64_t interval_ms, uint64_t now_ns);
+
 /* ---- Throttled convenience macros ---- */
 /* One `static uint64_t` per call site, which is what makes the window
  * per-SITE and not per-logger — the same shape as `rclcpp`'s
