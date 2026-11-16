@@ -143,6 +143,9 @@ nros-sdk.lock
 /target-check-cpp-param-services/
 # Issue 2123 -- nros-cpp with bridge, for rclc_init_multi_session_properties_runtime.
 /target-check-cpp-bridge/
+# Issue 2641 -- nros-c / nros-cpp with trace-callbacks, for the trace-marker probes.
+/target-check-cpp-trace/
+/target-check-c-trace/
 
 # Per-RMW example build dirs (target-xrce/ etc.) — build output, never committed
 examples/**/target-*/

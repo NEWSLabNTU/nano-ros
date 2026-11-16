@@ -82,6 +82,7 @@
 - [Real-time]()
   - [Pick a scheduling model](./guide/realtime/pick-a-scheduling-model.md)
   - [Analyze timing](./guide/realtime/analyze-timing.md)
+  - [Trace callbacks](./guide/realtime/trace-callbacks.md)
 - [Deploy and debug]()
   - [Deploy to production](./guide/deploy/deploy-to-production.md)
   - [Log and observe a board](./guide/deploy/log-and-observe.md)

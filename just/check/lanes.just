@@ -96,6 +96,9 @@ c: c-fmt
     # `nros_scoped_target_dir`'s doc warns it is for dirs with no consumer
     # reading a fixed relative path. That is honoured: every `-I` below is
     # derived from this same variable, so no fixed path escapes this recipe.
+    # issue 2641 -- the `trace-callbacks` shape the trace-marker probe links;
+    # derived BEFORE the export below (issue 1354: a call after it compounds).
+    tr_dir="$(nros_scoped_target_dir check-c-trace)"
     gen="$(nros_scoped_target_dir check-c)"
     export CARGO_TARGET_DIR="$gen"
     # issue 1852 — the per-build header dirs, ASKED (`nros locate artifact`),
@@ -152,6 +155,35 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/cdr_borrow_le_slice
     ./tmp/cdr_borrow_le_slice
+    echo "  - issue 2641: rclc_trace_marker reaches the installed sink; an executor id is refused"
+    # Run twice. WITH `trace-callbacks` (its own archive shape, in its own
+    # target dir): the capturing sink gets exactly the in-range events. Against
+    # the SHIPPED archive (`-DNROS_TEST_TRACE_OFF`): nothing reaches the sink
+    # and the range check still refuses. `test -f` first (issue 0196's class).
+    test -f packages/api/nros-c/tests/run/trace_marker.c || { \
+        echo "ERROR: trace_marker.c is MISSING -- this check passes on absence." >&2; exit 1; }
+    CARGO_TARGET_DIR="$tr_dir" \
+        nros_cargo_placed "$tr_dir/placed" nros-c -- build -p nros-c --no-default-features \
+        --features "{{C_API_SHIPPED_FEATURES}},trace-callbacks" --quiet
+    # profile-literal-ok: unprofiled: a plain `cargo build`, so `<dir>/debug/` IS
+    # its derived output dir.
+    tr_lib="$tr_dir/debug/libnros_c.a"
+    cc -std=c11 -Wall -Wextra -Werror -Wmissing-prototypes \
+        -I"$(nros_locate_artifact c-include --placed-dir "$tr_dir/placed")" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/run/trace_marker.c \
+        "$tr_lib" -lpthread -ldl -lm \
+        -o tmp/trace_marker
+    ./tmp/trace_marker
+    cc -std=c11 -Wall -Wextra -Werror -Wmissing-prototypes -DNROS_TEST_TRACE_OFF \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/run/trace_marker.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/trace_marker_off
+    ./tmp/trace_marker_off
     echo "  - issue 1531: the C surface forwards the BAKED RMW rung, and only when baked"
     # Three properties, with a NEGATIVE CONTROL, because "it compiles" is what
     # the pre-fix tree also did. `<rclc/detail/baked_rmw.h>` rewrites the two nameless
@@ -1562,6 +1594,8 @@ cpp: cpp-fmt
     # issue 2123 -- the `bridge` shape (`rclc_init_multi`) the C probe links;
     # derived here, before the export below, for the same reason as the three above.
     br_dir="$(nros_scoped_target_dir check-cpp-bridge)"
+    # issue 2641 -- the `trace-callbacks` shape the trace-marker probe links.
+    trc_dir="$(nros_scoped_target_dir check-cpp-trace)"
     gen="$(nros_scoped_target_dir check-cpp)"
     export CARGO_TARGET_DIR="$gen"
     # issue 1852 — the per-build header dirs, ASKED, never joined by hand.
@@ -2637,6 +2671,30 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$br_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/rclc_init_multi_session_properties_runtime
+    # issue 2641 -- rclcpp::trace_marker reaches the sink the C seam installed,
+    # and an executor id (16-27) is refused. Its own archive shape
+    # (`trace-callbacks`), in its own target dir, as the bridge build above.
+    test -f packages/api/nros-cpp/tests/compile/trace_marker_runtime.cpp || { \
+        echo "ERROR: trace_marker_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - rclcpp::trace_marker reaches the installed sink; an executor id is refused (runtime, issue 2641)"
+    CARGO_TARGET_DIR="$trc_dir" \
+        nros_cargo_placed "$trc_dir/placed" nros-cpp nros-c -- build -p nros-cpp \
+        --no-default-features --features "{{C_API_SHIPPED_FEATURES}},trace-callbacks" --quiet
+    # profile-literal-ok: unprofiled: a plain `cargo build`, so `<dir>/debug/` IS
+    # its derived output dir.
+    trc_lib="$trc_dir/debug/libnros_cpp.a"
+    c++ -std=c++14 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
+        -I"$(nros_locate_artifact cpp-include --placed-dir "$trc_dir/placed")" \
+        -I"$(nros_locate_artifact c-include --placed-dir "$trc_dir/placed")" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -o "$gen/nros-cpp-tests"/trace_marker_runtime \
+        packages/api/nros-cpp/tests/compile/trace_marker_runtime.cpp \
+        "$trc_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/trace_marker_runtime
     # issue 2023 — a served C++ node PUBLISHES `/parameter_events`: the
     # start-up event, then one frame per set / declare / undeclare, each naming
     # the node's FQN, read back from the stub's last published payload. Needs a

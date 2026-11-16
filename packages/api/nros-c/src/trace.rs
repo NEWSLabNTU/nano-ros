@@ -43,7 +43,8 @@
 /// and, with the later blocks, 20 (handle-tagged name chunk), 21-24 (a stored
 /// contract violation) and 25-27 (a take and its source stamp,
 /// see [`rclc_trace_set_take`]); the full table is in
-/// `nros_node::executor::callback_trace`.
+/// `nros_node::executor::callback_trace`. Ids 1-15 are the application's own
+/// events, emitted with [`rclc_trace_marker`].
 ///
 /// Call it once at startup, BEFORE anything is registered on the executor: a
 /// sink installed later misses the registration events, and the decoder then
@@ -148,4 +149,58 @@ pub extern "C" fn rclc_trace_set_timer_every(handle: u8, every: u16) {
     nros_node::executor::callback_trace::set_timer_trace_every(handle, every);
     #[cfg(not(all(feature = "trace-callbacks", feature = "rmw-cffi")))]
     let _ = (handle, every);
+}
+
+/// First application trace marker id (see [`rclc_trace_marker`]).
+pub const RCLC_TRACE_APP_MARKER_FIRST: u32 = 1;
+/// Last application trace marker id. Ids from 16 up are the executor's own
+/// callback events and are refused by [`rclc_trace_marker`].
+pub const RCLC_TRACE_APP_MARKER_LAST: u32 = 15;
+
+// issue 2641 -- one range, stated twice only because cbindgen needs literals
+// for the header; the core's constants are the authority.
+const _: () = assert!(
+    RCLC_TRACE_APP_MARKER_FIRST == nros_node::executor::trace_marker::APP_MARKER_FIRST
+        && RCLC_TRACE_APP_MARKER_LAST == nros_node::executor::trace_marker::APP_MARKER_LAST
+);
+
+/// Emit one application event `(id, arg)` through the installed trace sink:
+/// the sink [`rclc_set_trace_sink`] installed, or the platform default (on
+/// Zephyr, `sys_trace_app_marker`, so the event lands in the CTF stream). It
+/// takes the same path as the executor's own callback events, so it shares
+/// their clock and their ordering.
+///
+/// Marker ids are shared with the executor, so the application owns a block:
+///
+/// | ids       | owner                                                       |
+/// |-----------|-------------------------------------------------------------|
+/// | 0         | reserved, never emitted                                     |
+/// | 1 ..= 15  | the application (`RCLC_TRACE_APP_MARKER_FIRST` ..= `_LAST`) |
+/// | 16 and up | the executor's callback events (16-27 today)                |
+///
+/// `arg` is the application's own and is passed through unchanged.
+///
+/// Returns `RCL_RET_OK` when the event was handed to the sink, and also when
+/// there was nothing to hand it to: no sink installed, or a build without
+/// callback tracing. With no sink installed the call costs one range compare,
+/// one atomic load and one branch. An id outside the application block returns
+/// `RCL_RET_INVALID_ARGUMENT`, logs an error, sets the error state
+/// `rcl_get_error_string` reads, and emits nothing; it is never clamped onto
+/// another id.
+///
+/// Safe from any thread and from inside a callback.
+#[unsafe(no_mangle)]
+pub extern "C" fn rclc_trace_marker(id: u32, arg: u32) -> crate::error::rcl_ret_t {
+    match nros_node::executor::trace_marker::emit_app_marker(id, arg) {
+        Ok(()) => crate::error::RCL_RET_OK,
+        Err(e) => {
+            nros_log::log_error!(nros_log::get_logger("nros-c"), "rclc_trace_marker: {}", e);
+            crate::error_handling::set_static(
+                "rclc_trace_marker: id is outside the application range 1..=15",
+                file!(),
+                line!(),
+            );
+            crate::error::RCL_RET_INVALID_ARGUMENT
+        }
+    }
 }

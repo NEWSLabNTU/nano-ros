@@ -114,6 +114,25 @@ inline void arm_monitors() {
     nros_cpp_monitors_arm();
 }
 
+/// First application trace marker id (see `trace_marker`).
+constexpr uint32_t kTraceAppMarkerFirst = 1;
+/// Last application trace marker id. Ids from 16 up are the executor's own
+/// callback events and are refused.
+constexpr uint32_t kTraceAppMarkerLast = 15;
+
+/// Emit one application event `(id, arg)` through the installed trace sink,
+/// on the path the executor's own callback events take (on Zephyr the
+/// default sink is `sys_trace_app_marker`, so it lands in the CTF stream).
+///
+/// `id` must be in `kTraceAppMarkerFirst`..`kTraceAppMarkerLast` (1..15);
+/// any other id returns `ErrorCode::InvalidArgument`, logs an error and emits
+/// nothing. With no sink installed, or in a build without callback tracing,
+/// an in-range call emits nothing and succeeds. Safe from any thread and from
+/// inside a callback.
+inline Result trace_marker(uint32_t id, uint32_t arg) {
+    return Result(nros_cpp_trace_marker(id, arg));
+}
+
 /// Register a callback to run BEFORE the global session's entities are torn
 /// down.
 ///

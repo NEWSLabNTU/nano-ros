@@ -1,0 +1,5 @@
+{
+  "key": "c:trace_marker",
+  "verdict": "extension",
+  "why": "issue 2641 -- `rclc_trace_marker(id, arg)`: an application event through the callback trace sink (`c:set_trace_sink`), ids 1..=15, refusing the executor's. rclc leaves tracing to LTTng tracepoints, which none of the RTOS targets can host."
+}

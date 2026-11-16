@@ -1809,3 +1809,10 @@ path = "background/compared-with-other-stacks.md"
 action = "new docs-comparison"
 batch = "docs-comparison"
 note = "nano-ros compared with micro-ROS and mros2: the comparison table moved out of background/differences-from-ros2, every nano-ros claim linked to a page or file, every other project's claim cited to its own docs with the date read"
+
+[[page]]
+book = "user"
+path = "guide/realtime/trace-callbacks.md"
+action = "new phase-478"
+batch = "phase-478-i23"
+note = "Trace callbacks (issue 2641, GitHub #4009): the callback trace sink, the application trace marker and its reserved ids 1-15, and which platforms install a default sink"

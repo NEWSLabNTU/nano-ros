@@ -1250,6 +1250,11 @@ pub use nros_node::{
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::executor::port_park;
 
+// issue 2641 -- the application's trace markers. Ungated like the module it
+// re-exports: the id check runs in every build, the emission needs
+// `trace-callbacks` and an installed sink.
+pub use nros_node::executor::trace_marker;
+
 /// The other half of the seam, for the boards that now use it.
 ///
 /// `port_park` above is what a port hands the executor to WAIT with;
