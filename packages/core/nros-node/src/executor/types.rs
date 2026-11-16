@@ -22,6 +22,12 @@ pub struct SpinOnceResult {
     pub subscription_errors: usize,
     /// Number of service processing errors (e.g., BufferTooSmall)
     pub service_errors: usize,
+    /// RFC-0128 D8 (phase-554 W3 slice B) -- an executor-level entity that
+    /// waited for a node and could not be opened when the pass ran it (the
+    /// `/diagnostics` reporter of an image with no node; see
+    /// `Executor::open_pending_on_configured_name`). `spin` and `spin_some`
+    /// return that error; a bare `spin_once` counts it here.
+    pub setup_errors: usize,
 }
 
 impl SpinOnceResult {
@@ -33,6 +39,7 @@ impl SpinOnceResult {
             services_handled: 0,
             subscription_errors: 0,
             service_errors: 0,
+            setup_errors: 0,
         }
     }
 
@@ -48,12 +55,12 @@ impl SpinOnceResult {
 
     /// Check if any errors occurred during this spin iteration
     pub const fn any_errors(&self) -> bool {
-        self.subscription_errors > 0 || self.service_errors > 0
+        self.subscription_errors > 0 || self.service_errors > 0 || self.setup_errors > 0
     }
 
     /// Total number of errors across all handle types
     pub const fn total_errors(&self) -> usize {
-        self.subscription_errors + self.service_errors
+        self.subscription_errors + self.service_errors + self.setup_errors
     }
 }
 
