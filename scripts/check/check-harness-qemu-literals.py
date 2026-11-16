@@ -8,7 +8,9 @@ itself measures a launch no user makes, and the line drifts from the one the
 board descriptor and `nros build`'s printed next step state (issue 2172 found
 three spellings of the MPS2 line).
 
-Two rules over `packages/testing/nros-tests/src/`, outside comments:
+Two rules, outside comments: rule 1 over `packages/testing/nros-tests/src/`,
+rule 2 over `src/` AND `tests/` (a test target boots guests as much as the
+library does):
 
 1. No `qemu-system-` literal. A boot states plan args (`crate::run::QemuBoot`);
    a probe that needs a binary NAME asks `nros_qemu_ladder::system_exe(..)`.
@@ -174,8 +176,17 @@ def main() -> int:
         )
         return 1
     words = sorted(machines | nics)
+    # Rule 2 reaches the TEST targets too (`tests/`), not only the harness
+    # library: on 2026-11-16 `tests/killed_run_verb.rs` booted MPS2 from a
+    # hand `QemuBoot::table("arm", "mps2-an385")` with no semihosting, so the
+    # bare-metal image faulted at its first semihosting call (`Lockup: can't
+    # escalate 3 to HardFault`) and main's tier 2 read it as `nros run`
+    # exiting. Rule 1 stays on `src/`: a test names the binary in its
+    # `unmet!` text, which says what is missing and boots nothing.
+    tests_rel = (SRC.parent / "tests").relative_to(ROOT).as_posix()
     cand = git_grep.run(
-        ["-lF", *[a for w in words for a in ("-e", w)], "--", f"{rel}/*.rs"], ROOT
+        ["-lF", *[a for w in words for a in ("-e", w)], "--", f"{rel}/*.rs", f"{tests_rel}/*.rs"],
+        ROOT,
     ).split()
     facts = []
     for f in cand:

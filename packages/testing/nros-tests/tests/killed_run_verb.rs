@@ -256,7 +256,9 @@ fn sigkilled_verb_leaves_no_native_image(
 fn sigkilled_verb_leaves_no_qemu_guest() {
     require_qemu_baremetal_lane();
     let elf = build_qemu_bsp_talker().require("baremetal-rust-zenoh-talker");
-    let boot = run::QemuBoot::table("arm", "mps2-an385").arg("cpu", "cortex-m3");
+    let boot = nros_tests::qemu::MPS2_AN385
+        .boot()
+        .expect("the MPS2-AN385 descriptor boot");
     let mut plan = run::qemu_image(elf, &boot).expect("writing the plan");
     let mut verb = spawn_verb(&mut plan);
     let tree = running_tree(&mut verb, "QEMU", |p| comm(p).starts_with("qemu-system"));
@@ -270,7 +272,9 @@ fn sigkilled_verb_leaves_no_qemu_guest() {
 fn harness_stop_leaves_no_qemu_guest() {
     require_qemu_baremetal_lane();
     let elf = build_qemu_bsp_talker().require("baremetal-rust-zenoh-talker");
-    let boot = run::QemuBoot::table("arm", "mps2-an385").arg("cpu", "cortex-m3");
+    let boot = nros_tests::qemu::MPS2_AN385
+        .boot()
+        .expect("the MPS2-AN385 descriptor boot");
     let mut plan = run::qemu_image(elf, &boot).expect("writing the plan");
     let mut verb = spawn_verb(&mut plan);
     let tree = running_tree(&mut verb, "QEMU", |p| comm(p).starts_with("qemu-system"));
