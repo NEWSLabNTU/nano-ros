@@ -128,6 +128,11 @@ def render(lane, red, green, scanned, rows, total, window=GREEN_WINDOW):
     if total > len(rows):
         out.append(f"  ... and {total - len(rows)} more, newer, not listed: the oldest are closest "
                    f"to the green run, and each listed commit costs one PR lookup (cap {PR_LOOKUP_CAP}).")
+    # Every commit in the range is listed, so this is the SET the cause is in,
+    # never the cause. On 2026-11-16 a reading of this list blamed #4031 for an
+    # L3 link break that a bisect put on #4030, the commit beside it.
+    out.append("  These are SUSPECTS, not a cause: every commit in the range is listed. Bisect")
+    out.append("  (or build the commits in turn) before you revert one or name its author.")
     return out
 
 
@@ -271,6 +276,8 @@ def selftest(verbose=False):
          and not any(re.match(r"^    [0-9a-f]{10}  ", l) for l in lines))
     lines = render("nightly.yml", runs[0], runs[2], 2, rows, 7)
     case("a truncated list says how many it left out", any("5 more, newer, not listed" in l for l in lines))
+    case("a suspect list says it is not a cause",
+         any("SUSPECTS, not a cause" in l for l in render("x", runs[0], runs[2], 2, rows, 2)))
     # The lane is a JOB: per-job last green, and red jobs sharing one green
     # share one block. Run 4 did not schedule `b` at all, which is not green.
     jobs = {5: {"a": "failure", "b": "failure", "c": "failure"},
@@ -296,12 +303,22 @@ def main():
     ap.add_argument("--job", action="append", default=None,
                     help="a lane job to answer for (repeatable; default: every job that failed)")
     ap.add_argument("--run", default=None, help="the red run (default: the latest)")
+    ap.add_argument("--range", nargs=2, metavar=("GREEN_SHA", "RED_SHA"),
+                    help="name the commits between two known commits (queue-triage's MAIN verdict)")
+    ap.add_argument("--label", default="the lane")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
     if args.selftest:
         return selftest(verbose=True)
     if selftest():
         return 1
+    if args.range:
+        g, r = args.range
+        rows, total = _range({"headSha": g}, {"headSha": r})
+        out = render(args.label, {"databaseId": "merge group", "headSha": r},
+                     {"databaseId": "merge group", "headSha": g, "createdAt": ""}, 0, rows, total)
+        print("\n".join(out))
+        return 0
     print("\n".join(suspects(args.workflow, args.run, args.job)))
     return 0
 

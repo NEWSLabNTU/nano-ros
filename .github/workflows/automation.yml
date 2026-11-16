@@ -680,6 +680,7 @@ jobs:
           # for everyone, would otherwise label every `gate` ejection INFRA.
           if triage="$(NROS_TRIAGE_WORKFLOW="$WORKFLOW" bash scripts/ci/queue-triage.sh)"; then
             case "$triage" in
+              *"MAIN IS BROKEN"*)           verdict=MAIN ;;
               *"NOT YOUR PULL REQUEST"*)    verdict=INFRA ;;
               *"LIKELY YOUR PULL REQUEST"*) verdict=MINE ;;
             esac
@@ -728,6 +729,20 @@ jobs:
           # Indented heredoc + the same `sed` strip as above — the body must sit
           # inside this YAML block scalar, so a column-0 heredoc is a parse
           # error, not a formatting nit.
+          # A MAIN verdict (the same check failing at a build step for
+          # independent groups: a merged commit is wrong) REPLACES the advice
+          # too, and quotes the triage, which names the first red group and
+          # the suspect commits since the last green one.
+          if [ "$verdict" = "MAIN" ]; then
+            {
+              printf '**Ejected from the merge queue** — `%s` failed on the merge group.\n\n' "$WORKFLOW"
+              printf '[Run log](%s)\n\n' "$RUN_URL"
+              printf '> [!IMPORTANT]\n> **Main is broken.** The same check failed at a build or test step for other, independently built merge groups. This is not your pull request: a commit that already merged is wrong. Do not rebase or re-queue until main is fixed.\n\n'
+              printf '```\n%s\n```\n\n' "$(printf '%s\n' "$triage" | sed -n '/^== MAIN IS BROKEN ==/,$p')"
+              printf '<sub>Posted by `queue-notify`; verdict from `scripts/ci/queue-triage.sh`.</sub>\n'
+            } > /tmp/body.md
+          fi
+
           if [ "$verdict" = "INFRA" ]; then
             infra="$(cat <<MSG
           **Ejected from the merge queue** — \`$WORKFLOW\` failed on the merge group.
