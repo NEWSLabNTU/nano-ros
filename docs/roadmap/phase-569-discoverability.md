@@ -1,6 +1,8 @@
 # Phase 569 — find what nano-ros offers from the `nros` command
 
-**Status (2026-11-17). PROPOSED: W1–W10 are open, and nothing is built.**
+**Status (2026-11-17). PROPOSED: W1–W10 are open, and nothing is built.
+The review of 2026-11-17 (approve with changes) is folded in; recording a
+reason per derived value moved to [phase-570](phase-570-derived-value-reasons.md).**
 Implements [RFC-0133](../design/0133-discoverability.md), a draft written for
 the user's review. The user answered its five open questions on 2026-11-17
 (RFC-0133 "Decisions"); work starts when the user approves the RFC as a
@@ -26,11 +28,11 @@ source already exists (RFC-0133 D2), except W3's `because` field.
 | --- | --- | --- |
 | W1 | `nros rmw list` / `show` | — |
 | W2 | the knob catalog: `nros knob list` / `show` | — |
-| W3 | derived config: `nros image show --derived` | — |
+| W3 | derived config: `nros image show --derived` | reasons fill in as phase-570 lands |
 | W4 | dynamic completion and its registration | W1, W2 (their loaders) |
 | W5 | the shared `list` / `show` / `--json` / Book frame; existing verbs adopt it | W1 |
-| W6 | `platform`, `template`, `code`, `runner` lists | W5 |
-| W7 | `image list` / `show`; planned `node list` / `topic list` | W5 |
+| W6 | `platform`, `template`, `profile`, `code`, `runner` lists | W5 |
+| W7 | `image list` / `show`, with planned `--nodes` / `--topics` | W5 |
 | W8 | migration out of `nros dev`, aliases, old-spelling table | W1–W7 |
 | W9 | `nros search` | W5–W7 |
 | W10 | the book: a "Find what nano-ros offers" page; CLI reference | each item adds its rows |
@@ -58,39 +60,37 @@ by the descriptor's own platform list, not by a list in `new.rs`.
 - **Status:** OPEN
 
 Each `[[knob]]` row in `knobs.toml` gains `scope`, `default`, `values`,
-`set-in` and the public / carrier class that `gen-config-surface.py`
+`surface` (the one user spelling, `[image.<id>.knobs.<group>]` or the rung
+the row names) and the public / carrier class that `gen-config-surface.py`
 computes today. `prompt` and `help` are compiled into `KnobRow`.
 `nros knob list` prints every public knob (name, scope, default, one line of
 help); `--platform P` / `--board B` add the resolved value and the rung it
 came from, which is what `config explain` prints today. `nros knob show
-<name>` prints every spelling (system.toml, Kconfig, env), the valid values
-and the help. `config explain` becomes an alias. The configuration reference
+<name>` prints the user spelling from `surface`, the valid values and the
+help. It never prints the env carrier, the Kconfig twin or a `-D NROS_*`
+spelling. The build-arguments refusal (RFC-0117, as amended) reads the same
+field for its remedy. `config explain` becomes an alias. The configuration reference
 page is generated from the same rows.
 
 Acceptance: every one of the 110 rows has the new fields, or the generator
-refuses; `nros knob show net.max_sockets` prints the three spellings; the
+refuses; `nros knob show net.max_sockets` prints its `system.toml` spelling
+and no env or Kconfig name; the
 book page and `nros knob list` list the same public knobs (a gate compares
 them).
 
-### W3 — derived config with reasons
+### W3 — derived config
 
 - **Status:** OPEN
 
 `nros image show <image> --derived` prints, from
 `build/nros/sizing/<entry>.toml`, the pools, heap, stack and features the
-build derived, with the reason for each: the knob or the plan fact it came
-from. The sizing descriptor gains a `because` field per derived value,
-written where the value is derived. Reasons land in this order: first the
-pthread condition-variable and mutex pools, the executor backing, the
-parameter store slots, the Zephyr heap, and the stack setting against the
-floor the stack check measured; then the entity pools. A value without one
-prints
-"(no reason recorded)", and a test counts those so the number only goes
-down. With no descriptor, or one older than the image's inputs, the command
-names `nros configure` and runs nothing.
+build derived, with a reason column. The column shows the reason a producer
+recorded, which phase-570 adds, and "(no reason recorded)" until then. With
+no descriptor, or one older than the image's inputs, the command names
+`nros configure` and runs nothing.
 
-Acceptance: a configured image shows each of the first-wave values above
-with a reason; an unconfigured one names `nros configure` and exits non-zero
+Acceptance: a configured image shows its derived values, with the reason
+column; an unconfigured one names `nros configure` and exits non-zero
 without building.
 
 ### W4 — dynamic completion and its registration
@@ -104,7 +104,11 @@ toolchain-pin redispatch. `ArgValueCandidates` on every name argument
 templates, codes, toolchains) and `SubcommandCandidates` for extension
 verbs, each calling only compiled-in tables, file reads and the completion
 cache `build/nros/complete.json`, which `nros build` and `nros configure`
-rewrite from the scans they already run (RFC-0133 D7).
+rewrite from the scans they already run (RFC-0133 D7). The cache records a
+schema version and its search path; a cache for another search path offers
+nothing, and stale entries within one search path are expected. Redispatch
+skips a `path =` pin's stale-binary guard when `COMPLETE` is set, so every
+pin form meets the budget.
 
 `nros completions [<shell>]` prints the registration line for the shell, and
 `--static` keeps today's generated script. The dead `run()` stub goes.
@@ -118,7 +122,8 @@ Acceptance:
 - bash, zsh and fish each complete `nros board show <Tab>` with board keys,
   in a test that runs the real glue;
 - every completer stays under 100 ms per Tab on a cold page cache, the
-  redispatch exec included;
+  redispatch exec included, for a version pin and for a `path =` pin;
+- a cache written for another search path offers no names;
 - with no completion cache, workspace names are simply not offered, and no
   completer runs a scan;
 - a second `nros setup` prints no tip;
@@ -132,14 +137,18 @@ Acceptance:
 One helper renders `list` (table or `--json`), `show` (fields, then the Book
 line) and the unknown-name refusal with the nearest names. `board`,
 `interface`, `toolchain` and `nros list` adopt it and gain `--json`.
-`board list` lists board keys, with the crate as a column. A contract test
+`board list` lists board keys, with the crate as a column. `board show`
+renders every table in the board's descriptor, labelled from the schema's
+field documentation, so sections such as `[board.can]` and
+`[board.run.fvp]` appear with no CLI edit. A contract test
 pins each `--json` schema, and `check-user-surface-ids` renders every new
 verb. The Book base URL, `https://newslabntu.github.io/nano-ros-book/`, is
 defined once in the CLI workspace manifest and compiled in, and a gate checks
 `book/book.toml`'s `site-url` against it.
 
 Acceptance: every discovery verb accepts `--json`; the contract test fails on
-a renamed key; `check-user-surface-ids` covers the new verbs.
+a renamed key; `check-user-surface-ids` covers the new verbs; a fixture
+descriptor with a new section is printed by `board show`.
 
 ### W6 — `platform`, `template`, `code`, `runner` lists
 
@@ -149,6 +158,11 @@ a renamed key; `check-user-surface-ids` covers the new verbs.
   RMWs; `nros new --platform` reads the same list.
 - `nros template list` / `show` read `scaffold::Role::ALL`: roles, languages
   and features.
+- `nros profile list` / `show` read the built-in profiles that
+  `[image.<id>] profile` and `--profile=` accept, each with the cargo profile
+  and CMake build type it maps to, through the build's own resolver.
+  `nros dev profile args|dir|env` stays plumbing. A later
+  `[build_profile.<name>]` gets its own noun.
 - `nros code list` / `show` read the diagnostic code table. `nros explain
   <code>` stays as an alias, because diagnostics tell users to run it, and
   `nros explain plan` is unchanged.
@@ -167,10 +181,10 @@ and sees it listed, with no CLI edit.
 
 `nros image list` prints the workspace's images and bringups (board, RMW,
 launch file). `nros image show <image>` adds its packages and, with
-`--derived`, W3's view. `nros node list --image <i>` and
-`nros topic list --image <i>` print the nodes, and the topics, services and
-actions, from the plan, labelled planned. Without a plan they name
-`nros configure`.
+`--derived`, W3's view. `--nodes` and `--topics` print the nodes, and the
+topics, services and actions, from the plan, in a column headed planned.
+Without a plan they name `nros configure`. No `nros node` or `nros topic`
+noun exists: those names stay with the runtime.
 
 Acceptance: the Tutorial's workspace lists its images; its talker image's
 planned nodes and topics match what `ros2 node list` and `ros2 topic list`
@@ -193,7 +207,7 @@ Acceptance: every row of the D3 table works under both spellings;
 - **Status:** OPEN
 
 Search the name, aliases and description of every item in every cheap noun,
-plus the plan nouns when a plan exists, by calling each noun's `list` loader.
+plus each image's planned nodes and topics when a plan exists, by calling each noun's `list` loader.
 Results are grouped by noun, with the `show` command to run; `--json` gives
 `nros.search.v1`.
 
