@@ -1,15 +1,16 @@
 ---
 id: 2463
 title: "A workspace fixture row's road (cargo or cmake) is decided in two places, and the bash copy broke every row without an authored builder"
-status: open
+status: resolved
 type: tech-debt
 area: [testing, build]
 severity: medium
 found: 2026-11-12
+resolved: 2026-11-17
 related: [2377, 2433]
 ---
 
-**Home: [phase-535](../roadmap/phase-535-example-reorg-and-cadence-ci.md)** W6, which
+**Home: [phase-535](../../roadmap/phase-535-example-reorg-and-cadence-ci.md)** W6, which
 added the authored `builder` column (10d35dc209).
 
 ## Measured
@@ -49,3 +50,27 @@ record (so bash, the units script and the locator all read it instead of
 deriving it), or a fast-line check runs both derivations over every
 `[[workspace_fixture]]` row and fails on a disagreement, with a negative
 control that feeds it a row with no `builder` for each language.
+
+## Resolution (2026-11-17)
+
+The road is one decision in each language, and a fast-line check holds the
+script twins together:
+
+- **bash:** `nros_ws_row_road` in `scripts/lib/fixture-road.sh`, the only
+  spelling. `workspace-fixtures-build.sh` calls it instead of its own
+  `if/elif/else`.
+- **Python:** `row_road` in `scripts/build/workspace-fixture-units.py`,
+  named so the check can call it.
+- **Rust:** `road` in `nros_tests::fixtures::migrated_leaf`, with a unit test
+  (`road_tests`) over the same table.
+
+`check-workspace-fixture-road` (fast line) runs every manifest row (467) and
+a fixed table of each shape through the bash and Python twins, and fails on
+any disagreement. The table covers each language with no builder, plus an
+authored builder on each. It self-tests every run with a twin that sends a
+builder-less Rust row to cmake. Negative control: breaking the bash
+function's language test turns it red, naming the rows.
+
+The record was NOT changed to carry the resolved road. `workspace_record`
+keeps `builder` authored-only because the record is hashed into the fixture
+signature, so emitting the road would re-stale every fixture.

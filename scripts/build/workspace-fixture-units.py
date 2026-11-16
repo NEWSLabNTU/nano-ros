@@ -46,6 +46,13 @@ import sys
 SEP = "\x1f"
 
 
+def row_road(lang: str, builder: str) -> str:
+    """Issue 2463 — the road a row builds on: its authored `builder`, else its
+    language. The Python twin of `nros_ws_row_road` (scripts/lib/fixture-road.sh);
+    `check-workspace-fixture-road` holds the two to each other."""
+    return builder or ("cargo" if lang == "rust" else "cmake")
+
+
 def keys(record: str) -> list[str]:
     f = record.split(SEP)
     f += [""] * (15 - len(f))
@@ -53,7 +60,7 @@ def keys(record: str) -> list[str]:
     image = f[13]
     # phase-535 W6 — the row's authored builder (15th column, present only when
     # authored) wins over the language, as in `workspace-fixtures-build.sh`.
-    road = f[14] or ("cargo" if lang == "rust" else "cmake")
+    road = row_road(lang, f[14])
     out = []
     if road == "cargo":
         out.append(f"{ws}|cargo:{target_dir or 'target'}")
