@@ -1434,7 +1434,8 @@ impl ZenohSession {
             .then(|| DataKey::of(topic, qos));
     }
 
-    /// Issue 2493 -- declare a node's writer on `topic`'s data key: one ROS
+    // Issue 2493.
+    /// Declare a node's writer on `topic`'s data key: one ROS
     /// publisher in the graph (a publisher liveliness token under
     /// `topic.node_name`, its own gid and sequence number) that puts through
     /// the zenoh publisher this session holds on the key, declaring one only

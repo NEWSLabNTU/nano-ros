@@ -14409,7 +14409,7 @@ impl<'s> Executor<'s> {
     /// Every node served this way also PUBLISHES
     /// `/parameter_events` (`rcl_interfaces/msg/ParameterEvent`), rclcpp's and
     /// rclrs's default: a start-up event, then one event per declare, set and
-    /// undeclare. One VOLATILE publisher per node (issue 2493, as stock)
+    /// undeclare. One VOLATILE publisher per node, as stock
     /// ([`PARAM_EVENT_PUBLISHERS`](crate::parameter_services::PARAM_EVENT_PUBLISHERS)).
     /// A node opts out with
     /// [`disable_parameter_events_on`](Self::disable_parameter_events_on)

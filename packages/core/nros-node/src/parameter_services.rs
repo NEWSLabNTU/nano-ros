@@ -1334,8 +1334,9 @@ pub use crate::config::PARAM_SERVICE_BUFFER_SIZE;
 /// `check-infra-queryable-counts` holds it to the number of creation sites.
 pub const PARAM_SERVICE_QUERYABLES: usize = 6;
 
+// issue 2493 -- per node since then; one per executor before.
 /// Publishers the parameter family claims PER NODE: one `/parameter_events`
-/// writer for each node that serves parameters (issue 2493, as stock: the
+/// writer for each node that serves parameters (as stock: the
 /// graph lists every node as a publisher of the topic). It was one per
 /// executor until then, announced under the first node only. VOLATILE
 /// (`parameter_events_default`), so each costs a publisher handle and a
