@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 # C CXX: the node logic is a C typed component (src/Talker.c); the NuttX
 # typed-entry carrier `nros_components_register_node` generates is C++.
-project(c_typed_carrier LANGUAGES C CXX)
+project(nuttx_c_typed_carrier LANGUAGES C CXX)
 
 # issue 1795 — the RTOS TYPED CARRIER road. Every other qemu-armv7a-nuttx example
 # links through `nano_ros_add_executable()` (the entry road); this one

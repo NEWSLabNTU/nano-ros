@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 # C CXX: the node logic is a C typed component (src/Talker.c); the ThreadX
 # typed-entry carrier `nros_components_register_node` generates is C++.
-project(c_typed_carrier LANGUAGES C CXX)
+project(riscv64_threadx_c_typed_carrier LANGUAGES C CXX)
 
 # issue 1795 — the RTOS TYPED CARRIER road. Every other rv-virt-threadx example
 # links through `nano_ros_add_executable()` (the entry road); this one
