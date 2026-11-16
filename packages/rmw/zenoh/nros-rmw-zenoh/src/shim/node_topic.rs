@@ -1,4 +1,5 @@
-//! Issue 2493 -- a node's writer on a data key several nodes share.
+// Issue 2493.
+//! A node's writer on a data key several nodes share.
 //!
 //! One ROS publisher in the graph with no zenoh publisher of its own: a
 //! publisher liveliness token under its node, its own gid and sequence number
