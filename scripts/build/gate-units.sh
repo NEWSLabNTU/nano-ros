@@ -79,7 +79,13 @@ nros_gate_units() {
             wait -n || true
             running=$((running - 1))
         fi
-        ( rc=0; "$fn" "$unit" > "$dir/$i.out" 2>&1 || rc=$?; echo "$rc" > "$dir/$i.rc" ) &
+        # Issue 2502 — each unit's wall time is recorded too, so the report
+        # says which unit took how long: a job that doubled could not be
+        # attributed, because every unit's output printed only after the last
+        # one finished, with no duration.
+        ( rc=0; t0=$SECONDS; "$fn" "$unit" > "$dir/$i.out" 2>&1 || rc=$?
+          echo "$(( SECONDS - t0 ))" > "$dir/$i.secs"
+          echo "$rc" > "$dir/$i.rc" ) &
         running=$((running + 1))
         i=$((i + 1))
     done
@@ -109,11 +115,21 @@ nros_gate_unit_report() {
     for ok in "$@"; do
         if [ "$rc" = "$ok" ]; then
             cat "$dir/$i.out" 2>/dev/null
+            _nros_gate_unit_time "$dir" "$i"
             return 0
         fi
     done
     cat "$dir/$i.out" >&2 2>/dev/null || true
+    _nros_gate_unit_time "$dir" "$i" >&2
     return 0
+}
+
+# Issue 2502 — one line per unit, after its output (which names the unit):
+# its wall time. Nothing for a unit that did not finish (it recorded no time).
+_nros_gate_unit_time() {
+    local dir="$1" i="$2" secs
+    secs="$(cat "$dir/$i.secs" 2>/dev/null)" || return 0
+    echo "  [took ${secs} s]"
 }
 
 # The control: statuses survive, reports come back in unit order whatever order
@@ -136,7 +152,16 @@ _nros_gate_units_self_test() {
     t1="$(date +%s%N)"
     out="$(for i in 0 1 2 3; do nros_gate_unit_report "$dir" "$i" 0 4 2>&1; printf 'rc=%s\n' "$NROS_GATE_UNIT_RC"; done)"
     local want
-    want="$(printf 'said slow-ok\nrc=0\nsaid fast-red\nrc=5\nsaid skip\nrc=4\n  unit 3: FAIL — it did not finish\nrc=1')"
+    # Times are whole `SECONDS`, so a 1 s sleep reads 1 or 2: compare with the
+    # numbers normalised, and bound the slow unit's time separately.
+    want="$(printf 'said slow-ok\n  [took N s]\nrc=0\nsaid fast-red\n  [took N s]\nrc=5\nsaid skip\n  [took N s]\nrc=4\n  unit 3: FAIL — it did not finish\nrc=1')"
+    local slow_secs
+    slow_secs="$(sed -n '2s/^  \[took \([0-9]*\) s\]$/\1/p' <<<"$out")"
+    if [ -z "$slow_secs" ] || [ "$slow_secs" -lt 1 ]; then
+        echo "gate-units self-test FAIL: a 1 s unit reported '${slow_secs:-no}' seconds" >&2
+        fail=1
+    fi
+    out="$(sed 's/^  \[took [0-9]* s\]$/  [took N s]/' <<<"$out")"
     if [ "$out" != "$want" ]; then
         echo "gate-units self-test FAIL: reports/statuses out of order or wrong:" >&2
         printf '%s\n' "$out" | sed 's/^/    /' >&2
@@ -164,7 +189,7 @@ _nros_gate_units_self_test() {
         fail=1
     fi
     rm -rf -- "$dir"
-    [ "$fail" -eq 0 ] && echo "gate-units self-test OK: in-order reports, statuses kept, an unfinished unit fails, units overlap."
+    [ "$fail" -eq 0 ] && echo "gate-units self-test OK: in-order reports with each unit's time, statuses kept, an unfinished unit fails, units overlap."
     return "$fail"
 }
 

@@ -72,3 +72,22 @@ Same five projects both times (`ament-workspace-port`,
    dependency compile.
 3. The CLI build step grew 4.3 → 6.6 min and is shared by every gate job;
    price whether its cache is missing.
+
+## Item 1 done (2026-11-17): every unit's log line has its time
+
+The shared unit runner (`scripts/build/gate-units.sh`, used by
+`check-template-copy-out` and `check-scaffold-builds`) records each unit's
+wall time. The report prints it under the unit's own output, so the next
+slow run says which project took how long:
+
+```
+  local-msg-package: OK — 2 artifact(s), e.g. build/consumer/cmake/pkg/consumer/consumer
+  [took 57 s]
+```
+
+The runner's self-test covers it, with the times normalised, since
+`SECONDS` is whole seconds, and a lower bound on the 1 s unit.
+
+Items 2 and 3 are still open: pricing the census pre-pass, and the CLI
+cache in that job. Both need a measurement on a CI run of the job, which
+the per-unit times now give. Suggested owner: phase-559.
