@@ -1532,6 +1532,15 @@ function(nros_find_interfaces)
         ENTITY_INVENTORY "${_entity_knobs}")
     nros_promise_check("${_bounds_knobs}" "${_bounds_before}"
         LABEL "this image's derived message-bound sizes")
+    # Issue 2504 -- this composed over the entity fragment as it stood, which on
+    # a fresh build dir is a placeholder: the entity composer runs later in the
+    # configure. Record where the answer went and what it read, so that composer
+    # re-derives it once it has written the inventory
+    # (`nros_entity_inventory_recompose_bounds`). Otherwise this configure leaves
+    # a bounds answer over the placeholder, the next one moves it, and an
+    # unseeded configure needs a third pass.
+    set_property(GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_OUTPUT "${_bounds_knobs}")
+    set_property(GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_OVER "${_entity_knobs}")
     set(NROS_MESSAGE_BOUNDS_STATUS "${NROS_MESSAGE_BOUNDS_STATUS}" PARENT_SCOPE)
     set(NROS_MESSAGE_BOUNDS_REASON "${NROS_MESSAGE_BOUNDS_REASON}" PARENT_SCOPE)
     set(NROS_MESSAGE_BOUNDS_BASIS "${NROS_MESSAGE_BOUNDS_BASIS}" PARENT_SCOPE)

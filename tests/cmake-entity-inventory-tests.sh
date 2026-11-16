@@ -71,6 +71,15 @@
 #      no producing rule is `missing and no known rule to make it` at LOAD,
 #      before any rule runs. And seeding never overwrites an existing answer.
 #
+#   K. THE PAIR (issue 2504). Codegen derives the message-bound sizes over
+#      the entity fragment as it stands, then the entity composer writes the
+#      inventory later in the configure. `nros_entity_inventory_recompose_bounds`
+#      must re-derive the bounds over the file the composer just wrote (and
+#      only when codegen composed over that same file), and both composers
+#      must call it before their promise check, so one configure leaves both
+#      files at its final answer and an unseeded configure converges in two
+#      passes rather than three.
+#
 # PRECONDITIONS ARE HARD FAILURES. This script never prints-and-returns: a
 # green here is read as "the reader is sound". Skipping belongs in the `just`
 # recipe's check ledger, which is a different claim from "it passed".
@@ -876,6 +885,59 @@ check
 if [ "$(head -n 1 "$J_ARGV" | grep -o -- "--model" | wc -l)" -ne 1 ]; then
     fail "J: the FIRST call must still pass exactly its own model -- $(head -n 1 "$J_ARGV")"
 fi
+
+# ---------------------------------------------------------------------------
+# K -- the pair. A stand-in `nros_derive_message_bound_knobs` records what it
+# was asked to compose over; the real one is the bounds module's, tested in
+# tests/cmake-message-bounds-tests.sh.
+K_INV="$TEST_TMPDIR/k-entity.cmake"; : > "$K_INV"
+K_BOUNDS="$TEST_TMPDIR/k-bounds.cmake"
+K_SEQ="$TEST_TMPDIR/k-seq.cmake"
+cat > "$K_SEQ" <<EOF
+include("$MODULE")
+function(nros_derive_message_bound_knobs)
+    cmake_parse_arguments(_B "" "OUTPUT_FILE;ENTITY_INVENTORY" "" \${ARGN})
+    file(WRITE "\${_B_OUTPUT_FILE}" "over \${_B_ENTITY_INVENTORY}")
+endfunction()
+if(K_CASE STREQUAL "same")
+    set_property(GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_OUTPUT "$K_BOUNDS")
+    set_property(GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_OVER "$K_INV")
+elseif(K_CASE STREQUAL "other")
+    set_property(GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_OUTPUT "$K_BOUNDS")
+    set_property(GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_OVER "$TEST_TMPDIR/k-other.cmake")
+endif()
+nros_entity_inventory_recompose_bounds("$K_INV")
+EOF
+rm -f "$K_BOUNDS"
+OUT="$(cmake -DK_CASE=same -P "$K_SEQ" 2>&1)"
+check
+if [ "$(cat "$K_BOUNDS" 2>/dev/null)" != "over $K_INV" ]; then
+    fail "K: the bounds were not re-derived over the inventory just written -- $OUT"
+fi
+for k_case in other none; do
+    rm -f "$K_BOUNDS"
+    OUT="$(cmake -DK_CASE="$k_case" -P "$K_SEQ" 2>&1)"
+    check
+    if [ -e "$K_BOUNDS" ]; then
+        fail "K: case $k_case re-derived bounds codegen did not compose over this inventory -- $OUT"
+    fi
+done
+for k_site in NanoRosNodeRegister NanoRosEntry; do
+    k_file="$PROJECT_ROOT/cmake/$k_site.cmake"
+    k_order="$(grep -n -e 'nros_derive_entity_inventory_knobs(CLI' \
+                       -e 'nros_entity_inventory_recompose_bounds(' \
+                       -e 'nros_promise_check("${_knobs_path}"' \
+                       -e 'nros_promise_check("${_entity_knobs_path}"' \
+                       "$k_file" | cut -d: -f1 | tr '\n' ' ')"
+    check
+    read -r k_a k_b k_c _ <<<"$k_order"
+    if [ -z "${k_c:-}" ] || [ "$k_a" -ge "$k_b" ] || [ "$k_b" -ge "$k_c" ]; then
+        fail "K: $k_site.cmake must compose the inventory, re-derive the bounds, then check its promise, in that order -- lines [$k_order]"
+    fi
+done
+check
+nros_grep_q 'NROS_MESSAGE_BOUNDS_COMPOSED_OVER' "$PROJECT_ROOT/cmake/NanoRosCodegenCore.cmake" ||
+    fail "K: codegen does not record what it composed the bounds over"
 
 # ---------------------------------------------------------------------------
 if [ "$FAILURES" -eq 0 ]; then
