@@ -150,6 +150,15 @@ A second publish of it, dispatch run 43687664815 (`target=starter`,
 (`... already exists, and version tags are immutable`); the build and the
 push were skipped, and the tag's digest is unchanged.
 
+**`0.6.0-nros11` (2026-11-16).** The release published, and its `starter`
+image failed before any build: the context writer read the Zephyr starter's
+step 34 as one block, and #3989 had split it into three. Issue
+[2635](../issues/2635-starter-image-context-unchecked-before-publish.md):
+the writer now joins a step's blocks the probe's way, `just check
+starter-image-context` writes the context on every PR, the release dry run
+writes it before publishing, and `starter-image.yml` takes
+`scripts_from_main` to build a released tag with main's writer.
+
 ### W5 — The `image` probe track gates `latest`
 
 Gate: Q9, ruled 2026-11-12 (100 Mbit/s shared by 30 seats; the size is the

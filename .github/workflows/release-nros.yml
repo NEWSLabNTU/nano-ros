@@ -167,6 +167,14 @@ jobs:
           # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
           sudo apt-get install -y $pkgs python3-tomli
 
+      # Issue 2635: the starter images are built from the release's tag AFTER
+      # it is published, so a context that cannot be written (a book edit the
+      # step reader refuses) used to surface only then, as it did for
+      # 0.6.0-nros11. Write it here, on every run, dry runs included, before
+      # anything is published: the context only, no engine, about a second.
+      - name: Write the starter image context (no build)
+        run: bash scripts/ci/image-context.sh starter "$RUNNER_TEMP/starter-context"
+
       - name: Build the CLI from source
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
