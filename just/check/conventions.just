@@ -306,6 +306,16 @@ qemu-one-ladder:
 # so no `qemu-system-` literal is left in `packages/testing/nros-tests/src/`
 # outside comments: a boot states plan args, a probe asks
 # `nros_qemu_ladder::system_exe`. Buildless, ~0.1 s; self-tests its matcher.
+# A component package's project() is its package.xml <name>: the build names
+# the component's symbols from PROJECT_NAME and the metadata probe from
+# package.xml, so a mismatch made the probe's link fail
+# (`__nros_c_component_<pkg>_create`). `nros_package_symbol` refuses it at
+# configure; this says so before anything configures. Buildless, ~0.2 s;
+# self-tests its matcher.
+[private]
+project-name-matches-package:
+    @python3 scripts/check/check-project-name-matches-package.py
+
 # issue 2463 — a workspace fixture row's road (cargo or cmake) is one
 # decision with a bash spelling (`nros_ws_row_road`, the fixture build) and a
 # Python one (`row_road` in `workspace-fixture-units.py`, the unit grouping). The bash copy once
