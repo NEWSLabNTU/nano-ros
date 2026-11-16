@@ -266,7 +266,11 @@ fn main() {
          answer for every image that merely LINKS the declare path, which is \
          why it is conditional: an unconditional `.bss` store measured \
          280,832 B in a talker that never builds one.\n\
-         pub const IMPLIED_STORE_SLOTS: usize = {implied_store_slots};\n"
+         pub const IMPLIED_STORE_SLOTS: usize = {implied_store_slots};\n\
+         \n\
+         /// The carve for an image that builds a store but whose parameter \
+         count nobody stated or declared.\n\
+         pub const STOCK_STORE_SLOTS: usize = {STOCK_STORE_SLOTS};\n"
     );
 
     std::fs::write(Path::new(&out_dir).join("nros_params_config.rs"), contents).unwrap();
