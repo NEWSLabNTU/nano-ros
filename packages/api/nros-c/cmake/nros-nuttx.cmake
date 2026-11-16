@@ -59,6 +59,9 @@ endif()
 set(_NROS_NUTTX_INCLUDED TRUE)
 
 include("${CMAKE_CURRENT_LIST_DIR}/nros-rtos-helpers.cmake")
+# `nros_capability_features` -- the cargo features an image's declared
+# capability axes turn on, the same mapping the Corrosion roads use.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosFeatureSet.cmake")
 
 # The `_NROS_ENTRY_DIR` pattern from CLAUDE.md, and it is not optional here:
 # measured, `CMAKE_CURRENT_LIST_DIR` inside a FUNCTION body resolves to the
@@ -379,6 +382,38 @@ function(nros_nuttx_build_example)
     if(COMMAND nros_entity_facts_env)
         nros_entity_facts_env("" ENV_OUT _nnbe_entity_env)
     endif()
+
+    # The image's declared CAPABILITY AXES (`NROS_FEATURES`: the bringup's
+    # `[system] features` plus the stock node interfaces every image serves
+    # unless it opts out). The FFI crate's committed manifest names a fixed
+    # nros-c / nros-cpp feature set, so before this every NuttX image was built
+    # without the capabilities it declared, and the generated entry's call to
+    # `nros_cpp_register_parameter_services` was an undefined reference at link.
+    # The mapping is `nros_capability_features`, the one the Corrosion roads use;
+    # both crates get each feature, as `nros_feature_set` gives both. They are a
+    # shared-dir key field too: two images differing only there must not share
+    # build-script output.
+    set(_nnbe_caps ${NROS_FEATURES})
+    if(NROS_SAFETY_E2E)
+        list(APPEND _nnbe_caps safety)
+    endif()
+    set(_nnbe_rmw "${NROS_RMW}")
+    if(_nnbe_rmw STREQUAL "")
+        set(_nnbe_rmw zenoh)  # the FFI crates link nros-rmw-zenoh
+    endif()
+    nros_capability_features(_nnbe_cap_feats RMW "${_nnbe_rmw}" CAPABILITIES "${_nnbe_caps}")
+    set(_nnbe_features "")
+    foreach(_nnbe_f IN LISTS _nnbe_cap_feats)
+        list(APPEND _nnbe_features "nros-c/${_nnbe_f}" "nros-cpp/${_nnbe_f}")
+    endforeach()
+    string(REPLACE ";" "," _nnbe_features_csv "${_nnbe_features}")
+    set(_nnbe_features_arg "")
+    if(NOT _nnbe_features_csv STREQUAL "")
+        set(_nnbe_features_arg --features "${_nnbe_features_csv}")
+    endif()
+    string(REPLACE ";" ", " _nnbe_shown "${_nnbe_cap_feats}")
+    message(STATUS "nano-ros: ${_NNBE_NAME}: nros-c / nros-cpp capability features: "
+        "${_nnbe_shown}")
     set(_shared_cargo_dir "")
     if(COMMAND nros_shared_cargo_dir)
         nros_knob_key_fields(_nnbe_knob_fields)
@@ -388,6 +423,7 @@ function(nros_nuttx_build_example)
             "ffi=${_NNBE_FFI_CRATE_DIR}"
             "nuttx=${NUTTX_DIR}"
             "defconfig=${NROS_NUTTX_DEFCONFIG}"
+            "features=${_nnbe_features_csv}"
             ${_nnbe_knob_fields}
             ${_nnbe_entity_env})
     endif()
@@ -605,6 +641,7 @@ function(nros_nuttx_build_example)
             "NUTTX_APPS_DIR=${NUTTX_APPS_DIR}"
             "CARGO_TARGET_DIR=${_cargo_target_dir}"
             "${_nnbe_cargo}" build --profile ${_NROS_NUTTX_PROFILE} ${_artifact_dir_arg}
+                ${_nnbe_features_arg}
                 --config "${_nnbe_cpu_config}"
                 ${_nnbe_image_env_flags}
         ${_depfile_retarget_cmd}
