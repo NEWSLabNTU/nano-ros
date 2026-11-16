@@ -64,6 +64,7 @@ pub mod plan;
 pub mod prepare;
 pub mod profile;
 pub mod reserved;
+pub mod rmw;
 pub mod run_exec;
 pub mod run_plan;
 pub mod scaffold_deploy;
@@ -369,6 +370,10 @@ pub enum Cmd {
     /// Inspect supported boards
     #[command(subcommand)]
     Board(board::Args),
+
+    /// List the RMW backends, or show one: its host side and its boards
+    #[command(subcommand)]
+    Rmw(rmw::Args),
 
     /// Workspace-level message-package utilities: env, list, status, clean, doctor.
     // Phase 210.B.3 + 210.D.1. `sync` was promoted to the top-level `nros

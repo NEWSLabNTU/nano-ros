@@ -139,7 +139,10 @@ Subjects, all checked on every run:
   written back (`--update-ratchet`). At zero it becomes baseline zero;
 * the output of `nros board list`, `nros board show <board>` for every board
   the list names, and `nros doctor --report`, which in addition may hold no
-  tier number (`tier 1`, `tier 2`, `tier 3` — phase-522 W5).
+  tier number (`tier 1`, `tier 2`, `tier 3` — phase-522 W5);
+* the output of `nros rmw list`, both forms, and `nros rmw show <rmw>` for
+  every RMW the JSON list names (phase-569 W1: each discovery verb's output
+  is user surface, RFC-0133 D5).
 
 The rendered subjects need the in-tree CLI; with none built they are reported
 NOT VERIFIED through the skip ledger (issue 1043's middle outcome), never a
@@ -154,6 +157,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import json
 import os
 import re
 import subprocess
@@ -2364,6 +2368,18 @@ def rendered_hits(cli: str) -> list[str]:
     for b in boards:
         check(f"nros board show {b}", run(cli, ["board", "show", b]), tiers=True)
 
+    check("nros rmw list", run(cli, ["rmw", "list"]))
+    rmw_json = run(cli, ["rmw", "list", "--json"])
+    check("nros rmw list --json", rmw_json)
+    try:
+        rmws = [i["name"] for i in json.loads(rmw_json)["items"]]
+    except (ValueError, KeyError, TypeError):
+        bad.append(f"`nros rmw list --json` is not the list schema: {rmw_json[:90]!r}")
+        rmws = []
+    for r in rmws:
+        check(f"nros rmw show {r}", run(cli, ["rmw", "show", r]))
+        check(f"nros rmw show {r} --json", run(cli, ["rmw", "show", r, "--json"]))
+
     # `doctor --report` prints a row per image, so it is asked about a bringup
     # with one image per board the tracked examples deploy to — derived from
     # the tree, so a new board is covered the day an example names it.
@@ -2975,7 +2991,7 @@ def main() -> int:
         from source_locate import nros_cli_bin
 
         cli = nros_cli_bin(checkout_only=True)
-    rendered = "rendered help, board list/show and doctor --report"
+    rendered = "rendered help, board list/show, rmw list/show and doctor --report"
     if cli:
         bad += rendered_hits(cli)
     if bad:

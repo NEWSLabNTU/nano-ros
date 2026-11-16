@@ -482,8 +482,11 @@ mod tests {
         let root = crate::builtin_verbs::tree();
         let user = crate::builtin_verbs::taken(&root, false);
         assert!(user.contains("build") && user.contains("run") && user.contains("help"));
-        assert!(!user.contains("rmw"), "`rmw` is a `nros dev` verb only");
+        // phase-569 W1 — `rmw` became a user verb (`nros rmw list|show`,
+        // RFC-0133 D3), so an extension can no longer take it at either tier.
+        assert!(user.contains("rmw"), "`nros rmw` is a user verb");
+        assert!(!user.contains("lock"), "`lock` is a `nros dev` verb only");
         let dev = crate::builtin_verbs::taken(&root, true);
-        assert!(dev.contains("rmw") && dev.contains("build"));
+        assert!(dev.contains("lock") && dev.contains("rmw") && dev.contains("build"));
     }
 }

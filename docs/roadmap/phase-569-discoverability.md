@@ -1,6 +1,6 @@
 # Phase 569 — find what nano-ros offers from the `nros` command
 
-**Status (2026-11-17). OPEN: W1–W10 are open, and nothing is built yet.
+**Status (2026-11-17). OPEN: W1 is done; W2–W10 are open.
 The user approved the design on 2026-11-17; recording a reason per derived
 value is [phase-570](phase-570-derived-value-reasons.md).**
 Implements [RFC-0133](../design/0133-discoverability.md). The request came
@@ -38,7 +38,18 @@ source already exists (RFC-0133 D2), except W3's `because` field.
 
 ### W1 — `nros rmw list` / `show`
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-17)
+
+Landed as specified, with three findings:
+- no source stated which boards an RMW runs on except prose in the board
+  support status; the generator now writes it as data (`rmws`: runtime and
+  build-only, canonical names), from the same matrix cells as the prose;
+- an RMW's summary is the first paragraph of its `package.xml` description
+  (the rest is contributor notes);
+- `nros-sdk-index.toml` had no `[rmw.uorb]`; it now states `packages = []`,
+  and `check-rmw-descriptors` S5 holds the index and the backends to one
+  list. `nros new --rmw` accepts any indexed name, so `uorb` is accepted
+  there too; a scaffold whose board has no test over it is not refused yet.
 
 `nros rmw list` prints one row per RMW from `RmwIndex` (each
 `nros-rmw.toml`): name, summary, and the platforms and boards it supports.
@@ -103,9 +114,9 @@ verbs, each calling only compiled-in tables, file reads and the completion
 cache `build/nros/complete.json`, which `nros build` and `nros configure`
 rewrite from the scans they already run (RFC-0133 D7). The cache records a
 schema version and its search path; a cache for another search path offers
-nothing, and stale entries within one search path are expected. Redispatch
-skips a `path =` pin's stale-binary guard when `COMPLETE` is set, so every
-pin form meets the budget.
+nothing, and stale entries within one search path are expected. The
+redispatch costs every pin form under 5 ms (measured; the stale-binary guard
+never runs for `COMPLETE=`), so nothing in it needs skipping.
 
 `nros completions [<shell>]` prints the registration line for the shell, and
 `--static` keeps today's generated script. The dead `run()` stub goes.

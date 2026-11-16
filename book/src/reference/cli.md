@@ -72,6 +72,7 @@ Interfaces:
 Inspect:
   doctor       Health-check the workspace (SDK paths, toolchains, env)
   board        Inspect supported boards
+  rmw          List the RMW backends, or show one: its host side and its boards
   config       Inspect or validate the current project's resolved configuration
   plan         Resolve launch files, manifests, and metadata into nros-plan.json
   check        Check a runner, command or board package, a plan, a system.toml or a workspace
@@ -164,9 +165,7 @@ Options:
           [possible values: linux, freertos, nuttx, threadx, zephyr, baremetal]
 
       --rmw <RMW>
-          RMW backend. Defaults per mode: `zenoh` for project/component scaffolds (matches the tracked examples), `cyclonedds` for `--workspace` (needs no router — the quick-start default)
-          
-          [possible values: zenoh, xrce, cyclonedds]
+          RMW backend, as `nros rmw list` names it. Defaults per mode: `zenoh` for project/component scaffolds (matches the tracked examples), `cyclonedds` for `--workspace` (needs no router — the quick-start default)
 
       --ros-edition <ROS_EDITION>
           ROS edition (drives the `ros-<edition>` cargo feature). Defaults to the sourced ROS 2 (`$ROS_DISTRO`) when it is one of these, else humble
@@ -1248,6 +1247,54 @@ Options:
       --dry-run                    Print what would be written and write nothing
   -h, --help                       Print help
   -V, --version                    Print version
+```
+
+### `nros rmw`
+
+```text
+List the RMW backends, or show one: its host side and its boards
+
+Usage: nros rmw <COMMAND>
+
+Commands:
+  list  List every RMW backend and the boards it is verified on
+  show  Show one RMW backend: its names, what it needs on the host, and its boards
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+#### `nros rmw list`
+
+```text
+List every RMW backend and the boards it is verified on
+
+Usage: nros rmw list [OPTIONS]
+
+Options:
+      --json             Print one JSON object instead of a table
+      --workspace <DIR>  Workspace whose own RMW providers are listed too (default: the one the current directory is in, else the SDK's backends alone)
+  -h, --help             Print help
+  -V, --version          Print version
+```
+
+#### `nros rmw show`
+
+```text
+Show one RMW backend: its names, what it needs on the host, and its boards
+
+Usage: nros rmw show [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  The RMW name, as `rmw = "…"` spells it (e.g. `zenoh`)
+
+Options:
+      --json             Print one JSON object instead of text
+      --workspace <DIR>  Workspace whose own RMW providers are searched too
+  -h, --help             Print help
+  -V, --version          Print version
 ```
 
 ### `nros config`

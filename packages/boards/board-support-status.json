@@ -26,6 +26,14 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "witness \u2014 Runtime: Pubsub, ExecutorBoundNode, CustomLink, Service, Action, Port, PortSmoke, PortMonitor, PortWorkspace, Params, Qos, CustomMsg, Safety, Logging, EntryPubsub, Lifecycle, Remap, BeforeBoot, RealtimeSchedTasks, Multihost in Rust, C, C++, Mixed over zenoh, cyclonedds, XRCE-DDS",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "cyclonedds",
+          "xrce"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [
         "linux"
@@ -60,6 +68,14 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "witness \u2014 Runtime: Pubsub, Service, Action, ConnectBudget, Logging, EntryPubsub, Params, Lifecycle, Qos, Safety, RealtimeSchedTasks, Multihost in Rust, C, C++, Mixed over zenoh, cyclonedds, XRCE-DDS",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "cyclonedds",
+          "xrce"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [
         "zephyr"
@@ -86,6 +102,13 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "inherited from FreertosMps2 \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "cyclonedds"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": null,
@@ -133,6 +156,13 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "witness \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "cyclonedds"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": "starters/mps2-an385-freertos.md#run-it-in-qemu",
@@ -157,6 +187,13 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "inherited from FreertosMps2 \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "cyclonedds"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": null,
@@ -194,6 +231,12 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "witness \u2014 Runtime: Pubsub, TypedCarrier, Service, Action, Params, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++ over zenoh",
+      "rmws": {
+        "runtime": [
+          "zenoh"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [
         "nuttx",
@@ -226,6 +269,13 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "witness \u2014 Runtime: Pubsub, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "cyclonedds"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": "starters/threadx-linux.md#run-it-on-this-machine",
@@ -258,6 +308,13 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "inherited from FreertosMps2 \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds. Board-specific: Runtime: EntryPubsub in C, C++ over cyclonedds, zenoh",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "cyclonedds"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": "starters/freertos-posix.md#run-it-on-this-machine",
@@ -287,6 +344,13 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "inherited from ThreadxLinux \u2014 Runtime: Pubsub, Service, Action, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++, Mixed over zenoh, cyclonedds. Board-specific: Runtime: Pubsub, Service, Errno, TypedCarrier, Params, Logging, EntryPubsub in Rust, C, C++ over zenoh, cyclonedds; build-only: Action",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "cyclonedds"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": "starters/threadx-riscv64.md#run-it-in-qemu",
@@ -317,6 +381,13 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "witness \u2014 Runtime: Pubsub, Service, Action, Logging, BoardEntryBoot in Rust, C, C++ over zenoh, XRCE-DDS",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "xrce"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": "starters/mps2-an385-bare-metal.md#run-it-in-qemu",
@@ -346,6 +417,13 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "witness \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "xrce"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": "starters/mps2-an385-zephyr.md#run-it-in-qemu",
@@ -382,6 +460,12 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "inherited from NuttxArm \u2014 Runtime: Pubsub, TypedCarrier, Service, Action, Params, Logging, EntryPubsub, RealtimeSchedTasks in Rust, C, C++ over zenoh. Board-specific: Runtime: Pubsub, RealtimeSchedTasks in C, C++, Rust over zenoh; build-only: EntryPubsub",
+      "rmws": {
+        "runtime": [
+          "zenoh"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [
         "nuttx-riscv",
@@ -409,6 +493,15 @@
       "last_run": "2026-09-06",
       "stale_from": "2027-01-05",
       "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: build-only: Pubsub",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "xrce"
+        ],
+        "build_only": [
+          "cyclonedds"
+        ]
+      },
       "external": null,
       "board_keys": [
         "fvp-aemv8r-smp"
@@ -435,6 +528,13 @@
       "last_run": "2026-10-26",
       "stale_from": "2027-02-24",
       "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "xrce"
+        ],
+        "build_only": []
+      },
       "external": "simple-autoware-safety-island",
       "board_keys": [],
       "book_run": null,
@@ -467,6 +567,13 @@
       "last_run": "2026-11-01",
       "stale_from": "2027-03-02",
       "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action. Board-specific: Runtime: Pubsub in C over zenoh",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "xrce"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [
         "nucleo-f767zi-zephyr"
@@ -493,6 +600,13 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "inherited from ZephyrQemuCortexM \u2014 Runtime: Pubsub, Port, PortSmoke, PortMonitor, PortWorkspace, BootReport, IdleWake, ViolationChannel in C, C++, Rust over zenoh, XRCE-DDS; build-only: Service, Action",
+      "rmws": {
+        "runtime": [
+          "zenoh",
+          "xrce"
+        ],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [
         "rpi-pico-w-zephyr"
@@ -521,6 +635,12 @@
       "last_run": "2026-11-03",
       "stale_from": "2027-03-04",
       "breadth": "witness \u2014 Runtime: Pubsub in C++ over uORB",
+      "rmws": {
+        "runtime": [
+          "uorb"
+        ],
+        "build_only": []
+      },
       "external": "PX4-Autopilot",
       "board_keys": [],
       "book_run": "guide/platforms/px4.md#run-on-the-sitl-simulator",
@@ -545,6 +665,10 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "\u2014",
+      "rmws": {
+        "runtime": [],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": null,
@@ -569,6 +693,10 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "\u2014",
+      "rmws": {
+        "runtime": [],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": null,
@@ -593,6 +721,10 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "\u2014",
+      "rmws": {
+        "runtime": [],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": null,
@@ -617,6 +749,10 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "\u2014",
+      "rmws": {
+        "runtime": [],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": null,
@@ -641,6 +777,10 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "\u2014",
+      "rmws": {
+        "runtime": [],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": null,
@@ -665,6 +805,10 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "\u2014",
+      "rmws": {
+        "runtime": [],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": null,
@@ -689,6 +833,10 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "\u2014",
+      "rmws": {
+        "runtime": [],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": null,
@@ -713,6 +861,10 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "\u2014",
+      "rmws": {
+        "runtime": [],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": null,
@@ -737,6 +889,10 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "\u2014",
+      "rmws": {
+        "runtime": [],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": null,
@@ -761,6 +917,10 @@
       "last_run": null,
       "stale_from": null,
       "breadth": "\u2014",
+      "rmws": {
+        "runtime": [],
+        "build_only": []
+      },
       "external": null,
       "board_keys": [],
       "book_run": null,
