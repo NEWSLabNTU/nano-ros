@@ -120,6 +120,15 @@ pub struct ImageRun {
     /// `command` runner. An alternative to `method`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<crate::target_exec::CommandTemplate>,
+    // Issue 2629.
+    /// FVP model parameters this image chooses (`bp.pl011_uart1.out_file=
+    /// trace.log`), each one `-C <name>=<value>` after the board's own
+    /// `[board.run.fvp] params`. Read only on a board whose
+    /// emulator is an FVP, and refused on any other
+    /// ([`crate::target_exec::BoardRun::fvp_extra_flags`]). Bound when the
+    /// image CONFIGURES, so changing one means re-configuring.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub params: Vec<String>,
 }
 
 impl ImageRun {
@@ -131,6 +140,13 @@ impl ImageRun {
                 "[image.{id}.run]: `method` and `command` are alternatives — a command template \
                  REPLACES the method"
             ));
+        }
+        if let Some(e) = self
+            .params
+            .iter()
+            .find_map(|p| crate::target_exec::fvp_param_error(p))
+        {
+            return Err(format!("[image.{id}.run] params: {e}"));
         }
         match &self.nic {
             Some(n) => n.validate(&format!("[image.{id}.run]")),
@@ -155,6 +171,13 @@ impl ImageRun {
                 self.command.clone()
             } else {
                 base.command.clone()
+            },
+            // A list, so it is one key: an image that states any replaces the
+            // defaults' list rather than appending to it.
+            params: if self.params.is_empty() {
+                base.params.clone()
+            } else {
+                self.params.clone()
             },
         }
     }

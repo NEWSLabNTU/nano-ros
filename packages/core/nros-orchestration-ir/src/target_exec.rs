@@ -561,6 +561,55 @@ pub struct BoardRun {
     /// `[board.run.renode]` — read only by the Renode runner (phase-524 W4a).
     #[serde(default)]
     pub renode: Option<BoardRunRenode>,
+    // Issue 2629.
+    /// `[board.run.fvp]` — the FVP model parameters every image on this board
+    /// needs. Lowered with the image's own by
+    /// [`BoardRun::fvp_extra_flags`].
+    #[serde(default)]
+    pub fvp: Option<BoardRunFvp>,
+}
+
+// Issue 2629.
+/// `[board.run.fvp]` — FVP model parameters that are facts about the BOARD:
+/// the ones every image on it needs, such as
+/// `bp.smsc_91c111.enabled=1`, without which an `fvp-aemv8r-smp` model has
+/// no network at all. Each is one `-C <name>=<value>`.
+///
+/// They reach the model through Zephyr's own `armfvp.cmake`, which APPENDS
+/// the `ARMFVP_EXTRA_FLAGS` cache variable to the `run_armfvp` command it
+/// writes at configure time. So `west build -t run` and `nros run` (which
+/// runs that same target) boot one model from one `build.ninja`. The cost is
+/// the configure-time binding: changing one means re-configuring.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BoardRunFvp {
+    /// `<name>=<value>` model parameters, in order. A later one with the same
+    /// name wins in the model, which is how an image overrides a board fact.
+    #[serde(default)]
+    pub params: Vec<String>,
+}
+
+/// Why `p` is not a usable FVP model parameter, if it is not. It must read
+/// `<name>=<value>` with a non-empty name, and hold no whitespace and no `;`:
+/// the value travels as one element of a CMake list (`;`-separated), and
+/// the FVP command line splits on whitespace.
+#[must_use]
+pub fn fvp_param_error(p: &str) -> Option<String> {
+    let Some((name, _value)) = p.split_once('=') else {
+        return Some(format!(
+            "FVP model parameter `{p}` must read `<name>=<value>` (as after `-C`)"
+        ));
+    };
+    if name.is_empty() {
+        return Some(format!("FVP model parameter `{p}` has no name"));
+    }
+    if p.contains(';') || p.chars().any(char::is_whitespace) {
+        return Some(format!(
+            "FVP model parameter `{p}` holds whitespace or `;`, which the CMake list \
+             and the model's command line would both split"
+        ));
+    }
+    None
 }
 
 /// `[board.run.qemu]` — the QEMU invocation's board facts.
@@ -707,7 +756,87 @@ impl BoardRun {
                     .into(),
             );
         }
+        if let Some(f) = &self.fvp {
+            if kind != Some("fvp") {
+                return Some(
+                    "`[board.run.fvp]` holds FVP model parameters, so it needs \
+                     `[board.run] emulator = \"fvp:<model>\"`"
+                        .into(),
+                );
+            }
+            if let Some(e) = f.params.iter().find_map(|p| fvp_param_error(p)) {
+                return Some(format!("`[board.run.fvp] params`: {e}"));
+            }
+        }
         None
+    }
+
+    /// The FVP model parameters an image boots with, as the
+    /// `ARMFVP_EXTRA_FLAGS` list Zephyr's `armfvp.cmake` appends to its
+    /// `run_armfvp` command (`-C`, `<param>`, …), or `None` when this board's
+    /// emulator is not an FVP.
+    ///
+    /// In order: the board's `[board.run.fvp] params`, then the image's
+    /// `nic`, then the image's own `params`, so an image overrides a board
+    /// fact by naming the same parameter (the model keeps the last). The
+    /// `nic` lowers to the FVP's host bridge: `{ tap = "<dev>" }` is
+    /// `bp.hostbridge.userNetworking=0` and `bp.hostbridge.interfaceName=<dev>`;
+    /// `"slirp"` adds nothing, because the model's user networking is what
+    /// Zephyr's line already selects. `{ bridge = … }` is refused: the FVP host
+    /// bridge has a TAP mode and a user mode, and no bridge mode.
+    ///
+    /// # Errors
+    ///
+    /// The image names a bridge, an image parameter is malformed, or the image
+    /// states `params` on a board whose emulator is not an FVP (QEMU and
+    /// Renode have no such parameters; they are refused rather than dropped).
+    pub fn fvp_extra_flags(
+        &self,
+        image: &crate::system_net::ImageRun,
+        image_id: &str,
+    ) -> Result<Option<Vec<String>>, String> {
+        let kind = self.emulator_parts().map(|(k, _)| k);
+        if kind != Some("fvp") {
+            if !image.params.is_empty() {
+                return Err(format!(
+                    "[image.{image_id}.run] params are FVP model parameters, and this \
+                     board's emulator is {}; only an `fvp:` board reads them",
+                    self.emulator.as_deref().unwrap_or("none")
+                ));
+            }
+            return Ok(None);
+        }
+        let mut params: Vec<String> = self
+            .fvp
+            .as_ref()
+            .map(|f| f.params.clone())
+            .unwrap_or_default();
+        match &image.nic {
+            Some(crate::system_net::Attach::Tap { tap }) => {
+                params.push("bp.hostbridge.userNetworking=0".to_string());
+                params.push(format!("bp.hostbridge.interfaceName={tap}"));
+            }
+            Some(crate::system_net::Attach::Bridge { bridge }) => {
+                return Err(format!(
+                    "[image.{image_id}.run] nic = {{ bridge = \"{bridge}\" }}: the FVP host \
+                     bridge attaches to a TAP or to user networking, not to a bridge; name \
+                     a TAP on the bridge (`nic = {{ tap = \"<dev>\" }}`)"
+                ));
+            }
+            Some(crate::system_net::Attach::Mode(_)) | None => {}
+        }
+        for p in &image.params {
+            if let Some(e) = fvp_param_error(p) {
+                return Err(format!("[image.{image_id}.run] params: {e}"));
+            }
+            params.push(p.clone());
+        }
+        Ok(Some(
+            params
+                .into_iter()
+                .flat_map(|p| ["-C".to_string(), p])
+                .collect(),
+        ))
     }
 }
 
@@ -750,6 +879,115 @@ pub fn board_run_named(text: &str, name: &str) -> Result<Option<BoardRun>, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fvp_board(params: &[&str]) -> BoardRun {
+        BoardRun {
+            emulator: Some("fvp:FVP_BaseR_AEMv8R".into()),
+            fvp: Some(BoardRunFvp {
+                params: params.iter().map(|p| (*p).to_string()).collect(),
+            }),
+            ..Default::default()
+        }
+    }
+
+    /// Issue 2629 — the board's parameters, then the image's `nic`, then the
+    /// image's own, each one `-C <param>`.
+    #[test]
+    fn fvp_flags_are_the_board_then_the_nic_then_the_image() {
+        let board = fvp_board(&["bp.smsc_91c111.enabled=1", "bp.smsc_91c111.promiscuous=1"]);
+        let image = crate::system_net::ImageRun {
+            nic: Some(crate::system_net::Attach::Tap { tap: "tap0".into() }),
+            params: vec!["bp.pl011_uart1.out_file=trace.log".into()],
+            ..Default::default()
+        };
+        assert_eq!(
+            board.fvp_extra_flags(&image, "i").unwrap().unwrap(),
+            [
+                "-C",
+                "bp.smsc_91c111.enabled=1",
+                "-C",
+                "bp.smsc_91c111.promiscuous=1",
+                "-C",
+                "bp.hostbridge.userNetworking=0",
+                "-C",
+                "bp.hostbridge.interfaceName=tap0",
+                "-C",
+                "bp.pl011_uart1.out_file=trace.log",
+            ]
+        );
+        // "slirp" and no nic add nothing: Zephyr's line already selects the
+        // model's user networking.
+        let slirp = crate::system_net::ImageRun {
+            nic: Some(crate::system_net::Attach::slirp()),
+            ..Default::default()
+        };
+        assert_eq!(
+            board.fvp_extra_flags(&slirp, "i").unwrap().unwrap(),
+            [
+                "-C",
+                "bp.smsc_91c111.enabled=1",
+                "-C",
+                "bp.smsc_91c111.promiscuous=1"
+            ]
+        );
+        // A board with no table still answers (an empty list), so the
+        // configure can clear a parameter an earlier configure cached.
+        let bare = BoardRun {
+            emulator: Some("fvp:FVP_BaseR_AEMv8R".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            bare.fvp_extra_flags(&Default::default(), "i").unwrap(),
+            Some(Vec::new())
+        );
+    }
+
+    /// Issue 2629 — what the FVP cannot take, and what other emulators refuse.
+    #[test]
+    fn fvp_flags_refuse_a_bridge_a_bad_param_and_params_off_an_fvp() {
+        let board = fvp_board(&[]);
+        let bridge = crate::system_net::ImageRun {
+            nic: Some(crate::system_net::Attach::Bridge {
+                bridge: "br0".into(),
+            }),
+            ..Default::default()
+        };
+        let e = board.fvp_extra_flags(&bridge, "i").unwrap_err();
+        assert!(e.contains("not to a bridge"), "{e}");
+        let bad = crate::system_net::ImageRun {
+            params: vec!["no-equals".into()],
+            ..Default::default()
+        };
+        assert!(board.fvp_extra_flags(&bad, "i").is_err());
+        let qemu = BoardRun {
+            emulator: Some("qemu:mps2-an385".into()),
+            ..Default::default()
+        };
+        let with_params = crate::system_net::ImageRun {
+            params: vec!["a=1".into()],
+            ..Default::default()
+        };
+        let e = qemu.fvp_extra_flags(&with_params, "i").unwrap_err();
+        assert!(e.contains("only an `fvp:` board reads them"), "{e}");
+        assert_eq!(
+            qemu.fvp_extra_flags(&Default::default(), "i").unwrap(),
+            None
+        );
+    }
+
+    /// Issue 2629 — the table's own shape.
+    #[test]
+    fn a_board_run_fvp_table_needs_an_fvp_and_well_formed_params() {
+        let mut b = fvp_board(&["bp.smsc_91c111.enabled=1"]);
+        assert_eq!(b.shape_error(), None);
+        b.emulator = Some("qemu:virt".into());
+        assert!(b.shape_error().unwrap().contains("fvp:<model>"));
+        let b = fvp_board(&["bp.a = 1"]);
+        assert!(b.shape_error().unwrap().contains("whitespace"));
+        assert!(fvp_param_error("x;y=1").is_some());
+        assert!(fvp_param_error("=1").is_some());
+        assert_eq!(fvp_param_error("bp.hostbridge.interfaceName=tap0"), None);
+    }
 
     /// phase-544 W1: `[board.run]` by board name, mapped onto plan args.
     #[test]

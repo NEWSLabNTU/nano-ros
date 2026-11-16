@@ -632,6 +632,64 @@ fn a_generated_west_application_gets_the_board_packages_files() {
     assert!(!line.contains("packages/boards"), "{line}");
 }
 
+/// Issue 2629 — an FVP image's model parameters reach Zephyr's configure as
+/// `ARMFVP_EXTRA_FLAGS`, the one place both run roads read them back from:
+/// `west build -t run` runs the `run_armfvp` target `armfvp.cmake` writes, and
+/// `nros run`'s fvp runner runs that same target and adds no flag of its own
+/// (`nros_runner_fvp`'s `the_runner_adds_no_model_flag_of_its_own`). The
+/// board's parameters come first, then the image's `nic`, then its `params`.
+#[test]
+fn an_fvp_image_hands_its_model_parameters_to_the_configure() {
+    assert!(
+        nros_cli_core::orchestration::model_location::launch_resolver_bin().is_some(),
+        "nros-launch-resolve not found — run `just setup-launch-resolve`, or point \
+         $NROS_LAUNCH_RESOLVE at one. Generating the application needs a \
+         SystemModel, and this test is about the generated road."
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    write(
+        &tmp.path().join("src/demo_bringup/launch/system.launch.xml"),
+        "<launch>\n  <node pkg=\"talker_pkg\" exec=\"talker\" name=\"talker\"/>\n</launch>\n",
+    );
+    let sys = tmp.path().join("src/demo_bringup/system.toml");
+    let text = std::fs::read_to_string(&sys).unwrap();
+    write(
+        &sys,
+        &format!(
+            "{text}\n[image.fvp]\nboard = \"fvp-aemv8r-smp\"\n\
+             [image.fvp.run]\nnic = {{ tap = \"tap0\" }}\n\
+             params = [\"bp.pl011_uart1.out_file=trace.log\"]\n"
+        ),
+    );
+
+    let plans = plan_builds(&args(tmp.path(), &["fvp"])).expect("resolves");
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    assert!(
+        line.contains(
+            "-DARMFVP_EXTRA_FLAGS=-C;bp.smsc_91c111.enabled=1;-C;bp.smsc_91c111.promiscuous=1;\
+             -C;bp.hostbridge.userNetworking=0;-C;bp.hostbridge.interfaceName=tap0;\
+             -C;bp.pl011_uart1.out_file=trace.log"
+        ),
+        "the board's, then the nic's, then the image's: {line}"
+    );
+
+    // An image on a board that is no FVP names no model, and its `params`
+    // are refused rather than dropped.
+    let plans = plan_builds(&args(tmp.path(), &["zephyr"])).expect("resolves");
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    assert!(!line.contains("ARMFVP_EXTRA_FLAGS"), "{line}");
+    write(
+        &sys,
+        &format!("{text}\n[image.zephyr.run]\nparams = [\"a=1\"]\n"),
+    );
+    let e = plan_builds(&args(tmp.path(), &["zephyr"])).expect_err("refused");
+    assert!(
+        format!("{e:#}").contains("only an `fvp:` board reads them"),
+        "{e:#}"
+    );
+}
+
 #[test]
 fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
     // The asymmetry RFC-0065 D3 now records: cmake has no root/member hierarchy

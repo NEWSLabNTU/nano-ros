@@ -55,6 +55,16 @@ The decisions below keep their 2026-11-01 to 2026-11-03 text where it is
 history (the spike results), and mark where Wokwi was a twin until this
 amendment.
 
+## Amendment 2 (2026-11-16): an emulator's required parameters are board facts
+
+Issue 2629 (GH #4007), approved by the maintainer. A board's emulator
+sometimes needs parameters before it can boot the board as the board is,
+such as the SMSC NIC an `fvp-aemv8r-smp` model has no network without. Those
+are facts about the BOARD, typed once in its descriptor like the machine
+itself: `[board.run.fvp] params`. What an image chooses (its TAP, a UART
+capture file) is the image's, in `[image.<id>.run]`. RFC-0118 D4a owns the
+table shapes and the single carrier both run roads read.
+
 ## Summary
 
 nano-ros is adopted for three purposes: **industrial** (safety and robustness

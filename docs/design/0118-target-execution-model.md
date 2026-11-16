@@ -4,7 +4,7 @@ title: "Target execution model: run, flash and monitor as separate verbs over on
 status: Draft
 area: platform-board-rtos
 since: 2026-11
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-16
 implements-tracked-by: [phase-528, phase-529, phase-533]
 amends: [0097, 0114, 0116]
 supersedes: []
@@ -207,6 +207,7 @@ prints the plan and runs nothing. `--why` adds the provenance of each field.
 | the link | the image's transport and RFC-0109's network layers; no new table |
 | whether the board was verified | the registry (RFC-0114), never the descriptor |
 | Zephyr's flash and emulator facts | Zephyr's own `board.cmake` and `runners.yaml`, which the `west` runner reads. A Zephyr QEMU board may also state `[board.run.qemu]` for the readers that are not the `west` runner (the test harness, and `nros run` when an image names the `qemu` runner); the `west` road never reads it, and the harness holds it to the build's own `run_qemu` line before every boot (issue 2379) |
+| an Arm FVP's model parameters (`-C <name>=<value>`) | the board's `[board.run.fvp] params` for what every image on it needs, and the image's `[image.<id>.run]` `nic` and `params` for what it chooses. All reach Zephyr's `armfvp.cmake` at CONFIGURE (D4a), never through the runner (issue 2629) |
 
 ```toml
 # nros-board.toml
@@ -239,6 +240,51 @@ generator.
 
 The `runner = "…"` strings in today's descriptors retire into
 `[board.run]` and its runner table (phase-528 W3).
+
+### D4a — An FVP's model parameters bind at configure
+
+*Amendment, 2026-11-16 (issue 2629, approved by the maintainer).* An Arm FVP
+is configured by model parameters (`-C bp.smsc_91c111.enabled=1`), and some
+of them are not optional. `fvp-aemv8r-smp`'s model has no network at all
+unless its SMSC 91C111 is enabled. Before this, no board or image row could
+state one, so a consumer passed them through Zephyr's `ARMFVP_EXTRA_FLAGS`
+environment variable and read `build.ninja` back to learn the run command.
+
+```toml
+# nros-board.toml: what every image on the board needs
+[board.run.fvp]
+params = ["bp.smsc_91c111.enabled=1", "bp.smsc_91c111.promiscuous=1"]
+
+# system.toml: what this image chooses
+[image.island.run]
+nic    = { tap = "tap0" }                          # the FVP host bridge's TAP mode
+params = ["bp.pl011_uart1.out_file=trace.log"]    # read only on an fvp: board
+```
+
+- **Order.** The board's `params`, then the image's `nic`, then its
+  `params`. The model keeps the last value a parameter is given, so an image
+  overrides a board fact by naming the same parameter.
+- **`nic` under an FVP.** `{ tap = "<dev>" }` lowers to
+  `bp.hostbridge.userNetworking=0` and `bp.hostbridge.interfaceName=<dev>`.
+  `"slirp"` adds nothing: it is the model's user networking, which Zephyr's
+  line already selects. `{ bridge = "<dev>" }` is refused, because the FVP host
+  bridge has a TAP mode and a user mode and no bridge mode.
+- **`params` off an FVP.** Refused on every road, never dropped: QEMU and
+  Renode have no such parameters.
+- **One carrier.** Zephyr's `armfvp.cmake` appends the `ARMFVP_EXTRA_FLAGS`
+  CMake variable to the `run_armfvp` command it writes at configure.
+  `nros build`'s west road passes `-DARMFVP_EXTRA_FLAGS=-C;<p>;…`, always on an
+  FVP board and empty when nothing is stated, so a parameter an earlier
+  configure cached cannot outlive its row. `west build -t run` runs that
+  target, and so does `nros run`, whose fvp runner adds no model parameter of
+  its own. Both boot one model from one `build.ninja`, and no environment is
+  read at run time.
+- **The tradeoff: configure-time binding.** A model parameter is baked into
+  `build.ninja`, so changing one, a TAP name included, means re-configuring
+  the image (`nros build` does it when the row changes). A run-time carrier
+  through the runner would let `nros run` pick a TAP per run. It would also
+  make `nros run` and `west build -t run` boot different models, which is the
+  split this design exists to prevent.
 
 ### D5 — The customisation ladder
 
@@ -372,6 +418,10 @@ hang. Steps are a list, not a state machine. A bench that needs board states
   (new key `smp`) for the readers that are not the `west` runner. `nros run`
   keeps the `west` road for a west build; Zephyr's `board.cmake` stays the
   source of that line, and the harness compares the two before each boot.
+- 2026-11-16 -- issue 2629 (GH #4007): D4a. An FVP board states
+  `[board.run.fvp] params`, and an image states `[image.<id>.run] params`
+  and a `nic` the FVP lowers to its host bridge. They bind at configure,
+  through Zephyr's `ARMFVP_EXTRA_FLAGS`, the one carrier both run roads read.
 - 2026-11-13 -- phase-555 W2 review: `area` set to `platform-board-rtos`
   (the facts it owns are the board descriptor's `[board.run]`,
   `[board.flash]` and `[board.console]` tables and the bench file).
