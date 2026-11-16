@@ -312,6 +312,12 @@ jobs:
       # phase-565 W4: this lane is not provisioned by the provision-gate-lane
       # action; this says what provides its claims instead.
       NROS_GATE_PROVISIONED_BY: "the job's `just setup <tier>` (the lane claims only what it and the runner image provide)"
+      # phase-559 W5b — this job is tier 1's LINUX slice only (user ruling
+      # 2026-11-14, option B). The threadx_linux and zephyr slices run daily
+      # on hosted shards, nightly.yml's `tier1-hosted`, so a tier-1 cell runs
+      # in exactly one place. The shard is the same NROS_LANE_MODULE the
+      # hosted shards read (scripts/build/fixture-lane.sh).
+      NROS_LANE_MODULE: linux
     defaults:
       run:
         shell: bash

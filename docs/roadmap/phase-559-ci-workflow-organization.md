@@ -210,14 +210,46 @@ the user ruled; all five stand:
   and `matrix-nightly` runs once a day. W5b: the measurement is recorded
   here; if tier 1 moves, a host witness row's daily binding names the nightly
   per-board shard and `check-cadence-jobs` passes.
-- **Status:** OPEN — W5a DONE (#3727, 2026-11-13). W5b's tool landed in
+- **Status:** DONE — W5a (#3727, 2026-11-13); W5b, the move, in the PR
+  that records the ninth measurement below (2026-11-16). Tier 1's
+  threadx_linux and zephyr slices run daily on hosted shards: `nightly.yml`'s
+  `tier1-hosted` job calls `merge-runtime.yml` (`workflow_call`, `lane:
+  tier1`) on its 05:00 cron. `run-matrix.yml`'s self-hosted `tier1` keeps the
+  linux slice alone (`NROS_LANE_MODULE: linux`, option B). `check-cadence-jobs`
+  binds each host witness row to the ONE tier-1 job that runs its module and
+  refuses a module both jobs run (six new self-test cases). The history:
+  W5b's tool landed in
   #3731: `merge-runtime.yml` (`lane: tier1`). Issue 2475's provisioning
   defects 1-3 are fixed (#3733), defect 4 (tree-wide codegen) is
   [phase-535](phase-535-example-reorg-and-cadence-ci.md) W10, and both
   re-measures ran (43420012895 on main, 43438754804 with W10). The user ruled
-  on the linux shard (below). Remains: issues 2510 and 2511, then a re-measure
-  of the threadx_linux and zephyr shards to completion, final disk included,
-  then their move.
+  on the linux shard (below). Both hosted shards were then measured to
+  completion, and moved:
+
+  **Ninth measurement, run 43773321880 (2026-11-15, main 3a0daf8adb, with
+  W12's eviction): both hosted tier-1 shards FIT and PASSED to completion.**
+  From the jobs' disk-watch artifacts (`nros-disk-watch.log`):
+
+  | shard | job | `just build tier1` | build low | `just ci tier1 run` | run low | tests |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | threadx_linux | 84.5 min | 52 min, 110.7 G free at start | **58.4 G** | 25 min | **30.7 G** | 3086 ran, 580 out of lane, 0 real failures |
+  | zephyr | 84.8 min | 62 min, 103.2 G free at start | **11.0 G** | 15 min (41.1 G after the W12 eviction) | **13.6 G** | 3106 ran, 560 out of lane, 0 real failures |
+
+  Neither balloon was exhausted (`exhausted=0`), and no precondition
+  skipped a test (`check-skip-budget`: 0 for an unmet precondition). The
+  zephyr build low is above the balloon's 10 G warning line for the first
+  time; W13's trigger (a low under 5 G on two runs) is not met. The run
+  closes the three issues this item waited on, each on its own "done when":
+  - [2510](../issues/archived/2510-compile-check-cross-rows-unprovisioned-kernel.md):
+    the threadx_linux shard's compile-check stage scoped itself to the lane
+    (`freertos_firmware` and `orch_sched_tasks_freertos` out of lane) and
+    the build passed with no `freertos-kernel` provisioned;
+  - [2511](../issues/archived/2511-zephyr-ci-image-lacks-pinned-sdk.md):
+    the zephyr shard built `west_board_import` with the image as shipped;
+  - [2548](../issues/archived/2548-merge-shard-run-preconditions-unscoped.md):
+    the threadx_linux shard's preconditions passed and its tests ran, and
+    the zephyr shard's build is within budget with host compile-checks out
+    of scope.
 
   Fourth measurement, run 43551581652 (2026-11-14, main 28a9b3ebba, the
   disk balloon on): threadx_linux BUILT (105 G free after reclaim, 43 G left,
@@ -226,7 +258,7 @@ the user ruled; all five stand:
   zephyr shard was stopped by the balloon at 2 G free: ~90 G available, 44 G
   of Zephyr builds plus ~35 G of host compile-check work a zephyr shard does
   not own. Both are issue 2548
-  ([2548](../issues/2548-merge-shard-run-preconditions-unscoped.md)); the
+  ([2548](../issues/archived/2548-merge-shard-run-preconditions-unscoped.md)); the
   zephyr disk answer is re-measured after it.
 
   Fifth measurement, run 43568845036 (2026-11-14, main 36f665bedc, with the
@@ -371,8 +403,8 @@ the user ruled; all five stand:
   | shard | job | free after reclaim | failed on |
   | --- | --- | --- | --- |
   | linux | 141.5 min | 105 G | ENOSPC writing an `nros-cpp` rmeta (`build/sizes-probe`), 97 min into the fixture build (14:45 first fixture, 16:22 failure), on row `workspace-cpp-native-talker-cyclonedds`; 77 rows had finished |
-  | threadx_linux | 91.8 min | 105 G | `build-compile-check-fixtures`: two FreeRTOS cross-build rows, `freertos-kernel` not provisioned ([issue 2510](../issues/2510-compile-check-cross-rows-unprovisioned-kernel.md)); the same exit as the before-run |
-  | zephyr | 64.4 min | 80 G | `west_board_import`: the image bakes SDK 0.17.4, the 3.7 workspace pins 0.16.9 ([issue 2511](../issues/2511-zephyr-ci-image-lacks-pinned-sdk.md)); 6 of 7 west fixtures built |
+  | threadx_linux | 91.8 min | 105 G | `build-compile-check-fixtures`: two FreeRTOS cross-build rows, `freertos-kernel` not provisioned ([issue 2510](../issues/archived/2510-compile-check-cross-rows-unprovisioned-kernel.md)); the same exit as the before-run |
+  | zephyr | 64.4 min | 80 G | `west_board_import`: the image bakes SDK 0.17.4, the 3.7 workspace pins 0.16.9 ([issue 2511](../issues/archived/2511-zephyr-ci-image-lacks-pinned-sdk.md)); 6 of 7 west fixtures built |
 
   **Disk, linux: does not fit, measured twice.** Both runs had ~105 G free
   when `reclaim-disk.sh` finished (109,917,100 KB on the second run), and the
