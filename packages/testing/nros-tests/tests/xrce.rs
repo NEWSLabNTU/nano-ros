@@ -137,8 +137,12 @@ fn test_xrce_large_message_publish(xrce_large_msg_test_binary: PathBuf) {
     let mut test_proc = ManagedProcess::spawn_image(cmd, "xrce-large-msg-test")
         .expect("Failed to start large-msg-test");
 
-    // Wait for the test to complete (prints "ALL PASSED" or "SOME FAILED")
-    let output = test_proc.collect_until("Results:", Duration::from_secs(30));
+    // Wait for the VERDICT line itself. The image prints `Results: …` and then
+    // `ALL PASSED` on the next line (or `SOME FAILED` and exits 1), so waiting
+    // for `Results:` returned before the line the assertion reads: main's
+    // tier 1 (2026-11-16) failed this with all 9 sizes passing. On failure the
+    // image exits, which ends the wait too, so this never runs to the timeout.
+    let output = test_proc.collect_until("ALL PASSED", Duration::from_secs(30));
 
     test_proc.kill();
 
