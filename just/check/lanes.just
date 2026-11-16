@@ -1456,6 +1456,39 @@ compile-smoke:
     echo "  feature alone (issue 1468), nros-node param-services heap-free (issue 1812),"
     echo "  and nros-c with no std or alloc plus its default-feature test target (issue 1177)."
 
+# The C++ surface on a target with NO C library: the heap-free C++ image
+# (`heap-free-cpp-poc-mps2`, thumbv7m, `nros-cpp` + `nros-c` without `alloc`)
+# must LINK. Its C++ reaches the printf-style C log path (`NROS_ERROR` in
+# `report_component_failure`, called by a refused `declare_parameter`), so it
+# needs the port's freestanding `libc-stubs`; without them `vsnprintf` is
+# undefined. That broke on main with only the advisory queue L3 noticing. L3
+# also runs the image's allocation gate; this one only links it.
+#
+# Needs the PINNED cross compiler (`arm-gcc`): the distro 10.3 is refused for
+# nros-cpp's C++ (issue 2413). The `build` lane claims and provisions it for
+# the FreeRTOS C++ copy-out units, so this costs no fetch there; a `dev`
+# worktree lists it as not run. The resolved pin goes first on PATH, so a
+# distro copy also on PATH cannot answer instead.
+[private]
+[metadata("tier", "build")]
+[group('needs:arm-gcc')]
+cpp-heap-free-image-link:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/build/cargo.sh
+    if ! gcc="$(python3 scripts/lib/index_tool.py resolve arm-none-eabi-gcc arm-none-eabi-gcc)"; then
+        echo "ERROR: the pinned arm-none-eabi-gcc is not installed (nros setup --tool arm-none-eabi-gcc)." >&2
+        exit 1
+    fi
+    export PATH="$(dirname "$gcc"):$PATH"
+    read -r -a profile <<<"$(nros_cargo_profile_arg_string)"
+    if ! (cd packages/testing/nros-tests/bins/heap-free-cpp-poc-mps2 \
+            && env -u CARGO_TARGET_DIR cargo build "${profile[@]}" --quiet); then
+        echo "ERROR: heap-free-cpp-poc-mps2 does not link -- a C or C++ symbol it reaches has no definition on a target without a C library (e.g. vsnprintf: the bin needs the port's libc-stubs)." >&2
+        exit 1
+    fi
+    echo "OK: the heap-free C++ image links on a target with no C library"
+
 # Check C++ headers: formatting + freestanding syntax + nros-cpp clippy. The
 # clippy + syntax probe COMPILE nros-cpp/nros-c → build tier (check-build), NOT
 # the source-free push lane. (The clippy took `rmw-zenoh-cffi` until phase-506
