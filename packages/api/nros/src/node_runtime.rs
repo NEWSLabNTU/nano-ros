@@ -1752,13 +1752,10 @@ impl ExecutorSink<'_> {
             if !executor.declare_parameter_on(node, name, value)
                 && executor.get_parameter_on(node, name).is_none()
             {
-                nros_log::log_error!(
-                    nros_log::get_logger("nros"),
-                    "launch parameter '{name}' for node index {} was refused by the \
-                     parameter store",
-                    node.raw()
-                );
-                return Err(NodeDeclError::Runtime);
+                // GitHub #4018 -- the line names the store's capacity and the
+                // knob that sizes it, not only the refusal.
+                executor.report_parameter_refused(node, name);
+                return Err(NodeDeclError::ParameterRejected);
             }
         }
         Ok(())
@@ -2295,10 +2292,8 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     if !executor.declare_parameter_on(node, name, value)
                         && executor.get_parameter_on(node, name).is_none()
                     {
-                        nros_log::log_error!(
-                            nros_log::get_logger("nros"),
-                            "declared parameter '{name}' was refused by the parameter store"
-                        );
+                        // GitHub #4018 -- capacity and knob, not only "refused".
+                        executor.report_parameter_refused(node, name);
                         return Err(NodeDeclError::ParameterRejected);
                     }
                 }

@@ -88,6 +88,10 @@ pub trait ExecutorFfi<'s>: sealed::Sealed + Sized {
         descriptor: nros_params::ParameterDescriptor,
     ) -> bool;
 
+    /// The FFI entry point; see `Executor::report_parameter_refused` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn report_parameter_refused(&self, node: super::node_record::NodeId, name: &str) -> bool;
+
     /// The FFI entry point; see `Executor::set_parameter_on` in `spin.rs`.
     #[cfg(feature = "param-store")]
     fn set_parameter_on(
@@ -789,6 +793,12 @@ impl<'s> ExecutorFfi<'s> for Executor<'s> {
         descriptor: nros_params::ParameterDescriptor,
     ) -> bool {
         Executor::declare_parameter_with_descriptor_on(self, node, name, value, descriptor)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn report_parameter_refused(&self, node: super::node_record::NodeId, name: &str) -> bool {
+        Executor::report_parameter_refused(self, node, name)
     }
 
     #[inline]

@@ -18,7 +18,10 @@
  *  - a typed set of the wrong type is RCLC_PARAMETER_TYPE_MISMATCH;
  *  - `max_params` is a per-node quota;
  *  - two nodes' servers keep two tables;
- *  - `fini` takes the node's parameters with it.
+ *  - `fini` takes the node's parameters with it;
+ *  - a declaration the image-wide store has no slot for answers
+ *    RCLC_RET_FULL and logs the node, the parameter, the capacity and the
+ *    knob that sizes the store (GitHub #4018).
  *
  * The remote half (range and read-only enforced, NOT_SET deletes through the
  * callback, undeclared creates with old == NULL) is `nros-params`'s
@@ -88,17 +91,52 @@ static bool on_change(const Parameter* old_param, const Parameter* new_param, vo
     return new_param == NULL || new_param->value.integer_value != 13;
 }
 
+/* ---- the full-store line (GitHub #4018) -------------------------------- */
+
+/* The report is three records (the line, the knob, the derivation), kept
+ * from the first "parameter store is full" one on and joined by a space. */
+static char g_full_line[1024];
+static int g_records_kept;
+
+static void capture_sink(void* user, rcl_log_severity_t severity, const char* logger,
+                         size_t logger_len, const char* message, size_t message_len,
+                         const char* file, size_t file_len, uint32_t line, uint64_t ts) {
+    (void)user;
+    (void)severity;
+    (void)logger;
+    (void)logger_len;
+    (void)file;
+    (void)file_len;
+    (void)line;
+    (void)ts;
+    if (g_records_kept >= 3) {
+        return;
+    }
+    char buf[256];
+    size_t n = message_len < sizeof(buf) - 1 ? message_len : sizeof(buf) - 1;
+    memcpy(buf, message, n);
+    buf[n] = '\0';
+    if (g_records_kept == 0 && strstr(buf, "parameter store is full") == NULL) {
+        return;
+    }
+    size_t have = strlen(g_full_line);
+    snprintf(g_full_line + have, sizeof(g_full_line) - have, "%s%s", have == 0 ? "" : " ", buf);
+    g_records_kept++;
+}
+
 int main(void) {
     struct rclc_support_t support;
     struct rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
-    struct rcl_node_t talker, listener, unbound;
-    rclc_parameter_server_t ps, ps2, ps3;
+    struct rcl_node_t talker, listener, unbound, filler;
+    rclc_parameter_server_t ps, ps2, ps3, ps4;
     int64_t got = 0;
 
     memset(&support, 0, sizeof(support));
     memset(&talker, 0, sizeof(talker));
     memset(&listener, 0, sizeof(listener));
     memset(&unbound, 0, sizeof(unbound));
+    memset(&filler, 0, sizeof(filler));
+    memset(&ps4, 0, sizeof(ps4));
     memset(&ps, 0, sizeof(ps));
     memset(&ps2, 0, sizeof(ps2));
     memset(&ps3, 0, sizeof(ps3));
@@ -269,6 +307,49 @@ int main(void) {
           "re-init listener");
     CHECK(rclc_parameter_get_type(&ps3, "rate") == RCLC_PARAMETER_NOT_SET,
           "fini left the node's parameters behind");
+
+    /* GitHub #4018 -- the image-wide store fills before a node's quota does.
+     * The quota is set to the store's own capacity (the largest `max_params`
+     * init accepts), so the declaration that fails can only be the STORE's
+     * refusal: the other nodes already hold some of its slots. */
+    CHECK(rclc_log_add_sink(capture_sink, NULL), "install the capture sink");
+    CHECK(rclc_executor_node_init(&executor, &filler, "filler", NULL) == RCL_RET_OK,
+          "filler node init");
+    rclc_parameter_options_t whole = opts;
+    size_t capacity = 0;
+    for (size_t want = 4096; want > 0 && capacity == 0; --want) {
+        whole.max_params = want;
+        if (rclc_parameter_server_init_with_option(&ps4, &filler, &whole) == RCL_RET_OK) {
+            capacity = want;
+        }
+    }
+    CHECK(capacity > 0, "no max_params fit the store");
+    rcl_ret_t refused = RCL_RET_OK;
+    size_t filled = 0;
+    char pname[32];
+    for (size_t i = 0; i < capacity && refused == RCL_RET_OK; ++i) {
+        snprintf(pname, sizeof(pname), "f%zu", i);
+        refused = rclc_parameter_declare_int(&ps4, pname, 1);
+        if (refused == RCL_RET_OK) {
+            filled++;
+        }
+    }
+    CHECK(filled < capacity, "the store took %zu of a %zu-slot quota and refused nothing", filled,
+          capacity);
+    CHECK(refused == RCLC_RET_FULL, "a full store answered %d, expected RCLC_RET_FULL",
+          (int)refused);
+    CHECK(rclc_parameter_get_type(&ps4, pname) == RCLC_PARAMETER_NOT_SET,
+          "the refused parameter was declared anyway");
+    CHECK(g_full_line[0] != '\0', "no full-store line was logged");
+    CHECK(strstr(g_full_line, "/filler") != NULL, "the line names no node: %s", g_full_line);
+    CHECK(strstr(g_full_line, pname) != NULL, "the line names no parameter: %s", g_full_line);
+    CHECK(strstr(g_full_line, " slots, all nodes)") != NULL, "the line states no capacity: %s",
+          g_full_line);
+    CHECK(strstr(g_full_line, "max_parameters") != NULL &&
+              strstr(g_full_line, "[knobs.params]") != NULL &&
+              strstr(g_full_line, "NROS_MAX_PARAMETERS") != NULL &&
+              strstr(g_full_line, "CONFIG_NROS_MAX_PARAMETERS") != NULL,
+          "the line does not name the knob in every spelling: %s", g_full_line);
 
     if (g_failures != 0) {
         printf("rclc_parameter_server: %d failure(s)\n", g_failures);

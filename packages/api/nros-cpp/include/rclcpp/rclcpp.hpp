@@ -1832,10 +1832,13 @@ create_timer(NodeT&& node, ::rclcpp::Clock* clock, ::std::chrono::duration<Rep, 
 // `declare_parameter` returns the code default. The loud half USED to be
 // `nros::ComponentNode`, whose own facade recorded the failure on an `ok()`
 // flag and made it boot-fatal; that type is deleted, so no C++ path
-// is boot-fatal on a missing store any more. `rclcpp::Node` still carries the
-// flag (`set_error` / `ok()`); routing the parameter path back onto it is a
-// separate decision, because it changes what an upstream-shaped
-// `declare_parameter` does.
+// is boot-fatal on a missing store any more.
+//
+// A store that EXISTS and refuses is another matter: a full
+// store used to take this same silent `return default_value`, so a launch
+// override was lost and a controller ran on its compiled gains. That refusal
+// now goes through `rclcpp::Node`'s `set_error` latch, as upstream's
+// exception would end the node; only `Unsupported` keeps the default.
 
 /// `rclcpp::Node::declare_parameter<T>(name, default)` — declare, then read
 /// back, returning the value in effect.
@@ -1844,9 +1847,32 @@ create_timer(NodeT&& node, ::rclcpp::Clock* clock, ::std::chrono::duration<Rep, 
 /// user code runs, and upstream's contract is that `declare` adopts the
 /// override. That adoption is now the store's own ALREADY_EXISTS answer
 /// followed by the read-back below, rather than a helper that copied a value
-/// between two stores. On any other failure the code default is returned.
+/// between two stores.
+///
+/// Any other failure is BOOT-FATAL: the parameter is not declared, so a launch
+/// or YAML value for it is not applied, and a node that ran on would run on
+/// numbers its launch file does not state. With no exceptions to throw, the
+/// failure is printed (naming the node, the parameter and, for a full store,
+/// its capacity and the knob that sizes it) and recorded through `set_error`,
+/// which the entry's post-construct `ok()` check halts on. The code default is
+/// returned only so the constructor can finish. An image built with no parameter
+/// store at all (`Unsupported`) still answers the code default: no launch
+/// value can reach a node there.
 
 namespace rclcpp {
+namespace detail {
+inline void refuse_param_declare(Node& node, int32_t code) {
+    if (code == NROS_CPP_RET_UNSUPPORTED) {
+        return;
+    }
+    // The runtime printed the line naming the node, the parameter and the
+    // store's capacity (`Executor::report_parameter_refused`).
+    node.set_error(code == NROS_CPP_RET_FULL ? PARAM_STORE_FULL_WHAT : PARAM_DECLARE_REFUSED_WHAT,
+                   code);
+}
+
+} // namespace detail
+
 template <typename T> inline T Node::declare_parameter(const char* name, T default_value) {
     // A declaration the contract's `params:` does not make, or
     // makes with another type, refuses the boot through `set_error` before
@@ -1857,6 +1883,7 @@ template <typename T> inline T Node::declare_parameter(const char* name, T defau
     const ::nros_cpp_node_t* h = this->ffi_handle();
     Result r = ::rclcpp::detail::node_param_declare(h, name, default_value);
     if (!r.ok() && r.raw() != RCLC_RET_ALREADY_EXISTS) {
+        ::rclcpp::detail::refuse_param_declare(*this, r.raw());
         return default_value;
     }
     T out = T();

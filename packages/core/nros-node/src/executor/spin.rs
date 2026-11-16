@@ -15687,6 +15687,84 @@ impl<'s> Executor<'s> {
         accepted
     }
 
+    /// Say, at ERROR, why the store refused to declare `name` on `node`, and
+    /// whether the reason was a FULL store.
+    ///
+    /// For a caller whose declaration came back refused and whose name is
+    /// still absent afterwards (an "already declared" answer is not a refusal).
+    /// Returns `true` when every slot of the store was taken, so the caller
+    /// can answer its own language's "full" code.
+    ///
+    /// The line names the node, the parameter, the store's capacity and the
+    /// knob that sizes it in every spelling a user writes, because the value a
+    /// launch file or YAML gave this parameter is not applied, and a node that
+    /// runs anyway runs on numbers its launch file does not state.
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn report_parameter_refused(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+    ) -> bool {
+        // GitHub #4018: the C++ facade used to return the code default here
+        // with no word, so a controller ran on compiled gains.
+        // A launch seed lands on a node that is not built yet, so the table
+        // may have no row for it; the index is then all there is to name.
+        let mut fqn = heapless::String::<256>::new();
+        match self.nodes.get(node.index()) {
+            Some(r) => match crate::names::fully_qualified_name(&r.name, &r.namespace) {
+                Ok(f) => {
+                    let _ = fqn.push_str(f.as_str());
+                }
+                Err(()) => {
+                    let _ = fqn.push_str(&r.name);
+                }
+            },
+            None => {
+                let _ = core::fmt::Write::write_fmt(
+                    &mut fqn,
+                    format_args!("node index {}", node.raw()),
+                );
+            }
+        }
+        let Some(params) = self.params.as_ref() else {
+            nros_log::log_error!(
+                nros_log::get_logger("nros"),
+                "node \"{}\": parameter \"{}\" not declared: this image has no parameter \
+                 store.",
+                fqn.as_str(),
+                name
+            );
+            return false;
+        };
+        let capacity = params.server.capacity();
+        if params.server.is_full() {
+            // Three records, each short enough for the smallest log buffer:
+            // one long line is cut where the knob's name is.
+            let logger = nros_log::get_logger("nros");
+            nros_log::log_error!(
+                logger,
+                "node \"{}\": parameter \"{}\" not declared: the parameter store is full \
+                 ({} slots, all nodes). Its launch/YAML value is not applied.",
+                fqn.as_str(),
+                name,
+                capacity
+            );
+            nros_log::log_error!(logger, "{}", nros_params::STORE_SIZE_KNOB);
+            nros_log::log_error!(logger, "{}", nros_params::STORE_SIZE_DERIVED);
+            return true;
+        }
+        nros_log::log_error!(
+            nros_log::get_logger("nros"),
+            "node \"{}\": parameter \"{}\" not declared: the parameter store ({} slots, \
+             not full) refused it. Is the name over NROS_MAX_PARAM_NAME_LEN?",
+            fqn.as_str(),
+            name,
+            capacity
+        );
+        false
+    }
+
     /// phase-425 W3b — record a reserved parameter's effect. Today that is
     /// `use_sim_time` and nothing else: it is the tree's only reserved name,
     /// and [`time_source::USE_SIM_TIME_PARAM`](crate::time_source::USE_SIM_TIME_PARAM)
