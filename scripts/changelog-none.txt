@@ -1,0 +1,15 @@
+# The after-the-fact `Changelog: none`, read by scripts/changelog-audit.py.
+#
+# A pull request that changes a shipped path should carry a changelog.d/
+# fragment, or a `Changelog: none` trailer on one of its commits. A merged
+# commit cannot gain a trailer, so a PR that merged with neither and needs no
+# entry is listed here instead: `<PR number> <reason>`, one per line. A line
+# with no reason credits nothing, and the audit names it.
+#
+# A PR that DOES need an entry gets a fragment, not a line here. A fragment
+# that links the PR's page (`/pull/<N>`) credits it.
+
+4061 test-only: each CLI test takes its own scratch dir
+4074 build-internal: the CLI's own release build is incremental; nothing a user runs changes
+4079 test-only: nros-node tests stop reading each other's trace, profile and rosout state
+4085 fixes a link break #2634 introduced after nros-0.6.0-nros11; no release carried it
