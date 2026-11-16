@@ -254,7 +254,7 @@ fn seed_launch_text(
     name: &str,
     text: &str,
 ) -> nros_cpp_ret_t {
-    use nros::LaunchTextError as E;
+    use nros_node::LaunchTextError as E;
     // phase-446 seam: a declared type replaces this inference.
     let mut pv = ParameterValue::NotSet;
     if let Err(e) = pv.assign_launch_text(text) {

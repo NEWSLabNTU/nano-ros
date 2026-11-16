@@ -1,5 +1,5 @@
-//! Issue 2638 -- the TEXT an embedded image is baked with for one launch
-//! parameter value.
+// Issue 2638.
+//! The TEXT an embedded image is baked with for one launch parameter value.
 //!
 //! An image has no launch runtime to hand `--params-file` to, so every
 //! resolved parameter is baked as text and typed again on the device when it
@@ -15,9 +15,9 @@
 //!   elements spelled as the model spells them (a string that would re-type
 //!   is already single-quoted there). `to_bake_string` joins with `,`
 //!   (`40.0,50.0,60.0`), which reads back as one STRING -- and a one-element
-//!   list as a scalar, an empty one as `""`. That is how a
-//!   `steer_rate_lim_dps_list_by_curvature: [40.0, 50.0, 60.0]` from a
-//!   `config/*.param.yaml` reached the node as a string parameter.
+//!   list as a scalar, an empty one as `""`. That is how an MPC rate-limit
+//!   list `[40.0, 50.0, 60.0]` from a `config/*.param.yaml` reached the node
+//!   as a string parameter.
 //! - a STRING whose text would read as a LIST or as a quoted string (`[a]`,
 //!   `'q'`) is single-quoted, `'` doubled, which the reader reads back as
 //!   exactly that string. Those two spellings meant a string before lists

@@ -1514,11 +1514,11 @@ pub use nros_params::SetParameterResult;
 #[allow(deprecated)]
 pub use nros_params::UndeclaredParameters;
 pub use nros_params::{
-    DeclarationError, FloatingPointRange, IntegerRange, LaunchTextError, MAX_ON_SET_CALLBACKS,
-    MandatoryParameter, NodeKey, OnSetContext, OnSetParameterFn, OnSetParameterHandle,
-    OptionalParameter, Parameter, ParameterBuilder, ParameterDescriptor, ParameterError,
-    ParameterRange, ParameterServer, ParameterStorage, ParameterTable, ParameterType,
-    ParameterValue, ParameterVariant, Parameters, ReadOnlyParameter,
+    DeclarationError, FloatingPointRange, IntegerRange, MAX_ON_SET_CALLBACKS, MandatoryParameter,
+    NodeKey, OnSetContext, OnSetParameterFn, OnSetParameterHandle, OptionalParameter, Parameter,
+    ParameterBuilder, ParameterDescriptor, ParameterError, ParameterRange, ParameterServer,
+    ParameterStorage, ParameterTable, ParameterType, ParameterValue, ParameterVariant, Parameters,
+    ReadOnlyParameter,
 };
 // The wire-side half: why an `rcl_interfaces` parameter value could not be
 // turned into a native one. The `~/set_parameters` handler already puts
