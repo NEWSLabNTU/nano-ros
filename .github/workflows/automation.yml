@@ -637,6 +637,14 @@ jobs:
           case "$decision" in
             EJECTED*) ;;
             NOT_EJECTED*)
+              if [ "$WORKFLOW" = "queue" ]; then
+                # phase-567 W5b — L3 (cross build + link) is advisory, so its red
+                # ejects nothing; but a link break heard at the next nightly is a
+                # day late. Tell every PR whose change the red build contained.
+                bash scripts/ci/queue-l3-advisory.sh "$RUN_ID" "$RUN_URL" "$HEAD_BRANCH" \
+                  || echo "::warning::the L3 advisory could not be posted"
+                exit 0
+              fi
               echo "::notice::\`$WORKFLOW\` failed on a merge group, but no REQUIRED check failed (${decision#*[[:space:]]}) — not an ejection, nothing posted"
               exit 0 ;;
             *)
