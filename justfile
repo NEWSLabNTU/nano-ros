@@ -5835,7 +5835,7 @@ _orchestrate verb tier="everything":
     # that tier). Best-effort: silent if qemu missing entirely.
     if [[ "{{verb}}" == "doctor" && "{{tier}}" != "base" && "{{tier}}" != "quickstart" && "{{tier}}" != "minimal" && "{{tier}}" != "default" ]]; then
         # Issue 1851 — the qemu-system-arm the recipes and tests run.
-        if qbin="$(bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm')"; then
+        if qbin="$(bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm' 2>/dev/null)"; then
             ver=$("$qbin" --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+).*/\1/')
             major=${ver%%.*}
             minor=${ver##*.}

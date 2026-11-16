@@ -1034,13 +1034,32 @@ pub fn sdk_pinned_version(tool: &str) -> Option<String> {
     pinned_version_in(&text, tool)
 }
 
+/// Issue 2659 — `[tool.<tool>.source] configure` from this checkout's index:
+/// the line the store's copy is built with, so a caller can read what it
+/// BUILDS (a QEMU's `--target-list`, through
+/// `nros_qemu_ladder::targets_of_configure`). `None` when there is no index,
+/// no such section, or no `configure` key.
+///
+/// Twin: `nros_sdk_tool_source_configure` in `scripts/lib/sdk-pin.sh`.
+pub fn sdk_tool_source_configure(tool: &str) -> Option<String> {
+    let index = try_repo_root()?.join("nros-sdk-index.toml");
+    let text = std::fs::read_to_string(index).ok()?;
+    index_string_in(&text, &format!("tool.{tool}.source"), "configure")
+}
+
 /// [`sdk_pinned_version`]'s parser, over index TEXT so it is testable without
 /// a checkout. The section runs from `[tool.<tool>]` to the next line that
 /// STARTS a table — the bound the cmake and shell twins use, so an inline
 /// array such as `smoke = [` does not end it. No `toml` dependency: this crate
 /// has none, and adding one moves `Cargo.lock` for a single key.
 fn pinned_version_in(text: &str, tool: &str) -> Option<String> {
-    let header = format!("[tool.{tool}]");
+    index_string_in(text, &format!("tool.{tool}"), "version")
+}
+
+/// A `key = "<string>"` in the index table `[section]`, by the bound
+/// [`pinned_version_in`] documents.
+fn index_string_in(text: &str, section: &str, key: &str) -> Option<String> {
+    let header = format!("[{section}]");
     let mut inside = false;
     for line in text.lines() {
         if line == header {
@@ -1054,7 +1073,7 @@ fn pinned_version_in(text: &str, tool: &str) -> Option<String> {
         if !inside {
             continue;
         }
-        let Some(rest) = line.strip_prefix("version") else {
+        let Some(rest) = line.strip_prefix(key) else {
             continue;
         };
         let Some(rest) = rest.trim_start().strip_prefix('=') else {
@@ -1095,6 +1114,23 @@ version = \"not-this-one\"
             pinned_version_in(INDEX, "corrosion").as_deref(),
             Some("0.6.1-nros1")
         );
+    }
+
+    #[test]
+    fn reads_a_source_tables_configure_line() {
+        const Q: &str = "\
+[tool.qemu]
+version = \"11.0.0-nros8\"
+
+[tool.qemu.source]
+git = \"https://example.invalid/qemu\"
+configure = \"./configure --prefix={prefix} --target-list=arm-softmmu,riscv64-softmmu\"
+";
+        assert_eq!(
+            super::index_string_in(Q, "tool.qemu.source", "configure").as_deref(),
+            Some("./configure --prefix={prefix} --target-list=arm-softmmu,riscv64-softmmu")
+        );
+        assert_eq!(super::index_string_in(Q, "tool.qemu", "configure"), None);
     }
 
     #[test]

@@ -4,7 +4,9 @@ set working-directory := '..'
 # Used by NuttX QEMU recipes so the `-netdev dgram,local.type=unix,…`
 # multi-instance path works on Ubuntu jammy (system qemu 6.2 too old).
 # issue 1851 — the binary the QEMU ladder picks (scripts/lib/qemu-bin.sh).
-QEMU_BIN := `bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm || true'`
+# Silent at justfile load (issue 2659's missing-pin reason would print before
+# every `just` command); a recipe that runs it gets the shell's own error.
+QEMU_BIN := `bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm 2>/dev/null || true'`
 
 default:
     @just --list --justfile {{source_file()}}

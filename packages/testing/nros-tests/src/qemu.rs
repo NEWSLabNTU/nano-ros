@@ -73,12 +73,39 @@ pub(crate) fn qemu_system_path_in(
             .as_ref()
             .map(|v| crate::store_root().join("sdk").join(tool).join(v)),
         pin,
-        // No index reader here: every target is taken as the store's, which for
-        // a target it does not build ends at rung 4 either way.
-        store_targets: None,
+        // Issue 2659 — what the store BUILDS, from the index, so a missing pin
+        // for one of those targets is refused below instead of falling to
+        // `$PATH`. `None` (no index, no `configure`) takes every target as the
+        // store's, which refuses rather than guesses.
+        store_targets: nros_build_paths::sdk_tool_source_configure(tool)
+            .as_deref()
+            .and_then(nros_qemu_ladder::targets_of_configure),
         stale_prefix: nros_qemu_ladder::StalePrefix::Refuse,
     };
-    match nros_qemu_ladder::locate(exe, &ctx) {
+    binary_for(nros_qemu_ladder::locate(exe, &ctx), exe, tool)
+}
+
+/// Issue 2659 — for a unit test that RENDERS a QEMU line and runs nothing:
+/// answer rung 1 (`QEMU_SYSTEM_<ARCH>`) with a fixed path, so the test does
+/// not depend on whether this host's store holds the pinned QEMU (the ladder
+/// refuses a missing one, and a rendering test has no emulator to want).
+#[cfg(test)]
+pub(crate) fn pin_test_qemu(arch: &str) {
+    let var = format!(
+        "QEMU_SYSTEM_{}",
+        arch.to_ascii_uppercase().replace('-', "_")
+    );
+    // SAFETY: nextest runs every test in its own process, so no other thread
+    // reads the environment while this writes it.
+    let exe = nros_qemu_ladder::system_exe(arch);
+    unsafe { std::env::set_var(var, format!("/test/qemu/bin/{exe}")) };
+}
+
+/// The harness's policy over the ladder's answer: the binary a test runs, or a
+/// refusal. Separate from [`qemu_system_path_in`] so each arm is unit-tested
+/// without touching the host's store or `$PATH`.
+fn binary_for(bin: nros_qemu_ladder::QemuBin, exe: &str, tool: &str) -> std::ffi::OsString {
+    match bin {
         nros_qemu_ladder::QemuBin::Found { path, rung } => {
             if rung == "store" {
                 // The store copy must also LOAD (`[tool.qemu] system`).
@@ -98,9 +125,70 @@ pub(crate) fn qemu_system_path_in(
                 .unwrap_or(&path)
                 .display()
         ),
-        nros_qemu_ladder::QemuBin::Missing { .. } | nros_qemu_ladder::QemuBin::Host { .. } => {
-            std::ffi::OsString::from(exe)
-        }
+        // Issue 2659 — the pinned QEMU is missing for a target the store builds.
+        // Falling to `$PATH` ran the test on whatever QEMU the host had: on
+        // 2026-11-16 a distro 6.2 HALTED a guest the pinned 11.0.0-nros8 ends
+        // with `qemu: fatal: Lockup`, so a broken boot read green locally and
+        // red in CI. Same rule as `RefusedPrefix` above: a test must not run
+        // on an emulator nobody chose. Unmet, never a quiet substitute.
+        nros_qemu_ladder::QemuBin::Missing { why } => crate::unmet!(
+            "{why}. A test must not run on an emulator nobody chose (issue \
+             2659): the store does not hold the pinned {exe}, and a {exe} on \
+             $PATH is a different emulator, not a fallback"
+        ),
+        // A target the store does not build: the host's QEMU is the only one.
+        nros_qemu_ladder::QemuBin::Host { .. } => std::ffi::OsString::from(exe),
+    }
+}
+
+#[cfg(test)]
+mod harness_policy_tests {
+    use super::binary_for;
+    use nros_qemu_ladder::{QemuBin, system_exe};
+
+    /// Issue 2659: a missing pinned QEMU for a target the store builds is an
+    /// unmet precondition, never the bare name (which `$PATH` would answer
+    /// with whatever emulator the host has).
+    #[test]
+    #[should_panic(expected = "[UNMET PRECONDITION]")]
+    fn a_missing_pin_is_unmet_not_path() {
+        let _ = binary_for(
+            QemuBin::Missing {
+                why: format!("no {} (pinned 11.0.0-nros8)", system_exe("arm")),
+            },
+            &system_exe("arm"),
+            "qemu",
+        );
+    }
+
+    /// A target the store does not build is answered by the host's QEMU.
+    #[test]
+    fn a_target_the_store_does_not_build_uses_the_host() {
+        let got = binary_for(
+            QemuBin::Host {
+                why: "the store builds arm, riscv64 only".into(),
+            },
+            &system_exe("x86_64"),
+            "qemu",
+        );
+        assert_eq!(got, std::ffi::OsString::from(system_exe("x86_64")));
+    }
+
+    /// A rung that answered is run as found.
+    #[test]
+    fn a_found_binary_is_used_as_found() {
+        let got = binary_for(
+            QemuBin::Found {
+                path: format!("/opt/q/bin/{}", system_exe("arm")).into(),
+                rung: "env",
+            },
+            &system_exe("arm"),
+            "qemu",
+        );
+        assert_eq!(
+            got,
+            std::ffi::OsString::from(format!("/opt/q/bin/{}", system_exe("arm")))
+        );
     }
 }
 
@@ -1625,6 +1713,9 @@ mod tests {
     /// would reproduce the mistake the record exists to prevent.
     #[test]
     fn recorded_command_names_the_resolved_program_not_the_bare_name() {
+        // Issue 2659 — what is rendered, not which emulator the host holds: a
+        // host without the pinned QEMU is refused by the ladder, so name one.
+        crate::qemu::pin_test_qemu("arm");
         let mut cmd = qemu_system_arm_cmd();
         cmd.args(["-machine", "virt"]);
         let rendered = render_command(&cmd);
