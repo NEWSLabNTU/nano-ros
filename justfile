@@ -45,6 +45,12 @@ export NROS_BUILD_JOBS := env_var_or_default("NROS_BUILD_JOBS", `nproc 2>/dev/nu
 # value could not even be corrected by the recipe that builds the CLI.
 export NROS_CARGO_PROFILE := env_var_or_default("NROS_CARGO_PROFILE", "")
 
+# Issue 2608 -- a failed metadata probe leaves its component on DEFAULT sizes.
+# An interactive `nros build` / `configure` warns (the CLI's default, a person
+# reads it); every `just` lane runs where nobody reads a warning, so here it is
+# an error. Exported, so module recipes (`just ci`, `just check`) inherit it.
+export NROS_PROBE_FAILURE := env_var_or_default("NROS_PROBE_FAILURE", "refuse")
+
 # User-local tools installed by setup modules (for example PlatformIO via
 # pipx/pip --user) should be visible to all just-driven tests.
 #

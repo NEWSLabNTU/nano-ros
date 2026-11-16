@@ -25,6 +25,11 @@
 # matching row.
 set -euo pipefail
 
+# Issue 2608 -- a fixture is evidence its image was built as declared, so a
+# failed metadata probe (a component left on default sizes) is a red here,
+# whatever the caller set.
+export NROS_PROBE_FAILURE=refuse
+
 usage="usage: fixtures-build.sh <platform> [lang] [rmw] [--id <id>] [--core-only]"
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
     echo "$usage"
