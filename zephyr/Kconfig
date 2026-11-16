@@ -2033,7 +2033,9 @@ config NROS_SUBSCRIPTION_BUFFER_SIZE
 config NROS_ZEPHYR_HEAP_SIZE
     int
     default 1048576 if NROS_RMW_CYCLONEDDS
-    default 196608 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE || NROS_CAPABILITY_LIFECYCLE
+    default 196608 if NROS_CAPABILITY_LIFECYCLE
+    default 196608 if RUST && (NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE)
+    default 114688 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE
     default 131072 if RUST
     default 65536
     help
@@ -2062,8 +2064,15 @@ config NROS_ZEPHYR_HEAP_SIZE
       five services, each owning a 2 x 4,096-byte buffer pair); the Rust
       params image at 114,144 without it, and issue 1677's lifecycle and qos
       peaks less the store at 113,904 and 120,896.
-      Worst + the 24,576-byte floor is 145,472, hence 192 KiB for either axis
-      now that the store is carved.
+      Worst + the 24,576-byte floor is 145,472, hence 192 KiB for LIFECYCLE,
+      and for a Rust image with param_services, whose 114,144 peak was taken
+      on the both-axes image and is not split.
+
+      A C or C++ image with param_services (or a seeded store) and no
+      lifecycle gets 112 KiB: the 64 KiB default plus the 46,848-byte
+      param_services peak above. Since the stock node interfaces are on in
+      every image, 192 KiB there put 128 KiB of unused heap on every
+      C/C++ zenoh image, and a nucleo_f767zi serial talker no longer fit.
 
       A CYCLONE image gets 1 MiB (issue 1633): ddsrt's whole heap lands here
       since the Zephyr road compiles the platform funnel (heap/nros/heap.c),

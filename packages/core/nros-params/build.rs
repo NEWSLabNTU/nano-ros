@@ -5,6 +5,13 @@
 
 use std::{env, path::Path};
 
+/// Parameter-store slots carved for an image that builds a store but whose
+/// parameter count nobody stated or declared: one `use_sim_time` per node and
+/// room for a few application parameters. State `NROS_MAX_PARAMETERS`
+/// (`[image.<id>.knobs.params] max_parameters`) or declare the contract's
+/// `params:` for more.
+const STOCK_STORE_SLOTS: usize = 8;
+
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
@@ -154,8 +161,21 @@ fn main() {
 
     // phase-382 W3' -- does this build KNOW the image builds a store? Then the
     // executor carves it from its backing instead of asking the heap for it.
+    //
+    // HOW MANY slots: the count somebody STATED (env, Kconfig, board) or the
+    // contract DECLARED (`[params] max_parameters`: every declared name plus
+    // one `use_sim_time` per node). When neither says -- the store is implied
+    // only by the parameter services every image serves by default, or by a
+    // launch seed -- the carve is the small `STOCK_STORE_SLOTS`, not the full
+    // crate default: a slot costs ~8.5 KiB whatever it holds (`ParameterValue`
+    // is as large as its `StringArray` variant), so 32 of them put 285,696 B
+    // into the .bss of a talker that declares no parameter, and a 512 KiB
+    // board overflowed. A declaration past the carve stops the boot, naming
+    // NROS_MAX_PARAMETERS.
     let implied_store_slots = if store_implied(params) {
-        max_parameters
+        stated("NROS_MAX_PARAMETERS", rungs.max_parameters)
+            .or(contract(params.map(|p| p.max_parameters()), None))
+            .unwrap_or(STOCK_STORE_SLOTS.min(max_parameters))
     } else {
         0
     };
@@ -210,10 +230,11 @@ fn main() {
          1 otherwise).\n\
          pub const PARAM_EVENTS_DEPTH: u32 = {param_events_depth};\n\
          \n\
-         /// Slots of the parameter store this build KNOWS the image builds: \
-         `MAX_PARAMETERS` when the contract declares a parameter, the bringup \
-         declares `param_services`, or the launch seeds a `<param>` \
-         (`NROS_PARAM_STORE`); 0 otherwise.\n\
+         /// Slots of the parameter store this build KNOWS the image builds \
+         (the contract declares a parameter, the bringup declares \
+         `param_services`, or the launch seeds a `<param>`): the stated or \
+         declared `MAX_PARAMETERS`, else a small stock carve of \
+         {STOCK_STORE_SLOTS}; 0 when no store is implied.\n\
          ///\n\
          /// A caller that places the store in memory it already owns (the \
          executor's backing) reserves exactly this many slots. ZERO is the \
