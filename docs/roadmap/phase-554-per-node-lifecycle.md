@@ -281,6 +281,12 @@ Each row of RFC-0128's D8 table, as ruled:
     The default stays `"node"`, which an executor built from a bare session
     now carries too.
   - Slice B's first-spin side path is gone.
+  - The C++ API refuses an entity on a node that was never created, as the
+    C API already does. This covers a zero-initialised `nros_cpp_node_t`, and
+    an action server whose storage names no node. The check sits at all
+    twelve entity-creation entry points (`require_created_node`), and the
+    message says to create the node first. Such an entity used to land on
+    the primary node, or make the configured name one.
 
 Acceptance:
 
