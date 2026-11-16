@@ -26,6 +26,12 @@
 //! Each node also publishes `std_msgs/Int32` on its own topic, because a node
 //! with no endpoints is not something a `ros2 node list` is a fair test of.
 //!
+//! A third node, `bulk`, holds only issue 2639's `bulk.pNN` parameters (more
+//! names than the generated `rcl_interfaces` message's 64). It is its own node
+//! so `alpha` keeps the parameter set the stock rclpy peer of
+//! `tests/ros2_cli_parity_interop.rs` declares: the parity cases diff `alpha`'s
+//! listing and dump against it line for line.
+//!
 //! Consumed by `tests/params_per_node_interop.rs`.
 
 use log::{error, info};
@@ -41,7 +47,7 @@ use std_msgs::msg::Int32;
 /// `nros_tests::output::PARAM_SERVICE_NODE_PREFIX`.
 const PARAM_SERVICE_NODE_PREFIX: &str = "param services registered for node: ";
 
-/// Issue 2639 -- how many `bulk.pNN` parameters `alpha` declares: past the
+/// Issue 2639 -- how many `bulk.pNN` parameters `bulk` declares: past the
 /// generated message's 64. `tests/params_per_node_interop.rs` states it again.
 const BULK_PARAMS: usize = 70;
 
@@ -80,6 +86,12 @@ fn main() {
         .node_builder("beta")
         .build()
         .expect("Failed to register node beta");
+    // Issue 2639 -- registered last, so the parameter-service markers name
+    // `alpha` and `beta` first, as they did before this node existed.
+    let bulk = executor
+        .node_builder("bulk")
+        .build()
+        .expect("Failed to register node bulk");
 
     // The same NAME on both nodes, with different values. Pre-W1 this was one
     // flat table and the second declaration was a collision.
@@ -117,16 +129,17 @@ fn main() {
     // 64, so `ros2 param list` / `ros2 param dump` prove every one is
     // answered: the reply used to stop at 64 and say nothing. Under one
     // prefix, so the prefix list is exercised too. The store holds them by
-    // the bringup's `knobs.params.max_parameters`.
+    // the bringup's `knobs.params.max_parameters`. On `bulk`, not `alpha`:
+    // `alpha`'s list is the one the ros2_cli parity cases compare with stock.
     for i in 0..BULK_PARAMS {
         let name = format!("bulk.p{i:02}");
         let _ = executor
-            .node_mut(alpha)
+            .node_mut(bulk)
             .declare_parameter::<i64>(&name)
             .expect("parameter store")
             .default(i as i64)
             .mandatory()
-            .unwrap_or_else(|e| panic!("alpha/{name} declaration refused: {e:?}"));
+            .unwrap_or_else(|e| panic!("bulk/{name} declaration refused: {e:?}"));
     }
 
     let alpha_pub = {

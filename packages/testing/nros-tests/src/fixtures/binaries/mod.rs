@@ -4978,7 +4978,8 @@ pub fn build_native_param_talker() -> TestResult<&'static Path> {
 /// phase-426 W6 — the two-node parameter image
 /// (`packages/testing/nros-tests/bins/param-two-node-talker`). One executor,
 /// nodes `alpha` and `beta`, both declaring `rate` with different values, plus
-/// a step-constrained `stepped` on `alpha` alone. Registers the REP-2002
+/// a step-constrained `stepped` on `alpha` alone; a third node, `bulk`, holds
+/// issue 2639's 70 `bulk.pNN` parameters. Registers the REP-2002
 /// parameter services, which W3 publishes once PER NODE, and logs one
 /// [`crate::output::PARAM_SERVICE_NODE_PREFIX`] line per registered FQN once
 /// the first spin has reconciled them. Consumed by

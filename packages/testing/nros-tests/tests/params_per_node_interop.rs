@@ -10,7 +10,8 @@
 //!
 //! So this cell runs the same three verbs against a TWO-node image
 //! (`param-two-node-talker`: `alpha` and `beta` on one executor) and asks the
-//! questions that need two:
+//! questions that need two. The image's third node, `bulk`, carries only
+//! issue 2639's past-64 parameters, for the case that counts them.
 //!
 //! * both node FQNs appear in `ros2 param list` — W3's acceptance, on the wire;
 //! * a `get` on each returns THAT node's value where both declare the same
@@ -42,11 +43,15 @@ use std::{process::Command, time::Duration};
 /// timeout, a traceback — is not this string.
 const SET_OK: &str = "Set parameter successful";
 
+/// How many nodes the image registers parameter services for: `alpha` and
+/// `beta`, the pair this file is about, plus issue 2639's `bulk`.
+const IMAGE_NODES: usize = 3;
+
 /// A running two-node image, plus the FQNs it says it registered services under.
 struct TwoNodeImage {
     proc: ManagedProcess,
     /// In registration order, from the fixture's own
-    /// `parameter_service_node_names` — `alpha` first, then `beta`.
+    /// `parameter_service_node_names` -- `alpha`, `beta`, then `bulk`.
     fqns: Vec<String>,
 }
 
@@ -57,6 +62,11 @@ impl TwoNodeImage {
 
     fn beta(&self) -> &str {
         &self.fqns[1]
+    }
+
+    /// Issue 2639 -- the node holding the `bulk.pNN` parameters.
+    fn bulk(&self) -> &str {
+        &self.fqns[2]
     }
 }
 
@@ -72,8 +82,8 @@ impl Drop for TwoNodeImage {
 /// The wait is on the COUNT of marker lines, not on one line: a tree where the
 /// per-node registration is gone still prints a first marker, promptly, and a
 /// wait for "a marker" would be satisfied by it and then fail three assertions
-/// later with the fixture already several seconds into its spin. Waiting for two
-/// puts the failure where the cause is, and the diagnostic carries what the
+/// later with the fixture already several seconds into its spin. Waiting for all
+/// of them puts the failure where the cause is, and the diagnostic carries what the
 /// process actually printed.
 fn start_two_node_image(locator: &str) -> TwoNodeImage {
     let binary = build_native_param_two_node_talker().require("param-two-node-talker");
@@ -86,8 +96,11 @@ fn start_two_node_image(locator: &str) -> TwoNodeImage {
     let mut proc =
         ManagedProcess::spawn_image(cmd, "param-two-node").expect("failed to start fixture");
 
-    let (output, diag) =
-        proc.collect_until_count(PARAM_SERVICE_NODE_PREFIX, 2, Duration::from_secs(20));
+    let (output, diag) = proc.collect_until_count(
+        PARAM_SERVICE_NODE_PREFIX,
+        IMAGE_NODES,
+        Duration::from_secs(20),
+    );
     let fqns: Vec<String> = output
         .lines()
         .filter_map(|l| l.split_once(PARAM_SERVICE_NODE_PREFIX))
@@ -99,9 +112,10 @@ fn start_two_node_image(locator: &str) -> TwoNodeImage {
     // count — the diagnostic is where the evidence is.
     if let Some(diag) = diag {
         panic!(
-            "the image composes two nodes, so it must register two sets of \
-             parameter services and print two `{PARAM_SERVICE_NODE_PREFIX}` \
-             lines, and the wait for the second timed out. Seeing exactly ONE \
+            "the image composes {IMAGE_NODES} nodes, so it must register \
+             {IMAGE_NODES} sets of parameter services and print \
+             {IMAGE_NODES} `{PARAM_SERVICE_NODE_PREFIX}` lines, and the wait \
+             for them timed out. Seeing exactly ONE \
              means the six services are pinned to a single node key again \
              (phase-426 W3) — which is the state where `ros2 param list` \
              enumerates the executor and never the image's nodes.\n{diag}"
@@ -109,13 +123,13 @@ fn start_two_node_image(locator: &str) -> TwoNodeImage {
     }
     assert_eq!(
         fqns.len(),
-        2,
-        "the image composes two nodes, so it must register two sets of parameter \
-         services; parsed {fqns:?}.\nOutput:\n{output}"
+        IMAGE_NODES,
+        "the image composes {IMAGE_NODES} nodes, so it must register {IMAGE_NODES} \
+         sets of parameter services; parsed {fqns:?}.\nOutput:\n{output}"
     );
     assert!(
-        fqns[0].ends_with("/alpha") && fqns[1].ends_with("/beta"),
-        "the fixture's nodes are `alpha` and `beta`, in that order; got {fqns:?}"
+        fqns[0].ends_with("/alpha") && fqns[1].ends_with("/beta") && fqns[2].ends_with("/bulk"),
+        "the fixture's nodes are `alpha`, `beta` and `bulk`, in that order; got {fqns:?}"
     );
     assert_ne!(
         fqns[0], fqns[1],
@@ -299,7 +313,7 @@ fn ros2_param_cli_addresses_each_node_by_its_own_fqn(zenohd_unique: ZenohRouter)
 /// was refused.
 #[rstest]
 fn ros2_param_list_and_dump_answer_every_name_past_64(zenohd_unique: ZenohRouter) {
-    /// `alpha`'s `bulk.pNN` parameters (the fixture's `BULK_PARAMS`).
+    /// `bulk`'s `bulk.pNN` parameters (the fixture's `BULK_PARAMS`).
     const BULK: usize = 70;
     require_zenohd();
     require_ros2();
@@ -308,8 +322,8 @@ fn ros2_param_list_and_dump_answer_every_name_past_64(zenohd_unique: ZenohRouter
     require_both_nodes_discoverable(&image, &locator);
 
     let last = format!("bulk.p{:02}", BULK - 1);
-    let list = param_list_until(image.alpha(), &last, &locator);
-    println!("=== ros2 param list {} ===\n{list}", image.alpha());
+    let list = param_list_until(image.bulk(), &last, &locator);
+    println!("=== ros2 param list {} ===\n{list}", image.bulk());
     let listed = list
         .lines()
         .filter(|l| l.trim().starts_with("bulk.p"))
@@ -319,15 +333,15 @@ fn ros2_param_list_and_dump_answer_every_name_past_64(zenohd_unique: ZenohRouter
         BULK,
         "{} declares {BULK} `bulk.pNN` parameters; the listing must carry every one, \
          not the first 64. Output:\n{list}",
-        image.alpha()
+        image.bulk()
     );
 
-    let dump = nros_tests::ros2::ros2_param_dump(image.alpha(), &locator, DEFAULT_ROS_DISTRO)
+    let dump = nros_tests::ros2::ros2_param_dump(image.bulk(), &locator, DEFAULT_ROS_DISTRO)
         .expect("failed to run ros2 param dump");
-    println!("=== ros2 param dump {} ===\n{dump}", image.alpha());
+    println!("=== ros2 param dump {} ===\n{dump}", image.bulk());
     let last_value = format!("p{:02}: {}", BULK - 1, BULK - 1);
     assert!(
-        dump.contains(&last_value) && dump.contains("stepped: 10"),
+        dump.contains(&last_value) && dump.contains("p00: 0"),
         "`ros2 param dump` asks for every listed name in one get_parameters; the \
          dump must carry `{last_value}`. Output:\n{dump}"
     );
@@ -483,8 +497,11 @@ fn ros2_param_cli_addresses_each_node_on_cyclonedds() -> nros_tests::TestResult<
 
     let mut proc = ManagedProcess::spawn_image(cmd, "param-two-node-cyclone")
         .expect("failed to start fixture");
-    let (output, diag) =
-        proc.collect_until_count(PARAM_SERVICE_NODE_PREFIX, 2, Duration::from_secs(20));
+    let (output, diag) = proc.collect_until_count(
+        PARAM_SERVICE_NODE_PREFIX,
+        IMAGE_NODES,
+        Duration::from_secs(20),
+    );
     let fqns: Vec<String> = output
         .lines()
         .filter_map(|l| l.split_once(PARAM_SERVICE_NODE_PREFIX))
@@ -493,16 +510,17 @@ fn ros2_param_cli_addresses_each_node_on_cyclonedds() -> nros_tests::TestResult<
     if let Some(diag) = diag {
         proc.kill();
         panic!(
-            "the image composes two nodes, so it must register two sets of \
-             parameter services and print two `{PARAM_SERVICE_NODE_PREFIX}` lines. \
+            "the image composes {IMAGE_NODES} nodes, so it must register \
+             {IMAGE_NODES} sets of parameter services and print {IMAGE_NODES} \
+             `{PARAM_SERVICE_NODE_PREFIX}` lines. \
              On Cyclone this is ALSO where issue 1268 shows: a registration that \
              fails with UNSUPPORTED prints no marker at all.\n{diag}"
         );
     }
     assert_eq!(
         fqns.len(),
-        2,
-        "expected two registered node FQNs, got {fqns:?}"
+        IMAGE_NODES,
+        "expected {IMAGE_NODES} registered node FQNs, got {fqns:?}"
     );
     let (alpha, beta) = (fqns[0].clone(), fqns[1].clone());
 
