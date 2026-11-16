@@ -701,9 +701,21 @@ execution:
     assert_eq!(plan.sched_tasks["high"].spin_period_us, Some(1000));
 
     // Negative control: the switches come from the overlay and nowhere else.
+    // Without one, the image keeps only the default every image gets: the
+    // parameter services, and no safety.
     fs::remove_file(tmp.join("nros.toml")).unwrap();
     let bare = plan_from_model(&model_path, None).expect("plan without overlay");
-    assert!(!bare.param_services && bare.safety.is_none());
+    assert!(bare.param_services, "the default stock node interfaces");
+    assert!(bare.safety.is_none(), "safety is the overlay's switch");
+
+    // ... and an overlay that opts out turns them off.
+    fs::write(
+        tmp.join("nros.toml"),
+        "[meta]\nversion = 3\n[system]\nnode_interfaces = \"none\"\n",
+    )
+    .unwrap();
+    let off = plan_from_model(&model_path, None).expect("plan with the opt-out");
+    assert!(!off.param_services && off.safety.is_none());
 }
 
 /// issue 0794 — the model's `execution.deploy.<fqn>.{domain, locator, rmw}` is
