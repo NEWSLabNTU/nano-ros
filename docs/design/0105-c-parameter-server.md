@@ -393,9 +393,19 @@ items are tracked in phase-491 § Progress.
   empty event when it holds none), so a declaration made before the publisher
   existed is reported, as rclcpp's (whose publisher predates every
   declaration) reports it. The publisher is counted in the sizing
-  (`PARAM_EVENT_PUBLISHERS`, one per executor, held to its one creation site by
+  (`PARAM_EVENT_PUBLISHERS`, held to its one creation site by
   `check-infra-queryable-counts`). An event that does not fit the reply buffer
   is refused whole and logged as an error, never truncated.
+- **D8 amended (2026-11-17, issue 2493, phase-556 W14).** One publisher PER
+  NODE, as stock, where it was one per executor announced under the first
+  node: `ros2 topic info -v /parameter_events` now lists every node of an
+  image. Each node's events go out on that node's writer; opting out drops
+  it. `PARAM_EVENT_PUBLISHERS` is counted per parameter node in the entity
+  inventory and the zenoh liveliness default. On zenoh the writers of one
+  session share ONE zenoh publisher on the data key expression, each with its
+  own publisher liveliness token, gid and sequence number, so a node costs a
+  token and no publisher slot there; DDS and XRCE create an ordinary writer
+  per node.
 - **String arrays** landed with W6 (`rclc_parameter_*_string_array`).
 - **C components** moved onto this API in phase-492 W4 part 2 (2026-10-12),
   with the rest of their C surface, so no component reaches parameters

@@ -160,18 +160,25 @@ pub(crate) struct ParamState<'s> {
     /// ever in flight at once. Its content between requests is scratch.
     #[cfg(feature = "param-services")]
     pub(crate) staged: InternalValue,
-    /// phase-491 W3 (RFC-0105 D8) — the ONE `/parameter_events` publisher,
-    /// created when the first node asks for events
-    /// (`Executor::enable_parameter_events_on`).
+    /// phase-491 W3 (RFC-0105 D8) / issue 2493 — each node's
+    /// `/parameter_events` publisher, keyed by node index, created when that
+    /// node asks for events (`Executor::enable_parameter_events_on`) and
+    /// dropped when it opts out (`Executor::disable_parameter_events_on`).
     ///
-    /// One per executor, not one per node: the topic is global and every
-    /// event names its node in its own `node` field, so a subscriber reads
-    /// the same messages either way, and one handle is what an RTOS image can
-    /// afford beside the store (a handle per node slot is an array of them in
-    /// every image that carves a store). What differs is the graph: the
-    /// publisher is announced under the node that enabled it first.
+    /// One per node, as stock: every node with parameters is a publisher of
+    /// the topic, so `ros2 topic info -v /parameter_events` and
+    /// `ros2 node info` list each of them. Until issue 2493 this was ONE
+    /// handle for the executor, announced under the first node only. A
+    /// backend may still back the writers with one transport publisher (the
+    /// zenoh shim shares one data key expression and declares a liveliness
+    /// token per writer); that is its business, not the executor's.
+    ///
+    /// Bounded like [`ParamState::services`], by [`PARAM_SERVICE_SETS`]: the
+    /// nodes that serve parameters, which is what publishes events. A
+    /// backend handle is hundreds of bytes over the C ABI, so a slot for
+    /// every node-table entry would charge the spare executor slot too.
     #[cfg(feature = "param-services")]
-    pub(crate) event_publisher: Option<crate::session::RmwPublisher>,
+    pub(crate) event_publishers: heapless::Vec<EventPublisher, PARAM_SERVICE_SETS>,
     /// Issue 2023 — nodes that OPTED OUT of `/parameter_events`
     /// (`Executor::disable_parameter_events_on`: rclc's
     /// `notify_changed_over_dds = false`). Every other node whose six services
@@ -231,6 +238,14 @@ pub(crate) struct ParamState<'s> {
     pub(crate) sim_time_via_builder: [bool; MAX_SERVICE_SETS],
 }
 
+/// Issue 2493 — one node's `/parameter_events` publisher.
+#[cfg(feature = "param-services")]
+pub(crate) struct EventPublisher {
+    /// The node's index in the executor's node table (its `NodeKey`).
+    pub(crate) node: usize,
+    pub(crate) publisher: crate::session::RmwPublisher,
+}
+
 impl<'s> ParamState<'s> {
     /// Initialise a `ParamState` IN PLACE at `dst`, one field at a time.
     ///
@@ -264,7 +279,7 @@ impl<'s> ParamState<'s> {
                 addr_of_mut!((*dst).requested).write(false);
                 addr_of_mut!((*dst).buffers).write(buffers);
                 addr_of_mut!((*dst).staged).write(InternalValue::NotSet);
-                addr_of_mut!((*dst).event_publisher).write(None);
+                addr_of_mut!((*dst).event_publishers).write(heapless::Vec::new());
                 addr_of_mut!((*dst).events_opt_out).write(nros_params::NodeFlags::new());
                 addr_of_mut!((*dst).reconcile_failure_reported).write(false);
                 addr_of_mut!((*dst).reconcile_failure).write(None);
