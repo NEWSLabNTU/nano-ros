@@ -623,8 +623,36 @@ impl Context {
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
+        // Issue 2493 -- the declaring holder is the first user.
+        if let Some(users) = publisher_users(self.handle, handle) {
+            users.store(1, portable_atomic::Ordering::Release);
+        }
 
         Ok(Publisher {
+            session: self.handle,
+            handle,
+            _ctx: PhantomData,
+        })
+    }
+
+    /// Issue 2493 -- one more holder of the publisher this session declared
+    /// at `handle`, or `None` when nothing holds it any more (or this build's
+    /// session pool cannot count holders, see [`publisher_users`]).
+    ///
+    /// The publisher is undeclared when its LAST holder drops, so a holder
+    /// obtained here keeps the zenoh publisher up however the holders drop.
+    /// Nothing but the holder count decides it: a publisher whose count
+    /// already reached zero has been undeclared, and its handle may since
+    /// name another key, so a zero is never revived.
+    ///
+    /// `'static` for the reason the shim extends every publisher's lifetime:
+    /// the holder is stored beside the session that owns this context, and
+    /// the C shim keeps the publisher's state, not the borrow.
+    pub(crate) fn share_publisher(&self, handle: i32) -> Option<Publisher<'static>> {
+        if !acquire_holder(publisher_users(self.handle, handle)?) {
+            return None;
+        }
+        Some(Publisher {
             session: self.handle,
             handle,
             _ctx: PhantomData,
@@ -1322,10 +1350,8 @@ impl<'a> Publisher<'a> {
     }
 
     /// The owning session handle (for the shim's direct `publish_streamed`
-    /// call, which bypasses this wrapper). Same cfg as that sole caller —
-    /// `safety-e2e` builds take the staging-buffer path and would otherwise
-    /// trip `-D dead_code`.
-    #[cfg(not(feature = "safety-e2e"))]
+    /// call, which bypasses this wrapper, and since issue 2493 for
+    /// `NodeTopicWriter::put`'s check that it is put on its own session).
     pub(crate) fn session(&self) -> *mut zpico_session_t {
         self.session
     }
@@ -1333,10 +1359,101 @@ impl<'a> Publisher<'a> {
 
 impl<'a> Drop for Publisher<'a> {
     fn drop(&mut self) {
+        // Issue 2493 -- undeclare only when this is the LAST holder; the
+        // others keep publishing on the handle.
+        if let Some(users) = publisher_users(self.session, self.handle)
+            && !release_holder(users)
+        {
+            return;
+        }
         ffi_guard(|| unsafe {
             zpico_undeclare_publisher(self.session, self.handle);
         });
     }
+}
+
+/// Issue 2493 -- how many [`Publisher`] values hold each declared zenoh
+/// publisher, per session pool slot and publisher handle.
+///
+/// Several ROS publishers of one session may share ONE zenoh publisher on one
+/// data key expression (each with its own liveliness token and gid, which
+/// live in the shim's wrapper, not here): the zenoh shim does it for a second
+/// VOLATILE publisher on a key the session already publishes on, which is how
+/// every node of an image is a `/parameter_events` publisher without a zenoh
+/// publisher each. The C shim has one undeclare per handle, so the count says
+/// when it is time. Process-static and indexed by the session's POOL index,
+/// like the shim's wake table, because a holder's drop has no session to ask.
+type PublisherUsers = portable_atomic::AtomicU16;
+
+static PUBLISHER_USERS: [[PublisherUsers; ZPICO_MAX_PUBLISHERS]; ZPICO_MAX_SESSIONS] =
+    [const { [const { PublisherUsers::new(0) }; ZPICO_MAX_PUBLISHERS] }; ZPICO_MAX_SESSIONS];
+
+/// One more holder of a publisher that still has one. `false` when the count
+/// is zero (undeclared, never revived) or saturated.
+fn acquire_holder(users: &PublisherUsers) -> bool {
+    use portable_atomic::Ordering;
+    users
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+            (n != 0 && n != u16::MAX).then(|| n + 1)
+        })
+        .is_ok()
+}
+
+/// One holder fewer; `true` when it was the LAST (or the count was never
+/// set), so the caller undeclares.
+fn release_holder(users: &PublisherUsers) -> bool {
+    use portable_atomic::Ordering;
+    let prev = users
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
+            Some(n.saturating_sub(1))
+        })
+        .unwrap_or(0);
+    prev <= 1
+}
+
+#[cfg(test)]
+mod publisher_holder_tests {
+    use super::{PublisherUsers, acquire_holder, release_holder};
+
+    /// Issue 2493 -- the declaring holder plus two shares: only the third
+    /// release undeclares, whichever holder it is, and a released count is
+    /// never revived (its handle may since name another key).
+    #[test]
+    fn the_last_holder_undeclares_and_zero_is_never_revived() {
+        let users = PublisherUsers::new(1);
+        assert!(acquire_holder(&users));
+        assert!(acquire_holder(&users));
+        assert!(!release_holder(&users), "two holders left");
+        assert!(!release_holder(&users), "one holder left");
+        assert!(release_holder(&users), "the last one undeclares");
+        assert!(!acquire_holder(&users), "a zero count is not revived");
+    }
+
+    /// A count that was never set (a handle declared before the table, or a
+    /// stray drop) still undeclares, as every drop did before issue 2493.
+    #[test]
+    fn an_uncounted_drop_undeclares() {
+        let users = PublisherUsers::new(0);
+        assert!(release_holder(&users));
+        assert!(!acquire_holder(&users));
+    }
+
+    /// A saturated count refuses another share rather than wrapping to zero.
+    #[test]
+    fn a_saturated_count_refuses_a_share() {
+        let users = PublisherUsers::new(u16::MAX);
+        assert!(!acquire_holder(&users));
+    }
+}
+
+/// The holder count of `session`'s publisher `handle`, or `None` when the
+/// session is not a pool slot (the no-C stub answers -1) or the handle is out
+/// of range. `None` means "not counted": a drop then undeclares, as every
+/// drop did before issue 2493, and nothing can share the publisher.
+fn publisher_users(session: *mut zpico_session_t, handle: i32) -> Option<&'static PublisherUsers> {
+    let s = usize::try_from(crate::shim::session_wake_index(session)).ok()?;
+    let h = usize::try_from(handle).ok()?;
+    PUBLISHER_USERS.get(s)?.get(h)
 }
 
 // ============================================================================
