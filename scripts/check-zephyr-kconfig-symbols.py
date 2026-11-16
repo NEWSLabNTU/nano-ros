@@ -39,8 +39,10 @@ late.
 
 ## Trees
 
-  3.7   $NROS_ZEPHYR_WORKSPACE/zephyr, else zephyr-workspace/zephyr
-  4.4   build/zephyr-kconfig/zephyr-4.4, else ../nano-ros-workspace-4.4/zephyr
+  3.7   the shared resolver's workspace (scripts/lib/zephyr-workspace.sh), else
+        $NROS_ZEPHYR_WORKSPACE/zephyr, else zephyr-workspace/zephyr
+  4.4   the shared resolver's workspace, else build/zephyr-kconfig/zephyr-4.4,
+        else ../nano-ros-workspace-4.4/zephyr
 
 The 4.4 tree does not need a west workspace (~20 modules, and issue 0078 filled
 a CI disk building one). Kconfig lives in the `zephyr` repo alone:
@@ -65,6 +67,23 @@ REF = re.compile(r"^\s*(?:select|imply|depends\s+on)\s+(.+?)\s*$", re.M)
 SYMBOL = re.compile(r"\b([A-Z][A-Z0-9_]{2,})\b")
 DEFINES = re.compile(r"^\s*(?:menu)?config\s+([A-Z0-9_]+)\s*$", re.M)
 
+# A preprocessor call or macro reference, innermost first (applied repeatedly).
+PREPROCESSOR_ONE = re.compile(r"\$\([^()]*\)")
+
+
+class _Pre:
+    """Strip nested `$(...)` by repeatedly removing the innermost call."""
+
+    @staticmethod
+    def sub(repl, text):
+        prev = None
+        while prev != text:
+            prev, text = text, PREPROCESSOR_ONE.sub(repl, text)
+        return text
+
+
+PREPROCESSOR = _Pre()
+
 # Kconfig keywords / literals that match the symbol shape but are not symbols.
 NOT_SYMBOLS = {"IF", "ON", "Y", "N", "M", "AND", "OR", "NOT"}
 
@@ -75,7 +94,12 @@ def referenced_symbols(text: str):
     out = {}
     for m in REF.finditer(text):
         line_no = text[: m.start()].count("\n") + 1
-        for sym in SYMBOL.findall(m.group(1)):
+        # `$(fn,...)` is the Kconfig PREPROCESSOR (dt_chosen_enabled,
+        # dt_compat_enabled, a `NAME := value` macro): text, not symbols. Its
+        # macro names (DT_CHOSEN_Z_ITCM) matched the symbol shape and were the
+        # first two false positives the first real run of this gate reported.
+        expr = PREPROCESSOR.sub(" ", m.group(1))
+        for sym in SYMBOL.findall(expr):
             if sym in NOT_SYMBOLS or sym in ours or sym.startswith("NROS_"):
                 continue
             out.setdefault(sym, line_no)
@@ -109,7 +133,24 @@ def line_trees():
     """
     kc = os.path.join(ROOT, "build", "zephyr-kconfig")
     ws = os.environ.get("NROS_ZEPHYR_WORKSPACE") or os.path.join(ROOT, "zephyr-workspace")
-    candidates = [
+    candidates = []
+    # The shared resolver first (phase-440 W1's one spelling): the workspace
+    # `just setup zephyr` installs, which lives in the store, not in the
+    # checkout. Without it this gate found no tree on a host that had both
+    # (nightly.yml's dual-line job, where it now runs), and failed as
+    # "verified NOTHING".
+    for line in ("3.7", "4.4"):
+        try:
+            got = subprocess.run(
+                [os.path.join(ROOT, "scripts", "lib", "zephyr-workspace.sh"),
+                 "--version", line, "resolve"],
+                capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if got.returncode == 0 and got.stdout.strip():
+            w = got.stdout.strip()
+            candidates.append((line, [os.path.join(w, "zephyr"), os.path.join(w, "modules")]))
+    candidates += [
         # A west workspace already holds zephyr + every module: walk zephyr and
         # `modules/` rather than the whole tree (bootloader/tools carry no
         # symbols we reference, and skipping them keeps this seconds, not minutes).
@@ -174,6 +215,13 @@ def self_test():
     refs = referenced_symbols("config NROS_X\n\tselect FOO if BAR\n")
     if "IF" in refs or "FOO" not in refs or "BAR" not in refs:
         sys.stderr.write("self-test: `select FOO if BAR` mis-parsed\n")
+        sys.exit(2)
+    # The preprocessor is text, not symbols: a macro name inside `$(...)`
+    # (even nested) is not a reference, while a real symbol beside it still is.
+    refs = referenced_symbols(
+        "config NROS_Y\n\tdepends on UART_X && $(dt_chosen_enabled,$(DT_CHOSEN_Z_ITCM))\n")
+    if "DT_CHOSEN_Z_ITCM" in refs or "UART_X" not in refs:
+        sys.stderr.write("self-test: a `$(...)` macro was read as a symbol, or its neighbour lost\n")
         sys.exit(2)
     sys.stdout.write("check-zephyr-kconfig-symbols self-test: OK\n")
 

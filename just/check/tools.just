@@ -197,7 +197,6 @@ stack-elf elf top="30":
 # image from a `check` lane would need a fixture (banned) or would skip when
 # absent, and a skip is exactly the silence this gate exists to end.
 [private]
-[metadata("tier", "exempt", "in no lane and no caller found — issue 1071's class")]
 stack-floor:
     @python3 scripts/check-stack-floor.py --selftest
     @python3 scripts/check-stack-floor.py --claims

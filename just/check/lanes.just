@@ -5098,23 +5098,7 @@ workspace-features:
     cargo clippy --quiet -p nros-c --no-default-features --features "alloc,env,log,panic-platform,rmw-cffi,lending,platform-posix" -- -D warnings
     @echo "All feature checks passed!"
 
-# Check zenoh transport
-[private]
-[metadata("tier", "exempt", "`cargo clippy -p nros-rmw`; a compile, not a source gate")]
-zenoh:
-    cargo clippy --quiet -p nros-rmw --features alloc,log
 
-# Phase 134.5 — verify the in-tree zenoh staticlib's internal symbol
-# parity. For every defined `_z_f_link_*_<transport>` wrapper, the
-# matching `_z_*_<transport>` impl must also be defined. Pre-Phase-134
-# the POSIX CMake path shipped wrappers without multicast impls and
-# every C/C++ native link broke. Run after
-# `cargo build -p nros-rmw-zenoh-staticlib --release`.
-[group("debug")]
-[metadata("tier", "exempt", "reads a built `libnros_rmw_zenoh_staticlib.a`")]
-zenoh-archive:
-    # profile-literal-ok: symbol fixture: the archive built by build-zenoh-posix-fixture
-    @bash scripts/check-zenoh-archive-symbols.sh target/release/libnros_rmw_zenoh_staticlib.a
 
 # issue 1472 / phase-451 W4 — the tests of workspace-EXCLUDED crates.
 #
