@@ -220,7 +220,9 @@ pub fn build_rv64_c_errno_isolation() -> TestResult<&'static Path> {
 /// rather than `nano_ros_add_executable()`. Resolved like any cmake example.
 pub fn build_rv64_c_typed_carrier() -> TestResult<&'static Path> {
     RV64_C_TYPED_CARRIER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "typed-carrier", "c_typed_carrier"))
+        .get_or_try_init(|| {
+            build_cmake_example("c", "typed-carrier", "riscv64_threadx_c_typed_carrier")
+        })
         .map(|p| p.as_path())
 }
 
