@@ -68,6 +68,29 @@ rosidl-lower = { path = "rosidl-lower" }
 rosidl-codegen = { path = "rosidl-codegen" }
 nros-msg-to-idl = { path = "nros-msg-to-idl" }
 
+# Issue 2654 (user ruling 2026-11-16) — the CLI's release build is
+# incremental. `just setup-cli` rebuilds this workspace whenever the checkout
+# moves (ASI follows main), and without it an edit or a commit rebuilt
+# `nros-cli-core` in 35-39 s; with it, 5 s. Every other setting stays cargo's
+# default release (opt-level 3, thin-local LTO, unwind), and release-nros.yml
+# builds the shipped `nros` with this same profile, so dev-mode and the shipped
+# binary match.
+#
+# It is HERE and not in the shared `.cargo/config.toml` on purpose:
+# `check-cargo-profile-mirror` requires a profile defined in both that file and
+# the root `Cargo.toml` to be identical, and the root's `[profile.release]` is
+# fat LTO + `codegen-units = 1` + `panic = "abort"`. A shared `release` would
+# carry those to the CLI, a far slower build, and `panic = "abort"` would end
+# `nros setup`'s per-step `catch_unwind` (one failing install step would kill
+# the run). The shared `dev` profile stays `incremental = false` for phase-340
+# W6's sccache reason (issue 2656).
+#
+# Cost, measured: the target dir is about 1.7 GB, against 0.59 GB. It stays
+# flat across rebuilds (rustc collects its own stale sessions), so no sweep is
+# needed.
+[profile.release]
+incremental = true
+
 [profile.dev-release]
 inherits = "release"
 debug = true
