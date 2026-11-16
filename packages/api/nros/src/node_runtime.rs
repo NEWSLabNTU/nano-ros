@@ -2229,13 +2229,18 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                 Ok(())
             }),
             EntityKind::Parameter => out_of_line(|| {
+                // Issue 2360 -- ONE value, filled in place. A `ParameterValue`
+                // is as large as its largest variant (~8 KiB at the default
+                // capacities). Built by value, every arm of the conversion and
+                // the `unwrap_or` fallback kept its own copy in this frame:
+                // 24,960 B of main stack on thumbv7m for one declared
+                // parameter.
+                let mut value = nros_params::ParameterValue::NotSet;
+                param_default_into(metadata.parameter_default.as_ref(), &mut value);
                 // Issue 1419 — the declaration as the code made it, BEFORE the
                 // store answers and whether or not `param-services` gives this
                 // image a store at all: the census describes the code.
-                crate::census_hooks::on_param_declare(
-                    metadata.source_name.as_str(),
-                    &param_default_to_value(metadata.parameter_default.as_ref()),
-                );
+                crate::census_hooks::on_param_declare(metadata.source_name.as_str(), &value);
                 // Phase 212.M-F.23 Wave 2 — declarative parameter dispatch on
                 // the single-node runtime. The first declared parameter lazily
                 // stands up the 6 ROS 2 parameter services for this executor's
@@ -2258,7 +2263,6 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                             .register_parameter_store()
                             .map_err(decl_err_from_node)?;
                     }
-                    let value = param_default_to_value(metadata.parameter_default.as_ref());
                     let name = metadata.source_name.as_str();
                     // phase-446 W6 -- the code must declare what the node's
                     // contract declares: the store was sized from it (W4). A
@@ -2337,27 +2341,44 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
 /// `NotSet` — the parameter is still declared, just without a concrete array
 /// default. A `Double` default is stored as a string at the metadata layer and
 /// parsed here (unparseable → `0.0`).
-fn param_default_to_value(
+/// Write a declared parameter's source default into `out`, in place.
+///
+/// Issue 2360. This used to return the value, and a `ParameterValue` is as
+/// large as its largest variant (~8 KiB at the default capacities), so each
+/// match arm and the string arm's `unwrap_or` fallback built a full-size copy
+/// in the caller's frame. Writing through `out` keeps exactly one: the
+/// caller's. A string longer than the store's string capacity is `NotSet`, as
+/// before.
+#[inline(never)]
+fn param_default_into(
     default: Option<&crate::node_metadata::ParameterDefault>,
-) -> nros_params::ParameterValue {
+    out: &mut nros_params::ParameterValue,
+) {
     use crate::node_metadata::ParameterDefault;
     use nros_params::ParameterValue;
     match default {
-        None => ParameterValue::NotSet,
-        Some(ParameterDefault::Bool(b)) => ParameterValue::Bool(*b),
-        Some(ParameterDefault::Integer(i)) => ParameterValue::Integer(*i),
+        None => *out = ParameterValue::NotSet,
+        Some(ParameterDefault::Bool(b)) => *out = ParameterValue::Bool(*b),
+        Some(ParameterDefault::Integer(i)) => *out = ParameterValue::Integer(*i),
         Some(ParameterDefault::Double(s)) => {
-            ParameterValue::Double(s.as_str().parse::<f64>().unwrap_or(0.0))
+            *out = ParameterValue::Double(s.as_str().parse::<f64>().unwrap_or(0.0))
         }
         Some(ParameterDefault::String(s)) => {
-            ParameterValue::from_string(s.as_str()).unwrap_or(ParameterValue::NotSet)
+            *out = ParameterValue::String(Default::default());
+            let fits = match out {
+                ParameterValue::String(dst) => dst.push_str(s.as_str()).is_ok(),
+                _ => false,
+            };
+            if !fits {
+                *out = ParameterValue::NotSet;
+            }
         }
         Some(
             ParameterDefault::BoolArray
             | ParameterDefault::IntegerArray
             | ParameterDefault::DoubleArray
             | ParameterDefault::StringArray,
-        ) => ParameterValue::NotSet,
+        ) => *out = ParameterValue::NotSet,
     }
 }
 
@@ -3418,6 +3439,61 @@ pub fn seed_node_rank(
 mod tests {
     use super::*;
     use crate::node::Component;
+
+    /// Issue 2360 -- the in-place conversion gives what the by-value one gave:
+    /// the string arm is `from_string`'s answer (`NotSet` when the string does
+    /// not fit the store's capacity), a double is parsed, and an array default
+    /// is `NotSet`. Each case starts from a value of a DIFFERENT variant, so a
+    /// stale payload left in `out` would show.
+    #[test]
+    fn a_parameter_default_is_written_in_place() {
+        use crate::node_metadata::{MetadataString, ParameterDefault};
+        use core::fmt::Write as _;
+        use nros_params::ParameterValue;
+        let text = |s: &str| MetadataString::try_from(s).unwrap();
+        // `ParameterValue` has no `PartialEq`; its `Debug` names the variant
+        // and the payload, which is what these cases compare.
+        let shown = |v: &ParameterValue| {
+            let mut out: heapless::String<512> = heapless::String::new();
+            write!(out, "{v:?}").unwrap();
+            out
+        };
+        let convert = |d: Option<&ParameterDefault>| {
+            let mut out = ParameterValue::Integer(7);
+            param_default_into(d, &mut out);
+            shown(&out)
+        };
+        assert_eq!(convert(None), shown(&ParameterValue::NotSet));
+        assert_eq!(
+            convert(Some(&ParameterDefault::Bool(true))),
+            shown(&ParameterValue::Bool(true))
+        );
+        assert_eq!(
+            convert(Some(&ParameterDefault::Integer(-3))),
+            shown(&ParameterValue::Integer(-3))
+        );
+        assert_eq!(
+            convert(Some(&ParameterDefault::Double(text("2.5")))),
+            shown(&ParameterValue::Double(2.5))
+        );
+        assert_eq!(
+            convert(Some(&ParameterDefault::Double(text("not a number")))),
+            shown(&ParameterValue::Double(0.0))
+        );
+        for s in ["", "hello", "a longer default string than most"] {
+            let mut out = ParameterValue::Bool(false);
+            param_default_into(Some(&ParameterDefault::String(text(s))), &mut out);
+            assert_eq!(
+                shown(&out),
+                shown(&ParameterValue::from_string(s).unwrap_or(ParameterValue::NotSet)),
+                "string default {s:?}"
+            );
+        }
+        assert_eq!(
+            convert(Some(&ParameterDefault::StringArray)),
+            shown(&ParameterValue::NotSet)
+        );
+    }
 
     #[test]
     fn handle_slot_is_observable() {
