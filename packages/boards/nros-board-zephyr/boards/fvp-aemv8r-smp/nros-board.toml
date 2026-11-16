@@ -52,6 +52,16 @@ rust_components = ["clippy"]
 [board.run]
 emulator = "fvp:FVP_BaseR_AEMv8R"
 
+# Issue 2629 — the model parameters every image on this board needs. Without
+# the SMSC 91C111 enabled the model has no network at all; promiscuous mode is
+# what lets it receive multicast (DDS discovery). Zephyr's own line enables the
+# NIC only when the image's Kconfig selects its driver, so the board states it
+# for every image. `nros build` hands these, with the image's `[image.<id>.run]`
+# `nic` and `params`, to Zephyr's `armfvp.cmake` as `ARMFVP_EXTRA_FLAGS` at
+# CONFIGURE, which is where both `west build -t run` and `nros run` read them.
+[board.run.fvp]
+params = ["bp.smsc_91c111.enabled=1", "bp.smsc_91c111.promiscuous=1"]
+
 [board.provisioning]
 zephyr_line = "3.7"
 # AArch64 AEMv8-R: zephyr-lang-rust's `_rust_map_target` returns this triple

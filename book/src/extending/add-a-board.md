@@ -91,8 +91,10 @@ your RTOS yet, [add the platform](add-a-platform.md) first.
 
    - `[board.run]` holds `emulator = "<kind>:<machine>"` (`qemu`, `fvp`
      or `renode`) or `host = true`. A QEMU board adds
-     `[board.run.qemu]`. Real silicon with no emulator twin leaves
-     `[board.run]` out.
+     `[board.run.qemu]`. An Arm FVP board adds `[board.run.fvp] params`
+     for the model parameters every image on it needs, each written as it
+     would follow `-C` (`"bp.smsc_91c111.enabled=1"`). Real silicon with no
+     emulator twin leaves `[board.run]` out.
    - `[board.flash]` names the flasher `method` (`west`, `probe-rs`,
      `openocd`, `picotool`, …), the `chip` in that flasher's spelling, and the
      `prepare` steps a person does first. Each step is `say`, `wait_for` (an

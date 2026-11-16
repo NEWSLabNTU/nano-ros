@@ -513,6 +513,33 @@ shape.
   flash section could replace `book_flash` then. Also the heap measurement
   above. (Moving the knobs into `[knobs]` is done: issue 2194.)
 
+#### W3 addition — an FVP's model parameters (issue 2629, 2026-11-16)
+
+**Done.** The Autoware safety island (GH #4007) booted its `fvp-aemv8r-smp`
+image with model parameters that no row could state. It passed them through
+`ARMFVP_EXTRA_FLAGS` and read `build.ninja` back for the run command. The
+design is RFC-0118 D4a (and RFC-0115 Amendment 2), approved by the
+maintainer:
+
+- **Board.** `[board.run.fvp] params` in the board's descriptor holds what
+  every image needs. `fvp-aemv8r-smp` states the SMSC 91C111 enable and its
+  promiscuous mode.
+- **Image.** `[image.<id>.run] nic = { tap = "<dev>" }` now also works under
+  an FVP: it lowers to the model's host-bridge TAP mode. `{ bridge = … }` is
+  refused there. `[image.<id>.run] params` holds the parameters an image
+  chooses (a UART capture file). Only an `fvp:` board reads them, and any
+  other board refuses them.
+- **One carrier.** `nros build`'s west road passes all of them, in that
+  order, to Zephyr's `armfvp.cmake` as `-DARMFVP_EXTRA_FLAGS`. Both
+  `west build -t run` and `nros run` run the `run_armfvp` target it writes,
+  and the fvp runner adds no parameter of its own. They are bound at
+  configure, so changing one re-configures the image.
+- **Acceptance:** `nros-orchestration-ir`'s three `fvp` tests,
+  `an_fvp_image_hands_its_model_parameters_to_the_configure` (CLI), and
+  `the_runner_adds_no_model_flag_of_its_own` (`nros_runner_fvp`). A real
+  configure's `run_armfvp` line carries the parameters (issue 2629's
+  Resolution has the measurement).
+
 ### W4 — Probe tracks and serial-first chapters
 
 Generate the tracks `renode-uno-r4`, `renode-nucleo`, `wokwi-pico` from the
@@ -941,7 +968,7 @@ and the name misleads anyone who reads it as the board's platform.
 | [#2379](../issues/archived/2379-zephyr-qemu-boards-state-board-run-qemu.md) | W3 | **Resolved** 2026-11-16 (fixed by 1a7d61024a; its unrun a53 SMP cell now ACCEPTs). Homed 2026-11-09 (phase-544, where issue 2172's one-source rule landed, is closing). The Zephyr QEMU boards (`mps2-an385-zephyr`, `qemu-cortex-a53`) state `[board.run.qemu]` so the harness reads them from the descriptor, held to Zephyr's own `run_qemu` line before every boot; `nros run` keeps the `west` road. |
 | [#2375](../issues/archived/2375-renode-chain-lifetime-unmeasured.md) | W4c | **Resolved** 2026-11-15. `killed_run_verb` has the Nucleo twin's SIGKILL and Ctrl-C cases, through the real `renode` runner. A negative control (the chain tie removed) turns the SIGKILL case red. |
 | [#2607](../issues/archived/2607-zephyr-stale-workspace-module-fails-as-dtsi-error.md) | W2 | **Resolved** 2026-11-15. Found measuring 2375. A workspace missing a module `west.yml` lists (here `hal_stm32`, which W2 brought back) fails deep in configure as a devicetree "No such file", including when the module directory exists but the workspace's own manifest copy omits it. `just zephyr build-fixtures` now refuses it before configure when a board in the build needs the module, naming `just zephyr setup`, and `just zephyr doctor` reports it as `[MISSING]`. |
-| [#2629](../issues/2629-fvp-runner-model-parameter-rows.md) | W3 | Filed 2026-11-16 from the Autoware safety island (GH #4007). `fvp-aemv8r-smp`'s twin needs FVP model parameters (the SMSC NIC enable, tap networking, a UART output file) that no board or image row can state, so the consumer passes them through `ARMFVP_EXTRA_FLAGS` and parses `build.ninja` to boot the model. |
+| [#2629](../issues/archived/2629-fvp-runner-model-parameter-rows.md) | W3 | **Resolved** 2026-11-16 (W3 addition above). Filed 2026-11-16 from the Autoware safety island (GH #4007). `fvp-aemv8r-smp`'s twin needs FVP model parameters (the SMSC NIC enable, tap networking, a UART output file) that no board or image row can state, so the consumer passes them through `ARMFVP_EXTRA_FLAGS` and parses `build.ninja` to boot the model. |
 | [#2630](../issues/archived/2630-fvp-aemv8r-newlib-lacks-fabsl.md) | W3 | **Resolved** 2026-11-16. GitHub #4017, consumer ASI on `fvp-aemv8r-smp`. newlib declares no `fabsl` where long double is binary128, so Eigen's long-double `absdiff` stopped every C++ TU; `zephyr/cxx-compat/cmath` supplies `fabsl` and `copysignl` (exact sign-bit builtins) on newlib only, and ASI drops its BOARD-keyed define. |
 | [#2631](../issues/archived/2631-s32z270-rtu0-zephyr-board-descriptor.md) | W3 | **Resolved** 2026-11-16. GitHub #4014, consumer ASI. The `s32z270-rtu0-zephyr` descriptor (`west_board = "s32z2xxdc2@D/s32z270/rtu0"`, link-only); a revision in `west_board` now drops out of the `BOARD_<X>` symbol and the per-board file stem, as Zephyr's own rule does. |
 | [#2632](../issues/2632-s32z270-freertos-rtd-variant.md) | W3 | GitHub #4015, consumer ASI on S32Z270 hardware. The NXP RTD variant `s32z270-freertos-rtd` (GCC/ARM_CR52_GIC port, gated NXP kernel + RTD, nano-ros tasks on the port's `xTaskCreate*Fpu`) landed 2026-11-16; the NETC netif glue stays open (needs the RTD on a host). |
