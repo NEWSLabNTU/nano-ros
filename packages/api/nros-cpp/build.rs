@@ -87,8 +87,9 @@ fn emit_config_include() {
     println!("cargo:include={manifest_dir}/include");
 }
 
-/// Phase 241 W11 (Option D) — emit a `#[used]` anchor that force-references every
-/// `#[unsafe(no_mangle)] extern "C"` entry point this crate defines.
+/// Phase 241 W11 (Option D) — emit an anchor that force-references every
+/// `#[unsafe(no_mangle)] extern "C"` entry point this crate defines. Not `#[used]`, for
+/// the reason `nros-c`'s `generate_c_surface_anchor` gives (issue 2623).
 ///
 /// Mirrors `nros-c`'s `generate_c_surface_anchor`, one level up. Today `nros-cpp` is the
 /// C++ umbrella's staticlib root, so its own `nros_cpp_*` no_mangle symbols survive DCE
@@ -282,7 +283,7 @@ fn generate_cpp_surface_anchor() {
     out.push_str("    }\n");
     let _ = writeln!(
         out,
-        "    #[used]\n    pub static CPP_SURFACE_ANCHOR: [unsafe extern \"C\" fn(); {}] = [",
+        "    pub static CPP_SURFACE_ANCHOR: [unsafe extern \"C\" fn(); {}] = [",
         names.len()
     );
     for n in &names {
