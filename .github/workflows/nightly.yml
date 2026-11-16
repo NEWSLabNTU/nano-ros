@@ -1120,6 +1120,20 @@ jobs:
           source ./activate.sh
           just zephyr test-c-port
 
+      # phase-565 W4 — the Zephyr Kconfig stamp gate (phase-530 W4), which sat
+      # in no lane and no workflow. Its only precondition is a provisioned 3.7
+      # workspace, which this job has. Own step + `!cancelled()`, so a red
+      # above does not withhold its verdict; STRICT so a missing workspace is
+      # red, not a ledger skip.
+      - name: Zephyr Kconfig stamp gate (3.7)
+        if: ${{ !cancelled() }}
+        env:
+          NROS_CHECK_SKIP_STRICT: "1"
+          NROS_ZEPHYR_VERSION: "3.7"
+        run: |
+          source ./activate.sh
+          just check zephyr-kconfig-stamp
+
   # phase-557 W8 — a recorded stack-floor `static` that drifts is caught here,
   # not found by accident. Re-walks every `[[observed]]` row's image (a fresh
   # `nros new` for a template key, the in-tree bringup for a bringup key) and

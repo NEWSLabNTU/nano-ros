@@ -716,6 +716,13 @@ def main(argv: list[str]) -> int:
                 return 2
             print(nextest_config(b, junit, order))
             return 0
+        if lane == "exempt":
+            # The gates in NO lane, with the reason each carries:
+            # `<name>\t<reason>` (check-default-gates-run-somewhere's R4).
+            tiers = recipe_tiers()
+            for name in b["exempt"]:
+                print(f"{name}\t{' '.join(tiers.get(name, [])[1:])}")
+            return 0
         if lane == "all":
             names = sorted(b["fast"] + b["build"])
         elif lane in ("fast", "build"):
