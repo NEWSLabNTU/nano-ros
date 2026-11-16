@@ -625,6 +625,9 @@ nothing, so the island's controller listed 64 of its 149 parameters, and
 `get_parameters` refused the request `dump` sends for all of them. Both now
 answer every name; without a `params:` declaration the service buffers are
 sized for a full store, and the prefix and depth filters follow rclcpp.
+The 70 parameters the interop case counts live on the fixture's own `/bulk`
+node, not `/alpha`, whose list the ros2_cli parity cases compare with stock
+([issue 2662](../issues/archived/2662-parity-params-bulk-on-alpha.md)).
 
 ### I23 -- board-facts resolves a workspace board as `nros build` does
 
@@ -756,7 +759,7 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       `_SKIPFIRST_THROTTLE` exist at every level; `log_conditional_runtime` (issue 2636).
 - [x] I22: `list_parameters` answers every name and `get_parameters` takes a
       list as long as the store; stock `ros2 param list` / `dump` over 70
-      parameters in the two-node interop fixture (issue 2639).
+      parameters on the interop fixture's `/bulk` node (issues 2639, 2662).
 - [x] I24: every CMake configure `nros build` starts names that `nros` as
       the codegen tool, and a bare re-configure refuses a cached tool outside
       the accepted codegen range; `build_verb_pipeline.rs` and
@@ -791,6 +794,7 @@ this phase will fix it.
 Filed from the Autoware Safety Island's phase-15 P3 on nano-ros 5b9e8844a4.
 
 - [issue 2652](../issues/archived/2652-codegen-tool-cache-outlives-invoker.md) (GitHub #4067, resolved): a build dir kept the cached `nros` codegen tool after a different `nros build` ran into it (I24). Found on nano-ros 09219edc75.
+- [issue 2662](../issues/archived/2662-parity-params-bulk-on-alpha.md) (GitHub #4091, resolved): two ros2_cli parity params cases failed once issue 2639's 70 bulk parameters were on `/alpha`, the node they compare with stock (I22).
 - [issue 2639](../issues/archived/2639-list-parameters-silently-caps-at-64.md) (resolved): `ros2 param list` and `ros2 param dump` showed 64 of the controller's 149 parameters and said nothing (I22).
 - [issue 2638](../issues/archived/2638-launch-list-param-flattened-to-string.md) (resolved): a list parameter from a `<param from>` file reached the node as one comma-joined string (I20).
 - [issue 2640](../issues/2640-metadata-probe-no-launch-values.md): the C/C++ metadata probe constructs a node with no launch values and a default-size store, so a node declaring parameters without defaults cannot be probed.

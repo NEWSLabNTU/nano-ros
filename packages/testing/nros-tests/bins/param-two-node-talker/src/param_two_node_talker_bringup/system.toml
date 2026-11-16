@@ -20,8 +20,8 @@ features = ["param_services"]
 # Host build. The locator and domain stay runtime env on native.
 [image_defaults]
 board = "linux"
-# Issue 2639 -- `alpha` declares 70 `bulk.pNN` parameters on top of its own,
-# past the generated `rcl_interfaces` message's 64 (the default store holds 32).
+# Issue 2639 -- a third node, `bulk`, declares 70 `bulk.pNN` parameters, past
+# the generated `rcl_interfaces` message's 64 (the default store holds 32).
 knobs.params.max_parameters = 96
 
 # One image per RMW (RFC-0031): `nros configure --image <id> && nros build <id>`.
