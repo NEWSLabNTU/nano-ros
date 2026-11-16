@@ -359,6 +359,7 @@ NOT_ALLOWED
 NodeEntitiesInfo_
 NodeGraph::get_client_names_and_types_by_node
 NodeGraph::get_publisher_names_and_types_by_node
+NodeParameters::list_parameters
 ParticipantEntitiesInfo
 QosPresets::PARAMETERS
 RCLCPP_SMART_PTR_DEFINITIONS

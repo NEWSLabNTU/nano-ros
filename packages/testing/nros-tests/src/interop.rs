@@ -866,6 +866,7 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     co("params_per_node_interop", "ros2_param_cli_addresses_each_node_by_its_own_fqn", "native-params-per-node-rust-zenoh"),
     co("params_per_node_interop", "ros2_topic_echo_sees_each_nodes_parameter_events", "native-params-per-node-rust-zenoh"),
     co("params_per_node_interop", "ros2_param_set_refuses_undeclared_and_off_step",    "native-params-per-node-rust-zenoh"),
+    co("params_per_node_interop", "ros2_param_list_and_dump_answer_every_name_past_64", "native-params-per-node-rust-zenoh"),
     co("params_per_node_interop", "ros2_param_cli_addresses_each_node_on_cyclonedds",  "native-params-per-node-rust-cyclone"),
     co("params_per_node_interop", "xrce_set_parameters_naming_25_declared_lands",      "native-params-25-rust-xrce"),
 
