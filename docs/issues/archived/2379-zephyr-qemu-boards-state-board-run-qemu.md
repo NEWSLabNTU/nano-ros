@@ -1,15 +1,17 @@
 ---
 id: 2379
 title: "The Zephyr QEMU boards state no [board.run.qemu], so the harness restates their QEMU line and nothing holds it to Zephyr's board.cmake"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: [testing, qemu, zephyr, boards]
 related: [issue-2172, phase-524, phase-528]
 found: 2026-11-09
+resolved: 2026-11-16
+resolved_in: "phase-524 (commit 1a7d61024a)"
 ---
 
-**Home: [phase-524](../roadmap/phase-524-emulator-twins.md)** (its "Issues
+**Home: [phase-524](../../roadmap/phase-524-emulator-twins.md)** (its "Issues
 homed here" table). Phase-544, where issue 2172's one-source rule landed, is
 closing; phase-524 owns the emulator boards and RFC-0115's "every board fact
 is typed once".
@@ -112,5 +114,17 @@ fresh in the same tree after `just setup-cli`.
 * Unit: `nros-orchestration-ir --lib` 345, `nros-qemu-ladder` 5,
   `nros-tests --lib` 296, `nros-cli-core --lib` 2289, all passed. Clippy
   `-D warnings --all-targets` clean on all four crates.
-* Not run: the `qemu_cortex_a53` smp cell (`sched_dims_applied_e2e`); its
-  descriptor is checked against the generated line in the unit test only.
+* The `qemu_cortex_a53` smp cell (`sched_dims_applied_e2e`) was not run on
+  2026-11-09; its descriptor was checked against the generated line in the
+  unit test only.
+
+## Closed (2026-11-16)
+
+The fix landed on main as 1a7d61024a. The one cell it left unrun has now run.
+`build-ws-c-realtime-entry-smp` was built fresh from main on Zephyr 3.7, and
+`cargo nextest run -p nros-tests --test sched_dims_applied_e2e` reported
+`sched-dim arm: [zephyr c CorePinPlacement] ACCEPT`. So the `qemu_cortex_a53`
+SMP image booted through `west_qemu_boot`, from the descriptor's
+`[board.run.qemu]` (`-smp cpus=2` included), and its sched task ran on the core
+it asked for. That run's other 16 cells were not built on that host
+(`[UNMET PRECONDITION]`), and none of them is this issue's.
