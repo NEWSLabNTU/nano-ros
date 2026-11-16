@@ -109,7 +109,7 @@ pub use types::{
     MAX_BYTE_ARRAY_LEN, MAX_PARAM_CONSTRAINTS_LEN, MAX_PARAM_DESCRIPTION_LEN, MAX_PARAM_NAME_LEN,
     MAX_PARAMETERS, MAX_STRING_ARRAY_LEN, MAX_STRING_VALUE_LEN, NodeFlags, NodeKey,
     PARAM_EVENTS_DEPTH, Parameter, ParameterDescriptor, ParameterRange, ParameterType,
-    ParameterValue, ParameterVariant, fit_description,
+    ParameterValue, ParameterVariant, STOCK_STORE_SLOTS, fit_description,
 };
 
 /// The knob that sizes the parameter store, in every spelling a user writes.
