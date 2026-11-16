@@ -575,7 +575,7 @@ endfunction()
 # `nros configure` refuses a leaf whose launch tree states no contract, and
 # that is right for it: the leaf states its entities another way -- a Rust
 # leaf through its probe sidecars, a C/C++ leaf through `[[component]]
-# entities` or its census -- and `nros ws west-leaf-sizing` composes those.
+# entities` or its census -- and `nros dev image west-leaf-sizing` composes those.
 # The cargo build asks that verb for the knobs (`_nros_west_leaf_sizing`, after
 # Kconfig); the pool defaults are read BY Kconfig, so this asks the same verb
 # first. Without it the pools kept the module's defaults on every such leaf
@@ -589,15 +589,16 @@ function(_nros_image_kconfig_leaf_counts _out _cli _leaf _image _nros_dir)
     set(_d "${_nros_dir}/pthread-pool-counts")
     file(MAKE_DIRECTORY "${_d}")
     file(REMOVE "${_d}/counts.cmake")
+    nros_codegen_tool_reconfigure("${_cli}")
     execute_process(
-        COMMAND "${_cli}" ws west-leaf-sizing --leaf "${_leaf}" --build-dir "${_d}"
+        COMMAND "${_cli}" dev image west-leaf-sizing --leaf "${_leaf}" --build-dir "${_d}"
                 --output-cmake "${_d}/counts.cmake"
                 --nano-ros-path "${_NROS_IMAGE_KCONFIG_ROOT}" --image "${_image}"
         OUTPUT_VARIABLE _o ERROR_VARIABLE _e RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR
-            "nano-ros: `nros ws west-leaf-sizing` failed for ${_leaf} [image.${_image}], "
+            "nano-ros: `nros dev image west-leaf-sizing` failed for ${_leaf} [image.${_image}], "
             "which the zenoh pthread pool defaults are derived from:\n${_e}")
     endif()
     set(_basis "")
