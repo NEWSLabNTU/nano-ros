@@ -435,8 +435,11 @@ can tell that the remap happened at build time rather than at launch.
 
 ## Parameters from a file
 
-For more than a few values, a node loads a standard ROS 2 parameter file,
-named relative to the launch file:
+For more than a few values, a node loads a standard ROS 2 parameter file.
+Start its path with `$(dirname)`, the launch file's own directory. A bare
+relative path is resolved against the working directory, not the launch
+file, exactly as `ros2 launch` resolves it, so it breaks as soon as the
+command runs from another directory:
 
 ```yaml
 # launch/sensor.param.yaml
@@ -450,7 +453,7 @@ sensor_node:              # this node only
 
 ```xml
 <node pkg="sensor_node" exec="sensor_node" name="sensor_node">
-  <param from="sensor.param.yaml"/>
+  <param from="$(dirname)/sensor.param.yaml"/>
   <param name="period_ms" value="500"/>   <!-- wins over the file -->
 </node>
 ```
@@ -515,7 +518,7 @@ launch file again, because the board has nowhere to store the change.
 | `<arg name="…" default="…"/>` | declare a launch argument |
 | `<node pkg="…" exec="…" name="…"/>` | start a node |
 | `<param name="…" value="…"/>` | set one parameter (inside `<node>`) |
-| `<param from="….yaml"/>` | load a ROS 2 parameter file (inside `<node>`) |
+| `<param from="$(dirname)/….yaml"/>` | load a ROS 2 parameter file (inside `<node>`), named from the launch file's directory |
 | `<remap from="…" to="…"/>` | rename a topic or service (inside `<node>`) |
 | `<group ns="…">` | put a group of nodes in a namespace |
 | `<include file="…"/>` | include another launch file |
