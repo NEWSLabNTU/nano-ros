@@ -40,6 +40,12 @@ opt-level = 1
 # workspace only, so a leaf resolving `dev` through the config walk-up — every
 # Zephyr west leaf — got `unwind` and the mismatch this file exists to prevent.
 panic = "abort"
+# Stays OFF (user ruling 2026-11-16, issue 2656): incremental on `dev` made the
+# Zephyr west lane's rlibs differ build to build, and sccache keys on rlib
+# CONTENT; off, 115 of 143 are byte-identical (phase-340 W6, 78375a2d5d). It
+# costs `packages/cli`'s `cargo test` edit rebuilds (31.7 s), which inherit
+# this. The CLI's RELEASE build is incremental in its own manifest (issue
+# 2654), because a shared `release` here would have to mirror the root's.
 incremental = false
 
 # phase-336 — the nano-ros presets, so a bare `cargo build --profile
