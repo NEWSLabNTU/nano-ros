@@ -50,6 +50,15 @@ pub struct RefreshReport {
     /// Components skipped because no producer exists for their language yet
     /// (C/C++ — phase-307 W3). Reported, never silently dropped.
     pub unsupported: Vec<String>,
+    /// Issue 2608 — components whose probe BUILD FAILED, now or at this exact
+    /// source on an earlier sync (issue 1469's absorbing skip). A failure is
+    /// not "no producer": the command reports it apart and exits non-zero
+    /// ([`RefreshReport::check_failures`]).
+    pub failed: Vec<ProbeFailure>,
+    /// Issue 2608 — deploy-bound standalone examples (#0288) whose host probe
+    /// failed. Their image is not built for the host, so falling back to the
+    /// SystemModel bound is the designed outcome: reported, not fatal.
+    pub degraded: Vec<String>,
     /// Issue 1639 — sidecars the probe wrote for a component no declaration
     /// names any more (a rename, a deletion), removed this pass.
     pub pruned: Vec<PathBuf>,
@@ -60,9 +69,121 @@ pub struct RefreshReport {
     pub undeclared_kept: Vec<PathBuf>,
 }
 
+/// Issue 2608 — what a failed probe does to the command's exit status.
+///
+/// Declared by the caller in `NROS_PROBE_FAILURE`, never inferred from a TTY
+/// or `CI`: an interactive `nros build` / `configure` keeps `warn` (a person
+/// reads the warning, and the build does run), while every lane where nobody
+/// reads it -- the fixture builders, the `just` lanes, the release dry run --
+/// declares `refuse` (issue 2520).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ProbeFailurePolicy {
+    #[default]
+    Warn,
+    Refuse,
+}
+
+impl ProbeFailurePolicy {
+    pub const ENV: &'static str = "NROS_PROBE_FAILURE";
+
+    /// Read [`Self::ENV`]: unset or empty is `warn`; any other value than
+    /// `warn` or `refuse` is an error, never a silent default.
+    pub fn from_env() -> Result<Self> {
+        Self::parse(std::env::var(Self::ENV).ok().as_deref())
+    }
+
+    fn parse(value: Option<&str>) -> Result<Self> {
+        match value.map(str::trim) {
+            None | Some("") | Some("warn") => Ok(Self::Warn),
+            Some("refuse") => Ok(Self::Refuse),
+            Some(other) => eyre::bail!(
+                "{}={other:?} is not a policy; use `warn` or `refuse`",
+                Self::ENV
+            ),
+        }
+    }
+}
+
+/// Issue 2608 — one failed probe: which node, the first error line, and where
+/// the whole error is kept.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeFailure {
+    /// `<package>::<component>`.
+    pub node: String,
+    /// The first line that reads as an error (see [`first_error_line`]).
+    pub first_error: String,
+    /// Where the full text is: the component's failure marker, when one was
+    /// written.
+    pub log: Option<PathBuf>,
+}
+
+impl ProbeFailure {
+    fn new(node: String, text: &str, log: Option<PathBuf>) -> Self {
+        Self {
+            node,
+            first_error: first_error_line(text),
+            log,
+        }
+    }
+}
+
+impl std::fmt::Display for ProbeFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.node, self.first_error)?;
+        if let Some(log) = &self.log {
+            write!(f, " (full error: {})", log.display())?;
+        }
+        Ok(())
+    }
+}
+
 impl RefreshReport {
     pub fn total(&self) -> usize {
         self.rebuilt.len() + self.fresh.len()
+    }
+
+    /// Issue 2608 — the exit status a command reports for this refresh, under
+    /// `policy`. A component with no producer, or a deploy-bound degrade, is
+    /// never an error. A failed probe is an error under
+    /// [`ProbeFailurePolicy::Refuse`], and under `Warn` when NO probe of the
+    /// run succeeded (nothing was rebuilt or current), because then every
+    /// component is on default sizes.
+    pub fn check_failures(&self, policy: ProbeFailurePolicy) -> Result<()> {
+        if self.failed.is_empty() {
+            return Ok(());
+        }
+        let all_failed = self.total() == 0;
+        if policy == ProbeFailurePolicy::Warn && !all_failed {
+            return Ok(());
+        }
+        let mut msg = format!(
+            "{} metadata probe(s) failed, so their components have no source metadata \
+             and would be built on default sizes:",
+            self.failed.len()
+        );
+        for f in &self.failed {
+            msg.push_str(&format!("\n  {f}"));
+        }
+        if policy == ProbeFailurePolicy::Warn {
+            msg.push_str(
+                "\nNo probe in this workspace succeeded, so this is refused even under \
+                          NROS_PROBE_FAILURE=warn.",
+            );
+        }
+        eyre::bail!(msg)
+    }
+
+    /// Issue 2608 — the closing summary a command prints for this refresh, or
+    /// `None` when no probe failed. It is the LAST line, so the count cannot
+    /// scroll away behind a long build.
+    pub fn failure_summary(&self) -> Option<String> {
+        (!self.failed.is_empty()).then(|| {
+            format!(
+                "{} metadata probe(s) FAILED (listed above); their components keep default \
+                 sizes. NROS_PROBE_FAILURE=refuse makes this an error.",
+                self.failed.len()
+            )
+        })
     }
 }
 
@@ -155,13 +276,14 @@ pub fn refresh_stale_sidecars(
                     // reachable from no later sync at all. The marker holds the
                     // first error line; say it here, and where the whole file
                     // is, so the next reader starts at the cause.
-                    let why = match recorded_unprobeable_reason(&opts.output_path) {
-                        Some(line) => format!("; last error: {line}"),
-                        None => String::new(),
-                    };
-                    report.unsupported.push(format!(
-                        "{}::{} (probe failed at this source last sync; unchanged{why})",
-                        decl.config.package, decl.config.component
+                    // Issue 2608 — a recorded failure is a failure.
+                    let why = recorded_unprobeable_reason(&opts.output_path).unwrap_or_else(|| {
+                        "probe failed at this source on an earlier sync".to_string()
+                    });
+                    report.failed.push(ProbeFailure::new(
+                        format!("{}::{}", decl.config.package, decl.config.component),
+                        &format!("{why} (recorded on an earlier sync; the source is unchanged)"),
+                        Some(unprobeable_marker(&opts.output_path)),
                     ));
                     if verbose {
                         println!(
@@ -221,7 +343,7 @@ pub fn refresh_stale_sidecars(
                 Some(line) => format!("; last error: {line}"),
                 None => String::new(),
             };
-            report.unsupported.push(format!(
+            report.degraded.push(format!(
                 "{}::{} (deploy-bound: probe failed at this source last sync; unchanged{why})",
                 decl.config.package, decl.config.component
             ));
@@ -293,7 +415,7 @@ pub fn refresh_stale_sidecars(
                         Some(&format!("{why:#}")),
                     );
                 }
-                report.unsupported.push(format!(
+                report.degraded.push(format!(
                     "{}::{} (deploy-bound probe failed: {why:#})",
                     decl.config.package, decl.config.component
                 ));
@@ -353,9 +475,11 @@ pub fn refresh_stale_sidecars(
                                 compile_root().as_deref(),
                                 &text,
                             );
-                            report
-                                .unsupported
-                                .push(format!("{}::{} ({text})", o.package, o.component));
+                            report.failed.push(ProbeFailure::new(
+                                format!("{}::{}", o.package, o.component),
+                                &text,
+                                Some(unprobeable_marker(&opts.output_path)),
+                            ));
                         }
                     }
                 }
@@ -369,9 +493,11 @@ pub fn refresh_stale_sidecars(
                     .is_some() =>
             {
                 for opts in &cpp_batch {
-                    report
-                        .unsupported
-                        .push(format!("{}::{} ({why})", opts.package, opts.component));
+                    report.failed.push(ProbeFailure::new(
+                        format!("{}::{}", opts.package, opts.component),
+                        &format!("{why}"),
+                        None,
+                    ));
                 }
             }
             // A configure failure is the whole project, not one component, and
@@ -382,18 +508,18 @@ pub fn refresh_stale_sidecars(
             // one quiet line each. So no marker, and a warning that says the
             // sizes are defaults until the probe configures.
             Err(why) => {
-                let text = format!("probe project configure failed: {why:#}");
-                eprintln!(
-                    "nros: WARNING: the C/C++ metadata probe project did not configure, so \
-                     {} component(s) keep DEFAULT sizes this sync (nothing is recorded; \
-                     the next sync tries again): {}",
-                    cpp_batch.len(),
-                    first_error_line(&text)
+                // Issue 2608 -- every batched component's probe failed, so each
+                // is a FAILURE. Still no marker (above): the next sync retries.
+                let text = format!(
+                    "probe project configure failed (nothing recorded; the next sync \
+                     tries again): {why:#}"
                 );
                 for opts in &cpp_batch {
-                    report
-                        .unsupported
-                        .push(format!("{}::{} ({text})", opts.package, opts.component));
+                    report.failed.push(ProbeFailure::new(
+                        format!("{}::{}", opts.package, opts.component),
+                        &text,
+                        None,
+                    ));
                 }
             }
         }
@@ -1627,6 +1753,107 @@ pub fn stale_recorded_inputs(root: &Path, inputs: &[RecordedInput]) -> Vec<Stale
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2608 — a failed probe fails the command and names the node, its
+    /// first error and where the full error is; the line a reader needs is the
+    /// cause, not the `failed for` header above it.
+    #[test]
+    fn a_failed_probe_is_an_error_naming_node_and_cause() {
+        let report = RefreshReport {
+            failed: vec![ProbeFailure::new(
+                "talker_pkg::talker".into(),
+                "metadata probe build failed for `talker_pkg::talker` (exit 2):\n  \
+                 Compiling zpico-sys v0.6.0\n  error: failed to run custom build command \
+                 for `zpico-sys v0.6.0`",
+                Some(PathBuf::from("m/talker.json.unprobeable")),
+            )],
+            ..Default::default()
+        };
+        let err = format!(
+            "{:#}",
+            report
+                .check_failures(ProbeFailurePolicy::Refuse)
+                .unwrap_err()
+        );
+        assert!(err.contains("1 metadata probe(s) failed"), "{err}");
+        assert!(err.contains("talker_pkg::talker: "), "{err}");
+        assert!(
+            err.contains("error: failed to run custom build command"),
+            "{err}"
+        );
+        assert!(err.contains("m/talker.json.unprobeable"), "{err}");
+        assert!(!err.contains("no producer"), "{err}");
+    }
+
+    /// Issue 2608 — the negative control: a component with no producer, and a
+    /// deploy-bound example whose host probe failed (#0288's designed
+    /// fallback), are reported and NOT fatal.
+    #[test]
+    fn no_producer_and_deploy_bound_degrade_are_not_failures() {
+        let report = RefreshReport {
+            unsupported: vec!["pkg::node (no producer)".into()],
+            degraded: vec!["ex::talker (deploy-bound probe failed: x)".into()],
+            ..Default::default()
+        };
+        assert!(report.check_failures(ProbeFailurePolicy::Refuse).is_ok());
+        assert!(report.check_failures(ProbeFailurePolicy::Warn).is_ok());
+        assert_eq!(report.failure_summary(), None);
+    }
+
+    fn one_failure() -> ProbeFailure {
+        ProbeFailure::new("p::n".into(), "error: boom", None)
+    }
+
+    /// Issue 2608 — under `warn`, a failure beside a probe that worked is
+    /// reported, not fatal, and the summary carries the count.
+    #[test]
+    fn warn_reports_a_partial_failure_and_counts_it() {
+        let report = RefreshReport {
+            rebuilt: vec![PathBuf::from("ok.json")],
+            failed: vec![one_failure()],
+            ..Default::default()
+        };
+        assert!(report.check_failures(ProbeFailurePolicy::Warn).is_ok());
+        let line = report.failure_summary().expect("a summary");
+        assert!(line.starts_with("1 metadata probe(s) FAILED"), "{line}");
+        assert!(report.check_failures(ProbeFailurePolicy::Refuse).is_err());
+    }
+
+    /// Issue 2608's minimum — a run where EVERY probe failed refuses even
+    /// under `warn`.
+    #[test]
+    fn warn_refuses_when_every_probe_failed() {
+        let report = RefreshReport {
+            failed: vec![one_failure(), one_failure()],
+            ..Default::default()
+        };
+        let err = format!(
+            "{:#}",
+            report.check_failures(ProbeFailurePolicy::Warn).unwrap_err()
+        );
+        assert!(err.contains("2 metadata probe(s) failed"), "{err}");
+        assert!(
+            err.contains("No probe in this workspace succeeded"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn the_policy_reads_only_its_two_words() {
+        assert_eq!(
+            ProbeFailurePolicy::parse(None).unwrap(),
+            ProbeFailurePolicy::Warn
+        );
+        assert_eq!(
+            ProbeFailurePolicy::parse(Some("")).unwrap(),
+            ProbeFailurePolicy::Warn
+        );
+        assert_eq!(
+            ProbeFailurePolicy::parse(Some("refuse")).unwrap(),
+            ProbeFailurePolicy::Refuse
+        );
+        assert!(ProbeFailurePolicy::parse(Some("strict")).is_err());
+    }
 
     /// A probe configure that fails CMake's compiler check records CMake's
     /// error, not just the `failed for `workspace`` header — the shape CI

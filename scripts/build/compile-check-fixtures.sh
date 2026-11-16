@@ -13,6 +13,11 @@
 # Add a `[[compile_check_fixture]]` row to `examples/fixtures.toml` (phase-319 W2).
 set -Eeuo pipefail
 
+# Issue 2608 -- a fixture is evidence its image was built as declared, so a
+# failed metadata probe (a component left on default sizes) is a red here,
+# whatever the caller set.
+export NROS_PROBE_FAILURE=refuse
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
 cd "$repo_root"

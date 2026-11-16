@@ -4319,7 +4319,8 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         // DOES have components to probe. Returning here skipped the metadata
         // refresh entirely for exactly the workspaces the C/C++ producer
         // exists to serve.
-        refresh_source_metadata(&ws_root, nano_ros_for_probes, no_metadata, verbose)?;
+        let probes = refresh_source_metadata(&ws_root, nano_ros_for_probes, no_metadata, verbose)?;
+        finish_probes(&probes)?;
         println!("sync: done.");
         return Ok(());
     }
@@ -4458,7 +4459,9 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         seed_and_prune_leaf_lock(&ws_root, nrp, sync_image.as_deref(), offline)?;
     }
 
-    refresh_source_metadata(&ws_root, nano_ros_path.clone(), no_metadata, verbose)?;
+    // Issue 2608 — a failed probe fails the command, but only after the leaf
+    // settings below are written: they carry everything else this run made.
+    let probes = refresh_source_metadata(&ws_root, nano_ros_path.clone(), no_metadata, verbose)?;
 
     // phase-445 W4b (RFC-0098 D1/D2) — a single-package leaf is a workspace of
     // one, and sync is what a user who drives cargo runs before `cargo build
@@ -4473,7 +4476,20 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         println!("sync: settings → {}", img.config_path.display());
     }
 
+    finish_probes(&probes)?;
     println!("sync: done.");
+    Ok(())
+}
+
+/// Issue 2608 — the probes' verdict, decided once for both sync roads: an
+/// error under the declared policy, or the failed count as the last line
+/// before `sync: done.`.
+fn finish_probes(probes: &crate::orchestration::metadata_refresh::RefreshReport) -> Result<()> {
+    use crate::orchestration::metadata_refresh::ProbeFailurePolicy;
+    probes.check_failures(ProbeFailurePolicy::from_env()?)?;
+    if let Some(line) = probes.failure_summary() {
+        eprintln!("sync: WARNING — {line}");
+    }
     Ok(())
 }
 
@@ -4551,7 +4567,7 @@ fn refresh_source_metadata(
     nano_ros_path: Option<PathBuf>,
     no_metadata: bool,
     verbose: bool,
-) -> Result<()> {
+) -> Result<crate::orchestration::metadata_refresh::RefreshReport> {
     // A service family a node package compiles and its bringup does not
     // declare has no slot in the image; said here, whatever else is skipped.
     if let Ok(ws) = crate::orchestration::workspace::Workspace::discover(ws_root)
@@ -4567,7 +4583,7 @@ fn refresh_source_metadata(
         }
     }
     if no_metadata {
-        return Ok(());
+        return Ok(Default::default());
     }
     let report = crate::orchestration::metadata_refresh::refresh_stale_sidecars(
         ws_root,
@@ -4597,8 +4613,12 @@ fn refresh_source_metadata(
             path.display()
         );
     }
-    if report.total() == 0 && report.unsupported.is_empty() {
-        return Ok(());
+    if report.total() == 0
+        && report.unsupported.is_empty()
+        && report.failed.is_empty()
+        && report.degraded.is_empty()
+    {
+        return Ok(report);
     }
     println!(
         "sync: source metadata — {} rebuilt, {} already current",
@@ -4611,7 +4631,18 @@ fn refresh_source_metadata(
     for what in &report.unsupported {
         println!("sync: source metadata — no producer for {what}");
     }
-    Ok(())
+    // Issue 2608 — a deploy-bound example's host probe failing is the designed
+    // fallback (#0288), so it is said and not fatal; it is still not "no
+    // producer".
+    for what in &report.degraded {
+        println!("sync: source metadata — kept the SystemModel bound for {what}");
+    }
+    // Issue 2608 — a failed probe is a FAILURE, never "no producer": each is
+    // named on its own line, and the command exits non-zero.
+    for f in &report.failed {
+        eprintln!("sync: source metadata — probe FAILED for {f}");
+    }
+    Ok(report)
 }
 
 /// phase-463 W4 (issue 1419) -- report each entry's census, and RUN NONE.

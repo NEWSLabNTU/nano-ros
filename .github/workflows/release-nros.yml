@@ -117,6 +117,12 @@ concurrency:
   group: release-nros
   cancel-in-progress: false
 
+# Issue 2608 -- nobody reads a release run's warnings, so a failed metadata
+# probe in any `nros build` / `configure` it runs (dry runs included) is an
+# error, not a warning that ships default sizes.
+env:
+  NROS_PROBE_FAILURE: refuse
+
 jobs:
   build:
     name: build + verify nros-linux-x86_64

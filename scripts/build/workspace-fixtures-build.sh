@@ -29,6 +29,11 @@
 # sweep could ever build it.
 set -euo pipefail
 
+# Issue 2608 -- a fixture is evidence its image was built as declared, so a
+# failed metadata probe (a component left on default sizes) is a red here,
+# whatever the caller set.
+export NROS_PROBE_FAILURE=refuse
+
 platform="${1:?usage: workspace-fixtures-build.sh <platform> [lang] [--id <id>]}"
 shift
 lang_filter=""
