@@ -916,7 +916,7 @@ is W7's slow runner.
   registered, so its acceptance could not be measured (below). It is
   registered again on 2026-11-17, as a new host question: measure it against
   the history here before it takes the critical-path job, as a new item if
-  it does.
+  it does. Re-measured as W14.
 
 Compare `nproc`, the jobserver budget, disk type and free space, and other
 tenants (CLAUDE.md: `/home` is shared by 14 users) across the three runners.
@@ -1506,6 +1506,70 @@ So far:
   runnable p50 is 4, with the pool empty in 94 % of samples. No stage runs
   below the pool's width with tokens free. (Both runs then stop in the
   compile-check stage, on a main red unrelated to the pool, fixed separately.)
+
+### W14 — re-measure host 241 now that its runners are back
+
+- **Status:** OPEN. Measured from job history on 2026-11-17, with no new
+  dispatch; the like-for-like dispatch below is not run. It feeds the open decision on running the queue's heavy jobs on
+  self-hosted runners. It changes nothing.
+
+Three runners are registered: `newslab-118-server`, `newslab-server-241` and
+`newslab-server-241-queue`. Both 241 runners are containers on the same host
+(24 cores, 125 GiB, work volumes on NVMe). The queue runner carries
+`nros-queue` and takes only the queue's L3 job, so it has no 118 counterpart.
+
+**Like for like, per step (2026-11-03..17, steps that succeeded and took
+over 20 s, median minutes).** Whole-job times cannot be compared: almost
+every run-matrix job in the window failed, at different stages, so a job's
+length says how far it got. A step that succeeded is comparable across
+runners, though not at the same commit and not from the same cache state.
+
+| job / step | n 118 | 118 | n 241 | 241 | 241 / 118 |
+|---|---:|---:|---:|---:|---:|
+| tier 1 / `just build tier1` | 16 | 35.3 | 5 | 74.1 | 2.1x |
+| tier 1 / `just ci tier1 run` | 6 | 10.3 | 2 | 25.3 | 2.5x |
+| tier 2 / `just build tier2` | 11 | 37.6 | 4 | 96.8 | 2.6x |
+| tier 1 / `just setup tier1` | 7 | 1.0 | 7 | 1.4 | 1.4x |
+| tier 2 / `just setup tier2` | 26 | 1.4 | 12 | 2.3 | 1.7x |
+| tier 1 / persistent-tree checkout | 9 | 0.4 | 5 | 4.9 | 13x |
+| tier 2 / persistent-tree checkout | 14 | 0.4 | 8 | 5.8 | 15x |
+| tier 1 / sweep orphans and disk | 22 | 0.7 | 11 | 4.7 | 7x |
+| tier 2 nightly / sweep orphans and disk | 16 | 0.9 | 6 | 11.3 | 12x |
+
+So host 241 is still 2-2.6x slower on the builds, the same band W7
+recorded (2-5x). The filesystem-bound steps (checkout of the persistent
+tree, the sweep) are 7-22x slower, which points at the host's I/O or its
+load rather than at the build.
+
+**Contention on the host.** Host 241 also runs the agents' local
+`just ci gate` runs, and its load average read 55-71 on 24 cores while this
+was measured. The queue runner's L3 job (80 successful runs, 2026-11-14..17,
+median 26 min, range 14-63) by what else was running:
+
+| alongside | n | L3 median, min |
+|---|---:|---:|
+| nothing seen | 24 | 23.8 |
+| a local `ci gate` | 8 | 28.7 |
+| the sibling 241 runner's job | 8 | 38.2 |
+| both | 10 | 40.1 |
+
+Of the 241 runners' 3,518 job-minutes since 2026-11-14 20:13, 1,040 (30 %)
+ran while at least one local `ci gate` was running. That is a LOWER bound:
+the gate intervals come from the 12 gate logs that survive in worktrees'
+`tmp/` (a log is overwritten by the next run in that worktree), and a
+gate's start is its end minus its reported total. The two runners on one
+host contend with each other at least as much as with the gates.
+
+**What this does not settle.** No pair here is the same commit on both
+hosts with the same cache state, so the 2-2.6x mixes host speed with cache
+warmth and load. The smallest dispatch that would settle it: one
+`run-matrix.yml` `workflow_dispatch` of tier 1 at depth `build`, at one
+commit, run once on each of `newslab-118-server` and `newslab-server-241`
+while no local gate runs on 241, then the same pair again with warm caches.
+That is two to four ~30-75 min jobs. Today it cannot be pointed at one
+runner: both carry the same labels, so it needs a per-host label (W7's
+suggestion) or a dispatch input that picks one, and that is a change this
+item does not make.
 
 ## Self-hosted runner cache observations (2026-10-09..14)
 
