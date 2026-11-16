@@ -283,6 +283,12 @@ build_in_tree_cli() {
     # "next →" banner anyway, and the failure surfaced two commands later as
     # a cmake configure error naming a `just` recipe. A front door that
     # cannot build what the quick start needs must say so HERE.
+    # Issue 2660 -- the same PYO3_PYTHON pin `just setup-launch-resolve` uses,
+    # so this build and that recipe agree and a later PATH change does not
+    # rebuild pyo3-ffi and the resolver.
+    # shellcheck source=scripts/build/pyo3-python.sh
+    source "${REPO_ROOT}/scripts/build/pyo3-python.sh"
+    nros_pin_pyo3_python
     # profile-literal-ok: host tool: the launch resolver's own binary, same rule as the CLI build above
     run_cmd "building nros-launch-resolve (the launch resolver)" \
         cargo build --release --manifest-path "${REPO_ROOT}/packages/cli/nros-launch-resolve/Cargo.toml" \

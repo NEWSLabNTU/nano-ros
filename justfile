@@ -1185,6 +1185,11 @@ test-ignored package="":
         export NROS_C_CONFIG_INCLUDE
     fi
     echo "Running #[ignore]d tests (external infra may be required)…"
+    # Issue 2660 -- pin PYO3_PYTHON (scripts/build/pyo3-python.sh): unset, pyo3
+    # makes PATH a rebuild trigger and any PATH change rebuilds every pyo3 crate.
+    # shellcheck source=scripts/build/pyo3-python.sh
+    source scripts/build/pyo3-python.sh
+    nros_pin_pyo3_python
     # Issue 1824 (D4) — rosidl-codegen's `heap_compile_check` C syntax checks
     # compile against nros-c's per-build `rclc/detail/nros_config_generated.h`,
     # which lives only in a cargo `$OUT_DIR` now. The test takes its include
@@ -1648,6 +1653,11 @@ test-doc:
     # this adds a lane, not fixes. `nros-tests` is out for the reason
     # `test-unit` leaves it out.
     cargo test $cargo_profile_args --locked --doc --workspace --exclude nros-tests
+    # Issue 2660 -- pin PYO3_PYTHON (scripts/build/pyo3-python.sh): unset, pyo3
+    # makes PATH a rebuild trigger and any PATH change rebuilds every pyo3 crate.
+    # shellcheck source=scripts/build/pyo3-python.sh
+    source scripts/build/pyo3-python.sh
+    nros_pin_pyo3_python
     cargo test --manifest-path packages/cli/Cargo.toml --locked --doc --workspace
 
 # Rewrite [SKIPPED]-marker <failure> entries in the junit.xml to <skipped>
@@ -4870,6 +4880,13 @@ setup-launch-resolve:
     # 22.04's 3.10, 24.04's 3.12) — no need to detect the version and no second
     # code path to keep in step. Revisit when the vendored pin moves past 0.24.
     export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+    # Issue 2660 -- pin PYO3_PYTHON to the interpreter pyo3 would find on PATH.
+    # Unset, pyo3 registers PATH itself as a rebuild trigger, so a caller that
+    # prepends any directory (a consumer putting `nros` on PATH) rebuilt
+    # pyo3-ffi and the whole resolver on every call. Covers both builds below.
+    # shellcheck source=scripts/build/pyo3-python.sh
+    source "$root/scripts/build/pyo3-python.sh"
+    nros_pin_pyo3_python
     # profile-literal-ok: host tool: builds nros-launch-resolve
     cargo build --release --locked --manifest-path "$crate/Cargo.toml"
     # The Python HALF, and it is not optional packaging — it is half the tool.
