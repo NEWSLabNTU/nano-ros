@@ -15,7 +15,7 @@ superseded-by: null
 
 > **Amended by [RFC-0120](0120-nros-configure-one-resolver.md) (2026-11-03).** `configure` joins the Build group and absorbs `sync`, which stays as its alias.
 >
-> **Draft amendment 2026-11-17:** build arguments and profiles (D7–D11), for review; see the section of that name.
+> **Draft amendment 2026-11-17:** build arguments (D7–D9), for review; see the section of that name. Build profiles are deferred to a later amendment.
 
 **Status:** Draft (2026-11-01). Written from the maintainer discussion of
 2026-10-31 and 2026-11-01 on how the `nros` command tree should look to a
@@ -286,7 +286,7 @@ the issue's marker. Answer 1 resolved the second way: the source metadata is
 refreshed by configure's first phase, which `nros build` runs, and that
 needs no native image, so `nros new` names `nros build`.
 
-## Amendment 2026-11-17 (DRAFT, for review) — build arguments and profiles
+## Amendment 2026-11-17 (DRAFT, for review) — build arguments
 
 User-approved design, 2026-11-17, written up for review before anything is
 built. Implemented by
@@ -323,20 +323,36 @@ A `--profile` or `--release` after `--` wins over the stated profile, and a
 
 ### D7 — Where arguments come from (in order; a later one wins)
 
-1. **The image's own `system.toml` section.** `[image.<id>] profile =
-   "<name>"`, and `[image.<id>.build] cmake_args = [..]` / `cargo_args =
-   [..]`. Only the image's OWN section counts: a dependency's or a third-party
-   package's `system.toml` cannot add arguments to another image's build.
-2. **The command line.** `--profile=<name>`, `--cmake-args="<one shell
-   token>"` and `--cargo-args="<…>"`, with `=` required.
+1. **The image's own `system.toml` section:** `[image.<id>.build] cmake_args =
+   [..]`, CMake arguments only. Only the image's OWN section counts. A
+   dependency's or third-party package's `system.toml` is never read for
+   another image's arguments: it is **ignored** (a package is not this
+   build's to refuse, and refusing would make a third-party package unusable),
+   and `--dry-run` lists what it ignored. There is no `cargo_args` key: the
+   one cargo argument a project would commit is `--features`, and committing
+   features belongs in the package's manifest.
+2. **The command line:** `--cmake-args="<one shell token>"` and
+   `--cargo-args="<…>"`, with `=` required.
    - The value is split by plain POSIX quoting: no expansion, no `~`, and
      unbalanced quotes are refused.
    - The flags are repeatable, and their values add up in order.
    - The old space-separated form (`--cmake-args -DA -DB`) is refused, with a
      pointer to the `=` form.
-3. **An `@file`.** `--cmake-args=@build.args` reads one argument per line,
+   - `--profile=<name>` takes exactly what `[image.<id>] profile` takes today
+     (a cargo profile or a CMake build type). It is a command-line spelling of
+     that existing setting, not a new profile system (see "Deferred").
+3. **An `@file`:** `--cmake-args=@build.args` reads one argument per line,
    with `#` comments. The path is resolved from the current directory. It is
    allowed on the command line only, and an `@file` cannot name another.
+
+**One committed place per setting.** A setting the knob registry
+(`packages/tooling/nros-zephyr-build/knobs.toml`, RFC-0103) owns already has
+its committed home: the RFC-0049 app rung, `[image.<id>.knobs.<group>]`.
+Any argument naming such a knob, in ANY of its spellings (its `NROS_<id>`
+env name, its `CONFIG_*` symbol, a retired legacy name), is refused from
+EVERY source, pointing at that table. So `[image.<id>.build] cmake_args`
+holds only what no other key states (for example
+`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, `-Wno-dev`).
 
 ### D8 — Routing is built in, never a plugin
 
@@ -344,11 +360,19 @@ A `--profile` or `--release` after `--` wins over the stated profile, and a
   step, a cmake package's.
 - Cargo arguments go to every cargo command.
 - `--profile` maps to cargo's `--profile`, to `CMAKE_BUILD_TYPE`, and to
-  west's passthrough.
+  west's passthrough, as `[image.<id>] profile` does today.
 - A kind of argument that does not apply to an image's road is ignored, and
   `--dry-run` says so.
 - `--` is kept only for west's own known options. Anything else after `--` is
   refused, naming the flag that carries it now.
+- Arguments reach tools as argv only, never as a shell string.
+- **The build dir records the arguments it was configured with** (today's
+  one dir per image; per-profile dirs are deferred). On a change, the CMake
+  variables that were removed are `-U`'d and the configure re-runs, and the
+  build says so, so a `-DFOO` dropped from the command line does not linger
+  in the cache.
+- `--dry-run` prints the final argv for each tool and where each argument
+  came from.
 
 ### D9 — One allowlist, the same for every source
 
@@ -358,48 +382,43 @@ Every source (D7) passes the same validation.
 - CMake: `-D` in every spelling (parsed into name and value), `-U`, `-W*`,
   `--log-level`, `--log-context`, `--debug-find`.
 - cargo: `--features`, `--no-default-features`, `--all-features`, `-v` /
-  `-q`, `--timings`, `--locked` / `--offline` / `--frozen`.
+  `-q`, `--timings`, `--locked` / `--offline` / `--frozen`. In a workspace with
+  more than one package, a feature must be qualified (`--features=<pkg>/<feat>`).
+  A bare feature name is refused there, because cargo would apply it to
+  whichever packages define it.
 
-**Refused, with a pointer to the `system.toml` setting that owns it.**
+**Refused, with a pointer to the setting that owns it.**
 - CMake: `-C`, `-P`, `-G`, `-T`, `-A`, `--toolchain`, `--preset`, `-S`,
   `-B`, and anything else not listed above.
 - cargo: `--config`, `-Z`, `--target`, `--target-dir`, `--manifest-path`,
   `--profile`, `--release`, and anything else not listed above.
-- **Owned `-D` names**: `CMAKE_TOOLCHAIN_FILE`, `NROS_*`, `_NANO_ROS_*`,
-  `CMAKE_PROJECT_*INCLUDE*`. These are taken from the ONE table of what `nros
-  build` itself passes, so the table and the refusal cannot drift.
-- **Derived features**: RMW, platform, capability. They would split the
-  build's choice between its Rust and C halves.
-
-### D10 — Profiles
-
-- **Built-ins.** `dev` (cargo `dev`, CMake `Debug`) and `release` (cargo
-  `release`, CMake `Release`).
-- **User profiles** are declared at workspace level as `[profile.<name>]`:
-  - `inherits`: `dev`, `release` or another user profile. A missing field
-    falls back to the parent, and arguments add up parent first.
-  - `cargo_profile`: must exist in the project's `Cargo.toml` as a cargo
-    custom profile, and is refused early if it does not.
-  - `cmake_build_type`: one of the standard four, or a custom type only if
-    its flags are defined; otherwise refused.
-  - `cmake_args` / `cargo_args`: validated as in D9.
-- **Precedence:** CLI > image > board > default.
-  - A board that needs size optimisation states its profile, for example
-    FreeRTOS QEMU `MinSizeRel`.
-  - The default is `dev` for host images and `release` for board images, as
-    today.
-
-### D11 — Behaviour
-
-- **One build dir per profile**: `build/<image>/<profile>/`.
-- **Each build dir records its configured arguments.** On a change, the
-  removed CMake variables are `-U`'d and the configure re-runs, and the build
-  says so.
-- **Arguments reach tools as argv only**, never as a shell string.
-- **`--dry-run`** prints the final argv for each tool, the winning profile
-  and where it came from.
-- **Arguments and the profile are build inputs.** They appear in the plan and
-  in the profile summary, and fixtures and size reports carry the profile.
+- **`-DCONFIG_*`.** On the west road it sets a Kconfig symbol directly,
+  bypassing the Kconfig fragments and the knob ladder (RFC-0098 D10/D11, the
+  rule that a nano-ros knob is never authored in a conf file). Zephyr-native
+  Kconfig goes in the image's `conf = [..]` fragment.
+- **Owned `-D` names**: every `-D` name `nros build` itself passes. The table
+  is GENERATED FROM THE CODE THAT EMITS THE ARGUMENTS, not written as a list.
+  Each emitter (the configure-argument builders in
+  `nros-cli-core/src/cmd/build.rs` and `builder/`) takes its names from one
+  table it exports, and a test runs every road's argument builder and asserts
+  each `-D` it produced is in the table. That covers the unprefixed ones a
+  list would miss: `ARMFVP_EXTRA_FLAGS` (#4056; the `const` of that name in
+  `cmd/build.rs`, which `fvp_extra_flags_configure_arg` formats from, so the
+  table registers the const), the board heap `-D`,
+  `CMAKE_TOOLCHAIN_FILE`, `CMAKE_PROJECT_*INCLUDE*`, and every `NROS_*` /
+  `_NANO_ROS_*` name.
+- **Knob-registry names**, in every spelling a row has: env, `CONFIG_*`,
+  legacy (D7's "one committed place"). The refusal covers every spelling
+  because it guards against the bypass. Its remedy names the row's
+  user-facing spelling: the row's `surface` field in `knobs.toml`, which
+  `nros knob show` also reads (coordinated with #4082). The Kconfig twin `CONFIG_NROS_*` is a
+  carrier, never user surface: a nano-ros knob is never authored in a conf
+  file (RFC-0098 D10/D11, gate `check-leaf-conf-nros-knobs`).
+- **Derived features**: the RMW, platform and capability features. They are
+  derived from the descriptors (the RMW from the backend's `nros-rmw.toml`
+  and `[system] rmw`, the platform from the board descriptor's `platform`,
+  capabilities from the board and system declarations), and they would split
+  the build's choice between its Rust and C halves.
 
 ### Threat model
 
@@ -415,15 +434,17 @@ silently re-wiring or corrupting a build.
 
 - a CMake argument containing `--packages-skip`;
 - every bypass spelling (each refused option, joined and separate forms);
+- `-DCONFIG_<x>=y` from each source;
+- an owned name the generated table catches (`-DARMFVP_EXTRA_FLAGS=…`);
+- a knob in each spelling (`-DNROS_…`, `-DCONFIG_NROS_…`, a legacy name);
 - a derived feature on the command line;
+- a bare `--features=x` in a multi-package workspace, and `pkg/x` accepted;
 - cache drift: `-DFOO`, then a build without it;
 - `$(touch …)` in a value creates nothing;
 - an unbalanced quote;
 - `@file` resolution;
-- a dependency's `system.toml` adding arguments;
-- the `--dry-run` output;
-- a profile switch keeping separate dirs;
-- a missing `cargo_profile` refused.
+- a dependency's `system.toml` arguments ignored and listed by `--dry-run`;
+- the `--dry-run` output.
 
 ### Migration
 
@@ -435,11 +456,29 @@ silently re-wiring or corrupting a build.
   cargo argument there is refused with the flag that carries it now. A
   `--profile` / `--release` / `-DCMAKE_BUILD_TYPE` after `--`, which used to
   win over the image's profile, becomes `--profile=<name>`.
-- **`[image.<id>] profile`** keeps its key and meaning. It now also accepts a
-  user profile name (D10).
-- **`nros_cargo_profile`'s presets** (`nros-relwithdebinfo`,
-  `nros-minsizerel`, …) stay the cargo side of the board defaults. A user
-  profile names one as its `cargo_profile`.
+- **`[image.<id>] profile`** keeps its key and its meaning.
+
+### Deferred: build profiles (was D10–D11 in the first draft)
+
+User-defined profiles and per-profile build dirs move to a later amendment,
+with their own phase. The review found three things they need first, recorded
+here so the later amendment starts from them:
+
+- **Name and file.** `[profile.<name>]` collides with cargo's own
+  `[profile.*]` and would give two tables in two files pointing at each
+  other. The later amendment renames it (working name `[build_profile.<name>]`)
+  and names the one file it lives in.
+- **One locator plan, priced.** `build/<image>/<profile>/` moves every
+  artifact path: the fixture dirs, the sizing descriptor, the runner's
+  `build_dir`, and every `model_location` consumer. Without one locator and
+  its cost measured first, it repeats issue #393's class.
+- **No custom `CMAKE_BUILD_TYPE`.** A custom type cannot be checked before
+  configure, so only the four standard types are accepted.
+- **Vocabulary (coordinated with #4082).** "Profile" means one thing to a
+  user: the built-in choice `[image.<id>] profile` / `--profile=` takes, which
+  `nros profile list|show` presents. The cargo plumbing (`nros dev profile
+  args|dir|env`) is not a user noun. User-defined profiles get their own noun
+  (`nros build-profile …`), never a second meaning of "profile".
 
 ## Alternatives considered
 
@@ -494,6 +533,11 @@ silently re-wiring or corrupting a build.
   takes a bringup and no subcommands, `check` is top-level, `pin [VERSION]`,
   and `board list|show|info|new`.
 - 2026-11-17 — amendment (DRAFT, user-approved design, for review): build
-  arguments and profiles. `system.toml` / `--cmake-args=` / `--cargo-args=` /
-  `@file` sources, built-in routing, one allowlist, user profiles,
-  per-profile build dirs. Implemented by phase-568.
+  arguments. `system.toml` / `--cmake-args=` / `--cargo-args=` / `@file`
+  sources, built-in routing, one allowlist. Implemented by phase-568.
+- 2026-11-17 — the amendment revised after review: profiles (D10–D11) deferred
+  to a later amendment, with the review's three points recorded; `-DCONFIG_*`
+  refused; the owned-names table generated from the emitting code; derived
+  features' sources named; `pkg/feat` required in a multi-package workspace;
+  knob-registry names refused from every source; system.toml takes
+  `cmake_args` only; a dependency's arguments are ignored and listed.
