@@ -1054,7 +1054,7 @@ zenoh-platform-macros:
 # OK with a footnote. It used to fail only when NO line was present, so the
 # ordinary dev host — 3.7 present, 4.4 nowhere — went green having measured
 # nothing about the line the gate exists for.
-[metadata("tier", "exempt", "needs the fetched Zephyr Kconfig trees (~600 MB)")]
+[metadata("tier", "exempt", "needs the 3.7 and 4.4 Zephyr trees (~600 MB); nightly.yml's dual-line Zephyr job, which provisions both, runs it")]
 zephyr-kconfig-symbols:
     @python3 scripts/check-zephyr-kconfig-symbols.py
 

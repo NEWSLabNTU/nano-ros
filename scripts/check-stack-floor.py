@@ -98,6 +98,12 @@ ROW_PLATFORM_BOARD: dict[str, str | None] = {
     # `threadx-linux` sibling above, for the same reason.
     "threadx-riscv64": None,
     "zephyr": None,
+    # phase-531 W6 split the Zephyr workspace rows by board. Still Zephyr: every
+    # thread's stack is a kernel object (K_THREAD_STACK_DEFINE), so there is no
+    # linker leftover to measure, as for `zephyr` above. Found when this gate
+    # first ran in a lane (it refused the two unnamed platforms, rightly).
+    "zephyr-cortex-m": None,
+    "zephyr-nucleo-f767zi": None,
 }
 
 # Images that do NOT meet their board floor and are allowed to link anyway,

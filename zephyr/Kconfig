@@ -923,10 +923,18 @@ config NROS_ZENOH_SERIAL_TCM
       S32K344 with the ISR in flash each call cost 7-10 us. Off by default:
       it needs both TCMs, room in them, and CODE_DATA_RELOCATION.
 
+# The LPUART's devicetree compatible, asked through Zephyr's own preprocessor
+# function rather than its generated `DT_HAS_NXP_LPUART_ENABLED` symbol: that
+# symbol exists only on a line whose binding is `nxp,lpuart` (4.4), and on 3.7
+# (`nxp,kinetis-lpuart`) it is undefined, which Kconfig takes as a warning and
+# check-zephyr-kconfig-symbols as a failure. The function is defined on every
+# line and is false where no `nxp,lpuart` node is okay, as the symbol was.
+DT_COMPAT_NXP_LPUART := nxp,lpuart
+
 config NROS_ZENOH_SERIAL_FIFO_WATERMARK
     bool "Serial link: NXP LPUART FIFO watermarks, one interrupt per FIFO"
     depends on NROS_ZENOH_LINK_SERIAL && UART_INTERRUPT_DRIVEN
-    depends on UART_MCUX_LPUART && DT_HAS_NXP_LPUART_ENABLED
+    depends on UART_MCUX_LPUART && $(dt_compat_enabled,$(DT_COMPAT_NXP_LPUART))
     help
       nano-ros phase-474 I14. On the interrupt-driven path, when the link's
       UART is an NXP LPUART: set the RX watermark (NROS_ZENOH_SERIAL_FIFO_RXWATER)

@@ -57,7 +57,6 @@ scripts/check-sched-task-priority-plan.py
 scripts/check-version-lockstep.sh
 scripts/check-weak-symbols-image.sh
 scripts/check-workspace-build-output.sh
-scripts/check-zenoh-archive-symbols.sh
 scripts/check-zenohd-resolution-parity.sh
 scripts/check-zenohd-spawn-sites.sh
 scripts/ci/absolute-path-check.sh

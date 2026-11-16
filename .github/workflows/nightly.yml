@@ -1125,6 +1125,18 @@ jobs:
       # workspace, which this job has. Own step + `!cancelled()`, so a red
       # above does not withhold its verdict; STRICT so a missing workspace is
       # red, not a ledger skip.
+      # The Zephyr Kconfig symbol gate: every symbol nano-ros's Kconfig
+      # references exists on BOTH supported lines. It needs both trees, and this
+      # job provisions both workspaces (the gate finds them through the shared
+      # resolver). It ran nowhere until 2026-11-16, and its first run here
+      # found a dependency on a symbol 3.7 never defines. Own step,
+      # `!cancelled()`: a red above must not withhold its verdict.
+      - name: Zephyr Kconfig symbols gate (3.7 + 4.4)
+        if: ${{ !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check zephyr-kconfig-symbols
+
       - name: Zephyr Kconfig stamp gate (3.7)
         if: ${{ !cancelled() }}
         env:

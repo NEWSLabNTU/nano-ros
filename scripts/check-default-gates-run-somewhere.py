@@ -170,20 +170,26 @@ EXEMPT_NO_PLACEMENT: "dict[str, tuple]" = {
     "tier-preconditions": ("caller", "a precondition reporter at the head of `just ci`",
                            "just/ci.just", "steps=(check::tier-preconditions)"),
     "deny": ("by-hand", "developer lane (RFC-0104 D8): needs cargo-deny and the network"),
+    "workspace-embedded": ("caller", "the embedded half of `workspace-all`, run beside its host half",
+                           "just/check/lanes.just", "just check workspace-embedded &"),
+    "submodule-drift": ("caller", "the first probe of `check-tier-preconditions`",
+                        "scripts/check-tier-preconditions.sh", "bash scripts/check-submodule-drift.sh"),
+    "sdk-index": ("caller", "network; gate.yml's SDK-index job runs its three commands as steps",
+                  ".github/workflows/gate.yml",
+                  "run: python3 scripts/sdk/verify-index.py nros-sdk-index.toml"),
 }
 
 # The exempt gates that run NOWHERE today, measured when R4 landed. A RATCHET:
 # it may only shrink. A new exempt gate that no workflow reaches fails, and an
 # entry here that a workflow now reaches (or whose recipe is gone) must leave.
-EXEMPT_ORPHAN_BASELINE: "frozenset[str]" = frozenset({
-    "sdk-index",
-    "stack-floor",
-    "submodule-drift",
-    "workspace-embedded",
-    "zenoh",
-    "zenoh-archive",
-    "zephyr-kconfig-symbols",
-})
+EXEMPT_ORPHAN_BASELINE: "frozenset[str]" = frozenset()
+# EMPTY since 2026-11-16, when the seven it held were each placed, excused or
+# deleted: stack-floor moved to the fast tier; zephyr-kconfig-symbols runs in
+# nightly.yml; workspace-embedded, submodule-drift and sdk-index are excused
+# above with checked callers; `zenoh` (a duplicate of workspace-features'
+# clippy line) and `zenoh-archive` (superseded by the zenoh_archive_symbols
+# test, and reading a path the build stopped writing at phase-150) were
+# deleted. Two of the seven had been broken all along.
 
 
 def exempt_gates():
