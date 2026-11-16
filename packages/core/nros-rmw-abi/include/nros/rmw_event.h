@@ -22,7 +22,7 @@
  * `book/src/guide/rmw/qos-status-events.md` and
  * `book-internals/src/rmw/rmw-vs-upstream.md` Section 8 for the design.
  *
- * **Matched and incompatible-type events (issue 1972).** Iron/Jazzy's
+ * **Matched and incompatible-type events.** Iron/Jazzy's
  * RMW_EVENT_{PUBLICATION,SUBSCRIPTION}_MATCHED and
  * RMW_EVENT_{PUBLISHER,SUBSCRIPTION}_INCOMPATIBLE_TYPE are values 5..8,
  * APPENDED. Upstream inserted them in the middle of its enum; ours was never
@@ -52,7 +52,7 @@ typedef enum rmw_event_type_t {
     NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED    = 4,
     /** Publisher: the set of subscriptions matched to it changed (one
      *  appeared or left). Payload: `matched`. Upstream
-     *  RMW_EVENT_PUBLICATION_MATCHED (Iron+), issue 1972. */
+     *  RMW_EVENT_PUBLICATION_MATCHED (Iron+). */
     NROS_RMW_EVENT_PUBLICATION_MATCHED        = 5,
     /** Subscription: the set of publishers matched to it changed. Payload:
      *  `matched`. Upstream RMW_EVENT_SUBSCRIPTION_MATCHED. */
@@ -117,7 +117,7 @@ typedef struct rmw_incompatible_type_status_t {
 /** Borrow-shaped union the backend supplies to the registered
  *  callback. The `kind` argument selects which member is valid.
  *
- *  Members are APPENDED (issue 1972 grew it from 8 to 16 bytes). A caller
+ *  Members are APPENDED (the matched and incompatible-type events grew it from 8 to 16 bytes). A caller
  *  owns the union it hands `*_take_event`, so a backend built against the
  *  older, smaller header writes within the larger one. */
 typedef union rmw_event_payload_t {
@@ -139,7 +139,7 @@ typedef union rmw_event_payload_t {
  * is not uniform and is not `drive_io`. This paragraph claimed "invoked from
  * inside `drive_io` on the executor thread" until 2026-08-25; no backend did
  * that, and the claim was load-bearing — it was the stated reason
- * `rmw_take_event` could be declined (issue 0780). zenoh fires from
+ * `rmw_take_event` could be declined. zenoh fires from
  * `take` and `has_data`; a DDS backend's listeners fire on its own
  * worker thread.
  *
@@ -148,7 +148,7 @@ typedef union rmw_event_payload_t {
  * `*_event_init` NULL and implement `*_take_event` instead, which hands the
  * caller the deferral upstream gets from its wait set.
  */
-/* Phase 376 W5 — `rmw_status_event_callback_t`, NOT `rmw_event_callback_t`.
+/* `rmw_status_event_callback_t`, NOT `rmw_event_callback_t`.
  *
  * Upstream binds `rmw_event_callback_t` to a DIFFERENT signature —
  * `void(const void *user_data, size_t number_of_events)`, the callback

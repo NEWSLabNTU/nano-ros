@@ -1,11 +1,11 @@
 //! Link-feature env reader + per-platform policy mask.
 //!
-//! Phase 134.2 introduced the `LinkFeatures` env reader + the
+//! This module introduced the `LinkFeatures` env reader + the
 //! `LinkPolicy` mask that overrides per-platform invariants
 //! (Orin SPE has no Ethernet → `Force(false)` masks TCP / UDP /
-//! MC / SERIAL / TLS, etc.). Phase 136.2 extracted it from
-//! `zpico-sys/build.rs` into `zpico-sys/build/policy.rs`. Phase
-//! 152.5 lifted it into the `nros-board-common` library so the
+//! MC / SERIAL / TLS, etc.). It was later extracted from
+//! `zpico-sys/build.rs` into `zpico-sys/build/policy.rs`, then
+//! lifted into the `nros-board-common` library so the
 //! per-kernel generic board crates can share one canonical
 //! implementation alongside the manifest parser.
 //!
@@ -41,7 +41,7 @@ pub struct LinkFeatures {
     pub isotp: bool,
 }
 
-/// Issue 2096 — the zenoh-pico links an image compiles only when its session
+/// The zenoh-pico links an image compiles only when its session
 /// can reach one, as `(endpoint scheme, build knob)`. Off by default because
 /// each is a medium a generic build cannot assume (a CAN interface, the
 /// `can-isotp` module). A locator or RMW-file endpoint on the scheme is the
@@ -54,7 +54,7 @@ pub struct LinkFeatures {
 /// that is what a BOARD registers a driver for, and neither link has a board
 /// half on a hosted target -- the kernel owns the interface.
 ///
-/// Issue 2452 — `custom/…` is the third row. The zenoh custom link (the
+/// `custom/…` is the third row. The zenoh custom link (the
 /// `nros_transport_ops_t` the APPLICATION registers) was reachable only
 /// through `zpico-sys`'s `link-custom` cargo feature, which a Rust image names
 /// in its own manifest and a C/C++ image has no manifest to name: every C/C++
@@ -76,7 +76,7 @@ pub const LINK_BUILD_KNOBS: &[(&str, &str)] = &[
 pub const LINK_CAN_KNOB: &str = "NROS_LINK_CAN";
 /// The `isotp` row of [`LINK_BUILD_KNOBS`].
 pub const LINK_ISOTP_KNOB: &str = "NROS_LINK_ISOTP";
-/// The `custom` row of [`LINK_BUILD_KNOBS`] (issue 2452).
+/// The `custom` row of [`LINK_BUILD_KNOBS`].
 pub const LINK_CUSTOM_KNOB: &str = "NROS_LINK_CUSTOM";
 
 /// The [`LINK_BUILD_KNOBS`] that `endpoints` need, each once, in table order.
@@ -103,9 +103,9 @@ fn knob_on(name: &str) -> bool {
 impl LinkFeatures {
     /// Read link features from Cargo environment variables.
     ///
-    /// Phase 128.E.1 made `tcp`, `udp_unicast`, `udp_multicast`, `serial`
-    /// always-on (one binary serves any locator, picked at session-open). Phase
-    /// 204.7 re-gates the **IP** trio (`tcp`/`udp_unicast`/`udp_multicast`) on
+    /// `tcp`, `udp_unicast`, `udp_multicast`, `serial` were made
+    /// always-on (one binary serves any locator, picked at session-open). Later
+    /// work re-gates the **IP** trio (`tcp`/`udp_unicast`/`udp_multicast`) on
     /// `zpico-sys`'s `link-ip` feature — **default-ON**, so the 128.E.1 behaviour
     /// is unchanged for every existing build; a serial-only board drops `link-ip`
     /// to shed the IP-link C entirely (size). `serial` stays unconditionally on
@@ -153,7 +153,7 @@ impl LinkFeatures {
         }
     }
 
-    /// Phase 134.2 — apply a platform-invariant policy mask. Each
+    /// Apply a platform-invariant policy mask. Each
     /// `PolicyChoice` value either forces the field to a literal (SPE
     /// has no Ethernet → `Force(false)` masks TCP/UDP/MC/SERIAL/TLS)
     /// or lets the upstream `LinkFeatures::from_env()` value through
@@ -206,7 +206,7 @@ impl LinkFeatures {
     }
 }
 
-/// Phase 134.2 — per-platform link-feature policy mask.
+/// Per-platform link-feature policy mask.
 ///
 /// Layered on top of `LinkFeatures::from_env()`. Each field is a
 /// `PolicyChoice`: `Force(bool)` overrides the env-derived value;
@@ -264,7 +264,7 @@ impl LinkPolicy {
         }
     }
 
-    /// POSIX policy — same as passthrough today. Phase 134.7 adds
+    /// POSIX policy — same as passthrough today. Later work adds
     /// the missing multicast aliases in `platform_aliases.c`; until
     /// that lands the linker still fails on `_z_read_udp_multicast`
     /// if multicast is on, but `LinkFeatures::from_env()` already
@@ -277,11 +277,11 @@ impl LinkPolicy {
     /// IVC-only — no Ethernet, no serial, no TLS; the link layer is an
     /// inter-processor mailbox and only IVC + custom transports are valid.
     ///
-    /// phase-337 W7.b — was ~~`orin_spe()`~~, named for the one board that used it.
+    /// Was ~~`orin_spe()`~~, named for the one board that used it.
     /// The board is gone; the POLICY is not board-specific (any AMP mailbox
     /// target has this shape), so it keeps the capability name instead.
     ///
-    /// issue 1143 — selected by [`LinkPolicy::for_board`] from the board's
+    /// Selected by [`LinkPolicy::for_board`] from the board's
     /// `capabilities.ip_stack = false`, which is what the old comment here
     /// ("`nros-zpico-build` picks a policy per PLATFORM, and IVC-only has no
     /// in-tree platform") was waiting for. The rung is per-BOARD because the
@@ -302,7 +302,7 @@ impl LinkPolicy {
         }
     }
 
-    /// Phase 146.2 — FreeRTOS + lwIP. zenoh-pico's
+    /// FreeRTOS + lwIP. zenoh-pico's
     /// `src/system/freertos/lwip/network.c` ships an explicit
     /// `#error "Serial not supported yet on FreeRTOS + LWIP port"`
     /// behind `Z_FEATURE_LINK_SERIAL == 1`, and no FreeRTOS user
@@ -335,7 +335,7 @@ impl LinkPolicy {
         }
     }
 
-    /// Phase 146.2 — NuttX. Same shape as `freertos_lwip()`: NuttX
+    /// NuttX. Same shape as `freertos_lwip()`: NuttX
     /// ships no serial backend, no raweth, no TLS provider; forcing
     /// these features on under `LinkFeatures::from_env`'s Phase
     /// 128.E.1 "always-on" defaults causes `_z_*_serial_internal`
@@ -356,7 +356,7 @@ impl LinkPolicy {
         }
     }
 
-    /// Phase 146.2 — ThreadX (both Linux sim and RV64 board).
+    /// ThreadX (both Linux sim and RV64 board).
     /// `c/platform/threadx/network.c` ships TCP/UDP/serial code over
     /// NetX Duo BSD but is NOT listed under `[platform.threadx]
     /// extra_sources` — threadx uses `platform_aliases.c` for
@@ -378,10 +378,10 @@ impl LinkPolicy {
         }
     }
 
-    /// issue 1143 — the BOARD rung of policy selection, applied on top of the
+    /// The BOARD rung of policy selection, applied on top of the
     /// per-PLATFORM baseline the caller already chose.
     ///
-    /// The fact is `capabilities.ip_stack`, RFC-0086's vocabulary, resolved
+    /// The fact is `capabilities.ip_stack`, the unified-configuration vocabulary, resolved
     /// through `PlatformsTree::capabilities_with_board` so the board's own
     /// `[capabilities]` outranks its platform's. `false` means this image has
     /// no IP stack at all — no MAC, no PHY, no socket layer — and the only
@@ -416,10 +416,10 @@ impl LinkPolicy {
     }
 }
 
-/// The RFC-0086 capability that decides whether a socket-based link can exist
+/// The unified-configuration capability that decides whether a socket-based link can exist
 /// in this image. One spelling, shared by the policy selector above and by the
 /// zenoh port row's `defines_conditional` / `extra_sources` entries that pick the
-/// matching zenoh-pico `system/` TU set — the two halves of issue 1143 have to
+/// matching zenoh-pico `system/` TU set — the two halves have to
 /// agree about the fact or they pick a socket type and a link policy that
 /// disagree, which is the 0135 class.
 pub const IP_STACK: &str = "ip_stack";

@@ -17,7 +17,7 @@ pub fn run_qemu_arm() {
 /// identical to the old `run_qemu_arm`. A new-arch NuttX board (e.g. riscv)
 /// supplies its own `NUTTX_CROSS` / `NUTTX_ARCH` / `NUTTX_VECTORTAB_OBJ` /
 /// `NUTTX_LINKER_SCRIPT` / `NUTTX_ARCH_INCLUDES`. The CPU flags are never an
-/// input: they are NuttX's own, the export's `ARCHCPUFLAGS` (phase-550 W3b).
+/// input: they are NuttX's own, the export's `ARCHCPUFLAGS`.
 pub fn run_nuttx() {
     // APP_MAIN_CPP: path to the C or C++ source file to compile (set by CMake)
     // APP_INCLUDE_DIRS: semicolon-separated include directories (set by CMake)

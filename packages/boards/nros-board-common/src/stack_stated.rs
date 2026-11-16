@@ -1,4 +1,4 @@
-//! Issue 2400 W5 — the stack a board's build STATES, for the cargo road's check.
+//! The stack a board's build STATES, for the cargo road's check.
 //!
 //! On the cargo road `nros build` walks the linked image's deepest path after
 //! cargo and compares its floor with the stack the image was built with. Only

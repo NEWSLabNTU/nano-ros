@@ -583,13 +583,13 @@ const nros_app_config_t NROS_APP_CONFIG = {
 }
 
 /// The board's app-thread stack when nothing states one: the value its C
-/// carried as a constant before issue 2400 W5b. The cmake road compiles the
+/// carried as a constant before it became a knob. The cmake road compiles the
 /// same C with no `-D`, so `board_threadx_qemu_riscv64.c` keeps this number as
 /// its `#ifndef` fallback; the two are the board's one value on two roads.
 pub const APP_STACK_BYTES: u32 = 512 * 1024;
 
 /// The app-thread stack for this build: the `[knobs.memory] app_stack_bytes`
-/// rung of the RFC-0049 ladder, under its ThreadX env front-end
+/// rung of the board-configuration ladder, under its ThreadX env front-end
 /// `NROS_THREADX_APP_STACK_KB` (KiB). Emits the `rerun-if-env-changed` lines.
 pub fn app_stack_bytes_from_build_env() -> u32 {
     crate::platform_config::watch_knob_env("NROS_THREADX_APP_STACK_KB");

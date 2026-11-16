@@ -8,7 +8,7 @@
 
 /**
  * @file rmw_transport.h
- * @brief Runtime-pluggable custom transport vtable (Phase 115.A).
+ * @brief Runtime-pluggable custom transport vtable.
  *
  * Lets a consumer plug a custom byte-pipe (USB-CDC, BLE, RS-485,
  * semihosting bridge, ring-buffer loopback, etc.) at runtime — no
@@ -72,11 +72,11 @@ extern "C" {
  * dereferences `user_data`; it's the caller's per-transport
  * context, threaded back into every callback's first argument.
  *
- * THIS declaration is the ABI single source of truth (RFC-0054): Rust
+ * THIS declaration is the ABI single source of truth: Rust
  * consumes the committed bindgen output of this header, and
  * `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in
  * lockstep with it — not the other way round. The previous wording had that
- * backwards (issue 0331). Layout equivalence is asserted on both sides: see
+ * backwards. Layout equivalence is asserted on both sides: see
  * `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`
  * and the `const _` size/align block beside
  * `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same

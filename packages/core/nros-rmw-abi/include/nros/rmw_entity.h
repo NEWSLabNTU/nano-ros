@@ -40,7 +40,7 @@
 /* QoS profile — full DDS shape (matches `rmw_qos_profile_t`)          */
 /* ------------------------------------------------------------------ */
 
-/* Policy values carry UPSTREAM's numbering — phase-376 W5/B2.
+/* Policy values carry UPSTREAM's numbering.
  *
  * They did not until 2026-08-24, and the disagreement was not academic. Ours
  * were a dense 0/1 pair per policy, which put a DIFFERENT meaning on the same
@@ -74,7 +74,7 @@
  *  `rmw_qos_profile_t` about partial answers. */
 #define NROS_RMW_RELIABILITY_UNKNOWN        3
 /** Resolve at creation against the discovered graph — upstream's
- *  `RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE` (Iron+), issue 1973. A REQUEST
+ *  `RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE` (Iron+). A REQUEST
  *  value only: the runtime (`nros-rmw-cffi`) resolves it with
  *  `QoSProfile::resolve_best_available` before calling a backend's create
  *  slot, so no backend ever receives it and no read-back reports it. */
@@ -85,7 +85,7 @@
 #define NROS_RMW_DURABILITY_TRANSIENT_LOCAL  1
 #define NROS_RMW_DURABILITY_VOLATILE         2
 #define NROS_RMW_DURABILITY_UNKNOWN          3
-/** Upstream's `RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE` (Iron+), issue 1973.
+/** Upstream's `RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE` (Iron+).
  *  A request value only — see `NROS_RMW_RELIABILITY_BEST_AVAILABLE`. */
 #define NROS_RMW_DURABILITY_BEST_AVAILABLE   4
 
@@ -115,7 +115,7 @@ typedef int64_t rmw_time_point_value_t;
 
 /** Global identifier for a publisher — upstream `rmw_gid_t`, field for field.
  *
- *  Phase 376 W4. Mirrors upstream exactly, including the 24-byte width and the
+ *  Mirrors upstream exactly, including the 24-byte width and the
  *  `implementation_identifier`. The identifier matters MORE here than upstream:
  *  `nros_rmw_cffi_register_named` admits several backends in one image, so two
  *  gids are comparable only when it matches.
@@ -126,13 +126,13 @@ typedef int64_t rmw_time_point_value_t;
  *
  *  **One type and one value.** A gid obtained from a take
  *  (`rmw_message_info_t::publisher_gid`) and one obtained from
- *  `get_gid_for_publisher` are the same width (the phase-467 RMW gap-closure
- *  design study's Q1(a)) and, since issue 1495, produced from ONE source on
+ *  `get_gid_for_publisher` are the same width (per the RMW gap-closure
+ *  design study) and produced from ONE source on
  *  every backend that produces either: Cyclone's writer GUID on both sides
  *  (`take_with_info`); zenoh's XXH3-128 of the entity's liveliness keyexpr,
  *  which is `rmw_zenoh_cpp`'s own derivation and so also the gid a stock
  *  graph query prints for the entity. */
-/** Bytes to READ — phase-406 W2.
+/** Bytes to READ.
  *
  *  `len` is a FACT: how many bytes exist. Nothing is written through this, and
  *  `const` says so — `publish` handing a backend a mutable pointer is an
@@ -144,7 +144,7 @@ typedef struct rmw_byte_span_t {
     size_t len;
 } rmw_byte_span_t;
 
-/** Room to WRITE — phase-406 W2.
+/** Room to WRITE.
  *
  *  This is upstream's `rmw_serialized_message_t` MINUS THE ALLOCATOR. That is
  *  not a coincidence and it is the whole argument: upstream's is an
@@ -168,8 +168,8 @@ typedef struct rmw_mut_byte_span_t {
     /** Out: bytes actually written.
      *
      *  On `NROS_RMW_RET_BUFFER_TOO_SMALL` from any of the three TAKE slots —
-     *  the subscription `take` (issue 1612), the service `take_request` and
-     *  the client `take_response` (issue 1632) — it is the size the refused
+     *  the subscription `take`, the service `take_request` and
+     *  the client `take_response` — it is the size the refused
      *  sample, request or reply NEEDED, or `NROS_RMW_TAKE_LEN_UNKNOWN` when
      *  the backend cannot know it. The caller pre-sets it to that value on
      *  all three. Undefined on every other failure. */
@@ -191,11 +191,11 @@ typedef struct rmw_mut_byte_span_t {
  *  drop log named the buffer and never the sample. */
 #define NROS_RMW_TAKE_LEN_UNKNOWN 0
 
-/** The request id a backend reports when it CANNOT supply one — issue 2009.
+/** The request id a backend reports when it CANNOT supply one.
  *
  *  `send_request`'s `*sequence_id` and `take_response`'s `*seq_out` are how a
- *  client with more than one call outstanding matches a reply to its request
- *  (issue 0778). The CALLER pre-sets both to this value, exactly as it pre-sets
+ *  client with more than one call outstanding matches a reply to its request.
+ *  The CALLER pre-sets both to this value, exactly as it pre-sets
  *  `len` to `NROS_RMW_TAKE_LEN_UNKNOWN`, so a backend that never writes them —
  *  or writes this explicitly — reads as "no id" rather than as id 0, which is a
  *  legal id. Every in-tree backend that implements the client slots writes a
@@ -211,7 +211,7 @@ typedef struct rmw_mut_byte_span_t {
  *  sequence number, XRCE its 16-bit request id. */
 #define NROS_RMW_SEQUENCE_ID_UNKNOWN (-9223372036854775807LL - 1)
 
-/** A message type's identity — phase-406 W1.
+/** A message type's identity.
  *
  *  Upstream passes `const rosidl_message_type_support_t *`: a runtime-dispatch
  *  handle carrying `{typesupport_identifier, data, func}`, where `func` walks a
@@ -271,10 +271,10 @@ typedef struct rmw_gid_t {
 
 /** Per-sample metadata — upstream `rmw_message_info_t`, field for field.
  *
- *  Phase 376 W4. Two channels carry this metadata to Rust callers today. A
+ *  Two channels carry this metadata to Rust callers today. A
  *  backend that fills `take_with_info` reports it here, in caller-owned
  *  storage, and the runtime dispatches that slot whenever it is non-NULL
- *  (issue 1495 — before that nothing called it, and a C/C++ backend such as
+ *  (before that nothing called it, and a C/C++ backend such as
  *  Cyclone delivered every sample with no metadata at all). The Rust adapter
  *  instead writes `MESSAGE_INFO_TABLE`, a side table in `nros-rmw-cffi` keyed
  *  on the subscription's `backend_data` ADDRESS. That table is a workaround,
@@ -308,11 +308,11 @@ typedef struct rmw_message_info_t {
 
 /** Width of `rmw_request_id_t::writer_guid`, in bytes — upstream's `int8_t[16]`.
  *
- *  Issue 2081. NOT `RMW_GID_STORAGE_SIZE` (24): upstream keeps the request id's
+ *  NOT `RMW_GID_STORAGE_SIZE` (24): upstream keeps the request id's
  *  GUID and the publisher gid at different widths, and so does this ABI. */
 #define RMW_REQUEST_ID_WRITER_GUID_SIZE 16u
 
-/* Issue 2081 — the API headers (`<rclc/detail/request_id.h>`, rclcpp's
+/* The API headers (`<rclc/detail/request_id.h>`, rclcpp's
  * `service.hpp`) declare the SAME struct for a service callback, under the same
  * guard, so a translation unit that reaches two of them sees one definition. */
 #ifndef NROS_RMW_REQUEST_ID_T_DEFINED
@@ -334,8 +334,8 @@ typedef struct rmw_request_id_t {
 
 /** Per-request metadata — upstream `rmw_service_info_t`, field for field.
  *
- *  Issue 2081. Filled by `take_request_with_info` for a request and, since
- *  issue 2136, by `take_response_with_info` for a reply. As in
+ *  Filled by `take_request_with_info` for a request and
+ *  by `take_response_with_info` for a reply. As in
  *  `rmw_message_info_t`, a field the backend cannot report is ZERO: a
  *  timestamp of 0 means "not stamped", and an all-zero
  *  `request_id.writer_guid` means the request id is not reported. The runtime
@@ -394,7 +394,7 @@ typedef enum rmw_liveliness_kind_t {
  *  - `liveliness_kind = NONE`     → no liveliness tracking.
  *  - `liveliness_lease_ms = 0`    → infinite lease.
  *
- * **Boundary semantics (phase-301, issue 0241).** Durations are u32
+ * **Boundary semantics.** Durations are u32
  * MILLISECONDS; that width is part of the contract:
  *  - `0` = unset/no-check (matches upstream `RMW_QOS_*_DEFAULT`, the
  *    zero time — a "real 0-duration" is inexpressible upstream too).
@@ -408,10 +408,9 @@ typedef enum rmw_liveliness_kind_t {
  * `depth` is `uint16_t` (max 65 535). Embedded ROS application queue
  * depths are typically 1–100; the 16-bit width saves two bytes per
  * entity vs the upstream 32-bit choice. A requested depth the width
- * cannot represent is a create-time error, never a silent saturate
- * (phase-301, issue 0241).
+ * cannot represent is a create-time error, never a silent saturate.
  *
- * **Pure policy mirror (phase-301, issue 0240).** Transport hints
+ * **Pure policy mirror.** Transport hints
  * (`tx_express`, `rx_buffer_hint`) moved OUT of this struct into
  * `rmw_publisher_options_t` / `rmw_subscription_options_t` —
  * the upstream `rmw_publisher_options_t` / `rmw_subscription_options_t`
@@ -427,7 +426,7 @@ typedef struct rmw_qos_profile_t {
     uint16_t depth;
     uint16_t _reserved0;      /**< Reserved; must be zero. */
 
-    /* ---- 16-byte extension (Phase 109) ---- */
+    /* ---- 16-byte extension ---- */
     /** Subscription: max acceptable inter-arrival time, ms. Publisher:
      *  max acceptable inter-publish (offered rate), ms.
      *  0 = infinite (no deadline). */
@@ -453,7 +452,7 @@ typedef struct rmw_qos_profile_t {
 
 
 /* ====================================================================
- * Phase 376 W4 — the two PURE functions.
+ * The two PURE functions.
  *
  * Plain exported C functions, deliberately NOT vtable slots, and the reason is
  * the campaign's own rule read the other way round: a vtable slot is the
@@ -481,7 +480,7 @@ typedef struct rmw_qos_profile_t {
  *    and defined once in Rust with `#[no_mangle]`, so `nros-rmw-abi` stays a
  *    header-only INTERFACE target — no new compiled TU, no new link edge.
  *    (`static inline` was the alternative and is worse: bindgen does not emit
- *    it, so RFC-0054 would force a SECOND Rust implementation, which is the
+ *    it, so the C-headers-as-SSoT rule would force a SECOND Rust implementation, which is the
  *    first reason again.)
  * ==================================================================== */
 
@@ -658,22 +657,22 @@ typedef bool (*rmw_network_flow_endpoint_visit_fn)(void *ctx,
 typedef void (*rmw_content_filter_visit_fn)(void *ctx,
     const char *expression, const char *const *parameters, size_t parameter_count);
 
-/** Explicit infinite spelling for the u32-ms duration fields
- *  (phase-301, issue 0241). Semantically identical to 0 (no check) but
+/** Explicit infinite spelling for the u32-ms duration fields.
+ *  Semantically identical to 0 (no check) but
  *  lets a caller distinguish "I mean infinite" from "I left it unset". */
 #define NROS_RMW_DURATION_INFINITE_MS  UINT32_MAX
 
 /** "Best available" spelling for `deadline_ms` and `liveliness_lease_ms` —
  *  upstream's `RMW_QOS_DEADLINE_BEST_AVAILABLE` /
  *  `RMW_QOS_LIVELINESS_LEASE_DURATION_BEST_AVAILABLE` (both
- *  `RMW_DURATION_INFINITE - 1`), issue 1973: the infinite sentinel minus one.
+ *  `RMW_DURATION_INFINITE - 1`): the infinite sentinel minus one.
  *  A request value only, resolved by the runtime before a backend sees the
  *  profile; no finite duration lowers onto it (the u32-ms range for a finite
  *  window ends one below). */
 #define NROS_RMW_DURATION_BEST_AVAILABLE_MS  (UINT32_MAX - 1u)
 
 /* ------------------------------------------------------------------ */
-/* Entity options — transport hints (phase-301, issue 0240)           */
+/* Entity options — transport hints           */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -683,8 +682,8 @@ typedef void (*rmw_content_filter_visit_fn)(void *ctx,
  */
 /**
  * Session creation options — the home for init-time context that
- * `create_session`'s flat argument list cannot grow without another ABI break
- * (issue 0808). Passed as a NULLable trailing param; NULL = all defaults.
+ * `create_session`'s flat argument list cannot grow without another ABI break.
+ * Passed as a NULLable trailing param; NULL = all defaults.
  *
  * The carrier question 0808 opened had two candidates: encode this behind the
  * locator string, or take one options struct. The struct wins on precedent —
@@ -695,7 +694,7 @@ typedef void (*rmw_content_filter_visit_fn)(void *ctx,
  * silent misparse. One break, then the struct grows.
  *
  * Of Humble's eight `rmw_init_options_t` fields this carries the two that were
- * GAPS (issue 0785). `domain_id` stays a named argument because every backend
+ * GAPS. `domain_id` stays a named argument because every backend
  * needs it; `security_options` remains declined on the target (a DDS-SROS2
  * keystore path, and there is neither a filesystem nor a security plugin
  * where this ABI runs); `allocator`, `instance_id`, `impl` and
@@ -705,7 +704,7 @@ typedef void (*rmw_content_filter_visit_fn)(void *ctx,
  * One backend-specific session configuration property.
  *
  * The counterpart of `RmwConfig::properties` on the Rust side, which every
- * backend already accepts and which — until phase-206 W3 — NO non-Rust caller
+ * backend already accepts and which — until a later fix — NO non-Rust caller
  * could reach: the cffi adapter built `properties: &[]` and threw the options
  * pointer away, so a C or C++ entry could state no transport configuration at
  * all, on any platform.
@@ -749,7 +748,7 @@ typedef struct rmw_session_options_t {
      *  Borrowed for the duration of the call. Carried so
      *  `rmw_get_node_names_with_enclaves` stops being a HOLLOW grouping: the
      *  visitor's `enclave` argument was structurally always NULL because
-     *  nothing in this ABI accepted one (issue 0785). A backend that does not
+     *  nothing in this ABI accepted one. A backend that does not
      *  track enclaves still reports NULL, which is now a fact about the
      *  backend rather than about the seam. */
     const char *enclave;
@@ -764,7 +763,7 @@ typedef struct rmw_session_options_t {
 } rmw_session_options_t;
 
 typedef struct rmw_publisher_options_t {
-    /** phase-279 (#145) — express hint (`TopicInfo::tx_express` across
+    /** Express hint (`TopicInfo::tx_express` across
      *  the C ABI): non-zero = this publisher's samples bypass transport
      *  tx batching. A transport hint, not a DDS policy — no RxO
      *  matching. */
@@ -778,13 +777,13 @@ typedef struct rmw_publisher_options_t {
  * NULLable trailing param to `create_subscription`; NULL = all defaults.
  */
 typedef struct rmw_subscription_options_t {
-    /** Phase 231 (RFC-0038) — receive-buffer size hint, bytes, so a
+    /** Receive-buffer size hint, bytes, so a
      *  size-classing backend (zenoh-pico) can pick a small/large receive
      *  buffer. `0` = unset. A transport hint, not a DDS policy.
      *
-     *  Phase 403 W1 — the paragraph above is what this field MEANS; the rules
+     *  The paragraph above is what this field MEANS; the rules
      *  below are what it OBLIGES, and they are normative. They were prose in
-     *  RFC-0005 ("Receive-buffer sizing: what a backend is obliged to do") and
+     *  the RMW layer design ("Receive-buffer sizing: what a backend is obliged to do") and
      *  nowhere else, so a third party reading only this header could not tell
      *  whether ignoring the hint was conformant. It is.
      *
@@ -823,7 +822,7 @@ typedef struct rmw_subscription_options_t {
      *  (a backend saying what it would rather the take buffer were) was
      *  deleted unread — see the note where it stood in `rmw_vtable.h`. */
     uint32_t rx_buffer_hint;
-    /** Phase-519 W3 (RFC-0074, "On XRCE") — the rate this subscription
+    /** The rate this subscription
      *  DECLARED it can take, `arrival_curve.rate_hz`, in millihertz. `0` =
      *  undeclared, which is what every caller that names nothing passes, so
      *  the field took the old `_reserved[4]` bytes and the struct is the same
@@ -842,7 +841,7 @@ typedef struct rmw_subscription_options_t {
      *  - IT PACES, IT DOES NOT FILTER. The agent takes a sample and then waits
      *    for tokens, so what arrives is up to one period (`1 / rate_hz`) old,
      *    plus more for every sample the agent-side reader's history holds.
-     *    Measured in RFC-0074: median age 104 ms at depth 1 for a 10 Hz
+     *    Measured for the ingress budget: median age 104 ms at depth 1 for a 10 Hz
      *    declaration, against 0.2 ms unpaced. */
     uint32_t arrival_rate_mhz;
 } rmw_subscription_options_t;
@@ -853,7 +852,7 @@ typedef struct rmw_subscription_options_t {
  * usable in every TU that includes this header with no storage and no
  * initialisation order.
  *
- * **ONE STATEMENT PER PROFILE (phase-428 W10).** Every profile below is a
+ * **ONE STATEMENT PER PROFILE.** Every profile below is a
  * single line through `NROS_RMW_QOS_PROFILE_FROM_POLICIES`, which is the ONLY
  * place the fields that never vary between profiles — `_reserved0`, the three
  * durations, `avoid_ros_namespace_conventions`, `_reserved1` — are written.
@@ -872,8 +871,8 @@ typedef struct rmw_subscription_options_t {
  * `<prefix>/include/rmw/rmw/qos_profiles.h`. Edit a value here without the
  * gate agreeing and the gate is what tells you.
  *
- * That named `scripts/check-qos-profile-table.py` from 2026-09-05 to phase-454
- * W1, and NO SUCH SCRIPT EXISTED for any of it. Two gates were written for W10
+ * That named `scripts/check-qos-profile-table.py` from 2026-09-05 until a later
+ * fix, and NO SUCH SCRIPT EXISTED for any of it. Two gates were written for the profile table
  * and the duplicate was deleted — correctly, one parser of one table — but this
  * prose kept the deleted name, so the transcription claiming loudest to be
  * checked was the one checked by nothing. W1 wrote the coverage the sentence
@@ -887,7 +886,7 @@ typedef struct rmw_subscription_options_t {
  *  has no reason to call it. The arguments are BARE policy suffixes
  *  (`RELIABLE`, `VOLATILE`, `KEEP_LAST`, `SYSTEM_DEFAULT`, …) token-pasted
  *  onto the `NROS_RMW_*` prefixes, so a policy that is renamed becomes a
- *  compile error here instead of a silently wrong integer — phase-376 W5/B2's
+ *  compile error here instead of a silently wrong integer — the earlier
  *  lesson ("a comment is not a binding") applied to the profiles as well as to
  *  the enums. */
 #define NROS_RMW_QOS_PROFILE_FROM_POLICIES(rel, dur, hist, dep, live)       \
@@ -905,7 +904,7 @@ typedef struct rmw_subscription_options_t {
         ._reserved1      = {0, 0, 0},                                       \
     })
 
-/* LIVELINESS IS THE SENTINEL IN EVERY CONCRETE PROFILE — phase-428 W10.
+/* LIVELINESS IS THE SENTINEL IN EVERY CONCRETE PROFILE.
  *
  * `DEFAULT`, `SENSOR_DATA`, `SERVICES_DEFAULT` and `PARAMETERS` carried
  * `NROS_RMW_LIVELINESS_AUTOMATIC` (1) until 2026-09-05, under doc comments
@@ -928,7 +927,7 @@ typedef struct rmw_subscription_options_t {
  *     at AUTOMATIC with an infinite lease. Same offered QoS on the wire.
  *   - xrce: drops liveliness entirely (it lowers no liveliness field), so the
  *     value is unobservable there either way.
- *   - zenoh: reads no QoS field at all (phase-428 F1).
+ *   - zenoh: reads no QoS field at all.
  * A backend that starts honouring liveliness later sees the correct
  * "middleware's choice" here rather than an unrequested AUTOMATIC.
  */
@@ -957,7 +956,7 @@ typedef struct rmw_subscription_options_t {
 
 /** `rmw_qos_profile_parameter_events` — reliable + volatile + keep-last(1000).
  *
- *  NEW at phase-428 W10; the C ABI had no name for this profile while the Rust
+ *  NEW with the profile-table work; the C ABI had no name for this profile while the Rust
  *  side did, which is half of why the Rust copy could sit at `KEEP_ALL, 0` for
  *  two phases with nothing to disagree with it. KEEP_LAST(1000) is not a
  *  cosmetic difference from KEEP_ALL: a RELIABLE writer with KEEP_ALL BLOCKS
@@ -967,7 +966,7 @@ typedef struct rmw_subscription_options_t {
 
 /** `rmw_qos_profile_system_default` — **every field is the sentinel**.
  *
- * issue 0829. This aliased `NROS_RMW_QOS_PROFILE_DEFAULT` until 2026-09-03,
+ * This aliased `NROS_RMW_QOS_PROFILE_DEFAULT` until 2026-09-03,
  * which made `SYSTEM_DEFAULT` a byte-for-byte synonym for a concrete
  * RELIABLE / VOLATILE / KEEP_LAST(10) profile — i.e. the constant said nothing
  * of its own. Upstream's `rmw_qos_profile_system_default` names no concrete
@@ -997,12 +996,12 @@ typedef struct rmw_subscription_options_t {
 /** `rmw_qos_profile_unknown` — **"the backend could not determine this"**, and
  *  distinct from `SYSTEM_DEFAULT`.
  *
- *  NEW at phase-428 W10, completing upstream's set of seven. `SYSTEM_DEFAULT`
+ *  NEW with the profile-table work, completing upstream's set of seven. `SYSTEM_DEFAULT`
  *  means "nobody asked, so the middleware chooses"; `UNKNOWN` means "we looked
  *  and cannot say", which is what a `*_get_actual_qos` slot owes its caller for
  *  a policy it cannot read back. The `*_UNKNOWN` policy values have existed
- *  since phase-376 W5/B2 with no profile naming them, which is why
- *  `get_actual_qos` echoes the REQUEST today (phase-428 F1) — an unreportable
+ *  for a long time with no profile naming them, which is why
+ *  `get_actual_qos` echoes the REQUEST today — an unreportable
  *  field reads as *granted*, the inverse of upstream's meaning. Depth is 0
  *  because upstream's is `RMW_QOS_POLICY_DEPTH_SYSTEM_DEFAULT`; there is no
  *  "unknown depth" spelling. */
@@ -1010,7 +1009,7 @@ typedef struct rmw_subscription_options_t {
     NROS_RMW_QOS_PROFILE_FROM_POLICIES(UNKNOWN, UNKNOWN, UNKNOWN, 0, UNKNOWN)
 
 /* ------------------------------------------------------------------ */
-/* Which QoS policies a backend honours (issue 1329)                  */
+/* Which QoS policies a backend honours                  */
 /* ------------------------------------------------------------------ */
 
 /** One bit per policy a caller can REQUEST, for
@@ -1018,7 +1017,7 @@ typedef struct rmw_subscription_options_t {
  *
  *  These mirror `nros_rmw::QoSPolicyMask`'s `pub const` block bit for bit, and
  *  `check-qos-mask-derivation` compares the two — a hand mirror at a distance
- *  is still a hand mirror (issue 0160), and this one decides whether an
+ *  is still a hand mirror, and this one decides whether an
  *  application's entity is created.
  *
  *  A bit means "I read this field and either APPLY the request or REFUSE a
@@ -1057,7 +1056,7 @@ typedef struct rmw_subscription_options_t {
  *  A SHAPE, not a floor: a caller who states nothing else still states these,
  *  and a backend still has to earn each of the four. It is not
  *  "what every backend supports" — the zenoh shim honoured none of the four
- *  until phase-428 W9 measured it. */
+ *  until it was measured. */
 #define NROS_RMW_QOS_POLICY_CORE                                             \
     (NROS_RMW_QOS_POLICY_RELIABILITY | NROS_RMW_QOS_POLICY_DURABILITY_VOLATILE | \
      NROS_RMW_QOS_POLICY_HISTORY | NROS_RMW_QOS_POLICY_DEPTH)
@@ -1074,7 +1073,7 @@ typedef struct rmw_subscription_options_t {
  * backend-private state.
  *
  * The 8-byte `_reserved` slot is sized for a forthcoming
- * `vtable: const struct nros_rmw_vtable_t *` field that Phase 104's
+ * `vtable: const struct nros_rmw_vtable_t *` field that later
  * multi-instance work will land here. Backends and runtime keep
  * these bytes zero.
  */
@@ -1083,7 +1082,7 @@ typedef struct rmw_session_t {
     const char *node_name;
     /** Node namespace (borrowed from caller; outlives the session). */
     const char *namespace_;
-    /** Reserved for future fields (Phase 104 vtable pointer slot);
+    /** Reserved for future fields (a vtable pointer slot);
      *  must be zero. */
     uint8_t     _reserved[8];
     /** Opaque backend state. NULL for an uninitialised session. */
@@ -1092,7 +1091,7 @@ typedef struct rmw_session_t {
 
 /** A graph node — upstream `rmw_node_t`, minus what an image has no use for.
  *
- *  Phase 376 W4. Storage is CALLER-OWNED, like every other entity here: the
+ *  Storage is CALLER-OWNED, like every other entity here: the
  *  runtime hands `create_node` a zero-initialised shell and the backend writes
  *  its `backend_data` into it.
  *
@@ -1157,7 +1156,7 @@ typedef struct rmw_node_t {
  * the same name — `true` means the backend exposes the
  * `borrow_loaned_message` / `publish_loaned_message` primitive.
  *
- * **The runtime DERIVES it; a backend does not write it** (issue 0814).
+ * **The runtime DERIVES it; a backend does not write it**.
  * Its value is exactly `vtable->borrow_loaned_message != NULL`, because
  * that is the same fact, and a fact with two spellings drifts — this one
  * had drifted in both directions at once. Anything a backend writes here
@@ -1183,7 +1182,7 @@ typedef struct rmw_publisher_t {
     rmw_qos_profile_t qos;
     /** Backend exposes `borrow_loaned_message` / `publish_loaned_message`.
      *  DERIVED by the runtime from `vtable->borrow_loaned_message`;
-     *  a backend's write is overwritten (issue 0814). */
+     *  a backend's write is overwritten. */
     bool           can_loan_messages;
     /** Reserved for future fields; must be zero. */
     uint8_t        _reserved[7];
@@ -1192,7 +1191,7 @@ typedef struct rmw_publisher_t {
 } rmw_publisher_t;
 
 /**
- * Subscription entity (phase-301: renamed from `subscriber` to the upstream `rmw_subscription_t` term). Same shape as the publisher; `can_loan_messages`
+ * Subscription entity (renamed from `subscriber` to the upstream `rmw_subscription_t` term). Same shape as the publisher; `can_loan_messages`
  * means the backend exposes the receive-side loan primitive.
  */
 typedef struct rmw_subscription_t {
@@ -1202,9 +1201,9 @@ typedef struct rmw_subscription_t {
     const char    *type_name;
     /** QoS subset honoured by this subscription. */
     rmw_qos_profile_t qos;
-    /** Backend exposes loan_recv / release_recv (Phase 99).
+    /** Backend exposes loan_recv / release_recv.
      *  DERIVED by the runtime from `vtable->take_loaned_message`;
-     *  a backend's write is overwritten (issue 0814). */
+     *  a backend's write is overwritten. */
     bool           can_loan_messages;
     /** Reserved for future fields; must be zero. */
     uint8_t        _reserved[7];
@@ -1213,7 +1212,7 @@ typedef struct rmw_subscription_t {
 } rmw_subscription_t;
 
 /**
- * Service entity (phase-301: renamed from `service_server` to the upstream `rmw_service_t` term).
+ * Service entity (renamed from `service_server` to the upstream `rmw_service_t` term).
  *
  * Service entities have no QoS in the nros subset (the upstream
  * `rmw_qos_profile_services_default` distinction does not generalise
@@ -1238,7 +1237,7 @@ typedef struct rmw_service_t {
 } rmw_service_t;
 
 /**
- * Client entity (phase-301: renamed from `service_client` to the upstream `rmw_client_t` term). Same shape as the service.
+ * Client entity (renamed from `service_client` to the upstream `rmw_client_t` term). Same shape as the service.
  */
 typedef struct rmw_client_t {
     /** Service name (borrowed; outlives the client). */

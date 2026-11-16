@@ -1,6 +1,6 @@
 //! The FreeRTOS task-scheduling defaults, in one place.
 //!
-//! phase-337 W5.d — `nros_board_freertos::Config::default()`, the MPS2 board's
+//! `nros_board_freertos::Config::default()`, the MPS2 board's
 //! `build.rs::emit_nros_app_config` and `cmake/templates/freertos_app_config.c.in`
 //! each carried their own copy of these eight numbers, and they had **already
 //! drifted**: `app_stack_bytes` read 393216 in Rust, 262144 in the board's
@@ -17,7 +17,7 @@
 /// on anything higher.
 pub const FREERTOS_MAX_PRIORITY: u32 = 8;
 
-/// THE normalized-0–31 → raw-FreeRTOS priority conversion (issue 0623).
+/// THE normalized-0–31 → raw-FreeRTOS priority conversion.
 ///
 /// This is the one place the mapping exists. It used to exist in two, and they
 /// did not agree — which is the same silent-drift class as the numbers above,
@@ -44,8 +44,7 @@ pub const fn to_freertos_priority(normalized: u8) -> u32 {
 }
 
 /// Priorities are **RAW FreeRTOS** — `0..configMAX_PRIORITIES-1`, higher = more
-/// urgent — the same units a `[tasks.<name>.freertos] priority` is written in
-/// (issue 0623).
+/// urgent — the same units a `[tasks.<name>.freertos] priority` is written in.
 ///
 /// They were on a normalized 0–31 scale, and that was the defect: a sched task and a
 /// transport task both end up at `xTaskCreate` in ONE priority space, so an
@@ -66,7 +65,7 @@ pub struct FreertosScheduling {
     pub app_stack_bytes: u32,
     /// zenoh-pico read task priority (RAW FreeRTOS). The read task is
     /// zenoh-pico 1.10's executor thread: it also runs the lease and the
-    /// keep-alive, so there is no lease task and no lease field (RFC-0110 D2).
+    /// keep-alive, so there is no lease task and no lease field.
     pub zenoh_read_priority: u8,
     /// zenoh-pico read (executor) task stack size in bytes.
     pub zenoh_read_stack_bytes: u32,
@@ -110,7 +109,7 @@ impl Default for FreertosScheduling {
 /// `build.rs` passes `env::var(..).ok().as_deref()`. Both land here so the
 /// parser cannot drift.
 ///
-/// The default is **128 KiB, and it is MEASURED** (issue 1146). Every FreeRTOS
+/// The default is **128 KiB, and it is MEASURED**. Every FreeRTOS
 /// task stack here is drawn from the FreeRTOS heap (heap_4, `ucHeap[]` in
 /// `.bss`, sized in `nros-board-freertos/build.rs`), and a spawned sched task whose
 /// `stack_bytes` is 0 gets this number too — so it is charged once per task,
@@ -145,8 +144,8 @@ impl Default for FreertosScheduling {
 /// - *"the Rust zenoh executor can exceed 160 KiB opening a FreeRTOS session
 ///   with lwIP up"* — measured **8 952** bytes at exactly that point, on every
 ///   one of the eight images. Off by 18x.
-/// - *"the phase-212 Entry / run-plan Executor open overflows the older
-///   256 KiB (issue #46)"* — whatever issue #46 saw in phase 212, nothing on
+/// - *"the older Entry / run-plan Executor open overflows the older
+///   256 KiB"* — whatever was seen then, nothing on
 ///   this path now comes within 7x of 256 KiB.
 /// - *"a 10-node macro entry's register pass overflows even 384 KiB, hence the
 ///   override"* — true, and about an OUT-OF-TREE consumer (the sentinel entry
@@ -198,10 +197,10 @@ pub const fn app_stack_bytes(kb: Option<&str>) -> u32 {
 pub const DEFAULT_HEAP_APP_TASK_SLOTS: usize = 3;
 
 /// Heap an executor costs when it is NOT the one that took the `.bss`
-/// reservation — issue 1197's residue, and the only backing term left in this
+/// reservation — what remains of budgeting executor backing on the heap, and the only backing term left in this
 /// budget.
 ///
-/// phase-392 W6 put ONE executor's per-entry storage in the named `.bss` static
+/// ONE executor's per-entry storage moved into the named `.bss` static
 /// `nros_node::executor::backing::EXECUTOR_BACKING`, so the FIRST executor an
 /// image opens costs the heap NOTHING and this budget has no term for it. That
 /// is what makes the default independent of a size the board cannot see (issue
@@ -249,14 +248,14 @@ pub const DEFAULT_HEAP_WORKING_SET_BYTES: usize = 65_536;
 /// replacing a bisected 2 MiB literal that predates both of the reductions it
 /// was still sized for:
 ///
-/// * issue 1146 lowered `app_stack_bytes` 393,216 -> 131,072, charged per task;
-/// * issue 1197 / phase-392 W6 moved the first executor's backing to `.bss`,
+/// * `app_stack_bytes` was lowered 393,216 -> 131,072, charged per task;
+/// * the first executor's backing moved to `.bss`,
 ///   so this budget stopped holding it a second time.
 ///
 /// Doing those in two commits is how the subtraction ends up applied twice, and
 /// a too-small heap on this port does not say `*** STACK OVERFLOW ***` — heap_4
 /// hands out the task stacks, so it says `*** MALLOC FAILED ***` and hangs
-/// (issue 1146 measured that too). Hence one derivation, and hence every image
+/// (that was measured too). Hence one derivation, and hence every image
 /// prints its own `nros: heap peak` line so the next person reads the number
 /// instead of re-bisecting it.
 ///
@@ -266,7 +265,7 @@ pub const DEFAULT_HEAP_WORKING_SET_BYTES: usize = 65_536;
 ///
 /// Not applied to the cyclone / XRCE lane: DDS discovery's working set is a
 /// different measurement, and it has its own derivation —
-/// [`default_dds_heap_bytes`] (issue 1624).
+/// [`default_dds_heap_bytes`].
 pub const fn default_heap_bytes(app_stack_bytes: u32) -> usize {
     (app_stack_bytes as usize) * DEFAULT_HEAP_APP_TASK_SLOTS
         + DEFAULT_HEAP_SPARE_EXECUTOR_BYTES * (DEFAULT_HEAP_APP_TASK_SLOTS - 1)
@@ -318,12 +317,12 @@ pub const C_CARRIER_APP_STACK_BYTES: u32 = 65_536;
 ///
 /// ONE app-sized task, not [`DEFAULT_HEAP_APP_TASK_SLOTS`]: on the C/C++
 /// carrier only the app task's stack comes from heap_4 — sched task stacks and
-/// TCBs are the entry's statics since issue 1598 — and no sched task executor's
-/// backing reaches the heap since issue 1568. At the carrier's 65,536-byte
+/// TCBs are the entry's statics now — and no sched task executor's
+/// backing reaches the heap any more. At the carrier's 65,536-byte
 /// stack this is **655,360** bytes (640 KiB), which is what
 /// `FreeRTOSConfig.h`'s `NROS_FREERTOS_DDS_HEAP_KB` states; a test below holds
 /// the header to it. It replaced a 3 MiB budget nobody had measured. NOT minus
-/// the `.bss` sched task stacks (issue 1598): the derivation never contained them.
+/// the `.bss` sched task stacks: the derivation never contained them.
 pub const fn default_dds_heap_bytes(app_stack_bytes: u32) -> usize {
     app_stack_bytes as usize + DEFAULT_HEAP_DDS_WORKING_SET_BYTES
 }

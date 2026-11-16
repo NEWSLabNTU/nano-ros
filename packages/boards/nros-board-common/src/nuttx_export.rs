@@ -1,4 +1,4 @@
-//! phase-339 — where a NuttX consumer finds the kernel it links against.
+//! Where a NuttX consumer finds the kernel it links against.
 //!
 //! # Why this exists
 //!
@@ -47,7 +47,7 @@ fn snapshot_arch(target_arch: &str) -> Option<&'static str> {
 /// Emits the `rerun-if-changed` its own inputs need. Callers add more for the
 /// specific paths they consume.
 ///
-/// issue 0491 — `NUTTX_EXPORT_DIR` is a PATH, so it is watched by CONTENT and
+/// `NUTTX_EXPORT_DIR` is a PATH, so it is watched by CONTENT and
 /// never fingerprinted as a string: cargo compares an env value textually, and
 /// the same directory has one spelling per example leaf, another from `just`,
 /// and none from a bare build, so rows sharing one `--target-dir` re-ran this
@@ -78,13 +78,13 @@ pub fn snapshot_root(nuttx_dir: &Path) -> Option<PathBuf> {
 ///
 /// Falls back to the live `staging/` when this arch has no snapshot, so a tree
 /// provisioned by an older `build-nuttx.sh` still links. The fallback carries
-/// the pre-phase-339 hazard by definition — it is a compatibility path, not a
+/// the older shared-tree hazard by definition — it is a compatibility path, not a
 /// supported configuration.
 pub struct KernelLibs {
     /// Directory holding `lib*.a`.
     pub libs: PathBuf,
     /// True when `libs` is a per-arch snapshot (safe to watch), false when it
-    /// is the shared live `staging/` (the issue-0433 hazard).
+    /// is the shared live `staging/` (the shared-staging hazard).
     pub from_snapshot: bool,
     /// Snapshot root, when there is one — for the linker script, startup
     /// objects and headers that live beside `libs/`.
@@ -112,7 +112,7 @@ pub fn kernel_libs(nuttx_dir: &Path) -> KernelLibs {
 ///
 /// `snapshot_rel` is relative to the snapshot root (e.g. `scripts/dramboot.ld`,
 /// `startup/arm_vectortab.o`); `tree_rel` is the live-tree spelling used before
-/// phase-339 (e.g. `boards/arm/qemu/qemu-armv7a/scripts/dramboot.ld`). The
+/// the per-arch snapshot existed (e.g. `boards/arm/qemu/qemu-armv7a/scripts/dramboot.ld`). The
 /// snapshot wins when it has the file, so a half-migrated tree still links.
 pub fn snapshot_or_tree(
     libs: &KernelLibs,
@@ -135,7 +135,7 @@ pub fn snapshot_or_tree(
 
 /// The include root whose `nuttx/config.h` describes THIS build's arch.
 ///
-/// Issue 0511 — NuttX is built IN PLACE, so `$NUTTX_DIR/include/nuttx/config.h`
+/// NuttX is built IN PLACE, so `$NUTTX_DIR/include/nuttx/config.h`
 /// belongs to whichever arch the shared tree was configured for LAST. Every
 /// input derived from those macros therefore silently takes the other arch's
 /// values when two arches share one checkout, which `lane=tier2` does (it
@@ -146,14 +146,14 @@ pub fn snapshot_or_tree(
 /// CONFIG_FLASH_SIZE }` gave ROM zero bytes and every byte placed in it
 /// "overflowed".
 ///
-/// phase-339 W2 already made the LIBS and the linker SCRIPT per-arch via the
+/// The LIBS and the linker SCRIPT were already made per-arch via the
 /// export snapshot; the headers were left on the shared tree, so the arch
 /// selection covered two of the three input classes. This is the third.
 ///
 /// Returns the snapshot's `include/` when it carries a `nuttx/config.h`, else
-/// the live tree's — a pre-phase-339 checkout keeps working. Watches the
-/// preferred snapshot spellings even when they lose (issue 0477's rule) and the
-/// shared tree only when it is the answer (issue 2227); see
+/// the live tree's — an older checkout keeps working. Watches the
+/// preferred snapshot spellings even when they lose, and the
+/// shared tree only when it is the answer; see
 /// `nros_build_paths::nuttx_include_root`.
 pub fn include_root(nuttx_dir: &Path) -> PathBuf {
     // Issue 0525 — ONE spelling of this resolution, shared with any standalone
@@ -164,14 +164,14 @@ pub fn include_root(nuttx_dir: &Path) -> PathBuf {
 }
 
 /// The CPU flags NuttX compiled this build's kernel with: its export's
-/// `ARCHCPUFLAGS` (phase-550 W3b). Every C compile and every link a NuttX
+/// `ARCHCPUFLAGS`. Every C compile and every link a NuttX
 /// board crate runs takes these, never a restated `-mcpu` / `-march`, so a
 /// kernel reconfigured for another CPU moves nano-ros with it.
 ///
 /// `None` when this arch has no export yet: a caller skips its cross-compile
 /// exactly as it does for an unprovisioned tree, and the image link then fails
 /// loudly. The export's `Make.defs` is watched whether or not it exists
-/// (issue 0477's rule), so the export appearing reruns the caller.
+/// (the same rule), so the export appearing reruns the caller.
 pub fn cpu_flags(nuttx_dir: &Path) -> Option<Vec<String>> {
     let root = snapshot_root(nuttx_dir).or_else(|| {
         let arch = snapshot_arch(&std::env::var("CARGO_CFG_TARGET_ARCH").ok()?)?;

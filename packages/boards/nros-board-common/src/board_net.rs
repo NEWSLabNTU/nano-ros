@@ -1,4 +1,4 @@
-//! phase-484 W4b (RFC-0103 D1) — a board's network identity defaults, from its
+//! A board's network identity defaults, from its
 //! own descriptor, for its build script.
 //!
 //! A board's fallback IP / netmask / gateway / MAC used to be written into the
@@ -7,8 +7,8 @@
 //! now generated from `[board.net]` in the board's `nros-board.toml`
 //! (`nros_platform_config::BoardNet`): a board on the `qemu` network gets that
 //! network's plan, any other the platform default, [`crate::BaseConfig::default`].
-//! An image's own address is applied over it ([`ResolvedNet::with_interface`],
-//! phase-497 W2), never stated by the board.
+//! An image's own address is applied over it ([`ResolvedNet::with_interface`]),
+//! never stated by the board.
 //!
 //! Build-script only: it reads files and writes `OUT_DIR`.
 
@@ -38,7 +38,7 @@ impl ResolvedNet {
         }
     }
 
-    /// The built-in QEMU network's defaults (RFC-0103 D10): QEMU's own SLIRP
+    /// The built-in QEMU network's defaults: QEMU's own SLIRP
     /// plan — `10.0.2.15/24`, gateway `10.0.2.2` — with the platform's MAC.
     #[must_use]
     pub fn qemu_network() -> Self {
@@ -130,13 +130,13 @@ pub const DEFAULT_ROUTER_PORT: u16 = 7447;
 /// The router an image on this board dials when nothing states one: no
 /// `locator` in its `system.toml`, no `NROS_ENTRY_LOCATOR`, no `$NROS_LOCATOR`.
 ///
-/// A locator is the image's selection (RFC-0103 D1); this is only its
+/// A locator is the image's selection; this is only its
 /// fallback, and it is DERIVED from the board's network facts rather than
-/// stated by the board (RFC-0109, which absorbed RFC-0103 D10):
+/// stated by the board (network configuration in three layers):
 ///
 /// - `stack = "host"`: `tcp/127.0.0.1:7447`. The image is a host process
 ///   (linux, freertos-posix, threadx-linux's NSOS), and loopback is the one
-///   address it reaches without root-provisioned interfaces (issue 1793).
+///   address it reaches without root-provisioned interfaces.
 /// - `stack = "os"` with no `kernel_config` (every Zephyr board): `None`. The
 ///   RTOS's own configuration owns the default (`CONFIG_NROS_ZENOH_LOCATOR`,
 ///   which a board package's `prj.conf` may set), and nothing here reads it.
@@ -161,8 +161,8 @@ pub fn default_locator(descriptor: &Path, board: Option<&str>) -> Result<Option<
 }
 
 /// [`default_locator`] over a network already resolved for the image, whose
-/// own interface may state a gateway of its own (`--image-net`, RFC-0103
-/// D10f): the gateway form reads `net`, not the board's bare default.
+/// own interface may state a gateway of its own (`--image-net`):
+/// the gateway form reads `net`, not the board's bare default.
 ///
 /// # Errors
 ///
@@ -211,7 +211,7 @@ fn locator_for(descriptor: &Path, board: Option<&str>, net: ResolvedNet) -> Stri
 }
 
 impl ResolvedNet {
-    /// This default with an image's interface applied (RFC-0103 D10f): its
+    /// This default with an image's interface applied: its
     /// address, prefix, gateway and MAC. A lease keeps the default address —
     /// the board's DHCP client replaces it at run time.
     #[must_use]
@@ -243,7 +243,7 @@ pub fn emit_for_crate(fallback: ResolvedNet) -> ResolvedNet {
 /// `NROS_BOARD_TOML` (`nros ws board-facts` / the generated cargo config).
 /// Absent, the build named no board and `fallback` stands — a workspace-wide
 /// `cargo check`, which is what the crate's `Config::default()` always was.
-/// The path is watched by CONTENT, never as env text (issue 0491).
+/// The path is watched by CONTENT, never as env text.
 pub fn emit_for_named_board(fallback: ResolvedNet) -> ResolvedNet {
     let descriptor = crate::nros_build_paths::env_path("NROS_BOARD_TOML")
         .map(|p| crate::nros_build_paths::watch_path(&p))
@@ -254,7 +254,7 @@ pub fn emit_for_named_board(fallback: ResolvedNet) -> ResolvedNet {
 /// For a build script whose C half BAKES the address into a TU the board's
 /// own startup applies (riscv64's `NROS_APP_CONFIG`, read by `startup.c`
 /// before the kernel runs): `net` with the image's resolved network over it,
-/// from `NROS_IMAGE_NET` (RFC-0103 D10f). On every other board the image's
+/// from `NROS_IMAGE_NET`. On every other board the image's
 /// address arrives through `nros::main!`'s deploy overlay instead, so their
 /// build scripts do not read the variable and stay one compile per board.
 ///
@@ -290,7 +290,7 @@ fn emit_from(descriptor: &Path, fallback: ResolvedNet) -> ResolvedNet {
     net
 }
 
-/// RFC-0109 D2 (phase-514 W4) — a board whose RTOS owns its network
+/// A board whose RTOS owns its network
 /// (`[board.net] stack = "os"`) reads the address its kernel configuration
 /// states rather than restating one: `CONFIG_NETINIT_IPADDR` /
 /// `CONFIG_NETINIT_DRIPADDR` / `CONFIG_NETINIT_NETMASK` of a NuttX `.config` or

@@ -91,20 +91,20 @@ slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
 | 4 | `create_publisher` | Publisher | **yes** |
 | 5 | `destroy_publisher` | Publisher | **yes** |
 | 6 | `publish` | Publisher | **yes** |
-| 7 | `create_subscription` | Subscription (phase-301: rmw's term; was `subscriber`) | **yes** |
-| 8 | `destroy_subscription` | Subscription (phase-301: rmw's term; was `subscriber`) | **yes** |
-| 9 | `take` | Subscription (phase-301: rmw's term; was `subscriber`) | **yes** |
-| 10 | `has_data` | Subscription (phase-301: rmw's term; was `subscriber`) | **yes** |
-| 11 | `create_service` | Service (phase-301: rmw's term; was `service_server`) | **yes** |
-| 12 | `destroy_service` | Service (phase-301: rmw's term; was `service_server`) | **yes** |
-| 13 | `take_request` | Service (phase-301: rmw's term; was `service_server`) | **yes** |
-| 14 | `has_request` | Service (phase-301: rmw's term; was `service_server`) | **yes** |
-| 15 | `send_response` | Service (phase-301: rmw's term; was `service_server`) | **yes** |
-| 16 | `create_client` | Client (phase-301: rmw's term; was `service_client`) | **yes** |
-| 17 | `destroy_client` | Client (phase-301: rmw's term; was `service_client`) | **yes** |
-| 18 | `send_request` | Client (phase-301: rmw's term; was `service_client`) | optional |
-| 19 | `take_response` | Client (phase-301: rmw's term; was `service_client`) | optional |
-| 20 | `subscription_event_init` | Phase 108 — status events (optional) | optional |
+| 7 | `create_subscription` | Subscription (rmw's term; was `subscriber`) | **yes** |
+| 8 | `destroy_subscription` | Subscription (rmw's term; was `subscriber`) | **yes** |
+| 9 | `take` | Subscription (rmw's term; was `subscriber`) | **yes** |
+| 10 | `has_data` | Subscription (rmw's term; was `subscriber`) | **yes** |
+| 11 | `create_service` | Service (rmw's term; was `service_server`) | **yes** |
+| 12 | `destroy_service` | Service (rmw's term; was `service_server`) | **yes** |
+| 13 | `take_request` | Service (rmw's term; was `service_server`) | **yes** |
+| 14 | `has_request` | Service (rmw's term; was `service_server`) | **yes** |
+| 15 | `send_response` | Service (rmw's term; was `service_server`) | **yes** |
+| 16 | `create_client` | Client (rmw's term; was `service_client`) | **yes** |
+| 17 | `destroy_client` | Client (rmw's term; was `service_client`) | **yes** |
+| 18 | `send_request` | Client (rmw's term; was `service_client`) | optional |
+| 19 | `take_response` | Client (rmw's term; was `service_client`) | optional |
+| 20 | `subscription_event_init` | Status events (optional) | optional |
 | 21 | `subscription_take_event` | Status events: how the three upstream parts map here | optional |
 | 22 | `publisher_take_event` | Status events: how the three upstream parts map here | optional |
 | 23 | `publisher_event_init` | Status events: how the three upstream parts map here | optional |
@@ -120,49 +120,49 @@ slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
 | 33 | `take_sequence` | Status events: how the three upstream parts map here | optional |
 | 34 | `publish_streamed` | Status events: how the three upstream parts map here | optional |
 | 35 | `ping_session` | Status events: how the three upstream parts map here | optional |
-| 36 | `subscription_supports_in_place` | Phase 231 (RFC-0038) — zero-copy in-place subscription take | optional |
-| 37 | `process_raw_in_place` | Phase 231 (RFC-0038) — zero-copy in-place subscription take | optional |
-| 38 | `get_implementation_identifier` | Phase 376 W4 — identity + matched counts (all optional) | optional |
-| 39 | `get_serialization_format` | Phase 376 W4 — identity + matched counts (all optional) | optional |
-| 40 | `feature_supported` | Phase 376 W4 — identity + matched counts (all optional) | optional |
-| 41 | `get_gid_for_publisher` | Phase 376 W4 — identity + matched counts (all optional) | optional |
-| 42 | `publisher_count_matched_subscriptions` | Phase 376 W4 — identity + matched counts (all optional) | optional |
-| 43 | `subscription_count_matched_publishers` | Phase 376 W4 — identity + matched counts (all optional) | optional |
-| 44 | `publisher_get_actual_qos` | Phase 376 W4 — QoS read-back + clean shutdown (all optional) | optional |
-| 45 | `subscription_get_actual_qos` | Phase 376 W4 — QoS read-back + clean shutdown (all optional) | optional |
-| 46 | `client_request_publisher_get_actual_qos` | Phase 376 W4 — QoS read-back + clean shutdown (all optional) | optional |
-| 47 | `client_response_subscription_get_actual_qos` | Phase 376 W4 — QoS read-back + clean shutdown (all optional) | optional |
-| 48 | `service_request_subscription_get_actual_qos` | Phase 376 W4 — QoS read-back + clean shutdown (all optional) | optional |
-| 49 | `service_response_publisher_get_actual_qos` | Phase 376 W4 — QoS read-back + clean shutdown (all optional) | optional |
-| 50 | `publisher_wait_for_all_acked` | Phase 376 W4 — QoS read-back + clean shutdown (all optional) | optional |
-| 51 | `take_with_info` | Phase 376 W4 — with-info takes + entity callbacks (optional) | optional |
-| 52 | `take_loaned_message_with_info` | Phase 376 W4 — with-info takes + entity callbacks (optional) | optional |
-| 53 | `get_node_names` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 54 | `get_topic_names_and_types` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 55 | `get_service_names_and_types` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 56 | `get_publisher_names_and_types_by_node` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 57 | `get_subscriber_names_and_types_by_node` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 58 | `get_service_names_and_types_by_node` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 59 | `get_client_names_and_types_by_node` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 60 | `get_publishers_info_by_topic` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 61 | `get_subscriptions_info_by_topic` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 62 | `count_publishers` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 63 | `count_subscribers` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 64 | `node_get_graph_guard_condition` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 65 | `create_node` | Phase 376 W4 — graph node lifecycle (optional) | optional |
-| 66 | `destroy_node` | Phase 376 W4 — graph node lifecycle (optional) | optional |
-| 67 | `set_log_severity` | Phase 376 W4 — graph node lifecycle (optional) | optional |
-| 68 | `supported_qos_policies` | issue 1329 — which QoS policies THIS backend honours | optional |
-| 69 | `subscription_set_on_new_message_callback` | Per-entity new-data callbacks (issue 1940, phase-397 W1) | optional |
-| 70 | `service_set_on_new_request_callback` | Per-entity new-data callbacks (issue 1940, phase-397 W1) | optional |
-| 71 | `client_set_on_new_response_callback` | Per-entity new-data callbacks (issue 1940, phase-397 W1) | optional |
-| 72 | `count_clients` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
-| 73 | `count_services` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
-| 74 | `get_gid_for_client` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
-| 75 | `event_type_is_supported` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
-| 76 | `take_request_with_info` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
-| 77 | `take_response_with_info` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
-| 78 | `readiness_source` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
+| 36 | `subscription_supports_in_place` | Zero-copy in-place subscription take | optional |
+| 37 | `process_raw_in_place` | Zero-copy in-place subscription take | optional |
+| 38 | `get_implementation_identifier` | Identity + matched counts (all optional) | optional |
+| 39 | `get_serialization_format` | Identity + matched counts (all optional) | optional |
+| 40 | `feature_supported` | Identity + matched counts (all optional) | optional |
+| 41 | `get_gid_for_publisher` | Identity + matched counts (all optional) | optional |
+| 42 | `publisher_count_matched_subscriptions` | Identity + matched counts (all optional) | optional |
+| 43 | `subscription_count_matched_publishers` | Identity + matched counts (all optional) | optional |
+| 44 | `publisher_get_actual_qos` | QoS read-back + clean shutdown (all optional) | optional |
+| 45 | `subscription_get_actual_qos` | QoS read-back + clean shutdown (all optional) | optional |
+| 46 | `client_request_publisher_get_actual_qos` | QoS read-back + clean shutdown (all optional) | optional |
+| 47 | `client_response_subscription_get_actual_qos` | QoS read-back + clean shutdown (all optional) | optional |
+| 48 | `service_request_subscription_get_actual_qos` | QoS read-back + clean shutdown (all optional) | optional |
+| 49 | `service_response_publisher_get_actual_qos` | QoS read-back + clean shutdown (all optional) | optional |
+| 50 | `publisher_wait_for_all_acked` | QoS read-back + clean shutdown (all optional) | optional |
+| 51 | `take_with_info` | With-info takes + entity callbacks (optional) | optional |
+| 52 | `take_loaned_message_with_info` | With-info takes + entity callbacks (optional) | optional |
+| 53 | `get_node_names` | Graph introspection (all optional) | optional |
+| 54 | `get_topic_names_and_types` | Graph introspection (all optional) | optional |
+| 55 | `get_service_names_and_types` | Graph introspection (all optional) | optional |
+| 56 | `get_publisher_names_and_types_by_node` | Graph introspection (all optional) | optional |
+| 57 | `get_subscriber_names_and_types_by_node` | Graph introspection (all optional) | optional |
+| 58 | `get_service_names_and_types_by_node` | Graph introspection (all optional) | optional |
+| 59 | `get_client_names_and_types_by_node` | Graph introspection (all optional) | optional |
+| 60 | `get_publishers_info_by_topic` | Graph introspection (all optional) | optional |
+| 61 | `get_subscriptions_info_by_topic` | Graph introspection (all optional) | optional |
+| 62 | `count_publishers` | Graph introspection (all optional) | optional |
+| 63 | `count_subscribers` | Graph introspection (all optional) | optional |
+| 64 | `node_get_graph_guard_condition` | Graph introspection (all optional) | optional |
+| 65 | `create_node` | Graph node lifecycle (optional) | optional |
+| 66 | `destroy_node` | Graph node lifecycle (optional) | optional |
+| 67 | `set_log_severity` | Graph node lifecycle (optional) | optional |
+| 68 | `supported_qos_policies` | Which QoS policies THIS backend honours | optional |
+| 69 | `subscription_set_on_new_message_callback` | Per-entity new-data callbacks | optional |
+| 70 | `service_set_on_new_request_callback` | Per-entity new-data callbacks | optional |
+| 71 | `client_set_on_new_response_callback` | Per-entity new-data callbacks | optional |
+| 72 | `count_clients` | The Jazzy contract's four ADOPT additions | optional |
+| 73 | `count_services` | The Jazzy contract's four ADOPT additions | optional |
+| 74 | `get_gid_for_client` | The Jazzy contract's four ADOPT additions | optional |
+| 75 | `event_type_is_supported` | The Jazzy contract's four ADOPT additions | optional |
+| 76 | `take_request_with_info` | The Jazzy contract's four ADOPT additions | optional |
+| 77 | `take_response_with_info` | The Jazzy contract's four ADOPT additions | optional |
+| 78 | `readiness_source` | The Jazzy contract's four ADOPT additions | optional |
 
 <!-- END GENERATED SLOT TABLE -->
 

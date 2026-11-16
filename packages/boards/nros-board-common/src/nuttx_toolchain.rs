@@ -1,4 +1,4 @@
-//! phase-548 W3 — the NuttX cross compiler is the PINNED one, with a GCC floor.
+//! The NuttX cross compiler is the PINNED one, with a GCC floor.
 //!
 //! Every NuttX build script (`nuttx_ffi_build`, `nuttx_platform_build`,
 //! `nuttx_image_link`) used to read `NUTTX_CROSS` with a bare
@@ -18,7 +18,7 @@
 //!   `riscv-none-elf-gcc`), or unset (the arm default `arm-none-eabi-gcc`),
 //!   names a TOOL. When `nros-sdk-index.toml` pins that tool, the compiler is
 //!   CONSTRUCTED as `<store>/sdk/<tool>/<pin>/bin/<tool>` — never found by
-//!   listing the store (issue 1546), never taken from `PATH` (issue 0500: a
+//!   listing the store, never taken from `PATH` (a
 //!   stale store version on `PATH` shadows the pin). A missing pin REFUSES
 //!   with the pin's name and the command that provisions it.
 //! - A tool the index does not pin (no checkout above this build: an
@@ -26,7 +26,7 @@
 //!   saying so.
 //!
 //! The floor is the C++ one `cmake/toolchain/NanoRosCrossToolchain.cmake`
-//! enforces on the FreeRTOS road (issue 1936, `NROS_CROSS_GCC_FLOOR_MAJOR`):
+//! enforces on the FreeRTOS road (`NROS_CROSS_GCC_FLOOR_MAJOR`):
 //! a C++ image below it is refused before the first compile, by
 //! [`CrossGcc::require_cxx_floor`](crate::nuttx_toolchain::CrossGcc::require_cxx_floor). A C-only image keeps building, since the
 //! failing constructs are C++.

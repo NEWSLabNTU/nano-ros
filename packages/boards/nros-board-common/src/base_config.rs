@@ -1,18 +1,18 @@
 //! The network/node configuration core every board crate re-declares.
 //!
-//! phase-322 W1.g counted **12 hand-rolled `Config` structs** across
+//! An audit counted **12 hand-rolled `Config` structs** across
 //! `packages/boards/`, at least nine carrying an identical
 //! `{mac, ip, netmask, gateway, locator, domain_id}` core, and the
 //! `DeployOverlay` → `Config` merge written out at least four separate times.
 //! Each copy drifted on its own: the separate RTIC MPS2-AN385 board crate and
 //! `nros-board-mps2-an385` disagreed on the default IP (`10.0.2.10` vs
 //! `192.0.3.10`), which is invisible until a node fails to reach the router at
-//! runtime. (phase-337 W6.a folded those two crates into one and turned the
+//! runtime. (Those two crates were later folded into one, which turned the
 //! second default into the NAMED `Config::qemu_slirp()` preset — the two values
 //! are two QEMU launch modes, so the defect was that one of them lived in a
 //! sibling crate as a second `Default`-shaped function.)
 //!
-//! This type is **additive** (phase-337 W1.b): nothing adopts it yet. Each
+//! This type is **additive**: nothing adopts it yet. Each
 //! board wave migrates its own `Config` onto it as that wave's first step, so
 //! the blast radius is one board rather than twelve. A board keeps its
 //! board-specific fields — `uart_base`/`baudrate` on MPS2, `interface` on
@@ -125,8 +125,8 @@ impl BaseConfig {
 /// Free function as well as [`BaseConfig::prefix`] because the boards that
 /// think in CIDR need the conversion where they have a bare `[u8; 4]` and no
 /// `BaseConfig` — `nros-board-mps2-an385`'s deploy-overlay merge, for one.
-/// Both MPS2 crates had grown their own popcount ~~`mask_to_prefix`~~ (phase-337
-/// W6); this is the one spelling they now share.
+/// Both MPS2 crates had grown their own popcount ~~`mask_to_prefix`~~;
+/// this is the one spelling they now share.
 pub const fn prefix_from_netmask(netmask: [u8; 4]) -> u8 {
     let bits = u32::from_be_bytes(netmask);
     let mut n = 0u8;
@@ -365,7 +365,7 @@ struct DirectNetwork {
     gateway: Option<[u8; 4]>,
 }
 
-/// Parse a direct-mode board file (RFC-0109 D4, see the section note above).
+/// Parse a direct-mode board file (see the section note above).
 ///
 /// `board` receives every field the shared format does not own — a board's
 /// `[node.rt]` tunings, a serial interface's `baud`, ThreadX Linux's
@@ -374,7 +374,7 @@ struct DirectNetwork {
 /// A malformed VALUE keeps the board default, as it always has: firmware has
 /// nowhere to report it. A wrong SHAPE panics at boot, naming the fix, because
 /// it would otherwise boot on defaults the author believes they replaced:
-/// RFC-0004's `[[transport]]`, a second addressed interface, `host` with no
+/// the old `[[transport]]` table, a second addressed interface, `host` with no
 /// `network`, a network the file does not define, a `host` outside its
 /// network, and `address = "dhcp"` (no direct-mode board takes a lease).
 pub fn parse_direct_toml(

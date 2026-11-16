@@ -4,7 +4,7 @@
 //!
 //! Two distinct surfaces under one crate name:
 //!
-//! - the kernel-agnostic per-board init contract (Phase 152.4.B). The
+//! - the kernel-agnostic per-board init contract. The
 //!   `BoardInit` trait itself has MOVED and this crate no longer
 //!   declares one: it is `nros_platform::BoardInit` as of phase
 //!   212.N.1. (Not a link, because this crate's `nros-platform` dep is
@@ -66,23 +66,23 @@ pub use freertos_config::FreertosScheduling;
 
 #[cfg(feature = "build-helpers")]
 pub mod arch_flags;
-/// issue 0491 — re-export, so a board build script that already build-deps this
+/// Re-export, so a board build script that already build-deps this
 /// crate reaches the ONE path-input helper (`env_or_repo_path` / `watch_path`)
 /// without a new dependency edge in every leaf's `Cargo.lock`.
 #[cfg(feature = "build-helpers")]
 pub use nros_build_paths;
-/// phase-337 W5.d — shared `build.rs` helpers for the FreeRTOS + lwIP family.
+/// Shared `build.rs` helpers for the FreeRTOS + lwIP family.
 #[cfg(feature = "build-helpers")]
 pub mod freertos_build;
 /// The manifest parser, re-exported from `nros-platform-config`.
 ///
-/// phase-400 W6 — it MOVED to a leaf crate so a driver build script can read
+/// It MOVED to a leaf crate so a driver build script can read
 /// the ladder. Re-exported rather than relocated in the callers because the
 /// spelling `nros_board_common::manifest::…` is correct either way and a
 /// nine-file rename would bury the one change that matters.
 #[cfg(feature = "build-helpers")]
 pub use nros_platform_config::manifest;
-/// phase-339 — the per-arch export snapshot a NuttX consumer links against.
+/// The per-arch export snapshot a NuttX consumer links against.
 #[cfg(feature = "build-helpers")]
 pub mod nuttx_export;
 #[cfg(feature = "build-helpers")]
@@ -91,22 +91,22 @@ pub mod nuttx_ffi_build;
 pub mod nuttx_image_link;
 #[cfg(feature = "build-helpers")]
 pub mod nuttx_platform_build;
-/// phase-548 W3 — the NuttX cross compiler: the store pin, with a C++ GCC floor.
+/// The NuttX cross compiler: the store pin, with a C++ GCC floor.
 #[cfg(feature = "build-helpers")]
 pub mod nuttx_toolchain;
-/// RFC-0049 / phase-290 — per-package platform/board knob configuration.
+/// Per-package platform/board knob configuration.
 ///
-/// phase-400 W6 — re-exported from `nros-platform-config`; see `manifest` above.
+/// Re-exported from `nros-platform-config`; see `manifest` above.
 #[cfg(feature = "build-helpers")]
 pub use nros_platform_config::platform_config;
 #[cfg(feature = "build-helpers")]
 pub mod board_net;
-/// Issue 1779 — one `nros_platform_*` provider per linked graph.
+/// One `nros_platform_*` provider per linked graph.
 #[cfg(feature = "build-helpers")]
 pub mod platform_port;
 #[cfg(feature = "build-helpers")]
 pub mod policy;
-/// Issue 2400 W5 — the stack a board's build states, for `nros build`'s check.
+/// The stack a board's build states, for `nros build`'s check.
 #[cfg(feature = "build-helpers")]
 pub mod stack_stated;
 #[cfg(feature = "build-helpers")]
@@ -114,14 +114,14 @@ pub mod threadx_qemu_riscv64_build;
 #[cfg(feature = "build-helpers")]
 pub mod threadx_sources;
 
-/// issue 0288 — host-tooling detection for board build scripts.
+/// Host-tooling detection for board build scripts.
 ///
 /// Gated with the other `build.rs` helpers: this crate is `no_std` for its
 /// runtime surface (the `BoardInit` trait), and the guard needs `std::env` and
 /// `println!`.
 #[cfg(feature = "build-helpers")]
 pub mod host_probe {
-    /// issue 0288 — is this build HOST TOOLING rather than a firmware build?
+    /// Is this build HOST TOOLING rather than a firmware build?
     ///
     /// Board build scripts cross-compile C and assembly for their target. Run for a
     /// host triple they hand target flags to the host compiler and die before rustc

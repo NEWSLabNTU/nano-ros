@@ -28,7 +28,7 @@
  *
  * This block stated the PRE-W3.d contract as current until 2026-09-11
  * and was wrong four ways at once, which is why it is worth recording
- * rather than simply deleting (phase-428 W12): it promised NEGATIVE
+ * rather than simply deleting: it promised NEGATIVE
  * error codes, where step B adopted upstream's positive numbering; it
  * described a second "byte count + error" convention, which step A
  * retired by moving every count to an out-parameter; it named three
@@ -46,7 +46,7 @@
 
 /** Status code. Zero on success.
  *
- *  Phase 376 W3.d step B — the VALUES are upstream rmw's. `RMW_RET_OK` was
+ *  The VALUES are upstream rmw's. `RMW_RET_OK` was
  *  already 0 on both sides; everything else moved from a negative code to
  *  upstream's positive one, so a status means the same number on both sides of
  *  the seam: OK 0, ERROR 1, TIMEOUT 2, UNSUPPORTED 3, BAD_ALLOC 10,
@@ -137,31 +137,31 @@ typedef int32_t rmw_ret_t;
 /** Incoming message exceeded the backend's static capacity. */
 #define NROS_RMW_RET_MESSAGE_TOO_LARGE       (NROS_RMW_RET_EXTENSION_BASE + 6)
 
-/** Phase 115.A.2 — caller-supplied versioned struct
+/** Caller-supplied versioned struct
  *  (e.g. `nros_transport_ops_t`) carries an `abi_version` the
  *  runtime does not understand. The previously installed copy (if
  *  any) is left untouched. */
 #define NROS_RMW_RET_INCOMPATIBLE_ABI        (NROS_RMW_RET_EXTENSION_BASE + 7)
 
-/** Phase 128.A.3 — `Executor::open` / `nros::init` could not pick a
+/** `Executor::open` / `nros::init` could not pick a
  *  unique backend because no `nros-rmw-*` crate (or static lib) is
  *  linked into this binary. The walker found zero entries in the
  *  `.nros_rmw_init` section. */
 #define NROS_RMW_RET_NO_BACKEND              (NROS_RMW_RET_EXTENSION_BASE + 8)
 
-/** Phase 128.A.3 — more than one backend is linked into this
+/** More than one backend is linked into this
  *  binary and the caller did not select one. Set `NROS_RMW=<name>`
  *  (env var) to disambiguate, or use the bridge `Executor::open_multi`
  *  API to bind nodes to backends explicitly. */
 #define NROS_RMW_RET_AMBIGUOUS_BACKEND       (NROS_RMW_RET_EXTENSION_BASE + 9)
 
-/** Phase 128.A.3 — caller selected a backend by name (env var or
+/** Caller selected a backend by name (env var or
  *  `Executor::open_multi`) but no registered slot matches. The error
  *  is recoverable by linking the requested backend or correcting the
  *  spelling. */
 #define NROS_RMW_RET_UNKNOWN_BACKEND         (NROS_RMW_RET_EXTENSION_BASE + 10)
 
-/** Phase 155.B.3 — backend reached the wire but couldn't establish a
+/** Backend reached the wire but couldn't establish a
  *  session: refused TCP connect, unreachable agent, peer dropped the
  *  link mid-handshake. Distinct from `NROS_RMW_RET_ERROR` so callers
  *  (and the C-side `rclc_support_init` / `nros_cpp_init` log lines)
@@ -170,7 +170,7 @@ typedef int32_t rmw_ret_t;
  *  `TransportError::ConnectionFailed` and `Disconnected`. */
 #define NROS_RMW_RET_CONNECTION_FAILED       (NROS_RMW_RET_EXTENSION_BASE + 11)
 
-/** Issue 0468 — a COMPILE-TIME capacity or configuration made the call
+/** A COMPILE-TIME capacity or configuration made the call
  *  impossible: the zenoh session pool (`ZPICO_MAX_SESSIONS`) or a
  *  publisher/queryable table is sized smaller than what the application
  *  asked for. Distinct from `NROS_RMW_RET_INVALID_ARGUMENT`, which means
@@ -181,7 +181,7 @@ typedef int32_t rmw_ret_t;
  *  Added because `TransportError::InvalidConfig` had no code of its own and
  *  encoded to `INVALID_ARGUMENT`, so an exhausted session pool arrived on
  *  the far side indistinguishable from a bad pointer — the last hop of the
- *  same collision that made issue 0465 read as a connection failure. Maps
+ *  same collision that once made an exhausted session pool read as a connection failure. Maps
  *  to / from `TransportError::InvalidConfig`. */
 #define NROS_RMW_RET_INVALID_CONFIG          (NROS_RMW_RET_EXTENSION_BASE + 12)
 

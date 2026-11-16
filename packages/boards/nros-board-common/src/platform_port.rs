@@ -1,4 +1,4 @@
-//! Issue 1779 — ONE `nros_platform_*` provider per linked graph.
+//! ONE `nros_platform_*` provider per linked graph.
 //!
 //! The platform ABI (`<nros/platform.h>`) is a set of free C symbols bound at
 //! link time, so every binary must link exactly one port that defines them.

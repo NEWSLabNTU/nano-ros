@@ -1,7 +1,7 @@
 #ifndef NROS_RMW_VTABLE_H
 #define NROS_RMW_VTABLE_H
 
-/* Phase 376 W3.a — this header defines the GENERIC RMW ABI: its types are
+/* This header defines the GENERIC RMW ABI: its types are
  * `rmw_publisher_t`, `rmw_ret_t`, and so on, with no vendor prefix, because a
  * backend author implements RMW rather than nano-ros.
  *
@@ -43,7 +43,7 @@ extern "C" {
  * `create_*` call receives a runtime-allocated, zero-initialised struct
  * via the `out` pointer; the backend writes its `backend_data` into it.
  * (It does NOT write `can_loan_messages`: the runtime derives that from
- * the loan slots — issue 0814.) The runtime fills the metadata
+ * the loan slots.) The runtime fills the metadata
  * fields (`topic_name`, `type_name`, `qos`) before calling
  * `create_*`; the backend reads them through the same struct.
  *
@@ -78,7 +78,7 @@ extern "C" {
  */
 
 
-/* ---- Phase 376 W4 — graph enumeration visitors ----
+/* ---- Graph enumeration visitors ----
  *
  * Upstream returns `rcutils_string_array_t` and `rmw_names_and_types_t`, which
  * ALLOCATE — two levels deep for names-and-types. There is no allocator at this
@@ -111,7 +111,7 @@ typedef bool (*rmw_names_and_types_visit_fn)(void *ctx, const char *name,
 typedef bool (*rmw_topic_endpoint_info_visit_fn)(void *ctx,
     const rmw_topic_endpoint_info_t *info);
 
-/** An opaque per-loan handle — phase-406 W3.
+/** An opaque per-loan handle.
  *
  *  Was a bare `void *`. The type says nothing a reader can use, and nothing
  *  stops a caller returning a publisher's loan token to a subscription, or a
@@ -123,12 +123,12 @@ typedef bool (*rmw_topic_endpoint_info_visit_fn)(void *ctx,
  *  privately; nobody outside it may dereference one, which was already the
  *  contract and is now enforced rather than documented.
  *
- *  Issue 0781 asked whether the subscription-side loan slots earn their place
+ *  Whether the subscription-side loan slots earn their place was asked,
  *  given nothing implements them. The answer taken here is KEEP AND TYPE: a
  *  slot nobody can use safely is worse than one nobody uses. */
 typedef struct rmw_loan_token_t rmw_loan_token_t;
 
-/** A visitor: the function and the context it needs — phase-406 W2.
+/** A visitor: the function and the context it needs.
  *
  *  Upstream fills a heap-owning out-parameter the caller must `fini`
  *  (`rmw_names_and_types_t`, `rcutils_string_array_t`). We visit instead: one
@@ -144,13 +144,13 @@ typedef struct rmw_loan_token_t rmw_loan_token_t;
  *
  *  `fn == NULL` is INVALID_ARGUMENT, never a silent no-op: a graph query that
  *  visits nothing is indistinguishable from an empty graph, which is the exact
- *  confusion issue 0903 cost days to.
+ *  confusion that once cost days.
  *
  *  Passed BY VALUE — two words, and nothing is written back through it. */
 #define NROS_RMW_VISITOR_DEFINED 1
 typedef struct rmw_node_visitor_t {
     /* Named `visit`, not `fn`: `fn` is a Rust keyword, and this struct is
-       mirrored into Rust by bindgen (RFC-0054 — the C header is the SSoT,
+       mirrored into Rust by bindgen (the C header is the SSoT,
        so the C side is where a name has to be chosen that both languages
        can spell). */
     rmw_node_visit_fn visit;
@@ -159,7 +159,7 @@ typedef struct rmw_node_visitor_t {
 
 typedef struct rmw_names_and_types_visitor_t {
     /* Named `visit`, not `fn`: `fn` is a Rust keyword, and this struct is
-       mirrored into Rust by bindgen (RFC-0054 — the C header is the SSoT,
+       mirrored into Rust by bindgen (the C header is the SSoT,
        so the C side is where a name has to be chosen that both languages
        can spell). */
     rmw_names_and_types_visit_fn visit;
@@ -168,7 +168,7 @@ typedef struct rmw_names_and_types_visitor_t {
 
 typedef struct rmw_topic_endpoint_info_visitor_t {
     /* Named `visit`, not `fn`: `fn` is a Rust keyword, and this struct is
-       mirrored into Rust by bindgen (RFC-0054 — the C header is the SSoT,
+       mirrored into Rust by bindgen (the C header is the SSoT,
        so the C side is where a name has to be chosen that both languages
        can spell). */
     rmw_topic_endpoint_info_visit_fn visit;
@@ -176,7 +176,7 @@ typedef struct rmw_topic_endpoint_info_visitor_t {
 } rmw_topic_endpoint_info_visitor_t;
 
 
-/* Phase 376 W5 — teardown and loan-return REPORT.
+/* Teardown and loan-return REPORT.
  *
  * These six returned `void`. That was never a target constraint: upstream
  * returns `rmw_ret_t` from all of them, and a backend that cannot release a
@@ -193,7 +193,7 @@ typedef struct rmw_topic_endpoint_info_visitor_t {
  */
 typedef struct nros_rmw_vtable_t {
     /* ---- Session lifecycle ---- */
-    /** Create a session (phase-301: renamed from `open` to the table's
+    /** Create a session (renamed from `open` to the table's
      *  own `create_*` convention). The runtime supplies a
      *  zero-initialised `rmw_session_t` via @p out with
      *  `node_name` / `namespace_` already filled. The backend writes
@@ -203,12 +203,12 @@ typedef struct nros_rmw_vtable_t {
      *              rather than the enum to keep the slot's width fixed
      *              across compilers. A backend with no peer/client
      *              distinction must IGNORE it, not reject it.
-     *  @param options NULLable; NULL means every default. Issue 0808 — the
+     *  @param options NULLable; NULL means every default. The
      *              home for init-time context this flat list cannot grow
      *              without another break. `mode` is NOT moved into it: doing
      *              so would be a second break for no gain, and it is already
      *              a named argument every backend reads. What moved in are the
-     *              two fields issue 0785 measured as GAPS, `localhost_only`
+     *              two fields once measured as GAPS, `localhost_only`
      *              and `enclave`. */
     rmw_ret_t (*create_session)(const char *locator, uint8_t mode,
                            uint32_t domain_id, const char *node_name,
@@ -221,8 +221,8 @@ typedef struct nros_rmw_vtable_t {
     /** Create a publisher. The runtime fills `out->topic_name`,
      *  `out->type_name`, `out->qos` before this call; the backend
      *  writes `out->backend_data`. `out->can_loan_messages` is DERIVED
-     *  by the runtime, not written here (issue 0814).
-     *  `options` carries transport hints (phase-301: moved out of the
+     *  by the runtime, not written here.
+     *  `options` carries transport hints (moved out of the
      *  QoS struct); NULL = all defaults. */
     rmw_ret_t (*create_publisher)(const rmw_node_t *node,
         const rmw_message_type_support_t *type_support,
@@ -234,8 +234,8 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*publish)(const rmw_publisher_t *publisher,
         rmw_byte_span_t payload);
 
-    /* ---- Subscription (phase-301: rmw's term; was `subscriber`) ---- */
-    /** `options` carries transport hints (phase-301: moved out of the
+    /* ---- Subscription (rmw's term; was `subscriber`) ---- */
+    /** `options` carries transport hints (moved out of the
      *  QoS struct); NULL = all defaults. */
     rmw_ret_t (*create_subscription)(const rmw_node_t *node,
         const rmw_message_type_support_t *type_support,
@@ -244,7 +244,7 @@ typedef struct nros_rmw_vtable_t {
         const rmw_subscription_options_t *options,
         rmw_subscription_t *out);
     rmw_ret_t (*destroy_subscription)(rmw_subscription_t *subscription);
-    /** Upstream `rmw_take`. Phase 376 W3.b/W3.d step A.
+    /** Upstream `rmw_take`.
      *
      *  `*taken` says whether a message was copied; `*out_len` is
      *  how many bytes, meaningful only when taken. Both are
@@ -267,24 +267,24 @@ typedef struct nros_rmw_vtable_t {
      *    are a typesupport pointer and a sequence bound, both
      *    declined ABI-wide. Nothing can make one, so the argument has
      *    nothing to point at. Two earlier reasons here were wrong:
-     *    "pools are baked" (issue 0777 — cyclonedds calls
+     *    "pools are baked" (cyclonedds calls
      *    `ddsrt_calloc` on this very path) and then "upstream
      *    pre-sizes an `rcutils_allocator_t`" (there is none).
      *
-     *  Phase 403 W1 — `buf_len` is AUTHORITATIVE on every call, and a
+     *  `buf_len` is AUTHORITATIVE on every call, and a
      *  sample that does not fit it is a FAILURE (`*taken = false` with
      *  `NROS_RMW_RET_BUFFER_TOO_SMALL`), never a truncated success.
      *  That holds however the backend treated
      *  `rmw_subscription_options_t.rx_buffer_hint`, whose doc writes the
      *  rule out in full.
      *
-     *  Issue 1612 — on that failure `out->len` is the size the sample
+     *  On that failure `out->len` is the size the sample
      *  NEEDED, so the caller can say how big the dropped sample was rather
      *  than only that it did not fit. A backend that cannot know leaves it at
      *  `NROS_RMW_TAKE_LEN_UNKNOWN`, which is what the caller pre-sets. */
     rmw_ret_t (*take)(const rmw_subscription_t *subscription,
         rmw_mut_byte_span_t *out, bool *taken);
-    /** Phase 376 W3.d step A — status in the return, answer in the
+    /** Status in the return, answer in the
      *  out-parameter, so no slot multiplexes a flag with a status.
      *  `*out_has_data` is written only on `NROS_RMW_RET_OK`.
      *
@@ -298,13 +298,13 @@ typedef struct nros_rmw_vtable_t {
      *  marks samples READ). The rule a backend must actually keep is that a
      *  probe may not CONSUME a message — the sample a `has_data` reports must
      *  still be there for the `take` that follows. The stronger "must not
-     *  mutate subscription state" was recorded here and true of nobody
-     *  (issue 0780). */
+     *  mutate subscription state" was recorded here and true of nobody.
+     */
     rmw_ret_t (*has_data)(rmw_subscription_t *subscription,
         bool *out_has_data);
 
-    /* ---- Service (phase-301: rmw's term; was `service_server`) ---- */
-    /* Phase 193.1b — `qos` applies to both the request + reply endpoints
+    /* ---- Service (rmw's term; was `service_server`) ---- */
+    /* `qos` applies to both the request + reply endpoints
        (one profile per service, mirrors create_publisher/subscription). */
     rmw_ret_t (*create_service)(const rmw_node_t *node,
         const rmw_service_type_support_t *type_support,
@@ -312,7 +312,7 @@ typedef struct nros_rmw_vtable_t {
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         rmw_service_t *out);
     rmw_ret_t (*destroy_service)(rmw_service_t *server);
-    /** Upstream `rmw_take_request`. Phase 376 W3.b/W3.d step A.
+    /** Upstream `rmw_take_request`.
      *
      *  `*taken` says whether a request was copied, `*out_len` how
      *  many bytes, `*seq_out` the sequence number to reply against.
@@ -324,7 +324,7 @@ typedef struct nros_rmw_vtable_t {
      *  `rmw_service_info_t *` — an RTOS reply needs the sequence
      *  and nothing else in that struct. A backend that has the rest
      *  (who sent the request, when) reports it through
-     *  `take_request_with_info` (issue 2081).
+     *  `take_request_with_info`.
      *
      *  `taken = false` with `NROS_RMW_RET_OK` means NOTHING WAS
      *  PENDING, and only that (upstream `rmw.h`). A backend that
@@ -333,22 +333,22 @@ typedef struct nros_rmw_vtable_t {
      *  with `send_response` — returns `NROS_RMW_RET_WOULD_BLOCK`,
      *  consumes nothing, and leaves the request for a later take.
      *  Folding that into `taken = false` makes a saturated server
-     *  indistinguishable from an idle one (issue 1088).
+     *  indistinguishable from an idle one.
      *
-     *  Issue 1632 — a request bigger than `request->capacity` is refused with
+     *  A request bigger than `request->capacity` is refused with
      *  `NROS_RMW_RET_BUFFER_TOO_SMALL`, and `request->len` then carries the
      *  size it NEEDED (`NROS_RMW_TAKE_LEN_UNKNOWN`, which the caller pre-sets,
      *  when the backend cannot know) — the `take` slot's rule, widened. */
     rmw_ret_t (*take_request)(const rmw_service_t *server,
         rmw_mut_byte_span_t *request, int64_t *seq_out, bool *taken);
-    /** Phase 376 W3.d step A — the service-side sibling of
+    /** The service-side sibling of
      *  `has_data`; same contract, same reason. */
     rmw_ret_t (*has_request)(rmw_service_t *server,
         bool *out_has_request);
     rmw_ret_t (*send_response)(const rmw_service_t *server,
         int64_t seq, rmw_byte_span_t response);
 
-    /* ---- Client (phase-301: rmw's term; was `service_client`) ---- */
+    /* ---- Client (rmw's term; was `service_client`) ---- */
     rmw_ret_t (*create_client)(const rmw_node_t *node,
         const rmw_service_type_support_t *type_support,
         const char *service_name,
@@ -356,7 +356,7 @@ typedef struct nros_rmw_vtable_t {
         rmw_client_t *out);
     rmw_ret_t (*destroy_client)(rmw_client_t *client);
 
-    /** Phase 130.4 — non-blocking send_request_raw. Phase-301: the
+    /** Non-blocking send_request_raw. The
      *  deprecated blocking `call_raw` slot is DELETED (rmw has no
      *  blocking call); this + `take_response` is the ONE
      *  request/reply path and both slots are now REQUIRED for a backend
@@ -370,7 +370,7 @@ typedef struct nros_rmw_vtable_t {
      *  same reason here: a client with two calls outstanding has nothing else
      *  to match a reply against.
      *
-     *  Issue 0778 — this out-parameter was ABSENT until 2026-08-25, and every
+     *  This out-parameter was ABSENT until 2026-08-25, and every
      *  backend computed the id and threw it away (cyclonedds a
      *  `RequestId{guid, seq}`, zenoh a `fetch_add` into the rmw attachment,
      *  xrce `uxr_buffer_request`'s id). With nothing to correlate BY, each
@@ -381,7 +381,7 @@ typedef struct nros_rmw_vtable_t {
      *  which travel this path. Same application code, different behaviour per
      *  transport. The id is what deletes both policies.
      *
-     *  Issue 2009 — the caller pre-sets `*sequence_id` to
+     *  The caller pre-sets `*sequence_id` to
      *  `NROS_RMW_SEQUENCE_ID_UNKNOWN`; a backend that cannot assign ids
      *  leaves it there, and the runtime then keeps one call in flight on that
      *  client instead of matching replies it cannot tell apart. */
@@ -397,7 +397,7 @@ typedef struct nros_rmw_vtable_t {
      *  back. Mirrors `take_request`'s `seq_out`, which the SERVER side has
      *  always had — the asymmetry was the tell.
      *
-     *  Issue 2009 — the runtime delivers a reply ONLY to the request whose id
+     *  The runtime delivers a reply ONLY to the request whose id
      *  it carries, and drops a reply whose request was cancelled or is not
      *  pending. `*seq_out` is pre-set to `NROS_RMW_SEQUENCE_ID_UNKNOWN`; a
      *  reply that comes back with it is delivered only when one request is
@@ -408,16 +408,16 @@ typedef struct nros_rmw_vtable_t {
      *  after step A moved the count to an out-parameter and step B made the
      *  errors positive.)
      *
-     *  Issue 1632 — on `NROS_RMW_RET_BUFFER_TOO_SMALL`, `reply->len` is the
+     *  On `NROS_RMW_RET_BUFFER_TOO_SMALL`, `reply->len` is the
      *  size the reply NEEDED, as for `take_request`.
      *
      *  A backend that has the rest of upstream's `rmw_service_info_t` (the
      *  reply's timestamps, the request id it answers) reports it through
-     *  `take_response_with_info` (issue 2136). */
+     *  `take_response_with_info`. */
     rmw_ret_t (*take_response)(const rmw_client_t *client,
         rmw_mut_byte_span_t *reply, int64_t *seq_out, bool *taken);
 
-    /* ---- Phase 108 — status events (optional) ---- */
+    /* ---- Status events (optional) ---- */
     /** Register a callback for a subscription-side event. NULL function
      *  pointer = backend doesn't generate any subscription events.
      *  Specific kind unsupported on a backend that supports some
@@ -446,7 +446,7 @@ typedef struct nros_rmw_vtable_t {
      *    What that costs is real and small: upstream can replace or clear a
      *    callback later, and we cannot.
      *
-     *  - `rmw_take_event` is a SLOT (issue 0780), split per entity kind
+     *  - `rmw_take_event` is a SLOT, split per entity kind
      *    because we have no `rmw_event_t` to carry the entity — see
      *    `subscription_take_event` / `publisher_take_event` below.
      *
@@ -503,7 +503,7 @@ typedef struct nros_rmw_vtable_t {
         rmw_status_event_callback_t cb,
         void                  *user_context);
 
-    /** Phase 108.B — manually assert this publisher's liveliness.
+    /** Manually assert this publisher's liveliness.
      *  Required for `MANUAL_BY_TOPIC` / `MANUAL_BY_NODE` liveliness
      *  kinds; no-op (return `NROS_RMW_RET_OK`) for other kinds.
      *  NULL function pointer = backend doesn't support manual
@@ -512,14 +512,14 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*publisher_assert_liveliness)(
         const rmw_publisher_t *publisher);
 
-    /** Phase 110.0 — backend's next internal-event deadline in
+    /** Backend's next internal-event deadline in
      *  milliseconds from now (lease keepalive, heartbeat, reader
      *  ACK-NACK timeout, etc.). The runtime caps its `drive_io`
      *  timeout against `min(user_timeout, timer_deadline, this)` so
      *  quiet links don't wake early, see no user-visible work, and
      *  round-trip back into `drive_io`.
      *
-     *  Phase 376 W3.d step A — `*out_ms` carries the value and
+     *  `*out_ms` carries the value and
      *  `*has_deadline` whether there is one; both are written only
      *  on `NROS_RMW_RET_OK`.
      *
@@ -538,7 +538,7 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*next_deadline_ms)(const rmw_session_t *session,
         uint32_t *out_ms, bool *has_deadline);
 
-    /** Phase 124.B.1 — executor wake callback.
+    /** Executor wake callback.
      *
      *  The runtime calls this once per session right after `open`
      *  with `cb` pointing at a runtime-supplied function and `ctx`
@@ -557,7 +557,7 @@ typedef struct nros_rmw_vtable_t {
      *  poll-driven: bare-metal). The runtime still drains the
      *  session on its deadline-bound cv-wait boundary.
      *
-     *  phase-521 W4 — a backend that also fills `readiness_source`
+     *  A backend that also fills `readiness_source`
      *  is believed on THAT: the runtime treats the session as woken
      *  by this callback only when it reports
      *  `NROS_RMW_READINESS_NOTIFY`. So a backend may fill this slot
@@ -569,14 +569,14 @@ typedef struct nros_rmw_vtable_t {
                                          void (*cb)(void *ctx),
                                          void *ctx);
 
-    /** Phase 124.A — zero-copy publisher loan.
+    /** Zero-copy publisher loan.
      *
      *  Reserve a writable slot of at least `requested_len` bytes inside
      *  the backend's outbound buffer. Returns:
      *    * `NROS_RMW_RET_OK` + writes `*out_buf` / `*out_cap` / `*out_token`.
      *    * `NROS_RMW_RET_WOULD_BLOCK` if the backend has no slot
      *      available (caller may retry or fall back to a copy path).
-     *      This line said `TRY_AGAIN` until issue 1126 — a spelling
+     *      This line said `TRY_AGAIN` once — a spelling
      *      `rmw_ret.h` has never defined, in the header that
      *      IS the ABI contract a third-party backend writes against.
      *      The runtime reads `WOULD_BLOCK` (and `NO_DATA`) as "no slot,
@@ -595,19 +595,19 @@ typedef struct nros_rmw_vtable_t {
      *  LOAN, hands its pointer back as the slot, and commit memcpys
      *  it into `publish`; without `alloc` there is no fallback at
      *  all and the loan is refused PERMANENTLY, not "try again"
-     *  (issue 0814 — both facts are about the image and the vtable,
+     *  (both facts are about the image and the vtable,
      *  neither can change while the publisher lives).
      *
      *  This said "a per-publisher staging arena" until 2026-09-11.
      *  There is no per-publisher buffer anywhere in this tree — the
-     *  same fiction issue 0782 corrected 200 lines below, on
+     *  same fiction corrected 200 lines below, on
      *  `publish_streamed`, and left standing here. */
     rmw_ret_t (*borrow_loaned_message)(const rmw_publisher_t *publisher,
                                 size_t                 requested_len,
                                 rmw_mut_byte_span_t   *out_slot,
                                 rmw_loan_token_t     **out_token);
 
-    /** Phase 124.A — commit a previously loaned slot.
+    /** Commit a previously loaned slot.
      *
      *  `token` MUST be a value returned from a prior `pub_loan` on the
      *  same publisher. `actual_len` is the byte count actually
@@ -619,7 +619,7 @@ typedef struct nros_rmw_vtable_t {
                                   rmw_loan_token_t     *token,
                                   size_t                actual_len);
 
-    /** Phase 124.A — abandon a previously loaned slot.
+    /** Abandon a previously loaned slot.
      *
      *  Releases the slot without sending. `token` MUST be a value
      *  returned from a prior `pub_loan` on the same publisher.
@@ -627,7 +627,7 @@ typedef struct nros_rmw_vtable_t {
      *  NULL = paired NULL with `pub_loan`. */
     rmw_ret_t (*return_loaned_message_from_publisher)(const rmw_publisher_t *publisher, rmw_loan_token_t *token);
 
-    /** Upstream `rmw_take_loaned_message`. Phase 376 W3.b/W3.d step A.
+    /** Upstream `rmw_take_loaned_message`.
      *
      *  `*taken` says whether a view was handed out; `*out_buf`,
      *  `*out_len` and `*out_token` describe it and are meaningful
@@ -652,13 +652,13 @@ typedef struct nros_rmw_vtable_t {
      *  `process_raw_in_place`'s scoped callback cannot reach. Zenoh's native
      *  zero-copy receive is live but arrives through Rust
      *  `SlotBorrowing for ZenohSubscriber`, not through here. Recorded so
-     *  "the slot exists" is not read as "the capability works": issue 0781. */
+     *  "the slot exists" is not read as "the capability works". */
     rmw_ret_t (*take_loaned_message)(const rmw_subscription_t *subscription,
                            rmw_byte_span_t       *out_view,
                            rmw_loan_token_t     **out_token,
                            bool                  *taken);
 
-    /** Phase 124.A — release a previously borrowed view.
+    /** Release a previously borrowed view.
      *
      *  `token` MUST be a value returned from a prior `sub_borrow`
      *  on the same subscription. Lets the next message advance into
@@ -667,14 +667,14 @@ typedef struct nros_rmw_vtable_t {
      *  NULL = paired NULL with `sub_borrow`. */
     rmw_ret_t (*return_loaned_message_from_subscription)(const rmw_subscription_t *subscription, rmw_loan_token_t *token);
 
-    /** Phase 124.C.1 — service-server availability probe.
+    /** Service-server availability probe.
      *
      *  `*out_available` says whether ≥ 1 matching server has been
      *  discovered on the RMW graph; the return is a plain status.
      *  (This opened by describing the answer as the RETURN — `1`,
      *  `0`, or a negative code — the pre-W3.d shape that the rest of
      *  this same block goes on to explain was retired. Corrected
-     *  2026-09-11, phase-428 W12.) The runtime exposes this to user
+     *  2026-09-11.) The runtime exposes this to user
      *  code as `rclc_client_server_available()` /
      *  `Client<S>::server_available()` — clients use it to gate the
      *  first request so a startup-ordering race doesn't surface as
@@ -691,7 +691,7 @@ typedef struct nros_rmw_vtable_t {
      *  NULL function pointer = backend cannot answer; the runtime
      *  surfaces `NROS_RMW_RET_UNSUPPORTED` to the caller.
      *
-     *  Phase 376 W3.d step A — upstream's shape: the STATUS is the
+     *  Upstream's shape: the STATUS is the
      *  return value and the answer is an out-parameter. Previously
      *  this slot multiplexed both through one `int32_t` (1 = yes,
      *  0 = no, negative = error), which is what makes upstream's
@@ -713,8 +713,8 @@ typedef struct nros_rmw_vtable_t {
         const rmw_client_t *client,
         bool *out_available);
 
-    /** Upstream `rmw_take_sequence`. Phase 376 W3.b/W3.d step A —
-     *  the COUNT moves to `*taken`, matching upstream's
+    /** Upstream `rmw_take_sequence`.
+     *  The COUNT moves to `*taken`, matching upstream's
      *  `size_t *taken`, and the return carries only a status.
      *  `*taken` is written only on `NROS_RMW_RET_OK`; a partial
      *  drain reports what it got rather than erroring.
@@ -735,7 +735,7 @@ typedef struct nros_rmw_vtable_t {
      *  observable behaviour (each message still costs one vtable hop)
      *  while letting user code commit to the batched API.
      *
-     *  Issue 0971 — which leaves a question the count alone cannot
+     *  Which leaves a question the count alone cannot
      *  answer: WHY the drain stopped. A batch that ends because a
      *  message did not fit `per_msg_cap` returns the same shape as
      *  one that drained the reader, and the message that stopped it
@@ -761,7 +761,7 @@ typedef struct nros_rmw_vtable_t {
                                   size_t               *out_lens,
                                   size_t               *taken);
 
-    /** Phase 124.E.1 — streamed publish.
+    /** Streamed publish.
      *
      *  Caller hands the backend two callbacks. The backend invokes
      *  `size_cb` once to learn the total payload length, allocates
@@ -772,7 +772,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  That justification used to read "saves the per-publisher
      *  staging buffer … where the staging buffer dominates `.bss`",
-     *  which described a design this tree does not have (issue 0782).
+     *  which described a design this tree does not have.
      *  There is no per-publisher buffer and none of it is in `.bss`:
      *  `EmbeddedPublisher::publish` serialises into a per-CALL STACK
      *  array of `DEFAULT_TX_BUF` (= `NROS_SUBSCRIPTION_BUFFER_SIZE`,
@@ -807,7 +807,7 @@ typedef struct nros_rmw_vtable_t {
      *  "the configured NROS_MAX_STREAM_CHUNK" until 2026-09-11 and
      *  no such setting has ever existed, so a reader looking for
      *  the knob to raise found nothing and had no way to know the
-     *  limit was 4096 (phase-428 W12). */
+     *  limit was 4096. */
     rmw_ret_t (*publish_streamed)(
         rmw_publisher_t *publisher,
         void (*size_cb)(size_t *out_total_len, void *user_ctx),
@@ -815,7 +815,7 @@ typedef struct nros_rmw_vtable_t {
                          size_t *out_written, void *user_ctx),
         void *user_ctx);
 
-    /** Phase 124.F.1 — session-level connectivity probe.
+    /** Session-level connectivity probe.
      *
      *  Sends a wire-level round-trip probe ("is the peer / agent /
      *  router still reachable?") and waits up to `timeout_ms` for
@@ -853,19 +853,19 @@ typedef struct nros_rmw_vtable_t {
         rmw_session_t *session,
         int32_t             timeout_ms);
 
-    /* ---- Phase 231 (RFC-0038) — zero-copy in-place subscription take ---- */
+    /* ---- Zero-copy in-place subscription take ---- */
 
     /** Capability query: does this subscription support process_raw_in_place()?
      *  The runtime consults it once at subscription registration to choose
      *  in-place dispatch over the buffered (copying) path.
      *
-     *  `*out_supports` is written only on `NROS_RMW_RET_OK` (Phase 376 W3.d
-     *  step A — capability out, status returned).
+     *  `*out_supports` is written only on `NROS_RMW_RET_OK` (capability
+     *  out, status returned).
      *
      *  **The capability is the CONJUNCTION** of this probe answering true and
      *  `process_raw_in_place` being non-NULL. Either alone is unsupported.
      *
-     *  Why the probe is not redundant with that nullity (issue 0781 proposed
+     *  Why the probe is not redundant with that nullity (deleting it was
      *  deleting it, and this is the counterexample that stopped it):
      *  `RustBackendAdapter::<R>::VTABLE` is a `const`, so it installs
      *  `process_raw_in_place` for EVERY `R: RustBackend` — the slot is non-NULL
@@ -910,7 +910,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  NULL function pointer = unsupported (the runtime uses the buffered
      *  path); see `subscription_supports_in_place` for the conjunction. */
-    /** Phase 376 W3.d step A — "did it process one" moves to an
+    /** "Did it process one" moves to an
      *  out-parameter and the return is a plain status.
      *
      *  This retires `NROS_RMW_RET_NO_DATA` from this slot: an empty
@@ -925,7 +925,7 @@ typedef struct nros_rmw_vtable_t {
         void                  *ctx,
         void                 (*cb)(void *ctx, rmw_byte_span_t message),
         bool                  *out_processed);
-    /* ---- Phase 376 W4 — identity + matched counts (all optional) ---- */
+    /* ---- Identity + matched counts (all optional) ---- */
 
     /** Upstream `rmw_get_implementation_identifier`.
      *
@@ -960,21 +960,21 @@ typedef struct nros_rmw_vtable_t {
      *  the backend, not a guess; it is what a foreign vtable that predates the
      *  slot is known by. (Until 2026-10-27 this slot had no reader and this doc
      *  had once promised that fallback with no code behind it — corrected
-     *  phase-393 W2, implemented with the reader.) */
+     *  later, implemented with the reader.) */
     const char *(*get_implementation_identifier)(void);
 
     /** Upstream `rmw_get_serialization_format`.
      *
      *  The backend's wire encoding, as its cross-image identity STRING
-     *  (RFC-0088 D2: the `u8` discriminant is assigned per image and means
+     *  (the `u8` discriminant is assigned per image and means
      *  nothing outside it; the name is what two images can agree on). Static
      *  for the life of the image, like the identifier above.
      *
-     *  PRODUCED by every backend since phase-421 W2. It was reserved until
+     *  PRODUCED by every backend now. It was reserved until
      *  then for a stated reason — "every backend here speaks CDR, nothing
      *  asks, so a body would be parity shape with no reader" — and both halves
      *  of that reason have since stopped being true. uORB's wire is the PX4
-     *  struct verbatim (RFC-0011), so it answers `"uorb"` where every other
+     *  struct verbatim, so it answers `"uorb"` where every other
      *  backend answers `"cdr"`; and `nros_rmw_cffi_register_named` admits
      *  several backends in one image, so a bridge has two sessions whose
      *  formats differ and one compile-time constant cannot describe both.
@@ -988,7 +988,7 @@ typedef struct nros_rmw_vtable_t {
      *  NULL slot: the runtime answers NULL — it does NOT guess `"cdr"`. A
      *  backend that does not declare its format has not told anyone what it
      *  speaks, and inventing an answer is how the identifier slot's doc came
-     *  to promise a fallback nobody had written (corrected phase-393 W2). */
+     *  to promise a fallback nobody had written (since corrected). */
     const char *(*get_serialization_format)(void);
 
     /** Upstream `rmw_feature_supported`.
@@ -1004,8 +1004,8 @@ typedef struct nros_rmw_vtable_t {
      *  false", it is unreachable. This doc promised the `false`
      *  fallback until 2026-09-11 and no such code was ever written:
      *  the same fiction corrected 60 lines above on
-     *  `get_implementation_identifier`, and left standing here
-     *  (phase-428 W12). It earns a dispatch site when a caller
+     *  `get_implementation_identifier`, and left standing here.
+     *  It earns a dispatch site when a caller
      *  exists. */
     bool (*feature_supported)(rmw_feature_t feature);
 
@@ -1027,7 +1027,7 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*subscription_count_matched_publishers)(
         const rmw_subscription_t *subscription, size_t *publisher_count);
 
-    /* ---- Phase 376 W4 — QoS read-back + clean shutdown (all optional) ---- */
+    /* ---- QoS read-back + clean shutdown (all optional) ---- */
 
     /** Upstream `rmw_publisher_get_actual_qos`. Exact parity.
      *
@@ -1094,13 +1094,13 @@ typedef struct nros_rmw_vtable_t {
      *
      *  Deviation from upstream, declared: `uint32_t timeout_ms` for upstream's
      *  by-value `rmw_time_t`. Every duration in this ABI is u32 milliseconds
-     *  (issue 0241) — one width, one unit, no per-call struct.
+     *  — one width, one unit, no per-call struct.
      *
      *  Best-effort backends (zenoh best-effort, XRCE) leave this NULL. */
     rmw_ret_t (*publisher_wait_for_all_acked)(const rmw_publisher_t *publisher,
         uint32_t timeout_ms);
 
-    /* ---- Phase 376 W4 — with-info takes + entity callbacks (optional) ---- */
+    /* ---- With-info takes + entity callbacks (optional) ---- */
 
     /** Upstream `rmw_take_with_info`.
      *
@@ -1115,12 +1115,12 @@ typedef struct nros_rmw_vtable_t {
      *  `rmw_subscription_allocation_t` — see `take`, which carries the full
      *  reason and the two wrong ones that preceded it.
      *
-     *  DISPATCHED since issue 1495: a with-info take on the runtime
+     *  DISPATCHED now: a with-info take on the runtime
      *  calls this slot when it is non-NULL and converts the struct to
      *  `MessageInfo`. A NULL slot falls back to `take` plus the Rust
      *  adapter's side table, which is metadata for a Rust backend and
-     *  none for a C/C++ one. (Before 1495 nothing called this slot at
-     *  all, so filling it changed no behaviour — phase-428 W12 found
+     *  none for a C/C++ one. (Before that, nothing called this slot at
+     *  all, so filling it changed no behaviour — and the
      *  the fallback prose describing a mechanism that did not exist.) */
     rmw_ret_t (*take_with_info)(const rmw_subscription_t *subscription,
         rmw_mut_byte_span_t *message, bool *taken, rmw_message_info_t *message_info);
@@ -1133,7 +1133,7 @@ typedef struct nros_rmw_vtable_t {
         rmw_byte_span_t *out_view, rmw_loan_token_t **out_token,
         bool *taken, rmw_message_info_t *message_info);
 
-    /* ---- Phase 376 W4 — graph introspection (all optional) ----
+    /* ---- Graph introspection (all optional) ----
      *
      * NONE of these may block on the wire, and none takes a timeout: this
      * vtable's premise is that no background transport thread is assumed, so a
@@ -1144,7 +1144,7 @@ typedef struct nros_rmw_vtable_t {
      * A 128 KiB target cannot hold a graph cache, and NULL is the expected
      * answer there — the runtime surfaces UNSUPPORTED. XRCE cannot enumerate
      * participants at all; it answers `get_node_names` alone, from the
-     * `ros_discovery_info` samples it reads through the Agent (issue 2106).
+     * `ros_discovery_info` samples it reads through the Agent.
      */
 
     /** Upstream `rmw_get_node_names` AND `rmw_get_node_names_with_enclaves`.
@@ -1231,8 +1231,8 @@ typedef struct nros_rmw_vtable_t {
      *  NULL slot = backend has no graph-change edge (uORB, and any
      *  backend that discovers nothing). The runtime surfaces that as
      *  UNSUPPORTED and declines to create the guard condition: handing back
-     *  one nothing will ever trigger is the silent difference RFC-0089 Part I
-     *  refuses. phase-467 Row 8 wrote this paragraph, because the slot had
+     *  one nothing will ever trigger is the silent difference the ROS 2 adoption rule
+     *  refuses. This paragraph was written because the slot had
      *  carried no NULL sentence at all — unlike `set_wake_callback` two
      *  hundred lines above — and `check-rmw-slot-producers.py` reads a
      *  REACHABLE slot with neither a producer nor a documented NULL as
@@ -1240,7 +1240,7 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*node_get_graph_guard_condition)(rmw_session_t *session,
         rmw_event_callback_t callback, const void *user_data);
 
-    /* ---- Phase 376 W4 — graph node lifecycle (optional) ----
+    /* ---- Graph node lifecycle (optional) ----
      *
      * The rest of upstream's lifecycle group is deliberately absent, and the
      * absences are decisions rather than omissions:
@@ -1264,14 +1264,14 @@ typedef struct nros_rmw_vtable_t {
      *    enforcement switch, and neither a filesystem nor a security plugin
      *    exists where this ABI runs. `localhost_only` and `enclave` are
      *    CARRIED, by `create_session`'s NULLable `rmw_session_options_t`
-     *    (issue 0808, which closed issue 0785's two gaps): Cyclone honours
+     *    (which closed the two gaps): Cyclone honours
      *    `localhost_only` by restricting discovery to loopback, and a backend
      *    with no discovery to restrict ignores both, as it does `mode`.
      *
      *    `discovery_options` is NOT in this list: it is an IRON field, and the
-     *    recorded contract is Humble. It was named here until issue 0785, the
-     *    third unchecked sentence about an upstream struct in this campaign
-     *    (issue 0777 supplied the other two). Read the header, not the memory.
+     *    recorded contract is Humble. It was named here once, the
+     *    third unchecked sentence about an upstream struct in this campaign.
+     *    Read the header, not the memory.
      *
      *  - `rmw_wait`, the wait set, and the guard conditions are declined
      *    together, because `has_data` / `has_request` + `drive_io` +
@@ -1312,7 +1312,7 @@ typedef struct nros_rmw_vtable_t {
      *  NULL slot: nothing is called and the runtime simply forgets the node.
      *  Correct only for a backend that allocates nothing in `create_node`;
      *  a backend that fills `backend_data` there must fill this too, or it
-     *  leaks one node's state per session close (issue 0800 — this slot had a
+     *  leaks one node's state per session close (this slot had a
      *  producer in no backend and a consumer nowhere, so the leak was
      *  indistinguishable from an optional slot nobody needed). */
     rmw_ret_t (*destroy_node)(rmw_node_t *node);
@@ -1332,7 +1332,7 @@ typedef struct nros_rmw_vtable_t {
      *  bodies, which is the opposite of what they do for
      *  `rmw_get_serialized_message_size`.
      *
-     *  Phase 376 W5 — this was DECLINED, on the reasoning that "log level is a
+     *  This was DECLINED, on the reasoning that "log level is a
      *  build-time constant (nros_log); a runtime setter implies a mutable
      *  global". Both clauses were false: `Logger::level` is an `AtomicU8` with a
      *  public `set_level` already used by tests, and the compile-time part is a
@@ -1343,10 +1343,10 @@ typedef struct nros_rmw_vtable_t {
      *  surfaces `UNSUPPORTED`. */
     rmw_ret_t (*set_log_severity)(rmw_log_severity_t severity);
 
-    /* `required_rx_bytes` (phase-403 W1, slot "how many take-buffer bytes does
+    /* `required_rx_bytes` (slot "how many take-buffer bytes does
      * this type need") is DELETED, not reserved. Nothing ever dispatched it:
-     * phase-403 W3/W5 owned the dispatch site and closed by sizing every
-     * receive buffer from the message type's own bound instead (phase-498 W3,
+     * the work that owned the dispatch site closed by sizing every
+     * receive buffer from the message type's own bound instead (via
      * `RosMessage`), so the runtime never needed to ask. Its one body —
      * zenoh-pico's — answered the hint itself for every bounded type, and
      * refused only a hint no size class could hold, which
@@ -1355,7 +1355,7 @@ typedef struct nros_rmw_vtable_t {
      * symbol); it is a body nobody can reach. `rx_buffer_hint` in
      * `rmw_subscription_options_t` remains the one carrier of the size. */
 
-    /* ---- issue 1329 — which QoS policies THIS backend honours ---- */
+    /* ---- Which QoS policies THIS backend honours ---- */
 
     /** The `NROS_RMW_QOS_POLICY_*` bits this backend honours, for the session
      *  behind @p session. RTOS addition; upstream has no counterpart, because
@@ -1371,7 +1371,7 @@ typedef struct nros_rmw_vtable_t {
      *  backend it is talking to is decided at run time by
      *  `nros_rmw_cffi_register_named`, and until this slot existed the route
      *  had no way to ask. It therefore answered the UNION of what any
-     *  nano-ros-supported RMW honours — issue 1329, measured — so an
+     *  nano-ros-supported RMW honours — measured — so an
      *  application asking cyclonedds for `avoid_ros_namespace_conventions`, or
      *  XRCE for a deadline, was admitted and then ignored downstream. A union
      *  is an over-claim for every member of it.
@@ -1396,7 +1396,7 @@ typedef struct nros_rmw_vtable_t {
      *  switches off the no-silent-downgrade contract at the one seam that
      *  enforces it, invisibly. NONE is the same answer
      *  `nros_rmw::Session::supported_qos_policies` gives an implementation
-     *  that has written no code (phase-428 W9 moved that default from `CORE`
+     *  that has written no code (that default moved from `CORE`
      *  to nothing for exactly this reason), so the ABI and the trait give one
      *  answer to one question.
      *
@@ -1419,7 +1419,7 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*supported_qos_policies)(const rmw_session_t *session,
         uint32_t *out_mask);
 
-    /* ---- Per-entity new-data callbacks (issue 1940, phase-397 W1) ---- */
+    /* ---- Per-entity new-data callbacks ---- */
 
     /** Upstream `rmw_subscription_set_on_new_message_callback`. Exact parity
      *  in name and signature.
@@ -1431,7 +1431,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  `n` is a LOWER BOUND, not upstream's exact count: a backend that
      *  cannot count calls once per arrival with 1, and none is required to
-     *  track per-entity pending depth for it (issue 0960's RAM argument, kept).
+     *  track per-entity pending depth for it (the RAM argument, kept).
      *  Nor is a backend required to replay samples that arrived BEFORE the
      *  registration, as upstream's backends do; a caller registers first and
      *  then checks `has_data`, which closes the gap.
@@ -1467,7 +1467,7 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*client_set_on_new_response_callback)(rmw_client_t *client,
         rmw_event_callback_t callback, const void *user_data);
 
-    /* ---- Issue 1978 — the Jazzy contract's four ADOPT additions ----
+    /* ---- The Jazzy contract's four ADOPT additions ----
      *
      * Jazzy's `rmw_implementation` dispatch table carries seven symbols
      * Humble's does not; three are dynamic typesupport (declined, see
@@ -1519,7 +1519,7 @@ typedef struct nros_rmw_vtable_t {
 
     /** Upstream `rmw_take_request`, with its `rmw_service_info_t`.
      *
-     *  Issue 2081 — optional, appended. `take_request` plus the request's metadata — who sent it
+     *  Optional, appended. `take_request` plus the request's metadata — who sent it
      *  (`request_id`: the client's writer GUID and its sequence number) and the
      *  timestamps the backend has — written to caller-owned storage. The
      *  service twin of `take_with_info`.
@@ -1546,7 +1546,7 @@ typedef struct nros_rmw_vtable_t {
 
     /** Upstream `rmw_take_response`, with its `rmw_service_info_t`.
      *
-     *  Issue 2136 — optional, appended. The client twin of
+     *  Optional, appended. The client twin of
      *  `take_request_with_info`: `take_response` plus the reply's metadata,
      *  written to caller-owned storage —
      *
@@ -1558,7 +1558,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  Deviations from upstream, declared: the payload is bytes, as for
      *  `take_response`; and `*seq_out` stays beside the struct, because it is
-     *  what the runtime matches a reply against (issue 2009) whether or not
+     *  what the runtime matches a reply against whether or not
      *  the backend can report the rest.
      *
      *  Every other rule is `take_response`'s: `*taken`, `reply->len`,
@@ -1574,7 +1574,7 @@ typedef struct nros_rmw_vtable_t {
         rmw_mut_byte_span_t *reply, int64_t *seq_out, bool *taken,
         rmw_service_info_t *service_info);
 
-    /** phase-521 W3 (RFC-0113 D4) — how this session reports an arrival.
+    /** How this session reports an arrival.
      *
      *  Optional, appended. The executor's park ends on exactly two things:
      *  the sched task's deadline, or readiness. This slot says which form of
@@ -1590,8 +1590,8 @@ typedef struct nros_rmw_vtable_t {
      *    its own wake object (`nros_platform_wake_park_handles_us`) and
      *    drives the session non-blockingly after the park. The handle stays
      *    valid until the session closes.
-     *  - `NROS_RMW_READINESS_NONE`: neither. RFC-0113 D5: the runtime
-     *    refuses such a session at open (phase-521 W6); the executor never
+     *  - `NROS_RMW_READINESS_NONE`: neither. The runtime
+     *    refuses such a session at open; the executor never
      *    blocks inside `drive_io`.
      *
      *  `*out_kind` and `*out_handle` are written only on `NROS_RMW_RET_OK`.
@@ -1605,13 +1605,13 @@ typedef struct nros_rmw_vtable_t {
 
 } nros_rmw_vtable_t;
 
-/** phase-521 W3 (RFC-0113 D4) — values of `readiness_source`'s `*out_kind`. */
+/** Values of `readiness_source`'s `*out_kind`. */
 #define NROS_RMW_READINESS_NONE     0u
 #define NROS_RMW_READINESS_NOTIFY   1u
 #define NROS_RMW_READINESS_WAITABLE 2u
 
 /**
- * Session mode for `create_session`'s @p mode parameter (issue 0331).
+ * Session mode for `create_session`'s @p mode parameter.
  *
  * These values were previously an undocumented bare `uint8_t` with no legal-
  * value list — the only slot in the vtable without one — encoded inline as
@@ -1624,15 +1624,11 @@ typedef struct nros_rmw_vtable_t {
  * enclave, security_options and discovery_options" until 2026-08-24, which
  * omitted five of the eight and named one, `discovery_options`, that is an
  * IRON field and does not exist in the distro our recorded contract is taken
- * from. What we do and do not carry from those eight is issue 0785.) This parameter is closest to zenoh's `whatami`, and a
+ * from.) This parameter is closest to zenoh's `whatami`, and a
  * backend that has no such notion (cyclonedds, XRCE) is expected to IGNORE it
  * rather than fail. Folding it into backend-private config behind the locator
  * — so the agnostic vtable stops carrying a backend-shaped field — is the
- * structural fix, and is not done here; see issue 0808. (This said "see issue
- * 0331" until 2026-08-26. That issue documented this enum and stated in its own
- * resolution that the structural half was NOT done, deferring it to issue 0330
- * part 3 — which resolved a different concern entirely. Both are closed, so the
- * fold was tracked by nothing; 0808 is its home.)
+ * structural fix, and is not done here.
  */
 typedef enum nros_rmw_session_mode_t {
     /** Connect to a router/agent as a client. The default. */
@@ -1641,7 +1637,7 @@ typedef enum nros_rmw_session_mode_t {
     NROS_RMW_SESSION_MODE_PEER = 1,
 } nros_rmw_session_mode_t;
 
-/** Phase 104.B.2 — register a backend under a stable name. Multiple
+/** Register a backend under a stable name. Multiple
  *  backends can coexist (bridge nodes); consumers select via
  *  `nros_rmw_cffi_lookup` or the higher-level
  *  `Executor::node_builder(...).rmw(...)` path.
@@ -1649,7 +1645,7 @@ typedef enum nros_rmw_session_mode_t {
  *  Names: UTF-8, NUL-terminated, ≤ 31 bytes (excluding NUL).
  *  Reserved: "zenoh", "dds", "xrce", "cyclonedds", future "uorb".
  *  ("default" was the implicit name of the unnamed single-argument form,
- *  deleted by phase-482 W6; name the protocol instead.)
+ *  deleted; name the protocol instead.)
  *
  *  Duplicate registration of the same name overwrites the previous
  *  vtable (idempotent for ctor-fires-twice).
@@ -1676,7 +1672,7 @@ const nros_rmw_vtable_t *nros_rmw_cffi_lookup(const char *name);
 size_t nros_rmw_cffi_registered_names(const char **buf, size_t cap);
 
 
-/** Phase 249 P4b.2 — convenience macro for static-library backends.
+/** Convenience macro for static-library backends.
  *  Place in exactly one TU per backend to self-register the backend
  *  on library load. `REGISTER_FN` is a no-arg function that calls
  *  `nros_rmw_cffi_register_named` for the backend.
@@ -1694,14 +1690,14 @@ size_t nros_rmw_cffi_registered_names(const char **buf, size_t cap);
  *  keeps this object's `.init_array` slot. `nros_rmw_cffi_register_named`
  *  is idempotent (same-name overwrite), so re-registration is harmless.
  *  This consolidates the former `linkme` section walk onto the ctor
- *  (RFC-0042 §D3.3; the `linkme` distributed slice / section walker is
+ *  (the `linkme` distributed slice / section walker is
  *  deleted).
  *
  *  EMBEDDED (bare-metal / RTOS: Zephyr, NuttX, esp-idf, VxWorks): the
  *  loader does not run `.init_array` constructors on the startup path,
  *  so the macro expands to nothing. Registration is wired explicitly
  *  by the board / typed carrier via an explicit `nros_rmw_<x>_register()`
- *  call (phase-249 P1). For C/C++-via-cmake the `nano_ros_link_rmw`
+ *  call. For C/C++-via-cmake the `nano_ros_link_rmw`
  *  strong stub is the primary registration trigger (P2b/P4a); this
  *  hosted ctor is belt-and-suspenders.
  *

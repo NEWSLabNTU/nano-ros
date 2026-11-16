@@ -1,8 +1,8 @@
-//! RFC-0103 D10f (phase-497 W2) — an image's resolved network, as ONE line of
+//! An image's resolved network, as ONE line of
 //! text every carrier reads.
 //!
 //! `nros sync` / `nros build` resolve the board network files an image's
-//! `os_config` names (its interfaces and their networks, RFC-0109 D4), its
+//! `os_config` names (its interfaces and their networks), its
 //! `[image.<id>.run] nic` and its board's `[board.net]`, write the answer to `<build>/nros/net/<image>.toml`, and hand
 //! it to the build as `NROS_IMAGE_NET` — a cargo `[env]` row, a cmake cache
 //! variable. The consumers are:
@@ -29,7 +29,7 @@
 //!
 //! `<address>` is dotted IPv4 or `dhcp`; `<gateway>` is dotted IPv4 or `-`
 //! (the network states none); `<mac>` is six hex bytes; `<attach>` is how an
-//! EMULATED image joins the network (D10a, phase-497 W3) — `slirp`,
+//! EMULATED image joins the network — `slirp`,
 //! `bridge=<dev>`, `tap=<dev>`, or `-` for a physical-only network. Firmware
 //! ignores `<attach>`; a QEMU launcher renders it with [`qemu_nic`]. A board that cannot
 //! take a leased address never sees `dhcp`: the resolver refuses it for a
@@ -68,7 +68,7 @@ pub struct NetIf<'a> {
     pub attach: Attach<'a>,
 }
 
-/// `[image.<id>.run] nic` (RFC-0109 D6): how an EMULATED image joins a network.
+/// `[image.<id>.run] nic`: how an EMULATED image joins a network.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Attach<'a> {
     /// QEMU's user-mode network, private to the VM.
@@ -261,7 +261,7 @@ pub fn encode(ifs: &[NetIf<'_>]) -> String {
 }
 
 /// QEMU's `-nic` value for a guest with no image network: its own user-mode
-/// (SLIRP) network, which is the built-in `qemu` network (RFC-0103 D10).
+/// (SLIRP) network, which is the built-in `qemu` network.
 /// `model` is the board's NIC model (`lan9118`, `open_eth`,
 /// `virtio-net-device`). One spelling for every launcher.
 #[cfg(feature = "build-helpers")]
@@ -270,8 +270,8 @@ pub fn slirp_nic(model: &str) -> String {
     format!("user,model={model}")
 }
 
-/// QEMU's `-nic` value for interface `i` of an emulated image (D10a,
-/// phase-497 W3): the image's `run.nic`, the board's NIC `model`, and the
+/// QEMU's `-nic` value for interface `i` of an emulated image:
+/// the image's `run.nic`, the board's NIC `model`, and the
 /// image's MAC. A user-mode network off QEMU's own `10.0.2.0/24` passes its
 /// subnet and gateway (`net=` / `host=`), so the guest's static address is
 /// on the network QEMU makes.
