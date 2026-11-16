@@ -36,7 +36,9 @@ past the merge queue:
 
 ### W1 — a release cuts only from commits the slow lanes passed
 
-- **Status:** OPEN
+- **Status:** DONE (#4109). `scripts/release/release-lanes-green.py`, run by
+  `release-nros.yml`'s `lanes` job, which first proves its checkout answers
+  ancestry.
 
 `release-nros.yml`'s first job, `lanes`, refuses unless the nightly, tier 1
 and tier 2 are green, in scheduled runs on `main`, on each commit W2 names:
@@ -56,7 +58,8 @@ nightly is green.
 
 ### W2 — a published version's release branch is frozen
 
-- **Status:** OPEN
+- **Status:** DONE (#4109). `scripts/release/release-branch-frozen.py`, in
+  the same `lanes` job; its self-test runs on every invocation.
 
 User ruling 2026-11-16: `release/<ver>` may be re-cut from main under the
 same version name while that version is unpublished, which is while no
@@ -73,7 +76,8 @@ self-test covers both; AGENTS.md's release section states the rule.
 
 ### W3 — the dry run is a rehearsal of everything except the push
 
-- **Status:** OPEN
+- **Status:** DONE (#4109). `just check release-rehearsal` holds the
+  workflow to it; the `island-shaped-workspace` job is W4's release leg.
 
 `release-nros.yml` builds both starter images (`starter`, `starter-zephyr`)
 on every run, dry runs included, from the commit being released and with
