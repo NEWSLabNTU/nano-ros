@@ -128,7 +128,7 @@ function(nano_ros_use_board NAME)
     # only when the consumer has not already curated the list.
     if(NOT DTC_OVERLAY_FILE)
         # Issue 2631 -- Zephyr's own stem: the revision (`board@rev/...`) is
-        # dropped, not flattened in place (`zephyr_build_string` puts it last).
+        # dropped, not flattened in place (its build-string rule puts it last).
         string(REGEX REPLACE "^([^/@]*)@[^/]*" "\\1" _nros_board_norm "${NROS_BOARD_ZEPHYR_ID}")
         string(REPLACE "/" "_" _nros_board_norm "${_nros_board_norm}")
         foreach(_app_ovl

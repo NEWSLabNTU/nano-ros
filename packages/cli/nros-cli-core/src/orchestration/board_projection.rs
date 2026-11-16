@@ -44,11 +44,11 @@ use super::board_descriptor::BoardDescriptor;
 ///
 /// `/` separates the hwv2 `<board>/<soc>/<variant>` triple. A board REVISION
 /// (`board@rev/soc/variant`, issue 2631) is not part of the stem: Zephyr's
-/// `zephyr_build_string` joins the board and its qualifiers, and puts the
-/// revision LAST (`board_soc_variant_<rev>`, `.` in it as `_`). A descriptor
+/// build-string rule (cmake/modules/extensions.cmake) joins the board and its
+/// qualifiers, and puts the revision LAST, with `.` in it as `_`. A descriptor
 /// carries its revision in `west_board`, so it describes that revision only,
 /// and its revision-less file is the one it ships. Flattening the `@` in place
-/// named `s32z2xxdc2_D_s32z270_rtu0`, a file Zephyr never looks for.
+/// put the revision after the board name, a file Zephyr never looks for.
 pub fn flatten_board_id(id: &str) -> String {
     strip_board_revision(id).replace('/', "_")
 }
@@ -311,7 +311,7 @@ mod tests {
             "fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp"
         );
         // Issue 2631 -- a board REVISION is not part of the stem: Zephyr's
-        // `zephyr_build_string` puts it last, and the revision-less file is the
+        // build-string rule puts it last, and the revision-less file is the
         // one a per-revision descriptor ships.
         assert_eq!(flatten_board_id("plank@1.5/soc"), "plank_soc");
         assert_eq!(
@@ -323,8 +323,14 @@ mod tests {
 
     #[test]
     fn a_revision_is_stripped_from_the_board_segment_only() {
-        assert_eq!(strip_board_revision("s32z2xxdc2@D/s32z270/rtu0"), "s32z2xxdc2/s32z270/rtu0");
-        assert_eq!(strip_board_revision("native_sim/native/64"), "native_sim/native/64");
+        assert_eq!(
+            strip_board_revision("s32z2xxdc2@D/s32z270/rtu0"),
+            "s32z2xxdc2/s32z270/rtu0"
+        );
+        assert_eq!(
+            strip_board_revision("native_sim/native/64"),
+            "native_sim/native/64"
+        );
         assert_eq!(strip_board_revision("plank@1.5"), "plank");
     }
 
@@ -338,6 +344,9 @@ mod tests {
             "BOARD_FVP_BASER_AEMV8R"
         );
         // Issue 2631 -- nor the revision.
-        assert_eq!(board_kconfig_symbol("s32z2xxdc2@D/s32z270/rtu0"), "BOARD_S32Z2XXDC2");
+        assert_eq!(
+            board_kconfig_symbol("s32z2xxdc2@D/s32z270/rtu0"),
+            "BOARD_S32Z2XXDC2"
+        );
     }
 }
