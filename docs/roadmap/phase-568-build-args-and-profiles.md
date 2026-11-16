@@ -1,11 +1,12 @@
-# Phase 568 — build arguments and profiles
+# Phase 568 — build arguments
 
-**Status (2026-11-17). DRAFT, for review: nothing is built.** Implements the
-draft amendment "build arguments and profiles" (D7–D11) of
+**Status (2026-11-17). DRAFT, revised after review: nothing is built.**
+Implements the draft amendment "build arguments" (D7–D9) of
 [RFC-0117](../design/0117-cli-command-tiers.md). The design was approved by
-the user on 2026-11-17 for writing up, and is put up for review before any
-work item starts. Work items are listed so that the review can price them.
-None starts until the amendment is accepted.
+the user on 2026-11-17 for writing up. The review kept D7–D9 and moved build
+profiles (D10–D11, here W4–W5) to a later amendment with its own phase. Work
+items are listed so the review can price them, and none starts until the
+amendment is accepted.
 
 ## Motivation
 
@@ -37,14 +38,27 @@ One type for a validated native argument (`CmakeArg::Define { name, value }`,
 `CmakeArg::Undefine`, `CargoArg::Features`, …), built from every source by one
 parser. It carries:
 - plain POSIX splitting: no expansion, no `~`, unbalanced quotes refused;
-- the allowlist and the refusals of D9, each refusal naming the `system.toml`
-  setting that owns the option;
-- owned `-D` names taken from the one table of what `nros build` passes, which
-  this item creates if it is not one table already;
-- derived features (RMW, platform, capability) refused.
+- the allowlist and the refusals of D9, each refusal naming the setting that
+  owns the option;
+- `-DCONFIG_*` refused (the west road's Kconfig bypass);
+- owned `-D` names GENERATED from the code that emits them. Each
+  configure-argument builder takes its names from one exported table, and a
+  test runs every road's builder and asserts each `-D` it produced is in that
+  table. That covers `ARMFVP_EXTRA_FLAGS`, the board heap `-D` and the
+  `NROS_*` / `_NANO_ROS_*` names;
+- knob-registry names refused in every spelling of the row (env, `CONFIG_*`,
+  legacy). The remedy names the row's user-facing spelling (the `knobs.toml`
+  field `nros knob show` reads, #4082);
+- derived features (RMW, platform, capability) refused, derived from the
+  descriptors: `nros-rmw.toml` and `[system] rmw`, the board descriptor's
+  `platform`, and the board and system declarations;
+- `--features` must be `<pkg>/<feat>` in a workspace of more than one
+  package.
 
 **Acceptance:**
 - every refused spelling, joined and separate, has a test;
+- the owned-names test fails if a builder emits a `-D` missing from the
+  table (negative control: add one unregistered `-D` to a builder);
 - `$(touch x)` in a value creates nothing;
 - an unbalanced quote is refused.
 
@@ -52,8 +66,8 @@ parser. It carries:
 
 - **Status:** BLOCKED (awaits review of the RFC-0117 draft amendment)
 
-- `[image.<id>.build] cmake_args` / `cargo_args`, read from the image's own
-  section only.
+- `[image.<id>.build] cmake_args`, read from the image's own section only.
+  There is no `cargo_args` key: committed features belong in the manifest.
 - `--cmake-args=` / `--cargo-args=` / `--profile=`, with `=` required,
   repeatable, adding up in order.
 - `@file`: one argument per line, `#` comments, resolved from the current
@@ -63,8 +77,8 @@ The space-separated `--cmake-args` form is refused, with colcon-compatible
 wording that shows the user's arguments rewritten.
 
 **Acceptance:**
-- a dependency's `system.toml` adding arguments is refused or ignored, and
-  says which;
+- a dependency's `system.toml` arguments are IGNORED (not refused: a
+  package is not this build's to refuse) and listed by `--dry-run`;
 - `@file` resolution has a test;
 - a CMake argument containing `--packages-skip` stays a CMake argument.
 
@@ -78,41 +92,29 @@ kind a road does not use is ignored and reported by `--dry-run`. After `--`,
 only west's known options are accepted (`split_native_args` already holds
 their list). Anything else is refused, naming its flag.
 
+The build dir records the arguments it was configured with. On a change, the
+removed CMake variables are `-U`'d and the configure re-runs, and the build
+says so.
+
 **Acceptance:**
 - a test for each road receiving its argv;
-- `--dry-run` prints the final argv per tool, the winning profile and its
-  source.
+- cache drift: `-DFOO`, then a build without it, leaves no `FOO` in the cache;
+- `--dry-run` prints the final argv per tool, and the source of each
+  argument.
 
 ### W4 — profiles
 
-- **Status:** BLOCKED (awaits review of the RFC-0117 draft amendment)
+- **Status:** DROPPED (2026-11-17, review): moved to a later amendment with its
+  own phase. That amendment starts from the review's three points, recorded in
+  RFC-0117's "Deferred: build profiles": rename away from cargo's
+  `[profile.*]` and name the file; one locator plan, priced, before any
+  artifact path moves; no custom `CMAKE_BUILD_TYPE`.
 
-- Built-ins `dev` and `release`.
-- Workspace `[profile.<name>]` with `inherits`, `cargo_profile`,
-  `cmake_build_type`, `cmake_args` and `cargo_args`.
-- Precedence: CLI > image > board > default.
-- The board default moves from `board_cargo_profile` / `board_build_type_arg`
-  into the board descriptor, so a board that needs `MinSizeRel` states it.
-- `cargo_profile` must exist in the project's `Cargo.toml`, and is refused
-  early if not.
-- A custom `cmake_build_type` needs its flags defined.
+### W5 — per-profile build dirs
 
-**Acceptance:**
-- a missing `cargo_profile` is refused before any build step;
-- `inherits` chains resolve parent first, with a test.
-
-### W5 — per-profile build dirs and recorded arguments
-
-- **Status:** BLOCKED (awaits review of the RFC-0117 draft amendment)
-
-`build/<image>/<profile>/`. Each dir records the arguments it was configured
-with. On a change, the removed variables are `-U`'d and the configure re-runs,
-and the build says so. Arguments and the profile are build inputs: they go in
-the plan, the profile summary, fixtures and size reports.
-
-**Acceptance:**
-- cache drift: `-DFOO`, then a build without it, leaves no `FOO` in the cache;
-- a profile switch keeps both dirs, and switching back rebuilds nothing.
+- **Status:** DROPPED (2026-11-17, review): moved with W4. The recorded
+  arguments and the `-U` on a change, which are not about profiles, moved into
+  W3.
 
 ### W6 — migration and docs
 
