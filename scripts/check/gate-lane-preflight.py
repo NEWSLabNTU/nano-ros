@@ -167,7 +167,6 @@ PROBES = {
     "git-history": probe_git_history,
     "zephyr-tree": probe_zephyr_tree,
     "zephyr": probe_zephyr,
-    "nuttx": lambda: env_dir("NUTTX_DIR"),
     "fsp": lambda: env_dir("NV_SPE_FSP_DIR"),
     "west": probe_west,
     "build-tree": probe_build_tree,
