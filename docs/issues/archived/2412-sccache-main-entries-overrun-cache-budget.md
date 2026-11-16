@@ -1,15 +1,16 @@
 ---
 id: 2412
 title: "Per-commit sccache entries on `main` hold most of the Actions cache budget, so LRU eviction picks what every other lane loses"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [ci]
 related: [phase-489, 2369]
 found: 2026-11-10
+resolved: 2026-11-17
 ---
 
-**Home:** [phase-489](../roadmap/phase-489-ci-build-speedup.md)
+**Home:** [phase-489](../../roadmap/phase-489-ci-build-speedup.md)
 
 ## What
 
@@ -26,7 +27,7 @@ The repository's Actions cache held 10.67 GB of its 10 GB budget on 2026-11-10
 
 Over the limit, GitHub evicts the least recently used entries. So the budget's
 contents were decided by eviction rather than by any lane's needs, and a new
-entry, such as [issue 2369](archived/2369-sdk-release-504-ejects-merge-queue.md)'s
+entry, such as [issue 2369](2369-sdk-release-504-ejects-merge-queue.md)'s
 SDK-store cache, could be evicted before anything read it.
 
 ## Why
@@ -63,3 +64,12 @@ never delete a key outside the family.
   two `sccache-Linux-check-` entries and two `nros-cli-Linux-` entries (one
   when no warm-cache runs overlapped).
 - Cache usage stays under 10 GB, measured after the first prune.
+
+## Resolution (2026-11-17)
+
+Fixed by cb685adf31 (warm-cache prunes superseded main sccache and CLI
+entries) and 91c0346120 (the prune keeps the newest entry too). Measured
+2026-11-17: main holds one `sccache-Linux-check-` entry (2014 MiB) and one
+`nros-cli-Linux-` entry (1618 MiB). The repository's total is 8.87 GB of
+the 10 GB budget, across 51 entries, so LRU eviction no longer picks the
+caches the lanes read.

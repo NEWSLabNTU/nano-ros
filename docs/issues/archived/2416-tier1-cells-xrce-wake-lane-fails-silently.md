@@ -1,12 +1,13 @@
 ---
 id: 2416
 title: "Tier-2 run's `tier 1 (cells)` job: the four `xrce-wake-test` tests all fail at 14.5 s with no panic text in the log"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [rmw-xrce, ci, tests]
 related: [2142, 1734, 2108, 2109, 2144, 2420]
 found: 2026-11-10
+resolved: 2026-11-17
 ---
 
 ## Measured
@@ -144,3 +145,14 @@ The next recurrence then separates "the agent was alive and slow to create a
 participant" (a 1000 ms wait meeting a loaded Fast-DDS start, which would be
 fixed by the readiness of what the agent depends on, never by a bigger number)
 from "the agent was gone".
+
+## Resolution (2026-11-17)
+
+The closing rule, several more runs green, is met. The per-lane
+`xrce_guard_wake` junit is 4/4 pass in tier 1 on 2026-11-15 and 2026-11-16,
+and in the 11-15 pairwise nightly. Fixed for diagnosis by 8b752c2b01,
+8497b3ef8a, d72a0c9180 and 7d60c42daf: the failure's output reaches the
+lane's log, each lane has its own junit, and the agent's log prints on a
+failure. The cause of the 11-11 participant-create timeout was never named.
+A recurrence now prints whether the agent was alive, which is what a new
+issue would start from.

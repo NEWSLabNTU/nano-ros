@@ -1,15 +1,16 @@
 ---
 id: 2457
 title: "cffi_pubsub_round_trip's session open failed with ConnectionFailed at ~10 s, once, in a merge-queue test-unit run, and printed no reason"
-status: open
+status: resolved
 type: bug
 area: [rmw, zenoh, testing, ci]
 severity: low
 found: 2026-11-12
+resolved: 2026-11-17
 related: [2338, 2389, 2207, 1976]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**. A
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**. A
 merge-gating lane ejected a docs-only pull request (#3574) on it, so it costs a
 queue batch each time it fires.
 
@@ -163,3 +164,15 @@ The router fixture is the one with a sighting and a lease to refresh. The
 generic `wait_for_port` / `wait_for_port_on` in `nros-tests/src/lib.rs` take
 no pid and are used for QEMU's fixed forwarded ports in `emulator.rs`; they
 stay as they are, and this records them as the same shape.
+
+## Resolution (2026-11-17)
+
+Fixed by 2d594b3445 (2026-11-15): a router is ready only when its own
+process tree holds the listener, and a taken port gets a fresh lease. The
+second sighting named the phase: a foreign listener on the leased port,
+accepting 0 ms after spawn. No failure of `cffi_pubsub_round_trip`, or of
+its sibling issue 2338's test, has been seen in a merge-group `test-unit`
+since; the only merge-group failures after the fix were template-copy-out
+stack-floor drift. One caveat stays on record: issue 2338's pre-fix
+sighting accepted after 100 ms, not 0 ms, so that one is not proven to be a
+stranger on the port.

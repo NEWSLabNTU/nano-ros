@@ -1,15 +1,16 @@
 ---
 id: 2469
 title: "live-peer's host lane fills the hosted disk mid-build: its intermediates release stops after the first root under mawk, and the workspace rows grew from 57 to 73"
-status: open
+status: resolved
 type: bug
 area: [ci, testing, fixtures]
 severity: medium
 found: 2026-11-12
+resolved: 2026-11-17
 related: [2130, 2318, 1846]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, the
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, the
 home of scheduled lanes that end without a verdict. This one gave none in
 three straight runs, so the fix #3528 made to the bridge cells (`case_01`,
 `case_06`) is still unconfirmed.
@@ -84,3 +85,11 @@ Of the `awk … END { print … }` sites, only this one feeds bash arithmetic.
 
 A scheduled `live-peer` host job reaches its cells (a verdict, pass or fail),
 with the free-space trace showing the loop staying above its threshold.
+
+## Resolution (2026-11-17)
+
+The closing rule is met. live-peer 43802612787 (2026-11-16, schedule)
+reports every verdict job as "cells ran and passed", `live-peer host`
+included. Its free-space trace stays at 28-32 G, the mid-loop release under
+30 G fired twice, and the releases report integers (12761, 2999, 2279 and
+2024 MiB). Fixed by f686cb33da.

@@ -1,15 +1,16 @@
 ---
 id: 2190
 title: "Tier 1 on newslab-server-241: all five real failures are time budgets"
-status: open
+status: resolved
 type: flake
 severity: low
 area: [ci, testing]
 related: [0854, 1690, 2180, phase-466]
 found: 2026-11-01
+resolved: 2026-11-17
 ---
 
-**Home:** [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)
+**Home:** [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)
 — tier 1 now reaches its cells. Five time budgets keep its verdict red, and the reason is the runner, not the code.
 
 ## Symptom
@@ -60,3 +61,16 @@ Either:
   timeout override that matches what they do.
 
 Re-run the five tests SOLO on server-241 before changing any budget.
+
+## Resolution (2026-11-17)
+
+The closing rule is met: the next tier-1 run on newslab-server-241 passed
+all five tests with no budget change. That was run-matrix 42605683876,
+`tier 1 (cells)`, on 2026-11-09. Tier 1 also passed on newslab-118 on 11-14
+(43565474305) and 11-15 (43684674172). Runner load, as the issue's first
+branch says.
+
+The 11-15 pairwise nightly on server-241 timed out `rmw_coordinate_truth`
+and two FreeRTOS `port_templates_e2e` tests at 60 s. That is the same
+runner-load class on a different lane, and belongs with issue 2420 rather
+than reopening this one.

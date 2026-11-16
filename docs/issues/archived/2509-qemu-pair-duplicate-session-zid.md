@@ -1,11 +1,12 @@
 ---
 id: 2509
 title: "Two QEMU instances of a NuttX image can draw the same zenoh session ZID, so the router refuses the second and the pair never talks"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [rmw-zenoh, nuttx, zephyr, testing]
 found: 2026-11-13
+resolved: 2026-11-17
 related: [2503]
 ---
 
@@ -60,3 +61,12 @@ fix 3/6 failed (the MAC is what matters); in-lane 6/6.
 
 The NuttX service/pubsub/action pairs pass repeatedly in the tier-2 lane;
 two instances of one image never share a ZID when their MAC or IP differs.
+
+## Resolution (2026-11-17)
+
+Fixed by 6e69797684 (the NuttX MAC is mixed into the session seed, and the
+pair's peers get distinct MACs) and 457fe5b00f (Zephyr). The acceptance is
+met. The NuttX service, pubsub and action C pairs pass in tier 2 on
+2026-11-14 (43565474305), in the 11-15 pairwise nightly (43684674172, all
+three languages) and in tier 2 on 2026-11-16 (43816955034), and no
+duplicate-ZID failure has been seen.
