@@ -1,0 +1,24 @@
+[package]
+name = "rust_monitor_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Rust Node pkg of the island-shaped workspace: a monitor beside the C controller."
+
+# A workspace Rust node is bundled into the image's umbrella staticlib, so
+# `rlib` only (see examples/workspaces/mixed/src/rust_heartbeat_pkg).
+[lib]
+path = "src/lib.rs"
+crate-type = ["rlib"]
+
+[package.metadata.nros.node]
+class = "rust_monitor_pkg::Monitor"
+name = "monitor"
+
+[dependencies]
+nros = { version = "*", default-features = false, features = [
+    "alloc",
+    "rmw-cffi", "macros"] }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
+
+[workspace]

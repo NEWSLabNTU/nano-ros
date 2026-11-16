@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<!--
+  The island-shaped system: a C controller and a Rust monitor in one image.
+
+  The controller's param files live in a SIBLING package (c_controller_pkg),
+  as the island's did (issue 2615). Both spellings a consumer writes are here:
+  an absolute one through $(find-pkg-share) and a $(dirname)-relative one that
+  climbs out of this package. Both resolve outside the bringup root, so the
+  resolver records them as absolute model inputs, and every model consumer must
+  hash-check them rather than refuse them.
+-->
+<launch>
+  <node pkg="c_controller_pkg" exec="controller" name="controller">
+    <param from="$(find-pkg-share c_controller_pkg)/config/controller.param.yaml"/>
+    <param from="$(dirname)/../../c_controller_pkg/config/longitudinal/pid.param.yaml"/>
+  </node>
+  <node pkg="rust_monitor_pkg" exec="monitor" name="monitor"/>
+</launch>

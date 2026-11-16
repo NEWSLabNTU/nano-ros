@@ -424,6 +424,7 @@ Every workspace has its own README; one line each. Recount with
 | `realtime-rust/` | the Rust projection of the scheduling-sched-tasks differentiator |
 | `derived-sched-tasks-cpp/` | four C++ components and **no authored sched tasks** — the Safety-Island-shaped sizing fixture |
 | `sizing/` | a node the SystemModel cannot count (six timers, no subscription) — the executor-sizing showcase |
+| `island-shaped/` | the layouts the safety island hit, built in the merge queue: sibling-package param files, C + Rust in one image, raised pools, census + board build |
 
 ### `templates/` — multi-platform copy-out recipes
 

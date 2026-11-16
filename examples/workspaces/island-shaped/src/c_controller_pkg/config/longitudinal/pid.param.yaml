@@ -1,0 +1,9 @@
+# Loaded by island_bringup's launch/system.launch.xml with a
+# $(dirname)-relative spelling that climbs out of the bringup:
+# <param from="$(dirname)/../../c_controller_pkg/config/longitudinal/...">.
+# Recorded as an absolute model input too (issue 2615).
+/**:
+  ros__parameters:
+    kp: 1.0
+    ki: 0.1
+    kd: 0.0

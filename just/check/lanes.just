@@ -4905,7 +4905,42 @@ workspace-all:
     rc=0
     wait "$host" || rc=1
     wait "$emb" || rc=1
+    # phase-567 W4 -- the island-shaped workspace, AFTER the clippy halves so
+    # it does not split their job budget a third way. It builds images (a
+    # census and a board build), so this is the merge-queue job it belongs to.
+    just check island-shaped-workspace || rc=1
     exit "$rc"
+
+# phase-567 W4 -- one in-tree workspace shaped like the safety island: param
+# files in a sibling package loaded absolute and $(dirname)-relative, a C and a
+# Rust component in one image, pools raised above their derived counts, a
+# census and a board build, and check-knob-delivery over the committed snapshot
+# of its Zephyr image's build dir. Every layout a downstream project reports
+# that the tree did not cover is added to the workspace in the same PR as its
+# fix. Needs the FreeRTOS cross toolchain and sources (gate.yml provisions
+# them for `check-workspace-all`).
+[private]
+[metadata("tier", "exempt", "builds a census image and a FreeRTOS board image; minutes")]
+island-shaped-workspace:
+    ./tests/island-shaped-workspace-tests.sh
+
+# phase-567 W4 -- the island-shaped workspace's Zephyr image, live: build it
+# (native_sim, Zephyr 3.7), run check-knob-delivery over the real build dir,
+# and fail when the committed snapshot the merge queue checks differs from it.
+# DAILY (nightly.yml): the merge queue has no west workspace (user ruling
+# 2026-11-13).
+[private]
+[metadata("tier", "exempt", "builds a Zephyr image; needs a west workspace")]
+island-shaped-zephyr:
+    ./tests/island-shaped-zephyr-tests.sh
+
+# phase-567 W4 -- rewrite the committed snapshot from a live build of the
+# island-shaped Zephyr image. Run it when `island-shaped-zephyr` reports the
+# snapshot stale, and commit the result.
+[private]
+[metadata("tier", "exempt", "builds a Zephyr image; rewrites a tracked fixture")]
+island-shaped-zephyr-regen:
+    ./tests/island-shaped-zephyr-tests.sh --regen
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build

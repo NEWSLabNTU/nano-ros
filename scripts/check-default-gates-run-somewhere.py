@@ -177,6 +177,10 @@ EXEMPT_NO_PLACEMENT: "dict[str, tuple]" = {
     "sdk-index": ("caller", "network; gate.yml's SDK-index job runs its three commands as steps",
                   ".github/workflows/gate.yml",
                   "run: python3 scripts/sdk/verify-index.py nros-sdk-index.toml"),
+    "island-shaped-workspace": ("caller", "phase-567 W4: the tail of `workspace-all`'s body",
+                                "just/check/lanes.just", "just check island-shaped-workspace"),
+    "island-shaped-zephyr-regen": ("by-hand", "phase-567 W4: rewrites a tracked fixture when "
+                                   "`island-shaped-zephyr` reports it stale"),
 }
 
 # The exempt gates that run NOWHERE today, measured when R4 landed. A RATCHET:
