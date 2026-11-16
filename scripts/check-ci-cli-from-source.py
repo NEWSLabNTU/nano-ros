@@ -152,6 +152,15 @@ RELEASE_WORKFLOWS = {
         "phase-431 W5 -- it BUILDS the release, and installs its own asset as "
         "a pre-publish check"
     ),
+    # phase-567 W3 (user ruling 2026-11-17): release-nros.yml calls this with
+    # `asset_artifact`, the asset its build job just built from this tree, and
+    # the image installs THAT, served on localhost, so the dry run verifies the
+    # bytes a publish ships. Naming the tarball is the rehearsal, not a CI job
+    # testing a published binary instead of the tree. Arm B still applies.
+    ".github/workflows/starter-image.yml": (
+        "phase-567 W3 -- installs the asset release-nros.yml just built, to "
+        "rehearse the image before publishing"
+    ),
 }
 
 
