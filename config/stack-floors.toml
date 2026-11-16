@@ -155,6 +155,27 @@ NROS_MAX_QUERYABLES = 0
 NROS_EXECUTOR_MAX_CBS = 1
 NROS_EXECUTOR_ACTION_CLIENTS = 0
 
+# A walk the drift check holds and NOTHING ELSE reads: no build, no `nros
+# new` stamp, no twin lane. Its image stays UNMEASURED (the build warns, never
+# refuses), and `just zephyr stack-floor-drift` fails when the walk leaves
+# the band (above max(static, walk_floor), or more than 2 % below static).
+# For an image whose stack is deliberately not sized from its walk. Needs
+# image, rmw, target, role, static, method and issue; takes walk_floor with
+# walk_floor_reason; never peak or shape, which only size a stack.
+#
+# The FreeRTOS C tutorial ships a 64 KiB app stack and walks about twice that:
+# 169 of its 242 indirect C call sites still have no type in the walk, and
+# each one is charged every function C can hold (issue 2653). Sizing the stack
+# from that walk would cost every user RAM to satisfy a measuring tool.
+[[drift]]
+image = "talker/c/zenoh@mps2-an385-freertos"
+rmw = "zenoh"
+target = "thumbv7m-none-eabi"
+role = "OPEN"
+static = 130424
+method = "static walk of a fresh `nros new --template talker --lang c --rmw zenoh` project on the cmake road, with compile_commands.json (73 of 242 indirect C sites typed), 2026-11-16; drift-only, enforced nowhere, so the tutorial keeps its 65,536 B app stack"
+issue = "2653"
+
 [[policy]]
 kind = "cut"
 match = "4core9panicking"

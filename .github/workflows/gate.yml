@@ -2195,20 +2195,22 @@ jobs:
           source ./activate.sh
           just check cpp-heap-free-image-link
 
-      # phase-557 W8 follow-up — the merge queue re-walks ONE recorded
-      # stack-floor row, the mps2 bare-metal talker, so a change that moves
-      # its walk is caught the day it lands instead of at the next nightly.
-      # Only that row: it is the cargo road with no Zephyr SDK, and this job
-      # already provisions everything it builds with (the CLI, the resolver,
-      # zenoh-pico, the board's pinned arm-none-eabi-gcc). The three nucleo
-      # rows need the Zephyr SDK and stay on the nightly `stack-floor-drift`
-      # job, which re-walks all four. Shard 2 only: it is the shortest shard
-      # (about 18 min against 21-25 for the others, measured over two merge
-      # groups on 2026-11-15). Its own `run:` block, so a red copy-out cannot
-      # hide its verdict.
-      - name: just zephyr stack-floor-drift (mps2 row only)
+      # phase-557 W8 follow-up — the merge queue re-walks TWO recorded
+      # stack-floor rows, so a change that moves their walk is caught the day
+      # it lands instead of at the next nightly: the mps2 bare-metal talker
+      # (the cargo road) and the FreeRTOS C talker template (the cmake road,
+      # a `[[drift]]` row: held here, enforced by no build; phase-567 W5a).
+      # Only those two: neither needs the Zephyr SDK, and this job already
+      # provisions everything they build with (the CLI, the resolver,
+      # zenoh-pico, the FreeRTOS kernel + lwIP, the board's pinned
+      # arm-none-eabi-gcc). The three nucleo rows need the Zephyr SDK and stay
+      # on the nightly `stack-floor-drift` job, which re-walks every row.
+      # Shard 2 only: it is the shortest shard (about 18 min against 21-25 for
+      # the others, measured over two merge groups on 2026-11-15). Its own
+      # `run:` block, so a red copy-out cannot hide its verdict.
+      - name: just zephyr stack-floor-drift (mps2 + FreeRTOS C rows)
         if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() && matrix.shard == 2 }}
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
           source ./activate.sh
           # The row is measured the way a user builds it, with debuginfo: the
@@ -2218,7 +2220,8 @@ jobs:
           clang --version 2>/dev/null | head -1 || echo "no clang on PATH"
           env -u CARGO_PROFILE_DEV_DEBUG -u CARGO_PROFILE_TEST_DEBUG \
               -u CARGO_PROFILE_RELEASE_DEBUG -u CARGO_PROFILE_NROS_RELWITHDEBINFO_DEBUG \
-              just zephyr stack-floor-drift --only qemu_bsp_talker_bringup@mps2-an385-baremetal
+              just zephyr stack-floor-drift --only qemu_bsp_talker_bringup@mps2-an385-baremetal \
+                  --only talker/c/zenoh@mps2-an385-freertos
 
       # Issue 2043 — a ported ament workspace is sized from its census: the
       # same cost class as the templates above (it builds one, twice: the

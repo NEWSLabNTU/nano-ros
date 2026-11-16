@@ -2489,6 +2489,52 @@ def validate_table(doc: dict, issue_ids: set[str], root: Path | None = None) -> 
                             f"measured on ({', '.join(SHAPE_KNOBS)})")
         if root is not None and isinstance(o.get("image"), str):
             problems += template_key_problems(where, o["image"], root)
+    # A `[[drift]]` row records one image's walk for the drift check alone: no
+    # build, no `nros new` and no twin lane reads this table, so it sizes and
+    # refuses nothing. It is for an image whose walk is worth holding still
+    # while its stack is not sized from the walk (the FreeRTOS C tutorial: its
+    # walk is above the stack it ships with, and an UNMEASURED image warns).
+    enforced = {(r.get("image"), r.get("target"), r.get("role"))
+                for t in ("allowance", "observed") for r in doc.get(t, [])}
+    seen = set()
+    for i, d in enumerate(doc.get("drift", [])):
+        k = (d.get("image"), d.get("target"), d.get("role"))
+        where = f"[[drift]] #{i + 1} {k}"
+        if None in k or not d.get("rmw"):
+            problems.append(f"{where}: needs `image`, `rmw`, `target` and `role`")
+        if k in seen:
+            problems.append(f"{where}: duplicate")
+        seen.add(k)
+        if k in enforced:
+            problems.append(f"{where}: the same image has an [[allowance]] or [[observed]] row, "
+                            "which the drift check already holds; drop one")
+        if d.get("role") not in ROLES:
+            problems.append(f"{where}: role must be one of {ROLES}")
+        if not isinstance(d.get("static"), int) or d.get("static", 0) <= 0:
+            problems.append(f"{where}: needs a positive integer `static`, the recorded walk")
+        for f in ("peak", "shape"):
+            if f in d:
+                problems.append(f"{where}: `{f}` belongs to an [[observed]] row; a drift row "
+                                "sizes nothing, so it records the walk and its band alone")
+        if "walk_floor" in d:
+            wf = d["walk_floor"]
+            if not isinstance(wf, int) or not isinstance(d.get("static"), int) \
+                    or wf <= d["static"]:
+                problems.append(f"{where}: `walk_floor` must be an integer above `static` (the "
+                                "largest walk this image was seen to have)")
+            if not str(d.get("walk_floor_reason", "")).strip():
+                problems.append(f"{where}: `walk_floor` needs `walk_floor_reason`, the build "
+                                "that walked it")
+        for f in ("method", "issue"):
+            if not str(d.get(f, "")).strip():
+                problems.append(f"{where}: needs `{f}`")
+        iid = str(d.get("issue", ""))
+        if iid and not ISSUE_ID.match(iid):
+            problems.append(f"{where}: `issue` must be a four-digit id, got `{iid}`")
+        elif issue_ids and iid and iid not in issue_ids:
+            problems.append(f"{where}: names issue {iid}, which has no file")
+        if root is not None and isinstance(d.get("image"), str):
+            problems += template_key_problems(where, d["image"], root)
     return problems
 
 
@@ -3295,6 +3341,38 @@ def self_test() -> int:
     vo["observed"][0]["walk_floor"] = 150
     check("walk_floor not above static is refused",
           any("must be an integer above" in p for p in validate_table(vo, set())))
+
+    # A [[drift]] row: the walk alone, held by the drift check, enforced nowhere.
+    vd = {"schema": 2, "margin_pct": 10,
+          "drift": [{"image": "c@d", "rmw": "zenoh", "target": "t", "role": "OPEN",
+                     "static": 130, "method": "m", "issue": "2653"}]}
+    check("drift: a complete row validates", validate_table(vd, set()) == [])
+    check("drift: no build-side lookup finds a drift row",
+          find_observed(vd, "c@d", "t", "OPEN") is None
+          and find_allowance(vd, "c@d", "t", "OPEN") is None)
+    vd["drift"][0]["peak"] = 100
+    check("drift: a peak is refused", any("`peak`" in p for p in validate_table(vd, set())))
+    del vd["drift"][0]["peak"]
+    vd["drift"][0]["static"] = 0
+    check("drift: a static that is not positive is refused",
+          any("positive integer `static`" in p for p in validate_table(vd, set())))
+    vd["drift"][0]["static"] = 130
+    vd["drift"][0]["issue"] = ""
+    check("drift: a row naming no issue is refused",
+          any("needs `issue`" in p for p in validate_table(vd, set())))
+    vd["drift"][0]["issue"] = "2653"
+    vd["drift"][0]["walk_floor"] = 140
+    check("drift: a walk_floor needs its reason",
+          any("walk_floor_reason" in p for p in validate_table(vd, set())))
+    vd["drift"][0]["walk_floor_reason"] = "walked 140 B as project `x`"
+    check("drift: a band with its reason validates", validate_table(vd, set()) == [])
+    del vd["drift"][0]["walk_floor"], vd["drift"][0]["walk_floor_reason"]
+    vd["drift"].append(dict(vd["drift"][0]))
+    check("drift: a duplicate is refused", any("duplicate" in p for p in validate_table(vd, set())))
+    vd["drift"].pop()
+    vd["observed"] = [dict(vo["observed"][0], image="c@d")]
+    check("drift: a key that also has an [[observed]] row is refused",
+          any("already holds" in p for p in validate_table(vd, set())))
 
     check("fold1 charges one level", fold_charge(g5, recursion_allowance=None,
                                                  externals=set(), one_level=True) == 100)

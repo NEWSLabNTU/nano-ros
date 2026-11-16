@@ -1,4 +1,15 @@
 {
+  "drift": [
+    {
+      "image": "talker/c/zenoh@mps2-an385-freertos",
+      "issue": "2653",
+      "method": "static walk of a fresh `nros new --template talker --lang c --rmw zenoh` project on the cmake road, with compile_commands.json (73 of 242 indirect C sites typed), 2026-11-16; drift-only, enforced nowhere, so the tutorial keeps its 65,536 B app stack",
+      "rmw": "zenoh",
+      "role": "OPEN",
+      "static": 130424,
+      "target": "thumbv7m-none-eabi"
+    }
+  ],
   "indirect": {
     "default": {
       "mode": "allowance:0"

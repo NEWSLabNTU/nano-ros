@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""The stack-floor drift check: re-walk every `[[observed]]` row's image and
-compare the walk with the row's recorded `static` (phase-557 W8).
+"""The stack-floor drift check: re-walk every `[[observed]]` and `[[drift]]`
+row's image and compare the walk with the row's recorded `static` (phase-557 W8).
 
 An `[[observed]]` row in `config/stack-floors.toml` records the static walk
 of one image, and everything sized from the row (the floor, a template's
@@ -9,6 +9,14 @@ board commits moved the mps2 bare-metal talker's walk from 95,420 B to
 100,660 B and nothing noticed, because its build still said "holds" (the
 board's default stack is far above either number). This check builds each
 row's image as a user would and holds the fresh walk to the row.
+
+A `[[drift]]` row records a walk and nothing else: no build reads it, so its
+image stays UNMEASURED (the build warns, never refuses) and `nros new` stamps
+nothing from it. The check holds its walk all the same, and accepts the
+unmeasured report such an image produces. It exists for an image whose stack
+is not sized from its walk: the FreeRTOS C tutorial ships 64 KiB and walks
+about twice that, and raising the stack would charge every user's RAM to
+satisfy a walk that over-counts.
 
 Rows:
 
@@ -171,15 +179,23 @@ def build_bringup(nros: str, row: dict, out: Path, fixtures: list[dict]
                    log), log
 
 
-def verdict(row: dict, report: Path, drift) -> tuple[str, list[str]]:
+def verdict(row: dict, report: Path, drift, table: str = "observed"
+            ) -> tuple[str, list[str]]:
     role = json.loads(report.read_text()).get("roles", {}).get(row["role"])
     if role is None:
         return "fail", [f"  FAIL: {row['image']} {row['role']}: the build's report has no "
                         f"{row['role']} role ({report})"]
-    if not role.get("measured"):
+    # A [[drift]] row is read by no build, so its image is unmeasured by design.
+    if table == "observed" and not role.get("measured"):
         return "fail", [f"  FAIL: {row['image']} {row['role']}: the build did not take the "
                         f"image as measured, so it is not keyed to this row ({report})"]
     return drift(row, int(role["depth"]))
+
+
+def table_rows(doc: dict, only: list[str] | None) -> list[tuple[str, dict]]:
+    """Every row the check walks, with the table it came from."""
+    return [(t, r) for t in ("observed", "drift") for r in doc.get(t, [])
+            if not only or r["image"] in only]
 
 
 def self_test() -> int:
@@ -239,6 +255,19 @@ def self_test() -> int:
               verdict(dict(row, image="k2"), r2, w.static_drift)[0] == "fail")
         check("verdict: a report without the role fails",
               verdict(row, r3, w.static_drift)[0] == "fail")
+        drow = {"image": "k2", "role": "OPEN", "static": 1000}
+        check("verdict: a drift row takes an unmeasured walk, exact is ok",
+              verdict(drow, r2, w.static_drift, "drift")[0] == "ok")
+        check("verdict: a drift row whose walk rose fails",
+              verdict(dict(drow, static=900), r2, w.static_drift, "drift")[0] == "fail")
+        check("verdict: a drift row whose walk fell past the band fails",
+              verdict(dict(drow, static=1100), r2, w.static_drift, "drift")[0] == "fail")
+        check("rows: observed then drift, each tagged, --only across both",
+              [(t, r["image"]) for t, r in table_rows(
+                  {"observed": [{"image": "a"}], "drift": [{"image": "b"}]}, None)]
+              == [("observed", "a"), ("drift", "b")]
+              and [r["image"] for _, r in table_rows(
+                  {"observed": [{"image": "a"}], "drift": [{"image": "b"}]}, ["b"])] == ["b"])
 
     for b in bad:
         print(f"stack-floor-drift self-test: FAIL {b}", file=sys.stderr)
@@ -266,12 +295,13 @@ def main() -> int:
     if not nros:
         raise SystemExit("stack-floor-drift: no `nros` on PATH; `source ./activate.sh` first")
     fixtures = w.load_toml(FIXTURES).get("workspace_fixture", [])
-    rows = [r for r in doc.get("observed", []) if not args.only or r["image"] in args.only]
+    rows = table_rows(doc, args.only)
     if args.only and len(rows) != len(set(args.only)):
         raise SystemExit(f"stack-floor-drift: --only names a key with no row: {args.only}")
     failed = notes = 0
-    for row in rows:
-        print(f"== {row['image']} {row['role']} (recorded static {row['static']} B)", flush=True)
+    for table, row in rows:
+        print(f"== {row['image']} {row['role']} (recorded static {row['static']} B, "
+              f"[[{table}]])", flush=True)
         start = time.time()
         if twin.parse_key(row["image"]):
             report, why, log = build_template(nros, row, Path(args.out), twin)
@@ -284,7 +314,7 @@ def main() -> int:
                 print(f"  -- last lines of {log} --", flush=True)
                 print("\n".join(f"  | {line}" for line in log_tail(log)), flush=True)
             continue
-        kind, lines = verdict(row, report, w.static_drift)
+        kind, lines = verdict(row, report, w.static_drift, table)
         if why:
             lines.append(f"  the build refused: {why}")
         failed += kind == "fail"
