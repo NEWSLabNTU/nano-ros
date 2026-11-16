@@ -463,7 +463,7 @@ fn contract_node_rows(node: &NodePackage<'_>) -> (String, ContractWiring) {
         format!(
             "\x20   paths:\n\
              \x20     {name}:\n\
-             \x20       trigger: {{ timer: {{ rate_hz: {hz} }} }}\n\
+             \x20       trigger: {{ timer: {{ rate: {hz}Hz }} }}\n\
              \x20       output: [{output}]\n"
         )
     };
@@ -940,8 +940,8 @@ mod tests {
             let client_paths = c["nodes"]["client_node"]["paths"].as_mapping().unwrap();
             let (_, p) = client_paths.iter().next().unwrap();
             assert_eq!(
-                p["trigger"]["timer"]["rate_hz"].as_u64(),
-                Some(if rust { 1 } else { 2 }),
+                p["trigger"]["timer"]["rate"].as_str(),
+                Some(if rust { "1Hz" } else { "2Hz" }),
                 "{text}"
             );
             for a in ["action_server_node", "action_client_node"] {
@@ -1211,8 +1211,8 @@ mod tests {
         // the probe sidecar is not fresh) counts zero callbacks and the image
         // does not compile (phase-523 round two, on nros-0.6.0-nros7).
         assert_eq!(
-            node_c["paths"]["on_tick"]["trigger"]["timer"]["rate_hz"].as_u64(),
-            Some(1)
+            node_c["paths"]["on_tick"]["trigger"]["timer"]["rate"].as_str(),
+            Some("1Hz")
         );
         assert_eq!(
             node_c["paths"]["on_tick"]["output"][0].as_str(),

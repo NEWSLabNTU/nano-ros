@@ -278,15 +278,15 @@ impl NoDefault {
                  stated"
             ),
             NoDefault::NoPublishRate => "no publish rate reached this endpoint. State \
-                                         `topics.<topic>.rate_hz`, or `min_rate_hz` on the \
+                                         `topics.<topic>.rate`, or `min_rate` on the \
                                          publishing endpoint; without it the number of samples \
                                          arriving in a drain period is unknown and a guessed \
                                          depth is a guessed buffer size"
                 .to_string(),
             NoDefault::NoDrainRate => "no drain rate reached this endpoint. State \
-                                       `paths.<path>.trigger: { timer: { rate_hz: N } }` on the \
+                                       `paths.<path>.trigger: { timer: { rate: NHz } }` on the \
                                        consuming node -- the rate lives THERE and nowhere else, \
-                                       and a `min_rate_hz` on what the timer publishes is not a \
+                                       and a `min_rate` on what the timer publishes is not a \
                                        substitute for it (it is absent for a timer that \
                                        publishes nothing, and the resolver advises deleting it). \
                                        A path with no trigger is `Unclassified`, and this \
@@ -515,7 +515,7 @@ mod tests {
             .expect_err("no publish rate means no default");
         assert_eq!(no_pub, NoDefault::NoPublishRate);
         assert!(
-            no_pub.reason().contains("rate_hz") && no_pub.reason().contains("min_rate_hz"),
+            no_pub.reason().contains("rate`") && no_pub.reason().contains("min_rate`"),
             "the reason must name the keys that would fix it: {}",
             no_pub.reason()
         );
@@ -524,7 +524,7 @@ mod tests {
             .expect_err("no drain rate means no default");
         assert_eq!(no_drain, NoDefault::NoDrainRate);
         assert!(
-            no_drain.reason().contains("trigger") && no_drain.reason().contains("rate_hz"),
+            no_drain.reason().contains("trigger") && no_drain.reason().contains("rate: NHz"),
             "the reason must name the key that would supply it: {}",
             no_drain.reason()
         );
@@ -533,7 +533,7 @@ mod tests {
         // output is advice for a reader that no longer exists, and following it
         // would leave the drain rate as absent as before.
         assert!(
-            !no_drain.reason().contains("state `min_rate_hz`"),
+            !no_drain.reason().contains("state `min_rate`"),
             "the retired substitute must not be prescribed: {}",
             no_drain.reason()
         );

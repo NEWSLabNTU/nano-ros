@@ -3639,7 +3639,7 @@ impl EntityInventory {
     /// true. A node path is a `take -> publish` causal path, and the model's
     /// own definition of `PathContract::input` is "empty = periodic
     /// (timer-driven)", so a path with no inputs IS the periodic callback. The
-    /// contract spells it `trigger: { timer: { rate_hz: N } }`, which the
+    /// contract spells it `trigger: { timer: { rate: NHz } }`, which the
     /// resolver flattens to a `node_paths` entry with no `input` key.
     ///
     /// The flattening loses the rest of the taxonomy: `once` and `aperiodic`
@@ -9983,7 +9983,7 @@ structure:
     /// This is what retired `ENTITIES`: the claim that the model has no timer
     /// entity was wrong. `PathContract::input` is documented as "empty =
     /// periodic (timer-driven)", and a contract's
-    /// `trigger: { timer: { rate_hz: N } }` resolves to exactly that. A path
+    /// `trigger: { timer: { rate: NHz } }` resolves to exactly that. A path
     /// WITH inputs is a take-and-publish path, already counted through its
     /// subscriptions, and must not add a slot.
     #[test]
@@ -11871,7 +11871,7 @@ structure:
                 "the line must say a default was not produced: {line}"
             );
             assert!(
-                line.contains("rate_hz"),
+                line.contains("rate`") || line.contains("rate: NHz"),
                 "and name the contract key that would produce one: {line}"
             );
         }

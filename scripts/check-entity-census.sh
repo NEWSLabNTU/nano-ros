@@ -201,14 +201,14 @@ version: 1
 nodes:
   fixture_node:
     sub:
-      velocity: { min_rate_hz: 10, qos: { depth: 1 } }
+      velocity: { min_rate: 10Hz, qos: { depth: 1 } }
 
 topics:
   /sensing/velocity:
     type: autoware_vehicle_msgs/msg/VelocityReport
     external: pub
     sub: [fixture_node/velocity]
-    rate_hz: 10
+    rate: 10Hz
 YAML
 
 # The resolved model, written the way `nros configure` writes one: it records the
@@ -404,20 +404,20 @@ version: 1
 nodes:
   fixture_node:
     sub:
-      velocity: { min_rate_hz: 10, qos: { depth: 1 } }
-      operation_mode: { min_rate_hz: 10, qos: { depth: 1 } }
+      velocity: { min_rate: 10Hz, qos: { depth: 1 } }
+      operation_mode: { min_rate: 10Hz, qos: { depth: 1 } }
 
 topics:
   /sensing/velocity:
     type: autoware_vehicle_msgs/msg/VelocityReport
     external: pub
     sub: [fixture_node/velocity]
-    rate_hz: 10
+    rate: 10Hz
   /system/operation_mode:
     type: tier4_system_msgs/msg/OperationModeAvailability
     external: pub
     sub: [fixture_node/operation_mode]
-    rate_hz: 10
+    rate: 10Hz
 YAML
 
 # A contract edit is a MODEL input change: `nros configure` re-resolves and

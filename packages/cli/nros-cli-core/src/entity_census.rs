@@ -874,12 +874,12 @@ pub fn check(inputs: Inputs<'_>) -> Report {
                             verdict: Verdict::PeriodMismatch,
                             detail: format!(
                                 "the code launches this timer at {observed_ms} ms; \
-                                 `paths.{path}.trigger.timer.rate_hz: {rate_hz}` declares \
+                                 `paths.{path}.trigger.timer.rate: {rate_hz}Hz` declares \
                                  {declared_ms} ms"
                             ),
                             remedy: format!(
                                 "in {contract_path}, under `nodes.{}.paths.{path}.trigger`:\n    \
-                                 timer: {{ rate_hz: {} }}\nor change the period the code passes \
+                                 timer: {{ rate: {}Hz }}\nor change the period the code passes \
                                  to {declared_ms}",
                                 node.key,
                                 round_rate(observed_ms)
@@ -902,7 +902,7 @@ pub fn check(inputs: Inputs<'_>) -> Report {
                         ),
                         remedy: format!(
                             "in {contract_path}, under `nodes.{}.paths`:\n    <path_name>:\n      \
-                             trigger: {{ timer: {{ rate_hz: {} }} }}\n      output: [...]",
+                             trigger: {{ timer: {{ rate: {}Hz }} }}\n      output: [...]",
                             node.key,
                             round_rate(observed_ms)
                         ),
@@ -1445,12 +1445,12 @@ nodes:
       operate: {}
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 10 } }
+        trigger: { timer: { rate: 10Hz } }
         output: [status]
     pub:
-      max_velocity_candidates: { min_rate_hz: 10 }
-      clear_velocity_limit: { min_rate_hz: 10 }
-      status: { min_rate_hz: 10 }
+      max_velocity_candidates: { min_rate: 10Hz }
+      clear_velocity_limit: { min_rate: 10Hz }
+      status: { min_rate: 10Hz }
 
   mrm_emergency_stop_operator:
     params:
@@ -1461,13 +1461,13 @@ nodes:
       operate: {}
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 30 } }
+        trigger: { timer: { rate: 30Hz } }
         output: [emergency_control_cmd, status]
     sub:
-      control_cmd: { min_rate_hz: 30, qos: { depth: 1 }, state: true }
+      control_cmd: { min_rate: 30Hz, qos: { depth: 1 }, state: true }
     pub:
-      emergency_control_cmd: { min_rate_hz: 30 }
-      status: { min_rate_hz: 30 }
+      emergency_control_cmd: { min_rate: 30Hz }
+      status: { min_rate: 30Hz }
 
   mrm_handler:
     params:
@@ -1487,7 +1487,7 @@ nodes:
       emergency_stop_operate: {}
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 10 } }
+        trigger: { timer: { rate: 10Hz } }
         output:
           - mrm_state
           - turn_indicators_cmd
@@ -1495,19 +1495,19 @@ nodes:
           - gear_cmd_out
           - emergency_holding
     sub:
-      operation_mode_availability: { min_rate_hz: 10, qos: { depth: 1 } }
-      kinematic_state: { min_rate_hz: 10, qos: { depth: 1 } }
-      control_mode: { min_rate_hz: 10, qos: { depth: 1 } }
-      comfortable_stop_status: { min_rate_hz: 10, qos: { depth: 1 } }
-      emergency_stop_status: { min_rate_hz: 10, qos: { depth: 1 } }
-      gear_cmd_in: { min_rate_hz: 10, qos: { depth: 1 } }
-      operation_mode_state: { min_rate_hz: 10, qos: { depth: 1 } }
+      operation_mode_availability: { min_rate: 10Hz, qos: { depth: 1 } }
+      kinematic_state: { min_rate: 10Hz, qos: { depth: 1 } }
+      control_mode: { min_rate: 10Hz, qos: { depth: 1 } }
+      comfortable_stop_status: { min_rate: 10Hz, qos: { depth: 1 } }
+      emergency_stop_status: { min_rate: 10Hz, qos: { depth: 1 } }
+      gear_cmd_in: { min_rate: 10Hz, qos: { depth: 1 } }
+      operation_mode_state: { min_rate: 10Hz, qos: { depth: 1 } }
     pub:
-      mrm_state: { min_rate_hz: 10 }
-      gear_cmd_out: { min_rate_hz: 10 }
-      hazard_lights_cmd: { min_rate_hz: 10 }
-      turn_indicators_cmd: { min_rate_hz: 10 }
-      emergency_holding: { min_rate_hz: 10 }
+      mrm_state: { min_rate: 10Hz }
+      gear_cmd_out: { min_rate: 10Hz }
+      hazard_lights_cmd: { min_rate: 10Hz }
+      turn_indicators_cmd: { min_rate: 10Hz }
+      emergency_holding: { min_rate: 10Hz }
 
   stop_mode_operator:
     params:
@@ -1516,134 +1516,134 @@ nodes:
       enable_auto_parking: { type: bool }
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 30 } }
+        trigger: { timer: { rate: 30Hz } }
         output: [control, gear, turn_indicators, hazard_lights]
     sub:
-      steering_status: { min_rate_hz: 30, qos: { depth: 1 } }
-      velocity_status: { min_rate_hz: 30, qos: { depth: 1 } }
-      route_state: { min_rate_hz: 30, qos: { depth: 1 } }
+      steering_status: { min_rate: 30Hz, qos: { depth: 1 } }
+      velocity_status: { min_rate: 30Hz, qos: { depth: 1 } }
+      route_state: { min_rate: 30Hz, qos: { depth: 1 } }
     pub:
-      control: { min_rate_hz: 30 }
-      gear: { min_rate_hz: 30 }
-      hazard_lights: { min_rate_hz: 30 }
-      turn_indicators: { min_rate_hz: 30 }
+      control: { min_rate: 30Hz }
+      gear: { min_rate: 30Hz }
+      hazard_lights: { min_rate: 30Hz }
+      turn_indicators: { min_rate: 30Hz }
 
 topics:
   /system/mrm/comfortable_stop/status:
     type: tier4_system_msgs/msg/MrmBehaviorStatus
     pub: [mrm_comfortable_stop_operator/status]
     sub: [mrm_handler/comfortable_stop_status]
-    rate_hz: 10
+    rate: 10Hz
   /system/mrm/emergency_stop/status:
     type: tier4_system_msgs/msg/MrmBehaviorStatus
     pub: [mrm_emergency_stop_operator/status]
     sub: [mrm_handler/emergency_stop_status]
-    rate_hz: 30
+    rate: 30Hz
   /control/command/control_cmd:
     type: autoware_control_msgs/msg/Control
     external: pub
     sub: [mrm_emergency_stop_operator/control_cmd]
-    rate_hz: 30
+    rate: 30Hz
   /system/operation_mode/availability:
     type: tier4_system_msgs/msg/OperationModeAvailability
     external: pub
     sub: [mrm_handler/operation_mode_availability]
-    rate_hz: 10
+    rate: 10Hz
   /localization/kinematic_state:
     type: nav_msgs/msg/Odometry
     external: pub
     sub: [mrm_handler/kinematic_state]
-    rate_hz: 10
+    rate: 10Hz
   /vehicle/status/control_mode:
     type: autoware_vehicle_msgs/msg/ControlModeReport
     external: pub
     sub: [mrm_handler/control_mode]
-    rate_hz: 10
+    rate: 10Hz
   /control/command/gear_cmd:
     type: autoware_vehicle_msgs/msg/GearCommand
     external: pub
     sub: [mrm_handler/gear_cmd_in]
-    rate_hz: 10
+    rate: 10Hz
   /api/operation_mode/state:
     type: autoware_adapi_v1_msgs/msg/OperationModeState
     external: pub
     sub: [mrm_handler/operation_mode_state]
-    rate_hz: 10
+    rate: 10Hz
   /vehicle/status/steering_status:
     type: autoware_vehicle_msgs/msg/SteeringReport
     external: pub
     sub: [stop_mode_operator/steering_status]
-    rate_hz: 30
+    rate: 30Hz
   /vehicle/status/velocity_status:
     type: autoware_vehicle_msgs/msg/VelocityReport
     external: pub
     sub: [stop_mode_operator/velocity_status]
-    rate_hz: 30
+    rate: 30Hz
   /planning/route_state:
     type: autoware_planning_msgs/msg/RouteState
     external: pub
     sub: [stop_mode_operator/route_state]
-    rate_hz: 30
+    rate: 30Hz
   /planning/scenario_planning/max_velocity_candidates:
     type: autoware_internal_planning_msgs/msg/VelocityLimit
     external: sub
     pub: [mrm_comfortable_stop_operator/max_velocity_candidates]
-    rate_hz: 10
+    rate: 10Hz
   /planning/scenario_planning/clear_velocity_limit:
     type: autoware_internal_planning_msgs/msg/VelocityLimitClearCommand
     external: sub
     pub: [mrm_comfortable_stop_operator/clear_velocity_limit]
-    rate_hz: 10
+    rate: 10Hz
   /system/emergency/control_cmd:
     type: autoware_control_msgs/msg/Control
     external: sub
     pub: [mrm_emergency_stop_operator/emergency_control_cmd]
-    rate_hz: 30
+    rate: 30Hz
   /system/fail_safe/mrm_state:
     type: autoware_adapi_v1_msgs/msg/MrmState
     external: sub
     pub: [mrm_handler/mrm_state]
-    rate_hz: 10
+    rate: 10Hz
   /system/emergency/gear_cmd:
     type: autoware_vehicle_msgs/msg/GearCommand
     external: sub
     pub: [mrm_handler/gear_cmd_out]
-    rate_hz: 10
+    rate: 10Hz
   /system/emergency/hazard_lights_cmd:
     type: autoware_vehicle_msgs/msg/HazardLightsCommand
     external: sub
     pub: [mrm_handler/hazard_lights_cmd]
-    rate_hz: 10
+    rate: 10Hz
   /system/emergency/turn_indicators_cmd:
     type: autoware_vehicle_msgs/msg/TurnIndicatorsCommand
     external: sub
     pub: [mrm_handler/turn_indicators_cmd]
-    rate_hz: 10
+    rate: 10Hz
   /system/fail_safe/emergency_holding:
     type: tier4_system_msgs/msg/EmergencyHoldingState
     external: sub
     pub: [mrm_handler/emergency_holding]
-    rate_hz: 10
+    rate: 10Hz
   /system/stop_mode/control:
     type: autoware_control_msgs/msg/Control
     external: sub
     pub: [stop_mode_operator/control]
-    rate_hz: 30
+    rate: 30Hz
   /system/stop_mode/gear:
     type: autoware_vehicle_msgs/msg/GearCommand
     external: sub
     pub: [stop_mode_operator/gear]
-    rate_hz: 30
+    rate: 30Hz
   /system/stop_mode/hazard_lights:
     type: autoware_vehicle_msgs/msg/HazardLightsCommand
     external: sub
     pub: [stop_mode_operator/hazard_lights]
-    rate_hz: 30
+    rate: 30Hz
   /system/stop_mode/turn_indicators:
     type: autoware_vehicle_msgs/msg/TurnIndicatorsCommand
     external: sub
     pub: [stop_mode_operator/turn_indicators]
-    rate_hz: 30
+    rate: 30Hz
 
 services:
   /system/mrm/comfortable_stop/operate:
@@ -1999,13 +1999,13 @@ services:
         let census = island_census();
         let yaml = ISLAND_CONTRACT
             .replace(
-                "      operation_mode_state: { min_rate_hz: 10, qos: { depth: 1 } }\n",
+                "      operation_mode_state: { min_rate: 10Hz, qos: { depth: 1 } }\n",
                 "",
             )
             .replace(
                 "  /api/operation_mode/state:\n    type: \
                  autoware_adapi_v1_msgs/msg/OperationModeState\n    external: pub\n    sub: \
-                 [mrm_handler/operation_mode_state]\n    rate_hz: 10\n",
+                 [mrm_handler/operation_mode_state]\n    rate: 10Hz\n",
                 "",
             );
         let contract = manifest(&yaml);
@@ -2043,9 +2043,9 @@ services:
         let census = island_census();
         let yaml = ISLAND_CONTRACT
             .replace(
-                "      gear_cmd_in: { min_rate_hz: 10, qos: { depth: 1 } }\n",
-                "      gear_cmd_in: { min_rate_hz: 10, qos: { depth: 1 } }\n      phantom_in: \
-                 { min_rate_hz: 10, qos: { depth: 1 } }\n",
+                "      gear_cmd_in: { min_rate: 10Hz, qos: { depth: 1 } }\n",
+                "      gear_cmd_in: { min_rate: 10Hz, qos: { depth: 1 } }\n      phantom_in: \
+                 { min_rate: 10Hz, qos: { depth: 1 } }\n",
             )
             .replace(
                 "topics:\n",
@@ -2055,7 +2055,7 @@ services:
                     "    type: std_msgs/msg/Int32\n",
                     "    external: pub\n",
                     "    sub: [mrm_handler/phantom_in]\n",
-                    "    rate_hz: 10\n",
+                    "    rate: 10Hz\n",
                 ),
             );
         let contract = manifest(&yaml);
@@ -2092,9 +2092,9 @@ services:
     fn e3c_a_declared_endpoint_wired_to_no_topic_is_unwired() {
         let census = island_census();
         let yaml = ISLAND_CONTRACT.replace(
-            "      gear_cmd_in: { min_rate_hz: 10, qos: { depth: 1 } }\n",
-            "      gear_cmd_in: { min_rate_hz: 10, qos: { depth: 1 } }\n      dangling: \
-             { min_rate_hz: 10, qos: { depth: 1 } }\n",
+            "      gear_cmd_in: { min_rate: 10Hz, qos: { depth: 1 } }\n",
+            "      gear_cmd_in: { min_rate: 10Hz, qos: { depth: 1 } }\n      dangling: \
+             { min_rate: 10Hz, qos: { depth: 1 } }\n",
         );
         let contract = manifest(&yaml);
         let report = run(&census, &contract, &no_waivers());
@@ -2143,8 +2143,8 @@ services:
     fn e2a_a_depth_the_code_does_not_pass_is_a_depth_mismatch_naming_both() {
         let census = island_census();
         let yaml = ISLAND_CONTRACT.replace(
-            "      kinematic_state: { min_rate_hz: 10, qos: { depth: 1 } }",
-            "      kinematic_state: { min_rate_hz: 10, qos: { depth: 10 } }",
+            "      kinematic_state: { min_rate: 10Hz, qos: { depth: 1 } }",
+            "      kinematic_state: { min_rate: 10Hz, qos: { depth: 10 } }",
         );
         let contract = manifest(&yaml);
         let report = run(&census, &contract, &no_waivers());
@@ -2386,7 +2386,7 @@ services:
     fn the_inventory_says_what_the_image_would_have_been_sized_with() {
         let census = island_census();
         let yaml = ISLAND_CONTRACT.replace(
-            "      operation_mode_state: { min_rate_hz: 10, qos: { depth: 1 } }\n",
+            "      operation_mode_state: { min_rate: 10Hz, qos: { depth: 1 } }\n",
             "",
         );
         let contract = manifest(&yaml);
@@ -2468,8 +2468,8 @@ services:
         let census = json!({ "census": { "nodes": [server, client], "parameters": [] } });
         let contract = manifest(
             "version: 1\nnodes:\n  fib_server:\n    paths:\n      on_timer:\n        \
-             trigger: { timer: { rate_hz: 2 } }\n        output: []\n  fib_client:\n    \
-             paths:\n      on_timer:\n        trigger: { timer: { rate_hz: 2 } }\n        \
+             trigger: { timer: { rate: 2Hz } }\n        output: []\n  fib_client:\n    \
+             paths:\n      on_timer:\n        trigger: { timer: { rate: 2Hz } }\n        \
              output: []\nactions:\n  /fibonacci:\n    type: \
              example_interfaces/action/Fibonacci\n    server: [fib_server/fibonacci]\n    \
              client: [fib_client/fibonacci]\n",
