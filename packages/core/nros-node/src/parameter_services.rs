@@ -386,6 +386,20 @@ fn read_wire_seq_len(reader: &mut CdrReader<'_>) -> Result<usize, DeserError> {
     Ok(len)
 }
 
+/// Read the length of a NAME list a streaming handler answers one name at a
+/// time (get, describe, types) -- issue 2639. Bounded by the store
+/// ([`NAME_LIST_CAP`]), not the generated message: `ros2 param dump` asks for
+/// every name `list_parameters` gave it in ONE `get_parameters`, and a store
+/// of 149 used to have that request refused at 64.
+#[inline]
+fn read_name_list_len(reader: &mut CdrReader<'_>) -> Result<usize, DeserError> {
+    let len = reader.read_sequence_len()?;
+    if len > NAME_LIST_CAP {
+        return Err(DeserError::CapacityExceeded);
+    }
+    Ok(len)
+}
+
 /// Read a string, refusing one the generated message could not hold. Borrows
 /// out of the receive buffer — no copy, which is why `GetParameters` needs no
 /// scratch at all.
@@ -709,7 +723,7 @@ pub(crate) fn stream_get_parameters(
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
-    let count = read_wire_seq_len(reader).map_err(deser_failed)?;
+    let count = read_name_list_len(reader).map_err(deser_failed)?;
     writer.write_sequence_len(count).map_err(ser_failed)?;
 
     for _ in 0..count {
@@ -842,24 +856,62 @@ pub(crate) fn stream_set_parameters_atomically(
     }
 }
 
+/// A name's prefix: everything before its last `.`.
+fn prefix_of(name: &str) -> Option<&str> {
+    name.rfind('.').map(|dot| &name[..dot])
+}
+
+/// Does `ListParameters` select `name`? rclcpp's rule, verbatim
+/// (`node_parameters.cpp`, `NodeParameters::list_parameters`) -- issue 2639.
+///
+/// With no prefixes, every name with fewer than `depth` separators (`0` is
+/// `DEPTH_RECURSIVE`, every name). With prefixes, a name that IS one of them,
+/// or that continues one with a `.`, and has fewer than `depth` separators
+/// AFTER that prefix. The rule used to count every separator with `<=` and
+/// match a bare `starts_with`, so `robot` selected `robotics` and depth 1
+/// returned `a.b`.
+fn list_selects<'p>(
+    name: &str,
+    mut prefixes: impl Iterator<Item = &'p str>,
+    depth: u64,
+    none: bool,
+) -> bool {
+    let shallow = |rest: &str| depth == 0 || (rest.matches('.').count() as u64) < depth;
+    if none {
+        return shallow(name);
+    }
+    prefixes.any(|prefix| {
+        if name == prefix {
+            return true;
+        }
+        match name.strip_prefix(prefix) {
+            Some(rest) if rest.starts_with('.') => shallow(rest),
+            _ => false,
+        }
+    })
+}
+
 /// `ListParameters` — the one reply whose sequence length is not the request's.
 ///
 /// Both output sequences are derived from the STORE, so their lengths are not
-/// known until it has been walked. The store is cheap to walk twice, so the
-/// only scratch is the borrowed prefixes: `&str` into the receive buffer for
-/// the request's filters, `&str` into the store for the deduplicated reply
-/// prefixes. Bounded by the wire capacity, no copies, no `alloc`.
+/// known until it has been walked. The store is cheap to walk, so there is no
+/// scratch for the reply at all: the names are written straight out of it, and
+/// a prefix is written by the first selected name that has it (found by
+/// looking back over the names before it). The only scratch is the request's
+/// own filters, borrowed out of the receive buffer.
 ///
-/// `truncated` is set when more names or prefixes matched than the reply
-/// holds ([`WIRE_SEQ_CAP`] each). The reply is still a correct prefix of the
-/// answer; the caller reports the cut (issue 1271), because
-/// `ListParametersResult` has no field for it.
+/// Issue 2639 -- EVERY selected name is answered. The reply used to stop at
+/// the generated message's 64 (`WIRE_SEQ_CAP`), so `ros2 param list` showed 64
+/// of a controller's 149 parameters and said nothing: `ListParametersResult`
+/// has no field for a cut, and a log line on the device is not the reply. The
+/// reply is bounded by the reply buffer, which is sized for the whole store
+/// (`param_service_buffer_bytes`); a reply that still does not fit is dropped
+/// whole and reported (`ReplyTooLarge`), never shortened.
 pub(crate) fn stream_list_parameters<'r>(
     server: &ParameterServer,
     node: NodeKey,
     reader: &mut CdrReader<'r>,
     writer: &mut CdrWriter<'_>,
-    truncated: &mut bool,
 ) -> Result<(), TransportError> {
     let prefix_count = read_wire_seq_len(reader).map_err(deser_failed)?;
     let mut filters: heapless::Vec<&'r str, WIRE_SEQ_CAP> = heapless::Vec::new();
@@ -872,57 +924,51 @@ pub(crate) fn stream_list_parameters<'r>(
     let depth = reader.read_u64().map_err(deser_failed)?;
 
     let selected = |name: &str| -> bool {
-        let matches_prefix =
-            filters.is_empty() || filters.iter().any(|prefix| name.starts_with(*prefix));
-        // depth 0 = unlimited
-        matches_prefix && (depth == 0 || name.matches('.').count() as u64 <= depth)
+        list_selects(name, filters.iter().copied(), depth, filters.is_empty())
+    };
+    // The first selected name carrying `prefix`, at store position `at`?
+    let first_with_prefix = |at: usize, prefix: &str| -> bool {
+        !server
+            .iter(node)
+            .take(at)
+            .any(|p| selected(p.name.as_str()) && prefix_of(p.name.as_str()) == Some(prefix))
     };
 
-    // Pass 1 over the store: how many names, and which prefixes. Both are
-    // capped at the wire capacity, which is what the by-value handler's
-    // `let _ = push(..)` into a `heapless::Vec<_, 64>` silently did.
-    let mut name_count = 0usize;
-    let mut prefixes: heapless::Vec<&str, WIRE_SEQ_CAP> = heapless::Vec::new();
-    for param in server.iter(node) {
+    let name_count = server
+        .iter(node)
+        .filter(|p| selected(p.name.as_str()))
+        .count();
+    let prefix_count = server
+        .iter(node)
+        .enumerate()
+        .filter(|(at, p)| {
+            let name = p.name.as_str();
+            selected(name) && prefix_of(name).is_some_and(|pre| first_with_prefix(*at, pre))
+        })
+        .count();
+
+    // ListParametersResponse is a bare ListParametersResult: names, then prefixes.
+    writer.write_sequence_len(name_count).map_err(ser_failed)?;
+    for param in server.iter(node).filter(|p| selected(p.name.as_str())) {
+        writer
+            .write_string(fit_or_empty(param.name.as_str()))
+            .map_err(ser_failed)?;
+    }
+    writer
+        .write_sequence_len(prefix_count)
+        .map_err(ser_failed)?;
+    for (at, param) in server.iter(node).enumerate() {
         let name = param.name.as_str();
         if !selected(name) {
             continue;
         }
-        if name_count < WIRE_SEQ_CAP {
-            name_count += 1;
-        } else {
-            *truncated = true;
-        }
-        if let Some(dot) = name.rfind('.') {
-            let prefix = &name[..dot];
-            if !prefixes.contains(&prefix) && prefixes.push(prefix).is_err() {
-                *truncated = true;
-            }
-        }
-    }
-
-    // ListParametersResponse is a bare ListParametersResult: names, then prefixes.
-    writer.write_sequence_len(name_count).map_err(ser_failed)?;
-    let mut written = 0usize;
-    for param in server.iter(node) {
-        if written == name_count {
-            break;
-        }
-        let name = param.name.as_str();
-        if selected(name) {
+        if let Some(prefix) = prefix_of(name)
+            && first_with_prefix(at, prefix)
+        {
             writer
-                .write_string(fit_or_empty(name))
+                .write_string(fit_or_empty(prefix))
                 .map_err(ser_failed)?;
-            written += 1;
         }
-    }
-    writer
-        .write_sequence_len(prefixes.len())
-        .map_err(ser_failed)?;
-    for prefix in prefixes.iter() {
-        writer
-            .write_string(fit_or_empty(prefix))
-            .map_err(ser_failed)?;
     }
     Ok(())
 }
@@ -985,7 +1031,7 @@ pub(crate) fn stream_describe_parameters(
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
-    let count = read_wire_seq_len(reader).map_err(deser_failed)?;
+    let count = read_name_list_len(reader).map_err(deser_failed)?;
     writer.write_sequence_len(count).map_err(ser_failed)?;
 
     for _ in 0..count {
@@ -1009,7 +1055,7 @@ pub(crate) fn stream_get_parameter_types(
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
-    let count = read_wire_seq_len(reader).map_err(deser_failed)?;
+    let count = read_name_list_len(reader).map_err(deser_failed)?;
     writer.write_sequence_len(count).map_err(ser_failed)?;
 
     for _ in 0..count {
@@ -1162,43 +1208,29 @@ pub fn handle_list_parameters(
     let mut prefixes: heapless::Vec<heapless::String<256>, MAX_PARAMS_PER_REQUEST> =
         heapless::Vec::new();
 
+    let filters: heapless::Vec<&str, MAX_PARAMS_PER_REQUEST> =
+        request.prefixes.iter().map(|p| p.as_str()).collect();
     for param in server.iter(node) {
         let name = param.name.as_str();
+        // Issue 2639 -- rclcpp's selection (`list_selects`).
+        if list_selects(
+            name,
+            filters.iter().copied(),
+            request.depth,
+            filters.is_empty(),
+        ) {
+            let mut n = heapless::String::new();
+            let _ = n.push_str(name);
+            let _ = names.push(n);
 
-        // Check prefix filter
-        let matches_prefix = if request.prefixes.is_empty() {
-            true
-        } else {
-            request
-                .prefixes
-                .iter()
-                .any(|prefix| name.starts_with(prefix.as_str()))
-        };
-
-        if matches_prefix {
-            // Check depth filter (0 = unlimited)
-            let should_include = if request.depth == 0 {
-                true
-            } else {
-                // Count dots in the name after the prefix
-                let depth = name.matches('.').count() as u64;
-                depth <= request.depth
-            };
-
-            if should_include {
-                let mut n = heapless::String::new();
-                let _ = n.push_str(name);
-                let _ = names.push(n);
-
-                // Extract prefix (everything up to the last dot)
-                if let Some(dot_pos) = name.rfind('.') {
-                    let prefix = &name[..dot_pos];
-                    let mut p = heapless::String::new();
-                    let _ = p.push_str(prefix);
-                    // Only add if not already present
-                    if !prefixes.iter().any(|existing| existing.as_str() == prefix) {
-                        let _ = prefixes.push(p);
-                    }
+            // Extract prefix (everything up to the last dot)
+            if let Some(dot_pos) = name.rfind('.') {
+                let prefix = &name[..dot_pos];
+                let mut p = heapless::String::new();
+                let _ = p.push_str(prefix);
+                // Only add if not already present
+                if !prefixes.iter().any(|existing| existing.as_str() == prefix) {
+                    let _ = prefixes.push(p);
                 }
             }
         }
@@ -1498,11 +1530,6 @@ enum ParamServiceFailure {
     ReplyTooLarge,
     /// Anything else: the backend refused the take or the send.
     Transport,
-    /// Not a dropped request: a `list_parameters` reply was ANSWERED with
-    /// fewer names or prefixes than matched, because the reply message holds
-    /// [`WIRE_SEQ_CAP`] of each. `ListParametersResult` has no field to say
-    /// so, so the log line is the one place it is stated (issue 1271).
-    ListTruncated,
 }
 
 impl ParamServiceFailure {
@@ -1519,7 +1546,7 @@ impl ParamServiceFailure {
 
 /// Bits per service in [`ParameterServiceServers::reported`]: one per
 /// [`ParamServiceFailure`] kind.
-const FAILURE_KINDS: u32 = 6;
+const FAILURE_KINDS: u32 = 5;
 
 /// Holds the 6 ROS 2 parameter service servers for a node.
 ///
@@ -1604,17 +1631,12 @@ impl ParameterServiceServers {
         );
         count += self.settle(ParamService::SetAtomically, r, cap);
 
-        let mut truncated = false;
         let r = self.list_parameters.handle.handle_request_raw(
             &mut request[..],
             &mut reply[..],
-            |reader, writer| stream_list_parameters(server, node, reader, writer, &mut truncated),
+            |reader, writer| stream_list_parameters(server, node, reader, writer),
         );
-        let answered = self.settle(ParamService::List, r, cap);
-        if answered > 0 && truncated {
-            self.note_list_truncated();
-        }
-        count += answered;
+        count += self.settle(ParamService::List, r, cap);
 
         let r = self.describe_parameters.handle.handle_request_raw(
             &mut request[..],
@@ -1766,35 +1788,7 @@ impl ParameterServiceServers {
                 svc,
                 e
             ),
-            // Reported by `note_list_truncated`; no `TransportError` maps here.
-            ParamServiceFailure::ListTruncated => {}
         }
-    }
-
-    /// Issue 1271 -- a `list_parameters` reply that was answered SHORT: more
-    /// names or prefixes matched than the reply message holds. Once, like
-    /// [`Self::note_failure`]; a warning, because the client did get a reply.
-    #[cold]
-    #[inline(never)]
-    fn note_list_truncated(&mut self) {
-        let bit = 1u64
-            << (ParamService::List as u32 * FAILURE_KINDS
-                + ParamServiceFailure::ListTruncated as u32);
-        if self.reported & bit != 0 {
-            return;
-        }
-        self.reported |= bit;
-        // issue 1271
-        nros_log::log_warn!(
-            nros_log::get_logger("nros"),
-            "parameter service {}/list_parameters: the reply was cut to {} names / {} prefixes \
-             -- more matched than an rcl_interfaces ListParametersResult holds, and the message \
-             has no field to say so. Ask with a narrower prefix or depth. Logged once for this \
-             service.",
-            self.fqn.as_str(),
-            WIRE_SEQ_CAP,
-            WIRE_SEQ_CAP
-        );
     }
 }
 
@@ -2823,14 +2817,14 @@ mod tests {
         // the dotted names.
         for (prefixes, depth) in [
             (&[][..], 0u64),
-            (&["robot."][..], 0),
+            (&["robot"][..], 0),
             (&["nothing_matches"][..], 0),
             (&[][..], 1),
-            (&["robot."][..], 1),
+            (&["robot"][..], 1),
         ] {
             let request = list_request(prefixes, depth);
             let streamed = run_streaming(&encode(&*request), |reader, writer| {
-                stream_list_parameters(&server, NODE, reader, writer, &mut false)
+                stream_list_parameters(&server, NODE, reader, writer)
             });
             let oracle = handle_list_parameters(&server, NODE, &request);
             assert_eq!(
@@ -3187,7 +3181,7 @@ mod tests {
 
         let request = Box::new(ListParametersRequest::default());
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_list_parameters(&server, TALKER, reader, writer, &mut false)
+            stream_list_parameters(&server, TALKER, reader, writer)
         });
         let reply: Box<ListParametersResponse> = decode_boxed(&streamed);
         let names: AllocVec<&str> = reply.result.names.iter().map(|n| n.as_str()).collect();
@@ -3452,11 +3446,34 @@ mod tests {
     }
 
     /// With no declaration -- this crate's own test build, which reads no
-    /// contract -- the configured size stands and nothing is derived.
+    /// contract -- nothing is derived, and the configured size is a FLOOR
+    /// under what a full store needs (issue 2639): a `list_parameters` reply
+    /// of every name the store can hold fits.
     #[test]
     fn no_declaration_keeps_the_configured_buffer() {
         assert!(!param_service_buffer_derived());
-        assert_eq!(param_service_buffer_bytes(), PARAM_SERVICE_BUFFER_SIZE);
+        assert!(param_service_buffer_bytes() >= PARAM_SERVICE_BUFFER_SIZE);
+        let mut server = leaked_server();
+        let mut i = 0;
+        while server.declare(
+            NODE,
+            &name_of(&alloc::format!("a.b{i}"), MAX_PARAM_NAME_LEN),
+            InternalValue::Integer(0),
+        ) {
+            i += 1;
+        }
+        assert!(
+            i > WIRE_SEQ_CAP || i == nros_params::MAX_PARAMETERS,
+            "the store filled at {i}"
+        );
+        let request = encode(&ListParametersRequest::default());
+        let reply = run_streaming(&request, |r, w| stream_list_parameters(&server, NODE, r, w));
+        assert!(
+            reply.len() <= param_service_buffer_bytes(),
+            "a full store's listing ({} B) must fit the {} B buffer",
+            reply.len(),
+            param_service_buffer_bytes()
+        );
     }
 
     /// A distinct parameter name of exactly `len` bytes, from a readable stem.
@@ -3651,7 +3668,7 @@ mod tests {
         // The worst list REPLY is the unfiltered one: every name and every
         // prefix.
         let list_reply = run_streaming(&encode(&*list_request(&[])), |r, w| {
-            stream_list_parameters(&server, NODE, r, w, &mut false)
+            stream_list_parameters(&server, NODE, r, w)
         });
         check("list_parameters reply", list_reply.len(), bound.list_reply);
 
@@ -3823,9 +3840,15 @@ mod tests {
                  request {worst}; the const assert should have refused this build"
             );
         } else {
-            // No declaration: the executor-side fallback stands, and it is
-            // never smaller than the pair the same ladder resolved.
-            assert_eq!(PARAM_INBOX_SLOT_BYTES, param_service_buffer_bytes());
+            // No declaration: the executor-side fallback stands as a floor
+            // under a request naming every parameter of a full store (issue
+            // 2639).
+            assert_eq!(
+                PARAM_INBOX_SLOT_BYTES,
+                PARAM_SERVICE_BUFFER_SIZE
+                    .max(FULL_STORE_REQUEST_BYTES)
+                    .next_multiple_of(4)
+            );
         }
         assert_eq!(
             PARAM_INBOX_BYTES_PER_QUERYABLE,
@@ -4270,52 +4293,68 @@ mod tests {
         assert_eq!(server.get_integer(NODE, "rate"), Some(1), "nothing applied");
     }
 
-    /// A `list_parameters` reply cut to the message's 64 names is still
-    /// ANSWERED, and the cut is reported once: `ListParametersResult` has no
-    /// field for it.
-    #[cfg(not(feature = "rmw-cffi"))]
+    /// Issue 2639 -- a store with more than the generated message's 64 names
+    /// answers EVERY one: `ros2 param list` used to show 64 of a controller's
+    /// 149 parameters and say nothing.
     #[test]
-    fn a_truncated_list_is_answered_and_reported_once() {
+    fn a_list_past_64_names_answers_every_name() {
         use core::mem::MaybeUninit;
+        const N: usize = 149;
         let slots: &'static mut [MaybeUninit<nros_params::ParameterSlot>] = Box::leak(
-            (0..WIRE_SEQ_CAP + 6)
+            (0..N)
                 .map(|_| MaybeUninit::uninit())
                 .collect::<AllocVec<_>>()
                 .into_boxed_slice(),
         );
         let mut server = ParameterServer::new_in(nros_params::ParameterTable::init_in(slots));
-        for i in 0..WIRE_SEQ_CAP + 6 {
-            let name = alloc::format!("p{i}");
+        for i in 0..N {
+            // Two prefixes, so the deduplicated prefix list is checked too.
+            let name = alloc::format!("{}.p{i}", if i % 2 == 0 { "mpc" } else { "pid" });
             assert!(server.declare(NODE, &name, InternalValue::Integer(0)));
         }
-        let mut set = one_set_of_six();
-        let mut buffers = ParamServiceBuffers::try_with_capacity(1 << 16).expect("host heap");
-        let truncated = 1u64
-            << (ParamService::List as u32 * FAILURE_KINDS
-                + ParamServiceFailure::ListTruncated as u32);
-        for _ in 0..2 {
-            queue_list(&set);
-            assert_eq!(
-                set.process(&mut server, &mut staged(), &mut buffers),
-                1,
-                "a truncated list is still an answered request"
-            );
-            assert_eq!(set.reported, truncated, "reported once, as a truncation");
-        }
-        let sent = set.list_parameters.handle.sent.borrow();
-        let (_, bytes, len) = &sent[0];
-        let mut r = CdrReader::new_with_header(&bytes[..*len]).unwrap();
-        assert_eq!(r.read_sequence_len().unwrap(), WIRE_SEQ_CAP);
+        let request = encode(&ListParametersRequest::default());
+        let reply = run_streaming(&request, |r, w| stream_list_parameters(&server, NODE, r, w));
+        let mut r = CdrReader::new_with_header(&reply).unwrap();
+        assert_eq!(r.read_sequence_len().unwrap(), N, "every name is answered");
+        let names: AllocVec<alloc::string::String> =
+            (0..N).map(|_| r.read_string().unwrap().into()).collect();
+        assert!(
+            names.iter().any(|n| n == "mpc.p148"),
+            "the last name is there"
+        );
+        assert_eq!(r.read_sequence_len().unwrap(), 2);
+        assert_eq!(r.read_string().unwrap(), "mpc");
+        assert_eq!(r.read_string().unwrap(), "pid");
     }
 
-    /// Queue one `list_parameters` request (no prefixes, any depth).
-    #[cfg(not(feature = "rmw-cffi"))]
-    fn queue_list(set: &ParameterServiceServers) {
-        let mut buf = [0u8; 256];
-        let mut w = CdrWriter::new_with_header(&mut buf).unwrap();
-        w.write_sequence_len(0).unwrap();
-        w.write_u64(0).unwrap();
-        let len = w.position();
-        set.list_parameters.handle.load(buf, len);
+    /// Issue 2639 -- the selection is rclcpp's: a prefix matches a whole
+    /// segment, and `depth` counts the separators AFTER it, exclusively.
+    #[test]
+    fn list_selection_is_rclcpps() {
+        let none = core::iter::empty::<&str>;
+        assert!(
+            list_selects("a.b.c", none(), 0, true),
+            "0 is DEPTH_RECURSIVE"
+        );
+        assert!(list_selects("rate", none(), 1, true));
+        assert!(
+            !list_selects("a.b", none(), 1, true),
+            "one separator is depth 2"
+        );
+        assert!(list_selects("a.b", none(), 2, true));
+        let robot = || ["robot"].into_iter();
+        assert!(
+            list_selects("robot", robot(), 0, false),
+            "the prefix itself"
+        );
+        assert!(list_selects("robot.arm", robot(), 0, false));
+        assert!(
+            !list_selects("robotics", robot(), 0, false),
+            "a segment, not a string"
+        );
+        // `.arm` after the prefix is one separator, so depth 1 excludes it.
+        assert!(!list_selects("robot.arm", robot(), 1, false));
+        assert!(list_selects("robot.arm", robot(), 2, false));
+        assert!(!list_selects("robot.arm.x", robot(), 2, false));
     }
 }

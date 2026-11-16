@@ -292,6 +292,47 @@ fn ros2_param_cli_addresses_each_node_by_its_own_fqn(zenohd_unique: ZenohRouter)
     );
 }
 
+/// Issue 2639 on the wire: a node with more parameters than the generated
+/// `rcl_interfaces` message's 64 answers stock `ros2 param list` and
+/// `ros2 param dump` with EVERY one. `list_parameters` used to stop at 64 and
+/// say nothing, and the `get_parameters` naming all of them that `dump` sends
+/// was refused.
+#[rstest]
+fn ros2_param_list_and_dump_answer_every_name_past_64(zenohd_unique: ZenohRouter) {
+    /// `alpha`'s `bulk.pNN` parameters (the fixture's `BULK_PARAMS`).
+    const BULK: usize = 70;
+    require_zenohd();
+    require_ros2();
+    let locator = zenohd_unique.locator();
+    let image = start_two_node_image(&locator);
+    require_both_nodes_discoverable(&image, &locator);
+
+    let last = format!("bulk.p{:02}", BULK - 1);
+    let list = param_list_until(image.alpha(), &last, &locator);
+    println!("=== ros2 param list {} ===\n{list}", image.alpha());
+    let listed = list
+        .lines()
+        .filter(|l| l.trim().starts_with("bulk.p"))
+        .count();
+    assert_eq!(
+        listed,
+        BULK,
+        "{} declares {BULK} `bulk.pNN` parameters; the listing must carry every one, \
+         not the first 64. Output:\n{list}",
+        image.alpha()
+    );
+
+    let dump = nros_tests::ros2::ros2_param_dump(image.alpha(), &locator, DEFAULT_ROS_DISTRO)
+        .expect("failed to run ros2 param dump");
+    println!("=== ros2 param dump {} ===\n{dump}", image.alpha());
+    let last_value = format!("p{:02}: {}", BULK - 1, BULK - 1);
+    assert!(
+        dump.contains(&last_value) && dump.contains("stepped: 10"),
+        "`ros2 param dump` asks for every listed name in one get_parameters; the \
+         dump must carry `{last_value}`. Output:\n{dump}"
+    );
+}
+
 /// Issue 2023 on the wire: a served RUST node publishes `/parameter_events`
 /// (rclrs's and rclcpp's behaviour), as a stock `ros2 topic echo` reads it — an
 /// accepted `ros2 param set` arrives as an `rcl_interfaces/msg/ParameterEvent`

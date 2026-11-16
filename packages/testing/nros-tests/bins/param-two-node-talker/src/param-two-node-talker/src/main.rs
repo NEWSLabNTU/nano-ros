@@ -41,6 +41,10 @@ use std_msgs::msg::Int32;
 /// `nros_tests::output::PARAM_SERVICE_NODE_PREFIX`.
 const PARAM_SERVICE_NODE_PREFIX: &str = "param services registered for node: ";
 
+/// Issue 2639 -- how many `bulk.pNN` parameters `alpha` declares: past the
+/// generated message's 64. `tests/params_per_node_interop.rs` states it again.
+const BULK_PARAMS: usize = 70;
+
 fn main() {
     env_logger::init();
     // issue 1268 / phase-444 W6 — register whichever backend the `rmw-*` feature
@@ -108,6 +112,22 @@ fn main() {
         ),
         "alpha/stepped declaration refused"
     );
+
+    // Issue 2639 -- more names than the generated `rcl_interfaces` message's
+    // 64, so `ros2 param list` / `ros2 param dump` prove every one is
+    // answered: the reply used to stop at 64 and say nothing. Under one
+    // prefix, so the prefix list is exercised too. The store holds them by
+    // the bringup's `knobs.params.max_parameters`.
+    for i in 0..BULK_PARAMS {
+        let name = format!("bulk.p{i:02}");
+        let _ = executor
+            .node_mut(alpha)
+            .declare_parameter::<i64>(&name)
+            .expect("parameter store")
+            .default(i as i64)
+            .mandatory()
+            .unwrap_or_else(|e| panic!("alpha/{name} declaration refused: {e:?}"));
+    }
 
     let alpha_pub = {
         let mut node = executor
