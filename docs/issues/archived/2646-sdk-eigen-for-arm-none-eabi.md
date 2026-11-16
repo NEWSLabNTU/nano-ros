@@ -1,14 +1,37 @@
 ---
 id: 2646
 title: "No SDK Eigen for cross builds: Eigen 3.4's psincos does not compile on arm-none-eabi, where newlib's int32_t is long"
-status: open
+status: wontfix
 type: enhancement
 area: [sdk, cmake, cpp]
 related: [phase-478, rfc-0014]
+found: 2026-11-16
 ---
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md) I27.**
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md) I27.**
 GitHub [#4013](https://github.com/NEWSLabNTU/nano-ros/issues/4013).
+
+## Resolution (2026-11-17): wontfix, user ruling
+
+nano-ros does not ship patched general-purpose C++ libraries. A user picks
+their own library set and patches it for their board; a library from outside
+nano-ros is supported by design: a nano-ros package's `CMakeLists.txt` finds
+and links it as it would without nano-ros, and nano-ros neither provides nor
+blocks it. So there is no `[source.eigen]`, no fork and no
+`cmake/find/FindEigen3.cmake`, and the fork step the design below started
+with is dropped. GitHub #4013 is closed with this reason.
+
+**How a user brings their own library.** The book has no page for it today:
+[Build inside an existing CMake or vendor tree](../../../book/src/guide/build/existing-cmake-or-vendor-tree.md)
+covers adding nano-ros to a tree, not adding a library to a nano-ros package
+for a cross target. That is a documentation gap, open: a page would say to
+point `find_package(<Lib>)` at the user's own copy (`<Lib>_DIR` or
+`CMAKE_PREFIX_PATH`, or `add_subdirectory` of a vendored tree), and that the
+board toolchain file, not the host, decides what builds. The island already
+does this (it copies and patches an Eigen of its own).
+
+The analysis below stays as a note for anyone patching their own Eigen 3.4
+for `arm-none-eabi`.
 
 ## What happens
 
@@ -21,13 +44,9 @@ island copies the HOST's Eigen at configure time and applies its own
 so every C++ robotics package ported to Cortex-R/M through nano-ros meets this
 and solves it alone.
 
-## Design (proposed)
+## Design (withdrawn by the resolution above)
 
-**Step 1, the maintainer's:** create the fork (`NEWSLabNTU/eigen`) and its
-patch-line branch (`nano-ros`, off upstream's `3.4.0` tag). Agents do not
-create or push forks; nothing below is pushed until that exists.
-
-**The patch** (proposed for that branch; it is the island's
+**The patch** (the island's
 `eigen-psincos-int32.patch`, read 2026-11-16): in
 `Eigen/src/Core/arch/Default/GenericPacketMathFunctions.h`, `psincos_float`
 declares its huge-argument scratch buffer `y_int2` as plain `int` and then
@@ -54,10 +73,3 @@ reason, so the branch stays a readable patchset.
   where there is no system Eigen and the patch is needed.
 - The patch is offered upstream too; ours carries it until upstream's
   released line has it.
-
-## Acceptance
-
-- A C++ package with `find_package(Eigen3 REQUIRED)` and an `Eigen::Matrix`
-  `sin`/`cos` use builds for an `arm-none-eabi` board with no host Eigen and
-  no consumer-side patch.
-- ASI deletes its copy step and patch.
