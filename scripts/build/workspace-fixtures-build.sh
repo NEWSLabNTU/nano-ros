@@ -83,6 +83,8 @@ source "$repo_root/scripts/build/cargo.sh"
 
 # shellcheck source=scripts/build/leaf-cache.sh
 source "$repo_root/scripts/build/leaf-cache.sh"
+# shellcheck source=scripts/lib/fixture-road.sh
+source "$repo_root/scripts/lib/fixture-road.sh"
 # shellcheck source=scripts/build/cmake-incremental.sh
 source "$repo_root/scripts/build/cmake-incremental.sh"
 # shellcheck source=scripts/build/unignored-writes.sh
@@ -214,14 +216,10 @@ build_workspace() {
     # authors one (`workspace_record`): a C/C++ row whose image's OWNED entry is
     # a cargo package takes the cargo branch below although its language is
     # `c`/`cpp`. Otherwise the language decides, as it always has.
+    # Issue 2463 — one spelling, `nros_ws_row_road` (scripts/lib/fixture-road.sh),
+    # held to its Python twin by `check-workspace-fixture-road`.
     local road
-    if [ -n "$builder" ]; then
-        road="$builder"
-    elif [ "$lang" = "rust" ]; then
-        road=cargo
-    else
-        road=cmake
-    fi
+    road="$(nros_ws_row_road "$lang" "$builder")"
 
     [ -n "$id" ] || return 0
     [ -n "$dir" ] && [ -n "$bringup" ] && [ -n "$entry" ] || {

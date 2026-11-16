@@ -306,6 +306,17 @@ qemu-one-ladder:
 # so no `qemu-system-` literal is left in `packages/testing/nros-tests/src/`
 # outside comments: a boot states plan args, a probe asks
 # `nros_qemu_ladder::system_exe`. Buildless, ~0.1 s; self-tests its matcher.
+# issue 2463 — a workspace fixture row's road (cargo or cmake) is one
+# decision with a bash spelling (`nros_ws_row_road`, the fixture build) and a
+# Python one (`row_road` in `workspace-fixture-units.py`, the unit grouping). The bash copy once
+# broke every row with no `builder`, and no gate noticed because `ci gate`
+# builds no fixture. This runs every manifest row, plus a fixed table of each
+# shape, through both. Buildless, ~0.4 s; self-tests with a twin that
+# disagrees.
+[private]
+workspace-fixture-road:
+    @python3 scripts/check/check-workspace-fixture-road.py
+
 [private]
 harness-qemu-literals:
     @python3 scripts/check/check-harness-qemu-literals.py

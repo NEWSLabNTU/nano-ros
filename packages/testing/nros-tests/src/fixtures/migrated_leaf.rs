@@ -137,6 +137,11 @@ pub fn rows_at(dir: &str) -> TestResult<Vec<LeafRow>> {
 
 /// The road a workspace record builds on: its authored `builder`, else the
 /// language default (see [`LeafRow::builder`]).
+///
+/// Issue 2463 — the Rust twin of `nros_ws_row_road` (scripts/lib/fixture-road.sh)
+/// and `row_road` (scripts/build/workspace-fixture-units.py).
+/// `check-workspace-fixture-road` holds those two to each other over every
+/// manifest row; `road_tests` holds this one to the same table.
 fn road(lang: &str, builder: &str) -> String {
     if !builder.is_empty() {
         builder.to_string()
@@ -332,5 +337,30 @@ mod tests {
         // A leaf that still has a [[fixture]] row answers for itself; a dir
         // with no row at all is no migrated leaf either.
         assert!(select("examples/no/such/leaf", "zenoh", LeafVariant::Plain).is_none());
+    }
+}
+
+#[cfg(test)]
+mod road_tests {
+    /// Issue 2463 — the same `(lang, builder, road)` table
+    /// `check-workspace-fixture-road` runs the bash and Python twins over.
+    #[test]
+    fn road_matches_the_shared_table() {
+        for (lang, builder, want) in [
+            ("rust", "", "cargo"),
+            ("c", "", "cmake"),
+            ("cpp", "", "cmake"),
+            ("mixed", "", "cmake"),
+            ("c", "cargo", "cargo"),
+            ("cpp", "cargo", "cargo"),
+            ("rust", "cmake", "cmake"),
+            ("mixed", "cmake", "cmake"),
+        ] {
+            assert_eq!(
+                super::road(lang, builder),
+                want,
+                "lang={lang:?} builder={builder:?}"
+            );
+        }
     }
 }
