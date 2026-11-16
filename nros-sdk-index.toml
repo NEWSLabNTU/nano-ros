@@ -1402,12 +1402,33 @@ packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 # consumer-provisioned seams: NXP's RTD NETC ethernet driver (NXP Confidential
 # — arrives as a strong override of the board's weak, fail-loud
 # `nros_board_register_netif`), NXP's `GCC/ARM_CR52_GIC` FreeRTOS port, and an
-# RTD PBcfg set. `[gated.*]` exists for license-gated packages and holds zero
-# entries; none of these has a public URL, so none is index-expressible.
+# RTD PBcfg set. None has a public URL; the RTD variant below names the kernel
+# and the RTD as `[gated.*]` packages, which `nros setup` checks and never fetches.
 [board.s32z270-freertos]
 arch = "cortex-r52"
 platform = "freertos"
 packages = ["arm-none-eabi-gcc", "freertos-kernel", "lwip"]
+
+# Issue 2632 -- the NXP RTD variant of the same board. Its kernel and drivers
+# are the two NXP-licensed packages below; `nros setup` can only check them.
+[board.s32z270-freertos-rtd]
+arch = "cortex-r52"
+platform = "freertos"
+packages = ["arm-none-eabi-gcc", "lwip", "nxp-freertos-s32ze", "nxp-rtd-s32ze"]
+
+# NXP-licensed (Flexnet portal), never fetched: `nros setup` checks the
+# variable names an existing directory. SW32ZE FreeRTOS 11.1.0 version 4.0.0;
+# the directory is its kernel (the one holding include/ and portable/, with
+# portable/GCC/ARM_CR52_GIC), as staged and patched by the consumer.
+[gated.nxp-freertos-s32ze]
+version = "11.1.0-nxp4.0.0"
+env = "NXP_FREERTOS_S32ZE_DIR"
+
+# NXP-licensed: S32ZE Real-Time Drivers (RTD) 2.0.1, the PlatformSDK_S32ZE
+# directory of the distribution.
+[gated.nxp-rtd-s32ze]
+version = "2.0.1"
+env = "S32_RTD_PATH"
 
 # A SYSTEM board (RFC-0093): the FreeRTOS POSIX port, running as a host
 # process. Its overlay sets no `CMAKE_C_COMPILER` and no linker script, and

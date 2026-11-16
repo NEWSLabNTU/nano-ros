@@ -63,3 +63,55 @@ toolchain_file = "cmake/toolchain/arm-freertos-armcr52.cmake"
 stack = "board"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp"]
+
+# Issue 2632 -- the NXP RTD variant: the same board on NXP's GCC/ARM_CR52_GIC
+# port from a provisioned FreeRTOS_S32ZE kernel, with the S32Z RTD beside it,
+# so a consumer states the board name and nothing else (no FREERTOS_DIR /
+# FREERTOS_PORT in its environment). Both trees are NXP-licensed
+# (`[gated.nxp-freertos-s32ze]`, `[gated.nxp-rtd-s32ze]` in
+# nros-sdk-index.toml); cmake/board/nano-ros-board-s32z270-freertos-rtd.cmake
+# refuses a configure without them. Its `config-rtd/FreeRTOSConfig.h` switches
+# nano-ros's own task creation to the port's `xTaskCreate*Fpu`. The NETC netif
+# glue is not in it yet (it needs the RTD to be written against): the weak
+# fail-loud hooks still apply.
+[[board]]
+names = ["s32z270-freertos-rtd"]
+cmake_module = "s32z270-freertos-rtd"
+platform = "freertos"
+toolchain = "stable"
+entry_kind = "board-run"
+supported_netstacks = ["lwip"]
+board_crate = "nros-board-s32z270-freertos"
+cargo_config = '''
+[build]
+target = "armv8r-none-eabihf"
+
+[target.armv8r-none-eabihf]
+rustflags = [
+    "-C", "link-arg=-Ts32z270_rtu.ld",
+    "-C", "link-arg=--nmagic",
+    "-C", "link-arg=--gc-sections",
+]
+
+[env]
+# The vendor port's PATH under portable/ (it has no upstream enum), and the
+# variant's config directory. The kernel tree is the provisioned one: the CMake
+# board module reads NXP_FREERTOS_S32ZE_DIR; a cargo-road build takes it from
+# `nros locate freertos-dir` (FREERTOS_DIR), as every FreeRTOS board does.
+FREERTOS_PORT = { value = "GCC/ARM_CR52_GIC", force = true }
+FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-s32z270-freertos/config-rtd", force = true }
+'''
+
+[board.entry]
+
+[board.capabilities]
+heap = true
+atomics = true
+threads = true
+
+[board.cmake]
+toolchain_file = "cmake/toolchain/arm-freertos-armcr52.cmake"
+
+[board.net]
+stack = "board"
+links = ["tcp", "udp"]

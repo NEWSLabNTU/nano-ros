@@ -20,6 +20,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "nros_freertos_task_create.h" /* issue 2632 */
+
 /* Issue 2017 (RFC-0108 D6) -- the build said this is a level image; a board
  * FreeRTOSConfig.h that ignores the input would still slice. */
 #if defined(NROS_FREERTOS_LEVEL_IMAGE) && NROS_FREERTOS_LEVEL_IMAGE && \
@@ -588,7 +590,7 @@ static int freertos_spawn_next_sched_task(void* session_handle, uint8_t domain_i
     if (task_memory != NULL) {
         /* Issue 1598 — the stack and TCB are the entry's statics: no heap_4
          * block, and an image whose stacks do not fit fails at LINK. */
-        task = xTaskCreateStatic(freertos_sched_task, (t->name != NULL) ? t->name : "nros_sched_task",
+        task = NROS_FREERTOS_TASK_CREATE_STATIC(freertos_sched_task, (t->name != NULL) ? t->name : "nros_sched_task",
                                  stack_words, ctx, prio, (StackType_t*)task_memory->stack,
                                  (StaticTask_t*)task_memory->tcb);
         if (task == NULL) {
@@ -598,7 +600,7 @@ static int freertos_spawn_next_sched_task(void* session_handle, uint8_t domain_i
             return -1;
         }
     } else {
-        BaseType_t ret = xTaskCreate(freertos_sched_task, (t->name != NULL) ? t->name : "nros_sched_task",
+        BaseType_t ret = NROS_FREERTOS_TASK_CREATE(freertos_sched_task, (t->name != NULL) ? t->name : "nros_sched_task",
                                      stack_words, ctx, prio, &task);
         if (ret != pdPASS) {
             freertos_announce_spawn_failure(t->name, "xTaskCreate failed (FreeRTOS heap)");
@@ -1157,10 +1159,10 @@ static int freertos_spawn_next_level(void* scheduler, const nros_sched_task_spec
                            : (UBaseType_t)1u;
     TaskHandle_t task = NULL;
     if (task_memory != NULL) {
-        task = xTaskCreateStatic(freertos_level_task, (t->name != NULL) ? t->name : "nros_level",
+        task = NROS_FREERTOS_TASK_CREATE_STATIC(freertos_level_task, (t->name != NULL) ? t->name : "nros_level",
                                  stack_words, ctx, prio, (StackType_t*)task_memory->stack,
                                  (StaticTask_t*)task_memory->tcb);
-    } else if (xTaskCreate(freertos_level_task, (t->name != NULL) ? t->name : "nros_level",
+    } else if (NROS_FREERTOS_TASK_CREATE(freertos_level_task, (t->name != NULL) ? t->name : "nros_level",
                            stack_words, ctx, prio, &task) != pdPASS) {
         task = NULL;
     }

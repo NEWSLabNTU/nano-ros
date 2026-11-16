@@ -67,14 +67,23 @@ foreach(_src IN LISTS _NROS_FREERTOS_SHARED_C)
     endif()
 endforeach()
 
-set(FREERTOS_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}" CACHE PATH
+# Issue 2632 -- the RTD variant (nano-ros-board-s32z270-freertos-rtd.cmake)
+# names its own FreeRTOSConfig.h directory and port before including this file.
+if(NOT DEFINED _NROS_S32Z270_FREERTOS_CONFIG_DIR)
+    set(_NROS_S32Z270_FREERTOS_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}")
+endif()
+set(FREERTOS_CONFIG_DIR "${_NROS_S32Z270_FREERTOS_CONFIG_DIR}" CACHE PATH
     "Directory containing FreeRTOSConfig.h for s32z270-freertos" FORCE)
 # phase-484 W2 — a board fact, set by the board. OVERRIDABLE: real hardware
 # uses NXP's `GCC/ARM_CR52_GIC`, which a consumer passes as -DFREERTOS_PORT —
 # a path, because upstream has no enum for a vendor port (phase-349 W3); the
 # in-tree default, upstream's `GCC_ARM_CRX_NOGIC`, only makes a clean checkout
 # link-complete.
-nros_freertos_board_port(nano-ros-board-s32z270-freertos "GCC_ARM_CRX_NOGIC" OVERRIDABLE)
+if(_NROS_S32Z270_FREERTOS_RTD)
+    nros_freertos_board_port(nano-ros-board-s32z270-freertos-rtd "GCC/ARM_CR52_GIC")
+else()
+    nros_freertos_board_port(nano-ros-board-s32z270-freertos "GCC_ARM_CRX_NOGIC" OVERRIDABLE)
+endif()
 # The platform module's third-party fallback runs AFTER board overlays; the
 # kernel build below needs the path NOW (portASM.S existence probe).
 # phase-484 W2c — source trees come from `nros locate` (RFC-0103 D4).

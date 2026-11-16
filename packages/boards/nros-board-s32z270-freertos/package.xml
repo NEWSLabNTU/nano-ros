@@ -16,5 +16,6 @@
     -->
     <nano_ros_provides kind="board" name="s32z270-freertos"/>
     <nano_ros_provides kind="board" name="s32z270"/>
+    <nano_ros_provides kind="board" name="s32z270-freertos-rtd"/>
   </export>
 </package>
