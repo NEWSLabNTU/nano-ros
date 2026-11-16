@@ -85,3 +85,29 @@ here: an emulated UART at line rate under load (QEMU ignores the baud rate,
 per `book/src/guide/rmw/use-a-serial-link.md`) would not reproduce the
 ISR-vs-read-task race the island measured, so its high water would not be
 evidence for a default.
+
+## Renode does not pace this UART either (2026-11-16)
+
+The Nucleo-F767ZI Renode twin was the other candidate lane for item 2. It
+does not help, for the same reason as QEMU. Its zenoh link is USART3
+(`[board.run.renode] link = "usart3"`), which Renode's `stm32f746.repl`
+models as `UART.STM32F7_USART`. Measured in the Renode 1.17.0 monitor, with
+the model at 16 MHz, `BRR = 0x10` (`BaudRate` reads 1,000,000) and a 1 µs
+quantum:
+
+| model | RXNE at 0 µs | at 9 µs | at 10 µs |
+|---|---|---|---|
+| `STM32F7_USART` (USART3 on this twin) | set | set | set |
+| `STM32_UART` (control) | clear | clear | set |
+
+Each model had two bytes written with `WriteChar`. `STM32F7_USART` makes both
+readable at once, one behind the other with no frame time between them. The
+control uses the same script on the legacy `STM32_UART` model, which Renode's
+own `tests/peripherals/STM32_UART.robot` covers. It holds RXNE clear until one
+8N1 frame (10 µs) has passed, so the script does detect pacing where a model
+has it. `STM32_UART` cannot stand in for USART3, because it has the F1/F4
+register map and Zephyr's F7 driver programs the newer one.
+
+So no emulator in the tree feeds this link at line rate, and item 2 needs
+hardware. It moves to the S32K344 board batch, which is the board the
+original numbers came from.
