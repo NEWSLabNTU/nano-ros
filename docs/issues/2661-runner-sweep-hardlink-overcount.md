@@ -50,7 +50,11 @@ the sweep defect the leak exposed.
   kept unit is not freed, and one `du` counts it once, so this is also the real
   remaining total.
 - If that measures too slow on a large area, fall back to tracking freed bytes
-  by inode.
+  by inode. **Measured (2026-11-17), not needed:** `--check --disk` at a 0
+  budget over a real 68.2 GiB fixtures area (a gated worktree's `build/` plus
+  its `examples/**/build`, 76 units) took 20.7 s, against 5.8 s for the
+  per-unit sum it replaces. The sweep runs once per job, so the measured
+  remainder stays.
 - After the loop, warn whenever the measured total is still over budget, not
   only when the list ran out.
 - Test: a sweep test whose units share hard-linked files, asserting the real
