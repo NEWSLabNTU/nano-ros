@@ -854,9 +854,10 @@ mod tests {
         // Phase-524 W3: plus `nucleo-f767zi-zephyr` and `rpi-pico-w-zephyr`.
         // Phase-553 W4: plus the four bare-metal descriptor names and the
         // bare `mps2-an385` Rust key. Issue 2631: plus `s32z270-rtu0-zephyr`.
+        // Issue 2632: plus `s32z270-freertos-rtd`.
         assert_eq!(
             BOARD_KEYS.len(),
-            28,
+            29,
             "a key was added or removed without a row"
         );
     }
