@@ -3115,17 +3115,21 @@ fn plan_leaf_image(
     // pin set, and is resolved ONCE before the build — the same prepare step a
     // generated entry takes above, because `--frozen` (and the PATH shim's
     // `--locked`) cannot prune a seed down to the leaf's graph.
-    let had_lock = img.leaf.join("Cargo.lock").is_file();
-    let seeded = matches!(
-        crate::orchestration::registry_pins::seed(&img.leaf, Some(&nros_root))?,
-        crate::orchestration::registry_pins::Seed::Seeded { .. }
-    );
+    // Asked before the seed: a raw seed an earlier plan left behind does not
+    // name the leaf (issue 2451), so it is pruned too. Only that half of
+    // `lock_is_resolved`: a leaf's lock is pruned by `nros configure` (Ruling
+    // R10), so a configured leaf's lock is resolved wherever it lives, and
+    // the seeded-output rule for an untracked lock in a checkout (issue
+    // 2512) would re-resolve it on every build.
+    let resolved = lock_names_package(&img.leaf);
+    crate::orchestration::registry_pins::seed(&img.leaf, Some(&nros_root))?;
     // Issue 2149 — the NuttX kernel stage, as on the workspace cargo road.
     let leaf_kernel = nuttx_kernel_step(descriptor, &nros_root)
         .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
     // phase-530 W1 (Ruling R10): `nros configure` seeds and prunes in C1, so
-    // after a configure the lock is present and this is `None`.
-    let prepare = (!had_lock && seeded).then(|| leaf_lock_prune(&img, args.offline));
+    // after a configure the lock names the leaf and this is `None`.
+    let prepare = (!resolved && img.leaf.join("Cargo.lock").is_file())
+        .then(|| leaf_lock_prune(&img, args.offline));
     if args.offline {
         a.push("--frozen".to_string());
     }
@@ -4755,7 +4759,18 @@ fn plan_packages(
             // committed — CLAUDE.md, `check-leaf-lockfiles`).
             // RFC-0104 D3 (phase-485 W2): seeded from the pin set first, so the
             // resolve below keeps every pinned version the manifests accept.
-            let had_lock = pkg.dir.join("Cargo.lock").is_file();
+            //
+            // "Has a lock" means a lock cargo RESOLVED, one that names the
+            // package itself. Planning writes the seed (issue 1716), and the
+            // fixture builder plans every row with `--dry-run` before building
+            // it, so a raw seed is usually here already. Read as the user's
+            // lock, it skipped the resolve, and `--frozen` then refused to add
+            // the package's own path packages (the `local_msg_pkg` and
+            // `multi_package_workspace` compile-check rows). This is the test
+            // the generated-entry lane already makes (issue 2451). A lock in a
+            // checkout that no `[rust] locked_roots` row tracks is seeded
+            // output too (issue 2512), so it is re-resolved as well.
+            let had_lock = lock_is_resolved(&pkg.dir, nano_ros_root);
             crate::orchestration::registry_pins::seed(&pkg.dir, nano_ros_root)?;
             let configure = (!had_lock).then(|| {
                 let mut u = vec!["update".to_string(), "--workspace".to_string()];
@@ -5030,7 +5045,8 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
     let host_names: BTreeSet<&str> = hosts.iter().map(|p| p.name.as_str()).collect();
     let mut out = Vec::new();
     for pkg in hosts {
-        let has_lock = pkg.dir.join("Cargo.lock").is_file();
+        // Asked before the seed below writes one (see `lock_is_resolved`).
+        let has_lock = lock_is_resolved(&pkg.dir, nano_ros_root.as_deref());
         let routing = crate::routing::route(pkg);
         if routing.cargo_member {
             // RFC-0104 D3 — seeded from the pin set first, as every cargo root
@@ -9628,6 +9644,18 @@ fn stale_lock_refusal(hand: &Handoff) -> Option<String> {
          keep it, delete it; the next `nros build` seeds a fresh one from the pin set.",
         lock.display()
     ))
+}
+
+/// Has `dir`'s `Cargo.lock` been RESOLVED for this build, so a `--frozen`
+/// build may use it as it is? Planning writes a lock as a seed from the pin
+/// set (issue 1716), and the fixture builder plans every row before it builds
+/// it, so "a lock file exists" is not the question. The answer is yes when
+/// the lock names `dir`'s own package (issue 2451) and is not seeded build
+/// output in a checkout (issue 2512). The package and host-tool roads ask
+/// this, as the generated entry does. A single-package leaf asks only the
+/// first half, because `nros configure` resolves its lock (Ruling R10).
+pub(crate) fn lock_is_resolved(dir: &Path, nano_ros_root: Option<&Path>) -> bool {
+    lock_names_package(dir) && !nano_ros_root.is_some_and(|r| lock_is_seeded_output(dir, r))
 }
 
 fn lock_names_package(manifest_dir: &Path) -> bool {
