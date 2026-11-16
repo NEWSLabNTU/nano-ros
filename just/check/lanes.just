@@ -1466,8 +1466,9 @@ compile-smoke:
 #
 # Needs the PINNED cross compiler (`arm-gcc`): the distro 10.3 is refused for
 # nros-cpp's C++ (issue 2413). The `build` lane claims and provisions it for
-# the FreeRTOS C++ copy-out units, so this costs no fetch there; a `dev`
-# worktree lists it as not run. The resolved pin goes first on PATH, so a
+# the FreeRTOS C++ copy-out units, so this costs no fetch there, and the
+# merge queue runs it as a step of `check-template-copy-out` (gate.yml), whose
+# job installs the same compiler; a `dev` worktree lists it as not run. The resolved pin goes first on PATH, so a
 # distro copy also on PATH cannot answer instead.
 [private]
 [metadata("tier", "build")]

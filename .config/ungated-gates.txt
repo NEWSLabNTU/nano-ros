@@ -53,46 +53,15 @@ c
 # recipe runs first; the cargo half is what keeps it off the fast line.
 census-hooks-complete
 cpp
-# cpp-heap-free-image-link was a step of `cpp` and moved out so it could claim
-# the pinned cross compiler (`needs:arm-gcc`) instead of skipping without it:
-# it cargo-builds nros-c + nros-cpp for thumbv7m (20.6 s cold on 32 cores) and
-# links the image, so it fails in a pristine worktree with no cross toolchain.
-# Daily, in the build lane, like the gate it came from; the queue's advisory
-# L3 also links this image.
-cpp-heap-free-image-link
-node-std-tests
-# cpp-ffi-tests is a cargo lib-test build of nros-cpp under `alloc,env,log,rmw-cffi`
-# (no cargo in a pristine PATH, same as excluded-crate-tests). gate.yml DOES run
-# it on merge_group, in its own step — this gate reads LANE membership only,
-# which is also why node-std-tests above is listed despite its PR step.
-cpp-ffi-tests
 nros-log-riscv32
 staticlib-symbols
 test-targets
-workspace-all
 workspace-features
 
 # --- need the in-tree CLI built, or build it ---
-# ament-census-sizing (issue 2043) configures and builds a ported ament
-# workspace TWICE, the census host build and the image (~2 min warm), with the
-# in-tree CLI on PATH. Pristine worktree, no `nros`: FAIL — "this checkout has
-# no built nros CLI". The lane itself is not unrun: gate.yml calls
-# `just check ament-census-sizing` on merge_group beside template-copy-out;
-# this file credits whole lanes, never one gate's own step.
-ament-census-sizing
-cli-tests
 launch-resolve-builds
 required-features-tests
 source-gates
-# template-copy-out runs `nros sync` + `nros build --workspace` on a copy of
-# each template, so it needs the CLI — and it needs ~15 min WARM (measured:
-# 14:45 for six templates on a 24-core host, ~2.5 min each, and a cold host
-# pays a full nano-ros build per copy because a cargo target dir serves exactly
-# one workspace root, issue 0616, so the copies cannot share one). That is the
-# cost of the thing it checks: a user's first build IS a build from scratch.
-# Pristine worktree, PATH=/usr/bin:/bin, no `nros` anywhere:
-#   c-and-cpp-mixed-workspace: FAIL — no `nros` CLI to build with
-template-copy-out
 # scaffold-builds runs `nros new` for every variant the CLI declares, then
 # `nros sync` + cargo / cmake on each, OUTSIDE the checkout (measured:
 # scaffolding inside it makes `find_package(nano_ros)` walk up and resolve the

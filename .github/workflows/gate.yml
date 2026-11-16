@@ -2170,6 +2170,19 @@ jobs:
           source ./activate.sh
           just check template-copy-out
 
+      # The heap-free C++ image (thumbv7m, no C library) must LINK: a C or C++
+      # symbol it reaches with no definition there (vsnprintf, when the bin
+      # lost the port's libc-stubs) broke main with only the advisory L3
+      # noticing. This job already provisions the pinned arm-none-eabi-gcc the
+      # gate needs (`needs:arm-gcc`). About 21 s cold, 1 s warm. Shard 2 only,
+      # the shortest; its own `run:` block, so a red copy-out cannot hide it.
+      - name: just check cpp-heap-free-image-link (heap-free C++ image links)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() && matrix.shard == 2 }}
+        timeout-minutes: 10
+        run: |
+          source ./activate.sh
+          just check cpp-heap-free-image-link
+
       # phase-557 W8 follow-up — the merge queue re-walks ONE recorded
       # stack-floor row, the mps2 bare-metal talker, so a change that moves
       # its walk is caught the day it lands instead of at the next nightly.

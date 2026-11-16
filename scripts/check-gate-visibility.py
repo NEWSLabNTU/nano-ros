@@ -147,7 +147,11 @@ def main() -> int:
         verb = lane.removesuffix("-serial")
         if lane in gated_lanes or verb in gated_lanes:
             continue
-        ungated.extend(lane_gates(text, lane))
+        # A gate a gating job names in its OWN step is gated too (the
+        # `just check <gate>` the scan reads is the same invocation shape a
+        # lane verb has), so it is not listed: cpp-ffi-tests, node-std-tests
+        # and cpp-heap-free-image-link each run as a merge_group step.
+        ungated.extend(g for g in lane_gates(text, lane) if g not in gated_lanes)
 
     listed = set(read_baseline())
     actual = set(ungated)

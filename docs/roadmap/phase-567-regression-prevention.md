@@ -132,6 +132,17 @@ fix fails the merge queue on this workspace.
   `pr-<N>-<base>` chain still unmerged when the run started. A replay of real
   red L3 run 43836015138 named #4039 and #4038 and the failed step `just ci
   matrix build`. Selftests in `check queue-notify-decision`.
+- **W5c.** The heap-free C++ image (`heap-free-cpp-poc-mps2`, thumbv7m, no C
+  library) links in the merge queue. On 2026-11-16 it stopped linking
+  (`undefined symbol: vsnprintf`, after issue 2634's fix put a printf-style
+  log on its path), and only the advisory L3 saw it. Acceptance: dropping the
+  bin's `libc-stubs` fails the merge queue.
+  **W5c DONE (2026-11-17).** Gate `just check cpp-heap-free-image-link`
+  (`needs:arm-gcc`, the pinned 13.2) runs as its own step on shard 2 of
+  `check-template-copy-out`, which already provisions that compiler. Its cost
+  is about 21 s cold (20.6 s wall, 61 s CPU on 32 cores) and 1 s warm. With
+  `libc-stubs` dropped, it fails on `rust-lld: error: undefined symbol:
+  vsnprintf`.
 
 The nucleo Zephyr template walk stays nightly (it needs the Zephyr SDK); moving
 it into the queue is a separate user decision.
