@@ -568,6 +568,15 @@ freertos-fpu-context:
 leaf-conf-nros-knobs:
     @python3 scripts/check-leaf-conf-nros-knobs.py
 
+# A zenoh image's POSIX mutex/cond pools are derived by the module from its
+# subscribers and queryables, so no conf an image with a `system.toml` merges
+# (its leaf or bringup files, or a board package's) may hand-set
+# CONFIG_MAX_PTHREAD_{COND,MUTEX}_COUNT: an assignment beats the derived
+# default and pins the pool below the next entity.
+[group("checks")]
+zenoh-pthread-pools-derived:
+    @python3 scripts/check-zenoh-pthread-pools-derived.py
+
 # issue 2157 — native_sim's network (NSOS) has ONE source, the module's
 # `nros-nsos` snippet, which a board package names: no tracked conf elsewhere
 # enables it or names a line-specific TAP-driver symbol.

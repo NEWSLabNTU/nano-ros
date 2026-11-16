@@ -412,9 +412,10 @@ max_queryables = 16
 
 [image.zephyr_rust_qos]
 board = "zephyr"
-# Issue 2415 -- `prj-qos.conf` is this image's own pthread-cond pool (27), merged
-# after the shared `prj-zenoh.conf` (16) so the other images keep theirs.
-os_config = ["prj-zenoh.conf", "prj-qos.conf"]
+# Issue 2415 -- this image's pthread-cond pool (27) is DERIVED from its
+# subscribers and queryables now (zephyr/cmake/nros_zpico_pthread_pools.cmake);
+# it used to be a `prj-qos.conf` of its own.
+os_config = ["prj-zenoh.conf"]
 launch = "rust_qos.launch.xml"
 locator = "tcp/10.0.2.2:7465"
 
@@ -426,8 +427,8 @@ max_cbs = 16
 # publisher, so 12 + 5 + 1 = 18 queryables are claimed at boot. It used to state
 # 16, under that floor, which passed only while this road named no sizing
 # descriptor and so never checked it (phase-530 W3 began naming one, 1f493fd18f).
-# 18 needs a pthread-cond pool of 27 (1 subscriber + 18 + 8), which
-# `prj-qos.conf` provides. The executor row stays stated: the derived 2 slots
+# 18 needs a pthread-cond pool of 27 (1 subscriber + 18 + 8), which the module
+# derives. The executor row stays stated: the derived 2 slots
 # is smaller than 16 and nothing proves the infrastructure services cost none.
 
 # Issue 1681 -- the only Zephyr C++ image that declares `param_services`, and
