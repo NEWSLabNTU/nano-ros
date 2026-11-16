@@ -117,3 +117,12 @@ publish from `main` rather than with a release, and #3910's and #3946's
 `packages/boards/` edits are probe cadence metadata. That is the open question
 for (a): whether book-only PRs count as shipped.
 
+
+**Ruled 2026-11-16 (user, via the manager): book- and docs-only PRs do not
+count.** A group whose every path is documentation by
+`scripts/ci/gate-tier.py`'s own `tier()` (book/, book-internals/, any `.md` no
+Rust source reads) is skipped and COUNTED in the report's headline and job
+summary, never dropped silently. The audit imports that predicate rather than
+keeping a second one. Same change: the PR lookup is one aliased GraphQL query
+per 100 commits instead of one REST call per commit. Since `nros-0.6.0-nros11`
+(19 commits, 16 PRs, one call): 2 flagged, 1 skipped as docs-only.
