@@ -98,3 +98,12 @@ prints.
 * The startup-window semantics above are chosen deliberately and documented in
   the port, not left for a consumer to discover at a `vehicle_cmd_gate`.
 * No test asserts a marker that no CI-reachable image emits.
+
+## Consumer evidence (ASI, 2026-11-16, GitHub #4005)
+
+ASI is the consumer this issue waits for ([ASI](https://github.com/NEWSLabNTU/autoware-safety-island/blob/nano-ros/actuation_module/src/asi_common)):
+`asi_common/src/platform/freertos/wall_clock.cpp` (290 lines) runs lwIP SNTP
+plus newlib `_gettimeofday`, re-syncs every `ASI_SNTP_RESYNC_INTERVAL_S`, and
+is started from the controller constructor (`ASI_FREERTOS_WALL_CLOCK`) because
+the FreeRTOS entry never calls a network hook. It is used on the an536 (QEMU)
+and S32Z270 FreeRTOS lanes. Re-acquisition (issue 0758) applies here as well.

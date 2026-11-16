@@ -145,3 +145,10 @@ at current main: read `DISPATCH_GUARD`, `early::PENDING` and `early::LOST`, as
 
 The repro patch (the scratch edits) is not committed. It is two
 `RCLC_LOG_INFO` lines and the two Kconfig lines above.
+
+## Consumer evidence (ASI, 2026-11-16, GitHub #4005)
+
+Still reproduces for ASI and is still worked around ([ASI](https://github.com/NEWSLabNTU/autoware-safety-island/blob/nano-ros/actuation_module/src/asi_common)):
+`asi_common/include/common/logger/logger.hpp:54-67` sends every record to
+`printk` on Zephyr, bypassing `nros_log`, so CI greps still see "Actuation
+Safety Island is Live". ASI moves to `RCLCPP_*` / `rclc_log` once this closes.
