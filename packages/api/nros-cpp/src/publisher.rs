@@ -97,6 +97,9 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
     if node_ref.executor.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
+    if !crate::require_created_node(node_ref, "nros_cpp_publisher_create") {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
 
     let topic_str = match unsafe { cstr_to_str(topic) } {
         Some(s) => s,

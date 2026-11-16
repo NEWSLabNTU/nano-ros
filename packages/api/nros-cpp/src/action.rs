@@ -352,6 +352,10 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
     let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
+    if server.node_id == 0 {
+        crate::refuse_uncreated_node("nros_cpp_action_server_register");
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
 
     let act_str = match unsafe { cstr_to_str(action_name) } {
         Some(s) => s,
@@ -1286,6 +1290,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
 
     let node_ref = unsafe { &*node };
     if node_ref.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    if !crate::require_created_node(node_ref, "nros_cpp_action_client_create") {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 

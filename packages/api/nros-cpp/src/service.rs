@@ -84,6 +84,9 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
     if node_ref.executor.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
+    if !crate::require_created_node(node_ref, "nros_cpp_service_server_create") {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
 
     let svc_str = match unsafe { cstr_to_str(service_name) } {
         Some(s) => s,
@@ -343,6 +346,9 @@ unsafe fn service_server_register_impl(
     if node_ref.executor.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
+    if !crate::require_created_node(node_ref, "nros_cpp_service_server_register") {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
 
     let svc_str = match unsafe { cstr_to_str(service_name) } {
         Some(s) => s,
@@ -594,6 +600,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_create(
     if node_ref.executor.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
+    if !crate::require_created_node(node_ref, "nros_cpp_service_client_create") {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
 
     let svc_str = match unsafe { cstr_to_str(service_name) } {
         Some(s) => s,
@@ -771,6 +780,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_register(
 
     let node_ref = unsafe { &*node };
     if node_ref.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    if !crate::require_created_node(node_ref, "nros_cpp_service_client_register") {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
