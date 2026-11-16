@@ -215,7 +215,7 @@ What this shows:
     is why `g_sessions` is 82,752 B over TCP on mps2 but 17,176 B on the
     serial Nucleo, which derives `NROS_ZENOH_GRAPH_DISCOVERY=0`.
 * **C++ leaf, census road:** `TL_SLOTS` stays at two slots (2,688 B), where
-  the C census and the workspace C++ image get one. Not diagnosed.
+  the C census and the workspace C++ image get one. Filed as issue 2388, which re-measured it on 2026-11-16: it no longer reproduces, and every image here links one slot ([archived](archived/2388-zephyr-cpp-leaf-census-tl-slots-two.md)).
 
 Model road (direction item 6's other half): the workspace images
 `pubsub_bringup:zephyr_talker{,_xrce,_cyclonedds}` in `examples/workspaces/{c,cpp}`.
