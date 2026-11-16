@@ -1236,6 +1236,19 @@ cli-clippy:
 cli-fresh:
     @bash scripts/check-cli-fresh.sh
 
+# A second `cargo build` of the CLI, with nothing changed, compiles nothing.
+# `cargo-nano-ros/build.rs` watched `packages/` as a DIRECTORY; cargo walks it
+# recursively and `packages/cli/target/` is inside it, so every build re-ran
+# for 61 s while `setup-cli` (which asks `source-stamp` first and runs no
+# cargo) hid it. The gate checks the OUTCOME, so any other way to make a no-op
+# build rebuild is caught too. Needs the CLI built, so it is a step of
+# `ci gate`, right after `cli-fresh`.
+[private]
+[group('needs:cli')]
+[metadata("tier", "exempt", "needs the CLI BUILT: a step of `ci gate`, right after `cli-fresh`, which is where a built CLI is guaranteed")]
+cli-noop-build:
+    @bash scripts/check/check-cli-noop-build.sh
+
 # issue 1487 — the sibling of `cli-fresh`, and the asymmetry it closes.
 #
 # `nros` and `nros-launch-resolve` are built by SEPARATE recipes from

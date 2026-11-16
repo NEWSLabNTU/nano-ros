@@ -110,7 +110,7 @@ _gate-inner:
     # `check::cli-fresh` stays although fast also derives it: it is 0.02 s, and
     # its POSITION is the point (issue 1320) — a stale CLI fails here, first,
     # instead of as a confusing CMake error inside the fast fan-out.
-    steps=(check::cli-fresh check::launch-resolve-fresh check::fast check::pristine-checkout check::api-parity check::probe-workspace-caps check::build test-unit test-lane-contracts check::out-of-lane-deselected)
+    steps=(check::cli-fresh check::cli-noop-build check::launch-resolve-fresh check::fast check::pristine-checkout check::api-parity check::probe-workspace-caps check::build test-unit test-lane-contracts check::out-of-lane-deselected)
     gate_rc=0
     bash scripts/ci/run-lane-steps.sh gate "${steps[@]}" || gate_rc=$?
     # phase-543 W4 — keep this worktree's multi-target build caches to their

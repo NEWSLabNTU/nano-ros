@@ -110,8 +110,8 @@ fn main() {
             }
         }
     }
-    // A new backend dir must re-run this script, not just a changed file.
-    println!("cargo:rerun-if-changed={}", rmw_root.display());
+    // A new backend dir must re-run this script, not just a changed file:
+    // `watch_new_providers` below, never a watch on `rmw_root` itself.
 
     if descriptors.is_empty() {
         // phase-347 W3.
@@ -326,6 +326,43 @@ struct SerdesEntry {
 /// Same honest cost too: only IN-TREE providers are found here. An out-of-repo
 /// provider is resolved at selection time over the provider search path — see
 /// `serdes_resolver::resolve_serdes_in`.
+/// Re-run this script when a provider is ADDED, without watching a directory.
+///
+/// This used to watch `packages/`, every `packages/<family>/` and
+/// `packages/rmw/` themselves. Cargo walks a watched directory RECURSIVELY,
+/// and `packages/` holds `packages/cli/target/`, the very directory this
+/// build writes into. So every build of the CLI dirtied this crate, and
+/// through it `nros-cli-core` and `nros-cli`: a bare `cargo build` with
+/// nothing changed re-ran for 61 s (4.5-6 min on a cold host), and cargo's
+/// only reason was "the file `` has changed". The empty path is cargo's way
+/// of naming a file inside a watched directory.
+///
+/// An in-tree provider is a TRACKED file, so its arrival moves the git index.
+/// Watch the index, asking git where it is (`--git-path`, never `.git/index`:
+/// a linked worktree's `.git` is a file, issue 1336). A provider that exists
+/// but is not yet `git add`ed is picked up when it is added. Every existing
+/// descriptor and `package.xml` is watched by name above, so an EDIT re-runs
+/// at once. Outside a git checkout (a vendored tree) nothing can be added
+/// in place, so there is nothing to watch.
+fn watch_new_providers(packages: &Path) {
+    // The shared spawner clears an inherited `GIT_DIR` & co. (issue 1659), so
+    // a build run from a git hook asks THIS checkout, not the hook's.
+    let out = nros_build_paths::git_env::nros_git_command("git")
+        .arg("-C")
+        .arg(packages)
+        .args(["rev-parse", "--path-format=absolute", "--git-path", "index"])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => {
+            let index = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !index.is_empty() {
+                println!("cargo:rerun-if-changed={index}");
+            }
+        }
+        _ => {}
+    }
+}
+
 fn generate_serdes_table(packages: &Path) {
     let mut entries: Vec<SerdesEntry> = Vec::new();
 
@@ -349,11 +386,10 @@ fn generate_serdes_table(packages: &Path) {
             println!("cargo:rerun-if-changed={}", toml_path.display());
             entries.push(read_serdes_provider(&pkg, &toml_path));
         }
-        // A new provider DIRECTORY must re-run this script, not just a changed
-        // file — same rule the RMW root gets below.
-        println!("cargo:rerun-if-changed={}", family.display());
     }
-    println!("cargo:rerun-if-changed={}", packages.display());
+    // A new provider DIRECTORY must re-run this script, not just a changed
+    // file: `watch_new_providers`.
+    watch_new_providers(packages);
 
     if entries.is_empty() {
         // phase-421 W4.
