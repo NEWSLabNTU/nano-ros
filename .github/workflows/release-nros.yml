@@ -141,6 +141,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # The two checks below answer "is X an ancestor of Y" through
+      # scripts/lib/git_history.py, which reads a NO from a shallow clone as
+      # UNKNOWN, and both refuse on UNKNOWN. So prove THIS checkout can answer
+      # before reading their verdicts: it is not shallow, and the last
+      # release's tag resolves as an ancestor of main. Without this, a lost
+      # `fetch-depth: 0` would refuse every release with a message about
+      # history rather than about the release.
+      - name: Prove the checkout answers ancestry (full history, tags)
+        run: |
+          python3 - <<'PY'
+          import subprocess, sys
+          sys.path.insert(0, "scripts/lib")
+          from git_history import ancestry, is_truncated
+          if is_truncated("."):
+              sys.exit("::error::this checkout is shallow; the lanes job needs fetch-depth: 0")
+          tag = subprocess.run(["git", "describe", "--tags", "--abbrev=0", "--match", "nros-*",
+                                "origin/main"], capture_output=True, text=True).stdout.strip()
+          if not tag:
+              sys.exit("::error::no nros-* tag is reachable from origin/main in this checkout")
+          if ancestry(".", f"{tag}^{{commit}}", "origin/main") is not True:
+              sys.exit(f"::error::{tag} does not resolve as an ancestor of origin/main here")
+          print(f"ancestry answers here: not shallow, {tag} is an ancestor of origin/main")
+          PY
       # phase-567 W2 (user ruling 2026-11-16): `release/<ver>` may be re-cut
       # from main while `nros-<ver>` does not exist; once the tag exists the
       # name is burned and the branch is frozen at it. Either way, anything on
