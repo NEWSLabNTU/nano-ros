@@ -412,6 +412,17 @@ gate-order tier="fast":
 lane-provisioning-single-source:
     @python3 scripts/check/check-lane-provisioning-single-source.py
 
+# phase-565 W2 — every capability says how it is provided
+# (`[provision.claim]` in .config/gate-lanes.toml): a provisioner, a
+# `claim_<name>` in scripts/lib/claim-provision.sh that both `just
+# setup-worktree` (the `dev` lane) and CI's provision-gate-lane.sh run, or a
+# named HOST remedy. Refuses a capability with neither, a provisioner with no
+# implementation or missing from `[provision] order`, and either caller no
+# longer running the library. Buildless; self-tests on its normal path.
+[private]
+lane-claims-provisioned:
+    @python3 scripts/lib/lane_provision.py --check
+
 # phase-543 W5 — the lane preflight's probes cover every capability in
 # `.config/gate-lanes.toml`, and every lane claims only listed ones. Asks no
 # host state; self-tests on its normal path.

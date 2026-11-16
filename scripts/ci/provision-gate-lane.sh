@@ -13,91 +13,16 @@
 #     provided neither, so from phase-543 W5/W6 (2026-11-07) every one of them
 #     stopped in the lane preflight and no gate ran.
 #
-# Per claim:
-#   submodules   the `[[provision.submodule]]` rows of .config/gate-lanes.toml
-#                whose `tiers` meet the lane's, the same rows the lane
-#                preflight checks and `just setup-worktree` checks out (one
-#                reader, scripts/lib/lane_provision.py, phase-565 W1); depth 1.
-#   git-history  for the gates that ask about the COMMIT GRAPH
-#                (`doc-commit-citations`, `roadmap-commit-refs`): on a shallow
-#                clone a dead hash and an unfetched one look the same. In the
-#                merge queue this is what catches a doc citing its own
-#                branch's pre-rebase hashes. The BASE branch's commits,
-#                treeless (`--filter=tree:0`):
-#                measured 1.8 s and +13 MiB from a depth-1 clone, against 49 s
-#                and ~1 GiB for a full unshallow (issue 1476). The base branch
-#                only, never a bare `origin`: with checkout's `+refs/heads/*`
-#                refspec that pulled every branch and ran 85 minutes, twice.
-#   zephyr-tree  Zephyr's C++ minimal-libc headers, a sparse clone at the
-#                pinned west revision (issue 2308 keeps it from reading as a
-#                west workspace).
-#   sources      the pinned rosidl source clone (`python-entry-provenance`).
-#   arm-gcc      the pinned arm-none-eabi-gcc dist (issue 2413), which the
-#                FreeRTOS C++ copy-out units need.
-# Every other claim (cli, cmake, cc, ros2, ...) is the image's or an earlier
-# step's, and the lane preflight checks it.
+# What each claim provisions, and the code that does it, is shared with
+# `just setup-worktree` (phase-565 W2): `[provision.claim]` in
+# .config/gate-lanes.toml says which claims nano-ros installs, and
+# scripts/lib/claim-provision.sh holds one `claim_<name>` per provisioner.
+# This script runs that library for a CI lane (`--ci`): submodules at depth 1,
+# and the `cli` claim left to the job's own `setup-cli` step. Every other claim
+# (cmake, cc, ros2, ...) is the image's, and the lane preflight checks it.
 #
 # Usage: scripts/ci/provision-gate-lane.sh <lane>   (from the checkout root)
 set -euo pipefail
 lane="${1:?usage: provision-gate-lane.sh <lane>}"
 cd "$(dirname "$0")/../.."
-
-# "tiers: a b" and "claims: x y" for the lane, or a refusal naming it.
-lane_decl="$(python3 scripts/lib/lane_provision.py lane "$lane")"
-read -r -a tiers <<<"$(sed -n 's/^tiers: //p' <<<"$lane_decl")"
-read -r -a claims <<<"$(sed -n 's/^claims: //p' <<<"$lane_decl")"
-claims_has() { local c; for c in "${claims[@]}"; do [ "$c" = "$1" ] && return 0; done; return 1; }
-echo "provision-gate-lane: lane \`$lane\`, tiers: ${tiers[*]}, claims: ${claims[*]}"
-
-if claims_has submodules; then
-    rows="$(python3 scripts/lib/lane_provision.py submodules --tiers "${tiers[@]}")"
-    subs=()
-    [ -z "$rows" ] || mapfile -t subs <<<"$rows"
-    if [ "${#subs[@]}" -eq 0 ]; then
-        echo "provision-gate-lane: no [[provision.submodule]] rows for tiers ${tiers[*]} in .config/gate-lanes.toml" >&2
-        exit 1
-    fi
-    git submodule update --init --depth 1 "${subs[@]}"
-fi
-
-if claims_has git-history; then
-    base="${GITHUB_BASE_REF:-main}"
-    if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
-        # The depth-1 base fetch FIRST is load-bearing: without the base tip
-        # present, git 2.34's treeless unshallow fetches trees one at a time
-        # and stalls (measured: past a 240 s cap; with it, 5 s).
-        git fetch --no-tags --quiet --depth=1 origin \
-            "+refs/heads/$base:refs/remotes/origin/$base"
-        # shellcheck disable=SC1091
-        . scripts/lib/deadline.sh
-        "${NROS_DEADLINE[@]}" 300 git fetch --no-tags --quiet --filter=tree:0 --unshallow \
-            origin "+refs/heads/$base:refs/remotes/origin/$base"
-    fi
-    test "$(git rev-parse --is-shallow-repository)" = false
-    echo "provision-gate-lane: history: $(git rev-list --count HEAD) commits"
-fi
-
-if claims_has zephyr-tree; then
-    rev="$(awk '/- name: zephyr$/ { z = 1 } z && /revision:/ { print $2; exit }' west.yml)"
-    [ -n "$rev" ] || { echo "provision-gate-lane: no zephyr revision in west.yml" >&2; exit 1; }
-    if [ ! -d zephyr-workspace/zephyr/lib/cpp/minimal/include ]; then
-        git clone --quiet --depth 1 --filter=blob:none --sparse --branch "$rev" \
-            https://github.com/zephyrproject-rtos/zephyr.git zephyr-workspace/zephyr
-        git -C zephyr-workspace/zephyr sparse-checkout set lib/cpp/minimal/include
-    fi
-fi
-
-if claims_has sources; then
-    # shellcheck disable=SC1091
-    source ./activate.sh
-    nros setup --source rosidl
-fi
-
-if claims_has arm-gcc; then
-    # Issue 2413 — the FreeRTOS C++ copy-out units build with the PINNED
-    # cross compiler; the image's distro arm-none-eabi-gcc 10.3 is below issue
-    # 1936's C++ floor of GCC 11, so without this they fail at configure.
-    # shellcheck disable=SC1091
-    source ./activate.sh
-    nros setup --tool arm-none-eabi-gcc
-fi
+exec bash scripts/lib/claim-provision.sh "$lane" --ci
