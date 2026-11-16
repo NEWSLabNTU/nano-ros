@@ -24,7 +24,7 @@ smaller than its declarations:
 - a `declare_parameter<T>(name)` with NO default reads `T()`: the island's
   controller divides by `ctrl_period = 0` and sizes a deque from the NaN;
 - past the store's capacity every further declaration silently returns its
-  compiled default (issue 4018 on GitHub).
+  compiled default (GitHub #4018).
 
 So the node cannot be probed, and the island duplicates every declaration's
 default in C++ to keep the probe alive.

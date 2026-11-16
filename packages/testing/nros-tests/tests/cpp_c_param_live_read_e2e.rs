@@ -118,7 +118,7 @@ fn cpp_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     // comma-joined string. `configure` prints the verdict before it publishes.
     let entry_out = entry
         .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
+        .unwrap_or_else(|e| panic!("the entry's output could not be read: {e}"));
     assert!(
         entry_out.contains("list params: arrays"),
         "the launch file's list parameters did not arrive as arrays of their element \

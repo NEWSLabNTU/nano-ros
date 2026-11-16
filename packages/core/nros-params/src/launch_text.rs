@@ -1,4 +1,5 @@
-//! Issue 2638 -- the ONE reading of a launch parameter's baked text.
+// Issue 2638.
+//! The ONE reading of a launch parameter's baked text.
 //!
 //! An embedded image has no launch runtime to hand `--params-file` to, so the
 //! build bakes every launch parameter as TEXT and the image types it when it

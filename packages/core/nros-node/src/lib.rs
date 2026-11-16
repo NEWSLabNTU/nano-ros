@@ -205,6 +205,10 @@ pub use nros_params::{
     ParameterDescriptor, ParameterError, ParameterRange, ParameterServer, ParameterType,
     ParameterValue,
 };
+// Why a launch parameter's baked text has no value to seed; `nros-cpp`'s
+// launch seed answers each case.
+#[cfg(feature = "param-store")]
+pub use nros_params::LaunchTextError;
 // phase-491 — the bounds a C caller's buffers are sized against (RFC-0105 D10).
 #[cfg(feature = "param-store")]
 pub use nros_params::{
