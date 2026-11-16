@@ -1,15 +1,12 @@
 # Phase 569 — find what nano-ros offers from the `nros` command
 
-**Status (2026-11-17). PROPOSED: W1–W10 are open, and nothing is built.
-The review of 2026-11-17 (approve with changes) is folded in; recording a
-reason per derived value moved to [phase-570](phase-570-derived-value-reasons.md).**
-Implements [RFC-0133](../design/0133-discoverability.md), a draft written for
-the user's review. The user answered its five open questions on 2026-11-17
-(RFC-0133 "Decisions"); work starts when the user approves the RFC as a
-whole. The request came from the user through the manager on
-2026-11-17: a discoverability campaign in the style of `ros2 pkg list` and
-`ros2 interface list`, plus dynamic shell completion. Owner: the docs/UX
-session, until the user approves the RFC and the manager assigns the items.
+**Status (2026-11-17). OPEN: W1–W10 are open, and nothing is built yet.
+The user approved the design on 2026-11-17; recording a reason per derived
+value is [phase-570](phase-570-derived-value-reasons.md).**
+Implements [RFC-0133](../design/0133-discoverability.md). The request came
+from the user through the manager on 2026-11-17: a discoverability campaign
+in the style of `ros2 pkg list` and `ros2 interface list`, plus dynamic
+shell completion. Owner: the docs/UX session; it starts with W1.
 
 ## Why
 

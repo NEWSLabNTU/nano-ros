@@ -14,10 +14,11 @@ superseded-by: null
 **Status:** Draft (2026-11-17). Requested by the user through the manager on
 2026-11-17 ("a discoverability campaign … the way `ros2 pkg list` and
 `ros2 interface list` work"), with dynamic shell completion added by the user.
-Written for the user's review; nothing is built. The user answered the five
-open questions on 2026-11-17 (recorded under "Decisions"); the RFC stays Draft
-until the user approves it as a whole. The work breakdown is
-[phase-569](../roadmap/phase-569-discoverability.md).
+The user answered its five open questions and **approved it** on
+2026-11-17, after review changes (recorded under "Decisions"). Nothing is
+built yet; it stays Draft until the work lands. The work breakdown is
+[phase-569](../roadmap/phase-569-discoverability.md), with the reasons for
+derived values in [phase-570](../roadmap/phase-570-derived-value-reasons.md).
 
 ## Summary
 
@@ -408,10 +409,11 @@ stale-binary guard under `COMPLETE`, so every pin form gets the budget.
 
 ## Open questions
 
-None. The RFC waits for the user's approval as a whole.
+None.
 
 ## Changelog
 
 - 2026-11 — created (Draft), for the user's review.
 - 2026-11 — the user's five answers folded in (Decisions); still Draft.
 - 2026-11 — review changes (approve with changes) folded in; reasons moved to phase-570; still Draft.
+- 2026-11 — approved by the user; stays Draft until the work lands.

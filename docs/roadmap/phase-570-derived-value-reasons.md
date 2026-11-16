@@ -1,12 +1,12 @@
 # Phase 570 — every derived value records why it has that value
 
-**Status (2026-11-17). PROPOSED: W1–W4 are open, and nothing is built.**
+**Status (2026-11-17). OPEN: W1–W4 are open, and nothing is built yet. The
+user approved the design on 2026-11-17.**
 Split out of [phase-569](phase-569-discoverability.md) W3 by the review of
 2026-11-17, because it changes the producers of the sizing descriptor, not
 discovery. It implements the reason column of
-[RFC-0133](../design/0133-discoverability.md) D2, which stays Draft until the
-user approves it. Owner: unassigned; the manager assigns it once the RFC is
-approved.
+[RFC-0133](../design/0133-discoverability.md) D2. Owner: unassigned; the
+manager assigns it.
 
 ## Why
 
