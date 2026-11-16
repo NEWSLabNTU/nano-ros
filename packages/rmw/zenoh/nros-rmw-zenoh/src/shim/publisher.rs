@@ -1021,9 +1021,11 @@ impl ZenohPublisher {
         serialize_rmw_attachment(seq, ts, &self.rmw_gid, buf);
     }
 
-    /// Issue 2493 -- the zenoh publisher handle this publisher publishes on,
-    /// for the session's data-key table.
-    pub(super) fn zenoh_handle(&self) -> i32 {
+    // Issue 2493.
+    /// The zenoh publisher handle this publisher publishes on: the session's
+    /// data-key table keys on it, and two publishers that report the same
+    /// handle share one zenoh publisher.
+    pub fn zenoh_handle(&self) -> i32 {
         self.publisher.handle()
     }
 }
