@@ -1748,8 +1748,8 @@ const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 const LIFECYCLE_SERVICE_PUBLISHERS: usize = 1;
 
 /// MIRROR of `nros_node::parameter_services::PARAM_EVENT_PUBLISHERS`, held the
-/// same way (issue 2023): the parameter family's ONE `/parameter_events`
-/// writer, once per EXECUTOR. VOLATILE, so — exactly as
+/// same way (issue 2023): the parameter family's `/parameter_events` writer,
+/// once per parameter NODE since issue 2493 (as stock). VOLATILE, so — exactly as
 /// [`LIFECYCLE_SERVICE_PUBLISHERS`] — a term in
 /// [`DerivedEntityKnobs::max_publishers`] and the liveliness pool and nothing
 /// else.
@@ -2018,9 +2018,12 @@ impl InfraServices {
     /// issue 1270 makes for the five queryables, and the one `/rosout` met
     /// once it became a declared feature (phase-556 W13).
     ///
-    /// Issue 2023 — plus [`PARAM_EVENT_PUBLISHERS`] when the bringup declares
-    /// `param_services`: every node served that way publishes
-    /// `/parameter_events`, through ONE writer per executor.
+    /// Issue 2023 — plus [`PARAM_EVENT_PUBLISHERS`] per parameter node
+    /// ([`Self::param_nodes`]) when the bringup declares `param_services`:
+    /// every node served that way publishes `/parameter_events` through its
+    /// own writer (issue 2493, as stock). Counted per node on every backend;
+    /// the zenoh shim backs them with one zenoh publisher per session, so
+    /// there the count over-provisions the publisher table, never under.
     ///
     /// phase-556 W13 -- plus [`ROSOUT_PUBLISHERS`] per node
     /// ([`Self::rosout_nodes`]) when the effective features carry `rosout`:
@@ -2028,11 +2031,8 @@ impl InfraServices {
     pub fn publishers(self, components: usize) -> usize {
         // Issue 2553 -- one `transition_event` per state machine.
         let lifecycle = LIFECYCLE_SERVICE_PUBLISHERS * self.lifecycle_machines();
-        let params = if self.param_services {
-            PARAM_EVENT_PUBLISHERS
-        } else {
-            0
-        };
+        // Issue 2493 -- `/parameter_events`, once per parameter node.
+        let params = PARAM_EVENT_PUBLISHERS * self.param_nodes(components);
         // phase-556 W13 -- `/rosout`, once per node.
         let rosout = ROSOUT_PUBLISHERS * self.rosout_nodes(components);
         lifecycle + params + rosout
@@ -9001,14 +9001,15 @@ contracts:
             both.max_liveliness - none.max_liveliness,
             both.infra_queryables
                 + LIFECYCLE_SERVICE_PUBLISHERS
-                + PARAM_EVENT_PUBLISHERS
+                + 2 * PARAM_EVENT_PUBLISHERS
                 + 2 * ROSOUT_PUBLISHERS
                 + CLOCK_SUBSCRIPTIONS,
             "one token per runtime server, one for the `~/transition_event`
-             publisher (issue 1587), one for `/parameter_events` (issue 2023),
-             one `/rosout` writer per node and the `/clock` subscription (the
-             stock set the parameter services come with); lifecycle lives on
-             the components' nodes, so no node name of its own"
+             publisher (issue 1587), one per node for `/parameter_events`
+             (issues 2023, 2493), one `/rosout` writer per node and the
+             `/clock` subscription (the stock set the parameter services come
+             with); lifecycle lives on the components' nodes, so no node name
+             of its own"
         );
         assert_eq!(
             both.infra_queryables,
@@ -9050,14 +9051,15 @@ contracts:
         );
     }
 
-    /// Issue 2023 — what `param_services` pays for `/parameter_events`: ONE
-    /// publisher slot and one liveliness token for the whole executor, however
-    /// many nodes carry the family, and NO queryable (the writer is VOLATILE).
+    /// Issue 2023 / 2493 — what `param_services` pays for `/parameter_events`:
+    /// one publisher slot and one liveliness token PER NODE that carries the
+    /// family (as stock, every node is a publisher of the topic), and NO
+    /// queryable (the writer is VOLATILE).
     /// phase-556 W13 -- the parameter services come with `/rosout` (the
     /// stock set), whose one VOLATILE writer per node is a publisher and a
     /// token too, and no queryable.
     #[test]
-    fn param_services_pays_one_parameter_events_publisher_and_no_queryable() {
+    fn param_services_pays_one_parameter_events_publisher_per_node_and_no_queryable() {
         let knobs = |features: &str| {
             EntityInventory::from_model("t", &(infra_model(features)).clone())
                 .expect("model describes wiring")
@@ -9068,14 +9070,14 @@ contracts:
         };
         let none = knobs("");
         let params = knobs("param_services");
-        assert_eq!(
-            params.max_publishers - none.max_publishers,
-            PARAM_EVENT_PUBLISHERS + 2 * ROSOUT_PUBLISHERS,
-            "one `/parameter_events` writer per executor, one `/rosout` per node"
-        );
         assert!(
             params.param_service_nodes > 1,
-            "precondition: several nodes carry the family, yet one writer"
+            "precondition: several nodes carry the family"
+        );
+        assert_eq!(
+            params.max_publishers - none.max_publishers,
+            PARAM_EVENT_PUBLISHERS * params.param_service_nodes + 2 * ROSOUT_PUBLISHERS,
+            "one `/parameter_events` writer per node, one `/rosout` per node"
         );
         assert_eq!(
             params.max_queryables - none.max_queryables,
@@ -9087,7 +9089,7 @@ contracts:
         assert_eq!(
             params.max_liveliness - none.max_liveliness,
             PARAM_SERVICE_QUERYABLES * params.param_service_nodes
-                + PARAM_EVENT_PUBLISHERS
+                + PARAM_EVENT_PUBLISHERS * params.param_service_nodes
                 + 2 * ROSOUT_PUBLISHERS
                 + CLOCK_SUBSCRIPTIONS,
         );
@@ -9251,15 +9253,15 @@ structure:
             nros_sizing_descriptor::InfraFamilies::ParamRosoutClock
         );
         assert_eq!(infra.families().tag(), "param+rosout+clock");
-        // The model's two nodes: `/parameter_events` once per executor,
-        // `/rosout` once per node, and a third component adds one writer.
+        // The model's two nodes: `/parameter_events` and `/rosout` once per
+        // node each (issue 2493), and a third component adds one of each.
         assert_eq!(
             infra.publishers(1),
-            PARAM_EVENT_PUBLISHERS + 2 * ROSOUT_PUBLISHERS
+            2 * (PARAM_EVENT_PUBLISHERS + ROSOUT_PUBLISHERS)
         );
         assert_eq!(
             infra.publishers(3),
-            PARAM_EVENT_PUBLISHERS + 3 * ROSOUT_PUBLISHERS
+            3 * (PARAM_EVENT_PUBLISHERS + ROSOUT_PUBLISHERS)
         );
         // (c) `none` on the image removes what the system declared.
         let mut off = infra_model("param_services");
