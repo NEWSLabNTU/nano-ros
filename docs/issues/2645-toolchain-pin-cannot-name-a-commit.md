@@ -3,12 +3,17 @@ id: 2645
 title: "`nros-toolchain.toml` can only pin a release, so a consumer tracking main vendors nano-ros and sets NROS_SKIP_STALE_CHECK"
 status: open
 type: enhancement
+severity: low
 area: [cli, toolchain]
 related: [rfc-0097, rfc-0014, phase-478]
 ---
 
 **Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md) I26.**
 GitHub [#4006](https://github.com/NEWSLabNTU/nano-ros/issues/4006).
+
+**Priority: low (2026-11-16).** The island uses only released CLIs, so part A
+is a dev-mode convenience for it, not a blocker. It still waits on the
+user's design review.
 
 ## What happens
 
