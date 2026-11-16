@@ -252,6 +252,8 @@ fn family_keys_without_a_rust_board_are_exactly_these() {
             "mps3-an536-freertos",
             "s32z270",
             "s32z270-freertos",
+            // Issue 2632 -- the NXP RTD variant, C/C++ only like its base.
+            "s32z270-freertos-rtd",
             "threadx",
         ]),
     );
