@@ -136,9 +136,50 @@ pub(crate) const fn param_service_buffer_bytes() -> usize {
         Some(shapes) if !crate::config::PARAM_SERVICE_BUFFER_STATED => {
             param_service_bound(shapes, ParamWireCaps::THIS_BUILD).total()
         }
-        _ => PARAM_SERVICE_BUFFER_SIZE,
+        _ if crate::config::PARAM_SERVICE_BUFFER_STATED => PARAM_SERVICE_BUFFER_SIZE,
+        // Issue 2639 -- with nothing declared, the default is a FLOOR under
+        // what a full store needs: `ros2 param list` of every name, and the
+        // `get_parameters` naming every one that `ros2 param dump` sends next.
+        _ => max_usize(PARAM_SERVICE_BUFFER_SIZE, FULL_STORE_REPLY_BYTES),
     }
 }
+
+/// Issue 2639 -- the longest name a full store puts on the wire.
+const FULL_STORE_NAME_LEN: usize = if nros_params::MAX_PARAM_NAME_LEN < WIRE_STRING_CAP {
+    nros_params::MAX_PARAM_NAME_LEN
+} else {
+    WIRE_STRING_CAP
+};
+
+/// Issue 2639 -- every name of a FULL store (`nros_params::MAX_PARAMETERS`, the
+/// image's own capacity), each at the longest name, as one CDR sequence.
+const FULL_STORE_NAMES: usize = nros_params::MAX_PARAMETERS * (CDR_STR + FULL_STORE_NAME_LEN);
+
+/// Issue 2639 -- the largest REQUEST naming every parameter of a full store:
+/// the `get_parameters` (or describe / types) a client sends for all of them.
+pub(crate) const FULL_STORE_REQUEST_BYTES: usize = CDR_HEADER + CDR_SEQ + FULL_STORE_NAMES;
+
+/// Issue 2639 -- the larger of the `list_parameters` reply of a full store
+/// (every name, then at most as many prefixes, none longer than its name) and
+/// the `get_parameters` reply for every one of them holding a scalar.
+///
+/// Without a declaration the image cannot price its arrays and strings, so the
+/// get reply is priced at scalars; a dump of an image whose arrays overflow it
+/// is still REPORTED (`ReplyTooLarge`), as before. The listing is exact: a
+/// store cannot hold more names than this.
+const FULL_STORE_REPLY_BYTES: usize = max_usize(
+    CDR_HEADER + CDR_SEQ + FULL_STORE_NAMES + CDR_SEQ + FULL_STORE_NAMES,
+    max_usize(
+        CDR_HEADER + CDR_SEQ + nros_params::MAX_PARAMETERS * CDR_VALUE_BASE,
+        FULL_STORE_REQUEST_BYTES,
+    ),
+);
+
+/// Issue 2639 -- how many names one get / describe / types request may carry:
+/// the generated message's 64, or every parameter the store can hold when that
+/// is more. Those three handlers stream (each name is borrowed and answered in
+/// turn), so the message's capacity is not theirs; the store's is.
+pub(crate) const NAME_LIST_CAP: usize = max_usize(WIRE_SEQ_CAP, nros_params::MAX_PARAMETERS);
 
 // ---------------------------------------------------------------------------
 // the bound + the inbox
@@ -482,6 +523,11 @@ pub const fn param_service_inbox_bytes() -> usize {
     }
     let derived = match crate::config::DECLARED_PARAM_SERVICE_SHAPES {
         Some(shapes) => param_service_bound(shapes, ParamWireCaps::THIS_BUILD).request_max(),
+        // Issue 2639 -- a request naming every parameter of a full store fits,
+        // with the configured size as the floor it always was.
+        None if !crate::config::PARAM_SERVICE_BUFFER_STATED => {
+            max_usize(PARAM_SERVICE_BUFFER_SIZE, FULL_STORE_REQUEST_BYTES)
+        }
         None => param_service_buffer_bytes(),
     };
     derived.next_multiple_of(4)

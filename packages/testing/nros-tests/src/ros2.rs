@@ -1430,6 +1430,23 @@ pub fn ros2_param_get(
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Run `ros2 param dump <node>` and return the YAML it prints -- issue 2639.
+///
+/// The stock verb lists the node's names and then asks for every value in ONE
+/// `get_parameters`, so it exercises both halves of a node with many
+/// parameters: the listing and a name list longer than 64.
+pub fn ros2_param_dump(node_name: &str, locator: &str, distro: &str) -> TestResult<String> {
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
+    let cmd = ros2_query_cmd(&env_setup, 20, &format!("param dump {node_name}"));
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 param dump: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 /// Run `ros2 param set` to set a parameter on a node
 pub fn ros2_param_set(
     node_name: &str,
