@@ -469,6 +469,17 @@ process-deadline:
 runner-context-golden:
     @bash scripts/check/check-runner-context-golden.sh
 
+# A registration token on a command line is readable with `ps` by every user
+# on the host: the `docker run` client of a foreground runner holds its argv
+# for the container's whole life, and `config.sh` runs in the host's process
+# table even inside a container. Refuses `-e/--env <...TOKEN|SECRET|PASSWORD>=`
+# on a container launch and `config.sh --token`, across tracked scripts, just
+# files, workflows and Markdown samples; the value goes through `--env-file`
+# or `ACTIONS_RUNNER_INPUT_TOKEN`. Source-only, self-tests every run, ~1 s.
+[private]
+runner-token-argv:
+    @python3 scripts/check/check-runner-token-argv.py
+
 # Issue 2635 — the STARTER image's context is written from the book, so a book
 # edit can break it, and nothing wrote it before a release: #3989 split the
 # Zephyr starter's step 34 into three blocks, the one-block reader refused it,

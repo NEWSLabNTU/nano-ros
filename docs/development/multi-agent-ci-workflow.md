@@ -722,9 +722,9 @@ scripts/ci/runner-doctor.sh "$LABELS"      # refuse to lie about capabilities
 TOKEN="$(gh api -X POST "repos/$OWNER/$REPO/actions/runners/registration-token" \
          --jq .token)"
 
-./config.sh \
+# The token goes through the environment: an argument is visible in `ps`.
+ACTIONS_RUNNER_INPUT_TOKEN="$TOKEN" ./config.sh \
   --url "https://github.com/$OWNER/$REPO" \
-  --token "$TOKEN" \
   --labels "self-hosted,linux,$LABELS" \
   --ephemeral \
   --unattended \

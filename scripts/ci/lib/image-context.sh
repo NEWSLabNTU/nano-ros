@@ -430,13 +430,21 @@ if [ "${NROS_RUNNER_SKIP_DOCTOR:-0}" != "1" ]; then
     fi
 fi
 
-./config.sh \
+# The token reaches config.sh through the ENVIRONMENT, never `--token`: a
+# container's processes are in the HOST's process table, so an argument here
+# is readable with `ps` by every user on the host, exactly as one on the
+# `docker run` line was. The runner reads each config argument from
+# `ACTIONS_RUNNER_INPUT_<NAME>` when the flag is absent.
+ACTIONS_RUNNER_INPUT_TOKEN="${RUNNER_TOKEN}" ./config.sh \
     --url "https://github.com/${GH_REPO}" \
-    --token "${RUNNER_TOKEN}" \
     --labels "${NROS_RUNNER_LABELS}" \
     --name "${RUNNER_NAME:-$(hostname)}" \
     --work /home/runner/_work \
     --ephemeral --unattended --replace
+# run.sh hands this environment to EVERY job, so a job could read the token
+# and attach a runner of its own while it is still valid. Registration is
+# done with it; drop it before any job starts.
+unset RUNNER_TOKEN ACTIONS_RUNNER_INPUT_TOKEN
 exec ./run.sh
 ENTRYEOF
 chmod +x "$ctx/entrypoint.sh"

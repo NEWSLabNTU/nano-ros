@@ -246,17 +246,47 @@ if [ "$DO_RUN" -eq 1 ]; then
     # `-d` for an operator standing one up by hand (the logs stay after it
     # exits); `--rm` + foreground for a supervision loop, which wants the status
     # code and starts a fresh container next iteration anyway.
-    MODE_FLAGS=(-d)
-    [ "$ATTACH" -eq 1 ] && MODE_FLAGS=(--rm)
-    run_or_echo "$ENGINE" run "${MODE_FLAGS[@]}" --name "$NAME" \
+    #
+    # THE TOKEN NEVER GOES ON A COMMAND LINE. An argument of `docker run` is in
+    # the host's process table for as long as that client runs, and in
+    # foreground (`--attach`) mode that is the container's whole life: every
+    # user on the host could read a live registration token with `ps`. It goes
+    # through `--env-file` instead, a 0600 file in a 0700 directory of our own,
+    # deleted as soon as the engine has read it. The engine reads an env file
+    # when it CREATES the container, so the container is created first, the
+    # file removed, and only then started — one sequence for both modes, with
+    # `start -a` returning the container's exit status as `run` did.
+    # Gate: `check-runner-token-argv`.
+    CREATE_FLAGS=()
+    [ "$ATTACH" -eq 1 ] && CREATE_FLAGS=(--rm)
+    TOKEN_DIR=""
+    TOKEN_FILE="<0600 env file holding RUNNER_TOKEN>"
+    if [ "$CHECK" -eq 0 ]; then
+        TOKEN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/nros-runner-token.XXXXXX")"
+        chmod 700 "$TOKEN_DIR"
+        # Removed on every exit path, including a failed create.
+        trap 'rm -rf "$TOKEN_DIR"' EXIT
+        TOKEN_FILE="$TOKEN_DIR/env"
+        ( umask 077; printf 'RUNNER_TOKEN=%s\n' "$RUNNER_TOKEN" > "$TOKEN_FILE" )
+    fi
+    run_or_echo "$ENGINE" create "${CREATE_FLAGS[@]}" --name "$NAME" \
         "${CONFINE_ARGS[@]}" \
         "${VOLUME_ARGS[@]}" \
         -e NROS_RUNNER_LABELS="$LABELS" \
         -e NROS_RUNNER_MIN_FREE_GIB="${NROS_RUNNER_MIN_FREE_GIB:-}" \
         -e GH_REPO="${GH_REPO:-NEWSLabNTU/nano-ros}" \
-        -e RUNNER_TOKEN="$RUNNER_TOKEN" \
+        --env-file "$TOKEN_FILE" \
         -e RUNNER_NAME="${RUNNER_NAME:-$NAME}" \
         "$IMAGE"
+    if [ -n "$TOKEN_DIR" ]; then
+        rm -rf "$TOKEN_DIR"
+        trap - EXIT
+    fi
+    if [ "$ATTACH" -eq 1 ]; then
+        run_or_echo "$ENGINE" start -a "$NAME"
+    else
+        run_or_echo "$ENGINE" start "$NAME"
+    fi
     if [ "$ATTACH" -eq 0 ]; then
         echo "  logs: $ENGINE logs -f $NAME"
         echo "  The entrypoint proves the labels BEFORE registering, so a runner"
