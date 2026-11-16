@@ -876,9 +876,20 @@ pub fn render_manifest(
     // out cost `nros new --image tx_linux --board threadx-linux` its first build
     // (phase-517 W10, measured replaying threadx.md on the installed track).
     if board.entry_kind == EntryKind::BoardRun {
-        out.push_str(
-            "\n[profile.dev]\npanic = \"abort\"\n\n[profile.release]\npanic = \"abort\"\n",
-        );
+        out.push_str("\n[profile.dev]\npanic = \"abort\"\n");
+    }
+    // Issue 2623 -- `release` is the profile the book's table names: opt-level
+    // 3 and fat LTO, which is what the C and C++ images' runtime staticlib is
+    // built with (`cmake/NanoRosImageCrate.cmake`). Without it this root took
+    // cargo's own `release`, no LTO and 16 codegen units, and a Rust image was
+    // 15,508 B larger than the same build with LTO (mps2-an385 FreeRTOS
+    // talker). The west half below states its own.
+    if spec.west.is_none() {
+        out.push_str("\n[profile.release]\n");
+        if board.entry_kind == EntryKind::BoardRun {
+            out.push_str("panic = \"abort\"\n");
+        }
+        out.push_str("opt-level = 3\nlto = \"fat\"\ncodegen-units = 1\n");
     }
 
     // ---- the west application's manifest half (phase-470 W5.a) -------------
@@ -1874,6 +1885,20 @@ mod tests {
         );
         let h = render_manifest(&spec(), &hosted(), Path::new(DIR)).expect("renders");
         assert!(!h.contains("panic = \"abort\""), "{h}");
+    }
+
+    /// Issue 2623 -- `release` is opt-level 3 with fat LTO and one codegen
+    /// unit on every cargo entry, as the C/C++ runtime staticlib builds it.
+    #[test]
+    fn the_release_profile_is_fat_lto() {
+        for (what, board) in [("board-run", freertos()), ("hosted", hosted())] {
+            let m = render_manifest(&spec(), &board, Path::new(DIR)).expect("renders");
+            let rel = m.split("[profile.release]\n").nth(1).unwrap_or_default();
+            assert!(
+                rel.contains("opt-level = 3\nlto = \"fat\"\ncodegen-units = 1\n"),
+                "{what}: {m}"
+            );
+        }
     }
 
     /// phase-517 W10 — a board whose crate root links the panic handler

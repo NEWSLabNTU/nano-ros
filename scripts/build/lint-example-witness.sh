@@ -63,6 +63,13 @@ while [ "$i" -lt "${#words[@]}" ]; do
             c="${words[$((i + 1))]}"
             cargo_args+=(--config "$(cd "$ws" && cd "$(dirname "$c")" && pwd)/$(basename "$c")")
             i=$((i + 2)); continue ;;
+        # The image's profile: a board image names one now (it defaults to
+        # `release`), and the lane names its own in `$flags`. Cargo refuses
+        # `--profile` twice, and every package lints at the lane's profile.
+        --profile) i=$((i + 2)); continue ;;
+        # profile-literal-ok: flag mapping: recognises the image's profile
+        # flag in order to drop it; it names none of its own.
+        --profile=* | --release | -r) i=$((i + 1)); continue ;;
     esac
     cargo_args+=("$w")
     i=$((i + 1))

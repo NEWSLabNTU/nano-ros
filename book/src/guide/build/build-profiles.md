@@ -60,10 +60,30 @@ The `nros-*` profiles and the CMake build types they come from:
 | `CMAKE_BUILD_TYPE` | cargo profile | Meaning |
 | --- | --- | --- |
 | `Debug` | `dev` | debuggable, minimal optimization |
-| `RelWithDebInfo` | `nros-relwithdebinfo` | opt-level 2, debug info, no LTO; the default |
+| `RelWithDebInfo` | `nros-relwithdebinfo` | opt-level 2, debug info, no LTO |
 | `MinSizeRel` | `nros-minsizerel` | opt-level `s`, fat LTO; smallest images |
 | `Release` | `release` | opt-level 3, fat LTO; fastest code |
-| (unset) | `nros-relwithdebinfo` | the development default |
+| (unset) | `nros-relwithdebinfo` | a CMake project you configure yourself |
+
+### When an image states no profile
+
+An image with no `profile` builds `release` on a board, whichever language
+its nodes are in: `Release` on an image with C or C++ nodes, the cargo
+profile `release` on a Rust-only image. An image on the host (`linux`)
+builds cargo's `dev` when it is Rust-only, and CMake with no build type when
+it has C or C++ nodes. A Zephyr image always takes its optimisation from
+Kconfig.
+
+### Build a debug image
+
+On a board, `release` is the default, so a debug build is one flag away.
+Pass it after `--`, where it replaces the default:
+`nros build mps2 -- --profile dev` for a Rust-only image, and
+`nros build mps2 -- -DCMAKE_BUILD_TYPE=Debug` for an image with C or C++
+nodes.
+
+To make debug the image's default, state `profile = "dev"` on its
+`[image.<id>]` instead (`Debug` on an image with C or C++ nodes).
 
 ### Set it from CMake
 
