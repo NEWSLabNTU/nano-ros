@@ -35,6 +35,25 @@ fail() { echo "  [FAIL] $1" >&2; failures=$((failures + 1)); checks=$((checks + 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
+# A gate may only assert on what it built. The sweep resolves every root it
+# measures from the environment first (NROS_ZEPHYR_BUILD_ROOT, NROS_BUILD_ROOT,
+# NROS_SWEEP_WORK, RUNNER_WORK, NROS_RUNNER_DIR, ...), so a shell carrying one
+# points the sandboxed runs below at the REAL host tree: with
+# NROS_ZEPHYR_BUILD_ROOT set, the first run listed every host west build for
+# eviction beside the two entries it built, and `check fast` went red on a
+# host that exports it. Clear the whole inherited family rather than naming
+# members, so a root the sweep learns to read later is cleared too; each run
+# below then states only the sandbox values it means.
+for _var in $(compgen -e); do
+    case "$_var" in NROS_*|RUNNER_*|ZEPHYR_*|SCCACHE_*) unset "$_var" ;; esac
+done
+unset _var
+# The work dir's last fallback is `$HOME/actions-runner/_work`, the real
+# runner's. Default it to an empty sandbox dir; a run that models the work
+# dir still sets its own.
+mkdir -p "$work/no-work"
+export NROS_SWEEP_WORK="$work/no-work"
+
 # Two eviction units, both with an OLD directory mtime, differing only in when
 # their contents were last written. `cargo-fixtures` is one of the kinds the
 # fixtures area collects, so this exercises the real code path.
@@ -71,6 +90,16 @@ out="$(NROS_RUNNER_REPO_ROOT="$work" \
 
 busy_line="$(printf '%s\n' "$out" | grep -n 'rm -rf .*/busy' | head -1 | cut -d: -f1)"
 cold_line="$(printf '%s\n' "$out" | grep -n 'rm -rf .*/cold' | head -1 | cut -d: -f1)"
+
+# Every eviction the sandboxed run proposes is inside the sandbox. This is the
+# assertion that fails when the inherited environment leaks a host root in.
+outside="$(printf '%s\n' "$out" | sed -n 's/.*rm -rf \(\/[^ ]*\).*/\1/p' | grep -v "^$work/" || true)"
+if [ -z "$outside" ]; then
+    ok "the sandboxed sweep proposes no path outside its sandbox"
+else
+    fail "the sandboxed sweep proposed host paths (an inherited root leaked in):
+$(printf '%s\n' "$outside" | head -5)"
+fi
 
 if [ -n "$cold_line" ]; then
     ok "the entry whose CONTENT is old is proposed for eviction"
