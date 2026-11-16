@@ -1,0 +1,57 @@
+# Board descriptor for the NXP S32Z270 RTU0 Cortex-R52 on Zephyr (issue 2631).
+#
+# The board revision is part of `west_board` (`<board>@<revision>/<soc>/
+# <cluster>`), so the descriptor describes revision D only and a consumer
+# passes no `-DBOARD_REVISION`. Zephyr reads the revision from the board
+# string; nano-ros drops it where Zephyr does (the `BOARD_<X>` Kconfig symbol,
+# the per-board file stem: `board_projection::flatten_board_id`).
+#
+# No emulator models this SoC, so the board builds and links only here. The
+# first consumer is ASI's `s32z` image.
+
+[[board]]
+names = ["s32z270-rtu0-zephyr"]
+platform = "zephyr"
+toolchain = "stable"
+entry_kind = "zephyr-staticlib"
+# Zephyr's own ethernet L2 (the NXP NETC driver) owns the NIC, so this board
+# makes no netstack choice.
+supported_netstacks = []
+
+# Issue 2177 — the crate-root boilerplate a generated Rust entry needs on
+# Zephyr; the same as fvp-aemv8r-smp's.
+[board.entry]
+crate_root_extra = "extern crate zephyr;"
+crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
+
+[board.zephyr]
+west_board = "s32z2xxdc2@D/s32z270/rtu0"
+sdk_abi = "arm-zephyr-eabi"
+default_rmw = "cyclonedds"
+default_transport = "ethernet"
+# zephyr-lang-rust's `_rust_map_target` for a Cortex-R52 with CONFIG_FP_HARDABI.
+rust_target = "armv7r-none-eabihf"
+rust_prereqs = ["clang", "libclang-dev"]
+rust_components = ["clippy"]
+
+[board.provisioning]
+zephyr_line = "3.7"
+rust_targets = ["armv7r-none-eabihf"]
+rmw_source = "cyclonedds-src"
+
+[board.capabilities]
+heap = true
+atomics = true
+threads = true
+
+# RFC-0109 D2 — the RTOS's own configuration owns the network devices.
+[board.net]
+stack = "os"
+links = ["tcp", "udp"]
+
+# The nros allocator funnel's arena (CONFIG_NROS_ZEPHYR_HEAP_SIZE). The R52 is
+# 32-bit, so the rlsf heap holds at most 4 MiB, and the image must fit the
+# 7 MiB SRAM region the overlay chooses. 2 MiB is 3.4x the peak ASI's
+# controller reaches on the emulated R52 (mps3-an536: 618,880 B with Cyclone).
+[knobs.zephyr]
+heap_size = 2097152
