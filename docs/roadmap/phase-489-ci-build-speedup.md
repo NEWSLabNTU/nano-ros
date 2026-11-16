@@ -1263,8 +1263,9 @@ against the numbers above.
 
 ### W13 — one token pool per build run
 
-- **Status:** OPEN (APPROVED 2026-11-15 by the user, relayed by the nros 241
-  manager, with one addition: PROVISION the tools first; not started)
+- **Status:** OPEN. APPROVED 2026-11-15 by the user, relayed by the nros 241
+  manager, with one addition: PROVISION the tools first. Steps 1 and 2 are
+  done; step 3, the pool, is measured below and not yet accepted.
 
 **The user's addition.** make 4.4 and ninja 1.13.2 are provisioned wherever a
 pool can run: every agent host, and the CI images (ci-base and zephyr-ros,
@@ -1346,6 +1347,18 @@ sibling's cores.
   reach about `N + units`. That is bounded, unlike today.
 
 **Acceptance (measured before and after, the same commands).**
+
+What "runnable" means here (a clarification of what the approved target
+measures, not a new target; nros 241 manager's ruling, 2026-11-16, relayed to
+the user, who can overrule): the runnable threads of THIS build run's own
+processes, as `scripts/build/run-load-sampler.py` counts them (`NROS_GATE_LANE`
+in a process's environment). The target exists to show the pool bounds our
+own oversubscription, and other tenants' load is not something a pool can
+answer for: the agent hosts are shared (a CARLA / Autoware simulation on
+newslab-118 put 631 runnable into one host-wide sample). Host-wide
+`procs_running` / vmstat `r` is reported beside it as context. The baseline
+numbers below were taken host-wide, before that was known.
+
 - newslab-118, solo `just ci gate`: `check::build`'s runnable p90 is at most
   1.5 × cores (today 163 on 48), and its wall is no worse than +10 %.
 - The 4-core host's tier-1 `build-test-fixtures`: its wall falls, and no stage
@@ -1354,6 +1367,74 @@ sibling's cores.
 - A 20-core host (nros 175's) repeats the first: `r` p90 at most 1.5 × cores
   (today 88 on 20).
 - `check fast`, `ci gate` and a tier-1 fixture build stay green on all three.
+
+#### Progress so far (2026-11-15)
+
+**Step 1, provision: DONE** (#3960). ci-base and zephyr-ros bake make 4.4.1
+(`index_tool.py install-source`) and ninja 1.13.2 under `/usr/local`.
+`nros_pinned_make` / `nros_pinned_ninja` answer the SDK store first, then a
+copy that passes the index row's smoke probe, so a system make 4.3 or ninja
+1.10 never answers. 20 sites in 11 files that built the store path by hand now
+call the helpers; gate `pinned-tool-one-lookup`.
+
+**Step 2, prove: DONE.** The publish run for 29ea9b37f7 (43707885786) prints
+`GNU Make 4.4.1` and `1.13.2` from the RUN step's own checks, in both the
+ci-base and the zephyr-ci image log. On newslab-118 `nros_pinned_make` answers
+from the store.
+
+**Step 3, pool: implemented and measured on 48, 20 and 4 (emulated) cores.** `nros_pool_own`
+(`scripts/build/jobserver-pool.sh`) is the one owner. `gate-lane.sh` runs every
+lane under it, and the `build-test-fixtures` driver is pooled by default
+wherever a pinned make 4.4 exists. The lane reports its load after every run
+(`scripts/build/run-load-sampler.py`).
+
+The first measurement corrected the baseline. procs_running is HOST-WIDE, and
+newslab-118 is shared with another tenant's CARLA / Autoware simulation: its
+busiest sample (631 runnable) was mostly that tenant's threads. So the sampler
+now counts the lane's OWN runnable threads (`NROS_GATE_LANE` in the process's
+environment) beside the host's, and the tokens left in the pool.
+
+| host | run | check::build wall | lane runnable p50 / p90 / max | host runnable p90 | free tokens p50 (empty) |
+| --- | --- | --- | --- | --- | --- |
+| newslab-118, 48 cores | main 6ed248b898, no pool | 15m51s | 9 / 24 / 62 | 101 | — |
+| newslab-118, 48 cores | pool, 48 tokens | 13m51s | 14 / 46 / 80 | 58 | 43 (22 % of samples) |
+| nros 175's host, 20 cores | main, no pool, the same day (#3965) | 57m19s | — | vmstat `r` p90 88 (earlier W7 gate) | — |
+| nros 175's host, 20 cores | pool, 20 tokens | 58m15s | 3 / 14 / 26 | vmstat `r` p90 28 | not sampled |
+| nros 175's host, 20 cores | pool, 20 tokens, second sample | 48m36s | 2 / 11 / 29 | vmstat `r` p90 35 (tenants included) | 16 (27 % of samples) |
+
+So far:
+- **118 passes**: `r` p90 well under 1.5 × cores either way, wall 13 % lower.
+  The pool is not what limits this host: tokens sat free.
+- **The 20-core host passes on the same-day baseline.** Oversubscription is
+  gone (`r` p90 88 to 28, against at most 30; idle p50 7 % to 30 %), and
+  check::build is +1.6 % on a no-pool gate of the same day's main (57m19s).
+  The first reading compared it with gates on older, smaller trees (41-55
+  min) and called it a fail; that comparison was wrong. The second sample
+  took 48m36s (-15 % on the same day's main), with free tokens p50 16 of 20
+  while the lane ran little: the pool is not what holds this host back, and
+  the work there is I/O-bound (`b` p90 165 to 236).
+- **Read on the lane's own count (the acceptance text above), 175 passes.**
+  The second sample's host-wide vmstat `r` p90 was 35, while this lane's own
+  runnable p90 was 11 against 30; the busiest sample's non-lane owners were
+  another user's processes.
+- **4 cores, emulated, passes.** The tier-1 fixture build (`just
+  build-test-fixtures lane=tier1`) on newslab-118 under `taskset -c 0-3`
+  (`nproc` honours the mask, so the pool is 4 tokens). This is EMULATED: it
+  measures the stranded-core question on 4 cores, not a 4-core host's disk.
+  Both sides cold, one after the other, under the host lock (joblogs saved
+  with the runs):
+
+  | side | zephyr | threadx_linux | linux | stage span | whole build |
+  | --- | --- | --- | --- | --- | --- |
+  | main 6ed248b898, static split | 1168 s, alone first | 369 s, `inner=1` | 6174 s, `inner=1` | 7342 s | 9880 s |
+  | pool, 4 tokens | 2253 s | 852 s | 5833 s | 5833 s (-21 %) | 8265 s (-16 %) |
+
+  On main, once threadx_linux was done, linux ran alone at `inner=1` for
+  about 5,800 s: this lane's runnable p50 2 on 4 cores. Under the pool all
+  three stages start together, and in the same linux-alone stretch the lane's
+  runnable p50 is 4, with the pool empty in 94 % of samples. No stage runs
+  below the pool's width with tokens free. (Both runs then stop in the
+  compile-check stage, on a main red unrelated to the pool, fixed separately.)
 
 ## Self-hosted runner cache observations (2026-10-09..14)
 

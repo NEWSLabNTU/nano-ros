@@ -2374,7 +2374,10 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots (_requir
         echo "Invalid NROS_BUILD_JOBS=$budget; expected positive integer" >&2
         exit 2
     }
-    # Issue 0726 — POOLED launcher, opt-in via NROS_BUILD_POOL=1.
+    # Issue 0726 — POOLED launcher; the default since phase-489 W13 wherever a
+    # pinned make 4.4 is provisioned (the store, or the copy the CI images
+    # bake). Without one the static split below stays, and the line says the
+    # pool is off and why.
     #
     # The static split below measured 45% of its wall clock running ONE stage
     # against an inner cap of 8 on a 32-core host: a 25% ceiling, because a
@@ -2392,7 +2395,18 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots (_requir
     # outer jobserver no longer has to be hidden from them, and `-j` per child
     # can be dropped entirely: make hands out `budget` tokens and every cargo
     # and ninja in the tree draws from that one pool.
-    if [ "${NROS_BUILD_POOL:-}" = "1" ]; then
+    # shellcheck source=scripts/build/jobserver-pool.sh
+    source scripts/build/jobserver-pool.sh
+    pool_make=""
+    pool_off=""
+    if pool_make="$(nros_pinned_make)" \
+        && "$pool_make" --version 2>/dev/null | head -1 | grep -F 'GNU Make 4.4' >/dev/null; then
+        :
+    else
+        pool_make=""
+        pool_off="no pinned make 4.4 (neither the SDK store nor a baked copy passes the index probe; provision: nros setup --tool make)"
+    fi
+    if [ -n "$pool_make" ]; then
         # Count the lane's stages HERE rather than reading $lane_platforms,
         # which this recipe does not compute until further down — referencing it
         # early made it empty, `grep -c .` returned 1, and `set -e` killed the
@@ -2405,7 +2419,17 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots (_requir
         [ "$outer" -gt "$budget" ] && outer="$budget"
         inner=""            # no static split; children inherit the jobserver
         make_jobs="$budget"
-        echo "build-test-fixtures: POOLED — make -j$budget, $outer stage(s), shared tokens"
+        # phase-489 W13 — the pool is the PINNED make's FIFO jobserver (a
+        # system make 4.3 would hand out a pipe pool that ninja ignores and a
+        # path that does not survive), or the run's own pool when this driver
+        # already runs inside one (`nros_inherited_jobserver`): then it joins.
+        pool_make_args_out="$(nros_pool_make_args "$budget")" || exit 1
+        read -ra pool_make_args <<<"${pool_make_args_out//$'\n'/ }"
+        if nros_inherited_jobserver; then
+            echo "build-test-fixtures: POOLED — joining the run's pool, $outer stage(s), shared tokens"
+        else
+            echo "build-test-fixtures: POOLED — $budget tokens (make 4.4 fifo jobserver), $outer stage(s), shared tokens"
+        fi
         # Children INHERIT the jobserver; nothing is unset.
         NROS_STAGE_ENV=""
         # And they must not ALSO be handed an explicit width. A stage exports
@@ -2416,6 +2440,7 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots (_requir
         # just keyed on NROS_JOBSERVER alone, so tell them the same fact.
         export NROS_INHERIT_JOBSERVER=1
     else
+    echo "build-test-fixtures: token pool OFF: $pool_off; static split instead"
     outer=4
     [ "$outer" -gt "$budget" ] && outer="$budget"
     inner=$(( budget / outer )); [ "$inner" -lt 1 ] && inner=1
@@ -2428,7 +2453,9 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots (_requir
     # The generated recipes reference it as `$$NROS_STAGE_ENV`, i.e. the SHELL
     # expands it at stage-run time, so it has to be in the environment.
     export NROS_STAGE_ENV
-    echo "build-test-fixtures: budget=$budget, make-jobs=$make_jobs, pool=$outer×$inner + zephyr=$budget (solo)"
+    if [ -z "$pool_make" ]; then
+        echo "build-test-fixtures: budget=$budget, make-jobs=$make_jobs, pool=$outer×$inner + zephyr=$budget (solo)"
+    fi
     # Issue 0393 — the lane-filtered platform list, computed ONCE. The graph
     # names its targets in three places (.PHONY, `all:`, the rule loop) and they
     # must agree, so they read one variable rather than three copies of the
@@ -2455,8 +2482,13 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots (_requir
         # (~2x oversubscription, observed in the 2026-08-03 jobs audit).
         # Order, not success: a rule never exits non-zero (issue 2226), so a
         # failed zephyr still lets every other family start.
+        #
+        # phase-489 W13 — not under the pool. "Solo" bounded zephyr's width by
+        # making everything else wait, and the pool bounds it by tokens; kept,
+        # the order left a 4-core host running zephyr's single-threaded west
+        # configures alone for 1,653 s with tokens free.
         zephyr_prereq=""
-        if in_lane zephyr; then zephyr_prereq=" | zephyr"; fi
+        if in_lane zephyr && [ -z "$pool_make" ]; then zephyr_prereq=" | zephyr"; fi
         for platform in $lane_platforms; do
             # Pooled: hand each stage the full budget and let the shared
             # jobserver throttle. A jobserver client asks for tokens before it
@@ -2505,9 +2537,18 @@ build-test-fixtures-leaves lane="all": _require-owned-provisioned-roots (_requir
     # fixture jobserver, and a stall here was a silent hang (the sweep that
     # resolved 1403 found it unwrapped). Inside the guard, so the guard's group
     # still owns the whole tree.
-    nros_guard_exec fixtures python3 scripts/build/make-stall-watchdog.py \
-        --label build-test-fixtures --diag-dir "$log_dir" -- \
-        make -j "$make_jobs" -f "$makefile"
+    if [ -n "$pool_make" ]; then
+        # issue 2119 — the stages' tools find this same make (and the pinned
+        # ninja) by name, so a FIFO pool never reaches a make 4.3.
+        nros_guard_exec fixtures python3 scripts/build/make-stall-watchdog.py \
+            --label build-test-fixtures --diag-dir "$log_dir" -- \
+            env PATH="$(nros_pinned_tool_path_prefix "$pool_make"):$PATH" \
+            "$pool_make" "${pool_make_args[@]}" -f "$makefile"
+    else
+        nros_guard_exec fixtures python3 scripts/build/make-stall-watchdog.py \
+            --label build-test-fixtures --diag-dir "$log_dir" -- \
+            make -j "$make_jobs" -f "$makefile"
+    fi
     report_stages || exit 1
     echo "All test fixtures built."
 

@@ -38,6 +38,11 @@
 # `west_app::tests::the_application_states_its_own_digest`, which carries this
 # file's regex by hand.
 set -euo pipefail
+# The stubbed builds below model a fixture build OUTSIDE a token pool; under a
+# gate lane's pool (phase-489 W13) an inherited FIFO `MAKEFLAGS` would send
+# them down cmake-cache-guard's rule 5 (`repair-makes`), which is not what
+# this test asserts. The pool's own path is `cmake-guard-stale-make`'s.
+unset MAKEFLAGS CARGO_MAKEFLAGS MFLAGS NROS_INHERIT_JOBSERVER
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 runner="$repo/scripts/build/zephyr-fixture-run-one.sh"

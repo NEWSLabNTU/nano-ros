@@ -246,3 +246,70 @@ nros_pool_run() {
     rm -f "$makefile"
     return $rc
 }
+
+# phase-489 W13 — ONE token pool for a whole build RUN.
+#
+#   nros_pool_own <label> <tokens> <command...>
+#
+# The outermost driver of a run (`gate-lane.sh`, the `build-test-fixtures`
+# driver) runs its command under a pool it owns: pinned make 4.4 with
+# `-j<tokens> --jobserver-style=fifo` and one `+` recipe, so the command and
+# every descendant see `MAKEFLAGS=... --jobserver-auth=fifo:<path>` (and the
+# same in `CARGO_MAKEFLAGS`). Only the FIFO form: a path survives nextest,
+# `bash -c`, `env` and `setsid`; an inherited fd pair did not (191 x `cannot
+# open file descriptor 3` in one nightly). `NROS_INHERIT_JOBSERVER=1` tells
+# every stage below to JOIN it (`nros_inherited_jobserver`), and the pinned
+# make's and ninja's dirs go first on PATH, so a child that runs `make` by name
+# runs a make that can read a FIFO pool (issue 2119; a make 4.3 dies on it).
+#
+# Already inside a pool: the command joins it and nothing is nested. No pinned
+# make 4.4: the command runs as before, and the line says the pool is OFF and
+# why. The command's own exit status is returned, never make's.
+nros_pool_own() {
+    local label="${1:?label}" tokens="${2:?tokens}"
+    shift 2
+    if nros_inherited_jobserver; then
+        echo "$label: token pool: joining the run's pool (${MAKEFLAGS##*--jobserver-auth=})"
+        "$@"
+        return
+    fi
+    local make_bin
+    if ! make_bin="$(nros_pinned_make)" \
+        || ! "$make_bin" --version 2>/dev/null | head -1 | grep -F 'GNU Make 4.4' >/dev/null; then
+        echo "$label: token pool OFF: no pinned make 4.4 (neither the SDK store nor a baked copy" \
+            "passes the index probe); each tool runs at its own width. Provision: nros setup --tool make"
+        "$@"
+        return
+    fi
+    local dir rc=0 cmd="" a
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/nros-token-pool.XXXXXX")" || { "$@"; return; }
+    for a in "$@"; do cmd+=" $(printf '%q' "$a")"; done
+    # `$` doubled so make leaves the shell's expansions alone. The recipe
+    # records the command's status and exits 0, so make never reports a
+    # failure of its own over it. `MAKELEVEL` is dropped: a make below that
+    # sees it acts as a sub-make and prints `Entering directory` lines that
+    # the same command run outside a pool does not.
+    {
+        printf '.PHONY: run\nrun:\n'
+        printf '\t+@unset MAKELEVEL MFLAGS; CARGO_MAKEFLAGS="$$MAKEFLAGS" NROS_INHERIT_JOBSERVER=1 %s; echo $$? >%q\n' \
+            "${cmd//\$/\$\$}" "$dir/rc"
+    } >"$dir/run.mk"
+    echo "$label: token pool: $tokens tokens (make 4.4 fifo jobserver, $make_bin)"
+    # issue 1403 — the owner is a jobserver make, so it runs under the stall
+    # watchdog like every other one. Its one child is the command, so the
+    # watchdog's "no live child" condition holds only if that has exited.
+    local diag="${NROS_BUILD_LOG_DIR:-$_NROS_POOL_LIB_DIR/../../build}/jobserver-pool"
+    mkdir -p "$diag"
+    python3 "$_NROS_POOL_LIB_DIR/make-stall-watchdog.py" \
+        --label "token pool $label" --diag-dir "$diag" -- \
+        env -u MAKEFLAGS -u CARGO_MAKEFLAGS -u MFLAGS -u CMAKE_BUILD_PARALLEL_LEVEL \
+        PATH="$(nros_pinned_tool_path_prefix "$make_bin"):$PATH" \
+        "$make_bin" -j"$tokens" --jobserver-style=fifo -f "$dir/run.mk" || rc=$?
+    if [ -s "$dir/rc" ]; then
+        rc="$(cat "$dir/rc")"
+    elif [ "$rc" -eq 0 ]; then
+        rc=1
+    fi
+    rm -rf "$dir"
+    return "$rc"
+}
