@@ -825,8 +825,8 @@ nuttx-integration-makefile:
 # knows, answers only armv7a beyond it, and refuses the rest naming
 # LLVM_ARCHTYPE. When the nuttx-apps pin gains its own armv7a branch, this
 # goes red and says to delete the fallback. Reads upstream's `tools/Rust.mk`
-# from the nuttx-apps submodule, which `.config/worktree-provisioning.txt`
-# lists, so every lane claiming `submodules` provisions it and runs this
+# from the nuttx-apps submodule, which a `[[provision.submodule]]` row of
+# .config/gate-lanes.toml lists, so every lane claiming `submodules` provisions it and runs this
 # (a lane without it leaves the gate out of scope). Self-tests first. ~1 s.
 [private]
 [group('needs:submodules')]

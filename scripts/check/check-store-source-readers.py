@@ -92,7 +92,7 @@ ALLOWED = {
     # last rung), they do not read a tree.
     ".github/workflows/live-peer.yml": "submodule init list",
     ".github/workflows/gate.yml": "submodule init list (the check job's source gates)",
-    ".config/worktree-provisioning.txt": "submodule init list",
+    ".config/gate-lanes.toml": "submodule init list ([[provision.submodule]], phase-565 W1)",
     # Developer tools that read the checkout on purpose (they audit the
     # vendored sources a contributor edits, not what a build consumes).
     "scripts/dev/sweep-vendored-c-decls.sh": "audits the checkout's vendored C",

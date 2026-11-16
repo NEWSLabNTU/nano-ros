@@ -821,9 +821,14 @@ setup-worktree:
     # Issue 1513 — the list is DATA, shared with the preflight, not an array
     # here. It was an array here, described as "the submodules the fast gate tier
     # reads" with a note that a fourth "belongs in this list", and `check::build`
-    # then grew dependencies on two more that nobody added.
-    mapfile -t paths < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' \
-        -e 's/[[:space:]]*$//' .config/worktree-provisioning.txt)
+    # then grew dependencies on two more that nobody added. phase-565 W1: the
+    # data is the `submodules` claim's rows in .config/gate-lanes.toml, read
+    # only through scripts/lib/lane_provision.py.
+    if ! _rows="$(python3 scripts/lib/lane_provision.py submodules)"; then
+        echo "setup-worktree: cannot read the provisioning table (above)" >&2
+        exit 1
+    fi
+    mapfile -t paths <<<"$_rows"
     # issue 1850 — strictly THIS checkout's CLI (`NROS_CLI=`): it provisions
     # this checkout's store rows. Empty on a fresh clone, which is the
     # chicken-and-egg case below ("no CLI yet").
@@ -944,6 +949,19 @@ _require-worktree-provisioning:
     # `setup-worktree` and `check-submodule-drift.sh`.
     # shellcheck source=scripts/lib/submodule-provision.sh
     . scripts/lib/submodule-provision.sh
+    # phase-543 W6 — `NROS_PROVISION_TIERS="fast build"` keeps only the rows a
+    # tier reads: what a gate lane's `submodules` claim means for that lane's
+    # tiers. Unset: every row, which is what `just ci gate` needs. phase-565
+    # W1: the rows come from the one table, through its one reader.
+    _tiers=()
+    if [ -n "${NROS_PROVISION_TIERS:-}" ]; then
+        read -r -a _tiers <<<"$NROS_PROVISION_TIERS"
+        _tiers=(--tiers "${_tiers[@]}")
+    fi
+    if ! _rows="$(python3 scripts/lib/lane_provision.py submodules "${_tiers[@]}")"; then
+        echo "[FAIL] cannot read the provisioning table (above)" >&2
+        exit 1
+    fi
     while IFS= read -r p; do
         [ -n "$p" ] || continue
         # phase-484 W3c (RFC-0103 D5) — a store-first source is provisioned
@@ -957,20 +975,10 @@ _require-worktree-provisioning:
         nros_submodule_state_is_red "$state" || continue
         case "$state" in
             missing) missing+=("submodule  $p${row:+  (or: nros setup --source $row)}") ;;
-            not-submodule) missing+=("NOT A SUBMODULE of this checkout: $p (renamed? fix .config/worktree-provisioning.txt)") ;;
+            not-submodule) missing+=("NOT A SUBMODULE of this checkout: $p (renamed? fix its [[provision.submodule]] row in .config/gate-lanes.toml)") ;;
             *) missing+=("submodule  $p is ${state%%:*} (${state}) -> $(nros_submodule_state_remedy "$state" "$p")") ;;
         esac
-    done < <(
-        # phase-543 W6 — `NROS_PROVISION_TIERS="fast build"` keeps only the
-        # rows a tier reads (each row's comment names it, `# check::<tier>`):
-        # what a gate lane's `submodules` claim means for that lane's tiers.
-        # Unset: every row, which is what `just ci gate` needs.
-        if [ -n "${NROS_PROVISION_TIERS:-}" ]; then
-            pat="$(printf '%s\n' $NROS_PROVISION_TIERS | sed 's/^/# check::/' | paste -sd'|')"
-            grep -E "($pat)" .config/worktree-provisioning.txt | grep -v '^[[:space:]]*#'
-        else
-            cat .config/worktree-provisioning.txt
-        fi | sed -e 's/#.*//' -e '/^[[:space:]]*$/d' -e 's/[[:space:]]*$//')
+    done <<<"$_rows"
     # The two binaries the lane builds nothing without. `check::cli-fresh` and
     # `check::launch-resolve-fresh` run first and SKIP when a binary is absent —
     # correct for a fresh clone, and the reason an absent one otherwise surfaces

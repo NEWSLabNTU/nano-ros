@@ -20,7 +20,7 @@ bindgen = "bindgen-cli at the pin"
 ros2 = "a sourced ROS 2 (AMENT_PREFIX_PATH)"
 colcon = "colcon on PATH"
 sources = "provisioned source clones under $NROS_HOME/sources (nros setup --source)"
-submodules = "the submodules .config/worktree-provisioning.txt lists"
+submodules = "the submodules [[provision.submodule]] lists, below"
 git-history = "commit history deeper than a shallow clone"
 zephyr-tree = "Zephyr's lib/cpp/minimal/include under zephyr-workspace/ (CI's sparse clone)"
 zephyr = "a resolvable west workspace"
@@ -104,3 +104,70 @@ claims = ["cli", "cmake", "cc", "ros2", "sources"]
 # (issues 0650, 1373).
 tiers = ["fast"]
 claims = ["cmake", "cc", "git-history"]
+
+# What the `submodules` claim provisions: the submodules the gate tiers read,
+# and WHICH gates read each (phase-565 W1; until then the separate list
+# `.config/worktree-provisioning.txt`, issue 1513). ONE table, read only through
+# `scripts/lib/lane_provision.py` (gate `check-lane-provisioning-single-source`):
+# by `just setup-worktree`, by the lane preflight (`_require-worktree-provisioning`)
+# and by CI's `scripts/ci/provision-gate-lane.sh`, which takes the rows whose
+# `tiers` meet its lane's. A path that names no submodule of this checkout is
+# reported, not skipped: that is how a renamed submodule is caught.
+#
+# NOT every submodule: no lane checks out all 20 (issue 1043), and the Zephyr
+# `hal_*` modules alone are gigabytes. This is the set the gate tiers read,
+# which is why each row says who reads it.
+[[provision.submodule]]
+path = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
+tiers = ["fast"]
+reads = "capability-conditionals, zpico-config-keys, support-status"
+
+[[provision.submodule]]
+path = "packages/rmw/xrce/xrce-sys/micro-cdr"
+tiers = ["fast"]
+reads = "xrce-vendored-versions"
+
+[[provision.submodule]]
+path = "packages/rmw/xrce/xrce-sys/micro-xrce-dds-client"
+tiers = ["fast"]
+reads = "xrce-vendored-versions"
+
+[[provision.submodule]]
+path = "third-party/nuttx/nuttx-apps"
+tiers = ["fast"]
+reads = "nuttx-rust-triple (upstream's tools/Rust.mk triple table)"
+
+[[provision.submodule]]
+path = "third-party/dds/cyclonedds"
+tiers = ["build"]
+reads = "test-targets, workspace-all, workspace-features"
+
+[[provision.submodule]]
+path = "packages/cli/third-party/play_launch"
+tiers = ["build"]
+reads = "cli-tests; and the launch resolver is built from it"
+
+[[provision.submodule]]
+path = "third-party/freertos/kernel"
+tiers = ["build"]
+reads = "workspace-all, test-targets (nros-board-freertos build script; store-first)"
+
+[[provision.submodule]]
+path = "third-party/freertos/lwip"
+tiers = ["build"]
+reads = "workspace-all, test-targets (nros-board-freertos build script; store-first)"
+
+[[provision.submodule]]
+path = "third-party/threadx/kernel"
+tiers = ["build"]
+reads = "workspace-all, test-targets (nros-board-threadx build script; store-first)"
+
+[[provision.submodule]]
+path = "third-party/threadx/netxduo"
+tiers = ["build"]
+reads = "workspace-all, test-targets (nros-board-threadx build script; store-first)"
+
+[[provision.submodule]]
+path = "packages/cli/testing_workspaces/ros2_rust_examples"
+tiers = ["build"]
+reads = "cli-tests (the colcon flag parity tests, phase-526 W3)"

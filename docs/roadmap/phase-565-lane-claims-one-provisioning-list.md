@@ -1,6 +1,6 @@
 # Phase 565 — a lane's claims are the one provisioning list
 
-**Status (2026-11-15). OPEN: no item has started.** Implements
+**Status (2026-11-16). OPEN: W1 is done; W2–W6 are open.** Implements
 [RFC-0131](../design/0131-gates-are-nextest-tests.md), and closes its one open
 question. Assigned to nros 118 by the nros 241 manager on 2026-11-15, which
 relayed the user's approval of RFC-0131 and asked for phase docs that implement
@@ -38,7 +38,20 @@ main. Each is an item below.
 
 ### W1 — one provisioning table, read by one helper
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-16)
+
+Done: the 11 submodule rows are `[[provision.submodule]]` in
+`.config/gate-lanes.toml` (`path`, `tiers`, `reads`), and
+`scripts/lib/lane_provision.py` is their one reader (`submodules [--tiers
+...]`, `lane <name>`). `setup-worktree`, `_require-worktree-provisioning`
+(and so the lane preflight) and `provision-gate-lane.sh` call it;
+`check-store-source-readers` and `submodule-provision.sh` name the table.
+`.config/worktree-provisioning.txt` is deleted. Gate:
+`check-lane-provisioning-single-source` (fast tier). Measured: the helper's
+lists for `fast`, for `fast build` and for every row equal the old file's,
+by name and in order. Not part of W1: the two workflows' own submodule lists
+(`gate.yml`, `live-peer.yml`) are W4's, and RFC-0131's open question is
+W6's.
 
 What each claim provisions moves into `.config/gate-lanes.toml`. The submodule
 rows of `worktree-provisioning.txt` keep their per-tier tags and reasons. One

@@ -14,9 +14,10 @@
 #     stopped in the lane preflight and no gate ran.
 #
 # Per claim:
-#   submodules   the `.config/worktree-provisioning.txt` rows tagged with one
-#                of the lane's tiers (`# check::fast`, `# check::build`), the
-#                same rows the lane preflight checks; depth 1.
+#   submodules   the `[[provision.submodule]]` rows of .config/gate-lanes.toml
+#                whose `tiers` meet the lane's, the same rows the lane
+#                preflight checks and `just setup-worktree` checks out (one
+#                reader, scripts/lib/lane_provision.py, phase-565 W1); depth 1.
 #   git-history  for the gates that ask about the COMMIT GRAPH
 #                (`doc-commit-citations`, `roadmap-commit-refs`): on a shallow
 #                clone a dead hash and an unfetched one look the same. In the
@@ -42,32 +43,18 @@ lane="${1:?usage: provision-gate-lane.sh <lane>}"
 cd "$(dirname "$0")/../.."
 
 # "tiers: a b" and "claims: x y" for the lane, or a refusal naming it.
-lane_decl="$(python3 - "$lane" <<'PY'
-import sys
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
-lane = sys.argv[1]
-with open(".config/gate-lanes.toml", "rb") as f:
-    decl = tomllib.load(f).get("lane", {}).get(lane)
-if decl is None:
-    sys.exit(f"provision-gate-lane: no [lane.{lane}] in .config/gate-lanes.toml")
-print("tiers:", " ".join(decl.get("tiers", [])))
-print("claims:", " ".join(decl.get("claims", [])))
-PY
-)"
+lane_decl="$(python3 scripts/lib/lane_provision.py lane "$lane")"
 read -r -a tiers <<<"$(sed -n 's/^tiers: //p' <<<"$lane_decl")"
 read -r -a claims <<<"$(sed -n 's/^claims: //p' <<<"$lane_decl")"
 claims_has() { local c; for c in "${claims[@]}"; do [ "$c" = "$1" ] && return 0; done; return 1; }
 echo "provision-gate-lane: lane \`$lane\`, tiers: ${tiers[*]}, claims: ${claims[*]}"
 
 if claims_has submodules; then
-    tier_re="$(IFS='|'; echo "${tiers[*]}")"
-    mapfile -t subs < <(grep -E "# check::(${tier_re})([^a-z-]|$)" .config/worktree-provisioning.txt \
-        | grep -v '^[[:space:]]*#' | sed -e 's/#.*//' -e 's/[[:space:]]*$//' | sed '/^$/d')
+    rows="$(python3 scripts/lib/lane_provision.py submodules --tiers "${tiers[@]}")"
+    subs=()
+    [ -z "$rows" ] || mapfile -t subs <<<"$rows"
     if [ "${#subs[@]}" -eq 0 ]; then
-        echo "provision-gate-lane: no rows for tiers ${tiers[*]} in .config/worktree-provisioning.txt" >&2
+        echo "provision-gate-lane: no [[provision.submodule]] rows for tiers ${tiers[*]} in .config/gate-lanes.toml" >&2
         exit 1
     fi
     git submodule update --init --depth 1 "${subs[@]}"

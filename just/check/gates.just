@@ -402,6 +402,16 @@ lane name *args:
 gate-order tier="fast":
     @bash scripts/check/check-gate-order.sh "$1"
 
+# phase-565 W1 — what the `submodules` claim provisions is ONE table,
+# `[[provision.submodule]]` in .config/gate-lanes.toml, read only through
+# scripts/lib/lane_provision.py. Refuses a code line that reads the retired
+# `.config/worktree-provisioning.txt`, or that parses the table outside the
+# helper; its negative control is a second reader. Buildless; self-tests on
+# its normal path.
+[private]
+lane-provisioning-single-source:
+    @python3 scripts/check/check-lane-provisioning-single-source.py
+
 # phase-543 W5 — the lane preflight's probes cover every capability in
 # `.config/gate-lanes.toml`, and every lane claims only listed ones. Asks no
 # host state; self-tests on its normal path.
