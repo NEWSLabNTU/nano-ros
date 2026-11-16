@@ -873,10 +873,14 @@ workflow-checkout-before-repo-path:
 # failed merge-group run carry a failed REQUIRED context (an ejection), and is
 # the failing check red across pull requests (INFRA). The first posted
 # "Ejected" for every non-required `queue` red; the second had no gate at all.
+# phase-567 W5b adds the third: which pull requests a red advisory L3 build
+# contained (the merge-group ref chain), and the advisory comment each gets.
 [private]
 queue-notify-decision:
     @bash scripts/ci/queue-ejected.sh --selftest
     @bash scripts/ci/queue-triage.sh --selftest
+    @python3 scripts/ci/queue-batch.py --selftest
+    @bash scripts/ci/queue-l3-advisory.sh --selftest
 
 # issue 2469 — live-peer's intermediates release: every root reached and
 # reported (a mawk exponent once stopped it after the first), build-script

@@ -99,8 +99,16 @@ fix fails the merge queue on this workspace.
 - **W5b.** The tier-2 build-and-link job in `queue.yml` stays advisory, but its
   failures reach the PR author the way a merge-queue ejection does
   (`queue-notify.yml`), so a link break is heard about at merge rather than at
-  the next nightly. Acceptance: a seeded link failure on a queue batch posts a
-  comment on each PR in the batch.
+  the next nightly. Acceptance: a replay against a real red L3 run posts to
+  each PR in its batch.
+  **W5b DONE (2026-11-16).** The notifier's not-an-ejection branch runs
+  `scripts/ci/queue-l3-advisory.sh` for a failed `queue` run. It posts one
+  advisory comment to each pull request in the merge group, with a per-run
+  marker and `queue-triage`'s INFRA note. The batch is
+  `scripts/ci/queue-batch.py`: the run's PR plus every entry down the
+  `pr-<N>-<base>` chain still unmerged when the run started. A replay of real
+  red L3 run 43836015138 named #4039 and #4038 and the failed step `just ci
+  matrix build`. Selftests in `check queue-notify-decision`.
 
 The nucleo Zephyr template walk stays nightly (it needs the Zephyr SDK); moving
 it into the queue is a separate user decision.
