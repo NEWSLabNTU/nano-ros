@@ -1247,6 +1247,63 @@ fn a_workspace_with_no_bringup_builds_each_package_in_its_own_build_dir() {
     assert!(!ws.join("CMakeLists.txt").exists() && !ws.join("Cargo.toml").exists());
 }
 
+/// A cargo package's lock is resolved before its `--frozen` build whenever the
+/// lock is only a SEED, i.e. it does not name the package itself.
+///
+/// Planning seeds the lock from the pin set, and the fixture builder plans
+/// every row before it builds it. A package-mode build that took "a lock file
+/// exists" for "a resolved lock exists" therefore skipped the resolve on the
+/// second plan. Its `--frozen` build then refused to add the package's own
+/// path packages, which is how the `local_msg_pkg` and
+/// `multi_package_workspace` compile-check rows failed on main.
+#[test]
+fn a_seeded_lock_is_still_resolved_before_a_package_build() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path();
+    write(&ws.join(".colcon_workspace"), "");
+    write(&ws.join("src/tool/package.xml"), &pkg_xml("tool"));
+    write(
+        &ws.join("src/tool/Cargo.toml"),
+        "[package]\nname = \"tool\"\nversion = \"0.0.0\"\n",
+    );
+    let resolve = |plans: &[nros_cli_core::cmd::build::ResolvedBuild]| {
+        plans
+            .iter()
+            .find(|p| p.qualified == "tool")
+            .expect("tool planned")
+            .configure
+            .as_ref()
+            .map(|c| c.display())
+    };
+    let first = plan_builds(&args(ws, &[])).expect("first plan");
+    let pre = resolve(&first).expect("a package with no lock resolves one first");
+    assert!(pre.starts_with("cargo update --workspace"), "{pre}");
+
+    // What the first plan left behind: a seed that names registry crates and
+    // not the package. A second plan must still resolve it.
+    write(
+        &ws.join("src/tool/Cargo.lock"),
+        "version = 4\n\n[[package]]\nname = \"libc\"\nversion = \"0.2.186\"\n\
+         source = \"registry+https://github.com/rust-lang/crates.io-index\"\n",
+    );
+    let second = plan_builds(&args(ws, &[])).expect("second plan");
+    let pre = resolve(&second)
+        .expect("a seed is not a resolved lock, so the build must resolve it first");
+    assert!(pre.starts_with("cargo update --workspace"), "{pre}");
+
+    // A lock cargo resolved names the package, and is left alone.
+    write(
+        &ws.join("src/tool/Cargo.lock"),
+        "version = 4\n\n[[package]]\nname = \"tool\"\nversion = \"0.0.0\"\n",
+    );
+    let third = plan_builds(&args(ws, &[])).expect("third plan");
+    assert_eq!(
+        resolve(&third),
+        None,
+        "a resolved lock outside a checkout is the user's, so it is not re-resolved"
+    );
+}
+
 /// A bringup keeps image mode, even with no image asked for by name: package
 /// mode is for the workspace that has NO bringup, not a fallback for one that
 /// forgot to declare an image.
