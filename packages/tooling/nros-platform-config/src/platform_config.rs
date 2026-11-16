@@ -806,6 +806,7 @@ impl BuildRungs {
             max_param_name_len: b.max_param_name_len.or(plat.max_param_name_len),
             max_string_value_len: b.max_string_value_len.or(plat.max_string_value_len),
             max_array_len: b.max_array_len.or(plat.max_array_len),
+            max_string_array_len: b.max_string_array_len.or(plat.max_string_array_len),
             max_byte_array_len: b.max_byte_array_len.or(plat.max_byte_array_len),
             max_param_description_len: b
                 .max_param_description_len
@@ -1124,6 +1125,11 @@ pub struct ParamKnobs {
     pub max_string_value_len: Option<usize>,
     #[serde(default)]
     pub max_array_len: Option<usize>,
+    /// Issue 2647 -- a `string_array`'s element count, apart from
+    /// `max_array_len` so a slot never pays the string x array product unless
+    /// a string array is declared.
+    #[serde(default)]
+    pub max_string_array_len: Option<usize>,
     #[serde(default)]
     pub max_byte_array_len: Option<usize>,
     /// phase-446 F2 -- a parameter DESCRIPTION's capacity. A board fact: the
@@ -1421,6 +1427,7 @@ pub const PARAM_KNOBS: &[&str] = &[
     "max_param_name_len",
     "max_string_value_len",
     "max_array_len",
+    "max_string_array_len",
     "max_byte_array_len",
     "max_param_description_len",
     "max_param_constraints_len",
@@ -2498,6 +2505,7 @@ impl PlatformsTree {
                 (&mut out.max_param_name_len, p.max_param_name_len),
                 (&mut out.max_string_value_len, p.max_string_value_len),
                 (&mut out.max_array_len, p.max_array_len),
+                (&mut out.max_string_array_len, p.max_string_array_len),
                 (&mut out.max_byte_array_len, p.max_byte_array_len),
                 (
                     &mut out.max_param_description_len,
@@ -2987,6 +2995,7 @@ impl PlatformsTree {
             "max_param_name_len" => k.max_param_name_len,
             "max_string_value_len" => k.max_string_value_len,
             "max_array_len" => k.max_array_len,
+            "max_string_array_len" => k.max_string_array_len,
             "max_byte_array_len" => k.max_byte_array_len,
             "max_param_description_len" => k.max_param_description_len,
             "max_param_constraints_len" => k.max_param_constraints_len,

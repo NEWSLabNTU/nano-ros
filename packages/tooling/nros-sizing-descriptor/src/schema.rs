@@ -1340,6 +1340,7 @@ pub struct Params {
     max_param_name_len: Option<usize>,
     needs_max_string_value_len: Option<CapacityNeed>,
     needs_max_array_len: Option<CapacityNeed>,
+    needs_max_string_array_len: Option<CapacityNeed>,
     needs_max_byte_array_len: Option<CapacityNeed>,
     service_shape: Option<String>,
     store: Option<ParamStore>,
@@ -1354,6 +1355,7 @@ impl Params {
         "max_param_name_len",
         "needs_max_string_value_len",
         "needs_max_array_len",
+        "needs_max_string_array_len",
         "needs_max_byte_array_len",
         "service_shape",
         "store",
@@ -1413,6 +1415,18 @@ impl Params {
         fact(
             &self.needs_max_array_len,
             "needs_max_array_len",
+            &self.refused,
+        )
+    }
+
+    /// Does any declared parameter need `MAX_STRING_ARRAY_LEN`
+    /// (`string_array`), and which one? Issue 2647: a string array's element
+    /// count is its own bound, so a `string` beside a `double_array` does not
+    /// size every slot for their product.
+    pub fn needs_max_string_array_len(&self) -> Fact<CapacityNeed> {
+        fact(
+            &self.needs_max_string_array_len,
+            "needs_max_string_array_len",
             &self.refused,
         )
     }
@@ -1496,6 +1510,10 @@ impl Params {
         self.needs_max_array_len = v;
         self
     }
+    pub fn set_needs_max_string_array_len(&mut self, v: Option<CapacityNeed>) -> &mut Self {
+        self.needs_max_string_array_len = v;
+        self
+    }
     pub fn set_needs_max_byte_array_len(&mut self, v: Option<CapacityNeed>) -> &mut Self {
         self.needs_max_byte_array_len = v;
         self
@@ -1532,6 +1550,9 @@ impl Params {
                 quoted(&self.needs_max_string_value_len.as_ref()?.token())
             }
             "needs_max_array_len" => quoted(&self.needs_max_array_len.as_ref()?.token()),
+            "needs_max_string_array_len" => {
+                quoted(&self.needs_max_string_array_len.as_ref()?.token())
+            }
             "needs_max_byte_array_len" => quoted(&self.needs_max_byte_array_len.as_ref()?.token()),
             "service_shape" => quoted(self.service_shape.as_ref()?),
             "store" => quoted(self.store?.tag()),
@@ -1553,6 +1574,10 @@ impl Params {
                     self.needs_max_string_value_len.is_some(),
                 ),
                 ("needs_max_array_len", self.needs_max_array_len.is_some()),
+                (
+                    "needs_max_string_array_len",
+                    self.needs_max_string_array_len.is_some(),
+                ),
                 (
                     "needs_max_byte_array_len",
                     self.needs_max_byte_array_len.is_some(),

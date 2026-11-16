@@ -22,7 +22,7 @@
 //! 1. `NROS_ENTITY_DECLARED_DEPTHS=<a,b,…>`, the per-endpoint depth table, when
 //!    the inventory resolved it and it is non-empty;
 //! 2. `NROS_SIZING_DESCRIPTOR=<path>`;
-//! 3. `NROS_DECLARED_MAX_{STRING_VALUE_LEN,ARRAY_LEN,BYTE_ARRAY_LEN}`, the
+//! 3. `NROS_DECLARED_MAX_{STRING_VALUE_LEN,ARRAY_LEN,STRING_ARRAY_LEN,BYTE_ARRAY_LEN}`, the
 //!    parameter store, when the contract declared `params:`. A REFUSED
 //!    declaration stops the build rather than size the store from defaults.
 
@@ -45,12 +45,16 @@ pub struct EntityFactsArgs {
 }
 
 /// The parameter-store rows: the cargo name each derived value travels as.
-const PARAM_ROWS: [(&str, &str); 3] = [
+const PARAM_ROWS: [(&str, &str); 4] = [
     (
         "NROS_DECLARED_MAX_STRING_VALUE_LEN",
         "NROS_DERIVED_MAX_STRING_VALUE_LEN",
     ),
     ("NROS_DECLARED_MAX_ARRAY_LEN", "NROS_DERIVED_MAX_ARRAY_LEN"),
+    (
+        "NROS_DECLARED_MAX_STRING_ARRAY_LEN",
+        "NROS_DERIVED_MAX_STRING_ARRAY_LEN",
+    ),
     (
         "NROS_DECLARED_MAX_BYTE_ARRAY_LEN",
         "NROS_DERIVED_MAX_BYTE_ARRAY_LEN",

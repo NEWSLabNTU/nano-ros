@@ -1736,7 +1736,14 @@ fn declaration_facts(inputs: &DescriptorInputs<'_>) -> Params {
             );
             p.refuse(
                 "needs_max_array_len",
-                consequent("whether any declared parameter is an array"),
+                consequent(
+                    "whether any declared parameter is a `bool_array`, `integer_array` or \
+                     `double_array`",
+                ),
+            );
+            p.refuse(
+                "needs_max_string_array_len",
+                consequent("whether any declared parameter is a `string_array`"),
             );
             p.refuse(
                 "needs_max_byte_array_len",
@@ -1763,6 +1770,7 @@ fn declaration_facts(inputs: &DescriptorInputs<'_>) -> Params {
                 .set_max_param_name_len(Some(z.max_param_name_len))
                 .set_needs_max_string_value_len(Some(capacity_need(&z.string_value_len)))
                 .set_needs_max_array_len(Some(capacity_need(&z.array_len)))
+                .set_needs_max_string_array_len(Some(capacity_need(&z.string_array_len)))
                 .set_needs_max_byte_array_len(Some(capacity_need(&z.byte_array_len)))
                 // The TOKEN, not a re-spelling. `nros-node/build.rs` parses
                 // exactly this grammar and `ParamServiceShape::token` is its
@@ -5355,6 +5363,10 @@ mod tests {
             Some(&CapacityNeed::Unused)
         );
         assert_eq!(
+            d.params.needs_max_string_array_len().stated(),
+            Some(&CapacityNeed::Unused)
+        );
+        assert_eq!(
             d.params.needs_max_byte_array_len().stated(),
             Some(&CapacityNeed::Unused)
         );
@@ -5441,6 +5453,10 @@ mod tests {
             (
                 "needs_max_array_len",
                 d.params.needs_max_array_len().refusal(),
+            ),
+            (
+                "needs_max_string_array_len",
+                d.params.needs_max_string_array_len().refusal(),
             ),
             (
                 "needs_max_byte_array_len",

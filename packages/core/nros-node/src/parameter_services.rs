@@ -585,7 +585,7 @@ fn read_parameter_value_into(
     /// The empty string array, as a constant operand (see above).
     const EMPTY_STRING_ARRAY: heapless::Vec<
         heapless::String<MAX_STRING_VALUE_LEN>,
-        { nros_params::MAX_ARRAY_LEN },
+        { nros_params::MAX_STRING_ARRAY_LEN },
     > = heapless::Vec::new();
 
     let type_ = reader.read_u8()?;
@@ -3384,6 +3384,7 @@ mod tests {
         ParamWireCaps {
             string: 0,
             array: 0,
+            string_array: 0,
             byte_array: 0,
             description,
             constraints,
@@ -4024,7 +4025,7 @@ mod tests {
         let mut int = wire_value_of(2);
         int.integer_value = 7;
         let mut strings = wire_value_of(9);
-        for _ in 0..nros_params::MAX_ARRAY_LEN.min(64) {
+        for _ in 0..nros_params::MAX_STRING_ARRAY_LEN.min(64) {
             strings
                 .string_array_value
                 .push(wire_string("abc"))
@@ -4087,7 +4088,7 @@ mod tests {
                 InternalValue::StringArray(a) => Some(a.len()),
                 _ => None,
             }),
-            Some(nros_params::MAX_ARRAY_LEN.min(64)),
+            Some(nros_params::MAX_STRING_ARRAY_LEN.min(64)),
             "the string array landed"
         );
         used

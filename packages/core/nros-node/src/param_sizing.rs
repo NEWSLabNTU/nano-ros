@@ -209,6 +209,8 @@ pub(crate) const SHAPE_STRING_ARRAYS: usize = 8;
 pub(crate) struct ParamWireCaps {
     pub(crate) string: usize,
     pub(crate) array: usize,
+    /// Issue 2647 -- a `string_array`'s element count, its own bound.
+    pub(crate) string_array: usize,
     pub(crate) byte_array: usize,
     pub(crate) description: usize,
     /// phase-417 W4.a -- `additional_constraints`' own capacity. Default 0, so
@@ -227,6 +229,7 @@ impl ParamWireCaps {
     pub(crate) const THIS_BUILD: Self = Self {
         string: min_usize(MAX_STRING_VALUE_LEN, WIRE_STRING_CAP),
         array: min_usize(nros_params::MAX_ARRAY_LEN, WIRE_SEQ_CAP),
+        string_array: min_usize(nros_params::MAX_STRING_ARRAY_LEN, WIRE_SEQ_CAP),
         byte_array: min_usize(nros_params::MAX_BYTE_ARRAY_LEN, WIRE_SEQ_CAP),
         description: nros_params::MAX_PARAM_DESCRIPTION_LEN,
         // Clamped like the value strings: a board may state more than a wire
@@ -466,7 +469,7 @@ const fn node_bound(s: &[usize; 9], c: ParamWireCaps) -> ParamServiceBound {
         + s[SHAPE_BYTE_ARRAYS] * c.byte_array
         + s[SHAPE_BOOL_ARRAYS] * c.array
         + s[SHAPE_WORD_ARRAYS] * (7 + 8 * c.array)
-        + s[SHAPE_STRING_ARRAYS] * c.array * (CDR_STR + c.string);
+        + s[SHAPE_STRING_ARRAYS] * c.string_array * (CDR_STR + c.string);
     // The header, then the outer sequence's length.
     let head = CDR_HEADER + CDR_SEQ;
     let set_reply = head + n * (1 + CDR_STR + LONGEST_SET_REASON);

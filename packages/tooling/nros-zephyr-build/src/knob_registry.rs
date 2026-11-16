@@ -450,6 +450,18 @@ pub const KNOBS: &[KnobRow] = &[
         retired: None,
     },
     KnobRow {
+        id: "MAX_STRING_ARRAY_LEN",
+        env: "NROS_MAX_STRING_ARRAY_LEN",
+        legacy: &[],
+        kconfig: "CONFIG_NROS_MAX_STRING_ARRAY_LEN",
+        toml: Some("params.max_string_array_len"),
+        image_key: "params.max_string_array_len",
+        ty: Some("int"),
+        range: None,
+        names: &[],
+        retired: None,
+    },
+    KnobRow {
         id: "MAX_STRING_VALUE_LEN",
         env: "NROS_MAX_STRING_VALUE_LEN",
         legacy: &[],
@@ -1527,6 +1539,13 @@ pub const KCONFIG_KNOBS: &[crate::KconfigKnob] = &[
     crate::KconfigKnob {
         symbol: "NROS_MAX_PARAM_NAME_LEN",
         id: "MAX_PARAM_NAME_LEN",
+        ty: "int",
+        kconfig_if: None,
+        depends: &[],
+    },
+    crate::KconfigKnob {
+        symbol: "NROS_MAX_STRING_ARRAY_LEN",
+        id: "MAX_STRING_ARRAY_LEN",
         ty: "int",
         kconfig_if: None,
         depends: &[],
