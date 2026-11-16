@@ -1,7 +1,7 @@
 # Phase 565 — a lane's claims are the one provisioning list
 
-**Status (2026-11-16). OPEN: W1, W2, W4 and W5 are done; W3 and W6 are open.** Implements
-[RFC-0131](../design/0131-gates-are-nextest-tests.md), and closes its one open
+**Status (2026-11-17). DONE: W1–W6 are done.** Implements
+[RFC-0131](../../design/0131-gates-are-nextest-tests.md), and closes its one open
 question. Assigned to nros 118 by the nros 241 manager on 2026-11-15, which
 relayed the user's approval of RFC-0131 and asked for phase docs that implement
 what is still open in it.
@@ -105,7 +105,19 @@ Acceptance:
 
 ### W3 — provisioning never re-stales what it provisioned
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-16)
+
+Done by W2, measured. `[provision] order` provisions `submodules` (which checks
+out `play_launch`, a CLI build input) before `cli`, and `claim_cli` runs
+`setup-cli`, which asks `source-stamp` first. On a fresh `git worktree add`:
+- the first `just setup-worktree` took 2 min 32 s and left `check cli-fresh`
+  OK;
+- a second took 13 s and built nothing (every store source "already present
+  (skip)", no compile).
+
+The "`setup-cli` before AND after" comment went with the old `setup-worktree`
+body that W2 replaced: `git grep -i 'before AND after'` finds no
+provisioning code.
 
 The order is part of the claim table, not of a recipe's comment. A submodule
 that is a CLI build input (`play_launch`, issue 0561) is provisioned before the
