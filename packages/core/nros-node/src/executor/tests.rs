@@ -14653,11 +14653,27 @@ fn a_full_store_reports_the_refusal_and_names_its_knob() {
         !executor.declare_parameter_on(node, name, ParameterValue::Integer(7)),
         "a store of {slots} slots ({seeded} seeded) holds no third parameter"
     );
-    assert!(
-        executor.report_parameter_refused(node, name),
-        "the refusal is reported as a FULL store"
+    // Delivery is not synchronous in this binary: a record raised while a
+    // sibling test's thread holds the dispatch guard is parked and delivered by
+    // that thread, or lost to the bounded hold queue under load (issue 2000).
+    // Reading SEEN right after the call failed 2 runs in 6. Wait for all three
+    // records, re-raising on a counted loss; the report is safe to repeat.
+    let reported = core::cell::Cell::new(true);
+    let delivered = emit_until_delivered(
+        || reported.set(reported.get() & executor.report_parameter_refused(node, name)),
+        || {
+            let s = SEEN.lock().unwrap();
+            s.iter().any(|m| m.contains("parameter store is full"))
+                && s.iter().any(|m| m == nros_params::STORE_SIZE_KNOB)
+                && s.iter().any(|m| m == nros_params::STORE_SIZE_DERIVED)
+        },
     );
+    assert!(reported.get(), "the refusal is reported as a FULL store");
     let seen = SEEN.lock().unwrap().clone();
+    assert!(
+        delivered,
+        "the FULL line and both knob lines reach the sink; saw {seen:?}"
+    );
     let first = seen
         .iter()
         .find(|m| m.contains("parameter store is full"))
