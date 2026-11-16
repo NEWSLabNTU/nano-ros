@@ -89,7 +89,10 @@ published. Against what it built, each run then:
   published release (`PROBE_CANDIDATE_ASSET` / `PROBE_CANDIDATE_VERSION`, its
   own knob, never the lanes' `PROBE_ASSET`): that asset installed, then a
   project pinned to the previous release built under its pin;
-- runs `just check island-shaped-workspace`, W4's release leg, once W4 lands.
+- runs `just check island-shaped-workspace`, W4's release leg, in its own
+  job (`island-shaped-workspace`: the merge queue's `check-workspace-all`
+  setup, the FreeRTOS toolchain and sources), which `build` needs, so
+  `Publish the release` waits for it.
 
 `pinned` is not rehearsed: it expects the front to be the project's pin,
 and the asset under test sorts above the pin, so before publishing it would
@@ -101,7 +104,9 @@ GitHub release (`Publish the release`) are left for publish.
 or `inputs.push` must be one of those, and a job gated on publish (the
 pre-W3 shape, which let 0.6.0-nros11's image fail only after it published),
 a step gated elsewhere, or a `run:` that branches on it is refused, with
-five negative controls run first.
+five negative controls run first. It also refuses a release workflow
+where no job runs `just check island-shaped-workspace` or `build` does not
+need that job, with two more negative controls.
 
 Acceptance: the nros11 failure (a book block the image reader could not
 join) reproduced on a dry run fails there; each built image passes
@@ -128,9 +133,11 @@ workflow and passes the built one; W4's check runs in the dry run.
   FreeRTOS board build carries raised pools too, but no delivery check reads
   the CMake road, so issue 2618 is Zephyr-only: queue on the snapshot, daily
   on Zephyr.
-- **Release dry run: not covered here.** `release-nros.yml` does not run
-  `check-workspace-all` (its only reused workflow is `starter-image.yml`), so
-  this leg rides on W3, whose dry run rehearses the publish.
+- **Release dry run: covered by W3.** `release-nros.yml` does not run
+  `check-workspace-all`, so W3 added the `island-shaped-workspace` job, which
+  runs `just check island-shaped-workspace` on every run, dry runs included,
+  and which `build` (holding `Publish the release`) needs.
+  `just check release-rehearsal` refuses the workflow without it.
 - **Acceptance, measured locally** (the PR body has the output): reverting
   a002a58779's `model_gate.rs` hunk turns `just check island-shaped-workspace`
   red; reverting 2cde3951f2's `scripts/check-knob-delivery.py` turns it red;

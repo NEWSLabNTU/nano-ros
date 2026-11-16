@@ -185,9 +185,54 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/release/release-lanes-green.py --repo "$GITHUB_REPOSITORY" --shas-from "$RUNNER_TEMP/measure.txt"
 
+  # phase-567 W3 runs W4's release leg: the island-shaped workspace (a census
+  # and a FreeRTOS board build of a workspace laid out like the safety
+  # island), on every run, dry runs included. `build` holds `Publish the
+  # release` and needs this job, so a layout the island hit stops the release
+  # before anything is published. Its own job, not a `build` step: `build` has
+  # no cross toolchain and a 20 min budget, and this is the merge queue's
+  # `check-workspace-all` setup (gate.yml): the CI image, the in-tree CLI with
+  # its launch resolver, the FreeRTOS toolchain and sources.
+  # `just check release-rehearsal` refuses a release workflow without it.
+  island-shaped-workspace:
+    name: the island-shaped workspace builds (phase-567 W4)
+    needs: lanes
+    runs-on: ubuntu-22.04
+    # Not yet measured in this workflow; the merge queue's job that runs it
+    # (with the clippy halves) has 55 min.
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the in-tree nros CLI
+        uses: ./.github/actions/setup-nros-cli
+      - name: Provision Corrosion (pinned by [tool.corrosion])
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+      - name: Provision the FreeRTOS toolchain + sources
+        run: |
+          source ./activate.sh
+          nros setup --tool arm-none-eabi-gcc
+          nros setup --source freertos-kernel --source lwip
+      - name: just check island-shaped-workspace
+        run: |
+          source ./activate.sh
+          just check island-shaped-workspace
+
   build:
     name: build + verify nros-linux-x86_64
-    needs: lanes
+    needs: [lanes, island-shaped-workspace]
     # 22.04, not `latest`: the binary links the runner's glibc, and a newer one
     # will not run on the LTS the book's install instructions target. The floor
     # is a property of the release, so it is pinned rather than inherited.
