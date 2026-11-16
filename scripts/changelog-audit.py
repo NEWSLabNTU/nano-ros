@@ -24,6 +24,14 @@ request check (option (a)); until then a row is a question, not an error.
   GROUPED   by pull request, from GitHub's commit -> PR association (`gh`), so
             a PR's later commit that adds the fragment covers its earlier ones.
             With no `gh` (or a lookup that fails) each commit is its own row.
+            ONE GraphQL call per 100 commits (`associatedPullRequests`, aliased),
+            not one REST call per commit: the API quota is shared by every
+            session on the host, and a release range is ~300 commits.
+  DOCS-ONLY a group whose every path `scripts/ci/gate-tier.py` calls
+            documentation (its `tier()` is `docs`: book/, book-internals/, any
+            `.md` no Rust source reads) is SKIPPED, and counted in the report
+            rather than dropped (user ruling 2026-11-16). One predicate, the
+            gate's; this script does not keep a second.
 
   changelog-audit.py                    since the newest `nros-*` tag reachable from HEAD
   changelog-audit.py --since <ref> [--until <ref>]
@@ -35,6 +43,7 @@ request check (option (a)); until then a row is a question, not an error.
 Every invocation runs the self-test first; a report from a selector whose
 cases fail is not printed (a note says so), and the exit status is still 0.
 """
+import importlib.util
 import json
 import os
 import re
@@ -56,6 +65,23 @@ BOOK_NAV = ("book/src/SUMMARY.md", "book/page-map.toml", "book/src/migrating/fro
 FRAGMENTS = "changelog.d/"
 TRAILER = re.compile(r"^Changelog:\s*none\s*$", re.I | re.M)
 TAG_GLOB = "nros-*"
+GQL_BATCH = 100
+
+
+def _gate_tier():
+    spec = importlib.util.spec_from_file_location(
+        "gate_tier", Path(__file__).resolve().parent / "ci" / "gate-tier.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+GATE_TIER = _gate_tier()
+
+
+def docs_only(paths, included):
+    """gate-tier's docs predicate, verbatim: every path is documentation."""
+    return GATE_TIER.tier(paths, included)[0] == "docs"
 
 
 def shipped(path):
@@ -102,22 +128,49 @@ def pr_lookup(shas, use_gh):
         repo = p.stdout.strip()
     if not repo:
         return {}
+    owner, _, name = repo.partition("/")
     found = {}
-    for sha in shas:
-        p = subprocess.run(["gh", "api", f"repos/{repo}/commits/{sha}/pulls",
-                            "--jq", "[.[] | select(.merged_at != null) | [.number, .title]] | first"],
+    for batch in chunks(shas, GQL_BATCH):
+        p = subprocess.run(["gh", "api", "graphql", "-f", f"query={graphql_query(owner, name, batch)}"],
                            capture_output=True, text=True)
+        if p.returncode != 0:
+            continue  # those commits stay their own rows; a report, not a failure
         try:
-            v = json.loads(p.stdout or "null")
-        except json.JSONDecodeError:
-            v = None
-        if p.returncode == 0 and v:
-            found[sha] = (v[0], v[1])
+            found.update(parse_graphql(json.loads(p.stdout), batch))
+        except (json.JSONDecodeError, AttributeError, TypeError):
+            pass
     return found
 
 
-def audit(cwd, since, until, use_gh):
-    """Rows (label, title, [shipped paths]) for uncovered groups."""
+def chunks(xs, n):
+    return [xs[i:i + n] for i in range(0, len(xs), n)]
+
+
+def graphql_query(owner, name, shas):
+    """One query for a batch: alias `c<i>` per commit."""
+    body = " ".join(
+        f'c{i}: object(oid: "{sha}") {{ ... on Commit {{ associatedPullRequests(first: 5) '
+        f'{{ nodes {{ number title merged }} }} }} }}' for i, sha in enumerate(shas))
+    return f'query {{ repository(owner: "{owner}", name: "{name}") {{ {body} }} }}'
+
+
+def parse_graphql(resp, shas):
+    """{sha: (number, title)} for each alias with a MERGED pull request."""
+    repo = ((resp or {}).get("data") or {}).get("repository") or {}
+    out = {}
+    for i, sha in enumerate(shas):
+        nodes = (((repo.get(f"c{i}") or {}).get("associatedPullRequests") or {}).get("nodes")) or []
+        merged = [n for n in nodes if n and n.get("merged")]
+        if merged:
+            out[sha] = (merged[0]["number"], merged[0]["title"])
+    return out
+
+
+def audit(cwd, since, until, use_gh, included=None):
+    """Rows (label, title, [shipped paths]) for uncovered groups, and how many
+    otherwise-flagged groups were skipped as docs-only."""
+    if included is None:
+        included = GATE_TIER.included_markdown()
     cs = commits(cwd, since, until)
     prs = pr_lookup([c[0] for c in cs], use_gh)
     groups = {}
@@ -128,25 +181,30 @@ def audit(cwd, since, until, use_gh):
         g["paths"] += [p for p in paths if p not in g["paths"]]
         if any(p.startswith(FRAGMENTS) for p in paths) or TRAILER.search(msg):
             g["covered"] = True
-    rows = []
+    rows, skipped = [], 0
     for (kind, ident), g in groups.items():
         ship = [p for p in g["paths"] if shipped(p)]
         if ship and not g["covered"]:
+            if docs_only(g["paths"], included):
+                skipped += 1
+                continue
             rows.append((f"#{ident}" if kind == "pr" else ident[:10], g["title"], ship))
-    return rows, len(cs), len(groups), bool(prs)
+    return rows, skipped, len(cs), len(groups), bool(prs)
 
 
-def render(rows, since, until, n_commits, n_groups, by_pr):
+def render(rows, skipped, since, until, n_commits, n_groups, by_pr):
     unit = "pull request(s)" if by_pr else "commit(s), no PR lookup"
     head = (f"changelog-audit: {len(rows)} of {n_groups} {unit} merged in {since}..{until} "
             f"({n_commits} commits) touch shipped paths with no changelog.d fragment "
-            "and no `Changelog: none` trailer (report only, issue 2612)")
+            "and no `Changelog: none` trailer (report only, issue 2612); "
+            f"{skipped} more skipped as docs-only (gate-tier's docs predicate)")
     lines = [head]
     for label, title, paths in rows:
         shown = ", ".join(paths[:6]) + (f", … (+{len(paths) - 6})" if len(paths) > 6 else "")
         lines.append(f"  {label}  {title}\n      {shown}")
     md = [f"### Changes with no changelog entry ({since}..{until})", "",
-          f"Report only (issue 2612): {len(rows)} of {n_groups} {unit}. "
+          f"Report only (issue 2612): {len(rows)} of {n_groups} {unit}; "
+          f"{skipped} more skipped as docs-only. "
           "Each row should be in the release's notes page or carry `Changelog: none`.", ""]
     if rows:
         md += ["| change | title | shipped paths |", "| --- | --- | --- |"]
@@ -197,9 +255,12 @@ def self_test():
             s = commit(["scripts/x.sh", ".github/workflows/w.yml"]); want[s] = False  # not shipped
             s = commit(["book/src/SUMMARY.md", "book/page-map.toml",
                         "book/src/migrating/releases/0.1.0-c.md"]); want[s] = False  # a notes page + nav
-            s = commit(["book/src/SUMMARY.md", "book/src/guide/new.md"]); want[s] = True  # a new page is content
+            s = commit(["book/src/SUMMARY.md", "book/src/guide/new.md"]); want[s] = False  # docs-only: skipped
             s = commit(["cmake/a.cmake"]); want[s] = True
-            s = commit(["book/src/guide/g.md"]); want[s] = True
+            s = commit(["book/src/guide/g.md"]); want[s] = False                     # docs-only: skipped
+            s = commit(["book/src/guide/h.md", "packages/core/h.rs"]); want[s] = True  # book + code: flagged
+            s = commit(["book/src/guide/read-by-rust.md"]); want[s] = True         # a Rust source reads it
+            s = commit(["book/src/guide/i.md", "docs/issues/x.md", "README.md"]); want[s] = False  # docs-only
             s = commit(["packages/testing/u.rs", "packages/core/d.rs"]); want[s] = True  # mixed: shipped half counts
             # one PR, two commits, fragment in the later one -> covered
             p1 = commit(["packages/core/e.rs"]); p2 = commit(["changelog.d/+e.fix.md"])
@@ -211,7 +272,10 @@ def self_test():
             tag = last_tag(str(r), "HEAD")
             if tag != "nros-0.1.0-b":
                 fails.append(f"last tag: want nros-0.1.0-b, got {tag}")
-            rows, _, _, _ = audit(str(r), tag, "HEAD", use_gh=False)
+            rows, skipped, _, _, _ = audit(str(r), tag, "HEAD", use_gh=False,
+                                           included={"book/src/guide/read-by-rust.md"})
+            if skipped != 3:
+                fails.append(f"docs-only skipped count: want 3, got {skipped}")
             got = {lab for lab, _, _ in rows}
             for sha, flagged in want.items():
                 if (sha[:10] in got) != flagged:
@@ -227,9 +291,24 @@ def self_test():
                 fails.append("a row lists a non-shipped path")
             if any("old.rs" in p or "before-second-tag" in p for x in rows for p in x[2]):
                 fails.append("a commit from before the last tag was reported")
-            text, md = render(rows, tag, "HEAD", 1, 1, True)
+            text, md = render(rows, skipped, tag, "HEAD", 1, 1, True)
             if "#102" not in text or "| #102 |" not in md:
                 fails.append("the report does not name a flagged PR")
+            if "3 more skipped as docs-only" not in text or "3 more skipped as docs-only" not in md:
+                fails.append("the report does not state the docs-only skipped count")
+            # The batched lookup: one query per GQL_BATCH commits, aliases map back.
+            many = [f"{i:040x}" for i in range(GQL_BATCH * 2 + 1)]
+            if [len(b) for b in chunks(many, GQL_BATCH)] != [GQL_BATCH, GQL_BATCH, 1]:
+                fails.append("batching: 201 commits do not split 100/100/1")
+            qry = graphql_query("o", "n", many[:3])
+            if qry.count("object(oid:") != 3 or 'c2: object(oid: "' + many[2] not in qry:
+                fails.append("graphql query does not alias each commit")
+            resp = {"data": {"repository": {
+                "c0": {"associatedPullRequests": {"nodes": [{"number": 7, "title": "t7", "merged": True}]}},
+                "c1": {"associatedPullRequests": {"nodes": [{"number": 8, "title": "open", "merged": False}]}},
+                "c2": None}}}
+            if parse_graphql(resp, many[:3]) != {many[0]: (7, "t7")}:
+                fails.append("graphql parse: want only the merged PR of c0")
     finally:
         os.environ.clear()
         os.environ.update(saved)
@@ -237,7 +316,7 @@ def self_test():
         print(f"changelog-audit self-test FAIL: {f}", file=sys.stderr)
     if fails:
         return 1
-    print("changelog-audit self-test: OK (tag choice, fragment, trailer, exclusions, book navigation, PR grouping)")
+    print("changelog-audit self-test: OK (tag choice, fragment, trailer, exclusions, book navigation, docs-only skip, PR grouping, batched lookup)")
     return 0
 
 
@@ -268,11 +347,11 @@ def main(argv):
         if not since:
             print(f"changelog-audit: no `{TAG_GLOB}` tag is reachable from {until}; nothing to compare")
             return 0
-        rows, nc, ng, by_pr = audit(cwd, since, until, use_gh="--no-gh" not in argv)
+        rows, skipped, nc, ng, by_pr = audit(cwd, since, until, use_gh="--no-gh" not in argv)
     except (RuntimeError, OSError) as e:
         print(f"changelog-audit: could not audit ({e}); report only, so this is not a failure")
         return 0
-    text, md = render(rows, since, until, nc, ng, by_pr)
+    text, md = render(rows, skipped, since, until, nc, ng, by_pr)
     print(text)
     if "--summary" in argv:
         try:
