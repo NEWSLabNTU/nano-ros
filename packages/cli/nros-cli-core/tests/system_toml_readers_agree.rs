@@ -345,7 +345,10 @@ fn both_readers_build_every_image_with_the_same_node_interfaces() {
     let rows = effective_both(&synthetic[1], Path::new("s")).unwrap();
     let get = |id: &str| rows.iter().find(|r| r.0 == id).unwrap().1.clone();
     // `[system]` states no switch, so it gets the stock set (the default).
-    assert_eq!(get("<system>"), vec!["lifecycle", "param_services", "rosout"]);
+    assert_eq!(
+        get("<system>"),
+        vec!["lifecycle", "param_services", "rosout"]
+    );
     assert_eq!(get("a"), vec!["lifecycle"]);
     assert_eq!(
         get("b"),

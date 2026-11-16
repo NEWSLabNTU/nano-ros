@@ -15,7 +15,8 @@
 #   3. ADD ROW       declare it. The check passes.
 #   4. TOUCH ONLY    rewrite a source file with identical bytes. NOTHING is
 #                    stale.
-#  4c. CAPABILITIES  turn on `param_services` in `system.toml`: STALE, because
+#  4c. CAPABILITIES  drop the `node_interfaces = "none"` opt-out and declare
+#                    `param_services` in `system.toml`: STALE, because
 #                    the axes decide what the census binary is built with
 #                    (issue 1680); restore them and it is fresh with no re-run.
 #
@@ -178,11 +179,15 @@ XML
 # `refuse` on both keys, because this gate is asserting that the refusal
 # HAPPENS. It is also the shipped default since issue 1419; move 5 checks the
 # default and the `warn` opt-out separately so both arms are exercised.
+# `node_interfaces = "none"`: the census is taken WITHOUT the stock
+# parameter services every image gets by default, so move 4c has an axis
+# to turn on.
 cat > "$bringup/system.toml" <<'TOML'
 [system]
 name = "census_fixture"
 rmw = "zenoh"
 domain_id = 0
+node_interfaces = "none"
 
 [census]
 on_missing = "refuse"

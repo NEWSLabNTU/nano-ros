@@ -145,7 +145,8 @@ fi
 # script mode with the two inputs it reads from that configure:
 # APPLICATION_SOURCE_DIR and the resolved CLI.
 #
-#   D. NROS_FEATURES unset -> it becomes the image's declared axes.
+#   D. NROS_FEATURES unset -> it becomes the image's axes: the declared ones
+#      plus the stock default's `rosout`.
 #   E. set, missing a declared axis -> refused, naming the axis and 1261.
 #   F. set to a superset -> left alone.
 #   G. an application in no workspace -> left undefined (the standalone app).
@@ -179,8 +180,10 @@ probe() {
         "$@" -P "$TEST_TMPDIR/probe.cmake") >"$log" 2>&1 || RC=$?
 }
 
+# The declared `param_services` and `lifecycle`, plus the `rosout` writer of
+# the stock node interfaces every image gets by default.
 probe "$W/src/zephyr_entry" "$TEST_TMPDIR/d.log"
-if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle\]' "$TEST_TMPDIR/d.log"; then
+if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle;rosout\]' "$TEST_TMPDIR/d.log"; then
     fail "D: an unset NROS_FEATURES did not become the image's axes (rc=$RC)"
     tail -15 "$TEST_TMPDIR/d.log" >&2
     # Issue 2180: the macro's empty answer has three causes and it reported
@@ -224,7 +227,7 @@ mkdir -p "$TEST_TMPDIR/bare-rustup"
 printf '%s\n' '#!/bin/sh' 'exit 0' > "$TEST_TMPDIR/bare-rustup/rustup"
 chmod +x "$TEST_TMPDIR/bare-rustup/rustup"
 PATH="$TEST_TMPDIR/bare-rustup:$PATH" probe "$W/src/zephyr_entry" "$TEST_TMPDIR/h.log"
-if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle\]' "$TEST_TMPDIR/h.log"; then
+if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle;rosout\]' "$TEST_TMPDIR/h.log"; then
     fail "H: a toolchain missing the image's Rust target emptied the query (rc=$RC, issue 2180)"
     tail -15 "$TEST_TMPDIR/h.log" >&2
 fi
