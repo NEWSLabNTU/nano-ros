@@ -649,6 +649,7 @@ mod tests {
                 "mps2-an385-zephyr",
                 "qemu-cortex-a53",
                 "fvp-aemv8r-smp",
+                "s32z270-rtu0-zephyr",
                 "nucleo-f767zi-zephyr",
                 "rpi-pico-w-zephyr",
                 "rtic-mps2-an385",
