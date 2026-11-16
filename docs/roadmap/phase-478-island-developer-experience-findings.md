@@ -626,6 +626,14 @@ nothing, so the island's controller listed 64 of its 149 parameters, and
 answer every name; without a `params:` declaration the service buffers are
 sized for a full store, and the prefix and depth filters follow rclcpp.
 
+### I23 -- board-facts resolves a workspace board as `nros build` does
+
+**Status: DONE (2026-11-16).** [Issue 2637](../issues/archived/2637-board-facts-misses-workspace-boards.md).
+`nros dev image board-facts` loaded the checkout's board catalog alone, so a
+board package the workspace carries resolved for `nros build` and failed in
+the west configure it spawns; the island exported `NROS_EXTRA_BOARD_PATH` to
+get past it. Every verb now asks one lookup, `cmd::board::catalog_for_dir`.
+
 ## Test / check
 
 ### T1 -- issue status sweep
