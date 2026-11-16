@@ -124,8 +124,47 @@ env:
   NROS_PROBE_FAILURE: refuse
 
 jobs:
+  # phase-567 W1: a release cuts only from a commit the nightly, tier 1 and
+  # tier 2 passed, or a docs-only descendant of one (gate-tier.py's own docs
+  # predicate). FIRST, and on a dry run too, so the rehearsal refuses exactly
+  # what a publish would. Full history: proving "an ancestor with only docs
+  # since" needs the path between the two commits, not their endpoints.
+  # The refusal names the lane, the run it read and why it did not count.
+  lanes:
+    name: the slow lanes passed this commit, and the branch is frozen
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # phase-567 W2 (user ruling 2026-11-16): `release/<ver>` may be re-cut
+      # from main while `nros-<ver>` does not exist; once the tag exists the
+      # name is burned and the branch is frozen at it. Either way, anything on
+      # top of the cut is a `git cherry-pick -x` of a main commit. The refusal
+      # names the tag and the commits that are not cherry-picks. A non-release
+      # ref passes.
+      - name: Refuse a release branch re-cut after its version published
+        env:
+          BRANCH: ${{ github.ref_name }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          python3 scripts/release/release-branch-frozen.py --branch "$BRANCH" \
+            --version "$VERSION" --measure-out "$RUNNER_TEMP/measure.txt"
+      # W1 measures the commits W2 named: the first cut and each cherry-pick's
+      # source on main (the lanes never run on a release branch). Off a
+      # release branch, the commit itself.
+      - name: Refuse a commit the nightly, tier 1 or tier 2 did not pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release/release-lanes-green.py --repo "$GITHUB_REPOSITORY" --shas-from "$RUNNER_TEMP/measure.txt"
+
   build:
     name: build + verify nros-linux-x86_64
+    needs: lanes
     # 22.04, not `latest`: the binary links the runner's glibc, and a newer one
     # will not run on the LTS the book's install instructions target. The floor
     # is a property of the release, so it is pinned rather than inherited.
