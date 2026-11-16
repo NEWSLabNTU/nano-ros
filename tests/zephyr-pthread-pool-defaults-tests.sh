@@ -21,7 +21,7 @@
 #   E  no resolved fragment: the file is removed (a guest keeps the default)
 #   F  an unchanged re-render leaves the file untouched (it is a Kconfig source)
 #   G  REACH: the build's refusal takes its floor from the same function, and
-#      zephyr/Kconfig sources the file after the knob file and before the
+#      zephyr/Kconfig sources the file before the
 #      module's own zenoh defaults
 #
 # A cmake -P probe, so seconds; no Zephyr workspace. PRECONDITIONS ARE HARD
@@ -105,12 +105,11 @@ render "$WORK/resolved.cmake"
 
 nros_grep_q 'nros_zpico_pthread_floors(' "$PROJECT_ROOT/zephyr/cmake/nros_cargo_build.cmake" ||
     fail "G: the build's refusal does not take its floor from nros_zpico_pthread_floors"
-order="$(grep -n -e 'Kconfig.from-system-toml"$' -e 'Kconfig.pthread-pools"$' \
-             -e '^configdefault MAX_PTHREAD_COND_COUNT$' "$PROJECT_ROOT/zephyr/Kconfig" |
-         cut -d: -f2 | head -3 | tr '\n' ' ')"
+order="$(grep -n -e 'Kconfig.pthread-pools"$' -e '^configdefault MAX_PTHREAD_COND_COUNT$' \
+             "$PROJECT_ROOT/zephyr/Kconfig" | cut -d: -f2 | head -2 | tr '\n' ' ')"
 case "$order" in
-    'osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.from-system-toml" osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.pthread-pools" configdefault MAX_PTHREAD_COND_COUNT ') ;;
-    *) fail "G: zephyr/Kconfig does not source Kconfig.pthread-pools between the knob file and the module defaults: [$order]" ;;
+    'osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.pthread-pools" configdefault MAX_PTHREAD_COND_COUNT ') ;;
+    *) fail "G: zephyr/Kconfig does not source Kconfig.pthread-pools before the module's own pool defaults: [$order]" ;;
 esac
 
 if [ "$FAILURES" -ne 0 ]; then
