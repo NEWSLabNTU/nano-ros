@@ -52,6 +52,24 @@ function(_nros_stack_floor_enabled _out)
     endif()
 endfunction()
 
+# The walk types the image's C call sites from clang IR, which it builds from
+# `compile_commands.json` (`--compile-commands`, issue 2516). Zephyr always
+# writes that file; a plain cmake project writes it only when asked, and the
+# walker skips a missing one, so every C call site of a FreeRTOS, NuttX or
+# ThreadX image stayed bound to every function C can hold and the walk did not
+# fit the stack the image sets. Asked for here only when nobody stated it:
+# `project()` itself creates the cache entry EMPTY (from the environment
+# variable of the same name), so a plain `set(... CACHE)` never wins, and an
+# empty value is the "unstated" one. A project or `-D` that says ON or OFF keeps
+# its choice. A cache value reaches every directory, including the leaf's own
+# above `nano_ros`.
+_nros_stack_floor_enabled(_nros_sf_on)
+if(_nros_sf_on AND "${CMAKE_EXPORT_COMPILE_COMMANDS}" STREQUAL "")
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL
+        "Write compile_commands.json; the stack-floor walk reads it (NROS_STACK_FLOOR)" FORCE)
+endif()
+unset(_nros_sf_on)
+
 # The image key (issue 2400, key (c), ruled 2026-11-12): the image's own
 # `[image.<id>] stack_floor_image` when it states one -- `nros new` writes the
 # template's `<template>/<lang>/<rmw>@<board>` there, so a renamed project keeps
