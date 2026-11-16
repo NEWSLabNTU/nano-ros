@@ -210,7 +210,7 @@ the user ruled; all five stand:
   and `matrix-nightly` runs once a day. W5b: the measurement is recorded
   here; if tier 1 moves, a host witness row's daily binding names the nightly
   per-board shard and `check-cadence-jobs` passes.
-- **Status:** DONE — W5a (#3727, 2026-11-13); W5b, the move, in the PR
+- **Status:** DONE (W5a #3727 2026-11-13, W5b 2026-11-16) — W5b, the move, in the PR
   that records the ninth measurement below (2026-11-16). Tier 1's
   threadx_linux and zephyr slices run daily on hosted shards: `nightly.yml`'s
   `tier1-hosted` job calls `merge-runtime.yml` (`workflow_call`, `lane:
