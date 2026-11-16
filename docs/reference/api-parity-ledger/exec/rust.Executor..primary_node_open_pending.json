@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::primary_node_open_pending",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "whether an executor-level open handed to `open_on_primary_node` is still waiting for the image's primary node to register. The contract reporter's installer reads it so a second arm does not queue a second open. No upstream counterpart: rclcpp has no entity the runtime creates before the user's first node."
+}
