@@ -479,7 +479,7 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
 /// `DEPLOY nuttx`, linked through `nano_ros_node_register`'s carrier arm.
 pub fn build_nuttx_c_typed_carrier() -> TestResult<&'static Path> {
     NUTTX_C_TYPED_CARRIER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "typed-carrier", "c_typed_carrier"))
+        .get_or_try_init(|| build_cmake_example("c", "typed-carrier", "nuttx_c_typed_carrier"))
         .map(|p| p.as_path())
 }
 
