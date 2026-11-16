@@ -54,8 +54,11 @@ fn freertos_bridge_pair_delivers_over_the_host_bridge() {
         .unwrap_or_else(|e| nros_tests::unmet!("robot1 fixture: {e}"));
     let (listener_bin, listener_net) = freertos_bridge_pair_image("robot2")
         .unwrap_or_else(|e| nros_tests::unmet!("robot2 fixture: {e}"));
-    let talker_nic = image_nic(&talker_net, "lan9118").expect("robot1's -nic");
-    let listener_nic = image_nic(&listener_net, "lan9118").expect("robot2's -nic");
+    let model = nros_tests::qemu::MPS2_AN385
+        .nic_model()
+        .expect("the MPS2-AN385 descriptor's NIC model");
+    let talker_nic = image_nic(&talker_net, &model).expect("robot1's -nic");
+    let listener_nic = image_nic(&listener_net, &model).expect("robot2's -nic");
     assert!(
         talker_nic.starts_with(&format!("bridge,br={BRIDGE},"))
             && listener_nic.starts_with(&format!("bridge,br={BRIDGE},")),
