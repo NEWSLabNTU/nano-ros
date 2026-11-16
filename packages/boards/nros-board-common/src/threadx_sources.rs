@@ -1,4 +1,4 @@
-//! Phase 152.2.B — shared ThreadX kernel + port source helpers.
+//! Shared ThreadX kernel + port source helpers.
 //!
 //! Both `nros-board-threadx-linux` and `nros-board-threadx-qemu-riscv64`
 //! (and the future generic `nros-board-threadx` crate) enumerate the
@@ -52,7 +52,7 @@ pub fn add_threadx_port_sources(
     )
 }
 
-/// Phase 152.2.B — wire `nros-platform-threadx`'s C port into a
+/// Wire `nros-platform-threadx`'s C port into a
 /// pre-configured `cc::Build`. Adds the cffi include dir + the
 /// three platform C files (`platform.c`, `net.c`, `timer.c`) and
 /// emits the matching `cargo:rerun-if-changed` lines.
@@ -73,7 +73,7 @@ pub fn add_threadx_port_sources(
 /// nros_board_common::threadx_sources::add_nros_platform_threadx_build(&mut platform);
 /// platform.compile("nros_platform_threadx");
 /// ```
-/// Phase 152.2.B.1 — generic `tx_application_define` stub +
+/// Generic `tx_application_define` stub +
 /// shared FFI setters (`nros_threadx_set_app_callback`,
 /// `nros_threadx_set_app_main`) + app-thread plumbing.
 /// Materialises `threadx_hooks.c` into `OUT_DIR` so consumers do
@@ -106,7 +106,7 @@ pub fn add_threadx_port_sources(
 /// glue.file(manifest_dir.join("c/board_threadx_linux.c"));
 /// glue.compile("glue");
 /// ```
-/// Phase 152.2.B.2 — `THREADX_CFLAGS` env wiring.
+/// `THREADX_CFLAGS` env wiring.
 ///
 /// Appends every space-separated flag from the `THREADX_CFLAGS`
 /// environment variable to `build` and emits the matching

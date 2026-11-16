@@ -4,7 +4,7 @@
 //! `nros-board-nuttx-qemu/build.rs` (compiler, CPU flags and includes all
 //! arm literals). Hoisted here and parameterized so a new-arch NuttX board
 //! (riscv) reuses it with its own `NUTTX_*` env; the CPU flags are NuttX's
-//! own since phase-550 W3b.
+//! own.
 
 use std::env;
 
@@ -35,7 +35,7 @@ pub(crate) fn flat_kernel_code_model(build: &mut cc::Build) {
 /// Env (all optional, arm defaults):
 /// - `NUTTX_CROSS` — cross C compiler (default `arm-none-eabi-gcc`).
 /// - The CPU flags are not an input: they are NuttX's, the export's
-///   `ARCHCPUFLAGS` ([`crate::nuttx_export::cpu_flags`], phase-550 W3b);
+///   `ARCHCPUFLAGS` ([`crate::nuttx_export::cpu_flags`]);
 ///   `-std=c11` is always appended (generic to the C port).
 /// - `NUTTX_ARCH_INCLUDES` — space-separated dirs relative to `NUTTX_DIR`
 ///   (default `arch/arm/src/{chip,common,armv7-a}`). Same var the FFI helper
@@ -134,7 +134,7 @@ pub fn run_platform() {
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH_INCLUDES");
 }
 
-/// phase-281 W3 (nuttx) — compile the board's `nros_board_nuttx_run_sched_tasks` C
+/// Compile the board's `nros_board_nuttx_run_sched_tasks` C
 /// seam (`c/nuttx_run_sched_tasks.c`) into `libnros_nuttx_run_sched_tasks.a` and emit the
 /// propagating `-bundle,+whole-archive` link directive. The NuttX analog of the
 /// FreeRTOS glue (`nros-board-freertos/build.rs` compiling `c/freertos_run_sched_tasks.c`):

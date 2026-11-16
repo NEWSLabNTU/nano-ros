@@ -1,7 +1,7 @@
-//! phase-338 W4 — resolve `[arch.*]` compiler flags for a target triple.
+//! Resolve `[arch.*]` compiler flags for a target triple.
 //!
 //! The `[arch.*]` profiles in `config/<platform>/nros-platform.toml` already
-//! carry the `cflags` a target needs (RFC-0049). Before this module every
+//! carry the `cflags` a target needs. Before this module every
 //! consumer either re-implemented the match or hardcoded one arch's flags and
 //! **panicked** on the rest — which is how FreeRTOS+lwIP stayed unbuildable on
 //! Cortex-M4F/M7 after `[arch.cortex-m7]` had already been added to the
@@ -42,8 +42,8 @@ pub fn arch_matches(arch: &ArchEntry, target: &str) -> bool {
 /// Returns `None` for an out-of-tree consumer, whose caller must fall back to
 /// an explicit env var rather than guessing.
 ///
-/// phase-468 W1 — this was ~~`config_root() -> Option<PathBuf>`~~, ONE root, and
-/// that is issue 1486's defect a third time over. `PlatformsTree` searches
+/// This was ~~`config_root() -> Option<PathBuf>`~~, ONE root, and
+/// that is the same multiple-roots defect a third time over. `PlatformsTree` searches
 /// `packages/platform` and then `config`; this returned whichever of the two it
 /// found a descriptor in FIRST, which is always `packages/platform`, so
 /// `config/bare-metal` — the descriptor that answers `bare-metal` AND `esp32` —
@@ -86,7 +86,7 @@ pub fn platform_search_path() -> Option<Vec<PathBuf>> {
 /// answer ("this platform does not claim to support this arch"), which the
 /// caller should report rather than paper over with a default.
 ///
-/// An UNKNOWN platform is `Err`, not `Ok(None)` (phase-468 W1). The two used to
+/// An UNKNOWN platform is `Err`, not `Ok(None)`. The two used to
 /// be the same answer here, because `declared_arch_names` returns an empty list
 /// for both, and they are not the same question: "this platform does not build
 /// for this arch" is a fact about a descriptor, while "no descriptor answers to
@@ -139,11 +139,11 @@ pub fn cflags_for_target(
 /// (`thumbv7m`) must be offered before a profile that could also admit the
 /// triple. First match wins, as in the zpico include-path resolver.
 ///
-/// phase-349 W2b — the list is the platform's own `arch_profiles`. It used to
+/// The list is the platform's own `arch_profiles`. It used to
 /// be read out of the platform's `[build.zenoh]` block, so the FreeRTOS kernel
 /// and lwIP builds here took their CPU flags from a backend's build table with
 /// no backend involved. `PlatformsTree::arch_profiles` resolves aliases
-/// (phase-349 W1, `freertos_lwip_resolves_both_declared_arches`).
+/// (`freertos_lwip_resolves_both_declared_arches`).
 pub fn declared_arch_names(tree: &PlatformsTree, platform: &str) -> Vec<String> {
     tree.arch_profiles(platform)
         .map(<[String]>::to_vec)
@@ -394,12 +394,12 @@ mod tests {
     }
 }
 
-/// issue 1562 — the ThreadX RISC-V64 ISA/ABI answer, in one place.
+/// The ThreadX RISC-V64 ISA/ABI answer, in one place.
 ///
 /// `-march=rv64gc -mabi=lp64d -mcmodel=medany -fno-builtin` and the
 /// `--specs=picolibc.specs -print-sysroot` probe beside it were written out
 /// twice: in `threadx_qemu_riscv64_build` (the family builder) and in
-/// `nros-board-threadx/build.rs`. That is the shape phase-471 W2 removed from
+/// `nros-board-threadx/build.rs`. That is the shape already removed from
 /// the FreeRTOS family, where three board scripts each carried a private
 /// `gcc_print_file` with its own hardcoded `-mcpu` list.
 ///
@@ -471,7 +471,7 @@ pub mod riscv64 {
 
     /// The picolibc sysroot for `rv64gc/lp64d`, or `None`.
     ///
-    /// issue 0678 — there is NO hardcoded distro fallback, in either caller.
+    /// There is NO hardcoded distro fallback, in either caller.
     /// Returning `None` leaves the compiler to use its own headers and its own
     /// `libc.a`, which is the only arrangement where the TLS model is one
     /// decision rather than two.

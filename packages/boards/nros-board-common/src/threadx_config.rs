@@ -1,4 +1,4 @@
-//! Phase 152.2.B.4 — `ThreadxConfig` trait.
+//! `ThreadxConfig` trait.
 //!
 //! Generic `nros_board_threadx::run<B>` (lifted alongside this
 //! trait) needs uniform access to the network + RMW config bits

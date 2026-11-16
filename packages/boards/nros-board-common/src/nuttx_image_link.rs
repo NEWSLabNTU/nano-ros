@@ -1,5 +1,5 @@
-//! #127 — shared NuttX flat-build image link (the board-centric entry-link
-//! convention, RFC-0032 "third leg").
+//! Shared NuttX flat-build image link (the board-centric entry-link
+//! convention, the entry-codegen pipeline's "third leg").
 //!
 //! NuttX uses a flat-build model: the cargo binary IS the kernel image. This
 //! helper stages the *dynamic* link inputs in the BOARD crate's build script
@@ -36,7 +36,7 @@
 //! - `NUTTX_CROSS` — cross C compiler driver (default `arm-none-eabi-gcc`);
 //!   the archiver is derived by swapping the trailing `gcc` for `ar`.
 //! - CPU flags for the stub compile: NuttX's, the export's `ARCHCPUFLAGS`
-//!   ([`crate::nuttx_export::cpu_flags`], phase-550 W3b).
+//!   ([`crate::nuttx_export::cpu_flags`]).
 //! - `NUTTX_ARCH_INCLUDES` — space-separated include dirs relative to
 //!   `NUTTX_DIR` (default `arch/arm/src/{chip,common,armv7-a}`). Same var
 //!   the platform/FFI helpers read, so a board sets it once.

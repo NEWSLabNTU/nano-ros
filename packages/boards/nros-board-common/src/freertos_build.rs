@@ -1,10 +1,10 @@
 //! Shared `build.rs` helpers for the FreeRTOS + lwIP board family.
 //!
-//! phase-337 W5.d — ~~`configure_arm_cm3`~~ / `add_freertos_includes` /
+//! ~~`configure_arm_cm3`~~ / `add_freertos_includes` /
 //! `add_lwip_includes` existed twice (`nros-board-freertos/build.rs` and
 //! `nros-board-mps2-an385-freertos/build.rs`), and the copies had already
 //! diverged: the family crate resolved cflags from the `[arch.*]` profiles
-//! (phase-338 W4) while the overlay still hardcoded a Cortex-M3 fallback — so a
+//! while the overlay still hardcoded a Cortex-M3 fallback — so a
 //! Cortex-M7 overlay would have compiled its own board glue with M3 flags while
 //! the kernel beside it got M7 flags. One spelling lives here; both build
 //! scripts call it (CLAUDE.md: add ONE shared helper, never a second spelling).
@@ -15,14 +15,14 @@
 //! [`BaseConfig`] and a [`FreertosScheduling`] and writes the same TU from
 //! them.
 //!
-//! phase-471 W2 — [`run_overlay`](crate::freertos_build::run_overlay) is the RUNNER the helpers above never added
-//! up to. The study that opened phase-471 measured what "helpers only" cost:
+//! [`run_overlay`](crate::freertos_build::run_overlay) is the RUNNER the helpers above never added
+//! up to. A study measured what "helpers only" cost:
 //! `nros-board-mps3-an536-freertos/build.rs` and
 //! `nros-board-s32z270-freertos/build.rs`, past their doc comments, were **131
 //! shared lines with 5 differing ones** — the crate name, a linker-script name,
 //! a board C file name — and `gcc_print_file` was copied verbatim into three
 //! board scripts, hardcoded `-mcpu` flags and all. NuttX and ThreadX-RISCV had
-//! had runners since phase-337 (`nuttx_ffi_build::run_nuttx`,
+//! had runners for a while (`nuttx_ffi_build::run_nuttx`,
 //! `threadx_qemu_riscv64_build::run`), and their board scripts are 3 to 17
 //! lines. This module is the FreeRTOS family catching up; the overlays that
 //! call it keep only what differs.
@@ -51,7 +51,7 @@ const PLATFORM: &str = "freertos";
 /// `-ffunction-sections` / `-fdata-sections` / `-O2` / warnings-off stay
 /// built-in defaults — every FreeRTOS+lwIP consumer wants them.
 ///
-/// Resolution order for the target flags, so the RFC-0049 ladder still runs
+/// Resolution order for the target flags, so the board-configuration ladder still runs
 /// board-over-platform:
 ///   1. `FREERTOS_CFLAGS` — the board's explicit override (rung 1).
 ///   2. the matching `[arch.*]` profile for this `TARGET`.
@@ -63,7 +63,7 @@ const PLATFORM: &str = "freertos";
 /// # Panics
 /// When a `thumb*` target matches no `[arch.*]` profile and no
 /// `FREERTOS_CFLAGS` was given. Silently compiling for the wrong CPU or FPU ABI
-/// is worse than failing here (phase-195 audit (b)).
+/// is worse than failing here.
 pub fn configure_cflags(build: &mut cc::Build) {
     build
         .opt_level(2)
@@ -127,7 +127,7 @@ fn resolve_cflags() -> String {
 
 /// The port directory `FREERTOS_PORT` names, for a build script.
 ///
-/// phase-349 W3 — the port is upstream's enum (`GCC_ARM_CM3`), mapped to its
+/// The port is upstream's enum (`GCC_ARM_CM3`), mapped to its
 /// `portable/` directory through upstream's own table by
 /// [`nros_build_paths::freertos_port`], the one Rust spelling of that pairing
 /// (the zenoh-pico port row's `{freertos_port_dir}` token resolves through it
@@ -190,7 +190,7 @@ pub fn app_stack_bytes_from_build_env() -> u32 {
     }
 }
 
-/// The overlay board's `BaseConfig`: its own `[board.net]` (phase-484 W4b) over
+/// The overlay board's `BaseConfig`: its own `[board.net]` over
 /// the platform default, so the cargo road's `NROS_APP_CONFIG` takes the same
 /// network identity the cmake road asks `nros board net` for.
 ///
@@ -222,8 +222,8 @@ pub fn board_base_config(manifest_dir: &Path) -> BaseConfig {
 /// path, for `cc::Build::file`.
 ///
 /// The symbol is what the C/C++ application entry reads for network bring-up
-/// and task sizing (`<rclc/detail/app_config.h>` declares the type). Before phase-337
-/// W5.d this was a 57-line C string literal in the MPS2 overlay's `build.rs`,
+/// and task sizing (`<rclc/detail/app_config.h>` declares the type). Before this,
+/// it was a 57-line C string literal in the MPS2 overlay's `build.rs`,
 /// maintained by eye against `nros_board_freertos::Config::default()` — and it
 /// had drifted by 128 KiB on `app_stack_bytes`.
 pub fn emit_app_config_tu(
@@ -333,15 +333,15 @@ const SHARED_LINKER_SCRIPT: &str = "nros-freertos-cortex-m.ld";
 /// resolving a second time.
 ///
 /// Every path-valued field here is read through `nros_build_paths`, which is
-/// what applies issue 1280's three-valued rule (outside any checkout → keep, a
+/// what applies the three-valued checkout rule (outside any checkout → keep, a
 /// DIFFERENT checkout → re-root here, this one → keep). Folding the resolution
 /// into the runner is what keeps that rule at one site for the whole family
-/// instead of three copies of `env::var` — issue 1527 was two of those three
-/// copies drifting apart.
+/// instead of three copies of `env::var` — two of those three once drifted
+/// apart.
 ///
 /// **This MOVED three reads (`FREERTOS_DIR`, `LWIP_DIR`, `FREERTOS_CONFIG_DIR`)
 /// out of the board `build.rs` files and into this one, which is a build-script
-/// LIBRARY.** phase-471 W3's `check-build-script-path-resolution` reads
+/// LIBRARY.** The `check-build-script-path-resolution` gate reads
 /// `build.rs` files, so the reads left its reach — measured, not predicted: it
 /// counts 6 build scripts naming a path-valued SDK variable before W2 and 3
 /// after. Nothing was laundered: all three still go through `nros_build_paths`,
@@ -380,7 +380,7 @@ pub struct OverlayEnv {
     /// wrong default for every other board.
     pub freertos_config_dir: PathBuf,
     /// `packages/api/nros-c/include`, already asserted to hold
-    /// `rclc/detail/app_config.h` (issue 0365).
+    /// `rclc/detail/app_config.h`.
     pub nros_c_include: PathBuf,
 }
 
@@ -394,7 +394,7 @@ pub type ConfigureGlue<'a> = &'a dyn Fn(&OverlayEnv, &mut cc::Build);
 /// What differs between the FreeRTOS board overlays, and nothing else.
 ///
 /// A field here earned its place by being one of the 5 lines that differed
-/// between the two overlays phase-471 W0 measured, or by being an extra the
+/// between the two overlays as measured, or by being an extra the
 /// MPS2 overlay carries that the other two do not.
 ///
 /// Deliberately NOT `#[non_exhaustive]`: an overlay with extras builds this
@@ -403,13 +403,13 @@ pub type ConfigureGlue<'a> = &'a dyn Fn(&OverlayEnv, &mut cc::Build);
 /// is an in-tree board crate, so a new field is a compile error in three files
 /// rather than a silent default nobody chose.
 pub struct Overlay<'a> {
-    /// The crate name, for `skip_cross_build`'s message (issue 0288).
+    /// The crate name, for `skip_cross_build`'s message.
     pub crate_name: &'a str,
     /// This board's linker script, by name, in `config/`. The shared section
     /// layout is added by the runner.
     pub board_linker_script: &'a str,
     /// The port used when `FREERTOS_PORT` is unset, in upstream's enum
-    /// (`GCC_ARM_CM3`; phase-349 W3).
+    /// (`GCC_ARM_CM3`).
     pub default_port: &'a str,
     /// The board's own C translation units, relative to the crate root.
     pub board_c_files: &'a [&'a str],
@@ -451,7 +451,7 @@ impl<'a> Overlay<'a> {
 
 /// Run a FreeRTOS + lwIP board overlay's whole build script.
 ///
-/// Returns immediately when this is not a cross build (issue 0288 — the
+/// Returns immediately when this is not a cross build (the
 /// source-metadata probe runs these scripts host-side, where handing the host
 /// `cc` an `-mcpu=cortex-m3` kills it before rustc runs).
 ///
@@ -464,7 +464,7 @@ impl<'a> Overlay<'a> {
 ///
 /// # Panics
 /// When a linker script cannot be copied, when `nros-c`'s header is not where
-/// the workspace layout says it is (issue 0365), or when `arm-none-eabi-gcc`
+/// the workspace layout says it is, or when `arm-none-eabi-gcc`
 /// cannot be run or cannot resolve a multilib file.
 pub fn run_overlay(overlay: &Overlay<'_>) {
     // issue 0288 — skip the ARM cross-compile when host tooling builds this

@@ -1,0 +1,1 @@
+The RMW C ABI headers (`<nros/rmw_*.h>`, and the Rust bindings generated from them) and the `nros-board-common` API docs no longer cite internal design ids; where a sentence leaned on one, it now states the fact in plain words.
