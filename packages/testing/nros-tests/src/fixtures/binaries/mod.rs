@@ -505,6 +505,14 @@ fn build_failure_marker(binary_path: &Path) -> Option<String> {
 /// the third consumer that has to, and the last one that did not.
 fn rel_at_row_profile(row: &crate::fixtures::groups::GroupRow, rel: &Path) -> PathBuf {
     let (platform, _lang, _rmw) = &row.coord;
+    path_at_platform_profile(platform, rel)
+}
+
+/// [`rel_at_row_profile`] keyed by the PLATFORM alone: `rel` (or a whole path)
+/// with its ambient profile component replaced by the one `platform` builds at.
+/// The workspace chokepoint ([`require_prebuilt_workspace_binary`]) holds a
+/// manifest row id rather than a `GroupRow`, so it asks this.
+fn path_at_platform_profile(platform: &str, rel: &Path) -> PathBuf {
     let Some(profile) = nros_cargo_profile::platform_profile(platform) else {
         return rel.to_path_buf();
     };
@@ -2752,6 +2760,16 @@ fn require_prebuilt_workspace_binary(
     // resolvers already take the manifest row's id, and several rows share one
     // `dir`, so `id` is the exact key where a path prefix would be ambiguous.
     crate::fixtures::lane::require_workspace_in_lane(fixture_id)?;
+    // The FreeRTOS-QEMU and NuttX carve-out (issue 0608's class), applied at
+    // the workspace chokepoint as `require_prebuilt_row_binary_in` applies it
+    // for group rows. Every workspace resolver builds its path from
+    // `cargo_target_profile_dir()`, the AMBIENT profile, while `nros build`
+    // writes a FreeRTOS image at `nros-minsizerel`: nightly 43808375964 found
+    // `freertos_realtime_entry` reported MISSING under `nros-relwithdebinfo`
+    // with the build's own `artifact:` line naming `nros-minsizerel`.
+    let at_profile = crate::fixtures::lane::attribute_workspace_id(fixture_id)
+        .map(|row| path_at_platform_profile(&row.coord.0, binary_path));
+    let binary_path = at_profile.as_deref().unwrap_or(binary_path);
     if !binary_path.exists() {
         // issue 1129 / phase-450 W1 — the same verdict the binary/row resolvers
         // give. This branch used to return a bare `Err`, with no `.build-failed`
@@ -8720,6 +8738,42 @@ mod tests {
         let got = rel_at_row_profile(&row, &rel);
         let want = nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE);
         assert_eq!(got, PathBuf::from(format!("{want}/{want}")));
+    }
+
+    /// The WORKSPACE chokepoint applies the same carve-out, keyed by the
+    /// manifest row's platform. Nightly 43808375964: the FreeRTOS realtime
+    /// row's binary was built at `nros-minsizerel` and reported MISSING under
+    /// the ambient profile. Uses the real row, so a manifest that moved the
+    /// row's platform, or a carve-out that moved, both reach this.
+    #[test]
+    fn a_workspace_row_is_resolved_at_its_platforms_profile() {
+        let ambient = cargo_target_profile_dir();
+        let row = crate::fixtures::lane::attribute_workspace_id("workspace-rust-freertos-realtime")
+            .expect("the FreeRTOS realtime workspace row");
+        assert_eq!(row.coord.0, "freertos");
+        let want = nros_cargo_profile::target_dir(
+            nros_cargo_profile::platform_profile("freertos").expect("freertos lost its carve-out"),
+        );
+        let rel = PathBuf::from(format!(
+            "examples/workspaces/realtime-rust/target-fixtures/freertos/thumbv7m-none-eabi/{ambient}/freertos_realtime_entry"
+        ));
+        assert_eq!(
+            path_at_platform_profile(&row.coord.0, &rel),
+            PathBuf::from(format!(
+                "examples/workspaces/realtime-rust/target-fixtures/freertos/thumbv7m-none-eabi/{want}/freertos_realtime_entry"
+            )),
+        );
+        // And the chokepoint calls it (the 0608 test below's point, one funnel over).
+        let src = include_str!("mod.rs");
+        let body = src
+            .split("fn require_prebuilt_workspace_binary(")
+            .nth(1)
+            .and_then(|b| b.split("\nfn ").next())
+            .expect("require_prebuilt_workspace_binary");
+        assert!(
+            body.contains("path_at_platform_profile("),
+            "require_prebuilt_workspace_binary no longer applies the platform's profile"
+        );
     }
 
     /// Issue 0608 — and the RESOLVER must actually call it.
