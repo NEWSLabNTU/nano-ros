@@ -650,6 +650,22 @@ zephyr-transient-overrides:
     fi
     ./tests/zephyr-transient-overrides-tests.sh
 
+# zenoh's POSIX mutex/cond pools are DERIVED: the module's pre-Kconfig hook
+# writes their Kconfig defaults from the counts `nros configure` resolved
+# (zephyr/cmake/nros_zpico_pthread_pools.cmake), and the build's refusal takes
+# its floor from the same function. A cmake -P probe, so seconds.
+[group('needs:cmake')]
+zephyr-pthread-pool-defaults:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zephyr-pthread-pool-defaults "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/zephyr-pthread-pool-defaults-tests.sh
+
 # phase-530 W6 (RFC-0120 D7) -- the census step: a leaf census's digest is a
 # host-configure dependency refreshed by a build edge, so a body edit costs no
 # re-configure and an added endpoint exactly one. A real CMake + Ninja build
