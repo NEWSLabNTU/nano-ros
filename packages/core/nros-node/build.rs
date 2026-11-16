@@ -1578,7 +1578,23 @@ fn emit_executor_backing(out_dir: &str) {
     // script resolves this same rung and subtracts `8 *` it. One statement, two
     // readers -- two statements of one number is the drift that issue 1171 is
     // about, and it is not fixable by a gate on a number nobody can recompute.
-    let words = env_opt_usize_laddered("NROS_EXECUTOR_BACKING_U64S");
+    //
+    // The two higher rungs (env, `$DOTCONFIG`) and the board rung are read
+    // apart, because they mean different things once the backing is sized per
+    // unit. An env or Kconfig statement is an IMAGE's, made for the one unit it
+    // builds, and the assertion in `executor::backing` holds it to that unit's
+    // default. The board rung is a BOARD's, read by every unit compiled for the
+    // board, and a unit's default depends on its features and its image's
+    // declared entities (measured on threadx-linux with the stock interfaces
+    // on: the C talker's `nros-c` unit needs 11,408 table words against a rung
+    // of 11,084). No one board number covers every image a user can write, so
+    // the rung is what the board's pool GIVES BACK, and the static is the
+    // larger of the rung and the unit's default: a unit above the rung keeps
+    // the excess in the pool as well (wasted, never short), where it used to
+    // refuse to compile.
+    let (front, board_rung) = env_opt_usize_laddered("NROS_EXECUTOR_BACKING_U64S");
+    let words = front.or(board_rung);
+    let words_from_board = front.is_none() && words.is_some();
     println!("cargo:rustc-check-cfg=cfg(nros_executor_backing_static)");
     if words == Some(0) {
         // No item at all, and no cfg: `backing::take` is then a `None` stub and
@@ -1604,6 +1620,10 @@ fn emit_executor_backing(out_dir: &str) {
     // its meaning, and an image that declares parameters does not have to
     // restate a BOARD fact for an IMAGE one.
     let len = match words {
+        Some(n) if words_from_board => format!(
+            "if {n} + PARAMETER_STORE_U64S > EXECUTOR_BACKING_DEFAULT_U64S {{ \
+             {n} + PARAMETER_STORE_U64S }} else {{ EXECUTOR_BACKING_DEFAULT_U64S }}"
+        ),
         Some(n) => format!("{n} + PARAMETER_STORE_U64S"),
         None => "EXECUTOR_BACKING_DEFAULT_U64S".to_string(),
     };
@@ -1779,10 +1799,15 @@ fn env_opt_usize(name: &str) -> Option<usize> {
 /// stay `None`, and the ladder has to be walked separately rather than by
 /// passing a sentinel that would then have to be told apart from a stated `0`,
 /// which is this knob's documented opt-out.
-fn env_opt_usize_laddered(name: &str) -> Option<usize> {
-    nros_zephyr_build::knob(name)
-        .rung(descriptor_rung(name))
-        .stated()
+///
+/// Returned as its two halves, `(env or Kconfig, board rung)`: the backing
+/// treats a board's statement differently from an image's (see
+/// `emit_executor_backing`), and the ladder is `front.or(rung)`.
+fn env_opt_usize_laddered(name: &str) -> (Option<usize>, Option<usize>) {
+    (
+        nros_zephyr_build::knob(name).stated(),
+        descriptor_rung(name),
+    )
 }
 
 /// One executor knob: env → Kconfig → board → platform → built-in default.
