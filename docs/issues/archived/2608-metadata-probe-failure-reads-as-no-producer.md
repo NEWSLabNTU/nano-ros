@@ -1,11 +1,13 @@
 ---
 id: 2608
 title: "A FAILED metadata probe build is reported as \"no producer\" and `nros configure` ends `sync: done`, exit 0"
-status: open
+status: resolved
 type: bug
 area: [cli, metadata, testing]
 severity: medium
 found: 2026-11-15
+resolved: 2026-11-16
+resolved_in: "phase-559 W11"
 related: [phase-559, 0445, 0257, 1469]
 ---
 
@@ -68,3 +70,25 @@ They need a `failed` list beside `unsupported`. `ws.rs`'s report block is where
 the exit status is decided. Check who calls `refresh_stale_sidecars` and reads
 `unsupported` (regenerate-bindings, fixture builds) before changing the exit
 code: some may rely on sync never failing on a probe.
+
+## Resolved (2026-11-16, phase-559 W11)
+
+A failed probe is reported as a FAILURE, apart from "no producer", and the
+exit status follows `NROS_PROBE_FAILURE` (issue 2520's knob, taken in by the
+manager's ruling): `warn` by default for an interactive command, refusing a
+run where no probe succeeded; `refuse` in every lane where nobody reads the
+warning. Measured:
+
+- Every tracked workspace (`examples/workspaces/*`, 18) ran `nros configure`
+  under `NROS_PROBE_FAILURE=refuse` on the W11 branch: all exited 0, 87 probes
+  rebuilt, 0 failed, so no fixture lane goes red from this change.
+- Broken on purpose (`#error` at the top of `workspaces/c`'s `Talker.c`):
+  under `warn` the run exits 0, prints `probe FAILED for talker_pkg::talker:
+  …Talker.c:1:2: error: #error broken on purpose…` with the marker as the full
+  error, and its last line before `sync: done.` is `1 metadata probe(s)
+  FAILED`. Under `refuse` it exits 1 with the same node and cause, through
+  issue 1469's recorded-failure path (the source unchanged since the first
+  run).
+- The negative control: a no-producer component and a deploy-bound degrade
+  are not failures under either policy (unit tests). A mutation that drops
+  the `refuse` branch fails a test.

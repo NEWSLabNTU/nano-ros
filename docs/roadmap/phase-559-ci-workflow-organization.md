@@ -722,7 +722,7 @@ the user ruled; all five stand:
 
 - **Owner:** nros 175. Found by W10's smoke test, and fixed separately from
   W10.
-- **What.** [Issue 2608](../issues/2608-metadata-probe-failure-reads-as-no-producer.md):
+- **What.** [Issue 2608](../issues/archived/2608-metadata-probe-failure-reads-as-no-producer.md):
   `nros configure` and `nros dev bindings` report a probe whose BUILD failed as
   "no producer for <node>", print `sync: done` and exit 0. On
   `examples/workspaces/c`, every probe failed twice that way. The two facts
@@ -732,7 +732,35 @@ the user ruled; all five stand:
   exits non-zero and names the node and the error. A workspace with a real
   no-producer component still syncs with exit 0. Every caller of
   `refresh_stale_sidecars` is checked before the exit code changes.
-- **Status:** OPEN
+- **Ruling (manager, 2026-11-16):** issue 2520's knob joins this item.
+  `NROS_PROBE_FAILURE=warn` stays the default for an interactive `nros build`
+  / `configure`, but even `warn` refuses a run where no probe succeeded.
+  `refuse` holds wherever nobody reads the warning: the three fixture
+  builders, every `just` lane, and the release dry run. The warning's last
+  line carries the failed count.
+- **Status:** DONE (the PR that lands this line, 2026-11-16).
+  `RefreshReport` keeps `failed` (probe build failures, recorded failures, a
+  whole-project configure failure, a probe-root mismatch), `degraded` (a
+  deploy-bound example's host probe, #0288's designed fallback) and
+  `unsupported` (no producer) apart. `refuse` is exported by the root
+  `justfile` (module recipes inherit it), forced in
+  `scripts/build/{fixtures,workspace-fixtures,compile-check-fixtures}-build.sh`,
+  and set in `release-nros.yml`. Callers: `refresh_stale_sidecars` has one,
+  `cmd/ws.rs`, reached from both sync roads; the single-package road still
+  writes the leaf settings before it fails. Measured:
+  - Every tracked workspace (`examples/workspaces/*`, 18) ran `nros configure`
+    under `NROS_PROBE_FAILURE=refuse` on the W11 branch: all exited 0, 87 probes
+    rebuilt, 0 failed, so no fixture lane goes red from this change.
+  - Broken on purpose (`#error` at the top of `workspaces/c`'s `Talker.c`):
+    under `warn` the run exits 0, prints `probe FAILED for talker_pkg::talker:
+    …Talker.c:1:2: error: #error broken on purpose…` with the marker as the full
+    error, and its last line before `sync: done.` is `1 metadata probe(s)
+    FAILED`. Under `refuse` it exits 1 with the same node and cause, through
+    issue 1469's recorded-failure path (the source unchanged since the first
+    run).
+  - The negative control: a no-producer component and a deploy-bound degrade
+    are not failures under either policy (unit tests). A mutation that drops
+    the `refuse` branch fails a test.
 
 ### W12 — The hosted Zephyr shard's disk, without sharing a build-dir
 
