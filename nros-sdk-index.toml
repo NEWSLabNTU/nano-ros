@@ -1311,6 +1311,11 @@ packages = ["xrce-agent", "micro-xrce-dds-client", "micro-cdr"]
 # via `nros setup --check`.
 packages = ["cyclonedds", "cyclonedds-src", "rosidl"]
 
+[rmw.uorb]
+# phase-569 W1 — PX4's in-process bus: the host side needs nothing, and saying
+# so is what `check-rmw-descriptors` S5 asks of every backend.
+packages = []
+
 # --- boards (Phase 191.1): board → required package set, the board→toolchain
 # SSOT. `nros setup <board>` looks the board up here (no name guessing); an
 # unknown board errors. `packages` lists [tool]/[source]/[gated] names; empty is

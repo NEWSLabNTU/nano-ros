@@ -37,6 +37,7 @@ user pin
 user plan
 user planning-stamp
 user profile
+user rmw
 user run
 user sdk-front
 user sdk-path

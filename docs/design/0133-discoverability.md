@@ -297,11 +297,13 @@ extension verbs.
 **Fast, and never builds.** A completion runs on every <kbd>Tab</kbd>:
 
 - the budget is **100 ms per <kbd>Tab</kbd>**, including the redispatch
-  exec of the pinned binary, for **every pin form**. A `path =` pin's
-  stale-binary guard (the toolchain-pin design) rebuilds or refuses on
-  redispatch, which no budget survives, so redispatch **skips the guard when
-  `COMPLETE` is set**. That is safe because a completion reads, never builds
-  and never writes: at worst a stale binary offers names one build old;
+  exec of the pinned binary, for **every pin form**. Measured by the
+  toolchain-pin design's author on 2026-11-17: every pin form pays the
+  launcher walk plus the exec, 1.9 ms. The stale-binary guard's stamp
+  (18.3 ms) runs only for a `path =` pin's guarded verbs (`sync`,
+  `configure`, `plan`, `ws`, `codegen`, `setup`), never for a `COMPLETE=`
+  call. So the redispatch costs a completion under 5 ms of its 100 ms, and
+  nothing has to be skipped for it; the budget test keeps it that way;
 - candidate functions read only what D2 marks as a file read or compiled in.
   Names that could take longer — packages and images in a big workspace,
   interface types, workspace providers — come from a small completion cache,
@@ -403,8 +405,9 @@ the reasons became their own phase; `profile` got one meaning, agreed with
 the build-arguments amendment; one `surface` field decides which knob
 spellings are user surface; planned nodes and topics became an `image show`
 view instead of reusing `ros2`'s runtime verbs; the completion cache got a
-key and a statement that stale entries are expected; and redispatch skips the
-stale-binary guard under `COMPLETE`, so every pin form gets the budget.
+key and a statement that stale entries are expected; and every pin form gets
+the budget, because the stale-binary guard never runs for a completion (the
+redispatch costs under 5 ms, measured).
 `board show` renders descriptor sections from the descriptor.
 
 ## Open questions
@@ -417,3 +420,5 @@ None.
 - 2026-11 — the user's five answers folded in (Decisions); still Draft.
 - 2026-11 — review changes (approve with changes) folded in; reasons moved to phase-570; still Draft.
 - 2026-11 — approved by the user; stays Draft until the work lands.
+- 2026-11 — D7: the redispatch cost is measured (under 5 ms; the stale-binary
+  guard never runs for `COMPLETE=`), replacing the earlier plan to skip it.

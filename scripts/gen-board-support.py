@@ -129,6 +129,11 @@ MATRIX_RS = "packages/testing/nros-tests/src/matrix.rs"
 LANG_WORD = {"Rust": "Rust", "C": "C", "Cpp": "C++"}
 RMW_WORD = {"Zenoh": "zenoh", "Cyclonedds": "cyclonedds", "Xrce": "XRCE-DDS",
             "Uorb": "uORB"}
+# The matrix's RMW axis in the spelling a user types (`rmw = "…"`, `nros rmw
+# show <name>`): the descriptor's canonical name. `nros rmw list` reads the
+# `rmws` field built from it, so it must match `nros-rmw.toml`, not the prose.
+RMW_NAME = {"Zenoh": "zenoh", "Cyclonedds": "cyclonedds", "Xrce": "xrce",
+            "Uorb": "uorb"}
 
 
 # --------------------------------------------------------------------------
@@ -426,6 +431,33 @@ def nightly_job(row):
     if row.get("cadence") != "daily" or row.get("nightly_token") in (None, "zephyr"):
         return None
     return row.get("matrix_platform")
+
+
+def rmws_of(reg: Registry, row: dict) -> dict:
+    """The RMWs this row's evidence covers, as data: the same matrix cells
+    `breadth_text` renders as prose (the row's own platform for a witness;
+    the source platform plus its own for an inherited row). `runtime` lists
+    an RMW with at least one Runtime cell; `build_only` one with BuildOnly
+    cells and no Runtime cell. Each list is in matrix order, each RMW once."""
+    if row.get("infra") or row.get("breadth") is None:
+        return {"runtime": [], "build_only": []}
+    b = row["breadth"]
+    plats = [row.get("matrix_platform")] if b == "witness" else \
+        [b.split(" ", 1)[1], row.get("matrix_platform")]
+    cells = [c for plat in plats if plat for c in reg.cells_for(plat)]
+
+    def names(cs):
+        seen = []
+        for c in cs:
+            n = RMW_NAME.get(c["at"][2], c["at"][2].lower())
+            if n not in seen:
+                seen.append(n)
+        return seen
+
+    runtime = names([c for c in cells if c["status"].startswith("Runtime")])
+    built = [n for n in names([c for c in cells if c["status"].startswith("BuildOnly")])
+             if n not in runtime]
+    return {"runtime": runtime, "build_only": built}
 
 
 def breadth_text(reg: Registry, row: dict) -> str:
@@ -908,6 +940,9 @@ def render_status_json(reg: Registry) -> str:
             "last_run": row.get("last_run"),
             "stale_from": until.isoformat() if until else None,
             "breadth": breadth_text(reg, row),
+            # phase-569 W1 — the RMWs `breadth` names, as data, for
+            # `nros rmw list|show` (canonical names, not the prose words).
+            "rmws": rmws_of(reg, row),
             "external": row.get("external"),
             "board_keys": row.get("board_keys") or [],
             "book_run": row.get("book_run"),
@@ -1005,6 +1040,19 @@ def self_test() -> None:
     cells = render_cells(Fake())
     assert "    // why\n    cell(Linux, Rust, Zenoh, Pubsub, Example, Runtime)" \
         ".with(&[Config::Lending])," in cells, cells
+    # phase-569 W1 — `rmws` lists canonical names: Runtime first, then RMWs
+    # with only BuildOnly cells; an inherited row adds its source platform.
+    class Cells:
+        cells = [{"at": ["P", "C", "Xrce", "Pubsub", "Example"], "status": "Runtime"},
+                 {"at": ["P", "C", "Zenoh", "Pubsub", "Example"], "status": "BuildOnly"},
+                 {"at": ["P", "C", "Xrce", "Service", "Example"], "status": "BuildOnly"},
+                 {"at": ["S", "C", "Cyclonedds", "Pubsub", "Example"], "status": "Runtime"}]
+        cells_for = Registry.cells_for
+    assert rmws_of(Cells(), {"breadth": "witness", "matrix_platform": "P"}) == \
+        {"runtime": ["xrce"], "build_only": ["zenoh"]}, "rmws_of witness"
+    assert rmws_of(Cells(), {"breadth": "inherited S", "matrix_platform": "P"}) == \
+        {"runtime": ["cyclonedds", "xrce"], "build_only": ["zenoh"]}, "rmws_of inherited"
+    assert rmws_of(Cells(), {"breadth": None}) == {"runtime": [], "build_only": []}
     # A twin track whose board states no wiring for its emulator kind refuses.
     idx = {"by_name": {"k": ("d/nros-board.toml", 0)},
            "entries": {("d/nros-board.toml", 0): {

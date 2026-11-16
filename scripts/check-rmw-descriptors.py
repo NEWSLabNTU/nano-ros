@@ -22,6 +22,12 @@ It now checks what can still go wrong once there is a single source:
   S4  a descriptor exists for every backend directory that looks like one, so
       adding a backend and forgetting the descriptor fails here rather than at
       a consumer's link.
+  S5  the SDK index's `[rmw.<name>]` host package sets and the backends are
+      one list (phase-569 W1, RFC-0133 D2): every `[rmw.<name>]` is a
+      backend's canonical name (its first announcement), and every backend
+      has one, `packages = []` when the host needs nothing. `nros rmw show`
+      prints the set as the backend's host packages, so a missing or
+      misspelled entry would print an empty set for a backend that needs one.
 
 phase-420 W5 (RFC-0087 D4) retired two of the original five rules, because
 what they guarded stopped being writable:
@@ -178,6 +184,27 @@ def main():
                 f"nros-rmw.toml — add one, or add {fam!r} to NOT_BACKENDS in "
                 f"{os.path.basename(__file__)} saying why it is not a backend"
             )
+
+    # S5
+    canonical = {}
+    for path in paths:
+        names = announced_names(path)
+        if names:
+            canonical[names[0]] = os.path.relpath(path, ROOT)
+    index_path = os.path.join(ROOT, "nros-sdk-index.toml")
+    with open(index_path, "rb") as fh:
+        index_rmw = tomllib.load(fh).get("rmw") or {}
+    for name in sorted(set(index_rmw) - set(canonical)):
+        problems.append(
+            f"nros-sdk-index.toml: [rmw.{name}] names no backend; the backends "
+            f"are {', '.join(sorted(canonical))} (a key is a backend's canonical "
+            f"name, its first <nano_ros_provides kind=\"rmw\"/>)"
+        )
+    for name in sorted(set(canonical) - set(index_rmw)):
+        problems.append(
+            f"{canonical[name]}: no [rmw.{name}] in nros-sdk-index.toml -- add one "
+            f"listing what the host needs for it, `packages = []` when nothing"
+        )
 
     if problems:
         sys.stderr.write("check-rmw-descriptors: FAILED\n")

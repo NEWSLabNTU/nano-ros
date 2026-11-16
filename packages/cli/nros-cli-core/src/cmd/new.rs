@@ -108,10 +108,13 @@ pub struct Args {
     #[arg(long, value_parser = platform_values())]
     pub platform: Option<String>,
 
-    /// RMW backend. Defaults per mode: `zenoh` for project/component
-    /// scaffolds (matches the tracked examples), `cyclonedds` for
-    /// `--workspace` (needs no router — the quick-start default).
-    #[arg(long, value_parser = ["zenoh", "xrce", "cyclonedds"])]
+    /// RMW backend, as `nros rmw list` names it. Defaults per mode: `zenoh`
+    /// for project/component scaffolds (matches the tracked examples),
+    /// `cyclonedds` for `--workspace` (needs no router — the quick-start
+    /// default).
+    // phase-569 W1 (RFC-0133 D2) — checked against the RMW index in `run`,
+    // the list the build resolves `rmw = "…"` against, not a list here.
+    #[arg(long)]
     pub rmw: Option<String>,
 
     /// ROS edition (drives the `ros-<edition>` cargo feature). Defaults to the
@@ -467,7 +470,29 @@ fn refuse_retired_platform(platform: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-pub fn run(args: Args) -> Result<()> {
+/// `--rmw` in its canonical spelling, or a refusal naming the known RMWs.
+///
+/// The names come from the RMW index of the workspace the current directory
+/// is in, else of the SDK root alone (RFC-0071 D14) — the same index the build
+/// resolves `rmw = "…"` against, and the one `nros rmw list` prints.
+fn checked_rmw(rmw: Option<String>) -> Result<Option<String>> {
+    let Some(name) = rmw else {
+        return Ok(None);
+    };
+    let cwd = std::env::current_dir().map_err(|e| eyre::eyre!("resolving cwd: {e}"))?;
+    let index = crate::orchestration::rmw_index::for_dir(&cwd)?;
+    match index.canonical(&name) {
+        Some(canonical) => Ok(Some(canonical)),
+        None => bail!(
+            "no RMW named `{name}`; the known RMWs are: {}\n  \
+             `nros rmw list` shows each one",
+            index.known().join(", ")
+        ),
+    }
+}
+
+pub fn run(mut args: Args) -> Result<()> {
+    args.rmw = checked_rmw(args.rmw.take())?;
     refuse_retired_platform(args.platform.as_deref())?;
     refuse_use_case(args.use_case.as_deref())?;
     refuse_ros_only_flags(&args)?;

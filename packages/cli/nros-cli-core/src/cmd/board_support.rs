@@ -17,6 +17,17 @@ use eyre::{Result, WrapErr};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
+/// The RMWs a row's evidence covers (`rmws` in the status file).
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+pub struct RowRmws {
+    /// RMWs with at least one Runtime cell.
+    #[serde(default)]
+    pub runtime: Vec<String>,
+    /// RMWs with BuildOnly cells and no Runtime cell.
+    #[serde(default)]
+    pub build_only: Vec<String>,
+}
+
 /// Where the generated status file sits under an SDK root.
 pub const STATUS_FILE: &str = "packages/boards/board-support-status.json";
 
@@ -51,6 +62,11 @@ pub struct Row {
     /// First ISO day a manual row reads "Builds".
     pub stale_from: Option<String>,
     pub breadth: String,
+    /// The RMWs `breadth` names, as canonical names (phase-569 W1): the
+    /// matrix cells this row's evidence covers. Absent in a file cut before
+    /// the field existed, which reads as "no evidence of any RMW".
+    #[serde(default)]
+    pub rmws: RowRmws,
     pub external: Option<String>,
     /// Descriptor board keys this row's evidence is for, where the package
     /// directory alone cannot say (see the registry header).
@@ -387,6 +403,7 @@ mod tests {
             last_run: Some("2026-09-06".into()),
             stale_from: Some("2027-01-05".into()),
             breadth: String::new(),
+            rmws: RowRmws::default(),
             external: None,
             board_keys: vec!["fvp-aemv8r-smp".into()],
             book_run: None,
