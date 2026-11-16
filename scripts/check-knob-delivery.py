@@ -200,6 +200,29 @@ DERIVED_PAIRS = {
 # pointed the gate at one.
 GUARD_MARKER = "CONFIG_NROS_RMW_"
 
+# The rungs at which a PERSON stated the value (`_nros_resolve_knob`'s
+# `_source`), so the resolved value is theirs, not the derivation's. Configure
+# compares each against the derivation and says so; this gate does not judge it
+# again (issue 2618).
+STATING_RUNGS = ("environment", "image", "kconfig")
+
+# `NROS_KNOB_DERIVE_SENTINEL` in `zephyr/cmake/nros_cargo_build.cmake`: the
+# Kconfig default of a derivable knob, meaning "nobody stated one". Read from
+# that file so the two cannot drift.
+def _derive_sentinel(text=None):
+    if text is None:
+        with open(RESOLVER_CMAKE, encoding="utf8", errors="ignore") as fh:
+            text = fh.read()
+    m = re.search(r"^set\(NROS_KNOB_DERIVE_SENTINEL\s+(\S+)\)", text, re.M)
+    if not m:
+        raise SystemExit("check-knob-delivery: NROS_KNOB_DERIVE_SENTINEL is not "
+                         "set in %s -- the sentinel this gate refuses to excuse "
+                         "moved; update _derive_sentinel." % RESOLVER_CMAKE)
+    return m.group(1)
+
+
+DERIVE_SENTINEL = _derive_sentinel()
+
 # The call spans up to four lines and the FACT is the third argument, after an
 # env name and a `"${CONFIG_...}"` value that may sit on either line.
 _CALL_RE = re.compile(
@@ -280,6 +303,20 @@ def check_registry_against_source(pairs=None, road=None):
     return problems
 
 
+def knob_value(value):
+    """The ONE spelling both sides are compared in (issue 2618).
+
+    A list-valued fact (`NROS_SUBSCRIBED_TYPE_BOUNDS`, `type=rx` per entry) is
+    a cmake LIST in the inventory fragment, so it is written with `;`, and the
+    resolver joins it with `,` before resolving (`nros_cargo_build.cmake`: a
+    `;` would split into two `cmake -E env` arguments on the Rust lane). Same
+    entries, two separators; comparing the raw strings refused every image
+    that subscribes to two types. Both sides go through this, so a third
+    spelling cannot reach the comparison one side at a time.
+    """
+    return value.strip().strip('"').replace(";", ",")
+
+
 def read_cache(build_dir):
     """NROS_RESOLVED_* from CMakeCache.txt. Absent is DIFFERENT from empty."""
     out = {}
@@ -322,7 +359,7 @@ def read_fragment(build_dir):
             continue
         with open(path, encoding="utf8", errors="ignore") as fh:
             for m in re.finditer(r"^set\((NROS_DERIVED_[A-Z0-9_]+)\s+([^)]*)\)", fh.read(), re.M):
-                out[m.group(1)] = m.group(2).strip().strip('"')
+                out[m.group(1)] = knob_value(m.group(2))
     return out
 
 
@@ -381,10 +418,33 @@ def check(build_dir, road=None):
                 # so is rung `image`: an `[image.<id>] env` row with no Kconfig
                 # symbol, stated in system.toml, outranks a derivation the same
                 # way (RFC-0098 D11).
+                #
+                # Issue 2618 -- and so does `kconfig`. On this road a derivable
+                # knob records `kconfig` ONLY from the stating branch of
+                # `_nros_resolve_derivable_knob` (a CONFIG_ value that is not the
+                # derive sentinel), so a mismatch there is a person's number
+                # winning, which is what "a derived value is a DEFAULT" means.
+                # Whether that number is ALLOWED is configure's question, and
+                # configure already answers it (`_nros_compare_stated_to_derived`
+                # reports a stated value above or below the derivation). This
+                # gate asks only whether the RESOLVED value arrived; a stated
+                # rung re-judged here refused NXP's island for
+                # CONFIG_NROS_MAX_PUBLISHERS=13 over a derived 11, a value
+                # configure had accepted as over-provisioned. A mismatch is a
+                # carry fault only when the resolver says it took the
+                # derivation (`derived`), or says nothing.
                 knob = resolved[len("NROS_RESOLVED_"):]
-                if cache[resolved] != want and sources.get(knob) in ("environment", "image"):
+                got = knob_value(cache[resolved])
+                # The one `kconfig` that is NOT a statement: the derive
+                # sentinel itself. A second plain resolve of a derivable knob
+                # re-reads the raw CONFIG_ value, which is the sentinel, and
+                # records it as stated -- the shape this gate caught three
+                # times (NROS_RMW_SUBSCRIBER_SLOTS, NROS_EXECUTOR_MAX_SC, ...).
+                # No person writes the sentinel, so it is never excused.
+                if (got != want and sources.get(knob) in STATING_RUNGS
+                        and got != DERIVE_SENTINEL):
                     continue
-                if cache[resolved] != want:
+                if got != want:
                     problems.append(
                         "%s=%s but %s=%s -- the resolver did not carry the "
                         "derived value through%s."
@@ -524,14 +584,50 @@ def self_test(quiet=False):
           CLEAN_FRAG + "set(NROS_DERIVED_RMW_LOCAL_QUERYABLE 1)\n",
           CLEAN_NINJA + "cc -DZ_FEATURE_LOCAL_QUERYABLE=0 -c a.c\n"), 0,
          "an environment override of a derived knob is clean"),
-        # but the same mismatch recorded as `kconfig` is still a finding.
-        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=10\n"
+        # Issue 2618 -- a Kconfig-STATED value that differs from the
+        # derivation is a person's number winning. Configure compares it to
+        # the derivation and says so; this gate asks only whether it ARRIVED.
+        # NXP's island: CONFIG_NROS_MAX_PUBLISHERS=13 over a derived 11.
+        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=13\n"
+          "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=13\n"
+          "NROS_KNOB_SOURCE_NROS_MAX_SUBSCRIBERS:INTERNAL=kconfig\n",
+          "set(NROS_DERIVED_MAX_SUBSCRIBERS 11)\n",
+          "cc -DZPICO_MAX_SUBSCRIBERS=13 -c x.c\n"), 0,
+         "a Kconfig-stated value over the derivation is configure's call"),
+        # ...but a stated value that did NOT reach the compile is still this
+        # gate's finding: the question is arrival, whatever the rung.
+        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=13\n"
+          "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=13\n"
+          "NROS_KNOB_SOURCE_NROS_MAX_SUBSCRIBERS:INTERNAL=kconfig\n",
+          "set(NROS_DERIVED_MAX_SUBSCRIBERS 11)\n",
+          "cc -DZPICO_MAX_SUBSCRIBERS=11 -c x.c\n"), 1,
+         "a stated value the compiler never saw is still reported"),
+        # ...and the sentinel recorded as `kconfig` is the double-resolve
+        # bug, never a statement.
+        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=%s\n"
           "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=10\n"
-          "NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=0\n"
-          "NROS_KNOB_SOURCE_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=kconfig\n",
-          CLEAN_FRAG + "set(NROS_DERIVED_RMW_LOCAL_QUERYABLE 1)\n",
-          CLEAN_NINJA + "cc -DZ_FEATURE_LOCAL_QUERYABLE=0 -c a.c\n"), 1,
-         "a kconfig-recorded mismatch is still reported"),
+          "NROS_KNOB_SOURCE_NROS_MAX_SUBSCRIBERS:INTERNAL=kconfig\n" % DERIVE_SENTINEL,
+          CLEAN_FRAG, CLEAN_NINJA), 1,
+         "the derive sentinel resolved as kconfig is still reported"),
+        # ...and a derived value that disagrees is a carry fault.
+        (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=8\n"
+          "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=8\n"
+          "NROS_KNOB_SOURCE_NROS_MAX_SUBSCRIBERS:INTERNAL=derived\n",
+          CLEAN_FRAG, "cc -DZPICO_MAX_SUBSCRIBERS=8 -c x.c\n"), 1,
+         "a derived-rung mismatch is still reported"),
+        # Issue 2618 -- the same list in two separators is one value: the
+        # fragment writes a cmake LIST (`;`), the resolver joins with `,`.
+        ((CLEAN_CACHE + "NROS_RESOLVED_NROS_SUBSCRIBED_TYPE_BOUNDS:INTERNAL=A=28,B=116\n"
+          "NROS_KNOB_SOURCE_NROS_SUBSCRIBED_TYPE_BOUNDS:INTERNAL=derived\n",
+          CLEAN_FRAG + 'set(NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS "A=28;B=116")\n',
+          CLEAN_NINJA), 0,
+         "a list compared across `;` and `,` is one value"),
+        # ...and its control: a list whose CONTENT differs is still a mismatch.
+        ((CLEAN_CACHE + "NROS_RESOLVED_NROS_SUBSCRIBED_TYPE_BOUNDS:INTERNAL=A=28,B=64\n"
+          "NROS_KNOB_SOURCE_NROS_SUBSCRIBED_TYPE_BOUNDS:INTERNAL=derived\n",
+          CLEAN_FRAG + 'set(NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS "A=28;B=116")\n',
+          CLEAN_NINJA), 1,
+         "a list with a different entry is still reported"),
     ]
     failures = 0
     for (cache, frag, ninja), want, name in cases:
