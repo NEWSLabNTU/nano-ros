@@ -156,7 +156,7 @@ max_service_servers = 6  # 0 of its own + the six parameter services of its node
 max_service_clients = 0
 
 [image.zephyr_listener_xrce.knobs.zephyr]
-# Kconfig's arena default with the parameter services on (196608) plus
+# The arena default the parameter services had when this was stated (196608) plus
 # the 32 KiB this image stated above the plain default (65536) before
 # the stock interfaces: the six parameter service slots in the XRCE session
 # state are about 27 KiB, inside the 128 KiB the capability default adds.
