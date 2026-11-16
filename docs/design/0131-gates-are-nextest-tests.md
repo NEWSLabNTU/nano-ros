@@ -94,6 +94,18 @@ runs: `fast`, `build`, `dev`, `runner`, `merge`, `pristine`.
   lane provisions from its claims through the `provision-gate-lane` action, or
   says in `NROS_GATE_PROVISIONED_BY` what provides them (the self-hosted and
   merge-runtime jobs: their own `just setup <board>`).
+- The claims ARE the one provisioning list (phase-565, decided 2026-11-16;
+  was open question 1). `.config/gate-lanes.toml` holds, beside the lanes,
+  `[[provision.submodule]]` (which submodules each tier reads),
+  `[provision.claim]` (how each capability is provided: a `provisioner`
+  nano-ros runs, or a host `remedy` it only names) and `[provision] order`.
+  `scripts/lib/lane_provision.py` is its one reader. One implementation per
+  provisioner, `scripts/lib/claim-provision.sh`, is run by `just
+  setup-worktree` for the `dev` lane and by CI's
+  `scripts/ci/provision-gate-lane.sh` for a CI lane, and the preflight takes
+  its remedies from the same table. So a worktree and a CI job cannot
+  provision differently for one claim. Gates: `lane-provisioning-single-source`,
+  `lane-claims-provisioned`, `gate-lane-jobs`.
 - A `queue` lane was declared and is deleted (2026-11-16): no job ever set
   `NROS_GATE_SCOPE: queue`. The merge queue's L3 job runs the `runner` lane,
   BEFORE its fixture build, so the `build-tree` its claims named was never
@@ -201,17 +213,12 @@ It costs two runs, so it is on no lane.
 
 ## Open questions
 
-1. Lane claims as the ONE provisioning list. CI's gate jobs provision from
-   the claims (`scripts/ci/provision-gate-lane.sh`, through the
-   `provision-gate-lane` action), and the preflight refuses a lane whose job
-   provides less. `just setup-worktree` still reads its own list,
-   `.config/worktree-provisioning.txt`, so the `dev` lane's claims and a
-   worktree's provisioning can disagree.
-   [phase-565](../roadmap/phase-565-lane-claims-one-provisioning-list.md)
-   makes the claims that one list and closes this question (its W6).
+None. Question 1 (are the lane claims the ONE provisioning list?) is decided
+in D3 below, as phase-565 built it.
 
 ## Changelog
 
 - 2026-11-15: Draft, recording phase-543 W0-W6 as landed.
 - 2026-11-15: open question 1 and the D3/D5 gaps measured on main are
   tracked by phase-565.
+- 2026-11-16: open question 1 decided in D3 (phase-565 W1-W6): the claims are the one provisioning list, `setup-worktree` is the `dev` lane's provisioner, the `queue` lane is deleted, and every lane runs somewhere.

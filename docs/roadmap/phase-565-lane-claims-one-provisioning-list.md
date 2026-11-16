@@ -162,7 +162,14 @@ Acceptance:
 
 ### W6 — RFC-0131 records the answer
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-16)
+
+Done: RFC-0131's open question 1 is decided in D3 (the claims are the one
+provisioning list; `setup-worktree` is the `dev` lane's provisioner, and the
+same `claim-provision.sh` runs for CI's lanes), its Open questions section
+says none remain, and the changelog records it. `implements-tracked-by`
+already names this phase. The RFC's status stays Draft: Stable waits on the
+maintainer's OK.
 
 RFC-0131's open question 1 moves into D3 as decided: the claims are the one
 provisioning list, and `setup-worktree` is the `dev` lane's provisioner.
