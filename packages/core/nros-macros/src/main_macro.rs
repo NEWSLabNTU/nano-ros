@@ -6990,13 +6990,15 @@ mod leaf_axis_tests {
         assert!(!direct.contains("RticMps2An385"), "{direct}");
         assert!(!direct.contains("rtic :: app"), "{direct}");
 
-        let rtic = with_descriptor(MPS2_RTIC).unwrap();
+        // The RTIC entry registers no stock node interfaces, so the leaf
+        // opts out, as every shipped RTIC image does.
+        let rtic = expand_with_mps2_descriptor("", MPS2_RTIC, RTIC_OPT_OUT).unwrap();
         assert!(rtic.contains("rtic :: app"), "{rtic}");
         assert!(rtic.contains("RticMps2An385"), "{rtic}");
 
         // Without the descriptor the board's list is unread, and the refusal
         // says so rather than only "it boots owned-spin".
-        let err = expand("", MPS2_RTIC, "").unwrap_err();
+        let err = expand("", MPS2_RTIC, RTIC_OPT_OUT).unwrap_err();
         assert!(err.contains("NROS_BOARD_TOML"), "{err}");
     }
 
@@ -7004,6 +7006,7 @@ mod leaf_axis_tests {
     /// the image also states `framework = "rtic"`: the MPS2-AN385 bare-metal
     /// board with the RTIC entry.
     const MPS2_RTIC: &str = "mps2-an385-baremetal\"\nframework = \"rtic";
+    const RTIC_OPT_OUT: &str = "node_interfaces = \"none\"";
 
     /// [`expand`] with the MPS2-AN385 board descriptor named, as the cargo
     /// road names it for every image, so the board's `frameworks` list is
