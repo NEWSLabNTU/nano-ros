@@ -21,11 +21,47 @@ checkout and no system-wide install: everything lands under `~/.nros`.
 
 The edition follows your Ubuntu release: **Humble on 22.04, Jazzy on 24.04**
 (Humble has no 24.04 packages). If ROS 2 is already installed, skip to
-[Steps](#steps).
+[Add the Zenoh middleware](#add-the-zenoh-middleware).
 
-First add the ROS 2 apt repository. The `ros2-apt-source` package holds its
-address and signing key; these lines install release 1.3.0 of it for your
-Ubuntu release:
+Follow the official ROS 2 guide for your edition:
+[Humble](https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html)
+or [Jazzy](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html).
+Where it offers a choice, take these two:
+
+- **The desktop install** (`ros-<distro>-desktop`). It has everything else
+  this book uses: the message packages nano-ros generates your bindings from,
+  the `ros2` command the Tutorial watches your nodes with, the Cyclone DDS
+  middleware, `example_interfaces` for the services chapter, and
+  `demo_nodes_cpp`, a ROS 2 talker and listener to test a board against.
+- **The development tools** (`ros-dev-tools`). They bring `colcon`, which
+  the Tutorial uses to build a message package for the ROS 2 side.
+
+Do this **before** step 1 on Ubuntu, so that step 1's `python3-catkin-pkg`
+comes from the ROS 2 repository. Taken from Ubuntu's own archive first, it
+blocks ROS's catkin package, and the ROS install fails with
+`trying to overwrite '/usr/lib/python3/dist-packages/catkin_pkg/__init__.py'`.
+If that already happened, `sudo apt remove python3-catkin-pkg` and run the
+ROS 2 install again.
+
+#### Add the Zenoh middleware
+
+Neither ROS 2 install includes the Zenoh middleware, which nano-ros uses by
+default. Add it:
+
+```sh probe=6 track=installed variant=fresh-host
+# Ubuntu 24.04 (Jazzy); on 22.04, write humble for jazzy
+sudo apt-get install -y ros-jazzy-rmw-zenoh-cpp
+```
+
+You source ROS 2 before your first build; the Tutorial shows where.
+
+#### If adding the ROS 2 repository fails
+
+The official guide looks up the newest `ros2-apt-source` release through
+GitHub's API. On a network where many machines share one address, such as a
+lab, that lookup can answer `API rate limit exceeded`, and its `dpkg -i` then
+fails on an empty file. These lines add the same repository from a pinned
+release, 1.3.0, and ask GitHub for nothing but the file:
 
 ```sh probe=4 track=installed variant=fresh-host
 sudo apt-get update
@@ -39,32 +75,23 @@ sudo dpkg -i /tmp/ros2-apt-source.deb
 sudo apt-get update
 ```
 
-The version is written out, so the step asks GitHub for nothing but the file.
-A newer release of `ros2-apt-source` works the same way: replace both
-`1.3.0`s with its number.
+A newer release works the same way: replace both `1.3.0`s with its number.
+Then go back to the official guide's install step.
 
-Then install ROS 2 and its zenoh middleware:
+#### Optional: a minimal install
+
+For a headless machine, a container or a lab image, the smaller `ros-base`
+install is enough, with two packages it lacks: the Zenoh middleware and
+`example_interfaces`. It has no `rviz2`, no `rqt` and no demo nodes.
 
 ```sh probe=5 track=installed variant=fresh-host
 # Ubuntu 24.04 (Jazzy); on 22.04, write humble for jazzy
 sudo apt-get install -y \
     ros-jazzy-ros-base \
     ros-jazzy-rmw-zenoh-cpp \
-    ros-jazzy-example-interfaces
+    ros-jazzy-example-interfaces \
+    ros-dev-tools
 ```
-
-nano-ros generates your project's message bindings from this install, and
-the Tutorial watches your nodes with its `ros2` command. `example_interfaces`
-is not part of `ros-base`; the Tutorial's service chapter uses its
-`AddTwoInts`. You source it
-before your first build; the Tutorial shows where.
-
-Install it **first** on Ubuntu: step 1's `python3-catkin-pkg` must then
-come from the ROS 2 repository. Taken from Ubuntu's own archive before the
-repository is added, it blocks ROS's catkin package, and the ROS install
-fails with `trying to overwrite '/usr/lib/python3/dist-packages/catkin_pkg/__init__.py'`.
-If that already happened, `sudo apt remove python3-catkin-pkg` and run the
-ROS 2 install again.
 
 **For a lab of many seats,** prepare one machine or image with this page and
 the first board's `nros setup` done, then copy it to each seat. Thirty seats

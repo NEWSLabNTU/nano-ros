@@ -24,7 +24,8 @@ You write the talker in Rust, C or C++; pick a tab and every tab on the page fol
   FreeBSD are not.
 - ROS 2 (Humble on Ubuntu 22.04, Jazzy on 24.04; [which edition](../start/install.md#install-ros-2-first)),
   with its Cyclone DDS middleware, so that `ros2 topic echo`
-  can read what the talker publishes. On Debian or Ubuntu:
+  can read what the talker publishes. Both installs on the Install page
+  include it; for any other ROS 2 install, add it on Debian or Ubuntu:
 
 ```bash probe=30 track=installed
 sudo apt-get install -y ros-humble-rmw-cyclonedds-cpp

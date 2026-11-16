@@ -31,7 +31,9 @@ A ROS 2 program can only read a message whose type it knows. `std_msgs`
 came with ROS 2; `tutorial_msgs` is yours, so the ROS 2 side needs it built.
 It is a stock ROS 2 package, which is why chapter 5 gave it a
 `CMakeLists.txt` that nano-ros never runs. Build it with `colcon`, into a
-directory under `build/`, so it stays out of your sources:
+directory under `build/`, so it stays out of your sources. The ROS 2
+development tools from [Install](../start/install.md#install-ros-2-first)
+include `colcon`; without them, this line adds it:
 
 ```bash probe=1005 track=installed variant=qemu
 sudo apt-get install -y python3-colcon-common-extensions

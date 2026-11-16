@@ -30,7 +30,8 @@ router to start. The board runs zenoh too, through a router on this machine:
   [which edition](../start/install.md#install-ros-2-first)), with its Cyclone
   DDS middleware, so that `ros2 topic echo` can read what the talker
   publishes. The build also generates the talker's message code from ROS 2's
-  message definitions. On Debian or Ubuntu:
+  message definitions. Both installs on the Install page include Cyclone
+  DDS; for any other ROS 2 install, add it on Debian or Ubuntu:
 
 ```bash probe=30
 sudo apt-get install -y ros-humble-rmw-cyclonedds-cpp
@@ -143,8 +144,10 @@ reliable publisher alike.
 ## Zenoh on this board
 
 To talk over zenoh instead, the talker dials a zenoh router on this machine,
-at `tcp/127.0.0.1:7447`. Install ROS 2's zenoh middleware, which brings the
-router `nros run` starts, and provision the board for zenoh:
+at `tcp/127.0.0.1:7447`. ROS 2's zenoh middleware brings the router
+`nros run` starts. [Install](../start/install.md#add-the-zenoh-middleware)
+added it; the first line below is there for a host that skipped it. Then
+provision the board for zenoh:
 
 ```bash probe=80 variant=zenoh
 sudo apt-get install -y ros-humble-rmw-zenoh-cpp
