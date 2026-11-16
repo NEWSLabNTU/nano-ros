@@ -620,6 +620,12 @@ pub fn resolve_cmake(
         bringup_dir,
         nodes.iter().map(|(n, d)| (n.as_str(), d.as_path())),
     )?;
+    if !derived.is_empty() {
+        // A Rust node: the C++ entry pack is the one that constructs it
+        // (`discover::needs_cpp_entry`). Its package has no CMakeLists.txt,
+        // so the scan below never reaches it.
+        lang = "cpp";
+    }
     for n in &derived {
         let rel = relative_or_err(entry_dir, &n.dir)?;
         cargo_nodes.push(n.cmake_args(&format!("${{CMAKE_CURRENT_SOURCE_DIR}}/{rel}")));
@@ -643,7 +649,7 @@ pub fn resolve_cmake(
         if is_cargo_node(dir) {
             rust_node_dirs.push(relative_or_err(entry_dir, dir)?);
         }
-        if super::discover::holds_cpp_source(dir) {
+        if super::discover::needs_cpp_entry(dir) {
             lang = "cpp";
         }
     }
@@ -1728,6 +1734,31 @@ mod tests {
         );
         let m = cmake_app(td2.path(), &mixed, None);
         assert_eq!(m.cmake.as_ref().unwrap().lang, "cpp");
+    }
+
+    /// Issue 2644 -- a C node and a Rust node, no C++ source: `cpp`. The C
+    /// entry pack refuses a Rust component by name, so a `c` here refused the
+    /// island-shaped workspace's Zephyr image at configure.
+    #[test]
+    fn lang_is_cpp_when_a_rust_node_joins_c_nodes() {
+        let td = tempfile::tempdir().unwrap();
+        let root = td.path();
+        let mut nodes = cmake_workspace(root, &[("c_controller_pkg", false, false)]);
+        let rust = root.join("src/rust_monitor_pkg");
+        std::fs::create_dir_all(&rust).unwrap();
+        std::fs::write(rust.join("Cargo.toml"), "[package]\n").unwrap();
+        std::fs::write(rust.join("package.xml"), "<package/>").unwrap();
+        nodes.push(("rust_monitor_pkg".into(), rust));
+        let bringup = root.join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"d\"\n\n\
+             [[component]]\npkg = \"rust_monitor_pkg\"\nclass = \"rust_monitor_pkg::Monitor\"\nname = \"monitor\"\n",
+        )
+        .unwrap();
+        let app = cmake_app(root, &nodes, None);
+        assert_eq!(app.cmake.as_ref().unwrap().lang, "cpp");
     }
 
     /// Phase-548 W2 -- a C++ application's `prj.conf` states C++ and the
