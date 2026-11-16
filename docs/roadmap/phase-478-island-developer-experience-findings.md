@@ -617,6 +617,15 @@ on the platform's monotonic clock.
 `_ONCE`, `_SKIPFIRST` and `_SKIPFIRST_THROTTLE` are added at every level, with
 per-site static state. The island's own `std::map` throttle can go.
 
+### I22 -- `ros2 param list` and `ros2 param dump` see every parameter
+
+**Status: DONE (2026-11-16).** [Issue 2639](../issues/archived/2639-list-parameters-silently-caps-at-64.md).
+`list_parameters` stopped at the generated message's 64 names and said
+nothing, so the island's controller listed 64 of its 149 parameters, and
+`get_parameters` refused the request `dump` sends for all of them. Both now
+answer every name; without a `params:` declaration the service buffers are
+sized for a full store, and the prefix and depth filters follow rclcpp.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -726,6 +735,9 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
 - [x] I21: `RCLCPP_*_THROTTLE` measures on its `clock` argument (an invalid clock
       throttles on the platform's monotonic clock), and `_ONCE` / `_SKIPFIRST` /
       `_SKIPFIRST_THROTTLE` exist at every level; `log_conditional_runtime` (issue 2636).
+- [x] I22: `list_parameters` answers every name and `get_parameters` takes a
+      list as long as the store; stock `ros2 param list` / `dump` over 70
+      parameters in the two-node interop fixture (issue 2639).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -755,6 +767,7 @@ this phase will fix it.
 
 Filed from the Autoware Safety Island's phase-15 P3 on nano-ros 5b9e8844a4.
 
+- [issue 2639](../issues/archived/2639-list-parameters-silently-caps-at-64.md) (resolved): `ros2 param list` and `ros2 param dump` showed 64 of the controller's 149 parameters and said nothing (I22).
 - [issue 2638](../issues/archived/2638-launch-list-param-flattened-to-string.md) (resolved): a list parameter from a `<param from>` file reached the node as one comma-joined string (I20).
 - [issue 2640](../issues/2640-metadata-probe-no-launch-values.md): the C/C++ metadata probe constructs a node with no launch values and a default-size store, so a node declaring parameters without defaults cannot be probed.
 

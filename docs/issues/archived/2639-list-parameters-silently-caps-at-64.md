@@ -11,7 +11,7 @@ resolved_in: "the change that filed it"
 related: [phase-478, issue-1271]
 ---
 
-**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md), I20.**
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md), I22.**
 Reported by the Autoware Safety Island (phase-15 P3) on nano-ros 5b9e8844a4.
 
 ## What happened
