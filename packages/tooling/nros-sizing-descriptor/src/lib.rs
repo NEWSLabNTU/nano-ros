@@ -1309,6 +1309,7 @@ mod tests {
                 name: "label".into(),
             }))
             .set_needs_max_array_len(Some(CapacityNeed::Unused))
+            .set_needs_max_string_array_len(Some(CapacityNeed::Unused))
             .set_needs_max_byte_array_len(Some(CapacityNeed::Unused))
             .set_service_shape(Some("4:31:1:5:1:0:0:0:0,2:17:0:0:0:0:0:0:0".into()))
             .set_store(Some(ParamStore::Declared));
@@ -1399,6 +1400,10 @@ mod tests {
             Some(&CapacityNeed::Unused)
         );
         assert_eq!(
+            back.params.needs_max_string_array_len().stated(),
+            Some(&CapacityNeed::Unused)
+        );
+        assert_eq!(
             back.params.needs_max_byte_array_len().stated(),
             Some(&CapacityNeed::Unused)
         );
@@ -1431,6 +1436,7 @@ mod tests {
             "max_param_name_len",
             "needs_max_string_value_len",
             "needs_max_array_len",
+            "needs_max_string_array_len",
             "needs_max_byte_array_len",
             "service_shape",
         ] {

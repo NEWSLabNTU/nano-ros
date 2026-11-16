@@ -368,7 +368,7 @@ impl core::fmt::Debug for ParameterTable<'_> {
 ///
 /// This is where the size lives, and it is enormous: `ParameterValue` is sized
 /// by its largest variant
-/// (`StringArray(Vec<String<MAX_STRING_VALUE_LEN>, MAX_ARRAY_LEN>)`), so every
+/// (`StringArray(Vec<String<MAX_STRING_VALUE_LEN>, MAX_STRING_ARRAY_LEN>)`), so every
 /// slot costs ~8.5 KiB whatever it actually holds. Measured: **285,184 bytes**
 /// at the default 32 slots, **2,281,472** at 256. (The eight extra bytes in
 /// issue 0756's 285,192 were the `count` that stayed behind on
@@ -888,7 +888,7 @@ impl<'s> ParameterServer<'s> {
     /// spellings forward here.
     ///
     /// A [`ParameterValue`] is as large as its largest variant (`StringArray`:
-    /// `MAX_ARRAY_LEN` x `MAX_STRING_VALUE_LEN`, ~8 KiB at the defaults), and
+    /// `MAX_STRING_ARRAY_LEN` x `MAX_STRING_VALUE_LEN`, ~8 KiB at the defaults), and
     /// the by-value path moved it through every frame and built it again in
     /// [`Parameter::new`] and in the slot's `Some(..)`: ~57 KiB of stack for
     /// one `declare_parameter<double>` on aarch64, ~67 KiB on Cortex-M3,
