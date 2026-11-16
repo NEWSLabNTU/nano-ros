@@ -4,7 +4,7 @@ title: "Discoverability: every noun the build knows is listable, showable and co
 status: Draft
 since: 2026-11
 last-reviewed: 2026-11
-implements-tracked-by: [phase-569]
+implements-tracked-by: [phase-569, phase-570]
 supersedes: []
 superseded-by: null
 ---
@@ -108,17 +108,27 @@ The nouns:
 | `package` | the workspace's packages | `nros list` (kept, D3) |
 | `knob` | every configuration item a user can state | missing; `config explain` shows one platform's values |
 | `image` | the workspace's images and bringups: board, RMW, launch | missing |
-| `node` | the nodes an image *will* create, from its plan | missing |
-| `topic` | the topics, services and actions an image *will* use | missing |
+| `profile` | the build profiles `[image.<id>] profile` and `--profile=` accept, each with the cargo profile and CMake build type it maps to | buried: `dev profile resolve` |
 | `template` | what `nros new` can scaffold: roles, languages, features | missing |
 | `runner` | runners and extension commands on the search path | `dev runner check` only |
 | `code` | the diagnostic codes `nros explain` knows | missing |
 | `toolchain` | installed toolchains, and with `--available` the SDK index's | `toolchain list`, `setup --list` |
 
-`nros node list` and `nros topic list` take `--image <name>` and read the
-image's plan. They are labelled **planned** in human output and carry
-`"source": "plan"` in JSON: they say what the build will create, not what is
-running. A runtime view belongs to `nros monitor` and stays there.
+**What an image will create is a view of the image, not a noun.**
+`nros image show <image> --nodes` and `--topics` print the nodes, and the
+topics, services and actions, from the image's plan. Their column is headed
+**planned**, and JSON carries `"source": "plan"`. They deliberately do not
+reuse `ros2 node list` / `ros2 topic list`, which name what is *running*; a
+runtime view belongs to `nros monitor` and stays there.
+
+**`profile` has one meaning.** It is the built-in choice that
+`[image.<id>] profile` and `--profile=` take (RFC-0117, as amended by the
+build-arguments review), read through the resolver the build uses. The cargo
+profile plumbing (`nros dev profile args|dir|env`) stays in `nros dev` and is
+not a user noun, and build-time profiling (`just profile`) is a contributor
+recipe. User-defined build profiles, when a later amendment adds them as
+`[build_profile.<name>]`, get their own noun, `build-profile`, never a second
+meaning of this one.
 
 ### D2 — One source per noun
 
@@ -134,7 +144,8 @@ through the loader the build calls. No noun gets a table of its own.
 | `package` | workspace scan | `scan_for_query` (as today) | directory walk |
 | `knob` | `knobs.toml`, compiled into `KNOBS` | `knob_by_toml`, extended (below) | none: compiled in |
 | `image` | the workspace's bringups (`system.toml`) | the configure scan | file reads |
-| `node`, `topic` | `build/nros/nros-plan.json` | the plan reader `nros explain plan` uses | file read; needs a prior `nros configure` |
+| `profile` | the build-profile table `--profile=` resolves against | the profile resolver the build calls | none: compiled in |
+| `image --nodes` / `--topics` | `build/nros/nros-plan.json` | the plan reader `nros explain plan` uses | file read; needs a prior `nros configure` |
 | derived config | `build/nros/sizing/<entry>.toml` | `nros_sizing_descriptor::read` | file read; needs a prior `nros configure` |
 | `template` | `scaffold::Role::ALL` | `template_values()` | none: compiled in |
 | `runner` | package.xml announcements | `extension::discover` | provider scan |
@@ -150,28 +161,43 @@ Consequences, each a work item:
   descriptor and a descriptor with no `[rmw.*]`.
 - **The knob registry becomes the catalog.** Each `[[knob]]` row in
   `knobs.toml` gains what a user needs to state it: `scope` (image, platform,
-  board or workspace), `default`, `values` (a range or an enumeration),
-  `set-in` (which of `system.toml`, Kconfig and the environment accept it,
-  with the spelling in each; the Kconfig and env twins already exist), and
+  board or workspace), `default`, `values` (a range or an enumeration), and
   the `prompt` and `help` text, which today live only in the TOML and are not
-  compiled in. The public / carrier / dead classification
+  compiled in.
+- **One field says which spellings are user surface.** A knob has several
+  spellings today: its `system.toml` key, a Kconfig twin and an env carrier.
+  Only the committed place is user surface: `[image.<id>.knobs.<group>]`,
+  plus the platform or board rung the row already names. The env carrier is
+  how the build passes a fact along, and a fact is never re-carried through an
+  env knob, so `knob show` never lists it; nor does it show a
+  `-D NROS_*` spelling, which the build-arguments amendment refuses. The
+  Kconfig twin `CONFIG_NROS_*` is a carrier too: RFC-0098 D10/D11 already
+  rule that a nano-ros knob is never authored in a conf file, and
+  `check-leaf-conf-nros-knobs` refuses one in a leaf conf. The row's
+  `surface` field records the one user spelling. `nros knob show` prints
+  only that spelling. The build-arguments refusal reads the field for its
+  remedy ("set it in `[image.<id>.knobs.<group>]`") and the whole row for
+  what it refuses, since it guards every spelling against a bypass (agreed
+  with that amendment's author on 2026-11-17). The public / carrier / dead classification
   `gen-config-surface.py` computes in Python moves into the row, so the CLI,
   the book page and the gate read one field. `nros config explain` becomes
   `nros knob list --platform <p>` (the resolved values and the rung each came
   from) and stays as an alias.
-- **Derived values say why.** `nros image show <image> --derived` prints
-  what the build derived for the image — pool sizes, heap, stack, enabled
-  features — and, for each, the reason: the knob or the plan fact it came
-  from. The sizing descriptor records values today, not reasons, so the
-  descriptor gains a `because` field per derived value, written by the code
-  that derives it (phase-569 W3). Until a value has one, it prints
-  "(no reason recorded)", which a test counts down. The first values to
-  carry a reason are the ones that went wrong in the week of 2026-11-16: the
-  pthread condition-variable and mutex pools, the executor backing, the
-  parameter store slots, the Zephyr heap, and the stack setting against the
-  floor the stack check measured. The entity pools follow.
-- **Plan-dependent nouns never build.** `node`, `topic` and `--derived` read
-  what `nros configure` wrote. If it is missing or older than the workspace's
+- **Derived values are shown with whatever reason the producer recorded.**
+  `nros image show <image> --derived` prints what the build derived for the
+  image — pool sizes, heap, stack, enabled features — from the sizing
+  descriptor, with a reason column. Recording the reason is a change to every
+  producer of the descriptor, not to discovery, so it is its own phase,
+  [phase-570](../roadmap/phase-570-derived-value-reasons.md). Until a value
+  has one, the column says "(no reason recorded)".
+- **`board show` renders the descriptor, not a list of sections.** It walks
+  every table in the board's `nros-board.toml` and prints each one, labelled
+  from the descriptor schema's own field documentation. A section a new
+  design adds, such as the CAN frame driver's `[board.can]` (RFC-0132) or an
+  FVP's `[board.run.fvp]` model parameters, appears with no CLI edit; a test
+  adds a fixture section and sees it printed.
+- **Plan-dependent views never build.** `--nodes`, `--topics` and
+  `--derived` read what `nros configure` wrote. If it is missing or older than the workspace's
   inputs, they say so and name `nros configure`; they do not run it.
 
 ### D3 — Discovery lives in the user tier
@@ -189,8 +215,8 @@ old-spellings table so `check-cli-old-spellings` and the book see one name):
 | `nros dev rmw dispatch --known` | `nros rmw list` | `dispatch <name>` (build facts) stays in `dev` |
 | `nros dev ws providers [--kind K]` | `nros <K> list` for `rmw`, `board`, `platform`, `runner`; `nros dev ws providers` stays for kinds with no noun | |
 | `nros dev image sizing-descriptor` | `nros image show <image> --derived` | the TOML stays available as `--json` |
-| `nros dev image entity-inventory` / `entity-census` | `nros node list --image` / `nros topic list --image` | |
-| `nros dev profile resolve` | `nros profile list` / `show` | `profile args`, `dir`, `env` stay in `dev` |
+| `nros dev image entity-inventory` / `entity-census` | `nros image show <image> --nodes` / `--topics` | |
+| `nros dev profile resolve` | `nros profile list` / `show` | the built-in profiles only; `profile args`, `dir`, `env` stay in `dev` |
 | `nros config explain --platform P` | `nros knob list --platform P` | alias kept |
 | `nros setup --list` | `nros toolchain list --available` | alias kept |
 | `nros list` | `nros package list` | `nros list` stays the short spelling, as `ros2 pkg list` has no shorter one |
@@ -264,19 +290,31 @@ come from `SubcommandCandidates` over `extension::discover`. No shell script
 is written by hand: clap_complete generates each shell's glue.
 
 Completed names: board keys and aliases, RMWs, platforms, packages, images,
-knob names, interface types, template roles, codes, toolchains, and
+knob names, interface types, template roles, profiles, codes, toolchains, and
 extension verbs.
 
 **Fast, and never builds.** A completion runs on every <kbd>Tab</kbd>:
 
 - the budget is **100 ms per <kbd>Tab</kbd>**, including the redispatch
-  exec of the pinned binary;
+  exec of the pinned binary, for **every pin form**. A `path =` pin's
+  stale-binary guard (the toolchain-pin design) rebuilds or refuses on
+  redispatch, which no budget survives, so redispatch **skips the guard when
+  `COMPLETE` is set**. That is safe because a completion reads, never builds
+  and never writes: at worst a stale binary offers names one build old;
 - candidate functions read only what D2 marks as a file read or compiled in.
   Names that could take longer — packages and images in a big workspace,
   interface types, workspace providers — come from a small completion cache,
   `build/nros/complete.json`, that `nros build` and `nros configure` rewrite
   as a side effect of the scans they already do. When the cache is missing,
   those names are not offered; the compiled-in and SDK-root names still are;
+- the cache records a schema version and the search path it was built for,
+  the same key the provider index records. A completer compares both, and a
+  cache for another search path is **wrong**, not stale, so it offers none of
+  its names. Within one search path, **stale entries are expected**: a
+  package added since the last build or configure is not offered until the
+  next one, and checking the inputs further would cost more than the budget.
+  Only completion reads this cache; `list`, `show` and `search` read their
+  sources;
 - a candidate function never runs a scan that writes, never runs cargo,
   CMake, `nros build` or `nros configure`, never touches the network, and
   never writes a file;
@@ -356,7 +394,17 @@ The user's answers of 2026-11-17, relayed by the manager:
 5. **Reasons first** (the manager's call, which the user may revise): the
    pthread condition-variable and mutex pools, the executor backing, the
    parameter store slots, the Zephyr heap, and the stack setting against the
-   measured floor; then the entity pools (D2).
+   measured floor; then the entity pools. After review this moved to its own
+   phase, phase-570 (D2).
+
+The review of 2026-11-17 (approve with changes) made six more changes:
+the reasons became their own phase; `profile` got one meaning, agreed with
+the build-arguments amendment; one `surface` field decides which knob
+spellings are user surface; planned nodes and topics became an `image show`
+view instead of reusing `ros2`'s runtime verbs; the completion cache got a
+key and a statement that stale entries are expected; and redispatch skips the
+stale-binary guard under `COMPLETE`, so every pin form gets the budget.
+`board show` renders descriptor sections from the descriptor.
 
 ## Open questions
 
@@ -366,3 +414,4 @@ None. The RFC waits for the user's approval as a whole.
 
 - 2026-11 — created (Draft), for the user's review.
 - 2026-11 — the user's five answers folded in (Decisions); still Draft.
+- 2026-11 — review changes (approve with changes) folded in; reasons moved to phase-570; still Draft.
