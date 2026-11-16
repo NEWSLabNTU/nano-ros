@@ -22,6 +22,11 @@ dispatch = "deferred"
 # which the generated entry links (RFC-0077, issue 1305).
 [image_defaults]
 panic = "own"
+# Issue 2623 -- a board image that states no profile builds `release`. This
+# example's measured stack row (`qemu_bsp_talker_bringup@mps2-an385-baremetal`
+# in config/stack-floors.toml) was measured on `dev`, so it keeps `dev` until
+# the row is re-measured at `release`; the merge queue re-walks it.
+profile = "dev"
 
 # Bare-metal MPS2-AN385 (QEMU). The network identity overlays the board's
 # compiled-in `Config::default()` through `BoardEntry::run_with_deploy`.

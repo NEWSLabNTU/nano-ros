@@ -1692,7 +1692,12 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     a.push("--features".to_string());
                     a.push(owned_features.join(","));
                 }
-                if let Some(profile) = image.profile.as_deref() {
+                // Issue 2623 -- the image's profile, else the board default
+                // (`release` on a board, as the cmake road's `Release`); a
+                // profile the caller names after `--` replaces either.
+                if let Some(profile) =
+                    cargo_profile_arg(image.profile.as_deref(), &platform, &args.native_args)
+                {
                     // `--profile` rather than `--release`: a named profile is
                     // what `[image.<id>].profile` declares, and `release` is
                     // just one of its legal values.
@@ -1833,7 +1838,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                             .to_string()
                     }),
                     profile_dir: crate::cmd::build_next::cargo_profile_dir(
-                        image.profile.as_deref(),
+                        cargo_profile_arg(image.profile.as_deref(), &platform, &args.native_args),
                         &args.native_args,
                     ),
                     bin: crate::cmd::build_next::cargo_bin_name(&manifest_dir),
@@ -6296,6 +6301,38 @@ fn board_heap_budget(
 /// still wins: cmake takes the last definition on the line.
 fn board_build_type_arg(platform: &str) -> Option<String> {
     (platform != "posix").then(|| "-DCMAKE_BUILD_TYPE=Release".to_string())
+}
+
+/// Issue 2623 -- the cargo twin of [`board_build_type_arg`]: the profile a
+/// cargo image builds when it states none.
+///
+/// Cargo's own default is `dev`, so until this a Rust board image built
+/// unoptimised while the same image in C or C++ built `Release`: 914,880 B of
+/// flash against 515,536 B at `release` (mps2-an385 FreeRTOS talker), and
+/// the MCU stack and timing of a different program, issue 2072's reason. So
+/// `release` on every platform but `posix`, whose images are host processes
+/// and keep cargo's default.
+fn board_cargo_profile(platform: &str) -> Option<&'static str> {
+    (platform != "posix").then_some("release")
+}
+
+/// The `--profile` `nros build` passes cargo: the image's stated profile, else
+/// the board default ([`board_cargo_profile`]). `None` when the caller names a
+/// profile after `--` (`--profile dev`, `--release`): that one wins, as
+/// `-DCMAKE_BUILD_TYPE` does on the cmake road, and cargo refuses `--profile`
+/// twice, so nothing is added beside it.
+fn cargo_profile_arg<'a>(
+    stated: Option<&'a str>,
+    platform: &str,
+    native_args: &[String],
+) -> Option<&'a str> {
+    let names_one = native_args.iter().take_while(|a| *a != "--").any(|a| {
+        matches!(a.as_str(), "--release" | "-r" | "--profile") || a.starts_with("--profile=")
+    });
+    if names_one {
+        return None;
+    }
+    stated.or_else(|| board_cargo_profile(platform))
 }
 
 // GitHub #3899 (issue 2593).
@@ -11795,6 +11832,50 @@ mod board_heap_tests {
             );
         }
         assert_eq!(board_build_type_arg("posix"), None);
+    }
+
+    /// Issue 2623 -- a cargo board image that states no profile builds
+    /// `release`, as its cmake twin builds `Release`; a host image keeps
+    /// cargo's `dev`, and a profile named after `--` replaces the default or
+    /// a stated profile rather than doubling `--profile`.
+    #[test]
+    fn a_cargo_board_image_defaults_to_release() {
+        let none: Vec<String> = Vec::new();
+        assert_eq!(cargo_profile_arg(None, "freertos", &none), Some("release"));
+        assert_eq!(
+            cargo_profile_arg(None, "bare-metal", &none),
+            Some("release")
+        );
+        assert_eq!(cargo_profile_arg(None, "posix", &none), None);
+        assert_eq!(
+            cargo_profile_arg(Some("dev"), "freertos", &none),
+            Some("dev")
+        );
+        for named in [
+            &["--profile", "dev"][..],
+            &["--profile=dev"],
+            &["--release"],
+            &["-r"],
+        ] {
+            let named: Vec<String> = named.iter().map(|a| a.to_string()).collect();
+            assert_eq!(
+                cargo_profile_arg(None, "freertos", &named),
+                None,
+                "{named:?}"
+            );
+            // A stated profile is replaced too: cargo refuses `--profile` twice.
+            assert_eq!(
+                cargo_profile_arg(Some("dev"), "freertos", &named),
+                None,
+                "{named:?}"
+            );
+        }
+        // After `--` an argument is the program's, not cargo's.
+        let after: Vec<String> = ["--", "--profile", "dev"]
+            .iter()
+            .map(|a| a.to_string())
+            .collect();
+        assert_eq!(cargo_profile_arg(None, "freertos", &after), Some("release"));
     }
 
     // GitHub #3899 (issue 2593).
