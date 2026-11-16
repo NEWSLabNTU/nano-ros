@@ -117,17 +117,28 @@
  *    NO sched-task-stack subtraction here: that image has no sched tasks, and on this road
  *    sched task stacks (1598) and sched task executors (1568) are `.bss`, so the derivation
  *    never contained them — subtracting would take them out twice.
- * 3. Everything else — CMAKE road on zenoh, and a cargo build of the family
- *    crate with no RMW feature — takes the FALLBACK, 3072 KiB minus the sched task
+ * 2b. CMAKE road on zenoh: `nano-ros-freertos.cmake` defines
+ *    `NROS_FREERTOS_HEAP_DEFAULT_ZENOH`, and the heap is
+ *    `NROS_FREERTOS_ZENOH_HEAP_KB` below — the cargo road's own derivation at
+ *    the C/C++ carrier's app stack,
+ *    `default_heap_bytes(C_CARRIER_APP_STACK_BYTES)` = 3 x 65,536 (app task
+ *    slots) + 2 x 131,072 (spare executors) + 65,536 (working set) = 512 KiB,
+ *    held to it by `freertos_config::tests::the_header_states_the_derived_zenoh_default`.
+ *    MEASURED (issue 2623): the C talker template peaks at 91,888 bytes and the
+ *    tutorial's six-node project at 251,496. Like the DDS default, no sched
+ *    task stack subtraction: on this road those stacks are `.bss` (1598), so
+ *    the derivation's extra slots only over-provision. This replaced the
+ *    3 MiB fallback, which issue 1657 kept while no zenoh cmake image ran
+ *    past session open.
+ * 3. Everything else — a cargo build of the family crate with no RMW
+ *    feature, and a cmake host with no `freertos_config` target — takes the
+ *    FALLBACK, 3072 KiB minus the sched task
  *    stacks the entry moved to `.bss` (issue 1598): those stacks came out of
  *    this budget until 1598 gave each spawned sched task a static one, so without
  *    the subtraction the bytes were reserved twice (realtime-cpp's
  *    `demo_bringup:freertos` overflowed RAM by 151,024 bytes with `ucHeap` at
  *    0x300000). `nano_ros_entry` defines `NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB`
- *    from the generated entry's own declarations. The zenoh cmake images were
- *    NOT re-derived: on this host they open a session and never tick, on main
- *    as on this change, so no heap peak past session open could be read
- *    (issue 1657) — a cut nobody could measure is not made here.
+ *    from the generated entry's own declarations.
  *
  * Override per image with `NROS_FREERTOS_HEAP_KB` (cargo: the build env, which
  * build.rs forwards; cmake: a compile definition). It is a size someone chose
@@ -143,9 +154,12 @@
 #define NROS_FREERTOS_HEAP_RAISE_KB                   0
 #endif
 #define NROS_FREERTOS_DDS_HEAP_KB 640
+#define NROS_FREERTOS_ZENOH_HEAP_KB 512
 #ifndef NROS_FREERTOS_HEAP_KB
 #if defined(NROS_FREERTOS_HEAP_DEFAULT_DDS) && NROS_FREERTOS_HEAP_DEFAULT_DDS
 #define NROS_FREERTOS_HEAP_KB                   ((NROS_FREERTOS_DDS_HEAP_KB) + (NROS_FREERTOS_HEAP_RAISE_KB))
+#elif defined(NROS_FREERTOS_HEAP_DEFAULT_ZENOH) && NROS_FREERTOS_HEAP_DEFAULT_ZENOH
+#define NROS_FREERTOS_HEAP_KB                   ((NROS_FREERTOS_ZENOH_HEAP_KB) + (NROS_FREERTOS_HEAP_RAISE_KB))
 #else
 #define NROS_FREERTOS_HEAP_KB                   (3072 - (NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB) + (NROS_FREERTOS_HEAP_RAISE_KB))
 #endif
