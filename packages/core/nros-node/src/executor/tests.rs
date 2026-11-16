@@ -14689,6 +14689,88 @@ fn a_full_store_reports_the_refusal_and_names_its_knob() {
     );
 }
 
+/// The STOCK carve -- what an image gets when it builds a store but nobody
+/// stated or declared a parameter count (the stock parameter services every
+/// image serves) -- is `nros_params::STOCK_STORE_SLOTS`, and a declaration
+/// past it is refused and reported as a FULL store naming the knob. The
+/// carve is small on purpose (a slot costs ~8.5 KiB whatever it holds), so
+/// the refusal is the path an application that declares more in code meets
+/// first, and it must say how to get room.
+#[cfg(feature = "param-store")]
+#[test]
+fn a_declaration_past_the_stock_carve_is_refused_naming_the_knob() {
+    use nros_params::ParameterValue;
+    use std::{string::String, sync::Mutex, vec::Vec};
+
+    static SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    struct Capture;
+    impl nros_log::LogSink for Capture {
+        fn log(&self, record: &nros_log::Record<'_>) {
+            let m = record.message;
+            if m.contains("stock_carve_probe")
+                || m == nros_params::STORE_SIZE_KNOB
+                || m == nros_params::STORE_SIZE_DERIVED
+            {
+                SEEN.lock().unwrap().push(String::from(m));
+            }
+        }
+    }
+    static CAPTURE: Capture = Capture;
+    assert!(
+        nros_log::add_sink(&CAPTURE),
+        "the capture sink is installed"
+    );
+
+    let slots = nros_params::STOCK_STORE_SLOTS;
+    assert!(
+        slots > 1 && slots < nros_params::MAX_PARAMETERS,
+        "the stock carve ({slots}) is smaller than the crate default and holds use_sim_time and more"
+    );
+    let sizing = super::storage::ExecutorSizing {
+        params: slots,
+        ..super::storage::ExecutorSizing::DEFAULT
+    };
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] =
+        alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len()));
+    // SAFETY: `backing` is exactly `sizing.u64_len()` words, `'static`, and is
+    // handed to this executor alone.
+    let mut executor: Executor =
+        unsafe { Executor::from_session_in(MockSession::new(), backing, sizing) };
+    executor.clock_us_fn = Some(test_clock_us);
+    let node = super::node_record::NodeId::PRIMARY;
+    let seeded = usize::from(cfg!(feature = "sim-time"));
+    for i in 0..slots - seeded {
+        assert!(
+            executor.declare_parameter_on(node, &std::format!("p{i}"), ParameterValue::Integer(1)),
+            "declaration {} of {slots} fits the stock carve",
+            i + 1 + seeded
+        );
+    }
+    let name = "stock_carve_probe";
+    assert!(
+        !executor.declare_parameter_on(node, name, ParameterValue::Integer(7)),
+        "declaration {} is past the {slots}-slot stock carve",
+        slots + 1
+    );
+    assert!(
+        executor.report_parameter_refused(node, name),
+        "the refusal is reported as a FULL store"
+    );
+    let seen = SEEN.lock().unwrap().clone();
+    let first = seen
+        .iter()
+        .find(|m| m.contains("parameter store is full"))
+        .unwrap_or_else(|| panic!("no FULL line was logged; saw {seen:?}"));
+    assert!(
+        first.contains(&std::format!("({slots} slots")),
+        "the line states the stock capacity: {first}"
+    );
+    let line = seen.join(" ");
+    for needle in [name, "max_parameters", "NROS_MAX_PARAMETERS", "params:"] {
+        assert!(line.contains(needle), "the line names `{needle}`: {line}");
+    }
+}
+
 /// The typed builder's `Err` says what to do about a full store.
 // GitHub #4018.
 #[cfg(feature = "param-store")]
