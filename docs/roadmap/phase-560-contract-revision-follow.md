@@ -110,6 +110,13 @@ exhaustive match in `ftti_budget.rs`. End-to-end protection (a counter field,
 T7) is the image's to check if it enforces one. Several hosts (T10): the image
 reads one model per board, unchanged.
 
+The CAN frame driver under T7's CAN FD links (issue 2633, RFC-0132) is not
+blocked on a release: it is designed in RFC-0132 and built after that RFC's
+review, in this order: the ABI header and `PlatformCan` trait with the `mock`
+backend; the `zephyr` backend (the K344's FlexCAN, issue 2573's helper); the
+`socketcan` backend; `[board.can]` and the image row; the `board` hook for
+`s32z270-freertos` (issue 2632).
+
 ### W8 -- E7, the same answer as play_launch
 
 - **Status:** DONE (2026-11-14, rule `hazard-level-runtime`)
@@ -160,5 +167,6 @@ their GitHub reports.
 - [issue 2571](../issues/archived/2571-mode-form-contract-fixture.md): no fixture declares `hazards:` with a `modes:` ladder (NR-19). Resolved by PR #3853.
 - [issue 2572](../issues/2572-timer-silence-watchdog-from-on-violation.md): a timer watchdog for subscriber silence, generated from `on_violation.mechanism: timer` (NR-12). W7; blocked on the rlm addition.
 - [issue 2573](../issues/2573-can-fd-e2e-profile-and-flexcan-helper.md): a CAN FD fixed-length E2E profile and a raw FlexCAN helper (NR-6). W7's end-to-end protection.
+- [issue 2633](../issues/2633-board-owned-can-frame-driver.md): a board-owned CAN frame driver (`open`/`send`/`send_fd`/`fd_active`/`recv`), the portable layer under 2573's FlexCAN helper (GitHub #4012, consumer ASI). W7; design [RFC-0132](../design/0132-board-can-frame-driver.md), Draft, review-gated.
 - [issue 2574](../issues/2574-pluginlib-free-mode-plugin-registration.md): pluginlib-free registration for the mode decider and switcher plugins (NR-17). Homed here with its siblings; it is a registration question, not a contract one.
 
