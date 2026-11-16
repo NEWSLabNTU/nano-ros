@@ -127,17 +127,24 @@ fn parse_gated_modules(lib_rs: &str) -> std::collections::BTreeMap<String, Vec<S
     map
 }
 
-/// Phase 241.D3-rev — emit a `#[used]` anchor that force-references every
+/// Phase 241.D3-rev — emit an anchor that force-references every
 /// `#[unsafe(no_mangle)] extern "C"` entry point in this crate.
 ///
 /// `nros-c` is bundled as an **rlib** dependency by the C++ umbrella (`nros-cpp`,
 /// which links only `libnros_cpp.a`). rustc's staticlib emission dead-code-eliminates
 /// no_mangle symbols from a dependency rlib that the root crate does not reference, so
 /// a C++ binary calling a C-API function the C++ FFI itself never touches (e.g.
-/// `rcl_clock_init`) fails at link with `undefined reference`. The anchor —
-/// `#[used]`, so it survives DCE in every consumer — takes the address of each entry
-/// point, keeping the whole C surface in the archive. (We never call through it; the
-/// extern declarations only name the symbols, so their argument types are irrelevant.)
+/// `rcl_clock_init`) fails at link with `undefined reference`. The anchor takes the
+/// address of each entry point, and the staticlib ROOT references it from an exported
+/// function, which keeps the whole C surface in the archive. (We never call through it;
+/// the extern declarations only name the symbols, so their argument types are
+/// irrelevant.)
+///
+/// Issue 2623 — the anchor is deliberately NOT `#[used]`. `#[used]` gives its section
+/// `SHF_GNU_RETAIN`, which keeps it through the final link's `--gc-sections` too, and
+/// with it every function it names: the whole C and C++ API in every image, ~200 KB on a
+/// one-topic talker. Referenced from the root's exported function instead, it keeps the
+/// API in the ARCHIVE, and the image keeps only what it calls.
 fn generate_c_surface_anchor() {
     use std::fmt::Write as _;
 
@@ -232,7 +239,7 @@ fn generate_c_surface_anchor() {
     out.push_str("    }\n");
     let _ = writeln!(
         out,
-        "    #[used]\n    pub static C_SURFACE_ANCHOR: [unsafe extern \"C\" fn(); {}] = [",
+        "    pub static C_SURFACE_ANCHOR: [unsafe extern \"C\" fn(); {}] = [",
         names.len()
     );
     for n in &names {

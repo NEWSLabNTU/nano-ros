@@ -484,9 +484,10 @@ mod trace;
 mod transport;
 mod util;
 
-// Phase 241.D3-rev — `#[used]` anchor over this crate's `#[no_mangle]` C surface, so
-// the entry points survive DCE when `nros-c` is bundled as an rlib by the `nros-cpp`
-// umbrella (a C++ binary may call a C-API fn the C++ FFI never references). Generated
+// Phase 241.D3-rev — an anchor over this crate's `#[no_mangle]` C surface, so the entry
+// points survive DCE when `nros-c` is bundled as an rlib by the `nros-cpp` umbrella (a
+// C++ binary may call a C-API fn the C++ FFI never references). The staticlib root
+// references it from an exported function; it is not `#[used]` (issue 2623). Generated
 // by build.rs (ungated entry points only). See `generate_c_surface_anchor`.
 include!(concat!(env!("OUT_DIR"), "/c_surface_anchor.rs"));
 

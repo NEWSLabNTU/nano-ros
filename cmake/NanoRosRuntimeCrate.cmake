@@ -203,10 +203,15 @@ ${_patch}")
 ${_no_std_attr}#![allow(unused)]
 
 // Re-pull nros-cpp's full ABI surface (nros-c C API + nros-cpp C++ FFI + backend register
-// closure) past staticlib DCE — nros-cpp is a dependency rlib here, so its own #[used]
-// anchors are dropped before this staticlib root is emitted.
-#[used]
+// closure) past staticlib DCE — nros-cpp is a dependency rlib here, so its own anchors are
+// dropped before this staticlib root is emitted. Referenced from an EXPORTED function, not
+// a `#[used]` static (issue 2623): the export keeps the surface in this archive, and an
+// image drops the API it never calls at `--gc-sections`.
 static _KEEP_SURFACE: &[&[unsafe extern \"C\" fn()]] = nros_cpp::FORCE_LINK_ANCHOR;
+#[unsafe(no_mangle)]
+pub extern \"C\" fn nros_runtime_keep_api_surface() -> *const core::ffi::c_void {
+    core::ptr::addr_of!(_KEEP_SURFACE).cast()
+}
 
 ${_backend_ctor}
 // One anchor per workspace Rust node — keep its __nros_component_<pkg>_register C symbol

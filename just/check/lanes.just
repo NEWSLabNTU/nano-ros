@@ -1811,8 +1811,27 @@ cpp: cpp-fmt
         -o "$gen/nros-cpp-tests"/clock_sleep_runtime \
         packages/api/nros-cpp/tests/compile/clock_sleep_runtime.cpp \
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        -Wl,--gc-sections \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/clock_sleep_runtime
+    # Issue 2623 -- the API anchors keep the surface in the ARCHIVE, never in the
+    # image. This program calls `rcl_clock_init`, a C-API function the C++ FFI
+    # never references, so it is the case the anchors exist for: linked with
+    # `--gc-sections`, it must still find it. And it calls no action API, so
+    # `nros_cpp_action_server_init_polling` must be gone: a `#[used]` anchor
+    # (SHF_GNU_RETAIN) kept it, with the rest of the C and C++ API, in every image.
+    clock_syms="$(nm "$gen/nros-cpp-tests"/clock_sleep_runtime)"
+    _rc=0; nros_grep_q ' T rcl_clock_init$' <<<"$clock_syms" || _rc=$?
+    if [ "$_rc" -ne 0 ]; then \
+        echo "ERROR: clock_sleep_runtime links no rcl_clock_init (grep rc $_rc) -- a C++ program lost a C-API function the C++ FFI never calls (issue 2623)." >&2; \
+        exit 1; \
+    fi
+    _rc=0; nros_grep_q ' T nros_cpp_action_server_init_polling$' <<<"$clock_syms" || _rc=$?
+    if [ "$_rc" -ne 1 ]; then \
+        echo "ERROR: clock_sleep_runtime keeps nros_cpp_action_server_init_polling (grep rc $_rc, 1 = absent) -- an API anchor is retained through --gc-sections again (issue 2623)." >&2; \
+        exit 1; \
+    fi
+    echo "  - an image keeps the C-API function it calls and drops the API it does not (issue 2623)"
     # phase-515 P4 -- generic pub/sub keyed by a type name AND hash: both
     # entities reach the backend under the given type, the publisher puts the
     # caller's bytes on the wire, the subscription hands a staged sample's bytes
