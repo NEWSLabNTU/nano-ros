@@ -239,3 +239,51 @@ symbol's address: a native_sim `zephyr.elf` is a relocatable ELF, with every
 section at address 0. On the Nucleo A image, the unattributed gap goes from
 84,464 B (23.9 %) to 580 B, and the storage is listed under
 `[executor storage]` at 83,880 B.
+
+## The stack half: runtime peaks (2026-11-16)
+
+Item 4's stack half, measured after issue 2360 shrank the graph query's and
+the parameter declaration's frames. Two Nucleo-F767ZI images were made with
+`nros new` from the `talker` template, the way `just zephyr stack-floor-twin`
+makes them, and then changed to do what the template does not:
+
+* **C talker:** calls `rclc_executor_get_topic_names_and_types` and
+  `rclc_executor_get_publisher_names_and_types_by_node` on every tick, with
+  graph discovery switched on (`[image.zephyr.knobs.zenoh] graph_discovery =
+  true`, `graph_cache_size = 8192`);
+* **Rust talker:** declares an integer and a string parameter, with the
+  `param-store` feature and `[image.zephyr.knobs.params] max_parameters = 2`.
+
+Each image ran for 75 s under Renode with the twin's thread analyzer, the
+main stack raised to 128 KiB so that nothing overflows while measuring, and
+the peaks taken over 13 or 14 analyzer rounds. "Before" is the parent of the
+2360 commit and "after" is the commit itself, both built the same way.
+
+| thread | stack | C graph, before | C graph, after | Rust param, before | Rust param, after |
+|---|---:|---:|---:|---:|---:|
+| main | 131,072 (measuring) | 29,220 | 12,844 | 27,388 | 27,388 |
+| `zpico_exec` (tier slot) | 16,384 | 992 | 992 | 992 | 992 |
+| `zpico_flush` (tier slot) | 16,384 | 340 | 152 | 152 | 152 |
+
+What this settles:
+
+* **The graph saving is real, and it applies only where graph discovery is
+  on.** The C image's main peak drops by 16,376 B, from above the Nucleo's
+  16 KiB main-stack default to well inside it. On the serial Nucleo, graph
+  discovery is OFF by default (`NROS_ZENOH_GRAPH_DISCOVERY` is derived 0 on a
+  serial-only link, and every graph query returns `RCL_RET_UNSUPPORTED`), so
+  a default Nucleo image never pays the cost and gains nothing from the fix.
+  The measurement had to switch discovery on to see it.
+* **The parameter declaration did not move on this build.** The Rust main
+  peak is 27,388 B before and after. Its largest out-of-line frame here is
+  6,844 B, where the mps2 build showed 24,984 B, so the frame 2360 shrank was
+  never large on this target. Why the two targets differ is not known.
+  At 27,388 B a Rust image that declares parameters still needs more than the
+  16 KiB board default for main.
+* **The tier slots are far larger than what runs in them.** Both tasks peak
+  under 1 KiB against a 16 KiB slot (`NROS_ZEPHYR_TIER_STACK_SIZE`), in both
+  images. This is a measurement only; lowering the default is a decision for
+  the owners of 2360 / 2365, and two images are not a census.
+
+The static walk's floors for the same two images are 3-10x these peaks, and
+are filed separately as issue 2658.
