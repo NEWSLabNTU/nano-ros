@@ -235,6 +235,7 @@ ANY_ID = re.compile(r"\b[Pp]hase[- ]\d{1,4}\b|\b[Ii]ssues?[- ]#?\d{3,4}\b|\bRFC-
 def scrub(text: str) -> str:
     text = re.sub(r"\s*\(" + UP_CITE + r"\)", "", text)
     text = re.sub(r"\(" + UP_CITE + r"[,;] ", "(", text)
+    text = re.sub(r"[,;] " + UP_CITE + r"\)", ")", text)
     text = re.sub(r"\b(Removed|Added|Renamed|Deprecated) in " + UP_CITE + r"\b", r"\1", text)
     left = sorted({m.group(0) for m in ANY_ID.finditer(text)})
     if left:
@@ -290,6 +291,7 @@ def self_test() -> None:
         f"in {UPSTREAM_DOC}, not in {TABLE}: `older` under `nodes.<name>`"]
     assert scrub("Removed in phase 70 — write x. Links (play_launch phase 97): y (play_launch phase 97 P5, "
                  "not adopted).") == "Removed — write x. Links: y (not adopted)."
+    assert scrub("(since v0.3.17; phase 104 S3): a") == "(since v0.3.17): a"
     assert refused(lambda: scrub("since phase 70 the key is gone")), "a remaining id passed"
     assert escape_cell_pipes("| `k` | `{ a | b }` |") == "| `k` | `{ a \\| b }` |"
     assert escape_cell_pipes("prose `a | b`") == "prose `a | b`"
