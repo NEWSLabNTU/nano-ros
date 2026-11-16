@@ -3478,9 +3478,11 @@ impl<'s> Executor<'s> {
         if !self.nodes.is_empty() {
             return Ok(());
         }
-        #[cfg(feature = "param-store")]
+        // `requested` records a parameter-SERVICES request, so it exists only
+        // with that feature; a store alone asks for no node.
+        #[cfg(feature = "param-services")]
         let params_wanted = self.params.as_deref().is_some_and(|p| p.requested);
-        #[cfg(not(feature = "param-store"))]
+        #[cfg(not(feature = "param-services"))]
         let params_wanted = false;
         #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
         let sim_time_wanted = self.sim_time_requested;
