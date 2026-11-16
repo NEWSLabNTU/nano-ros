@@ -495,14 +495,8 @@ pub fn board_not_applied(
 /// not here, so the module hook would build its image without the board's
 /// snippets or conf files.
 pub(crate) fn load_catalog(root: &std::path::Path, dir: &std::path::Path) -> Option<BoardCatalog> {
-    let pkg_dirs: Vec<PathBuf> = crate::cmd::image_facts::workspace_root_from(dir)
-        .and_then(|ws| {
-            let members = crate::builder::discover::cargo_members_or_walk(&ws);
-            crate::builder::discover::discover(&ws, &members).ok()
-        })
-        .map(|found| found.packages.iter().map(|p| p.dir.clone()).collect())
-        .unwrap_or_default();
-    BoardCatalog::load_with_packages(root, &pkg_dirs).ok()
+    // Issue 2637 -- the one shared lookup, not a copy of it.
+    crate::cmd::board::catalog_for_dir(root, dir).ok()
 }
 
 /// `nros ws qemu-nic`.

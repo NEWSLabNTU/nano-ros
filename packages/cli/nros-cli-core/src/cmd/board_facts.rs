@@ -139,7 +139,11 @@ pub fn resolve(
     // table is keyed by board (issue 0951) — so what survives here is the
     // genuinely ambiguous case: blocks on DIFFERENT boards, where answering
     // with either one would hand the build another board's SDK roots.
-    let (candidates, site, origin) = pick_deploys(ws, nano_ros_root, deploy, board)?;
+    // Issue 2637 -- the catalog `nros build` resolves against (the checkout's
+    // boards, `$NROS_EXTRA_BOARD_PATH`, AND the workspace's own board
+    // packages), loaded once by the one shared lookup.
+    let catalog = crate::cmd::board::catalog_for_dir(nano_ros_root, ws)?;
+    let (candidates, site, origin) = pick_deploys(ws, nano_ros_root, &catalog, deploy, board)?;
     let mut resolved: Vec<(String, BTreeMap<String, String>)> = Vec::new();
     for (name, board) in &candidates {
         // Issue 2199 — a refusal about the BOARD belongs to every candidate on
@@ -154,7 +158,7 @@ pub fn resolve(
             [one] => format!("deploy {one}"),
             many => format!("deploys {}", many.join(", ")),
         };
-        let facts = resolve_one(&origin, nano_ros_root, &label, board, &site, env)?;
+        let facts = resolve_one(&origin, nano_ros_root, &catalog, &label, board, &site, env)?;
         resolved.push((name.clone(), facts));
     }
     if let Some((first_name, first)) = resolved.first()
@@ -236,6 +240,7 @@ fn site_for_board<'a>(
 fn resolve_one(
     origin: &str,
     nano_ros_root: &Path,
+    catalog: &BoardCatalog,
     deploy_label: &str,
     board_name: &str,
     site_table: &BTreeMap<String, toml::Value>,
@@ -243,9 +248,7 @@ fn resolve_one(
 ) -> Result<BTreeMap<String, String>> {
     let board_name = board_name.to_string();
 
-    let catalog = BoardCatalog::load(nano_ros_root)
-        .map_err(|e| eyre!("board catalog under {}: {e}", nano_ros_root.display()))?;
-    let descriptor = resolve_board(&catalog, &board_name).ok_or_else(|| {
+    let descriptor = resolve_board(catalog, &board_name).ok_or_else(|| {
         eyre!(
             "no board descriptor claims `{board_name}` ({deploy_label}). \
              Descriptors are matched by their `names` and by their directory \
@@ -260,7 +263,7 @@ fn resolve_one(
     // `[board_config."qemu-armv7a-nsh"]` invisible to a build that spelled the
     // same board `qemu-armv7a-nuttx`, which is issue 0606 one table over. So
     // resolve both sides through the catalog and compare DESCRIPTORS.
-    let (site_section, site) = match site_for_board(site_table, &catalog, descriptor) {
+    let (site_section, site) = match site_for_board(site_table, catalog, descriptor) {
         Some((key, value)) => {
             let section = format!("board_config.{key}");
             (
@@ -514,6 +517,7 @@ type Picked = (Vec<PickedDeploy>, BTreeMap<String, toml::Value>, String);
 fn pick_deploys(
     ws: &Path,
     nano_ros_root: &Path,
+    catalog: &BoardCatalog,
     deploy: Option<&str>,
     board: Option<&str>,
 ) -> Result<Picked> {
@@ -552,13 +556,13 @@ fn pick_deploys(
         let raw = std::fs::read_to_string(&p).map_err(|e| eyre!("reading {}: {e}", p.display()))?;
         let sys = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
             .map_err(|e| eyre!("parsing {}: {e}", p.display()))?;
-        return pick_from(&p, &sys, Some(leaf), nano_ros_root, deploy, board);
+        return pick_from(&p, &sys, Some(leaf), nano_ros_root, catalog, deploy, board);
     }
     let mut found = load_system_tomls(ws)?;
     if found.len() == 1 {
         let (p, sys) = found.remove(0);
         let own = own.as_ref().filter(|_| deploy.is_none() && board.is_none());
-        return pick_from(&p, &sys, own, nano_ros_root, deploy, board);
+        return pick_from(&p, &sys, own, nano_ros_root, catalog, deploy, board);
     }
     let listed = found
         .iter()
@@ -580,7 +584,7 @@ fn pick_deploys(
     let mut hits = Vec::new();
     let mut misses = Vec::new();
     for (p, sys) in &found {
-        match pick_from(p, sys, None, nano_ros_root, deploy, board) {
+        match pick_from(p, sys, None, nano_ros_root, catalog, deploy, board) {
             Ok(picked) => hits.push(picked),
             Err(e) => misses.push(e.to_string()),
         }
@@ -614,6 +618,7 @@ fn pick_from(
     system: &crate::orchestration::cargo_metadata_schema::SystemToml,
     claimed: Option<&nros_orchestration_ir::leaf_system::LeafSystem>,
     nano_ros_root: &Path,
+    catalog: &BoardCatalog,
     deploy: Option<&str>,
     board: Option<&str>,
 ) -> Result<Picked> {
@@ -685,13 +690,11 @@ fn pick_from(
         // the same block. A textual compare here makes the gate and the
         // resolver disagree about which boards a workspace builds for — issue
         // 0606's failure, one table over.
-        let catalog = BoardCatalog::load(nano_ros_root)
-            .map_err(|e| eyre!("board catalog under {}: {e}", nano_ros_root.display()))?;
-        let wanted = resolve_board(&catalog, want).map(|d| d.names.clone());
+        let wanted = resolve_board(catalog, want).map(|d| d.names.clone());
         candidates.retain(|(_, b)| {
             b == want
                 || (wanted.is_some()
-                    && resolve_board(&catalog, b).map(|d| d.names.clone()) == wanted)
+                    && resolve_board(catalog, b).map(|d| d.names.clone()) == wanted)
         });
         if candidates.is_empty() {
             return Err(eyre!(
@@ -823,6 +826,7 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
         resolve_one(
             &ws.join("Cargo.toml").display().to_string(),
             &root,
+            &crate::cmd::board::catalog_for_dir(&root, &ws)?,
             "the leaf's board crate",
             &board,
             &BTreeMap::new(),
@@ -830,8 +834,7 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
         )?
     };
     if let Some(picked) = args.rust_target.as_deref() {
-        let catalog = BoardCatalog::load(&root)
-            .map_err(|e| eyre!("board catalog under {}: {e}", root.display()))?;
+        let catalog = crate::cmd::board::catalog_for_dir(&root, &ws)?;
         let board = facts
             .get("NROS_BOARD")
             .ok_or_else(|| eyre!("board-facts: resolved no NROS_BOARD to check"))?;
@@ -932,8 +935,7 @@ fn board_of_cargo_leaf(ws: &Path, root: &Path) -> Result<Option<String>> {
         }
     }
     let deps: Vec<&str> = deps.iter().map(String::as_str).collect();
-    let catalog = BoardCatalog::load(root)
-        .map_err(|e| eyre!("board catalog under {}: {e}", root.display()))?;
+    let catalog = crate::cmd::board::catalog_for_dir(root, ws)?;
     let hits: Vec<&BoardDescriptor> = catalog
         .descriptors()
         .iter()
@@ -1184,7 +1186,9 @@ mod tests {
         let board = board_of_cargo_leaf(leaf.path(), &root)
             .expect("attributed")
             .expect("one board crate");
-        let facts = resolve_one("t", &root, "test", &board, &BTreeMap::new(), &|_| None).unwrap();
+        let catalog = BoardCatalog::load(&root).unwrap();
+        let facts =
+            resolve_one("t", &root, &catalog, "test", &board, &BTreeMap::new(), &|_| None).unwrap();
         assert_eq!(
             facts.get("FREERTOS_PORT").map(String::as_str),
             Some("GCC_ARM_CM3")
@@ -1195,6 +1199,61 @@ mod tests {
                 .is_some_and(|d| d.ends_with("nros-board-mps2-an385-freertos/config")),
             "{facts:?}"
         );
+    }
+
+    /// Issue 2637 -- a board package the WORKSPACE carries is found by
+    /// `nros build`'s catalog and by this verb alike, with no
+    /// `$NROS_EXTRA_BOARD_PATH`. Asked of the bringup dir, as the west
+    /// configure asks (`NanoRosBoardFacts.cmake`), and of the workspace root.
+    #[test]
+    fn a_workspace_board_package_resolves_here_as_it_does_for_nros_build() {
+        let ws = tempfile::tempdir().unwrap();
+        let board = ws.path().join("src").join("my_board");
+        let bringup = ws.path().join("src").join("my_bringup");
+        std::fs::create_dir_all(&board).unwrap();
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::write(
+            board.join("nros-board.toml"),
+            "[[board]]\nnames = [\"my-ws-board\"]\nplatform = \"zephyr\"\n\
+             toolchain = \"stable\"\nentry_kind = \"zephyr-staticlib\"\n\
+             supported_netstacks = []\n\n[board.zephyr]\nwest_board = \"qemu_cortex_m3\"\n",
+        )
+        .unwrap();
+        let pkg = |name: &str, export: &str| {
+            format!(
+                "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>{name}</name>\n  \
+                 <version>0.0.0</version>\n  <description>t</description>\n  \
+                 <maintainer email=\"t@example.com\">t</maintainer>\n  \
+                 <license>Apache-2.0</license>\n  <export>\n    \
+                 <build_type>nros_cmake</build_type>\n{export}  </export>\n</package>\n"
+            )
+        };
+        std::fs::write(
+            board.join("package.xml"),
+            pkg("my_board", "    <nano_ros_provides kind=\"board\" name=\"my-ws-board\"/>\n"),
+        )
+        .unwrap();
+        std::fs::write(bringup.join("package.xml"), pkg("my_bringup", "")).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n[image.ws]\nboard = \"my-ws-board\"\n",
+        )
+        .unwrap();
+
+        let root = repo_root();
+        // `nros build`'s catalog: the checkout plus the workspace's packages.
+        let build = crate::cmd::board::workspace_catalog(&root, ws.path()).unwrap();
+        assert!(resolve_board(&build, "my-ws-board").is_some(), "nros build's catalog");
+        // The checkout's catalog alone does not have it: the case this guards.
+        let checkout = BoardCatalog::load_with_extra(&root, &[]).unwrap();
+        assert!(resolve_board(&checkout, "my-ws-board").is_none());
+        for dir in [bringup.as_path(), ws.path()] {
+            let here = crate::cmd::board::catalog_for_dir(&root, dir).unwrap();
+            assert!(resolve_board(&here, "my-ws-board").is_some(), "{}", dir.display());
+        }
+        let facts = resolve(&bringup, &root, Some("ws"), None, &|_| None)
+            .expect("board-facts resolves the workspace's own board");
+        assert_eq!(facts.get("NROS_BOARD").map(String::as_str), Some("my-ws-board"));
     }
 
     /// Issue 2229 — a named image asked of a dir that cannot state it (a

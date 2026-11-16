@@ -422,6 +422,27 @@ pub(crate) fn workspace_catalog(root: &Path, ws: &Path) -> Result<BoardCatalog> 
     BoardCatalog::load_with_packages(root, &pkg_dirs).map_err(|e| eyre!("board catalog: {e}"))
 }
 
+/// The board catalog for a directory `dir` in (or at the root of) a workspace:
+/// the one [`workspace_catalog`] `nros build` resolves against, for the
+/// workspace `dir` sits in. Outside any workspace, the checkout's boards and
+/// `$NROS_EXTRA_BOARD_PATH`.
+///
+/// Issue 2637 -- every verb that resolves a board for a build asks THIS, so a
+/// workspace's own board package resolves for all of them or for none.
+/// `nros dev image board-facts` (run inside the west configure `nros build`
+/// spawns) used to load the checkout's catalog alone, so a board `nros build`
+/// found in the workspace failed there unless `$NROS_EXTRA_BOARD_PATH` named it.
+///
+/// # Errors
+///
+/// As [`workspace_catalog`].
+pub(crate) fn catalog_for_dir(root: &Path, dir: &Path) -> Result<BoardCatalog> {
+    match crate::cmd::image_facts::workspace_root_from(dir) {
+        Some(ws) => workspace_catalog(root, &ws),
+        None => BoardCatalog::load(root).map_err(|e| eyre!("board catalog: {e}")),
+    }
+}
+
 /// `nros check <board>` (issue 2294): what a board package must get right
 /// before an image is built on it.
 ///
