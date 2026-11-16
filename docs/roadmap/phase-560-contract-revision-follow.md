@@ -2,7 +2,8 @@
 
 **Status (2026-11-13). W1-W5 DONE** (rlm v0.3.15, play_launch v0.32.0,
 #3745); W6 and W7 BLOCKED on releases not yet tagged; W8 DONE (every level
-charged since #3758). nano-ros's
+charged since #3758); W9 (the CAN frame driver, RFC-0132) BLOCKED on its RFC
+review. nano-ros's
 share of two play_launch phases: phase 103 (defects the contract grammar review found in shipped
 behaviour) and phase 104 (the grammar revision itself). The design of
 record is rlm `docs/design/grammar-revision/` (an overview and one file per
@@ -111,11 +112,7 @@ T7) is the image's to check if it enforces one. Several hosts (T10): the image
 reads one model per board, unchanged.
 
 The CAN frame driver under T7's CAN FD links (issue 2633, RFC-0132) is not
-blocked on a release: it is designed in RFC-0132 and built after that RFC's
-review, in this order: the ABI header and `PlatformCan` trait with the `mock`
-backend; the `zephyr` backend (the K344's FlexCAN, issue 2573's helper); the
-`socketcan` backend; `[board.can]` and the image row; the `board` hook for
-`s32z270-freertos` (its NXP RTD variant, GitHub #4015).
+blocked on a release; it is W9.
 
 ### W8 -- E7, the same answer as play_launch
 
@@ -149,6 +146,82 @@ The image reports the fallback level it fell to, so the evaluation can compare
 nano-ros's verdict with play_launch's on an omission fault. It needs W1's
 meaning, which shipped in #3745. Size M.
 
+### W9 -- The CAN frame driver (RFC-0132)
+
+- **Status:** BLOCKED (RFC-0132 review: starts when the RFC is accepted)
+
+Issue 2633 (GitHub #4012), consumer ASI; the portable layer under issue 2573's
+FlexCAN helper. The items land in this order, each in its own pull request,
+and each states its acceptance before it lands.
+
+- **W9.a -- The header, the bindings, the mock.**
+  `packages/platform/nros-platform-api/include/nros/platform_can.h` (RFC-0132
+  D2), added to `scripts/gen-abi-bindings.sh`'s platform wrapper with the
+  regenerated `nros-platform-cffi/src/generated.rs` committed; the
+  `PlatformCan` trait and the `nros_platform_export_can!` macro; the
+  `packages/drivers/can/nros-can-mock` crate (host-only, `compile_error!` on
+  `target_os = "none"`).
+  *Accepted when:* `just check abi-bindings` and `just check
+  platform-abi-mirror` pass with `platform_can.h` in `HEADERS_REQUIRE_MACRO`,
+  and a deliberately unlisted symbol fails the mirror gate (its self-test);
+  `check-opaque-storage-guards` lists the header as an emitter and the mock's
+  `assert!` as a guard, and fails when the assert is removed; a host test
+  sends classic and FD frames through the mock and reads them back, and
+  refuses a 9-byte classic frame and a 13-byte FD frame; the mock crate fails
+  to build for `thumbv7m-none-eabi`. The RFC records the measured `sizeof` of
+  the mock state beside `NROS_PLATFORM_CAN_OPAQUE_U64S`.
+- **W9.b -- The `zephyr` backend.** `nros-platform-zephyr/src/can.c` over the
+  `nros,can` chosen, else `zephyr,canbus`; `NROS_PLATFORM_CAN_SEND_WAIT_TX`
+  through the TX callback.
+  *Accepted when:* a `native_sim` image with a `zephyr,native-linux-can` node on
+  `vcan0` sends a classic and an FD frame that `candump vcan0` on the host
+  reads byte for byte; opening with `want_fd` on a classic-MTU interface fails
+  at `open`; the backend's `_Static_assert` is in the gate's `GUARD_SITES`;
+  the S32K344 build (issue 2573's board) compiles the backend.
+- **W9.c -- The `socketcan` backend.**
+  `packages/boards/nros-board-linux/c/can_socketcan.c` with a new `build.rs`,
+  compiled by the same path into `nros-board-freertos-posix` and
+  `nros-board-threadx-linux`; `PF_CAN`, `CAN_RAW` and `linux/can.h` added to
+  `check-posix-platform-purity`'s `FORBIDDEN`; `can` added to those two
+  boards' `links`.
+  *Accepted when:* `just check posix-platform-purity` passes and its self-test
+  refuses a `PF_CAN` line planted in `nros-platform-posix/src`; a `linux` and a
+  `freertos-posix` image each send a classic and an FD frame on `vcan0` that
+  `candump` reads; `fd_active` is false and `want_fd` refused on a classic
+  `vcan` (MTU 16).
+- **W9.d -- The device table and its carrier.** `[image.<id>.can]` (`device`,
+  `driver = "mock"`) in the `system.toml` schema; `[canN]` rows (`bitrate`,
+  `dbitrate`, `frames`) in the D4 file parser (`system_net.rs`); the `can`
+  row kind in `nros-board-common/src/image_net.rs`; the RFC-0132 D5 and D6
+  refusals in `nros configure`.
+  *Accepted when:* CLI tests refuse, each with the message naming the right
+  home: `device` on an `"os"` board, `device` on a `"board"` board, a `[canN]`
+  table on a host board, `driver = "mock"` on `nucleo-f767zi-zephyr` (has
+  `[board.flash]`) and on `mps2-an385` (an emulator board), two unmarked
+  `[canN]` tables, and a device on a board whose `links` lacks `can`; the
+  image-net codec round-trips a `can` row in its unit tests.
+- **W9.e -- Delivery on every road.** The board decode of the `can` row and
+  the hand-off to `open(NULL)`.
+  *Accepted when:* a non-default probe (`[image.<id>.can] device = "vcan7"`)
+  reaches `open(NULL)` on the cargo road and on the cmake road (an image built
+  each way reports the device it opened), and a `native_sim` image whose
+  overlay sets `nros,can` opens that node on the west road; no new `NROS_*`
+  environment variable or Kconfig symbol appears
+  (`python3 scripts/nros-build-wiring.py` shows no new knob source).
+- **W9.f -- The `board` hook and the consumer.** Weak fail-loud defaults and
+  the `s32z270-freertos` strong symbols over the NXP RTD driver (GitHub
+  #4015); ASI's `platform_can.h` `#if` chain replaced; the follow-up issue
+  for rebasing the zenoh-pico CAN link onto this driver (RFC-0132 open
+  question 4) filed against RFC-0080.
+  *Accepted when:* an image on a board with no strong symbols fails at
+  `open` with "not supported", naming the board; the `s32z270-freertos` image
+  builds with the RTD backend; ASI's host census image builds with the mock
+  and ASI sets `[census] on_missing = "error"`; the follow-up issue exists.
+
+The five open questions of the first draft are resolved in RFC-0132 itself
+(send completion, polled receive, consumer backends through the `board` hook,
+sharing with the link, one default device); none is left to this phase.
+
 ## Acceptance
 
 - W1, W2: one rlm sentence per meaning, cited in the code comment that
@@ -157,6 +230,8 @@ meaning, which shipped in #3745. Size M.
   `deprecated-spelling` warnings.
 - Every item lands in a pull request that bumps rlm and the play_launch
   submodule together. Its manifests name the tag the submodule pins.
+- W9: each sub-item meets its own "accepted when" above; W9 is DONE when
+  W9.a-W9.f are, and issue 2633 closes with W9.f.
 
 ## Issues homed here (2026-11-15)
 
@@ -167,6 +242,6 @@ their GitHub reports.
 - [issue 2571](../issues/archived/2571-mode-form-contract-fixture.md): no fixture declares `hazards:` with a `modes:` ladder (NR-19). Resolved by PR #3853.
 - [issue 2572](../issues/2572-timer-silence-watchdog-from-on-violation.md): a timer watchdog for subscriber silence, generated from `on_violation.mechanism: timer` (NR-12). W7; blocked on the rlm addition.
 - [issue 2573](../issues/2573-can-fd-e2e-profile-and-flexcan-helper.md): a CAN FD fixed-length E2E profile and a raw FlexCAN helper (NR-6). W7's end-to-end protection.
-- [issue 2633](../issues/2633-board-owned-can-frame-driver.md): a board-owned CAN frame driver (`open`/`send`/`send_fd`/`fd_active`/`recv`), the portable layer under 2573's FlexCAN helper (GitHub #4012, consumer ASI). W7; design [RFC-0132](../design/0132-board-can-frame-driver.md), Draft, review-gated.
+- [issue 2633](../issues/2633-board-owned-can-frame-driver.md): a board-owned CAN frame driver (`open`/`send`/`send_fd`/`fd_active`/`recv`), the portable layer under 2573's FlexCAN helper (GitHub #4012, consumer ASI). W9; design [RFC-0132](../design/0132-board-can-frame-driver.md), Draft, review-gated.
 - [issue 2574](../issues/2574-pluginlib-free-mode-plugin-registration.md): pluginlib-free registration for the mode decider and switcher plugins (NR-17). Homed here with its siblings; it is a registration question, not a contract one.
 
