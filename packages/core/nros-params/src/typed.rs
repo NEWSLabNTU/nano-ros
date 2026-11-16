@@ -146,7 +146,7 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
     /// The ONE default setter. rclrs also has `default_from_iter(impl IntoIterator)`
     /// and `default_string_array(&[&str])`; neither exists here, so pass the array
     /// value itself. An array is a `heapless::Vec` bounded by `MAX_ARRAY_LEN` (a
-    /// string array is `Vec<String<MAX_STRING_VALUE_LEN>, MAX_ARRAY_LEN>`, two
+    /// string array is `Vec<String<MAX_STRING_VALUE_LEN>, MAX_STRING_ARRAY_LEN>`, two
     /// compile-time bounds), and an over-capacity value is refused by
     /// [`ParameterVariant::try_to_parameter_value`], never truncated. No allocator.
     pub fn default(mut self, value: T) -> Self {

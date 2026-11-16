@@ -41,7 +41,8 @@ pub enum LaunchTextError {
     /// A list whose elements are not all one type (`[1, 2.5]`, `[1, a]`).
     /// rcl refuses the file and launch_ros refuses the inline value.
     MixedList,
-    /// A string past `MAX_STRING_VALUE_LEN`, or a list past `MAX_ARRAY_LEN`.
+    /// A string past `MAX_STRING_VALUE_LEN`, or a list past `MAX_ARRAY_LEN`
+    /// (`MAX_STRING_ARRAY_LEN` for a list of strings).
     DoesNotFit,
     /// An unterminated quote or a stray character after a quoted element.
     Malformed,
@@ -253,7 +254,13 @@ impl ParameterValue {
         let Some(kind) = kind else {
             return Err(LaunchTextError::EmptyList);
         };
-        if n > crate::types::MAX_ARRAY_LEN {
+        // A string list has its own element bound (issue 2647).
+        let cap = if kind == Kind::String {
+            crate::types::MAX_STRING_ARRAY_LEN
+        } else {
+            crate::types::MAX_ARRAY_LEN
+        };
+        if n > cap {
             return Err(LaunchTextError::DoesNotFit);
         }
         // Pass 2: fill the value of that type in place.

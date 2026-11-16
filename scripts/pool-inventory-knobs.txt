@@ -83,6 +83,7 @@ NROS_PARAM_EVENTS_DEPTH | not-a-size | | a QoS history depth handed to the RMW w
 NROS_MAX_PARAM_CONSTRAINTS_LEN | element | | bounds a parameter descriptor's constraints text inside every `ParameterStorage` slot
 NROS_MAX_STRING_VALUE_LEN | element | | bounds a string parameter VALUE — `ParameterValue` is sized by its largest variant, so this is paid by every slot
 NROS_MAX_ARRAY_LEN | element | | bounds an array parameter value; paid by every `ParameterValue`, i.e. every slot
+NROS_MAX_STRING_ARRAY_LEN | element | | bounds a string-array parameter value (elements; each a MAX_STRING_VALUE_LEN string); paid by every `ParameterValue`, i.e. every slot
 NROS_MAX_BYTE_ARRAY_LEN | element | | bounds a byte-array parameter value; paid by every `ParameterValue`, i.e. every slot
 NROS_EXECUTOR_ARENA_SIZE | executor | | the executor arena itself; the backing is `EXECUTOR_BACKING` (Rust) or the entry's `__nros_executor_storage` / sched_task table (C/C++)
 NROS_EXECUTOR_BACKING_U64S | executor | | STATES the boot executor's backing size in words; `EXECUTOR_BACKING` is exactly 8x this

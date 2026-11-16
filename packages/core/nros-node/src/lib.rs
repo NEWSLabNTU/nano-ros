@@ -212,7 +212,8 @@ pub use nros_params::LaunchTextError;
 // phase-491 — the bounds a C caller's buffers are sized against (RFC-0105 D10).
 #[cfg(feature = "param-store")]
 pub use nros_params::{
-    MAX_ARRAY_LEN, MAX_BYTE_ARRAY_LEN, MAX_PARAM_NAME_LEN, MAX_STRING_VALUE_LEN,
+    MAX_ARRAY_LEN, MAX_BYTE_ARRAY_LEN, MAX_PARAM_NAME_LEN, MAX_STRING_ARRAY_LEN,
+    MAX_STRING_VALUE_LEN,
 };
 
 #[cfg(all(feature = "lifecycle-services", any(has_rmw, test)))]
