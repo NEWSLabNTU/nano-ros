@@ -1187,8 +1187,16 @@ mod tests {
             .expect("attributed")
             .expect("one board crate");
         let catalog = BoardCatalog::load(&root).unwrap();
-        let facts =
-            resolve_one("t", &root, &catalog, "test", &board, &BTreeMap::new(), &|_| None).unwrap();
+        let facts = resolve_one(
+            "t",
+            &root,
+            &catalog,
+            "test",
+            &board,
+            &BTreeMap::new(),
+            &|_| None,
+        )
+        .unwrap();
         assert_eq!(
             facts.get("FREERTOS_PORT").map(String::as_str),
             Some("GCC_ARM_CM3")
@@ -1230,7 +1238,10 @@ mod tests {
         };
         std::fs::write(
             board.join("package.xml"),
-            pkg("my_board", "    <nano_ros_provides kind=\"board\" name=\"my-ws-board\"/>\n"),
+            pkg(
+                "my_board",
+                "    <nano_ros_provides kind=\"board\" name=\"my-ws-board\"/>\n",
+            ),
         )
         .unwrap();
         std::fs::write(bringup.join("package.xml"), pkg("my_bringup", "")).unwrap();
@@ -1243,17 +1254,27 @@ mod tests {
         let root = repo_root();
         // `nros build`'s catalog: the checkout plus the workspace's packages.
         let build = crate::cmd::board::workspace_catalog(&root, ws.path()).unwrap();
-        assert!(resolve_board(&build, "my-ws-board").is_some(), "nros build's catalog");
+        assert!(
+            resolve_board(&build, "my-ws-board").is_some(),
+            "nros build's catalog"
+        );
         // The checkout's catalog alone does not have it: the case this guards.
         let checkout = BoardCatalog::load_with_extra(&root, &[]).unwrap();
         assert!(resolve_board(&checkout, "my-ws-board").is_none());
         for dir in [bringup.as_path(), ws.path()] {
             let here = crate::cmd::board::catalog_for_dir(&root, dir).unwrap();
-            assert!(resolve_board(&here, "my-ws-board").is_some(), "{}", dir.display());
+            assert!(
+                resolve_board(&here, "my-ws-board").is_some(),
+                "{}",
+                dir.display()
+            );
         }
         let facts = resolve(&bringup, &root, Some("ws"), None, &|_| None)
             .expect("board-facts resolves the workspace's own board");
-        assert_eq!(facts.get("NROS_BOARD").map(String::as_str), Some("my-ws-board"));
+        assert_eq!(
+            facts.get("NROS_BOARD").map(String::as_str),
+            Some("my-ws-board")
+        );
     }
 
     /// Issue 2229 — a named image asked of a dir that cannot state it (a
