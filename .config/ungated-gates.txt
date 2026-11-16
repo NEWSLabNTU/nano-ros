@@ -53,6 +53,13 @@ c
 # recipe runs first; the cargo half is what keeps it off the fast line.
 census-hooks-complete
 cpp
+# cpp-heap-free-image-link was a step of `cpp` and moved out so it could claim
+# the pinned cross compiler (`needs:arm-gcc`) instead of skipping without it:
+# it cargo-builds nros-c + nros-cpp for thumbv7m (20.6 s cold on 32 cores) and
+# links the image, so it fails in a pristine worktree with no cross toolchain.
+# Daily, in the build lane, like the gate it came from; the queue's advisory
+# L3 also links this image.
+cpp-heap-free-image-link
 node-std-tests
 # cpp-ffi-tests is a cargo lib-test build of nros-cpp under `alloc,env,log,rmw-cffi`
 # (no cargo in a pristine PATH, same as excluded-crate-tests). gate.yml DOES run

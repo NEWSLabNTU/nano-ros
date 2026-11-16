@@ -34,7 +34,12 @@ nros-c = { path = "../../../../api/nros-c", default-features = false }
 # `malloc`/`free`, and a DEFINED `malloc` counts as an allocation surface for
 # the gate whether or not anything calls it. `cffi-export` provides the
 # `nros_platform_*` C ABI the runtime calls.
-nros-platform-mps2-an385 = { path = "../../../../platform/nros-platform-mps2-an385", default-features = false, features = ["cffi-export"] }
+#
+# `libc-stubs` IS on: this image has no C library, and its C++ reaches the
+# printf-style C log path (`NROS_ERROR` in `report_component_failure`, which a
+# refused `declare_parameter` calls), so it needs the port's freestanding
+# `vsnprintf` and friends. None of them allocates; `libc-heap` stays off.
+nros-platform-mps2-an385 = { path = "../../../../platform/nros-platform-mps2-an385", default-features = false, features = ["cffi-export", "libc-stubs"] }
 nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", default-features = false }
 
 cortex-m-rt = "0.7"
