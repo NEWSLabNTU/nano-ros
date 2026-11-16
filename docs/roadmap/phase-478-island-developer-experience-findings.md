@@ -605,6 +605,18 @@ island's MPC rate-limit lists reached the controller as strings. A list is now
 baked as YAML flow text and seeded as an array of its element type; a list
 ROS refuses is refused, and `[]` seeds nothing.
 
+### I21 -- `RCLCPP_*_THROTTLE` on the clock argument, and `_ONCE` / `_SKIPFIRST`
+
+**Status: DONE (2026-11-16).** [Issue 2636](../issues/archived/2636-rclcpp-throttle-once.md),
+GitHub #4010. The island's vendored controller files log through
+`RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), ms, ...)`, which was refused,
+and use `_ONCE`, which did not exist. The throttle now reads the `clock`
+argument and hands the reading to the C throttle rule
+(`rclc_log_throttle_admit_at`); an invalid clock warns once and is throttled
+on the platform's monotonic clock.
+`_ONCE`, `_SKIPFIRST` and `_SKIPFIRST_THROTTLE` are added at every level, with
+per-site static state. The island's own `std::map` throttle can go.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -711,6 +723,9 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       logged line names the knob; a test per language (issue 2634).
 - [x] I20: a list parameter from a `<param from>` file seeds as an array of
       its element type; the features `cpp_params` e2e reads each back (issue 2638).
+- [x] I21: `RCLCPP_*_THROTTLE` measures on its `clock` argument (an invalid clock
+      throttles on the platform's monotonic clock), and `_ONCE` / `_SKIPFIRST` /
+      `_SKIPFIRST_THROTTLE` exist at every level; `log_conditional_runtime` (issue 2636).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -751,6 +766,7 @@ from that session, `FREERTOS_PORT not set` on `freertos-posix`, is
 [issue 2341](../issues/archived/2341-freertos-posix-port-not-reaching-zpico.md),
 fixed after that release.
 
+- [issue 2636](../issues/archived/2636-rclcpp-throttle-once.md) (GitHub #4010, resolved): `RCLCPP_*_THROTTLE` was refused and `RCLCPP_*_ONCE` / `_SKIPFIRST` were missing. The throttle now measures on its `clock` argument (I21).
 - [issue 2615](../issues/archived/2615-model-gate-refuses-sibling-param-file.md) (resolved): a model whose launch loads a param file from a sibling package was refused as non-portable (I17).
 - [issue 2618](../issues/archived/2618-knob-delivery-check-false-mismatch-after-link.md): the knob delivery check refuses a build after link over a list separator and an override row (I18).
 - [issue 2634](../issues/archived/2634-param-store-full-declare-silently-uses-default.md) (GitHub #4018, resolved): `declare_parameter` past a full parameter store returned the code default in silence. It now stops the boot and names the knob (I19).
