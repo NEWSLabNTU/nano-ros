@@ -447,6 +447,9 @@ function(_nros_west_leaf_sizing)
     # Issue 2086 -- a leaf that sizes from its census had it taken by the
     # module's pre-Kconfig hook (`nros_image_kconfig.cmake`), which needs it
     # first: the census also decides the parameter store's Kconfig axis.
+    # The fragment and descriptor it writes outlive this configure, so a
+    # rebuilt CLI must re-run it (issue 1018).
+    nros_codegen_tool_reconfigure("${_nros}")
     nros_detect_rust_target()
     nros_entity_inventory_knobs_file(_knobs)
     set(_args ws west-leaf-sizing
@@ -1176,7 +1179,7 @@ function(nros_resolve_knobs)
                         "The nano-ros module derives this pool's default from the image's "
                         "entities before Kconfig runs, and found none to derive from: no "
                         "`nros configure` resolve with entity counts, and no standalone-leaf "
-                        "inventory (`nros ws west-leaf-sizing`). This configure counted them "
+                        "inventory (`nros dev image west-leaf-sizing`). This configure counted them "
                         "afterwards, which is too late for Kconfig.\n"
                         "\n"
                         "Run `nros build` (or `nros configure`) for this image, or state the "
