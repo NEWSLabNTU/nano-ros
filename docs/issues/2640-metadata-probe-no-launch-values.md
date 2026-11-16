@@ -43,6 +43,8 @@ was already keyed on them (`nros_knob_key_fields`).
 ## Launch values (open)
 
 The design is [phase-566](../roadmap/phase-566-probe-launch-seeds.md) (draft,
-for review): the probe seeds the component's launch values from the launch
-RECORD, a component whose instances disagree is refused with a plain message,
-and the sidecar records `probe.seeds`.
+for review): the probe seeds the component's launch values from the model the
+sync just resolved, through `resolved_params` (the bake's projection). A
+component whose instances disagree is probed on its defaults as today, and is
+refused with a plain message only when that unseeded probe fails. The sidecar
+records `probe.seeds` (or `probe.unseeded`), with `sha256` digests.
