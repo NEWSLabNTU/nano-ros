@@ -15,9 +15,16 @@ branches on them is refused, naming where. Before phase-567 the whole
 `starter-image` job was `if: inputs.publish`, which is how 0.6.0-nros11's
 image failure surfaced only after the release had published.
 
+And the dry run must run W4's release leg: some job of release-nros.yml runs
+`just check island-shaped-workspace`, and `build` (which holds `Publish the
+release`) needs that job, so a red island-shaped workspace stops the publish.
+A job gated on publish is already refused above, so that job runs on a dry
+run too.
+
 On every run: the negative controls first (a job gated on publish, a step
-gated on publish, a `run:` reading it, a push-gated step that is not `Push`),
-then the real workflows. ~0.1 s.
+gated on publish, a `run:` reading it, a push-gated step that is not `Push`,
+the `Push` step ungated, the island-shaped step removed, `build` no longer
+needing its job), then the real workflows. ~0.1 s.
 """
 import copy
 import sys
@@ -62,6 +69,25 @@ def problems(tree, word, allowed, fname):
     return out
 
 
+ISLAND = "just check island-shaped-workspace"
+
+
+def island_problems(tree, fname="release-nros.yml"):
+    """W4's release leg: a job runs ISLAND, and `build` needs that job."""
+    jobs = tree.get("jobs", {})
+    runners = [name for name, job in jobs.items()
+               if any(ISLAND in (st.get("run") or "") for st in job.get("steps", []) or [])]
+    if not runners:
+        return [f"{fname}: no job runs `{ISLAND}`; the dry run must rehearse W4's release leg "
+                "(phase-567 W3)"]
+    needs = jobs.get("build", {}).get("needs", [])
+    needs = [needs] if isinstance(needs, str) else list(needs)
+    if not any(r in needs for r in runners):
+        return [f"{fname}: `jobs.build.needs` names none of {', '.join(runners)}, so "
+                f"`Publish the release` does not wait for `{ISLAND}`"]
+    return []
+
+
 def self_test(trees):
     """Each mutation must be refused; the real trees are the baseline."""
     fails = []
@@ -90,6 +116,21 @@ def self_test(trees):
         if st.get("name") == "Push":
             st.pop("if")
     refused(m, w_star, a_star, "the `Push` step no longer gated (a dry run would push)")
+
+    if island_problems(rel):
+        fails.append("baseline: the real release-nros.yml fails the island-shaped rule, so its "
+                     "negative controls prove nothing")
+    m = copy.deepcopy(rel)
+    for job in m["jobs"].values():
+        job["steps"] = [st for st in job.get("steps", []) if ISLAND not in (st.get("run") or "")]
+    if not island_problems(m):
+        fails.append("negative control not refused: the `just check island-shaped-workspace` step removed")
+    m = copy.deepcopy(rel)
+    needs = m["jobs"]["build"].get("needs", [])
+    needs = [needs] if isinstance(needs, str) else list(needs)
+    m["jobs"]["build"]["needs"] = [n for n in needs if n != "island-shaped-workspace"]
+    if not island_problems(m):
+        fails.append("negative control not refused: `build` no longer needs the island-shaped job")
     return fails
 
 
@@ -103,12 +144,14 @@ def main():
     probs = []
     for f, word, allowed in RULES:
         probs += problems(trees[f], word, allowed, f)
+    probs += island_problems(trees["release-nros.yml"])
     for p in probs:
         print(f"check-release-rehearsal: {p}", file=sys.stderr)
     if probs:
         return 1
     print("check-release-rehearsal: OK (a dry run differs from a publish only by the tag + release "
-          "step and the image push; 5 negative controls refused)")
+          "step and the image push, and runs the island-shaped workspace before publishing; "
+          "7 negative controls refused)")
     return 0
 
 
