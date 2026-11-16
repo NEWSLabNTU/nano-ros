@@ -129,7 +129,10 @@ mod tests {
     /// only ones either road gives the model.
     #[test]
     fn the_runner_adds_no_model_flag_of_its_own() {
-        let dir = std::env::temp_dir().join(format!("nros-runner-fvp-{}", std::process::id()));
+        // The project's own `tmp/` (gitignored), not the system temp dir.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tmp")
+            .join(format!("nros-runner-fvp-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("build.ninja"),

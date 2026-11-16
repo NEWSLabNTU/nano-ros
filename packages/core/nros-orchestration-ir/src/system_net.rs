@@ -121,14 +121,36 @@ pub struct ImageRun {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<crate::target_exec::CommandTemplate>,
     // Issue 2629.
-    /// FVP model parameters this image chooses (`bp.pl011_uart1.out_file=
-    /// trace.log`), each one `-C <name>=<value>` after the board's own
-    /// `[board.run.fvp] params`. Read only on a board whose
-    /// emulator is an FVP, and refused on any other
-    /// ([`crate::target_exec::BoardRun::fvp_extra_flags`]). Bound when the
-    /// image CONFIGURES, so changing one means re-configuring.
+    /// `[image.<id>.run.fvp]`: FVP model settings this image chooses, nested
+    /// under the emulator they belong to as `[board.run.fvp]` is. Read only on
+    /// a board whose emulator is an FVP, and refused on any other
+    /// ([`crate::target_exec::BoardRun::fvp_extra_flags`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fvp: Option<ImageRunFvp>,
+}
+
+// Issue 2629.
+/// `[image.<id>.run.fvp]`: the image's own FVP model parameters.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImageRunFvp {
+    /// `<name>=<value>` model parameters (`bp.pl011_uart1.out_file=trace.log`),
+    /// each one `-C <name>=<value>`. They APPEND: an image's follow
+    /// `[image_defaults.run.fvp]`'s, which follow the board's
+    /// `[board.run.fvp] params`, and the model keeps the last value a name is
+    /// given, so a later layer overrides an earlier one by naming the same
+    /// parameter. Bound when the image CONFIGURES, so changing one means
+    /// re-configuring.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub params: Vec<String>,
+}
+
+impl ImageRun {
+    /// The image's FVP model parameters, empty when it states none.
+    #[must_use]
+    pub fn fvp_params(&self) -> &[String] {
+        self.fvp.as_ref().map_or(&[], |f| f.params.as_slice())
+    }
 }
 
 impl ImageRun {
@@ -140,13 +162,6 @@ impl ImageRun {
                 "[image.{id}.run]: `method` and `command` are alternatives — a command template \
                  REPLACES the method"
             ));
-        }
-        if let Some(e) = self
-            .params
-            .iter()
-            .find_map(|p| crate::target_exec::fvp_param_error(p))
-        {
-            return Err(format!("[image.{id}.run] params: {e}"));
         }
         match &self.nic {
             Some(n) => n.validate(&format!("[image.{id}.run]")),
@@ -172,12 +187,17 @@ impl ImageRun {
             } else {
                 base.command.clone()
             },
-            // A list, so it is one key: an image that states any replaces the
-            // defaults' list rather than appending to it.
-            params: if self.params.is_empty() {
-                base.params.clone()
-            } else {
-                self.params.clone()
+            // FVP parameters APPEND, as the board's do: the defaults', then
+            // the image's, so a later one overrides by naming the same
+            // parameter (the model keeps the last).
+            fvp: {
+                let params: Vec<String> = base
+                    .fvp_params()
+                    .iter()
+                    .chain(self.fvp_params())
+                    .cloned()
+                    .collect();
+                (self.fvp.is_some() || base.fvp.is_some()).then_some(ImageRunFvp { params })
             },
         }
     }
@@ -808,6 +828,23 @@ mod tests {
         assert_eq!(merged.method.as_deref(), Some("acme"));
         assert!(merged.command.is_none());
         assert_eq!(ImageRun::default().over(&defaults), defaults);
+    }
+
+    /// Issue 2629 — FVP parameters nest under `[run.fvp]`, and an image's
+    /// APPEND to the defaults' (as the board's are prepended to both), so a
+    /// later layer overrides by naming the same parameter. A bare
+    /// `[run] params` is no longer a key.
+    #[test]
+    fn fvp_run_params_nest_and_append_over_the_defaults() {
+        let t: toml::Table = "[run.fvp]\nparams = [\"a=1\"]\n".parse().unwrap();
+        let defaults = parse_run(Some(&t), "x").unwrap();
+        let t: toml::Table = "[run.fvp]\nparams = [\"b=2\", \"a=3\"]\n".parse().unwrap();
+        let image = parse_run(Some(&t), "x").unwrap();
+        assert_eq!(image.over(&defaults).fvp_params(), ["a=1", "b=2", "a=3"]);
+        assert_eq!(ImageRun::default().over(&defaults).fvp_params(), ["a=1"]);
+        assert!(ImageRun::default().over(&ImageRun::default()).fvp.is_none());
+        let t: toml::Table = "[run]\nparams = [\"a=1\"]\n".parse().unwrap();
+        assert!(parse_run(Some(&t), "x").is_err());
     }
 
     #[test]

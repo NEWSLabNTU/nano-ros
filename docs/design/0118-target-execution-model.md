@@ -207,7 +207,7 @@ prints the plan and runs nothing. `--why` adds the provenance of each field.
 | the link | the image's transport and RFC-0109's network layers; no new table |
 | whether the board was verified | the registry (RFC-0114), never the descriptor |
 | Zephyr's flash and emulator facts | Zephyr's own `board.cmake` and `runners.yaml`, which the `west` runner reads. A Zephyr QEMU board may also state `[board.run.qemu]` for the readers that are not the `west` runner (the test harness, and `nros run` when an image names the `qemu` runner); the `west` road never reads it, and the harness holds it to the build's own `run_qemu` line before every boot (issue 2379) |
-| an Arm FVP's model parameters (`-C <name>=<value>`) | the board's `[board.run.fvp] params` for what every image on it needs, and the image's `[image.<id>.run]` `nic` and `params` for what it chooses. All reach Zephyr's `armfvp.cmake` at CONFIGURE (D4a), never through the runner (issue 2629) |
+| an Arm FVP's model parameters (`-C <name>=<value>`) | the board's `[board.run.fvp] params` for what every image on it needs, and the image's `[image.<id>.run]` `nic` and `[image.<id>.run.fvp] params` for what it chooses; the layers APPEND (board, then `[image_defaults]`, then image) and the model keeps the last value a name is given. All reach Zephyr's `armfvp.cmake` at CONFIGURE (D4a), never through the runner (issue 2629) |
 
 ```toml
 # nros-board.toml
@@ -419,7 +419,7 @@ hang. Steps are a list, not a state machine. A bench that needs board states
   keeps the `west` road for a west build; Zephyr's `board.cmake` stays the
   source of that line, and the harness compares the two before each boot.
 - 2026-11-16 -- issue 2629 (GH #4007): D4a. An FVP board states
-  `[board.run.fvp] params`, and an image states `[image.<id>.run] params`
+  `[board.run.fvp] params`, and an image states `[image.<id>.run.fvp] params`
   and a `nic` the FVP lowers to its host bridge. They bind at configure,
   through Zephyr's `ARMFVP_EXTRA_FLAGS`, the one carrier both run roads read.
 - 2026-11-13 -- phase-555 W2 review: `area` set to `platform-board-rtos`

@@ -777,7 +777,7 @@ impl BoardRun {
     /// emulator is not an FVP.
     ///
     /// In order: the board's `[board.run.fvp] params`, then the image's
-    /// `nic`, then the image's own `params`, so an image overrides a board
+    /// `nic`, then the image's own `[image.<id>.run.fvp] params`, so an image overrides a board
     /// fact by naming the same parameter (the model keeps the last). The
     /// `nic` lowers to the FVP's host bridge: `{ tap = "<dev>" }` is
     /// `bp.hostbridge.userNetworking=0` and `bp.hostbridge.interfaceName=<dev>`;
@@ -788,7 +788,7 @@ impl BoardRun {
     /// # Errors
     ///
     /// The image names a bridge, an image parameter is malformed, or the image
-    /// states `params` on a board whose emulator is not an FVP (QEMU and
+    /// states `[image.<id>.run.fvp]` on a board whose emulator is not an FVP (QEMU and
     /// Renode have no such parameters; they are refused rather than dropped).
     pub fn fvp_extra_flags(
         &self,
@@ -797,9 +797,9 @@ impl BoardRun {
     ) -> Result<Option<Vec<String>>, String> {
         let kind = self.emulator_parts().map(|(k, _)| k);
         if kind != Some("fvp") {
-            if !image.params.is_empty() {
+            if image.fvp.is_some() {
                 return Err(format!(
-                    "[image.{image_id}.run] params are FVP model parameters, and this \
+                    "[image.{image_id}.run.fvp] holds FVP model parameters, and this \
                      board's emulator is {}; only an `fvp:` board reads them",
                     self.emulator.as_deref().unwrap_or("none")
                 ));
@@ -825,9 +825,11 @@ impl BoardRun {
             }
             Some(crate::system_net::Attach::Mode(_)) | None => {}
         }
-        for p in &image.params {
+        // The one place an image's parameters are validated: every road
+        // lowers them through here (`nros build` calls it for each image).
+        for p in image.fvp_params() {
             if let Some(e) = fvp_param_error(p) {
-                return Err(format!("[image.{image_id}.run] params: {e}"));
+                return Err(format!("[image.{image_id}.run.fvp] params: {e}"));
             }
             params.push(p.clone());
         }
@@ -897,7 +899,9 @@ mod tests {
         let board = fvp_board(&["bp.smsc_91c111.enabled=1", "bp.smsc_91c111.promiscuous=1"]);
         let image = crate::system_net::ImageRun {
             nic: Some(crate::system_net::Attach::Tap { tap: "tap0".into() }),
-            params: vec!["bp.pl011_uart1.out_file=trace.log".into()],
+            fvp: Some(crate::system_net::ImageRunFvp {
+                params: vec!["bp.pl011_uart1.out_file=trace.log".into()],
+            }),
             ..Default::default()
         };
         assert_eq!(
@@ -955,7 +959,9 @@ mod tests {
         let e = board.fvp_extra_flags(&bridge, "i").unwrap_err();
         assert!(e.contains("not to a bridge"), "{e}");
         let bad = crate::system_net::ImageRun {
-            params: vec!["no-equals".into()],
+            fvp: Some(crate::system_net::ImageRunFvp {
+                params: vec!["no-equals".into()],
+            }),
             ..Default::default()
         };
         assert!(board.fvp_extra_flags(&bad, "i").is_err());
@@ -964,7 +970,9 @@ mod tests {
             ..Default::default()
         };
         let with_params = crate::system_net::ImageRun {
-            params: vec!["a=1".into()],
+            fvp: Some(crate::system_net::ImageRunFvp {
+                params: vec!["a=1".into()],
+            }),
             ..Default::default()
         };
         let e = qemu.fvp_extra_flags(&with_params, "i").unwrap_err();
