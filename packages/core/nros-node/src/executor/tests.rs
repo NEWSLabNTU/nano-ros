@@ -19649,9 +19649,12 @@ mod rosout_writers {
     }
 
     /// The pump puts a queued record on the wire, encoded as a `Log` whose
-    /// name is the logger's. The queue is process-wide, so the record may be
-    /// drained by another test's executor; this asserts only what reached
-    /// this one, and that the pump counted it.
+    /// name is the logger's. The queue is process-wide: another test's
+    /// executor may drain this test's record, and this executor may drain
+    /// another test's (a record no node name matches goes to the first node,
+    /// so it lands on this writer). So a sample here is checked for the
+    /// logger's name only when it is this test's, and the test asks again
+    /// until one is.
     #[test]
     fn the_spin_pumps_a_node_record_onto_its_rosout_writer() {
         let mut executor = executor_with_clock(MockSession::new());
@@ -19659,10 +19662,16 @@ mod rosout_writers {
         let _ = executor.spin_once(core::time::Duration::from_millis(0));
         let logger = nros_log::resolve_node_logger("rosout_pumped");
         let before = crate::rosout::published();
+        let needle = b"pumped record";
+        let name = b"rosout_pumped";
+        let mut ours = None;
         for _ in 0..20 {
             nros_log::log_info!(logger, "pumped record");
             let _ = executor.spin_once(core::time::Duration::from_millis(0));
-            if writer(&executor, id).publish_count() > 0 {
+            if let Some((bytes, len)) = writer(&executor, id).last_published()
+                && bytes[..len].windows(needle.len()).any(|w| w == needle)
+            {
+                ours = Some((bytes, len));
                 break;
             }
         }
@@ -19670,13 +19679,10 @@ mod rosout_writers {
             crate::rosout::published() > before,
             "a queued node record was never published by any spin"
         );
-        if writer(&executor, id).publish_count() > 0 {
-            let (bytes, len) = writer(&executor, id).last_published().unwrap();
-            let needle = b"rosout_pumped";
-            assert!(
-                bytes[..len].windows(needle.len()).any(|w| w == needle),
-                "the Log carries the node logger's name"
-            );
-        }
+        let (bytes, len) = ours.expect("none of twenty records reached this test's writer");
+        assert!(
+            bytes[..len].windows(name.len()).any(|w| w == name),
+            "the Log carries the node logger's name"
+        );
     }
 }

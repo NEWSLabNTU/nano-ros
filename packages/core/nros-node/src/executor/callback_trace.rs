@@ -171,7 +171,33 @@ pub type TraceSink = unsafe extern "C" fn(u32, u32);
 /// `Option<TraceSink>` cannot be atomic because a function pointer is not
 /// `AtomicPtr<T>`'s `T`; store as `*mut ()` and `transmute` on read. Same
 /// shape as `wake_probe::CYCLE_READER`.
+#[cfg(not(test))]
 static SINK: AtomicPtr<()> = AtomicPtr::new(core::ptr::null_mut());
+
+// A test build runs tests in parallel threads of one process, and every
+// executor test that spins a timer or takes a sample asks `sink()`. With one
+// process-wide sink, a trace test's sink saw the other tests' ticks: they
+// advanced `TIMER_TICKS` for the same slot index and broke the "one tick in
+// three" count about one run in four. So a test's sink belongs to the
+// thread that installed it, and every other test sees none and touches no
+// trace state. A trace test's callbacks run on its own thread.
+#[cfg(test)]
+std::thread_local! {
+    static SINK: AtomicPtr<()> = const { AtomicPtr::new(core::ptr::null_mut()) };
+}
+
+/// The sink cell: the process-wide one in an image, this thread's in a test.
+#[inline]
+fn with_sink<R>(f: impl FnOnce(&AtomicPtr<()>) -> R) -> R {
+    #[cfg(not(test))]
+    {
+        f(&SINK)
+    }
+    #[cfg(test)]
+    {
+        SINK.with(f)
+    }
+}
 
 /// Install the trace sink. Call once at app startup, BEFORE the executor
 /// registers anything — a sink installed later misses the registration
@@ -182,7 +208,7 @@ pub fn set_trace_sink(sink: Option<TraceSink>) {
         Some(f) => f as *mut (),
         None => core::ptr::null_mut(),
     };
-    SINK.store(ptr, Ordering::Release);
+    with_sink(|s| s.store(ptr, Ordering::Release));
 }
 
 /// Install `sink` only when no sink is installed yet; returns whether it was.
@@ -193,18 +219,20 @@ pub fn set_trace_sink(sink: Option<TraceSink>) {
 /// `set_trace_sink` would replace it, and every event after that would go to
 /// a sink the application never chose.
 pub fn set_trace_sink_if_unset(sink: TraceSink) -> bool {
-    SINK.compare_exchange(
-        core::ptr::null_mut(),
-        sink as *mut (),
-        Ordering::AcqRel,
-        Ordering::Acquire,
-    )
-    .is_ok()
+    with_sink(|s| {
+        s.compare_exchange(
+            core::ptr::null_mut(),
+            sink as *mut (),
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        )
+        .is_ok()
+    })
 }
 
 #[inline]
 fn sink() -> Option<TraceSink> {
-    let ptr = SINK.load(Ordering::Acquire);
+    let ptr = with_sink(|s| s.load(Ordering::Acquire));
     if ptr.is_null() {
         None
     } else {

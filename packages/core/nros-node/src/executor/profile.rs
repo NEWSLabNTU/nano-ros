@@ -440,9 +440,25 @@ fn render(st: &State, now: u64) -> String {
 mod tests {
     use super::*;
 
+    /// A key unique per live thread: the address of a thread-local.
+    fn test_thread_key() -> usize {
+        std::thread_local! {
+            static KEY: u8 = const { 0 };
+        }
+        KEY.with(|k| k as *const u8 as usize)
+    }
+
+    fn no_sink(_: &str) {}
+
     /// One process-wide state, so everything runs as ONE test.
     #[test]
     fn a_timed_dispatch_records_ns_and_the_topics_it_published() {
+        // Every other executor test registers into the same state from its
+        // own thread. With the default key, all threads share one cursor, so
+        // another test's registration between `on_register` and `label_last`
+        // took this test's label. Give each thread its own cursor, as the
+        // hosted edge does.
+        install(test_thread_key, no_sink);
         let exec = 0xdead_0000;
         set_current_node("/talker");
         on_register(exec, 0, EntryKind::Timer, TraceName::TimerPeriod(100_000));
