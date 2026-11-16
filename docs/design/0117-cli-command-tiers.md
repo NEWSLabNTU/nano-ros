@@ -5,7 +5,7 @@ status: Draft
 area: docs-ux-diagnostics
 since: 2026-11
 last-reviewed: 2026-11
-implements-tracked-by: [phase-526]
+implements-tracked-by: [phase-526, phase-568]
 amends: [0116]
 supersedes: []
 superseded-by: null
@@ -14,6 +14,8 @@ superseded-by: null
 # RFC-0117 — CLI command tiers
 
 > **Amended by [RFC-0120](0120-nros-configure-one-resolver.md) (2026-11-03).** `configure` joins the Build group and absorbs `sync`, which stays as its alias.
+>
+> **Draft amendment 2026-11-17:** build arguments and profiles (D7–D11), for review; see the section of that name.
 
 **Status:** Draft (2026-11-01). Written from the maintainer discussion of
 2026-10-31 and 2026-11-01 on how the `nros` command tree should look to a
@@ -284,6 +286,161 @@ the issue's marker. Answer 1 resolved the second way: the source metadata is
 refreshed by configure's first phase, which `nros build` runs, and that
 needs no native image, so `nros new` names `nros build`.
 
+## Amendment 2026-11-17 (DRAFT, for review) — build arguments and profiles
+
+User-approved design, 2026-11-17, written up for review before anything is
+built. Implemented by
+[phase-568](../roadmap/phase-568-build-args-and-profiles.md). D4's
+`--cmake-args` row and the `--` passthrough change as described under
+"Migration".
+
+### Motivation
+
+The user raised two concerns:
+
+1. **colcon argument confusion.** `--cmake-args` today is colcon's flag: it
+   takes one or more values, hyphens allowed, and ends "at the next `nros
+   build` flag or at `--`". So `--cmake-args -DFOO=1 --packages-skip x` reads
+   one way to a colcon user and another to a reader who does not know where
+   the list ends. A value that happens to start like a build flag cannot be
+   passed at all.
+2. **Plugin interpretation and injection.** Arguments for the native tools
+   reach several routes: a CMake image, west's two argument zones, cargo, a
+   cmake package. If each route (or a plugin) interpreted them its own way,
+   one argument could mean different things on different roads, and a project
+   or a dependency could re-wire a build silently.
+
+Today `nros build` has three channels for this, each with its own rules:
+- `--cmake-args`, colcon-style;
+- everything after `--` (`native_args`), handed to the native tool verbatim
+  and, on the west road, split by west's own flag list;
+- `[image.<id>] profile` in `system.toml`, mapped to cargo's `--profile` and
+  to `CMAKE_BUILD_TYPE` through `nros_cargo_profile::cmake_build_type`, with
+  a board default (`board_cargo_profile`: `release` except on `posix`).
+
+A `--profile` or `--release` after `--` wins over the stated profile, and a
+`-DCMAKE_BUILD_TYPE` after `--` wins on the cmake road.
+
+### D7 — Where arguments come from (in order; a later one wins)
+
+1. **The image's own `system.toml` section.** `[image.<id>] profile =
+   "<name>"`, and `[image.<id>.build] cmake_args = [..]` / `cargo_args =
+   [..]`. Only the image's OWN section counts: a dependency's or a third-party
+   package's `system.toml` cannot add arguments to another image's build.
+2. **The command line.** `--profile=<name>`, `--cmake-args="<one shell
+   token>"` and `--cargo-args="<…>"`, with `=` required.
+   - The value is split by plain POSIX quoting: no expansion, no `~`, and
+     unbalanced quotes are refused.
+   - The flags are repeatable, and their values add up in order.
+   - The old space-separated form (`--cmake-args -DA -DB`) is refused, with a
+     pointer to the `=` form.
+3. **An `@file`.** `--cmake-args=@build.args` reads one argument per line,
+   with `#` comments. The path is resolved from the current directory. It is
+   allowed on the command line only, and an `@file` cannot name another.
+
+### D8 — Routing is built in, never a plugin
+
+- CMake arguments go to every CMake configure: a cmake image's, west's cmake
+  step, a cmake package's.
+- Cargo arguments go to every cargo command.
+- `--profile` maps to cargo's `--profile`, to `CMAKE_BUILD_TYPE`, and to
+  west's passthrough.
+- A kind of argument that does not apply to an image's road is ignored, and
+  `--dry-run` says so.
+- `--` is kept only for west's own known options. Anything else after `--` is
+  refused, naming the flag that carries it now.
+
+### D9 — One allowlist, the same for every source
+
+Every source (D7) passes the same validation.
+
+**Allowed.**
+- CMake: `-D` in every spelling (parsed into name and value), `-U`, `-W*`,
+  `--log-level`, `--log-context`, `--debug-find`.
+- cargo: `--features`, `--no-default-features`, `--all-features`, `-v` /
+  `-q`, `--timings`, `--locked` / `--offline` / `--frozen`.
+
+**Refused, with a pointer to the `system.toml` setting that owns it.**
+- CMake: `-C`, `-P`, `-G`, `-T`, `-A`, `--toolchain`, `--preset`, `-S`,
+  `-B`, and anything else not listed above.
+- cargo: `--config`, `-Z`, `--target`, `--target-dir`, `--manifest-path`,
+  `--profile`, `--release`, and anything else not listed above.
+- **Owned `-D` names**: `CMAKE_TOOLCHAIN_FILE`, `NROS_*`, `_NANO_ROS_*`,
+  `CMAKE_PROJECT_*INCLUDE*`. These are taken from the ONE table of what `nros
+  build` itself passes, so the table and the refusal cannot drift.
+- **Derived features**: RMW, platform, capability. They would split the
+  build's choice between its Rust and C halves.
+
+### D10 — Profiles
+
+- **Built-ins.** `dev` (cargo `dev`, CMake `Debug`) and `release` (cargo
+  `release`, CMake `Release`).
+- **User profiles** are declared at workspace level as `[profile.<name>]`:
+  - `inherits`: `dev`, `release` or another user profile. A missing field
+    falls back to the parent, and arguments add up parent first.
+  - `cargo_profile`: must exist in the project's `Cargo.toml` as a cargo
+    custom profile, and is refused early if it does not.
+  - `cmake_build_type`: one of the standard four, or a custom type only if
+    its flags are defined; otherwise refused.
+  - `cmake_args` / `cargo_args`: validated as in D9.
+- **Precedence:** CLI > image > board > default.
+  - A board that needs size optimisation states its profile, for example
+    FreeRTOS QEMU `MinSizeRel`.
+  - The default is `dev` for host images and `release` for board images, as
+    today.
+
+### D11 — Behaviour
+
+- **One build dir per profile**: `build/<image>/<profile>/`.
+- **Each build dir records its configured arguments.** On a change, the
+  removed CMake variables are `-U`'d and the configure re-runs, and the build
+  says so.
+- **Arguments reach tools as argv only**, never as a shell string.
+- **`--dry-run`** prints the final argv for each tool, the winning profile
+  and where it came from.
+- **Arguments and the profile are build inputs.** They appear in the plan and
+  in the profile summary, and fixtures and size reports carry the profile.
+
+### Threat model
+
+The arguments come from the user or from their own project, and a build
+already runs that project's code. So the design guards against MISUSE:
+silently re-wiring or corrupting a build.
+- The allowlist also closes code execution through CMake (`-C`, `-P`) and
+  cargo (`--config`, `-Z`).
+- Secrets passed as arguments appear in logs. That is documented, not
+  prevented.
+
+### Tests (at least one for each risk)
+
+- a CMake argument containing `--packages-skip`;
+- every bypass spelling (each refused option, joined and separate forms);
+- a derived feature on the command line;
+- cache drift: `-DFOO`, then a build without it;
+- `$(touch …)` in a value creates nothing;
+- an unbalanced quote;
+- `@file` resolution;
+- a dependency's `system.toml` adding arguments;
+- the `--dry-run` output;
+- a profile switch keeping separate dirs;
+- a missing `cargo_profile` refused.
+
+### Migration
+
+- **`--cmake-args` (colcon form).** The space-separated form is refused. The
+  message is colcon-compatible in wording ("nros build takes
+  `--cmake-args=<arg>`, one argument per flag, repeatable") and shows the
+  user's own arguments rewritten.
+- **`--` passthrough.** Only west's own options stay after `--`. A CMake or
+  cargo argument there is refused with the flag that carries it now. A
+  `--profile` / `--release` / `-DCMAKE_BUILD_TYPE` after `--`, which used to
+  win over the image's profile, becomes `--profile=<name>`.
+- **`[image.<id>] profile`** keeps its key and meaning. It now also accepts a
+  user profile name (D10).
+- **`nros_cargo_profile`'s presets** (`nros-relwithdebinfo`,
+  `nros-minsizerel`, …) stay the cargo side of the board defaults. A user
+  profile names one as its `cargo_profile`.
+
 ## Alternatives considered
 
 - **Delete the dev verbs from the CLI and make them library calls.** Their
@@ -336,3 +493,7 @@ needs no native image, so `nros new` names `nros build`.
   on review question N4/B25): `explain` and `update` are top-level, `plan`
   takes a bringup and no subcommands, `check` is top-level, `pin [VERSION]`,
   and `board list|show|info|new`.
+- 2026-11-17 — amendment (DRAFT, user-approved design, for review): build
+  arguments and profiles. `system.toml` / `--cmake-args=` / `--cargo-args=` /
+  `@file` sources, built-in routing, one allowlist, user profiles,
+  per-profile build dirs. Implemented by phase-568.
