@@ -4179,6 +4179,9 @@ node-std-tests:
     # while every merge-gating lane stayed green. Same feature set as the line
     # above, so the two cannot drift apart.
     cargo clippy -p nros-node --lib --tests --features alloc,log,sim-time,param-services,lifecycle-services --quiet -- -D warnings
+    # Issue 2651 -- and every feature at once: a lint that fires only in the
+    # union (`RosoutWriter` under `rmw-cffi`) was linted by no gating lane.
+    cargo clippy -p nros-node --lib --tests --all-features --quiet -- -D warnings
     # Issue 1036 — the boot self-report, third entry and the same defect class.
     # `boot_report` is behind a BUILD-TIME cfg set from an env var
     # (`NROS_BOOT_REPORT=1`, Zephyr `CONFIG_NROS_BOOT_REPORT=y`), and nothing in

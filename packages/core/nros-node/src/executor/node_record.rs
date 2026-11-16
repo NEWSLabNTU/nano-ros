@@ -110,6 +110,14 @@ pub struct NodeRecord {
 }
 
 /// phase-556 W13 -- the state of one node's runtime-owned `/rosout` writer.
+// `Up` holds the backend's publisher inline: 648 bytes with the C-vtable
+// backend (`rmw-cffi`), where clippy's `large_enum_variant` fires. Boxing it
+// is not available: `rosout` does not require `alloc`, and the node table
+// lives in the executor's caller-supplied arena. Nor would it save anything:
+// a node's writer is created on the first spin after the node is built, so
+// `Up` is the state every record spends its life in, and the dataless
+// variants are the short-lived ones.
+#[allow(clippy::large_enum_variant)]
 #[cfg(feature = "rosout")]
 pub(crate) enum RosoutWriter {
     /// Not created yet; the next spin creates it.
