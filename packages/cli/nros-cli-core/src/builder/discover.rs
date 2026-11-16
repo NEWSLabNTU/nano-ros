@@ -575,6 +575,43 @@ pub fn holds_cpp_source(dir: &Path) -> bool {
     })
 }
 
+/// Does this node package need the C++ entry pack?
+///
+/// The entry's `LANG` question, asked of one package: a C++ source
+/// ([`holds_cpp_source`]), or a Rust node. The generated carrier constructs a
+/// Rust component only from the C++ pack; the C pack refuses one by name
+/// ("node pkg `rust_monitor_pkg` exec `monitor` is lang `rust` ... not `c`").
+/// So an image of C and Rust components and no C++ source was refused at
+/// configure, on the cmake root and on the west application alike, although
+/// every component in it builds (issue 2644).
+///
+/// A Rust node is a ROS package whose `Cargo.toml` carries
+/// `[package.metadata.nros.node]`, the table `nros::node!` packages declare.
+/// A Rust package that is not a node (a library) does not change the language.
+#[must_use]
+pub fn needs_cpp_entry(dir: &Path) -> bool {
+    holds_cpp_source(dir) || is_rust_node_package(dir)
+}
+
+/// A ROS package (`package.xml`) whose `Cargo.toml` declares
+/// `[package.metadata.nros.node]`.
+fn is_rust_node_package(dir: &Path) -> bool {
+    if !dir.join("package.xml").is_file() {
+        return false;
+    }
+    let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+        return false;
+    };
+    let Ok(doc) = text.parse::<toml::Table>() else {
+        return false;
+    };
+    doc.get("package")
+        .and_then(|p| p.get("metadata"))
+        .and_then(|m| m.get("nros"))
+        .and_then(|n| n.get("node"))
+        .is_some()
+}
+
 /// Apply `sel` to what stage 1 discovered.
 ///
 /// ## Where this matches colcon and where it deliberately does not
@@ -904,6 +941,46 @@ fn name_list(packages: &[WorkspacePackage]) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// Issue 2644 -- a Rust node needs the C++ entry pack; a Rust library,
+    /// a C package and a cargo crate that is no ROS package do not.
+    #[test]
+    fn a_rust_node_package_needs_the_cpp_entry() {
+        let td = tempfile::tempdir().unwrap();
+        let mk = |name: &str, cargo: Option<&str>, xml: bool, file: &str| {
+            let dir = td.path().join(name);
+            std::fs::create_dir_all(dir.join("src")).unwrap();
+            std::fs::write(dir.join("src").join(file), "").unwrap();
+            if let Some(c) = cargo {
+                std::fs::write(dir.join("Cargo.toml"), c).unwrap();
+            }
+            if xml {
+                std::fs::write(dir.join("package.xml"), "<package/>").unwrap();
+            }
+            dir
+        };
+        let node = "[package]\nname = \"m\"\n\n[package.metadata.nros.node]\nclass = \"m::M\"\n";
+        assert!(needs_cpp_entry(&mk(
+            "rust_node",
+            Some(node),
+            true,
+            "lib.rs"
+        )));
+        assert!(!needs_cpp_entry(&mk(
+            "rust_lib",
+            Some("[package]\nname = \"l\"\n"),
+            true,
+            "lib.rs"
+        )));
+        assert!(!needs_cpp_entry(&mk(
+            "not_ros",
+            Some(node),
+            false,
+            "lib.rs"
+        )));
+        assert!(!needs_cpp_entry(&mk("c_pkg", None, true, "node.c")));
+        assert!(needs_cpp_entry(&mk("cpp_pkg", None, true, "Node.cpp")));
+    }
     use super::*;
 
     fn write(path: &Path, body: &str) {

@@ -1229,7 +1229,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     let lang = if found
                         .packages
                         .iter()
-                        .any(|p| crate::builder::discover::holds_cpp_source(&p.dir))
+                        .any(|p| crate::builder::discover::needs_cpp_entry(&p.dir))
                     {
                         nros_lang::Language::Cpp
                     } else {
@@ -1877,16 +1877,17 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // that name would collide. Delete the package and the next
                 // build emits its call (D13, incremental).
                 let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
-                // A C++ source ANYWHERE in a package, not just at its top —
-                // `builder::discover::holds_cpp_source`, the one spelling the
-                // west application's `LANG` also reads (phase-470 W5.b3). The
+                // A C++ source ANYWHERE in a package, not just at its top, or a
+                // Rust node -- `builder::discover::needs_cpp_entry`, the one
+                // spelling the west application's `LANG` also reads (phase-470
+                // W5.b3, issue 2644). The
                 // SCOPE differs and stays here: this root serves the whole
                 // workspace, a west application only the node packages one
                 // image's launch file names.
                 let has_cpp = found
                     .packages
                     .iter()
-                    .any(|p| crate::builder::discover::holds_cpp_source(&p.dir));
+                    .any(|p| crate::builder::discover::needs_cpp_entry(&p.dir));
                 let cmake_entries = coordinate_members(&bringup, &coord)
                     .into_iter()
                     .filter_map(|(_, bd, id, img)| {
@@ -5329,9 +5330,10 @@ fn generate_entry(
             let resolved_dir = root
                 .join("build")
                 .join(crate::resolve::dir_name_for(bringup, image_id));
-            let probe_codegen = metadata_probe_build_dir(root)
-                .join("nros-codegen")
-                .join(format!("nano_ros_{}", cm.lang));
+            let probe_codegen = probe_bound_tables(
+                root,
+                nros_lang::Language::parse(&cm.lang).unwrap_or(nros_lang::Language::Cpp),
+            );
             let node_dirs: Vec<std::path::PathBuf> = nodes.iter().map(|(_, d)| d.clone()).collect();
             match crate::message_bound_knobs::write_west_seed(
                 &resolved_dir,
@@ -6173,6 +6175,29 @@ fn package_closure<'a>(
         }
     }
     Ok(nodes)
+}
+
+/// The directory of the bound tables the metadata probe generated, for an
+/// entry of language `lang` (`c` or `cpp`).
+///
+/// The probe generates per COMPONENT language, and a table prices a TYPE, so
+/// either language's table is the same bound. The entry's language and the
+/// probe's can differ: an image of C and Rust components gets the C++ entry
+/// (issue 2644) while its only probe is the C component's. So take `lang`'s
+/// tables when the probe wrote them, else the other language's.
+fn probe_bound_tables(root: &Path, lang: nros_lang::Language) -> PathBuf {
+    use nros_lang::Language;
+    let codegen = metadata_probe_build_dir(root).join("nros-codegen");
+    let dir = |l: Language| codegen.join(format!("nano_ros_{}", l.as_str()));
+    let other = match lang {
+        Language::C => Language::Cpp,
+        Language::Cpp | Language::Rust => Language::C,
+    };
+    [lang, other]
+        .into_iter()
+        .map(dir)
+        .find(|d| d.is_dir())
+        .unwrap_or_else(|| dir(lang))
 }
 
 /// The build dir of `nros sync`'s metadata probe for this workspace, which
@@ -7098,12 +7123,7 @@ fn seed_hand_written_west_bounds(
         // language is its own (`nano_ros_add_executable(... TYPED)` is C++
         // whatever its nodes are written in), so take the language the probe
         // generated: C++ when it did, else C.
-        let codegen = metadata_probe_build_dir(root).join("nros-codegen");
-        let probe_codegen = ["cpp", "c"]
-            .iter()
-            .map(|lang| codegen.join(format!("nano_ros_{lang}")))
-            .find(|d| d.is_dir())
-            .unwrap_or_else(|| codegen.join("nano_ros_cpp"));
+        let probe_codegen = probe_bound_tables(root, nros_lang::Language::Cpp);
         crate::message_bound_knobs::write_west_seed(
             resolved_dir,
             &probe_codegen,
@@ -7580,9 +7600,7 @@ fn resolve_coordinate(
             // of every package the root adds -- the closure the configure's
             // `nros_find_interfaces()` calls register (phase-439 W6's seed, on
             // this road). Composed over the union's entity answer just written.
-            let probe_codegen = metadata_probe_build_dir(root)
-                .join("nros-codegen")
-                .join(format!("nano_ros_{}", lang.as_str()));
+            let probe_codegen = probe_bound_tables(root, lang);
             let dirs: Vec<PathBuf> = registered_packages.values().cloned().collect();
             match crate::message_bound_knobs::write_west_seed(
                 &dir,
@@ -9762,6 +9780,38 @@ fn with_rust_channel(h: Handoff, channel: Option<&str>) -> Handoff {
         None => h,
     }
 }
+#[cfg(test)]
+mod probe_bound_tables_tests {
+    use super::{metadata_probe_build_dir, probe_bound_tables};
+    use nros_lang::Language;
+
+    /// Issue 2644 -- a C + Rust image gets the C++ entry while its only probe
+    /// is the C component's, so its tables are under `nano_ros_c`.
+    #[test]
+    fn the_other_languages_tables_are_taken_when_the_entrys_are_absent() {
+        let td = tempfile::tempdir().unwrap();
+        let codegen = metadata_probe_build_dir(td.path()).join("nros-codegen");
+        assert_eq!(
+            probe_bound_tables(td.path(), Language::Cpp),
+            codegen.join("nano_ros_cpp")
+        );
+        std::fs::create_dir_all(codegen.join("nano_ros_c")).unwrap();
+        assert_eq!(
+            probe_bound_tables(td.path(), Language::Cpp),
+            codegen.join("nano_ros_c")
+        );
+        assert_eq!(
+            probe_bound_tables(td.path(), Language::C),
+            codegen.join("nano_ros_c")
+        );
+        std::fs::create_dir_all(codegen.join("nano_ros_cpp")).unwrap();
+        assert_eq!(
+            probe_bound_tables(td.path(), Language::Cpp),
+            codegen.join("nano_ros_cpp")
+        );
+    }
+}
+
 #[cfg(test)]
 mod lock_names_package_tests {
     use super::{is_locked_root, lock_is_seeded_output, lock_names_package};
