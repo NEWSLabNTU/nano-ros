@@ -1802,6 +1802,9 @@ pub(crate) fn census_host_program(
         // issue 2043) names the SDK root this way instead.
         .arg(format!("-DNROS_REPO_DIR={}", root.display()))
         .arg("-DNROS_LEAF_BOARD=linux")
+        // phase-478 I24 -- this `nros` is the codegen tool, whatever the
+        // census build dir cached.
+        .args(crate::builder::codegen_tool_arg())
         .arg(format!("-DZephyr_DIR={}", zephyr_stub.display()))
         // A Zephyr application's `project()` may name CXX alone, because
         // Zephyr enables C itself; the stub does not, so this does.

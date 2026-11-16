@@ -121,10 +121,11 @@ set(_NROS_RMW_DISPATCH_VARS
 # only move the failure. Same lazy bootstrap as `nano_ros_load_providers`.
 # ---------------------------------------------------------------------------
 function(_nros_rmw_cli out_var)
-    if(NOT _NANO_ROS_CODEGEN_TOOL)
-        include("${_NROS_RMW_DISPATCH_DIR}/NanoRosBootstrapCodegen.cmake")
-        nros_bootstrap_codegen()
-    endif()
+    # Always through the bootstrap, a cached tool included: it is where a
+    # cached CLI this tree cannot use is refused (phase-478 I24), before the
+    # dispatch query below runs it.
+    include("${_NROS_RMW_DISPATCH_DIR}/NanoRosBootstrapCodegen.cmake")
+    nros_bootstrap_codegen()
     if(NOT _NANO_ROS_CODEGEN_TOOL OR NOT EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
         # RFC-0094 D5.
         message(FATAL_ERROR

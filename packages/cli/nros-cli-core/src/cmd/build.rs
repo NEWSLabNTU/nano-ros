@@ -2205,6 +2205,10 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 if let Some(nr) = &nano_ros_root {
                     a.push(crate::builder::nano_ros_root_arg(nr));
                 }
+                // phase-478 I24 -- this `nros` is the codegen tool, whatever
+                // the build dir cached. Before `cmake_args`, so a caller's own
+                // `-D_NANO_ROS_CODEGEN_TOOL` still wins.
+                a.extend(crate::builder::codegen_tool_arg());
                 a.extend(image_build_type_args(
                     &platform,
                     &image_id,
@@ -2647,6 +2651,10 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     // `-Dnano_ros_ROOT` still wins.
                     resolved_opt.push(crate::builder::nano_ros_root_arg(nr));
                 }
+                // phase-478 I24 -- this `nros` is the codegen tool, whatever
+                // the build dir cached (the Zephyr lane adopts it into
+                // `_NROS_ZEPHYR_CODEGEN_TOOL`). Before `cmake_extra`.
+                resolved_opt.extend(crate::builder::codegen_tool_arg());
                 // Issue 2314 -- and the workspace a Rust entry's `nros::main!`
                 // indexes for its bringup. Without it the walk up from the
                 // generated entry stopped at that entry's own `[workspace]`
@@ -3347,6 +3355,8 @@ fn plan_single_package_cmake(
     ));
     a.extend(board_rx_configure_args(descriptor));
     a.push(crate::builder::nano_ros_root_arg(&nros_root));
+    // phase-478 I24 -- this `nros` is the codegen tool.
+    a.extend(crate::builder::codegen_tool_arg());
     a.extend(image_build_type_args(
         &platform,
         &image_id,
@@ -4743,6 +4753,8 @@ fn plan_packages(
             // Issue 1304 — same seam as the workspace lane above; `nros_root` is
             // the root this arm already refuses to proceed without.
             a.push(crate::builder::nano_ros_root_arg(nros_root));
+            // phase-478 I24 -- this `nros` is the codegen tool.
+            a.extend(crate::builder::codegen_tool_arg());
             a.extend(args.cmake_args.iter().cloned());
             a.extend(args.native_args.iter().cloned());
             (

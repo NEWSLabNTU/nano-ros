@@ -51,6 +51,29 @@ pub fn nano_ros_root_arg(nano_ros_root: &std::path::Path) -> String {
     format!("-Dnano_ros_ROOT={}", nano_ros_root.display())
 }
 
+/// The configure argument that names THIS `nros` as the build's codegen tool
+/// (phase-478 I24).
+///
+/// A build dir caches `_NANO_ROS_CODEGEN_TOOL` on its first configure, and the
+/// cmake modules honor a cached value. So a dir first configured by one CLI
+/// (an in-tree build) kept running that binary after a different one (a
+/// release) ran `nros build` into it, and failed "in-tree nros CLI is STALE"
+/// from the RMW dispatch query. The invoking binary is the truth: every road
+/// that configures CMake (the cmake image and package roads, west after its
+/// `--`) passes this. `None` only when the running binary cannot be located.
+#[must_use]
+pub fn codegen_tool_arg() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
+    Some(codegen_tool_arg_for(&exe))
+}
+
+/// [`codegen_tool_arg`] for a given binary, so its spelling is testable.
+#[must_use]
+pub fn codegen_tool_arg_for(exe: &std::path::Path) -> String {
+    format!("-D_NANO_ROS_CODEGEN_TOOL={}", exe.display())
+}
+
 /// The configure argument that names the WORKSPACE to a west-built Rust
 /// entry's `nros::main!` (issue 2314).
 ///

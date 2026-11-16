@@ -150,6 +150,24 @@ build-tool-verbs-exempt:
 codegen-version-refusal:
     @./tests/codegen-version-refusal-tests.sh
 
+# phase-478 I24 (GitHub #4067) -- a build dir's cached codegen tool. `nros
+# build` names itself on every configure (asserted in Rust); this gates the
+# cmake half: such a `-D` replaces the cached tool, a bare re-configure keeps a
+# usable one, and a cached tool whose `--codegen-version` this tree does not
+# accept is refused at the bootstrap instead of failing later as "in-tree nros
+# CLI is STALE". The CLI is STUBBED, so this needs cmake and nothing else.
+[group('needs:cmake')]
+codegen-tool-cache:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip codegen-tool-cache "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-codegen-tool-cache-tests.sh
+
 # Issue 0985 — the per-build sizes header must have ONE writer, the mirror
 # script, which since issue 0978 knows that the leaf's own copy is present and
 # arbitrarily old once leaves share a cargo target dir.

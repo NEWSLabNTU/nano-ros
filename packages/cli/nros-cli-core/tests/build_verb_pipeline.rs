@@ -632,6 +632,54 @@ fn a_generated_west_application_gets_the_board_packages_files() {
     assert!(!line.contains("packages/boards"), "{line}");
 }
 
+/// phase-478 I24 (GitHub #4067) -- every configure `nros build` starts names
+/// THIS binary as the codegen tool. A build dir caches `_NANO_ROS_CODEGEN_TOOL`
+/// on its first configure and the cmake modules honor a cached value, so a dir
+/// first configured by an in-tree CLI kept running it after a release CLI ran
+/// `nros build` into it ("in-tree nros CLI is STALE"). The invoking binary is
+/// the truth: the cmake road's configure and the west road's cmake zone both
+/// carry it, and a caller's own `-D_NANO_ROS_CODEGEN_TOOL` comes later and wins.
+#[test]
+fn every_configure_names_the_invoking_nros_as_the_codegen_tool() {
+    let want = nros_cli_core::builder::codegen_tool_arg().expect("this binary is locatable");
+    let exe = std::fs::canonicalize(std::env::current_exe().unwrap()).unwrap();
+    assert_eq!(want, nros_cli_core::builder::codegen_tool_arg_for(&exe));
+
+    // The cmake road.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    write(
+        &tmp.path().join("src/talker_pkg/CMakeLists.txt"),
+        "# c pkg\n",
+    );
+    let plans = plan_builds(&args(tmp.path(), &["linux"])).expect("resolves");
+    assert_eq!(plans[0].driver, Driver::CMake);
+    let cfg = plans[0].configure.as_ref().expect("configure").display();
+    assert!(cfg.contains(&want), "{want} missing: {cfg}");
+
+    let mut a = args(tmp.path(), &["linux"]);
+    a.cmake_args = vec!["-D_NANO_ROS_CODEGEN_TOOL=/elsewhere/nros".into()];
+    let plans = plan_builds(&a).expect("resolves");
+    let cfg = plans[0].configure.as_ref().expect("configure").display();
+    let ours = cfg.find(&want);
+    let theirs = cfg.find("-D_NANO_ROS_CODEGEN_TOOL=/elsewhere/nros");
+    assert!(
+        matches!((ours, theirs), (Some(o), Some(t)) if o < t),
+        "the caller's tool comes last, so cmake takes it: {cfg}"
+    );
+
+    // The west road: after `--`, where a cmake -D belongs.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let plans = plan_builds(&args(tmp.path(), &["zephyr"])).expect("resolves");
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    let (_, cmake_zone) = line.split_once(" -- ").expect("a cmake zone");
+    assert!(
+        cmake_zone.contains(&want),
+        "{want} missing after `--`: {line}"
+    );
+}
+
 #[test]
 fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
     // The asymmetry RFC-0065 D3 now records: cmake has no root/member hierarchy
