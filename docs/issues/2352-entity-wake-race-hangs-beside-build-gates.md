@@ -158,3 +158,14 @@ the zenoh session pool is `ZPICO_MAX_SESSIONS = 1` (`ZpicoError::Full` maps
 to `InvalidConfig`, issue 0465). With `--test-threads=1` both pass in one
 process (1.09 s), so the first session's slot IS returned on drop; it is
 unrelated to this hang.
+
+## Status (2026-11-17): waiting for a recurrence
+
+The diagnostics merged (4acaea437a, 6236a4b4b7): the watchdog names the hang
+stage and prints every thread's stack. No recurrence has been seen since,
+in the junits read: tier 1, tier 2 and the pairwise nightly of
+2026-11-14..16. The cause is still unknown. The closing rule stands: cause,
+fix, and a loaded `gate-order build` with matching verdicts.
+
+**Suggested owner: the executor / test owner**, picking it up when the
+watchdog fires.
