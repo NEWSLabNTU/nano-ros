@@ -659,6 +659,23 @@ its `nros` on PATH. Every recipe that builds a pyo3 crate now pins
 and `just check pyo3-path-stable` holds a prepended PATH entry to a Fresh
 pyo3-ffi.
 
+### I26 -- a toolchain pin can name a commit or a checkout
+
+**Status: OPEN.** [Issue 2645](../issues/2645-toolchain-pin-cannot-name-a-commit.md)
+(GitHub #4006). `nros-toolchain.toml` pins a release only, so the island,
+which tracks main, vendors nano-ros, builds the CLI itself and sets
+`NROS_SKIP_STALE_CHECK=1` because `nros configure` stales the checkout it
+runs from. Design: `git = { rev }` and `path` beside `version`, one of the
+three, and a stale guard that does not count the tool's own writes.
+
+### I27 -- an SDK Eigen 3.4 that builds on arm-none-eabi
+
+**Status: OPEN.** [Issue 2646](../issues/2646-sdk-eigen-for-arm-none-eabi.md)
+(GitHub #4013). Eigen 3.4's `psincos` does not compile where newlib's
+`int32_t` is `long`; the island patches a copy of the host's Eigen. Design: a
+`[source.eigen]` pin on a fork patch line and a `FindEigen3.cmake` giving
+upstream's `Eigen3::Eigen`.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -777,6 +794,8 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       `just check codegen-tool-cache` (issue 2652).
 - [x] I25: a PATH change leaves pyo3-ffi Fresh in every recipe that builds a
       pyo3 crate; `check pyo3-path-stable` with an unpinned control (issue 2660).
+- [ ] I26: the island pins one nano-ros commit in `nros-toolchain.toml`, with no vendored CLI build and no `NROS_SKIP_STALE_CHECK` (issue 2645).
+- [ ] I27: a `find_package(Eigen3)` package builds for an `arm-none-eabi` board with no host Eigen and no consumer patch (issue 2646).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -815,6 +834,8 @@ Filed from the Autoware Safety Island's phase-15 P3 on nano-ros 5b9e8844a4.
 - [issue 2639](../issues/archived/2639-list-parameters-silently-caps-at-64.md) (resolved): `ros2 param list` and `ros2 param dump` showed 64 of the controller's 149 parameters and said nothing (I22).
 - [issue 2638](../issues/archived/2638-launch-list-param-flattened-to-string.md) (resolved): a list parameter from a `<param from>` file reached the node as one comma-joined string (I20).
 - [issue 2640](../issues/2640-metadata-probe-no-launch-values.md): the C/C++ metadata probe constructs a node with no launch values and a default-size store, so a node declaring parameters without defaults cannot be probed.
+- [issue 2645](../issues/2645-toolchain-pin-cannot-name-a-commit.md) (GitHub #4006): `nros-toolchain.toml` cannot pin a commit, so a consumer on main vendors nano-ros and sets `NROS_SKIP_STALE_CHECK` (I26).
+- [issue 2646](../issues/2646-sdk-eigen-for-arm-none-eabi.md) (GitHub #4013): no SDK Eigen for cross builds; Eigen 3.4's psincos fails on newlib's `int32_t = long` (I27).
 
 ## Issues homed here (2026-11-15)
 
