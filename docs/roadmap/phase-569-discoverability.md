@@ -1,0 +1,200 @@
+# Phase 569 — find what nano-ros offers from the `nros` command
+
+**Status (2026-11-17). PROPOSED: W1–W10 are open, and nothing is built.**
+Implements [RFC-0133](../design/0133-discoverability.md), a draft written for
+the user's review. The request came from the user through the manager on
+2026-11-17: a discoverability campaign in the style of `ros2 pkg list` and
+`ros2 interface list`, plus dynamic shell completion. Owner: the docs/UX
+session, until the user approves the RFC and the manager assigns the items.
+
+## Why
+
+The RFC's Motivation has the audit. In short, a user cannot list the RMWs,
+platforms, configuration knobs, templates, runners or diagnostic codes, or
+see what the build derived for an image, without reading the source. Three
+lists of RMWs disagree, only one discovery verb emits JSON, and completion
+offers no names.
+
+## Order
+
+The order puts the cheapest, highest-value items first. Each item's data
+source already exists (RFC-0133 D2), except W3's `because` field.
+
+| item | what | depends on |
+| --- | --- | --- |
+| W1 | `nros rmw list` / `show` | — |
+| W2 | the knob catalog: `nros knob list` / `show` | — |
+| W3 | derived config: `nros image show --derived` | — |
+| W4 | dynamic completion and its registration | W1, W2 (their loaders) |
+| W5 | the shared `list` / `show` / `--json` / Book frame; existing verbs adopt it | W1 |
+| W6 | `platform`, `template`, `code`, `runner` lists | W5 |
+| W7 | `image list` / `show`; planned `node list` / `topic list` | W5 |
+| W8 | migration out of `nros dev`, aliases, old-spelling table | W1–W7 |
+| W9 | `nros search` | W5–W7 |
+| W10 | the book: a "Find what nano-ros offers" page; CLI reference | each item adds its rows |
+
+## Work items
+
+### W1 — `nros rmw list` / `show`
+
+- **Status:** OPEN
+
+`nros rmw list` prints one row per RMW from `RmwIndex` (each
+`nros-rmw.toml`): name, summary, and the platforms and boards it supports.
+`nros rmw show <name>` adds the host packages it needs (from the SDK index's
+`[rmw.*]`), the Kconfig and `system.toml` spellings that select it, and its
+Book line. `nros new --rmw` takes its candidates and validation from the same
+index; its hardcoded list goes. A gate refuses an `[rmw.*]` entry with no
+descriptor, and a descriptor with no entry.
+
+Acceptance: `nros rmw list` names zenoh, xrce, cyclonedds and uorb on main;
+`--json` matches a pinned schema; `nros new --rmw uorb` is accepted or refused
+by the descriptor's own platform list, not by a list in `new.rs`.
+
+### W2 — the knob catalog
+
+- **Status:** OPEN
+
+Each `[[knob]]` row in `knobs.toml` gains `scope`, `default`, `values`,
+`set-in` and the public / carrier class that `gen-config-surface.py`
+computes today. `prompt` and `help` are compiled into `KnobRow`.
+`nros knob list` prints every public knob (name, scope, default, one line of
+help); `--platform P` / `--board B` add the resolved value and the rung it
+came from, which is what `config explain` prints today. `nros knob show
+<name>` prints every spelling (system.toml, Kconfig, env), the valid values
+and the help. `config explain` becomes an alias. The configuration reference
+page is generated from the same rows.
+
+Acceptance: every one of the 110 rows has the new fields, or the generator
+refuses; `nros knob show net.max_sockets` prints the three spellings; the
+book page and `nros knob list` list the same public knobs (a gate compares
+them).
+
+### W3 — derived config with reasons
+
+- **Status:** OPEN
+
+`nros image show <image> --derived` prints, from
+`build/nros/sizing/<entry>.toml`, the pools, heap, stack and features the
+build derived, with the reason for each: the knob or the plan fact it came
+from. The sizing descriptor gains a `because` field per derived value,
+written where the value is derived. A value without one prints
+"(no reason recorded)", and a test counts those so the number only goes
+down. With no descriptor, or one older than the image's inputs, the command
+names `nros configure` and runs nothing.
+
+Acceptance: a configured Linux-host image shows its executor pools with a
+reason each; an unconfigured one names `nros configure` and exits non-zero
+without building.
+
+### W4 — dynamic completion and its registration
+
+- **Status:** OPEN
+
+Enable clap_complete's `unstable-dynamic`, pinned to an exact version.
+`CompleteEnv::with_factory(Cli::command).complete()` goes in `main` after the
+toolchain-pin redispatch. `ArgValueCandidates` on every name argument
+(boards, RMWs, platforms, packages, images, knobs, interface types,
+templates, codes, toolchains) and `SubcommandCandidates` for extension
+verbs, each calling only cheap sources and the provider cache (RFC-0133 D7).
+
+`nros completions [<shell>]` prints the registration line for the shell, and
+`--static` keeps today's generated script. The dead `run()` stub goes.
+`install.sh` and the end of `nros setup` print the line for the user's shell.
+`activate.sh` and `activate.fish` source the glue for interactive shells.
+Install gains a "Turn on completion" step.
+
+Acceptance:
+- bash, zsh and fish each complete `nros board show <Tab>` with board keys,
+  in a test that runs the real glue;
+- every completer stays under the budget on a cold cache;
+- a completer run under `strace -f` executes no cargo, cmake or network
+  call, and writes no file.
+
+### W5 — the shared frame, and existing verbs adopt it
+
+- **Status:** OPEN
+
+One helper renders `list` (table or `--json`), `show` (fields, then the Book
+line) and the unknown-name refusal with the nearest names. `board`,
+`interface`, `toolchain` and `nros list` adopt it and gain `--json`.
+`board list` lists board keys, with the crate as a column. A contract test
+pins each `--json` schema, and `check-user-surface-ids` renders every new
+verb. The Book base URL is one constant (RFC-0133 open question 1).
+
+Acceptance: every discovery verb accepts `--json`; the contract test fails on
+a renamed key; `check-user-surface-ids` covers the new verbs.
+
+### W6 — `platform`, `template`, `code`, `runner` lists
+
+- **Status:** OPEN
+
+- `nros platform list` / `show` read `PlatformsTree`, with its boards and
+  RMWs; `nros new --platform` reads the same list.
+- `nros template list` / `show` read `scaffold::Role::ALL`: roles, languages
+  and features.
+- `nros code list` / `show` read the diagnostic code table; `nros explain`
+  keeps working for codes and plans.
+- `nros runner list` / `show` list runners and extension commands from
+  `extension::discover`.
+
+Each `show` has a Book line from its own data (new `book` fields where
+needed).
+
+Acceptance: each list matches its source in a test that adds a fixture item
+and sees it listed, with no CLI edit.
+
+### W7 — images, and what an image will create
+
+- **Status:** OPEN
+
+`nros image list` prints the workspace's images and bringups (board, RMW,
+launch file). `nros image show <image>` adds its packages and, with
+`--derived`, W3's view. `nros node list --image <i>` and
+`nros topic list --image <i>` print the nodes, and the topics, services and
+actions, from the plan, labelled planned. Without a plan they name
+`nros configure`.
+
+Acceptance: the Tutorial's workspace lists its images; its talker image's
+planned nodes and topics match what `ros2 node list` and `ros2 topic list`
+show when it runs (a probe step).
+
+### W8 — migration out of `nros dev`
+
+- **Status:** OPEN
+
+Apply RFC-0133 D3's table. Each moved spelling stays as a hidden alias and
+gets a row in the old-spellings table. `nros --help` gains the
+"Find what nano-ros offers" group.
+
+Acceptance: every row of the D3 table works under both spellings;
+`check-cli-old-spellings` reports each old one; build scripts that call
+`nros dev …` keep working unchanged.
+
+### W9 — `nros search <word>`
+
+- **Status:** OPEN
+
+Search the name, aliases and description of every item in every cheap noun,
+plus the plan nouns when a plan exists, by calling each noun's `list` loader.
+Results are grouped by noun, with the `show` command to run; `--json` gives
+`nros.search.v1`.
+
+Acceptance: `nros search zenoh` returns the RMW, its knobs and the boards
+that support it; a fixture item added to any source is found with no search
+code change.
+
+### W10 — the book
+
+- **Status:** OPEN
+
+A user-guide page, "Find what nano-ros offers", walks through `list`, `show`,
+`search` and completion with real output. The CLI reference is regenerated.
+Each item above adds its own rows to the page as it lands.
+
+Acceptance: the page passes the book gates; each command on it is a probe
+step on the installed track.
+
+## Open questions
+
+The RFC's open questions 1–5 carry over. They do not block W1 or W2.
