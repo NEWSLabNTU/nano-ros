@@ -62,9 +62,8 @@ impl DiagSink {
     /// `domain_id` (the executor's own for a Rust entry; the C++ context
     /// keeps its domain beside the executor).
     ///
-    /// RFC-0128 D8 (phase-554 W3 slice B): an executor-level entity, so it is
-    /// announced under the primary node (`Executor::create_executor_publisher`),
-    /// as a stock ROS 2 node publishes its own diagnostics. It used to be a
+    /// An executor-level entity, so it is announced under the primary node
+    /// (`Executor::create_executor_publisher`), as a stock ROS 2 node publishes its own diagnostics. It used to be a
     /// session publisher with no node, filed under the session's own name.
     pub fn create(executor: &mut Executor<'_>, domain_id: u32) -> Result<Self, NodeError> {
         let publisher = executor.create_executor_publisher(
@@ -302,7 +301,7 @@ pub unsafe fn install_contract_modes(
 ///   never spins, so the reporter could never publish, and the recorder has no
 ///   node open yet to attribute it to — it refused the publisher, and the
 ///   C/C++ road turned that refusal into a failed setup that recorded nothing.
-/// * The publisher opens on the image's PRIMARY node (RFC-0128 D8). Armed
+/// * The publisher opens on the image's PRIMARY node. Armed
 ///   before any node exists -- the usual case, since the tables must precede
 ///   every entity -- it opens when the primary node is registered, and a
 ///   failure then fails that registration (the node's `build()` returns it).
