@@ -115,7 +115,7 @@ one ladder (`nros_qemu_ladder::Board`), shared with the CLI's plan.
 Zephyr boots (`zephyr_qemu_boot`) restate Zephyr's `board.cmake`, because no
 Zephyr board states a `[board.run.qemu]`: `nros run` boots a Zephyr image
 through the `west` runner. The gate fires if one ever does.
-**Superseded 2026-11-09 by [issue 2379](../2379-zephyr-qemu-boards-state-board-run-qemu.md):**
+**Superseded 2026-11-09 by [issue 2379](2379-zephyr-qemu-boards-state-board-run-qemu.md):**
 the Zephyr QEMU boards now state `[board.run.qemu]`, `zephyr_qemu_boot` is
 gone, and the harness reads them through `nros_tests::zephyr::west_qemu_boot`,
 which holds each to its build's own `run_qemu` line. `nros run` keeps the
