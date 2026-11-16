@@ -597,6 +597,18 @@ node, the parameter, the capacity and the knob in every spelling. The size is
 already derived from the contract's `params:` when every node declares them;
 deriving it from the census is not done.
 
+### I20 -- `RCLCPP_*_THROTTLE` on the clock argument, and `_ONCE` / `_SKIPFIRST`
+
+**Status: DONE (2026-11-16).** [Issue 2636](../issues/archived/2636-rclcpp-throttle-once.md),
+GitHub #4010. The island's vendored controller files log through
+`RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), ms, ...)`, which was refused,
+and use `_ONCE`, which did not exist. The throttle now reads the `clock`
+argument and hands the reading to the C throttle rule
+(`rclc_log_throttle_admit_at`); an invalid clock warns once and is throttled
+on the platform's monotonic clock.
+`_ONCE`, `_SKIPFIRST` and `_SKIPFIRST_THROTTLE` are added at every level, with
+per-site static state. The island's own `std::map` throttle can go.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -734,6 +746,7 @@ from that session, `FREERTOS_PORT not set` on `freertos-posix`, is
 [issue 2341](../issues/archived/2341-freertos-posix-port-not-reaching-zpico.md),
 fixed after that release.
 
+- [issue 2636](../issues/archived/2636-rclcpp-throttle-once.md) (GitHub #4010, resolved): `RCLCPP_*_THROTTLE` was refused and `RCLCPP_*_ONCE` / `_SKIPFIRST` were missing. The throttle now measures on its `clock` argument (I20).
 - [issue 2615](../issues/archived/2615-model-gate-refuses-sibling-param-file.md) (resolved): a model whose launch loads a param file from a sibling package was refused as non-portable (I17).
 - [issue 2618](../issues/archived/2618-knob-delivery-check-false-mismatch-after-link.md): the knob delivery check refuses a build after link over a list separator and an override row (I18).
 - [issue 2634](../issues/archived/2634-param-store-full-declare-silently-uses-default.md) (GitHub #4018, resolved): `declare_parameter` past a full parameter store returned the code default in silence. It now stops the boot and names the knob (I19).

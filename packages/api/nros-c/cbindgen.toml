@@ -129,6 +129,7 @@ exclude = [
     "Option_nros_log_sink_fn",
     "rclc_log_add_sink",
     "rclc_log_throttle_admit",
+    "rclc_log_throttle_admit_at",
     "rclc_log_timestamp_available",
     # issue-0027 (gcc 14 / riscv NuttX) — platform-PROVIDED functions
     # (posix.h / board startup.c), imported by Rust in a `cfg(not(std))`
