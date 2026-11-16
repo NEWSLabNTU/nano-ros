@@ -1002,3 +1002,4 @@ Rehomed from [phase-548](archived/phase-548-three-languages-every-board.md) when
 | [#2400](../issues/2400-stack-floor-from-measured-frames.md) | The design and rulings this phase implements. |
 | [#2360](../issues/2360-zephyr-rust-registration-stack-frames.md) | A Rust Zephyr entry's registration frames outgrow 32 KiB of main stack for an action server (measured 63,776 B): the floor this phase derives, and the input of issue 2400. |
 | [#2414](../issues/2414-stack-floor-bitcode-store-under-sccache.md) | DEFERRED by ruling. Measuring floors every build bypasses sccache for the measured crates; a bitcode store keyed by crate output would remove the cost. |
+| [#2658](../issues/2658-stack-floor-walk-over-estimates-graph-and-param-images.md) | The walk refuses an image that queries the graph or declares a parameter: 122,120 B against a measured 12,844 B (C), 76,816 B against 27,388 B (Rust), on the Renode Nucleo twin. |
