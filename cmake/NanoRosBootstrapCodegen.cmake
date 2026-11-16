@@ -17,7 +17,9 @@
 #
 # Resolution order:
 #   1. `_NANO_ROS_CODEGEN_TOOL` already in cache (caller pre-set via
-#      `-D_NANO_ROS_CODEGEN_TOOL=<path>`) — honored as-is.
+#      `-D_NANO_ROS_CODEGEN_TOOL=<path>`) — honored, after one check: the
+#      tool's `--codegen-version` must be one this tree's runtime accepts
+#      (phase-478 I24, below).
 #   2. PATH (incl in-tree `packages/cli/target/release/` via `activate.sh`),
 #      then `$NROS_HOME/bin` / `~/.nros/bin` (transitional).
 
@@ -30,11 +32,69 @@ include_guard(GLOBAL)
 # too). At file scope it is this module's own directory.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 
+# _nros_bootstrap_codegen_assert_accepted(<tool>) -- phase-478 I24.
+#
+# A build dir remembers the CLI it was first configured with. `nros build`
+# passes its OWN path on every configure (`-D_NANO_ROS_CODEGEN_TOOL`), so the
+# invoking binary always wins there. A bare `cmake` re-configure has no
+# invoker to ask, so the cache is kept -- but a cached CLI from another
+# checkout or release can be one this tree cannot use, and the build then
+# failed much later and far away ("in-tree nros CLI is STALE" from the RMW
+# dispatch query, or a `#error` in a generated header). Ask the tool which
+# codegen version it emits and refuse here, naming both sides, when this
+# tree's runtime does not accept it.
+#
+# Silent when either side cannot answer (an installed root with no
+# `codegen_version.rs`, or a binary predating `--codegen-version`): absence of
+# evidence is not a mismatch, the contract `nros_codegen_accepted_range` has.
+# Asked once per configure per tool.
+function(_nros_bootstrap_codegen_assert_accepted _tool)
+    if(CMAKE_SCRIPT_MODE_FILE)
+        return()
+    endif()
+    get_property(_asked GLOBAL PROPERTY _NROS_CODEGEN_TOOL_VERSION_ASKED)
+    if("${_tool}" IN_LIST _asked)
+        return()
+    endif()
+    set_property(GLOBAL APPEND PROPERTY _NROS_CODEGEN_TOOL_VERSION_ASKED "${_tool}")
+    nros_codegen_accepted_range(_min _max)
+    if(_min STREQUAL "" OR _max STREQUAL "")
+        return()
+    endif()
+    execute_process(
+        COMMAND "${_tool}" --codegen-version
+        OUTPUT_VARIABLE _emits
+        ERROR_QUIET
+        RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rc EQUAL 0 OR NOT _emits MATCHES "^[0-9]+$")
+        return()
+    endif()
+    if(_emits LESS _min OR _emits GREATER _max)
+        message(FATAL_ERROR
+            "nano-ros: this build directory is configured with an `nros` CLI "
+            "this nano-ros tree cannot use.\n"
+            "  cached CLI:        ${_tool}\n"
+            "  it emits codegen:  ${_emits}\n"
+            "  this tree accepts: ${_min}..${_max}\n"
+            "  tree:              ${_NROS_CODEGEN_CORE_TREE}\n"
+            "\n"
+            "A build directory keeps the CLI it was first configured with "
+            "(`_NANO_ROS_CODEGEN_TOOL` in CMakeCache.txt). `nros build` passes "
+            "its own path on every configure; a bare `cmake` re-configure "
+            "keeps the cached one. Re-configure with the CLI you mean:\n"
+            "  nros build <image>\n"
+            "or\n"
+            "  cmake -D_NANO_ROS_CODEGEN_TOOL=<path to nros> <build-dir>")
+    endif()
+endfunction()
+
 function(nros_bootstrap_codegen)
     if(DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL}
        AND NOT _NANO_ROS_CODEGEN_TOOL STREQUAL "_NANO_ROS_CODEGEN_TOOL-NOTFOUND"
        AND EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
-        # User (or a prior call) pre-set it, nothing to do.
+        # User (or a prior call) pre-set it: keep it, if this tree accepts it.
+        _nros_bootstrap_codegen_assert_accepted("${_NANO_ROS_CODEGEN_TOOL}")
         return()
     endif()
     if(DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL}

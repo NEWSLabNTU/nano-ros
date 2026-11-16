@@ -634,6 +634,17 @@ board package the workspace carries resolved for `nros build` and failed in
 the west configure it spawns; the island exported `NROS_EXTRA_BOARD_PATH` to
 get past it. Every verb now asks one lookup, `cmd::board::catalog_for_dir`.
 
+### I24 -- a build dir follows the `nros` that builds it
+
+**Status: DONE (2026-11-16).** [Issue 2652](../issues/archived/2652-codegen-tool-cache-outlives-invoker.md)
+(GitHub #4067). A build dir configured once by the in-tree CLI kept that
+binary as `_NANO_ROS_CODEGEN_TOOL` after a release `nros build` ran into it,
+and the configure failed "in-tree nros CLI is STALE"; the island passed
+`-D_NANO_ROS_CODEGEN_TOOL` on every configure to get past it. `nros build`
+now passes its own path on every CMake configure it starts (cmake, west,
+census). A bare `cmake` re-configure keeps the cache, and refuses a cached
+tool whose `--codegen-version` the tree does not accept.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -746,6 +757,10 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
 - [x] I22: `list_parameters` answers every name and `get_parameters` takes a
       list as long as the store; stock `ros2 param list` / `dump` over 70
       parameters in the two-node interop fixture (issue 2639).
+- [x] I24: every CMake configure `nros build` starts names that `nros` as
+      the codegen tool, and a bare re-configure refuses a cached tool outside
+      the accepted codegen range; `build_verb_pipeline.rs` and
+      `just check codegen-tool-cache` (issue 2652).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -775,6 +790,7 @@ this phase will fix it.
 
 Filed from the Autoware Safety Island's phase-15 P3 on nano-ros 5b9e8844a4.
 
+- [issue 2652](../issues/archived/2652-codegen-tool-cache-outlives-invoker.md) (GitHub #4067, resolved): a build dir kept the cached `nros` codegen tool after a different `nros build` ran into it (I24). Found on nano-ros 09219edc75.
 - [issue 2639](../issues/archived/2639-list-parameters-silently-caps-at-64.md) (resolved): `ros2 param list` and `ros2 param dump` showed 64 of the controller's 149 parameters and said nothing (I22).
 - [issue 2638](../issues/archived/2638-launch-list-param-flattened-to-string.md) (resolved): a list parameter from a `<param from>` file reached the node as one comma-joined string (I20).
 - [issue 2640](../issues/2640-metadata-probe-no-launch-values.md): the C/C++ metadata probe constructs a node with no launch values and a default-size store, so a node declaring parameters without defaults cannot be probed.
