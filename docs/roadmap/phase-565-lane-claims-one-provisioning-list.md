@@ -1,6 +1,6 @@
 # Phase 565 — a lane's claims are the one provisioning list
 
-**Status (2026-11-16). OPEN: W1 and W2 are done; W3–W6 are open.** Implements
+**Status (2026-11-16). OPEN: W1, W2 and W4 are done; W3, W5 and W6 are open.** Implements
 [RFC-0131](../design/0131-gates-are-nextest-tests.md), and closes its one open
 question. Assigned to nros 118 by the nros 241 manager on 2026-11-15, which
 relayed the user's approval of RFC-0131 and asked for phase docs that implement
@@ -121,7 +121,17 @@ Acceptance:
 
 ### W4 — every lane runs somewhere, provisioned by its own claims
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-16)
+
+Done: `[lane.queue]` is deleted, with the reason in RFC-0131 D3 (no job set it,
+and the L3 job that would have runs the `runner` lane before its fixture
+build). `dev` and `pristine` name the `local` place they run. The six jobs
+that run a lane without the `provision-gate-lane` action (merge-runtime's
+`merge` and self-hosted `runner`, queue's L3, run-matrix's three) say in
+`NROS_GATE_PROVISIONED_BY` that their own `just setup <board>` provides the
+claims. Gate: `check-gate-lane-jobs` (fast tier), holding all three rules,
+with negative controls for an unrun lane, an unprovisioned job, an undeclared
+scope in a job and in a script.
 
 The `queue` lane is either run by the job that runs on its claims
 (`zephyr`, `west`, `build-tree`: the queue's L3 job) or deleted, with the

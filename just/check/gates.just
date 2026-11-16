@@ -412,6 +412,16 @@ gate-order tier="fast":
 lane-provisioning-single-source:
     @python3 scripts/check/check-lane-provisioning-single-source.py
 
+# phase-565 W4 — every gate lane runs somewhere, provisioned by its claims:
+# each `[lane.<name>]` is some workflow job's NROS_GATE_SCOPE or names the
+# `local` place it runs; each scoped job runs the provision-gate-lane action
+# or says in NROS_GATE_PROVISIONED_BY what provides its claims; every
+# NROS_GATE_SCOPE names a declared lane. Buildless; self-tests on its normal
+# path.
+[private]
+gate-lane-jobs:
+    @python3 scripts/check/check-gate-lane-jobs.py
+
 # phase-565 W2 — every capability says how it is provided
 # (`[provision.claim]` in .config/gate-lanes.toml): a provisioner, a
 # `claim_<name>` in scripts/lib/claim-provision.sh that both `just

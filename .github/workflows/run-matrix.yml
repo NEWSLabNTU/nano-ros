@@ -53,6 +53,9 @@ jobs:
       # [lane.runner]): `just build <lane>` and `just ci matrix` reach `check
       # fast`/`check build`, and an unset scope is refused in CI.
       NROS_GATE_SCOPE: runner
+      # phase-565 W4: this lane is not provisioned by the provision-gate-lane
+      # action; this says what provides its claims instead.
+      NROS_GATE_PROVISIONED_BY: "the job's `just setup <tier>` (the lane claims only what it and the runner image provide)"
     defaults:
       run:
         shell: bash
@@ -306,6 +309,9 @@ jobs:
       # [lane.runner]): `just build <lane>` and `just ci matrix` reach `check
       # fast`/`check build`, and an unset scope is refused in CI.
       NROS_GATE_SCOPE: runner
+      # phase-565 W4: this lane is not provisioned by the provision-gate-lane
+      # action; this says what provides its claims instead.
+      NROS_GATE_PROVISIONED_BY: "the job's `just setup <tier>` (the lane claims only what it and the runner image provide)"
     defaults:
       run:
         shell: bash
@@ -536,6 +542,9 @@ jobs:
       # [lane.runner]): `just build <lane>` and `just ci matrix` reach `check
       # fast`/`check build`, and an unset scope is refused in CI.
       NROS_GATE_SCOPE: runner
+      # phase-565 W4: this lane is not provisioned by the provision-gate-lane
+      # action; this says what provides its claims instead.
+      NROS_GATE_PROVISIONED_BY: "the job's `just setup <tier>` (the lane claims only what it and the runner image provide)"
     defaults:
       run:
         shell: bash
