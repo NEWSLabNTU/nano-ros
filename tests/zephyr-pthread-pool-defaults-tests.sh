@@ -23,6 +23,13 @@
 #   G  REACH: the build's refusal takes its floor from the same function, and
 #      zephyr/Kconfig sources the file before the
 #      module's own zenoh defaults
+#   H  REACH, by road: a standalone leaf whose resolve projected no counts (a
+#      plain `west build`, or a leaf with no contract sidecar) takes them from
+#      `nros ws west-leaf-sizing` before Kconfig -- the same verb the cargo
+#      build sizes it from -- so the pools are derived on every road, not
+#      only under `nros build` (a fake CLI stands in for the verb)
+#   I  the hook asks for that fallback before it renders the pools, and the
+#      build's refusal says so when no default was derived at all
 #
 # A cmake -P probe, so seconds; no Zephyr workspace. PRECONDITIONS ARE HARD
 # FAILURES (issue 1758): no cmake, no verdict, red.
@@ -111,6 +118,44 @@ case "$order" in
     'osource "$(KCONFIG_BINARY_DIR)/../nros/Kconfig.pthread-pools" configdefault MAX_PTHREAD_COND_COUNT ') ;;
     *) fail "G: zephyr/Kconfig does not source Kconfig.pthread-pools before the module's own pool defaults: [$order]" ;;
 esac
+
+# H -- the leaf fallback, with a fake `nros` that answers like the verb.
+KCONFIG_HOOK="$PROJECT_ROOT/zephyr/cmake/nros_image_kconfig.cmake"
+printf '%s\n' '#!/bin/sh' \
+    'out=""; while [ $# -gt 0 ]; do [ "$1" = --output-cmake ] && out="$2"; shift; done' \
+    'if [ -n "$FAKE_BASIS" ]; then' \
+    '    printf "set(NROS_DERIVED_MAX_SUBSCRIBERS 1)\nset(NROS_DERIVED_MAX_QUERYABLES 10)\n" > "$out"' \
+    '    echo "basis $FAKE_BASIS"' \
+    'fi' > "$WORK/fake-nros"
+chmod +x "$WORK/fake-nros"
+printf '%s\n' \
+    "include(\"$KCONFIG_HOOK\")" \
+    "_nros_image_kconfig_leaf_counts(_f \"$WORK/fake-nros\" \"$WORK\" img \"$WORK/nros\")" \
+    'file(WRITE "${OUT}" "${_f}")' > "$WORK/leaf.cmake"
+FAKE_BASIS="probe sidecars" cmake -DOUT="$WORK/leaf-frag" -P "$WORK/leaf.cmake" >/dev/null 2>&1 ||
+    fail "H: the leaf-counts probe did not run"
+frag="$(cat "$WORK/leaf-frag" 2>/dev/null)"
+if [ -n "$frag" ] && [ -f "$frag" ]; then
+    render "$frag"
+    [ "$(pool COND)" = 19 ] || fail "H: a leaf's own counts gave cond $(pool COND), want 19 (1 + 10 + 4 + 4)"
+else
+    fail "H: a leaf the verb sized gave no counts fragment [$frag]"
+fi
+cmake -DOUT="$WORK/leaf-frag" -P "$WORK/leaf.cmake" >/dev/null 2>&1 ||
+    fail "H: the leaf-counts probe did not run (no basis)"
+[ -z "$(cat "$WORK/leaf-frag" 2>/dev/null)" ] ||
+    fail "H: a leaf the verb found nothing for still got a fragment"
+
+order="$(grep -n -e '_nros_image_kconfig_leaf_counts(_resolved_frag' \
+             -e 'nros_zpico_pthread_pool_kconfig("${_resolved_frag}"' "$KCONFIG_HOOK" |
+             cut -d: -f1 | tr '\n' ' ')"
+case "$order" in
+    [0-9]*' '[0-9]*' ') [ "${order%% *}" -lt "$(echo "$order" | cut -d' ' -f2)" ] ||
+        fail "I: the hook renders the pools before it asks for a leaf's counts" ;;
+    *) fail "I: the hook does not ask for a leaf's counts before rendering the pools: [$order]" ;;
+esac
+nros_grep_q 'Kconfig.pthread-pools")' "$PROJECT_ROOT/zephyr/cmake/nros_cargo_build.cmake" ||
+    fail "I: the build's refusal does not tell a missing derived default from a conf value"
 
 if [ "$FAILURES" -ne 0 ]; then
     echo "zephyr-pthread-pool-defaults: $FAILURES failure(s)" >&2

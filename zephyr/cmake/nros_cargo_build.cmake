@@ -1161,6 +1161,28 @@ function(nros_resolve_knobs)
                     set(_nros_fixed "${_nros_zpico_mutex_overhead_q}")
                     set(_nros_what "mutex")
                 endif()
+                if(NOT "${_nros_have}" STREQUAL "" AND _nros_have LESS _nros_need
+                   AND NOT EXISTS "${CMAKE_BINARY_DIR}/nros/Kconfig.pthread-pools")
+                    # The module hook derived no pool default for this image, so
+                    # the value is the module's own, not a conf's: a reach gap in
+                    # nano-ros (the hook found no resolve and no leaf inventory
+                    # before Kconfig), not something a conf line fixes.
+                    message(FATAL_ERROR
+                        "CONFIG_MAX_PTHREAD_${_nros_pool}_COUNT=${_nros_have} is the module's "
+                        "default, and this image needs at least ${_nros_need} "
+                        "(${_nros_zpico_subs} subscribers + ${_nros_zpico_qrys} queryables "
+                        "+ ${_nros_fixed} zenoh-pico fixed + 4 headroom).\n"
+                        "\n"
+                        "The nano-ros module derives this pool's default from the image's "
+                        "entities before Kconfig runs, and found none to derive from: no "
+                        "`nros configure` resolve with entity counts, and no standalone-leaf "
+                        "inventory (`nros ws west-leaf-sizing`). This configure counted them "
+                        "afterwards, which is too late for Kconfig.\n"
+                        "\n"
+                        "Run `nros build` (or `nros configure`) for this image, or state the "
+                        "image's entities (a contract sidecar beside its launch file, or "
+                        "`[[component]] entities` in its system.toml).")
+                endif()
                 if(NOT "${_nros_have}" STREQUAL "" AND _nros_have LESS _nros_need)
                     message(FATAL_ERROR
                         "CONFIG_MAX_PTHREAD_${_nros_pool}_COUNT=${_nros_have} is too small "
