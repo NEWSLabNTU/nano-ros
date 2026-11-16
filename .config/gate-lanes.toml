@@ -105,6 +105,40 @@ claims = ["cli", "cmake", "cc", "ros2", "sources"]
 tiers = ["fast"]
 claims = ["cmake", "cc", "git-history"]
 
+# How each capability is PROVIDED (phase-565 W2; RFC-0131 D3). Every capability
+# has a `remedy`, the fix a refusal names. One that nano-ros can install itself
+# also names a `provisioner`: a `claim_<name>` function in
+# scripts/lib/claim-provision.sh, run by `just setup-worktree` for the `dev`
+# lane and by CI's scripts/ci/provision-gate-lane.sh for a CI lane, so both run
+# the same code. The rest are HOST tools: named with their remedy, never
+# installed (no sudo). `ci = false` marks a provisioner a CI job's own steps
+# already cover, so CI's provisioner leaves it to them. `order` is the order the
+# provisioners run in: a submodule that is a CLI build input (play_launch,
+# issue 0561) before `cli`, and `sources` after it, since it needs a CLI. Read
+# only through scripts/lib/lane_provision.py; `lane_provision.py --check` (gate
+# `lane-claims-provisioned`) refuses a capability with no entry.
+[provision]
+order = ["submodules", "git-history", "zephyr-tree", "cli", "sources", "arm-gcc"]
+
+[provision.claim]
+cli = { provisioner = "cli", ci = false, remedy = "just setup-cli && just setup-launch-resolve" }
+submodules = { provisioner = "submodules", remedy = "just setup-worktree" }
+git-history = { provisioner = "git-history", remedy = "git fetch --unshallow" }
+sources = { provisioner = "sources", remedy = "nros setup --source <name> (the index's [source.*] rows)" }
+zephyr-tree = { provisioner = "zephyr-tree", remedy = "the sparse header clone (scripts/ci/provision-gate-lane.sh), or a west workspace" }
+arm-gcc = { provisioner = "arm-gcc", remedy = "nros setup --tool arm-none-eabi-gcc" }
+ros2 = { remedy = "source /opt/ros/<distro>/setup.bash (or ./activate.sh with ROS installed)" }
+colcon = { remedy = "install colcon (python3 -m pip install colcon-common-extensions)" }
+bindgen = { remedy = "just setup linux" }
+cmake = { remedy = "install cmake and ninja" }
+cc = { remedy = "install a C/C++ compiler" }
+arm-gcc-any = { remedy = "any arm-none-eabi-g++ on PATH works: the distro package (gcc-arm-none-eabi, as in the CI image) or nros setup --tool arm-none-eabi-gcc then re-source activate.sh; or set NROS_ARM_NONE_EABI_PREFIX" }
+zephyr = { remedy = "just zephyr setup" }
+west = { remedy = "just zephyr setup" }
+nuttx = { remedy = "nros setup --source nuttx" }
+fsp = { remedy = "provision NV_SPE_FSP_DIR (not on any runner)" }
+build-tree = { remedy = "just build-test-fixtures" }
+
 # What the `submodules` claim provisions: the submodules the gate tiers read,
 # and WHICH gates read each (phase-565 W1; until then the separate list
 # `.config/worktree-provisioning.txt`, issue 1513). ONE table, read only through

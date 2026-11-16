@@ -1,6 +1,6 @@
 # Phase 565 — a lane's claims are the one provisioning list
 
-**Status (2026-11-16). OPEN: W1 is done; W2–W6 are open.** Implements
+**Status (2026-11-16). OPEN: W1 and W2 are done; W3–W6 are open.** Implements
 [RFC-0131](../design/0131-gates-are-nextest-tests.md), and closes its one open
 question. Assigned to nros 118 by the nros 241 manager on 2026-11-15, which
 relayed the user's approval of RFC-0131 and asked for phase docs that implement
@@ -70,7 +70,24 @@ Acceptance:
 
 ### W2 — `just setup-worktree` provisions the `dev` lane's claims
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-16)
+
+Done: every capability has a `[provision.claim]` entry in
+`.config/gate-lanes.toml`: a `remedy`, and a `provisioner` when nano-ros can
+install it (`submodules`, `git-history`, `zephyr-tree`, `cli`, `sources`,
+`arm-gcc`). `[provision] order` runs them CLI inputs first, then `cli`, then
+`sources`, which needs the CLI. `scripts/lib/claim-provision.sh` holds one
+`claim_<name>` per provisioner, and both `just setup-worktree` (lane `dev`)
+and `scripts/ci/provision-gate-lane.sh` (`--ci`: depth 1, and the `cli`
+claim, marked `ci = false`, left to the job's own step) run it. Host tools are
+named with their remedy, never installed. The lane preflight takes its
+remedies from the same table, and `setup-worktree` ends with the `dev`
+preflight. Gate: `lane-claims-provisioned`, whose negative control is a claim
+added to `dev` with no provisioner and no host remedy; it also refuses either
+caller dropping the library. Measured on a fresh `git worktree add` at the
+change: `just setup-worktree` alone (2 min 32 s) checked out all 11 submodules,
+built the CLI and the resolver, provisioned the rosidl clone, passed the `dev`
+preflight, and left `check cli-fresh` OK.
 
 `setup-worktree` walks `[lane.dev] claims` and, for each claim, either runs that
 claim's provisioner (the same code CI's provisioner runs) or names the host

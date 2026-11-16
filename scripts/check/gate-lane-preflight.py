@@ -140,29 +140,18 @@ def probe_nextest() -> str | None:
     return None if r.returncode == 0 else "the pinned cargo-nextest is not installed"
 
 
-# What fixes each missing claim. A refusal names the fix, never only the gap:
-# a fresh agent worktree is how most sessions work, and `check fast` is what
-# its pre-push hook runs.
-REMEDY = {
-    "cli": "just setup-cli",
-    "submodules": "just setup-worktree",
-    "git-history": "git fetch --unshallow",
-    "sources": "nros setup --source <name> (the index's [source.*] rows)",
-    "ros2": "source /opt/ros/<distro>/setup.bash (or ./activate.sh with ROS installed)",
-    "colcon": "install colcon (python3 -m pip install colcon-common-extensions)",
-    "bindgen": "just setup linux",
-    "cmake": "install cmake and ninja",
-    "cc": "install a C/C++ compiler",
-    "arm-gcc-any": "any arm-none-eabi-g++ on PATH works: the distro package (gcc-arm-none-eabi, as in the CI image) or nros setup --tool arm-none-eabi-gcc then re-source activate.sh; or set NROS_ARM_NONE_EABI_PREFIX",
-    "zephyr-tree": "the sparse header clone in gate.yml's fast job, or a west workspace",
-    "zephyr": "just zephyr setup",
-    "nuttx": "nros setup --source nuttx",
-    "fsp": "provision NV_SPE_FSP_DIR (not on any runner)",
-    "west": "just zephyr setup",
-    "build-tree": "just build-test-fixtures",
-    "arm-gcc": "nros setup --tool arm-none-eabi-gcc",
-    "nextest": "just setup-worktree",
-}
+# What fixes each missing claim: `[provision.claim] <cap> remedy` in
+# .config/gate-lanes.toml (phase-565 W2), the same table setup-worktree and CI's
+# provisioner run from, so a refusal and a provisioner cannot name different
+# fixes. A refusal names the fix, never only the gap: a fresh agent worktree is
+# how most sessions work, and `check fast` is what its pre-push hook runs.
+# `nextest` is not a capability (every lane needs it), so its fix is here.
+def remedies(cfg: dict) -> dict:
+    sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+    import lane_provision  # the one reader of the table (phase-565 W1)
+    out = {c: e.get("remedy", "") for c, e in lane_provision.claim_entries(cfg).items()}
+    out["nextest"] = "just setup-worktree"
+    return out
 
 
 PROBES = {
@@ -199,15 +188,17 @@ def coverage(cfg: dict) -> list[str]:
     caps = set(cfg.get("capabilities", {}))
     return ([f"capability `{c}` has no probe here" for c in sorted(caps - PROBES.keys())]
             + [f"probe `{p}` names no capability" for p in sorted(PROBES.keys() - caps)]
-            + [f"capability `{c}` has no remedy here" for c in sorted(caps - REMEDY.keys())])
+            + [f"capability `{c}` has no remedy in [provision.claim]"
+               for c in sorted(caps - {k for k, v in remedies(cfg).items() if v})])
 
 
 def self_test() -> None:
-    cfg = {"capabilities": {k: "" for k in PROBES}, "lane": {"x": {"claims": ["cmake"]}}}
+    cfg = {"capabilities": {k: "" for k in PROBES}, "lane": {"x": {"claims": ["cmake"]}},
+           "provision": {"claim": {k: {"remedy": "fix"} for k in PROBES}}}
     assert coverage(cfg) == [], coverage(cfg)
     cfg["capabilities"]["new"] = ""
     assert coverage(cfg) == ["capability `new` has no probe here",
-                             "capability `new` has no remedy here"], coverage(cfg)
+                             "capability `new` has no remedy in [provision.claim]"], coverage(cfg)
     assert lane_claims(cfg, "x") == ["cmake"]
     assert on_path("nros-no-such-tool-543") is not None
     assert env_dir("NROS_NO_SUCH_VAR_543") == "$NROS_NO_SUCH_VAR_543 is unset"
@@ -237,6 +228,7 @@ def main(argv: list[str]) -> int:
               f"{len(cfg.get('lane', {}))} lanes")
         return 0
     lane = argv[0]
+    REMEDY = remedies(cfg)
     claims = lane_claims(cfg, lane)
     tiers = list(cfg["lane"][lane]["tiers"])
     missing = [(c, why) for c in claims

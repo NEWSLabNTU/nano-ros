@@ -817,87 +817,27 @@ setup-hooks:
 [group("main")]
 setup-worktree:
     #!/usr/bin/env bash
-    set -euo pipefail
-    # Issue 1513 — the list is DATA, shared with the preflight, not an array
-    # here. It was an array here, described as "the submodules the fast gate tier
-    # reads" with a note that a fourth "belongs in this list", and `check::build`
-    # then grew dependencies on two more that nobody added. phase-565 W1: the
-    # data is the `submodules` claim's rows in .config/gate-lanes.toml, read
-    # only through scripts/lib/lane_provision.py.
-    if ! _rows="$(python3 scripts/lib/lane_provision.py submodules)"; then
-        echo "setup-worktree: cannot read the provisioning table (above)" >&2
-        exit 1
-    fi
-    mapfile -t paths <<<"$_rows"
-    # issue 1850 — strictly THIS checkout's CLI (`NROS_CLI=`): it provisions
-    # this checkout's store rows. Empty on a fresh clone, which is the
-    # chicken-and-egg case below ("no CLI yet").
-    # shellcheck source=scripts/build/cargo.sh
-    source scripts/build/cargo.sh
-    _cli="$(NROS_CLI= nros_cli_bin --checkout-only)" || _cli=""
-    # Issue 2306 — the checkout's state, not only its HEAD.
-    # shellcheck source=scripts/lib/submodule-provision.sh
-    . scripts/lib/submodule-provision.sh
-    want=()
-    broken=0
-    for p in "${paths[@]}"; do
-        # phase-484 W3c (RFC-0103 D5) — a STORE-FIRST source is provisioned
-        # into the store, not the checkout, once a CLI can do it; with no CLI
-        # yet (a fresh clone) the submodule is still the way to get it.
-        row="$(python3 scripts/lib/source_locate.py --store-row-for "$p" 2>/dev/null || true)"
-        # A STALE CLI is "no CLI yet" for this purpose, not a CLI to call: it
-        # refuses every verb. And a fresh worktree makes it stale by itself:
-        # this loop checks out `play_launch`, whose pin is a CLI build input
-        # (issue 0561). So `setup-cli && setup-worktree` left a CLI that the
-        # NEXT `setup-worktree` called and died on, and the order that works
-        # (`setup-cli` before AND after) had to be learned by failing.
-        # `source-stamp` is the freshness question `check cli-fresh` asks.
-        if [ -n "$row" ] && [ -n "$_cli" ] \
-            && "$_cli" source-stamp >/dev/null 2>&1; then
-            echo "  [STORE]   $p -> nros setup --source $row"
-            "$_cli" setup --source "$row"
-            continue
-        fi
-        state="$(nros_submodule_provision_state "$p")"
-        case "$state" in
-            missing)
-                want+=("$p")
-                ;;
-            incomplete:* | diverged)
-                # Issue 2306 — NOT repaired here: `--force` discards whatever
-                # the tree holds, and only a person can say it holds nothing.
-                broken=$((broken + 1))
-                echo "  [BROKEN]  $p is ${state%%:*} ($state): an interrupted or redirected checkout."
-                echo "            NOT repaired - that would discard what it holds. When it holds nothing:"
-                echo "                $(nros_submodule_state_remedy "$state" "$p")"
-                ;;
-            behind:* | ahead:* | unknown-pin)
-                echo "  [KEPT]    $p is checked out at a commit other than its pin ($state)."
-                echo "            NOT updated - that would discard work in it (AGENTS.md)."
-                echo "            When you are sure it holds nothing you need:"
-                echo "                git submodule update $p"
-                ;;
-            not-submodule)
-                echo "  [UNKNOWN] $p is not a submodule of this checkout."
-                ;;
-            *)
-                echo "  [OK]      $p already checked out."
-                ;;
-        esac
-    done
-    if [ "${#want[@]}" -gt 0 ]; then
-        echo "setup-worktree: checking out ${#want[@]} submodule(s)."
-        git submodule update --init "${want[@]}"
-    fi
+    set -uo pipefail
+    # phase-565 W2 (RFC-0131 D3) — a worktree is the `dev` lane's environment,
+    # so this provisions `[lane.dev] claims` with the code CI's provisioner
+    # runs (scripts/lib/claim-provision.sh, driven by `[provision.claim]` in
+    # .config/gate-lanes.toml): the gate-tier submodules (issue 1513's one
+    # list), the history, this checkout's CLI and launch resolver, and the
+    # rosidl source clone. A HOST tool (cmake, cc, ros2, colcon, bindgen) is
+    # named with its remedy, never installed: no sudo. The `dev` preflight at
+    # the end reports every unmet claim at once.
+    rc=0
+    bash scripts/lib/claim-provision.sh dev || rc=1
     # phase-543 — the gate harness's runner, at the index's pin, into the
     # store every checkout shares (so a second worktree finds it installed).
+    # Not a lane claim: every lane needs it, and the preflight checks it.
     nx_rc=0
     nx="$(python3 scripts/lib/index_tool.py resolve cargo-nextest cargo-nextest)" || nx_rc=$?
     if [ "$nx_rc" -eq 0 ]; then
         echo "  [OK]      cargo-nextest at the pin: $nx"
     else
         echo "  [INSTALL] cargo-nextest at the pin -> $(dirname "$(dirname "$nx")")"
-        python3 scripts/lib/index_tool.py install cargo-nextest --prefix "$(dirname "$(dirname "$nx")")"
+        python3 scripts/lib/index_tool.py install cargo-nextest --prefix "$(dirname "$(dirname "$nx")")" || rc=1
     fi
     # Issue 2611 - record whoever provisions this worktree as its owner, so
     # just worktree-prune can remove it once its work is on main. Only when no
@@ -905,19 +845,12 @@ setup-worktree:
     # checkout is never marked, and it never fails this recipe.
     python3 scripts/worktree-prune.py --mark-if-absent . || true
     echo ""
-    if [ "$broken" -gt 0 ]; then
-        echo "setup-worktree: $broken submodule(s) are BROKEN (listed above); repair them, then re-run." >&2
+    python3 scripts/check/gate-lane-preflight.py dev || rc=1
+    if [ "$rc" -ne 0 ]; then
+        echo "setup-worktree: the dev lane is not fully provisioned (above)." >&2
         exit 1
     fi
-    # No backticks in these strings: `just` treats a backtick in a recipe line
-    # as command substitution, so an earlier draft of this message EXECUTED
-    # `just ci gate` while printing itself.
-    echo "setup-worktree: done -- every gate-tier submodule is checked out."
-    echo "The two BINARIES are separate, and the gate lane needs both:"
-    echo "    just setup-cli             # then"
-    echo "    just setup-launch-resolve  # a pin move stales BOTH (issue 1487)"
-    echo ""
-    echo "just ci gate reports anything still missing before it starts."
+    echo "setup-worktree: done -- every claim of the dev lane is provided."
 
 # _require-worktree-provisioning — issue 1513
 #
