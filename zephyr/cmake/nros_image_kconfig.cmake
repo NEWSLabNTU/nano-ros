@@ -405,6 +405,10 @@ function(nros_image_kconfig_hook)
     # the knob file (`zephyr/Kconfig` sources both before its own defaults).
     # Before the stamp, which digests it too.
     nros_resolved_entity_fragment(_resolved_frag)
+    if(_resolved_frag STREQUAL "" AND NOT _generated)
+        _nros_image_kconfig_leaf_counts(_resolved_frag "${_nros}" "${_dir}" "${_image}"
+            "${_nros_dir}")
+    endif()
     get_filename_component(_kpools "${_kgen}" DIRECTORY)
     nros_zpico_pthread_pool_kconfig("${_resolved_frag}" "${_kpools}/Kconfig.pthread-pools" "${_kgen}")
     _nros_image_kconfig_stamp("${_NROS_IMAGE_KCONFIG_ROOT}/zephyr/Kconfig" "${_kgen}" "${_bin}")
@@ -561,6 +565,54 @@ function(_nros_image_kconfig_configure _nros _dir _image _generated)
     endif()
     nros_configure_hook(DIR "${_dir}" IMAGE "${_image}" PROJECT "${_project}"
         CLI "${_nros}" ROAD "the Zephyr module hook")
+endfunction()
+
+# _nros_image_kconfig_leaf_counts(<out> <cli> <leaf> <image> <nros-dir>)
+#
+# The entity counts of a STANDALONE leaf whose resolve projected none, for the
+# zenoh pools' Kconfig defaults above; <out> is the fragment, or empty.
+#
+# `nros configure` refuses a leaf whose launch tree states no contract, and
+# that is right for it: the leaf states its entities another way -- a Rust
+# leaf through its probe sidecars, a C/C++ leaf through `[[component]]
+# entities` or its census -- and `nros ws west-leaf-sizing` composes those.
+# The cargo build asks that verb for the knobs (`_nros_west_leaf_sizing`, after
+# Kconfig); the pool defaults are read BY Kconfig, so this asks the same verb
+# first. Without it the pools kept the module's defaults on every such leaf
+# while the build's floor check, reading the verb's counts, refused them.
+#
+# Into a directory of its own, so it writes nothing a later reader of this
+# configure takes as its seed. A leaf the verb finds nothing for (no basis)
+# gets no fragment, and the pools keep the module's defaults, as for a guest.
+function(_nros_image_kconfig_leaf_counts _out _cli _leaf _image _nros_dir)
+    set(${_out} "" PARENT_SCOPE)
+    set(_d "${_nros_dir}/pthread-pool-counts")
+    file(MAKE_DIRECTORY "${_d}")
+    file(REMOVE "${_d}/counts.cmake")
+    execute_process(
+        COMMAND "${_cli}" ws west-leaf-sizing --leaf "${_leaf}" --build-dir "${_d}"
+                --output-cmake "${_d}/counts.cmake"
+                --nano-ros-path "${_NROS_IMAGE_KCONFIG_ROOT}" --image "${_image}"
+        OUTPUT_VARIABLE _o ERROR_VARIABLE _e RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR
+            "nano-ros: `nros ws west-leaf-sizing` failed for ${_leaf} [image.${_image}], "
+            "which the zenoh pthread pool defaults are derived from:\n${_e}")
+    endif()
+    set(_basis "")
+    nros_cli_rows(_row "${_o}")
+    foreach(_i IN LISTS _row_INDICES)
+        set(_line "${_row_${_i}}")
+        if(_line MATCHES "^input (.+)$")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
+        elseif(_line MATCHES "^basis (.+)$")
+            set(_basis "${CMAKE_MATCH_1}")
+        endif()
+    endforeach()
+    if(NOT _basis STREQUAL "" AND EXISTS "${_d}/counts.cmake")
+        set(${_out} "${_d}/counts.cmake" PARENT_SCOPE)
+    endif()
 endfunction()
 
 # _nros_image_kconfig_stamp(<kconfig> <kconfig-from-system-toml> <bin>)
