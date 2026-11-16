@@ -1289,9 +1289,13 @@ fn clear_unprobeable(sidecar: &Path) {
 pub fn probe_inputs_key(package_root: &Path, nano_ros: Option<&Path>) -> Option<String> {
     let pkg = source_digest(package_root).ok()?;
     let closure = probe_closure_digest(nano_ros?)?;
+    // Issue 2640 -- and the knobs the probe's build pins (store and executor
+    // sizes): a sidecar from a probe built under other values is not this
+    // probe's answer.
     Some(format!(
-        "{pkg}:{}:{closure}",
-        env!("NROS_CLI_PLANNING_STAMP")
+        "{pkg}:{}:{closure}:{}",
+        env!("NROS_CLI_PLANNING_STAMP"),
+        super::metadata_probe_cmake::probe_knob_key()
     ))
 }
 

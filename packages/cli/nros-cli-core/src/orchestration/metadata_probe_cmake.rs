@@ -601,6 +601,30 @@ fn run_one(build_dir: &Path, c: &CmakeProbeOptions, target: &str) -> Result<()> 
 /// executor's `u64` ready-set (`ExecutorSizing::cbs` must be <= 64).
 pub const PROBE_EXECUTOR_MAX_CBS: usize = 64;
 
+/// Issue 2640 -- the probe's parameter-store slots (`params.max_parameters`,
+/// `NROS_MAX_PARAMETERS`).
+///
+/// The probe runs a component's constructor to see what it declares, so the
+/// store must not be what stops it. At the build default (32) a component
+/// declaring more -- the Autoware Safety Island's controller declares 149 --
+/// found the store full: before issue 2634 every later declaration silently
+/// returned its compiled default, so the constructor ran on values the image
+/// never has; since 2634 the declaration stops the run and the component goes
+/// unprobed. Nothing derives the number for the probe: it is what produces the
+/// declaration count. 1,024 slots is ~9 MiB of host BSS, more than any
+/// component declares, and it never reaches a firmware build (the probe's
+/// cargo directory is keyed on it, `nros_knob_key_fields`).
+pub const PROBE_MAX_PARAMETERS: usize = 1024;
+
+/// The knobs [`pin_probe_env`] states, as `NAME=value` pairs: part of
+/// `probe_inputs_key`, so a sidecar produced under other values reads stale
+/// and is probed again rather than trusted.
+pub fn probe_knob_key() -> String {
+    format!(
+        "NROS_EXECUTOR_MAX_CBS={PROBE_EXECUTOR_MAX_CBS},NROS_MAX_PARAMETERS={PROBE_MAX_PARAMETERS}"
+    )
+}
+
 /// The variables that would make the host probe compile for another target
 /// (see [`pin_probe_env`]).
 ///
@@ -814,6 +838,8 @@ fn pin_probe_env(cmd: &mut Command, nano_ros: &Path) {
     }
     cmd.env("NROS_WORKSPACE", nano_ros);
     cmd.env("NROS_EXECUTOR_MAX_CBS", PROBE_EXECUTOR_MAX_CBS.to_string());
+    // Issue 2640 -- and the parameter store's slots, for the same reason.
+    cmd.env("NROS_MAX_PARAMETERS", PROBE_MAX_PARAMETERS.to_string());
     if let Ok(exe) = std::env::current_exe() {
         cmd.env("NROS_CLI", exe);
     }
@@ -1060,6 +1086,30 @@ mod tests {
             .map(str::to_owned);
         assert_eq!(cbs.as_deref(), Some("64"));
         assert_eq!(PROBE_EXECUTOR_MAX_CBS, 64);
+    }
+
+    /// Issue 2640 -- the probe's parameter store holds more declarations than
+    /// any component makes. At the build default (32) the island's 149-parameter
+    /// controller filled it: each later declaration returned its compiled
+    /// default (since issue 2634, the run stops instead), so the component was
+    /// probed on values the image never has, or not at all.
+    #[test]
+    fn the_probe_parameter_store_never_fills() {
+        let mut cmd = Command::new("cmake");
+        // The caller's environment does not shrink it.
+        cmd.env("NROS_MAX_PARAMETERS", "32");
+        pin_probe_env(&mut cmd, Path::new("/nano-ros"));
+        let slots = cmd
+            .get_envs()
+            .find(|(k, _)| *k == "NROS_MAX_PARAMETERS")
+            .and_then(|(_, v)| v)
+            .and_then(|v| v.to_str())
+            .and_then(|v| v.parse::<usize>().ok());
+        assert_eq!(slots, Some(PROBE_MAX_PARAMETERS));
+        // The island's controller: 149 declarations, plus `use_sim_time` and
+        // its launch seeds, with room for a component several times its size.
+        const { assert!(PROBE_MAX_PARAMETERS >= 4 * 164) };
+        assert!(probe_knob_key().contains(&format!("NROS_MAX_PARAMETERS={PROBE_MAX_PARAMETERS}")));
     }
 
     fn opts() -> CmakeProbeOptions {
