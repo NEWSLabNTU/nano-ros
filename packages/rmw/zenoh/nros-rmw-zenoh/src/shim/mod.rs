@@ -383,7 +383,7 @@ pub struct RmwAttachment {
     /// Timestamp in nanoseconds
     pub timestamp: i64,
     /// The sender's entity gid — XXH3-128 of its liveliness keyexpr
-    /// ([`entity_gid::entity_gid`], issue 1495), the derivation
+    /// ([`entity_gid::entity_gid`]), the derivation
     /// `rmw_zenoh_cpp` uses for its own entities.
     pub rmw_gid: [u8; RMW_GID_SIZE],
 }
@@ -463,7 +463,7 @@ pub struct MessageInfo {
     pub timestamp_ns: i64,
     /// Publisher's Global Identifier
     pub publisher_gid: [u8; RMW_GID_SIZE],
-    /// Issue 2135 — when this subscriber RECEIVED the sample, wall-clock ns
+    /// When this subscriber RECEIVED the sample, wall-clock ns
     /// since the Unix epoch, stamped by the ring producer (the sample
     /// callback), as `rmw_zenoh_cpp` stamps `received_timestamp`. 0 = not
     /// stamped (no wall clock, or not read from a ring slot).
@@ -547,7 +547,7 @@ const ENTITY_SUBSCRIBER: &str = "MS";
 const ENTITY_SERVICE_SERVER: &str = "SS";
 const ENTITY_SERVICE_CLIENT: &str = "SC";
 
-/// What a liveliness token describes — phase-381 W2.
+/// What a liveliness token describes.
 ///
 /// The two-letter tokens are `rmw_zenoh_cpp`'s, not ours to choose.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -579,7 +579,7 @@ impl EntityKind {
 /// parsed from, and names stay MANGLED — see `Ros2Liveliness::parse`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LivelinessEntity<'a> {
-    /// The whole token, as received. Issue 1495: `rmw_zenoh_cpp` derives an
+    /// The whole token, as received. `rmw_zenoh_cpp` derives an
     /// entity's gid by hashing exactly this string ([`entity_gid::entity_gid`]),
     /// so it is what a graph query reports an endpoint's gid from.
     pub keyexpr: &'a str,
@@ -814,14 +814,14 @@ impl Ros2Liveliness {
     /// Build a wildcard liveliness keyexpr matching any service-server token
     /// for the given service.
     ///
-    /// phase-381 W3 — wildcard NODE liveliness keyexpr.
+    /// Wildcard NODE liveliness keyexpr.
     ///
     /// Format: `@ros2_lv/<domain_id>/*/*/*/NN/%/*/*` — every field but the
     /// domain and the entity KIND wildcarded, because "which nodes exist" is a
     /// question about the whole domain.
     ///
     /// Node tokens use the fixed `0/0`, so `*/*` there is broader than we
-    /// declare — deliberately, for the same reason as issue 0890: the peers
+    /// declare — deliberately: the peers
     /// worth enumerating are native `rmw_zenoh_cpp` nodes and their ids are not
     /// ours to assume.
     pub fn node_keyexpr_wildcard<const N: usize>(domain_id: u32) -> heapless::String<N> {
@@ -836,7 +836,7 @@ impl Ros2Liveliness {
         key
     }
 
-    /// phase-381 / issue 0903 — the GRAPH CACHE keyexpr: every liveliness token
+    /// The GRAPH CACHE keyexpr: every liveliness token
     /// on a domain, both shapes.
     ///
     /// `**` matches any number of chunks, so this covers the 9-chunk node token
@@ -857,9 +857,9 @@ impl Ros2Liveliness {
         out
     }
 
-    /// phase-381 W3 — wildcard ENTITY liveliness keyexpr, all four kinds.
+    /// Wildcard ENTITY liveliness keyexpr, all four kinds.
     ///
-    /// NOTE (issue 0903): a `**` pattern was tried here to collapse this and
+    /// NOTE: a `**` pattern was tried here to collapse this and
     /// the node wildcard into ONE standing query, because two concurrent
     /// liveliness gets do not both receive replies. It made things WORSE —
     /// measured, `**` delivered 2 tokens and none of them a node token, so node
@@ -884,7 +884,7 @@ impl Ros2Liveliness {
         key
     }
 
-    /// Phase 108.C.zenoh.4 — wildcard publisher liveliness keyexpr.
+    /// Wildcard publisher liveliness keyexpr.
     ///
     /// Format: `@ros2_lv/<domain_id>/*/*/*/MP/%/*/*/<topic>/<type>/*/*`
     /// — wildcards on zid, namespace, node, type_hash, qos. Used by
@@ -926,7 +926,7 @@ impl Ros2Liveliness {
         out
     }
 
-    /// Parse a `@ros2_lv` liveliness keyexpr — phase-381 W2.
+    /// Parse a `@ros2_lv` liveliness keyexpr.
     ///
     /// ```text
     /// @ros2_lv/<domain>/<zid>/<node_id>/<entity_id>/<kind>/%/<ns>/<node>
@@ -1002,7 +1002,7 @@ impl Ros2Liveliness {
         })
     }
 
-    /// phase-381 W3 — the mangler, reachable from outside this module.
+    /// The mangler, reachable from outside this module.
     ///
     /// A wrapper rather than making `mangle_topic_name` public, so the callers
     /// inside this file keep using the short name and there is still exactly

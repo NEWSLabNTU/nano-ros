@@ -1,4 +1,4 @@
-//! RFC-0109 D8 (phase-514 W3) — a zenoh session config, in upstream zenoh's
+//! A zenoh session config, in upstream zenoh's
 //! own json5 language, lowered to the zenoh-pico session properties nano-ros
 //! hands `zp_config_insert`.
 //!
@@ -12,7 +12,7 @@
 //!
 //! **A key zenoh-pico cannot take is refused, never dropped.** A dropped line
 //! is indistinguishable from one that took effect, so whoever runs the image
-//! debugs the transport rather than the file (phase-206 W3's lesson). That
+//! debugs the transport rather than the file (a lesson already learned). That
 //! makes the accepted set deliberately small: the subset of zenoh's session
 //! config that zenoh-pico implements. It is not a filter over
 //! `DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5` — write the keys you mean.
@@ -66,7 +66,7 @@ pub fn lower_file(path: &std::path::Path) -> Result<Vec<Property>, String> {
 }
 
 /// The locator keys that state a DEVICE fact rather than wiring, per scheme
-/// (RFC-0109 D10; the RFC-0081 / RFC-0083 amendments).
+/// (the network-config layers, and the CAN link and ISO-TP amendments).
 ///
 /// A CAN controller's rates are layer 1: the OS sets them (`ip link set …
 /// bitrate`, Zephyr devicetree `bus-speed`), or the board package where

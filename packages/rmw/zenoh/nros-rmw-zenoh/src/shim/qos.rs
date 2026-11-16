@@ -1,6 +1,6 @@
 //! QoS admission — what this backend GRANTS for what a caller requested.
 //!
-//! phase-428 W9. Every bit `ZenohSession::supported_qos_policies` sets is
+//! Every bit `ZenohSession::supported_qos_policies` sets is
 //! backed by a `nros-qos-honours:` claim, and a claim means the backend READS
 //! the field and either applies it or refuses a value it cannot serve.
 //! `check-qos-mask-derivation` re-measures that on every push, so the mask is
@@ -21,15 +21,15 @@
 //! * **history** — the ring is KEEP_LAST by construction (`subscriber.rs`
 //!   drops on a full ring), so `KEEP_ALL` is refused rather than silently
 //!   served as KEEP_LAST. Nothing in the tree requests it: no named preset is
-//!   KEEP_ALL since phase-428 W10.
+//!   KEEP_ALL any more.
 //! * **durability** — VOLATILE is what an entity with no retention does.
-//!   TRANSIENT_LOCAL is SERVED on a publisher since phase-455 W5 and refused on
+//!   TRANSIENT_LOCAL is SERVED on a publisher and refused on
 //!   every other kind.
 //! * **depth** — clamped to the ring, which is a build-time constant, and the
 //!   clamp is REPORTED: the granted value goes into the graph token, and the
 //!   first entity to lose depth says so once per session.
 //!
-//! The fourth, **reliability**, is granted AS ASKED — issue 1687. Until then
+//! The fourth, **reliability**, is granted AS ASKED. Until then
 //! it was granted RELIABLE whatever was asked, on the premise that zenoh-pico's
 //! publisher path "sets `Z_CONGESTION_CONTROL_BLOCK` unconditionally". It does
 //! not: `zpico.c` sets BLOCK only under the opt-in `ZPICO_TX_BATCH`, and every
@@ -48,7 +48,7 @@
 //! a `rmw_zenoh_cpp` peer parses. So the graph stops carrying a number we do
 //! not honour, which was the lie.
 //!
-//! # Why refusing was not free either — phase-455 W5, issue 1341
+//! # Why refusing was not free either
 //!
 //! W9's rule is right and the population it was applied to was not.
 //! `QOS_PROFILE_ACTION_STATUS_DEFAULT` mirrors

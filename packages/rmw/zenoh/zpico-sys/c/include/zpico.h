@@ -84,13 +84,13 @@
 
 /**
  * Caller's buffer cannot hold the value, which is REFUSED rather than
- * truncated (phase-381 W1) — a partial keyexpr names a different, plausible
+ * truncated — a partial keyexpr names a different, plausible
  * entity, so `zpico_liveliness_entry` never returns one.
  */
 #define ZPICO_ERR_BUFFER -10
 
 /**
- * Opaque per-session handle (issue 0348 / phase-328). A `zpico_session_t*`
+ * Opaque per-session handle. A `zpico_session_t*`
  * points into the C shim's compile-time session pool
  * (`ZPICO_MAX_SESSIONS`, default 1). Every `zpico_*` entry point that
  * operates on a session takes one as its leading argument. Rust never
@@ -164,7 +164,7 @@ typedef void (*ZpicoNotifyCallback)(size_t len,
                                     void *ctx);
 
 /**
- * Phase 124.D.3.c — SPSC ring descriptor mirroring
+ * SPSC ring descriptor mirroring
  * `zpico_ring_desc_t` in `c/include/zpico.h`. Field order, names,
  * and types track the C struct byte-for-byte. The Rust shim owns
  * the backing storage (a `SubscriberBuffer`) and fills this
@@ -211,14 +211,14 @@ typedef struct zpico_ring_desc_t {
    */
   size_t *tail;
   /**
-   * Issue 1979 — the consumer's claim: 0, or one more than the claimed
+   * The consumer's claim: 0, or one more than the claimed
    * head counter. Written only by `zpico_ring_claim_head` and
    * `zpico_ring_consume_head`, under the session's slot lock; a producer
    * never writes a claimed slot.
    */
   size_t *claimed;
   /**
-   * Issue 1979 — samples a full ring evicted, replaced or dropped.
+   * Samples a full ring evicted, replaced or dropped.
    * Written only by the C producer, under the session's slot lock.
    */
   size_t *full_drops;
@@ -229,7 +229,7 @@ typedef struct zpico_ring_desc_t {
    */
   void *lock_session;
   /**
-   * Issue 2135 — `slot_count` entries: the wall-clock time (ns since the
+   * `slot_count` entries: the wall-clock time (ns since the
    * Unix epoch, `nros_platform_time_now_ns`) the producer received each
    * slot's sample, upstream `rmw_message_info_t::received_timestamp`.
    * 0 when the platform has no wall clock. NULL: not recorded.
@@ -280,31 +280,31 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * invalid afterwards.
  */
 /**
- * Issue 2207 — the connect budget for the next `zpico_open`.
+ * The connect budget for the next `zpico_open`.
  */
 /**
- * Phase 124.F.2 — wire-level connectivity probe. Returns 0
+ * Wire-level connectivity probe. Returns 0
  * on success, `ZPICO_ERR_*` on failure.
  */
 /**
- * Phase 124.E.3 — streamed publish via zenoh-pico's
+ * Streamed publish via zenoh-pico's
  * `z_bytes_writer` API. `chunk_cb` is invoked repeatedly with
  * up to 1 KiB buffers until `total_len` bytes have landed.
  * `attachment` carries the ROS-interop metadata (seq + source
  * timestamp + GID); pass NULL / 0 for a bare publish.
  */
 /**
- * Phase 99.F: zero-copy publish via z_bytes_from_static_buf.
+ * Zero-copy publish via z_bytes_from_static_buf.
  * Caller guarantees `data` outlives the call.
  */
 /**
- * Issue 1979 — claim the head slot for reading; -1 when empty.
+ * Claim the head slot for reading; -1 when empty.
  */
 /**
- * Issue 1979 — consume the claimed head slot and drop the claim.
+ * Consume the claimed head slot and drop the claim.
  */
 /**
- * Issue 1979 — push bytes through the C producer (unit tests).
+ * Push bytes through the C producer (unit tests).
  */
 /**
  * Transient-local, the subscriber half: one history query on `keyexpr`
@@ -314,27 +314,27 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * The history window's reply and drop counts; 1 while it is open.
  */
 /**
- * Issue 1709 — `zpico_query_reply` that keeps the query open for another
+ * `zpico_query_reply` that keeps the query open for another
  * reply on the same `reply_seq`; a series ends with `zpico_query_reply`.
  */
 /**
- * Phase 237 — reply-slot index from the most recent query callback (the
+ * Reply-slot index from the most recent query callback (the
  * deferred-reply seq); call from inside the synchronous query callback.
  */
 /**
- * Issue 1942 — copy the attachment of the request held in reply slot
+ * Copy the attachment of the request held in reply slot
  * `reply_seq` into `out` (at most `out_cap` bytes). Returns the
  * attachment's full length (0 when the query carried none) or
  * `ZPICO_ERR_INVALID` (bad handle, or no query held in that slot).
  */
 /**
- * issue 0902 / phase-455 W1 — read one queryable's reply-slot table.
+ * Read one queryable's reply-slot table.
  *
  * Returns the number of slots currently HELD (cloned queries awaiting a
  * deferred reply), or `ZPICO_ERR_INVALID`. `out_refusals` receives the
  * cumulative count of allocations refused because the table was full —
  * the condition `zpico_queryable_take_reply_seq`'s -1 could not
- * distinguish from "no query pending", which is the whole of issue 0902.
+ * distinguish from "no query pending", which is the whole of the reply-slot leak.
  * `out_capacity` receives `ZPICO_MAX_PENDING_REPLIES` as the C TU sees
  * it, so a caller reads the effective capacity rather than assuming one.
  *
@@ -342,7 +342,7 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * two more entries in the process-global `zpico_get_diag_counters`.
  */
 /**
- * issue 1332 / phase-455 W2.b — how many queries this queryable's
+ * How many queries this queryable's
  * callback DECLINED, or `ZPICO_ERR_INVALID` for a bad handle.
  *
  * A declined query is one the callback dropped without taking its reply
@@ -350,24 +350,24 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * full request ring on an image whose reply table is larger than
  * `SERVICE_REQUEST_RING_DEPTH` (at the shipped 4 = 4 a query meeting a full
  * ring has already been refused a slot, so it holds nothing to decline).
- * Those are what issue 0902's leak fed on, and the
+ * Those are what the reply-slot leak fed on, and the
  * reason this count exists beside the refusal count is that the native
- * host lane produces NONE of them (issue 1332): a `refusals == 0` there
+ * host lane produces NONE of them: a `refusals == 0` there
  * is the same value whether the table is managed correctly or never
  * pressed at all. A test that means to control the leak asserts this
  * moved first, and only then that refusals did not.
  */
 /**
- * issue 0902 / phase-455 W1 — take the pending "this table just
+ * Take the pending "this table just
  * saturated" announcement, clearing it. 1 = announce now, 0 = nothing
  * pending, `ZPICO_ERR_INVALID` for a bad handle.
  *
- * The once-ness lives here and nowhere else (phase-444 W6's correction:
+ * The once-ness lives here and nowhere else (an earlier correction:
  * a permanent failure asked six times per spin). A second latch on the
  * Rust side would be a second spelling of the same rule.
  */
 /**
- * issue 0902 / phase-455 W2 — every reply-slot refusal in this process,
+ * Every reply-slot refusal in this process,
  * summed, with NO session argument.
  *
  * The companion to `zpico_reply_slot_stats`, which answers "WHICH server
@@ -375,10 +375,10 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * neither — it owns an `Executor` and a node, and the zenoh `Context` is
  * several layers below the API it was written against — so the question
  * it can ask is "did ANY reply slot get refused here", which is what
- * phase-455 W2's acceptance asserts is zero. Never reset.
+ * the acceptance test asserts is zero. Never reset.
  */
 /**
- * issue 0902 / phase-455 W1 — the PURE half of the reply-slot
+ * The PURE half of the reply-slot
  * allocation, exported like `zpico_entry_at` / `zpico_graph_set_apply` so
  * the accounting is reachable from a host test with no session, no router
  * and no live peer.
@@ -390,12 +390,12 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * `*out_announce` is true exactly on the TRANSITION into exhaustion.
  */
 /**
- * Phase 108.C.zenoh.4-followup — count of liveliness-token
+ * Count of liveliness-token
  * replies on this slot. Used by the subscriber-side
  * `LivelinessChanged` bridge to surface `alive_count > 1`.
  */
 /**
- * phase-381 W1 — a liveliness query that KEEPS its replies' keyexprs.
+ * A liveliness query that KEEPS its replies' keyexprs.
  * Poll with `zpico_liveliness_get_check`, then read with the two below.
  */
 /**
@@ -409,7 +409,7 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * the NUL, or a negative `ZPICO_ERR_*`.
  */
 /**
- * phase-428 W13 — the PURE half of the graph-cache sample handler: apply
+ * The PURE half of the graph-cache sample handler: apply
  * one liveliness sample to a NUL-separated token set in a caller buffer.
  * PUT inserts once (a duplicate is a no-op), DELETE removes and closes the
  * gap, a PUT that does not fit is counted in `dropped` and never truncated.
@@ -423,7 +423,7 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * reuses it to walk its snapshot instead of growing a second walk.
  */
 /**
- * phase-381 / issue 0903 — the GRAPH CACHE, which replaces the per-question
+ * The GRAPH CACHE, which replaces the per-question
  * liveliness sweep.
  *
  * A liveliness get is an INTEREST under the hood, and a token only reaches
@@ -452,7 +452,7 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
 /**
  * The session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if the handle is
  * not a valid pool slot. Used to scope the Rust shim's process-global
- * service-buffer / reply-waker tables per session (issue 0376).
+ * service-buffer / reply-waker tables per session.
  */
 /**
  * Acquire a free slot from the C shim's session pool. Returns NULL when
@@ -469,7 +469,7 @@ void zpico_session_release(struct zpico_session_t *_session);
 
 /**
  * The session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if invalid.
- * Scopes the Rust shim's process-global tables per session (issue 0376).
+ * Scopes the Rust shim's process-global tables per session.
  */
 int32_t zpico_session_index(struct zpico_session_t *_session);
 
@@ -513,7 +513,7 @@ int32_t zpico_init_with_config(struct zpico_session_t *_session,
 int32_t zpico_open(struct zpico_session_t *_session);
 
 /**
- * Issue 2207 — set how long the next `zpico_open` keeps trying to reach
+ * Set how long the next `zpico_open` keeps trying to reach
  * its router: -1 until a router answers, 0 one attempt, N a budget of N ms.
  * Call between `zpico_init*` and `zpico_open`.
  *
@@ -531,7 +531,7 @@ int32_t zpico_set_connect_timeout(struct zpico_session_t *_session, int32_t _tim
 int32_t zpico_is_open(struct zpico_session_t *_session);
 
 /**
- * Phase 124.F.2 — wire-level connectivity probe.
+ * Wire-level connectivity probe.
  *
  * Returns 0 on success (transport accepted a keep-alive frame),
  * `ZPICO_ERR_SESSION` if no session is open, `ZPICO_ERR_TIMEOUT`
@@ -541,7 +541,7 @@ int32_t zpico_is_open(struct zpico_session_t *_session);
 int32_t zpico_send_keep_alive(struct zpico_session_t *_session);
 
 /**
- * Phase 124.E.3 — streamed publish driven by `z_bytes_writer`.
+ * Streamed publish driven by `z_bytes_writer`.
  *
  * Returns 0 on success, `ZPICO_ERR_*` on failure.
  */
@@ -566,7 +566,7 @@ void zpico_close(struct zpico_session_t *_session);
  *
  * zenoh-pico 1.10 runs the read path, lease, keep-alive, reconnect and every
  * callback on that one thread, so there is no lease task to configure any
- * more (RFC-0110 D2).
+ * more.
  *
  * Must be called between `zpico_init()` and `zpico_open()`.  If not called,
  * `zpico_open()` passes NULL to zenoh-pico (platform defaults).
@@ -588,7 +588,7 @@ int32_t zpico_declare_publisher(struct zpico_session_t *_session, const char *_k
 
 /**
  * Declare a publisher with options (stub). `_is_express` mirrors the real
- * shim's phase-279 express hint. `_is_reliable` (issue 2001) makes a put
+ * shim's express hint. `_is_reliable` makes a put
  * WAIT for the transport TX mutex instead of being dropped when another
  * thread holds it: nonzero for a RELIABLE publisher.
  */
@@ -684,7 +684,7 @@ int32_t zpico_declare_subscriber_direct_write(struct zpico_session_t *_session,
                                               void *_ctx);
 
 /**
- * Phase 124.D.3.c — declare a burst-tolerant direct-write
+ * Declare a burst-tolerant direct-write
  * subscriber backed by an SPSC ring. Each message lands in the
  * next free ring slot rather than a single shared slot, so a
  * burst arriving between two `take` calls is buffered
@@ -707,7 +707,7 @@ int32_t zpico_declare_subscriber_ring(struct zpico_session_t *_session,
                                       void *_ctx);
 
 /**
- * Issue 1979 — claim the head slot of a ring for reading, under the
+ * Claim the head slot of a ring for reading, under the
  * ring's session slot lock. A producer never writes a claimed slot, so
  * the consumer may read it in place until it calls
  * `zpico_ring_consume_head`. Claiming the same head again is a no-op.
@@ -718,13 +718,13 @@ int32_t zpico_declare_subscriber_ring(struct zpico_session_t *_session,
 ptrdiff_t zpico_ring_claim_head(struct zpico_ring_desc_t *_desc);
 
 /**
- * Issue 1979 — consume the claimed head slot and drop the claim, under
+ * Consume the claimed head slot and drop the claim, under
  * the ring's session slot lock.
  */
 void zpico_ring_consume_head(struct zpico_ring_desc_t *_desc);
 
 /**
- * Issue 1979 — push `len` payload bytes into a ring through the same
+ * Push `len` payload bytes into a ring through the same
  * producer path a zenoh sample takes, full-ring policy included. For a
  * ring no session produces into (unit tests).
  *
@@ -828,10 +828,10 @@ int32_t zpico_spin_once(struct zpico_session_t *_session, uint32_t _timeout_ms);
 bool zpico_uses_polling(void);
 
 /**
- * RFC-0113 D6 — does zenoh-pico's executor run on its own thread?
+ * Does zenoh-pico's executor run on its own thread?
  *
  * # Returns
- * true in RFC-0110 THREAD mode (POSIX, NuttX, Zephyr, FreeRTOS): that
+ * true in zenoh-pico's THREAD mode (POSIX, NuttX, Zephyr, FreeRTOS): that
  * thread runs the lease, keep-alive, query timeout and reconnect, so a
  * caller of `zpico_spin_once` owes zenoh-pico no deadline. false in
  * CALLER mode (bare metal, serial, ThreadX), where those futures run only
@@ -840,7 +840,7 @@ bool zpico_uses_polling(void);
 bool zpico_drives_on_thread(void);
 
 /**
- * phase-521 W5 (RFC-0113 D6) — when the session's executor next has work
+ * When the session's executor next has work
  * its caller must wake for, link read futures excluded.
  *
  * # Returns
@@ -850,7 +850,7 @@ bool zpico_drives_on_thread(void);
 int8_t zpico_next_wake_ms(struct zpico_session_t *_session, uint64_t *_out_ms);
 
 /**
- * phase-521 W6 (RFC-0113 D4) — install or remove the executor's wake
+ * Install or remove the executor's wake
  * callback as the link's TCP receive notification (ThreadX CALLER mode).
  *
  * # Returns
@@ -961,7 +961,7 @@ int32_t zpico_query_reply(struct zpico_session_t *_session,
                           size_t _attachment_len);
 
 /**
- * Issue 1709 — reply to a query and KEEP it open for another reply.
+ * Reply to a query and KEEP it open for another reply.
  *
  * Same parameters and failure behaviour as `zpico_query_reply`, except
  * that a SUCCESSFUL reply does not drop the stored query or free its reply
@@ -983,14 +983,14 @@ int32_t zpico_query_reply_keep(struct zpico_session_t *_session,
                                size_t _attachment_len);
 
 /**
- * Phase 237 — reply-slot index from the most recent query callback (the
+ * Reply-slot index from the most recent query callback (the
  * deferred-reply seq); call from inside the synchronous query callback.
  * Stub returns -1 (no slot) in the pure-Rust no-op build.
  */
 int64_t zpico_queryable_take_reply_seq(struct zpico_session_t *_session, int32_t _queryable_handle);
 
 /**
- * Issue 1942 — copy the attachment of the request held in reply slot
+ * Copy the attachment of the request held in reply slot
  * `reply_seq` into `out` (at most `out_cap` bytes), for the server's
  * per-request `ServiceInfo`. Readable any time between the take and the
  * reply. Returns the attachment's full length (0 when the query carried
@@ -1004,7 +1004,7 @@ int32_t zpico_queryable_request_attachment(struct zpico_session_t *_session,
                                            size_t _out_cap);
 
 /**
- * issue 0902 / phase-455 W1 — how many reply slots this queryable holds,
+ * How many reply slots this queryable holds,
  * and how many allocations it has refused because the table was full.
  * `out_capacity` reports `ZPICO_MAX_PENDING_REPLIES` as the C TU sees it.
  */
@@ -1014,7 +1014,7 @@ int32_t zpico_reply_slot_stats(struct zpico_session_t *_session,
                                uint32_t *_out_capacity);
 
 /**
- * issue 1332 / phase-455 W2.b — how many queries this queryable's
+ * How many queries this queryable's
  * callback DECLINED, i.e. how many times the slot it had already been
  * given was reclaimed. The companion to the refusal count: refusals say
  * the table ran out, declines say the arm that used to exhaust it ran.
@@ -1022,20 +1022,20 @@ int32_t zpico_reply_slot_stats(struct zpico_session_t *_session,
 int32_t zpico_reply_slot_declines(struct zpico_session_t *_session, int32_t _queryable_handle);
 
 /**
- * issue 0902 / phase-455 W1 — take the pending "this reply-slot table
+ * Take the pending "this reply-slot table
  * just saturated" announcement, clearing it. 1 = announce, 0 = nothing.
  */
 int32_t zpico_reply_slot_take_announcement(struct zpico_session_t *_session,
                                            int32_t _queryable_handle);
 
 /**
- * issue 0902 / phase-455 W2 — every reply-slot refusal in this process,
+ * Every reply-slot refusal in this process,
  * summed, for a reader that holds no session handle.
  */
 uint32_t zpico_reply_slot_refusals_total(void);
 
 /**
- * issue 0902 / phase-455 W1 — the PURE half of the reply-slot
+ * The PURE half of the reply-slot
  * allocation: pick a free slot and account for a refusal. Split out like
  * `zpico_entry_at` so the accounting is testable without a session.
  */
@@ -1057,7 +1057,7 @@ int32_t zpico_get_start(struct zpico_session_t *_session,
                         uint32_t _timeout_ms);
 
 /**
- * Issue 0153 — attachment-carrying query start (rmw_zenoh service interop).
+ * Attachment-carrying query start (rmw_zenoh service interop).
  */
 int32_t zpico_get_start_with_attachment(struct zpico_session_t *_session,
                                         const char *_keyexpr,
@@ -1078,7 +1078,7 @@ int32_t zpico_get_check(struct zpico_session_t *_session,
                         size_t _reply_buf_size);
 
 /**
- * Issue 2136 — `zpico_get_check`, plus the reply's metadata.
+ * `zpico_get_check`, plus the reply's metadata.
  *
  * Copies the reply's rmw attachment into `att_out` (up to `att_cap`
  * bytes; one that does not fit reads as none, `*att_len_out = 0`) and the
@@ -1096,7 +1096,7 @@ int32_t zpico_get_check_info(struct zpico_session_t *_session,
                              int64_t *_recv_ns_out);
 
 /**
- * Issue 1632 — the length of the reply a pending get received.
+ * The length of the reply a pending get received.
  *
  * For the caller `zpico_get_check` refused with `ZPICO_ERR_FULL`: that
  * says the reply did not fit; this says how big it was. Returns
@@ -1121,7 +1121,7 @@ int32_t zpico_liveliness_get_start(struct zpico_session_t *_session,
 int32_t zpico_liveliness_get_check(struct zpico_session_t *_session, int32_t _handle);
 
 /**
- * phase-381 W1 — a liveliness query that KEEPS its replies' keyexprs.
+ * A liveliness query that KEEPS its replies' keyexprs.
  *
  * `zpico_liveliness_get_start` answers "does anything match"; reading the
  * ROS graph needs "WHAT matched", and a liveliness reply carries all of it
@@ -1161,7 +1161,7 @@ int32_t zpico_liveliness_entry(struct zpico_session_t *_session,
                                size_t _cap);
 
 /**
- * phase-381 / issue 0903 — start the standing graph cache (a liveliness
+ * Start the standing graph cache (a liveliness
  * SUBSCRIBER with history), replacing the per-question sweep. Idempotent.
  */
 int32_t zpico_graph_cache_start(struct zpico_session_t *_session, const char *_keyexpr);
@@ -1186,7 +1186,7 @@ int32_t zpico_graph_entry_at(struct zpico_session_t *_session,
                              size_t _cap);
 
 /**
- * phase-428 W13 — the PURE half of the graph-cache sample handler: apply
+ * The PURE half of the graph-cache sample handler: apply
  * one liveliness sample (PUT inserts once, DELETE removes and closes the
  * gap, a PUT that does not fit is COUNTED in `dropped`) to a
  * NUL-separated token set in a caller buffer. Split out like
@@ -1217,7 +1217,7 @@ int32_t zpico_entry_at(const uint8_t *_buf,
                        size_t _cap);
 
 /**
- * Phase 108.C.zenoh.4-followup — count of liveliness-token
+ * Count of liveliness-token
  * replies on this slot. Used by the subscriber-side
  * `LivelinessChanged` bridge to surface `alive_count > 1`.
  */
@@ -1229,7 +1229,7 @@ int32_t zpico_liveliness_get_count(struct zpico_session_t *_session, int32_t _ha
 void zpico_set_reply_waker(struct zpico_session_t *_session, void (*_func)(int32_t, int32_t));
 
 /**
- * phase-467 Row 8 — register the graph-CHANGE edge.
+ * Register the graph-CHANGE edge.
  *
  * A no-op, which is the honest stub rather than a convenient one: this
  * build declares no liveliness subscriber, so there is no token set to

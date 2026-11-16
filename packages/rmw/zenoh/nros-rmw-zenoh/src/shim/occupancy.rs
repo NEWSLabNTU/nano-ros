@@ -1,4 +1,4 @@
-//! phase-392 amendment B — how much of the payload pools is ever live AT ONCE.
+//! How much of the payload pools is ever live AT ONCE.
 //!
 //! # The question this exists to answer
 //!
@@ -21,7 +21,7 @@
 //! In `subscriber_notify_callback` (`super::subscriber`), which the C shim
 //! calls once per arrival IMMEDIATELY AFTER its Release-store to `ring_tail`.
 //! Not a doc LINK: that callback is private, and rustdoc rejects a public item
-//! linking to one — the phase-431 W6 rustdoc red, recorded in the module
+//! linking to one — a rustdoc failure already recorded in the module
 //! next door and then repeated here anyway. It is `zpico.c`'s ring producer on the other
 //! side of the FFI. Ring occupancy only ever RISES at that store
 //! and FALLS at the Rust consumer's `consume_head`, so sampling there catches
@@ -48,9 +48,9 @@
 //!
 //! **That line only appears where an `nros_log` SINK exists**, which is the
 //! embedded boot funnels and not a bare native binary — MEASURED on
-//! `x86_64-unknown-linux-gnu` during the phase-392 amendment B run, where the
+//! `x86_64-unknown-linux-gnu` during the pool-occupancy run, where the
 //! record was correct and the announcement went nowhere (the same dispatch-
-//! and-drop that issue 0708 fixed for the RTOS families). So [`report`] is
+//! and-drop already fixed for the RTOS families). So [`report`] is
 //! not a convenience: it is the portable reader, and a harness on a host
 //! should use it rather than grep for the line.
 

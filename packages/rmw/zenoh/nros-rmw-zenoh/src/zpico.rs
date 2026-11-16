@@ -125,13 +125,13 @@ impl core::fmt::Display for ZpicoError {
 /// Result type for shim operations
 pub type Result<T> = core::result::Result<T, ZpicoError>;
 
-/// issue 0902 / phase-455 — every reply-slot refusal in this PROCESS, summed.
+/// Every reply-slot refusal in this PROCESS, summed.
 ///
 /// A refusal means the C shim had no free slot to clone an incoming query
 /// into, so the request was accepted and can never be answered. **Zero is a
 /// statement**, not the absence of one: this process has never run out. That
 /// is the distinction `zpico_queryable_take_reply_seq`'s `-1` could not make,
-/// and issue 0902's whole complaint — a 20-90 % goal-completion spread with no
+/// and the whole complaint of the reply-slot leak — a 20-90 % goal-completion spread with no
 /// observable cause is not measurable as a regression gate.
 ///
 /// The per-server answer is [`Context::reply_slot_stats`], which needs the
@@ -253,10 +253,10 @@ impl Drop for Queryable {
 /// # Note
 ///
 /// Each `Context` owns one slot of the C shim's session pool
-/// (`ZPICO_MAX_SESSIONS`, default 1) — issue 0348 / phase-328. The raw
+/// (`ZPICO_MAX_SESSIONS`, default 1). The raw
 /// `handle` pointer also makes `Context` `!Send`/`!Sync`, matching the
 /// old `PhantomData<*const ()>` marker.
-/// Issue 2136 — what [`Context::get_check_info`] reports beside a reply.
+/// What [`Context::get_check_info`] reports beside a reply.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReplyMeta {
     /// Bytes of the reply's attachment copied into the caller's buffer.
@@ -602,7 +602,7 @@ impl Context {
     /// Returns an error if the session is not open, the key expression is invalid,
     /// or the maximum number of publishers has been reached.
     ///
-    /// `reliable` (issue 2001): a put on a RELIABLE publisher waits for the
+    /// `reliable`: a put on a RELIABLE publisher waits for the
     /// transport's TX mutex rather than being dropped while another thread
     /// holds it.
     pub fn declare_publisher(
@@ -744,7 +744,7 @@ impl Context {
         })
     }
 
-    /// Phase 124.D.3.c — declare a burst-tolerant direct-write
+    /// Declare a burst-tolerant direct-write
     /// subscriber backed by an SPSC ring.
     ///
     /// # Safety
@@ -962,14 +962,14 @@ impl Context {
         Ok(())
     }
 
-    /// Phase 237 — reply-slot index allocated by the most recent query callback
+    /// Reply-slot index allocated by the most recent query callback
     /// for `queryable_handle` (the deferred-reply seq). Call from inside the
     /// synchronous query callback; -1 if the reply table was full.
     pub fn queryable_take_reply_seq(&self, queryable_handle: i32) -> i64 {
         unsafe { zpico_queryable_take_reply_seq(self.handle, queryable_handle) }
     }
 
-    /// Issue 1942 — copy the attachment of the request held in reply slot
+    /// Copy the attachment of the request held in reply slot
     /// `reply_seq` into `out`. `Some(len)` is the attachment's FULL length
     /// (`0` when the query carried none; more than `out.len()` means it was
     /// truncated), `None` when no query is held there.
@@ -991,13 +991,13 @@ impl Context {
         (ret >= 0).then_some(ret as usize)
     }
 
-    /// issue 0902 / phase-455 W1 — one queryable's reply-slot table:
+    /// One queryable's reply-slot table:
     /// `(held, refusals, capacity)`, or `None` for an invalid handle.
     ///
     /// `refusals` is the count of allocations the C shim refused because every
     /// slot was held. Zero means this server has never run out; the -1 that
     /// `queryable_take_reply_seq` returns cannot say that, and that conflation
-    /// is what made issue 0902's 20-90 % completion spread unfalsifiable.
+    /// is what made the reply-slot leak's 20-90 % completion spread unfalsifiable.
     /// `capacity` is `ZPICO_MAX_PENDING_REPLIES` as the C TU was compiled with
     /// it, so a caller reads the effective size instead of assuming a `-D`
     /// arrived.
@@ -1013,10 +1013,10 @@ impl Context {
         Some((held as u32, refusals, capacity))
     }
 
-    /// issue 1332 / phase-455 W2.b — how many queries this queryable's
+    /// How many queries this queryable's
     /// callback DECLINED, or `None` for an invalid handle.
     ///
-    /// Read this BEFORE believing a `refusals == 0`. Issue 0902's leak is fed
+    /// Read this BEFORE believing a `refusals == 0`. The reply-slot leak is fed
     /// by declined queries, and the native host lane produces none of them, so
     /// zero refusals there is not evidence that the table is managed — it is
     /// the value an unpressed table also reports. Non-zero declines is what
@@ -1026,14 +1026,14 @@ impl Context {
         (declines >= 0).then_some(declines as u32)
     }
 
-    /// issue 0902 / phase-455 W1 — true exactly once per TRANSITION of this
+    /// True exactly once per TRANSITION of this
     /// queryable's reply-slot table into exhaustion; the pending flag is
     /// cleared by the read.
     ///
     /// The once-ness lives in the C shim (`zpico_reply_slot_pick`), which is
     /// the only place that sees the allocation. Latching again here would be a
     /// second spelling of one rule, which is how a permanent failure ends up
-    /// reported per spin (phase-444 W6, on the Cyclone parameter services).
+    /// reported per spin (as happened on the Cyclone parameter services).
     pub fn take_reply_slot_announcement(&self, queryable_handle: i32) -> bool {
         unsafe { zpico_reply_slot_take_announcement(self.handle, queryable_handle) == 1 }
     }
@@ -1045,7 +1045,7 @@ impl Context {
         self.get_start_with_attachment(keyexpr, payload, &[], timeout_ms)
     }
 
-    /// Issue 0153 — query start carrying an rmw attachment (sequence_number +
+    /// Query start carrying an rmw attachment (sequence_number +
     /// source_timestamp + gid). rmw_zenoh_cpp service servers REQUIRE it on
     /// the query; an empty `attachment` omits it (nano↔nano tolerates both).
     pub fn get_start_with_attachment(
@@ -1106,7 +1106,7 @@ impl Context {
         }
     }
 
-    /// Issue 2136 — [`get_check`](Self::get_check), plus the reply's metadata:
+    /// [`get_check`](Self::get_check), plus the reply's metadata:
     /// its rmw attachment, copied into `att_buf` (length in the returned
     /// [`ReplyMeta`]; 0 when it had none or one that does not fit), and the
     /// wall-clock time it arrived (0 = no wall clock).
@@ -1143,7 +1143,7 @@ impl Context {
         }
     }
 
-    /// Issue 1632 — the size of the reply [`get_check`](Self::get_check)
+    /// The size of the reply [`get_check`](Self::get_check)
     /// refused with [`ZpicoError::Full`] because it did not fit `reply_buf`.
     /// `None` when no reply was received on `handle`.
     pub fn get_reply_len(&self, handle: i32) -> Option<usize> {
@@ -1189,7 +1189,7 @@ impl Context {
         }
     }
 
-    /// Phase 108.C.zenoh.4-followup — count of liveliness-token replies
+    /// Count of liveliness-token replies
     /// received on this slot. Used by the subscriber-side
     /// `LivelinessChanged` bridge to surface `alive_count > 1` when more
     /// than one publisher matches the wildcard liveliness keyexpr.
@@ -1279,7 +1279,7 @@ impl<'a> Publisher<'a> {
         Ok(())
     }
 
-    /// Phase 99.F — zero-copy publish via z_bytes_from_static_buf.
+    /// Zero-copy publish via z_bytes_from_static_buf.
     ///
     /// Identical to [`Self::publish_with_attachment`] but ALIASES the
     /// payload pointer instead of copying. Caller MUST guarantee

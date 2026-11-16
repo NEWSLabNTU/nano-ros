@@ -15,7 +15,7 @@ use super::{
     subscriber::ZenohSubscriber,
 };
 
-/// Issue 0330 — normalize an incoming locator to "supplied" vs "absent".
+/// Normalize an incoming locator to "supplied" vs "absent".
 ///
 /// RMW-agnostic layers no longer carry a zenoh default; they hand this
 /// backend either `None` or the empty string when the user supplied
@@ -34,7 +34,7 @@ pub fn normalize_locator(locator: Option<&str>) -> Option<&str> {
     }
 }
 
-/// Issue 0330 — the client-mode locator this backend will actually dial:
+/// The client-mode locator this backend will actually dial:
 /// the caller's value when they supplied one, else [`crate::DEFAULT_LOCATOR`]
 /// on HOSTED builds, else nothing.
 ///
@@ -54,7 +54,7 @@ pub fn normalize_locator(locator: Option<&str>) -> Option<&str> {
 /// have silently disabled the default everywhere.
 ///
 /// It is also NOT `target_os = "none"` alone, which is what it said until
-/// issue 1028. "Is this hosted?" and "does `target_os` have a value?" are
+/// it was fixed. "Is this hosted?" and "does `target_os` have a value?" are
 /// different questions, and NuttX is the counterexample that proves it:
 /// `armv7a-nuttx-eabihf` reports `target_os = "nuttx"` and
 /// `target_family = "unix"`, so `not(target_os = "none")` classified an RTOS as
@@ -1969,7 +1969,7 @@ fn log_keyexpr_chunks(key: &str) {
 static CALLER_RX_WAKES_PARK: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
 
-/// phase-521 W5 (RFC-0113 D4) — state that this board's platform park ends
+/// State that this board's platform park ends
 /// when the zenoh link receives data.
 ///
 /// For a CALLER-mode build (bare metal): nothing reads the link outside

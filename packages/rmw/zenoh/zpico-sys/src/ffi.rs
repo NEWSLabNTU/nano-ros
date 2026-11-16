@@ -49,7 +49,7 @@ pub const ZPICO_ERR_PUBLISH: i32 = -8;
 /// Query timeout
 pub const ZPICO_ERR_TIMEOUT: i32 = -9;
 /// Caller's buffer cannot hold the value, which is REFUSED rather than
-/// truncated (phase-381 W1) — a partial keyexpr names a different, plausible
+/// truncated — a partial keyexpr names a different, plausible
 /// entity, so `zpico_liveliness_entry` never returns one.
 pub const ZPICO_ERR_BUFFER: i32 = -10;
 
@@ -138,7 +138,7 @@ pub type ZpicoQueryCallback = extern "C" fn(
 mod cbindgen_stubs {
     use super::*;
 
-    /// Opaque per-session handle (issue 0348 / phase-328). A `zpico_session_t*`
+    /// Opaque per-session handle. A `zpico_session_t*`
     /// points into the C shim's compile-time session pool
     /// (`ZPICO_MAX_SESSIONS`, default 1). Every `zpico_*` entry point that
     /// operates on a session takes one as its leading argument. Rust never
@@ -162,7 +162,7 @@ mod cbindgen_stubs {
     pub extern "C" fn zpico_session_release(_session: *mut zpico_session_t) {}
 
     /// The session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if invalid.
-    /// Scopes the Rust shim's process-global tables per session (issue 0376).
+    /// Scopes the Rust shim's process-global tables per session.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_session_index(_session: *mut zpico_session_t) -> i32 {
         -1
@@ -177,7 +177,7 @@ mod cbindgen_stubs {
         pub value: *const c_char,
     }
 
-    /// Phase 124.D.3.c — SPSC ring descriptor for burst-tolerant
+    /// SPSC ring descriptor for burst-tolerant
     /// direct-write subscribers. C shim is the sole producer
     /// (writes payloads, advances `tail`); Rust shim the sole
     /// consumer (reads payloads, advances `head`). Slot index is
@@ -203,19 +203,19 @@ mod cbindgen_stubs {
         pub head: *mut usize,
         /// Producer counter — written only by the C shim.
         pub tail: *mut usize,
-        /// Issue 1979 — the consumer's claim: 0, or one more than the claimed
+        /// The consumer's claim: 0, or one more than the claimed
         /// head counter. Written only by `zpico_ring_claim_head` and
         /// `zpico_ring_consume_head`, under the session's slot lock; a producer
         /// never writes a claimed slot.
         pub claimed: *mut usize,
-        /// Issue 1979 — samples a full ring evicted, replaced or dropped.
+        /// Samples a full ring evicted, replaced or dropped.
         /// Written only by the C producer, under the session's slot lock.
         pub full_drops: *mut usize,
         /// The session whose slot lock serialises the claim with the
         /// producers. Set by `zpico_declare_subscriber_ring`; NULL (no lock)
         /// for a ring no session produces into.
         pub lock_session: *mut c_void,
-        /// Issue 2135 — `slot_count` entries: the wall-clock time (ns since the
+        /// `slot_count` entries: the wall-clock time (ns since the
         /// Unix epoch, `nros_platform_time_now_ns`) the producer received each
         /// slot's sample, upstream `rmw_message_info_t::received_timestamp`.
         /// 0 when the platform has no wall clock. NULL: not recorded.
@@ -266,7 +266,7 @@ mod cbindgen_stubs {
         0
     }
 
-    /// Issue 2207 — set how long the next `zpico_open` keeps trying to reach
+    /// Set how long the next `zpico_open` keeps trying to reach
     /// its router: -1 until a router answers, 0 one attempt, N a budget of N ms.
     /// Call between `zpico_init*` and `zpico_open`.
     ///
@@ -289,7 +289,7 @@ mod cbindgen_stubs {
         0
     }
 
-    /// Phase 124.F.2 — wire-level connectivity probe.
+    /// Wire-level connectivity probe.
     ///
     /// Returns 0 on success (transport accepted a keep-alive frame),
     /// `ZPICO_ERR_SESSION` if no session is open, `ZPICO_ERR_TIMEOUT`
@@ -300,7 +300,7 @@ mod cbindgen_stubs {
         ZPICO_ERR_SESSION
     }
 
-    /// Phase 124.E.3 — streamed publish driven by `z_bytes_writer`.
+    /// Streamed publish driven by `z_bytes_writer`.
     ///
     /// Returns 0 on success, `ZPICO_ERR_*` on failure.
     #[unsafe(no_mangle)]
@@ -331,7 +331,7 @@ mod cbindgen_stubs {
     ///
     /// zenoh-pico 1.10 runs the read path, lease, keep-alive, reconnect and every
     /// callback on that one thread, so there is no lease task to configure any
-    /// more (RFC-0110 D2).
+    /// more.
     ///
     /// Must be called between `zpico_init()` and `zpico_open()`.  If not called,
     /// `zpico_open()` passes NULL to zenoh-pico (platform defaults).
@@ -356,7 +356,7 @@ mod cbindgen_stubs {
     }
 
     /// Declare a publisher with options (stub). `_is_express` mirrors the real
-    /// shim's phase-279 express hint. `_is_reliable` (issue 2001) makes a put
+    /// shim's express hint. `_is_reliable` makes a put
     /// WAIT for the transport TX mutex instead of being dropped when another
     /// thread holds it: nonzero for a RELIABLE publisher.
     #[unsafe(no_mangle)]
@@ -471,7 +471,7 @@ mod cbindgen_stubs {
         0
     }
 
-    /// Phase 124.D.3.c — declare a burst-tolerant direct-write
+    /// Declare a burst-tolerant direct-write
     /// subscriber backed by an SPSC ring. Each message lands in the
     /// next free ring slot rather than a single shared slot, so a
     /// burst arriving between two `take` calls is buffered
@@ -497,7 +497,7 @@ mod cbindgen_stubs {
         0
     }
 
-    /// Issue 1979 — claim the head slot of a ring for reading, under the
+    /// Claim the head slot of a ring for reading, under the
     /// ring's session slot lock. A producer never writes a claimed slot, so
     /// the consumer may read it in place until it calls
     /// `zpico_ring_consume_head`. Claiming the same head again is a no-op.
@@ -509,12 +509,12 @@ mod cbindgen_stubs {
         -1
     }
 
-    /// Issue 1979 — consume the claimed head slot and drop the claim, under
+    /// Consume the claimed head slot and drop the claim, under
     /// the ring's session slot lock.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_ring_consume_head(_desc: *mut zpico_ring_desc_t) {}
 
-    /// Issue 1979 — push `len` payload bytes into a ring through the same
+    /// Push `len` payload bytes into a ring through the same
     /// producer path a zenoh sample takes, full-ring policy included. For a
     /// ring no session produces into (unit tests).
     ///
@@ -639,10 +639,10 @@ mod cbindgen_stubs {
         false
     }
 
-    /// RFC-0113 D6 — does zenoh-pico's executor run on its own thread?
+    /// Does zenoh-pico's executor run on its own thread?
     ///
     /// # Returns
-    /// true in RFC-0110 THREAD mode (POSIX, NuttX, Zephyr, FreeRTOS): that
+    /// true in zenoh-pico's THREAD mode (POSIX, NuttX, Zephyr, FreeRTOS): that
     /// thread runs the lease, keep-alive, query timeout and reconnect, so a
     /// caller of `zpico_spin_once` owes zenoh-pico no deadline. false in
     /// CALLER mode (bare metal, serial, ThreadX), where those futures run only
@@ -652,7 +652,7 @@ mod cbindgen_stubs {
         false
     }
 
-    /// phase-521 W5 (RFC-0113 D6) — when the session's executor next has work
+    /// When the session's executor next has work
     /// its caller must wake for, link read futures excluded.
     ///
     /// # Returns
@@ -663,7 +663,7 @@ mod cbindgen_stubs {
         -1
     }
 
-    /// phase-521 W6 (RFC-0113 D4) — install or remove the executor's wake
+    /// Install or remove the executor's wake
     /// callback as the link's TCP receive notification (ThreadX CALLER mode).
     ///
     /// # Returns
@@ -817,7 +817,7 @@ mod cbindgen_stubs {
         0
     }
 
-    /// Issue 1709 — reply to a query and KEEP it open for another reply.
+    /// Reply to a query and KEEP it open for another reply.
     ///
     /// Same parameters and failure behaviour as `zpico_query_reply`, except
     /// that a SUCCESSFUL reply does not drop the stored query or free its reply
@@ -842,7 +842,7 @@ mod cbindgen_stubs {
         0
     }
 
-    /// Phase 237 — reply-slot index from the most recent query callback (the
+    /// Reply-slot index from the most recent query callback (the
     /// deferred-reply seq); call from inside the synchronous query callback.
     /// Stub returns -1 (no slot) in the pure-Rust no-op build.
     #[unsafe(no_mangle)]
@@ -853,7 +853,7 @@ mod cbindgen_stubs {
         -1
     }
 
-    /// Issue 1942 — copy the attachment of the request held in reply slot
+    /// Copy the attachment of the request held in reply slot
     /// `reply_seq` into `out` (at most `out_cap` bytes), for the server's
     /// per-request `ServiceInfo`. Readable any time between the take and the
     /// reply. Returns the attachment's full length (0 when the query carried
@@ -870,7 +870,7 @@ mod cbindgen_stubs {
         ZPICO_ERR_INVALID
     }
 
-    /// issue 0902 / phase-455 W1 — how many reply slots this queryable holds,
+    /// How many reply slots this queryable holds,
     /// and how many allocations it has refused because the table was full.
     /// `out_capacity` reports `ZPICO_MAX_PENDING_REPLIES` as the C TU sees it.
     #[unsafe(no_mangle)]
@@ -883,7 +883,7 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
-    /// issue 1332 / phase-455 W2.b — how many queries this queryable's
+    /// How many queries this queryable's
     /// callback DECLINED, i.e. how many times the slot it had already been
     /// given was reclaimed. The companion to the refusal count: refusals say
     /// the table ran out, declines say the arm that used to exhaust it ran.
@@ -895,7 +895,7 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
-    /// issue 0902 / phase-455 W1 — take the pending "this reply-slot table
+    /// Take the pending "this reply-slot table
     /// just saturated" announcement, clearing it. 1 = announce, 0 = nothing.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_reply_slot_take_announcement(
@@ -905,14 +905,14 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
-    /// issue 0902 / phase-455 W2 — every reply-slot refusal in this process,
+    /// Every reply-slot refusal in this process,
     /// summed, for a reader that holds no session handle.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_reply_slot_refusals_total() -> u32 {
         0 // stub: not available
     }
 
-    /// issue 0902 / phase-455 W1 — the PURE half of the reply-slot
+    /// The PURE half of the reply-slot
     /// allocation: pick a free slot and account for a refusal. Split out like
     /// `zpico_entry_at` so the accounting is testable without a session.
     #[unsafe(no_mangle)]
@@ -940,7 +940,7 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
-    /// Issue 0153 — attachment-carrying query start (rmw_zenoh service interop).
+    /// Attachment-carrying query start (rmw_zenoh service interop).
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_get_start_with_attachment(
         _session: *mut zpico_session_t,
@@ -967,7 +967,7 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
-    /// Issue 2136 — `zpico_get_check`, plus the reply's metadata.
+    /// `zpico_get_check`, plus the reply's metadata.
     ///
     /// Copies the reply's rmw attachment into `att_out` (up to `att_cap`
     /// bytes; one that does not fit reads as none, `*att_len_out = 0`) and the
@@ -989,7 +989,7 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
-    /// Issue 1632 — the length of the reply a pending get received.
+    /// The length of the reply a pending get received.
     ///
     /// For the caller `zpico_get_check` refused with `ZPICO_ERR_FULL`: that
     /// says the reply did not fit; this says how big it was. Returns
@@ -1022,7 +1022,7 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
-    /// phase-381 W1 — a liveliness query that KEEPS its replies' keyexprs.
+    /// A liveliness query that KEEPS its replies' keyexprs.
     ///
     /// `zpico_liveliness_get_start` answers "does anything match"; reading the
     /// ROS graph needs "WHAT matched", and a liveliness reply carries all of it
@@ -1076,7 +1076,7 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
-    /// phase-381 / issue 0903 — start the standing graph cache (a liveliness
+    /// Start the standing graph cache (a liveliness
     /// SUBSCRIBER with history), replacing the per-question sweep. Idempotent.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_graph_cache_start(
@@ -1113,7 +1113,7 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
-    /// phase-428 W13 — the PURE half of the graph-cache sample handler: apply
+    /// The PURE half of the graph-cache sample handler: apply
     /// one liveliness sample (PUT inserts once, DELETE removes and closes the
     /// gap, a PUT that does not fit is COUNTED in `dropped`) to a
     /// NUL-separated token set in a caller buffer. Split out like
@@ -1150,7 +1150,7 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
-    /// Phase 108.C.zenoh.4-followup — count of liveliness-token
+    /// Count of liveliness-token
     /// replies on this slot. Used by the subscriber-side
     /// `LivelinessChanged` bridge to surface `alive_count > 1`.
     #[unsafe(no_mangle)]
@@ -1169,7 +1169,7 @@ mod cbindgen_stubs {
     ) {
     }
 
-    /// phase-467 Row 8 — register the graph-CHANGE edge.
+    /// Register the graph-CHANGE edge.
     ///
     /// A no-op, which is the honest stub rather than a convenient one: this
     /// build declares no liveliness subscriber, so there is no token set to

@@ -1,4 +1,4 @@
-//! Phase 115.B — Rust drain symbol for zenoh-pico's custom-link
+//! Rust drain symbol for zenoh-pico's custom-link
 //! scheme.
 //!
 //! The zenoh-pico C source `src/link/unicast/custom.c` (in our
@@ -7,7 +7,7 @@
 //! calls `nros_zpico_custom_take(out)` from inside
 //! `_z_f_link_open_custom`. This crate is the Rust side of that
 //! symbol — it drains the slot populated by
-//! `nros_rmw::set_custom_transport(...)` (Phase 115.A.2) into the
+//! `nros_rmw::set_custom_transport(...)` into the
 //! caller-provided struct.
 //!
 //! The C side embeds a *copy* of the vtable into its `_z_link_t`
@@ -28,7 +28,7 @@
 
 use core::ffi::c_void;
 
-/// Phase 115.B — C-ABI mirror of `nros_rmw::NrosTransportOps` so
+/// C-ABI mirror of `nros_rmw::NrosTransportOps` so
 /// the C custom-link source can refer to a struct we own. Same
 /// `#[repr(C)]` layout — single canonical ABI.
 ///

@@ -1,5 +1,5 @@
 //! The shim's bump allocators: ONE spelling of "claim the next slot of a
-//! static table" and "hand it back after a later step failed" (issue 1956).
+//! static table" and "hand it back after a later step failed".
 //!
 //! Every table here (subscriber metadata, the two payload classes, service
 //! headers, the service inbox rings) is a cursor over a fixed array, and slots

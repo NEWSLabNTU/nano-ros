@@ -1,4 +1,4 @@
-//! Issue 1978 — which status events this backend can carry, stated ONCE.
+//! Which status events this backend can carry, stated ONCE.
 //!
 //! Three questions read this answer: the per-entity
 //! `Publisher::supports_event` and `Subscription::supports_event`, and the

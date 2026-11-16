@@ -89,7 +89,7 @@ pub struct zpico_property_t {
     pub value: *const core::ffi::c_char,
 }
 
-/// Phase 124.D.3.c — SPSC ring descriptor mirroring
+/// SPSC ring descriptor mirroring
 /// `zpico_ring_desc_t` in `c/include/zpico.h`. Field order, names,
 /// and types track the C struct byte-for-byte. The Rust shim owns
 /// the backing storage (a `SubscriberBuffer`) and fills this
@@ -117,19 +117,19 @@ pub struct zpico_ring_desc_t {
     pub head: *mut usize,
     /// Producer counter — written only by the C shim.
     pub tail: *mut usize,
-    /// Issue 1979 — the consumer's claim: 0, or one more than the claimed
+    /// The consumer's claim: 0, or one more than the claimed
     /// head counter. Written only by `zpico_ring_claim_head` and
     /// `zpico_ring_consume_head`, under the session's slot lock; a producer
     /// never writes a claimed slot.
     pub claimed: *mut usize,
-    /// Issue 1979 — samples a full ring evicted, replaced or dropped.
+    /// Samples a full ring evicted, replaced or dropped.
     /// Written only by the C producer, under the session's slot lock.
     pub full_drops: *mut usize,
     /// The session whose slot lock serialises the claim with the
     /// producers. Set by `zpico_declare_subscriber_ring`; NULL (no lock)
     /// for a ring no session produces into.
     pub lock_session: *mut c_void,
-    /// Issue 2135 — `slot_count` entries: the wall-clock time (ns since the
+    /// `slot_count` entries: the wall-clock time (ns since the
     /// Unix epoch, `nros_platform_time_now_ns`) the producer received each
     /// slot's sample, upstream `rmw_message_info_t::received_timestamp`.
     /// 0 when the platform has no wall clock. NULL: not recorded.
@@ -145,7 +145,7 @@ pub struct zpico_ring_desc_t {
 // see the `use core::ffi::c_void` note above). The `not(cbindgen)`
 // guard stays — these are Rust imports of C functions, not header
 // declarations.
-/// Opaque per-session handle (issue 0348 / phase-328). A `zpico_session_t*`
+/// Opaque per-session handle. A `zpico_session_t*`
 /// points into the C shim's compile-time session pool
 /// (`ZPICO_MAX_SESSIONS`, default 1). Every `zpico_*` entry point that
 /// operates on a session takes one as its leading argument. Rust never
@@ -181,10 +181,10 @@ unsafe extern "C" {
         num_properties: usize,
     ) -> i32;
     pub fn zpico_open(session: *mut zpico_session_t) -> i32;
-    /// Issue 2207 — the connect budget for the next `zpico_open`.
+    /// The connect budget for the next `zpico_open`.
     pub fn zpico_set_connect_timeout(session: *mut zpico_session_t, timeout_ms: i32) -> i32;
     pub fn zpico_is_open(session: *mut zpico_session_t) -> i32;
-    /// Phase 124.F.2 — wire-level connectivity probe. Returns 0
+    /// Wire-level connectivity probe. Returns 0
     /// on success, `ZPICO_ERR_*` on failure.
     pub fn zpico_send_keep_alive(session: *mut zpico_session_t) -> i32;
     pub fn zpico_close(session: *mut zpico_session_t);
@@ -213,7 +213,7 @@ unsafe extern "C" {
         data: *const u8,
         len: usize,
     ) -> i32;
-    /// Phase 124.E.3 — streamed publish via zenoh-pico's
+    /// Streamed publish via zenoh-pico's
     /// `z_bytes_writer` API. `chunk_cb` is invoked repeatedly with
     /// up to 1 KiB buffers until `total_len` bytes have landed.
     /// `attachment` carries the ROS-interop metadata (seq + source
@@ -242,7 +242,7 @@ unsafe extern "C" {
         attachment: *const u8,
         attachment_len: usize,
     ) -> i32;
-    /// Phase 99.F: zero-copy publish via z_bytes_from_static_buf.
+    /// Zero-copy publish via z_bytes_from_static_buf.
     /// Caller guarantees `data` outlives the call.
     pub fn zpico_publish_with_attachment_aliased(
         session: *mut zpico_session_t,
@@ -276,7 +276,7 @@ unsafe extern "C" {
         callback: ZpicoNotifyCallback,
         ctx: *mut c_void,
     ) -> i32;
-    /// phase-412 -- which exit `zpico_declare_subscriber_ring` took (1..=6,
+    /// Which exit `zpico_declare_subscriber_ring` took (1..=6,
     /// 0 = entered and stamped nothing), and the raw zenoh-pico code when the
     /// declare itself failed. Written by the C shim on every call; read by the
     /// caller immediately after a failure. See the comment beside their
@@ -292,11 +292,11 @@ unsafe extern "C" {
         callback: ZpicoNotifyCallback,
         ctx: *mut c_void,
     ) -> i32;
-    /// Issue 1979 — claim the head slot for reading; -1 when empty.
+    /// Claim the head slot for reading; -1 when empty.
     pub fn zpico_ring_claim_head(desc: *mut zpico_ring_desc_t) -> isize;
-    /// Issue 1979 — consume the claimed head slot and drop the claim.
+    /// Consume the claimed head slot and drop the claim.
     pub fn zpico_ring_consume_head(desc: *mut zpico_ring_desc_t);
-    /// Issue 1979 — push bytes through the C producer (unit tests).
+    /// Push bytes through the C producer (unit tests).
     pub fn zpico_ring_push_bytes(
         desc: *mut zpico_ring_desc_t,
         payload: *const u8,
@@ -350,7 +350,7 @@ unsafe extern "C" {
         attachment: *const u8,
         attachment_len: usize,
     ) -> i32;
-    /// Issue 1709 — `zpico_query_reply` that keeps the query open for another
+    /// `zpico_query_reply` that keeps the query open for another
     /// reply on the same `reply_seq`; a series ends with `zpico_query_reply`.
     pub fn zpico_query_reply_keep(
         session: *mut zpico_session_t,
@@ -362,14 +362,14 @@ unsafe extern "C" {
         attachment: *const u8,
         attachment_len: usize,
     ) -> i32;
-    /// Phase 237 — reply-slot index from the most recent query callback (the
+    /// Reply-slot index from the most recent query callback (the
     /// deferred-reply seq); call from inside the synchronous query callback.
     pub fn zpico_queryable_take_reply_seq(
         session: *mut zpico_session_t,
         queryable_handle: i32,
     ) -> i64;
 
-    /// Issue 1942 — copy the attachment of the request held in reply slot
+    /// Copy the attachment of the request held in reply slot
     /// `reply_seq` into `out` (at most `out_cap` bytes). Returns the
     /// attachment's full length (0 when the query carried none) or
     /// `ZPICO_ERR_INVALID` (bad handle, or no query held in that slot).
@@ -381,13 +381,13 @@ unsafe extern "C" {
         out_cap: usize,
     ) -> i32;
 
-    /// issue 0902 / phase-455 W1 — read one queryable's reply-slot table.
+    /// Read one queryable's reply-slot table.
     ///
     /// Returns the number of slots currently HELD (cloned queries awaiting a
     /// deferred reply), or `ZPICO_ERR_INVALID`. `out_refusals` receives the
     /// cumulative count of allocations refused because the table was full —
     /// the condition `zpico_queryable_take_reply_seq`'s -1 could not
-    /// distinguish from "no query pending", which is the whole of issue 0902.
+    /// distinguish from "no query pending", which is the whole of the reply-slot leak.
     /// `out_capacity` receives `ZPICO_MAX_PENDING_REPLIES` as the C TU sees
     /// it, so a caller reads the effective capacity rather than assuming one.
     ///
@@ -400,7 +400,7 @@ unsafe extern "C" {
         out_capacity: *mut u32,
     ) -> i32;
 
-    /// issue 1332 / phase-455 W2.b — how many queries this queryable's
+    /// How many queries this queryable's
     /// callback DECLINED, or `ZPICO_ERR_INVALID` for a bad handle.
     ///
     /// A declined query is one the callback dropped without taking its reply
@@ -408,19 +408,19 @@ unsafe extern "C" {
     /// full request ring on an image whose reply table is larger than
     /// `SERVICE_REQUEST_RING_DEPTH` (at the shipped 4 = 4 a query meeting a full
     /// ring has already been refused a slot, so it holds nothing to decline).
-    /// Those are what issue 0902's leak fed on, and the
+    /// Those are what the reply-slot leak fed on, and the
     /// reason this count exists beside the refusal count is that the native
-    /// host lane produces NONE of them (issue 1332): a `refusals == 0` there
+    /// host lane produces NONE of them: a `refusals == 0` there
     /// is the same value whether the table is managed correctly or never
     /// pressed at all. A test that means to control the leak asserts this
     /// moved first, and only then that refusals did not.
     pub fn zpico_reply_slot_declines(session: *mut zpico_session_t, queryable_handle: i32) -> i32;
 
-    /// issue 0902 / phase-455 W1 — take the pending "this table just
+    /// Take the pending "this table just
     /// saturated" announcement, clearing it. 1 = announce now, 0 = nothing
     /// pending, `ZPICO_ERR_INVALID` for a bad handle.
     ///
-    /// The once-ness lives here and nowhere else (phase-444 W6's correction:
+    /// The once-ness lives here and nowhere else (an earlier correction:
     /// a permanent failure asked six times per spin). A second latch on the
     /// Rust side would be a second spelling of the same rule.
     pub fn zpico_reply_slot_take_announcement(
@@ -428,7 +428,7 @@ unsafe extern "C" {
         queryable_handle: i32,
     ) -> i32;
 
-    /// issue 0902 / phase-455 W2 — every reply-slot refusal in this process,
+    /// Every reply-slot refusal in this process,
     /// summed, with NO session argument.
     ///
     /// The companion to `zpico_reply_slot_stats`, which answers "WHICH server
@@ -436,10 +436,10 @@ unsafe extern "C" {
     /// neither — it owns an `Executor` and a node, and the zenoh `Context` is
     /// several layers below the API it was written against — so the question
     /// it can ask is "did ANY reply slot get refused here", which is what
-    /// phase-455 W2's acceptance asserts is zero. Never reset.
+    /// the acceptance test asserts is zero. Never reset.
     pub fn zpico_reply_slot_refusals_total() -> u32;
 
-    /// issue 0902 / phase-455 W1 — the PURE half of the reply-slot
+    /// The PURE half of the reply-slot
     /// allocation, exported like `zpico_entry_at` / `zpico_graph_set_apply` so
     /// the accounting is reachable from a host test with no session, no router
     /// and no live peer.
@@ -502,12 +502,12 @@ unsafe extern "C" {
         timeout_ms: u32,
     ) -> i32;
     pub fn zpico_liveliness_get_check(session: *mut zpico_session_t, handle: i32) -> i32;
-    /// Phase 108.C.zenoh.4-followup — count of liveliness-token
+    /// Count of liveliness-token
     /// replies on this slot. Used by the subscriber-side
     /// `LivelinessChanged` bridge to surface `alive_count > 1`.
     pub fn zpico_liveliness_get_count(session: *mut zpico_session_t, handle: i32) -> i32;
 
-    /// phase-381 W1 — a liveliness query that KEEPS its replies' keyexprs.
+    /// A liveliness query that KEEPS its replies' keyexprs.
     /// Poll with `zpico_liveliness_get_check`, then read with the two below.
     pub fn zpico_liveliness_collect_start(
         session: *mut zpico_session_t,
@@ -533,7 +533,7 @@ unsafe extern "C" {
         cap: usize,
     ) -> i32;
 
-    /// phase-428 W13 — the PURE half of the graph-cache sample handler: apply
+    /// The PURE half of the graph-cache sample handler: apply
     /// one liveliness sample to a NUL-separated token set in a caller buffer.
     /// PUT inserts once (a duplicate is a no-op), DELETE removes and closes the
     /// gap, a PUT that does not fit is counted in `dropped` and never truncated.
@@ -563,7 +563,7 @@ unsafe extern "C" {
         cap: usize,
     ) -> i32;
 
-    /// phase-381 / issue 0903 — the GRAPH CACHE, which replaces the per-question
+    /// The GRAPH CACHE, which replaces the per-question
     /// liveliness sweep.
     ///
     /// A liveliness get is an INTEREST under the hood, and a token only reaches
@@ -600,7 +600,7 @@ unsafe extern "C" {
 
     /// The session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if the handle is
     /// not a valid pool slot. Used to scope the Rust shim's process-global
-    /// service-buffer / reply-waker tables per session (issue 0376).
+    /// service-buffer / reply-waker tables per session.
     pub fn zpico_session_index(session: *mut zpico_session_t) -> i32;
 
     // Reply waker callback (for async service client) — per-session. The

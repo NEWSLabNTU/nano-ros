@@ -272,7 +272,7 @@ const LARGEST_PAYLOAD_CLASS: usize =
         SUBSCRIBER_BUFFER_SIZE
     };
 
-/// phase-412 -- a RAM record of what the payload-class allocator decided.
+/// A RAM record of what the payload-class allocator decided.
 ///
 /// # Why this is its own record and not a field of `boot_report`
 ///
@@ -377,7 +377,7 @@ pub struct SubscriberAllocReport {
 /// the magic is looking at a fully populated record. Not a doc LINK: the writer
 /// is private, and rustdoc rejects a public item linking to one (which is how
 /// this line's previous target, a ~~`record_alloc_ceilings`~~ that no longer
-/// exists, went unnoticed -- see phase-431 W6, the rustdoc red).
+/// exists, went unnoticed -- a rustdoc failure).
 pub const SUBSCRIBER_ALLOC_MAGIC: u32 = 0x53554241;
 /// Layout version for [`SubscriberAllocReport`].
 pub const SUBSCRIBER_ALLOC_VERSION: u32 = 7;
@@ -658,7 +658,7 @@ pub const fn reserved_payload_bytes() -> usize {
 }
 
 /// What the subscriber payload pools hold RIGHT NOW, across every live
-/// subscriber. The instantaneous half of phase-392 amendment B's question;
+/// subscriber. The instantaneous half of the pool-occupancy question;
 /// [`super::occupancy`] is the high-water half that samples it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LivePayload {
@@ -897,7 +897,7 @@ pub fn overflow_drops_total() -> u32 {
     OVERFLOW_DROPS.load(Ordering::Relaxed)
 }
 
-/// Issue 1979 — cumulative count, over every live subscriber, of samples a
+/// Cumulative count, over every live subscriber, of samples a
 /// FULL ring evicted, replaced or dropped. A full ring keeps the newest
 /// samples, so each one counted here is an older sample this process will
 /// never dispatch. A nonzero count means a consumer is slower than its
@@ -1995,7 +1995,7 @@ mod borrowing {
     use super::*;
 
     /// Backend-lent read-only view into the subscriber's static receive
-    /// buffer. Phase 124.D.3.c — borrows the head ring slot's payload
+    /// buffer. Borrows the head ring slot's payload
     /// for the lifetime of the view. The SPSC discipline guarantees
     /// the C producer never writes the slot `ring_head` points at, so
     /// no explicit lock is needed; `Drop` advances `ring_head`

@@ -22,7 +22,7 @@ extern "C" {
 #endif
 
 /* Network-wait relocated to <nros/platform_zephyr.h>
- * (`nros_platform_zephyr_wait_network`) in Phase 200.1 — RMW-independent. */
+ * (`nros_platform_zephyr_wait_network`) — RMW-independent. */
 
 /**
  * @brief Initialize and open a zenoh-pico session.

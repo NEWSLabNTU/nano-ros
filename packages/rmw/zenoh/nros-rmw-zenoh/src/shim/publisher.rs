@@ -949,10 +949,10 @@ impl ZenohPublisher {
         }
     }
 
-    /// issue 1341 — how many publishes this publisher's retention slot refused
+    /// How many publishes this publisher's retention slot refused
     /// because they exceeded `ZPICO_TL_RETAIN_BYTES`, and `None` when it is not
     /// a transient-local publisher at all. A counter rather than a log grep,
-    /// for the same reason the reply-slot refusals are one (phase-455 W1).
+    /// for the same reason the reply-slot refusals are one.
     pub fn transient_local_oversize_drops(&self) -> Option<u32> {
         self.retention
             .as_ref()
@@ -1255,7 +1255,7 @@ mod lending {
     /// `ZPICO_PUBLISHER_TX_BUFFER_SIZE` (default 1024). It is the ceiling
     /// `try_claim` enforces: a loan longer than this is `TooLarge`, so a
     /// consumer publishing images or scans through the zero-copy path raises
-    /// this knob rather than editing the crate (issue 0813).
+    /// this knob rather than editing the crate.
     pub const ZENOH_TX_BUF: usize = crate::config::PUBLISHER_TX_BUFFER_SIZE;
 
     /// Backend-owned arena for a `ZenohPublisher`. Single-slot;
@@ -1334,7 +1334,7 @@ mod lending {
     }
 
     impl<'a> ZenohSlot<'a> {
-        /// Phase 124.A.4.b — truncate the slot to `actual_len` bytes.
+        /// Truncate the slot to `actual_len` bytes.
         /// Called by the cffi `pub_commit` trampoline when the caller's
         /// `actual_len` is shorter than the originally loaned capacity.
         /// No-op when `actual_len >= self.bytes.len()`.
@@ -1349,7 +1349,7 @@ mod lending {
             self.bytes = unsafe { core::slice::from_raw_parts_mut(ptr, actual_len) };
         }
 
-        /// Issue 0812 — re-materialise a publisher's outstanding loan
+        /// Re-materialise a publisher's outstanding loan
         /// from nothing but its length.
         ///
         /// The arena is single-slot and `try_claim` always hands out a

@@ -30,7 +30,7 @@ pub(crate) mod config;
 pub mod keyexpr;
 pub mod zpico;
 
-/// Issue 0330 — **the** default zenoh router endpoint, owned by the zenoh
+/// **The** default zenoh router endpoint, owned by the zenoh
 /// backend.
 ///
 /// This is the single source of truth for the value. RMW-agnostic layers
@@ -166,7 +166,7 @@ mod cffi_register {
     /// `NROS_RMW_RET_OK` (0) on success. Idempotent — duplicate
     /// `("zenoh", vtable)` registrations are in-place overwrites.
     ///
-    /// Phase 124.A.4.b — when the `lending` feature is on, install
+    /// When the `lending` feature is on, install
     /// a vtable that overrides `pub_loan/_commit/_discard` with
     /// zenoh-pico-specific trampolines (zero-copy aliased publish).
     /// Without `lending`, the loan slots stay NULL and the runtime
