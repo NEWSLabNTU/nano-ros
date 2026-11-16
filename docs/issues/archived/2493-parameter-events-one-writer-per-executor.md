@@ -84,7 +84,8 @@ publisher, as stock.
   multiplies it by `InfraServices::param_nodes`, the zenoh liveliness default
   by the image's nodes, as `/rosout` already was. `check-infra-queryable-counts`
   still ties it to its one creation site.
-- **zenoh.** A VOLATILE publisher on a data key the session already publishes
+- **zenoh.** A VOLATILE publisher on one of the runtime's stock topics
+  (`/parameter_events`, `/rosout`), on a data key the session already publishes
   on, with the same declare-time options (reliability, express), shares that
   zenoh publisher: one data key expression, and a liveliness token, gid and
   sequence number per ROS publisher. The zenoh publisher is undeclared when
