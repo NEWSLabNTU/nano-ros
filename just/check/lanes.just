@@ -1199,6 +1199,11 @@ c: c-fmt
 cli-clippy:
     #!/usr/bin/env bash
     set -e
+    # Issue 2660 -- pin PYO3_PYTHON (scripts/build/pyo3-python.sh): unset, pyo3
+    # makes PATH a rebuild trigger and any PATH change rebuilds every pyo3 crate.
+    # shellcheck source=scripts/build/pyo3-python.sh
+    source scripts/build/pyo3-python.sh
+    nros_pin_pyo3_python
     cargo clippy --manifest-path packages/cli/Cargo.toml --workspace --all-targets \
         --exclude ros-launch-manifest-model \
         --exclude ros-launch-manifest-sched \
@@ -1244,6 +1249,16 @@ cli-fresh:
 launch-resolve-fresh:
     @bash scripts/check-launch-resolve-fresh.sh
 
+# Issue 2660 -- a PATH change does not rebuild pyo3. Unset, PYO3_PYTHON makes
+# pyo3-build-config register PATH as a rebuild trigger, so a consumer that put
+# `nros` on PATH rebuilt the resolver (~30 s on CI) on every call. Builds
+# pyo3-ffi from the resolver's lock in a scratch target: unpinned, a prepended
+# PATH entry must dirty it (the control); pinned by scripts/build/pyo3-python.sh,
+# it must stay Fresh. A cold pyo3-build-config compile: ~40 s at load 140.
+[group('needs:submodules')]
+pyo3-path-stable:
+    @bash scripts/check-pyo3-path-stable.sh
+
 # issue 1552 — the rosidl-codegen parity tests need a ROS 2 install. They used
 # to `return` (a PASS over nothing) on a host without one; they are `#[ignore]`d
 # now, so the plain run REPORTS them ignored, and this recipe runs them with
@@ -1273,6 +1288,11 @@ launch-resolve-fresh:
 cli-tests:
     #!/usr/bin/env bash
     set -e
+    # Issue 2660 -- pin PYO3_PYTHON (scripts/build/pyo3-python.sh): unset, pyo3
+    # makes PATH a rebuild trigger and any PATH change rebuilds every pyo3 crate.
+    # shellcheck source=scripts/build/pyo3-python.sh
+    source scripts/build/pyo3-python.sh
+    nros_pin_pyo3_python
     threads=4  # = the cpu:4 weight above
     cargo test --manifest-path packages/cli/Cargo.toml --workspace --quiet -- --test-threads="$threads"
     # phase-527 W3 — the runner packages workspace (RFC-0119 D5) is a SEPARATE

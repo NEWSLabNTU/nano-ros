@@ -645,6 +645,17 @@ now passes its own path on every CMake configure it starts (cmake, west,
 census). A bare `cmake` re-configure keeps the cache, and refuses a cached
 tool whose `--codegen-version` the tree does not accept.
 
+### I25 -- a PATH change does not rebuild the launch resolver
+
+**Status: DONE (2026-11-17).** [Issue 2660](../issues/archived/2660-pyo3-rebuilds-on-path-change.md).
+With `PYO3_PYTHON` unset, pyo3-build-config registers PATH as a rebuild
+trigger, so `just setup-launch-resolve` rebuilt pyo3-ffi and the resolver
+(about 30 s on CI) whenever PATH differed, as it does for a consumer that puts
+its `nros` on PATH. Every recipe that builds a pyo3 crate now pins
+`PYO3_PYTHON` to the interpreter pyo3 would find (`scripts/build/pyo3-python.sh`),
+and `just check pyo3-path-stable` holds a prepended PATH entry to a Fresh
+pyo3-ffi.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -761,6 +772,8 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       the codegen tool, and a bare re-configure refuses a cached tool outside
       the accepted codegen range; `build_verb_pipeline.rs` and
       `just check codegen-tool-cache` (issue 2652).
+- [x] I25: a PATH change leaves pyo3-ffi Fresh in every recipe that builds a
+      pyo3 crate; `check pyo3-path-stable` with an unpinned control (issue 2660).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -785,6 +798,10 @@ this phase will fix it.
 ## Issues homed here (2026-11-02)
 
 - [issue 2165](../issues/2165-zephyr-smp-nros-log-stops-after-four-records.md): on the island's Zephyr SMP image (`fvp_baser_aemv8r_smp`), only the four early-ring `nros_log` records reach the console. Every later record is lost with no `report_lost` warning. The same sources log normally on FreeRTOS.
+
+## Issues homed here (2026-11-17)
+
+- [issue 2660](../issues/archived/2660-pyo3-rebuilds-on-path-change.md) (GitHub #4084, resolved): the launch resolver rebuilt pyo3-ffi whenever PATH changed (I25).
 
 ## Issues homed here (2026-11-16)
 
