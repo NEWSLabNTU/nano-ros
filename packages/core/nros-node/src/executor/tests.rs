@@ -2737,10 +2737,19 @@ fn test_spin_once_result_counts() {
         services_handled: 1,
         subscription_errors: 0,
         service_errors: 0,
+        setup_errors: 0,
     };
     assert!(result.any_work());
     assert!(!result.any_errors());
     assert_eq!(result.total(), 4);
+
+    // RFC-0128 D8 -- a waiting executor-level open that failed is an error.
+    let result = SpinOnceResult {
+        setup_errors: 1,
+        ..SpinOnceResult::new()
+    };
+    assert!(result.any_errors());
+    assert_eq!(result.total_errors(), 1);
 }
 
 #[test]
@@ -19966,4 +19975,196 @@ mod reentry {
         // SAFETY: `p` came from `Box::into_raw` and is not used again.
         drop(unsafe { Box::from_raw(p) });
     }
+}
+
+// RFC-0128 D8 (phase-554 W3 slice B) -- an executor-level publisher that
+// waits for the primary node: the `/diagnostics` reporter's shape.
+const DIAG: &str = "/diagnostics";
+
+/// The reporter's open, as `nros::contract` hands it to the executor.
+unsafe fn open_diag_on_primary(
+    _ctx: *mut core::ffi::c_void,
+    domain: u32,
+    executor: &mut Executor<'_>,
+) -> Result<(), NodeError> {
+    executor
+        .create_executor_publisher(
+            DIAG,
+            "diagnostic_msgs/msg/DiagnosticArray",
+            "H",
+            QoSProfile::default(),
+            domain,
+        )
+        .map(|_| ())
+}
+
+/// An open that cannot succeed (a full pool, say).
+unsafe fn refuse_diag_open(
+    _ctx: *mut core::ffi::c_void,
+    _domain: u32,
+    _executor: &mut Executor<'_>,
+) -> Result<(), NodeError> {
+    Err(NodeError::NodeTableFull)
+}
+
+fn diag_opens(executor: &Executor<'_>) -> usize {
+    executor
+        .session()
+        .created_on
+        .borrow()
+        .iter()
+        .filter(|(n, _)| n.as_str() == DIAG)
+        .count()
+}
+
+#[test]
+fn a_reporter_armed_before_any_node_opens_on_the_primary_node_at_registration() {
+    let mut executor = executor_with_clock(MockSession::new());
+    executor.set_node_identity("configured", "/");
+    // Armed before any node exists, as every generated entry does.
+    unsafe { executor.open_on_primary_node(open_diag_on_primary, core::ptr::null_mut(), 0) }
+        .expect("deferred");
+    assert!(executor.primary_node_open_pending());
+    assert_eq!(
+        diag_opens(&executor),
+        0,
+        "nothing opens before a node exists"
+    );
+
+    executor
+        .node_builder("talker")
+        .build()
+        .expect("primary node");
+    // Open now, before any spin, under the primary node -- not the
+    // configured executor name.
+    assert!(!executor.primary_node_open_pending());
+    assert_eq!(
+        executor.session().created_node(DIAG).as_deref(),
+        Some("talker")
+    );
+
+    // A second node does not open it again, and neither does a spin.
+    executor
+        .node_builder("listener")
+        .build()
+        .expect("second node");
+    let _ = executor.spin_once(core::time::Duration::ZERO);
+    assert_eq!(diag_opens(&executor), 1);
+}
+
+#[test]
+fn a_reporter_armed_after_a_node_opens_on_the_primary_node_at_once() {
+    let mut executor = executor_with_clock(MockSession::new());
+    executor.set_node_identity("configured", "/");
+    executor.node_builder("talker").build().expect("node");
+    executor.node_builder("listener").build().expect("node");
+    unsafe { executor.open_on_primary_node(open_diag_on_primary, core::ptr::null_mut(), 0) }
+        .expect("opened");
+    assert!(!executor.primary_node_open_pending());
+    assert_eq!(
+        executor.session().created_node(DIAG).as_deref(),
+        Some("talker")
+    );
+}
+
+#[test]
+fn a_reporter_that_cannot_open_fails_the_primary_nodes_registration() {
+    let mut executor = executor_with_clock(MockSession::new());
+    unsafe { executor.open_on_primary_node(refuse_diag_open, core::ptr::null_mut(), 0) }
+        .expect("deferred");
+    assert!(
+        executor.node_builder("talker").build().is_err(),
+        "the open's failure is the registration's, never logged and dropped"
+    );
+    // No half-registered primary is left behind.
+    assert!(executor.nodes.is_empty());
+}
+
+#[test]
+fn a_zero_node_image_opens_its_reporter_under_the_configured_name_at_first_spin() {
+    // TEMPORARY path (phase-554 W3 slice C deletes it): no node is ever
+    // registered, so the configured name is the image's one node.
+    let mut executor = executor_with_clock(MockSession::new());
+    executor.set_node_identity("configured", "/");
+    unsafe { executor.open_on_primary_node(open_diag_on_primary, core::ptr::null_mut(), 0) }
+        .expect("deferred");
+    let r = executor.spin_once(core::time::Duration::ZERO);
+    assert_eq!(r.setup_errors, 0);
+    assert_eq!(
+        executor.session().created_node(DIAG).as_deref(),
+        Some("configured")
+    );
+    let _ = executor.spin_once(core::time::Duration::ZERO);
+    assert_eq!(diag_opens(&executor), 1, "it opens once");
+}
+
+#[test]
+fn a_zero_node_reporter_that_cannot_open_is_a_spin_error() {
+    let mut executor = executor_with_clock(MockSession::new());
+    unsafe { executor.open_on_primary_node(refuse_diag_open, core::ptr::null_mut(), 0) }
+        .expect("deferred");
+    assert!(
+        executor.spin_some(core::time::Duration::ZERO).is_err(),
+        "spin_some returns the failure"
+    );
+
+    let mut bare = executor_with_clock(MockSession::new());
+    unsafe { bare.open_on_primary_node(refuse_diag_open, core::ptr::null_mut(), 0) }
+        .expect("deferred");
+    let r = bare.spin_once(core::time::Duration::ZERO);
+    assert_eq!(r.setup_errors, 1, "a bare spin_once counts it");
+    assert!(r.any_errors());
+}
+
+#[test]
+fn the_first_spin_path_never_fires_when_a_node_exists() {
+    // The node was registered before arming, so the open ran at arming; the
+    // first-spin path must not open a second publisher.
+    let mut executor = executor_with_clock(MockSession::new());
+    executor.set_node_identity("configured", "/");
+    unsafe { executor.open_on_primary_node(open_diag_on_primary, core::ptr::null_mut(), 0) }
+        .expect("deferred");
+    executor.node_builder("talker").build().expect("node");
+    for _ in 0..3 {
+        let r = executor.spin_once(core::time::Duration::ZERO);
+        assert_eq!(r.setup_errors, 0);
+    }
+    assert_eq!(diag_opens(&executor), 1);
+    assert_ne!(
+        executor.session().created_node(DIAG).as_deref(),
+        Some("configured")
+    );
+}
+
+#[test]
+fn a_name_resolves_against_the_node_its_entity_registers_on() {
+    // RFC-0128 D8 (phase-554 W3 slice B) -- not against whichever identity
+    // `set_node_identity` left behind.
+    let mut executor = executor_with_clock(MockSession::new());
+    executor.set_node_identity("configured", "/");
+    let a = executor.node_builder("a").build().expect("node a");
+    let b = executor.node_builder("b").build().expect("node b");
+    executor.set_node_identity("stale", "/");
+    let on = |node| -> std::string::String {
+        executor
+            .resolve_entity_name_on(node, "~/cmd")
+            .expect("resolves")
+            .as_str()
+            .into()
+    };
+    assert_eq!(on(Some(b)), "/b/cmd");
+    assert_eq!(on(Some(a)), "/a/cmd");
+    // An executor-level entity belongs to the primary node.
+    assert_eq!(on(None), "/a/cmd");
+
+    // With no node, the configured name is the image's one node.
+    let mut direct = executor_with_clock(MockSession::new());
+    direct.set_node_identity("configured", "/");
+    assert_eq!(
+        direct
+            .resolve_entity_name_on(None, "~/cmd")
+            .expect("resolves")
+            .as_str(),
+        "/configured/cmd"
+    );
 }

@@ -5092,26 +5092,18 @@ impl EntityInventory {
             + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES
             + tl_queryables
             + infra_queryables;
-        // Issue 1676 -- plus the node the `/diagnostics` reporter is created
-        // on. It is created BEFORE any component node, with no node identity,
-        // so the RMW shim files it under the session's own name: in a
-        // multi-node image that name ("node") is none of the components', and
-        // the reporter claimed the last `NROS_RMW_MAX_NODES` slot -- measured,
-        // the listener's registration then failed `ConnectionFailed` from
-        // `claim_node_slot`. One slot, worst case: a single-node image's
-        // session carries that node's name and reuses its slot.
-        //
-        // Issue 1740 -- the LIFECYCLE family lands on that same name.
-        // `register_lifecycle_services` creates its five servers and its
-        // `transition_event` publisher on the EXECUTOR's node, which is the
-        // session's own name, so in a multi-node image it claims the same
-        // extra slot the reporter does. Measured on `linux_rust_qos` once a
-        // contract made the table exact (2 slots, 3 names): the image died at
-        // boot with `Capability { name: "lifecycle", reason:
-        // "Transport::ConnectionFailed" }`. Both land on ONE name, so they
-        // share ONE slot -- `||`, not a sum.
-        let max_nodes =
-            self.components().len() + usize::from(contract_reporters > 0 || self.infra.lifecycle);
+        // RFC-0128 D8 (phase-554 W3 slice B) -- the `/diagnostics` reporter
+        // and the lifecycle family live on DECLARED nodes now: the reporter
+        // opens on the primary node when it registers
+        // (`Executor::open_on_primary_node`), and a generated entry registers
+        // each lifecycle machine on its own component's node. So neither
+        // claims a node-table slot of its own any more. Issues 1676 and 1740
+        // held one spare slot for "the session's own name", which both used
+        // to land on; it is dropped. An image with NO component still needs
+        // one slot for the configured name its reporter or lifecycle family
+        // is announced under, so the floor is one, not a sum.
+        let own_name = usize::from(contract_reporters > 0 || self.infra.lifecycle);
+        let max_nodes = self.components().len().max(own_name);
         // Issue 1198 -- slot 0 is RESERVED for the default Fifo context
         // (`create_sched_context` searches `1..MAX_SC`), so the demand is one
         // plus whatever the schedule creates. See `DerivedEntityKnobs::max_sc`
@@ -5129,15 +5121,15 @@ impl EntityInventory {
         // on the field; every one is a count this derivation already made.
         let service_clients = n(EntityKind::ServiceClient.tag())
             + n(EntityKind::ActionClient.tag()) * ACTION_CLIENT_SERVICE_CLIENTS;
-        // Issue 1740 -- from the components and the reporter, NOT from
-        // `max_nodes`: that now holds a slot for the lifecycle family's node
-        // too, which this sum already adds as its own term below, and a node
-        // TABLE slot is not a liveliness TOKEN (the table is keyed by
-        // `claim_node_slot`, the tokens by `ensure_node_liveliness`).
-        let named_nodes = self.components().len() + usize::from(contract_reporters > 0);
-        let node_tokens = named_nodes.max(param_service_nodes)
-            + PRIMARY_NODE_LIVELINESS_TOKENS
-            + usize::from(self.infra.lifecycle);
+        // RFC-0128 D8 -- the named nodes are the node table's: the reporter
+        // and the lifecycle family announce under a component's node (or,
+        // with no component, the one configured name `max_nodes` floors at),
+        // so neither adds a node token of its own. A node TABLE slot is still
+        // not a liveliness TOKEN in general (the table is keyed by
+        // `claim_node_slot`, the tokens by `ensure_node_liveliness`); they
+        // agree here because both count the same names.
+        let named_nodes = max_nodes;
+        let node_tokens = named_nodes.max(param_service_nodes) + PRIMARY_NODE_LIVELINESS_TOKENS;
         // Issue 1713 -- the TL cache queryables declare no token (see the
         // field), so they are taken back out of the queryable term here.
         let max_liveliness = node_tokens
@@ -7360,7 +7352,9 @@ mod tests {
         let (pd, cd) = (p.derive(), c.derive());
         let (pk, ck) = (pd.knobs().expect("derived"), cd.knobs().expect("derived"));
         assert_eq!(ck.max_publishers, pk.max_publishers + 1, "the reporter");
-        assert_eq!(ck.max_nodes, pk.max_nodes + 1, "the node it is created on");
+        // RFC-0128 D8 -- the reporter opens on the primary node, so it
+        // claims no node-table slot of its own.
+        assert_eq!(ck.max_nodes, pk.max_nodes, "it lives on the primary node");
     }
 
     /// Issue 1729 -- `realtime-rust`'s `derived_bringup`, measured: two nodes,
@@ -8696,8 +8690,7 @@ contracts:
         );
     }
 
-    /// phase-412 W2 -- the runtime's own servers declare tokens too, and the
-    /// lifecycle family registers under the executor's node name.
+    /// phase-412 W2 -- the runtime's own servers declare tokens too.
     #[test]
     fn liveliness_counts_the_runtime_servers_the_bringup_declares() {
         let knobs = |features: &str| {
@@ -8712,10 +8705,10 @@ contracts:
         let both = knobs("param_services, lifecycle");
         assert_eq!(
             both.max_liveliness - none.max_liveliness,
-            both.infra_queryables + LIFECYCLE_SERVICE_PUBLISHERS + PARAM_EVENT_PUBLISHERS + 1,
+            both.infra_queryables + LIFECYCLE_SERVICE_PUBLISHERS + PARAM_EVENT_PUBLISHERS,
             "one token per runtime server, one for the `~/transition_event`
-             publisher (issue 1587), one for `/parameter_events` (issue 2023),
-             plus one node name for lifecycle"
+             publisher (issue 1587) and one for `/parameter_events` (issue 2023);
+             lifecycle lives on the components' nodes, so no node name of its own"
         );
         assert_eq!(
             both.infra_queryables,
@@ -8723,13 +8716,13 @@ contracts:
         );
     }
 
-    /// Issue 1740 -- the lifecycle family registers on the EXECUTOR's node
-    /// name, so a lifecycle image needs one node-table slot beyond its
-    /// components. Without it `linux_rust_qos`, sized exactly by its contract
-    /// (2 slots, 3 names), died at boot: `Capability { name: "lifecycle",
-    /// reason: "Transport::ConnectionFailed" }`.
+    /// Issue 1740 held one node-table slot beyond the components for the
+    /// lifecycle family, which registered on the EXECUTOR's node name
+    /// (`linux_rust_qos` died at boot without it). RFC-0128 D8 (phase-554 W3
+    /// slice B): a generated entry registers each machine on its own
+    /// component's node, so that slot is dropped.
     #[test]
-    fn a_lifecycle_image_holds_a_node_slot_for_the_executor() {
+    fn a_lifecycle_image_claims_no_node_slot_of_its_own() {
         let knobs = |features: &str| {
             EntityInventory::from_model("t", &(infra_model(features)).clone())
                 .expect("model describes wiring")
@@ -8742,19 +8735,18 @@ contracts:
         let lifecycle = knobs("lifecycle");
         let params = knobs("param_services");
         assert_eq!(
-            lifecycle.max_nodes - none.max_nodes,
-            1,
-            "the executor's own name claims one slot when lifecycle registers on it"
+            lifecycle.max_nodes, none.max_nodes,
+            "each machine lives on its component's node: no slot of its own"
         );
         assert_eq!(
             params.max_nodes, none.max_nodes,
             "the parameter family registers on each COMPONENT's node: no extra slot"
         );
-        // A node SLOT is not a liveliness TOKEN: the token count moves by the
-        // runtime's entities plus the one node name, exactly as before.
+        // ...and no node token of its own either: the token count moves by
+        // the runtime's entities only.
         assert_eq!(
             lifecycle.max_liveliness - none.max_liveliness,
-            LIFECYCLE_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_PUBLISHERS + 1
+            LIFECYCLE_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_PUBLISHERS
         );
     }
 
