@@ -735,7 +735,7 @@ impl<'s> Executor<'s> {
     /// Register a raw action server with custom buffer sizes.
     ///
     /// `spec.node_id` selects the target: `None` registers on the
-    /// executor's own node, `Some(id)` routes the server's 5 underlying
+    /// image's primary node, `Some(id)` routes the server's 5 underlying
     /// handles through the named Node's session.
     /// `spec.qos` applies to the action's three underlying service
     /// servers (send_goal / cancel_goal / get_result); the
@@ -1639,7 +1639,7 @@ impl<'s> Executor<'s> {
     /// Register a raw action client with explicit buffer sizes.
     ///
     /// `spec.node_id` selects the target: `None` registers on the
-    /// executor's own node, `Some(id)` routes the client's 4 underlying
+    /// image's primary node, `Some(id)` routes the client's 4 underlying
     /// handles through the named Node's session.
     #[doc(hidden)]
     pub fn register_action_client_raw_sized<
