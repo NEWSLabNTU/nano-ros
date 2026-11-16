@@ -70,8 +70,10 @@ maintainer approved it on 2026-11-16.
   an FVP, where it becomes `bp.hostbridge.userNetworking=0` and
   `bp.hostbridge.interfaceName=<dev>`. `"slirp"` adds nothing.
   `{ bridge = … }` is refused, because the FVP host bridge has no bridge mode.
-- **Image parameters.** `[image.<id>.run] params` holds the parameters an
-  image chooses. They are refused on a board whose emulator is not an FVP.
+- **Image parameters.** `[image.<id>.run.fvp] params` holds the parameters an
+  image chooses, nested under the emulator as the board's are. They APPEND to
+  `[image_defaults.run.fvp]`'s, as the board's are prepended to both. They are
+  refused on a board whose emulator is not an FVP.
 - **Carrier.** `nros build`'s west road passes all of them, the board's first,
   to Zephyr's `armfvp.cmake` as `-DARMFVP_EXTRA_FLAGS=-C;<p>;…`. It always
   passes the argument on an FVP board, empty when nothing is stated, so a

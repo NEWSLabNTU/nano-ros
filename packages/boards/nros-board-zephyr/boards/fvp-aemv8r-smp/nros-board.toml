@@ -57,7 +57,7 @@ emulator = "fvp:FVP_BaseR_AEMv8R"
 # what lets it receive multicast (DDS discovery). Zephyr's own line enables the
 # NIC only when the image's Kconfig selects its driver, so the board states it
 # for every image. `nros build` hands these, with the image's `[image.<id>.run]`
-# `nic` and `params`, to Zephyr's `armfvp.cmake` as `ARMFVP_EXTRA_FLAGS` at
+# `nic` and `[image.<id>.run.fvp] params`, to Zephyr's `armfvp.cmake` as `ARMFVP_EXTRA_FLAGS` at
 # CONFIGURE, which is where both `west build -t run` and `nros run` read them.
 [board.run.fvp]
 params = ["bp.smsc_91c111.enabled=1", "bp.smsc_91c111.promiscuous=1"]
