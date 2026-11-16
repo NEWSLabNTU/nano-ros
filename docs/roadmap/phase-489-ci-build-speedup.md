@@ -1,6 +1,8 @@
 # Phase 489 — CI build speed-up: the required gate first, then the build-bound lanes
 
-**Status (2026-11-05). The required gate is back under W1's target:
+**Status (2026-11-17). OPEN on two runner-side items: W2 and W6 are BLOCKED
+on runner capacity and a pinned CI re-run. Every other item is DONE, and W7
+is DROPPED.** The required gate is back under W1's target:
 `gate.yml` on `merge_group` has a median of 20.1 min (range 16.1–37.5) over
 the 20 successful runs after W8's last part landed (41874153706 …
 41931428840, 2026-11-04/05), against 37.1 min before W8. Measured as below:
@@ -153,6 +155,15 @@ a median of **15.2 min** (11.1–21.7) against the 25-min target and the
 is runner queueing, not the gate.
 
 ### W2 — run the gate's heavy siblings on the self-hosted runners
+
+- **Status:** BLOCKED (2026-11-17) on runner capacity, an operator decision
+  outside this repo. The routing is in `gate.yml` and switched off
+  (`vars.NROS_GATE_SELF_HOSTED` unset). Remaining step: enough runners that
+  queue L3 and the siblings do not starve each other, then a green
+  `workflow_dispatch` on the pool, then the variable on and the acceptance
+  median taken. Three runners are registered again on 2026-11-17
+  (`newslab-118-server`, `newslab-server-241`, `newslab-server-241-queue`),
+  so the capacity question can be re-asked; nothing here has been re-tried.
 
 Three self-hosted runners are idle most of the time, and they keep warm
 `target/` directories that a hosted runner never has. Route the cargo-heavy
@@ -653,6 +664,21 @@ gates cost about 80 + 39 s solo.
 
 ### W6 — a persistent build cache for the fixture lanes
 
+- **Status:** BLOCKED (2026-11-17). Local acceptance is met (both no-change
+  re-runs under 10 %, below). The remaining step is the CI half: a NO-CHANGE
+  second run of each self-hosted lane on the same runner. `run-matrix` cannot
+  pick its runner and main moves between runs, so that needs a
+  `workflow_dispatch` pair on one SHA pinned to one runner. Live-peer and the
+  nightly ports run on hosted VMs with no persistent tree, and are out of
+  this item's reach.
+  Checked 2026-11-17: that pair cannot be pinned without changing
+  `run-matrix.yml`. Its `workflow_dispatch` takes no inputs, and its
+  `runs-on` (`[self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]`)
+  matches both `newslab-118-server` and `newslab-server-241`, which carry
+  identical labels. Pinning needs a runner input or a per-host label, i.e. a
+  workflow or runner-registration change, so the item stays BLOCKED on that
+  decision.
+
 Live-peer (84.5 + 33.7 min of fixture build), run-matrix (about 30 min a
 tier) and the nightly ports (23–47 min each) are build-bound, and they run on
 self-hosted runners that could keep warm build trees. Measure what the
@@ -886,6 +912,12 @@ is W7's slow runner.
 
 ### W7 — find out why `newslab-server-241` is 2–5× slower (moot: runner gone)
 
+- **Status:** DROPPED (2026-11-17). Moot: on 2026-11-03 the runner was not
+  registered, so its acceptance could not be measured (below). It is
+  registered again on 2026-11-17, as a new host question: measure it against
+  the history here before it takes the critical-path job, as a new item if
+  it does.
+
 Compare `nproc`, the jobserver budget, disk type and free space, and other
 tenants (CLAUDE.md: `/home` is shared by 14 users) across the three runners.
 Until it is fixed, consider a label that keeps the critical-path L3 job off
@@ -907,6 +939,10 @@ before it takes the critical-path job.
 two runners'.
 
 ### W8 — take `template-copy-out` off the gate's critical path
+
+- **Status:** DONE (2026-11-05) on its time target (gate `merge_group`
+  median 37.1 to 20.1 min). Its second half, "not the longest job in most
+  runs", is recorded below as not met and not worth chasing.
 
 `check / template-copy-out` became the gate's critical path when it joined the
 merge queue on 2026-10-17 (eda59e4126, issue 1453). It is the longest job in
@@ -1149,7 +1185,7 @@ Re-measure after a day with the queue runner up. Fetch each run's jobs, sum
 
 ### W11 — a push to main does not re-verify what the queue verified
 
-- **Status:** OPEN (2026-11-14): landed, waiting for the "after" measurement
+- **Status:** DONE (2026-11-17). After, measured below.
 
 User-accepted, from the manager, 2026-11-14 (HEADGREEN was dropped in favour
 of this). `main` is rebase-merged, so the commit a push brings is the commit
@@ -1200,10 +1236,30 @@ expects the push run.
 the job-min of each push run, and whether its SHA was queue-verified. Done
 when it reads near 515 job-min (the warms alone) for the same merge rate.
 
+**Measured (2026-11-17)**, `gate.yml` on `push` to main, same query, two
+13 h windows after fd962a1cfe landed:
+
+| window | runs | job-min | runs that skipped the fast tier |
+| --- | --- | --- | --- |
+| before, 2026-11-14 05:00-18:00Z | 33 | 1,295 | 0 of 33 |
+| 2026-11-15 03:00-16:00Z | 31 | 597 | 31 of 31 |
+| 2026-11-16 03:00-16:00Z | 31 | 591 | 31 of 31 |
+
+By job, 2026-11-16 window:
+- warm the compile-tier cache: 543.9 job-min;
+- warm the SDK-store cache: 39.6;
+- `changes`: 5.8;
+- `CI`: 1.4;
+- the four skipped jobs: 0.
+
+The skippable 775 job-min went to 0. What is left is the warms, which
+W11 does not touch. They are about 75 job-min above the 515 target
+because the compile-tier warm itself grew, from 13.6 to 17.5 job-min a
+run.
+
 ### W12 — a docs-only batch skips the heavy queue siblings
 
-- **Status:** OPEN (the after-measure waits on docs-only batches through the
-  queue).
+- **Status:** DONE (2026-11-17). After, measured below.
 
 **Problem.** `changes` did not run on `merge_group`: `dorny/paths-filter` has
 no base ref there, so the job was skipped and every sibling's
@@ -1260,6 +1316,19 @@ the shallow test turns its case red.
 
 **Acceptance.** A docs-only batch's queue time and job-minutes, after,
 against the numbers above.
+
+**Measured (2026-11-17).** Successful `merge_group` gate runs from
+2026-11-15 03:00Z to 2026-11-17 (145 runs). A batch counts as docs-only when
+its heavy siblings (`cli-tests`) were skipped:
+
+| batch | n | wall, median (mean) | job-min, median (mean) |
+| --- | --- | --- | --- |
+| docs-only, before | 41 | 23.2 min (25.7) | 132.3 (137.5) |
+| **docs-only, after** | 51 | **14.2 min (15.1)** | **20.2 (20.5)** |
+| code, after | 94 | 24.9 min (24.6) | 141.6 (138.8) |
+
+Under the expected "at most about 18 min wall and 30 job-min". A code
+batch costs what it did.
 
 ### W13 — one token pool per build run
 
