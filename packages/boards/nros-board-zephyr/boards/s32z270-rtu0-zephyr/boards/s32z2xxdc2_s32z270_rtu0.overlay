@@ -1,0 +1,43 @@
+/*
+ * Copyright (c) 2022-2023, Arm Limited.
+ * Copyright (c) 2026, NEWSLab NTU.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * s32z270-rtu0-zephyr (`s32z2xxdc2@D/s32z270/rtu0`, issue 2631). Applied on
+ * top of Zephyr's own revision-D overlay, which already routes the console to
+ * uart9, and its RTU0 devicetree, which already chooses can0 as the canbus.
+ * From the ASI reference consumer's board package.
+ */
+
+/ {
+	soc {
+		/* 7 MiB of SRAM for the image: a nano-ros C++ image with Cyclone
+		 * DDS does not fit the RTU0's default sram0. */
+		sram2: memory@32100000 {
+			compatible = "mmio-sram";
+			reg = <0x32100000 DT_SIZE_M(7)>;
+		};
+	};
+
+	chosen {
+		zephyr,sram = &sram2;
+	};
+};
+
+/* A locally administered unicast MAC. Two boards on one link must not share
+ * it: override `local-mac-address` in the application's overlay. */
+&enetc_psi0 {
+	local-mac-address = [BA DA 01 04 57 E2];
+};
+
+/* The board's ethernet PHY answers at MDIO address 2, not the 7 Zephyr's
+ * board dtsi names. */
+&emdio {
+	/delete-node/ ethernet-phy@7;
+
+	phy0: ethernet-phy@2 {
+		compatible = "ethernet-phy";
+		reg = <0x2>;
+		status = "okay";
+	};
+};

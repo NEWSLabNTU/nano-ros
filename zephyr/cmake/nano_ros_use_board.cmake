@@ -127,7 +127,10 @@ function(nano_ros_use_board NAME)
     # Replicate Zephyr's app-overlay convention here BEFORE appending ours,
     # only when the consumer has not already curated the list.
     if(NOT DTC_OVERLAY_FILE)
-        string(REGEX REPLACE "[/@]" "_" _nros_board_norm "${NROS_BOARD_ZEPHYR_ID}")
+        # Issue 2631 -- Zephyr's own stem: the revision (`board@rev/...`) is
+        # dropped, not flattened in place (`zephyr_build_string` puts it last).
+        string(REGEX REPLACE "^([^/@]*)@[^/]*" "\\1" _nros_board_norm "${NROS_BOARD_ZEPHYR_ID}")
+        string(REPLACE "/" "_" _nros_board_norm "${_nros_board_norm}")
         foreach(_app_ovl
                 "${CMAKE_CURRENT_SOURCE_DIR}/boards/${_nros_board_norm}.overlay"
                 "${CMAKE_CURRENT_SOURCE_DIR}/app.overlay")

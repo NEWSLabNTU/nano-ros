@@ -190,7 +190,7 @@ fn render_descriptor(args: &NewArgs) -> String {
             "\n[board.zephyr]\n\
              west_board = \"{wb}\"\n\
              # Derived, so absent on purpose: prj.conf and\n\
-             # `boards/<west_board with / and @ as _>.{{conf,overlay}}`,\n\
+             # `boards/<west_board, / as _, no @revision>.{{conf,overlay}}`,\n\
              # present-if-exists. Zephyr's own board definition selects the\n\
              # emulator `west build -t run` drives.\n"
         ));
@@ -320,13 +320,10 @@ fn next_steps(args: &NewArgs, dir: &Path) -> Vec<String> {
         out.push("packages/boards/board-support.toml  # row added at runs = \"none\"".into());
     }
     if args.platform == "zephyr" {
-        let flat: String = args
-            .west_board
-            .as_deref()
-            .unwrap_or("")
-            .chars()
-            .map(|c| if matches!(c, '/' | '@' | '.') { '_' } else { c })
-            .collect();
+        // Issue 2631 -- the one rule the build reads the files by.
+        let flat = crate::orchestration::board_projection::flatten_board_id(
+            args.west_board.as_deref().unwrap_or(""),
+        );
         out.push(format!(
             "{}/boards/{flat}.conf      # optional, picked up if present",
             dir.display()

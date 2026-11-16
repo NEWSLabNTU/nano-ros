@@ -42,23 +42,39 @@ use super::board_descriptor::BoardDescriptor;
 /// `fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp` →
 /// `fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp`.
 ///
-/// `/` separates the hwv2 `<board>/<soc>/<variant>` triple. `@` and `.` are
-/// here for the REVISION form: a revision is spelled `board@1.5` on the command
-/// line and board_1_5 in the per-revision file names, so a rule that handled
-/// only `/` would silently look for a file nobody writes.
+/// `/` separates the hwv2 `<board>/<soc>/<variant>` triple. A board REVISION
+/// (`board@rev/soc/variant`, issue 2631) is not part of the stem: Zephyr's
+/// `zephyr_build_string` joins the board and its qualifiers, and puts the
+/// revision LAST (`board_soc_variant_<rev>`, `.` in it as `_`). A descriptor
+/// carries its revision in `west_board`, so it describes that revision only,
+/// and its revision-less file is the one it ships. Flattening the `@` in place
+/// named `s32z2xxdc2_D_s32z270_rtu0`, a file Zephyr never looks for.
 pub fn flatten_board_id(id: &str) -> String {
-    id.chars()
-        .map(|c| if matches!(c, '/' | '@' | '.') { '_' } else { c })
-        .collect()
+    strip_board_revision(id).replace('/', "_")
+}
+
+/// `board@rev/soc/variant` → `board/soc/variant`; an id with no revision is
+/// returned as it is. Issue 2631.
+pub fn strip_board_revision(id: &str) -> String {
+    let (board, rest) = id.split_once('/').map_or((id, ""), |(b, r)| (b, r));
+    let board = board.split_once('@').map_or(board, |(b, _)| b);
+    if rest.is_empty() {
+        board.to_string()
+    } else {
+        format!("{board}/{rest}")
+    }
 }
 
 /// Kconfig symbol for a Zephyr board id's BOARD, e.g.
 /// `fvp_baser_aemv8r/...` → `BOARD_FVP_BASER_AEMV8R`.
 ///
 /// Zephyr's `BOARD_<name>` symbol names the BOARD, which is the first
-/// `/`-separated segment — not the SoC and not the variant.
+/// `/`-separated segment — not the SoC, not the variant, and not the revision
+/// (`s32z2xxdc2@D/...` → `BOARD_S32Z2XXDC2`; with the `@D` kept the symbol is
+/// not a Kconfig identifier and `RUST_SUPPORTED` stays off — issue 2631).
 pub fn board_kconfig_symbol(id: &str) -> String {
-    let board = id.split('/').next().unwrap_or(id);
+    let stripped = strip_board_revision(id);
+    let board = stripped.split('/').next().unwrap_or(&stripped);
     format!("BOARD_{}", board.to_uppercase())
 }
 
@@ -294,9 +310,22 @@ mod tests {
             flatten_board_id("fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp"),
             "fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp"
         );
-        // A board REVISION uses `@`, and Zephyr flattens that too. The rule
-        // `board.cmake` documented only mentioned `/`.
-        assert_eq!(flatten_board_id("plank@1.5/soc"), "plank_1_5_soc");
+        // Issue 2631 -- a board REVISION is not part of the stem: Zephyr's
+        // `zephyr_build_string` puts it last, and the revision-less file is the
+        // one a per-revision descriptor ships.
+        assert_eq!(flatten_board_id("plank@1.5/soc"), "plank_soc");
+        assert_eq!(
+            flatten_board_id("s32z2xxdc2@D/s32z270/rtu0"),
+            "s32z2xxdc2_s32z270_rtu0"
+        );
+        assert_eq!(flatten_board_id("plank@2"), "plank");
+    }
+
+    #[test]
+    fn a_revision_is_stripped_from_the_board_segment_only() {
+        assert_eq!(strip_board_revision("s32z2xxdc2@D/s32z270/rtu0"), "s32z2xxdc2/s32z270/rtu0");
+        assert_eq!(strip_board_revision("native_sim/native/64"), "native_sim/native/64");
+        assert_eq!(strip_board_revision("plank@1.5"), "plank");
     }
 
     #[test]
@@ -308,5 +337,7 @@ mod tests {
             board_kconfig_symbol("fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp"),
             "BOARD_FVP_BASER_AEMV8R"
         );
+        // Issue 2631 -- nor the revision.
+        assert_eq!(board_kconfig_symbol("s32z2xxdc2@D/s32z270/rtu0"), "BOARD_S32Z2XXDC2");
     }
 }
