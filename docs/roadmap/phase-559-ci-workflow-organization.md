@@ -937,3 +937,7 @@ an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
   check::build gates that run up to 22 processes (the token pool's over-weight
   report). Parked: fix one only when it measures as a problem, the way
   `cli-tests` was fixed (`cpu:4`, 2026-11-16).
+- [issue 2648](../issues/2648-threadx-linux-c-pubsub-listener-exits-156.md) —
+  the threadx-linux C pubsub listener's intermittent exit 156 (`-100`), seen
+  on W12's acceptance run. Its log predates #3984, so the cause is not named;
+  the next red after #3984 names it.
