@@ -8,6 +8,11 @@
 #
 # No emulator models this SoC, so the board builds and links only here. The
 # first consumer is ASI's `s32z` image.
+#
+# What an image on this board states itself (issue 2631, measured by a link):
+# `CONFIG_MAIN_STACK_SIZE` (the S32ZE SoC defconfig's 1024 wins over the nros
+# module's default) and its C++ runtime. `hal_nxp` is not in nano-ros's own
+# west allowlist (`[zephyr_module.hal_nxp]`), so the consumer's manifest names it.
 
 [[board]]
 names = ["s32z270-rtu0-zephyr"]
