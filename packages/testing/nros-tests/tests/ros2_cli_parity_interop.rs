@@ -92,18 +92,6 @@ fn hold_gap(c: &Compared, what: &str, gap_present: impl Fn(&Compared) -> bool) {
     }
 }
 
-/// The plain-form counterpart of [`hold_gap`] for a predicate that is not an
-/// equality: fails with `what` when `still_differs` is false.
-fn hold_gap_by(still_differs: bool, what: &str, query: &str, evidence: &str) {
-    if !still_differs {
-        panic!(
-            "{what}: nano-ros now answers `ros2 {query}` as stock ROS 2 does. This test held \
-             that difference as a known gap so that a fix would be noticed. Change it to the \
-             plain compatibility check and close the gap it tracked.\n\n{evidence}"
-        );
-    }
-}
-
 fn has_line(a: &CliAnswer, needle: &str) -> bool {
     a.output.lines().any(|l| l.contains(needle))
 }
@@ -227,20 +215,22 @@ fn each_node_of_a_two_node_image_serves_the_parameter_services_as_stock_does() {
     }
 }
 
-/// Expected-failure: every stock node publishes its own `/parameter_events`;
-/// in a two-node nano-ros image only the first node does.
-// design gap: one /parameter_events writer per executor (issue 2023); separate issue pending
+/// Matches stock: every node of a two-node image publishes its own
+/// `/parameter_events`, as every stock node does.
+///
+/// Issue 2493 (resolved): the executor had one `/parameter_events` writer,
+/// announced under the first node, so `ros2 topic info -v` listed `/alpha`
+/// only. Each node now has its own writer; on zenoh they share one data key
+/// expression, with a publisher liveliness token per node.
 #[test]
-fn second_node_as_parameter_events_publisher_compared_with_stock() {
+fn each_node_of_a_two_node_image_publishes_parameter_events_as_stock_does() {
     let pair = param_pair();
     params_discovered(&pair);
 
     // The query is graph-wide, so the publishers are read per side rather than
     // diffed: the nano-ros graph holds two nodes and the stock graph one.
-    let publishers = |side: &GraphSide| {
-        let a = side.query_until("topic info -v /parameter_events", SETTLE, |a| {
-            has_line(a, "Endpoint type: PUBLISHER")
-        });
+    let publishers = |side: &GraphSide, ready: &dyn Fn(&CliAnswer) -> bool| {
+        let a = side.query_until("topic info -v /parameter_events", SETTLE, ready);
         let names: Vec<String> = a
             .output
             .lines()
@@ -250,22 +240,24 @@ fn second_node_as_parameter_events_publisher_compared_with_stock() {
             .collect();
         (names, a)
     };
-    let (stock_pubs, stock_answer) = publishers(&pair.stock);
+    let (stock_pubs, stock_answer) =
+        publishers(&pair.stock, &|a| has_line(a, "Endpoint type: PUBLISHER"));
     assert!(
         stock_pubs.contains(&pair.stock.node),
         "a stock node publishes its own /parameter_events.\n{stock_answer}"
     );
-    let (nano_pubs, nano_answer) = publishers(&pair.nano);
-    assert!(
-        nano_pubs.iter().any(|n| n == "/alpha"),
-        "the first node of the image publishes /parameter_events.\n{nano_answer}"
-    );
-    hold_gap_by(
-        !nano_pubs.iter().any(|n| n == "/beta"),
-        "the second node of an image as a /parameter_events publisher",
-        "topic info -v /parameter_events",
-        &format!("nano-ros answered:\n{nano_answer}\n\nstock ROS 2 answered:\n{stock_answer}"),
-    );
+    // Ready once both nodes are listed, so a half-discovered graph is not read.
+    let (nano_pubs, nano_answer) = publishers(&pair.nano, &|a| {
+        has_line(a, "Node name: alpha") && has_line(a, "Node name: beta")
+    });
+    for node in ["/alpha", "/beta"] {
+        assert!(
+            nano_pubs.iter().any(|n| n == node),
+            "node {node} of a two-node image publishes /parameter_events, as a stock \
+             node does.\n\nnano-ros answered:\n{nano_answer}\n\nstock ROS 2 \
+             answered:\n{stock_answer}"
+        );
+    }
 }
 
 /// Expected-failure, issue 2483: every stock node declares `use_sim_time`

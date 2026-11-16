@@ -43,6 +43,7 @@ mod bump;
 pub mod entity_gid;
 mod events;
 mod matched;
+mod node_topic;
 pub mod occupancy;
 pub mod publisher;
 pub mod qos;
@@ -81,6 +82,7 @@ use crate::{
 pub use crate::zpico::ZenohId;
 
 // Re-export submodule types
+pub use node_topic::NodeTopicWriter;
 pub use publisher::ZenohPublisher;
 pub use service::{
     InboxDropStats, InboxRing, InboxSpec, InboxStorage, ZenohServiceClient, ZenohServiceServer,

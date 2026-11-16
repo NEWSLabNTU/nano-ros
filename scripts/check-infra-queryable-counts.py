@@ -53,12 +53,13 @@ GROUPS = [
         "LIFECYCLE_SERVICE_PUBLISHERS",
         LIFECYCLE,
     ),
-    # Issue 2023 — the parameter family's ONE `/parameter_events` writer, per
-    # executor. Same reasoning as the lifecycle publisher row: VOLATILE, so no
-    # queryable, but a publisher slot and a liveliness token the entity
-    # inventory and the zenoh liveliness default both mirror.
+    # Issue 2023 / 2493 — the parameter family's `/parameter_events` writer,
+    # one PER NODE since issue 2493 (as stock). Same reasoning as the lifecycle
+    # publisher row: VOLATILE, so no queryable, but a publisher slot and a
+    # liveliness token per node that the entity inventory and the zenoh
+    # liveliness default multiply by the parameter nodes.
     (
-        "ROS parameter-event publisher",
+        "ROS parameter-event publisher (per node)",
         "create_param_event_pub",
         "PARAM_EVENT_PUBLISHERS",
         PARAMS,

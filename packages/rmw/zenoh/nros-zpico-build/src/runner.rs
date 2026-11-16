@@ -46,9 +46,12 @@ use nros_sizing_descriptor::infra::{
 /// two above.
 const LIFECYCLE_SERVICE_PUBLISHERS: usize = 1;
 
-/// Publishers the ROS parameter family claims (`/parameter_events`, one per
-/// executor), mirroring `nros_node::parameter_services::PARAM_EVENT_PUBLISHERS`
-/// (issue 2023). A liveliness token, no queryable; held like the one above.
+/// Publishers the ROS parameter family claims PER NODE (`/parameter_events`,
+/// one per node since issue 2493, as stock), mirroring
+/// `nros_node::parameter_services::PARAM_EVENT_PUBLISHERS` (issue 2023). A
+/// liveliness token each, no queryable; held like the one above. The shim
+/// backs every node's writer with one zenoh publisher, so the token is what
+/// each node costs here, not a publisher slot.
 const PARAM_EVENT_PUBLISHERS: usize = 1;
 
 /// The configured name's node token. The session no longer declares it at
@@ -637,7 +640,12 @@ fn liveliness_with_runtime(
         } else {
             0
         }
-        + if param { PARAM_EVENT_PUBLISHERS } else { 0 }
+        // Issue 2493 -- each node's `/parameter_events` writer's token.
+        + if param {
+            PARAM_EVENT_PUBLISHERS * nodes_here
+        } else {
+            0
+        }
         // phase-556 W13 -- each node's `/rosout` writer's token.
         + if rosout {
             ROSOUT_PUBLISHERS * nodes_here
@@ -1116,8 +1124,8 @@ mod liveliness_default_tests {
     /// shim's creation calls: the session's node, two node names, three
     /// application endpoints, the parameter family on both nodes, the
     /// lifecycle family's five servers and its `transition_event` publisher,
-    /// and (issue 2023) the parameter family's one `/parameter_events` writer.
-    const NATIVE_RUST_QOS_TOKENS: usize = 1 + 2 + 3 + 6 * 2 + 5 + 1 + 1;
+    /// and (issues 2023, 2493) each node's `/parameter_events` writer.
+    const NATIVE_RUST_QOS_TOKENS: usize = 1 + 2 + 3 + 6 * 2 + 5 + 1 + 2;
 
     #[test]
     fn a_param_and_lifecycle_image_on_two_nodes_is_not_short() {
@@ -1141,8 +1149,8 @@ mod liveliness_default_tests {
         assert!(got < NATIVE_RUST_QOS_TOKENS);
         assert_eq!(
             NATIVE_RUST_QOS_TOKENS - got,
-            8 + PARAM_EVENT_PUBLISHERS,
-            "the issue's eight lost services, plus issue 2023's /parameter_events writer"
+            8 + 2 * PARAM_EVENT_PUBLISHERS,
+            "the issue's eight lost services, plus each node's /parameter_events writer"
         );
     }
 
@@ -1165,7 +1173,7 @@ mod liveliness_default_tests {
             "session node + one node name + two entities"
         );
         let param = liveliness_default_from(Some(2), Some(1), Some("param"), Some("1"), false);
-        // six servers per node, one `/parameter_events` writer per executor.
+        // six servers and one `/parameter_events` writer per node.
         assert_eq!(
             param - base,
             PARAM_SERVICE_QUERYABLES + PARAM_EVENT_PUBLISHERS
@@ -1178,7 +1186,10 @@ mod liveliness_default_tests {
         );
         // The parameter family is per NODE.
         let two = liveliness_default_from(Some(2), Some(2), Some("param"), Some("2"), false);
-        assert_eq!(two - param, 1 + PARAM_SERVICE_QUERYABLES);
+        assert_eq!(
+            two - param,
+            1 + PARAM_SERVICE_QUERYABLES + PARAM_EVENT_PUBLISHERS
+        );
         // phase-556 W13 -- `/rosout`: one writer's token per node, no server,
         // no node name.
         let rosout = liveliness_default_from(Some(2), Some(1), Some("rosout"), Some("1"), false);
@@ -1216,9 +1227,9 @@ mod liveliness_default_tests {
 
     /// Issue 2482 -- the tokens a two-node owned image declares
     /// (`param-two-node-talker`): the session's node, two node names, a
-    /// publisher on each, the parameter family on both nodes and its one
-    /// `/parameter_events` writer.
-    const TWO_NODE_PARAM_TOKENS: usize = 1 + 2 + 2 + 6 * 2 + PARAM_EVENT_PUBLISHERS;
+    /// publisher on each, the parameter family on both nodes and each node's
+    /// `/parameter_events` writer (issue 2493).
+    const TWO_NODE_PARAM_TOKENS: usize = 1 + 2 + 2 + 6 * 2 + 2 * PARAM_EVENT_PUBLISHERS;
 
     /// Issue 2482 -- a HOSTED image that states nothing (an owned entry with
     /// no model) prices the runtime's families present, as its queryable

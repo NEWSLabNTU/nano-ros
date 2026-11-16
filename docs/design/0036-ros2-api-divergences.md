@@ -127,11 +127,17 @@ What still diverges, by name:
 | ROS 2 | nano-ros | why | owner |
 |---|---|---|---|
 | `/rosout`: one publisher per node, RELIABLE, TRANSIENT_LOCAL, KEEP_LAST(1000), 10 s lifespan | VOLATILE, KEEP_LAST(queue depth), RELIABLE, 10 s lifespan, one publisher per node (owned by the executor since phase-556 W13); `rclc_rosout_qos_default()` gives upstream's TRANSIENT_LOCAL profile on a target that has budgeted for it | a transient-local writer retains history: on zenoh one retention slot plus one queryable, out of 8 on an embedded build. A tool that subscribes after boot misses the boot records; `ros2 topic echo /rosout` still matches | phase-556 W13 (step 2 moves `/rosout` to one writer per node) |
-| `/parameter_events`: every node is a publisher | one publisher per executor, announced under the first node that enabled events; every event still names its node | one handle is what an RTOS image affords beside the store (RFC-0105 D8) | [issue 2493](../issues/2493-parameter-events-one-writer-per-executor.md), phase-556 W14 (moves to one per node) |
 | every node subscribes to `/parameter_events`, to follow `use_sim_time` | no subscription | a nano-ros node declares no `use_sim_time`, so it has nothing to follow | [issue 2483](../issues/2483-use-sim-time-not-declared.md), phase-556 W11 |
 | `use_sim_time` declared (bool, default false) on every node | not declared; `ros2 param set <node> use_sim_time true` is refused | not yet decided whether it switches ROS time at runtime or is a read-only build-time value | [issue 2483](../issues/2483-use-sim-time-not-declared.md), phase-556 W11 |
 | `GetParameters` / `DescribeParameters` answer an undeclared name with no entry | a filler entry, so `ros2 param get` exits 0; delete and off-step refusals give a different reason | open | [issue 2484](../issues/2484-param-service-undeclared-replies.md), phase-556 W12 |
 | every node has them | the Pico W and PX4 example images declare `node_interfaces = "none"` once the default flips | the two opt-outs the ruling names, where memory or the backend does not afford them | phase-556 W13 step 3 |
+
+No longer a divergence: `/parameter_events` has one publisher per node, as
+stock, since phase-556 W14
+([issue 2493](../issues/archived/2493-parameter-events-one-writer-per-executor.md),
+resolved). It was one per executor, announced under the first node. On zenoh
+the nodes' writers share one data key expression, each with its own publisher
+liveliness token and gid; on DDS each node has an ordinary writer.
 
 ### Reduced / omitted surface
 

@@ -223,6 +223,39 @@ pub struct ZenohSession {
     /// the knob: the cache lives entirely in `zpico.c`, and a Rust-side flag
     /// would be a second consumer that can disagree with the one that decides.
     graph_discovery_off: bool,
+    /// Issue 2493 -- which data key each live zenoh publisher handle of this
+    /// session publishes on, indexed by handle, so a second VOLATILE ROS
+    /// publisher on a key this session already publishes on shares that zenoh
+    /// publisher (`share_data_publisher`) instead of declaring another.
+    ///
+    /// Overwritten whenever a handle is declared, so an entry never names a
+    /// key its handle has stopped publishing on; and a share is granted only
+    /// while the handle still has a holder (`Context::share_publisher`), so an
+    /// entry left behind by a dropped publisher is inert.
+    data_keys: [Option<DataKey>; crate::zpico::ZPICO_MAX_PUBLISHERS],
+}
+
+/// Issue 2493 -- one row of [`ZenohSession::data_keys`]: the data keyexpr (as
+/// its XXH3-128, the hash the gids are made with, so a row is 18 bytes
+/// rather than a keyexpr buffer) and the two declare-time options a share
+/// must agree on.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) struct DataKey {
+    key: [u8; 16],
+    reliable: bool,
+    express: bool,
+}
+
+impl DataKey {
+    fn of(topic: &TopicInfo, qos: &QoSProfile) -> Self {
+        use crate::keyexpr::TopicKeyExpr as _;
+        let key: heapless::String<{ super::KEYEXPR_STRING_SIZE }> = topic.to_key();
+        Self {
+            key: super::entity_gid::entity_gid(key.as_str()),
+            reliable: qos.reliability == nros_rmw::QoSReliabilityPolicy::Reliable,
+            express: topic.tx_express,
+        }
+    }
 }
 
 // ============================================================================
@@ -763,6 +796,7 @@ impl ZenohSession {
             domain_id: config.domain_id,
             graph_cache_started: false,
             graph_discovery_off: false,
+            data_keys: [None; crate::zpico::ZPICO_MAX_PUBLISHERS],
         };
 
         // RFC-0128 D8 (phase-554 W3) -- no node is announced at session open.
@@ -1336,6 +1370,112 @@ const ZENOH_SYSTEM_DEFAULTS: nros_rmw::QoSSystemDefaults = nros_rmw::QoSSystemDe
     depth: crate::config::SUBSCRIBER_RING_DEPTH as u32,
 };
 
+impl ZenohSession {
+    /// Issue 2493 -- a counted holder of the zenoh publisher this session
+    /// already has on `topic`'s data key with the same declare-time options,
+    /// or `None` (nothing to share, the holder is gone, or `qos` is
+    /// TRANSIENT_LOCAL, whose retention is per publisher).
+    pub(super) fn share_data_publisher(
+        &self,
+        topic: &TopicInfo,
+        qos: &QoSProfile,
+    ) -> Option<crate::zpico::Publisher<'static>> {
+        if qos.durability == nros_rmw::QoSDurabilityPolicy::TransientLocal {
+            return None;
+        }
+        let want = DataKey::of(topic, qos);
+        self.data_keys
+            .iter()
+            .enumerate()
+            .filter(|(_, k)| **k == Some(want))
+            .find_map(|(h, _)| self.context.share_publisher(i32::try_from(h).ok()?))
+    }
+
+    /// Issue 2493 -- record that zenoh publisher `handle` publishes on
+    /// `topic`'s data key. A TRANSIENT_LOCAL publisher is recorded as
+    /// unshareable (its row is cleared), so a later VOLATILE one declares its
+    /// own.
+    pub(super) fn note_data_publisher(&mut self, handle: i32, topic: &TopicInfo, qos: &QoSProfile) {
+        let Some(row) = usize::try_from(handle)
+            .ok()
+            .and_then(|h| self.data_keys.get_mut(h))
+        else {
+            return;
+        };
+        *row = (qos.durability != nros_rmw::QoSDurabilityPolicy::TransientLocal)
+            .then(|| DataKey::of(topic, qos));
+    }
+
+    /// Issue 2493 -- declare a node's writer on `topic`'s data key: one ROS
+    /// publisher in the graph (a publisher liveliness token under
+    /// `topic.node_name`, its own gid and sequence number) that puts through
+    /// the zenoh publisher this session holds on the key, declaring one only
+    /// when it holds none. Several nodes may share one data key this way;
+    /// see [`super::NodeTopicWriter`].
+    ///
+    /// `&mut self`, not `&self`: announcing the writer's node
+    /// (`ensure_node_liveliness`) and recording the data key are writes to
+    /// the session, as they are for `create_publisher`.
+    ///
+    /// # Errors
+    ///
+    /// [`TransportError::InvalidArgument`] when `topic.node_name` is absent
+    /// or empty (the writer exists to be listed under a node);
+    /// [`TransportError::Backend`] for a TRANSIENT_LOCAL `qos` (VOLATILE
+    /// only); otherwise what the publisher declaration answers.
+    pub fn declare_node_topic_writer(
+        &mut self,
+        topic: &TopicInfo<'_>,
+        qos: &QoSProfile,
+    ) -> Result<super::NodeTopicWriter, TransportError> {
+        let Some(node_name) = topic.node_name.filter(|n| !n.is_empty()) else {
+            return Err(TransportError::InvalidArgument);
+        };
+        if qos.durability == nros_rmw::QoSDurabilityPolicy::TransientLocal {
+            return Err(TransportError::Backend(
+                "a node topic writer is VOLATILE only: TRANSIENT_LOCAL needs a \
+                 retention cache of its own, which is a publisher's; create a \
+                 publisher instead",
+            ));
+        }
+        // The same resolution `create_publisher` applies, in its order, so
+        // the token carries what this backend does.
+        let qos = nros_rmw::resolve_best_available_on(
+            self,
+            nros_rmw::BestAvailableRole::Publisher,
+            topic.name,
+            *qos,
+        );
+        let qos = qos.resolve_system_default(&ZENOH_SYSTEM_DEFAULTS);
+        let qos = super::qos::admit(super::qos::EntityKind::Publisher, topic.name, &qos)?;
+        let data_key = match self.share_data_publisher(topic, &qos) {
+            Some(p) => p,
+            None => super::publisher::declare_data_publisher(&self.context, topic, &qos)?,
+        };
+        self.note_data_publisher(data_key.handle(), topic, &qos);
+        self.ensure_node_liveliness(topic.domain_id, topic.namespace, node_name);
+        let (token, gid) = self.entity_identity(Some(node_name), |zid, entity_id, node_name| {
+            Ros2Liveliness::publisher_keyexpr::<256>(
+                topic.domain_id,
+                zid,
+                entity_id,
+                topic.namespace,
+                node_name,
+                topic,
+                &qos,
+            )
+        });
+        Ok(super::NodeTopicWriter::new(data_key, token, gid))
+    }
+
+    /// Issue 2493 -- the session's zenoh session handle, so a
+    /// [`super::NodeTopicWriter`] can refuse a put on a session it was not
+    /// declared on.
+    pub(super) fn zenoh_session(&self) -> *mut zpico_sys::zpico_session_t {
+        self.context.handle()
+    }
+}
+
 impl Session for ZenohSession {
     /// The name this backend registers under (`nros_rmw_zenoh_register`),
     /// NOT `rmw_zenoh_cpp`: this is zenoh-pico speaking `rmw_zenoh_cpp`'s wire,
@@ -1379,7 +1519,14 @@ impl Session for ZenohSession {
         // the resolve comes first: the token must carry what this backend does,
         // not what it was asked to do.
         let qos = super::qos::admit(super::qos::EntityKind::Publisher, topic.name, &qos)?;
-        let mut publisher = ZenohPublisher::new(&self.context, topic, None, &qos)?;
+        // Issue 2493 -- a VOLATILE publisher on a data key this session
+        // already publishes on shares that zenoh publisher: one data key, a
+        // liveliness token and gid per ROS publisher. That is how every node
+        // of an image is a `/parameter_events` (and `/rosout`) publisher
+        // without a zenoh publisher slot each.
+        let shared = self.share_data_publisher(topic, &qos);
+        let mut publisher = ZenohPublisher::new_on(&self.context, topic, None, &qos, shared)?;
+        self.note_data_publisher(publisher.zenoh_handle(), topic, &qos);
         // Phase 268 W2 — ensure a per-node NN token for this publisher's node.
         if let Some(node_name) = topic.node_name {
             self.ensure_node_liveliness(topic.domain_id, topic.namespace, node_name);
@@ -1987,4 +2134,46 @@ pub fn set_caller_rx_wakes_park(on: bool) {
 
 fn caller_rx_wakes_park() -> bool {
     CALLER_RX_WAKES_PARK.load(core::sync::atomic::Ordering::Acquire)
+}
+
+#[cfg(test)]
+mod data_key_tests {
+    use super::DataKey;
+    use nros_rmw::{QoSProfile, QoSReliabilityPolicy, TopicInfo};
+
+    fn topic<'a>(name: &'a str, node: &'a str) -> TopicInfo<'a> {
+        TopicInfo::new(
+            name,
+            "rcl_interfaces::msg::dds_::ParameterEvent_",
+            "RIHS01_00",
+        )
+        .with_node_name(node)
+    }
+
+    /// Issue 2493 -- every node's `/parameter_events` names ONE data key:
+    /// the node is in the liveliness token, never in the data keyexpr, so
+    /// the rows of two nodes match and their writers share a publisher.
+    #[test]
+    fn two_nodes_on_one_topic_name_one_data_key() {
+        let qos = QoSProfile::parameter_events_default();
+        assert!(
+            DataKey::of(&topic("/parameter_events", "alpha"), &qos)
+                == DataKey::of(&topic("/parameter_events", "beta"), &qos)
+        );
+    }
+
+    /// A different topic, or a different declare-time option, is a
+    /// different row: sharing never crosses a reliability or express choice.
+    #[test]
+    fn another_topic_or_option_is_another_data_key() {
+        let qos = QoSProfile::parameter_events_default();
+        let base = DataKey::of(&topic("/parameter_events", "alpha"), &qos);
+        assert!(base != DataKey::of(&topic("/rosout", "alpha"), &qos));
+        let mut best_effort = qos;
+        best_effort.reliability = QoSReliabilityPolicy::BestEffort;
+        assert!(base != DataKey::of(&topic("/parameter_events", "alpha"), &best_effort));
+        let mut express = topic("/parameter_events", "alpha");
+        express.tx_express = true;
+        assert!(base != DataKey::of(&express, &qos));
+    }
 }
