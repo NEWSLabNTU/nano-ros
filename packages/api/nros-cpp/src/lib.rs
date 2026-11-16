@@ -11345,6 +11345,11 @@ mod install_argv_remaps_tests {
         );
     }
 
+    // Without a parameter store that holds overrides on the heap, `-p` has
+    // nowhere to go, so the remap-only parse refuses it by name. With one it
+    // is honoured (the twin below): the precondition is the feature set, and
+    // the test states it rather than failing under a valid one.
+    #[cfg(not(all(feature = "param-store", feature = "alloc")))]
     #[test]
     fn a_parameter_override_is_refused_by_name() {
         let mut why = [0u8; 256];
@@ -11354,6 +11359,20 @@ mod install_argv_remaps_tests {
             text(&why).contains("`-p`"),
             "reason names the flag: {}",
             text(&why)
+        );
+    }
+
+    #[cfg(all(feature = "param-store", feature = "alloc"))]
+    #[test]
+    fn a_parameter_override_is_accepted_where_a_store_can_hold_it() {
+        let mut why = [0xAAu8; 64];
+        assert_eq!(
+            call(&[c"prog", c"--ros-args", c"-p", c"x:=1"], &mut why),
+            NROS_CPP_RET_OK
+        );
+        assert_eq!(
+            why[0], 0xAA,
+            "an accepted vector must not touch the reason buffer"
         );
     }
 
