@@ -1,4 +1,4 @@
-//! RFC-0098 D3/D5/D8 (phase-445 W3) — what ONE package deploys to, and where
+//! What ONE package deploys to, and where
 //! that is written.
 //!
 //! A single-package example (a directory holding `Cargo.toml` or
@@ -26,7 +26,7 @@
 //! A workspace entry package (a hand-written Zephyr west application, a test
 //! fixture's entry, and the entry `nros build` GENERATES under
 //! `build/<coord>/<id>_entry/`) is not its own image: the bringup's
-//! `[image.<id>]` is (RFC-0065 D6, RFC-0098 D5). [`for_entry`] finds the image
+//! `[image.<id>]` is. [`for_entry`] finds the image
 //! that claims an entry — `entry = "<pkg>"`, else the `<id>_entry` name the
 //! builder gives a generated one ([`entry_package_name`]) — and answers from it,
 //! through the same overlay as a leaf's `system.toml`. A `system.toml` beside a
@@ -35,16 +35,16 @@
 //!
 //! # The retired manifest keys are REFUSED
 //!
-//! Before RFC-0098 a Rust leaf spelled all of this in `Cargo.toml`:
+//! Before this, a Rust leaf spelled all of this in `Cargo.toml`:
 //! `[package.metadata.nros.entry] deploy`, `[package.metadata.nros.deploy.<b>]`,
 //! `[package.metadata.nros.node]` and `[package.metadata.nros.component]`.
-//! phase-445 W3/W3b read them through a deprecated fallback while the leaves
-//! were converted; W5 converted the last workspace entries and deleted it. The
+//! They were read through a deprecated fallback while the leaves
+//! were converted; then the last workspace entries were converted and the fallback deleted. The
 //! deployment keys are now an ERROR wherever they appear ([`read`]) — naming
 //! the file to write — because a key nothing reads is a fact that silently
 //! stopped being true. `[package.metadata.nros.node]` / `component` on a
 //! workspace NODE package are node REGISTRATION — the Rust spelling of a C/C++
-//! package's `nros_components_register_node` (issue 1289) — not a deployment,
+//! package's `nros_components_register_node` — not a deployment,
 //! and are not this reader's business. Nor is an `[package.metadata.nros.entry]`
 //! table what makes a package an entry: an image's claim is
 //! ([`claiming_image`]).
@@ -75,8 +75,8 @@ pub use crate::entry_names::entry_package_name;
 /// The generated selection package a package `pkg` depends on —
 /// `qemu-bsp-talker` → `qemu_bsp_talker_nros_selection`.
 ///
-/// Issue 1305 / RFC-0098 D6 (amendment 2026-10-11). A workspace entry has had
-/// one since phase-315 (`<entry>_nros_selection`); a single-package leaf gets
+/// A workspace entry has had
+/// one for a long time (`<entry>_nros_selection`); a single-package leaf gets
 /// the same crate, so a board switch touches no `Cargo.toml`. The name is the
 /// crate IDENT form (hyphens folded), so the manifest key, the package name and
 /// the path `nros::main!` emits are one spelling. Lives here for the same
@@ -88,7 +88,7 @@ pub fn selection_crate_name(pkg: &str) -> String {
 }
 
 /// Where a single-package leaf's generated selection package lives, relative
-/// to the leaf: `build/nros/selection` (RFC-0103 D7 puts generated artifacts
+/// to the leaf: `build/nros/selection` (generated artifacts live
 /// under `<build>/nros/`).
 ///
 /// ONE directory per leaf, independent of the image and its board, because
@@ -99,7 +99,7 @@ pub fn selection_crate_name(pkg: &str) -> String {
 pub const LEAF_SELECTION_DIR: &str = "build/nros/selection";
 
 /// The environment variable a single-package leaf's generated settings file
-/// (`build/<image>/nros-cargo.toml`) sets to the image it builds (issue 1305).
+/// (`build/<image>/nros-cargo.toml`) sets to the image it builds.
 ///
 /// A cargo leaf may declare several images (one per RMW and ROS edition), and
 /// cargo is the only thing between `nros build <id>` and `nros::main!`, so the
@@ -109,7 +109,7 @@ pub const LEAF_SELECTION_DIR: &str = "build/nros/selection";
 pub const IMAGE_ENV: &str = "NROS_IMAGE";
 
 /// The link kinds an image's session can ride, as its locator's scheme spells
-/// them (RFC-0109 D6: an image's link is DERIVED from its wiring, never stated
+/// them (an image's link is DERIVED from its wiring, never stated
 /// beside it). This is the one list; `nros::main!` maps each onto a
 /// `nros_platform::LinkKind` variant.
 ///
@@ -139,27 +139,27 @@ pub fn is_byte_stream_link(kind: Option<&str>) -> bool {
     matches!(kind, Some("serial" | "custom"))
 }
 
-/// Deployment identity (RFC-0098 D5): what the image dials and what it is.
+/// Deployment identity: what the image dials and what it is.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Network {
     pub domain_id: Option<u32>,
     pub locator: Option<String>,
     /// The image's interfaces, from the board network files its `os_config`
-    /// names (RFC-0109 D4), checked against the networks without the board
+    /// names, checked against the networks without the board
     /// (`crate::system_net::check_image_interfaces`). The CLI's resolver
     /// combines it with the board and hands the answer to every build as
     /// `NROS_IMAGE_NET`; `nros::main!` only needs to know whether there IS one.
     pub net: BTreeMap<String, crate::system_net::ImageNetIf>,
     /// `[network.<name>]` of those files: the networks the interfaces sit on.
     pub networks: BTreeMap<String, crate::system_net::NetworkDef>,
-    /// `[image.<id>.run]` — how the image is run (RFC-0109 D6).
+    /// `[image.<id>.run]` — how the image is run.
     pub run: crate::system_net::ImageRun,
     /// `[image.<id>.flash]` — this image's override of the board's
-    /// `[board.flash]` (RFC-0118 D4/D5, phase-529 W1). Parsed and checked;
-    /// read by the flash verb (phase-529 W3).
+    /// `[board.flash]`. Parsed and checked;
+    /// read by the flash verb.
     pub flash: Option<crate::target_exec::FlashTable>,
     /// `[image.<id>.console]` — this image's override of the board's
-    /// `[board.console]` (RFC-0118 D4/D5).
+    /// `[board.console]`.
     pub console: Option<crate::target_exec::ConsoleTable>,
     /// `[system] name` — part of the key a MAC the image does not state is
     /// derived from (D10b), so two projects' images with the same id differ.
@@ -167,7 +167,7 @@ pub struct Network {
     pub transport: Option<String>,
 }
 
-/// One declared node (`[[component]]`, RFC-0098 D8 for `entities`).
+/// One declared node (`[[component]]`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LeafComponent {
     /// `package.xml` name of the package providing the class. `None` when the
@@ -176,29 +176,29 @@ pub struct LeafComponent {
     pub class: Option<String>,
     pub name: Option<String>,
     /// Declared entities, in `EntityDecl::parse` grammar, for a board whose
-    /// component cannot be host-probed (issues 1556, 1603; issue 1265 retired
-    /// the esp32-c3 / mps2 cases). `None` = not declared;
+    /// component cannot be host-probed (the esp32-c3 / mps2 cases have since
+    /// been retired). `None` = not declared;
     /// `Some(vec![])` = declared to have none.
     pub entities: Option<Vec<String>>,
-    /// Issue 1556 -- `entities = "census"`: nothing is authored, and this
+    /// `entities = "census"`: nothing is authored, and this
     /// component's entities are what the leaf's own program creates, read from
     /// its census (`nros ws entity-census take --leaf`). `entities` is `None`
     /// when this is set; the two are one key, so a component cannot state both.
     pub entities_from_census: bool,
-    /// RFC-0120 D4 -- `entities = "defaults"`: the WRITTEN opt-out of the
+    /// `entities = "defaults"`: the WRITTEN opt-out of the
     /// census a C/C++ leaf gets when it states nothing. The component is sized
     /// at the crate defaults because somebody chose that, not because nothing
     /// was said. `entities` is `None` when this is set.
     pub entities_defaults: bool,
-    /// Dispatch strategy (`"inline"` | `"deferred"` | `"from_isr"`,
-    /// phase-216 A.5), replacing `[package.metadata.nros.node] dispatch`
-    /// (issue 1278). Read by `nros check`'s framework × dispatch lint; `None`
+    /// Dispatch strategy (`"inline"` | `"deferred"` | `"from_isr"`),
+    /// replacing `[package.metadata.nros.node] dispatch`.
+    /// Read by `nros check`'s framework × dispatch lint; `None`
     /// = the trait default. Validated there, not here, so the lint keeps its
     /// one diagnostic for a typo.
     pub dispatch: Option<String>,
 }
 
-/// One `[image.<id>.knobs]` value, as TOML typed it (phase-484 W8).
+/// One `[image.<id>.knobs]` value, as TOML typed it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum KnobValue {
     Int(i64),
@@ -275,9 +275,9 @@ pub struct LeafSystem {
     pub image: Option<String>,
     /// The board the image is built for, as the image names it.
     pub board: Option<String>,
-    /// RFC-0111 D1 (phase-562 W1) -- `[image.<id>] framework` (over
+    /// `[image.<id>] framework` (over
     /// `[image_defaults]`), as written. `None` when the image names none, so
-    /// the board's first `frameworks` entry applies (RFC-0111 D2).
+    /// the board's first `frameworks` entry applies.
     pub framework: Option<String>,
     // GitHub #3899 (issue 2593).
     /// `[image.<id>] profile` (over `[image_defaults]`), as written: a cargo
@@ -285,19 +285,19 @@ pub struct LeafSystem {
     pub profile: Option<String>,
     /// RMW: `[image] rmw` > `[image_defaults] rmw` > `[system] rmw`.
     pub rmw: Option<String>,
-    /// ROS edition, the same overlay as [`Self::rmw`] (RFC-0056): `[image]
+    /// ROS edition, the same overlay as [`Self::rmw`]: `[image]
     /// ros_edition` > `[image_defaults]` > `[system]`. `None` when no table
-    /// states one, so the consumer's own default applies (issue 2087).
+    /// states one, so the consumer's own default applies.
     pub ros_edition: Option<String>,
     pub network: Network,
     pub components: Vec<LeafComponent>,
-    /// phase-530 W2 (Ruling R29) -- `[system] entities = "defaults"`: the
+    /// `[system] entities = "defaults"`: the
     /// census opt-out for a leaf whose program is not a `[[component]]` (a
     /// port that names its executable in CMake), which has no component row
     /// to write it on. The same word as a component's.
     pub system_entities_defaults: bool,
-    /// `[image.<id>] env` — the RFC-0049 APP rung, stated per image
-    /// (RFC-0098 D4, phase-445 W6).
+    /// `[image.<id>] env` — the APP rung of the board-configuration hierarchy,
+    /// stated per image.
     ///
     /// A build knob whose value is neither a board fact (it differs between two
     /// images of the same board) nor derivable from the declarations. The KEY is
@@ -316,15 +316,15 @@ pub struct LeafSystem {
     /// images want the defaults.
     pub env: BTreeMap<String, String>,
     /// `[image.<id>.knobs.<group>] <name> = <value>` — the same APP rung,
-    /// spelled the way a board's `[knobs.<group>]` is (RFC-0103 D6, phase-484
-    /// W8), keyed by the dotted `<group>.<name>`. `[image_defaults.knobs]`
+    /// spelled the way a board's `[knobs.<group>]` is, keyed by
+    /// the dotted `<group>.<name>`. `[image_defaults.knobs]`
     /// underneath, key by key, like [`Self::env`].
     ///
     /// Read as written: which knob a key names, and whether its value fits,
     /// is the registry's answer (`nros-zephyr-build`), which the CLI asks
     /// before rendering each one into the carrier [`Self::env`] rides.
     pub knobs: BTreeMap<String, KnobValue>,
-    /// Issue 1142 — `[system] features`, the SAME key a workspace bringup's
+    /// `[system] features`, the SAME key a workspace bringup's
     /// `system.toml` carries (`features = ["param_services"]`, which reaches a
     /// resolved model as `execution.features`).
     ///
@@ -341,15 +341,15 @@ pub struct LeafSystem {
     /// much as the `entities` declaration beside it, which is why it is read
     /// only where that declaration exists.
     ///
-    /// phase-556 W13 -- this is the EFFECTIVE list: [`Self::declared_features`]
+    /// This is the EFFECTIVE list: [`Self::declared_features`]
     /// through [`crate::node_interfaces::effective_features`] with
     /// [`Self::node_interfaces`]. Every leaf consumer reads this one.
     pub features: Vec<String>,
-    /// phase-556 W13 -- `[system] features` exactly as written, before the
+    /// `[system] features` exactly as written, before the
     /// node-interface switch. For a consumer that adds a list of its own (an
     /// image's `features`) and must apply the switch over the union.
     pub declared_features: Vec<String>,
-    /// phase-556 W13 -- `node_interfaces`: `[image.<id>]` over
+    /// `node_interfaces`: `[image.<id>]` over
     /// `[image_defaults]` over `[system]`. `None` = stated nowhere.
     pub node_interfaces: Option<crate::node_interfaces::NodeInterfaces>,
     /// The RTOS's own config fragments among [`Self::os_config`] (every file
@@ -357,7 +357,7 @@ pub struct LeafSystem {
     /// then the image's own, CONCATENATED (the overlay `ImageBlock::with_base`
     /// gives a list).
     ///
-    /// phase-481 W3. On Zephyr these are the Zephyr-native fragments an RMW
+    /// On Zephyr these are the Zephyr-native fragments an RMW
     /// needs (`prj-xrce.conf`'s `CONFIG_NET_TCP`, heap and POSIX sizing): the
     /// nano-ros half of the image is rendered from this file, the Zephyr half
     /// stays a Kconfig fragment, and the image names which one. Names are
@@ -365,26 +365,26 @@ pub struct LeafSystem {
     /// as written and leaves resolution to the caller, which knows the road.
     pub conf: Vec<String>,
     /// `[image.<id>] os_config` (with its alias `conf`) over
-    /// `[image_defaults]`'s — every layer-1 file the image names (RFC-0109
-    /// D6), for the check that each suits its board's network owner.
+    /// `[image_defaults]`'s — every layer-1 file the image names,
+    /// for the check that each suits its board's network owner.
     pub os_config: Vec<String>,
-    /// Issue 2073 — `[image.<id>] ros_args`, the argument vector a ported
+    /// `[image.<id>] ros_args`, the argument vector a ported
     /// program's `main` receives after its name (`["--ros-args", "-p",
     /// "rate:=10.0"]`), `[image_defaults]`'s first. A board has no command
     /// line, so this is how such an image states one; on a host the real
     /// arguments follow it, so the command line still wins.
     pub ros_args: Vec<String>,
-    /// Issue 2073 — `[image.<id>] params_files`, ROS 2 parameter files
+    /// `[image.<id>] params_files`, ROS 2 parameter files
     /// relative to the directory holding `system.toml`, `[image_defaults]`'s
     /// first. Each reaches the program as `--ros-args --params-file <name>`
     /// ahead of [`Self::ros_args`]; the build bakes the file's text into the
     /// image, which is where a board reads it from.
     pub params_files: Vec<String>,
-    /// Issue 2400 — `[image.<id>] stack_floor_image`, the key the image's
+    /// `[image.<id>] stack_floor_image`, the key the image's
     /// measured stack allowance is filed under (`<template>/<lang>/<rmw>@<board>`,
     /// written by `nros new`). `None`: the build keys it `<bringup>@<board>`.
     pub stack_floor_image: Option<String>,
-    /// Issue 2400 W2b — `[image.<id>] stack_floor = "raise"`: a MEASURED floor
+    /// `[image.<id>] stack_floor = "raise"`: a MEASURED floor
     /// above the stated stack rebuilds the image once at the floor instead of
     /// failing. `"check"` (the default) and absent are `false`.
     pub stack_floor_raise: bool,
@@ -412,20 +412,20 @@ impl LeafSystem {
         any.then_some(out)
     }
 
-    /// Issue 1556 -- does any component take its entities from the leaf's
+    /// Does any component take its entities from the leaf's
     /// census (`entities = "census"`)?
     pub fn entities_from_census(&self) -> bool {
         self.components.iter().any(|c| c.entities_from_census)
     }
 
-    /// RFC-0120 D4 -- does any component write `entities = "defaults"`?
+    /// Does any component write `entities = "defaults"`?
     pub fn entities_defaults(&self) -> bool {
         self.system_entities_defaults || self.components.iter().any(|c| c.entities_defaults)
     }
 
     /// Does any component state `entities` at all -- a list, `"census"` or
     /// `"defaults"`? A C/C++ leaf that states none is counted by its census
-    /// by default (RFC-0120 D4).
+    /// by default.
     pub fn states_entities(&self) -> bool {
         self.system_entities_defaults
             || self
@@ -467,7 +467,7 @@ pub fn read(dir: &Path) -> Result<Option<LeafSystem>, String> {
 /// so the CLI can raise it as its diagnostic code.
 pub const NAMES_NO_BOARD: &str = "names no `board`";
 
-/// phase-481 W1 (RFC-0098 D11) — the deployment `dir`'s `system.toml` states
+/// The deployment `dir`'s `system.toml` states
 /// for the NAMED image, whether `dir` is a single-package leaf or a workspace
 /// bringup.
 ///
@@ -521,8 +521,8 @@ pub fn read_image(dir: &Path, image: &str) -> Result<Option<LeafSystem>, String>
 /// beside the package name for both, because `entry =` has always accepted
 /// either (`west_application_dir`).
 ///
-/// `Ok(None)` when no image claims it. SEVERAL images may name one OWNED entry
-/// (RFC-0071 D19): the one being built is then [`IMAGE_ENV`], which `nros
+/// `Ok(None)` when no image claims it. SEVERAL images may name one OWNED entry:
+/// the one being built is then [`IMAGE_ENV`], which `nros
 /// build` sets in the image's settings file so `nros::main!` reads it. Several
 /// claims with no image named, or with one that is not among them, is an
 /// error, not a first match: which image's locator an entry bakes is not a
@@ -643,7 +643,7 @@ fn for_entry_choosing(
     }
 }
 
-/// Issue 1289 — the image that claims the package at `entry_dir` (package name
+/// The image that claims the package at `entry_dir` (package name
 /// `entry_pkg`), searched over a WORKSPACE's bringups: what makes a package an
 /// ENTRY.
 ///
@@ -672,7 +672,7 @@ pub fn claiming_image<'a>(
 }
 
 /// [`claiming_image`] with the image being built named by the caller
-/// ([`for_entry_as`], RFC-0071 D19).
+/// ([`for_entry_as`]).
 pub fn claiming_image_as<'a>(
     entry_dir: &Path,
     entry_pkg: &str,
@@ -683,8 +683,8 @@ pub fn claiming_image_as<'a>(
 }
 
 /// [`claiming_image`] for a question every image naming the entry answers
-/// alike: "is this package an entry", "which board does it deploy to"
-/// (RFC-0071 D19). With [`IMAGE_ENV`] unset and several images of one bringup
+/// alike: "is this package an entry", "which board does it deploy to".
+/// With [`IMAGE_ENV`] unset and several images of one bringup
 /// naming the entry, the first answers, provided they agree on the board; two
 /// bringups are still an error.
 pub fn claiming_image_any<'a>(
@@ -783,11 +783,11 @@ fn features_key(t: Option<&toml::Table>, file: &Path) -> Result<Vec<String>, Str
         .collect()
 }
 
-/// The word `entities` takes instead of a list (issue 1556).
+/// The word `entities` takes instead of a list.
 pub const ENTITIES_FROM_CENSUS: &str = "census";
 
 /// The word that opts a component out of the census and onto the crate
-/// defaults, written down (RFC-0120 D4).
+/// defaults, written down.
 pub const ENTITIES_DEFAULTS: &str = "defaults";
 
 /// What one `[[component]] entities` key says.
@@ -1308,7 +1308,7 @@ fn env_table(
 /// `[package.metadata.nros.node]` / `component` are not among them: on a
 /// single-package leaf they retired with W3b (and `check-leaf-deployment-
 /// spelling` refuses them there), but on a workspace node package they are
-/// node REGISTRATION (issue 1289), not a deployment, and the deployment reader
+/// node REGISTRATION, not a deployment, and the deployment reader
 /// has no business refusing them.
 #[must_use]
 pub fn retired_deployment_keys(nros: &toml::Table) -> Vec<String> {

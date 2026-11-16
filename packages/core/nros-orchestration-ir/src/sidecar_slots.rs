@@ -1,11 +1,11 @@
-//! phase-307 — the ONE definition of "how many callback slots does a recorded
+//! The ONE definition of "how many callback slots does a recorded
 //! node consume?".
 //!
 //! Two bakes read source-metadata sidecars and must agree on this number: the
 //! CLI's `codegen-system` (which REFUSES an over-capacity system) and the
 //! `nros::main!` proc-macro (which SIZES the executor). A disagreement between
 //! them is an image that passes the bake's check and dies at boot anyway —
-//! precisely the issue-0257 failure the sidecars exist to prevent. It landed
+//! precisely the callback-table undersizing the sidecars exist to prevent. It landed
 //! duplicated in both consumers first; this module is the correction.
 //!
 //! Deliberately `serde_json::Value`-based rather than typed. The macro cannot

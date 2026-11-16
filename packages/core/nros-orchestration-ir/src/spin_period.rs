@@ -1,4 +1,4 @@
-//! RFC-0079's table, the `spin_period_us` row: a sched task's spin period is
+//! The priority-allocation table, the `spin_period_us` row: a sched task's spin period is
 //! DERIVED from "the sched task's fastest release", not authored.
 //!
 //! Before this module nothing derived it. An unset `spin_period` reached the

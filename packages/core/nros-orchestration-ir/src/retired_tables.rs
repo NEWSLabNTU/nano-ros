@@ -1,4 +1,4 @@
-//! Issue 1809 (the 0.6.0 boundary, phase-486 W8) — `system.toml` tables
+//! `system.toml` tables (retired at the 0.6.0 boundary)
 //! nano-ros RETIRED, refused by name.
 //!
 //! A retired table is never dropped in silence: every nano-ros reader of a
@@ -77,8 +77,8 @@ pub const RETIRED_SYSTEM_TABLES: &[RetiredTable] = &[
     },
 ];
 
-/// The refusal of a `[[component]]`'s `group_tiers` (rlm v0.3.11, phase-536
-/// W3), the component-key half of the `tiers` row above.
+/// The refusal of a `[[component]]`'s `group_tiers` (rlm v0.3.11),
+/// the component-key half of the `tiers` row above.
 // user-surface: table
 pub const RETIRED_GROUP_TIERS: &str = "`[[component]] group_tiers` is retired (rlm v0.3.11): \
     the scheduling unit is a task in play_launch: write `group_tasks`, \

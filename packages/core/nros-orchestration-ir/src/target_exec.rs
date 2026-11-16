@@ -1,4 +1,4 @@
-//! RFC-0118 D4/D5/D7 (phase-529 W1, schema half) — the flash and console
+//! The flash and console
 //! tables a board descriptor and an image share, the `prepare` step syntax,
 //! and the command-template placeholders.
 //!
@@ -12,7 +12,7 @@
 //! Everything is parsed into typed values and checked when the file is read:
 //! an unknown key, an unknown `wait_for` event kind, a step with two actions
 //! or an unknown `{placeholder}` is refused naming the table. Nothing here
-//! EXECUTES a step or a template — that needs phase-528 W1's RunPlan.
+//! EXECUTES a step or a template — that needs the run plan.
 
 use std::{fmt, str::FromStr};
 
@@ -31,7 +31,7 @@ pub const PLACEHOLDERS: &[&str] = &[
     "nic",
 ];
 
-/// A command template (RFC-0118 D5): a host command line whose `{…}`
+/// A command template: a host command line whose `{…}`
 /// placeholders the plan fills. Checked at parse time: every placeholder is
 /// one of [`PLACEHOLDERS`] or `{tool:<name>}`, and every `{` closes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,7 +164,7 @@ impl From<UsbId> for String {
     }
 }
 
-/// A `wait_for` event (RFC-0118 D7).
+/// A `wait_for` event.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub enum WaitFor {
@@ -236,7 +236,7 @@ impl From<WaitFor> for String {
     }
 }
 
-/// One `prepare` step (RFC-0118 D7): exactly one of `say`, `wait_for`, `run`,
+/// One `prepare` step: exactly one of `say`, `wait_for`, `run`,
 /// except that `say` and `wait_for` may pair in one table (print, then wait).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "RawStep", into = "RawStep")]
@@ -311,13 +311,13 @@ impl From<PrepareStep> for RawStep {
     }
 }
 
-/// `[board.flash]` / `[image.<id>.flash]` (RFC-0118 D4/D5).
+/// `[board.flash]` / `[image.<id>.flash]`.
 ///
 /// `method` names the flasher runner (`west`, `espflash`, `probe-rs`,
 /// `openocd`, `picotool`, `uf2`, `dfu-util`, …) by its word; `command`
 /// replaces the method with a template (D5) and is exclusive with it. The
 /// method word is checked for SHAPE, not against a closed list: runners are
-/// packages (RFC-0119), so which words exist is a question for the installed
+/// packages, so which words exist is a question for the installed
 /// runner set when a plan resolves, not for the file format.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -395,7 +395,7 @@ impl FlashTable {
     }
 }
 
-/// `[board.console] kind` / `[image.<id>.console] kind` (RFC-0118 D1).
+/// `[board.console] kind` / `[image.<id>.console] kind`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ConsoleKind {
@@ -405,7 +405,7 @@ pub enum ConsoleKind {
     Semihosting,
 }
 
-/// `[board.console]` / `[image.<id>.console]` (RFC-0118 D4/D5). `usb` and
+/// `[board.console]` / `[image.<id>.console]`. `usb` and
 /// `baud` describe a serial console; `command` attaches it through a template
 /// (`picocom -b {baud} {port}`) instead of the console runner.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -529,9 +529,9 @@ pub fn parse_image_console(
 // `cpu`/`machine`/`icount`/`semihosting`/NIC model, so a descriptor edit never
 // reached it.
 
-/// The emulator kinds RFC-0114 D10's vocabulary names, and RFC-0118 D1's
+/// The emulator kinds the board-registry vocabulary names, and the target execution model's
 /// launcher row: `<kind>:<machine>`. A twin is free and open source
-/// (RFC-0115 Amendment 1), so a paid hosted simulator is no kind here and a
+/// (the emulator-first policy), so a paid hosted simulator is no kind here and a
 /// descriptor naming one is refused like any unknown kind.
 pub const EMULATOR_KINDS: &[&str] = &["qemu", "fvp", "renode"];
 
@@ -539,10 +539,10 @@ pub const EMULATOR_KINDS: &[&str] = &["qemu", "fvp", "renode"];
 /// `-semihosting-config`.
 pub const QEMU_SEMIHOSTING_CONFIG: &str = "enable=on,target=native";
 
-/// `[board.run]` — RFC-0118 D4.
+/// `[board.run]`.
 ///
 /// `emulator = "<kind>:<machine>"` names the emulator and the machine in the
-/// RFC-0114 vocabulary (`qemu:mps2-an385`, `fvp:FVP_BaseR_AEMv8R`,
+/// board-registry vocabulary (`qemu:mps2-an385`, `fvp:FVP_BaseR_AEMv8R`,
 /// `renode:nucleo_f767zi`), or `host = true` says the image is
 /// a host process. Never both. A runner-specific sub-table (`[board.run.qemu]`)
 /// holds what only that runner reads; it requires the matching emulator kind.
@@ -558,7 +558,7 @@ pub struct BoardRun {
     /// `[board.run.qemu]` — read only by the QEMU runner.
     #[serde(default)]
     pub qemu: Option<BoardRunQemu>,
-    /// `[board.run.renode]` — read only by the Renode runner (phase-524 W4a).
+    /// `[board.run.renode]` — read only by the Renode runner.
     #[serde(default)]
     pub renode: Option<BoardRunRenode>,
 }
@@ -579,7 +579,7 @@ pub struct BoardRunQemu {
     /// The `qemu-system-<system>` binary's suffix (`arm`, `riscv64`).
     pub system: String,
     /// QEMU's `-machine`, when it differs from the machine word of
-    /// `emulator` (that word is RFC-0114 vocabulary, not always QEMU's).
+    /// `emulator` (that word is board-registry vocabulary, not always QEMU's).
     #[serde(default)]
     pub machine: Option<String>,
     /// `-cpu`, when the machine's default CPU is not the one.
@@ -592,7 +592,7 @@ pub struct BoardRunQemu {
     #[serde(default)]
     pub semihosting: bool,
     /// `-smp <value>` (`cpus=2`), for a board whose variant is multi-core
-    /// (issue 2379: `qemu_cortex_a53/qemu_cortex_a53/smp`).
+    /// (e.g. `qemu_cortex_a53/qemu_cortex_a53/smp`).
     #[serde(default)]
     pub smp: Option<String>,
     /// The NIC model (`lan9118`). The board states only the model; how it
@@ -602,9 +602,9 @@ pub struct BoardRunQemu {
     pub nic_model: Option<String>,
 }
 
-/// `[board.run.renode]` — the Renode twin's wiring (phase-524 W4a), read only
+/// `[board.run.renode]` — the Renode twin's wiring, read only
 /// by the Renode runner: `nros_runner_renode`, which `nros run` hands it as
-/// the plan's `link` and `console` args (phase-524 W4b), and the test
+/// the plan's `link` and `console` args, and the test
 /// harness's launcher (`scripts/probe/twin/renode.sh`, through
 /// `nros_tests::renode`).
 /// The platform is the emulator's machine word (`platforms/boards/<m>.repl`).

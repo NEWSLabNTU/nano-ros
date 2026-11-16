@@ -1,4 +1,4 @@
-//! Issue 0303 — lowering `qos_overrides.<topic>.<role>.<policy>` parameters
+//! Lowering `qos_overrides.<topic>.<role>.<policy>` parameters
 //! into the primitive `(topic, role, policy, value)` codes every language bakes.
 //!
 //! ROS 2 declares per-topic QoS through ordinary parameters:
@@ -110,7 +110,7 @@ const POLICY_NAMES: &str = "reliability, durability, history, depth, deadline, l
 
 /// Every policy [`lower`] accepts, and whether it bounds CAPACITY.
 ///
-/// phase-454 W7 (RFC-0100 D8). The second flag is the whole of this wave's
+/// The second flag is the whole of this check's
 /// scope decision, so it is a field rather than a comment: `reliability`,
 /// `durability`, `history` and `depth` decide how many bytes an image must
 /// reserve, and the launch CONTRACT states the same four per endpoint
@@ -118,7 +118,7 @@ const POLICY_NAMES: &str = "reliability, durability, history, depth, deadline, l
 /// `deadline`, `lifespan` and the two liveliness policies bound OCCUPANCY or
 /// LIVENESS of a queue whose size is already decided, so they size nothing --
 /// but the contract states them too (`deadline`, `lifespan`, `lease_duration`,
-/// `liveliness`), and since phase-462 W5 [`contract_statement`] reads all
+/// `liveliness`), and since [`contract_statement`] reads all
 /// eight, so a parameter that disagrees with its contract is refused either way.
 ///
 /// A table and not a `match` because it is read by three things that must not
@@ -256,7 +256,7 @@ pub fn is_qos_override(name: &str) -> bool {
 /// The canonical spelling of a [`qos_override_role`] code, for a diagnostic.
 ///
 /// The inverse of the role match in `split_key`, and the reason it is a
-/// function: phase-454 W7's messages name the role the author WROTE, and a
+/// function: the messages name the role the author WROTE, and a
 /// message that respelled it would send someone looking for a key they did not
 /// type.
 pub fn role_spelling(role: u8) -> &'static str {
@@ -476,7 +476,7 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
 }
 
 /// What one `qos_overrides.*` parameter states about SIZING, in the same
-/// vocabulary the launch contract states it in (phase-454 W7, RFC-0100 D8).
+/// vocabulary the launch contract states it in.
 ///
 /// The four capacity policies of [`MODELLED_POLICIES`] and no others. This is
 /// deliberately NOT the wire encoding [`LoweredOverride`] carries: comparing an

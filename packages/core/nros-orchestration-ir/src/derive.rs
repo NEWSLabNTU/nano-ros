@@ -1,4 +1,4 @@
-//! phase-296 W5.13 follow-up — the DERIVED-schedule core (RFC-0052).
+//! The DERIVED-schedule core.
 //!
 //! When a resolved `SystemModel` declares NO `execution.tasks`, the schedule is
 //! DERIVED from the contract layer: `mapper_input_from_model` → `chain_aware_rank`
@@ -29,14 +29,14 @@ use crate::{
 pub struct DerivedSchedule {
     /// Derived sched task definitions, keyed by sched task name: one per derived level
     /// (`derived-<node>`, or `derived-level-<k>` for a level of several
-    /// nodes; phase-509 P5). These are NEW
+    /// nodes). These are NEW
     /// sched tasks, for nodes whose groups name no sched task at all; the caller MERGES
     /// them into whatever the model authored (see [`DerivedSchedule`]).
     pub sched_tasks: BTreeMap<String, SchedTaskDef>,
     /// One override per derived node, binding its callback groups to its
     /// level's sched task.
     pub overrides: Vec<NodeOverride>,
-    /// issue 1426 — placements ALLOCATED for sched tasks the author NAMED and left
+    /// Placements ALLOCATED for sched tasks the author NAMED and left
     /// unplaced, keyed by the authored sched task name.
     ///
     /// The caller installs each on the `[tasks.<name>]` it already built from
@@ -52,15 +52,15 @@ pub struct DerivedSchedule {
     /// default sched task (advisory-derived, not authored). One human-readable note
     /// per node; the caller surfaces them.
     pub groupless_notes: Vec<String>,
-    /// issue 1426 — every authored placement that WON over one the contract
+    /// Every authored placement that WON over one the contract
     /// implied. Authored wins, and it may not win silently.
     pub shadowed: Vec<ShadowedPlacement>,
     /// Every node the contract ranked, as the realizer placed it in the plan
     /// (priority, period, deadline). What a record of the derivation shows
     /// for "why this number": the sched tasks above are built from these.
     pub realized: Vec<crate::rtos_realizer::RealizedNode>,
-    /// RFC-0079 section 6 - the nodes allocated above the transport band
-    /// because their sched task names it (`above = "transport"`, issue 1967;
+    /// The nodes allocated above the transport band
+    /// because their sched task names it (`above = "transport"`;
     /// [`lift_above_transport`]). Their `realized` priority is the lifted
     /// one.
     pub above_transport: Vec<String>,
@@ -70,21 +70,21 @@ pub struct DerivedSchedule {
     /// the contract supervises nothing, or the kernel had no priority left
     /// for it (then a degradation says so).
     pub supervisor_priority: Option<i64>,
-    /// phase-509 P4 (RFC-0108 D1) - the callback record of every callback the
+    /// The callback record of every callback the
     /// model names: release kind, T or T_min, D, C, and a server's Q/P
     /// ([`crate::callback_record`]). On an image whose contract supervises
     /// nothing, each unanalysable one is also a `unanalysable` degradation;
     /// on one that supervises a deadline it is refused before this runs
     /// ([`crate::callback_record::check_model`]).
     pub callback_records: Vec<crate::callback_record::CallbackRecord>,
-    /// phase-509 P5 (RFC-0108 D4) - the preemption levels, one plan per
+    /// The preemption levels, one plan per
     /// core: the derived nodes banded under the image's cap, the authored
     /// sched tasks as pins. The realizer's core placement partitions the nodes
-    /// first, so no level spans two cores (issue 0259); with nothing placed
+    /// first, so no level spans two cores; with nothing placed
     /// there is one plan, `core: None`. Empty when nothing ranked. Each
     /// derived level is one sched task in [`Self::sched_tasks`] (`derived-<node>` when it
     /// holds one node, `derived-level-<k>` or `derived-core<c>-level-<k>` when
-    /// it holds several) until the level runners (phase-509 P9) run levels.
+    /// it holds several) until the level runners run levels.
     pub levels: Vec<crate::levels::LevelPlan>,
 }
 
@@ -112,7 +112,7 @@ fn names_the_transport(t: &ros_launch_manifest_sched::TaskDef) -> bool {
 }
 
 /// The authored sched tasks that name the transport band AND ask for an allocated
-/// priority on this target (issue 1426 rule 2: no platform sub-table at
+/// priority on this target (rule 2: no platform sub-table at
 /// all). A sched task with an authored priority keeps it (rule 1, `above` does
 /// not move a number the author wrote); one placed for other boards only is
 /// rule 3's error, not a request.
@@ -131,11 +131,11 @@ pub fn sched_tasks_named_above_transport(
         .collect()
 }
 
-/// RFC-0079 section 6: crossing into the transport band requires naming it,
+/// Crossing into the transport band requires naming it,
 /// and the name is `above = "transport"` on the sched task. Nothing else crosses:
 /// a node whose contract supervises a deadline (`supervise:`) stays where
-/// its rank puts it, which may be below the transport (issue 1967; until
-/// then #2312 lifted such a node implicitly).
+/// its rank puts it, which may be below the transport (before, such a node
+/// was lifted implicitly).
 ///
 /// `lift` is the set of nodes to allocate ABOVE the reserved transport band
 /// (the most urgent members of the sched tasks that name it, see
@@ -254,7 +254,7 @@ pub fn lift_above_transport(
     )
 }
 
-/// issue 1426 — an authored priority that took precedence over an allocated one.
+/// An authored priority that took precedence over an allocated one.
 ///
 /// Not a [`Degradation`]: nothing was weakened, a decision was made. But
 /// "authored wins" is only a defensible rule while the person who authored the
@@ -271,7 +271,7 @@ pub struct ShadowedPlacement {
     pub allocated: i64,
 }
 
-/// issue 1426 — does any node carrying callback groups lack an authored
+/// Does any node carrying callback groups lack an authored
 /// placement for this target? THE predicate that decides whether a derivation
 /// runs, in one spelling.
 ///
@@ -286,7 +286,7 @@ pub struct ShadowedPlacement {
 /// 2. `[tasks.<name>]` authored with **no** platform sub-table at all ⇒
 ///    **ALLOCATED** for that sched task ([`DerivedSchedule::placements`]). Naming a
 ///    sched task is how a binding gets written (`group_tasks = { main = "ctrl" }`);
-///    it says nothing about a priority, and RFC-0079 is that a priority is
+///    it says nothing about a priority, and the rule is that a priority is
 ///    allocated rather than authored. So an unplaced sched task is a REQUEST, which
 ///    is also why this needs no new key in the `[tasks.*]` schema.
 /// 3. `[tasks.<name>]` authored with sub-tables for OTHER targets and not this
@@ -294,15 +294,15 @@ pub struct ShadowedPlacement {
 ///    `resolve_sched_tasks` raises `MissingRtosSpec` exactly as before. Reading that
 ///    as a request would silence a real mistake.
 /// 4. the group names no sched task (`DEFAULT_SCHED_TASK`) ⇒ **ALLOCATED** on a derived
-///    level ([`DerivedSchedule::sched_tasks`]): phase-509 P5 bands these nodes into
-///    preemption levels (RFC-0108 D4, [`crate::levels`]), one derived sched task per
+///    level ([`DerivedSchedule::sched_tasks`]): these nodes are banded into
+///    preemption levels ([`crate::levels`]), one derived sched task per
 ///    level, `derived-<node>` for a level of one node.
 ///
 /// Rule 4 is what the old table-shaped guard got wrong. A group at
 /// `DEFAULT_SCHED_TASK` is a node the author wrote nothing about, and whether it gets
 /// a derived placement cannot depend on whether some OTHER node's sched task was
 /// authored — which is what `sched_tasks.is_empty()` made it depend on. Measured on
-/// the phase-459 W0 fixture: one component binding to one authored
+/// a test fixture: one component binding to one authored
 /// `[tasks.ctrl.zephyr]` left the other three on the synthesised default sched task
 /// at Zephyr priority 0, i.e. ABOVE the transport that feeds them, with their
 /// rate contracts unread and nothing printed.
@@ -353,7 +353,7 @@ fn bare(fqn: &str) -> &str {
 /// name to its declared groups (from cargo/cmake metadata); a node with none
 /// stays on the default sched task.
 ///
-/// issue 1426 — this runs WHENEVER [`placement_is_unauthored`] holds, not only
+/// This runs WHENEVER [`placement_is_unauthored`] holds, not only
 /// on an empty sched task table, and it never overwrites an authored fact. Read that
 /// function's doc for the precedence; the three outputs it decides between are
 /// [`DerivedSchedule::sched_tasks`] (rule 4), [`DerivedSchedule::placements`]
@@ -375,13 +375,13 @@ pub fn derive_sched_tasks_from_contracts(
 /// resolved rather than the one [`PriorityPlan::for_target`] projects from a
 /// sched task key.
 ///
-/// Issue 1508. For Zephyr, `for_target` is the Kconfig DEFAULTS projection
+/// For Zephyr, `for_target` is the Kconfig DEFAULTS projection
 /// (15 preemptive priorities, one transport task at band 200 -> pool
 /// `[5, 14]`), and an image is free to differ: measured, an image with
 /// `CONFIG_NUM_PREEMPT_PRIORITIES=32` reserves `[7, 7]` and owns `[8, 31]`,
 /// and one with `CONFIG_NROS_ZENOH_READ_PRIORITY=100` reserves `[4, 9]` and
 /// owns `[10, 14]`. Against either, the projection's rank 0 (5) is MORE urgent
-/// than the transport - issue 0623's inversion. A road that has the image's
+/// than the transport - a priority inversion. A road that has the image's
 /// `.config` in hand (the C/C++ entry and the Zephyr module bake both run at
 /// cmake configure time, after Kconfig) resolves the image's own plan with
 /// [`PriorityPlan::from_zephyr_dotconfig`] and passes it here.
@@ -401,9 +401,9 @@ pub fn derive_sched_tasks_in_plan(
 }
 
 /// [`derive_sched_tasks_in_plan`] with the sched tasks that name the transport band
-/// given (issue 1967; [`sched_tasks_named_above_transport`] reads them off the
+/// given ([`sched_tasks_named_above_transport`] reads them off the
 /// model). A sched task is one thread at one priority, its most urgent member's
-/// (issue 1426 rule 2), so it is that member's rank that is lifted: every
+/// (rule 2), so it is that member's rank that is lifted: every
 /// member at the sched task's most urgent rank joins [`lift_above_transport`]'s
 /// set, and the others keep their pool ranks, which no thread runs at.
 pub fn derive_sched_tasks_with_named(
@@ -423,9 +423,9 @@ pub fn derive_sched_tasks_with_named(
     )
 }
 
-/// [`derive_sched_tasks_with_named`] with an RFC-0078 measurement profile: the task
+/// [`derive_sched_tasks_with_named`] with a WCET measurement profile: the task
 /// records carry C where it declares a bound, and the level derivation's
-/// analysed merge (RFC-0108 D4 rule 2) engages when every derived callback
+/// analysed merge (rule 2 of the level rules) engages when every derived callback
 /// has one. The bake roads select no profile yet, so they pass `None` and the
 /// levels come from rules 1 and 3.
 pub fn derive_sched_tasks_with_wcet(

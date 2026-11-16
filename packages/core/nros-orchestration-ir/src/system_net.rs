@@ -1,4 +1,4 @@
-//! RFC-0109 D4 (phase-514) — an image's network, read ONE way: the board
+//! An image's network, read ONE way: the board
 //! network files its `os_config` names, and the runner's NIC in
 //! `[image.<id>.run]`.
 //!
@@ -18,7 +18,7 @@
 //! `nros::main!` bakes that text and does not resolve anything itself.
 //!
 //! The spellings this replaced — `[network.<name>]` and `[image.<id>.net.*]`
-//! in `system.toml` (RFC-0103 D10, phase-497), and before them the flat
+//! in `system.toml`, and before them the flat
 //! `[image.<id>] ip` / `gateway` / `netmask` (D10g) — are refused by name,
 //! naming the new home (`crate::retired_tables`, [`refuse_flat_image_net`]).
 
@@ -35,7 +35,7 @@ pub const RETIRED_FLAT_KEYS: &[&str] = &["ip", "gateway", "netmask"];
 
 /// `[network.<name>]` in a board network file: what a network IS. How an
 /// emulated image attaches to it is the image's `[image.<id>.run] nic`, and
-/// the locator it dials is the image's `locator` (RFC-0109 D6).
+/// the locator it dials is the image's `locator`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkDef {
@@ -100,7 +100,7 @@ impl Attach {
     }
 }
 
-/// `[image.<id>.run]` (RFC-0109 D6, phase-514 W6; RFC-0118 D5's image rung):
+/// `[image.<id>.run]` (the image rung of the target execution model):
 /// facts about how this image is RUN, read by `nros run`, the QEMU launchers
 /// and the test harness. The image's build never reads them.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -113,10 +113,10 @@ pub struct ImageRun {
     pub nic: Option<Attach>,
     /// The runner that runs this image (`method = "acme"` is the runner
     /// package announcing `runner/acme`), over what the board's `[board.run]`
-    /// implies (phase-527 W7). As `[image.<id>.flash] method`.
+    /// implies. As `[image.<id>.flash] method`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub method: Option<String>,
-    /// A command template that runs the image (RFC-0118 D5), through the
+    /// A command template that runs the image, through the
     /// `command` runner. An alternative to `method`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<crate::target_exec::CommandTemplate>,
@@ -393,7 +393,7 @@ fn parse_network_table(
     Ok(out)
 }
 
-/// One board network file (RFC-0109 D4), read.
+/// One board network file, read.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BoardNetFile {
     /// `[<interface>]` — the image's address on each interface.
@@ -403,10 +403,10 @@ pub struct BoardNetFile {
     pub networks: BTreeMap<String, NetworkDef>,
 }
 
-/// RFC-0109 D4 (phase-514 W2) — the board config files an image names.
+/// The board config files an image names.
 ///
 /// `os_config` lists an image's layer-1 files. The `.toml` ones are the board
-/// package's own network file (RFC-0109 D4); the rest (Zephyr `.conf`,
+/// package's own network file; the rest (Zephyr `.conf`,
 /// devicetree `.overlay`, a NuttX `defconfig` fragment) belong to the RTOS and
 /// are not read here.
 #[must_use]
@@ -446,8 +446,8 @@ pub fn read_board_net_file(path: &std::path::Path) -> Result<BoardNetFile, Strin
 
 /// An image's network: every board network file its `os_config` names,
 /// resolved against `dir` (the `system.toml`'s directory). An interface stated
-/// in two files is refused, naming both: one owner per fact (RFC-0103), and a
-/// file is that owner (RFC-0109 D4). A network two files define differently is
+/// in two files is refused, naming both: one owner per fact, and a
+/// file is that owner. A network two files define differently is
 /// refused the same way. `at` names the image table.
 pub fn fold_board_net_files(
     dir: &std::path::Path,

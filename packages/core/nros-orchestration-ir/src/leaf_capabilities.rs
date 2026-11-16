@@ -1,11 +1,11 @@
-//! Issue 1766 — what a single-package leaf's `[system] features` asks the
+//! What a single-package leaf's `[system] features` asks the
 //! entry to WIRE.
 //!
 //! A leaf states its capability axes in `system.toml`'s `[system] features`,
-//! the key a workspace bringup uses ([`crate::leaf_system::LeafSystem::features`],
-//! issue 1142). The sizing descriptor already reads that key on the leaf road
+//! the key a workspace bringup uses ([`crate::leaf_system::LeafSystem::features`]).
+//! The sizing descriptor already reads that key on the leaf road
 //! (the queryable pool counts the parameter and lifecycle servers for it, and
-//! issue 1706 carves the parameter store from it). A Form-1 `nros::main!()` —
+//! the parameter store is carved from it). A Form-1 `nros::main!()` —
 //! the shape every `examples/*/rust/<role>` leaf uses — did NOT read it: the
 //! axis was dropped in silence, so the descriptor sized for services the image
 //! never registered. This module is the reading the macro shares with every
@@ -21,9 +21,9 @@
 //!   entry can const-assert that the feature is compiled in — a leaf, unlike a
 //!   generated entry, writes its own `nros` features, and without the feature
 //!   the runtime hook is a no-op;
-//! * the typed `[safety]` block a bringup may still carry (deprecated by
-//!   phase-261) is refused in a leaf, and `[param_services]` everywhere
-//!   (phase-486 W8): no leaf consumer reads
+//! * the typed `[safety]` block a bringup may still carry (deprecated)
+//!   is refused in a leaf, and `[param_services]` everywhere:
+//!   no leaf consumer reads
 //!   them, so honouring one in the entry alone would make the entry and the
 //!   descriptor disagree, and ignoring it is the silent drop this module exists
 //!   to end.
@@ -90,7 +90,7 @@ pub struct LeafCapabilities {
     pub axes: Vec<&'static LeafAxis>,
     /// `param_services` is declared: register the six parameter services.
     pub param_services: bool,
-    /// phase-461 W6 -- `params` is declared and `param_services` is not: build
+    /// `params` is declared and `param_services` is not: build
     /// the parameter store before the nodes register, and serve nothing.
     pub param_store: bool,
     /// `lifecycle` is declared: register the five REP-2002 services and drive

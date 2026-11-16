@@ -1,4 +1,4 @@
-//! Issue 0257 — model-derived executor callback-table sizing.
+//! Model-derived executor callback-table sizing.
 //!
 //! The executor's callback table is `NROS_EXECUTOR_MAX_CBS` (nros-node
 //! `build.rs`, default 4). Before this module the knob was discovered at
@@ -20,9 +20,9 @@
 //!   headroom and why the bake-time check only fires on a count that already
 //!   exceeds capacity (never a false positive).
 //!
-//! Where the exact count comes from (phase-307). The 172.E
+//! Where the exact count comes from. The
 //! `source-metadata.json` DOES carry `timers`, and its recorder walks the same
-//! `Component::register` the runtime does. Phase-307 W1/W2 made it real: every
+//! `Component::register` the runtime does. That is now real: every
 //! Rust Node pkg is now a producer candidate, and `nros sync` refreshes stale
 //! sidecars automatically with a content-addressed provenance stamp, so a bake
 //! can tell a current sidecar from museum data.
@@ -67,14 +67,14 @@ use ros_launch_manifest_model::SystemModel;
 /// Keep in sync with `packages/core/nros-node/build.rs`.
 pub const DEFAULT_MAX_CBS: usize = 4;
 
-/// issue 0460 — callback slots the `[lifecycle]` capability consumes.
+/// Callback slots the `[lifecycle]` capability consumes.
 ///
 /// REP-2002's five services, one slot each: `ChangeState`, `GetState`,
 /// `GetAvailableStates`, `GetAvailableTransitions`, `GetTransitionGraph` — the
 /// fields of `nros_node::lifecycle_services::LifecycleServiceServers`.
 pub const LIFECYCLE_SERVICE_SLOTS: usize = 5;
 
-/// issue 0460 — callback slots the `[param_services]` capability consumes.
+/// Callback slots the `[param_services]` capability consumes.
 ///
 /// The six ROS 2 parameter services: `GetParameters`, `SetParameters`,
 /// `SetParametersAtomically`, `ListParameters`, `DescribeParameters`,
@@ -82,13 +82,13 @@ pub const LIFECYCLE_SERVICE_SLOTS: usize = 5;
 /// `nros_node::parameter_services::ParameterServiceServers`.
 pub const PARAM_SERVICE_SLOTS: usize = 6;
 
-/// phase-426 W3 — what `[param_services]` costs an entry registering `nodes`
+/// What `[param_services]` costs an entry registering `nodes`
 /// nodes.
 ///
 /// [`PARAM_SERVICE_SLOTS`] is per NODE, not per image: the six services are
 /// registered under each node's own fully-qualified name, because that is what
-/// `ros2 param list` enumerates. Sizing an executor for one set is issue 0460's
-/// shape one node over — the entry builds, and the second node's
+/// `ros2 param list` enumerates. Sizing an executor for one set undercounts
+/// the capability slots by one node's worth — the entry builds, and the second node's
 /// `register_parameter_services` fails inside a call whose `Result` some boot
 /// paths drop.
 ///
@@ -134,7 +134,7 @@ pub fn count_callbacks<F: FnMut(&str) -> bool>(model: &SystemModel, mut keep: F)
     n
 }
 
-/// phase-307 W4 — the shared `max(model_wiring, recorded_metadata)` rule.
+/// The shared `max(model_wiring, recorded_metadata)` rule.
 ///
 /// `keep` selects the nodes this entry registers (the CLI bake takes all of
 /// them; the macro slices per board). `recorded` answers "how many callback
@@ -204,7 +204,7 @@ pub fn derive_max_callbacks(counted: usize) -> usize {
 
 /// Whether the board behind a `deploy = "<key>"` honors the per-entry sizing
 /// the entry bake emits (`BoardEntry::run_with_deploy_sized` →
-/// `Executor::open_sized`, phase-271 / issue #110).
+/// `Executor::open_sized`).
 ///
 /// Only the hosted boards override it; every firmware board takes the default
 /// trait body, which drops the sizing and opens at the build-time `MAX_CBS`.

@@ -1,4 +1,4 @@
-//! RFC-0109 D8 (phase-514 W3) — the session properties an image bakes, as
+//! The session properties an image bakes, as
 //! the one text the CLI hands its build.
 //!
 //! A backend whose configuration file the target cannot parse has it lowered
@@ -6,7 +6,7 @@
 //! of `(key, value)` session properties. Which file, which keys and which
 //! backend are the CLI's business (`nros_cli_core::orchestration::rmw_config`,
 //! keyed by the backend's descriptor); a core consumer such as `nros::main!`
-//! only receives the list, so it names no backend (RFC-0071).
+//! only receives the list, so it names no backend.
 //!
 //! The text is the JSON array `[["key", "value"], …]`, carried in
 //! [`ENV`] the way `NROS_IMAGE_NET` carries the image's network: written into
@@ -16,28 +16,28 @@
 /// The variable that carries an image's session properties to its build.
 pub const ENV: &str = "NROS_SESSION_PROPERTIES";
 
-/// Issue 2051 — the file, in `nros configure`'s resolve directory (located by
+/// The file, in `nros configure`'s resolve directory (located by
 /// the image's identity, `nros locate configured`), that carries a Zephyr RUST west application's session
 /// properties: the table [`rust_table`] renders, which the `nros` crate's build
 /// copies in for `zephyr_component_main!` to install. The west lane has no
-/// `--config` seam (issue 1288), and its cargo command is an unquoted shell
+/// `--config` seam, and its cargo command is an unquoted shell
 /// line inside a CMake list, which would take [`ENV`]'s JSON apart (the shell
 /// strips its `"`, the list splits an ISO-TP endpoint's `;`) — so the module
 /// hands cargo this file's PATH as [`WEST_FILE_ENV`], never the text.
 pub const WEST_FILE: &str = "session-properties.rs";
 
-/// Issue 2051 — the variable that names [`WEST_FILE`] to the `nros` crate's
+/// The variable that names [`WEST_FILE`] to the `nros` crate's
 /// build. A path, so the build watches the file's content, not the spelling.
 pub const WEST_FILE_ENV: &str = "NROS_SESSION_PROPERTIES_RS";
 
 /// The bridge runtime configuration `nros sync` writes beside a bridged
 /// bringup's `system.toml`: every bridged domain's session, the file
-/// `nros::main!` bakes into a bridge entry (phase-267, phase-514 W3b).
+/// `nros::main!` bakes into a bridge entry.
 pub const BRIDGE_CONFIG: &str = "nros-bridge.toml";
 
-/// Issue 2062 — the bridge configuration for image `image` when that image
+/// The bridge configuration for image `image` when that image
 /// overrides a bridged domain's RMW file (`[image.<id>] rmw_config = {
-/// <domain> = "<file>" }`, RFC-0109 D6): `nros-bridge.<image>.toml`, beside
+/// <domain> = "<file>" }`): `nros-bridge.<image>.toml`, beside
 /// [`BRIDGE_CONFIG`]. An image with no override reads [`BRIDGE_CONFIG`], which
 /// is the bringup's answer; the topics and types are the same in both, only
 /// the sessions differ.
@@ -48,8 +48,8 @@ pub fn bridge_config_for(image: &str) -> String {
 
 /// The property that carries a configuration file a backend parses itself
 /// (`[rmw.config] format = "verbatim-xml"`, Cyclone's XML) to a session that
-/// is not the image's default one — a `[[domain]]` a bridge opens (phase-514
-/// W3b). Its value is the file's whole text; a backend that reads such a file
+/// is not the image's default one — a `[[domain]]` a bridge opens.
+/// Its value is the file's whole text; a backend that reads such a file
 /// takes it in place of the document its road bakes for the default session.
 pub const DOCUMENT: &str = "config";
 
@@ -63,7 +63,7 @@ pub fn encode(props: &[(String, String)]) -> String {
     serde_json::to_string(&rows).unwrap_or_default()
 }
 
-/// Issue 2051 — `props` as the Rust source of [`WEST_FILE`]: one
+/// `props` as the Rust source of [`WEST_FILE`]: one
 /// `SESSION_PROPERTIES` static of `nros`'s `SessionProperty` rows, in the
 /// `nros` crate's own scope (it is `include!`d there). Empty `props` is an
 /// empty table, which installs nothing.
@@ -117,7 +117,7 @@ pub fn c_string_body(s: &str) -> String {
     out
 }
 
-/// Issue 2123 — `props` as a C header for a hand-written multi-session C/C++
+/// `props` as a C header for a hand-written multi-session C/C++
 /// caller: `static const <row_type> <symbol>[N]` (`nros_cpp_session_property_t`
 /// for `NrosCppSessionSpec`, `rclc_session_property_t` for
 /// `rclc_session_spec_t`; one layout) and `<symbol>_LEN`. `origin` names the
@@ -190,7 +190,7 @@ pub fn decode(text: &str) -> Result<Vec<(String, String)>, String> {
 }
 
 /// The first endpoint the session dials or listens on, whose scheme is the
-/// image's link (RFC-0109 D6) — the role a locator plays without a file.
+/// image's link — the role a locator plays without a file.
 #[must_use]
 pub fn endpoint(props: &[(String, String)]) -> Option<&str> {
     props

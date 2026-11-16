@@ -1,4 +1,4 @@
-//! phase-509 P8 (RFC-0108 D8.3) -- refuse a blocking call to a level that
+//! Refuse a blocking call to a level that
 //! cannot preempt the client.
 //!
 //! A callback that sends a request and waits for the response holds its
@@ -25,7 +25,7 @@
 //!   urgent level is REPORTED, never refused, so a contract written before
 //!   the key keeps building and says what it would take to check it.
 //!
-//! **What a level is here.** Until the level runners land (phase-509 P9) a
+//! **What a level is here.** Until the level runners land a
 //! level is a sched task of the image's resolved sched task table: one thread at the
 //! sched task's priority. A single-executor image (no table, or the one synthesized
 //! `default` sched task) is one level. A node of a multi-sched-task image that no sched task
@@ -312,7 +312,7 @@ fn findings_for(
     }
 }
 
-/// RFC-0108 D8.3 over one image. `Err` names every `call: blocking` whose
+/// The blocking-call rule over one image. `Err` names every `call: blocking` whose
 /// server runs at the client's own level or one that cannot preempt it.
 /// `Ok` carries the reports: each client with no stated call to such a
 /// server, and each call a node with no known level makes or serves.

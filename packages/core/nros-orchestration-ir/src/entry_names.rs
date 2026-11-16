@@ -1,5 +1,4 @@
-//! The names an image's entry package and an owned entry's adapter crate go by
-//! (RFC-0071 D13, phase-531 W5).
+//! The names an image's entry package and an owned entry's adapter crate go by.
 //!
 //! Both rules live here, not in the CLI's builder, because `nros::main!`
 //! cannot depend on the CLI and must compute the SAME names the builder and
@@ -17,7 +16,7 @@ pub fn entry_package_name(image_id: &str) -> String {
 }
 
 /// The adapter crate an OWNED entry depends on — `demo_entry` →
-/// `demo_entry_nros_derived` (RFC-0071 D13).
+/// `demo_entry_nros_derived`.
 ///
 /// An entry a person owns (one from `nros materialize`, one from `nros new
 /// entry`) cannot be regenerated per image, so the features its image's
@@ -48,7 +47,7 @@ pub fn legacy_adapter_crate_name(entry: &str) -> String {
 /// The directory [`legacy_adapter_crate_name`] lived in.
 pub const LEGACY_ADAPTER_DIR: &str = "nros-selection";
 
-/// RFC-0071 D15 — the arm of `__nros_register_backends!` that registers the
+/// The arm of `__nros_register_backends!` that registers the
 /// backends the IMAGE links itself (the board crate does not). The facade
 /// renders it only when the image has such a backend, and `nros::main!`'s
 /// ordinary arms call `__nros_register_backends!(image)` only when the

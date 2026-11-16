@@ -1,4 +1,4 @@
-//! phase-509 P5 (RFC-0108 D3/D4) -- preemption levels, derived from the
+//! Preemption levels, derived from the
 //! contract.
 //!
 //! A LEVEL is a contiguous band of ranks that one worker dispatches without
@@ -7,7 +7,7 @@
 //! level is realised as one derived sched task: one thread at the band's most
 //! urgent priority, whose members dispatch in rank order inside it (P2).
 //!
-//! # The rules (RFC-0108 D4)
+//! # The rules
 //!
 //! 1. **Default:** one level per distinct rank. Equal ranks share a level.
 //! 2. **Merge with execution times.** When every callback of the free nodes
@@ -25,7 +25,7 @@
 //! 4. **The cap** is a count, `max_levels`: the image's
 //!    `CONFIG_NROS_EXECUTOR_MAX_LEVELS` when its `.config` is in hand
 //!    ([`crate::priority_plan::PriorityPlan::max_levels`]), else the
-//!    platform's default ([`default_max_levels`](crate::levels::default_max_levels), RFC-0108 D6).
+//!    platform's default ([`default_max_levels`](crate::levels::default_max_levels)).
 //! 5. **Report:** one `level-budget` degradation per member that loses its
 //!    rank, naming the cap, the rank it would have had and the band it
 //!    shares.
@@ -37,11 +37,11 @@
 //!    ([`time_slices_equal_priorities`](crate::levels::time_slices_equal_priorities)): two levels at one priority there
 //!    buy no preemption, only memory, and slicing would cut a callback.
 //!
-//! An unanalysable callback (RFC-0108 D1) is placed at the least urgent rank
+//! An unanalysable callback is placed at the least urgent rank
 //! of its level ([`Level::best_effort`](crate::levels::Level::best_effort)), so it never orders ahead of an
 //! analysed member of its band.
 //!
-//! # Where the response-time analysis lives (RFC-0108, deferred to P5)
+//! # Where the response-time analysis lives (deferred)
 //!
 //! Here, in `nros-orchestration-ir`, beside the derivation that consumes it.
 //! The analysis needs what only this side has: the board's priority plan,
@@ -60,7 +60,7 @@ use crate::{
     rtos_realizer::Degradation,
 };
 
-/// The platform's default level cap (RFC-0108 D6), when the image states
+/// The platform's default level cap, when the image states
 /// none. `plan` gives the pool width, which is ThreadX's default (its native
 /// preemption threshold makes a level cheap).
 pub fn default_max_levels(target_rtos: &str, plan: &PriorityPlan) -> u16 {
@@ -73,8 +73,8 @@ pub fn default_max_levels(target_rtos: &str, plan: &PriorityPlan) -> u16 {
     }
 }
 
-/// Does this kernel time-slice threads of equal priority (RFC-0108 D4 rule
-/// 8, D6)? FreeRTOS does by default (`configUSE_TIME_SLICING`). Linux and
+/// Does this kernel time-slice threads of equal priority (level rule
+/// 8)? FreeRTOS does by default (`configUSE_TIME_SLICING`). Linux and
 /// NuttX levels run `SCHED_FIFO`, never `SCHED_RR`; Zephyr's sched tasks run with
 /// `CONFIG_TIMESLICE_SIZE` 0; ThreadX's sched task threads take no time slice.
 pub fn time_slices_equal_priorities(target_rtos: &str) -> bool {
@@ -93,12 +93,12 @@ pub struct LevelNode {
     pub protected: Option<&'static str>,
 }
 
-/// An authored sched task: a pinned band (RFC-0108 D4 rule 6).
+/// An authored sched task: a pinned band (level rule 6).
 #[derive(Clone, Debug, PartialEq)]
 pub struct PinnedBand {
     pub sched_task: String,
     /// The sched task's kernel priority: authored, or allocated from its most
-    /// urgent member (issue 1426 rule 2).
+    /// urgent member (rule 2).
     pub priority: i64,
     /// Its members, each at its own allocated priority (its rank).
     pub members: Vec<LevelNode>,
@@ -135,7 +135,7 @@ pub struct LevelMember {
     /// The node FQN.
     pub node: String,
     /// Its normalised rank (0 = most urgent), the dispatch key inside the
-    /// level (RFC-0108 D2).
+    /// level.
     pub rank: u8,
     /// Its allocated kernel priority.
     pub priority: i64,
@@ -143,7 +143,7 @@ pub struct LevelMember {
     pub sched_task: Option<String>,
 }
 
-/// One preemption level (RFC-0108 D3).
+/// One preemption level.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Level {
     /// 0 is the most urgent level.
@@ -157,7 +157,7 @@ pub struct Level {
     /// The authored sched tasks this level is (empty for a derived level).
     pub sched_tasks: Vec<String>,
     /// Unanalysable callbacks of its members, each dispatched at the band's
-    /// least urgent rank (RFC-0108 D1): `(callback, rank)`.
+    /// least urgent rank: `(callback, rank)`.
     pub best_effort: Vec<(String, u8)>,
 }
 
@@ -168,11 +168,11 @@ impl Level {
     }
 }
 
-/// The derived levels of one core (RFC-0108 D4).
+/// The derived levels of one core.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct LevelPlan {
     /// The core these levels run on: the realizer's placement of their
-    /// members (issue 0259), `None` for the nodes it left unpinned.
+    /// members, `None` for the nodes it left unpinned.
     pub core: Option<u32>,
     /// The cap the levels were derived against.
     pub max_levels: u16,
@@ -190,7 +190,7 @@ pub struct LevelPlan {
 pub struct LevelInput<'a> {
     /// The core every node in `free` is placed on (`None`: unpinned). The
     /// caller partitions first, so one call never spans two cores' scheduling
-    /// domains (RFC-0108 D3, issue 0259).
+    /// domains.
     pub core: Option<u32>,
     /// Work this call does not see can preempt on this core: unpinned
     /// nodes beside placed ones. Their interference is not in `callback_records`, so the
@@ -201,7 +201,7 @@ pub struct LevelInput<'a> {
     pub free: &'a [LevelNode],
     /// The authored sched tasks.
     pub pinned: &'a [PinnedBand],
-    /// The callback record of every callback (RFC-0108 D1).
+    /// The callback record of every callback.
     pub callback_records: &'a [CallbackRecord],
     pub max_levels: u16,
     pub cap_source: &'static str,
@@ -215,7 +215,7 @@ pub struct LevelInput<'a> {
 }
 
 /// Each ranked node's normalised rank: the distinct priorities in urgency
-/// order, 0 the most urgent, equal priorities one rank (RFC-0108 D2). The
+/// order, 0 the most urgent, equal priorities one rank. The
 /// one normalisation the C/C++ packs and the Rust entry seed with
 /// (`bind_node_rank`), and the levels' ranks.
 pub fn node_ranks(
@@ -277,7 +277,7 @@ const MAX_JOBS: u64 = 100_000;
 /// The worst-case response time of `jobs[i]` when its band covers the ranks
 /// `top..=bottom`, under fixed-priority preemption-threshold scheduling
 /// (Wang and Saksena 1999, with every job of the level-i busy period
-/// examined; RFC-0108 D3). `None` when it cannot be bounded within the
+/// examined). `None` when it cannot be bounded within the
 /// job's deadline (the band misses it).
 ///
 /// - Blocking `B` is the largest C of a less urgent member of the band (a
@@ -429,7 +429,7 @@ struct FreeBand {
     bottom: usize,
 }
 
-/// Derive one core's levels (RFC-0108 D4).
+/// Derive one core's levels.
 pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
     let urgent_first = |a: &i64, b: &i64| {
         if input.low_number_is_high {
