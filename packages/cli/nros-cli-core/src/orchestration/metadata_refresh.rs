@@ -164,6 +164,10 @@ impl RefreshReport {
         for f in &self.failed {
             msg.push_str(&format!("\n  {f}"));
         }
+        msg.push_str(&format!(
+            "\nNote: {}.",
+            crate::orchestration::metadata_probe_cmake::PROBE_ARGS_RULE
+        ));
         if policy == ProbeFailurePolicy::Warn {
             msg.push_str(
                 "\nNo probe in this workspace succeeded, so this is refused even under \
@@ -220,6 +224,12 @@ pub fn refresh_stale_sidecars(
     // read by this pass either.
     prune_undeclared_sidecars(&declarations, &mut report);
     let probe_root = ws_root.join("build").join("nros-metadata");
+    // RFC-0117 D8: the probe's arguments are the workspace-wide block's, set
+    // before any freshness check so a change re-probes.
+    crate::orchestration::metadata_probe_cmake::set_probe_cmake_args(
+        &crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(&probe_root),
+        &workspace.probe_cmake_args()?,
+    )?;
     // Issue 0286 — resolved once, not per component.
     let host = host_triple();
     // phase-313 — C/C++ components to probe in ONE workspace-scoped project.
@@ -562,10 +572,9 @@ fn cpp_probe_options(
 /// absence makes every C/C++ component stale; its CMake cache marks a project
 /// that was configured here, whatever interfaces its members name.
 fn probe_build_present(probe_root: &Path) -> bool {
-    crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(probe_root)
-        .join("build")
-        .join("CMakeCache.txt")
-        .is_file()
+    let dir = crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(probe_root);
+    dir.join("build").join("CMakeCache.txt").is_file()
+        && crate::orchestration::metadata_probe_cmake::probe_args_current(&dir)
 }
 
 /// Issue 2238 -- the probe options of a C/C++ component whatever its

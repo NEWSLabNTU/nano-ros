@@ -114,12 +114,14 @@ says so.
 
 **Acceptance:**
 - a test for each road receiving its argv;
-- the source-metadata probe gets the same CMake arguments as the configure it
-  stands for. A package whose `find_package(<Pkg> … NO_DEFAULT_PATH)` path
-  comes only from `--cmake-args=` (or `[image.<id>.build] cmake_args`) both
-  probes and builds; today the probe fails it, or, unguarded, finds the
-  host's copy while the image uses the user's (found by the book's
-  bring-your-own-library page, 2026-11-17);
+- the source-metadata probe reads `[image_defaults.build] cmake_args` and
+  nothing else (RFC-0117 D8's exception). A package whose
+  `find_package(<Pkg> … NO_DEFAULT_PATH)` path is given there both probes
+  and builds; removing it re-probes and fails, saying where the path goes.
+  The book's bring-your-own-library page found the gap on 2026-11-17, with
+  a guarded probe that failed and an unguarded one that found the host's
+  copy. **Done** in W3a, measured end to end on a copy of `image_config_ws`;
+  the probe's dropped `-D`s are `-U`'d, so the cache cannot keep them;
 - a dependency's `system.toml` arguments are listed by `--dry-run` as
   ignored (moved from W2);
 - cache drift: `-DFOO`, then a build without it, leaves no `FOO` in the cache;

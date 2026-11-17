@@ -366,6 +366,19 @@ holds only what no other key states (for example
 - `--` is kept only for west's own known options. Anything else after `--` is
   refused, naming the flag that carries it now.
 - Arguments reach tools as argv only, never as a shell string.
+- **The documented exception: the source-metadata probe.** It is ONE CMake
+  project for the whole workspace, built by `sync`, which `nros configure`
+  runs too, with no `nros build` command line. So
+  `--cmake-args=` and per-image `cmake_args` never reach it: a one-build
+  argument would make the probe's answer depend on which command ran last.
+  It reads only the workspace-wide `[image_defaults.build] cmake_args`,
+  which joins its freshness check, so changing them re-probes. Two bringups
+  stating different lists are refused. A probe failure, and `--dry-run`,
+  say so: "the source probe runs once for the whole workspace and reads
+  only `[image_defaults.build] cmake_args`; put a path the probe needs
+  there". (Ruled 2026-11-17: no union of per-image lists, because a cross
+  image and a host image pointing a `<Pkg>_DIR` at different prefixes is
+  the normal case.)
 - **The build dir records the arguments it was configured with** (today's
   one dir per image; per-profile dirs are deferred). On a change, the CMake
   variables that were removed are `-U`'d and the configure re-runs, and the
