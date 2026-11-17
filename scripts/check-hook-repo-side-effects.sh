@@ -121,6 +121,8 @@ cd "$(dirname "$0")/.."
 nros_clear_inherited_git_env
 # shellcheck source=scripts/lib/grep-q.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)/grep-q.sh"
+# shellcheck source=scripts/lib/deadline.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)/deadline.sh"
 
 REPO="$PWD"
 HOOK=".githooks/pre-push"
@@ -437,9 +439,55 @@ build_checkout() {
 # $PROBE_LOG and its status to the first line of $PROBE_RC_FILE — through files
 # rather than variables because callers read the verdict with `$(…)`, and a
 # variable set inside a command substitution dies with its subshell.
+#
+# Every probe is BOUNDED (issue 2669). A probe that runs past its budget is
+# killed and reported as `TIMEOUT`, which every caller turns into a FAIL naming
+# the script and the shape. It is never a skip: a probe that did not finish
+# asserted nothing, and on a loaded host that is exactly the run whose answer
+# nobody would otherwise see. The budget is `PROBE_BUDGET` seconds when the
+# caller sets it (the hook run below does), and `PROBE_TIMEOUT` otherwise.
+# `NROS_HOOK_PROBE_TIMEOUT` overrides the default for a host known to be slow;
+# it changes where the line is drawn, never whether a slow probe fails.
+#
+# Each probe also writes its wall time to $PROBE_TIME_FILE, as
+# `<total> <build> <run>` in seconds: the whole probe, the part spent building
+# its victim and owned checkout, and the part spent running the subject. The
+# verdict lines print it, so a slow run says where its time went.
+#
+# The gate as a whole has a deadline too, `NROS_HOOK_GATE_BUDGET` seconds from
+# its start (default 900). A probe never gets more than the time left before
+# it, and a probe that starts after it is TIMEOUT at once. 82 probes at 120 s
+# each could otherwise run past the CI job's 40-minute limit, and a job the
+# runner cancels names no probe at all, which is what issue 2669 measured.
+PROBE_TIMEOUT="${NROS_HOOK_PROBE_TIMEOUT:-120}"
+GATE_BUDGET="${NROS_HOOK_GATE_BUDGET:-900}"
 PROBE_LOG="$(mktemp)"
 PROBE_RC_FILE="$(mktemp)"
-trap 'rm -f "$PROBE_LOG" "$PROBE_RC_FILE"' EXIT
+PROBE_TIME_FILE="$(mktemp)"
+trap 'rm -f "$PROBE_LOG" "$PROBE_RC_FILE" "$PROBE_TIME_FILE"' EXIT
+
+# now_ms — wall clock in milliseconds. `EPOCHREALTIME` is bash 5; the `date`
+# arm keeps an older bash working.
+now_ms() {
+    if [ -n "${EPOCHREALTIME:-}" ]; then
+        local t="${EPOCHREALTIME/[.,]/}"; echo "${t:0:${#t}-3}"
+    else
+        date +%s%3N
+    fi
+}
+
+GATE_DEADLINE_MS=$(( $(now_ms) + GATE_BUDGET * 1000 ))
+
+# secs <ms> — `12.3s`.
+secs() { printf '%d.%ds' "$(( $1 / 1000 ))" "$(( ($1 % 1000) / 100 ))"; }
+
+# probe_time — the last probe's wall time, for a verdict line:
+# `12.3s (build 1.1s, run 11.2s)`.
+probe_time() {
+    local total build run
+    read -r total build run < "$PROBE_TIME_FILE" 2>/dev/null || { echo "time unknown"; return; }
+    echo "$(secs "$total") (build $(secs "$build"), run $(secs "$run"))"
+}
 # `TMPDIR_PROBE_REUSE`, when it names a directory that still holds a victim and
 # an owned checkout, is used by the `tmpdir` shape instead of building both
 # again: a full clone per probe cost ~3 s, i.e. +60 s over 20 scripts on a gate
@@ -448,7 +496,17 @@ trap 'rm -f "$PROBE_LOG" "$PROBE_RC_FILE"' EXIT
 # the directory, so the next probe builds afresh rather than inherit damage.
 run_probe() {
     local shape="$1" cwd="$2"; shift 2
-    local v before after rc reuse=0
+    local v before after rc reuse=0 t0 t1 t2
+    local budget="${PROBE_BUDGET:-$PROBE_TIMEOUT}" left
+    t0="$(now_ms)"
+    printf '0 0 0\n' > "$PROBE_TIME_FILE"
+    left=$(( (GATE_DEADLINE_MS - t0) / 1000 ))
+    if [ "$left" -le 0 ]; then
+        echo "TIMEOUT"
+        echo "      [$shape] not started: the gate's ${GATE_BUDGET} s budget was already spent."
+        return 0
+    fi
+    [ "$left" -lt "$budget" ] && budget="$left"
     if [ "$shape" = tmpdir ] && [ "$cwd" = "@checkout" ] && [ -n "${TMPDIR_PROBE_REUSE:-}" ] \
         && [ -e "$TMPDIR_PROBE_REUSE/checkout/.git" ]; then
         v="$TMPDIR_PROBE_REUSE"; reuse=1; cwd="$v/checkout"
@@ -488,6 +546,7 @@ run_probe() {
             ;;
     esac
     before="$(snapshot "$v")"
+    t1="$(now_ms)"
     case "$shape" in
         tmpdir) ;;
         # Exactly what git hands a hook on a push from a linked worktree — the
@@ -516,13 +575,27 @@ run_probe() {
     if [ "$shape" = tmpdir ]; then
         # No inherited git environment in this shape, by definition, and no
         # ceiling the caller happened to have: the probe asks what the SCRIPT does.
-        ( cd "$cwd" && env -u GIT_CEILING_DIRECTORIES -u GIT_DIR -u GIT_WORK_TREE \
-              -u NROS_GATE_SKIP_LEDGER "${env_args[@]}" "$@" ) > "$PROBE_LOG" 2>&1
+        ( cd "$cwd" && "${NROS_DEADLINE[@]}" "$budget" env -u GIT_CEILING_DIRECTORIES -u GIT_DIR \
+              -u GIT_WORK_TREE -u NROS_GATE_SKIP_LEDGER "${env_args[@]}" "$@" ) > "$PROBE_LOG" 2>&1
     else
-        ( cd "$cwd" && env -u NROS_GATE_SKIP_LEDGER "${env_args[@]}" "$@" ) > "$PROBE_LOG" 2>&1
+        ( cd "$cwd" && "${NROS_DEADLINE[@]}" "$budget" env -u NROS_GATE_SKIP_LEDGER "${env_args[@]}" "$@" ) \
+            > "$PROBE_LOG" 2>&1
     fi
     rc=$?
+    t2="$(now_ms)"
     printf '%s\n' "$rc" > "$PROBE_RC_FILE"
+    printf '%s %s %s\n' "$((t2 - t0))" "$((t1 - t0))" "$((t2 - t1))" > "$PROBE_TIME_FILE"
+
+    # `timeout` exits 124 when it sent the TERM, and 137 when the TERM was
+    # ignored and `--kill-after` sent the KILL. Either way the subject did not finish.
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+        echo "TIMEOUT"
+        echo "      [$shape] still running after its ${budget} s budget, so it was killed."
+        echo "      Its last output:"
+        tail -n 8 "$PROBE_LOG" | sed 's/^/        /'
+        rm -rf "$v"
+        return 0
+    fi
     after="$(snapshot "$v")"
 
     if [ "$before" = "$after" ]; then
@@ -722,13 +795,34 @@ EOF
            printf '%s\n' "$verdict" | tail -n +2 >&2; errs=1 ;;
     esac
 
+    # --- the budget (issue 2669), both directions -------------------------
+    # A subject that outlives its budget is TIMEOUT, never CLEAN: a killed
+    # probe compared nothing. One that finishes inside it is not. `exec sleep`
+    # so the TERM lands on the sleeper itself and the probe ends at the budget.
+    printf '#!/usr/bin/env bash\nexec sleep 60\n' > "$t/slow.sh"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$t/quick.sh"
+    verdict="$(PROBE_BUDGET=1 run_probe worktree "$t" bash "$t/slow.sh")"
+    case "$verdict" in
+        TIMEOUT*) ;;
+        *) echo "  selftest: a probe that outlived its 1 s budget was reported" >&2
+           echo "       '${verdict%%$'\n'*}', not TIMEOUT. The budget bounds nothing (issue 2669)." >&2
+           errs=1 ;;
+    esac
+    verdict="$(PROBE_BUDGET=30 run_probe worktree "$t" bash "$t/quick.sh")"
+    case "$verdict" in
+        CLEAN) ;;
+        *) echo "  selftest: a probe that finished inside its budget was reported" >&2
+           echo "       '${verdict%%$'\n'*}' (issue 2669)." >&2; errs=1 ;;
+    esac
+
     rm -rf "$t"
     [ "$errs" -eq 0 ] || { echo "check-hook-repo-side-effects: SELFTEST FAILED" >&2; return 1; }
     echo "  ok    selftest: a shell AND a Python offender are caught in both shapes,
         their cleared twins are not, a working-directory write is caught and
         lands in the gate's own clone, a scratch step that reaches the checkout
-        holding TMPDIR is caught and its cleared twin is not, and the Python
-        helper's control holds"
+        holding TMPDIR is caught and its cleared twin is not, the Python
+        helper's control holds, and a probe past its budget is TIMEOUT while
+        one inside it is not"
     return 0
 }
 
@@ -764,6 +858,13 @@ probe_args() {
         # inherited CI environment that is the real tree. The self-test builds
         # its own repos, which is the git-init path this probe is for.
         scripts/ci/fixture-tree.sh) echo "--self-test" ;;
+        # Its normal path runs `nros configure` over every tracked workspace
+        # root (53 of them) IN THE REAL TREE: a cold configure is minutes, and
+        # under `check fast` it races its own gate for the same build dirs.
+        # Measured on host 241 (issue 2669): 2 s alone and warm, killed at the
+        # 120 s budget in both shapes under `check fast`. The selftest is
+        # its only `git init`, which is the site this probe is for.
+        scripts/check-workspace-probes.sh) echo "--selftest" ;;
         *) echo "" ;;
     esac
 }
@@ -788,7 +889,7 @@ interp() {
 # Its verdict lines are printed, and its failures counted, after the join.
 tmpdir_pass() {
     local f verdict
-    PROBE_LOG="$(mktemp)"; PROBE_RC_FILE="$(mktemp)"
+    PROBE_LOG="$(mktemp)"; PROBE_RC_FILE="$(mktemp)"; PROBE_TIME_FILE="$(mktemp)"
     TMPDIR_PROBE_REUSE="$(mktemp -d)" || return 2
     if ! build_victim "$TMPDIR_PROBE_REUSE" || ! build_checkout "$TMPDIR_PROBE_REUSE/checkout"; then
         rm -rf "$TMPDIR_PROBE_REUSE"; TMPDIR_PROBE_REUSE=""
@@ -799,24 +900,33 @@ tmpdir_pass() {
         # shellcheck disable=SC2046  # deliberate: an empty arg set must vanish
         verdict="$(run_probe tmpdir @checkout "$(interp "$f")" "@ROOT/$f" $(probe_args "$f"))"
         case "$verdict" in
-            CLEAN) ok "$f [tmpdir]" ;;
+            CLEAN) ok "$f [tmpdir] $(probe_time)" ;;
+            TIMEOUT*) bad "$f [tmpdir] did not finish: $(probe_time). A probe that
+        is killed asserted nothing, so this is a failure, not a skip (issue 2669):
+$(printf '%s\n' "$verdict" | tail -n +2)" ;;
             *) bad "$f [tmpdir] MODIFIED the checkout that holds its TMPDIR (issue 2240):
 $(printf '%s\n' "$verdict" | tail -n +2)" ;;
         esac
     done
     [ -n "$TMPDIR_PROBE_REUSE" ] && rm -rf "$TMPDIR_PROBE_REUSE"
-    rm -f "$PROBE_LOG" "$PROBE_RC_FILE"
+    rm -f "$PROBE_LOG" "$PROBE_RC_FILE" "$PROBE_TIME_FILE"
     return "$fail"
 }
 tmpdir_out="$(mktemp)"
 tmpdir_pass > "$tmpdir_out" 2>&1 &
 tmpdir_pid=$!
 
-echo "check-hook-repo-side-effects: the victim repo survives every hazardous script"
-for f in "${hazardous[@]}"; do
-    [ "$f" = "$HOOK" ] && continue                     # run end-to-end below
-    [ "$f" = "scripts/check-hook-repo-side-effects.sh" ] && continue  # this file
-    for shape in worktree explicit; do
+# One pass per hook environment. The two shapes share nothing (each probe
+# builds its own victim, and each pass has its own log, status and time
+# files), so they run CONCURRENTLY with each other and with the tmpdir pass
+# (issue 2669). Run one after the other they were two thirds of the gate's
+# probe time, measured on host 241 under a load average of 33.
+shape_pass() {
+    local shape="$1" f verdict
+    PROBE_LOG="$(mktemp)"; PROBE_RC_FILE="$(mktemp)"; PROBE_TIME_FILE="$(mktemp)"
+    for f in "${hazardous[@]}"; do
+        [ "$f" = "$HOOK" ] && continue                     # run end-to-end below
+        [ "$f" = "scripts/check-hook-repo-side-effects.sh" ] && continue  # this file
         # The real repo is the working directory because that is where these run
         # from; the VICTIM is what the environment names, and it is the thing
         # compared. A script that ignored the environment entirely and wrote to
@@ -826,12 +936,28 @@ for f in "${hazardous[@]}"; do
         # shellcheck disable=SC2046  # deliberate: an empty arg set must vanish
         verdict="$(run_probe "$shape" "$REPO" "$(interp "$f")" "$REPO/$f" $(probe_args "$f"))"
         case "$verdict" in
-            CLEAN) ok "$f [$shape]" ;;
+            CLEAN) ok "$f [$shape] $(probe_time)" ;;
+            TIMEOUT*) bad "$f [$shape] did not finish: $(probe_time). A probe that
+        is killed asserted nothing, so this is a failure, not a skip (issue 2669):
+$(printf '%s\n' "$verdict" | tail -n +2)" ;;
             *) bad "$f [$shape] MODIFIED the repository its environment named:
 $(printf '%s\n' "$verdict" | tail -n +2)" ;;
         esac
     done
-done
+    rm -f "$PROBE_LOG" "$PROBE_RC_FILE" "$PROBE_TIME_FILE"
+    return "$fail"
+}
+explicit_out="$(mktemp)"
+shape_pass explicit > "$explicit_out" 2>&1 &
+explicit_pid=$!
+
+echo "check-hook-repo-side-effects: the victim repo survives every hazardous script"
+shape_pass worktree || fail=1
+explicit_rc=0
+wait "$explicit_pid" || explicit_rc=$?
+cat "$explicit_out"
+rm -f "$explicit_out"
+[ "$explicit_rc" -eq 0 ] || fail=1
 
 echo "check-hook-repo-side-effects: TMPDIR inside the checkout (issue 2240)"
 tmpdir_rc=0
@@ -867,10 +993,15 @@ if [ -z "$head_sha" ]; then
     bad "cannot resolve HEAD — refusing to report on a hook run that did not happen"
 else
     verdict="$(printf 'refs/heads/probe %s refs/heads/probe %s\n' "$head_sha" "$head_sha" \
-        | run_probe worktree @checkout env NROS_SKIP_PREPUSH_CHECKS=1 \
-              timeout 180 bash "$REPO/$HOOK" origin "$REPO")"
+        | PROBE_BUDGET=180 run_probe worktree @checkout env NROS_SKIP_PREPUSH_CHECKS=1 \
+              bash "$REPO/$HOOK" origin "$REPO")"
+    hook_timed_out=0
     case "$verdict" in
-        CLEAN) ok "$HOOK [worktree] left both repositories it can reach untouched
+        TIMEOUT*) hook_timed_out=1
+            bad "$HOOK [worktree] did not finish: $(probe_time). A hook run that is
+        killed asserted nothing, so this is a failure, not a skip (issue 2669):
+$(printf '%s\n' "$verdict" | tail -n +2)" ;;
+        CLEAN) ok "$HOOK [worktree] $(probe_time) left both repositories it can reach untouched
         — the one its environment names and the checkout it runs in" ;;
         *) bad "$HOOK [worktree] MODIFIED a repository across a hook run. A
         change to the clone's own config is 0986's exact symptom
@@ -886,7 +1017,7 @@ $(printf '%s\n' "$verdict" | tail -n +2)" ;;
     # they are fast gates too, so they are red alongside this. It also fires if
     # the owned checkout is missing something a stage needs, which is the
     # failure mode a sparse checkout would have made silent.
-    if ! nros_grep_q -- 'fast gates SKIPPED' "$PROBE_LOG"; then
+    if [ "$hook_timed_out" -eq 0 ] && ! nros_grep_q -- 'fast gates SKIPPED' "$PROBE_LOG"; then
         bad "$HOOK exited before its final stage (rc=$(cat "$PROBE_RC_FILE")), so
         the stages after that point were not exercised. Its output:
 $(sed 's/^/          /' "$PROBE_LOG" | head -20)"

@@ -118,9 +118,6 @@ ALLOWLIST = {
         "bash -c 'sleep <marker> & wait'` tree whose exact shape (and the "
         "missing kill-after) is what the test measures; it is reaped by the "
         "test's own group kill",
-    ("scripts/check-hook-repo-side-effects.sh", "bash"):
-        "runs OUR pre-push hook script, a plain bash script with no SIGTERM "
-        "trap, inside the gate's own probe wrapper",
     # phase-551 W1: the Dockerfile text moved into the shared image generator.
     ("scripts/ci/lib/image-context.sh", "bash"):
         "a Dockerfile `RUN` that smoke-starts the router at image BUILD time: "

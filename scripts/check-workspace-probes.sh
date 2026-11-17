@@ -19,6 +19,10 @@
 # Usage:
 #   check-workspace-probes.sh             every root
 #   check-workspace-probes.sh <root>...   only these (for a repro)
+#   check-workspace-probes.sh --selftest  the negative control alone, which is
+#                                          this script's only `git init`
+#                                          (`check-hook-repo-side-effects`
+#                                          probes it this way)
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -83,6 +87,10 @@ selftest() {
 source scripts/lib/git-hook-env.sh
 nros_clear_inherited_git_env
 selftest || exit 1
+if [ "${1:-}" = "--selftest" ]; then
+    echo "check-workspace-probes: selftest OK"
+    exit 0
+fi
 
 if [ "$#" -gt 0 ]; then
     roots=("$@")
