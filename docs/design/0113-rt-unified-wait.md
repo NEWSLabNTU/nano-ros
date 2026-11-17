@@ -4,7 +4,7 @@ title: "Every supported way to run nano-ros keeps the real-time promise; one wai
 status: Stable
 area: runtime-api
 since: 2026-10
-last-reviewed: 2026-11-13
+last-reviewed: 2026-11-17
 implements-tracked-by: [phase-521]
 amends: [RFC-0106, RFC-0112]
 supersedes: []
@@ -291,7 +291,7 @@ deleted receive-blocking wait.
 | zenoh CALLER mode, mps2-an385 (LAN9118 / UART0) | Notify (RX IRQ + SysTick one-shot) | idle listener, QEMU 9.0.2, 20 s: 41 one-shot arms (1,892 with the old 10 ms drain); the same under the SDK's QEMU `11.0.0-nros8` (QEMU process idle at 0 % host CPU; `-nros7`'s `wfi` did not halt and cost 120 %, issue 2209) |
 | Cyclone DDS | Notify — the listener posts the executor's wake from Cyclone's receive thread; on the host-simulator boards (freertos-posix, threadx-linux), where that thread may not enter the kernel, it posts a port-owned forwarder (`nros/platform_foreign_wake.h`) that signals from kernel context. A build with neither states `None` and is refused at open (issue 2217) | threadx-linux `test_threadx_linux_cyclonedds_*` (pubsub, C++ pubsub, service, action) and freertos-posix `freertos_posix_{c,cpp}_entry_delivers_over_cyclonedds` pass with the forwarder |
 | XRCE over UDP, POSIX / NuttX | Waitable (socket fd) | phase-521 W3 |
-| XRCE over zsock, Zephyr | Waitable (`zsock_poll`) | native_sim arrival→dispatch p50 0.4–1.1 ms (was 3.2–6.3 ms); mps2/an385 (in-kernel IP stack, QEMU 11): 10 executor switch-ins over five 1 s expiries, dispatch on the tick |
+| XRCE over zsock, Zephyr | Waitable (`zsock_poll`) | native_sim arrival→dispatch p50 0.4–1.1 ms (was 3.2–6.3 ms); mps2/an385 (in-kernel IP stack, QEMU 11): 5 executor wakes over five 1 s expiries, all ended by the deadline (14–15 switch-ins, the rest preemption and reschedule passes, 2026-11-17), dispatch on the tick |
 | XRCE over lwIP (FreeRTOS), NetX Duo (ThreadX) | Notify (stack receive callback) | p50 2.2–4.0 ms (was 72–253 ms); NetX 1.8 ms |
 | C++ native sched task runner, `rclc_executor_spin_period` | parks on the wake object | `node_guard_condition.c`: a trigger in the period gap dispatched 0 ms after it lands (was: next period) |
 | zenoh CALLER mode, ThreadX | Notify — the link's TCP socket notifies through `nros_platform_tcp_set_rx_notify` (NetX Duo's receive notify; on threadx-linux a lowest-priority NSOS watcher thread), and `zp_next_wake_ms` is real in the multi-thread build | idle threadx-linux listener, 10 s: 4,599 context switches against 53,061 with the blind `z_sleep_ms`; `rtos_e2e` pubsub/service/action pass on threadx-linux and rv-virt-threadx |
@@ -313,12 +313,26 @@ pins the same per member.
 Measured on Zephyr (mps2/an385 under QEMU 11, Zephyr's own IP stack and the
 LAN9118 driver; `zephyr_cortex_m_qemu::zephyr_cortex_m_idle_{zenoh,xrce}_image_wakes_only_for_its_deadlines`,
 2026-11-03): an image with one idle subscription and one 1 s timer counts its
-executor thread's switch-ins with Zephyr's user tracing hook. Over five
-expiries (5,000 ms) the count is 10 on zenoh and 10 on XRCE, each expiry
-dispatched on its 1 ms tick (0 us late, 0 us early), in every run. That is two
-switch-ins per deadline and none between them; the receive-blocking wait woke
-on a 10 ms slice, ~500 times in the same window. The test bounds the count at
-two per expiry plus two, and the lateness at 50 ms. The XRCE cell is the first
+executor thread's switch-ins with Zephyr's user tracing hooks. Over five
+expiries (5,000 ms) the count was 10 on zenoh and 10 on XRCE, each expiry
+dispatched on its 1 ms tick (0 us late, 0 us early), in every run. The
+receive-blocking wait woke on a 10 ms slice, ~500 times in the same window.
+
+**A switch-in is not a wake** (measured 2026-11-17). The hook also fires when
+the thread resumes after a preemption, and after a reschedule pass in which no
+other thread ran, both while the executor is dispatching. By then the XRCE
+image read 14–15 switch-ins over the same five expiries, and the old bound
+(two per expiry plus two, 12) failed. Splitting each switch-in by the state its
+preceding switch-out left the thread in gave this: exactly **5** followed a
+BLOCKED switch-out (pending in `zsock_poll`), one per deadline. At most 2
+followed a preemption by Zephyr's net RX thread (the Agent's frames, 4 LAN9118
+interrupts in the window). The rest were reschedule passes. The park ended 5
+times on its timeout and 3 times on the socket. All 3 socket returns found the
+frame already readable at entry, so the thread never slept. So D2.3 holds: the
+image wakes for its deadlines and for nothing else. The witness now counts
+WAKES, a switch-in after a blocked switch-out, and prints the switch-in total
+beside it. The test bounds wakes at one per expiry plus two (the old bound's
+slack), and the lateness at 50 ms. The XRCE cell is the first
 XRCE image on an in-kernel Zephyr stack, and it found that XRCE's per-attempt
 receive timeout was ignored there: `CONFIG_NET_CONTEXT_RCVTIMEO` was selected
 for zenoh only (issue 2105), so the first CREATE_CLIENT's receive never
@@ -393,6 +407,11 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 - 2026-11-04 — Coverage: Cyclone states its form from its listener (a
   `readiness_source` slot), and the host-simulator boards forward Cyclone's
   arrival through a port-owned foreign-wake bridge (issue 2217).
+- 2026-11-17 — Zephyr idle-wake: the witness counts wakes, not switch-ins.
+  The XRCE cell failed at 14–15 switch-ins against a bound of 12. Measured:
+  5 were wakes, one per deadline, and the rest were preemptions and
+  reschedule passes during dispatch. D2.3 held throughout. The bound is now
+  on wakes, `fires + 2`, tighter than the old `2 * fires + 2`.
 - 2026-11-03 — D9: the park slot gains its wake half. The executor's wake
   object calls a hook (`nros_cpp_executor_set_wake_hook`) on every signal,
   and a PX4 sched task binds it to `notify()`, so a networked backend's arrival
