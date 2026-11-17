@@ -1,6 +1,6 @@
 # Phase 567 — a release ships only what the slow lanes have seen
 
-**Status (2026-11-18). OPEN: W1–W4, W5 (W5a–W5c) and W6 are done; W3b and W7 are open.** Approved by the user on
+**Status (2026-11-18). OPEN: W1–W4, W3b, W5 (W5a–W5c) and W6 are done; W3c and W7 are open.** Approved by the user on
 2026-11-16 ("Take your advice on regression prevention. Have a phase doc to
 track the change"), after a review of the CI workflows on main against that
 day's regressions. Implements no RFC; it closes gaps between the lanes that
@@ -120,7 +120,11 @@ workflow and passes the built one; W4's check runs in the dry run.
 
 ### W3b — a rehearsal that runs past a W1/W2 refusal
 
-- **Status:** OPEN (user ruling 2026-11-17).
+- **Status:** DONE (#4157, 2026-11-17). The first `rehearse=true` dry run
+  (run 44115121052, main 2b2f695f3b) printed W1's three REFUSED lines and
+  `REFUSED (rehearsal: continuing, NOT releasable)`, then ran `build`, the
+  island job and both images. Its `pinned-newer` replay failed for a reason
+  that is not W3b's: W3c.
 
 W1 runs first and `build`, the island job and the images all need it, so a
 dry run on a commit W1 refuses rehearses nothing else: the first rehearsal on
@@ -153,6 +157,45 @@ refusal, opens its summary with it, and runs `build`, the island job, both
 images and the `pinned-newer` replay; `rehearse=true publish=true` is refused
 in the lanes job's first step; without `rehearse` a refusal still stops the
 run; `just check release-rehearsal` refuses each mutation above.
+
+### W3c — the probe tests the commit under test, by SHA
+
+- **Status:** OPEN — done when a `rehearse=true` dry run's `pinned-newer`
+  replay passes on main.
+
+The first rehearsal's `starter` job built and verified its image, then died in
+the `pinned-newer` replay: `fatal: invalid object name 'main'` / `probe: main
+has no .github/workflows/release-nros.yml`. `starter-image.yml` checks out
+`inputs.ref` by SHA (a detached HEAD with no local `main`) and handed the probe
+`PROBE_BRANCH: ${{ github.ref_name }}`, so `run-bootstrap-probe.sh` read
+`git show main:…`. Where a `main` did exist the probe was wrong more quietly:
+`git clone --branch main` (the book clone and the release builder's) built
+main's TIP, not the commit under test, and a `main` in a shared git dir is
+any session's stale branch (issue 2604).
+
+1. The commit under test is the checked-out commit, `HEAD`, by SHA, for every
+   read (the release workflow, `install.sh`, the index, and now the pinned
+   version too — issue 2604) and every clone. `PROBE_BRANCH` is retired: set,
+   the probe refuses (exit 2) naming the replacement. A detached `HEAD` is the
+   normal case, no longer a refusal. The workflows (`host-tests.yml`,
+   `weekly.yml`, `starter-image.yml`) stop naming a ref, and weekly's
+   `probe-under-test` branch step goes.
+2. One clone, `scripts/probe/commit-under-test.sh`'s `probe_clone_at_commit`,
+   fetches the SHA, checks it out detached and asserts it landed there. The
+   harness sources it, the release builder mounts it, and the extracted book
+   script carries it as a prelude. It fetches with `--update-shallow` when
+   unbounded: from a shallow source (every CI checkout) a plain fetch WARNS,
+   exits 0 and fetches nothing — found by the check below, not by reading.
+3. `check-book-probe-tracks` builds the rehearsal's shape every call: a clone
+   detached on C1 with a local `main` one commit ahead whose tree has no
+   release workflow and no `install.sh`. It asserts the `pinned-newer` track
+   extracts there, `PROBE_BRANCH=main` is refused, the checkout track's clone
+   line fetches `$PROBE_COMMIT`, and the book's and the builder's clones land
+   on C1. Negative control: `main:` must fail to read in that clone. About
+   +7 s on the gate's ~12 s.
+
+Acceptance: the check above holds; a `rehearse=true` dry run on main runs the
+`pinned-newer` replay against the commit it released.
 
 ### W4 — a consumer-shaped workspace in the tree
 

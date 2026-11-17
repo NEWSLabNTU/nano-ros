@@ -68,10 +68,14 @@ EXEMPT = {
     ("scripts/ci/fixture-tree.sh", "diff"):
         "not a gate, and not this repository: it diffs two commits of the "
         "separate fixture tree, which `fixture-tree.sh sync` fetches whole",
+    ("scripts/check-book-probe-tracks.py", "show"):
+        "reads `main:<file>` in a scratch clone the gate itself just built "
+        "and committed into, so every object is local (the non-tip "
+        "rehearsal's negative control, phase-567 W3c)",
     ("scripts/probe/run-bootstrap-probe.sh", "show"):
-        "not a gate: `show <under_test>:<file>` reads the tip under test "
-        "(HEAD or PROBE_BRANCH), and the daily host-tests.yml checkout track checks "
-        "out with fetch-depth: 0 (a full clone)",
+        "not a gate: `show <under_test>:<file>` reads the commit under test, "
+        "which is HEAD by SHA (phase-567 W3c) and so present in any clone, "
+        "shallow or treeless",
 }
 
 LOG_FLAGS = ("--name-status", "--name-only", "--stat", "--numstat",

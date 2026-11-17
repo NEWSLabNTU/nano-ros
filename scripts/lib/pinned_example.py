@@ -13,6 +13,9 @@ index bump, so it is never more than one release behind what the book is
 written for.
 
   pinned_example.py           print the version
+  pinned_example.py -         print it for the index text on stdin (the probe
+                              reads the COMMIT under test's index, never the
+                              working tree's -- issue 2604)
   pinned_example.py --check   the page's two literals equal it (the gate)
 """
 import re
@@ -82,11 +85,11 @@ def self_test(quiet: bool = False) -> None:
         print(f"pinned_example.py: selftest OK ({len(cases)} cases)")
 
 
-def derived() -> str:
+def derived(index_text: str = None, origin: str = None) -> str:
     try:
-        return derive(INDEX.read_text())
+        return derive(INDEX.read_text() if index_text is None else index_text)
     except Underivable as e:
-        sys.exit(f"{INDEX}: {e}")
+        sys.exit(f"{origin or INDEX}: {e}")
 
 
 def check() -> int:
@@ -108,6 +111,9 @@ def check() -> int:
 if __name__ == "__main__":
     if sys.argv[1:] == ["--check"]:
         sys.exit(check())
+    if sys.argv[1:] == ["-"]:
+        print(derived(sys.stdin.read(), "<stdin>"))
+        sys.exit(0)
     if sys.argv[1:]:
-        sys.exit("usage: pinned_example.py [--check]")
+        sys.exit("usage: pinned_example.py [--check | -]")
     print(derived())

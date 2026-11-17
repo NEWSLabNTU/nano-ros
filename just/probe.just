@@ -12,7 +12,8 @@ default:
 #      run-a-talker.md (the serial QEMU chapter, timed) with NO checkout on the host.
 #      The released `nros` could not build anything and nothing noticed, because
 #      every host that ran it had a checkout the SDK-root ladder reached first.
-# ~30-60 min cold each. Knobs: PROBE_BRANCH, PROBE_CLONE_URL, PROBE_IMAGE,
+# ~30-60 min cold each. The commit under test is the checked-out one (HEAD,
+# by SHA). Knobs: PROBE_CLONE_URL, PROBE_IMAGE,
 # PROBE_KEEP=1, and for the installed track PROBE_ASSET / PROBE_RELEASE_CACHE
 # (see scripts/probe/run-bootstrap-probe.sh).
 [group("main")]

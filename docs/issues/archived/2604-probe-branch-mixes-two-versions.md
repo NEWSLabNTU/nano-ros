@@ -1,12 +1,14 @@
 ---
 id: 2604
 title: "run-bootstrap-probe.sh reads the pinned version from the working tree and the published version from PROBE_BRANCH, so a PROBE_BRANCH other than HEAD mixes two releases"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [testing, release]
-related: [issue-2168]
+related: [issue-2168, phase-567]
 found: 2026-11-15
+resolved: 2026-11-18
+resolved_in: "fix(phase-567 W3c): the probe tests the commit under test, by SHA"
 ---
 
 # One probe, two sources for its versions
@@ -53,3 +55,16 @@ derived from the same `git show` the published one reads.
 
 Test: the probe's preamble, with an index at `PROBE_BRANCH` that differs from
 the working tree's, refuses and names both versions.
+
+## Resolution (2026-11-18, phase-567 W3c)
+
+A different shape from the one agreed above, because the release rehearsal
+found the same defect from the other side: `PROBE_BRANCH=main` on a detached
+SHA checkout, where `main` did not exist at all. Rather than refuse a
+`PROBE_BRANCH` that disagrees, the knob is RETIRED: the commit under test is
+always the checked-out `HEAD`, by SHA, and a set `PROBE_BRANCH` is refused
+(exit 2). Both versions now come from that one commit — `pinned_example.py -`
+derives the pinned version from `git show <sha>:nros-sdk-index.toml`, the read
+the published version already made — so the working tree is no longer a
+second source. `check-book-probe-tracks` builds a detached non-tip SHA with a
+`main` ahead of it and asserts the probe reads the SHA (phase-567 W3c).

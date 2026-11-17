@@ -262,7 +262,10 @@ jobs:
       - name: Replay pinned-newer against the release asset
         if: ${{ inputs.asset_artifact != '' && inputs.asset_artifact != null && (inputs.target || 'starter') == 'starter' }}
         env:
-          PROBE_BRANCH: ${{ github.ref_name }}
+          # No PROBE_BRANCH (retired, phase-567 W3c): this job checked out
+          # `inputs.ref` by SHA, and the probe tests exactly that commit. It
+          # named `github.ref_name` (main) and failed the first rehearsal on
+          # `fatal: invalid object name 'main'`.
           PROBE_CANDIDATE_ASSET: ${{ runner.temp }}/asset
           PROBE_CANDIDATE_VERSION: ${{ inputs.version }}
         run: |

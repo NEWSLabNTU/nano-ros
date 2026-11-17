@@ -23,14 +23,17 @@
 # what that step installs (`zstd`, and `python3-tomli` for
 # `check-source-refs.py` on 22.04's Python 3.10).
 #
-# Inputs (env): PROBE_BRANCH, HOST_UID, HOST_GID.
+# Inputs (env): PROBE_COMMIT (a SHA — phase-567 W3c), HOST_UID, HOST_GID.
 # Mounts: /nano-ros-git (the repo's git dir, RO), /probe/release-steps.sh,
+#         /probe/commit-under-test.sh,
 #         /out (receives the asset + its .sha256), and optionally the cache
 #         volumes /cache/target-cli and /cache/target-resolve.
 
 set -euo pipefail
 
-: "${PROBE_BRANCH:?PROBE_BRANCH names the commit to build}"
+: "${PROBE_COMMIT:?PROBE_COMMIT names the commit to build, by SHA}"
+# shellcheck disable=SC1091  # mounted by run-bootstrap-probe.sh
+. /probe/commit-under-test.sh
 
 echo '=== release builder: runner-image shim ==='
 export DEBIAN_FRONTEND=noninteractive
@@ -51,12 +54,14 @@ cargo --version
 # anything a runner does.
 git config --global --add safe.directory '*'
 
-echo "=== release builder: checkout $PROBE_BRANCH (actions/checkout@v4 shape) ==="
+echo "=== release builder: checkout $PROBE_COMMIT (actions/checkout@v4 shape) ==="
 # Depth 1, as actions/checkout@v4 fetches by default — which matters, because
 # the workflow's `Record` step has a fallback for exactly that shallowness.
 # `file://` because git ignores `--depth` for a plain-path local clone.
 src=/src
-git clone -q --depth 1 --branch "$PROBE_BRANCH" file:///nano-ros-git "$src"
+# By SHA, detached — what actions/checkout leaves; a `--branch` clone built
+# the branch's TIP, which on a rehearsal is not the commit being released.
+probe_clone_at_commit file:///nano-ros-git "$PROBE_COMMIT" "$src" 1
 echo "building $(git -C "$src" rev-parse --short HEAD): $(git -C "$src" log -1 --format=%s)"
 # The cache volumes (run-bootstrap-probe.sh, PROBE_RELEASE_CACHE=1) mount under
 # /cache rather than inside the clone, because a clone refuses a destination
