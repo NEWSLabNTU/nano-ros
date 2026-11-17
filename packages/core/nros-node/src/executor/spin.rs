@@ -15115,6 +15115,35 @@ impl<'s> Executor<'s> {
 
 #[cfg(feature = "param-store")]
 impl<'s> Executor<'s> {
+    /// Issue 2670 -- tell a metadata probe that Rust code declared a parameter
+    /// through one of this crate's own declaration routes. Called by those
+    /// four routes only (see
+    /// [`ObservedParameterDeclare`](super::registration_observer::ObservedParameterDeclare)),
+    /// before the store answers. Compiles to nothing without
+    /// `registration-observer`.
+    #[inline]
+    #[cfg_attr(not(feature = "registration-observer"), allow(unused_variables))]
+    pub(crate) fn observe_code_parameter_declare(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: Option<&nros_params::ParameterValue>,
+        parameter_type: nros_params::ParameterType,
+    ) {
+        #[cfg(feature = "registration-observer")]
+        if let Some(record) = self.nodes.get(node.index()) {
+            super::registration_observer::observe_parameter_declare(
+                super::registration_observer::ObservedParameterDeclare {
+                    node_name: record.name.as_str(),
+                    node_namespace: record.namespace.as_str(),
+                    name,
+                    value,
+                    parameter_type,
+                },
+            );
+        }
+    }
+
     /// Build the parameter STORE and register no service.
     ///
     /// What an image declaring the `params` axis (and not `param_services`)
@@ -15583,7 +15612,9 @@ impl<'s> Executor<'s> {
         note = "the node is the parameter receiver: call `node.declare_parameter::<T>(name).default(value).mandatory()` on the `Node` that `create_node` / `node_mut(id)` returns"
     )]
     pub fn declare_parameter(&mut self, name: &str, value: nros_params::ParameterValue) -> bool {
-        self.declare_parameter_on(super::node_record::NodeId::PRIMARY, name, value)
+        let node = super::node_record::NodeId::PRIMARY;
+        self.observe_code_parameter_declare(node, name, Some(&value), value.param_type());
+        self.declare_parameter_on(node, name, value)
     }
 
     /// Declare a parameter with a value on a named node.
@@ -15912,12 +15943,9 @@ impl<'s> Executor<'s> {
         value: nros_params::ParameterValue,
         descriptor: nros_params::ParameterDescriptor,
     ) -> bool {
-        self.declare_parameter_with_descriptor_on(
-            super::node_record::NodeId::PRIMARY,
-            name,
-            value,
-            descriptor,
-        )
+        let node = super::node_record::NodeId::PRIMARY;
+        self.observe_code_parameter_declare(node, name, Some(&value), value.param_type());
+        self.declare_parameter_with_descriptor_on(node, name, value, descriptor)
     }
 
     /// Declare a parameter with a value and descriptor on a named node.
@@ -16415,6 +16443,11 @@ impl<'s> Executor<'s> {
         node: super::node_record::NodeId,
         name: &'a str,
     ) -> Result<nros_params::ParameterBuilder<'a, 's, T>, NodeError> {
+        // Issue 2670 -- observed here, where the typed builder starts, because
+        // its terminals live in nros-params and know no node name. Reached only
+        // by `parameter` and `Node::declare_parameter`; no C, C++ or
+        // declarative route builds a typed builder.
+        self.observe_code_parameter_declare(node, name, None, T::parameter_type());
         // phase-515 R10 — the store comes into being on first use, as it
         // does for `declare_parameter_on`: `Node::declare_parameter` is the
         // user-facing declaration now, and it must not need a call the old

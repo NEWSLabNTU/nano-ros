@@ -277,6 +277,11 @@ fn census_arm() -> Option<::nros::ExecutorSizing> {
     // SAFETY: the boot funnel, before the executor opens and before any sched task
     // thread is spawned -- the process is single-threaded here.
     unsafe { std::env::set_var("NROS_RMW", nros::census_hooks::RECORDER_RMW) };
+    // Issue 2670 -- arm the registration observers before the executor opens.
+    // `begin_node` arms them too, but only when a hooked route opens a node;
+    // an image whose nodes and parameters all go through `nros-node`'s own
+    // routes (`node_builder`, `node_mut(..).declare_parameter`) never calls it.
+    ::nros::metadata_mode::listen_for_registrations();
     Some(::nros::census_hooks::CENSUS_SIZING)
 }
 
