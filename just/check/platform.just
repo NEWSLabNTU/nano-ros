@@ -79,6 +79,21 @@ board-key-family-sites:
 r5f-hard-float-abi:
     @bash scripts/check/check-r5f-hard-float-abi.sh
 
+# phase-575 W2 / phase-577 W8 (RFC-0135 D2) -- a board package kept OUTSIDE
+# nano-ros builds hard-float FreeRTOS images in C, C++ and Rust with nothing
+# patched. Copies the fixture board package and its vendor SDK stand-in to a
+# scratch dir, reaches them only through NROS_EXTRA_BOARD_PATH and the
+# package's own FIXTURE_R5F_SDK_ROOT, runs `nros build` in each example, and
+# requires every ELF to say `Tag_ABI_VFP_args: VFP registers` and
+# `Tag_FP_arch: VFPv3-D16`. Its selftest hands the same check a softfp object
+# and requires a refusal. ~2 min warm: three cross builds.
+[metadata("tier", "build")]
+[group('needs:cli')]
+[group('needs:arm-gcc')]
+[group('needs:cmake')]
+out-of-tree-board-images:
+    @bash scripts/check/check-out-of-tree-board-images.sh
+
 # phase-340 W4 — the artifact-identity budget: how many times one crate is
 # COMPILED, and how many dirs one compilation is written into, for a single
 # workspace at a single feature set. `examples/workspaces/mixed` is the fixture
