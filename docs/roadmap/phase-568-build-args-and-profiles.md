@@ -131,8 +131,11 @@ says so.
 - the probe adds each node package's build-time WORKSPACE dependency
   packages to its one project, in ws-order before the node, and keys
   freshness on them, so a node including a sibling library's header
-  probes without an `add_subdirectory` fallback of its own (issue 2680;
-  design in the issue, under review);
+  probes without an `add_subdirectory` fallback of its own (issue 2680).
+  **Done**: dependency closure over the build-time tags, added once in
+  topological order, cycle and west-dependency refusals, blame per member,
+  freshness key over the closure; `probe_workspace_dep_ws` configures under
+  `refuse` with no fallback (`archived/2680-*`);
 - a dependency's `system.toml` arguments are listed by `--dry-run` as
   ignored (moved from W2). **Open**: a dependency package has no
   `[image.<id>.build]` of its own today, so there is nothing yet to ignore;
