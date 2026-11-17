@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>dep_probe_bringup</name>
+  <version>0.1.0</version>
+  <description>Issue 2680 -- one native image of the dependent node.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>dep_probe_pkg</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

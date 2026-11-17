@@ -10434,6 +10434,7 @@ mod retired_table_tests {
             dir: dir.to_path_buf(),
             build_type: None,
             depends: Default::default(),
+            build_depends: Default::default(),
         }]
     }
 

@@ -133,6 +133,11 @@ pub struct PackageXml {
     pub version: String,
     /// All dependencies (build, exec, depend)
     pub dependencies: HashSet<String>,
+    /// Issue 2680 -- the BUILD-time subset: `<depend>`, `<build_depend>` and
+    /// `<build_export_depend>`, without `<exec_depend>`. What a package needs
+    /// configured before it can compile, so what the metadata probe adds
+    /// before it; a bringup's `<exec_depend>` on a node is not a build edge.
+    pub build_dependencies: HashSet<String>,
     /// `<export><nano_ros_provides …/></export>` entries (phase-348 W1).
     /// Empty for every package that is not a provider, which is almost all of
     /// them — this is the cheap parse the scan does per package.
@@ -228,6 +233,7 @@ impl PackageXml {
         let mut name = None;
         let mut version = None;
         let mut dependencies = HashSet::new();
+        let mut build_dependencies = HashSet::new();
         let mut provides = Vec::new();
         let mut uses: Vec<Selection> = Vec::new();
         let mut build_type: Option<String> = None;
@@ -299,6 +305,7 @@ impl PackageXml {
                             &mut name,
                             &mut version,
                             &mut dependencies,
+                            &mut build_dependencies,
                             &mut build_type,
                         );
                     }
@@ -317,6 +324,7 @@ impl PackageXml {
             name: name.ok_or_else(|| eyre!("Missing <name> in package.xml"))?,
             version: version.unwrap_or_else(|| "0.0.0".to_string()),
             dependencies,
+            build_dependencies,
             provides,
             uses,
             build_type,
@@ -330,6 +338,7 @@ impl PackageXml {
         name: &mut Option<String>,
         version: &mut Option<String>,
         dependencies: &mut HashSet<String>,
+        build_dependencies: &mut HashSet<String>,
         build_type: &mut Option<String>,
     ) {
         match current_tag {
@@ -340,6 +349,9 @@ impl PackageXml {
                 *version = Some(text);
             }
             "depend" | "build_depend" | "exec_depend" | "build_export_depend" => {
+                if current_tag != "exec_depend" {
+                    build_dependencies.insert(text.clone());
+                }
                 dependencies.insert(text);
             }
             // FIRST declaration wins, matching every other reader
@@ -420,6 +432,10 @@ mod tests {
         assert!(pkg.dependencies.contains("geometry_msgs"));
         assert!(pkg.dependencies.contains("rosidl_default_generators"));
         assert!(pkg.dependencies.contains("rosidl_default_runtime"));
+        // Issue 2680 -- the build-time subset leaves `<exec_depend>` out.
+        assert!(pkg.build_dependencies.contains("std_msgs"));
+        assert!(pkg.build_dependencies.contains("rosidl_default_generators"));
+        assert!(!pkg.build_dependencies.contains("rosidl_default_runtime"));
     }
 
     /// phase-348 W1 — a package.xml carrying provisions, in both XML spellings.

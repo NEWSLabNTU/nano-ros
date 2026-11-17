@@ -463,7 +463,16 @@ pub fn refresh_stale_sidecars(
             rmw,
         ) {
             Ok(outcomes) => {
-                for (o, opts) in outcomes.iter().zip(cpp_batch.iter()) {
+                // Matched by name, not zipped: a component dropped to let the
+                // rest configure is reported AFTER the ones that ran (phase-367
+                // W4), so the outcome order is not the batch order.
+                for o in &outcomes {
+                    let Some(opts) = cpp_batch
+                        .iter()
+                        .find(|b| b.package == o.package && b.component == o.component)
+                    else {
+                        continue;
+                    };
                     match &o.result {
                         Ok(()) => {
                             // Stamp only on success; a failed probe leaves the
@@ -613,6 +622,10 @@ fn cpp_probe_member(
         return Err("no CMake library target to link".into());
     };
     let sidecar = decl.source_metadata_path();
+    // Issue 2680 -- the workspace packages the probe adds before this one. A
+    // cycle, or a dependency the host probe cannot configure, refuses the
+    // component, naming why.
+    let deps = crate::orchestration::probe_deps::workspace_deps(&decl.package_root)?;
 
     // Issue 1528 — the C-vs-C++ decision, with NO wildcard.
     //
@@ -657,6 +670,7 @@ fn cpp_probe_member(
             nano_ros_workspace: nano_ros.to_path_buf(),
             output_path: sidecar,
             probe_dir: probe_root.to_path_buf(),
+            deps,
         },
     )
 }
@@ -1472,11 +1486,14 @@ fn clear_unprobeable(sidecar: &Path) {
 pub fn probe_inputs_key(package_root: &Path, nano_ros: Option<&Path>) -> Option<String> {
     let pkg = source_digest(package_root).ok()?;
     let closure = probe_closure_digest(nano_ros?)?;
+    // Issue 2680 -- and the workspace packages the probe adds before this one:
+    // their names and sources. Empty without any, so such a key is unchanged.
+    let deps = super::probe_deps::key_field(package_root)?;
     // Issue 2640 -- and the knobs the probe's build pins (store and executor
     // sizes): a sidecar from a probe built under other values is not this
     // probe's answer.
     Some(format!(
-        "{pkg}:{}:{closure}:{}",
+        "{pkg}:{}:{closure}:{}{deps}",
         env!("NROS_CLI_PLANNING_STAMP"),
         super::metadata_probe_cmake::probe_knob_key()
     ))
@@ -1855,6 +1872,45 @@ mod tests {
         assert!(report.check_failures(ProbeFailurePolicy::Refuse).is_ok());
         assert!(report.check_failures(ProbeFailurePolicy::Warn).is_ok());
         assert_eq!(report.failure_summary(), None);
+    }
+
+    /// Issue 2680 -- a component dropped because a workspace DEPENDENCY the
+    /// probe added could not configure is a failure like any other: it names
+    /// the dependency and the CMake error, and the message still closes with
+    /// the probe-args note, since a path such a dependency needs goes in the
+    /// probe's one `[image_defaults.build] cmake_args`.
+    #[test]
+    fn a_dependency_blamed_failure_closes_with_the_probe_args_note() {
+        use crate::orchestration::metadata_probe_cmake::{PROBE_ARGS_RULE, blame_reason};
+        let why = blame_reason(
+            Some("autoware_controller_libs"),
+            "metadata probe configure failed for `workspace` (exit 1):\n\
+             CMake Error at /ws/src/autoware/CMakeLists.txt:3 (find_package):\n\
+               Could not find a package configuration file provided by \"Eigen3\"",
+        );
+        let report = RefreshReport {
+            failed: vec![ProbeFailure::new(
+                "controller_pkg::controller".into(),
+                &why,
+                None,
+            )],
+            ..Default::default()
+        };
+        let err = format!(
+            "{:#}",
+            report
+                .check_failures(ProbeFailurePolicy::Refuse)
+                .unwrap_err()
+        );
+        assert!(err.contains("controller_pkg::controller"), "{err}");
+        assert!(
+            err.contains("workspace dependency `autoware_controller_libs`"),
+            "{err}"
+        );
+        assert!(
+            err.ends_with(&format!("Note: {PROBE_ARGS_RULE}.")),
+            "the probe-args note closes the message:\n{err}"
+        );
     }
 
     fn one_failure() -> ProbeFailure {
