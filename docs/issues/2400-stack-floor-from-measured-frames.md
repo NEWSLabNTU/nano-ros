@@ -522,3 +522,27 @@ about 8 KB short (issue 2402's RMW vtable gap). The example now has a measured
 row (allowance 8,800 B, floor 36,048 B), and a 26 KiB build fails with
 `NROS_BAREMETAL_STACK_KB=36`. Superseded by ruling (B) the next day: the walk now binds every indirect call and reads 96,680 B (51,240 B before phase-557 W7b closed three binding holes, 90,200 B before W7d took the deepest of 8 callee orders, 96,680 B before W7e, 95,420 B before the board changes of phase-553 W6 and issue 2555, 100,660 B before main moved under it, 97,064 B before phase-557 W8 masked the project's name out of the walk's callee order, 99,340 B before that order was read from inlined v0 back-references, which had moved it with the checkout path), it now reads 103,252 B, the row is an `[[observed]]` row, and a 26 KiB build fails with `NROS_BAREMETAL_STACK_KB=111`. ThreadX and NuttX remain. The detail is in
 [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W5b.
+
+## What is left (2026-11-17)
+
+Confirmed against main on 2026-11-17. Phase-557 W1–W7e are done (W7f was
+dropped at its first checkpoint): the build measures the floor on every road,
+checks it, and can raise a stack on request; the twin and drift lanes hold the
+recorded rows. This issue stays open for four things, each tracked where it
+lives:
+
+- **W3b, the NuttX PX4 case:** blocked on phase-542 W8.b (prebuilt NuttX
+  archives), which waits on a maintainer ruling on hardware.
+- **W5b, the other cargo-road platforms:** bare metal states its stack; ThreadX
+  and NuttX do not yet.
+- **W8, the drift check on the nightly:** the 2026-11-17 run walked 4 of 5
+  rows within band. The fifth needs the nucleo board's rust targets provisioned in the job, and
+  #4137 adds that. W8 is done after the first green nightly.
+- **The 32 KiB `NROS_RUST_MAIN_STACK_FLOOR` literal:** it stays by ruling until
+  measured rows cover the boards, so `check-zephyr-rust-main-stack` still reads
+  a number, not the producer. Retiring it is what meets the acceptance's
+  "neither holds a literal".
+
+Whether floors stay per image or move to per-layer declarations is the open
+design question with the user, and issues 2653 and 2658 are its measured
+inputs.
