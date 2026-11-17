@@ -153,6 +153,25 @@ fn install_report(store: &Path, exe: &Path, cwd: &Path) -> (Vec<String>, usize) 
         ));
     }
 
+    // --- git ---------------------------------------------------------------
+    //
+    // A stated prerequisite of an install (book `start/install.md`), and a
+    // NEEDED one: cargo fetches nano-ros's git dependencies through it
+    // (issue 2671; `nros` sets `CARGO_NET_GIT_FETCH_WITH_CLI`), so without it
+    // the first build fails on a fetch, far from the cause.
+    let git = command_stdout("git", &["--version"]);
+    match git.trim() {
+        "" => {
+            problems += 1;
+            lines.push(
+                "  [!!] git        not found — cargo fetches nano-ros's git dependencies \
+                 with it; install git (your distribution's `git` package)"
+                    .to_string(),
+            );
+        }
+        v => lines.push(format!("  [OK] git        {v}")),
+    }
+
     // --- the launcher ------------------------------------------------------
     //
     // `<store>/bin/nros` is what `install.sh` fronts and what a user's PATH
