@@ -41,7 +41,10 @@ jobs:
     # Gated for the same reason as queue.yml's L3: this needs the RTOS
     # toolchains, and a job that cannot start is not a signal.
     if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
-    runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]
+    # `nros-heavy` (issue 2663): only a runner whose host shares no cores with
+    # local gates may take this job. It is a role label the operator grants;
+    # see docs/development/multi-agent-ci-workflow.md, "Labels, not hostnames".
+    runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big, nros-heavy]
     # Longest run whose cells all passed: 229.5 min (run 43684674172,
     # 2026-11-15: `just build tier2` 128 min from a cold tree, `just ci matrix`
     # 88 min, both green), which the old 230 then cut off while it collected
@@ -532,7 +535,8 @@ jobs:
     # tier 1 must not skip the pairwise cover.
     needs: [tier1]
     if: ${{ always() && vars.NROS_SELF_HOSTED_READY == 'true' }}
-    runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]
+    # `nros-heavy`: see the tier 2 job above (issue 2663).
+    runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big, nros-heavy]
     # NO green run in the last 60. The longest completed run was 243.8 min
     # (a failure); twice that, rounded up. Self-hosted, so above 360 is legal.
     # Re-measure from the first green run.
