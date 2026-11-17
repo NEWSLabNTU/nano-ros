@@ -969,7 +969,7 @@ an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
   check::build gates that run up to 22 processes (the token pool's over-weight
   report). Parked: fix one only when it measures as a problem, the way
   `cli-tests` was fixed (`cpu:4`, 2026-11-16).
-- [issue 2669](../issues/2669-hook-repo-side-effects-gate-unbounded-runtime.md) —
+- [issue 2669](../issues/archived/2669-hook-repo-side-effects-gate-unbounded-runtime.md) — RESOLVED 2026-11-17 —
   `check-hook-repo-side-effects` took 98 s to over 1,900 s on the fast line
   on one day, and its per-script probes have no time limit. It cancelled the
   merge group for #4125. Fix: a per-probe timeout that fails naming the
