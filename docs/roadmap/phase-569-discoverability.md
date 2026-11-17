@@ -223,6 +223,10 @@ Acceptance: the Tutorial's workspace lists its images; its talker image's
 planned nodes and topics match what `ros2 node list` and `ros2 topic list`
 show when it runs (a probe step).
 
+Also here: [issue 2667](../issues/2667-no-user-verb-for-no-alloc-check.md),
+a user verb on the image noun that runs the allocation check
+(`check-no-alloc-image`) on a built image, which today only a checkout can run.
+
 ### W8 — migration out of `nros dev`
 
 - **Status:** OPEN
