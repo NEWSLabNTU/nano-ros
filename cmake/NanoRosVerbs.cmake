@@ -313,6 +313,45 @@ function(nano_ros_add_executable name)
     endif()
 endfunction()
 
+# ---------------------------------------------------------------------------
+# nano_ros_add_plain_executable(<name> <add_executable arguments...>)
+#
+# Issue 2678 (GitHub #4016). An executable that is NOT an image: a test helper
+# or a host tool that keeps its own `main` and links none of the nano-ros
+# runtime. On a board the ament surface turns every `add_executable` into an
+# image (NanoRosAmentSurface.cmake, phase-518), which is right for a stock
+# package's program and wrong for such a helper. This verb is the builtin
+# `add_executable`, with the same arguments, on every platform: no board entry,
+# no renamed `main`, no app config, no platform link pass. What the caller
+# links into `<name>` afterwards is its own business.
+#
+# The target carries `NROS_PLAIN_EXECUTABLE TRUE`, so a later pass (or a
+# person reading the build) can tell it from an image.
+#
+# It replaces setting the private `_NROS_IN_IMAGE_ADD_EXECUTABLE` around a
+# plain `add_executable`, which is the switch nano-ros's own image sites use
+# and is not a public name.
+# ---------------------------------------------------------------------------
+function(nano_ros_add_plain_executable name)
+    if(NOT ARGN)
+        message(FATAL_ERROR
+            "nano_ros_add_plain_executable(${name}) names no sources. It takes "
+            "the arguments of add_executable: <name> [WIN32] [MACOSX_BUNDLE] "
+            "[EXCLUDE_FROM_ALL] <sources...>.")
+    endif()
+    if("IMPORTED" IN_LIST ARGN OR "ALIAS" IN_LIST ARGN)
+        message(FATAL_ERROR
+            "nano_ros_add_plain_executable(${name}) is for an executable this "
+            "project builds. An IMPORTED or ALIAS executable is never made an "
+            "image: declare it with add_executable.")
+    endif()
+    # Function scope: the switch ends with this call, so the next
+    # add_executable of the caller is an image again.
+    set(_NROS_IN_IMAGE_ADD_EXECUTABLE TRUE)
+    add_executable(${name} ${ARGN})
+    set_property(TARGET ${name} PROPERTY NROS_PLAIN_EXECUTABLE TRUE)
+endfunction()
+
 # The compile definitions a board that rebuilds `target`'s sources OUTSIDE
 # CMake (the NuttX boards hand them to a cargo cc-rs build) must pass on: the
 # target's own COMPILE_DEFINITIONS plus every definition set on one of its

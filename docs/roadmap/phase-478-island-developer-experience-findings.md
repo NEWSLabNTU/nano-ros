@@ -702,6 +702,15 @@ are 1..=15, the block the executor's 16-27 were placed above; any other id is
 refused. Zephyr's default sink carries it to CTF; FreeRTOS, POSIX, NuttX and
 ThreadX need a sink the application installs.
 
+### I30 -- a board build's executable that is not an image
+
+**Status: DONE (2026-11-17).** [Issue 2678](../issues/archived/2678-plain-executable-opt-out-on-a-board.md),
+GitHub #4016. On a board every `add_executable` is an image (phase-518), so
+the island's SocketCAN test driver set the private
+`_NROS_IN_IMAGE_ADD_EXECUTABLE` to keep the builtin.
+`nano_ros_add_plain_executable(<name> <sources>...)` is the public verb: the
+builtin on every platform, marked `NROS_PLAIN_EXECUTABLE`.
+
 ## Test / check
 
 ### T1 -- issue status sweep
@@ -829,6 +838,10 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       `nros::trace_marker::emit_app_marker` reach the installed sink with id
       and arg, and refuse every id outside 1..=15 (issue 2641; `just check c`,
       `just check cpp`, `nros-node` tests).
+- [x] I30: on `freertos` a plain `add_executable` reaches the image verb and
+      `nano_ros_add_plain_executable` does not, on `posix` it is the same
+      builtin, and no sources is refused (issue 2678;
+      `just check cmake-ament-surface` case 14).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -857,6 +870,7 @@ this phase will fix it.
 ## Issues homed here (2026-11-17)
 
 - [issue 2670](../issues/2670-imperative-param-declare-invisible-to-census.md): a Rust parameter declared through `Executor::node_mut(..).declare_parameter` reaches no census hook, so a contract that omits it sizes the store short with no `param-missing-in-contract` error.
+- [issue 2678](../issues/archived/2678-plain-executable-opt-out-on-a-board.md) (GitHub #4016, resolved): a board build had no public way to declare an executable that is not an image; `nano_ros_add_plain_executable` is it (I30).
 - [issue 2665](../issues/2665-target-session-chain-start-deadline-under-load.md): `target_session::tests::teardown_waits_for_a_chain_that_is_stopping` failed under host load at its 5 s chain-start deadline and passes alone.
 - [issue 2660](../issues/archived/2660-pyo3-rebuilds-on-path-change.md) (GitHub #4084, resolved): the launch resolver rebuilt pyo3-ffi whenever PATH changed (I25).
 
