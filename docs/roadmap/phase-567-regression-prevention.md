@@ -1,6 +1,6 @@
 # Phase 567 — a release ships only what the slow lanes have seen
 
-**Status (2026-11-17). OPEN: W1–W4, W5 (W5a–W5c) and W6 are done; W3b is open.** Approved by the user on
+**Status (2026-11-18). OPEN: W1–W4, W5 (W5a–W5c) and W6 are done; W3b and W7 are open.** Approved by the user on
 2026-11-16 ("Take your advice on regression prevention. Have a phase doc to
 track the change"), after a review of the CI workflows on main against that
 day's regressions. Implements no RFC; it closes gaps between the lanes that
@@ -270,6 +270,22 @@ when it failed.
 Measured: run-matrix `tier 2 (1-wise matrix)` last green 2026-11-05, 1225
 commits back. FreertosMps2 had been red on every nightly since at least
 2026-11-13.
+
+### W7 - a host C link on every pull request and batch
+
+- **Status:** OPEN (proposed 2026-11-18, unclaimed), issue
+  [2685](../issues/2685-pr-lanes-run-no-link.md) (GitHub #4170). Owner:
+  assigned by the nros 241 manager.
+
+#4151 linked nowhere on a merge-gating event, so its undefined
+`nros_platform_can_*` references reached main and broke every local
+`just ci gate` for 2.9 h (fixed by #4158). The proposal: a minimal `check c`
+link (the shipped `libnros_c.a` plus one C TU), heard by `ci-ok` on every
+event, with no path filter and no docs-only skip. Measured cost and the two
+wiring shapes are in the issue.
+
+Acceptance: reverting #4158's package hunks fails `CI` on a pull request and
+in the merge queue; a docs-only pull request still gets a verdict.
 
 ## Not in this phase
 
