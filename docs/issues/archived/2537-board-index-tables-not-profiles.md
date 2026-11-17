@@ -1,15 +1,17 @@
 ---
 id: 2537
 title: "`[board.*]` in the SDK index is still keyed per board, not per (arch × ecosystem) profile"
-status: open
+status: resolved
 type: tech-debt
 severity: low
 area: [boards, tooling]
 related: [rfc-0064, rfc-0087, rfc-0062]
 found: 2026-11-14
+resolved: 2026-11-17
+resolved_in: "docs(boards): record the board-support rulings in their issues and RFCs"
 ---
 
-**Home: [RFC-0064](../design/0064-board-support-organization.md) Sequencing
+**Home: [RFC-0064](../../design/0064-board-support-organization.md) Sequencing
 step 6 (exploration log: "`[board.*]` is a package-set alias, not board
 support")**
 
@@ -34,7 +36,24 @@ phase-555's design review (W2/W3, platform-board-rtos brief P7). The user
 ruled (2026-11-14) that RFC-0064 becomes a short Stable RFC and that steps 6
 and 8, which never landed, are filed as issues.
 
-## What closes it
+## Ruling (2026-11-17): dropped
+
+The user accepted the decision brief's recommendation: **drop the step.**
+RFC-0087's package route already removed the out-of-tree need, so a
+downstream board needs no index row to be provisioned. What remains is
+in-tree duplication of a few lines for each new in-tree board on an existing
+(arch, RTOS) pair, which costs less than an index schema change plus every
+reader of the index. RFC-0064 marks step 6 dropped with this reason.
+
+Reopen if the in-tree duplication grows into a maintenance cost, for example
+if several boards' rows drift apart while naming the same (arch, RTOS) pair.
+
+## What closed it
+
+The second arm of the original condition: a ruling in RFC-0064 that RFC-0087's
+package route makes the re-key unnecessary, with the step marked dropped.
+
+## Original close condition
 
 Either the profile re-key (with existing board names kept as aliases), or a
 ruling in RFC-0064 that RFC-0087's package route makes it unnecessary, with

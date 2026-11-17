@@ -41,7 +41,36 @@ phase-555's design review (W3, platform-board-rtos brief P7). The user ruled
 (2026-11-14) that an RFC becomes Stable only after its open questions are
 filed as issues and the RFC points at them.
 
+## Ruling (2026-11-17)
+
+The user accepted the decision brief's four recommendations, as written. They
+are recorded in RFC-0064's "Open questions".
+
+1. **A vendor-IDE build is an integration shell (row 1).** Both shapes exist
+   for NXP S32 parts today: `integrations/s32ds/`, and the per-board
+   `cmake/board/nano-ros-board-s32z270-freertos{,-rtd}.cmake`. The shell is
+   the intended home, because the vendor IDE owns the build. The per-board
+   files stay only as the plain-CMake route. **Trigger:** confirm it on the
+   CANHUBK344 bring-up, as RFC-0064 already planned.
+2. **The mandatory platform ABI is derived, not guessed.** Link a
+   serial-only, single-threaded image against a minimal platform
+   implementation and record the symbols the linker demands. The porting
+   guide then states that number. **Trigger:** the first minimal port.
+3. **The index field is renamed so its meaning is plain.** Measured:
+   `[board.fvp-aemv8r-smp]` installs only `arm-fvp`, the simulator, which no
+   single OS owns. So the row's `platform` means "what to install", not
+   "which OS". The rename (or a split into two fields) is a schema touch to
+   `nros-sdk-index.toml` and its readers. It has no work item yet, and needs
+   one in an open phase.
+4. **No `integrations/generic-cmake/` shell until an RTOS is waiting for
+   one.** There are five shells today (FreeRTOS, NuttX, PlatformIO, PX4,
+   S32DS), and none is generic. Closed.
+
 ## What closes it
+
+Question 4 is closed. Question 3 closes when the field is renamed. Questions 1
+and 2 close when their triggers fire and the answer is written into RFC-0064.
+Until then this issue stays open for them, by design.
 
 Each question answered in RFC-0064 (a ruling, a measurement, or a fix to the
 index row), or dropped there with the reason.

@@ -125,7 +125,8 @@ Satisfy these and nano-ros runs. That is the honest definition of "embeddable
 library", and it is a real boundary, not a slogan — the ESP-IDF, NuttX and Zephyr
 shells all cross it without either side knowing much about the other.
 
-**[OPEN, issue 2539]** How much of the 92 is *mandatory*? A serial-only, single-threaded,
+**[RULED 2026-11-17: derive it from the first minimal port; issue 2539]**
+How much of the 92 is *mandatory*? A serial-only, single-threaded,
 no-heap deployment plainly does not need 33 socket functions. If the mandatory
 core is ~25 and the rest is capability-gated, "port nano-ros to my RTOS" becomes
 a weekend, and that number belongs in the porting guide's first paragraph. Worth
@@ -198,7 +199,10 @@ Two consequences worth stating plainly:
   drivers, startup and two linker scripts. **The right integration may be
   `integrations/s32ds/` rather than `cmake/board/nano-ros-board-canhubk344-freertos.cmake`.**
   That inverts the plan RFC-0064 R1 proposed and is the most important open
-  question in this document. **[OPEN — test it during the CANHUBK3 bring-up; issue 2539.]**
+  question in this document. **[RULED 2026-11-17: the shell is the intended
+  home, because the vendor IDE owns the build; the per-board cmake files stay
+  only as the plain-CMake route. Confirm it on the CANHUBK3 bring-up; issue
+  2539.]**
 - **For the boards that genuinely stay in row 2, keep the module dumb.** It
   supplies linker script, startup, kernel config, netif, and nothing else. It
   should not carry arch policy, language standard, or config that belongs to the
@@ -215,12 +219,21 @@ The full sequencing is in the companion. Checked against the tree on
   ThreadX riscv64 arch port (`nros-board-threadx-port-riscv64`), the Zephyr
   Cortex-M witness (`mps2/an385`, phase-337 W2.a), and Revision 5 (phase-375
   W6 to W9, phase-215 215.K, phase-420 W3).
-- **Did not land:**
-  - step 6, re-keying `[board.*]` in the SDK index as `[profile.*]`:
-    [issue 2537](../issues/2537-board-index-tables-not-profiles.md);
-  - step 8, extending the RFC-0049 ladder to the build block (a board
-    contributing `[arch.*]`, `include_paths`, `required_env`):
-    [issue 2538](../issues/2538-board-layer-build-block-not-on-ladder.md).
+- **Did not land, and DROPPED (user ruling, 2026-11-17):**
+  - step 6, re-keying `[board.*]` in the SDK index as `[profile.*]`
+    ([issue 2537](../issues/archived/2537-board-index-tables-not-profiles.md)).
+    Dropped because RFC-0087's package route already removed the
+    out-of-tree need: a downstream board provisions from its own
+    `package.xml` and needs no index row. What is left is a few lines of
+    in-tree duplication for each new board, which costs less than an index
+    schema change plus every reader of the index.
+  - step 8, extending the RFC-0049 ladder to the build block, so a board
+    contributes `[arch.*]`, `include_paths` and `required_env`
+    ([issue 2538](../issues/archived/2538-board-layer-build-block-not-on-ladder.md)).
+    Dropped for now: no board descriptor (0 of 23) needs it, and the `-mfpu`
+    case the step was written for already lives in the toolchain files,
+    which are the home for these facts. Reopen when a real board needs to
+    state one of them in its own descriptor.
 
 ## Revision 5 (2026-09-06) — one board process, and the descriptor holds only primitives
 
@@ -514,16 +527,29 @@ reach it.
 
 ## Open questions
 
-Re-checked 2026-11-14. Four are still open and are filed together as
-[issue 2539](../issues/2539-board-support-organization-open-questions.md):
+Re-checked 2026-11-14 and filed together as
+[issue 2539](../issues/2539-board-support-organization-open-questions.md).
+All four were ruled by the user on 2026-11-17, accepting the board-support
+decision brief as written:
 
-- **[OPEN]** Is a vendor SDK build (S32DS/RTD) row 1 or row 2? Step 2 landed
-  `integrations/s32ds/`, but the answer was never written here.
-- **[OPEN]** What is the mandatory subset of the platform ABI?
-- **[OPEN]** `[board.fvp-aemv8r-smp] platform = "bare-metal"` in the index vs
-  the board being a Zephyr board — drift, or does the index's `platform` mean
-  "provisioning family"?
-- **[OPEN]** Should there be an `integrations/generic-cmake/` shell?
+- **[RULED, confirm on hardware]** Is a vendor SDK build (S32DS/RTD) row 1 or
+  row 2? **Row 1, an integration shell**, because the vendor IDE owns the
+  build. Both shapes exist for S32 parts (`integrations/s32ds/` and the
+  per-board `cmake/board/nano-ros-board-s32z270-freertos{,-rtd}.cmake`); the
+  per-board files stay only as the plain-CMake route. Still to do: confirm it
+  on the CANHUBK344 bring-up.
+- **[RULED, waits for a port]** What is the mandatory subset of the platform
+  ABI? **Derive it, do not guess it:** link a serial-only, single-threaded
+  image against the first minimal platform implementation and record what the
+  linker demands, then put the number in the porting guide.
+- **[RULED, not yet done]** `[board.fvp-aemv8r-smp] platform = "bare-metal"`
+  in the index vs the board being a Zephyr board. Measured: the row installs
+  only `arm-fvp`, the simulator, which no single OS owns, so the field means
+  "what to install". **Rename the field (or split it) so the meaning is
+  plain.** It has no work item yet.
+- **[ANSWERED]** Should there be an `integrations/generic-cmake/` shell?
+  **No, not until an RTOS is waiting for one.** There are five shells today
+  (FreeRTOS, NuttX, PlatformIO, PX4, S32DS).
 
 Answered:
 
@@ -589,3 +615,9 @@ linked both ways; steps 6 and 8 filed as issues 2537 and 2538 and the four
 open questions as issue 2539; the banner names RFC-0114, RFC-0115 and RFC-0124
 as superseding the tiers and book rows (each carries `amends: [RFC-0064]`), and
 `amends` names RFC-0012. ARCHITECTURE §4 updated.
+
+**Rulings (2026-11-17).** The user accepted the board-support decision brief
+as written. Steps 6 and 8 are dropped, with their reasons under "What landed,
+and what did not", and issues 2537 and 2538 are resolved. The four open
+questions are ruled under "Open questions": `generic-cmake` is answered, and
+the other three stay open in issue 2539, each until its trigger or its work.
