@@ -541,19 +541,18 @@ fn nros_build_takes_allow_overriding() {
         "x",
     ])
     .unwrap()
-    .split_cmake_args()
+    .resolve_cmake_args()
     .unwrap();
     assert_eq!(a.allow_overriding, ["qemu", "legacy"]);
-    // The flag survives `--cmake-args`' swallowing, like every other flag.
+    // The flag is read beside `--cmake-args=`, like every other flag.
     let a = nros_cli_core::cmd::build::Args::try_parse_from([
         "build",
-        "--cmake-args",
-        "-DX=1",
+        "--cmake-args=-DX=1",
         "--allow-overriding",
         "qemu",
     ])
     .unwrap()
-    .split_cmake_args()
+    .resolve_cmake_args()
     .unwrap();
     assert_eq!(a.allow_overriding, ["qemu"]);
     assert_eq!(a.cmake_args, ["-DX=1"]);

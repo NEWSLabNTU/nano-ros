@@ -129,13 +129,29 @@ pub struct Args {
     #[arg(long)]
     pub continue_on_error: bool,
 
-    /// Arguments passed to every CMake configure: a cmake image's, a west
-    /// image's (after west's own `--`), and a cmake package's.
+    /// Arguments for every CMake configure: a cmake image's, a west image's,
+    /// and a cmake package's. A cargo image runs no CMake configure and
+    /// ignores them.
     ///
-    /// A cargo image runs no CMake configure and ignores them, as colcon
-    /// ignores them for a package that is not a CMake package. Ends at the
-    /// next `nros build` flag or at `--`, as colcon's does.
-    #[arg(long, value_name = "ARG", num_args = 1.., allow_hyphen_values = true)]
+    /// The `=` is required. The value is split with plain POSIX quoting (no
+    /// expansion), so one flag can carry many arguments:
+    /// `--cmake-args="-DA=1 -DB='x y'"`. The flag is repeatable, and the
+    /// values add up in order. `--cmake-args=@<file>` reads one argument per
+    /// line, with `#` comments. Allowed: `-D`, `-U`, `-W*`, `--log-level`,
+    /// `--log-context`, `--debug-find`. A name `nros build` passes itself, or
+    /// `-DCONFIG_*` (Zephyr Kconfig, which goes in the image's `conf`), is
+    /// refused, saying where the setting goes. An image states its own in
+    /// `[image.<id>.build] cmake_args`; these come after them.
+    // RFC-0117 D7/D9 (phase-568 W2). colcon's space-separated form is refused
+    // before clap runs (`refuse_space_separated_args`), with the rewrite shown.
+    #[arg(
+        long,
+        value_name = "ARGS",
+        require_equals = true,
+        num_args = 1,
+        allow_hyphen_values = true,
+        action = clap::ArgAction::Append
+    )]
     pub cmake_args: Vec<String>,
 
     /// Run at most N jobs at once, in total. Default: the number of CPUs.
@@ -222,100 +238,98 @@ pub struct Args {
 }
 
 impl Args {
-    /// End `--cmake-args` where colcon ends it: at the next `nros build` flag
-    /// or at `--`.
-    ///
-    /// clap cannot: an argument that takes hyphenated values (`-DX=1`) and
-    /// any number of them consumes every token after it, so `--cmake-args
-    /// -DX=1 --packages-skip a` would hand `--packages-skip a` to CMake. The
-    /// swallowed tail is parsed again as `nros build` arguments and folded in.
-    pub fn split_cmake_args(mut self) -> Result<Self> {
-        use clap::CommandFactory;
-        let cmd = Args::command();
-        let is_ours = |tok: &str| {
-            if tok == "--" {
-                return true;
-            }
-            if let Some(long) = tok.strip_prefix("--") {
-                let name = long.split('=').next().unwrap_or(long);
-                return cmd.get_arguments().any(|a| {
-                    a.get_long() == Some(name)
-                        || a.get_all_aliases().is_some_and(|al| al.contains(&name))
-                });
-            }
-            let mut chars = tok.chars();
-            if chars.next() == Some('-')
-                && let (Some(c), None) = (chars.next(), chars.next())
-            {
-                return cmd.get_arguments().any(|a| a.get_short() == Some(c)) || c == 'h';
-            }
-            // `-j4`, the attached form of `-j 4`.
-            if let Some(n) = tok.strip_prefix("-j") {
-                return !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit());
-            }
-            false
-        };
-        let Some(at) = self.cmake_args.iter().position(|t| is_ours(t)) else {
-            return Ok(self);
-        };
-        let tail = self.cmake_args.split_off(at);
-        let rest = Args::try_parse_from(std::iter::once("build".to_string()).chain(tail))
-            .map_err(|e| eyre::eyre!("{e}"))?
-            .split_cmake_args()?;
-        // Exhaustive, so a new field is a compile error here rather than a
-        // flag silently dropped after `--cmake-args`.
-        let Args {
-            images,
-            workspace,
-            nano_ros_path,
-            zephyr_workspace,
-            all,
-            board,
-            dry_run,
-            verbose,
-            explain_sizing,
-            offline,
-            selection,
-            continue_on_error,
-            cmake_args,
-            jobs,
-            parallel_workers,
-            build_base,
-            check,
-            allow_overriding,
-            native_args,
-        } = rest;
-        self.images.extend(images);
-        self.workspace = workspace.or(self.workspace);
-        self.nano_ros_path = nano_ros_path.or(self.nano_ros_path);
-        self.zephyr_workspace = zephyr_workspace.or(self.zephyr_workspace);
-        self.all |= all;
-        self.board = board.or(self.board);
-        self.dry_run |= dry_run;
-        self.verbose |= verbose;
-        self.explain_sizing |= explain_sizing;
-        self.offline |= offline;
-        let SelectionArgs {
-            packages_select,
-            packages_up_to,
-            packages_above,
-            packages_skip,
-            sources,
-        } = selection;
-        self.selection.packages_select.extend(packages_select);
-        self.selection.packages_up_to.extend(packages_up_to);
-        self.selection.packages_above.extend(packages_above);
-        self.selection.packages_skip.extend(packages_skip);
-        self.selection.sources.base_paths.extend(sources.base_paths);
-        self.continue_on_error |= continue_on_error;
-        self.cmake_args.extend(cmake_args);
-        self.jobs = jobs.or(self.jobs);
-        self.allow_overriding.extend(allow_overriding);
-        self.parallel_workers = parallel_workers.or(self.parallel_workers);
-        self.build_base = build_base.or(self.build_base);
-        self.check = check.or(self.check);
-        self.native_args.extend(native_args);
+    /// Expand and validate `--cmake-args` (RFC-0117 D7/D9): each value is
+    /// split with POSIX quoting, or read from `@<file>`, and every argument
+    /// goes through the one allowlist, `builder::build_args::parse_cmake`.
+    /// Afterwards `cmake_args` holds validated argv, one argument per entry.
+    pub fn resolve_cmake_args(mut self) -> Result<Self> {
+        self.cmake_args = expand_cmake_args(&self.cmake_args, Path::new("."))?;
         Ok(self)
+    }
+}
+
+/// The CMake argv for the raw `--cmake-args` values, resolved against `cwd`
+/// for `@file`.
+pub(crate) fn expand_cmake_args(raw: &[String], cwd: &Path) -> Result<Vec<String>> {
+    use crate::builder::build_args::{parse_cmake, split_posix};
+    let mut words = Vec::new();
+    for v in raw {
+        if let Some(file) = v.strip_prefix('@') {
+            words.extend(read_args_file(&cwd.join(file), file)?);
+        } else {
+            words.extend(split_posix(v).map_err(|r| eyre::eyre!("--cmake-args: {r}"))?);
+        }
+    }
+    let parsed = parse_cmake(&words).map_err(|r| eyre::eyre!("--cmake-args: {r}"))?;
+    Ok(parsed.iter().map(|a| a.to_argv()).collect())
+}
+
+/// An `@file` of arguments: one per line, split with POSIX quoting, blank
+/// lines and `#` comments skipped. An `@file` cannot name another.
+fn read_args_file(path: &Path, shown: &str) -> Result<Vec<String>> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| eyre::eyre!("--cmake-args=@{shown}: cannot read {}: {e}", path.display()))?;
+    let mut out = Vec::new();
+    for (n, line) in text.lines().enumerate() {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        let words = crate::builder::build_args::split_posix(t)
+            .map_err(|r| eyre::eyre!("{shown}:{}: {r}", n + 1))?;
+        if let Some(w) = words.iter().find(|w| w.starts_with('@')) {
+            eyre::bail!("{shown}:{}: `{w}`: an @file cannot name another", n + 1);
+        }
+        out.extend(words);
+    }
+    Ok(out)
+}
+
+/// colcon's space-separated `--cmake-args A B` is refused before clap runs,
+/// with the user's own arguments shown in the `=` form (RFC-0117 Migration).
+/// `argv` is the `nros` command line after the program name. `None` when
+/// there is nothing to refuse.
+pub fn refuse_space_separated_args(argv: &[String]) -> Option<String> {
+    let at = argv.iter().position(|t| t == "build")?;
+    let rest = &argv[at + 1..];
+    let flag_at = rest
+        .iter()
+        .take_while(|t| *t != "--")
+        .position(|t| t == "--cmake-args")?;
+    let vals: Vec<&String> = rest[flag_at + 1..]
+        .iter()
+        .take_while(|t| *t != "--" && !(t.starts_with("--") || is_short_build_flag(t)))
+        .collect();
+    let shown: Vec<String> = vals.iter().map(|v| shell_quote(v)).collect();
+    let rewrite = if shown.is_empty() {
+        "--cmake-args=\"<args>\"".to_string()
+    } else {
+        format!("--cmake-args=\"{}\"", shown.join(" ").replace('"', "\\\""))
+    };
+    Some(format!(
+        "nros build takes `--cmake-args=<args>`, with `=`: the space-separated \
+         colcon form cannot tell a CMake argument from the next `nros build` flag.\n  \
+         instead of: --cmake-args {}\n  write:      {rewrite}\n\
+         One value may hold many arguments, and the flag may be repeated.",
+        shown.join(" ")
+    ))
+}
+
+/// A short flag `nros build` itself takes (`-j4`, `-v`), which ends a colcon
+/// `--cmake-args` run.
+fn is_short_build_flag(t: &str) -> bool {
+    t == "-v" || t == "-h" || (t.starts_with("-j") && t[2..].bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// Single-quote a word for the shell when it needs it.
+fn shell_quote(w: &str) -> String {
+    if !w.is_empty()
+        && w.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_=./:,+@%".contains(&b))
+    {
+        w.to_string()
+    } else {
+        format!("'{}'", w.replace('\'', "'\\''"))
     }
 }
 
@@ -2215,6 +2229,8 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     &image_id,
                     image.profile.as_deref(),
                 )?);
+                // RFC-0117 D7: the image's committed arguments, then the caller's.
+                a.extend(image.build.cmake_argv(&image_id)?);
                 a.extend(args.cmake_args.iter().cloned());
                 a.extend(args.native_args.iter().cloned());
                 // phase-439 W7 / phase-530 W3 -- the record's digest, so the
@@ -2533,6 +2549,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         .map_err(|e| eyre::eyre!("{e}"))?;
                 // `--cmake-args` belong to CMake whatever their spelling, so
                 // they skip the west/cmake split and go to the second zone.
+                cmake_extra.extend(image.build.cmake_argv(&image_id)?);
                 cmake_extra.extend(args.cmake_args.iter().cloned());
 
                 // `west_board` is resolved above, beside the overlay directory
@@ -3363,6 +3380,12 @@ fn plan_single_package_cmake(
         &image_id,
         decl.profile.as_deref(),
     )?);
+    a.extend(
+        crate::orchestration::image::ImageBuild {
+            cmake_args: decl.build_cmake_args.clone(),
+        }
+        .cmake_argv(&image_id)?,
+    );
     a.extend(args.cmake_args.iter().cloned());
     a.extend(args.native_args.iter().cloned());
     Ok(Some(vec![ResolvedBuild {
@@ -3496,7 +3519,7 @@ pub(crate) fn workspace_generated_missing(root: &std::path::Path) -> Vec<String>
 }
 
 pub fn run(args: Args) -> Result<()> {
-    let args = args.split_cmake_args()?;
+    let args = args.resolve_cmake_args()?;
     crate::sizing_descriptor::set_explain_sizing(args.explain_sizing);
     crate::build_notes::enter_driver(args.verbose);
     // phase-429 W2 — the codegen version guard, BEFORE planning. `nros build`
@@ -10520,29 +10543,76 @@ mod selection_wiring_tests {
         assert!(a.images.is_empty(), "no image was named: {:?}", a.images);
     }
 
-    /// `--cmake-args` takes hyphenated values (`-DX=1`) and stops at the next
-    /// `nros build` flag and at `--`, which still hands the rest to the
-    /// native tool.
+    /// RFC-0117 D7: `--cmake-args=` needs its `=`, one value may hold many
+    /// arguments (POSIX-split), the flag repeats, and `--` still hands the
+    /// rest to the native tool.
     #[test]
-    fn cmake_args_take_hyphen_values_and_stop_at_the_separator() {
+    fn cmake_args_take_equals_values_split_and_repeat() {
         let a = Args::try_parse_from([
             "build",
-            "--cmake-args",
-            "-DA=1",
-            "-DB",
+            "--cmake-args=-DA=1 '-DB=x y'",
             "--packages-skip",
             "other",
-            "--cmake-args",
-            "-DC",
+            "--cmake-args=-UC",
             "--",
             "-j4",
         ])
         .expect("parses")
-        .split_cmake_args()
-        .expect("splits");
-        assert_eq!(a.cmake_args, vec!["-DA=1", "-DB", "-DC"]);
+        .resolve_cmake_args()
+        .expect("resolves");
+        assert_eq!(a.cmake_args, vec!["-DA=1", "-DB=x y", "-UC"]);
         assert_eq!(a.native_args, vec!["-j4"]);
         assert_eq!(a.selection.packages_skip, vec!["other"]);
+    }
+
+    /// Every `--cmake-args` value goes through the one allowlist.
+    #[test]
+    fn cmake_args_are_validated() {
+        for v in [
+            "--cmake-args=-G Ninja",
+            "--cmake-args=-DCONFIG_FOO=y",
+            "--cmake-args=-DNROS_IMAGE=x",
+            "--cmake-args=-DA='unbalanced",
+        ] {
+            let r = Args::try_parse_from(["build", v])
+                .expect("parses")
+                .resolve_cmake_args();
+            assert!(r.is_err(), "{v} was accepted");
+        }
+    }
+
+    /// `--cmake-args=@file`: one argument per line, `#` comments, no nesting.
+    #[test]
+    fn cmake_args_read_an_args_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.args"), "# comment\n-DA=1\n\n'-DB=x y'\n").unwrap();
+        std::fs::write(dir.path().join("n.args"), "@a.args\n").unwrap();
+        let got = expand_cmake_args(&["@a.args".into(), "-DC=3".into()], dir.path()).unwrap();
+        assert_eq!(got, vec!["-DA=1", "-DB=x y", "-DC=3"]);
+        let e = expand_cmake_args(&["@n.args".into()], dir.path())
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("cannot name another"), "{e}");
+    }
+
+    /// colcon's space form is refused with the user's own arguments rewritten,
+    /// and the `=` form is not refused.
+    #[test]
+    fn the_space_separated_form_is_refused_with_the_rewrite() {
+        let argv = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let msg = refuse_space_separated_args(&argv(&[
+            "build",
+            "linux",
+            "--cmake-args",
+            "-DA=1",
+            "-DB=x y",
+            "--packages-skip",
+            "p",
+        ]))
+        .expect("refused");
+        assert!(msg.contains(r#"--cmake-args="-DA=1 '-DB=x y'""#), "{msg}");
+        assert!(refuse_space_separated_args(&argv(&["build", "--cmake-args=-DA=1"])).is_none());
+        assert!(refuse_space_separated_args(&argv(&["build", "--", "--cmake-args"])).is_none());
     }
 
     /// `-j 0` is refused by the parser: zero jobs build nothing. `-j N`,
@@ -10572,17 +10642,6 @@ mod selection_wiring_tests {
             .to_string();
         assert!(!help.contains("--parallel-workers"), "{help}");
         assert!(help.contains("--jobs"), "{help}");
-    }
-
-    /// `-j4` after `--cmake-args` ends the cmake arguments, as `-j 4` does.
-    #[test]
-    fn attached_jobs_ends_cmake_args() {
-        let a = Args::try_parse_from(["build", "--cmake-args", "-DX=1", "-j4"])
-            .expect("parses")
-            .split_cmake_args()
-            .expect("splits");
-        assert_eq!(a.cmake_args, vec!["-DX=1"]);
-        assert_eq!(a.jobs, Some(4));
     }
 
     /// A selection composes with the flags the verb already has — here the

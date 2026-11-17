@@ -16,7 +16,7 @@ A FreeRTOS image's app-task stack is `NROS_FREERTOS_APP_STACK_KB`. How a project
 - **The cargo road.** `[image.<id>.knobs.freertos] app_stack_kb = <kb>` in `system.toml` works. (An `[image.<id>] env` row naming `NROS_FREERTOS_APP_STACK_KB` is refused since phase-484 W8 and points there.) The knob renders to an `NROS_FREERTOS_APP_STACK_KB` row in the generated `nros-cargo.toml` `[env]`. From there it reaches both the board build script (which sizes the heap) and the `option_env!` that sizes the task.
 - **The cmake road (the C/C++ carrier).** The stack is a CMAKE variable that `_nros_freertos_entry_app_stack` (`cmake/NanoRosBoardNet.cmake`) reads at configure. The same knob row reaches only the cargo commands the configure spawns (`cmake/NanoRosImageEnv.cmake`, issue 1712). The C carrier never sees it. Measured 2026-11-13 on `examples/mps2-an385-freertos/c/talker`: `app_stack_kb = 20` left `.app_stack_bytes = 65536u`.
 
-The only way to set it on this road is a configure flag: `nros build --cmake-args -DNROS_FREERTOS_APP_STACK_KB=<kb>`. That is a one-off command line, not part of the project. The cmake cache then keeps it, which `system.toml` does not show.
+The only way to set it on this road is a configure flag: `nros build --cmake-args=-DNROS_FREERTOS_APP_STACK_KB=<kb>`. That is a one-off command line, not part of the project. The cmake cache then keeps it, which `system.toml` does not show.
 
 ## Why it matters now
 
