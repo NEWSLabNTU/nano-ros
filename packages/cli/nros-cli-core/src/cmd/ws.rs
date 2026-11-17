@@ -6504,6 +6504,12 @@ const fn nros_crate_path_lookup() -> &'static [(&'static str, &'static str)] {
         ("mps2-an385-pac", "packages/boards/mps2-an385-pac"),
         // RMW backends
         ("nros-rmw-zenoh", "packages/rmw/zenoh/nros-rmw-zenoh"),
+        // RFC-0135 D2 (phase-577 W8) -- a FreeRTOS board crate outside the
+        // tree names the zenoh-pico C library by registry name, as every
+        // in-tree board crate names it by path (`rmw-zenoh = ["dep:zpico-sys"]`).
+        ("zpico-sys", "packages/rmw/zenoh/zpico-sys"),
+        // ... and its build script resolves paths the checkout's way.
+        ("nros-build-paths", "packages/tooling/nros-build-paths"),
         (
             "nros-rmw-zenoh-staticlib",
             "packages/rmw/zenoh/nros-rmw-zenoh-staticlib",

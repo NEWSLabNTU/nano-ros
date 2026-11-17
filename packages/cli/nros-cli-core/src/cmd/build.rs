@@ -6041,9 +6041,12 @@ pub(crate) fn registry_patches_from(
                 }
             }
         }
-        // Follow path deps, but only inside the workspace: the nano-ros crates
-        // path-depend on each other and never registry-name an in-repo crate
-        // a leaf would need patched.
+        // Follow path deps inside the workspace, and any OUTSIDE nano-ros's
+        // own tree: a board package's crate (RFC-0135 D2) is the entry's path
+        // dep from wherever the package lives, and it registry-names the
+        // nano-ros crates it needs, so its rows must be here. The nano-ros
+        // crates path-depend on each other and never registry-name an
+        // in-repo crate, so their walk is skipped.
         let Ok(doc) = body.parse::<toml::Value>() else {
             continue;
         };
@@ -6067,13 +6070,25 @@ pub(crate) fn registry_patches_from(
                 };
                 let next = dir.join(p);
                 let next = next.canonicalize().unwrap_or(next);
-                if next.starts_with(ws_root) {
+                if next.starts_with(ws_root) || is_board_package_crate(&next, nano_ros_root) {
                     queue.push(next);
                 }
             }
         }
     }
     out
+}
+
+/// A path dep the registry-patch walk follows although it is outside the
+/// workspace: any crate outside nano-ros's own crate directories. Those
+/// (`packages/{api,boards,core,platform,rmw,...}`) path-depend on each other and
+/// registry-name nothing the entry must patch; a board package's crate is
+/// anywhere else, including a test fixture under `packages/testing`.
+fn is_board_package_crate(dir: &std::path::Path, nano_ros_root: &std::path::Path) -> bool {
+    match dir.strip_prefix(nano_ros_root) {
+        Err(_) => true,
+        Ok(rel) => !rel.starts_with("packages") || rel.starts_with("packages/testing"),
+    }
 }
 
 /// The crates a BRIDGE entry must name directly, derived from the bringup.

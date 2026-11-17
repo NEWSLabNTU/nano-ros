@@ -28,6 +28,7 @@ mps2-an385-pac                       0   1     1       2      0
 nros                               123  30     5      30      0
 nros-baremetal-common               24   0     0      21      0
 nros-board-cffi                      3   0     0       6      0
+nros-board-fixture-r5f-freertos      1   0     0       1      0
 nros-board-freertos                 65   1     1      20      0
 nros-board-freertos-posix            4   0     0       1      0
 nros-board-linux                    23   0     0       7      0

@@ -1,0 +1,32 @@
+# The board crate of the board package `fixture-r5f-freertos` (RFC-0135 D2).
+#
+# It lives in the package's own directory, which is where the board
+# definition's `crate_path` points by default. Its nano-ros dependencies are
+# REGISTRY names: a crate outside nano-ros cannot spell a path into it, and
+# the generated entry's cargo settings patch each name to the nano-ros tree
+# it builds against.
+[package]
+name = "nros-board-fixture-r5f-freertos"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Test fixture: an out-of-tree Cortex-R5F FreeRTOS board crate"
+publish = false
+
+[lib]
+name = "nros_board_fixture_r5f_freertos"
+
+[dependencies]
+nros-board-freertos = { version = "0.4", default-features = false }
+nros-platform = { version = "0.6", default-features = false, features = ["platform-freertos", "global-allocator"] }
+nros-platform-cffi = { version = "0.6", default-features = false }
+zpico-sys = { version = "0.6", default-features = false, features = ["freertos", "platform-aliases"], optional = true }
+
+[build-dependencies]
+nros-board-common = { version = "0.6", features = ["build-helpers"] }
+nros-build-paths = "0.6"
+cc = "1"
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:zpico-sys", "nros-board-freertos/rmw-zenoh"]
