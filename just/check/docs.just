@@ -170,7 +170,9 @@ book-board-names:
 # this asserts the cheap half: each track's tags still assemble (a `probe-run`
 # step keeps its `probe-expect` output block, a `variant=` selects something,
 # the harness substitution matches once) and the script parses. Tracks are read
-# from run-bootstrap-probe.sh's PROBE_PLATFORM table. Buildless, ~0.5 s.
+# from run-bootstrap-probe.sh's PROBE_PLATFORM table. Also builds the release
+# rehearsal's checkout shape — a detached non-tip SHA with a `main` ahead of it
+# — and asserts the probe tests the SHA (phase-567 W3c). Buildless, ~19 s.
 [private]
 book-probe-tracks:
     @python3 scripts/check-book-probe-tracks.py

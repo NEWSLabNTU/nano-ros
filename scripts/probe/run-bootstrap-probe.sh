@@ -9,13 +9,14 @@
 # probe cannot drift from what users actually read.
 #
 # Substitutions (both fail loudly if the book text drifts):
-#   - the clone line (contributing.md) -> the branch/URL under test
+#   - the clone line (contributing.md) -> the COMMIT under test, by SHA
 #   - the `nros setup <board>` placeholder     -> `native --rmw zenoh`
 #
 # Env knobs:
 #   PROBE_CLONE_URL  clone source inside the container
 #                    (default: the local checkout, mounted read-only)
-#   PROBE_BRANCH     branch to clone (default: current branch)
+#   (the commit under test is always the CHECKED-OUT commit, HEAD, by SHA —
+#   phase-567 W3c; `PROBE_BRANCH` is retired and refused)
 #   PROBE_IMAGE      container image (default: ros:jazzy for quickstart)
 #   PROBE_KEEP       set to 1 to keep the container on failure (debug)
 #   PROBE_TRACK      quickstart (default) | zenoh — which documented flow runs.
@@ -117,13 +118,24 @@ PROBE_IMAGE="${PROBE_IMAGE:-$default_image}"
 PROBE_DISTRO="${PROBE_DISTRO:-debian}"
 PROBE_SHELL="${PROBE_SHELL:-bash}"
 PROBE_CLONE_URL="${PROBE_CLONE_URL:-/nano-ros-src}"
-if [[ -z "${PROBE_BRANCH:-}" ]]; then
-    PROBE_BRANCH="$(git -C "$REPO_ROOT" symbolic-ref --short -q HEAD || true)"
-    if [[ -z "$PROBE_BRANCH" && -z "${PROBE_EXTRACT_ONLY:-}" ]]; then
-        echo "probe: detached HEAD — set PROBE_BRANCH to a branch/tag to clone" >&2
-        exit 1
-    fi
+# phase-567 W3c — the commit under test is the CHECKED-OUT commit, by SHA,
+# for every read (the release workflow, install.sh, the index) and every
+# clone (the book's, the release builder's). A branch NAME was the old knob,
+# and it named the wrong tree twice: the release rehearsal checks out the
+# commit it releases by SHA, so `main` did not exist (`fatal: invalid object
+# name 'main'`), and where it did, `--branch main` cloned main's TIP and a
+# `main` from the shared git dir could be any session's stale branch (issue
+# 2604). A detached HEAD is now the normal case, not a refusal.
+if [[ -n "${PROBE_BRANCH:-}" ]]; then
+    echo "probe: PROBE_BRANCH is retired (phase-567 W3c) — the probe tests the checked-out commit, HEAD, by SHA. Check out what you want tested and unset PROBE_BRANCH." >&2
+    exit 2
 fi
+# shellcheck source=../lib/git-hook-env.sh
+. "$REPO_ROOT/scripts/lib/git-hook-env.sh"
+# shellcheck source=commit-under-test.sh
+. "$SCRIPT_DIR/commit-under-test.sh"
+PROBE_COMMIT="$(git -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')"
+under_test="$PROBE_COMMIT"
 
 # The chapters carrying probe=NN tagged blocks, in reading order (order of
 # execution comes from the NN numbers, not this list).
@@ -136,8 +148,13 @@ fi
 # in verify-first-node.sh's scaffolded-workspace run instead.
 # phase-517 W2 — the clone + bootstrap steps are CONTRIBUTOR material now and
 # live in internals/contributing.md; no user chapter clones this repository.
-# The book clones `main`, never a tag, so the line substituted is the bare clone.
-CLONE_SUBST=(--subst 'git clone https://github.com/NEWSLabNTU/nano-ros.git:::git clone --branch "$PROBE_BRANCH" "$PROBE_CLONE_URL" nano-ros')
+# The book clones `main`, never a tag, so the line substituted is the bare
+# clone — replaced by a fetch of the commit under test (commit-under-test.sh,
+# a --prelude of the extracted script), left on a branch named `main` as the
+# reader's clone is.
+# Two statements, not `a && b`: `set -e` does not stop on a failing left
+# operand of `&&`, so a failed fetch would carry on into the chapter.
+CLONE_SUBST=(--subst $'git clone https://github.com/NEWSLabNTU/nano-ros.git:::probe_clone_at_commit "$PROBE_CLONE_URL" "$PROBE_COMMIT" nano-ros\ngit -C nano-ros switch -q -c main')
 C_CD_SUBST=()
 # Which `track=` blocks of the book this run reads — how the reader got `nros`.
 BOOK_TRACK=checkout
@@ -368,6 +385,7 @@ python3 "$SCRIPT_DIR/extract-book-steps.py" \
     --track "$BOOK_TRACK" \
     "${CLONE_SUBST[@]}" \
     --subst "nros setup <board> --rmw <zenoh|xrce|cyclonedds>:::${SETUP_SUBST:-nros setup linux --rmw $PROBE_RMW}" \
+    --prelude "$SCRIPT_DIR/commit-under-test.sh" \
     --prelude "$REPO_ROOT/scripts/lib/grep-q.sh" \
     --prelude "$REPO_ROOT/scripts/lib/deadline.sh" \
     --prelude "$SCRIPT_DIR/probe-run.sh" \
@@ -384,7 +402,6 @@ python3 "$SCRIPT_DIR/extract-book-steps.py" \
 # Read from the COMMIT under test — the same commit the builder checks out —
 # never from this worktree, so the workflow and the tree it builds agree.
 if [[ "$PROBE_TRACK" = "installed" ]]; then
-    under_test="${PROBE_BRANCH:-HEAD}"
     rc=0
     git -C "$REPO_ROOT" show "$under_test:.github/workflows/release-nros.yml" \
         >"$workdir/release-nros.yml" || rc=$?
@@ -415,7 +432,10 @@ if [[ "$VERIFIER" = verify-installed-pinned.sh ]]; then
     # `0.0.0-probe`), the installed release when it is newer (issue 2168).
     # The project's pin is the release before the index's (one helper, which
     # also gates the book's literal: scripts/lib/pinned_example.py).
-    if ! probe_pinned="$(python3 "$SCRIPT_DIR/../lib/pinned_example.py")"; then
+    # Read from the commit under test, as the published version is (issue
+    # 2604: two trees in one run mixed two releases).
+    if ! probe_pinned="$(git -C "$REPO_ROOT" show "$under_test:nros-sdk-index.toml" |
+            python3 "$SCRIPT_DIR/../lib/pinned_example.py" -)"; then
         echo "run-bootstrap-probe: cannot derive the pinned example's release" >&2
         exit 1
     fi
@@ -460,7 +480,7 @@ command -v docker >/dev/null || { echo "probe: docker required"; exit 1; }
 rm_flag=(--rm)
 [[ "${PROBE_KEEP:-0}" = 1 ]] && rm_flag=()
 
-echo "probe: track=$PROBE_TRACK platform=$PROBE_PLATFORM image=$PROBE_IMAGE distro=$PROBE_DISTRO shell=$PROBE_SHELL branch=$PROBE_BRANCH url=$PROBE_CLONE_URL"
+echo "probe: track=$PROBE_TRACK platform=$PROBE_PLATFORM image=$PROBE_IMAGE distro=$PROBE_DISTRO shell=$PROBE_SHELL commit=$PROBE_COMMIT url=$PROBE_CLONE_URL"
 
 # Two host-configuration shims, not book prerequisites: `sudo` (the book's
 # prereq block uses it; real user machines have it, the root container doesn't)
@@ -591,7 +611,8 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
             -v "$SCRIPT_DIR/build-release-asset.sh:/probe/build-release-asset.sh:ro" \
             -v "$workdir/release:/out" \
             ${cache_args[@]+"${cache_args[@]}"} \
-            -e PROBE_BRANCH="$under_test" \
+            -v "$SCRIPT_DIR/commit-under-test.sh:/probe/commit-under-test.sh:ro" \
+            -e PROBE_COMMIT="$under_test" \
             -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             ${CARGO_BUILD_JOBS:+-e "CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS"} \
             "$RELEASE_BUILDER_IMAGE" \
@@ -619,7 +640,7 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
     git -C "$REPO_ROOT" show "$under_test:nros-sdk-index.toml" >"$workdir/release/nros-sdk-index.toml"
 
     echo "probe: installed track — user container $PROBE_IMAGE, mounting the asset and nothing else"
-    # No repo mount, no git dir, no PROBE_BRANCH: the user container sees the
+    # No repo mount, no git dir, no PROBE_COMMIT: the user container sees the
     # asset directory and the probe script, and verify-installed-first-project.sh
     # asserts that nothing else resembling a nano-ros root reached it.
     # `--entrypoint ''`: the ros:humble image's entrypoint sources ROS into
@@ -690,7 +711,7 @@ docker run "${rm_flag[@]}" \
     --name "nros-bootstrap-probe-$$" \
     -v "$git_dir:/nano-ros-src:ro" \
     -v "$workdir/probe.sh:/probe.sh:ro" \
-    -e PROBE_BRANCH="$PROBE_BRANCH" \
+    -e PROBE_COMMIT="$PROBE_COMMIT" \
     -e PROBE_CLONE_URL="$PROBE_CLONE_URL" \
     -e PROBE_SHELL="$PROBE_SHELL" \
     -w /root \
