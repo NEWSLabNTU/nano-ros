@@ -974,3 +974,8 @@ an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
   on one day, and its per-script probes have no time limit. It cancelled the
   merge group for #4125. Fix: a per-probe timeout that fails naming the
   probe, plus per-probe timings.
+- [issue 2682](../issues/archived/2682-fixture-tree-selftest-walks-shared-caches.md) — RESOLVED 2026-11-17 —
+  the follow-up to 2669. `fixture-tree.sh --self-test` overran the new 120 s
+  probe budget under another gate's load, because its `sync` case swept the
+  caller's shared zephyr and sccache roots (about 250,000 files). Its sweeps
+  now run inside the test's sandbox.
