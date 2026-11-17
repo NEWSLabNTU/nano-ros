@@ -1,0 +1,1 @@
+A failed metadata probe now reports its cause. For a link failure that is the linker's first `undefined reference` (or `multiple definition`, `cannot find -l`, `undefined symbol:`) line, not `ld returned 1 exit status`. For a CMake error it is the message, not the `CMake Error at <file>:<line>` header alone. ([#4113](https://github.com/NEWSLabNTU/nano-ros/pull/4113))

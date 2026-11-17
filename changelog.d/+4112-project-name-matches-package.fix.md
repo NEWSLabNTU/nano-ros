@@ -1,0 +1,1 @@
+A C or C++ component package whose `project()` name is not its `package.xml` `<name>` is refused at configure. The message names both values and both files, and says which to rename. Before, the component's metadata probe failed to link with an undefined `__nros_c_component_<pkg>_create`. ([#4112](https://github.com/NEWSLabNTU/nano-ros/pull/4112))
