@@ -4,7 +4,7 @@
 /// What the host metadata probe compiles in place of witness_board_zephyr.c:
 /// the probe reads what the node DECLARES (its subscription and timer), which
 /// does not depend on the board, so this measures nothing. A wall clock for
-/// the timestamps, an empty switch-in count, and no receive interrupt.
+/// the timestamps, empty switch-in and wake counts, and no receive interrupt.
 
 #include <time.h>
 
@@ -19,6 +19,10 @@ int64_t witness_board_now_us(void) {
 void witness_board_open_window(void) {}
 
 uint32_t witness_board_close_window(void) {
+    return 0;
+}
+
+uint32_t witness_board_wakes(void) {
     return 0;
 }
 

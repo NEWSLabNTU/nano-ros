@@ -24,6 +24,11 @@ void witness_board_open_window(void);
 /// Stop counting, and return the switch-ins seen since the window opened.
 uint32_t witness_board_close_window(void);
 
+/// The wakes in the last window: switch-ins whose preceding switch-out left
+/// the thread blocked (pending, suspended or sleeping). A subset of the
+/// switch-ins, which also count resumptions after a preemption.
+uint32_t witness_board_wakes(void);
+
 /// Microseconds from the last receive interrupt to now, or false when no
 /// interrupt has been seen.
 bool witness_board_arrival_us(uint32_t* us);

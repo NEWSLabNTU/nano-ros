@@ -2,12 +2,14 @@
 /// @brief The idle-wake witness's measurement on Zephyr (mps2/an385).
 ///
 /// Counted from Zephyr's user tracing hooks (`CONFIG_TRACING_USER`): every
-/// switch-in of the executor's thread is one wake, and the last LAN9118
+/// switch-in of the executor's thread, and of those the wakes, a switch-in
+/// whose preceding switch-out left the thread blocked. The last LAN9118
 /// receive interrupt (IPSR naming its IRQ) is stamped on the 25 MHz cycle
 /// counter. Built only inside a Zephyr build (see CMakeLists.txt).
 
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
+#include <zephyr/kernel_structs.h>
 #include <cmsis_core.h>
 
 #include "witness_board.h"
@@ -21,11 +23,30 @@
  * interrupts locked on a single-core Cortex-M3. */
 static struct k_thread* volatile exec_thread;
 static volatile uint32_t switch_ins;
+static volatile uint32_t wakes;
 static volatile bool window_open;
+/* Whether the executor thread's last switch-out left it blocked. */
+static volatile bool exec_blocked;
+
+#ifdef _THREAD_SLEEPING
+#define WITNESS_BLOCKED_STATES (_THREAD_PENDING | _THREAD_SUSPENDED | _THREAD_SLEEPING)
+#else
+#define WITNESS_BLOCKED_STATES (_THREAD_PENDING | _THREAD_SUSPENDED)
+#endif
+
+void sys_trace_thread_switched_out_user(void) {
+    if (window_open && k_current_get() == exec_thread) {
+        exec_blocked = (k_current_get()->base.thread_state & WITNESS_BLOCKED_STATES) != 0;
+    }
+}
 
 void sys_trace_thread_switched_in_user(void) {
     if (window_open && k_current_get() == exec_thread) {
         switch_ins++;
+        if (exec_blocked) {
+            wakes++;
+            exec_blocked = false;
+        }
     }
 }
 
@@ -47,12 +68,18 @@ int64_t witness_board_now_us(void) {
 void witness_board_open_window(void) {
     exec_thread = k_current_get();
     switch_ins = 0;
+    wakes = 0;
+    exec_blocked = false;
     window_open = true;
 }
 
 uint32_t witness_board_close_window(void) {
     window_open = false;
     return switch_ins;
+}
+
+uint32_t witness_board_wakes(void) {
+    return wakes;
 }
 
 bool witness_board_arrival_us(uint32_t* us) {
