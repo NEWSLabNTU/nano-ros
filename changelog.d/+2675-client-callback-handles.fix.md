@@ -1,0 +1,1 @@
+A callback-based service or action client (`create_client_with_callback`, `create_action_client_with_callbacks`) may send its next request through its handle after a reply, including from inside the reply callback. Before, the handle's pointer into the executor was invalidated by the reply's own dispatch, which is undefined behaviour.

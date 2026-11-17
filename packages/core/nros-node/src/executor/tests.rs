@@ -20466,7 +20466,6 @@ mod reentry_service_client {
             .call(&TestServiceRequest { a: 2 })
             .expect("a second request after the first reply");
 
-        drop(client);
         // SAFETY: `p` came from `Box::into_raw` and is not used again.
         drop(unsafe { Box::from_raw(p) });
     }
@@ -20572,7 +20571,6 @@ mod reentry_action_client {
             .get_result(&goal)
             .expect("ask for the result after the response");
 
-        drop(client);
         // SAFETY: `p` came from `Box::into_raw` and is not used again.
         drop(unsafe { Box::from_raw(p) });
     }
