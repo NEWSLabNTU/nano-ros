@@ -265,15 +265,22 @@ mod tests {
 
     /// `armv7r-none-eabi` is a SUBSTRING of `armv7r-none-eabihf`, so without
     /// `target_exclude = "eabihf"` the soft-float profile would silently claim
-    /// the hard-float triple. Selecting nothing is the correct answer: the
-    /// FreeRTOS platform does not describe a hard-float ARMv7-R C half.
+    /// the hard-float triple. Since phase-575 W1 the hard-float triple has a
+    /// profile of its own, `cortex-r5f`, so the answer is that one: hard
+    /// float, never the SPE's softfp.
     #[test]
-    fn cortex_r5_does_not_claim_the_hard_float_triple() {
+    fn the_hard_float_r5_triple_selects_cortex_r5f_not_the_softfp_profile() {
         let roots = platform_search_path().expect("in-tree checkout");
-        let got = cflags_for_target(&roots, "freertos", "armv7r-none-eabihf").expect("readable");
+        let got = cflags_for_target(&roots, "freertos", "armv7r-none-eabihf")
+            .expect("readable")
+            .expect("armv7r-none-eabihf must select the cortex-r5f profile");
         assert!(
-            got.is_none(),
-            "armv7r-none-eabihf must select no profile, not the softfp one; got {got:?}"
+            got.iter().any(|f| f == "-mfloat-abi=hard"),
+            "armv7r-none-eabihf is AAPCS-VFP; got {got:?}"
+        );
+        assert!(
+            !got.iter().any(|f| f == "-mfloat-abi=softfp"),
+            "the softfp SPE profile claimed the hard-float triple; got {got:?}"
         );
     }
 

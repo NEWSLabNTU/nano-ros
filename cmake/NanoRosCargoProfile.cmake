@@ -205,34 +205,42 @@ function(nros_riscv64_rustflags_env _target)
         "${_target} or ${_target}-static")
 endfunction()
 
-# nros_armv8r_cflags_env(<target>) — phase-372 W1, issue 0657's class on a
-# second architecture.
+# nros_arm_r_fpu_cflags_env(<target>) — phase-372 W1, issue 0657's class on a
+# second architecture; phase-575 W1 added the Cortex-R5F.
 #
 # cc-rs builds inside cargo crates (nros-c's shim TUs, compiler_builtins' C
-# fallbacks) derive their flags from the Rust triple, and for
-# `armv8r-none-eabihf` that yields `-mfloat-abi=hard` with NO `-mfpu` — gcc
-# refuses: "selected architecture lacks an FPU". The cmake lane's own TUs get
-# the FPU from the toolchain file; the cargo-side C needs it through
-# `CFLAGS_<triple>`, per-target via corrosion's env (the 0657 lesson: a
-# configure-time `set(ENV{})` never reaches build-time cargo, and a lane-wide
-# RUSTFLAGS export clobbers leaf link args).
-function(nros_armv8r_cflags_env _target)
-    if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "cortex-r52")
+# fallbacks) derive their flags from the Rust triple, and for a hard-float
+# Cortex-R triple (`armv8r-none-eabihf`, `armv7r-none-eabihf`) that yields
+# `-mfloat-abi=hard` with NO `-mfpu`, which gcc refuses: "selected
+# architecture lacks an FPU". The cmake lane's own TUs get the FPU from the
+# toolchain file; the cargo-side C needs it through `CFLAGS_<triple>`,
+# per-target via corrosion's env (the 0657 lesson: a configure-time
+# `set(ENV{})` never reaches build-time cargo, and a lane-wide RUSTFLAGS export
+# clobbers leaf link args). The flags are the matching `[arch.*]` profile's in
+# `nros-platform-freertos/nros-platform.toml`, one row per toolchain file.
+function(nros_arm_r_fpu_cflags_env _target)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "cortex-r52")
+        set(_triple armv8r_none_eabihf)
+        set(_flags "-mcpu=cortex-r52 -mfpu=neon-fp-armv8 -mfloat-abi=hard")
+    elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "cortex-r5f")
+        set(_triple armv7r_none_eabihf)
+        set(_flags "-mcpu=cortex-r5 -mfpu=vfpv3-d16 -mfloat-abi=hard")
+    else()
         return()
     endif()
     if(NOT COMMAND corrosion_set_env_vars)
-        message(FATAL_ERROR "nros_armv8r_cflags_env(${_target}): Corrosion not loaded")
+        message(FATAL_ERROR "nros_arm_r_fpu_cflags_env(${_target}): Corrosion not loaded")
     endif()
     nros_corrosion_env_target("${_target}" _env_target)
     if(TARGET ${_env_target})
         corrosion_set_env_vars(${_env_target}
-            "CFLAGS_armv8r_none_eabihf=-mcpu=cortex-r52 -mfpu=neon-fp-armv8 -mfloat-abi=hard"
-            "CXXFLAGS_armv8r_none_eabihf=-mcpu=cortex-r52 -mfpu=neon-fp-armv8 -mfloat-abi=hard")
-        message(STATUS "nano-ros: cortex-r52 FPU CFLAGS -> ${_env_target}")
+            "CFLAGS_${_triple}=${_flags}"
+            "CXXFLAGS_${_triple}=${_flags}")
+        message(STATUS "nano-ros: ${CMAKE_SYSTEM_PROCESSOR} FPU CFLAGS -> ${_env_target}")
         return()
     endif()
     # History: phase-372 W1.
     message(STATUS
-        "nano-ros: cortex-r52 FPU CFLAGS NOT attached — no target named "
+        "nano-ros: ${CMAKE_SYSTEM_PROCESSOR} FPU CFLAGS NOT attached — no target named "
         "${_env_target}")
 endfunction()
