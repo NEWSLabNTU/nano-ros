@@ -196,6 +196,15 @@ gate-scratch:
 gate-units:
     @bash scripts/build/gate-units.sh --self-test
 
+# issue 2664 — the fixture build refuses a native-simulator image linked with
+# no unwind search table (`scripts/build/zephyr-fixture-run-one.sh`). This is
+# the check's own controls: a sound executable, a header with no table, one
+# indexing 0 FDEs, no header at all, and ld's line found in a log. Needs only
+# a host C compiler, so it runs on the fast line.
+[private]
+unwind-table:
+    @python3 scripts/build/check-unwind-table.py --self-test
+
 # phase-535 W3 — the rule `workspace-fixtures-build.sh` fans its rows out by:
 # rows that write a common cmake configure, cargo target dir or generated
 # entry are one build unit and stay serial; units run at once. Buildless, so

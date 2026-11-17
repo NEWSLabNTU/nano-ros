@@ -456,6 +456,14 @@ set +e
         "${cmake_build_env[@]}" \
         "${build_argv[@]}"
     rc=$?
+    # Issue 2664 — a native-simulator image is a host executable, and one
+    # linked with no unwind search table aborts at a thread exit by layout
+    # (ld only warns). Refuse it here, BEFORE the signature below, so a
+    # refused leaf never reads as fresh.
+    if [ "$rc" -eq 0 ] && [ -f "$build_dir/zephyr/zephyr.exe" ]; then
+        python3 "$nros_root/scripts/build/check-unwind-table.py" \
+            --log "$log" "$build_dir/zephyr/zephyr.exe" || rc=1
+    fi
     if [ "$rc" -eq 0 ] && [ "$use_west" = "1" ]; then
         printf '%s\n' "$sig" > "$sig_file"
     fi

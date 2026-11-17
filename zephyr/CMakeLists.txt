@@ -34,6 +34,26 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
 # IVT_HEADER region. See nros_boot_config.ld.
 zephyr_linker_sources(RODATA ${CMAKE_CURRENT_LIST_DIR}/nros_boot_config.ld)
 
+# Issue 2664 -- a native-simulator board (native_sim, native_sim/native/64,
+# nrf_bsim: CONFIG_NATIVE_LIBRARY) links `zephyr.elf` as a RELOCATABLE (`-r`)
+# and lets `scripts/native_simulator/Makefile` link the executable. Zephyr's
+# `toolchain_ld_base` adds `--gc-sections` to every link, the `-r` one
+# included, and garbage collection in a relocatable link leaves the FDEs of
+# the discarded sections behind with R_X86_64_NONE relocations. Host ld 2.38
+# then cannot parse that `.eh_frame` ("no .eh_frame_hdr table will be
+# created"), so the executable has an EMPTY unwind search table, and the
+# forced unwind native_sim runs when a thread exits (`pthread_exit`) walks
+# `.eh_frame` linearly and aborts on the bad entry, or not, by layout. Every
+# XRCE C native_sim image carried it, and which ones died at boot moved with
+# unrelated code. The executable's link does no garbage collection, so the
+# relocatable one does none either: measured +5 % on the XRCE C listener,
+# and its table back (0x2784 bytes). Later in the link line than the base
+# option, so it wins. `scripts/build/check-unwind-table.py` refuses an image
+# that still lacks a table.
+if(CONFIG_NATIVE_LIBRARY)
+  zephyr_ld_options(-Wl,--no-gc-sections)
+endif()
+
 # RFC-0071 D9 (phase-506 W4b) — the backend reaches `nros-c` / `nros-cpp`'s
 # staticlib through a generated IMAGE crate (cmake/NanoRosImageCrate.cmake),
 # exactly as on the cmake road: the API crate is built without its backend
