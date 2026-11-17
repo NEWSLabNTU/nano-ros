@@ -867,6 +867,10 @@ this phase will fix it.
 
 - [issue 2165](../issues/2165-zephyr-smp-nros-log-stops-after-four-records.md): on the island's Zephyr SMP image (`fvp_baser_aemv8r_smp`), only the four early-ring `nros_log` records reach the console. Every later record is lost with no `report_lost` warning. The same sources log normally on FreeRTOS.
 
+## Issues homed here (2026-11-18)
+
+- [issue 2686](../issues/2686-constraints-truncation-names-description-knob.md): a truncated `additional_constraints` text is logged as a description that did not fit, telling the user to raise `NROS_MAX_PARAM_DESCRIPTION_LEN` when `NROS_MAX_PARAM_CONSTRAINTS_LEN` sizes it.
+
 ## Issues homed here (2026-11-17)
 
 - [issue 2670](../issues/2670-imperative-param-declare-invisible-to-census.md): a Rust parameter declared through `Executor::node_mut(..).declare_parameter` reaches no census hook, so a contract that omits it sizes the store short with no `param-missing-in-contract` error.

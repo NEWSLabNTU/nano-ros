@@ -62,7 +62,7 @@ deprecate-node-name-setter = []
 # neither the global nor the call, so the observation costs a firmware build
 # nothing at all. `sync-spin` is what makes the global `Sync` in a `no_std`
 # crate — the same dep `metadata-mode` itself names.
-registration-observer = ["nros-rmw/sync-spin"]
+registration-observer = ["nros-rmw/sync-spin", "nros-params/descriptor-text-observer"]
 
 # phase-463 W7 — the PROFILING half of the host census: per-callback
 # `max_observed` (ns, host monotonic clock) and the topics each invocation

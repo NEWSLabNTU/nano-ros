@@ -677,6 +677,11 @@ impl ParameterDescriptor {
     /// Returns whether it was truncated; the descriptor also remembers it, so
     /// the executor can report it once the parameter is declared.
     pub fn set_description(&mut self, desc: &str) -> bool {
+        #[cfg(feature = "descriptor-text-observer")]
+        crate::descriptor_text_observer::observe_descriptor_text(
+            crate::descriptor_text_observer::DescriptorText::Description,
+            desc.len(),
+        );
         self.description_truncated = fit_description(&mut self.description, desc);
         self.description_truncated
     }
@@ -690,6 +695,11 @@ impl ParameterDescriptor {
     /// `rclc_add_parameter_description`. Truncated and recorded like the
     /// description; returns whether anything was cut.
     pub fn set_additional_constraints(&mut self, text: &str) -> bool {
+        #[cfg(feature = "descriptor-text-observer")]
+        crate::descriptor_text_observer::observe_descriptor_text(
+            crate::descriptor_text_observer::DescriptorText::Constraints,
+            text.len(),
+        );
         let cut = fit_description(&mut self.additional_constraints, text);
         // ONE truncation flag for both texts, deliberately. What the executor
         // reports is "this parameter's descriptor prose did not fit", and the

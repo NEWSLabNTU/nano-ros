@@ -59,6 +59,11 @@
 #         none). Issue 2377 cites it so the two cannot drift. REMOVE THIS ROW
 #         when the PR carrying `docs/issues/2376-*.md` merges.
 #
+#   2681  IN FLIGHT -- filed on PR #4173 (the issue 2670 census fix). Issue
+#         2650 cites it as the node gap that makes a census incomplete.
+#         REMOVE THIS ROW when #4173 merges.
+#
+docs/issues/2650-param-descriptor-description-per-slot.md:2681
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110

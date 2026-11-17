@@ -76,6 +76,9 @@ pub(crate) mod config;
 // phase-446 W6 -- what each node's contract declares, looked up when the code
 // declares a parameter.
 pub mod declared;
+// Issue 2650 -- the probe's view of descriptor prose lengths.
+#[cfg(feature = "descriptor-text-observer")]
+pub mod descriptor_text_observer;
 // Issue 2638 -- the reading of a launch parameter's baked text.
 pub mod launch_text;
 pub mod ops;
