@@ -510,6 +510,10 @@ launch file again, because the board has nowhere to store the change.
 - **The build names a package that does not exist:** a `<node>`'s `pkg`
   names no package in the workspace. `nros check --workspace .` lists every
   such mistake before a build.
+- **A C++ node stops at boot with `parameter "…" is declared double but the
+  launch value is the integer 1; write 1.0 in the YAML`:** the launch file or
+  YAML gives the parameter a value of another type than `declare_parameter<T>`
+  asks for. Write the value in the declared type, as the line says.
 
 ## The launch file, briefly
 

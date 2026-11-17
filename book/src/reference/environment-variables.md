@@ -45,6 +45,7 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | `ZENOH_PICO_DIR` | CMake install prefix for pre-built zenoh-pico (use with `system-zenohpico` feature on `zpico-sys`) | Only with `system-zenohpico`        |
 | `NROS_EXTRA_BOARD_PATH` | Extra board-search roots (PATH-style `:` separated). Each entry is a directory shaped like `packages/boards/` — subdirs carrying `nros-board.toml` crates or `*/boards/<name>/board.cmake` bundles. Read by the `nros` CLI's board catalog AND `nano_ros_use_board()` (also settable as a CMake cache var there). Board keys stay global: a name found under two roots is an error, never shadowed. | (unset) |
 | `NROS_BUILD_ROOT` | One writable directory for the probe-build caches `nros build` keeps, shared by every project that sets it. Unset, each project keeps its own; a build never writes into the installed release. See [one install for several users](../guide/build/install-options.md#one-install-for-several-users-or-a-read-only-one). | (unset) |
+| `NROS_PROBE_FAILURE` | What a failed source probe does to `nros build` and `nros configure`. Before a build, `nros` configures the workspace's C and C++ packages once to read their metadata (the source probe). `warn` prints each failure and builds the failed packages' components on default sizes, and the build's last line counts the failures. `refuse` makes any failure an error: set it in CI, where nobody reads a warning. Another value is an error. When no probe in the workspace succeeds, the build stops under either value. | `warn` |
 
 ### ARM FVP (`FVP_BaseR_AEMv8R`)
 

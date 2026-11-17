@@ -362,6 +362,11 @@ node.set_parameter<int64_t>("gain", 4);      // changed_parameters = [gain]
 node.undeclare_parameter("gain");            // deleted_parameters = [gain]
 ```
 
+A launch or YAML value whose type is not the declared `T` (an integer
+written for a `double` parameter) stops the boot at the declaration, as
+upstream's `declare_parameter<T>` throws: the node's `ok()` turns false, and
+the log line names the node, the parameter and the value to write.
+
 Each event names the node's fully qualified name in `node`; the events are
 published on the next spin. The image needs the `param_services` capability.
 One publisher per executor serves every node. It is on for every served node

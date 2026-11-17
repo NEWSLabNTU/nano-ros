@@ -77,10 +77,11 @@ Kconfig.
 ### Build a debug image
 
 On a board, `release` is the default, so a debug build is one flag away.
-Pass it after `--`, where it replaces the default:
-`nros build mps2 -- --profile dev` for a Rust-only image, and
-`nros build mps2 -- -DCMAKE_BUILD_TYPE=Debug` for an image with C or C++
-nodes.
+`--profile=` replaces the image's profile for one build, and takes what the
+image's `profile` key takes: `nros build mps2 --profile=dev` for a Rust-only
+image, and `nros build mps2 --profile=Debug` for an image with C or C++ nodes.
+The `=` is required. A `-DCMAKE_BUILD_TYPE` in `--cmake-args=` is refused,
+naming `--profile=`.
 
 To make debug the image's default, state `profile = "dev"` on its
 `[image.<id>]` instead (`Debug` on an image with C or C++ nodes).
