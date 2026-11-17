@@ -112,6 +112,16 @@ on:
         required: false
         default: false
         type: boolean
+      # phase-567 W3 follow-up (user ruling 2026-11-17). Off: a W1/W2 refusal
+      # stops the run, as for a release. On: every job runs anyway, so a dry
+      # run can rehearse the build, the island job and the images on a commit
+      # W1 refuses; the refusal is still printed, the run summary opens with
+      # it, and `releasable` stays false. Refused together with `publish`.
+      rehearse:
+        description: "rehearsal: run every job even when W1/W2 refuse (still printed REFUSED, never releasable; refused with publish)"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: release-nros
@@ -137,7 +147,20 @@ jobs:
     permissions:
       contents: read
       actions: read
+    # phase-567 W3 follow-up (user ruling 2026-11-17): `releasable` is the
+    # second lock on every publishing step. `Publish the release` and the image
+    # push each need it beside `inputs.publish`, so a rehearsal that carried on
+    # past a refusal can never publish, whatever else changes.
+    outputs:
+      releasable: ${{ steps.verdict.outputs.releasable }}
     steps:
+      # A rehearsal runs every job past a W1/W2 refusal, so it must never be a
+      # publish: refused here, before anything is measured.
+      - name: Refuse a rehearsal that would publish
+        if: ${{ inputs.rehearse && inputs.publish }}
+        run: |
+          echo "::error::rehearse=true with publish=true: a rehearsal carries on past a refusal, so it never publishes. Dispatch one or the other."
+          exit 1
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -170,7 +193,13 @@ jobs:
       # top of the cut is a `git cherry-pick -x` of a main commit. The refusal
       # names the tag and the commits that are not cherry-picks. A non-release
       # ref passes.
+      #
+      # On a rehearsal (and only then) W2 and W1 do not stop the job: each
+      # still prints its REFUSED lines, and `Verdict` below turns any refusal
+      # into `releasable=false`, which no publishing step accepts.
       - name: Refuse a release branch re-cut after its version published
+        id: frozen
+        continue-on-error: ${{ inputs.rehearse }}
         env:
           BRANCH: ${{ github.ref_name }}
           VERSION: ${{ inputs.version }}
@@ -179,11 +208,55 @@ jobs:
             --version "$VERSION" --measure-out "$RUNNER_TEMP/measure.txt"
       # W1 measures the commits W2 named: the first cut and each cherry-pick's
       # source on main (the lanes never run on a release branch). Off a
-      # release branch, the commit itself.
+      # release branch, the commit itself. A rehearsal whose W2 refused before
+      # naming any commit measures the commit itself, so W1 still answers.
       - name: Refuse a commit the nightly, tier 1 or tier 2 did not pass
+        id: lanes-green
+        continue-on-error: ${{ inputs.rehearse }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/release/release-lanes-green.py --repo "$GITHUB_REPOSITORY" --shas-from "$RUNNER_TEMP/measure.txt"
+          REHEARSE: ${{ inputs.rehearse }}
+        run: |
+          measure="$RUNNER_TEMP/measure.txt"
+          if [ ! -s "$measure" ] && [ "$REHEARSE" = true ]; then
+            echo "$GITHUB_SHA" > "$measure"
+          fi
+          python3 scripts/release/release-lanes-green.py --repo "$GITHUB_REPOSITORY" --shas-from "$measure"
+      # Releasable only when both W2 and W1 passed. Without a rehearsal a
+      # refusal has already failed the job, so this answers `true` or never
+      # runs; on a rehearsal it says, first and in the run summary, that the
+      # commit is NOT releasable.
+      - name: Verdict (releasable, or a rehearsal that is not)
+        id: verdict
+        env:
+          REHEARSE: ${{ inputs.rehearse }}
+          W2: ${{ steps.frozen.outcome }}
+          W1: ${{ steps.lanes-green.outcome }}
+        run: |
+          if [ "$W2" = success ] && [ "$W1" = success ]; then
+            echo "releasable=true" >> "$GITHUB_OUTPUT"
+            echo "releasable: W2 and W1 passed $GITHUB_SHA"
+            exit 0
+          fi
+          echo "releasable=false" >> "$GITHUB_OUTPUT"
+          which=""
+          [ "$W1" = success ] || which="W1"
+          [ "$W2" = success ] || which="${which:+$which+}W2"
+          if [ "$REHEARSE" = true ]; then
+            echo "::error::REFUSED (rehearsal: continuing, NOT releasable): $which refused $GITHUB_SHA"
+            {
+              echo "## REHEARSAL — $which REFUSED $GITHUB_SHA: not releasable"
+              echo
+              echo "This run carried on past the refusal to rehearse the rest of the release."
+              echo "Nothing it builds may be published; the refusal lines are in the lanes job's log."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Not a rehearsal: W2 or W1 refused, and without `continue-on-error`
+          # that already failed the job, so this is a backstop that never runs.
+          echo "::error::$which REFUSED $GITHUB_SHA"
+          exit 1
 
   # phase-567 W3 runs W4's release leg: the island-shaped workspace (a census
   # and a FreeRTOS board build of a workspace laid out like the safety
@@ -594,7 +667,7 @@ jobs:
             ${{ runner.temp }}/nros-linux-x86_64.cdx.json
 
       - name: Publish the release
-        if: ${{ inputs.publish }}
+        if: ${{ inputs.publish && needs.lanes.outputs.releasable == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
@@ -636,7 +709,8 @@ jobs:
   # release-rehearsal` holds that.
   starter-image:
     name: starter image (${{ matrix.target }})
-    needs: build
+    # `lanes` for its `releasable` output: `needs` reaches direct dependencies only.
+    needs: [lanes, build]
     strategy:
       fail-fast: false
       matrix:
@@ -648,7 +722,7 @@ jobs:
     with:
       version: ${{ inputs.version }}
       target: ${{ matrix.target }}
-      push: ${{ inputs.publish }}
+      push: ${{ inputs.publish && needs.lanes.outputs.releasable == 'true' }}
       ref: ${{ github.sha }}
       asset_artifact: nros-linux-x86_64
 
