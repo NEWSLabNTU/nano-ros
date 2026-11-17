@@ -94,3 +94,11 @@ linux-check
 # so there it could only record "not verified" skips; the self-hosted nightly
 # runner has one, which is why it runs on `build-serial`. Ruled 2026-10-09.
 dist-runtime-deps
+
+# workspace-probes (issue 2608) runs `nros configure` under refuse over every
+# tracked workspace root with a C/C++ package (53), which COMPILES every
+# component's metadata probe: 1,687 s one after another on a warm host, and it
+# needs the in-tree CLI (it skips through the ledger without one). Too heavy
+# for the PR job; it runs in every `just ci gate` (`check::build`) before a
+# push, and in the scheduled `check-build`.
+workspace-probes

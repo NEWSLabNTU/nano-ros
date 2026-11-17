@@ -7,6 +7,13 @@
 //! image must get its OWN configure (`build/<coord>-cfg<hash>/`) — otherwise
 //! its knobs are dropped, or leak into the other image. Each binary prints what
 //! its runtime build compiled in, and this asserts each saw its own image.
+//!
+//! Issue 2608 — `probe_pkg`'s component declares one timer. It declared
+//! nothing until then, and a metadata probe that records nothing is a failed
+//! probe, so since phase-559 W11 (`NROS_PROBE_FAILURE=refuse` in every
+//! fixture lane) both rows stopped building. With the timer, `plain`'s
+//! `max_cbs` is what its declarations derive (one callback slot) instead of
+//! nros-node's builtin, which it only reached because the probe failed.
 
 use std::{process::Command, time::Duration};
 
@@ -19,8 +26,13 @@ use nros_tests::{
 
 const BRINGUP: &str = "packages/testing/nros-tests/fixtures/image_config_ws/src/probe_bringup";
 
-/// nros-node's builtin `NROS_EXECUTOR_MAX_CBS`.
+/// nros-node's builtin `NROS_EXECUTOR_MAX_CBS`: a `warn` stating this would
+/// hide a dropped rung.
 const BUILTIN_MAX_CBS: usize = 4;
+
+/// What `plain`'s declarations derive for `NROS_EXECUTOR_MAX_CBS`: its one
+/// component declares one timer, one callback slot (`Probe.c`).
+const PLAIN_DERIVED_MAX_CBS: usize = 1;
 
 /// `[image.warn.knobs]`, as authored — read rather than restated, so the test
 /// cannot pass against a fixture that changed under it.
@@ -75,6 +87,10 @@ fn each_workspace_image_builds_against_its_own_configuration() {
         max_cbs, BUILTIN_MAX_CBS,
         "`warn` states the builtin, which hides a dropped rung"
     );
+    assert_ne!(
+        max_cbs, PLAIN_DERIVED_MAX_CBS,
+        "`warn` states what `plain` derives, which hides a leak between them"
+    );
     assert_eq!(knobs["log"]["max_level"].as_str(), Some("warn"));
 
     let plain = fixtures::build_workspace_cmake_generated_entry(
@@ -100,9 +116,10 @@ fn each_workspace_image_builds_against_its_own_configuration() {
     let p = probe_line(&plain, &locator, "plain_entry");
     assert_eq!(
         field(&p, "max_handles"),
-        BUILTIN_MAX_CBS.to_string(),
-        "`plain` states nothing, so it must build against the builtins — a \
-         configured sibling's value leaked into it: {p}"
+        PLAIN_DERIVED_MAX_CBS.to_string(),
+        "`plain` states nothing, so it must build against what its own \
+         declarations derive — a configured sibling's value leaked into it, or \
+         the derivation did not reach nros-c: {p}"
     );
     assert_eq!(field(&p, "info_enabled"), "1", "{p}");
 

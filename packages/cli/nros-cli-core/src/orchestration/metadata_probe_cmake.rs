@@ -1220,6 +1220,14 @@ mod tests {
             src.contains("/ws/src/talker_pkg/metadata/talker.json"),
             "{src}"
         );
+        // A component that declares nothing is refused in its own words,
+        // not as a bare exit status.
+        assert!(
+            src.contains("if (dump == -2)")
+                && src.contains("declares no publisher, subscription, timer, service, \"\n")
+                && src.contains("must declare at least one."),
+            "{src}"
+        );
         assert!(
             !src.contains("::run_components("),
             "a probe never spins:\n{src}"

@@ -79,7 +79,8 @@ manager's ruling): `warn` by default for an interactive command, refusing a
 run where no probe succeeded; `refuse` in every lane where nobody reads the
 warning. Measured:
 
-- Every tracked workspace (`examples/workspaces/*`, 18) ran `nros configure`
+- `examples/workspaces/*` (18; the claim "every tracked workspace" was wrong,
+  see the reach gap below) ran `nros configure`
   under `NROS_PROBE_FAILURE=refuse` on the W11 branch: all exited 0, 87 probes
   rebuilt, 0 failed, so no fixture lane goes red from this change.
 - Broken on purpose (`#error` at the top of `workspaces/c`'s `Talker.c`):
@@ -92,3 +93,43 @@ warning. Measured:
 - The negative control: a no-producer component and a deploy-bound degrade
   are not failures under either policy (unit tests). A mutation that drops
   the `refuse` branch fails a test.
+
+## Reach gap (2026-11-17)
+
+The measurement above covered 18 roots, and the tree has 114 tracked
+workspace roots, 53 of them with a C or C++ package. A component outside the
+18, `packages/testing/nros-tests/bins/idle-wake-zephyr-mps2`'s
+`nros_idle_wake_witness_c` (phase-521 W7), included `<zephyr/devicetree.h>`
+and Zephyr's kernel and tracing APIs in its node source, so the HOST probe
+could never compile it. Before W11 that read as "no producer"; after it,
+`refuse` stopped `just zephyr build-fixtures` on main, every leaf unbuilt,
+since the fixture build syncs that workspace whatever its filter. (It refused
+under `warn` too: the workspace has one component, and a run where no probe
+succeeded refuses.) The typed-carrier fix (#4106) was the same fallout one site
+over.
+
+The sweep below found one more, of a second shape:
+`packages/testing/nros-tests/fixtures/image_config_ws`'s `probe_pkg::probe`
+declared no entity at all (it only prints what its image compiled in), and a
+probe that records nothing is a failed probe by design
+(`nros_cpp_metadata_dump` returns -2, so the run exits 254). That stopped
+both `workspace-image-config-*` linux rows.
+
+Fixed in the change that follows this note:
+
+- The witness keeps its node (`Witness.c`) host-compilable and moves the
+  board measurement (tracing hooks, devicetree IRQ, cycle counter) into
+  `witness_board_zephyr.c`, which its CMakeLists.txt adds only inside a
+  Zephyr build; the probe builds `witness_board_host.c` instead. `refuse`
+  stays strict, and the probe now records the witness's subscription and
+  timer.
+- `probe_pkg`'s component declares a 1 s timer that does nothing, so the probe
+  records one callback slot. `plain` now builds against what that derives
+  (`max_cbs` 1) instead of nros-node's builtin (4), which it only reached
+  because its probe failed; `image_config_workspace.rs` asserts the derived
+  value, and that `warn`'s stated 13 differs from both.
+- The class check is `scripts/check-workspace-probes.sh`
+  (`just check workspace-probes`): `nros sync` under `refuse` over EVERY
+  tracked workspace root with a C/C++ package, so a new component the host
+  probe cannot compile is red before it merges.
+

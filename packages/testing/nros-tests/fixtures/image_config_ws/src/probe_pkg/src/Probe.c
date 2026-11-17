@@ -7,6 +7,10 @@
  *                 exactly when nros-log was built with a ceiling above INFO
  *                 (NROS_LOG_MAX_LEVEL);
  *   warn_enabled  the same for WARN, so info_enabled=0 cannot mean "off".
+ *
+ * The 1 s timer does nothing. It is what the metadata probe records: a
+ * component that declares nothing is a failed probe, and a failed probe stops
+ * the fixture build. So `plain`'s max_handles is the one slot it derives.
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -15,13 +19,24 @@
 #include <rclc/rclc.h>
 
 typedef struct {
-    int32_t unused;
+    rcl_timer_t timer;
 } probe_t;
+
+static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
+    (void)timer;
+    (void)last_call_time;
+}
 
 static rcl_ret_t probe_configure(rcl_node_t* node, rclc_executor_t* executor, probe_t* self) {
     (void)node;
-    (void)executor;
-    (void)self;
+    self->timer = rcl_get_zero_initialized_timer();
+    rcl_ret_t rc = rclc_timer_init_default(&self->timer, NULL, 1000000000ULL, on_tick);
+    if (rc == RCL_RET_OK) {
+        rc = rclc_executor_add_timer(executor, &self->timer);
+    }
+    if (rc != RCL_RET_OK) {
+        return rc;
+    }
     setvbuf(stdout, NULL, _IOLBF, 0);
     rclc_logger_t logger = rclc_log_get_logger("image_config_probe");
     rclc_logger_set_level(logger, RCLC_LOG_SEVERITY_DEBUG);

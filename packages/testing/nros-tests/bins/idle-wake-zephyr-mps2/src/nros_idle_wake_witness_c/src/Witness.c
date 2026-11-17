@@ -26,19 +26,15 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include <zephyr/devicetree.h>
-#include <zephyr/kernel.h>
-#include <cmsis_core.h>
-
 #include <rclc/rclc.h>
+
+#include "witness_board.h"
 
 #include <std_msgs/msg/string.h>
 
 #define PERIOD_MS 1000
 #define WINDOW_FIRES 5
 #define LAT_SAMPLES 5
-/* The LAN9118's IRQ line; the exception number is 16 above it. */
-#define ETH_IRQ DT_IRQN(DT_NODELABEL(eth0))
 
 typedef struct {
     rcl_subscription_t sub;
@@ -51,48 +47,18 @@ typedef struct {
     int64_t max_early_us;
 } witness_t;
 
-/* The executor's thread, learned from the first timer dispatch, and the
- * switch-in count of that thread while the window is open. Written from the
- * scheduler's switch-in hook, so plain volatiles: the hook runs with
- * interrupts locked on a single-core Cortex-M3. */
-static struct k_thread* volatile exec_thread;
-static volatile uint32_t switch_ins;
-static volatile bool window_open;
-
-void sys_trace_thread_switched_in_user(void) {
-    if (window_open && k_current_get() == exec_thread) {
-        switch_ins++;
-    }
-}
-
-/* The cycle count at the last LAN9118 receive interrupt. */
-static volatile uint32_t last_eth_cyc;
-static volatile bool eth_seen;
-
-void sys_trace_isr_enter_user(void) {
-    if ((__get_IPSR() & 0x1FFu) == 16u + (uint32_t)ETH_IRQ) {
-        last_eth_cyc = k_cycle_get_32();
-        eth_seen = true;
-    }
-}
-
 static uint32_t lat_n;
 static uint64_t lat_sum_us;
 static uint32_t lat_min_us = UINT32_MAX;
 static uint32_t lat_max_us;
 
-static int64_t now_us(void) {
-    return (int64_t)k_ticks_to_us_floor64(k_uptime_ticks());
-}
-
 static void on_msg(const void* msgin, void* ctx) {
     (void)ctx;
     (void)msgin;
-    uint32_t now = k_cycle_get_32();
-    if (!eth_seen || lat_n >= LAT_SAMPLES) {
+    uint32_t us;
+    if (!witness_board_arrival_us(&us) || lat_n >= LAT_SAMPLES) {
         return;
     }
-    uint32_t us = k_cyc_to_us_floor32(now - last_eth_cyc);
     lat_n++;
     lat_sum_us += us;
     if (us < lat_min_us) {
@@ -110,12 +76,10 @@ static void on_msg(const void* msgin, void* ctx) {
 static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
     witness_t* self = RCLC_CONTAINER_OF(timer, witness_t, timer);
     (void)last_call_time;
-    int64_t t = now_us();
+    int64_t t = witness_board_now_us();
     if (self->fires == 0) {
-        exec_thread = k_current_get();
         self->first_us = t;
-        switch_ins = 0;
-        window_open = true;
+        witness_board_open_window();
     } else if (self->fires <= WINDOW_FIRES) {
         int64_t due = self->first_us + (int64_t)self->fires * PERIOD_MS * 1000;
         if (t > due && t - due > self->max_late_us) {
@@ -126,7 +90,7 @@ static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
         }
     }
     if (self->fires == WINDOW_FIRES) {
-        window_open = false;
+        uint32_t switch_ins = witness_board_close_window();
         printf("idle-wake: switch_ins=%u fires=%d window_ms=%d max_late_us=%lld "
                "max_early_us=%lld\n",
                (unsigned)switch_ins, WINDOW_FIRES, (int)((t - self->first_us) / 1000),
