@@ -111,3 +111,35 @@ no samples. Issues 2510 and 2511 are still open beside it.
 
 **Suggested owner: the phase-559 W5b / phase-535 W8.2 owner**, with one
 `lane=merge` dispatch.
+
+## Status (2026-11-17, later): threadx_linux met, zephyr not reached
+
+One `lane=merge` dispatch was made for this issue, 2592 and 2511 together.
+
+- **merge-runtime 43968023728: void.** Both shards stopped in the fixture
+  build on the typed-carrier metadata probe (fixed by #4106, which merged
+  after the dispatch). No cell ran.
+- **merge-runtime 43982551835, at main after #4106:**
+  - **threadx_linux: met.** It reached `just ci merge` and passed, with
+    `Real failures: 0 / 0` (job 133702431268, 23:49–01:26Z, hosted
+    runner).
+  - **zephyr: not reached.** `just build merge` stopped in the zephyr
+    fixture stage on a second probe break: `probe FAILED for
+    nros_idle_wake_witness_c::witness`. The mps2 idle-wake witness
+    includes `zephyr/devicetree.h`, which the host probe cannot compile.
+    nros 175 is fixing it.
+
+`scripts/ci/merge-runtime-p95.py` on 2026-11-17, over the last 7 days of
+dispatches:
+
+```
+merge-runtime.yml: 21 workflow_dispatch run(s) in the last 7 day(s)
+threadx_linux    n_ok=1 n_fail=3 n_timed_out=0 n_no_verdict=0  p50=  97.4 min  p95=  97.4 min  (OVER 20 min)
+zephyr           n_ok=0 n_fail=5 n_timed_out=0 n_no_verdict=7  no samples
+```
+
+The done-when is half met. threadx_linux has a sample, and it is **97.4
+min against RFC-0122 D9's 20-min p95** (n = 1). zephyr has no sample yet.
+Next: re-dispatch `lane=merge` once the idle-wake probe fix lands. The 97
+min is a finding of its own and is not part of this done-when, which asks
+only for samples.
