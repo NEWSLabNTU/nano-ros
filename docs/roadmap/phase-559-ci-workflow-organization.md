@@ -922,6 +922,42 @@ an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
 (`queue.yml` is not a required check), and its runner already provisions the
 3.7 workspace and SDK, so it costs neither of the things #3710 removed.
 
+### W14 — A lane shard's run step runs the lane's cells, not `test-all`
+
+- **Owner:** nros 175. Added at the manager's direction (2026-11-17), from
+  [issue 2475](../issues/2475-merge-lane-fails-before-fixtures.md)'s cost
+  split.
+- **What.** On a hosted lane shard, `just ci merge` / `just ci tier1 run` is
+  `test-all`. On threadx_linux (run 43982551835) that was 22.8 min: five
+  feature lanes compiled and ran (about 12 min, `loan_e2e` alone 7.5), then
+  the whole workspace's unit suite (3,689 tests, about 4 min) and its
+  doctests (about 3.5 min). The unit suite, doctests and feature lanes
+  already run per merge group (`gate.yml`'s `test-unit` and `check-build`),
+  and the lane's own cells are a small slice of the run. The shard runs the
+  lane's cells only, scoped by its coordinates (a `just test <lane>`).
+- **Acceptance.** One nightly dispatch before and one after, on the same
+  board, gives the run step's time for each. Every cell the lane selected
+  before still runs after (`check-skip-budget`'s counts agree), and no gate
+  loses its only lane (`check-default-gates-run-somewhere`).
+- **Status:** OPEN
+
+### W15 — A lane shard's census and fixture build cover only its coordinates
+
+- **Owner:** nros 175. Added at the manager's direction (2026-11-17), from
+  issue 2475's cost split.
+- **What.** The same run spent 12.6 min in the census prepass (7.1 of them on
+  `workspaces/c`) and 44.6 min in the pooled fixture build, which also visits
+  rows the merge lane's cells do not run: `bins/logging-smoke-threadx-linux`,
+  `condvar-contract-threadx-linux` and `pool-exhaustion-threadx-linux` are
+  not Example cells. The census and the build take the shard's coordinate
+  file, as the build's row filter already does (`lane-coords`). Whether the
+  pooled `linux` stage builds only the rows that serve the threadx cells
+  (issue 2548's observer) or the whole linux slice is measured first, from
+  one verbose run.
+- **Acceptance.** Before and after on one nightly dispatch: census and build
+  time per shard, and every cell that ran before still finds its fixture.
+- **Status:** OPEN
+
 ## Issues homed here
 
 - [issue 2502](../issues/2502-zephyr-template-copy-out-doubled.md) — the
