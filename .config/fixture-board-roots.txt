@@ -1,0 +1,6 @@
+# Tracked board roots OUTSIDE packages/boards/: test fixtures that stand in for
+# a user's NROS_EXTRA_BOARD_PATH (RFC-0135 D2). Each holds board PACKAGES, one
+# directory per package, like packages/boards/. Read by
+# scripts/lib/board_roots.py (the Python gates) and by the CLI's tests that
+# join tracked images to board definitions, so no gate spells a root.
+packages/testing/nros-tests/fixtures/out-of-tree-r5f/boards

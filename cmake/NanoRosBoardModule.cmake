@@ -20,10 +20,18 @@
 #
 # One spelling for every platform file: the five that built this path by hand
 # (freertos, nuttx, threadx and bare metal twice) now ask here.
+#
+# A board package's module reaches nano-ros's own shared board files (the
+# FreeRTOS family's `FreeRTOSConfig.h`, its glue sources) through
+# `NROS_SOURCE_DIR`, the nano-ros tree this configure includes, because its
+# own `CMAKE_CURRENT_LIST_DIR` is in the package, not in nano-ros.
 include_guard(GLOBAL)
 
 set(_NROS_BOARD_MODULE_INTREE_DIR "${CMAKE_CURRENT_LIST_DIR}/board"
     CACHE INTERNAL "nano-ros's in-tree board modules")
+get_filename_component(NROS_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+set(NROS_SOURCE_DIR "${NROS_SOURCE_DIR}"
+    CACHE INTERNAL "the nano-ros tree a board package's CMake module builds against")
 
 function(nros_board_module_path out_var who)
     cmake_parse_arguments(_BM "OPTIONAL" "" "" ${ARGN})

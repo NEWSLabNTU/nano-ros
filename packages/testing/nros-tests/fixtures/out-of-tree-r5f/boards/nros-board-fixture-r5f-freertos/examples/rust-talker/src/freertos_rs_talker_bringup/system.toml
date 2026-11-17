@@ -1,0 +1,22 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses. Switching board is editing `[image.*] board`
+# and re-running `nros configure`.
+
+[system]
+name = "freertos_rs_talker"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "freertos_rs_talker"
+class = "freertos_rs_talker::Talker"
+name = "talker"
+
+# The fixture board. The locator is the ENTRY's role port — what the
+# e2e harness binds zenohd to (phase-338 W2).
+[image.fixture-r5f-freertos]
+board = "fixture-r5f-freertos"
+locator = "tcp/192.0.3.1:7447"
+
+[board_config."fixture-r5f-freertos"]
+netstack = "lwip"

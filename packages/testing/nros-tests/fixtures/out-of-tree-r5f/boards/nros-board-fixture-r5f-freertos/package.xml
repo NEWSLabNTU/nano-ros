@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_board_fixture_r5f_freertos</name>
+  <version>0.1.0</version>
+  <description>
+    Test fixture: a hard-float Cortex-R5F FreeRTOS board package kept outside
+    nano-ros, built against a vendor SDK it names through its own variable
+    (phase-575 W2, phase-577 W8). Not a real board.
+  </description>
+  <maintainer email="dev@example.com">nano-ros</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cargo</build_type>
+    <!-- This package IS a board; the name equals the board definition's
+         `names`, canonical first. -->
+    <nano_ros_provides kind="board" name="fixture-r5f-freertos"/>
+    <!-- RFC-0135 D6: the nano-ros versions this board package supports.
+         Parsed and ignored until the pre-build check reads it. -->
+    <nano_ros_requires nano_ros="&gt;=0.1"/>
+  </export>
+</package>

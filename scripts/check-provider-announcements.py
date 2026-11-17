@@ -108,6 +108,13 @@ except ModuleNotFoundError:  # 3.10 backport, same spelling as the sibling gates
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+
+def _fixture_board_roots():
+    """`.config/fixture-board-roots.txt` (scripts/lib/board_roots.py)."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+    from board_roots import FIXTURE_BOARD_ROOTS
+    return FIXTURE_BOARD_ROOTS
+
 # kind -> (descriptor glob, how to pull the declared names out of it).
 #
 # `extract=None` means a NAMELESS family: its readers derive the names from the
@@ -144,7 +151,13 @@ FAMILIES = {
     # under a comment saying otherwise, which is issue 1220 one family over. A4
     # is what holds it now, and A4 exists rather than being cited.
     "board": (
-        ["packages/boards/*/nros-board.toml", "packages/boards/*/boards/*/nros-board.toml"],
+        [
+            "packages/boards/*/nros-board.toml",
+            "packages/boards/*/boards/*/nros-board.toml",
+            # RFC-0135 D2 -- the tracked out-of-tree board roots
+            # (.config/fixture-board-roots.txt), descriptors like any other.
+            *[f"{r}/*/nros-board.toml" for r in _fixture_board_roots()],
+        ],
         lambda d: [n for b in d.get("board", []) for n in b.get("names", [])],
     ),
     # TWO roots, in `PlatformsTree::default_search_path` order, and neither is

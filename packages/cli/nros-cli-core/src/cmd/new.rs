@@ -1191,7 +1191,9 @@ pub(crate) fn package_dir(args: &Args, name: &str) -> PathBuf {
 /// too). No in-tree board is refused now; the guard stays for a board from an
 /// out-of-tree catalog that the entry table does not know.
 pub(crate) fn refuse_c_family_without_entry(lang: nros_lang::Language, board: &str) -> Result<()> {
-    if matches!(lang, nros_lang::Language::Rust) || nros_entry_lower::board_family(board).is_ok() {
+    if matches!(lang, nros_lang::Language::Rust)
+        || crate::orchestration::board_key::board_family(board).is_ok()
+    {
         return Ok(());
     }
     let stem = board.rsplit_once('-').map_or(board, |(s, _)| s);

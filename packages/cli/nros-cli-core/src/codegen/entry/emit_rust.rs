@@ -288,7 +288,7 @@ fn board_default_framework(key: &str) -> Result<&'static str, String> {
     let board = nros_orchestration_ir::BoardBoot::for_key(
         key,
         &[],
-        nros_entry_lower::entry_shape_for_key(key),
+        crate::orchestration::board_key::entry_shape(key),
     );
     nros_orchestration_ir::image_framework(None, &board)
 }

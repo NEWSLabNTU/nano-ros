@@ -1,0 +1,54 @@
+# Board definition for `fixture-r5f-freertos`: a test fixture, not a real board
+# (phase-575 W2, phase-577 W8). It stands for a hard-float Cortex-R5F under
+# FreeRTOS, kept outside nano-ros and reached through NROS_EXTRA_BOARD_PATH.
+#
+# What makes it an out-of-tree board package (RFC-0135 D2):
+#   - its CMake module ships here, `cmake/nano-ros-board-fixture-r5f-freertos.cmake`,
+#     and `nros build` names it on the configure line;
+#   - its vendor SDK is named through the package's own variable,
+#     FIXTURE_R5F_SDK_ROOT, never fetched and never an SDK-index row;
+#   - the core's profile is nano-ros's in-tree `[arch.cortex-r5f]`, and the
+#     toolchain file is nano-ros's `cmake/toolchain/arm-freertos-armcr5f.cmake`.
+[[board]]
+names = ["fixture-r5f-freertos"]
+cmake_module = "fixture-r5f-freertos"
+platform = "freertos"
+toolchain = "stable"
+entry_kind = "board-run"
+supported_netstacks = ["lwip"]
+# The cargo half: the triple, the link script, and the board's own FreeRTOS
+# port and config dir. `${board_dir}` is this package's directory (RFC-0135 D2).
+cargo_config = '''
+[build]
+target = "armv7r-none-eabihf"
+
+[target.armv7r-none-eabihf]
+rustflags = [
+    "-C", "link-arg=-Tfixture_r5f.ld",
+    "-C", "link-arg=--nmagic",
+    "-C", "link-arg=--gc-sections",
+]
+
+[env]
+CC_armv7r_none_eabihf = "arm-none-eabi-gcc"
+FREERTOS_PORT = { value = "GCC_ARM_CRX_NOGIC", force = true }
+FREERTOS_CONFIG_DIR = { value = "${board_dir}/config", force = true }
+'''
+
+[board.capabilities]
+heap = true
+atomics = true
+threads = true
+
+[board.cmake]
+# Relative to the nano-ros tree: the toolchain file is nano-ros's.
+toolchain_file = "cmake/toolchain/arm-freertos-armcr5f.cmake"
+
+[board.net]
+stack = "board"
+links = ["tcp", "udp"]
+
+[board.provisioning]
+# Index packages this board needs (RFC-0135 D3, phase-577 W10). The vendor
+# SDK is not one: it is FIXTURE_R5F_SDK_ROOT.
+tools = ["arm-none-eabi-gcc"]

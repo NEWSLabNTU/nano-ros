@@ -1,0 +1,20 @@
+# What this example deploys to (RFC-0098 D3/D5): its board, RMW, domain and
+# locator. The node is a component; the generated entry boots it
+# (RFC-0122 D10).
+
+[system]
+name = "freertos_cpp_talker"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "freertos_cpp_talker"
+class = "freertos_cpp_talker::Talker"
+name = "talker"
+
+[image.fixture-r5f-freertos]
+board = "fixture-r5f-freertos"
+locator = "tcp/192.0.3.1:7447"
+
+[board_config."fixture-r5f-freertos"]
+netstack = "lwip"

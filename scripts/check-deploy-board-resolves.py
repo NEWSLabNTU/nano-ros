@@ -51,9 +51,12 @@ def descriptor_paths():
     `packages/` holds build output, and `packages/boards/**` would descend
     every `target/` on the way to the 14 tracked descriptors.
     """
+    # RFC-0135 D2 -- plus the tracked out-of-tree fixture root, which the
+    # build reaches through NROS_EXTRA_BOARD_PATH (`board_roots`).
+    from board_roots import FIXTURE_BOARD_ROOTS
     return sorted(
         p
-        for p in tracked("packages/boards", name="nros-board.toml")
+        for p in tracked("packages/boards", *FIXTURE_BOARD_ROOTS, name="nros-board.toml")
         # A `nros-board.toml` inside a board's own build output is not a
         # descriptor; the index cannot hold one, so this is belt-and-braces
         # for a staging copy someone checked in.

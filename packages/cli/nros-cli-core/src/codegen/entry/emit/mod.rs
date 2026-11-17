@@ -243,7 +243,7 @@ pub(crate) fn admit_and_lower(
             manifest.context
         ));
     }
-    let family = nros_entry_lower::board_family(&plan.board)
+    let family = crate::orchestration::board_key::board_family(&plan.board)
         .map_err(|e| format!("typed entry emit: {e}"))?;
 
     // The pack calls the board's C-ABI runners. The routing sends such a

@@ -264,7 +264,7 @@ pub fn lower_entry(plan: &Plan) -> LoweredEntry {
 pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry, String> {
     // Issue 1285 — an unknown board key is refused HERE, naming the known
     // ones, before anything reads the family.
-    let family = nros_entry_lower::board_family(&plan.board)
+    let family = crate::orchestration::board_key::board_family(&plan.board)
         .map_err(|e| format!("typed entry emit: {e}"))?;
 
     for n in &plan.nodes {

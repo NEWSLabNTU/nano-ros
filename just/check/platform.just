@@ -58,6 +58,14 @@ arch-profile-resolution:
 [group('needs:cmake')]
 board-module-path:
     @bash scripts/check/check-board-module-path.sh
+
+# RFC-0135 D2 (phase-577 W8) -- a board KEY reaches its family through ONE
+# CLI function, `orchestration::board_key::board_family`: nano-ros's
+# compiled-in table first, then the board catalog, so a board package outside
+# nano-ros is not "unknown". Refuses a new direct call to the table in
+# nros-cli-core/src. Buildless; selftest on the normal path.
+board-key-family-sites:
+    @bash scripts/check/check-board-key-family-sites.sh
 # phase-575 W1 -- the hard-float Cortex-R5F profile, checked on real objects:
 # C and C++ built through cmake/toolchain/arm-freertos-armcr5f.cmake and Rust
 # built for `armv7r-none-eabihf` all carry `Tag_ABI_VFP_args: VFP registers`

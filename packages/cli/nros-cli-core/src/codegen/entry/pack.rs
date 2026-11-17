@@ -196,7 +196,7 @@ pub fn entry_pack_for(language: Language, board: &str) -> Result<EntryPackInfo, 
     // family-wide assumption would route a C entry to C++ on a board that no
     // longer needs it. One predicate, in `nros-entry-lower`, because four
     // sites must give the same answer.
-    let has_c_runner = nros_entry_lower::board_family(board)
+    let has_c_runner = crate::orchestration::board_key::board_family(board)
         .map_err(|e| e.to_string())?
         .has_c_run_components();
     let all = manifests()?;
