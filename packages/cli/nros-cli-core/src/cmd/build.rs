@@ -154,6 +154,36 @@ pub struct Args {
     )]
     pub cmake_args: Vec<String>,
 
+    /// Arguments for every cargo command of a cargo image. A CMake or west
+    /// image ignores them.
+    ///
+    /// Split and repeated like `--cmake-args=`, and `@<file>` works too.
+    /// Allowed: `--features`, `--no-default-features`, `--all-features`,
+    /// `-v`, `-q`, `--timings`, `--locked`, `--offline`, `--frozen`. In a
+    /// workspace, name a feature with its package (`--features=<pkg>/<feat>`).
+    /// A feature the build chooses itself (the RMW, the platform, a board or
+    /// capability feature) is refused: choose those in `system.toml`.
+    // RFC-0117 D7/D9 (phase-568 W2b).
+    #[arg(
+        long,
+        value_name = "ARGS",
+        require_equals = true,
+        num_args = 1,
+        allow_hyphen_values = true,
+        action = clap::ArgAction::Append
+    )]
+    pub cargo_args: Vec<String>,
+
+    /// Build with this profile instead of the image's `profile`.
+    ///
+    /// It takes exactly what `[image.<id>] profile` takes: a cargo profile
+    /// (`dev`, `release`, …) or a CMake build type (`Debug`, `Release`, …).
+    /// It is a command-line spelling of that key for one build, not a new
+    /// kind of profile.
+    // RFC-0117 D7 (phase-568 W2b). Built-in profiles only.
+    #[arg(long, value_name = "NAME", require_equals = true)]
+    pub profile: Option<String>,
+
     /// Run at most N jobs at once, in total. Default: the number of CPUs.
     ///
     /// Every tool below `nros build` (cargo, make, ninja, west's cmake)
@@ -244,7 +274,14 @@ impl Args {
     /// Afterwards `cmake_args` holds validated argv, one argument per entry.
     pub fn resolve_cmake_args(mut self) -> Result<Self> {
         self.cmake_args = expand_cmake_args(&self.cmake_args, Path::new("."))?;
+        self.cargo_args = expand_cargo_args(&self.cargo_args, Path::new("."))?;
         Ok(self)
+    }
+
+    /// The profile this build uses for an image that states `stated`:
+    /// `--profile=` when given, else the image's own.
+    pub(crate) fn profile_for<'a>(&'a self, stated: Option<&'a str>) -> Option<&'a str> {
+        self.profile.as_deref().or(stated)
     }
 }
 
@@ -262,6 +299,77 @@ pub(crate) fn expand_cmake_args(raw: &[String], cwd: &Path) -> Result<Vec<String
     }
     let parsed = parse_cmake(&words).map_err(|r| eyre::eyre!("--cmake-args: {r}"))?;
     Ok(parsed.iter().map(|a| a.to_argv()).collect())
+}
+
+/// The cargo words for the raw `--cargo-args` values, split (or read from
+/// `@file`) and checked against the allowlist with no image in view. The
+/// per-image checks (derived features, `<pkg>/<feat>`) run again at each
+/// cargo command, through [`image_cargo_args`].
+pub(crate) fn expand_cargo_args(raw: &[String], cwd: &Path) -> Result<Vec<String>> {
+    use crate::builder::build_args::{CargoPolicy, parse_cargo, split_posix};
+    let mut words = Vec::new();
+    for v in raw {
+        if let Some(file) = v.strip_prefix('@') {
+            words.extend(read_args_file(&cwd.join(file), file)?);
+        } else {
+            words.extend(split_posix(v).map_err(|r| eyre::eyre!("--cargo-args: {r}"))?);
+        }
+    }
+    let parsed = parse_cargo(&words, &CargoPolicy::default())
+        .map_err(|r| eyre::eyre!("--cargo-args: {r}"))?;
+    Ok(parsed.iter().map(|a| a.to_argv()).collect())
+}
+
+/// `--cargo-args` for one cargo image: refused if they name a feature the
+/// build derives for it (its board's features, its platform feature, any
+/// `rmw-*` selection feature, its capability features) or, where the cargo
+/// root has more than one package, a feature not written `<pkg>/<feat>`.
+pub(crate) fn image_cargo_args(
+    args: &Args,
+    image_id: &str,
+    derived: impl IntoIterator<Item = String>,
+    multi_package: bool,
+) -> Result<Vec<String>> {
+    use crate::builder::build_args::{CargoArg, CargoPolicy, parse_cargo};
+    if args.cargo_args.is_empty() {
+        return Ok(Vec::new());
+    }
+    let policy = CargoPolicy {
+        derived_features: derived.into_iter().collect(),
+        multi_package,
+    };
+    let parsed = parse_cargo(&args.cargo_args, &policy)
+        .map_err(|r| eyre::eyre!("--cargo-args for image `{image_id}`: {r}"))?;
+    // `rmw-*` chooses the RMW, which `[system] rmw` / `[image] rmw` states.
+    for a in &parsed {
+        if let CargoArg::Features(fs) = a
+            && let Some(f) = fs
+                .iter()
+                .find(|f| f.rsplit('/').next().is_some_and(|x| x.starts_with("rmw-")))
+        {
+            eyre::bail!(
+                "--cargo-args for image `{image_id}`: `--features={f}` chooses the RMW, which \
+                 the build derives from `rmw` in system.toml; set it there"
+            );
+        }
+    }
+    Ok(parsed.iter().map(|a| a.to_argv()).collect())
+}
+
+/// The cargo features the build chooses for an image itself, from its board
+/// descriptor (its board features and platform feature) and its capability
+/// features. `rmw-*` is refused separately, by name.
+fn derived_cargo_features(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    capabilities: &[String],
+) -> Vec<String> {
+    let mut v = descriptor.board_features.clone();
+    v.push(descriptor.platform_feature.clone());
+    if let Some(f) = descriptor.platform_feature.strip_prefix("nros/") {
+        v.push(f.to_string());
+    }
+    v.extend(capabilities.iter().cloned());
+    v
 }
 
 /// An `@file` of arguments: one per line, split with POSIX quoting, blank
@@ -777,6 +885,17 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
     } else {
         plan::resolve(&bringups, &requested).map_err(|e| eyre::eyre!("{e}"))?
     };
+    // RFC-0117 D7: `--profile=` replaces each image's `profile` for this
+    // build, before anything reads it, so every reader sees one answer.
+    let resolved: Vec<_> = resolved
+        .into_iter()
+        .map(|(b, d, id, mut img)| {
+            if let Some(p) = &args.profile {
+                img.profile = Some(p.clone());
+            }
+            (b, d, id, img)
+        })
+        .collect();
 
     // The driver is chosen by the board's PLATFORM, never by its name - a
     // Zephyr board is spelled `native_sim/native/64`, which says nothing about
@@ -1799,6 +1918,16 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         toml_edit::Value::from(build_dir.display().to_string())
                     ));
                 }
+                // RFC-0117 D7: `--cargo-args=`, checked against this image's
+                // derived features. The generated entry is the cargo root here,
+                // and the user's packages are its dependencies, so a feature
+                // names its package.
+                a.extend(image_cargo_args(
+                    args,
+                    &image_id,
+                    derived_cargo_features(descriptor, &image.features),
+                    true,
+                )?);
                 a.extend(args.native_args.iter().cloned());
                 // A caller-named target dir wins over the settings file's, as it
                 // does for cargo itself (CLI/env above config).
@@ -2285,8 +2414,13 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // build type, so a stated `profile` would be dropped without a
                 // word. Refused, naming where Zephyr states it.
                 if let Some(p) = image.profile.as_deref() {
+                    let whose = if args.profile.is_some() {
+                        format!("`--profile={p}` asks for image `{image_id}`")
+                    } else {
+                        format!("image `{image_id}` states profile `{p}`")
+                    };
                     eyre::bail!(
-                        "image `{image_id}` states profile `{p}`, which a Zephyr build does not \
+                        "{whose}, which a Zephyr build does not \
                          read: Zephyr takes its optimisation from Kconfig. Remove `profile` and \
                          state CONFIG_SPEED_OPTIMIZATIONS, CONFIG_SIZE_OPTIMIZATIONS or \
                          CONFIG_DEBUG_OPTIMIZATIONS in a fragment the image's `os_config` names."
@@ -3180,6 +3314,24 @@ fn plan_leaf_image(
             ));
         }
     }
+    // RFC-0117 D7: `--profile=`, or the leaf image's own `profile`. Neither
+    // reached this road before; an image that states neither keeps cargo's
+    // own default, as it always has. A profile named after `--` still wins.
+    let leaf_profile = args
+        .profile_for(img.decl.profile.as_deref())
+        .and_then(|p| cargo_profile_arg(Some(p), "posix", &args.native_args));
+    if let Some(p) = leaf_profile {
+        a.push("--profile".to_string());
+        a.push(p.to_string());
+    }
+    // `--cargo-args=`: the leaf package is the cargo root, so a bare feature
+    // is its own.
+    a.extend(image_cargo_args(
+        args,
+        &img.image_id,
+        derived_cargo_features(descriptor, &img.decl.features),
+        false,
+    )?);
     a.extend(args.native_args.iter().cloned());
     let output = crate::cmd::build_next::BuildOutput::Cargo {
         target_dir: crate::builder::shared_target::caller_target_dir(
@@ -3192,7 +3344,7 @@ fn plan_leaf_image(
             .target
             .as_deref()
             .map(|t| crate::orchestration::board_descriptor::triple_of_build_target(t).to_string()),
-        profile_dir: crate::cmd::build_next::cargo_profile_dir(None, &args.native_args),
+        profile_dir: crate::cmd::build_next::cargo_profile_dir(leaf_profile, &args.native_args),
         bin: crate::cmd::build_next::cargo_bin_name(&img.leaf),
     };
     Ok(Some(vec![ResolvedBuild {
@@ -3378,7 +3530,7 @@ fn plan_single_package_cmake(
     a.extend(image_build_type_args(
         &platform,
         &image_id,
-        decl.profile.as_deref(),
+        args.profile_for(decl.profile.as_deref()),
     )?);
     a.extend(
         crate::orchestration::image::ImageBuild {
@@ -10497,6 +10649,8 @@ mod selection_wiring_tests {
             },
             continue_on_error: false,
             cmake_args: Vec::new(),
+            cargo_args: Vec::new(),
+            profile: None,
             jobs: None,
             parallel_workers: None,
             build_base: None,
@@ -10579,6 +10733,79 @@ mod selection_wiring_tests {
                 .resolve_cmake_args();
             assert!(r.is_err(), "{v} was accepted");
         }
+    }
+
+    /// RFC-0117 D7: `--profile=` is the built-in choice `[image.<id>] profile`
+    /// takes, for one build; it wins over the image's, and needs its `=`.
+    #[test]
+    fn profile_flag_overrides_the_images_and_needs_equals() {
+        let a = Args::try_parse_from(["build", "--profile=release"]).expect("parses");
+        assert_eq!(a.profile_for(Some("dev")), Some("release"));
+        let b = Args::try_parse_from(["build"]).expect("parses");
+        assert_eq!(b.profile_for(Some("dev")), Some("dev"));
+        assert!(Args::try_parse_from(["build", "--profile", "release"]).is_err());
+    }
+
+    /// `--cargo-args=` splits and repeats like `--cmake-args=`, and refuses
+    /// what D9 refuses before any image is planned.
+    #[test]
+    fn cargo_args_split_repeat_and_refuse() {
+        let a = Args::try_parse_from([
+            "build",
+            "--cargo-args=--timings -v",
+            "--cargo-args=--locked",
+        ])
+        .expect("parses")
+        .resolve_cmake_args()
+        .expect("resolves");
+        assert_eq!(a.cargo_args, vec!["--timings", "--verbose", "--locked"]);
+        for v in [
+            "--cargo-args=--target x",
+            "--cargo-args=-Zbuild-std",
+            "--cargo-args=--release",
+        ] {
+            let r = Args::try_parse_from(["build", v])
+                .expect("parses")
+                .resolve_cmake_args();
+            assert!(r.is_err(), "{v} was accepted");
+        }
+    }
+
+    /// Per image: a derived feature and any `rmw-*` feature are refused, and
+    /// a bare feature where the root has many packages.
+    #[test]
+    fn image_cargo_args_refuse_derived_and_unqualified_features() {
+        let args = |v: &str| {
+            Args::try_parse_from(["build", v])
+                .unwrap()
+                .resolve_cmake_args()
+                .unwrap()
+        };
+        let derived = || vec!["board-qemu".to_string(), "platform-posix".to_string()];
+        assert!(
+            image_cargo_args(
+                &args("--cargo-args=--features=app/fast"),
+                "i",
+                derived(),
+                true
+            )
+            .is_ok()
+        );
+        for (v, multi) in [
+            ("--cargo-args=--features=fast", true),
+            ("--cargo-args=--features=app/board-qemu", true),
+            ("--cargo-args=--features=platform-posix", false),
+            ("--cargo-args=--features=rmw-xrce", false),
+            ("--cargo-args=--features=app/rmw-zenoh", true),
+        ] {
+            assert!(
+                image_cargo_args(&args(v), "i", derived(), multi).is_err(),
+                "{v} was accepted"
+            );
+        }
+        assert!(
+            image_cargo_args(&args("--cargo-args=--features=fast"), "i", derived(), false).is_ok()
+        );
     }
 
     /// `--cmake-args=@file`: one argument per line, `#` comments, no nesting.
@@ -11216,6 +11443,8 @@ mod single_package_tests {
             selection: Default::default(),
             continue_on_error: false,
             cmake_args: Vec::new(),
+            cargo_args: Vec::new(),
+            profile: None,
             jobs: None,
             parallel_workers: None,
             build_base: None,

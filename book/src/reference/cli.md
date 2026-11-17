@@ -511,6 +511,16 @@ Options:
           
           The `=` is required. The value is split with plain POSIX quoting (no expansion), so one flag can carry many arguments: `--cmake-args="-DA=1 -DB='x y'"`. The flag is repeatable, and the values add up in order. `--cmake-args=@<file>` reads one argument per line, with `#` comments. Allowed: `-D`, `-U`, `-W*`, `--log-level`, `--log-context`, `--debug-find`. A name `nros build` passes itself, or `-DCONFIG_*` (Zephyr Kconfig, which goes in the image's `conf`), is refused, saying where the setting goes. An image states its own in `[image.<id>.build] cmake_args`; these come after them.
 
+      --cargo-args=<ARGS>
+          Arguments for every cargo command of a cargo image. A CMake or west image ignores them.
+          
+          Split and repeated like `--cmake-args=`, and `@<file>` works too. Allowed: `--features`, `--no-default-features`, `--all-features`, `-v`, `-q`, `--timings`, `--locked`, `--offline`, `--frozen`. In a workspace, name a feature with its package (`--features=<pkg>/<feat>`). A feature the build chooses itself (the RMW, the platform, a board or capability feature) is refused: choose those in `system.toml`.
+
+      --profile=<NAME>
+          Build with this profile instead of the image's `profile`.
+          
+          It takes exactly what `[image.<id>] profile` takes: a cargo profile (`dev`, `release`, …) or a CMake build type (`Debug`, `Release`, …). It is a command-line spelling of that key for one build, not a new kind of profile.
+
   -j, --jobs <N>
           Run at most N jobs at once, in total. Default: the number of CPUs.
           

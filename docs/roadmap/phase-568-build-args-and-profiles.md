@@ -68,7 +68,19 @@ parser. It carries:
 
 ### W2 — the sources: `system.toml`, the command line, `@file`
 
-- **Status:** OPEN (W1 landed: the sources feed its parser)
+- **Status:** DONE (2026-11-17), in two PRs:
+  - W2a, #4124 (08f2847bea): `--cmake-args=`, `@file`, the space-form
+    refusal, `[image.<id>.build] cmake_args`. It also ships
+    `builder::knob_roads`, the measured knob-carriage table, and the knob
+    refusal OFF.
+  - W2b, this PR: `--cargo-args=` with the per-image derived-feature and
+    `<pkg>/<feat>` checks, and `--profile=`. `--profile=` replaces each
+    image's `profile` before anything reads it, and now also reaches the
+    single-package cargo road, which read no profile at all before.
+
+  The acceptance's `--dry-run` listing of a dependency's ignored arguments
+  moves to W3, with the rest of `--dry-run`'s output. The arguments are
+  already ignored by construction, since only the image's own block is read.
 
 - `[image.<id>.build] cmake_args`, read from the image's own section only.
   There is no `cargo_args` key: committed features belong in the manifest.
@@ -88,7 +100,7 @@ wording that shows the user's arguments rewritten.
 
 ### W3 — built-in routing, and `--` narrowed to west
 
-- **Status:** BLOCKED (on W1 and W2)
+- **Status:** OPEN (W2 landed)
 
 CMake arguments reach every CMake configure (cmake image, west's cmake step,
 cmake package), and cargo arguments reach every cargo command. An argument
@@ -102,6 +114,14 @@ says so.
 
 **Acceptance:**
 - a test for each road receiving its argv;
+- the source-metadata probe gets the same CMake arguments as the configure it
+  stands for. A package whose `find_package(<Pkg> … NO_DEFAULT_PATH)` path
+  comes only from `--cmake-args=` (or `[image.<id>.build] cmake_args`) both
+  probes and builds; today the probe fails it, or, unguarded, finds the
+  host's copy while the image uses the user's (found by the book's
+  bring-your-own-library page, 2026-11-17);
+- a dependency's `system.toml` arguments are listed by `--dry-run` as
+  ignored (moved from W2);
 - cache drift: `-DFOO`, then a build without it, leaves no `FOO` in the cache;
 - `--dry-run` prints the final argv per tool, and the source of each
   argument.

@@ -603,6 +603,8 @@ pub(crate) fn build_args(
         selection: Default::default(),
         continue_on_error: false,
         cmake_args: Vec::new(),
+        cargo_args: Vec::new(),
+        profile: None,
         jobs: None,
         parallel_workers: None,
         build_base: None,
