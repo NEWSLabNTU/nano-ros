@@ -1,6 +1,7 @@
 # Phase 572 — a Rust component can query the ROS graph
 
-**Status (2026-11-17). OPEN: W1–W4 are open.** Tracks
+**Status (2026-11-17). OPEN: W1 is done; W2–W4 wait on
+[phase-573](phase-573-executor-reentry-soundness.md).** Tracks
 [issue 2674](../issues/2674-rust-component-api-has-no-graph-query.md). Implements
 no new RFC. It closes a language-parity gap in the surface RFC-0089 adopted.
 Owner: nros 133.
@@ -20,7 +21,7 @@ cannot ask what is on the graph.
 
 ### W1 — The API shape
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-17, this PR: the shape below)
 
 Decide, and record here before building:
 - the method names, matching the C and C++ ones;
@@ -32,9 +33,27 @@ Decide, and record here before building:
 The queries go through the same session path the executor's own queries use,
 never a second implementation.
 
+Decided 2026-11-17:
+- **Names and signatures:** the 14 the Rust executor's `Node` has, which are
+  rclrs's: the four counts (`count_publishers`, `count_subscriptions`,
+  `count_services`, `count_clients`), `get_node_names`,
+  `get_node_names_with_enclaves`, `get_topic_names_and_types`,
+  `get_service_names_and_types`, the four `get_*_names_and_types_by_node`
+  forms, and `get_{publishers,subscriptions}_info_by_topic`. They take the
+  same visitor signatures and return the same `NodeError`.
+- **`TickCtx`:** yes. The tick driver already reaches the executor through
+  its raw pointer and reborrows it per call, as the action and client
+  dispatch do.
+- **`NodeContext`:** yes. At boot the graph is mostly not discovered yet, so
+  the docs say an early answer is partial, never an error.
+- **`CallbackCtx`:** no. A callback runs inside the pass, and giving it the
+  session would alias the executor (issue 2675). A component that needs the
+  graph queries it from its tick. Phase-573's restructure may later make a
+  sound callback path possible; that is a separate design.
+
 ### W2 — The queries on the Rust component surface
 
-- **Status:** OPEN
+- **Status:** BLOCKED (on phase-573, issue 2675)
 
 Implement W1's shape. The dispatch site already holds the executor, so each
 method forwards to it.
@@ -46,7 +65,7 @@ Acceptance:
 
 ### W3 — One graph, three languages
 
-- **Status:** OPEN
+- **Status:** BLOCKED (on W2)
 
 A test per language (Rust, C, C++), each a component on native Linux over
 zenoh, with the same peer on the graph.
@@ -56,7 +75,7 @@ peer.
 
 ### W4 — The Rust graph-query stack measurement (issue 2360)
 
-- **Status:** OPEN
+- **Status:** BLOCKED (on W2)
 
 Once W2 lands, take issue 2360's missing measurement: the main-thread peak, on
 the nucleo-f767zi Renode twin, of a Rust Zephyr image whose component queries

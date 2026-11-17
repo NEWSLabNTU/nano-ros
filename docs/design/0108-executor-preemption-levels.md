@@ -4,8 +4,8 @@ title: "One ordered ready set per core, N preemption levels derived from the con
 status: Stable
 area: runtime-api
 since: 2026-10
-last-reviewed: 2026-11-14
-implements-tracked-by: [phase-509]
+last-reviewed: 2026-11-17
+implements-tracked-by: [phase-509, phase-573]
 amends: [rfc-0002, rfc-0107]
 supersedes: []
 superseded-by: null
@@ -1087,6 +1087,60 @@ executor's lock and the thread identity:
   board states it, adds a rest every N frames. The levels themselves sit at
   distinct priorities and park each pass.
 
+### D9 -- Re-entry from a callback (amended 2026-11-17)
+
+A C or C++ callback may call back into the executor that is dispatching it:
+timer cancel and reset, entity releases, parameter calls, graph queries. That
+is rclc and rclcpp behaviour, and it is why the executor lock is recursive
+(D8). The lock serialises THREADS. It does nothing about the same thread
+holding two `&mut` to the executor. On the owned pass that is what happened
+(issue 2675):
+
+- `spin_once(&mut self)` holds a protected `&mut` for the whole pass, and the
+  C/C++ spin entries create it through their locked reference's `DerefMut`.
+- `Executor::pass` re-derived its `s` from `this` after a callback only when a
+  window opened, which is a shared or band pass whose lock has a thread id.
+  An owned pass kept `s` live across `try_process`.
+
+The callback's own entry then derived a second `&mut` from the C handle. That
+is undefined behaviour under Rust's aliasing model whatever the C side does.
+
+**The rule.** Nothing in the dispatch path holds a reference into the
+executor across a user callback or a component tick:
+
+1. **The core.** `pass` re-derives `s` from `this` after EVERY callback and
+   tick, in every mode. Nothing borrowed from the executor before a callback
+   (a slice of entries, a field reference) is used after it. This is the rule
+   the windowed passes already follow, now applied without the window.
+2. **The entries.** Every spin entry reaches `pass` through a raw pointer:
+   `unsafe fn spin_once_raw(this: *mut Self, ..)`. `spin_once(&mut self)` is
+   kept as a safe wrapper for Rust callers. Its protector cannot be violated
+   from safe Rust, because a Rust callback has no path back into the executor
+   (phase-572 keeps it that way for `CallbackCtx`). The C and C++ spin entries
+   call `spin_once_raw` with their locked reference's pointer and create no
+   `&mut` that outlives the call.
+3. **One derive.** Every FFI entry that reaches the executor does it through
+   one helper. It takes the lock (recursive) and yields a reference scoped to
+   that entry's body. It is the only way to obtain one, so an entry cannot
+   hand-roll a derivation that outlives its call. `get_executor`,
+   `get_executor_from_ptr`, `cpp_ctx_checked`, `cpp_ctx_locked` and the
+   `CLocked` / `Locked` lookups become that helper's callers or are retired.
+
+**What it does not change.** Which entries a callback may call is the same,
+and `in_dispatch` still refuses the BLOCKING helpers (RFC-0021). The lock is
+still recursive and still released around a callback by a windowed pass. The
+RTIC SRP backend's ceiling (phase-509 W10) is not held across a callback, so
+a higher level can preempt a re-entering callback. Rule 1 covers that,
+because the preempting pass derives its own reference from `this` under the
+lock.
+
+**How it is held.** A pure-Rust harness re-enters from a callback once per
+entry kind, through a raw pointer, as the FFI does. It runs under Miri with
+Tree Borrows, on the owned pass and on a two-band `spin_band_once` pass. It
+fails on the pre-amendment core. A sweep gate lists every executor-deriving
+FFI entry and requires each to use the helper or to return `REENTRANT` from a
+callback. Work: phase-573.
+
 ## Relation to other RFCs
 
 - **RFC-0002 (RT execution model).** Amended. Its single-thread, registration-
@@ -1435,3 +1489,7 @@ The first draft's open questions, as decided:
   0.30-0.31 ms, from 2.11-2.86 ms on one thread. The level cost is measured.
 - 2026-11-14: Stable (phase-555 W3; `Accepted` is outside the status
   vocabulary). The deferred items filed as issues 2544 and 2545.
+- 2026-11-17: D9 added (issue 2675): nothing in the dispatch path holds a
+  reference into the executor across a callback; every spin entry reaches the
+  pass through a raw pointer; one helper derives the executor for every FFI
+  entry. Tracked by phase-573.
