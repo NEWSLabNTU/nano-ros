@@ -132,6 +132,16 @@ def _env() -> dict:
     # user; an inherited RUSTUP_TOOLCHAIN would override it.
     env = dict(os.environ)
     env.pop("RUSTUP_TOOLCHAIN", None)
+    # A row is measured the way a user builds it: the `dev` profile with
+    # full debuginfo, cargo's default. The walk reads DWARF (the callee order
+    # comes from inlined back-references), so the debuginfo level moves it
+    # with no change to the code: measured on the mps2 bare-metal bringup,
+    # 90,976 B with full debuginfo and 93,040 B with `line-tables-only`. The
+    # build runs inside the checkout, so the checkout's own `.cargo/config.toml`
+    # profile reaches it, and a user's copied-out project never sees that
+    # file. Pinned here, so neither the checkout nor a CI job's environment
+    # chooses what the row measures.
+    env["CARGO_PROFILE_DEV_DEBUG"] = "true"
     return env
 
 
