@@ -41,7 +41,8 @@ Most of the machinery exists (survey of main, 2026-11-18):
 - **Out-of-tree discovery.** Out-of-tree board packages are found through
   `$NROS_EXTRA_BOARD_PATH` and the workspace.
 
-This RFC fills six gaps (D3–D8) and fixes the vocabulary (D1). It amends
+This RFC fills the gaps (D2–D9), sets out the user flow, and fixes the
+vocabulary (D1). It amends
 RFC-0087 D8, which kept discovery source-time only.
 
 ## Terminology (D1)
@@ -51,9 +52,20 @@ User ruling, 2026-11-18. Each term names one thing, and only that thing.
 | Term | Means | Is not |
 | --- | --- | --- |
 | **board package** | the self-contained, installable unit: a ROS package (`package.xml`) that provides one or more boards, and carries their board definitions, any bring-up code, examples and flash configuration | a crate; a status |
-| **board definition** | one `nros-board.toml` entry: the facts about one board key (platform, target, toolchain, run, flash, capabilities, network) | the package around it |
+| **board definition** | one `[[board]]` entry in a `nros-board.toml`: the facts about one board key (platform, target, toolchain, provisioning, run, flash, console, capabilities, network). A package's `nros-board.toml` holds one board definition per board key. | the file; the package around it |
+| **board key** | the name an image selects a board by (`board = "<key>"`), unique across every root; one board definition answers to it | a package name |
+| **platform** | the RTOS or OS family a board definition builds for (`zephyr`, `freertos`, `nuttx`, `threadx`, `linux`, bare metal) | a board |
 | **board support** | a board's support **status** only: the word RFC-0114's registry generates ("Verified in emulator (daily)", "Builds", and so on) | the package; the code |
-| **BSP** | the vendor's SDK layer (for example TI's Processor SDK RTOS, NXP's MCUXpresso SDK) that a board package wraps and names, and never ships | a nano-ros package |
+| **BSP** | the vendor's SDK layer (for example TI's Processor SDK RTOS, NXP's MCUXpresso SDK) that a board package wraps and names, and never ships | a nano-ros package; **not the board package, despite what the letters expand to** |
+
+Two rules for prose, because the terms collide when read aloud:
+
+- **Never expand BSP.** "Board support package" reads as either "board
+  package" or "board support". Write "the vendor SDK (BSP)" on first use and
+  "vendor SDK" after.
+- **Write "support status" in sentences.** "Board support" is the column and
+  heading word only. "The board's support status is Builds", never "the
+  board's board support is Builds".
 
 "Board crate" stays meaningful only for the optional Rust crate inside a board
 package. "Board descriptor" is retired in favour of "board definition". The
@@ -61,7 +73,7 @@ sweep is its own work item (phase-577 W9), not a precondition.
 
 ## Motivation
 
-Five gaps, measured on main on 2026-11-18:
+Six gaps, measured on main on 2026-11-18:
 
 1. **Discovery stops at source trees.** Boards are found in
    `packages/boards`, in `$NROS_EXTRA_BOARD_PATH`, and in the user's workspace
@@ -90,6 +102,13 @@ Five gaps, measured on main on 2026-11-18:
    image's needs with a board's definition as a whole, and there is no
    declarative check of RMW, transport or memory.
 
+6. **`nros setup` cannot serve an outside board.** It resolves a key only
+   through the `[board.*]` rows of `nros-sdk-index.toml`. For an unknown key
+   it tells the user to add a row there, which means editing nano-ros. D2
+   gives an outside package no index row, so as things stand every
+   out-of-tree or installed board would fail at `nros setup`, before any
+   check runs. (Book-side review, 2026-11-18.)
+
 Two smaller gaps:
 
 - **Flash methods.** Only two board definitions state `[board.flash]`, both
@@ -112,6 +131,23 @@ my-board-package/
   examples/<name>/          at least one example per board key (D7)
 ```
 
+- **`package.xml`**, in the shape this RFC asks for:
+
+  ```xml
+  <package format="3">
+    <name>ti_j784s4_r5f_boards</name>
+    <version>0.1.0</version>
+    <exec_depend>nros_runner_openocd</exec_depend>
+    <export>
+      <build_type>nros_cargo</build_type>
+      <nano_ros_provides kind="board" name="ti-j784s4-r5f-freertos"/>
+      <nano_ros_requires nano_ros="&gt;=0.9, &lt;0.11"/>
+    </export>
+  </package>
+  ```
+
+  The `exec_depend` on its flash method's runner package lets apt or rosdep
+  bring the runner with the board.
 - One package may provide several board keys. This is RFC-0115 D3's
   family package, for example one FreeRTOS package with a board definition
   per SoC.
@@ -122,6 +158,27 @@ my-board-package/
   third-party BSP under its vendor's licence is not ours to fetch. This
   follows RFC-0064's 2026-11-17 ruling. A missing BSP root is one of D8's
   reasons, reported with the rest.
+- **What nano-ros provisions for an outside board, and how `nros setup`
+  finds it.** The line runs between the toolchain and tools, which nano-ros
+  provisions, and the BSP, which it never fetches. The board definition
+  already has the field for the first: `[board.provisioning] tools`, which
+  names `nros-sdk-index.toml` packages by index name (the field was called
+  `gated` until 2026-09-06). `nros setup <key>` therefore resolves the key
+  through the board catalog, across all four roots of D5. It takes the
+  package list from the in-tree index row where one exists, and otherwise
+  from the board definition's `[board.provisioning] tools` (for example the
+  Arm GNU toolchain, plus OpenOCD for the flash method). An unknown key is
+  refused with near matches and the roots searched, never with "add an index
+  row".
+- **Scaffolding.** `nros board new` already scaffolds a board package. It
+  emits D2's shape: `package.xml` with a version range and the runner
+  `exec_depend`, a board definition with run, flash and console tables, the
+  ament marker's install rule (D5) and one example (D7).
+- **A new project names its board.** `nros new <name> --board <key>` writes
+  the image's `board =`. The scaffold writes nothing platform-specific; the
+  board definition brings that. Where today's `nros new` writes
+  platform-specific files, that is a defect this RFC's phase removes, because
+  otherwise "one line switches the board" holds only within one platform.
 - **Switching boards stays one line.** It is the image's `board =` in
   `system.toml`, with `nros build --board <key>` as a per-invocation override.
   Everything else follows from the board definition.
@@ -134,8 +191,11 @@ The existing tables become the whole contract:
   `fvp:<model>`).
 - `[board.flash]`: the method, plus the method's arguments. Paths in the
   arguments are relative to the board package's directory.
-- `[board.console]`: how to read the image's output (a serial device and baud
-  rate, RTT, or semihosting).
+- `[board.console]`: how to read the image's output (serial, RTT, or
+  semihosting). For serial it states the baud rate and the USB vendor and
+  product ids, never a device path: a path belongs to one machine and cannot
+  ship in a package. The port comes from `nros bench scan` (recorded in
+  `$NROS_HOME/bench.toml`, RFC-0118 D6) or from `--port`.
 
 Each method is a runner package (RFC-0119), as `qemu`, `renode`, `fvp`,
 `west` and `serial` already are. This RFC adds three:
@@ -152,8 +212,23 @@ UniFlash), because runner discovery already works for any announced
 `kind="runner"`.
 
 `nros flash` and `nros monitor` therefore need no new design. What changes is
-that every board package states these tables, and D8 checks that the named
-method's runner is installed.
+that every board package states these tables, and D8 checks two things that
+are easy to confuse:
+
+- **the runner package** for the method is installed;
+- **the host tool** it drives (`openocd`, `probe-rs`, `picotool`) is present.
+  The remedy is `nros setup <key>`, when the board definition lists the tool
+  under `[board.provisioning] tools`.
+
+Two more rules:
+
+- **Probe access on Linux.** "Permission denied" on a probe's device node is a
+  named diagnostic whose remedy installs the probe's udev rules. A board
+  package may ship those rules under `flash/udev/`. Installing them needs root,
+  so nano-ros prints the command and never runs it.
+- **The verbs are named once.** Hardware is `nros flash --monitor`: write,
+  then watch the console. An emulator or the host is `nros run`, because there
+  is nothing to write. The book states each in one sentence.
 
 ### D4 — A board package's own architecture profiles
 
@@ -197,14 +272,33 @@ reads the index from `$AMENT_PREFIX_PATH`.
   installed one.
 - **Installation.** Any ament route installs a board package: `colcon build`
   plus `install`, a Debian package built with bloom, or copying into a prefix.
-  A board package needs no compile step to install, because its build
-  happens per image.
+  Installing compiles nothing, because a board package's code is built per
+  image, for that image's target. An optional board crate is installed as
+  source. This needs one thing from the colcon side: for a package that
+  announces `kind="board"`, the `nros_cargo` build type's install step copies
+  the package and writes the marker, and does not build the crate. The
+  phase records that as its own item.
 - **What D8 of RFC-0087 keeps.** The user's own packages stay source-time, and
   nothing requires sourcing a `setup.sh`. The amendment is narrow: installed
   board packages (and, through D4, their profiles) become one more root.
 - **Listing.** `nros board list` shows every key from every root, with its
-  package, root, platform and support status (RFC-0133 D1, RFC-0114). This
-  is the Boards Manager view.
+  package, root, platform and support status (RFC-0133 D1, RFC-0114). Two
+  marker columns flag an incompatible version range (D6) and a shadowed copy.
+  Its footer says how to get more board packages (the package naming
+  convention for apt and rosdep, and the book's board page), because unlike
+  Arduino's Boards Manager it lists only what is already found.
+- **One board's page.** `nros board show <key>` answers the reader's next
+  question, "what does this one need?". It shows:
+  - the package, its root, its version range and whether it is compatible;
+  - the support status;
+  - the provisioning packages, and whether they are installed;
+  - the BSP variable, and whether it is set;
+  - the flash method, with its runner and tool, and whether each is
+    installed;
+  - the examples.
+
+  `nros board show` exists today for registry evidence (RFC-0114), so this
+  extends it.
 - **Not in this RFC:** a remote package index from which `nros` downloads
   board packages. apt and the ROS buildfarm already distribute ament
   packages. A remote index of our own is a later decision.
@@ -233,8 +327,9 @@ A board package declares the nano-ros versions it supports in `package.xml`:
 - Every board key a package provides has at least one example under the
   package's `examples/`, using the template's talker/listener pair unless the
   board needs something else.
-- `nros board check <package>` (today's `nros check <board-package>`) builds
-  each example, and runs it where `[board.run]` names a host or an emulator.
+- `nros check <board-package>`, which already dispatches by package kind
+  (RFC-0117 D2, RFC-0119 D10), also builds each example, and runs it where
+  `[board.run]` names a host or an emulator. It stays the one spelling.
 - For in-tree boards this is RFC-0115 D3's "one worked configuration per book
   board", extended to every in-tree board key. The five in-tree boards with no
   example gain one.
@@ -246,12 +341,33 @@ own) compares the image with the board definition and reports every mismatch
 at once:
 
 ```
-error[NROS-....]: image `talker` cannot build for board `rpi-pico-w-zephyr`:
+error[NROS-....]: image `talker` cannot build for board `acme-m7-freertos`
+  (board package `acme_boards` 0.4.1, installed in /opt/ros/humble):
   - rmw `cyclonedds` needs threads; the board's capabilities say threads = false
-  - transport `udp` is not among the board's links [serial, wifi]
-  - 3 publishers + 2 subscriptions need ~148 KiB; the board's RAM is 264 KiB minus 180 KiB reserved
-  - board package `pico-boards` supports nano-ros >=0.7, <0.8; this is 0.9.2
+      fix: choose rmw `zenoh` for this image, or a board with threads
+  - transport `udp` is not among the board's links [serial]
+      fix: set transport = "serial" in [image.talker.network]
+  - the image needs ~148 KiB of RAM; the board has 84 KiB free
+      fix: lower the entity counts, or choose a board with more RAM
+  - the vendor SDK root ACME_SDK_ROOT is not set
+      fix: export ACME_SDK_ROOT=<path to the vendor SDK>
+  - toolchain `arm-gnu-toolchain` is not installed
+      fix: nros setup acme-m7-freertos
+  - `acme_boards` supports nano-ros >=0.7, <0.8; this is 0.9.2
+      fix: install an `acme_boards` release that supports 0.9
+note: a workspace copy of `acme_boards` would shadow this installed one; none is present
 ```
+
+Rules for the output:
+
+- **Every reason carries a remedy line**, not only the fault.
+- **Numbers are given as the comparison the reader needs.** Memory is
+  "needs N, has M free", never a subtraction left to the reader.
+- **The board's origin is named**: package, version and root, with any
+  shadowing. Otherwise a user who edits one copy and builds another debugs
+  the wrong file.
+- **A key found in no root** lists near matches and the roots searched. It is
+  the most common mistake when switching boards.
 
 It checks, from facts that already exist:
 
@@ -261,9 +377,11 @@ It checks, from facts that already exist:
 | RMW and its capability needs (threads, heap, atomics) | board `[board.capabilities]`; RMW provider facts |
 | transports and links | image network configuration (RFC-0109); `[board.net]` |
 | memory | the sizing descriptor (RFC-0100) against a board memory budget, which the board definition gains |
-| toolchain present; the BSP root the package names is set and exists | today's preflight; the board package's own variable |
+| toolchain and tools present, with `nros setup <key>` as the remedy | today's preflight; `[board.provisioning] tools` |
+| the BSP root the package names is set and exists | the board package's own variable |
+| every library the image uses can build for this board | D9 |
 | nano-ros version | D6 |
-| flash method's runner installed | D3 |
+| flash method's runner package and host tool installed | D3 |
 
 - **Each existing check stays the authority for its own fact.** D8 calls them
   and collects their verdicts; it adds no second copy of any rule.
@@ -271,6 +389,45 @@ It checks, from facts that already exist:
 - **What is new in data:**
   - a memory budget in the board definition;
   - each RMW provider's capability needs, stated as facts.
+
+### D9 — What a library needs from a board
+
+A library package (for example Eigen, or a vendor driver library) declares
+what it needs from a board, in the same capability vocabulary that D8 uses
+for an RMW: hosted C++ (a standard library with `<string>` and friends),
+heap, threads, atomics, and a minimum RAM. This is Arduino's
+`architectures=`, stated as needs rather than as a list of names.
+
+- D8 checks every library the image uses against the board definition's
+  `[board.capabilities]`, before any build. Today, Eigen on a board built with
+  `-nostdinc++` (ThreadX RISC-V) fails mid-configure, in
+  `nano_ros_hosted_cxx()`. Under D9 it is refused before the build, with the
+  reason.
+- Adding a library never edits a board package.
+- Switching board re-checks every library the image uses.
+
+## User flow
+
+What a reader types, in order. The book's board pages are written from this
+sequence (phase-577 W13).
+
+1. **See what is available.** `nros board list`, then `nros board show <key>`
+   for the board they want.
+2. **Install the board package** if it is not listed: from apt or rosdep by
+   its package name, or with `colcon build` into a prefix that the shell has
+   sourced.
+3. **Create a project for it.** `nros new <name> --board <key>`.
+4. **Provision.** `nros setup <key>` installs the toolchain and tools the
+   board definition lists. The reader sets the vendor SDK variable, if the
+   board names one.
+5. **Build.** `nros build`. D8 runs first, and any mismatch is listed with its
+   remedy.
+6. **Run it.** On hardware, `nros flash --monitor`. On an emulator or the
+   host, `nros run`.
+7. **Switch board.** Change the one `board =` line, or pass
+   `nros build --board <other>`. D8 reports anything that no longer fits.
+8. **Add a library.** Add the dependency. D9's check runs at the next build
+   and again on every board switch.
 
 ## Alternatives considered
 
@@ -295,3 +452,13 @@ time.
 ## Changelog
 
 - 2026-11-18: drafted from the user's approved brief.
+- 2026-11-18: book-side review folded in. The changes:
+  - `nros setup` resolves through the board catalog, using
+    `[board.provisioning] tools`;
+  - D1 gains its prose rules, "board key" and "platform";
+  - console ports come from the bench, not the package;
+  - D3 checks the host tool as well as the runner package;
+  - D8 output carries a remedy per reason;
+  - D9 covers library needs;
+  - a User flow section is added;
+  - `nros check` stays the one verb.
