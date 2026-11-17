@@ -1,7 +1,7 @@
 # Phase 558 -- Nightly verdicts per board, not per platform family
 
-**Status (2026-11-14). OPEN: W1 to W6 done; W7 (Zephyr's second board)
-open.**
+**Status (2026-11-17). OPEN: W1 to W6 done; W7 (Zephyr's second board)
+and W8 (a derived `nightly_token`) open.**
 
 User ruling, 2026-11-13, verbatim: "Have results per board instead of per
 platform family".
@@ -185,3 +185,24 @@ The zephyr-* jobs (05:00 cron) build `native_sim/native/64` only, so they are
 ZephyrNativeSim's. ZephyrQemuCortexM has no daily job at all; that is issue
 2462 (phase-535 W8.4) and stays baselined in `cadence-job-baseline.toml`.
 This phase only stops the borrowing (W4).
+
+### W8 -- `nightly_token` is derived from the board's platform
+
+- **Owner:** unassigned.
+- **Status:** OPEN
+
+User ruling, 2026-11-17 (issue 2536, question 1): the token is derived, not
+authored. Since W4 the nightly verdict is per board, so a row's token names
+only the `just` module whose verbs that board's job runs. That is
+`PlatformId::just_module` of its `matrix_platform`. Measured on main on
+2026-11-17: 10 rows in `packages/boards/board-support.toml` carry a token,
+and all 9 that name a `matrix_platform` already equal the derived value. The
+tenth, `nros-board-mps3-an536-freertos`, names no `matrix_platform`, so it
+keeps an authored token.
+
+- **Do:** `scripts/gen-board-support.py` derives the token for a row with a
+  `matrix_platform`, and `check board-registry` refuses an authored token on
+  such a row. A row with no `matrix_platform` may still author one.
+- **Acceptance:** the nine redundant tokens are gone from the registry, and the
+  generated outputs are byte-identical before and after the change. A
+  mutation (an authored token on a row with a `matrix_platform`) is refused.

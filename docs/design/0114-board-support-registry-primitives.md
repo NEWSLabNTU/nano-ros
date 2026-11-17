@@ -15,7 +15,8 @@ superseded-by: null
 
 > **Stable (2026-11-14, phase-555 W3, user ruling P4 (c)).** phase-522
 > shipped it. The three open questions are filed as
-> [issue 2536](../issues/2536-board-registry-open-questions.md).
+> [issue 2536](../issues/2536-board-registry-open-questions.md), and were
+> ruled on 2026-11-17 (see "Open questions").
 
 **Status:** Stable (2026-11-14); drafted 2026-10-31. Written from the adoption discussion of
 2026-10-31 (three purposes: industrial, field solutions, education) and
@@ -363,6 +364,7 @@ stated reversal.
 ## Open questions
 
 Filed as [issue 2536](../issues/2536-board-registry-open-questions.md) (2026-11-14).
+All three were ruled on 2026-11-17 (decision log). The questions as filed:
 
 - Whether `nightly_token` stays an authored field or is derived from the
   board's `PlatformId::just_module`. Phase-558 made the nightly verdict
@@ -376,7 +378,33 @@ Filed as [issue 2536](../issues/2536-board-registry-open-questions.md) (2026-11-
   own registry row so `nros board list` shows the same status words for a
   board nano-ros does not ship.
 
+The rulings:
+
+- **`nightly_token` is derived** from `PlatformId::just_module` of the row's
+  `matrix_platform`. Measured: all 9 of the 10 token rows that name a
+  `matrix_platform` already equal the derived value. The field stays
+  authored only on a row with no `matrix_platform` (today one row,
+  `nros-board-mps3-an536-freertos`). The work is phase-558 W8.
+- **The evidence page links to the probe's numbers once the probe records
+  them,** and shows no number until then. It never shows a hand-copied
+  number, because that is the drift this registry exists to stop. Open until
+  the probe records time to first output and install minutes per board.
+- **A downstream board package carries its own registry row,** and its status
+  can claim no more than its own CI proves. The shape is decided now. The
+  merge into `nros board list`, which today reads only this tree's
+  `board-support.toml`, is built when the first out-of-tree board package
+  wants a row.
+
 ## Decision log
+
+- 2026-11-17 — the three open questions (issue 2536), ruled by the user,
+  accepting the board-support decision brief as written:
+  (1) `nightly_token` is derived, and stays authored only where no
+  `matrix_platform` exists (phase-558 W8);
+  (2) the evidence page links to the probe's numbers once the probe records
+  them, and shows none before then;
+  (3) a downstream package carries its own row, capped at what its own CI
+  proves, and the merge is built when the first one arrives.
 
 - 2026-11-07 — phase-542 W0, three user rulings for PX4 SITL's row (PR #3169):
   (1) "Boots, manual (date)" widens to `runs = "host"`; no new status word,
