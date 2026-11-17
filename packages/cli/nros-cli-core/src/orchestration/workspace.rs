@@ -327,6 +327,52 @@ impl Workspace {
     /// `nros::component!` export (their `[metadata].source_metadata`
     /// path doesn't exist on disk — see Phase 126.B.7 acceptance
     /// criterion).
+    /// RFC-0117 D8: the CMake arguments the source probe is configured with,
+    /// the workspace-wide `[image_defaults.build] cmake_args`, validated by the
+    /// `--cmake-args=` allowlist. The probe is one project for the whole
+    /// workspace, so per-image `cmake_args` never reach it. Two bringups that
+    /// state different lists are refused, naming both, since one probe cannot
+    /// take two.
+    pub fn probe_cmake_args(&self) -> Result<Vec<String>> {
+        use crate::orchestration::cargo_metadata_schema::SystemToml;
+        let mut found: Option<(PathBuf, Vec<String>)> = None;
+        for path in self.packages.iter().filter_map(|p| p.system_toml.as_ref()) {
+            let Ok(raw) = std::fs::read_to_string(path) else {
+                continue;
+            };
+            // A file that does not parse is reported where the build reads it,
+            // as for the probe's RMW, unless it states `[image_defaults…]`:
+            // skipping that one would run the probe without the arguments it
+            // states, and the probe could find another copy of a package.
+            let sys: SystemToml = match toml::from_str(&raw) {
+                Ok(sys) => sys,
+                Err(e) if raw.contains("image_defaults") => {
+                    return Err(e).wrap_err_with(|| format!("parsing {}", path.display()));
+                }
+                Err(_) => continue,
+            };
+            let Some(defaults) = sys.image_defaults.as_ref() else {
+                continue;
+            };
+            if defaults.build.cmake_args.is_empty() {
+                continue;
+            }
+            let args = defaults.build.cmake_argv("<image_defaults>")?;
+            match &found {
+                Some((first, prev)) if *prev != args => eyre::bail!(
+                    "{} and {} state different `[image_defaults.build] cmake_args`; the \
+                     source probe runs once for the whole workspace, so it can take only one \
+                     list. State it in one of them.",
+                    first.display(),
+                    path.display()
+                ),
+                Some(_) => {}
+                None => found = Some((path.clone(), args)),
+            }
+        }
+        Ok(found.map(|(_, a)| a).unwrap_or_default())
+    }
+
     pub fn component_declarations(&self) -> Result<Vec<ComponentDeclaration>> {
         let mut out = Vec::new();
         for pkg in &self.packages {
@@ -2260,6 +2306,57 @@ name = "demo"
     /// rooted at its own dir and host-probeable (the image's entry is the
     /// GENERATED `<image>_entry`, so nothing claims the node). Red before: no
     /// declaration, so no sidecar and every in-place row priced as buffered.
+    /// RFC-0117 D8: the probe reads only `[image_defaults.build] cmake_args`,
+    /// validated; a per-image list never reaches it, and two bringups that
+    /// disagree are refused.
+    #[test]
+    fn the_probe_reads_only_the_workspace_wide_cmake_args() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws_root = tmp.path();
+        let pkg = |name: &str| {
+            format!(
+                "<?xml version=\"1.0\"?>\n<package format=\"3\"><name>{name}</name>\
+                 <version>0.1.0</version><description>d</description>\
+                 <maintainer email=\"a@b.c\">m</maintainer><license>MIT</license></package>\n"
+            )
+        };
+        let bringup = |name: &str, toml: &str| {
+            let d = ws_root.join("src").join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("package.xml"), pkg(name)).unwrap();
+            std::fs::write(
+                d.join("system.toml"),
+                format!("[system]\nname = \"{name}\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n{toml}"),
+            )
+            .unwrap();
+        };
+        bringup(
+            "a_bringup",
+            "[image_defaults.build]\ncmake_args = [\"-DEigen3_DIR=/p\"]\n\n\
+             [image.linux]\nboard = \"linux\"\n[image.linux.build]\ncmake_args = [\"-DPER_IMAGE=1\"]\n",
+        );
+        let ws = Workspace::discover(ws_root).unwrap();
+        assert_eq!(ws.probe_cmake_args().unwrap(), vec!["-DEigen3_DIR=/p"]);
+
+        bringup(
+            "b_bringup",
+            "[image_defaults.build]\ncmake_args = [\"-DEigen3_DIR=/q\"]\n",
+        );
+        let ws = Workspace::discover(ws_root).unwrap();
+        let e = ws.probe_cmake_args().unwrap_err().to_string();
+        assert!(
+            e.contains("different `[image_defaults.build] cmake_args`"),
+            "{e}"
+        );
+
+        bringup(
+            "b_bringup",
+            "[image_defaults.build]\ncmake_args = [\"-DNROS_IMAGE=x\"]\n",
+        );
+        let ws = Workspace::discover(ws_root).unwrap();
+        assert!(ws.probe_cmake_args().is_err(), "the allowlist applies");
+    }
+
     #[test]
     fn a_bringup_component_row_declares_its_workspace_node_package() {
         let tmp = tempfile::tempdir().unwrap();

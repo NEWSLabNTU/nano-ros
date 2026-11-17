@@ -731,6 +731,8 @@ fn set_aside_cross_cache(build_dir: &Path) -> Result<()> {
 /// other rung re-derived cannot slip past.
 fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path, rmw: &str) -> Result<()> {
     set_aside_cross_cache(build_dir)?;
+    let probe_args = read_args(&probe_dir.join(PROBE_ARGS_WANTED));
+    let dropped = dropped_defines(&read_args(&build_dir.join(PROBE_ARGS_USED)), &probe_args);
     let mut cmd = Command::new("cmake");
     cmd.arg("-S")
         .arg(probe_dir)
@@ -777,8 +779,24 @@ fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path, rmw: &
     if let Ok(exe) = std::env::current_exe() {
         cmd.arg(format!("-D_NANO_ROS_CODEGEN_TOOL={}", exe.display()));
     }
-    run_step(&mut cmd, "configure", "workspace")?;
-    check_probe_root(build_dir, nano_ros)
+    // The workspace's own `[image_defaults.build] cmake_args`, last, already
+    // validated by the same allowlist as `--cmake-args=`.
+    // A variable an earlier configure was given and this one is not stays in
+    // CMakeCache.txt, so it is `-U`'d: removing a line from system.toml must
+    // remove its effect, not leave the old value deciding.
+    cmd.args(dropped.iter().map(|n| format!("-U{n}")));
+    cmd.args(&probe_args);
+    run_step(&mut cmd, "configure", "workspace").map_err(|e| {
+        if probe_args.is_empty() {
+            e
+        } else {
+            e.wrap_err(format!(
+                "with [image_defaults.build] cmake_args {probe_args:?}"
+            ))
+        }
+    })?;
+    check_probe_root(build_dir, nano_ros)?;
+    crate::atomic_file::atomic_write(&build_dir.join(PROBE_ARGS_USED), &args_text(&probe_args))
 }
 
 /// The network backend the probe project compiles, chosen from what the
@@ -1019,6 +1037,98 @@ fn write_capabilities(probe_dir: &Path) -> Result<()> {
 /// Was per component, which is what made every probe rebuild the runtime.
 pub fn probe_dir_for_workspace(root: &Path) -> PathBuf {
     root.join("metadata-probe-cmake")
+}
+
+/// RFC-0117 D8's documented exception: the probe is ONE project for the whole
+/// workspace, built by `sync` (which `nros configure` runs
+/// too, with no command line of `nros build`'s), so it takes no
+/// `--cmake-args=` and no per-image `cmake_args`. It reads only the
+/// workspace-wide `[image_defaults.build] cmake_args`, which the caller
+/// records here with [`set_probe_cmake_args`] before any freshness check.
+const PROBE_ARGS_WANTED: &str = "cmake-args.wanted";
+/// What the probe's last successful configure was given, in its build dir.
+const PROBE_ARGS_USED: &str = "cmake-args.used";
+
+/// Said wherever the probe's arguments matter: on a failure, and in
+/// `--dry-run`.
+pub const PROBE_ARGS_RULE: &str = "the source probe runs once for the whole workspace and reads \
+     only `[image_defaults.build] cmake_args`; put a path the probe needs there";
+
+/// Record the arguments the probe is to be configured with (write-if-changed).
+pub fn set_probe_cmake_args(probe_dir: &Path, args: &[String]) -> Result<()> {
+    std::fs::create_dir_all(probe_dir)
+        .wrap_err_with(|| format!("create {}", probe_dir.display()))?;
+    crate::atomic_file::atomic_write(&probe_dir.join(PROBE_ARGS_WANTED), &args_text(args))
+}
+
+fn args_text(args: &[String]) -> String {
+    args.iter().map(|a| format!("{a}\n")).collect()
+}
+
+fn read_args(path: &Path) -> Vec<String> {
+    std::fs::read_to_string(path)
+        .map(|t| t.lines().map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+/// The `-D` names in `used` that `wanted` no longer defines.
+fn dropped_defines(used: &[String], wanted: &[String]) -> Vec<String> {
+    let name = |a: &String| {
+        a.strip_prefix("-D")
+            .map(|d| d.split(['=', ':']).next().unwrap_or(d).to_string())
+    };
+    let keep: Vec<String> = wanted.iter().filter_map(name).collect();
+    used.iter()
+        .filter_map(name)
+        .filter(|n| !keep.contains(n))
+        .collect()
+}
+
+/// Whether the probe build was configured with the arguments now wanted. A
+/// change re-probes every C/C++ component, as a missing build does.
+pub fn probe_args_current(probe_dir: &Path) -> bool {
+    read_args(&probe_dir.join(PROBE_ARGS_WANTED))
+        == read_args(&probe_dir.join("build").join(PROBE_ARGS_USED))
+}
+
+#[cfg(test)]
+mod probe_args_tests {
+    use super::*;
+
+    /// A change to the wanted arguments makes the probe build not current,
+    /// so every C/C++ component is probed again; the same list is current.
+    #[test]
+    fn a_changed_argument_list_reprobes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        std::fs::create_dir_all(dir.join("build")).unwrap();
+        assert!(probe_args_current(dir), "none wanted, none used");
+        set_probe_cmake_args(dir, &["-DA=1".into()]).unwrap();
+        assert!(
+            !probe_args_current(dir),
+            "wanted but not yet configured with"
+        );
+        std::fs::write(
+            dir.join("build").join(PROBE_ARGS_USED),
+            args_text(&["-DA=1".into()]),
+        )
+        .unwrap();
+        assert!(probe_args_current(dir));
+        set_probe_cmake_args(dir, &["-DA=2".into()]).unwrap();
+        assert!(!probe_args_current(dir));
+        assert!(PROBE_ARGS_RULE.contains("[image_defaults.build] cmake_args"));
+    }
+
+    /// A `-D` dropped from the list is `-U`'d, so the cache cannot keep it.
+    #[test]
+    fn a_dropped_define_is_undefined() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            dropped_defines(&v(&["-DA=1", "-DB:BOOL=ON", "-Wno-dev"]), &v(&["-DA=2"])),
+            vec!["B"]
+        );
+        assert!(dropped_defines(&v(&[]), &v(&["-DA=1"])).is_empty());
+    }
 }
 
 #[cfg(test)]
