@@ -20699,3 +20699,221 @@ mod reentry_action_client {
         drop(unsafe { Box::from_raw(p) });
     }
 }
+
+/// RFC-0108 D9 rule 4, phase-573 W2b — an action server's user callbacks
+/// write their OWN entry, the way a C goal or cancel callback does when it
+/// calls `rclc_action_succeed` / `rclc_action_publish_feedback`: those reach
+/// the arena entry through the executor (`ActionServerRawHandle` ->
+/// `as_raw_complete_goal`), a pointer the dispatch code did not hand out.
+/// Here the callback reaches the same `as_raw_*` functions through the
+/// entry's raw pointer, carried in `context`. Run under Miri
+/// (`just check miri-executor-reentry`): the filter `executor::tests::reentry`
+/// selects this module too.
+mod reentry_action_server {
+    use super::super::{
+        action_core::ActionServerCore,
+        arena::{
+            ActionServerRawArenaEntry, action_server_raw_try_process, as_raw_complete_goal,
+            as_raw_publish_feedback,
+        },
+    };
+    use crate::mock::{MockPublisher, MockServiceServer};
+    use alloc::boxed::Box;
+    use nros_core::{CancelResponse, GoalResponse, GoalStatusCode, GoalUuid};
+
+    const GB: usize = 128;
+    const RB: usize = 128;
+    const FB: usize = 128;
+    const MG: usize = 2;
+    type Entry = ActionServerRawArenaEntry<GB, RB, FB, MG>;
+
+    /// A raw action server entry on the heap, reached ONLY through the
+    /// returned pointer from here on (its `context` is that same pointer),
+    /// so the test itself holds no reference the callback could invalidate.
+    fn leak_entry(
+        goal: unsafe extern "C" fn(
+            *const GoalUuid,
+            *const u8,
+            usize,
+            *mut core::ffi::c_void,
+        ) -> GoalResponse,
+        cancel: unsafe extern "C" fn(
+            *const GoalUuid,
+            GoalStatusCode,
+            *mut core::ffi::c_void,
+        ) -> CancelResponse,
+        accepted: Option<unsafe extern "C" fn(*const GoalUuid, *mut core::ffi::c_void)>,
+    ) -> *mut u8 {
+        let core: ActionServerCore<GB, RB, FB, MG> = ActionServerCore::from_channels(
+            MockServiceServer::new(),
+            MockServiceServer::new(),
+            MockServiceServer::new(),
+            MockPublisher::new(),
+            MockPublisher::new(),
+        );
+        let p = Box::into_raw(Box::new(Entry {
+            core,
+            goal_callback: goal,
+            cancel_callback: cancel,
+            accepted_callback: accepted,
+            context: core::ptr::null_mut(),
+        }));
+        // SAFETY: `p` is fresh from `Box::into_raw`.
+        unsafe { (*p).context = p as *mut core::ffi::c_void };
+        p as *mut u8
+    }
+
+    /// # Safety
+    /// `p` came from `leak_entry` and nothing references the entry.
+    unsafe fn free_entry(p: *mut u8) {
+        // SAFETY: the caller's contract.
+        drop(unsafe { Box::from_raw(p as *mut Entry) });
+    }
+
+    /// # Safety
+    /// As `free_entry`.
+    unsafe fn deliver_goal(p: *mut u8, id: &GoalUuid) {
+        let (req, len) = super::mk_send_goal_req(id);
+        // SAFETY: the caller's contract; the borrow ends at the statement.
+        unsafe { (*(p as *mut Entry)).core.send_goal_server.load(req, len) };
+    }
+
+    /// `[CDR-LE header][GoalInfo { goal_id: uint8[16], stamp: Time }]`, the
+    /// stamp zero.
+    fn mk_cancel_req(id: &GoalUuid) -> ([u8; 256], usize) {
+        let mut b = [0u8; 256];
+        b[..4].copy_from_slice(&[0x00, 0x01, 0x00, 0x00]);
+        b[4..20].copy_from_slice(&id.uuid);
+        (b, 28)
+    }
+
+    /// # Safety
+    /// `p` is a live entry and nothing references it.
+    unsafe fn spin(p: *mut u8) -> bool {
+        // SAFETY: the caller's contract.
+        unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(p, 0, 0) }.unwrap()
+    }
+
+    /// # Safety
+    /// `p` is a live entry and nothing references it.
+    unsafe fn active_goals(p: *mut u8) -> usize {
+        // SAFETY: the caller's contract.
+        unsafe { (&(*(p as *const Entry)).core.active_goals).len() }
+    }
+
+    unsafe extern "C" fn defer(
+        _: *const GoalUuid,
+        _: *const u8,
+        _: usize,
+        _: *mut core::ffi::c_void,
+    ) -> GoalResponse {
+        GoalResponse::AcceptAndDefer
+    }
+
+    unsafe extern "C" fn refuse(
+        _: *const GoalUuid,
+        _: GoalStatusCode,
+        _: *mut core::ffi::c_void,
+    ) -> CancelResponse {
+        CancelResponse::Reject
+    }
+
+    /// The accepted hook finishes the goal at once: a short goal a C server
+    /// completes from `accepted_callback` with `rclc_action_succeed`.
+    unsafe extern "C" fn succeed_on_accept(id: *const GoalUuid, ctx: *mut core::ffi::c_void) {
+        let result = [0x00u8, 0x01, 0x00, 0x00, 7];
+        // SAFETY: `ctx` is the entry's own pointer (`leak_entry`).
+        let r = unsafe {
+            as_raw_complete_goal::<GB, RB, FB, MG>(
+                ctx as *mut u8,
+                &*id,
+                GoalStatusCode::Succeeded,
+                result.as_ptr(),
+                result.len(),
+            )
+        };
+        assert!(r.is_ok(), "completing an accepted goal: {r:?}");
+    }
+
+    /// The accepted hook publishes feedback, as `rclc_action_publish_feedback`.
+    unsafe extern "C" fn feedback_on_accept(id: *const GoalUuid, ctx: *mut core::ffi::c_void) {
+        let fields = [1u8, 2, 3, 4];
+        // SAFETY: as `succeed_on_accept`.
+        let r = unsafe {
+            as_raw_publish_feedback::<GB, RB, FB, MG>(
+                ctx as *mut u8,
+                &*id,
+                fields.as_ptr(),
+                fields.len(),
+            )
+        };
+        assert!(r.is_ok(), "feedback for an accepted goal: {r:?}");
+    }
+
+    /// The cancel callback finishes the goal it is asked about (a server
+    /// that cancels by completing with `Canceled`), then accepts the cancel.
+    unsafe extern "C" fn complete_on_cancel(
+        id: *const GoalUuid,
+        _: GoalStatusCode,
+        ctx: *mut core::ffi::c_void,
+    ) -> CancelResponse {
+        // SAFETY: as `succeed_on_accept`.
+        let r = unsafe {
+            as_raw_complete_goal::<GB, RB, FB, MG>(
+                ctx as *mut u8,
+                &*id,
+                GoalStatusCode::Canceled,
+                [0u8; 0].as_ptr(),
+                0,
+            )
+        };
+        assert!(
+            r.is_ok(),
+            "completing a goal from its cancel callback: {r:?}"
+        );
+        CancelResponse::Accept
+    }
+
+    #[test]
+    fn an_accepted_callback_that_completes_its_goal_reenters_soundly() {
+        let p = leak_entry(defer, refuse, Some(succeed_on_accept));
+        let id = GoalUuid { uuid: [0x11; 16] };
+        // SAFETY: `p` is live and only reached through itself.
+        unsafe {
+            deliver_goal(p, &id);
+            assert!(spin(p));
+            assert_eq!(active_goals(p), 0, "the goal finished inside the hook");
+            free_entry(p);
+        }
+    }
+
+    #[test]
+    fn an_accepted_callback_that_publishes_feedback_reenters_soundly() {
+        let p = leak_entry(defer, refuse, Some(feedback_on_accept));
+        let id = GoalUuid { uuid: [0x22; 16] };
+        // SAFETY: as above.
+        unsafe {
+            deliver_goal(p, &id);
+            assert!(spin(p));
+            assert_eq!(active_goals(p), 1);
+            free_entry(p);
+        }
+    }
+
+    #[test]
+    fn a_cancel_callback_that_completes_its_goal_reenters_soundly() {
+        let p = leak_entry(defer, complete_on_cancel, None);
+        let id = GoalUuid { uuid: [0x33; 16] };
+        // SAFETY: as above.
+        unsafe {
+            deliver_goal(p, &id);
+            assert!(spin(p));
+            assert_eq!(active_goals(p), 1);
+            let (req, len) = mk_cancel_req(&id);
+            (*(p as *mut Entry)).core.cancel_goal_server.load(req, len);
+            assert!(spin(p));
+            assert_eq!(active_goals(p), 0, "the cancel callback finished the goal");
+            free_entry(p);
+        }
+    }
+}
