@@ -5,13 +5,13 @@ status: open
 type: limitation
 severity: low
 area: [api, rust, graph]
-related: [issue-2360, issue-2658, issue-0791, phase-379, phase-381]
+related: [issue-2360, issue-2658, issue-0791, phase-379, phase-381, phase-572]
 found: 2026-11-17
 ---
 
-**Home:** the API-parity work, [phase-379](../roadmap/archived/phase-379-api-parity-with-ros2-client-libraries.md)
-(archived; no API-parity phase is open), beside phase-381, which added the graph
-queries.
+**Home: [phase-572](../roadmap/phase-572-rust-component-graph-query.md).** The
+API-parity work it extends was phase-379 (archived), beside phase-381, which
+added the graph queries.
 
 ## What
 

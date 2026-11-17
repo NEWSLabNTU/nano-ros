@@ -5,7 +5,7 @@ status: open
 type: tech-debt
 severity: medium
 area: [zephyr, rust, executor]
-related: [2359, 2658, 2674, phase-548, phase-557]
+related: [2359, 2658, 2674, phase-548, phase-557, phase-572]
 found: 2026-11-07
 ---
 
@@ -208,7 +208,7 @@ Two items remain, and neither is a fix this issue can make alone:
    (`names_and_types_filtered`, 3,524 B static since 2026-11-16) cannot be put
    on main without a hand-written main. That gap is
    [issue 2674](2674-rust-component-api-has-no-graph-query.md). The measurement
-   reopens there once the component surface can make the call. The C graph-query
+   reopens there once the component surface can make the call (phase-572 W4). The C graph-query
    image peaks at 12,844 B on the same twin (issue 2658).
 2. **Lowering the floor, or stating it per entity kind,** belongs to the
    stack-floor redesign that is waiting on the user (phase-557 "Not in this
