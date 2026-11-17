@@ -40,7 +40,9 @@
 + packages/tooling/nros-sizing-descriptor
 + packages/tooling/nros-zephyr-build
 - packages/cli/cargo-nano-ros/tests
+- packages/cli/nros-cli-core/src/builder/build_args.rs
 - packages/cli/nros-cli-core/src/builder/dist.rs
+- packages/cli/nros-cli-core/src/builder/owned_defines.rs
 - packages/cli/nros-cli-core/src/cmd/completions.rs
 - packages/cli/nros-cli-core/src/cmd/config.rs
 - packages/cli/nros-cli-core/src/cmd/doctor.rs

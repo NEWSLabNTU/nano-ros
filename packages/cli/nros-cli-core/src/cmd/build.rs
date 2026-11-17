@@ -2152,6 +2152,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 if let Some(n) = &image_net {
                     crate::orchestration::image_net::write(&root.join("build"), &image_id, n)
                         .map_err(|e| eyre::eyre!("{e}"))?;
+                    // owned-define: NROS_IMAGE_NET
                     a.push(format!(
                         "-D{}={}",
                         nros_board_common::image_net::ENV,
@@ -9792,6 +9793,27 @@ fn with_rust_channel(h: Handoff, channel: Option<&str>) -> Handoff {
         None => h,
     }
 }
+#[cfg(test)]
+mod owned_defines_cross_check {
+    use super::*;
+
+    /// phase-568 W1: the private argument helpers pass only OWNED names.
+    #[test]
+    fn the_build_argument_helpers_pass_only_owned_names() {
+        let mut args = Vec::new();
+        args.extend(board_build_type_arg("freertos"));
+        args.extend(image_build_type_args("freertos", "img", Some("release")).unwrap());
+        args.extend(image_build_type_args("posix", "img", Some("dev")).unwrap());
+        args.extend(hand_written_image_args(
+            Path::new("/no/such/app"),
+            Path::new("/b"),
+            "img",
+        ));
+        assert!(args.len() >= 4, "{args:?}");
+        crate::builder::owned_defines::assert_all_owned(&args);
+    }
+}
+
 #[cfg(test)]
 mod probe_bound_tables_tests {
     use super::{metadata_probe_build_dir, probe_bound_tables};

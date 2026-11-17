@@ -335,7 +335,7 @@ const CLI_SOURCE_DIRS_FILE: &str = "packages/cli/cli-source-dirs.txt";
 /// A missing or unreadable file yields `packages/cli` alone, which is the
 /// pre-phase-330 behaviour: under-watching, and therefore wrong. It cannot be
 /// silent, so [`source_stamp`] refuses to produce a stamp at all in that case.
-fn cli_source_dirs(root: &Path) -> Vec<String> {
+pub(crate) fn cli_source_dirs(root: &Path) -> Vec<String> {
     let mut dirs = vec!["packages/cli".to_string()];
     let Ok(body) = std::fs::read_to_string(root.join(CLI_SOURCE_DIRS_FILE)) else {
         return dirs;
