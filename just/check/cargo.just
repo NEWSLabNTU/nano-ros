@@ -725,9 +725,22 @@ shared-cargo-dir-witness:
 # wrong thing: an orphan folder in a live store is reported, while a folder a
 # live `build.ninja` names, a store whose linking build dir has no
 # `build.ninja`, and a store a build file names directly (the NuttX road) are
-# left alone. Synthetic tree under `tmp/`, ~0.1 s.
+# left alone. Synthetic tree under `tmp/`, ~0.1 s. Since issue 2676 it also
+# covers the metadata probe's shared image roots: one a generated build file
+# names stays, an unnamed one and its lock go, and nothing goes while a
+# linking build dir cannot be read.
 gc-shared-cargo-selftest:
     @python3 scripts/build/gc-shared-cargo.py --self-test
+
+# Issue 2676 -- the metadata probe's equal workspaces share one generated image
+# root, at a path named by its content (`NROS_SHARED_IMAGE_CRATE_ROOT`), and
+# several probes generate it at once. Eight parallel script-mode generations of
+# one content must leave ONE complete root, byte-equal to a solo run, with no
+# staging dir behind; other content gets its own root. No build: a few seconds.
+[group('needs:cli')]
+[group('needs:cmake')]
+shared-image-crate-race:
+    @bash scripts/check/check-shared-image-crate-race.sh
 
 # Issue 0570 — the vendored NuttX `libc` fork mirrors NuttX's opaque types as
 # byte blobs, but NuttX sizes several of them from Kconfig, so a mirror that is

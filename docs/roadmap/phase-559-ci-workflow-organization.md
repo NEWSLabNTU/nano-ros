@@ -717,6 +717,27 @@ the user ruled; all five stand:
   The sharing itself goes nowhere yet, and the hosted shard's disk moves to
   W12. Issue 2318 stays homed in phase-489; this was its lever 2, scoped to
   the probe.
+- **Follow-up, 2026-11-18 (issue 2676): the ROOT is shared, not the
+  build-dir, and that is ON.** This W10's build-dir stays off. What landed
+  instead is narrower and cheaper: the probe's generated image root is
+  written once per CONTENT, at a path named by a hash of its manifest, lib
+  and features (`NROS_SHARED_IMAGE_CRATE_ROOT`, `NanoRosImageCrate.cmake`).
+  Corrosion names its cargo folder from the manifest path, so equal
+  workspaces now ARE one root and one unit, with no per-root identity to
+  serialise on. Measured on host 118, two cold `just ci gate` runs on one base
+  (both stopping at the same unrelated `check::build` failure):
+  - the probe store went from 26.2 G (68 folders) to 3.8 G (8), and the
+    gate's peak from 169 G to 143 G;
+  - `workspace-probes` went from 1034 s to 722 s in the gate, and from 580 /
+    573 s to 464 s alone, so it is faster, where W10 was +40 %;
+  - all 72 probe binaries define the allocator and `GlobalAlloc` once with no
+    duplicate exported symbol (0616's shape), and all 142 probe sidecars are
+    byte-identical with sharing off and on.
+
+  The user ruled it ON on 2026-11-18 (`NROS_PROBE_SHARED_IMAGE_ROOT=0` turns
+  it off). Gates: `shared-image-crate-race` (parallel generation of one
+  content, which also runs the "root already there" branch every time), and
+  `gc-shared-cargo-selftest`, which now covers the shared roots.
 
 ### W11 — A failed metadata probe is a failure, not "no producer"
 

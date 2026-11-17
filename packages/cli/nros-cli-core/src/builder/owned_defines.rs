@@ -85,6 +85,10 @@ pub const OWNED: &[OwnedDefine] = &[
     exact("NROS_SHARED_CARGO_BUILD_DIR", "the shared cargo target"),
     exact("NROS_SHARED_CARGO_ROOT", "the shared cargo target"),
     exact(
+        "NROS_SHARED_IMAGE_CRATE_ROOT",
+        "the shared image roots of the metadata probe",
+    ),
+    exact(
         "NROS_WEST_CONFIGURE_SHA256",
         "the west configure's input digest",
     ),

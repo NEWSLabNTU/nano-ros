@@ -776,6 +776,24 @@ fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path, rmw: &
     // survive. The post-build check stays, and is a no-op without the roots'
     // records. Turning it on is a one-line change here, plus the ruling.
     cmd.arg("-DNROS_SHARED_CARGO_BUILD_DIR=OFF");
+    // Issue 2676 — one generated image root per CONTENT, so the probes of
+    // equal workspaces share one compiled runtime instead of one per build
+    // dir (`NanoRosImageCrate.cmake`). Measured on a cold gate: the probe's
+    // store 26.2 G -> 3.8 G and `workspace-probes` 1034 s -> 722 s, every probe
+    // sidecar byte-identical; the user ruled it ON on 2026-11-18.
+    // `NROS_PROBE_SHARED_IMAGE_ROOT=0` turns it off. Always passed, so a cached
+    // value from an earlier configure cannot decide it.
+    let shared_image_root = std::env::var_os("NROS_PROBE_SHARED_IMAGE_ROOT")
+        .is_none_or(|v| v != "0")
+        .then(|| super::metadata_build::shared_probe_dir(nano_ros, "image-crates/metadata-probe"))
+        .flatten();
+    cmd.arg(format!(
+        "-DNROS_SHARED_IMAGE_CRATE_ROOT={}",
+        shared_image_root
+            .as_deref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default()
+    ));
     pin_probe_env(&mut cmd, nano_ros);
     // The documented caller pre-set of the codegen tool (NanoRosBootstrapCodegen
     // rung 1): THIS process is the CLI whose stamp the key carries.
