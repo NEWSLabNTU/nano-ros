@@ -130,8 +130,24 @@ is already a package. What is missing is measured in RFC-0135's Motivation:
 
   It is found first through `$NROS_EXTRA_BOARD_PATH`, then through the ament
   index once W2 lands.
-- **Acceptance:** phase-575 W2's acceptance, plus W2's installed-prefix test
-  passed by this package.
+- **Staged against the items it depends on.** W8 does not wait for them. It
+  lands first with what exists, and each check tightens when its item lands:
+
+  | W8 asserts | Until then | Tightens when |
+  | --- | --- | --- |
+  | the version range refuses an out-of-range nano-ros, and a missing tag warns | the tag parses and is ignored | W3 (parse and listing) and W6 (refusal at build) |
+  | the example builds, and runs where `[board.run]` names an emulator, through `nros board check` | `nros build` and `nros run --dry-run` directly | W7 |
+  | `[board.flash] method = "openocd"`, checked with `nros flash --dry-run` | only `[board.run]` and `[board.console]` are stated | W5 |
+  | found through the ament index from an installed prefix | found through `$NROS_EXTRA_BOARD_PATH` | W2 |
+
+- The BSP stand-in is a "released SDK root" built from public sources (linker
+  script, startup code, UART driver), named by the package's own variable,
+  so CI needs no vendor download. The core profile is the in-tree
+  `cortex-r5f`.
+- **Acceptance:**
+  - phase-575 W2's acceptance;
+  - every row of the table above at its tightened form;
+  - W2's installed-prefix test, passed by this package.
 
 ### W9 — Terminology sweep
 
