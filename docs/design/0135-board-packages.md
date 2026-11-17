@@ -127,6 +127,8 @@ my-board-package/
   nros-board.toml           one or more board definitions
   nros-platform.toml        optional: the package's own [arch.*] profiles (D4)
   src/ + Cargo.toml         optional: bring-up code (the board crate)
+  cmake/nano-ros-board-<key>.cmake
+                            optional: the board's CMake module, for C/C++ images
   flash/                    optional: OpenOCD scripts, probe configs (D3)
   examples/<name>/          at least one example per board key (D7)
 ```
@@ -170,6 +172,25 @@ my-board-package/
   Arm GNU toolchain, plus OpenOCD for the flash method). An unknown key is
   refused with near matches and the roots searched, never with "add an index
   row".
+- **The board's CMake module travels with the package.** A FreeRTOS, NuttX
+  or bare-metal C/C++ image includes the board's CMake module (its port,
+  config directory, linker script and startup). Today the platform files
+  build that path inside the nano-ros tree (`cmake/board/nano-ros-board-<key>.cmake`,
+  four hand-built sites), so an outside board package cannot supply one
+  without patching nano-ros. Found building phase-577 W8 on 2026-11-18. The
+  rule:
+  - a board package may ship `cmake/nano-ros-board-<key>.cmake`, and may
+    refer to its own files through `CMAKE_CURRENT_LIST_DIR`;
+  - the CLI knows the resolved board definition's directory, so it passes
+    `-DNROS_BOARD_MODULE=<that file>` on the configure command it emits (the
+    cmake road's carrier, per the canonical build path; never an environment
+    variable);
+  - one helper, `nros_board_module_path()`, replaces the four hand-built
+    paths. It takes `NROS_BOARD_MODULE` when set and falls back to the
+    in-tree file, so in-tree boards are unchanged;
+  - a configure run by hand for an outside board, without the variable, is
+    refused with a message that names `NROS_BOARD_MODULE` and the key,
+    rather than failing on a missing file.
 - **Scaffolding.** `nros board new` already scaffolds a board package. It
   emits D2's shape: `package.xml` with a version range and the runner
   `exec_depend`, a board definition with run, flash and console tables, the
@@ -452,6 +473,8 @@ time.
 ## Changelog
 
 - 2026-11-18: drafted from the user's approved brief.
+- 2026-11-18: D2 gains the board's own CMake module, found by phase-577
+  W8's owner building the first board package.
 - 2026-11-18: book-side review folded in. The changes:
   - `nros setup` resolves through the board catalog, using
     `[board.provisioning] tools`;
