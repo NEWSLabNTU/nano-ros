@@ -5,7 +5,7 @@ status: open
 type: tech-debt
 severity: medium
 area: [zephyr, rust, executor]
-related: [2359, phase-548, phase-557]
+related: [2359, 2658, 2674, phase-548, phase-557]
 found: 2026-11-07
 ---
 
@@ -184,3 +184,32 @@ Not measured here: the runtime peak of a Rust image that queries the graph or
 declares a parameter. These numbers are static frame sizes. A graph query runs
 from the executor's spin, not from registration, so how much of its frame
 lands on main depends on where the image calls it.
+
+## What is left (2026-11-17)
+
+Confirmed against main on 2026-11-17. Every frame fix above is in, and every
+measured Rust image on this board fits the 32 KiB main stack a Rust entry gets
+(the module's `MAIN_STACK_SIZE` default for `NROS_RUST_API`, held by
+`NROS_RUST_MAIN_STACK_FLOOR`):
+
+| image (Rust, zenoh, nucleo-f767zi twin) | main peak |
+| --- | ---: |
+| talker | 27,248 B |
+| action server | 29,184 B |
+| action client | 30,600 B |
+| talker declaring two parameters (issue 2658) | 27,388 B |
+
+Two items remain, and neither is a fix this issue can make alone:
+
+1. **A Rust image that queries the graph is not measured, because none can be
+   built from the generated surface.** The graph queries are on the imperative
+   Rust executor only. The component context (`NodeContext`, `CallbackCtx`),
+   which every template and generated entry uses, has none, so the frame
+   (`names_and_types_filtered`, 3,524 B static since 2026-11-16) cannot be put
+   on main without a hand-written main. That gap is
+   [issue 2674](2674-rust-component-api-has-no-graph-query.md). The measurement
+   reopens there once the component surface can make the call. The C graph-query
+   image peaks at 12,844 B on the same twin (issue 2658).
+2. **Lowering the floor, or stating it per entity kind,** belongs to the
+   stack-floor redesign that is waiting on the user (phase-557 "Not in this
+   phase"; issue 2400). Until it is decided, the 32 KiB floor stands.
