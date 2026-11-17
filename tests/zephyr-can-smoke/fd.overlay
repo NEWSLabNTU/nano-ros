@@ -1,0 +1,16 @@
+/*
+ * RFC-0132 W9.b -- the FD shape: the frame driver's device named by the
+ * `nros,can` chosen (`zephyr,canbus` stays on the loopback controller), with a
+ * data-phase bitrate, so can_start.c puts it in CAN FD mode.
+ */
+/ {
+	chosen {
+		nros,can = &can0;
+	};
+};
+
+&can0 {
+	status = "okay";
+	host-interface = "vcan0";
+	bitrate-data = <2000000>;
+};

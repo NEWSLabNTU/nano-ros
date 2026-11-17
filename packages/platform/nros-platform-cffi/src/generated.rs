@@ -599,7 +599,7 @@ unsafe extern "C" {
     pub fn nros_platform_timer_cancel(handle: *mut core::ffi::c_void) -> i8;
 }
 unsafe extern "C" {
-    #[doc = " Open `device` into the caller's handle storage. `device` NULL opens the\n  image's device (the one its board stack names); a non-NULL name opens that\n  device instead. `want_fd` non-zero asks for CAN FD and fails with\n  `NROS_PLATFORM_CAN_ENOFD` when the device does not carry it, so an image\n  learns at open rather than at its first FD send."]
+    #[doc = " Open `device` into the caller's handle storage. `device` NULL opens the\n  image's device (the one its board stack names); a non-NULL name opens that\n  device instead. `want_fd` non-zero asks for CAN FD: afterwards\n  `nros_platform_can_fd_active` says whether FD is active. A backend that can\n  tell at open that the device does not carry FD (SocketCAN: the interface\n  MTU) fails here with `NROS_PLATFORM_CAN_ENOFD`; one that learns it from\n  the device's mode (Zephyr: the controller's `CAN_MODE_FD`, set at\n  bring-up) opens and reports it through `fd_active`. Either way an FD send\n  on a handle whose FD is not active returns `NROS_PLATFORM_CAN_ENOFD`."]
     pub fn nros_platform_can_open(
         can: *mut nros_platform_can_t,
         device: *const core::ffi::c_char,

@@ -316,10 +316,14 @@ else()
 endif()
 
 # RFC-0109 D10 (phase-514 W5) — the board starts its `zephyr,canbus` controller
-# before any session opens; the zenoh-pico CAN and ISO-TP links no longer do.
+# (and, RFC-0132, the `nros,can` one, in FD mode when devicetree states a data
+# bitrate) before any session opens; the zenoh-pico CAN and ISO-TP links no
+# longer do. RFC-0132 D3 — `can.c` is the CAN frame driver's `zephyr` backend
+# (`<nros/platform_can.h>`); an image that sends no frames links none of it.
 if(CONFIG_CAN)
     zephyr_library_sources(
         ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/can_start.c
+        ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/can.c
     )
 endif()
 

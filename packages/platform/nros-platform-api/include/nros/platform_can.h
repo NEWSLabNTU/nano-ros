@@ -57,7 +57,8 @@ extern "C" {
 
 /** 29-bit (extended) identifier; clear for an 11-bit identifier. */
 #define NROS_PLATFORM_CAN_FLAG_EXT 0x01u
-/** A CAN FD frame. Legal only on a handle whose `fd_active` is true. */
+/** A CAN FD frame. Legal only on a handle whose `fd_active` is true; on any
+ *  other `send` returns `NROS_PLATFORM_CAN_ENOFD`. */
 #define NROS_PLATFORM_CAN_FLAG_FD 0x02u
 /** FD bit-rate switch. Legal only together with `NROS_PLATFORM_CAN_FLAG_FD`. */
 #define NROS_PLATFORM_CAN_FLAG_BRS 0x04u
@@ -81,12 +82,14 @@ extern "C" {
 /** Sent, received, opened. */
 #define NROS_PLATFORM_CAN_OK 0
 /** Invalid frame: identifier out of range for its width, a length that is not
- *  a valid classic or FD size, an unknown flag, BRS without FD, or an FD flag
- *  on a handle whose FD is not active. Also an invalid argument (NULL). */
+ *  a valid classic or FD size, an unknown flag, or BRS without FD. Also an
+ *  invalid argument (NULL). */
 #define NROS_PLATFORM_CAN_EINVAL (-1)
 /** The handle is not open. */
 #define NROS_PLATFORM_CAN_ENOTOPEN (-2)
-/** `open` with `want_fd` on a device that does not carry CAN FD. */
+/** CAN FD is not active: an FD frame sent on a handle whose `fd_active` is
+ *  false, or `open` with `want_fd` on a device a backend can tell at open does
+ *  not carry FD (SocketCAN reads the interface MTU). */
 #define NROS_PLATFORM_CAN_ENOFD (-3)
 /** The transmit queue stayed full, or nothing arrived, within `timeout_us`. */
 #define NROS_PLATFORM_CAN_EAGAIN (-4)
@@ -118,7 +121,7 @@ typedef struct {
 
 /** Handle storage in `uint64_t` words. ABI: changing it is a header edit, a
  *  `scripts/gen-abi-bindings.sh` run and a commit of both. Measured state per
- *  backend (bytes, x86_64): mock 8, socketcan 12. */
+ *  backend (bytes, x86_64): mock 8, socketcan 12, zephyr 24. */
 #define NROS_PLATFORM_CAN_OPAQUE_U64S 16u
 
 /** A CAN handle: caller storage, the backend's state lives inside it. */
@@ -144,9 +147,13 @@ typedef struct {
 
 /** Open `device` into the caller's handle storage. `device` NULL opens the
  *  image's device (the one its board stack names); a non-NULL name opens that
- *  device instead. `want_fd` non-zero asks for CAN FD and fails with
- *  `NROS_PLATFORM_CAN_ENOFD` when the device does not carry it, so an image
- *  learns at open rather than at its first FD send. */
+ *  device instead. `want_fd` non-zero asks for CAN FD: afterwards
+ *  `nros_platform_can_fd_active` says whether FD is active. A backend that can
+ *  tell at open that the device does not carry FD (SocketCAN: the interface
+ *  MTU) fails here with `NROS_PLATFORM_CAN_ENOFD`; one that learns it from
+ *  the device's mode (Zephyr: the controller's `CAN_MODE_FD`, set at
+ *  bring-up) opens and reports it through `fd_active`. Either way an FD send
+ *  on a handle whose FD is not active returns `NROS_PLATFORM_CAN_ENOFD`. */
 int8_t nros_platform_can_open(nros_platform_can_t *can, const char *device, uint8_t want_fd);
 
 /** Send one frame, waiting at most `timeout_us` for the controller to take
@@ -170,7 +177,8 @@ void nros_platform_can_close(nros_platform_can_t *can);
 /* ---- The one frame check every backend applies ---- */
 
 /** `NROS_PLATFORM_CAN_OK` when `frame` is valid to send on a handle whose FD
- *  is active (`fd_active` non-zero) or not, `NROS_PLATFORM_CAN_EINVAL`
+ *  is active (`fd_active` non-zero) or not; `NROS_PLATFORM_CAN_ENOFD` for an
+ *  FD frame on a handle whose FD is not active; `NROS_PLATFORM_CAN_EINVAL`
  *  otherwise. One definition, so every backend refuses the same frames. */
 static inline int8_t nros_platform_can_frame_check(const nros_platform_can_frame_t *frame, uint8_t fd_active) {
     uint8_t flags;
@@ -194,7 +202,7 @@ static inline int8_t nros_platform_can_frame_check(const nros_platform_can_frame
         return NROS_PLATFORM_CAN_OK;
     }
     if (fd_active == 0u) {
-        return NROS_PLATFORM_CAN_EINVAL;
+        return NROS_PLATFORM_CAN_ENOFD;
     }
     if (len <= 8u || len == 12u || len == 16u || len == 20u || len == 24u || len == 32u ||
         len == 48u || len == 64u) {

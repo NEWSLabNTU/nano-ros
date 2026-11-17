@@ -1,0 +1,1 @@
+The CAN frame driver's Zephyr backend: a Zephyr image sends and receives classic and CAN FD frames through `<nros/platform_can.h>` on the `nros,can` chosen controller (else `zephyr,canbus`). The board's CAN bring-up now starts the `nros,can` controller too, and puts a controller in CAN FD mode when its devicetree node states a data-phase bitrate (`bitrate-data`).

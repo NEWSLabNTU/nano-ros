@@ -75,6 +75,24 @@ pub fn can_probe(args: &[String]) -> Result<(), String> {
     )?;
     drop(can);
 
+    // A classic open of the FD interface: FD is not active, so an FD send is
+    // refused with ENOFD (RFC-0132 revision of 2026-11-17) and never sent.
+    let mut storage = closed_storage();
+    let mut classic_open = Can::open(&mut storage, Some(&name), false)
+        .map_err(|e| format!("open({iface}, classic) failed: {e:?}"))?;
+    if classic_open.fd_active() {
+        return Err(format!("{iface}: fd_active is true on a classic open"));
+    }
+    want(
+        "FD send on a classic open",
+        classic_open.send_fd(
+            &frame(PROBE_FD_ID, NROS_PLATFORM_CAN_FLAG_EXT as u8, &[0; 8]).unwrap(),
+            0,
+        ),
+        NROS_PLATFORM_CAN_ENOFD,
+    )?;
+    drop(classic_open);
+
     match args.get(1) {
         None => println!("CAN-PROBE: classic-interface check NOT RUN (no classic interface given)"),
         Some(classic_iface) => {

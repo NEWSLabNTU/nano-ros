@@ -1,0 +1,15 @@
+/*
+ * RFC-0132 W9.b -- the classic shape: no `nros,can`, so the frame driver falls
+ * back to `zephyr,canbus`; no data-phase bitrate, so the controller stays in
+ * classic mode even though the image has CONFIG_CAN_FD_MODE.
+ */
+/ {
+	chosen {
+		zephyr,canbus = &can0;
+	};
+};
+
+&can0 {
+	status = "okay";
+	host-interface = "vcan0";
+};
