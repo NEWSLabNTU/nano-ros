@@ -284,6 +284,25 @@ fn main() {
         freertos.file(freertos_dir.join(src));
     }
     freertos.file(port_dir.join("port.c"));
+    // The A/R-profile ports (`ARM_CRx_No_GIC` and upstream's other GCC
+    // Cortex-R/Cortex-A ports) carry their context switch in assembly
+    // (`portASM.S`): without it a Rust image links with
+    // `FreeRTOS_IRQ_Handler` and the port's other entry points undefined. The CMake road globs the port's `.S` files for the same
+    // reason (`nros_freertos_build_kernel`); this is that rule on the cargo
+    // road. An M-profile port has none, so nothing changes there.
+    // RFC-0135 D2 (phase-577 W8): the first Rust image on an R-profile port.
+    let mut port_asm: Vec<_> = std::fs::read_dir(&port_dir)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "S"))
+        .collect();
+    port_asm.sort();
+    for asm in &port_asm {
+        println!("cargo:rerun-if-changed={}", asm.display());
+        freertos.file(asm);
+    }
     freertos.file(freertos_dir.join("portable/MemMang/heap_4.c"));
     // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
     // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
