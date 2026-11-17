@@ -1,15 +1,17 @@
 ---
 id: 2669
 title: "`check-hook-repo-side-effects` takes 98 s to over 1,900 s on the fast line, and its per-script probes have no time limit, so it can cancel any merge group"
-status: open
+status: resolved
 type: bug
 area: [ci, testing]
 severity: medium
 found: 2026-11-17
+resolved: 2026-11-17
+resolved_in: "fix(check): every hook-gate probe is bounded, timed, and fails by name"
 related: [0986, 1465, 2240, 2625, phase-559]
 ---
 
-**Home:** [phase-559](../roadmap/phase-559-ci-workflow-organization.md),
+**Home:** [phase-559](../../roadmap/phase-559-ci-workflow-organization.md),
 "Issues homed here". The gate is on the fast line, which every lane runs.
 
 ## What happens
@@ -71,3 +73,33 @@ shows the gate as SLOW but not which subject it was on.
   The victim and owned-checkout builds, about 3 s each according to the
   `TMPDIR_PROBE_REUSE` comment, are the first suspects, multiplied by
   scripts times shapes.
+
+## Resolution (2026-11-17)
+
+Fixed by "fix(check): every hook-gate probe is bounded, timed, and fails by
+name".
+
+- **Every probe is bounded.** Each probe runs under the shared
+  `NROS_DEADLINE` spelling with a 120 s budget (`NROS_HOOK_PROBE_TIMEOUT`).
+  The gate as a whole has a 900 s deadline (`NROS_HOOK_GATE_BUDGET`), well
+  inside nextest's 40-minute terminate for gates. A probe that is killed, or
+  that never starts because the deadline has passed, is a FAIL naming the
+  script, its shape and its last output. It is never a skip. The negative
+  control covers both directions.
+- **Every verdict prints its wall time,** split into total, victim build and
+  run.
+- **The worktree and explicit passes run concurrently,** as the tmpdir pass
+  already did. Alone at a load average of 33 on host 241, the gate went from
+  58 s to 35 s.
+
+**What was slow, measured.** The suspects named above were not the cause:
+the victim and owned-checkout builds took 0.0 to 1.6 s each. The cause was
+one subject. Probed with no arguments, `scripts/check-workspace-probes.sh`
+(new in #4123, merged about 04:30Z, before the 05:14Z stall) ran
+`nros configure` over all 53 tracked workspace roots in the real tree, once
+per shape. That took 2 s warm and alone. Under `check fast`, where it races
+its own `workspace-probes` gate for the same build dirs, it was killed at the
+new 120 s budget in both shapes. On a cold hosted runner it is three full
+configures of 53 roots. The script gained `--selftest`, which runs only its
+negative control (its one `git init`), and the probe passes that. The next
+slowest subject is `changelog-audit.py`, at 7 s.
