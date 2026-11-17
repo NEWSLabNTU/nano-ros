@@ -2333,6 +2333,12 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     &board,
                     nano_ros_root.as_deref(),
                 ));
+                // RFC-0135 D2 -- a board package's own CMake module.
+                a.push(board_module_configure_arg(
+                    descriptor,
+                    &board,
+                    nano_ros_root.as_deref(),
+                ));
                 // phase-462 W6c -- the board's `[board.rx]`, on the same terms.
                 a.extend(board_rx_configure_args(descriptor));
                 // Issue 1304 — the ROOT this generated file's
@@ -3566,6 +3572,12 @@ fn plan_single_package_cmake(
         ));
     }
     a.push(board_heap_configure_arg(
+        descriptor,
+        &board,
+        Some(&nros_root),
+    ));
+    // RFC-0135 D2 -- a board package's own CMake module.
+    a.push(board_module_configure_arg(
         descriptor,
         &board,
         Some(&nros_root),
@@ -6660,6 +6672,48 @@ fn image_build_type_args(
 /// The empty value is the configure's own spelling of "nobody said"
 /// (`_nros_sizing_heap_args` treats it as unset), so the field goes back to
 /// refused on the next configure.
+/// RFC-0135 D2 (phase-577 W8) — the board package's own CMake module, as a
+/// configure argument: `<package>/cmake/nano-ros-board-<board>.cmake`, beside
+/// the board definition, when the package ships one. That is how a board
+/// package outside nano-ros supplies its port, linker script and startup
+/// (`cmake/NanoRosBoardModule.cmake`); an in-tree board's module lives in
+/// nano-ros's own `cmake/board/` and passes nothing.
+///
+/// ALWAYS emitted, empty when there is none, for [`board_heap_configure_arg`]'s
+/// reason: a `-D` is a cache entry, and an omitted one would keep a module the
+/// image no longer selects.
+fn board_module_configure_arg(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    board: &str,
+    nano_ros_root: Option<&std::path::Path>,
+) -> String {
+    format!(
+        "-DNROS_BOARD_MODULE={}",
+        board_package_module(descriptor, board, nano_ros_root)
+            .map(|p| p.display().to_string())
+            .unwrap_or_default()
+    )
+}
+
+/// The board package's `cmake/nano-ros-board-<board>.cmake`, if it ships one.
+fn board_package_module(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    board: &str,
+    nano_ros_root: Option<&std::path::Path>,
+) -> Option<std::path::PathBuf> {
+    let source = std::path::Path::new(descriptor.source.as_deref()?);
+    let source = if source.is_absolute() {
+        source.to_path_buf()
+    } else {
+        nano_ros_root?.join(source)
+    };
+    let module = source
+        .parent()?
+        .join("cmake")
+        .join(format!("nano-ros-board-{board}.cmake"));
+    module.is_file().then_some(module)
+}
+
 fn board_heap_configure_arg(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
     board: &str,
@@ -12213,6 +12267,35 @@ mod board_heap_tests {
         assert_eq!(
             board_heap_configure_arg(&d2, "heapy", None),
             "-DNROS_BOARD_HEAP_BUDGET_BYTES="
+        );
+    }
+
+    /// RFC-0135 D2 -- a board package that ships
+    /// `cmake/nano-ros-board-<board>.cmake` beside its board definition gets it
+    /// named on the configure line, by absolute path; one that ships none (every
+    /// in-tree board) clears the value, because a `-D` is a cache entry.
+    #[test]
+    fn a_board_packages_own_cmake_module_reaches_the_configure_line() {
+        let t = root_with_board(None);
+        let d = descriptor(t.path());
+        assert_eq!(
+            board_module_configure_arg(&d, "heapy", Some(t.path())),
+            "-DNROS_BOARD_MODULE=",
+            "no module shipped: empty"
+        );
+        let module = t
+            .path()
+            .join("packages/boards/nros-board-heapy/cmake/nano-ros-board-heapy.cmake");
+        std::fs::create_dir_all(module.parent().unwrap()).unwrap();
+        std::fs::write(&module, "# the board's module\n").unwrap();
+        assert_eq!(
+            board_module_configure_arg(&d, "heapy", Some(t.path())),
+            format!("-DNROS_BOARD_MODULE={}", module.display())
+        );
+        assert_eq!(
+            board_module_configure_arg(&d, "heapy", None),
+            "-DNROS_BOARD_MODULE=",
+            "a relative source with no root to resolve it: never a cwd-relative read"
         );
     }
 

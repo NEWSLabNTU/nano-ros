@@ -104,15 +104,8 @@ if(NOT DEFINED NROS_BOARD)
         "script + startup asm.")
 endif()
 
-set(_nros_threadx_board_module
-    "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
-if(NOT EXISTS "${_nros_threadx_board_module}")
-    message(FATAL_ERROR
-        "nano-ros-threadx: no board overlay at "
-        "${_nros_threadx_board_module}. Add a "
-        "cmake/board/nano-ros-board-${NROS_BOARD}.cmake module or "
-        "pick a supported board (e.g. rv-virt-threadx, threadx-linux).")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBoardModule.cmake")
+nros_board_module_path(_nros_threadx_board_module nano-ros-threadx)
 include("${_nros_threadx_board_module}")
 
 # ---------------------------------------------------------------------------

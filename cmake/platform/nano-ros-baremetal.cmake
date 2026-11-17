@@ -67,9 +67,13 @@ target_compile_definitions(nros_platform_baremetal_iface INTERFACE NROS_PLATFORM
 # the same failure: nros-cpp's heap_string/heap_sequence headers, parsed in a
 # component TU with no `nros_platform_malloc` declaration. The overlay is
 # include-guarded, so including it here and again at link is one include.
-if(DEFINED NROS_BOARD AND NOT NROS_BOARD STREQUAL ""
-   AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
-    include("${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBoardModule.cmake")
+set(_nros_baremetal_board_module "")
+if(DEFINED NROS_BOARD AND NOT NROS_BOARD STREQUAL "")
+    nros_board_module_path(_nros_baremetal_board_module nano-ros-baremetal OPTIONAL)
+endif()
+if(_nros_baremetal_board_module)
+    include("${_nros_baremetal_board_module}")
     if(_NROS_BAREMETAL_BOARD_CAP_DEFINES)
         target_compile_definitions(nros_platform_baremetal_iface
             INTERFACE ${_NROS_BAREMETAL_BOARD_CAP_DEFINES})
@@ -84,14 +88,7 @@ function(nros_platform_link_app target)
             "set(NROS_BOARD mps2-an385-baremetal) — supported boards live "
             "under cmake/board/nano-ros-board-*.cmake).")
     endif()
-    set(_board_module
-        "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
-    if(NOT EXISTS "${_board_module}")
-        message(FATAL_ERROR
-            "nros_platform_link_app: no board module at ${_board_module}. "
-            "Add cmake/board/nano-ros-board-${NROS_BOARD}.cmake or "
-            "pick a supported NROS_BOARD value.")
-    endif()
+    nros_board_module_path(_board_module nros_platform_link_app)
     include("${_board_module}")
     if(NOT COMMAND nros_board_link_app)
         message(FATAL_ERROR

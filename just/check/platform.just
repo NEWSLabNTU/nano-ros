@@ -48,6 +48,17 @@
 arch-profile-resolution:
     @python3 scripts/check-arch-profile-resolution.py
 
+# RFC-0135 D2 (phase-577 W8) -- a board's CMake module has ONE lookup,
+# `nros_board_module_path()` (cmake/NanoRosBoardModule.cmake), so a board
+# package outside nano-ros can ship its own and `nros build` can name it
+# (`-DNROS_BOARD_MODULE`). Five platform files built the in-tree path by hand,
+# which no outside board could satisfy. Refuses a sixth spelling; its selftest
+# runs the lookup in script mode (used, in-tree fallback, outside board refused
+# by name, OPTIONAL empty, missing module refused). Buildless.
+[group('needs:cmake')]
+board-module-path:
+    @bash scripts/check/check-board-module-path.sh
+
 # phase-340 W4 — the artifact-identity budget: how many times one crate is
 # COMPILED, and how many dirs one compilation is written into, for a single
 # workspace at a single feature set. `examples/workspaces/mixed` is the fixture
