@@ -30,16 +30,49 @@ set(_NROS_GTHREADLESS_COMPAT_DIR
     "${CMAKE_CURRENT_LIST_DIR}/../packages/api/nros-cpp/compat/gthreadless"
     CACHE INTERNAL "nros-cpp's <mutex> for a libstdc++ without threads")
 
-# nros_ported_cxx_hosted()
+# nano_ros_hosted_cxx()
 #
-# A MACRO, so it edits CMAKE_CXX_FLAGS in the scope it is called from: a find
-# module's (the caller's directory) or a function's (which then forwards it
-# with PARENT_SCOPE). A no-op when the flag is absent (posix, Zephyr).
-macro(nros_ported_cxx_hosted)
+# The PUBLIC opt-in, and the one implementation: the C++ compiled in the
+# calling directory is hosted, so a library that needs the hosted standard
+# library (Eigen: `<cmath>`, `<vector>`, `<complex>`) compiles there. A user
+# calls it in a node package's CMakeLists, after `find_package(nano_ros)`; the
+# ported roads below call it too, so there is no second spelling of the flag.
+# The book's "Bring your own C++ library" page is its user documentation.
+#
+# A MACRO, so it edits CMAKE_CXX_FLAGS in the scope it is called from: the
+# caller's directory, a find module's (which is the caller's directory), or a
+# function's (which then forwards it with PARENT_SCOPE). CMake reads
+# CMAKE_CXX_FLAGS at the end of the directory, so every C++ target the
+# directory defines is hosted, wherever the call sits in it. Other directories,
+# nano-ros's own included, keep the toolchain's flags (RFC-0096 D1).
+#
+# - A toolchain without `-ffreestanding` (POSIX, Zephyr, NuttX): a no-op.
+# - A freestanding toolchain with the toolchain's libstdc++ (FreeRTOS on
+#   arm-none-eabi): drops the flag and adds the gthreadless `<mutex>`.
+# - A toolchain whose C++ library IS a freestanding shim (`-nostdinc++`,
+#   ThreadX on RISC-V): REFUSED. There is no hosted library to switch to, so
+#   dropping the flag would only move the failure into the first `<vector>`.
+macro(nano_ros_hosted_cxx)
+    if(CMAKE_CXX_FLAGS MATCHES "-nostdinc\\+\\+")
+        message(FATAL_ERROR
+            "nano_ros_hosted_cxx(): this board's C++ library is a freestanding "
+            "shim (the toolchain compiles C++ with -nostdinc++), so there is no "
+            "hosted C++ standard library to build ${CMAKE_CURRENT_SOURCE_DIR} "
+            "against. Keep the library out of this board's image, or use a "
+            "freestanding build of it.")
+    endif()
     if(CMAKE_CXX_FLAGS MATCHES "-ffreestanding")
         string(REPLACE "-ffreestanding" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
         include_directories(BEFORE "${_NROS_GTHREADLESS_COMPAT_DIR}")
     endif()
+endmacro()
+
+# nros_ported_cxx_hosted()
+#
+# The ported roads' name for the same switch (phase-518), kept so the find
+# modules and `ROS2_MAIN` read as what they are.
+macro(nros_ported_cxx_hosted)
+    nano_ros_hosted_cxx()
 endmacro()
 
 # nros_ported_ament_package()

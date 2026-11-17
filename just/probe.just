@@ -350,6 +350,12 @@ install-offline: (platform "install-offline")
 [group("main")]
 install-ros: (platform "install-ros")
 
+# Bring your own C++ library: Eigen in a FreeRTOS mps2-an385 C++ talker,
+# through nano_ros_hosted_cxx() and Eigen3_ROOT (issue 2646). It fails up
+# front naming the Eigen install prefix the probe image lacks.
+[group("main")]
+own-library: (platform "own-library")
+
 # The same page with `nros flash` onto an attached Nucleo-F767ZI; it fails up
 # front naming the board it awaits (phase-537 W9).
 [group("main")]

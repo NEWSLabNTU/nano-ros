@@ -1831,3 +1831,10 @@ action = "new phase-568"
 batch = "phase-568-w2"
 note = "Build arguments (phase-568 W2a/W2b/W3a): where a CMake or cargo argument can be stated, how a value is read, the order, and what is refused and where it goes instead"
 sidebar_group = "config"
+
+[[page]]
+book = "user"
+path = "guide/build/bring-your-own-cpp-library.md"
+action = "new issue-2646"
+batch = "issue-2646"
+note = "Bring your own C++ library (issue 2646's documentation gap): find and link a library nano-ros does not ship, from a prefix you own or vendored in the package, with nano_ros_hosted_cxx() on a freestanding board"

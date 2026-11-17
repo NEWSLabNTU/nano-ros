@@ -1371,6 +1371,8 @@ mod tests {
             "starters/nuttx-riscv.md",
             "starters/threadx-riscv64.md",
             "starters/nucleo-f767zi.md",
+            // Issue 2646: the own-library page boots its Eigen talker the same way.
+            "guide/build/bring-your-own-cpp-library.md",
         ] {
             let chapter = path.rsplit('/').next().unwrap();
             let text = std::fs::read_to_string(root.join("book/src").join(path))
