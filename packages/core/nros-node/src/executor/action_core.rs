@@ -178,6 +178,28 @@ pub struct CompletedResultEntry {
     pub delivered: bool,
 }
 
+/// One goal a `CancelGoal` request selected: what its handler is asked
+/// about, copied out of `active_goals` (see
+/// [`ActionServerCore::recv_cancel`]).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CancelRow {
+    pub(crate) goal_id: GoalUuid,
+    pub(crate) status: GoalStatusCode,
+    stamp: Time,
+}
+
+/// A received `CancelGoal` request, selected but not yet answered: the
+/// handle between [`ActionServerCore::recv_cancel`] and
+/// [`ActionServerCore::reply_cancel`].
+pub(crate) struct CancelSelection<const MAX_GOALS: usize> {
+    /// The goal id the request named (zero for the cancel-all forms).
+    pub(crate) goal_id: GoalUuid,
+    sequence_number: i64,
+    early: Option<nros_core::CancelResponseCode>,
+    /// Selected goals, in `active_goals` order at selection time.
+    pub(crate) rows: [Option<CancelRow>; MAX_GOALS],
+}
+
 /// Information about a peeked cancel-goal
 /// request. Returned by
 /// [`ActionServerCore::try_recv_cancel_request`](crate::executor::ffi::ActionServerCoreFfi::try_recv_cancel_request).
@@ -1039,9 +1061,33 @@ impl<
         &mut self,
         mut cancel_handler: impl FnMut(&GoalUuid, GoalStatusCode) -> nros_core::CancelResponse,
     ) -> Result<Option<(GoalUuid, nros_core::CancelResponse)>, NodeError> {
-        // (issue 0796) the handler answers about ONE goal; the reply below
-        // carries the RPC-level return code. They are different types with
-        // overlapping discriminants, so the translation is explicit.
+        let Some(selection) = self.recv_cancel()? else {
+            return Ok(None);
+        };
+        // (issue 0796) the handler answers about ONE goal; `reply_cancel`
+        // carries the RPC-level return code.
+        let mut accepted = [false; MAX_GOALS];
+        for (slot, row) in accepted.iter_mut().zip(&selection.rows) {
+            if let Some(row) = row {
+                *slot =
+                    cancel_handler(&row.goal_id, row.status) == nros_core::CancelResponse::Accept;
+            }
+        }
+        let response = self.reply_cancel(&selection, &accepted)?;
+        Ok(Some((selection.goal_id, response)))
+    }
+
+    /// The first half of [`try_handle_cancel`](Self::try_handle_cancel): take
+    /// one pending `CancelGoal` request and select the goals it names, without
+    /// asking anyone about them.
+    ///
+    /// The selection is a COPY of what the handler needs (id, status,
+    /// acceptance stamp per goal), so the caller asks its handler with no
+    /// borrow of this core held. A C handler may complete the goal it is
+    /// asked about, which removes it from `active_goals` and moves the goals
+    /// behind it; a handler asked from inside a loop over that array would
+    /// have its answers applied to the wrong goals (phase-573 W2b).
+    pub(crate) fn recv_cancel(&mut self) -> Result<Option<CancelSelection<MAX_GOALS>>, NodeError> {
         let buf_start = self.cancel_buffer.as_ptr() as usize;
         // Phase 120: NoData == steady-state idle; map to Ok(None).
         let request = match self
@@ -1076,26 +1122,60 @@ impl<
         let request_stamp = Time::new(stamp_sec, stamp_nanosec);
 
         let (selected, early) = self.select_cancel_goals(&goal_id, request_stamp);
-
-        // Ask the handler per selected goal; keep the ones it accepts.
-        let mut canceling = [false; MAX_GOALS];
-        let mut any = false;
-        for (i, goal) in self.active_goals.iter().enumerate() {
-            if !selected[i] {
-                continue;
-            }
-            if cancel_handler(&goal.goal_id, goal.status) == nros_core::CancelResponse::Accept {
-                canceling[i] = true;
-                any = true;
+        let mut rows = [None; MAX_GOALS];
+        for ((row, goal), picked) in rows.iter_mut().zip(&self.active_goals).zip(selected) {
+            if picked {
+                *row = Some(CancelRow {
+                    goal_id: goal.goal_id,
+                    status: goal.status,
+                    stamp: goal.stamp,
+                });
             }
         }
-        for (i, goal) in self.active_goals.iter_mut().enumerate() {
-            if canceling[i] {
+        Ok(Some(CancelSelection {
+            goal_id,
+            sequence_number,
+            early,
+            rows,
+        }))
+    }
+
+    /// The second half of [`try_handle_cancel`](Self::try_handle_cancel):
+    /// answer a [`recv_cancel`](Self::recv_cancel) selection. `accepted[i]`
+    /// is the handler's answer for `selection.rows[i]`.
+    ///
+    /// Goals are found again BY ID, never by position, because the handler
+    /// may have changed `active_goals`. An accepted goal still `Accepted` or
+    /// `Executing` moves to `Canceling`; one the handler already finished
+    /// keeps its terminal status. Either way it is listed in the reply's
+    /// `goals_canceling`, with the acceptance stamp it had when selected.
+    pub(crate) fn reply_cancel(
+        &mut self,
+        selection: &CancelSelection<MAX_GOALS>,
+        accepted: &[bool; MAX_GOALS],
+    ) -> Result<nros_core::CancelResponse, NodeError> {
+        let canceling = || {
+            selection
+                .rows
+                .iter()
+                .zip(accepted)
+                .filter_map(|(row, yes)| row.filter(|_| *yes))
+        };
+        let mut any = false;
+        for row in canceling() {
+            any = true;
+            if let Some(goal) = self.active_goals.iter_mut().find(|g| {
+                g.goal_id.uuid == row.goal_id.uuid
+                    && matches!(
+                        g.status,
+                        GoalStatusCode::Accepted | GoalStatusCode::Executing
+                    )
+            }) {
                 goal.status = GoalStatusCode::Canceling;
             }
         }
 
-        let return_code = match early {
+        let return_code = match selection.early {
             Some(code) => code,
             None if any => nros_core::CancelResponseCode::Ok,
             None => nros_core::CancelResponseCode::Rejected,
@@ -1107,38 +1187,34 @@ impl<
         writer
             .write_i8(return_code as i8)
             .map_err(|_| NodeError::Serialization)?;
-        let count = canceling.iter().filter(|c| **c).count() as u32;
+        let count = canceling().count() as u32;
         writer
             .write_u32(count)
             .map_err(|_| NodeError::Serialization)?;
-        for (i, goal) in self.active_goals.iter().enumerate() {
-            if !canceling[i] {
-                continue;
-            }
-            write_goal_id(&mut writer, &goal.goal_id)?;
+        for row in canceling() {
+            write_goal_id(&mut writer, &row.goal_id)?;
             writer
-                .write_i32(goal.stamp.sec)
+                .write_i32(row.stamp.sec)
                 .map_err(|_| NodeError::Serialization)?;
             writer
-                .write_u32(goal.stamp.nanosec)
+                .write_u32(row.stamp.nanosec)
                 .map_err(|_| NodeError::Serialization)?;
         }
         let reply_len = writer.position();
 
         self.cancel_goal_server
-            .send_response(sequence_number, &self.goal_buffer[..reply_len])
+            .send_response(selection.sequence_number, &self.goal_buffer[..reply_len])
             .map_err(|_| NodeError::ServiceReplyFailed)?;
 
         if any {
             let _ = self.publish_status_array();
         }
 
-        let response = if any {
+        Ok(if any {
             nros_core::CancelResponse::Accept
         } else {
             nros_core::CancelResponse::Reject
-        };
-        Ok(Some((goal_id, response)))
+        })
     }
 
     /// Issue 2029 — which active goals a `CancelGoal` request selects, and the
