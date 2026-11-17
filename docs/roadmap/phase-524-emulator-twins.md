@@ -907,6 +907,25 @@ same commit the date lands.
   sentence; the twin track stays. A bench pass with a twin fail does not exist
   under RFC-0115 D4 (the board would not be in the book).
 
+### W6 — The SDK index's `platform` field says what it means
+
+- **Owner:** nros 241.
+- **Status:** OPEN
+
+User ruling, 2026-11-17 (issue 2539, question 3). `[board.fvp-aemv8r-smp]` in
+`nros-sdk-index.toml` says `platform = "bare-metal"`, while the board is a
+Zephyr board (`packages/boards/nros-board-zephyr/boards/fvp-aemv8r-smp/`).
+Measured: the row installs only `arm-fvp`, the simulator, which no single OS
+owns. So for that row the field means "what to install", not "which OS",
+and the name misleads anyone who reads it as the board's platform.
+
+- **Do:** rename the field, or split it into two, so its meaning is plain.
+  Then update every reader of the index (`nros-pkg-index`, the Python readers
+  in `scripts/lib/`, and the gates that read it).
+- **Acceptance:** no `[board.*]` row's `platform` contradicts the board
+  package it provisions, and a reader that meets the old key name refuses it
+  with a message naming the new one.
+
 ## Issues homed here (2026-11-02)
 
 | issue | work item | why it belongs here |

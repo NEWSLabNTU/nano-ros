@@ -546,7 +546,7 @@ decision brief as written:
   in the index vs the board being a Zephyr board. Measured: the row installs
   only `arm-fvp`, the simulator, which no single OS owns, so the field means
   "what to install". **Rename the field (or split it) so the meaning is
-  plain.** It has no work item yet.
+  plain.** The work is phase-524 W6.
 - **[ANSWERED]** Should there be an `integrations/generic-cmake/` shell?
   **No, not until an RTOS is waiting for one.** There are five shells today
   (FreeRTOS, NuttX, PlatformIO, PX4, S32DS).
