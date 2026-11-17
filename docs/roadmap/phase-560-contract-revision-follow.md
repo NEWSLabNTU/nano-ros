@@ -3,7 +3,7 @@
 **Status (2026-11-13). W1-W5 DONE** (rlm v0.3.15, play_launch v0.32.0,
 #3745); W6 and W7 BLOCKED on releases not yet tagged; W8 DONE (every level
 charged since #3758); W9 (the CAN frame driver, RFC-0132) OPEN, RFC accepted
-2026-11-17. nano-ros's
+2026-11-17, W9.a DONE. nano-ros's
 share of two play_launch phases: phase 103 (defects the contract grammar review found in shipped
 behaviour) and phase 104 (the grammar revision itself). The design of
 record is rlm `docs/design/grammar-revision/` (an overview and one file per
@@ -154,7 +154,8 @@ Issue 2633 (GitHub #4012), consumer ASI; the portable layer under issue 2573's
 FlexCAN helper. The items land in this order, each in its own pull request,
 and each states its acceptance before it lands.
 
-- **W9.a -- The header, the bindings, the mock.**
+- **W9.a -- The header, the bindings, the mock.** DONE (2026-11-17): the mock's
+  handle state measures 8 bytes (alignment 4) against 128.
   `packages/platform/nros-platform-api/include/nros/platform_can.h` (RFC-0132
   D2), added to `scripts/gen-abi-bindings.sh`'s platform wrapper with the
   regenerated `nros-platform-cffi/src/generated.rs` committed; the

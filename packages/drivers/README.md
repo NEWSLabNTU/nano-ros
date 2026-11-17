@@ -14,6 +14,7 @@ pointed at RFC-0012 for a "category split" that RFC-0012 does not define. So
 | `net/` | MAC/PHY drivers and the network-stack adapters they feed | `lan9118-smoltcp`, `openeth-smoltcp`, `lan9118-lwip` (C), `virtio-net-netx` (C), `nros-smoltcp`, `nsos-netx` (C) |
 | `serial/` | UART peripherals | `cmsdk-uart`, `stm32f4-usart` |
 | `ipc/` | Inter-processor channels | `nvidia-ivc` |
+| `can/` | CAN frame driver backends that are crates (RFC-0132) | `nros-can-mock` (host-only) |
 | `sys/` | `-sys` FFI bindings to a KERNEL or vendor stack — not to hardware | *(none — see below)* |
 
 `sys/` is its own category on purpose: those crates bind a kernel or a vendored

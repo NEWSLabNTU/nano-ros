@@ -141,6 +141,8 @@ members = [
     # an empty stub; `unix-mock` for host CI, `fsp` to link against
     # NVIDIA's `tegra_aon_fsp.a` (requires `NV_SPE_FSP_DIR`).
     "packages/drivers/ipc/nvidia-ivc",
+    # RFC-0132 -- the CAN frame driver's host-only mock backend.
+    "packages/drivers/can/nros-can-mock",
     # The core pre-generated ROS 2 interface set — ONE output tree, SIX crates,
     # one per ament package (phase-465, RFC-0067 §D5). Checked into git because
     # core crates need these messages before any codegen runs, and because cargo

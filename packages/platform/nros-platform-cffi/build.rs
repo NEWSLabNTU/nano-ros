@@ -29,6 +29,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../nros-platform-api/include/nros/platform.h");
     println!("cargo:rerun-if-changed=../nros-platform-api/include/nros/platform_net.h");
     println!("cargo:rerun-if-changed=../nros-platform-api/include/nros/platform_timer.h");
+    println!("cargo:rerun-if-changed=../nros-platform-api/include/nros/platform_can.h");
     println!("cargo:rerun-if-changed=../nros-platform-posix/src/platform.c");
     println!("cargo:rerun-if-changed=../nros-platform-posix/src/net.c");
     println!("cargo:rerun-if-changed=../nros-platform-posix/src/timer.c");

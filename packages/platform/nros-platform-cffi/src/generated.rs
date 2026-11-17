@@ -36,6 +36,25 @@ pub struct nros_platform_task_attr_t {
     #[doc = " `NROS_PLATFORM_TASK_*` flags below."]
     pub flags: u8,
 }
+#[doc = " One CAN or CAN FD frame. `len` is the payload in BYTES, never a DLC: the\n  backend maps bytes to the wire DLC, and a length that is not a valid size\n  is refused, never padded (padding is payload layout, the application's)."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_platform_can_frame_t {
+    #[doc = " 11- or 29-bit identifier, per `NROS_PLATFORM_CAN_FLAG_EXT`."]
+    pub id: u32,
+    #[doc = " `NROS_PLATFORM_CAN_FLAG_*` / `NROS_PLATFORM_CAN_SEND_WAIT_TX`."]
+    pub flags: u8,
+    #[doc = " Payload bytes: 0..8 classic; 0..8, 12, 16, 20, 24, 32, 48, 64 FD."]
+    pub len: u8,
+    #[doc = " Payload; bytes past `len` are ignored on send and unspecified on recv."]
+    pub data: [u8; 64usize],
+}
+#[doc = " A CAN handle: caller storage, the backend's state lives inside it."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct nros_platform_can_t {
+    pub opaque: [u64; 16usize],
+}
 pub const NROS_PLATFORM_RET_OK: i32 = 0;
 pub const NROS_PLATFORM_RET_ERROR: i32 = -1;
 pub const NROS_PLATFORM_RET_UNSUPPORTED: i32 = -5;
@@ -54,6 +73,25 @@ pub const NROS_PLATFORM_STORAGE_ALIGN: i32 = 8;
 pub const NROS_PLATFORM_PARK_SIGNALLED: i32 = 0;
 pub const NROS_PLATFORM_PARK_EXPIRED: i32 = 1;
 pub const NROS_PLATFORM_PARK_YIELDED: i32 = 2;
+pub const NROS_PLATFORM_CAN_FLAG_EXT: i32 = 1;
+pub const NROS_PLATFORM_CAN_FLAG_FD: i32 = 2;
+pub const NROS_PLATFORM_CAN_FLAG_BRS: i32 = 4;
+pub const NROS_PLATFORM_CAN_SEND_WAIT_TX: i32 = 128;
+pub const NROS_PLATFORM_CAN_FLAGS_KNOWN: i32 = 135;
+pub const NROS_PLATFORM_CAN_STD_ID_MAX: i32 = 2047;
+pub const NROS_PLATFORM_CAN_EXT_ID_MAX: i32 = 536870911;
+pub const NROS_PLATFORM_CAN_CLASSIC_MAX_LEN: i32 = 8;
+pub const NROS_PLATFORM_CAN_FD_MAX_LEN: i32 = 64;
+pub const NROS_PLATFORM_CAN_OK: i32 = 0;
+pub const NROS_PLATFORM_CAN_EINVAL: i32 = -1;
+pub const NROS_PLATFORM_CAN_ENOTOPEN: i32 = -2;
+pub const NROS_PLATFORM_CAN_ENOFD: i32 = -3;
+pub const NROS_PLATFORM_CAN_EAGAIN: i32 = -4;
+pub const NROS_PLATFORM_CAN_EBUSOFF: i32 = -5;
+pub const NROS_PLATFORM_CAN_ENOTSUP: i32 = -6;
+pub const NROS_PLATFORM_CAN_ENODEV: i32 = -7;
+pub const NROS_PLATFORM_CAN_EIO: i32 = -8;
+pub const NROS_PLATFORM_CAN_OPAQUE_U64S: i32 = 16;
 unsafe extern "C" {
     #[doc = " Monotonic nanoseconds since a platform-defined epoch (boot, program\n  start, …). Never decreases. Wraps after ~584 years.\n\n  Must be backed by a hardware counter or the OS tick — never by a\n  software counter that only advances when polled.\n\n  Available immediately after platform init, before any other nros\n  subsystem. SHOULD be callable from an ISR; a port whose clock is not\n  ISR-safe must say so in its port documentation.\n\n  RFC-0073: this replaced the former `clock_ms` / `clock_us` pair. Ports\n  that can convert without a runtime division should — where the counter\n  frequency divides 1e9 (25/50/100/125/200/250 MHz) a compile-time\n  ns-per-cycle multiply is ~2.5x cheaper than the divide it replaces."]
     pub fn nros_platform_clock_ns() -> u64;
@@ -559,4 +597,36 @@ unsafe extern "C" {
 unsafe extern "C" {
     #[doc = " Cancel a previously-armed timer. Returns:\n\n   - 1 if cancellation prevented the callback from firing,\n   - 0 if the callback already fired (or the timer was already\n     cancelled / destroyed),\n   - -1 on unrecoverable error.\n\n  Distinct from `destroy` — the handle remains valid after\n  `cancel` and may be re-armed by the application's own\n  bookkeeping if the implementation supports it."]
     pub fn nros_platform_timer_cancel(handle: *mut core::ffi::c_void) -> i8;
+}
+unsafe extern "C" {
+    #[doc = " Open `device` into the caller's handle storage. `device` NULL opens the\n  image's device (the one its board stack names); a non-NULL name opens that\n  device instead. `want_fd` non-zero asks for CAN FD and fails with\n  `NROS_PLATFORM_CAN_ENOFD` when the device does not carry it, so an image\n  learns at open rather than at its first FD send."]
+    pub fn nros_platform_can_open(
+        can: *mut nros_platform_can_t,
+        device: *const core::ffi::c_char,
+        want_fd: u8,
+    ) -> i8;
+}
+unsafe extern "C" {
+    #[doc = " Send one frame, waiting at most `timeout_us` for the controller to take\n  it (`0`: do not wait). See the file comment for what `0` means."]
+    pub fn nros_platform_can_send(
+        can: *mut nros_platform_can_t,
+        frame: *const nros_platform_can_frame_t,
+        timeout_us: u32,
+    ) -> i8;
+}
+unsafe extern "C" {
+    #[doc = " Non-zero when the handle was opened with `want_fd` and the device carries\n  CAN FD; zero otherwise, a closed handle included."]
+    pub fn nros_platform_can_fd_active(can: *const nros_platform_can_t) -> u8;
+}
+unsafe extern "C" {
+    #[doc = " Receive one frame, waiting at most `timeout_us` (`0`: poll).\n  `NROS_PLATFORM_CAN_EAGAIN` when nothing arrived; `NROS_PLATFORM_CAN_ENOTSUP`\n  on a backend without receive."]
+    pub fn nros_platform_can_recv(
+        can: *mut nros_platform_can_t,
+        frame: *mut nros_platform_can_frame_t,
+        timeout_us: u32,
+    ) -> i8;
+}
+unsafe extern "C" {
+    #[doc = " Close the handle. Idempotent; a closed or never-opened handle is a no-op."]
+    pub fn nros_platform_can_close(can: *mut nros_platform_can_t);
 }

@@ -1,0 +1,29 @@
+[package]
+name = "nros-can-mock"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Host-only mock backend for the nros platform CAN frame driver (RFC-0132): records sent frames, replays queued ones"
+
+# RFC-0132 D5 -- the mock never reaches hardware. Host-only, so the embedded
+# workspace lanes leave it out (scripts/build/host-only-members.sh), and its
+# lib.rs refuses a `target_os = "none"` build that reached it by any path.
+[package.metadata.nros]
+host-only = true
+host-only-reason = "the CAN frame driver's mock, legal only on host-process boards (RFC-0132 D5)"
+
+# Gated like nros-board-linux's: under a bare-metal target the crate is the
+# compile_error and nothing else, so it pulls no deps into that build.
+[target.'cfg(not(any(target_os = "none", target_os = "nuttx")))'.dependencies]
+nros-platform-api = { version = "0.6.0", path = "../../../platform/nros-platform-api" }
+nros-platform-cffi = { version = "0.6.0", path = "../../../platform/nros-platform-cffi" }
+
+[build-dependencies]
+# The frame check is the header's `static inline`, compiled into a one-line
+# shim so the mock refuses exactly the frames every C backend refuses.
+cc = "1"
+nros-cc-flags = { path = "../../../tooling/nros-cc-flags" }
+
+[lints]
+workspace = true

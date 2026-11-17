@@ -295,6 +295,7 @@ cat > "$plat_wrapper" << 'EOF2'
 #include <nros/platform.h>
 #include <nros/platform_net.h>
 #include <nros/platform_timer.h>
+#include <nros/platform_can.h>
 EOF2
 
 {

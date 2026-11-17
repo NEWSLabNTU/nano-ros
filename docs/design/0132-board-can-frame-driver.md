@@ -193,6 +193,13 @@ that class:
   receive `k_msgq` pointer and flags, on 64-bit `native_sim`). W9.a records the
   measured `sizeof` of each backend's state beside the constant.
 
+  Measured (x86_64), kept beside the constant in `platform_can.h` as each
+  backend lands:
+
+  | Backend | State | `sizeof` | `_Alignof` | Recorded by |
+  | --- | --- | --- | --- | --- |
+  | `mock` | `HandleState` (`magic: u32`, `fd_active: u8`) | 8 | 4 | W9.a |
+
 ### D3 -- Backends
 
 | Backend | Boards | Device is | Lives in |
@@ -386,6 +393,14 @@ because its image is the binary that gets flashed.
 
 ## Changelog
 
+- 2026-11-17 -- W9.a landed: the header, the bindings, the mock. Two codes
+  beyond D2's list, both for `open`: `NROS_PLATFORM_CAN_ENODEV` (the device
+  does not exist or is not ready) and `NROS_PLATFORM_CAN_EIO` (any other
+  backend failure). The frame check is one `static inline` in the header
+  (`nros_platform_can_frame_check`) that every backend applies; the Rust mock
+  calls it through a compiled shim rather than restating it. An open handle
+  must not move (a backend may keep a kernel object in it), so the Rust
+  wrapper borrows its storage.
 - 2026-11-17 -- accepted by the maintainer as revised, strict mock rule
   included; phase-560 W9 opens.
 - 2026-11-17 -- revised after review: the header is authored and the Rust side
