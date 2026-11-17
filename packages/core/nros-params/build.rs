@@ -108,18 +108,24 @@ fn main() {
         256,
     );
     // phase-446 F2 -- a DESCRIPTION's capacity, its own knob. The contract
-    // declares no descriptions (they are code-supplied text), so nothing here
-    // is derived: a board states it, and 0 is a legitimate statement meaning
+    // declares no descriptions (they are code-supplied text), so the contract
+    // derives nothing here: a board states it, and 0 is a legitimate statement meaning
     // "no descriptions". It used to be MAX_STRING_VALUE_LEN, which the
     // contract derives to 0 for an image with no string parameter -- so such
     // an image had no room for any description. The default keeps the old
     // effective 256, which is also the most the describe reply can carry
     // (`rcl_interfaces` strings are 256 bytes; nros-node refuses a larger
     // value at compile time).
+    //
+    // Issue 2650 -- unless the probe watched it. The descriptor's
+    // `[params] max_param_description_len` is stated only when every launched
+    // node's code ran under a probe that watched its descriptions, and is the
+    // longest one seen (floored, never 0). Below every stated rung, like the
+    // contract's facts; refused or absent, the default stands.
     let max_param_description_len = knob(
         "NROS_MAX_PARAM_DESCRIPTION_LEN",
         rungs.max_param_description_len,
-        None,
+        contract(params.map(|p| p.max_param_description_len()), None),
         256,
     );
 

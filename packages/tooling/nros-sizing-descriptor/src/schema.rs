@@ -1344,6 +1344,7 @@ pub struct Params {
     needs_max_byte_array_len: Option<CapacityNeed>,
     service_shape: Option<String>,
     store: Option<ParamStore>,
+    max_param_description_len: Option<usize>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -1359,6 +1360,7 @@ impl Params {
         "needs_max_byte_array_len",
         "service_shape",
         "store",
+        "max_param_description_len",
     ];
 
     /// Parameters the contract declares, across EVERY node in the image.
@@ -1384,6 +1386,26 @@ impl Params {
     /// a real slot and is why the two numbers are not the same.
     pub fn max_parameters(&self) -> Fact<usize> {
         fact(&self.max_parameters, "max_parameters", &self.refused)
+    }
+
+    /// `NROS_MAX_PARAM_DESCRIPTION_LEN` — the room each store slot keeps for
+    /// a descriptor's `description`, in BYTES (issue 2650).
+    ///
+    /// Not a contract fact: a `params:` row states a type and no prose. It
+    /// comes from the metadata probe, which watched every launched node's
+    /// code set its descriptions, so it is stated only when that watch was
+    /// COMPLETE (every launched node has one fresh sidecar that watched).
+    /// Then it is the longest description seen, floored above zero and
+    /// capped at the 256 bytes a describe reply carries. A watch that missed a
+    /// node refuses, an image nobody probed leaves it absent, and either way
+    /// the consumer keeps its default: a missed description must never be
+    /// sized short.
+    pub fn max_param_description_len(&self) -> Fact<usize> {
+        fact(
+            &self.max_param_description_len,
+            "max_param_description_len",
+            &self.refused,
+        )
     }
 
     /// `NROS_MAX_PARAM_NAME_LEN` — the longest declared name, in BYTES.
@@ -1526,6 +1548,10 @@ impl Params {
         self.store = v;
         self
     }
+    pub fn set_max_param_description_len(&mut self, v: Option<usize>) -> &mut Self {
+        self.max_param_description_len = v;
+        self
+    }
 
     /// Record that `field` could not be derived, and why.
     pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
@@ -1556,6 +1582,7 @@ impl Params {
             "needs_max_byte_array_len" => quoted(&self.needs_max_byte_array_len.as_ref()?.token()),
             "service_shape" => quoted(self.service_shape.as_ref()?),
             "store" => quoted(self.store?.tag()),
+            "max_param_description_len" => self.max_param_description_len?.to_string(),
             _ => return None,
         })
     }
@@ -1584,6 +1611,10 @@ impl Params {
                 ),
                 ("service_shape", self.service_shape.is_some()),
                 ("store", self.store.is_some()),
+                (
+                    "max_param_description_len",
+                    self.max_param_description_len.is_some(),
+                ),
             ],
         )
     }
