@@ -778,6 +778,30 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             crate::orchestration::image_net::write(&dir.join("build"), id, n)
                 .map_err(|e| eyre!("{e}"))?;
         }
+        // Issue 2679 -- a Zephyr leaf's board network file, rendered into
+        // `NET_CONFIG_*` and appended LAST to `NROS_LEAF_CONF` (after the
+        // board's and the leaf's own fragments), the order `nros build` gives
+        // a workspace image. A bringup answers no `conf` here (`nros build`
+        // passes it), so nor this.
+        if let (Some(n), leaf_system::Origin::SystemToml(_)) = (&net, &leaf.origin)
+            && board_applies
+            && descriptor.platform == crate::orchestration::board_descriptor::PlatformKind::Zephyr
+        {
+            let id = leaf.image.as_deref().unwrap_or("default");
+            let own = leaf_conf_paths(&leaf).map_err(|e| eyre!(e))?;
+            let path = crate::cmd::build::zephyr_net_fragment(
+                descriptor,
+                &board,
+                root.as_deref(),
+                id,
+                n,
+                &own,
+                &leaf.os_config,
+                &dir.join("build"),
+            )
+            .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?;
+            conf.push(path);
+        }
         net.map(|n| n.text())
     };
     for (k, v) in rows(

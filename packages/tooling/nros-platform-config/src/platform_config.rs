@@ -3568,6 +3568,10 @@ impl BoardNet {
     /// network, or an RTOS fragment (`prj.conf`, a devicetree overlay) where
     /// the host OS or the board package does. A board that states no `stack`
     /// is not checked.
+    ///
+    /// Issue 2679 -- an `"os"` board that declares its interface (a Zephyr
+    /// board's `[board.net] interfaces`) takes a board network file too:
+    /// `nros build` renders it into the RTOS's own configuration.
     pub fn check_os_config(&self, files: &[String]) -> Result<(), String> {
         let Some(owner) = self.stack_owner()? else {
             return Ok(());
@@ -3576,13 +3580,15 @@ impl BoardNet {
             let board_file = f.ends_with(".toml");
             let refusal = match (owner, board_file) {
                 (StackOwner::Board, true) | (StackOwner::Os, false) => continue,
+                (StackOwner::Os, true) if !self.interfaces.is_empty() => continue,
                 (StackOwner::Host, true) => {
                     "the host operating system owns this board's network (`[board.net] stack = \
                      \"host\"`): configure the interface there, and state only the locator"
                 }
                 (StackOwner::Os, true) => {
-                    "this board's RTOS owns its network (`[board.net] stack = \"os\"`): state \
-                     the address in its own configuration (Kconfig / devicetree / defconfig), \
+                    "this board's RTOS owns its network (`[board.net] stack = \"os\"`) and the \
+                     board declares no interface yet (`[board.net] interfaces`): state the \
+                     address in its own configuration (Kconfig / devicetree / defconfig), \
                      named in `os_config` as such a file"
                 }
                 (StackOwner::Host | StackOwner::Board, false) => {
@@ -3637,12 +3643,12 @@ impl BoardNet {
         }
         if self.interfaces.is_empty() {
             return Err(format!(
-                // RFC-0103 D10c
+                // RFC-0103 D10c; the Zephyr half is issue 2679.
                 "this board declares no network interfaces (`[board.net] interfaces`), so \
                  nothing on it would take `[image.<id>.net.{name}]` — the address would be \
-                 dropped. A board that brings its own stack states its interfaces; \
-                 a board configured another way (Zephyr's Kconfig) is not \
-                 addressed through system.toml yet"
+                 dropped. A board that brings its own stack states its interfaces, \
+                 and a Zephyr board takes a board network file once it declares its \
+                 interface; this one declares none yet"
             ));
         }
         let Some(decl) = self.interfaces.get(name) else {
@@ -4095,8 +4101,16 @@ mod tests {
         net("os")
             .check_os_config(&files(&["prj-zenoh.conf", "app.overlay"]))
             .unwrap();
+        // Issue 2679 -- an "os" board that declares its interface (a Zephyr
+        // board) takes a board network file, rendered into its Kconfig.
+        BoardNet {
+            interfaces: [("eth0".to_string(), InterfaceDecl::Kind("ethernet".into()))].into(),
+            ..net("os")
+        }
+        .check_os_config(&files(&["net.toml", "prj-zenoh.conf"]))
+        .unwrap();
         for (stack, f, want) in [
-            ("os", "board-net.toml", "RTOS owns its network"),
+            ("os", "board-net.toml", "declares no interface yet"),
             ("host", "board-net.toml", "host operating system owns"),
             ("board", "prj.conf", "RTOS configuration fragment"),
             ("host", "prj.conf", "RTOS configuration fragment"),

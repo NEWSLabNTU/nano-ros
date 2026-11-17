@@ -91,8 +91,33 @@ Refused, naming the image: an address outside its subnet or equal to the
 gateway; a network no file defines; two images with one static address or MAC
 on a network other than `qemu`; two files defining one network differently; a
 board network file on a board whose network belongs to the host OS (`linux`,
-`freertos-posix`, `threadx-linux`) or that declares no interfaces (Zephyr
-boards take their address from Kconfig).
+`freertos-posix`, `threadx-linux`) or that declares no interfaces; an image on
+a network other than `qemu` with no `locator`, when its RMW's descriptor states
+a host peer (`[rmw.host] peer` other than `"none"`: zenoh, XRCE-DDS). A
+Cyclone DDS image has no router to name and is not refused.
+
+### On a Zephyr board
+
+A Zephyr board takes a board network file once its `[board.net]` declares its
+interface (`fvp-aemv8r-smp` and `mps2-an385-zephyr` do). `nros build` renders
+the resolved interface into Zephyr's own Kconfig,
+`build/nros/net/<image>.conf`, appended last to `EXTRA_CONF_FILE`:
+
+| Resolved | Rendered |
+| --- | --- |
+| any address | `CONFIG_NET_CONFIG_SETTINGS=y`, `CONFIG_NET_CONFIG_AUTO_INIT=y`, `CONFIG_NET_CONFIG_NEED_IPV4=y` |
+| a static address (`address` or `host`) | `CONFIG_NET_DHCPV4=n`, `CONFIG_NET_CONFIG_MY_IPV4_ADDR`, `CONFIG_NET_CONFIG_MY_IPV4_NETMASK` from the subnet |
+| a network `gateway` | `CONFIG_NET_CONFIG_MY_IPV4_GW` |
+| `address = "dhcp"` | `CONFIG_NET_DHCPV4=y`, `CONFIG_NET_CONFIG_MY_IPV4_ADDR=""` |
+
+Zephyr configures the first auto-started interface at boot and, on a lease,
+waits for it (up to `CONFIG_NET_CONFIG_INIT_TIMEOUT`) before the application
+starts. Refused: a board or file with a second interface (Zephyr's
+`NET_CONFIG` configures one; configure another in the application), a stated
+`mac` (the driver takes it from devicetree or generates one), and an
+`os_config` fragment that sets a rendered symbol, naming the fragment, the
+symbol, both values and the board network file. A symbol the file does not
+render, such as `CONFIG_NET_DHCPV4_INITIAL_DELAY_MAX`, stays the fragment's.
 
 ## `[image.<id>.run]`, `.flash` and `.console`
 
