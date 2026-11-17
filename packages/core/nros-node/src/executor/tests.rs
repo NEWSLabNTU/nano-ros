@@ -20358,3 +20358,222 @@ fn an_executor_sized_past_64_callbacks_refuses_the_65th() {
         .collect();
     assert!(never.is_empty(), "timers that never fired: {never:?}");
 }
+
+/// Phase-573 W2b, issue 2675 — a typed service client whose reply callback
+/// sends the NEXT request on the same client: the ordinary request chain,
+/// written with nothing but the safe API. `ServiceClientCallback::call`
+/// writes the entry's send header (`handle`, `sequences`, `pending`) while
+/// the executor is still dispatching that entry's reply.
+mod reentry_service_client {
+    use super::*;
+    use crate::executor::arena::ServiceClientSendHeader;
+    use alloc::rc::Rc;
+    use core::cell::{Cell, RefCell};
+
+    type Hdr = ServiceClientSendHeader<{ crate::config::DEFAULT_RX_BUF_SIZE }>;
+
+    fn reply_bytes(sum: i32) -> ([u8; 256], usize) {
+        let mut buf = [0u8; 256];
+        let mut writer = CdrWriter::new_with_header(&mut buf).unwrap();
+        writer.write_i32(sum).unwrap();
+        let len = writer.position();
+        (buf, len)
+    }
+
+    #[test]
+    fn a_reply_callback_that_sends_the_next_request_reenters_soundly() {
+        let mut boxed = Box::new(executor_with_clock(MockSession::new()));
+        let nid = boxed.node_builder("chain").build().unwrap();
+
+        // Safe user code: the callback reaches its own client through a
+        // shared cell, set once the client exists.
+        let client: Rc<RefCell<Option<crate::executor::ServiceClientCallback<TestService>>>> =
+            Rc::default();
+        let replies = Rc::new(Cell::new(0u32));
+        let (c2, r2) = (client.clone(), replies.clone());
+        let handle = boxed
+            .node_mut(nid)
+            .create_client_with_callback::<TestService, _>(
+                "/svc",
+                move |reply: &TestServiceReply| {
+                    r2.set(r2.get() + 1);
+                    if let Some(c) = c2.borrow_mut().as_mut() {
+                        c.call(&TestServiceRequest { a: reply.sum })
+                            .expect("the next request in the chain");
+                    }
+                },
+            )
+            .unwrap();
+        *client.borrow_mut() = Some(handle);
+        client
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .call(&TestServiceRequest { a: 7 })
+            .unwrap();
+
+        let off = boxed.entries[0].as_ref().unwrap().offset;
+        // SAFETY: `off` is the client entry's offset; its send header leads it.
+        let hdr = unsafe { boxed.arena.as_mut_ptr().cast::<u8>().add(off) } as *mut Hdr;
+        // From here on the executor is reached only through `p`.
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+
+        let (reply, len) = reply_bytes(14);
+        // SAFETY: `hdr` points into the live arena; the borrow ends here.
+        unsafe { (*hdr).handle.load_reply(reply, len) };
+        // SAFETY: `p` is the only path to the executor.
+        let _ = unsafe { Executor::spin_once_raw(p, core::time::Duration::ZERO) };
+
+        assert_eq!(replies.get(), 1, "the reply was delivered");
+        // SAFETY: as above.
+        assert!(
+            unsafe { (*hdr).pending },
+            "the callback's next request is in flight"
+        );
+
+        drop(client);
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+    /// Not re-entry at all: send, let the executor dispatch the reply, send
+    /// again from outside any callback. The handle's pointer into the arena
+    /// must survive the executor's own writes to the entry it points at.
+    #[test]
+    fn a_client_handle_survives_its_reply_dispatch() {
+        let mut boxed = Box::new(executor_with_clock(MockSession::new()));
+        let nid = boxed.node_builder("again").build().unwrap();
+        let replies = Rc::new(Cell::new(0u32));
+        let r2 = replies.clone();
+        let mut client = boxed
+            .node_mut(nid)
+            .create_client_with_callback::<TestService, _>("/svc", move |_: &TestServiceReply| {
+                r2.set(r2.get() + 1);
+            })
+            .unwrap();
+        client.call(&TestServiceRequest { a: 1 }).unwrap();
+        let off = boxed.entries[0].as_ref().unwrap().offset;
+        // SAFETY: as in the chain case.
+        let hdr = unsafe { boxed.arena.as_mut_ptr().cast::<u8>().add(off) } as *mut Hdr;
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+
+        let (reply, len) = reply_bytes(2);
+        // SAFETY: as in the chain case.
+        unsafe { (*hdr).handle.load_reply(reply, len) };
+        // SAFETY: `p` is the only path to the executor.
+        let _ = unsafe { Executor::spin_once_raw(p, core::time::Duration::ZERO) };
+        assert_eq!(replies.get(), 1);
+        client
+            .call(&TestServiceRequest { a: 2 })
+            .expect("a second request after the first reply");
+
+        drop(client);
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+}
+
+/// Phase-573 W2b, issue 2675 — the action-client twin of
+/// `reentry_service_client`: a goal-response callback that asks for the
+/// goal's result through the same client (safe API), and a handle that must
+/// survive the executor's own writes to the entry it points into.
+mod reentry_action_client {
+    use super::*;
+    use crate::executor::action_core::ActionClientCore;
+    use alloc::rc::Rc;
+    use core::cell::{Cell, RefCell};
+
+    const B: usize = crate::config::DEFAULT_RX_BUF_SIZE;
+    type Core = ActionClientCore<B, B, B>;
+    type Handle = crate::executor::ActionClientCallback<TestAction>;
+
+    fn accepted_reply() -> ([u8; 256], usize) {
+        let mut b = [0u8; 256];
+        // header(4) + accepted(1)
+        b[..5].copy_from_slice(&[0, 1, 0, 0, 1]);
+        (b, 5)
+    }
+
+    #[test]
+    fn a_goal_response_callback_that_requests_the_result_reenters_soundly() {
+        let mut boxed = Box::new(executor_with_clock(MockSession::new()));
+        let nid = boxed.node_builder("act_chain").build().unwrap();
+        let client: Rc<RefCell<Option<Handle>>> = Rc::default();
+        let responses = Rc::new(Cell::new(0u32));
+        let (c2, r2) = (client.clone(), responses.clone());
+        let handle = boxed
+            .node_mut(nid)
+            .create_action_client_with_callbacks::<TestAction, _, _, _>(
+                "/act",
+                move |id: &nros_core::GoalUuid, accepted: bool| {
+                    r2.set(r2.get() + 1);
+                    if accepted && let Some(c) = c2.borrow_mut().as_mut() {
+                        c.get_result(id).expect("ask for the result on acceptance");
+                    }
+                },
+                |_: &nros_core::GoalUuid, _: &TestFeedback| {},
+                |_: &nros_core::GoalUuid, _: nros_core::GoalStatusCode, _: &TestResult| {},
+            )
+            .unwrap();
+        *client.borrow_mut() = Some(handle);
+        client
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .send_goal(&TestGoal { order: 1 })
+            .unwrap();
+
+        let off = boxed.entries[0].as_ref().unwrap().offset;
+        // SAFETY: `off` is the client entry's offset; its core leads it.
+        let core = unsafe { boxed.arena.as_mut_ptr().cast::<u8>().add(off) } as *mut Core;
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+
+        let (r, l) = accepted_reply();
+        // SAFETY: `core` points into the live arena; the borrow ends here.
+        unsafe { (*core).send_goal_client.load_reply(r, l) };
+        // SAFETY: `p` is the only path to the executor.
+        let _ = unsafe { Executor::spin_once_raw(p, core::time::Duration::ZERO) };
+        assert_eq!(responses.get(), 1, "the goal response was delivered");
+
+        drop(client);
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+
+    /// Not re-entry: send a goal, let the executor dispatch its response, then
+    /// ask for the result from outside any callback.
+    #[test]
+    fn an_action_client_handle_survives_its_reply_dispatch() {
+        let mut boxed = Box::new(executor_with_clock(MockSession::new()));
+        let nid = boxed.node_builder("act_again").build().unwrap();
+        let responses = Rc::new(Cell::new(0u32));
+        let r2 = responses.clone();
+        let mut client = boxed
+            .node_mut(nid)
+            .create_action_client_with_callbacks::<TestAction, _, _, _>(
+                "/act",
+                move |_: &nros_core::GoalUuid, _: bool| r2.set(r2.get() + 1),
+                |_: &nros_core::GoalUuid, _: &TestFeedback| {},
+                |_: &nros_core::GoalUuid, _: nros_core::GoalStatusCode, _: &TestResult| {},
+            )
+            .unwrap();
+        let goal = client.send_goal(&TestGoal { order: 1 }).unwrap();
+        let off = boxed.entries[0].as_ref().unwrap().offset;
+        // SAFETY: as above.
+        let core = unsafe { boxed.arena.as_mut_ptr().cast::<u8>().add(off) } as *mut Core;
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+
+        let (r, l) = accepted_reply();
+        // SAFETY: as above.
+        unsafe { (*core).send_goal_client.load_reply(r, l) };
+        // SAFETY: `p` is the only path to the executor.
+        let _ = unsafe { Executor::spin_once_raw(p, core::time::Duration::ZERO) };
+        assert_eq!(responses.get(), 1);
+        client
+            .get_result(&goal)
+            .expect("ask for the result after the response");
+
+        drop(client);
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+}
