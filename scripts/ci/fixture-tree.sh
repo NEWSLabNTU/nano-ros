@@ -299,6 +299,21 @@ self_test() {
     pass() { echo "  ok   $*"; ok=$((ok + 1)); }
     fail() { echo "  FAIL $*"; bad=$((bad + 1)); }
 
+    # Every sweep this test causes runs inside the sandbox (issue 2682). `sync`
+    # sweeps before it syncs, and the sweep resolves its roots from the
+    # environment: inherited, `SCCACHE_DIR` and `NROS_ZEPHYR_BUILD_ROOT` named
+    # the developer's shared caches (32 GB and 88 GB, about 250,000 files on
+    # newslab-server-241), so the self-test walked both with `du`, and the
+    # `sync` case ran a LIVE sweep there, which may evict, and wrote its
+    # high-water mark into the real `~/.local/state`. Under another gate's I/O
+    # load those walks took the self-test past 120 s. Each root is named here,
+    # under `$t`, so no path outside the sandbox is reachable.
+    in_sandbox() {
+        NROS_SWEEP_STATE_DIR="$t/state" NROS_SWEEP_WORK="$t/work" NROS_HOME="$t/home" \
+            XDG_STATE_HOME="$t/xdg-state" SCCACHE_DIR="$t/sccache" NROS_ZEPHYR_BUILD_ROOT="" \
+            "$@"
+    }
+
     local ws="$t/_work/repo/repo" tree
     mkdir -p "$ws"
     git init -q "$ws"
@@ -452,7 +467,8 @@ self_test() {
     git init -q "$victim"; echo v > "$victim/v"; git -C "$victim" add v; git -C "$victim" commit -qm v
     vhead="$(git -C "$victim" rev-parse HEAD)"
     printf 'b3\n' > "$ws/b.c"; git -C "$ws" commit -qam three
-    if GIT_DIR="$victim/.git" GITHUB_WORKSPACE="$ws" bash "$0" sync >/dev/null 2>&1 \
+    if in_sandbox env GIT_DIR="$victim/.git" GITHUB_WORKSPACE="$ws" NROS_BUILD_ROOT="$tree/build" \
+        bash "$0" sync >/dev/null 2>&1 \
         && [ "$(git -C "$victim" rev-parse HEAD)" = "$vhead" ] && [ -f "$victim/v" ] \
         && [ "$(git -C "$tree" rev-parse HEAD)" = "$(git -C "$ws" rev-parse HEAD)" ] && [ -f "$tree/a.c" ]; then
         pass "an inherited GIT_DIR does not redirect the sync (issues 0986/0988)"
@@ -475,26 +491,30 @@ self_test() {
     # script runs from — and with no tree yet it does nothing, successfully.
     local out
     printf '[package]\nname = "x"\n' > "$tree/Cargo.toml"
+    mkdir -p "$t/sccache"
     mkdir -p "$tree/target/debug"; echo x > "$tree/target/debug/x"
-    out="$(NROS_SWEEP_STATE_DIR="$t/state" NROS_SWEEP_WORK="$t/work" NROS_HOME="$t/home" \
-           NROS_BUILD_ROOT="$tree/build" NROS_ZEPHYR_BUILD_ROOT="" \
-           sweep_tree "$tree" --check 2>&1)" || true
+    out="$(NROS_BUILD_ROOT="$tree/build" in_sandbox sweep_tree "$tree" --check 2>&1)" || true
     case "$out" in
         *"no cargo manifest"*) fail "sweep did not sweep the tree: $out" ;;
         *"cargo-targets:"*) pass "sweep sweeps the tree's own target dirs" ;;
         *) fail "sweep printed no cargo-targets line: $out" ;;
     esac
+    # The sweep's reach stays inside the sandbox (issue 2682): the one root it
+    # always reports, sccache, is the sandbox's. Without `in_sandbox` this line
+    # names the developer's shared cache, which is the walk that took 120 s.
+    case "$out" in
+        *"sccache: "*" at $t/sccache "*) pass "sweep's sccache root is the sandbox's, not the caller's" ;;
+        *) fail "sweep reached an sccache outside the sandbox: $(printf '%s\n' "$out" | grep sccache)" ;;
+    esac
     # Two-sided: the checkout this script runs from has a Cargo.toml too, so
     # only a tree WITHOUT one tells "swept the tree" from "swept the wrong root".
     rm "$tree/Cargo.toml"
-    out="$(NROS_SWEEP_STATE_DIR="$t/state" NROS_SWEEP_WORK="$t/work" NROS_HOME="$t/home" \
-           NROS_BUILD_ROOT="$tree/build" NROS_ZEPHYR_BUILD_ROOT="" \
-           sweep_tree "$tree" --check 2>&1)" || true
+    out="$(NROS_BUILD_ROOT="$tree/build" in_sandbox sweep_tree "$tree" --check 2>&1)" || true
     case "$out" in
         *"no cargo manifest at the checkout root"*) pass "…and only the tree's: a tree with no Cargo.toml has none" ;;
         *) fail "sweep reached a root other than the tree: $out" ;;
     esac
-    out="$(sweep_tree "$t/absent" --check 2>&1)" \
+    out="$(in_sandbox sweep_tree "$t/absent" --check 2>&1)" \
         && [ "${out#*nothing from an earlier run}" != "$out" ] \
         && pass "sweep with no tree yet does nothing and succeeds" \
         || fail "sweep with no tree: $out"
