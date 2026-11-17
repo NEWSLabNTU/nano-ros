@@ -1,6 +1,6 @@
 # Phase 567 — a release ships only what the slow lanes have seen
 
-**Status (2026-11-17). OPEN: W4, W5 (W5a–W5c) and W6 are done; W1–W3 are open.** Approved by the user on
+**Status (2026-11-17). OPEN: W1–W4, W5 (W5a–W5c) and W6 are done; W3b is open.** Approved by the user on
 2026-11-16 ("Take your advice on regression prevention. Have a phase doc to
 track the change"), after a review of the CI workflows on main against that
 day's regressions. Implements no RFC; it closes gaps between the lanes that
@@ -117,6 +117,42 @@ join) reproduced on a dry run fails there; each built image passes
 `verify-starter-image.sh` and the candidate `pinned-newer` replay passes,
 before any push; `just check release-rehearsal` refuses the pre-W3
 workflow and passes the built one; W4's check runs in the dry run.
+
+### W3b — a rehearsal that runs past a W1/W2 refusal
+
+- **Status:** OPEN (user ruling 2026-11-17).
+
+W1 runs first and `build`, the island job and the images all need it, so a
+dry run on a commit W1 refuses rehearses nothing else: the first rehearsal on
+main (2026-11-17) stopped at the lanes job with every later job skipped. A
+new `release-nros.yml` input, `rehearse` (default off), lets a dry run carry
+on, without making that commit releasable:
+
+1. The lanes job runs W2 and W1 unchanged, each printing its REFUSED lines;
+   on `rehearse` (and only for those two steps) a refusal does not stop the
+   job. A `verdict` step sets the job's `releasable` output: `true` only when
+   both passed. On a rehearsal it prints
+   `REFUSED (rehearsal: continuing, NOT releasable)` and opens the run summary
+   with `REHEARSAL — <W1|W2> REFUSED <sha>: not releasable`.
+2. `rehearse` with `publish` is refused by the lanes job's first step,
+   before anything is measured.
+3. `releasable` is a second lock: `Publish the release` and the image push
+   each need `needs.lanes.outputs.releasable == 'true'` beside
+   `inputs.publish`, so no change to the first lock alone can publish a
+   rehearsed commit.
+4. A rehearsal whose W2 refused before naming a commit measures the commit
+   itself, so W1 still answers.
+5. `just check release-rehearsal` holds all of it, with eight more negative
+   controls: the guard removed or blind to publish, either publishing step
+   without `releasable`, `starter-image` not needing `lanes`, the summary's
+   REFUSED line removed, another lanes step carrying on past a refusal, and
+   W1 carrying on without a rehearsal.
+
+Acceptance: a `rehearse=true` dry run on a commit W1 refuses prints the
+refusal, opens its summary with it, and runs `build`, the island job, both
+images and the `pinned-newer` replay; `rehearse=true publish=true` is refused
+in the lanes job's first step; without `rehearse` a refusal still stops the
+run; `just check release-rehearsal` refuses each mutation above.
 
 ### W4 — a consumer-shaped workspace in the tree
 
