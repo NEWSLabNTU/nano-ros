@@ -644,6 +644,11 @@ panic = "abort"      # Smaller binary, no unwinding
 
 [profile.dev]
 opt-level = 1        # Some optimization even in dev for embedded
+# Issue 2676 — line tables only: a panic and a backtrace keep file:line, and
+# the full variable debuginfo that made each of ~190 test binaries carry its
+# own multi-hundred-MB `.debug_*` copy goes. `test` inherits this. A debugger
+# session that needs locals sets `CARGO_PROFILE_DEV_DEBUG=true`.
+debug = "line-tables-only"
 # phase-359 W10 — `abort`, so a bare `cargo check -p <crate>` works on the
 # `no_std` crates in this workspace.
 #

@@ -40,6 +40,11 @@ opt-level = 1
 # workspace only, so a leaf resolving `dev` through the config walk-up — every
 # Zephyr west leaf — got `unwind` and the mismatch this file exists to prevent.
 panic = "abort"
+# Issue 2676 — mirrors the manifest's `debug = "line-tables-only"`. Here it
+# reaches every cargo root under the checkout that the manifest cannot: the
+# `packages/cli` workspace, the generated metadata-probe and example-lint
+# roots, and the leaves.
+debug = "line-tables-only"
 # Stays OFF (user ruling 2026-11-16, issue 2656): incremental on `dev` made the
 # Zephyr west lane's rlibs differ build to build, and sccache keys on rlib
 # CONTENT; off, 115 of 143 are byte-identical (phase-340 W6, 78375a2d5d). It
