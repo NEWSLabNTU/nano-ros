@@ -31,13 +31,13 @@ names = ["freertos", "freertos-lwip"]
 # first match wins), so the profile was unreachable: an `armv8r-none-eabihf`
 # cargo build panicked with "no [arch.*] profile … admits TARGET", naming only
 # m3 and m7. The S32Z270 board never noticed because its CMake lane passes
-# `FREERTOS_CFLAGS` explicitly (`nros_armv8r_cflags_env`), which short-circuits
+# `FREERTOS_CFLAGS` explicitly (`nros_arm_r_fpu_cflags_env`), which short-circuits
 # the lookup — so the gap only surfaces on a cargo-native build, which is
 # exactly what a QEMU board's `runner` needs.
 # phase-418 418.3 — `cortex-r5` (ARMv7-R, the Orin SPE) is listed here at the
 # same time as its block is written, for the reason the paragraph above
 # records: a block nobody lists is a block nobody can reach.
-arch_profiles = ["cortex-m3", "cortex-m7", "cortex-r5", "cortex-r52"]
+arch_profiles = ["cortex-m3", "cortex-m7", "cortex-r5", "cortex-r5f", "cortex-r52"]
 compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 # phase-484 W2c — the source TREES (kernel, lwIP, ThreadX, NetX Duo) are not
 # required env any more: `{source:<name>}` in the zenoh port row locates each through the one
@@ -169,6 +169,22 @@ cflags = ["-mcpu=cortex-r52", "-mfpu=neon-fp-armv8", "-mfloat-abi=hard"]
 target_match = "armv7r-none-eabi"
 target_exclude = "eabihf"
 cflags = ["-mcpu=cortex-r5", "-mthumb-interwork", "-mfloat-abi=softfp", "-mfpu=vfpv3-d16"]
+
+# phase-575 W1 — Cortex-R5F, HARD float (AAPCS-VFP): the mirror image of
+# `[arch.cortex-r5]` above, for a C half that passes floats in s0../d0... TI's
+# J784S4 R5F under its Processor SDK RTOS is the first consumer, and that SDK
+# builds the R5F with TI ARM Clang; `-mcpu=cortex-r5 -mfpu=vfpv3-d16
+# -mfloat-abi=hard` is spelled the same for arm-none-eabi-gcc and tiarmclang,
+# so one profile serves both. The two R5 profiles split the ARMv7-R triples
+# between them: this one claims `armv7r-none-eabihf` and nothing else
+# (`armv7r-none-eabi` does not contain `eabihf`), and `[arch.cortex-r5]`'s
+# `target_exclude = "eabihf"` keeps it off this one, so no triple has two
+# answers (`check-arch-profile-resolution` R4). The hard ABI agrees with the
+# triple's `eabihf` suffix (R3). Like the softfp profile, `vfpv3-d16` has 16
+# d-registers; the R5F's FPU is single- and double-precision VFPv3-D16.
+[arch.cortex-r5f]
+target_match = "armv7r-none-eabihf"
+cflags = ["-mcpu=cortex-r5", "-mfpu=vfpv3-d16", "-mfloat-abi=hard"]
 
 # RFC-0062 — Cortex-M7, hard float (`thumbv7em-none-eabihf`). Added for the
 # NXP S32K344 / MR-CANHUBK3 bring-up; before it, this platform had exactly one

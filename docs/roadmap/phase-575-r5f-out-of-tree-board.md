@@ -46,8 +46,9 @@ What main had on 2026-11-17 (each checked):
 
 ### W1 — a hard-float Cortex-R5 arch profile and toolchain file
 
-- **Status:** OPEN
-- **Owner:** nros 118, after its current work
+- **Status:** OPEN (the profile, toolchain file and ABI check landed
+  2026-11-18; the image acceptance moved to W2)
+- **Owner:** nros 118
 
 An `[arch.*]` profile for `armv7r-none-eabihf` with
 `-mcpu=cortex-r5 -mfpu=vfpv3-d16 -mfloat-abi=hard`, beside the softfp
@@ -58,6 +59,25 @@ arm-none-eabi-gcc). The Rust side uses the `armv7r-none-eabihf` target.
 Acceptance: a FreeRTOS C, C++ and Rust image builds for the new profile in
 CI (build only; there is no R5F emulator), and the softfp SPE profile's
 builds are unchanged.
+
+**Split, ruled 2026-11-18.** A FreeRTOS image needs a board, and the real
+board stays out of tree, so the image half of this acceptance moved to W2,
+whose fixture board builds those images. W2 checks `Tag_ABI_VFP_args: VFP
+registers` on each. What W1 landed:
+
+- `[arch.cortex-r5f]` in `nros-platform-freertos/nros-platform.toml`,
+  claiming `armv7r-none-eabihf` only, beside the softfp `[arch.cortex-r5]`,
+  which still claims `armv7r-none-eabi` only (`check-arch-profile-resolution`:
+  no triple has two answers, and each ABI agrees with its triple);
+- `cmake/toolchain/arm-freertos-armcr5f.cmake`, on the R52 file's pattern;
+- `nros_arm_r_fpu_cflags_env` (was `nros_armv8r_cflags_env`), which now also
+  hands cargo's cc-rs builds the R5F's FPU flags;
+- `check-r5f-hard-float-abi` (build tier): C, C++ and Rust objects built for
+  the profile all carry `Tag_ABI_VFP_args: VFP registers` and link together,
+  and its selftest requires ld to refuse a softfp C half against them.
+  Making the toolchain file `softfp` turns it red (measured).
+
+W1 closes when W2's images build.
 
 ### W2 — an out-of-tree board with a vendor SDK, end to end
 

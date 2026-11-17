@@ -235,7 +235,7 @@ nros_image_share_build_dir(nros_c-static ROOT_ID "${_nros_c_img_ROOT_ID}")
 # issue 0657 — the riscv64 float ABI, per target (see the helper's comment).
 nros_riscv64_rustflags_env(nros_c-static)
 # phase-372 W1 — the cortex-r52 FPU cflags, same class one arch over.
-nros_armv8r_cflags_env(nros_c-static)
+nros_arm_r_fpu_cflags_env(nros_c-static)
 # issue 2400 W2 -- keep bitcode + .su for the stack-floor CHECK (after the
 # helpers above: it merges into their RUSTFLAGS / CFLAGS).
 nros_stack_floor_cargo_env(nros_c-static)
