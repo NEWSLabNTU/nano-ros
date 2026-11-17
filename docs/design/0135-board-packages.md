@@ -206,6 +206,39 @@ my-board-package/
   - **nano-ros's shared files from a package's CMake module.** The module's
     own `CMAKE_CURRENT_LIST_DIR` is inside the package, so the cache variable
     `NROS_SOURCE_DIR` names the nano-ros tree for the family files it reuses.
+- **How a board crate joins the cargo graph.** These rules settle the Rust
+  road for a board package with a crate:
+  - **`crate_path` is relative to the board definition's own directory, for
+    every root, and defaults to that directory.** Today it is joined to the
+    nano-ros root, with `packages/boards/<crate>` as the default. Measured
+    on 2026-11-18, all 8 in-tree definitions that name a board crate sit in
+    that crate's own directory, so the new default resolves every one of
+    them identically and needs no migration. One rule for every root is what
+    RFC-0064 D1 asks for: ours and a user's board differ only in which root
+    found them. A root-dependent meaning would break that.
+  - **The board crate names nano-ros crates by registry name**
+    (`nros-board-freertos = "0.6"`, `nros-platform = "0.6"`). The generated
+    entry's `[patch.crates-io]` rows (RFC-0098, RFC-0104) resolve them to the
+    sources in use, which is the mechanism leaves already use. A path
+    dependency from an outside crate into the nano-ros tree cannot be spelled
+    portably. The board crate itself is the entry's path dependency.
+  - **`nros::main!` learns the board type from the crate's own metadata.**
+    The board crate states `[package.metadata.nros.board] type =
+    "::my_board::MyBoard"`, as it can today. The CLI reads it and writes
+    `NROS_BOARD_TYPE` into the generated entry's `nros-cargo.toml` `[env]`.
+    That is the cargo road's carrier, and the CLI owns the file. This
+    replaces the route that needed an entry `build.rs` calling
+    `emit_board_framework()`, which a generated entry does not have. The
+    type is stated once, by the crate, and is not repeated in the board
+    definition.
+  - **Acceptance includes a rebuild check:** changing the board's `type` (or
+    switching board) rebuilds the entry, rather than linking a stale
+    expansion.
+  - **The compiled-in key tables become a fallback, then go.** The macro's
+    `BOARD_PATHS` is the Rust twin of the entry pipeline's board-key table.
+    While in-tree board crates do not yet state `type`, the macro keeps it
+    as a fallback after `NROS_BOARD_TYPE`. Once every in-tree crate states
+    its type, both tables can be retired (phase-577).
 - **An outside board owns its whole RTOS configuration.** An outside FreeRTOS
   board ships its complete `FreeRTOSConfig.h`, `lwipopts.h` and `arch/cc.h`
   (RFC-0064's third level). In-tree boards include the family's shared
@@ -497,6 +530,13 @@ time.
 - 2026-11-18: drafted from the user's approved brief.
 - 2026-11-18: D2 gains the board's own CMake module, found by phase-577
   W8's owner building the first board package.
+- 2026-11-18: D2 settles the Rust road for a board crate:
+  - `crate_path` is relative to the definition, for every root;
+  - registry names plus patch rows;
+  - `NROS_BOARD_TYPE` comes from the crate's metadata, carried in the entry's
+    `nros-cargo.toml` `[env]`.
+
+  Asked by W8's owner.
 - 2026-11-18: D2 gains key-to-family resolution through the catalog,
   `${board_dir}`, `NROS_SOURCE_DIR`, and the rule that an outside board owns
   its RTOS configuration, all found building W8's first C image.
