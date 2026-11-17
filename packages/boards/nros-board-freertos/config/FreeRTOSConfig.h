@@ -227,6 +227,20 @@ extern void freertos_assert_failed(const char *file, int line);
 #define configCHECK_FOR_STACK_OVERFLOW          2
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
 
+/* ---- Task stack guard (issue 2507) ----
+ * A board that defines NROS_BOARD_TASK_STACK_GUARD to 1 supplies
+ * `nros_board_task_stack_guard_arm`, and the kernel calls it with the incoming
+ * task's lowest stack address on every switch. `portTASK_SWITCH_HOOK` is the
+ * kernel's own hook for reprogramming the MPU, and is separate from the trace
+ * hooks `NROS_TRACE` defines. It expands inside `tasks.c`, where `pxStack` is
+ * visible. */
+#if defined(NROS_BOARD_TASK_STACK_GUARD) && NROS_BOARD_TASK_STACK_GUARD
+#ifndef __ASSEMBLER__
+extern void nros_board_task_stack_guard_arm(const void *stack_lowest);
+#endif
+#define portTASK_SWITCH_HOOK(pxTCB) nros_board_task_stack_guard_arm((const void *)(pxTCB)->pxStack)
+#endif
+
 /* ---- Tonbandgeraet tracing (opt-in via NROS_TRACE=1) ----
  * `configUSE_TRACE_FACILITY` is unconditionally on above (issue 1657), so the
  * opt-in adds only the trace hooks and the tick hook, neither of which changes

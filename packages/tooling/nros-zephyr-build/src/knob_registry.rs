@@ -282,6 +282,18 @@ pub const KNOBS: &[KnobRow] = &[
         retired: None,
     },
     KnobRow {
+        id: "FREERTOS_TASK_STACK_GUARD",
+        env: "NROS_FREERTOS_TASK_STACK_GUARD",
+        legacy: &[],
+        kconfig: "CONFIG_NROS_FREERTOS_TASK_STACK_GUARD",
+        toml: None,
+        image_key: "freertos.task_stack_guard",
+        ty: None,
+        range: None,
+        names: &[],
+        retired: None,
+    },
+    KnobRow {
         id: "GRAPH_MAX_ENTITIES",
         env: "NROS_GRAPH_MAX_ENTITIES",
         legacy: &[],
