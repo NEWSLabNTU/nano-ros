@@ -20,6 +20,7 @@
 //! `build/<coord>/<entry>/` — its own cargo root — with its settings file
 //! beside it ([`cargo_config`]). A workspace has no root build file.
 
+pub mod build_args;
 pub mod cargo_config;
 pub mod cargo_node;
 pub mod cargo_root;
@@ -32,6 +33,7 @@ pub mod handoff;
 pub mod host_tool;
 pub mod jobserver;
 pub mod materialize;
+pub mod owned_defines;
 pub mod paths;
 pub mod plan;
 pub mod preflight;
