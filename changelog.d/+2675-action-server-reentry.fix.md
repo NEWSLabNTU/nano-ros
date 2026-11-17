@@ -1,0 +1,1 @@
+A C action server may complete a goal or publish feedback from inside its own goal, accepted or cancel callback. A cancel callback that completes one goal no longer moves another goal it refused to `Canceling`.

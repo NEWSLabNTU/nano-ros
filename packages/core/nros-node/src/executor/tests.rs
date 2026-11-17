@@ -20798,7 +20798,8 @@ mod reentry_action_server {
     /// `p` is a live entry and nothing references it.
     unsafe fn active_goals(p: *mut u8) -> usize {
         // SAFETY: the caller's contract.
-        unsafe { (&(*(p as *const Entry)).core.active_goals).len() }
+        let goals = unsafe { &(*(p as *const Entry)).core.active_goals };
+        goals.len()
     }
 
     unsafe extern "C" fn defer(
@@ -20874,6 +20875,37 @@ mod reentry_action_server {
         CancelResponse::Accept
     }
 
+    /// The cancel callback finishes the FIRST goal and refuses every other:
+    /// the shape that moves a goal under a handler asked from inside a loop
+    /// over `active_goals`.
+    unsafe extern "C" fn complete_first_refuse_rest(
+        id: *const GoalUuid,
+        status: GoalStatusCode,
+        ctx: *mut core::ffi::c_void,
+    ) -> CancelResponse {
+        // SAFETY: `id` is valid for the call.
+        if unsafe { (*id).uuid } == FIRST.uuid {
+            // SAFETY: as `complete_on_cancel`.
+            unsafe { complete_on_cancel(id, status, ctx) }
+        } else {
+            CancelResponse::Reject
+        }
+    }
+
+    const FIRST: GoalUuid = GoalUuid { uuid: [0x44; 16] };
+    const SECOND: GoalUuid = GoalUuid { uuid: [0x55; 16] };
+
+    /// # Safety
+    /// As `active_goals`.
+    unsafe fn status_of(p: *mut u8, id: &GoalUuid) -> Option<GoalStatusCode> {
+        // SAFETY: the caller's contract; the borrow ends here.
+        let goals = unsafe { &(*(p as *const Entry)).core.active_goals };
+        goals
+            .iter()
+            .find(|g| g.goal_id.uuid == id.uuid)
+            .map(|g| g.status)
+    }
+
     #[test]
     fn an_accepted_callback_that_completes_its_goal_reenters_soundly() {
         let p = leak_entry(defer, refuse, Some(succeed_on_accept));
@@ -20913,6 +20945,35 @@ mod reentry_action_server {
             (*(p as *mut Entry)).core.cancel_goal_server.load(req, len);
             assert!(spin(p));
             assert_eq!(active_goals(p), 0, "the cancel callback finished the goal");
+            free_entry(p);
+        }
+    }
+
+    /// A cancel-all whose callback finishes the first goal it is asked about
+    /// must apply each answer to the goal it was given for. The first goal
+    /// leaves `active_goals` mid-request (`swap_remove`), so an answer applied
+    /// by POSITION lands on the second goal, which the callback refused.
+    #[test]
+    fn a_cancel_answer_lands_on_the_goal_it_was_given_for() {
+        let p = leak_entry(defer, complete_first_refuse_rest, None);
+        // SAFETY: as above.
+        unsafe {
+            deliver_goal(p, &FIRST);
+            assert!(spin(p));
+            deliver_goal(p, &SECOND);
+            assert!(spin(p));
+            assert_eq!(active_goals(p), 2);
+            // A zero goal id and a zero stamp: cancel every cancelable goal.
+            let (req, len) = mk_cancel_req(&GoalUuid { uuid: [0; 16] });
+            (*(p as *mut Entry)).core.cancel_goal_server.load(req, len);
+            assert!(spin(p));
+            assert_eq!(status_of(p, &FIRST), None, "the callback finished it");
+            assert_ne!(
+                status_of(p, &SECOND),
+                Some(GoalStatusCode::Canceling),
+                "the callback refused to cancel the second goal"
+            );
+            assert!(status_of(p, &SECOND).is_some());
             free_entry(p);
         }
     }
