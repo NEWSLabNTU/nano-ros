@@ -1263,3 +1263,26 @@ test-live-peer-regression runner="all" verbose="":
         echo "anything about the cells."
         exit 2
     fi
+
+# RFC-0132 / phase-560 W9.c — the CAN frame driver's SocketCAN backend on the
+# two Linux-process boards that run it. Builds each board's probe
+# (`can-probe` feature, `tests/can_socketcan_probe.rs`): `linux` always,
+# `freertos-posix` when the FreeRTOS kernel is provisioned. Then
+# `scripts/test/can-frame-socketcan.sh` runs both against IFACE (an up CAN FD
+# interface, scripts/test/vcan-setup.sh) and reads the frames with candump.
+# CLASSIC names an up classic (MTU 16) interface for the `want_fd` refusal
+# check; without one that check is reported NOT VERIFIED, never passed.
+# A missing interface or candump is a reported skip (`nros_check_unverified`).
+[group("debug")]
+test-can-frames IFACE="vcan0" CLASSIC="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/build/cargo.sh
+    cargo test -q -p nros-board-linux --features can-probe --test can_socketcan_probe --no-run
+    if nros_locate_source freertos-kernel >/dev/null 2>&1; then
+        FREERTOS_PORT=GCC_POSIX \
+        FREERTOS_CONFIG_DIR="$PWD/packages/boards/nros-board-freertos-posix/config" \
+            cargo test -q -p nros-board-freertos-posix --features can-probe \
+            --test can_socketcan_probe --no-run
+    fi
+    exec scripts/test/can-frame-socketcan.sh "{{IFACE}}" {{ if CLASSIC == "" { "" } else { quote(CLASSIC) } }}

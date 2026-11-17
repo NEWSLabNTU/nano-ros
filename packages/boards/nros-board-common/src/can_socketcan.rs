@@ -1,5 +1,7 @@
-//! RFC-0132 D3 -- the `socketcan` backend of the CAN frame driver, compiled by
-//! every board that is a Linux process.
+// RFC-0132 D3.
+
+//! The `socketcan` backend of the CAN frame driver, compiled by every board
+//! that is a Linux process.
 //!
 //! The source is ONE file, `packages/boards/nros-board-linux/c/can_socketcan.c`:
 //! `nros-board-linux` owns it (the board layer is the only layer allowed to be
@@ -11,12 +13,11 @@
 //! The archive is pulled on demand: an image that never calls
 //! `nros_platform_can_*` links none of it.
 //!
-//! The caller owns the rebuild edge: this tracks the compile's header
-//! dependencies, and the caller's `build.rs` calls
-//! `nros_cc_flags::header_deps::emit_header_deps(OUT_DIR)` once after all of
-//! its compiles, as every board build script here already does.
+//! The rebuild edge is declared here, after this compile: `emit_header_deps`
+//! consumes every depfile in `OUT_DIR`, so a caller that compiles other
+//! sources calls this AFTER its own `emit_header_deps`.
 
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 /// The backend source, by its workspace path.
 pub fn socketcan_source() -> PathBuf {
@@ -36,4 +37,7 @@ pub fn compile_socketcan_backend() {
         .include(nros_build_paths::nros_platform_cffi_include())
         .warnings_into_errors(true)
         .compile("nros_can_socketcan");
+    nros_cc_flags::header_deps::emit_header_deps(&PathBuf::from(
+        env::var("OUT_DIR").expect("OUT_DIR"),
+    ));
 }
