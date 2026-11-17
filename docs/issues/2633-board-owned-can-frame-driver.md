@@ -14,7 +14,7 @@ GitHub: NEWSLabNTU/nano-ros#4012
 **Home: [phase-560](../roadmap/phase-560-contract-revision-follow.md) W9**,
 beside issue [2573](2573-can-fd-e2e-profile-and-flexcan-helper.md) (GitHub
 #3761): this is the portable layer under 2573's FlexCAN helper. Design:
-[RFC-0132](../design/0132-board-can-frame-driver.md) (Draft, review-gated).
+[RFC-0132](../design/0132-board-can-frame-driver.md) (Accepted 2026-11-17).
 
 ## What is missing
 

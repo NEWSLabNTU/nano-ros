@@ -2,8 +2,8 @@
 
 **Status (2026-11-13). W1-W5 DONE** (rlm v0.3.15, play_launch v0.32.0,
 #3745); W6 and W7 BLOCKED on releases not yet tagged; W8 DONE (every level
-charged since #3758); W9 (the CAN frame driver, RFC-0132) BLOCKED on its RFC
-review. nano-ros's
+charged since #3758); W9 (the CAN frame driver, RFC-0132) OPEN, RFC accepted
+2026-11-17. nano-ros's
 share of two play_launch phases: phase 103 (defects the contract grammar review found in shipped
 behaviour) and phase 104 (the grammar revision itself). The design of
 record is rlm `docs/design/grammar-revision/` (an overview and one file per
@@ -148,7 +148,7 @@ meaning, which shipped in #3745. Size M.
 
 ### W9 -- The CAN frame driver (RFC-0132)
 
-- **Status:** BLOCKED (RFC-0132 review: starts when the RFC is accepted)
+- **Status:** OPEN (RFC-0132 accepted 2026-11-17)
 
 Issue 2633 (GitHub #4012), consumer ASI; the portable layer under issue 2573's
 FlexCAN helper. The items land in this order, each in its own pull request,
