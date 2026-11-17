@@ -284,6 +284,15 @@ fi
 : "${PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1}"
 export PYO3_USE_ABI3_FORWARD_COMPATIBILITY
 
+# Cargo fetches git dependencies (the `ros-launch-manifest` tag every nano-ros
+# crate pins) through the git CLI instead of its built-in libgit2. On host 118
+# libgit2 failed twice in one day with `SSL error: unknown error; class=Ssl
+# (16)`, once on the host and once in the runner container, while `git
+# ls-remote` of the same URL passed 3 of 3 in both. This is a transport choice
+# cargo offers, not a retry. A value the caller already exported is kept.
+: "${CARGO_NET_GIT_FETCH_WITH_CLI=true}"
+export CARGO_NET_GIT_FETCH_WITH_CLI
+
 # `nros` CLI resolution: the in-tree per-checkout binary at
 # `packages/cli/target/release/nros`, built by `just setup-cli`. Each
 # nano-ros worktree carries its own CLI — no global PATH skew across
