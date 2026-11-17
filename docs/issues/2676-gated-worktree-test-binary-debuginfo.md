@@ -74,6 +74,42 @@ The other large directories (`build/corrosion-cargo`, `target/nros-
 relwithdebinfo`, `build/sizes-probe`, `build/example-lint`) are not split
 further here.
 
+## First lever, measured: `debug = "line-tables-only"`
+
+Set in `[profile.dev]` of the root `Cargo.toml` and of `.cargo/config.toml`,
+the copy the mirror gate holds identical and the one that reaches every other
+cargo root under the checkout (the `packages/cli` workspace, the generated
+probe and lint roots, the leaves). `test` inherits it. Measured on host 118,
+2026-11-17: two cold `just ci gate` runs on one fresh worktree, `git clean
+-fdX` between them, `du` every minute, both green.
+
+| | before (origin/main) | after |
+| --- | --- | --- |
+| **peak, whole worktree** | **188 G** (39 min) | **145 G** (32 min) |
+| `target/debug` | 39 G | 16.5 G |
+| `packages/cli/target/debug` | 29 G | 11 G |
+| `build/sizes-probe` | 19 G | 16 G |
+| `build/corrosion-cargo` | 26 G | 26 G |
+| `target/nros-relwithdebinfo` | 19 G | 19 G |
+| `examples/` | 24 G | 24 G |
+| `build/example-lint` | 11 G | 11 G |
+
+A test panic still prints `panicked at src/lib.rs:1:38`, and its backtrace
+`at ./src/lib.rs:3:21`. The binary carries no `DW_TAG_variable` entries.
+
+**Why this is not yet under 100 G.** What is left is not dev debuginfo:
+
+- `build/corrosion-cargo/metadata-probe`, 26 G: about 60 per-image target
+  dirs, about 290 MB each, each a full `libnros_c.a` or `libnros_cpp.a`
+  build. Their `nros-probe` profile is already `debug = 0`. This is issue
+  2235's class (each C/C++ image builds the runtime again in its own target
+  dir), and the dedup is the next lever, planned there before any code.
+- `target/nros-relwithdebinfo`, 19 G: **considered and kept.** Its
+  `debug = 1` is what a user debugging an image gets, so trimming it is a
+  product decision, and the saving was not worth making one.
+- `examples/` and `build/example-lint`, 35 G together: leaf target dirs
+  (already line tables only) and non-Rust output, not yet broken down.
+
 ## Done when
 
 A cold `just ci gate` stays under 100 GB at its peak, measured the same way,
