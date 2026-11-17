@@ -974,3 +974,7 @@ an advisory per-merge link in L3 (W9). L3 is not on the queue's critical path
   on one day, and its per-script probes have no time limit. It cancelled the
   merge group for #4125. Fix: a per-probe timeout that fails naming the
   probe, plus per-probe timings.
+- [issue 2664](../issues/2664-native-sim-prelink-drops-unwind-table.md) — a
+  native_sim image linked with no unwind search table aborts at a thread exit
+  by layout. Found as W5b's hosted tier-1 zephyr shard red (two XRCE C cells);
+  W5b re-arms on a green shard after its fix.

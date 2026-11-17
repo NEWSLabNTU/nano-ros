@@ -136,6 +136,7 @@ fn run_pubsub_cell(lang: &str, matrix_lang: Lang, wait_marker: &str, budget: Dur
              not a setup condition — read the verdict before rebuilding: {e:?}"
         )
     });
+    assert_registers_zenoh(&binary, lang);
 
     // Bind 0.0.0.0, not loopback: the guest reaches the host through SLIRP's
     // 10.0.2.2 gateway, and a loopback-only listener leaves those SYNs
@@ -448,6 +449,57 @@ fn zephyr_cortex_m_c_boot_report_names_arena_exhaustion() {
             "after the exhaustion the guest is at PC {pc:#x}, outside the fatal path \
              {fatal:#x?} — the image ran on instead of halting \
              (CONFIG_NROS_ARENA_EXHAUSTION_IS_FATAL).\nDecode:\n{verdict}"
+        );
+    }
+}
+
+/// Issue 2664 — the registration family's LINK half lives here now. An image
+/// registers its RMW backend through `nros_app_register_backends` (C/C++) and
+/// the backend's own `nros_rmw_<rmw>_register`; a link with `--gc-sections`
+/// drops either one when nothing reaches it, and the image boots with an empty
+/// RMW registry (phase-531 W6). native_sim's relocatable pre-link no longer
+/// garbage-collects (it left an `.eh_frame` ld could not index), so its images
+/// keep everything their archives hold and `zephyr.rs`'s
+/// `assert_registers_cyclonedds` sees only the ARCHIVE half (rustc's staticlib
+/// dead-code elimination). This image is one garbage-collected link, the way a
+/// real board's is, so this is where an unreferenced register entry shows.
+/// (`nm` reads the prebuilt artifact; nothing is compiled here.)
+fn assert_registers_zenoh(elf: &std::path::Path, lang: &str) {
+    let out = ["nm", "arm-zephyr-eabi-nm", "arm-none-eabi-nm", "llvm-nm"]
+        .iter()
+        .find_map(|tool| {
+            Command::new(tool)
+                .arg("--defined-only")
+                .arg(elf)
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+        })
+        .unwrap_or_else(|| {
+            nros_tests::unmet!(
+                "no usable `nm` (tried nm, arm-zephyr-eabi-nm, arm-none-eabi-nm, llvm-nm)"
+            )
+        });
+    let table = String::from_utf8_lossy(&out.stdout);
+    // The C hook and the backend's exported entry are the C and C++ images'.
+    // A Rust image calls its backend's registration directly and the linker
+    // inlines it (measured: neither name is in the mps2 Rust talker), so its
+    // evidence is the registry insertion itself: `nros_rmw_cffi_register_named`
+    // has no caller but a registration, and goes with it when the link drops
+    // one.
+    let wanted: &[&str] = if lang == "rust" {
+        &["nros_rmw_cffi_register_named"]
+    } else {
+        &["nros_app_register_backends", "nros_rmw_zenoh_register"]
+    };
+    for sym in wanted {
+        assert!(
+            table
+                .lines()
+                .any(|l| l.split_whitespace().last() == Some(*sym)),
+            "{} defines no `{sym}`: the link dropped the image's backend registration, \
+             so it would boot with an empty RMW registry",
+            elf.display()
         );
     }
 }

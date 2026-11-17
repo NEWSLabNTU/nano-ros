@@ -316,6 +316,7 @@ test-targets
 tests-can-fail
 third-party-is-submodules
 tier-has-ci-owner
+unwind-table
 vendor-fetch-pinned
 version-lockstep
 wait-evidence-discarded

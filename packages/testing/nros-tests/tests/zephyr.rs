@@ -908,6 +908,15 @@ fn boot_smoke(#[case] smoke: Smoke) {
 /// it. That image links and boots, then fails at `Executor::open` with "no RMW
 /// backend is registered"; reading the symbol table names the cause before the
 /// run does. (`nm` reads the prebuilt artifact; nothing is compiled here.)
+///
+/// Issue 2664 — on native_sim this now covers ONE half of that family: rustc's
+/// staticlib dead-code elimination, which leaves the export out of the archive
+/// itself. native_sim's relocatable pre-link no longer garbage-collects (its
+/// `.eh_frame` came out unindexable), so the image holds whatever the archives
+/// hold, and a register entry only the LINK would drop stays. That half, an
+/// unreferenced entry dropped by `--gc-sections`, is asserted on the mps2
+/// image instead (`zephyr_cortex_m_qemu.rs`, `assert_registers_zenoh`), one
+/// garbage-collected link like a real board's.
 fn assert_registers_cyclonedds(bin: &std::path::Path, id: &str) {
     let out = std::process::Command::new("nm")
         .arg("--defined-only")
