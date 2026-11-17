@@ -1,19 +1,26 @@
 ---
 id: 2679
 title: "A board network file is refused on Zephyr; render `[eth0]` and `[network.<n>]` into Zephyr's `NET_CONFIG_*` instead"
-status: open
+status: resolved
 type: enhancement
 area: [zephyr, orchestration, cli, boards]
 severity: medium
 found: 2026-11-17
+resolved: 2026-11-17
+resolved_in: "feat(zephyr): a board network file renders into NET_CONFIG_* (issue 2679)"
 related: [phase-478, phase-497]
 ---
 
 **Home:** phase-478 I31 (found by the safety island). GitHub #4011.
-**State: DESIGN, Q1-Q3 ruled by the nano-ros manager 2026-11-17; awaiting the
-user's approval** (it adds public config surface: a Zephyr board's
-`[board.net] interfaces`, a generated Kconfig fragment, and an amended
-RFC-0103 D10d).
+**State: RESOLVED 2026-11-17.** Design approved by the user 2026-11-17 as
+revised, D7 included, and implemented as written: `[board.net] interfaces` on
+`fvp-aemv8r-smp` and `mps2-an385-zephyr`; `image_net::zephyr_conf` renders
+`build/nros/net/<image>.conf`, appended last to `EXTRA_CONF_FILE` on the
+workspace road and to `NROS_LEAF_CONF` on a standalone leaf;
+`check_zephyr_fragments` refuses a fragment that sets a rendered symbol; the
+D10d locator rule reads the RMW descriptor's `[rmw.host] peer`. Unit tests in
+`orchestration/image_net.rs` and `builder/zephyr.rs`. The QEMU end-to-end row
+under "Test" was not run in this change.
 
 ## Symptom
 

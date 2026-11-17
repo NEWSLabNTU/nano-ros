@@ -713,16 +713,16 @@ builtin on every platform, marked `NROS_PLAIN_EXECUTABLE`.
 
 ### I31 -- a board network file on a Zephyr image
 
-**Status: DESIGN (2026-11-17), Q1-Q3 ruled, awaiting the user's approval.** [Issue 2679](../issues/2679-zephyr-board-network-file-net-config.md),
-GitHub #4011. A board network file is refused on Zephyr, so the island states
-its address in its own Kconfig symbols and waits for DHCP by hand. Proposed: a
-Zephyr board declares its interface in `[board.net]`, and `nros build` renders
-the one resolved interface into `NET_CONFIG_*` / `NET_DHCPV4` as a Kconfig
-fragment appended last, refusing a second interface, a stated MAC and an
-`os_config` fragment that sets the same symbols (naming both sources). It
-also scopes RFC-0103 D10d's locator refusal to an RMW whose descriptor states
-a host peer, so a Cyclone DDS image is not refused. Every Zephyr symbol and
-the DHCP wait are cited against v3.7.2 and v4.4.0 in the issue.
+**Status: DONE (2026-11-17).** [Issue 2679](../issues/archived/2679-zephyr-board-network-file-net-config.md),
+GitHub #4011. A board network file was refused on Zephyr, so the island stated
+its address in its own Kconfig symbols and waited for DHCP by hand. A Zephyr
+board now declares its interface in `[board.net]` (`fvp-aemv8r-smp`,
+`mps2-an385-zephyr`), and `nros build` renders the one resolved interface into
+`NET_CONFIG_*` / `NET_DHCPV4` as `build/nros/net/<image>.conf`, appended last,
+refusing a second interface, a stated MAC and an `os_config` fragment that
+sets the same symbols (naming both sources). RFC-0103 D10d's locator refusal
+now applies only to an RMW whose descriptor states a host peer, so a Cyclone
+DDS image is not refused.
 
 ## Test / check
 
@@ -855,6 +855,12 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       `nano_ros_add_plain_executable` does not, on `posix` it is the same
       builtin, and no sources is refused (issue 2678;
       `just check cmake-ament-surface` case 14).
+- [x] I31: a Zephyr image's board network file renders `NET_CONFIG_*` for a
+      static address (`NET_DHCPV4=n`) and a lease, last in `EXTRA_CONF_FILE`;
+      a second interface, a stated `mac` and a conflicting fragment are
+      refused; a Cyclone DDS image off `qemu` with no locator is accepted and
+      a zenoh one refused, read from the descriptor (issue 2679;
+      `nros-cli-core` `image_net` and `builder::zephyr` tests).
 - [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
       re-run and its result recorded. Needs the island tree at a pin that
@@ -884,7 +890,7 @@ this phase will fix it.
 
 - [issue 2670](../issues/2670-imperative-param-declare-invisible-to-census.md): a Rust parameter declared through `Executor::node_mut(..).declare_parameter` reaches no census hook, so a contract that omits it sizes the store short with no `param-missing-in-contract` error.
 - [issue 2678](../issues/archived/2678-plain-executable-opt-out-on-a-board.md) (GitHub #4016, resolved): a board build had no public way to declare an executable that is not an image; `nano_ros_add_plain_executable` is it (I30).
-- [issue 2679](../issues/2679-zephyr-board-network-file-net-config.md) (GitHub #4011): a board network file is refused on Zephyr; a design renders it into `NET_CONFIG_*` (I31, design).
+- [issue 2679](../issues/archived/2679-zephyr-board-network-file-net-config.md) (GitHub #4011, resolved): a board network file was refused on Zephyr; it renders into `NET_CONFIG_*` (I31).
 - [issue 2665](../issues/2665-target-session-chain-start-deadline-under-load.md): `target_session::tests::teardown_waits_for_a_chain_that_is_stopping` failed under host load at its 5 s chain-start deadline and passes alone.
 - [issue 2660](../issues/archived/2660-pyo3-rebuilds-on-path-change.md) (GitHub #4084, resolved): the launch resolver rebuilt pyo3-ffi whenever PATH changed (I25).
 
