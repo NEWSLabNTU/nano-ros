@@ -143,3 +143,40 @@ min against RFC-0122 D9's 20-min p95** (n = 1). zephyr has no sample yet.
 Next: re-dispatch `lane=merge` once the idle-wake probe fix lands. The 97
 min is a finding of its own and is not part of this done-when, which asks
 only for samples.
+
+## Where the 97.4 min goes (2026-11-17)
+
+From run 43982551835's threadx_linux job (133702431268), read from its log,
+with no new dispatch:
+
+| stage | min |
+| --- | --- |
+| setup: containers 1.4, CLI 1.6, disk reclaim 1.9 | ~5 |
+| `just build merge` | **68.1** |
+| · `check fast` | 0 (reused gate run 43978168526) |
+| · codegen scope scan | 2.0 |
+| · codegen, 14 of 190 units (a `nros configure` per workspace) | 5.1 |
+| · census prepass (`workspaces/c` alone 7.1) | 12.6 |
+| · fixture build, pooled on 4 tokens: threadx_linux stage, with `linux` beside it | 44.6 |
+| · compile-check, px4, link-determinism, post-build gates | 2.7 |
+| `just ci merge` (`test-all`) | **22.8** |
+| · 5 feature lanes, compiled and run (`loan_e2e` 7.5) | ~12 |
+| · the workspace unit suite, 3,689 tests | ~4 |
+| · doctests | ~3.5 |
+
+Ruling (manager, 2026-11-17): `merge` stays off the queue and dispatch-only,
+and the three host witness boards keep `cadence = "daily"`. Even trimmed, a
+cold hosted shard is estimated at 35-45 min, twice RFC-0122 D9's 20-min p95.
+Two trims are worth doing for the daily hosted tier-1 shards alone, which
+have the same shape. Both are phase-559 work items:
+
+- **W14:** the run step runs the lane's cells, not `test-all` (the unit
+  suite, doctests and feature lanes already run per merge group).
+- **W15:** the census prepass and the fixture build cover only the shard's
+  coordinates. The run also visited three threadx bins that are not merge
+  Example cells.
+
+A cross-run cargo cache (sccache) would take most of the fixture build on a
+warm hit. It waits for a measurement of its size against the repository's
+10 GB Actions cache budget (issues 2141, 2412).
+
