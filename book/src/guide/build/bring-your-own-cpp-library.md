@@ -199,7 +199,7 @@ it with the board's toolchain, as part of the package.
 > `std::string` allocates through `operator new`, from the package's own
 > code rather than through the platform's allocator. An image with a package
 > that calls `nano_ros_hosted_cxx()` cannot claim to be free of allocation:
-> [check-no-alloc-image](https://github.com/NEWSLabNTU/nano-ros/blob/main/scripts/check-no-alloc-image.py)
+> [the project's allocation check](https://github.com/NEWSLabNTU/nano-ros/blob/main/scripts/check-no-alloc-image.py)
 > reports `operator new` in its `cxx-operator-new` family. Fixed-size Eigen
 > types, as in the talker above, keep their storage inline.
 
@@ -219,8 +219,8 @@ so a library that throws must be built with its no-exceptions option.
 - A compile error inside the library: the library does not support this
   board's CPU or C library as it is, and needs a patch to your copy. Eigen 3.4,
   for one, does not compile its vectorized `psincos` on an `arm-none-eabi` CPU
-  with NEON, where newlib's `int32_t` is `long`
-  ([#4013](https://github.com/NEWSLabNTU/nano-ros/issues/4013)).
+  with NEON, where newlib's `int32_t` is `long`: its scratch buffer is `int`
+  where Eigen's integer packets expect `int32_t`.
 
 ## Reference
 

@@ -103,7 +103,9 @@ def script_case(tmp: str, flags: str) -> tuple[int, str]:
     return run(["cmake", "-P", path], tmp)
 
 
-def script_cases(tmp: str) -> list[str]:
+def selftest(tmp: str) -> list[str]:
+    """The two script-mode controls, on every run: the -nostdinc++ refusal and
+    the POSIX no-op. Neither needs a compiler, so neither can be skipped."""
     failures = []
     rc, out = script_case(tmp, "-std=c++14 -ffreestanding -nostdinc++")
     if rc == 0 or SHIM_REFUSAL not in out:
@@ -153,7 +155,7 @@ def main() -> int:
         return 1
     skipped = 0
     with tempfile.TemporaryDirectory(prefix="nros-hosted-cxx-") as tmp:
-        failures = script_cases(tmp)
+        failures = selftest(tmp)
         arm = pinned_arm_gxx()
         if arm and os.path.exists(arm):
             failures += compile_cases(tmp)

@@ -337,6 +337,13 @@ BOOK_CLAIMS = (
         "stack frame), not a statement about the linked image",
     },
     {
+        "file": "book/src/guide/build/bring-your-own-cpp-library.md",
+        "text": "[the project's allocation check](https://github.com/NEWSLabNTU/nano-ros/blob/main/scripts/check-no-alloc-image.py)",
+        "kind": "disclaimer",
+        "why": "says an image whose package calls nano_ros_hosted_cxx() cannot "
+        "claim to be free of allocation; the match is this tool's URL in the link",
+    },
+    {
         "file": "book/src/guide/realtime/analyze-timing.md",
         "text": "No heap in RT code",
         "kind": "rationale",
