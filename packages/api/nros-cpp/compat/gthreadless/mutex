@@ -8,8 +8,8 @@
 // everywhere: Nav2's `nav2_util::OdomSmoother` holds a `std::mutex` member, and
 // a port failed with "'mutex' in namespace 'std' does not name a type".
 //
-// This header is on the include path only of a ported package's hosted C++
-// (`nros_ported_cxx_hosted()`, and the Zephyr module's C++ include set). It
+// This header is on the include path only of a package directory whose C++ is hosted
+// (`nano_ros_hosted_cxx()`, and the Zephyr module's C++ include set). It
 // forwards to the toolchain's `<mutex>` and, only where that has no
 // `std::mutex`, defines `std::mutex` and `std::recursive_mutex` over the
 // platform's own mutex (`nros/platform.h`), which inherits priority on every

@@ -21,7 +21,9 @@ blocks it. So there is no `[source.eigen]`, no fork and no
 `cmake/find/FindEigen3.cmake`, and the fork step the design below started
 with is dropped. GitHub #4013 is closed with this reason.
 
-**How a user brings their own library.** The book has no page for it today:
+**How a user brings their own library.** Closed 2026-11-17 by the book's
+[Bring your own C++ library](../../../book/src/guide/build/bring-your-own-cpp-library.md)
+page and the public `nano_ros_hosted_cxx()` it calls. Until then the book had no page for it:
 [Build inside an existing CMake or vendor tree](../../../book/src/guide/build/existing-cmake-or-vendor-tree.md)
 covers adding nano-ros to a tree, not adding a library to a nano-ros package
 for a cross target. That is a documentation gap, open: a page would say to

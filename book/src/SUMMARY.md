@@ -61,6 +61,7 @@
   - [Build profiles](./guide/build/build-profiles.md)
   - [Build inside an existing CMake or vendor tree](./guide/build/existing-cmake-or-vendor-tree.md)
   - [Install options, pinning, working offline](./guide/build/install-options.md)
+  - [Bring your own C++ library](./guide/build/bring-your-own-cpp-library.md)
 - [Platforms]()
   - [Verified on host]()
     - [Linux host](./guide/platforms/linux-host.md)

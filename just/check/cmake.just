@@ -279,6 +279,15 @@ refusal-needles:
 cpp-freestanding-mechanisms:
     @python3 scripts/check-cpp-freestanding-mechanisms.py
 
+# The public hosted-C++ opt-in (`nano_ros_hosted_cxx()`, the book's "Bring your
+# own C++ library" page): under the real FreeRTOS toolchain file, a directory
+# that calls it compiles Eigen's standard-library set and one that does not is
+# refused by libstdc++; `-nostdinc++` (ThreadX's shim) is refused; POSIX flags
+# are left alone. One configure and two object compiles, ~2 s.
+[private]
+hosted-cxx-opt-in:
+    @python3 scripts/check/check-hosted-cxx-opt-in.py
+
 # phase-456 W7 / issue 1319 — every C++ subscription registration states its
 # receive bound. A site that omits it takes the `c_raw_no_hint` row, priced at
 # the executor's closure buffer rather than at the message, and the sizing

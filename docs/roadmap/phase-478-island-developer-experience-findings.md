@@ -678,8 +678,12 @@ pin the island drops both its CLI build and the skip.
 (GitHub #4013). Eigen 3.4's `psincos` does not compile where newlib's
 `int32_t` is `long`; the island patches a copy of the host's Eigen. nano-ros
 does not ship patched general-purpose C++ libraries: a user brings and
-patches their own, which a nano-ros package already supports. The book has
-no page saying how, which the issue records as an open documentation gap.
+patches their own, which a nano-ros package already supports. The
+documentation gap the issue recorded is closed (2026-11-17): the book's
+[Bring your own C++ library](../../book/src/guide/build/bring-your-own-cpp-library.md)
+page finds a user's Eigen from a prefix they own, and the public
+`nano_ros_hosted_cxx()` makes a node package's C++ hosted on a freestanding
+FreeRTOS toolchain, held by `just check hosted-cxx-opt-in`.
 
 ### I28 -- a string array's element count is its own bound
 

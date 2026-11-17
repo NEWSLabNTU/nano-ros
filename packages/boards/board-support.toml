@@ -1418,6 +1418,16 @@ weekly = true
 notes = "phase-517 W4 — not a platform: installation-details.md's \"Provision a whole workspace\" run, one bare `nros setup` for a Linux and a FreeRTOS image, then `nros build --all` with nothing else installed."
 
 [[probe]]
+track = "own-library"
+chapter = "guide/build/bring-your-own-cpp-library.md"
+variant = "own-library"
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+qemu_board = "mps2-an385-freertos"
+awaits = ["an Eigen 3.4 install prefix in the probe image: the chapter starts from the user's own copy, installed into $HOME/opt/eigen, and the probe image has none"]
+weekly = false
+notes = "Issue 2646 follow-up — Bring your own C++ library: Eigen in a FreeRTOS mps2-an385 C++ talker through nano_ros_hosted_cxx() and Eigen3_ROOT, run in QEMU. It fails up front until the probe image provides the prefix."
+
+[[probe]]
 track = "pinned"
 chapter = "guide/build/install-options.md"
 variant = "pinned"
