@@ -41,11 +41,10 @@ const _: () =
 const _: () = assert!(NROS_CPP_ACTION_CDR_HEADER_LEN == action_frame::CDR_HEADER_LEN);
 
 use crate::{
-    CppContext, DispatchGuard, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT,
-    NROS_CPP_RET_NOT_ALLOWED, NROS_CPP_RET_NOT_FOUND, NROS_CPP_RET_NOT_INIT, NROS_CPP_RET_OK,
-    NROS_CPP_RET_REENTRANT, NROS_CPP_RET_REJECTED, NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRY_AGAIN,
-    NROS_CPP_RET_UNSUPPORTED, cpp_ctx_checked, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t,
-    nros_cpp_ret_t,
+    NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_NOT_ALLOWED,
+    NROS_CPP_RET_NOT_FOUND, NROS_CPP_RET_NOT_INIT, NROS_CPP_RET_OK, NROS_CPP_RET_REENTRANT,
+    NROS_CPP_RET_REJECTED, NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRY_AGAIN, NROS_CPP_RET_UNSUPPORTED,
+    cpp_ctx_checked, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 /// Scratch buffer for re-framing an incoming goal payload before handing
@@ -1435,11 +1434,15 @@ pub unsafe extern "C" fn nros_cpp_action_client_wait_for_action_server(
         if crate::nros_cpp_time_ns() >= deadline_ns {
             return NROS_CPP_RET_TIMEOUT;
         }
-        let mut ctx_ref = unsafe { crate::cpp_ctx_locked(executor_ptr) };
-        let ctx: &mut crate::CppContext = &mut ctx_ref;
-        let _ = ctx
-            .executor
-            .spin_once(core::time::Duration::from_millis(SPIN_MS));
+        let ctx_ref = unsafe { crate::cpp_ctx_locked(executor_ptr) };
+        // SAFETY: `ctx_ref` holds the lock; no reference to the executor is
+        // live across the pass (RFC-0108 D9, issue 2675).
+        let _ = unsafe {
+            crate::CppExecutor::spin_once_raw(
+                ctx_ref.exec_ptr(),
+                core::time::Duration::from_millis(SPIN_MS),
+            )
+        };
     }
 }
 
@@ -1549,17 +1552,17 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     // server's queryable callback may not run for ~12 s after the
     // client sends the goal (lease/keepalive serialization). The
     // 10 s budget was racing this on test_zephyr_cpp_action_server_to_client_e2e.
-    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(client.executor_ptr) };
-    let ctx: &mut crate::CppContext = &mut ctx_ref;
+    let ctx_ref = unsafe { crate::cpp_ctx_locked(client.executor_ptr) };
+    // RFC-0108 D9 (issue 2675) -- the spins below run callbacks that may call
+    // back in through the handle, so nothing here holds a reference into the
+    // context or the executor across them.
+    let exec = ctx_ref.exec_ptr();
     // Issue 0290 — this helper BLOCKS by spinning the executor, so it must not
     // run from inside a callback (the C twin `rclc_action_send_goal` returns
     // RCLC_RET_REENTRANT for exactly this).
-    let CppContext {
-        executor,
-        c: nros_c::rclc_executor_t { in_dispatch, .. },
-        ..
-    } = ctx;
-    let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
+    // SAFETY: the flag of the context `ctx_ref` locks, for its life.
+    let Some(_guard) = (unsafe { crate::RawDispatchGuard::enter(ctx_ref.in_dispatch_ptr()) })
+    else {
         return NROS_CPP_RET_REENTRANT;
     };
     let mut waiter = BlockingWaiter::new(goal_id.uuid, false, client.callbacks);
@@ -1569,7 +1572,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     let start_ns = crate::nros_cpp_time_ns();
     let timeout_ns: u64 = 30_000_000_000; // 30 s
     loop {
-        let _ = executor.spin_once(core::time::Duration::from_millis(10));
+        // SAFETY: `ctx_ref` holds the lock; no reference is live across the pass.
+        let _ = unsafe {
+            crate::CppExecutor::spin_once_raw(exec, core::time::Duration::from_millis(10))
+        };
         // SAFETY: written only by the waiter callbacks, inside `spin_once`.
         let (done, accepted) = unsafe { ((*waiter_ptr).done, (*waiter_ptr).accepted) };
         if done {
@@ -1657,15 +1663,15 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     // Phase 89.3: wall-clock budgeting — see the explanation on
     // `send_goal` above for why `for _ in 0..1000` is insufficient on
     // multi-threaded zpico backends.
-    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(client.executor_ptr) };
-    let ctx: &mut crate::CppContext = &mut ctx_ref;
+    let ctx_ref = unsafe { crate::cpp_ctx_locked(client.executor_ptr) };
+    // RFC-0108 D9 (issue 2675) -- the spins below run callbacks that may call
+    // back in through the handle, so nothing here holds a reference into the
+    // context or the executor across them.
+    let exec = ctx_ref.exec_ptr();
     // Issue 0290 — blocking helper; refuse to re-enter from a callback.
-    let CppContext {
-        executor,
-        c: nros_c::rclc_executor_t { in_dispatch, .. },
-        ..
-    } = ctx;
-    let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
+    // SAFETY: the flag of the context `ctx_ref` locks, for its life.
+    let Some(_guard) = (unsafe { crate::RawDispatchGuard::enter(ctx_ref.in_dispatch_ptr()) })
+    else {
         return NROS_CPP_RET_REENTRANT;
     };
     let mut waiter = BlockingWaiter::new(id.uuid, true, client.callbacks);
@@ -1675,7 +1681,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     let start_ns = crate::nros_cpp_time_ns();
     let timeout_ns: u64 = 10_000_000_000; // 10 s
     loop {
-        let _ = executor.spin_once(core::time::Duration::from_millis(10));
+        // SAFETY: `ctx_ref` holds the lock; no reference is live across the pass.
+        let _ = unsafe {
+            crate::CppExecutor::spin_once_raw(exec, core::time::Duration::from_millis(10))
+        };
         // SAFETY: written only by the waiter callbacks, inside `spin_once`.
         let w = unsafe { &*waiter_ptr };
         if w.done {

@@ -1939,6 +1939,59 @@ pub(crate) type HaltFlag = portable_atomic_util::Arc<portable_atomic::AtomicBool
 #[cfg(not(feature = "alloc"))]
 pub(crate) type HaltFlag = portable_atomic::AtomicBool;
 
+/// The executor's entry arena, held as a raw pointer and a length rather than
+/// a `&'s mut [MaybeUninit<u8>]` (RFC-0108 D9, issue 2675).
+///
+/// Every path into the arena derives its pointer from this one: the pass that
+/// dispatches an entry, and a callback that calls back into the executor (a C
+/// timer cancel writes the entry it is running from). A stored `&mut` would
+/// give each path its own reborrow, and a write through one disables the
+/// other, so the pass could not touch the entry again after the callback.
+/// Raw pointers derived from one raw pointer share its permission, so the
+/// pass and the callback stay compatible, and each entry's own `&mut` is
+/// derived afresh after the callback returns.
+pub(crate) struct ArenaRef<'s> {
+    ptr: core::ptr::NonNull<MaybeUninit<u8>>,
+    len: usize,
+    _borrow: core::marker::PhantomData<&'s mut [MaybeUninit<u8>]>,
+}
+
+impl<'s> ArenaRef<'s> {
+    /// Hold `arena` for `'s`: the executor is its only user from here on.
+    pub(crate) fn new(arena: &'s mut [MaybeUninit<u8>]) -> Self {
+        let len = arena.len();
+        Self {
+            ptr: core::ptr::NonNull::from(arena).cast(),
+            len,
+            _borrow: core::marker::PhantomData,
+        }
+    }
+
+    /// The arena's first byte, for a write.
+    #[inline]
+    pub(crate) fn as_mut_ptr(&self) -> *mut MaybeUninit<u8> {
+        self.ptr.as_ptr()
+    }
+
+    /// The arena's first byte, for a read.
+    #[inline]
+    pub(crate) fn as_ptr(&self) -> *const MaybeUninit<u8> {
+        self.ptr.as_ptr()
+    }
+
+    /// The arena's size in bytes.
+    #[inline]
+    pub(crate) fn len(&self) -> usize {
+        self.len
+    }
+}
+
+// SAFETY: `ArenaRef` stands for the `&'s mut [MaybeUninit<u8>]` it was made
+// from, which is `Send` and `Sync` (bytes); it adds no shared state.
+unsafe impl Send for ArenaRef<'_> {}
+// SAFETY: as above.
+unsafe impl Sync for ArenaRef<'_> {}
+
 pub struct Executor<'s> {
     /// Issue 0656 — the ROS domain this executor's entities belong to.
     ///
@@ -1956,7 +2009,7 @@ pub struct Executor<'s> {
     /// fat native entry and a lean embedded entry in one shared-target
     /// workspace each size to its own topology. `Executor` stays non-generic
     /// (lifetime only) so the C/C++ FFI keeps wrapping one concrete type.
-    pub(crate) arena: &'s mut [MaybeUninit<u8>],
+    pub(crate) arena: ArenaRef<'s>,
     pub(crate) arena_used: usize,
     /// Issue 1496 / 1667 — the head of the FREE LIST: arena regions given back
     /// by a released entry, reused first-fit by the next allocation that fits.
@@ -2643,7 +2696,7 @@ impl<'s> Executor<'s> {
             // binding that knows better overwrite it via `set_domain_id`.
             domain_id: 0,
             session,
-            arena,
+            arena: ArenaRef::new(arena),
             arena_used: 0,
             arena_free_head: ARENA_FREE_NONE,
             pending_region: None,
@@ -12088,6 +12141,28 @@ impl<'s> Executor<'s> {
         self.spin_once_capturing(timeout, &mut discarded)
     }
 
+    // RFC-0108 D9, issue 2675.
+    /// [`spin_once`](Self::spin_once) through a raw pointer, for a caller
+    /// whose callbacks may call back into this executor.
+    ///
+    /// A C or C++ callback reaches the executor again from its handle, a raw
+    /// pointer, and derives a fresh reference each time. `spin_once(&mut
+    /// self)` would hold a protected `&mut` across that callback, so any such
+    /// re-entry is undefined behaviour. This entry holds none: the pass works
+    /// from `this` and re-derives its reference after every callback. Every
+    /// FFI spin entry calls this, never `spin_once`.
+    ///
+    /// # Safety
+    /// `this` points at a live executor. For the whole call, nothing reaches
+    /// the executor except through `this` (or a pointer derived from it, or
+    /// the handle it was derived from) on this thread, and no reference to the
+    /// executor is live in the caller.
+    pub unsafe fn spin_once_raw(this: *mut Self, timeout: core::time::Duration) -> SpinOnceResult {
+        let mut discarded = None;
+        // SAFETY: the caller's contract is `pass`'s for an owned pass.
+        unsafe { Self::pass(this, PassMode::Owned, timeout, &mut discarded) }
+    }
+
     /// [`spin_once`](Self::spin_once), plus the FIRST failing callback's
     /// error.
     ///
@@ -12416,11 +12491,17 @@ impl<'s> Executor<'s> {
                     // Read before the lock is taken back, so a wait for it
                     // is not counted as the callback's latency.
                     let swept_end_us = start_us.and(lat_clock).map(|c| c());
-                    if let Some(w) = window {
-                        drop(w);
-                        // SAFETY: the lock is held again; nothing borrowed
-                        // from the executor before the window is used after.
-                        s = unsafe { &mut *this };
+                    let windowed = window.is_some();
+                    drop(window);
+                    // RFC-0108 D9 (issue 2675) -- derived again after EVERY
+                    // callback, windowed or not: the callback may have called
+                    // back into the executor from its own handle, which a
+                    // reference held across it would alias.
+                    // SAFETY: the lock (if any) is held again; nothing
+                    // borrowed from the executor before the callback is used
+                    // after it.
+                    s = unsafe { &mut *this };
+                    if windowed {
                         s.unlink_running(&mut rec);
                     }
                     if let (Some(end_us), Some(t0)) = (swept_end_us, start_us) {
@@ -13056,11 +13137,14 @@ impl<'s> Executor<'s> {
                 });
                 dispatch_one(&meta, i, arena_ptr, delta_us, &mut result);
                 let end_us = start_us.map(|_| read_us());
-                if let Some(w) = window {
-                    drop(w);
-                    // SAFETY: the lock is held again; nothing borrowed from
-                    // the executor before the window is used after.
-                    s = unsafe { &mut *this };
+                let windowed = window.is_some();
+                drop(window);
+                // RFC-0108 D9 (issue 2675) -- derived again after EVERY
+                // callback, windowed or not (see the timer sweep above).
+                // SAFETY: the lock (if any) is held again; nothing borrowed
+                // from the executor before the callback is used after it.
+                s = unsafe { &mut *this };
+                if windowed {
                     s.unlink_running(&mut rec);
                 }
                 let elapsed_us: Option<u32> = start_us
@@ -13860,6 +13944,49 @@ impl<'s> Executor<'s> {
             }
             if bounded
                 && let (Some(start), Some(now)) = (start_us, self.now_us())
+                && now.saturating_sub(start) >= max_us
+            {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    // RFC-0108 D9, issue 2675.
+    /// [`spin_some`](Self::spin_some) through a raw pointer, for a caller
+    /// whose callbacks may call back into this executor: each pass is a
+    /// [`spin_once_raw`](Self::spin_once_raw), and the clock is read through
+    /// a reference that lives for that read alone.
+    ///
+    /// # Safety
+    /// As [`spin_once_raw`](Self::spin_once_raw).
+    pub unsafe fn spin_some_raw(
+        this: *mut Self,
+        max: core::time::Duration,
+    ) -> Result<(), NodeError> {
+        let bounded = !max.is_zero();
+        // SAFETY: the caller's contract; the reference ends with the read.
+        let now_us = || unsafe { (*this).now_us() };
+        let start_us = now_us();
+        if bounded && start_us.is_none() {
+            // issue 0709 -- as `spin_some`.
+            nros_log::log_error!(
+                nros_log::get_logger("nros"),
+                "spin_some: a max duration was requested but this build has no clock \
+                 - install one with `ExecutorConfig::clock_us`, or pass \
+                 `Duration::ZERO` for rclcpp's unbounded default"
+            );
+            return Err(NodeError::NotInitialized);
+        }
+        let max_us = max.as_micros().min(u64::MAX as u128) as u64;
+        loop {
+            // SAFETY: the caller's contract.
+            let result = unsafe { Self::spin_once_raw(this, core::time::Duration::ZERO) };
+            if !result.any_work() {
+                break;
+            }
+            if bounded
+                && let (Some(start), Some(now)) = (start_us, now_us())
                 && now.saturating_sub(start) >= max_us
             {
                 break;

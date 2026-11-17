@@ -94,6 +94,13 @@ pub(crate) struct CExecRef<'a> {
 }
 
 impl CExecRef<'_> {
+    /// The executor this reference locks, as a raw pointer, for an entry that
+    /// runs user callbacks (a spin) and so must hold no `&mut` across them
+    /// (RFC-0108 D9, issue 2675). The lock stays held while `self` lives.
+    pub(crate) fn as_ptr(&self) -> *mut CExecutor {
+        self.exec
+    }
+
     /// # Safety
     /// `exec` points at a live, initialised executor.
     pub(crate) unsafe fn lock(exec: *mut CExecutor) -> Self {
@@ -4831,17 +4838,24 @@ pub unsafe extern "C" fn rclc_executor_spin_some(
     // Issue 1556 item 2 — a census run writes and exits here, instead of spinning.
     crate::census::finish_if_armed();
 
-    let executor = &mut *executor;
-
+    // RFC-0108 D9 (issue 2675) -- a callback this spin runs may call back
+    // into the executor through `executor` (a timer cancel, a graph query),
+    // so no reference to the header or to the executor is held across the
+    // pass: the header is read and written through the raw pointer, and the
+    // pass runs through `spin_once_raw`.
+    //
+    // SAFETY: `executor` is non-null (checked) and initialised (the caller's
+    // contract); each field access is a raw place expression.
+    let state = unsafe { core::ptr::read(core::ptr::addr_of!((*executor).state)) };
     // Accept both INITIALIZED and SPINNING states
-    if executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
-        && executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
+    if state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
+        && state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
     {
         return RCL_RET_NOT_INIT;
     }
 
     {
-        let mut rust_exec = get_executor(executor);
+        let rust_exec = get_executor(executor);
 
         // Convert timeout from nanoseconds to milliseconds (i32) for nros-node
         let timeout_ms: u64 = if timeout_ns > 0 {
@@ -4853,9 +4867,19 @@ pub unsafe extern "C" fn rclc_executor_spin_some(
         // spin_once drives I/O internally and handles trigger evaluation,
         // LET semantics, and dispatch. Guard against reentrancy so
         // blocking helpers called from inside a callback are detected.
-        executor.in_dispatch = true;
-        let result = rust_exec.spin_once(core::time::Duration::from_millis(timeout_ms));
-        executor.in_dispatch = false;
+        let in_dispatch = unsafe { core::ptr::addr_of_mut!((*executor).in_dispatch) };
+        // SAFETY: a raw write to the header's own flag.
+        unsafe { in_dispatch.write(true) };
+        // SAFETY: `rust_exec` holds the executor's lock and its pointer is
+        // the live executor; no reference to it is held across the call.
+        let result = unsafe {
+            CExecutor::spin_once_raw(
+                rust_exec.as_ptr(),
+                core::time::Duration::from_millis(timeout_ms),
+            )
+        };
+        // SAFETY: as above.
+        unsafe { in_dispatch.write(false) };
 
         spin_cycle_ret(result.any_work())
     }
@@ -4871,7 +4895,7 @@ pub unsafe extern "C" fn rclc_executor_spin(executor: *mut rclc_executor_t) -> r
     // Issue 1556 item 2 — a census run writes and exits here, instead of spinning.
     crate::census::finish_if_armed();
 
-    let executor_ref = &mut *executor;
+    let mut executor_ref = &mut *executor;
 
     validate_state!(
         executor_ref,
@@ -4908,6 +4932,9 @@ pub unsafe extern "C" fn rclc_executor_spin(executor: *mut rclc_executor_t) -> r
         && !get_executor(executor_ref).is_halted()
     {
         let ret = rclc_executor_spin_some(executor, executor_ref.timeout_ns);
+        // RFC-0108 D9 (issue 2675) -- a callback may have written the header
+        // through `executor`; derive the reference again.
+        executor_ref = &mut *executor;
         if get_executor(executor_ref).session_io_failures() >= SPIN_ERROR_TOLERANCE {
             get_executor(executor_ref).exit_spin_loop();
             if executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING {
@@ -4962,7 +4989,7 @@ pub unsafe extern "C" fn rclc_executor_spin_period(
         return RCL_RET_INVALID_ARGUMENT;
     }
 
-    let executor_ref = &mut *executor;
+    let mut executor_ref = &mut *executor;
 
     validate_state!(
         executor_ref,
@@ -4989,6 +5016,9 @@ pub unsafe extern "C" fn rclc_executor_spin_period(
         // timeout as the delta would tick timers faster than wall-clock.
         let wait_ns = period_spin_wait_ns(executor_ref, period_ns);
         let ret = rclc_executor_spin_some(executor, wait_ns);
+        // RFC-0108 D9 (issue 2675) -- a callback may have written the header
+        // through `executor`; derive the reference again.
+        executor_ref = &mut *executor;
         // issue 0355 — bail only on genuine SESSION death, read from the real
         // `drive_io` health counter, NOT from `spin_some`'s idle
         // `RCL_RET_TIMEOUT`. See `rclc_executor_spin` for the full rationale:
@@ -5025,6 +5055,9 @@ pub unsafe extern "C" fn rclc_executor_spin_period(
                 break;
             }
             let _ = rclc_executor_spin_some(executor, executor_ref.invocation_time_ns - now);
+            // RFC-0108 D9 (issue 2675) -- a callback may have written the header
+            // through `executor`; derive the reference again.
+            executor_ref = &mut *executor;
             if get_executor(executor_ref).session_io_failures() >= SPIN_ERROR_TOLERANCE {
                 break;
             }
@@ -5070,6 +5103,8 @@ pub unsafe extern "C" fn rclc_executor_spin_one_period(
     // `rclc_executor_spin_some(executor, executor->timeout_ns)` and spends the
     // period on the sleep below. See `period_spin_wait_ns`.
     let wait_ns = period_spin_wait_ns(executor_ref, period_ns);
+    // `executor_ref` is not used past this point: a callback the spin runs
+    // may write the header through `executor` (RFC-0108 D9, issue 2675).
     let _ = rclc_executor_spin_some(executor, wait_ns);
 
     // Sleep for remaining time in period

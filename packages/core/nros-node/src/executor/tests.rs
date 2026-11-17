@@ -19747,18 +19747,20 @@ mod rosout_writers {
 // `&mut Executor` from it. These tests do the same from a Rust timer closure:
 // the pointer lives in a static, as the handle lives in the C caller.
 //
-// They are meant for Miri with Tree Borrows
-// (`MIRIFLAGS=-Zmiri-tree-borrows cargo +nightly miri test -p nros-node
-// reentry`), which is what can tell an aliased `&mut` from a sound one. Under a
-// normal `cargo test` they only check that the re-entry works.
+// They are meant for Miri with Tree Borrows (`just check
+// miri-executor-reentry`), which is what can tell an aliased `&mut` from a
+// sound one. Under a normal `cargo test` they only check that the re-entry
+// works.
 //
-// `spin_through_a_reference` drives the pass the way the C spin entries do
-// today: `(&mut *p).spin_once(..)`, a `&mut` derived from the handle and held
-// for the whole pass.
+// `spin_through_the_raw_entry` drives the pass the way the FFI spin entries
+// do (RFC-0108 D9): through `Executor::spin_once_raw`, holding no reference
+// across the pass. Before D9 the C entry spun through
+// `(&mut *p).spin_once(..)`, which Miri reports as undefined behaviour here.
 // ---------------------------------------------------------------------------
 
 mod reentry {
     use super::*;
+    use crate::executor::arena::EntryKind;
     use portable_atomic::{AtomicPtr, AtomicU32, Ordering};
 
     private_test_clock!(reentry_write_clock);
@@ -19773,14 +19775,14 @@ mod reentry {
     static READ_TIMER: std::sync::Mutex<Option<HandleId>> = std::sync::Mutex::new(None);
     static READ_SEEN: AtomicU32 = AtomicU32::new(0);
 
-    /// One pass, driven the way `rclc_executor_spin_some` drives it today.
+    /// One pass, driven the way the FFI spin entries drive it (RFC-0108 D9):
+    /// through the raw pointer, with no reference held across the pass.
     ///
     /// # Safety
     /// `p` points at a live executor nothing else references.
-    unsafe fn spin_through_a_reference(p: *mut Executor<'static>) {
+    unsafe fn spin_through_the_raw_entry(p: *mut Executor<'static>) {
         // SAFETY: the caller's contract.
-        let exec = unsafe { &mut *p };
-        let _ = exec.spin_once(core::time::Duration::ZERO);
+        let _ = unsafe { Executor::spin_once_raw(p, core::time::Duration::ZERO) };
     }
 
     /// A timer callback that WRITES to its executor: it cancels its own timer,
@@ -19811,16 +19813,117 @@ mod reentry {
 
         reentry_write_clock::set_us(10_000);
         // SAFETY: `p` is the only path to the executor.
-        unsafe { spin_through_a_reference(p) };
+        unsafe { spin_through_the_raw_entry(p) };
         assert_eq!(WRITE_CALLS.load(Ordering::SeqCst), 1, "the timer ran once");
 
         reentry_write_clock::set_us(30_000);
         // SAFETY: as above.
-        unsafe { spin_through_a_reference(p) };
+        unsafe { spin_through_the_raw_entry(p) };
         assert_eq!(
             WRITE_CALLS.load(Ordering::SeqCst),
             1,
             "the timer cancelled itself, so it does not run again"
+        );
+
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+
+    private_test_clock!(reentry_release_clock);
+    static RELEASE_EXEC: AtomicPtr<Executor<'static>> = AtomicPtr::new(core::ptr::null_mut());
+    static RELEASE_VICTIM: std::sync::Mutex<Option<HandleId>> = std::sync::Mutex::new(None);
+    static RELEASED: AtomicU32 = AtomicU32::new(0);
+
+    /// A timer callback that RELEASES another entry: it writes the entry table
+    /// and the arena's free list, fields of the executor itself, as a C
+    /// callback finishing another handle does. The pass must not hold a
+    /// reference into the executor across it.
+    #[test]
+    fn a_timer_callback_that_releases_another_entry_reenters_soundly() {
+        reentry_release_clock::claim_at_us(0);
+        let mut boxed = Box::new(executor_with_clock_fn(
+            MockSession::new(),
+            reentry_release_clock::now_us,
+        ));
+        boxed
+            .register_timer(TimerDuration::from_millis(10), || {
+                let p = RELEASE_EXEC.load(Ordering::SeqCst);
+                let Some(victim) = RELEASE_VICTIM.lock().unwrap().take() else {
+                    return;
+                };
+                // SAFETY: as in the write test.
+                let exec = unsafe { &mut *p };
+                let slot = exec.live_slot(victim);
+                // SAFETY: the victim's handle is not used again.
+                if unsafe { exec.release_entry(slot, EntryKind::Timer) } {
+                    RELEASED.fetch_add(1, Ordering::SeqCst);
+                }
+            })
+            .unwrap();
+        let victim = boxed
+            .register_timer(TimerDuration::from_millis(1000), || {})
+            .unwrap();
+        *RELEASE_VICTIM.lock().unwrap() = Some(victim);
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+        RELEASE_EXEC.store(p, Ordering::SeqCst);
+
+        reentry_release_clock::set_us(10_000);
+        // SAFETY: `p` is the only path to the executor.
+        unsafe { spin_through_the_raw_entry(p) };
+        assert_eq!(
+            RELEASED.load(Ordering::SeqCst),
+            1,
+            "the callback released the other timer"
+        );
+
+        reentry_release_clock::set_us(20_000);
+        // SAFETY: as above.
+        unsafe { spin_through_the_raw_entry(p) };
+
+        // SAFETY: `p` came from `Box::into_raw` and is not used again.
+        drop(unsafe { Box::from_raw(p) });
+    }
+
+    private_test_clock!(reentry_reset_clock);
+    static RESET_EXEC: AtomicPtr<Executor<'static>> = AtomicPtr::new(core::ptr::null_mut());
+    static RESET_TIMER: std::sync::Mutex<Option<HandleId>> = std::sync::Mutex::new(None);
+    static RESET_CALLS: AtomicU32 = AtomicU32::new(0);
+
+    /// A timer callback that RESETS its own timer, as a C callback calling
+    /// `rcl_timer_reset` does: a write to the entry being dispatched.
+    #[test]
+    fn a_timer_callback_that_resets_its_own_timer_reenters_soundly() {
+        reentry_reset_clock::claim_at_us(0);
+        let mut boxed = Box::new(executor_with_clock_fn(
+            MockSession::new(),
+            reentry_reset_clock::now_us,
+        ));
+        let id = boxed
+            .register_timer(TimerDuration::from_millis(10), || {
+                RESET_CALLS.fetch_add(1, Ordering::SeqCst);
+                let p = RESET_EXEC.load(Ordering::SeqCst);
+                let id = RESET_TIMER.lock().unwrap().expect("timer id");
+                // SAFETY: as in the write test.
+                let exec = unsafe { &mut *p };
+                exec.reset_timer(id)
+                    .expect("reset from inside the callback");
+            })
+            .unwrap();
+        *RESET_TIMER.lock().unwrap() = Some(id);
+        let p: *mut Executor<'static> = Box::into_raw(boxed);
+        RESET_EXEC.store(p, Ordering::SeqCst);
+
+        reentry_reset_clock::set_us(10_000);
+        // SAFETY: `p` is the only path to the executor.
+        unsafe { spin_through_the_raw_entry(p) };
+        assert_eq!(RESET_CALLS.load(Ordering::SeqCst), 1, "the timer ran once");
+        reentry_reset_clock::set_us(20_000);
+        // SAFETY: as above.
+        unsafe { spin_through_the_raw_entry(p) };
+        assert_eq!(
+            RESET_CALLS.load(Ordering::SeqCst),
+            2,
+            "a reset timer runs again"
         );
 
         // SAFETY: `p` came from `Box::into_raw` and is not used again.
@@ -19853,7 +19956,7 @@ mod reentry {
 
         reentry_read_clock::set_us(10_000);
         // SAFETY: `p` is the only path to the executor.
-        unsafe { spin_through_a_reference(p) };
+        unsafe { spin_through_the_raw_entry(p) };
         assert_eq!(
             READ_SEEN.load(Ordering::SeqCst),
             1,

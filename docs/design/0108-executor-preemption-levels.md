@@ -1125,6 +1125,12 @@ executor across a user callback or a component tick:
    hand-roll a derivation that outlives its call. `get_executor`,
    `get_executor_from_ptr`, `cpp_ctx_checked`, `cpp_ctx_locked` and the
    `CLocked` / `Locked` lookups become that helper's callers or are retired.
+4. **The entry in dispatch.** The same holds one level down: an entry's
+   dispatch function (`*_try_process`) holds no reference to its own entry
+   across the user callback. A callback may write that entry through the
+   executor (a timer cancelling or resetting itself), so the dispatch function
+   derives its entry reference again after the callback, or the write is
+   deferred until the dispatch ends.
 
 **What it does not change.** Which entries a callback may call is the same,
 and `in_dispatch` still refuses the BLOCKING helpers (RFC-0021). The lock is
@@ -1140,6 +1146,17 @@ Tree Borrows, on the owned pass and on a two-band `spin_band_once` pass. It
 fails on the pre-amendment core. A sweep gate lists every executor-deriving
 FFI entry and requires each to use the helper or to return `REENTRANT` from a
 callback. Work: phase-573.
+
+**As built (phase-573 W2).** The executor's arena is no longer a stored
+`&'s mut [MaybeUninit<u8>]` but `ArenaRef<'s>`, a raw pointer and a length.
+A stored `&mut` gave the pass and the re-entering callback sibling reborrows,
+and a write through one disabled the other. Every arena path now derives from
+one raw pointer. `spin_once_raw` and `spin_some_raw` are the raw entries.
+`rclc_executor_spin_some`, `nros_cpp_spin_some` and the C++ blocking helpers
+spin through them, and hold the `in_dispatch` flag through a raw pointer
+(`RawDispatchGuard`). The C++ `CtxRef` holds the context as a raw pointer and
+derives a fresh reference on each deref. Rule 4 holds for timers. Every other
+entry kind is phase-573 W2b.
 
 ## Relation to other RFCs
 

@@ -4280,6 +4280,43 @@ no-std:
 # reader of the process environment — is behind a non-default `env` feature for
 # the same reason, so its 11 tests were in no lane the hour they were written.
 # Same recipe, because it is the same defect class, not a new one.
+# RFC-0108 D9 (issue 2675, phase-573 W2) -- a callback that calls back into the
+# executor dispatching it, run under Miri with Tree Borrows. A C or C++ callback
+# reaches the executor again from its handle, a raw pointer, so the dispatch
+# path must hold no reference into the executor across a callback; only Miri
+# can tell an aliased `&mut` from a sound one, and a normal `cargo test` of the
+# same cases passes either way. The harness is `executor::tests::reentry`.
+#
+# `-Zmiri-ignore-leaks`: each case leaks its executor's backing on purpose (the
+# static a callback reaches it through outlives the test). Measured: 11 s cold,
+# 6 s warm on 32 cores.
+#
+# EXEMPT because it needs the pinned nightly's `miri` component, which the
+# merge-gating images do not carry; host-tests.yml's daily `miri` job installs
+# it and runs this by name.
+[metadata("tier", "exempt", "needs the pinned nightly's `miri` component; host-tests.yml's daily `miri` job installs it and runs this by name (phase-573 W2)")]
+miri-executor-reentry:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! cargo +{{NIGHTLY}} miri --version >/dev/null 2>&1; then
+        echo "miri-executor-reentry: no \`miri\` for {{NIGHTLY}}." >&2
+        echo "  rustup component add miri rust-src --toolchain {{NIGHTLY}}" >&2
+        exit 1
+    fi
+    rc=0
+    out="$(MIRIFLAGS="-Zmiri-tree-borrows -Zmiri-ignore-leaks" \
+        cargo +{{NIGHTLY}} miri test -p nros-node --lib \
+        --features alloc,log,sim-time,param-services,lifecycle-services \
+        executor::tests::reentry 2>&1)" || rc=$?
+    printf '%s\n' "$out"
+    [ "$rc" -eq 0 ] || exit "$rc"
+    # A filter that matches nothing exits 0 (see `node-std-tests`).
+    case "$out" in
+        *"test result: ok. 0 passed;"*|*"running 0 tests"*)
+            echo "miri-executor-reentry: the filter matched no test -- renamed, or its cfg is off." >&2
+            exit 1 ;;
+    esac
+
 [group('uses:root-target')]
 [metadata("tier", "build")]
 node-std-tests:
