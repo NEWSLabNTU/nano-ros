@@ -48,6 +48,19 @@
 arch-profile-resolution:
     @python3 scripts/check-arch-profile-resolution.py
 
+# phase-575 W1 -- the hard-float Cortex-R5F profile, checked on real objects:
+# C and C++ built through cmake/toolchain/arm-freertos-armcr5f.cmake and Rust
+# built for `armv7r-none-eabihf` all carry `Tag_ABI_VFP_args: VFP registers`
+# and link together; the toolchain file carries `[arch.cortex-r5f]`'s flags.
+# Its selftest links a softfp C half against the hard-float Rust half and
+# requires ld to refuse it. No board: the FreeRTOS images are W2's. The fast
+# line: it builds three tiny objects from a pristine worktree in seconds, with
+# whichever arm-none-eabi-gcc the lane has.
+[group('needs:arm-gcc-any')]
+[group('needs:cmake')]
+r5f-hard-float-abi:
+    @bash scripts/check/check-r5f-hard-float-abi.sh
+
 # phase-340 W4 — the artifact-identity budget: how many times one crate is
 # COMPILED, and how many dirs one compilation is written into, for a single
 # workspace at a single feature set. `examples/workspaces/mixed` is the fixture
