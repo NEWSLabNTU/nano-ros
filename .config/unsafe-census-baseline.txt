@@ -83,6 +83,7 @@ qemu-rs-common                      52   0     0      15      0
 qemu-rs-lan9118                      5   0     0       0      0
 qemu_bsp_large_msg_test              2   0     0       0      0
 qemu_wcet_bench                      0   0     0       1      0
+stack-guard-freertos-mps2           12   0     0       1      0
 stm32f4-rs-polling-example           5   0     0       1      0
 stm32f4-rs-rtic-example              5   0     0       1      0
 stm32f4-rs-smoltcp                   4   0     0       0      0

@@ -240,12 +240,35 @@ fn main() {
     // that does not time-slice: FreeRTOSConfig.h reads
     // `NROS_FREERTOS_LEVEL_IMAGE`. Same carrier as the heap, every TU.
     let level_image = env::var("CARGO_FEATURE_LEVEL_IMAGE").is_ok();
+    // Issue 2507 -- `NROS_FREERTOS_TASK_STACK_GUARD=0` builds a kernel that
+    // does not call the board's stack guard on a switch. Unset (or 1) keeps the
+    // board's default from its FreeRTOSConfig.h. It reaches the kernel TUs,
+    // which call the guard; the board's own C keeps the guard's code either
+    // way, and with the kernel not calling it the guard is never armed.
+    let task_stack_guard_off = match nros_board_common::platform_config::knob_env(
+        &|k| env::var(k).ok(),
+        "NROS_FREERTOS_TASK_STACK_GUARD",
+    )
+    .as_deref()
+    .map(str::trim)
+    {
+        None | Some("") | Some("1") => false,
+        Some("0") => true,
+        Some(other) => panic!(
+            "NROS_FREERTOS_TASK_STACK_GUARD={other:?}: expected 0 (no task stack guard) or 1 \
+             (the board's default)"
+        ),
+    };
+    nros_board_common::platform_config::watch_knob_env("NROS_FREERTOS_TASK_STACK_GUARD");
     let apply_heap_kb = |build: &mut cc::Build| {
         if let Some(kb) = heap_kb {
             build.define("NROS_FREERTOS_HEAP_KB", kb.to_string().as_str());
         }
         if level_image {
             build.define("NROS_FREERTOS_LEVEL_IMAGE", "1");
+        }
+        if task_stack_guard_off {
+            build.define("NROS_BOARD_TASK_STACK_GUARD", "0");
         }
     };
     apply_heap_kb(&mut freertos);

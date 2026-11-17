@@ -446,7 +446,10 @@ test verbose="": build-fixtures
     # every test it reached as out of lane and was red with "NOT ONE test actually
     # ran" (nightly 43679672304, 2026-11-15). Each board's job now selects its
     # board's cells, and the scope deselects the sibling's.
-    just _nextest-platform 'rtos_e2e realtime_sched_tasks_e2e freertos_posix' '{{verbose}}' '' 'test(Freertos) | binary(=realtime_sched_tasks_e2e) | binary(=freertos_posix)'
+    #
+    # Issue 2507 -- and `freertos_stack_guard`: a task stack overflow on the
+    # mps2-an385 board hits its MPU guard and names the task.
+    just _nextest-platform 'rtos_e2e realtime_sched_tasks_e2e freertos_posix freertos_stack_guard' '{{verbose}}' '' 'test(Freertos) | binary(=realtime_sched_tasks_e2e) | binary(=freertos_posix) | binary(=freertos_stack_guard)'
 
 # Run all FreeRTOS tests including networked E2E
 [group("full-matrix")]

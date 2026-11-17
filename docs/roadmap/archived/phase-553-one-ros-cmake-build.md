@@ -297,7 +297,7 @@ empty: `for f in $(git ls-files 'examples/**/build.rs'); do grep -l 'cc::Build' 
 
 ### W7 — A bounded, guarded stack on the C-rooted image
 
-- **Status:** DONE (2026-11-13, #3737). FreeRTOS task stacks are not covered: [issue 2507](../../issues/2507-freertos-task-stack-overflow-reads-as-malloc-failed.md).
+- **Status:** DONE (2026-11-13, #3737). FreeRTOS task stacks are not covered: [issue 2507](../../issues/archived/2507-freertos-task-stack-overflow-reads-as-malloc-failed.md).
 
 Issue 2494. On bare-metal mps2-an385 the main stack is neither bounded nor
 guarded: cortex-m-rt grows it down from `_stack_start` (0x2040_0000), the
@@ -382,7 +382,7 @@ Not covered: FreeRTOS images. Their task stacks are heap_4 blocks, and an
 overflow already surfaces (as `MALLOC FAILED`, the misattribution recorded in
 `freertos_config.rs`), so guarding them means reprogramming the MPU on every
 context switch. That is separate work, tracked in
-[issue 2507](../../issues/2507-freertos-task-stack-overflow-reads-as-malloc-failed.md).
+[issue 2507](../../issues/archived/2507-freertos-task-stack-overflow-reads-as-malloc-failed.md).
 
 ## Not in scope
 

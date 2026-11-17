@@ -167,7 +167,10 @@ impl Default for FreertosScheduling {
 ///   wired: heap_4 hands out the task stack, so the overflow lands in the
 ///   ADJACENT heap block header and the next `pvPortMalloc` fails before any
 ///   context switch can check the pattern. The kernel's own stack check cannot
-///   win that race here.
+///   win that race here. That was measured before the MPS2-AN385 board had a
+///   task stack guard: there the overflow now faults in the
+///   guard and the image prints `*** STACK OVERFLOW: <task> ***`. A board
+///   without a guard still reports `MALLOC FAILED`.
 ///
 /// So the way to know is the boot line, not the failure.
 ///
