@@ -270,11 +270,13 @@ pub fn type_to_u8(param_type: InternalType) -> u8 {
     }
 }
 
-/// Convert internal ParameterDescriptor to rcl_interfaces ParameterDescriptor
-pub fn to_rcl_descriptor(desc: &InternalDescriptor) -> ParameterDescriptor {
+/// Convert an internal ParameterDescriptor to the rcl_interfaces one. The name
+/// comes from the caller: the store keeps it once, in the entry's `Parameter`,
+/// not again in the descriptor.
+pub fn to_rcl_descriptor(name: &str, desc: &InternalDescriptor) -> ParameterDescriptor {
     let mut result = ParameterDescriptor::default();
 
-    let _ = result.name.push_str(desc.name.as_str());
+    let _ = result.name.push_str(name);
     result.type_ = type_to_u8(desc.param_type);
     let _ = result.description.push_str(desc.description.as_str());
     // phase-417 W4.a — `additional_constraints` used to be sent EMPTY for every
@@ -974,8 +976,12 @@ pub(crate) fn stream_list_parameters<'r>(
 }
 
 /// Write one `rcl_interfaces/msg/ParameterDescriptor` from the internal form.
-fn write_descriptor(writer: &mut CdrWriter<'_>, desc: &InternalDescriptor) -> Result<(), SerError> {
-    writer.write_string(fit_or_empty(desc.name.as_str()))?;
+fn write_descriptor(
+    writer: &mut CdrWriter<'_>,
+    name: &str,
+    desc: &InternalDescriptor,
+) -> Result<(), SerError> {
+    writer.write_string(fit_or_empty(name))?;
     writer.write_u8(type_to_u8(desc.param_type))?;
     writer.write_string(fit_or_empty(desc.description.as_str()))?;
     // phase-417 W4.a — `additional_constraints` is a REAL field now. This is
@@ -1037,7 +1043,7 @@ pub(crate) fn stream_describe_parameters(
     for _ in 0..count {
         let name = read_wire_string(reader).map_err(deser_failed)?;
         if let Some(desc) = server.get_descriptor(node, name) {
-            write_descriptor(writer, desc)
+            write_descriptor(writer, name, desc)
         } else if let Some(param) = server.get_parameter(node, name) {
             write_minimal_descriptor(writer, name, type_to_u8(param.param_type()))
         } else {
@@ -1256,7 +1262,7 @@ pub fn handle_describe_parameters(
 
     for name in request.names.iter() {
         let descriptor = if let Some(desc) = server.get_descriptor(node, name.as_str()) {
-            to_rcl_descriptor(desc)
+            to_rcl_descriptor(name.as_str(), desc)
         } else if let Some(param) = server.get_parameter(node, name.as_str()) {
             // Create a minimal descriptor from the parameter
             let mut d = ParameterDescriptor::default();
@@ -2797,6 +2803,24 @@ mod tests {
             let round: Box<DescribeParametersResponse> = decode_boxed(&streamed);
             assert_eq!(*round, *oracle);
         }
+    }
+
+    /// Issue 2650 -- the descriptor no longer holds a copy of the name, so the
+    /// describe reply takes it from the store entry. Every descriptor in the
+    /// reply, on the streamed path that the service answers with, carries the
+    /// name it was asked for: with a descriptor, without one, and unknown.
+    #[test]
+    fn describe_reply_names_each_parameter_without_a_descriptor_copy() {
+        let server = described_server();
+        let names = ["speed", "count", "mode", "bare", "no_such_parameter"];
+        let request = names_request!(DescribeParametersRequest, &names[..]);
+        let streamed = run_streaming(&encode(&*request), |reader, writer| {
+            stream_describe_parameters(&server, NODE, reader, writer)
+        });
+        let reply: Box<DescribeParametersResponse> = decode_boxed(&streamed);
+        let got: std::vec::Vec<&str> = reply.descriptors.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(got, names, "a describe reply lost a parameter's name");
+        assert_eq!(reply.descriptors[0].description.as_str(), "wheel speed");
     }
 
     #[test]

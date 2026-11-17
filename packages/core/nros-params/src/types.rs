@@ -586,8 +586,6 @@ impl ParameterRange {
 /// Describes a parameter including its type, constraints, and documentation.
 #[derive(Debug, Clone)]
 pub struct ParameterDescriptor {
-    /// Parameter name
-    pub name: String<MAX_PARAM_NAME_LEN>,
     /// Parameter type
     pub param_type: ParameterType,
     /// Human-readable description.
@@ -650,10 +648,10 @@ pub fn fit_description<const N: usize>(dst: &mut String<N>, text: &str) -> bool 
 impl ParameterDescriptor {
     /// Create a new parameter descriptor
     pub fn new(name: &str, param_type: ParameterType) -> Option<Self> {
-        let mut n = String::new();
-        n.push_str(name).ok()?;
+        if name.len() > MAX_PARAM_NAME_LEN {
+            return None;
+        }
         Some(Self {
-            name: n,
             param_type,
             description: String::new(),
             additional_constraints: String::new(),
@@ -1246,7 +1244,6 @@ mod tests {
             .with_description("Maximum speed in m/s")
             .with_float_range(0.0, 10.0, 0.1);
 
-        assert_eq!(desc.name.as_str(), "speed");
         assert_eq!(desc.param_type, ParameterType::Double);
         assert!(!desc.read_only);
 

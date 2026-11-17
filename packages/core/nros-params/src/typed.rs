@@ -263,7 +263,13 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
 
         let param_value = default_value.to_parameter_value();
 
-        declare(self.server, self.node, descriptor, Some(&param_value))?;
+        declare(
+            self.server,
+            self.node,
+            self.name,
+            descriptor,
+            Some(&param_value),
+        )?;
 
         Ok(ReadOnlyParameter::new(self.server, self.node, self.name))
     }
@@ -277,7 +283,13 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
 
         let default_value = self.default.map(|v| v.to_parameter_value());
 
-        declare(self.server, self.node, descriptor, default_value.as_ref())?;
+        declare(
+            self.server,
+            self.node,
+            self.name,
+            descriptor,
+            default_value.as_ref(),
+        )?;
 
         Ok(MandatoryParameter::new(self.server, self.node, self.name))
     }
@@ -289,7 +301,13 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
 
         let default_value = self.default.map(|v| v.to_parameter_value());
 
-        declare(self.server, self.node, descriptor, default_value.as_ref())?;
+        declare(
+            self.server,
+            self.node,
+            self.name,
+            descriptor,
+            default_value.as_ref(),
+        )?;
 
         Ok(OptionalParameter::new(self.server, self.node, self.name))
     }
@@ -306,6 +324,7 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
 fn declare(
     server: &mut ParameterServer<'_>,
     node: NodeKey,
+    name: &str,
     descriptor: ParameterDescriptor,
     value: Option<&crate::ParameterValue>,
 ) -> Result<(), DeclarationError> {
@@ -314,7 +333,7 @@ fn declare(
         &value.cloned().unwrap_or_default(),
     );
     server
-        .declare_parameter(node, descriptor, value)
+        .declare_parameter(node, name, descriptor, value)
         .map_err(|result| match result {
             ParameterError::TypeMismatch => DeclarationError::AlreadyDeclared,
             ParameterError::InvalidRange => {

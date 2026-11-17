@@ -1710,17 +1710,18 @@ impl<'s> ParameterServer<'s> {
     ///
     /// # Arguments
     /// - `node`: The node the parameter belongs to.
+    /// - `name`: The parameter's name. The entry's `Parameter` holds it; the
+    ///   descriptor does not carry a second copy.
     /// - `descriptor`: The metadata for the parameter.
     /// - `initial_value`: An optional initial value for the parameter. If `None`,
     ///   the parameter will be initialized to `ParameterValue::NotSet`.
     pub(crate) fn declare_parameter(
         &mut self,
         node: NodeKey,
+        name: &str,
         descriptor: ParameterDescriptor,
         initial_value: Option<&ParameterValue>,
     ) -> Result<(), ParameterError> {
-        let name = descriptor.name.as_str();
-
         // Check if already exists
         if self.find_index(node, name).is_some() {
             return Err(ParameterError::TypeMismatch); // Indicates already declared
@@ -2214,7 +2215,7 @@ mod tests {
         ));
         assert!(!server.has(NODE, "bad"));
         assert_eq!(
-            server.declare_parameter(NODE, desc, Some(&ParameterValue::Integer(0))),
+            server.declare_parameter(NODE, "bad", desc, Some(&ParameterValue::Integer(0))),
             Err(ParameterError::InvalidRange)
         );
         assert!(!server.has(NODE, "bad"));

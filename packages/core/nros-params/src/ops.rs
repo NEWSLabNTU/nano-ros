@@ -293,6 +293,7 @@ pub trait ParameterServerOps<'s>: sealed::Sealed + Sized {
     fn declare_parameter(
         &mut self,
         node: NodeKey,
+        name: &str,
         descriptor: ParameterDescriptor,
         initial_value: Option<&ParameterValue>,
     ) -> Result<(), ParameterError>;
@@ -700,10 +701,11 @@ impl<'s> ParameterServerOps<'s> for ParameterServer<'s> {
     fn declare_parameter(
         &mut self,
         node: NodeKey,
+        name: &str,
         descriptor: ParameterDescriptor,
         initial_value: Option<&ParameterValue>,
     ) -> Result<(), ParameterError> {
-        ParameterServer::declare_parameter(self, node, descriptor, initial_value)
+        ParameterServer::declare_parameter(self, node, name, descriptor, initial_value)
     }
 
     #[inline]
