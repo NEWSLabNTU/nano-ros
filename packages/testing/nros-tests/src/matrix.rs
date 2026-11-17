@@ -1483,6 +1483,9 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ),
     ("zephyr_leaf_staleness", NonCell::Static),
     ("zephyr_link_layout", NonCell::CompileCheck),
+    // Reads the built nucleo_serial west image's RAM against its linker map;
+    // boots nothing.
+    ("zephyr_nucleo_ram_budget", NonCell::CompileCheck),
     ("zephyr_prjconf_requirements", NonCell::Static),
     ("zephyr_self_pkg", NonCell::CompileCheck),
     (

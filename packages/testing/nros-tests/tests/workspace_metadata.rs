@@ -270,9 +270,12 @@ fn assert_entry_writes_a_complete_census(entry: &std::path::Path, lang: &str) {
     );
     // Attribution: a C entry's entities used to reach the recorder with no
     // node (phase-463 Limits). Each endpoint must sit under the node that
-    // created it, not under the other one.
+    // created it, not under the other one. Asked of the pair's own topic: every
+    // node also publishes the stock `/parameter_events` and `/rosout`, so the
+    // listener has publishers of its own.
+    let on_chatter = |rows: Vec<String>| rows.iter().any(|t| t.ends_with("chatter"));
     assert!(
-        topics(listener, "publishers").is_empty() && topics(talker, "subscribers").is_empty(),
+        !on_chatter(topics(listener, "publishers")) && !on_chatter(topics(talker, "subscribers")),
         "an entity was attributed to the wrong node: {raw}"
     );
 }

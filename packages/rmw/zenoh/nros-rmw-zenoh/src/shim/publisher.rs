@@ -1002,8 +1002,9 @@ impl Publisher for ZenohPublisher {
 
             #[cfg(feature = "std")]
             log::trace!(
-                "Publishing {} bytes with attachment: seq={}, ts={}, gid={:02x?}",
+                "Publishing {} bytes with attachment: topic={}, seq={}, ts={}, gid={:02x?}",
                 data.len(),
+                self.name,
                 seq,
                 ts,
                 &self.rmw_gid[..4],
