@@ -1,0 +1,259 @@
+/* FreeRTOS kernel configuration: fixture-r5f-freertos (Cortex-R5F, hard float).
+ *
+ * A board package outside nano-ros owns this whole file (RFC-0064's rung 3):
+ * nano-ros's in-tree boards include the FreeRTOS family's configuration by a
+ * path relative to their own directory, which a package elsewhere cannot spell,
+ * and the cargo road's C builds see only FREERTOS_CONFIG_DIR. So the board's
+ * facts come first and the family's configuration follows, copied from
+ * packages/boards/nros-board-freertos/config/FreeRTOSConfig.h.
+ */
+#define NROS_BOARD_CPU_CLOCK_HZ 500000000 /* RPU at 500 MHz */
+#define NROS_BOARD_PRIO_BITS    5
+
+/* Every task gets an FPU context: hard-float objects use d0-d15 freely. */
+#define configUSE_TASK_FPU_SUPPORT 2
+
+/* ---- The FreeRTOS family's configuration, verbatim but for its header comment ---- */
+
+#ifndef FREERTOS_CONFIG_H
+#define FREERTOS_CONFIG_H
+
+#ifndef NROS_BOARD_CPU_CLOCK_HZ
+#error "board must #define NROS_BOARD_CPU_CLOCK_HZ before including this file"
+#endif
+#if !defined(NROS_BOARD_PRIO_BITS) && !defined(__NVIC_PRIO_BITS)
+#error "board must #define NROS_BOARD_PRIO_BITS (or supply a CMSIS __NVIC_PRIO_BITS)"
+#endif
+
+/* ---- Scheduler ---- */
+#define configUSE_PREEMPTION                    1
+/* Issue 2017 (RFC-0108 D6) -- a LEVEL image runs its levels at distinct
+ * priorities and every level worker parks each pass, so the kernel never has
+ * to rotate one with an equal-priority task; RFC-0108 D6 asks it not to slice
+ * a level in the middle of a callback. `NROS_FREERTOS_LEVEL_IMAGE` is the
+ * per-image input: the cmake road's `nano_ros_entry` defines it on
+ * `freertos_config` for a sched-task entry (the entry's link-libs sidecar says
+ * `NROS_LEVEL_IMAGE`), and the cargo road's board build.rs defines it on
+ * every `cc::Build` when `nros build` turned on the board's `level-image`
+ * feature for a multi-sched-task schedule (`schedule_board_features`). An image
+ * without levels keeps the kernel default, 1. A sched-task entry refuses to
+ * build against a kernel that slices (`sched_task_memory_freertos.h`). */
+#if defined(NROS_FREERTOS_LEVEL_IMAGE) && NROS_FREERTOS_LEVEL_IMAGE
+#define configUSE_TIME_SLICING                  0
+#else
+#define configUSE_TIME_SLICING                  1
+#endif
+#define configUSE_PORT_OPTIMISED_TASK_SELECTION 0
+#define configUSE_TICKLESS_IDLE                 0
+#define configCPU_CLOCK_HZ                      ((unsigned long)NROS_BOARD_CPU_CLOCK_HZ)
+#define configTICK_RATE_HZ                      ((TickType_t)1000)
+#define configMAX_PRIORITIES                    8
+#define configMINIMAL_STACK_SIZE                ((unsigned short)256)
+#define configSTACK_DEPTH_TYPE                  uint32_t
+#define configMAX_TASK_NAME_LEN                 16
+#define configUSE_16_BIT_TICKS                  0
+#define configIDLE_SHOULD_YIELD                 1
+#define configTASK_NOTIFICATION_ARRAY_ENTRIES   3
+
+/* ---- Memory ---- */
+/* Issue 1598 — ON, so each sched task's stack and TCB are statics the generated
+ * entry owns (`xTaskCreateStatic`), sized by the build, placed and priced by the
+ * linker, named by `mem-report`. The two hooks this obliges the application to
+ * supply are in `c/freertos_hooks.c`. Dynamic allocation stays on: every other
+ * task (app, zenoh read/lease, poll) is still `xTaskCreate`. */
+#define configSUPPORT_STATIC_ALLOCATION         1
+#define configSUPPORT_DYNAMIC_ALLOCATION        1
+
+/* Issue 1657 — ON, and stated HERE rather than as a `-D` on one target.
+ *
+ * It changes the LAYOUT of `TCB_t`/`StaticTask_t` and `Queue_t`/
+ * `StaticQueue_t` (+`uxTCBNumber`/`uxTaskNumber`, +`uxQueueNumber`/
+ * `ucQueueType`), so it is an ABI fact every TU that names a kernel type must
+ * agree on — and the only carrier every TU reads is this file. It used to
+ * arrive as `target_compile_definitions(freertos_kernel PUBLIC
+ * configUSE_TRACE_FACILITY=1)` on the cmake road (CycloneDDS's
+ * `ddsrt_gettid()` needs `vTaskGetInfo()`), which reached the kernel and its
+ * cmake consumers but never the cargo-built C: zenoh-pico (`zpico-sys`) sized
+ * an embedded `StaticSemaphore_t` at 72 bytes against a kernel that writes 80.
+ * Harmless while every kernel object came from the heap; once
+ * `configSUPPORT_STATIC_ALLOCATION 1` (issue 1598) made zenoh-pico embed its
+ * mutexes, initialising `_mutex_rx` wrote its `ucQueueType` over the
+ * neighbouring `_mutex_tx`'s `pcHead`, turning that recursive mutex into a
+ * plain semaphore, and the first recursive re-take deadlocked the app task in
+ * session open. Never pass a `config*` macro on a command line — gate
+ * `check-freertos-config-single-carrier`. */
+#define configUSE_TRACE_FACILITY                1
+/* Phase 175.B / 204.6 — FreeRTOS heap (heap_4 `ucHeap[]`, the dominant bss).
+ *
+ * WHO GETS WHICH NUMBER — three roads, decided by WHERE the RMW is known.
+ *
+ * 1. CARGO road, `rmw-zenoh` on: the board build.rs passes
+ *    `-DNROS_FREERTOS_HEAP_KB` from the measured derivation
+ *    `nros_board_common::freertos_config::default_heap_bytes`. Nothing below
+ *    applies (an explicit size is never adjusted).
+ * 2. CMAKE road (every C/C++ image: the kernel is `freertos_kernel`, which never
+ *    runs the board build.rs), Cyclone or XRCE: `cmake/platform/
+ *    nano-ros-freertos.cmake` defines `NROS_FREERTOS_HEAP_DEFAULT_DDS`, and the
+ *    heap is `NROS_FREERTOS_DDS_HEAP_KB` below — issue 1624's MEASURED
+ *    derivation, `default_dds_heap_bytes(C_CARRIER_APP_STACK_BYTES)` = 65,536
+ *    (the carrier's app stack) + 589,824 (the DDS working set) = 640 KiB. A C
+ *    header cannot call the Rust function, so the literal is held to it by
+ *    `freertos_config::tests::the_header_states_the_derived_dds_default`.
+ *    MEASURED on `workspace-cpp-mps3-an536-freertos` (the S32Z270 Cyclone
+ *    entry's emulated twin: same C++ entry, Cortex-R52, kernel port) on qemu
+ *    mps3-an536, 2026-10-02: `nros: heap peak 447944 of 33554432 bytes`, i.e.
+ *    382,408 beside the app stack; the term is 1.54x that (no remote
+ *    participant was on the LAN). Kept measured by
+ *    `freertos_qemu::an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default`.
+ *    NO sched-task-stack subtraction here: that image has no sched tasks, and on this road
+ *    sched task stacks (1598) and sched task executors (1568) are `.bss`, so the derivation
+ *    never contained them — subtracting would take them out twice.
+ * 2b. CMAKE road on zenoh: `nano-ros-freertos.cmake` defines
+ *    `NROS_FREERTOS_HEAP_DEFAULT_ZENOH`, and the heap is
+ *    `NROS_FREERTOS_ZENOH_HEAP_KB` below — the cargo road's own derivation at
+ *    the C/C++ carrier's app stack,
+ *    `default_heap_bytes(C_CARRIER_APP_STACK_BYTES)` = 3 x 65,536 (app task
+ *    slots) + 2 x 131,072 (spare executors) + 65,536 (working set) = 512 KiB,
+ *    held to it by `freertos_config::tests::the_header_states_the_derived_zenoh_default`.
+ *    MEASURED (issue 2623): the C talker template peaks at 91,888 bytes and the
+ *    tutorial's six-node project at 251,496. Like the DDS default, no sched
+ *    task stack subtraction: on this road those stacks are `.bss` (1598), so
+ *    the derivation's extra slots only over-provision. This replaced the
+ *    3 MiB fallback, which issue 1657 kept while no zenoh cmake image ran
+ *    past session open.
+ * 3. Everything else — a cargo build of the family crate with no RMW
+ *    feature, and a cmake host with no `freertos_config` target — takes the
+ *    FALLBACK, 3072 KiB minus the sched task
+ *    stacks the entry moved to `.bss` (issue 1598): those stacks came out of
+ *    this budget until 1598 gave each spawned sched task a static one, so without
+ *    the subtraction the bytes were reserved twice (realtime-cpp's
+ *    `demo_bringup:freertos` overflowed RAM by 151,024 bytes with `ucHeap` at
+ *    0x300000). `nano_ros_entry` defines `NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB`
+ *    from the generated entry's own declarations.
+ *
+ * Override per image with `NROS_FREERTOS_HEAP_KB` (cargo: the build env, which
+ * build.rs forwards; cmake: a compile definition). It is a size someone chose
+ * and is never adjusted by either rule above. */
+#ifndef NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB
+#define NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB     0
+#endif
+/* Issue 2400 W2b -- an image that opted in to a stack raise (`stack_floor =
+ * "raise"`) and was rebuilt at its measured floor: heap_4 hands out the task
+ * stack, so the DEFAULT heap grows by what the stack did. An explicit
+ * NROS_FREERTOS_HEAP_KB is a size someone chose and is not adjusted. */
+#ifndef NROS_FREERTOS_HEAP_RAISE_KB
+#define NROS_FREERTOS_HEAP_RAISE_KB                   0
+#endif
+#define NROS_FREERTOS_DDS_HEAP_KB 640
+#define NROS_FREERTOS_ZENOH_HEAP_KB 512
+#ifndef NROS_FREERTOS_HEAP_KB
+#if defined(NROS_FREERTOS_HEAP_DEFAULT_DDS) && NROS_FREERTOS_HEAP_DEFAULT_DDS
+#define NROS_FREERTOS_HEAP_KB                   ((NROS_FREERTOS_DDS_HEAP_KB) + (NROS_FREERTOS_HEAP_RAISE_KB))
+#elif defined(NROS_FREERTOS_HEAP_DEFAULT_ZENOH) && NROS_FREERTOS_HEAP_DEFAULT_ZENOH
+#define NROS_FREERTOS_HEAP_KB                   ((NROS_FREERTOS_ZENOH_HEAP_KB) + (NROS_FREERTOS_HEAP_RAISE_KB))
+#else
+#define NROS_FREERTOS_HEAP_KB                   (3072 - (NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB) + (NROS_FREERTOS_HEAP_RAISE_KB))
+#endif
+#endif
+#define configTOTAL_HEAP_SIZE                   ((size_t)((NROS_FREERTOS_HEAP_KB) * 1024))
+#define configAPPLICATION_ALLOCATED_HEAP        0
+
+/* ---- Synchronisation ---- */
+#define configUSE_MUTEXES                       1
+#define configUSE_RECURSIVE_MUTEXES             1
+#define configUSE_COUNTING_SEMAPHORES           1
+#define configQUEUE_REGISTRY_SIZE               10
+
+/* ---- Timers ---- */
+#define configUSE_TIMERS                        1
+#define configTIMER_TASK_PRIORITY               2
+#define configTIMER_QUEUE_LENGTH                10
+#define configTIMER_TASK_STACK_DEPTH            (configMINIMAL_STACK_SIZE * 2)
+
+/* ---- Optional API functions ---- */
+#define INCLUDE_vTaskPrioritySet                1
+#define INCLUDE_uxTaskPriorityGet               1
+#define INCLUDE_vTaskDelete                     1
+#define INCLUDE_vTaskSuspend                    1
+#define INCLUDE_xResumeFromISR                  1
+#define INCLUDE_vTaskDelayUntil                 1
+#define INCLUDE_vTaskDelay                      1
+#define INCLUDE_xTaskGetSchedulerState          1
+#define INCLUDE_xTaskGetCurrentTaskHandle       1
+#define INCLUDE_uxTaskGetStackHighWaterMark     1
+#define INCLUDE_xTaskGetIdleTaskHandle          1
+#define INCLUDE_eTaskGetState                   1
+#define INCLUDE_xTimerPendFunctionCall          1
+
+/* ---- Cortex-M interrupt priorities ---- */
+/* NVIC priority bits are a board fact (MPS2-AN385: 3 bits / 8 levels). A CMSIS
+ * device header, when one is on the include path, states it authoritatively. */
+#ifdef __NVIC_PRIO_BITS
+    #define configPRIO_BITS __NVIC_PRIO_BITS
+#else
+    #define configPRIO_BITS NROS_BOARD_PRIO_BITS
+#endif
+
+#define configLIBRARY_LOWEST_INTERRUPT_PRIORITY         7
+#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY    5
+#define configKERNEL_INTERRUPT_PRIORITY \
+    (configLIBRARY_LOWEST_INTERRUPT_PRIORITY << (8 - configPRIO_BITS))
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY \
+    (configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << (8 - configPRIO_BITS))
+
+/* ---- Assert ---- */
+/* Semihosting-compatible assert for QEMU debugging */
+extern void freertos_assert_failed(const char *file, int line);
+#define configASSERT(x)                                     \
+    if ((x) == 0) { freertos_assert_failed(__FILE__, __LINE__); }
+
+/* ---- Hook functions ---- */
+#define configUSE_IDLE_HOOK                     1
+#ifdef NROS_TRACE
+#define configUSE_TICK_HOOK                     1
+#else
+#define configUSE_TICK_HOOK                     0
+#endif
+#define configUSE_MALLOC_FAILED_HOOK            1
+#define configCHECK_FOR_STACK_OVERFLOW          2
+#define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
+
+/* ---- Task stack guard (issue 2507) ----
+ * A board that defines NROS_BOARD_TASK_STACK_GUARD to 1 supplies
+ * `nros_board_task_stack_guard_arm`, and the kernel calls it with the incoming
+ * task's lowest stack address on every switch. `portTASK_SWITCH_HOOK` is the
+ * kernel's own hook for reprogramming the MPU, and is separate from the trace
+ * hooks `NROS_TRACE` defines. It expands inside `tasks.c`, where `pxStack` is
+ * visible. */
+#if defined(NROS_BOARD_TASK_STACK_GUARD) && NROS_BOARD_TASK_STACK_GUARD
+#ifndef __ASSEMBLER__
+extern void nros_board_task_stack_guard_arm(const void *stack_lowest);
+#endif
+#define portTASK_SWITCH_HOOK(pxTCB) nros_board_task_stack_guard_arm((const void *)(pxTCB)->pxStack)
+#endif
+
+/* ---- Tonbandgeraet tracing (opt-in via NROS_TRACE=1) ----
+ * `configUSE_TRACE_FACILITY` is unconditionally on above (issue 1657), so the
+ * opt-in adds only the trace hooks and the tick hook, neither of which changes
+ * a kernel type's layout. */
+#ifdef NROS_TRACE
+#include "tband.h"
+#endif
+
+/* ---- Board hooks, after the family's configuration ---- */
+
+/* GCC/ARM_CRx_No_GIC tick seam: board hooks over the vendor SDK's timer. */
+#ifndef configSETUP_TICK_INTERRUPT
+void nros_board_setup_tick_interrupt(void);
+void nros_board_clear_tick_interrupt(void);
+#define configSETUP_TICK_INTERRUPT() nros_board_setup_tick_interrupt()
+#define configCLEAR_TICK_INTERRUPT() nros_board_clear_tick_interrupt()
+#endif
+
+/* The port writes the acknowledged interrupt here on exit: the SDK's word. */
+#ifndef configEOI_ADDRESS
+extern volatile unsigned long fxsdk_eoi_word;
+#define configEOI_ADDRESS ((unsigned long)&fxsdk_eoi_word)
+#endif
+
+#endif /* FREERTOS_CONFIG_H */

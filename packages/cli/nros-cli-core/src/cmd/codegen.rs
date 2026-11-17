@@ -544,7 +544,8 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         // Issue 1285 — a typed C/C++ entry needs the board's FAMILY (its
         // runner, its boot shape, its sched task sub-table), so an unknown key stops
         // here, naming the known ones, instead of reading as `posix`/`native`.
-        let family = nros_entry_lower::board_family(&plan.board).map_err(|e| eyre!("{e}"))?;
+        let family =
+            crate::orchestration::board_key::board_family(&plan.board).map_err(|e| eyre!("{e}"))?;
         let image_plan = crate::orchestration::image_priority_plan::plan_for_image(
             family.sched_task_rtos_key(),
             args.dotconfig.as_deref(),

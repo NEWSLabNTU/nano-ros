@@ -645,6 +645,12 @@ pub struct BoardDescriptor {
     /// A declared `[safety]` axis lowers to the board feature only when the board
     /// Verbatim `.cargo/config.toml` body, with `${workspace}` placeholders for
     /// any layout path. `None` for boards that need no config (posix/zephyr/…).
+    ///
+    /// `${board_dir}` names the board package's own directory (RFC-0135 D2):
+    /// a board package outside nano-ros has its config dir and linker script
+    /// beside its definition, which `${workspace}` (the nano-ros tree) cannot
+    /// reach. It is resolved when the catalog reads the definition, to an
+    /// absolute path, so every consumer of this text sees it resolved.
     #[serde(default)]
     pub cargo_config: Option<String>,
     /// Generated entry-point pieces; `None` for hosted boards that emit the
@@ -1284,6 +1290,18 @@ impl BoardDescriptor {
 }
 
 /// Escape a path for embedding inside a double-quoted TOML string.
+/// Resolve `${board_dir}` in a definition's `cargo_config` to the directory the
+/// definition was read from (RFC-0135 D2).
+fn resolve_board_dir(mut b: BoardDescriptor, dir: &Path) -> BoardDescriptor {
+    if let Some(text) = b.cargo_config.as_mut()
+        && text.contains("${board_dir}")
+    {
+        let abs = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+        *text = text.replace("${board_dir}", &path_for_template(&abs));
+    }
+    b
+}
+
 fn path_for_template(path: &Path) -> String {
     path.to_string_lossy()
         .replace('\\', "\\\\")
@@ -1828,7 +1846,7 @@ impl BoardCatalog {
             self.descriptors
                 .extend(file.with_inferred_targets().into_iter().map(|mut b| {
                     b.source = Some(abs.clone());
-                    b
+                    resolve_board_dir(b, &dir)
                 }));
         }
         Ok(())
@@ -1996,7 +2014,7 @@ impl BoardCatalog {
             };
             descriptors.extend(file.with_inferred_targets().into_iter().map(|mut b| {
                 b.source = Some(rel.clone());
-                b
+                resolve_board_dir(b, &dir)
             }));
         }
         Ok(())
@@ -4180,5 +4198,47 @@ mod platform_family_tests {
         .unwrap_err()
         .to_string();
         assert!(err.contains("`platform_name` is derived"), "{err}");
+    }
+
+    /// RFC-0135 D2 -- `${board_dir}` in a board package's `cargo_config` is
+    /// that package's directory, resolved when the catalog reads it, so an
+    /// outside board can name its own config dir; `${workspace}` is untouched.
+    #[test]
+    fn board_dir_in_cargo_config_is_the_board_packages_own_directory() {
+        let t = tempfile::tempdir().unwrap();
+        let dir = t.path().join("nros-board-outside");
+        std::fs::create_dir_all(&dir).unwrap();
+        let toml = r#"[[board]]
+names = ["outside"]
+platform = "freertos"
+toolchain = "stable"
+entry_kind = "board-run"
+supported_netstacks = []
+cargo_config = '''
+[env]
+FREERTOS_CONFIG_DIR = "${board_dir}/config"
+X = "${workspace}/y"
+'''
+"#;
+        std::fs::write(dir.join("nros-board.toml"), toml).unwrap();
+        std::fs::write(
+            dir.join("package.xml"),
+            r#"<package format="3"><name>nros_board_outside</name><export><nano_ros_provides kind="board" name="outside"/></export></package>"#,
+        )
+        .unwrap();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let cat = BoardCatalog::load_with_extra(&root, &[t.path().to_path_buf()]).unwrap();
+        let d = cat
+            .descriptors()
+            .iter()
+            .find(|d| d.answers_to("outside"))
+            .expect("the outside board");
+        let text = d.cargo_config.as_deref().unwrap();
+        let abs = std::fs::canonicalize(&dir).unwrap();
+        assert!(
+            text.contains(&format!("{}/config", abs.display())),
+            "{text}"
+        );
+        assert!(text.contains("${workspace}/y"), "{text}");
     }
 }

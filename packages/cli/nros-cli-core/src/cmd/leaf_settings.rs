@@ -2331,6 +2331,12 @@ mod board_crate_tests {
             if leaf.join("system.toml").is_file() {
                 continue;
             }
+            // RFC-0135 D2 -- a board package's own crate (an `nros-board.toml`
+            // beside it) IS a board crate: it names the family crate it builds
+            // on, and no image's selection package could carry that for it.
+            if leaf.join("nros-board.toml").is_file() {
+                continue;
+            }
             let Some(doc) = std::fs::read_to_string(&manifest)
                 .ok()
                 .and_then(|t| t.parse::<toml::Table>().ok())

@@ -69,7 +69,7 @@ def board_netstacks():
     netstack is inside the resolved board's domain.
     """
     out = {}
-    for path in sorted(glob.glob(os.path.join(ROOT, "packages/boards/*/nros-board.toml"))):
+    for path in board_definition_paths():
         with open(path, "rb") as fh:
             doc = tomllib.load(fh)
         dir_name = os.path.basename(os.path.dirname(path))
@@ -84,6 +84,20 @@ def board_netstacks():
                     if st not in out[name]:
                         out[name].append(st)
     return out
+
+
+def board_definition_paths():
+    """Every tracked board definition the build can reach (`board_roots`):
+    `packages/boards/*/nros-board.toml` plus the tracked out-of-tree fixture
+    root (RFC-0135 D2), absolute."""
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    from board_roots import tracked_board_definitions
+    return [
+        os.path.join(ROOT, p)
+        for p in tracked_board_definitions(ROOT)
+        # In tree, the immediate-child depth this gate always read.
+        if not p.startswith("packages/boards/") or p.count("/") == 3
+    ]
 
 
 def board_aliases():
@@ -103,7 +117,7 @@ def board_aliases():
     is therefore only honoured when the directory holds exactly one entry.
     """
     out = {}
-    for path in sorted(glob.glob(os.path.join(ROOT, "packages/boards/*/nros-board.toml"))):
+    for path in board_definition_paths():
         with open(path, "rb") as fh:
             doc = tomllib.load(fh)
         dir_name = os.path.basename(os.path.dirname(path))

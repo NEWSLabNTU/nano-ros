@@ -302,7 +302,7 @@ impl Plan {
 /// emitter refuses such a key, naming the known ones, before it renders
 /// anything, so this answer is never used.
 fn board_has_run_sched_tasks(board: &str) -> bool {
-    nros_entry_lower::board_family(board)
+    crate::orchestration::board_key::board_family(board)
         .ok()
         .and_then(nros_entry_lower::BoardFamily::c_abi_runners)
         .is_some_and(|r| r.run_sched_tasks.is_some())
@@ -690,7 +690,8 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
 /// all silently got the POSIX sched task sub-table. An unknown key is now an error
 /// naming the known ones.
 pub fn board_to_rtos(board: &str) -> Result<&'static str, nros_entry_lower::UnknownBoard> {
-    nros_entry_lower::board_family(board).map(nros_entry_lower::BoardFamily::sched_task_rtos_key)
+    crate::orchestration::board_key::board_family(board)
+        .map(nros_entry_lower::BoardFamily::sched_task_rtos_key)
 }
 
 /// phase-459 W2 (issue 1426) - THE ENTRY DERIVES ITS OWN SCHEDULE.

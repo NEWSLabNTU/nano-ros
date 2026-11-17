@@ -96,6 +96,11 @@ Acceptance: the fixture board builds a FreeRTOS image from a released SDK
 root with no nano-ros source patched, and the "Add a board" page's
 out-of-tree section is a probe-fenced walk-through of it.
 
+Built as RFC-0135's first board package (phase-577 W8). Found on the way:
+an outside FreeRTOS board must copy the family's three config headers, because
+the cargo road's C builds see only `FREERTOS_CONFIG_DIR` (issue 2687, not a
+precondition).
+
 ### W3 — linking nano-ros into an image another compiler builds
 
 - **Status:** OPEN, and needed (settled 2026-11-18)
