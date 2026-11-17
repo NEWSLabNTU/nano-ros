@@ -81,7 +81,8 @@ On a board, `release` is the default, so a debug build is one flag away.
 image's `profile` key takes: `nros build mps2 --profile=dev` for a Rust-only
 image, and `nros build mps2 --profile=Debug` for an image with C or C++ nodes.
 The `=` is required. A `-DCMAKE_BUILD_TYPE` in `--cmake-args=` is refused,
-naming `--profile=`.
+naming `--profile=`; [Build arguments](../../reference/build-arguments.md)
+lists the rest.
 
 To make debug the image's default, state `profile = "dev"` on its
 `[image.<id>]` instead (`Debug` on an image with C or C++ nodes).
