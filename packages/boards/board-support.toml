@@ -1423,9 +1423,9 @@ chapter = "guide/build/bring-your-own-cpp-library.md"
 variant = "own-library"
 row = "nros-board-mps2-an385-freertos@FreertosMps2"
 qemu_board = "mps2-an385-freertos"
-awaits = ["an Eigen 3.4 install prefix in the probe image: the chapter starts from the user's own copy, installed into $HOME/opt/eigen, and the probe image has none"]
+awaits = ["an Eigen 3.4 source copy in the probe image: the chapter copies the user's own Eigen from $HOME/src/eigen into a workspace package, and the probe image has none"]
 weekly = false
-notes = "Issue 2646 follow-up — Bring your own C++ library: Eigen in a FreeRTOS mps2-an385 C++ talker through nano_ros_hosted_cxx() and Eigen3_ROOT, run in QEMU. It fails up front until the probe image provides the prefix."
+notes = "Issue 2646 follow-up — Bring your own C++ library: Eigen as a workspace package linked into a FreeRTOS mps2-an385 C++ talker through nano_ros_hosted_cxx(), run in QEMU. It fails up front until the probe image provides the Eigen copy."
 
 [[probe]]
 track = "pinned"

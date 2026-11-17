@@ -681,7 +681,8 @@ does not ship patched general-purpose C++ libraries: a user brings and
 patches their own, which a nano-ros package already supports. The
 documentation gap the issue recorded is closed (2026-11-17): the book's
 [Bring your own C++ library](../../book/src/guide/build/bring-your-own-cpp-library.md)
-page finds a user's Eigen from a prefix they own, and the public
+page adds a user's Eigen as a workspace package (the shape a ported project
+ships), or finds it in a prefix they own, and the public
 `nano_ros_hosted_cxx()` makes a node package's C++ hosted on a freestanding
 FreeRTOS toolchain, held by `just check hosted-cxx-opt-in`.
 
