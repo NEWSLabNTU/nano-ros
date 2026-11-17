@@ -1,7 +1,7 @@
 ---
 rfc: 0132
 title: "A board-owned CAN frame driver: one C ABI, the backend derived from the board, the device named once"
-status: Draft
+status: Accepted
 since: 2026-11
 last-reviewed: 2026-11
 implements-tracked-by: [phase-560]
@@ -11,8 +11,9 @@ superseded-by: null
 
 # RFC-0132 -- A board-owned CAN frame driver
 
-**Status:** Draft (2026-11-16, revised 2026-11-17 after the first review).
-Review-gated: nothing here is built until the maintainer accepts the shape.
+**Status:** Accepted (2026-11-17, after the review revision of 2026-11-17).
+The mock rule is strict: QEMU and Renode count as hardware; an emulator mock
+rule is added only if CI coverage needs it.
 Opened for issue [2633](../issues/2633-board-owned-can-frame-driver.md)
 (GitHub #4012); the portable layer under issue
 [2573](../issues/2573-can-fd-e2e-profile-and-flexcan-helper.md)'s FlexCAN
@@ -385,6 +386,8 @@ because its image is the binary that gets flashed.
 
 ## Changelog
 
+- 2026-11-17 -- accepted by the maintainer as revised, strict mock rule
+  included; phase-560 W9 opens.
 - 2026-11-17 -- revised after review: the header is authored and the Rust side
   is bindgen output (RFC-0054); SocketCAN moves to `nros-board-linux`; the
   handle is a complete type sized by a committed header constant, with a
