@@ -3390,70 +3390,92 @@ pub(crate) unsafe fn action_server_raw_try_process<
     _delta_us: u64,
     desc_idx: u8,
 ) -> Result<bool, TransportError> {
-    let entry = unsafe {
-        &mut *(ptr as *mut ActionServerRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>)
+    type Entry<const G: usize, const R: usize, const F: usize, const M: usize> =
+        ActionServerRawArenaEntry<G, R, F, M>;
+    // RFC-0108 D9 / phase-573 W2b: every user callback below may re-enter
+    // this entry through the C API (`rclc_action_succeed`,
+    // `rclc_action_publish_feedback`, ...), which derives its own `&mut` to
+    // it from the arena. So no reference into the entry lives across a
+    // callback: each step takes a fresh one from `ptr` and drops it before
+    // the next callback runs, and the callbacks read only copies.
+    //
+    // SAFETY (each use): `ptr` points to a valid entry (this fn's contract),
+    // and the reference ends before any user callback runs.
+    let entry =
+        || unsafe { &mut *(ptr as *mut Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>) };
+    let (goal_callback, cancel_callback, accepted_callback, context) = {
+        let e = entry();
+        (
+            e.goal_callback,
+            e.cancel_callback,
+            e.accepted_callback,
+            e.context,
+        )
     };
-    let ActionServerRawArenaEntry {
-        core,
-        goal_callback,
-        cancel_callback,
-        accepted_callback,
-        context,
-    } = entry;
 
     let mut did_work = false;
 
-    // Handle cancels first
+    // Handle cancels first: receive and select, ask the callback per goal
+    // with the core released, then reply.
     //
-    // Phase 8 — hooked INSIDE the closure: the core runs it only when a cancel
-    // request is actually pending, so nothing is emitted on the common
-    // `Ok(None)` spin.
-    if let Ok(Some(_)) = core.try_handle_cancel(|id, st| {
-        trace_cb_start(desc_idx);
-        let resp = unsafe { (*cancel_callback)(id, st, *context) };
-        trace_cb_end(desc_idx);
-        resp
-    }) {
+    // Phase 8 — the trace pair wraps each callback, so nothing is emitted on
+    // the common no-request spin.
+    if let Ok(Some(selection)) = entry().core.recv_cancel() {
+        let mut accepted = [false; MAX_GOALS];
+        for (slot, row) in accepted.iter_mut().zip(&selection.rows) {
+            if let Some(row) = row {
+                trace_cb_start(desc_idx);
+                let resp = unsafe { cancel_callback(&row.goal_id, row.status, context) };
+                trace_cb_end(desc_idx);
+                *slot = resp == nros_core::CancelResponse::Accept;
+            }
+        }
+        let _ = entry().core.reply_cancel(&selection, &accepted);
         did_work = true;
     }
 
     // Handle new goals
-    if let Ok(Some(raw_req)) = core.try_recv_goal_request() {
-        let goal_data = &core.goal_buffer()[..raw_req.data_len];
+    if let Ok(Some(raw_req)) = entry().core.try_recv_goal_request() {
+        // The goal bytes, addressed from `ptr` itself rather than through a
+        // reference the callback's own derive would invalidate.
+        // SAFETY: `ptr` points to a valid entry; no reference is formed.
+        let goal_data = unsafe {
+            core::ptr::addr_of!(
+                (*(ptr as *const Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>))
+                    .core
+                    .goal_buffer
+            )
+        } as *const u8;
+        let data_len = raw_req.data_len.min(GOAL_BUF);
         // Phase 8 — hooked inside the `Ok(Some(..))` arm: no goal request,
         // no goal callback, nothing emitted.
         trace_cb_start(desc_idx);
-        let response = unsafe {
-            (*goal_callback)(
-                &raw_req.goal_id,
-                goal_data.as_ptr(),
-                raw_req.data_len,
-                *context,
-            )
-        };
+        let response = unsafe { goal_callback(&raw_req.goal_id, goal_data, data_len, context) };
         trace_cb_end(desc_idx);
 
         if response.is_accepted() {
             // Send the accept reply *before* running any long-running
             // post-accept hook so the client observes acceptance promptly.
-            let _ = core.accept_goal(raw_req.goal_id, raw_req.sequence_number);
+            let _ = entry()
+                .core
+                .accept_goal(raw_req.goal_id, raw_req.sequence_number);
             // Phase 8 — the post-accept hook is a THIRD, separate user
             // callback: optional, and run only on the accepted branch, so
             // it carries its own pair rather than being folded into the
             // goal callback's span above.
-            if let Some(post) = *accepted_callback {
+            if let Some(post) = accepted_callback {
                 trace_cb_start(desc_idx);
-                unsafe { post(&raw_req.goal_id, *context) };
+                unsafe { post(&raw_req.goal_id, context) };
                 trace_cb_end(desc_idx);
             }
         } else {
-            let _ = core.reject_goal(raw_req.sequence_number);
+            let _ = entry().core.reject_goal(raw_req.sequence_number);
         }
         did_work = true;
     }
 
     // Handle result requests (empty default result for raw API)
-    if let Ok(Some(_)) = core.try_handle_get_result_raw(&[]) {
+    if let Ok(Some(_)) = entry().core.try_handle_get_result_raw(&[]) {
         did_work = true;
     }
 
