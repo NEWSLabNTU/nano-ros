@@ -23,6 +23,10 @@ set -l _nros_root (cd (dirname (status -f)); pwd -P)
 # interpreter is already supported. Mirror of activate.sh.
 set -q PYO3_USE_ABI3_FORWARD_COMPATIBILITY; or set -gx PYO3_USE_ABI3_FORWARD_COMPATIBILITY 1
 
+# Cargo fetches git dependencies through the git CLI, not libgit2, whose TLS
+# failed where the git CLI passed. Mirror of activate.sh.
+set -q CARGO_NET_GIT_FETCH_WITH_CLI; or set -gx CARGO_NET_GIT_FETCH_WITH_CLI true
+
 # ROS 2 Humble — fish needs `bass` or a hand-port of setup.bash. The
 # user `source setup.fish` if their ROS install ships one; otherwise
 # we leave AMENT/CMAKE prefix paths unset. The recipes that need ROS
