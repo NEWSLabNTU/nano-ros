@@ -84,11 +84,22 @@ pub const TALKER_PAYLOAD_PREFIX: &str = "Publishing: '";
 
 /// MessageInfo attachment trace (issue 0429). The zenoh publisher shim logs the
 /// per-message MessageInfo it stamps into the wire attachment under `RUST_LOG=trace`
-/// (`nros-rmw-zenoh/src/shim/publisher.rs`): `… with attachment: seq=N, ts=…,
-/// gid=[..]`. This is the authoritative source of the sequence/GID a subscriber
+/// (`nros-rmw-zenoh/src/shim/publisher.rs`): `… with attachment: topic=/t, seq=N,
+/// ts=…, gid=[..]`. This is the authoritative source of the sequence/GID a subscriber
 /// then reads — the DEMO listener is slim and no longer traces the receive side, so
 /// tests observe the values here. The line marker proves the attachment path fired.
 pub const MESSAGE_INFO_ATTACHMENT_MARKER: &str = "with attachment:";
+/// The publishing topic inside [`MESSAGE_INFO_ATTACHMENT_MARKER`] (`topic=/t,`).
+/// Every node also publishes the stock `/parameter_events` and `/rosout`, each
+/// with its own sequence and GID, so a per-publisher check selects its topic's
+/// lines with [`message_info_trace_for_topic`].
+pub const MESSAGE_INFO_TOPIC_PREFIX: &str = "topic=";
+
+/// The text that starts the MessageInfo trace of one publisher on `topic`
+/// (absolute name): `with attachment: topic=<topic>,`.
+pub fn message_info_trace_for_topic(topic: &str) -> String {
+    format!("{MESSAGE_INFO_ATTACHMENT_MARKER} {MESSAGE_INFO_TOPIC_PREFIX}{topic},")
+}
 /// The per-message sequence number inside [`MESSAGE_INFO_ATTACHMENT_MARKER`]
 /// (`seq=N,`). Monotonic per publisher.
 pub const MESSAGE_INFO_SEQ_PREFIX: &str = "seq=";

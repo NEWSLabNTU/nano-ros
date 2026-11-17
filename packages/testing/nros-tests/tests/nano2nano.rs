@@ -270,9 +270,18 @@ fn test_peer_mode_communication() -> nros_tests::TestResult<()> {
 // assert on `output::*` constants, not literals, so the next banner change breaks
 // the constant rather than these tests (CLAUDE.md grep-drift rule).
 
-/// Run the native pair with `RUST_LOG=trace` on the TALKER and return the talker's
-/// captured output. Fails loudly if the MessageInfo attachment trace is absent —
-/// the drift #0429 fixed must not recur as a silent "got 0".
+/// The topic the native talker publishes on; its MessageInfo lines are the ones
+/// these tests read.
+const TALKER_TOPIC: &str = "/chatter";
+
+/// Run the native pair with `RUST_LOG=trace` on the TALKER and return the
+/// MessageInfo trace lines of its `/chatter` publisher, one per publish. Fails
+/// loudly if the trace is absent -- the drift #0429 fixed must not recur as a
+/// silent "got 0".
+///
+/// Only that publisher's lines: the talker node also publishes the stock
+/// `/parameter_events` (and `/rosout`), each a publisher with its own sequence
+/// and GID, so a GID read across every publish line compared two publishers.
 fn capture_publisher_msginfo_trace(
     locator: &str,
     talker_binary: &std::path::Path,
@@ -297,16 +306,13 @@ fn capture_publisher_msginfo_trace(
     // the increment/consistency checks) instead of sleeping 3 s for them. The
     // marker is the same one the assertion below greps, so the wait and the
     // assertion cannot disagree about what "published" means.
+    let marker = output::message_info_trace_for_topic(TALKER_TOPIC);
     let talker_output = talker
-        .wait_for_output_count(
-            output::MESSAGE_INFO_ATTACHMENT_MARKER,
-            2,
-            Duration::from_secs(20),
-        )
+        .wait_for_output_count(&marker, 2, Duration::from_secs(20))
         .unwrap_or_else(|e| {
             talker.kill();
             listener.kill();
-            panic!("talker emitted fewer than 2 MessageInfo trace lines: {e}")
+            panic!("talker emitted fewer than 2 MessageInfo trace lines for {TALKER_TOPIC}: {e}")
         });
 
     talker.kill();
@@ -322,6 +328,10 @@ fn capture_publisher_msginfo_trace(
         talker_output
     );
     talker_output
+        .lines()
+        .filter(|line| line.contains(&marker))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Test that sequence numbers increment monotonically per publisher.
