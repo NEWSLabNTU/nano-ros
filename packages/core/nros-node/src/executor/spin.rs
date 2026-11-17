@@ -16515,7 +16515,13 @@ impl<'s> Executor<'s> {
         }
     }
 
-    #[cfg(all(test, feature = "param-services"))]
+    // Gated like its only callers, the `tests` module (`executor/mod.rs`).
+    #[cfg(all(
+        test,
+        feature = "param-services",
+        feature = "alloc",
+        not(feature = "rmw-cffi")
+    ))]
     /// Issue 2493 — `node`'s `/parameter_events` publisher, if it has one.
     pub(crate) fn parameter_event_publisher(
         &self,
