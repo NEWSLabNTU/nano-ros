@@ -44,6 +44,8 @@ pub mod metadata_probe_cmake;
 pub mod metadata_refresh;
 pub mod model_ingest;
 pub mod names;
+// Issue 2680 -- the workspace packages a C/C++ probe member needs added.
+pub mod probe_deps;
 // phase-447 A2 (RFC-0099 D3) — the four-rung ladder to the SDK root. One
 // spelling, so a released toolchain's own `share/nano-ros` is reachable from
 // every site that used to bail with "no nano-ros checkout found".

@@ -771,6 +771,7 @@ mod tests {
             name: name.to_string(),
             dir,
             depends: Default::default(),
+            build_depends: Default::default(),
             build_type: None,
         }
     }

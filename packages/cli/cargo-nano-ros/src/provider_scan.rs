@@ -881,6 +881,9 @@ pub struct WorkspacePackage {
     /// not workspace packages (`std_msgs`); ordering ignores those rather than
     /// failing, since an external dependency imposes no local build order.
     pub depends: HashSet<String>,
+    /// Issue 2680 -- the build-time subset of `depends` (`<exec_depend>` left
+    /// out), which is what the metadata probe follows.
+    pub build_depends: HashSet<String>,
     /// The package's `<build_type>`, VERBATIM (RFC-0094 D3, phase-439 W3).
     ///
     /// Carried here so the three routing sites read the DECLARATION instead of
@@ -911,6 +914,7 @@ pub fn scan_workspace_packages(root: &Path) -> Result<(Vec<WorkspacePackage>, Sc
             name: pkg.name.clone(),
             dir: dir.to_path_buf(),
             depends: pkg.dependencies.clone(),
+            build_depends: pkg.build_dependencies.clone(),
             build_type: pkg.build_type.clone(),
         });
     })?;

@@ -71,6 +71,9 @@ pub struct CmakeProbeOptions {
     pub output_path: PathBuf,
     /// Scratch directory for the generated probe project.
     pub probe_dir: PathBuf,
+    /// Issue 2680 -- the workspace packages this component's package needs
+    /// configured before it ([`super::probe_deps`]), in dependency order.
+    pub deps: Vec<super::probe_deps::ProbeDep>,
 }
 
 /// The workspace's single probe project (phase-313).
@@ -191,15 +194,10 @@ pub fn render_probe_cmakelists(comps: &[CmakeProbeOptions]) -> String {
         );
     }
 
-    // Each package added once even when it declares several components.
-    let mut added: Vec<&str> = Vec::new();
-    for c in comps {
-        let dir = c.package_dir.to_string_lossy();
-        if added.contains(&dir.as_ref()) {
-            continue;
-        }
-        added.push(Box::leak(dir.clone().into_owned().into_boxed_str()));
-        let _ = writeln!(out, "add_subdirectory({dir} {})", c.package);
+    // Each package added once even when it declares several components, or is
+    // a member and another member's dependency too (issue 2680).
+    for (name, dir) in add_order(comps) {
+        let _ = writeln!(out, "add_subdirectory({} {name})", dir.to_string_lossy());
     }
     out.push('\n');
     for c in comps {
@@ -216,6 +214,59 @@ pub fn render_probe_cmakelists(comps: &[CmakeProbeOptions]) -> String {
             t = c.probe_target(),
             lib = c.library_target,
         );
+    }
+    out
+}
+
+/// Issue 2680 -- the packages the probe project adds, each once, every one
+/// after the packages it needs.
+///
+/// The members and their workspace dependencies ([`super::probe_deps`]), in
+/// first-seen order (each member's dependencies, then the member), sorted on
+/// TRUE edges only: a member after each of its dependencies, a dependency
+/// after each it `needs`. Ties keep first-seen order, so a workspace whose
+/// members have no workspace dependencies renders exactly as before. Keyed on
+/// the package name, which is also the binary dir: two components of one
+/// package are one entry.
+fn add_order(comps: &[CmakeProbeOptions]) -> Vec<(String, PathBuf)> {
+    let mut nodes: Vec<(String, PathBuf)> = Vec::new();
+    let mut needs: Vec<Vec<String>> = Vec::new();
+    let mut seen = |name: &str, dir: &Path, wants: &[String]| match nodes
+        .iter()
+        .position(|(n, _)| n == name)
+    {
+        Some(i) => needs[i].extend(wants.iter().cloned()),
+        None => {
+            nodes.push((name.to_string(), dir.to_path_buf()));
+            needs.push(wants.to_vec());
+        }
+    };
+    for c in comps {
+        for d in &c.deps {
+            seen(&d.name, &d.dir, &d.needs);
+        }
+        let wants: Vec<String> = c.deps.iter().map(|d| d.name.clone()).collect();
+        seen(&c.package, &c.package_dir, &wants);
+    }
+    let mut done: Vec<bool> = vec![false; nodes.len()];
+    let mut out = Vec::with_capacity(nodes.len());
+    while out.len() < nodes.len() {
+        // The first not-yet-added node whose needs are all added (or are not
+        // nodes here). None means an unsatisfiable remainder, which
+        // `probe_deps` refuses before this; added in first-seen order rather
+        // than lost.
+        let ready = (0..nodes.len()).find(|&i| {
+            !done[i]
+                && needs[i].iter().all(|n| {
+                    nodes
+                        .iter()
+                        .position(|(m, _)| m == n)
+                        .is_none_or(|j| done[j] || j == i)
+                })
+        });
+        let i = ready.unwrap_or_else(|| (0..nodes.len()).find(|&i| !done[i]).unwrap_or(0));
+        done[i] = true;
+        out.push(nodes[i].clone());
     }
     out
 }
@@ -402,13 +453,17 @@ pub fn run_probes(
                     // Nothing attributable — the project really is malformed.
                     break Err(why);
                 }
-                for c in &blamed {
+                for (c, via) in &blamed {
                     rejected.push((
                         format!("{}::{}", c.package, c.component),
-                        format!("cannot configure in the probe project: {why:#}"),
+                        blame_reason(via.as_deref(), &format!("{why:#}")),
                     ));
                 }
-                live.retain(|c| !blamed.iter().any(|b| b.package_dir == c.package_dir));
+                live.retain(|c| {
+                    !blamed
+                        .iter()
+                        .any(|(b, _)| b.package == c.package && b.component == c.component)
+                });
                 if live.is_empty() {
                     break Err(why);
                 }
@@ -932,22 +987,62 @@ fn check_probe_root(build_dir: &Path, nano_ros: &Path) -> Result<()> {
 ///
 /// Returns an empty list when nothing matches, which the caller reads as "the
 /// project itself is malformed" and keeps the old fatal behaviour for.
+///
+/// Issue 2680 -- a dependency package the probe added for a component is
+/// blamed through it: an error in `<dep>/CMakeLists.txt` drops every
+/// component that needs `<dep>`, and the second field names the dependency.
+/// The retry re-renders from the remaining components, so a dependency no
+/// one left needs goes with them.
 fn components_named_in<'a>(
     stderr: &str,
     comps: &[&'a CmakeProbeOptions],
-) -> Vec<&'a CmakeProbeOptions> {
-    let mut out: Vec<&CmakeProbeOptions> = Vec::new();
+) -> Vec<(&'a CmakeProbeOptions, Option<String>)> {
+    let named = |dir: &Path| {
+        let dir = dir.to_string_lossy();
+        !dir.is_empty() && stderr.contains(&format!("{dir}/CMakeLists.txt"))
+    };
+    let mut out: Vec<(&CmakeProbeOptions, Option<String>)> = Vec::new();
     for c in comps {
-        let dir = c.package_dir.to_string_lossy();
-        if dir.is_empty() {
+        let via = if named(&c.package_dir) {
+            None
+        } else if let Some(d) = c.deps.iter().find(|d| named(&d.dir)) {
+            Some(d.name.clone())
+        } else {
             continue;
-        }
-        let marker = format!("{dir}/CMakeLists.txt");
-        if stderr.contains(&marker) && !out.iter().any(|o| o.package_dir == c.package_dir) {
-            out.push(c);
+        };
+        if !out
+            .iter()
+            .any(|(o, _)| o.package == c.package && o.component == c.component)
+        {
+            out.push((c, via));
         }
     }
     out
+}
+
+/// Why a component was dropped from the probe project's configure: its own
+/// CMakeLists, or (issue 2680) a workspace dependency's, named. The caller
+/// reports it as a probe failure, whose summary closes with the probe-args
+/// note (`RefreshReport::check_failures`).
+///
+/// A failure's summary keeps one error line, so the dependency's case leads
+/// with a line naming the dependency AND CMake's own error; the full text
+/// follows for the marker.
+pub fn blame_reason(via: Option<&str>, why: &str) -> String {
+    match via {
+        None => format!("cannot configure in the probe project: {why}"),
+        Some(dep) => {
+            let cmake = why
+                .lines()
+                .map(str::trim)
+                .find(|l| l.starts_with("CMake Error"))
+                .unwrap_or("its CMakeLists.txt failed");
+            format!(
+                "error: workspace dependency `{dep}`, which the probe adds before this \
+                 component, cannot configure: {cmake}\n{why}"
+            )
+        }
+    }
 }
 
 fn run_step(cmd: &mut Command, step: &str, who: &str) -> Result<()> {
@@ -1149,6 +1244,7 @@ mod w4_configure_attribution_tests {
             nano_ros_workspace: PathBuf::from("/nano"),
             output_path: PathBuf::from("/out.json"),
             probe_dir: PathBuf::from("/probe"),
+            deps: Vec::new(),
         }
     }
 
@@ -1163,7 +1259,52 @@ mod w4_configure_attribution_tests {
                      Could not find a package configuration file provided by \"custom_msgs\"";
         let blamed = components_named_in(err, &all);
         assert_eq!(blamed.len(), 1, "exactly the named component");
-        assert_eq!(blamed[0].package, "reading_talker_pkg");
+        assert_eq!(blamed[0].0.package, "reading_talker_pkg");
+        assert_eq!(blamed[0].1, None, "its own CMakeLists, no dependency named");
+    }
+
+    /// Issue 2680 -- an error in a dependency package the probe added blames
+    /// every component that needs it, naming the dependency, and nobody else.
+    #[test]
+    fn a_dependency_error_blames_its_dependents_naming_it() {
+        let dep = super::super::probe_deps::ProbeDep {
+            name: "autoware_controller_libs".into(),
+            dir: PathBuf::from("/ws/src/autoware"),
+            needs: Vec::new(),
+        };
+        let mut a = opts("/ws/src/controller_pkg", "controller_pkg");
+        a.deps = vec![dep.clone()];
+        let mut b = opts("/ws/src/other_pkg", "other_pkg");
+        b.deps = vec![dep];
+        let c = opts("/ws/src/bystander_pkg", "bystander_pkg");
+        let all = vec![&a, &b, &c];
+        let err = "metadata probe configure failed for `workspace` (exit 1):\n\
+                   CMake Error at /ws/src/autoware/CMakeLists.txt:3 (find_package):\n\
+                     Could not find a package configuration file provided by \"Eigen3\"";
+        let blamed = components_named_in(err, &all);
+        let named: Vec<(&str, Option<&str>)> = blamed
+            .iter()
+            .map(|(o, via)| (o.package.as_str(), via.as_deref()))
+            .collect();
+        assert_eq!(
+            named,
+            [
+                ("controller_pkg", Some("autoware_controller_libs")),
+                ("other_pkg", Some("autoware_controller_libs")),
+            ]
+        );
+        let why = blame_reason(blamed[0].1.as_deref(), err);
+        assert!(
+            why.contains("workspace dependency `autoware_controller_libs`"),
+            "{why}"
+        );
+        assert!(
+            why.lines()
+                .next()
+                .unwrap()
+                .contains("CMake Error at /ws/src/autoware"),
+            "{why}"
+        );
     }
 
     /// An error naming nothing keeps the old fatal behaviour — the project
@@ -1236,6 +1377,7 @@ mod tests {
             nano_ros_workspace: PathBuf::from("/nano-ros"),
             output_path: PathBuf::from("/ws/src/talker_pkg/metadata/talker.json"),
             probe_dir: PathBuf::from("/scratch/probe"),
+            deps: Vec::new(),
         }
     }
 
@@ -1433,6 +1575,131 @@ mod tests {
 }
 
 #[cfg(test)]
+mod workspace_dep_render_tests {
+    //! Issue 2680 -- the probe adds a member's workspace dependency packages.
+    use super::*;
+    use crate::orchestration::probe_deps::ProbeDep;
+
+    fn member(pkg: &str, deps: Vec<ProbeDep>) -> CmakeProbeOptions {
+        CmakeProbeOptions {
+            package: pkg.into(),
+            component: pkg.trim_end_matches("_pkg").into(),
+            executable: "e".into(),
+            class: format!("{pkg}::K"),
+            header: "h.hpp".into(),
+            language: nros_lang::Language::Cpp,
+            shape: "configure".into(),
+            library_target: format!("{pkg}_lib"),
+            package_dir: PathBuf::from(format!("/ws/src/{pkg}")),
+            nano_ros_workspace: PathBuf::from("/nano"),
+            output_path: PathBuf::from(format!("/ws/src/{pkg}/metadata/x.json")),
+            probe_dir: PathBuf::from("/probe"),
+            deps,
+        }
+    }
+
+    fn dep(name: &str, dir: &str, needs: &[&str]) -> ProbeDep {
+        ProbeDep {
+            name: name.into(),
+            dir: PathBuf::from(format!("/ws/src/{dir}")),
+            needs: needs.iter().map(|n| n.to_string()).collect(),
+        }
+    }
+
+    fn adds(txt: &str) -> Vec<&str> {
+        txt.lines()
+            .filter(|l| l.starts_with("add_subdirectory("))
+            .collect()
+    }
+
+    /// The ASI shape: the dependencies come before the member, in their own
+    /// order, each under its package name though the directory differs.
+    #[test]
+    fn dependencies_are_added_before_the_member_that_needs_them() {
+        let m = member(
+            "controller_pkg",
+            vec![
+                dep("asi_common", "asi_common", &[]),
+                dep("autoware_controller_libs", "autoware", &["asi_common"]),
+            ],
+        );
+        let txt = render_probe_cmakelists(&[m]);
+        assert_eq!(
+            adds(&txt),
+            [
+                "add_subdirectory(/ws/src/asi_common asi_common)",
+                "add_subdirectory(/ws/src/autoware autoware_controller_libs)",
+                "add_subdirectory(/ws/src/controller_pkg controller_pkg)",
+            ]
+        );
+    }
+
+    /// A package that is a member AND another member's dependency is added
+    /// exactly once, before the member that needs it, whatever the member
+    /// order.
+    #[test]
+    fn a_member_that_is_also_a_dependency_is_added_once() {
+        let lib = member("lib_pkg", Vec::new());
+        let node = member("node_pkg", vec![dep("lib_pkg", "lib_pkg", &[])]);
+        for comps in [vec![node.clone(), lib.clone()], vec![lib, node]] {
+            let txt = render_probe_cmakelists(&comps);
+            assert_eq!(
+                txt.matches("add_subdirectory(/ws/src/lib_pkg ").count(),
+                1,
+                "{txt}"
+            );
+            assert_eq!(
+                adds(&txt),
+                [
+                    "add_subdirectory(/ws/src/lib_pkg lib_pkg)",
+                    "add_subdirectory(/ws/src/node_pkg node_pkg)",
+                ]
+            );
+        }
+    }
+
+    /// A dependency two members share is added once; a member with no
+    /// dependency keeps its place.
+    #[test]
+    fn a_shared_dependency_is_added_once() {
+        let shared = dep("common_lib", "common_lib", &[]);
+        let comps = [
+            member("plain_pkg", Vec::new()),
+            member("a_pkg", vec![shared.clone()]),
+            member("b_pkg", vec![shared]),
+        ];
+        let txt = render_probe_cmakelists(&comps);
+        assert_eq!(
+            adds(&txt),
+            [
+                "add_subdirectory(/ws/src/plain_pkg plain_pkg)",
+                "add_subdirectory(/ws/src/common_lib common_lib)",
+                "add_subdirectory(/ws/src/a_pkg a_pkg)",
+                "add_subdirectory(/ws/src/b_pkg b_pkg)",
+            ]
+        );
+    }
+
+    /// Members with no workspace dependencies render as before: member order,
+    /// nothing else added.
+    #[test]
+    fn a_workspace_without_dependencies_renders_in_member_order() {
+        let comps = [
+            member("talker_pkg", Vec::new()),
+            member("listener_pkg", Vec::new()),
+        ];
+        let txt = render_probe_cmakelists(&comps);
+        assert_eq!(
+            adds(&txt),
+            [
+                "add_subdirectory(/ws/src/talker_pkg talker_pkg)",
+                "add_subdirectory(/ws/src/listener_pkg listener_pkg)",
+            ]
+        );
+    }
+}
+
+#[cfg(test)]
 mod incremental_membership_tests {
     use super::*;
 
@@ -1450,6 +1717,7 @@ mod incremental_membership_tests {
             nano_ros_workspace: PathBuf::from("/nano"),
             output_path: PathBuf::from(format!("/ws/src/{pkg}/metadata/x.json")),
             probe_dir: PathBuf::from("/probe"),
+            deps: Vec::new(),
         }
     }
 

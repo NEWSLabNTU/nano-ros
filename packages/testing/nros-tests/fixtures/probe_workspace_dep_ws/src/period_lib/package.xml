@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>period_lib</name>
+  <version>0.1.0</version>
+  <description>Issue 2680 -- a header-only workspace library a node package depends on.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

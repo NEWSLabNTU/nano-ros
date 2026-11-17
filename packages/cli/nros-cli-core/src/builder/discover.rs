@@ -217,6 +217,7 @@ pub fn discover_in(
             name,
             dir: dir.clone(),
             depends: Default::default(),
+            build_depends: Default::default(),
             // No `package.xml`, so nothing DECLARED a build type. RFC-0094 D3
             // falls back to file presence for these, which is what a cargo-only
             // member wants anyway: it is a member because a `[workspace]`

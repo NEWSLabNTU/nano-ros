@@ -1,0 +1,3 @@
+<launch>
+  <node pkg="dep_probe_pkg" exec="dep_probe" name="dep_probe"/>
+</launch>

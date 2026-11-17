@@ -1,0 +1,16 @@
+# Issue 2680 -- one native image of a node that includes a header from a
+# sibling workspace library package.
+
+[system]
+name = "probe_workspace_dep"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "dep_probe_pkg"
+class = "dep_probe_pkg::DepProbe"
+name = "dep_probe"
+
+[image.linux]
+board = "linux"
