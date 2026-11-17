@@ -32,6 +32,7 @@ pub mod entry;
 pub mod handoff;
 pub mod host_tool;
 pub mod jobserver;
+pub mod knob_roads;
 pub mod materialize;
 pub mod owned_defines;
 pub mod paths;

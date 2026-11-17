@@ -283,6 +283,10 @@ pub struct LeafSystem {
     /// `[image.<id>] profile` (over `[image_defaults]`), as written: a cargo
     /// profile or a CMake build type. `None` when the image names none.
     pub profile: Option<String>,
+    // RFC-0117 D7.
+    /// `[image.<id>.build] cmake_args` after `[image_defaults.build]`'s, as
+    /// written. The CLI validates them; this only reads them.
+    pub build_cmake_args: Vec<String>,
     /// RMW: `[image] rmw` > `[image_defaults] rmw` > `[system] rmw`.
     pub rmw: Option<String>,
     /// ROS edition, the same overlay as [`Self::rmw`]: `[image]
@@ -965,6 +969,18 @@ fn image_system(
     })?;
     let framework = pick("framework");
     let profile = pick("profile");
+    let mut build_cmake_args = string_list(
+        as_table(defaults.and_then(|t| t.get("build"))),
+        path,
+        "image_defaults.build",
+        "cmake_args",
+    )?;
+    build_cmake_args.extend(string_list(
+        as_table(image.and_then(|t| t.get("build"))),
+        path,
+        &format!("image.{id}.build"),
+        "cmake_args",
+    )?);
     let rmw = pick("rmw").or_else(|| str_key(system, "rmw"));
     let ros_edition = pick("ros_edition").or_else(|| str_key(system, "ros_edition"));
     let domain_id = match u32_key(image, "domain_id", path)? {
@@ -1141,6 +1157,7 @@ fn image_system(
         board: Some(board),
         framework,
         profile,
+        build_cmake_args,
         rmw,
         ros_edition,
         network,

@@ -126,6 +126,16 @@ fn run() -> Result<()> {
         }
         return Ok(());
     }
+    // RFC-0117 D7 (phase-568 W2): colcon's `--cmake-args A B` is refused
+    // before clap, which would only say an `=` is missing, so the message can
+    // show the user's own arguments rewritten.
+    {
+        let argv: Vec<String> = std::env::args().skip(1).collect();
+        if let Some(msg) = nros_cli_core::cmd::build::refuse_space_separated_args(&argv) {
+            eprintln!("error: {msg}");
+            std::process::exit(2);
+        }
+    }
     let matches = match grouped_help(Cli::command(), false).try_get_matches() {
         Ok(m) => m,
         Err(e) => {

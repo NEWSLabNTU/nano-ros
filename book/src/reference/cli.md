@@ -506,10 +506,10 @@ Options:
           
           A package that depends on a failed one is skipped, as with colcon, and the command still exits non-zero, with the first failure's status. In a workspace with images, the unit is the image: each image is one merged build, so a failure inside it fails the whole image, and the next image is still attempted.
 
-      --cmake-args <ARG>...
-          Arguments passed to every CMake configure: a cmake image's, a west image's (after west's own `--`), and a cmake package's.
+      --cmake-args=<ARGS>
+          Arguments for every CMake configure: a cmake image's, a west image's, and a cmake package's. A cargo image runs no CMake configure and ignores them.
           
-          A cargo image runs no CMake configure and ignores them, as colcon ignores them for a package that is not a CMake package. Ends at the next `nros build` flag or at `--`, as colcon's does.
+          The `=` is required. The value is split with plain POSIX quoting (no expansion), so one flag can carry many arguments: `--cmake-args="-DA=1 -DB='x y'"`. The flag is repeatable, and the values add up in order. `--cmake-args=@<file>` reads one argument per line, with `#` comments. Allowed: `-D`, `-U`, `-W*`, `--log-level`, `--log-context`, `--debug-find`. A name `nros build` passes itself, or `-DCONFIG_*` (Zephyr Kconfig, which goes in the image's `conf`), is refused, saying where the setting goes. An image states its own in `[image.<id>.build] cmake_args`; these come after them.
 
   -j, --jobs <N>
           Run at most N jobs at once, in total. Default: the number of CPUs.

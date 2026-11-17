@@ -1642,6 +1642,7 @@ mod tests {
             board: Some("linux".into()),
             framework: None,
             profile: None,
+            build_cmake_args: Vec::new(),
             rmw: None,
             ros_edition: None,
             network: leaf_system::Network {

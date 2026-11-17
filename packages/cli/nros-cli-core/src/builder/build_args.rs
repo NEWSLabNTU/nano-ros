@@ -176,13 +176,27 @@ pub fn split_posix(s: &str) -> Result<Vec<String>, Refusal> {
     Ok(words)
 }
 
+/// The knob rows whose `-D` D9 refuses, by id: those `[image.<id>.knobs]`
+/// carries on EVERY road, so the refusal's remedy works wherever the user is.
+///
+/// EMPTY for now (phase-568 W2a, ruled 2026-11-17). Issue 2496 found a row
+/// the cmake road does not carry from the image, so for it a configure flag
+/// is the only way in, and refusing it would point at a remedy that does
+/// nothing. `knob_roads::tests` measures every row's carriage per road; W2c
+/// closes the gaps and adds a row here once all its roads carry it.
+pub const KNOB_REFUSAL_ON: &[&str] = &[];
+
 /// What a `-D` name collides with, if anything.
 fn define_refusal(arg: &str, name: &str) -> Option<Refusal> {
+    define_refusal_with(arg, name, KNOB_REFUSAL_ON)
+}
+
+fn define_refusal_with(arg: &str, name: &str, knob_refusal_on: &[&str]) -> Option<Refusal> {
     // A knob first, by every spelling its row has: the remedy names its home.
-    if let Some(row) = nros_zephyr_build::KNOBS
-        .iter()
-        .find(|r| r.env == name || r.kconfig == name || r.legacy.contains(&name) || r.id == name)
-    {
+    if let Some(row) = nros_zephyr_build::KNOBS.iter().find(|r| {
+        knob_refusal_on.contains(&r.id)
+            && (r.env == name || r.kconfig == name || r.legacy.contains(&name) || r.id == name)
+    }) {
         let (group, key) = row.image_key.split_once('.').unwrap_or((row.image_key, ""));
         return Some(refuse(
             arg,
@@ -552,15 +566,26 @@ mod tests {
     }
 
     #[test]
-    fn a_knob_is_refused_in_every_spelling_pointing_at_its_home() {
+    fn a_knob_turned_on_is_refused_in_every_spelling_pointing_at_its_home() {
         let row = nros_zephyr_build::KNOBS
             .iter()
             .find(|r| !r.legacy.is_empty())
             .expect("a knob with a legacy spelling");
         for name in [row.env, row.kconfig, row.legacy[0]] {
-            let r = cmake(&format!("-D{name}=1")).unwrap_err();
+            let r = define_refusal_with("-D", name, &[row.id]).expect("refused");
             assert!(r.reason.contains("[image.<id>.knobs."), "{name}: {r}");
         }
+    }
+
+    /// W2a ships the knob refusal OFF: a knob `-D` passes, because for some
+    /// rows a configure flag is the only way in (issue 2496).
+    #[test]
+    fn a_knob_not_turned_on_passes() {
+        assert!(
+            KNOB_REFUSAL_ON.is_empty(),
+            "turning a row on is W2c's, with its roads measured"
+        );
+        assert!(cmake("-DNROS_FREERTOS_APP_STACK_KB=64").is_ok());
     }
 
     #[test]

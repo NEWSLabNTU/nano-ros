@@ -83,6 +83,35 @@ impl RmwConfigSel {
 
 /// `[image]` / `[image.<id>]` — a buildable image.
 ///
+/// `[image.<id>.build]` (RFC-0117 D7): native arguments the image commits.
+///
+/// CMake arguments only, each entry ONE argument, validated by the same
+/// allowlist as `--cmake-args=` (`builder::build_args::parse_cmake`). There
+/// is no `cargo_args`: the one cargo argument a project would commit is a
+/// feature, and committed features belong in the package's manifest. A
+/// setting another key owns (a knob, the profile, a name `nros build` passes)
+/// is refused here as on the command line, so it has one committed place.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImageBuild {
+    /// Passed to every CMake configure of the image, before `--cmake-args=`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cmake_args: Vec<String>,
+}
+
+impl ImageBuild {
+    pub fn is_empty(&self) -> bool {
+        self.cmake_args.is_empty()
+    }
+
+    /// The validated argv, or the refusal naming `image_id`.
+    pub fn cmake_argv(&self, image_id: &str) -> eyre::Result<Vec<String>> {
+        let parsed = crate::builder::build_args::parse_cmake(&self.cmake_args)
+            .map_err(|r| eyre::eyre!("[image.{image_id}.build] cmake_args: {r}"))?;
+        Ok(parsed.iter().map(|a| a.to_argv()).collect())
+    }
+}
+
 /// `deny_unknown_fields` for upstream's stated reason: a mistyped key must be
 /// an error rather than a silent drop. A silently ignored `board` key is a
 /// build for the wrong target that reports success.
@@ -324,6 +353,11 @@ pub struct ImageBlock {
     /// Capability axes for this image, over the system's own list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
+
+    /// `[image.<id>.build]`: the image's committed native arguments
+    /// (RFC-0117 D7, phase-568 W2).
+    #[serde(default, skip_serializing_if = "ImageBuild::is_empty")]
+    pub build: ImageBuild,
 
     /// phase-556 W13 -- `node_interfaces = "stock" | "none"`: add or remove
     /// the stock node interfaces (parameter services, `/rosout`) for this
@@ -628,6 +662,17 @@ impl ImageBlock {
             // CONF_FILE semantics. A specific block extends the base set rather
             // than replacing it.
             conf: base.conf.iter().chain(self.conf.iter()).cloned().collect(),
+            // Ordered like `conf`: the base's, then the image's own, so an
+            // image's `-D` overrides a default's (CMake takes the last).
+            build: ImageBuild {
+                cmake_args: base
+                    .build
+                    .cmake_args
+                    .iter()
+                    .chain(self.build.cmake_args.iter())
+                    .cloned()
+                    .collect(),
+            },
             features: base
                 .features
                 .iter()
@@ -669,6 +714,27 @@ impl ImageBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// RFC-0117 D7: `[image.<id>.build] cmake_args` parses, follows
+    /// `[image_defaults.build]`'s, and goes through the one allowlist.
+    #[test]
+    fn image_build_cmake_args_merge_and_are_validated() {
+        let base: ImageBlock = toml::from_str("build = { cmake_args = [\"-DA=1\"] }").unwrap();
+        let own: ImageBlock = toml::from_str(
+            "board = \"linux\"\n[build]\ncmake_args = [\"-DB=2\", \"-DSPACED=x y\"]\n",
+        )
+        .unwrap();
+        let merged = own.with_base(&base);
+        assert_eq!(
+            merged.build.cmake_argv("img").unwrap(),
+            vec!["-DA=1", "-DB=2", "-DSPACED=x y"]
+        );
+        let bad: ImageBlock =
+            toml::from_str("build = { cmake_args = [\"-DNROS_IMAGE=x\"] }").unwrap();
+        let e = bad.build.cmake_argv("img").unwrap_err().to_string();
+        assert!(e.contains("[image.img.build] cmake_args"), "{e}");
+        assert!(toml::from_str::<ImageBlock>("build = { cargo_args = [\"-v\"] }").is_err());
+    }
 
     fn parse(src: &str) -> ImageBlock {
         toml::from_str(src).expect("parses")
