@@ -139,15 +139,8 @@ if(NOT DEFINED NROS_BOARD)
 endif()
 
 if(NOT _nros_freertos_boardless)
-    set(_nros_freertos_board_module
-        "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
-    if(NOT EXISTS "${_nros_freertos_board_module}")
-        message(FATAL_ERROR
-            "nano-ros-freertos: no board overlay at "
-            "${_nros_freertos_board_module}. Add a "
-            "cmake/board/nano-ros-board-${NROS_BOARD}.cmake module or "
-            "pick a supported board (e.g. mps2-an385-freertos).")
-    endif()
+    include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBoardModule.cmake")
+    nros_board_module_path(_nros_freertos_board_module nano-ros-freertos)
     include("${_nros_freertos_board_module}")
 endif()
 

@@ -188,15 +188,8 @@ if(NOT DEFINED NROS_BOARD)
         "`nuttx_build_example`.")
 endif()
 
-set(_nros_nuttx_board_module
-    "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
-if(NOT EXISTS "${_nros_nuttx_board_module}")
-    message(FATAL_ERROR
-        "nano-ros-nuttx: no board overlay at "
-        "${_nros_nuttx_board_module}. Add a "
-        "cmake/board/nano-ros-board-${NROS_BOARD}.cmake module or "
-        "pick a supported board (e.g. qemu-armv7a-nuttx).")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBoardModule.cmake")
+nros_board_module_path(_nros_nuttx_board_module nano-ros-nuttx)
 include("${_nros_nuttx_board_module}")
 
 # ---------------------------------------------------------------------------

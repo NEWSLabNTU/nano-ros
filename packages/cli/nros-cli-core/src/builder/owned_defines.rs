@@ -63,6 +63,7 @@ pub const OWNED: &[OwnedDefine] = &[
         "NROS_BOARD_HEAP_BUDGET_BYTES",
         "the board heap, resolved at stage 4",
     ),
+    exact("NROS_BOARD_MODULE", "the board package's CMake module"),
     exact("NROS_BOARD_RX_FLOOR_US", "the board's receive timing"),
     exact("NROS_BOARD_RX_FRAME_COST_US", "the board's receive timing"),
     exact("NROS_BOARD_SNIPPETS", "the board's Zephyr snippets"),
