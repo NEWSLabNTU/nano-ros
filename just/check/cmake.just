@@ -882,3 +882,20 @@ toolchain-paths-persist:
     fi
     printf '%s\n' "$out"
     exit "$rc"
+
+# issue 2608 — every tracked workspace root with a C/C++ package configures
+# under `NROS_PROBE_FAILURE=refuse` (`scripts/check-workspace-probes.sh`).
+# Since phase-559 W11 a failed metadata probe stops every unattended lane that
+# syncs its workspace, and W11's pre-merge measurement reached 18 roots of 53:
+# a Zephyr witness under `packages/testing/nros-tests/bins/` that the host
+# probe could never compile stopped every Zephyr fixture build on main, and a
+# fixture component that declared nothing stopped two linux rows. This is the
+# same configure over all of them, so the next one is red before it merges.
+# The build tier, not the fast line: it compiles every probe (1,687 s one after
+# another on a warm host; six at a time by default).
+[group('needs:cli')]
+[group('needs:cmake')]
+[metadata("tier", "build")]
+workspace-probes:
+    @bash scripts/check-workspace-probes.sh
+

@@ -334,6 +334,7 @@ workspace-features
 workspace-fmt
 workspace-generated-ignored
 workspace-order
+workspace-probes
 workspace-root-build-files
 xrce-agent-door
 xrce-agent-invocations

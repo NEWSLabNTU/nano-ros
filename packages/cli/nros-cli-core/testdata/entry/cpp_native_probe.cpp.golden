@@ -31,6 +31,7 @@ static int32_t __nros_entry_setup() {
 
 // phase-308 — metadata probe. Records what this component DECLARES;
 // opens no transport and never spins.
+#include <stdio.h>
 extern "C" int nros_cpp_metadata_dump(const char*, const char*, const char*,
                                      const char*, const char*);
 // Registering the recording backend EXPLICITLY, rather than relying on
@@ -47,5 +48,17 @@ int main(int /*argc*/, char** /*argv*/) {
     if (!r.ok()) return 1;
     int32_t rc = __nros_entry_setup();
     if (rc != 0) return rc;
-    return nros_cpp_metadata_dump("demo_bringup", "talker", "talker", "cpp", "/build/nros/metadata/talker.json");
+    int dump = nros_cpp_metadata_dump("demo_bringup", "talker", "talker", "cpp", "/build/nros/metadata/talker.json");
+    // Issue 2608 — "nothing recorded" (-2) is a real error, not an empty
+    // sidecar: the declaration path did not run, or the component has
+    // nothing to size an image from. Say which component, in the words a
+    // user wrote it in; the exit status alone reads as 254.
+    if (dump == -2) {
+        fprintf(stderr,
+                "component `%s::%s` declares no publisher, subscription, timer, service, "
+                "action or parameter, so nothing sizes its image from it. A component "
+                "must declare at least one.\n",
+                "demo_bringup", "talker");
+    }
+    return dump;
 }
