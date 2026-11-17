@@ -3701,6 +3701,20 @@ image = "mps2-an385-freertos"
 target_dir = "target"
 target = "thumbv7m-none-eabi"
 
+# issue 2507 — a task stack overflow on FreeRTOS + MPS2-AN385 hits the board's
+# MPU stack guard and names the task (not `*** MALLOC FAILED ***`); a sized
+# task's high-water read still works under the guard. Opens no session.
+[[workspace_fixture]]
+id = "freertos-stack-guard-mps2"
+platform = "freertos"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/stack-guard-freertos-mps2"
+rmw = "zenoh"
+bringup = "src/stack_guard_freertos_mps2_bringup"
+image = "mps2-an385-freertos"
+target_dir = "target"
+target = "thumbv7m-none-eabi"
+
 # ===========================================================================
 # nuttx (qemu ARM virt) — Rust role examples. Plain cargo (nightly pinned by
 # the example's rust-toolchain.toml). Codegen runs in the recipe.

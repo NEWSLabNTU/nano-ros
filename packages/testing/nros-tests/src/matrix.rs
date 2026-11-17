@@ -1260,6 +1260,10 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
             "FreertosMps2/Rust/Zenoh/Pubsub/Example (same talker image) — answered by rtos_e2e",
         ),
     ),
+    (
+        "freertos_stack_guard",
+        NonCell::Probe("the mps2-an385 FreeRTOS task stack guard catches an overflow"),
+    ),
     ("ftti_detection_bounds", NonCell::Static),
     (
         "fvp_smoke",

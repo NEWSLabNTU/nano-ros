@@ -263,6 +263,31 @@ elseif(TARGET freertos_config AND _nros_freertos_rmw STREQUAL "zenoh")
     nros_freertos_config_define(NROS_FREERTOS_HEAP_DEFAULT_ZENOH=1)
 endif()
 
+# Issue 2507 -- NROS_FREERTOS_TASK_STACK_GUARD=0 builds the kernel without the
+# board's task stack guard (on MPS2-AN385, an MPU region over each task
+# stack's lowest 256 bytes, moved on every switch). Unset or 1 keeps the
+# board's default, which is on. A `-D` wins; otherwise the environment, then
+# the image's `[image.<id>.knobs]` (`nros_image_env_value`), so the image's
+# value reaches the kernel this road compiles. On `freertos_config`, so the
+# kernel and the board's C agree (the cargo road's reader is
+# nros-board-freertos/build.rs).
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosImageEnv.cmake")
+if(DEFINED NROS_FREERTOS_TASK_STACK_GUARD AND NOT "${NROS_FREERTOS_TASK_STACK_GUARD}" STREQUAL "")
+    set(_nros_task_stack_guard "${NROS_FREERTOS_TASK_STACK_GUARD}")
+else()
+    nros_image_env_value(_nros_task_stack_guard NROS_FREERTOS_TASK_STACK_GUARD)
+endif()
+if(NOT "${_nros_task_stack_guard}" STREQUAL "")
+    if(NOT _nros_task_stack_guard MATCHES "^[01]$")
+        message(FATAL_ERROR
+            "nano-ros: NROS_FREERTOS_TASK_STACK_GUARD='${_nros_task_stack_guard}': "
+            "expected 0 (no task stack guard) or 1 (the board's default)")
+    endif()
+    if(_nros_task_stack_guard EQUAL 0 AND TARGET freertos_config)
+        nros_freertos_config_define(NROS_BOARD_TASK_STACK_GUARD=0)
+    endif()
+endif()
+
 # ---------------------------------------------------------------------------
 # Native-C platform shim (`packages/platform/nros-platform-freertos`). The
 # board overlay must have declared `freertos_kernel` + `lwip` (the shim

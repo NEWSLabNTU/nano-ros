@@ -605,6 +605,20 @@ pub use nros_condvar_contract::{
     PASS_PREFIX as CONDVAR_CONTRACT_PASS,
 };
 
+/// Issue 2507 — what the `stack-guard-freertos-mps2` image prints: the app
+/// task's stack high-water mark (read under the guard), the line before it
+/// overflows a task named `overflow`, and the board's report when that task's
+/// stack hits its guard. A line with the FAIL prefix means the overflow was not
+/// caught.
+pub const STACK_GUARD_HIGH_WATER: &str = "stack-guard: app high-water ";
+pub const STACK_GUARD_OVERFLOWING: &str = "stack-guard: overflowing the task 'overflow'";
+pub const STACK_GUARD_CAUGHT: &str =
+    "*** STACK OVERFLOW: overflow *** (the task's stack hit its guard)";
+pub const STACK_GUARD_FAIL: &str = "stack-guard: FAIL";
+/// What the MPS2-AN385 FreeRTOS board printed for a task stack overflow before
+/// it had a stack guard (issue 2507).
+pub const FREERTOS_MALLOC_FAILED: &str = "*** MALLOC FAILED ***";
+
 // ---------------------------------------------------------------------------
 // Service (AddTwoInts) demo wording — phase-277 W5.
 //

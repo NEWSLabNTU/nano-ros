@@ -173,6 +173,10 @@ NO_ROUTER = {
     "packages/testing/nros-tests/bins/condvar-contract-threadx-linux": (
         "no-session `run_bare` contract check — opens no Executor and dials nothing"
     ),
+    # Issue 2507 — the FreeRTOS task stack guard image overflows a task on purpose.
+    "packages/testing/nros-tests/bins/stack-guard-freertos-mps2": (
+        "no-session `run_bare` stack guard check — opens no Executor and dials nothing"
+    ),
     "packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux": (
         "takes the one pool slot raw, then asserts the second `Context::new` is "
         "refused `Full` before it dials — no router by design"

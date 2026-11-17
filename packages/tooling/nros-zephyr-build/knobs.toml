@@ -410,6 +410,14 @@ id = "FREERTOS_APP_STACK_KB"
 [[knob]]
 id = "FREERTOS_HEAP_KB"
 
+# Issue 2507 -- 0 builds a FreeRTOS kernel that does not reprogram the
+# board's task stack guard on a context switch (MPS2-AN385: an MPU region
+# over each task stack's lowest 256 bytes). Unset keeps the board's default,
+# which is on. Read by nros-board-freertos/build.rs and, on the cmake road,
+# cmake/platform/nano-ros-freertos.cmake.
+[[knob]]
+id = "FREERTOS_TASK_STACK_GUARD"
+
 [[knob]]
 id = "GRAPH_MAX_ENTITIES"
 type = "int"
