@@ -128,6 +128,11 @@ says so.
   a guarded probe that failed and an unguarded one that found the host's
   copy. **Done** in W3a, measured end to end on a copy of `image_config_ws`;
   the probe's dropped `-D`s are `-U`'d, so the cache cannot keep them;
+- the probe adds each node package's build-time WORKSPACE dependency
+  packages to its one project, in ws-order before the node, and keys
+  freshness on them, so a node including a sibling library's header
+  probes without an `add_subdirectory` fallback of its own (issue 2680;
+  design in the issue, under review);
 - a dependency's `system.toml` arguments are listed by `--dry-run` as
   ignored (moved from W2). **Open**: a dependency package has no
   `[image.<id>.build]` of its own today, so there is nothing yet to ignore;
